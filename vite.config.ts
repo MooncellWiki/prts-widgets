@@ -18,9 +18,6 @@ export default defineConfig({
       protocol: "ws",
     },
   },
-  optimizeDeps: {
-    disabled: true,
-  },
   build: {
     minify: "terser",
     sourcemap: true,
