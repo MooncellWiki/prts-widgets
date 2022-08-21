@@ -10,12 +10,15 @@
     "sourcemap": "source-map-explorer ./dist/*.js"
   },
   "dependencies": {
+    "@vicons/material": "^0.12.0",
     "@vueuse/core": "^9.1.0",
+    "hammerjs": "^2.0.8",
     "md5": "^2.3.0",
     "naive-ui": "^2.32.1",
     "vue": "^3.2.37"
   },
   "devDependencies": {
+    "@types/hammerjs": "^2.0.41",
     "@types/md5": "^2.3.2",
     "@vitejs/plugin-vue": "^3.0.3",
     "source-map-explorer": "^2.5.2",
