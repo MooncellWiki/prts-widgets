@@ -5,14 +5,14 @@ import { Spine } from '../../utils/spine';
 import { isFirefox } from '../../utils/utils';
 export function useEvent(
     canvas: Ref<HTMLCanvasElement | undefined>,
-    spineRef: Ref<Spine | undefined>,
+    spine: { spine?: Spine },
 ): {
     big: Ref<boolean>;
 } {
     const big = ref(false);
     const startPosition = ref<{ x: number; y: number }>();
     const getPosition = () => {
-        return spineRef.value!.position;
+        return spine.spine!.position;
     };
     const wheelHandler = (e: WheelEvent) => {
         e.preventDefault();
@@ -21,14 +21,14 @@ export function useEvent(
             return;
         }
         const delta = isFirefox() ? e.deltaY / -480 : e.deltaY * -0.001;
-        if (!spineRef.value) {
+        if (!spine.spine) {
             return;
         }
         const { scale } = getPosition();
         if (scale + delta <= 0) {
             return;
         }
-        spineRef.value?.scale(scale + delta);
+        spine.spine?.scale(scale + delta);
     };
     let hm: HammerManager;
     onMounted(() => {
@@ -38,7 +38,7 @@ export function useEvent(
         hm = new hammer(canvas.value);
         hm.get('pinch').set({ enable: true });
         hm.on('panstart', () => {
-            if (!spineRef.value) {
+            if (!spine.spine) {
                 return;
             }
             const { x, y } = getPosition();
@@ -48,14 +48,14 @@ export function useEvent(
             };
         });
         hm.on('panmove', (e) => {
-            if (!spineRef.value) {
+            if (!spine.spine) {
                 return;
             }
             const { scale } = getPosition();
             const { x, y } = startPosition.value!;
             // console.log(e.deltaX, e.deltaY);
             const ratio = (big.value ? 1 : 10 / 3) / scale;
-            spineRef.value.move(x - e.deltaX * ratio, y + e.deltaY * ratio);
+            spine.spine.move(x - e.deltaX * ratio, y + e.deltaY * ratio);
         });
         hm.on('panend', () => {
             startPosition.value = undefined;

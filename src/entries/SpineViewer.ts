@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import "virtual:windi.css";
-import SpineVue, { Props } from '../widgets/Spine/Spine.vue';
+import { Props } from '../widgets/Spine/Spine.vue';
+import SpineVue from '../widgets/Spine/Wrapper.vue';
 import { Spine } from '../utils/spine';
 //@ts-ignore
 window.SpineApi = Spine;
