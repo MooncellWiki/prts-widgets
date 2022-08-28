@@ -3,12 +3,14 @@ lockfileVersion: 5.4
 specifiers:
   '@types/hammerjs': ^2.0.41
   '@types/md5': ^2.3.2
+  '@types/offscreencanvas': ^2019.7.0
   '@vicons/material': ^0.12.0
   '@vitejs/plugin-vue': ^3.0.3
   '@vueuse/core': ^9.1.0
   hammerjs: ^2.0.8
   md5: ^2.3.0
   naive-ui: ^2.32.1
+  rollup-plugin-visualizer: ^5.8.0
   source-map-explorer: ^2.5.2
   terser: ^5.14.2
   typescript: ^4.6.4
@@ -29,7 +31,9 @@ dependencies:
 devDependencies:
   '@types/hammerjs': 2.0.41
   '@types/md5': 2.3.2
+  '@types/offscreencanvas': 2019.7.0
   '@vitejs/plugin-vue': 3.0.3_vite@3.0.9+vue@3.2.37
+  rollup-plugin-visualizer: 5.8.0
   source-map-explorer: 2.5.2
   terser: 5.14.2
   typescript: 4.7.4
@@ -179,6 +183,10 @@ packages:
   /@types/node/17.0.45:
     resolution: {integrity: sha512-w+tIMs3rq2afQdsPJlODhoUEKzFP1ayaoyl1CcnwtIlsVe7K7bA1NGm4s3PraqTLlXnbIN84zuBlxBWo1u9BLw==}
     dev: false
+
+  /@types/offscreencanvas/2019.7.0:
+    resolution: {integrity: sha512-PGcyveRIpL1XIqK8eBsmRBt76eFgtzuPiSTyKHZxnGemp2yzGzWpjYKAfK3wIMiU7eH+851yEpiuP8JZerTmWg==}
+    dev: true
 
   /@types/web-bluetooth/0.0.15:
     resolution: {integrity: sha512-w7hEHXnPMEZ+4nGKl/KDRVpxkwYxYExuHOYXyzIzCDzEZ9ZCGMAewulr9IqJu2LR4N37fcnb1XVeuZ09qgOxhA==}
@@ -512,6 +520,11 @@ packages:
         optional: true
     dependencies:
       ms: 2.1.2
+    dev: true
+
+  /define-lazy-prop/2.0.0:
+    resolution: {integrity: sha512-Ds09qNh8yw3khSjiJjiUInaGX9xlqZDY7JVryGxdxV7NPeuqQfplOpQ66yJFZut3jLa5zOwkXw1g9EI2uKh4Og==}
+    engines: {node: '>=8'}
     dev: true
 
   /duplexer/0.1.2:
@@ -1048,6 +1061,15 @@ packages:
       is-wsl: 2.2.0
     dev: true
 
+  /open/8.4.0:
+    resolution: {integrity: sha512-XgFPPM+B28FtCCgSb9I+s9szOC1vZRSwgWsRUA5ylIxRTgKozqjOCrVOqGsYABPYK5qnfqClxZTFBa8PKt2v6Q==}
+    engines: {node: '>=12'}
+    dependencies:
+      define-lazy-prop: 2.0.0
+      is-docker: 2.2.1
+      is-wsl: 2.2.0
+    dev: true
+
   /path-is-absolute/1.0.1:
     resolution: {integrity: sha512-AVbw3UJ2e9bq64vSaS9Am0fje1Pa8pbGqTTsmXfaIiMpnr5DlDhfJOuLj9Sf95ZPVDAUerDfEk88MPmPe7UCQg==}
     engines: {node: '>=0.10.0'}
@@ -1101,6 +1123,19 @@ packages:
     hasBin: true
     dependencies:
       glob: 7.2.3
+    dev: true
+
+  /rollup-plugin-visualizer/5.8.0:
+    resolution: {integrity: sha512-pY6j/7qHz5I9rB7d/bQoA5gX+2FbV3MBG055wrsFxDn550bgl0FNViRj6wDHh85PMswv+JVdZjhnMBzz/hdAHA==}
+    engines: {node: '>=14'}
+    hasBin: true
+    peerDependencies:
+      rollup: ^2.0.0
+    dependencies:
+      nanoid: 3.3.4
+      open: 8.4.0
+      source-map: 0.7.4
+      yargs: 17.5.1
     dev: true
 
   /rollup/2.77.3:
@@ -1386,6 +1421,11 @@ packages:
     engines: {node: '>=10'}
     dev: true
 
+  /yargs-parser/21.1.1:
+    resolution: {integrity: sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw==}
+    engines: {node: '>=12'}
+    dev: true
+
   /yargs/16.2.0:
     resolution: {integrity: sha512-D1mvvtDG0L5ft/jGWkLpG1+m0eQxOfaBvTNELraWj22wSVUMWxZUvYgJYcKh6jGGIkJFhH4IZPQhR4TKpc8mBw==}
     engines: {node: '>=10'}
@@ -1397,4 +1437,17 @@ packages:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 20.2.9
+    dev: true
+
+  /yargs/17.5.1:
+    resolution: {integrity: sha512-t6YAJcxDkNX7NFYiVtKvWUz8l+PaKTLiL63mJYWR2GnHq2gjEWISzsLp9wg3aY36dY1j+gfIEL3pIF+XlJJfbA==}
+    engines: {node: '>=12'}
+    dependencies:
+      cliui: 7.0.4
+      escalade: 3.1.1
+      get-caller-file: 2.0.5
+      require-directory: 2.1.1
+      string-width: 4.2.3
+      y18n: 5.0.8
+      yargs-parser: 21.1.1
     dev: true

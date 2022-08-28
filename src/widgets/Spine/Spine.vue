@@ -2,26 +2,28 @@
   <n-card :style="{ width: 'fit-content' }">
     <div class="flex justify-around">
       <div class="w-[330px] h-[300px] pr-4 flex flex-col justify-around">
-        <n-form-item size="small" :show-feedback="false" label="皮肤">
+        <form-item label="皮肤">
           <n-select :options="skinList" v-model:value="curSkin" @update:value="onSelectSkin"></n-select>
-        </n-form-item>
-        <n-form-item size="small" :show-feedback="false" label="模型">
+        </form-item>
+        <form-item label="模型">
           <n-select :options="modelList" v-model:value="curModel" @update:value="onSelectModel"></n-select>
-        </n-form-item>
-        <n-form-item size="small" :show-feedback="false" label="动画">
+        </form-item>
+        <form-item label="动画">
           <n-select :options="aniList" v-model:value="curAni" @update:value="onSelectAni"></n-select>
-        </n-form-item>
+        </form-item>
         <div class="flex">
-          <n-form-item size="small" :show-feedback="false" label="循环播放" class="mr-2">
-            <n-switch size="small" v-model:value="isLoop" @update:value="onChangeLoop"></n-switch>
-          </n-form-item>
-          <n-form-item size="small" :show-feedback="false" label="背景颜色" class="flex-grow">
+          <form-item label="循环播放" class="mr-2">
+            <div>
+              <n-switch size="small" v-model:value="isLoop" @update:value="onChangeLoop"></n-switch>
+            </div>
+          </form-item>
+          <form-item label="背景颜色" class="flex-grow">
             <n-color-picker size="small" :actions="['confirm']" @confirm="onChangeColor" default-value="#00000000" />
-          </n-form-item>
+          </form-item>
         </div>
-        <n-form-item label-placement="left" :show-feedback="false" label="播放速度">
+        <form-item label-placement="left" label="播放速度">
           <n-slider :min="0.1" :max="2" :step="0.1" v-model:value="speed" @update:value="onChangeSpeed"></n-slider>
-        </n-form-item>
+        </form-item>
         <div class="flex justify-around">
           <n-button circle size="large">
             <template #icon>
@@ -87,8 +89,8 @@ import {
   NButton,
   NCard,
   NSkeleton,
-  NForm,
-  NFormItem,
+  // NForm,
+  // NFormItem,
   NSelect,
   NSwitch,
   NColorPicker,
@@ -104,6 +106,7 @@ import {
 } from "@vicons/material";
 import { useEvent } from "./useEvent";
 import { Spine } from "../../utils/spine";
+import FormItem from "../../components/FormItem.vue";
 interface States {
   skin: string;
   modelList: string[];
@@ -134,8 +137,8 @@ export default defineComponent({
     NButton,
     NCard,
     NSkeleton,
-    NForm,
-    NFormItem,
+    // NForm,
+    // NFormItem,
     NSelect,
     NSwitch,
     NColorPicker,
@@ -145,7 +148,8 @@ export default defineComponent({
     RefreshOutlined,
     FullscreenOutlined,
     InfoOutlined,
-    FullscreenExitOutlined
+    FullscreenExitOutlined,
+    FormItem
   },
   props: {
     prefix: String,

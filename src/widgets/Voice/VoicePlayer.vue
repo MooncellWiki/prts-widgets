@@ -1,9 +1,9 @@
 <template>
   <div class="container">
     <img
-      class="md:w-10 <sm:w-7 cursor-pointer"
+      class="md:w-10 <sm:w-7 cursor-pointer lazyload"
       :title="playing ? '暂停' : '播放'"
-      :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
+      :data-src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
       @click="
         () => {
           playing = !playing;
@@ -17,9 +17,9 @@
       :download="voicePath.split('/')[voicePath.split('/').length - 1]"
     >
       <img
-        class="md:w-10 <sm:w-7 cursor-pointer"
+        class="md:w-10 <sm:w-7 cursor-pointer lazyload"
         title="下载"
-        src="/images/f/f1/Download.png"
+        data-src="/images/f/f1/Download.png"
       />
     </a>
   </div>

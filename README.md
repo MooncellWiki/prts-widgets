@@ -14,3 +14,9 @@ Since TypeScript cannot handle type information for `.vue` imports, they are shi
 2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
 
 You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+
+## 子应用列表
+会逐步迁移一些没人会去搜，而且需要复杂 lua/smw 查询的模板过来
+- 需求材料干员 [Widget:ItemDemand/dev](http://prts.wiki/w/Widget:ItemDemand/dev)
+- 干员语音 [Widget:VoiceTable/dev](https://prts.wiki/w/Widget:VoiceTable/dev)
+- Spine [Widget:Spinev2/dev](https://prts.wiki/w/Widget:Spinev2/dev)
