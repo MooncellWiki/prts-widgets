@@ -1,6 +1,6 @@
 <template>
-  <card :style="{ width: 'fit-content' }" class="p-5 bg-white">
-    <div class="flex justify-around">
+  <card :style="{ width: 'fit-content' }" class="bg-white relative">
+    <div class="m-5 flex justify-around">
       <div class="w-[330px] h-[300px] pr-4 flex flex-col justify-around">
         <form-item label="皮肤">
           <n-select :options="skinList" v-model:value="curSkin" @update:value="onSelectSkin"></n-select>
@@ -25,13 +25,18 @@
           <n-slider :min="0.1" :max="2" :step="0.1" v-model:value="speed" @update:value="onChangeSpeed"></n-slider>
         </form-item>
         <div class="flex justify-around">
-          <n-button circle size="large">
-            <template #icon>
-              <n-icon :size="28">
-                <DownloadOutlined />
-              </n-icon>
+          <n-popover v-if="supportWebm">
+            <template #trigger>
+              <n-button circle size="large" @click="record">
+                <template #icon>
+                  <n-icon :size="28">
+                    <DownloadOutlined />
+                  </n-icon>
+                </template>
+              </n-button>
             </template>
-          </n-button>
+            实验性WEBM导出
+          </n-popover>
           <n-button circle size="large" @click="reset">
             <template #icon>
               <n-icon :size="28">
@@ -47,13 +52,18 @@
               </n-icon>
             </template>
           </n-button>
-          <n-button circle size="large">
-            <template #icon>
-              <n-icon :size="28">
-                <InfoOutlined />
-              </n-icon>
+          <n-popover trigger="hover">
+            <template #trigger>
+              <n-button circle size="large">
+                <template #icon>
+                  <n-icon :size="28">
+                    <InfoOutlined />
+                  </n-icon>
+                </template>
+              </n-button>
             </template>
-          </n-button>
+            <Detail :detailes="animationsDetail"></Detail>
+          </n-popover>
         </div>
       </div>
       <div class="overflow-hidden relative" :style="{
@@ -81,10 +91,14 @@
         </div>
       </div>
     </div>
+    <div v-if="recording" class="absolute top-0 bottom-0 right-0 left-0 h-full flex justify-center items-center"
+      :style="{ backgroundColor: 'rgba(0,0,0,0.4)' }">
+      <div class="bg-white p-4 rounded ">正在导出 {{ name }}-{{ curSkin }}-{{ curModel }}-{{ curAni }}-x{{ speed }}.webm</div>
+    </div>
   </card>
 </template>
 <script lang="ts">
-import { computed, defineComponent, onMounted, PropType, ref } from "vue";
+import { computed, defineComponent, onMounted, PropType, ref, render, h } from "vue";
 import {
   NButton,
   NSkeleton,
@@ -95,6 +109,7 @@ import {
   NColorPicker,
   NSlider,
   NIcon,
+  NPopover,
 } from "naive-ui";
 import {
   DownloadOutlined,
@@ -107,6 +122,8 @@ import { useEvent } from "./useEvent";
 import { Spine } from "../../utils/spine";
 import FormItem from "../../components/FormItem.vue";
 import Card from "../../components/Card.vue";
+import Detail from './Detail.vue';
+import { isMobile } from "../../utils/utils";
 interface States {
   skin: string;
   modelList: string[];
@@ -143,13 +160,15 @@ export default defineComponent({
     NColorPicker,
     NSlider,
     NIcon,
+    NPopover,
     DownloadOutlined,
     RefreshOutlined,
     FullscreenOutlined,
     InfoOutlined,
     FullscreenExitOutlined,
     FormItem,
-    Card
+    Card,
+    Detail
   },
   props: {
     prefix: String,
@@ -253,6 +272,17 @@ export default defineComponent({
     function reset() {
       spineRef.spine?.transform(-500, -200, 1);
     }
+    const supportWebm =
+      window.MediaRecorder && MediaRecorder.isTypeSupported('video/webm') && !isMobile();
+    const recording = ref(false);
+    async function record() {
+      if (!spineRef.spine || recording.value) {
+        return;
+      }
+      recording.value = true;
+      await spineRef.spine.record(curAni.value, `${name}-${curSkin.value}-${curModel.value}-${curAni.value}-x${speed.value}`)
+      recording.value = false;
+    }
     return {
       canvas,
       big,
@@ -272,7 +302,11 @@ export default defineComponent({
       onSelectModel,
       onSelectAni,
       onChangeLoop,
-      reset
+      reset,
+      animationsDetail,
+      supportWebm,
+      record,
+      recording
     };
   },
 });
