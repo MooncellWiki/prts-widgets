@@ -1,5 +1,5 @@
 <template>
-  <n-card :style="{ width: 'fit-content' }">
+  <card :style="{ width: 'fit-content' }" class="p-5 bg-white">
     <div class="flex justify-around">
       <div class="w-[330px] h-[300px] pr-4 flex flex-col justify-around">
         <form-item label="皮肤">
@@ -81,13 +81,12 @@
         </div>
       </div>
     </div>
-  </n-card>
+  </card>
 </template>
 <script lang="ts">
 import { computed, defineComponent, onMounted, PropType, ref } from "vue";
 import {
   NButton,
-  NCard,
   NSkeleton,
   // NForm,
   // NFormItem,
@@ -107,6 +106,7 @@ import {
 import { useEvent } from "./useEvent";
 import { Spine } from "../../utils/spine";
 import FormItem from "../../components/FormItem.vue";
+import Card from "../../components/Card.vue";
 interface States {
   skin: string;
   modelList: string[];
@@ -135,7 +135,6 @@ export interface Props {
 export default defineComponent({
   components: {
     NButton,
-    NCard,
     NSkeleton,
     // NForm,
     // NFormItem,
@@ -149,7 +148,8 @@ export default defineComponent({
     FullscreenOutlined,
     InfoOutlined,
     FullscreenExitOutlined,
-    FormItem
+    FormItem,
+    Card
   },
   props: {
     prefix: String,

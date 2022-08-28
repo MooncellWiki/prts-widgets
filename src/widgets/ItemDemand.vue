@@ -1,41 +1,20 @@
 <template>
-  <n-config-provider
-    preflight-style-disabled
-    :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
-    :theme-overrides="{common:{'primaryColor':'#6a6aff'}}"
-  >
+  <n-config-provider preflight-style-disabled :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
+    :theme-overrides="{ common: { 'primaryColor': '#6a6aff' } }">
     <!-- <div class="max-w-700px box-border">
     <Cost ></Cost>
   </div> -->
-    <NButton v-if="state == Status.fail" @click="load"
-      >加载失败 点击重试</NButton
-    >
-    <NCard
-      v-else-if="state == Status.succ && data"
-      class="max-w-700px"
-      content-style="padding: 0;"
-    >
+    <NButton v-if="state == Status.fail" @click="load">加载失败 点击重试</NButton>
+    <card v-else-if="state == Status.succ && data" class="max-w-700px" content-style="padding: 0;">
       <NTabs :tabs-padding="20" size="large">
-        <NTabPane
-          v-for="cost in data.costs"
-          :key="cost.label"
-          :name="cost.label"
-          class="grid grid-cols-5 <sm:grid-cols-3"
-        >
-          <Cost
-            v-for="item in cost.data"
-            :key="item.name"
-            :rarity="item.rarity"
-            :name="item.name"
-            :profession="item.profession"
-            :elite="item.elite"
-            :skill="item.skill"
-            :mastery="item.mastery"
-            :uniequip="item.uniequip"
-          ></Cost>
+        <NTabPane v-for="cost in data.costs" :key="cost.label" :name="cost.label"
+          class="grid grid-cols-5 <sm:grid-cols-3">
+          <Cost v-for="item in cost.data" :key="item.name" :rarity="item.rarity" :name="item.name"
+            :profession="item.profession" :elite="item.elite" :skill="item.skill" :mastery="item.mastery"
+            :uniequip="item.uniequip"></Cost>
         </NTabPane>
       </NTabs>
-    </NCard>
+    </card>
     <NSkeleton v-else> </NSkeleton>
   </n-config-provider>
 </template>
@@ -44,13 +23,13 @@ import { defineComponent, onMounted, ref } from "vue";
 import CostVue, { costProps } from "../components/Cost.vue";
 import { apiEndPoint, professionMap } from "../utils/utils";
 import {
-  NCard,
   NTabs,
   NTabPane,
   NButton,
   NSkeleton,
   NConfigProvider,
 } from "naive-ui";
+import Card from "../components/Card.vue";
 interface cost {
   label: string;
   data: Array<costProps>;
@@ -112,7 +91,7 @@ export default defineComponent({
   },
   components: {
     Cost: CostVue,
-    NCard,
+    Card,
     NTabs,
     NTabPane,
     NButton,
