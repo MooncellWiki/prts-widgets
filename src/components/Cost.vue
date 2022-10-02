@@ -6,21 +6,41 @@
             :profession="profession"
             :size="60"
         />
-        <div>
+        <div :class="{ 'text-disabled': elite === 0 }">
             精英化：
-            <span> {{ elite }} </span>
+            <span
+                :class="{ 'text-primary-main': elite !== 0 }"
+                class="font-bold"
+            >
+                {{ elite }}
+            </span>
         </div>
-        <div>
+        <div :class="{ 'text-disabled': skill === 0 }">
             技能1→7：
-            <span> {{ skill }} </span>
+            <span
+                :class="{ 'text-primary-main': skill !== 0 }"
+                class="font-bold"
+            >
+                {{ skill }}
+            </span>
         </div>
-        <div v-if="mastery">
+        <div v-if="mastery" :class="{ 'text-disabled': sum(mastery) === 0 }">
             技能专精：
-            <span> {{ sum(mastery) === 0 ? 0 : `${mastery.join('/')}` }} </span>
+            <span
+                :class="{ 'text-primary-main': sum(mastery) !== 0 }"
+                class="font-bold"
+            >
+                {{ sum(mastery) === 0 ? 0 : `${mastery.join('/')}` }}
+            </span>
         </div>
-        <div>
+        <div :class="{ 'text-disabled': uniequip === 0 }">
             模组：
-            <span> {{ uniequip }} </span>
+            <span
+                :class="{ 'text-primary-main': uniequip !== 0 }"
+                class="font-bold"
+            >
+                {{ uniequip }}
+            </span>
         </div>
     </div>
 </template>

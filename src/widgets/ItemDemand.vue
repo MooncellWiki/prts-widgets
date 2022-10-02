@@ -10,11 +10,18 @@
         <NButton v-if="state === Status.fail" @click="load">
             加载失败 点击重试
         </NButton>
-        <card
+        <div
             v-else-if="state === Status.succ && data"
             class="max-w-700px"
             content-style="padding: 0;"
         >
+            <div>
+                <div>精英化：{{data.total.elite}}</div>
+                <div>技能1→7：{{data.total.skill}}</div>
+                <div>技能专精：{{data.total.mastery}}</div>
+                <div>模组：{{data.total.uniequip}}</div>
+                <div class="font-bold">总计：{{data.total.total}}</div>
+            </div>
             <NTabs :tabs-padding="20" size="large">
                 <NTabPane
                     v-for="cost in data.costs"
@@ -35,7 +42,7 @@
                     ></Cost>
                 </NTabPane>
             </NTabs>
-        </card>
+        </div>
         <NSkeleton v-else> </NSkeleton>
     </n-config-provider>
 </template>
