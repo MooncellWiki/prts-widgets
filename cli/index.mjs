@@ -5,10 +5,11 @@ import { checkPageExist, edit, login } from './api.mjs';
 
 async function index() {
     if (process.argv[2] === '-h' || process.argv.length < 5) {
-        console.log('node .\\cli\\index.mjs widgetName username password');
+        console.log('node .\\cli\\index.mjs WidgetName username password');
         return;
     }
-    const name = process.argv[2];
+    let name = process.argv[2];
+    name = name[0].toUpperCase() + name.slice(1);
     if (await checkPageExist(`widget:${name}`)) {
         console.log(`https://prts.wiki/w/widget:${name} already exist!`);
         return;
@@ -16,16 +17,20 @@ async function index() {
     const username = process.argv[3];
     const password = process.argv[4];
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const entry = path.resolve(__dirname, `../src/entries/${name}.tsx`);
-    console.log(`${entry} created`);
+    const entry = path.resolve(__dirname, `../src/entries/${name}.ts`);
+    console.log(`src/entries/${entry} created`);
     writeFileSync(
         entry,
-        `
-import { render } from "preact";
-import "virtual:windi.css";
+        `import { createApp } from 'vue';
+import 'virtual:windi.css';
+import ${entry} from '../widgets/${entry}.vue';
 
-const ele = document.getElementById("root");
-render(<div>hello world</div>, ele);
+const ele = document.getElementById('root');
+if (ele?.dataset?.item) {
+    createApp(${entry}, { item: ele.dataset.item }).mount(ele);
+} else {
+    console.error('data-item or ele not found', ele);
+}
   `,
     );
     await login(username, password);
@@ -40,7 +45,7 @@ render(<div>hello world</div>, ele);
     await edit(
         `Widget:${name}/doc`,
         `
-[https://github.com/MooncellWiki/prts-micro-frontends 源码]
+[https://github.com/MooncellWiki/prts-widgets 源码]
 {{#widget:${name}}}
   `,
     );
@@ -50,8 +55,8 @@ render(<div>hello world</div>, ele);
         `
 <includeonly>
 <div id="root"></div>
-<script type="module" src="http://localhost:3000/@vite/client"></script>
-<script type="module" src="http://localhost:3000/src/entries/${name}.tsx"></script>
+<script type="module" src="http://localhost:8080/@vite/client"></script>
+<script type="module" src="http://localhost:8080/src/entries/${name}.tsx"></script>
 </includeonly><noinclude>{{#widget:${name}/dev}}</noinclude>
   `,
     );
