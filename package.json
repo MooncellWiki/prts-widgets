@@ -9,6 +9,8 @@
     "sourcemap": "source-map-explorer ./dist/*.js"
   },
   "dependencies": {
+    "@sentry/browser": "^7.14.0",
+    "@sentry/tracing": "^7.14.0",
     "@vicons/material": "^0.12.0",
     "@vueuse/core": "^9.1.0",
     "@webank/eslint-config-ts": "^1.1.1",
