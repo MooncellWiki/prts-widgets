@@ -1,21 +1,24 @@
-import { createApp } from 'vue'
-import "virtual:windi.css";
+import { createApp } from 'vue';
+import 'virtual:windi.css';
 import { Props } from '../widgets/Spine/Spine.vue';
 import SpineVue from '../widgets/Spine/Wrapper.vue';
 import { Spine } from '../utils/spine';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 //@ts-ignore
 window.SpineApi = Spine;
 window.dispatchEvent(new Event('spine_api_ready'));
 
-const spineData: Props = JSON.parse(document.getElementById('SPINEDATA')!.innerHTML);
+const spineData: Props = JSON.parse(
+    document.getElementById('SPINEDATA')!.innerHTML,
+);
 spineData.prefix = spineData.prefix.replace(
     'https://static.prts.wiki/spine/',
     'https://static.prts.wiki/spine38/',
 );
 
-const ele = document.getElementById("spine-root");
-if (ele&& spineData) {
-    createApp(SpineVue, { ...spineData }).mount(ele)
+const ele = document.getElementById('spine-root');
+if (ele && spineData) {
+    createApp(SpineVue, { ...spineData }).mount(ele);
 } else {
-    console.error("SPINEDATA or ele not found", ele);
+    console.error('SPINEDATA or ele not found', ele);
 }

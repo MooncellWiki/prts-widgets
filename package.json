@@ -2,7 +2,6 @@
   "name": "mooncell-micro-fontend",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -12,6 +11,7 @@
   "dependencies": {
     "@vicons/material": "^0.12.0",
     "@vueuse/core": "^9.1.0",
+    "@webank/eslint-config-ts": "^1.1.1",
     "hammerjs": "^2.0.8",
     "md5": "^2.3.0",
     "naive-ui": "^2.32.1",

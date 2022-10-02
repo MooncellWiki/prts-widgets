@@ -1,6 +1,5 @@
 import hammer from 'hammerjs';
 import { onMounted, onUnmounted, ref, Ref } from 'vue';
-
 import { Spine } from '../../utils/spine';
 import { isFirefox } from '../../utils/utils';
 export function useEvent(
@@ -58,10 +57,10 @@ export function useEvent(
             spine.spine.move(x - e.deltaX * ratio, y + e.deltaY * ratio);
         });
         hm.on('panend', () => {
-            startPosition.value = undefined;
+            startPosition.value = void 0;
         });
         canvas.value.addEventListener('wheel', wheelHandler);
-    })
+    });
     onUnmounted(() => {
         hm?.destroy();
         canvas.value?.removeEventListener('wheel', wheelHandler);
