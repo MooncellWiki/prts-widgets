@@ -16,11 +16,11 @@
             content-style="padding: 0;"
         >
             <div>
-                <div>精英化：{{data.total.elite}}</div>
-                <div>技能1→7：{{data.total.skill}}</div>
-                <div>技能专精：{{data.total.mastery}}</div>
-                <div>模组：{{data.total.uniequip}}</div>
-                <div class="font-bold">总计：{{data.total.total}}</div>
+                <div>精英化：{{ data.total.elite }}</div>
+                <div>技能1→7：{{ data.total.skill }}</div>
+                <div>技能专精：{{ data.total.mastery }}</div>
+                <div>模组：{{ data.total.uniequip }}</div>
+                <div class="font-bold">总计：{{ data.total.total }}</div>
             </div>
             <NTabs :tabs-padding="20" size="large">
                 <NTabPane
@@ -50,8 +50,7 @@
 import { defineComponent, onMounted, ref } from 'vue';
 import { NTabs, NTabPane, NButton, NSkeleton, NConfigProvider } from 'naive-ui';
 import CostVue, { costProps } from '../components/Cost.vue';
-import { apiEndPoint, professionMap } from '../utils/utils';
-import Card from '../components/Card.vue';
+import { apiEndPoint } from '../utils/utils';
 interface cost {
     label: string;
     data: Array<costProps>;
@@ -113,7 +112,6 @@ async function query(name: string): Promise<itemCost> {
 export default defineComponent({
     components: {
         Cost: CostVue,
-        Card,
         NTabs,
         NTabPane,
         NButton,

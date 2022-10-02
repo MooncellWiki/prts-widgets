@@ -3,9 +3,7 @@
         <img
             class="md:w-10 <sm:w-7 cursor-pointer"
             :title="playing ? '暂停' : '播放'"
-            :src="
-                playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'
-            "
+            :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
             @click="
                 () => {
                     playing = !playing;
