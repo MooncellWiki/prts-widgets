@@ -14,6 +14,7 @@ entries.forEach((entry) => {
 export default defineConfig({
     plugins: [vue(), WindiCSS(), visualizer({ sourcemap: true })],
     server: {
+        port: 8080,
         hmr: {
             host: 'localhost',
             protocol: 'ws',

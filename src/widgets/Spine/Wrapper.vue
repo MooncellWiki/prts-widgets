@@ -9,6 +9,7 @@
         <Spine v-if="loaded" :prefix="prefix" :name="name" :skin="skin"></Spine>
         <n-button
             v-else
+            type="info"
             @click="
                 () => {
                     loaded = true;
