@@ -52,7 +52,7 @@ export async function login(name, password) {
         throw new Error(resp);
     }
 }
-export async function edit(
+export async function create(
     pagename,
     content,
     summary = 'by prts-micro-frontends cli',
@@ -69,6 +69,26 @@ export async function edit(
             token,
             format: 'json',
             createonly: 1,
+        },
+    });
+    console.log(resp);
+}
+export async function edit(
+    pagename,
+    content,
+    summary = 'by prts-micro-frontends cli',
+) {
+    let token = await getCsrfToken();
+    const resp = await request({
+        method: 'POST',
+        body: {
+            action: 'edit',
+            title: pagename,
+            text: content,
+            bot: 1,
+            summary,
+            token,
+            format: 'json',
         },
     });
     console.log(resp);

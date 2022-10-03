@@ -1,7 +1,7 @@
 import 'virtual:windi.css';
 import { createApp } from 'vue';
-import Voice from '../widgets/Voice/VoiceTable.vue';
-import VoiceMobile from '../widgets/Voice/VoiceTableMobile.vue';
+import Voice from '../widgets/VoiceTable/VoiceTable.vue';
+import VoiceMobile from '../widgets/VoiceTable/VoiceTableMobile.vue';
 
 const ele = document.getElementById('voice-table-root');
 const dataRoot = document.getElementById('voice-data-root');

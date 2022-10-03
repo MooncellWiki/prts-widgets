@@ -1,7 +1,7 @@
 import { writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { checkPageExist, edit, login } from './api.mjs';
+import { create, login } from './api.mjs';
 
 async function index() {
     if (process.argv[2] === '-h' || process.argv.length < 5) {
@@ -31,14 +31,14 @@ if (ele?.dataset?.item) {
     );
     await login(username, password);
     console.log(`login as ${username}`);
-    await edit(
+    await create(
         `Widget:${name}`,
         `
 <includeonly><div id="root"></div><!--inject your release script here--></includeonly><noinclude>{{Documentation}}</noinclude>
   `,
     );
     console.log(`https://prts.wiki/w/Widget:${name} created`);
-    await edit(
+    await create(
         `Widget:${name}/doc`,
         `
 [https://github.com/MooncellWiki/prts-widgets 源码]
@@ -46,7 +46,7 @@ if (ele?.dataset?.item) {
   `,
     );
     console.log(`https://prts.wiki/w/Widget:${name}/doc created`);
-    await edit(
+    await create(
         `Widget:${name}/dev`,
         `
 <includeonly>
