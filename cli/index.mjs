@@ -10,10 +10,6 @@ async function index() {
     }
     let name = process.argv[2];
     name = name[0].toUpperCase() + name.slice(1);
-    if (await checkPageExist(`widget:${name}`)) {
-        console.log(`https://prts.wiki/w/widget:${name} already exist!`);
-        return;
-    }
     const username = process.argv[3];
     const password = process.argv[4];
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
