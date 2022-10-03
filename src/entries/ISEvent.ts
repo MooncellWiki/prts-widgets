@@ -8,13 +8,35 @@ const ele = document.getElementById('IS-event-block-root');
 //数据表元素（根层级）
 const eventDataRoot = document.getElementById('IS-event-data-root');
 //事件场景表元素组
-const evnetEle = eventDataRoot?.getElementsByClassName(
+const eventEles = eventDataRoot?.getElementsByClassName(
     'IS-event-data',
 ) as HTMLCollectionOf<HTMLElement>;
 
-if (ele?.dataset?.item) {
-    createApp(ISEventFramework).mount(ele);
-} else {
-    console.error('data-item or ele not found', ele);
-}
-  
+Array.from(eventEles).forEach((eventEle) => {
+    const scenes = Array.from(eventEle.children).map((scene) => {
+        const data = scene.dataset!;
+        return {
+            name: data.name,
+            nav: data.nav,
+            index: data.index,
+            image: data.image,
+            text: data.text,
+            options: Array.from(scene.children).map((choose) => {
+                const chooseData = choose.dataset!;
+                return {
+                    title: chooseData.title,
+                    type: chooseData.type,
+                    icon: chooseData.icon,
+                    description: chooseData.desc,
+                    dest: chooseData.dest
+                }
+            }),
+        };
+    });
+    console.log(scenes)
+    createApp(ISEventFramework, {
+        sceneNav: [[1,'开始']],
+        currentSceneId: 1,
+        sceneData: scenes
+    }).mount(eventEle)
+});
