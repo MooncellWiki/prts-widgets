@@ -77,6 +77,7 @@ export class Spine {
         skelPath: string,
         atlasPath: string,
         position: Position,
+        skinName?: string,
         premultipliedAlpha = true,
     ): Promise<Skeleton> {
         if (this.skeletons[name]) {
@@ -89,6 +90,7 @@ export class Spine {
             atlasPath,
             position,
             premultipliedAlpha,
+            skinName,
         );
     }
     private async fetchAssets(skel: string, atlas: string): Promise<string[]> {
@@ -116,6 +118,7 @@ export class Spine {
         atlasPath: string,
         position: Position,
         premultipliedAlpha = true,
+        skinName?: string,
     ): Skeleton {
         const atlas = this.assetManager.get(atlasPath);
         const atlasLoader = new spine.AtlasAttachmentLoader(atlas);
@@ -123,6 +126,9 @@ export class Spine {
         const skeletonBinary = new spine.SkeletonBinary(atlasLoader);
         const skeletonData = skeletonBinary.readSkeletonData(skel);
         const skeleton = new spine.Skeleton(skeletonData);
+        if (skinName) {
+            skeleton.setSkinByName(skinName);
+        }
         const bounds = calculateBounds(skeleton);
         const animationStateData = new spine.AnimationStateData(skeleton.data);
         const animationState = new spine.AnimationState(animationStateData);

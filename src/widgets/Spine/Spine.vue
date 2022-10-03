@@ -277,6 +277,7 @@ export default defineComponent({
                         y: -200,
                         scale: 1,
                     },
+                    props!.skin![curSkin.value][curModel.value].skin,
                 );
             const names = (animations.value = skeleton.data.animations.map(
                 (v) => v.name,
