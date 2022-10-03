@@ -37,6 +37,7 @@ async function main() {
                 join(__dirname, '../templates/', tmpl),
                 { encoding: 'utf8' },
             );
+
             const script = dist[name].content
                 .replaceAll(
                     'sourceMappingURL=',
