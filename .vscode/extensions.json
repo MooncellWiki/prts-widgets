@@ -1,3 +1,7 @@
 {
-  "recommendations": ["Vue.volar", "voorjaar.windicss-intellisense"]
+  "recommendations": [
+    "Vue.volar",
+    "voorjaar.windicss-intellisense",
+    "dbaeumer.vscode-eslint"
+  ]
 }
