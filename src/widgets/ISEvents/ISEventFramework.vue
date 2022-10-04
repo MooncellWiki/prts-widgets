@@ -1,37 +1,41 @@
 <template>
-    <n-config-provider
-        preflight-style-disabled
-        :theme-overrides="{ Card: { color: '#212121' , textColor: '#fff', titleTextColor: '#fff', borderRadius: '5px', actionColor: '#343434'},
-                            Breadcrumb: {itemTextColor: '#A8AFB5'} }"
-    >
+    <h2>{{ sceneData[0].name }}</h2>
+    <n-config-provider preflight-style-disabled :theme-overrides="{ Card: { color: '#212121' , textColor: '#fff', titleTextColor: '#fff', borderRadius: '5px', actionColor: '#343434'},
+    Breadcrumb: {itemTextColor: '#A8AFB5'},
+    Button: {textColor: '#fff'} }">
         <n-space>
             <n-layout>
-            <n-layout-header>
-                
-            </n-layout-header>
-            <n-layout-content>
-                <n-breadcrumb separator=">">
-                    <n-breadcrumb-item v-for="[navId, navText] in sceneNav">
-                        <n-icon v-if="navId === 1"><HomeSharp /></n-icon> {{ navText }}
-                    </n-breadcrumb-item>
-                </n-breadcrumb>
-                <n-card :style="{ width: '560px' }" class="relative" :title="sceneTitle" size="small">
-                    <template #cover>
-                        <img class="lazyload img" :data-src="`/images/${getImagePath(`${sceneBg}.png`)}`" style="width:560px">
-                    </template>
-                    {{ sceneText }}
-                    <template #action>
-                        action
-                        <n-button-group vertical>
-
-                        </n-button-group>
-                    </template>
-                </n-card>
-            </n-layout-content>
+                <n-layout-content>
+                    <n-breadcrumb separator=">">
+                        <n-breadcrumb-item v-for="([SceneId, navText]) in sceneNav" @click="currentSceneId = SceneId">
+                            <n-icon v-if="SceneId === '0'">
+                                <HomeSharp />
+                            </n-icon> {{ navText }}
+                        </n-breadcrumb-item>
+                    </n-breadcrumb>
+                    <n-card :style="{ width: '560px' }" class="relative" :title="sceneData[currentSceneId].name"
+                        size="small">
+                        <template #cover>
+                            <a :href="`/images/${getImagePath(`${sceneData[currentSceneId].image}.png`)}`">
+                                <img class="lazyload img"
+                                    :data-src="`/images/${getImagePath(`${sceneData[currentSceneId].image}.png`)}`"
+                                    style="width:560px">
+                            </a>
+                        </template>
+                        {{ sceneData[currentSceneId].text }}
+                        <template #action>
+                            <n-space vertical>
+                                <ISEventOption v-for="optionitem in sceneData[currentSceneId].options"
+                                    :optionData="optionitem" :themeColor="themeColor"
+                                    @click="currentSceneId = optionitem.dest"></ISEventOption>
+                            </n-space>
+                        </template>
+                    </n-card>
+                </n-layout-content>
             </n-layout>
         </n-space>
     </n-config-provider>
-    
+
 </template>
 <script lang="ts">
 import { defineComponent, PropType, onMounted, getCurrentInstance, ref } from 'vue';
@@ -41,7 +45,6 @@ import {
     NBreadcrumbItem,
     NSpace,
     NLayout,
-    NLayoutHeader,
     NLayoutContent,
     NCard,
     NIcon,
@@ -49,7 +52,8 @@ import {
 import {
     HomeSharp,
 } from '@vicons/material';
-import {getImagePath} from '../../utils/utils';
+import { getImagePath } from '../../utils/utils';
+import ISEventOption from './ISEventOption.vue';
 export default defineComponent({
     components: {
         NConfigProvider,
@@ -57,57 +61,59 @@ export default defineComponent({
         NBreadcrumbItem,
         NSpace,
         NLayout,
-        NLayoutHeader,
         NLayoutContent,
         NCard,
         NIcon,
         HomeSharp,
+        ISEventOption,
     },
-    // data: () => ({
-    //     sceneNav : [[1, '开始']],
-    //     sceneBg : "Avg_pic_rogue_2_46",
-    //     sceneTitle: "sceneTitle",
-    //     sceneText: "sceneText",
-    //     currentSceneId: -999
-    // }),
     props: {
         sceneData: Array as PropType<
             {
                 name?: string;
                 nav?: string;
-                index? : number;
+                index?: number;
                 image?: string;
                 text?: string;
-                option?: Array<any>;
+                options?: Array<any>;
             }[]
         >,
+        themeColor: String,
     },
     watch: {
         currentSceneId(newEle, oldEle) {
-            this.sceneNavChange();
+            this.sceneNavRefresh(newEle);
         }
     },
-    methods:{
-        async sceneNavChange(){
-            var currentScene = this.sceneData[this.currentSceneId || 0];
-            this.sceneTitle = currentScene.name;
-            this.sceneText = currentScene.text;
+    methods: {
+        async findIfSceneOnNav(destSceneIndex) {
+            var res = -999
+            this.sceneNav.find((nav, index, arr, dest = destSceneIndex) => {
+                if (nav[0] == dest) {
+                    res = index
+                }
+            })
+            return res
+        },
+        async sceneNavRefresh(newSceneId) {
+            var newScene = this.sceneData[newSceneId || 0];
+            console.log("newSceneId", newSceneId)
+            var findRepetedSceneOnNav = this.findIfSceneOnNav(newSceneId);
+            console.log("findRepetedSceneOnNav", findRepetedSceneOnNav)
+            if (findRepetedSceneOnNav) {
+
+            } else {
+                this.sceneNav.push([newSceneId, newScene.nav])
+            }
         }
     },
     setup(props) {
-        const sceneNav = ref([[1, "开始"]]);
-        const currentSceneId = ref(1);
-        const currentScene = ref(props.sceneData[currentSceneId-1]);
-        const sceneBg = ref(currentScene.image);
-        const sceneTitle = ref(currentScene.name);
-        const sceneText = ref(currentScene.text);
+        const sceneNav = ref([['0', "开始"]]);
+        const currentSceneId = ref('0');
         return {
             getImagePath,
             sceneNav,
             currentSceneId,
-            sceneBg,
-            sceneTitle,
-            sceneText,
         };
     },
 });

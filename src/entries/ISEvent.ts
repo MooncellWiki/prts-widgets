@@ -33,10 +33,7 @@ Array.from(eventEles).forEach((eventEle) => {
             }),
         };
     });
-    console.log(scenes)
     createApp(ISEventFramework, {
-        sceneNav: [[1,'开始']],
-        currentSceneId: 1,
         sceneData: scenes
     }).mount(eventEle)
 });
