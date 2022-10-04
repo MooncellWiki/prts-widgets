@@ -10,11 +10,11 @@
     </n-card>
 </template>
 <script lang="ts">
-import { defineComponent, PropType, onMounted, getCurrentInstance, ref } from 'vue';
+import { defineComponent, PropType } from 'vue';
 import {
     NCard,
     NAvatar,
-     NIcon,
+    NIcon,
 } from 'naive-ui';
  import {
      ChevronRightSharp,
@@ -32,13 +32,13 @@ export default defineComponent({
         NAvatar,
         NIcon,
         
-         ChevronRightSharp,
-         InfoSharp,
-         HelpSharp,
-         WarningSharp,
-         DangerousSharp,
-         DoDisturbSharp,
-         DoNotDisturbSharp,
+        ChevronRightSharp,
+        InfoSharp,
+        HelpSharp,
+        WarningSharp,
+        DangerousSharp,
+        DoDisturbSharp,
+        DoNotDisturbSharp,
     },
     props: {
         optionData: Array as PropType<
@@ -56,5 +56,6 @@ export default defineComponent({
         return {
             getImagePath,
         }
-     }
-}
+    }
+})
+</script>

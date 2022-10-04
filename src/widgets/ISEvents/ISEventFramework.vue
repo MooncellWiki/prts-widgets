@@ -38,7 +38,7 @@
 
 </template>
 <script lang="ts">
-import { defineComponent, PropType, onMounted, getCurrentInstance, ref } from 'vue';
+import { defineComponent, PropType, ref } from 'vue';
 import {
     NConfigProvider,
     NBreadcrumb,
