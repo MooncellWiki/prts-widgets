@@ -24,10 +24,21 @@
                             :key="index"
                             @click="navJump(index)"
                         >
-                            <n-icon v-if="SceneId === 0">
-                                <HomeSharp />
-                            </n-icon>
-                            {{ sceneData[SceneId].nav }}
+                            <n-dropdown v-if="sceneData[SceneId].options.length>1 && index!=sceneNav.length-1" 
+                                placement="bottom-start" :show-arrow="true" :options="optionsToNavDrop(sceneData[SceneId].options, index)" @select="dropjump">
+                                <div class="trigger">
+                                    <n-icon v-if="SceneId === 0">
+                                        <HomeSharp />
+                                    </n-icon>
+                                    {{ sceneData[SceneId].nav }}
+                                </div>
+                            </n-dropdown>
+                            <div v-else>
+                                <n-icon v-if="SceneId === 0">
+                                    <HomeSharp />
+                                </n-icon>
+                                {{ sceneData[SceneId].nav }}
+                            </div>
                         </n-breadcrumb-item>
                     </n-breadcrumb>
                     <n-card
@@ -51,7 +62,7 @@
                             </a>
                         </template>
                         <div v-html="sceneData[currentSceneId].text"></div>
-                        <template #action v-if="sceneData[currentSceneId].options.length>0">
+                        <template #action v-if="sceneData[currentSceneId].options.length>1">
                             <n-space vertical>
                                 <ISEventOption
                                     v-for="(item, index) in sceneData[
@@ -80,11 +91,13 @@ import {
     NConfigProvider,
     NBreadcrumb,
     NBreadcrumbItem,
+    NDropdown,
     NSpace,
     NLayout,
     NLayoutContent,
     NCard,
     NIcon,
+DropdownOption,
 } from 'naive-ui';
 import { HomeSharp } from '@vicons/material';
 import { getImagePath } from '../../utils/utils';
@@ -94,6 +107,7 @@ export default defineComponent({
         NConfigProvider,
         NBreadcrumb,
         NBreadcrumbItem,
+        NDropdown,
         NSpace,
         NLayout,
         NLayoutContent,
@@ -138,7 +152,6 @@ export default defineComponent({
                     sceneNav.value.splice(index + 1);
                 }
                 currentSceneId.value = id;
-                console.log(props.sceneData[currentSceneId].text)
             }
         }
         function navJump(index: number) {
@@ -148,12 +161,39 @@ export default defineComponent({
             currentSceneId.value = sceneNav.value[index];
             sceneNav.value.splice(index + 1);
         }
+        function optionsToNavDrop(options: Array<Object>, navIndex: number){
+            var dropdownData = Array.from(options).map((option, index) => {
+                if (index>0 && option.type != "desc") {
+                    return {
+                        label: option.title,
+                        key: option.dest,
+                        props: {
+                            navIndex: navIndex,
+                        }
+                    }
+                }else{
+                    return { label: "desc"}
+                }
+            })
+            dropdownData = dropdownData.filter((data) => {
+                if (data.label != "desc"){
+                    return data
+                }
+            })
+            return dropdownData
+        }
+        function dropjump(key:number, option:DropdownOption){
+            navJump(option.props.navIndex)
+            jump(key)
+        }
         return {
             getImagePath,
             sceneNav,
             currentSceneId,
             jump,
             navJump,
+            optionsToNavDrop,
+            dropjump,
         };
     },
 });
