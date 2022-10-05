@@ -30,14 +30,14 @@
                                     <n-icon v-if="SceneId === 0">
                                         <HomeSharp />
                                     </n-icon>
-                                    {{ sceneData[SceneId].nav }}
+                                    <span v-else>{{ sceneData[SceneId].nav }}</span>
                                 </div>
                             </n-dropdown>
                             <div v-else>
                                 <n-icon v-if="SceneId === 0">
                                     <HomeSharp />
                                 </n-icon>
-                                {{ sceneData[SceneId].nav }}
+                                <span v-else>{{ sceneData[SceneId].nav }}</span>
                             </div>
                         </n-breadcrumb-item>
                     </n-breadcrumb>
