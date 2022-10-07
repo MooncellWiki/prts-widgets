@@ -48,9 +48,7 @@
                     >
                         <template #cover>
                             <a
-                                :href="`/images/${getImagePath(
-                                    `${sceneData[currentSceneId].image}.png`,
-                                )}`"
+                                :href="`/w/File:${sceneData[currentSceneId].image}.png`"
                             >
                                 <img
                                     class="lazyload img"

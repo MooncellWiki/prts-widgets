@@ -16,7 +16,7 @@
                 }
             "
         >
-            点击加载
+            点此载入模型
         </n-button>
         <!-- </n-dialog-provider> -->
     </n-config-provider>

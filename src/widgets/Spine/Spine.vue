@@ -1,15 +1,15 @@
 <template>
     <card :style="{ width: 'fit-content' }" class="bg-white relative">
         <div class="m-5 flex justify-around">
-            <div class="w-[330px] h-[300px] pr-4 flex flex-col justify-around">
-                <form-item label="皮肤">
+            <div class="w-[330px] h-[400px] pr-4 space-y-2 flex flex-col justify-around">
+                <form-item label="时装组">
                     <n-select
                         v-model:value="curSkin"
                         :options="skinList"
                         @update:value="onSelectSkin"
                     ></n-select>
                 </form-item>
-                <form-item label="模型">
+                <form-item label="模型组">
                     <n-select
                         v-model:value="curModel"
                         :options="modelList"
@@ -36,9 +36,20 @@
                     <form-item label="背景颜色" class="flex-grow">
                         <n-color-picker
                             size="small"
-                            :actions="['confirm']"
+                            
                             default-value="#00000000"
-                            @confirm="onChangeColor"
+                            :swatches="[
+                                '#00000000',
+                                '#FFFFFFFF',
+                                '#DBDBDBFF',
+                                '#2F2F2FFF',
+                                '#000000FF',
+                                '#FF0000FF',
+                                '#00FF00FF',
+                                '#0000FFFF',
+                            ]"
+                            :show-preview="true"
+                            @update:value="onChangeColor"
                         />
                     </form-item>
                 </div>
@@ -48,6 +59,8 @@
                         :min="0.1"
                         :max="2"
                         :step="0.1"
+                        :marks="{ 0.1 : 'x0.1', 0.5 : 'x0.5', 1 : 'x1.0', 1.5 : 'x1.5', 2 : 'x2.0' }"
+                        :format-tooltip = "(value) => {return 'x'+value.toFixed(1)}"
                         @update:value="onChangeSpeed"
                     ></n-slider>
                 </form-item>
@@ -64,29 +77,40 @@
                         </template>
                         实验性WEBM导出
                     </n-popover>
-                    <n-button circle size="large" @click="reset">
-                        <template #icon>
-                            <n-icon :size="28">
-                                <RefreshOutlined />
-                            </n-icon>
+                    <n-popover v-if="supportWebm">
+                        <template #trigger>
+                            <n-button circle size="large" @click="reset">
+                                <template #icon>
+                                    <n-icon :size="28">
+                                        <CenterFocusStrongSharp />
+                                    </n-icon>
+                                </template>
+                            </n-button>
                         </template>
-                    </n-button>
-                    <n-button
-                        circle
-                        size="large"
-                        @click="
-                            () => {
-                                big = !big;
-                            }
-                        "
-                    >
-                        <template #icon>
-                            <n-icon :size="28">
-                                <FullscreenExitOutlined v-if="big" />
-                                <FullscreenOutlined v-else />
-                            </n-icon>
+                        重置模型中心
+                    </n-popover>
+                    <n-popover v-if="supportWebm">
+                        <template #trigger>
+                            <n-button
+                                circle
+                                size="large"
+                                @click="
+                                    () => {
+                                        big = !big;
+                                    }
+                                "
+                            >
+                                <template #icon>
+                                    <n-icon :size="28">
+                                        <FullscreenExitOutlined v-if="big" />
+                                        <FullscreenOutlined v-else />
+                                    </n-icon>
+                                </template>
+                            </n-button>
                         </template>
-                    </n-button>
+                        <span v-if="big">小屏查看</span><span v-else>大屏查看</span>
+                    </n-popover>
+                    
                     <n-popover trigger="hover">
                         <template #trigger>
                             <n-button circle size="large">
@@ -97,6 +121,7 @@
                                 </template>
                             </n-button>
                         </template>
+                        <b>模型动画数据</b>
                         <Detail :detailes="animationsDetail"></Detail>
                     </n-popover>
                 </div>
@@ -171,7 +196,7 @@ import {
 } from 'naive-ui';
 import {
     DownloadOutlined,
-    RefreshOutlined,
+    CenterFocusStrongSharp,
     FullscreenOutlined,
     InfoOutlined,
     FullscreenExitOutlined,
@@ -220,7 +245,7 @@ export default defineComponent({
         NIcon,
         NPopover,
         DownloadOutlined,
-        RefreshOutlined,
+        CenterFocusStrongSharp,
         FullscreenOutlined,
         InfoOutlined,
         FullscreenExitOutlined,
@@ -328,8 +353,9 @@ export default defineComponent({
             if (!spineRef.spine) {
                 return;
             }
+            //console.log(e)
             const color = parseInt(e.slice(1), 16);
-            console.log(color);
+            //console.log(color);
             spineRef.spine.bg = [
                 (color >>> 24) / 255,
                 ((color & 0x00ff0000) >>> 16) / 255,
