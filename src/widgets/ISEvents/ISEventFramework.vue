@@ -190,7 +190,6 @@ export default defineComponent({
             let option = props.sceneData[sceneNav.value[navIndex]].options[key];
             navJump(navIndex);
             jump(option.dest);
-            
         }
         return {
             getImagePath,
