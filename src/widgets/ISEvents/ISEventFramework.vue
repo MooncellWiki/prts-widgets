@@ -1,6 +1,7 @@
 <template>
     <h2 v-if="sceneData[0].etype">{{ sceneData[0].etype }}</h2>
     <h3>{{ sceneData[0].name }}</h3>
+    {{ sceneData }}
     <n-config-provider
         preflight-style-disabled
         :theme-overrides="{
@@ -15,7 +16,7 @@
             Button: { textColor: '#fff' },
         }"
     >
-        <n-space :style="{ width: '560px', maxWidth: '100%' }">
+        <n-space class="w-140 max-w-full">
             <n-layout>
                 <n-layout-content>
                     <n-breadcrumb separator=">">
@@ -26,18 +27,15 @@
                         >
                             <n-dropdown
                                 v-if="
-                                    sceneData[SceneId].options.length > 1 &&
+                                    sceneData[SceneId].options.length &&
                                     index !== sceneNav.length - 1
                                 "
                                 placement="bottom-start"
                                 :show-arrow="true"
                                 :options="
-                                    optionsToNavDrop(
-                                        sceneData[SceneId].options,
-                                        index,
-                                    )
+                                    optionsToNavDrop(sceneData[SceneId].options)
                                 "
-                                @select="dropjump"
+                                @select="(i) => dropJump(i, index)"
                             >
                                 <div class="trigger">
                                     <n-icon v-if="SceneId === 0">
@@ -66,17 +64,16 @@
                                 :href="`/w/File:${sceneData[currentSceneId].image}.png`"
                             >
                                 <img
-                                    class="lazyload img"
+                                    class="lazyload img w-140"
                                     :data-src="`/images/${getImagePath(
                                         `${sceneData[currentSceneId].image}.png`,
                                     )}`"
-                                    style="width: 560px"
                                 />
                             </a>
                         </template>
                         <div v-html="sceneData[currentSceneId].text"></div>
                         <template
-                            v-if="sceneData[currentSceneId].options.length > 1"
+                            v-if="sceneData[currentSceneId].options"
                             #action
                         >
                             <n-space vertical>
@@ -102,7 +99,7 @@
     </n-config-provider>
 </template>
 <script lang="ts">
-import { computed, defineComponent, PropType, ref } from 'vue';
+import { defineComponent, PropType, ref } from 'vue';
 import {
     NConfigProvider,
     NBreadcrumb,
@@ -118,6 +115,15 @@ import {
 import { HomeSharp } from '@vicons/material';
 import { getImagePath } from '../../utils/utils';
 import ISEventOption from './ISEventOption.vue';
+interface Option {
+    title: string;
+    type: string;
+    icon: string;
+    desc1: string;
+    desc2: string;
+    dest: number;
+    index: number;
+}
 export default defineComponent({
     components: {
         NConfigProvider,
@@ -142,14 +148,7 @@ export default defineComponent({
                     index?: number;
                     image?: string;
                     text?: string;
-                    options?: Array<{
-                        title: string;
-                        type: string;
-                        icon: string;
-                        desc1: string;
-                        desc2: string;
-                        dest: number;
-                    }>;
+                    options: Array<Option>;
                 }[]
             >,
             default: [],
@@ -177,33 +176,20 @@ export default defineComponent({
             currentSceneId.value = sceneNav.value[index];
             sceneNav.value.splice(index + 1);
         }
-        function optionsToNavDrop(
-            options: Array<Record<string, unknown>>,
-            navIndex: number,
-        ) {
-            var dropdownData = Array.from(options).map((option, index) => {
-                if (index > 0 && option.type != 'desc') {
+        function optionsToNavDrop(options: Array<Option>) {
+            return options
+                .filter((option) => option.type != 'desc')
+                .map((option) => {
                     return {
                         label: option.title,
-                        key: option.dest,
-                        props: {
-                            navIndex: navIndex,
-                        },
+                        key: option.index,
                     };
-                } else {
-                    return { label: 'desc' };
-                }
-            });
-            dropdownData = dropdownData.filter((data) => {
-                if (data.label != 'desc') {
-                    return data;
-                }
-            });
-            return dropdownData;
+                });
         }
-        function dropjump(key: number, option: DropdownOption) {
-            navJump(option.props.navIndex);
-            jump(key);
+        function dropJump(key: number, navIndex: number) {
+            let option = props.sceneData[sceneNav.value[navIndex]].options[key];
+            navJump(navIndex);
+            jump(option.dest);
         }
         return {
             getImagePath,
@@ -212,7 +198,7 @@ export default defineComponent({
             jump,
             navJump,
             optionsToNavDrop,
-            dropjump,
+            dropJump,
         };
     },
 });
