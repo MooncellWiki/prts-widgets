@@ -15,7 +15,7 @@
             Button: { textColor: '#fff' },
         }"
     >
-        <n-space :style="{ width: '560px', maxWidth: '100%'}">
+        <n-space :style="{ width: '560px', maxWidth: '100%' }">
             <n-layout>
                 <n-layout-content>
                     <n-breadcrumb separator=">">
@@ -24,13 +24,28 @@
                             :key="index"
                             @click="navJump(index)"
                         >
-                            <n-dropdown v-if="sceneData[SceneId].options.length>1 && index!=sceneNav.length-1" 
-                                placement="bottom-start" :show-arrow="true" :options="optionsToNavDrop(sceneData[SceneId].options, index)" @select="dropjump">
+                            <n-dropdown
+                                v-if="
+                                    sceneData[SceneId].options.length > 1 &&
+                                    index !== sceneNav.length - 1
+                                "
+                                placement="bottom-start"
+                                :show-arrow="true"
+                                :options="
+                                    optionsToNavDrop(
+                                        sceneData[SceneId].options,
+                                        index,
+                                    )
+                                "
+                                @select="dropjump"
+                            >
                                 <div class="trigger">
                                     <n-icon v-if="SceneId === 0">
                                         <HomeSharp />
                                     </n-icon>
-                                    <span v-else>{{ sceneData[SceneId].nav }}</span>
+                                    <span v-else>{{
+                                        sceneData[SceneId].nav
+                                    }}</span>
                                 </div>
                             </n-dropdown>
                             <div v-else>
@@ -60,7 +75,10 @@
                             </a>
                         </template>
                         <div v-html="sceneData[currentSceneId].text"></div>
-                        <template #action v-if="sceneData[currentSceneId].options.length>1">
+                        <template
+                            v-if="sceneData[currentSceneId].options.length > 1"
+                            #action
+                        >
                             <n-space vertical>
                                 <ISEventOption
                                     v-for="(item, index) in sceneData[
@@ -95,7 +113,7 @@ import {
     NLayoutContent,
     NCard,
     NIcon,
-DropdownOption,
+    DropdownOption,
 } from 'naive-ui';
 import { HomeSharp } from '@vicons/material';
 import { getImagePath } from '../../utils/utils';
@@ -159,30 +177,33 @@ export default defineComponent({
             currentSceneId.value = sceneNav.value[index];
             sceneNav.value.splice(index + 1);
         }
-        function optionsToNavDrop(options: Array<Object>, navIndex: number){
+        function optionsToNavDrop(
+            options: Array<Record<string, unknown>>,
+            navIndex: number,
+        ) {
             var dropdownData = Array.from(options).map((option, index) => {
-                if (index>0 && option.type != "desc") {
+                if (index > 0 && option.type != 'desc') {
                     return {
                         label: option.title,
                         key: option.dest,
                         props: {
                             navIndex: navIndex,
-                        }
-                    }
-                }else{
-                    return { label: "desc"}
+                        },
+                    };
+                } else {
+                    return { label: 'desc' };
                 }
-            })
+            });
             dropdownData = dropdownData.filter((data) => {
-                if (data.label != "desc"){
-                    return data
+                if (data.label != 'desc') {
+                    return data;
                 }
-            })
-            return dropdownData
+            });
+            return dropdownData;
         }
-        function dropjump(key:number, option:DropdownOption){
-            navJump(option.props.navIndex)
-            jump(key)
+        function dropjump(key: number, option: DropdownOption) {
+            navJump(option.props.navIndex);
+            jump(key);
         }
         return {
             getImagePath,

@@ -1,7 +1,7 @@
 import { createApp } from 'vue';
 import 'virtual:windi.css';
 // import F:\git\prts-widgets\src\entries\ISEvent.ts from '../widgets/F:\git\prts-widgets\src\entries\ISEvent.ts.vue';
-import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue'
+import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue';
 
 //数据表元素（根层级）
 const eventDataRoot = document.getElementById('IS-event-data-root');
@@ -23,24 +23,26 @@ Array.from(eventEles).forEach((eventEle) => {
             image: data.image,
             text: scene.firstElementChild?.innerHTML,
             options: Array.from(scene.children).map((choose, index) => {
-                if (index>0) {
+                if (index > 0) {
                     const chooseData = choose.dataset!;
                     return {
                         title: chooseData.title,
                         type: chooseData.type,
                         icon: chooseData.icon,
-                        desc1: choose.getElementsByClassName('desc1')[0]?.innerHTML,
-                        desc2: choose.getElementsByClassName('desc2')[0]?.innerHTML,
-                        dest: chooseData.dest
-                    }
-                }else{
-                    return {}
+                        desc1: choose.getElementsByClassName('desc1')[0]
+                            ?.innerHTML,
+                        desc2: choose.getElementsByClassName('desc2')[0]
+                            ?.innerHTML,
+                        dest: chooseData.dest,
+                    };
+                } else {
+                    return {};
                 }
             }),
         };
     });
     createApp(ISEventFramework, {
         sceneData: scenes,
-        ISTheme: ISTheme
-    }).mount(eventEle)
+        ISTheme: ISTheme,
+    }).mount(eventEle);
 });
