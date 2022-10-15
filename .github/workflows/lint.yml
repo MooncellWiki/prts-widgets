@@ -11,5 +11,6 @@ jobs:
       - uses: actions/checkout@v2
       - uses: reviewdog/action-eslint@v1
         with:
+          level: error
           fail_on_error: true
           eslint_flags: './cli ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue'
