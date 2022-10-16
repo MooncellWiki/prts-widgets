@@ -1,14 +1,14 @@
-import { readdirSync } from 'fs';
-import { join } from 'path';
-import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
-import WindiCSS from 'vite-plugin-windicss';
-import { visualizer } from 'rollup-plugin-visualizer';
-const entries = readdirSync(join(__dirname, 'src/entries/'));
-const input = {};
+import { readdirSync } from 'fs'
+import { join } from 'path'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import WindiCSS from 'vite-plugin-windicss'
+import { visualizer } from 'rollup-plugin-visualizer'
+const entries = readdirSync(join(__dirname, 'src/entries/'))
+const input = {}
 entries.forEach((entry) => {
-    input[entry.replace('.ts', '')] = `src/entries/${entry}`;
-});
+    input[entry.replace('.ts', '')] = `src/entries/${entry}`
+})
 // https://vitejs.dev/config/
 export default defineConfig({
     plugins: [vue(), WindiCSS(), visualizer({ sourcemap: true })],
@@ -29,16 +29,16 @@ export default defineConfig({
             output: {
                 manualChunks(id) {
                     if (id.includes('sentry')) {
-                        return 'sentry';
+                        return 'sentry'
                     }
                     if (id.includes('node_modules') && !id.includes('hammer')) {
-                        return 'vendor';
+                        return 'vendor'
                     }
                     if (id.includes('src/components/')) {
-                        return 'vendor';
+                        return 'vendor'
                     }
                     if (id.includes('windi')) {
-                        return 'vendor';
+                        return 'vendor'
                     }
                 },
             },
@@ -46,41 +46,41 @@ export default defineConfig({
                 {
                     name: 'prts',
                     generateBundle(opts, bundle) {
-                        const bundles = Object.keys(bundle);
+                        const bundles = Object.keys(bundle)
                         const cssFilename = bundles.find((v) =>
                             v.startsWith('style'),
-                        );
+                        )
                         const vendorFilename = bundles.find((v) =>
                             v.startsWith('vendor'),
-                        );
+                        )
 
-                        const vendor = bundle[vendorFilename];
-                        const css = bundle[cssFilename];
+                        const vendor = bundle[vendorFilename]
+                        const css = bundle[cssFilename]
                         if (css.type !== 'asset' || vendor.type !== 'chunk') {
-                            return;
+                            return
                         }
                         const cssStr = (css.source as string)
                             .trim()
                             .replaceAll('[', '\\[')
-                            .replaceAll(']', '\\]');
-                        const IIFEcss = `(function(){try{var elementStyle=document.createElement('style');elementStyle.type='text/css';elementStyle.innerText="${cssStr}";document.head.appendChild(elementStyle);}catch(error){console.error(error,'unable to concat style inside the bundled file');}})();`;
-                        vendor.code = IIFEcss + vendor.code;
+                            .replaceAll(']', '\\]')
+                        const IIFEcss = `(function(){try{var elementStyle=document.createElement('style');elementStyle.type='text/css';elementStyle.innerText="${cssStr}";document.head.appendChild(elementStyle);}catch(error){console.error(error,'unable to concat style inside the bundled file');}})();`
+                        vendor.code = IIFEcss + vendor.code
                         // remove from final bundle
-                        delete bundle[cssFilename];
+                        delete bundle[cssFilename]
                         Object.keys(bundle).forEach((key) => {
-                            const chunk = bundle[key];
+                            const chunk = bundle[key]
                             if (chunk.type !== 'chunk') {
-                                return;
+                                return
                             }
                             if (chunk.fileName.startsWith('SpineViewer')) {
                                 // SpineViewer 不需要改导入路径
-                                return;
+                                return
                             }
                             chunk.code = chunk.code.replaceAll(
                                 `./${vendorFilename}`,
                                 `https://static.prts.wiki/widgets/release/${vendorFilename}`,
-                            );
-                        });
+                            )
+                        })
                     },
                 },
             ],
@@ -92,4 +92,4 @@ export default defineConfig({
             },
         },
     },
-});
+})

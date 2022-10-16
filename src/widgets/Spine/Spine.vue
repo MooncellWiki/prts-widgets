@@ -69,7 +69,7 @@
                         }"
                         :format-tooltip="
                             (value) => {
-                                return 'x' + value.toFixed(1);
+                                return 'x' + value.toFixed(1)
                             }
                         "
                         @update:value="onChangeSpeed"
@@ -107,7 +107,7 @@
                                 size="large"
                                 @click="
                                     () => {
-                                        big = !big;
+                                        big = !big
                                     }
                                 "
                             >
@@ -193,7 +193,7 @@ import {
     ref,
     render,
     h,
-} from 'vue';
+} from 'vue'
 import {
     NButton,
     NSkeleton,
@@ -205,26 +205,26 @@ import {
     NSlider,
     NIcon,
     NPopover,
-} from 'naive-ui';
+} from 'naive-ui'
 import {
     DownloadOutlined,
     CenterFocusStrongSharp,
     FullscreenOutlined,
     InfoOutlined,
     FullscreenExitOutlined,
-} from '@vicons/material';
-import { Spine } from '../../utils/spine';
-import FormItem from '../../components/FormItem.vue';
-import Card from '../../components/Card.vue';
-import { isMobile } from '../../utils/utils';
-import Detail from './Detail.vue';
-import { useEvent } from './useEvent';
+} from '@vicons/material'
+import { Spine } from '../../utils/spine'
+import FormItem from '../../components/FormItem.vue'
+import Card from '../../components/Card.vue'
+import { isMobile } from '../../utils/utils'
+import Detail from './Detail.vue'
+import { useEvent } from './useEvent'
 interface States {
-    skin: string;
-    modelList: string[];
-    model: string;
-    animations: string[];
-    animation: string;
+    skin: string
+    modelList: string[]
+    model: string
+    animations: string[]
+    animation: string
 }
 enum Actions {
     changeSkin,
@@ -233,16 +233,16 @@ enum Actions {
     update,
 }
 export interface Props {
-    prefix: string;
-    name: string;
+    prefix: string
+    name: string
     skin: {
         [key: string]: {
             [key: string]: {
-                file: string;
-                skin?: string;
-            };
-        };
-    };
+                file: string
+                skin?: string
+            }
+        }
+    }
 }
 export default defineComponent({
     components: {
@@ -271,39 +271,39 @@ export default defineComponent({
         skin: Object as PropType<{
             [key: string]: {
                 [key: string]: {
-                    file: string;
-                    skin?: string;
-                };
-            };
+                    file: string
+                    skin?: string
+                }
+            }
         }>,
     },
     setup(props) {
-        const canvas = ref<HTMLCanvasElement>();
-        let spineRef: { spine?: Spine } = {};
+        const canvas = ref<HTMLCanvasElement>()
+        let spineRef: { spine?: Spine } = {}
 
-        const isLoading = ref(true);
-        const color = ref('#00000000');
-        const speed = ref(1);
-        const skinList = Object.keys(props.skin!);
-        const curSkin = ref(skinList[0]);
+        const isLoading = ref(true)
+        const color = ref('#00000000')
+        const speed = ref(1)
+        const skinList = Object.keys(props.skin!)
+        const curSkin = ref(skinList[0])
         const modelList = computed(() => {
             return Object.keys(props.skin![curSkin.value]).map((v) => ({
                 label: v,
                 value: v,
-            }));
-        });
-        const curModel = ref(Object.keys(props.skin![skinList[0]])[0]);
-        const animations = ref<string[]>([]);
+            }))
+        })
+        const curModel = ref(Object.keys(props.skin![skinList[0]])[0])
+        const animations = ref<string[]>([])
         const aniList = computed(() => {
-            return animations.value.map((v) => ({ label: v, value: v }));
-        });
-        const animationsDetail = ref<{ name: string; duration: number }[]>([]);
-        const curAni = ref('');
-        const isLoop = ref(false);
+            return animations.value.map((v) => ({ label: v, value: v }))
+        })
+        const animationsDetail = ref<{ name: string; duration: number }[]>([])
+        const curAni = ref('')
+        const isLoop = ref(false)
         async function load() {
-            isLoading.value = true;
+            isLoading.value = true
             const path =
-                props.prefix + props.skin![curSkin.value][curModel.value].file;
+                props.prefix + props.skin![curSkin.value][curModel.value].file
             const { skeleton, state: animationState } =
                 await spineRef.spine!.load(
                     `${curSkin.value}-${curModel.value}`,
@@ -315,91 +315,91 @@ export default defineComponent({
                         scale: 1,
                     },
                     props!.skin![curSkin.value][curModel.value].skin,
-                );
+                )
             const names = (animations.value = skeleton.data.animations.map(
                 (v) => v.name,
-            ));
+            ))
             animationsDetail.value = skeleton.data.animations.map((v) => ({
                 name: v.name,
                 duration: v.duration,
-            }));
-            isLoading.value = false;
-            spineRef.spine!.play(`${curSkin.value}-${curModel.value}`);
-            animationState.setAnimation(0, names[0], isLoop.value);
-            curAni.value = names[0];
-            animationState.timeScale = speed.value;
+            }))
+            isLoading.value = false
+            spineRef.spine!.play(`${curSkin.value}-${curModel.value}`)
+            animationState.setAnimation(0, names[0], isLoop.value)
+            curAni.value = names[0]
+            animationState.timeScale = speed.value
         }
         onMounted(() => {
-            console.warn('canvas', canvas.value);
+            console.warn('canvas', canvas.value)
             if (!canvas.value) {
-                return;
+                return
             }
-            spineRef.spine = new Spine(canvas.value);
-            load();
-        });
-        const { big } = useEvent(canvas, spineRef);
+            spineRef.spine = new Spine(canvas.value)
+            load()
+        })
+        const { big } = useEvent(canvas, spineRef)
         function onSelectSkin(e: string) {
-            curSkin.value = e;
-            load();
+            curSkin.value = e
+            load()
         }
         function onSelectModel(e: string) {
-            curModel.value = e;
-            load();
+            curModel.value = e
+            load()
         }
         function onSelectAni(e: string) {
-            const cur = spineRef.spine?.getCurrent();
+            const cur = spineRef.spine?.getCurrent()
             if (cur) {
-                console.log('ani change', cur);
-                cur.state.setAnimation(0, e, isLoop.value);
-                cur.state.timeScale = speed.value;
+                console.log('ani change', cur)
+                cur.state.setAnimation(0, e, isLoop.value)
+                cur.state.timeScale = speed.value
             }
         }
         function onChangeLoop(e: boolean) {
-            const state = spineRef.spine?.getCurrent()?.state;
+            const state = spineRef.spine?.getCurrent()?.state
             if (!state) {
-                return;
+                return
             }
-            state.setAnimation(0, state.tracks[0].animation.name, e);
+            state.setAnimation(0, state.tracks[0].animation.name, e)
         }
         function onChangeColor(e: string) {
             if (!spineRef.spine) {
-                return;
+                return
             }
             //console.log(e)
-            const color = parseInt(e.slice(1), 16);
+            const color = parseInt(e.slice(1), 16)
             //console.log(color);
             spineRef.spine.bg = [
                 (color >>> 24) / 255,
                 ((color & 0x00ff0000) >>> 16) / 255,
                 ((color & 0x0000ff00) >>> 8) / 255,
                 (color & 0x000000ff) / 255,
-            ];
+            ]
         }
         function onChangeSpeed(e: number) {
-            const state = spineRef.spine?.getCurrent()?.state;
+            const state = spineRef.spine?.getCurrent()?.state
             if (!state) {
-                return;
+                return
             }
-            state.timeScale = e;
+            state.timeScale = e
         }
         function reset() {
-            spineRef.spine?.transform(-500, -200, 1);
+            spineRef.spine?.transform(-500, -200, 1)
         }
         const supportWebm =
             window.MediaRecorder &&
             MediaRecorder.isTypeSupported('video/webm') &&
-            !isMobile();
-        const recording = ref(false);
+            !isMobile()
+        const recording = ref(false)
         async function record() {
             if (!spineRef.spine || recording.value) {
-                return;
+                return
             }
-            recording.value = true;
+            recording.value = true
             await spineRef.spine.record(
                 curAni.value,
                 `${name}-${curSkin.value}-${curModel.value}-${curAni.value}-x${speed.value}`,
-            );
-            recording.value = false;
+            )
+            recording.value = false
         }
         return {
             canvas,
@@ -425,7 +425,7 @@ export default defineComponent({
             supportWebm,
             record,
             recording,
-        };
+        }
     },
-});
+})
 </script>

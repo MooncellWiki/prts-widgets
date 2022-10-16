@@ -33,7 +33,7 @@
                     class="float-right z-1 select-none"
                     @click="
                         () => {
-                            isCollapsed = !isCollapsed;
+                            isCollapsed = !isCollapsed
                         }
                     "
                 >
@@ -84,12 +84,12 @@
     </n-config-provider>
 </template>
 <script lang="ts">
-import { defineComponent, PropType, ref } from 'vue';
-import { NSelect, NConfigProvider } from 'naive-ui';
-import FormItem from '../../components/FormItem.vue';
-import VoicePlayer from './VoicePlayer.vue';
+import { defineComponent, PropType, ref } from 'vue'
+import { NSelect, NConfigProvider } from 'naive-ui'
+import FormItem from '../../components/FormItem.vue'
+import VoicePlayer from './VoicePlayer.vue'
 const isSimplified =
-    decodeURIComponent(window.location.href).indexOf('/语音') === -1;
+    decodeURIComponent(window.location.href).indexOf('/语音') === -1
 export default defineComponent({
     components: {
         NSelect,
@@ -102,13 +102,13 @@ export default defineComponent({
         voiceKey: String,
         voiceData: Array as PropType<
             {
-                title?: string;
-                index?: string;
-                voiceFilename?: string;
-                cond?: string;
+                title?: string
+                index?: string
+                voiceFilename?: string
+                cond?: string
                 detail: {
-                    [index: string]: string;
-                };
+                    [index: string]: string
+                }
             }[]
         >,
         langArr: { type: Array as PropType<string[]>, default: [] },
@@ -118,15 +118,15 @@ export default defineComponent({
         },
     },
     setup(props) {
-        const isCollapsed = ref(true);
-        const selectedWordLang = ref(['中文']);
-        const selectedVoicePath = ref(props.voiceBase[0]?.path || '');
+        const isCollapsed = ref(true)
+        const selectedWordLang = ref(['中文'])
+        const selectedVoicePath = ref(props.voiceBase[0]?.path || '')
         return {
             isSimplified,
             isCollapsed,
             selectedWordLang,
             selectedVoicePath,
-        };
+        }
     },
-});
+})
 </script>

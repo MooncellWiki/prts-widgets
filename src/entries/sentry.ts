@@ -1,5 +1,5 @@
-import * as Sentry from '@sentry/browser';
-import { BrowserTracing } from '@sentry/tracing';
+import * as Sentry from '@sentry/browser'
+import { BrowserTracing } from '@sentry/tracing'
 
 Sentry.init({
     dsn: 'https://b8fa071a70cd455f9e63c105e9be7050@mt.mooncell.wiki/2',
@@ -9,4 +9,4 @@ Sentry.init({
     // of transactions for performance monitoring.
     // We recommend adjusting this value in production
     tracesSampleRate: 0.0001,
-});
+})
