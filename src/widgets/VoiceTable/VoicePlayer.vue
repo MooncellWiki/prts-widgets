@@ -6,7 +6,7 @@
             :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
             @click="
                 () => {
-                    playing = !playing;
+                    playing = !playing
                 }
             "
         />
@@ -25,11 +25,11 @@
     </div>
 </template>
 <script lang="ts">
-import { computed, defineComponent, ref, watch } from 'vue';
-import { useMediaControls } from '@vueuse/core';
+import { computed, defineComponent, ref, watch } from 'vue'
+import { useMediaControls } from '@vueuse/core'
 
 const isSimplified =
-    decodeURIComponent(window.location.href).indexOf('/语音') === -1;
+    decodeURIComponent(window.location.href).indexOf('/语音') === -1
 
 export default defineComponent({
     props: {
@@ -37,22 +37,22 @@ export default defineComponent({
         voicePath: String,
     },
     setup(props) {
-        const audioRef = ref<HTMLAudioElement>();
-        const source = computed(() => `//static.prts.wiki/${props.voicePath}`);
+        const audioRef = ref<HTMLAudioElement>()
+        const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
         const { playing } = useMediaControls(audioRef, {
             src: source,
-        });
+        })
         watch(
             () => props.voicePath,
             () => {
-                playing.value = false;
+                playing.value = false
             },
-        );
+        )
         return {
             playing,
             isSimplified,
             audioRef,
-        };
+        }
     },
-});
+})
 </script>

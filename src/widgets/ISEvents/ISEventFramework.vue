@@ -102,7 +102,7 @@
     </n-config-provider>
 </template>
 <script lang="ts">
-import { computed, defineComponent, PropType, ref } from 'vue';
+import { computed, defineComponent, PropType, ref } from 'vue'
 import {
     NConfigProvider,
     NBreadcrumb,
@@ -114,10 +114,10 @@ import {
     NCard,
     NIcon,
     DropdownOption,
-} from 'naive-ui';
-import { HomeSharp } from '@vicons/material';
-import { getImagePath } from '../../utils/utils';
-import ISEventOption from './ISEventOption.vue';
+} from 'naive-ui'
+import { HomeSharp } from '@vicons/material'
+import { getImagePath } from '../../utils/utils'
+import ISEventOption from './ISEventOption.vue'
 export default defineComponent({
     components: {
         NConfigProvider,
@@ -136,20 +136,20 @@ export default defineComponent({
         sceneData: {
             type: Array as PropType<
                 {
-                    etype?: string;
-                    name?: string;
-                    nav?: string;
-                    index?: number;
-                    image?: string;
-                    text?: string;
+                    etype?: string
+                    name?: string
+                    nav?: string
+                    index?: number
+                    image?: string
+                    text?: string
                     options?: Array<{
-                        title: string;
-                        type: string;
-                        icon: string;
-                        desc1: string;
-                        desc2: string;
-                        dest: number;
-                    }>;
+                        title: string
+                        type: string
+                        icon: string
+                        desc1: string
+                        desc2: string
+                        dest: number
+                    }>
                 }[]
             >,
             default: [],
@@ -157,25 +157,25 @@ export default defineComponent({
         ISTheme: String,
     },
     setup(props) {
-        const sceneNav = ref<Array<number>>([0]);
-        const currentSceneId = ref(0);
+        const sceneNav = ref<Array<number>>([0])
+        const currentSceneId = ref(0)
         function jump(id: number) {
             if (id) {
-                let index = sceneNav.value.findIndex((v) => v == id);
+                let index = sceneNav.value.findIndex((v) => v == id)
                 if (index == -1) {
-                    sceneNav.value.push(id);
+                    sceneNav.value.push(id)
                 } else if (index + 1 < sceneNav.value.length) {
-                    sceneNav.value.splice(index + 1);
+                    sceneNav.value.splice(index + 1)
                 }
-                currentSceneId.value = id;
+                currentSceneId.value = id
             }
         }
         function navJump(index: number) {
             if (index == sceneNav.value.length - 1) {
-                return;
+                return
             }
-            currentSceneId.value = sceneNav.value[index];
-            sceneNav.value.splice(index + 1);
+            currentSceneId.value = sceneNav.value[index]
+            sceneNav.value.splice(index + 1)
         }
         function optionsToNavDrop(
             options: Array<Record<string, unknown>>,
@@ -189,21 +189,21 @@ export default defineComponent({
                         props: {
                             navIndex: navIndex,
                         },
-                    };
+                    }
                 } else {
-                    return { label: 'desc' };
+                    return { label: 'desc' }
                 }
-            });
+            })
             dropdownData = dropdownData.filter((data) => {
                 if (data.label != 'desc') {
-                    return data;
+                    return data
                 }
-            });
-            return dropdownData;
+            })
+            return dropdownData
         }
         function dropjump(key: number, option: DropdownOption) {
-            navJump(option.props.navIndex);
-            jump(key);
+            navJump(option.props.navIndex)
+            jump(key)
         }
         return {
             getImagePath,
@@ -213,7 +213,7 @@ export default defineComponent({
             navJump,
             optionsToNavDrop,
             dropjump,
-        };
+        }
     },
-});
+})
 </script>

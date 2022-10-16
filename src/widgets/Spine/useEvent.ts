@@ -1,71 +1,71 @@
-import hammer from 'hammerjs';
-import { onMounted, onUnmounted, ref, Ref } from 'vue';
-import { Spine } from '../../utils/spine';
-import { isFirefox } from '../../utils/utils';
+import hammer from 'hammerjs'
+import { onMounted, onUnmounted, ref, Ref } from 'vue'
+import { Spine } from '../../utils/spine'
+import { isFirefox } from '../../utils/utils'
 export function useEvent(
     canvas: Ref<HTMLCanvasElement | undefined>,
     spine: { spine?: Spine },
 ): {
-    big: Ref<boolean>;
+    big: Ref<boolean>
 } {
-    const big = ref(false);
-    const startPosition = ref<{ x: number; y: number }>();
+    const big = ref(false)
+    const startPosition = ref<{ x: number; y: number }>()
     const getPosition = () => {
-        return spine.spine!.position;
-    };
+        return spine.spine!.position
+    }
     const wheelHandler = (e: WheelEvent) => {
-        e.preventDefault();
-        const widget = canvas.value;
+        e.preventDefault()
+        const widget = canvas.value
         if (!widget) {
-            return;
+            return
         }
-        const delta = isFirefox() ? e.deltaY / -480 : e.deltaY * -0.001;
+        const delta = isFirefox() ? e.deltaY / -480 : e.deltaY * -0.001
         if (!spine.spine) {
-            return;
+            return
         }
-        const { scale } = getPosition();
+        const { scale } = getPosition()
         if (scale + delta <= 0) {
-            return;
+            return
         }
-        spine.spine?.scale(scale + delta);
-    };
-    let hm: HammerManager;
+        spine.spine?.scale(scale + delta)
+    }
+    let hm: HammerManager
     onMounted(() => {
         if (!canvas.value) {
-            return;
+            return
         }
-        hm = new hammer(canvas.value);
-        hm.get('pinch').set({ enable: true });
+        hm = new hammer(canvas.value)
+        hm.get('pinch').set({ enable: true })
         hm.on('panstart', () => {
             if (!spine.spine) {
-                return;
+                return
             }
-            const { x, y } = getPosition();
+            const { x, y } = getPosition()
             startPosition.value = {
                 x,
                 y,
-            };
-        });
+            }
+        })
         hm.on('panmove', (e) => {
             if (!spine.spine) {
-                return;
+                return
             }
-            const { scale } = getPosition();
-            const { x, y } = startPosition.value!;
+            const { scale } = getPosition()
+            const { x, y } = startPosition.value!
             // console.log(e.deltaX, e.deltaY);
-            const ratio = (big.value ? 1 : 10 / 3) / scale;
-            spine.spine.move(x - e.deltaX * ratio, y + e.deltaY * ratio);
-        });
+            const ratio = (big.value ? 1 : 10 / 3) / scale
+            spine.spine.move(x - e.deltaX * ratio, y + e.deltaY * ratio)
+        })
         hm.on('panend', () => {
-            startPosition.value = void 0;
-        });
-        canvas.value.addEventListener('wheel', wheelHandler);
-    });
+            startPosition.value = void 0
+        })
+        canvas.value.addEventListener('wheel', wheelHandler)
+    })
     onUnmounted(() => {
-        hm?.destroy();
-        canvas.value?.removeEventListener('wheel', wheelHandler);
-    });
+        hm?.destroy()
+        canvas.value?.removeEventListener('wheel', wheelHandler)
+    })
     return {
         big,
-    };
+    }
 }

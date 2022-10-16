@@ -30,8 +30,8 @@
     </div>
 </template>
 <script lang="ts">
-import { PropType } from 'vue';
-import { professionMap, getImagePath } from '../utils/utils';
+import { PropType } from 'vue'
+import { professionMap, getImagePath } from '../utils/utils'
 export default {
     props: {
         size: {
@@ -46,7 +46,7 @@ export default {
         return {
             professionMap,
             getImagePath,
-        };
+        }
     },
-};
+}
 </script>

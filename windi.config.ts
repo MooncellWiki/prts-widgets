@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite-plugin-windicss';
-import colors from 'windicss/colors';
+import { defineConfig } from 'vite-plugin-windicss'
+import colors from 'windicss/colors'
 
 export default defineConfig({
     theme: {
@@ -29,4 +29,4 @@ export default defineConfig({
         img: 'border-solid block align-middle max-w-full h-auto',
     },
     preflight: false,
-});
+})

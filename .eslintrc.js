@@ -10,6 +10,12 @@ module.exports = {
         // Vue: false
     },
     rules: {
+        'prettier/prettier': [
+            'error',
+            {
+                semi: false,
+            },
+        ],
         'vue/object-curly-spacing': 'off',
         'vue/no-v-model-argument': 'off',
         'no-undef': 'off', // 这种事交给ts
@@ -17,4 +23,4 @@ module.exports = {
         '@typescript-eslint/no-unused-vars': 'warn',
     },
     ignorePatterns: ['src/spine/runtime/'],
-};
+}
