@@ -1,3 +1,4 @@
+/* eslint-disable vue/one-component-per-file */
 import 'virtual:windi.css'
 import { createApp } from 'vue'
 import Voice from '../widgets/VoiceTable/VoiceTable.vue'

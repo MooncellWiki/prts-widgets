@@ -5,7 +5,7 @@
         :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
     >
         <div class="max-w-screen-lg">
-            <div v-if="!isSimplified" class="flex">
+            <div v-if="!isSimplified" class="flex mb-1">
                 <form-item label="选择语音文本差分" class="flex-grow mr-2">
                     <n-select
                         v-model:value="selectedWordLang"
@@ -86,6 +86,7 @@
 <script lang="ts">
 import { defineComponent, PropType, ref } from 'vue'
 import { NSelect, NConfigProvider } from 'naive-ui'
+
 import FormItem from '../../components/FormItem.vue'
 import VoicePlayer from './VoicePlayer.vue'
 const isSimplified =
