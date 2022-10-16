@@ -45,18 +45,18 @@
     </div>
 </template>
 <script lang="ts">
-import { defineComponent, PropType } from 'vue';
-import { professionMap, sum } from '../utils/utils';
+import { defineComponent, PropType } from 'vue'
+import { professionMap, sum } from '../utils/utils'
 export interface costProps {
-    rarity: number;
-    name: string;
-    profession: keyof typeof professionMap;
-    elite: number; //精英化
-    skill: number; //技能1-7
-    mastery: [number, number, number]; //技能专精
-    uniequip: number; //模组
+    rarity: number
+    name: string
+    profession: keyof typeof professionMap
+    elite: number //精英化
+    skill: number //技能1-7
+    mastery: [number, number, number] //技能专精
+    uniequip: number //模组
 }
-import Avatar from './Avatar.vue';
+import Avatar from './Avatar.vue'
 export default defineComponent({
     components: { Avatar },
     props: {
@@ -73,7 +73,7 @@ export default defineComponent({
     setup() {
         return {
             sum,
-        };
+        }
     },
-});
+})
 </script>

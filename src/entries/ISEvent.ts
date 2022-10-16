@@ -1,14 +1,14 @@
-import { createApp } from 'vue';
-import 'virtual:windi.css';
+import { createApp } from 'vue'
+import 'virtual:windi.css'
 // import F:\git\prts-widgets\src\entries\ISEvent.ts from '../widgets/F:\git\prts-widgets\src\entries\ISEvent.ts.vue';
-import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue';
+import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue'
 
 //数据表元素（根层级）
-const eventDataRoot = document.getElementById('IS-event-data-root');
+const eventDataRoot = document.getElementById('IS-event-data-root')
 //事件场景表元素组
 const eventEles = eventDataRoot?.getElementsByClassName(
     'IS-event-data',
-) as HTMLCollectionOf<HTMLElement>;
+) as HTMLCollectionOf<HTMLElement>
 
 const ISTheme = eventDataRoot?.dataset?.theme;
 // debugger;
@@ -47,5 +47,5 @@ Array.from(eventEles).forEach((eventEle) => {
     createApp(ISEventFramework, {
         sceneData: scenes,
         ISTheme: ISTheme,
-    }).mount(eventEle);
-});
+    }).mount(eventEle)
+})

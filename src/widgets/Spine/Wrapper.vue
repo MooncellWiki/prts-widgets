@@ -12,7 +12,7 @@
             type="info"
             @click="
                 () => {
-                    loaded = true;
+                    loaded = true
                 }
             "
         >
@@ -22,10 +22,10 @@
     </n-config-provider>
 </template>
 <script lang="ts">
-import { NConfigProvider, NButton, NDialogProvider } from 'naive-ui';
-import { defineComponent, PropType, ref } from 'vue';
-import { zhCN } from 'naive-ui';
-import Spine from './Spine.vue';
+import { NConfigProvider, NButton, NDialogProvider } from 'naive-ui'
+import { defineComponent, PropType, ref } from 'vue'
+import { zhCN } from 'naive-ui'
+import Spine from './Spine.vue'
 export default defineComponent({
     components: {
         NConfigProvider,
@@ -39,18 +39,18 @@ export default defineComponent({
         skin: Object as PropType<{
             [key: string]: {
                 [key: string]: {
-                    file: string;
-                    skin?: string;
-                };
-            };
+                    file: string
+                    skin?: string
+                }
+            }
         }>,
     },
     setup() {
-        const loaded = ref(false);
+        const loaded = ref(false)
         return {
             loaded,
             zhCN,
-        };
+        }
     },
-});
+})
 </script>

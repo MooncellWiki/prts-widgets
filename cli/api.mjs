@@ -1,14 +1,14 @@
-import got from 'got';
-import { CookieJar } from 'tough-cookie';
-const entry = 'https://prts.wiki/api.php';
-const cookieJar = new CookieJar();
+import got from 'got'
+import { CookieJar } from 'tough-cookie'
+const entry = 'https://prts.wiki/api.php'
+const cookieJar = new CookieJar()
 async function request({ method = 'GET', body, query }) {
     return got(entry, {
         method,
         cookieJar,
         form: body,
         searchParams: query,
-    }).json();
+    }).json()
 }
 export async function getCsrfToken() {
     const resp = await request({
@@ -19,8 +19,8 @@ export async function getCsrfToken() {
             type: 'csrf',
             format: 'json',
         },
-    });
-    return resp.query.tokens.csrftoken;
+    })
+    return resp.query.tokens.csrftoken
 }
 async function getLoginToken() {
     const resp = await request({
@@ -30,13 +30,13 @@ async function getLoginToken() {
             format: 'json',
             type: 'login',
         },
-    });
-    return resp?.query?.tokens?.logintoken;
+    })
+    return resp?.query?.tokens?.logintoken
 }
 export async function login(name, password) {
-    let token = await getLoginToken();
+    let token = await getLoginToken()
     if (!token) {
-        throw new Error('get login token failed');
+        throw new Error('get login token failed')
     }
     const resp = await request({
         method: 'POST',
@@ -47,9 +47,9 @@ export async function login(name, password) {
             lgtoken: token,
             format: 'json',
         },
-    });
+    })
     if (resp?.login?.result?.toLowerCase() !== 'success') {
-        throw new Error(resp);
+        throw new Error(resp)
     }
 }
 export async function create(
@@ -57,7 +57,7 @@ export async function create(
     content,
     summary = 'by prts-micro-frontends cli',
 ) {
-    let token = await getCsrfToken();
+    let token = await getCsrfToken()
     const resp = await request({
         method: 'POST',
         body: {
@@ -70,15 +70,15 @@ export async function create(
             format: 'json',
             createonly: 1,
         },
-    });
-    console.log(resp);
+    })
+    console.log(resp)
 }
 export async function edit(
     pagename,
     content,
     summary = 'by prts-micro-frontends cli',
 ) {
-    let token = await getCsrfToken();
+    let token = await getCsrfToken()
     const resp = await request({
         method: 'POST',
         body: {
@@ -90,18 +90,18 @@ export async function edit(
             token,
             format: 'json',
         },
-    });
-    console.log(resp);
+    })
+    console.log(resp)
 }
 async function view(pagename) {
-    return got(`https://prts.wiki/w/${pagename}`);
+    return got(`https://prts.wiki/w/${pagename}`)
 }
 export async function checkPageExist(pagename) {
     try {
-        await view(pagename);
-        return true;
+        await view(pagename)
+        return true
     } catch (err) {
-        console.log(err);
-        return false;
+        console.log(err)
+        return false
     }
 }

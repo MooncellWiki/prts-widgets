@@ -156,25 +156,25 @@ export default defineComponent({
         ISTheme: String,
     },
     setup(props) {
-        const sceneNav = ref<Array<number>>([0]);
-        const currentSceneId = ref(0);
+        const sceneNav = ref<Array<number>>([0])
+        const currentSceneId = ref(0)
         function jump(id: number) {
             if (id) {
-                let index = sceneNav.value.findIndex((v) => v == id);
+                let index = sceneNav.value.findIndex((v) => v == id)
                 if (index == -1) {
-                    sceneNav.value.push(id);
+                    sceneNav.value.push(id)
                 } else if (index + 1 < sceneNav.value.length) {
-                    sceneNav.value.splice(index + 1);
+                    sceneNav.value.splice(index + 1)
                 }
-                currentSceneId.value = id;
+                currentSceneId.value = id
             }
         }
         function navJump(index: number) {
             if (index == sceneNav.value.length - 1) {
-                return;
+                return
             }
-            currentSceneId.value = sceneNav.value[index];
-            sceneNav.value.splice(index + 1);
+            currentSceneId.value = sceneNav.value[index]
+            sceneNav.value.splice(index + 1)
         }
         function optionsToNavDrop(options: Array<Option>) {
             return options
@@ -201,5 +201,5 @@ export default defineComponent({
             dropJump,
         };
     },
-});
+})
 </script>

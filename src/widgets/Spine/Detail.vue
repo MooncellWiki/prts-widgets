@@ -17,22 +17,22 @@
     </table>
 </template>
 <script lang="ts">
-import { defineComponent, PropType } from 'vue';
+import { defineComponent, PropType } from 'vue'
 
 export default defineComponent({
     props: {
         detailes: Array as PropType<
             {
-                duration: number;
-                name: string;
+                duration: number
+                name: string
             }[]
         >,
     },
     setup() {
         function round(x: number) {
-            return Math.round(x);
+            return Math.round(x)
         }
-        return { round };
+        return { round }
     },
-});
+})
 </script>
