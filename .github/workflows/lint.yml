@@ -18,3 +18,6 @@ jobs:
     steps: 
       - uses: actions/checkout@v2
       - uses: daflyinbed/reviewdog-action-vue-tsc@v1
+        with:
+          reporter: github-pr-review
+          vue_tsc_flags: --noEmit
