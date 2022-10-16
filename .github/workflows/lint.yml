@@ -12,3 +12,9 @@ jobs:
       - uses: reviewdog/action-eslint@v1
         with:
           eslint_flags: './cli ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue'
+  vue_tsc:
+    name: runner / vue_tsc
+    runs-on: ubuntu-latest
+    steps: 
+      - uses: actions/checkout@v2
+      - uses: daflyinbed/reviewdog-action-vue-tsc@v1

@@ -26,7 +26,7 @@ Array.from(eventEles).forEach((eventEle) => {
                 options: (
                     Array.from(
                         scene.getElementsByClassName('choose'),
-                    ) as HTMLElement[]
+                    ) 
                 ).map((choose, index) => {
                     const chooseData = choose.dataset!;
                     return {
