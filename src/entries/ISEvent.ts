@@ -23,22 +23,24 @@ Array.from(eventEles).forEach((eventEle) => {
                 index: data.index,
                 image: data.image,
                 text: scene.firstElementChild?.innerHTML,
-                options: Array.from(scene.getElementsByClassName('choose')).map(
-                    (choose, index) => {
-                        const chooseData = choose.dataset!;
-                        return {
-                            title: chooseData.title,
-                            type: chooseData.type,
-                            icon: chooseData.icon,
-                            desc1: choose.getElementsByClassName('desc1')[0]
-                                ?.innerHTML,
-                            desc2: choose.getElementsByClassName('desc2')[0]
-                                ?.innerHTML,
-                            dest: chooseData.dest,
-                            index,
-                        };
-                    },
-                ),
+                options: (
+                    Array.from(
+                        scene.getElementsByClassName('choose'),
+                    ) as HTMLElement[]
+                ).map((choose, index) => {
+                    const chooseData = choose.dataset!;
+                    return {
+                        title: chooseData.title,
+                        type: chooseData.type,
+                        icon: chooseData.icon,
+                        desc1: choose.getElementsByClassName('desc1')[0]
+                            ?.innerHTML,
+                        desc2: choose.getElementsByClassName('desc2')[0]
+                            ?.innerHTML,
+                        dest: chooseData.dest,
+                        index,
+                    };
+                }),
             };
         },
     );
