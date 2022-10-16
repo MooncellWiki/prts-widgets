@@ -5,7 +5,7 @@
         :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
     >
         <div class="max-w-screen-lg">
-            <div v-if="!isSimplified">
+            <div v-if="!isSimplified" class="flex mb-1">
                 <form-item label="选择语音文本差分" class="flex-grow mr-2">
                     <n-select
                         v-model:value="selectedWordLang"
