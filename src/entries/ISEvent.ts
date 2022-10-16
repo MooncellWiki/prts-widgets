@@ -10,12 +10,12 @@ const eventEles = eventDataRoot?.getElementsByClassName(
     'IS-event-data',
 ) as HTMLCollectionOf<HTMLElement>
 
-const ISTheme = eventDataRoot?.dataset?.theme;
+const ISTheme = eventDataRoot?.dataset?.theme
 // debugger;
 Array.from(eventEles).forEach((eventEle) => {
     const scenes = (Array.from(eventEle.children) as HTMLElement[]).map(
         (scene) => {
-            const data = scene.dataset!;
+            const data = scene.dataset!
             return {
                 etype: data.etype,
                 name: data.name,
@@ -28,7 +28,7 @@ Array.from(eventEles).forEach((eventEle) => {
                         scene.getElementsByClassName('choose'),
                     ) as HTMLElement[]
                 ).map((choose, index) => {
-                    const chooseData = choose.dataset!;
+                    const chooseData = choose.dataset!
                     return {
                         title: chooseData.title,
                         type: chooseData.type,
@@ -39,11 +39,11 @@ Array.from(eventEles).forEach((eventEle) => {
                             ?.innerHTML,
                         dest: chooseData.dest,
                         index,
-                    };
+                    }
                 }),
-            };
+            }
         },
-    );
+    )
     createApp(ISEventFramework, {
         sceneData: scenes,
         ISTheme: ISTheme,

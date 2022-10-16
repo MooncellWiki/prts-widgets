@@ -99,7 +99,7 @@
     </n-config-provider>
 </template>
 <script lang="ts">
-import { defineComponent, PropType, ref } from 'vue';
+import { defineComponent, PropType, ref } from 'vue'
 import {
     NConfigProvider,
     NBreadcrumb,
@@ -111,18 +111,18 @@ import {
     NCard,
     NIcon,
     DropdownOption,
-} from 'naive-ui';
-import { HomeSharp } from '@vicons/material';
-import { getImagePath } from '../../utils/utils';
-import ISEventOption from './ISEventOption.vue';
+} from 'naive-ui'
+import { HomeSharp } from '@vicons/material'
+import { getImagePath } from '../../utils/utils'
+import ISEventOption from './ISEventOption.vue'
 interface Option {
-    title: string;
-    type: string;
-    icon: string;
-    desc1: string;
-    desc2: string;
-    dest: number;
-    index: number;
+    title: string
+    type: string
+    icon: string
+    desc1: string
+    desc2: string
+    dest: number
+    index: number
 }
 export default defineComponent({
     components: {
@@ -142,13 +142,13 @@ export default defineComponent({
         sceneData: {
             type: Array as PropType<
                 {
-                    etype?: string;
-                    name?: string;
-                    nav?: string;
-                    index?: number;
-                    image?: string;
-                    text?: string;
-                    options: Array<Option>;
+                    etype?: string
+                    name?: string
+                    nav?: string
+                    index?: number
+                    image?: string
+                    text?: string
+                    options: Array<Option>
                 }[]
             >,
             default: [],
@@ -183,13 +183,13 @@ export default defineComponent({
                     return {
                         label: option.title,
                         key: option.index,
-                    };
-                });
+                    }
+                })
         }
         function dropJump(key: number, navIndex: number) {
-            let option = props.sceneData[sceneNav.value[navIndex]].options[key];
-            navJump(navIndex);
-            jump(option.dest);
+            let option = props.sceneData[sceneNav.value[navIndex]].options[key]
+            navJump(navIndex)
+            jump(option.dest)
         }
         return {
             getImagePath,
@@ -199,7 +199,7 @@ export default defineComponent({
             navJump,
             optionsToNavDrop,
             dropJump,
-        };
+        }
     },
 })
 </script>
