@@ -38,7 +38,7 @@ Array.from(eventEles).forEach((eventEle) => {
                         desc2: choose.getElementsByClassName('desc2')[0]
                             ?.innerHTML,
                         dest: chooseData.dest,
-                            index,
+                        index,
                     }
                 }),
             }
