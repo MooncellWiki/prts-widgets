@@ -59,12 +59,10 @@ export default defineConfig({
                         if (css.type !== 'asset' || vendor.type !== 'chunk') {
                             return
                         }
-                        const cssStr = (css.source as string)
-                            .trim()
-                            .replaceAll('[', '\\[')
-                            .replaceAll(']', '\\]')
-                            .replaceAll('!', '\\!')
-                        const IIFEcss = `(function(){try{var elementStyle=document.createElement('style');elementStyle.type='text/css';elementStyle.innerText="${cssStr}";document.head.appendChild(elementStyle);}catch(error){console.error(error,'unable to concat style inside the bundled file');}})();`
+                        const cssStr = JSON.stringify({
+                            c: css.source as string,
+                        })
+                        const IIFEcss = `(function(){try{var elementStyle=document.createElement('style');elementStyle.type='text/css';var cssStr=${cssStr};elementStyle.innerText=cssStr.c;document.head.appendChild(elementStyle);}catch(error){console.error(error,'unable to concat style inside the bundled file');}})();`
                         vendor.code = IIFEcss + vendor.code
                         // remove from final bundle
                         delete bundle[cssFilename]
