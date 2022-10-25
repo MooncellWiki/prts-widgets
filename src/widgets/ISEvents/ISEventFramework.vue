@@ -1,7 +1,6 @@
 <template>
     <h2 v-if="sceneData[0].etype">{{ sceneData[0].etype }}</h2>
     <h3>{{ sceneData[0].name }}</h3>
-    {{ sceneData }}
     <n-config-provider
         preflight-style-disabled
         :theme-overrides="{
