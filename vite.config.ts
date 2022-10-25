@@ -63,6 +63,7 @@ export default defineConfig({
                             .trim()
                             .replaceAll('[', '\\[')
                             .replaceAll(']', '\\]')
+                            .replaceAll('!', '\\!')
                         const IIFEcss = `(function(){try{var elementStyle=document.createElement('style');elementStyle.type='text/css';elementStyle.innerText="${cssStr}";document.head.appendChild(elementStyle);}catch(error){console.error(error,'unable to concat style inside the bundled file');}})();`
                         vendor.code = IIFEcss + vendor.code
                         // remove from final bundle
