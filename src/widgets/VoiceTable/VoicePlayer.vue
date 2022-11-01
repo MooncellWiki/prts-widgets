@@ -10,7 +10,7 @@
                 }
             "
         />
-        <audio ref="audioRef"></audio>
+        <audio ref="audioRef" preload="none"></audio>
         <a
             v-if="!isSimplified && voicePath"
             :href="`//static.prts.wiki/${voicePath}`"
