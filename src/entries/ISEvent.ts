@@ -1,6 +1,5 @@
 import { createApp } from 'vue'
 import 'virtual:windi.css'
-// import F:\git\prts-widgets\src\entries\ISEvent.ts from '../widgets/F:\git\prts-widgets\src\entries\ISEvent.ts.vue';
 import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue'
 
 //数据表元素（根层级）
