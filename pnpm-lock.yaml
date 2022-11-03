@@ -4,6 +4,7 @@ specifiers:
   '@sentry/browser': ^7.16.0
   '@sentry/tracing': ^7.16.0
   '@types/hammerjs': ^2.0.41
+  '@types/js-cookie': ^3.0.2
   '@types/md5': ^2.3.2
   '@types/offscreencanvas': ^2019.7.0
   '@types/tough-cookie': ^4.0.2
@@ -13,6 +14,7 @@ specifiers:
   '@webank/eslint-config-ts': ^1.1.1
   got: ^12.5.2
   hammerjs: ^2.0.8
+  js-cookie: ^3.0.1
   md5: ^2.3.0
   naive-ui: ^2.33.5
   rollup-plugin-visualizer: ^5.8.3
@@ -20,6 +22,7 @@ specifiers:
   terser: ^5.15.1
   tough-cookie: ^4.1.2
   typescript: ^4.8.4
+  velocity-animate: ^2.0.6
   vite: ^3.1.8
   vite-plugin-windicss: ^1.8.8
   vue: ^3.2.41
@@ -33,12 +36,15 @@ dependencies:
   '@vueuse/core': 9.3.1_vue@3.2.41
   '@webank/eslint-config-ts': 1.1.1_typescript@4.8.4
   hammerjs: 2.0.8
+  js-cookie: 3.0.1
   md5: 2.3.0
   naive-ui: 2.33.5_vue@3.2.41
+  velocity-animate: 2.0.6
   vue: 3.2.41
 
 devDependencies:
   '@types/hammerjs': 2.0.41
+  '@types/js-cookie': 3.0.2
   '@types/md5': 2.3.2
   '@types/offscreencanvas': 2019.7.0
   '@types/tough-cookie': 4.0.2
@@ -277,6 +283,10 @@ packages:
 
   /@types/http-cache-semantics/4.0.1:
     resolution: {integrity: sha512-SZs7ekbP8CN0txVG2xVRH6EgKmEm31BOxA07vkFaETzZz1xh+cbt8BcI0slpymvwhx5dlFnQG2rTlPVQn+iRPQ==}
+    dev: true
+
+  /@types/js-cookie/3.0.2:
+    resolution: {integrity: sha512-6+0ekgfusHftJNYpihfkMu8BWdeHs9EOJuGcSofErjstGPfPGEu9yTu4t460lTzzAMl2cM5zngQJqPMHbbnvYA==}
     dev: true
 
   /@types/json-schema/7.0.11:
@@ -1988,6 +1998,11 @@ packages:
     hasBin: true
     dev: true
 
+  /js-cookie/3.0.1:
+    resolution: {integrity: sha512-+0rgsUXZu4ncpPxRL+lNEptWMOWl9etvPHc/koSRp6MPwpRYAhmk0dUG00J4bxVV3r9uUzfo24wW0knS07SKSw==}
+    engines: {node: '>=12'}
+    dev: false
+
   /js-sdsl/4.1.5:
     resolution: {integrity: sha512-08bOAKweV2NUC1wqTtf3qZlnpOX/R2DU9ikpjOHs0H+ibQv3zpncVQg6um4uYtRtrwIX8M4Nh3ytK4HGlYAq7Q==}
     dev: false
@@ -2710,6 +2725,10 @@ packages:
     dependencies:
       evtd: 0.2.4
       vue: 3.2.41
+    dev: false
+
+  /velocity-animate/2.0.6:
+    resolution: {integrity: sha512-tU+/UtSo3GkIjEfk2KM4e24DvpgX0+FzfLr7XqNwm9BCvZUtbCHPq/AFutx/Mkp2bXlUS9EcX8yxu8XmzAv2Kw==}
     dev: false
 
   /vite-plugin-windicss/1.8.8_vite@3.1.8:

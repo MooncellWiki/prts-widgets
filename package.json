@@ -16,12 +16,15 @@
     "@vueuse/core": "^9.3.1",
     "@webank/eslint-config-ts": "^1.1.1",
     "hammerjs": "^2.0.8",
+    "js-cookie": "^3.0.1",
     "md5": "^2.3.0",
     "naive-ui": "^2.33.5",
+    "velocity-animate": "^2.0.6",
     "vue": "^3.2.41"
   },
   "devDependencies": {
     "@types/hammerjs": "^2.0.41",
+    "@types/js-cookie": "^3.0.2",
     "@types/md5": "^2.3.2",
     "@types/offscreencanvas": "^2019.7.0",
     "@types/tough-cookie": "^4.0.2",
