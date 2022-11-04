@@ -52,6 +52,11 @@
                 </div>
             </div>
             <div
+                :ref="
+                    (el) => {
+                        refs.indexOf(el) === -1 && refs.push(el)
+                    }
+                "
                 class="expand-panel"
                 :style="{ height: expanded[i] ? 'auto' : '0px' }"
             >
@@ -77,276 +82,58 @@ export default defineComponent({
     components: {
         FilterRow,
     },
-    props: {},
+    inject: ['$vel', '$cookies'],
+    props: {
+        filters: Array,
+    },
     data() {
         return {
-            filters: [
-                {
-                    title: '筛选',
-                    filter: [
-                        {
-                            title: '职业',
-                            cbt: [
-                                '先锋',
-                                '近卫',
-                                '狙击',
-                                '重装',
-                                '医疗',
-                                '辅助',
-                                '术师',
-                                '特种',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '稀有度',
-                            cbt: ['★1', '★2', '★3', '★4', '★5', '★6'],
-                            both: false,
-                        },
-                        {
-                            title: '位置',
-                            cbt: ['近战位', '远程位'],
-                            both: false,
-                        },
-                        {
-                            title: '性别',
-                            cbt: ['男性', '女性', '其他'],
-                            both: false,
-                        },
-                        {
-                            title: '获取途径',
-                            cbt: ['公开招募', '标准寻访', '限定寻访', '其他'],
-                            both: false,
-                        },
-                        {
-                            title: '词缀',
-                            cbt: [
-                                '治疗',
-                                '支援',
-                                '输出',
-                                '群攻',
-                                '减速',
-                                '生存',
-                                '防护',
-                                '削弱',
-                                '位移',
-                                '控场',
-                                '爆发',
-                                '召唤',
-                                '快速复活',
-                                '费用回复',
-                                '支援机械',
-                            ],
-                            both: true,
-                        },
-                    ],
-                },
-                {
-                    title: '六维筛选',
-                    filter: [
-                        {
-                            title: '物理强度',
-                            cbt: [
-                                '卓越',
-                                '优良',
-                                '标准',
-                                '普通',
-                                '缺陷',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '战场机动',
-                            cbt: [
-                                '卓越',
-                                '优良',
-                                '标准',
-                                '普通',
-                                '缺陷',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '生理耐受',
-                            cbt: [
-                                '卓越',
-                                '优良',
-                                '标准',
-                                '普通',
-                                '缺陷',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '战术规划',
-                            cbt: [
-                                '卓越',
-                                '优良',
-                                '标准',
-                                '普通',
-                                '缺陷',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '战斗技巧',
-                            cbt: [
-                                '卓越',
-                                '优良',
-                                '标准',
-                                '普通',
-                                '缺陷',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '源石技艺适应性',
-                            cbt: [
-                                '卓越',
-                                '优良',
-                                '标准',
-                                '普通',
-                                '缺陷',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                    ],
-                },
-                {
-                    title: '标志/出身地/团队/种族筛选',
-                    filter: [
-                        {
-                            title: '标志',
-                            cbt: [
-                                '乌萨斯',
-                                '企鹅物流',
-                                '卡西米尔',
-                                '拉特兰',
-                                '深海猎人',
-                                '维多利亚',
-                                '罗德岛',
-                                '巴别塔',
-                                '莱塔尼亚',
-                                '莱茵生命',
-                                '谢拉格',
-                                '雷姆必拓',
-                                '黑钢',
-                                '龙门',
-                                '炎国',
-                                '汐斯塔',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '出身地',
-                            cbt: [
-                                '卡西米尔',
-                                '未公开',
-                                '雷姆必拓',
-                                '乌萨斯',
-                                '谢拉格',
-                                '玻利瓦尔',
-                                '卡兹戴尔',
-                                '莱塔尼亚',
-                                '米诺斯',
-                                '龙门',
-                                '哥伦比亚',
-                                '东',
-                                '维多利亚',
-                                '拉特兰',
-                                '叙拉古',
-                                '炎',
-                                '阿戈尔',
-                                '萨尔贡',
-                                '萨米',
-                                '汐斯塔',
-                                '瓦伊凡',
-                                '伊比利亚',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '团队',
-                            cbt: [
-                                '龙门近卫局',
-                                '黑钢',
-                                '行动预备组A6',
-                                '行动预备组A4',
-                                '行动预备组A1',
-                                '行动组A4',
-                                '莱茵生命',
-                                '深海猎人',
-                                '格拉斯哥帮',
-                                '喀兰贸易',
-                                '使徒',
-                                '企鹅物流',
-                                '乌萨斯学生自治团',
-                                'S.W.E.E.P原型',
-                                '无团队',
-                            ],
-                            both: false,
-                        },
-                        {
-                            title: '种族',
-                            cbt: [
-                                '龙',
-                                '黎博利',
-                                '鲁珀',
-                                '鬼',
-                                '阿达克利斯',
-                                '阿纳缇',
-                                '萨科塔',
-                                '萨弗拉',
-                                '萨卡兹',
-                                '菲林',
-                                '瓦伊凡',
-                                '德拉克',
-                                '瑞柏巴',
-                                '沃尔珀',
-                                '杜林',
-                                '札拉克',
-                                '未公开',
-                                '曼提柯',
-                                '库兰塔',
-                                '安努拉',
-                                '埃拉菲亚',
-                                '卡特斯',
-                                '卡普里尼',
-                                '匹特拉姆',
-                                '依特拉',
-                                '佩洛',
-                                '丰蹄',
-                                '乌萨斯',
-                                '奇美拉',
-                                '阿斯兰',
-                                '麒麟',
-                                '阿戈尔',
-                                '其他',
-                            ],
-                            both: false,
-                        },
-                    ],
-                },
-            ],
             states: [
                 [[], [], [], [], [], []],
                 [[], [], [], [], [], []],
                 [[], [], [], []],
             ], // 筛选 六维筛选 标志/出身地/团队/种族筛选
             expanded: [true, false, false], // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
+            refs: [],
         }
+    },
+    watch: {
+        states: {
+            deep: true,
+        },
     },
     methods: {
         toggleCollapse(index: number) {
-            console.log(this.expanded)
             this.expanded[index] = !this.expanded[index]
+            /*
+            this.$cookies.set('opFilterExpandState', this.expanded.join(','), {
+                expires: 365,
+            })*/
+            if (this.expanded[index]) {
+                let targetHeight = 0
+                for (let j = 0; j < this.refs[index].children.length; j++) {
+                    targetHeight += this.refs[index].children[j].offsetHeight
+                }
+                this.$vel(
+                    this.refs[index],
+                    { height: targetHeight },
+                    {
+                        duration: 250,
+                        delay: 0,
+                    },
+                ).then(() => {
+                    this.refs[index].style.height = 'auto'
+                })
+            } else {
+                this.$vel(
+                    this.refs[index],
+                    { height: 0 },
+                    {
+                        duration: 250,
+                        delay: 0,
+                    },
+                )
+            }
         },
     },
 })

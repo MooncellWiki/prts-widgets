@@ -7,7 +7,12 @@
         <div class="btns">
             <button class="btn" @click="addAll">全选</button>
             <button class="btn" @click="removeAll">清除</button>
-            <CheckBox v-if="both" :key="'both'" :title="'同时满足'"></CheckBox>
+            <CheckBox
+                v-if="both"
+                :key="'both'"
+                v-model:states="selectedLabels"
+                :text="'同时满足'"
+            ></CheckBox>
         </div>
         <div class="checkboxs">
             <CheckBox
@@ -44,6 +49,11 @@ export default defineComponent({
         return {
             selectedLabels: this.states,
         }
+    },
+    watch: {
+        selectedLabels(val) {
+            this.$emit('update:states', val)
+        },
     },
     methods: {
         addAll() {
