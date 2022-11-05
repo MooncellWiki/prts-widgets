@@ -35,6 +35,17 @@ export default defineComponent({
         onClick: function () {
             let statesCopy = [...this.states]
             const i: number = this.states?.indexOf(this.text)
+
+            if (this.atLeastOne && i !== -1) {
+                return
+            }
+
+            if (this.onlyOne) {
+                statesCopy = [this.text]
+                this.$emit('update:states', statesCopy)
+                return
+            }
+
             if (i !== -1) {
                 statesCopy.splice(i, 1)
             } else {
