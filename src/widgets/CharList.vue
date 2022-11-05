@@ -71,62 +71,198 @@
                 ></FilterRow>
             </div>
         </div>
+        <div class="control">
+            <div>排序方式</div>
+            <div class="order">
+                <CheckBox
+                    v-for="v in sortMethods"
+                    :key="v"
+                    v-model:states="currSortMethod"
+                    :text="v"
+                    :atLeastOne="true"
+                    :onlyOne="true"
+                ></CheckBox>
+            </div>
+        </div>
+        <div class="mode">
+            <input v-model="searchText" placeholder="搜索干员名称/简介/特性" />
+            <div>
+                <CheckBox
+                    v-for="v in dataTypes"
+                    :key="v"
+                    v-model:states="currDataTypes"
+                    :text="v"
+                ></CheckBox>
+            </div>
+            <div>
+                <CheckBox
+                    v-for="v in displayModes"
+                    :key="v"
+                    v-model:states="currDisplayMode"
+                    :text="v"
+                    :atLeastOne="true"
+                    :onlyOne="true"
+                ></CheckBox>
+            </div>
+        </div>
+
+        <div id="pagination">
+            <div class="btn" :data-clipboard-text="url" @click="copyurl">
+                复制短链接
+            </div>
+            <Pagination
+                :length="oridata.length"
+                :index="page.index"
+                :step="page.step"
+                @change="onPageChange"
+                @changestep="onStepChange"
+            ></Pagination>
+        </div>
+        <div id="result">
+            <div v-for="v in data">{{ v.zh }}</div>
+            <shead
+                v-if="currDisplayMode[0] === '表格' && bp === 1"
+                :class="{ fix: fix }"
+            ></shead>
+            <lhead
+                v-else-if="currDisplayMode[0] === '表格' && bp === 2"
+                :class="{ fix: fix }"
+            ></lhead>
+            <div
+                id="filter-result"
+                :class="{
+                    showhead: currDisplayMode[0] === '头像',
+                    showavatar: currDisplayMode[0] === '半身像',
+                }"
+            >
+                <template v-if="currDisplayMode[0] === '半身像'">
+                    <half
+                        v-for="v in data"
+                        :key="v.sortid"
+                        :class_="v.class_"
+                        :rarity="v.rarity"
+                        :logo="v.logo"
+                        :zh="v.zh"
+                        :en="v.en"
+                    ></half>
+                </template>
+                <template v-if="currDisplayMode[0] === '头像'">
+                    <avatar
+                        v-for="v in data"
+                        :key="v.sortid"
+                        :class_="v.class_"
+                        :rarity="v.rarity"
+                        :zh="v.zh"
+                    ></avatar>
+                </template>
+                <template v-if="currDisplayMode[0] === '表格' && bp === 1">
+                    <short
+                        v-for="v in data"
+                        :key="v.sortid"
+                        :row="v"
+                        :addtrust="currDataTypes.indexOf('满信赖') !== -1"
+                        :addpotential="currDataTypes.indexOf('满潜能') !== -1"
+                    >
+                        <div v-html="v.feature"></div>
+                    </short>
+                </template>
+                <template v-if="currDisplayMode[0] === '表格' && bp === 2">
+                    <long
+                        v-for="v in data"
+                        :key="v.sortid"
+                        :row="v"
+                        :addtrust="currDataTypes.indexOf('满信赖') !== -1"
+                        :addpotential="currDataTypes.indexOf('满潜能') !== -1"
+                    >
+                        <div v-html="v.feature"></div>
+                    </long>
+                </template>
+                <template v-if="currDisplayMode[0] === '表格' && bp === 0">
+                    <card
+                        v-for="v in data"
+                        :key="v.sortid"
+                        :row="v"
+                        :addtrust="currDataTypes.indexOf('满信赖') !== -1"
+                        :addpotential="currDataTypes.indexOf('满潜能') !== -1"
+                    >
+                        <div v-html="v.feature"></div>
+                    </card>
+                </template>
+            </div>
+        </div>
     </div>
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue'
+import { defineComponent, ref, computed, reactive, Ref, inject } from 'vue'
 import FilterRow from '../components/FilterRow.vue'
+import CheckBox from '../components/CheckBox.vue'
+import Pagination from '../components/Pagination.vue'
 
 export default defineComponent({
     components: {
         FilterRow,
+        CheckBox,
+        Pagination,
     },
-    inject: ['$vel', '$cookies'],
     props: {
         filters: Array,
+        source: Array,
     },
-    data() {
-        return {
-            states: [
-                [[], [], [], [], [], []],
-                [[], [], [], [], [], []],
-                [[], [], [], []],
-            ], // 筛选 六维筛选 标志/出身地/团队/种族筛选
-            expanded: [true, false, false], // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
-            refs: [],
-        }
-    },
-    watch: {
-        states: {
-            deep: true,
-        },
-    },
-    methods: {
-        toggleCollapse(index: number) {
-            this.expanded[index] = !this.expanded[index]
+    setup(props) {
+        const page = ref({
+            index: 1,
+            step: '50',
+        })
+        const filter_map = ref([])
+        const states = reactive([
+            [[], [], [], [], [], []],
+            [[], [], [], [], [], []],
+            [[], [], [], []],
+        ]) // 筛选 六维筛选 标志/出身地/团队/种族筛选
+        const expanded: Ref<Array<boolean>> = ref([true, false, false]) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
+        const refs = ref([])
+        const currSortMethod = ref(['实装顺序'])
+        const sortMethods = ref([
+            '实装顺序',
+            '实装倒序',
+            '名称升序',
+            '名称降序',
+            '稀有度升序',
+            '稀有度降序',
+        ])
+        const searchText = ref('')
+        const dataTypes = ref(['满潜能', '满信赖'])
+        const currDataTypes = ref([])
+        const displayModes = ref(['表格', '半身像', '头像'])
+        const currDisplayMode = ref(['表格'])
+        const $vel = inject('$vel')
+        const $cookies = inject('$cookies')
+
+        const toggleCollapse = (index: number) => {
+            expanded.value[index] = !expanded.value[index]
             /*
             this.$cookies.set('opFilterExpandState', this.expanded.join(','), {
                 expires: 365,
             })*/
-            if (this.expanded[index]) {
+            if (expanded.value[index]) {
                 let targetHeight = 0
-                for (let j = 0; j < this.refs[index].children.length; j++) {
-                    targetHeight += this.refs[index].children[j].offsetHeight
+                for (let j = 0; j < refs.value[index].children.length; j++) {
+                    targetHeight += refs.value[index].children[j].offsetHeight
                 }
-                this.$vel(
-                    this.refs[index],
+                $vel(
+                    refs.value[index],
                     { height: targetHeight },
                     {
                         duration: 250,
                         delay: 0,
                     },
                 ).then(() => {
-                    this.refs[index].style.height = 'auto'
+                    refs.value[index].style.height = 'auto'
                 })
             } else {
-                this.$vel(
-                    this.refs[index],
+                $vel(
+                    refs.value[index],
                     { height: 0 },
                     {
                         duration: 250,
@@ -134,7 +270,30 @@ export default defineComponent({
                     },
                 )
             }
-        },
+        }
+
+        const oridata = computed(() => props.source)
+        const data = computed(() => {
+            let start = (page.value.index - 1) * page.value.step
+            return oridata.value.slice(start, start + page.value.step)
+        })
+        return {
+            page,
+            filter_map,
+            states,
+            expanded,
+            refs,
+            currSortMethod,
+            sortMethods,
+            searchText,
+            dataTypes,
+            currDataTypes,
+            displayModes,
+            currDisplayMode,
+            oridata,
+            data,
+            toggleCollapse,
+        }
     },
 })
 </script>
