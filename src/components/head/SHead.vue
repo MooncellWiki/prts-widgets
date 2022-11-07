@@ -29,10 +29,12 @@
     <div id="feature">特性</div>
   </div>
 </template>
-<script>
-export default {
-  name: 'shead',
-}
+<script lang="ts">
+import { defineComponent } from 'vue'
+
+export default defineComponent({
+  name: 'SHead',
+})
 </script>
 <style scoped>
 #shead {

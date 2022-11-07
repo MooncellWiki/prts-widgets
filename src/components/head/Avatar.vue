@@ -3,32 +3,33 @@
     <a :href="`/w/${zh}`">
       <img
         class="avatar lazyload"
-        :data-src="`${$8data.domain}images/${getImagePath(`头像_${zh}.png`)}`"
+        :data-src="`${domain}/images/${getImagePath(`头像_${zh}.png`)}`"
       />
       <div class="rarity">
-        <img :src="`${$8data.domain}images/${$8data.rarity[rarity]}`" />
+        <img :src="`${domain}/images/${charListData.rarity[rarity]}`" />
       </div>
       <div class="class_">
-        <img :src="`${$8data.domain}images/${$8data.class_[class_]}`" />
+        <img :src="`${domain}/images/${charListData.class_[class_]}`" />
       </div>
     </a>
   </div>
 </template>
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { getImagePath, domain } from '../../utils/utils.js'
+import { getImagePath, domain, charListData } from '../../utils/utils.js'
 
 export default defineComponent({
   name: 'Avatar',
   props: {
     class_: String,
-    rarity: String, //但是应该是数字
+    rarity: Number, //但是应该是数字
     zh: String,
   },
   setup() {
     return {
       getImagePath,
       domain,
+      charListData,
     }
   },
 })
