@@ -3,7 +3,7 @@
   <div class="card-container">
     <div class="basic">
       <div class="avatar">
-        <avatar :rarity="row.rarity" :class_="row.class_" :zh="row.zh"></avatar>
+        <Avatar :rarity="row.rarity" :class_="row.class_" :zh="row.zh"></Avatar>
       </div>
       <div class="info">
         <div class="name">
@@ -104,122 +104,45 @@
   </div>
 </template>
 <script lang="ts">
+import { defineComponent, ref, computed, inject, PropType, watch } from 'vue'
+import { domain } from '../../utils/utils.js'
 import Avatar from '../head/Avatar.vue'
 
 export default defineComponent({
   name: 'Card',
-  components: { avatar },
+  components: { Avatar },
   props: {
-    row: {
-      class_: String, //职业
-      rarity: Number, //稀有度（0-5）
-      logo: String, //标志
-      birth_place: String, //出身地
-      team: String, //团队
-      race: String, //种族
-      zh: String, //中文干员名
-      en: String, //英文干员名
-      ja: String, //日文干员名
-      id: String, //情报编号
-      re_deploy: String, //再部署时间
-      cost: Number, //部署费用
-      block: Number, //阻挡数
-      sex: String, //性别
-      position: String, //位置
-      tag: Array, //词缀,
-      feature: String, //特性
-      obtain_method: Array, //获得方式
-    },
+    row: Object as PropType<{
+      class_: string //职业
+      rarity: number //稀有度（0-5）
+      logo: string //标志
+      birth_place: string //出身地
+      team: string //团队
+      race: string //种族
+      zh: string //中文干员名
+      en: string //英文干员名
+      ja: string //日文干员名
+      id: string //情报编号
+      re_deploy: string //再部署时间
+      cost: number //部署费用
+      block: number //阻挡数
+      sex: string //性别
+      position: string //位置
+      tag: Array<string> //词缀,
+      feature: string //特性
+      obtain_method: Array<string> //获得方式
+    }>,
     addtrust: Boolean, //是否加算信赖
     addpotential: Boolean, //是否加算潜能
   },
-  data: () => {
-    return {
-      collapsed: true,
-    }
-  },
-  computed: {
-    hp_: function () {
-      let result = parseInt(this.row.hp)
-      if (this.addtrust) {
-        result += this.row.trust[0]
-      }
-      if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
-          if (v == 'hp') {
-            result += this.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    },
-    atk_: function () {
-      let result = parseInt(this.row.atk)
-      if (this.addtrust) {
-        result += this.row.trust[1]
-      }
-      if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
-          if (v == 'atk') {
-            result += this.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    },
-    def_: function () {
-      let result = parseInt(this.row.def)
-      if (this.addtrust) {
-        result += this.row.trust[2]
-      }
-      if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
-          if (v == 'def') {
-            result += this.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    },
-    res_: function () {
-      let result = parseInt(this.row.res)
-      if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
-          if (v == 'res') {
-            result += this.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    },
-    cost_: function () {
-      let result = parseInt(this.row.cost)
-      if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
-          if (v == 'cost') {
-            result += this.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    },
-    re_deploy_: function () {
-      let result = parseInt(this.row.re_deploy.slice(0, -1))
-      if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
-          if (v == 're_deploy') {
-            result += this.row.potential[1][i]
-          }
-        })
-      }
-      return result + 's'
-    },
-  },
-  watch: {
-    collapsed: function () {
-      if (this.collapsed) {
-        this.vel(
-          this.$refs['panel'],
+  setup(props) {
+    const collapsed = ref(true)
+    const $vel = inject('$vel')
+    const refs = inject('refs')
+    watch(collapsed, () => {
+      if (collapsed) {
+        $vel(
+          refs['panel'],
           { height: 0 },
           {
             duration: 500,
@@ -228,21 +151,97 @@ export default defineComponent({
         )
       } else {
         let targetHeight = 0
-        for (let j = 0; j < this.$refs['panel'].children.length; j++) {
-          targetHeight += this.$refs['panel'].children[j].offsetHeight
+        for (let j = 0; j < refs['panel'].children.length; j++) {
+          targetHeight += refs['panel'].children[j].offsetHeight
         }
-        this.vel(
-          this.$refs['panel'],
+        $vel(
+          refs['panel'],
           { height: targetHeight },
           {
             duration: 500,
             delay: 0,
           },
         ).then(() => {
-          this.$refs['panel'].style.height = 'auto'
+          refs['panel'].style.height = 'auto'
         })
       }
-    },
+    })
+    const hp_ = computed(() => {
+      let result = parseInt(props.row.hp)
+      if (props.addtrust) {
+        result += props.row.trust[0]
+      }
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v == 'hp') {
+            result += props.row.potential[1][i]
+          }
+        })
+      }
+      return result
+    })
+    const atk_ = computed(() => {
+      let result = parseInt(props.row.atk)
+      if (props.addtrust) {
+        result += props.row.trust[1]
+      }
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v == 'atk') {
+            result += props.row.potential[1][i]
+          }
+        })
+      }
+      return result
+    })
+    const def_ = computed(() => {
+      let result = parseInt(props.row.def)
+      if (props.addtrust) {
+        result += props.row.trust[2]
+      }
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v == 'def') {
+            result += props.row.potential[1][i]
+          }
+        })
+      }
+      return result
+    })
+    const res_ = computed(() => {
+      let result = parseInt(props.row.res)
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v == 'res') {
+            result += props.row.potential[1][i]
+          }
+        })
+      }
+      return result
+    })
+    const cost_ = computed(() => {
+      let result = parseInt(props.row.cost)
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v == 'cost') {
+            result += props.row.potential[1][i]
+          }
+        })
+      }
+      return result
+    })
+    const re_deploy_ = computed(() => {
+      let result = parseInt(props.row.re_deploy.slice(0, -1))
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v == 're_deploy') {
+            result += props.row.potential[1][i]
+          }
+        })
+      }
+      return result + 's'
+    })
+    return { collapsed, hp_, atk_, def_, res_, cost_, re_deploy_, domain }
   },
 })
 </script>

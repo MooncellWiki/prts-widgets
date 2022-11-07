@@ -2,11 +2,11 @@
 <template>
   <div class="short-container">
     <div class="avatar">
-      <avatar :rarity="row.rarity" :class_="row.class_" :zh="row.zh"></avatar>
+      <Avatar :rarity="row.rarity" :class_="row.class_" :zh="row.zh"></Avatar>
     </div>
     <div class="name">
       <div>
-        <a :href="`${$8data.domain}/w/${row.zh}`">
+        <a :href="`${domain}/w/${row.zh}`">
           <div>{{ row.zh }}</div>
         </a>
         <div>{{ row.en }}</div>
@@ -53,120 +53,132 @@
     </div>
   </div>
 </template>
-<script>
-import avatar from '../head/Avatar.vue'
-export default {
-  name: 'short',
-  components: { avatar },
+<script lang="ts">
+import { defineComponent, computed, PropType } from 'vue'
+import { domain } from '../../utils/utils.js'
+import Avatar from '../head/Avatar.vue'
+export default defineComponent({
+  name: 'Short',
+  components: { Avatar },
   props: {
-    row: {
-      class_: String, //职业
-      rarity: Number, //稀有度（0-5）
-      logo: String, //标志
-      birth_place: String, //出身地
-      team: String, //团队
-      race: String, //种族
-      zh: String, //中文干员名
-      en: String, //英文干员名
-      ja: String, //日文干员名
-      id: String, //情报编号
-      hp: Number, //生命值
-      atk: Number, //攻击力
-      def: Number, //防御
-      res: Number, //法抗
-      re_deploy: String, //再部署时间
-      cost: Number, //部署费用
-      block: Number, //阻挡数,
-      interval: Number, //攻击间隔
-      sex: String, //性别
-      position: String, //位置
-      tag: Array, //词缀
-      feature: String, //特性
-      obtain_method: Array, //获得方式
-      trust: Array, //信赖加成
-      potential: Array, //潜能加成
-    },
+    row: Object as PropType<{
+      class_: string //职业
+      rarity: number //稀有度（0-5）
+      logo: string //标志
+      birth_place: string //出身地
+      team: string //团队
+      race: string //种族
+      zh: string //中文干员名
+      en: string //英文干员名
+      ja: string //日文干员名
+      id: string //情报编号
+      hp: number //生命值
+      atk: number //攻击力
+      def: number //防御
+      res: number //法抗
+      re_deploy: string //再部署时间
+      cost: number //部署费用
+      block: number //阻挡数,
+      interval: number //攻击间隔
+      sex: string //性别
+      position: string //位置
+      tag: Array<string> //词缀
+      feature: string //特性
+      obtain_method: Array<string> //获得方式
+      trust: Array<string> //信赖加成
+      potential: Array<string> //潜能加成
+    }>,
     addtrust: Boolean, //是否加算信赖
     addpotential: Boolean, //是否加算潜能
   },
-  computed: {
-    hp_: function () {
-      let result = parseInt(this.row.hp)
+  setup(props) {
+    const hp_ = computed(() => {
+      let result = parseInt(props.row.hp)
       if (this.addtrust) {
-        result += this.row.trust[0]
+        result += props.row.trust[0]
       }
       if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
+        props.row.potential[0].forEach((v, i) => {
           if (v == 'hp') {
-            result += this.row.potential[1][i]
+            result += props.row.potential[1][i]
           }
         })
       }
       return result
-    },
-    atk_: function () {
-      let result = parseInt(this.row.atk)
+    })
+    const atk_ = computed(() => {
+      let result = parseInt(props.row.atk)
       if (this.addtrust) {
-        result += this.row.trust[1]
+        result += props.row.trust[1]
       }
       if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
+        props.row.potential[0].forEach((v, i) => {
           if (v == 'atk') {
-            result += this.row.potential[1][i]
+            result += props.row.potential[1][i]
           }
         })
       }
       return result
-    },
-    def_: function () {
-      let result = parseInt(this.row.def)
+    })
+    const def_ = computed(() => {
+      let result = parseInt(props.row.def)
       if (this.addtrust) {
-        result += this.row.trust[2]
+        result += props.row.trust[2]
       }
       if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
+        props.row.potential[0].forEach((v, i) => {
           if (v == 'def') {
-            result += this.row.potential[1][i]
+            result += props.row.potential[1][i]
           }
         })
       }
       return result
-    },
-    res_: function () {
-      let result = parseInt(this.row.res)
+    })
+    const res_ = computed(() => {
+      let result = parseInt(props.row.res)
       if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
+        props.row.potential[0].forEach((v, i) => {
           if (v == 'res') {
-            result += this.row.potential[1][i]
+            result += props.row.potential[1][i]
           }
         })
       }
       return result
-    },
-    cost_: function () {
-      let result = parseInt(this.row.cost)
+    })
+    const cost_ = computed(() => {
+      let result = parseInt(props.row.cost)
       if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
+        props.row.potential[0].forEach((v, i) => {
           if (v == 'cost') {
-            result += this.row.potential[1][i]
+            result += props.row.potential[1][i]
           }
         })
       }
       return result
-    },
-    re_deploy_: function () {
-      let result = parseInt(this.row.re_deploy.slice(0, -1))
+    })
+    const re_deploy_ = computed(() => {
+      let result = parseInt(props.row.re_deploy.slice(0, -1))
       if (this.addpotential) {
-        this.row.potential[0].forEach((v, i) => {
+        props.row.potential[0].forEach((v, i) => {
           if (v == 're_deploy') {
-            result += this.row.potential[1][i]
+            result += props.row.potential[1][i]
           }
         })
       }
       return result + 's'
-    },
+    })
+
+    return {
+      domain,
+      hp_,
+      atk_,
+      def_,
+      res_,
+      cost_,
+      re_deploy_,
+    }
   },
-}
+})
 </script>
 <style scoped>
 .short-container {
