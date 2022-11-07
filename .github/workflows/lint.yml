@@ -1,7 +1,7 @@
 name: eslint
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   eslint:
@@ -15,7 +15,7 @@ jobs:
   vue_tsc:
     name: runner / vue_tsc
     runs-on: ubuntu-latest
-    steps: 
+    steps:
       - uses: actions/checkout@v2
       - uses: daflyinbed/reviewdog-action-vue-tsc@v1
         with:
