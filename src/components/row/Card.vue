@@ -8,7 +8,7 @@
       <div class="info">
         <div class="name">
           <div class="zh">
-            <a :href="`${$8data.domain}/w/${row.zh}`">
+            <a :href="`${domain}/w/${row.zh}`">
               <div>{{ row.zh }}</div>
             </a>
           </div>

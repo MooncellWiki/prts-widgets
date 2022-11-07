@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div id="app" ref="app">
     <div
       v-for="(v, i) in filters"
       :key="v.title"
@@ -119,15 +119,14 @@
       ></Pagination>
     </div>
     <div id="result">
-      <div v-for="v in data" :key="v.sortid">{{ v.zh }}</div>
-      <shead
+      <SHead
         v-if="currDisplayMode[0] === '表格' && bp === 1"
         :class="{ fix: fix }"
-      ></shead>
-      <lhead
+      ></SHead>
+      <LHead
         v-else-if="currDisplayMode[0] === '表格' && bp === 2"
         :class="{ fix: fix }"
-      ></lhead>
+      ></LHead>
       <div
         id="filter-result"
         :class="{
@@ -178,7 +177,7 @@
           </long>
         </template>
         <template v-if="currDisplayMode[0] === '表格' && bp === 0">
-          <card
+          <Card
             v-for="v in data"
             :key="v.sortid"
             :row="v"
@@ -186,7 +185,7 @@
             :addpotential="currDataTypes.indexOf('满潜能') !== -1"
           >
             <div v-html="v.feature"></div>
-          </card>
+          </Card>
         </template>
       </div>
     </div>
@@ -194,22 +193,54 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, reactive, Ref, inject } from 'vue'
+import {
+  defineComponent,
+  ref,
+  computed,
+  reactive,
+  Ref,
+  inject,
+  provide,
+  onMounted,
+} from 'vue'
 import FilterRow from '../components/FilterRow.vue'
 import CheckBox from '../components/CheckBox.vue'
 import Pagination from '../components/Pagination.vue'
+import SHead from '../components/head/SHead.vue'
+import Avatar from '../components/head/Avatar.vue'
+import LHead from '../components/head/LHead.vue'
+import Card from '../components/row/Card.vue'
+import Long from '../components/row/Long.vue'
+import Short from '../components/row/Short.vue'
 
 export default defineComponent({
   components: {
     FilterRow,
     CheckBox,
     Pagination,
+    SHead,
+    LHead,
+    Avatar,
+    Card,
+    Long,
+    Short,
   },
   props: {
     filters: Array,
     source: Array,
   },
   setup(props) {
+    const app = ref()
+    let bp = 2
+    onMounted(() => {
+      if (app.offsetWidth > 900) {
+        bp = 2
+      } else if (app.offsetWidth > 640) {
+        bp = 1
+      } else {
+        bp = 0
+      }
+    })
     const page = ref({
       index: 1,
       step: '50',
@@ -222,6 +253,7 @@ export default defineComponent({
     ]) // 筛选 六维筛选 标志/出身地/团队/种族筛选
     const expanded: Ref<Array<boolean>> = ref([true, false, false]) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
     const refs = ref([])
+    provide('refs', refs)
     const currSortMethod = ref(['实装顺序'])
     const sortMethods = ref([
       '实装顺序',
@@ -278,6 +310,8 @@ export default defineComponent({
       return oridata.value.slice(start, start + page.value.step)
     })
     return {
+      app,
+      bp,
       page,
       filter_map,
       states,

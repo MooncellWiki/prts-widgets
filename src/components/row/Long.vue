@@ -88,10 +88,10 @@ export default defineComponent({
   setup(props) {
     const hp_ = computed(() => {
       let result = parseInt(props.row.hp)
-      if (this.addtrust) {
+      if (props.addtrust) {
         result += props.row.trust[0]
       }
-      if (this.addpotential) {
+      if (props.addpotential) {
         props.row.potential[0].forEach((v, i) => {
           if (v == 'hp') {
             result += props.row.potential[1][i]
@@ -102,10 +102,10 @@ export default defineComponent({
     })
     const atk_ = computed(() => {
       let result = parseInt(props.row.atk)
-      if (this.addtrust) {
+      if (props.addtrust) {
         result += props.row.trust[1]
       }
-      if (this.addpotential) {
+      if (props.addpotential) {
         props.row.potential[0].forEach((v, i) => {
           if (v == 'atk') {
             result += props.row.potential[1][i]
@@ -116,10 +116,10 @@ export default defineComponent({
     })
     const def_ = computed(() => {
       let result = parseInt(props.row.def)
-      if (this.addtrust) {
+      if (props.addtrust) {
         result += props.row.trust[2]
       }
-      if (this.addpotential) {
+      if (props.addpotential) {
         props.row.potential[0].forEach((v, i) => {
           if (v == 'def') {
             result += props.row.potential[1][i]
@@ -130,7 +130,7 @@ export default defineComponent({
     })
     const res_ = computed(() => {
       let result = parseInt(props.row.res)
-      if (this.addpotential) {
+      if (props.addpotential) {
         props.row.potential[0].forEach((v, i) => {
           if (v == 'res') {
             result += props.row.potential[1][i]
@@ -141,7 +141,7 @@ export default defineComponent({
     })
     const cost_ = computed(() => {
       let result = parseInt(props.row.cost)
-      if (this.addpotential) {
+      if (props.addpotential) {
         props.row.potential[0].forEach((v, i) => {
           if (v == 'cost') {
             result += props.row.potential[1][i]
@@ -152,7 +152,7 @@ export default defineComponent({
     })
     const re_deploy_ = computed(() => {
       let result = parseInt(props.row.re_deploy.slice(0, -1))
-      if (this.addpotential) {
+      if (props.addpotential) {
         props.row.potential[0].forEach((v, i) => {
           if (v == 're_deploy') {
             result += props.row.potential[1][i]
