@@ -231,6 +231,11 @@ export default defineComponent({
   },
   setup(props) {
     const app = ref()
+    const m = [
+      ['class_', 'rarity', 'position', 'sex', 'obtain_method', 'tag'],
+      ['phy', 'flex', 'tolerance', 'plan', 'skill', 'adapt'],
+      ['logo', 'birth_place', 'team', 'race'],
+    ]
     let bp = ref(0)
     let fix = ref(false)
     onMounted(() => {
@@ -306,7 +311,7 @@ export default defineComponent({
     const expanded: Ref<Array<boolean>> = ref([true, false, false]) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
     const refs = ref([])
     provide('refs', refs)
-    const currSortMethod = ref(['实装顺序'])
+    const currSortMethod = ref(['实装倒序'])
     const sortMethods = ref([
       '实装顺序',
       '实装倒序',
@@ -372,7 +377,148 @@ export default defineComponent({
       page.value.step = n.toString()
     }
 
-    const oridata = computed(() => props.source)
+    const oridata = computed(() => {
+      let temp = props.source
+      let filters = props.filters
+      const has = (v, arr, i1, i2) => {
+        let a = arr
+        if (i1 == 2) {
+          a = arr.map((v) => filter_map.value[i2][v] || v).flat()
+        }
+        return a.indexOf(v) !== -1
+      }
+      const other = (v, arr, i1, i2) => {
+        if (arr.indexOf('其他') !== -1) {
+          let da = filters[i1]['filter'][i2]['cbt']
+            .map((v) => {
+              if (filter_map.value[i2] && filter_map.value[i2][v]) {
+                return filter_map.value[i2][v]
+              } else {
+                return v
+              }
+            })
+            .flat()
+          da.splice(da.indexOf('其他'), 1)
+          return arr.indexOf(v) !== -1 || da.indexOf(v) == -1
+        } else {
+          return has(v, arr, i1, i2)
+        }
+      }
+      states.forEach((v1, i1) => {
+        v1.forEach((v2, i2) => {
+          if (v2.length !== 0) {
+            temp = temp.filter((v3) => {
+              if (i1 == 0 && i2 == 1) {
+                //稀有度
+                return v2.indexOf('★' + (1 + parseInt(v3[m[i1][i2]]))) !== -1
+              } else if (i1 == 0 && i2 == 3) {
+                //性别
+                if (v2.indexOf('其他') !== -1) {
+                  return (
+                    v2.indexOf(v3[m[i1][i2]] + '性') !== -1 ||
+                    (v3.sex !== '男' && v3.sex !== '女')
+                  )
+                } else {
+                  return v2.indexOf(v3[m[i1][i2]] + '性') !== -1
+                }
+              } else if (i1 == 0 && i2 == 4) {
+                return (
+                  v3[m[i1][i2]].filter((v4) => other(v4, v2, i1, i2)).length !=
+                  0
+                )
+                // return other(v3[m[i1][i2]], v2, i1, i2)
+              } else if (i1 == 0 && i2 == 5) {
+                //词缀
+                if (v2.indexOf('同时满足') !== -1) {
+                  //同时满足
+                  if (v2.length === 1) {
+                    return true
+                  }
+                  let flag = true
+                  for (let i = 0; i < v2.length; i++) {
+                    if (v2[i] !== '同时满足') {
+                      if (v3.tag.indexOf(v2[i]) === -1) {
+                        flag = false
+                      }
+                    }
+                  }
+                  return flag
+                } else {
+                  let flag = false
+                  for (let i = 0; i < v2.length; i++) {
+                    if (v3.tag.indexOf(v2[i]) !== -1) {
+                      flag = true
+                      break
+                    }
+                  }
+                  return flag
+                }
+              } else if (i1 == 1 || (i1 == 2 && (i2 == 1 || i2 == 3))) {
+                //六维筛选，出身地，种族有其他
+                return other(v3[m[i1][i2]], v2, i1, i2)
+              } else {
+                return has(v3[m[i1][i2]], v2, i1, i2)
+                // return v2.indexOf(v3[m[i1][i2]]) !== -1
+              }
+            })
+          }
+        })
+      })
+      temp = temp.filter((v) => {
+        let tags = ['zh', 'en', 'ja', 'id', 'noHtmlFeature']
+        return (
+          tags.filter((key) => v[key].indexOf(searchText.value) != -1).length !=
+          0
+        )
+      })
+      switch (currSortMethod.value[0]) {
+        case '实装顺序':
+          temp.sort((a, b) => a.sortid - b.sortid)
+          break
+        case '实装倒序':
+          temp.sort((a, b) => b.sortid - a.sortid)
+          break
+        case '名称升序':
+          temp.sort((a, b) => a.zh.localeCompare(b.zh, 'zh'))
+          break
+        case '名称降序':
+          temp.sort((a, b) => b.zh.localeCompare(a.zh, 'zh'))
+          break
+        case '稀有度升序':
+          temp.sort((a, b) => {
+            let r = a.rarity - b.rarity
+            if (r === 0) {
+              let classes = filters[0].filter[0].cbt
+              let o = classes.indexOf(a.class_) - classes.indexOf(b.class_)
+              if (o === 0) {
+                return a.zh.localeCompare(b.zh, 'zh')
+              } else {
+                return o
+              }
+            } else {
+              return r
+            }
+          })
+          break
+        case '稀有度降序':
+          temp.sort((a, b) => {
+            let r = b.rarity - a.rarity
+            if (r === 0) {
+              let classes = filters[0].filter[0].cbt
+              let o = classes.indexOf(a.class_) - classes.indexOf(b.class_)
+              if (o === 0) {
+                return a.zh.localeCompare(b.zh, 'zh')
+              } else {
+                return o
+              }
+            } else {
+              return r
+            }
+          })
+          break
+      }
+      return temp
+    })
     const data = computed(() => {
       let start = (page.value.index - 1) * parseInt(page.value.step)
       return oridata.value.slice(start, start + parseInt(page.value.step))
