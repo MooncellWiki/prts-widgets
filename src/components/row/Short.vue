@@ -2,7 +2,11 @@
 <template>
   <div class="short-container">
     <div class="avatar">
-      <Avatar :rarity="row.rarity" :class_="row.class_" :zh="row.zh"></Avatar>
+      <Avatar
+        :rarity="parseInt(row.rarity)"
+        :class_="row.class_"
+        :zh="row.zh"
+      ></Avatar>
     </div>
     <div class="name">
       <div>

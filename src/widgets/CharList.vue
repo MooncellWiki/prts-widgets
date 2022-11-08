@@ -139,23 +139,23 @@
             v-for="v in data"
             :key="v.sortid"
             :class_="v.class_"
-            :rarity="v.rarity"
+            :rarity="parseInt(v.rarity)"
             :logo="v.logo"
             :zh="v.zh"
             :en="v.en"
           ></half>
         </template>
         <template v-if="currDisplayMode[0] === '头像'">
-          <avatar
+          <Avatar
             v-for="v in data"
             :key="v.sortid"
             :class_="v.class_"
-            :rarity="v.rarity"
+            :rarity="parseInt(v.rarity)"
             :zh="v.zh"
-          ></avatar>
+          ></Avatar>
         </template>
         <template v-if="currDisplayMode[0] === '表格' && bp === 1">
-          <short
+          <Short
             v-for="v in data"
             :key="v.sortid"
             :row="v"
@@ -163,10 +163,10 @@
             :addpotential="currDataTypes.indexOf('满潜能') !== -1"
           >
             <div v-html="v.feature"></div>
-          </short>
+          </Short>
         </template>
         <template v-if="currDisplayMode[0] === '表格' && bp === 2">
-          <long
+          <Long
             v-for="v in data"
             :key="v.sortid"
             :row="v"
@@ -174,7 +174,7 @@
             :addpotential="currDataTypes.indexOf('满潜能') !== -1"
           >
             <div v-html="v.feature"></div>
-          </long>
+          </Long>
         </template>
         <template v-if="currDisplayMode[0] === '表格' && bp === 0">
           <Card
@@ -231,17 +231,17 @@ export default defineComponent({
   },
   setup(props) {
     const app = ref()
-    let bp = 2
+    let bp = ref(0)
     onMounted(() => {
-      if (app.offsetWidth > 900) {
-        bp = 2
-      } else if (app.offsetWidth > 640) {
-        bp = 1
+      if (app.value.offsetWidth > 900) {
+        bp.value = 2
+      } else if (app.value.offsetWidth > 640) {
+        bp.value = 1
       } else {
-        bp = 0
+        bp.value = 0
       }
     })
-    const page = ref({
+    let page = ref({
       index: 1,
       step: '50',
     })
@@ -304,10 +304,26 @@ export default defineComponent({
       }
     }
 
+    const onPageChange = (newPage) => {
+      page.value = newPage
+    }
+    const onStepChange = ({ n, o }) => {
+      n = parseInt(n)
+      o = parseInt(o)
+      if (o < n) {
+        page.value.index = Math.ceil((o / n) * page.value.index)
+      } else {
+        if (page.value.index >= 1) {
+          page.value.index = ((page.value.index - 1) * o) / n + 1
+        }
+      }
+      page.value.step = n.toString()
+    }
+
     const oridata = computed(() => props.source)
     const data = computed(() => {
-      let start = (page.value.index - 1) * page.value.step
-      return oridata.value.slice(start, start + page.value.step)
+      let start = (page.value.index - 1) * parseInt(page.value.step)
+      return oridata.value.slice(start, start + parseInt(page.value.step))
     })
     return {
       app,
@@ -327,6 +343,8 @@ export default defineComponent({
       oridata,
       data,
       toggleCollapse,
+      onPageChange,
+      onStepChange,
     }
   },
 })
