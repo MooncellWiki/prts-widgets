@@ -107,7 +107,7 @@
     </div>
 
     <div id="pagination">
-      <div class="btn" :data-clipboard-text="url" @click="copyurl">
+      <div class="btn" :data-clipboard-text="url" @click="copyUrl">
         复制短链接
       </div>
       <Pagination
@@ -232,14 +232,66 @@ export default defineComponent({
   setup(props) {
     const app = ref()
     let bp = ref(0)
+    let fix = ref(false)
     onMounted(() => {
-      if (app.value.offsetWidth > 900) {
-        bp.value = 2
-      } else if (app.value.offsetWidth > 640) {
-        bp.value = 1
-      } else {
-        bp.value = 0
+      let bpf = () => {
+        if (app.value.offsetWidth > 900) {
+          bp.value = 2
+        } else if (app.value.offsetWidth > 640) {
+          bp.value = 1
+        } else {
+          bp.value = 0
+        }
       }
+      window.addEventListener(
+        'resize',
+        ((fn) => {
+          let canRun = true
+          return function () {
+            if (!canRun) return
+            canRun = false
+            fn()
+            setTimeout(() => {
+              fn()
+              canRun = true
+            }, 500)
+          }
+        })(bpf),
+      )
+      bpf()
+      let f = () => {
+        let ele
+        if (bp.value == 1) {
+          ele = document.querySelector('#pagination')
+        } else if (bp.value === 2) {
+          ele = document.querySelector('#pagination')
+        } else {
+          return 0
+        }
+        if (
+          ele.getBoundingClientRect().top + ele.getBoundingClientRect().height <
+          0
+        ) {
+          fix.value = true
+        } else {
+          fix.value = false
+        }
+      }
+      f()
+      window.addEventListener(
+        'scroll',
+        ((fn) => {
+          let timeout
+          return function () {
+            if (timeout) {
+              clearTimeout(timeout)
+            }
+            timeout = setTimeout(() => {
+              fn()
+            }, 10)
+          }
+        })(f),
+      )
     })
     let page = ref({
       index: 1,
@@ -342,6 +394,7 @@ export default defineComponent({
       currDisplayMode,
       oridata,
       data,
+      fix,
       toggleCollapse,
       onPageChange,
       onStepChange,
