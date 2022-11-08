@@ -109,7 +109,7 @@
 </template>
 <script lang="ts">
 import { defineComponent, ref, computed, inject, PropType, watch } from 'vue'
-import { domain } from '../../utils/utils.js'
+import { domain } from '@/utils/utils'
 import Avatar from '../head/Avatar.vue'
 
 export default defineComponent({

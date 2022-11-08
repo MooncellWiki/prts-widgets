@@ -29,7 +29,7 @@
 </template>
 <script lang="ts">
 import { PropType } from 'vue'
-import { professionMap, getImagePath } from '../utils/utils'
+import { professionMap, getImagePath } from '@/utils/utils'
 export default {
   props: {
     size: {

@@ -1,5 +1,5 @@
 import { readdirSync } from 'fs'
-import { join } from 'path'
+import { resolve, join } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import WindiCSS from 'vite-plugin-windicss'
@@ -11,6 +11,11 @@ entries.forEach((entry) => {
 })
 // https://vitejs.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src'),
+    },
+  },
   plugins: [vue(), WindiCSS(), visualizer({ sourcemap: true })],
   server: {
     port: 8080,

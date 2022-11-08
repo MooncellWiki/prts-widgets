@@ -16,7 +16,7 @@
 </template>
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { getImagePath, domain, charListData } from '../../utils/utils.js'
+import { getImagePath, domain, charListData } from '@/utils/utils'
 
 export default defineComponent({
   name: 'Avatar',

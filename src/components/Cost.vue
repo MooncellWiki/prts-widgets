@@ -32,7 +32,7 @@
 </template>
 <script lang="ts">
 import { defineComponent, PropType } from 'vue'
-import { professionMap, sum } from '../utils/utils'
+import { professionMap, sum } from '@/utils/utils'
 export interface costProps {
   rarity: number
   name: string

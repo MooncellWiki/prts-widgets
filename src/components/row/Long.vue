@@ -55,7 +55,7 @@
 </template>
 <script lang="ts">
 import { defineComponent, computed, PropType } from 'vue'
-import { domain } from '../../utils/utils.js'
+import { domain } from '@/utils/utils'
 import Avatar from '../head/Avatar.vue'
 
 export default defineComponent({

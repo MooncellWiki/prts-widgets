@@ -1,7 +1,15 @@
+import { resolve } from 'path'
+
 module.exports = {
   extends: ['@webank/eslint-config-ts/vue'],
   settings: {
     'import/core-modules': ['virtual:windi.css'],
+    'import/resolver': {
+      alias: {
+        map: [['@', resolve(__dirname, './src')]],
+        extensions: ['.ts', '.js', '.json'],
+      },
+    },
   },
   globals: {
     // 这里填入你的项目需要的全局变量
