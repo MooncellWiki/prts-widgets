@@ -7,6 +7,10 @@ const ele = document.getElementById('root')
 const filters = JSON.parse(
   document.getElementById('filter-filter')?.innerText ?? '',
 ).filters
+const filterMap = JSON.parse(
+  document.getElementById('filter-map')?.innerText ?? '',
+).filter_map
+
 const shortLinkMap = JSON.parse(
   document.getElementById('filter-shortLinkMap')?.innerText ?? '',
 ).map
@@ -44,7 +48,7 @@ const source = Array.prototype.map.call(
 )
 
 if (ele) {
-  const app = createApp(CharList, { filters, source, shortLinkMap })
+  const app = createApp(CharList, { filters, source, shortLinkMap, filterMap })
   app.provide('$vel', vel)
   app.provide('$cookies', Cookies)
   app.mount(ele)

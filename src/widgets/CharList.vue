@@ -214,6 +214,7 @@ import Long from '@/components/row/Long.vue'
 import Short from '@/components/row/Short.vue'
 import Half from '@/components/Half.vue'
 import { keyStr } from '@/utils/utils'
+import Velocity, { VelocityElements } from 'velocity-animate'
 
 export default defineComponent({
   components: {
@@ -232,6 +233,7 @@ export default defineComponent({
     filters: Array,
     source: Array,
     shortLinkMap: Array,
+    filterMap: Array,
   },
   setup(props) {
     const app = ref()
@@ -278,8 +280,9 @@ export default defineComponent({
           return 0
         }
         if (
+          ele &&
           ele.getBoundingClientRect().top + ele.getBoundingClientRect().height <
-          0
+            0
         ) {
           fix.value = true
         } else {
@@ -290,7 +293,7 @@ export default defineComponent({
       window.addEventListener(
         'scroll',
         ((fn) => {
-          let timeout
+          let timeout: number | undefined
           return function () {
             if (timeout) {
               clearTimeout(timeout)
@@ -306,7 +309,6 @@ export default defineComponent({
       index: 1,
       step: '50',
     })
-    const filter_map = ref([])
     const states = reactive([
       [[], [], [], [], [], []],
       [[], [], [], [], [], []],
@@ -329,7 +331,8 @@ export default defineComponent({
     const currDataTypes = ref([])
     const displayModes = ref(['表格', '半身像', '头像'])
     const currDisplayMode = ref(['表格'])
-    const $vel = inject('$vel')
+    const $vel: Velocity<VelocityElements> =
+      inject<Velocity<VelocityElements>>('$vel')
     const $cookies = inject('$cookies')
 
     const toggleCollapse = (index: number) => {
@@ -387,7 +390,7 @@ export default defineComponent({
       const has = (v, arr, i1, i2) => {
         let a = arr
         if (i1 == 2) {
-          a = arr.map((v) => filter_map.value[i2][v] || v).flat()
+          a = arr.map((v) => props.filterMap[i2][v] || v).flat()
         }
         return a.indexOf(v) !== -1
       }
@@ -395,8 +398,8 @@ export default defineComponent({
         if (arr.indexOf('其他') !== -1) {
           let da = filters[i1]['filter'][i2]['cbt']
             .map((v) => {
-              if (filter_map.value[i2] && filter_map.value[i2][v]) {
-                return filter_map.value[i2][v]
+              if (props.filterMap[i2] && props.filterMap[i2][v]) {
+                return props.filterMap[i2][v]
               } else {
                 return v
               }
@@ -566,7 +569,6 @@ export default defineComponent({
       app,
       bp,
       page,
-      filter_map,
       states,
       expanded,
       refs,
