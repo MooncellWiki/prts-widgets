@@ -1,6 +1,8 @@
 import MD5 from 'md5'
 export const apiEndPoint = 'https://api.prts.wiki'
 export const domain = 'https://prts.wiki'
+export const keyStr =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,'
 export const charListData = {
   uh: [
     '6/68/干员图鉴_uh_0.png',

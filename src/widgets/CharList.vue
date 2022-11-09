@@ -135,7 +135,7 @@
         }"
       >
         <template v-if="currDisplayMode[0] === '半身像'">
-          <half
+          <Half
             v-for="v in data"
             :key="v.sortid"
             :class_="v.class_"
@@ -143,7 +143,7 @@
             :logo="v.logo"
             :zh="v.zh"
             :en="v.en"
-          ></half>
+          ></Half>
         </template>
         <template v-if="currDisplayMode[0] === '头像'">
           <Avatar
@@ -203,15 +203,17 @@ import {
   provide,
   onMounted,
 } from 'vue'
-import FilterRow from '../components/FilterRow.vue'
-import CheckBox from '../components/CheckBox.vue'
-import Pagination from '../components/Pagination.vue'
-import SHead from '../components/head/SHead.vue'
-import Avatar from '../components/head/Avatar.vue'
-import LHead from '../components/head/LHead.vue'
-import Card from '../components/row/Card.vue'
-import Long from '../components/row/Long.vue'
-import Short from '../components/row/Short.vue'
+import FilterRow from '@/components/FilterRow.vue'
+import CheckBox from '@/components/CheckBox.vue'
+import Pagination from '@/components/Pagination.vue'
+import SHead from '@/components/head/SHead.vue'
+import Avatar from '@/components/head/Avatar.vue'
+import LHead from '@/components/head/LHead.vue'
+import Card from '@/components/row/Card.vue'
+import Long from '@/components/row/Long.vue'
+import Short from '@/components/row/Short.vue'
+import Half from '@/components/Half.vue'
+import { keyStr } from '@/utils/utils'
 
 export default defineComponent({
   components: {
@@ -224,10 +226,12 @@ export default defineComponent({
     Card,
     Long,
     Short,
+    Half,
   },
   props: {
     filters: Array,
     source: Array,
+    shortLinkMap: Array,
   },
   setup(props) {
     const app = ref()
@@ -523,6 +527,41 @@ export default defineComponent({
       let start = (page.value.index - 1) * parseInt(page.value.step)
       return oridata.value.slice(start, start + parseInt(page.value.step))
     })
+    const url = computed(() => {
+      const arrToBase64 = (arr) => {
+        if (arr.indexOf(1) == -1) {
+          return ''
+        }
+        let result = []
+        while (arr.length % 6 != 0) {
+          arr.push(0)
+        }
+        for (let i = 0; i < arr.length; i += 6) {
+          result.push(keyStr.charAt(parseInt(arr.slice(i, i + 6).join(''), 2)))
+        }
+        return result.join('')
+      }
+      let result = []
+      props.filters.forEach((v1, i1) => {
+        v1.filter.forEach((v2, i2) => {
+          let temp = Array(v2.cbt.length).fill(0)
+          states[i1][i2].forEach((selected) => {
+            temp[props.shortLinkMap[i1][i2].indexOf(selected)] = 1
+          })
+          result.push(arrToBase64(temp))
+        })
+      })
+      return (
+        window.location.origin +
+        window.location.pathname +
+        '#' +
+        result.join('|') +
+        '|' +
+        searchText +
+        '#'
+      )
+    })
+
     return {
       app,
       bp,
@@ -541,6 +580,7 @@ export default defineComponent({
       oridata,
       data,
       fix,
+      url,
       toggleCollapse,
       onPageChange,
       onStepChange,
