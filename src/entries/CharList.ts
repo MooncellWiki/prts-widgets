@@ -15,7 +15,7 @@ const shortLinkMap = JSON.parse(
   document.getElementById('filter-shortLinkMap')?.innerText ?? '',
 ).map
 
-const getLast = (str) => {
+const getLast = (str: string) => {
   if (str.indexOf('→') !== -1) {
     const arr = str.split('→')
     return arr[arr.length - 1]
@@ -26,23 +26,30 @@ const getLast = (str) => {
 const source = Array.prototype.map.call(
   document.getElementById('filter-data')?.children,
   (v) => {
-    const temp = {}
+    const temp: Record<
+      string,
+      string | Array<string> | Array<number> | Array<Array<string | number>>
+    > = {}
     Object.assign(temp, v.dataset)
-    temp.tag = temp.tag.split(' ')
-    temp.obtain_method = temp.obtain_method.split(' ')
-    temp.cost = getLast(temp.cost)
-    temp.block = getLast(temp.block)
+    temp.tag = (temp.tag as string).split(' ')
+    temp.obtain_method = (temp.obtain_method as string).split(' ')
+    temp.cost = getLast(temp.cost as string)
+    temp.block = getLast(temp.block as string)
     temp.feature = v.innerHTML
-    temp.trust = temp.trust.split(',').map((v) => {
+    temp.trust = (temp.trust as string).split(',').map((v: string) => {
       if (v.length !== 0) {
         return parseInt(v)
       } else {
         return 0
       }
     })
-    temp.potential = temp.potential.split('`').map((v) => v.split(','))
-    temp.potential[1] = temp.potential[1].map((v) => parseFloat(v))
-    temp.noHtmlFeature = temp.feature.replace(/<[^<>]+>/g, '')
+    temp.potential = (temp.potential as string)
+      .split('`')
+      .map((v: string) => v.split(','))
+    temp.potential[1] = (temp.potential[1] as Array<string>).map((v: string) =>
+      parseFloat(v),
+    )
+    temp.noHtmlFeature = (temp.feature as string).replace(/<[^<>]+>/g, '')
     return Object.freeze(temp)
   },
 )

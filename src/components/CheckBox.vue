@@ -15,8 +15,8 @@ import { defineComponent } from 'vue'
 export default defineComponent({
   name: 'CheckBox',
   props: {
-    states: Array,
-    text: String,
+    states: { type: Array<string>, required: true },
+    text: { type: String, required: true },
     atLeastOne: Boolean,
     onlyOne: Boolean,
     noWidth: Boolean,

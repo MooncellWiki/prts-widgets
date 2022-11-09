@@ -33,8 +33,8 @@
         <img :src="`${domain}/images/${charListData.logo[logo]}`" />
       </div>
       <div class="zh">{{ zh }}</div>
-      <div class="en">{{ en }}</div></a
-    >
+      <div class="en">{{ en }}</div>
+    </a>
   </div>
 </template>
 <script lang="ts">
@@ -44,9 +44,9 @@ import { domain, charListData, getImagePath } from '@/utils/utils'
 export default defineComponent({
   name: 'Half',
   props: {
-    class_: String,
-    rarity: Number,
-    logo: String,
+    class_: { type: String, required: true },
+    rarity: { type: Number, required: true },
+    logo: { type: String, required: true },
     zh: String,
     en: String,
   },

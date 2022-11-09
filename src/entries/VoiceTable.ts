@@ -24,12 +24,12 @@ const voiceData = Array.from(dataEle).map((ele) => ({
   index: ele?.dataset?.voiceIndex,
   voiceFilename: ele?.dataset?.voiceFilename,
   cond: ele?.dataset?.cond,
-  detail: Array.from(ele.children as HTMLCollectionOf<HTMLElement>).reduce<{
+  detail: Array.from(ele.children).reduce<{
     [index: string]: string
   }>((acc, curr) => {
-    if (curr.dataset?.kindName !== void 0) {
-      acc[curr.dataset.kindName] = curr.innerHTML
-      langSet.add(curr.dataset.kindName)
+    if ((curr as HTMLElement).dataset?.kindName !== void 0) {
+      acc[(curr as HTMLElement).dataset.kindName || ''] = curr.innerHTML
+      langSet.add((curr as HTMLElement).dataset.kindName || '')
     }
     return acc
   }, {}),

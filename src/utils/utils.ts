@@ -22,7 +22,7 @@ export const charListData = {
     辅助: 'c/c7/图标_职业_辅助.png',
     术师: '2/23/图标_职业_术师.png',
     特种: 'f/f1/图标_职业_特种.png',
-  },
+  } as Record<string, string>,
   rarity: [
     '6/62/稀有度_黄_0.png',
     '0/02/稀有度_黄_1.png',
@@ -31,7 +31,7 @@ export const charListData = {
     '8/81/稀有度_黄_4.png',
     '4/46/稀有度_黄_5.png',
   ],
-  lh: (r) => {
+  lh: (r: number) => {
     const _lh = [
       '0/0b/干员图鉴_lh_0%2C1%2C2.png',
       'a/a5/干员图鉴_lh_3.png',
@@ -52,7 +52,7 @@ export const charListData = {
     'f/f7/干员图鉴_稀有度_亮光_4.png',
     '1/19/干员图鉴_稀有度_亮光_5.png',
   ],
-  bg: (r) => {
+  bg: (r: number) => {
     const _bg = [
       '2/25/干员图鉴_背景_0%2C1%2C2.png',
       'b/b1/干员图鉴_背景_3.png',
@@ -83,7 +83,7 @@ export const charListData = {
     龙门: '6/66/Logo_龙门.png',
     炎国: 'f/f6/Logo_炎国.png',
     汐斯塔: '2/2d/Logo_汐斯塔.png',
-  },
+  } as Record<string, string>,
 }
 export function getImagePath(filename: string) {
   const md5 = MD5(filename)

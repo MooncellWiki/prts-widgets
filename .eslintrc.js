@@ -1,12 +1,10 @@
-import { resolve } from 'path'
-
 module.exports = {
   extends: ['@webank/eslint-config-ts/vue'],
   settings: {
     'import/core-modules': ['virtual:windi.css'],
     'import/resolver': {
       alias: {
-        map: [['@', resolve(__dirname, './src')]],
+        map: [['@', './src']],
         extensions: ['.ts', '.js', '.json'],
       },
     },

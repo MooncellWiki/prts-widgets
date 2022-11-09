@@ -54,7 +54,7 @@
       <div
         :ref="
           (el) => {
-            refs.indexOf(el) === -1 && refs.push(el)
+            el && refs.indexOf(el) === -1 && refs.push(el)
           }
         "
         class="expand-panel"
@@ -107,9 +107,7 @@
     </div>
 
     <div id="pagination">
-      <div class="btn" :data-clipboard-text="url" @click="copyUrl">
-        复制短链接
-      </div>
+      <div class="btn" :data-clipboard-text="url">复制短链接</div>
       <Pagination
         :length="oridata.length"
         :index="page.index"
@@ -200,9 +198,10 @@ import {
   reactive,
   Ref,
   inject,
-  provide,
   onMounted,
 } from 'vue'
+import Velocity, { VelocityElements } from 'velocity-animate'
+
 import FilterRow from '@/components/FilterRow.vue'
 import CheckBox from '@/components/CheckBox.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -214,7 +213,7 @@ import Long from '@/components/row/Long.vue'
 import Short from '@/components/row/Short.vue'
 import Half from '@/components/Half.vue'
 import { keyStr } from '@/utils/utils'
-import Velocity, { VelocityElements } from 'velocity-animate'
+import { DataSource } from '@/utils/charList'
 
 export default defineComponent({
   components: {
@@ -230,14 +229,27 @@ export default defineComponent({
     Half,
   },
   props: {
-    filters: Array,
-    source: Array,
-    shortLinkMap: Array,
-    filterMap: Array,
+    filters: {
+      type: Array<{
+        filter: Array<{
+          both: boolean
+          cbt: Array<string>
+          title: string
+        }>
+        title: string
+      }>,
+      required: true,
+    },
+    source: {
+      type: Array<DataSource>,
+      required: true,
+    },
+    shortLinkMap: { type: Array<Array<Array<string>>>, required: true },
+    filterMap: { type: Array<Record<string, Array<string>>>, required: true },
   },
   setup(props) {
     const app = ref()
-    const m = [
+    const m: Array<Array<keyof DataSource>> = [
       ['class_', 'rarity', 'position', 'sex', 'obtain_method', 'tag'],
       ['phy', 'flex', 'tolerance', 'plan', 'skill', 'adapt'],
       ['logo', 'birth_place', 'team', 'race'],
@@ -315,8 +327,7 @@ export default defineComponent({
       [[], [], [], []],
     ]) // 筛选 六维筛选 标志/出身地/团队/种族筛选
     const expanded: Ref<Array<boolean>> = ref([true, false, false]) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
-    const refs = ref([])
-    provide('refs', refs)
+    const refs: Ref = ref([])
     const currSortMethod = ref(['实装倒序'])
     const sortMethods = ref([
       '实装顺序',
@@ -328,12 +339,14 @@ export default defineComponent({
     ])
     const searchText = ref('')
     const dataTypes = ref(['满潜能', '满信赖'])
-    const currDataTypes = ref([])
+    const currDataTypes: Ref<Array<string>> = ref([])
     const displayModes = ref(['表格', '半身像', '头像'])
     const currDisplayMode = ref(['表格'])
-    const $vel: Velocity<VelocityElements> =
-      inject<Velocity<VelocityElements>>('$vel')
-    const $cookies = inject('$cookies')
+    const $vel: Velocity<VelocityElements> = inject<Velocity<VelocityElements>>(
+      '$vel',
+      Velocity,
+    )
+    //const $cookies = inject('$cookies')
 
     const toggleCollapse = (index: number) => {
       expanded.value[index] = !expanded.value[index]
@@ -344,7 +357,8 @@ export default defineComponent({
       if (expanded.value[index]) {
         let targetHeight = 0
         for (let j = 0; j < refs.value[index].children.length; j++) {
-          targetHeight += refs.value[index].children[j].offsetHeight
+          targetHeight += (refs.value[index].children[j] as HTMLElement)
+            .offsetHeight
         }
         $vel(
           refs.value[index],
@@ -353,7 +367,7 @@ export default defineComponent({
             duration: 250,
             delay: 0,
           },
-        ).then(() => {
+        ).then?.(() => {
           refs.value[index].style.height = 'auto'
         })
       } else {
@@ -368,56 +382,62 @@ export default defineComponent({
       }
     }
 
-    const onPageChange = (newPage) => {
+    const onPageChange = (newPage: { index: number; step: string }) => {
       page.value = newPage
     }
-    const onStepChange = ({ n, o }) => {
-      n = parseInt(n)
-      o = parseInt(o)
-      if (o < n) {
-        page.value.index = Math.ceil((o / n) * page.value.index)
+    const onStepChange = ({ n, o }: { n: string; o: string }) => {
+      const _n = parseInt(n)
+      const _o = parseInt(o)
+      if (_o < _n) {
+        page.value.index = Math.ceil((_o / _n) * page.value.index)
       } else {
         if (page.value.index >= 1) {
-          page.value.index = ((page.value.index - 1) * o) / n + 1
+          page.value.index = ((page.value.index - 1) * _o) / _n + 1
         }
       }
       page.value.step = n.toString()
     }
 
     const oridata = computed(() => {
-      let temp = props.source
+      let temp: Array<DataSource> = props.source
       let filters = props.filters
-      const has = (v, arr, i1, i2) => {
+      let filterMap = props.filterMap
+      const has = (v: string, arr: Array<string>, i1: number, i2: number) => {
         let a = arr
         if (i1 == 2) {
-          a = arr.map((v) => props.filterMap[i2][v] || v).flat()
+          a = arr.map((v) => props?.filterMap?.[i2]?.[v] || v).flat()
         }
         return a.indexOf(v) !== -1
       }
-      const other = (v, arr, i1, i2) => {
+      const other = (v: string, arr: Array<string>, i1: number, i2: number) => {
         if (arr.indexOf('其他') !== -1) {
-          let da = filters[i1]['filter'][i2]['cbt']
-            .map((v) => {
-              if (props.filterMap[i2] && props.filterMap[i2][v]) {
-                return props.filterMap[i2][v]
-              } else {
-                return v
-              }
-            })
-            .flat()
-          da.splice(da.indexOf('其他'), 1)
-          return arr.indexOf(v) !== -1 || da.indexOf(v) == -1
+          let da =
+            filters &&
+            filters[i1]['filter'][i2]['cbt']
+              .map((v) => {
+                if (filterMap && filterMap[i2] && filterMap[i2][v]) {
+                  return filterMap[i2][v]
+                } else {
+                  return v
+                }
+              })
+              .flat()
+          da?.splice(da.indexOf('其他'), 1)
+          return arr.indexOf(v) !== -1 || da?.indexOf(v) == -1
         } else {
           return has(v, arr, i1, i2)
         }
       }
       states.forEach((v1, i1) => {
-        v1.forEach((v2, i2) => {
+        v1.forEach((v2: Array<string>, i2: number) => {
           if (v2.length !== 0) {
             temp = temp.filter((v3) => {
               if (i1 == 0 && i2 == 1) {
                 //稀有度
-                return v2.indexOf('★' + (1 + parseInt(v3[m[i1][i2]]))) !== -1
+                return (
+                  v2.indexOf('★' + (1 + parseInt(v3[m[i1][i2]] as string))) !==
+                  -1
+                )
               } else if (i1 == 0 && i2 == 3) {
                 //性别
                 if (v2.indexOf('其他') !== -1) {
@@ -430,8 +450,9 @@ export default defineComponent({
                 }
               } else if (i1 == 0 && i2 == 4) {
                 return (
-                  v3[m[i1][i2]].filter((v4) => other(v4, v2, i1, i2)).length !=
-                  0
+                  (v3[m[i1][i2]] as Array<string>).filter((v4: string) =>
+                    other(v4, v2, i1, i2),
+                  ).length != 0
                 )
                 // return other(v3[m[i1][i2]], v2, i1, i2)
               } else if (i1 == 0 && i2 == 5) {
@@ -462,9 +483,9 @@ export default defineComponent({
                 }
               } else if (i1 == 1 || (i1 == 2 && (i2 == 1 || i2 == 3))) {
                 //六维筛选，出身地，种族有其他
-                return other(v3[m[i1][i2]], v2, i1, i2)
+                return other(v3[m[i1][i2]] as string, v2, i1, i2)
               } else {
-                return has(v3[m[i1][i2]], v2, i1, i2)
+                return has(v3[m[i1][i2]] as string, v2, i1, i2)
                 // return v2.indexOf(v3[m[i1][i2]]) !== -1
               }
             })
@@ -474,16 +495,20 @@ export default defineComponent({
       temp = temp.filter((v) => {
         let tags = ['zh', 'en', 'ja', 'id', 'noHtmlFeature']
         return (
-          tags.filter((key) => v[key].indexOf(searchText.value) != -1).length !=
-          0
+          tags.filter(
+            (key: string) =>
+              (v[key as keyof DataSource] as Array<string>).indexOf(
+                searchText.value,
+              ) != -1,
+          ).length != 0
         )
       })
       switch (currSortMethod.value[0]) {
         case '实装顺序':
-          temp.sort((a, b) => a.sortid - b.sortid)
+          temp.sort((a, b) => parseInt(a.sortid) - parseInt(b.sortid))
           break
         case '实装倒序':
-          temp.sort((a, b) => b.sortid - a.sortid)
+          temp.sort((a, b) => parseInt(b.sortid) - parseInt(a.sortid))
           break
         case '名称升序':
           temp.sort((a, b) => a.zh.localeCompare(b.zh, 'zh'))
@@ -493,9 +518,9 @@ export default defineComponent({
           break
         case '稀有度升序':
           temp.sort((a, b) => {
-            let r = a.rarity - b.rarity
+            let r = parseInt(a.rarity) - parseInt(b.rarity)
             if (r === 0) {
-              let classes = filters[0].filter[0].cbt
+              let classes = filters?.[0].filter[0].cbt ?? []
               let o = classes.indexOf(a.class_) - classes.indexOf(b.class_)
               if (o === 0) {
                 return a.zh.localeCompare(b.zh, 'zh')
@@ -509,9 +534,9 @@ export default defineComponent({
           break
         case '稀有度降序':
           temp.sort((a, b) => {
-            let r = b.rarity - a.rarity
+            let r = parseInt(b.rarity) - parseInt(a.rarity)
             if (r === 0) {
-              let classes = filters[0].filter[0].cbt
+              let classes = filters?.[0].filter[0].cbt ?? []
               let o = classes.indexOf(a.class_) - classes.indexOf(b.class_)
               if (o === 0) {
                 return a.zh.localeCompare(b.zh, 'zh')
@@ -531,7 +556,7 @@ export default defineComponent({
       return oridata.value.slice(start, start + parseInt(page.value.step))
     })
     const url = computed(() => {
-      const arrToBase64 = (arr) => {
+      const arrToBase64 = (arr: Array<number>) => {
         if (arr.indexOf(1) == -1) {
           return ''
         }
@@ -544,7 +569,7 @@ export default defineComponent({
         }
         return result.join('')
       }
-      let result = []
+      let result: Array<string> = []
       props.filters.forEach((v1, i1) => {
         v1.filter.forEach((v2, i2) => {
           let temp = Array(v2.cbt.length).fill(0)

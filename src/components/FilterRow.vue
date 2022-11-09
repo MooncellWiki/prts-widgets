@@ -27,7 +27,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue'
+import { defineComponent, ref, watch } from 'vue'
 import CheckBox from './CheckBox.vue'
 
 export default defineComponent({
@@ -36,36 +36,35 @@ export default defineComponent({
     CheckBox,
   },
   props: {
-    labels: Array<string>,
+    labels: { type: Array<string>, required: true },
     title: String,
     both: Boolean,
     noWidth: Boolean,
-    states: Array,
+    states: { type: Array<string>, required: true },
   },
-  emits: ['update:states'],
-  data(): {
-    selectedLabels: string[]
-  } {
-    return {
-      selectedLabels: this.states,
-    }
-  },
-  watch: {
-    selectedLabels(val) {
-      this.$emit('update:states', val)
-    },
-  },
-  methods: {
-    addAll() {
-      if (this.states) {
-        this.selectedLabels = this.labels
-        this.$emit('update:states', this.labels)
+  setup(props, { emit }) {
+    const selectedLabels = ref(props.states)
+    watch(
+      () => props.states,
+      (val) => {
+        emit('update:states', val)
+      },
+    )
+    const addAll = () => {
+      if (props.states) {
+        selectedLabels.value = props.labels
+        emit('update:states', props.labels)
       }
-    },
-    removeAll() {
-      this.selectedLabels = []
-      this.$emit('update:states', this.selectedLabels)
-    },
+    }
+    const removeAll = () => {
+      selectedLabels.value = []
+      emit('update:states', selectedLabels)
+    }
+    return {
+      selectedLabels,
+      addAll,
+      removeAll,
+    }
   },
 })
 </script>

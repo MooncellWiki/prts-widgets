@@ -19,49 +19,60 @@
   </div>
 </template>
 <script lang="ts">
+import { defineComponent, ref, computed, watch } from 'vue'
 import CheckBox from './CheckBox.vue'
-export default {
+export default defineComponent({
   name: 'Pagination',
   components: {
     CheckBox,
   },
   props: {
-    length: Number,
-    step: String,
-    index: Number,
+    length: { type: Number, required: true },
+    step: { type: String, required: true },
+    index: { type: Number, required: true },
   },
-  data: () => {
+  setup(props, { emit }) {
+    const step_ = ref(props.step)
+    const values = ref(['1'])
+    const checkboxCount = computed(() =>
+      Math.ceil(props.length / parseInt(props.step)),
+    )
+
+    watch(
+      () => values,
+      () => {
+        emit('update:values', {
+          index: parseInt(values.value[0]),
+          step: step_,
+        })
+      },
+    )
+    watch(
+      () => props.index,
+      () => {
+        values.value[0] = props.index.toString()
+      },
+    )
+    watch(
+      () => step_,
+      (n, o) => {
+        emit('update:step', { n, o })
+      },
+    )
+    watch(
+      () => props.step,
+      () => {
+        step_.value = props.step
+      },
+    )
+
     return {
-      step_: 50,
-      values: ['1'],
+      step_,
+      values,
+      checkboxCount,
     }
   },
-  computed: {
-    checkboxCount: function () {
-      return Math.ceil(this.length / this.step)
-    },
-  },
-  watch: {
-    values: function () {
-      this.$emit('change', {
-        index: parseInt(this.values[0]),
-        step: this.step,
-      })
-    },
-    index: function () {
-      this.values[0] = this.index.toString()
-    },
-    step_: function (n, o) {
-      this.$emit('changestep', { n, o })
-    },
-    step: function () {
-      this.step_ = this.step
-    },
-  },
-  created: function () {
-    this.step_ = this.step
-  },
-}
+})
 </script>
 <style scoped>
 .paginations-container {

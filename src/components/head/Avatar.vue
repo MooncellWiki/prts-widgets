@@ -21,8 +21,8 @@ import { getImagePath, domain, charListData } from '@/utils/utils'
 export default defineComponent({
   name: 'Avatar',
   props: {
-    class_: String,
-    rarity: Number, //但是应该是数字
+    class_: { type: String, required: true },
+    rarity: { type: Number, required: true },
     zh: String,
   },
   setup() {

@@ -60,38 +60,14 @@
 <script lang="ts">
 import { defineComponent, computed, PropType } from 'vue'
 import { domain } from '@/utils/utils'
+import { DataSource } from '@/utils/charList'
 import Avatar from '../head/Avatar.vue'
+
 export default defineComponent({
   name: 'Short',
   components: { Avatar },
   props: {
-    row: Object as PropType<{
-      class_: string //职业
-      rarity: number //稀有度（0-5）
-      logo: string //标志
-      birth_place: string //出身地
-      team: string //团队
-      race: string //种族
-      zh: string //中文干员名
-      en: string //英文干员名
-      ja: string //日文干员名
-      id: string //情报编号
-      hp: number //生命值
-      atk: number //攻击力
-      def: number //防御
-      res: number //法抗
-      re_deploy: string //再部署时间
-      cost: number //部署费用
-      block: number //阻挡数,
-      interval: number //攻击间隔
-      sex: string //性别
-      position: string //位置
-      tag: Array<string> //词缀
-      feature: string //特性
-      obtain_method: Array<string> //获得方式
-      trust: Array<string> //信赖加成
-      potential: Array<string> //潜能加成
-    }>,
+    row: { type: Object as PropType<DataSource>, required: true },
     addtrust: Boolean, //是否加算信赖
     addpotential: Boolean, //是否加算潜能
   },

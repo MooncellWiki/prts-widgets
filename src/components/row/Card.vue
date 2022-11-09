@@ -66,7 +66,7 @@
         </div>
       </div>
     </div>
-    <div :ref="'panel'" class="expand-panel" :class="{ collapsed: collapsed }">
+    <div :ref="panel" class="expand-panel" :class="{ collapsed: collapsed }">
       <div class="story">
         <div class="head">标志</div>
         <div class="head">出身地</div>
@@ -108,50 +108,31 @@
   </div>
 </template>
 <script lang="ts">
+import Velocity, { VelocityElements } from 'velocity-animate'
 import { defineComponent, ref, computed, inject, PropType, watch } from 'vue'
 import { domain } from '@/utils/utils'
+import { DataSource } from '@/utils/charList'
 import Avatar from '../head/Avatar.vue'
 
 export default defineComponent({
   name: 'Card',
   components: { Avatar },
   props: {
-    row: Object as PropType<{
-      class_: string //职业
-      rarity: number //稀有度（0-5）
-      logo: string //标志
-      birth_place: string //出身地
-      team: string //团队
-      race: string //种族
-      zh: string //中文干员名
-      en: string //英文干员名
-      ja: string //日文干员名
-      id: string //情报编号
-      hp: number //生命值
-      atk: number //攻击力
-      def: number //防御
-      res: number //法抗
-      re_deploy: string //再部署时间
-      cost: number //部署费用
-      block: number //阻挡数
-      interval: number //攻击间隔
-      sex: string //性别
-      position: string //位置
-      tag: Array<string> //词缀
-      feature: string //特性
-      obtain_method: Array<string> //获得方式
-    }>,
+    row: { type: Object as PropType<DataSource>, required: true },
     addtrust: Boolean, //是否加算信赖
     addpotential: Boolean, //是否加算潜能
   },
   setup(props) {
     const collapsed = ref(true)
-    const $vel = inject('$vel')
-    const refs = inject('refs')
+    const $vel: Velocity<VelocityElements> = inject<Velocity<VelocityElements>>(
+      '$vel',
+      Velocity,
+    )
+    const panel = ref()
     watch(collapsed, () => {
       if (collapsed) {
         $vel(
-          refs['panel'],
+          panel.value,
           { height: 0 },
           {
             duration: 500,
@@ -160,18 +141,18 @@ export default defineComponent({
         )
       } else {
         let targetHeight = 0
-        for (let j = 0; j < refs['panel'].children.length; j++) {
-          targetHeight += refs['panel'].children[j].offsetHeight
+        for (let j = 0; j < panel.value.children.length; j++) {
+          targetHeight += panel.value.children[j].offsetHeight
         }
         $vel(
-          refs['panel'],
+          panel.value,
           { height: targetHeight },
           {
             duration: 500,
             delay: 0,
           },
-        ).then(() => {
-          refs['panel'].style.height = 'auto'
+        ).then?.(() => {
+          panel.value.style.height = 'auto'
         })
       }
     })
@@ -250,7 +231,17 @@ export default defineComponent({
       }
       return result + 's'
     })
-    return { collapsed, hp_, atk_, def_, res_, cost_, re_deploy_, domain }
+    return {
+      collapsed,
+      hp_,
+      atk_,
+      def_,
+      res_,
+      cost_,
+      re_deploy_,
+      domain,
+      panel,
+    }
   },
 })
 </script>
