@@ -51,15 +51,14 @@ export default defineComponent({
       },
     )
     const addAll = () => {
-      if (props.states) {
-        selectedLabels.value = props.labels
-        emit('update:states', props.labels)
-      }
+      selectedLabels.value = props.labels
+      emit('update:states', props.labels)
     }
     const removeAll = () => {
       selectedLabels.value = []
-      emit('update:states', selectedLabels)
+      emit('update:states', selectedLabels.value)
     }
+
     return {
       selectedLabels,
       addAll,
