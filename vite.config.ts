@@ -33,6 +33,9 @@ export default defineConfig({
       input,
       output: {
         manualChunks(id) {
+          if (id.includes('naive-ui')) {
+            return 'naive-ui'
+          }
           if (id.includes('sentry')) {
             return 'sentry'
           }
