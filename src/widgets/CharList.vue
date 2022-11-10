@@ -51,25 +51,28 @@
           </svg>
         </div>
       </div>
-      <div
-        :ref="
-          (el) => {
-            el && refs.indexOf(el) === -1 && refs.push(el)
-          }
-        "
-        class="expand-panel"
-        :style="{ height: expanded[i] ? 'auto' : '0px' }"
-      >
-        <FilterRow
-          v-for="(v2, i2) in v.filter"
-          :key="v2.title"
-          v-model:states="states[i][i2]"
-          :title="v2.title"
-          :labels="v2.cbt"
-          :both="v2.both"
-          :noWidth="i === 2"
-        ></FilterRow>
-      </div>
+      <Transition name="slide-fade">
+        <div
+          v-if="expanded[i]"
+          :ref="
+            (el) => {
+              el && refs.indexOf(el) === -1 && refs.push(el)
+            }
+          "
+          class="expand-panel"
+          :style="{ height: expanded[i] ? 'auto' : '0px' }"
+        >
+          <FilterRow
+            v-for="(v2, i2) in v.filter"
+            :key="v2.title"
+            v-model:states="states[i][i2]"
+            :title="v2.title"
+            :labels="v2.cbt"
+            :both="v2.both"
+            :noWidth="i === 2"
+          ></FilterRow>
+        </div>
+      </Transition>
     </div>
     <div class="control">
       <div>排序方式</div>
@@ -112,8 +115,8 @@
         :length="oridata.length"
         :index="page.index"
         :step="page.step"
-        @change="onPageChange"
-        @changestep="onStepChange"
+        @update:values="onPageChange"
+        @update:step="onStepChange"
       ></Pagination>
     </div>
     <div id="result">
@@ -187,20 +190,18 @@
         </template>
       </div>
     </div>
+    <Pagination
+      :length="oridata.length"
+      :index="page.index"
+      :step="page.step"
+      @update:values="onPageChange"
+      @update:step="onStepChange"
+    ></Pagination>
   </div>
 </template>
 
 <script lang="ts">
-import {
-  defineComponent,
-  ref,
-  computed,
-  reactive,
-  Ref,
-  inject,
-  onMounted,
-} from 'vue'
-import Velocity, { VelocityElements } from 'velocity-animate'
+import { defineComponent, ref, computed, reactive, Ref, onMounted } from 'vue'
 
 import FilterRow from '@/components/FilterRow.vue'
 import CheckBox from '@/components/CheckBox.vue'
@@ -342,10 +343,6 @@ export default defineComponent({
     const currDataTypes: Ref<Array<string>> = ref([])
     const displayModes = ref(['表格', '半身像', '头像'])
     const currDisplayMode = ref(['表格'])
-    const $vel: Velocity<VelocityElements> = inject<Velocity<VelocityElements>>(
-      '$vel',
-      Velocity,
-    )
     //const $cookies = inject('$cookies')
 
     const toggleCollapse = (index: number) => {
@@ -354,32 +351,6 @@ export default defineComponent({
             this.$cookies.set('opFilterExpandState', this.expanded.join(','), {
                 expires: 365,
             })*/
-      if (expanded.value[index]) {
-        let targetHeight = 0
-        for (let j = 0; j < refs.value[index].children.length; j++) {
-          targetHeight += (refs.value[index].children[j] as HTMLElement)
-            .offsetHeight
-        }
-        $vel(
-          refs.value[index],
-          { height: targetHeight },
-          {
-            duration: 250,
-            delay: 0,
-          },
-        ).then?.(() => {
-          refs.value[index].style.height = 'auto'
-        })
-      } else {
-        $vel(
-          refs.value[index],
-          { height: 0 },
-          {
-            duration: 250,
-            delay: 0,
-          },
-        )
-      }
     }
 
     const onPageChange = (newPage: { index: number; step: string }) => {
@@ -625,6 +596,19 @@ export default defineComponent({
   color: #2c3e50;
   margin-top: 60px;
   max-width: 1353px;
+}
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateY(-5px);
+  opacity: 0;
 }
 .filter {
   width: 100%;
