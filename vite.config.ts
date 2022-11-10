@@ -57,6 +57,9 @@ export default defineConfig({
             const bundles = Object.keys(bundle)
             const cssFilename = bundles.find((v) => v.startsWith('style'))
             const vendorFilename = bundles.find((v) => v.startsWith('vendor'))
+            const naiveUiFilename = bundles.find((v) =>
+              v.startsWith('naive-ui'),
+            )
 
             const vendor = bundle[vendorFilename]
             const css = bundle[cssFilename]
@@ -82,6 +85,10 @@ export default defineConfig({
               chunk.code = chunk.code.replaceAll(
                 `./${vendorFilename}`,
                 `https://static.prts.wiki/widgets/release/${vendorFilename}`,
+              )
+              chunk.code = chunk.code.replaceAll(
+                `./${naiveUiFilename}`,
+                `https://static.prts.wiki/widgets/release/${naiveUiFilename}`,
               )
             })
           },
