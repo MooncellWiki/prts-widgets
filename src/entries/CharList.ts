@@ -1,5 +1,4 @@
 import { createApp } from 'vue'
-import vel from 'velocity-animate'
 import Cookies from 'js-cookie'
 import CharList from '../widgets/CharList.vue'
 
@@ -56,7 +55,6 @@ const source = Array.prototype.map.call(
 
 if (ele) {
   const app = createApp(CharList, { filters, source, shortLinkMap, filterMap })
-  app.provide('$vel', vel)
   app.provide('$cookies', Cookies)
   app.mount(ele)
 }
