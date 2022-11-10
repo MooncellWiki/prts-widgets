@@ -11,7 +11,7 @@
   </div>
 </template>
 <script lang="ts">
-import { defineComponent } from 'vue'
+import { defineComponent, ref, computed } from 'vue'
 export default defineComponent({
   name: 'CheckBox',
   props: {
@@ -21,38 +21,37 @@ export default defineComponent({
     onlyOne: Boolean,
     noWidth: Boolean,
   },
-  emits: ['update:states'],
-  computed: {
-    selected() {
-      if (this.states) {
-        return this.states.indexOf(this.text) !== -1
-      } else {
-        return false
-      }
-    },
-  },
-  methods: {
-    onClick: function () {
-      let statesCopy = [...this.states]
-      const i: number = this.states?.indexOf(this.text)
+  setup(props, { emit }) {
+    const onClick = function () {
+      let states = ref(props.states)
+      const i: number = props.states?.indexOf(props.text)
 
-      if (this.atLeastOne && i !== -1) {
+      if (props.atLeastOne && i !== -1) {
         return
       }
 
-      if (this.onlyOne) {
-        statesCopy = [this.text]
-        this.$emit('update:states', statesCopy)
+      if (props.onlyOne) {
+        states.value = [props.text]
+        emit('update:states', states.value)
         return
       }
 
       if (i !== -1) {
-        statesCopy.splice(i, 1)
+        states.value.splice(i, 1)
       } else {
-        statesCopy.push(this.text)
+        states.value.push(props.text)
       }
-      this.$emit('update:states', statesCopy)
-    },
+      emit('update:states', states.value)
+    }
+
+    const selected = computed(() => {
+      if (props.states) {
+        return props.states.indexOf(props.text) !== -1
+      } else {
+        return false
+      }
+    })
+    return { selected, onClick }
   },
 })
 </script>
