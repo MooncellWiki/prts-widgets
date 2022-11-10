@@ -38,31 +38,25 @@ export default defineComponent({
       Math.ceil(props.length / parseInt(props.step)),
     )
 
+    watch(values, () => {
+      emit('update:values', {
+        index: parseInt(values.value[0]),
+        step: step_,
+      })
+    })
+    watch(step_, (n, o) => {
+      emit('update:step', { n, o })
+    })
     watch(
-      () => values,
+      () => props.step,
       () => {
-        emit('update:values', {
-          index: parseInt(values.value[0]),
-          step: step_,
-        })
+        step_.value = props.step
       },
     )
     watch(
       () => props.index,
       () => {
         values.value[0] = props.index.toString()
-      },
-    )
-    watch(
-      () => step_,
-      (n, o) => {
-        emit('update:step', { n, o })
-      },
-    )
-    watch(
-      () => props.step,
-      () => {
-        step_.value = props.step
       },
     )
 
