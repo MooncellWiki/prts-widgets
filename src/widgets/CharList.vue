@@ -587,16 +587,7 @@ export default defineComponent({
 })
 </script>
 
-<style scoped>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-  max-width: 1353px;
-}
+<style>
 .slide-fade-enter-active {
   transition: all 0.3s ease-out;
 }
@@ -609,6 +600,18 @@ export default defineComponent({
 .slide-fade-leave-to {
   transform: translateY(-5px);
   opacity: 0;
+}
+</style>
+
+<style scoped>
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-align: center;
+  color: #2c3e50;
+  margin-top: 60px;
+  max-width: 1353px;
 }
 .filter {
   width: 100%;

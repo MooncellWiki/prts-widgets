@@ -24,92 +24,91 @@
           <div class="head">性别</div>
           <div class="head">位置</div>
           <div class="button">
-            <transition name="fade">
-              <div @click="collapsed = !collapsed">
-                <svg
-                  v-show="collapsed"
-                  t="1590476789572"
-                  class="icon"
-                  viewBox="0 0 1024 1024"
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  p-id="6592"
-                  width="24"
-                  height="24"
-                >
-                  <path
-                    d="M500.8 604.779L267.307 371.392l-45.227 45.27 278.741 278.613L779.307 416.66l-45.248-45.248z"
-                    p-id="6593"
-                  ></path>
-                </svg>
-                <svg
-                  v-show="!collapsed"
-                  t="1590477111828"
-                  class="icon"
-                  viewBox="0 0 1024 1024"
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  p-id="6715"
-                  width="24"
-                  height="24"
-                >
-                  <path
-                    d="M500.8 461.909333L267.306667 695.296l-45.226667-45.269333 278.741333-278.613334L779.306667 650.026667l-45.248 45.226666z"
-                    p-id="6716"
-                  ></path>
-                </svg>
-              </div>
-            </transition>
+            <div @click="collapsed = !collapsed">
+              <svg
+                v-show="collapsed"
+                t="1590476789572"
+                class="icon"
+                viewBox="0 0 1024 1024"
+                version="1.1"
+                xmlns="http://www.w3.org/2000/svg"
+                p-id="6592"
+                width="24"
+                height="24"
+              >
+                <path
+                  d="M500.8 604.779L267.307 371.392l-45.227 45.27 278.741 278.613L779.307 416.66l-45.248-45.248z"
+                  p-id="6593"
+                ></path>
+              </svg>
+              <svg
+                v-show="!collapsed"
+                t="1590477111828"
+                class="icon"
+                viewBox="0 0 1024 1024"
+                version="1.1"
+                xmlns="http://www.w3.org/2000/svg"
+                p-id="6715"
+                width="24"
+                height="24"
+              >
+                <path
+                  d="M500.8 461.909333L267.306667 695.296l-45.226667-45.269333 278.741333-278.613334L779.306667 650.026667l-45.248 45.226666z"
+                  p-id="6716"
+                ></path>
+              </svg>
+            </div>
           </div>
           <div>{{ row.sex }}</div>
           <div>{{ row.position }}</div>
         </div>
       </div>
     </div>
-    <div :ref="panel" class="expand-panel" :class="{ collapsed: collapsed }">
-      <div class="story">
-        <div class="head">标志</div>
-        <div class="head">出身地</div>
-        <div class="head">团队</div>
-        <div class="head">种族</div>
-        <div>{{ row.logo }}</div>
-        <div>{{ row.birth_place }}</div>
-        <div>{{ row.team }}</div>
-        <div>{{ row.race }}</div>
-      </div>
-      <div class="data1">
-        <div class="head">生命值</div>
-        <div class="head">攻击力</div>
-        <div class="head">防御</div>
-        <div class="head">法术抗性</div>
-        <div>{{ hp_ }}</div>
-        <div>{{ atk_ }}</div>
-        <div>{{ def_ }}</div>
-        <div>{{ res_ }}</div>
-      </div>
-      <div class="data2">
-        <div class="head">再部署</div>
-        <div class="head">部署费用</div>
-        <div class="head">阻挡数</div>
-        <div class="head">攻击间隔</div>
-        <div>{{ re_deploy_ }}</div>
-        <div>{{ cost_ }}</div>
-        <div>{{ row.block }}</div>
-        <div>{{ row.interval }}</div>
-      </div>
-      <div class="tags">
-        <!-- <div>标签</div> -->
-        <div class="tag">
-          <div v-for="(tag, i) in row.tag" :key="i">{{ tag }}</div>
+    <Transition name="slide-fade">
+      <div v-if="!collapsed" :ref="panel" class="expand-panel">
+        <div class="story">
+          <div class="head">标志</div>
+          <div class="head">出身地</div>
+          <div class="head">团队</div>
+          <div class="head">种族</div>
+          <div>{{ row.logo }}</div>
+          <div>{{ row.birth_place }}</div>
+          <div>{{ row.team }}</div>
+          <div>{{ row.race }}</div>
         </div>
+        <div class="data1">
+          <div class="head">生命值</div>
+          <div class="head">攻击力</div>
+          <div class="head">防御</div>
+          <div class="head">法术抗性</div>
+          <div>{{ hp_ }}</div>
+          <div>{{ atk_ }}</div>
+          <div>{{ def_ }}</div>
+          <div>{{ res_ }}</div>
+        </div>
+        <div class="data2">
+          <div class="head">再部署</div>
+          <div class="head">部署费用</div>
+          <div class="head">阻挡数</div>
+          <div class="head">攻击间隔</div>
+          <div>{{ re_deploy_ }}</div>
+          <div>{{ cost_ }}</div>
+          <div>{{ row.block }}</div>
+          <div>{{ row.interval }}</div>
+        </div>
+        <div class="tags">
+          <!-- <div>标签</div> -->
+          <div class="tag">
+            <div v-for="(tag, i) in row.tag" :key="i">{{ tag }}</div>
+          </div>
+        </div>
+        <div class="feature head"><slot></slot></div>
       </div>
-      <div class="feature head"><slot></slot></div>
-    </div>
+    </Transition>
   </div>
 </template>
 <script lang="ts">
-import Velocity, { VelocityElements } from 'velocity-animate'
-import { defineComponent, ref, computed, inject, PropType, watch } from 'vue'
+import { defineComponent, ref, computed, PropType } from 'vue'
 import { domain } from '@/utils/utils'
 import { DataSource } from '@/utils/charList'
 import Avatar from '../head/Avatar.vue'
@@ -124,38 +123,7 @@ export default defineComponent({
   },
   setup(props) {
     const collapsed = ref(true)
-    const $vel: Velocity<VelocityElements> = inject<Velocity<VelocityElements>>(
-      '$vel',
-      Velocity,
-    )
     const panel = ref()
-    watch(collapsed, () => {
-      if (collapsed) {
-        $vel(
-          panel.value,
-          { height: 0 },
-          {
-            duration: 500,
-            delay: 0,
-          },
-        )
-      } else {
-        let targetHeight = 0
-        for (let j = 0; j < panel.value.children.length; j++) {
-          targetHeight += panel.value.children[j].offsetHeight
-        }
-        $vel(
-          panel.value,
-          { height: targetHeight },
-          {
-            duration: 500,
-            delay: 0,
-          },
-        ).then?.(() => {
-          panel.value.style.height = 'auto'
-        })
-      }
-    })
     const hp_ = computed(() => {
       let result = parseInt(props.row.hp)
       if (props.addtrust) {
@@ -320,18 +288,7 @@ export default defineComponent({
 .head {
   background-color: rgba(213, 215, 219, 0.4);
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.5s;
-}
-.fade-enter,
-.fade-leave-to {
-  opacity: 0;
-}
 .expand-panel {
   overflow: hidden;
-}
-.collapsed {
-  height: 0px;
 }
 </style>
