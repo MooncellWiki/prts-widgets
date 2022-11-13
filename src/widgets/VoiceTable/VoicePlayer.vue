@@ -6,7 +6,6 @@
       :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
       @click="
         () => {
-          loaded || load()
           playing ? pause() : play()
           playing = !playing
         }
@@ -37,35 +36,46 @@ export default defineComponent({
     voicePath: String,
   },
   setup(props) {
-    const audioRef = ref<HTMLAudioElement>()
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
 
-    let audioCtx: AudioContext | null
-    let audioSource: AudioBufferSourceNode | null
-    const loaded = ref(false)
+    let audioCtx: AudioContext | null = new AudioContext()
+    let _audioBuffer: AudioBuffer | null = null
+
     const playing = ref(false)
     const suspended = ref(false)
+
+    const playSound = (buffer: AudioBuffer | null) => {
+      if (audioCtx == null || buffer == null) return
+      var source = audioCtx.createBufferSource()
+      source.buffer = buffer
+      source.connect(audioCtx?.destination)
+      source.onended = () => {
+        playing.value = false
+        suspended.value = false
+      }
+      source.start()
+    }
     const load = () => {
-      loaded.value = true
-      audioCtx = new AudioContext()
-      audioSource = audioCtx.createBufferSource()
       fetch(source.value)
         .then((response) => response.arrayBuffer())
         .then((arrayBuffer) => audioCtx?.decodeAudioData(arrayBuffer))
         .then((audioBuffer) => {
-          if (audioSource) {
-            audioSource.buffer = audioBuffer || null
-            audioSource.connect((audioCtx as AudioContext).destination)
+          if (audioBuffer) {
+            _audioBuffer = audioBuffer
+            playSound(_audioBuffer)
           }
         })
-      audioSource?.start()
     }
     const play = () => {
-      return suspended.value && audioCtx?.resume()
+      if (suspended.value) {
+        audioCtx?.resume().then(() => (suspended.value = false))
+      } else {
+        if (_audioBuffer) playSound(_audioBuffer)
+        else load()
+      }
     }
     const pause = () => {
-      audioCtx?.suspend()
-      suspended.value = true
+      audioCtx?.suspend().then(() => (suspended.value = true))
     }
 
     watch(
@@ -73,17 +83,14 @@ export default defineComponent({
       () => {
         audioCtx?.close()
         audioCtx = null
-        audioSource = null
+        _audioBuffer = null
         playing.value = false
-        loaded.value = false
         suspended.value = false
       },
     )
     return {
       playing,
       isSimplified,
-      audioRef,
-      loaded,
       load,
       play,
       pause,
