@@ -43,7 +43,7 @@
         </NTabPane>
       </NTabs>
     </div>
-    <NSkeleton v-else> </NSkeleton>
+    <NSkeleton v-else></NSkeleton>
   </n-config-provider>
 </template>
 <script lang="ts">

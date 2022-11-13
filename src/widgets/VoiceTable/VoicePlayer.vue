@@ -81,6 +81,8 @@ export default defineComponent({
     watch(
       () => props.voicePath,
       () => {
+        audioCtx?.close()
+        audioCtx = new AudioContext()
         _audioBuffer = null
         playing.value = false
         suspended.value = false
