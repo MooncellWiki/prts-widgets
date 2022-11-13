@@ -6,11 +6,12 @@
       :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
       @click="
         () => {
+          loaded || load()
+          playing ? pause() : play()
           playing = !playing
         }
       "
     />
-    <audio ref="audioRef" preload="none"></audio>
     <a
       v-if="!isSimplified && voicePath"
       :href="`//static.prts.wiki/${voicePath}`"
@@ -26,7 +27,6 @@
 </template>
 <script lang="ts">
 import { computed, defineComponent, ref, watch } from 'vue'
-import { useMediaControls } from '@vueuse/core'
 
 const isSimplified =
   decodeURIComponent(window.location.href).indexOf('/语音') === -1
@@ -39,19 +39,54 @@ export default defineComponent({
   setup(props) {
     const audioRef = ref<HTMLAudioElement>()
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
-    const { playing } = useMediaControls(audioRef, {
-      src: source,
-    })
+
+    let audioCtx: AudioContext | null
+    let audioSource: AudioBufferSourceNode | null
+    const loaded = ref(false)
+    const playing = ref(false)
+    const suspended = ref(false)
+    const load = () => {
+      loaded.value = true
+      audioCtx = new AudioContext()
+      audioSource = audioCtx.createBufferSource()
+      fetch(source.value)
+        .then((response) => response.arrayBuffer())
+        .then((arrayBuffer) => audioCtx?.decodeAudioData(arrayBuffer))
+        .then((audioBuffer) => {
+          if (audioSource) {
+            audioSource.buffer = audioBuffer || null
+            audioSource.connect((audioCtx as AudioContext).destination)
+          }
+        })
+      audioSource?.start()
+    }
+    const play = () => {
+      return suspended.value && audioCtx?.resume()
+    }
+    const pause = () => {
+      audioCtx?.suspend()
+      suspended.value = true
+    }
+
     watch(
       () => props.voicePath,
       () => {
+        audioCtx?.close()
+        audioCtx = null
+        audioSource = null
         playing.value = false
+        loaded.value = false
+        suspended.value = false
       },
     )
     return {
       playing,
       isSimplified,
       audioRef,
+      loaded,
+      load,
+      play,
+      pause,
     }
   },
 })

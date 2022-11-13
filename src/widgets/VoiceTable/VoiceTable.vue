@@ -11,8 +11,7 @@
             v-model:value="selectedWordLang"
             multiple
             :options="langArr.map((v) => ({ label: v, value: v }))"
-          >
-          </n-select>
+          ></n-select>
         </form-item>
         <form-item label="选择语音资源差分">
           <n-select
@@ -20,8 +19,7 @@
             :options="voiceBase"
             label-field="lang"
             value-field="path"
-          >
-          </n-select>
+          ></n-select>
         </form-item>
       </div>
       <div
