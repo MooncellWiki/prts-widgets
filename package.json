@@ -7,7 +7,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "sourcemap": "source-map-explorer ./dist/*.js",
-    "lint:fix": "eslint ./cli ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue --quiet --fix "
+    "lint:fix": "eslint ./cli ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue --quiet --fix && prettier --write ./cli ./src"
   },
   "dependencies": {
     "@sentry/browser": "^7.19.0",
