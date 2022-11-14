@@ -38,14 +38,14 @@ export default defineComponent({
   setup(props) {
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
 
-    let audioCtx: AudioContext | null = new AudioContext()
+    let audioCtx: AudioContext = new AudioContext()
     let _audioBuffer: AudioBuffer | null = null
 
     const playing = ref(false)
     const suspended = ref(false)
 
     const playSound = (buffer: AudioBuffer | null) => {
-      if (audioCtx == null || buffer == null) return
+      if (buffer == null) return
       var source = audioCtx.createBufferSource()
       source.buffer = buffer
       source.connect(audioCtx?.destination)
