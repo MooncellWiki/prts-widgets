@@ -20,5 +20,6 @@ You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/
 会逐步迁移一些没人会去搜，而且需要复杂 lua/smw 查询的模板过来
 
 - 需求材料干员 [Widget:ItemDemand/dev](http://prts.wiki/w/Widget:ItemDemand/dev)
-- 干员语音 [Widget:VoiceTable/dev](https://prts.wiki/w/Widget:VoiceTable/dev)
+- 语音表格 [Widget:VoiceTable/dev](https://prts.wiki/w/Widget:VoiceTable/dev)
 - Spine [Widget:Spinev2/dev](https://prts.wiki/w/Widget:Spinev2/dev)
+- 干员图鉴 [Widget:CharList/dev](https://prts.wiki/w/Widget:CharList/dev)
