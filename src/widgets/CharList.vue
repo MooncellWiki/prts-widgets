@@ -532,7 +532,6 @@ export default defineComponent({
       return oridata.value.slice(start, start + parseInt(page.value.step))
     })
     const url = computed(() => {
-      console.log(states)
       const arrToBase64 = (arr: Array<number>) => {
         if (arr.indexOf(1) == -1) {
           return ''
@@ -592,7 +591,6 @@ export default defineComponent({
       let arr = hash[1].split('|')
       searchText.value = arr[arr.length - 1]
       let arr2 = arr.slice(0, -1).map((v) => base64ToArr(v))
-      // console.log(arr)
       let i = 0
       states.forEach((v1, i1) => {
         v1.forEach((v2, i2) => {
