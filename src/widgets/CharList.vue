@@ -110,7 +110,9 @@
     </div>
 
     <div id="pagination">
-      <div class="btn" :data-clipboard-text="url">复制短链接</div>
+      <div class="btn" :data-clipboard-text="url" @click="copyUrl">
+        复制短链接
+      </div>
       <Pagination
         :length="oridata.length"
         :index="page.index"
@@ -201,20 +203,21 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, reactive, Ref, onMounted } from 'vue'
+import { computed, defineComponent, onMounted, reactive, ref, Ref } from 'vue'
+import Cookies from 'js-cookie'
 
-import FilterRow from '@/components/FilterRow.vue'
 import CheckBox from '@/components/CheckBox.vue'
-import Pagination from '@/components/Pagination.vue'
-import SHead from '@/components/head/SHead.vue'
+import FilterRow from '@/components/FilterRow.vue'
+import Half from '@/components/Half.vue'
 import Avatar from '@/components/head/Avatar.vue'
 import LHead from '@/components/head/LHead.vue'
+import SHead from '@/components/head/SHead.vue'
+import Pagination from '@/components/Pagination.vue'
 import Card from '@/components/row/Card.vue'
 import Long from '@/components/row/Long.vue'
 import Short from '@/components/row/Short.vue'
-import Half from '@/components/Half.vue'
-import { keyStr } from '@/utils/utils'
 import { DataSource } from '@/utils/charList'
+import { keyStr } from '@/utils/utils'
 
 export default defineComponent({
   components: {
@@ -322,12 +325,17 @@ export default defineComponent({
       index: 1,
       step: '50',
     })
-    const states = reactive([
+    const states = reactive<string[][][]>([
       [[], [], [], [], [], []],
       [[], [], [], [], [], []],
       [[], [], [], []],
     ]) // 筛选 六维筛选 标志/出身地/团队/种族筛选
-    const expanded: Ref<Array<boolean>> = ref([true, false, false]) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
+    const opFilterExpandState = Cookies.get('opFilterExpandState')
+    const expanded: Ref<Array<boolean>> = ref(
+      opFilterExpandState
+        ? JSON.parse(opFilterExpandState)
+        : [true, false, false],
+    ) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
     const refs: Ref = ref([])
     const currSortMethod = ref(['实装倒序'])
     const sortMethods = ref([
@@ -343,16 +351,13 @@ export default defineComponent({
     const currDataTypes: Ref<Array<string>> = ref([])
     const displayModes = ref(['表格', '半身像', '头像'])
     const currDisplayMode = ref(['表格'])
-    //const $cookies = inject('$cookies')
 
     const toggleCollapse = (index: number) => {
       expanded.value[index] = !expanded.value[index]
-      /*
-            this.$cookies.set('opFilterExpandState', this.expanded.join(','), {
-                expires: 365,
-            })*/
+      Cookies.set('opFilterExpandState', JSON.stringify(expanded.value), {
+        expires: 365,
+      })
     }
-
     const onPageChange = (newPage: { index: number; step: string }) => {
       page.value = newPage
     }
@@ -527,6 +532,7 @@ export default defineComponent({
       return oridata.value.slice(start, start + parseInt(page.value.step))
     })
     const url = computed(() => {
+      console.log(states)
       const arrToBase64 = (arr: Array<number>) => {
         if (arr.indexOf(1) == -1) {
           return ''
@@ -550,16 +556,57 @@ export default defineComponent({
           result.push(arrToBase64(temp))
         })
       })
+
       return (
         window.location.origin +
         window.location.pathname +
         '#' +
         result.join('|') +
         '|' +
-        searchText +
+        searchText.value +
         '#'
       )
     })
+    const copyUrl = () => {
+      window.navigator.clipboard.writeText(url.value)
+      alert('链接已复制: ' + url.value)
+    }
+
+    const _keyStr =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,'
+
+    let hash = /#([^#]+)#/.exec(window.location.hash)
+    if (hash && hash[1]) {
+      const base64ToArr = (str: string) => {
+        return str
+          .split('')
+          .map((v) => {
+            let temp = _keyStr.indexOf(v).toString(2)
+            while (temp.length % 6 != 0) {
+              temp = '0' + temp
+            }
+            return temp.split('')
+          })
+          .flat()
+      }
+      let arr = hash[1].split('|')
+      searchText.value = arr[arr.length - 1]
+      let arr2 = arr.slice(0, -1).map((v) => base64ToArr(v))
+      // console.log(arr)
+      let i = 0
+      states.forEach((v1, i1) => {
+        v1.forEach((v2, i2) => {
+          if (arr2[i].filter((v: string) => v != '0').length != 0) {
+            arr2[i].forEach((v3, i3) => {
+              if (v3 == '1') {
+                states[i1][i2].push(props.shortLinkMap[i1][i2][i3])
+              }
+            })
+          }
+          i++
+        })
+      })
+    }
 
     return {
       app,
@@ -582,6 +629,7 @@ export default defineComponent({
       toggleCollapse,
       onPageChange,
       onStepChange,
+      copyUrl,
     }
   },
 })
@@ -610,7 +658,6 @@ export default defineComponent({
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
   color: #2c3e50;
-  margin-top: 60px;
   max-width: 1353px;
 }
 .filter {

@@ -1,5 +1,4 @@
 import { createApp } from 'vue'
-import Cookies from 'js-cookie'
 import CharList from '../widgets/CharList.vue'
 
 const ele = document.getElementById('root')
@@ -55,6 +54,5 @@ const source = Array.prototype.map.call(
 
 if (ele) {
   const app = createApp(CharList, { filters, source, shortLinkMap, filterMap })
-  app.provide('$cookies', Cookies)
   app.mount(ele)
 }
