@@ -1,6 +1,6 @@
 <template>
   <card
-    :style="{ width: !isMobile() && 'fit-content' }"
+    :style="{ width: !isMobile() ? 'fit-content' : '' }"
     class="bg-white relative"
   >
     <div
