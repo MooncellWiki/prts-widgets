@@ -78,8 +78,8 @@
   </n-config-provider>
 </template>
 <script lang="ts">
+import { NConfigProvider, NSelect } from 'naive-ui'
 import { defineComponent, PropType, ref } from 'vue'
-import { NSelect, NConfigProvider } from 'naive-ui'
 import FormItem from '../../components/FormItem.vue'
 import VoicePlayer from './VoicePlayer.vue'
 

@@ -64,6 +64,8 @@
               class="table-cell p-1 border border-solid border-divider rounded align-middle truncate"
             >
               <VoicePlayer
+                :key="index"
+                v-model:playKey="playKey"
                 :voiceId="`${voiceKey}/${ele?.title}`"
                 :voicePath="`${selectedVoicePath}/${ele?.voiceFilename?.replace(
                   /\s/g,
@@ -78,8 +80,8 @@
   </n-config-provider>
 </template>
 <script lang="ts">
-import { defineComponent, PropType, ref } from 'vue'
-import { NSelect, NConfigProvider } from 'naive-ui'
+import { NConfigProvider, NSelect } from 'naive-ui'
+import { defineComponent, PropType, provide, ref } from 'vue'
 
 import FormItem from '../../components/FormItem.vue'
 import VoicePlayer from './VoicePlayer.vue'
@@ -116,11 +118,16 @@ export default defineComponent({
     const isCollapsed = ref(true)
     const selectedWordLang = ref(['中文'])
     const selectedVoicePath = ref(props.voiceBase[0]?.path || '')
+    const playKey = ref(-1)
+
+    provide('audioElem', new Audio())
+
     return {
       isSimplified,
       isCollapsed,
       selectedWordLang,
       selectedVoicePath,
+      playKey,
     }
   },
 })

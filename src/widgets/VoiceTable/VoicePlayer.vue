@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/no-mutating-props -->
 <template>
   <div class="container">
     <img
@@ -7,7 +8,6 @@
       @click="
         () => {
           playing ? pause() : play()
-          playing = !playing
         }
       "
     />
@@ -25,7 +25,14 @@
   </div>
 </template>
 <script lang="ts">
-import { computed, defineComponent, ref, watch } from 'vue'
+import {
+  computed,
+  defineComponent,
+  getCurrentInstance,
+  inject,
+  ref,
+  watch,
+} from 'vue'
 
 const isSimplified =
   decodeURIComponent(window.location.href).indexOf('/语音') === -1
@@ -34,74 +41,49 @@ export default defineComponent({
   props: {
     voiceId: String,
     voicePath: String,
+    playKey: Number,
   },
-  setup(props) {
+  setup(props, { emit }) {
+    const key = getCurrentInstance()?.vnode.key
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
-
-    let audioCtx: AudioContext = new AudioContext()
-    let _audioBuffer: AudioBuffer | null = null
-
     const playing = ref(false)
-    const suspended = ref(false)
+    const audioElem = inject<HTMLAudioElement>('audioElem') ?? new Audio()
 
-    const playSound = (buffer: AudioBuffer | null) => {
-      if (buffer == null) return
-      var source = audioCtx.createBufferSource()
-      source.buffer = buffer
-      source.connect(audioCtx?.destination)
-      source.onended = () => {
-        playing.value = false
-        suspended.value = false
-      }
-      source.start()
-    }
-    const load = () => {
-      fetch(source.value)
-        .then((response) => {
-          if (response.ok) {
-            return response.arrayBuffer()
-          }
-          return Promise.reject(response)
-        })
-        .then((arrayBuffer) => audioCtx?.decodeAudioData(arrayBuffer))
-        .then((audioBuffer) => {
-          if (audioBuffer) {
-            _audioBuffer = audioBuffer
-            playSound(_audioBuffer)
-          }
-        })
-        .catch((error) => {
-          console.log(error)
-        })
+    const pause = () => {
+      playing.value = false
+      audioElem?.pause()
     }
     const play = () => {
-      if (suspended.value) {
-        audioCtx?.resume().then(() => (suspended.value = false))
-      } else {
-        if (_audioBuffer) playSound(_audioBuffer)
-        else load()
-      }
-    }
-    const pause = () => {
-      audioCtx?.suspend().then(() => (suspended.value = true))
+      audioElem.src = source.value
+      emit('update:playKey', key)
+      playing.value = true
+      audioElem?.play()
     }
 
     watch(
       () => props.voicePath,
       () => {
-        audioCtx?.close()
-        audioCtx = new AudioContext()
-        _audioBuffer = null
         playing.value = false
-        suspended.value = false
+        audioElem?.pause()
       },
     )
+
+    watch(
+      () => props.playKey,
+      (newVal) => {
+        if (newVal != key) {
+          playing.value = false
+        }
+      },
+    )
+
     return {
+      source,
       playing,
       isSimplified,
-      load,
-      play,
+      audioElem,
       pause,
+      play,
     }
   },
 })
