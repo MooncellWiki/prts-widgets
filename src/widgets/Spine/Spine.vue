@@ -1,6 +1,12 @@
 <template>
-  <card :style="{ width: 'fit-content' }" class="bg-white relative">
-    <div class="m-5 flex justify-around">
+  <card
+    :style="{ width: !isMobile() && 'fit-content' }"
+    class="bg-white relative"
+  >
+    <div
+      :class="{ 'pr-5': !isMobile() }"
+      class="m-5 flex flex-wrap justify-around"
+    >
       <div
         class="w-[330px] h-[400px] pr-4 space-y-2 flex flex-col justify-around"
       >
@@ -186,36 +192,28 @@
 </template>
 <script lang="ts">
 import {
-  computed,
-  defineComponent,
-  onMounted,
-  PropType,
-  ref,
-  render,
-  h,
-} from 'vue'
+  CenterFocusStrongSharp,
+  DownloadOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
+  InfoOutlined,
+} from '@vicons/material'
 import {
   NButton,
-  NSkeleton,
+  NColorPicker,
+  NIcon,
+  NPopover,
   // NForm,
   // NFormItem,
   NSelect,
-  NSwitch,
-  NColorPicker,
+  NSkeleton,
   NSlider,
-  NIcon,
-  NPopover,
+  NSwitch,
 } from 'naive-ui'
-import {
-  DownloadOutlined,
-  CenterFocusStrongSharp,
-  FullscreenOutlined,
-  InfoOutlined,
-  FullscreenExitOutlined,
-} from '@vicons/material'
-import { Spine } from '../../utils/spine'
-import FormItem from '../../components/FormItem.vue'
+import { computed, defineComponent, onMounted, PropType, ref } from 'vue'
 import Card from '../../components/Card.vue'
+import FormItem from '../../components/FormItem.vue'
+import { Spine } from '../../utils/spine'
 import { isMobile } from '../../utils/utils'
 import Detail from './Detail.vue'
 import { useEvent } from './useEvent'
@@ -424,6 +422,7 @@ export default defineComponent({
       supportWebm,
       record,
       recording,
+      isMobile,
     }
   },
 })
