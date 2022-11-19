@@ -57,13 +57,21 @@ export default defineComponent({
     }
     const load = () => {
       fetch(source.value)
-        .then((response) => response.arrayBuffer())
+        .then((response) => {
+          if (response.ok) {
+            return response.arrayBuffer()
+          }
+          return Promise.reject(response)
+        })
         .then((arrayBuffer) => audioCtx?.decodeAudioData(arrayBuffer))
         .then((audioBuffer) => {
           if (audioBuffer) {
             _audioBuffer = audioBuffer
             playSound(_audioBuffer)
           }
+        })
+        .catch((error) => {
+          console.log(error)
         })
     }
     const play = () => {
