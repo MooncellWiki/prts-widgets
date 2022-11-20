@@ -56,8 +56,17 @@ export default defineComponent({
     const play = () => {
       audioElem.src = source.value
       emit('update:playKey', key)
-      playing.value = true
-      audioElem?.play()
+
+      var playPromise = audioElem?.play()
+      if (playPromise) {
+        playPromise
+          .then(() => {
+            playing.value = true
+          })
+          .catch(() => {
+            playing.value = false
+          })
+      }
     }
 
     watch(
