@@ -20,7 +20,7 @@
           class="lazyload img"
           :style="{ height: (size / 100) * 25 + 'px' }"
           :data-src="`/images/${getImagePath(
-            `图标_职业_${professionMap[profession]}.png`,
+            `图标_职业_${professionMap[profession!]}.png`,
           )}`"
         />
       </div>

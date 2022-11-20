@@ -5,7 +5,7 @@
       <option value="100">100</option>
       <option value="200">200</option>
     </select>
-    <div>{{ '共' + length + '条' }}</div>
+    <div>共{{ length }}条</div>
     <div class="checkbox-container">
       <CheckBox
         v-for="k in checkboxCount"
