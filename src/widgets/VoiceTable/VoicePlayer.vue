@@ -13,8 +13,8 @@
     />
     <a
       v-if="!isSimplified && voicePath"
-      :href="`//static.prts.wiki/${voicePath}`"
-      :download="voicePath.split('/')[voicePath.split('/').length - 1]"
+      :href="`//static.prts.wiki/${voicePath}?filename=${fileName}.wav`"
+      :download="`${fileName}.wav`"
     >
       <img
         class="md:w-10 <sm:w-7 cursor-pointer lazyload"
@@ -24,6 +24,7 @@
     </a>
   </div>
 </template>
+
 <script lang="ts">
 import {
   computed,
@@ -46,6 +47,7 @@ export default defineComponent({
   setup(props, { emit }) {
     const key = getCurrentInstance()?.vnode.key
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
+    const fileName = computed(() => props.voiceId?.split('/').pop())
     const playing = ref(false)
     const audioElem = inject<HTMLAudioElement>('audioElem') ?? new Audio()
 
@@ -91,6 +93,7 @@ export default defineComponent({
       playing,
       isSimplified,
       audioElem,
+      fileName,
       pause,
       play,
     }
