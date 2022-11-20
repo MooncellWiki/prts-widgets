@@ -1,4 +1,3 @@
-<!-- eslint-disable vue/no-mutating-props -->
 <template>
   <div class="container">
     <img
@@ -56,19 +55,19 @@ export default defineComponent({
       audioElem?.pause()
     }
     const play = () => {
+      playing.value = true
       audioElem.src = source.value
       emit('update:playKey', key)
 
       var playPromise = audioElem?.play()
       if (playPromise) {
-        playPromise
-          .then(() => {
-            playing.value = true
-          })
-          .catch(() => {
-            playing.value = false
-          })
+        playPromise.catch(() => {
+          playing.value = false
+        })
       }
+      audioElem.addEventListener('ended', () => {
+        playing.value = false
+      })
     }
 
     watch(
