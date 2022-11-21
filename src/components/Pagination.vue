@@ -55,7 +55,7 @@ export default defineComponent({
     watch(
       () => checkboxCount.value,
       (newVal) => {
-        if (newVal < parseInt(values.value[0])) {
+        if (newVal != 0 && newVal < parseInt(values.value[0])) {
           values.value[0] = newVal.toString()
         }
       },
