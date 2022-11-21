@@ -19,7 +19,7 @@
   </div>
 </template>
 <script lang="ts">
-import { defineComponent, ref, computed, watch } from 'vue'
+import { defineComponent, ref, computed, watch, watchEffect } from 'vue'
 import CheckBox from './CheckBox.vue'
 export default defineComponent({
   name: 'Pagination',
@@ -38,25 +38,26 @@ export default defineComponent({
       Math.ceil(props.length / parseInt(props.step)),
     )
 
-    watch(values, () => {
-      emit('update:values', {
-        index: parseInt(values.value[0]),
-        step: step_,
-      })
-    })
-    watch(step_, (n, o) => {
-      emit('update:step', { n, o })
-    })
     watch(
-      () => props.step,
-      () => {
-        step_.value = props.step
-      },
+      () => values.value,
+      () =>
+        emit('update:values', {
+          index: parseInt(values.value[0]),
+          step: step_,
+        }),
+      { deep: true },
     )
+    watch(step_, (n, o) => emit('update:step', { n, o }))
     watch(
       () => props.index,
-      () => {
-        values.value[0] = props.index.toString()
+      () => (values.value[0] = props.index.toString()),
+    )
+    watch(
+      () => checkboxCount.value,
+      (newVal) => {
+        if (newVal < parseInt(values.value[0])) {
+          values.value[0] = newVal.toString()
+        }
       },
     )
 
