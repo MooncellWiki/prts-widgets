@@ -73,6 +73,7 @@ export default {
     renderTiles(data) {
       data.forEach((tile, i) => {
         let key = tile.tileKey.replace('tile_', '')
+        let height = tile.heightType
         $('.board-' + i).addClass(key)
         switch (key) {
           case 'start':
@@ -87,9 +88,6 @@ export default {
             )
             this.addTippy('.board-' + i, '<b>保护目标</b>')
             break
-          case 'floor':
-            $('.board-' + i).html('<span><i class="fas fa-ban"></i></span>')
-            break
           case 'flystart':
             $('.board-' + i).html('<span><i class="fas fa-plane"></i></span>')
             this.addTippy('.board-' + i, '<b>空袭侵入点</b>')
@@ -99,6 +97,11 @@ export default {
             break
           case 'grass':
             this.addTippy('.board-' + i, '<b>草丛</b>')
+            if (height == 1) {
+              $('.board-' + i).css('box-shadow', '5px 5px 8px black')
+              $('.board-' + i).css('filter', 'brightness(1.15)')
+              $('.board-' + i).css('z-index', '2')
+            }
             break
           case 'deepsea':
             this.addTippy('.board-' + i, '<b>清澈水域</b>')
@@ -322,9 +325,6 @@ export default {
 </script>
 
 <style scoped>
-.uk-table th {
-  text-align: center;
-}
 .row {
   display: flex;
 }
@@ -356,10 +356,6 @@ export default {
 .empty {
   background-color: transparent;
 }
-/*.forbidden {
-    background-color: dimgray;
-    border: 2px solid darkgray;
-  }*/
 .start,
 .flystart {
   background-color: indianred;
@@ -378,7 +374,8 @@ export default {
 }
 .floor {
   background-color: darkgray;
-  border: 2px dashed dimgray;
+  border: 1px dashed yellow;
+  box-shadow: inset 0 0 0 2px black;
 }
 :deep(.floor span) {
   color: white;
@@ -390,6 +387,8 @@ export default {
 .wall {
   background-color: lightgray;
   border: 2px dotted dimgray;
+  box-shadow: 5px 5px 8px black;
+  z-index: 2;
 }
 .hole {
   background-color: black;
