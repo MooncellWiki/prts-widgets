@@ -19,7 +19,7 @@ async function index() {
     entry,
     `import { createApp } from 'vue';
 import 'virtual:windi.css';
-import ${entry} from '../widgets/${entry}.vue';
+import ${name} from '../widgets/${name}.vue';
 
 const ele = document.getElementById('root');
 if (ele?.dataset?.item) {
@@ -52,7 +52,7 @@ if (ele?.dataset?.item) {
 <includeonly>
 <div id="root"></div>
 <script type="module" src="http://localhost:8080/@vite/client"></script>
-<script type="module" src="http://localhost:8080/src/entries/${name}.tsx"></script>
+<script type="module" src="http://localhost:8080/src/entries/${name}.ts"></script>
 </includeonly><noinclude>{{#widget:${name}/dev}}</noinclude>
   `,
   )
