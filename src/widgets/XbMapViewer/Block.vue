@@ -4,27 +4,31 @@
     :class="`block ${tile} ${token ? 'token' : ''} ${black}`"
     :style="style"
   >
-    <span>
-      <i v-if="tile === 'start'" class="fas fa-exclamation-triangle"></i>
-      <i v-if="tile === 'end'" class="fas fa-exclamation-triangle"></i>
-      <i v-if="tile === 'flystart'" class="fas fa-plane"></i>
-      <i v-if="tile === 'corrosion_2'" class="fas fa-angle-double-down"></i>
-      <i v-if="tile === 'telin'" class="fas fa-indent"></i>
-      <i v-if="tile === 'telout'" class="fas fa-outdent"></i>
-      <i v-if="token === 'gtreasure'" class="fas fa-crown"></i>
-      <i v-if="token === 'ballis'" class="fas fa-exclamation"></i>
-      <i v-if="token === 'streasure'" class="fas fa-crown"></i>
-      <i v-if="token === 'wdescp'" class="fas fa-sign-out-alt"></i>
-      <i v-if="token === 'redtower'" class="fas fa-broadcast-tower"></i>
-      <i v-if="token === 'xbbase'" class="fas fa-chess-rook"></i>
-      <i v-if="token === 'poachr'" class="far fa-dot-circle"></i>
-      <i v-if="token === 'ore'" class="fas fa-radiation"></i>
+    <span v-if="classMap[tile!] || classMap[token!]">
+      <i :class="classMap[tile!] || classMap[token!]"></i>
     </span>
   </div>
 </template>
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue'
 import { getImagePath } from '@/utils/utils'
+const classMap: Record<string, string> = {
+  start: 'fas fa-exclamation-triangle',
+  end: 'fas fa-exclamation-triangle',
+  flystart: 'fas fa-plane',
+  corrosion_2: 'fas fa-angle-double-down',
+  telin: 'fas fa-indent',
+  telout: 'fas fa-outdent',
+  //token
+  gtreasure: 'fas fa-crown',
+  ballis: 'fas fa-exclamation',
+  streasure: 'fas fa-crown',
+  wdescp: 'fas fa-sign-out-alt',
+  redtower: 'fas fa-broadcast-tower',
+  xbbase: 'fas fa-chess-rook',
+  poachr: 'far fa-dot-circle',
+  ore: 'fas fa-radiation',
+}
 const TipMap: Record<string, string> = {
   start: '<b>侵入点</b>',
   end: '<b>保护目标</b>',
@@ -125,7 +129,7 @@ export default defineComponent({
         })
       }
     })
-    return { self, style }
+    return { self, style, classMap }
   },
 })
 </script>
