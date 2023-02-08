@@ -367,6 +367,7 @@ export default defineComponent({
     })
     const copyUrl = () => {
       window.navigator.clipboard.writeText(url.value)
+      // eslint-disable-next-line no-alert
       alert(`链接已复制: ${url.value}`)
     }
 

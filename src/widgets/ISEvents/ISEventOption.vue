@@ -14,7 +14,7 @@ export default defineComponent({
     icon: String,
     desc1: String,
     desc2: String,
-    ISTheme: String,
+    isTheme: String,
   },
   setup() {
     return {
@@ -57,7 +57,7 @@ export default defineComponent({
           object-fit="scale-down"
           :size="45"
           :src="`/images/${getImagePath(
-            ISTheme ? `收藏品_${ISTheme}_${icon}.png` : `收藏品_${icon}.png`,
+            isTheme ? `收藏品_${isTheme}_${icon}.png` : `收藏品_${icon}.png`,
           )}`"
         />
       </NBadge>

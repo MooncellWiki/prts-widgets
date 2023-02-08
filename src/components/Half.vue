@@ -5,6 +5,7 @@ import { charListData, domain, getImagePath } from '@/utils/utils'
 export default defineComponent({
   name: 'Half',
   props: {
+    // eslint-disable-next-line vue/prop-name-casing
     class_: { type: String, required: true },
     rarity: { type: Number, required: true },
     logo: { type: String, required: true },

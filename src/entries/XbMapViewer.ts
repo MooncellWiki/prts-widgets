@@ -7,7 +7,6 @@ const data = document.getElementById('MAPDATA')
 if (ele && data) {
   createApp(XbMapViewer, {
     data() {
-       
       return JSON.parse(data?.innerText)
     },
   }).mount(ele)

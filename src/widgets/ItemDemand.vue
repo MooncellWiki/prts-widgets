@@ -140,15 +140,15 @@ export default defineComponent({
           class="grid grid-cols-5 <sm:grid-cols-3"
         >
           <Cost
-            v-for="item in cost.data"
-            :key="item.name"
-            :rarity="item.rarity"
-            :name="item.name"
-            :profession="item.profession"
-            :elite="item.elite"
-            :skill="item.skill"
-            :mastery="item.mastery"
-            :uniequip="item.uniequip"
+            v-for="i in cost.data"
+            :key="i.name"
+            :rarity="i.rarity"
+            :name="i.name"
+            :profession="i.profession"
+            :elite="i.elite"
+            :skill="i.skill"
+            :mastery="i.mastery"
+            :uniequip="i.uniequip"
           />
         </NTabPane>
       </NTabs>
