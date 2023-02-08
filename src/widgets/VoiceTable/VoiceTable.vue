@@ -1,26 +1,81 @@
+<script lang="ts">
+import { NConfigProvider, NSelect } from 'naive-ui'
+import type { PropType } from 'vue'
+import { defineComponent, provide, ref } from 'vue'
+
+import FormItem from '../../components/FormItem.vue'
+import VoicePlayer from './VoicePlayer.vue'
+const isSimplified
+  = !decodeURIComponent(window.location.href).includes('/语音')
+export default defineComponent({
+  components: {
+    NSelect,
+    NConfigProvider,
+    VoicePlayer,
+    FormItem,
+  },
+  props: {
+    tocTitle: String,
+    voiceKey: String,
+    voiceData: Array as PropType<
+      {
+        title?: string
+        index?: string
+        voiceFilename?: string
+        cond?: string
+        detail: {
+          [index: string]: string
+        }
+      }[]
+    >,
+    langArr: { type: Array as PropType<string[]>, default: () => [] },
+    voiceBase: {
+      type: Array as PropType<{ lang: string; path: string }[]>,
+      default: () => [],
+    },
+  },
+  setup(props) {
+    const isCollapsed = ref(true)
+    const selectedWordLang = ref(['中文'])
+    const selectedVoicePath = ref(props.voiceBase[0]?.path || '')
+    const playKey = ref(-1)
+
+    provide('audioElem', new Audio())
+
+    return {
+      isSimplified,
+      isCollapsed,
+      selectedWordLang,
+      selectedVoicePath,
+      playKey,
+    }
+  },
+})
+</script>
+
 <template>
-  <n-config-provider
+  <NConfigProvider
     preflight-style-disabled
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
     :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
   >
     <div class="max-w-screen-lg">
       <div v-if="!isSimplified" class="flex mb-1">
-        <form-item label="选择语音文本差分" class="flex-grow mr-2">
-          <n-select
+        <FormItem label="选择语音文本差分" class="flex-grow mr-2">
+          <NSelect
             v-model:value="selectedWordLang"
             multiple
             :options="langArr.map((v) => ({ label: v, value: v }))"
-          ></n-select>
-        </form-item>
-        <form-item label="选择语音资源差分">
-          <n-select
+          />
+        </FormItem>
+        <FormItem label="选择语音资源差分">
+          <NSelect
             v-model:value="selectedVoicePath"
             :options="voiceBase"
             label-field="lang"
             value-field="path"
-          ></n-select>
-        </form-item>
+          />
+        </FormItem>
       </div>
       <div
         v-if="isSimplified"
@@ -66,8 +121,8 @@
               <VoicePlayer
                 :key="index"
                 v-model:playKey="playKey"
-                :voiceId="`${voiceKey}/${ele?.title}`"
-                :voicePath="`${selectedVoicePath}/${ele?.voiceFilename?.replace(
+                :voice-id="`${voiceKey}/${ele?.title}`"
+                :voice-path="`${selectedVoicePath}/${ele?.voiceFilename?.replace(
                   /\s/g,
                   '_',
                 )}`"
@@ -77,58 +132,5 @@
         </div>
       </div>
     </div>
-  </n-config-provider>
+  </NConfigProvider>
 </template>
-<script lang="ts">
-import { NConfigProvider, NSelect } from 'naive-ui'
-import { defineComponent, PropType, provide, ref } from 'vue'
-
-import FormItem from '../../components/FormItem.vue'
-import VoicePlayer from './VoicePlayer.vue'
-const isSimplified =
-  decodeURIComponent(window.location.href).indexOf('/语音') === -1
-export default defineComponent({
-  components: {
-    NSelect,
-    NConfigProvider,
-    VoicePlayer,
-    FormItem,
-  },
-  props: {
-    tocTitle: String,
-    voiceKey: String,
-    voiceData: Array as PropType<
-      {
-        title?: string
-        index?: string
-        voiceFilename?: string
-        cond?: string
-        detail: {
-          [index: string]: string
-        }
-      }[]
-    >,
-    langArr: { type: Array as PropType<string[]>, default: [] },
-    voiceBase: {
-      type: Array as PropType<{ lang: string; path: string }[]>,
-      default: [],
-    },
-  },
-  setup(props) {
-    const isCollapsed = ref(true)
-    const selectedWordLang = ref(['中文'])
-    const selectedVoicePath = ref(props.voiceBase[0]?.path || '')
-    const playKey = ref(-1)
-
-    provide('audioElem', new Audio())
-
-    return {
-      isSimplified,
-      isCollapsed,
-      selectedWordLang,
-      selectedVoicePath,
-      playKey,
-    }
-  },
-})
-</script>

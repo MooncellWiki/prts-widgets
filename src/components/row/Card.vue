@@ -1,4 +1,106 @@
-<!--元素宽度小于等于640px-->
+<!-- 元素宽度小于等于640px -->
+<script lang="ts">
+import type { PropType } from 'vue'
+import { computed, defineComponent, ref } from 'vue'
+import Avatar from '../head/Avatar.vue'
+import { domain } from '@/utils/utils'
+import type { DataSource } from '@/utils/charList'
+
+export default defineComponent({
+  name: 'Card',
+  components: { Avatar },
+  props: {
+    row: { type: Object as PropType<DataSource>, required: true },
+    addtrust: Boolean, // 是否加算信赖
+    addpotential: Boolean, // 是否加算潜能
+  },
+  setup(props) {
+    const collapsed = ref(true)
+    const panel = ref()
+    const hp_ = computed(() => {
+      let result = parseInt(props.row.hp)
+      if (props.addtrust)
+        result += props.row.trust[0]
+
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'hp')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const atk_ = computed(() => {
+      let result = parseInt(props.row.atk)
+      if (props.addtrust)
+        result += props.row.trust[1]
+
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'atk')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const def_ = computed(() => {
+      let result = parseInt(props.row.def)
+      if (props.addtrust)
+        result += props.row.trust[2]
+
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'def')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const res_ = computed(() => {
+      let result = parseInt(props.row.res)
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'res')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const cost_ = computed(() => {
+      let result = parseInt(props.row.cost)
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'cost')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const re_deploy_ = computed(() => {
+      let result = parseInt(props.row.re_deploy.slice(0, -1))
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 're_deploy')
+            result += props.row.potential[1][i]
+        })
+      }
+      return `${result}s`
+    })
+    return {
+      collapsed,
+      hp_,
+      atk_,
+      def_,
+      res_,
+      cost_,
+      re_deploy_,
+      domain,
+      panel,
+    }
+  },
+})
+</script>
+
 <template>
   <div class="card-container">
     <div class="basic">
@@ -7,7 +109,7 @@
           :rarity="parseInt(row.rarity)"
           :class_="row.class_"
           :zh="row.zh"
-        ></Avatar>
+        />
       </div>
       <div class="info">
         <div class="name">
@@ -16,13 +118,23 @@
               <div>{{ row.zh }}</div>
             </a>
           </div>
-          <div class="id">{{ row.id }}</div>
-          <div class="en">{{ row.en }}</div>
-          <div class="ja">{{ row.ja }}</div>
+          <div class="id">
+            {{ row.id }}
+          </div>
+          <div class="en">
+            {{ row.en }}
+          </div>
+          <div class="ja">
+            {{ row.ja }}
+          </div>
         </div>
         <div class="sp">
-          <div class="head">性别</div>
-          <div class="head">位置</div>
+          <div class="head">
+            性别
+          </div>
+          <div class="head">
+            位置
+          </div>
           <div class="button">
             <div @click="collapsed = !collapsed">
               <svg
@@ -39,7 +151,7 @@
                 <path
                   d="M500.8 604.779L267.307 371.392l-45.227 45.27 278.741 278.613L779.307 416.66l-45.248-45.248z"
                   p-id="6593"
-                ></path>
+                />
               </svg>
               <svg
                 v-show="!collapsed"
@@ -55,7 +167,7 @@
                 <path
                   d="M500.8 461.909333L267.306667 695.296l-45.226667-45.269333 278.741333-278.613334L779.306667 650.026667l-45.248 45.226666z"
                   p-id="6716"
-                ></path>
+                />
               </svg>
             </div>
           </div>
@@ -67,30 +179,54 @@
     <Transition name="slide-fade">
       <div v-if="!collapsed" :ref="panel" class="expand-panel">
         <div class="story">
-          <div class="head">标志</div>
-          <div class="head">出身地</div>
-          <div class="head">团队</div>
-          <div class="head">种族</div>
+          <div class="head">
+            标志
+          </div>
+          <div class="head">
+            出身地
+          </div>
+          <div class="head">
+            团队
+          </div>
+          <div class="head">
+            种族
+          </div>
           <div>{{ row.logo }}</div>
           <div>{{ row.birth_place }}</div>
           <div>{{ row.team }}</div>
           <div>{{ row.race }}</div>
         </div>
         <div class="data1">
-          <div class="head">生命值</div>
-          <div class="head">攻击力</div>
-          <div class="head">防御</div>
-          <div class="head">法术抗性</div>
+          <div class="head">
+            生命值
+          </div>
+          <div class="head">
+            攻击力
+          </div>
+          <div class="head">
+            防御
+          </div>
+          <div class="head">
+            法术抗性
+          </div>
           <div>{{ hp_ }}</div>
           <div>{{ atk_ }}</div>
           <div>{{ def_ }}</div>
           <div>{{ res_ }}</div>
         </div>
         <div class="data2">
-          <div class="head">再部署</div>
-          <div class="head">部署费用</div>
-          <div class="head">阻挡数</div>
-          <div class="head">攻击间隔</div>
+          <div class="head">
+            再部署
+          </div>
+          <div class="head">
+            部署费用
+          </div>
+          <div class="head">
+            阻挡数
+          </div>
+          <div class="head">
+            攻击间隔
+          </div>
           <div>{{ re_deploy_ }}</div>
           <div>{{ cost_ }}</div>
           <div>{{ row.block }}</div>
@@ -99,120 +235,19 @@
         <div class="tags">
           <!-- <div>标签</div> -->
           <div class="tag">
-            <div v-for="(tag, i) in row.tag" :key="i">{{ tag }}</div>
+            <div v-for="(tag, i) in row.tag" :key="i">
+              {{ tag }}
+            </div>
           </div>
         </div>
-        <div class="feature head"><slot></slot></div>
+        <div class="feature head">
+          <slot />
+        </div>
       </div>
     </Transition>
   </div>
 </template>
-<script lang="ts">
-import { defineComponent, ref, computed, PropType } from 'vue'
-import { domain } from '@/utils/utils'
-import { DataSource } from '@/utils/charList'
-import Avatar from '../head/Avatar.vue'
 
-export default defineComponent({
-  name: 'Card',
-  components: { Avatar },
-  props: {
-    row: { type: Object as PropType<DataSource>, required: true },
-    addtrust: Boolean, //是否加算信赖
-    addpotential: Boolean, //是否加算潜能
-  },
-  setup(props) {
-    const collapsed = ref(true)
-    const panel = ref()
-    const hp_ = computed(() => {
-      let result = parseInt(props.row.hp)
-      if (props.addtrust) {
-        result += props.row.trust[0]
-      }
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'hp') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const atk_ = computed(() => {
-      let result = parseInt(props.row.atk)
-      if (props.addtrust) {
-        result += props.row.trust[1]
-      }
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'atk') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const def_ = computed(() => {
-      let result = parseInt(props.row.def)
-      if (props.addtrust) {
-        result += props.row.trust[2]
-      }
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'def') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const res_ = computed(() => {
-      let result = parseInt(props.row.res)
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'res') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const cost_ = computed(() => {
-      let result = parseInt(props.row.cost)
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'cost') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const re_deploy_ = computed(() => {
-      let result = parseInt(props.row.re_deploy.slice(0, -1))
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 're_deploy') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result + 's'
-    })
-    return {
-      collapsed,
-      hp_,
-      atk_,
-      def_,
-      res_,
-      cost_,
-      re_deploy_,
-      domain,
-      panel,
-    }
-  },
-})
-</script>
 <style scoped>
 .card-container {
   width: calc(100% - 18px);

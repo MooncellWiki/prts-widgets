@@ -1,10 +1,10 @@
 import { createApp } from 'vue'
 import 'virtual:windi.css'
-import { Props } from '../widgets/Spine/Spine.vue'
+import type { Props } from '../widgets/Spine/Spine.vue'
 import SpineVue from '../widgets/Spine/Wrapper.vue'
 import { Spine } from '../utils/spine'
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-//@ts-ignore
+// @ts-expect-error
 window.SpineApi = Spine
 window.dispatchEvent(new Event('spine_api_ready'))
 
@@ -17,8 +17,7 @@ spineData.prefix = spineData.prefix.replace(
 )
 
 const ele = document.getElementById('spine-root')
-if (ele && spineData) {
+if (ele && spineData)
   createApp(SpineVue, { ...spineData }).mount(ele)
-} else {
+else
   console.error('SPINEDATA or ele not found', ele)
-}

@@ -34,10 +34,10 @@ async function getLoginToken() {
   return resp?.query?.tokens?.logintoken
 }
 export async function login(name, password) {
-  let token = await getLoginToken()
-  if (!token) {
+  const token = await getLoginToken()
+  if (!token)
     throw new Error('get login token failed')
-  }
+
   const resp = await request({
     method: 'POST',
     body: {
@@ -48,16 +48,15 @@ export async function login(name, password) {
       format: 'json',
     },
   })
-  if (resp?.login?.result?.toLowerCase() !== 'success') {
+  if (resp?.login?.result?.toLowerCase() !== 'success')
     throw new Error(resp)
-  }
 }
 export async function create(
   pagename,
   content,
   summary = 'by prts-micro-frontends cli',
 ) {
-  let token = await getCsrfToken()
+  const token = await getCsrfToken()
   const resp = await request({
     method: 'POST',
     body: {
@@ -78,7 +77,7 @@ export async function edit(
   content,
   summary = 'by prts-micro-frontends cli',
 ) {
-  let token = await getCsrfToken()
+  const token = await getCsrfToken()
   const resp = await request({
     method: 'POST',
     body: {
@@ -100,7 +99,8 @@ export async function checkPageExist(pagename) {
   try {
     await view(pagename)
     return true
-  } catch (err) {
+  }
+  catch (err) {
     console.log(err)
     return false
   }

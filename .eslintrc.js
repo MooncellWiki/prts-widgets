@@ -1,13 +1,15 @@
+// process.env.ESLINT_TSCONFIG = 'tsconfig.json'
+
 module.exports = {
-  extends: ['@webank/eslint-config-ts/vue'],
+  extends: ['@antfu'],
   settings: {
-    'import/core-modules': ['virtual:windi.css'],
-    'import/resolver': {
-      alias: {
-        map: [['@', './src']],
-        extensions: ['.ts', '.js', '.json'],
-      },
-    },
+    // 'import/core-modules': ['virtual:windi.css'],
+    // 'import/resolver': {
+    //   alias: {
+    //     map: [['@', './src']],
+    //     extensions: ['.ts', '.js', '.json'],
+    //   },
+    // },
   },
   globals: {
     // 这里填入你的项目需要的全局变量
@@ -16,17 +18,7 @@ module.exports = {
     // Vue: false
   },
   rules: {
-    'prettier/prettier': [
-      'warn',
-      {
-        semi: false,
-      },
-    ],
-    'vue/object-curly-spacing': 'off',
-    'vue/no-v-model-argument': 'off',
-    'no-undef': 'off', // 这种事交给ts
-    'no-unused-vars': 'off',
-    '@typescript-eslint/no-unused-vars': 'warn',
+    'no-console': 'warn',
   },
   ignorePatterns: ['src/spine/runtime/'],
 }

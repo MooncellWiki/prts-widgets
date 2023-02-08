@@ -30,7 +30,7 @@ export class Spine {
   shapes: spine.webgl.ShapeRenderer
   assetManager: spine.webgl.AssetManager
   lastFrameTime: number
-  bg: [number, number, number, number] = [0, 0, 0, 0] //rgba
+  bg: [number, number, number, number] = [0, 0, 0, 0] // rgba
   activeSkeleton: string | undefined
   debug = false
   position: Position
@@ -70,6 +70,7 @@ export class Spine {
     this.assetManager = new spine.webgl.AssetManager(this.context)
     this.lastFrameTime = 0
   }
+
   async load(
     name: string,
     skelPath: string,
@@ -78,9 +79,9 @@ export class Spine {
     skinName?: string,
     premultipliedAlpha = true,
   ): Promise<Skeleton> {
-    if (this.skeletons[name]) {
+    if (this.skeletons[name])
       return this.skeletons[name]
-    }
+
     await this.fetchAssets(skelPath, atlasPath)
     return this.loadSkel(
       name,
@@ -91,25 +92,27 @@ export class Spine {
       skinName,
     )
   }
+
   private async fetchAssets(skel: string, atlas: string): Promise<string[]> {
     const skelPromise = new Promise<string>((res, rej) => {
       this.assetManager.loadBinary(
         skel,
-        (p) => res(p),
-        (p) => rej(p),
+        p => res(p),
+        p => rej(p),
       )
     })
 
     const atlasPromise = new Promise<string>((res, rej) => {
       this.assetManager.loadTextureAtlas(
         atlas,
-        (p) => res(p),
-        (p) => rej(p),
+        p => res(p),
+        p => rej(p),
       )
     })
 
     return Promise.all([skelPromise, atlasPromise])
   }
+
   private loadSkel(
     name: string,
     skelPath: string,
@@ -124,9 +127,9 @@ export class Spine {
     const skeletonBinary = new spine.SkeletonBinary(atlasLoader)
     const skeletonData = skeletonBinary.readSkeletonData(skel)
     const skeleton = new spine.Skeleton(skeletonData)
-    if (skinName) {
+    if (skinName)
       skeleton.setSkinByName(skinName)
-    }
+
     const bounds = calculateBounds(skeleton)
     const animationStateData = new spine.AnimationStateData(skeleton.data)
     const animationState = new spine.AnimationState(animationStateData)
@@ -145,6 +148,7 @@ export class Spine {
     this.position = position
     return this.skeletons[name]
   }
+
   play(activeSkeleton: string): void {
     if (this.lastFrameTime && activeSkeleton == this.activeSkeleton) {
       console.log('is playing!')
@@ -155,6 +159,7 @@ export class Spine {
     this.activeSkeleton = activeSkeleton
     this.render()
   }
+
   render(): void {
     if (!this.activeSkeleton) {
       this.lastFrameTime = 0
@@ -175,8 +180,8 @@ export class Spine {
     const state = this.skeletons[this.activeSkeleton].state
     const skeleton = this.skeletons[this.activeSkeleton].skeleton
     // const bounds = this.skeletons[this.activeSkeleton].bounds;
-    const premultipliedAlpha =
-      this.skeletons[this.activeSkeleton].premultipliedAlpha
+    const premultipliedAlpha
+      = this.skeletons[this.activeSkeleton].premultipliedAlpha
     state.update(delta)
     state.apply(skeleton)
     skeleton.updateWorldTransform()
@@ -214,18 +219,20 @@ export class Spine {
 
     requestAnimationFrame(this.render.bind(this))
   }
+
   getCurrent(): Skeleton | undefined {
-    if (!this.activeSkeleton) {
+    if (!this.activeSkeleton)
       return void 0
-    }
+
     console.log('getCurrent', this.activeSkeleton)
     return this.skeletons[this.activeSkeleton]
   }
+
   move(x: number, y: number): void {
     console.log(x, y)
-    if (!this.activeSkeleton) {
+    if (!this.activeSkeleton)
       return
-    }
+
     this.position.x = x
     this.position.y = y
     this.mvp.ortho2d(
@@ -235,6 +242,7 @@ export class Spine {
       this.canvas.height / this.position.scale,
     )
   }
+
   scale(scale: number): void {
     this.position = {
       scale,
@@ -248,6 +256,7 @@ export class Spine {
       this.canvas.height / scale,
     )
   }
+
   transform(x: number, y: number, scale: number): void {
     this.position = {
       scale,
@@ -261,10 +270,11 @@ export class Spine {
       this.canvas.height / scale,
     )
   }
+
   async record(ani: string, name: string): Promise<void> {
-    if (!this.activeSkeleton) {
+    if (!this.activeSkeleton)
       throw new Error('activeSkeleton is empty')
-    }
+
     const stream = this.canvas.captureStream(60)
     const chunks: BlobPart[] = []
     const mr = new MediaRecorder(stream, { mimeType: 'video/webm' })
@@ -284,9 +294,9 @@ export class Spine {
       interrupt: noop,
       dispose: noop,
       complete: (_) => {
-        if (!started) {
+        if (!started)
           return
-        }
+
         console.log('end')
         mr.stop()
       },
@@ -312,5 +322,5 @@ function calculateBounds(skeleton: spine.Skeleton) {
   const offset = new spine.Vector2()
   const size = new spine.Vector2()
   skeleton.getBounds(offset, size, [])
-  return { offset: offset, size: size }
+  return { offset, size }
 }

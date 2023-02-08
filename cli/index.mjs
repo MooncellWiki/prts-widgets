@@ -57,6 +57,6 @@ if (ele?.dataset?.item) {
   `,
   )
   console.log(`https://prts.wiki/w/Widget:${name}/dev created`)
-  console.log(`success!`)
+  console.log('success!')
 }
 index()

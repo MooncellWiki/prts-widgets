@@ -2,9 +2,9 @@ import { createApp } from 'vue'
 import 'virtual:windi.css'
 import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue'
 
-//数据表元素（根层级）
+// 数据表元素（根层级）
 const eventDataRoot = document.getElementById('IS-event-data-root')
-//事件场景表元素组
+// 事件场景表元素组
 const eventEles = eventDataRoot?.getElementsByClassName(
   'IS-event-data',
 ) as HTMLCollectionOf<HTMLElement>
@@ -14,7 +14,7 @@ const ISTheme = eventDataRoot?.dataset?.theme
 Array.from(eventEles).forEach((eventEle) => {
   const scenes = (Array.from(eventEle.children) as HTMLElement[]).map(
     (scene) => {
-      const data = scene.dataset!
+      const data = scene.dataset
       return {
         etype: data.etype,
         name: data.name,
@@ -25,7 +25,7 @@ Array.from(eventEles).forEach((eventEle) => {
         options: (
           Array.from(scene.getElementsByClassName('choose')) as HTMLElement[]
         ).map((choose, index) => {
-          const chooseData = choose.dataset!
+          const chooseData = choose.dataset
           return {
             title: chooseData.title,
             type: chooseData.type,
@@ -41,6 +41,6 @@ Array.from(eventEles).forEach((eventEle) => {
   )
   createApp(ISEventFramework, {
     sceneData: scenes,
-    ISTheme: ISTheme,
+    ISTheme,
   }).mount(eventEle)
 })

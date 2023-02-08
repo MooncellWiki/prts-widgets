@@ -1,8 +1,8 @@
 import MD5 from 'md5'
 export const apiEndPoint = 'https://api.prts.wiki'
 export const domain = 'https://prts.wiki'
-export const keyStr =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,'
+export const keyStr
+  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,'
 export const charListData = {
   uh: [
     '6/68/干员图鉴_uh_0.png',
@@ -38,11 +38,10 @@ export const charListData = {
       '9/9e/干员图鉴_lh_4.png',
       'a/a5/干员图鉴_lh_5.png',
     ]
-    if (r < 3) {
+    if (r < 3)
       return _lh[0]
-    } else {
+    else
       return _lh[r - 2]
-    }
   },
   light: [
     'a/a7/干员图鉴_稀有度_亮光_0.png',
@@ -59,11 +58,10 @@ export const charListData = {
       'a/ad/干员图鉴_背景_4.png',
       'c/c9/干员图鉴_背景_5.png',
     ]
-    if (r < 3) {
+    if (r < 3)
       return _bg[0]
-    } else {
+    else
       return _bg[r - 2]
-    }
   },
   patch: '2/20/干员图鉴_补丁.png',
   logo: {
@@ -108,14 +106,13 @@ export function isMobile(): boolean {
     window.navigator.userAgent.match(
       /(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i,
     )
-  ) {
+  )
     return true // 移动端
-  } else {
+  else
     return false // PC端
-  }
 }
 export function isFirefox(): boolean {
-  return window.navigator.userAgent.indexOf('Firefox') !== -1
+  return window.navigator.userAgent.includes('Firefox')
 }
 // export function rgba2str(color:Color){
 //   return `#${color.r.toString(16)}${color.g.toString(16)}${color.b.toString(16)}${color.a.toString(16)}`
@@ -124,6 +121,6 @@ export function downloadBlob(b: Blob, filename: string): void {
   const url = URL.createObjectURL(b)
   const ele = window.document.createElement('a')
   ele.href = url
-  ele.download = filename + '.webm'
+  ele.download = `${filename}.webm`
   ele.click()
 }

@@ -1,25 +1,5 @@
-<template>
-  <div class="paginations-container">
-    <select v-model="step_" name="length">
-      <option value="50">50</option>
-      <option value="100">100</option>
-      <option value="200">200</option>
-    </select>
-    <div>共{{ length }}条</div>
-    <div class="checkbox-container">
-      <CheckBox
-        v-for="k in checkboxCount"
-        :key="k"
-        v-model:states="values"
-        :text="k.toString()"
-        :onlyOne="true"
-        :atleastOne="true"
-      ></CheckBox>
-    </div>
-  </div>
-</template>
 <script lang="ts">
-import { defineComponent, ref, computed, watch, watchEffect } from 'vue'
+import { computed, defineComponent, ref, watch } from 'vue'
 import CheckBox from './CheckBox.vue'
 export default defineComponent({
   name: 'Pagination',
@@ -55,9 +35,8 @@ export default defineComponent({
     watch(
       () => checkboxCount.value,
       (newVal) => {
-        if (newVal != 0 && newVal < parseInt(values.value[0])) {
+        if (newVal !== 0 && newVal < parseInt(values.value[0]))
           values.value[0] = newVal.toString()
-        }
       },
     )
 
@@ -69,6 +48,34 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <div class="paginations-container">
+    <select v-model="step_" name="length">
+      <option value="50">
+        50
+      </option>
+      <option value="100">
+        100
+      </option>
+      <option value="200">
+        200
+      </option>
+    </select>
+    <div>共{{ length }}条</div>
+    <div class="checkbox-container">
+      <CheckBox
+        v-for="k in checkboxCount"
+        :key="k"
+        v-model:states="values"
+        :text="k.toString()"
+        :only-one="true"
+        :atleast-one="true"
+      />
+    </div>
+  </div>
+</template>
+
 <style scoped>
 .paginations-container {
   width: 100%;

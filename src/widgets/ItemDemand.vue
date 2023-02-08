@@ -1,55 +1,8 @@
-<template>
-  <n-config-provider
-    preflight-style-disabled
-    :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
-    :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
-  >
-    <!-- <div class="max-w-700px box-border">
-    <Cost ></Cost>
-  </div> -->
-    <NButton v-if="state === Status.fail" @click="load">
-      加载失败 点击重试
-    </NButton>
-    <div
-      v-else-if="state === Status.succ && data"
-      class="max-w-700px"
-      content-style="padding: 0;"
-    >
-      <div>
-        <div>精英化：{{ data.total.elite }}</div>
-        <div>技能1→7：{{ data.total.skill }}</div>
-        <div>技能专精：{{ data.total.mastery }}</div>
-        <div>模组：{{ data.total.uniequip }}</div>
-        <div class="font-bold">总计：{{ data.total.total }}</div>
-      </div>
-      <NTabs :tabs-padding="20" size="large">
-        <NTabPane
-          v-for="cost in data.costs"
-          :key="cost.label"
-          :name="cost.label"
-          class="grid grid-cols-5 <sm:grid-cols-3"
-        >
-          <Cost
-            v-for="item in cost.data"
-            :key="item.name"
-            :rarity="item.rarity"
-            :name="item.name"
-            :profession="item.profession"
-            :elite="item.elite"
-            :skill="item.skill"
-            :mastery="item.mastery"
-            :uniequip="item.uniequip"
-          ></Cost>
-        </NTabPane>
-      </NTabs>
-    </div>
-    <NSkeleton v-else></NSkeleton>
-  </n-config-provider>
-</template>
 <script lang="ts">
 import { defineComponent, onMounted, ref } from 'vue'
-import { NTabs, NTabPane, NButton, NSkeleton, NConfigProvider } from 'naive-ui'
-import CostVue, { costProps } from '../components/Cost.vue'
+import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from 'naive-ui'
+import type { costProps } from '../components/Cost.vue'
+import CostVue from '../components/Cost.vue'
 import { apiEndPoint } from '../utils/utils'
 interface cost {
   label: string
@@ -105,7 +58,7 @@ async function query(name: string): Promise<itemCost> {
   total.total = total.elite + total.skill + total.mastery + total.uniequip
   console.log(total)
   return {
-    costs: costs.filter((v) => v).reverse(), // 让六星排到前面
+    costs: costs.filter(v => v).reverse(), // 让六星排到前面
     total,
   }
 }
@@ -130,7 +83,8 @@ export default defineComponent({
         const cost = await query(props.item!)
         data.value = cost
         state.value = Status.succ
-      } catch (err) {
+      }
+      catch (err) {
         console.warn(err)
         state.value = Status.fail
       }
@@ -151,3 +105,54 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <NConfigProvider
+    preflight-style-disabled
+    :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
+    :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
+  >
+    <!-- <div class="max-w-700px box-border">
+    <Cost ></Cost>
+  </div> -->
+    <NButton v-if="state === Status.fail" @click="load">
+      加载失败 点击重试
+    </NButton>
+    <div
+      v-else-if="state === Status.succ && data"
+      class="max-w-700px"
+      content-style="padding: 0;"
+    >
+      <div>
+        <div>精英化：{{ data.total.elite }}</div>
+        <div>技能1→7：{{ data.total.skill }}</div>
+        <div>技能专精：{{ data.total.mastery }}</div>
+        <div>模组：{{ data.total.uniequip }}</div>
+        <div class="font-bold">
+          总计：{{ data.total.total }}
+        </div>
+      </div>
+      <NTabs :tabs-padding="20" size="large">
+        <NTabPane
+          v-for="cost in data.costs"
+          :key="cost.label"
+          :name="cost.label"
+          class="grid grid-cols-5 <sm:grid-cols-3"
+        >
+          <Cost
+            v-for="item in cost.data"
+            :key="item.name"
+            :rarity="item.rarity"
+            :name="item.name"
+            :profession="item.profession"
+            :elite="item.elite"
+            :skill="item.skill"
+            :mastery="item.mastery"
+            :uniequip="item.uniequip"
+          />
+        </NTabPane>
+      </NTabs>
+    </div>
+    <NSkeleton v-else />
+  </NConfigProvider>
+</template>

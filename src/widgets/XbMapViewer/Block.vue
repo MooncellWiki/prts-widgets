@@ -1,14 +1,3 @@
-<template>
-  <div
-    ref="self"
-    :class="`block ${tile} ${token ? 'token' : ''} ${black}`"
-    :style="style"
-  >
-    <span v-if="classMap[tile!] || classMap[token!]">
-      <i :class="classMap[tile!] || classMap[token!]"></i>
-    </span>
-  </div>
-</template>
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue'
 import { getImagePath } from '@/utils/utils'
@@ -19,7 +8,7 @@ const classMap: Record<string, string> = {
   corrosion_2: 'fas fa-angle-double-down',
   telin: 'fas fa-indent',
   telout: 'fas fa-outdent',
-  //token
+  // token
   gtreasure: 'fas fa-crown',
   ballis: 'fas fa-exclamation',
   streasure: 'fas fa-crown',
@@ -45,7 +34,7 @@ const TipMap: Record<string, string> = {
   volcano: '<b>热泵通道</b><br>每隔一段时间便会对其上的我军和敌军造成大量伤害',
   volspread:
     '<b>岩浆喷射处</b><br>每隔一定时间会喷出岩浆，对周围8格内的我方单位造成大量伤害且融化障碍物',
-  //tokens
+  // tokens
   xbwood: '<b>杂木林</b><br>可开采<木材>',
   xboverwatch: '<b>监控塔</b><br>可以侦查范围内的视野',
   vegetation: '<b>灌木丛</b><br>击破后可以获得一些素材',
@@ -74,7 +63,7 @@ const bgMap: Record<string, string> = {
   healing: '特殊地形_医疗符文.png',
   volcano: '特殊地形_热泵通道.png',
   volspread: '特殊地形_岩浆喷射处.png',
-  //tokens,
+  // tokens,
   xbwood: '生息演算_资源_木材.png',
   xboverwatch: '头像_装置_监控塔.png',
   vegetation: '生息演算_资源_其他掉落物品.png',
@@ -97,29 +86,29 @@ export default defineComponent({
     }
     const style = computed(() => {
       let result = ''
-      if (bgMap[props.tile!]) {
+      if (bgMap[props.tile!])
         result += ` ${bg(bgMap[props.tile!])}`
-      }
-      if (props.token && bgMap[props.token]) {
+
+      if (props.token && bgMap[props.token])
         result += ` ${bg(bgMap[props.token])}`
-      }
-      if (props.tile == 'grass' && props.tileHeightType == 1) {
-        result +=
-          'box-shadow: 5px 5px 8px black; filter: brightness(1.15); z-index: 2'
+
+      if (props.tile === 'grass' && props.tileHeightType === 1) {
+        result
+          += 'box-shadow: 5px 5px 8px black; filter: brightness(1.15); z-index: 2'
       }
       return result
     })
     onMounted(() => {
       console.log(props.token)
       let content = ''
-      if (props.tile && TipMap[props.tile]) {
+      if (props.tile && TipMap[props.tile])
         content += TipMap[props.tile]
-      }
-      if (props.token && TipMap[props.token]) {
+
+      if (props.token && TipMap[props.token])
         content += TipMap[props.token]
-      }
+
       if (content.length) {
-        //@ts-expect-error tippy
+        // @ts-expect-error tippy
         tippy6(self.value, {
           allowHTML: true,
           content,
@@ -133,6 +122,19 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <div
+    ref="self"
+    :class="`block ${tile} ${token ? 'token' : ''} ${black}`"
+    :style="style"
+  >
+    <span v-if="classMap[tile!] || classMap[token!]">
+      <i :class="classMap[tile!] || classMap[token!]" />
+    </span>
+  </div>
+</template>
+
 <style scoped>
 .block {
   display: inline-block;

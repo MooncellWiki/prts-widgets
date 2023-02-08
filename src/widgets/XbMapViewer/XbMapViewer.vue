@@ -1,19 +1,6 @@
-<template>
-  <div id="map" ref="self" class="w-1/2">
-    <div v-for="(row, i) in mapData.map" :key="i" class="row">
-      <Block
-        v-for="(board, n) in row"
-        :key="n"
-        :tile="getTile(board)"
-        :tileHeightType="mapData.tiles[board].height"
-        :token="getToken(mapData.height - 1 - i, n)"
-        :black="black[`${mapData.height - 1 - i}-${n}`]"
-      ></Block>
-    </div>
-  </div>
-</template>
 <script lang="ts">
-import { computed, defineComponent, onMounted, PropType, ref } from 'vue'
+import type { PropType } from 'vue'
+import { computed, defineComponent, onMounted, ref } from 'vue'
 import Block from './Block.vue'
 export default defineComponent({
   components: { Block },
@@ -28,8 +15,8 @@ export default defineComponent({
     const tokens = computed(() => {
       const result: Record<string, string> = {}
       props.data?.predefines.tokenInsts.forEach((token: any) => {
-        let pos = token.position
-        result[pos.row + '-' + pos.col] = token.inst.characterKey.replace(
+        const pos = token.position
+        result[`${pos.row}-${pos.col}`] = token.inst.characterKey.replace(
           /trap_[0-9]+_/g,
           '',
         )
@@ -40,16 +27,16 @@ export default defineComponent({
       const result: Record<string, string> = {}
       props.data?.options.configBlackBoard.forEach((block: any) => {
         const val = block.valueStr
-        if (val === null) {
+        if (val === null)
           return
-        }
-        let pos = val.replace(/\(|\)/g, '').split(',')
-        if (pos.length == 4) {
+
+        const pos = val.replace(/\(|\)/g, '').split(',')
+        if (pos.length === 4) {
           // let list = []
           for (let y = parseInt(pos[0]); y <= parseInt(pos[2]); y++) {
             for (let x = parseInt(pos[1]); x <= parseInt(pos[3]); x++) {
               // list.push([y, x])
-              result[y + '-' + x] = 'rect'
+              result[`${y}-${x}`] = 'rect'
             }
           }
         }
@@ -65,9 +52,9 @@ export default defineComponent({
     const self = ref<HTMLElement>()
     const fontsize = ref('')
     onMounted(() => {
-      if (!self.value || !props.data) {
+      if (!self.value || !props.data)
         return
-      }
+
       fontsize.value = `${
         (self.value.clientHeight / props.data.mapData.width / 4) * 3
       }px`
@@ -85,6 +72,22 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <div id="map" ref="self" class="w-1/2">
+    <div v-for="(row, i) in mapData.map" :key="i" class="row">
+      <Block
+        v-for="(board, n) in row"
+        :key="n"
+        :tile="getTile(board)"
+        :tile-height-type="mapData.tiles[board].height"
+        :token="getToken(mapData.height - 1 - i, n)"
+        :black="black[`${mapData.height - 1 - i}-${n}`]"
+      />
+    </div>
+  </div>
+</template>
+
 <style scoped>
 .row {
   display: grid;

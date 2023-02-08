@@ -1,45 +1,6 @@
-<template>
-  <div class="half-container">
-    <a :href="`${domain}/w/${zh}`">
-      <div class="uh">
-        <img :src="`${domain}/images/${charListData.uh[rarity]}`" />
-      </div>
-      <div class="uhs">
-        <img :src="`${domain}/images/${charListData.uhs}`" width="70px" />
-      </div>
-      <div class="class_">
-        <img :src="`${domain}/images/${charListData.class_[class_]}`" />
-      </div>
-      <div class="rarity">
-        <img :src="`${domain}/images/${charListData.rarity[rarity]}`" />
-      </div>
-      <div class="lh">
-        <img :src="`${domain}/images/${charListData.lh(rarity)}`" />
-      </div>
-      <div class="light">
-        <img :src="`${domain}/images/${charListData.light[rarity]}`" />
-      </div>
-      <div class="bg">
-        <img :src="`${domain}/images/${charListData.bg(rarity)}`" />
-      </div>
-      <div class="operator">
-        <img
-          class="lazyload"
-          :data-src="`${domain}/images/${getImagePath(`半身像_${zh}_1.png`)}`"
-        />
-      </div>
-      <div class="patch"></div>
-      <div class="logo">
-        <img :src="`${domain}/images/${charListData.logo[logo]}`" />
-      </div>
-      <div class="zh">{{ zh }}</div>
-      <div class="en">{{ en }}</div>
-    </a>
-  </div>
-</template>
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { domain, charListData, getImagePath } from '@/utils/utils'
+import { charListData, domain, getImagePath } from '@/utils/utils'
 
 export default defineComponent({
   name: 'Half',
@@ -55,6 +16,47 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <div class="half-container">
+    <a :href="`${domain}/w/${zh}`">
+      <div class="uh">
+        <img :src="`${domain}/images/${charListData.uh[rarity]}`">
+      </div>
+      <div class="uhs">
+        <img :src="`${domain}/images/${charListData.uhs}`" width="70px">
+      </div>
+      <div class="class_">
+        <img :src="`${domain}/images/${charListData.class_[class_]}`">
+      </div>
+      <div class="rarity">
+        <img :src="`${domain}/images/${charListData.rarity[rarity]}`">
+      </div>
+      <div class="lh">
+        <img :src="`${domain}/images/${charListData.lh(rarity)}`">
+      </div>
+      <div class="light">
+        <img :src="`${domain}/images/${charListData.light[rarity]}`">
+      </div>
+      <div class="bg">
+        <img :src="`${domain}/images/${charListData.bg(rarity)}`">
+      </div>
+      <div class="operator">
+        <img
+          class="lazyload"
+          :data-src="`${domain}/images/${getImagePath(`半身像_${zh}_1.png`)}`"
+        >
+      </div>
+      <div class="patch" />
+      <div class="logo">
+        <img :src="`${domain}/images/${charListData.logo[logo]}`">
+      </div>
+      <div class="zh">{{ zh }}</div>
+      <div class="en">{{ en }}</div>
+    </a>
+  </div>
+</template>
+
 <style scoped>
 .half-container {
   position: relative;
