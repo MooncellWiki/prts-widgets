@@ -49,6 +49,9 @@ export default defineConfig({
             return 'vendor'
           }
         },
+        chunkFileNames: '[name].[hash].js',
+        entryFileNames: '[name].[hash].js',
+        assetFileNames: '[name].[hash].[ext]',
       },
       plugins: [
         {
