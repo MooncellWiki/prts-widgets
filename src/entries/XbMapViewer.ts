@@ -7,7 +7,7 @@ const data = document.getElementById('MAPDATA')
 if (ele && data) {
   createApp(XbMapViewer, {
     data() {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+       
       return JSON.parse(data?.innerText)
     },
   }).mount(ele)
