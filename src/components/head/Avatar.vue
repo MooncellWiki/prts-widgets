@@ -1,22 +1,6 @@
-<template>
-  <div class="avatar-container">
-    <a :href="`/w/${zh}`">
-      <img
-        class="avatar lazyload"
-        :data-src="`${domain}/images/${getImagePath(`头像_${zh}.png`)}`"
-      />
-      <div class="rarity">
-        <img :src="`${domain}/images/${charListData.rarity[rarity]}`" />
-      </div>
-      <div class="class_">
-        <img :src="`${domain}/images/${charListData.class_[class_]}`" />
-      </div>
-    </a>
-  </div>
-</template>
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { getImagePath, domain, charListData } from '@/utils/utils'
+import { charListData, domain, getImagePath } from '@/utils/utils'
 
 export default defineComponent({
   name: 'Avatar',
@@ -34,6 +18,24 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <div class="avatar-container">
+    <a :href="`/w/${zh}`">
+      <img
+        class="avatar lazyload"
+        :data-src="`${domain}/images/${getImagePath(`头像_${zh}.png`)}`"
+      >
+      <div class="rarity">
+        <img :src="`${domain}/images/${charListData.rarity[rarity]}`">
+      </div>
+      <div class="class_">
+        <img :src="`${domain}/images/${charListData.class_[class_]}`">
+      </div>
+    </a>
+  </div>
+</template>
+
 <style scoped>
 .avatar-container {
   position: relative;

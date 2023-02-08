@@ -1,29 +1,3 @@
-<template>
-  <div class="container">
-    <img
-      class="md:w-10 <sm:w-7 cursor-pointer"
-      :title="playing ? '暂停' : '播放'"
-      :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
-      @click="
-        () => {
-          playing ? pause() : play()
-        }
-      "
-    />
-    <a
-      v-if="!isSimplified && voicePath"
-      :href="`//static.prts.wiki/${voicePath}?filename=${fileName}.wav`"
-      :download="`${fileName}.wav`"
-    >
-      <img
-        class="md:w-10 <sm:w-7 cursor-pointer lazyload"
-        title="下载"
-        data-src="/images/f/f1/Download.png"
-      />
-    </a>
-  </div>
-</template>
-
 <script lang="ts">
 import {
   computed,
@@ -34,8 +8,8 @@ import {
   watch,
 } from 'vue'
 
-const isSimplified =
-  decodeURIComponent(window.location.href).indexOf('/语音') === -1
+const isSimplified
+  = !decodeURIComponent(window.location.href).includes('/语音')
 
 export default defineComponent({
   props: {
@@ -59,7 +33,7 @@ export default defineComponent({
       audioElem.src = source.value
       emit('update:playKey', key)
 
-      var playPromise = audioElem?.play()
+      const playPromise = audioElem?.play()
       if (playPromise) {
         playPromise.catch(() => {
           playing.value = false
@@ -81,9 +55,8 @@ export default defineComponent({
     watch(
       () => props.playKey,
       (newVal) => {
-        if (newVal != key) {
+        if (newVal !== key)
           playing.value = false
-        }
       },
     )
 
@@ -99,3 +72,29 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <div class="container">
+    <img
+      class="md:w-10 <sm:w-7 cursor-pointer"
+      :title="playing ? '暂停' : '播放'"
+      :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
+      @click="
+        () => {
+          playing ? pause() : play()
+        }
+      "
+    >
+    <a
+      v-if="!isSimplified && voicePath"
+      :href="`//static.prts.wiki/${voicePath}?filename=${fileName}.wav`"
+      :download="`${fileName}.wav`"
+    >
+      <img
+        class="md:w-10 <sm:w-7 cursor-pointer lazyload"
+        title="下载"
+        data-src="/images/f/f1/Download.png"
+      >
+    </a>
+  </div>
+</template>

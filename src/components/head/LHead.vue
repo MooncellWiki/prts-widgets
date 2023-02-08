@@ -1,3 +1,11 @@
+<script lang="ts">
+import { defineComponent } from 'vue'
+
+export default defineComponent({
+  name: 'LHead',
+})
+</script>
+
 <template>
   <div id="lhead">
     <div id="avatar">头像</div>
@@ -29,13 +37,7 @@
     <div id="feature">特性</div>
   </div>
 </template>
-<script lang="ts">
-import { defineComponent } from 'vue'
 
-export default defineComponent({
-  name: 'LHead',
-})
-</script>
 <style scoped>
 #lhead {
   flex-wrap: nowrap;

@@ -14,10 +14,11 @@ const shortLinkMap = JSON.parse(
 ).map
 
 const getLast = (str: string) => {
-  if (str.indexOf('→') !== -1) {
+  if (str.includes('→')) {
     const arr = str.split('→')
     return arr[arr.length - 1]
-  } else {
+  }
+  else {
     return str
   }
 }
@@ -35,11 +36,10 @@ const source = Array.prototype.map.call(
     temp.block = getLast(temp.block as string)
     temp.feature = v.innerHTML
     temp.trust = (temp.trust as string).split(',').map((v: string) => {
-      if (v.length !== 0) {
+      if (v.length !== 0)
         return parseInt(v)
-      } else {
+      else
         return 0
-      }
     })
     temp.potential = (temp.potential as string)
       .split('`')

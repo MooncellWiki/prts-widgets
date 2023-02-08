@@ -1,31 +1,3 @@
-<template>
-  <div
-    class="filter-row-container"
-    :class="{ disabled: states?.length === 0, long: both }"
-  >
-    <div class="title">{{ title }}</div>
-    <div class="btns">
-      <button class="btn" @click="addAll">全选</button>
-      <button class="btn" @click="removeAll">清除</button>
-      <CheckBox
-        v-if="both"
-        :key="'both'"
-        v-model:states="selectedLabels"
-        :text="'同时满足'"
-      ></CheckBox>
-    </div>
-    <div class="checkboxs">
-      <CheckBox
-        v-for="label in labels"
-        :key="label"
-        v-model:states="selectedLabels"
-        :text="label"
-        :noWidth="noWidth"
-      ></CheckBox>
-    </div>
-  </div>
-</template>
-
 <script lang="ts">
 import { defineComponent, ref, watch } from 'vue'
 import CheckBox from './CheckBox.vue'
@@ -42,6 +14,7 @@ export default defineComponent({
     noWidth: Boolean,
     states: { type: Array<string>, required: true },
   },
+  emits: ['update:states'],
   setup(props, { emit }) {
     const selectedLabels = ref(props.states)
     watch(
@@ -67,6 +40,40 @@ export default defineComponent({
   },
 })
 </script>
+
+<template>
+  <div
+    class="filter-row-container"
+    :class="{ disabled: states?.length === 0, long: both }"
+  >
+    <div class="title">
+      {{ title }}
+    </div>
+    <div class="btns">
+      <button class="btn" @click="addAll">
+        全选
+      </button>
+      <button class="btn" @click="removeAll">
+        清除
+      </button>
+      <CheckBox
+        v-if="both"
+        key="both"
+        v-model:states="selectedLabels"
+        text="同时满足"
+      />
+    </div>
+    <div class="checkboxs">
+      <CheckBox
+        v-for="label in labels"
+        :key="label"
+        v-model:states="selectedLabels"
+        :text="label"
+        :no-width="noWidth"
+      />
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .filter-row-container {

@@ -1,12 +1,111 @@
-<!--元素宽度大于900时-->
+<!-- 元素宽度大于900时 -->
+<script lang="ts">
+import type { PropType } from 'vue'
+import { computed, defineComponent } from 'vue'
+import Avatar from '../head/Avatar.vue'
+import { domain } from '@/utils/utils'
+import type { DataSource } from '@/utils/charList'
+
+export default defineComponent({
+  name: 'Long',
+  components: { Avatar },
+  props: {
+    row: { type: Object as PropType<DataSource>, required: true },
+    addtrust: Boolean, // 是否加算信赖
+    addpotential: Boolean, // 是否加算潜能
+  },
+  setup(props) {
+    const hp_ = computed(() => {
+      let result = parseInt(props.row.hp)
+      if (props.addtrust)
+        result += props.row.trust[0]
+
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'hp')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const atk_ = computed(() => {
+      let result = parseInt(props.row.atk)
+      if (props.addtrust)
+        result += props.row.trust[1]
+
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'atk')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const def_ = computed(() => {
+      let result = parseInt(props.row.def)
+      if (props.addtrust)
+        result += props.row.trust[2]
+
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'def')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const res_ = computed(() => {
+      let result = parseInt(props.row.res)
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'res')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const cost_ = computed(() => {
+      let result = parseInt(props.row.cost)
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 'cost')
+            result += props.row.potential[1][i]
+        })
+      }
+      return result
+    })
+    const re_deploy_ = computed(() => {
+      let result = parseInt(props.row.re_deploy.slice(0, -1))
+      if (props.addpotential) {
+        props.row.potential[0].forEach((v, i) => {
+          if (v === 're_deploy')
+            result += props.row.potential[1][i]
+        })
+      }
+      return `${result}s`
+    })
+
+    return {
+      hp_,
+      atk_,
+      def_,
+      res_,
+      cost_,
+      re_deploy_,
+      domain,
+    }
+  },
+})
+</script>
+
 <template>
   <div class="long-container">
     <div class="avatar">
-      <avatar
+      <Avatar
         :rarity="parseInt(row.rarity)"
         :class_="row.class_"
         :zh="row.zh"
-      ></avatar>
+      />
     </div>
     <div class="name">
       <div>
@@ -27,135 +126,57 @@
       </div>
     </div>
     <div class="data1">
-      <div class="hp">{{ hp_ }}</div>
-      <div class="atk">{{ atk_ }}</div>
-      <div class="def">{{ def_ }}</div>
-      <div class="res">{{ res_ }}</div>
+      <div class="hp">
+        {{ hp_ }}
+      </div>
+      <div class="atk">
+        {{ atk_ }}
+      </div>
+      <div class="def">
+        {{ def_ }}
+      </div>
+      <div class="res">
+        {{ res_ }}
+      </div>
     </div>
     <div class="data2">
-      <div class="re_deploy">{{ re_deploy_ }}</div>
-      <div class="cost">{{ cost_ }}</div>
-      <div class="block">{{ row.block }}</div>
-      <div class="interval">{{ row.interval }}</div>
+      <div class="re_deploy">
+        {{ re_deploy_ }}
+      </div>
+      <div class="cost">
+        {{ cost_ }}
+      </div>
+      <div class="block">
+        {{ row.block }}
+      </div>
+      <div class="interval">
+        {{ row.interval }}
+      </div>
     </div>
     <div class="other">
-      <div class="sex">{{ row.sex }}</div>
-      <div class="position">{{ row.position }}</div>
+      <div class="sex">
+        {{ row.sex }}
+      </div>
+      <div class="position">
+        {{ row.position }}
+      </div>
     </div>
     <div class="obtain">
-      <div v-for="(obtain, i) in row.obtain_method" :key="i">{{ obtain }}</div>
+      <div v-for="(obtain, i) in row.obtain_method" :key="i">
+        {{ obtain }}
+      </div>
     </div>
     <div class="tag">
-      <div v-for="(tag, i) in row.tag" :key="i">{{ tag }}</div>
+      <div v-for="(tag, i) in row.tag" :key="i">
+        {{ tag }}
+      </div>
     </div>
     <div class="feature">
-      <div><slot></slot></div>
+      <div><slot /></div>
     </div>
   </div>
 </template>
-<script lang="ts">
-import { defineComponent, computed, PropType } from 'vue'
-import { domain } from '@/utils/utils'
-import { DataSource } from '@/utils/charList'
-import Avatar from '../head/Avatar.vue'
 
-export default defineComponent({
-  name: 'Long',
-  components: { Avatar },
-  props: {
-    row: { type: Object as PropType<DataSource>, required: true },
-    addtrust: Boolean, //是否加算信赖
-    addpotential: Boolean, //是否加算潜能
-  },
-  setup(props) {
-    const hp_ = computed(() => {
-      let result = parseInt(props.row.hp)
-      if (props.addtrust) {
-        result += props.row.trust[0]
-      }
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'hp') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const atk_ = computed(() => {
-      let result = parseInt(props.row.atk)
-      if (props.addtrust) {
-        result += props.row.trust[1]
-      }
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'atk') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const def_ = computed(() => {
-      let result = parseInt(props.row.def)
-      if (props.addtrust) {
-        result += props.row.trust[2]
-      }
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'def') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const res_ = computed(() => {
-      let result = parseInt(props.row.res)
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'res') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const cost_ = computed(() => {
-      let result = parseInt(props.row.cost)
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 'cost') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result
-    })
-    const re_deploy_ = computed(() => {
-      let result = parseInt(props.row.re_deploy.slice(0, -1))
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v == 're_deploy') {
-            result += props.row.potential[1][i]
-          }
-        })
-      }
-      return result + 's'
-    })
-
-    return {
-      hp_,
-      atk_,
-      def_,
-      res_,
-      cost_,
-      re_deploy_,
-      domain,
-    }
-  },
-})
-</script>
 <style scoped>
 .long-container {
   width: 100%;

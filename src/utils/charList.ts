@@ -1,4 +1,4 @@
-export type DataSource = {
+export interface DataSource {
   adapt: string
   atk: string
   birth_place: string

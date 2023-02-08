@@ -1,17 +1,5 @@
-<template>
-  <div
-    :class="{
-      selected: selected,
-      nowidth: noWidth,
-    }"
-    class="checkbox-container"
-    @click="onClick"
-  >
-    {{ text }}
-  </div>
-</template>
 <script lang="ts">
-import { defineComponent, ref, computed } from 'vue'
+import { computed, defineComponent, ref } from 'vue'
 export default defineComponent({
   name: 'CheckBox',
   props: {
@@ -23,12 +11,11 @@ export default defineComponent({
   },
   setup(props, { emit }) {
     const onClick = function () {
-      let states = ref(props.states)
+      const states = ref(props.states)
       const i: number = props.states?.indexOf(props.text)
 
-      if (props.atLeastOne && i !== -1) {
+      if (props.atLeastOne && i !== -1)
         return
-      }
 
       if (props.onlyOne) {
         states.value = [props.text]
@@ -36,25 +23,38 @@ export default defineComponent({
         return
       }
 
-      if (i !== -1) {
+      if (i !== -1)
         states.value.splice(i, 1)
-      } else {
+      else
         states.value.push(props.text)
-      }
+
       emit('update:states', states.value)
     }
 
     const selected = computed(() => {
-      if (props.states) {
-        return props.states.indexOf(props.text) !== -1
-      } else {
+      if (props.states)
+        return props.states.includes(props.text)
+      else
         return false
-      }
     })
     return { selected, onClick }
   },
 })
 </script>
+
+<template>
+  <div
+    :class="{
+      selected,
+      nowidth: noWidth,
+    }"
+    class="checkbox-container"
+    @click="onClick"
+  >
+    {{ text }}
+  </div>
+</template>
+
 <style scoped>
 .checkbox-container {
   width: 70px;

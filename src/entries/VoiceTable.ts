@@ -11,15 +11,15 @@ const dataEle = dataRoot?.getElementsByClassName(
 ) as HTMLCollectionOf<HTMLElement>
 
 const langSet = new Set<string>()
-const voiceBase =
-  dataRoot?.dataset?.voiceBase?.split(',').map((kvp) => {
+const voiceBase
+  = dataRoot?.dataset?.voiceBase?.split(',').map((kvp) => {
     const [lang, path] = kvp.split(':')
     return {
       lang,
       path,
     }
   }) || []
-const voiceData = Array.from(dataEle).map((ele) => ({
+const voiceData = Array.from(dataEle).map(ele => ({
   title: ele?.dataset?.title,
   index: ele?.dataset?.voiceIndex,
   voiceFilename: ele?.dataset?.voiceFilename,
@@ -27,7 +27,7 @@ const voiceData = Array.from(dataEle).map((ele) => ({
   detail: Array.from(ele.children).reduce<{
     [index: string]: string
   }>((acc, curr) => {
-    if ((curr as HTMLElement).dataset?.kindName !== void 0) {
+    if ((curr as HTMLElement).dataset?.kindName !== undefined) {
       acc[(curr as HTMLElement).dataset.kindName || ''] = curr.innerHTML
       langSet.add((curr as HTMLElement).dataset.kindName || '')
     }
@@ -37,35 +37,37 @@ const voiceData = Array.from(dataEle).map((ele) => ({
 const langArr = Array.from(langSet)
 // 挂到window上面给上面的charInfo用
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore;
+// @ts-expect-error;
 window.charVoice = voiceData
 console.log(dataRoot, voiceData, voiceBase, langSet)
 const isMobile = !!document
   .getElementsByTagName('body')[0]
   .classList.contains('skin-minerva')
 if (
-  ele &&
-  dataRoot?.dataset?.tocTitle &&
-  dataRoot?.dataset?.voiceKey &&
-  voiceData
+  ele
+  && dataRoot?.dataset?.tocTitle
+  && dataRoot?.dataset?.voiceKey
+  && voiceData
 ) {
   if (isMobile) {
     createApp(VoiceMobile, {
       tocTitle: dataRoot?.dataset?.tocTitle,
       voiceKey: dataRoot?.dataset?.voiceKey,
-      voiceData: voiceData,
-      langArr: langArr,
-      voiceBase: voiceBase,
+      voiceData,
+      langArr,
+      voiceBase,
     }).mount(ele)
-  } else {
+  }
+  else {
     createApp(Voice, {
       tocTitle: dataRoot?.dataset?.tocTitle,
       voiceKey: dataRoot?.dataset?.voiceKey,
-      voiceData: voiceData,
-      langArr: langArr,
-      voiceBase: voiceBase,
+      voiceData,
+      langArr,
+      voiceBase,
     }).mount(ele)
   }
-} else {
+}
+else {
   console.error('voice-data or ele not found', ele)
 }

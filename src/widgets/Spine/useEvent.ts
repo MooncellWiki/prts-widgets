@@ -1,13 +1,14 @@
-import hammer from 'hammerjs'
-import { onMounted, onUnmounted, ref, Ref } from 'vue'
-import { Spine } from '../../utils/spine'
+import Hammer from 'hammerjs'
+import type { Ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
+import type { Spine } from '../../utils/spine'
 import { isFirefox } from '../../utils/utils'
 export function useEvent(
   canvas: Ref<HTMLCanvasElement | undefined>,
   spine: { spine?: Spine },
 ): {
-  big: Ref<boolean>
-} {
+    big: Ref<boolean>
+  } {
   const big = ref(false)
   const startPosition = ref<{ x: number; y: number }>()
   const getPosition = () => {
@@ -16,30 +17,30 @@ export function useEvent(
   const wheelHandler = (e: WheelEvent) => {
     e.preventDefault()
     const widget = canvas.value
-    if (!widget) {
+    if (!widget)
       return
-    }
+
     const delta = isFirefox() ? e.deltaY / -480 : e.deltaY * -0.001
-    if (!spine.spine) {
+    if (!spine.spine)
       return
-    }
+
     const { scale } = getPosition()
-    if (scale + delta <= 0) {
+    if (scale + delta <= 0)
       return
-    }
+
     spine.spine?.scale(scale + delta)
   }
   let hm: HammerManager
   onMounted(() => {
-    if (!canvas.value) {
+    if (!canvas.value)
       return
-    }
-    hm = new hammer(canvas.value)
+
+    hm = new Hammer(canvas.value)
     hm.get('pinch').set({ enable: true })
     hm.on('panstart', () => {
-      if (!spine.spine) {
+      if (!spine.spine)
         return
-      }
+
       const { x, y } = getPosition()
       startPosition.value = {
         x,
@@ -47,9 +48,9 @@ export function useEvent(
       }
     })
     hm.on('panmove', (e) => {
-      if (!spine.spine) {
+      if (!spine.spine)
         return
-      }
+
       const { scale } = getPosition()
       const { x, y } = startPosition.value!
       // console.log(e.deltaX, e.deltaY);
@@ -57,7 +58,7 @@ export function useEvent(
       spine.spine.move(x - e.deltaX * ratio, y + e.deltaY * ratio)
     })
     hm.on('panend', () => {
-      startPosition.value = void 0
+      startPosition.value = undefined
     })
     canvas.value.addEventListener('wheel', wheelHandler)
   })

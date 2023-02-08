@@ -1,5 +1,5 @@
 import fs from 'fs'
-import { join, dirname } from 'path'
+import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { edit, login } from './api.mjs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -29,10 +29,10 @@ async function main() {
   const username = process.argv[2]
   const password = process.argv[3]
   await login(username, password)
-  let tmpls = fs.readdirSync(join(__dirname, '../templates/'))
+  const tmpls = fs.readdirSync(join(__dirname, '../templates/'))
   await Promise.allSettled(
     tmpls.map((tmpl) => {
-      let name = tmpl.replace('.html', '')
+      const name = tmpl.replace('.html', '')
       let content = fs.readFileSync(join(__dirname, '../templates/', tmpl), {
         encoding: 'utf8',
       })
@@ -49,7 +49,7 @@ async function main() {
           '__SCRIPT_PATH__',
           `https://static.prts.wiki/widgets/release/${dist[name].fileName}`,
         )
-      edit(`Widget:${name}`, content)
+      return edit(`Widget:${name}`, content)
     }),
   )
 }
