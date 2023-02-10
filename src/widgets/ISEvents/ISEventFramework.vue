@@ -106,9 +106,23 @@ export default defineComponent({
 
 <template>
   <h2 v-if="sceneData[0].etype">
-    {{ sceneData[0].etype }}
+    <span :id="sceneData[0].etype"></span>
+    <span
+      :id="encodeURI(sceneData[0].etype).replace('%', '.')"
+      class="mw-headline"
+    >
+      {{ sceneData[0].etype }}
+    </span>
   </h2>
-  <h3>{{ sceneData[0].name }}</h3>
+  <h3>
+    <span :id="sceneData[0].name"></span>
+    <span
+      :id="encodeURI(sceneData[0].name).replace('%', '.')"
+      class="mw-headline"
+    >
+      {{ sceneData[0].name }}
+    </span>
+  </h3>
   <NConfigProvider
     preflight-style-disabled
     :theme-overrides="{
