@@ -74,7 +74,7 @@ export default defineComponent({
 </script>
 
 <template>
-  <div id="map" ref="self" class="w-1/2">
+  <div id="map" ref="self" class="w-full">
     <div v-for="(row, i) in mapData.map" :key="i" class="row">
       <Block
         v-for="(board, n) in row"
