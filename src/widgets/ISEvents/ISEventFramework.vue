@@ -115,7 +115,7 @@ export default defineComponent({
     </span>
   </h2>
   <h3>
-    <span :id="sceneData[0].name"></span>
+    <span :id="sceneData[0].name"/>
     <span
       :id="encodeURI(sceneData[0].name).replace('%', '.')"
       class="mw-headline"
