@@ -106,7 +106,7 @@ export default defineComponent({
 
 <template>
   <h2 v-if="sceneData[0].etype">
-    <span :id="sceneData[0].etype"></span>
+    <span :id="sceneData[0].etype"/>
     <span
       :id="encodeURI(sceneData[0].etype).replace('%', '.')"
       class="mw-headline"
