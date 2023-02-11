@@ -141,6 +141,13 @@ export default defineComponent({
   position: relative;
   background-color: gray;
 }
+@media screen and (max-width: 540px) {
+  .block {
+    border-width: 1px !important;
+    border-style: none;
+    border-color: transparent;
+  }
+}
 .block:before {
   content: '';
   display: block;
