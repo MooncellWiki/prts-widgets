@@ -110,7 +110,7 @@ export default defineComponent({
             if (timeout)
               clearTimeout(timeout)
 
-            timeout = setTimeout(() => {
+            timeout = window.setTimeout(() => {
               fn()
             }, 10)
           }

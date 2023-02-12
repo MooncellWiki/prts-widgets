@@ -5,7 +5,7 @@ import Block from './Block.vue'
 export default defineComponent({
   components: { Block },
   props: {
-    data: Object as PropType<{
+    map: Object as PropType<{
       options: Record<string, any>
       mapData: Record<string, any>
       predefines: Record<string, any>
@@ -14,7 +14,7 @@ export default defineComponent({
   setup(props) {
     const tokens = computed(() => {
       const result: Record<string, string> = {}
-      props.data?.predefines.tokenInsts.forEach((token: any) => {
+      props.map?.predefines.tokenInsts.forEach((token: any) => {
         const pos = token.position
         result[`${pos.row}-${pos.col}`] = token.inst.characterKey.replace(
           /trap_[0-9]+_/g,
@@ -25,7 +25,7 @@ export default defineComponent({
     })
     const black = computed(() => {
       const result: Record<string, string> = {}
-      props.data?.options.configBlackBoard.forEach((block: any) => {
+      props.map?.options.configBlackBoard.forEach((block: any) => {
         const val = block.valueStr
         if (val === null)
           return
@@ -44,7 +44,7 @@ export default defineComponent({
       return result
     })
     function getTile(index: number) {
-      return props.data?.mapData.tiles[index].tileKey.replace('tile_', '')
+      return props.map?.mapData.tiles[index].tileKey.replace('tile_', '')
     }
     function getToken(row: number, col: number) {
       return tokens.value[`${row}-${col}`]
@@ -52,17 +52,17 @@ export default defineComponent({
     const self = ref<HTMLElement>()
     const fontsize = ref('')
     onMounted(() => {
-      if (!self.value || !props.data)
+      if (!self.value || !props.map)
         return
 
       fontsize.value = `${
-        (self.value.clientHeight / props.data.mapData.width / 4) * 3
+        (self.value.clientHeight / props.map.mapData.width / 4) * 3
       }px`
     })
     return {
-      mapData: props.data!.mapData,
-      width: props.data!.mapData.width,
-      predefines: props.data!.predefines,
+      mapData: props.map!.mapData,
+      width: props.map!.mapData.width,
+      predefines: props.map!.predefines,
       black,
       self,
       fontsize,

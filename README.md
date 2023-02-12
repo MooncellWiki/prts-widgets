@@ -21,3 +21,4 @@ You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/
 - 语音表格 [Widget:VoiceTable/dev](https://prts.wiki/w/Widget:VoiceTable/dev)
 - Spine [Widget:Spinev2/dev](https://prts.wiki/w/Widget:Spinev2/dev)
 - 干员图鉴 [Widget:CharList/dev](https://prts.wiki/w/Widget:CharList/dev)
+- 生息演算地图 [Widget:XbMapViewer/dev](https://prts.wiki/w/Widget:XbMapViewer/dev)
