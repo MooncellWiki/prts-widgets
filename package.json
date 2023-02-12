@@ -8,7 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "sourcemap": "source-map-explorer ./dist/*.js",
-    "lint:fix": "eslint ./cli ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue --quiet --fix",
+    "lint:fix": "eslint ./scripts ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue --quiet --fix",
     "create": "ts-node-esm scripts/index.ts",
     "update": "ts-node-esm scripts/update.ts"
   },
