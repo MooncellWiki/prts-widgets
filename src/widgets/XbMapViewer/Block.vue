@@ -12,6 +12,7 @@ const classMap: Record<string, string> = {
   gtreasure: 'fas fa-crown',
   ballis: 'fas fa-exclamation',
   streasure: 'fas fa-crown',
+  airsup: 'fas fa-times',
   wdescp: 'fas fa-sign-out-alt',
   redtower: 'fas fa-broadcast-tower',
   xbbase: 'fas fa-chess-rook',
@@ -46,7 +47,7 @@ const TipMap: Record<string, string> = {
   xbstone: '<b>巨大岩石</b><br>可开采<石材>',
   roadblock: '<b>道路障碍物</b><br>不容易受到我方单位的攻击',
   xbiron: '<b>奇异矿脉</b><br>可开采<铁矿石>',
-  airsup: '<b>无人机出发点</b>',
+  airsup: '<b>可移动战术机库</b><br>根据需要可随时发射无人机支援敌方佣兵小队作战',
   wdescp: '<b>逃脱点</b><br>部署干员后激活野外支援可进行逃脱',
   redtower:
     '<b>移动战塔</b><br>敌方老巢，击败该地区的全部老巢使该地区不会刷新精英敌袭',
@@ -99,7 +100,6 @@ export default defineComponent({
       return result
     })
     onMounted(() => {
-      console.log(props.token)
       let content = ''
       if (props.tile && TipMap[props.tile])
         content += TipMap[props.tile]
@@ -141,6 +141,13 @@ export default defineComponent({
   position: relative;
   background-color: gray;
 }
+@media screen and (max-width: 540px) {
+  .block {
+    border-width: 1px !important;
+    border-style: none;
+    border-color: transparent;
+  }
+}
 .block:before {
   content: '';
   display: block;
@@ -173,8 +180,8 @@ export default defineComponent({
   background-color: indianred;
   border: 2px solid darkred;
 }
-:deep(.start span),
-:deep(.flystart span) {
+.start span,
+.flystart span {
   color: darkred;
 }
 .end {
@@ -248,7 +255,8 @@ export default defineComponent({
 }
 .ballis span,
 .ore span,
-.airsup span {
+.airsup span,
+.redtower span {
   color: darkred;
 }
 .streasure span {
@@ -265,8 +273,5 @@ export default defineComponent({
 .wdescp span,
 .xbbase span {
   color: green;
-}
-.redtower span {
-  color: darkred;
 }
 </style>
