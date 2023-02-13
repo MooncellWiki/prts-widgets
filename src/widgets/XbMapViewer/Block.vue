@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { PropType } from 'vue'
 import { computed, defineComponent, onMounted, ref } from 'vue'
 import { getImagePath } from '@/utils/utils'
 const classMap: Record<string, string> = {
@@ -8,7 +9,7 @@ const classMap: Record<string, string> = {
   corrosion_2: 'fas fa-angle-double-down',
   telin: 'fas fa-indent',
   telout: 'fas fa-outdent',
-  // token
+  // tokens
   gtreasure: 'fas fa-crown',
   ballis: 'fas fa-exclamation',
   streasure: 'fas fa-crown',
@@ -71,13 +72,13 @@ const bgMap: Record<string, string> = {
   xbstone: '生息演算_资源_石材.png',
   xbiron: '生息演算_资源_铁矿石.png',
   xbfarm: '头像_装置_便携式种植槽.png',
-  stone: '头像_装置_碎石',
+  stone: '头像_装置_碎石.png',
 }
 export default defineComponent({
   props: {
     tile: String,
     tileHeightType: Number,
-    token: String,
+    tokens: { type: Array as PropType<string[]> },
     black: { type: String, default: '' },
   },
   setup(props) {
@@ -90,8 +91,10 @@ export default defineComponent({
       if (bgMap[props.tile!])
         result += ` ${bg(bgMap[props.tile!])}`
 
-      if (props.token && bgMap[props.token])
-        result += ` ${bg(bgMap[props.token])}`
+      props.tokens?.forEach((token: any) => {
+        if (token && bgMap[token])
+          result += ` ${bg(bgMap[token])}`
+      })
 
       if (props.tile === 'grass' && props.tileHeightType === 1) {
         result
@@ -104,8 +107,10 @@ export default defineComponent({
       if (props.tile && TipMap[props.tile])
         content += TipMap[props.tile]
 
-      if (props.token && TipMap[props.token])
-        content += TipMap[props.token]
+      props.tokens?.forEach((token: any) => {
+        if (token && TipMap[token])
+          content += content ? `<br/> ${TipMap[token]}` : ` ${TipMap[token]}`
+      })
 
       if (content.length) {
         // @ts-expect-error tippy
@@ -115,6 +120,7 @@ export default defineComponent({
           arrow: true,
           theme: 'light-border',
           size: 'large',
+          maxWidth: 250,
         })
       }
     })
@@ -126,12 +132,21 @@ export default defineComponent({
 <template>
   <div
     ref="self"
-    :class="`block ${tile} ${token ? 'token' : ''} ${black}`"
+    :class="`block ${tile} ${tokens ? 'token '.concat(tokens.toString().replace(/,/g, ' ')) : ''} ${black}`"
     :style="style"
   >
-    <span v-if="classMap[tile!] || classMap[token!]">
-      <i :class="classMap[tile!] || classMap[token!]" />
-    </span>
+    <template v-if="tokens">
+      <template v-for="(token, i) in tokens" :key="i">
+        <span v-if="classMap[token!]">
+          <i :class="classMap[token!]" />
+        </span>
+      </template>
+    </template>
+    <template v-else>
+      <span v-if="classMap[tile!]">
+        <i :class="classMap[tile!]" />
+      </span>
+    </template>
   </div>
 </template>
 

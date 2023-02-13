@@ -13,13 +13,15 @@ export default defineComponent({
   },
   setup(props) {
     const tokens = computed(() => {
-      const result: Record<string, string> = {}
+      const result: Record<string, any> = {}
       props.map?.predefines.tokenInsts.forEach((token: any) => {
         const pos = token.position
-        result[`${pos.row}-${pos.col}`] = token.inst.characterKey.replace(
+        const coord = `${pos.row}-${pos.col}`
+        result[coord] = result[coord] ?? []
+        result[coord].push(token.inst.characterKey.replace(
           /trap_[0-9]+_/g,
           '',
-        )
+        ))
       })
       return result
     })
@@ -80,8 +82,8 @@ export default defineComponent({
         v-for="(board, n) in row"
         :key="n"
         :tile="getTile(board)"
-        :tile-height-type="mapData.tiles[board].height"
-        :token="getToken(mapData.height - 1 - i, n)"
+        :tileHeightType="mapData.tiles[board].height"
+        :tokens="getToken(mapData.height - 1 - i, n)"
         :black="black[`${mapData.height - 1 - i}-${n}`]"
       />
     </div>
