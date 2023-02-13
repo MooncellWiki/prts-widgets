@@ -1,14 +1,14 @@
 import fs from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { edit, login } from './api.mjs'
+import { edit, login } from './api.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 function readDist() {
-  let manifest = fs.readFileSync(join(__dirname, '../dist/manifest.json'), {
+  const json = fs.readFileSync(join(__dirname, '../dist/manifest.json'), {
     encoding: 'utf8',
   })
-  manifest = JSON.parse(manifest)
-  const result = {}
+  const manifest: Record<string, { file: string }> = JSON.parse(json)
+  const result: Record<string, { fileName: string; content: string }> = {}
   Object.values(manifest).forEach((v) => {
     const name = v.file.split('.')[0]
     result[name] = {
@@ -37,7 +37,7 @@ async function main() {
         encoding: 'utf8',
       })
 
-      const script = dist[name].content
+      const script: string = dist[name].content
         .replaceAll(
           'sourceMappingURL=',
           'sourceMappingURL=https://static.prts.wiki/widgets/release/',

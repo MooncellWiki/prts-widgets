@@ -1,10 +1,11 @@
+import type { Method, SearchParameters } from 'got'
 import got from 'got'
 import { CookieJar } from 'tough-cookie'
 const entry = 'https://prts.wiki/api.php'
 const cookieJar = new CookieJar()
-async function request({ method = 'GET', body, query }) {
+async function request({ method, body, query }: { method?: Method; body?: Record<string, any>; query?: SearchParameters | URLSearchParams }): Promise<any> {
   return got(entry, {
-    method,
+    method: method || 'GET',
     cookieJar,
     form: body,
     searchParams: query,
@@ -33,7 +34,7 @@ async function getLoginToken() {
   })
   return resp?.query?.tokens?.logintoken
 }
-export async function login(name, password) {
+export async function login(name: string, password: string) {
   const token = await getLoginToken()
   if (!token)
     throw new Error('get login token failed')
@@ -52,9 +53,9 @@ export async function login(name, password) {
     throw new Error(resp)
 }
 export async function create(
-  pagename,
-  content,
-  summary = 'by prts-micro-frontends cli',
+  pagename: string,
+  content: string,
+  summary = 'by prts-micro-frontends script',
 ) {
   const token = await getCsrfToken()
   const resp = await request({
@@ -73,9 +74,9 @@ export async function create(
   console.log(resp)
 }
 export async function edit(
-  pagename,
-  content,
-  summary = 'by prts-micro-frontends cli',
+  pagename: string,
+  content: string,
+  summary = 'by prts-micro-frontends script',
 ) {
   const token = await getCsrfToken()
   const resp = await request({
@@ -92,10 +93,10 @@ export async function edit(
   })
   console.log(resp)
 }
-async function view(pagename) {
+async function view(pagename: string) {
   return got(`https://prts.wiki/w/${pagename}`)
 }
-export async function checkPageExist(pagename) {
+export async function checkPageExist(pagename: string) {
   try {
     await view(pagename)
     return true
