@@ -1,11 +1,11 @@
 import { readdirSync } from 'fs'
-import { resolve, join } from 'path'
+import { join, resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import WindiCSS from 'vite-plugin-windicss'
 import { visualizer } from 'rollup-plugin-visualizer'
 const entries = readdirSync(join(__dirname, 'src/entries/'))
-const input = {}
+const input: Record<string, string> = {}
 entries.forEach((entry) => {
   input[entry.replace('.ts', '')] = `src/entries/${entry}`
 })
@@ -32,22 +32,22 @@ export default defineConfig({
     rollupOptions: {
       input,
       output: {
+        minifyInternalExports: false,
         manualChunks(id) {
-          if (id.includes('naive-ui')) {
+          if (id.includes('naive-ui'))
             return 'naive-ui'
-          }
-          if (id.includes('sentry')) {
+
+          if (id.includes('sentry'))
             return 'sentry'
-          }
-          if (id.includes('node_modules') && !id.includes('hammer')) {
+
+          if (id.includes('node_modules') && !id.includes('hammer'))
             return 'vendor'
-          }
-          if (id.includes('src/components/')) {
+
+          if (id.includes('src/components/'))
             return 'vendor'
-          }
-          if (id.includes('windi')) {
+
+          if (id.includes('windi'))
             return 'vendor'
-          }
         },
         chunkFileNames: '[name].[hash].js',
         entryFileNames: '[name].[hash].js',
@@ -58,17 +58,17 @@ export default defineConfig({
           name: 'prts',
           generateBundle(opts, bundle) {
             const bundles = Object.keys(bundle)
-            const cssFilename = bundles.find((v) => v.startsWith('style'))
-            const vendorFilename = bundles.find((v) => v.startsWith('vendor'))
-            const naiveUiFilename = bundles.find((v) =>
+            const cssFilename = bundles.find(v => v.startsWith('style'))!
+            const vendorFilename = bundles.find(v => v.startsWith('vendor'))!
+            const naiveUiFilename = bundles.find(v =>
               v.startsWith('naive-ui'),
-            )
+            )!
 
             const vendor = bundle[vendorFilename]
             const css = bundle[cssFilename]
-            if (css.type !== 'asset' || vendor.type !== 'chunk') {
+            if (css.type !== 'asset' || vendor.type !== 'chunk')
               return
-            }
+
             const cssStr = JSON.stringify({
               c: css.source as string,
             })
@@ -78,9 +78,9 @@ export default defineConfig({
             delete bundle[cssFilename]
             Object.keys(bundle).forEach((key) => {
               const chunk = bundle[key]
-              if (chunk.type !== 'chunk') {
+              if (chunk.type !== 'chunk')
                 return
-              }
+
               if (chunk.fileName.startsWith('SpineViewer')) {
                 // SpineViewer 不需要改导入路径
                 return

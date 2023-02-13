@@ -94,19 +94,19 @@ export class Spine {
   }
 
   private async fetchAssets(skel: string, atlas: string): Promise<string[]> {
-    const skelPromise = new Promise<string>((res, rej) => {
+    const skelPromise = new Promise<string>((resolve, reject) => {
       this.assetManager.loadBinary(
         skel,
-        p => res(p),
-        p => rej(p),
+        p => resolve(p),
+        p => reject(p),
       )
     })
 
-    const atlasPromise = new Promise<string>((res, rej) => {
+    const atlasPromise = new Promise<string>((resolve, reject) => {
       this.assetManager.loadTextureAtlas(
         atlas,
-        p => res(p),
-        p => rej(p),
+        p => resolve(p),
+        p => reject(p),
       )
     })
 
@@ -150,7 +150,7 @@ export class Spine {
   }
 
   play(activeSkeleton: string): void {
-    if (this.lastFrameTime && activeSkeleton == this.activeSkeleton) {
+    if (this.lastFrameTime && activeSkeleton === this.activeSkeleton) {
       console.log('is playing!')
       return
     }
@@ -222,7 +222,7 @@ export class Spine {
 
   getCurrent(): Skeleton | undefined {
     if (!this.activeSkeleton)
-      return void 0
+      return undefined
 
     console.log('getCurrent', this.activeSkeleton)
     return this.skeletons[this.activeSkeleton]
@@ -304,14 +304,14 @@ export class Spine {
     })
     state.setAnimation(0, ani, false)
 
-    return new Promise<void>((res, rej) => {
+    return new Promise<void>((resolve) => {
       mr.onstop = () => {
         const blob = new Blob(chunks, {
           type: 'video/webm',
         })
         downloadBlob(blob, name || 'output')
         state.clearListeners()
-        res()
+        resolve()
       }
     })
   }

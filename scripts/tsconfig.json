@@ -1,0 +1,12 @@
+{
+  // "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "lib": ["ESNext", "Es2021.String"],
+    "esModuleInterop": true,
+    "moduleResolution": "Node",
+    "skipLibCheck": true,
+    "outDir": "dist"
+  },
+  "include": ["./"]
+}

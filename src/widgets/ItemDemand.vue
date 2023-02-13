@@ -30,7 +30,6 @@ async function query(name: string): Promise<itemCost> {
   const data: resp = await (
     await fetch(`${apiEndPoint}/widget/itemDemand/${name}`)
   ).json()
-  console.log(data)
   const costs = new Array<cost>(6)
   const total = {
     elite: 0,
