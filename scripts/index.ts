@@ -1,20 +1,20 @@
 import { writeFileSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { create, login } from './api.mjs'
+import { create, login } from './api.js'
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 async function index() {
   if (process.argv[2] === '-h' || process.argv.length < 5) {
-    console.log('node .\\cli\\index.mjs WidgetName username password')
+    console.log('pnpm run create WidgetName username password')
     return
   }
   let name = process.argv[2]
   name = name[0].toUpperCase() + name.slice(1)
   const username = process.argv[3]
   const password = process.argv[4]
-  const __dirname = path.dirname(fileURLToPath(import.meta.url))
   const entry = path.resolve(__dirname, `../src/entries/${name}.ts`)
-  console.log(`src/entries/${entry} created`)
+  console.log(`${entry} created`)
   writeFileSync(
     entry,
     `import { createApp } from 'vue';
@@ -23,7 +23,7 @@ import ${name} from '../widgets/${name}.vue';
 
 const ele = document.getElementById('root');
 if (ele?.dataset?.item) {
-    createApp(${entry}, { item: ele.dataset.item }).mount(ele);
+    createApp(${name}, { item: ele.dataset.item }).mount(ele);
 } else {
     console.error('data-item or ele not found', ele);
 }

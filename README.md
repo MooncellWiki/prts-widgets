@@ -23,3 +23,14 @@ You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/
 - 干员图鉴 [Widget:CharList/dev](https://prts.wiki/w/Widget:CharList/dev)
 - 事件[Widget:IsEvent/dev](https://prts.wiki/w/Widget:ISEvent/dev)
 - 生息演算地图 [Widget:XbMapViewer/dev](https://prts.wiki/w/Widget:XbMapViewer/dev)
+
+### 创建新应用
+```bash
+pnpm run create WidgetName username password
+```
+### 发布
+```bash 
+pnpm run build
+// 手动上传dist/
+pnpm run update username password
+```
