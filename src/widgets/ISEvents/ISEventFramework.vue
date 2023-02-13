@@ -108,7 +108,7 @@ export default defineComponent({
   <h2 v-if="sceneData[0].etype">
     <span :id="sceneData[0].etype" />
     <span
-      :id="encodeURI(sceneData[0].etype).replace('%', '.')"
+      :id="encodeURI(sceneData[0].etype).replace(/%/g, '.')"
       class="mw-headline"
     >
       {{ sceneData[0].etype }}
@@ -117,7 +117,7 @@ export default defineComponent({
   <h3>
     <span :id="sceneData[0].name" />
     <span
-      :id="encodeURI(sceneData[0].name!).replace('%', '.')"
+      :id="encodeURI(sceneData[0].name!).replace(/%/g, '.')"
       class="mw-headline"
     >
       {{ sceneData[0].name }}
@@ -197,7 +197,7 @@ export default defineComponent({
                   :icon="item.icon"
                   :desc1="item.desc1"
                   :desc2="item.desc2"
-                  :i-s-theme="ISTheme"
+                  :is-theme="ISTheme"
                   @click="jump(item.dest)"
                 />
               </NSpace>
