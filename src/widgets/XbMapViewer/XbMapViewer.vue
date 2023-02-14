@@ -45,7 +45,7 @@ export default defineComponent({
     })
     function getTile(index: number) {
       let a = props.map?.mapData.tiles[index].tileKey.replace('tile_', '');
-      if (a === 'floor' or a === 'road') {
+      if (a === 'floor' || a === 'road') {
         if (props.map?.mapData.tiles[index].buildableType & 1 === 1){
           a = 'road'
         }else{
