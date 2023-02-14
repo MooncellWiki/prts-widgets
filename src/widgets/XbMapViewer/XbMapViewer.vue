@@ -58,7 +58,7 @@ export default defineComponent({
         return
 
       fontsize.value = `${
-        (self.value.clientHeight / props.map.mapData.width / 4) * 3
+        (self.value.clientWidth / props.map.mapData.width / 4) * 3
       }px`
     })
     return {
