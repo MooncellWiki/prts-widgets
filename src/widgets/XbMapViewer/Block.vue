@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { PropType } from 'vue'
 import { computed, defineComponent, onMounted, ref } from 'vue'
 import { getImagePath } from '@/utils/utils'
 const classMap: Record<string, string> = {
@@ -8,7 +9,7 @@ const classMap: Record<string, string> = {
   corrosion_2: 'fas fa-angle-double-down',
   telin: 'fas fa-indent',
   telout: 'fas fa-outdent',
-  // token
+  // tokens
   gtreasure: 'fas fa-crown',
   ballis: 'fas fa-exclamation',
   streasure: 'fas fa-crown',
@@ -18,6 +19,7 @@ const classMap: Record<string, string> = {
   xbbase: 'fas fa-chess-rook',
   poachr: 'far fa-dot-circle',
   ore: 'fas fa-radiation',
+  tower: 'fas fa-broadcast-tower',
 }
 const TipMap: Record<string, string> = {
   start: '<b>侵入点</b>',
@@ -58,6 +60,7 @@ const TipMap: Record<string, string> = {
   ore: '<b>源石祭坛</b><br>周期性向四周释放脉冲波，对我军与敌军造成伤害',
   tidectrl: '<b>涨潮控制</b>',
   stone: '<b>碎石</b><br>改变敌人行径路线',
+  tower: '<b>L-44"留声机"</b><br>我方与敌方可夺取控制权，激活后对敌方造成法术伤害，并可治疗友方单位',
 }
 const bgMap: Record<string, string> = {
   infection: '特殊地形_活性源石.png',
@@ -71,13 +74,13 @@ const bgMap: Record<string, string> = {
   xbstone: '生息演算_资源_石材.png',
   xbiron: '生息演算_资源_铁矿石.png',
   xbfarm: '头像_装置_便携式种植槽.png',
-  stone: '头像_装置_碎石',
+  stone: '头像_装置_碎石.png',
 }
 export default defineComponent({
   props: {
     tile: String,
     tileHeightType: Number,
-    token: String,
+    tokens: { type: Array as PropType<string[]> },
     black: { type: String, default: '' },
   },
   setup(props) {
@@ -90,8 +93,10 @@ export default defineComponent({
       if (bgMap[props.tile!])
         result += ` ${bg(bgMap[props.tile!])}`
 
-      if (props.token && bgMap[props.token])
-        result += ` ${bg(bgMap[props.token])}`
+      props.tokens?.forEach((token: any) => {
+        if (token && bgMap[token])
+          result += ` ${bg(bgMap[token])}`
+      })
 
       if (props.tile === 'grass' && props.tileHeightType === 1) {
         result
@@ -104,8 +109,10 @@ export default defineComponent({
       if (props.tile && TipMap[props.tile])
         content += TipMap[props.tile]
 
-      if (props.token && TipMap[props.token])
-        content += TipMap[props.token]
+      props.tokens?.forEach((token: any) => {
+        if (token && TipMap[token])
+          content += content ? `<br/> ${TipMap[token]}` : ` ${TipMap[token]}`
+      })
 
       if (content.length) {
         // @ts-expect-error tippy
@@ -115,6 +122,7 @@ export default defineComponent({
           arrow: true,
           theme: 'light-border',
           size: 'large',
+          maxWidth: 250,
         })
       }
     })
@@ -126,12 +134,21 @@ export default defineComponent({
 <template>
   <div
     ref="self"
-    :class="`block ${tile} ${token ? 'token' : ''} ${black}`"
+    :class="`block ${tile} ${tokens ? 'token '.concat(tokens.toString().replace(/,/g, ' ')) : ''} ${black}`"
     :style="style"
   >
-    <span v-if="classMap[tile!] || classMap[token!]">
-      <i :class="classMap[tile!] || classMap[token!]" />
-    </span>
+    <template v-if="tokens">
+      <template v-for="(token, i) in tokens" :key="i">
+        <span v-if="classMap[token!]">
+          <i :class="classMap[token!]" />
+        </span>
+      </template>
+    </template>
+    <template v-else>
+      <span v-if="classMap[tile!]">
+        <i :class="classMap[tile!]" />
+      </span>
+    </template>
   </div>
 </template>
 
@@ -257,7 +274,7 @@ export default defineComponent({
 .ore span,
 .airsup span,
 .redtower span {
-  color: darkred;
+  color: red;
 }
 .streasure span {
   color: black;
@@ -273,5 +290,8 @@ export default defineComponent({
 .wdescp span,
 .xbbase span {
   color: green;
+}
+.tower span {
+  color: powderblue;
 }
 </style>
