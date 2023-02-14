@@ -13,8 +13,8 @@
     "update": "ts-node-esm scripts/update.ts"
   },
   "dependencies": {
-    "@sentry/browser": "^7.37.1",
-    "@sentry/tracing": "^7.37.1",
+    "@sentry/browser": "^7.37.2",
+    "@sentry/tracing": "^7.37.2",
     "@vicons/material": "^0.12.0",
     "@vueuse/core": "^9.12.0",
     "hammerjs": "^2.0.8",
