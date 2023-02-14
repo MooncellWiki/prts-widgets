@@ -19,6 +19,7 @@ const classMap: Record<string, string> = {
   xbbase: 'fas fa-chess-rook',
   poachr: 'far fa-dot-circle',
   ore: 'fas fa-radiation',
+  tower: 'fas fa-broadcast-tower',
 }
 const TipMap: Record<string, string> = {
   start: '<b>侵入点</b>',
@@ -59,6 +60,7 @@ const TipMap: Record<string, string> = {
   ore: '<b>源石祭坛</b><br>周期性向四周释放脉冲波，对我军与敌军造成伤害',
   tidectrl: '<b>涨潮控制</b>',
   stone: '<b>碎石</b><br>改变敌人行径路线',
+  tower: '<b>L-44"留声机"</b><br>我方与敌方可夺取控制权，激活后对敌方造成法术伤害，并可治疗友方单位',
 }
 const bgMap: Record<string, string> = {
   infection: '特殊地形_活性源石.png',
@@ -272,7 +274,7 @@ export default defineComponent({
 .ore span,
 .airsup span,
 .redtower span {
-  color: darkred;
+  color: red;
 }
 .streasure span {
   color: black;
@@ -288,5 +290,8 @@ export default defineComponent({
 .wdescp span,
 .xbbase span {
   color: green;
+}
+.tower span {
+  color: powderblue;
 }
 </style>
