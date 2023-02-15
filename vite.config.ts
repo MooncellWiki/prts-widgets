@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import WindiCSS from 'vite-plugin-windicss'
 import { visualizer } from 'rollup-plugin-visualizer'
+import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js'
+
 const entries = readdirSync(join(__dirname, 'src/entries/'))
 const input: Record<string, string> = {}
 entries.forEach((entry) => {
@@ -16,7 +18,18 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
-  plugins: [vue(), WindiCSS(), visualizer({ sourcemap: true })],
+  plugins: [
+    vue(),
+    WindiCSS(),
+    visualizer({ sourcemap: true }),
+    cssInjectedByJsPlugin({
+      jsAssetsFilterFunction: function customJsAssetsfilterFunction(
+        outputChunk,
+      ) {
+        return outputChunk.fileName.startsWith('vendor')
+      },
+    }),
+  ],
   server: {
     port: 8080,
     hmr: {
@@ -58,24 +71,10 @@ export default defineConfig({
           name: 'prts',
           generateBundle(opts, bundle) {
             const bundles = Object.keys(bundle)
-            const cssFilename = bundles.find(v => v.startsWith('style'))!
             const vendorFilename = bundles.find(v => v.startsWith('vendor'))!
             const naiveUiFilename = bundles.find(v =>
               v.startsWith('naive-ui'),
             )!
-
-            const vendor = bundle[vendorFilename]
-            const css = bundle[cssFilename]
-            if (css.type !== 'asset' || vendor.type !== 'chunk')
-              return
-
-            const cssStr = JSON.stringify({
-              c: css.source as string,
-            })
-            const IIFEcss = `(function(){try{var elementStyle=document.createElement('style');elementStyle.type='text/css';var cssStr=${cssStr};elementStyle.innerText=cssStr.c;document.head.appendChild(elementStyle);}catch(error){console.error(error,'unable to concat style inside the bundled file');}})();`
-            vendor.code = IIFEcss + vendor.code
-            // remove from final bundle
-            delete bundle[cssFilename]
             Object.keys(bundle).forEach((key) => {
               const chunk = bundle[key]
               if (chunk.type !== 'chunk')

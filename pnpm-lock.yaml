@@ -26,6 +26,7 @@ specifiers:
   ts-node: ^10.9.1
   typescript: ^4.9.5
   vite: ^4.1.1
+  vite-plugin-css-injected-by-js: ^3.0.0
   vite-plugin-windicss: ^1.8.10
   vue: ^3.2.47
   vue-tsc: ^1.0.24
@@ -60,6 +61,7 @@ devDependencies:
   ts-node: 10.9.1_4bewfcp2iebiwuold25d6rgcsy
   typescript: 4.9.5
   vite: 4.1.1_d7kjmwg5lyp5bmymljws654d5q
+  vite-plugin-css-injected-by-js: 3.0.0_vite@4.1.1
   vite-plugin-windicss: 1.8.10_vite@4.1.1
   vue-tsc: 1.0.24_typescript@4.9.5
   windicss: 3.5.6
@@ -3556,6 +3558,14 @@ packages:
       evtd: 0.2.4
       vue: 3.2.47
     dev: false
+
+  /vite-plugin-css-injected-by-js/3.0.0_vite@4.1.1:
+    resolution: {integrity: sha512-gJxLYkD0rLxGnqBHkFm0bUlYq9VWRT0Fr6lHYD3uRzgW5IGMSdLbNDapXUV57SSlYpvZUrXSlne1Y89BWF1Mgw==}
+    peerDependencies:
+      vite: '>2.0.0-0'
+    dependencies:
+      vite: 4.1.1_d7kjmwg5lyp5bmymljws654d5q
+    dev: true
 
   /vite-plugin-windicss/1.8.10_vite@4.1.1:
     resolution: {integrity: sha512-scywsuzo46lcTBohspmF0WiwhWEte6p+OUVrX4yr7VMRvLHMHVfLtJReyD5pppjijG7YOwVsZn7XBWWZtF658Q==}
