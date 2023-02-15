@@ -26,6 +26,7 @@ async function main() {
     return
   }
   const dist = readDist()
+  const cssDom = `<link rel="stylesheet" href="https://static.prts.wiki/widgets/release/${dist.style.fileName}">`
   const username = process.argv[2]
   const password = process.argv[3]
   await login(username, password)
@@ -37,13 +38,9 @@ async function main() {
         encoding: 'utf8',
       })
 
-      const script: string = dist[name].content
-        .replaceAll(
-          'sourceMappingURL=',
-          'sourceMappingURL=https://static.prts.wiki/widgets/release/',
-        )
-        .trim()
+      const script: string = dist[name].content.trim()
       content = content
+        .replaceAll('__CSS_CONTENT__', cssDom)
         .replaceAll('__SCRIPT_CONTENT__', script)
         .replaceAll(
           '__SCRIPT_PATH__',

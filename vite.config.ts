@@ -12,7 +12,6 @@ entries.forEach((entry) => {
 })
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: 'https://static.prts.wiki/widgets/release/',
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
@@ -59,12 +58,52 @@ export default defineConfig({
         entryFileNames: '[name].[hash].js',
         assetFileNames: '[name].[hash].[ext]',
       },
+      /*
+      plugins: [
+        {
+          name: 'prts',
+          generateBundle(opts, bundle) {
+            const bundles = Object.keys(bundle)
+            const vendorFilename = bundles.find(v => v.startsWith('vendor'))!
+            const naiveUiFilename = bundles.find(v =>
+              v.startsWith('naive-ui'),
+            )!
+            Object.keys(bundle).forEach((key) => {
+              const chunk = bundle[key]
+              if (chunk.type !== 'chunk')
+                return
+
+              if (chunk.fileName.startsWith('SpineViewer')) {
+                // SpineViewer 不需要改导入路径
+                return
+              }
+              chunk.code = chunk.code.replaceAll(
+                `./${vendorFilename}`,
+                `https://static.prts.wiki/widgets/release/${vendorFilename}`,
+              )
+              chunk.code = chunk.code.replaceAll(
+                `./${naiveUiFilename}`,
+                `https://static.prts.wiki/widgets/release/${naiveUiFilename}`,
+              )
+            })
+          },
+        },
+      ],
+      */
     },
     assetsDir: '.',
     terserOptions: {
       compress: {
         passes: 10,
       },
+    },
+  },
+  experimental: {
+    renderBuiltUrl(filename: string, { hostType }: { hostType: 'js' | 'css' | 'html' }) {
+      if (hostType === 'js')
+        return { runtime: `https://static.prts.wiki/widgets/release/${JSON.stringify(filename)}` }
+      else
+        return { relative: true }
     },
   },
 })
