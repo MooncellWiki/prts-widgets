@@ -4,7 +4,6 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import WindiCSS from 'vite-plugin-windicss'
 import { visualizer } from 'rollup-plugin-visualizer'
-import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js'
 
 const entries = readdirSync(join(__dirname, 'src/entries/'))
 const input: Record<string, string> = {}
@@ -13,6 +12,7 @@ entries.forEach((entry) => {
 })
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: 'https://static.prts.wiki/widgets/release/',
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
@@ -22,13 +22,6 @@ export default defineConfig({
     vue(),
     WindiCSS(),
     visualizer({ sourcemap: true }),
-    cssInjectedByJsPlugin({
-      jsAssetsFilterFunction: function customJsAssetsfilterFunction(
-        outputChunk,
-      ) {
-        return outputChunk.fileName.startsWith('vendor')
-      },
-    }),
   ],
   server: {
     port: 8080,
@@ -45,7 +38,7 @@ export default defineConfig({
     rollupOptions: {
       input,
       output: {
-        minifyInternalExports: false,
+        sourcemapBaseUrl: 'https://static.prts.wiki/widgets/release/',
         manualChunks(id) {
           if (id.includes('naive-ui'))
             return 'naive-ui'
@@ -66,36 +59,6 @@ export default defineConfig({
         entryFileNames: '[name].[hash].js',
         assetFileNames: '[name].[hash].[ext]',
       },
-      plugins: [
-        {
-          name: 'prts',
-          generateBundle(opts, bundle) {
-            const bundles = Object.keys(bundle)
-            const vendorFilename = bundles.find(v => v.startsWith('vendor'))!
-            const naiveUiFilename = bundles.find(v =>
-              v.startsWith('naive-ui'),
-            )!
-            Object.keys(bundle).forEach((key) => {
-              const chunk = bundle[key]
-              if (chunk.type !== 'chunk')
-                return
-
-              if (chunk.fileName.startsWith('SpineViewer')) {
-                // SpineViewer 不需要改导入路径
-                return
-              }
-              chunk.code = chunk.code.replaceAll(
-                `./${vendorFilename}`,
-                `https://static.prts.wiki/widgets/release/${vendorFilename}`,
-              )
-              chunk.code = chunk.code.replaceAll(
-                `./${naiveUiFilename}`,
-                `https://static.prts.wiki/widgets/release/${naiveUiFilename}`,
-              )
-            })
-          },
-        },
-      ],
     },
     assetsDir: '.',
     terserOptions: {
