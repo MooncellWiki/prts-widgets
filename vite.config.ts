@@ -58,7 +58,6 @@ export default defineConfig({
         entryFileNames: '[name].[hash].js',
         assetFileNames: '[name].[hash].[ext]',
       },
-      /*
       plugins: [
         {
           name: 'prts',
@@ -89,21 +88,12 @@ export default defineConfig({
           },
         },
       ],
-      */
     },
     assetsDir: '.',
     terserOptions: {
       compress: {
         passes: 10,
       },
-    },
-  },
-  experimental: {
-    renderBuiltUrl(filename: string, { hostType }: { hostType: 'js' | 'css' | 'html' }) {
-      if (hostType === 'js')
-        return { runtime: `https://static.prts.wiki/widgets/release/${JSON.stringify(filename)}` }
-      else
-        return { relative: true }
     },
   },
 })
