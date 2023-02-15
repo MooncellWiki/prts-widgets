@@ -85,7 +85,7 @@ export default defineComponent({
         v-for="(board, n) in row"
         :key="n"
         :tile="getTile(board)"
-        :tileHeightType="mapData.tiles[board].height"
+        :tile-height-type="mapData.tiles[board].height"
         :tokens="getToken(mapData.height - 1 - i, n)"
         :black="black[`${mapData.height - 1 - i}-${n}`]"
       />
