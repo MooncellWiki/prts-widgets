@@ -146,6 +146,7 @@ export default defineComponent({
     const { big } = useEvent(canvas, spineRef)
     function onSelectSkin(e: string) {
       curSkin.value = e
+      curModel.value = Object.keys(props.skin![e])[0]
       load()
     }
     function onSelectModel(e: string) {
