@@ -272,8 +272,7 @@ export default defineComponent({
 }
 .ballis span,
 .ore span,
-.airsup span,
-.redtower span {
+.airsup span {
   color: red;
 }
 .streasure span {
@@ -292,6 +291,9 @@ export default defineComponent({
   color: green;
 }
 .tower span {
-  color: powderblue;
+  color: darkslategray;
+}
+.redtower span {
+  color: crimson;
 }
 </style>
