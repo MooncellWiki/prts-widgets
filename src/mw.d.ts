@@ -1,3 +1,4 @@
 declare interface Window{
-    RLQ?: any[]
+    RLQ?: any[],
+    Sentry: Record<string, any>
 }
