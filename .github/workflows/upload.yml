@@ -3,7 +3,7 @@ name: Upload dist
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   upload:
