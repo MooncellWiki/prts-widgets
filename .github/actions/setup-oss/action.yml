@@ -1,6 +1,11 @@
 name: Setup OSS
 description: Setup OSS
 
+inputs:
+  ossutil-config:
+    description: 'ossutil config'
+    required: true
+
 runs:
   using: "composite"
   steps:
@@ -9,5 +14,5 @@ runs:
       shell: bash
 
     - name: Write ossutil config
-      run: echo ${{ secrets.OSSUTIL_CONFIG }} >> "./.ossutilconfig"
+      run: echo ${{ inputs.ossutil-config }} >> "./.ossutilconfig"
       shell: bash
