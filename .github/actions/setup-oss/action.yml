@@ -14,5 +14,5 @@ runs:
       shell: bash
 
     - name: Write ossutil config
-      run: echo ${{ inputs.ossutil-config }} >> "./.ossutilconfig"
+      run: echo "${{ inputs.ossutil-config }}" >> ./.ossutilconfig
       shell: bash
