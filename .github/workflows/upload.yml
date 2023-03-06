@@ -27,4 +27,7 @@ jobs:
         run: pnpm run build
 
       - name: Upload to OSS
-        run: ossutil64 cp -c ./.ossutilconfig -r dist/ ${{ secrets.OSS_REMOTE_PATH }}
+        run: ossutil64 cp -f -c ./.ossutilconfig -r dist/ ${{ secrets.OSS_REMOTE_PATH }}
+
+      - name: Update PRTS Website
+        run: pnpm run update ${{ secrets.PRTS_USERNAME }} ${{ secrets.PRTS_PASSWORD }}
