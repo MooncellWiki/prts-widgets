@@ -1,4 +1,5 @@
 name: eslint
+
 on:
   pull_request:
     branches: [main]
@@ -7,15 +8,18 @@ jobs:
   eslint:
     name: runner / eslint
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
       - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-review
-          eslint_flags: './scripts ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue'
+          eslint_flags: "./scripts ./src --ext .mjs,.js,.ts,.jsx,.tsx,.vue"
+
   vue_tsc:
     name: runner / vue_tsc
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
       - uses: daflyinbed/reviewdog-action-vue-tsc@v1
