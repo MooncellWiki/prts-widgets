@@ -14,7 +14,6 @@ Sentry.init({
   tracesSampleRate: 0.0001,
 })
 
-// @ts-expect-error yes
 window.Sentry = {
   showReportDialog: Sentry.showReportDialog,
   captureException: Sentry.captureException,
