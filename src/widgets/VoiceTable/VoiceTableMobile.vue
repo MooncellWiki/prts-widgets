@@ -1,12 +1,13 @@
 <script lang="ts">
 import { NConfigProvider, NSelect } from 'naive-ui'
 import type { PropType } from 'vue'
-import { defineComponent, ref } from 'vue'
+import { defineComponent, provide, ref } from 'vue'
 import FormItem from '../../components/FormItem.vue'
 import VoicePlayer from './VoicePlayer.vue'
 
-const isSimplified
-  = !decodeURIComponent(window.location.href).includes('/语音')
+const isSimplified = !decodeURIComponent(document.title).includes(
+  '/语音记录',
+)
 export default defineComponent({
   components: {
     NSelect,
@@ -38,7 +39,12 @@ export default defineComponent({
     const isCollapsed = ref(true)
     const selectedWordLang = ref(['中文'])
     const selectedVoicePath = ref(props.voiceBase[0]?.path || '')
+    const playKey = ref(-1)
+
+    provide('audioElem', new Audio())
+
     return {
+      playKey,
       isSimplified,
       isCollapsed,
       selectedWordLang,
@@ -81,11 +87,11 @@ export default defineComponent({
           class="float-right z-1 select-none"
           @click="
             () => {
-              isCollapsed = !isCollapsed
+              isCollapsed = !isCollapsed;
             }
           "
         >
-          {{ isCollapsed ? '展开' : '折叠' }}
+          {{ isCollapsed ? "展开" : "折叠" }}
         </a>
       </div>
       <div
@@ -104,6 +110,8 @@ export default defineComponent({
               </div>
               <div>
                 <VoicePlayer
+                  :key="index"
+                  v-model:playKey="playKey"
                   :voice-id="`${voiceKey}/${ele?.title}`"
                   :voice-path="`${selectedVoicePath}/${ele?.voiceFilename?.replace(
                     /\s/g,

@@ -17,6 +17,7 @@ export default defineComponent({
     voicePath: String,
     playKey: Number,
   },
+  emits: ['update:playKey'],
   setup(props, { emit }) {
     const key = getCurrentInstance()?.vnode.key
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
