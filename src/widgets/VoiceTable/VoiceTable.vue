@@ -5,8 +5,11 @@ import { defineComponent, provide, ref } from 'vue'
 
 import FormItem from '../../components/FormItem.vue'
 import VoicePlayer from './VoicePlayer.vue'
-const isSimplified
-  = !decodeURIComponent(window.location.href).includes('/语音')
+
+const isSimplified = !decodeURIComponent(document.title).includes(
+  '/语音记录',
+)
+
 export default defineComponent({
   components: {
     NSelect,
