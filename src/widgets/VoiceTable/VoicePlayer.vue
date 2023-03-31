@@ -13,6 +13,7 @@ const isSimplified
 
 export default defineComponent({
   props: {
+    directLink: String,
     voiceId: String,
     voicePath: String,
     playKey: Number,
@@ -22,6 +23,9 @@ export default defineComponent({
     const key = getCurrentInstance()?.vnode.key
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
     const fileName = computed(() => props.voiceId?.split('/').pop())
+    const audioHref = computed(
+      () => props.directLink ? props.directLink : `${source.value}?filename=${fileName.value}.wav`,
+    )
     const playing = ref(false)
     const audioElem = inject<HTMLAudioElement>('audioElem') ?? new Audio()
 
@@ -31,7 +35,7 @@ export default defineComponent({
     }
     const play = () => {
       playing.value = true
-      audioElem.src = source.value
+      audioElem.src = props.directLink ? props.directLink : source.value
       emit('update:playKey', key)
 
       const playPromise = audioElem?.play()
@@ -67,6 +71,7 @@ export default defineComponent({
       isSimplified,
       audioElem,
       fileName,
+      audioHref,
       pause,
       play,
     }
@@ -88,7 +93,7 @@ export default defineComponent({
     >
     <a
       v-if="!isSimplified && voicePath"
-      :href="`//static.prts.wiki/${voicePath}?filename=${fileName}.wav`"
+      :href="audioHref"
       :download="`${fileName}.wav`"
     >
       <img

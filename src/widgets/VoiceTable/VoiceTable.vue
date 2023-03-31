@@ -6,9 +6,7 @@ import { defineComponent, provide, ref } from 'vue'
 import FormItem from '../../components/FormItem.vue'
 import VoicePlayer from './VoicePlayer.vue'
 
-const isSimplified = !decodeURIComponent(document.title).includes(
-  '/语音记录',
-)
+const isSimplified = !decodeURIComponent(document.title).includes('/语音记录')
 
 export default defineComponent({
   components: {
@@ -25,6 +23,9 @@ export default defineComponent({
         title?: string
         index?: string
         voiceFilename?: string
+        directLinks: {
+          [index: string]: string
+        }
         cond?: string
         detail: {
           [index: string]: string
@@ -41,7 +42,13 @@ export default defineComponent({
     const isCollapsed = ref(true)
     const selectedWordLang = ref(['中文'])
     const selectedVoicePath = ref(props.voiceBase[0]?.path || '')
+    const selectedVoiceLang = ref(props.voiceBase[0]?.lang || '')
     const playKey = ref(-1)
+
+    const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
+      selectedVoicePath.value = newValue
+      selectedVoiceLang.value = newOptions.lang || ''
+    }
 
     provide('audioElem', new Audio())
 
@@ -49,8 +56,10 @@ export default defineComponent({
       isSimplified,
       isCollapsed,
       selectedWordLang,
+      selectedVoiceLang,
       selectedVoicePath,
       playKey,
+      onVoicePathUpdate,
     }
   },
 })
@@ -73,10 +82,11 @@ export default defineComponent({
         </FormItem>
         <FormItem label="选择语音资源差分">
           <NSelect
-            v-model:value="selectedVoicePath"
+            :value="selectedVoicePath"
             :options="voiceBase"
             label-field="lang"
             value-field="path"
+            @update:value="onVoicePathUpdate"
           />
         </FormItem>
       </div>
@@ -89,11 +99,11 @@ export default defineComponent({
           class="float-right z-1 select-none"
           @click="
             () => {
-              isCollapsed = !isCollapsed
+              isCollapsed = !isCollapsed;
             }
           "
         >
-          {{ isCollapsed ? '展开' : '折叠' }}
+          {{ isCollapsed ? "展开" : "折叠" }}
         </a>
       </div>
       <div
@@ -124,6 +134,7 @@ export default defineComponent({
               <VoicePlayer
                 :key="index"
                 v-model:playKey="playKey"
+                :direct-link="ele?.directLinks[selectedVoiceLang]"
                 :voice-id="`${voiceKey}/${ele?.title}`"
                 :voice-path="`${selectedVoicePath}/${ele?.voiceFilename?.replace(
                   /\s/g,

@@ -23,6 +23,13 @@ const voiceData = Array.from(dataEle).map(ele => ({
   title: ele?.dataset?.title,
   index: ele?.dataset?.voiceIndex,
   voiceFilename: ele?.dataset?.voiceFilename,
+  directLinks: ele?.dataset?.directLinks?.split(',').reduce<{
+    [index: string]: string
+  }>((acc, curr) => {
+    const [lang, link] = curr.split(':')
+    acc[lang] = link
+    return acc
+  }, {}) || {},
   cond: ele?.dataset?.cond,
   detail: Array.from(ele.children).reduce<{
     [index: string]: string
