@@ -44,15 +44,5 @@
     "vite-plugin-windicss": "^1.8.10",
     "vue-tsc": "^1.2.0",
     "windicss": "^3.5.6"
-  },
-  "browserslist": [
-    "chrome > 70",
-    "edge > 81",
-    "firefox > 70",
-    "safari > 12",
-    "ios_saf > 12",
-    "not opera > 0",
-    "not samsung > 0",
-    "not and_qq > 0"
-  ]
+  }
 }

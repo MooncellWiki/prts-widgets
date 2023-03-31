@@ -95,5 +95,6 @@ export default defineConfig({
         passes: 10,
       },
     },
+    target: ['chrome70', 'edge81', 'firefox70', 'safari12', 'ios12'],
   },
 })
