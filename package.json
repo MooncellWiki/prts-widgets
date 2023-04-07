@@ -19,14 +19,17 @@
     "@vueuse/core": "^9.13.0",
     "hammerjs": "^2.0.8",
     "js-cookie": "^3.0.1",
+    "leaflet": "^1.9.3",
     "md5": "^2.3.0",
     "naive-ui": "^2.34.3",
+    "ol": "^7.3.0",
     "vue": "^3.2.47"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^0.35.3",
     "@types/hammerjs": "^2.0.41",
     "@types/js-cookie": "^3.0.3",
+    "@types/leaflet": "^1.9.3",
     "@types/md5": "^2.3.2",
     "@types/node": "^18.15.11",
     "@types/offscreencanvas": "^2019.7.0",

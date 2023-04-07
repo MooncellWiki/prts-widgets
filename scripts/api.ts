@@ -49,8 +49,10 @@ export async function login(name: string, password: string) {
       format: 'json',
     },
   })
-  if (resp?.login?.result?.toLowerCase() !== 'success')
+  if (resp?.login?.result?.toLowerCase() !== 'success') {
+    console.error(JSON.stringify(resp))
     throw new Error(resp)
+  }
 }
 export async function create(
   pagename: string,
