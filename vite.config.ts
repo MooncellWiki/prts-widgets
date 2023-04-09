@@ -39,11 +39,12 @@ export default defineConfig({
       output: {
         sourcemapBaseUrl: 'https://static.prts.wiki/widgets/release/',
         manualChunks(id) {
-          if (id.includes('naive-ui'))
-            return 'naive-ui'
-
           if (id.includes('sentry'))
             return 'sentry'
+          if (id.includes('MarkedMap') || id.includes('node_modules/ol'))
+            return 'marked-map'
+          if (id.includes('naive-ui'))
+            return 'naive-ui'
 
           if (id.includes('node_modules') && !id.includes('hammer'))
             return 'vendor'
