@@ -21,6 +21,7 @@
     "js-cookie": "^3.0.1",
     "md5": "^2.3.0",
     "naive-ui": "^2.34.3",
+    "ol": "^7.3.0",
     "vue": "^3.2.47"
   },
   "devDependencies": {
