@@ -31,7 +31,7 @@ const source = Array.prototype.map.call(
     > = {}
     Object.assign(temp, v.dataset)
     temp.tag = (temp.tag as string).split(' ')
-    temp.obtain_method = (temp.obtain_method as string).split(' ')
+    temp.obtain_method = (temp.obtain_method as string).split(', ')
     temp.cost = getLast(temp.cost as string)
     temp.block = getLast(temp.block as string)
     temp.feature = v.innerHTML
