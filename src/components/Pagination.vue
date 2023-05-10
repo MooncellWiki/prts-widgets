@@ -11,6 +11,7 @@ export default defineComponent({
     step: { type: String, required: true },
     index: { type: Number, required: true },
   },
+  emits: ['update:index', 'update:step'],
   setup(props, { emit }) {
     const step_ = ref(props.step)
     const values = ref(['1'])
@@ -21,7 +22,7 @@ export default defineComponent({
     watch(
       () => values.value,
       () =>
-        emit('update:values', {
+        emit('update:index', {
           index: parseInt(values.value[0]),
           step: step_,
         }),

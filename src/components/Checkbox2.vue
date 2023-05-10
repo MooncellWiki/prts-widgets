@@ -5,16 +5,13 @@ export default defineComponent({
   props: {
     modelValue: Boolean, noWidth: { type: Boolean, default: false },
   },
-  emits: ['update:modelValue'],
-  setup() {
-  },
 })
 </script>
 
 <template>
   <div
     :class="{
-      selected: modelValue, nowidth: noWidth,
+      'selected': modelValue, 'no-width': noWidth,
     }"
     class="checkbox-container"
   >
@@ -44,7 +41,7 @@ export default defineComponent({
 .selected {
   background-color: #0098dc;
 }
-.nowidth {
+.no-width {
   width: initial;
 }
 </style>
