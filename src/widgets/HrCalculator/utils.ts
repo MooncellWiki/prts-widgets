@@ -65,6 +65,7 @@ export class BitMap {
     return result
   }
 
+  // 不包过空集
   getSubSet(): number[] {
     const result = []
     const selfIndices = this.getIndict()
@@ -74,7 +75,8 @@ export class BitMap {
       indices.forEach((index) => {
         tmp = tmp | (1 << selfIndices[index])
       })
-      result.push(tmp)
+      if (tmp !== 0)
+        result.push(tmp)
     }
     return result
   }
@@ -174,20 +176,28 @@ export class Char {
 
   dump() {
     console.log(this.bitmap.value.toString(2).padStart(profession.length + position.length + rarity.length + tag.length, '0'))
-    console.log(this.bitmap.getIndict().map((v) => {
-      let tmp = v
-      if (tmp < tag.length)
-        return tag[tmp]
-      tmp = tmp - tag.length
-      if (tmp < rarity.length)
-        return rarity[tmp]
-      tmp = tmp - rarity.length
-      if (tmp < position.length)
-        return position[tmp]
-      tmp = tmp - position.length
-      if (tmp < profession.length)
-        return profession[tmp]
-      throw new Error(`unknown: ${v}`)
-    }))
+    console.log(number2names(this.bitmap.value))
   }
+}
+export function can4(num: number) {
+  const bm = new BitMap(num)
+  return bm.get(rarityIndex - rarity.indexOf('资深干员')) !== 0
+}
+export function can5(num: number) {
+  const bm = new BitMap(num)
+  return bm.get(rarityIndex - rarity.indexOf('高级资深干员')) !== 0
+}
+export function number2names(num: number): string[] {
+  const bitmap = new BitMap(num)
+  return bitmap.getIndict().map((v) => {
+    if (v <= tagIndex)
+      return tag[tagIndex - v]
+    if (v <= rarityIndex)
+      return rarity[rarityIndex - v]
+    if (v <= positionIndex)
+      return position[positionIndex - v]
+    if (v <= professionIndex)
+      return profession[professionIndex - v]
+    throw new Error(`unknown: ${v}`)
+  })
 }

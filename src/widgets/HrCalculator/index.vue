@@ -1,15 +1,14 @@
 <script lang="ts">
 import type { PropType } from 'vue'
-import { computed, defineComponent, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, nextTick, reactive, ref, watch } from 'vue'
 
 import type { Source } from './utils'
-import { Char, all, position, positionIndex, profession, professionIndex, rarity, rarityIndex, tag, tagIndex } from './utils'
+import { Char, all, can4, can5, number2names, position, positionIndex, profession, professionIndex, rarity, rarityIndex, tag, tagIndex } from './utils'
 import CheckBox from '@/components/Checkbox2.vue'
 import FilterRow from '@/components/FilterRow2.vue'
 import Avatar from '@/components/head/Avatar.vue'
-import Pagination from '@/components/Pagination.vue'
 export default defineComponent({
-  components: { CheckBox, FilterRow, Avatar, Pagination },
+  components: { CheckBox, FilterRow, Avatar },
   props: {
     source: { type: Array as PropType<Source[]>, default: () => [] },
   },
@@ -40,53 +39,64 @@ export default defineComponent({
       return value.isTagEmpty()
     })
     function calc() {
-      const result: Record<number | string, { charIndict: number[] }> = {}
+      const result: Record<number | string, { charIndict: Set<number> }> = {}
       const subset = value.bitmap.getSubSet()
       props.source.forEach((c, charIndex) => {
         c.subset.forEach((set) => {
           subset.forEach((group) => {
             // 干员的子集中的一个元素 是这个选中的子集中的一个元素 的子集
-            if ((group & set) === group) {
-              if (!result[group]) {
-                result[group] = {
-                  charIndict: [],
-                }
+            if ((group & set) !== group)
+              return
+
+            // 56星要有对应的稀有度tag才能出
+            if (c.rarity === 5 && !can5(group))
+              return
+
+            if (c.rarity === 4 && !can4(group))
+              return
+
+            if (!result[group]) {
+              result[group] = {
+                charIndict: new Set(),
               }
-              result[group].charIndict.push(charIndex)
             }
+            result[group].charIndict.add(charIndex)
           })
         })
       })
       const list: Array<{ tags: number; charIndict: number[]; score: number }> = []
       Object.keys(result).forEach((k) => {
         const key = parseInt(k)
+        const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
+          return props.source[a].rarity - props.source[b].rarity
+        })
         list.push({
           tags: key,
-          charIndict: result[key].charIndict,
-          score: result[key].charIndict.reduce((acc, cur) => {
+          charIndict,
+          score: charIndict.reduce((acc, cur) => {
             return acc + props.source[cur].rarity
-          }, 0) / result[key].charIndict.length,
+          }, 0) / charIndict.length,
         })
       })
       list.sort((a, b) => {
-        return b.score - a.score
+        const rarity = b.score - a.score
+        if (rarity !== 0)
+          return rarity
+        return a.charIndict.length - b.charIndict.length
       })
       return list
     }
-    const page = ref({ cur: 1, size: 50, total: 0 })
     const result = ref<Array<{
       tags: number
       charIndict: number[]
       score: number
     }>>([])
     watch(value, () => {
-      result.value = calc()
-      page.value.total = result.value.length
-      page.value.cur = 1
+      nextTick(() => {
+        result.value = calc()
+      })
     })
-    const list = computed(() => {
-      return result.value.slice((page.value.cur - 1) * page.value.size, page.value.cur * page.value.size)
-    })
+
     return {
       value,
       profession,
@@ -103,8 +113,8 @@ export default defineComponent({
       isPositionEmpty,
       isRarityEmpty,
       isTagEmpty,
-      list,
-      page,
+      result,
+      number2names,
     }
   },
 })
@@ -112,7 +122,7 @@ export default defineComponent({
 
 <template>
   <div>
-    <FilterRow title="职业" :empty="isClassEmpty" @all="value.selectAllProfession" @clear="value.unselectAllProfession">
+    <FilterRow title="职业" :empty="isClassEmpty" @all="() => value.selectAllProfession()" @clear="() => value.unselectAllProfession()">
       <CheckBox
         v-for="(c, i) in profession"
         :key="c"
@@ -123,7 +133,7 @@ export default defineComponent({
         {{ c }}
       </CheckBox>
     </FilterRow>
-    <FilterRow title="位置" :empty="isPositionEmpty" @all="value.selectAllPosition" @clear="value.unselectAllPosition">
+    <FilterRow title="位置" :empty="isPositionEmpty" @all="() => value.selectAllPosition()" @clear="() => value.unselectAllPosition()">
       <CheckBox
         v-for="(c, i) in position"
         :key="c" class="m-1" :model-value="selected[positionIndex - i]"
@@ -132,7 +142,7 @@ export default defineComponent({
         {{ c }}
       </CheckBox>
     </FilterRow>
-    <FilterRow title="资历" :empty="isRarityEmpty" @all="value.selectAllRarity" @clear="value.unselectAllRarity">
+    <FilterRow title="资历" :empty="isRarityEmpty" @all="() => value.selectAllRarity()" @clear="() => value.unselectAllRarity()">
       <CheckBox
         v-for="(c, i) in rarity"
         :key="c" class="m-1" :model-value="selected[rarityIndex - i]"
@@ -141,7 +151,7 @@ export default defineComponent({
         {{ c }}
       </CheckBox>
     </FilterRow>
-    <FilterRow title="词缀" :empty="isTagEmpty" @all="value.selectAllTag" @clear="value.unselectAllTag">
+    <FilterRow title="词缀" :empty="isTagEmpty" @all="() => value.selectAllTag()" @clear="() => value.unselectAllTag()">
       <CheckBox
         v-for="(c, i) in tag"
         :key="c" class="m-1" :model-value="selected[tagIndex - i]" checkable
@@ -152,22 +162,16 @@ export default defineComponent({
     </FilterRow>
   </div>
   <div>
-    <Pagination
-      v-model:index="page.cur"
-      v-model:step="page.size"
-      :length="page.total"
-    />
-    <div v-for="data in list" :key="data.tags">
-      <div>data.tags</div>
-      <div>
+    <div v-for="data in result" :key="data.tags">
+      <div class="flex flex-wrap">
+        <div v-for="name in number2names(data.tags)" :key="name">
+          {{ name }}
+        </div>
+      </div>
+      <div class="flex flex-wrap">
         <Avatar v-for="charIndex in data.charIndict" :key="charIndex" :class_="source[charIndex].profession" :rarity="source[charIndex].rarity" :zh="source[charIndex].zh" />
       </div>
     </div>
-    <Pagination
-      v-model:index="page.cur"
-      v-model:step="page.size"
-      :length="page.total"
-    />
   </div>
 </template>
 

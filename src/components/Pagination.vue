@@ -8,7 +8,7 @@ export default defineComponent({
   },
   props: {
     length: { type: Number, required: true },
-    step: { type: String, required: true },
+    step: { type: Number, required: true },
     index: { type: Number, required: true },
   },
   emits: ['update:index', 'update:step'],
@@ -16,7 +16,7 @@ export default defineComponent({
     const step_ = ref(props.step)
     const values = ref(['1'])
     const checkboxCount = computed(() =>
-      Math.ceil(props.length / parseInt(props.step)),
+      Math.ceil(props.length / props.step),
     )
 
     watch(
@@ -53,13 +53,13 @@ export default defineComponent({
 <template>
   <div class="paginations-container">
     <select v-model="step_" name="length">
-      <option value="50">
+      <option :value="50">
         50
       </option>
-      <option value="100">
+      <option :value="100">
         100
       </option>
-      <option value="200">
+      <option :value="200">
         200
       </option>
     </select>
