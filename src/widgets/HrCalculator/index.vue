@@ -3,12 +3,12 @@ import type { PropType } from 'vue'
 import { computed, defineComponent, nextTick, reactive, ref, watch } from 'vue'
 
 import type { Source } from './utils'
-import { Char, all, can4, can5, number2names, position, positionIndex, profession, professionIndex, rarity, rarityIndex, tag, tagIndex } from './utils'
-import CheckBox from '@/components/Checkbox2.vue'
-import FilterRow from '@/components/FilterRow2.vue'
+import { Char, all, can5, number2names, position, positionIndex, profession, professionIndex, rarity, rarityIndex, tag, tagIndex } from './utils'
+import Checkbox from '@/components/Checkbox2.vue'
+import FilterRow from '@/components/FilterRow.vue'
 import Avatar from '@/components/head/Avatar.vue'
 export default defineComponent({
-  components: { CheckBox, FilterRow, Avatar },
+  components: { Checkbox, FilterRow, Avatar },
   props: {
     source: { type: Array as PropType<Source[]>, default: () => [] },
   },
@@ -48,11 +48,8 @@ export default defineComponent({
             if ((group & set) !== group)
               return
 
-            // 56星要有对应的稀有度tag才能出
+            // 6星要有对应的稀有度tag才能出
             if (c.rarity === 5 && !can5(group))
-              return
-
-            if (c.rarity === 4 && !can4(group))
               return
 
             if (!result[group]) {
@@ -122,8 +119,8 @@ export default defineComponent({
 
 <template>
   <div>
-    <FilterRow title="职业" :empty="isClassEmpty" @all="() => value.selectAllProfession()" @clear="() => value.unselectAllProfession()">
-      <CheckBox
+    <FilterRow title="职业" :some-selected="!isClassEmpty" @all="() => value.selectAllProfession()" @clear="() => value.unselectAllProfession()">
+      <Checkbox
         v-for="(c, i) in profession"
         :key="c"
         :model-value="selected[professionIndex - i]"
@@ -131,34 +128,34 @@ export default defineComponent({
         @click="onTagClick(professionIndex - i)"
       >
         {{ c }}
-      </CheckBox>
+      </Checkbox>
     </FilterRow>
-    <FilterRow title="位置" :empty="isPositionEmpty" @all="() => value.selectAllPosition()" @clear="() => value.unselectAllPosition()">
-      <CheckBox
+    <FilterRow title="位置" :some-selected="!isPositionEmpty" @all="() => value.selectAllPosition()" @clear="() => value.unselectAllPosition()">
+      <Checkbox
         v-for="(c, i) in position"
         :key="c" class="m-1" :model-value="selected[positionIndex - i]"
         @click="onTagClick(positionIndex - i)"
       >
         {{ c }}
-      </CheckBox>
+      </Checkbox>
     </FilterRow>
-    <FilterRow title="资历" :empty="isRarityEmpty" @all="() => value.selectAllRarity()" @clear="() => value.unselectAllRarity()">
-      <CheckBox
+    <FilterRow title="资历" :some-selected="!isRarityEmpty" @all="() => value.selectAllRarity()" @clear="() => value.unselectAllRarity()">
+      <Checkbox
         v-for="(c, i) in rarity"
         :key="c" class="m-1" :model-value="selected[rarityIndex - i]"
         @click="onTagClick(rarityIndex - i)"
       >
         {{ c }}
-      </CheckBox>
+      </Checkbox>
     </FilterRow>
-    <FilterRow title="词缀" :empty="isTagEmpty" @all="() => value.selectAllTag()" @clear="() => value.unselectAllTag()">
-      <CheckBox
+    <FilterRow title="词缀" :some-selected="!isTagEmpty" @all="() => value.selectAllTag()" @clear="() => value.unselectAllTag()">
+      <Checkbox
         v-for="(c, i) in tag"
         :key="c" class="m-1" :model-value="selected[tagIndex - i]" checkable
         @click="onTagClick(tagIndex - i)"
       >
         {{ c }}
-      </CheckBox>
+      </Checkbox>
     </FilterRow>
   </div>
   <div>

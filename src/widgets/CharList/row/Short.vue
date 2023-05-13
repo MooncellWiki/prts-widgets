@@ -2,9 +2,9 @@
 <script lang="ts">
 import type { PropType } from 'vue'
 import { computed, defineComponent } from 'vue'
-import Avatar from '../head/Avatar.vue'
+import type { DataSource } from '../utils'
+import Avatar from '@/components/head/Avatar.vue'
 import { domain } from '@/utils/utils'
-import type { DataSource } from '@/utils/charList'
 
 export default defineComponent({
   name: 'Short',

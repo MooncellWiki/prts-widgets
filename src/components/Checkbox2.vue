@@ -1,9 +1,32 @@
 <script lang="ts">
-import { defineComponent } from 'vue'
+import type { Ref } from 'vue'
+import { computed, defineComponent, inject } from 'vue'
 export default defineComponent({
   name: 'Checkbox2',
   props: {
-    modelValue: Boolean, noWidth: { type: Boolean, default: false },
+    modelValue: Boolean,
+    noWidth: { type: Boolean, default: false },
+    value: String,
+  },
+  emits: ['update:modelValue'],
+  setup(props, { emit }) {
+    const group = inject<{ state: Ref<Record<string, boolean>>; setState: (value: string, state: boolean) => void } | null>('check-box-group', null)
+    const isSelected = computed({
+      get() {
+        if (props.value && group)
+          return group.state.value[props.value]
+        if (typeof props.modelValue === 'boolean')
+          return props.modelValue
+        return false
+      },
+      set() {
+        if (props.value && group)
+          group.setState(props.value, !isSelected.value)
+        if (typeof props.modelValue === 'boolean')
+          emit('update:modelValue', !isSelected.value)
+      },
+    })
+    return { isSelected }
   },
 })
 </script>
@@ -11,9 +34,10 @@ export default defineComponent({
 <template>
   <div
     :class="{
-      'selected': modelValue, 'no-width': noWidth,
+      'selected': isSelected, 'no-width': noWidth,
     }"
     class="checkbox-container"
+    @click="() => { isSelected = !isSelected }"
   >
     <slot />
   </div>

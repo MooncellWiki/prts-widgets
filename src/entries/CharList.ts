@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import CharList from '../widgets/CharList.vue'
+import CharList from '../widgets/CharList/index.vue'
 
 const ele = document.getElementById('root')
 const filters = JSON.parse(

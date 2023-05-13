@@ -179,10 +179,7 @@ export class Char {
     console.log(number2names(this.bitmap.value))
   }
 }
-export function can4(num: number) {
-  const bm = new BitMap(num)
-  return bm.get(rarityIndex - rarity.indexOf('资深干员')) !== 0
-}
+
 export function can5(num: number) {
   const bm = new BitMap(num)
   return bm.get(rarityIndex - rarity.indexOf('高级资深干员')) !== 0

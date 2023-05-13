@@ -3,23 +3,24 @@ import type { Ref } from 'vue'
 import { computed, defineComponent, onMounted, reactive, ref } from 'vue'
 import Cookies from 'js-cookie'
 
-import CheckBox from '@/components/CheckBox.vue'
+import type { DataSource } from './utils'
+import Card from './row/Card.vue'
+import Long from './row/Long.vue'
+import Short from './row/Short.vue'
+import Checkbox from '@/components/Checkbox2.vue'
+import CheckboxGroup from '@/components/CheckboxGroup.vue'
 import FilterRow from '@/components/FilterRow.vue'
 import Half from '@/components/Half.vue'
 import Avatar from '@/components/head/Avatar.vue'
 import LHead from '@/components/head/LHead.vue'
 import SHead from '@/components/head/SHead.vue'
 import Pagination from '@/components/Pagination.vue'
-import Card from '@/components/row/Card.vue'
-import Long from '@/components/row/Long.vue'
-import Short from '@/components/row/Short.vue'
-import type { DataSource } from '@/utils/charList'
 import { keyStr } from '@/utils/utils'
 
 export default defineComponent({
   components: {
     FilterRow,
-    CheckBox,
+    Checkbox,
     Pagination,
     SHead,
     LHead,
@@ -28,6 +29,7 @@ export default defineComponent({
     Long,
     Short,
     Half,
+    CheckboxGroup,
   },
   props: {
     filters: {
@@ -119,10 +121,10 @@ export default defineComponent({
     })
     const page = ref({
       index: 1,
-      step: '50',
+      step: 50,
     })
     const states = reactive<string[][][]>([
-      [[], [], [], [], [], []],
+      [[], [], [], [], [], [], []],
       [[], [], [], [], [], []],
       [[], [], [], []],
     ]) // 筛选 六维筛选 标志/出身地/团队/种族筛选
@@ -133,7 +135,7 @@ export default defineComponent({
         : [true, false, false],
     ) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
     const refs: Ref = ref([])
-    const currSortMethod = ref(['实装倒序'])
+    const sortMethod = ref('实装倒序')
     const sortMethods = ref([
       '实装顺序',
       '实装倒序',
@@ -154,20 +156,15 @@ export default defineComponent({
         expires: 365,
       })
     }
-    const onPageChange = (newPage: { index: number; step: string }) => {
-      page.value = newPage
-    }
-    const onStepChange = ({ n, o }: { n: string; o: string }) => {
-      const _n = parseInt(n)
-      const _o = parseInt(o)
-      if (_o < _n) {
-        page.value.index = Math.ceil((_o / _n) * page.value.index)
+    const onStepChange = ({ n, o }: { n: number; o: number }) => {
+      if (o < n) {
+        page.value.index = Math.ceil((o / n) * page.value.index)
       }
       else {
         if (page.value.index >= 1)
-          page.value.index = ((page.value.index - 1) * _o) / _n + 1
+          page.value.index = ((page.value.index - 1) * o) / n + 1
       }
-      page.value.step = n.toString()
+      page.value.step = n
     }
 
     const oridata = computed(() => {
@@ -278,7 +275,7 @@ export default defineComponent({
           ).length !== 0
         )
       })
-      switch (currSortMethod.value[0]) {
+      switch (sortMethod.value[0]) {
         case '实装顺序':
           temp.sort((a, b) => parseInt(a.sortid) - parseInt(b.sortid))
           break
@@ -327,8 +324,8 @@ export default defineComponent({
       return temp
     })
     const data = computed(() => {
-      const start = (page.value.index - 1) * parseInt(page.value.step)
-      return oridata.value.slice(start, start + parseInt(page.value.step))
+      const start = (page.value.index - 1) * page.value.step
+      return oridata.value.slice(start, start + page.value.step)
     })
     const url = computed(() => {
       const arrToBase64 = (arr: Array<number>) => {
@@ -412,7 +409,7 @@ export default defineComponent({
       states,
       expanded,
       refs,
-      currSortMethod,
+      sortMethod,
       sortMethods,
       searchText,
       dataTypes,
@@ -424,7 +421,6 @@ export default defineComponent({
       fix,
       url,
       toggleCollapse,
-      onPageChange,
       onStepChange,
       copyUrl,
     }
@@ -510,36 +506,35 @@ export default defineComponent({
     </div>
     <div class="control">
       <div>排序方式</div>
-      <div class="order">
-        <CheckBox
+      <CheckboxGroup v-model="sortMethod" is-radio class="order">
+        <Checkbox
           v-for="v in sortMethods"
           :key="v"
-          v-model:states="currSortMethod"
-          :text="v"
-          :at-least-one="true"
-          :only-one="true"
-        />
-      </div>
+          :value="v"
+        >
+          {{ v }}
+        </Checkbox>
+      </CheckboxGroup>
     </div>
     <div class="mode">
       <input v-model="searchText" placeholder="搜索干员名称/简介/特性">
       <div>
-        <CheckBox
+        <!-- <CheckBox
           v-for="v in dataTypes"
           :key="v"
           v-model:states="currDataTypes"
           :text="v"
-        />
+        /> -->
       </div>
       <div>
-        <CheckBox
+        <!-- <CheckBox
           v-for="v in displayModes"
           :key="v"
           v-model:states="currDisplayMode"
           :text="v"
           :at-least-one="true"
           :only-one="true"
-        />
+        /> -->
       </div>
     </div>
 
@@ -548,10 +543,9 @@ export default defineComponent({
         复制短链接
       </div>
       <Pagination
+        v-model:index="page.index"
         :length="oridata.length"
-        :index="page.index"
         :step="page.step"
-        @update:values="onPageChange"
         @update:step="onStepChange"
       />
     </div>
@@ -627,10 +621,9 @@ export default defineComponent({
       </div>
     </div>
     <Pagination
+      v-model:index="page.index"
       :length="oridata.length"
-      :index="page.index"
       :step="page.step"
-      @update:values="onPageChange"
       @update:step="onStepChange"
     />
   </div>
