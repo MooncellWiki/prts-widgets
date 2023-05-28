@@ -23,7 +23,7 @@ export default defineConfig({
     visualizer({ sourcemap: true }),
   ],
   server: {
-    port: 8080,
+    port: 18080,
     hmr: {
       host: 'localhost',
       protocol: 'ws',

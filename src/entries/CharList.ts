@@ -1,56 +1,27 @@
 import { createApp } from 'vue'
 import CharList from '../widgets/CharList/index.vue'
+import type { FilterGroup } from '../widgets/CharList/utils'
+import { Char } from '../widgets/CharList/utils'
+import 'virtual:windi.css'
 
 const ele = document.getElementById('root')
 const filters = JSON.parse(
   document.getElementById('filter-filter')?.innerText ?? '',
-).filters
+).filters as FilterGroup[]
 const filterMap = JSON.parse(
   document.getElementById('filter-map')?.innerText ?? '',
-).filter_map
+)
 
 const shortLinkMap = JSON.parse(
   document.getElementById('filter-shortLinkMap')?.innerText ?? '',
 ).map
 
-const getLast = (str: string) => {
-  if (str.includes('→')) {
-    const arr = str.split('→')
-    return arr[arr.length - 1]
-  }
-  else {
-    return str
-  }
-}
 const source = Array.prototype.map.call(
   document.getElementById('filter-data')?.children,
   (v) => {
-    const temp: Record<
-      string,
-      string | Array<string> | Array<number> | Array<Array<string | number>>
-    > = {}
-    Object.assign(temp, v.dataset)
-    temp.tag = (temp.tag as string).split(' ')
-    temp.obtain_method = (temp.obtain_method as string).split(', ')
-    temp.cost = getLast(temp.cost as string)
-    temp.block = getLast(temp.block as string)
-    temp.feature = v.innerHTML
-    temp.trust = (temp.trust as string).split(',').map((v: string) => {
-      if (v.length !== 0)
-        return parseInt(v)
-      else
-        return 0
-    })
-    temp.potential = (temp.potential as string)
-      .split('`')
-      .map((v: string) => v.split(','))
-    temp.potential[1] = (temp.potential[1] as Array<string>).map((v: string) =>
-      parseFloat(v),
-    )
-    temp.noHtmlFeature = (temp.feature as string).replace(/<[^<>]+>/g, '')
-    return Object.freeze(temp)
+    return new Char(v)
   },
-)
+) as Char[]
 
 if (ele) {
   const app = createApp(CharList, { filters, source, shortLinkMap, filterMap })

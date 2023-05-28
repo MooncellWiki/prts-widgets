@@ -1,101 +1,34 @@
 <!-- 元素宽度小于等于640px -->
 <script lang="ts">
 import type { PropType } from 'vue'
-import { computed, defineComponent, ref } from 'vue'
-import type { DataSource } from '../utils'
-import Avatar from '@/components/head/Avatar.vue'
+import { defineComponent, ref, toRefs } from 'vue'
+import type { Char } from '../utils'
+import { useChar } from './useChar'
+import Avatar from '@/components/Avatar.vue'
 import { domain } from '@/utils/utils'
 
 export default defineComponent({
   name: 'Card',
   components: { Avatar },
   props: {
-    row: { type: Object as PropType<DataSource>, required: true },
-    addtrust: Boolean, // 是否加算信赖
-    addpotential: Boolean, // 是否加算潜能
+    row: { type: Object as PropType<Char>, required: true },
+    addTrust: Boolean, // 是否加算信赖
+    addPotential: Boolean, // 是否加算潜能
   },
   setup(props) {
     const collapsed = ref(true)
-    const panel = ref()
-    const hp_ = computed(() => {
-      let result = parseInt(props.row.hp)
-      if (props.addtrust)
-        result += props.row.trust[0]
+    const { addTrust, addPotential } = toRefs(props)
+    const { hp, atk, def, res, cost, reDeploy } = useChar(props.row, addTrust, addPotential)
 
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v === 'hp')
-            result += props.row.potential[1][i]
-        })
-      }
-      return result
-    })
-    const atk_ = computed(() => {
-      let result = parseInt(props.row.atk)
-      if (props.addtrust)
-        result += props.row.trust[1]
-
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v === 'atk')
-            result += props.row.potential[1][i]
-        })
-      }
-      return result
-    })
-    const def_ = computed(() => {
-      let result = parseInt(props.row.def)
-      if (props.addtrust)
-        result += props.row.trust[2]
-
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v === 'def')
-            result += props.row.potential[1][i]
-        })
-      }
-      return result
-    })
-    const res_ = computed(() => {
-      let result = parseInt(props.row.res)
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v === 'res')
-            result += props.row.potential[1][i]
-        })
-      }
-      return result
-    })
-    const cost_ = computed(() => {
-      let result = parseInt(props.row.cost)
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v === 'cost')
-            result += props.row.potential[1][i]
-        })
-      }
-      return result
-    })
-    const re_deploy_ = computed(() => {
-      let result = parseInt(props.row.re_deploy.slice(0, -1))
-      if (props.addpotential) {
-        props.row.potential[0].forEach((v, i) => {
-          if (v === 're_deploy')
-            result += props.row.potential[1][i]
-        })
-      }
-      return `${result}s`
-    })
     return {
       collapsed,
-      hp_,
-      atk_,
-      def_,
-      res_,
-      cost_,
-      re_deploy_,
+      hp,
+      atk,
+      def,
+      res,
+      cost,
+      reDeploy,
       domain,
-      panel,
     }
   },
 })
@@ -106,9 +39,9 @@ export default defineComponent({
     <div class="basic">
       <div class="avatar">
         <Avatar
-          :rarity="parseInt(row.rarity)"
-          :class_="row.class_"
-          :zh="row.zh"
+          :rarity="row.rarity"
+          :profession="row.profession"
+          :name="row.zh"
         />
       </div>
       <div class="info">
@@ -177,7 +110,7 @@ export default defineComponent({
       </div>
     </div>
     <Transition name="slide-fade">
-      <div v-if="!collapsed" :ref="panel" class="expand-panel">
+      <div v-if="!collapsed" class="expand-panel">
         <div class="story">
           <div class="head">
             标志
@@ -192,7 +125,7 @@ export default defineComponent({
             种族
           </div>
           <div>{{ row.logo }}</div>
-          <div>{{ row.birth_place }}</div>
+          <div>{{ row.birthPlace }}</div>
           <div>{{ row.team }}</div>
           <div>{{ row.race }}</div>
         </div>
@@ -209,10 +142,10 @@ export default defineComponent({
           <div class="head">
             法术抗性
           </div>
-          <div>{{ hp_ }}</div>
-          <div>{{ atk_ }}</div>
-          <div>{{ def_ }}</div>
-          <div>{{ res_ }}</div>
+          <div>{{ hp }}</div>
+          <div>{{ atk }}</div>
+          <div>{{ def }}</div>
+          <div>{{ res }}</div>
         </div>
         <div class="data2">
           <div class="head">
@@ -227,8 +160,8 @@ export default defineComponent({
           <div class="head">
             攻击间隔
           </div>
-          <div>{{ re_deploy_ }}</div>
-          <div>{{ cost_ }}</div>
+          <div>{{ reDeploy }}</div>
+          <div>{{ cost }}</div>
           <div>{{ row.block }}</div>
           <div>{{ row.interval }}</div>
         </div>

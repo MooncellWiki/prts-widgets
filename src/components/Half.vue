@@ -5,8 +5,7 @@ import { charListData, domain, getImagePath } from '@/utils/utils'
 export default defineComponent({
   name: 'Half',
   props: {
-    // eslint-disable-next-line vue/prop-name-casing
-    class_: { type: String, required: true },
+    profession: { type: String, required: true },
     rarity: { type: Number, required: true },
     logo: { type: String, required: true },
     zh: String,
@@ -22,22 +21,22 @@ export default defineComponent({
   <div class="half-container">
     <a :href="`${domain}/w/${zh}`">
       <div class="uh">
-        <img :src="`${domain}/images/${charListData.uh[rarity]}`">
+        <img :src="`${domain}/images/${getImagePath(`干员图鉴_uh_${rarity}.png`)}`">
       </div>
       <div class="uhs">
         <img :src="`${domain}/images/${charListData.uhs}`" width="70px">
       </div>
       <div class="class_">
-        <img :src="`${domain}/images/${charListData.class_[class_]}`">
+        <img :src="`${domain}/images/${getImagePath(`图标_职业_${profession}.png`)}`">
       </div>
       <div class="rarity">
-        <img :src="`${domain}/images/${charListData.rarity[rarity]}`">
+        <img :src="`${domain}/images/${getImagePath(`稀有度_黄_${rarity}.png`)}`">
       </div>
       <div class="lh">
         <img :src="`${domain}/images/${charListData.lh(rarity)}`">
       </div>
       <div class="light">
-        <img :src="`${domain}/images/${charListData.light[rarity]}`">
+        <img :src="`${domain}/images/${getImagePath(`干员图鉴_稀有度_亮光_${rarity}.png`)}`">
       </div>
       <div class="bg">
         <img :src="`${domain}/images/${charListData.bg(rarity)}`">
@@ -50,7 +49,7 @@ export default defineComponent({
       </div>
       <div class="patch" />
       <div class="logo">
-        <img :src="`${domain}/images/${charListData.logo[logo]}`">
+        <img :src="`${domain}/images/${getImagePath(`Logo_${logo}.png`)}`">
       </div>
       <div class="zh">{{ zh }}</div>
       <div class="en">{{ en }}</div>

@@ -1,22 +1,27 @@
 <script lang="ts">
-import type { Ref } from 'vue'
-import { computed, defineComponent, onMounted, reactive, ref } from 'vue'
+import type { PropType, Ref } from 'vue'
+import { computed, defineComponent, reactive, ref } from 'vue'
 import Cookies from 'js-cookie'
-
-import type { DataSource } from './utils'
+import { NCollapseTransition } from 'naive-ui'
+import { useBreakpoints } from '@vueuse/core'
+import type { Char, FilterGroup } from './utils'
 import Card from './row/Card.vue'
 import Long from './row/Long.vue'
 import Short from './row/Short.vue'
-import Checkbox from '@/components/Checkbox2.vue'
+import LHead from './head/LHead.vue'
+import SHead from './head/SHead.vue'
+import Checkbox from '@/components/Checkbox.vue'
 import CheckboxGroup from '@/components/CheckboxGroup.vue'
 import FilterRow from '@/components/FilterRow.vue'
 import Half from '@/components/Half.vue'
-import Avatar from '@/components/head/Avatar.vue'
-import LHead from '@/components/head/LHead.vue'
-import SHead from '@/components/head/SHead.vue'
+import Avatar from '@/components/Avatar.vue'
 import Pagination from '@/components/Pagination.vue'
-import { keyStr } from '@/utils/utils'
+interface State {
 
+  both: boolean
+  selected: Record<string, boolean>
+  meta: { cbt: string[]; title: string; field: string; groupTitle: string }
+}
 export default defineComponent({
   components: {
     FilterRow,
@@ -30,111 +35,53 @@ export default defineComponent({
     Short,
     Half,
     CheckboxGroup,
+    NCollapseTransition,
   },
   props: {
     filters: {
-      type: Array<{
-        filter: Array<{
-          both: boolean
-          cbt: Array<string>
-          title: string
-        }>
-        title: string
-      }>,
+      type: Array as PropType<FilterGroup[]>,
       required: true,
     },
     source: {
-      type: Array<DataSource>,
+      type: Array as PropType<Char[]>,
       required: true,
     },
-    shortLinkMap: { type: Array<Array<Array<string>>>, required: true },
-    filterMap: { type: Array<Record<string, Array<string>>>, required: true },
+
+    filterMap: { type: Object as PropType<Record<string, string>>, required: true },
   },
   setup(props) {
-    const app = ref()
-    const m: Array<Array<keyof DataSource>> = [
-      ['class_', 'rarity', 'position', 'sex', 'obtain_method', 'tag'],
-      ['phy', 'flex', 'tolerance', 'plan', 'skill', 'adapt'],
-      ['logo', 'birth_place', 'team', 'race'],
-    ]
-    const bp = ref(0)
-    const fix = ref(false)
-    onMounted(() => {
-      const bpf = () => {
-        if (app.value.offsetWidth > 900)
-          bp.value = 2
-        else if (app.value.offsetWidth > 640)
-          bp.value = 1
-        else
-          bp.value = 0
-      }
-      window.addEventListener(
-        'resize',
-        ((fn) => {
-          let canRun = true
-          return function () {
-            if (!canRun)
-              return
-            canRun = false
-            fn()
-            setTimeout(() => {
-              fn()
-              canRun = true
-            }, 500)
-          }
-        })(bpf),
-      )
-      bpf()
-      const f = () => {
-        let ele
-        if (bp.value === 1)
-          ele = document.querySelector('#pagination')
-        else if (bp.value === 2)
-          ele = document.querySelector('#pagination')
-        else
-          return 0
-
-        if (
-          ele
-          && ele.getBoundingClientRect().top + ele.getBoundingClientRect().height
-            < 0
-        )
-          fix.value = true
-        else
-          fix.value = false
-      }
-      f()
-      window.addEventListener(
-        'scroll',
-        ((fn) => {
-          let timeout: number | undefined
-          return function () {
-            if (timeout)
-              clearTimeout(timeout)
-
-            timeout = window.setTimeout(() => {
-              fn()
-            }, 10)
-          }
-        })(f),
-      )
+    const breakpoints = useBreakpoints({
+      small: 640,
+      big: 1024,
     })
+    const card = breakpoints.smallerOrEqual('small')
+    const short = breakpoints.between('small', 'big')
+    const long = breakpoints.greaterOrEqual('big')
+    const fix = ref(false)
+
     const page = ref({
       index: 1,
       step: 50,
     })
-    const states = reactive<string[][][]>([
-      [[], [], [], [], [], [], []],
-      [[], [], [], [], [], []],
-      [[], [], [], []],
-    ]) // 筛选 六维筛选 标志/出身地/团队/种族筛选
+    const states = reactive<State[][]>(
+      props.filters.map((fg) => {
+        return fg.filter.map((f) => {
+          return {
+            selected: {},
+            both: false,
+            meta: {
+              cbt: f.cbt, title: f.title, field: f.field, groupTitle: fg.title,
+            },
+          }
+        }).flat()
+      })) // 筛选 六维筛选 标志/出身地/团队/种族筛选
     const opFilterExpandState = Cookies.get('opFilterExpandState')
     const expanded: Ref<Array<boolean>> = ref(
       opFilterExpandState
         ? JSON.parse(opFilterExpandState)
         : [true, false, false],
     ) // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
-    const refs: Ref = ref([])
+
     const sortMethod = ref('实装倒序')
     const sortMethods = ref([
       '实装顺序',
@@ -146,9 +93,9 @@ export default defineComponent({
     ])
     const searchText = ref('')
     const dataTypes = ref(['满潜能', '满信赖'])
-    const currDataTypes: Ref<Array<string>> = ref([])
+    const currDataTypes: Ref<Record<string, boolean>> = ref({ 满潜能: false, 满信赖: false })
     const displayModes = ref(['表格', '半身像', '头像'])
-    const currDisplayMode = ref(['表格'])
+    const currDisplayMode = ref('表格')
 
     const toggleCollapse = (index: number) => {
       expanded.value[index] = !expanded.value[index]
@@ -168,132 +115,88 @@ export default defineComponent({
     }
 
     const oridata = computed(() => {
-      let temp: Array<DataSource> = props.source
       const filters = props.filters
       const filterMap = props.filterMap
-      const has = (v: string, arr: Array<string>, i1: number, i2: number) => {
-        let a = arr
-        if (i1 === 2)
-          a = arr.map(v => props?.filterMap?.[i2]?.[v] || v).flat()
-
-        return a.includes(v)
-      }
-      const other = (v: string, arr: Array<string>, i1: number, i2: number) => {
-        if (arr.includes('其他')) {
-          const da
-            = filters
-            && filters[i1].filter[i2].cbt
-              .map((v) => {
-                if (filterMap && filterMap[i2] && filterMap[i2][v])
-                  return filterMap[i2][v]
-                else
-                  return v
-              })
-              .flat()
-          da?.splice(da.indexOf('其他'), 1)
-          return arr.includes(v) || da?.indexOf(v) === -1
+      function predicate(filter: State, char: Char) {
+        if (searchText.value) {
+          const tags = ['zh', 'en', 'ja', 'id', 'feature']
+          return tags.some((key) => {
+            return (char[key as keyof Char] as string).includes(searchText.value)
+          })
         }
-        else {
-          return has(v, arr, i1, i2)
+        let value = char[filter.meta.field as keyof Char]
+        if (filter.meta.groupTitle === '势力/出身地/种族筛选' && typeof value === 'string' && filterMap[value])
+          value = filterMap[value]
+        const selected = Object.entries(filter.selected).filter(([_, v]) => v).map(([k, _]) => k)
+        if (filter.both) {
+          return selected.every((k) => {
+            return (value as string[]).includes(k)
+          })
         }
-      }
-      states.forEach((v1, i1) => {
-        v1.forEach((v2: Array<string>, i2: number) => {
-          if (v2.length !== 0) {
-            temp = temp.filter((v3) => {
-              if (i1 === 0 && i2 === 1) {
-                // 稀有度
-                return (
-                  v2.includes(`★${1 + parseInt(v3[m[i1][i2]] as string)}`)
-                )
-              }
-              else if (i1 === 0 && i2 === 3) {
-                // 性别
-                if (v2.includes('其他')) {
-                  return (
-                    v2.includes(`${v3[m[i1][i2]]}性`)
-                    || (v3.sex !== '男' && v3.sex !== '女')
-                  )
-                }
-                else {
-                  return v2.includes(`${v3[m[i1][i2]]}性`)
-                }
-              }
-              else if (i1 === 0 && i2 === 4) {
-                return (
-                  (v3[m[i1][i2]] as Array<string>).filter((v4: string) =>
-                    other(v4, v2, i1, i2),
-                  ).length !== 0
-                )
-                // return other(v3[m[i1][i2]], v2, i1, i2)
-              }
-              else if (i1 === 0 && i2 === 5) {
-                // 词缀
-                if (v2.includes('同时满足')) {
-                  // 同时满足
-                  if (v2.length === 1)
-                    return true
+        if (selected.length === 0)
+          return true
+        if (filter.meta.title === '稀有度')
+          return filter.selected[`★${1 + char.rarity}`]
+        if (filter.meta.title === '性别') {
+          if (filter.selected['其他'])
+            return filter.selected[`${char.sex}性`] || (char.sex !== '男' && char.sex !== '女')
+          return filter.selected[`${char.sex}性`]
+        }
 
-                  let flag = true
-                  for (let i = 0; i < v2.length; i++) {
-                    if (v2[i] !== '同时满足') {
-                      if (!v3.tag.includes(v2[i]))
-                        flag = false
-                    }
-                  }
-                  return flag
-                }
-                else {
-                  let flag = false
-                  for (let i = 0; i < v2.length; i++) {
-                    if (v3.tag.includes(v2[i])) {
-                      flag = true
-                      break
-                    }
-                  }
-                  return flag
-                }
-              }
-              else if (i1 === 1 || (i1 === 2 && (i2 === 1 || i2 === 3))) {
-                // 六维筛选，出身地，种族有其他
-                return other(v3[m[i1][i2]] as string, v2, i1, i2)
-              }
-              else {
-                return has(v3[m[i1][i2]] as string, v2, i1, i2)
-                // return v2.indexOf(v3[m[i1][i2]]) !== -1
-              }
-            })
+        if (filter.meta.cbt.includes('其他')) {
+          // 其他的时候一定没同时满足
+          if (filter.selected['其他']) {
+            if (Array.isArray(value)) {
+              if (selected.some(v => (value as string[]).includes(v)))
+                return true
+              if (value.some(v => !filter.meta.cbt.includes(v as string)))
+                return true
+              return false
+            }
+            if (selected.includes(value as string))
+              return true
+            if (!filter.meta.cbt.includes(value as string))
+              return true
+            return false
           }
-        })
+          if (Array.isArray(value))
+            return selected.some(v => (value as string[]).includes(v))
+          return selected.includes(value as string)
+        }
+        if (Array.isArray(value))
+          return selected.some(v => (value as string[]).includes(v))
+
+        return selected.includes(value as string)
+      }
+      const result = props.source.filter((char) => {
+        for (const group of states) {
+          for (const filter of group) {
+            if (!predicate(filter, char))
+              return false
+          }
+        }
+        return true
       })
-      temp = temp.filter((v) => {
-        const tags = ['zh', 'en', 'ja', 'id', 'noHtmlFeature']
-        return (
-          tags.filter(
-            (key: string) =>
-              (v[key as keyof DataSource] as Array<string>).includes(searchText.value),
-          ).length !== 0
-        )
-      })
-      switch (sortMethod.value[0]) {
+
+      switch (sortMethod.value) {
         case '实装顺序':
-          temp.sort((a, b) => parseInt(a.sortid) - parseInt(b.sortid))
+          result.sort((a, b) => a.sortId - b.sortId)
           break
         case '实装倒序':
-          temp.sort((a, b) => parseInt(b.sortid) - parseInt(a.sortid))
+          result.sort((a, b) => b.sortId - a.sortId)
           break
         case '名称升序':
-          temp.sort((a, b) => a.zh.localeCompare(b.zh, 'zh'))
+          result.sort((a, b) => a.zh.localeCompare(b.zh, 'zh'))
           break
         case '名称降序':
-          temp.sort((a, b) => b.zh.localeCompare(a.zh, 'zh'))
+          result.sort((a, b) => b.zh.localeCompare(a.zh, 'zh'))
           break
         case '稀有度升序':
-          temp.sort((a, b) => {
-            const r = parseInt(a.rarity) - parseInt(b.rarity)
+          result.sort((a, b) => {
+            const r = a.rarity - b.rarity
             if (r === 0) {
-              const classes = filters?.[0].filter[0].cbt ?? []
-              const o = classes.indexOf(a.class_) - classes.indexOf(b.class_)
+              const classes = filters[0].filter[0].cbt
+              const o = classes.indexOf(a.profession) - classes.indexOf(b.profession)
               if (o === 0)
                 return a.zh.localeCompare(b.zh, 'zh')
               else
@@ -305,11 +208,11 @@ export default defineComponent({
           })
           break
         case '稀有度降序':
-          temp.sort((a, b) => {
-            const r = parseInt(b.rarity) - parseInt(a.rarity)
+          result.sort((a, b) => {
+            const r = b.rarity - a.rarity
             if (r === 0) {
-              const classes = filters?.[0].filter[0].cbt ?? []
-              const o = classes.indexOf(a.class_) - classes.indexOf(b.class_)
+              const classes = filters[0].filter[0].cbt
+              const o = classes.indexOf(a.profession) - classes.indexOf(b.profession)
               if (o === 0)
                 return a.zh.localeCompare(b.zh, 'zh')
               else
@@ -321,94 +224,83 @@ export default defineComponent({
           })
           break
       }
-      return temp
+      return result
     })
     const data = computed(() => {
       const start = (page.value.index - 1) * page.value.step
       return oridata.value.slice(start, start + page.value.step)
     })
-    const url = computed(() => {
-      const arrToBase64 = (arr: Array<number>) => {
-        if (!arr.includes(1))
-          return ''
+    // const url = computed(() => {
+    //   const arrToBase64 = (arr: Array<number>) => {
+    //     if (!arr.includes(1))
+    //       return ''
 
-        const result = []
-        while (arr.length % 6 !== 0)
-          arr.push(0)
+    //     const result = []
+    //     while (arr.length % 6 !== 0)
+    //       arr.push(0)
 
-        for (let i = 0; i < arr.length; i += 6)
-          result.push(keyStr.charAt(parseInt(arr.slice(i, i + 6).join(''), 2)))
+    //     for (let i = 0; i < arr.length; i += 6)
+    //       result.push(keyStr.charAt(parseInt(arr.slice(i, i + 6).join(''), 2)))
 
-        return result.join('')
-      }
-      const result: Array<string> = []
-      props.filters.forEach((v1, i1) => {
-        v1.filter.forEach((v2, i2) => {
-          const temp = Array(v2.cbt.length).fill(0)
-          states[i1][i2].forEach((selected) => {
-            temp[props.shortLinkMap[i1][i2].indexOf(selected)] = 1
-          })
-          result.push(arrToBase64(temp))
-        })
-      })
+    //     return result.join('')
+    //   }
+    //   const result: Array<string> = []
+    //   props.filters.forEach((v1, i1) => {
+    //     v1.filter.forEach((v2, i2) => {
+    //       const temp = Array(v2.cbt.length).fill(0)
+    //       states[i1][i2].forEach((selected) => {
+    //         temp[props.shortLinkMap[i1][i2].indexOf(selected)] = 1
+    //       })
+    //       result.push(arrToBase64(temp))
+    //     })
+    //   })
 
-      return (
-        `${window.location.origin
-        + window.location.pathname
-        }#${
-        result.join('|')
-        }|${
-        searchText.value
-        }#`
-      )
-    })
+    //   return (
+    //     `${window.location.origin
+    //     + window.location.pathname
+    //     }#${
+    //     result.join('|')
+    //     }|${
+    //     searchText.value
+    //     }#`
+    //   )
+    // })
     const copyUrl = () => {
-      window.navigator.clipboard.writeText(url.value)
-      // eslint-disable-next-line no-alert
-      alert(`链接已复制: ${url.value}`)
+      // window.navigator.clipboard.writeText(url.value)
+
+      // alert(`链接已复制: ${url.value}`)
     }
 
-    const _keyStr
-      = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,'
+    // const _keyStr
+    //   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,'
 
-    const hash = /#([^#]+)#/.exec(window.location.hash)
-    if (hash && hash[1]) {
-      const base64ToArr = (str: string) => {
-        return str
-          .split('')
-          .map((v) => {
-            let temp = _keyStr.indexOf(v).toString(2)
-            while (temp.length % 6 !== 0)
-              temp = `0${temp}`
+    // const hash = /#([^#]+)#/.exec(window.location.hash)
+    // if (hash && hash[1]) {
+    //   const base64ToArr = (str: string) => {
+    //     return str
+    //       .split('')
+    //       .map((v) => {
+    //         let temp = _keyStr.indexOf(v).toString(2)
+    //         while (temp.length % 6 !== 0)
+    //           temp = `0${temp}`
 
-            return temp.split('')
-          })
-          .flat()
-      }
-      const arr = hash[1].split('|')
-      searchText.value = arr[arr.length - 1]
-      const arr2 = arr.slice(0, -1).map(v => base64ToArr(v))
-      let i = 0
-      states.forEach((v1, i1) => {
-        v1.forEach((v2, i2) => {
-          if (arr2[i].filter((v: string) => v !== '0').length !== 0) {
-            arr2[i].forEach((v3, i3) => {
-              if (v3 === '1')
-                states[i1][i2].push(props.shortLinkMap[i1][i2][i3])
-            })
-          }
-          i++
-        })
-      })
-    }
+    //         return temp.split('')
+    //       })
+    //       .flat()
+    //   }
+    //   const arr = hash[1].split('|')
+    //   searchText.value = arr[arr.length - 1]
+    //   const arr2 = arr.slice(0, -1).map(v => base64ToArr(v))
+    //   let i = 0
+    // }
 
     return {
-      app,
-      bp,
+      card,
+      short,
+      long,
       page,
       states,
       expanded,
-      refs,
       sortMethod,
       sortMethods,
       searchText,
@@ -419,7 +311,7 @@ export default defineComponent({
       oridata,
       data,
       fix,
-      url,
+      // url,
       toggleCollapse,
       onStepChange,
       copyUrl,
@@ -434,7 +326,6 @@ export default defineComponent({
       v-for="(v, i) in filters"
       :key="v.title"
       class="filter"
-      :class="[`filter-${i}`]"
     >
       <div
         class="filter-title"
@@ -446,63 +337,21 @@ export default defineComponent({
       </div>
 
       <div class="collapsible" @click="toggleCollapse(i)">
-        <div>
-          <svg
-            v-show="!expanded[i]"
-            t="1590476789572"
-            class="icon"
-            viewBox="0 0 1024 1024"
-            version="1.1"
-            xmlns="http://www.w3.org/2000/svg"
-            p-id="6592"
-            width="24"
-            height="24"
-          >
-            <path
-              d="M500.8 604.779L267.307 371.392l-45.227 45.27 278.741 278.613L779.307 416.66l-45.248-45.248z"
-              p-id="6593"
-            />
-          </svg>
-          <svg
-            v-show="expanded[i]"
-            t="1590477111828"
-            class="icon"
-            viewBox="0 0 1024 1024"
-            version="1.1"
-            xmlns="http://www.w3.org/2000/svg"
-            p-id="6715"
-            width="24"
-            height="24"
-          >
-            <path
-              d="M500.8 461.909333L267.306667 695.296l-45.226667-45.269333 278.741333-278.613334L779.306667 650.026667l-45.248 45.226666z"
-              p-id="6716"
-            />
-          </svg>
-        </div>
+        <span v-if="expanded[i]" class="text-2xl mdi mdi-chevron-up" />
+        <span v-else class="text-2xl mdi mdi-chevron-down" />
       </div>
-      <Transition name="slide-fade">
-        <div
-          v-if="expanded[i]"
-          :ref="
-            (el) => {
-              el && refs.indexOf(el) === -1 && refs.push(el)
-            }
-          "
-          class="expand-panel"
-          :style="{ height: expanded[i] ? 'auto' : '0px' }"
-        >
-          <FilterRow
-            v-for="(v2, i2) in v.filter"
-            :key="v2.title"
-            v-model:states="states[i][i2]"
-            :title="v2.title"
-            :labels="v2.cbt"
-            :both="v2.both"
-            :no-width="i === 2"
-          />
-        </div>
-      </Transition>
+      <NCollapseTransition :show="expanded[i]">
+        <FilterRow
+          v-for="(v2, i2) in v.filter"
+          :key="v2.title"
+          v-model="states[i][i2].selected"
+          v-model:both="states[i][i2].both"
+          :title="v2.title"
+          :labels="v2.cbt"
+          :show-both="v2.both"
+          :no-width="i === 2"
+        />
+      </NCollapseTransition>
     </div>
     <div class="control">
       <div>排序方式</div>
@@ -518,28 +367,28 @@ export default defineComponent({
     </div>
     <div class="mode">
       <input v-model="searchText" placeholder="搜索干员名称/简介/特性">
-      <div>
-        <!-- <CheckBox
+      <CheckboxGroup v-model="currDataTypes">
+        <Checkbox
           v-for="v in dataTypes"
           :key="v"
-          v-model:states="currDataTypes"
-          :text="v"
-        /> -->
-      </div>
-      <div>
-        <!-- <CheckBox
+          :value="v"
+        >
+          {{ v }}
+        </Checkbox>
+      </CheckboxGroup>
+      <CheckboxGroup v-model="currDisplayMode" is-radio>
+        <Checkbox
           v-for="v in displayModes"
           :key="v"
-          v-model:states="currDisplayMode"
-          :text="v"
-          :at-least-one="true"
-          :only-one="true"
-        /> -->
-      </div>
+          :value="v"
+        >
+          {{ v }}
+        </Checkbox>
+      </CheckboxGroup>
     </div>
 
     <div id="pagination">
-      <div class="btn" :data-clipboard-text="url" @click="copyUrl">
+      <div class="btn" @click="copyUrl">
         复制短链接
       </div>
       <Pagination
@@ -551,69 +400,69 @@ export default defineComponent({
     </div>
     <div id="result">
       <SHead
-        v-if="currDisplayMode[0] === '表格' && bp === 1"
+        v-if="currDisplayMode === '表格' && short"
         :class="{ fix }"
       />
       <LHead
-        v-else-if="currDisplayMode[0] === '表格' && bp === 2"
+        v-else-if="currDisplayMode === '表格' && long"
         :class="{ fix }"
       />
       <div
         id="filter-result"
         :class="{
-          showhead: currDisplayMode[0] === '头像',
-          showavatar: currDisplayMode[0] === '半身像',
+          showhead: currDisplayMode === '头像',
+          showavatar: currDisplayMode === '半身像',
         }"
       >
-        <template v-if="currDisplayMode[0] === '半身像'">
+        <template v-if="currDisplayMode === '半身像'">
           <Half
             v-for="v in data"
-            :key="v.sortid"
-            :class_="v.class_"
-            :rarity="parseInt(v.rarity)"
+            :key="v.sortId"
+            :profession="v.profession"
+            :rarity="v.rarity"
             :logo="v.logo"
             :zh="v.zh"
             :en="v.en"
           />
         </template>
-        <template v-if="currDisplayMode[0] === '头像'">
+        <template v-if="currDisplayMode === '头像'">
           <Avatar
             v-for="v in data"
-            :key="v.sortid"
-            :class_="v.class_"
-            :rarity="parseInt(v.rarity)"
-            :zh="v.zh"
+            :key="v.sortId"
+            :profession="v.profession"
+            :rarity="v.rarity"
+            :name="v.zh"
           />
         </template>
-        <template v-if="currDisplayMode[0] === '表格' && bp === 1">
+        <template v-if="currDisplayMode === '表格' && short">
           <Short
             v-for="v in data"
-            :key="v.sortid"
+            :key="v.sortId"
             :row="v"
-            :addtrust="currDataTypes.indexOf('满信赖') !== -1"
-            :addpotential="currDataTypes.indexOf('满潜能') !== -1"
+            :add-trust="currDataTypes['满信赖']"
+            :add-potential="currDataTypes['满潜能']"
           >
             <div v-html="v.feature" />
           </Short>
         </template>
-        <template v-if="currDisplayMode[0] === '表格' && bp === 2">
+        <template v-if="currDisplayMode === '表格' && long">
           <Long
             v-for="v in data"
-            :key="v.sortid"
+            :key="v.sortId"
             :row="v"
-            :addtrust="currDataTypes.indexOf('满信赖') !== -1"
-            :addpotential="currDataTypes.indexOf('满潜能') !== -1"
+            :add-trust="currDataTypes['满信赖']"
+            :add-potential="currDataTypes['满潜能']"
           >
             <div v-html="v.feature" />
           </Long>
         </template>
-        <template v-if="currDisplayMode[0] === '表格' && bp === 0">
+        <template v-if="currDisplayMode === '表格' && card">
           <Card
             v-for="v in data"
-            :key="v.sortid"
+            :key="v.sortId"
             :row="v"
-            :addtrust="currDataTypes.indexOf('满信赖') !== -1"
-            :addpotential="currDataTypes.indexOf('满潜能') !== -1"
+            :add-trust="currDataTypes['满信赖']"
+            :add-potential="currDataTypes['满潜能']"
           >
             <div v-html="v.feature" />
           </Card>
@@ -684,15 +533,11 @@ export default defineComponent({
   font-weight: 700;
   width: 29px;
   height: 24px;
-  padding-top: 5px;
+  padding-top: 3px;
 }
-.collapsible > div:hover {
+.collapsible > span:hover {
   border-radius: 50%;
   background-color: rgba(213, 215, 219, 0.4);
-}
-.expand-panel {
-  /* transition: height 0.5s; */
-  overflow: hidden;
 }
 .control {
   display: flex;

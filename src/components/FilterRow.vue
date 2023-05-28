@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { PropType } from 'vue'
 import { computed, defineComponent } from 'vue'
-import Checkbox from './Checkbox2.vue'
+import Checkbox from './Checkbox.vue'
 import CheckboxGroup from './CheckboxGroup.vue'
 export default defineComponent({
   name: 'FilterRow',
@@ -87,8 +87,9 @@ export default defineComponent({
       <Checkbox
         v-if="showBoth"
         v-model="isBoth"
-        text="同时满足"
-      />
+      >
+        同时满足
+      </Checkbox>
     </div>
     <div v-if="hasSlot" class="checkboxs">
       <slot />

@@ -4,9 +4,9 @@ import { computed, defineComponent, nextTick, reactive, ref, watch } from 'vue'
 
 import type { Source } from './utils'
 import { Char, all, can5, number2names, position, positionIndex, profession, professionIndex, rarity, rarityIndex, tag, tagIndex } from './utils'
-import Checkbox from '@/components/Checkbox2.vue'
+import Checkbox from '@/components/Checkbox.vue'
 import FilterRow from '@/components/FilterRow.vue'
-import Avatar from '@/components/head/Avatar.vue'
+import Avatar from '@/components/Avatar.vue'
 export default defineComponent({
   components: { Checkbox, FilterRow, Avatar },
   props: {
@@ -166,7 +166,7 @@ export default defineComponent({
         </div>
       </div>
       <div class="flex flex-wrap">
-        <Avatar v-for="charIndex in data.charIndict" :key="charIndex" :class_="source[charIndex].profession" :rarity="source[charIndex].rarity" :zh="source[charIndex].zh" />
+        <Avatar v-for="charIndex in data.charIndict" :key="charIndex" :profession="source[charIndex].profession" :rarity="source[charIndex].rarity" :name="source[charIndex].zh" />
       </div>
     </div>
   </div>

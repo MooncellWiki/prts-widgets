@@ -2,7 +2,7 @@
 import type { Ref } from 'vue'
 import { computed, defineComponent, inject } from 'vue'
 export default defineComponent({
-  name: 'Checkbox2',
+  name: 'Checkbox',
   props: {
     modelValue: Boolean,
     noWidth: { type: Boolean, default: false },

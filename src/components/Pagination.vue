@@ -1,6 +1,6 @@
 <script lang="ts">
 import { computed, defineComponent } from 'vue'
-import Checkbox from './Checkbox2.vue'
+import Checkbox from './Checkbox.vue'
 import CheckboxGroup from './CheckboxGroup.vue'
 export default defineComponent({
   name: 'Pagination',
@@ -21,10 +21,10 @@ export default defineComponent({
 
     const cur = computed({
       get() {
-        return { [props.index.toString()]: true }
+        return `${props.index}`
       },
       set(v) {
-        emit('update:index', parseInt(Object.keys(v)[0]))
+        emit('update:index', parseInt(v))
       },
     })
     const curStep = computed({
@@ -32,7 +32,7 @@ export default defineComponent({
         return props.step
       },
       set(v) {
-        emit('update:step', { n: v, o: curStep })
+        emit('update:step', { n: v, o: curStep.value })
       },
     })
 

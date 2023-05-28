@@ -2,8 +2,7 @@
 import type { PropType } from 'vue'
 import { defineComponent } from 'vue'
 import Avatar from './Avatar.vue'
-import type { professionMap } from '@/utils/utils'
-import { sum } from '@/utils/utils'
+import { professionMap, sum } from '@/utils/utils'
 export interface costProps {
   rarity: number
   name: string
@@ -16,9 +15,9 @@ export interface costProps {
 export default defineComponent({
   components: { Avatar },
   props: {
-    rarity: Number,
+    rarity: { type: Number, required: true },
     name: String,
-    profession: String as PropType<keyof typeof professionMap>,
+    profession: { type: String as PropType<keyof typeof professionMap>, required: true },
     elite: Number, // 精英化
     skill: Number, // 技能1-7
     mastery: Array as PropType<number[]> as PropType<[number, number, number]>, // 技能专精
@@ -27,6 +26,7 @@ export default defineComponent({
   setup() {
     return {
       sum,
+      professionMap,
     }
   },
 })
@@ -34,7 +34,7 @@ export default defineComponent({
 
 <template>
   <div class="flex flex-col justify-center items-center my-8px">
-    <Avatar :rarity="rarity" :name="name" :profession="profession" :size="60" />
+    <Avatar :rarity="rarity" :name="name" :profession="professionMap[profession]" :size="60" />
     <div :class="{ 'text-disabled': elite === 0 }">
       精英化：
       <span :class="{ 'text-primary-main': elite !== 0 }" class="font-bold">

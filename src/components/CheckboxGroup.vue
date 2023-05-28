@@ -10,7 +10,6 @@ export default defineComponent({
   emits: ['update:modelValue'],
   setup(props, { emit }) {
     const stateMap = computed(() => {
-      debugger
       if (props.isRadio) {
         return {
           [props.modelValue as string]: true,
@@ -19,7 +18,6 @@ export default defineComponent({
       return props.modelValue as Record<string, boolean>
     })
     function setState(value: string, state: boolean) {
-      debugger
       if (!props.isRadio) {
         stateMap.value[value] = state
         emit('update:modelValue', stateMap.value)
