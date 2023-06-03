@@ -14,8 +14,7 @@ export class Char {
   rarity: number
   logo: string
   birthPlace: string
-  team: string
-  race: string
+  race: string[]
   en: string
   ja: string
   id: string
@@ -42,6 +41,7 @@ export class Char {
   sortId: number
   subProfession: string
   feature: string
+  force: string[] = []
   constructor(ele: HTMLDivElement) {
     const d = ele.dataset
     this.zh = d.zh!
@@ -49,8 +49,14 @@ export class Char {
     this.rarity = parseInt(d.rarity!)
     this.logo = d.logo || ''
     this.birthPlace = d.birth_place || ''
-    this.team = d.team || ''
-    this.race = d.race || ''
+    if (d.nation)
+      this.force.push(d.nation)
+    if (d.group)
+      this.force.push(d.group)
+    if (d.team)
+      this.force.push(d.team)
+
+    this.race = (d.race || '').split('/')
     this.en = d.en || ''
     this.ja = d.ja || ''
     this.id = d.id || ''
@@ -87,10 +93,10 @@ export class Char {
     this.feature = ele.innerHTML || ''
   }
 }
-
+export type CheckboxOption = string | { label: string; value: string[] }
 export interface Filter {
   title: string
-  cbt: string[]
+  cbt: CheckboxOption[]
   both: boolean
   field: string
 }
