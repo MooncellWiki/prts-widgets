@@ -158,20 +158,59 @@ export default defineComponent({
       </Checkbox>
     </FilterRow>
   </div>
-  <div>
-    <div v-for="data in result" :key="data.tags">
-      <div class="flex flex-wrap">
-        <div v-for="name in number2names(data.tags)" :key="name">
-          {{ name }}
-        </div>
-      </div>
-      <div class="flex flex-wrap">
-        <Avatar v-for="charIndex in data.charIndict" :key="charIndex" :profession="source[charIndex].profession" :rarity="source[charIndex].rarity" :name="source[charIndex].zh" />
-      </div>
-    </div>
-  </div>
+  <table class="bg-[#f8f9fa] w-full mt-2">
+    <colgroup>
+      <col class="tag-row">
+      <col>
+    </colgroup>
+    <thead class="bg-[#eaebee]">
+      <tr><th>Tags</th><th>可能出现</th></tr>
+    </thead>
+    <tbody>
+      <tr v-for="data in result" :key="data.tags" class="row">
+        <td>
+          <div class="flex justify-center items-center flex-wrap">
+            <div v-for="name in number2names(data.tags)" :key="name" class="tag">
+              {{ name }}
+            </div>
+          </div>
+        </td>
+        <td class="flex flex-wrap flex-1">
+          <Avatar v-for="charIndex in data.charIndict" :key="charIndex" :profession="source[charIndex].profession" :rarity="source[charIndex].rarity" :name="source[charIndex].zh" />
+        </td>
+      </tr>
+    </tbody>
+  </table>
 </template>
 
 <style scoped>
-
+.tag{
+  width: 100px;
+  background-color: #313131;
+  color: #ffffff;
+  height: 28px;
+  min-width: 40px;
+  padding: 0 8px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  box-shadow: 0 3px 5px grey;
+  letter-spacing: 0.08em;
+  text-indent: 0.08em;
+  margin: 4px 12px;
+}
+.row{
+  margin-top: 6px;
+  box-shadow: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
+}
+.tag-row{
+  width:110px
+}
+@media screen and (min-width: 700px) {
+  .tag-row{
+    width:300px
+  }
+}
 </style>
