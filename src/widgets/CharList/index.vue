@@ -243,7 +243,6 @@ export default defineComponent({
             delete hash[element.meta.field]
             return
           }
-          console.log(selected, element.meta.title)
           const fields = selected.map(([k]) => k).join('-')
           const both = element.both ? '0-' : '1-'
           hash[element.meta.field] = both + fields

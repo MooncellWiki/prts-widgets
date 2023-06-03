@@ -174,10 +174,10 @@ export class Char {
     return char
   }
 
-  dump() {
-    console.log(this.bitmap.value.toString(2).padStart(profession.length + position.length + rarity.length + tag.length, '0'))
-    console.log(number2names(this.bitmap.value))
-  }
+  // dump() {
+  //   console.log(this.bitmap.value.toString(2).padStart(profession.length + position.length + rarity.length + tag.length, '0'))
+  //   console.log(number2names(this.bitmap.value))
+  // }
 }
 
 export function can5(num: number) {

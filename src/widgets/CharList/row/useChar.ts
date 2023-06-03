@@ -8,7 +8,7 @@ export function useChar(char: Char, addTrust: Ref<boolean>, addPotential: Ref<bo
       result += char.trust[0]
 
     if (addPotential.value) {
-      char.potential.forEach((v, i) => {
+      char.potential.forEach((v) => {
         if (v.type === 'hp')
           result += v.value
       })
