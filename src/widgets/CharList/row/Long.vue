@@ -53,10 +53,9 @@ export default defineComponent({
     </div>
     <div class="camp">
       <div>
-        <div>{{ row.logo }}</div>
+        <div>{{ row.force.join('-') }}</div>
         <div>{{ row.birthPlace }}</div>
-        <div>{{ row.team }}</div>
-        <div>{{ row.race }}</div>
+        <div>{{ row.race.join('/') }}</div>
       </div>
     </div>
     <div class="data1">

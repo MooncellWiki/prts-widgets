@@ -4,7 +4,7 @@ import { computed, defineComponent, onBeforeMount, reactive, ref, watch } from '
 import Cookies from 'js-cookie'
 import { NCollapseTransition } from 'naive-ui'
 import { useBreakpoints, useUrlSearchParams } from '@vueuse/core'
-import type { Char, FilterGroup } from './utils'
+import type { Char, CheckboxOption, FilterGroup } from './utils'
 import Card from './row/Card.vue'
 import Long from './row/Long.vue'
 import Short from './row/Short.vue'
@@ -20,7 +20,7 @@ interface State {
 
   both: boolean
   selected: Record<string, boolean>
-  meta: { cbt: string[]; title: string; field: string; groupTitle: string }
+  meta: { cbt: CheckboxOption[]; title: string; field: string; groupTitle: string }
 }
 export default defineComponent({
   components: {
@@ -46,8 +46,6 @@ export default defineComponent({
       type: Array as PropType<Char[]>,
       required: true,
     },
-
-    filterMap: { type: Object as PropType<Record<string, string>>, required: true },
   },
   setup(props) {
     const breakpoints = useBreakpoints({
@@ -116,7 +114,6 @@ export default defineComponent({
 
     const oridata = computed(() => {
       const filters = props.filters
-      const filterMap = props.filterMap
       function predicate(filter: State, char: Char) {
         if (searchText.value) {
           const tags = ['zh', 'en', 'ja', 'id', 'feature']
@@ -124,16 +121,25 @@ export default defineComponent({
             return (char[key as keyof Char] as string).includes(searchText.value)
           })
         }
-        let value = char[filter.meta.field as keyof Char]
-        if (filter.meta.groupTitle === '势力/出身地/种族筛选' && typeof value === 'string' && filterMap[value])
-          value = filterMap[value]
+        const value = char[filter.meta.field as keyof Char]
+
         const selected = Object.entries(filter.selected).filter(([_, v]) => v).map(([k, _]) => k)
+        const range = selected.map((s) => {
+          const option = filter.meta.cbt.find((v) => {
+            if (typeof v === 'string')
+              return v === s
+            return v.label === s
+          })!
+          if (typeof option === 'string')
+            return [option]
+          return option.value
+        }).flat()
         if (filter.both) {
-          return selected.every((k) => {
+          return range.every((k) => {
             return (value as string[]).includes(k)
           })
         }
-        if (selected.length === 0)
+        if (range.length === 0)
           return true
         if (filter.meta.title === '稀有度')
           return filter.selected[`★${1 + char.rarity}`]
@@ -146,27 +152,31 @@ export default defineComponent({
         if (filter.meta.cbt.includes('其他')) {
           // 其他的时候一定没同时满足
           if (filter.selected['其他']) {
+            const allValues = filter.meta.cbt.map((v) => {
+              if (typeof v === 'string')
+                return [v]
+              return v.value
+            }).flat()
             if (Array.isArray(value)) {
-              if (selected.some(v => (value as string[]).includes(v)))
+              if (range.some(v => (value as string[]).includes(v)))
                 return true
-              if (value.some(v => !filter.meta.cbt.includes(v as string)))
+              if (value.some(v => !allValues.includes(v as string)))
                 return true
               return false
             }
-            if (selected.includes(value as string))
+            if (range.includes(value as string))
               return true
-            if (!filter.meta.cbt.includes(value as string))
+            if (!allValues.includes(value as string))
               return true
             return false
           }
           if (Array.isArray(value))
-            return selected.some(v => (value as string[]).includes(v))
-          return selected.includes(value as string)
+            return range.some(v => (value as string[]).includes(v))
+          return range.includes(value as string)
         }
         if (Array.isArray(value))
-          return selected.some(v => (value as string[]).includes(v))
-
-        return selected.includes(value as string)
+          return range.some(v => (value as string[]).includes(v))
+        return range.includes(value as string)
       }
       const result = props.source.filter((char) => {
         for (const group of states) {
@@ -307,7 +317,13 @@ export default defineComponent({
       window.navigator.clipboard.writeText(url)
       alert(`链接已复制: ${url}`)
     }
-
+    function flat(cbt: CheckboxOption[]) {
+      return cbt.map((v) => {
+        if (typeof v === 'string')
+          return v
+        return v.label
+      })
+    }
     return {
       card,
       short,
@@ -325,6 +341,7 @@ export default defineComponent({
       oridata,
       data,
       fix,
+      flat,
       // url,
       toggleCollapse,
       onStepChange,
@@ -361,7 +378,7 @@ export default defineComponent({
           v-model="states[i][i2].selected"
           v-model:both="states[i][i2].both"
           :title="v2.title"
-          :labels="v2.cbt"
+          :labels="flat(v2.cbt)"
           :show-both="v2.both"
           :no-width="i === 2"
         />

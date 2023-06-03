@@ -126,8 +126,8 @@ export default defineComponent({
           </div>
           <div>{{ row.logo }}</div>
           <div>{{ row.birthPlace }}</div>
-          <div>{{ row.team }}</div>
-          <div>{{ row.race }}</div>
+          <div>{{ row.force.join('-') }}</div>
+          <div>{{ row.race.join('/') }}</div>
         </div>
         <div class="data1">
           <div class="head">

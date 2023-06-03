@@ -15,9 +15,8 @@ export default defineComponent({
       姓名
     </div>
     <div id="camp">
-      <div>标志</div>
+      <div>势力</div>
       <div>出身地</div>
-      <div>团队</div>
       <div>种族</div>
     </div>
     <div id="data1">
