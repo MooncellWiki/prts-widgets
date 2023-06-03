@@ -1,48 +1,44 @@
 <script lang="ts">
-import { computed, defineComponent, ref, watch } from 'vue'
-import CheckBox from './CheckBox.vue'
+import { computed, defineComponent } from 'vue'
+import Checkbox from './Checkbox.vue'
+import CheckboxGroup from './CheckboxGroup.vue'
 export default defineComponent({
   name: 'Pagination',
   components: {
-    CheckBox,
+    Checkbox,
+    CheckboxGroup,
   },
   props: {
     length: { type: Number, required: true },
-    step: { type: String, required: true },
+    step: { type: Number, required: true },
     index: { type: Number, required: true },
   },
+  emits: ['update:index', 'update:step'],
   setup(props, { emit }) {
-    const step_ = ref(props.step)
-    const values = ref(['1'])
-    const checkboxCount = computed(() =>
-      Math.ceil(props.length / parseInt(props.step)),
-    )
+    const checkboxCount = computed(() => {
+      return Math.ceil(props.length / props.step)
+    })
 
-    watch(
-      () => values.value,
-      () =>
-        emit('update:values', {
-          index: parseInt(values.value[0]),
-          step: step_,
-        }),
-      { deep: true },
-    )
-    watch(step_, (n, o) => emit('update:step', { n, o }))
-    watch(
-      () => props.index,
-      () => (values.value[0] = props.index.toString()),
-    )
-    watch(
-      () => checkboxCount.value,
-      (newVal) => {
-        if (newVal !== 0 && newVal < parseInt(values.value[0]))
-          values.value[0] = newVal.toString()
+    const cur = computed({
+      get() {
+        return `${props.index}`
       },
-    )
+      set(v) {
+        emit('update:index', parseInt(v))
+      },
+    })
+    const curStep = computed({
+      get() {
+        return props.step
+      },
+      set(v) {
+        emit('update:step', { n: v, o: curStep.value })
+      },
+    })
 
     return {
-      step_,
-      values,
+      cur,
+      curStep,
       checkboxCount,
     }
   },
@@ -51,28 +47,27 @@ export default defineComponent({
 
 <template>
   <div class="paginations-container">
-    <select v-model="step_" name="length">
-      <option value="50">
+    <select v-model="curStep" name="length">
+      <option :value="50">
         50
       </option>
-      <option value="100">
+      <option :value="100">
         100
       </option>
-      <option value="200">
+      <option :value="200">
         200
       </option>
     </select>
     <div>共{{ length }}条</div>
-    <div class="checkbox-container">
-      <CheckBox
+    <CheckboxGroup v-model="cur" class="checkbox-container" is-radio>
+      <Checkbox
         v-for="k in checkboxCount"
         :key="k"
-        v-model:states="values"
-        :text="k.toString()"
-        :only-one="true"
-        :atleast-one="true"
-      />
-    </div>
+        :value="k.toString()"
+      >
+        {{ k }}
+      </Checkbox>
+    </CheckboxGroup>
   </div>
 </template>
 

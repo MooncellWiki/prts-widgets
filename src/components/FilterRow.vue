@@ -1,41 +1,69 @@
 <script lang="ts">
-import { defineComponent, ref, watch } from 'vue'
-import CheckBox from './CheckBox.vue'
-
+import type { PropType } from 'vue'
+import { computed, defineComponent } from 'vue'
+import Checkbox from './Checkbox.vue'
+import CheckboxGroup from './CheckboxGroup.vue'
 export default defineComponent({
   name: 'FilterRow',
   components: {
-    CheckBox,
+    Checkbox,
+    CheckboxGroup,
   },
   props: {
-    labels: { type: Array<string>, required: true },
+    labels: { type: Array<string> },
     title: String,
+    showBoth: Boolean,
     both: Boolean,
     noWidth: Boolean,
-    states: { type: Array<string>, required: true },
+    someSelected: Boolean,
+    modelValue: { type: Object as PropType<Record<string, boolean>>, default: () => ({}) },
   },
-  emits: ['update:states'],
-  setup(props, { emit }) {
-    const selectedLabels = ref(props.states)
-    watch(
-      () => props.states,
-      (val) => {
-        emit('update:states', val)
+  emits: ['update:modelValue', 'update:both', 'all', 'clear'],
+  setup(props, { emit, slots }) {
+    const isBoth = computed({
+      get() {
+        return props.both
       },
-    )
+      set(v) {
+        emit('update:both', v)
+      },
+    })
+    const selected = computed({
+      get() {
+        return props.modelValue
+      },
+      set(v) {
+        emit('update:modelValue', v)
+      },
+    })
+    const hasSlot = computed(() => {
+      return !!slots.default
+    })
     const addAll = () => {
-      selectedLabels.value = props.labels
-      emit('update:states', props.labels)
+      if (hasSlot.value) {
+        emit('all')
+        return
+      }
+      const tmp: Record<string, boolean> = {}
+      props.labels?.forEach((label) => {
+        tmp[label] = true
+      })
+      selected.value = tmp
     }
     const removeAll = () => {
-      selectedLabels.value = []
-      emit('update:states', selectedLabels.value)
+      if (hasSlot.value) {
+        emit('clear')
+        return
+      }
+      selected.value = {}
     }
 
     return {
-      selectedLabels,
+      selected,
       addAll,
       removeAll,
+      isBoth,
+      hasSlot,
     }
   },
 })
@@ -44,7 +72,7 @@ export default defineComponent({
 <template>
   <div
     class="filter-row-container"
-    :class="{ disabled: states?.length === 0, long: both }"
+    :class="{ disabled: !someSelected, long: both }"
   >
     <div class="title">
       {{ title }}
@@ -56,22 +84,26 @@ export default defineComponent({
       <button class="btn" @click="removeAll">
         清除
       </button>
-      <CheckBox
-        v-if="both"
-        key="both"
-        v-model:states="selectedLabels"
-        text="同时满足"
-      />
+      <Checkbox
+        v-if="showBoth"
+        v-model="isBoth"
+      >
+        同时满足
+      </Checkbox>
     </div>
-    <div class="checkboxs">
-      <CheckBox
+    <div v-if="hasSlot" class="checkboxs">
+      <slot />
+    </div>
+    <CheckboxGroup v-else v-model="selected" class="checkboxs">
+      <Checkbox
         v-for="label in labels"
         :key="label"
-        v-model:states="selectedLabels"
-        :text="label"
+        :value="label"
         :no-width="noWidth"
-      />
-    </div>
+      >
+        {{ label }}
+      </Checkbox>
+    </CheckboxGroup>
   </div>
 </template>
 
