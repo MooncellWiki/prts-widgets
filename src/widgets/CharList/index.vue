@@ -1,9 +1,9 @@
 <script lang="ts">
 import type { PropType, Ref } from 'vue'
-import { computed, defineComponent, reactive, ref } from 'vue'
+import { computed, defineComponent, onBeforeMount, reactive, ref, watch } from 'vue'
 import Cookies from 'js-cookie'
 import { NCollapseTransition } from 'naive-ui'
-import { useBreakpoints } from '@vueuse/core'
+import { useBreakpoints, useUrlSearchParams } from '@vueuse/core'
 import type { Char, FilterGroup } from './utils'
 import Card from './row/Card.vue'
 import Long from './row/Long.vue'
@@ -230,69 +230,84 @@ export default defineComponent({
       const start = (page.value.index - 1) * page.value.step
       return oridata.value.slice(start, start + page.value.step)
     })
-    // const url = computed(() => {
-    //   const arrToBase64 = (arr: Array<number>) => {
-    //     if (!arr.includes(1))
-    //       return ''
+    const hash = useUrlSearchParams('hash')
+    watch(searchText, () => {
+      // @ts-expect-error string
+      hash._s = searchText.value || undefined
+    })
+    watch(states, () => {
+      states.forEach((s) => {
+        s.forEach((element) => {
+          const selected = Object.entries(element.selected).filter(([_, v]) => v)
+          if (selected.length === 0) {
+            delete hash[element.meta.field]
+            return
+          }
+          console.log(selected, element.meta.title)
+          const fields = selected.map(([k]) => k).join('-')
+          const both = element.both ? '0-' : '1-'
+          hash[element.meta.field] = both + fields
+        })
+      })
+    })
+    watch(sortMethod, () => {
+      hash._o = `${sortMethods.value.indexOf(sortMethod.value)}`
+    })
+    watch(currDataTypes, () => {
+      let result = ''
+      if (currDataTypes.value['满潜能'])
+        result += 'p'
 
-    //     const result = []
-    //     while (arr.length % 6 !== 0)
-    //       arr.push(0)
+      if (currDataTypes.value['满信赖'])
+        result += 't'
+      // @ts-expect-error string
+      hash._f = result || undefined
+    }, { deep: true })
+    watch(currDisplayMode, () => {
+      hash._d = `${displayModes.value.indexOf(currDisplayMode.value)}`
+    })
+    onBeforeMount(() => {
+      Object.entries(hash).forEach(([k, v]) => {
+        if (k === '_s') {
+          searchText.value = v as string
+          return
+        }
+        if (k === '_o') {
+          sortMethod.value = sortMethods.value[parseInt(v as string)]
+          return
+        }
+        if (k === '_f') {
+          if (v.includes('p'))
+            currDataTypes.value['满潜能'] = true
+          if (v.includes('t'))
+            currDataTypes.value['满信赖'] = true
+          return
+        }
+        if (k === '_d') {
+          currDisplayMode.value = displayModes.value[parseInt(v as string)]
+          return
+        }
 
-    //     for (let i = 0; i < arr.length; i += 6)
-    //       result.push(keyStr.charAt(parseInt(arr.slice(i, i + 6).join(''), 2)))
-
-    //     return result.join('')
-    //   }
-    //   const result: Array<string> = []
-    //   props.filters.forEach((v1, i1) => {
-    //     v1.filter.forEach((v2, i2) => {
-    //       const temp = Array(v2.cbt.length).fill(0)
-    //       states[i1][i2].forEach((selected) => {
-    //         temp[props.shortLinkMap[i1][i2].indexOf(selected)] = 1
-    //       })
-    //       result.push(arrToBase64(temp))
-    //     })
-    //   })
-
-    //   return (
-    //     `${window.location.origin
-    //     + window.location.pathname
-    //     }#${
-    //     result.join('|')
-    //     }|${
-    //     searchText.value
-    //     }#`
-    //   )
-    // })
-    const copyUrl = () => {
-      // window.navigator.clipboard.writeText(url.value)
-
-      // alert(`链接已复制: ${url.value}`)
+        const both = v[0] === '0'
+        const selected = (v as string).slice(2).split('-')
+        for (let i = 0; i < states.length; i++) {
+          for (let j = 0; j < states[i].length; j++) {
+            if (states[i][j].meta.field === v) {
+              states[i][j].both = both
+              selected.forEach((f) => {
+                states[i][j].selected[f] = true
+              })
+              return
+            }
+          }
+        }
+      })
+    })
+    function copyUrl() {
+      const url = `${location.origin}/w/干员一览#${location.hash}`
+      window.navigator.clipboard.writeText(url)
+      alert(`链接已复制: ${url}`)
     }
-
-    // const _keyStr
-    //   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,'
-
-    // const hash = /#([^#]+)#/.exec(window.location.hash)
-    // if (hash && hash[1]) {
-    //   const base64ToArr = (str: string) => {
-    //     return str
-    //       .split('')
-    //       .map((v) => {
-    //         let temp = _keyStr.indexOf(v).toString(2)
-    //         while (temp.length % 6 !== 0)
-    //           temp = `0${temp}`
-
-    //         return temp.split('')
-    //       })
-    //       .flat()
-    //   }
-    //   const arr = hash[1].split('|')
-    //   searchText.value = arr[arr.length - 1]
-    //   const arr2 = arr.slice(0, -1).map(v => base64ToArr(v))
-    //   let i = 0
-    // }
 
     return {
       card,
