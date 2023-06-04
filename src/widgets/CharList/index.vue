@@ -313,7 +313,7 @@ export default defineComponent({
       })
     })
     function copyUrl() {
-      const url = `${location.origin}/w/干员一览#${location.hash}`
+      const url = `${location.origin}/id/1831#${location.hash}`
       window.navigator.clipboard.writeText(url)
       alert(`链接已复制: ${url}`)
     }
@@ -322,6 +322,11 @@ export default defineComponent({
         if (typeof v === 'string')
           return v
         return v.label
+      })
+    }
+    function hasSelected(states: State[]) {
+      return states.some((state) => {
+        return Object.values(state.selected).some(v => v)
       })
     }
     return {
@@ -342,7 +347,7 @@ export default defineComponent({
       data,
       fix,
       flat,
-      // url,
+      hasSelected,
       toggleCollapse,
       onStepChange,
       copyUrl,
@@ -361,7 +366,7 @@ export default defineComponent({
       <div
         class="filter-title"
         :class="{
-          enabled: states[i].flat().length > 0 && !expanded[i],
+          enabled: hasSelected(states[i].flat()),
         }"
       >
         {{ v.title }}
