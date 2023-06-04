@@ -15,6 +15,7 @@ export default defineComponent({
       姓名
     </div>
     <div id="camp">
+      <div>子职业</div>
       <div>势力</div>
       <div>出身地</div>
       <div>种族</div>

@@ -113,20 +113,20 @@ export default defineComponent({
       <div v-if="!collapsed" class="expand-panel">
         <div class="story">
           <div class="head">
-            标志
+            子职业
+          </div>
+          <div class="head">
+            势力
           </div>
           <div class="head">
             出身地
           </div>
           <div class="head">
-            团队
-          </div>
-          <div class="head">
             种族
           </div>
-          <div>{{ row.logo }}</div>
-          <div>{{ row.birthPlace }}</div>
+          <div>{{ row.subProfession }}</div>
           <div>{{ row.force.join('-') }}</div>
+          <div>{{ row.birthPlace }}</div>
           <div>{{ row.race.join('/') }}</div>
         </div>
         <div class="data1">
