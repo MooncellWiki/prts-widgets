@@ -15,6 +15,7 @@ export interface Source {
   tag: string[]
   zh: string
   subset: number[]
+  obtainMethod: string[]
 }
 export class BitMap {
   value: number

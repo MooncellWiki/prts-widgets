@@ -12,12 +12,13 @@ function init(): Source[] {
       return v.dataset.obtain_method?.split(', ').includes('公开招募')
     }).map((v) => {
       const temp: Source = {
-        profession: v.dataset.class_!,
+        profession: v.dataset.profession!,
         position: v.dataset.position!,
         rarity: parseInt(v.dataset.rarity!),
         tag: v.dataset.tag?.split(' ') || [],
         zh: v.dataset.zh!,
         subset: [],
+        obtainMethod: v.dataset.obtain_method?.split(', ') || [],
       }
       const char = Char.fromSource(temp)
       temp.subset = char.bitmap.getSubSet()

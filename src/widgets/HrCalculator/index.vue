@@ -93,7 +93,10 @@ export default defineComponent({
         result.value = calc()
       })
     })
-
+    // 寻访出不了的都算只能公招出
+    function isOnly(s: Source) {
+      return !s.obtainMethod.some(v => v.includes('寻访'))
+    }
     return {
       value,
       profession,
@@ -112,6 +115,7 @@ export default defineComponent({
       isTagEmpty,
       result,
       number2names,
+      isOnly,
     }
   },
 })
@@ -119,39 +123,45 @@ export default defineComponent({
 
 <template>
   <div>
-    <FilterRow title="职业" :some-selected="!isClassEmpty" @all="() => value.selectAllProfession()" @clear="() => value.unselectAllProfession()">
+    <FilterRow
+      title="职业" :some-selected="!isClassEmpty" @all="() => value.selectAllProfession()"
+      @clear="() => value.unselectAllProfession()"
+    >
       <Checkbox
-        v-for="(c, i) in profession"
-        :key="c"
-        :model-value="selected[professionIndex - i]"
-        class="m-1"
+        v-for="(c, i) in profession" :key="c" :model-value="selected[professionIndex - i]" class="m-1"
         @click="onTagClick(professionIndex - i)"
       >
         {{ c }}
       </Checkbox>
     </FilterRow>
-    <FilterRow title="位置" :some-selected="!isPositionEmpty" @all="() => value.selectAllPosition()" @clear="() => value.unselectAllPosition()">
+    <FilterRow
+      title="位置" :some-selected="!isPositionEmpty" @all="() => value.selectAllPosition()"
+      @clear="() => value.unselectAllPosition()"
+    >
       <Checkbox
-        v-for="(c, i) in position"
-        :key="c" class="m-1" :model-value="selected[positionIndex - i]"
+        v-for="(c, i) in position" :key="c" class="m-1" :model-value="selected[positionIndex - i]"
         @click="onTagClick(positionIndex - i)"
       >
         {{ c }}
       </Checkbox>
     </FilterRow>
-    <FilterRow title="资历" :some-selected="!isRarityEmpty" @all="() => value.selectAllRarity()" @clear="() => value.unselectAllRarity()">
+    <FilterRow
+      title="资历" :some-selected="!isRarityEmpty" @all="() => value.selectAllRarity()"
+      @clear="() => value.unselectAllRarity()"
+    >
       <Checkbox
-        v-for="(c, i) in rarity"
-        :key="c" class="m-1" :model-value="selected[rarityIndex - i]"
+        v-for="(c, i) in rarity" :key="c" class="m-1" :model-value="selected[rarityIndex - i]"
         @click="onTagClick(rarityIndex - i)"
       >
         {{ c }}
       </Checkbox>
     </FilterRow>
-    <FilterRow title="词缀" :some-selected="!isTagEmpty" @all="() => value.selectAllTag()" @clear="() => value.unselectAllTag()">
+    <FilterRow
+      title="词缀" :some-selected="!isTagEmpty" @all="() => value.selectAllTag()"
+      @clear="() => value.unselectAllTag()"
+    >
       <Checkbox
-        v-for="(c, i) in tag"
-        :key="c" class="m-1" :model-value="selected[tagIndex - i]" checkable
+        v-for="(c, i) in tag" :key="c" class="m-1" :model-value="selected[tagIndex - i]" checkable
         @click="onTagClick(tagIndex - i)"
       >
         {{ c }}
@@ -164,7 +174,10 @@ export default defineComponent({
       <col>
     </colgroup>
     <thead class="bg-[#eaebee]">
-      <tr><th>Tags</th><th>可能出现</th></tr>
+      <tr>
+        <th>Tags</th>
+        <th>可能出现</th>
+      </tr>
     </thead>
     <tbody>
       <tr v-for="data in result" :key="data.tags" class="row">
@@ -176,7 +189,13 @@ export default defineComponent({
           </div>
         </td>
         <td class="flex flex-wrap flex-1">
-          <Avatar v-for="charIndex in data.charIndict" :key="charIndex" :profession="source[charIndex].profession" :rarity="source[charIndex].rarity" :name="source[charIndex].zh" />
+          <div v-for="charIndex in data.charIndict" :key="charIndex" class="p-2 m-2 rounded relative" :class="`r-${source[charIndex].rarity}`">
+            <span v-if="isOnly(source[charIndex])" class="absolute top-0 right-0 bg-[#3fbd43] text-white leading-none p-1 rounded z-1 font-bold">限</span>
+            <Avatar
+              small
+              :profession="source[charIndex].profession" :rarity="source[charIndex].rarity" :name="source[charIndex].zh"
+            />
+          </div>
         </td>
       </tr>
     </tbody>
@@ -184,7 +203,7 @@ export default defineComponent({
 </template>
 
 <style scoped>
-.tag{
+.tag {
   width: 100px;
   background-color: #313131;
   color: #ffffff;
@@ -201,16 +220,42 @@ export default defineComponent({
   text-indent: 0.08em;
   margin: 4px 12px;
 }
-.row{
+
+.row {
   margin-top: 6px;
   box-shadow: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
 }
-.tag-row{
-  width:110px
+
+.tag-row {
+  width: 110px
 }
+
 @media screen and (min-width: 700px) {
-  .tag-row{
-    width:300px
+  .tag-row {
+    width: 300px
   }
+}
+
+.r-5 {
+  background: #ff7f27;
+}
+
+.r-4 {
+  background: #ffc90e
+}
+
+.r-3 {
+  background: #d8b3d8
+}
+
+.r-2 {
+  background: #09b3f7
+}
+
+.r-1 {
+  background: #d3db2e
+}
+.r-0 {
+  background: gray;
 }
 </style>
