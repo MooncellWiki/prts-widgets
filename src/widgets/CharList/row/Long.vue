@@ -53,6 +53,7 @@ export default defineComponent({
     </div>
     <div class="camp">
       <div>
+        <div>{{ row.subProfession }}</div>
         <div>{{ row.force.join('-') }}</div>
         <div>{{ row.birthPlace }}</div>
         <div>{{ row.race.join('/') }}</div>
