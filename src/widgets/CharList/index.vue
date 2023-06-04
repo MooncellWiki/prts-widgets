@@ -301,7 +301,7 @@ export default defineComponent({
         const selected = (v as string).slice(2).split('-')
         for (let i = 0; i < states.length; i++) {
           for (let j = 0; j < states[i].length; j++) {
-            if (states[i][j].meta.field === v) {
+            if (states[i][j].meta.field === k) {
               states[i][j].both = both
               selected.forEach((f) => {
                 states[i][j].selected[f] = true
@@ -313,7 +313,7 @@ export default defineComponent({
       })
     })
     function copyUrl() {
-      const url = `${location.origin}/id/1831#${location.hash}`
+      const url = `${location.origin}/w/CHAR${location.hash}`
       window.navigator.clipboard.writeText(url)
       alert(`链接已复制: ${url}`)
     }
