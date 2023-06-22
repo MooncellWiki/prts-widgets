@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { PropType } from 'vue'
 import { defineComponent } from 'vue'
 import { domain, getImagePath } from '@/utils/utils'
 
@@ -8,7 +9,10 @@ export default defineComponent({
     profession: { type: String, required: true },
     rarity: { type: Number, required: true },
     name: String,
-    small: Boolean,
+    size: {
+      type: String as PropType<'sm' | 'xs'>,
+      default: '',
+    },
   },
   setup() {
     return {
@@ -20,7 +24,7 @@ export default defineComponent({
 </script>
 
 <template>
-  <div class="avatar-container" :class="{ sm: small }">
+  <div class="avatar-container" :class="size">
     <a :href="`/w/${name}`">
       <img
         class="avatar lazyload"
@@ -46,11 +50,18 @@ export default defineComponent({
   width: 80px;
   height: 80px;
 }
+.avatar-container.xs{
+  width: 50px;
+  height: 50px;
+}
 .avatar {
   width: 100px;
 }
 .sm .avatar{
   width: 80px;
+}
+.xs .avatar{
+  width: 50px;
 }
 .rarity {
   position: absolute;
@@ -63,14 +74,17 @@ export default defineComponent({
 .sm .rarity > img{
   height: 14px;
 }
+.xs .rarity > img{
+  height: 9px;
+}
 .profession {
   position: absolute;
   top: 0px;
 }
-.class > img {
-  width: 25px;
+.profession > img{
+  height: 25px;
 }
-.sm .class > img {
-  width: 20px;
+.xs .profession >img{
+  height: 12px;
 }
 </style>

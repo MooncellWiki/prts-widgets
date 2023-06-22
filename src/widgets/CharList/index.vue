@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { PropType, Ref } from 'vue'
-import { computed, defineComponent, onBeforeMount, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, nextTick, onBeforeMount, reactive, ref, watch } from 'vue'
 import Cookies from 'js-cookie'
 import { NCollapseTransition } from 'naive-ui'
 import { useBreakpoints, useUrlSearchParams } from '@vueuse/core'
@@ -116,10 +116,12 @@ export default defineComponent({
       const filters = props.filters
       function predicate(filter: State, char: Char) {
         if (searchText.value) {
-          const tags = ['zh', 'en', 'ja', 'id', 'feature']
-          return tags.some((key) => {
+          const tags = ['zh', 'en', 'ja', 'id', 'plainFeature']
+          const text = tags.some((key) => {
             return (char[key as keyof Char] as string).includes(searchText.value)
           })
+          if (!text)
+            return false
         }
         const value = char[filter.meta.field as keyof Char]
 
@@ -236,8 +238,12 @@ export default defineComponent({
       }
       return result
     })
+    watch(oridata, () => {
+      page.value.index = 1
+    })
     const data = computed(() => {
       const start = (page.value.index - 1) * page.value.step
+
       return oridata.value.slice(start, start + page.value.step)
     })
     const hash = useUrlSearchParams('hash')
@@ -253,7 +259,7 @@ export default defineComponent({
             delete hash[element.meta.field]
             return
           }
-          const fields = selected.map(([k]) => k).join('-')
+          const fields = selected.map(([k]) => k.replace('★', '')).join('-')
           const both = element.both ? '0-' : '1-'
           hash[element.meta.field] = both + fields
         })
@@ -304,6 +310,9 @@ export default defineComponent({
             if (states[i][j].meta.field === k) {
               states[i][j].both = both
               selected.forEach((f) => {
+                if (k === 'rarity')
+                  f = `★${f}`
+
                 states[i][j].selected[f] = true
               })
               return
@@ -329,6 +338,32 @@ export default defineComponent({
         return Object.values(state.selected).some(v => v)
       })
     }
+    const resultTable = ref<HTMLElement>()
+    watch(data, () => {
+      nextTick(() => {
+        try {
+          resultTable.value?.querySelectorAll('.mc-tooltips').forEach((e) => {
+            if (!e.children || e.children.length < 2)
+              return
+            (e.children[1] as HTMLElement).style.display = 'block'
+            // @ts-expect-error tippy
+            tippy6(e.children[0],
+              {
+                content: e.children[1],
+                arrow: true,
+                theme: 'light-border',
+                size: 'large',
+                maxWidth: parseInt((e.children[1] as HTMLElement).dataset.size!),
+                trigger: (e.children[1] as HTMLElement).dataset.trigger || 'mouseenter focus',
+              },
+            )
+          })
+        }
+        catch (e) {
+          console.error(e)
+        }
+      })
+    })
     return {
       card,
       short,
@@ -351,6 +386,7 @@ export default defineComponent({
       toggleCollapse,
       onStepChange,
       copyUrl,
+      resultTable,
     }
   },
 })
@@ -377,16 +413,17 @@ export default defineComponent({
         <span v-else class="text-2xl mdi mdi-chevron-down" />
       </div>
       <NCollapseTransition :show="expanded[i]">
-        <FilterRow
-          v-for="(v2, i2) in v.filter"
-          :key="v2.title"
-          v-model="states[i][i2].selected"
-          v-model:both="states[i][i2].both"
-          :title="v2.title"
-          :labels="flat(v2.cbt)"
-          :show-both="v2.both"
-          :no-width="i === 2"
-        />
+        <template v-for="(v2, i2) in v.filter" :key="v2.title">
+          <FilterRow
+            v-if="v2.cbt.length > 0"
+            v-model="states[i][i2].selected"
+            v-model:both="states[i][i2].both"
+            :title="v2.title"
+            :labels="flat(v2.cbt)"
+            :show-both="v2.both"
+            :no-width="i === 2"
+          />
+        </template>
       </NCollapseTransition>
     </div>
     <div class="control">
@@ -402,7 +439,7 @@ export default defineComponent({
       </CheckboxGroup>
     </div>
     <div class="mode">
-      <input v-model="searchText" placeholder="搜索干员名称/简介/特性">
+      <input v-model="searchText" placeholder="搜索干员名称/特性">
       <CheckboxGroup v-model="currDataTypes">
         <Checkbox
           v-for="v in dataTypes"
@@ -445,6 +482,7 @@ export default defineComponent({
       />
       <div
         id="filter-result"
+        ref="resultTable"
         :class="{
           showhead: currDisplayMode === '头像',
           showavatar: currDisplayMode === '半身像',

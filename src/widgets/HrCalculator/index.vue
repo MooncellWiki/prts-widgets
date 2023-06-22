@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { PropType } from 'vue'
 import { computed, defineComponent, nextTick, reactive, ref, watch } from 'vue'
-
+import { useBreakpoints } from '@vueuse/core'
 import type { Source } from './utils'
 import { Char, all, can5, number2names, position, positionIndex, profession, professionIndex, rarity, rarityIndex, tag, tagIndex } from './utils'
 import Checkbox from '@/components/Checkbox.vue'
@@ -13,6 +13,8 @@ export default defineComponent({
     source: { type: Array as PropType<Source[]>, default: () => [] },
   },
   setup(props) {
+    const breakpoints = useBreakpoints({ xs: 640 })
+    const xs = breakpoints.smallerOrEqual('xs')
     const value = reactive(new Char(0))
     const selected = computed(() => {
       return all.map((v, i) => {
@@ -65,13 +67,17 @@ export default defineComponent({
       Object.keys(result).forEach((k) => {
         const key = parseInt(k)
         const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
-          return props.source[a].rarity - props.source[b].rarity
+          return props.source[b].rarity - props.source[a].rarity
         })
         list.push({
           tags: key,
           charIndict,
           score: charIndict.reduce((acc, cur) => {
-            return acc + props.source[cur].rarity
+            let s = props.source[cur].rarity + 1
+            if (s === 1)
+              s = 3.5
+
+            return acc + s
           }, 0) / charIndict.length,
         })
       })
@@ -116,6 +122,7 @@ export default defineComponent({
       result,
       number2names,
       isOnly,
+      xs,
     }
   },
 })
@@ -168,7 +175,25 @@ export default defineComponent({
       </Checkbox>
     </FilterRow>
   </div>
-  <table class="bg-[#f8f9fa] w-full mt-2">
+  <div v-if="xs" class="w-full mt-2 ">
+    <div v-for="data in result" :key="data.tags" class="bg-[#f8f9fa] mb-1 shadow shadow-gray-400">
+      <div class="flex items-center flex-wrap justify-start">
+        <div v-for="name in number2names(data.tags)" :key="name" class="tag">
+          {{ name }}
+        </div>
+      </div>
+      <div class="flex flex-wrap ">
+        <div v-for="charIndex in data.charIndict" :key="charIndex" class="p-2 m-2 <sm:p-1 <sm:m-1 rounded relative" :class="`r-${source[charIndex].rarity}`">
+          <span v-if="isOnly(source[charIndex])" class="absolute top-0 right-0 bg-[#3fbd43] text-white leading-none p-1 rounded z-1 font-bold">限</span>
+          <Avatar
+            :size="xs ? 'xs' : 'sm'"
+            :profession="source[charIndex].profession" :rarity="source[charIndex].rarity" :name="source[charIndex].zh"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+  <table v-else class="bg-[#f8f9fa] w-full mt-2">
     <colgroup>
       <col class="tag-row">
       <col>
@@ -189,10 +214,10 @@ export default defineComponent({
           </div>
         </td>
         <td class="flex flex-wrap flex-1">
-          <div v-for="charIndex in data.charIndict" :key="charIndex" class="p-2 m-2 rounded relative" :class="`r-${source[charIndex].rarity}`">
+          <div v-for="charIndex in data.charIndict" :key="charIndex" class="p-2 m-2 <sm:p-1 <sm:m-1 rounded relative" :class="`r-${source[charIndex].rarity}`">
             <span v-if="isOnly(source[charIndex])" class="absolute top-0 right-0 bg-[#3fbd43] text-white leading-none p-1 rounded z-1 font-bold">限</span>
             <Avatar
-              small
+              :size="xs ? 'xs' : 'sm'"
               :profession="source[charIndex].profession" :rarity="source[charIndex].rarity" :name="source[charIndex].zh"
             />
           </div>
@@ -204,7 +229,6 @@ export default defineComponent({
 
 <style scoped>
 .tag {
-  width: 100px;
   background-color: #313131;
   color: #ffffff;
   height: 28px;
@@ -218,7 +242,7 @@ export default defineComponent({
   box-shadow: 0 3px 5px grey;
   letter-spacing: 0.08em;
   text-indent: 0.08em;
-  margin: 4px 12px;
+  margin: 4px 4px;
 }
 
 .row {
