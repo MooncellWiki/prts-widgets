@@ -131,6 +131,17 @@ export default defineComponent({
 <template>
   <div>
     <FilterRow
+      title="资历" :some-selected="!isRarityEmpty" @all="() => value.selectAllRarity()"
+      @clear="() => value.unselectAllRarity()"
+    >
+      <Checkbox
+        v-for="(c, i) in rarity" :key="c" class="m-1" :model-value="selected[rarityIndex - i]"
+        @click="onTagClick(rarityIndex - i)"
+      >
+        {{ c }}
+      </Checkbox>
+    </FilterRow>
+    <FilterRow
       title="职业" :some-selected="!isClassEmpty" @all="() => value.selectAllProfession()"
       @clear="() => value.unselectAllProfession()"
     >
@@ -152,17 +163,7 @@ export default defineComponent({
         {{ c }}
       </Checkbox>
     </FilterRow>
-    <FilterRow
-      title="资历" :some-selected="!isRarityEmpty" @all="() => value.selectAllRarity()"
-      @clear="() => value.unselectAllRarity()"
-    >
-      <Checkbox
-        v-for="(c, i) in rarity" :key="c" class="m-1" :model-value="selected[rarityIndex - i]"
-        @click="onTagClick(rarityIndex - i)"
-      >
-        {{ c }}
-      </Checkbox>
-    </FilterRow>
+
     <FilterRow
       title="词缀" :some-selected="!isTagEmpty" @all="() => value.selectAllTag()"
       @clear="() => value.unselectAllTag()"
