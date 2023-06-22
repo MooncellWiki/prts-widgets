@@ -413,17 +413,16 @@ export default defineComponent({
         <span v-else class="text-2xl mdi mdi-chevron-down" />
       </div>
       <NCollapseTransition :show="expanded[i]">
-        <template v-for="(v2, i2) in v.filter" :key="v2.title">
-          <FilterRow
-            v-if="v2.cbt.length > 0"
-            v-model="states[i][i2].selected"
-            v-model:both="states[i][i2].both"
-            :title="v2.title"
-            :labels="flat(v2.cbt)"
-            :show-both="v2.both"
-            :no-width="i === 2"
-          />
-        </template>
+        <FilterRow
+          v-for="(v2, i2) in v.filter"
+          :key="v2.title"
+          v-model="states[i][i2].selected"
+          v-model:both="states[i][i2].both"
+          :title="v2.title"
+          :labels="flat(v2.cbt)"
+          :show-both="v2.both"
+          :no-width="i === 2"
+        />
       </NCollapseTransition>
     </div>
     <div class="control">
