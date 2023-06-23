@@ -41,6 +41,7 @@ export class Char {
   sortId: number
   subProfession: string
   feature: string
+  plainFeature: string
   force: string[] = []
   constructor(ele: HTMLDivElement) {
     const d = ele.dataset
@@ -91,6 +92,20 @@ export class Char {
     this.sortId = parseInt(d.sortid!)
     this.subProfession = d.subprofession!
     this.feature = ele.innerHTML || ''
+    this.plainFeature = ''
+    if (ele.innerHTML) {
+      try {
+        const dom = document.createElement('div')
+        dom.innerHTML = ele.innerHTML
+        dom.querySelectorAll('.mc-tooltips').forEach((e) => {
+          if (e.children[1])
+            e.children[1].remove()
+        })
+        this.plainFeature = dom.textContent!
+      }
+      catch (_) {
+      }
+    }
   }
 }
 export type CheckboxOption = string | { label: string; value: string[] }

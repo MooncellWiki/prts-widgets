@@ -1,8 +1,8 @@
 // bitmap的格式是 职业 位置 稀有度 词缀
-export const profession = ['先锋', '近卫', '狙击', '重装', '医疗', '辅助', '术师', '特种']
+export const profession = ['近卫', '狙击', '重装', '医疗', '辅助', '术师', '特种', '先锋']
 export const position = ['近战位', '远程位']
-export const rarity = ['新手', '资深干员', '高级资深干员']
-export const tag = ['治疗', '支援', '输出', '群攻', '减速', '生存', '防护', '削弱', '位移', '控场', '爆发', '召唤', '快速复活', '费用回复', '支援机械']
+export const rarity = ['高级资深干员', '资深干员', '新手']
+export const tag = ['支援机械', '控场', '爆发', '治疗', '支援', '费用回复', '输出', '生存', '群攻', '防护', '减速', '削弱', '快速复活', '位移', '召唤']
 export const all = [...profession, ...position, ...rarity, ...tag]
 export const professionIndex = profession.length + position.length + rarity.length + tag.length - 1
 export const positionIndex = position.length + rarity.length + tag.length - 1
