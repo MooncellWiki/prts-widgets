@@ -34,7 +34,7 @@ export default defineComponent({
 
 <template>
   <div class="flex flex-col justify-center items-center my-8px">
-    <Avatar :rarity="rarity" :name="name" :profession="professionMap[profession]" :size="60" />
+    <Avatar :rarity="rarity" :name="name" :profession="professionMap[profession]" size="sm" />
     <div :class="{ 'text-disabled': elite === 0 }">
       精英化：
       <span :class="{ 'text-primary-main': elite !== 0 }" class="font-bold">
