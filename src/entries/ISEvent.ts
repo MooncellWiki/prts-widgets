@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import 'virtual:windi.css'
 import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue'
+import ISEventCategory from '../widgets/ISEvents/ISEventCategory.vue'
 
 // 数据表元素（根层级）
 const eventDataRoot = document.getElementById('IS-event-data-root')
@@ -10,7 +11,13 @@ const eventEles = eventDataRoot?.getElementsByClassName(
 ) as HTMLCollectionOf<HTMLElement>
 
 const ISTheme = eventDataRoot?.dataset?.theme
-// debugger;
+
+//nav app
+const navArea = document.getElementById('IS-event-nav')
+let sceneCategoryData: string[][] = []
+let sceneCategoryTabList: string[] = []
+
+//events app
 Array.from(eventEles).forEach((eventEle) => {
   const scenes = (Array.from(eventEle.children) as HTMLElement[]).map(
     (scene) => {
@@ -39,8 +46,20 @@ Array.from(eventEles).forEach((eventEle) => {
       }
     },
   )
+  //add new Category
+  if (scenes[0].etype){
+    sceneCategoryTabList.push(scenes[0].etype)
+    sceneCategoryData.push([])
+  }
+  sceneCategoryData[sceneCategoryData.length-1].push(scenes[0].name || "？？？")
+  //creat event
   createApp(ISEventFramework, {
     sceneData: scenes,
     ISTheme,
   }).mount(eventEle)
 })
+
+createApp(ISEventCategory, {
+  eventNameList: sceneCategoryData,
+  tabList: sceneCategoryTabList
+}).mount(navArea)
