@@ -1,7 +1,9 @@
-import { writeFileSync } from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import process from 'node:process'
 import { create, login } from './api.js'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 async function index() {
