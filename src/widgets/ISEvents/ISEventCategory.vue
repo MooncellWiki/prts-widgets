@@ -24,8 +24,8 @@ export default defineComponent({
     NTabPane,
   },
   props: {
-    tabList: Array,
-    eventNameList: Array,
+    tabList: Array as PropType<string[]>,
+    eventNameList: Array as PropType<string[][]>,
   },
 })
 </script>
@@ -33,8 +33,7 @@ export default defineComponent({
 <template>
   <h2>事件导航</h2>
   <NConfigProvider
-    preflight-style-disabled
-    :theme-overrides="{
+    preflight-style-disabled :theme-overrides="{
       Card: {
         borderRadius: '5px',
         actionColor: '#343434',
@@ -50,20 +49,20 @@ export default defineComponent({
       Button: {
         textColorTextHover: '#4294CF',
         textColorTextPressed: '#07426D',
-      }
+      },
     }"
   >
     <NSpace class="w-140 max-w-full">
       <NLayout>
         <NLayoutContent>
-          <NCard
-            class="relative"
-            size="small"
-          >
+          <NCard class="relative" size="small">
             <NTabs type="line" animated>
-              <NTabPane v-for="(tabName,index) in tabList" :name="tabName">
+              <NTabPane v-for="(tabName, index) in tabList" :key="tabName" :name="tabName">
                 <NSpace class="w-140 max-w-full">
-                  <NButton size="small" quaternary tag="a" v-for="eventName in eventNameList[index]" :href="'#'+eventName">
+                  <NButton
+                    v-for="eventName in eventNameList![index]" :key="eventName" size="small" quaternary tag="a"
+                    :href="`#${eventName}`"
+                  >
                     {{ eventName }}
                   </NButton>
                 </NSpace>

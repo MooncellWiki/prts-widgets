@@ -12,12 +12,12 @@ const eventEles = eventDataRoot?.getElementsByClassName(
 
 const ISTheme = eventDataRoot?.dataset?.theme
 
-//nav app
+// nav app
 const navArea = document.getElementById('IS-event-nav')
-let sceneCategoryData: string[][] = []
-let sceneCategoryTabList: string[] = []
+const sceneCategoryData: string[][] = []
+const sceneCategoryTabList: string[] = []
 
-//events app
+// events app
 Array.from(eventEles).forEach((eventEle) => {
   const scenes = (Array.from(eventEle.children) as HTMLElement[]).map(
     (scene) => {
@@ -46,13 +46,13 @@ Array.from(eventEles).forEach((eventEle) => {
       }
     },
   )
-  //add new Category
-  if (scenes[0].etype){
+  // add new Category
+  if (scenes[0].etype) {
     sceneCategoryTabList.push(scenes[0].etype)
     sceneCategoryData.push([])
   }
-  sceneCategoryData[sceneCategoryData.length-1].push(scenes[0].name || "？？？")
-  //creat event
+  sceneCategoryData[sceneCategoryData.length - 1].push(scenes[0].name || '？？？')
+  // creat event
   createApp(ISEventFramework, {
     sceneData: scenes,
     ISTheme,
@@ -61,5 +61,5 @@ Array.from(eventEles).forEach((eventEle) => {
 
 createApp(ISEventCategory, {
   eventNameList: sceneCategoryData,
-  tabList: sceneCategoryTabList
-}).mount(navArea)
+  tabList: sceneCategoryTabList,
+}).mount(navArea!)
