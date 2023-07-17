@@ -1,7 +1,9 @@
-import fs from 'fs'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
+import fs from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import process from 'node:process'
 import { edit, login } from './api.js'
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 function readDist() {
   const json = fs.readFileSync(join(__dirname, '../dist/manifest.json'), {
