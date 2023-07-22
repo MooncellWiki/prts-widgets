@@ -1,10 +1,4 @@
-enum FilterFieldType {
-  USER_AGENT,
-}
-
-enum FilterCondType {
-  INCLUDES,
-}
+import defaultStyle from '../widgets/DisplayController.css?inline'
 
 interface DisplayConfig {
   version: number
@@ -16,8 +10,8 @@ interface DisplayConfig {
 
 const defaultDisplayConfig: DisplayConfig = {
   version: 0,
-  userAgent: '20230731UA',
-  styleClass: '.20230731UA-hidden',
+  userAgent: 'ua20230731',
+  styleClass: 'ua20230731-hidden',
   selectors: [
     '#p-personal',
     '#pt-preferences',
@@ -29,11 +23,14 @@ const defaultDisplayConfig: DisplayConfig = {
     '#ooui-penguin-mirror-option-container',
     '#ooui-penguin-server-option-container',
     '#ooui-penguin-stage-option-container',
+    '.minerva-user-navigation',
+    'a[data-event-name="tabs.talk"]',
+    '.last-modified-bar',
   ],
   pages: [
     '特殊:创建账户',
     '特殊:用户登录',
-    'PRTS:如何帮助我们完善网站#资助我们改善访问质量',
+    'PRTS:如何帮助我们完善网站',
     'PRTS:交流群组',
     'PRTS:收支一览',
     'PRTS:反馈与建议',
@@ -50,7 +47,17 @@ function removeDOM(selector: string) {
 }
 
 function main(config: DisplayConfig) {
+  const styleEle = document.createElement('style')
+  styleEle.className = config.styleClass
+  styleEle.innerHTML = defaultStyle
+  document.head.appendChild(styleEle)
+
   if (navigator.userAgent.includes(config.userAgent)) {
+    if (window.location.hostname === 'prts.wiki') {
+      window.location.replace(
+        window.location.href.replace('prts.wiki', 'm.prts.wiki'),
+      )
+    }
     config.pages.forEach((page) => {
       if (document.title.includes(page))
         window.location.replace('https://m.prts.wiki')
@@ -60,21 +67,23 @@ function main(config: DisplayConfig) {
     })
   }
   else {
-    removeDOM(config.styleClass)
+    removeDOM(`.${config.styleClass}`)
   }
 }
 
-fetch('https://static.prts.wiki/display_config.json')
+fetch('https://static.prts.wiki/20230731ua/display_config.json')
   .then((response) => {
     if (!response.ok)
-      main(defaultDisplayConfig)
+      throw new Error('[DisplayController] Received non-200 response')
 
     return response.json()
   })
-  .then((data) => {
-    main(data)
-  })
+  .then(data => main(data))
   .catch((error) => {
-    console.log('[DisplayController] Falling back to default config', error)
+    console.error(error)
+    console.log(
+      '[DisplayController] Falling back to default config',
+      defaultDisplayConfig,
+    )
     main(defaultDisplayConfig)
   })
