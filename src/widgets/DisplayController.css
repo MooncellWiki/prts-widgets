@@ -1,75 +1,26 @@
-#p-personal {
-  display: none;
-}
-
-#pt-preferences {
-  display: none;
-}
-
-#p-prts-extra-links {
-  display: none;
-}
-
-.mp-siteinfo {
-  display: none;
-}
-
-#footer-places-desktop-toggle {
-  display: none;
-}
-
-.page-actions-menu {
-  display: none;
-}
-
-.penguin-widget {
-  display: none;
-}
-
-#ooui-penguin-mirror-option-container {
-  display: none;
-}
-
-#ooui-penguin-server-option-container {
-  display: none;
-}
-
-#ooui-penguin-stage-option-container {
-  display: none;
-}
-
-.minerva-user-navigation {
-  display: none;
-}
-
-a[data-event-name="tabs.talk"] {
-  display: none;
-}
-
+#p-personal,
+#pt-preferences,
+#p-prts-extra-links,
+.mp-support-us,
+.mp-more-info,
+#footer-places-desktop-toggle,
+.page-actions-menu,
+.penguin-widget,
+#ooui-penguin-mirror-option-container,
+#ooui-penguin-server-option-container,
+#ooui-penguin-stage-option-container,
+.minerva-user-notifications,
+.minerva-user-menu,
+a[data-event-name="tabs.talk"],
 .last-modified-bar {
   display: none;
 }
 
-.page-特殊_创建账户 {
-  display: none;
-}
-
-.page-特殊_用户登录 {
-  display: none;
-}
-
-.page-PRTS_如何帮助我们完善网站 {
-  display: none;
-}
-
-.page-PRTS_交流群组 {
-  display: none;
-}
-
-.page-PRTS_收支一览 {
-  display: none;
-}
-
+.page-特殊_创建账户,
+.page-特殊_用户登录,
+.page-PRTS_如何帮助我们完善网站,
+.page-PRTS_交流群组,
+.page-PRTS_收支一览,
 .page-PRTS_反馈与建议 {
   display: none;
 }
