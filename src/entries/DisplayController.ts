@@ -73,6 +73,8 @@ function main(config: DisplayConfig) {
   }
 }
 
+main(defaultDisplayConfig)
+
 fetch('https://static.prts.wiki/20230731ua/display_config.json')
   .then((response) => {
     if (!response.ok)
@@ -81,11 +83,4 @@ fetch('https://static.prts.wiki/20230731ua/display_config.json')
     return response.json()
   })
   .then(data => main(data))
-  .catch((error) => {
-    console.error(error)
-    console.log(
-      '[DisplayController] Falling back to default config',
-      defaultDisplayConfig,
-    )
-    main(defaultDisplayConfig)
-  })
+  .catch(error => console.error(error))
