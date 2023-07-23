@@ -21,6 +21,7 @@ a[data-event-name="tabs.talk"],
 .page-PRTS_如何帮助我们完善网站,
 .page-PRTS_交流群组,
 .page-PRTS_收支一览,
-.page-PRTS_反馈与建议 {
+.page-PRTS_反馈与建议,
+.ns-2 {
   display: none;
 }
