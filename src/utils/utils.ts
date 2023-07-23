@@ -1,5 +1,7 @@
 import MD5 from 'md5'
+
 export const apiEndPoint = 'https://api.prts.wiki'
+export const torappuEndPoint = 'https://torappu.prts.wiki'
 export const staticEndPoint = 'https://static.prts.wiki'
 export const domain = 'https://prts.wiki'
 export const keyStr

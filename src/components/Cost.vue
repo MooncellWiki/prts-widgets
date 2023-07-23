@@ -3,7 +3,8 @@ import type { PropType } from 'vue'
 import { defineComponent } from 'vue'
 import Avatar from './Avatar.vue'
 import { professionMap, sum } from '@/utils/utils'
-export interface costProps {
+
+export interface CostProps {
   rarity: number
   name: string
   profession: keyof typeof professionMap
