@@ -18,7 +18,7 @@ const defaultDisplayConfig: DisplayConfig = {
     '#p-prts-extra-links',
     '.mp-support-us',
     '.mp-more-info',
-    '#footer-places-desktop-toggle',
+    '.footer-places',
     '.page-actions-menu',
     '.penguin-widget',
     '#ooui-penguin-mirror-option-container',
