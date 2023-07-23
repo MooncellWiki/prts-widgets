@@ -5,7 +5,7 @@ interface DisplayConfig {
   userAgent: string
   styleClass: string
   selectors: string[]
-  pages: string[]
+  redirectSelectors: string[]
 }
 
 const defaultDisplayConfig: DisplayConfig = {
@@ -29,15 +29,17 @@ const defaultDisplayConfig: DisplayConfig = {
     'a[data-event-name="tabs.talk"]',
     '.last-modified-bar',
   ],
-  pages: [
-    '特殊:创建账户',
-    '特殊:用户登录',
-    'PRTS:如何帮助我们完善网站',
-    'PRTS:交流群组',
-    'PRTS:收支一览',
-    'PRTS:反馈与建议',
+  redirectSelectors: [
+    'page-特殊_创建账户',
+    'page-特殊_用户登录',
+    'page-PRTS_如何帮助我们完善网站',
+    'page-PRTS_交流群组',
+    'page-PRTS_收支一览',
+    'page-PRTS_反馈与建议',
+    'ns-2',
   ],
 }
+// ns-2 -> ns-userpages
 
 function removeDOM(selector: string) {
   try {
@@ -60,8 +62,8 @@ function main(config: DisplayConfig) {
         window.location.href.replace('prts.wiki', 'm.prts.wiki'),
       )
     }
-    config.pages.forEach((page) => {
-      if (window.location.href.includes(encodeURI(page)))
+    config.redirectSelectors.forEach((page) => {
+      if (document.body.classList.contains(page))
         window.location.replace('https://m.prts.wiki')
     })
     config.selectors.forEach((selector) => {
