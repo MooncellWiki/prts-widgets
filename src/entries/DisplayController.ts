@@ -61,7 +61,7 @@ function main(config: DisplayConfig) {
       )
     }
     config.pages.forEach((page) => {
-      if (window.location.pathname.includes(encodeURI(page)))
+      if (window.location.href.includes(encodeURI(page)))
         window.location.replace('https://m.prts.wiki')
     })
     config.selectors.forEach((selector) => {
