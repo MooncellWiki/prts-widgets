@@ -1,12 +1,13 @@
 <script lang="ts">
 import { defineComponent, onMounted, ref } from 'vue'
 import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from 'naive-ui'
-import type { costProps } from '../components/Cost.vue'
+import type { CostProps } from '../components/Cost.vue'
 import CostVue from '../components/Cost.vue'
-import { apiEndPoint } from '../utils/utils'
+import { torappuEndPoint } from '../utils/utils'
+
 interface cost {
   label: string
-  data: Array<costProps>
+  data: Array<CostProps>
 }
 interface itemCost {
   costs: Array<cost>
@@ -18,8 +19,8 @@ interface itemCost {
     uniequip: number
   }
 }
-interface resp {
-  [index: string]: costProps
+interface Resp {
+  [index: string]: CostProps
 }
 enum Status {
   req,
@@ -27,10 +28,10 @@ enum Status {
   succ,
 }
 async function query(name: string): Promise<itemCost> {
-  const data: resp = await (
-    await fetch(`${apiEndPoint}/widget/itemDemand/${name}`)
-  ).json()
-  const costs = new Array<cost>(6)
+  const data: Resp = (await (
+    await fetch(`${torappuEndPoint}/api/v1/item/${name}/demand`)
+  ).json()).data
+  const costs = Array.from({ length: 6 })
   const total = {
     elite: 0,
     skill: 0,
@@ -39,7 +40,7 @@ async function query(name: string): Promise<itemCost> {
     total: 0,
   }
   Object.keys(data).forEach((key) => {
-    const v = data[key] as costProps
+    const v = data[key]
     const cost = costs[v.rarity] || {
       label: `${v.rarity + 1}星`,
       data: [],
@@ -57,7 +58,7 @@ async function query(name: string): Promise<itemCost> {
   total.total = total.elite + total.skill + total.mastery + total.uniequip
   console.log(total)
   return {
-    costs: costs.filter(v => v).reverse(), // 让六星排到前面
+    costs: costs.filter(v => v).reverse() as cost[], // 让六星排到前面
     total,
   }
 }
