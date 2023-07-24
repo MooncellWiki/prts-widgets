@@ -31,7 +31,7 @@ async function query(name: string): Promise<itemCost> {
   const data: Resp = (await (
     await fetch(`${torappuEndPoint}/api/v1/item/${name}/demand`)
   ).json()).data
-  const costs = Array.from({ length: 6 })
+  const costs = Array.from<{ label: string; data: CostProps[] }>({ length: 6 })
   const total = {
     elite: 0,
     skill: 0,
