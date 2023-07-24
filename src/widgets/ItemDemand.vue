@@ -42,7 +42,7 @@ async function query(name: string): Promise<itemCost> {
   Object.keys(data).forEach((key) => {
     const v = data[key]
     const cost = costs[v.rarity] || {
-      label: `${v.rarity + 1}星`,
+      label: `${v.rarity}星`,
       data: [],
     }
     cost.data.push(v)
@@ -56,7 +56,6 @@ async function query(name: string): Promise<itemCost> {
     total.mastery += v.mastery.reduce((acc, cur) => acc + cur, 0)
   })
   total.total = total.elite + total.skill + total.mastery + total.uniequip
-  console.log(total)
   return {
     costs: costs.filter(v => v).reverse() as cost[], // 让六星排到前面
     total,
