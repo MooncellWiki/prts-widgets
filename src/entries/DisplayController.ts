@@ -10,8 +10,8 @@ interface DisplayConfig {
 
 const defaultDisplayConfig: DisplayConfig = {
   version: 0,
-  userAgent: 'ua20230731',
-  styleClass: 'ua20230731-hidden',
+  userAgent: 'SKLand',
+  styleClass: 'skland-hidden',
   selectors: [
     '#p-personal',
     '#pt-preferences',
