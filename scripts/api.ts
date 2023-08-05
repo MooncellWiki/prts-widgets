@@ -1,6 +1,7 @@
 import type { Method, SearchParameters } from 'got'
 import got from 'got'
 import { CookieJar } from 'tough-cookie'
+
 const entry = 'https://prts.wiki/api.php'
 const cookieJar = new CookieJar()
 async function request({ method, body, query }: { method?: Method; body?: Record<string, any>; query?: SearchParameters | URLSearchParams }): Promise<any> {

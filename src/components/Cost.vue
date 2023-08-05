@@ -3,7 +3,8 @@ import type { PropType } from 'vue'
 import { defineComponent } from 'vue'
 import Avatar from './Avatar.vue'
 import { professionMap, sum } from '@/utils/utils'
-export interface costProps {
+
+export interface CostProps {
   rarity: number
   name: string
   profession: keyof typeof professionMap
@@ -34,7 +35,7 @@ export default defineComponent({
 
 <template>
   <div class="flex flex-col justify-center items-center my-8px">
-    <Avatar :rarity="rarity" :name="name" :profession="professionMap[profession]" size="sm" />
+    <Avatar :rarity="rarity - 1" :name="name" :profession="professionMap[profession]" size="sm" />
     <div :class="{ 'text-disabled': elite === 0 }">
       精英化：
       <span :class="{ 'text-primary-main': elite !== 0 }" class="font-bold">
