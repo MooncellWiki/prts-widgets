@@ -20,7 +20,7 @@ async function index() {
   writeFileSync(
     entry,
     `import { createApp } from 'vue';
-import 'virtual:windi.css';
+import 'virtual:uno.css';
 import ${name} from '../widgets/${name}.vue';
 
 const ele = document.getElementById('root');

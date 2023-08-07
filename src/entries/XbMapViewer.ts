@@ -1,5 +1,5 @@
+import 'virtual:uno.css'
 import { createApp } from 'vue'
-import 'virtual:windi.css'
 import XbMapViewer from '../widgets/XbMapViewer/XbMapViewer.vue'
 
 const ele = document.getElementById('root')

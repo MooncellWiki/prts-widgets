@@ -3,7 +3,7 @@
 module.exports = {
   extends: ['@antfu'],
   settings: {
-    // 'import/core-modules': ['virtual:windi.css'],
+    // 'import/core-modules': ['virtual:uno.css'],
     // 'import/resolver': {
     //   alias: {
     //     map: [['@', './src']],

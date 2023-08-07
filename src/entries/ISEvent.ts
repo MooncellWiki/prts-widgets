@@ -1,7 +1,7 @@
+import 'virtual:uno.css'
 import { createApp } from 'vue'
-import 'virtual:windi.css'
-import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue'
 import ISEventCategory from '../widgets/ISEvents/ISEventCategory.vue'
+import ISEventFramework from '../widgets/ISEvents/ISEventFramework.vue'
 
 // 数据表元素（根层级）
 const eventDataRoot = document.getElementById('IS-event-data-root')

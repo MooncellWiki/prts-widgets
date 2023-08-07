@@ -1,8 +1,8 @@
+import 'virtual:uno.css'
 import { createApp } from 'vue'
-import 'virtual:windi.css'
+import HrCalculator from '../widgets/HrCalculator/index.vue'
 import type { Source } from '../widgets/HrCalculator/utils'
 import { Char } from '../widgets/HrCalculator/utils'
-import HrCalculator from '../widgets/HrCalculator/index.vue'
 
 const ele = document.getElementById('root')
 
@@ -14,7 +14,7 @@ function init(): Source[] {
       const temp: Source = {
         profession: v.dataset.profession!,
         position: v.dataset.position!,
-        rarity: parseInt(v.dataset.rarity!),
+        rarity: Number.parseInt(v.dataset.rarity!),
         tag: v.dataset.tag?.split(' ') || [],
         zh: v.dataset.zh!,
         subset: [],

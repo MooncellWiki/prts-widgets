@@ -1,5 +1,5 @@
+import 'virtual:uno.css'
 import { createApp } from 'vue'
-import 'virtual:windi.css'
 import ItemDemand from '../widgets/ItemDemand.vue'
 
 const ele = document.getElementById('root')

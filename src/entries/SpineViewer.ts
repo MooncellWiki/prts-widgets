@@ -1,8 +1,9 @@
+import 'virtual:uno.css'
 import { createApp } from 'vue'
-import 'virtual:windi.css'
+import { Spine } from '../utils/spine'
 import type { Props } from '../widgets/Spine/Spine.vue'
 import SpineVue from '../widgets/Spine/Wrapper.vue'
-import { Spine } from '../utils/spine'
+
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
 window.SpineApi = Spine

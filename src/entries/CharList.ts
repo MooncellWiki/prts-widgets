@@ -1,8 +1,8 @@
+import 'virtual:uno.css'
 import { createApp } from 'vue'
 import CharList from '../widgets/CharList/index.vue'
 import type { FilterGroup } from '../widgets/CharList/utils'
 import { Char } from '../widgets/CharList/utils'
-import 'virtual:windi.css'
 
 const ele = document.getElementById('root')
 const filters = JSON.parse(

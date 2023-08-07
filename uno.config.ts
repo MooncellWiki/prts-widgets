@@ -1,9 +1,18 @@
-import { defineConfig } from 'vite-plugin-windicss'
-import colors from 'windicss/colors'
+import presetAttributify from '@unocss/preset-attributify'
+import presetUno from '@unocss/preset-uno'
+import { defineConfig } from 'unocss'
 
 export default defineConfig({
+  presets: [
+    presetUno(),
+    presetAttributify(),
+  ],
+
+  shortcuts: {
+    img: 'border-solid block align-middle max-w-full h-auto',
+  },
   theme: {
-    screens: {
+    breakpoints: {
       'sm': '640px',
       'md': '768px',
       'lg': '1024px',
@@ -19,14 +28,6 @@ export default defineConfig({
       'table': '#eaebee',
       'wikitable': '#f8f9fa',
       'ooui-primary': '#2a4b8d',
-      'white': colors.white,
-      'black': colors.black,
-      'gray': colors.gray,
-      'blue': colors.blue,
     },
   },
-  shortcuts: {
-    img: 'border-solid block align-middle max-w-full h-auto',
-  },
-  preflight: false,
 })

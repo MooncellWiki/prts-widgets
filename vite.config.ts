@@ -1,9 +1,9 @@
-import { readdirSync } from 'fs'
-import { join, resolve } from 'path'
-import { defineConfig } from 'vite'
+import { readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
-import WindiCSS from 'vite-plugin-windicss'
 import { visualizer } from 'rollup-plugin-visualizer'
+import UnoCSS from 'unocss/vite'
+import { defineConfig } from 'vite'
 
 const entries = readdirSync(join(__dirname, 'src/entries/'))
 const input: Record<string, string> = {}
@@ -19,7 +19,7 @@ export default defineConfig({
   },
   plugins: [
     vue(),
-    WindiCSS(),
+    UnoCSS(),
     visualizer({ sourcemap: true }),
   ],
   server: {
@@ -52,7 +52,7 @@ export default defineConfig({
           if (id.includes('src/components/'))
             return 'vendor'
 
-          if (id.includes('windi'))
+          if (id.includes('uno'))
             return 'vendor'
         },
         chunkFileNames: '[name].[hash].js',

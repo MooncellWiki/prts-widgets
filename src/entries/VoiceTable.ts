@@ -1,5 +1,5 @@
 /* eslint-disable vue/one-component-per-file */
-import 'virtual:windi.css'
+import 'virtual:uno.css'
 import { createApp } from 'vue'
 import Voice from '../widgets/VoiceTable/VoiceTable.vue'
 import VoiceMobile from '../widgets/VoiceTable/VoiceTableMobile.vue'
