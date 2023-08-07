@@ -2,6 +2,7 @@
 import { computed, defineComponent } from 'vue'
 import Checkbox from './Checkbox.vue'
 import CheckboxGroup from './CheckboxGroup.vue'
+
 export default defineComponent({
   name: 'Pagination',
   components: {
@@ -24,7 +25,7 @@ export default defineComponent({
         return `${props.index}`
       },
       set(v) {
-        emit('update:index', parseInt(v))
+        emit('update:index', Number.parseInt(v))
       },
     })
     const curStep = computed({

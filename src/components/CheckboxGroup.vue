@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { PropType } from 'vue'
 import { computed, defineComponent, provide } from 'vue'
+
 export default defineComponent({
   props: {
     modelValue: { type: [Object, String] as PropType<Record<string, boolean> | string>, required: true },

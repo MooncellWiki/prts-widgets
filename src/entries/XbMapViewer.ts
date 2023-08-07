@@ -6,7 +6,6 @@ const ele = document.getElementById('root')
 const data = document.getElementById('MAPDATA')?.innerText
 if (!ele && !data) {
   console.error('data or ele not found', ele, data)
-  console.log('123')
 }
 else {
   (window.RLQ = window.RLQ || []).push(['ext.gadget.tippy', () => {

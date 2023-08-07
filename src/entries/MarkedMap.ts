@@ -4,6 +4,7 @@ import { Image } from 'ol/layer'
 import Projection from 'ol/proj/Projection'
 import { ImageStatic } from 'ol/source'
 import 'ol/ol.css'
+
 function init() {
   document.querySelectorAll('.marked-map').forEach((ele) => {
     if (!(ele instanceof HTMLElement))
@@ -12,7 +13,7 @@ function init() {
     if (!data.url || !data.left || !data.right || !data.bottom || !data.top || !data.zoom || !data.maxZoom || !data.minZoom)
       return
     const url = data.url
-    const extent = [parseInt(data.left), parseInt(data.bottom), parseInt(data.right), parseInt(data.top)]
+    const extent = [Number.parseInt(data.left), Number.parseInt(data.bottom), Number.parseInt(data.right), Number.parseInt(data.top)]
     const projection = new Projection({
       code: 'xkcd-image',
       units: 'pixels',
@@ -30,7 +31,7 @@ function init() {
             duration: 250,
           },
         },
-        position: [parseFloat(child.dataset.x), parseFloat(child.dataset.y)],
+        position: [Number.parseFloat(child.dataset.x), Number.parseFloat(child.dataset.y)],
       })
     }).filter(v => !!v) as Overlay[]
     const posEle = document.createElement('div')
@@ -52,9 +53,9 @@ function init() {
       overlays,
       view: new View({
         center: getCenter(extent),
-        zoom: parseInt(data.zoom),
-        maxZoom: parseInt(data.maxZoom),
-        minZoom: parseInt(data.minZoom),
+        zoom: Number.parseInt(data.zoom),
+        maxZoom: Number.parseInt(data.maxZoom),
+        minZoom: Number.parseInt(data.minZoom),
         projection,
       }),
     })

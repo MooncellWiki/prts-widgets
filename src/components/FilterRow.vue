@@ -3,6 +3,7 @@ import type { PropType } from 'vue'
 import { computed, defineComponent } from 'vue'
 import Checkbox from './Checkbox.vue'
 import CheckboxGroup from './CheckboxGroup.vue'
+
 export default defineComponent({
   name: 'FilterRow',
   components: {

@@ -1,3 +1,4 @@
+/* eslint-disable vue/one-component-per-file */
 import 'virtual:uno.css'
 import { createApp } from 'vue'
 import ISEventCategory from '../widgets/ISEvents/ISEventCategory.vue'
