@@ -61,9 +61,6 @@ devDependencies:
   '@types/tough-cookie':
     specifier: ^4.0.2
     version: 4.0.2
-  '@unocss/preset-attributify':
-    specifier: ^0.54.1
-    version: 0.54.1
   '@unocss/preset-uno':
     specifier: ^0.54.1
     version: 0.54.1
