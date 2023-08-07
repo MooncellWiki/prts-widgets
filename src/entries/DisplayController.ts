@@ -69,6 +69,15 @@ function main(config: DisplayConfig) {
     config.selectors.forEach((selector) => {
       removeDOM(selector)
     })
+    const viewport = document.querySelector('meta[name=\'viewport\']')
+    const viewportContent = viewport?.getAttribute('content')
+
+    viewport?.setAttribute(
+      'content',
+      viewportContent
+        ? viewportContent.replaceAll('user-scalable=yes', 'user-scalable=no')
+        : 'initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width',
+    )
   }
   else {
     removeDOM(`.${config.styleClass}`)
