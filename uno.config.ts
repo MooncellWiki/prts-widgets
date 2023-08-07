@@ -1,9 +1,9 @@
 import presetUno from '@unocss/preset-uno'
+import transformerDirectives from '@unocss/transformer-directives'
 import { defineConfig } from 'unocss'
 
 export default defineConfig({
   presets: [presetUno()],
-
   shortcuts: {
     img: 'border-solid block align-middle max-w-full h-auto',
   },
@@ -26,4 +26,5 @@ export default defineConfig({
       'ooui-primary': '#2a4b8d',
     },
   },
+  transformers: [transformerDirectives()],
 })

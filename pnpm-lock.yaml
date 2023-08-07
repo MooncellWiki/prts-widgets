@@ -64,6 +64,9 @@ devDependencies:
   '@unocss/preset-uno':
     specifier: ^0.54.1
     version: 0.54.1
+  '@unocss/transformer-directives':
+    specifier: ^0.54.1
+    version: 0.54.1
   '@vitejs/plugin-vue':
     specifier: ^4.2.3
     version: 4.2.3(vite@4.4.8)(vue@3.3.4)

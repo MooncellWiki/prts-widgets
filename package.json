@@ -34,6 +34,7 @@
     "@types/offscreencanvas": "^2019.7.0",
     "@types/tough-cookie": "^4.0.2",
     "@unocss/preset-uno": "^0.54.1",
+    "@unocss/transformer-directives": "^0.54.1",
     "@vitejs/plugin-vue": "^4.2.3",
     "eslint": "^8.46.0",
     "got": "^13.0.0",
