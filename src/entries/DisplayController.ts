@@ -2,7 +2,6 @@
 import defaultStyle from '../widgets/DisplayController.css?inline'
 
 interface DisplayConfig {
-  version: number
   userAgent: string
   styleClass: string
   selectors: string[]
@@ -10,7 +9,6 @@ interface DisplayConfig {
 }
 
 const defaultDisplayConfig: DisplayConfig = {
-  version: 0,
   userAgent: 'SKLand',
   styleClass: 'skland-hidden',
   selectors: [
@@ -103,7 +101,7 @@ function main(config: DisplayConfig) {
 
 main(defaultDisplayConfig)
 
-fetch('https://static.prts.wiki/20230731ua/display_config.json')
+fetch('https://static.prts.wiki/20230731ua/display_config_v2.json')
   .then((response) => {
     if (!response.ok)
       throw new Error('[DisplayController] Received non-200 response')
