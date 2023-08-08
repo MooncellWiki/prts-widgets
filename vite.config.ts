@@ -6,6 +6,7 @@ import UnoCSS from 'unocss/vite'
 import { defineConfig } from 'vite'
 
 const entries = readdirSync(join(__dirname, 'src/entries/'))
+const nohashEntries = ['DisplayController']
 const input: Record<string, string> = {}
 entries.forEach((entry) => {
   input[entry.replace('.ts', '')] = `src/entries/${entry}`
@@ -17,11 +18,7 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
-  plugins: [
-    vue(),
-    UnoCSS(),
-    visualizer({ sourcemap: true }),
-  ],
+  plugins: [vue(), UnoCSS(), visualizer({ sourcemap: true })],
   server: {
     port: 8080,
     hmr: {
@@ -56,7 +53,7 @@ export default defineConfig({
             return 'vendor'
         },
         chunkFileNames: '[name].[hash].js',
-        entryFileNames: '[name].[hash].js',
+        entryFileNames: chunk => nohashEntries.includes(chunk.name) ? '[name].js' : '[name].[hash].js',
         assetFileNames: '[name].[hash].[ext]',
       },
       plugins: [
