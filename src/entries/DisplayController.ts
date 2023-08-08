@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import defaultStyle from '../widgets/DisplayController.css?inline'
 
 interface DisplayConfig {
@@ -5,7 +6,7 @@ interface DisplayConfig {
   userAgent: string
   styleClass: string
   selectors: string[]
-  redirectSelectors: string[]
+  redirectBodyClasses: string[]
 }
 
 const defaultDisplayConfig: DisplayConfig = {
@@ -28,8 +29,9 @@ const defaultDisplayConfig: DisplayConfig = {
     '.minerva-user-menu',
     'a[data-event-name="tabs.talk"]',
     '.last-modified-bar',
+    '.flow-board-page',
   ],
-  redirectSelectors: [
+  redirectBodyClasses: [
     'page-特殊_创建账户',
     'page-特殊_用户登录',
     'page-PRTS_如何帮助我们完善网站',
@@ -37,6 +39,7 @@ const defaultDisplayConfig: DisplayConfig = {
     'page-PRTS_收支一览',
     'page-PRTS_反馈与建议',
     'ns-2',
+    'ns-talk',
   ],
 }
 // ns-2 -> ns-userpages
@@ -46,7 +49,10 @@ function removeDOM(selector: string) {
     return document.querySelector(selector)?.remove()
   }
   catch (e) {
-    console.log('[DisplayController] An error occurred while removing', e)
+    console.log(
+      `[DisplayController] An error occurred while removing ${selector}`,
+      e,
+    )
   }
 }
 
@@ -62,21 +68,32 @@ function main(config: DisplayConfig) {
         window.location.href.replace('prts.wiki', 'm.prts.wiki'),
       )
     }
-    config.redirectSelectors.forEach((page) => {
+
+    config.redirectBodyClasses.forEach((page) => {
       if (document.body.classList.contains(page))
         window.location.replace('https://m.prts.wiki')
     })
+
     config.selectors.forEach((selector) => {
       removeDOM(selector)
     })
-    const viewport = document.querySelector('meta[name=\'viewport\']')
-    const viewportContent = viewport?.getAttribute('content')
 
-    viewport?.setAttribute(
-      'content',
+    let viewport = document.querySelector('meta[name=\'viewport\']')
+    if (!viewport) {
+      viewport = document.createElement('meta')
+      viewport.setAttribute('name', 'viewport')
+      document.head.appendChild(viewport)
+    }
+
+    let viewportContent = viewport.getAttribute('content')
+    if (!viewportContent) {
       viewportContent
-        ? viewportContent.replaceAll('user-scalable=yes', 'user-scalable=no')
-        : 'initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width',
+        = 'initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width'
+    }
+
+    viewport.setAttribute(
+      'content',
+      viewportContent.replaceAll('user-scalable=yes', 'user-scalable=no'),
     )
   }
   else {
