@@ -74,6 +74,7 @@ export default defineComponent({
             '化物',
             '机械',
             '坍缩体',
+            '野生动物',
             '其他',
           ],
           title: '种类',
@@ -83,7 +84,7 @@ export default defineComponent({
           title: '攻击方式',
         },
         damageTypes: {
-          options: ['物理', '法术', '治疗', '其他'],
+          options: ['物理', '法术', '治疗', '无'],
           title: '伤害类型',
         },
         endure: {
@@ -100,7 +101,7 @@ export default defineComponent({
             'D',
             '其他',
           ],
-          title: '耐久',
+          title: '生命值',
         },
         attack: {
           options: [
@@ -134,6 +135,38 @@ export default defineComponent({
           ],
           title: '防御力',
         },
+        moveSpeed: {
+          options: [
+            'S+',
+            'S',
+            'A+',
+            'A',
+            'B+',
+            'B',
+            'C+',
+            'C',
+            'D+',
+            'D',
+            '其他',
+          ],
+          title: '移动速度',
+        },
+        attackSpeed: {
+          options: [
+            'S+',
+            'S',
+            'A+',
+            'A',
+            'B+',
+            'B',
+            'C+',
+            'C',
+            'D+',
+            'D',
+            '其他',
+          ],
+          title: '攻击速度',
+        },
         resistance: {
           options: [
             'S+',
@@ -158,8 +191,15 @@ export default defineComponent({
           show: true,
         },
         {
-          title: '四维筛选',
-          filters: ['endure', 'attack', 'defence', 'resistance'],
+          title: '六维筛选',
+          filters: [
+            'endure',
+            'attack',
+            'defence',
+            'moveSpeed',
+            'attackSpeed',
+            'resistance',
+          ],
           show: false,
         },
       ],
@@ -195,9 +235,13 @@ export default defineComponent({
             height: '65px',
           },
         })
-        return h('a', {
-          href: `/w/${row.enemyLink}`,
-        }, img)
+        return h(
+          'a',
+          {
+            href: `/w/${row.enemyLink}`,
+          },
+          img,
+        )
       },
       minWidth: 80,
     }
@@ -234,7 +278,10 @@ export default defineComponent({
         },
       ],
       filter(value, row) {
-        return !!~row.ability.indexOf(value.toString()) || !!~row.name.indexOf(value.toString())
+        return (
+          !!~row.ability.indexOf(value.toString())
+          || !!~row.name.indexOf(value.toString())
+        )
       },
       render(row) {
         nextTick(() => {
@@ -264,6 +311,26 @@ export default defineComponent({
       },
     }
 
+    const createDimensionalColumn = (
+      field: keyof EnemyData,
+      title: string,
+    ): DataTableColumn<EnemyData> => {
+      return {
+        title,
+        key: field,
+        defaultSortOrder: false,
+        sorter: 'default',
+        filterOptions: createFilterOptions(field),
+        filterOptionValues: filterConfig.states[field],
+        filter(value, row) {
+          return row[field] === value.toString()
+        },
+        renderFilter() {
+          return h('div')
+        },
+      }
+    }
+
     const createColumns = (): DataTableColumns<EnemyData> => {
       return [
         iconColumn,
@@ -274,9 +341,13 @@ export default defineComponent({
           defaultSortOrder: false,
           sorter: 'default',
           render(row) {
-            return h('a', {
-              href: `/w/${row.enemyLink}`,
-            }, row.name)
+            return h(
+              'a',
+              {
+                href: `/w/${row.enemyLink}`,
+              },
+              row.name,
+            )
           },
           renderFilter() {
             return h('div')
@@ -320,62 +391,9 @@ export default defineComponent({
           },
         },
         abilityColumn,
-        {
-          title: '攻击力',
-          key: 'attack',
-          defaultSortOrder: false,
-          sorter: 'default',
-          filterOptions: createFilterOptions('attack'),
-          filterOptionValues: filterConfig.states.attack,
-          filter(value, row) {
-            return row.attack === value.toString()
-          },
-          renderFilter() {
-            return h('div')
-          },
-        },
-        {
-          title: '耐久',
-          key: 'endure',
-          defaultSortOrder: false,
-          sorter: 'default',
-          filterOptions: createFilterOptions('endure'),
-          filterOptionValues: filterConfig.states.endure,
-          filter(value, row) {
-            return row.endure === value.toString()
-          },
-          renderFilter() {
-            return h('div')
-          },
-        },
-        {
-          title: '防御力',
-          key: 'defence',
-          defaultSortOrder: false,
-          sorter: 'default',
-          filterOptions: createFilterOptions('defence'),
-          filterOptionValues: filterConfig.states.defence,
-          filter(value, row) {
-            return row.defence === value.toString()
-          },
-          renderFilter() {
-            return h('div')
-          },
-        },
-        {
-          title: '法术抗性',
-          key: 'resistance',
-          defaultSortOrder: false,
-          sorter: 'default',
-          filterOptions: createFilterOptions('resistance'),
-          filterOptionValues: filterConfig.states.resistance,
-          filter(value, row) {
-            return row.resistance === value.toString()
-          },
-          renderFilter() {
-            return h('div')
-          },
-        },
+        ...filterConfig.groups[1].filters.map(field =>
+          createDimensionalColumn(field as keyof EnemyData, filterConfig.filters[field].title),
+        ),
       ]
     }
 
@@ -475,11 +493,11 @@ export default defineComponent({
 
 <style>
 .backToTop {
-  @apply hidden!;
+  @apply hidden !;
 }
 
 .n-data-table__pagination {
-  @apply justify-center!;
+  @apply justify-center !;
 }
 
 .mc-tooltips {
