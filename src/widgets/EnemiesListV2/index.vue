@@ -6,11 +6,28 @@ import type {
   DataTableFilterState,
   DataTableInst,
 } from 'naive-ui'
-import { NConfigProvider, NDataTable, NInput } from 'naive-ui'
-import { defineComponent, h, nextTick, reactive, ref, watch } from 'vue'
+import {
+  NButton,
+  NConfigProvider,
+  NDataTable,
+  NInput,
+  NLayout,
+  NPagination,
+} from 'naive-ui'
+import { storeToRefs } from 'pinia'
+import {
+  computed,
+  defineComponent,
+  h,
+  nextTick,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
 import FilterGroup from './FilterGroup.vue'
 import { getImagePath } from '@/utils/utils'
 import { getNaiveUILocale } from '@/utils/i18n'
+import { useThemeStore } from '@/stores/theme'
 
 interface EnemyData {
   enemyIndex: string
@@ -52,6 +69,9 @@ export default defineComponent({
     NDataTable,
     NConfigProvider,
     NInput,
+    NButton,
+    NLayout,
+    NPagination,
   },
   setup() {
     const enemyData = ref<EnemyData[]>([])
@@ -69,6 +89,18 @@ export default defineComponent({
       'D',
       'E',
     ]
+    const filterKeyToPropertyKey: Record<string, string> = {
+      levels: 'enemyLevel',
+      races: 'enemyRace',
+      attackTypes: 'attackType',
+      damageTypes: 'damageType',
+      endure: 'endure',
+      attack: 'attack',
+      defence: 'defence',
+      moveSpeed: 'moveSpeed',
+      attackSpeed: 'attackSpeed',
+      resistance: 'resistance',
+    }
     const filterConfig = reactive<FilterConfig>({
       filters: {
         levels: {
@@ -99,99 +131,27 @@ export default defineComponent({
           title: '伤害类型',
         },
         endure: {
-          options: [
-            'SS',
-            'S+',
-            'S',
-            'A+',
-            'A',
-            'B+',
-            'B',
-            'C',
-            'D',
-            'E',
-            '其他',
-          ],
+          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
           title: '生命值',
         },
         attack: {
-          options: [
-            'SS',
-            'S+',
-            'S',
-            'A+',
-            'A',
-            'B+',
-            'B',
-            'C',
-            'D',
-            'E',
-            '其他',
-          ],
+          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
           title: '攻击力',
         },
         defence: {
-          options: [
-            'SS',
-            'S+',
-            'S',
-            'A+',
-            'A',
-            'B+',
-            'B',
-            'C',
-            'D',
-            'E',
-            '其他',
-          ],
+          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
           title: '防御力',
         },
         moveSpeed: {
-          options: [
-            'SS',
-            'S+',
-            'S',
-            'A+',
-            'A',
-            'B+',
-            'B',
-            'C',
-            'D',
-            'E',
-            '其他',
-          ],
+          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
           title: '移动速度',
         },
         attackSpeed: {
-          options: [
-            'SS',
-            'S+',
-            'S',
-            'A+',
-            'A',
-            'B+',
-            'B',
-            'C',
-            'D',
-            'E',
-            '其他',
-          ],
+          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
           title: '攻击速度',
         },
         resistance: {
-          options: [
-            'SS',
-            'S+',
-            'S',
-            'A+',
-            'A',
-            'B+',
-            'B',
-            'C',
-            'D',
-            'E',
-            '其他',
-          ],
+          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
           title: '法术抗性',
         },
       },
@@ -227,15 +187,70 @@ export default defineComponent({
         resistance: [],
       },
     })
+    const isLoading = ref(true)
+    const i18nConfig = getNaiveUILocale()
+    const isMobile = document.body.classList.contains('skin-minerva')
+    const isIconMode = ref(!!isMobile)
+    const themeStore = useThemeStore()
+    const { theme } = storeToRefs(themeStore)
+    const pagination = reactive({
+      page: 1,
+      pageSize: 10,
+      pageSizes: [10, 25, 50, 100],
+      pageSlot: isMobile ? 5 : 9,
+      showSizePicker: true,
+      onChange: (page: number) => {
+        pagination.page = page
+      },
+      onUpdatePageSize: (pageSize: number) => {
+        pagination.pageSize = pageSize
+        pagination.page = 1
+      },
+    })
+    const filteredEnemyData = computed(() => {
+      if (Object.values(filterConfig.states).every(v => v.length === 0))
+        return enemyData.value
+
+      return enemyData.value.filter((enemy) => {
+        let shouldPicked = false
+        Object.entries(filterConfig.states).forEach(([key, value]) => {
+          if (
+            value.length !== 0
+            || value.length !== filterConfig.filters[key].options.length
+          ) {
+            if (
+              value.some(
+                element =>
+                  !!~enemy[filterKeyToPropertyKey[key] as keyof EnemyData]
+                    .toString()
+                    .indexOf(element),
+              )
+            )
+              shouldPicked = true
+          }
+          else if (
+            !!~enemy.ability.indexOf(keyword.value.toString())
+            || !!~enemy.name.indexOf(keyword.value.toString())
+          ) {
+            shouldPicked = true
+          }
+        })
+        return shouldPicked
+      })
+    })
+    const filteredChunkedEnemyData = computed(() =>
+      filteredEnemyData.value.slice(
+        pagination.pageSize * (pagination.page - 1),
+        pagination.pageSize * pagination.page,
+      ),
+    )
+
     watch(keyword, () => {
       tableRef.value?.filter({
         ability: [keyword.value],
         name: [keyword.value],
       })
     })
-    const isLoading = ref(true)
-    const i18nConfig = getNaiveUILocale()
-    const isMobile = document.body.classList.contains('skin-minerva')
 
     const iconColumn: DataTableColumn<EnemyData> = {
       title: '头像',
@@ -243,6 +258,7 @@ export default defineComponent({
       render(row) {
         const img = h('img', {
           src: `/images/${getImagePath(`头像_敌人_${row.name}.png`)}`,
+          class: 'lazyload',
           style: {
             width: '65px',
             height: '65px',
@@ -417,21 +433,6 @@ export default defineComponent({
       ]
     }
 
-    const pagination = reactive({
-      page: 1,
-      pageSize: 10,
-      pageSizes: [10, 25, 50, 100],
-      pageSlot: isMobile ? 5 : 9,
-      showSizePicker: true,
-      onChange: (page: number) => {
-        pagination.page = page
-      },
-      onUpdatePageSize: (pageSize: number) => {
-        pagination.pageSize = pageSize
-        pagination.page = 1
-      },
-    })
-
     fetch(
       `${window.location.origin}/index.php?${new URLSearchParams({
         title: '敌人一览/数据',
@@ -460,6 +461,12 @@ export default defineComponent({
       pagination,
       i18nConfig,
       keyword,
+      theme,
+      themeStore,
+      isIconMode,
+      filteredEnemyData,
+      filteredChunkedEnemyData,
+      getImagePath,
       handleUpdateFilter(
         filters: DataTableFilterState,
         sourceColumn: DataTableBaseColumn,
@@ -475,10 +482,11 @@ export default defineComponent({
 
 <template>
   <NConfigProvider
+    :theme="theme"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <div class="antialiased mx-auto lg:max-w-[90rem] max-w-3xl mx-auto">
+    <NLayout class="p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
       <FilterGroup
         v-for="group in filterConfig.groups"
         :key="group.title"
@@ -493,21 +501,64 @@ export default defineComponent({
           )
         "
       />
-      <NInput
-        v-model:value="keyword"
-        class="my-3"
-        type="text"
-        placeholder="搜索敌人名称/描述/能力"
-      />
+      <div class="flex items-center">
+        <NInput
+          v-model:value="keyword"
+          class="my-2"
+          type="text"
+          placeholder="搜索敌人名称/描述/能力"
+        />
+        <NButton
+          class="mx-2"
+          strong
+          secondary
+          :type="isIconMode ? 'info' : 'default'"
+          @click="isIconMode = !isIconMode"
+        >
+          简
+        </NButton>
+        <div @click="themeStore.toggleDark()">
+          <NButton>
+            <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
+            <span v-else class="text-2xl mdi mdi-brightness-4" />
+          </NButton>
+        </div>
+      </div>
       <NDataTable
+        v-if="!isIconMode"
         ref="table"
+        class="my-2"
         :columns="columns"
         :data="enemyData"
         :pagination="pagination"
         :bordered="false"
         @update:filters="handleUpdateFilter"
       />
-    </div>
+      <div v-if="isIconMode">
+        <a
+          v-for="(row, index) in filteredChunkedEnemyData"
+          :key="index"
+          :href="`/w/${row.enemyLink}`"
+        >
+          <img
+            class="lazyload"
+            style="width: 65px; height: 65px"
+            :src="`/images/${getImagePath(`头像_敌人_${row.name}.png`)}`"
+          >
+        </a>
+        <NPagination
+          class="justify-center my-2"
+          :item-count="filteredEnemyData.length"
+          :page="pagination.page"
+          :page-size="pagination.pageSize"
+          :page-sizes="pagination.pageSizes"
+          :page-slot="pagination.pageSlot"
+          :show-size-picker="pagination.showSizePicker"
+          @update:page="pagination.onChange"
+          @update:page-size="pagination.onUpdatePageSize"
+        />
+      </div>
+    </NLayout>
   </NConfigProvider>
 </template>
 
@@ -517,10 +568,10 @@ export default defineComponent({
 }
 
 .n-data-table__pagination {
-  @apply justify-center !;
+  @apply justify-center!;
 }
 
 .mc-tooltips {
-  border-bottom: 1px dotted black;
+  @apply border-b-1 border-dotted border-black;
 }
 </style>
