@@ -1,62 +1,65 @@
 <script lang="ts">
 import { useVModel } from '@vueuse/core'
-import { NButton } from 'naive-ui'
-import { type PropType, defineComponent } from 'vue'
+import { NCard, NCollapseTransition } from 'naive-ui'
+import type { PropType } from 'vue'
+import { defineComponent } from 'vue'
+import SingleFilter from './SingleFilter.vue'
 
 export default defineComponent({
   name: 'FilterGroup',
-  components: { NButton },
-  props: {
-    title: String,
-    options: Array as PropType<string[]>,
-    modelValue: { type: Array as PropType<string[]>, default: () => [] },
+  components: {
+    NCard,
+    NCollapseTransition,
+    SingleFilter,
   },
-  emits: ['update:modelValue'],
+  props: {
+    show: Boolean,
+    title: String,
+    filters: {
+      type: Object as PropType<{
+        [field: string]: {
+          title: string
+          options: string[]
+        } }>,
+      required: true,
+    },
+    states: {
+      type: Object as PropType<Record<string, string[]>>,
+      required: true,
+    },
+  },
+  emits: ['update:collapsed', 'update:states'],
   setup(props, { emit }) {
-    const modelValue = useVModel(props, 'modelValue', emit, {
-      passive: true,
-      deep: true,
-    })
-    const handleClick = (option: string) => {
-      return modelValue.value.includes(option)
-        ? modelValue.value.splice(modelValue.value.indexOf(option), 1)
-        : modelValue.value.push(option)
-    }
+    const showRef = useVModel(props, 'show', emit)
+    const statesRef = useVModel(props, 'states', emit)
     return {
-      modelValue,
-      handleClick,
+      showRef,
+      statesRef,
     }
   },
 })
 </script>
 
 <template>
-  <div class="flex flex-row justify-center items-center">
-    <span class="basis-1/8">{{ title }}</span>
-    <div class="flex flex-row items-center basis-7/8">
-      <div class="flex flex-col lg:flex-row">
-        <NButton class="m-1">
-          全选
-        </NButton>
-        <NButton class="m-1">
-          清除
-        </NButton>
+  <NCard :title="title" header-style="text-align: center;" size="small">
+    <template #header-extra>
+      <div @click="showRef = !showRef">
+        <span v-if="showRef" class="text-2xl mdi mdi-chevron-up" />
+        <span v-else class="text-2xl mdi mdi-chevron-down" />
       </div>
-      <div>
-        <NButton
-          v-for="(option, index) in options"
-          :key="index"
-          strong
-          secondary
-          :type="modelValue.includes(option) ? 'info' : 'default'"
-          class="m-1"
-          @click="() => handleClick(option)"
-        >
-          {{ option }}
-        </NButton>
-      </div>
-    </div>
-  </div>
+    </template>
+    <NCollapseTransition :show="showRef">
+      <table class="w-full text-left border-collapse">
+        <tbody class="align-baseline">
+          <tr v-for="(filter, field) in filters" :key="field">
+            <SingleFilter
+              v-model="statesRef[field]"
+              :title="filter.title"
+              :options="filter.options"
+            />
+          </tr>
+        </tbody>
+      </table>
+    </NCollapseTransition>
+  </NCard>
 </template>
-
-<style scoped></style>
