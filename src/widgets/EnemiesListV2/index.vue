@@ -57,6 +57,18 @@ export default defineComponent({
     const enemyData = ref<EnemyData[]>([])
     const keyword = ref('')
     const tableRef = ref<DataTableInst>()
+    const dimensionPrecedence = [
+      'SS',
+      'S+',
+      'S',
+      'A+',
+      'A',
+      'B+',
+      'B',
+      'C',
+      'D',
+      'E',
+    ]
     const filterConfig = reactive<FilterConfig>({
       filters: {
         levels: {
@@ -73,9 +85,8 @@ export default defineComponent({
             '法术造物',
             '化物',
             '机械',
-            '坍缩体',
             '野生动物',
-            '其他',
+            '坍缩体',
           ],
           title: '种类',
         },
@@ -89,96 +100,96 @@ export default defineComponent({
         },
         endure: {
           options: [
+            'SS',
             'S+',
             'S',
             'A+',
             'A',
             'B+',
             'B',
-            'C+',
             'C',
-            'D+',
             'D',
+            'E',
             '其他',
           ],
           title: '生命值',
         },
         attack: {
           options: [
+            'SS',
             'S+',
             'S',
             'A+',
             'A',
             'B+',
             'B',
-            'C+',
             'C',
-            'D+',
             'D',
+            'E',
             '其他',
           ],
           title: '攻击力',
         },
         defence: {
           options: [
+            'SS',
             'S+',
             'S',
             'A+',
             'A',
             'B+',
             'B',
-            'C+',
             'C',
-            'D+',
             'D',
+            'E',
             '其他',
           ],
           title: '防御力',
         },
         moveSpeed: {
           options: [
+            'SS',
             'S+',
             'S',
             'A+',
             'A',
             'B+',
             'B',
-            'C+',
             'C',
-            'D+',
             'D',
+            'E',
             '其他',
           ],
           title: '移动速度',
         },
         attackSpeed: {
           options: [
+            'SS',
             'S+',
             'S',
             'A+',
             'A',
             'B+',
             'B',
-            'C+',
             'C',
-            'D+',
             'D',
+            'E',
             '其他',
           ],
           title: '攻击速度',
         },
         resistance: {
           options: [
+            'SS',
             'S+',
             'S',
             'A+',
             'A',
             'B+',
             'B',
-            'C+',
             'C',
-            'D+',
             'D',
+            'E',
             '其他',
           ],
           title: '法术抗性',
@@ -321,7 +332,11 @@ export default defineComponent({
         title,
         key: field,
         defaultSortOrder: false,
-        sorter: 'default',
+        sorter: (row1, row2) => {
+          const index1 = dimensionPrecedence.indexOf(row1[field].toString())
+          const index2 = dimensionPrecedence.indexOf(row2[field].toString())
+          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2
+        },
         filterOptions: createFilterOptions(field),
         filterOptionValues: filterConfig.states[field],
         filter(value, row) {
@@ -394,7 +409,10 @@ export default defineComponent({
         },
         abilityColumn,
         ...filterConfig.groups[1].filters.map(field =>
-          createDimensionalColumn(field as keyof EnemyData, filterConfig.filters[field].title),
+          createDimensionalColumn(
+            field as keyof EnemyData,
+            filterConfig.filters[field].title,
+          ),
         ),
       ]
     }
