@@ -177,6 +177,7 @@ export default defineComponent({
     watch(keyword, () => {
       tableRef.value?.filter({
         ability: [keyword.value],
+        name: [keyword.value],
       })
     })
     const isLoading = ref(true)
@@ -187,13 +188,16 @@ export default defineComponent({
       title: '头像',
       key: 'icon',
       render(row) {
-        return h('img', {
+        const img = h('img', {
           src: `/images/${getImagePath(`头像_敌人_${row.name}.png`)}`,
           style: {
-            width: '50px',
-            height: '50px',
+            width: '65px',
+            height: '65px',
           },
         })
+        return h('a', {
+          href: `/w/${row.enemyLink}`,
+        }, img)
       },
       minWidth: 80,
     }
@@ -230,7 +234,7 @@ export default defineComponent({
         },
       ],
       filter(value, row) {
-        return !!~row.ability.indexOf(value.toString())
+        return !!~row.ability.indexOf(value.toString()) || !!~row.name.indexOf(value.toString())
       },
       render(row) {
         nextTick(() => {
@@ -269,6 +273,11 @@ export default defineComponent({
           minWidth: 100,
           defaultSortOrder: false,
           sorter: 'default',
+          render(row) {
+            return h('a', {
+              href: `/w/${row.enemyLink}`,
+            }, row.name)
+          },
           renderFilter() {
             return h('div')
           },
