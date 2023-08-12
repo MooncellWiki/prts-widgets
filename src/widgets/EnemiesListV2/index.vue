@@ -211,6 +211,8 @@ export default defineComponent({
         endure: [],
         attack: [],
         defence: [],
+        moveSpeed: [],
+        attackSpeed: [],
         resistance: [],
       },
     })
