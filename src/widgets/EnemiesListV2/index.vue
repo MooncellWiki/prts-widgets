@@ -562,16 +562,16 @@ export default defineComponent({
   </NConfigProvider>
 </template>
 
-<style>
-.backToTop {
+<style scoped>
+:global(.page-敌人一览 .backToTop) {
   @apply hidden!;
 }
 
-.n-data-table__pagination {
+.n-data-table :deep(.n-data-table__pagination) {
   @apply justify-center!;
 }
 
-.mc-tooltips {
-  @apply border-b-1 border-dotted border-b-black;
+:deep(.mc-tooltips) {
+  @apply border-b-1 border-b-dotted border-b-black;
 }
 </style>
