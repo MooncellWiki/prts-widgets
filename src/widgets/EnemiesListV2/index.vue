@@ -564,7 +564,7 @@ export default defineComponent({
 
 <style>
 .backToTop {
-  @apply hidden !;
+  @apply hidden!;
 }
 
 .n-data-table__pagination {
@@ -572,6 +572,6 @@ export default defineComponent({
 }
 
 .mc-tooltips {
-  @apply border-b-1 border-dotted border-black;
+  @apply border-b-1 border-dotted border-b-black;
 }
 </style>
