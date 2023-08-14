@@ -208,35 +208,31 @@ export default defineComponent({
       },
     })
     const filteredEnemyData = computed(() => {
-      if (Object.values(filterConfig.states).every(v => v.length === 0))
-        return enemyData.value
-
-      return enemyData.value.filter((enemy) => {
-        let shouldPicked = false
-        Object.entries(filterConfig.states).forEach(([key, value]) => {
-          if (
-            value.length !== 0
-            || value.length !== filterConfig.filters[key].options.length
-          ) {
+      const filters = filterConfig.states
+      const searchWord = keyword.value
+      const filteredData = enemyData.value.filter((enemy) => {
+        for (const key in filters) {
+          if (filters[key].length > 0) {
             if (
-              value.some(
-                element =>
+              !filters[key].some(
+                filter =>
                   !!~enemy[filterKeyToPropertyKey[key] as keyof EnemyData]
                     .toString()
-                    .indexOf(element),
+                    .indexOf(filter),
               )
             )
-              shouldPicked = true
+              return false
           }
-          else if (
-            !!~enemy.ability.indexOf(keyword.value.toString())
-            || !!~enemy.name.indexOf(keyword.value.toString())
-          ) {
-            shouldPicked = true
-          }
-        })
-        return shouldPicked
+          if (
+            searchWord
+              && !~enemy.name.indexOf(searchWord)
+              && !~enemy.ability.indexOf(searchWord)
+          )
+            return false
+        }
+        return true
       })
+      return filteredData
     })
     const filteredChunkedEnemyData = computed(() =>
       filteredEnemyData.value.slice(
