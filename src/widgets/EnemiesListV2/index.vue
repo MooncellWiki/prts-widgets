@@ -502,7 +502,7 @@ export default defineComponent({
         </div>
       </div>
       <NDataTable
-        v-if="!isIconMode"
+        v-show="!isIconMode"
         ref="table"
         class="my-2"
         :columns="columns"
