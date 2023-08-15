@@ -89,25 +89,13 @@ export default defineComponent({
       'D',
       'E',
     ]
-    const filterKeyToPropertyKey: Record<string, string> = {
-      levels: 'enemyLevel',
-      races: 'enemyRace',
-      attackTypes: 'attackType',
-      damageTypes: 'damageType',
-      endure: 'endure',
-      attack: 'attack',
-      defence: 'defence',
-      moveSpeed: 'moveSpeed',
-      attackSpeed: 'attackSpeed',
-      resistance: 'resistance',
-    }
     const filterConfig = reactive<FilterConfig>({
       filters: {
-        levels: {
+        enemyLevel: {
           options: ['普通', '精英', '领袖'],
           title: '地位',
         },
-        races: {
+        enemyRace: {
           options: [
             '感染生物',
             '无人机',
@@ -122,11 +110,11 @@ export default defineComponent({
           ],
           title: '种类',
         },
-        attackTypes: {
+        attackType: {
           options: ['近战', '远程', '不攻击'],
           title: '攻击方式',
         },
-        damageTypes: {
+        damageType: {
           options: ['物理', '法术', '治疗', '无'],
           title: '伤害类型',
         },
@@ -158,7 +146,7 @@ export default defineComponent({
       groups: [
         {
           title: '筛选',
-          filters: ['levels', 'races', 'attackTypes', 'damageTypes'],
+          filters: ['enemyLevel', 'enemyRace', 'attackType', 'damageType'],
           show: true,
         },
         {
@@ -175,10 +163,10 @@ export default defineComponent({
         },
       ],
       states: {
-        levels: [],
-        races: [],
-        attackTypes: [],
-        damageTypes: [],
+        enemyLevel: [],
+        enemyRace: [],
+        attackType: [],
+        damageType: [],
         endure: [],
         attack: [],
         defence: [],
@@ -214,19 +202,23 @@ export default defineComponent({
         for (const key in filters) {
           if (filters[key].length > 0) {
             if (
-              !filters[key].some(
+              filterConfig.groups[0].filters.includes(key)
+              && !filters[key].some(
                 filter =>
-                  !!~enemy[filterKeyToPropertyKey[key] as keyof EnemyData]
-                    .toString()
-                    .indexOf(filter),
+                  !!~enemy[key as keyof EnemyData].toString().indexOf(filter),
               )
+            )
+              return false
+            if (
+              filterConfig.groups[1].filters.includes(key)
+              && !filters[key].includes(enemy[key as keyof EnemyData].toString())
             )
               return false
           }
           if (
             searchWord
-              && !~enemy.name.indexOf(searchWord)
-              && !~enemy.ability.indexOf(searchWord)
+            && !~enemy.name.indexOf(searchWord)
+            && !~enemy.ability.indexOf(searchWord)
           )
             return false
         }
@@ -248,29 +240,6 @@ export default defineComponent({
       })
     })
 
-    const iconColumn: DataTableColumn<EnemyData> = {
-      title: '头像',
-      key: 'icon',
-      render(row) {
-        const img = h('img', {
-          src: `/images/${getImagePath(`头像_敌人_${row.name}.png`)}`,
-          class: 'lazyload',
-          style: {
-            width: '65px',
-            height: '65px',
-          },
-        })
-        return h(
-          'a',
-          {
-            href: `/w/${row.enemyLink}`,
-          },
-          img,
-        )
-      },
-      minWidth: 80,
-    }
-
     const createFilterOptions = (field: string) => {
       return filterConfig.filters[field].options.map(option => ({
         label: option,
@@ -278,30 +247,34 @@ export default defineComponent({
       }))
     }
 
-    const levelColumn: DataTableColumn<EnemyData> = {
-      title: '地位',
-      key: 'enemyLevel',
-      filterOptions: createFilterOptions('levels'),
-      filterOptionValues: filterConfig.states.levels,
-      filter(value, row) {
-        return !!~row.enemyLevel.indexOf(value.toString())
-      },
-      renderFilter() {
-        return h('div')
-      },
+    const createDimensionalColumn = (
+      field: keyof EnemyData,
+      title: string,
+    ): DataTableColumn<EnemyData> => {
+      return {
+        title,
+        key: field,
+        defaultSortOrder: false,
+        sorter: (row1, row2) => {
+          const index1 = dimensionPrecedence.indexOf(row1[field].toString())
+          const index2 = dimensionPrecedence.indexOf(row2[field].toString())
+          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2
+        },
+        filterOptions: createFilterOptions(field),
+        filterOptionValues: filterConfig.states[field],
+        filter(value, row) {
+          return row[field] === value.toString()
+        },
+        renderFilter() {
+          return h('div')
+        },
+      }
     }
 
     const abilityColumn: DataTableColumn<EnemyData> = {
       title: '能力',
       key: 'ability',
       minWidth: 200,
-      defaultFilterOptionValue: keyword.value,
-      filterOptions: [
-        {
-          label: keyword.value,
-          value: keyword.value,
-        },
-      ],
       filter(value, row) {
         return (
           !!~row.ability.indexOf(value.toString())
@@ -336,33 +309,30 @@ export default defineComponent({
       },
     }
 
-    const createDimensionalColumn = (
-      field: keyof EnemyData,
-      title: string,
-    ): DataTableColumn<EnemyData> => {
-      return {
-        title,
-        key: field,
-        defaultSortOrder: false,
-        sorter: (row1, row2) => {
-          const index1 = dimensionPrecedence.indexOf(row1[field].toString())
-          const index2 = dimensionPrecedence.indexOf(row2[field].toString())
-          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2
-        },
-        filterOptions: createFilterOptions(field),
-        filterOptionValues: filterConfig.states[field],
-        filter(value, row) {
-          return row[field] === value.toString()
-        },
-        renderFilter() {
-          return h('div')
-        },
-      }
-    }
-
     const createColumns = (): DataTableColumns<EnemyData> => {
       return [
-        iconColumn,
+        {
+          title: '头像',
+          key: 'icon',
+          render(row) {
+            const img = h('img', {
+              src: `/images/${getImagePath(`头像_敌人_${row.name}.png`)}`,
+              class: 'lazyload',
+              style: {
+                width: '65px',
+                height: '65px',
+              },
+            })
+            return h(
+              'a',
+              {
+                href: `/w/${row.enemyLink}`,
+              },
+              img,
+            )
+          },
+          minWidth: 80,
+        },
         {
           title: '名称',
           key: 'name',
@@ -382,12 +352,23 @@ export default defineComponent({
             return h('div')
           },
         },
-        levelColumn,
+        {
+          title: '地位',
+          key: 'enemyLevel',
+          filterOptions: createFilterOptions('enemyLevel'),
+          filterOptionValues: filterConfig.states.enemyLevel,
+          filter(value, row) {
+            return !!~row.enemyLevel.indexOf(value.toString())
+          },
+          renderFilter() {
+            return h('div')
+          },
+        },
         {
           title: '种类',
           key: 'enemyRace',
-          filterOptions: createFilterOptions('races'),
-          filterOptionValues: filterConfig.states.races,
+          filterOptions: createFilterOptions('enemyRace'),
+          filterOptionValues: filterConfig.states.enemyRace,
           filter(value, row) {
             return !!~row.enemyRace.indexOf(value.toString())
           },
@@ -398,8 +379,8 @@ export default defineComponent({
         {
           title: '攻击方式',
           key: 'attackType',
-          filterOptions: createFilterOptions('attackTypes'),
-          filterOptionValues: filterConfig.states.attackTypes,
+          filterOptions: createFilterOptions('attackType'),
+          filterOptionValues: filterConfig.states.attackType,
           filter(value, row) {
             return !!~row.attackType.indexOf(value.toString())
           },
@@ -410,8 +391,8 @@ export default defineComponent({
         {
           title: '伤害类型',
           key: 'damageType',
-          filterOptions: createFilterOptions('damageTypes'),
-          filterOptionValues: filterConfig.states.damageTypes,
+          filterOptions: createFilterOptions('damageType'),
+          filterOptionValues: filterConfig.states.damageType,
           filter(value, row) {
             return !!~row.damageType.indexOf(value.toString())
           },
