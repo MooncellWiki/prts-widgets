@@ -1,6 +1,6 @@
 import 'virtual:uno.css'
 import { createApp } from 'vue'
-import { Spine } from '../utils/spine'
+import { Spine } from '../widgets/Spine/spine'
 import type { Props } from '../widgets/Spine/Spine.vue'
 import SpineVue from '../widgets/Spine/Wrapper.vue'
 

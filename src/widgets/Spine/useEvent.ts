@@ -1,8 +1,9 @@
 import Hammer from 'hammerjs'
 import type { Ref } from 'vue'
 import { onMounted, onUnmounted, ref } from 'vue'
-import type { Spine } from '../../utils/spine'
 import { isFirefox } from '../../utils/utils'
+import type { Spine } from './spine'
+
 export function useEvent(
   canvas: Ref<HTMLCanvasElement | undefined>,
   spine: { spine?: Spine },
