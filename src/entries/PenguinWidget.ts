@@ -3,7 +3,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import PenguinWidget from '../widgets/PenguinWidget.vue'
 
-const ele = document.getElementById('root')
+const ele = document.getElementById('penguin-widget')
 const type = ele?.dataset.type
 const id = ele?.dataset.id
 const isAct = !!Number.parseInt(ele?.dataset.isAct || '0')
