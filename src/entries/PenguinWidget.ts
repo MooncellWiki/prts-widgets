@@ -6,7 +6,7 @@ import PenguinWidget from '../widgets/PenguinWidget.vue'
 const ele = document.getElementById('root')
 const type = ele?.dataset.type
 const id = ele?.dataset.id
-const isAct = !!ele?.dataset.type
+const isAct = !!Number.parseInt(ele?.dataset.isAct || '0')
 const language = navigator.language.split('-')[0]
 
 if (ele) {
