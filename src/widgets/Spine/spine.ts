@@ -1,6 +1,7 @@
-import spine from '../spine/runtime/spine-webgl'
-import { downloadBlob } from './utils'
-const noop = () => {
+import spine from '../../spine/runtime/spine-webgl'
+import { downloadBlob } from '../../utils/utils'
+
+function noop() {
   // noop
 }
 interface Skeleton {

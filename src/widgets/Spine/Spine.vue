@@ -22,10 +22,11 @@ import type { PropType } from 'vue'
 import { computed, defineComponent, onMounted, ref } from 'vue'
 import Card from '../../components/Card.vue'
 import FormItem from '../../components/FormItem.vue'
-import { Spine } from '../../utils/spine'
 import { isMobile } from '../../utils/utils'
+import { Spine } from './spine'
 import Detail from './Detail.vue'
 import { useEvent } from './useEvent'
+
 interface States {
   skin: string
   modelList: string[]
@@ -173,7 +174,7 @@ export default defineComponent({
         return
 
       // console.log(e)
-      const color = parseInt(e.slice(1), 16)
+      const color = Number.parseInt(e.slice(1), 16)
       // console.log(color);
       spineRef.spine.bg = [
         (color >>> 24) / 255,

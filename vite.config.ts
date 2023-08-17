@@ -42,15 +42,16 @@ export default defineConfig({
             return 'marked-map'
           if (id.includes('naive-ui'))
             return 'naive-ui'
-
           if (id.includes('node_modules') && !id.includes('hammer'))
             return 'vendor'
-
-          if (id.includes('src/components/'))
-            return 'vendor'
-
           if (id.includes('uno'))
             return 'vendor'
+          if (id.includes('src/components/'))
+            return 'common'
+          if (id.includes('src/utils/'))
+            return 'common'
+          if (id.includes('src/stores/'))
+            return 'common'
         },
         chunkFileNames: '[name].[hash].js',
         entryFileNames: chunk => nohashEntries.includes(chunk.name) ? '[name].js' : '[name].[hash].js',
