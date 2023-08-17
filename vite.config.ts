@@ -51,6 +51,12 @@ export default defineConfig({
 
           if (id.includes('uno'))
             return 'vendor'
+
+          if (id.includes('src/utils/'))
+            return 'vendor'
+
+          if (id.includes('src/stores/'))
+            return 'vendor'
         },
         chunkFileNames: '[name].[hash].js',
         entryFileNames: chunk => nohashEntries.includes(chunk.name) ? '[name].js' : '[name].[hash].js',
