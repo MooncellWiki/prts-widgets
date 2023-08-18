@@ -31,8 +31,13 @@ pnpm run create WidgetName username password
 ```
 
 ### 发布
+
+> [!WARNING]
+> 部署更新包需要上传到站内 OSS 后才会生效，发布小部件应仅在 Pull Request 被合并后由 GitHub Actions 机器人自动操作。
+> 在未获确认的情况下请勿执行，hash 变动会导致其他线上组件出错。
+
 ```bash 
-pnpm run build
-# 手动上传dist/
-pnpm run update username password
+$ pnpm run build
+# ... 上传 dist/ 至 OSS
+$ pnpm run update username password
 ```
