@@ -36,7 +36,6 @@
     "vue": "^3.3.4"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^0.39.8",
     "@types/hammerjs": "^2.0.41",
     "@types/js-cookie": "^3.0.3",
     "@types/md5": "^2.3.2",
