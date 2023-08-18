@@ -1,10 +1,12 @@
 <script lang="ts">
-import type { PropType } from 'vue'
-import { computed, defineComponent } from 'vue'
-import Checkbox from './Checkbox.vue'
-import CheckboxGroup from './CheckboxGroup.vue'
+import type { PropType } from "vue";
+import { computed, defineComponent } from "vue";
+
+import Checkbox from "./Checkbox.vue";
+import CheckboxGroup from "./CheckboxGroup.vue";
+
 export default defineComponent({
-  name: 'FilterRow',
+  name: "FilterRow",
   components: {
     Checkbox,
     CheckboxGroup,
@@ -16,47 +18,50 @@ export default defineComponent({
     both: Boolean,
     noWidth: Boolean,
     someSelected: Boolean,
-    modelValue: { type: Object as PropType<Record<string, boolean>>, default: () => ({}) },
+    modelValue: {
+      type: Object as PropType<Record<string, boolean>>,
+      default: () => ({}),
+    },
   },
-  emits: ['update:modelValue', 'update:both', 'all', 'clear'],
+  emits: ["update:modelValue", "update:both", "all", "clear"],
   setup(props, { emit, slots }) {
     const isBoth = computed({
       get() {
-        return props.both
+        return props.both;
       },
       set(v) {
-        emit('update:both', v)
+        emit("update:both", v);
       },
-    })
+    });
     const selected = computed({
       get() {
-        return props.modelValue
+        return props.modelValue;
       },
       set(v) {
-        emit('update:modelValue', v)
+        emit("update:modelValue", v);
       },
-    })
+    });
     const hasSlot = computed(() => {
-      return !!slots.default
-    })
+      return !!slots.default;
+    });
     const addAll = () => {
       if (hasSlot.value) {
-        emit('all')
-        return
+        emit("all");
+        return;
       }
-      const tmp: Record<string, boolean> = {}
+      const tmp: Record<string, boolean> = {};
       props.labels?.forEach((label) => {
-        tmp[label] = true
-      })
-      selected.value = tmp
-    }
+        tmp[label] = true;
+      });
+      selected.value = tmp;
+    };
     const removeAll = () => {
       if (hasSlot.value) {
-        emit('clear')
-        return
+        emit("clear");
+        return;
       }
-      selected.value = {}
-    }
+      selected.value = {};
+    };
 
     return {
       selected,
@@ -64,9 +69,9 @@ export default defineComponent({
       removeAll,
       isBoth,
       hasSlot,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -78,18 +83,9 @@ export default defineComponent({
       {{ title }}
     </div>
     <div class="btns">
-      <button class="btn" @click="addAll">
-        全选
-      </button>
-      <button class="btn" @click="removeAll">
-        清除
-      </button>
-      <Checkbox
-        v-if="showBoth"
-        v-model="isBoth"
-      >
-        同时满足
-      </Checkbox>
+      <button class="btn" @click="addAll">全选</button>
+      <button class="btn" @click="removeAll">清除</button>
+      <Checkbox v-if="showBoth" v-model="isBoth"> 同时满足 </Checkbox>
     </div>
     <div v-if="hasSlot" class="checkboxs">
       <slot />

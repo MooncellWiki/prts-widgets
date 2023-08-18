@@ -1,9 +1,11 @@
 <script lang="ts">
-import { computed, defineComponent } from 'vue'
-import Checkbox from './Checkbox.vue'
-import CheckboxGroup from './CheckboxGroup.vue'
+import { computed, defineComponent } from "vue";
+
+import Checkbox from "./Checkbox.vue";
+import CheckboxGroup from "./CheckboxGroup.vue";
+
 export default defineComponent({
-  name: 'Pagination',
+  name: "Pagination",
   components: {
     Checkbox,
     CheckboxGroup,
@@ -13,58 +15,48 @@ export default defineComponent({
     step: { type: Number, required: true },
     index: { type: Number, required: true },
   },
-  emits: ['update:index', 'update:step'],
+  emits: ["update:index", "update:step"],
   setup(props, { emit }) {
     const checkboxCount = computed(() => {
-      return Math.ceil(props.length / props.step)
-    })
+      return Math.ceil(props.length / props.step);
+    });
 
     const cur = computed({
       get() {
-        return `${props.index}`
+        return `${props.index}`;
       },
       set(v) {
-        emit('update:index', parseInt(v))
+        emit("update:index", Number.parseInt(v));
       },
-    })
+    });
     const curStep = computed({
       get() {
-        return props.step
+        return props.step;
       },
       set(v) {
-        emit('update:step', { n: v, o: curStep.value })
+        emit("update:step", { n: v, o: curStep.value });
       },
-    })
+    });
 
     return {
       cur,
       curStep,
       checkboxCount,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
   <div class="paginations-container">
     <select v-model="curStep" name="length">
-      <option :value="50">
-        50
-      </option>
-      <option :value="100">
-        100
-      </option>
-      <option :value="200">
-        200
-      </option>
+      <option :value="50">50</option>
+      <option :value="100">100</option>
+      <option :value="200">200</option>
     </select>
     <div>共{{ length }}条</div>
     <CheckboxGroup v-model="cur" class="checkbox-container" is-radio>
-      <Checkbox
-        v-for="k in checkboxCount"
-        :key="k"
-        :value="k.toString()"
-      >
+      <Checkbox v-for="k in checkboxCount" :key="k" :value="k.toString()">
         {{ k }}
       </Checkbox>
     </CheckboxGroup>

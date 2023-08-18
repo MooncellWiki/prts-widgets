@@ -1,23 +1,23 @@
-import { createApp } from 'vue'
-import 'virtual:windi.css'
-import type { Props } from '../widgets/Spine/Spine.vue'
-import SpineVue from '../widgets/Spine/Wrapper.vue'
-import { Spine } from '../utils/spine'
+import "virtual:uno.css";
+import { createApp } from "vue";
+
+import type { Props } from "../widgets/Spine/Spine.vue";
+import SpineVue from "../widgets/Spine/Wrapper.vue";
+import { Spine } from "../widgets/Spine/spine";
+
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
-window.SpineApi = Spine
-window.dispatchEvent(new Event('spine_api_ready'))
+window.SpineApi = Spine;
+window.dispatchEvent(new Event("spine_api_ready"));
 
 const spineData: Props = JSON.parse(
-  document.getElementById('SPINEDATA')!.innerHTML,
-)
+  document.getElementById("SPINEDATA")!.innerHTML,
+);
 spineData.prefix = spineData.prefix.replace(
-  'https://static.prts.wiki/spine/',
-  'https://static.prts.wiki/spine38/',
-)
+  "https://static.prts.wiki/spine/",
+  "https://static.prts.wiki/spine38/",
+);
 
-const ele = document.getElementById('spine-root')
-if (ele && spineData)
-  createApp(SpineVue, { ...spineData }).mount(ele)
-else
-  console.error('SPINEDATA or ele not found', ele)
+const ele = document.getElementById("spine-root");
+if (ele && spineData) createApp(SpineVue, { ...spineData }).mount(ele);
+else console.error("SPINEDATA or ele not found", ele);

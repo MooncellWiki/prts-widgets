@@ -1,7 +1,9 @@
 {
   "recommendations": [
+    "EditorConfig.EditorConfig",
     "Vue.volar",
-    "voorjaar.windicss-intellisense",
-    "dbaeumer.vscode-eslint"
+    "antfu.unocss",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode"
   ]
 }

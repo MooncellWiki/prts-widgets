@@ -6,10 +6,11 @@ import {
   inject,
   ref,
   watch,
-} from 'vue'
+} from "vue";
 
-const isSimplified
-  = !decodeURIComponent(window.location.href).includes('/语音')
+const isSimplified = !decodeURIComponent(window.location.href).includes(
+  "/语音",
+);
 
 export default defineComponent({
   props: {
@@ -18,52 +19,53 @@ export default defineComponent({
     voicePath: String,
     playKey: Number,
   },
-  emits: ['update:playKey'],
+  emits: ["update:playKey"],
   setup(props, { emit }) {
-    const key = getCurrentInstance()?.vnode.key
-    const source = computed(() => `//static.prts.wiki/${props.voicePath}`)
-    const fileName = computed(() => props.voiceId?.split('/').pop())
-    const audioHref = computed(
-      () => props.directLink ? props.directLink : `${source.value}?filename=${fileName.value}.wav`,
-    )
-    const playing = ref(false)
-    const audioElem = inject<HTMLAudioElement>('audioElem') ?? new Audio()
+    const key = getCurrentInstance()?.vnode.key;
+    const source = computed(() => `//static.prts.wiki/${props.voicePath}`);
+    const fileName = computed(() => props.voiceId?.split("/").pop());
+    const audioHref = computed(() =>
+      props.directLink
+        ? props.directLink
+        : `${source.value}?filename=${fileName.value}.wav`,
+    );
+    const playing = ref(false);
+    const audioElem = inject<HTMLAudioElement>("audioElem") ?? new Audio();
 
     const pause = () => {
-      playing.value = false
-      audioElem?.pause()
-    }
+      playing.value = false;
+      audioElem?.pause();
+    };
     const play = () => {
-      playing.value = true
-      audioElem.src = props.directLink ? props.directLink : source.value
-      emit('update:playKey', key)
+      playing.value = true;
+      audioElem.src = props.directLink ? props.directLink : source.value;
+      emit("update:playKey", key);
 
-      const playPromise = audioElem?.play()
+      const playPromise = audioElem?.play();
       if (playPromise) {
         playPromise.catch(() => {
-          playing.value = false
-        })
+          playing.value = false;
+        });
       }
-      audioElem.addEventListener('ended', () => {
-        playing.value = false
-      })
-    }
+      audioElem.addEventListener("ended", () => {
+        playing.value = false;
+      });
+    };
 
     watch(
       () => props.voicePath,
       () => {
-        playing.value = false
-        audioElem?.pause()
+        playing.value = false;
+        audioElem?.pause();
       },
-    )
+    );
 
     watch(
       () => props.playKey,
       (newVal) => {
-        if (newVal !== key)
-          playing.value = false
+        if (newVal !== key) playing.value = false;
       },
-    )
+    );
 
     return {
       source,
@@ -74,9 +76,9 @@ export default defineComponent({
       audioHref,
       pause,
       play,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -87,10 +89,10 @@ export default defineComponent({
       :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
       @click="
         () => {
-          playing ? pause() : play()
+          playing ? pause() : play();
         }
       "
-    >
+    />
     <a
       v-if="!isSimplified && voicePath"
       :href="audioHref"
@@ -100,7 +102,7 @@ export default defineComponent({
         class="md:w-10 <sm:w-7 cursor-pointer lazyload"
         title="下载"
         data-src="/images/f/f1/Download.png"
-      >
+      />
     </a>
   </div>
 </template>
