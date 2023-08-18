@@ -1,10 +1,11 @@
 <script lang="ts">
-import { useVModel } from '@vueuse/core'
-import { NButton } from 'naive-ui'
-import { type PropType, defineComponent } from 'vue'
+import { type PropType, defineComponent } from "vue";
+
+import { useVModel } from "@vueuse/core";
+import { NButton } from "naive-ui";
 
 export default defineComponent({
-  name: 'FilterLine',
+  name: "FilterLine",
   components: {
     NButton,
   },
@@ -19,34 +20,30 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: [
-    'update:OptionValue',
-  ],
+  emits: ["update:OptionValue"],
   setup(props, { emit }) {
-    const optionValue = useVModel(props, 'optionValue', emit)
+    const optionValue = useVModel(props, "optionValue", emit);
     const selectAll = () => {
       props.options.forEach((option) => {
-        if (!optionValue.value.includes(option))
-          optionValue.value.push(option)
-      })
-    }
+        if (!optionValue.value.includes(option)) optionValue.value.push(option);
+      });
+    };
     const cancelAll = () => {
-      optionValue.value.splice(0)
-    }
+      optionValue.value.splice(0);
+    };
     const onTagClick = (option: string) => {
       if (optionValue.value.includes(option))
-        optionValue.value.splice(optionValue.value.indexOf(option), 1)
-      else
-        optionValue.value.push(option)
-    }
+        optionValue.value.splice(optionValue.value.indexOf(option), 1);
+      else optionValue.value.push(option);
+    };
     return {
       optionValue,
       selectAll,
       cancelAll,
       onTagClick,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -54,12 +51,8 @@ export default defineComponent({
     <span class="basis-1/8">{{ title }}</span>
     <div class="flex flex-row items-center basis-7/8">
       <div class="flex flex-col lg:flex-row">
-        <NButton class="m-1" @click="selectAll()">
-          全选
-        </NButton>
-        <NButton class="m-1" @click="cancelAll()">
-          清除
-        </NButton>
+        <NButton class="m-1" @click="selectAll()"> 全选 </NButton>
+        <NButton class="m-1" @click="cancelAll()"> 清除 </NButton>
       </div>
       <div>
         <NButton

@@ -1,49 +1,58 @@
 <script lang="ts">
-import type { PropType } from 'vue'
-import { defineComponent, ref, watch } from 'vue'
-import { useVModel } from '@vueuse/core'
-import { useCharStore } from './script/charStore'
-import { getImagePath } from '@/utils/utils'
+import type { PropType } from "vue";
+import { defineComponent, ref, watch } from "vue";
+
+import { useVModel } from "@vueuse/core";
+
+import { getImagePath } from "@/utils/utils";
+
+import { useCharStore } from "./script/charStore";
 
 interface Char {
-  name: string
-  type: string
-  subtype: string
-  rarity: string | number
-  id: number
+  name: string;
+  type: string;
+  subtype: string;
+  rarity: string | number;
+  id: number;
 }
 export default defineComponent({
-  name: 'SubAvatar',
+  name: "SubAvatar",
   props: {
     char: {
       type: Object as PropType<Char>,
       required: true,
     },
   },
-  emits: [
-    'update:char',
-  ],
+  emits: ["update:char"],
   setup(props, { emit }) {
-    const charStore = useCharStore()
-    const charRef = useVModel(props, 'char', emit)
+    const charStore = useCharStore();
+    const charRef = useVModel(props, "char", emit);
     const onClickImg = (name: string) => {
-      return name
-    }
-    const src = ref(`/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`)
+      return name;
+    };
+    const src = ref(
+      `/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`,
+    );
     watch(charRef.value, () => {
-      src.value = `/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`
-    })
+      src.value = `/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`;
+    });
     return {
       getImagePath,
       src,
       charRef,
       onClickImg,
       charStore,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
-  <img class="m-[2px] cursor-pointer" :src="`/images/${getImagePath(`头像_${charRef.name}_2.png`)}`" width="65" height="65" @click="charStore.addOrDeleteChar(char)">
+  <img
+    class="m-[2px] cursor-pointer"
+    :src="`/images/${getImagePath(`头像_${charRef.name}_2.png`)}`"
+    width="65"
+    height="65"
+    @click="charStore.addOrDeleteChar(char)"
+  />
 </template>
