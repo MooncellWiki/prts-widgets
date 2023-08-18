@@ -17,17 +17,13 @@ import {
 } from "naive-ui";
 import { storeToRefs } from "pinia";
 
+import OptionsGroup from "@/components/OptionsGroup.vue";
 import { useThemeStore } from "@/stores/theme";
 
-import FilterLine from "./FilterLine.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
 import { useCharStore } from "./script/charStore";
 
-interface FilterConfig {
-  title: string;
-  options: string[];
-}
 interface SelectionConfig {
   title: string;
   options: SelectGroupOption[];
@@ -41,7 +37,7 @@ interface Char {
 }
 export default defineComponent({
   components: {
-    FilterLine,
+    OptionsGroup,
     FilterSub,
     NCard,
     NCollapse,
@@ -63,19 +59,19 @@ export default defineComponent({
     const isLoading = ref(false);
     const themeStore = useThemeStore();
     const { theme } = storeToRefs(themeStore);
-    const filterType = reactive<FilterConfig>({
+    const filterType = {
       title: "职业",
       options: ["先锋", "近卫", "重装", "狙击", "术师", "医疗", "辅助", "特种"],
-    });
-    const filterRarity = reactive<FilterConfig>({
+    };
+    const filterRarity = {
       title: "稀有度",
       options: ["4★", "5★", "6★"],
-    });
-    const transferRarity = reactive<Record<string, string>>({
-      3: "4★",
-      4: "5★",
-      5: "6★",
-    });
+    };
+    const rarityMap: Record<string, string> = {
+      "3": "4★",
+      "4": "5★",
+      "5": "6★",
+    };
     const stateType = ref<string[]>([]);
     const stateRarity = ref<string[]>([]);
     const filterSub = reactive<SelectionConfig>({
@@ -161,7 +157,9 @@ export default defineComponent({
       if (states.value.rarity.length >= 1) {
         for (const sub in result.value) {
           result.value[sub] = result.value[sub].filter((char) => {
-            return states.value.rarity.includes(transferRarity[char.rarity]);
+            return states.value.rarity.includes(
+              rarityMap[char.rarity.toString()],
+            );
           });
           if (result.value[sub].length < 1) delete result.value[sub];
         }
@@ -199,23 +197,16 @@ export default defineComponent({
       if (states.value.rarity.length >= 1) {
         for (const sub in result.value) {
           result.value[sub] = result.value[sub].filter((char) => {
-            return states.value.rarity.includes(transferRarity[char.rarity]);
+            return states.value.rarity.includes(
+              rarityMap[char.rarity.toString()],
+            );
           });
           if (result.value[sub].length < 1) delete result.value[sub];
         }
       }
       filteredCharData.value = result.value;
     };
-    watch(states.value.type, () => {
-      andMode.value ? filterIntersection() : filterUnion();
-    });
-    watch(states.value.rarity, () => {
-      andMode.value ? filterIntersection() : filterUnion();
-    });
-    watch(states.value.sub, () => {
-      andMode.value ? filterIntersection() : filterUnion();
-    });
-    watch(andMode, () => {
+    watch([states.value, andMode], () => {
       andMode.value ? filterIntersection() : filterUnion();
     });
     const initPanel = (name: string) => {
@@ -377,15 +368,15 @@ export default defineComponent({
           <table class="w-full text-left border-collapse">
             <tbody class="align-baseline">
               <tr>
-                <FilterLine
-                  :option-value="states.type"
+                <OptionsGroup
+                  v-model="states.type"
                   :title="filterType.title"
                   :options="filterType.options"
                 />
               </tr>
               <tr>
-                <FilterLine
-                  :option-value="states.rarity"
+                <OptionsGroup
+                  v-model="states.rarity"
                   :title="filterRarity.title"
                   :options="filterRarity.options"
                 />
@@ -501,7 +492,7 @@ export default defineComponent({
   </NConfigProvider>
 </template>
 
-<style>
+<style scoped>
 .modbody {
   display: flex;
   width: 100%;

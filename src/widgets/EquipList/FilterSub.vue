@@ -19,7 +19,7 @@ export default defineComponent({
     },
     selected: {
       type: Array as PropType<string[]>,
-      default: () => {},
+      default: () => [],
       required: true,
     },
   },
