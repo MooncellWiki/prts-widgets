@@ -16,6 +16,7 @@ You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/
 ## 子应用列表
 
 会逐步迁移一些没人会去搜，而且需要复杂 lua/smw 查询的模板过来
+
 - 干员一览[Widget:CharList/dev](https://prts.wiki/w/Widget:CharList/dev)
 - 公招计算[Widget:HrCalculator/dev](https://prts.wiki/w/Widget:HrCalculator/dev)
 - 需求材料干员 [Widget:ItemDemand/dev](http://prts.wiki/w/Widget:ItemDemand/dev)
@@ -45,10 +46,10 @@ $ pnpm run create WidgetName username password
 
 > [!WARNING]
 > 部署更新包需要上传到站内 OSS 后才会生效，发布小部件应仅在 Pull Request 被合并后由 GitHub Actions 机器人自动操作。
-> 
+>
 > 在未获确认的情况下请勿执行，hash 变动会导致其他线上组件出错。
 
-```bash 
+```bash
 $ pnpm run build
 # ... 上传 dist/ 至 OSS
 $ pnpm run update username password

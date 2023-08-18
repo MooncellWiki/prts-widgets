@@ -3,7 +3,7 @@ description: Setup OSS
 
 inputs:
   ossutil-config:
-    description: 'ossutil config'
+    description: "ossutil config"
     required: true
 
 runs:
