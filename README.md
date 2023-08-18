@@ -25,9 +25,20 @@ You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/
 - 不期而遇事件 [Widget:IsEvent/dev](https://prts.wiki/w/Widget:ISEvent/dev)
 - 生息演算地图 [Widget:XbMapViewer/dev](https://prts.wiki/w/Widget:XbMapViewer/dev)
 
-### 创建新应用
+## 项目配置
+
+### 安装项目依赖
+
+项目使用 [pnpm](https://pnpm.io/) 管理项目依赖，请使用 [pnpm](https://pnpm.io/) 安装本项目。
+
 ```bash
-pnpm run create WidgetName username password
+$ pnpm install
+```
+
+### 创建新应用
+
+```bash
+$ pnpm run create WidgetName username password
 ```
 
 ### 发布
