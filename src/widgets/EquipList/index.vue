@@ -1,5 +1,5 @@
 <script lang="ts">
-import { computed, defineComponent, ref } from "vue";
+import { computed, defineComponent, onMounted, ref } from "vue";
 
 import {
   NButton,
@@ -15,6 +15,7 @@ import {
   NTooltip,
 } from "naive-ui";
 import { storeToRefs } from "pinia";
+import { useFetch } from "@vueuse/core";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { useThemeStore } from "@/stores/theme";
@@ -159,7 +160,7 @@ export default defineComponent({
           loadedChar.value++;
           return;
         }
-        fetch(
+        const { error, data } = useFetch(
           `/api.php?${new URLSearchParams({
             action: "parse",
             format: "json",
@@ -172,78 +173,76 @@ export default defineComponent({
             disabletoc: "1",
           })}`,
         )
-          .then((response) => {
-            if (!response.ok) {
-              isError.value = true;
-              throw new Error("[EquipList] Received non-200 response");
-            }
-            return response.json();
-          })
-          .then((data) => {
-            const content = data.parse.text["*"];
-            equipData.value[char.name] = content;
-            equipChar.value.push(char.name);
-            loadedChar.value++;
-          });
+          .get()
+          .json();
+
+        if (error.value) {
+          isError.value = true;
+          throw new Error(`[EquipList] Network Error: ${error.value}`);
+        }
+        const content = data.value.parse.text["*"];
+        equipData.value[char.name] = content;
+        equipChar.value.push(char.name);
+        loadedChar.value++;
       });
       isLoading.value = false;
     };
-    fetch(
-      `/api.php?${new URLSearchParams({
-        action: "ask",
-        format: "json",
-        query:
-          "[[分类:拥有专属模组的干员]]|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
-        api_version: "2",
-        utf8: "1",
-      })}`,
-    )
-      .then((response) => {
-        if (!response.ok)
-          throw new Error("[EquipList] Received non-200 response");
 
-        return response.json();
-      })
-      .then((data) => {
-        const result: Record<string, any> = data.query.results;
-        const charData: Char[] = Object.entries(result).map(([k, v]) => {
-          return {
-            name: k,
-            type: v.printouts["职业"][0] as string,
-            subtype: v.printouts["子职业"][0] as string,
-            rarity: v.printouts["稀有度"][0] as string,
-            id: v.printouts["干员序号"][0] as number,
-          };
-        });
-        charData.forEach((char) => {
-          if (!subProfMap.value[char.type]) subProfMap.value[char.type] = [];
-
-          if (!sortedCharData.value[char.subtype])
-            sortedCharData.value[char.subtype] = [];
-
-          if (!~subProfMap.value[char.type].indexOf(char.subtype))
-            subProfMap.value[char.type].push(char.subtype);
-
-          sortedCharData.value[char.subtype].push(char);
-        });
-
-        Object.keys(sortedCharData.value).forEach((key) => {
-          sortedCharData.value[key].sort((a: Char, b: Char) => {
-            return a.rarity === b.rarity
-              ? b.id - a.id
-              : Number.parseInt(b.rarity as string) -
-                  Number.parseInt(a.rarity as string);
-          });
-        });
-
-        console.log(sortedCharData.value);
-      })
-      .catch((error) => console.error(error));
     const toggleCollapse = () => {
       operatorShow.value = false;
       if (window.screen.availWidth < 1024) filterShow.value = false;
       getEquipData();
     };
+    onMounted(async () => {
+      const { error, data } = await useFetch(
+        `/api.php?${new URLSearchParams({
+          action: "ask",
+          format: "json",
+          query:
+            "[[分类:拥有专属模组的干员]]|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
+          api_version: "2",
+          utf8: "1",
+        })}`,
+      )
+        .get()
+        .json();
+
+      if (error.value) {
+        throw new Error(`[EquipList] Network Error: ${error.value}`);
+      }
+
+      const charData: Char[] = Object.entries<Record<string, any>>(
+        data.value.query.results,
+      ).map(([k, v]) => {
+        return {
+          name: k,
+          type: v.printouts["职业"][0] as string,
+          subtype: v.printouts["子职业"][0] as string,
+          rarity: v.printouts["稀有度"][0] as string,
+          id: v.printouts["干员序号"][0] as number,
+        };
+      });
+      charData.forEach((char) => {
+        if (!subProfMap.value[char.type]) subProfMap.value[char.type] = [];
+
+        if (!sortedCharData.value[char.subtype])
+          sortedCharData.value[char.subtype] = [];
+
+        if (!~subProfMap.value[char.type].indexOf(char.subtype))
+          subProfMap.value[char.type].push(char.subtype);
+
+        sortedCharData.value[char.subtype].push(char);
+      });
+
+      Object.keys(sortedCharData.value).forEach((key) => {
+        sortedCharData.value[key].sort((a: Char, b: Char) => {
+          return a.rarity === b.rarity
+            ? b.id - a.id
+            : Number.parseInt(b.rarity as string) -
+                Number.parseInt(a.rarity as string);
+        });
+      });
+    });
     return {
       filterType,
       filterRarity,
