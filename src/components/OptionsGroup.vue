@@ -5,7 +5,7 @@ import { useVModel } from "@vueuse/core";
 import { NButton } from "naive-ui";
 
 export default defineComponent({
-  name: "SingleFilter",
+  name: "OptionsGroup",
   components: { NButton },
   props: {
     title: String,
@@ -14,23 +14,25 @@ export default defineComponent({
   },
   emits: ["update:modelValue"],
   setup(props, { emit }) {
-    const selected = useVModel(props, "modelValue", emit, {
+    const selectedOptions = useVModel(props, "modelValue", emit, {
       passive: true,
       deep: true,
     });
     const onTagClick = (option: string) => {
-      return selected.value.includes(option)
-        ? selected.value.splice(selected.value.indexOf(option), 1)
-        : selected.value.push(option);
+      return selectedOptions.value.includes(option)
+        ? selectedOptions.value.splice(selectedOptions.value.indexOf(option), 1)
+        : selectedOptions.value.push(option);
     };
     const selectAll = () =>
       props.options.forEach(
         (option) =>
-          !selected.value.includes(option) && selected.value.push(option),
+          !selectedOptions.value.includes(option) &&
+          selectedOptions.value.push(option),
       );
-    const selectNone = () => selected.value.splice(0);
+    const selectNone = () => selectedOptions.value.splice(0);
+
     return {
-      selected,
+      selectedOptions,
       selectAll,
       selectNone,
       onTagClick,
@@ -53,7 +55,7 @@ export default defineComponent({
           :key="index"
           strong
           secondary
-          :type="selected.includes(option) ? 'info' : 'default'"
+          :type="selectedOptions.includes(option) ? 'info' : 'default'"
           class="m-1"
           @click="onTagClick(option)"
         >

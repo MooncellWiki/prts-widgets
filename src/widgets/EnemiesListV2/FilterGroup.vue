@@ -5,14 +5,14 @@ import { defineComponent } from "vue";
 import { useVModel } from "@vueuse/core";
 import { NCard, NCollapseTransition } from "naive-ui";
 
-import SingleFilter from "./SingleFilter.vue";
+import OptionsGroup from "@/components/OptionsGroup.vue";
 
 export default defineComponent({
   name: "FilterGroup",
   components: {
     NCard,
     NCollapseTransition,
-    SingleFilter,
+    OptionsGroup,
   },
   props: {
     show: Boolean,
@@ -55,7 +55,7 @@ export default defineComponent({
       <table class="w-full text-left border-collapse">
         <tbody class="align-baseline">
           <tr v-for="(filter, field) in filters" :key="field">
-            <SingleFilter
+            <OptionsGroup
               v-model="statesRef[field]"
               :title="filter.title"
               :options="filter.options"
