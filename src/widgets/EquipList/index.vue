@@ -1,6 +1,7 @@
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from "vue";
 
+import { useFetch } from "@vueuse/core";
 import {
   NButton,
   NCard,
@@ -15,7 +16,6 @@ import {
   NTooltip,
 } from "naive-ui";
 import { storeToRefs } from "pinia";
-import { useFetch } from "@vueuse/core";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { useThemeStore } from "@/stores/theme";
