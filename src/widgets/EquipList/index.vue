@@ -1,7 +1,7 @@
 <script lang="ts">
 import { defineComponent, reactive, ref, watch } from "vue";
 
-import type { SelectGroupOption, SelectOption } from "naive-ui";
+import type { SelectOption } from "naive-ui";
 import {
   NButton,
   NCard,
@@ -23,18 +23,8 @@ import { useThemeStore } from "@/stores/theme";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
 import { useCharStore } from "./script/charStore";
+import { Char, SelectionConfig } from "./types";
 
-interface SelectionConfig {
-  title: string;
-  options: SelectGroupOption[];
-}
-interface Char {
-  name: string;
-  type: string;
-  subtype: string;
-  rarity: string | number;
-  id: number;
-}
 export default defineComponent({
   components: {
     OptionsGroup,
@@ -209,10 +199,6 @@ export default defineComponent({
     watch([states.value, andMode], () => {
       andMode.value ? filterIntersection() : filterUnion();
     });
-    const initPanel = (name: string) => {
-      const ele = document.getElementById(`equip_${name}`);
-      if (ele instanceof HTMLElement) ele.innerHTML = equipData.value[name];
-    };
     const loadedChar = ref(0);
     const getEquipData = () => {
       loadedChar.value = 0;
@@ -330,7 +316,6 @@ export default defineComponent({
       equipData,
       getEquipData,
       equipChar,
-      initPanel,
       loadedChar,
       toggleCollapse,
       isLoading,
@@ -479,10 +464,12 @@ export default defineComponent({
               :name="name"
               :title="name"
               display-directive="show"
-              @vue:mounted="initPanel(name)"
-              @vue:updated="initPanel(name)"
             >
-              <div v-show="equipChar.includes(name)" :id="`equip_${name}`" />
+              <div
+                v-show="equipChar.includes(name)"
+                :id="`equip_${name}`"
+                v-html="equipData[name]"
+              />
             </NCollapseItem>
           </NCollapse>
           <template #description> 加载中 </template>
@@ -493,7 +480,7 @@ export default defineComponent({
 </template>
 
 <style scoped>
-.modbody {
+:deep(.modbody) {
   display: flex;
   width: 100%;
   max-width: 800px;
@@ -503,7 +490,7 @@ export default defineComponent({
   box-sizing: border-box;
   flex-flow: column;
 }
-.modtype {
+:deep(.modtype) {
   display: flex;
   flex-flow: column;
   flex: 25 25 25%;
@@ -512,21 +499,21 @@ export default defineComponent({
   align-items: center;
   height: 60px;
 }
-.modname {
+:deep(.modname) {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: 75 75 75%;
   height: 60px;
 }
-.rankicon {
+:deep(.rankicon) {
   flex: 10 10 10%;
   display: flex;
   justify-content: center;
   align-items: center;
   min-width: 55px;
 }
-.ranktext {
+:deep(.ranktext) {
   flex: 16.5 16.5 16.5%;
   display: flex;
   align-items: center;
@@ -535,60 +522,60 @@ export default defineComponent({
   flex-wrap: wrap;
   align-content: center;
 }
-.descr {
+:deep(.descr) {
   flex: 25 25 25%;
   display: flex;
   justify-content: center;
   align-items: center;
   min-width: 130px;
 }
-.consume {
+:deep(.consume) {
   flex: 50 50 50%;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   min-width: 260px;
 }
-.basicbox {
+:deep(.basicbox) {
   display: flex;
   width: 100%;
   flex-wrap: wrap;
   margin: 5px 0;
 }
-.rankbox {
+:deep(.rankbox) {
   display: flex;
   width: 100%;
   flex-flow: column;
   margin: 5px 0;
 }
-.singlerank {
+:deep(.singlerank) {
   display: flex;
   width: 100%;
   flex-wrap: wrap;
   margin: 5px 0;
 }
-.rankinfo {
+:deep(.rankinfo) {
   flex: 90 90 90%;
   display: flex;
   flex-wrap: wrap;
 }
-.talent {
+:deep(.talent) {
   flex: 83.5 83.5 83.5%;
   display: flex;
   align-items: center;
 }
-.majorsep {
+:deep(.majorsep) {
   height: 1px;
   background-color: black;
 }
-.minorsep {
+:deep(.minorsep) {
   height: 1px;
   background-color: lightgray;
 }
-.dark .majorsep {
+:deep(.dark .majorsep) {
   background-color: whitesmoke;
 }
-.dark .minorsep {
+:deep(.dark .minorsep) {
   background-color: gray;
 }
 </style>

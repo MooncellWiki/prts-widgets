@@ -7,14 +7,8 @@ import { NCard } from "naive-ui";
 import { getImagePath } from "@/utils/utils";
 
 import SubAvatar from "./SubAvatar.vue";
+import { Char } from "./types";
 
-interface Char {
-  name: string;
-  type: string;
-  subtype: string;
-  rarity: string | number;
-  id: number;
-}
 export default defineComponent({
   name: "SubContainer",
   components: {
@@ -28,10 +22,9 @@ export default defineComponent({
       default: () => [],
     },
   },
-  setup(props) {
-    const src = `/images/${getImagePath(`职业分支图标_${props.title}.png`)}`;
+  setup() {
     return {
-      src,
+      getImagePath,
     };
   },
 });
@@ -49,7 +42,10 @@ export default defineComponent({
         <span
           class="inline-flex w-[40px] h-[40px] vertical-text-bottom overflow-hidden justify-center flex-items-center bg-black"
         >
-          <img :src="src" style="position: absolute; transform: scale(0.5)" />
+          <img
+            :src="`/images/${getImagePath(`职业分支图标_${title}.png`)}`"
+            style="position: absolute; transform: scale(0.5)"
+          />
         </span>
         <span class="text-center inline-block" style="width: 6em">{{
           title

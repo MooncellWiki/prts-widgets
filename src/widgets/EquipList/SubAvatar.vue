@@ -7,14 +7,8 @@ import { useVModel } from "@vueuse/core";
 import { getImagePath } from "@/utils/utils";
 
 import { useCharStore } from "./script/charStore";
+import type { Char } from "./types";
 
-interface Char {
-  name: string;
-  type: string;
-  subtype: string;
-  rarity: string | number;
-  id: number;
-}
 export default defineComponent({
   name: "SubAvatar",
   props: {
