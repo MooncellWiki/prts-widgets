@@ -46,6 +46,7 @@ export default defineComponent({
         tabTextColorActiveLine: '#4294CF',
         barColor: '#4294CF',
         tabFontWeightActive: 'bold',
+        tabGapSmallLine: '20px',
       },
       Breadcrumb: { itemTextColor: '#A8AFB5' },
       Button: {
@@ -58,7 +59,7 @@ export default defineComponent({
       <NLayout>
         <NLayoutContent>
           <NCard class="relative" size="small">
-            <NTabs type="line" animated>
+            <NTabs type="line" size="small" animated>
               <NTabPane
                 v-for="(tabName, index) in tabList"
                 :key="tabName"

@@ -283,7 +283,7 @@ export default defineComponent({
             delete hash[element.meta.field];
             return;
           }
-          const fields = selected.map(([k]) => k.replace("★", "")).join("-");
+          const fields = selected.map(([k]) => k.replace("★", "")).join(";");
           const both = element.both ? "0-" : "1-";
           hash[element.meta.field] = both + fields;
         });
@@ -328,7 +328,7 @@ export default defineComponent({
         }
 
         const both = v[0] === "0";
-        const selected = (v as string).slice(2).split("-");
+        const selected = (v as string).slice(2).split(";");
         for (let i = 0; i < states.length; i++) {
           for (let j = 0; j < states[i].length; j++) {
             if (states[i][j].meta.field === k) {
