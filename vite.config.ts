@@ -62,10 +62,10 @@ export default defineConfig({
           name: 'prts',
           generateBundle(opts, bundle) {
             const bundles = Object.keys(bundle)
-            const vendorFilename = bundles.find(v => v.startsWith('vendor'))!
-            const naiveUiFilename = bundles.find(v =>
-              v.startsWith('naive-ui'),
-            )!
+            const fileNames = ['vendor', 'naive-ui', 'common']
+              .map((name) => {
+                return bundles.find(v => v.startsWith(name))!
+              })
             Object.keys(bundle).forEach((key) => {
               const chunk = bundle[key]
               if (chunk.type !== 'chunk')
@@ -75,14 +75,12 @@ export default defineConfig({
                 // SpineViewer 不需要改导入路径
                 return
               }
-              chunk.code = chunk.code.replaceAll(
-                `./${vendorFilename}`,
-                `https://static.prts.wiki/widgets/release/${vendorFilename}`,
-              )
-              chunk.code = chunk.code.replaceAll(
-                `./${naiveUiFilename}`,
-                `https://static.prts.wiki/widgets/release/${naiveUiFilename}`,
-              )
+              fileNames.forEach((name) => {
+                chunk.code = chunk.code.replaceAll(
+                  `./${name}`,
+                  `https://static.prts.wiki/widgets/release/${name}`,
+                )
+              })
             })
           },
         },
