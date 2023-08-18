@@ -60,7 +60,6 @@ module.exports = {
       },
     ],
     "import/no-unresolved": ["error", { ignore: ["^virtual:"] }],
-    "no-console": ["error", { allow: ["warn", "error"] }],
   },
   ignorePatterns: ["src/spine/runtime/"],
 };
