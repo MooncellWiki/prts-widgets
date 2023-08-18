@@ -1,9 +1,10 @@
 <script lang="ts">
-import { defineComponent } from 'vue'
-import { charListData, domain, getImagePath } from '@/utils/utils'
+import { defineComponent } from "vue";
+
+import { charListData, domain, getImagePath } from "@/utils/utils";
 
 export default defineComponent({
-  name: 'Half',
+  name: "Half",
   props: {
     profession: { type: String, required: true },
     rarity: { type: Number, required: true },
@@ -12,44 +13,56 @@ export default defineComponent({
     en: String,
   },
   setup() {
-    return { domain, charListData, getImagePath }
+    return { domain, charListData, getImagePath };
   },
-})
+});
 </script>
 
 <template>
   <div class="half-container">
     <a :href="`${domain}/w/${zh}`">
       <div class="uh">
-        <img :src="`${domain}/images/${getImagePath(`干员图鉴_uh_${rarity}.png`)}`">
+        <img
+          :src="`${domain}/images/${getImagePath(`干员图鉴_uh_${rarity}.png`)}`"
+        />
       </div>
       <div class="uhs">
-        <img :src="`${domain}/images/${charListData.uhs}`" width="70px">
+        <img :src="`${domain}/images/${charListData.uhs}`" width="70px" />
       </div>
       <div class="class_">
-        <img :src="`${domain}/images/${getImagePath(`图标_职业_${profession}.png`)}`">
+        <img
+          :src="`${domain}/images/${getImagePath(
+            `图标_职业_${profession}.png`,
+          )}`"
+        />
       </div>
       <div class="rarity">
-        <img :src="`${domain}/images/${getImagePath(`稀有度_黄_${rarity}.png`)}`">
+        <img
+          :src="`${domain}/images/${getImagePath(`稀有度_黄_${rarity}.png`)}`"
+        />
       </div>
       <div class="lh">
-        <img :src="`${domain}/images/${charListData.lh(rarity)}`">
+        <img :src="`${domain}/images/${charListData.lh(rarity)}`" />
       </div>
       <div class="light">
-        <img :src="`${domain}/images/${getImagePath(`干员图鉴_稀有度_亮光_${rarity}.png`)}`">
+        <img
+          :src="`${domain}/images/${getImagePath(
+            `干员图鉴_稀有度_亮光_${rarity}.png`,
+          )}`"
+        />
       </div>
       <div class="bg">
-        <img :src="`${domain}/images/${charListData.bg(rarity)}`">
+        <img :src="`${domain}/images/${charListData.bg(rarity)}`" />
       </div>
       <div class="operator">
         <img
           class="lazyload"
           :data-src="`${domain}/images/${getImagePath(`半身像_${zh}_1.png`)}`"
-        >
+        />
       </div>
       <div class="patch" />
       <div class="logo">
-        <img :src="`${domain}/images/${getImagePath(`Logo_${logo}.png`)}`">
+        <img :src="`${domain}/images/${getImagePath(`Logo_${logo}.png`)}`" />
       </div>
       <div class="zh">{{ zh }}</div>
       <div class="en">{{ en }}</div>

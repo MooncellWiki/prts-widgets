@@ -1,20 +1,4 @@
 <script lang="ts">
-import type {
-  DataTableBaseColumn,
-  DataTableColumn,
-  DataTableColumns,
-  DataTableFilterState,
-  DataTableInst,
-} from 'naive-ui'
-import {
-  NButton,
-  NConfigProvider,
-  NDataTable,
-  NInput,
-  NLayout,
-  NPagination,
-} from 'naive-ui'
-import { storeToRefs } from 'pinia'
 import {
   computed,
   defineComponent,
@@ -23,44 +7,63 @@ import {
   reactive,
   ref,
   watch,
-} from 'vue'
-import FilterGroup from './FilterGroup.vue'
-import { getImagePath } from '@/utils/utils'
-import { getNaiveUILocale } from '@/utils/i18n'
-import { useThemeStore } from '@/stores/theme'
+} from "vue";
+
+import type {
+  DataTableBaseColumn,
+  DataTableColumn,
+  DataTableColumns,
+  DataTableFilterState,
+  DataTableInst,
+} from "naive-ui";
+import {
+  NButton,
+  NConfigProvider,
+  NDataTable,
+  NInput,
+  NLayout,
+  NPagination,
+} from "naive-ui";
+import { storeToRefs } from "pinia";
+
+import { useThemeStore } from "@/stores/theme";
+import { getNaiveUILocale } from "@/utils/i18n";
+import { getImagePath } from "@/utils/utils";
+
+import FilterGroup from "./FilterGroup.vue";
 
 interface EnemyData {
-  enemyIndex: string
-  sortId: number
-  name: string
-  enemyLink: string
-  enemyRace: string
-  enemyLevel: string
-  attackType: string
-  damageType: string
-  motion: string
-  endure: string
-  attack: string
-  defence: string
-  moveSpeed: string
-  attackSpeed: string
-  resistance: string
-  ability: string
+  enemyIndex: string;
+  sortId: number;
+  name: string;
+  enemyLink: string;
+  enemyRace: string;
+  enemyLevel: string;
+  attackType: string;
+  damageType: string;
+  motion: string;
+  endure: string;
+  attack: string;
+  defence: string;
+  moveSpeed: string;
+  attackSpeed: string;
+  resistance: string;
+  ability: string;
 }
 
 interface FilterConfig {
   filters: {
     [field: string]: {
-      title: string
-      options: string[]
-    }
-  }
+      title: string;
+      options: string[];
+    };
+  };
   groups: {
-    title: string
-    filters: string[]
-    show: boolean
-  }[]
-  states: Record<string, string[]>
+    title: string;
+    filters: string[];
+    show: boolean;
+  }[];
+  states: Record<string, string[]>;
 }
 
 export default defineComponent({
@@ -74,90 +77,90 @@ export default defineComponent({
     NPagination,
   },
   setup() {
-    const enemyData = ref<EnemyData[]>([])
-    const keyword = ref('')
-    const tableRef = ref<DataTableInst>()
+    const enemyData = ref<EnemyData[]>([]);
+    const keyword = ref("");
+    const tableRef = ref<DataTableInst>();
     const dimensionPrecedence = [
-      'SS',
-      'S+',
-      'S',
-      'A+',
-      'A',
-      'B+',
-      'B',
-      'C',
-      'D',
-      'E',
-    ]
+      "SS",
+      "S+",
+      "S",
+      "A+",
+      "A",
+      "B+",
+      "B",
+      "C",
+      "D",
+      "E",
+    ];
     const filterConfig = reactive<FilterConfig>({
       filters: {
         enemyLevel: {
-          options: ['普通', '精英', '领袖'],
-          title: '地位',
+          options: ["普通", "精英", "领袖"],
+          title: "地位",
         },
         enemyRace: {
           options: [
-            '感染生物',
-            '无人机',
-            '萨卡兹',
-            '宿主',
-            '海怪',
-            '法术造物',
-            '化物',
-            '机械',
-            '野生动物',
-            '坍缩体',
+            "感染生物",
+            "无人机",
+            "萨卡兹",
+            "宿主",
+            "海怪",
+            "法术造物",
+            "化物",
+            "机械",
+            "野生动物",
+            "坍缩体",
           ],
-          title: '种类',
+          title: "种类",
         },
         attackType: {
-          options: ['近战', '远程', '不攻击'],
-          title: '攻击方式',
+          options: ["近战", "远程", "不攻击"],
+          title: "攻击方式",
         },
         damageType: {
-          options: ['物理', '法术', '治疗', '无'],
-          title: '伤害类型',
+          options: ["物理", "法术", "治疗", "无"],
+          title: "伤害类型",
         },
         endure: {
-          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
-          title: '生命值',
+          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
+          title: "生命值",
         },
         attack: {
-          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
-          title: '攻击力',
+          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
+          title: "攻击力",
         },
         defence: {
-          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
-          title: '防御力',
+          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
+          title: "防御力",
         },
         moveSpeed: {
-          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
-          title: '移动速度',
+          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
+          title: "移动速度",
         },
         attackSpeed: {
-          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
-          title: '攻击速度',
+          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
+          title: "攻击速度",
         },
         resistance: {
-          options: ['SS', 'S+', 'S', 'A+', 'A', 'B+', 'B', 'C', 'D', 'E'],
-          title: '法术抗性',
+          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
+          title: "法术抗性",
         },
       },
       groups: [
         {
-          title: '筛选',
-          filters: ['enemyLevel', 'enemyRace', 'attackType', 'damageType'],
+          title: "筛选",
+          filters: ["enemyLevel", "enemyRace", "attackType", "damageType"],
           show: true,
         },
         {
-          title: '六维筛选',
+          title: "六维筛选",
           filters: [
-            'endure',
-            'attack',
-            'defence',
-            'moveSpeed',
-            'attackSpeed',
-            'resistance',
+            "endure",
+            "attack",
+            "defence",
+            "moveSpeed",
+            "attackSpeed",
+            "resistance",
           ],
           show: false,
         },
@@ -174,13 +177,13 @@ export default defineComponent({
         attackSpeed: [],
         resistance: [],
       },
-    })
-    const isLoading = ref(true)
-    const i18nConfig = getNaiveUILocale()
-    const isMobile = document.body.classList.contains('skin-minerva')
-    const isIconMode = ref(!!isMobile)
-    const themeStore = useThemeStore()
-    const { theme } = storeToRefs(themeStore)
+    });
+    const isLoading = ref(true);
+    const i18nConfig = getNaiveUILocale();
+    const isMobile = document.body.classList.contains("skin-minerva");
+    const isIconMode = ref(!!isMobile);
+    const themeStore = useThemeStore();
+    const { theme } = storeToRefs(themeStore);
     const pagination = reactive({
       page: 1,
       pageSize: 10,
@@ -188,64 +191,64 @@ export default defineComponent({
       pageSlot: isMobile ? 5 : 9,
       showSizePicker: true,
       onChange: (page: number) => {
-        pagination.page = page
+        pagination.page = page;
       },
       onUpdatePageSize: (pageSize: number) => {
-        pagination.pageSize = pageSize
-        pagination.page = 1
+        pagination.pageSize = pageSize;
+        pagination.page = 1;
       },
-    })
+    });
     const filteredEnemyData = computed(() => {
-      const filters = filterConfig.states
-      const searchWord = keyword.value
+      const filters = filterConfig.states;
+      const searchWord = keyword.value;
       const filteredData = enemyData.value.filter((enemy) => {
         for (const key in filters) {
           if (filters[key].length > 0) {
             if (
-              filterConfig.groups[0].filters.includes(key)
-              && !filters[key].some(
-                filter =>
+              filterConfig.groups[0].filters.includes(key) &&
+              !filters[key].some(
+                (filter) =>
                   !!~enemy[key as keyof EnemyData].toString().indexOf(filter),
               )
             )
-              return false
+              return false;
             if (
-              filterConfig.groups[1].filters.includes(key)
-              && !filters[key].includes(enemy[key as keyof EnemyData].toString())
+              filterConfig.groups[1].filters.includes(key) &&
+              !filters[key].includes(enemy[key as keyof EnemyData].toString())
             )
-              return false
+              return false;
           }
           if (
-            searchWord
-            && !~enemy.name.indexOf(searchWord)
-            && !~enemy.ability.indexOf(searchWord)
+            searchWord &&
+            !~enemy.name.indexOf(searchWord) &&
+            !~enemy.ability.indexOf(searchWord)
           )
-            return false
+            return false;
         }
-        return true
-      })
-      return filteredData
-    })
+        return true;
+      });
+      return filteredData;
+    });
     const filteredChunkedEnemyData = computed(() =>
       filteredEnemyData.value.slice(
         pagination.pageSize * (pagination.page - 1),
         pagination.pageSize * pagination.page,
       ),
-    )
+    );
 
     watch(keyword, () => {
       tableRef.value?.filter({
         ability: [keyword.value],
         name: [keyword.value],
-      })
-    })
+      });
+    });
 
     const createFilterOptions = (field: string) => {
-      return filterConfig.filters[field].options.map(option => ({
+      return filterConfig.filters[field].options.map((option) => ({
         label: option,
         value: option,
-      }))
-    }
+      }));
+    };
 
     const createDimensionalColumn = (
       field: keyof EnemyData,
@@ -256,178 +259,178 @@ export default defineComponent({
         key: field,
         defaultSortOrder: false,
         sorter: (row1, row2) => {
-          const index1 = dimensionPrecedence.indexOf(row1[field].toString())
-          const index2 = dimensionPrecedence.indexOf(row2[field].toString())
-          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2
+          const index1 = dimensionPrecedence.indexOf(row1[field].toString());
+          const index2 = dimensionPrecedence.indexOf(row2[field].toString());
+          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2;
         },
         filterOptions: createFilterOptions(field),
         filterOptionValues: filterConfig.states[field],
         filter(value, row) {
-          return row[field] === value.toString()
+          return row[field] === value.toString();
         },
         renderFilter() {
-          return h('div')
+          return h("div");
         },
-      }
-    }
+      };
+    };
 
     const abilityColumn: DataTableColumn<EnemyData> = {
-      title: '能力',
-      key: 'ability',
+      title: "能力",
+      key: "ability",
       minWidth: 200,
       filter(value, row) {
         return (
-          !!~row.ability.indexOf(value.toString())
-          || !!~row.name.indexOf(value.toString())
-        )
+          !!~row.ability.indexOf(value.toString()) ||
+          !!~row.name.indexOf(value.toString())
+        );
       },
       render(row) {
         nextTick(() => {
-          document.querySelectorAll('.mc-tooltips').forEach((e) => {
-            if (!e.children || e.children.length < 2)
-              return;
-            (e.children[1] as HTMLElement).style.display = 'block'
+          document.querySelectorAll(".mc-tooltips").forEach((e) => {
+            if (!e.children || e.children.length < 2) return;
+            (e.children[1] as HTMLElement).style.display = "block";
             // @ts-expect-error tippy
+            // eslint-disable-next-line no-undef
             tippy6(e.children[0], {
               content: e.children[1],
               arrow: true,
-              theme: 'light-border',
-              size: 'large',
+              theme: "light-border",
+              size: "large",
               maxWidth: Number.parseInt(
                 (e.children[1] as HTMLElement).dataset.size!,
               ),
               trigger:
-                (e.children[1] as HTMLElement).dataset.trigger
-                || 'mouseenter focus',
-            })
-          })
-        })
-        return h('span', { innerHTML: row.ability })
+                (e.children[1] as HTMLElement).dataset.trigger ||
+                "mouseenter focus",
+            });
+          });
+        });
+        return h("span", { innerHTML: row.ability });
       },
       renderFilter() {
-        return h('div')
+        return h("div");
       },
-    }
+    };
 
     const createColumns = (): DataTableColumns<EnemyData> => {
       return [
         {
-          title: '头像',
-          key: 'icon',
+          title: "头像",
+          key: "icon",
           render(row) {
-            const img = h('img', {
+            const img = h("img", {
               src: `/images/${getImagePath(`头像_敌人_${row.name}.png`)}`,
-              class: 'lazyload',
+              class: "lazyload",
               style: {
-                width: '65px',
-                height: '65px',
+                width: "65px",
+                height: "65px",
               },
-            })
+            });
             return h(
-              'a',
+              "a",
               {
                 href: `/w/${row.enemyLink}`,
               },
               img,
-            )
+            );
           },
           minWidth: 80,
         },
         {
-          title: '名称',
-          key: 'name',
+          title: "名称",
+          key: "name",
           minWidth: 100,
           defaultSortOrder: false,
-          sorter: 'default',
+          sorter: "default",
           render(row) {
             return h(
-              'a',
+              "a",
               {
                 href: `/w/${row.enemyLink}`,
               },
               row.name,
-            )
+            );
           },
           renderFilter() {
-            return h('div')
+            return h("div");
           },
         },
         {
-          title: '地位',
-          key: 'enemyLevel',
-          filterOptions: createFilterOptions('enemyLevel'),
+          title: "地位",
+          key: "enemyLevel",
+          filterOptions: createFilterOptions("enemyLevel"),
           filterOptionValues: filterConfig.states.enemyLevel,
           filter(value, row) {
-            return !!~row.enemyLevel.indexOf(value.toString())
+            return !!~row.enemyLevel.indexOf(value.toString());
           },
           renderFilter() {
-            return h('div')
+            return h("div");
           },
         },
         {
-          title: '种类',
-          key: 'enemyRace',
-          filterOptions: createFilterOptions('enemyRace'),
+          title: "种类",
+          key: "enemyRace",
+          filterOptions: createFilterOptions("enemyRace"),
           filterOptionValues: filterConfig.states.enemyRace,
           filter(value, row) {
-            return !!~row.enemyRace.indexOf(value.toString())
+            return !!~row.enemyRace.indexOf(value.toString());
           },
           renderFilter() {
-            return h('div')
+            return h("div");
           },
         },
         {
-          title: '攻击方式',
-          key: 'attackType',
-          filterOptions: createFilterOptions('attackType'),
+          title: "攻击方式",
+          key: "attackType",
+          filterOptions: createFilterOptions("attackType"),
           filterOptionValues: filterConfig.states.attackType,
           filter(value, row) {
-            return !!~row.attackType.indexOf(value.toString())
+            return !!~row.attackType.indexOf(value.toString());
           },
           renderFilter() {
-            return h('div')
+            return h("div");
           },
         },
         {
-          title: '伤害类型',
-          key: 'damageType',
-          filterOptions: createFilterOptions('damageType'),
+          title: "伤害类型",
+          key: "damageType",
+          filterOptions: createFilterOptions("damageType"),
           filterOptionValues: filterConfig.states.damageType,
           filter(value, row) {
-            return !!~row.damageType.indexOf(value.toString())
+            return !!~row.damageType.indexOf(value.toString());
           },
           renderFilter() {
-            return h('div')
+            return h("div");
           },
         },
         abilityColumn,
-        ...filterConfig.groups[1].filters.map(field =>
+        ...filterConfig.groups[1].filters.map((field) =>
           createDimensionalColumn(
             field as keyof EnemyData,
             filterConfig.filters[field].title,
           ),
         ),
-      ]
-    }
+      ];
+    };
 
     fetch(
       `${window.location.origin}/index.php?${new URLSearchParams({
-        title: '敌人一览/数据',
-        action: 'raw',
-        ctype: 'application/json',
+        title: "敌人一览/数据",
+        action: "raw",
+        ctype: "application/json",
       })}`,
     )
       .then((response) => {
         if (!response.ok)
-          throw new Error('[EnemiesListV2] Received non-200 response')
+          throw new Error("[EnemiesListV2] Received non-200 response");
 
-        return response.json()
+        return response.json();
       })
       .then((data) => {
-        enemyData.value = data
-        isLoading.value = false
+        enemyData.value = data;
+        isLoading.value = false;
       })
-      .catch(error => console.error(error))
+      .catch((error) => console.error(error));
 
     return {
       table: tableRef,
@@ -450,11 +453,11 @@ export default defineComponent({
       ) {
         abilityColumn.filterOptionValues = filters[
           sourceColumn.key
-        ] as string[]
+        ] as string[];
       },
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -521,7 +524,7 @@ export default defineComponent({
             class="lazyload"
             style="width: 65px; height: 65px"
             :src="`/images/${getImagePath(`头像_敌人_${row.name}.png`)}`"
-          >
+          />
         </a>
         <NPagination
           class="justify-center my-2"

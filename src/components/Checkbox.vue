@@ -1,44 +1,50 @@
 <script lang="ts">
-import type { Ref } from 'vue'
-import { computed, defineComponent, inject } from 'vue'
+import type { Ref } from "vue";
+import { computed, defineComponent, inject } from "vue";
 
 export default defineComponent({
-  name: 'Checkbox',
+  name: "Checkbox",
   props: {
     modelValue: Boolean,
     noWidth: { type: Boolean, default: false },
     value: String,
   },
-  emits: ['update:modelValue'],
+  emits: ["update:modelValue"],
   setup(props, { emit }) {
-    const group = inject<{ state: Ref<Record<string, boolean>>; setState: (value: string, state: boolean) => void } | null>('check-box-group', null)
+    const group = inject<{
+      state: Ref<Record<string, boolean>>;
+      setState: (value: string, state: boolean) => void;
+    } | null>("check-box-group", null);
     const isSelected = computed({
       get() {
-        if (props.value && group)
-          return group.state.value[props.value]
-        if (typeof props.modelValue === 'boolean')
-          return props.modelValue
-        return false
+        if (props.value && group) return group.state.value[props.value];
+        if (typeof props.modelValue === "boolean") return props.modelValue;
+        return false;
       },
       set() {
         if (props.value && group)
-          group.setState(props.value, !isSelected.value)
-        if (typeof props.modelValue === 'boolean')
-          emit('update:modelValue', !isSelected.value)
+          group.setState(props.value, !isSelected.value);
+        if (typeof props.modelValue === "boolean")
+          emit("update:modelValue", !isSelected.value);
       },
-    })
-    return { isSelected }
+    });
+    return { isSelected };
   },
-})
+});
 </script>
 
 <template>
   <div
     :class="{
-      'selected': isSelected, 'no-width': noWidth,
+      selected: isSelected,
+      'no-width': noWidth,
     }"
     class="checkbox-container"
-    @click="() => { isSelected = !isSelected }"
+    @click="
+      () => {
+        isSelected = !isSelected;
+      }
+    "
   >
     <slot />
   </div>

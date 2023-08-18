@@ -1,6 +1,7 @@
 <script lang="ts">
-import type { PropType } from 'vue'
-import { defineComponent } from 'vue'
+import type { PropType } from "vue";
+import { defineComponent } from "vue";
+
 import {
   NButton,
   NCard,
@@ -10,7 +11,7 @@ import {
   NSpace,
   NTabPane,
   NTabs,
-} from 'naive-ui'
+} from "naive-ui";
 
 export default defineComponent({
   components: {
@@ -27,13 +28,14 @@ export default defineComponent({
     tabList: Array as PropType<string[]>,
     eventNameList: Array as PropType<string[][]>,
   },
-})
+});
 </script>
 
 <template>
   <h2>事件导航</h2>
   <NConfigProvider
-    preflight-style-disabled :theme-overrides="{
+    preflight-style-disabled
+    :theme-overrides="{
       Card: {
         borderRadius: '5px',
         actionColor: '#343434',
@@ -57,10 +59,18 @@ export default defineComponent({
         <NLayoutContent>
           <NCard class="relative" size="small">
             <NTabs type="line" animated>
-              <NTabPane v-for="(tabName, index) in tabList" :key="tabName" :name="tabName">
+              <NTabPane
+                v-for="(tabName, index) in tabList"
+                :key="tabName"
+                :name="tabName"
+              >
                 <NSpace class="w-140 max-w-full">
                   <NButton
-                    v-for="eventName in eventNameList![index]" :key="eventName" size="small" quaternary tag="a"
+                    v-for="eventName in eventNameList![index]"
+                    :key="eventName"
+                    size="small"
+                    quaternary
+                    tag="a"
                     :href="`#${eventName}`"
                   >
                     {{ eventName }}

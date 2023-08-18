@@ -1,7 +1,9 @@
 <script lang="ts">
-import { defineComponent } from 'vue'
-import { NAvatar, NBadge, NCard } from 'naive-ui'
-import { getImagePath } from '../../utils/utils'
+import { defineComponent } from "vue";
+
+import { NAvatar, NBadge, NCard } from "naive-ui";
+
+import { getImagePath } from "../../utils/utils";
 export default defineComponent({
   components: {
     NCard,
@@ -19,9 +21,9 @@ export default defineComponent({
   setup() {
     return {
       getImagePath,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>

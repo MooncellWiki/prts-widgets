@@ -1,12 +1,14 @@
 <script lang="ts">
-import { useVModel } from '@vueuse/core'
-import { NCard, NCollapseTransition } from 'naive-ui'
-import type { PropType } from 'vue'
-import { defineComponent } from 'vue'
-import SingleFilter from './SingleFilter.vue'
+import type { PropType } from "vue";
+import { defineComponent } from "vue";
+
+import { useVModel } from "@vueuse/core";
+import { NCard, NCollapseTransition } from "naive-ui";
+
+import SingleFilter from "./SingleFilter.vue";
 
 export default defineComponent({
-  name: 'FilterGroup',
+  name: "FilterGroup",
   components: {
     NCard,
     NCollapseTransition,
@@ -18,9 +20,10 @@ export default defineComponent({
     filters: {
       type: Object as PropType<{
         [field: string]: {
-          title: string
-          options: string[]
-        } }>,
+          title: string;
+          options: string[];
+        };
+      }>,
       required: true,
     },
     states: {
@@ -28,16 +31,16 @@ export default defineComponent({
       required: true,
     },
   },
-  emits: ['update:collapsed', 'update:states'],
+  emits: ["update:collapsed", "update:states"],
   setup(props, { emit }) {
-    const showRef = useVModel(props, 'show', emit)
-    const statesRef = useVModel(props, 'states', emit)
+    const showRef = useVModel(props, "show", emit);
+    const statesRef = useVModel(props, "states", emit);
     return {
       showRef,
       statesRef,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>

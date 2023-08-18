@@ -1,9 +1,11 @@
 <script lang="ts">
-import { NConfigProvider, NRadioButton, NRadioGroup } from 'naive-ui'
-import { storeToRefs } from 'pinia'
-import { defineComponent, ref } from 'vue'
-import { getNaiveUILocale } from '@/utils/i18n'
-import { useThemeStore } from '@/stores/theme'
+import { defineComponent, ref } from "vue";
+
+import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
+import { storeToRefs } from "pinia";
+
+import { useThemeStore } from "@/stores/theme";
+import { getNaiveUILocale } from "@/utils/i18n";
 
 export default defineComponent({
   components: { NConfigProvider, NRadioButton, NRadioGroup },
@@ -14,37 +16,37 @@ export default defineComponent({
     language: String,
   },
   setup() {
-    const themeStore = useThemeStore()
-    const { theme } = storeToRefs(themeStore)
-    const i18nConfig = getNaiveUILocale()
-    const isMobile = document.body.classList.contains('skin-minerva')
+    const themeStore = useThemeStore();
+    const { theme } = storeToRefs(themeStore);
+    const i18nConfig = getNaiveUILocale();
+    const isMobile = document.body.classList.contains("skin-minerva");
 
     const servers = [
       {
-        value: 'CN',
-        label: '国服(CN)',
+        value: "CN",
+        label: "国服(CN)",
       },
       {
-        value: 'JP',
-        label: '日服(JP)',
+        value: "JP",
+        label: "日服(JP)",
       },
       {
-        value: 'US',
-        label: '美服(US)',
+        value: "US",
+        label: "美服(US)",
       },
       {
-        value: 'KR',
-        label: '韩服(KR)',
+        value: "KR",
+        label: "韩服(KR)",
       },
-    ]
+    ];
     const stages = [
-      { value: '', label: '活动' },
-      { value: '_perm', label: '常驻' },
-      { value: '_rep', label: '复刻' },
-    ]
+      { value: "", label: "活动" },
+      { value: "_perm", label: "常驻" },
+      { value: "_rep", label: "复刻" },
+    ];
 
-    const selectedServer = ref(servers[0].value)
-    const selectedStage = ref(stages[0].value)
+    const selectedServer = ref(servers[0].value);
+    const selectedStage = ref(stages[0].value);
     return {
       theme,
       i18nConfig,
@@ -53,9 +55,9 @@ export default defineComponent({
       selectedStage,
       servers,
       stages,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>

@@ -1,8 +1,10 @@
 <script lang="ts">
-import { NButton, NConfigProvider, zhCN } from 'naive-ui'
-import type { PropType } from 'vue'
-import { defineComponent, ref } from 'vue'
-import Spine from './Spine.vue'
+import type { PropType } from "vue";
+import { defineComponent, ref } from "vue";
+
+import { NButton, NConfigProvider, zhCN } from "naive-ui";
+
+import Spine from "./Spine.vue";
 export default defineComponent({
   components: {
     NConfigProvider,
@@ -16,20 +18,20 @@ export default defineComponent({
     skin: Object as PropType<{
       [key: string]: {
         [key: string]: {
-          file: string
-          skin?: string
-        }
-      }
+          file: string;
+          skin?: string;
+        };
+      };
     }>,
   },
   setup() {
-    const loaded = ref(false)
+    const loaded = ref(false);
     return {
       loaded,
       zhCN,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -46,7 +48,7 @@ export default defineComponent({
       type="info"
       @click="
         () => {
-          loaded = true
+          loaded = true;
         }
       "
     >

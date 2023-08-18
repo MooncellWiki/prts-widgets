@@ -1,24 +1,70 @@
-// process.env.ESLINT_TSCONFIG = 'tsconfig.json'
-
 module.exports = {
-  extends: ['@antfu'],
+  root: true,
+  env: {
+    browser: true,
+    commonjs: true,
+    node: true,
+  },
+  parser: "vue-eslint-parser",
+  parserOptions: {
+    parser: "@typescript-eslint/parser",
+    sourceType: "module",
+    tsconfigRootDir: __dirname,
+  },
+  extends: [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:vue/vue3-recommended",
+    "plugin:import/recommended",
+    "plugin:import/typescript",
+    "plugin:prettier/recommended",
+  ],
   settings: {
-    // 'import/core-modules': ['virtual:uno.css'],
-    // 'import/resolver': {
-    //   alias: {
-    //     map: [['@', './src']],
-    //     extensions: ['.ts', '.js', '.json'],
-    //   },
-    // },
+    "import/resolver": {
+      node: {
+        extensions: [".js", ".jsx", ".ts", ".tsx"],
+      },
+      typescript: true,
+    },
   },
-  globals: {
-    // 这里填入你的项目需要的全局变量
-    // 这里值为 false 表示这个全局变量不允许被重新赋值，比如：
-    //
-    // Vue: false
-  },
+  plugins: ["@typescript-eslint"],
   rules: {
-    'no-console': 'warn',
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": "off",
+    "vue/require-default-prop": "off",
+    "import/no-named-as-default": "off",
+    "linebreak-style": ["error", "unix"],
+    quotes: ["error", "double", { avoidEscape: true }],
+    semi: ["error", "always"],
+    "import/order": [
+      "error",
+      {
+        groups: [
+          "builtin",
+          "external",
+          "internal",
+          "parent",
+          "sibling",
+          "index",
+        ],
+        pathGroups: [{ pattern: "vue", group: "builtin", position: "before" }],
+        pathGroupsExcludedImportTypes: [],
+        "newlines-between": "always",
+        alphabetize: {
+          order: "asc",
+        },
+      },
+    ],
+    "vue/multi-word-component-names": 0,
+    "vue/no-v-html": 0,
+    "vue/component-tags-order": [
+      "error",
+      {
+        order: ["script", "template", "style"],
+      },
+    ],
+    "import/no-unresolved": ["error", { ignore: ["^virtual:"] }],
   },
-  ignorePatterns: ['src/spine/runtime/'],
-}
+  ignorePatterns: ["src/spine/runtime/"],
+};

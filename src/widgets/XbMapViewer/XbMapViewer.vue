@@ -1,69 +1,73 @@
 <script lang="ts">
-import type { PropType } from 'vue'
-import { computed, defineComponent, onMounted, ref } from 'vue'
-import Block from './Block.vue'
+import type { PropType } from "vue";
+import { computed, defineComponent, onMounted, ref } from "vue";
+
+import Block from "./Block.vue";
 export default defineComponent({
   components: { Block },
   props: {
     map: Object as PropType<{
-      options: Record<string, any>
-      mapData: Record<string, any>
-      predefines: Record<string, any>
+      options: Record<string, any>;
+      mapData: Record<string, any>;
+      predefines: Record<string, any>;
     }>,
   },
   setup(props) {
     const tokens = computed(() => {
-      const result: Record<string, any> = {}
+      const result: Record<string, any> = {};
       props.map?.predefines.tokenInsts.forEach((token: any) => {
-        const pos = token.position
-        const coord = `${pos.row}-${pos.col}`
-        result[coord] = result[coord] ?? []
-        result[coord].push(token.inst.characterKey.replace(
-          /trap_[0-9]+_/g,
-          '',
-        ))
-      })
-      return result
-    })
+        const pos = token.position;
+        const coord = `${pos.row}-${pos.col}`;
+        result[coord] = result[coord] ?? [];
+        result[coord].push(
+          token.inst.characterKey.replace(/trap_[0-9]+_/g, ""),
+        );
+      });
+      return result;
+    });
     const black = computed(() => {
-      const result: Record<string, string> = {}
+      const result: Record<string, string> = {};
       props.map?.options.configBlackBoard.forEach((block: any) => {
-        const val = block.valueStr
-        if (val === null)
-          return
+        const val = block.valueStr;
+        if (val === null) return;
 
-        const pos = val.replace(/\(|\)/g, '').split(',')
+        const pos = val.replace(/\(|\)/g, "").split(",");
         if (pos.length === 4) {
           // let list = []
           for (let y = parseInt(pos[0]); y <= parseInt(pos[2]); y++) {
             for (let x = parseInt(pos[1]); x <= parseInt(pos[3]); x++) {
               // list.push([y, x])
-              result[`${y}-${x}`] = 'rect'
+              result[`${y}-${x}`] = "rect";
             }
           }
         }
-      })
-      return result
-    })
+      });
+      return result;
+    });
     function getTile(index: number) {
-      let a = props.map?.mapData.tiles[index].tileKey.replace('tile_', '')
-      if (a === 'floor' || a === 'road')
-        a = (props.map?.mapData.tiles[index].buildableType & 1) === 1 ? 'road' : 'floor'
-      return a
+      let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
+      if (a === "floor" || a === "road")
+        a =
+          (props.map?.mapData.tiles[index].buildableType & 1) === 1
+            ? "road"
+            : "floor";
+      return a;
     }
     function getToken(row: number, col: number) {
-      return tokens.value[`${row}-${col}`]
+      return tokens.value[`${row}-${col}`];
     }
-    const self = ref<HTMLElement>()
-    const fontsize = ref('')
+    const self = ref<HTMLElement>();
+    const fontsize = ref("");
     onMounted(() => {
-      if (!self.value || !props.map)
-        return
+      if (!self.value || !props.map) return;
 
       fontsize.value = `${
-        (self.value.getBoundingClientRect().width / props.map.mapData.width / 9) * 5
-      }px`
-    })
+        (self.value.getBoundingClientRect().width /
+          props.map.mapData.width /
+          9) *
+        5
+      }px`;
+    });
     return {
       mapData: props.map!.mapData,
       width: props.map!.mapData.width,
@@ -73,9 +77,9 @@ export default defineComponent({
       fontsize,
       getTile,
       getToken,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>

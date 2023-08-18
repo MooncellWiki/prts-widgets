@@ -1,26 +1,27 @@
 <script lang="ts">
-import type { PropType } from 'vue'
-import { defineComponent } from 'vue'
-import { domain, getImagePath } from '@/utils/utils'
+import type { PropType } from "vue";
+import { defineComponent } from "vue";
+
+import { domain, getImagePath } from "@/utils/utils";
 
 export default defineComponent({
-  name: 'Avatar',
+  name: "Avatar",
   props: {
     profession: { type: String, required: true },
     rarity: { type: Number, required: true },
     name: String,
     size: {
-      type: String as PropType<'sm' | 'xs'>,
-      default: '',
+      type: String as PropType<"sm" | "xs">,
+      default: "",
     },
   },
   setup() {
     return {
       getImagePath,
       domain,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -29,12 +30,18 @@ export default defineComponent({
       <img
         class="avatar lazyload"
         :data-src="`${domain}/images/${getImagePath(`头像_${name}.png`)}`"
-      >
+      />
       <div class="rarity">
-        <img :src="`${domain}/images/${getImagePath(`稀有度_黄_${rarity}.png`)}`">
+        <img
+          :src="`${domain}/images/${getImagePath(`稀有度_黄_${rarity}.png`)}`"
+        />
       </div>
       <div class="profession">
-        <img :src="`${domain}/images/${getImagePath(`图标_职业_${profession}.png`)}`">
+        <img
+          :src="`${domain}/images/${getImagePath(
+            `图标_职业_${profession}.png`,
+          )}`"
+        />
       </div>
     </a>
   </div>
@@ -46,21 +53,21 @@ export default defineComponent({
   width: 100px;
   height: 100px;
 }
-.avatar-container.sm{
+.avatar-container.sm {
   width: 80px;
   height: 80px;
 }
-.avatar-container.xs{
+.avatar-container.xs {
   width: 50px;
   height: 50px;
 }
 .avatar {
   width: 100px;
 }
-.sm .avatar{
+.sm .avatar {
   width: 80px;
 }
-.xs .avatar{
+.xs .avatar {
   width: 50px;
 }
 .rarity {
@@ -71,20 +78,20 @@ export default defineComponent({
 .rarity > img {
   height: 18px;
 }
-.sm .rarity > img{
+.sm .rarity > img {
   height: 14px;
 }
-.xs .rarity > img{
+.xs .rarity > img {
   height: 9px;
 }
 .profession {
   position: absolute;
   top: 0px;
 }
-.profession > img{
+.profession > img {
   height: 25px;
 }
-.xs .profession >img{
+.xs .profession > img {
   height: 12px;
 }
 </style>

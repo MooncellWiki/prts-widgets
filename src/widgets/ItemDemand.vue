@@ -1,26 +1,28 @@
 <script lang="ts">
-import { defineComponent, onMounted, ref } from 'vue'
-import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from 'naive-ui'
-import type { CostProps } from '../components/Cost.vue'
-import CostVue from '../components/Cost.vue'
-import { torappuEndPoint } from '../utils/utils'
+import { defineComponent, onMounted, ref } from "vue";
+
+import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
+
+import type { CostProps } from "../components/Cost.vue";
+import CostVue from "../components/Cost.vue";
+import { torappuEndPoint } from "../utils/utils";
 
 interface cost {
-  label: string
-  data: Array<CostProps>
+  label: string;
+  data: Array<CostProps>;
 }
 interface itemCost {
-  costs: Array<cost>
+  costs: Array<cost>;
   total: {
-    elite: number
-    skill: number
-    mastery: number
-    total: number
-    uniequip: number
-  }
+    elite: number;
+    skill: number;
+    mastery: number;
+    total: number;
+    uniequip: number;
+  };
 }
 interface Resp {
-  [index: string]: CostProps
+  [index: string]: CostProps;
 }
 enum Status {
   req,
@@ -28,38 +30,38 @@ enum Status {
   succ,
 }
 async function query(name: string): Promise<itemCost> {
-  const data: Resp = (await (
-    await fetch(`${torappuEndPoint}/api/v1/item/${name}/demand`)
-  ).json()).data
-  const costs = Array.from<{ label: string; data: CostProps[] }>({ length: 6 })
+  const data: Resp = (
+    await (await fetch(`${torappuEndPoint}/api/v1/item/${name}/demand`)).json()
+  ).data;
+  const costs = Array.from<{ label: string; data: CostProps[] }>({ length: 6 });
   const total = {
     elite: 0,
     skill: 0,
     mastery: 0,
     uniequip: 0,
     total: 0,
-  }
+  };
   Object.keys(data).forEach((key) => {
-    const v = data[key]
+    const v = data[key];
     const cost = costs[v.rarity] || {
       label: `${v.rarity}星`,
       data: [],
-    }
-    cost.data.push(v)
-    costs[v.rarity] = cost
-    total.elite += v.elite
-    total.uniequip += v.uniequip
-    if (key !== 'char_1001_amiya2') {
+    };
+    cost.data.push(v);
+    costs[v.rarity] = cost;
+    total.elite += v.elite;
+    total.uniequip += v.uniequip;
+    if (key !== "char_1001_amiya2") {
       // 剑兔的技能1-7的需求在阿米娅那算过了
-      total.skill += v.skill
+      total.skill += v.skill;
     }
-    total.mastery += v.mastery.reduce((acc, cur) => acc + cur, 0)
-  })
-  total.total = total.elite + total.skill + total.mastery + total.uniequip
+    total.mastery += v.mastery.reduce((acc, cur) => acc + cur, 0);
+  });
+  total.total = total.elite + total.skill + total.mastery + total.uniequip;
   return {
-    costs: costs.filter(v => v).reverse() as cost[], // 让六星排到前面
+    costs: costs.filter((v) => v).reverse() as cost[], // 让六星排到前面
     total,
-  }
+  };
 }
 export default defineComponent({
   components: {
@@ -74,35 +76,34 @@ export default defineComponent({
     item: String,
   },
   setup(props) {
-    const data = ref<itemCost>()
-    const state = ref(Status.req)
+    const data = ref<itemCost>();
+    const state = ref(Status.req);
     async function load() {
       try {
-        state.value = Status.req
-        const cost = await query(props.item!)
-        data.value = cost
-        state.value = Status.succ
-      }
-      catch (err) {
-        console.warn(err)
-        state.value = Status.fail
+        state.value = Status.req;
+        const cost = await query(props.item!);
+        data.value = cost;
+        state.value = Status.succ;
+      } catch (err) {
+        console.warn(err);
+        state.value = Status.fail;
       }
     }
     onMounted(async () => {
       if (!props.item) {
-        console.warn('item empty', props)
-        return
+        console.warn("item empty", props);
+        return;
       }
-      load()
-    })
+      load();
+    });
     return {
       state,
       data,
       Status,
       load,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -127,9 +128,7 @@ export default defineComponent({
         <div>技能1→7：{{ data.total.skill }}</div>
         <div>技能专精：{{ data.total.mastery }}</div>
         <div>模组：{{ data.total.uniequip }}</div>
-        <div class="font-bold">
-          总计：{{ data.total.total }}
-        </div>
+        <div class="font-bold">总计：{{ data.total.total }}</div>
       </div>
       <NTabs :tabs-padding="20" size="large">
         <NTabPane
