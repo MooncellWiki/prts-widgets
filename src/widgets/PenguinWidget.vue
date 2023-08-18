@@ -62,6 +62,7 @@ export default defineComponent({
 
 <template>
   <NConfigProvider
+    preflight-style-disabled
     :theme="theme"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
