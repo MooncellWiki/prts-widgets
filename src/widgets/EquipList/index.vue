@@ -1,7 +1,6 @@
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from "vue";
 
-import { useFetch } from "@vueuse/core";
 import {
   NButton,
   NCard,
@@ -20,9 +19,10 @@ import { storeToRefs } from "pinia";
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { useThemeStore } from "@/stores/theme";
 
+import Equip from "./Equip.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
-import { useCharStore } from "./script/charStore";
+import { useCharStore } from "./charStore";
 import { Char } from "./types";
 
 export default defineComponent({
@@ -39,14 +39,13 @@ export default defineComponent({
     NEmpty,
     NButton,
     NTag,
-    NSpin,
+    Equip,
     SubContainer,
   },
   setup() {
     const filterShow = ref(true);
     const operatorShow = ref(true);
     const andMode = ref(true);
-    const isLoading = ref(false);
     const themeStore = useThemeStore();
     const { theme } = storeToRefs(themeStore);
     const filterType = {
@@ -81,9 +80,7 @@ export default defineComponent({
         }),
       };
     });
-    const equipData = ref<Record<string, string>>({});
     const equipChar = ref<string[]>([]);
-    const isError = ref(false);
     const charStore = useCharStore();
     const { selectedChar } = storeToRefs(charStore);
     const sortedCharData = ref<Record<string, Char[]>>({});
@@ -149,52 +146,14 @@ export default defineComponent({
         ? filterIntersection(states.value)
         : filterUnion(states.value);
     });
-    const loadedChar = ref(0);
-    const getEquipData = () => {
-      loadedChar.value = 0;
-      isLoading.value = true;
-      equipChar.value.splice(0);
-      selectedChar.value.forEach((char) => {
-        if (equipData.value[char.name]) {
-          equipChar.value.push(char.name);
-          loadedChar.value++;
-          return;
-        }
-        const { error, data } = useFetch(
-          `/api.php?${new URLSearchParams({
-            action: "parse",
-            format: "json",
-            title: "干员模组一览",
-            text: `{{#lst:${char.name}|专属模组}}`,
-            prop: "text",
-            utf8: "1",
-            disablelimitreport: "1",
-            disableeditsection: "1",
-            disabletoc: "1",
-          })}`,
-        )
-          .get()
-          .json();
-
-        if (error.value) {
-          isError.value = true;
-          throw new Error(`[EquipList] Network Error: ${error.value}`);
-        }
-        const content = data.value.parse.text["*"];
-        equipData.value[char.name] = content;
-        equipChar.value.push(char.name);
-        loadedChar.value++;
-      });
-      isLoading.value = false;
-    };
 
     const toggleCollapse = () => {
       operatorShow.value = false;
       if (window.screen.availWidth < 1024) filterShow.value = false;
-      getEquipData();
+      equipChar.value = selectedChar.value.map((v) => v.name);
     };
     onMounted(async () => {
-      const { error, data } = await useFetch(
+      const resp = await fetch(
         `/api.php?${new URLSearchParams({
           action: "ask",
           format: "json",
@@ -203,17 +162,12 @@ export default defineComponent({
           api_version: "2",
           utf8: "1",
         })}`,
-      )
-        .get()
-        .json();
+      );
+      const json = await resp.json();
 
-      if (error.value) {
-        throw new Error(`[EquipList] Network Error: ${error.value}`);
-      }
-
-      const charData: Char[] = Object.entries<Record<string, any>>(
-        data.value.query.results,
-      ).map(([k, v]) => {
+      const charData = Object.entries<Record<string, any>>(
+        json.query.results,
+      ).map<Char>(([k, v]) => {
         return {
           name: k,
           type: v.printouts["职业"][0] as string,
@@ -254,12 +208,8 @@ export default defineComponent({
       andMode,
       selectedChar,
       charStore,
-      equipData,
-      getEquipData,
       equipChar,
-      loadedChar,
       toggleCollapse,
-      isLoading,
       theme,
       themeStore,
     };
@@ -397,126 +347,18 @@ export default defineComponent({
         header-style="text-align: center;"
         size="small"
       >
-        <NSpin :show="isLoading">
-          <NCollapse>
-            <NCollapseItem
-              v-for="(name, ind) in equipChar"
-              :key="ind"
-              :name="name"
-              :title="name"
-              display-directive="show"
-            >
-              <div
-                v-show="equipChar.includes(name)"
-                :id="`equip_${name}`"
-                v-html="equipData[name]"
-              />
-            </NCollapseItem>
-          </NCollapse>
-          <template #description> 加载中 </template>
-        </NSpin>
+        <NCollapse>
+          <NCollapseItem
+            v-for="(name, ind) in equipChar"
+            :key="ind"
+            :name="name"
+            :title="name"
+            display-directive="if"
+          >
+            <Equip :name="name"></Equip>
+          </NCollapseItem>
+        </NCollapse>
       </NCard>
     </NLayout>
   </NConfigProvider>
 </template>
-
-<style scoped>
-:deep(.modbody) {
-  display: flex;
-  width: 100%;
-  max-width: 800px;
-  margin: 10px 0;
-  padding: 10px;
-  box-shadow: 3px 3px 5px #888;
-  box-sizing: border-box;
-  flex-flow: column;
-}
-:deep(.modtype) {
-  display: flex;
-  flex-flow: column;
-  flex: 25 25 25%;
-  min-width: 60px;
-  justify-content: center;
-  align-items: center;
-  height: 60px;
-}
-:deep(.modname) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 75 75 75%;
-  height: 60px;
-}
-:deep(.rankicon) {
-  flex: 10 10 10%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 55px;
-}
-:deep(.ranktext) {
-  flex: 16.5 16.5 16.5%;
-  display: flex;
-  align-items: center;
-  min-width: 100px;
-  white-space: nowrap;
-  flex-wrap: wrap;
-  align-content: center;
-}
-:deep(.descr) {
-  flex: 25 25 25%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 130px;
-}
-:deep(.consume) {
-  flex: 50 50 50%;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  min-width: 260px;
-}
-:deep(.basicbox) {
-  display: flex;
-  width: 100%;
-  flex-wrap: wrap;
-  margin: 5px 0;
-}
-:deep(.rankbox) {
-  display: flex;
-  width: 100%;
-  flex-flow: column;
-  margin: 5px 0;
-}
-:deep(.singlerank) {
-  display: flex;
-  width: 100%;
-  flex-wrap: wrap;
-  margin: 5px 0;
-}
-:deep(.rankinfo) {
-  flex: 90 90 90%;
-  display: flex;
-  flex-wrap: wrap;
-}
-:deep(.talent) {
-  flex: 83.5 83.5 83.5%;
-  display: flex;
-  align-items: center;
-}
-:deep(.majorsep) {
-  height: 1px;
-  background-color: black;
-}
-:deep(.minorsep) {
-  height: 1px;
-  background-color: lightgray;
-}
-:deep(.dark .majorsep) {
-  background-color: whitesmoke;
-}
-:deep(.dark .minorsep) {
-  background-color: gray;
-}
-</style>

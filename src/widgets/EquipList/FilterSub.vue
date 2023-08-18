@@ -23,7 +23,7 @@ export default defineComponent({
       required: true,
     },
   },
-  emits: ["update:selected", "update:options"],
+  emits: ["update:selected"],
   setup(props, { emit }) {
     const selectedRef = useVModel(props, "selected", emit);
     const onChange = (value: Array<string>) => {

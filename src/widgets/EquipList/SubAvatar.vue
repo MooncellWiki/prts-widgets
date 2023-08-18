@@ -6,7 +6,7 @@ import { useVModel } from "@vueuse/core";
 
 import { getImagePath } from "@/utils/utils";
 
-import { useCharStore } from "./script/charStore";
+import { useCharStore } from "./charStore";
 import type { Char } from "./types";
 
 export default defineComponent({
