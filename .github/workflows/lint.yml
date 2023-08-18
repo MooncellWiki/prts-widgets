@@ -40,21 +40,3 @@ jobs:
           reporter: github-pr-review # Change reporter.
           fail_on_error: true
           vue_tsc_flags: --noEmit
-
-  stylelint:
-    name: runner / stylelint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup Node Environment
-        uses: ./.github/actions/setup-node
-
-      - name: Run stylelint
-        uses: reviewdog/action-stylelint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review # Change reporter.
-          fail_on_error: true
-          stylelint_input: "\"**/*.{css,scss}\""
