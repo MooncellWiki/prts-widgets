@@ -37,7 +37,7 @@ if (ele?.dataset?.item) {
   await create(
     `Widget:${name}`,
     `
-<includeonly><div id="root"></div><!--inject your release script here--></includeonly><noinclude>{{Documentation}}</noinclude>
+<includeonly><div id="root"></div><!--inject your release script here--></includeonly><noinclude>{{Documentation}}[[分类:由机器人维护的小部件]]</noinclude>
   `,
   );
   console.log(`https://prts.wiki/w/Widget:${name} created`);
