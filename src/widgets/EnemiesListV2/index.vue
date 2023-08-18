@@ -414,7 +414,7 @@ export default defineComponent({
     };
 
     fetch(
-      `${window.location.origin}/index.php?${new URLSearchParams({
+      `/index.php?${new URLSearchParams({
         title: "敌人一览/数据",
         action: "raw",
         ctype: "application/json",

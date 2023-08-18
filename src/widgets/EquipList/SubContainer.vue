@@ -33,18 +33,18 @@ export default defineComponent({
 <template>
   <NCard
     class="w-full lg:w-[calc(50%-0.5rem)] m-1"
-    header-style="text-align:center;"
+    header-style="text-align: center;"
     size="small"
     hoverable
   >
     <template #header>
-      <div class="display-flex flex-items-center flex-justify-center">
+      <div class="flex items-center justify-center">
         <span
-          class="inline-flex w-[40px] h-[40px] vertical-text-bottom overflow-hidden justify-center flex-items-center bg-black"
+          class="inline-flex w-[40px] h-[40px] align-text-bottom overflow-hidden justify-center items-center bg-black"
         >
           <img
+            class="absolute scale-50"
             :src="`/images/${getImagePath(`职业分支图标_${title}.png`)}`"
-            style="position: absolute; transform: scale(0.5)"
           />
         </span>
         <span class="text-center inline-block" style="width: 6em">{{

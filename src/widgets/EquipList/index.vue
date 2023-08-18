@@ -1,7 +1,6 @@
 <script lang="ts">
-import { defineComponent, reactive, ref, watch } from "vue";
+import { computed, defineComponent, ref } from "vue";
 
-import type { SelectOption } from "naive-ui";
 import {
   NButton,
   NCard,
@@ -23,7 +22,7 @@ import { useThemeStore } from "@/stores/theme";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
 import { useCharStore } from "./script/charStore";
-import { Char, SelectionConfig } from "./types";
+import { Char } from "./types";
 
 export default defineComponent({
   components: {
@@ -62,142 +61,92 @@ export default defineComponent({
       "4": "5★",
       "5": "6★",
     };
-    const stateType = ref<string[]>([]);
-    const stateRarity = ref<string[]>([]);
-    const filterSub = reactive<SelectionConfig>({
-      title: "子职业",
-      options: [
-        {
-          type: "group",
-          label: "先锋",
-          key: "先锋",
-          children: [],
-        },
-        {
-          type: "group",
-          label: "近卫",
-          key: "近卫",
-          children: [],
-        },
-        {
-          type: "group",
-          label: "重装",
-          key: "重装",
-          children: [],
-        },
-        {
-          type: "group",
-          label: "狙击",
-          key: "狙击",
-          children: [],
-        },
-        {
-          type: "group",
-          label: "术师",
-          key: "术师",
-          children: [],
-        },
-        {
-          type: "group",
-          label: "医疗",
-          key: "医疗",
-          children: [],
-        },
-        {
-          type: "group",
-          label: "辅助",
-          key: "辅助",
-          children: [],
-        },
-        {
-          type: "group",
-          label: "特种",
-          key: "特种",
-          children: [],
-        },
-      ],
+    const subProfMap = ref<Record<string, string[]>>({});
+    const filterSub = computed(() => {
+      return {
+        title: "子职业",
+        options: Object.entries(subProfMap.value).map(([k, v]) => {
+          return {
+            type: "group",
+            label: k,
+            key: k,
+            children: v.map((subProf) => {
+              return {
+                label: subProf,
+                value: subProf,
+              };
+            }),
+          };
+        }),
+      };
     });
-    const stateSub = ref<string[]>([]);
     const equipData = ref<Record<string, string>>({});
     const equipChar = ref<string[]>([]);
     const isError = ref(false);
     const charStore = useCharStore();
     const { selectedChar } = storeToRefs(charStore);
     const sortedCharData = ref<Record<string, Char[]>>({});
-    const filteredCharData = ref<Record<string, Char[]>>({});
-    const states = ref({
-      type: stateType,
-      rarity: stateRarity,
-      sub: stateSub,
+    const states = ref<Record<string, string[]>>({
+      type: [],
+      rarity: [],
+      sub: [],
     });
-    const filterIntersection = () => {
-      const result = ref<Record<string, Char[]>>({});
-      result.value = JSON.parse(JSON.stringify(sortedCharData.value));
-      if (states.value.sub.length >= 1) {
-        for (const sub in result.value) {
-          if (!states.value.sub.includes(sub)) delete result.value[sub];
-        }
-      }
-      if (states.value.type.length >= 1) {
-        for (const sub in result.value) {
-          if (!states.value.type.includes(result.value[sub][0].type))
-            delete result.value[sub];
-        }
-      }
-      if (states.value.rarity.length >= 1) {
-        for (const sub in result.value) {
-          result.value[sub] = result.value[sub].filter((char) => {
-            return states.value.rarity.includes(
-              rarityMap[char.rarity.toString()],
-            );
-          });
-          if (result.value[sub].length < 1) delete result.value[sub];
-        }
-      }
-      filteredCharData.value = result.value;
+    const filterIntersection = (states: Record<string, string[]>) => {
+      return Object.fromEntries(
+        Object.entries(sortedCharData.value)
+          .filter(([k, v]) => {
+            if (states.sub.length > 0 && !states.sub.includes(k)) return false;
+            if (states.type.length > 0 && !states.type.includes(v[0].type))
+              return false;
+            return true;
+          })
+          .map(([k, v]) => {
+            return [
+              [k],
+              v.filter((char) => {
+                if (
+                  states.rarity.length > 0 &&
+                  !states.rarity.includes(rarityMap[char.rarity.toString()])
+                )
+                  return false;
+                return true;
+              }),
+            ];
+          })
+          .filter(([k, v]) => v.length > 0),
+      );
     };
-    const filterUnion = () => {
-      const result = ref<Record<string, Char[]>>({});
-      if (states.value.sub.length < 1) {
-        result.value = JSON.parse(JSON.stringify(sortedCharData.value));
-      } else {
-        states.value.sub.forEach((sub) => {
-          result.value[sub] = JSON.parse(
-            JSON.stringify(sortedCharData.value[sub]),
-          );
-        });
-      }
-      if (states.value.type.length >= 1) {
-        if (states.value.sub.length < 1) {
-          for (const sub in result.value) {
-            if (!states.value.type.includes(result.value[sub][0].type))
-              delete result.value[sub];
-          }
-        } else {
-          states.value.type.forEach((type) => {
-            for (const sub in sortedCharData.value) {
-              if (sortedCharData.value[sub][0].type === type)
-                result.value[sub] = JSON.parse(
-                  JSON.stringify(sortedCharData.value[sub]),
-                );
-            }
-          });
-        }
-      }
-      if (states.value.rarity.length >= 1) {
-        for (const sub in result.value) {
-          result.value[sub] = result.value[sub].filter((char) => {
-            return states.value.rarity.includes(
-              rarityMap[char.rarity.toString()],
-            );
-          });
-          if (result.value[sub].length < 1) delete result.value[sub];
-        }
-      }
-      filteredCharData.value = result.value;
+    const filterUnion = (states: Record<string, string[]>) => {
+      return Object.fromEntries(
+        Object.entries(sortedCharData.value)
+          .filter(([k, v]) => {
+            if (
+              (states.sub.length > 0 && states.sub.includes(k)) ||
+              (states.type.length > 0 && states.type.includes(v[0].type))
+            )
+              return true;
+            return false;
+          })
+          .map(([k, v]) => {
+            return [
+              [k],
+              v.filter((char) => {
+                if (
+                  states.rarity.length > 0 &&
+                  !states.rarity.includes(rarityMap[char.rarity.toString()])
+                )
+                  return false;
+                return true;
+              }),
+            ];
+          })
+          .filter(([k, v]) => v.length > 0),
+      );
     };
-    watch([states.value, andMode], () => {
-      andMode.value ? filterIntersection() : filterUnion();
+    const filteredCharData = computed<Record<string, Char[]>>(() => {
+      return andMode.value
+        ? filterIntersection(states.value)
+        : filterUnion(states.value);
     });
     const loadedChar = ref(0);
     const getEquipData = () => {
@@ -211,7 +160,7 @@ export default defineComponent({
           return;
         }
         fetch(
-          `${window.location.origin}/api.php?${new URLSearchParams({
+          `/api.php?${new URLSearchParams({
             action: "parse",
             format: "json",
             title: "干员模组一览",
@@ -240,7 +189,7 @@ export default defineComponent({
       isLoading.value = false;
     };
     fetch(
-      `${window.location.origin}/api.php?${new URLSearchParams({
+      `/api.php?${new URLSearchParams({
         action: "ask",
         format: "json",
         query:
@@ -256,45 +205,38 @@ export default defineComponent({
         return response.json();
       })
       .then((data) => {
-        const result: any = data.query.results;
-        const charData = ref<Char[]>([]);
-        for (const i in result) {
-          charData.value.push({
-            name: i,
-            type: result[i].printouts["职业"][0] as string,
-            subtype: result[i].printouts["子职业"][0] as string,
-            rarity: result[i].printouts["稀有度"][0] as string,
-            id: result[i].printouts["干员序号"][0] as number,
-          });
-        }
-        let cursub = "";
-        for (const i in charData.value) {
-          const char = charData.value[i];
-          if (cursub !== char.subtype) {
-            cursub = char.subtype;
-            sortedCharData.value[cursub] = [char];
-            const children = filterSub.options[
-              filterType.options.indexOf(char.type)
-            ].children as Array<SelectOption>;
-            children.push({
-              label: cursub,
-              value: cursub,
-            });
-          } else {
-            sortedCharData.value[cursub].push(char);
-          }
-        }
-        for (const i in sortedCharData.value) {
-          sortedCharData.value[i].sort((a: Char, b: Char) => {
+        const result: Record<string, any> = data.query.results;
+        const charData: Char[] = Object.entries(result).map(([k, v]) => {
+          return {
+            name: k,
+            type: v.printouts["职业"][0] as string,
+            subtype: v.printouts["子职业"][0] as string,
+            rarity: v.printouts["稀有度"][0] as string,
+            id: v.printouts["干员序号"][0] as number,
+          };
+        });
+        charData.forEach((char) => {
+          if (!subProfMap.value[char.type]) subProfMap.value[char.type] = [];
+
+          if (!sortedCharData.value[char.subtype])
+            sortedCharData.value[char.subtype] = [];
+
+          if (!~subProfMap.value[char.type].indexOf(char.subtype))
+            subProfMap.value[char.type].push(char.subtype);
+
+          sortedCharData.value[char.subtype].push(char);
+        });
+
+        Object.keys(sortedCharData.value).forEach((key) => {
+          sortedCharData.value[key].sort((a: Char, b: Char) => {
             return a.rarity === b.rarity
               ? b.id - a.id
               : Number.parseInt(b.rarity as string) -
                   Number.parseInt(a.rarity as string);
           });
-        }
-        filteredCharData.value = JSON.parse(
-          JSON.stringify(sortedCharData.value),
-        );
+        });
+
+        console.log(sortedCharData.value);
       })
       .catch((error) => console.error(error));
     const toggleCollapse = () => {
@@ -441,7 +383,7 @@ export default defineComponent({
             />
           </div>
           <NEmpty
-            v-if="JSON.stringify(filteredCharData) === '{}'"
+            v-if="Object.keys(filteredCharData).length < 1"
             description="无结果"
           >
             <template #icon>

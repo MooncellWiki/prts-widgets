@@ -1,4 +1,4 @@
-import type { SelectGroupOption, SelectOption } from "naive-ui";
+import type { SelectGroupOption } from "naive-ui";
 
 export interface SelectionConfig {
   title: string;
