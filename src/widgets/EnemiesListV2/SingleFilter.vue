@@ -14,23 +14,23 @@ export default defineComponent({
   },
   emits: ["update:modelValue"],
   setup(props, { emit }) {
-    const modelValue = useVModel(props, "modelValue", emit, {
+    const selected = useVModel(props, "modelValue", emit, {
       passive: true,
       deep: true,
     });
     const onTagClick = (option: string) => {
-      return modelValue.value.includes(option)
-        ? modelValue.value.splice(modelValue.value.indexOf(option), 1)
-        : modelValue.value.push(option);
+      return selected.value.includes(option)
+        ? selected.value.splice(selected.value.indexOf(option), 1)
+        : selected.value.push(option);
     };
     const selectAll = () =>
       props.options.forEach(
         (option) =>
-          !modelValue.value.includes(option) && modelValue.value.push(option),
+          !selected.value.includes(option) && selected.value.push(option),
       );
-    const selectNone = () => modelValue.value.splice(0);
+    const selectNone = () => selected.value.splice(0);
     return {
-      modelValue,
+      selected,
       selectAll,
       selectNone,
       onTagClick,
@@ -53,7 +53,7 @@ export default defineComponent({
           :key="index"
           strong
           secondary
-          :type="modelValue.includes(option) ? 'info' : 'default'"
+          :type="selected.includes(option) ? 'info' : 'default'"
           class="m-1"
           @click="onTagClick(option)"
         >

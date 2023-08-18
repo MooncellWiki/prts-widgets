@@ -26,7 +26,6 @@ import SHead from "./head/SHead.vue";
 import Card from "./row/Card.vue";
 import Long from "./row/Long.vue";
 import Short from "./row/Short.vue";
-
 import type { Char, CheckboxOption, FilterGroup } from "./utils";
 interface State {
   both: boolean;
@@ -369,6 +368,7 @@ export default defineComponent({
             if (!e.children || e.children.length < 2) return;
             (e.children[1] as HTMLElement).style.display = "block";
             // @ts-expect-error tippy
+            // eslint-disable-next-line no-undef
             tippy6(e.children[0], {
               content: e.children[1],
               arrow: true,

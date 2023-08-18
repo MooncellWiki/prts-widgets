@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "create": "ts-node-esm scripts/index.ts",
+    "update": "ts-node-esm scripts/update.ts",
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
@@ -16,10 +18,9 @@
     "lint:fix": "pnpm lint:js:fix && pnpm lint:style:fix",
     "lint:js": "pnpm eslint \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
     "lint:js:fix": "pnpm eslint:fix \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
-    "lint:style": "pnpm stylelint \"**/*.{css}\"",
-    "lint:style:fix": "pnpm stylelint:fix \"**/*.{css}\"",
-    "create": "ts-node-esm scripts/index.ts",
-    "update": "ts-node-esm scripts/update.ts"
+    "lint:style": "pnpm stylelint \"**/*.{css,scss}\"",
+    "lint:style:fix": "pnpm stylelint:fix \"**/*.{css,scss}\"",
+    "prepare": "husky install"
   },
   "dependencies": {
     "@sentry/browser": "^7.64.0",

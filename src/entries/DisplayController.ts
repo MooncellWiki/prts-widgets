@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import defaultStyle from "../widgets/DisplayController.css?inline";
 
 interface DisplayConfig {

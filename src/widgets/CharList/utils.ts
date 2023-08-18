@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 const getLast = (str: string) => {
   if (str.includes("→")) {
     const arr = str.split("→");

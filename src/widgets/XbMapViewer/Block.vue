@@ -116,6 +116,7 @@ export default defineComponent({
 
       if (content.length) {
         // @ts-expect-error tippy
+        // eslint-disable-next-line no-undef
         tippy6(self.value, {
           allowHTML: true,
           content,
