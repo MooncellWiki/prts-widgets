@@ -16,8 +16,8 @@
     "lint:fix": "pnpm lint:js:fix && pnpm lint:style:fix",
     "lint:js": "pnpm eslint \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
     "lint:js:fix": "pnpm eslint:fix \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
-    "lint:style": "pnpm stylelint \"**/*.{css,scss}\"",
-    "lint:style:fix": "pnpm stylelint:fix \"**/*.{css,scss}\"",
+    "lint:style": "pnpm stylelint \"**/*.{css}\"",
+    "lint:style:fix": "pnpm stylelint:fix \"**/*.{css}\"",
     "create": "ts-node-esm scripts/index.ts",
     "update": "ts-node-esm scripts/update.ts"
   },
