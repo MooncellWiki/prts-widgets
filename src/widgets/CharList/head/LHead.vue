@@ -1,19 +1,15 @@
 <script lang="ts">
-import { defineComponent } from 'vue'
+import { defineComponent } from "vue";
 
 export default defineComponent({
-  name: 'LHead',
-})
+  name: "LHead",
+});
 </script>
 
 <template>
   <div id="lhead">
-    <div id="avatar">
-      头像
-    </div>
-    <div id="name">
-      姓名
-    </div>
+    <div id="avatar">头像</div>
+    <div id="name">姓名</div>
     <div id="camp">
       <div>子职业</div>
       <div>势力</div>
@@ -36,15 +32,9 @@ export default defineComponent({
       <div>性别</div>
       <div>位置</div>
     </div>
-    <div id="obtain">
-      获取方式
-    </div>
-    <div id="tag">
-      标签
-    </div>
-    <div id="feature">
-      特性
-    </div>
+    <div id="obtain">获取方式</div>
+    <div id="tag">标签</div>
+    <div id="feature">特性</div>
   </div>
 </template>
 

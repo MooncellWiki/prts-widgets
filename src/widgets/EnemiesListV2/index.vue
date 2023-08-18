@@ -7,7 +7,7 @@ import {
   reactive,
   ref,
   watch,
-} from "vue"
+} from "vue";
 
 import type {
   DataTableBaseColumn,
@@ -15,7 +15,7 @@ import type {
   DataTableColumns,
   DataTableFilterState,
   DataTableInst,
-} from "naive-ui"
+} from "naive-ui";
 import {
   NButton,
   NConfigProvider,
@@ -23,47 +23,47 @@ import {
   NInput,
   NLayout,
   NPagination,
-} from "naive-ui"
-import { storeToRefs } from "pinia"
+} from "naive-ui";
+import { storeToRefs } from "pinia";
 
-import { useThemeStore } from "@/stores/theme"
-import { getNaiveUILocale } from "@/utils/i18n"
-import { getImagePath } from "@/utils/utils"
+import { useThemeStore } from "@/stores/theme";
+import { getNaiveUILocale } from "@/utils/i18n";
+import { getImagePath } from "@/utils/utils";
 
-import FilterGroup from "./FilterGroup.vue"
+import FilterGroup from "./FilterGroup.vue";
 
 interface EnemyData {
-  enemyIndex: string
-  sortId: number
-  name: string
-  enemyLink: string
-  enemyRace: string
-  enemyLevel: string
-  attackType: string
-  damageType: string
-  motion: string
-  endure: string
-  attack: string
-  defence: string
-  moveSpeed: string
-  attackSpeed: string
-  resistance: string
-  ability: string
+  enemyIndex: string;
+  sortId: number;
+  name: string;
+  enemyLink: string;
+  enemyRace: string;
+  enemyLevel: string;
+  attackType: string;
+  damageType: string;
+  motion: string;
+  endure: string;
+  attack: string;
+  defence: string;
+  moveSpeed: string;
+  attackSpeed: string;
+  resistance: string;
+  ability: string;
 }
 
 interface FilterConfig {
   filters: {
     [field: string]: {
-      title: string
-      options: string[]
-    }
-  }
+      title: string;
+      options: string[];
+    };
+  };
   groups: {
-    title: string
-    filters: string[]
-    show: boolean
-  }[]
-  states: Record<string, string[]>
+    title: string;
+    filters: string[];
+    show: boolean;
+  }[];
+  states: Record<string, string[]>;
 }
 
 export default defineComponent({
@@ -77,9 +77,9 @@ export default defineComponent({
     NPagination,
   },
   setup() {
-    const enemyData = ref<EnemyData[]>([])
-    const keyword = ref("")
-    const tableRef = ref<DataTableInst>()
+    const enemyData = ref<EnemyData[]>([]);
+    const keyword = ref("");
+    const tableRef = ref<DataTableInst>();
     const dimensionPrecedence = [
       "SS",
       "S+",
@@ -91,7 +91,7 @@ export default defineComponent({
       "C",
       "D",
       "E",
-    ]
+    ];
     const filterConfig = reactive<FilterConfig>({
       filters: {
         enemyLevel: {
@@ -177,13 +177,13 @@ export default defineComponent({
         attackSpeed: [],
         resistance: [],
       },
-    })
-    const isLoading = ref(true)
-    const i18nConfig = getNaiveUILocale()
-    const isMobile = document.body.classList.contains("skin-minerva")
-    const isIconMode = ref(!!isMobile)
-    const themeStore = useThemeStore()
-    const { theme } = storeToRefs(themeStore)
+    });
+    const isLoading = ref(true);
+    const i18nConfig = getNaiveUILocale();
+    const isMobile = document.body.classList.contains("skin-minerva");
+    const isIconMode = ref(!!isMobile);
+    const themeStore = useThemeStore();
+    const { theme } = storeToRefs(themeStore);
     const pagination = reactive({
       page: 1,
       pageSize: 10,
@@ -191,16 +191,16 @@ export default defineComponent({
       pageSlot: isMobile ? 5 : 9,
       showSizePicker: true,
       onChange: (page: number) => {
-        pagination.page = page
+        pagination.page = page;
       },
       onUpdatePageSize: (pageSize: number) => {
-        pagination.pageSize = pageSize
-        pagination.page = 1
+        pagination.pageSize = pageSize;
+        pagination.page = 1;
       },
-    })
+    });
     const filteredEnemyData = computed(() => {
-      const filters = filterConfig.states
-      const searchWord = keyword.value
+      const filters = filterConfig.states;
+      const searchWord = keyword.value;
       const filteredData = enemyData.value.filter((enemy) => {
         for (const key in filters) {
           if (filters[key].length > 0) {
@@ -211,44 +211,44 @@ export default defineComponent({
                   !!~enemy[key as keyof EnemyData].toString().indexOf(filter),
               )
             )
-              return false
+              return false;
             if (
               filterConfig.groups[1].filters.includes(key) &&
               !filters[key].includes(enemy[key as keyof EnemyData].toString())
             )
-              return false
+              return false;
           }
           if (
             searchWord &&
             !~enemy.name.indexOf(searchWord) &&
             !~enemy.ability.indexOf(searchWord)
           )
-            return false
+            return false;
         }
-        return true
-      })
-      return filteredData
-    })
+        return true;
+      });
+      return filteredData;
+    });
     const filteredChunkedEnemyData = computed(() =>
       filteredEnemyData.value.slice(
         pagination.pageSize * (pagination.page - 1),
         pagination.pageSize * pagination.page,
       ),
-    )
+    );
 
     watch(keyword, () => {
       tableRef.value?.filter({
         ability: [keyword.value],
         name: [keyword.value],
-      })
-    })
+      });
+    });
 
     const createFilterOptions = (field: string) => {
       return filterConfig.filters[field].options.map((option) => ({
         label: option,
         value: option,
-      }))
-    }
+      }));
+    };
 
     const createDimensionalColumn = (
       field: keyof EnemyData,
@@ -259,20 +259,20 @@ export default defineComponent({
         key: field,
         defaultSortOrder: false,
         sorter: (row1, row2) => {
-          const index1 = dimensionPrecedence.indexOf(row1[field].toString())
-          const index2 = dimensionPrecedence.indexOf(row2[field].toString())
-          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2
+          const index1 = dimensionPrecedence.indexOf(row1[field].toString());
+          const index2 = dimensionPrecedence.indexOf(row2[field].toString());
+          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2;
         },
         filterOptions: createFilterOptions(field),
         filterOptionValues: filterConfig.states[field],
         filter(value, row) {
-          return row[field] === value.toString()
+          return row[field] === value.toString();
         },
         renderFilter() {
-          return h("div")
+          return h("div");
         },
-      }
-    }
+      };
+    };
 
     const abilityColumn: DataTableColumn<EnemyData> = {
       title: "能力",
@@ -282,13 +282,13 @@ export default defineComponent({
         return (
           !!~row.ability.indexOf(value.toString()) ||
           !!~row.name.indexOf(value.toString())
-        )
+        );
       },
       render(row) {
         nextTick(() => {
           document.querySelectorAll(".mc-tooltips").forEach((e) => {
-            if (!e.children || e.children.length < 2) return
-            ;(e.children[1] as HTMLElement).style.display = "block"
+            if (!e.children || e.children.length < 2) return;
+            (e.children[1] as HTMLElement).style.display = "block";
             // @ts-expect-error tippy
             // eslint-disable-next-line no-undef
             tippy6(e.children[0], {
@@ -302,15 +302,15 @@ export default defineComponent({
               trigger:
                 (e.children[1] as HTMLElement).dataset.trigger ||
                 "mouseenter focus",
-            })
-          })
-        })
-        return h("span", { innerHTML: row.ability })
+            });
+          });
+        });
+        return h("span", { innerHTML: row.ability });
       },
       renderFilter() {
-        return h("div")
+        return h("div");
       },
-    }
+    };
 
     const createColumns = (): DataTableColumns<EnemyData> => {
       return [
@@ -325,14 +325,14 @@ export default defineComponent({
                 width: "65px",
                 height: "65px",
               },
-            })
+            });
             return h(
               "a",
               {
                 href: `/w/${row.enemyLink}`,
               },
               img,
-            )
+            );
           },
           minWidth: 80,
         },
@@ -349,10 +349,10 @@ export default defineComponent({
                 href: `/w/${row.enemyLink}`,
               },
               row.name,
-            )
+            );
           },
           renderFilter() {
-            return h("div")
+            return h("div");
           },
         },
         {
@@ -361,10 +361,10 @@ export default defineComponent({
           filterOptions: createFilterOptions("enemyLevel"),
           filterOptionValues: filterConfig.states.enemyLevel,
           filter(value, row) {
-            return !!~row.enemyLevel.indexOf(value.toString())
+            return !!~row.enemyLevel.indexOf(value.toString());
           },
           renderFilter() {
-            return h("div")
+            return h("div");
           },
         },
         {
@@ -373,10 +373,10 @@ export default defineComponent({
           filterOptions: createFilterOptions("enemyRace"),
           filterOptionValues: filterConfig.states.enemyRace,
           filter(value, row) {
-            return !!~row.enemyRace.indexOf(value.toString())
+            return !!~row.enemyRace.indexOf(value.toString());
           },
           renderFilter() {
-            return h("div")
+            return h("div");
           },
         },
         {
@@ -385,10 +385,10 @@ export default defineComponent({
           filterOptions: createFilterOptions("attackType"),
           filterOptionValues: filterConfig.states.attackType,
           filter(value, row) {
-            return !!~row.attackType.indexOf(value.toString())
+            return !!~row.attackType.indexOf(value.toString());
           },
           renderFilter() {
-            return h("div")
+            return h("div");
           },
         },
         {
@@ -397,10 +397,10 @@ export default defineComponent({
           filterOptions: createFilterOptions("damageType"),
           filterOptionValues: filterConfig.states.damageType,
           filter(value, row) {
-            return !!~row.damageType.indexOf(value.toString())
+            return !!~row.damageType.indexOf(value.toString());
           },
           renderFilter() {
-            return h("div")
+            return h("div");
           },
         },
         abilityColumn,
@@ -410,8 +410,8 @@ export default defineComponent({
             filterConfig.filters[field].title,
           ),
         ),
-      ]
-    }
+      ];
+    };
 
     fetch(
       `${window.location.origin}/index.php?${new URLSearchParams({
@@ -422,15 +422,15 @@ export default defineComponent({
     )
       .then((response) => {
         if (!response.ok)
-          throw new Error("[EnemiesListV2] Received non-200 response")
+          throw new Error("[EnemiesListV2] Received non-200 response");
 
-        return response.json()
+        return response.json();
       })
       .then((data) => {
-        enemyData.value = data
-        isLoading.value = false
+        enemyData.value = data;
+        isLoading.value = false;
       })
-      .catch((error) => console.error(error))
+      .catch((error) => console.error(error));
 
     return {
       table: tableRef,
@@ -451,11 +451,13 @@ export default defineComponent({
         filters: DataTableFilterState,
         sourceColumn: DataTableBaseColumn,
       ) {
-        abilityColumn.filterOptionValues = filters[sourceColumn.key] as string[]
+        abilityColumn.filterOptionValues = filters[
+          sourceColumn.key
+        ] as string[];
       },
-    }
+    };
   },
-})
+});
 </script>
 
 <template>

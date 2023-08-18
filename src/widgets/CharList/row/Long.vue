@@ -1,14 +1,17 @@
 <!-- 元素宽度大于900时 -->
 <script lang="ts">
-import type { PropType } from 'vue'
-import { defineComponent, toRefs } from 'vue'
-import type { Char } from '../utils'
-import { useChar } from './useChar'
-import Avatar from '@/components/Avatar.vue'
-import { domain } from '@/utils/utils'
+import type { PropType } from "vue";
+import { defineComponent, toRefs } from "vue";
+
+import Avatar from "@/components/Avatar.vue";
+import { domain } from "@/utils/utils";
+
+import type { Char } from "../utils";
+
+import { useChar } from "./useChar";
 
 export default defineComponent({
-  name: 'Long',
+  name: "Long",
   components: { Avatar },
   props: {
     row: { type: Object as PropType<Char>, required: true },
@@ -16,8 +19,12 @@ export default defineComponent({
     addPotential: Boolean, // 是否加算潜能
   },
   setup(props) {
-    const { addTrust, addPotential } = toRefs(props)
-    const { hp, atk, def, res, cost, reDeploy } = useChar(props.row, addTrust, addPotential)
+    const { addTrust, addPotential } = toRefs(props);
+    const { hp, atk, def, res, cost, reDeploy } = useChar(
+      props.row,
+      addTrust,
+      addPotential,
+    );
 
     return {
       hp,
@@ -27,9 +34,9 @@ export default defineComponent({
       cost,
       reDeploy,
       domain,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -54,9 +61,9 @@ export default defineComponent({
     <div class="camp">
       <div>
         <div>{{ row.subProfession }}</div>
-        <div>{{ row.force.join('-') }}</div>
+        <div>{{ row.force.join("-") }}</div>
         <div>{{ row.birthPlace }}</div>
-        <div>{{ row.race.join('/') }}</div>
+        <div>{{ row.race.join("/") }}</div>
       </div>
     </div>
     <div class="data1">

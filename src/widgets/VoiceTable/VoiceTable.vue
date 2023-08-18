@@ -1,12 +1,14 @@
 <script lang="ts">
-import { NConfigProvider, NSelect } from 'naive-ui'
-import type { PropType } from 'vue'
-import { defineComponent, provide, ref } from 'vue'
+import type { PropType } from "vue";
+import { defineComponent, provide, ref } from "vue";
 
-import FormItem from '../../components/FormItem.vue'
-import VoicePlayer from './VoicePlayer.vue'
+import { NConfigProvider, NSelect } from "naive-ui";
 
-const isSimplified = !decodeURIComponent(document.title).includes('/语音记录')
+import FormItem from "../../components/FormItem.vue";
+
+import VoicePlayer from "./VoicePlayer.vue";
+
+const isSimplified = !decodeURIComponent(document.title).includes("/语音记录");
 
 export default defineComponent({
   components: {
@@ -20,16 +22,16 @@ export default defineComponent({
     voiceKey: String,
     voiceData: Array as PropType<
       {
-        title?: string
-        index?: string
-        voiceFilename?: string
+        title?: string;
+        index?: string;
+        voiceFilename?: string;
         directLinks: {
-          [index: string]: string
-        }
-        cond?: string
+          [index: string]: string;
+        };
+        cond?: string;
         detail: {
-          [index: string]: string
-        }
+          [index: string]: string;
+        };
       }[]
     >,
     langArr: { type: Array as PropType<string[]>, default: () => [] },
@@ -39,18 +41,21 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const isCollapsed = ref(true)
-    const selectedWordLang = ref(['中文'])
-    const selectedVoicePath = ref(props.voiceBase[0]?.path || '')
-    const selectedVoiceLang = ref(props.voiceBase[0]?.lang || '')
-    const playKey = ref(-1)
+    const isCollapsed = ref(true);
+    const selectedWordLang = ref(["中文"]);
+    const selectedVoicePath = ref(props.voiceBase[0]?.path || "");
+    const selectedVoiceLang = ref(props.voiceBase[0]?.lang || "");
+    const playKey = ref(-1);
 
-    const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
-      selectedVoicePath.value = newValue
-      selectedVoiceLang.value = newOptions.lang || ''
-    }
+    const onVoicePathUpdate = (
+      newValue: string,
+      newOptions: { lang: string },
+    ) => {
+      selectedVoicePath.value = newValue;
+      selectedVoiceLang.value = newOptions.lang || "";
+    };
 
-    provide('audioElem', new Audio())
+    provide("audioElem", new Audio());
 
     return {
       isSimplified,
@@ -60,9 +65,9 @@ export default defineComponent({
       selectedVoicePath,
       playKey,
       onVoicePathUpdate,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>

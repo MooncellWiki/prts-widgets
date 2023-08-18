@@ -1,14 +1,17 @@
 <!-- 元素宽度小于等于640px -->
 <script lang="ts">
-import type { PropType } from 'vue'
-import { defineComponent, ref, toRefs } from 'vue'
-import type { Char } from '../utils'
-import { useChar } from './useChar'
-import Avatar from '@/components/Avatar.vue'
-import { domain } from '@/utils/utils'
+import type { PropType } from "vue";
+import { defineComponent, ref, toRefs } from "vue";
+
+import Avatar from "@/components/Avatar.vue";
+import { domain } from "@/utils/utils";
+
+import type { Char } from "../utils";
+
+import { useChar } from "./useChar";
 
 export default defineComponent({
-  name: 'Card',
+  name: "Card",
   components: { Avatar },
   props: {
     row: { type: Object as PropType<Char>, required: true },
@@ -16,9 +19,13 @@ export default defineComponent({
     addPotential: Boolean, // 是否加算潜能
   },
   setup(props) {
-    const collapsed = ref(true)
-    const { addTrust, addPotential } = toRefs(props)
-    const { hp, atk, def, res, cost, reDeploy } = useChar(props.row, addTrust, addPotential)
+    const collapsed = ref(true);
+    const { addTrust, addPotential } = toRefs(props);
+    const { hp, atk, def, res, cost, reDeploy } = useChar(
+      props.row,
+      addTrust,
+      addPotential,
+    );
 
     return {
       collapsed,
@@ -29,9 +36,9 @@ export default defineComponent({
       cost,
       reDeploy,
       domain,
-    }
+    };
   },
-})
+});
 </script>
 
 <template>
@@ -62,12 +69,8 @@ export default defineComponent({
           </div>
         </div>
         <div class="sp">
-          <div class="head">
-            性别
-          </div>
-          <div class="head">
-            位置
-          </div>
+          <div class="head">性别</div>
+          <div class="head">位置</div>
           <div class="button">
             <div @click="collapsed = !collapsed">
               <svg
@@ -112,54 +115,30 @@ export default defineComponent({
     <Transition name="slide-fade">
       <div v-if="!collapsed" class="expand-panel">
         <div class="story">
-          <div class="head">
-            子职业
-          </div>
-          <div class="head">
-            势力
-          </div>
-          <div class="head">
-            出身地
-          </div>
-          <div class="head">
-            种族
-          </div>
+          <div class="head">子职业</div>
+          <div class="head">势力</div>
+          <div class="head">出身地</div>
+          <div class="head">种族</div>
           <div>{{ row.subProfession }}</div>
-          <div>{{ row.force.join('-') }}</div>
+          <div>{{ row.force.join("-") }}</div>
           <div>{{ row.birthPlace }}</div>
-          <div>{{ row.race.join('/') }}</div>
+          <div>{{ row.race.join("/") }}</div>
         </div>
         <div class="data1">
-          <div class="head">
-            生命值
-          </div>
-          <div class="head">
-            攻击力
-          </div>
-          <div class="head">
-            防御
-          </div>
-          <div class="head">
-            法术抗性
-          </div>
+          <div class="head">生命值</div>
+          <div class="head">攻击力</div>
+          <div class="head">防御</div>
+          <div class="head">法术抗性</div>
           <div>{{ hp }}</div>
           <div>{{ atk }}</div>
           <div>{{ def }}</div>
           <div>{{ res }}</div>
         </div>
         <div class="data2">
-          <div class="head">
-            再部署
-          </div>
-          <div class="head">
-            部署费用
-          </div>
-          <div class="head">
-            阻挡数
-          </div>
-          <div class="head">
-            攻击间隔
-          </div>
+          <div class="head">再部署</div>
+          <div class="head">部署费用</div>
+          <div class="head">阻挡数</div>
+          <div class="head">攻击间隔</div>
           <div>{{ reDeploy }}</div>
           <div>{{ cost }}</div>
           <div>{{ row.block }}</div>
