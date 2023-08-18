@@ -332,7 +332,7 @@ export default defineComponent({
             />
           </div>
           <NEmpty
-            v-if="Object.keys(filteredCharData).length < 1"
+            v-if="Object.keys(filteredCharData).length == 0"
             description="无结果"
           >
             <template #icon>
