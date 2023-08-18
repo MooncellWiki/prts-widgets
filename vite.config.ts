@@ -57,11 +57,10 @@ export default defineConfig({
         {
           name: "prts",
           generateBundle(opts, bundle) {
-            const bundles = Object.keys(bundle)
-            const fileNames = ['vendor', 'naive-ui', 'common']
-              .map((name) => {
-                return bundles.find(v => v.startsWith(name))!
-              })
+            const bundles = Object.keys(bundle);
+            const fileNames = ["vendor", "naive-ui", "common"].map((name) => {
+              return bundles.find((v) => v.startsWith(name))!;
+            });
 
             Object.keys(bundle).forEach((key) => {
               const chunk = bundle[key];
@@ -75,9 +74,9 @@ export default defineConfig({
                 chunk.code = chunk.code.replaceAll(
                   `./${name}`,
                   `https://static.prts.wiki/widgets/release/${name}`,
-                )
-              })
-            })
+                );
+              });
+            });
           },
         },
       ],
