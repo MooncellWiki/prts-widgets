@@ -31,6 +31,7 @@ module.exports = {
   rules: {
     "linebreak-style": ["error", "unix"],
     quotes: ["error", "double", { avoidEscape: true }],
+    semi: ["error", "always"],
     "import/order": [
       "error",
       {
@@ -62,4 +63,4 @@ module.exports = {
     "no-console": ["error", { allow: ["warn", "error"] }],
   },
   ignorePatterns: ["src/spine/runtime/"],
-}
+};
