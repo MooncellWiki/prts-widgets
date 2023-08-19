@@ -218,10 +218,7 @@ export default defineComponent({
 </script>
 
 <template>
-  <NConfigProvider
-    :theme="theme"
-    preflight-style-disabled
-  >
+  <NConfigProvider :theme="theme" preflight-style-disabled>
     <NLayout class="md:p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
       <NCard title="干员筛选" header-style="text-align: center;" size="small">
         <template #header-extra>
