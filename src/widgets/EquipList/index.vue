@@ -218,10 +218,16 @@ export default defineComponent({
 </script>
 
 <template>
-  <NConfigProvider :theme="theme">
-    <NLayout class="p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
+  <NConfigProvider
+    :theme="theme"
+    preflight-style-disabled>
+    <NLayout class="md:p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
       <NCard title="干员筛选" header-style="text-align: center;" size="small">
         <template #header-extra>
+          <div class="m-1" @click="themeStore.toggleDark()">
+            <span v-if="theme" class="text-xl mdi mdi-brightness-6" />
+            <span v-else class="text-xl mdi mdi-brightness-4" />
+          </div>
           <NTooltip trigger="hover">
             <template #trigger>
               <div class="m-1" @click="andMode = !andMode">
@@ -285,32 +291,28 @@ export default defineComponent({
               >选中的干员在此显示，点击头像以选择干员</span
             >
           </NCard>
-          <NButton
-            class="mx-1"
-            strong
-            secondary
-            type="error"
-            @click="
-              () => {
-                selectedChar.splice(0);
-              }
-            "
-          >
-            <span class="text-xl mdi mdi-close-circle" />
-          </NButton>
-          <NButton
-            class="mx-1"
-            strong
-            secondary
-            type="primary"
-            @click="toggleCollapse"
-          >
-            <span class="text-xl mdi mdi-check-circle" />
-          </NButton>
-          <div @click="themeStore.toggleDark()">
-            <NButton>
-              <span v-if="theme" class="text-xl mdi mdi-brightness-6" />
-              <span v-else class="text-xl mdi mdi-brightness-4" />
+          <div class="flex flex-col lg:flex-row">
+              <NButton
+              class="m-1"
+              strong
+              secondary
+              type="error"
+              @click="
+                () => {
+                  selectedChar.splice(0);
+                }
+              "
+            >
+              <span class="text-xl mdi mdi-close-circle" />
+            </NButton>
+            <NButton
+              class="m-1"
+              strong
+              secondary
+              type="primary"
+              @click="toggleCollapse"
+            >
+              <span class="text-xl mdi mdi-check-circle" />
             </NButton>
           </div>
         </div>
