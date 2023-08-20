@@ -4,6 +4,7 @@ export interface SelectionConfig {
   title: string;
   options: SelectGroupOption[];
 }
+
 export interface Char {
   name: string;
   type: string;

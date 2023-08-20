@@ -4,6 +4,7 @@ import {
   defineComponent,
   h,
   nextTick,
+  onMounted,
   reactive,
   ref,
   watch,
@@ -413,24 +414,18 @@ export default defineComponent({
       ];
     };
 
-    fetch(
-      `/index.php?${new URLSearchParams({
-        title: "敌人一览/数据",
-        action: "raw",
-        ctype: "application/json",
-      })}`,
-    )
-      .then((response) => {
-        if (!response.ok)
-          throw new Error("[EnemiesListV2] Received non-200 response");
+    onMounted(async () => {
+      const response = await fetch(
+        `/index.php?${new URLSearchParams({
+          title: "敌人一览/数据",
+          action: "raw",
+          ctype: "application/json",
+        })}`,
+      );
 
-        return response.json();
-      })
-      .then((data) => {
-        enemyData.value = data;
-        isLoading.value = false;
-      })
-      .catch((error) => console.error(error));
+      enemyData.value = await response.json();
+      isLoading.value = false;
+    });
 
     return {
       table: tableRef,
