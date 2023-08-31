@@ -74,18 +74,18 @@ function main(config: DisplayConfig) {
       removeDOM(selector);
     });
 
-    let viewport = document.querySelector("meta[name='viewport']");
-    if (!viewport) {
-      viewport = document.createElement("meta");
+    const createViewport = () => {
+      const viewport = document.createElement("meta");
       viewport.setAttribute("name", "viewport");
       document.head.appendChild(viewport);
-    }
+      return viewport;
+    };
+    const viewport =
+      document.querySelector("meta[name='viewport']") || createViewport();
 
-    let viewportContent = viewport.getAttribute("content");
-    if (!viewportContent) {
-      viewportContent =
-        "initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width";
-    }
+    const viewportContent =
+      viewport.getAttribute("content") ||
+      "initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width";
 
     viewport.setAttribute(
       "content",
