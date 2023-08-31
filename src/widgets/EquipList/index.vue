@@ -2,6 +2,7 @@
 import { computed, defineComponent, onMounted, ref } from "vue";
 
 import {
+  type CollapseProps,
   NButton,
   NCard,
   NCollapse,
@@ -10,7 +11,6 @@ import {
   NConfigProvider,
   NEmpty,
   NLayout,
-  NSpin,
   NTag,
   NTooltip,
 } from "naive-ui";
@@ -45,9 +45,11 @@ export default defineComponent({
   setup() {
     const filterShow = ref(true);
     const operatorShow = ref(true);
+    const resultShow = ref(true);
     const andMode = ref(true);
     const themeStore = useThemeStore();
     const { theme } = storeToRefs(themeStore);
+    const expandedChar = ref<string[]>([]);
     const filterType = {
       title: "职业",
       options: ["先锋", "近卫", "重装", "狙击", "术师", "医疗", "辅助", "特种"],
@@ -149,8 +151,20 @@ export default defineComponent({
 
     const toggleCollapse = () => {
       operatorShow.value = false;
+      resultShow.value = true;
       if (window.screen.availWidth < 1024) filterShow.value = false;
       equipChar.value = selectedChar.value.map((v) => v.name);
+    };
+    const expandAll = () => {
+      expandedChar.value = equipChar.value.concat();
+    };
+    const collapseAll = () => {
+      expandedChar.value.splice(0);
+    };
+    const onClickTitle: CollapseProps["onItemHeaderClick"] = ({ name }) => {
+      !expandedChar.value.includes(name)
+        ? expandedChar.value.push(name)
+        : expandedChar.value.splice(expandedChar.value.indexOf(name), 1);
     };
     onMounted(async () => {
       const resp = await fetch(
@@ -212,6 +226,11 @@ export default defineComponent({
       toggleCollapse,
       theme,
       themeStore,
+      resultShow,
+      expandedChar,
+      expandAll,
+      collapseAll,
+      onClickTitle,
     };
   },
 });
@@ -223,8 +242,8 @@ export default defineComponent({
       <NCard title="干员筛选" header-style="text-align: center;" size="small">
         <template #header-extra>
           <div class="m-1" @click="themeStore.toggleDark()">
-            <span v-if="theme" class="text-xl mdi mdi-brightness-6" />
-            <span v-else class="text-xl mdi mdi-brightness-4" />
+            <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
+            <span v-else class="text-2xl mdi mdi-brightness-4" />
           </div>
           <NTooltip trigger="hover">
             <template #trigger>
@@ -308,7 +327,12 @@ export default defineComponent({
               strong
               secondary
               type="primary"
-              @click="toggleCollapse"
+              @click="
+                () => {
+                  toggleCollapse();
+                  collapseAll();
+                }
+              "
             >
               <span class="text-xl mdi mdi-check-circle" />
             </NButton>
@@ -317,7 +341,13 @@ export default defineComponent({
       </NCard>
       <NCard title="干员选择" header-style="text-align: center;" size="small">
         <template #header-extra>
-          <div @click="operatorShow = !operatorShow">
+          <div class="m-1">
+            <span class="text-2xl mdi mdi-information invisible" />
+          </div>
+          <div class="m-1">
+            <span class="text-2xl mdi mdi-information invisible" />
+          </div>
+          <div class="m-1" @click="operatorShow = !operatorShow">
             <span v-if="operatorShow" class="text-2xl mdi mdi-chevron-up" />
             <span v-else class="text-2xl mdi mdi-chevron-down" />
           </div>
@@ -347,17 +377,34 @@ export default defineComponent({
         header-style="text-align: center;"
         size="small"
       >
-        <NCollapse>
-          <NCollapseItem
-            v-for="(name, ind) in equipChar"
-            :key="ind"
-            :name="name"
-            :title="name"
-            display-directive="if"
+        <template #header-extra>
+          <div class="m-1" @click="expandAll">
+            <span class="text-2xl mdi mdi-arrow-expand-vertical" />
+          </div>
+          <div class="m-1" @click="collapseAll">
+            <span class="text-2xl mdi mdi-arrow-collapse-vertical" />
+          </div>
+          <div class="m-1" @click="resultShow = !resultShow">
+            <span v-if="resultShow" class="text-2xl mdi mdi-chevron-up" />
+            <span v-else class="text-2xl mdi mdi-chevron-down" />
+          </div>
+        </template>
+        <NCollapseTransition :show="resultShow">
+          <NCollapse
+            :expanded-names="expandedChar"
+            @item-header-click="onClickTitle"
           >
-            <Equip :name="name"></Equip>
-          </NCollapseItem>
-        </NCollapse>
+            <NCollapseItem
+              v-for="(name, ind) in equipChar"
+              :key="ind"
+              :name="name"
+              :title="name"
+              display-directive="if"
+            >
+              <Equip :name="name"></Equip>
+            </NCollapseItem>
+          </NCollapse>
+        </NCollapseTransition>
       </NCard>
     </NLayout>
   </NConfigProvider>
