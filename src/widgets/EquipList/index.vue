@@ -379,10 +379,10 @@ export default defineComponent({
       >
         <template #header-extra>
           <div class="m-1" @click="expandAll">
-            <span class="text-2xl mdi mdi-arrow-expand-vertical" />
+            <span class="text-2xl mdi mdi-arrow-expand" />
           </div>
           <div class="m-1" @click="collapseAll">
-            <span class="text-2xl mdi mdi-arrow-collapse-vertical" />
+            <span class="text-2xl mdi mdi-arrow-collapse" />
           </div>
           <div class="m-1" @click="resultShow = !resultShow">
             <span v-if="resultShow" class="text-2xl mdi mdi-chevron-up" />
