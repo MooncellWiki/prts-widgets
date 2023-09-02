@@ -241,13 +241,13 @@ export default defineComponent({
     <NLayout class="md:p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
       <NCard title="干员筛选" header-style="text-align: center;" size="small">
         <template #header-extra>
-          <div class="m-1" @click="themeStore.toggleDark()">
+          <div class="m-1 cursor-pointer" @click="themeStore.toggleDark()">
             <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
             <span v-else class="text-2xl mdi mdi-brightness-4" />
           </div>
           <NTooltip trigger="hover">
             <template #trigger>
-              <div class="m-1" @click="andMode = !andMode">
+              <div class="m-1 cursor-pointer" @click="andMode = !andMode">
                 <span v-if="andMode" class="text-2xl mdi mdi-set-center" />
                 <span v-else class="text-2xl mdi mdi-set-all" />
               </div>
@@ -258,7 +258,7 @@ export default defineComponent({
               class="mdi mdi-set-all"
             />：满足职业和子职业的其中一个筛选条件
           </NTooltip>
-          <div class="m-1" @click="filterShow = !filterShow">
+          <div class="m-1 cursor-pointer" @click="filterShow = !filterShow">
             <span v-if="filterShow" class="text-2xl mdi mdi-chevron-up" />
             <span v-else class="text-2xl mdi mdi-chevron-down" />
           </div>
@@ -347,7 +347,7 @@ export default defineComponent({
           <div class="m-1">
             <span class="text-2xl mdi mdi-information invisible" />
           </div>
-          <div class="m-1" @click="operatorShow = !operatorShow">
+          <div class="m-1 cursor-pointer" @click="operatorShow = !operatorShow">
             <span v-if="operatorShow" class="text-2xl mdi mdi-chevron-up" />
             <span v-else class="text-2xl mdi mdi-chevron-down" />
           </div>
@@ -378,13 +378,13 @@ export default defineComponent({
         size="small"
       >
         <template #header-extra>
-          <div class="m-1" @click="expandAll">
+          <div class="m-1 cursor-pointer" @click="expandAll">
             <span class="text-2xl mdi mdi-arrow-expand" />
           </div>
-          <div class="m-1" @click="collapseAll">
+          <div class="m-1 cursor-pointer" @click="collapseAll">
             <span class="text-2xl mdi mdi-arrow-collapse" />
           </div>
-          <div class="m-1" @click="resultShow = !resultShow">
+          <div class="m-1 cursor-pointer" @click="resultShow = !resultShow">
             <span v-if="resultShow" class="text-2xl mdi mdi-chevron-up" />
             <span v-else class="text-2xl mdi mdi-chevron-down" />
           </div>
