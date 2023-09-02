@@ -5,7 +5,7 @@ export async function getEquipData(name: string): Promise<string> {
     `/api.php?${new URLSearchParams({
       action: "parse",
       format: "json",
-      title: "干员模组一览",
+      title: `干员模组一览/${name}`,
       text: `{{#lst:${name}|专属模组}}`,
       prop: "text",
       utf8: "1",

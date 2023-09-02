@@ -2,16 +2,19 @@
 import type { PropType } from "vue";
 import { defineComponent } from "vue";
 
-import { NCard } from "naive-ui";
+import { NButton, NCard } from "naive-ui";
+import { storeToRefs } from "pinia";
 
 import { getImagePath } from "@/utils/utils";
 
 import SubAvatar from "./SubAvatar.vue";
+import { useCharStore } from "./charStore";
 import { Char } from "./types";
 
 export default defineComponent({
   name: "SubContainer",
   components: {
+    NButton,
     NCard,
     SubAvatar,
   },
@@ -22,9 +25,17 @@ export default defineComponent({
       default: () => [],
     },
   },
-  setup() {
+  setup(props) {
+    const charStore = useCharStore();
+    const { selectedChar } = storeToRefs(charStore);
+    const selectAll = () => {
+      props.chars.forEach((char: Char) => {
+        if (!selectedChar.value.includes(char)) charStore.addOrDeleteChar(char);
+      });
+    };
     return {
       getImagePath,
+      selectAll,
     };
   },
 });
@@ -51,6 +62,11 @@ export default defineComponent({
           title
         }}</span>
       </div>
+    </template>
+    <template #header-extra>
+      <NButton ghost @click="selectAll()">
+        <span class="text-xl mdi mdi-checkbox-marked-circle-plus-outline" />
+      </NButton>
     </template>
     <SubAvatar v-for="(char, ind) in chars" :key="ind" :char="char" />
   </NCard>
