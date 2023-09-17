@@ -9,15 +9,25 @@ import { Spine } from "../widgets/Spine/spine";
 // @ts-expect-error
 window.SpineApi = Spine;
 window.dispatchEvent(new Event("spine_api_ready"));
+async function main() {
+  const ele = document.getElementById("spine-root");
+  let spineData: Props;
+  if (ele?.dataset.id) {
+    const resp = await fetch(
+      `https://torappu.prts.wiki/assets/charSpine/${ele.dataset.id}/meta.json`,
+    );
+    spineData = await resp.json();
+    //
+  } else {
+    spineData = JSON.parse(document.getElementById("SPINEDATA")!.innerHTML);
+    spineData.prefix = spineData.prefix.replace(
+      "https://static.prts.wiki/spine/",
+      "https://static.prts.wiki/spine38/",
+    );
+  }
 
-const spineData: Props = JSON.parse(
-  document.getElementById("SPINEDATA")!.innerHTML,
-);
-spineData.prefix = spineData.prefix.replace(
-  "https://static.prts.wiki/spine/",
-  "https://static.prts.wiki/spine38/",
-);
+  if (ele && spineData) createApp(SpineVue, { ...spineData }).mount(ele);
+  else console.error("SPINEDATA or ele not found", ele);
+}
 
-const ele = document.getElementById("spine-root");
-if (ele && spineData) createApp(SpineVue, { ...spineData }).mount(ele);
-else console.error("SPINEDATA or ele not found", ele);
+main();
