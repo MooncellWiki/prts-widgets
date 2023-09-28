@@ -24,7 +24,17 @@ export default defineComponent({
   setup(props, { emit }) {
     const charmRef = useVModel(props, "charMemory", emit);
     const src = computed(() => {
-      return `/images/${getImagePath(`头像_${charmRef.value.char}.png`)}`;
+      switch (charmRef.value.rarity) {
+        case "3":
+        case "4":
+        case "5":
+          return `/images/${getImagePath(`头像_${charmRef.value.char}_2.png`)}`;
+        case "0":
+        case "1":
+        case "2":
+        default:
+          return `/images/${getImagePath(`头像_${charmRef.value.char}.png`)}`;
+      }
     });
     const link = computed(() => {
       return `/w/${charmRef.value.char}`;

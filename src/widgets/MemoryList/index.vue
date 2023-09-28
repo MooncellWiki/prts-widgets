@@ -4,6 +4,7 @@ import { computed, defineComponent, onMounted, reactive, ref } from "vue";
 import {
   NButton,
   NConfigProvider,
+  NEmpty,
   NInput,
   NLayout,
   NPagination,
@@ -21,6 +22,7 @@ export default defineComponent({
   components: {
     NButton,
     NConfigProvider,
+    NEmpty,
     NLayout,
     NInput,
     NPagination,
@@ -225,6 +227,11 @@ export default defineComponent({
           >
           </Memory>
         </div>
+        <NEmpty v-if="shownMemory.length == 0" description="无结果">
+          <template #icon>
+            <span class="text-5xl mdi mdi-book-search" />
+          </template>
+        </NEmpty>
         <NPagination
           class="justify-center my-2"
           :item-count="filteredMemory.length"
