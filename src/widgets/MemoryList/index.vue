@@ -9,11 +9,10 @@ import {
   NLayout,
   NPagination,
 } from "naive-ui";
-import { storeToRefs } from "pinia";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
-import { useThemeStore } from "@/stores/theme";
 import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
 
 import Memory from "./Memory.vue";
 import { CharMemory } from "./types";
@@ -32,8 +31,7 @@ export default defineComponent({
   setup() {
     const isMobile = document.body.classList.contains("skin-minerva");
     const i18nConfig = getNaiveUILocale();
-    const themeStore = useThemeStore();
-    const { theme } = storeToRefs(themeStore);
+    const { theme, toggleDark } = useTheme();
     const states = ref<Record<string, string[]>>({
       rarity: [],
     });
@@ -57,23 +55,18 @@ export default defineComponent({
       const r = states.value.rarity;
       const s = searchTerm.value;
       const filtered = charMemoryData.value.filter((charm) => {
-        if (r.length == 0 || r.includes(rarityMap[charm.rarity])) {
-          if (
-            charm.char.includes(s) ||
-            charm.memories.some((memory) => {
-              if (memory.name.includes(s)) return true;
-              else {
-                return memory.info.some((info) => {
-                  return info.intro.includes(s) ? true : false;
-                });
-              }
-            })
-          )
-            return true;
-          else return false;
-        } else {
+        if (r.length !== 0 && !r.includes(rarityMap[charm.rarity]))
           return false;
-        }
+
+        if (
+          charm.char.includes(s) ||
+          charm.memories.some(
+            (memory) =>
+              memory.name.includes(s) ||
+              memory.info.some((info) => info.intro.includes(s)),
+          )
+        )
+          return true;
       });
       return filtered;
     });
@@ -161,7 +154,7 @@ export default defineComponent({
     });
     return {
       theme,
-      themeStore,
+      toggleDark,
       i18nConfig,
       filterRarity,
       states,
@@ -199,7 +192,7 @@ export default defineComponent({
                 type="text"
                 placeholder="搜索干员名称/密录名称/引言文字"
               />
-              <div class="px-2" @click="themeStore.toggleDark()">
+              <div class="px-2" @click="toggleDark()">
                 <NButton>
                   <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
                   <span v-else class="text-2xl mdi mdi-brightness-4" />
