@@ -15,7 +15,7 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import Memory from "./Memory.vue";
-import { CharMemory } from "./types";
+import { CharMemory, Medal } from "./types";
 
 export default defineComponent({
   components: {
@@ -49,6 +49,7 @@ export default defineComponent({
     };
     const searchTerm = ref("");
     const charMemoryData = ref<CharMemory[]>([]);
+    const medalData = ref<Medal[]>([]);
     const filteredMemory = computed<CharMemory[]>(() => {
       if (states.value.rarity.length === 0 && searchTerm.value === "")
         return charMemoryData.value;
@@ -112,6 +113,26 @@ export default defineComponent({
           };
         },
       );
+      const respMedal = await fetch(
+        `/index.php?${new URLSearchParams({
+          action: "raw",
+          title: "光荣之路/data",
+        })}`,
+      );
+      const jsonMedal = await respMedal.json();
+      medalData.value = Object.entries(jsonMedal.medal)
+        .filter(([key, _]: [string, any]) => {
+          return jsonMedal.category.storyMedal.medal.includes(key)
+            ? true
+            : false;
+        })
+        .map(([_, value]: [string, any]) => {
+          return {
+            medal: value.name as string,
+            alias: value.alias as string,
+            desc: value.desc as string,
+          };
+        });
       charMemoryData.value.forEach((charm) => {
         fetch(`/rest.php/v1/page/${charm.char}`)
           .then((response) => response.json())
@@ -122,15 +143,16 @@ export default defineComponent({
               /{{干员密录\/list[\s\S]*?}}(?=\s{{干员密录|\s}})/gm,
             ) as string[];
             matches.forEach((str, key) => {
+              const medalterm = str.match(/(?<=\|蚀刻章override=).*/)
+                ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
+                : `“${(str.match(/(?<=\|storySetName=).*/) as string[])[0]}”`;
               charm.memories[key] = {
                 elite: (str.match(/(?<=\|精英化=).*/) as string[])[0],
                 level: (str.match(/(?<=\|等级=).*/) as string[])[0],
                 favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
-                medal: str.match(/(?<=\|蚀刻章override=).*/)
-                  ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
-                  : "“" +
-                    (str.match(/(?<=\|storySetName=).*/) as string[])[0] +
-                    "”",
+                medal: medalData.value.find((medal) => {
+                  return medal.alias == medalterm ? true : false;
+                }) as Medal,
                 name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
                 info: [],
               };
@@ -177,7 +199,7 @@ export default defineComponent({
     :date-locale="i18nConfig.dateLocale"
   >
     <NLayout class="md:p-4 p-2 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
-      <table class="w-full text-left border-collapse">
+      <table class="w-full text-left border-collapse important-table">
         <tbody class="align-baseline">
           <tr>
             <OptionsGroup

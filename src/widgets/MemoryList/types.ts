@@ -3,7 +3,7 @@ export interface Memory {
   level: string;
   favor: string;
   name: string;
-  medal: string;
+  medal: Medal;
   info: MemoryInfo[];
 }
 
@@ -17,4 +17,10 @@ export interface CharMemory {
   charEID: string;
   rarity: string;
   memories: Memory[];
+}
+
+export interface Medal {
+  medal: string;
+  alias: string;
+  desc: string;
 }
