@@ -2,10 +2,9 @@
 import { defineComponent, ref } from "vue";
 
 import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
-import { storeToRefs } from "pinia";
 
-import { useThemeStore } from "@/stores/theme";
 import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
 
 export default defineComponent({
   components: { NConfigProvider, NRadioButton, NRadioGroup },
@@ -16,8 +15,7 @@ export default defineComponent({
     language: String,
   },
   setup() {
-    const themeStore = useThemeStore();
-    const { theme } = storeToRefs(themeStore);
+    const { theme } = useTheme();
     const i18nConfig = getNaiveUILocale();
     const isMobile = document.body.classList.contains("skin-minerva");
 

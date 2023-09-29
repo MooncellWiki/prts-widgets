@@ -17,7 +17,7 @@ import {
 import { storeToRefs } from "pinia";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
-import { useThemeStore } from "@/stores/theme";
+import { useTheme } from "@/utils/theme";
 
 import Equip from "./Equip.vue";
 import FilterSub from "./FilterSub.vue";
@@ -47,8 +47,7 @@ export default defineComponent({
     const operatorShow = ref(true);
     const resultShow = ref(true);
     const andMode = ref(true);
-    const themeStore = useThemeStore();
-    const { theme } = storeToRefs(themeStore);
+    const { theme, toggleDark } = useTheme();
     const expandedChar = ref<string[]>([]);
     const filterType = {
       title: "职业",
@@ -225,7 +224,7 @@ export default defineComponent({
       equipChar,
       toggleCollapse,
       theme,
-      themeStore,
+      toggleDark,
       resultShow,
       expandedChar,
       expandAll,
@@ -241,7 +240,7 @@ export default defineComponent({
     <NLayout class="md:p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
       <NCard title="干员筛选" header-style="text-align: center;" size="small">
         <template #header-extra>
-          <div class="m-1 cursor-pointer" @click="themeStore.toggleDark()">
+          <div class="m-1 cursor-pointer" @click="toggleDark()">
             <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
             <span v-else class="text-2xl mdi mdi-brightness-4" />
           </div>

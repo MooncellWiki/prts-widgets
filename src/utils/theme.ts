@@ -1,10 +1,9 @@
 import { ref } from "vue";
 
 import { useDark, useToggle } from "@vueuse/core";
-import { type GlobalTheme, darkTheme } from "naive-ui";
-import { defineStore } from "pinia";
+import { darkTheme, type GlobalTheme } from "naive-ui";
 
-export const useThemeStore = defineStore("theme", () => {
+export const useTheme = () => {
   const theme = ref<GlobalTheme | null>(null);
   const isDark = useDark({
     onChanged(dark: boolean) {
@@ -21,4 +20,4 @@ export const useThemeStore = defineStore("theme", () => {
     isDark,
     toggleDark,
   };
-});
+};

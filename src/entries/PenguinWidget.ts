@@ -1,8 +1,6 @@
 import "virtual:uno.css";
 import { createApp } from "vue";
 
-import { createPinia } from "pinia";
-
 import PenguinWidget from "../widgets/PenguinWidget.vue";
 
 const ele = document.getElementById("penguin-widget");
@@ -22,9 +20,7 @@ if (ele) {
     .then(
       (data) =>
         !navigator.userAgent.includes(data.userAgent) &&
-        createApp(PenguinWidget, { type, id, isAct, language })
-          .use(createPinia())
-          .mount(ele),
+        createApp(PenguinWidget, { type, id, isAct, language }).mount(ele),
     )
     .catch((error) => console.error(error));
 }
