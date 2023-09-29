@@ -102,14 +102,16 @@ export default defineComponent({
         })}`,
       );
       const json = await resp.json();
-      Object.keys(json.query.results).forEach(async (key) => {
-        charMemoryData.value.push({
-          char: key,
-          charEID: json.query.results[key].printouts["情报编号"][0] as string,
-          rarity: json.query.results[key].printouts["稀有度"][0] as string,
-          memories: [],
-        });
-      });
+      charMemoryData.value = Object.entries(json.query.results).map(
+        ([key, value]: [string, any]) => {
+          return {
+            char: key,
+            charEID: value.printouts["情报编号"][0] as string,
+            rarity: value.printouts["稀有度"][0] as string,
+            memories: [],
+          };
+        },
+      );
       charMemoryData.value.forEach((charm) => {
         fetch(`/rest.php/v1/page/${charm.char}`)
           .then((response) => response.json())
@@ -220,7 +222,7 @@ export default defineComponent({
           >
           </Memory>
         </div>
-        <NEmpty v-if="shownMemory.length == 0" description="无结果">
+        <NEmpty v-if="shownMemory.length === 0" description="无结果">
           <template #icon>
             <span class="text-5xl mdi mdi-book-search" />
           </template>

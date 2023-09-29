@@ -1,5 +1,5 @@
 <script lang="ts">
-import { computed, PropType, defineComponent } from "vue";
+import { PropType, computed, defineComponent } from "vue";
 
 import { useVModel } from "@vueuse/core";
 import { NCard, NPopover } from "naive-ui";
@@ -24,16 +24,17 @@ export default defineComponent({
   setup(props, { emit }) {
     const charmRef = useVModel(props, "charMemory", emit);
     const src = computed(() => {
-      switch (charmRef.value.rarity) {
-        case "3":
-        case "4":
-        case "5":
-          return `/images/${getImagePath(`头像_${charmRef.value.char}_2.png`)}`;
-        case "0":
-        case "1":
-        case "2":
-        default:
-          return `/images/${getImagePath(`头像_${charmRef.value.char}.png`)}`;
+      const lowRarityImg = `/images/${getImagePath(
+        `头像_${charmRef.value.char}.png`,
+      )}`;
+      const highRarityImg = `/images/${getImagePath(
+        `头像_${charmRef.value.char}_2.png`,
+      )}`;
+      try {
+        const rarity = parseInt(charmRef.value.rarity);
+        return rarity >= 3 ? highRarityImg : lowRarityImg;
+      } catch (e) {
+        return lowRarityImg;
       }
     });
     const link = computed(() => {
@@ -101,8 +102,7 @@ export default defineComponent({
           class="flex flex-col w-full"
         >
           <div
-            class="flex text-white w-full text-3 items-center py-[3px]"
-            style="background-color: #313131"
+            class="flex text-white w-full text-3 items-center py-[3px] bg-[#313131]"
           >
             <div
               class="flex max-md:flex-col max-md:min-w-[5em] md:min-w-[9em] px-1 b-r-white b-r-solid b-r-1"
@@ -122,9 +122,8 @@ export default defineComponent({
                 <template #trigger>
                   <a :href="`/w/光荣之路#${mmr.medal}`">
                     <div
-                      class="flex justify-center items-center w-[40]"
+                      class="flex justify-center items-center w-[40] rounded"
                       style="
-                        border-radius: 3px;
                         background: linear-gradient(
                           0deg,
                           #ffffff38,
