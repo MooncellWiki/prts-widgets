@@ -25,10 +25,9 @@ import {
   NLayout,
   NPagination,
 } from "naive-ui";
-import { storeToRefs } from "pinia";
 
-import { useThemeStore } from "@/stores/theme";
 import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
@@ -183,8 +182,7 @@ export default defineComponent({
     const i18nConfig = getNaiveUILocale();
     const isMobile = document.body.classList.contains("skin-minerva");
     const isIconMode = ref(!!isMobile);
-    const themeStore = useThemeStore();
-    const { theme } = storeToRefs(themeStore);
+    const { theme, toggleDark } = useTheme();
     const pagination = reactive({
       page: 1,
       pageSize: 10,
@@ -437,7 +435,7 @@ export default defineComponent({
       i18nConfig,
       keyword,
       theme,
-      themeStore,
+      toggleDark,
       isIconMode,
       filteredEnemyData,
       filteredChunkedEnemyData,
@@ -492,7 +490,7 @@ export default defineComponent({
         >
           简
         </NButton>
-        <div @click="themeStore.toggleDark()">
+        <div @click="toggleDark()">
           <NButton>
             <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
             <span v-else class="text-2xl mdi mdi-brightness-4" />
