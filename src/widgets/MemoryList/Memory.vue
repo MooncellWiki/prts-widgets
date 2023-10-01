@@ -55,7 +55,7 @@ export default defineComponent({
       }
     };
     const getSrcMedal = (mmr: Memory) => {
-      const searchstr = mmr.medal.replace(" ", "_");
+      const searchstr = mmr.medal.alias.replace(" ", "_");
       return `/images/${getImagePath(`蚀刻章_${searchstr}.png`)}`;
     };
     const srcfavor = `/images/${getImagePath("图标_信赖.png")}`;
@@ -105,7 +105,7 @@ export default defineComponent({
             class="flex text-white w-full text-3 items-center py-[3px] bg-[#313131]"
           >
             <div
-              class="flex max-md:flex-col max-md:min-w-[5em] md:min-w-[9em] px-1 b-r-white b-r-solid b-r-1"
+              class="flex flex-wrap min-w-[4em] md:min-w-[9em] px-1 b-r-white b-r-solid b-r-1"
             >
               <div class="flex items-center">
                 <img width="15" class="pr-1" :src="getSrcElite(mmr.elite)" />
@@ -118,28 +118,29 @@ export default defineComponent({
             </div>
             <div class="flex items-center justify-between mx-1 w-full">
               <span>{{ mmr.name }}</span>
-              <NPopover trigger="hover">
+              <NPopover trigger="hover" placement="top-end">
                 <template #trigger>
-                  <a :href="`/w/光荣之路#${mmr.medal}`">
-                    <div
-                      class="flex justify-center items-center w-[40] rounded"
-                      style="
-                        background: linear-gradient(
-                          0deg,
-                          #ffffff38,
-                          transparent
-                        );
-                      "
-                    >
-                      <span class="mdi mdi-medal text-4 text-white"></span>
-                      <img :src="getSrcMedal(mmr)" width="20" />
-                    </div>
-                  </a>
+                  <div
+                    class="flex justify-center items-center w-[40]"
+                    style="
+                      border-radius: 3px;
+                      background: linear-gradient(0deg, #ffffff38, transparent);
+                    "
+                  >
+                    <span class="mdi mdi-medal text-4 text-white"></span>
+                    <img :src="getSrcMedal(mmr)" width="20" />
+                  </div>
                 </template>
                 <div
-                  class="flex flex-col items-center w-[120px] p-2 bg-[#2f2f2f]"
+                  class="flex flex-col items-center w-[200px] p-2 bg-[#2f2f2f]"
                 >
                   <img :src="getSrcMedal(mmr)" width="100" />
+                  <span class="font-bold py-1 text-white">
+                    {{ mmr.medal.medal }}
+                  </span>
+                  <span class="italic text-3 py-1 text-white">
+                    {{ mmr.medal.desc }}
+                  </span>
                 </div>
               </NPopover>
             </div>
