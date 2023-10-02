@@ -1,14 +1,11 @@
 <script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent } from "vue";
+import { defineComponent, inject, PropType, Ref } from "vue";
 
 import { NButton, NCard } from "naive-ui";
-import { storeToRefs } from "pinia";
 
 import { getImagePath } from "@/utils/utils";
 
 import SubAvatar from "./SubAvatar.vue";
-import { useCharStore } from "./charStore";
 import { Char } from "./types";
 
 export default defineComponent({
@@ -24,18 +21,23 @@ export default defineComponent({
       type: Array as PropType<Char[]>,
       default: () => [],
     },
+    charList: {
+      type: Array as PropType<Char[]>,
+      required: true,
+    },
   },
+  emits: ["update:charList"],
   setup(props) {
-    const charStore = useCharStore();
-    const { selectedChar } = storeToRefs(charStore);
+    const selectedChar = inject("selectedChar") as Ref<Char[]>;
     const selectAll = () => {
       props.chars.forEach((char: Char) => {
-        if (!selectedChar.value.includes(char)) charStore.addOrDeleteChar(char);
+        if (!selectedChar.value.includes(char)) selectedChar.value.push(char);
       });
     };
     return {
       getImagePath,
       selectAll,
+      selectedChar,
     };
   },
 });
@@ -68,6 +70,11 @@ export default defineComponent({
         <span class="text-xl mdi mdi-checkbox-marked-circle-plus-outline" />
       </NButton>
     </template>
-    <SubAvatar v-for="(char, ind) in chars" :key="ind" :char="char" />
+    <SubAvatar
+      v-for="(char, ind) in chars"
+      :key="ind"
+      :char="char"
+      :char-list="selectedChar"
+    />
   </NCard>
 </template>

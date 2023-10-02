@@ -1,5 +1,5 @@
 <script lang="ts">
-import { computed, defineComponent, onMounted, ref } from "vue";
+import { computed, defineComponent, onMounted, provide, ref } from "vue";
 
 import {
   type CollapseProps,
@@ -14,7 +14,6 @@ import {
   NTag,
   NTooltip,
 } from "naive-ui";
-import { storeToRefs } from "pinia";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { useTheme } from "@/utils/theme";
@@ -22,7 +21,6 @@ import { useTheme } from "@/utils/theme";
 import Equip from "./Equip.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
-import { useCharStore } from "./charStore";
 import { Char } from "./types";
 
 export default defineComponent({
@@ -82,14 +80,18 @@ export default defineComponent({
       };
     });
     const equipChar = ref<string[]>([]);
-    const charStore = useCharStore();
-    const { selectedChar } = storeToRefs(charStore);
+    const selectedChar = ref<Char[]>([]);
     const sortedCharData = ref<Record<string, Char[]>>({});
     const states = ref<Record<string, string[]>>({
       type: [],
       rarity: [],
       sub: [],
     });
+    const addOrDeleteChar = (char: Char) => {
+      !selectedChar.value.includes(char)
+        ? selectedChar.value.push(char)
+        : selectedChar.value.splice(selectedChar.value.indexOf(char));
+    };
     const filterIntersection = (states: Record<string, string[]>) => {
       return Object.fromEntries(
         Object.entries(sortedCharData.value)
@@ -210,6 +212,7 @@ export default defineComponent({
         });
       });
     });
+    provide("selectedChar", selectedChar);
     return {
       filterType,
       filterRarity,
@@ -220,7 +223,6 @@ export default defineComponent({
       operatorShow,
       andMode,
       selectedChar,
-      charStore,
       equipChar,
       toggleCollapse,
       theme,
@@ -230,6 +232,7 @@ export default defineComponent({
       expandAll,
       collapseAll,
       onClickTitle,
+      addOrDeleteChar,
     };
   },
 });
@@ -299,7 +302,7 @@ export default defineComponent({
               class="m-1"
               type="info"
               closable
-              @close="charStore.addOrDeleteChar(char)"
+              @close="addOrDeleteChar(char)"
             >
               {{ char.name }}
             </NTag>
@@ -358,6 +361,7 @@ export default defineComponent({
               :key="subtype"
               :chars="chars"
               :title="subtype"
+              :char-list="selectedChar"
             />
           </div>
           <NEmpty
