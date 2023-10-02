@@ -361,7 +361,6 @@ export default defineComponent({
               :key="subtype"
               :chars="chars"
               :title="subtype"
-              :char-list="selectedChar"
             />
           </div>
           <NEmpty

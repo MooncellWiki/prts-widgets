@@ -1,5 +1,6 @@
 <script lang="ts">
-import { defineComponent, inject, ref, watch, PropType, Ref } from "vue";
+import type { PropType, Ref } from "vue";
+import { defineComponent, inject, ref, watch } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
