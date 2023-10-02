@@ -22,10 +22,6 @@ export default defineComponent({
       type: Array as PropType<Char[]>,
       default: () => [],
     },
-    charList: {
-      type: Array as PropType<Char[]>,
-      required: true,
-    },
   },
   emits: ["update:charList"],
   setup(props) {
@@ -71,11 +67,6 @@ export default defineComponent({
         <span class="text-xl mdi mdi-checkbox-marked-circle-plus-outline" />
       </NButton>
     </template>
-    <SubAvatar
-      v-for="(char, ind) in chars"
-      :key="ind"
-      :char="char"
-      :char-list="selectedChar"
-    />
+    <SubAvatar v-for="(char, ind) in chars" :key="ind" :char="char" />
   </NCard>
 </template>
