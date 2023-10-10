@@ -150,8 +150,8 @@ export default defineComponent({
         const value = char[filter.meta.field as keyof Char];
 
         const selected = Object.entries(filter.selected)
-          .filter(([_, v]) => v)
-          .map(([k, _]) => k);
+          .filter(([, v]) => v)
+          .map(([k]) => k);
         const range = selected
           .map((s) => {
             const option = filter.meta.cbt.find((v) => {
@@ -277,7 +277,7 @@ export default defineComponent({
       states.forEach((s) => {
         s.forEach((element) => {
           const selected = Object.entries(element.selected).filter(
-            ([_, v]) => v,
+            ([, v]) => v,
           );
           if (selected.length === 0) {
             delete hash[element.meta.field];

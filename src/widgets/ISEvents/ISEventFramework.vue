@@ -56,7 +56,7 @@ export default defineComponent({
       >,
       default: () => [],
     },
-    ISTheme: String,
+    isTheme: String,
   },
   setup(props) {
     const sceneNav = ref<Array<number>>([0]);
@@ -198,7 +198,7 @@ export default defineComponent({
                   :icon="item.icon"
                   :desc1="item.desc1"
                   :desc2="item.desc2"
-                  :is-theme="ISTheme"
+                  :is-theme="isTheme"
                   @click="jump(item.dest)"
                 />
               </NSpace>
