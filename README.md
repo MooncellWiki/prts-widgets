@@ -52,7 +52,7 @@ pnpm run create WidgetName username password
 > 在未获确认的情况下请勿执行，hash 变动会导致其他线上组件出错。
 
 ```bash
-$ pnpm run build
+pnpm run build
 # ... 上传 dist/ 至 OSS
-$ pnpm run update username password
+pnpm run update username password
 ```
