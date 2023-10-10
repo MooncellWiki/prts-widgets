@@ -1,7 +1,6 @@
 <script lang="ts">
 import { PropType, computed, defineComponent } from "vue";
 
-import { useVModel } from "@vueuse/core";
 import { NCard, NPopover } from "naive-ui";
 
 import { getImagePath } from "@/utils/utils";
@@ -21,47 +20,34 @@ export default defineComponent({
     },
   },
   emits: ["update:charMemory"],
-  setup(props, { emit }) {
-    const charmRef = useVModel(props, "charMemory", emit);
+  setup(props) {
     const src = computed(() => {
       const lowRarityImg = `/images/${getImagePath(
-        `头像_${charmRef.value.char}.png`,
+        `头像_${props.charMemory.char}.png`,
       )}`;
       const highRarityImg = `/images/${getImagePath(
-        `头像_${charmRef.value.char}_2.png`,
+        `头像_${props.charMemory.char}_2.png`,
       )}`;
       try {
-        const rarity = parseInt(charmRef.value.rarity);
+        const rarity = parseInt(props.charMemory.rarity);
         return rarity >= 3 ? highRarityImg : lowRarityImg;
       } catch (e) {
         return lowRarityImg;
       }
     });
     const link = computed(() => {
-      return `/w/${charmRef.value.char}`;
+      return `/w/${props.charMemory.char}`;
     });
-    const srcelite2 = `/images/${getImagePath("图标_升级_精英化2.png")}`;
-    const srcelite1 = `/images/${getImagePath("图标_升级_精英化1.png")}`;
-    const srcelite0 = `/images/${getImagePath("图标_升级_精英化0.png")}`;
     const getSrcElite = (elite: string) => {
-      switch (elite) {
-        case "2":
-          return srcelite2;
-        case "1":
-          return srcelite1;
-        case "0":
-        default:
-          return srcelite0;
-      }
+      return `/images/${getImagePath(`图标_升级_精英化${elite || "0"}.png`)}`;
     };
     const getSrcMedal = (mmr: Memory) => {
-      const searchstr = mmr.medal.alias.replace(" ", "_");
-      return `/images/${getImagePath(`蚀刻章_${searchstr}.png`)}`;
+      const search = mmr.medal.alias.replace(" ", "_");
+      return `/images/${getImagePath(`蚀刻章_${search}.png`)}`;
     };
     const srcfavor = `/images/${getImagePath("图标_信赖.png")}`;
     const srcplay = `/images/${getImagePath("情报处理室_播放按钮.png")}`;
     return {
-      charmRef,
       src,
       link,
       srcfavor,
@@ -93,11 +79,11 @@ export default defineComponent({
             height="60"
           />
         </a>
-        <span class="text-sm">{{ charmRef.char }}</span>
+        <span class="text-sm">{{ charMemory.char }}</span>
       </div>
       <div class="flex flex-col basis-4/5 justify-center items-center">
         <div
-          v-for="mmr in charmRef.memories"
+          v-for="mmr in charMemory.memories"
           :key="mmr.name"
           class="flex flex-col w-full"
         >
@@ -165,6 +151,7 @@ export default defineComponent({
     </div>
   </NCard>
 </template>
+
 <style scoped>
 :deep(.sep) {
   height: 1px;

@@ -15,6 +15,7 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import Memory from "./Memory.vue";
+import { rarityMap, filterRarity } from "./consts";
 import { CharMemory, Medal } from "./types";
 
 export default defineComponent({
@@ -35,42 +36,32 @@ export default defineComponent({
     const states = ref<Record<string, string[]>>({
       rarity: [],
     });
-    const filterRarity = {
-      title: "稀有度",
-      options: ["1★", "2★", "3★", "4★", "5★", "6★"],
-    };
-    const rarityMap: Record<string, string> = {
-      "0": "1★",
-      "1": "2★",
-      "2": "3★",
-      "3": "4★",
-      "4": "5★",
-      "5": "6★",
-    };
     const searchTerm = ref("");
     const charMemoryData = ref<CharMemory[]>([]);
     const medalData = ref<Medal[]>([]);
     const filteredMemory = computed<CharMemory[]>(() => {
       if (states.value.rarity.length === 0 && searchTerm.value === "")
         return charMemoryData.value;
-      const r = states.value.rarity;
-      const s = searchTerm.value;
+
+      const rarity = states.value.rarity;
+      const keyword = searchTerm.value;
       const filtered = charMemoryData.value.filter((charm) => {
-        if (r.length !== 0 && !r.includes(rarityMap[charm.rarity]))
+        if (rarity.length !== 0 && !rarity.includes(rarityMap[charm.rarity]))
           return false;
 
-        if (
-          charm.char.includes(s) ||
+        return (
+          charm.char.includes(keyword) ||
           charm.memories.some(
             (memory) =>
-              memory.name.includes(s) ||
-              memory.info.some((info) => info.intro.includes(s)),
+              memory.name.includes(keyword) ||
+              memory.info.some((info) => info.intro.includes(keyword)),
           )
-        )
-          return true;
+        );
       });
+
       return filtered;
     });
+
     const pagination = reactive({
       page: 1,
       pageSize: 10,
@@ -91,6 +82,7 @@ export default defineComponent({
         pagination.pageSize * pagination.page,
       );
     });
+
     onMounted(async () => {
       const resp = await fetch(
         `/api.php?${new URLSearchParams({
@@ -113,6 +105,7 @@ export default defineComponent({
           };
         },
       );
+
       const respMedal = await fetch(
         `/index.php?${new URLSearchParams({
           action: "raw",
@@ -133,48 +126,57 @@ export default defineComponent({
             desc: value.desc as string,
           };
         });
-      charMemoryData.value.forEach((charm) => {
-        fetch(`/rest.php/v1/page/${charm.char}`)
-          .then((response) => response.json())
-          .then((json) => {
-            var rawdata = json.source as string;
-            rawdata = rawdata.replaceAll("{{FULLPAGENAME}}", charm.char);
-            const matches = rawdata.match(
-              /{{干员密录\/list[\s\S]*?}}(?=\s{{干员密录|\s}})/gm,
-            ) as string[];
-            matches.forEach((str, key) => {
-              const medalterm = str.match(/(?<=\|蚀刻章override=).*/)
-                ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
-                : `“${(str.match(/(?<=\|storySetName=).*/) as string[])[0]}”`;
-              charm.memories[key] = {
-                elite: (str.match(/(?<=\|精英化=).*/) as string[])[0],
-                level: (str.match(/(?<=\|等级=).*/) as string[])[0],
-                favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
-                medal: medalData.value.find((medal) => {
-                  return medal.alias == medalterm ? true : false;
-                }) as Medal,
-                name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
-                info: [],
-              };
-              var i = 1;
-              str = str.replace(/\|storyIntro=/, "|storyIntro1=");
-              str = str.replace(/\|storyTxt=/, "|storyTxt1=");
-              while (str.match(new RegExp(`storyIntro${i}`))) {
-                charm.memories[key].info[i - 1] = {
-                  intro: (
-                    str.match(
-                      new RegExp(`(?<=\\|storyIntro${i}=).*`),
-                    ) as string[]
-                  )[0],
-                  link: (
-                    str.match(new RegExp(`(?<=\\|storyTxt${i}=).*`)) as string[]
-                  )[0],
+
+      Promise.all(
+        charMemoryData.value.map((charm) => {
+          fetch(`/rest.php/v1/page/${charm.char}`)
+            .then((response) => response.json())
+            .then((json) => {
+              const rawdata = (json.source as string).replaceAll(
+                "{{FULLPAGENAME}}",
+                charm.char,
+              );
+              const matches = rawdata.match(
+                /{{干员密录\/list[\s\S]*?}}(?=\s{{干员密录|\s}})/gm,
+              ) as string[];
+              matches.forEach((str, key) => {
+                const medalterm = str.match(/(?<=\|蚀刻章override=).*/)
+                  ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
+                  : `“${(str.match(/(?<=\|storySetName=).*/) as string[])[0]}”`;
+                charm.memories[key] = {
+                  elite: (str.match(/(?<=\|精英化=).*/) as string[])[0],
+                  level: (str.match(/(?<=\|等级=).*/) as string[])[0],
+                  favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
+                  medal: medalData.value.find((medal) => {
+                    return medal.alias == medalterm ? true : false;
+                  }) as Medal,
+                  name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
+                  info: [],
                 };
-                i++;
-              }
+
+                var i = 1;
+                str = str
+                  .replace(/\|storyIntro=/, "|storyIntro1=")
+                  .replace(/\|storyTxt=/, "|storyTxt1=");
+                while (str.match(new RegExp(`storyIntro${i}`))) {
+                  charm.memories[key].info.push({
+                    intro: (
+                      str.match(
+                        new RegExp(`(?<=\\|storyIntro${i}=).*`),
+                      ) as string[]
+                    )[0],
+                    link: (
+                      str.match(
+                        new RegExp(`(?<=\\|storyTxt${i}=).*`),
+                      ) as string[]
+                    )[0],
+                  });
+                  i++;
+                }
+              });
             });
-          });
-      });
+        }),
+      );
     });
     return {
       theme,
