@@ -215,8 +215,8 @@ export default defineComponent({
         <NRow>
           <NCol :span="6">
             <NStatistic label="已有蚀刻章" :tabular-nums="true">
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="showSecretMedalStatic ? staticData.all[0] : 0"
                 :to="
                   staticData.all[0] +
@@ -229,8 +229,8 @@ export default defineComponent({
           </NCol>
           <NCol :span="6">
             <NStatistic label="3★蚀刻章" :tabular-nums="true">
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="showSecretMedalStatic ? staticData.star3[0] : 0"
                 :to="
                   staticData.star3[0] +
@@ -243,8 +243,8 @@ export default defineComponent({
           </NCol>
           <NCol :span="6">
             <NStatistic label="2★蚀刻章" :tabular-nums="true">
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="showSecretMedalStatic ? staticData.star2[0] : 0"
                 :to="
                   staticData.star2[0] +
@@ -257,8 +257,8 @@ export default defineComponent({
           </NCol>
           <NCol :span="6">
             <NStatistic label="1★蚀刻章" :tabular-nums="true">
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="showSecretMedalStatic ? staticData.star1[0] : 0"
                 :to="
                   staticData.star1[0] +
@@ -273,8 +273,8 @@ export default defineComponent({
         <NRow>
           <NCol :span="6">
             <NStatistic label="镀层蚀刻章" :tabular-nums="true">
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="showSecretMedalStatic ? staticData.trim[0] : 0"
                 :to="
                   staticData.trim[0] +
@@ -291,8 +291,8 @@ export default defineComponent({
               label="3★加密蚀刻章"
               :tabular-nums="true"
             >
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="0"
                 :to="staticData.star3[1]"
                 show-separator
@@ -306,8 +306,8 @@ export default defineComponent({
               label="2★加密蚀刻章"
               :tabular-nums="true"
             >
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="0"
                 :to="staticData.star2[1]"
                 show-separator
@@ -321,8 +321,8 @@ export default defineComponent({
               label="1★加密蚀刻章"
               :tabular-nums="true"
             >
-              <n-number-animation
-                :active="true"
+              <NNumberAnimation
+                active
                 :from="0"
                 :to="staticData.star1[1]"
                 show-separator
