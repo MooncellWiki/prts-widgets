@@ -114,10 +114,10 @@ export default defineComponent({
       );
       const jsonMedal = await respMedal.json();
       medalData.value = Object.entries(jsonMedal.medal)
-        .filter(([key, _]: [string, any]) => {
+        .filter(([key]: [string, any]) => {
           return jsonMedal.category.storyMedal.medal.includes(key);
         })
-        .map(([_, value]: [string, any]) => {
+        .map(([, value]: [string, any]) => {
           return {
             medal: value.name as string,
             alias: value.alias as string,

@@ -1,3 +1,4 @@
+<!-- eslint-disable @typescript-eslint/no-unused-vars -->
 <script lang="ts">
 import type { PropType } from "vue";
 import { computed, defineComponent, onMounted, ref } from "vue";

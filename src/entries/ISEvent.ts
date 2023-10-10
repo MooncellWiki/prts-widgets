@@ -12,7 +12,7 @@ const eventEles = eventDataRoot?.getElementsByClassName(
   "IS-event-data",
 ) as HTMLCollectionOf<HTMLElement>;
 
-const ISTheme = eventDataRoot?.dataset?.theme;
+const isTheme = eventDataRoot?.dataset?.theme;
 
 // nav app
 const navArea = document.getElementById("IS-event-nav");
@@ -59,7 +59,7 @@ Array.from(eventEles).forEach((eventEle) => {
   // creat event
   createApp(ISEventFramework, {
     sceneData: scenes,
-    ISTheme,
+    isTheme,
   }).mount(eventEle);
 });
 

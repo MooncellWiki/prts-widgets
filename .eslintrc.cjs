@@ -31,7 +31,6 @@ module.exports = {
   rules: {
     "@typescript-eslint/no-non-null-assertion": "off",
     "@typescript-eslint/no-explicit-any": "off",
-    "@typescript-eslint/no-unused-vars": "off",
     "vue/require-default-prop": "off",
     "import/no-named-as-default": "off",
     "linebreak-style": ["error", "unix"],

@@ -114,7 +114,7 @@ export default defineComponent({
               }),
             ];
           })
-          .filter(([k, v]) => v.length > 0),
+          .filter(([, v]) => v.length > 0),
       );
     };
     const filterUnion = (states: Record<string, string[]>) => {
@@ -141,7 +141,7 @@ export default defineComponent({
               }),
             ];
           })
-          .filter(([k, v]) => v.length > 0),
+          .filter(([, v]) => v.length > 0),
       );
     };
     const filteredCharData = computed<Record<string, Char[]>>(() => {
