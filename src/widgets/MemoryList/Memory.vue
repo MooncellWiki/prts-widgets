@@ -1,7 +1,7 @@
 <script lang="ts">
 import { PropType, computed, defineComponent } from "vue";
 
-import { NCard, NPopover } from "naive-ui";
+import { NCard, NDivider, NPopover } from "naive-ui";
 
 import { getImagePath } from "@/utils/utils";
 
@@ -11,6 +11,7 @@ export default defineComponent({
   name: "Memory",
   components: {
     NCard,
+    NDivider,
     NPopover,
   },
   props: {
@@ -132,7 +133,7 @@ export default defineComponent({
             </div>
           </div>
           <div v-for="info in mmr.info" :key="info.link" class="flex flex-col">
-            <div v-if="info.link != mmr.info[0].link" class="sep" />
+            <NDivider />
             <div class="flex flex-nowrap px-1 py-2">
               <div class="flex-basis-4/5">
                 {{ info.intro }}
@@ -152,10 +153,4 @@ export default defineComponent({
   </NCard>
 </template>
 
-<style scoped>
-:deep(.sep) {
-  height: 1px;
-  width: 100%;
-  background-color: grey;
-}
-</style>
+<style scoped></style>
