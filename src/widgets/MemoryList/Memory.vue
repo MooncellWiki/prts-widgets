@@ -20,7 +20,6 @@ export default defineComponent({
       required: true,
     },
   },
-  emits: ["update:charMemory"],
   setup(props) {
     const src = computed(() => {
       const lowRarityImg = `/images/${getImagePath(
