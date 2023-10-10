@@ -125,56 +125,49 @@ export default defineComponent({
           };
         });
 
-      Promise.all(
-        charMemoryData.value.map((charm) => {
-          fetch(`/rest.php/v1/page/${charm.char}`)
-            .then((response) => response.json())
-            .then((json) => {
-              const rawdata = (json.source as string).replaceAll(
-                "{{FULLPAGENAME}}",
-                charm.char,
-              );
-              const matches = rawdata.match(
-                /{{干员密录\/list[\s\S]*?}}(?=\s{{干员密录|\s}})/gm,
-              ) as string[];
-              matches.forEach((str, key) => {
-                const medalterm = str.match(/(?<=\|蚀刻章override=).*/)
-                  ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
-                  : `“${(str.match(/(?<=\|storySetName=).*/) as string[])[0]}”`;
-                charm.memories[key] = {
-                  elite: (str.match(/(?<=\|精英化=).*/) as string[])[0],
-                  level: (str.match(/(?<=\|等级=).*/) as string[])[0],
-                  favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
-                  medal: medalData.value.find((medal) => {
-                    return medal.alias == medalterm;
-                  }) as Medal,
-                  name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
-                  info: [],
-                };
+      async function getMemories(charm: CharMemory) {
+        const resp = await fetch(`/rest.php/v1/page/${charm.char}`);
+        const json = await resp.json();
+        const rawdata = (json.source as string).replaceAll(
+          "{{FULLPAGENAME}}",
+          charm.char,
+        );
+        const matches = rawdata.match(
+          /{{干员密录\/list[\s\S]*?}}(?=\s{{干员密录|\s}})/gm,
+        ) as string[];
+        matches.forEach((str, key) => {
+          const medalterm = str.match(/(?<=\|蚀刻章override=).*/)
+            ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
+            : `“${(str.match(/(?<=\|storySetName=).*/) as string[])[0]}”`;
+          charm.memories[key] = {
+            elite: (str.match(/(?<=\|精英化=).*/) as string[])[0],
+            level: (str.match(/(?<=\|等级=).*/) as string[])[0],
+            favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
+            medal: medalData.value.find((medal) => {
+              return medal.alias == medalterm;
+            }) as Medal,
+            name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
+            info: [],
+          };
 
-                var i = 1;
-                str = str
-                  .replace(/\|storyIntro=/, "|storyIntro1=")
-                  .replace(/\|storyTxt=/, "|storyTxt1=");
-                while (str.match(new RegExp(`storyIntro${i}`))) {
-                  charm.memories[key].info.push({
-                    intro: (
-                      str.match(
-                        new RegExp(`(?<=\\|storyIntro${i}=).*`),
-                      ) as string[]
-                    )[0],
-                    link: (
-                      str.match(
-                        new RegExp(`(?<=\\|storyTxt${i}=).*`),
-                      ) as string[]
-                    )[0],
-                  });
-                  i++;
-                }
-              });
+          let i = 1;
+          str = str
+            .replace(/\|storyIntro=/, "|storyIntro1=")
+            .replace(/\|storyTxt=/, "|storyTxt1=");
+          while (str.match(new RegExp(`storyIntro${i}`))) {
+            charm.memories[key].info.push({
+              intro: (
+                str.match(new RegExp(`(?<=\\|storyIntro${i}=).*`)) as string[]
+              )[0],
+              link: (
+                str.match(new RegExp(`(?<=\\|storyTxt${i}=).*`)) as string[]
+              )[0],
             });
-        }),
-      );
+            i++;
+          }
+        });
+      }
+      await Promise.all(charMemoryData.value.map(getMemories));
     });
     return {
       theme,
