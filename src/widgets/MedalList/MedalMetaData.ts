@@ -12,6 +12,6 @@ export async function getMedalMetaData(): Promise<Record<string, any>> {
     })}`,
   );
   const json = await resp.json();
-  const content = JSON.parse(json.parse.wikitext["*"]);
-  return content;
+
+  return JSON.parse(json.parse.wikitext["*"]);
 }
