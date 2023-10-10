@@ -133,7 +133,7 @@ export default defineComponent({
             </div>
           </div>
           <div v-for="info in mmr.info" :key="info.link" class="flex flex-col">
-            <NDivider />
+            <NDivider v-if="info.link != mmr.info[0].link" />
             <div class="flex flex-nowrap px-1 py-2">
               <div class="flex-basis-4/5">
                 {{ info.intro }}
