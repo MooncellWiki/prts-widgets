@@ -115,9 +115,7 @@ export default defineComponent({
       const jsonMedal = await respMedal.json();
       medalData.value = Object.entries(jsonMedal.medal)
         .filter(([key, _]: [string, any]) => {
-          return jsonMedal.category.storyMedal.medal.includes(key)
-            ? true
-            : false;
+          return jsonMedal.category.storyMedal.medal.includes(key);
         })
         .map(([_, value]: [string, any]) => {
           return {
@@ -148,7 +146,7 @@ export default defineComponent({
                   level: (str.match(/(?<=\|等级=).*/) as string[])[0],
                   favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
                   medal: medalData.value.find((medal) => {
-                    return medal.alias == medalterm ? true : false;
+                    return medal.alias == medalterm;
                   }) as Medal,
                   name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
                   info: [],
