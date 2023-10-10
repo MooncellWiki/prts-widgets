@@ -35,13 +35,13 @@ You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/
 项目使用 [pnpm](https://pnpm.io/) 管理项目依赖，请使用 [pnpm](https://pnpm.io/) 安装本项目。
 
 ```bash
-$ pnpm install
+pnpm install
 ```
 
 ### 创建新应用
 
 ```bash
-$ pnpm run create WidgetName username password
+pnpm run create WidgetName username password
 ```
 
 ### 发布
