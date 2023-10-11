@@ -18,6 +18,8 @@ import {
 
 import { getImagePath } from "../../utils/utils";
 
+import type { Medal } from "./MedalMetaData";
+
 export default defineComponent({
   components: {
     NConfigProvider,
@@ -34,13 +36,7 @@ export default defineComponent({
   },
   props: {
     medalData: {
-      type: Object as PropType<{
-        alias: string;
-        name: string;
-        desc: string;
-        method: string;
-        decrypt: string;
-      }>,
+      type: Object as PropType<Medal>,
       required: true,
     },
   },

@@ -1,5 +1,4 @@
 <script lang="ts">
-import type { PropType } from "vue";
 import { defineComponent, onMounted, ref } from "vue";
 
 import {
@@ -22,42 +21,7 @@ import {
 import OptionsGroup from "@/components/OptionsGroup.vue";
 
 import MedalComponent from "./Medal.vue";
-import { getMedalMetaData } from "./MedalMetaData";
-
-export interface Props {
-  medal: {
-    [key: string]: {
-      name: string;
-      alias: string;
-      desc: string;
-      method: string;
-      decrypt?: string;
-      isTrim: boolean;
-      trimMethod?: string;
-      reward?: string;
-    };
-  };
-  medalGroup: {
-    [key: string]: {
-      name: string;
-      desc: string;
-      color: string;
-      bindEvent: Array<string>;
-      deprecateType?: string;
-      hasChangedInRetro?: boolean;
-      medal: Array<string>;
-    };
-  };
-  category: {
-    [key: string]: {
-      name: string;
-      desc: string;
-      subCategory?: Array<string>;
-      medalGroup: Array<string>;
-      medal: Array<string>;
-    };
-  };
-}
+import { getMedalMetaData, type MedalMetaData } from "./MedalMetaData";
 
 export default defineComponent({
   components: {
@@ -77,40 +41,7 @@ export default defineComponent({
     NGrid,
     NGridItem,
   },
-  props: {
-    medal: Object as PropType<{
-      [key: string]: {
-        name: string;
-        alias: string;
-        desc: string;
-        method: string;
-        decrypt?: string;
-        isTrim: boolean;
-        trimMethod?: string;
-        reward?: string;
-      };
-    }>,
-    medalGroup: Object as PropType<{
-      [key: string]: {
-        name: string;
-        desc: string;
-        color: string;
-        bindEvent: Array<string>;
-        deprecateType?: string;
-        hasChangedInRetro?: boolean;
-        medal: Array<string>;
-      };
-    }>,
-    category: Object as PropType<{
-      [key: string]: {
-        name: string;
-        desc: string;
-        subCategory?: Array<string>;
-        medalGroup: Array<string>;
-        medal: Array<string>;
-      };
-    }>,
-  },
+  props: {},
   setup() {
     const staticData = ref<Record<string, number[]>>({
       star3: [0, 0],
@@ -119,7 +50,11 @@ export default defineComponent({
       trim: [0, 0],
       all: [0, 0],
     });
-    const medalMetaData = ref<Record<string, any>>({});
+    const medalMetaData = ref<MedalMetaData>({
+      medal: {},
+      medalGroup: {},
+      category: {},
+    });
     onMounted(async () => {
       medalMetaData.value = await getMedalMetaData();
       Object.keys(medalMetaData.value.medal).forEach((key) => {
