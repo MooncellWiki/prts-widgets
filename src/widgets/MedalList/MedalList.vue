@@ -57,11 +57,10 @@ export default defineComponent({
     });
     onMounted(async () => {
       medalMetaData.value = await getMedalMetaData();
-      Object.keys(medalMetaData.value.medal).forEach((key) => {
-        const md = medalMetaData.value.medal[key];
-        staticData.value.all[md.decrypt ? 1 : 0] += 1;
-        staticData.value[`star${md.rarity}`][md.decrypt ? 1 : 0] += 1;
-        staticData.value.trim[md.decrypt ? 1 : 0] += md.isTrim ? 1 : 0;
+      Object.values(medalMetaData.value.medal).forEach((medal) => {
+        staticData.value.all[medal.decrypt ? 1 : 0] += 1;
+        staticData.value[`star${medal.rarity}`][medal.decrypt ? 1 : 0] += 1;
+        staticData.value.trim[medal.decrypt ? 1 : 0] += medal.isTrim ? 1 : 0;
       });
     });
     const showFilter = ref(true);
