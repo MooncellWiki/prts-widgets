@@ -228,7 +228,6 @@ export class Char {
       rarity: rarityState >> tag.length,
       tag: tagState,
     };
-    console.log(payload);
 
     return encoder.encode(payload);
   }
@@ -246,8 +245,6 @@ export class Char {
         const index =
           indexes[k as "profession" | "position" | "rarity" | "tag"];
         const binaryString = (v >>> 0).toString(2);
-        console.log(v);
-        console.log(binaryString);
         let loopCount = 0;
         [...binaryString].reverse().forEach((c) => {
           if (c !== "0") this.bitmap.set(index + loopCount);
