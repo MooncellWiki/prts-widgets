@@ -32,6 +32,15 @@ export default defineComponent({
     const breakpoints = useBreakpoints({ xs: 640 });
     const xs = breakpoints.smallerOrEqual("xs");
     const value = reactive(new Char(0));
+    const shortcutParam = new URLSearchParams(window.location.search).get(
+      "filter",
+    );
+    const shortcutUrl = computed(
+      () =>
+        `${window.location.origin}${
+          window.location.pathname
+        }?${new URLSearchParams({ filter: value.dump() })}`,
+    );
     const selected = computed(() => {
       return all.map((v, i) => {
         return value.bitmap.get(i) !== 0;
@@ -113,12 +122,20 @@ export default defineComponent({
         result.value = calc();
       });
     });
+    if (shortcutParam) {
+      value.load(shortcutParam);
+      result.value = calc();
+    }
     // 寻访出不了的都算只能公招出
     function isOnly(s: Source) {
       return !s.obtainMethod.some((v) => v.includes("寻访"));
     }
+    function copyUrl() {
+      return navigator.clipboard.writeText(shortcutUrl.value);
+    }
     return {
       value,
+      shortcutUrl,
       profession,
       position,
       rarity,
@@ -136,6 +153,7 @@ export default defineComponent({
       result,
       number2names,
       isOnly,
+      copyUrl,
       xs,
     };
   },
@@ -210,6 +228,31 @@ export default defineComponent({
         {{ c }}
       </Checkbox>
     </FilterRow>
+    <table class="wikitable w-full mt-2">
+      <tbody>
+        <tr>
+          <th style="text-align: left">
+            如需分享筛选结果，请
+            <a @click="copyUrl()">点此复制链接</a>。
+          </th>
+        </tr>
+        <tr>
+          <td>
+            <div
+              style="
+                width: 100%;
+                max-width: 100%;
+                word-break: break-all;
+                word-wrap: break-word;
+                white-space: normal;
+              "
+            >
+              {{ shortcutUrl }}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
   <div v-if="xs" class="w-full mt-2">
     <div

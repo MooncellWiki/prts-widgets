@@ -1,3 +1,4 @@
+import { makeJsonEncoder, makeJsonDecoder } from "@urlpack/json";
 // bitmap的格式是 职业 位置 稀有度 词缀
 export const profession = [
   "近卫",
@@ -205,10 +206,56 @@ export class Char {
     return char;
   }
 
-  // dump() {
-  //   console.log(this.bitmap.value.toString(2).padStart(profession.length + position.length + rarity.length + tag.length, '0'))
-  //   console.log(number2names(this.bitmap.value))
-  // }
+  dump(): string {
+    const encoder = makeJsonEncoder();
+    const professionState = this.bitmap.range(
+      professionIndex - profession.length,
+      professionIndex,
+    );
+    const positionState = this.bitmap.range(
+      positionIndex - position.length,
+      positionIndex,
+    );
+    const rarityState = this.bitmap.range(
+      rarityIndex - rarity.length,
+      rarityIndex,
+    );
+    const tagState = this.bitmap.range(tagIndex - tag.length, tagIndex);
+    const payload = {
+      profession:
+        professionState >> (position.length + rarity.length + tag.length),
+      position: positionState >> (rarity.length + tag.length),
+      rarity: rarityState >> tag.length,
+      tag: tagState,
+    };
+    console.log(payload);
+
+    return encoder.encode(payload);
+  }
+
+  load(encoded: string) {
+    const decoder = makeJsonDecoder();
+    const indexes = {
+      profession: position.length + rarity.length + tag.length,
+      position: rarity.length + tag.length,
+      rarity: tag.length,
+      tag: 0,
+    };
+    Object.entries(decoder.decode(encoded) as Record<string, number>).forEach(
+      ([k, v]) => {
+        const index =
+          indexes[k as "profession" | "position" | "rarity" | "tag"];
+        const binaryString = (v >>> 0).toString(2);
+        console.log(v);
+        console.log(binaryString);
+        let loopCount = 0;
+        [...binaryString].reverse().forEach((c) => {
+          if (c !== "0") this.bitmap.set(index + loopCount);
+          loopCount++;
+        });
+      },
+    );
+  }
 }
 
 export function can5(num: number) {
