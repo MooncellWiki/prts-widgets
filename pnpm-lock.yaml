@@ -11,6 +11,9 @@ dependencies:
   '@sentry/tracing':
     specifier: ^7.73.0
     version: 7.73.0
+  '@urlpack/json':
+    specifier: ^1.1.0
+    version: 1.1.0
   '@vicons/material':
     specifier: ^0.12.0
     version: 0.12.0
@@ -1077,6 +1080,27 @@ packages:
     transitivePeerDependencies:
       - rollup
     dev: true
+
+  /@urlpack/base-codec@1.1.0:
+    resolution: {integrity: sha512-c+yASLIkNvcygQVbfEtGfCMIerFKfdwoDIbctZr+i2klMig6htWw0k4JQ2A9CgIYdGXrKb/xXr8zJmWqQvxqyQ==}
+    dev: false
+
+  /@urlpack/base58@1.1.0:
+    resolution: {integrity: sha512-riqRKeXkCrXFlELe2eCcQZ1BML2qu6o9VIntP+NbMQdo6NGi3JdolzS8jvSJIXwQufXJTMaUPjuz1lw+JLCxoA==}
+    dependencies:
+      '@urlpack/base-codec': 1.1.0
+    dev: false
+
+  /@urlpack/json@1.1.0:
+    resolution: {integrity: sha512-pqMl2iaJCSNmE+xWEeaq0AuXj4TkbzUy9Y36rKF8PK/i9mElzBMet7fnPmsrYVp9LISK2k//EG50sZq6UaA0wg==}
+    dependencies:
+      '@urlpack/base58': 1.1.0
+      '@urlpack/msgpack': 1.1.0
+    dev: false
+
+  /@urlpack/msgpack@1.1.0:
+    resolution: {integrity: sha512-TJAhPZ0asYvPu/7+pfeDHOTyt49Oq9z2/6TOaM4PvOVQShNWZAEzDfV28QJ/KqZmWRXDt675ZMyUJ+aboaWnKQ==}
+    dev: false
 
   /@vicons/material@0.12.0:
     resolution: {integrity: sha512-chv1CYAl8P32P3Ycwgd5+vw/OFNc2mtkKdb1Rw4T5IJmKy6GVDsoUKV3N2l208HATn7CCQphZtuPDdsm7K2kmA==}
