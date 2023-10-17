@@ -46,7 +46,14 @@ export default defineComponent({
   },
   props: {},
   setup() {
-    const staticData = ref<Record<string, number[]>>({
+    const staticData = ref<{
+      star3: [number, number];
+      star2: [number, number];
+      star1: [number, number];
+      trim: [number, number];
+      all: [number, number];
+      cateNums: Record<string, number>;
+    }>({
       star3: [0, 0],
       star2: [0, 0],
       star1: [0, 0],
@@ -63,6 +70,7 @@ export default defineComponent({
       medalMetaData.value = await getMedalMetaData();
       Object.values(medalMetaData.value.medal).forEach((medal) => {
         staticData.value.all[medal.isHidden ? 1 : 0] += 1;
+        // @ts-expect-error rarity will be 1/2/3
         staticData.value[`star${medal.rarity}`][medal.isHidden ? 1 : 0] += 1;
         staticData.value.trim[medal.isHidden ? 1 : 0] += medal.isTrim ? 1 : 0;
       });
@@ -78,7 +86,7 @@ export default defineComponent({
             },
           );
         });
-      })
+      });
     });
     const showFilter = ref(true);
     const showSecretMedalStatic = ref(false);
@@ -109,9 +117,9 @@ export default defineComponent({
           hiddenCatExpanded.value = true;
         } else {
           hiddenCatExpanded.value = false;
-        };
-      };
-    }
+        }
+      }
+    };
     return {
       medalMetaData,
       zhCN,
@@ -308,12 +316,33 @@ export default defineComponent({
         <NCollapse @item-header-click="collapseTitleChange">
           <NCollapseItem
             v-for="cate in medalMetaData.category"
+            :key="cate.name"
             :name="cate.name"
           >
             <template #header>
-              <NText :type="cate.name=='加密奖章' ? (hiddenCatExpanded ? 'warning' : 'default') : 'default'"
-              :tag="cate.name=='加密奖章' ? (hiddenCatExpanded ? 'b' : 'span') : 'span'">
-                {{ cate.name=='加密奖章' ? (hiddenCatExpanded ? `${cate.name} (${staticData.cateNums[cate.name]})` : '？？？(??)') : `${cate.name} (${staticData.cateNums[cate.name]})` }}
+              <NText
+                :type="
+                  cate.name == '加密奖章'
+                    ? hiddenCatExpanded
+                      ? 'warning'
+                      : 'default'
+                    : 'default'
+                "
+                :tag="
+                  cate.name == '加密奖章'
+                    ? hiddenCatExpanded
+                      ? 'b'
+                      : 'span'
+                    : 'span'
+                "
+              >
+                {{
+                  cate.name == "加密奖章"
+                    ? hiddenCatExpanded
+                      ? `${cate.name} (${staticData.cateNums[cate.name]})`
+                      : "？？？(??)"
+                    : `${cate.name} (${staticData.cateNums[cate.name]})`
+                }}
               </NText>
             </template>
             <template #header-extra>
