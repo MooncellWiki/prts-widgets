@@ -14,9 +14,11 @@ import {
   NNumberAnimation,
   NRow,
   NStatistic,
+  NText,
   NTooltip,
   zhCN,
 } from "naive-ui";
+import type { CollapseProps } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 
@@ -34,6 +36,7 @@ export default defineComponent({
     NConfigProvider,
     NLayout,
     NStatistic,
+    NText,
     NRow,
     NCol,
     NNumberAnimation,
@@ -49,6 +52,7 @@ export default defineComponent({
       star1: [0, 0],
       trim: [0, 0],
       all: [0, 0],
+      cateNums: {},
     });
     const medalMetaData = ref<MedalMetaData>({
       medal: {},
@@ -58,10 +62,23 @@ export default defineComponent({
     onMounted(async () => {
       medalMetaData.value = await getMedalMetaData();
       Object.values(medalMetaData.value.medal).forEach((medal) => {
-        staticData.value.all[medal.decrypt ? 1 : 0] += 1;
-        staticData.value[`star${medal.rarity}`][medal.decrypt ? 1 : 0] += 1;
-        staticData.value.trim[medal.decrypt ? 1 : 0] += medal.isTrim ? 1 : 0;
+        staticData.value.all[medal.isHidden ? 1 : 0] += 1;
+        staticData.value[`star${medal.rarity}`][medal.isHidden ? 1 : 0] += 1;
+        staticData.value.trim[medal.isHidden ? 1 : 0] += medal.isTrim ? 1 : 0;
       });
+      Object.values(medalMetaData.value.category).forEach((cate) => {
+        staticData.value.cateNums[cate.name] = 0;
+        cate.medal.forEach(() => {
+          staticData.value.cateNums[cate.name] += 1;
+        });
+        cate.medalGroup.forEach((groupId) => {
+          Object.values(medalMetaData.value.medalGroup[groupId].medal).forEach(
+            () => {
+              staticData.value.cateNums[cate.name] += 1;
+            },
+          );
+        });
+      })
     });
     const showFilter = ref(true);
     const showSecretMedalStatic = ref(false);
@@ -82,6 +99,19 @@ export default defineComponent({
       rarity: [],
       special: [],
     });
+    const hiddenCatExpanded = ref(false);
+    const collapseTitleChange: CollapseProps["onItemHeaderClick"] = ({
+      name,
+      expanded,
+    }) => {
+      if (name == "加密奖章") {
+        if (expanded) {
+          hiddenCatExpanded.value = true;
+        } else {
+          hiddenCatExpanded.value = false;
+        };
+      };
+    }
     return {
       medalMetaData,
       zhCN,
@@ -92,6 +122,8 @@ export default defineComponent({
       showFilter,
       showSecretMedalStatic,
       staticData,
+      collapseTitleChange,
+      hiddenCatExpanded,
     };
   },
 });
@@ -273,16 +305,24 @@ export default defineComponent({
         </template>
       </NCard>
       <NCard>
-        <NCollapse>
+        <NCollapse @item-header-click="collapseTitleChange">
           <NCollapseItem
             v-for="cate in medalMetaData.category"
-            :key="cate.name"
-            :title="cate.name"
+            :name="cate.name"
           >
+            <template #header>
+              <NText :type="cate.name=='加密奖章' ? (hiddenCatExpanded ? 'warning' : 'default') : 'default'"
+              :tag="cate.name=='加密奖章' ? (hiddenCatExpanded ? 'b' : 'span') : 'span'">
+                {{ cate.name=='加密奖章' ? (hiddenCatExpanded ? `${cate.name} (${staticData.cateNums[cate.name]})` : '？？？(??)') : `${cate.name} (${staticData.cateNums[cate.name]})` }}
+              </NText>
+            </template>
             <template #header-extra>
               {{ cate.desc }}
             </template>
             <!--<div v-for="medalId in cate.medal"> {{ medalMetaData.medal[medalId].name }} </div>-->
+            <NCard v-if="cate.extraDesc">
+              <div v-html="cate.extraDesc"></div>
+            </NCard>
             <NGrid cols="1 l:2" responsive="screen">
               <NGridItem v-for="medalId in cate.medal" :key="medalId">
                 <MedalComponent :medal-data="medalMetaData.medal[medalId]">

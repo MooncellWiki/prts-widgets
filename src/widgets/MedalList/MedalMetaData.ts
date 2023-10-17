@@ -1,10 +1,11 @@
 export interface Medal {
   name: string;
   alias: string;
-  rarity?: number;
+  rarity: number;
   desc: string;
   method: string;
   decrypt?: string;
+  isHidden: boolean;
   isTrim: boolean;
   trimMethod?: string;
   reward?: string;
@@ -29,6 +30,7 @@ export interface MedalMetaData {
     [key: string]: {
       name: string;
       desc: string;
+      extraDesc?: string;
       subCategory?: Array<string>;
       medalGroup: Array<string>;
       medal: Array<string>;
