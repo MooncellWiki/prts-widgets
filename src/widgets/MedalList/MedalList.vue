@@ -329,7 +329,7 @@ export default defineComponent({
                     : 'default'
                 "
                 :tag="
-                  cate.name == '加密奖章'
+                  cate.name === '加密奖章'
                     ? hiddenCatExpanded
                       ? 'b'
                       : 'span'
