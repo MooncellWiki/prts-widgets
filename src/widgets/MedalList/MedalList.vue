@@ -337,7 +337,7 @@ export default defineComponent({
                 "
               >
                 {{
-                  cate.name == "加密奖章"
+                  cate.name === "加密奖章"
                     ? hiddenCatExpanded
                       ? `${cate.name} (${staticData.cateNums[cate.name]})`
                       : "？？？(??)"
