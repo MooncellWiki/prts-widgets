@@ -55,7 +55,7 @@ export default defineComponent({
 </script>
 
 <template>
-  <NCard title="蚀刻章统计" class="">
+  <NCard title="蚀刻章统计">
     <template #header-extra>
       <NTooltip trigger="hover">
         <template #trigger>
