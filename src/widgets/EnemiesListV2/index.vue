@@ -460,7 +460,7 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
+    <NLayout class="antialiased mx-auto">
       <FilterGroup
         v-for="group in filterConfig.groups"
         :key="group.title"
