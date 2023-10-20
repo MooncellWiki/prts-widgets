@@ -154,7 +154,7 @@ export default defineComponent({
 
 <template>
   <NConfigProvider preflight-style-disabled>
-    <NLayout class="md:p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
+    <NLayout class="antialiased mx-auto">
       <NCard title="光荣之路">
         <template #header-extra>
           <div class="mx-1 cursor-pointer">
@@ -211,12 +211,13 @@ export default defineComponent({
               </NText>
             </template>
             <template #header-extra>
-              {{ cate.desc }}
+              <span class="<lg:hidden">{{ cate.desc }}</span>
             </template>
+            <span class="lg:hidden p-1">{{ cate.desc }}</span>
             <NCard v-if="cate.extraDesc">
               <div v-html="cate.extraDesc"></div>
             </NCard>
-            <NGrid cols="1 l:2" responsive="screen">
+            <NGrid cols="1 l:2" :x-gap="12" :y-gap="8" responsive="screen">
               <NGridItem
                 v-for="medalId in cate.medal.filter((medalId) =>
                   checkMedalExists(medalId),

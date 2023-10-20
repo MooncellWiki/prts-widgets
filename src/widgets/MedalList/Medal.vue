@@ -1,20 +1,7 @@
 <script lang="ts">
 import { defineComponent, ref, type PropType } from "vue";
 
-import {
-  NCard,
-  NConfigProvider,
-  NH3,
-  NImage,
-  NLayout,
-  NLayoutContent,
-  NLayoutFooter,
-  NLayoutHeader,
-  NLayoutSider,
-  NTag,
-  NTooltip,
-  zhCN,
-} from "naive-ui";
+import { NCard, NConfigProvider, NImage, NTag, NTooltip } from "naive-ui";
 
 import { getImagePath } from "../../utils/utils";
 
@@ -25,12 +12,6 @@ export default defineComponent({
     NConfigProvider,
     NCard,
     NImage,
-    NLayout,
-    NLayoutSider,
-    NLayoutHeader,
-    NLayoutContent,
-    NLayoutFooter,
-    NH3,
     NTag,
     NTooltip,
   },
@@ -45,7 +26,6 @@ export default defineComponent({
     return {
       getImagePath,
       inDecrypt,
-      zhCN,
     };
   },
 });
@@ -54,7 +34,6 @@ export default defineComponent({
 <template>
   <NConfigProvider
     preflight-style-disabled
-    :locale="zhCN"
     :theme-overrides="{
       Card: {
         paddingMedium: '0',
@@ -75,37 +54,37 @@ export default defineComponent({
     }"
   >
     <NCard>
-      <NLayout has-sider>
-        <NLayoutSider
-          bordered
-          content-style="padding: 20px; text-align:center; background:#464646;"
-          width="150"
-        >
+      <div class="flex <lg:flex-col">
+        <div class="bg-[#464646] <lg:flex <lg:justify-center <lg:w-full">
           <NImage
             width="100"
+            class="p-8"
             :src="`/images/${getImagePath(`蚀刻章_${medalData.alias}.png`)}`"
             show-toolbar-tooltip
             :previewed-img-props="{
               style: {
+                padding: '20px',
                 background: '#2f2f2fdb',
-                padding: '10px',
                 borderRadius: '5px',
               },
             }"
           />
-        </NLayoutSider>
-        <NLayout>
-          <NLayoutHeader bordered style="padding: 10px">
-            <NH3 style="padding: 0">{{ medalData.name }}</NH3>
-          </NLayoutHeader>
-          <NLayoutContent bordered content-style="padding: 10px;">
+        </div>
+
+        <div class="flex flex-col w-full divide-y!">
+          <h3 class="p-2.5!">{{ medalData.name }}</h3>
+          <div
+            class="p-2.5! grow flex items-center align-middle border-0 border-solid border-[#e5e7eb]"
+          >
             <span
               class="whitespace-pre-wrap font-italic"
               v-html="medalData.desc"
-            ></span>
-          </NLayoutContent>
-          <NLayoutFooter bordered style="padding: 10px">
-            <template v-if="!medalData.decrypt">
+            />
+          </div>
+          <div
+            class="p-2.5! border-0 border-solid border-[#e5e7eb] bg-[#fafafc] align-middle"
+          >
+            <div v-if="!medalData.decrypt">
               <NTag
                 :color="{
                   color: '#565656',
@@ -113,10 +92,9 @@ export default defineComponent({
                   borderColor: '#565656',
                 }"
                 >获得方式</NTag
-              >
-              {{ medalData.method }}
-            </template>
-            <template v-if="medalData.decrypt">
+              ><span class="pl-1">{{ medalData.method }}</span>
+            </div>
+            <div v-else>
               <NTooltip
                 trigger="hover"
                 :style="{ background: inDecrypt ? '#1976d2' : '#262626FF' }"
@@ -131,11 +109,13 @@ export default defineComponent({
                 </template>
                 点击{{ inDecrypt ? "加密" : "破译" }}蚀刻章获得方式
               </NTooltip>
-              {{ inDecrypt ? medalData.decrypt : medalData.method }}
-            </template>
-          </NLayoutFooter>
-        </NLayout>
-      </NLayout>
+              <span class="pl-1">{{
+                inDecrypt ? medalData.decrypt : medalData.method
+              }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </NCard>
   </NConfigProvider>
 </template>
