@@ -1,5 +1,5 @@
 <script lang="ts">
-import { defineComponent, onMounted, ref, computed } from "vue";
+import { computed, defineComponent, onMounted, ref } from "vue";
 
 import type { CollapseProps } from "naive-ui";
 import {
@@ -44,22 +44,6 @@ export default defineComponent({
       medalGroup: {},
       category: {},
     });
-    const cateNums = computed(() => {
-      return Object.fromEntries(
-        Object.values(medalMetaData.value.category).map((category) => {
-          return [
-            category.name,
-            category.medal.length +
-              category.medalGroup
-                .map(
-                  (groupId) =>
-                    medalMetaData.value.medalGroup[groupId].medal.length,
-                )
-                .reduce((a, b) => a + b, 0),
-          ];
-        }),
-      );
-    });
 
     onMounted(async () => {
       medalMetaData.value = await getMedalMetaData();
@@ -82,6 +66,59 @@ export default defineComponent({
       rarity: [],
       special: [],
     });
+    const filteredMedalData = computed(() => {
+      const medal = Object.fromEntries(
+        Object.entries(medalMetaData.value.medal).filter(([, medal]) => {
+          if (
+            states.value.rarity.length > 0 &&
+            states.value.rarity.length < filterRarity.options.length &&
+            !states.value.rarity.includes(rarityMap[medal.rarity.toString()])
+          ) {
+            return false;
+          }
+          if (states.value.special.includes("有镀层")) {
+            return medal.isTrim;
+          }
+
+          return true;
+        }),
+      );
+      const category = Object.fromEntries(
+        Object.entries(medalMetaData.value.category).map(([key, cate]) => {
+          return [
+            key,
+            {
+              ...cate,
+              medal: cate.medal.filter((medalId) =>
+                Object.keys(medal).includes(medalId),
+              ),
+            },
+          ];
+        }),
+      );
+
+      return {
+        medal,
+        medalGroup: medalMetaData.value.medalGroup,
+        category,
+      };
+    });
+    const cateNums = computed(() => {
+      return Object.fromEntries(
+        Object.values(filteredMedalData.value.category).map((category) => {
+          return [
+            category.name,
+            category.medal.length +
+              category.medalGroup
+                .map(
+                  (groupId) =>
+                    filteredMedalData.value.medalGroup[groupId].medal.length,
+                )
+                .reduce((a, b) => a + b, 0),
+          ];
+        }),
+      );
+    });
     const hiddenCatExpanded = ref(false);
     const collapseTitleChange: CollapseProps["onItemHeaderClick"] = ({
       name,
@@ -95,8 +132,11 @@ export default defineComponent({
         }
       }
     };
+    const checkMedalExists = (medalId: string) => {
+      return Object.keys(filteredMedalData.value.medal).includes(medalId);
+    };
+
     return {
-      medalMetaData,
       filterRarity,
       rarityMap,
       filterSpecial,
@@ -105,6 +145,8 @@ export default defineComponent({
       collapseTitleChange,
       hiddenCatExpanded,
       cateNums,
+      filteredMedalData,
+      checkMedalExists,
     };
   },
 });
@@ -120,7 +162,7 @@ export default defineComponent({
               <template #trigger>
                 <span class="text-2xl mdi mdi-chart-bar" />
               </template>
-              <MedalStats :medal-meta-data="medalMetaData" />
+              <MedalStats :medal-meta-data="filteredMedalData" />
             </NPopover>
           </div>
           <div class="mx-1 cursor-pointer" @click="showFilter = !showFilter">
@@ -152,7 +194,7 @@ export default defineComponent({
       <NCard>
         <NCollapse @item-header-click="collapseTitleChange">
           <NCollapseItem
-            v-for="cate in medalMetaData.category"
+            v-for="cate in filteredMedalData.category"
             :key="cate.name"
             :name="cate.name"
           >
@@ -175,19 +217,27 @@ export default defineComponent({
               <div v-html="cate.extraDesc"></div>
             </NCard>
             <NGrid cols="1 l:2" responsive="screen">
-              <NGridItem v-for="medalId in cate.medal" :key="medalId">
-                <MedalComponent :medal-data="medalMetaData.medal[medalId]" />
+              <NGridItem
+                v-for="medalId in cate.medal.filter((medalId) =>
+                  checkMedalExists(medalId),
+                )"
+                :key="medalId"
+              >
+                <MedalComponent
+                  :medal-data="filteredMedalData.medal[medalId]"
+                />
               </NGridItem>
             </NGrid>
             <div v-for="medalGroupId in cate.medalGroup" :key="medalGroupId">
-              【套组】{{ medalMetaData.medalGroup[medalGroupId].name }}<br />{{
-                medalMetaData.medalGroup[medalGroupId].desc
-              }}
+              【套组】{{ filteredMedalData.medalGroup[medalGroupId].name
+              }}<br />{{ filteredMedalData.medalGroup[medalGroupId].desc }}
               <div
-                v-for="medalId in medalMetaData.medalGroup[medalGroupId].medal"
+                v-for="medalId in filteredMedalData.medalGroup[
+                  medalGroupId
+                ].medal.filter((medalId) => checkMedalExists(medalId))"
                 :key="medalId"
               >
-                {{ medalMetaData.medal[medalId].name }}
+                {{ filteredMedalData.medal[medalId].name }}
               </div>
             </div>
           </NCollapseItem>

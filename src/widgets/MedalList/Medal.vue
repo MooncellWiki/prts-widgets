@@ -100,7 +100,7 @@ export default defineComponent({
           </NLayoutHeader>
           <NLayoutContent bordered content-style="padding: 10px;">
             <span
-              style="white-space: pre-wrap; font-style: italic"
+              class="whitespace-pre-wrap font-italic"
               v-html="medalData.desc"
             ></span>
           </NLayoutContent>
