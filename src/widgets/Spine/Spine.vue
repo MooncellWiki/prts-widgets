@@ -204,7 +204,7 @@ export default defineComponent({
       recording.value = true;
       await spineRef.spine.record(
         curAni.value,
-        `${name}-${curSkin.value}-${curModel.value}-${curAni.value}-x${speed.value}`,
+        `${props.name}-${curSkin.value}-${curModel.value}-${curAni.value}-x${speed.value}`,
       );
       recording.value = false;
     }
