@@ -18,7 +18,7 @@ import {
 
 import { getImagePath } from "../../utils/utils";
 
-import type { Medal } from "./MedalMetaData";
+import type { Medal } from "./types";
 
 export default defineComponent({
   components: {
