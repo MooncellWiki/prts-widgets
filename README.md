@@ -1,17 +1,16 @@
 # PRTS Widgets
 
-## Recommended IDE Setup
+## 推荐开发环境配置
 
 - [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar)
 
-## Type Support For `.vue` Imports in TS
+## `.vue` TypeScript 类型支持
 
-Since TypeScript cannot handle type information for `.vue` imports, they are shimmed to be a generic Vue component type by default. In most cases this is fine if you don't really care about component prop types outside of templates. However, if you wish to get actual prop types in `.vue` imports (for example to get props validation when using manual `h(...)` calls), you can enable Volar's Take Over mode by following these steps:
+由于 TypeScript 不能处理 `.vue`  导入的类型信息，它们默认会被作为通用的 Vue 组件类型来处理。在大多数情况下，如果您不太关心模板之外的组件属性类型，这是可以接受的。然而，如果您希望在 `.vue` 导入中获取实际的属性类型（例如，在使用手动的 `h(...)` 调用时获取属性验证），您可以按照以下步骤启用 Volar 的接管模式：
 
-1. Run `Extensions: Show Built-in Extensions` from VS Code's command palette, look for `TypeScript and JavaScript Language Features`, then right click and select `Disable (Workspace)`. By default, Take Over mode will enable itself if the default TypeScript extension is disabled.
-2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
-
-You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+1. 从 VS Code 的命令面板运行 `Extensions: Show Built-in Extensions`，找到 `TypeScript and JavaScript Language Features`，然后右键单击并选择 `Disable (Workspace)`。默认情况下，如果默认的 TypeScript 扩展被禁用，接管模式将自动启用。
+2. 通过从命令面板运行 `Developer: Reload Window` 来重新加载 VS Code 窗口。
+您可以在 [这里](https://github.com/johnsoncodehk/volar/discussions/471) 了解更多关于接管模式的信息。
 
 ## 子应用列表
 
