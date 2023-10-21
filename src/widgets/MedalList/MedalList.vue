@@ -16,6 +16,8 @@ import {
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
+import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
 
 import MedalComponent from "./Medal.vue";
 import MedalStats from "./MedalStats.vue";
@@ -108,13 +110,13 @@ export default defineComponent({
         Object.values(filteredMedalData.value.category).map((category) => {
           return [
             category.name,
-            category.medal.length +
-              category.medalGroup
-                .map(
-                  (groupId) =>
-                    filteredMedalData.value.medalGroup[groupId].medal.length,
-                )
-                .reduce((a, b) => a + b, 0),
+            [
+              category.medal.length,
+              ...category.medalGroup.map(
+                (groupId) =>
+                  filteredMedalData.value.medalGroup[groupId].medal.length,
+              ),
+            ].reduce((a, b) => a + b, 0),
           ];
         }),
       );
@@ -124,21 +126,17 @@ export default defineComponent({
       name,
       expanded,
     }) => {
-      if (name == "加密奖章") {
-        if (expanded) {
-          hiddenCatExpanded.value = true;
-        } else {
-          hiddenCatExpanded.value = false;
-        }
-      }
+      hiddenCatExpanded.value = name === "加密奖章" && expanded;
     };
     const checkMedalExists = (medalId: string) => {
       return Object.keys(filteredMedalData.value.medal).includes(medalId);
     };
+    const { theme, toggleDark } = useTheme();
 
     return {
       filterRarity,
       rarityMap,
+      i18nConfig: getNaiveUILocale(),
       filterSpecial,
       states,
       showFilter,
@@ -147,13 +145,20 @@ export default defineComponent({
       cateNums,
       filteredMedalData,
       checkMedalExists,
+      theme,
+      toggleDark,
     };
   },
 });
 </script>
 
 <template>
-  <NConfigProvider preflight-style-disabled>
+  <NConfigProvider
+    preflight-style-disabled
+    :theme="theme"
+    :locale="i18nConfig.locale"
+    :date-locale="i18nConfig.dateLocale"
+  >
     <NLayout class="antialiased mx-auto">
       <NCard title="光荣之路">
         <template #header-extra>

@@ -70,7 +70,6 @@ export default defineComponent({
             }"
           />
         </div>
-
         <div class="flex flex-col w-full divide-y!">
           <h3 class="p-2.5!">{{ medalData.name }}</h3>
           <div
