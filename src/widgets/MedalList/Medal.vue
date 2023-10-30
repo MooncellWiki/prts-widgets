@@ -89,10 +89,10 @@ export default defineComponent({
         </div>
         <div class="flex flex-col w-full divide-y!">
           <h3
-            :class="
-              'p-2.5! m-0! bg-gradient-to-r color-white' +
-              rarityGradient[medalData.rarity]
-            "
+            :class="[
+              'p-2.5! m-0! bg-gradient-to-r color-white',
+              rarityGradient[medalData.rarity],
+            ]"
           >
             {{ medalData.name }}
           </h3>
