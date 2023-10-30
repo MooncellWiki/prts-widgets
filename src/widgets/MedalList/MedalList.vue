@@ -15,11 +15,11 @@ import {
   NText,
 } from "naive-ui";
 
-import { getImagePath } from "../../utils/utils";
-
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
+
+import { getImagePath } from "../../utils/utils";
 
 import MedalComponent from "./Medal.vue";
 import MedalStats from "./MedalStats.vue";
@@ -165,7 +165,10 @@ export default defineComponent({
     <NLayout class="antialiased mx-auto">
       <NCard>
         <template #header>
-          <img :src="`/images/${getImagePath('图标_光荣之路.png')}`" width="25"/>&nbsp;&nbsp;光荣之路
+          <img
+            :src="`/images/${getImagePath('图标_光荣之路.png')}`"
+            width="25"
+          />&nbsp;&nbsp;光荣之路
         </template>
         <template #header-extra>
           <div class="mx-1 cursor-pointer">

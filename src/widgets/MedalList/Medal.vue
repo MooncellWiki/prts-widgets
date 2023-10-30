@@ -1,7 +1,7 @@
 <script lang="ts">
 import { defineComponent, ref, type PropType } from "vue";
 
-import { NCard, NConfigProvider, NImage, NTag, NTooltip, NGradientText } from "naive-ui";
+import { NCard, NConfigProvider, NImage, NTag, NTooltip } from "naive-ui";
 
 import { getImagePath } from "../../utils/utils";
 
@@ -14,7 +14,6 @@ export default defineComponent({
     NImage,
     NTag,
     NTooltip,
-    NGradientText,
   },
   props: {
     medalData: {
@@ -23,17 +22,16 @@ export default defineComponent({
     },
   },
   setup() {
-    const inDecrypt = ref(false);
-    const showTrimed = ref(false);
-    const rarityGradient = ref([
-      "linear-gradient(90deg, #75655d, #decaa2)",
-      "linear-gradient(90deg, #83898b, #7bb7b7)",
-      "linear-gradient(90deg, #a56e37, #f5c391)",
-    ]);
+    const rarityGradient: Record<number, string> = {
+      1: "from-[#75655d] to-[#decaa2]",
+      2: "from-[#83898b] to-[#7bb7b7]",
+      3: "from-[#a56e37] to-[#f5c391]",
+    };
+
     return {
       getImagePath,
-      inDecrypt,
-      showTrimed,
+      isDecrypt: ref(false),
+      showTrimed: ref(false),
       rarityGradient,
     };
   },
@@ -66,26 +64,18 @@ export default defineComponent({
       <div class="flex <lg:flex-col">
         <div class="bg-[#464646] <lg:flex <lg:justify-center <lg:w-full">
           <NImage
-            v-if="!showTrimed"
             width="100"
-            class="p-8"
-            :src="`/images/${getImagePath(`蚀刻章_${medalData.alias}.png`)}`"
-            show-toolbar-tooltip
-            :previewed-img-props="{
-              style: {
-                padding: '20px',
-                background: '#2f2f2fdb',
-                borderRadius: '5px',
+            :class="[
+              'p-8',
+              {
+                'bg-gradient-to-b from-[#485a5c] to-[#1d0942]':
+                  showTrimed && medalData.isTrim,
               },
-            }"
-          />
-          <NImage
-            v-if="showTrimed && medalData.isTrim"
-            width="100"
-            class="p-8"
-            style="background: linear-gradient(#485a5c, #1d0942);"
+            ]"
             :src="`/images/${getImagePath(
-              `蚀刻章_${medalData.alias}_镀层.png`,
+              `蚀刻章_${medalData.alias}${
+                showTrimed && medalData.isTrim ? '_镀层' : ''
+              }.png`,
             )}`"
             show-toolbar-tooltip
             :previewed-img-props="{
@@ -99,8 +89,10 @@ export default defineComponent({
         </div>
         <div class="flex flex-col w-full divide-y!">
           <h3
-            class="p-2.5! m-0!"
-            :style="'color:white; background:' + rarityGradient[medalData.rarity - 1]"
+            :class="
+              'p-2.5! m-0! bg-gradient-to-r color-white' +
+              rarityGradient[medalData.rarity]
+            "
           >
             {{ medalData.name }}
           </h3>
@@ -128,23 +120,23 @@ export default defineComponent({
             <div v-else>
               <NTooltip
                 trigger="hover"
-                :style="{ background: inDecrypt ? '#1976d2' : '#262626FF' }"
+                :style="{ background: isDecrypt ? '#1976d2' : '#262626FF' }"
                 :arrow-style="{
-                  background: inDecrypt ? '#1976d2' : '#262626FF',
+                  background: isDecrypt ? '#1976d2' : '#262626FF',
                 }"
               >
                 <template #trigger>
-                  <NTag v-model:checked="inDecrypt" checkable>{{
-                    inDecrypt ? "破译结果" : "获得方式"
+                  <NTag v-model:checked="isDecrypt" checkable>{{
+                    isDecrypt ? "破译结果" : "获得方式"
                   }}</NTag>
                 </template>
-                点击{{ inDecrypt ? "加密" : "破译" }}蚀刻章获得方式
+                点击{{ isDecrypt ? "加密" : "破译" }}蚀刻章获得方式
               </NTooltip>
               <span class="pl-1">{{
-                inDecrypt ? medalData.decrypt : medalData.method
+                isDecrypt ? medalData.decrypt : medalData.method
               }}</span>
             </div>
-            <div v-if="medalData.isTrim" style="margin-top: 2px;">
+            <div v-if="medalData.isTrim" class="mt-0.5">
               <NTooltip
                 trigger="hover"
                 :style="{ background: '#262626FF' }"
@@ -152,13 +144,9 @@ export default defineComponent({
               >
                 <template #trigger>
                   <NTag
-                    v-model:checked="showTrimed" checkable
-                    style="
-                      background: linear-gradient(#B2EBF2,#D1C4E9);
-                      color: #2f2f2f;
-                      border-color: #565656;
-                      font-weight: bold;
-                    "
+                    v-model:checked="showTrimed"
+                    checkable
+                    class="bg-gradient-to-b from-[#b2ebf2] to-[#d1c4e9] color-[#2f2f2f]! border-[#565656] font-bold"
                     >镀层方式</NTag
                   >
                 </template>
