@@ -1,7 +1,7 @@
-import fs from "node:fs";
-import { dirname, join } from "node:path";
-import process from "node:process";
-import { fileURLToPath } from "node:url";
+import fs from "fs";
+import { dirname, join } from "path";
+import process from "process";
+import { fileURLToPath } from "url";
 
 import { edit, login } from "./api.js";
 
@@ -10,8 +10,8 @@ function readDist() {
   const json = fs.readFileSync(join(__dirname, "../dist/manifest.json"), {
     encoding: "utf8",
   });
-  const manifest: Record<string, { file: string }> = JSON.parse(json);
-  const result: Record<string, { fileName: string; content: string }> = {};
+  const manifest = JSON.parse(json);
+  const result = {};
   Object.values(manifest).forEach((v) => {
     const name = v.file.split(".")[0];
     result[name] = {
@@ -41,7 +41,7 @@ async function main() {
         encoding: "utf8",
       });
 
-      const script: string = dist[name].content.trim();
+      const script = dist[name].content.trim();
       content = content
         .replaceAll("__CSS_CONTENT__", cssDom)
         .replaceAll("__SCRIPT_CONTENT__", script)

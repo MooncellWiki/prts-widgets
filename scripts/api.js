@@ -1,18 +1,10 @@
-import type { Method, SearchParameters } from "got";
 import got from "got";
 import { CookieJar } from "tough-cookie";
 
 const entry = "https://prts.wiki/api.php";
 const cookieJar = new CookieJar();
-async function request({
-  method,
-  body,
-  query,
-}: {
-  method?: Method;
-  body?: Record<string, any>;
-  query?: SearchParameters | URLSearchParams;
-}): Promise<any> {
+
+async function request({ method, body, query }) {
   return got(entry, {
     method: method || "GET",
     cookieJar,
@@ -20,6 +12,7 @@ async function request({
     searchParams: query,
   }).json();
 }
+
 export async function getCsrfToken() {
   const resp = await request({
     method: "GET",
@@ -32,6 +25,7 @@ export async function getCsrfToken() {
   });
   return resp.query.tokens.csrftoken;
 }
+
 async function getLoginToken() {
   const resp = await request({
     query: {
@@ -43,7 +37,8 @@ async function getLoginToken() {
   });
   return resp?.query?.tokens?.logintoken;
 }
-export async function login(name: string, password: string) {
+
+export async function login(name, password) {
   const token = await getLoginToken();
   if (!token) throw new Error("get login token failed");
 
@@ -62,9 +57,10 @@ export async function login(name: string, password: string) {
     throw new Error(resp);
   }
 }
+
 export async function create(
-  pagename: string,
-  content: string,
+  pagename,
+  content,
   summary = "by prts-micro-frontends script",
 ) {
   const token = await getCsrfToken();
@@ -83,10 +79,11 @@ export async function create(
   });
   console.log(resp);
 }
+
 export async function edit(
-  pagename: string,
-  content: string,
-  summary = "by prts-micro-frontends script",
+  pagename,
+  content,
+  summary = "by prts-widgets script",
 ) {
   const token = await getCsrfToken();
   const resp = await request({
@@ -103,10 +100,12 @@ export async function edit(
   });
   console.log(resp);
 }
-async function view(pagename: string) {
+
+async function view(pagename) {
   return got(`https://prts.wiki/w/${pagename}`);
 }
-export async function checkPageExist(pagename: string) {
+
+export async function checkPageExist(pagename) {
   try {
     await view(pagename);
     return true;
