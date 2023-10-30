@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "create": "node scripts/index.ts",
-    "update": "node scripts/update.ts",
+    "create": "node scripts/index.js",
+    "update": "node scripts/update.js",
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
