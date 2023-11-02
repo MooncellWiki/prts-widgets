@@ -33,11 +33,11 @@ export default defineComponent({
         : [],
     );
     Object.values(props.medalMetaData.medal).forEach((medal) => {
-      statsData.all.data[medal.decrypt ? 1 : 0] += 1;
+      statsData.all.data[medal.isHidden ? 1 : 0] += 1;
       statsData[`star${medal.rarity}` as keyof typeof statsData].data[
-        medal.decrypt ? 1 : 0
+        medal.isHidden ? 1 : 0
       ] += 1;
-      statsData.trim.data[medal.decrypt ? 1 : 0] += medal.isTrim ? 1 : 0;
+      statsData.trim.data[medal.isHidden ? 1 : 0] += medal.isTrim ? 1 : 0;
     });
     return {
       statsData,
@@ -80,8 +80,8 @@ export default defineComponent({
         <NStatistic :label="'加密' + item.name" :tabular-nums="true">
           <NNumberAnimation
             active
-            :from="item.data[0]"
-            :to="item.data.reduce((a, b) => a + b, 0)"
+            :from="0"
+            :to="item.data[1]"
             show-separator
           />
           <template #suffix>枚</template>
