@@ -21,43 +21,21 @@ export default defineComponent({
   setup(props) {
     const showSecret = ref(false);
     const statsData = computed(() => {
-      const medalList = Object.values(props.medalMetaData.medal);
-      const createRarityItem = (rarity: number) => {
-        return {
-          [`star${rarity}`]: {
-            data: [
-              medalList.filter(
-                (medal) => !medal.isHidden && medal.rarity == rarity,
-              ).length,
-              medalList.filter((medal) => medal.rarity == rarity).length,
-            ],
-            name: `${rarity}★蚀刻章`,
-            indieEncrypt: true,
-          },
-        };
+      const result = {
+        star3: { data: [0, 0], name: "3★蚀刻章", indieEncrypt: true },
+        star2: { data: [0, 0], name: "2★蚀刻章", indieEncrypt: true },
+        star1: { data: [0, 0], name: "1★蚀刻章", indieEncrypt: true },
+        trim: { data: [0, 0], name: "镀层蚀刻章", indieEncrypt: false },
+        all: { data: [0, 0], name: "已有蚀刻章", indieEncrypt: false },
       };
-
-      return {
-        ...createRarityItem(3),
-        ...createRarityItem(2),
-        ...createRarityItem(1),
-        trim: {
-          data: [
-            medalList.filter((medal) => !medal.isHidden && medal.isTrim).length,
-            medalList.length,
-          ],
-          name: "镀层蚀刻章",
-          indieEncrypt: false,
-        },
-        all: {
-          data: [
-            medalList.filter((medal) => !medal.isHidden).length,
-            medalList.length,
-          ],
-          name: "已有蚀刻章",
-          indieEncrypt: false,
-        },
-      };
+      Object.values(props.medalMetaData.medal).forEach((medal) => {
+        result.all.data[Number(medal.isHidden)]++;
+        result[`star${medal.rarity as 1 | 2 | 3}`].data[
+          Number(medal.isHidden)
+        ]++;
+        result.trim.data[Number(medal.isHidden)] += Number(medal.isTrim);
+      });
+      return result;
     });
 
     return {
@@ -96,23 +74,26 @@ export default defineComponent({
           <template #suffix>枚</template>
         </NStatistic>
       </div>
-      <div
-        v-for="(item, index) in showSecret
-          ? Object.values(statsData).filter((category) => category.indieEncrypt)
-          : []"
-        :key="index"
-      >
-        <NStatistic :label="'加密' + item.name" :tabular-nums="true">
-          <NNumberAnimation
-            active
-            :from="item.data[0]"
-            :to="item.data.reduce((a, b) => a + b, 0)"
-            show-separator
-          />
-          <template #suffix>枚</template>
-        </NStatistic>
-      </div>
+      <template v-if="showSecret">
+        <div
+          v-for="(item, index) in Object.values(statsData).filter(
+            (category) => category.indieEncrypt,
+          )"
+          :key="index"
+        >
+          <NStatistic :label="'加密' + item.name" :tabular-nums="true">
+            <NNumberAnimation
+              active
+              :from="0"
+              :to="item.data[1]"
+              show-separator
+            />
+            <template #suffix>枚</template>
+          </NStatistic>
+        </div>
+      </template>
     </div>
+
     <template #action>
       <p>
         <span class="mdi mdi-information-variant-circle" />
