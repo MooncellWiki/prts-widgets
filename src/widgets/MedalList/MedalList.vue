@@ -88,7 +88,6 @@ export default defineComponent({
         }),
       );
       const medalList = Object.keys(medal);
-      console.log(medalList, medalList.length);
       const medalGroup = Object.fromEntries(
         Object.entries(medalMetaData.value.medalGroup).map(([key, group]) => {
           return [
