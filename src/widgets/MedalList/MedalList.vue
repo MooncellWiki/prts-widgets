@@ -87,6 +87,21 @@ export default defineComponent({
           return true;
         }),
       );
+      const medalList = Object.keys(medal);
+      console.log(medalList, medalList.length);
+      const medalGroup = Object.fromEntries(
+        Object.entries(medalMetaData.value.medalGroup).map(([key, group]) => {
+          return [
+            key,
+            {
+              ...group,
+              medal: group.medal.filter((medalId) =>
+                medalList.includes(medalId),
+              ),
+            },
+          ];
+        }),
+      );
       const category = Object.fromEntries(
         Object.entries(medalMetaData.value.category).map(([key, cate]) => {
           return [
@@ -94,7 +109,7 @@ export default defineComponent({
             {
               ...cate,
               medal: cate.medal.filter((medalId) =>
-                Object.keys(medal).includes(medalId),
+                medalList.includes(medalId),
               ),
             },
           ];
@@ -103,7 +118,7 @@ export default defineComponent({
 
       return {
         medal,
-        medalGroup: medalMetaData.value.medalGroup,
+        medalGroup,
         category,
       };
     });

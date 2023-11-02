@@ -20,28 +20,48 @@ export default defineComponent({
   },
   setup(props) {
     const showSecret = ref(false);
-    const statsData = {
-      star3: { data: [0, 0], name: "3★蚀刻章", indieEncrypt: true },
-      star2: { data: [0, 0], name: "2★蚀刻章", indieEncrypt: true },
-      star1: { data: [0, 0], name: "1★蚀刻章", indieEncrypt: true },
-      trim: { data: [0, 0], name: "镀层蚀刻章", indieEncrypt: false },
-      all: { data: [0, 0], name: "已有蚀刻章", indieEncrypt: false },
-    };
-    const statsIndies = computed(() =>
-      showSecret.value
-        ? Object.values(statsData).filter((category) => category.indieEncrypt)
-        : [],
-    );
-    Object.values(props.medalMetaData.medal).forEach((medal) => {
-      statsData.all.data[medal.decrypt ? 1 : 0] += 1;
-      statsData[`star${medal.rarity}` as keyof typeof statsData].data[
-        medal.decrypt ? 1 : 0
-      ] += 1;
-      statsData.trim.data[medal.decrypt ? 1 : 0] += medal.isTrim ? 1 : 0;
+    const statsData = computed(() => {
+      const medalList = Object.values(props.medalMetaData.medal);
+      const createRarityItem = (rarity: number) => {
+        return {
+          [`star${rarity}`]: {
+            data: [
+              medalList.filter(
+                (medal) => !medal.isHidden && medal.rarity == rarity,
+              ).length,
+              medalList.filter((medal) => medal.rarity == rarity).length,
+            ],
+            name: `${rarity}★蚀刻章`,
+            indieEncrypt: true,
+          },
+        };
+      };
+
+      return {
+        ...createRarityItem(3),
+        ...createRarityItem(2),
+        ...createRarityItem(1),
+        trim: {
+          data: [
+            medalList.filter((medal) => !medal.isHidden && medal.isTrim).length,
+            medalList.length,
+          ],
+          name: "镀层蚀刻章",
+          indieEncrypt: false,
+        },
+        all: {
+          data: [
+            medalList.filter((medal) => !medal.isHidden).length,
+            medalList.length,
+          ],
+          name: "已有蚀刻章",
+          indieEncrypt: false,
+        },
+      };
     });
+
     return {
       statsData,
-      statsIndies,
       showSecret,
     };
   },
@@ -76,7 +96,12 @@ export default defineComponent({
           <template #suffix>枚</template>
         </NStatistic>
       </div>
-      <div v-for="(item, index) in statsIndies" :key="index">
+      <div
+        v-for="(item, index) in showSecret
+          ? Object.values(statsData).filter((category) => category.indieEncrypt)
+          : []"
+        :key="index"
+      >
         <NStatistic :label="'加密' + item.name" :tabular-nums="true">
           <NNumberAnimation
             active
