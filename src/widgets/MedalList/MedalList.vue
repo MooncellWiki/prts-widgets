@@ -13,6 +13,7 @@ import {
   NLayout,
   NPopover,
   NText,
+  NEmpty,
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
@@ -41,6 +42,7 @@ export default defineComponent({
     NGrid,
     NGridItem,
     NText,
+    NEmpty,
   },
   setup() {
     const medalMetaData = ref<MedalMetaData>({
@@ -256,8 +258,23 @@ export default defineComponent({
                   :medal-data="filteredMedalData.medal[medalId]"
                 />
               </NGridItem>
+              <NGridItem
+                v-if="cate.medal.length < 1 && cate.medalGroup.length < 1"
+                span="1 l:2"
+              >
+                <NEmpty>
+                  <template #default>
+                    <div class="text-center">
+                      什么都没有 0.0<br />试着调整一下过滤器？
+                    </div>
+                  </template>
+                </NEmpty>
+              </NGridItem>
             </NGrid>
-            <div v-for="medalGroupId in cate.medalGroup" :key="medalGroupId">
+            <div
+              v-for="medalGroupId in cate.medalGroup.slice().reverse()"
+              :key="medalGroupId"
+            >
               【套组】{{ filteredMedalData.medalGroup[medalGroupId].name
               }}<br />{{ filteredMedalData.medalGroup[medalGroupId].desc }}
               <div

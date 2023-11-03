@@ -26,7 +26,7 @@
 - Spine [Widget:Spinev2/dev](https://prts.wiki/w/Widget:Spinev2/dev)
 - 不期而遇事件 [Widget:IsEvent/dev](https://prts.wiki/w/Widget:ISEvent/dev)
 - 生息演算地图 [Widget:XbMapViewer/dev](https://prts.wiki/w/Widget:XbMapViewer/dev)
-
+- 蚀刻章（光荣之路）[Widget:MedalList/dev](https://prts.wiki/w/Widget:MedalList/dev)
 ## 项目配置
 
 ### 安装项目依赖

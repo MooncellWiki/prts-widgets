@@ -62,16 +62,19 @@ export default defineComponent({
   >
     <NCard>
       <div class="flex <lg:flex-col">
-        <div class="bg-[#464646] <lg:flex <lg:justify-center <lg:w-full">
+        <div
+          :class="[
+            'bg-[#464646]',
+            {
+              'bg-gradient-to-b from-[#485a5c] to-[#1d0942]':
+                showTrimed && medalData.isTrim,
+            },
+            '<lg:flex <lg:justify-center <lg:w-full',
+          ]"
+        >
           <NImage
             width="100"
-            :class="[
-              'p-8',
-              {
-                'bg-gradient-to-b from-[#485a5c] to-[#1d0942]':
-                  showTrimed && medalData.isTrim,
-              },
-            ]"
+            class="p-8"
             :src="`/images/${getImagePath(
               `蚀刻章_${medalData.alias}${
                 showTrimed && medalData.isTrim ? '_镀层' : ''
