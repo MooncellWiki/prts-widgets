@@ -19,6 +19,10 @@ export default defineComponent({
       type: Object as PropType<CharMemory>,
       required: true,
     },
+    isNew: {
+      type: Boolean,
+      default: false,
+    },
   },
   setup(props) {
     const src = computed(() => {
@@ -82,6 +86,12 @@ export default defineComponent({
         <span class="text-sm">{{ charMemory.char }}</span>
       </div>
       <div class="flex flex-col basis-4/5 justify-center items-center">
+        <div
+          v-if="isNew"
+          class="flex flex-col w-full bg-orange text-white my-1 text-center"
+        >
+          有新增密录
+        </div>
         <div
           v-for="mmr in charMemory.memories"
           :key="mmr.name"

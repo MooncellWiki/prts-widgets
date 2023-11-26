@@ -1,5 +1,12 @@
 <script lang="ts">
-import { computed, defineComponent, onMounted, reactive, ref } from "vue";
+import {
+  computed,
+  defineComponent,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 
 import {
   NButton,
@@ -17,6 +24,7 @@ import { useTheme } from "@/utils/theme";
 import Memory from "./Memory.vue";
 import { rarityMap, filterRarity } from "./consts";
 import { CharMemory, Medal } from "./types";
+import { getOnlineDate, getTargetDate } from "./util";
 
 export default defineComponent({
   components: {
@@ -36,31 +44,64 @@ export default defineComponent({
     const states = ref<Record<string, string[]>>({
       rarity: [],
     });
+    const isLoaded = ref(false);
+    const sorting = ref("");
+    const order = ref(0);
     const searchTerm = ref("");
     const charMemoryData = ref<CharMemory[]>([]);
     const medalData = ref<Medal[]>([]);
+    const latestChar = ref<string[]>([]);
+    const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
+      let result = 0;
+      let datex: Date;
+      let datey: Date;
+      if (sorting.value === "fmmr") {
+        datex = getTargetDate(onlineDate.value[mmrx.char], false);
+        datey = getTargetDate(onlineDate.value[mmry.char], false);
+      } else if (sorting.value === "lmmr") {
+        datex = getTargetDate(onlineDate.value[mmrx.char], true);
+        datey = getTargetDate(onlineDate.value[mmry.char], true);
+      } else {
+        datex = new Date(1);
+        datey = new Date(1);
+      }
+      result =
+        datex.getTime() !== datey.getTime()
+          ? datex.getTime() - datey.getTime()
+          : Number(mmrx.charID) - Number(mmry.charID);
+      return order.value ? result * order.value : result * -1;
+    };
+
     const filteredMemory = computed<CharMemory[]>(() => {
-      if (states.value.rarity.length === 0 && searchTerm.value === "")
-        return charMemoryData.value;
+      if (states.value.rarity.length === 0 && searchTerm.value === "") {
+        const filtered = charMemoryData.value
+          .filter(() => true)
+          .sort(compareDate);
+        return filtered;
+      }
 
       const rarity = states.value.rarity;
       const keyword = searchTerm.value;
-      const filtered = charMemoryData.value.filter((charm) => {
-        if (rarity.length !== 0 && !rarity.includes(rarityMap[charm.rarity]))
-          return false;
+      const filtered = charMemoryData.value
+        .filter((charm) => {
+          if (rarity.length !== 0 && !rarity.includes(rarityMap[charm.rarity]))
+            return false;
 
-        return (
-          charm.char.includes(keyword) ||
-          charm.memories.some(
-            (memory) =>
-              memory.name.includes(keyword) ||
-              memory.info.some((info) => info.intro.includes(keyword)),
-          )
-        );
-      });
+          return (
+            charm.char.includes(keyword) ||
+            charm.memories.some(
+              (memory) =>
+                memory.name.includes(keyword) ||
+                memory.info.some((info) => info.intro.includes(keyword)),
+            )
+          );
+        })
+        .sort(compareDate);
 
       return filtered;
     });
+
+    const onlineDate = ref<Record<string, Date[]>>({});
 
     const pagination = reactive({
       page: 1,
@@ -75,6 +116,9 @@ export default defineComponent({
         pagination.pageSize = pageSize;
         pagination.page = 1;
       },
+      onSearchChange: () => {
+        pagination.page = 1;
+      },
     });
     const shownMemory = computed(() => {
       return filteredMemory.value.slice(
@@ -83,13 +127,22 @@ export default defineComponent({
       );
     });
 
+    watch(
+      states,
+      () => {
+        pagination.page = 1;
+      },
+      {
+        deep: true,
+      },
+    );
     onMounted(async () => {
       const resp = await fetch(
         `/api.php?${new URLSearchParams({
           action: "ask",
           format: "json",
           query:
-            "[[分类:拥有干员密录的干员]]|?情报编号|?稀有度|sort=干员序号|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
+            "[[分类:拥有干员密录的干员]]|?干员序号|?情报编号|?稀有度|sort=干员序号|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
           api_version: "2",
           utf8: "1",
         })}`,
@@ -99,6 +152,7 @@ export default defineComponent({
         ([key, value]: [string, any]) => {
           return {
             char: key,
+            charID: value.printouts["干员序号"][0] as string,
             charEID: value.printouts["情报编号"][0] as string,
             rarity: value.printouts["稀有度"][0] as string,
             memories: [],
@@ -115,7 +169,10 @@ export default defineComponent({
       const jsonMedal = await respMedal.json();
       medalData.value = Object.entries(jsonMedal.medal)
         .filter(([key]: [string, any]) => {
-          return jsonMedal.category.storyMedal.medal.includes(key);
+          return (
+            jsonMedal.category.storyMedal.medal.includes(key) ||
+            jsonMedal.category.hiddenMedal.medal.includes(key)
+          );
         })
         .map(([, value]: [string, any]) => {
           return {
@@ -168,6 +225,20 @@ export default defineComponent({
         });
       }
       await Promise.all(charMemoryData.value.map(getMemories));
+
+      getOnlineDate().then((result) => {
+        onlineDate.value = result;
+        isLoaded.value = true;
+        sorting.value = "lmmr";
+        order.value = -1;
+
+        const latest = onlineDate.value[filteredMemory.value[0].char];
+        const ldate = getTargetDate(latest, true);
+        for (let char in onlineDate.value) {
+          if (getTargetDate(onlineDate.value[char], true) >= ldate)
+            latestChar.value.push(char);
+        }
+      });
     });
     return {
       theme,
@@ -177,9 +248,19 @@ export default defineComponent({
       states,
       searchTerm,
       pagination,
-      charMemoryData,
       filteredMemory,
       shownMemory,
+      onlineDate,
+      sorting,
+      order,
+      isLoaded,
+      latestChar,
+      sortMode: (mode: string) => {
+        sorting.value = mode;
+      },
+      orderMode: (mode: number) => {
+        order.value = mode;
+      },
     };
   },
 });
@@ -202,12 +283,64 @@ export default defineComponent({
             />
           </tr>
           <tr>
+            <div class="flex flex-row justify-center items-center">
+              <span class="basis-1/8">排序</span>
+              <div class="flex flex-row items-center basis-7/8 justify-between">
+                <div class="flex flex-wrap justify-start">
+                  <NButton
+                    class="m-1"
+                    :disabled="!isLoaded"
+                    :type="sorting === 'opt' ? 'info' : 'default'"
+                    @click="sortMode('opt')"
+                    >干员</NButton
+                  >
+                  <NButton
+                    class="m-1"
+                    :disabled="!isLoaded"
+                    :type="sorting === 'fmmr' ? 'info' : 'default'"
+                    @click="sortMode('fmmr')"
+                    >首个密录</NButton
+                  >
+                  <NButton
+                    class="m-1"
+                    :disabled="!isLoaded"
+                    :type="sorting === 'lmmr' ? 'info' : 'default'"
+                    @click="sortMode('lmmr')"
+                    >最新密录</NButton
+                  >
+                </div>
+                <div class="flex flex-wrap justify-end">
+                  <NButton
+                    class="m-1"
+                    :disabled="!isLoaded"
+                    :type="order === 1 ? 'info' : 'default'"
+                    @click="orderMode(1)"
+                    ><span
+                      class="text-2xl mdi mdi-sort-calendar-descending"
+                    ></span>
+                  </NButton>
+                  <NButton
+                    class="m-1"
+                    :disabled="!isLoaded"
+                    :type="order === -1 ? 'info' : 'default'"
+                    @click="orderMode(-1)"
+                    ><span
+                      class="text-2xl mdi mdi-sort-calendar-ascending"
+                    ></span>
+                  </NButton>
+                </div>
+              </div>
+            </div>
+          </tr>
+          <tr>
             <div class="flex items-center">
               <NInput
                 v-model:value="searchTerm"
                 class="my-2"
                 type="text"
                 placeholder="搜索干员名称/密录名称/引言文字"
+                @change="pagination.onSearchChange()"
+                @input="pagination.onSearchChange()"
               />
               <div class="px-2" @click="toggleDark()">
                 <NButton>
@@ -234,6 +367,7 @@ export default defineComponent({
             v-for="charm in shownMemory"
             :key="charm.char"
             :char-memory="charm"
+            :is-new="latestChar.includes(charm.char)"
           >
           </Memory>
         </div>
