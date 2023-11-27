@@ -244,7 +244,7 @@ export default defineComponent({
               <span class="<lg:hidden">{{ cate.desc }}</span>
             </template>
             <span class="lg:hidden p-1">{{ cate.desc }}</span>
-            <NCard v-if="cate.extraDesc">
+            <NCard v-if="cate.extraDesc" class="mb-2">
               <div v-html="cate.extraDesc"></div>
             </NCard>
             <NGrid cols="1 l:2" :x-gap="12" :y-gap="8" responsive="screen">

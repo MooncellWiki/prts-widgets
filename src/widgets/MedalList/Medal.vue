@@ -28,11 +28,25 @@ export default defineComponent({
       3: "from-[#a56e37] to-[#f5c391]",
     };
 
+    const rarityStarColor: Record<number, string> = {
+      1: "color-white",
+      2: "color-[#d7ffff]",
+      3: "color-[#ffeebe]",
+    };
+
+    const rarityImgStyleSet: Record<number, string[]> = {
+      1: ["p-8", "80"],
+      2: ["p-6", "100"],
+      3: ["p-4", "130"],
+    };
+
     return {
       getImagePath,
       isDecrypt: ref(false),
       showTrimed: ref(false),
       rarityGradient,
+      rarityStarColor,
+      rarityImgStyleSet,
     };
   },
 });
@@ -44,6 +58,7 @@ export default defineComponent({
     :theme-overrides="{
       Card: {
         paddingMedium: '0',
+        borderColor: '#adadad',
       },
       Tag: {
         colorCheckable: '#565656',
@@ -60,21 +75,21 @@ export default defineComponent({
       },
     }"
   >
-    <NCard>
+    <NCard hoverable>
       <div class="flex <lg:flex-col">
         <div
           :class="[
-            'bg-[#464646]',
+            'bg-[#464646] flex grid-items-center w-190px justify-center',
             {
               'bg-gradient-to-b from-[#485a5c] to-[#1d0942]':
                 showTrimed && medalData.isTrim,
             },
-            '<lg:flex <lg:justify-center <lg:w-full',
+            '<lg:w-full <lg:py-2',
           ]"
         >
           <NImage
-            width="100"
-            class="p-8"
+            class=""
+            :width="rarityImgStyleSet[medalData.rarity][1]"
             :src="`/images/${getImagePath(
               `蚀刻章_${medalData.alias}${
                 showTrimed && medalData.isTrim ? '_镀层' : ''
@@ -86,19 +101,36 @@ export default defineComponent({
                 padding: '20px',
                 background: '#2f2f2fdb',
                 borderRadius: '5px',
+                justifyContent: 'center',
               },
             }"
           />
         </div>
         <div class="flex flex-col w-full divide-y!">
-          <h3
+          <div
             :class="[
-              'p-2.5! m-0! bg-gradient-to-r color-white',
+              'flex',
+              'flex-row',
+              'justify-between',
+              'p-2.5! m-0! bg-gradient-to-r',
+              'text-shadow-lg',
               rarityGradient[medalData.rarity],
             ]"
           >
-            {{ medalData.name }}
-          </h3>
+            <h3 class="color-white p-0 mt-0!">
+              {{ medalData.name }}
+            </h3>
+            <div>
+              <span
+                v-for="i of medalData.rarity"
+                :key="i"
+                :class="[
+                  'text-xl mdi mdi-star mdi-rotate-45',
+                  rarityStarColor[medalData.rarity],
+                ]"
+              />
+            </div>
+          </div>
           <div
             class="p-2.5! grow flex items-center align-middle border-0 border-solid border-[#e5e7eb]"
           >
