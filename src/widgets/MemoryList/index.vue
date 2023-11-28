@@ -56,12 +56,14 @@ export default defineComponent({
       let result = 0;
       let datex: Date;
       let datey: Date;
-      if (sorting.value === "fmmr") {
-        datex = getTargetDate(onlineDate.value[mmrx.char], false);
-        datey = getTargetDate(onlineDate.value[mmry.char], false);
-      } else if (sorting.value === "lmmr") {
-        datex = getTargetDate(onlineDate.value[mmrx.char], true);
-        datey = getTargetDate(onlineDate.value[mmry.char], true);
+      if (
+        onlineDate.value &&
+        onlineDate.value[mmrx.char] &&
+        onlineDate.value[mmry.char]
+      ) {
+        let isLatest = sorting.value === "lmmr";
+        datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
+        datey = getTargetDate(onlineDate.value[mmry.char], isLatest);
       } else {
         datex = new Date(1);
         datey = new Date(1);
