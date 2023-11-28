@@ -88,7 +88,6 @@ export default defineComponent({
           ]"
         >
           <NImage
-            class=""
             :width="rarityImgStyleSet[medalData.rarity][1]"
             :src="`/images/${getImagePath(
               `蚀刻章_${medalData.alias}${
