@@ -1,13 +1,7 @@
 <script lang="ts">
-import {
-  computed,
-  defineComponent,
-  onMounted,
-  reactive,
-  ref,
-  watch,
-} from "vue";
+import { computed, defineComponent, onMounted, reactive, ref } from "vue";
 
+import { debounce } from "lodash-es";
 import {
   NButton,
   NConfigProvider,
@@ -24,7 +18,7 @@ import { useTheme } from "@/utils/theme";
 import Memory from "./Memory.vue";
 import { rarityMap, filterRarity } from "./consts";
 import { CharMemory, Medal } from "./types";
-import { getOnlineDate, getTargetDate } from "./util";
+import { getOnlineDate, getTargetDate, getMemories } from "./util";
 
 export default defineComponent({
   components: {
@@ -74,8 +68,7 @@ export default defineComponent({
     };
     const filteredMemory = ref<CharMemory[]>([]);
 
-    function calcMemory() {
-      pagination.page = 1;
+    function _calcMemory() {
       if (states.value.length === 0 && searchTerm.value === "") {
         filteredMemory.value = charMemoryData.value.toSorted(compareDate);
       }
@@ -98,7 +91,7 @@ export default defineComponent({
         })
         .sort(compareDate);
     }
-
+    const calcMemory = debounce(_calcMemory, 500);
     const onlineDate = ref<Record<string, Date[]>>({});
 
     const pagination = reactive({
@@ -110,6 +103,7 @@ export default defineComponent({
     function onUpdatePageSize(pageSize: number) {
       pagination.pageSize = pageSize;
       pagination.page = 1;
+      calcMemory();
     }
     const shownMemory = computed(() => {
       return filteredMemory.value.slice(
@@ -118,14 +112,6 @@ export default defineComponent({
       );
     });
 
-    watch(
-      states,
-      () => {
-        calcMemory();
-      },
-      { deep: true },
-    );
-    watch(searchTerm, () => calcMemory());
     onMounted(async () => {
       const resp = await fetch(
         `/api.php?${new URLSearchParams({
@@ -171,50 +157,10 @@ export default defineComponent({
             desc: value.desc as string,
           };
         });
-
-      async function getMemories(charm: CharMemory) {
-        const resp = await fetch(`/rest.php/v1/page/${charm.char}`);
-        const json = await resp.json();
-        const rawdata = (json.source as string).replaceAll(
-          "{{FULLPAGENAME}}",
-          charm.char,
-        );
-        const matches = rawdata.match(
-          /{{干员密录\/list[\s\S]*?}}(?=\s{{干员密录|\s}})/gm,
-        ) as string[];
-        matches.forEach((str, key) => {
-          const medalterm = str.match(/(?<=\|蚀刻章override=).*/)
-            ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
-            : `“${(str.match(/(?<=\|storySetName=).*/) as string[])[0]}”`;
-          charm.memories[key] = {
-            elite: (str.match(/(?<=\|精英化=).*/) as string[])[0],
-            level: (str.match(/(?<=\|等级=).*/) as string[])[0],
-            favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
-            medal: medalData.value.find((medal) => {
-              return medal.alias == medalterm;
-            }) as Medal,
-            name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
-            info: [],
-          };
-
-          let i = 1;
-          str = str
-            .replace(/\|storyIntro=/, "|storyIntro1=")
-            .replace(/\|storyTxt=/, "|storyTxt1=");
-          while (str.match(new RegExp(`storyIntro${i}`))) {
-            charm.memories[key].info.push({
-              intro: (
-                str.match(new RegExp(`(?<=\\|storyIntro${i}=).*`)) as string[]
-              )[0],
-              link: (
-                str.match(new RegExp(`(?<=\\|storyTxt${i}=).*`)) as string[]
-              )[0],
-            });
-            i++;
-          }
-        });
-      }
-      await Promise.all(charMemoryData.value.map((c) => getMemories(c)));
+      const map = await getMemories(medalData.value);
+      charMemoryData.value.forEach((charm) => {
+        charm.memories = map[charm.char];
+      });
 
       onlineDate.value = await getOnlineDate();
       isLoaded.value = true;
@@ -270,6 +216,7 @@ export default defineComponent({
               v-model="states"
               :title="filterRarity.title"
               :options="filterRarity.options"
+              @update:model-value="calcMemory"
             />
           </tr>
           <tr>
@@ -329,6 +276,7 @@ export default defineComponent({
                 class="my-2"
                 type="text"
                 placeholder="搜索干员名称/密录名称/引言文字"
+                @update:value="calcMemory"
               />
               <div class="px-2" @click="toggleDark()">
                 <NButton>
@@ -347,6 +295,7 @@ export default defineComponent({
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
           show-size-picker
+          @update:page="calcMemory"
           @update:page-size="onUpdatePageSize"
         />
         <div class="w-full flex flex-col lg:flex-row flex-wrap">
@@ -371,6 +320,7 @@ export default defineComponent({
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
           show-size-picker
+          @update:page="calcMemory"
           @update:page-size="onUpdatePageSize"
         />
       </table>

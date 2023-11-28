@@ -29,6 +29,9 @@ dependencies:
   js-cookie:
     specifier: ^3.0.5
     version: 3.0.5
+  lodash-es:
+    specifier: ^4.17.21
+    version: 4.17.21
   md5:
     specifier: ^2.3.0
     version: 2.3.0
@@ -47,8 +50,11 @@ devDependencies:
     specifier: ^2.0.45
     version: 2.0.45
   '@types/js-cookie':
-    specifier: ^3.0.6
-    version: 3.0.6
+    specifier: ^3.0.5
+    version: 3.0.5
+  '@types/lodash-es':
+    specifier: ^4.17.12
+    version: 4.17.12
   '@types/md5':
     specifier: ^2.3.5
     version: 2.3.5
@@ -959,13 +965,13 @@ packages:
 
   /@types/lodash-es@4.17.12:
     resolution: {integrity: sha512-0NgftHUcV4v34VhXm8QBSftKVXtbkBG3ViCjs6+eJ5a6y6Mi/jiFGPc1sC7QK+9BFhWrURE3EOggmWaSxL9OzQ==}
+  /@types/lodash-es@4.17.12:
+    resolution: {integrity: sha512-0NgftHUcV4v34VhXm8QBSftKVXtbkBG3ViCjs6+eJ5a6y6Mi/jiFGPc1sC7QK+9BFhWrURE3EOggmWaSxL9OzQ==}
     dependencies:
-      '@types/lodash': 4.14.202
-    dev: false
+      '@types/lodash': 4.14.200
 
-  /@types/lodash@4.14.202:
-    resolution: {integrity: sha512-OvlIYQK9tNneDlS0VN54LLd5uiPCBOp7gS5Z0f1mjoJYBrtStzgmJBxONW3U6OZqdtNzZPmn9BS/7WI7BFFcFQ==}
-    dev: false
+  /@types/lodash@4.14.200:
+    resolution: {integrity: sha512-YI/M/4HRImtNf3pJgbF+W6FrXovqj+T+/HpENLTooK9PnkacBsDpeP3IpHab40CClUfhNmdM2WTNP2sa2dni5Q==}
 
   /@types/md5@2.3.5:
     resolution: {integrity: sha512-/i42wjYNgE6wf0j2bcTX6kuowmdL/6PE4IVitMpm2eYKBUuYCprdcWVK+xEF0gcV6ufMCRhtxmReGfc6hIK7Jw==}
@@ -3442,9 +3448,9 @@ packages:
       vue: ^3.0.0
     dependencies:
       '@css-render/plugin-bem': 0.15.12(css-render@0.15.12)
-      '@css-render/vue3-ssr': 0.15.12(vue@3.3.9)
-      '@types/katex': 0.16.7
-      '@types/lodash': 4.14.202
+      '@css-render/vue3-ssr': 0.15.12(vue@3.3.7)
+      '@types/katex': 0.16.5
+      '@types/lodash': 4.14.200
       '@types/lodash-es': 4.17.12
       async-validator: 4.2.5
       css-render: 0.15.12
