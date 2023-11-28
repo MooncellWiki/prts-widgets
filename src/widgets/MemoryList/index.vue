@@ -45,12 +45,13 @@ export default defineComponent({
       rarity: [],
     });
     const isLoaded = ref(false);
-    const sorting = ref("");
-    const order = ref(0);
+    const sorting = ref("lmmr");
+    const order = ref(-1);
     const searchTerm = ref("");
     const charMemoryData = ref<CharMemory[]>([]);
     const medalData = ref<Medal[]>([]);
     const latestChar = ref<string[]>([]);
+
     const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
       let result = 0;
       let datex: Date;
@@ -226,20 +227,17 @@ export default defineComponent({
       }
       await Promise.all(charMemoryData.value.map(getMemories));
 
-      getOnlineDate().then((result) => {
-        onlineDate.value = result;
-        isLoaded.value = true;
-        sorting.value = "lmmr";
-        order.value = -1;
+      onlineDate.value = await getOnlineDate();
+      isLoaded.value = true;
 
-        const latest = onlineDate.value[filteredMemory.value[0].char];
-        const ldate = getTargetDate(latest, true);
-        for (let char in onlineDate.value) {
-          if (getTargetDate(onlineDate.value[char], true) >= ldate)
-            latestChar.value.push(char);
-        }
-      });
+      const latest = onlineDate.value[filteredMemory.value[0].char];
+      const ldate = getTargetDate(latest, true);
+      for (let char in onlineDate.value) {
+        if (getTargetDate(onlineDate.value[char], true) >= ldate)
+          latestChar.value.push(char);
+      }
     });
+
     return {
       theme,
       toggleDark,
