@@ -41,9 +41,7 @@ export default defineComponent({
     const isMobile = document.body.classList.contains("skin-minerva");
     const i18nConfig = getNaiveUILocale();
     const { theme, toggleDark } = useTheme();
-    const states = ref<Record<string, string[]>>({
-      rarity: [],
-    });
+    const states = ref<string[]>([]);
     const isLoaded = ref(false);
     const sorting = ref("lmmr");
     const order = ref(-1);
@@ -74,18 +72,17 @@ export default defineComponent({
           : Number(mmrx.charID) - Number(mmry.charID);
       return order.value ? result * order.value : result * -1;
     };
+    const filteredMemory = ref<CharMemory[]>([]);
 
-    const filteredMemory = computed<CharMemory[]>(() => {
-      if (states.value.rarity.length === 0 && searchTerm.value === "") {
-        const filtered = charMemoryData.value
-          .filter(() => true)
-          .sort(compareDate);
-        return filtered;
+    function calcMemory() {
+      pagination.page = 1;
+      if (states.value.length === 0 && searchTerm.value === "") {
+        filteredMemory.value = charMemoryData.value.toSorted(compareDate);
       }
 
-      const rarity = states.value.rarity;
+      const rarity = states.value;
       const keyword = searchTerm.value;
-      const filtered = charMemoryData.value
+      filteredMemory.value = charMemoryData.value
         .filter((charm) => {
           if (rarity.length !== 0 && !rarity.includes(rarityMap[charm.rarity]))
             return false;
@@ -100,9 +97,7 @@ export default defineComponent({
           );
         })
         .sort(compareDate);
-
-      return filtered;
-    });
+    }
 
     const onlineDate = ref<Record<string, Date[]>>({});
 
@@ -111,18 +106,11 @@ export default defineComponent({
       pageSize: 10,
       pageSizes: [10, 25, 50, 100],
       pageSlot: isMobile ? 5 : 9,
-      showSizePicker: true,
-      onChange: (page: number) => {
-        pagination.page = page;
-      },
-      onUpdatePageSize: (pageSize: number) => {
-        pagination.pageSize = pageSize;
-        pagination.page = 1;
-      },
-      onSearchChange: () => {
-        pagination.page = 1;
-      },
     });
+    function onUpdatePageSize(pageSize: number) {
+      pagination.pageSize = pageSize;
+      pagination.page = 1;
+    }
     const shownMemory = computed(() => {
       return filteredMemory.value.slice(
         pagination.pageSize * (pagination.page - 1),
@@ -133,12 +121,11 @@ export default defineComponent({
     watch(
       states,
       () => {
-        pagination.page = 1;
+        calcMemory();
       },
-      {
-        deep: true,
-      },
+      { deep: true },
     );
+    watch(searchTerm, () => calcMemory());
     onMounted(async () => {
       const resp = await fetch(
         `/api.php?${new URLSearchParams({
@@ -227,7 +214,7 @@ export default defineComponent({
           }
         });
       }
-      await Promise.all(charMemoryData.value.map(getMemories));
+      await Promise.all(charMemoryData.value.map((c) => getMemories(c)));
 
       onlineDate.value = await getOnlineDate();
       isLoaded.value = true;
@@ -238,6 +225,7 @@ export default defineComponent({
         if (getTargetDate(onlineDate.value[char], true) >= ldate)
           latestChar.value.push(char);
       }
+      calcMemory();
     });
 
     return {
@@ -247,7 +235,9 @@ export default defineComponent({
       filterRarity,
       states,
       searchTerm,
+      calcMemory,
       pagination,
+      onUpdatePageSize,
       filteredMemory,
       shownMemory,
       onlineDate,
@@ -277,7 +267,7 @@ export default defineComponent({
         <tbody class="align-baseline">
           <tr>
             <OptionsGroup
-              v-model="states.rarity"
+              v-model="states"
               :title="filterRarity.title"
               :options="filterRarity.options"
             />
@@ -339,8 +329,6 @@ export default defineComponent({
                 class="my-2"
                 type="text"
                 placeholder="搜索干员名称/密录名称/引言文字"
-                @change="pagination.onSearchChange()"
-                @input="pagination.onSearchChange()"
               />
               <div class="px-2" @click="toggleDark()">
                 <NButton>
@@ -352,15 +340,14 @@ export default defineComponent({
           </tr>
         </tbody>
         <NPagination
+          v-model:page="pagination.page"
           class="justify-center my-2"
           :item-count="filteredMemory.length"
-          :page="pagination.page"
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
-          :show-size-picker="pagination.showSizePicker"
-          @update:page="pagination.onChange"
-          @update:page-size="pagination.onUpdatePageSize"
+          show-size-picker
+          @update:page-size="onUpdatePageSize"
         />
         <div class="w-full flex flex-col lg:flex-row flex-wrap">
           <Memory
@@ -377,15 +364,14 @@ export default defineComponent({
           </template>
         </NEmpty>
         <NPagination
+          v-model:page="pagination.page"
           class="justify-center my-2"
           :item-count="filteredMemory.length"
-          :page="pagination.page"
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
-          :show-size-picker="pagination.showSizePicker"
-          @update:page="pagination.onChange"
-          @update:page-size="pagination.onUpdatePageSize"
+          show-size-picker
+          @update:page-size="onUpdatePageSize"
         />
       </table>
     </NLayout>

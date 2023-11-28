@@ -1,11 +1,11 @@
 export async function getOnlineDate() {
   const resp = await fetch("/rest.php/v1/page/干员密录一览%2F密录上线时间");
   const content = (await resp.json()).source as string;
-  let lines = content.split("\n");
-  lines = lines.map((line) => {
-    return line.replaceAll(/\s/g, "");
-  });
-  const temp = lines
+  const temp = content
+    .split("\n")
+    .map((line) => {
+      return line.replaceAll(/\s/g, "");
+    })
     .filter((line) => {
       return line.match(/\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)/);
     })
