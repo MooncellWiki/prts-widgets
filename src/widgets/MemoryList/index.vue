@@ -53,7 +53,7 @@ export default defineComponent({
         onlineDate.value[mmrx.char] &&
         onlineDate.value[mmry.char]
       ) {
-        let isLatest = sorting.value === "lmmr";
+        const isLatest = sorting.value === "lmmr";
         datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
         datey = getTargetDate(onlineDate.value[mmry.char], isLatest);
       } else {
@@ -144,12 +144,11 @@ export default defineComponent({
       );
       const jsonMedal = await respMedal.json();
       medalData.value = Object.entries(jsonMedal.medal)
-        .filter(([key]: [string, any]) => {
-          return (
+        .filter(
+          ([key]: [string, any]) =>
             jsonMedal.category.storyMedal.medal.includes(key) ||
-            jsonMedal.category.hiddenMedal.medal.includes(key)
-          );
-        })
+            jsonMedal.category.hiddenMedal.medal.includes(key),
+        )
         .map(([, value]: [string, any]) => {
           return {
             medal: value.name as string,
@@ -165,17 +164,26 @@ export default defineComponent({
       onlineDate.value = await getOnlineDate();
       isLoaded.value = true;
 
+      _calcMemory();
       const latest = onlineDate.value[filteredMemory.value[0].char];
       const ldate = getTargetDate(latest, true);
       for (let char in onlineDate.value) {
         if (getTargetDate(onlineDate.value[char], true) >= ldate)
           latestChar.value.push(char);
       }
-      calcMemory();
     });
 
     return {
       theme,
+      sortModes: [
+        { type: "opt", label: "干员" },
+        { type: "fmmr", label: "首个密录" },
+        { type: "lmmr", label: "最新密录" },
+      ],
+      orderModes: [
+        { value: 1, icon: "mdi-sort-calendar-descending" },
+        { value: -1, icon: "mdi-sort-calendar-ascending" },
+      ],
       toggleDark,
       i18nConfig,
       filterRarity,
@@ -225,45 +233,24 @@ export default defineComponent({
               <div class="flex flex-row items-center basis-7/8 justify-between">
                 <div class="flex flex-wrap justify-start">
                   <NButton
+                    v-for="(item, index) in sortModes"
+                    :key="index"
                     class="m-1"
                     :disabled="!isLoaded"
-                    :type="sorting === 'opt' ? 'info' : 'default'"
-                    @click="sortMode('opt')"
-                    >干员</NButton
-                  >
-                  <NButton
-                    class="m-1"
-                    :disabled="!isLoaded"
-                    :type="sorting === 'fmmr' ? 'info' : 'default'"
-                    @click="sortMode('fmmr')"
-                    >首个密录</NButton
-                  >
-                  <NButton
-                    class="m-1"
-                    :disabled="!isLoaded"
-                    :type="sorting === 'lmmr' ? 'info' : 'default'"
-                    @click="sortMode('lmmr')"
-                    >最新密录</NButton
+                    :type="sorting === item.type ? 'info' : 'default'"
+                    @click="sortMode(item.type)"
+                    >{{ item.label }}</NButton
                   >
                 </div>
                 <div class="flex flex-wrap justify-end">
                   <NButton
+                    v-for="(item, index) in orderModes"
+                    :key="index"
                     class="m-1"
                     :disabled="!isLoaded"
-                    :type="order === 1 ? 'info' : 'default'"
-                    @click="orderMode(1)"
-                    ><span
-                      class="text-2xl mdi mdi-sort-calendar-descending"
-                    ></span>
-                  </NButton>
-                  <NButton
-                    class="m-1"
-                    :disabled="!isLoaded"
-                    :type="order === -1 ? 'info' : 'default'"
-                    @click="orderMode(-1)"
-                    ><span
-                      class="text-2xl mdi mdi-sort-calendar-ascending"
-                    ></span>
+                    :type="order === item.value ? 'info' : 'default'"
+                    @click="orderMode(item.value)"
+                    ><span :class="['text-2xl mdi', item.icon]"></span>
                   </NButton>
                 </div>
               </div>
