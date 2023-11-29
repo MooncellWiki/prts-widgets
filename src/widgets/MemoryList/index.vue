@@ -51,7 +51,8 @@ export default defineComponent({
       if (
         onlineDate.value &&
         onlineDate.value[mmrx.char] &&
-        onlineDate.value[mmry.char]
+        onlineDate.value[mmry.char] &&
+        sorting.value !== "opt"
       ) {
         const isLatest = sorting.value === "lmmr";
         datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
@@ -176,7 +177,7 @@ export default defineComponent({
     return {
       theme,
       sortModes: [
-        { type: "opt", label: "干员" },
+        { type: "opt", label: "干员上线" },
         { type: "fmmr", label: "首个密录" },
         { type: "lmmr", label: "最新密录" },
       ],
@@ -200,9 +201,11 @@ export default defineComponent({
       isLoaded,
       latestChar,
       sortMode: (mode: string) => {
+        calcMemory();
         sorting.value = mode;
       },
       orderMode: (mode: number) => {
+        calcMemory();
         order.value = mode;
       },
     };
