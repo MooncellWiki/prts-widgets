@@ -27,6 +27,7 @@
     "build",
     "template",
     "scripts",
+    "src/spine",
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
   ]

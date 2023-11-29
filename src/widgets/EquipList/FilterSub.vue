@@ -28,9 +28,9 @@ export default defineComponent({
     const selectedRef = useVModel(props, "selected", emit);
     const onChange = (value: Array<string>) => {
       selectedRef.value.splice(0);
-      value.forEach((value) => {
-        selectedRef.value.push(value);
-      });
+      for (const v of value) {
+        selectedRef.value.push(v);
+      }
     };
     return {
       selectedRef,

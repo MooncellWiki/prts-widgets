@@ -88,9 +88,9 @@ export default defineComponent({
       sub: [],
     });
     const addOrDeleteChar = (char: Char) => {
-      !selectedChar.value.includes(char)
-        ? selectedChar.value.push(char)
-        : selectedChar.value.splice(selectedChar.value.indexOf(char));
+      selectedChar.value.includes(char)
+        ? selectedChar.value.splice(selectedChar.value.indexOf(char))
+        : selectedChar.value.push(char);
     };
     const filterIntersection = (states: Record<string, string[]>) => {
       return Object.fromEntries(
@@ -163,9 +163,9 @@ export default defineComponent({
       expandedChar.value.splice(0);
     };
     const onClickTitle: CollapseProps["onItemHeaderClick"] = ({ name }) => {
-      !expandedChar.value.includes(name)
-        ? expandedChar.value.push(name)
-        : expandedChar.value.splice(expandedChar.value.indexOf(name), 1);
+      expandedChar.value.includes(name)
+        ? expandedChar.value.splice(expandedChar.value.indexOf(name), 1)
+        : expandedChar.value.push(name);
     };
     onMounted(async () => {
       const resp = await fetch(
@@ -191,7 +191,7 @@ export default defineComponent({
           id: v.printouts["干员序号"][0] as number,
         };
       });
-      charData.forEach((char) => {
+      for (const char of charData) {
         if (!subProfMap.value[char.type]) subProfMap.value[char.type] = [];
 
         if (!sortedCharData.value[char.subtype])
@@ -201,16 +201,16 @@ export default defineComponent({
           subProfMap.value[char.type].push(char.subtype);
 
         sortedCharData.value[char.subtype].push(char);
-      });
+      }
 
-      Object.keys(sortedCharData.value).forEach((key) => {
+      for (const key of Object.keys(sortedCharData.value)) {
         sortedCharData.value[key].sort((a: Char, b: Char) => {
           return a.rarity === b.rarity
             ? b.id - a.id
             : Number.parseInt(b.rarity as string) -
                 Number.parseInt(a.rarity as string);
         });
-      });
+      }
     });
     provide("selectedChar", selectedChar);
     return {
@@ -364,7 +364,7 @@ export default defineComponent({
             />
           </div>
           <NEmpty
-            v-if="Object.keys(filteredCharData).length == 0"
+            v-if="Object.keys(filteredCharData).length === 0"
             description="无结果"
           >
             <template #icon>

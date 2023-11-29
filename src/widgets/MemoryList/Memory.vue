@@ -33,9 +33,9 @@ export default defineComponent({
         `头像_${props.charMemory.char}_2.png`,
       )}`;
       try {
-        const rarity = parseInt(props.charMemory.rarity);
+        const rarity = Number.parseInt(props.charMemory.rarity);
         return rarity >= 3 ? highRarityImg : lowRarityImg;
-      } catch (e) {
+      } catch {
         return lowRarityImg;
       }
     });

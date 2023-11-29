@@ -20,7 +20,7 @@ export default defineComponent({
         const coord = `${pos.row}-${pos.col}`;
         result[coord] = result[coord] ?? [];
         result[coord].push(
-          token.inst.characterKey.replace(/trap_[0-9]+_/g, ""),
+          token.inst.characterKey.replaceAll(/trap_\d+_/g, ""),
         );
       });
       return result;
@@ -31,11 +31,19 @@ export default defineComponent({
         const val = block.valueStr;
         if (val === null) return;
 
-        const pos = val.replace(/\(|\)/g, "").split(",");
+        const pos = val.replaceAll(/\(|\)/g, "").split(",");
         if (pos.length === 4) {
           // let list = []
-          for (let y = parseInt(pos[0]); y <= parseInt(pos[2]); y++) {
-            for (let x = parseInt(pos[1]); x <= parseInt(pos[3]); x++) {
+          for (
+            let y = Number.parseInt(pos[0]);
+            y <= Number.parseInt(pos[2]);
+            y++
+          ) {
+            for (
+              let x = Number.parseInt(pos[1]);
+              x <= Number.parseInt(pos[3]);
+              x++
+            ) {
               // list.push([y, x])
               result[`${y}-${x}`] = "rect";
             }

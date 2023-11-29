@@ -62,9 +62,9 @@ export default defineComponent({
         datey = new Date(1);
       }
       result =
-        datex.getTime() !== datey.getTime()
-          ? datex.getTime() - datey.getTime()
-          : Number(mmrx.charID) - Number(mmry.charID);
+        datex.getTime() === datey.getTime()
+          ? Number(mmrx.charID) - Number(mmry.charID)
+          : datex.getTime() - datey.getTime();
       return order.value ? result * order.value : result * -1;
     };
     const filteredMemory = ref<CharMemory[]>([]);
@@ -78,7 +78,7 @@ export default defineComponent({
       const keyword = searchTerm.value;
       filteredMemory.value = charMemoryData.value
         .filter((charm) => {
-          if (rarity.length !== 0 && !rarity.includes(rarityMap[charm.rarity]))
+          if (rarity.length > 0 && !rarity.includes(rarityMap[charm.rarity]))
             return false;
 
           return (
@@ -158,9 +158,9 @@ export default defineComponent({
           };
         });
       const map = await getMemories(medalData.value);
-      charMemoryData.value.forEach((charm) => {
+      for (const charm of charMemoryData.value) {
         charm.memories = map[charm.char];
-      });
+      }
 
       onlineDate.value = await getOnlineDate();
       isLoaded.value = true;

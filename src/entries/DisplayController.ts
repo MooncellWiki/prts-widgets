@@ -44,10 +44,10 @@ const defaultDisplayConfig: DisplayConfig = {
 function removeDOM(selector: string) {
   try {
     return document.querySelector(selector)?.remove();
-  } catch (e) {
+  } catch (error) {
     console.log(
       `[DisplayController] An error occurred while removing ${selector}`,
-      e,
+      error,
     );
   }
 }
@@ -56,7 +56,7 @@ function main(config: DisplayConfig) {
   const styleEle = document.createElement("style");
   styleEle.className = config.styleClass;
   styleEle.innerHTML = defaultStyle;
-  document.head.appendChild(styleEle);
+  document.head.append(styleEle);
 
   if (navigator.userAgent.includes(config.userAgent)) {
     if (window.location.hostname === "prts.wiki") {
@@ -65,19 +65,19 @@ function main(config: DisplayConfig) {
       );
     }
 
-    config.redirectBodyClasses.forEach((page) => {
+    for (const page of config.redirectBodyClasses) {
       if (document.body.classList.contains(page))
         window.location.replace("https://m.prts.wiki");
-    });
+    }
 
-    config.selectors.forEach((selector) => {
+    for (const selector of config.selectors) {
       removeDOM(selector);
-    });
+    }
 
     const createViewport = () => {
       const viewport = document.createElement("meta");
       viewport.setAttribute("name", "viewport");
-      document.head.appendChild(viewport);
+      document.head.append(viewport);
       return viewport;
     };
     const viewport =

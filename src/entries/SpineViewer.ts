@@ -10,7 +10,7 @@ import { Spine } from "../widgets/Spine/spine";
 window.SpineApi = Spine;
 window.dispatchEvent(new Event("spine_api_ready"));
 async function main() {
-  const ele = document.getElementById("spine-root");
+  const ele = document.querySelector("#spine-root");
   let spineData: Props;
   if (ele?.dataset.id) {
     const resp = await fetch(
@@ -19,7 +19,7 @@ async function main() {
     spineData = await resp.json();
     //
   } else {
-    spineData = JSON.parse(document.getElementById("SPINEDATA")!.innerHTML);
+    spineData = JSON.parse(document.querySelector("#SPINEDATA")!.innerHTML);
     spineData.prefix = spineData.prefix.replace(
       "https://static.prts.wiki/spine/",
       "https://static.prts.wiki/spine38/",

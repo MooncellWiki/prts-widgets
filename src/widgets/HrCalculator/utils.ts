@@ -99,9 +99,9 @@ export class BitMap {
     for (let i = new BitMap(0); i.value < 1 << selfIndices.length; i.value++) {
       let tmp = 0;
       const indices = i.getIndict();
-      indices.forEach((index) => {
+      for (const index of indices) {
         tmp = tmp | (1 << selfIndices[index]);
-      });
+      }
       if (tmp !== 0) result.push(tmp);
     }
     return result;
@@ -114,16 +114,16 @@ export class Char {
   }
 
   selectAllProfession() {
-    profession.forEach((v, i) => {
+    for (const [i] of profession.entries()) {
       this.bitmap.set(professionIndex - i);
-    });
+    }
   }
 
   unselectAllProfession() {
-    profession.forEach((v, i) => {
+    for (const [i] of profession.entries()) {
       if (this.bitmap.get(professionIndex - i) !== 0)
         this.bitmap.clear(professionIndex - i);
-    });
+    }
   }
 
   isProfessionEmpty() {
@@ -136,9 +136,9 @@ export class Char {
   }
 
   selectAllPosition() {
-    position.forEach((v, i) => {
+    for (const [i] of position.entries()) {
       this.bitmap.set(positionIndex - i);
-    });
+    }
   }
 
   isPositionEmpty() {
@@ -148,23 +148,23 @@ export class Char {
   }
 
   unselectAllPosition() {
-    position.forEach((v, i) => {
+    for (const [i] of position.entries()) {
       if (this.bitmap.get(positionIndex - i) !== 0)
         this.bitmap.clear(positionIndex - i);
-    });
+    }
   }
 
   selectAllRarity() {
-    rarity.forEach((v, i) => {
+    for (const [i] of rarity.entries()) {
       this.bitmap.set(rarityIndex - i);
-    });
+    }
   }
 
   unselectAllRarity() {
-    rarity.forEach((v, i) => {
+    for (const [i] of rarity.entries()) {
       if (this.bitmap.get(rarityIndex - i) !== 0)
         this.bitmap.clear(rarityIndex - i);
-    });
+    }
   }
 
   isRarityEmpty() {
@@ -172,15 +172,15 @@ export class Char {
   }
 
   selectAllTag() {
-    tag.forEach((v, i) => {
+    for (const [i] of tag.entries()) {
       this.bitmap.set(tagIndex - i);
-    });
+    }
   }
 
   unselectAllTag() {
-    tag.forEach((v, i) => {
+    for (const [i] of tag.entries()) {
       if (this.bitmap.get(tagIndex - i) !== 0) this.bitmap.clear(tagIndex - i);
-    });
+    }
   }
 
   isTagEmpty() {
@@ -196,13 +196,13 @@ export class Char {
       char.bitmap.set(rarityIndex - rarity.indexOf("资深干员"));
     else if (source.rarity === 5)
       char.bitmap.set(rarityIndex - rarity.indexOf("高级资深干员"));
-    source.tag.forEach((v) => {
+    for (const v of source.tag) {
       if (v === "新手") {
         char.bitmap.set(rarityIndex - rarity.indexOf("新手"));
-        return;
+        continue;
       }
       char.bitmap.set(tagIndex - tag.indexOf(v));
-    });
+    }
     return char;
   }
 
@@ -240,18 +240,17 @@ export class Char {
       rarity: tag.length,
       tag: 0,
     };
-    Object.entries(decoder.decode(encoded) as Record<string, number>).forEach(
-      ([k, v]) => {
-        const index =
-          indexes[k as "profession" | "position" | "rarity" | "tag"];
-        const binaryString = (v >>> 0).toString(2);
-        let loopCount = 0;
-        [...binaryString].reverse().forEach((c) => {
-          if (c !== "0") this.bitmap.set(index + loopCount);
-          loopCount++;
-        });
-      },
-    );
+    for (const [k, v] of Object.entries(
+      decoder.decode(encoded) as Record<string, number>,
+    )) {
+      const index = indexes[k as "profession" | "position" | "rarity" | "tag"];
+      const binaryString = (v >>> 0).toString(2);
+      let loopCount = 0;
+      for (const c of [...binaryString].reverse()) {
+        if (c !== "0") this.bitmap.set(index + loopCount);
+        loopCount++;
+      }
+    }
   }
 }
 

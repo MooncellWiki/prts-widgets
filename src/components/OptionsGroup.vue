@@ -23,12 +23,11 @@ export default defineComponent({
         ? selectedOptions.value.splice(selectedOptions.value.indexOf(option), 1)
         : selectedOptions.value.push(option);
     };
-    const selectAll = () =>
-      props.options.forEach(
-        (option) =>
-          !selectedOptions.value.includes(option) &&
-          selectedOptions.value.push(option),
-      );
+    const selectAll = () => {
+      for (const option of props.options)
+        !selectedOptions.value.includes(option) &&
+          selectedOptions.value.push(option);
+    };
     const selectNone = () => selectedOptions.value.splice(0);
 
     return {

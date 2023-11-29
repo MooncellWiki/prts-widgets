@@ -79,6 +79,9 @@ const bgMap: Record<string, string> = {
   xbfarm: "头像_装置_便携式种植槽.png",
   stone: "头像_装置_碎石.png",
 };
+function bg(name: string) {
+  return `background-image: url(/images/${getImagePath(name)})`;
+}
 export default defineComponent({
   props: {
     tile: String,
@@ -88,9 +91,6 @@ export default defineComponent({
   },
   setup(props) {
     const self = ref();
-    function bg(name: string) {
-      return `background-image: url(/images/${getImagePath(name)})`;
-    }
     const style = computed(() => {
       let result = "";
       if (bgMap[props.tile!]) result += ` ${bg(bgMap[props.tile!])}`;
@@ -114,7 +114,7 @@ export default defineComponent({
           content += content ? `<br/> ${TipMap[token]}` : ` ${TipMap[token]}`;
       });
 
-      if (content.length) {
+      if (content.length > 0) {
         // @ts-expect-error tippy
         // eslint-disable-next-line no-undef
         tippy6(self.value, {

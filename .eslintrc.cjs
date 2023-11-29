@@ -18,6 +18,7 @@ module.exports = {
     "plugin:import/recommended",
     "plugin:import/typescript",
     "plugin:prettier/recommended",
+    "plugin:unicorn/recommended",
   ],
   settings: {
     "import/resolver": {
@@ -64,6 +65,14 @@ module.exports = {
       },
     ],
     "import/no-unresolved": ["error", { ignore: ["^virtual:"] }],
+    "unicorn/filename-case": "off",
+    "unicorn/prevent-abbreviations": "off",
+    "unicorn/no-null": "off",
+    "unicorn/prefer-top-level-await": "off",
+    "unicorn/prefer-spread": "off",
+    "unicorn/no-array-reduce": "warn",
+    "unicorn/number-literal-case": "off",
+    "unicorn/no-array-for-each": "warn",
   },
   ignorePatterns: ["src/spine/runtime/"],
 };

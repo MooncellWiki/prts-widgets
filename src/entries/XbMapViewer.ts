@@ -3,8 +3,8 @@ import { createApp } from "vue";
 
 import XbMapViewer from "../widgets/XbMapViewer/XbMapViewer.vue";
 
-const ele = document.getElementById("root");
-const data = document.getElementById("MAPDATA")?.innerText;
+const ele = document.querySelector("#root");
+const data = document.querySelector("#MAPDATA")?.textContent;
 if (!ele && !data) {
   console.error("data or ele not found", ele, data);
 } else {

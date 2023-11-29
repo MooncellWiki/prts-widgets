@@ -179,9 +179,9 @@ export default defineComponent({
       // console.log(color);
       spineRef.spine.bg = [
         (color >>> 24) / 255,
-        ((color & 0x00ff0000) >>> 16) / 255,
-        ((color & 0x0000ff00) >>> 8) / 255,
-        (color & 0x000000ff) / 255,
+        ((color & 0x00_ff_00_00) >>> 16) / 255,
+        ((color & 0x00_00_ff_00) >>> 8) / 255,
+        (color & 0x00_00_00_ff) / 255,
       ];
     }
     function onChangeSpeed(e: number) {

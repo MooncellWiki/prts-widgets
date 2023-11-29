@@ -24,10 +24,9 @@ export default defineComponent({
     const key = getCurrentInstance()?.vnode.key;
     const source = computed(() => `//static.prts.wiki/${props.voicePath}`);
     const fileName = computed(() => props.voiceId?.split("/").pop());
-    const audioHref = computed(() =>
-      props.directLink
-        ? props.directLink
-        : `${source.value}?filename=${fileName.value}.wav`,
+    const audioHref = computed(
+      () =>
+        props.directLink || `${source.value}?filename=${fileName.value}.wav`,
     );
     const playing = ref(false);
     const audioElem = inject<HTMLAudioElement>("audioElem") ?? new Audio();
@@ -38,7 +37,7 @@ export default defineComponent({
     };
     const play = () => {
       playing.value = true;
-      audioElem.src = props.directLink ? props.directLink : source.value;
+      audioElem.src = props.directLink || source.value;
       emit("update:playKey", key);
 
       const playPromise = audioElem?.play();
