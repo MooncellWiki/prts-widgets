@@ -10,7 +10,7 @@ import { Spine } from "../widgets/Spine/spine";
 window.SpineApi = Spine;
 window.dispatchEvent(new Event("spine_api_ready"));
 async function main() {
-  const ele = document.querySelector("#spine-root");
+  const ele = document.querySelector<HTMLElement>("#spine-root");
   let spineData: Props;
   if (ele?.dataset.id) {
     const resp = await fetch(
