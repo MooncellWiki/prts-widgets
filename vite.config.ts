@@ -7,7 +7,7 @@ import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
-const TARGET = ["since 2019"];
+const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
 const entries = readdirSync(
   join(dirname(fileURLToPath(import.meta.url)), "src/entries/"),
 );
@@ -49,7 +49,16 @@ export default defineConfig({
       input,
       output: {
         sourcemapBaseUrl: "https://static.prts.wiki/widgets/release/",
-        experimentalMinChunkSize: 512 * 1024,
+        manualChunks(id) {
+          if (id.includes("sentry")) return "sentry";
+          if (id.includes("naive-ui")) return "naive-ui";
+          if (id.includes("hammer")) return;
+          if (id.includes("node_modules")) return "vendor";
+          if (id.includes("uno")) return "vendor";
+          if (id.includes("src/components/")) return "common";
+          if (id.includes("src/utils/")) return "common";
+          if (id.includes("src/stores/")) return "common";
+        },
         chunkFileNames: "[name].[hash].js",
         entryFileNames: (chunk) =>
           nohashEntries.has(chunk.name) ? "[name].js" : "[name].[hash].js",
