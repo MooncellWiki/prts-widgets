@@ -7,7 +7,7 @@ import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
-const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
+const TARGET = ["since 2019"];
 const entries = readdirSync(
   join(dirname(fileURLToPath(import.meta.url)), "src/entries/"),
 );
