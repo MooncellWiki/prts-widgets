@@ -1,22 +1,25 @@
 import { readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
 
-const entries = readdirSync(join(__dirname, "src/entries/"));
-const nohashEntries = ["DisplayController"];
+const entries = readdirSync(
+  join(dirname(fileURLToPath(import.meta.url)), "src/entries/"),
+);
+const nohashEntries = new Set(["DisplayController"]);
 const input: Record<string, string> = {};
-entries.forEach((entry) => {
+for (const entry of entries) {
   input[entry.replace(".ts", "")] = `src/entries/${entry}`;
-});
+}
 // https://vitejs.dev/config/
 export default defineConfig({
   resolve: {
     alias: {
-      "@": resolve(__dirname, "./src"),
+      "@": resolve(dirname(fileURLToPath(import.meta.url)), "./src"),
     },
   },
   plugins: [vue(), UnoCSS(), visualizer({ sourcemap: true })],
@@ -50,33 +53,33 @@ export default defineConfig({
         },
         chunkFileNames: "[name].[hash].js",
         entryFileNames: (chunk) =>
-          nohashEntries.includes(chunk.name) ? "[name].js" : "[name].[hash].js",
+          nohashEntries.has(chunk.name) ? "[name].js" : "[name].[hash].js",
         assetFileNames: "[name].[hash].[ext]",
       },
       plugins: [
         {
           name: "prts",
-          generateBundle(opts, bundle) {
+          generateBundle(options, bundle) {
             const bundles = Object.keys(bundle);
             const fileNames = ["vendor", "naive-ui", "common"].map((name) => {
               return bundles.find((v) => v.startsWith(name))!;
             });
 
-            Object.keys(bundle).forEach((key) => {
+            for (const key of Object.keys(bundle)) {
               const chunk = bundle[key];
-              if (chunk.type !== "chunk") return;
+              if (chunk.type !== "chunk") continue;
 
               if (chunk.fileName.startsWith("SpineViewer")) {
                 // SpineViewer 不需要改导入路径
-                return;
+                continue;
               }
-              fileNames.forEach((name) => {
+              for (const name of fileNames) {
                 chunk.code = chunk.code.replaceAll(
                   `./${name}`,
                   `https://static.prts.wiki/widgets/release/${name}`,
                 );
-              });
-            });
+              }
+            }
           },
         },
       ],

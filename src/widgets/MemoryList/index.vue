@@ -1,6 +1,7 @@
 <script lang="ts">
 import { computed, defineComponent, onMounted, reactive, ref } from "vue";
 
+import { debounce } from "lodash-es";
 import {
   NButton,
   NConfigProvider,
@@ -17,6 +18,7 @@ import { useTheme } from "@/utils/theme";
 import Memory from "./Memory.vue";
 import { rarityMap, filterRarity } from "./consts";
 import { CharMemory, Medal } from "./types";
+import { getOnlineDate, getTargetDate, getMemories } from "./util";
 
 export default defineComponent({
   components: {
@@ -33,49 +35,77 @@ export default defineComponent({
     const isMobile = document.body.classList.contains("skin-minerva");
     const i18nConfig = getNaiveUILocale();
     const { theme, toggleDark } = useTheme();
-    const states = ref<Record<string, string[]>>({
-      rarity: [],
-    });
+    const states = ref<string[]>([]);
+    const isLoaded = ref(false);
+    const sorting = ref("lmmr");
+    const order = ref(-1);
     const searchTerm = ref("");
     const charMemoryData = ref<CharMemory[]>([]);
     const medalData = ref<Medal[]>([]);
-    const filteredMemory = computed<CharMemory[]>(() => {
-      if (states.value.rarity.length === 0 && searchTerm.value === "")
-        return charMemoryData.value;
+    const latestChar = ref<string[]>([]);
 
-      const rarity = states.value.rarity;
+    const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
+      let result = 0;
+      let datex: Date;
+      let datey: Date;
+      if (
+        onlineDate.value &&
+        onlineDate.value[mmrx.char] &&
+        onlineDate.value[mmry.char] &&
+        sorting.value !== "opt"
+      ) {
+        const isLatest = sorting.value === "lmmr";
+        datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
+        datey = getTargetDate(onlineDate.value[mmry.char], isLatest);
+      } else {
+        datex = new Date(1);
+        datey = new Date(1);
+      }
+      result =
+        datex.getTime() !== datey.getTime()
+          ? datex.getTime() - datey.getTime()
+          : Number(mmrx.charID) - Number(mmry.charID);
+      return order.value ? result * order.value : result * -1;
+    };
+    const filteredMemory = ref<CharMemory[]>([]);
+
+    function _calcMemory() {
+      if (states.value.length === 0 && searchTerm.value === "") {
+        filteredMemory.value = charMemoryData.value.toSorted(compareDate);
+      }
+
+      const rarity = states.value;
       const keyword = searchTerm.value;
-      const filtered = charMemoryData.value.filter((charm) => {
-        if (rarity.length !== 0 && !rarity.includes(rarityMap[charm.rarity]))
-          return false;
+      filteredMemory.value = charMemoryData.value
+        .filter((charm) => {
+          if (rarity.length !== 0 && !rarity.includes(rarityMap[charm.rarity]))
+            return false;
 
-        return (
-          charm.char.includes(keyword) ||
-          charm.memories.some(
-            (memory) =>
-              memory.name.includes(keyword) ||
-              memory.info.some((info) => info.intro.includes(keyword)),
-          )
-        );
-      });
-
-      return filtered;
-    });
+          return (
+            charm.char.includes(keyword) ||
+            charm.memories.some(
+              (memory) =>
+                memory.name.includes(keyword) ||
+                memory.info.some((info) => info.intro.includes(keyword)),
+            )
+          );
+        })
+        .sort(compareDate);
+    }
+    const calcMemory = debounce(_calcMemory, 500);
+    const onlineDate = ref<Record<string, Date[]>>({});
 
     const pagination = reactive({
       page: 1,
       pageSize: 10,
       pageSizes: [10, 25, 50, 100],
       pageSlot: isMobile ? 5 : 9,
-      showSizePicker: true,
-      onChange: (page: number) => {
-        pagination.page = page;
-      },
-      onUpdatePageSize: (pageSize: number) => {
-        pagination.pageSize = pageSize;
-        pagination.page = 1;
-      },
     });
+    function onUpdatePageSize(pageSize: number) {
+      pagination.pageSize = pageSize;
+      pagination.page = 1;
+      calcMemory();
+    }
     const shownMemory = computed(() => {
       return filteredMemory.value.slice(
         pagination.pageSize * (pagination.page - 1),
@@ -89,7 +119,7 @@ export default defineComponent({
           action: "ask",
           format: "json",
           query:
-            "[[分类:拥有干员密录的干员]]|?情报编号|?稀有度|sort=干员序号|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
+            "[[分类:拥有干员密录的干员]]|?干员序号|?情报编号|?稀有度|sort=干员序号|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
           api_version: "2",
           utf8: "1",
         })}`,
@@ -99,6 +129,7 @@ export default defineComponent({
         ([key, value]: [string, any]) => {
           return {
             char: key,
+            charID: value.printouts["干员序号"][0] as string,
             charEID: value.printouts["情报编号"][0] as string,
             rarity: value.printouts["稀有度"][0] as string,
             memories: [],
@@ -114,9 +145,11 @@ export default defineComponent({
       );
       const jsonMedal = await respMedal.json();
       medalData.value = Object.entries(jsonMedal.medal)
-        .filter(([key]: [string, any]) => {
-          return jsonMedal.category.storyMedal.medal.includes(key);
-        })
+        .filter(
+          ([key]: [string, any]) =>
+            jsonMedal.category.storyMedal.medal.includes(key) ||
+            jsonMedal.category.hiddenMedal.medal.includes(key),
+        )
         .map(([, value]: [string, any]) => {
           return {
             medal: value.name as string,
@@ -124,62 +157,57 @@ export default defineComponent({
             desc: value.desc as string,
           };
         });
+      const map = await getMemories(medalData.value);
+      charMemoryData.value.forEach((charm) => {
+        charm.memories = map[charm.char];
+      });
 
-      async function getMemories(charm: CharMemory) {
-        const resp = await fetch(`/rest.php/v1/page/${charm.char}`);
-        const json = await resp.json();
-        const rawdata = (json.source as string).replaceAll(
-          "{{FULLPAGENAME}}",
-          charm.char,
-        );
-        const matches = rawdata.match(
-          /{{干员密录\/list[\s\S]*?}}(?=\s{{干员密录|\s}})/gm,
-        ) as string[];
-        matches.forEach((str, key) => {
-          const medalterm = str.match(/(?<=\|蚀刻章override=).*/)
-            ? (str.match(/(?<=\|蚀刻章override=).*/) as string[])[0]
-            : `“${(str.match(/(?<=\|storySetName=).*/) as string[])[0]}”`;
-          charm.memories[key] = {
-            elite: (str.match(/(?<=\|精英化=).*/) as string[])[0],
-            level: (str.match(/(?<=\|等级=).*/) as string[])[0],
-            favor: (str.match(/(?<=\|信赖=).*/) as string[])[0],
-            medal: medalData.value.find((medal) => {
-              return medal.alias == medalterm;
-            }) as Medal,
-            name: (str.match(/(?<=\|storySetName=).*/) as string[])[0],
-            info: [],
-          };
+      onlineDate.value = await getOnlineDate();
+      isLoaded.value = true;
 
-          let i = 1;
-          str = str
-            .replace(/\|storyIntro=/, "|storyIntro1=")
-            .replace(/\|storyTxt=/, "|storyTxt1=");
-          while (str.match(new RegExp(`storyIntro${i}`))) {
-            charm.memories[key].info.push({
-              intro: (
-                str.match(new RegExp(`(?<=\\|storyIntro${i}=).*`)) as string[]
-              )[0],
-              link: (
-                str.match(new RegExp(`(?<=\\|storyTxt${i}=).*`)) as string[]
-              )[0],
-            });
-            i++;
-          }
-        });
+      _calcMemory();
+      const latest = onlineDate.value[filteredMemory.value[0].char];
+      const ldate = getTargetDate(latest, true);
+      for (let char in onlineDate.value) {
+        if (getTargetDate(onlineDate.value[char], true) >= ldate)
+          latestChar.value.push(char);
       }
-      await Promise.all(charMemoryData.value.map(getMemories));
     });
+
     return {
       theme,
+      sortModes: [
+        { type: "opt", label: "干员上线" },
+        { type: "fmmr", label: "首个密录" },
+        { type: "lmmr", label: "最新密录" },
+      ],
+      orderModes: [
+        { value: 1, icon: "mdi-sort-calendar-descending" },
+        { value: -1, icon: "mdi-sort-calendar-ascending" },
+      ],
       toggleDark,
       i18nConfig,
       filterRarity,
       states,
       searchTerm,
+      calcMemory,
       pagination,
-      charMemoryData,
+      onUpdatePageSize,
       filteredMemory,
       shownMemory,
+      onlineDate,
+      sorting,
+      order,
+      isLoaded,
+      latestChar,
+      sortMode: (mode: string) => {
+        calcMemory();
+        sorting.value = mode;
+      },
+      orderMode: (mode: number) => {
+        calcMemory();
+        order.value = mode;
+      },
     };
   },
 });
@@ -196,10 +224,40 @@ export default defineComponent({
         <tbody class="align-baseline">
           <tr>
             <OptionsGroup
-              v-model="states.rarity"
+              v-model="states"
               :title="filterRarity.title"
               :options="filterRarity.options"
+              @update:model-value="calcMemory"
             />
+          </tr>
+          <tr>
+            <div class="flex flex-row justify-center items-center">
+              <span class="basis-1/8">排序</span>
+              <div class="flex flex-row items-center basis-7/8 justify-between">
+                <div class="flex flex-wrap justify-start">
+                  <NButton
+                    v-for="(item, index) in sortModes"
+                    :key="index"
+                    class="m-1"
+                    :disabled="!isLoaded"
+                    :type="sorting === item.type ? 'info' : 'default'"
+                    @click="sortMode(item.type)"
+                    >{{ item.label }}</NButton
+                  >
+                </div>
+                <div class="flex flex-wrap justify-end">
+                  <NButton
+                    v-for="(item, index) in orderModes"
+                    :key="index"
+                    class="m-1"
+                    :disabled="!isLoaded"
+                    :type="order === item.value ? 'info' : 'default'"
+                    @click="orderMode(item.value)"
+                    ><span :class="['text-2xl mdi', item.icon]"></span>
+                  </NButton>
+                </div>
+              </div>
+            </div>
           </tr>
           <tr>
             <div class="flex items-center">
@@ -208,6 +266,7 @@ export default defineComponent({
                 class="my-2"
                 type="text"
                 placeholder="搜索干员名称/密录名称/引言文字"
+                @update:value="calcMemory"
               />
               <div class="px-2" @click="toggleDark()">
                 <NButton>
@@ -219,21 +278,22 @@ export default defineComponent({
           </tr>
         </tbody>
         <NPagination
+          v-model:page="pagination.page"
           class="justify-center my-2"
           :item-count="filteredMemory.length"
-          :page="pagination.page"
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
-          :show-size-picker="pagination.showSizePicker"
-          @update:page="pagination.onChange"
-          @update:page-size="pagination.onUpdatePageSize"
+          show-size-picker
+          @update:page="calcMemory"
+          @update:page-size="onUpdatePageSize"
         />
         <div class="w-full flex flex-col lg:flex-row flex-wrap">
           <Memory
             v-for="charm in shownMemory"
             :key="charm.char"
             :char-memory="charm"
+            :is-new="latestChar.includes(charm.char)"
           >
           </Memory>
         </div>
@@ -243,15 +303,15 @@ export default defineComponent({
           </template>
         </NEmpty>
         <NPagination
+          v-model:page="pagination.page"
           class="justify-center my-2"
           :item-count="filteredMemory.length"
-          :page="pagination.page"
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
-          :show-size-picker="pagination.showSizePicker"
-          @update:page="pagination.onChange"
-          @update:page-size="pagination.onUpdatePageSize"
+          show-size-picker
+          @update:page="calcMemory"
+          @update:page-size="onUpdatePageSize"
         />
       </table>
     </NLayout>
