@@ -7,7 +7,7 @@ import { edit, login } from "./api.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 function readDist() {
-  const json = fs.readFileSync(join(__dirname, "../dist/manifest.json"), {
+  const json = fs.readFileSync(join(__dirname, "../dist/.vite/manifest.json"), {
     encoding: "utf8",
   });
   const manifest = JSON.parse(json);
