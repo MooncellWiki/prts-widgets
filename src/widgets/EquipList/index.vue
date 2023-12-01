@@ -284,9 +284,9 @@ export default defineComponent({
               </tr>
               <tr>
                 <FilterSub
+                  v-model:selected="states.sub"
                   :title="filterSub.title"
                   :options="filterSub.options"
-                  :selected="states.sub"
                 />
               </tr>
             </tbody>
