@@ -7,7 +7,7 @@
     "create": "node scripts/index.js",
     "update": "node scripts/update.js",
     "dev": "vite",
-    "build": " vite build",
+    "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "sourcemap": "source-map-explorer ./dist/*.js",
     "eslint": "eslint --cache --report-unused-disable-directives",
