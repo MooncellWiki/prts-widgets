@@ -14,6 +14,7 @@ export interface MemoryInfo {
 
 export interface CharMemory {
   char: string;
+  charID: string;
   charEID: string;
   rarity: string;
   memories: Memory[];
