@@ -2,11 +2,12 @@ import { readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import legacy from "@vitejs/plugin-legacy";
 import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
-
+const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
 const entries = readdirSync(
   join(dirname(fileURLToPath(import.meta.url)), "src/entries/"),
 );
@@ -22,7 +23,16 @@ export default defineConfig({
       "@": resolve(dirname(fileURLToPath(import.meta.url)), "./src"),
     },
   },
-  plugins: [vue(), UnoCSS(), visualizer({ sourcemap: true })],
+  plugins: [
+    vue(),
+    UnoCSS(),
+    legacy({
+      targets: TARGET,
+      modernPolyfills: true,
+      renderLegacyChunks: false,
+    }),
+    visualizer({ sourcemap: true }),
+  ],
   server: {
     port: 8080,
     hmr: {
@@ -41,11 +51,9 @@ export default defineConfig({
         sourcemapBaseUrl: "https://static.prts.wiki/widgets/release/",
         manualChunks(id) {
           if (id.includes("sentry")) return "sentry";
-          if (id.includes("MarkedMap") || id.includes("node_modules/ol"))
-            return "marked-map";
           if (id.includes("naive-ui")) return "naive-ui";
-          if (id.includes("node_modules") && !id.includes("hammer"))
-            return "vendor";
+          if (id.includes("hammer")) return;
+          if (id.includes("node_modules")) return "vendor";
           if (id.includes("uno")) return "vendor";
           if (id.includes("src/components/")) return "common";
           if (id.includes("src/utils/")) return "common";
@@ -90,6 +98,6 @@ export default defineConfig({
         passes: 10,
       },
     },
-    target: ["chrome70", "edge81", "firefox70", "safari12", "ios12"],
+    target: TARGET,
   },
 });
