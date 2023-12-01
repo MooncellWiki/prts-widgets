@@ -233,16 +233,14 @@ export class Char {
   }
 
   load(encoded: string) {
-    const decoder = makeJsonDecoder();
+    const decoder = makeJsonDecoder<Record<string, number>>();
     const indexes = {
       profession: position.length + rarity.length + tag.length,
       position: rarity.length + tag.length,
       rarity: tag.length,
       tag: 0,
     };
-    for (const [k, v] of Object.entries(
-      decoder.decode(encoded) as Record<string, number>,
-    )) {
+    for (const [k, v] of Object.entries(decoder.decode(encoded))) {
       const index = indexes[k as "profession" | "position" | "rarity" | "tag"];
       const binaryString = (v >>> 0).toString(2);
       let loopCount = 0;

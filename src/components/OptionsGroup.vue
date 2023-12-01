@@ -25,7 +25,7 @@ export default defineComponent({
     };
     const selectAll = () => {
       for (const option of props.options)
-        !selectedOptions.value.includes(option) &&
+        if (!selectedOptions.value.includes(option))
           selectedOptions.value.push(option);
     };
     const selectNone = () => selectedOptions.value.splice(0);
