@@ -1,18 +1,18 @@
-import fs from "fs";
-import { dirname, join } from "path";
-import process from "process";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import { dirname, join } from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { edit, login } from "./api.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 function readDist() {
-  const json = fs.readFileSync(join(__dirname, "../dist/manifest.json"), {
+  const json = fs.readFileSync(join(__dirname, "../dist/.vite/manifest.json"), {
     encoding: "utf8",
   });
   const manifest = JSON.parse(json);
   const result = {};
-  Object.values(manifest).forEach((v) => {
+  for (const v of Object.values(manifest)) {
     const name = v.file.split(".")[0];
     result[name] = {
       fileName: v.file,
@@ -20,7 +20,7 @@ function readDist() {
         encoding: "utf8",
       }),
     };
-  });
+  }
   return result;
 }
 async function main() {
