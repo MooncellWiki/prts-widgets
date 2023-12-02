@@ -223,7 +223,7 @@ export default defineComponent({
           </table>
         </NCollapseTransition>
       </NCard>
-      <NCard content-style="padding: 1%">
+      <NCard size="small">
         <NCollapse @item-header-click="collapseTitleChange">
           <NCollapseItem
             v-for="cate in filteredMedalData.category"

@@ -7,7 +7,6 @@ import {
   NConfigProvider,
   NDropdown,
   NImage,
-  DropdownOption,
   NCollapse,
   NCollapseItem,
   NTooltip,
@@ -17,7 +16,9 @@ import { getImagePath } from "../../utils/utils";
 
 import MedalComponent from "./Medal.vue";
 import type { Medal, MedalGroup } from "./types";
-
+function goToLink(link: string) {
+  window.open("https://prts.wiki/w/" + link, "_blank");
+}
 export default defineComponent({
   components: {
     NButton,
@@ -47,13 +48,9 @@ export default defineComponent({
         return {
           label: props.groupData.bindEvent[0] + (index > 0 ? " 复刻" : ""),
           key: value,
-        } as DropdownOption;
+        };
       });
     });
-
-    function goToLink(link: string) {
-      window.open("https://prts.wiki/w/" + link, "_blank");
-    }
 
     return {
       eventLinkList,

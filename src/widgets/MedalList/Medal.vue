@@ -79,7 +79,7 @@ export default defineComponent({
       <div class="flex <lg:flex-col">
         <div
           :class="[
-            'bg-[#464646] flex grid-items-center w-190px justify-center min-h-12.5em',
+            'bg-[#464646] flex grid-items-center w-190px justify-center min-h-50',
             {
               'bg-gradient-to-b from-[#485a5c] to-[#1d0942]':
                 showTrimed && medalData.isTrim,
