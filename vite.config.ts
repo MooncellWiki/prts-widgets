@@ -21,7 +21,6 @@ for (const entry of entries) {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: "https://static.prts.wiki/widgets/release/",
   resolve: {
     alias: {
       "@": resolve(dirname(fileURLToPath(import.meta.url)), "./src"),
@@ -84,6 +83,12 @@ export default defineConfig({
               if (chunk.fileName.startsWith("SpineViewer")) {
                 // SpineViewer 不需要改导入路径
                 continue;
+              }
+              for (const name of fileNames) {
+                chunk.code = chunk.code.replaceAll(
+                  `./${name}`,
+                  `https://static.prts.wiki/widgets/release/${name}`,
+                );
               }
             }
           },
