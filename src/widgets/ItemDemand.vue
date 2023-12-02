@@ -30,9 +30,9 @@ enum Status {
   succ,
 }
 async function query(name: string): Promise<itemCost> {
-  const data: Resp = (
-    await (await fetch(`${torappuEndPoint}/api/v1/item/${name}/demand`)).json()
-  ).data;
+  const resp = await fetch(`${torappuEndPoint}/api/v1/item/${name}/demand`);
+  const json = await resp.json();
+  const data: Resp = json.data;
   const costs = Array.from<{ label: string; data: CostProps[] }>({ length: 6 });
   const total = {
     elite: 0,
@@ -41,7 +41,7 @@ async function query(name: string): Promise<itemCost> {
     uniequip: 0,
     total: 0,
   };
-  Object.keys(data).forEach((key) => {
+  for (const key of Object.keys(data)) {
     const v = data[key];
     const cost = costs[v.rarity] || {
       label: `${v.rarity}星`,
@@ -56,10 +56,10 @@ async function query(name: string): Promise<itemCost> {
       total.skill += v.skill;
     }
     total.mastery += v.mastery.reduce((acc, cur) => acc + cur, 0);
-  });
+  }
   total.total = total.elite + total.skill + total.mastery + total.uniequip;
   return {
-    costs: costs.filter((v) => v).reverse() as cost[], // 让六星排到前面
+    costs: costs.filter(Boolean).reverse() as cost[], // 让六星排到前面
     total,
   };
 }
@@ -84,8 +84,8 @@ export default defineComponent({
         const cost = await query(props.item!);
         data.value = cost;
         state.value = Status.succ;
-      } catch (err) {
-        console.warn(err);
+      } catch (error) {
+        console.warn(error);
         state.value = Status.fail;
       }
     }

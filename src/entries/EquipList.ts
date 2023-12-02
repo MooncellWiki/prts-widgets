@@ -3,5 +3,5 @@ import { createApp } from "vue";
 
 import EquipList from "../widgets/EquipList/index.vue";
 
-const ele = document.getElementById("root");
+const ele = document.querySelector("#root");
 if (ele) createApp(EquipList, {}).mount(ele);

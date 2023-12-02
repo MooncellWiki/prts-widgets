@@ -5,8 +5,8 @@ import { createApp } from "vue";
 import Voice from "../widgets/VoiceTable/VoiceTable.vue";
 import VoiceMobile from "../widgets/VoiceTable/VoiceTableMobile.vue";
 
-const ele = document.getElementById("voice-table-root");
-const dataRoot = document.getElementById("voice-data-root");
+const ele = document.querySelector("#voice-table-root");
+const dataRoot = document.querySelector<HTMLElement>("#voice-data-root");
 const dataEle = dataRoot?.getElementsByClassName(
   "voice-data-item",
 ) as HTMLCollectionOf<HTMLElement>;
@@ -50,7 +50,7 @@ const langArr = Array.from(langSet);
 window.charVoice = voiceData;
 console.log(dataRoot, voiceData, voiceBase, langSet);
 const isMobile = !!document
-  .getElementsByTagName("body")[0]
+  .querySelectorAll("body")[0]
   .classList.contains("skin-minerva");
 if (
   ele &&

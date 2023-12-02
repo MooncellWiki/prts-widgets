@@ -260,7 +260,13 @@ export default defineComponent({
         sorter: (row1, row2) => {
           const index1 = dimensionPrecedence.indexOf(row1[field].toString());
           const index2 = dimensionPrecedence.indexOf(row2[field].toString());
-          return index1 === -1 ? 1 : index2 === -1 ? -1 : index1 - index2;
+          if (index1 === -1) {
+            return 1;
+          }
+          if (index2 === -1) {
+            return -1;
+          }
+          return index1 - index2;
         },
         filterOptions: createFilterOptions(field),
         filterOptionValues: filterConfig.states[field],
@@ -285,8 +291,10 @@ export default defineComponent({
       },
       render(row) {
         nextTick(() => {
-          document.querySelectorAll(".mc-tooltips").forEach((e) => {
-            if (!e.children || e.children.length < 2) return;
+          for (const e of Array.from(
+            document.querySelectorAll(".mc-tooltips"),
+          )) {
+            if (!e.children || e.children.length < 2) continue;
             (e.children[1] as HTMLElement).style.display = "block";
             // @ts-expect-error tippy
             // eslint-disable-next-line no-undef
@@ -302,7 +310,7 @@ export default defineComponent({
                 (e.children[1] as HTMLElement).dataset.trigger ||
                 "mouseenter focus",
             });
-          });
+          }
         });
         return h("span", { innerHTML: row.ability });
       },

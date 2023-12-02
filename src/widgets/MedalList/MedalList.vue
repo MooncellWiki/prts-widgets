@@ -259,7 +259,7 @@ export default defineComponent({
                 />
               </NGridItem>
               <NGridItem
-                v-if="cate.medal.length < 1 && cate.medalGroup.length < 1"
+                v-if="cate.medal.length === 0 && cate.medalGroup.length === 0"
                 span="1 l:2"
               >
                 <NEmpty>

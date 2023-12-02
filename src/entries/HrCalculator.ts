@@ -5,12 +5,12 @@ import HrCalculator from "../widgets/HrCalculator/index.vue";
 import type { Source } from "../widgets/HrCalculator/utils";
 import { Char } from "../widgets/HrCalculator/utils";
 
-const ele = document.getElementById("root");
+const ele = document.querySelector("#root");
 
 function init(): Source[] {
   return (
     Array.from(
-      document.getElementById("filter-data")?.children || [],
+      document.querySelector("#filter-data")?.children || [],
     ) as HTMLElement[]
   )
     .filter((v) => {

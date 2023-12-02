@@ -1,10 +1,9 @@
-/* eslint-disable no-empty */
 const getLast = (str: string) => {
   if (str.includes("→")) {
     const arr = str.split("→");
-    return parseInt(arr[arr.length - 1]);
+    return Number.parseInt(arr.at(-1)!);
   } else {
-    return parseInt(str);
+    return Number.parseInt(str);
   }
 };
 
@@ -47,7 +46,7 @@ export class Char {
     const d = ele.dataset;
     this.zh = d.zh!;
     this.profession = d.profession!;
-    this.rarity = parseInt(d.rarity!);
+    this.rarity = Number.parseInt(d.rarity!);
     this.logo = d.logo || "";
     this.birthPlace = d.birth_place || "";
     if (d.nation) this.force.push(d.nation);
@@ -58,10 +57,10 @@ export class Char {
     this.en = d.en || "";
     this.ja = d.ja || "";
     this.id = d.id || "";
-    this.hp = parseInt(d.hp!);
-    this.atk = parseInt(d.atk!);
-    this.def = parseInt(d.def!);
-    this.res = parseInt(d.res!);
+    this.hp = Number.parseInt(d.hp!);
+    this.atk = Number.parseInt(d.atk!);
+    this.def = Number.parseInt(d.def!);
+    this.res = Number.parseInt(d.res!);
     this.reDeploy = d.re_deploy!;
     this.cost = getLast(d.cost!);
     this.block = getLast(d.block!);
@@ -75,18 +74,19 @@ export class Char {
     const [types, values] =
       d.potential?.split("`").map((v) => v.split(",")) || [];
     if (types && values) {
-      types.forEach((t, i) => {
-        this.potential.push({ type: t, value: parseInt(values[i]) });
-      });
+      for (const [i, t] of types.entries()) {
+        this.potential.push({ type: t, value: Number.parseInt(values[i]) });
+      }
     }
-    this.trust = d.trust?.split(",").map((v) => (v ? parseInt(v) : 0)) || [];
+    this.trust =
+      d.trust?.split(",").map((v) => (v ? Number.parseInt(v) : 0)) || [];
     this.phy = d.phy || "";
     this.flex = d.flex || "";
     this.tolerance = d.tolerance || "";
     this.plan = d.plan || "";
     this.skill = d.skill || "";
     this.adapt = d.adapt || "";
-    this.sortId = parseInt(d.sortid!);
+    this.sortId = Number.parseInt(d.sortid!);
     this.subProfession = d.subprofession!;
     this.feature = ele.innerHTML || "";
     this.plainFeature = "";
@@ -94,11 +94,13 @@ export class Char {
       try {
         const dom = document.createElement("div");
         dom.innerHTML = ele.innerHTML;
-        dom.querySelectorAll(".mc-tooltips").forEach((e) => {
+        for (const e of Array.from(dom.querySelectorAll(".mc-tooltips"))) {
           if (e.children[1]) e.children[1].remove();
-        });
+        }
         this.plainFeature = dom.textContent!;
-      } catch (_) {}
+      } catch {
+        //
+      }
     }
   }
 }

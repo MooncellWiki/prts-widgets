@@ -1,7 +1,7 @@
-import { writeFileSync } from "fs";
-import path from "path";
-import process from "process";
-import { fileURLToPath } from "url";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { create, login } from "./api.js";
 
