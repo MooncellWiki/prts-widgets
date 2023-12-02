@@ -11,20 +11,27 @@ export interface Medal {
   reward?: string;
 }
 
+export interface MedalGroup {
+  name: string;
+  desc: string;
+  color: string;
+  bindEvent: Array<string>;
+  alias: string;
+  deprecateType?: string;
+  hasChangedInRetro?: boolean;
+  medal: Array<string>;
+  isTrim: boolean;
+  background?: string;
+  textStyle?: string;
+  customText?: string;
+}
+
 export interface MedalMetaData {
   medal: {
     [key: string]: Medal;
   };
   medalGroup: {
-    [key: string]: {
-      name: string;
-      desc: string;
-      color: string;
-      bindEvent: Array<string>;
-      deprecateType?: string;
-      hasChangedInRetro?: boolean;
-      medal: Array<string>;
-    };
+    [key: string]: MedalGroup;
   };
   category: {
     [key: string]: {
