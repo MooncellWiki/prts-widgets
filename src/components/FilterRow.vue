@@ -50,9 +50,10 @@ export default defineComponent({
         return;
       }
       const tmp: Record<string, boolean> = {};
-      props.labels?.forEach((label) => {
-        tmp[label] = true;
-      });
+      if (props.labels)
+        for (const label of props.labels) {
+          tmp[label] = true;
+        }
       selected.value = tmp;
     };
     const removeAll = () => {

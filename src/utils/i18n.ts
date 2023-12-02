@@ -38,17 +38,23 @@ export function getLanguage() {
 export function getNaiveUILocale() {
   const language = getLanguage();
   switch (language) {
-    case LANGUAGES.EN:
+    case LANGUAGES.EN: {
       return { locale: enUS, dateLocale: dateEnUS };
-    case LANGUAGES.JA:
+    }
+    case LANGUAGES.JA: {
       return { locale: jaJP, dateLocale: dateJaJP };
-    case LANGUAGES.KO:
+    }
+    case LANGUAGES.KO: {
       return { locale: koKR, dateLocale: dateKoKR };
-    case LANGUAGES.ZH_TW:
+    }
+    case LANGUAGES.ZH_TW: {
       return { locale: zhTW, dateLocale: dateZhTW };
-    case LANGUAGES.ZH:
+    }
+    case LANGUAGES.ZH: {
       return { locale: zhCN, dateLocale: dateZhCN };
-    default:
+    }
+    default: {
       return { locale: zhCN, dateLocale: dateZhCN };
+    }
   }
 }

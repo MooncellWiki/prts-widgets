@@ -2,7 +2,8 @@ import { Medal, Memory } from "./types";
 
 export async function getOnlineDate() {
   const resp = await fetch("/rest.php/v1/page/干员密录一览%2F密录上线时间");
-  const content = (await resp.json()).source as string;
+  const json = await resp.json();
+  const content = json.source as string;
   const temp = content
     .split("\n")
     .map((line) => {
@@ -16,7 +17,7 @@ export async function getOnlineDate() {
         /\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)/,
       ) as string[];
       return [
-        (extract[1].match(/\[\[(.*?)\|(.*?)\]\]/) as string[])[2] as string,
+        (extract[1].match(/\[\[(.*?)\|(.*?)]]/) as string[])[2] as string,
         // 第一密录下标：3
         extract.slice(3, -1).map((str) => {
           return new Date(str);
@@ -101,24 +102,24 @@ export async function getMemories(
   );
   const json: { cargoquery: { title: CargoMemory }[] } = await resp.json();
   const tmp: Record<string, CargoMemory[]> = {};
-  json.cargoquery.forEach((e) => {
+  for (const e of json.cargoquery) {
     if (!tmp[e.title.page]) {
       tmp[e.title.page] = [];
     }
     tmp[e.title.page].push(e.title);
-  });
+  }
   const memoryMap: Record<string, Memory[]> = {};
-  Object.entries(tmp).forEach(([key, memories]) => {
+  for (const [key, memories] of Object.entries(tmp)) {
     memories.sort((a, b) => {
-      const e = parseInt(a.elite) - parseInt(b.elite);
+      const e = Number.parseInt(a.elite) - Number.parseInt(b.elite);
       if (e !== 0) return e;
-      const l = parseInt(a.level) - parseInt(b.level);
+      const l = Number.parseInt(a.level) - Number.parseInt(b.level);
       if (l !== 0) return l;
-      const f = parseInt(a.favor) - parseInt(b.favor);
+      const f = Number.parseInt(a.favor) - Number.parseInt(b.favor);
       if (f !== 0) return f;
-      return parseInt(a.storyIndex) - parseInt(b.storyIndex);
+      return Number.parseInt(a.storyIndex) - Number.parseInt(b.storyIndex);
     });
     memoryMap[key] = toMemories(medalData, memories);
-  });
+  }
   return memoryMap;
 }

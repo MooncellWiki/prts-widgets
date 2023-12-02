@@ -5,13 +5,13 @@ import CharList from "../widgets/CharList/index.vue";
 import type { FilterGroup } from "../widgets/CharList/utils";
 import { Char } from "../widgets/CharList/utils";
 
-const ele = document.getElementById("root");
+const ele = document.querySelector("#root");
 const filters = JSON.parse(
-  document.getElementById("filter-filter")?.innerText ?? "",
+  document.querySelector("#filter-filter")?.textContent ?? "",
 ).filters as FilterGroup[];
 
 const source = Array.prototype.map.call(
-  document.getElementById("filter-data")?.children,
+  document.querySelector("#filter-data")?.children,
   (v) => {
     return new Char(v);
   },

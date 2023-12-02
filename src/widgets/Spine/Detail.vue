@@ -1,7 +1,9 @@
 <script lang="ts">
 import type { PropType } from "vue";
 import { defineComponent } from "vue";
-
+function round(x: number) {
+  return Math.round(x);
+}
 export default defineComponent({
   props: {
     detailes: Array as PropType<
@@ -12,9 +14,6 @@ export default defineComponent({
     >,
   },
   setup() {
-    function round(x: number) {
-      return Math.round(x);
-    }
     return { round };
   },
 });
