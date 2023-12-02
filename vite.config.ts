@@ -7,7 +7,9 @@ import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
-const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
+
+const TARGET = ["chrome87", "edge88", "firefox78", "safari14", "ios14"];
+
 const entries = readdirSync(
   join(dirname(fileURLToPath(import.meta.url)), "src/entries/"),
 );
@@ -16,8 +18,10 @@ const input: Record<string, string> = {};
 for (const entry of entries) {
   input[entry.replace(".ts", "")] = `src/entries/${entry}`;
 }
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: "https://static.prts.wiki/widgets/release/",
   resolve: {
     alias: {
       "@": resolve(dirname(fileURLToPath(import.meta.url)), "./src"),
@@ -80,12 +84,6 @@ export default defineConfig({
               if (chunk.fileName.startsWith("SpineViewer")) {
                 // SpineViewer 不需要改导入路径
                 continue;
-              }
-              for (const name of fileNames) {
-                chunk.code = chunk.code.replaceAll(
-                  `./${name}`,
-                  `https://static.prts.wiki/widgets/release/${name}`,
-                );
               }
             }
           },
