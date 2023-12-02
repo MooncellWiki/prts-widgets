@@ -23,6 +23,7 @@ import { useTheme } from "@/utils/theme";
 import { getImagePath } from "../../utils/utils";
 
 import MedalComponent from "./Medal.vue";
+import MedalGroupComponent from "./MedalGroup.vue";
 import MedalStats from "./MedalStats.vue";
 import type { MedalMetaData } from "./types";
 import { getMedalMetaData } from "./utils";
@@ -32,6 +33,7 @@ export default defineComponent({
     OptionsGroup,
     MedalStats,
     MedalComponent,
+    MedalGroupComponent,
     NCard,
     NCollapse,
     NPopover,
@@ -221,7 +223,7 @@ export default defineComponent({
           </table>
         </NCollapseTransition>
       </NCard>
-      <NCard>
+      <NCard size="small">
         <NCollapse @item-header-click="collapseTitleChange">
           <NCollapseItem
             v-for="cate in filteredMedalData.category"
@@ -259,6 +261,21 @@ export default defineComponent({
                 />
               </NGridItem>
               <NGridItem
+                v-for="medalGroupId in cate.medalGroup.slice().reverse()"
+                :key="medalGroupId"
+              >
+                <MedalGroupComponent
+                  :group-data="filteredMedalData.medalGroup[medalGroupId]"
+                  :medal-data-list="
+                    filteredMedalData.medalGroup[medalGroupId].medal.map(
+                      (id) => {
+                        return filteredMedalData.medal[id];
+                      },
+                    )
+                  "
+                />
+              </NGridItem>
+              <NGridItem
                 v-if="cate.medal.length === 0 && cate.medalGroup.length === 0"
                 span="1 l:2"
               >
@@ -271,6 +288,7 @@ export default defineComponent({
                 </NEmpty>
               </NGridItem>
             </NGrid>
+            <!--
             <div
               v-for="medalGroupId in cate.medalGroup.slice().reverse()"
               :key="medalGroupId"
@@ -286,6 +304,7 @@ export default defineComponent({
                 {{ filteredMedalData.medal[medalId].name }}
               </div>
             </div>
+            -->
           </NCollapseItem>
         </NCollapse>
       </NCard>
