@@ -8,7 +8,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
 
-const TARGET = ["chrome87", "edge88", "firefox78", "safari14", "ios14"];
+const TARGET = ["es2020", "edge88", "firefox78", "chrome87", "safari14"];
 
 const entries = readdirSync(
   join(dirname(fileURLToPath(import.meta.url)), "src/entries/"),
@@ -101,6 +101,5 @@ export default defineConfig({
         passes: 10,
       },
     },
-    target: TARGET,
   },
 });
