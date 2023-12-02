@@ -15,8 +15,7 @@ export const charListData = {
       "9/9e/干员图鉴_lh_4.png",
       "a/a5/干员图鉴_lh_5.png",
     ];
-    if (r < 3) return _lh[0];
-    else return _lh[r - 2];
+    return r < 3 ? _lh[0] : _lh[r - 2];
   },
   bg: (r: number) => {
     const _bg = [
@@ -25,8 +24,7 @@ export const charListData = {
       "a/ad/干员图鉴_背景_4.png",
       "c/c9/干员图鉴_背景_5.png",
     ];
-    if (r < 3) return _bg[0];
-    else return _bg[r - 2];
+    return r < 3 ? _bg[0] : _bg[r - 2];
   },
   patch: "2/20/干员图鉴_补丁.png",
 };
@@ -49,13 +47,9 @@ export function sum(arr: Array<number>) {
   return arr.reduce((acc, cur) => acc + cur, 0);
 }
 export function isMobile(): boolean {
-  if (
-    window.navigator.userAgent.match(
-      /(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i,
-    )
-  )
-    return true; // 移动端
-  else return false; // PC端
+  return /(phone|pad|pod|iphone|ipod|ios|ipad|android|mobile|blackberry|iemobile|mqqbrowser|juc|fennec|wosbrowser|browserng|webos|symbian|windows phone)/i.test(
+    window.navigator.userAgent,
+  );
 }
 export function isFirefox(): boolean {
   return window.navigator.userAgent.includes("Firefox");

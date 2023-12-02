@@ -63,7 +63,7 @@ export default defineComponent({
     const currentSceneId = ref(0);
     function jump(id: number) {
       if (id) {
-        const index = sceneNav.value.findIndex((v) => v === id);
+        const index = sceneNav.value.indexOf(id);
         if (index === -1) sceneNav.value.push(id);
         else if (index + 1 < sceneNav.value.length)
           sceneNav.value.splice(index + 1);
@@ -149,7 +149,7 @@ export default defineComponent({
             >
               <NDropdown
                 v-if="
-                  sceneData[SceneId].options.length &&
+                  sceneData[SceneId].options.length > 0 &&
                   index !== sceneNav.length - 1
                 "
                 placement="bottom-start"

@@ -27,9 +27,9 @@ export default defineComponent({
   setup(props) {
     const selectedChar = inject("selectedChar") as Ref<Char[]>;
     const selectAll = () => {
-      props.chars.forEach((char: Char) => {
+      for (const char of props.chars) {
         if (!selectedChar.value.includes(char)) selectedChar.value.push(char);
-      });
+      }
     };
     return {
       getImagePath,

@@ -28,13 +28,13 @@ export default defineComponent({
         trim: { data: [0, 0], name: "镀层蚀刻章", indieEncrypt: false },
         all: { data: [0, 0], name: "已有蚀刻章", indieEncrypt: false },
       };
-      Object.values(props.medalMetaData.medal).forEach((medal) => {
+      for (const medal of Object.values(props.medalMetaData.medal)) {
         result.all.data[Number(medal.isHidden)]++;
         result[`star${medal.rarity as 1 | 2 | 3}`].data[
           Number(medal.isHidden)
         ]++;
         result.trim.data[Number(medal.isHidden)] += Number(medal.isTrim);
-      });
+      }
       return result;
     });
 

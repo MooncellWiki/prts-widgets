@@ -19,14 +19,11 @@ export default defineComponent({
   emits: ["update:char"],
   setup(props, { emit }) {
     const charRef = useVModel(props, "char", emit);
-    const onClickImg = (name: string) => {
-      return name;
-    };
     const selectedChar = inject("selectedChar") as Ref<Char[]>;
     const addOrDeleteChar = (char: Char) => {
-      !selectedChar.value.includes(char)
-        ? selectedChar.value.push(char)
-        : selectedChar.value.splice(selectedChar.value.indexOf(char));
+      selectedChar.value.includes(char)
+        ? selectedChar.value.splice(selectedChar.value.indexOf(char))
+        : selectedChar.value.push(char);
     };
     const src = ref(
       `/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`,
@@ -38,7 +35,6 @@ export default defineComponent({
       getImagePath,
       src,
       charRef,
-      onClickImg,
       addOrDeleteChar,
     };
   },

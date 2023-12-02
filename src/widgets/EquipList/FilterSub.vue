@@ -25,16 +25,9 @@ export default defineComponent({
   },
   emits: ["update:selected"],
   setup(props, { emit }) {
-    const selectedRef = useVModel(props, "selected", emit);
-    const onChange = (value: Array<string>) => {
-      selectedRef.value.splice(0);
-      value.forEach((value) => {
-        selectedRef.value.push(value);
-      });
-    };
+    const value = useVModel(props, "selected", emit);
     return {
-      selectedRef,
-      onChange,
+      value,
     };
   },
 });
@@ -45,13 +38,13 @@ export default defineComponent({
     <span class="basis-1/8">{{ title }}</span>
     <div class="flex flex-row items-center basis-7/8">
       <NSelect
+        v-model:value="value"
         class="m-1"
         :options="options"
         multiple
         filterable
         clearable
         placeholder="输入或在下拉列表中选择"
-        @update:value="onChange"
       />
     </div>
   </div>

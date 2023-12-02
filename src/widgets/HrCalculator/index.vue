@@ -23,6 +23,10 @@ import {
   tag,
   tagIndex,
 } from "./utils";
+// 寻访出不了的都算只能公招出
+function isOnly(s: Source) {
+  return !s.obtainMethod.some((v) => v.includes("寻访"));
+}
 export default defineComponent({
   components: { Checkbox, FilterRow, Avatar },
   props: {
@@ -66,14 +70,14 @@ export default defineComponent({
     function calc() {
       const result: Record<number | string, { charIndict: Set<number> }> = {};
       const subset = value.bitmap.getSubSet();
-      props.source.forEach((c, charIndex) => {
-        c.subset.forEach((set) => {
-          subset.forEach((group) => {
+      for (const [charIndex, c] of props.source.entries()) {
+        for (const set of c.subset) {
+          for (const group of subset) {
             // 干员的子集中的一个元素 是这个选中的子集中的一个元素 的子集
-            if ((group & set) !== group) return;
+            if ((group & set) !== group) continue;
 
             // 6星要有对应的稀有度tag才能出
-            if (c.rarity === 5 && !can5(group)) return;
+            if (c.rarity === 5 && !can5(group)) continue;
 
             if (!result[group]) {
               result[group] = {
@@ -81,13 +85,13 @@ export default defineComponent({
               };
             }
             result[group].charIndict.add(charIndex);
-          });
-        });
-      });
+          }
+        }
+      }
       const list: Array<{ tags: number; charIndict: number[]; score: number }> =
         [];
-      Object.keys(result).forEach((k) => {
-        const key = parseInt(k);
+      for (const k of Object.keys(result)) {
+        const key = Number.parseInt(k);
         const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
           return props.source[b].rarity - props.source[a].rarity;
         });
@@ -102,7 +106,7 @@ export default defineComponent({
               return acc + s;
             }, 0) / charIndict.length,
         });
-      });
+      }
       list.sort((a, b) => {
         const rarity = b.score - a.score;
         if (rarity !== 0) return rarity;
@@ -126,10 +130,7 @@ export default defineComponent({
       value.load(shortcutParam);
       result.value = calc();
     }
-    // 寻访出不了的都算只能公招出
-    function isOnly(s: Source) {
-      return !s.obtainMethod.some((v) => v.includes("寻访"));
-    }
+
     function copyUrl() {
       return navigator.clipboard.writeText(shortcutUrl.value);
     }

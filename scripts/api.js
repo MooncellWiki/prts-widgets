@@ -109,8 +109,8 @@ export async function checkPageExist(pagename) {
   try {
     await view(pagename);
     return true;
-  } catch (err) {
-    console.log(err);
+  } catch (error) {
+    console.log(error);
     return false;
   }
 }
