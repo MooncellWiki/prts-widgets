@@ -114,6 +114,7 @@ export default defineConfig(({ command }) => {
           passes: 10,
         },
       },
+      target: TARGET,
     },
   };
 });
