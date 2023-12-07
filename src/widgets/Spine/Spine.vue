@@ -44,18 +44,7 @@ enum Actions {
   changeAni,
   update,
 }
-export interface Props {
-  prefix: string;
-  name: string;
-  skin: {
-    [key: string]: {
-      [key: string]: {
-        file: string;
-        skin?: string;
-      };
-    };
-  };
-}
+
 export default defineComponent({
   components: {
     NButton,
