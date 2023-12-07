@@ -1,10 +1,22 @@
 <script lang="ts">
 import type { PropType } from "vue";
-import { defineComponent, ref } from "vue";
+import { defineComponent, ref, watch } from "vue";
 
 import { NButton, NConfigProvider, zhCN } from "naive-ui";
 
 import Spine from "./Spine.vue";
+export interface Props {
+  prefix: string;
+  name: string;
+  skin: {
+    [key: string]: {
+      [key: string]: {
+        file: string;
+        skin?: string;
+      };
+    };
+  };
+}
 export default defineComponent({
   components: {
     NConfigProvider,
@@ -13,22 +25,30 @@ export default defineComponent({
     Spine,
   },
   props: {
-    prefix: String,
-    name: String,
-    skin: Object as PropType<{
-      [key: string]: {
-        [key: string]: {
-          file: string;
-          skin?: string;
-        };
-      };
-    }>,
+    conf: Object as PropType<Props>,
+    id: String,
   },
-  setup() {
+  setup(props) {
     const loaded = ref(false);
+    const value = ref<Props>();
+    value.value = props.conf;
+    watch(props, () => {
+      value.value = props.conf;
+    });
+    async function load() {
+      if (props.id) {
+        const resp = await fetch(
+          `https://torappu.prts.wiki/assets/charSpine/${props.id}/meta.json`,
+        );
+        value.value = await resp.json();
+      }
+      loaded.value = true;
+    }
     return {
+      value,
       loaded,
       zhCN,
+      load,
     };
   },
 });
@@ -42,18 +62,13 @@ export default defineComponent({
     :locale="zhCN"
   >
     <!-- <n-dialog-provider> -->
-    <Spine v-if="loaded" :prefix="prefix" :name="name" :skin="skin" />
-    <NButton
-      v-else
-      type="info"
-      @click="
-        () => {
-          loaded = true;
-        }
-      "
-    >
-      点此载入模型
-    </NButton>
+    <Spine
+      v-if="loaded"
+      :prefix="value!.prefix"
+      :name="value!.name"
+      :skin="value!.skin"
+    />
+    <NButton v-else type="info" @click="load"> 点此载入模型 </NButton>
     <!-- </n-dialog-provider> -->
   </NConfigProvider>
 </template>
