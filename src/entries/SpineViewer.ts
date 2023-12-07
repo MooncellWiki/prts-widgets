@@ -10,7 +10,6 @@ window.SpineApi = Spine;
 window.dispatchEvent(new Event("spine_api_ready"));
 async function main() {
   const ele = document.querySelector<HTMLElement>("#spine-root");
-  // eslint-disable-next-line unicorn/no-useless-undefined
   let spineData: Props | null = null;
   if (!ele?.dataset.id) {
     spineData = JSON.parse(
