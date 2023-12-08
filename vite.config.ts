@@ -33,7 +33,7 @@ export default defineConfig(({ command }) => {
   const useHtmlMode = command === "build";
 
   return {
-    base: useHtmlMode ? "https://static.prts.wiki/widgets/release" : "/",
+    base: useHtmlMode ? "https://static.prts.wiki/widgets/production" : "/",
     resolve: {
       alias: {
         "@": resolve(dirname(fileURLToPath(import.meta.url)), "./src"),
@@ -64,7 +64,7 @@ export default defineConfig(({ command }) => {
       rollupOptions: {
         input: useHtmlMode ? templatesInput : input,
         output: {
-          sourcemapBaseUrl: "https://static.prts.wiki/widgets/release/",
+          sourcemapBaseUrl: "https://static.prts.wiki/widgets/production/",
           manualChunks(id) {
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
@@ -100,7 +100,7 @@ export default defineConfig(({ command }) => {
                 for (const name of fileNames) {
                   chunk.code = chunk.code.replaceAll(
                     `./${name}`,
-                    `https://static.prts.wiki/widgets/release/${name}`,
+                    `https://static.prts.wiki/widgets/production/${name}`,
                   );
                 }
               }
