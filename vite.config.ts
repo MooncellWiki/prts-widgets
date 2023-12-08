@@ -23,9 +23,7 @@ for (const entry of entries) {
   input[entry.replace(".ts", "")] = `src/entries/${entry}`;
 }
 
-const templatesInput: Record<string, string> = {
-  sentry: "src/entries/sentry.ts",
-};
+const templatesInput: Record<string, string> = {};
 for (const template of templates) {
   templatesInput[template.replace(".html", "")] = `templates/${template}`;
 }
