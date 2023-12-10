@@ -7,32 +7,37 @@ import { Char } from "../widgets/HrCalculator/utils";
 
 const ele = document.querySelector("#root");
 
-function init(): Source[] {
-  return (
-    Array.from(
-      document.querySelector("#filter-data")?.children || [],
-    ) as HTMLElement[]
-  )
-    .filter((v) => {
-      return v.dataset.obtain_method?.split(", ").includes("公开招募");
-    })
-    .map((v) => {
-      const temp: Source = {
-        profession: v.dataset.profession!,
-        position: v.dataset.position!,
-        rarity: Number.parseInt(v.dataset.rarity!),
-        tag: v.dataset.tag?.split(" ") || [],
-        zh: v.dataset.zh!,
-        subset: [],
-        obtainMethod: v.dataset.obtain_method?.split(", ") || [],
-      };
-      const char = Char.fromSource(temp);
-      temp.subset = char.bitmap.getSubSet();
-      return Object.freeze(temp);
-    });
+async function init() {
+  const resp = await fetch(
+    `/api.php?${new URLSearchParams({
+      action: "cargoquery",
+      format: "json",
+      tables: "chara,char_obatin",
+      limit: "5000",
+      fields:
+        "chara.profession,chara.position,chara.rarity,chara.tag,chara.cn,char_obatin.obtainMethod",
+      where: 'char_obatin.obtainMethod like "%公开招募%" AND chara.charIndex>0',
+      join_on: "chara._pageName=char_obatin._pageName",
+    })}`,
+  );
+  const json = await resp.json();
+  const source = json.cargoquery.map((obj: any) => {
+    const v = obj.title;
+    const temp: Source = {
+      profession: v.profession!,
+      position: v.position!,
+      rarity: Number.parseInt(v.rarity!),
+      tag: v.tag?.split(" ") || [],
+      zh: v.cn!,
+      subset: [],
+      obtainMethod: v.obtainMethod?.split(" ") || [],
+    };
+    const char = Char.fromSource(temp);
+    temp.subset = char.bitmap.getSubSet();
+    return Object.freeze(temp);
+  });
+  console.log(source);
+  if (ele) createApp(HrCalculator, { source }).mount(ele);
+  else console.error("data-item or ele not found", ele);
 }
-
-const source = init();
-console.log(source);
-if (ele) createApp(HrCalculator, { source }).mount(ele);
-else console.error("data-item or ele not found", ele);
+init();
