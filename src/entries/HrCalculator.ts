@@ -12,12 +12,12 @@ async function init() {
     `/api.php?${new URLSearchParams({
       action: "cargoquery",
       format: "json",
-      tables: "chara,char_obatin",
+      tables: "chara,char_obtain",
       limit: "5000",
       fields:
-        "chara.profession,chara.position,chara.rarity,chara.tag,chara.cn,char_obatin.obtainMethod",
-      where: 'char_obatin.obtainMethod like "%公开招募%" AND chara.charIndex>0',
-      join_on: "chara._pageName=char_obatin._pageName",
+        "chara.profession,chara.position,chara.rarity,chara.tag,chara.cn,char_obtain.obtainMethod",
+      where: 'char_obtain.obtainMethod like "%公开招募%" AND chara.charIndex>0',
+      join_on: "chara._pageName=char_obtain._pageName",
     })}`,
   );
   const json = await resp.json();
