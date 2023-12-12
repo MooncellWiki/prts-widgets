@@ -24,10 +24,10 @@ const voiceBase =
 const dataDomList = Array.from(dataEle);
 const voiceData = [];
 
-const parseDirectLinks = (directLinks: string | undefined) => {
+const parseDirectLinks = (directLinks?: string) => {
   const splitted = directLinks?.split(",");
   const langToLink: Record<string, string> = {};
-  if (!directLinks || !splitted) return langToLink;
+  if (!splitted) return langToLink;
 
   for (const directLink of splitted) {
     const [lang, link] = directLink.split(":");
@@ -51,10 +51,11 @@ const parseDetail = (children: HTMLCollection) => {
 };
 
 for (const dom of dataDomList) {
-  const title = dom.dataset?.title;
-  const index = dom.dataset?.voiceIndex;
-  const fileName = dom.dataset?.voiceFilename?.toLowerCase();
-  const directLinks = parseDirectLinks(dom.dataset?.directLinks);
+  if (!dom.dataset) continue;
+  const title = dom.dataset.title;
+  const index = dom.dataset.voiceIndex;
+  const fileName = dom.dataset.voiceFilename?.toLowerCase();
+  const directLinks = parseDirectLinks(dom.dataset.directLinks);
   const cond = dom.dataset?.cond;
   const detail = parseDetail(dom.children);
 
