@@ -24,7 +24,7 @@ export default defineComponent({
       {
         title?: string;
         index?: string;
-        voiceFilename?: string;
+        fileName?: string;
         directLinks: {
           [index: string]: string;
         };
@@ -139,9 +139,9 @@ export default defineComponent({
               <VoicePlayer
                 :key="index"
                 v-model:playKey="playKey"
-                :direct-link="ele?.directLinks[selectedVoiceLang]"
-                :voice-id="`${voiceKey}/${ele?.title}`"
-                :voice-path="`${selectedVoicePath}/${ele?.voiceFilename?.replace(
+                :direct-link="ele.directLinks[selectedVoiceLang]"
+                :voice-id="`${voiceKey}/${ele.title}`"
+                :voice-path="`${selectedVoicePath}/${ele.fileName?.replace(
                   /\s/g,
                   '_',
                 )}`"

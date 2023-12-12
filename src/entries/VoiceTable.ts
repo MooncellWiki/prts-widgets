@@ -20,35 +20,62 @@ const voiceBase =
       path,
     };
   }) || [];
-const voiceData = Array.from(dataEle).map((ele) => ({
-  title: ele?.dataset?.title,
-  index: ele?.dataset?.voiceIndex,
-  voiceFilename: ele?.dataset?.voiceFilename,
-  directLinks:
-    ele?.dataset?.directLinks?.split(",").reduce<{
-      [index: string]: string;
-    }>((acc, curr) => {
-      const [lang, link] = curr.split(":");
-      acc[lang] = link;
-      return acc;
-    }, {}) || {},
-  cond: ele?.dataset?.cond,
-  detail: Array.from(ele.children).reduce<{
-    [index: string]: string;
-  }>((acc, curr) => {
-    if ((curr as HTMLElement).dataset?.kindName !== undefined) {
-      acc[(curr as HTMLElement).dataset.kindName || ""] = curr.innerHTML;
-      langSet.add((curr as HTMLElement).dataset.kindName || "");
+
+const dataDomList = Array.from(dataEle);
+const voiceData = [];
+
+const parseDirectLinks = (directLinks: string | undefined) => {
+  const splitted = directLinks?.split(",");
+  const langToLink: Record<string, string> = {};
+  if (!directLinks || !splitted) return langToLink;
+
+  for (const directLink of splitted) {
+    const [lang, link] = directLink.split(":");
+    langToLink[lang] = link;
+  }
+
+  return langToLink;
+};
+
+const parseDetail = (children: HTMLCollection) => {
+  const detail: Record<string, string> = {};
+  const childrenArray = Array.from(children) as Array<HTMLElement>;
+  for (const child of childrenArray) {
+    if (child.dataset?.kindName !== undefined) {
+      detail[child.dataset.kindName || ""] = child.innerHTML;
+      langSet.add(child.dataset.kindName || "");
     }
-    return acc;
-  }, {}),
-}));
+  }
+
+  return detail;
+};
+
+for (const dom of dataDomList) {
+  const title = dom.dataset?.title;
+  const index = dom.dataset?.voiceIndex;
+  const fileName = dom.dataset?.voiceFilename?.toLowerCase();
+  const directLinks = parseDirectLinks(dom.dataset?.directLinks);
+  const cond = dom.dataset?.cond;
+  const detail = parseDetail(dom.children);
+
+  voiceData.push({
+    title,
+    index,
+    fileName,
+    directLinks,
+    cond,
+    detail,
+  });
+}
+
 const langArr = Array.from(langSet);
+
 // 挂到window上面给上面的charInfo用
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error;
 window.charVoice = voiceData;
 console.log(dataRoot, voiceData, voiceBase, langSet);
+
 const isMobile = !!document
   .querySelectorAll("body")[0]
   .classList.contains("skin-minerva");
