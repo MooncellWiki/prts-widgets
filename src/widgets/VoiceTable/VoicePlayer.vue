@@ -22,7 +22,13 @@ export default defineComponent({
   emits: ["update:playKey"],
   setup(props, { emit }) {
     const key = getCurrentInstance()?.vnode.key;
-    const source = computed(() => `//static.prts.wiki/${props.voicePath}`);
+
+    const source = computed(
+      () => `//torappu.prts.wiki/assets/audio/${props.voicePath}`,
+    );
+    const transformSourceURL = (ext: string) =>
+      source.value.replaceAll(".wav", ext);
+
     const fileName = computed(() => props.voiceId?.split("/").pop());
     const audioHref = computed(
       () =>
@@ -37,7 +43,7 @@ export default defineComponent({
     };
     const play = () => {
       playing.value = true;
-      audioElem.src = props.directLink || source.value;
+      audioElem.src = props.directLink || transformSourceURL(".mp3");
       emit("update:playKey", key);
 
       const playPromise = audioElem?.play();
