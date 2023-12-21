@@ -116,7 +116,7 @@ export default defineComponent({
               rarityGradient[medalData.rarity],
             ]"
           >
-            <h3 class="color-white p-0 mt-0!">
+            <h3 class="color-white p-0 mt-0! <lg:pt-1!">
               {{ medalData.name }}
             </h3>
             <div>

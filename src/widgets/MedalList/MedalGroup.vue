@@ -90,7 +90,7 @@ export default defineComponent({
       <div class="flex flex-col <lg:flex-col">
         <div
           :class="[
-            'flex <lg:flex-col',
+            'flex <lg:flex-row',
             'justify-between',
             'p-2.5! m-0! bg-gradient-to-r',
             'text-shadow-lg',
@@ -99,7 +99,7 @@ export default defineComponent({
             background: groupData.background || 'black',
           }"
         >
-          <h3 class="color-white p-0 px-1 pr-2 mt-0!">
+          <h3 class="color-white p-0 px-1 pr-2 mt-0! <lg:p-0! <lg:pt-1!">
             <span :style="groupData.textStyle || 'color:white;'">
               <span
                 v-if="groupData.customText"
@@ -210,13 +210,13 @@ export default defineComponent({
           arrow-placement="right"
           @item-header-click="showGroupDetail = !showGroupDetail"
         >
-          <NCollapseItem class="m-3!">
+          <NCollapseItem class="m-3! <lg:m-1.5!">
             <template #header>
-              <div class="flex flex-row <lg:flex-col">
+              <div class="flex flex-row">
                 <div>共 {{ groupData.medal.length }} 枚，展开套组</div>
                 <div
                   v-if="groupData.hasChangedInRetro"
-                  class="bg-bluegray-6 color-white ml-1 <lg:ml-0 px-1 py-0.5 font-bold font-size-1"
+                  class="bg-bluegray-6 color-white ml-1 px-1 py-0.5 font-bold font-size-2"
                 >
                   <span class="mdi mdi-information-outline" />
                   复刻时获取条件调整

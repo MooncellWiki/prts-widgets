@@ -3,6 +3,7 @@ import { computed, defineComponent, onMounted, ref } from "vue";
 
 import type { CollapseProps } from "naive-ui";
 import {
+  NButton,
   NCard,
   NCollapse,
   NCollapseItem,
@@ -34,6 +35,7 @@ export default defineComponent({
     MedalStats,
     MedalComponent,
     MedalGroupComponent,
+    NButton,
     NCard,
     NCollapse,
     NPopover,
@@ -142,6 +144,7 @@ export default defineComponent({
       );
     });
     const hiddenCatExpanded = ref(false);
+    const hiddenCatUnlocked = ref(false);
     const collapseTitleChange: CollapseProps["onItemHeaderClick"] = ({
       name,
       expanded,
@@ -162,6 +165,7 @@ export default defineComponent({
       showFilter,
       collapseTitleChange,
       hiddenCatExpanded,
+      hiddenCatUnlocked,
       cateNums,
       filteredMedalData,
       checkMedalExists,
@@ -223,7 +227,7 @@ export default defineComponent({
           </table>
         </NCollapseTransition>
       </NCard>
-      <NCard size="small">
+      <NCard size="small" content-style="padding: 0.5rem;">
         <NCollapse @item-header-click="collapseTitleChange">
           <NCollapseItem
             v-for="cate in filteredMedalData.category"
@@ -249,7 +253,16 @@ export default defineComponent({
             <NCard v-if="cate.extraDesc" class="mb-2">
               <div v-html="cate.extraDesc"></div>
             </NCard>
-            <NGrid cols="1 l:2" :x-gap="12" :y-gap="8" responsive="screen">
+            <NGrid
+              v-if="
+                cate.name != '加密奖章' ||
+                (cate.name == '加密奖章' && hiddenCatUnlocked)
+              "
+              cols="1 l:2"
+              :x-gap="12"
+              :y-gap="8"
+              responsive="screen"
+            >
               <NGridItem
                 v-for="medalId in cate.medal.filter((medalId) =>
                   checkMedalExists(medalId),
@@ -283,6 +296,45 @@ export default defineComponent({
                   <template #default>
                     <div class="text-center">
                       什么都没有 0.0<br />试着调整一下过滤器？
+                    </div>
+                  </template>
+                </NEmpty>
+              </NGridItem>
+            </NGrid>
+            <NGrid
+              v-else
+              cols="1 l:2"
+              :x-gap="12"
+              :y-gap="8"
+              responsive="screen"
+            >
+              <NGridItem span="1 l:2">
+                <NEmpty class="bg-#424242">
+                  <template #icon>
+                    <div class="text-center">
+                      <span
+                        class="mdi mdi-lock color-white p-0 font-size-2rem"
+                      />
+                    </div>
+                  </template>
+                  <template #default>
+                    <div class="text-center color-white pt-2">
+                      以下内容需要验证权限后查阅
+                    </div>
+                  </template>
+                  <template #extra>
+                    <div class="text-center color-white pb-2">
+                      <NButton
+                        color="white"
+                        text-color="#424242"
+                        @click="
+                          () => {
+                            hiddenCatUnlocked = true;
+                          }
+                        "
+                      >
+                        <span class="mdi mdi-key-variant" />&nbsp;移除加密
+                      </NButton>
                     </div>
                   </template>
                 </NEmpty>
