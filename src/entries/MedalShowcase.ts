@@ -12,5 +12,6 @@ for (const showcaseEle of Array.from(eles)) {
   createApp(MedalShowcase, {
     medal: data.medal || "",
     medalGroup: data.medalgroup || "",
+    spoiler: (data.spoiler || "") == "true",
   }).mount(showcaseEle);
 }

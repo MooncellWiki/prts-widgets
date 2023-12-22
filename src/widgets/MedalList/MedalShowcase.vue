@@ -153,6 +153,20 @@ export default defineComponent({
             点击前往【光荣之路】主页面
           </n-tooltip>
         </template>
+        <template #header-extra>
+          <div v-if="spoiler && spoilerManualUnlocked">
+            <NButton
+              color="#424242"
+              @click="
+                () => {
+                  spoilerManualUnlocked = false;
+                }
+              "
+            >
+              <span class="mdi mdi-lock-open-variant" />
+            </NButton>
+          </div>
+        </template>
         <NGrid
           v-if="medalList.length === 0 && medalGroupList.length === 0"
           cols="1"
@@ -213,10 +227,14 @@ export default defineComponent({
         </NGrid>
         <NGrid v-else cols="1" :x-gap="12" :y-gap="8" responsive="screen">
           <NGridItem v-for="medalId in medalList" :key="medalId">
-            <MedalComponent :medal-data="filteredMedalData.medal[medalId]" />
+            <MedalComponent
+              v-if="filteredMedalData.medal[medalId]"
+              :medal-data="filteredMedalData.medal[medalId]"
+            />
           </NGridItem>
           <NGridItem v-for="medalGroupId in medalGroupList" :key="medalGroupId">
             <MedalGroupComponent
+              v-if="filteredMedalData.medalGroup[medalGroupId]"
               :group-data="filteredMedalData.medalGroup[medalGroupId]"
               :medal-data-list="generateGroupMedalData(medalGroupId)"
             />
