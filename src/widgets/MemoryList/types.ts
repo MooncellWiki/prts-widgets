@@ -24,4 +24,5 @@ export interface Medal {
   medal: string;
   alias: string;
   desc: string;
+  method: string;
 }

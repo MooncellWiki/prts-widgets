@@ -64,7 +64,12 @@ interface CargoMemory {
   storyTxt: string;
   storyIndex: string;
 }
-function toMemories(medalData: Medal[], sorted: CargoMemory[]): Memory[] {
+
+function toMemories(
+  char: string,
+  medalData: Medal[],
+  sorted: CargoMemory[],
+): Memory[] {
   const result: Memory[] = [];
 
   for (const item of sorted) {
@@ -80,7 +85,11 @@ function toMemories(medalData: Medal[], sorted: CargoMemory[]): Memory[] {
         level: item.level,
         favor: item.favor,
         name: item.storySetName,
-        medal: medalData.find((e) => e.alias === item.medal)!,
+        medal:
+          medalData.find(
+            (e) =>
+              e.method === `解锁干员${char}的干员密录《${item.storySetName}》`,
+          ) ?? medalData.find((e) => e.alias === item.medal)!,
         info: [{ intro: item.storyIntro, link: item.storyTxt }],
       });
     }
@@ -119,7 +128,7 @@ export async function getMemories(
       if (f !== 0) return f;
       return Number.parseInt(a.storyIndex) - Number.parseInt(b.storyIndex);
     });
-    memoryMap[key] = toMemories(medalData, memories);
+    memoryMap[key] = toMemories(key, medalData, memories);
   }
   return memoryMap;
 }
