@@ -155,6 +155,7 @@ export default defineComponent({
             medal: value.name as string,
             alias: value.alias as string,
             desc: value.desc as string,
+            method: value.method as string,
           };
         });
       const map = await getMemories(medalData.value);
