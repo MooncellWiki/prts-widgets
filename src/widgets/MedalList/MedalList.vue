@@ -327,11 +327,7 @@ export default defineComponent({
                       <NButton
                         color="white"
                         text-color="#424242"
-                        @click="
-                          () => {
-                            hiddenCatUnlocked = true;
-                          }
-                        "
+                        @click="hiddenCatUnlocked = true"
                       >
                         <span class="mdi mdi-key-variant" />&nbsp;移除加密
                       </NButton>

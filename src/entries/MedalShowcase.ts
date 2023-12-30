@@ -10,8 +10,8 @@ const eles = document.querySelectorAll(
 for (const showcaseEle of Array.from(eles)) {
   const data = showcaseEle.dataset;
   createApp(MedalShowcase, {
-    medal: data.medal || "",
-    medalGroup: data.medalgroup || "",
-    spoiler: (data.spoiler || "") == "true",
+    medalList: data.medal ? data.medal.split(";") : [],
+    medalGroupList: data.medalgroup ? data.medalgroup.split(";") : [],
+    spoiler: data.spoiler !== undefined,
   }).mount(showcaseEle);
 }

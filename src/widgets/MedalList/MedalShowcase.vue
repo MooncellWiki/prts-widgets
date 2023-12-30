@@ -1,5 +1,5 @@
 <script lang="ts">
-import { computed, defineComponent, onMounted, ref } from "vue";
+import { PropType, computed, defineComponent, onMounted, ref } from "vue";
 
 import {
   NButton,
@@ -38,13 +38,13 @@ export default defineComponent({
     NTooltip,
   },
   props: {
-    medal: {
-      type: String,
-      required: true,
+    medalList: {
+      type: Array as PropType<string[]>,
+      default: () => [],
     },
-    medalGroup: {
-      type: String,
-      required: true,
+    medalGroupList: {
+      type: Array as PropType<string[]>,
+      default: () => [],
     },
     spoiler: {
       type: Boolean,
@@ -62,31 +62,16 @@ export default defineComponent({
       medalMetaData.value = await getMedalMetaData();
     });
 
-    const medalList = computed<string[]>(() => {
-      const res = props.medal.split(";");
-      return res.length === 1 && res[0] === "" ? [] : res;
-    });
-    const medalGroupList = computed(() => {
-      const res = props.medalGroup.split(";");
-      return res.length === 1 && res[0] === "" ? [] : res;
-    });
-
     const filteredMedalData = computed(() => {
       const medalGroup = Object.fromEntries(
         Object.entries(medalMetaData.value.medalGroup).filter(([gid]) => {
-          if (medalGroupList.value.includes(gid)) {
-            return true;
-          }
-          return false;
+          return props.medalGroupList.includes(gid);
         }),
       );
 
       const medal = Object.fromEntries(
         Object.entries(medalMetaData.value.medal).filter(([id]) => {
-          if (medalList.value.includes(id)) {
-            return true;
-          }
-          return false;
+          return props.medalList.includes(id);
         }),
       );
 
@@ -110,8 +95,6 @@ export default defineComponent({
 
     return {
       i18nConfig: getNaiveUILocale(),
-      medalList,
-      medalGroupList,
       filteredMedalData,
       spoilerManualUnlocked,
       theme,
@@ -145,7 +128,7 @@ export default defineComponent({
                 text-color="#2f2f2f"
                 class="text-1.15rem visited:color-none hover:decoration-none focus:decoration-none"
                 tag="a"
-                @click="openMedalPage()"
+                @click="openMedalPage"
               >
                 光荣之路 <span class="mdi mdi-chevron-right"
               /></NButton>
@@ -155,14 +138,7 @@ export default defineComponent({
         </template>
         <template #header-extra>
           <div v-if="spoiler && spoilerManualUnlocked">
-            <NButton
-              color="#424242"
-              @click="
-                () => {
-                  spoilerManualUnlocked = false;
-                }
-              "
-            >
+            <NButton color="#424242" @click="spoilerManualUnlocked = false">
               <span class="mdi mdi-lock-open-variant" />
             </NButton>
           </div>
@@ -212,11 +188,7 @@ export default defineComponent({
                   <NButton
                     color="white"
                     text-color="#424242"
-                    @click="
-                      () => {
-                        spoilerManualUnlocked = true;
-                      }
-                    "
+                    @click="spoilerManualUnlocked = true"
                   >
                     <span class="mdi mdi-key-variant" />&nbsp;移除加密
                   </NButton>
