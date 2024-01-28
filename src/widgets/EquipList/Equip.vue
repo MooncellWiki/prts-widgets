@@ -1,7 +1,9 @@
 <script lang="ts">
-import { defineComponent, onBeforeMount, ref } from "vue";
+import { defineComponent, onBeforeMount, ref, watch } from "vue";
 
 import { NSpin } from "naive-ui";
+
+import { useTheme } from "@/utils/theme";
 
 import { getEquipData } from "./equipData";
 
@@ -12,8 +14,54 @@ export default defineComponent({
   },
   setup(props) {
     const content = ref("");
+    const { isDark } = useTheme();
+    watch(isDark, () => {
+      const temp = new DOMParser().parseFromString(content.value, "text/html");
+      const seps = temp.querySelectorAll(
+        ".majorsep,.minorsep,.term,.iconfilter",
+      );
+      for (const ele of Array.from(seps)) {
+        if (isDark.value) {
+          ele.classList.add("dark");
+        } else {
+          ele.classList.remove("dark");
+        }
+      }
+      content.value = temp.body.innerHTML;
+    });
     onBeforeMount(async () => {
-      content.value = await getEquipData(props.name);
+      const rawdata = await getEquipData(props.name);
+      const temp = new DOMParser().parseFromString(rawdata, "text/html");
+      const eles = temp.querySelectorAll(".mc-tooltips");
+      const seps = temp.querySelectorAll(
+        ".majorsep,.minorsep,.term,.iconfilter",
+      );
+      for (const e of Array.from(eles)) {
+        if (!e.children || e.children.length < 2) continue;
+        (e.children[1] as HTMLElement).style.display = "block";
+        // @ts-expect-error tippy
+        // eslint-disable-next-line no-undef
+        tippy6(e.children[0], {
+          content: e.children[1],
+          arrow: true,
+          theme: "light-border",
+          size: "large",
+          maxWidth: Number.parseInt(
+            (e.children[1] as HTMLElement).dataset.size!,
+          ),
+          trigger:
+            (e.children[1] as HTMLElement).dataset.trigger ||
+            "mouseenter focus",
+        });
+      }
+      for (const ele of Array.from(seps)) {
+        if (isDark.value) {
+          ele.classList.add("dark");
+        } else {
+          ele.classList.remove("dark");
+        }
+      }
+      content.value = temp.body.innerHTML;
     });
     return {
       content,
@@ -32,9 +80,9 @@ export default defineComponent({
   display: flex;
   width: 100%;
   max-width: 800px;
-  margin: 10px 0;
-  padding: 10px;
-  box-shadow: 3px 3px 5px #888;
+  margin: 5px 0;
+  padding: 5px;
+  box-shadow: 2px 2px 3px #888;
   box-sizing: border-box;
   flex-flow: column;
 }
@@ -120,10 +168,17 @@ export default defineComponent({
   height: 1px;
   background-color: lightgray;
 }
-:deep(.dark .majorsep) {
+:deep(.dark.majorsep) {
   background-color: whitesmoke;
 }
-:deep(.dark .minorsep) {
+:deep(.dark.minorsep) {
   background-color: gray;
+}
+:deep(.dark.term) {
+  text-decoration: underline whitesmoke !important;
+  color: whitesmoke !important;
+}
+:deep(.dark.iconfilter) {
+  filter: invert(100%);
 }
 </style>

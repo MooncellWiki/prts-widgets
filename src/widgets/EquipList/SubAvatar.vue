@@ -25,6 +25,9 @@ export default defineComponent({
         ? selectedChar.value.splice(selectedChar.value.indexOf(char))
         : selectedChar.value.push(char);
     };
+    const getBackdrop = (char: Char) => {
+      return selectedChar.value.includes(char) ? "invert(25%)" : "";
+    };
     const src = ref(
       `/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`,
     );
@@ -35,6 +38,7 @@ export default defineComponent({
       getImagePath,
       src,
       charRef,
+      getBackdrop,
       addOrDeleteChar,
     };
   },
@@ -47,6 +51,9 @@ export default defineComponent({
     :src="`/images/${getImagePath(`头像_${charRef.name}_2.png`)}`"
     width="65"
     height="65"
+    :style="{
+      backdropFilter: getBackdrop(charRef),
+    }"
     @click="addOrDeleteChar(charRef)"
   />
 </template>

@@ -209,6 +209,9 @@ export default defineComponent({
         calcMemory();
         order.value = mode;
       },
+      pickSize: () => {
+        return isMobile ? "small" : "medium";
+      },
     };
   },
 });
@@ -285,6 +288,7 @@ export default defineComponent({
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
+          :size="pickSize()"
           show-size-picker
           @update:page="calcMemory"
           @update:page-size="onUpdatePageSize"
@@ -310,6 +314,7 @@ export default defineComponent({
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
+          :size="pickSize()"
           show-size-picker
           @update:page="calcMemory"
           @update:page-size="onUpdatePageSize"
