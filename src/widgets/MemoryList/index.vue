@@ -155,6 +155,7 @@ export default defineComponent({
             medal: value.name as string,
             alias: value.alias as string,
             desc: value.desc as string,
+            method: value.method as string,
           };
         });
       const map = await getMemories(medalData.value);
@@ -207,6 +208,9 @@ export default defineComponent({
       orderMode: (mode: number) => {
         calcMemory();
         order.value = mode;
+      },
+      pickSize: () => {
+        return isMobile ? "small" : "medium";
       },
     };
   },
@@ -284,6 +288,7 @@ export default defineComponent({
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
+          :size="pickSize()"
           show-size-picker
           @update:page="calcMemory"
           @update:page-size="onUpdatePageSize"
@@ -309,6 +314,7 @@ export default defineComponent({
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
           :page-slot="pagination.pageSlot"
+          :size="pickSize()"
           show-size-picker
           @update:page="calcMemory"
           @update:page-size="onUpdatePageSize"

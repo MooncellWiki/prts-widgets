@@ -23,6 +23,16 @@ import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
 import { Char } from "./types";
 
+export function onClickTag(charname: string): void {
+  const items = document.querySelectorAll(".equipitem");
+  const ele = Array.from(items).find((item) => {
+    return (item as HTMLElement).dataset?.opt === charname;
+  });
+
+  const y = ele?.getBoundingClientRect().y ?? Number.NaN;
+  window.scrollBy({ behavior: "smooth", top: y - 10, left: 0 });
+}
+
 export default defineComponent({
   components: {
     OptionsGroup,
@@ -44,6 +54,7 @@ export default defineComponent({
     const filterShow = ref(true);
     const operatorShow = ref(true);
     const resultShow = ref(true);
+    const helpShow = ref(false);
     const andMode = ref(true);
     const { theme, toggleDark } = useTheme();
     const expandedChar = ref<string[]>([]);
@@ -89,7 +100,7 @@ export default defineComponent({
     });
     const addOrDeleteChar = (char: Char) => {
       selectedChar.value.includes(char)
-        ? selectedChar.value.splice(selectedChar.value.indexOf(char))
+        ? selectedChar.value.splice(selectedChar.value.indexOf(char), 1)
         : selectedChar.value.push(char);
     };
     const filterIntersection = (states: Record<string, string[]>) => {
@@ -165,7 +176,7 @@ export default defineComponent({
     const onClickTitle: CollapseProps["onItemHeaderClick"] = ({ name }) => {
       expandedChar.value.includes(name)
         ? expandedChar.value.splice(expandedChar.value.indexOf(name), 1)
-        : expandedChar.value.push(name);
+        : expandedChar.value.push(String(name));
     };
     onMounted(async () => {
       const resp = await fetch(
@@ -221,6 +232,7 @@ export default defineComponent({
       filteredCharData,
       filterShow,
       operatorShow,
+      helpShow,
       andMode,
       selectedChar,
       equipChar,
@@ -233,6 +245,7 @@ export default defineComponent({
       collapseAll,
       onClickTitle,
       addOrDeleteChar,
+      onClickTag,
     };
   },
 });
@@ -293,22 +306,23 @@ export default defineComponent({
           </table>
         </NCollapseTransition>
       </NCard>
-      <NCard>
+      <NCard size="small">
         <div class="flex flex-row items-center">
           <NCard size="small">
             <NTag
               v-for="(char, ind) in selectedChar"
               :key="ind"
-              class="m-1"
+              class="m-1 cursor-pointer"
               type="info"
               closable
               @close="addOrDeleteChar(char)"
+              @click="onClickTag(char.name)"
             >
               {{ char.name }}
             </NTag>
-            <span v-if="selectedChar.length === 0" class="text-sm color-gray"
-              >选中的干员在此显示，点击头像以选择干员</span
-            >
+            <span v-if="selectedChar.length === 0" class="text-sm color-gray">
+              选中的干员在此显示，点击头像以选择干员。点击标签可跳转到对应干员的模组信息。
+            </span>
           </NCard>
           <div class="flex flex-col lg:flex-row">
             <NButton
@@ -402,6 +416,8 @@ export default defineComponent({
               :name="name"
               :title="name"
               display-directive="if"
+              class="equipitem"
+              :data-opt="name"
             >
               <Equip :name="name"></Equip>
             </NCollapseItem>
