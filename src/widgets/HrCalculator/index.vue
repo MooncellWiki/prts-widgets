@@ -69,7 +69,6 @@ export default defineComponent({
     });
     function calc() {
       const result: Record<number | string, { charIndict: Set<number> }> = {};
-      console.log(Date.now());
       for (const [charIndex, c] of props.source.entries()) {
         for (const set of c.subset) {
           if ((value.bitmap.value | set) !== value.bitmap.value) continue;
@@ -82,7 +81,6 @@ export default defineComponent({
           result[set].charIndict.add(charIndex);
         }
       }
-      console.log(Date.now());
       const list: Array<{ tags: number; charIndict: number[]; score: number }> =
         [];
       for (const k of Object.keys(result)) {
@@ -102,13 +100,11 @@ export default defineComponent({
             }, 0) / charIndict.length,
         });
       }
-      console.log(Date.now());
       list.sort((a, b) => {
         const rarity = b.score - a.score;
         if (rarity !== 0) return rarity;
         return a.charIndict.length - b.charIndict.length;
       });
-      console.log(Date.now());
       return list;
     }
     const result = ref<
