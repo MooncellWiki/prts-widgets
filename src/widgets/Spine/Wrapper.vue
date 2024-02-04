@@ -38,7 +38,7 @@ export default defineComponent({
     async function load() {
       if (props.id) {
         const resp = await fetch(
-          `https://torappu.prts.wiki/assets/charSpine/${props.id}/meta.json`,
+          `https://torappu.prts.wiki/assets/char_spine/${props.id}/meta.json`,
         );
         value.value = await resp.json();
       }
