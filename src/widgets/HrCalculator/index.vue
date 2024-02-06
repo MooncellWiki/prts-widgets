@@ -69,23 +69,16 @@ export default defineComponent({
     });
     function calc() {
       const result: Record<number | string, { charIndict: Set<number> }> = {};
-      const subset = value.bitmap.getSubSet();
       for (const [charIndex, c] of props.source.entries()) {
         for (const set of c.subset) {
-          for (const group of subset) {
-            // 干员的子集中的一个元素 是这个选中的子集中的一个元素 的子集
-            if ((group & set) !== group) continue;
-
-            // 6星要有对应的稀有度tag才能出
-            if (c.rarity === 5 && !can5(group)) continue;
-
-            if (!result[group]) {
-              result[group] = {
-                charIndict: new Set(),
-              };
-            }
-            result[group].charIndict.add(charIndex);
+          if ((value.bitmap.value | set) !== value.bitmap.value) continue;
+          if (c.rarity === 5 && !can5(set)) continue;
+          if (!result[set]) {
+            result[set] = {
+              charIndict: new Set(),
+            };
           }
+          result[set].charIndict.add(charIndex);
         }
       }
       const list: Array<{ tags: number; charIndict: number[]; score: number }> =
