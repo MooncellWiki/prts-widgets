@@ -19,18 +19,7 @@ interface Position {
   y: number;
   scale: number;
 }
-// 一个临时的patch 这个变更在spine runtime 4.1上 要是以后升到4.1了就可以删掉了
-// 现在的spine runtime渲染的时候 给blendFunc传的都是gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA
-// https://github.com/EsotericSoftware/spine-runtimes/commit/78a730a6d78241add86bef41aa26530567bc11dc#diff-b88f26766af82544f5c7781e19787743f71b053a06d24e7ee0bc6fe7975f2f72L63-L73
-WebGL2RenderingContext.prototype.blendFunc = function (a, b) {
-  WebGL2RenderingContext.prototype.blendFuncSeparate.call(
-    this,
-    WebGL2RenderingContext.SRC_ALPHA,
-    WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
-    WebGL2RenderingContext.ONE,
-    WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
-  );
-};
+
 export class Spine {
   skeletons: Record<string, Skeleton> = {};
   canvas: HTMLCanvasElement;
