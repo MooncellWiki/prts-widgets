@@ -25,7 +25,7 @@ async function main() {
   // https://github.com/EsotericSoftware/spine-runtimes/commit/78a730a6d78241add86bef41aa26530567bc11dc#diff-b88f26766af82544f5c7781e19787743f71b053a06d24e7ee0bc6fe7975f2f72L63-L73
   // 有的spine不需要这个patch (比如年的)
   if (!ele?.dataset.disablePatch) {
-    WebGL2RenderingContext.prototype.blendFunc = function (a, b) {
+    WebGL2RenderingContext.prototype.blendFunc = function (_a, _b) {
       WebGL2RenderingContext.prototype.blendFuncSeparate.call(
         this,
         WebGL2RenderingContext.SRC_ALPHA,
