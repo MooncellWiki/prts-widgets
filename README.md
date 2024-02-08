@@ -4,6 +4,7 @@
 
 - [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar)
 
+
 ## `.vue` TypeScript 类型支持
 
 由于 TypeScript 不能处理 `.vue`  导入的类型信息，它们默认会被作为通用的 Vue 组件类型来处理。在大多数情况下，如果您不太关心模板之外的组件属性类型，这是可以接受的。然而，如果您希望在 `.vue` 导入中获取实际的属性类型（例如，在使用手动的 `h(...)` 调用时获取属性验证），您可以按照以下步骤启用 Volar 的接管模式：
