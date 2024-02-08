@@ -1,10 +1,9 @@
 import MD5 from "md5";
 
-export const apiEndPoint = "https://api.prts.wiki";
-export const torappuEndPoint = "https://torappu.prts.wiki";
-export const staticEndPoint = "https://static.prts.wiki";
-export const domain = "https://prts.wiki";
-export const keyStr =
+export const TORAPPU_ENDPOINT = "https://torappu.prts.wiki";
+export const STATIC_ENDPOINT = "https://static.prts.wiki";
+export const PRTS_BASE_DOMAIN = "https://prts.wiki";
+export const KEY_STRING =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,";
 export const charListData = {
   uhs: "7/7f/干员图鉴_uh_阴影.png",

@@ -1,7 +1,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { charListData, domain, getImagePath } from "@/utils/utils";
+import { PRTS_BASE_DOMAIN, charListData, getImagePath } from "@/utils/utils";
 
 export default defineComponent({
   name: "Half",
@@ -13,7 +13,7 @@ export default defineComponent({
     en: String,
   },
   setup() {
-    return { domain, charListData, getImagePath };
+    return { domain: PRTS_BASE_DOMAIN, charListData, getImagePath };
   },
 });
 </script>

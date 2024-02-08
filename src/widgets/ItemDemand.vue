@@ -5,7 +5,7 @@ import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
 
 import type { CostProps } from "../components/Cost.vue";
 import CostVue from "../components/Cost.vue";
-import { torappuEndPoint } from "../utils/utils";
+import { TORAPPU_ENDPOINT } from "../utils/utils";
 
 interface cost {
   label: string;
@@ -30,7 +30,7 @@ enum Status {
   succ,
 }
 async function query(name: string): Promise<itemCost> {
-  const resp = await fetch(`${torappuEndPoint}/api/v1/item/${name}/demand`);
+  const resp = await fetch(`${TORAPPU_ENDPOINT}/api/v1/item/${name}/demand`);
   const json = await resp.json();
   const data: Resp = json.data;
   const costs = Array.from<{ label: string; data: CostProps[] }>({ length: 6 });

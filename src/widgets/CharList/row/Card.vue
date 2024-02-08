@@ -4,7 +4,7 @@ import type { PropType } from "vue";
 import { defineComponent, ref, toRefs } from "vue";
 
 import Avatar from "@/components/Avatar.vue";
-import { domain } from "@/utils/utils";
+import { PRTS_BASE_DOMAIN } from "@/utils/utils";
 
 import type { Char } from "../utils";
 
@@ -35,7 +35,7 @@ export default defineComponent({
       res,
       cost,
       reDeploy,
-      domain,
+      domain: PRTS_BASE_DOMAIN,
     };
   },
 });
