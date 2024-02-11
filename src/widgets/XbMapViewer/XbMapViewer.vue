@@ -66,19 +66,19 @@ export default defineComponent({
     }
     const self = ref<HTMLElement>();
     const fontsize = ref("");
+    const width = computed(() => {
+      return props.map!.mapData.width ?? props.map!.mapData.map[0].length;
+    });
     onMounted(() => {
       if (!self.value || !props.map) return;
 
       fontsize.value = `${
-        (self.value.getBoundingClientRect().width /
-          props.map.mapData.width /
-          9) *
-        5
+        (self.value.getBoundingClientRect().width / width.value / 9) * 5
       }px`;
     });
     return {
       mapData: props.map!.mapData,
-      width: props.map!.mapData.width,
+      width,
       predefines: props.map!.predefines,
       black,
       self,
