@@ -79,7 +79,7 @@ export default defineComponent({
       <div class="flex <lg:flex-col">
         <div
           :class="[
-            'bg-[#464646] flex grid-items-center w-190px justify-center min-h-50',
+            'bg-[#2f2f2f]/86 flex grid-items-center w-190px justify-center min-h-50',
             {
               'bg-gradient-to-b from-[#485a5c] to-[#1d0942]':
                 showTrimed && medalData.isTrim,
@@ -139,7 +139,7 @@ export default defineComponent({
             />
           </div>
           <div
-            class="p-2.5! border-0 border-solid border-[#e5e7eb] bg-[#fafafc] align-middle"
+            class="p-2.5! border-0 border-solid border-[#e5e7eb] align-middle"
           >
             <div v-if="!medalData.decrypt">
               <NTag

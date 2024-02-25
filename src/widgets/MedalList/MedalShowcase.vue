@@ -111,6 +111,19 @@ export default defineComponent({
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="{
+      Button: {
+        textColorTextHover: '#d97706',
+        textColorTextFocus: '#d97706',
+        textColorTextPressed: '#b45309',
+        textColorHover: '#d97706',
+        textColorFocus: '#d97706',
+        textColorPressed: '#b45309',
+        borderHover: '1px solid #d97706',
+        borderFocus: '1px solid #d97706',
+        borderPressed: '1px solid #b45309',
+      },
+    }"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
@@ -120,13 +133,13 @@ export default defineComponent({
           <img
             :src="`/images/${getImagePath('图标_光荣之路.png')}`"
             width="25"
-          />&nbsp;&nbsp;
+            class="mr-3"
+          />
           <n-tooltip trigger="hover">
             <template #trigger>
               <NButton
                 text
-                text-color="#2f2f2f"
-                class="text-1.15rem visited:color-none hover:decoration-none focus:decoration-none"
+                class="text-1.15rem visited:color-none decoration-none! align-middle"
                 tag="a"
                 @click="openMedalPage"
               >
@@ -138,7 +151,7 @@ export default defineComponent({
         </template>
         <template #header-extra>
           <div v-if="spoiler && spoilerManualUnlocked">
-            <NButton color="#424242" @click="spoilerManualUnlocked = false">
+            <NButton @click="spoilerManualUnlocked = false">
               <span class="mdi mdi-lock-open-variant" />
             </NButton>
           </div>

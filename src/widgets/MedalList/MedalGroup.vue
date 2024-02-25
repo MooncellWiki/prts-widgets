@@ -112,6 +112,7 @@ export default defineComponent({
             <div v-if="groupData.isTrim">
               <NButton
                 size="small"
+                class="color-white!"
                 :color="showTrimed ? '#637cad' : '#000'"
                 @click="showTrimed = !showTrimed"
               >
@@ -119,7 +120,7 @@ export default defineComponent({
                   <span
                     :class="[
                       'mdi',
-                      'mdi-chevron-up-circle' + (showTrimed ? '' : '-outline'),
+                      `mdi-chevron-up-circle${!showTrimed && '-outline'}`,
                     ]"
                   />
                   <span class="<lg:hidden"> 切换镀层</span>
