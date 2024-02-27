@@ -120,7 +120,7 @@ export default defineComponent({
                   <span
                     :class="[
                       'mdi',
-                      `mdi-chevron-up-circle${showTrimed ? '-outline' : ''}`,
+                      `mdi-chevron-up-circle${showTrimed ? '' : '-outline'}`,
                     ]"
                   />
                   <span class="<lg:hidden"> 切换镀层</span>
