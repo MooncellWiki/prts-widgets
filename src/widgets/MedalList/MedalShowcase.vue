@@ -5,10 +5,10 @@ import {
   NButton,
   NCard,
   NConfigProvider,
+  NEmpty,
   NGrid,
   NGridItem,
   NLayout,
-  NEmpty,
   NTooltip,
 } from "naive-ui";
 
@@ -21,9 +21,7 @@ import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
 import type { MedalMetaData } from "./types";
 import { getMedalMetaData } from "./utils";
-function openMedalPage() {
-  window.open("https://prts.wiki/w/光荣之路", "_blank");
-}
+
 export default defineComponent({
   components: {
     MedalComponent,
@@ -100,7 +98,6 @@ export default defineComponent({
       theme,
       toggleDark,
       getImagePath,
-      openMedalPage,
       generateGroupMedalData,
     };
   },
@@ -139,9 +136,9 @@ export default defineComponent({
             <template #trigger>
               <NButton
                 text
-                class="text-1.15rem visited:color-none decoration-none! align-middle"
+                class="text-lg decoration-none! align-middle"
                 tag="a"
-                @click="openMedalPage"
+                href="/w/光荣之路"
               >
                 光荣之路 <span class="mdi mdi-chevron-right"
               /></NButton>
@@ -229,3 +226,9 @@ export default defineComponent({
     </NLayout>
   </NConfigProvider>
 </template>
+
+<style scoped>
+a {
+  color: unset;
+}
+</style>

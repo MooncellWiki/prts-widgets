@@ -57,7 +57,6 @@ export default defineComponent({
       getImagePath,
       goToLink,
       showTrimed: ref(false),
-      showGroupDetail: ref(false),
     };
   },
 });
@@ -89,18 +88,13 @@ export default defineComponent({
     <NCard v-if="medalDataList.length > 0">
       <div class="flex flex-col <lg:flex-col">
         <div
-          :class="[
-            'flex <lg:flex-row',
-            'justify-between',
-            'p-2.5! m-0! bg-gradient-to-r',
-            'text-shadow-lg',
-          ]"
+          class="flex <lg:flex-row justify-between p-2.5! m-0! bg-gradient-to-r text-shadow-lg"
           :style="{
             background: groupData.background || 'black',
           }"
         >
           <h3 class="color-white p-0 px-1 pr-2 mt-0! <lg:p-0! <lg:pt-1!">
-            <span :style="groupData.textStyle || 'color:white;'">
+            <span :style="groupData.textStyle || { color: 'white' }">
               <span
                 v-if="groupData.customText"
                 v-html="groupData.customText"
@@ -133,8 +127,7 @@ export default defineComponent({
                   <NButton
                     size="small"
                     color="#2f2f2f"
-                    tag="a"
-                    class="visited:color-none color-white! hover:decoration-none focus:decoration-none"
+                    class="hover:decoration-none color-white! focus:decoration-none"
                     @click="goToLink(groupData.bindEvent[1])"
                   >
                     <div>
@@ -201,35 +194,30 @@ export default defineComponent({
           />
         </div>
         <div
-          class="italic whitespace-pre-wrap p-1 text-center <lg:font-size-1"
+          class="italic whitespace-pre-wrap p-1 text-center <lg:text-sm"
           :style="{
             background: `linear-gradient(180deg, ${groupData.color}5c, transparent)`,
           }"
           v-html="groupData.desc"
-        ></div>
-        <NCollapse
-          arrow-placement="right"
-          @item-header-click="showGroupDetail = !showGroupDetail"
-        >
+        />
+        <NCollapse arrow-placement="right">
           <NCollapseItem class="m-3! <lg:m-1.5!">
             <template #header>
               <div class="flex flex-row">
                 <div>共 {{ groupData.medal.length }} 枚，展开套组</div>
                 <div
                   v-if="groupData.hasChangedInRetro"
-                  class="bg-bluegray-6 color-white ml-1 px-1 py-0.5 font-bold font-size-2"
+                  class="bg-bluegray-6 color-white ml-1 px-1 py-0.5 font-bold text-xs"
                 >
                   <span class="mdi mdi-information-outline" />
                   复刻时获取条件调整
                 </div>
               </div>
             </template>
-            <div
-              v-for="(medal, i) in medalDataList"
-              :key="i"
-              :class="showGroupDetail ? 'm-2 mb-0 <lg:m-0 <lg:mb-2' : ''"
-            >
-              <MedalComponent :medal-data="medal" />
+            <div class="flex flex-col gap-2">
+              <div v-for="(medal, i) in medalDataList" :key="i">
+                <MedalComponent :medal-data="medal" />
+              </div>
             </div>
           </NCollapseItem>
         </NCollapse>
