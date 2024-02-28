@@ -147,7 +147,11 @@ export default defineComponent({
                 placement="bottom-end"
                 @select="goToLink"
               >
-                <NButton size="small" color="#2f2f2f">
+                <NButton
+                  size="small"
+                  color="#2f2f2f"
+                  class="hover:decoration-none color-white! focus:decoration-none"
+                >
                   <div>
                     <span class="mdi mdi-flag-variant" />
                     <span class="<lg:hidden"> 前往活动</span>
