@@ -98,7 +98,7 @@ function main(config: DisplayConfig) {
 
 main(defaultDisplayConfig);
 
-fetch("https://static.prts.wiki/20230731ua/display_config_v3.json")
+fetch("https://static.prts.wiki/skland/display_config_v3.json")
   .then((response) => {
     if (!response.ok)
       throw new Error("[DisplayController] Received non-200 response");
