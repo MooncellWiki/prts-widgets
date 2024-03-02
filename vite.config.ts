@@ -25,6 +25,7 @@ for (const entry of entries) {
 
 const templatesInput: Record<string, string> = {
   sentry: "src/entries/sentry.ts",
+  DisplayController: "src/entries/DisplayController.ts",
 };
 for (const template of templates) {
   templatesInput[template.replace(".html", "")] = `templates/${template}`;
