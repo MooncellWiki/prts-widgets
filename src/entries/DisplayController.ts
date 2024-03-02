@@ -93,7 +93,7 @@ function main(config: DisplayConfig) {
       "content",
       viewportContent.replaceAll("user-scalable=yes", "user-scalable=no"),
     );
-  } else removeDOM(STYLE_ELEMENT_CLASS);
+  } else removeDOM(`.${STYLE_ELEMENT_CLASS}`);
 }
 
 main(defaultDisplayConfig);
