@@ -2,14 +2,16 @@ import defaultStyle from "../widgets/DisplayController.css?inline";
 
 interface DisplayConfig {
   userAgent: string;
-  styleClass: string;
+  hiddenClass: string;
   selectors: string[];
   redirectBodyClasses: string[];
 }
 
+const STYLE_ELEMENT_CLASS = "skland-style";
+
 const defaultDisplayConfig: DisplayConfig = {
   userAgent: "SKLand",
-  styleClass: "skland-hidden",
+  hiddenClass: "skland-hidden",
   selectors: [
     "#p-personal",
     "#pt-preferences",
@@ -51,10 +53,17 @@ function removeDOM(selector: string) {
     );
   }
 }
+function createViewport() {
+  const viewport = document.createElement("meta");
+  viewport.setAttribute("name", "viewport");
+  document.head.append(viewport);
+
+  return viewport;
+}
 
 function main(config: DisplayConfig) {
   const styleEle = document.createElement("style");
-  styleEle.className = config.styleClass;
+  styleEle.className = STYLE_ELEMENT_CLASS;
   styleEle.innerHTML = defaultStyle;
   document.head.append(styleEle);
 
@@ -73,32 +82,23 @@ function main(config: DisplayConfig) {
     for (const selector of config.selectors) {
       removeDOM(selector);
     }
+    removeDOM(`.${config.hiddenClass}`);
 
-    const createViewport = () => {
-      const viewport = document.createElement("meta");
-      viewport.setAttribute("name", "viewport");
-      document.head.append(viewport);
-      return viewport;
-    };
     const viewport =
       document.querySelector("meta[name='viewport']") || createViewport();
-
     const viewportContent =
       viewport.getAttribute("content") ||
       "initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width";
-
     viewport.setAttribute(
       "content",
       viewportContent.replaceAll("user-scalable=yes", "user-scalable=no"),
     );
-  } else {
-    removeDOM(`.${config.styleClass}`);
-  }
+  } else removeDOM(STYLE_ELEMENT_CLASS);
 }
 
 main(defaultDisplayConfig);
 
-fetch("https://static.prts.wiki/20230731ua/display_config_v2.json")
+fetch("https://static.prts.wiki/20230731ua/display_config_v3.json")
   .then((response) => {
     if (!response.ok)
       throw new Error("[DisplayController] Received non-200 response");
