@@ -22,7 +22,7 @@ export interface CharMemory {
 
 export interface Medal {
   medal: string;
-  alias: string;
+  id: string;
   desc: string;
   method: string;
 }
