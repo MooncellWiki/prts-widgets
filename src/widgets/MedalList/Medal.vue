@@ -3,8 +3,6 @@ import { defineComponent, ref, type PropType } from "vue";
 
 import { NCard, NConfigProvider, NImage, NTag, NTooltip } from "naive-ui";
 
-import { getImagePath } from "../../utils/utils";
-
 import type { Medal } from "./types";
 
 export default defineComponent({
@@ -41,7 +39,6 @@ export default defineComponent({
     };
 
     return {
-      getImagePath,
       isDecrypt: ref(false),
       showTrimed: ref(false),
       rarityGradient,
@@ -89,11 +86,7 @@ export default defineComponent({
         >
           <NImage
             :width="rarityImgStyleSet[medalData.rarity][1]"
-            :src="`/images/${getImagePath(
-              `蚀刻章_${medalData.alias}${
-                showTrimed && medalData.isTrim ? '_镀层' : ''
-              }.png`,
-            )}`"
+            :src="`https://torappu.prts.wiki/assets/medal_icon/${showTrimed && medalData.isTrim ? medalData.trimId : medalData.id}.png`"
             show-toolbar-tooltip
             :previewed-img-props="{
               style: {

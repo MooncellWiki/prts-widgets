@@ -188,11 +188,16 @@ export default defineComponent({
       <NCard>
         <template #header>
           <img
-            :src="`/images/${getImagePath('图标_光荣之路.png')}`"
+            :src="`/images/${getImagePath('图标_光荣之路.svg')}`"
+            :class="`${theme ? 'brightness-100' : 'brightness-0'} transition-all`"
             width="25"
           />&nbsp;&nbsp;光荣之路
         </template>
         <template #header-extra>
+          <div class="mx-1 cursor-pointer" @click="toggleDark()">
+            <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
+            <span v-else class="text-2xl mdi mdi-brightness-4" />
+          </div>
           <div class="mx-1 cursor-pointer">
             <NPopover trigger="click" raw>
               <template #trigger>
