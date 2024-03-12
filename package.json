@@ -16,7 +16,7 @@
     "lint:fix": "pnpm lint:js:fix",
     "lint:js": "pnpm eslint \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
     "lint:js:fix": "pnpm eslint:fix \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
-    "prepare": "husky install"
+    "prepare": "node .husky/install.mjs"
   },
   "dependencies": {
     "@sentry/browser": "^7.102.1",
