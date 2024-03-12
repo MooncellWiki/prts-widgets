@@ -12,8 +12,6 @@ import {
   NTooltip,
 } from "naive-ui";
 
-import { getImagePath } from "../../utils/utils";
-
 import MedalComponent from "./Medal.vue";
 import type { Medal, MedalGroup } from "./types";
 function goToLink(link: string) {
@@ -54,7 +52,6 @@ export default defineComponent({
 
     return {
       eventLinkList,
-      getImagePath,
       goToLink,
       showTrimed: ref(false),
     };
@@ -176,11 +173,7 @@ export default defineComponent({
         </div>
         <div class="flex max-w-full">
           <NImage
-            :src="`/images/${getImagePath(
-              `蚀刻章套组_${groupData.alias}${
-                showTrimed && groupData.isTrim ? '_镀层' : ''
-              }.png`,
-            )}`"
+            :src="`https://torappu.prts.wiki/assets/medal_diy/${(showTrimed && groupData.isTrim ? 'trim/' : '') + groupData.id}.png`"
             :img-props="{
               style: {
                 width: '100%',

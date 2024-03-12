@@ -1,18 +1,20 @@
 export interface Medal {
   name: string;
-  alias: string;
+  id: string;
   rarity: number;
   desc: string;
   method: string;
   decrypt?: string;
   isHidden: boolean;
   isTrim: boolean;
+  trimId?: string;
   trimMethod?: string;
   reward?: string;
 }
 
 export interface MedalGroup {
   name: string;
+  id: string;
   desc: string;
   color: string;
   bindEvent: Array<string>;

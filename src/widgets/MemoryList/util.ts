@@ -89,7 +89,7 @@ function toMemories(
           medalData.find(
             (e) =>
               e.method === `解锁干员${char}的干员密录《${item.storySetName}》`,
-          ) ?? medalData.find((e) => e.alias === item.medal)!,
+          ) ?? medalData.find((e) => e.id === item.medal)!,
         info: [{ intro: item.storyIntro, link: item.storyTxt }],
       });
     }
