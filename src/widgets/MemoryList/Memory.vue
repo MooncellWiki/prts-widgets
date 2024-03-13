@@ -7,6 +7,12 @@ import { getImagePath } from "@/utils/utils";
 
 import { CharMemory, Memory } from "./types";
 
+const getSrcMedal = (mmr: Memory) =>
+  `https://torappu.prts.wiki/assets/medal_icon/${mmr.medal.id}`;
+
+const getSrcElite = (elite: string) =>
+  `/images/${getImagePath(`图标_升级_精英化${elite || "0"}.png`)}`;
+
 export default defineComponent({
   name: "Memory",
   components: {
@@ -42,16 +48,6 @@ export default defineComponent({
     const link = computed(() => {
       return `/w/${props.charMemory.char}`;
     });
-    const getSrcElite = (elite: string) => {
-      return `/images/${getImagePath(`图标_升级_精英化${elite || "0"}.png`)}`;
-    };
-    const getSrcMedal = (mmr: Memory) => {
-      /*
-      const search = mmr.medal.alias.replace(" ", "_");
-      return `/images/${getImagePath(`蚀刻章_${search}.png`)}`;
-      */
-      return `https://torappu.prts.wiki/assets/medal_icon/${mmr.medal.id}`;
-    };
     const srcfavor = `/images/${getImagePath("图标_信赖.png")}`;
     const srcplay = `/images/${getImagePath("情报处理室_播放按钮.png")}`;
     return {

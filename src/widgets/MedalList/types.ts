@@ -18,7 +18,6 @@ export interface MedalGroup {
   desc: string;
   color: string;
   bindEvent: Array<string>;
-  alias: string;
   deprecateType?: string;
   hasChangedInRetro?: boolean;
   medal: Array<string>;

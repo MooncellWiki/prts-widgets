@@ -153,7 +153,7 @@ export default defineComponent({
         .map(([, value]: [string, any]) => {
           return {
             medal: value.name as string,
-            alias: value.alias as string,
+            id: value.id as string,
             desc: value.desc as string,
             method: value.method as string,
           };
