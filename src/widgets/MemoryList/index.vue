@@ -16,9 +16,9 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import Memory from "./Memory.vue";
-import { rarityMap, filterRarity } from "./consts";
+import { filterRarity, rarityMap } from "./consts";
 import { CharMemory, Medal } from "./types";
-import { getOnlineDate, getTargetDate, getMemories } from "./util";
+import { getMemories, getOnlineDate, getTargetDate } from "./utils";
 
 export default defineComponent({
   components: {
@@ -323,3 +323,4 @@ export default defineComponent({
     </NLayout>
   </NConfigProvider>
 </template>
+./utils

@@ -8,7 +8,7 @@ import { getImagePath } from "@/utils/utils";
 import { CharMemory, Memory } from "./types";
 
 const getSrcMedal = (mmr: Memory) =>
-  `https://torappu.prts.wiki/assets/medal_icon/${mmr.medal.id}`;
+  `https://torappu.prts.wiki/assets/medal_icon/${mmr.medal.id}.png`;
 
 const getSrcElite = (elite: string) =>
   `/images/${getImagePath(`图标_升级_精英化${elite || "0"}.png`)}`;

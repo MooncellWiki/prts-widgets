@@ -1,4 +1,4 @@
-import { Medal, Memory } from "./types";
+import type { CargoMemory, Medal, Memory } from "./types";
 
 export async function getOnlineDate() {
   const resp = await fetch("/rest.php/v1/page/干员密录一览%2F密录上线时间");
@@ -53,18 +53,6 @@ function eq(
   );
 }
 
-interface CargoMemory {
-  page: string;
-  elite: string;
-  level: string;
-  favor: string;
-  medal: string;
-  storySetName: string;
-  storyIntro: string;
-  storyTxt: string;
-  storyIndex: string;
-}
-
 function toMemories(
   char: string,
   medalData: Medal[],
@@ -96,6 +84,7 @@ function toMemories(
   }
   return result;
 }
+
 export async function getMemories(
   medalData: Medal[],
 ): Promise<Record<string, Memory[]>> {
