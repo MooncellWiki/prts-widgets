@@ -1,10 +1,5 @@
 import MD5 from "md5";
 
-export const TORAPPU_ENDPOINT = "https://torappu.prts.wiki";
-export const STATIC_ENDPOINT = "https://static.prts.wiki";
-export const PRTS_BASE_DOMAIN = "https://prts.wiki";
-export const KEY_STRING =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,";
 export const charListData = {
   uhs: "7/7f/干员图鉴_uh_阴影.png",
   lh: (r: number) => {
@@ -27,6 +22,7 @@ export const charListData = {
   },
   patch: "2/20/干员图鉴_补丁.png",
 };
+
 export function getImagePath(filename: string) {
   const md5 = MD5(filename);
   return `${md5.slice(0, 1)}/${md5.slice(0, 2)}/${filename}`;
@@ -42,20 +38,21 @@ export const professionMap = {
   MEDIC: "医疗",
   TANK: "重装",
 };
+
 export function sum(arr: Array<number>) {
   return arr.reduce((acc, cur) => acc + cur, 0);
 }
+
 export function isMobile(): boolean {
   return /(phone|pad|pod|iphone|ipod|ios|ipad|android|mobile|blackberry|iemobile|mqqbrowser|juc|fennec|wosbrowser|browserng|webos|symbian|windows phone)/i.test(
     window.navigator.userAgent,
   );
 }
+
 export function isFirefox(): boolean {
   return window.navigator.userAgent.includes("Firefox");
 }
-// export function rgba2str(color:Color){
-//   return `#${color.r.toString(16)}${color.g.toString(16)}${color.b.toString(16)}${color.a.toString(16)}`
-// }
+
 export function downloadBlob(b: Blob, filename: string): void {
   const url = URL.createObjectURL(b);
   const ele = window.document.createElement("a");

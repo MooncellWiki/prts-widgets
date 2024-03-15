@@ -15,7 +15,7 @@ import {
   NSpace,
 } from "naive-ui";
 
-import { getImagePath } from "../../utils/utils";
+import { getImagePath } from "@/utils/utils";
 
 import ISEventOption from "./ISEventOption.vue";
 interface Option {

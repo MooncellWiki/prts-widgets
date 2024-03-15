@@ -15,6 +15,7 @@ export interface CostProps {
   mastery: [number, number, number]; // 技能专精
   uniequip: number; // 模组
 }
+
 export default defineComponent({
   components: { Avatar },
   props: {

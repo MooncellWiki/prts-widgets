@@ -14,8 +14,7 @@ import {
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-
-import { getImagePath } from "../../utils/utils";
+import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";

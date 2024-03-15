@@ -4,7 +4,7 @@ import type { PropType } from "vue";
 import { defineComponent, toRefs } from "vue";
 
 import Avatar from "@/components/Avatar.vue";
-import { PRTS_BASE_DOMAIN } from "@/utils/utils";
+import { PRTS_BASE_DOMAIN } from "@/utils/consts";
 
 import type { Char } from "../utils";
 

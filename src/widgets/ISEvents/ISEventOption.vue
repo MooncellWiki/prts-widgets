@@ -3,7 +3,7 @@ import { defineComponent } from "vue";
 
 import { NAvatar, NBadge, NCard } from "naive-ui";
 
-import { getImagePath } from "../../utils/utils";
+import { getImagePath } from "@/utils/utils";
 export default defineComponent({
   components: {
     NCard,

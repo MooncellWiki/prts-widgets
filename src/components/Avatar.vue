@@ -2,7 +2,8 @@
 import type { PropType } from "vue";
 import { defineComponent } from "vue";
 
-import { PRTS_BASE_DOMAIN, getImagePath } from "@/utils/utils";
+import { PRTS_BASE_DOMAIN } from "@/utils/consts";
+import { getImagePath } from "@/utils/utils";
 
 export default defineComponent({
   name: "Avatar",

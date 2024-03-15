@@ -3,6 +3,7 @@ import type { PropType } from "vue";
 import { computed, defineComponent, onMounted, ref } from "vue";
 
 import { getImagePath } from "@/utils/utils";
+
 const classMap: Record<string, string> = {
   start: "fas fa-exclamation-triangle",
   end: "fas fa-exclamation-triangle",
@@ -22,6 +23,7 @@ const classMap: Record<string, string> = {
   ore: "fas fa-radiation",
   tower: "fas fa-broadcast-tower",
 };
+
 const TipMap: Record<string, string> = {
   start: "<b>侵入点</b>",
   end: "<b>保护目标</b>",
@@ -65,6 +67,7 @@ const TipMap: Record<string, string> = {
   tower:
     '<b>L-44"留声机"</b><br>我方与敌方可夺取控制权，激活后对敌方造成法术伤害，并可治疗友方单位',
 };
+
 const bgMap: Record<string, string> = {
   infection: "特殊地形_活性源石.png",
   healing: "特殊地形_医疗符文.png",
@@ -79,9 +82,11 @@ const bgMap: Record<string, string> = {
   xbfarm: "头像_装置_便携式种植槽.png",
   stone: "头像_装置_碎石.png",
 };
+
 function bg(name: string) {
   return `background-image: url(/images/${getImagePath(name)})`;
 }
+
 export default defineComponent({
   props: {
     tile: String,
@@ -95,9 +100,9 @@ export default defineComponent({
       let result = "";
       if (bgMap[props.tile!]) result += ` ${bg(bgMap[props.tile!])}`;
 
-      props.tokens?.forEach((token: any) => {
+      for (const token of props.tokens || []) {
         if (token && bgMap[token]) result += ` ${bg(bgMap[token])}`;
-      });
+      }
 
       if (props.tile === "grass" && props.tileHeightType === 1) {
         result +=
@@ -109,10 +114,10 @@ export default defineComponent({
       let content = "";
       if (props.tile && TipMap[props.tile]) content += TipMap[props.tile];
 
-      props.tokens?.forEach((token: any) => {
+      for (const token of props.tokens || []) {
         if (token && TipMap[token])
           content += content ? `<br/> ${TipMap[token]}` : ` ${TipMap[token]}`;
-      });
+      }
 
       if (content.length > 0) {
         // @ts-expect-error tippy
@@ -161,6 +166,7 @@ export default defineComponent({
   position: relative;
   background-color: gray;
 }
+
 @media screen and (max-width: 540px) {
   .block {
     border-width: 1px !important;
@@ -168,11 +174,13 @@ export default defineComponent({
     border-color: transparent;
   }
 }
+
 .block:before {
   content: "";
   display: block;
   padding-top: 100%;
 }
+
 .block span {
   position: absolute;
   /*font-weight: bold;*/
@@ -183,11 +191,13 @@ export default defineComponent({
   top: 50%;
   transform: translate(-50%, -50%);
 }
+
 .token {
   background-position: center;
   background-size: contain;
   background-repeat: no-repeat;
 }
+
 .rect {
   filter: opacity(0.75);
 }
@@ -195,51 +205,63 @@ export default defineComponent({
 .empty {
   background-color: transparent;
 }
+
 .start,
 .flystart {
   background-color: indianred;
   border: 2px solid darkred;
 }
+
 .start span,
 .flystart span {
   color: darkred;
 }
+
 .end {
   background-color: skyblue;
   border: 2px solid dodgerblue;
 }
+
 .end span {
   color: dodgerblue;
 }
+
 .floor {
   background-color: darkgray;
   border: 1px dashed yellow;
   box-shadow: inset 0 0 0 2px black;
 }
+
 .floor span {
   color: white;
 }
+
 .road {
   background-color: darkgray;
   border: 2px dotted dimgray;
 }
+
 .wall {
   background-color: lightgray;
   border: 2px dotted dimgray;
   box-shadow: 5px 5px 8px black;
   z-index: 2;
 }
+
 .hole {
   background-color: black;
 }
+
 .grass {
   background-color: yellowgreen;
   border: 2px dotted dimgray;
 }
+
 .deepsea {
   background-color: steelblue;
   border: 2px dotted darkgray;
 }
+
 .infection,
 .corrosion_2,
 .healing,
@@ -253,13 +275,16 @@ export default defineComponent({
   background-size: contain;
   background-repeat: no-repeat;
 }
+
 .corrosion_2 span {
   color: darkgoldenrod;
 }
+
 .telin,
 .telout {
   border: 2px dashed dimgray;
 }
+
 .telin {
   transform: rotate(180deg); /* fa 和 windicss 都不起作用 */
 }
@@ -269,33 +294,41 @@ export default defineComponent({
   background-size: contain;
   background-repeat: no-repeat;
 }
+
 .hiddenstone {
   background-color: dimgray;
   border: 2px solid darkgray;
 }
+
 .ballis span,
 .ore span,
 .airsup span {
   color: red;
 }
+
 .streasure span {
   color: black;
 }
+
 .roadblock {
   background-color: slategray;
   border: 2px dotted darkgray;
 }
+
 .airsup {
   background-color: indianred;
   border: 2px solid darkred;
 }
+
 .wdescp span,
 .xbbase span {
   color: green;
 }
+
 .tower span {
   color: darkslategray;
 }
+
 .redtower span {
   color: crimson;
 }

@@ -3,9 +3,8 @@ import { defineComponent, onMounted, ref } from "vue";
 
 import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
 
-import type { CostProps } from "../components/Cost.vue";
-import CostVue from "../components/Cost.vue";
-import { TORAPPU_ENDPOINT } from "../utils/utils";
+import CostVue, { type CostProps } from "@/components/Cost.vue";
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
 interface cost {
   label: string;

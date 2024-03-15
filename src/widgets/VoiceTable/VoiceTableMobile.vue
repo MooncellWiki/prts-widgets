@@ -4,7 +4,7 @@ import { defineComponent, provide, ref } from "vue";
 
 import { NConfigProvider, NSelect } from "naive-ui";
 
-import FormItem from "../../components/FormItem.vue";
+import FormItem from "@/components/FormItem.vue";
 
 import VoicePlayer from "./VoicePlayer.vue";
 

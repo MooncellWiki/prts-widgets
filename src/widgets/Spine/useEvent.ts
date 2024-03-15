@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 
 import Hammer from "hammerjs";
 
-import { isFirefox } from "../../utils/utils";
+import { isFirefox } from "@/utils/utils";
 
 import type { Spine } from "./spine";
 

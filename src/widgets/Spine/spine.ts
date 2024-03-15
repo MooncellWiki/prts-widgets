@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import spine from "../../spine/runtime/spine-webgl";
-import { downloadBlob } from "../../utils/utils";
+import spine from "@/spine/runtime/spine-webgl";
+import { downloadBlob } from "@/utils/utils";
 
 function noop() {
   // noop

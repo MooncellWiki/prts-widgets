@@ -1,7 +1,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { PRTS_BASE_DOMAIN, charListData, getImagePath } from "@/utils/utils";
+import { PRTS_BASE_DOMAIN } from "@/utils/consts";
+import { charListData, getImagePath } from "@/utils/utils";
 
 export default defineComponent({
   name: "Half",

@@ -15,17 +15,15 @@ import {
   NColorPicker,
   NIcon,
   NPopover,
-  // NForm,
-  // NFormItem,
   NSelect,
   NSkeleton,
   NSlider,
   NSwitch,
 } from "naive-ui";
 
-import Card from "../../components/Card.vue";
-import FormItem from "../../components/FormItem.vue";
-import { isMobile } from "../../utils/utils";
+import Card from "@/components/Card.vue";
+import FormItem from "@/components/FormItem.vue";
+import { isMobile } from "@/utils/utils";
 
 import Detail from "./Detail.vue";
 import { Spine } from "./spine";

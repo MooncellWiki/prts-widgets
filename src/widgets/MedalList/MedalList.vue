@@ -9,19 +9,18 @@ import {
   NCollapseItem,
   NCollapseTransition,
   NConfigProvider,
+  NEmpty,
   NGrid,
   NGridItem,
   NLayout,
   NPopover,
   NText,
-  NEmpty,
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-
-import { getImagePath } from "../../utils/utils";
+import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";

@@ -27,6 +27,7 @@ import Card from "./row/Card.vue";
 import Long from "./row/Long.vue";
 import Short from "./row/Short.vue";
 import type { Char, CheckboxOption, FilterGroup } from "./utils";
+
 interface State {
   both: boolean;
   selected: Record<string, boolean>;
@@ -37,17 +38,20 @@ interface State {
     groupTitle: string;
   };
 }
+
 function copyUrl() {
   const url = `${location.origin}/w/CHAR${location.hash}`;
   window.navigator.clipboard.writeText(url);
   alert(`链接已复制: ${url}`);
 }
+
 function flat(cbt: CheckboxOption[]) {
   return cbt.map((v) => {
     if (typeof v === "string") return v;
     return v.label;
   });
 }
+
 export default defineComponent({
   components: {
     FilterRow,
