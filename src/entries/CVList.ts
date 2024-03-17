@@ -38,7 +38,7 @@ const initCharWord = async () => {
   const data = Object.fromEntries(
     Object.keys(table.voiceLangTypeDict).map((voiceLangType) => [
       voiceLangType,
-      {} as Record<string, string[]>,
+      {} as Record<string, Set<string>>,
     ]),
   );
 
@@ -48,9 +48,9 @@ const initCharWord = async () => {
       const cvName = charVoice.cvName;
       for (const name of cvName) {
         if (!data[charVoice.voiceLangType][name]) {
-          data[charVoice.voiceLangType][name] = [];
+          data[charVoice.voiceLangType][name] = new Set();
         }
-        data[charVoice.voiceLangType][name].push(charId);
+        data[charVoice.voiceLangType][name].add(charId);
       }
     }
   }
