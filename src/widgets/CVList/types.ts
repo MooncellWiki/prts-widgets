@@ -1,14 +1,14 @@
 export enum VoiceLangType {
   NONE = 0,
-  JP = 1,
-  CN_MANDARIN = 2,
-  EN = 3,
-  KR = 4,
-  CN_TOPOLECT = 5,
-  LINKAGE = 6,
-  ITA = 7,
-  GER = 8,
-  RUS = 9,
+  CN_MANDARIN = 1,
+  CN_TOPOLECT = 2,
+  JP = 3,
+  EN = 4,
+  KR = 5,
+  ITA = 6,
+  GER = 7,
+  RUS = 8,
+  LINKAGE = 1000,
 }
 
 export type VoiceLangInfoData = {
@@ -38,4 +38,14 @@ export type VoiceLangTypeData = {
 export interface CharWordTable {
   voiceLangTypeDict: VoiceLangTypeData;
   voiceLangDict: VoiceLangData;
+}
+
+export async function getCVConfig(): Promise<MedalMetaData> {
+  const resp = await fetch(
+    `/index.php?${new URLSearchParams({
+      title: "配音一览/config",
+      action: "raw",
+    })}`,
+  );
+  return await resp.json();
 }
