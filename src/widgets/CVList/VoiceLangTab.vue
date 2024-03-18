@@ -35,8 +35,8 @@ export default defineComponent({
       :key="[cvName, charId].join('_')"
       :href="`/w/${mapping[charId]}`"
     >
-      <img class="lazyload" :src="getAvatarURL(charId).toString()" width="80"
-    /></a>
+      <img class="lazyload" :src="getAvatarURL(charId).toString()" width="80" />
+    </a>
   </div>
 </template>
 
