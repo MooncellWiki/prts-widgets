@@ -1,7 +1,7 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+import { defineComponent, nextTick, ref, type PropType } from "vue";
 
-import { NConfigProvider, NTabPane, NTabs } from "naive-ui";
+import { NConfigProvider, NTabPane, NTabs, type TabsInst } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
@@ -16,7 +16,7 @@ export default defineComponent({
       type: Object as PropType<Record<string, Record<string, string[]>>>,
       required: true,
     },
-    voiceLangTypeDict: {
+    langTypes: {
       type: Object as PropType<VoiceLangTypeData>,
       required: true,
     },
@@ -25,11 +25,26 @@ export default defineComponent({
       required: true,
     },
   },
-  setup() {
+  setup(props) {
     const { theme } = useTheme();
     const i18nConfig = getNaiveUILocale();
+    const tabsInstRef = ref<TabsInst | null>(null);
+    const tabs = ref(Object.values(props.langTypes).map((v) => v.name));
+    const valueRef = ref(tabs.value[0]);
+    const nameToKey = Object.fromEntries(
+      Object.entries(props.langTypes).map(([key, value]) => [value.name, key]),
+    );
 
-    return { theme, i18nConfig };
+    if (window.location.hash) {
+      const [lang, name] = decodeURIComponent(window.location.hash).split("：");
+      valueRef.value = lang.slice(1);
+      nextTick(() => {
+        tabsInstRef.value?.syncBarPosition();
+        document.querySelector(`#${name}`)?.scrollIntoView();
+      });
+    }
+
+    return { theme, i18nConfig, valueRef, tabsInstRef, tabs, nameToKey };
   },
 });
 </script>
@@ -41,14 +56,13 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <n-tabs type="line" animated>
-      <n-tab-pane
-        v-for="(value, key) in voiceLangTypeDict"
-        :key="key"
-        :name="key"
-        :tab="value.name"
-      >
-        <VoiceLangTab v-if="data" :voice-data="data[key]" :mapping="mapping" />
+    <n-tabs ref="tabsInstRef" v-model:value="valueRef" type="line" animated>
+      <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
+        <VoiceLangTab
+          v-if="data"
+          :voice-data="data[nameToKey[tab]]"
+          :mapping="mapping"
+        />
       </n-tab-pane>
     </n-tabs>
   </NConfigProvider>

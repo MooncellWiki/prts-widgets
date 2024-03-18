@@ -34,10 +34,10 @@ const initCharWord = async () => {
     new URL("/gamedata/latest/excel/charword_table.json", TORAPPU_ENDPOINT),
   );
   const table: CharWordTable = await response.json();
-  const voiceLangTypeDict = table.voiceLangTypeDict;
+  const langTypes = table.voiceLangTypeDict;
   const data = Object.fromEntries(
-    Object.keys(table.voiceLangTypeDict).map((voiceLangType) => [
-      voiceLangType,
+    Object.keys(langTypes).map((langType) => [
+      langType,
       {} as Record<string, Set<string>>,
     ]),
   );
@@ -55,7 +55,7 @@ const initCharWord = async () => {
     }
   }
 
-  return { data, voiceLangTypeDict };
+  return { data, langTypes };
 };
 
 Promise.all([initCharWord(), initCharMap()]).then((retvals) => {
