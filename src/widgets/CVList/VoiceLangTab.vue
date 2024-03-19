@@ -44,7 +44,7 @@ export default defineComponent({
     <a
       v-for="voiceId in voiceIds"
       :key="[cvName, voiceId].join('_')"
-      :href="`/w/${mapping[charMapping[voiceId]]}`"
+      :href="`/w/${mapping[charMapping[voiceId] || voiceId]}`"
     >
       <img
         class="lazyload"

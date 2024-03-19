@@ -35,7 +35,9 @@ const initCharMap = async () => {
   const json = await response.json();
   const cargoquery = json.cargoquery;
 
-  const mapping: Record<string, string> = {};
+  const mapping: Record<string, string> = {
+    char_1001_amiya2: "阿米娅(近卫)",
+  };
   for (const query of cargoquery) {
     const { charId, pageName } = query.title;
     if (charId && pageName) {
