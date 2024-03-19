@@ -24,8 +24,8 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const getAvatarURL = (charId: string) => {
-      const avatarId = props.avatarMapping[charId] || charId;
+    const getAvatarURL = (voiceId: string) => {
+      const avatarId = props.avatarMapping[voiceId] || voiceId;
       return new URL(
         `/assets/char_avatar/${encodeURIComponent(avatarId)}.png`,
         TORAPPU_ENDPOINT,
