@@ -3,10 +3,6 @@ import { defineComponent, type PropType } from "vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
-const getAvatarURL = (charId: string) => {
-  return new URL(`/assets/char_avatar/${charId}.png`, TORAPPU_ENDPOINT);
-};
-
 export default defineComponent({
   components: {},
   props: {
@@ -18,24 +14,43 @@ export default defineComponent({
       type: Object as PropType<Record<string, string>>,
       required: true,
     },
+    avatarMapping: {
+      type: Object as PropType<Record<string, string>>,
+      required: true,
+    },
+    charMapping: {
+      type: Object as PropType<Record<string, string>>,
+      required: true,
+    },
   },
-  setup() {
+  setup(props) {
+    const getAvatarURL = (charId: string) => {
+      const avatarId = props.avatarMapping[charId] || charId;
+      return new URL(
+        `/assets/char_avatar/${encodeURIComponent(avatarId)}.png`,
+        TORAPPU_ENDPOINT,
+      );
+    };
     return { getAvatarURL };
   },
 });
 </script>
 
 <template>
-  <div v-for="(charIds, cvName) in voiceData" :key="cvName">
+  <div v-for="(voiceIds, cvName) in voiceData" :key="cvName">
     <h2>
       <span :id="cvName" class="mw-headline">{{ cvName }}</span>
     </h2>
     <a
-      v-for="charId in charIds"
-      :key="[cvName, charId].join('_')"
-      :href="`/w/${mapping[charId]}`"
+      v-for="voiceId in voiceIds"
+      :key="[cvName, voiceId].join('_')"
+      :href="`/w/${mapping[charMapping[voiceId]]}`"
     >
-      <img class="lazyload" :src="getAvatarURL(charId).toString()" width="80" />
+      <img
+        class="lazyload"
+        :src="getAvatarURL(voiceId).toString()"
+        width="80"
+      />
     </a>
   </div>
 </template>

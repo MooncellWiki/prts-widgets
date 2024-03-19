@@ -3,7 +3,24 @@ import { createApp } from "vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import CVList from "@/widgets/CVList/index.vue";
-import { CharWordTable } from "@/widgets/CVList/types";
+import type { CharWordTable, SkinTable } from "@/widgets/CVList/types";
+
+const initSkinTable = async () => {
+  const response = await fetch(
+    new URL("/gamedata/latest/excel/skin_table.json", TORAPPU_ENDPOINT),
+  );
+  const table: SkinTable = await response.json();
+  const avatarMapping: Record<string, string> = {};
+  const charMapping: Record<string, string> = {};
+  for (const skin of Object.values(table.charSkins)) {
+    if (skin.voiceId) {
+      avatarMapping[skin.voiceId] = skin.avatarId;
+      charMapping[skin.voiceId] = skin.charId;
+    }
+  }
+
+  return { charMapping, avatarMapping };
+};
 
 const initCharMap = async () => {
   const response = await fetch(
@@ -42,8 +59,8 @@ const initCharWord = async () => {
     ]),
   );
 
-  for (const voiceLang of Object.values(table.voiceLangDict)) {
-    const { charId, dict } = voiceLang;
+  for (const [charId, voiceLang] of Object.entries(table.voiceLangDict)) {
+    const { dict } = voiceLang;
     for (const charVoice of Object.values(dict)) {
       const cvName = charVoice.cvName;
       for (const name of cvName) {
@@ -58,14 +75,16 @@ const initCharWord = async () => {
   return { data, langTypes };
 };
 
-Promise.all([initCharWord(), initCharMap()]).then((retvals) => {
-  const ele = document.querySelector("#root");
-  const props = {};
-  for (const retval of retvals) {
-    Object.assign(props, retval);
-  }
-  if (ele) {
-    const app = createApp(CVList, props);
-    app.mount(ele);
-  }
-});
+Promise.all([initCharWord(), initCharMap(), initSkinTable()]).then(
+  (retvals) => {
+    const props = {};
+    for (const retval of retvals) {
+      Object.assign(props, retval);
+    }
+    const ele = document.querySelector("#root");
+    if (ele) {
+      const app = createApp(CVList, props);
+      app.mount(ele);
+    }
+  },
+);
