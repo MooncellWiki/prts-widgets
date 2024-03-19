@@ -3,24 +3,7 @@ import { createApp } from "vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import CVList from "@/widgets/CVList/index.vue";
-import type { CharWordTable, SkinTable } from "@/widgets/CVList/types";
-
-const initSkinTable = async () => {
-  const response = await fetch(
-    new URL("/gamedata/latest/excel/skin_table.json", TORAPPU_ENDPOINT),
-  );
-  const table: SkinTable = await response.json();
-  const avatarMapping: Record<string, string> = {};
-  const charMapping: Record<string, string> = {};
-  for (const skin of Object.values(table.charSkins)) {
-    if (skin.voiceId) {
-      avatarMapping[skin.voiceId] = skin.avatarId;
-      charMapping[skin.voiceId] = skin.charId;
-    }
-  }
-
-  return { charMapping, avatarMapping };
-};
+import { CharWordTable, CVConfig, getCVConfig } from "@/widgets/CVList/types";
 
 const initCharMap = async () => {
   const response = await fetch(
@@ -35,9 +18,7 @@ const initCharMap = async () => {
   const json = await response.json();
   const cargoquery = json.cargoquery;
 
-  const mapping: Record<string, string> = {
-    char_1001_amiya2: "阿米娅(近卫)",
-  };
+  const mapping: Record<string, string> = {};
   for (const query of cargoquery) {
     const { charId, pageName } = query.title;
     if (charId && pageName) {
@@ -48,7 +29,7 @@ const initCharMap = async () => {
   return { mapping };
 };
 
-const initCharWord = async () => {
+const initCharWord = async (conf: CVConfig) => {
   const response = await fetch(
     new URL("/gamedata/latest/excel/charword_table.json", TORAPPU_ENDPOINT),
   );
@@ -57,19 +38,56 @@ const initCharWord = async () => {
   const data = Object.fromEntries(
     Object.keys(langTypes).map((langType) => [
       langType,
-      {} as Record<string, Set<string>>,
+      {} as Record<string, Set<Array<string>>>,
     ]),
   );
 
-  for (const [charId, voiceLang] of Object.entries(table.voiceLangDict)) {
-    const { dict } = voiceLang;
+  for (const voiceLang of Object.values(table.voiceLangDict)) {
+    const { charId, dict } = voiceLang;
     for (const charVoice of Object.values(dict)) {
+      const wordkey = charVoice.wordkey;
+      // skin pre process
+      if (wordkey.includes("#") && wordkey.split("#")[0] == charId) continue;
       const cvName = charVoice.cvName;
       for (const name of cvName) {
-        if (!data[charVoice.voiceLangType][name]) {
-          data[charVoice.voiceLangType][name] = new Set();
+        const curLangType = charVoice.voiceLangType;
+        if (!data[curLangType][name]) {
+          data[curLangType][name] = new Set<Array<string>>();
         }
-        data[charVoice.voiceLangType][name].add(charId);
+        data[curLangType][name].add([
+          charId,
+          wordkey == charId ||
+          conf.customLangList.includes(curLangType.toString())
+            ? ""
+            : wordkey,
+          "",
+        ]);
+        if (curLangType.toString() == "LINKAGE" && name != "-") {
+          const realLangTypeStr = conf.linkageRedirect[charId];
+          if (!data[realLangTypeStr][name]) {
+            data[realLangTypeStr][name] = new Set();
+          }
+          data[realLangTypeStr][name].add([
+            charId,
+            wordkey == charId || conf.customLangList.includes(realLangTypeStr)
+              ? ""
+              : wordkey,
+            "",
+          ]);
+        }
+        if (conf.linkageRedirectRev.includes(charId)) {
+          const realLangTypeStr = "LINKAGE";
+          if (!data[realLangTypeStr][name]) {
+            data[realLangTypeStr][name] = new Set();
+          }
+          data[realLangTypeStr][name].add([
+            charId,
+            wordkey == charId || conf.customLangList.includes(realLangTypeStr)
+              ? ""
+              : wordkey,
+            curLangType.toString(),
+          ]);
+        }
       }
     }
   }
@@ -77,16 +95,16 @@ const initCharWord = async () => {
   return { data, langTypes };
 };
 
-Promise.all([initCharWord(), initCharMap(), initSkinTable()]).then(
-  (retvals) => {
-    const props = {};
-    for (const retval of retvals) {
-      Object.assign(props, retval);
-    }
-    const ele = document.querySelector("#root");
-    if (ele) {
-      const app = createApp(CVList, props);
-      app.mount(ele);
-    }
-  },
-);
+const conf = await getCVConfig();
+
+Promise.all([initCharWord(conf), initCharMap()]).then((retvals) => {
+  const ele = document.querySelector("#root");
+  const props = {};
+  for (const retval of retvals) {
+    Object.assign(props, retval);
+  }
+  if (ele) {
+    const app = createApp(CVList, props);
+    app.mount(ele);
+  }
+});
