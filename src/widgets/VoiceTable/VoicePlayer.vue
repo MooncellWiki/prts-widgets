@@ -104,7 +104,7 @@ export default defineComponent({
       :download="`${fileName}.wav`"
     >
       <img
-        class="md:w-10 <sm:w-7 cursor-pointer lazyload"
+        class="md:w-10 <sm:w-7 cursor-pointer"
         title="下载"
         data-src="/images/f/f1/Download.png"
       />

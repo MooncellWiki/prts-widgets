@@ -48,7 +48,7 @@ export default defineComponent({
     >
       <img
         class="lazyload"
-        :src="getAvatarURL(voiceId).toString()"
+        :data-src="getAvatarURL(voiceId).toString()"
         width="80"
       />
     </a>

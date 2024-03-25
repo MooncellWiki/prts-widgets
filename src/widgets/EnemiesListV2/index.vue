@@ -326,7 +326,7 @@ export default defineComponent({
           key: "icon",
           render(row) {
             const img = h("img", {
-              src: `/images/${getImagePath(`头像_敌人_${row.name}.png`)}`,
+              "data-src": `/images/${getImagePath(`头像_敌人_${row.name}.png`)}`,
               class: "lazyload",
               style: {
                 width: "65px",
@@ -525,7 +525,7 @@ export default defineComponent({
           <img
             class="lazyload"
             style="width: 65px; height: 65px"
-            :src="`/images/${getImagePath(`头像_敌人_${row.name}.png`)}`"
+            :data-src="`/images/${getImagePath(`头像_敌人_${row.name}.png`)}`"
           />
         </a>
         <NPagination
