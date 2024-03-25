@@ -1,57 +1,112 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+import { computed, defineComponent, type PropType } from "vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+
+const getAvatarURL = (charIdRecord: string[]) => {
+  return new URL(
+    `/assets/char_avatar/${encodeURIComponent(charIdRecord[1] == "" ? charIdRecord[0] : charIdRecord[1])}.png`,
+    TORAPPU_ENDPOINT,
+  );
+};
 
 export default defineComponent({
   components: {},
   props: {
     voiceData: {
-      type: Object as PropType<Record<string, string[]>>,
+      type: Object as PropType<Record<string, Array<string[]>>>,
       required: true,
     },
     mapping: {
       type: Object as PropType<Record<string, string>>,
       required: true,
     },
-    avatarMapping: {
-      type: Object as PropType<Record<string, string>>,
+    lang: {
+      type: String,
       required: true,
     },
-    charMapping: {
-      type: Object as PropType<Record<string, string>>,
+    langTypes: {
+      type: Object,
+      required: true,
+    },
+    cvConfig: {
+      type: Object,
       required: true,
     },
   },
   setup(props) {
-    const getAvatarURL = (voiceId: string) => {
-      const avatarId = props.avatarMapping[voiceId] || voiceId;
-      return new URL(
-        `/assets/char_avatar/${encodeURIComponent(avatarId)}.png`,
-        TORAPPU_ENDPOINT,
+    const originalCV = computed(() => {
+      const idcv = Object.entries(props.voiceData).map((data) => {
+        return data;
+      });
+
+      return Object.fromEntries(
+        idcv.flatMap(([cvName, charIdRecords]) => {
+          var kv = [];
+          for (const charIdRecord of charIdRecords) {
+            if (charIdRecord[1] == "") kv.push([charIdRecord[0], cvName]);
+          }
+          return kv;
+        }),
       );
+    });
+
+    return {
+      originalCV,
+      getAvatarURL,
     };
-    return { getAvatarURL };
   },
 });
 </script>
 
 <template>
-  <div v-for="(voiceIds, cvName) in voiceData" :key="cvName">
+  <div v-for="(charIdRecords, cvName) in voiceData" :key="cvName">
     <h2>
-      <span :id="cvName" class="mw-headline">{{ cvName }}</span>
+      <span :id="cvName" class="mw-headline">{{
+        cvName == "-" ? "(无CV)" : cvName
+      }}</span>
     </h2>
-    <a
-      v-for="voiceId in voiceIds"
-      :key="[cvName, voiceId].join('_')"
-      :href="`/w/${mapping[charMapping[voiceId] || voiceId]}`"
+    <div
+      v-for="charIdRecord in charIdRecords"
+      :key="charIdRecord[0]"
+      class="inline-block relative"
     >
-      <img
-        class="lazyload"
-        :src="getAvatarURL(voiceId).toString()"
-        width="80"
-      />
-    </a>
+      <div
+        v-if="charIdRecord[1] == '' || cvName != originalCV[charIdRecord[0]]"
+      >
+        <a :href="`/w/${mapping[charIdRecord[0]]}`">
+          <img
+            class="lazyload"
+            :src="getAvatarURL(charIdRecord).toString()"
+            width="80"
+          />
+        </a>
+        <div
+          v-if="charIdRecord[1]"
+          class="absolute right-0 bottom-0 bg-blue-5 px-0.5"
+        >
+          <span class="mdi mdi mdi-tshirt-crew color-white"></span>
+        </div>
+        <div
+          v-if="
+            (cvConfig.linkageRedirect &&
+              langTypes[cvConfig.linkageRedirect[charIdRecord[0]]] &&
+              charIdRecord[0] in cvConfig.linkageRedirect) ||
+            (cvConfig.linkageRedirectRev &&
+              langTypes[charIdRecord[2]] &&
+              cvConfig.linkageRedirectRev.includes(charIdRecord[0]))
+          "
+          class="absolute right-0 top-0 bg-orange px-0.5 text-1 color-white"
+        >
+          <span v-if="lang == '联动'">{{
+            langTypes[
+              charIdRecord[2] || cvConfig.linkageRedirect[charIdRecord[0]]
+            ].name || ""
+          }}</span>
+          <span v-else class="mdi mdi-handshake mdi-rotate-45 text-4"></span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 

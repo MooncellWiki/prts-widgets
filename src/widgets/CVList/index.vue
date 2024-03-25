@@ -1,19 +1,26 @@
 <script lang="ts">
-import { defineComponent, nextTick, ref, type PropType } from "vue";
+import { defineComponent, nextTick, ref, type PropType, onMounted } from "vue";
 
-import { NConfigProvider, NTabPane, NTabs } from "naive-ui";
+import {
+  NConfigProvider,
+  NTabPane,
+  NTabs,
+  type TabsInst,
+  NTooltip,
+} from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import VoiceLangTab from "./VoiceLangTab.vue";
 import type { VoiceLangTypeData } from "./types";
+import { CVConfig, getCVConfig } from "./types";
 
 export default defineComponent({
-  components: { NConfigProvider, NTabs, NTabPane, VoiceLangTab },
+  components: { NConfigProvider, NTabs, NTabPane, NTooltip, VoiceLangTab },
   props: {
     data: {
-      type: Object as PropType<Record<string, Record<string, string[]>>>,
+      type: Object as PropType<Record<string, Record<string, Array<string[]>>>>,
       required: true,
     },
     langTypes: {
@@ -24,22 +31,20 @@ export default defineComponent({
       type: Object as PropType<Record<string, string>>,
       required: true,
     },
-    avatarMapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
-    charMapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
   },
   setup(props) {
     const { theme } = useTheme();
     const i18nConfig = getNaiveUILocale();
-
-    const tabs = ref(Object.values(props.langTypes).map((v) => v.name));
+    const tabsInstRef = ref<TabsInst | null>(null);
+    const tabs = ref(
+      Object.values(props.langTypes)
+        .map((v) => v.name)
+        .filter((v) => {
+          return v != "联动";
+        })
+        .concat("联动"),
+    );
     const valueRef = ref(tabs.value[0]);
-
     const nameToKey = Object.fromEntries(
       Object.entries(props.langTypes).map(([key, value]) => [value.name, key]),
     );
@@ -48,11 +53,29 @@ export default defineComponent({
       const [lang, name] = decodeURIComponent(window.location.hash).split("：");
       valueRef.value = lang.slice(1);
       nextTick(() => {
+        tabsInstRef.value?.syncBarPosition();
         document.querySelector(`#${name}`)?.scrollIntoView();
       });
     }
+    const cvConf = ref<CVConfig>({
+      langDisplay: {},
+      customLangList: [],
+      linkageRedirect: {},
+      linkageRedirectRev: [],
+    });
+    onMounted(async () => {
+      cvConf.value = await getCVConfig();
+    });
 
-    return { theme, i18nConfig, valueRef, tabs, nameToKey };
+    return {
+      theme,
+      i18nConfig,
+      valueRef,
+      tabsInstRef,
+      tabs,
+      nameToKey,
+      cvConf,
+    };
   },
 });
 </script>
@@ -64,14 +87,40 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <n-tabs v-model:value="valueRef" type="line" animated>
-      <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
+    <n-tabs ref="tabsInstRef" v-model:value="valueRef" type="line" animated>
+      <n-tab-pane
+        v-for="tab in tabs"
+        :key="tab"
+        :name="tab == '联动' ? '联动语音' : tab"
+      >
+        <template #tab>
+          <n-tooltip
+            v-if="cvConf.langDisplay && tab in cvConf.langDisplay"
+            trigger="hover"
+          >
+            <template #trigger>{{ tab }}</template>
+            {{ cvConf.langDisplay[tab] }}
+          </n-tooltip>
+          <n-tooltip
+            v-else-if="tab == '联动'"
+            trigger="hover"
+            :arrow-style="{ background: 'orange' }"
+            :style="{ border: '1px solid orange' }"
+          >
+            <template #trigger>联动</template>
+            <span class="mdi mdi-handshake mdi-rotate-45 color-orange"></span>
+          </n-tooltip>
+          <span v-else>
+            {{ tab }}
+          </span>
+        </template>
         <VoiceLangTab
           v-if="data"
+          :lang="tab"
           :voice-data="data[nameToKey[tab]]"
           :mapping="mapping"
-          :avatar-mapping="avatarMapping"
-          :char-mapping="charMapping"
+          :lang-types="langTypes"
+          :cv-config="cvConf || {}"
         />
       </n-tab-pane>
     </n-tabs>
