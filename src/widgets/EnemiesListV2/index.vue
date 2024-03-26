@@ -510,6 +510,7 @@ export default defineComponent({
         v-show="!isIconMode"
         ref="table"
         class="my-2"
+        :row-key="(row) => row.name"
         :columns="columns"
         :data="enemyData"
         :pagination="pagination"
@@ -518,8 +519,8 @@ export default defineComponent({
       />
       <div v-if="isIconMode">
         <a
-          v-for="(row, index) in filteredChunkedEnemyData"
-          :key="index"
+          v-for="row in filteredChunkedEnemyData"
+          :key="row.name"
           :href="`/w/${row.enemyLink}`"
         >
           <img
