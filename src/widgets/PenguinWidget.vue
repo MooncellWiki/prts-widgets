@@ -5,6 +5,7 @@ import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
+import { isMobileSkin } from "@/utils/utils";
 
 export default defineComponent({
   components: { NConfigProvider, NRadioButton, NRadioGroup },
@@ -17,7 +18,7 @@ export default defineComponent({
   setup() {
     const { theme } = useTheme();
     const i18nConfig = getNaiveUILocale();
-    const isMobile = document.body.classList.contains("skin-minerva");
+    const isMobile = isMobileSkin();
 
     const servers = [
       {

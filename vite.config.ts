@@ -69,6 +69,7 @@ export default defineConfig(({ command }) => {
         output: {
           sourcemapBaseUrl: "https://static.prts.wiki/widgets/production/",
           manualChunks(id) {
+            if (id.includes("crypto-js")) return;
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
             if (id.includes("hammer")) return;
