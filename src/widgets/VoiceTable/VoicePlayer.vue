@@ -111,7 +111,7 @@ export default defineComponent({
       <img
         class="md:w-10 <sm:w-7 cursor-pointer"
         title="下载"
-        data-src="//media.prts.wiki/f/f1/Download.png"
+        :data-src="`${MEDIA_ENDPOINT}/f/f1/Download.png`"
       />
     </a>
   </div>

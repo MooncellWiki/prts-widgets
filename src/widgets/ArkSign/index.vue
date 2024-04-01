@@ -26,6 +26,7 @@ import {
 } from "naive-ui";
 import { VueDraggable } from "vue-draggable-plus";
 
+import { MEDIA_ENDPOINT } from "@/utils/consts";
 import { isMobileSkin } from "@/utils/utils";
 
 import Label from "./Label.vue";
@@ -304,7 +305,7 @@ function calcSkillRankShow(skills: Char["skills"], skillId: string) {
 function calcEquip(char: Char) {
   return char.defaultEquipId
     ? equip(equipmentInfoMap.value[char.defaultEquipId].typeIcon)
-    : "https://media.prts.wiki/0/03/Skill_icon_none.png";
+    : `${MEDIA_ENDPOINT}/0/03/Skill_icon_none.png`;
 }
 function calcEquipStyle(char: Char) {
   if (char.defaultEquipId) {
@@ -421,7 +422,7 @@ function calcServerColor(id: string) {
                   <div v-show="showInfo.equip" class="skillIcon">
                     <div class="equipBg">
                       <img
-                        src="https://media.prts.wiki/c/c2/Skill_icon_empty.png"
+                        :src="`${MEDIA_ENDPOINT}/c/c2/Skill_icon_empty.png`"
                         width="100%"
                       />
                     </div>
