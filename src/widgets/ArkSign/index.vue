@@ -157,7 +157,6 @@ const onStart = () => {
   drag.value = true;
 };
 function onEnd() {
-  console.log("onEnd");
   nextTick(() => {
     drag.value = false;
   });
