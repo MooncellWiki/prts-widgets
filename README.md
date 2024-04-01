@@ -22,23 +22,11 @@
 - 配音一览 [Widget:CVList/dev](https://prts.wiki/w/Widget:CVList/dev)
 - 干员密录一览[MemoryList/dev](https://prts.wiki/w/Widget:MemoryList/dev)
 
-## 项目配置
+## 贡献代码
 
-### 安装项目依赖
+读[CONTRIBUTING.md](CONTRIBUTING.md)
 
-项目使用 [pnpm](https://pnpm.io/) 管理项目依赖，请使用 [pnpm](https://pnpm.io/) 安装本项目。
-
-```bash
-pnpm install
-```
-
-### 创建新应用
-
-```bash
-pnpm run create WidgetName username password
-```
-
-### 发布
+## 发布
 
 > [!WARNING]
 > 部署更新包需要上传到站内 OSS 后才会生效，发布小部件应仅在 Pull Request 被合并后由 GitHub Actions 机器人自动操作。
