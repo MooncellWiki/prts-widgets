@@ -21,6 +21,7 @@ import {
   NModal,
   NCollapse,
   NCollapseItem,
+  NAlert,
   useMessage,
 } from "naive-ui";
 import { VueDraggable } from "vue-draggable-plus";
@@ -75,7 +76,7 @@ const selectFilterProfession = ref("all");
 const selectFilterRarity = ref("all");
 const sortOrder = ref(false);
 const selectSort = ref("level");
-const customSign = ref("");
+const customSign = ref("签名内容，建议不超过两行");
 const imgScale = ref(1);
 const credStr = ref(""); //森空岛凭据input
 const bindingList = ref<BindingListItem[]>([]); //绑定列表
@@ -169,7 +170,6 @@ function getCredAndSecret(text: string) {
     console.log(111);
   } else {
     console.log("错误");
-    message.error("可能输入格式不正确，应是一个中间包含逗号的一串字母");
     throw new Error("可能输入格式不正确，应是一个中间包含逗号的一串字母");
   }
   text = text.replaceAll(/\s+/g, "").replaceAll(/["']/g, "");
@@ -344,8 +344,14 @@ function calcServerColor(id: string) {
 
 <template>
   <div>
+    <n-alert title="操作指南" type="info" style="margin-bottom: 1em;" closable>
+      {{ selected.length?'选择干员后，可以拖拽立绘来进行排序':'导入数据后，在下方干员列表选择喜爱的干员' }}
+    </n-alert>
     <div class="charSign">
       <div ref="charSignInner" class="charSignInner">
+        <div class="circlePoint">
+          <img src="https://static.prts.wiki/charinfo/img/skland/rightPoint.png" />
+        </div>
         <div class="leftWrapper">
           <div class="logoBg">
             <img
@@ -453,7 +459,6 @@ function calcServerColor(id: string) {
                         "
                         class="skillRank"
                       >
-                        " >
                         {{ charData[charId].mainSkillLvl }}
                       </div>
                     </template>
@@ -1224,6 +1229,8 @@ img {
   display: flex;
   justify-content: center;
   margin: auto;
+  position: relative;
+  overflow: hidden;
 }
 
 .leftWrapper {
@@ -1389,7 +1396,15 @@ img {
   align-items: center;
   padding: 0 calc(var(--charSize) * 2) 0 calc(var(--charSize) * 1.5);
 }
-
+.circlePoint{
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.circlePoint img{
+  height: calc(var(--charSize) * 30);
+  width: calc(var(--charSize) * 30);
+}
 :deep(.n-card-header__main) {
   border-left: 5px solid var(--n-color-target);
   box-sizing: border-box;
