@@ -1,27 +1,27 @@
 <script setup lang="ts">
-import { ref, nextTick, h, VNodeChild, watch } from "vue";
+import { type VNodeChild, h, nextTick, ref, watch } from "vue";
 
 import {
+  HelpOutlineOutlined,
   KeyboardArrowDownFilled,
   KeyboardArrowUpFilled,
-  HelpOutlineOutlined,
 } from "@vicons/material";
 import html2canvas from "html2canvas";
 import {
+  NAlert,
   NButton,
-  NInput,
-  NInputNumber,
-  NSelect,
   NCard,
-  NEmpty,
-  NIcon,
   NCheckbox,
-  NDrawer,
-  NDrawerContent,
-  NModal,
   NCollapse,
   NCollapseItem,
-  NAlert,
+  NDrawer,
+  NDrawerContent,
+  NEmpty,
+  NIcon,
+  NInput,
+  NInputNumber,
+  NModal,
+  NSelect,
   useMessage,
 } from "naive-ui";
 import { VueDraggable } from "vue-draggable-plus";
@@ -33,25 +33,21 @@ import howToGetSklandToken from "./Skland.vue";
 import {
   charAvatar,
   docAvatar,
+  elite,
+  equip,
   portrait,
   potential,
-  elite,
   profession,
-  starYellow,
-  starWhite,
+  server,
   skill,
   specialized,
-  equip,
-  server,
+  starWhite,
+  starYellow,
 } from "./getUrl";
-import { filterRarityList, sortList, filterProfessionList } from "./option";
-import {
-  getPlayerInfo,
-  getPlayerBinding,
-  BindingListItem,
-  PlayerInfo,
-  Char,
-} from "./skland";
+import { filterProfessionList, filterRarityList, sortList } from "./option";
+import { getPlayerBinding, getPlayerInfo } from "./skland";
+import type { BindingListItem, Char, PlayerInfo } from "./types";
+
 const isMobile = isMobileSkin();
 const doctorInfo = ref<{
   nickName: string;
@@ -164,8 +160,7 @@ function onEnd() {
 
 //获取Cred
 function getCredAndSecret(text: string) {
-  if (text.includes(",")) {
-  } else {
+  if (!text.includes(",")) {
     console.log("错误");
     throw new Error("可能输入格式不正确，应是一个中间包含逗号的一串字母");
   }
