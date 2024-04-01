@@ -1,6 +1,7 @@
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
-import { Char } from "./skland";
+import type { Char } from "./types";
+
 export function charAvatar(skinId: string) {
   if (skinId.includes("@")) {
     skinId = skinId.replaceAll("@", "_");
