@@ -84,7 +84,7 @@ const bgMap: Record<string, string> = {
 };
 
 function bg(name: string) {
-  return `background-image: url(/images/${getImagePath(name)})`;
+  return `background-image: url(${getImagePath(name)})`;
 }
 
 export default defineComponent({

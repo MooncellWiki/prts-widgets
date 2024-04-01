@@ -30,19 +30,13 @@ export default defineComponent({
     <a :href="`/w/${name}`">
       <img
         class="avatar lazyload"
-        :data-src="`${domain}/images/${getImagePath(`头像_${name}.png`)}`"
+        :data-src="`${getImagePath(`头像_${name}.png`)}`"
       />
       <div class="rarity">
-        <img
-          :src="`${domain}/images/${getImagePath(`稀有度_黄_${rarity}.png`)}`"
-        />
+        <img :src="`${getImagePath(`稀有度_黄_${rarity}.png`)}`" />
       </div>
       <div class="profession">
-        <img
-          :src="`${domain}/images/${getImagePath(
-            `图标_职业_${profession}.png`,
-          )}`"
-        />
+        <img :src="`${getImagePath(`图标_职业_${profession}.png`)}`" />
       </div>
     </a>
   </div>
