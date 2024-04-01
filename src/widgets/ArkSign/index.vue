@@ -299,7 +299,6 @@ function GenerateImg(type: string) {
       showImgResultM.value = true;
     }
     resultImgUrl.value = imgData;
-    console.log(imgData.length);
   });
 }
 function calcSkillRankShow(skills: Char["skills"], skillId: string) {
