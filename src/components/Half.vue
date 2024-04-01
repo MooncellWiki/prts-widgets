@@ -26,7 +26,7 @@ export default defineComponent({
         <img :src="getImagePath(`干员图鉴_uh_${rarity}.png`)" />
       </div>
       <div class="uhs">
-        <img :src="`${charListData.uhs}`" width="70px" />
+        <img :src="charListData.uhs" width="70px" />
       </div>
       <div class="class_">
         <img :src="getImagePath(`图标_职业_${profession}.png`)" />
@@ -35,13 +35,13 @@ export default defineComponent({
         <img :src="getImagePath(`稀有度_黄_${rarity}.png`)" />
       </div>
       <div class="lh">
-        <img :src="`${charListData.lh(rarity)}`" />
+        <img :src="charListData.lh(rarity)" />
       </div>
       <div class="light">
         <img :src="getImagePath(`干员图鉴_稀有度_亮光_${rarity}.png`)" />
       </div>
       <div class="bg">
-        <img :src="`${charListData.bg(rarity)}`" />
+        <img :src="charListData.bg(rarity)" />
       </div>
       <div class="operator">
         <img class="lazyload" :data-src="getImagePath(`半身像_${zh}_1.png`)" />

@@ -65,7 +65,7 @@ export default defineComponent({
         :class="{ 'text-primary-main': sum(mastery) !== 0 }"
         class="font-bold"
       >
-        {{ sum(mastery) === 0 ? 0 : `${mastery.join("/")}` }}
+        {{ sum(mastery) === 0 ? 0 : mastery.join("/") }}
       </span>
     </div>
     <div :class="{ 'text-disabled': uniequip === 0 }">
