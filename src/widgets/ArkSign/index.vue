@@ -154,7 +154,6 @@ watch(
 const drag = ref(false);
 const disabled = ref(false);
 const onStart = () => {
-  console.log("start");
   drag.value = true;
 };
 function onEnd() {
