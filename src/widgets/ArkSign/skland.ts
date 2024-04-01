@@ -16,7 +16,6 @@ function getSign(path: string, requestParam = "", secret: string) {
   };
   const message = path + requestParam + timestamp + JSON.stringify(headers);
   const sign = md5(hmacSHA256(message, secret).toString()).toString();
-  console.log("sign", sign);
   return { timestamp, sign };
 }
 export interface BindingListItem {
