@@ -395,17 +395,16 @@ function calcServerColor(id: string) {
             :animation="200"
             ghost-class="ghost"
             easing="cubic-bezier(0.55, 0, 0.1, 1)"
-            class="container"
-            target=".container-inner"
+            class="signContainer"
+            target=".signContainer-inner"
             @start="onStart"
             @end="onEnd"
           >
-            >
             <TransitionGroup
               type="transition"
               tag="div"
               :name="!drag ? 'fade' : undefined"
-              class="container-inner"
+              class="signContainer-inner"
             >
               <div
                 v-for="charId in selected"
@@ -418,7 +417,6 @@ function calcServerColor(id: string) {
                   alt=""
                 />
                 <div class="mask"></div>
-                <!-- <div class="name">{{ charInfoMap[item.charId].name }}</div> -->
                 <div class="skillWrapper">
                   <div v-show="showInfo.equip" class="skillIcon">
                     <div class="equipBg">
@@ -498,7 +496,6 @@ function calcServerColor(id: string) {
                     v-show="showInfo.rarity"
                     class="rarityIcon"
                     :src="starWhite(charInfoMap[charId].rarity)"
-                  />
                   />
                 </div>
               </div>
@@ -783,7 +780,7 @@ function calcServerColor(id: string) {
       </div>
     </n-card>
   </div>
-  <n-drawer v-model:show="drawerShow" class="w-full">
+  <n-drawer v-model:show="drawerShow" class="w-full" default-width="100%">
     <n-drawer-content title="如何获取森空岛凭证" closable>
       <howToGetSklandToken />
     </n-drawer-content>
@@ -832,13 +829,13 @@ img {
   box-sizing: border-box;
 }
 
-.container {
+.signContainer {
   max-width: inherit !important;
   display: flex;
   justify-content: start;
 }
 
-.container-inner {
+.signContainer-inner {
   display: flex;
   justify-content: start;
   flex-wrap: nowrap;
@@ -1197,7 +1194,6 @@ img {
   width: 100%;
   --charSize: 10px;
   display: flex;
-  /* justify-content: center; */
   margin-bottom: 10px;
   overflow-x: scroll;
   overflow-y: hidden;
@@ -1220,13 +1216,11 @@ img {
 .charSignInner {
   width: auto;
   height: calc(var(--charSize) * 30);
-  /* background-color: #242424; */
   background-image: linear-gradient(to right, #313131, #1d1d1d 50%);
   display: flex;
   justify-content: center;
   margin: auto;
   position: relative;
-  overflow: hidden;
 }
 
 .leftWrapper {
