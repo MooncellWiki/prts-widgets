@@ -344,13 +344,19 @@ function calcServerColor(id: string) {
 
 <template>
   <div>
-    <n-alert title="操作指南" type="info" style="margin-bottom: 1em;" closable>
-      {{ selected.length?'选择干员后，可以拖拽立绘来进行排序':'导入数据后，在下方干员列表选择喜爱的干员' }}
+    <n-alert title="操作指南" type="info" style="margin-bottom: 1em" closable>
+      {{
+        selected.length > 0
+          ? "选择干员后，可以拖拽立绘来进行排序"
+          : "导入数据后，在下方干员列表选择喜爱的干员"
+      }}
     </n-alert>
     <div class="charSign">
       <div ref="charSignInner" class="charSignInner">
         <div class="circlePoint">
-          <img src="https://static.prts.wiki/charinfo/img/skland/rightPoint.png" />
+          <img
+            src="https://static.prts.wiki/charinfo/img/skland/rightPoint.png"
+          />
         </div>
         <div class="leftWrapper">
           <div class="logoBg">
@@ -1396,12 +1402,12 @@ img {
   align-items: center;
   padding: 0 calc(var(--charSize) * 2) 0 calc(var(--charSize) * 1.5);
 }
-.circlePoint{
+.circlePoint {
   position: absolute;
   top: 0;
   right: 0;
 }
-.circlePoint img{
+.circlePoint img {
   height: calc(var(--charSize) * 30);
   width: calc(var(--charSize) * 30);
 }
