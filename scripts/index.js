@@ -32,6 +32,12 @@ if (ele?.dataset?.item) {
 }
   `,
   );
+  const tmplEntry = path.resolve(__dirname, `../templates/${name}.html`);
+  writeFileSync(
+    tmplEntry,
+    `<includeonly><div id="root"></div><head></head><script type="module" src="/src/entries/${name}.ts"></script></includeonly><noinclude>{{Documentation}}[[分类:由机器人维护的小部件]]</noinclude>`,
+  );
+  console.log(`${tmplEntry} created`);
   await login(username, password);
   console.log(`login as ${username}`);
   await create(
