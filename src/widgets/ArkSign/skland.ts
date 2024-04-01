@@ -357,16 +357,16 @@ export async function getPlayerInfo(
     method: "get",
   });
   const json: PlayerInfoResp = await resp.json();
-  if (json.code !== 0) {
+  const { data, code } = json;
+  if (code !== 0) {
     throw new Error("查询森空岛api失败");
   }
-  const data = json.data;
-  const chars = data.chars;
-  const charInfoMap = data.charInfoMap;
-  const equipmentInfoMap = data.equipmentInfoMap;
-  const nickName = data.status.name;
-  const avatar = data.status.avatar;
-  const level = data.status.level;
+  const {
+    charInfoMap,
+    equipmentInfoMap,
+    chars,
+    status: { name: nickName, avatar, level },
+  } = data;
   return {
     nickName,
     avatar,

@@ -25,7 +25,6 @@
     "@vicons/material": "^0.12.0",
     "@vueuse/core": "^10.9.0",
     "@vueuse/router": "^10.9.0",
-    "axios": "^1.6.8",
     "crypto-js": "^4.2.0",
     "hammerjs": "^2.0.8",
     "html2canvas": "^1.4.1",
