@@ -24,7 +24,7 @@
 
 ## 贡献代码
 
-读[CONTRIBUTING.md](CONTRIBUTING.md)
+[CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 发布
 
