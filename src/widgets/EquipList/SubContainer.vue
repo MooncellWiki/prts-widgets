@@ -54,7 +54,7 @@ export default defineComponent({
         >
           <img
             class="absolute scale-50"
-            :src="`${getImagePath(`职业分支图标_${title}.png`)}`"
+            :src="getImagePath(`职业分支图标_${title}.png`)"
           />
         </span>
         <span class="text-center inline-block" style="width: 6em">{{

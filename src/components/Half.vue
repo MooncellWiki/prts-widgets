@@ -23,35 +23,32 @@ export default defineComponent({
   <div class="half-container">
     <a :href="`${domain}/w/${zh}`">
       <div class="uh">
-        <img :src="`${getImagePath(`干员图鉴_uh_${rarity}.png`)}`" />
+        <img :src="getImagePath(`干员图鉴_uh_${rarity}.png`)" />
       </div>
       <div class="uhs">
         <img :src="`${charListData.uhs}`" width="70px" />
       </div>
       <div class="class_">
-        <img :src="`${getImagePath(`图标_职业_${profession}.png`)}`" />
+        <img :src="getImagePath(`图标_职业_${profession}.png`)" />
       </div>
       <div class="rarity">
-        <img :src="`${getImagePath(`稀有度_黄_${rarity}.png`)}`" />
+        <img :src="getImagePath(`稀有度_黄_${rarity}.png`)" />
       </div>
       <div class="lh">
         <img :src="`${charListData.lh(rarity)}`" />
       </div>
       <div class="light">
-        <img :src="`${getImagePath(`干员图鉴_稀有度_亮光_${rarity}.png`)}`" />
+        <img :src="getImagePath(`干员图鉴_稀有度_亮光_${rarity}.png`)" />
       </div>
       <div class="bg">
         <img :src="`${charListData.bg(rarity)}`" />
       </div>
       <div class="operator">
-        <img
-          class="lazyload"
-          :data-src="`${getImagePath(`半身像_${zh}_1.png`)}`"
-        />
+        <img class="lazyload" :data-src="getImagePath(`半身像_${zh}_1.png`)" />
       </div>
       <div class="patch" />
       <div class="logo">
-        <img :src="`${getImagePath(`Logo_${logo}.png`)}`" />
+        <img :src="getImagePath(`Logo_${logo}.png`)" />
       </div>
       <div class="zh">{{ zh }}</div>
       <div class="en">{{ en }}</div>

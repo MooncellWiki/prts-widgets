@@ -12,7 +12,7 @@ const getSrcMedal = (mmr: Memory) =>
   `${TORAPPU_ENDPOINT}/assets/medal_icon/${mmr.medal.id}.png`;
 
 const getSrcElite = (elite: string) =>
-  `${getImagePath(`图标_升级_精英化${elite || "0"}.png`)}`;
+  getImagePath(`图标_升级_精英化${elite || "0"}.png`);
 
 export default defineComponent({
   name: "Memory",
@@ -33,12 +33,8 @@ export default defineComponent({
   },
   setup(props) {
     const src = computed(() => {
-      const lowRarityImg = `${getImagePath(
-        `头像_${props.charMemory.char}.png`,
-      )}`;
-      const highRarityImg = `${getImagePath(
-        `头像_${props.charMemory.char}_2.png`,
-      )}`;
+      const lowRarityImg = getImagePath(`头像_${props.charMemory.char}.png`);
+      const highRarityImg = getImagePath(`头像_${props.charMemory.char}_2.png`);
       try {
         const rarity = Number.parseInt(props.charMemory.rarity);
         return rarity >= 3 ? highRarityImg : lowRarityImg;
@@ -49,8 +45,8 @@ export default defineComponent({
     const link = computed(() => {
       return `/w/${props.charMemory.char}`;
     });
-    const srcfavor = `${getImagePath("图标_信赖.png")}`;
-    const srcplay = `${getImagePath("情报处理室_播放按钮.png")}`;
+    const srcfavor = getImagePath("图标_信赖.png");
+    const srcplay = getImagePath("情报处理室_播放按钮.png");
     return {
       src,
       link,
