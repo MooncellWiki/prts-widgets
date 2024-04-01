@@ -15,7 +15,6 @@ function getSign(path: string, requestParam = "", secret: string) {
     vName: "1.2.0",
   };
   const message = path + requestParam + timestamp + JSON.stringify(headers);
-  console.log("message", message);
   const sign = md5(hmacSHA256(message, secret).toString()).toString();
   console.log("sign", sign);
   return { timestamp, sign };
