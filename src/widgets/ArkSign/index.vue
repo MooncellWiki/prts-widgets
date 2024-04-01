@@ -165,7 +165,6 @@ function onEnd() {
 //获取Cred
 function getCredAndSecret(text: string) {
   if (text.includes(",")) {
-    console.log(111);
   } else {
     console.log("错误");
     throw new Error("可能输入格式不正确，应是一个中间包含逗号的一串字母");
