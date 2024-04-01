@@ -28,7 +28,7 @@ import {
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-import { getImagePath } from "@/utils/utils";
+import { getImagePath, isMobileSkin } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
 
@@ -180,7 +180,7 @@ export default defineComponent({
     });
     const isLoading = ref(true);
     const i18nConfig = getNaiveUILocale();
-    const isMobile = document.body.classList.contains("skin-minerva");
+    const isMobile = isMobileSkin();
     const isIconMode = ref(!!isMobile);
     const { theme, toggleDark } = useTheme();
     const pagination = reactive({

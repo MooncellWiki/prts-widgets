@@ -14,6 +14,7 @@ import {
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
+import { isMobileSkin } from "@/utils/utils";
 
 import Memory from "./Memory.vue";
 import { filterRarity, rarityMap } from "./consts";
@@ -32,7 +33,7 @@ export default defineComponent({
     Memory,
   },
   setup() {
-    const isMobile = document.body.classList.contains("skin-minerva");
+    const isMobile = isMobileSkin();
     const i18nConfig = getNaiveUILocale();
     const { theme, toggleDark } = useTheme();
     const states = ref<string[]>([]);

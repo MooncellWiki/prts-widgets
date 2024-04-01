@@ -2,6 +2,8 @@
 import "virtual:uno.css";
 import { createApp } from "vue";
 
+import { isMobileSkin } from "@/utils/utils";
+
 import Voice from "../widgets/VoiceTable/VoiceTable.vue";
 import VoiceMobile from "../widgets/VoiceTable/VoiceTableMobile.vue";
 
@@ -77,9 +79,7 @@ const langArr = Array.from(langSet);
 window.charVoice = voiceData;
 console.log(dataRoot, voiceData, voiceBase, langSet);
 
-const isMobile = !!document
-  .querySelectorAll("body")[0]
-  .classList.contains("skin-minerva");
+const isMobile = isMobileSkin();
 if (
   ele &&
   dataRoot?.dataset?.tocTitle &&
