@@ -23,3 +23,5 @@ pnpm install
 ```bash
 pnpm run create <WidgetName> <username> <password>
 ```
+
+不要忘记更新[README.md](README.md)中的子应用列表
