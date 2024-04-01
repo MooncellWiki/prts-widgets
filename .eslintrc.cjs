@@ -74,5 +74,5 @@ module.exports = {
     "unicorn/number-literal-case": "off",
     "unicorn/no-array-for-each": "warn",
   },
-  ignorePatterns: ["src/spine/runtime/"],
+  ignorePatterns: ["src/spine/runtime/", "**/dist/*.js"],
 };
