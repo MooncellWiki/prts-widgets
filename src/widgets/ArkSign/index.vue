@@ -178,7 +178,6 @@ function getCredAndSecret(text: string) {
 async function importSKLandOperatorData() {
   try {
     const { cred, secret } = getCredAndSecret(credStr.value);
-    console.log(cred, secret);
     if (cred == undefined || secret == undefined) {
       console.log("出错了");
       return false;
