@@ -1,4 +1,4 @@
-import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { MEDIA_ENDPOINT, TORAPPU_ENDPOINT } from "@/utils/consts";
 
 import type { Char } from "./types";
 
@@ -76,7 +76,7 @@ export function skill(skillId: string) {
     }
     return `${TORAPPU_ENDPOINT}/assets/skill_icon/skill_icon_${skillId}.png`;
   } else {
-    return "https://media.prts.wiki/0/03/Skill_icon_none.png";
+    return `${MEDIA_ENDPOINT}/0/03/Skill_icon_none.png`;
   }
 }
 

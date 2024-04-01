@@ -44,23 +44,25 @@ export default defineComponent({
         color="#212121"
         object-fit="scale-down"
         :size="45"
-        :src="`/images/${getImagePath(`集成战略_选项_${icon}.png`)}`"
+        :src="getImagePath(`集成战略_选项_${icon}.png`)"
       />
       <NAvatar
         v-if="type === 'item'"
         color="#212121"
         object-fit="scale-down"
         :size="45"
-        :src="`/images/${getImagePath(`集成战略_道具_${icon}.png`)}`"
+        :src="getImagePath(`集成战略_道具_${icon}.png`)"
       />
       <NBadge v-if="type === 'collection'" :value="icon" color="#666666">
         <NAvatar
           color="#212121"
           object-fit="scale-down"
           :size="45"
-          :src="`/images/${getImagePath(
-            isTheme ? `收藏品_${isTheme}_${icon}.png` : `收藏品_${icon}.png`,
-          )}`"
+          :src="
+            getImagePath(
+              isTheme ? `收藏品_${isTheme}_${icon}.png` : `收藏品_${icon}.png`,
+            )
+          "
         />
       </NBadge>
     </template>

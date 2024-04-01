@@ -11,7 +11,7 @@ import {
 const isSimplified = !decodeURIComponent(window.location.href).includes(
   "/语音",
 );
-
+import { MEDIA_ENDPOINT } from "@/utils/consts";
 export default defineComponent({
   props: {
     directLink: String,
@@ -81,6 +81,7 @@ export default defineComponent({
       audioHref,
       pause,
       play,
+      MEDIA_ENDPOINT,
     };
   },
 });
@@ -91,7 +92,11 @@ export default defineComponent({
     <img
       class="md:w-10 <sm:w-7 cursor-pointer"
       :title="playing ? '暂停' : '播放'"
-      :src="playing ? '/images/4/47/Pause.png' : '/images/9/90/Play.png'"
+      :src="
+        playing
+          ? `${MEDIA_ENDPOINT}/4/47/Pause.png`
+          : `${MEDIA_ENDPOINT}/9/90/Play.png`
+      "
       @click="
         () => {
           playing ? pause() : play();
@@ -106,7 +111,7 @@ export default defineComponent({
       <img
         class="md:w-10 <sm:w-7 cursor-pointer"
         title="下载"
-        data-src="/images/f/f1/Download.png"
+        :data-src="`${MEDIA_ENDPOINT}/f/f1/Download.png`"
       />
     </a>
   </div>

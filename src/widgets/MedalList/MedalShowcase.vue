@@ -127,7 +127,7 @@ export default defineComponent({
       <NCard>
         <template #header>
           <img
-            :src="`/images/${getImagePath('图标_光荣之路.svg')}`"
+            :src="getImagePath('图标_光荣之路.svg')"
             :class="`${theme ? 'brightness-100' : 'brightness-0'} transition-all`"
             width="25"
             class="mr-3"

@@ -28,11 +28,9 @@ export default defineComponent({
     const getBackdrop = (char: Char) => {
       return selectedChar.value.includes(char) ? "invert(25%)" : "";
     };
-    const src = ref(
-      `/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`,
-    );
+    const src = ref(getImagePath(`头像_${charRef.value.name}_2.png`));
     watch(charRef.value, () => {
-      src.value = `/images/${getImagePath(`头像_${charRef.value.name}_2.png`)}`;
+      src.value = getImagePath(`头像_${charRef.value.name}_2.png`);
     });
     return {
       getImagePath,
@@ -48,7 +46,7 @@ export default defineComponent({
 <template>
   <img
     class="m-[2px] cursor-pointer"
-    :src="`/images/${getImagePath(`头像_${charRef.name}_2.png`)}`"
+    :src="getImagePath(`头像_${charRef.name}_2.png`)"
     width="65"
     height="65"
     :style="{

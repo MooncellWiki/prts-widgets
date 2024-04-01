@@ -20,6 +20,7 @@
 - 生息演算地图 [Widget:XbMapViewer/dev](https://prts.wiki/w/Widget:XbMapViewer/dev)
 - 蚀刻章（光荣之路）[Widget:MedalList/dev](https://prts.wiki/w/Widget:MedalList/dev)
 - 配音一览 [Widget:CVList/dev](https://prts.wiki/w/Widget:CVList/dev)
+- 干员密录一览[MemoryList/dev](https://prts.wiki/w/Widget:MemoryList/dev)
 
 ## 项目配置
 

@@ -181,9 +181,9 @@ export default defineComponent({
               <a :href="`/w/File:${sceneData[currentSceneId].image}.png`">
                 <img
                   class="lazyload img w-140"
-                  :data-src="`/images/${getImagePath(
-                    `${sceneData[currentSceneId].image}.png`,
-                  )}`"
+                  :data-src="
+                    getImagePath(`${sceneData[currentSceneId].image}.png`)
+                  "
                 />
               </a>
             </template>
