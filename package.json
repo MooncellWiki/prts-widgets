@@ -14,8 +14,8 @@
     "eslint:fix": "pnpm eslint --fix",
     "lint": "pnpm lint:js",
     "lint:fix": "pnpm lint:js:fix",
-    "lint:js": "pnpm eslint \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
-    "lint:js:fix": "pnpm eslint:fix \"**/*.{js,jsx,ts,tsx,cjs,mjs,vue}\"",
+    "lint:js": "pnpm eslint .",
+    "lint:js:fix": "pnpm eslint:fix .",
     "prepare": "node .husky/install.mjs"
   },
   "dependencies": {
