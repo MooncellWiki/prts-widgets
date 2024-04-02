@@ -26,3 +26,9 @@ jobs:
 
       - name: Remove files
         run: pnpm run prune
+        env:
+          REGION: ${{ secrets.OSS_REGION }}
+          ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          BUCKET: ${{ secrets.OSS_BUCKET }}
+          REMOTE_PATH: ${{ secrets.OSS_REMOTE_PATH }}
