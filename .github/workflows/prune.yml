@@ -13,11 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup OSS
-        uses: ./.github/actions/setup-oss
-        with:
-          ossutil-config: ${{ secrets.OSSUTIL_CONFIG }}
-
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
