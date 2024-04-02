@@ -1,0 +1,35 @@
+name: Prune unused files
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: prune-oss-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OSS
+        uses: ./.github/actions/setup-oss
+        with:
+          ossutil-config: ${{ secrets.OSSUTIL_CONFIG }}
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Build Dist
+        run: pnpm run build
+
+      - name: List files in the repository
+        run: |
+          FILES=$(find dist/ -type f -name "*.js" -exec echo -n '--exclude "{}" ' \;)
+          echo "FILES=$FILES" >> $GITHUB_ENV
+
+      - name: Remove files
+        run: ossutil64 rm ${{ secrets.OSS_REMOTE_PATH }} --include "*.js" ${{ env.FILES }}
