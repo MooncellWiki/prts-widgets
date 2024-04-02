@@ -22,7 +22,11 @@ const store = new OSS({
 });
 
 //List REMOTE_PATH dir objects, not including subdirs
-const result = await store.listV2({ prefix: REMOTE_PATH, delimiter: "/" });
+const result = await store.listV2({
+  prefix: REMOTE_PATH,
+  delimiter: "/",
+  "max-keys": 1000,
+});
 console.log(
   "[INFO] list result:",
   result.objects.map((object) => object.name),
