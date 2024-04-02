@@ -22,6 +22,9 @@ const store = new OSS({
 });
 
 for (const file of distFiles) {
-  const result = await store.put(posix.join(REMOTE_PATH, file), file);
+  const result = await store.put(
+    posix.join(REMOTE_PATH, file),
+    posix.join("dist/", file),
+  );
   console.log("[INFO] Uploaded", result.res.status, result.name);
 }
