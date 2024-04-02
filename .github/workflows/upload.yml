@@ -15,11 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup OSS
-        uses: ./.github/actions/setup-oss
-        with:
-          ossutil-config: ${{ secrets.OSSUTIL_CONFIG }}
-
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
@@ -27,7 +22,13 @@ jobs:
         run: pnpm run build
 
       - name: Upload to OSS
-        run: ossutil64 cp -f -r dist/ ${{ secrets.OSS_REMOTE_PATH }}
+        run: pnpm run upload
+        env:
+          REGION: ${{ secrets.OSS_REGION }}
+          ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          BUCKET: ${{ secrets.OSS_BUCKET }}
+          REMOTE_PATH: ${{ secrets.OSS_REMOTE_PATH }}
 
       - name: Update PRTS Website
         run: pnpm run update ${{ secrets.PRTS_USERNAME }} ${{ secrets.PRTS_PASSWORD }}

@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "create": "node scripts/index.js",
+    "upload": "node scripts/upload.js",
     "update": "node scripts/update.js",
     "prune": "node scripts/prune.js",
     "dev": "vite",
