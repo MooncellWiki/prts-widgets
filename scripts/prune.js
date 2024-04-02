@@ -4,13 +4,17 @@ import { fileURLToPath } from "node:url";
 
 import OSS from "ali-oss";
 
-const isDistFiles = (file) => file.endsWith(".js") || file.endsWith(".js.map");
-
+const BUILD_DIR = "dist";
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const localDistFiles = new Set(
-  fs.readdirSync(join(__dirname, "../dist/")).filter((ele) => isDistFiles(ele)),
-);
-console.log("[INFO] local js files:", localDistFiles);
+
+const dirents = fs.readdirSync(join(__dirname, `../${BUILD_DIR}/`), {
+  withFileTypes: true,
+});
+const filesNames = dirents
+  .filter((dirent) => dirent.isFile())
+  .map((dirent) => dirent.name);
+const distSet = new Set(filesNames);
+console.log("[INFO] Dist set:", distSet);
 
 const { REGION, ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET, REMOTE_PATH } =
   process.env;
@@ -33,11 +37,7 @@ console.log(
 );
 
 const removingFiles = result.objects
-  .filter(
-    (object) =>
-      isDistFiles(object.name) &&
-      !localDistFiles.has(object.name.replace(REMOTE_PATH, "")),
-  )
+  .filter((object) => !distSet.has(object.name.replace(REMOTE_PATH, "")))
   .map((file) => file.name);
 console.log("[INFO] removing files:", removingFiles);
 
