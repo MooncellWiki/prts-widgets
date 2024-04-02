@@ -88,16 +88,17 @@ export default defineComponent({
         const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
           return props.source[b].rarity - props.source[a].rarity;
         });
+
+        let acc = 0;
+        for (const cur of charIndict) {
+          let s = props.source[cur].rarity + 1;
+          if (s === 1) s = 3.5;
+          acc += s;
+        }
         list.push({
           tags: key,
           charIndict,
-          score:
-            charIndict.reduce((acc, cur) => {
-              let s = props.source[cur].rarity + 1;
-              if (s === 1) s = 3.5;
-
-              return acc + s;
-            }, 0) / charIndict.length,
+          score: acc / charIndict.length,
         });
       }
       list.sort((a, b) => {
