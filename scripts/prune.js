@@ -32,7 +32,7 @@ const result = await store.listV2({
   "max-keys": 1000,
 });
 console.log(
-  "[INFO] list result:",
+  "[INFO] List result:",
   result.objects.map((object) => object.name),
 );
 
@@ -43,7 +43,11 @@ const removingFiles = result.objects
       object.name !== REMOTE_PATH,
   )
   .map((file) => file.name);
-console.log("[INFO] removing files:", removingFiles);
+console.log("[INFO] Removing files:", removingFiles);
 
-const deleteResult = await store.deleteMulti(removingFiles);
-console.log("[INFO] delete result:", deleteResult.deleted);
+if (removingFiles.length === 0) {
+  console.log("[INFO] No files to remove.");
+} else {
+  const deleteResult = await store.deleteMulti(removingFiles);
+  console.log("[INFO] Delete result:", deleteResult.deleted);
+}
