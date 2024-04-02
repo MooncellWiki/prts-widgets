@@ -37,7 +37,11 @@ console.log(
 );
 
 const removingFiles = result.objects
-  .filter((object) => !distSet.has(object.name.replace(REMOTE_PATH, "")))
+  .filter(
+    (object) =>
+      !distSet.has(object.name.replace(REMOTE_PATH, "")) &&
+      object.name !== REMOTE_PATH,
+  )
   .map((file) => file.name);
 console.log("[INFO] removing files:", removingFiles);
 
