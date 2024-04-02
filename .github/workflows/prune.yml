@@ -24,10 +24,5 @@ jobs:
       - name: Build Dist
         run: pnpm run build
 
-      - name: List files in the repository
-        run: |
-          FILES=$(find dist/ -type f -name "*.js" -exec echo -n '--exclude "{}" ' \;)
-          echo "FILES=$FILES" >> $GITHUB_ENV
-
       - name: Remove files
-        run: ossutil64 rm ${{ secrets.OSS_REMOTE_PATH }} --include "*.js" ${{ env.FILES }}
+        run: pnpm run prune
