@@ -9,13 +9,10 @@ import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
 
 const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
+const BASE_DIR = dirname(fileURLToPath(import.meta.url));
 
-const entries = readdirSync(
-  join(dirname(fileURLToPath(import.meta.url)), "src/entries/"),
-);
-const templates = readdirSync(
-  join(dirname(fileURLToPath(import.meta.url)), "templates/"),
-);
+const entries = readdirSync(join(BASE_DIR, "src/entries/"));
+const templates = readdirSync(join(BASE_DIR, "templates/"));
 const nohashEntries = new Set(["DisplayController"]);
 
 const input: Record<string, string> = {};
@@ -39,7 +36,7 @@ export default defineConfig(({ command }) => {
     base: useHtmlMode ? "https://static.prts.wiki/widgets/production" : "/",
     resolve: {
       alias: {
-        "@": resolve(dirname(fileURLToPath(import.meta.url)), "./src"),
+        "@": resolve(BASE_DIR, "./src"),
       },
     },
     plugins: [
