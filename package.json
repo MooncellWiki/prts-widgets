@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@sentry/browser": "^7.109.0",
-    "@sentry/tracing": "^7.109.0",
+    "@sentry/integrations": "^7.109.0",
     "@urlpack/json": "^2.0.0",
     "@vicons/material": "^0.12.0",
     "@vueuse/core": "^10.9.0",
