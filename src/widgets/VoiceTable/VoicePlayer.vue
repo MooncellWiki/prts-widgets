@@ -8,7 +8,6 @@ import {
   watch,
 } from "vue";
 
-import { MEDIA_ENDPOINT } from "@/utils/consts";
 import { getImagePath } from "@/utils/utils";
 
 const isSimplified = !decodeURIComponent(window.location.href).includes(
@@ -87,7 +86,6 @@ export default defineComponent({
       audioHref,
       pause,
       play,
-      MEDIA_ENDPOINT,
       pauseImageSource,
       playImageSource,
       downloadImageSource,
