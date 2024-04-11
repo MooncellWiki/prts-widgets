@@ -8,10 +8,16 @@ import {
   watch,
 } from "vue";
 
+import { MEDIA_ENDPOINT } from "@/utils/consts";
+import { getImagePath } from "@/utils/utils";
+
 const isSimplified = !decodeURIComponent(window.location.href).includes(
   "/语音",
 );
-import { MEDIA_ENDPOINT } from "@/utils/consts";
+const pauseImageSource = getImagePath("Pause.png");
+const playImageSource = getImagePath("Play.png");
+const downloadImageSource = getImagePath("Download.png");
+
 export default defineComponent({
   props: {
     directLink: String,
@@ -82,6 +88,9 @@ export default defineComponent({
       pause,
       play,
       MEDIA_ENDPOINT,
+      pauseImageSource,
+      playImageSource,
+      downloadImageSource,
     };
   },
 });
@@ -92,11 +101,7 @@ export default defineComponent({
     <img
       class="md:w-10 <sm:w-7 cursor-pointer"
       :title="playing ? '暂停' : '播放'"
-      :src="
-        playing
-          ? `${MEDIA_ENDPOINT}/4/47/Pause.png`
-          : `${MEDIA_ENDPOINT}/9/90/Play.png`
-      "
+      :src="playing ? pauseImageSource : playImageSource"
       @click="
         () => {
           playing ? pause() : play();
@@ -111,7 +116,7 @@ export default defineComponent({
       <img
         class="md:w-10 <sm:w-7 cursor-pointer"
         title="下载"
-        :data-src="`${MEDIA_ENDPOINT}/f/f1/Download.png`"
+        :src="downloadImageSource"
       />
     </a>
   </div>
