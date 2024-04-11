@@ -22,8 +22,7 @@ Sentry.init({
     // ads and statistics
     "google",
     "baidu",
-    // https://docs.sentry.io/platforms/javascript/configuration/filtering/#decluttering-sentry
-    // copy from https://gist.github.com/impressiver/5092952
+    // START: https://docs.sentry.io/platforms/javascript/configuration/filtering/#decluttering-sentry
     // Random plugins/extensions
     "top.GLOBALS",
     // See: http://blog.errorception.com/2012/03/tale-of-unfindable-js-error.html
@@ -38,8 +37,9 @@ Sentry.init({
     "atomicFindClose",
     // Facebook borked
     "fb_xd_fragment",
-    // ISP "optimizing" proxy - `Cache-Control: no-transform` seems to reduce this. (thanks @acdha)
-    // See http://stackoverflow.com/questions/4113268/how-to-stop-javascript-injection-from-vodafone-proxy
+    // ISP "optimizing" proxy - `Cache-Control: no-transform` seems to
+    // reduce this. (thanks @acdha)
+    // See http://stackoverflow.com/questions/4113268
     "bmi_SafeAddOnload",
     "EBCallBackMessageReceived",
     // See http://toolbar.conduit.com/Developer/HtmlAndGadget/Methods/JSInjection.aspx
@@ -56,6 +56,7 @@ Sentry.init({
     // Chrome extensions
     /extensions\//i,
     /^chrome:\/\//i,
+    /^chrome-extension:\/\//i,
     // Other plugins
     /127\.0\.0\.1:4001\/isrunning/i, // Cacaoweb
     /webappstoolbarba\.texthelp\.com\//i,
