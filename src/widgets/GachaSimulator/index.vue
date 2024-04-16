@@ -50,56 +50,74 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const bannerImageURL = getImagePath(props.gachaBannerFile);
     const { availCharInfo, upCharInfo } =
       props.gachaServerPool.gachaPoolDetail.detailInfo;
-    let gachaExecutor = new GachaExecutor(availCharInfo, upCharInfo);
-
-    const displayStars = [5, 4, 3, 2];
-    const counter = ref(0);
-    const results: Ref<{ charId: string; img: URL; rarity: number }[]> = ref(
-      [],
+    let gachaExecutor = new GachaExecutor(
+      availCharInfo,
+      upCharInfo,
+      props.gachaClientPool,
     );
+
+    const counter = ref(0);
+    const results: Ref<
+      Record<
+        string,
+        { charId: string; avatarURL: URL; rarity: number; count: number }
+      >
+    > = ref({});
     const expandedNames = computed(() => [
-      ...new Set(results.value.map((result) => result.rarity)),
+      ...new Set(Object.values(results.value).map((result) => result.rarity)),
     ]);
 
-    const doGachaOnce = () => {
+    const doGachaOne = () => {
       const { charId, rarity } = gachaExecutor.doGachaOnce();
-      counter.value = gachaExecutor.counter;
+      counter.value = gachaExecutor.state.counter;
 
-      if (charId && rarity)
-        results.value.push({
-          charId,
-          img: new URL(`/assets/char_avatar/${charId}.png`, TORAPPU_ENDPOINT),
-          rarity,
-        });
+      if (charId && rarity) {
+        if (results.value[charId]) {
+          results.value[charId].count++;
+        } else {
+          results.value[charId] = {
+            charId,
+            rarity,
+            avatarURL: new URL(
+              `/assets/char_avatar/${charId}.png`,
+              TORAPPU_ENDPOINT,
+            ),
+            count: 1,
+          };
+        }
+      }
     };
 
-    const doGachaTenth = () => {
+    const doGachaTen = () => {
       for (let i = 0; i < 10; i++) {
-        doGachaOnce();
+        doGachaOne();
       }
     };
 
     const clearResults = () => {
-      results.value = [];
+      results.value = {};
       counter.value = 0;
-      gachaExecutor = new GachaExecutor(availCharInfo, upCharInfo);
+      gachaExecutor = new GachaExecutor(
+        availCharInfo,
+        upCharInfo,
+        props.gachaClientPool,
+      );
     };
 
     return {
       theme,
       locale,
       dateLocale,
-      bannerImageURL,
+      bannerImageURL: getImagePath(props.gachaBannerFile),
       results,
       counter,
       expandedNames,
-      doGachaOnce,
-      doGachaTenth,
+      doGachaOne,
+      doGachaTen,
       clearResults,
-      displayStars,
+      displayStars: [5, 4, 3, 2],
     };
   },
 });
@@ -116,8 +134,8 @@ export default defineComponent({
       <div class="flex flex-col gap-y-3 mx-2 my-4">
         <NImage width="800" :src="bannerImageURL" />
         <div class="flex gap-x-2">
-          <NButton @click="doGachaOnce()">寻访1次</NButton>
-          <NButton @click="doGachaTenth()">寻访10次</NButton>
+          <NButton @click="doGachaOne()">寻访1次</NButton>
+          <NButton @click="doGachaTen()">寻访10次</NButton>
           <NButton type="error" @click="clearResults()">清空结果</NButton>
         </div>
         <div class="flex flex-col gap-y-1">
@@ -135,14 +153,24 @@ export default defineComponent({
             :title="`获得的${star + 1}★干员`"
             :name="star"
           >
-            <NImage
-              v-for="(result, j) in results.filter(
-                (result) => result.rarity === star,
-              )"
-              :key="j"
-              :src="result.img.toString()"
-              width="72"
-            />
+            <div class="flex">
+              <div
+                v-for="(result, j) in Object.values(results).filter(
+                  (result) => result.rarity === star,
+                )"
+                :key="j"
+                class="relative"
+              >
+                <div>
+                  <img :src="result.avatarURL.toString()" width="75" />
+                </div>
+                <span
+                  class="absolute right-1 -bottom-1 text-shadow-base font-bold text-lg"
+                >
+                  {{ result.count }}
+                </span>
+              </div>
+            </div>
           </NCollapseItem>
         </NCollapse>
       </div>
@@ -150,4 +178,32 @@ export default defineComponent({
   </NConfigProvider>
 </template>
 
-<style scoped></style>
+<style scoped>
+.text-shadow-base {
+  text-shadow:
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff,
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff,
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff,
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff,
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff,
+    -2px -2px 4px #ffffff,
+    2px -2px 4px #ffffff,
+    -2px 2px 4px #ffffff,
+    2px 2px 4px #ffffff;
+}
+</style>

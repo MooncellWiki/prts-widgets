@@ -1,3 +1,4 @@
+import { type GachaPoolClientData as GachaClientPool } from "./gamedata-types";
 import type { GachaAvailChar, GachaUpChar } from "./types";
 
 export function weightedRandom<T>(
@@ -33,17 +34,31 @@ export function weightedRandom<T>(
   return { item: null, index: -1 };
 }
 
-export class GachaState {}
+export class GachaState {
+  counter: number;
+  isGotFirst5Star: boolean;
+
+  constructor() {
+    this.counter = 0;
+    this.isGotFirst5Star = false;
+  }
+}
 
 export class GachaExecutor {
   availCharInfo: GachaAvailChar;
   upCharInfo: GachaUpChar;
-  counter: number = 0;
-  isGotFirst5Star: boolean = false;
+  state: GachaState;
+  gachaClientPool: GachaClientPool;
 
-  constructor(availCharInfo: GachaAvailChar, upCharInfo: GachaUpChar) {
+  constructor(
+    availCharInfo: GachaAvailChar,
+    upCharInfo: GachaUpChar,
+    gachaClientPool: GachaClientPool,
+  ) {
     this.availCharInfo = availCharInfo;
     this.upCharInfo = upCharInfo;
+    this.gachaClientPool = gachaClientPool;
+    this.state = new GachaState();
   }
 
   getRandomRarity() {
@@ -101,15 +116,17 @@ export class GachaExecutor {
     const { charId } = this.doRarityGachaOnce(rarity);
     if (charId === null) throw new Error("charId is null");
 
-    this.counter++;
-    if (!this.isGotFirst5Star) {
-      // 5 星保底
-      if (this.counter <= 10 && rarity == 4) {
-        this.isGotFirst5Star = true;
-        console.log("在第 10 抽前已有五星，跳过保底");
+    this.state.counter++;
+
+    const { guarantee5Count } = this.gachaClientPool;
+    // 5 星保底
+    if (guarantee5Count && !this.state.isGotFirst5Star) {
+      if (this.state.counter <= guarantee5Count && rarity == 4) {
+        this.state.isGotFirst5Star = true;
+        console.log(`在第 ${guarantee5Count} 抽前已有五星，跳过保底`);
       }
 
-      if (this.counter === 10) {
+      if (this.state.counter === guarantee5Count) {
         console.log("触发保底");
         return this.doRarityGachaOnce(4);
       }

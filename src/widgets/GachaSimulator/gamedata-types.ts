@@ -1,12 +1,12 @@
 export enum GachaRuleType {
-  NORMAL = 0,
-  LIMITED = 1,
-  LINKAGE = 2,
-  ATTAIN = 3,
-  CLASSIC = 4,
-  SINGLE = 5,
-  FESCLASSIC = 6,
-  CLASSIC_ATTAIN = 7,
+  NORMAL = "NORMAL",
+  LIMITED = "LIMITED",
+  LINKAGE = "LINKAGE",
+  ATTAIN = "ATTAIN",
+  CLASSIC = "CLASSIC",
+  SINGLE = "SINGLE",
+  FESCLASSIC = "FESCLASSIC",
+  CLASSIC_ATTAIN = "CLASSIC_ATTAIN",
 }
 
 export interface GachaPoolClientData {
