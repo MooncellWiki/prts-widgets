@@ -3,15 +3,19 @@ import { defineComponent } from "vue";
 
 import {
   NButton,
+  NCollapse,
   NCollapseItem,
   NConfigProvider,
   NImage,
-  NCollapse,
   NLayout,
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
+import { getImagePath } from "@/utils/utils";
+
+const { locale, dateLocale } = getNaiveUILocale();
+const { theme } = useTheme();
 
 export default defineComponent({
   components: {
@@ -22,13 +26,24 @@ export default defineComponent({
     NCollapse,
     NLayout,
   },
-  setup() {
-    const i18nConfig = getNaiveUILocale();
-    const { theme } = useTheme();
+  props: {
+    gachaPoolId: {
+      type: String,
+      required: true,
+    },
+    gachaBannerFile: {
+      type: String,
+      required: true,
+    },
+  },
+  setup(props) {
+    const bannerImageURL = getImagePath(props.gachaBannerFile);
 
     return {
       theme,
-      i18nConfig,
+      locale,
+      dateLocale,
+      bannerImageURL,
     };
   },
 });
@@ -38,16 +53,12 @@ export default defineComponent({
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
-    :locale="i18nConfig.locale"
-    :date-locale="i18nConfig.dateLocale"
+    :locale="locale"
+    :date-locale="dateLocale"
   >
-    <NImage
-      class="justify-center"
-      width="800"
-      src="https://media.prts.wiki/4/40/%E8%81%94%E5%90%88%E8%A1%8C%E5%8A%A814.jpg"
-    />
     <NLayout class="antialiased px-2 py-4">
       <div class="flex flex-col gap-y-3">
+        <NImage width="800" :src="bannerImageURL" />
         <div class="flex gap-x-2">
           <NButton>寻访1次</NButton>
           <NButton>寻访10次</NButton>
