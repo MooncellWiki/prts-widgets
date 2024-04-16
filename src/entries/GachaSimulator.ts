@@ -31,10 +31,10 @@ const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
 const { gachaPoolId, gachaBannerFile } = gachaDataRoot?.dataset || {};
 
 const gachaClientPool = gachaClientTable.gachaPoolClient.find(
-  (pool) => pool.gachaPoolId === "NORM_0_1_1",
+  (pool) => pool.gachaPoolId === gachaPoolId,
 );
 const gachaServerPool = gachaServerTable.gachaPoolClient.find(
-  (pool) => pool.gachaPoolId === "NORM_0_1_1",
+  (pool) => pool.gachaPoolId === gachaPoolId,
 );
 
 const ele = document.querySelector("#root");
