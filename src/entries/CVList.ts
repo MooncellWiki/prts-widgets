@@ -5,7 +5,7 @@ import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import CVList from "@/widgets/CVList/index.vue";
 import type { CharWordTable, SkinTable } from "@/widgets/CVList/types";
 
-const initSkinTable = async () => {
+async function initSkinTable() {
   const response = await fetch(
     new URL("/gamedata/latest/excel/skin_table.json", TORAPPU_ENDPOINT),
   );
@@ -20,9 +20,9 @@ const initSkinTable = async () => {
   }
 
   return { charMapping, avatarMapping };
-};
+}
 
-const initCharMap = async () => {
+async function initCharMap() {
   const response = await fetch(
     `/api.php?${new URLSearchParams({
       action: "cargoquery",
@@ -46,9 +46,9 @@ const initCharMap = async () => {
   }
 
   return { mapping };
-};
+}
 
-const initCharWord = async () => {
+async function initCharWord() {
   const response = await fetch(
     new URL("/gamedata/latest/excel/charword_table.json", TORAPPU_ENDPOINT),
   );
@@ -75,18 +75,21 @@ const initCharWord = async () => {
   }
 
   return { data, langTypes };
-};
+}
 
-Promise.all([initCharWord(), initCharMap(), initSkinTable()]).then(
-  (retvals) => {
-    const props = {};
-    for (const retval of retvals) {
-      Object.assign(props, retval);
-    }
-    const ele = document.querySelector("#root");
-    if (ele) {
-      const app = createApp(CVList, props);
-      app.mount(ele);
-    }
-  },
-);
+const retvals = await Promise.all([
+  initCharWord(),
+  initCharMap(),
+  initSkinTable(),
+]);
+
+const props = {};
+for (const retval of retvals) {
+  Object.assign(props, retval);
+}
+
+const ele = document.querySelector("#root");
+if (ele) {
+  const app = createApp(CVList, props);
+  app.mount(ele);
+}
