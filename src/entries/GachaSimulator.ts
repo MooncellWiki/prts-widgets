@@ -22,34 +22,38 @@ async function initGachaTable(): Promise<GachaData> {
   return data;
 }
 
-const [gachaServerTable, gachaClientTable] = await Promise.all([
-  initWeedy(),
-  initGachaTable(),
-]);
+async function main() {
+  const [gachaServerTable, gachaClientTable] = await Promise.all([
+    initWeedy(),
+    initGachaTable(),
+  ]);
 
-const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
-const { gachaPoolId, gachaBannerFile } = gachaDataRoot?.dataset || {};
+  const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
+  const { gachaPoolId, gachaBannerFile } = gachaDataRoot?.dataset || {};
 
-const gachaClientPool =
-  gachaClientTable.gachaPoolClient.find(
+  const gachaClientPool =
+    gachaClientTable.gachaPoolClient.find(
+      (pool) => pool.gachaPoolId === gachaPoolId,
+    ) || null;
+
+  const newbeeClientPool =
+    gachaClientTable.newbeeGachaPoolClient.find(
+      (pool) => pool.gachaPoolId === gachaPoolId,
+    ) || null;
+
+  const gachaServerPool = gachaServerTable.gachaPoolClient.find(
     (pool) => pool.gachaPoolId === gachaPoolId,
-  ) || null;
+  );
 
-const newbeeClientPool =
-  gachaClientTable.newbeeGachaPoolClient.find(
-    (pool) => pool.gachaPoolId === gachaPoolId,
-  ) || null;
+  const ele = document.querySelector("#root");
+  if (ele)
+    createApp(GachaSimulator, {
+      gachaPoolId,
+      gachaBannerFile,
+      gachaClientPool,
+      gachaServerPool,
+      newbeeClientPool,
+    }).mount(ele);
+}
 
-const gachaServerPool = gachaServerTable.gachaPoolClient.find(
-  (pool) => pool.gachaPoolId === gachaPoolId,
-);
-
-const ele = document.querySelector("#root");
-if (ele)
-  createApp(GachaSimulator, {
-    gachaPoolId,
-    gachaBannerFile,
-    gachaClientPool,
-    gachaServerPool,
-    newbeeClientPool,
-  }).mount(ele);
+main();
