@@ -1,4 +1,7 @@
-import { type GachaPoolClientData as GachaClientPool } from "./gamedata-types";
+import {
+  GachaRuleType,
+  type GachaPoolClientData as GachaClientPool,
+} from "./gamedata-types";
 import type { GachaAvailChar, GachaUpChar } from "./types";
 
 export function weightedRandom<T>(
@@ -36,11 +39,13 @@ export function weightedRandom<T>(
 
 export class GachaState {
   counter: number;
-  isGotFirst5Star: boolean;
+  guarantee5Avail: number;
+  non6StarCount: number;
 
-  constructor() {
+  constructor(guarantee5Avail: number) {
     this.counter = 0;
-    this.isGotFirst5Star = false;
+    this.guarantee5Avail = guarantee5Avail;
+    this.non6StarCount = 0;
   }
 }
 
@@ -49,6 +54,7 @@ export class GachaExecutor {
   upCharInfo: GachaUpChar;
   state: GachaState;
   gachaClientPool: GachaClientPool;
+  gachaRuleType: GachaRuleType;
 
   constructor(
     availCharInfo: GachaAvailChar,
@@ -58,7 +64,9 @@ export class GachaExecutor {
     this.availCharInfo = availCharInfo;
     this.upCharInfo = upCharInfo;
     this.gachaClientPool = gachaClientPool;
-    this.state = new GachaState();
+    this.gachaRuleType = gachaClientPool.gachaRuleType;
+    const { guarantee5Avail } = gachaClientPool;
+    this.state = new GachaState(guarantee5Avail);
   }
 
   getRandomRarity() {
@@ -68,6 +76,7 @@ export class GachaExecutor {
     const weights = this.availCharInfo.perAvailList.map(
       (availList) => availList.totalPercent * 100, // scale up to percentage
     );
+
     const { item: rarity } = weightedRandom(items, weights);
 
     return rarity;
@@ -118,11 +127,18 @@ export class GachaExecutor {
 
     this.state.counter++;
 
+    // 6星计数
+    if (rarity === 5) {
+      this.state.non6StarCount = 0;
+    } else {
+      this.state.non6StarCount++;
+    }
+
+    // 前10次抽卡5星保底
     const { guarantee5Count } = this.gachaClientPool;
-    // 5 星保底
-    if (guarantee5Count && !this.state.isGotFirst5Star) {
+    if (guarantee5Count && this.state.guarantee5Avail > 0) {
       if (this.state.counter <= guarantee5Count && rarity == 4) {
-        this.state.isGotFirst5Star = true;
+        this.state.guarantee5Avail--;
         console.log(`在第 ${guarantee5Count} 抽前已有五星，跳过保底`);
       }
 

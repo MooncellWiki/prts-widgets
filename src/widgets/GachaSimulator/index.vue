@@ -118,6 +118,7 @@ export default defineComponent({
       doGachaTen,
       clearResults,
       displayStars: [5, 4, 3, 2],
+      guarantee5Avail: props.gachaClientPool.guarantee5Avail,
     };
   },
 });
@@ -139,12 +140,12 @@ export default defineComponent({
           <NButton type="error" @click="clearResults()">清空结果</NButton>
         </div>
         <div class="flex flex-col gap-y-1">
-          <span
-            >累计寻访次数:{{ counter }}（使用的合成玉:{{ counter * 600 }} /
-            源石:{{ Math.ceil((counter * 600) / 180) }}）</span
-          >
+          <span>
+            累计寻访次数：{{ counter }}（使用的合成玉：{{ counter * 600 }} /
+            源石：{{ Math.ceil((counter * 600) / 180) }}）
+          </span>
           <span>连续未寻访出6★干员次数:0</span>
-          <span>10次寻访内必得5★以上干员</span>
+          <span v-if="guarantee5Avail > 0">前 10 次寻访内必得5★以上干员</span>
         </div>
         <NCollapse :expanded-names="expandedNames">
           <NCollapseItem
@@ -153,7 +154,7 @@ export default defineComponent({
             :title="`获得的${star + 1}★干员`"
             :name="star"
           >
-            <div class="flex">
+            <div class="flex flex-wrap">
               <div
                 v-for="(result, j) in Object.values(results).filter(
                   (result) => result.rarity === star,
@@ -165,6 +166,7 @@ export default defineComponent({
                   <img :src="result.avatarURL.toString()" width="75" />
                 </div>
                 <span
+                  v-if="result.count > 1"
                   class="absolute right-1 -bottom-1 text-shadow-base font-bold text-lg"
                 >
                   {{ result.count }}
