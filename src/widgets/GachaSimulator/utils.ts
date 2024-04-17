@@ -138,6 +138,10 @@ export function shouldApplyEnsureUp6StarRule(state: GachaState) {
   return state.guarantee6Up6Count && state.guarantee6Up6Avail > 0;
 }
 
+export function shouldApplyEnsure6StarRule(state: GachaState) {
+  return state.guarantee6Count && state.guarantee6Avail > 0;
+}
+
 export function applyEnsure5StarRule(
   state: GachaState,
   perAvailList: GachaPerAvail[],
@@ -153,6 +157,24 @@ export function applyEnsure5StarRule(
     console.log(`触发 ${state.guarantee5Count} 抽内五星保底`);
     state.guarantee5Avail--;
     return getRandomCharWithRarity(perAvailList, upCharInfo, 4);
+  }
+}
+
+export function applyEnsure6StarRule(
+  state: GachaState,
+  perAvailList: GachaPerAvail[],
+  upCharInfo: GachaUpChar,
+  rarity: number,
+) {
+  if (state.counter < state.guarantee6Count && rarity >= 5) {
+    state.guarantee6Avail--;
+    console.log(`在第 ${state.guarantee6Count} 抽前已有六星及以上，已完成保底`);
+  }
+
+  if (state.counter === state.guarantee6Count) {
+    console.log(`触发 ${state.guarantee6Count} 抽内六星保底`);
+    state.guarantee6Avail--;
+    return getRandomCharWithRarity(perAvailList, upCharInfo, 5);
   }
 }
 
@@ -176,6 +198,8 @@ export interface GachaConfig {
   guarantee5Count: number;
   guarantee6Up6Avail: number;
   guarantee6Up6Count: number;
+  guarantee6Avail: number;
+  guarantee6Count: number;
   gachaTimes: number;
 }
 
@@ -198,6 +222,8 @@ export class GachaExecutor {
   state: GachaState;
   config: GachaConfig;
 
+  newbeeClientPool: NewbeeGachaPoolClientData | null;
+
   constructor(
     gachaClientPool: GachaClientPool,
     gachaServerPool: GachaServerPool,
@@ -207,6 +233,7 @@ export class GachaExecutor {
       gachaServerPool.gachaPoolDetail.detailInfo.availCharInfo;
     this.upCharInfo = gachaServerPool.gachaPoolDetail.detailInfo.upCharInfo;
     this.gachaRuleType = gachaClientPool.gachaRuleType;
+    this.newbeeClientPool = newbeeClientPool;
 
     let guarantee6Up6Avail = 0;
     let guarantee6Up6Count = 0;
@@ -227,6 +254,8 @@ export class GachaExecutor {
       guarantee5Count: gachaClientPool.guarantee5Count,
       guarantee6Up6Avail: guarantee6Up6Avail,
       guarantee6Up6Count: guarantee6Up6Count,
+      guarantee6Avail: newbeeClientPool ? 1 : -1,
+      guarantee6Count: newbeeClientPool?.gachaTimes || -1,
       gachaTimes: newbeeClientPool?.gachaTimes || -1,
     };
 
@@ -285,6 +314,16 @@ export class GachaExecutor {
         );
 
       const ruleResult = applyEnsureUp6StarRule(this.state, up6StarCharId);
+      if (ruleResult) result = ruleResult;
+    }
+
+    if (this.newbeeClientPool && shouldApplyEnsure6StarRule(this.state)) {
+      const ruleResult = applyEnsure6StarRule(
+        this.state,
+        this.availCharInfo.perAvailList,
+        this.upCharInfo,
+        rarity,
+      );
       if (ruleResult) result = ruleResult;
     }
 

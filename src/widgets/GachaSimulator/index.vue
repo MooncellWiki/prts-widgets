@@ -72,6 +72,9 @@ export default defineComponent({
       ...new Set(Object.values(results.value).map((result) => result.rarity)),
     ]);
     const buttonDisabled = ref(false);
+    const pricePerTime = props.newbeeClientPool
+      ? props.newbeeClientPool.gachaPrice
+      : 600;
 
     const doGachaOne = () => {
       const gachaResult = gachaExecutor.doGachaOnce();
@@ -126,6 +129,7 @@ export default defineComponent({
       guarantee5Avail: props.gachaClientPool.guarantee5Avail,
       non6StarCount,
       buttonDisabled,
+      pricePerTime,
     };
   },
 });
@@ -157,8 +161,10 @@ export default defineComponent({
         </div>
         <div class="flex flex-col gap-y-1">
           <span>
-            累计寻访次数：{{ counter }}（使用的合成玉：{{ counter * 600 }} /
-            源石：{{ Math.ceil((counter * 600) / 180) }}）
+            累计寻访次数：{{ counter }}（使用的合成玉：{{
+              counter * pricePerTime
+            }}
+            / 源石：{{ Math.ceil((counter * pricePerTime) / 180) }}）
           </span>
           <span>连续未寻访出6★干员次数:{{ non6StarCount }}</span>
           <span v-if="guarantee5Avail > 0">前 10 次寻访内必得5★以上干员</span>
