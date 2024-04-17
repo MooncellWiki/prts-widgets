@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/prefer-string-replace-all */
 import defaultStyle from "../widgets/DisplayController.css?inline";
 
 interface DisplayConfig {
@@ -91,7 +92,7 @@ function main(config: DisplayConfig) {
       "initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width";
     viewport.setAttribute(
       "content",
-      viewportContent.replace(/user\-scalable\=yes/gi, "user-scalable=no"),
+      viewportContent.replace(/user-scalable=yes/g, "user-scalable=no"),
     );
   } else removeDOM(`.${STYLE_ELEMENT_CLASS}`);
 }
