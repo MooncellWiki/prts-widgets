@@ -50,15 +50,13 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const { availCharInfo, upCharInfo } =
-      props.gachaServerPool.gachaPoolDetail.detailInfo;
     let gachaExecutor = new GachaExecutor(
-      availCharInfo,
-      upCharInfo,
       props.gachaClientPool,
+      props.gachaServerPool,
     );
 
     const counter = ref(0);
+    const non6StarCount = ref(0);
     const results: Ref<
       Record<
         string,
@@ -72,22 +70,21 @@ export default defineComponent({
     const doGachaOne = () => {
       const { charId, rarity } = gachaExecutor.doGachaOnce();
       counter.value = gachaExecutor.state.counter;
+      non6StarCount.value = gachaExecutor.state.non6StarCount;
 
-      if (charId && rarity) {
-        if (results.value[charId]) {
-          results.value[charId].count++;
-        } else {
-          results.value[charId] = {
-            charId,
-            rarity,
-            avatarURL: new URL(
-              `/assets/char_avatar/${charId}.png`,
-              TORAPPU_ENDPOINT,
-            ),
-            count: 1,
-          };
-        }
-      }
+      if (!charId) throw new Error("charId is null");
+
+      if (results.value[charId]) results.value[charId].count++;
+      else
+        results.value[charId] = {
+          charId,
+          rarity,
+          avatarURL: new URL(
+            `/assets/char_avatar/${charId}.png`,
+            TORAPPU_ENDPOINT,
+          ),
+          count: 1,
+        };
     };
 
     const doGachaTen = () => {
@@ -99,11 +96,7 @@ export default defineComponent({
     const clearResults = () => {
       results.value = {};
       counter.value = 0;
-      gachaExecutor = new GachaExecutor(
-        availCharInfo,
-        upCharInfo,
-        props.gachaClientPool,
-      );
+      gachaExecutor.resetState();
     };
 
     return {
@@ -119,6 +112,7 @@ export default defineComponent({
       clearResults,
       displayStars: [5, 4, 3, 2],
       guarantee5Avail: props.gachaClientPool.guarantee5Avail,
+      non6StarCount,
     };
   },
 });
@@ -144,7 +138,7 @@ export default defineComponent({
             累计寻访次数：{{ counter }}（使用的合成玉：{{ counter * 600 }} /
             源石：{{ Math.ceil((counter * 600) / 180) }}）
           </span>
-          <span>连续未寻访出6★干员次数:0</span>
+          <span>连续未寻访出6★干员次数:{{ non6StarCount }}</span>
           <span v-if="guarantee5Avail > 0">前 10 次寻访内必得5★以上干员</span>
         </div>
         <NCollapse :expanded-names="expandedNames">
