@@ -7,6 +7,7 @@ export enum GachaRuleType {
   SINGLE = "SINGLE",
   FESCLASSIC = "FESCLASSIC",
   CLASSIC_ATTAIN = "CLASSIC_ATTAIN",
+  NEWBEE = "NEWBEE",
 }
 
 export interface GachaPoolClientData {

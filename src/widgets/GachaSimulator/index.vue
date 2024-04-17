@@ -19,7 +19,7 @@ import type {
   NewbeeGachaPoolClientData,
 } from "./gamedata-types";
 import type { GachaPoolClientData as GachaServerPool } from "./types";
-import { GachaExecutor } from "./utils";
+import { GachaExecutor, NewbeeGachaExecutor } from "./utils";
 
 const { locale, dateLocale } = getNaiveUILocale();
 const { theme } = useTheme();
@@ -42,7 +42,7 @@ export default defineComponent({
       required: true,
     },
     gachaClientPool: {
-      type: Object as PropType<GachaClientPool>,
+      type: Object as PropType<GachaClientPool | null>,
       required: true,
     },
     gachaServerPool: {
@@ -55,11 +55,9 @@ export default defineComponent({
     },
   },
   setup(props) {
-    let gachaExecutor = new GachaExecutor(
-      props.gachaClientPool,
-      props.gachaServerPool,
-      props.newbeeClientPool,
-    );
+    let gachaExecutor = props.newbeeClientPool
+      ? new NewbeeGachaExecutor(props.newbeeClientPool, props.gachaServerPool)
+      : new GachaExecutor(props.gachaClientPool, props.gachaServerPool);
     const counter = ref(0);
     const non6StarCount = ref(0);
     const results: Ref<
@@ -111,6 +109,7 @@ export default defineComponent({
     const clearResults = () => {
       results.value = {};
       counter.value = 0;
+      buttonDisabled.value = false;
       gachaExecutor.resetState();
     };
 
@@ -126,7 +125,6 @@ export default defineComponent({
       doGachaTen,
       clearResults,
       displayStars: [5, 4, 3, 2],
-      guarantee5Avail: props.gachaClientPool.guarantee5Avail,
       non6StarCount,
       buttonDisabled,
       pricePerTime,
@@ -152,12 +150,7 @@ export default defineComponent({
           <NButton :disabled="buttonDisabled" @click="doGachaTen()"
             >寻访10次</NButton
           >
-          <NButton
-            :disabled="buttonDisabled"
-            type="error"
-            @click="clearResults()"
-            >清空结果</NButton
-          >
+          <NButton type="error" @click="clearResults()">清空结果</NButton>
         </div>
         <div class="flex flex-col gap-y-1">
           <span>
@@ -167,7 +160,7 @@ export default defineComponent({
             / 源石：{{ Math.ceil((counter * pricePerTime) / 180) }}）
           </span>
           <span>连续未寻访出6★干员次数:{{ non6StarCount }}</span>
-          <span v-if="guarantee5Avail > 0">前 10 次寻访内必得5★以上干员</span>
+          <span>前 10 次寻访内必得5★以上干员</span>
         </div>
         <NCollapse :expanded-names="expandedNames">
           <NCollapseItem

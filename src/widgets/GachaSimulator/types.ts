@@ -87,7 +87,7 @@ export interface GachaAvailChar {
 }
 
 export interface GachaPerChar {
-  charIdList: Array<string>;
+  charIdList: string[];
   count: number;
   percent: number;
   rarityRank: number;
