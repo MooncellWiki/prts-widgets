@@ -33,6 +33,12 @@ const { gachaPoolId, gachaBannerFile } = gachaDataRoot?.dataset || {};
 const gachaClientPool = gachaClientTable.gachaPoolClient.find(
   (pool) => pool.gachaPoolId === gachaPoolId,
 );
+
+const newbeeClientPool =
+  gachaClientTable.newbeeGachaPoolClient.find(
+    (pool) => pool.gachaPoolId === gachaPoolId,
+  ) || null;
+
 const gachaServerPool = gachaServerTable.gachaPoolClient.find(
   (pool) => pool.gachaPoolId === gachaPoolId,
 );
@@ -44,4 +50,5 @@ if (ele)
     gachaBannerFile,
     gachaClientPool,
     gachaServerPool,
+    newbeeClientPool,
   }).mount(ele);

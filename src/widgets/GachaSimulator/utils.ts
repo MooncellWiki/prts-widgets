@@ -1,5 +1,6 @@
 import {
   GachaRuleType,
+  NewbeeGachaPoolClientData,
   type GachaPoolClientData as GachaClientPool,
 } from "./gamedata-types";
 import type {
@@ -170,44 +171,22 @@ export function applyEnsureUp6StarRule(state: GachaState, charId: string) {
   }
 }
 
-export class GachaConfig {
+export interface GachaConfig {
   guarantee5Avail: number;
   guarantee5Count: number;
   guarantee6Up6Avail: number;
   guarantee6Up6Count: number;
-
-  constructor(
-    guarantee5Avail: number,
-    guarantee5Count: number,
-    guarantee6Up6Avail: number,
-    guarantee6Up6Count: number,
-  ) {
-    this.guarantee5Avail = guarantee5Avail;
-    this.guarantee5Count = guarantee5Count;
-    this.guarantee6Up6Avail = guarantee6Up6Avail;
-    this.guarantee6Up6Count = guarantee6Up6Count;
-  }
+  gachaTimes: number;
 }
 
-export class GachaState {
+export interface GachaState extends GachaConfig {
   counter: number;
   non6StarCount: number;
   results: Record<string, number>;
+}
 
-  guarantee5Avail: number;
-  guarantee5Count: number;
-  guarantee6Up6Avail: number;
-  guarantee6Up6Count: number;
-
-  constructor(config: GachaConfig) {
-    this.counter = 0;
-    this.non6StarCount = 0;
-    this.guarantee5Avail = config.guarantee5Avail;
-    this.guarantee5Count = config.guarantee5Count;
-    this.guarantee6Up6Avail = config.guarantee6Up6Avail;
-    this.guarantee6Up6Count = config.guarantee6Up6Count;
-    this.results = {};
-  }
+function createGachaState(config: GachaConfig) {
+  return { ...config, counter: 0, results: {}, non6StarCount: 0 };
 }
 
 export class GachaExecutor {
@@ -222,6 +201,7 @@ export class GachaExecutor {
   constructor(
     gachaClientPool: GachaClientPool,
     gachaServerPool: GachaServerPool,
+    newbeeClientPool: NewbeeGachaPoolClientData | null,
   ) {
     this.availCharInfo =
       gachaServerPool.gachaPoolDetail.detailInfo.availCharInfo;
@@ -236,17 +216,25 @@ export class GachaExecutor {
       guarantee6Up6Count = 150;
     }
 
-    this.config = new GachaConfig(
-      gachaClientPool.guarantee5Avail,
-      gachaClientPool.guarantee5Count,
-      guarantee6Up6Avail,
-      guarantee6Up6Count,
-    );
-    this.state = new GachaState(this.config);
+    if (this.gachaRuleType === GachaRuleType.LINKAGE) {
+      guarantee6Up6Avail = 1;
+      guarantee6Up6Count =
+        gachaClientPool.linkageParam.guaranteeTarget6Count || 120;
+    }
+
+    this.config = {
+      guarantee5Avail: gachaClientPool.guarantee5Avail,
+      guarantee5Count: gachaClientPool.guarantee5Count,
+      guarantee6Up6Avail: guarantee6Up6Avail,
+      guarantee6Up6Count: guarantee6Up6Count,
+      gachaTimes: newbeeClientPool?.gachaTimes || -1,
+    };
+
+    this.state = createGachaState(this.config);
   }
 
   resetState() {
-    this.state = new GachaState(this.config);
+    this.state = createGachaState(this.config);
   }
 
   doGachaOnce() {
@@ -259,6 +247,10 @@ export class GachaExecutor {
       rarity,
     );
     if (charId === null) throw new Error("charId is null");
+
+    if (this.state.counter >= this.config.gachaTimes) {
+      return null;
+    }
 
     this.state.counter++;
 
@@ -281,7 +273,8 @@ export class GachaExecutor {
 
     // gachaRuleType: SINGLE 150 抽保底单 UP 六星
     if (
-      this.gachaRuleType === "SINGLE" &&
+      (this.gachaRuleType === GachaRuleType.SINGLE ||
+        this.gachaRuleType === GachaRuleType.LINKAGE) &&
       shouldApplyEnsureUp6StarRule(this.state)
     ) {
       const up6StarCharId = getUpListWithRarity(this.upCharInfo, 5)
@@ -295,11 +288,8 @@ export class GachaExecutor {
       if (ruleResult) result = ruleResult;
     }
 
-    if (this.state.results[result.charId]) {
-      this.state.results[result.charId]++;
-    } else {
-      this.state.results[result.charId] = 1;
-    }
+    if (this.state.results[result.charId]) this.state.results[result.charId]++;
+    else this.state.results[result.charId] = 1;
 
     return result;
   }

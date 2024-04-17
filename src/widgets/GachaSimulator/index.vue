@@ -14,7 +14,10 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
-import type { GachaPoolClientData as GachaClientPool } from "./gamedata-types";
+import type {
+  GachaPoolClientData as GachaClientPool,
+  NewbeeGachaPoolClientData,
+} from "./gamedata-types";
 import type { GachaPoolClientData as GachaServerPool } from "./types";
 import { GachaExecutor } from "./utils";
 
@@ -46,13 +49,17 @@ export default defineComponent({
       type: Object as PropType<GachaServerPool>,
       required: true,
     },
+    newbeeClientPool: {
+      type: Object as PropType<NewbeeGachaPoolClientData | null>,
+      required: true,
+    },
   },
   setup(props) {
     let gachaExecutor = new GachaExecutor(
       props.gachaClientPool,
       props.gachaServerPool,
+      props.newbeeClientPool,
     );
-
     const counter = ref(0);
     const non6StarCount = ref(0);
     const results: Ref<
@@ -64,9 +71,16 @@ export default defineComponent({
     const expandedNames = computed(() => [
       ...new Set(Object.values(results.value).map((result) => result.rarity)),
     ]);
+    const buttonDisabled = ref(false);
 
     const doGachaOne = () => {
-      const { charId, rarity } = gachaExecutor.doGachaOnce();
+      const gachaResult = gachaExecutor.doGachaOnce();
+      if (gachaResult === null) {
+        console.error("池子剩余抽取次数已耗尽");
+        buttonDisabled.value = true;
+        return;
+      }
+      const { charId, rarity } = gachaResult;
       counter.value = gachaExecutor.state.counter;
       non6StarCount.value = gachaExecutor.state.non6StarCount;
 
@@ -111,6 +125,7 @@ export default defineComponent({
       displayStars: [5, 4, 3, 2],
       guarantee5Avail: props.gachaClientPool.guarantee5Avail,
       non6StarCount,
+      buttonDisabled,
     };
   },
 });
@@ -127,9 +142,18 @@ export default defineComponent({
       <div class="flex flex-col gap-y-3 mx-2 my-4">
         <img width="800" :src="bannerImageURL" />
         <div class="flex gap-x-2">
-          <NButton @click="doGachaOne()">寻访1次</NButton>
-          <NButton @click="doGachaTen()">寻访10次</NButton>
-          <NButton type="error" @click="clearResults()">清空结果</NButton>
+          <NButton :disabled="buttonDisabled" @click="doGachaOne()"
+            >寻访1次</NButton
+          >
+          <NButton :disabled="buttonDisabled" @click="doGachaTen()"
+            >寻访10次</NButton
+          >
+          <NButton
+            :disabled="buttonDisabled"
+            type="error"
+            @click="clearResults()"
+            >清空结果</NButton
+          >
         </div>
         <div class="flex flex-col gap-y-1">
           <span>
