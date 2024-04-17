@@ -279,7 +279,11 @@ export class GachaExecutor {
       if (ruleResult) result = ruleResult;
     }
 
-    if (shouldApplyEnsureUp6StarRule(this.state)) {
+    // gachaRuleType: SINGLE 150 抽保底单 UP 六星
+    if (
+      this.gachaRuleType === "SINGLE" &&
+      shouldApplyEnsureUp6StarRule(this.state)
+    ) {
       const up6StarCharId = getUpListWithRarity(this.upCharInfo, 5)
         ?.charIdList[0];
       if (!up6StarCharId)
