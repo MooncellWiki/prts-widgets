@@ -77,19 +77,23 @@ async function initCharWord() {
   return { data, langTypes };
 }
 
-const retvals = await Promise.all([
-  initCharWord(),
-  initCharMap(),
-  initSkinTable(),
-]);
+async function main() {
+  const retvals = await Promise.all([
+    initCharWord(),
+    initCharMap(),
+    initSkinTable(),
+  ]);
 
-const props = {};
-for (const retval of retvals) {
-  Object.assign(props, retval);
+  const props = {};
+  for (const retval of retvals) {
+    Object.assign(props, retval);
+  }
+
+  const ele = document.querySelector("#root");
+  if (ele) {
+    const app = createApp(CVList, props);
+    app.mount(ele);
+  }
 }
 
-const ele = document.querySelector("#root");
-if (ele) {
-  const app = createApp(CVList, props);
-  app.mount(ele);
-}
+main();
