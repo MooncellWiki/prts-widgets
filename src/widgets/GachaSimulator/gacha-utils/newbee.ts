@@ -28,10 +28,10 @@ export class NewbeeGachaExecutor {
   state: GachaState;
   config: GachaConfig;
 
-  newbeeClientPool: NewbeeGachaPoolClientData | Record<string, never>;
+  newbeeClientPool: NewbeeGachaPoolClientData;
 
   constructor(
-    gachaClientPool: NewbeeGachaPoolClientData | Record<string, never>,
+    gachaClientPool: NewbeeGachaPoolClientData | null,
     gachaServerPool: GachaServerPool,
   ) {
     if (gachaClientPool === null) throw new Error("gachaClientPool is null");

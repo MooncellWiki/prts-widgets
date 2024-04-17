@@ -30,14 +30,15 @@ const [gachaServerTable, gachaClientTable] = await Promise.all([
 const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
 const { gachaPoolId, gachaBannerFile } = gachaDataRoot?.dataset || {};
 
-const gachaClientPool = gachaClientTable.gachaPoolClient.find(
-  (pool) => pool.gachaPoolId === gachaPoolId,
-);
+const gachaClientPool =
+  gachaClientTable.gachaPoolClient.find(
+    (pool) => pool.gachaPoolId === gachaPoolId,
+  ) || null;
 
 const newbeeClientPool =
   gachaClientTable.newbeeGachaPoolClient.find(
     (pool) => pool.gachaPoolId === gachaPoolId,
-  ) || {};
+  ) || null;
 
 const gachaServerPool = gachaServerTable.gachaPoolClient.find(
   (pool) => pool.gachaPoolId === gachaPoolId,

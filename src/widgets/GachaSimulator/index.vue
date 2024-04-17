@@ -43,18 +43,18 @@ export default defineComponent({
       required: true,
     },
     gachaClientPool: {
-      type: Object as PropType<GachaClientPool | null>,
-      required: true,
+      type: null as unknown as PropType<GachaClientPool | null>,
+      default: null,
+      validator: (v: any) => typeof v === "object" || v === null,
     },
     gachaServerPool: {
       type: Object as PropType<GachaServerPool>,
       required: true,
     },
     newbeeClientPool: {
-      type: Object as PropType<
-        NewbeeGachaPoolClientData | Record<string, never>
-      >,
-      required: true,
+      type: null as unknown as PropType<NewbeeGachaPoolClientData | null>,
+      default: null,
+      validator: (v: any) => typeof v === "object" || v === null,
     },
   },
   setup(props) {
