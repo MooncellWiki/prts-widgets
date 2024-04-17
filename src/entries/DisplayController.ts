@@ -91,7 +91,7 @@ function main(config: DisplayConfig) {
       "initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width";
     viewport.setAttribute(
       "content",
-      viewportContent.replaceAll("user-scalable=yes", "user-scalable=no"),
+      viewportContent.replace(/user\-scalable\=yes/gi, "user-scalable=no"),
     );
   } else removeDOM(`.${STYLE_ELEMENT_CLASS}`);
 }
