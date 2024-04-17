@@ -130,11 +130,11 @@ export function getRandomCharWithRarity(
 }
 
 export function shouldApplyEnsure5StarRule(state: GachaState) {
-  return state.config.guarantee5Count && state.config.guarantee5Avail > 0;
+  return state.guarantee5Count && state.guarantee5Avail > 0;
 }
 
 export function shouldApplyEnsureUp6StarRule(state: GachaState) {
-  return state.config.guarantee6Up6Count && state.config.guarantee6Up6Avail > 0;
+  return state.guarantee6Up6Count && state.guarantee6Up6Avail > 0;
 }
 
 export function applyEnsure5StarRule(
@@ -143,34 +143,29 @@ export function applyEnsure5StarRule(
   upCharInfo: GachaUpChar,
   rarity: number,
 ) {
-  if (state.counter < state.config.guarantee5Count && rarity >= 4) {
-    state.config.guarantee5Avail--;
-    console.log(
-      `在第 ${state.config.guarantee5Count} 抽前已有五星及以上，已完成保底`,
-    );
+  if (state.counter < state.guarantee5Count && rarity >= 4) {
+    state.guarantee5Avail--;
+    console.log(`在第 ${state.guarantee5Count} 抽前已有五星及以上，已完成保底`);
   }
 
-  if (state.counter === state.config.guarantee5Count) {
-    console.log(`触发 ${state.config.guarantee5Count} 抽内五星保底`);
-    state.config.guarantee5Avail--;
+  if (state.counter === state.guarantee5Count) {
+    console.log(`触发 ${state.guarantee5Count} 抽内五星保底`);
+    state.guarantee5Avail--;
     return getRandomCharWithRarity(perAvailList, upCharInfo, 4);
   }
 }
 
 export function applyEnsureUp6StarRule(state: GachaState, charId: string) {
-  if (
-    state.counter < state.config.guarantee6Up6Count &&
-    state.results[charId] >= 1
-  ) {
-    state.config.guarantee6Up6Avail--;
+  if (state.counter < state.guarantee6Up6Count && state.results[charId] >= 1) {
+    state.guarantee6Up6Avail--;
     console.log(
-      `在第 ${state.config.guarantee6Up6Count} 抽前已有对应六星 UP，已完成保底`,
+      `在第 ${state.guarantee6Up6Count} 抽前已有对应六星 UP，已完成保底`,
     );
   }
 
-  if (state.counter === state.config.guarantee6Up6Count) {
+  if (state.counter === state.guarantee6Up6Count) {
     console.log("触发保底");
-    state.config.guarantee6Up6Avail--;
+    state.guarantee6Up6Avail--;
     return { charId, rarity: 5 };
   }
 }
@@ -197,13 +192,20 @@ export class GachaConfig {
 export class GachaState {
   counter: number;
   non6StarCount: number;
-  config: GachaConfig;
   results: Record<string, number>;
+
+  guarantee5Avail: number;
+  guarantee5Count: number;
+  guarantee6Up6Avail: number;
+  guarantee6Up6Count: number;
 
   constructor(config: GachaConfig) {
     this.counter = 0;
     this.non6StarCount = 0;
-    this.config = config;
+    this.guarantee5Avail = config.guarantee5Avail;
+    this.guarantee5Count = config.guarantee5Count;
+    this.guarantee6Up6Avail = config.guarantee6Up6Avail;
+    this.guarantee6Up6Count = config.guarantee6Up6Count;
     this.results = {};
   }
 }
