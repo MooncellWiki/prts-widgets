@@ -6,7 +6,6 @@ import {
   NCollapse,
   NCollapseItem,
   NConfigProvider,
-  NImage,
   NLayout,
 } from "naive-ui";
 
@@ -25,7 +24,6 @@ const { theme } = useTheme();
 export default defineComponent({
   components: {
     NConfigProvider,
-    NImage,
     NButton,
     NCollapseItem,
     NCollapse,
@@ -127,7 +125,7 @@ export default defineComponent({
   >
     <NLayout class="antialiased">
       <div class="flex flex-col gap-y-3 mx-2 my-4">
-        <NImage width="800" :src="bannerImageURL" />
+        <img width="800" :src="bannerImageURL" />
         <div class="flex gap-x-2">
           <NButton @click="doGachaOne()">寻访1次</NButton>
           <NButton @click="doGachaTen()">寻访10次</NButton>

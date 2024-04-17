@@ -49,6 +49,7 @@ export function getRandomRarity(
 ) {
   const items = perAvailList.map((avails) => avails.rarityRank);
   const weights = [];
+  // 6 星 50 抽概率增加
   for (const availList of perAvailList) {
     let finalPercent = availList.totalPercent * 100;
     if (state.non6StarCount >= 50 && availList.rarityRank === 5) {
@@ -57,7 +58,6 @@ export function getRandomRarity(
     }
     weights.push(finalPercent);
   }
-  console.log(weights);
 
   const { item: rarity } = weightedRandom(items, weights);
 
@@ -90,15 +90,18 @@ export function calculateCharWeights(
   const charWeights: Record<string, number> = {};
 
   let upSumWeight = 0;
+  let upCount = 0;
   if (upList !== null) {
     for (const upCharId of upList.charIdList) {
       const percentage = upList.percent * 100;
       charWeights[upCharId] = percentage;
       upSumWeight += percentage;
+      upCount++;
     }
   }
 
-  const remainingWeight = (100 - upSumWeight) / availList.charIdList.length;
+  const remainingWeight =
+    (100 - upSumWeight) / (availList.charIdList.length - upCount);
   for (const charId of availList.charIdList) {
     if (charWeights[charId]) continue;
     charWeights[charId] = remainingWeight;
@@ -108,7 +111,6 @@ export function calculateCharWeights(
 }
 
 export function getRandomCharWithRarity(
-  state: GachaState,
   perAvailList: GachaPerAvail[],
   upCharInfo: GachaUpChar,
   rarity: number,
@@ -122,38 +124,87 @@ export function getRandomCharWithRarity(
     Object.values(charWeights),
   );
 
+  if (charId === null) throw new Error("charId is null");
+
   return { charId, rarity };
 }
 
-export function applyTenthFiveStarRule(
+export function shouldApplyEnsure5StarRule(state: GachaState) {
+  return state.config.guarantee5Count && state.config.guarantee5Avail > 0;
+}
+
+export function shouldApplyEnsureUp6StarRule(state: GachaState) {
+  return state.config.guarantee6Up6Count && state.config.guarantee6Up6Avail > 0;
+}
+
+export function applyEnsure5StarRule(
   state: GachaState,
   perAvailList: GachaPerAvail[],
   upCharInfo: GachaUpChar,
   rarity: number,
 ) {
-  if (state.counter < state.guarantee5Count && rarity === 4) {
-    state.guarantee5Avail--;
-    console.log(`在第 ${state.guarantee5Count} 抽前已有五星，跳过保底`);
+  if (state.counter < state.config.guarantee5Count && rarity >= 4) {
+    state.config.guarantee5Avail--;
+    console.log(
+      `在第 ${state.config.guarantee5Count} 抽前已有五星及以上，已完成保底`,
+    );
   }
 
-  if (state.counter === state.guarantee5Count) {
+  if (state.counter === state.config.guarantee5Count) {
+    console.log(`触发 ${state.config.guarantee5Count} 抽内五星保底`);
+    state.config.guarantee5Avail--;
+    return getRandomCharWithRarity(perAvailList, upCharInfo, 4);
+  }
+}
+
+export function applyEnsureUp6StarRule(state: GachaState, charId: string) {
+  if (
+    state.counter < state.config.guarantee6Up6Count &&
+    state.results[charId] >= 1
+  ) {
+    state.config.guarantee6Up6Avail--;
+    console.log(
+      `在第 ${state.config.guarantee6Up6Count} 抽前已有对应六星 UP，已完成保底`,
+    );
+  }
+
+  if (state.counter === state.config.guarantee6Up6Count) {
     console.log("触发保底");
-    state.guarantee5Avail--;
-    return getRandomCharWithRarity(state, perAvailList, upCharInfo, 4);
+    state.config.guarantee6Up6Avail--;
+    return { charId, rarity: 5 };
+  }
+}
+
+export class GachaConfig {
+  guarantee5Avail: number;
+  guarantee5Count: number;
+  guarantee6Up6Avail: number;
+  guarantee6Up6Count: number;
+
+  constructor(
+    guarantee5Avail: number,
+    guarantee5Count: number,
+    guarantee6Up6Avail: number,
+    guarantee6Up6Count: number,
+  ) {
+    this.guarantee5Avail = guarantee5Avail;
+    this.guarantee5Count = guarantee5Count;
+    this.guarantee6Up6Avail = guarantee6Up6Avail;
+    this.guarantee6Up6Count = guarantee6Up6Count;
   }
 }
 
 export class GachaState {
   counter: number;
   non6StarCount: number;
-  guarantee5Avail: number;
-  guarantee5Count: number;
+  config: GachaConfig;
+  results: Record<string, number>;
 
-  constructor(guarantee5Avail: number, guarantee5Count: number) {
+  constructor(config: GachaConfig) {
     this.counter = 0;
     this.non6StarCount = 0;
-    this.guarantee5Avail = guarantee5Avail;
-    this.guarantee5Count = guarantee5Count;
+    this.config = config;
+    this.results = {};
   }
 }
 
@@ -164,6 +215,7 @@ export class GachaExecutor {
   upCharInfo: GachaUpChar;
 
   state: GachaState;
+  config: GachaConfig;
 
   constructor(
     gachaClientPool: GachaClientPool,
@@ -174,17 +226,25 @@ export class GachaExecutor {
     this.upCharInfo = gachaServerPool.gachaPoolDetail.detailInfo.upCharInfo;
     this.gachaRuleType = gachaClientPool.gachaRuleType;
 
-    this.state = new GachaState(
+    let guarantee6Up6Avail = 0;
+    let guarantee6Up6Count = 0;
+
+    if (this.gachaRuleType === GachaRuleType.SINGLE) {
+      guarantee6Up6Avail = 1;
+      guarantee6Up6Count = 150;
+    }
+
+    this.config = new GachaConfig(
       gachaClientPool.guarantee5Avail,
       gachaClientPool.guarantee5Count,
+      guarantee6Up6Avail,
+      guarantee6Up6Count,
     );
+    this.state = new GachaState(this.config);
   }
 
   resetState() {
-    this.state = new GachaState(
-      this.state.guarantee5Avail,
-      this.state.guarantee5Count,
-    );
+    this.state = new GachaState(this.config);
   }
 
   doGachaOnce() {
@@ -192,7 +252,6 @@ export class GachaExecutor {
     if (rarity === null) throw new Error("rarity is null");
 
     const { charId } = getRandomCharWithRarity(
-      this.state,
       this.availCharInfo.perAvailList,
       this.upCharInfo,
       rarity,
@@ -202,23 +261,40 @@ export class GachaExecutor {
     this.state.counter++;
 
     // 6星计数
-    if (rarity === 5) {
-      this.state.non6StarCount = 0;
-    } else {
-      this.state.non6StarCount++;
-    }
+    if (rarity === 5) this.state.non6StarCount = 0;
+    else this.state.non6StarCount++;
+
+    let result = { charId, rarity };
 
     // 前10次抽卡5星保底
-    if (this.state.guarantee5Count && this.state.guarantee5Avail > 0) {
-      const applied = applyTenthFiveStarRule(
+    if (shouldApplyEnsure5StarRule(this.state)) {
+      const ruleResult = applyEnsure5StarRule(
         this.state,
         this.availCharInfo.perAvailList,
         this.upCharInfo,
         rarity,
       );
-      if (applied) return applied;
+      if (ruleResult) result = ruleResult;
     }
 
-    return { charId, rarity };
+    if (shouldApplyEnsureUp6StarRule(this.state)) {
+      const up6StarCharId = getUpListWithRarity(this.upCharInfo, 5)
+        ?.charIdList[0];
+      if (!up6StarCharId)
+        throw new Error(
+          `Empty 6 star upCharId when applying ensureUp6StarRule for gacha rule type ${this.gachaRuleType}`,
+        );
+
+      const ruleResult = applyEnsureUp6StarRule(this.state, up6StarCharId);
+      if (ruleResult) result = ruleResult;
+    }
+
+    if (this.state.results[result.charId]) {
+      this.state.results[result.charId]++;
+    } else {
+      this.state.results[result.charId] = 1;
+    }
+
+    return result;
   }
 }
