@@ -14,12 +14,13 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
+import { GachaExecutor } from "./gacha-utils/base";
+import { NewbeeGachaExecutor } from "./gacha-utils/newbee";
 import type {
   GachaPoolClientData as GachaClientPool,
   NewbeeGachaPoolClientData,
 } from "./gamedata-types";
 import type { GachaPoolClientData as GachaServerPool } from "./types";
-import { GachaExecutor, NewbeeGachaExecutor } from "./utils";
 
 const { locale, dateLocale } = getNaiveUILocale();
 const { theme } = useTheme();
@@ -50,7 +51,9 @@ export default defineComponent({
       required: true,
     },
     newbeeClientPool: {
-      type: Object as PropType<NewbeeGachaPoolClientData | null>,
+      type: Object as PropType<
+        NewbeeGachaPoolClientData | Record<string, never>
+      >,
       required: true,
     },
   },

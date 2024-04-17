@@ -37,7 +37,7 @@ const gachaClientPool = gachaClientTable.gachaPoolClient.find(
 const newbeeClientPool =
   gachaClientTable.newbeeGachaPoolClient.find(
     (pool) => pool.gachaPoolId === gachaPoolId,
-  ) || null;
+  ) || {};
 
 const gachaServerPool = gachaServerTable.gachaPoolClient.find(
   (pool) => pool.gachaPoolId === gachaPoolId,
