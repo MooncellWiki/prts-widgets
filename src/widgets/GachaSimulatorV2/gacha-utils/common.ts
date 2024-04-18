@@ -18,7 +18,7 @@ export interface GachaState extends GachaConfig {
   results: Record<string, number>;
 }
 
-export function createGachaState(config: GachaConfig) {
+export function createGachaState(config: GachaConfig): GachaState {
   return { ...config, counter: 0, results: {}, non6StarCount: 0 };
 }
 

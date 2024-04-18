@@ -114,6 +114,7 @@ export default defineComponent({
       counter.value = 0;
       buttonDisabled.value = false;
       gachaExecutor.resetState();
+      non6StarCount.value = gachaExecutor.state.non6StarCount;
     };
 
     return {
