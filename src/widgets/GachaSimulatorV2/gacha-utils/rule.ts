@@ -54,11 +54,13 @@ export function applyEnsure5StarRule(
 ) {
   if (state.counter < state.guarantee5Count && rarity >= RarityRank.TIER_5) {
     state.guarantee5Avail--;
-    console.log(`在第 ${state.guarantee5Count} 抽前已有五星及以上，已完成保底`);
+    console.log(
+      `在第 ${state.guarantee5Count} 抽前已有 5 星及以上，已完成保底`,
+    );
   }
 
   if (state.counter === state.guarantee5Count) {
-    console.log(`触发 ${state.guarantee5Count} 抽内五星保底`);
+    console.log(`触发 ${state.guarantee5Count} 抽内 5 星保底`);
     state.guarantee5Avail--;
     return getRandomCharWithRarity(perAvailList, upCharInfo, RarityRank.TIER_5);
   }
@@ -72,11 +74,11 @@ export function applyEnsure6StarRule(
 ) {
   if (state.counter < state.guarantee6Count && rarity === RarityRank.TIER_6) {
     state.guarantee6Avail--;
-    console.log(`在第 ${state.guarantee6Count} 抽前已有六星，已完成保底`);
+    console.log(`在第 ${state.guarantee6Count} 抽前已有 6 星，已完成保底`);
   }
 
   if (state.counter === state.guarantee6Count) {
-    console.log(`触发 ${state.guarantee6Count} 抽内六星保底`);
+    console.log(`触发 ${state.guarantee6Count} 抽内 6 星保底`);
     state.guarantee6Avail--;
     return getRandomCharWithRarity(perAvailList, upCharInfo, RarityRank.TIER_6);
   }
@@ -86,12 +88,12 @@ export function applyEnsureUp6StarRule(state: GachaState, charId: string) {
   if (state.counter < state.guarantee6Up6Count && state.results[charId] >= 1) {
     state.guarantee6Up6Avail--;
     console.log(
-      `在第 ${state.guarantee6Up6Count} 抽前已有对应六星 UP，已完成保底`,
+      `在第 ${state.guarantee6Up6Count} 抽前已有对应 UP 6 星，已完成保底`,
     );
   }
 
   if (state.counter === state.guarantee6Up6Count) {
-    console.log("触发保底");
+    console.log("触发 Up 6 星保底");
     state.guarantee6Up6Avail--;
     return { charId, rarity: RarityRank.TIER_6 };
   }
