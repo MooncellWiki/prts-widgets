@@ -90,11 +90,11 @@ export function equip(eq: string) {
   return `${TORAPPU_ENDPOINT}/assets/uniequip_direction/${eq}.png`;
 }
 
-export const ServerAvatar = {
+export const ServerAvatar: Record<string, string> = {
   1: "yj",
   2: "bili",
 };
 
-export function server(id: keyof typeof ServerAvatar) {
-  return `${STATIC_ENDPOINT}/charinfo/img/skland/${ServerAvatar[id] || null}.png`;
+export function server(id: string) {
+  return `${STATIC_ENDPOINT}/charinfo/img/skland/${ServerAvatar[id] || "yj"}.png`;
 }
