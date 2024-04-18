@@ -76,7 +76,7 @@ export function skill(skillId: string) {
     }
     return `${TORAPPU_ENDPOINT}/assets/skill_icon/skill_icon_${skillId}.png`;
   } else {
-    return `https://static.prts.wiki/charinfo/img/skland/Skill_icon_none.png`;
+    return `https://static.prts.wiki/charinfo/img/skland/skill_icon_none.png`;
   }
 }
 
