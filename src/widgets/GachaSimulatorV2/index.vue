@@ -1,5 +1,5 @@
 <script lang="ts">
-import { PropType, computed, defineComponent, ref, type Ref } from "vue";
+import { PropType, computed, defineComponent, ref, toRaw } from "vue";
 
 import {
   NButton,
@@ -16,18 +16,20 @@ import { getImagePath } from "@/utils/utils";
 
 import { GachaExecutor } from "./gacha-utils/base";
 import { NewbeeGachaExecutor } from "./gacha-utils/newbee";
-import type {
-  GachaPoolClientData as GachaClientPool,
-  NewbeeGachaPoolClientData,
+import {
+  GachaRuleType,
+  type GachaPoolClientData as GachaClientPool,
+  type NewbeeGachaPoolClientData,
 } from "./gamedata-types";
-import type { GachaPoolClientData as GachaServerPool } from "./types";
+import {
+  GachaUpChar,
+  RarityRankString,
+  type GachaPoolClientData as GachaServerPool,
+} from "./types";
+import { getPortraitURL, rarityStringToNumber } from "./utils";
 
 const { locale, dateLocale } = getNaiveUILocale();
 const { theme } = useTheme();
-
-function getPortraitURL(charId: string) {
-  return new URL(`/assets/char_portrait/${charId}_1.png`, TORAPPU_ENDPOINT);
-}
 
 export default defineComponent({
   components: {
@@ -62,17 +64,28 @@ export default defineComponent({
     },
   },
   setup(props) {
-    let gachaExecutor = props.newbeeClientPool
+    const showOperatorSelector = ref(false);
+    let gachaExecutor: GachaExecutor | NewbeeGachaExecutor;
+
+    const rarityPickCharDict: Record<
+      keyof typeof RarityRankString,
+      string[]
+    > | null = props.gachaClientPool?.dynMeta?.rarityPickCharDict || null;
+
+    gachaExecutor = props.newbeeClientPool
       ? new NewbeeGachaExecutor(props.newbeeClientPool, props.gachaServerPool)
       : new GachaExecutor(props.gachaClientPool, props.gachaServerPool);
+
+    const isFesClassic =
+      props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC;
     const counter = ref(0);
     const non6StarCount = ref(0);
-    const results: Ref<
+    const results = ref<
       Record<
         string,
-        { charId: string; avatarURL: URL; rarity: number; count: number }
+        { charId: string; avatarURL: string; rarity: number; count: number }
       >
-    > = ref({});
+    >({});
     const expandedNames = computed(() => [
       ...new Set(Object.values(results.value).map((result) => result.rarity)),
     ]);
@@ -106,7 +119,7 @@ export default defineComponent({
           avatarURL: new URL(
             `/assets/char_avatar/${charId}.png`,
             TORAPPU_ENDPOINT,
-          ),
+          ).toString(),
           count: 1,
         };
 
@@ -132,6 +145,45 @@ export default defineComponent({
       portraitResult.value = [];
     };
 
+    const selectedUpInfo = ref<Record<number, string[]>>({});
+    const getSelectedUpCharInfo = () => {
+      const upCharInfo: GachaUpChar = { perCharList: [] };
+      for (const [rarity, charIdList] of Object.entries(
+        toRaw(selectedUpInfo.value),
+      )) {
+        if (charIdList.length === 0) continue;
+        upCharInfo.perCharList.push({
+          rarityRank: Number.parseInt(rarity),
+          charIdList,
+          count: charIdList.length,
+          percent: 0.5 / charIdList.length,
+        });
+      }
+      return upCharInfo;
+    };
+
+    const onImageClicked = (rarity: number, charId: string) => {
+      if (!selectedUpInfo.value[rarity]) selectedUpInfo.value[rarity] = [];
+      if (selectedUpInfo.value[rarity].includes(charId)) {
+        selectedUpInfo.value[rarity] = selectedUpInfo.value[rarity].filter(
+          (id) => id !== charId,
+        );
+      } else {
+        selectedUpInfo.value[rarity].push(charId);
+      }
+      const upCharInfo = getSelectedUpCharInfo();
+      console.log(gachaExecutor.upCharInfo);
+      gachaExecutor.upCharInfo = upCharInfo;
+      console.log(gachaExecutor.upCharInfo);
+    };
+
+    const isCharIdSelected = (rarity: number, charId: string) => {
+      return (
+        selectedUpInfo.value[rarity] &&
+        selectedUpInfo.value[rarity].includes(charId)
+      );
+    };
+
     return {
       theme,
       locale,
@@ -150,6 +202,13 @@ export default defineComponent({
       portraitResult,
       getPortraitURL,
       showPortaits,
+      showOperatorSelector,
+      rarityPickCharDict,
+      rarityStringToNumber,
+      onImageClicked,
+      selectedUpInfo,
+      isCharIdSelected,
+      isFesClassic,
     };
   },
 });
@@ -199,6 +258,33 @@ export default defineComponent({
             >寻访10次</NButton
           >
           <NButton type="error" @click="clearResults()">清空结果</NButton>
+          <NButton
+            v-if="isFesClassic"
+            type="info"
+            @click="showOperatorSelector = !showOperatorSelector"
+          >
+            {{ showOperatorSelector ? "关闭干员 UP 选择" : "展开干员 UP 选择" }}
+          </NButton>
+        </div>
+        <div v-show="showOperatorSelector">
+          <div v-for="(charIds, rarity) in rarityPickCharDict" :key="rarity">
+            <h2>{{ rarityStringToNumber(rarity) + 1 }}星角色 UP 选择</h2>
+            <div class="flex flex-wrap gap-2">
+              <img
+                v-for="(charId, i) in charIds"
+                :key="i"
+                :class="
+                  isCharIdSelected(rarityStringToNumber(rarity), charId) &&
+                  'outline-2 outline-cyan-500 outline-solid'
+                "
+                width="75"
+                :src="getPortraitURL(charId).toString()"
+                @click="
+                  () => onImageClicked(rarityStringToNumber(rarity), charId)
+                "
+              />
+            </div>
+          </div>
         </div>
         <div class="flex flex-col gap-y-1">
           <span>
@@ -227,8 +313,8 @@ export default defineComponent({
               >
                 <div>
                   <img
-                    :class="`rarity-${result.rarity} outline-2 outline-gray-600 outline-solid overflow-hidden`"
-                    :src="result.avatarURL.toString()"
+                    :class="`rarity-${result.rarity} outline-2 outline-gray-600 outline-solid`"
+                    :src="result.avatarURL"
                     width="75"
                   />
                 </div>

@@ -21,6 +21,16 @@ export enum RarityRank {
   E_NUM,
 }
 
+export const RarityRankString = {
+  TIER_1: RarityRank.TIER_1,
+  TIER_2: RarityRank.TIER_2,
+  TIER_3: RarityRank.TIER_3,
+  TIER_4: RarityRank.TIER_4,
+  TIER_5: RarityRank.TIER_5,
+  TIER_6: RarityRank.TIER_6,
+  E_NUM: RarityRank.E_NUM,
+};
+
 export enum GachaType {
   TEXT,
   UP_CHAR,
