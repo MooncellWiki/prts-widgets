@@ -422,7 +422,7 @@ function calcServerColor(id: string) {
                   <div v-show="showInfo.equip" class="skillIcon">
                     <div class="equipBg">
                       <img
-                        :src="`${MEDIA_ENDPOINT}/c/c2/Skill_icon_empty.png`"
+                        :src="`https://static.prts.wiki/charinfo/img/skland/Skill_icon_empty.png`"
                         width="100%"
                       />
                     </div>
