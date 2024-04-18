@@ -1,4 +1,4 @@
-import { MEDIA_ENDPOINT, TORAPPU_ENDPOINT } from "@/utils/consts";
+import { STATIC_ENDPOINT, TORAPPU_ENDPOINT } from "@/utils/consts";
 
 import type { Char } from "./types";
 
@@ -76,7 +76,7 @@ export function skill(skillId: string) {
     }
     return `${TORAPPU_ENDPOINT}/assets/skill_icon/skill_icon_${skillId}.png`;
   } else {
-    return "https://static.prts.wiki/charinfo/img/skland/skill_icon_none.png";
+    return `${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_none.png`;
   }
 }
 
@@ -90,10 +90,11 @@ export function equip(eq: string) {
   return `${TORAPPU_ENDPOINT}/assets/uniequip_direction/${eq}.png`;
 }
 
-export function server(id: string) {
-  if (id === "1") {
-    return "https://static.prts.wiki/charinfo/img/skland/yj.png";
-  } else if (id === "2") {
-    return "https://static.prts.wiki/charinfo/img/skland/bili.png";
-  }
+export const ServerAvatar = {
+  1: "yj",
+  2: "bili",
+};
+
+export function server(id: keyof typeof ServerAvatar) {
+  return `${STATIC_ENDPOINT}/charinfo/img/skland/${ServerAvatar[id] || null}.png`;
 }
