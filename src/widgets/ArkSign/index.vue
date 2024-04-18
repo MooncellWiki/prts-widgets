@@ -26,7 +26,7 @@ import {
 } from "naive-ui";
 import { VueDraggable } from "vue-draggable-plus";
 
-import { MEDIA_ENDPOINT } from "@/utils/consts";
+import { STATIC_ENDPOINT } from "@/utils/consts";
 import { isMobileSkin } from "@/utils/utils";
 
 import Label from "./Label.vue";
@@ -305,7 +305,7 @@ function calcSkillRankShow(skills: Char["skills"], skillId: string) {
 function calcEquip(char: Char) {
   return char.defaultEquipId
     ? equip(equipmentInfoMap.value[char.defaultEquipId].typeIcon)
-    : `${MEDIA_ENDPOINT}/0/03/Skill_icon_none.png`;
+    : `${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_none.png`;
 }
 function calcEquipStyle(char: Char) {
   if (char.defaultEquipId) {
@@ -345,14 +345,12 @@ function calcServerColor(id: string) {
     <div class="charSign">
       <div ref="charSignInner" class="charSignInner">
         <div class="circlePoint">
-          <img
-            src="https://static.prts.wiki/charinfo/img/skland/rightPoint.png"
-          />
+          <img :src="`${STATIC_ENDPOINT}/charinfo/img/skland/rightPoint.png`" />
         </div>
         <div class="leftWrapper">
           <div class="logoBg">
             <img
-              src="https://static.prts.wiki/charinfo/img/skland/Logo_rhodesBlack.png"
+              :src="`${STATIC_ENDPOINT}/charinfo/img/skland/Logo_rhodesBlack.png`"
             />
           </div>
           <div class="avatarWrapper">
@@ -422,7 +420,7 @@ function calcServerColor(id: string) {
                   <div v-show="showInfo.equip" class="skillIcon">
                     <div class="equipBg">
                       <img
-                        :src="`${MEDIA_ENDPOINT}/c/c2/Skill_icon_empty.png`"
+                        :src="`${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_empty.png`"
                         width="100%"
                       />
                     </div>
