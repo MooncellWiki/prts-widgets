@@ -305,7 +305,7 @@ function calcSkillRankShow(skills: Char["skills"], skillId: string) {
 function calcEquip(char: Char) {
   return char.defaultEquipId
     ? equip(equipmentInfoMap.value[char.defaultEquipId].typeIcon)
-    : `${MEDIA_ENDPOINT}/0/03/Skill_icon_none.png`;
+    : `https://static.prts.wiki/charinfo/img/skland/Skill_icon_none.png`;
 }
 function calcEquipStyle(char: Char) {
   if (char.defaultEquipId) {
