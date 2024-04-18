@@ -1,8 +1,9 @@
 import { GachaRuleType, NewbeeGachaPoolClientData } from "../gamedata-types";
-import type {
-  GachaAvailChar,
-  GachaPoolClientData as GachaServerPool,
-  GachaUpChar,
+import {
+  RarityRank,
+  type GachaAvailChar,
+  type GachaPoolClientData as GachaServerPool,
+  type GachaUpChar,
 } from "../types";
 
 import {
@@ -75,7 +76,7 @@ export class NewbeeGachaExecutor {
     this.state.counter++;
 
     // 6 星计数
-    if (rarity === 5) this.state.non6StarCount = 0;
+    if (rarity === RarityRank.TIER_6) this.state.non6StarCount = 0;
     else this.state.non6StarCount++;
 
     let result = { charId, rarity };

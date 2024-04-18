@@ -19,6 +19,7 @@ import {
 import {
   applyEnsure5StarRule,
   applyEnsureUp6StarRule,
+  getUp5StarUngottenList,
   hasOneOf5StarCharGotten,
   shouldApplyEnsure5StarRule,
   shouldApplyEnsureUp6StarRule,
@@ -124,12 +125,20 @@ export class GachaExecutor {
       if (ruleResult) result = ruleResult;
     }
 
+    // 联动五星保底另一角色
     if (
       this.gachaRuleType === GachaRuleType.LINKAGE &&
       rarity === 4 &&
       hasOneOf5StarCharGotten(this.state, this.upCharInfo)
     ) {
-      // 保底单角色
+      const up5StarUngottenList = getUp5StarUngottenList(
+        this.state,
+        this.upCharInfo,
+      );
+      if (up5StarUngottenList.length > 0) {
+        const charId = up5StarUngottenList[0];
+        result = { charId, rarity: 4 };
+      }
     }
 
     if (this.state.results[result.charId]) this.state.results[result.charId]++;

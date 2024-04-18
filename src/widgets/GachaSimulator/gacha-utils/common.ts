@@ -33,6 +33,7 @@ export function getRandomRarity(
     let finalPercent = availList.totalPercent * 100;
     if (state.non6StarCount >= 50 && availList.rarityRank === 5) {
       const bonusCount = state.non6StarCount - 50 + 1;
+      // 每抽 0.02 概率增加
       finalPercent += bonusCount * 0.02 * 100;
     }
     weights.push(finalPercent);
