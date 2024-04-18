@@ -76,9 +76,6 @@ export default defineComponent({
           ele.classList.remove("dark");
         }
       }
-      if (props.name == "阿米娅") {
-        console.log(content.value);
-      }
       loading.value = false;
       loadingCount.value -= 1;
     });
