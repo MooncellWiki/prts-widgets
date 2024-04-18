@@ -25,6 +25,10 @@ import type { GachaPoolClientData as GachaServerPool } from "./types";
 const { locale, dateLocale } = getNaiveUILocale();
 const { theme } = useTheme();
 
+function getPortraitURL(charId: string) {
+  return new URL(`/assets/char_portrait/${charId}_1.png`, TORAPPU_ENDPOINT);
+}
+
 export default defineComponent({
   components: {
     NConfigProvider,
@@ -72,6 +76,10 @@ export default defineComponent({
     const expandedNames = computed(() => [
       ...new Set(Object.values(results.value).map((result) => result.rarity)),
     ]);
+    const portraitResult = ref<
+      { charId: string; rarity: number; portraitURL: string }[]
+    >([]);
+    const showPortaits = computed(() => portraitResult.value.length > 0);
     const buttonDisabled = ref(false);
     const pricePerTime = props.newbeeClientPool
       ? props.newbeeClientPool.gachaPrice
@@ -101,6 +109,12 @@ export default defineComponent({
           ),
           count: 1,
         };
+
+      portraitResult.value.push({
+        charId,
+        rarity,
+        portraitURL: getPortraitURL(charId).toString(),
+      });
     };
 
     const doGachaTen = () => {
@@ -115,6 +129,7 @@ export default defineComponent({
       buttonDisabled.value = false;
       gachaExecutor.resetState();
       non6StarCount.value = gachaExecutor.state.non6StarCount;
+      portraitResult.value = [];
     };
 
     return {
@@ -132,6 +147,9 @@ export default defineComponent({
       non6StarCount,
       buttonDisabled,
       pricePerTime,
+      portraitResult,
+      getPortraitURL,
+      showPortaits,
     };
   },
 });
@@ -147,11 +165,37 @@ export default defineComponent({
     <NLayout class="antialiased">
       <div class="flex flex-col gap-y-3 mx-2 my-4">
         <img width="800" :src="bannerImageURL" />
+        <div
+          v-show="showPortaits"
+          class="flex flex-wrap justify-center items-center bg-gray-700 max-w-fit gap-x-1.5 py-3 px-2"
+        >
+          <img
+            v-for="(char, i) in portraitResult"
+            :key="i"
+            :class="`rarity-${char.rarity} rarity-${char.rarity}-shadow`"
+            width="75"
+            :src="char.portraitURL"
+          />
+        </div>
         <div class="flex gap-x-2">
-          <NButton :disabled="buttonDisabled" @click="doGachaOne()"
+          <NButton
+            :disabled="buttonDisabled"
+            @click="
+              () => {
+                portraitResult = [];
+                doGachaOne();
+              }
+            "
             >寻访1次</NButton
           >
-          <NButton :disabled="buttonDisabled" @click="doGachaTen()"
+          <NButton
+            :disabled="buttonDisabled"
+            @click="
+              () => {
+                portraitResult = [];
+                doGachaTen();
+              }
+            "
             >寻访10次</NButton
           >
           <NButton type="error" @click="clearResults()">清空结果</NButton>
@@ -182,7 +226,11 @@ export default defineComponent({
                 class="relative"
               >
                 <div>
-                  <img :src="result.avatarURL.toString()" width="75" />
+                  <img
+                    :class="`rarity-${result.rarity} outline-2 outline-gray-600 outline-solid overflow-hidden`"
+                    :src="result.avatarURL.toString()"
+                    width="75"
+                  />
                 </div>
                 <span
                   v-if="result.count > 1"
@@ -226,5 +274,37 @@ export default defineComponent({
     2px -2px 4px #ffffff,
     -2px 2px 4px #ffffff,
     2px 2px 4px #ffffff;
+}
+
+/*6星干员背景样式*/
+.rarity-5 {
+  background-image: linear-gradient(32deg, #eee2b8 22%, #ffa573 100%);
+}
+
+.rarity-5-shadow {
+  box-shadow: 0 0 20px orange;
+}
+
+/*5星干员背景样式*/
+.rarity-4 {
+  background-image: linear-gradient(180deg, #f1e3ad 0%, #e6e5e2 100%);
+}
+
+.rarity-4-shadow {
+  box-shadow: 0 0 20px gold;
+}
+
+/*4星干员背景样式*/
+.rarity-3 {
+  background-image: linear-gradient(180deg, #a99db4 0%, #d3d3d3 58%);
+}
+
+.rarity-3-shadow {
+  box-shadow: 0 0 20px #c6b3d1;
+}
+
+/*3星干员背景样式*/
+.rarity-2 {
+  background-color: grey;
 }
 </style>
