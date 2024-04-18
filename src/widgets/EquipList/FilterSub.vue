@@ -13,6 +13,7 @@ export default defineComponent({
   },
   props: {
     title: String,
+    placeholder: String,
     options: {
       type: Array as PropType<SelectOption[] | SelectGroupOption[]>,
       default: () => [],
@@ -21,6 +22,10 @@ export default defineComponent({
       type: Array as PropType<string[]>,
       default: () => [],
       required: true,
+    },
+    disabled: {
+      type: Boolean,
+      default: false,
     },
   },
   emits: ["update:selected"],
@@ -40,11 +45,12 @@ export default defineComponent({
       <NSelect
         v-model:value="value"
         class="m-1"
+        :disabled="disabled"
         :options="options"
         multiple
         filterable
         clearable
-        placeholder="输入或在下拉列表中选择"
+        :placeholder="placeholder"
       />
     </div>
   </div>

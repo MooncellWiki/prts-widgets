@@ -7,7 +7,7 @@ export async function getOnlineDate() {
   const temp = content
     .split("\n")
     .map((line) => {
-      return line.replaceAll(/\s/g, "");
+      return line.replaceAll(/\s/g, "").replaceAll(/<!--.*-->/g, "");
     })
     .filter((line) => {
       return line.match(/\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)/);

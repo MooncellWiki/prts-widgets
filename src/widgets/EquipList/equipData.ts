@@ -1,11 +1,11 @@
-const cache: Record<string, string> = {};
-export async function getEquipData(name: string): Promise<string> {
+const cache: Record<string, any> = {};
+export async function getEquipData(name: string): Promise<any> {
   if (cache[name]) return cache[name];
   const resp = await fetch(
     `/api.php?${new URLSearchParams({
       action: "parse",
       format: "json",
-      title: `干员模组一览/${name}`,
+      title: `干员模组一览/${name}/2`,
       text: `{{#lst:${name}|专属模组}}`,
       prop: "text",
       utf8: "1",
@@ -16,6 +16,9 @@ export async function getEquipData(name: string): Promise<string> {
   );
   const json = await resp.json();
   const content = json.parse.text["*"];
-  cache[name] = content;
-  return content;
+  const data = new DOMParser().parseFromString(content, "text/html");
+  cache[name] = Array.from(data.querySelectorAll(".equipdata")).map((e) => {
+    return (e as HTMLElement).dataset;
+  });
+  return cache[name];
 }
