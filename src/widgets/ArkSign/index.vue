@@ -305,7 +305,7 @@ function calcSkillRankShow(skills: Char["skills"], skillId: string) {
 function calcEquip(char: Char) {
   return char.defaultEquipId
     ? equip(equipmentInfoMap.value[char.defaultEquipId].typeIcon)
-    : `https://static.prts.wiki/charinfo/img/skland/Skill_icon_none.png`;
+    : `https://static.prts.wiki/charinfo/img/skland/skill_icon_none.png`;
 }
 function calcEquipStyle(char: Char) {
   if (char.defaultEquipId) {
@@ -422,7 +422,7 @@ function calcServerColor(id: string) {
                   <div v-show="showInfo.equip" class="skillIcon">
                     <div class="equipBg">
                       <img
-                        :src="`https://static.prts.wiki/charinfo/img/skland/Skill_icon_empty.png`"
+                        :src="`https://static.prts.wiki/charinfo/img/skland/skill_icon_empty.png`"
                         width="100%"
                       />
                     </div>
