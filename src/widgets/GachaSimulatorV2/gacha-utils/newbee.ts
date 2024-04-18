@@ -24,7 +24,7 @@ export class NewbeeGachaExecutor {
   gachaRuleType: GachaRuleType = GachaRuleType.NEWBEE;
 
   availCharInfo: GachaAvailChar;
-  upCharInfo: GachaUpChar | null;
+  upCharInfo: GachaUpChar;
 
   state: GachaState;
   config: GachaConfig;
@@ -32,10 +32,10 @@ export class NewbeeGachaExecutor {
   newbeeClientPool: NewbeeGachaPoolClientData;
 
   constructor(
-    gachaClientPool: NewbeeGachaPoolClientData | null,
     gachaServerPool: GachaServerPool,
+    gachaClientPool?: NewbeeGachaPoolClientData,
   ) {
-    if (gachaClientPool === null) throw new Error("gachaClientPool is null");
+    if (!gachaClientPool) throw new Error("gachaClientPool is null");
 
     this.availCharInfo =
       gachaServerPool.gachaPoolDetail.detailInfo.availCharInfo;
@@ -60,14 +60,12 @@ export class NewbeeGachaExecutor {
 
   doGachaOnce() {
     const rarity = getRandomRarity(this.state, this.availCharInfo.perAvailList);
-    if (rarity === null) throw new Error("rarity is null");
 
     const { charId } = getRandomCharWithRarity(
       this.availCharInfo.perAvailList,
       this.upCharInfo,
       rarity,
     );
-    if (charId === null) throw new Error("charId is null");
 
     if (this.state.counter >= this.config.gachaTimes) {
       return null;

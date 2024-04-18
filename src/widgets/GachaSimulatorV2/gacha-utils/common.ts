@@ -56,26 +56,21 @@ export function getAvailListWithRarity(
   return availList;
 }
 
-export function getUpListWithRarity(
-  upCharInfo: GachaUpChar | null,
-  rarity: number,
-) {
-  return (
-    upCharInfo?.perCharList.find(
-      (charList) => charList.rarityRank === rarity,
-    ) || null
+export function getUpListWithRarity(upCharInfo: GachaUpChar, rarity: number) {
+  return upCharInfo.perCharList.find(
+    (charList) => charList.rarityRank === rarity,
   );
 }
 
 export function calculateCharWeights(
   availList: GachaPerAvail,
-  upList: GachaPerChar | null,
+  upList?: GachaPerChar,
 ) {
   const charWeights: Record<string, number> = {};
 
   let upSumWeight = 0;
   let upCount = 0;
-  if (upList !== null) {
+  if (upList) {
     for (const upCharId of upList.charIdList) {
       const percentage = upList.percent * 100;
       charWeights[upCharId] = percentage;
@@ -96,7 +91,7 @@ export function calculateCharWeights(
 
 export function getRandomCharWithRarity(
   perAvailList: GachaPerAvail[],
-  upCharInfo: GachaUpChar | null,
+  upCharInfo: GachaUpChar,
   rarity: number,
 ) {
   const availList = getAvailListWithRarity(perAvailList, rarity);
@@ -107,8 +102,6 @@ export function getRandomCharWithRarity(
     Object.keys(charWeights),
     Object.values(charWeights),
   );
-
-  if (charId === null) throw new Error("charId is null");
 
   return { charId, rarity };
 }

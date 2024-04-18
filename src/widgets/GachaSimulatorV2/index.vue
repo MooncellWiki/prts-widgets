@@ -23,7 +23,6 @@ import {
 } from "./gamedata-types";
 import {
   GachaUpChar,
-  RarityRankString,
   type GachaPoolClientData as GachaServerPool,
 } from "./types";
 import { getPortraitURL, rarityStringToNumber } from "./utils";
@@ -49,32 +48,26 @@ export default defineComponent({
       required: true,
     },
     gachaClientPool: {
-      type: null as unknown as PropType<GachaClientPool | null>,
-      default: null,
-      validator: (v: any) => typeof v === "object" || v === null,
+      type: Object as PropType<GachaClientPool>,
     },
     gachaServerPool: {
       type: Object as PropType<GachaServerPool>,
       required: true,
     },
     newbeeClientPool: {
-      type: null as unknown as PropType<NewbeeGachaPoolClientData | null>,
-      default: null,
-      validator: (v: any) => typeof v === "object" || v === null,
+      type: Object as PropType<NewbeeGachaPoolClientData>,
     },
   },
   setup(props) {
     const showOperatorSelector = ref(false);
     let gachaExecutor: GachaExecutor | NewbeeGachaExecutor;
 
-    const rarityPickCharDict: Record<
-      keyof typeof RarityRankString,
-      string[]
-    > | null = props.gachaClientPool?.dynMeta?.rarityPickCharDict || null;
+    const rarityPickCharDict =
+      props.gachaClientPool?.dynMeta?.rarityPickCharDict;
 
     gachaExecutor = props.newbeeClientPool
-      ? new NewbeeGachaExecutor(props.newbeeClientPool, props.gachaServerPool)
-      : new GachaExecutor(props.gachaClientPool, props.gachaServerPool);
+      ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
+      : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
 
     const isFesClassic =
       props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC;

@@ -1,9 +1,15 @@
+/**
+ * Returns a randomly selected item from an array of items based on their weights.
+ * @template T - The type of items in the array.
+ * @param {T[]} items - The array of items to choose from.
+ * @param {number[]} weights - The corresponding weights for each item.
+ * @returns {{ item: T; index: number }} - An object containing the selected item and its index.
+ * @throws {Error} - If the lengths of items and weights are not the same, or if either of them is empty.
+ */
 export function weightedRandom<T>(
   items: T[],
   weights: number[],
-): { item: T | null; index: number } {
-  if (items.length !== weights.length)
-    throw new Error("Items and weights must be of the same size");
+): { item: T; index: number } {
   if (items.length === 0 || weights.length === 0)
     throw new Error("Items or Weights must not be empty");
   if (weights.length !== items.length)
@@ -28,5 +34,5 @@ export function weightedRandom<T>(
     }
   }
 
-  return { item: null, index: -1 };
+  throw new Error("unreachable");
 }

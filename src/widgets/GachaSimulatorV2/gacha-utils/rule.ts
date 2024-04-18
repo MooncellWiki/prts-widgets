@@ -23,13 +23,11 @@ export function hasOneOf5StarCharGotten(
   upCharInfo: GachaUpChar,
 ) {
   const up5StarUpList = getUpListWithRarity(upCharInfo, RarityRank.TIER_5);
-  if (up5StarUpList === null) return false;
+  if (!up5StarUpList) return false;
 
-  for (const charId of up5StarUpList.charIdList) {
-    if (state.results[charId] && state.results[charId] >= 1) {
-      return true;
-    }
-  }
+  return up5StarUpList.charIdList.some(
+    (charId) => state.results[charId] && state.results[charId] >= 1,
+  );
 }
 
 export function getUp5StarUngottenList(
@@ -37,7 +35,7 @@ export function getUp5StarUngottenList(
   upCharInfo: GachaUpChar,
 ) {
   const up5StarUpList = getUpListWithRarity(upCharInfo, RarityRank.TIER_5);
-  if (up5StarUpList === null) return [];
+  if (!up5StarUpList) return [];
 
   const ungottenList = up5StarUpList.charIdList.filter(
     (charId) => !state.results[charId],
@@ -49,7 +47,7 @@ export function getUp5StarUngottenList(
 export function applyEnsure5StarRule(
   state: GachaState,
   perAvailList: GachaPerAvail[],
-  upCharInfo: GachaUpChar | null,
+  upCharInfo: GachaUpChar,
   rarity: number,
 ) {
   if (state.counter < state.guarantee5Count && rarity >= RarityRank.TIER_5) {
@@ -69,7 +67,7 @@ export function applyEnsure5StarRule(
 export function applyEnsure6StarRule(
   state: GachaState,
   perAvailList: GachaPerAvail[],
-  upCharInfo: GachaUpChar | null,
+  upCharInfo: GachaUpChar,
   rarity: number,
 ) {
   if (state.counter < state.guarantee6Count && rarity === RarityRank.TIER_6) {

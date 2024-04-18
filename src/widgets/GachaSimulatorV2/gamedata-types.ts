@@ -1,12 +1,56 @@
+import { RarityRankString } from "./types";
+/**
+ * https://prts.wiki/w/%E5%AF%BB%E8%AE%BF%E8%A7%84%E5%88%99
+ */
 export enum GachaRuleType {
+  /**
+   * 常驻标准寻访
+   * 如果连续50次没有获得6★干员，则下一次获得6★干员的概率将从原本的2%提升至4%，如果该次还没有寻访到6★干员，则下一次寻访获得6★的概率由4%提升到6%。
+   * 依此类推，每次提高2%获得6★干员的概率，直至达到100%时必定获得6★干员。
+   * 任何时候在【标准寻访】中获得一位6★干员，则下一次在【标准寻访】中获得6★干员的概率将恢复到2%。
+   * 每开启一个新的寻访池，在其中的前10次寻访内必定获得一名5★或以上的干员，每个寻访池限一次。
+   */
   NORMAL = "NORMAL",
-  LIMITED = "LIMITED",
-  LINKAGE = "LINKAGE",
-  ATTAIN = "ATTAIN",
-  CLASSIC = "CLASSIC",
+  /**
+   * 限时标准寻访 规则同常驻标准寻访
+   */
   SINGLE = "SINGLE",
+  /**
+   * 联动寻访
+   * 前120次寻访必定能够获得联动6★干员，仅限一次。
+   * 如果该寻访池拥有2名联动5★干员，则在首次获得其中1名联动5★干员后，下次获得5★干员时必定为另一名联动5★干员，仅限一次。
+   */
+  LINKAGE = "LINKAGE",
+
+  /**
+   * 常驻中坚寻访
+   */
+  CLASSIC = "CLASSIC",
+  /**
+   * 中坚甄选
+   */
   FESCLASSIC = "FESCLASSIC",
+
+  /**
+   * 限定
+   */
+  LIMITED = "LIMITED",
+
+  /**
+   * 跨年欢庆寻访
+   * 带仓检的标准寻访
+   */
+  ATTAIN = "ATTAIN",
+  /**
+   * 跨年欢庆（中坚）寻访
+   * 带仓检的中坚寻访
+   */
   CLASSIC_ATTAIN = "CLASSIC_ATTAIN",
+
+  /**
+   * 新人特惠寻访
+   * 只能抽取21次 必定至少获得1名6★干员，次数内必定获得至少1名5★以上干员
+   */
   NEWBEE = "NEWBEE",
 }
 
@@ -24,7 +68,9 @@ export interface GachaPoolClientData {
   CDPrimColor: string;
   CDSecColor: string;
   gachaRuleType: GachaRuleType;
-  dynMeta: Record<string, any>;
+  dynMeta?: {
+    rarityPickCharDict: Record<keyof typeof RarityRankString, string[]>;
+  };
   linkageRuleId: string;
   linkageParam: Record<string, any>;
 }

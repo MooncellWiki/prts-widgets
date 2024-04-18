@@ -36,8 +36,8 @@ export class GachaExecutor {
   config: GachaConfig;
 
   constructor(
-    gachaClientPool: GachaClientPool | null,
     gachaServerPool: GachaServerPool,
+    gachaClientPool?: GachaClientPool,
   ) {
     if (!gachaClientPool) throw new Error("gachaClientPool is null");
 
@@ -86,14 +86,12 @@ export class GachaExecutor {
 
   doGachaOnce() {
     const rarity = getRandomRarity(this.state, this.availCharInfo.perAvailList);
-    if (rarity === null) throw new Error("rarity is null");
 
     const { charId } = getRandomCharWithRarity(
       this.availCharInfo.perAvailList,
       this.upCharInfo,
       rarity,
     );
-    if (charId === null) throw new Error("charId is null");
 
     if (this.state.counter >= this.config.gachaTimes) {
       return null;
@@ -140,7 +138,7 @@ export class GachaExecutor {
     // LINKAGE 联动多 Up 5 星保底另一 Up 5 星角色
     if (
       this.gachaRuleType === GachaRuleType.LINKAGE &&
-      rarity === 4 &&
+      rarity === RarityRank.TIER_5 &&
       hasOneOf5StarCharGotten(this.state, this.upCharInfo)
     ) {
       const up5StarUngottenList = getUp5StarUngottenList(

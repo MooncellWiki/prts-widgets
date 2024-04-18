@@ -31,15 +31,13 @@ async function main() {
   const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
   const { gachaPoolId, gachaBannerFile } = gachaDataRoot?.dataset || {};
 
-  const gachaClientPool =
-    gachaClientTable.gachaPoolClient.find(
-      (pool) => pool.gachaPoolId === gachaPoolId,
-    ) || null;
+  const gachaClientPool = gachaClientTable.gachaPoolClient.find(
+    (pool) => pool.gachaPoolId === gachaPoolId,
+  );
 
-  const newbeeClientPool =
-    gachaClientTable.newbeeGachaPoolClient.find(
-      (pool) => pool.gachaPoolId === gachaPoolId,
-    ) || null;
+  const newbeeClientPool = gachaClientTable.newbeeGachaPoolClient.find(
+    (pool) => pool.gachaPoolId === gachaPoolId,
+  );
 
   const gachaServerPool = gachaServerTable.gachaPoolClient.find(
     (pool) => pool.gachaPoolId === gachaPoolId,
