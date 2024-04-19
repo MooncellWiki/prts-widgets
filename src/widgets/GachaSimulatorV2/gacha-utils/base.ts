@@ -46,8 +46,6 @@ export class GachaExecutor {
 
     let guarantee6Up6Avail = 0;
     let guarantee6Up6Count = 0;
-    const guarantee6Avail = 0;
-    const guarantee6Count = 0;
 
     if (this.gachaRuleType === GachaRuleType.SINGLE) {
       guarantee6Up6Avail = 1;
@@ -65,8 +63,8 @@ export class GachaExecutor {
       guarantee5Count: gachaClientPool.guarantee5Count,
       guarantee6Up6Avail,
       guarantee6Up6Count,
-      guarantee6Avail,
-      guarantee6Count,
+      guarantee6Avail: 0,
+      guarantee6Count: 0,
       gachaTimes: Number.POSITIVE_INFINITY,
     };
 
