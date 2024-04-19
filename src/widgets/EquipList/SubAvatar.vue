@@ -4,6 +4,7 @@ import { defineComponent, inject, ref } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
+import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
@@ -44,6 +45,8 @@ export default defineComponent({
       showEquipList,
       getCharEquip,
       loading,
+      LANGUAGES,
+      locale: getLanguage(),
     };
   },
 });
@@ -76,7 +79,16 @@ export default defineComponent({
         "
       />
       <div v-if="showInfo" class="flex items-center justify-center w-full">
-        <span class="font-bold">{{ char.name }}</span>
+        <span v-if="locale == LANGUAGES.JA" class="font-bold">
+          {{ char.nameJP ?? char.name }}
+        </span>
+        <span
+          v-else-if="locale == LANGUAGES.EN || locale == LANGUAGES.KO"
+          class="font-bold"
+        >
+          {{ char.nameEN ?? char.name }}
+        </span>
+        <span v-else class="font-bold">{{ char.name }}</span>
       </div>
     </div>
     <div v-if="showInfo" class="w-full">

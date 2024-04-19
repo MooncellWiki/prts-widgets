@@ -17,8 +17,8 @@ import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
-import { customLabel } from "./consts";
 import { getEquipData } from "./equipData";
+import { customLabel } from "./i18n";
 import { Char } from "./types";
 
 type EquipRow = {
@@ -142,24 +142,19 @@ export default defineComponent({
     onBeforeMount(async () => {
       loading.value = true;
       loadingCount.value += charList.value.length;
-      let promises = charList.value.map((char) => {
-        return getEquipData(char.name);
-      });
-      Promise.all(promises).then((values) => {
-        for (const v of values) {
-          const rawdata = (v ?? {}) as DOMStringMap[];
-          for (const e of rawdata) {
-            charEquipData.value.push({
-              name: e.name ?? "",
-              type: e.type ?? "",
-              operator: e.opt ?? "",
-              data: e ?? [],
-            });
-          }
+      for (const c of charList.value) {
+        const rawdata = ((await getEquipData(c.name)) ?? []) as DOMStringMap[];
+        for (const e of rawdata) {
+          charEquipData.value.push({
+            name: e.name ?? "",
+            type: e.type ?? "",
+            operator: e.opt ?? "",
+            data: e ?? [],
+          });
         }
-        loading.value = false;
-        loadingCount.value -= charList.value.length;
-      });
+        loadingCount.value -= 1;
+      }
+      loading.value = false;
     });
     return {
       createData,

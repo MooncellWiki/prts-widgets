@@ -7,6 +7,8 @@ export interface SelectionConfig {
 
 export interface Char {
   name: string;
+  nameEN: string;
+  nameJP: string;
   type: string;
   subtype: string;
   rarity: string | number;

@@ -8,7 +8,7 @@ import { getLanguage } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import SubAvatar from "./SubAvatar.vue";
-import { customLabel } from "./consts";
+import { customLabel } from "./i18n";
 import { Char } from "./types";
 
 export default defineComponent({
@@ -61,7 +61,7 @@ export default defineComponent({
 
 <template>
   <NCard
-    class="w-full 2xl:w-[calc(50%-0.5rem)] m-1"
+    class="w-full m-1"
     header-style="text-align: center;"
     size="small"
     hoverable

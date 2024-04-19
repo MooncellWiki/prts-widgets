@@ -5,7 +5,6 @@ import {
   nextTick,
   onMounted,
   provide,
-  reactive,
   ref,
   watch,
 } from "vue";
@@ -28,12 +27,13 @@ import { isMobileSkin } from "@/utils/utils";
 import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
+import { rarityMap } from "./consts";
 import {
   getFilterType,
   getFilterRarity,
+  getLocaleType,
   customLabel,
-  rarityMap,
-} from "./consts";
+} from "./i18n";
 import { Char } from "./types";
 import { updateTippy } from "./utils";
 
@@ -110,7 +110,10 @@ export default defineComponent({
         Object.entries(sortedCharData.value)
           .filter(([k, v]) => {
             if (states.sub.length > 0 && !states.sub.includes(k)) return false;
-            if (states.type.length > 0 && !states.type.includes(v[0].type))
+            if (
+              states.type.length > 0 &&
+              !states.type.includes(getLocaleType(v[0].type, locale))
+            )
               return false;
             return true;
           })
@@ -142,8 +145,8 @@ export default defineComponent({
     };
     const charDataTable = computed<Char[]>(() => {
       let list: Char[] = [];
-      let skip = pagination.pageSize * (pagination.page - 1);
-      let size = pagination.pageSize;
+      let skip = pagination.value.pageSize * (pagination.value.page - 1);
+      let size = pagination.value.pageSize;
       for (const subtype in filteredCharData.value) {
         list = list.concat(filteredCharData.value[subtype]);
         if (skip > 0 && list.length <= skip) {
@@ -161,7 +164,7 @@ export default defineComponent({
       return list;
     });
     watch(states.value, () => {
-      pagination.page = 1;
+      pagination.value.page = 1;
     });
 
     const showChars = ref<string[]>([]);
@@ -169,7 +172,7 @@ export default defineComponent({
     const loadingCount = ref(0);
     provide("loadingCount", loadingCount);
 
-    const pagination = reactive({
+    const pagination = ref({
       page: 1,
       pageSize: 5,
       pageSizes: customLabel[locale].pagination,
@@ -185,7 +188,7 @@ export default defineComponent({
           action: "ask",
           format: "json",
           query:
-            "[[分类:拥有专属模组的干员]]|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
+            "[[分类:拥有专属模组的干员]]|?干员外文名|?干员名jp|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
           api_version: "2",
           utf8: "1",
         })}`,
@@ -197,6 +200,8 @@ export default defineComponent({
       ).map<Char>(([k, v]) => {
         return {
           name: k,
+          nameEN: v.printouts["干员外文名"][0] as string,
+          nameJP: v.printouts["干员名jp"][0] as string,
           type: v.printouts["职业"][0] as string,
           subtype: v.printouts["子职业"][0] as string,
           rarity: v.printouts["稀有度"][0] as string,
@@ -325,7 +330,7 @@ export default defineComponent({
           </div>
         </template>
         <div v-if="operatorShow">
-          <div class="w-full flex flex-col 2xl:flex-row flex-wrap">
+          <div class="w-full flex flex-col flex-wrap">
             <SubContainer
               v-for="(chars, subtype) in filteredCharData"
               :key="subtype"

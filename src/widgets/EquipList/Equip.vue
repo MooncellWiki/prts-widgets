@@ -18,8 +18,9 @@ import { getLanguage } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
-import { colorMap, statsStyleMap, customLabel } from "./consts";
+import { colorMap, statsStyleMap } from "./consts";
 import { getEquipData } from "./equipData";
+import { customLabel } from "./i18n";
 import { processLink, processMaterial, updateTippy } from "./utils";
 
 function getStatColor(type: string, stat: string): string {
