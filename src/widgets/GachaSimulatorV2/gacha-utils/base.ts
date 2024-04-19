@@ -19,12 +19,10 @@ import {
 } from "./common";
 import {
   applyEnsure5StarRule,
-  applyEnsure6StarRule,
   applyEnsureUp6StarRule,
   getUp5StarUngottenList,
   hasOneOf5StarCharGotten,
   shouldApplyEnsure5StarRule,
-  shouldApplyEnsure6StarRule,
   shouldApplyEnsureUp6StarRule,
 } from "./rule";
 
@@ -48,8 +46,8 @@ export class GachaExecutor {
 
     let guarantee6Up6Avail = 0;
     let guarantee6Up6Count = 0;
-    let guarantee6Avail = 0;
-    let guarantee6Count = 0;
+    const guarantee6Avail = 0;
+    const guarantee6Count = 0;
 
     if (this.gachaRuleType === GachaRuleType.SINGLE) {
       guarantee6Up6Avail = 1;
@@ -60,16 +58,6 @@ export class GachaExecutor {
       guarantee6Up6Avail = 1;
       guarantee6Up6Count =
         gachaClientPool.linkageParam.guaranteeTarget6Count || 120;
-    }
-
-    if (this.gachaRuleType === GachaRuleType.ATTAIN) {
-      guarantee6Avail = 1;
-      guarantee6Count = 10;
-    }
-
-    if (this.gachaRuleType === GachaRuleType.CLASSIC_ATTAIN) {
-      guarantee6Avail = 1;
-      guarantee6Count = 10;
     }
 
     this.config = {
@@ -151,19 +139,6 @@ export class GachaExecutor {
         console.log("联动保底 5 星角色", charId);
         result = { charId, rarity: RarityRank.TIER_5 };
       }
-    }
-
-    if (
-      this.gachaRuleType === GachaRuleType.ATTAIN &&
-      shouldApplyEnsure6StarRule(this.state)
-    ) {
-      const ruleResult = applyEnsure6StarRule(
-        this.state,
-        this.availCharInfo.perAvailList,
-        this.upCharInfo,
-        rarity,
-      );
-      if (ruleResult) result = ruleResult;
     }
 
     if (this.state.results[result.charId]) this.state.results[result.charId]++;
