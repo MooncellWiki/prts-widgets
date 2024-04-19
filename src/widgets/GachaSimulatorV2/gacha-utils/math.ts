@@ -12,8 +12,8 @@ export function weightedRandom<T>(
 ): { item: T; index: number } {
   if (items.length === 0 || weights.length === 0)
     throw new Error("Items or Weights must not be empty");
-  if (weights.length !== items.length)
-    throw new Error("Each item should have a weight");
+  if (items.length !== weights.length)
+    throw new Error("Items and Weights must be of the same size");
 
   const cumulativeWeights: Array<number> = [];
   for (const [i, weight] of weights.entries()) {
@@ -21,7 +21,9 @@ export function weightedRandom<T>(
   }
   const maxCumulativeWeight = cumulativeWeights.at(-1);
   if (!maxCumulativeWeight) {
-    throw new Error("Got falsy maxCumulativeWeight");
+    throw new Error(
+      `Max cumulative weight is falsy value: ${maxCumulativeWeight}`,
+    );
   }
 
   const randomNumber = maxCumulativeWeight * Math.random();
@@ -34,5 +36,5 @@ export function weightedRandom<T>(
     }
   }
 
-  throw new Error("unreachable");
+  throw new Error("Failed to select an item");
 }
