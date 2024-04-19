@@ -1,14 +1,19 @@
-import { RarityRankString } from "./types";
+import { RarityRank } from "./types";
+
 /**
- * https://prts.wiki/w/%E5%AF%BB%E8%AE%BF%E8%A7%84%E5%88%99
+ * https://prts.wiki/id/52144 寻访规则
  */
 export enum GachaRuleType {
   /**
-   * 常驻标准寻访
+   * 通用规则：
    * 如果连续50次没有获得6★干员，则下一次获得6★干员的概率将从原本的2%提升至4%，如果该次还没有寻访到6★干员，则下一次寻访获得6★的概率由4%提升到6%。
    * 依此类推，每次提高2%获得6★干员的概率，直至达到100%时必定获得6★干员。
    * 任何时候在【标准寻访】中获得一位6★干员，则下一次在【标准寻访】中获得6★干员的概率将恢复到2%。
    * 每开启一个新的寻访池，在其中的前10次寻访内必定获得一名5★或以上的干员，每个寻访池限一次。
+   */
+
+  /**
+   * 常驻标准寻访
    */
   NORMAL = "NORMAL",
   /**
@@ -69,7 +74,7 @@ export interface GachaPoolClientData {
   CDSecColor: string;
   gachaRuleType: GachaRuleType;
   dynMeta?: {
-    rarityPickCharDict: Record<keyof typeof RarityRankString, string[]>;
+    rarityPickCharDict: Record<keyof typeof RarityRank, string[]>;
   };
   linkageRuleId: string;
   linkageParam: Record<string, any>;

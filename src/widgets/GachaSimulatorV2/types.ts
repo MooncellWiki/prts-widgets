@@ -11,24 +11,14 @@ export interface GachaDetail {
   detailInfo: GachaDetailData;
 }
 
-export enum RarityRank {
-  TIER_1,
-  TIER_2,
-  TIER_3,
-  TIER_4,
-  TIER_5,
-  TIER_6,
-  E_NUM,
-}
-
-export const RarityRankString = {
-  TIER_1: RarityRank.TIER_1,
-  TIER_2: RarityRank.TIER_2,
-  TIER_3: RarityRank.TIER_3,
-  TIER_4: RarityRank.TIER_4,
-  TIER_5: RarityRank.TIER_5,
-  TIER_6: RarityRank.TIER_6,
-  E_NUM: RarityRank.E_NUM,
+export const RarityRank = {
+  TIER_1: 0,
+  TIER_2: 1,
+  TIER_3: 2,
+  TIER_4: 3,
+  TIER_5: 4,
+  TIER_6: 5,
+  E_NUM: 6,
 };
 
 export enum GachaType {
@@ -81,7 +71,7 @@ export interface GachaObject {
 }
 
 export interface GachaWeightUpChar {
-  rarityRank: RarityRank;
+  rarityRank: keyof typeof RarityRank;
   charId: string;
   weight: number;
 }
