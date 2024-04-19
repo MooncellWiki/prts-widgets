@@ -67,6 +67,11 @@ export class GachaExecutor {
       guarantee6Count = 10;
     }
 
+    if (this.gachaRuleType === GachaRuleType.CLASSIC_ATTAIN) {
+      guarantee6Avail = 1;
+      guarantee6Count = 10;
+    }
+
     this.config = {
       guarantee5Avail: gachaClientPool.guarantee5Avail,
       guarantee5Count: gachaClientPool.guarantee5Count,
