@@ -73,10 +73,6 @@ export class NewbeeGachaExecutor {
 
     this.state.counter++;
 
-    // 6 星计数
-    if (rarity === RarityRank.TIER_6) this.state.non6StarCount = 0;
-    else this.state.non6StarCount++;
-
     let result = { charId, rarity };
 
     // 前 10 次抽卡 5 星保底
@@ -103,6 +99,10 @@ export class NewbeeGachaExecutor {
 
     if (this.state.results[result.charId]) this.state.results[result.charId]++;
     else this.state.results[result.charId] = 1;
+
+    // 6 星计数
+    if (result.rarity === RarityRank.TIER_6) this.state.non6StarCount = 0;
+    else this.state.non6StarCount++;
 
     return result;
   }
