@@ -116,10 +116,7 @@ export default defineComponent({
           }"
         >
           <div class="flex-none">
-            <img
-              :src="getImagePath(`模组类型_${e.type}.png`)"
-              height="30"
-            />
+            <img :src="getImagePath(`模组类型_${e.type}.png`)" height="30" />
           </div>
           <div class="flex-none color-white font-bold">
             {{ e.type }}
