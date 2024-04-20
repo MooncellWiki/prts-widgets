@@ -56,8 +56,8 @@ export function getAvailListWithRarity(
   return availList;
 }
 
-export function getUpListWithRarity(upCharInfo: GachaUpChar, rarity: number) {
-  return upCharInfo.perCharList.find(
+export function getUpListWithRarity(rarity: number, upCharInfo?: GachaUpChar) {
+  return upCharInfo?.perCharList.find(
     (charList) => charList.rarityRank === rarity,
   );
 }
@@ -91,11 +91,11 @@ export function calculateCharWeights(
 
 export function getRandomCharWithRarity(
   perAvailList: GachaPerAvail[],
-  upCharInfo: GachaUpChar,
   rarity: number,
+  upCharInfo?: GachaUpChar,
 ) {
   const availList = getAvailListWithRarity(perAvailList, rarity);
-  const upList = getUpListWithRarity(upCharInfo, rarity);
+  const upList = getUpListWithRarity(rarity, upCharInfo);
   const charWeights = calculateCharWeights(availList, upList);
 
   const { item: charId } = weightedRandom(

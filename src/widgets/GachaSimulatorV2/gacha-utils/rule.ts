@@ -20,9 +20,9 @@ export function shouldApplyEnsure6StarRule(state: GachaState) {
 
 export function hasOneOf5StarCharGotten(
   state: GachaState,
-  upCharInfo: GachaUpChar,
+  upCharInfo?: GachaUpChar,
 ) {
-  const up5StarUpList = getUpListWithRarity(upCharInfo, RarityRank.TIER_5);
+  const up5StarUpList = getUpListWithRarity(RarityRank.TIER_5, upCharInfo);
   if (!up5StarUpList) return false;
 
   return up5StarUpList.charIdList.some(
@@ -32,9 +32,9 @@ export function hasOneOf5StarCharGotten(
 
 export function getUp5StarUngottenList(
   state: GachaState,
-  upCharInfo: GachaUpChar,
+  upCharInfo?: GachaUpChar,
 ) {
-  const up5StarUpList = getUpListWithRarity(upCharInfo, RarityRank.TIER_5);
+  const up5StarUpList = getUpListWithRarity(RarityRank.TIER_5, upCharInfo);
   if (!up5StarUpList) return [];
 
   const ungottenList = up5StarUpList.charIdList.filter(
@@ -47,8 +47,8 @@ export function getUp5StarUngottenList(
 export function applyEnsure5StarRule(
   state: GachaState,
   perAvailList: GachaPerAvail[],
-  upCharInfo: GachaUpChar,
   rarity: number,
+  upCharInfo?: GachaUpChar,
 ) {
   if (state.counter < state.guarantee5Count && rarity >= RarityRank.TIER_5) {
     state.guarantee5Avail--;
@@ -60,15 +60,15 @@ export function applyEnsure5StarRule(
   if (state.counter === state.guarantee5Count) {
     console.log(`触发 ${state.guarantee5Count} 抽内 5 星保底`);
     state.guarantee5Avail--;
-    return getRandomCharWithRarity(perAvailList, upCharInfo, RarityRank.TIER_5);
+    return getRandomCharWithRarity(perAvailList, RarityRank.TIER_5, upCharInfo);
   }
 }
 
 export function applyEnsure6StarRule(
   state: GachaState,
   perAvailList: GachaPerAvail[],
-  upCharInfo: GachaUpChar,
   rarity: number,
+  upCharInfo?: GachaUpChar,
 ) {
   if (state.counter < state.guarantee6Count && rarity === RarityRank.TIER_6) {
     state.guarantee6Avail--;
@@ -78,7 +78,7 @@ export function applyEnsure6StarRule(
   if (state.counter === state.guarantee6Count) {
     console.log(`触发 ${state.guarantee6Count} 抽内 6 星保底`);
     state.guarantee6Avail--;
-    return getRandomCharWithRarity(perAvailList, upCharInfo, RarityRank.TIER_6);
+    return getRandomCharWithRarity(perAvailList, RarityRank.TIER_6, upCharInfo);
   }
 }
 

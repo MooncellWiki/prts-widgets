@@ -24,7 +24,7 @@ export class NewbeeGachaExecutor {
   gachaRuleType: GachaRuleType = GachaRuleType.NEWBEE;
 
   availCharInfo: GachaAvailChar;
-  upCharInfo: GachaUpChar;
+  upCharInfo?: GachaUpChar;
 
   state: GachaState;
   config: GachaConfig;
@@ -63,8 +63,8 @@ export class NewbeeGachaExecutor {
 
     const { charId } = getRandomCharWithRarity(
       this.availCharInfo.perAvailList,
-      this.upCharInfo,
       rarity,
+      this.upCharInfo,
     );
 
     if (this.state.counter >= this.config.gachaTimes) {
@@ -80,8 +80,8 @@ export class NewbeeGachaExecutor {
       const ruleResult = applyEnsure5StarRule(
         this.state,
         this.availCharInfo.perAvailList,
-        this.upCharInfo,
         rarity,
+        this.upCharInfo,
       );
       if (ruleResult) result = ruleResult;
     }
@@ -91,8 +91,8 @@ export class NewbeeGachaExecutor {
       const ruleResult = applyEnsure6StarRule(
         this.state,
         this.availCharInfo.perAvailList,
-        this.upCharInfo,
         rarity,
+        this.upCharInfo,
       );
       if (ruleResult) result = ruleResult;
     }
