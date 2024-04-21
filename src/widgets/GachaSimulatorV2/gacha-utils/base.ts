@@ -80,8 +80,8 @@ export class GachaExecutor {
 
     const { charId } = getRandomCharWithRarity(
       this.availCharInfo.perAvailList,
-      this.upCharInfo,
       rarity,
+      this.upCharInfo,
     );
 
     if (this.state.counter >= this.config.gachaTimes) {
@@ -97,8 +97,8 @@ export class GachaExecutor {
       const ruleResult = applyEnsure5StarRule(
         this.state,
         this.availCharInfo.perAvailList,
-        this.upCharInfo,
         rarity,
+        this.upCharInfo,
       );
       if (ruleResult) result = ruleResult;
     }
@@ -110,8 +110,8 @@ export class GachaExecutor {
       shouldApplyEnsureUp6StarRule(this.state)
     ) {
       const up6StarCharId = getUpListWithRarity(
-        this.upCharInfo,
         RarityRank.TIER_6,
+        this.upCharInfo,
       )?.charIdList[0];
       if (!up6StarCharId)
         throw new Error(
