@@ -29,7 +29,11 @@ async function main() {
   ]);
 
   const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
-  const { gachaPoolId, gachaBannerFile } = gachaDataRoot?.dataset || {};
+  const { gachaPoolId } = gachaDataRoot?.dataset || {};
+  const gachaBannerFile = gachaDataRoot?.dataset.gachaBannerFile?.replace(
+    / /g,
+    "_",
+  );
 
   const gachaClientPool = gachaClientTable.gachaPoolClient.find(
     (pool) => pool.gachaPoolId === gachaPoolId,
