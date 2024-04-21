@@ -172,7 +172,7 @@ export default defineComponent({
               </span>
               <span v-else>
                 <span class="font=bold">
-                  <span class="mdimdi-arrow-up-drop-circle"></span>
+                  <span class="mdi mdi-arrow-up-drop-circle"></span>
                   &nbsp;特性更新：
                   <span v-html="e.trait"></span>
                 </span>
