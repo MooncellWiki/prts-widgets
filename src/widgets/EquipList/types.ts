@@ -14,3 +14,30 @@ export interface Char {
   rarity: string | number;
   id: number;
 }
+
+export interface CargoEquip {
+  opt: string;
+  name: string;
+  type: string;
+  color: string;
+  hp: string;
+  atk: string;
+  def: string;
+  res: string;
+  time: string;
+  block: string;
+  cost: string;
+  atkspd: string;
+  other: string;
+  add: string;
+  trait: string;
+  talent2: string;
+  talent3: string;
+  lv: string;
+  favor: string;
+  mat: string;
+  mat2: string;
+  mat3: string;
+  mission1: string;
+  mission2: string;
+}

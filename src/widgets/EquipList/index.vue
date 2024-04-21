@@ -28,10 +28,12 @@ import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
 import { rarityMap } from "./consts";
+import { getEquipDataAll } from "./equipData";
 import {
   getFilterType,
   getFilterRarity,
   getLocaleType,
+  getZhType,
   customLabel,
 } from "./i18n";
 import { Char } from "./types";
@@ -80,11 +82,19 @@ export default defineComponent({
     const filterType = getFilterType(locale);
     const filterRarity = getFilterRarity(locale);
     const subProfMap = ref<Record<string, string[]>>({});
+    const filteredSubProfMap = computed(() => {
+      const map: Record<string, string[]> = {};
+      if (states.value.type.length === 0) return subProfMap.value;
+      for (const t of states.value.type) {
+        map[getZhType(t, locale)] = subProfMap.value[getZhType(t, locale)];
+      }
+      return map;
+    });
     const filterSub = computed(() => {
       return {
         title: customLabel[locale].subtypeLabel,
         placeholder: customLabel[locale].subPlaceholder,
-        options: Object.entries(subProfMap.value).map(([k, v]) => {
+        options: Object.entries(filteredSubProfMap.value).map(([k, v]) => {
           return {
             type: "group",
             label: customLabel[locale].subtypeMap[k] ?? k,
@@ -228,6 +238,7 @@ export default defineComponent({
                 Number.parseInt(a.rarity as string);
         });
       }
+      await getEquipDataAll();
 
       nextTick(() => {
         updateTippy();
@@ -319,9 +330,6 @@ export default defineComponent({
         class="selectcard"
       >
         <template #header-extra>
-          <div class="m-1">
-            <span class="text-2xl mdi mdi-information invisible" />
-          </div>
           <div class="m-1 cursor-pointer" @click="operatorShow = false">
             <span class="text-2xl mdi mdi-view-list" />
           </div>

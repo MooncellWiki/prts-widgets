@@ -63,8 +63,8 @@ export default defineComponent({
       for (const e of content.value) {
         for (const v in e) {
           e[v] = e[v]
-            ?.replace(/....UNIQ.*?QINU..../, "")
-            .replace("[[分类:对原文有修正的页面]]", "");
+            ?.replaceAll(/....UNIQ.*?QINU..../g, "")
+            .replaceAll("[[分类:对原文有修正的页面]]", "");
         }
       }
       const seps = document.querySelectorAll(
@@ -116,7 +116,11 @@ export default defineComponent({
           }"
         >
           <div class="flex-none">
-            <img :src="getImagePath(`模组类型_${e.type}.png`)" height="30" />
+            <img
+              :src="getImagePath(`模组类型_${e.type}.png`)"
+              height="30"
+              class="typepic"
+            />
           </div>
           <div class="flex-none color-white font-bold">
             {{ e.type }}
@@ -142,7 +146,10 @@ export default defineComponent({
                 v-for="stats in customLabel[locale].statsMap"
                 :key="stats[0]"
               >
-                <span v-if="e[stats[0]]" class="whitespace-nowrap mx-[0.5em]">
+                <span
+                  v-if="e[stats[0]] != '0'"
+                  class="whitespace-nowrap mx-[0.5em]"
+                >
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
@@ -189,7 +196,7 @@ export default defineComponent({
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[stats[0] + '2']"
+                  v-if="e[stats[0] + '2'] != '0'"
                   class="whitespace-nowrap mx-[0.5em]"
                 >
                   {{ stats[1] }}&nbsp;
@@ -231,7 +238,7 @@ export default defineComponent({
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[stats[0] + '3']"
+                  v-if="e[stats[0] + '3'] != '0'"
                   class="whitespace-nowrap mx-[0.5em]"
                 >
                   {{ stats[1] }}&nbsp;
@@ -386,6 +393,9 @@ export default defineComponent({
 }
 :deep(.rankpic) {
   height: 40px;
+}
+:deep(.typepic) {
+  height: 30px;
 }
 :deep(.ranktext) {
   flex: 16.5 16.5 16.5%;

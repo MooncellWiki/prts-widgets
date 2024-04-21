@@ -12,6 +12,15 @@ export function processMaterial(res: string): string {
   return res;
 }
 
+export function recoverHTML(res: string): string {
+  return res
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll(/&#(.*?);/g, "`");
+}
+
 export function processLink(res: string): string {
   const regexp = /\[\[(.*?)(?=[\]|])\|?(.*?)]]/g;
   const result = res.matchAll(regexp);

@@ -67,7 +67,9 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
             ),
             h("div", [
               h("img", {
-                src: getImagePath(`模组类型_${row.type}_小图.png`),
+                src: getImagePath(
+                  `模组类型_${row.type.replace("Δ", "D")}_小图.png`,
+                ),
                 width: 60,
                 style: {
                   margin: "5px 0",

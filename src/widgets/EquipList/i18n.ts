@@ -352,7 +352,7 @@ export const customLabel = {
     pagination: customPages.jaJP,
     emptyDesc: "結果なし",
     typeLabel: "クラス",
-    filterTitle: "キャラクター フィルター",
+    filterTitle: "オペレーター絞り込み",
     rarityLabel: "レアリティ",
     subPlaceholder: "入力または選択してください",
     subtypeLabel: "クラス細分",
@@ -455,6 +455,12 @@ export function getFilterType(locale: LANGUAGES) {
 export function getLocaleType(type: string, locale: LANGUAGES) {
   return customLabel[locale].typeOptions[
     customLabel[LANGUAGES.ZH].typeOptions.indexOf(type)
+  ];
+}
+
+export function getZhType(type: string, locale: LANGUAGES) {
+  return customLabel[LANGUAGES.ZH].typeOptions[
+    customLabel[locale].typeOptions.indexOf(type)
   ];
 }
 
