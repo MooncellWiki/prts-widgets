@@ -1,36 +1,59 @@
 <script lang="ts">
-import { computed, defineComponent, onMounted, provide, ref } from "vue";
+import {
+  computed,
+  defineComponent,
+  nextTick,
+  onMounted,
+  provide,
+  ref,
+  watch,
+} from "vue";
 
 import {
-  type CollapseProps,
-  NButton,
   NCard,
-  NCollapse,
-  NCollapseItem,
   NCollapseTransition,
   NConfigProvider,
   NEmpty,
   NLayout,
-  NTag,
-  NTooltip,
+  NScrollbar,
+  NPagination,
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
+import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
+import { isMobileSkin } from "@/utils/utils";
 
-import Equip from "./Equip.vue";
+import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
+import { rarityMap } from "./consts";
+import { getEquipDataAll } from "./equipData";
+import {
+  getFilterType,
+  getFilterRarity,
+  getLocaleType,
+  getZhType,
+  customLabel,
+} from "./i18n";
 import { Char } from "./types";
+import { updateTippy } from "./utils";
 
 export function onClickTag(charname: string): void {
   const items = document.querySelectorAll(".equipitem");
+  const affix = document.querySelectorAll(".affix")[0];
   const ele = Array.from(items).find((item) => {
     return (item as HTMLElement).dataset?.opt === charname;
   });
+  const affixStatus = affix.classList.contains("n-affix--affixed") ? 1 : 2;
+  const affixHeight = affix.getBoundingClientRect().height;
 
   const y = ele?.getBoundingClientRect().y ?? Number.NaN;
-  window.scrollBy({ behavior: "smooth", top: y - 10, left: 0 });
+  window.scrollBy({
+    behavior: "smooth",
+    top: y - (affixStatus * affixHeight + 10),
+    left: 0,
+  });
 }
 
 export default defineComponent({
@@ -38,51 +61,47 @@ export default defineComponent({
     OptionsGroup,
     FilterSub,
     NCard,
-    NCollapse,
-    NCollapseItem,
     NConfigProvider,
     NLayout,
     NCollapseTransition,
-    NTooltip,
     NEmpty,
-    NButton,
-    NTag,
-    Equip,
+    NScrollbar,
     SubContainer,
+    EquipTable,
+    NPagination,
   },
   setup() {
     const filterShow = ref(true);
     const operatorShow = ref(true);
     const resultShow = ref(true);
-    const helpShow = ref(false);
-    const andMode = ref(true);
+    const isMobile = isMobileSkin();
+    const i18nConfig = getNaiveUILocale();
     const { theme, toggleDark } = useTheme();
-    const expandedChar = ref<string[]>([]);
-    const filterType = {
-      title: "职业",
-      options: ["先锋", "近卫", "重装", "狙击", "术师", "医疗", "辅助", "特种"],
-    };
-    const filterRarity = {
-      title: "稀有度",
-      options: ["4★", "5★", "6★"],
-    };
-    const rarityMap: Record<string, string> = {
-      "3": "4★",
-      "4": "5★",
-      "5": "6★",
-    };
+    const locale = getLanguage();
+
+    const filterType = getFilterType(locale);
+    const filterRarity = getFilterRarity(locale);
     const subProfMap = ref<Record<string, string[]>>({});
+    const filteredSubProfMap = computed(() => {
+      const map: Record<string, string[]> = {};
+      if (states.value.type.length === 0) return subProfMap.value;
+      for (const t of states.value.type) {
+        map[getZhType(t, locale)] = subProfMap.value[getZhType(t, locale)];
+      }
+      return map;
+    });
     const filterSub = computed(() => {
       return {
-        title: "子职业",
-        options: Object.entries(subProfMap.value).map(([k, v]) => {
+        title: customLabel[locale].subtypeLabel,
+        placeholder: customLabel[locale].subPlaceholder,
+        options: Object.entries(filteredSubProfMap.value).map(([k, v]) => {
           return {
             type: "group",
-            label: k,
+            label: customLabel[locale].subtypeMap[k] ?? k,
             key: k,
             children: v.map((subProf) => {
               return {
-                label: subProf,
+                label: customLabel[locale].subtypeMap[subProf] ?? subProf,
                 value: subProf,
               };
             }),
@@ -90,25 +109,21 @@ export default defineComponent({
         }),
       };
     });
-    const equipChar = ref<string[]>([]);
-    const selectedChar = ref<Char[]>([]);
     const sortedCharData = ref<Record<string, Char[]>>({});
     const states = ref<Record<string, string[]>>({
       type: [],
       rarity: [],
       sub: [],
     });
-    const addOrDeleteChar = (char: Char) => {
-      selectedChar.value.includes(char)
-        ? selectedChar.value.splice(selectedChar.value.indexOf(char), 1)
-        : selectedChar.value.push(char);
-    };
     const filterIntersection = (states: Record<string, string[]>) => {
       return Object.fromEntries(
         Object.entries(sortedCharData.value)
           .filter(([k, v]) => {
             if (states.sub.length > 0 && !states.sub.includes(k)) return false;
-            if (states.type.length > 0 && !states.type.includes(v[0].type))
+            if (
+              states.type.length > 0 &&
+              !states.type.includes(getLocaleType(v[0].type, locale))
+            )
               return false;
             return true;
           })
@@ -128,63 +143,62 @@ export default defineComponent({
           .filter(([, v]) => v.length > 0),
       );
     };
-    const filterUnion = (states: Record<string, string[]>) => {
-      return Object.fromEntries(
-        Object.entries(sortedCharData.value)
-          .filter(([k, v]) => {
-            if (
-              (states.sub.length > 0 && states.sub.includes(k)) ||
-              (states.type.length > 0 && states.type.includes(v[0].type))
-            )
-              return true;
-            return false;
-          })
-          .map(([k, v]) => {
-            return [
-              [k],
-              v.filter((char) => {
-                if (
-                  states.rarity.length > 0 &&
-                  !states.rarity.includes(rarityMap[char.rarity.toString()])
-                )
-                  return false;
-                return true;
-              }),
-            ];
-          })
-          .filter(([, v]) => v.length > 0),
-      );
-    };
     const filteredCharData = computed<Record<string, Char[]>>(() => {
-      return andMode.value
-        ? filterIntersection(states.value)
-        : filterUnion(states.value);
+      return filterIntersection(states.value);
+    });
+    const getFilteredCharCount = () => {
+      let count = 0;
+      for (const sub in filteredCharData.value) {
+        count += filteredCharData.value[sub].length;
+      }
+      return count;
+    };
+    const charDataTable = computed<Char[]>(() => {
+      let list: Char[] = [];
+      let skip = pagination.value.pageSize * (pagination.value.page - 1);
+      let size = pagination.value.pageSize;
+      for (const subtype in filteredCharData.value) {
+        list = list.concat(filteredCharData.value[subtype]);
+        if (skip > 0 && list.length <= skip) {
+          continue;
+        }
+        if (skip > 0 && list.length > skip) {
+          list.splice(0, skip);
+          skip = 0;
+        }
+        if (list.length > size) {
+          list = list.slice(0, size);
+          break;
+        }
+      }
+      return list;
+    });
+    watch(states.value, () => {
+      pagination.value.page = 1;
     });
 
-    const toggleCollapse = () => {
-      operatorShow.value = false;
-      resultShow.value = true;
-      if (window.screen.availWidth < 1024) filterShow.value = false;
-      equipChar.value = selectedChar.value.map((v) => v.name);
-    };
-    const expandAll = () => {
-      expandedChar.value = equipChar.value.concat();
-    };
-    const collapseAll = () => {
-      expandedChar.value.splice(0);
-    };
-    const onClickTitle: CollapseProps["onItemHeaderClick"] = ({ name }) => {
-      expandedChar.value.includes(name)
-        ? expandedChar.value.splice(expandedChar.value.indexOf(name), 1)
-        : expandedChar.value.push(String(name));
-    };
+    const showChars = ref<string[]>([]);
+    provide("showChars", showChars);
+    const loadingCount = ref(0);
+    provide("loadingCount", loadingCount);
+
+    const pagination = ref({
+      page: 1,
+      pageSize: 5,
+      pageSizes: customLabel[locale].pagination,
+      pageSlot: isMobile ? 5 : 9,
+      pickSize: () => {
+        return isMobile ? "small" : "medium";
+      },
+    });
+
     onMounted(async () => {
       const resp = await fetch(
         `/api.php?${new URLSearchParams({
           action: "ask",
           format: "json",
           query:
-            "[[分类:拥有专属模组的干员]]|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
+            "[[分类:拥有专属模组的干员]]|?干员外文名|?干员名jp|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
           api_version: "2",
           utf8: "1",
         })}`,
@@ -196,6 +210,8 @@ export default defineComponent({
       ).map<Char>(([k, v]) => {
         return {
           name: k,
+          nameEN: v.printouts["干员外文名"][0] as string,
+          nameJP: v.printouts["干员名jp"][0] as string,
           type: v.printouts["职业"][0] as string,
           subtype: v.printouts["子职业"][0] as string,
           rarity: v.printouts["稀有度"][0] as string,
@@ -222,8 +238,12 @@ export default defineComponent({
                 Number.parseInt(a.rarity as string);
         });
       }
+      await getEquipDataAll();
+
+      nextTick(() => {
+        updateTippy();
+      });
     });
-    provide("selectedChar", selectedChar);
     return {
       filterType,
       filterRarity,
@@ -232,47 +252,40 @@ export default defineComponent({
       filteredCharData,
       filterShow,
       operatorShow,
-      helpShow,
-      andMode,
-      selectedChar,
-      equipChar,
-      toggleCollapse,
       theme,
       toggleDark,
       resultShow,
-      expandedChar,
-      expandAll,
-      collapseAll,
-      onClickTitle,
-      addOrDeleteChar,
       onClickTag,
+      charDataTable,
+      pagination,
+      getFilteredCharCount,
+      i18nConfig,
+      locale,
+      loadingCount,
+      customLabel,
     };
   },
 });
 </script>
 
 <template>
-  <NConfigProvider :theme="theme" preflight-style-disabled>
+  <NConfigProvider
+    :theme="theme"
+    :locale="i18nConfig.locale"
+    :date-locale="i18nConfig.dateLocale"
+    preflight-style-disabled
+  >
     <NLayout class="md:p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
-      <NCard title="干员筛选" header-style="text-align: center;" size="small">
+      <NCard
+        :title="customLabel[locale].filterTitle"
+        header-style="text-align: center;"
+        size="small"
+      >
         <template #header-extra>
           <div class="m-1 cursor-pointer" @click="toggleDark()">
             <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
             <span v-else class="text-2xl mdi mdi-brightness-4" />
           </div>
-          <NTooltip trigger="hover">
-            <template #trigger>
-              <div class="m-1 cursor-pointer" @click="andMode = !andMode">
-                <span v-if="andMode" class="text-2xl mdi mdi-set-center" />
-                <span v-else class="text-2xl mdi mdi-set-all" />
-              </div>
-            </template>
-            点击改变筛选模式<br /><span
-              class="mdi mdi-set-center"
-            />：同时满足所有筛选条件<br /><span
-              class="mdi mdi-set-all"
-            />：满足职业和子职业的其中一个筛选条件
-          </NTooltip>
           <div class="m-1 cursor-pointer" @click="filterShow = !filterShow">
             <span v-if="filterShow" class="text-2xl mdi mdi-chevron-up" />
             <span v-else class="text-2xl mdi mdi-chevron-down" />
@@ -286,6 +299,7 @@ export default defineComponent({
                   v-model="states.type"
                   :title="filterType.title"
                   :options="filterType.options"
+                  :disabled="loadingCount > 0"
                 />
               </tr>
               <tr>
@@ -293,6 +307,7 @@ export default defineComponent({
                   v-model="states.rarity"
                   :title="filterRarity.title"
                   :options="filterRarity.options"
+                  :disabled="loadingCount > 0"
                 />
               </tr>
               <tr>
@@ -300,76 +315,30 @@ export default defineComponent({
                   v-model:selected="states.sub"
                   :title="filterSub.title"
                   :options="filterSub.options"
+                  :placeholder="filterSub.placeholder"
+                  :disabled="loadingCount > 0"
                 />
               </tr>
             </tbody>
           </table>
         </NCollapseTransition>
       </NCard>
-      <NCard size="small">
-        <div class="flex flex-row items-center">
-          <NCard size="small">
-            <NTag
-              v-for="(char, ind) in selectedChar"
-              :key="ind"
-              class="m-1 cursor-pointer"
-              type="info"
-              closable
-              @close="addOrDeleteChar(char)"
-              @click="onClickTag(char.name)"
-            >
-              {{ char.name }}
-            </NTag>
-            <span v-if="selectedChar.length === 0" class="text-sm color-gray">
-              选中的干员在此显示，点击头像以选择干员。点击标签可跳转到对应干员的模组信息。
-            </span>
-          </NCard>
-          <div class="flex flex-col lg:flex-row">
-            <NButton
-              class="m-1"
-              strong
-              secondary
-              type="error"
-              @click="
-                () => {
-                  selectedChar.splice(0);
-                }
-              "
-            >
-              <span class="text-xl mdi mdi-close-circle" />
-            </NButton>
-            <NButton
-              class="m-1"
-              strong
-              secondary
-              type="primary"
-              @click="
-                () => {
-                  toggleCollapse();
-                  collapseAll();
-                }
-              "
-            >
-              <span class="text-xl mdi mdi-check-circle" />
-            </NButton>
-          </div>
-        </div>
-      </NCard>
-      <NCard title="干员选择" header-style="text-align: center;" size="small">
+      <NCard
+        title=" "
+        header-style="text-align: center;"
+        size="small"
+        class="selectcard"
+      >
         <template #header-extra>
-          <div class="m-1">
-            <span class="text-2xl mdi mdi-information invisible" />
+          <div class="m-1 cursor-pointer" @click="operatorShow = false">
+            <span class="text-2xl mdi mdi-view-list" />
           </div>
-          <div class="m-1">
-            <span class="text-2xl mdi mdi-information invisible" />
-          </div>
-          <div class="m-1 cursor-pointer" @click="operatorShow = !operatorShow">
-            <span v-if="operatorShow" class="text-2xl mdi mdi-chevron-up" />
-            <span v-else class="text-2xl mdi mdi-chevron-down" />
+          <div class="m-1 cursor-pointer" @click="operatorShow = true">
+            <span class="text-2xl mdi mdi-view-grid" />
           </div>
         </template>
-        <NCollapseTransition :show="operatorShow">
-          <div class="w-full flex flex-col lg:flex-row flex-wrap">
+        <div v-if="operatorShow">
+          <div class="w-full flex flex-col flex-wrap">
             <SubContainer
               v-for="(chars, subtype) in filteredCharData"
               :key="subtype"
@@ -379,50 +348,60 @@ export default defineComponent({
           </div>
           <NEmpty
             v-if="Object.keys(filteredCharData).length === 0"
-            description="无结果"
+            :description="customLabel[locale].emptyDesc"
           >
             <template #icon>
               <span class="text-5xl mdi mdi-account-filter-outline" />
             </template>
           </NEmpty>
-        </NCollapseTransition>
-      </NCard>
-      <NCard
-        v-if="equipChar.length > 0"
-        title="查询结果"
-        header-style="text-align: center;"
-        size="small"
-      >
-        <template #header-extra>
-          <div class="m-1 cursor-pointer" @click="expandAll">
-            <span class="text-2xl mdi mdi-arrow-expand" />
-          </div>
-          <div class="m-1 cursor-pointer" @click="collapseAll">
-            <span class="text-2xl mdi mdi-arrow-collapse" />
-          </div>
-          <div class="m-1 cursor-pointer" @click="resultShow = !resultShow">
-            <span v-if="resultShow" class="text-2xl mdi mdi-chevron-up" />
-            <span v-else class="text-2xl mdi mdi-chevron-down" />
-          </div>
-        </template>
-        <NCollapseTransition :show="resultShow">
-          <NCollapse
-            :expanded-names="expandedChar"
-            @item-header-click="onClickTitle"
-          >
-            <NCollapseItem
-              v-for="(name, ind) in equipChar"
-              :key="ind"
-              :name="name"
-              :title="name"
-              display-directive="if"
-              class="equipitem"
-              :data-opt="name"
-            >
-              <Equip :name="name"></Equip>
-            </NCollapseItem>
-          </NCollapse>
-        </NCollapseTransition>
+        </div>
+        <div v-if="!operatorShow">
+          <NPagination
+            v-model:page="pagination.page"
+            class="justify-center my-2"
+            :item-count="getFilteredCharCount()"
+            :page-size="pagination.pageSize"
+            :page-sizes="pagination.pageSizes"
+            :page-slot="pagination.pageSlot"
+            :size="pagination.pickSize()"
+            show-size-picker
+            @update:page="
+              (page) => {
+                pagination.page = page;
+              }
+            "
+            @update:page-size="
+              (size) => {
+                pagination.pageSize = size;
+                pagination.page = 1;
+              }
+            "
+          />
+          <NScrollbar trigger="none" :x-scrollable="true">
+            <EquipTable :chars="charDataTable"></EquipTable>
+          </NScrollbar>
+          <NPagination
+            v-model:page="pagination.page"
+            class="justify-center my-2"
+            :item-count="getFilteredCharCount()"
+            :page-size="pagination.pageSize"
+            :page-sizes="pagination.pageSizes"
+            :page-slot="pagination.pageSlot"
+            :size="pagination.pickSize()"
+            show-size-picker
+            @update:page="
+              (page) => {
+                pagination.page = page;
+              }
+            "
+            @update:page-size="
+              (size) => {
+                pagination.pageSize = size;
+                pagination.page = 1;
+              }
+            "
+          />
+        </div>
       </NCard>
     </NLayout>
   </NConfigProvider>

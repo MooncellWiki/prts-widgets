@@ -1,57 +1,98 @@
 <script lang="ts">
 import type { PropType, Ref } from "vue";
-import { defineComponent, inject, ref, watch } from "vue";
+import { defineComponent, inject, ref } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
+import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
+import Equip from "./Equip.vue";
+import { getEquipData } from "./equipData";
 import type { Char } from "./types";
 
 export default defineComponent({
   name: "SubAvatar",
+  components: {
+    Equip,
+  },
   props: {
     char: {
       type: Object as PropType<Char>,
       required: true,
     },
+    show: {
+      type: Boolean,
+      default: false,
+    },
   },
-  emits: ["update:char"],
+  emits: ["update:char", "update:show"],
   setup(props, { emit }) {
     const charRef = useVModel(props, "char", emit);
-    const selectedChar = inject("selectedChar") as Ref<Char[]>;
-    const addOrDeleteChar = (char: Char) => {
-      selectedChar.value.includes(char)
-        ? selectedChar.value.splice(selectedChar.value.indexOf(char))
-        : selectedChar.value.push(char);
+    const showInfo = useVModel(props, "show", emit);
+    const showChars = inject("showChars") as Ref<string[]>;
+    const equipRef = ref<DOMStringMap[]>([]);
+    const getCharEquip = async () => {
+      equipRef.value = await getEquipData(props.char.name);
     };
-    const getBackdrop = (char: Char) => {
-      return selectedChar.value.includes(char) ? "invert(25%)" : "";
-    };
-    const src = ref(getImagePath(`头像_${charRef.value.name}_2.png`));
-    watch(charRef.value, () => {
-      src.value = getImagePath(`头像_${charRef.value.name}_2.png`);
-    });
+    const loading = ref(false);
+    const showEquipList = ref<string[]>([]);
     return {
       getImagePath,
-      src,
       charRef,
-      getBackdrop,
-      addOrDeleteChar,
+      showInfo,
+      showChars,
+      showEquipList,
+      getCharEquip,
+      loading,
+      LANGUAGES,
+      locale: getLanguage(),
     };
   },
 });
 </script>
 
 <template>
-  <img
-    class="m-[2px] cursor-pointer"
-    :src="getImagePath(`头像_${charRef.name}_2.png`)"
-    width="65"
-    height="65"
-    :style="{
-      backdropFilter: getBackdrop(charRef),
-    }"
-    @click="addOrDeleteChar(charRef)"
-  />
+  <div class="flex flex-col" :style="{ width: showInfo ? '100%' : 'auto' }">
+    <div class="flex">
+      <img
+        class="m-[2px] cursor-pointer"
+        :src="getImagePath(`头像_${charRef.name}_2.png`)"
+        width="60"
+        height="60"
+        @click="
+          async () => {
+            if (showChars.includes(char.name)) {
+              showInfo = false;
+              showChars.splice(
+                showChars.findIndex((c) => c == char.name),
+                1,
+              );
+            } else {
+              loading = true;
+              await getCharEquip();
+              showInfo = true;
+              showChars.push(char.name);
+              loading = false;
+            }
+          }
+        "
+      />
+      <div v-if="showInfo" class="flex items-center justify-center w-full">
+        <span v-if="locale == LANGUAGES.JA" class="font-bold">
+          {{ char.nameJP ?? char.name }}
+        </span>
+        <span
+          v-else-if="locale == LANGUAGES.EN || locale == LANGUAGES.KO"
+          class="font-bold"
+        >
+          {{ char.nameEN ?? char.name }}
+        </span>
+        <span v-else class="font-bold">{{ char.name }}</span>
+      </div>
+    </div>
+    <div v-if="showInfo" class="w-full">
+      <Equip :name="char.name"></Equip>
+    </div>
+  </div>
 </template>

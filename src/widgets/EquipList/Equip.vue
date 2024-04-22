@@ -1,23 +1,46 @@
 <script lang="ts">
-import { defineComponent, onBeforeMount, ref, watch } from "vue";
+import {
+  PropType,
+  Ref,
+  defineComponent,
+  inject,
+  nextTick,
+  onBeforeMount,
+  onBeforeUpdate,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 
 import { NSpin } from "naive-ui";
 
+import { getLanguage } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
+import { getImagePath } from "@/utils/utils";
 
+import { colorMap, statsStyleMap } from "./consts";
 import { getEquipData } from "./equipData";
+import { customLabel } from "./i18n";
+import { processLink, processMaterial, updateTippy } from "./utils";
+
+function getStatColor(type: string, stat: string): string {
+  return Number(stat) * statsStyleMap[type] ?? 1 >= 0 ? "#00B0FF" : "#FF6237";
+}
 
 export default defineComponent({
   components: { NSpin },
   props: {
     name: { type: String, required: true },
+    data: { type: Array as PropType<DOMStringMap[]>, default: () => [] },
+    simple: { type: Boolean, default: false },
   },
   setup(props) {
-    const content = ref("");
+    const content = ref<DOMStringMap[]>([]);
+    const loading = ref(false);
+    const loadingCount = inject("loadingCount") as Ref<number>;
     const { isDark } = useTheme();
     watch(isDark, () => {
-      const temp = new DOMParser().parseFromString(content.value, "text/html");
-      const seps = temp.querySelectorAll(
+      const seps = document.querySelectorAll(
         ".majorsep,.minorsep,.term,.iconfilter",
       );
       for (const ele of Array.from(seps)) {
@@ -27,33 +50,26 @@ export default defineComponent({
           ele.classList.remove("dark");
         }
       }
-      content.value = temp.body.innerHTML;
     });
     onBeforeMount(async () => {
-      const rawdata = await getEquipData(props.name);
-      const temp = new DOMParser().parseFromString(rawdata, "text/html");
-      const eles = temp.querySelectorAll(".mc-tooltips");
-      const seps = temp.querySelectorAll(
+      loading.value = true;
+      loadingCount.value += 1;
+      if (props.data.length > 0) {
+        content.value = props.data;
+      } else {
+        const rawdata = await getEquipData(props.name ?? "");
+        content.value = rawdata ?? [];
+      }
+      for (const e of content.value) {
+        for (const v in e) {
+          e[v] = e[v]
+            ?.replaceAll(/....UNIQ.*?QINU..../g, "")
+            .replaceAll("[[分类:对原文有修正的页面]]", "");
+        }
+      }
+      const seps = document.querySelectorAll(
         ".majorsep,.minorsep,.term,.iconfilter",
       );
-      for (const e of Array.from(eles)) {
-        if (!e.children || e.children.length < 2) continue;
-        (e.children[1] as HTMLElement).style.display = "block";
-        // @ts-expect-error tippy
-        // eslint-disable-next-line no-undef
-        tippy6(e.children[0], {
-          content: e.children[1],
-          arrow: true,
-          theme: "light-border",
-          size: "large",
-          maxWidth: Number.parseInt(
-            (e.children[1] as HTMLElement).dataset.size!,
-          ),
-          trigger:
-            (e.children[1] as HTMLElement).dataset.trigger ||
-            "mouseenter focus",
-        });
-      }
       for (const ele of Array.from(seps)) {
         if (isDark.value) {
           ele.classList.add("dark");
@@ -61,18 +77,274 @@ export default defineComponent({
           ele.classList.remove("dark");
         }
       }
-      content.value = temp.body.innerHTML;
+      loading.value = false;
+      loadingCount.value -= 1;
+    });
+    onMounted(() => {
+      nextTick(updateTippy);
+    });
+    onBeforeUpdate(() => {
+      nextTick(updateTippy);
     });
     return {
+      colorMap,
+      getImagePath,
       content,
+      getStatColor,
+      customLabel,
+      processMaterial,
+      processLink,
+      loading,
+      locale: getLanguage(),
     };
   },
 });
 </script>
 <template>
-  <NSpin :show="!content">
-    <div v-html="content" />
-    <template #description> 加载中 </template>
+  <NSpin :show="loading">
+    <div
+      v-for="e in content"
+      :key="e.name"
+      class="modbody"
+      :class="{ simple: simple }"
+    >
+      <div class="basicbox" :class="{ nosimple: simple }">
+        <div
+          class="modtype"
+          :style="{
+            background: colorMap[e.color as string] ?? colorMap['grey'],
+          }"
+        >
+          <div class="flex-none">
+            <img
+              :src="getImagePath(`模组类型_${e.type}.png`)"
+              height="30"
+              class="typepic"
+            />
+          </div>
+          <div class="flex-none color-white font-bold">
+            {{ e.type }}
+          </div>
+        </div>
+        <div class="modname">
+          <a :href="`/w/${name}#${e.name}`" class="font-bold">{{ e.name }}</a>
+        </div>
+      </div>
+      <div class="majorsep" :class="{ nosimple: simple }"></div>
+      <div class="rankbox">
+        <div class="singlerank">
+          <div class="rankicon iconfilter" :class="{ nosimple: simple }">
+            <img
+              :src="getImagePath(`模组等级_1.png`)"
+              height="40"
+              class="rankpic"
+            />
+          </div>
+          <div class="rankinfo">
+            <div class="ranktext">
+              <span
+                v-for="stats in customLabel[locale].statsMap"
+                :key="stats[0]"
+              >
+                <span
+                  v-if="e[stats[0]] != '0'"
+                  class="whitespace-nowrap mx-[0.5em]"
+                >
+                  {{ stats[1] }}&nbsp;
+                  <span
+                    :style="{
+                      color: getStatColor('hp', e[stats[0]] ?? '0'),
+                    }"
+                  >
+                    {{ (Number(e[stats[0]]) >= 0 ? "+" : "") + e[stats[0]] }}
+                  </span>
+                </span>
+                <span v-if="e['其他']" v-html="e['其他']"></span>
+              </span>
+            </div>
+            <div class="talent">
+              <span v-if="e.add">
+                <span class="font=bold">
+                  <span class="mdi mdi-plus-circle"></span>
+                  &nbsp;特性追加：
+                  <span v-html="e.trait"></span>
+                </span>
+              </span>
+              <span v-else>
+                <span class="font=bold">
+                  <span class="mdi mdi-arrow-up-drop-circle"></span>
+                  &nbsp;特性更新：
+                  <span v-html="e.trait"></span>
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="minorsep" :class="{ simple: simple }"></div>
+        <div class="singlerank">
+          <div class="rankicon iconfilter" :class="{ nosimple: simple }">
+            <img
+              :src="getImagePath(`模组等级_2.png`)"
+              height="40"
+              class="rankpic"
+            />
+          </div>
+          <div class="rankinfo">
+            <div class="ranktext">
+              <span
+                v-for="stats in customLabel[locale].statsMap"
+                :key="stats[0]"
+              >
+                <span
+                  v-if="e[stats[0] + '2'] != '0'"
+                  class="whitespace-nowrap mx-[0.5em]"
+                >
+                  {{ stats[1] }}&nbsp;
+                  <span
+                    :style="{
+                      color: getStatColor('hp', e[stats[0] + '2'] ?? '0'),
+                    }"
+                  >
+                    {{
+                      (Number(e[stats[0]]) >= 0 ? "+" : "") + e[stats[0] + "2"]
+                    }}
+                  </span>
+                </span>
+                <span v-if="e['其他2']" v-html="e['其他2']"></span>
+              </span>
+            </div>
+            <div class="talent">
+              <span class="font=bold">
+                <span class="mdi mdi-asterisk"></span>
+                &nbsp;
+                <span v-html="e['talent' + 2]"></span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="minorsep" :class="{ simple: simple }"></div>
+        <div class="singlerank">
+          <div class="rankicon iconfilter" :class="{ nosimple: simple }">
+            <img
+              :src="getImagePath(`模组等级_3.png`)"
+              height="40"
+              class="rankpic"
+            />
+          </div>
+          <div class="rankinfo">
+            <div class="ranktext">
+              <span
+                v-for="stats in customLabel[locale].statsMap"
+                :key="stats[0]"
+              >
+                <span
+                  v-if="e[stats[0] + '3'] != '0'"
+                  class="whitespace-nowrap mx-[0.5em]"
+                >
+                  {{ stats[1] }}&nbsp;
+                  <span
+                    :style="{
+                      color: getStatColor('hp', e[stats[0] + '3'] ?? '0'),
+                    }"
+                  >
+                    {{
+                      (Number(e[stats[0]]) >= 0 ? "+" : "") + e[stats[0] + 3]
+                    }}
+                  </span>
+                </span>
+                <span v-if="e['其他3']" v-html="e['其他3']"></span>
+              </span>
+            </div>
+            <div class="talent">
+              <span class="font=bold">
+                <span class="mdi mdi-asterisk"></span>
+                &nbsp;
+                <span v-html="e['talent' + 3]"></span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="majorsep" :class="{ nosimple: simple }"></div>
+        <div class="linebox" :class="{ nosimple: simple }">
+          <div class="descr font-bold">
+            {{ customLabel[locale].equipString.mission }}
+          </div>
+          <div class="lineparta flex-col">
+            <span>
+              <span class="mdi mdi-chevron-right"></span>
+              &nbsp;
+              <span v-html="processLink(e.mission1 ?? '')"></span>
+            </span>
+            <span>
+              <span class="mdi mdi-chevron-right"></span>
+              &nbsp;
+              <span v-html="processLink(e.mission2 ?? '')"></span>
+            </span>
+          </div>
+        </div>
+        <div class="majorsep" :class="{ nosimple: simple }"></div>
+        <div class="linebox" :class="{ nosimple: simple }">
+          <div class="descr font-bold">
+            {{ customLabel[locale].equipString.condition }}
+          </div>
+          <div class="lineparta flex-wrap">
+            <div class="linebox">
+              <div class="linepartb">
+                <span>{{ customLabel[locale].equipString.condStats[0] }}</span>
+                <span>
+                  {{ customLabel[locale].equipString.condStats[1] }}
+                  <span class="font-bold">{{ e.lv }}</span>
+                  {{ customLabel[locale].equipString.condStats[2] }}
+                </span>
+                <span>
+                  {{ customLabel[locale].equipString.condStats[3] }}
+                  <span class="font-bold">{{ e.favor }}</span>
+                  {{ customLabel[locale].equipString.condStats[4] }}
+                </span>
+              </div>
+              <div class="consume">
+                <span v-html="processMaterial(e.mat ?? '')"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="majorsep" :class="{ nosimple: simple }"></div>
+        <div class="linebox" :class="{ nosimple: simple }">
+          <div class="descr font-bold">
+            {{ customLabel[locale].equipString.upgrade }}
+          </div>
+          <div class="lineparta flex-wrap">
+            <div class="linebox">
+              <div class="consume">
+                <span>
+                  <div class="iconfilter inline-block">
+                    <img
+                      :src="getImagePath('模组等级_2.png')"
+                      height="40"
+                      class="m-1 rankpic"
+                    />
+                  </div>
+                  <span v-html="processMaterial(e.mat2 ?? '')"></span>
+                </span>
+              </div>
+              <div class="consume">
+                <span>
+                  <div class="iconfilter inline-block">
+                    <img
+                      :src="getImagePath('模组等级_3.png')"
+                      height="40"
+                      class="m-1 rankpic"
+                    />
+                  </div>
+                  <span v-html="processMaterial(e.mat3 ?? '')"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <template #description> {{ customLabel[locale].loading }} </template>
   </NSpin>
 </template>
 <style scoped>
@@ -83,6 +355,16 @@ export default defineComponent({
   margin: 5px 0;
   padding: 5px;
   box-shadow: 2px 2px 3px #888;
+  box-sizing: border-box;
+  flex-flow: column;
+}
+:deep(.modbody.simple) {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 2px;
+  box-shadow: none;
   box-sizing: border-box;
   flex-flow: column;
 }
@@ -109,6 +391,12 @@ export default defineComponent({
   align-items: center;
   min-width: 55px;
 }
+:deep(.rankpic) {
+  height: 40px;
+}
+:deep(.typepic) {
+  height: 30px;
+}
 :deep(.ranktext) {
   flex: 16.5 16.5 16.5%;
   display: flex;
@@ -118,12 +406,28 @@ export default defineComponent({
   flex-wrap: wrap;
   align-content: center;
 }
+:deep(.linebox) {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  margin: 5px 0;
+}
+:deep(.lineparta) {
+  flex: 75 75 75%;
+  display: flex;
+}
+:deep(.linepartb) {
+  flex: 50 50 50%;
+  display: flex;
+  flex-flow: column;
+}
 :deep(.descr) {
   flex: 25 25 25%;
   display: flex;
   justify-content: center;
   align-items: center;
   min-width: 130px;
+  text-align: center;
 }
 :deep(.consume) {
   flex: 50 50 50%;
@@ -168,11 +472,19 @@ export default defineComponent({
   height: 1px;
   background-color: lightgray;
 }
+:deep(.minorsep.simple) {
+  height: 1px;
+  background-color: black;
+}
 :deep(.dark.majorsep) {
   background-color: whitesmoke;
 }
 :deep(.dark.minorsep) {
-  background-color: gray;
+  background-color: rgb(85, 85, 85);
+}
+:deep(.dark.minorsep.simple) {
+  height: 1px;
+  background-color: whitesmoke;
 }
 :deep(.dark.term) {
   text-decoration: underline whitesmoke !important;
@@ -180,5 +492,8 @@ export default defineComponent({
 }
 :deep(.dark.iconfilter) {
   filter: invert(100%);
+}
+:deep(.nosimple) {
+  display: none;
 }
 </style>
