@@ -219,14 +219,14 @@ export default defineComponent({
         <img width="800" :src="bannerImageURL" />
         <div
           v-show="showPortaits"
-          class="flex flex-wrap justify-center items-center bg-gray-700 max-w-fit gap-x-1.5 py-3 px-2"
+          class="inline-flex max-w-[800px] max-h-[150px] overflow-hidden justify-center items-center bg-gray-700 gap-x-1.5 p-1"
         >
           <img
             v-for="(char, i) in portraitResult"
             :key="i"
             :class="`rarity-${char.rarity} rarity-${char.rarity}-shadow`"
-            width="75"
             :src="char.portraitURL"
+            style="min-width: 0; max-height: 150px"
           />
         </div>
         <div class="flex gap-x-2">
