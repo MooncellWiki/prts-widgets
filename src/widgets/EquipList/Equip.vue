@@ -24,7 +24,7 @@ import { customLabel } from "./i18n";
 import { processLink, processMaterial, updateTippy } from "./utils";
 
 function getStatColor(type: string, stat: string): string {
-  return Number(stat) * statsStyleMap[type] ?? 1 >= 0 ? "#00B0FF" : "#FF6237";
+  return Number(stat) * (statsStyleMap[type] ?? 1) >= 0 ? "#00B0FF" : "#FF6237";
 }
 
 export default defineComponent({
