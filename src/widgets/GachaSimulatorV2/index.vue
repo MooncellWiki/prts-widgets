@@ -219,14 +219,13 @@ export default defineComponent({
         <img width="800" :src="bannerImageURL" />
         <div
           v-show="showPortaits"
-          class="inline-flex max-w-[800px] max-h-[150px] overflow-hidden justify-center items-center bg-gray-700 gap-x-1.5 p-1"
+          class="grid grid-cols-10 gap-2 max-w-[800px] overflow-hidden justify-center items-center bg-gray-700 gap-x-1.5 p-1"
         >
           <img
             v-for="(char, i) in portraitResult"
             :key="i"
-            :class="`rarity-${char.rarity} rarity-${char.rarity}-shadow`"
+            :class="`rarity-${char.rarity} rarity-${char.rarity}-shadow max-w-full ${portraitResult.length === 1 && 'col-start-5'}`"
             :src="char.portraitURL"
-            style="min-width: 0; max-height: 150px"
           />
         </div>
         <div class="flex gap-x-2">
@@ -309,6 +308,7 @@ export default defineComponent({
                     :class="`rarity-${result.rarity} outline-2 outline-gray-600 outline-solid`"
                     :src="result.avatarURL"
                     width="75"
+                    style="min-height: 75px"
                   />
                 </div>
                 <span
