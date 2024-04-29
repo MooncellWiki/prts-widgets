@@ -202,6 +202,7 @@ export default defineComponent({
       selectedUpInfo,
       isCharIdSelected,
       isFesClassic,
+      gachaExecutor,
     };
   },
 });
@@ -285,8 +286,10 @@ export default defineComponent({
             }}
             / 源石：{{ Math.ceil((counter * pricePerTime) / 180) }}）
           </span>
-          <span>连续未寻访出6★干员次数:{{ non6StarCount }}</span>
-          <span>前 10 次寻访内必得5★以上干员</span>
+          <span>连续未寻访出 6★ 干员次数:{{ non6StarCount }}</span>
+          <span v-if="gachaExecutor.state.guarantee5Avail !== 0"
+            >前 10 次寻访内必得 5★ 以上干员</span
+          >
         </div>
         <NCollapse :expanded-names="expandedNames">
           <NCollapseItem
