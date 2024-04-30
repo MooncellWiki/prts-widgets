@@ -217,15 +217,18 @@ export default defineComponent({
   >
     <NLayout class="antialiased">
       <div class="flex flex-col gap-y-3 mx-2 my-4">
-        <img width="800" :src="bannerImageURL" />
+        <img class="max-w-[800px]" :src="bannerImageURL" />
         <div
           v-show="showPortaits"
-          class="grid grid-cols-10 gap-2 max-w-[800px] overflow-hidden justify-center items-center bg-gray-700 gap-x-1.5 p-1"
+          class="grid grid-cols-10 <md:grid-cols-5 <md:grid-rows-2 gap-1 p-1 max-w-[800px] overflow-hidden justify-center items-center bg-gray-700"
         >
           <img
             v-for="(char, i) in portraitResult"
             :key="i"
-            :class="`rarity-${char.rarity} rarity-${char.rarity}-shadow max-w-full ${portraitResult.length === 1 && 'col-start-5'}`"
+            :class="[
+              `rarity-${char.rarity} rarity-${char.rarity}-shadow max-w-full min-h-[75px] max-h-[150px]`,
+              portraitResult.length === 1 && 'col-start-5',
+            ]"
             :src="char.portraitURL"
           />
         </div>
@@ -298,7 +301,7 @@ export default defineComponent({
             :title="`获得的${star + 1}★干员`"
             :name="star"
           >
-            <div class="flex flex-wrap">
+            <div class="flex flex-wrap gap-1">
               <div
                 v-for="(result, j) in Object.values(results).filter(
                   (result) => result.rarity === star,
@@ -308,15 +311,14 @@ export default defineComponent({
               >
                 <div>
                   <img
-                    :class="`rarity-${result.rarity} outline-2 outline-gray-600 outline-solid`"
+                    :class="`rarity-${result.rarity}`"
                     :src="result.avatarURL"
                     width="75"
-                    style="min-height: 75px"
                   />
                 </div>
                 <span
                   v-if="result.count > 1"
-                  class="absolute right-1 -bottom-1 text-shadow-base font-bold text-lg"
+                  class="absolute right-0.5 -bottom-1 text-shadow-base font-bold text-lg color-black"
                 >
                   {{ result.count }}
                 </span>
