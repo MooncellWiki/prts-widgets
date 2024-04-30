@@ -3,6 +3,7 @@ import {
   httpClientIntegration,
   contextLinesIntegration,
 } from "@sentry/integrations";
+
 Sentry.init({
   dsn: location.host.includes("prts")
     ? "https://dc4bd835a0a1de41d7107d3eb1dbf4e1@ingest.sentry.mooncell.wiki/5"
@@ -72,6 +73,7 @@ window.Sentry = {
   showReportDialog: Sentry.showReportDialog,
   captureException: Sentry.captureException,
 };
+
 (window.RLQ = window.RLQ || []).push([
   "mediawiki.user",
   function () {
