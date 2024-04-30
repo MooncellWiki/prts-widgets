@@ -90,6 +90,7 @@ export default defineComponent({
     const pricePerTime = props.newbeeClientPool
       ? props.newbeeClientPool.gachaPrice
       : 600;
+    const guarantee5Avail = ref(gachaExecutor.state.guarantee5Avail);
 
     const doGachaOne = () => {
       const gachaResult = gachaExecutor.doGachaOnce();
@@ -101,6 +102,7 @@ export default defineComponent({
       const { charId, rarity } = gachaResult;
       counter.value = gachaExecutor.state.counter;
       non6StarCount.value = gachaExecutor.state.non6StarCount;
+      guarantee5Avail.value = gachaExecutor.state.guarantee5Avail;
 
       if (!charId) throw new Error("charId is null");
 
@@ -135,6 +137,7 @@ export default defineComponent({
       buttonDisabled.value = false;
       gachaExecutor.resetState();
       non6StarCount.value = gachaExecutor.state.non6StarCount;
+      guarantee5Avail.value = gachaExecutor.state.guarantee5Avail;
       portraitResult.value = [];
     };
 
@@ -202,7 +205,7 @@ export default defineComponent({
       selectedUpInfo,
       isCharIdSelected,
       isFesClassic,
-      gachaExecutor,
+      guarantee5Avail,
     };
   },
 });
@@ -290,7 +293,7 @@ export default defineComponent({
             / 源石：{{ Math.ceil((counter * pricePerTime) / 180) }}）
           </span>
           <span>连续未寻访出 6★ 干员次数:{{ non6StarCount }}</span>
-          <span v-if="gachaExecutor.state.guarantee5Avail !== 0"
+          <span v-if="guarantee5Avail !== 0"
             >前 10 次寻访内必得 5★ 以上干员</span
           >
         </div>
