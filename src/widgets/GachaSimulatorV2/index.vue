@@ -79,9 +79,30 @@ export default defineComponent({
         { charId: string; avatarURL: string; rarity: number; count: number }
       >
     >({});
-    const expandedNames = computed(() => [
-      ...new Set(Object.values(results.value).map((result) => result.rarity)),
-    ]);
+
+    const defaultExpandedNames = computed(() =>
+      Array.from(
+        new Set(Object.values(results.value).map((result) => result.rarity)),
+      ),
+    );
+    const overrideExpandedNames = ref<Record<number, boolean>>({});
+    const expandedNames = computed(() => {
+      const final = Array.from(defaultExpandedNames.value);
+
+      for (const [name, expanded] of Object.entries(
+        overrideExpandedNames.value,
+      )) {
+        const index = final.indexOf(Number.parseInt(name));
+        if (expanded) {
+          if (index === -1) final.push(Number.parseInt(name));
+        } else {
+          if (index > -1) final.splice(index, 1);
+        }
+      }
+
+      return final;
+    });
+
     const portraitResult = ref<
       { charId: string; rarity: number; portraitURL: string }[]
     >([]);
@@ -139,6 +160,7 @@ export default defineComponent({
       non6StarCount.value = gachaExecutor.state.non6StarCount;
       guarantee5Avail.value = gachaExecutor.state.guarantee5Avail;
       portraitResult.value = [];
+      overrideExpandedNames.value = {};
     };
 
     const selectedUpInfo = ref<Record<number, string[]>>({});
@@ -168,9 +190,15 @@ export default defineComponent({
         selectedUpInfo.value[rarity].push(charId);
       }
       const upCharInfo = getSelectedUpCharInfo();
-      console.log(gachaExecutor.upCharInfo);
       gachaExecutor.upCharInfo = upCharInfo;
-      console.log(gachaExecutor.upCharInfo);
+    };
+
+    const onCollapseItemHeaderClicked = (data: {
+      name: number;
+      expanded: boolean;
+      event: MouseEvent;
+    }) => {
+      overrideExpandedNames.value[data.name] = data.expanded;
     };
 
     const isCharIdSelected = (rarity: number, charId: string) => {
@@ -206,6 +234,7 @@ export default defineComponent({
       isCharIdSelected,
       isFesClassic,
       guarantee5Avail,
+      onCollapseItemHeaderClicked,
     };
   },
 });
@@ -223,7 +252,12 @@ export default defineComponent({
         <img class="max-w-[800px]" :src="bannerImageURL" />
         <div
           v-show="showPortaits"
-          class="grid grid-cols-10 <md:grid-cols-5 <md:grid-rows-2 gap-1 p-1 max-w-[800px] overflow-hidden justify-center items-center bg-gray-700"
+          :class="[
+            'grid grid-cols-10 <md:grid-cols-5 <md:grid-rows-2 gap-1',
+            'p-1 max-w-[800px] overflow-hidden',
+            'justify-center items-center',
+            'bg-gray-700 select-none',
+          ]"
         >
           <img
             v-for="(char, i) in portraitResult"
@@ -244,8 +278,9 @@ export default defineComponent({
                 doGachaOne();
               }
             "
-            >寻访1次</NButton
           >
+            寻访1次
+          </NButton>
           <NButton
             :disabled="buttonDisabled"
             @click="
@@ -254,8 +289,9 @@ export default defineComponent({
                 doGachaTen();
               }
             "
-            >寻访10次</NButton
           >
+            寻访10次
+          </NButton>
           <NButton type="error" @click="clearResults()">清空结果</NButton>
           <NButton
             v-if="isFesClassic"
@@ -297,12 +333,18 @@ export default defineComponent({
             >前 10 次寻访内必得 5★ 以上干员</span
           >
         </div>
-        <NCollapse :expanded-names="expandedNames">
+        <NCollapse
+          display-directive="show"
+          :expanded-names="expandedNames"
+          :on-item-header-click="onCollapseItemHeaderClicked"
+        >
           <NCollapseItem
             v-for="(star, i) in displayStars"
             :key="i"
+            class="select-none"
             :title="`获得的${star + 1}★干员`"
             :name="star"
+            :disabled="counter === 0"
           >
             <div class="flex flex-wrap gap-1">
               <div
