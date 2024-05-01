@@ -28,6 +28,7 @@ export const tag = [
   "快速复活",
   "位移",
   "召唤",
+  "元素",
 ];
 export const all = [...profession, ...position, ...rarity, ...tag];
 export const professionIndex =
