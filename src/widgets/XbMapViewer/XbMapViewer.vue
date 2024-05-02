@@ -15,23 +15,19 @@ export default defineComponent({
   setup(props) {
     const tokens = computed(() => {
       const result: Record<string, any> = {};
-      const tokenInsts = props.map?.predefines.tokenInsts;
-
-      for (const token of tokenInsts) {
+      props.map?.predefines.tokenInsts.forEach((token: any) => {
         const pos = token.position;
         const coord = `${pos.row}-${pos.col}`;
         result[coord] = result[coord] ?? [];
         result[coord].push(
           token.inst.characterKey.replaceAll(/trap_\d+_/g, ""),
         );
-      }
+      });
       return result;
     });
     const black = computed(() => {
       const result: Record<string, string> = {};
-      const configBlackBoard = props.map?.options.configBlackBoard;
-
-      for (const block of configBlackBoard) {
+      props.map?.options.configBlackBoard.forEach((block: any) => {
         const val = block.valueStr;
         if (val === null) return;
 
@@ -53,14 +49,14 @@ export default defineComponent({
             }
           }
         }
-      }
+      });
       return result;
     });
     function getTile(index: number) {
       let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
       if (a === "floor" || a === "road")
         a =
-          (props.map?.mapData.tiles[index].buildableType & 1) === 1
+          props.map?.mapData.tiles[index].buildableType === 1 || props.map?.mapData.tiles[index].buildableType === "MELEE" || props.map?.mapData.tiles[index].buildableType === "ALL"
             ? "road"
             : "floor";
       return a;
@@ -101,9 +97,9 @@ export default defineComponent({
         v-for="(board, n) in row"
         :key="n"
         :tile="getTile(board)"
-        :tile-height-type="mapData.tiles[board].height"
-        :tokens="getToken(mapData.height - 1 - i, n)"
-        :black="black && black[`${mapData.height - 1 - i}-${n}`]"
+        :tile-height-type="mapData.tiles[board].heightType"
+        :tokens="getToken(mapData.map.length - 1 - i, n)"
+        :black="black[`${mapData.map.length - 1 - i}-${n}`]"
       />
     </div>
   </div>
