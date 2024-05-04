@@ -15,8 +15,7 @@ export default defineComponent({
   setup(props) {
     const tokens = computed(() => {
       const result: Record<string, any> = {};
-      const tokenInsts = props.map?.predefines.tokenInsts;
-
+      const tokenInsts = props.map?.predefines.tokenInsts || [];
       for (const token of tokenInsts) {
         const pos = token.position;
         const coord = `${pos.row}-${pos.col}`;
@@ -29,8 +28,7 @@ export default defineComponent({
     });
     const black = computed(() => {
       const result: Record<string, string> = {};
-      const configBlackBoard = props.map?.options.configBlackBoard;
-
+      const configBlackBoard = props.map?.options.configBlackBoard || [];
       for (const block of configBlackBoard) {
         const val = block.valueStr;
         if (val === null) return;
@@ -60,7 +58,9 @@ export default defineComponent({
       let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
       if (a === "floor" || a === "road")
         a =
-          (props.map?.mapData.tiles[index].buildableType & 1) === 1
+          props.map?.mapData.tiles[index].buildableType === 1 ||
+          props.map?.mapData.tiles[index].buildableType === "MELEE" ||
+          props.map?.mapData.tiles[index].buildableType === "ALL"
             ? "road"
             : "floor";
       return a;
@@ -101,9 +101,9 @@ export default defineComponent({
         v-for="(board, n) in row"
         :key="n"
         :tile="getTile(board)"
-        :tile-height-type="mapData.tiles[board].height"
-        :tokens="getToken(mapData.height - 1 - i, n)"
-        :black="black && black[`${mapData.height - 1 - i}-${n}`]"
+        :tile-height-type="mapData.tiles[board].heightType"
+        :tokens="getToken(mapData.map.length - 1 - i, n)"
+        :black="black && black[`${mapData.map.length - 1 - i}-${n}`]"
       />
     </div>
   </div>
