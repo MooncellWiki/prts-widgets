@@ -103,7 +103,7 @@ export default defineComponent({
         :tile="getTile(board)"
         :tile-height-type="mapData.tiles[board].heightType"
         :tokens="getToken(mapData.map.length - 1 - i, n)"
-        :black="black[`${mapData.map.length - 1 - i}-${n}`]"
+        :black="black && black[`${mapData.map.length - 1 - i}-${n}`]"
       />
     </div>
   </div>
