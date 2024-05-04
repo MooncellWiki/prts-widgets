@@ -15,19 +15,21 @@ export default defineComponent({
   setup(props) {
     const tokens = computed(() => {
       const result: Record<string, any> = {};
-      props.map?.predefines.tokenInsts.forEach((token: any) => {
+      const tokenInsts = props.map?.predefines.tokenInsts || [];
+      for (const token of tokenInsts) {
         const pos = token.position;
         const coord = `${pos.row}-${pos.col}`;
         result[coord] = result[coord] ?? [];
         result[coord].push(
           token.inst.characterKey.replaceAll(/trap_\d+_/g, ""),
         );
-      });
+      }
       return result;
     });
     const black = computed(() => {
       const result: Record<string, string> = {};
-      props.map?.options.configBlackBoard.forEach((block: any) => {
+      const configBlackBoard = props.map?.options.configBlackBoard || [];
+      for (const block of configBlackBoard) {
         const val = block.valueStr;
         if (val === null) return;
 
@@ -49,14 +51,16 @@ export default defineComponent({
             }
           }
         }
-      });
+      }
       return result;
     });
     function getTile(index: number) {
       let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
       if (a === "floor" || a === "road")
         a =
-          props.map?.mapData.tiles[index].buildableType === 1 || props.map?.mapData.tiles[index].buildableType === "MELEE" || props.map?.mapData.tiles[index].buildableType === "ALL"
+          props.map?.mapData.tiles[index].buildableType === 1 ||
+          props.map?.mapData.tiles[index].buildableType === "MELEE" ||
+          props.map?.mapData.tiles[index].buildableType === "ALL"
             ? "road"
             : "floor";
       return a;

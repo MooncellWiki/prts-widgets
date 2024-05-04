@@ -39,7 +39,8 @@ const TipMap: Record<string, string> = {
   volcano: "<b>热泵通道</b><br>每隔一段时间便会对其上的我军和敌军造成大量伤害",
   volspread:
     "<b>岩浆喷射处</b><br>每隔一定时间会喷出岩浆，对周围8格内的我方单位造成大量伤害且融化障碍物",
-  steam: "<b>隐焰</b><br><盛季>和<荒季>时每隔一段时间对其上的任何单位造成无视防御和法术抗性的伤害",
+  steam:
+    "<b>隐焰</b><br><盛季>和<荒季>时每隔一段时间对其上的任何单位造成无视防御和法术抗性的伤害",
   puddle: "<b>池沼</b><br><荒季>时会干涸露出地面",
   // tokens
   xbwood: "<b>杂木林</b><br>可开采<木材>",
@@ -110,11 +111,14 @@ export default defineComponent({
       let result = "";
       if (bgMap[props.tile!]) result += ` ${bg(bgMap[props.tile!])}`;
 
-      props.tokens?.forEach((token: any) => {
+      for (const token of props.tokens || []) {
         if (token && bgMap[token]) result += ` ${bg(bgMap[token])}`;
-      });
+      }
 
-      if (props.tile === "grass" && (props.tileHeightType === "1" || props.tileHeightType === "HIGHLAND")) {
+      if (
+        props.tile === "grass" &&
+        (props.tileHeightType === "1" || props.tileHeightType === "HIGHLAND")
+      ) {
         result +=
           "box-shadow: 5px 5px 8px black; filter: brightness(1.15); z-index: 2";
       }
@@ -124,10 +128,10 @@ export default defineComponent({
       let content = "";
       if (props.tile && TipMap[props.tile]) content += TipMap[props.tile];
 
-      props.tokens?.forEach((token: any) => {
+      for (const token of props.tokens || []) {
         if (token && TipMap[token])
           content += content ? `<br/> ${TipMap[token]}` : ` ${TipMap[token]}`;
-      });
+      }
 
       if (content.length > 0) {
         // @ts-expect-error tippy
