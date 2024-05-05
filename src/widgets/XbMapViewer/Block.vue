@@ -18,11 +18,11 @@ export default defineComponent({
     const style = computed(() => {
       let result = {} as Record<string, string>;
       if (bgMap[props.tile!])
-        result.backgroundImage = getImagePath(bgMap[props.tile!]);
+        result.backgroundImage = `url(${getImagePath(bgMap[props.tile!])})`;
 
       for (const token of props.tokens || []) {
         if (token && bgMap[token])
-          result.backgroundImage = getImagePath(bgMap[token]);
+          result.backgroundImage = `url(${getImagePath(bgMap[token])})`;
       }
 
       if (
@@ -68,9 +68,12 @@ export default defineComponent({
 <template>
   <div
     ref="self"
-    :class="`block ${tile} ${
-      tokens ? 'token '.concat(tokens.toString().replace(/,/g, ' ')) : ''
-    } ${black}`"
+    :class="[
+      'block',
+      tile,
+      tokens ? `token ${tokens.toString().replace(/,/g, ' ')}` : '',
+      black,
+    ]"
     :style="style"
   >
     <template v-if="tokens">
@@ -94,6 +97,7 @@ export default defineComponent({
   position: relative;
   background-color: gray;
 }
+
 @media screen and (max-width: 540px) {
   .block {
     border-width: 1px !important;
@@ -101,11 +105,13 @@ export default defineComponent({
     border-color: transparent;
   }
 }
+
 .block:before {
   content: "";
   display: block;
   padding-top: 100%;
 }
+
 .block span {
   position: absolute;
   /*font-weight: bold;*/
@@ -116,11 +122,13 @@ export default defineComponent({
   top: 50%;
   transform: translate(-50%, -50%);
 }
+
 .token {
   background-position: center;
   background-size: contain;
   background-repeat: no-repeat;
 }
+
 .rect {
   filter: opacity(0.75);
 }
@@ -128,11 +136,13 @@ export default defineComponent({
 .empty {
   background-color: transparent;
 }
+
 .start,
 .flystart {
   background-color: indianred;
   border: 2px solid darkred;
 }
+
 .start span,
 .flystart span,
 .ballis span,
@@ -142,25 +152,31 @@ export default defineComponent({
 .xbbillb span {
   color: darkred;
 }
+
 .end {
   background-color: skyblue;
   border: 2px solid dodgerblue;
 }
+
 .end span {
   color: dodgerblue;
 }
+
 .floor {
   background-color: darkgray;
   border: 1px dashed yellow;
   box-shadow: inset 0 0 0 2px black;
 }
+
 .floor span {
   color: white;
 }
+
 .road {
   background-color: darkgray;
   border: 2px dotted dimgray;
 }
+
 .wall {
   background-color: lightgray;
   border: 2px dotted dimgray;
@@ -176,14 +192,17 @@ export default defineComponent({
 .hole {
   background-color: black;
 }
+
 .grass {
   background-color: yellowgreen;
   border: 2px dotted dimgray;
 }
+
 .deepsea {
   background-color: steelblue;
   border: 2px dotted darkgray;
 }
+
 .infection,
 .corrosion_2,
 .healing,
@@ -197,13 +216,16 @@ export default defineComponent({
   background-size: contain;
   background-repeat: no-repeat;
 }
+
 .corrosion_2 span {
   color: darkgoldenrod;
 }
+
 .telin,
 .telout {
   border: 2px dashed dimgray;
 }
+
 .telin {
   transform: rotate(180deg); /* fa 和 windicss 都不起作用 */
 }
@@ -213,6 +235,7 @@ export default defineComponent({
   background-size: contain;
   background-repeat: no-repeat;
 }
+
 .hiddenstone {
   background-color: dimgray;
   border: 2px solid darkgray;
@@ -221,21 +244,26 @@ export default defineComponent({
 .streasure span {
   color: black;
 }
+
 .roadblock {
   background-color: slategray;
   border: 2px dotted darkgray;
 }
+
 .airsup {
   background-color: indianred;
   border: 2px solid darkred;
 }
+
 .wdescp span,
 .xbbase span {
   color: green;
 }
+
 .tower span {
   color: darkslategray;
 }
+
 .redtower span {
   color: crimson;
 }

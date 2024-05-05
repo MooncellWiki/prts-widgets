@@ -27,13 +27,14 @@ export default defineComponent({
       return result;
     });
     const black = computed(() => {
-      const result: Record<string, string> = {};
+      let result: Record<string, string> = {};
       const configBlackBoard = props.map?.options.configBlackBoard || [];
       for (const block of configBlackBoard) {
         const val = block.valueStr;
-        if (val === null) return;
+        if (val === null) break;
 
         const pos = val.replaceAll(/\(|\)/g, "").split(",");
+        console.log(pos);
         if (pos.length === 4) {
           // let list = []
           for (
@@ -46,14 +47,16 @@ export default defineComponent({
               x <= Number.parseInt(pos[3]);
               x++
             ) {
-              // list.push([y, x])
               result[`${y}-${x}`] = "rect";
             }
           }
         }
       }
+
       return result;
     });
+
+    console.log(black.value);
     function getTile(index: number) {
       let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
       if (a === "floor" || a === "road")
@@ -99,9 +102,9 @@ export default defineComponent({
     <div v-for="(row, i) in mapData.map" :key="i" class="row">
       <Block
         v-for="(board, n) in row"
-        :key="n"
+        :key="i * row.length + n"
         :tile="getTile(board)"
-        :tile-height-type="mapData.tiles[board].heightType"
+        :tile-height-type="mapData.tiles[board].heightType.toString()"
         :tokens="getToken(mapData.map.length - 1 - i, n)"
         :black="black && black[`${mapData.map.length - 1 - i}-${n}`]"
       />
@@ -114,6 +117,7 @@ export default defineComponent({
   display: grid;
   grid-template-columns: repeat(v-bind(width), 1fr);
 }
+
 :deep(.block span) {
   font-size: v-bind(fontsize);
 }
