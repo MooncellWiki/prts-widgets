@@ -6,10 +6,6 @@ import { getImagePath } from "@/utils/utils";
 
 import { TipMap, bgMap, classMap } from "./consts";
 
-function bg(name: string) {
-  return `background-image: url(/images/${getImagePath(name)})`;
-}
-
 export default defineComponent({
   props: {
     tile: String,
@@ -20,22 +16,27 @@ export default defineComponent({
   setup(props) {
     const self = ref();
     const style = computed(() => {
-      let result = "";
-      if (bgMap[props.tile!]) result += ` ${bg(bgMap[props.tile!])}`;
+      let result = {} as Record<string, string>;
+      if (bgMap[props.tile!])
+        result.backgroundImage = getImagePath(bgMap[props.tile!]);
 
       for (const token of props.tokens || []) {
-        if (token && bgMap[token]) result += ` ${bg(bgMap[token])}`;
+        if (token && bgMap[token])
+          result.backgroundImage = getImagePath(bgMap[token]);
       }
 
       if (
         props.tile === "grass" &&
         (props.tileHeightType === "1" || props.tileHeightType === "HIGHLAND")
       ) {
-        result +=
-          "box-shadow: 5px 5px 8px black; filter: brightness(1.15); z-index: 2";
+        result.boxShadow = "5px 5px 8px black";
+        result.filter = "brightness(1.15)";
+        result.zIndex = "2";
       }
+
       return result;
     });
+
     onMounted(() => {
       let content = "";
       if (props.tile && TipMap[props.tile]) content += TipMap[props.tile];
@@ -58,6 +59,7 @@ export default defineComponent({
         });
       }
     });
+
     return { self, style, classMap };
   },
 });
@@ -165,10 +167,12 @@ export default defineComponent({
   box-shadow: 5px 5px 8px black;
   z-index: 2;
 }
+
 .fence_bound {
   background-color: darkgray;
   border: 2px solid lightgray;
 }
+
 .hole {
   background-color: black;
 }
@@ -213,6 +217,7 @@ export default defineComponent({
   background-color: dimgray;
   border: 2px solid darkgray;
 }
+
 .streasure span {
   color: black;
 }
