@@ -31,7 +31,7 @@ export default defineComponent({
       const configBlackBoard = props.map?.options.configBlackBoard || [];
       for (const block of configBlackBoard) {
         const val = block.valueStr;
-        if (val === null) break;
+        if (val === null) continue;
 
         const pos = val.replaceAll(/\(|\)/g, "").split(",");
         if (pos.length === 4) {
