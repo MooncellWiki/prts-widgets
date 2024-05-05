@@ -34,7 +34,6 @@ export default defineComponent({
         if (val === null) break;
 
         const pos = val.replaceAll(/\(|\)/g, "").split(",");
-        console.log(pos);
         if (pos.length === 4) {
           // let list = []
           for (
@@ -56,7 +55,6 @@ export default defineComponent({
       return result;
     });
 
-    console.log(black.value);
     function getTile(index: number) {
       let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
       if (a === "floor" || a === "road")
