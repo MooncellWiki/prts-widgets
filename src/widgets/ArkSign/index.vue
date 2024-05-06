@@ -125,7 +125,15 @@ function order() {
     result.push(charData.value[charId]);
   }
   if (selectSort.value == "level") {
-    result.sort((a, b) => a.level - b.level);
+    result.sort((a, b) => {
+      if (a.evolvePhase == b.evolvePhase) {
+        return a.level == b.level
+          ? charInfoMap.value[a.charId].rarity -
+              charInfoMap.value[b.charId].rarity
+          : a.level - b.level;
+      }
+      return a.evolvePhase - b.evolvePhase;
+    });
   } else if (selectSort.value == "gainTime") {
     result.sort((a, b) => a.gainTime - b.gainTime);
   } else if (selectSort.value == "potentialRank") {
@@ -345,12 +353,16 @@ function calcServerColor(id: string) {
     <div class="charSign">
       <div ref="charSignInner" class="charSignInner">
         <div class="circlePoint">
-          <img :src="`${STATIC_ENDPOINT}/charinfo/img/skland/rightPoint.png`" />
+          <img
+            crossorigin="anonymous"
+            :src="`${STATIC_ENDPOINT}/charinfo/img/skland/rightPoint.png?a=${new Date().getTime()}`"
+          />
         </div>
         <div class="leftWrapper">
           <div class="logoBg">
             <img
-              :src="`${STATIC_ENDPOINT}/charinfo/img/skland/Logo_rhodesBlack.png`"
+              crossorigin="anonymous"
+              :src="`${STATIC_ENDPOINT}/charinfo/img/skland/Logo_rhodesBlack.png?a=${new Date().getTime()}`"
             />
           </div>
           <div class="avatarWrapper">
@@ -420,7 +432,8 @@ function calcServerColor(id: string) {
                   <div v-show="showInfo.equip" class="skillIcon">
                     <div class="equipBg">
                       <img
-                        :src="`${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_empty.png`"
+                        crossorigin="anonymous"
+                        :src="`${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_empty.png?a=${new Date().getTime()}`"
                         width="100%"
                       />
                     </div>
@@ -456,8 +469,13 @@ function calcServerColor(id: string) {
                       </div>
                     </template>
                     <img
+                      crossorigin="anonymous"
                       class="skillImg"
-                      :src="skill(charData[charId].defaultSkillId)"
+                      :src="
+                        skill(charData[charId].defaultSkillId) +
+                        '?a=' +
+                        new Date().getTime()
+                      "
                       alt=""
                     />
                   </div>
