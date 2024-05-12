@@ -141,7 +141,7 @@ export default defineComponent({
             <div class="p-2 border border-solid border-divider">
               <p v-for="(v, i) in selectedWordLang" :key="i">
                 <span
-                  :lang="v === '日文' ? 'ja' : ''"
+                  :lang="v.includes('日文') ? 'ja' : ''"
                   v-html="ele.detail[v || '中文']"
                 />
                 <b v-if="ele.cond">({{ ele.cond }})</b>
