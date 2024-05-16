@@ -1,5 +1,5 @@
 import js from "@eslint/js";
-import * as pluginImport from "eslint-plugin-import-x";
+import pluginImport from "eslint-plugin-import-x";
 import configPrettierRecommended from "eslint-plugin-prettier/recommended";
 import pluginUnicorn from "eslint-plugin-unicorn";
 import pluginVue from "eslint-plugin-vue";
@@ -17,29 +17,16 @@ export const GLOB_TSX = "**/*.?([cm])tsx";
 
 export const GLOB_VUE = "**/*.vue";
 
-export const imports = [
+export const lintEnv = [
   {
-    plugins: {
-      import: pluginImport,
-    },
-    rules: {
-      "import/order": [
-        "error",
-        {
-          groups: [
-            "builtin",
-            "external",
-            "internal",
-            "parent",
-            "sibling",
-            "index",
-            "object",
-            "type",
-          ],
-          pathGroups: [{ group: "internal", pattern: "{{@,~}/,#}**" }],
-          pathGroupsExcludedImportTypes: ["type"],
-        },
-      ],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.browser,
+        ...globals.commonjs,
+        ...globals.node,
+      },
     },
   },
 ];
@@ -100,6 +87,40 @@ export const vue = [
   },
 ];
 
+export const imports = [
+  {
+    plugins: {
+      import: pluginImport,
+    },
+    rules: {
+      "import/no-named-as-default": "off",
+      "import/order": [
+        "error",
+        {
+          groups: [
+            "builtin",
+            "external",
+            "internal",
+            "parent",
+            "sibling",
+            "index",
+            "object",
+            "type",
+          ],
+          pathGroups: [
+            { group: "internal", pattern: "{{@,~}/,#}**" },
+            { pattern: "vue", group: "builtin", position: "before" },
+          ],
+          "newlines-between": "always",
+          alphabetize: {
+            order: "asc",
+          },
+        },
+      ],
+    },
+  },
+];
+
 export const prettier = [
   configPrettierRecommended,
   {
@@ -128,20 +149,6 @@ export const unicorn = [
 export const ignores = [
   {
     ignores: ["**/spine/runtime", "**/.husky"],
-  },
-];
-
-export const lintEnv = [
-  {
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: "module",
-      globals: {
-        ...globals.browser,
-        ...globals.commonjs,
-        ...globals.node,
-      },
-    },
   },
 ];
 
