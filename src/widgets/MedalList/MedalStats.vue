@@ -1,7 +1,6 @@
 <script lang="ts">
-import { computed, defineComponent, ref, type PropType } from "vue";
-
 import { NCard, NNumberAnimation, NStatistic, NTooltip } from "naive-ui";
+import { computed, defineComponent, ref, type PropType } from "vue";
 
 import type { MedalMetaData } from "./types";
 

@@ -1,5 +1,9 @@
 <script lang="ts">
 import type { PropType, Ref } from "vue";
+
+import { useBreakpoints, useUrlSearchParams } from "@vueuse/core";
+import Cookies from "js-cookie";
+import { NCollapseTransition } from "naive-ui";
 import {
   computed,
   defineComponent,
@@ -9,10 +13,6 @@ import {
   ref,
   watch,
 } from "vue";
-
-import { useBreakpoints, useUrlSearchParams } from "@vueuse/core";
-import Cookies from "js-cookie";
-import { NCollapseTransition } from "naive-ui";
 
 import Avatar from "@/components/Avatar.vue";
 import Checkbox from "@/components/Checkbox.vue";
@@ -26,6 +26,7 @@ import SHead from "./head/SHead.vue";
 import Card from "./row/Card.vue";
 import Long from "./row/Long.vue";
 import Short from "./row/Short.vue";
+
 import type { Char, CheckboxOption, FilterGroup } from "./utils";
 
 interface State {
@@ -376,7 +377,7 @@ export default defineComponent({
             if (!e.children || e.children.length < 2) continue;
             (e.children[1] as HTMLElement).style.display = "block";
             // @ts-expect-error tippy
-            // eslint-disable-next-line no-undef
+
             tippy6(e.children[0], {
               content: e.children[1],
               arrow: true,

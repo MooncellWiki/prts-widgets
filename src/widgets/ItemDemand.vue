@@ -1,7 +1,6 @@
 <script lang="ts">
-import { defineComponent, onMounted, ref } from "vue";
-
 import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
+import { defineComponent, onMounted, ref } from "vue";
 
 import CostVue, { type CostProps } from "@/components/Cost.vue";
 import { TORAPPU_ENDPOINT } from "@/utils/consts";

@@ -1,8 +1,8 @@
 <script lang="ts">
 import type { PropType } from "vue";
-import { defineComponent, provide, ref } from "vue";
 
 import { NConfigProvider, NSelect } from "naive-ui";
+import { defineComponent, provide, ref } from "vue";
 
 import FormItem from "@/components/FormItem.vue";
 

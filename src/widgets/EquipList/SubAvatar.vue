@@ -1,14 +1,15 @@
 <script lang="ts">
 import type { PropType, Ref } from "vue";
-import { defineComponent, inject, ref } from "vue";
 
 import { useVModel } from "@vueuse/core";
+import { defineComponent, inject, ref } from "vue";
 
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
 import { getEquipData } from "./equipData";
+
 import type { Char } from "./types";
 
 export default defineComponent({

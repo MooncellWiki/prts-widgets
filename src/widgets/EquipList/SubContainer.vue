@@ -1,8 +1,8 @@
 <script lang="ts">
 import type { PropType, Ref } from "vue";
-import { defineComponent, inject } from "vue";
 
 import { NCard } from "naive-ui";
+import { defineComponent, inject } from "vue";
 
 import { getLanguage } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";

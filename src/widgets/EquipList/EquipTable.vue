@@ -1,4 +1,6 @@
 <script lang="ts">
+import { useVModel } from "@vueuse/core";
+import { DataTableColumns, NDataTable } from "naive-ui";
 import {
   PropType,
   Ref,
@@ -9,9 +11,6 @@ import {
   ref,
   watch,
 } from "vue";
-
-import { useVModel } from "@vueuse/core";
-import { DataTableColumns, NDataTable } from "naive-ui";
 
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
@@ -122,7 +121,7 @@ export default defineComponent({
       loading.value = true;
       loadingCount.value += charList.value.length;
       charEquipData.value = [];
-      let promises = charList.value.map((char) => {
+      const promises = charList.value.map((char) => {
         return getEquipData(char.name);
       });
       Promise.all(promises).then((values) => {

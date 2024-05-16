@@ -1,6 +1,4 @@
 <script lang="ts">
-import { PropType, computed, defineComponent, onMounted, ref } from "vue";
-
 import {
   NButton,
   NCard,
@@ -11,6 +9,7 @@ import {
   NLayout,
   NTooltip,
 } from "naive-ui";
+import { PropType, computed, defineComponent, onMounted, ref } from "vue";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
@@ -18,8 +17,9 @@ import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
-import type { MedalMetaData } from "./types";
 import { getMedalMetaData } from "./utils";
+
+import type { MedalMetaData } from "./types";
 
 export default defineComponent({
   components: {

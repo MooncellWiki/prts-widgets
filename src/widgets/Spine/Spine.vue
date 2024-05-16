@@ -1,7 +1,6 @@
 <!-- eslint-disable @typescript-eslint/no-unused-vars -->
 <script lang="ts">
 import type { PropType } from "vue";
-import { computed, defineComponent, onMounted, ref } from "vue";
 
 import {
   CenterFocusStrongSharp,
@@ -20,6 +19,7 @@ import {
   NSlider,
   NSwitch,
 } from "naive-ui";
+import { computed, defineComponent, onMounted, ref } from "vue";
 
 import Card from "@/components/Card.vue";
 import FormItem from "@/components/FormItem.vue";

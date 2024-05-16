@@ -1,6 +1,4 @@
 <script lang="ts">
-import { computed, defineComponent, ref, type PropType } from "vue";
-
 import {
   NButton,
   NCard,
@@ -11,8 +9,10 @@ import {
   NCollapseItem,
   NTooltip,
 } from "naive-ui";
+import { computed, defineComponent, ref, type PropType } from "vue";
 
 import MedalComponent from "./Medal.vue";
+
 import type { Medal, MedalGroup } from "./types";
 function goToLink(link: string) {
   window.open("https://prts.wiki/w/" + link, "_blank");

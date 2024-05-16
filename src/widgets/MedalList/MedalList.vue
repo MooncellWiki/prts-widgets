@@ -1,7 +1,4 @@
 <script lang="ts">
-import { computed, defineComponent, onMounted, ref } from "vue";
-
-import type { CollapseProps } from "naive-ui";
 import {
   NButton,
   NCard,
@@ -16,6 +13,7 @@ import {
   NPopover,
   NText,
 } from "naive-ui";
+import { computed, defineComponent, onMounted, ref } from "vue";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
@@ -25,8 +23,10 @@ import { getImagePath } from "@/utils/utils";
 import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
 import MedalStats from "./MedalStats.vue";
-import type { MedalMetaData } from "./types";
 import { getMedalMetaData } from "./utils";
+
+import type { MedalMetaData } from "./types";
+import type { CollapseProps } from "naive-ui";
 
 export default defineComponent({
   components: {

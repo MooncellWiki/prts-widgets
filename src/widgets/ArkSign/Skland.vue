@@ -15,7 +15,7 @@ async function textCopy() {
     }
     message.info("复制成功！");
   } else {
-    var ele = document.createElement("input");
+    const ele = document.createElement("input");
     ele.value = commandValue;
     document.body.append(ele);
     ele.select();

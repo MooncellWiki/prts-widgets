@@ -1,12 +1,12 @@
 <script lang="ts">
-import { defineComponent, nextTick, ref, type PropType } from "vue";
-
 import { NConfigProvider, NTabPane, NTabs } from "naive-ui";
+import { defineComponent, nextTick, ref, type PropType } from "vue";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import VoiceLangTab from "./VoiceLangTab.vue";
+
 import type { VoiceLangTypeData } from "./types";
 
 export default defineComponent({

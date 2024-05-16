@@ -1,4 +1,3 @@
-/* eslint-disable vue/one-component-per-file */
 import "virtual:uno.css";
 import { createApp } from "vue";
 

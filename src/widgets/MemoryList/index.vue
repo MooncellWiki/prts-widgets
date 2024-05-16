@@ -1,6 +1,4 @@
 <script lang="ts">
-import { computed, defineComponent, onMounted, reactive, ref } from "vue";
-
 import { debounce } from "lodash-es";
 import {
   NButton,
@@ -10,6 +8,7 @@ import {
   NLayout,
   NPagination,
 } from "naive-ui";
+import { computed, defineComponent, onMounted, reactive, ref } from "vue";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
@@ -170,7 +169,7 @@ export default defineComponent({
       _calcMemory();
       const latest = onlineDate.value[filteredMemory.value[0].char];
       const ldate = getTargetDate(latest, true);
-      for (let char in onlineDate.value) {
+      for (const char in onlineDate.value) {
         if (getTargetDate(onlineDate.value[char], true) >= ldate)
           latestChar.value.push(char);
       }

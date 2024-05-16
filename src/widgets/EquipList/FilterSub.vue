@@ -1,9 +1,10 @@
 <script lang="ts">
 import type { PropType } from "vue";
-import { defineComponent } from "vue";
 
 import { useVModel } from "@vueuse/core";
 import { NSelect } from "naive-ui";
+import { defineComponent } from "vue";
+
 import type { SelectGroupOption, SelectOption } from "naive-ui";
 
 export default defineComponent({

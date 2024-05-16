@@ -1,7 +1,6 @@
-import { ref } from "vue";
-
 import { useDark, useToggle } from "@vueuse/core";
 import { darkTheme, type GlobalTheme } from "naive-ui";
+import { ref } from "vue";
 
 export const useTheme = () => {
   const theme = ref<GlobalTheme | null>(null);

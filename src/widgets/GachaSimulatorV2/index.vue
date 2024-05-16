@@ -1,6 +1,4 @@
 <script lang="ts">
-import { PropType, computed, defineComponent, ref, toRaw } from "vue";
-
 import {
   NButton,
   NCollapse,
@@ -8,6 +6,7 @@ import {
   NConfigProvider,
   NLayout,
 } from "naive-ui";
+import { PropType, computed, defineComponent, ref, toRaw } from "vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getNaiveUILocale } from "@/utils/i18n";
@@ -60,14 +59,14 @@ export default defineComponent({
   },
   setup(props) {
     const showOperatorSelector = ref(false);
-    let gachaExecutor: GachaExecutor | NewbeeGachaExecutor;
 
     const rarityPickCharDict =
       props.gachaClientPool?.dynMeta?.rarityPickCharDict;
 
-    gachaExecutor = props.newbeeClientPool
-      ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
-      : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
+    const gachaExecutor: GachaExecutor | NewbeeGachaExecutor =
+      props.newbeeClientPool
+        ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
+        : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
 
     const isFesClassic =
       props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC;

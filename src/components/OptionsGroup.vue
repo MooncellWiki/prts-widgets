@@ -1,8 +1,7 @@
 <script lang="ts">
-import { type PropType, defineComponent } from "vue";
-
 import { useVModel } from "@vueuse/core";
 import { NButton } from "naive-ui";
+import { type PropType, defineComponent } from "vue";
 
 export default defineComponent({
   name: "OptionsGroup",

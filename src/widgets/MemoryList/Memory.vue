@@ -1,7 +1,6 @@
 <script lang="ts">
-import { PropType, computed, defineComponent } from "vue";
-
 import { NCard, NDivider, NPopover } from "naive-ui";
+import { PropType, computed, defineComponent } from "vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getImagePath } from "@/utils/utils";

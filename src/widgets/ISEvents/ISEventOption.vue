@@ -1,7 +1,6 @@
 <script lang="ts">
-import { defineComponent } from "vue";
-
 import { NAvatar, NBadge, NCard } from "naive-ui";
+import { defineComponent } from "vue";
 
 import { getImagePath } from "@/utils/utils";
 export default defineComponent({

@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { PropType } from "vue";
+
 import { defineComponent } from "vue";
 
 import { PRTS_BASE_DOMAIN } from "@/utils/consts";

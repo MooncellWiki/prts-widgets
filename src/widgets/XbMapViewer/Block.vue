@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { PropType } from "vue";
+
 import { computed, defineComponent, onMounted, ref } from "vue";
 
 import { getImagePath } from "@/utils/utils";
@@ -16,7 +17,7 @@ export default defineComponent({
   setup(props) {
     const self = ref();
     const style = computed(() => {
-      let result = {} as Record<string, string>;
+      const result = {} as Record<string, string>;
       if (bgMap[props.tile!])
         result.backgroundImage = `url(${getImagePath(bgMap[props.tile!])})`;
 
@@ -48,7 +49,7 @@ export default defineComponent({
 
       if (content.length > 0) {
         // @ts-expect-error tippy
-        // eslint-disable-next-line no-undef
+
         tippy6(self.value, {
           allowHTML: true,
           content,

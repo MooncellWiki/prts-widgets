@@ -1,14 +1,15 @@
 <!-- 元素宽度小于等于640px -->
 <script lang="ts">
 import type { PropType } from "vue";
+
 import { defineComponent, ref, toRefs } from "vue";
 
 import Avatar from "@/components/Avatar.vue";
 import { PRTS_BASE_DOMAIN } from "@/utils/consts";
 
-import type { Char } from "../utils";
-
 import { useChar } from "./useChar";
+
+import type { Char } from "../utils";
 
 export default defineComponent({
   name: "Card",

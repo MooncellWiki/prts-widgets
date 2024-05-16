@@ -1,5 +1,13 @@
 <script lang="ts">
 import {
+  NButton,
+  NConfigProvider,
+  NDataTable,
+  NInput,
+  NLayout,
+  NPagination,
+} from "naive-ui";
+import {
   computed,
   defineComponent,
   h,
@@ -10,6 +18,12 @@ import {
   watch,
 } from "vue";
 
+import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
+import { getImagePath, isMobileSkin } from "@/utils/utils";
+
+import FilterGroup from "./FilterGroup.vue";
+
 import type {
   DataTableBaseColumn,
   DataTableColumn,
@@ -17,20 +31,6 @@ import type {
   DataTableFilterState,
   DataTableInst,
 } from "naive-ui";
-import {
-  NButton,
-  NConfigProvider,
-  NDataTable,
-  NInput,
-  NLayout,
-  NPagination,
-} from "naive-ui";
-
-import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
-import { getImagePath, isMobileSkin } from "@/utils/utils";
-
-import FilterGroup from "./FilterGroup.vue";
 
 interface EnemyData {
   enemyIndex: string;
@@ -297,7 +297,7 @@ export default defineComponent({
             if (!e.children || e.children.length < 2) continue;
             (e.children[1] as HTMLElement).style.display = "block";
             // @ts-expect-error tippy
-            // eslint-disable-next-line no-undef
+
             tippy6(e.children[0], {
               content: e.children[1],
               arrow: true,
