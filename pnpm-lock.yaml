@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@sentry/browser':
+        specifier: ^7.115.0
+        version: 7.115.0
       '@sentry/integrations':
         specifier: ^7.114.0
         version: 7.114.0
@@ -54,9 +57,6 @@ importers:
       '@eslint/js':
         specifier: ^9.2.0
         version: 9.2.0
-      '@sentry/browser':
-        specifier: ^7.115.0
-        version: 7.115.0
       '@types/crypto-js':
         specifier: ^4.2.2
         version: 4.2.2
