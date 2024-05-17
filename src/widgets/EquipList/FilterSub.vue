@@ -50,6 +50,7 @@ export default defineComponent({
         multiple
         filterable
         clearable
+        :fallback-option="false"
         :placeholder="placeholder"
       />
     </div>

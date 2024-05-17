@@ -2,6 +2,7 @@
 import {
   PropType,
   Ref,
+  computed,
   defineComponent,
   h,
   inject,
@@ -11,13 +12,14 @@ import {
 } from "vue";
 
 import { useVModel } from "@vueuse/core";
-import { DataTableColumns, NDataTable } from "naive-ui";
+import { DataTableColumns, NDataTable, NPagination } from "naive-ui";
 
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
-import { getImagePath } from "@/utils/utils";
+import { getImagePath, isMobileSkin } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
-import { getEquipData } from "./equipData";
+import { statsStyleMap } from "./consts";
+import { getEquipDataAll } from "./equipData";
 import { customLabel } from "./i18n";
 import { Char } from "./types";
 
@@ -99,53 +101,113 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
 export default defineComponent({
   components: {
     NDataTable,
+    NPagination,
   },
   props: {
     chars: {
       type: Array as PropType<Char[]>,
       required: true,
     },
+    sortValue: {
+      type: Object as PropType<Record<string, string>>,
+      default: () => {
+        return {
+          mode: "default",
+          value: "desc",
+        };
+      },
+    },
+    filterValue: {
+      type: Array as PropType<Record<string, string>[]>,
+      default: () => {
+        return [
+          {
+            mode: "all",
+            value: "yes",
+          },
+        ];
+      },
+    },
   },
   emits: ["update:chars"],
   setup(props, { emit }) {
+    const isMobile = isMobileSkin();
+    const locale = getLanguage();
+    const pagination = ref({
+      page: 1,
+      pageSize: 10,
+      pageSizes: customLabel[locale].pagination,
+      pageSlot: isMobile ? 5 : 9,
+      pickSize: () => {
+        return isMobile ? "small" : "medium";
+      },
+    });
     const charEquipData = ref<EquipRow[]>([]);
     const loading = ref(false);
     const loadingCount = inject("loadingCount") as Ref<number>;
-    const createData = (): EquipRow[] => {
-      return charEquipData.value;
+    const createData = (): { data: EquipRow[]; length: number } => {
+      return {
+        data: filterSortedEquip.value.slice(
+          (pagination.value.page - 1) * pagination.value.pageSize,
+          pagination.value.page * pagination.value.pageSize,
+        ),
+        length: filterSortedEquip.value.length,
+      };
     };
     const createRowKey = (row: EquipRow) => {
       return row.operator + "." + row.name;
     };
     const charList = useVModel(props, "chars", emit);
-    watch(charList, async () => {
+    const filterSortEquip = () => {
+      let filteredEquip = charEquipData.value.filter((e) => {
+        return props.chars.some((d) => d.name == e.operator);
+      });
+      for (const v of props.filterValue) {
+        if (v.mode == "all") continue;
+        filteredEquip = filteredEquip.filter((data) => {
+          if (v.mode == "trait") {
+            return v.value == "yes"
+              ? data.data["add"] != null
+              : data.data["add"] == null;
+          } else if (v.mode == "talent") {
+            const match =
+              data.data["talent2"]?.match("新增天赋") ||
+              data.data["talent3"]?.match("新增天赋");
+            return v.value == "yes" ? match : !match;
+          } else {
+            return v.value == "yes"
+              ? data.data[v.mode] != "0"
+              : data.data[v.mode] == "0";
+          }
+        });
+      }
+      if (props.sortValue.mode != "default") {
+        filteredEquip.sort((x, y) => {
+          const mode = props.sortValue.mode;
+          const order = props.sortValue.value == "asc" ? 1 : -1;
+          const numx = Number(x.data[mode + "3"]) ?? 0;
+          const numy = Number(y.data[mode + "3"]) ?? 0;
+          return (numx - numy) * order * (statsStyleMap[mode] ?? 1);
+        });
+      }
+      return filteredEquip;
+    };
+    const filterSortedEquip = computed(filterSortEquip);
+    const renewData = async () => {
       loading.value = true;
       loadingCount.value += charList.value.length;
       charEquipData.value = [];
-      let promises = charList.value.map((char) => {
-        return getEquipData(char.name);
-      });
-      Promise.all(promises).then((values) => {
-        for (const v of values) {
-          const rawdata = (v ?? {}) as DOMStringMap[];
-          for (const e of rawdata) {
-            charEquipData.value.push({
-              name: e.name ?? "",
-              type: e.type ?? "",
-              operator: e.opt ?? "",
-              data: e ?? [],
-            });
-          }
-        }
-        loading.value = false;
-        loadingCount.value -= charList.value.length;
-      });
-    });
-    onBeforeMount(async () => {
-      loading.value = true;
-      loadingCount.value += charList.value.length;
+      const temp = (await getEquipDataAll()) as Record<string, any>;
       for (const c of charList.value) {
-        const rawdata = ((await getEquipData(c.name)) ?? []) as DOMStringMap[];
+        if (
+          charEquipData.value.some((e) => {
+            return e.operator == c.name;
+          })
+        ) {
+          loadingCount.value -= 1;
+          continue;
+        }
+        const rawdata = temp[c.name] as DOMStringMap[];
         for (const e of rawdata) {
           charEquipData.value.push({
             name: e.name ?? "",
@@ -157,6 +219,14 @@ export default defineComponent({
         loadingCount.value -= 1;
       }
       loading.value = false;
+      pagination.value.page = 1;
+    };
+    watch(charList, renewData);
+    watch(props, () => {
+      pagination.value.page = 1;
+    });
+    onBeforeMount(() => {
+      renewData();
     });
     return {
       createData,
@@ -164,17 +234,55 @@ export default defineComponent({
       charList,
       createRowKey,
       loading,
-      locale: getLanguage(),
+      customLabel,
+      locale,
+      pagination,
     };
   },
 });
 </script>
 <template>
+  <NPagination
+    v-model:page="pagination.page"
+    class="justify-center my-2"
+    :item-count="createData().length"
+    :page-size="pagination.pageSize"
+    :page-sizes="pagination.pageSizes"
+    :page-slot="pagination.pageSlot"
+    :size="pagination.pickSize()"
+    show-size-picker
+    @update:page="
+      (page) => {
+        pagination.page = page;
+      }
+    "
+    @update:page-size="
+      (size) => {
+        pagination.pageSize = size;
+        pagination.page = 1;
+      }
+    "
+  />
   <NDataTable
     :columns="columns(locale)"
-    :data="createData()"
+    :data="createData().data"
     :loading="loading"
     :row-key="createRowKey"
     remote
   ></NDataTable>
+  <NPagination
+    v-model:page="pagination.page"
+    class="justify-center my-2"
+    :item-count="createData().length"
+    :page-size="pagination.pageSize"
+    :page-sizes="pagination.pageSizes"
+    :page-slot="pagination.pageSlot"
+    :size="pagination.pickSize()"
+    show-size-picker
+    @update:page-size="
+      () => {
+        pagination.page = 1;
+      }
+    "
+  />
 </template>

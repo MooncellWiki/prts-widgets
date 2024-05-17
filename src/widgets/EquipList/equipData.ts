@@ -2,6 +2,7 @@ import { CargoEquip } from "./types";
 import { recoverHTML } from "./utils";
 
 const cache: Record<string, any> = {};
+let got = false;
 export async function getEquipData(name: string): Promise<any> {
   if (cache[name]) return cache[name];
   await getEquipDataAll();
@@ -9,6 +10,7 @@ export async function getEquipData(name: string): Promise<any> {
 }
 
 export async function getEquipDataAll(): Promise<any> {
+  if (got) return cache;
   const resp = await fetch(
     `/api.php?${new URLSearchParams({
       action: "cargoquery",
@@ -86,4 +88,6 @@ export async function getEquipDataAll(): Promise<any> {
     });
     cache[opt] = map;
   }
+  got = true;
+  return cache;
 }

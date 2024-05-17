@@ -9,20 +9,24 @@ import {
   watch,
 } from "vue";
 
+import { useUrlSearchParams } from "@vueuse/core";
 import {
+  NButton,
+  NButtonGroup,
   NCard,
+  NCollapse,
+  NCollapseItem,
   NCollapseTransition,
   NConfigProvider,
+  NSelect,
   NEmpty,
   NLayout,
   NScrollbar,
-  NPagination,
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-import { isMobileSkin } from "@/utils/utils";
 
 import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
@@ -35,49 +39,40 @@ import {
   getLocaleType,
   getZhType,
   customLabel,
+  getFilterOptions,
+  getFilterValue,
+  getSortOptions,
+  getSortValue,
 } from "./i18n";
 import { Char } from "./types";
 import { updateTippy } from "./utils";
-
-export function onClickTag(charname: string): void {
-  const items = document.querySelectorAll(".equipitem");
-  const affix = document.querySelectorAll(".affix")[0];
-  const ele = Array.from(items).find((item) => {
-    return (item as HTMLElement).dataset?.opt === charname;
-  });
-  const affixStatus = affix.classList.contains("n-affix--affixed") ? 1 : 2;
-  const affixHeight = affix.getBoundingClientRect().height;
-
-  const y = ele?.getBoundingClientRect().y ?? Number.NaN;
-  window.scrollBy({
-    behavior: "smooth",
-    top: y - (affixStatus * affixHeight + 10),
-    left: 0,
-  });
-}
 
 export default defineComponent({
   components: {
     OptionsGroup,
     FilterSub,
+    NButton,
+    NButtonGroup,
     NCard,
     NConfigProvider,
     NLayout,
+    NCollapse,
+    NCollapseItem,
     NCollapseTransition,
+    NSelect,
     NEmpty,
     NScrollbar,
     SubContainer,
     EquipTable,
-    NPagination,
   },
   setup() {
     const filterShow = ref(true);
     const operatorShow = ref(true);
     const resultShow = ref(true);
-    const isMobile = isMobileSkin();
     const i18nConfig = getNaiveUILocale();
     const { theme, toggleDark } = useTheme();
     const locale = getLanguage();
+    const hash = useUrlSearchParams("hash");
 
     const filterType = getFilterType(locale);
     const filterRarity = getFilterRarity(locale);
@@ -109,12 +104,61 @@ export default defineComponent({
         }),
       };
     });
+    const sortOptions = {
+      sortOption: getSortOptions(locale),
+      sortValue: getSortValue(locale),
+      filterOption: getFilterOptions(locale),
+      filterValue: getFilterValue(locale),
+    };
+    const sortValue = ref<Record<string, string>>({
+      mode: "default",
+      value: "desc",
+    });
+    const filterValue = ref<Record<string, string>[]>([
+      {
+        mode: "all",
+        value: "yes",
+      },
+    ]);
     const sortedCharData = ref<Record<string, Char[]>>({});
     const states = ref<Record<string, string[]>>({
       type: [],
       rarity: [],
       sub: [],
     });
+    const updateHash = () => {
+      if (states.value.type.length > 0) {
+        hash.type = states.value.type
+          .map((v) => {
+            return customLabel[locale].typeOptions.indexOf(v as string);
+          })
+          .join("");
+      } else delete hash.type;
+      if (states.value.rarity.length > 0) {
+        hash.rarity = states.value.rarity
+          .map((v) => {
+            return Number(v.slice(1)) - 1;
+          })
+          .join("");
+      } else delete hash.rarity;
+      if (states.value.sub.length > 0) {
+        hash.sub = states.value.sub.join("-");
+      } else delete hash.sub;
+      sortValue.value.mode == "default"
+        ? delete hash.sort
+        : (hash.sort = sortValue.value.mode);
+      hash.filter = filterValue.value
+        .filter((v) => {
+          return v.mode == "all" ? false : true;
+        })
+        .map((v) => {
+          return v.mode + "_" + v.value.slice(0, 1);
+        });
+    };
+    watch(states, updateHash, { deep: true });
+    watch(operatorShow, updateHash);
+    watch(sortValue, updateHash, { deep: true });
+    watch(filterValue, updateHash, { deep: true });
     const filterIntersection = (states: Record<string, string[]>) => {
       return Object.fromEntries(
         Object.entries(sortedCharData.value)
@@ -146,51 +190,18 @@ export default defineComponent({
     const filteredCharData = computed<Record<string, Char[]>>(() => {
       return filterIntersection(states.value);
     });
-    const getFilteredCharCount = () => {
-      let count = 0;
-      for (const sub in filteredCharData.value) {
-        count += filteredCharData.value[sub].length;
-      }
-      return count;
-    };
     const charDataTable = computed<Char[]>(() => {
       let list: Char[] = [];
-      let skip = pagination.value.pageSize * (pagination.value.page - 1);
-      let size = pagination.value.pageSize;
       for (const subtype in filteredCharData.value) {
         list = list.concat(filteredCharData.value[subtype]);
-        if (skip > 0 && list.length <= skip) {
-          continue;
-        }
-        if (skip > 0 && list.length > skip) {
-          list.splice(0, skip);
-          skip = 0;
-        }
-        if (list.length > size) {
-          list = list.slice(0, size);
-          break;
-        }
       }
       return list;
-    });
-    watch(states.value, () => {
-      pagination.value.page = 1;
     });
 
     const showChars = ref<string[]>([]);
     provide("showChars", showChars);
     const loadingCount = ref(0);
     provide("loadingCount", loadingCount);
-
-    const pagination = ref({
-      page: 1,
-      pageSize: 5,
-      pageSizes: customLabel[locale].pagination,
-      pageSlot: isMobile ? 5 : 9,
-      pickSize: () => {
-        return isMobile ? "small" : "medium";
-      },
-    });
 
     onMounted(async () => {
       const resp = await fetch(
@@ -238,6 +249,33 @@ export default defineComponent({
                 Number.parseInt(a.rarity as string);
         });
       }
+      for (const [k, v] of Object.entries(hash)) {
+        if (k == "sort" && v != "default") {
+          sortValue.value.mode = v as string;
+        }
+        if (k == "filter") {
+          const res = typeof v == "string" ? [v] : v;
+          filterValue.value = res.map((e) => {
+            return {
+              mode: e.slice(0, -2),
+              value: e.slice(-1) == "y" ? "yes" : "no",
+            };
+          });
+        }
+        if (k == "type") {
+          states.value[k] = (v as string).split("").map((e) => {
+            return customLabel[locale].typeOptions[Number(e)];
+          });
+        }
+        if (k == "rarity") {
+          states.value[k] = (v as string).split("").map((e) => {
+            return rarityMap[e];
+          });
+        }
+        if (k == "sub") {
+          states.value[k] = (v as string).split("-");
+        }
+      }
       await getEquipDataAll();
 
       nextTick(() => {
@@ -255,14 +293,14 @@ export default defineComponent({
       theme,
       toggleDark,
       resultShow,
-      onClickTag,
       charDataTable,
-      pagination,
-      getFilteredCharCount,
       i18nConfig,
       locale,
       loadingCount,
       customLabel,
+      sortOptions,
+      sortValue,
+      filterValue,
     };
   },
 });
@@ -330,14 +368,26 @@ export default defineComponent({
         class="selectcard"
       >
         <template #header-extra>
-          <div class="m-1 cursor-pointer" @click="operatorShow = false">
-            <span class="text-2xl mdi mdi-view-list" />
-          </div>
-          <div class="m-1 cursor-pointer" @click="operatorShow = true">
-            <span class="text-2xl mdi mdi-view-grid" />
-          </div>
+          <NButtonGroup size="small">
+            <NButton
+              secondary
+              :disabled="loadingCount > 0"
+              :type="operatorShow ? 'info' : 'default'"
+              @click="operatorShow = true"
+            >
+              <span class="text-xl mdi mdi-view-list" />
+            </NButton>
+            <NButton
+              secondary
+              :disabled="loadingCount > 0"
+              :type="operatorShow ? 'default' : 'info'"
+              @click="operatorShow = false"
+            >
+              <span class="text-xl mdi mdi-view-grid" />
+            </NButton>
+          </NButtonGroup>
         </template>
-        <div v-if="operatorShow">
+        <div v-if="!operatorShow">
           <div class="w-full flex flex-col flex-wrap">
             <SubContainer
               v-for="(chars, subtype) in filteredCharData"
@@ -355,52 +405,91 @@ export default defineComponent({
             </template>
           </NEmpty>
         </div>
-        <div v-if="!operatorShow">
-          <NPagination
-            v-model:page="pagination.page"
-            class="justify-center my-2"
-            :item-count="getFilteredCharCount()"
-            :page-size="pagination.pageSize"
-            :page-sizes="pagination.pageSizes"
-            :page-slot="pagination.pageSlot"
-            :size="pagination.pickSize()"
-            show-size-picker
-            @update:page="
-              (page) => {
-                pagination.page = page;
-              }
-            "
-            @update:page-size="
-              (size) => {
-                pagination.pageSize = size;
-                pagination.page = 1;
-              }
-            "
-          />
+        <div v-else>
+          <div class="my-1">
+            <NCollapse default-expanded-names="sort">
+              <NCollapseItem
+                name="sort"
+                :title="customLabel[locale].tableCollapse"
+              >
+                <div class="flex flex-row justify-center items-center">
+                  <span class="basis-1/8">
+                    {{ customLabel[locale].tableSortLabel }}
+                  </span>
+                  <div class="flex flex-row items-center basis-7/8">
+                    <NSelect
+                      v-model:value="sortValue.mode"
+                      class="m-1"
+                      :disabled="loadingCount > 0"
+                      :options="sortOptions.sortOption"
+                    />
+                  </div>
+                </div>
+                <div class="flex flex-row justify-center items-center">
+                  <span class="basis-1/8">
+                    {{ customLabel[locale].tableFilterLabel }}
+                  </span>
+                  <div class="flex flex-col items-center basis-7/8">
+                    <div
+                      v-for="(v, i) in filterValue"
+                      :key="i"
+                      class="flex flex-row items-center w-full"
+                    >
+                      <NSelect
+                        v-model:value="v.mode"
+                        class="m-1"
+                        :disabled="loadingCount > 0"
+                        :options="sortOptions.filterOption"
+                      />
+                      <NSelect
+                        v-model:value="v.value"
+                        class="m-1"
+                        :disabled="loadingCount > 0 || v.mode == 'all'"
+                        :options="sortOptions.filterValue"
+                      />
+                    </div>
+                  </div>
+                  <NButtonGroup vertical size="small">
+                    <NButton
+                      type="default"
+                      class="my-1"
+                      @click="
+                        () => {
+                          filterValue.push({
+                            mode: 'all',
+                            value: 'yes',
+                          });
+                        }
+                      "
+                    >
+                      <span class="text-xl mdi mdi-plus"></span>
+                    </NButton>
+                    <NButton
+                      type="default"
+                      class="my-1"
+                      @click="
+                        () => {
+                          if (filterValue.length > 1) {
+                            filterValue.pop();
+                          }
+                        }
+                      "
+                    >
+                      <span class="text-xl mdi mdi-minus"></span>
+                    </NButton>
+                  </NButtonGroup>
+                </div>
+              </NCollapseItem>
+            </NCollapse>
+          </div>
           <NScrollbar trigger="none" :x-scrollable="true">
-            <EquipTable :chars="charDataTable"></EquipTable>
+            <EquipTable
+              :chars="charDataTable"
+              :sort-value="sortValue"
+              :filter-value="filterValue"
+            >
+            </EquipTable>
           </NScrollbar>
-          <NPagination
-            v-model:page="pagination.page"
-            class="justify-center my-2"
-            :item-count="getFilteredCharCount()"
-            :page-size="pagination.pageSize"
-            :page-sizes="pagination.pageSizes"
-            :page-slot="pagination.pageSlot"
-            :size="pagination.pickSize()"
-            show-size-picker
-            @update:page="
-              (page) => {
-                pagination.page = page;
-              }
-            "
-            @update:page-size="
-              (size) => {
-                pagination.pageSize = size;
-                pagination.page = 1;
-              }
-            "
-          />
         </div>
       </NCard>
     </NLayout>
