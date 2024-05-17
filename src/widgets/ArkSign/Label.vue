@@ -1,7 +1,8 @@
 <script lang="ts">
+import { PropType, defineComponent } from "vue";
+
 import { NTag } from "naive-ui";
 import { TagColor } from "naive-ui/es/tag/src/common-props";
-import { PropType, defineComponent } from "vue";
 export default defineComponent({
   components: { NTag },
   props: {

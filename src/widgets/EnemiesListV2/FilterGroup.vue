@@ -1,9 +1,9 @@
 <script lang="ts">
 import type { PropType } from "vue";
+import { defineComponent } from "vue";
 
 import { useVModel } from "@vueuse/core";
 import { NCard, NCollapseTransition } from "naive-ui";
-import { defineComponent } from "vue";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 

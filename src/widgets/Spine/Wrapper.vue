@@ -1,8 +1,8 @@
 <script lang="ts">
 import type { PropType } from "vue";
+import { defineComponent, ref, watch } from "vue";
 
 import { NButton, NConfigProvider, zhCN } from "naive-ui";
-import { defineComponent, ref, watch } from "vue";
 
 import Spine from "./Spine.vue";
 

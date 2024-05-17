@@ -1,4 +1,6 @@
 <script lang="ts">
+import { PropType, computed, defineComponent, ref, toRaw } from "vue";
+
 import {
   NButton,
   NCollapse,
@@ -6,7 +8,6 @@ import {
   NConfigProvider,
   NLayout,
 } from "naive-ui";
-import { PropType, computed, defineComponent, ref, toRaw } from "vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getNaiveUILocale } from "@/utils/i18n";

@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { PropType } from "vue";
-
 import { computed, defineComponent, onMounted, ref } from "vue";
 
 import { getImagePath } from "@/utils/utils";

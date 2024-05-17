@@ -1,7 +1,7 @@
 import type { Ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 
 import Hammer from "hammerjs";
-import { onMounted, onUnmounted, ref } from "vue";
 
 import { isFirefox } from "@/utils/utils";
 

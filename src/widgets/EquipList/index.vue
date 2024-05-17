@@ -1,14 +1,5 @@
 <script lang="ts">
 import {
-  NCard,
-  NCollapseTransition,
-  NConfigProvider,
-  NEmpty,
-  NLayout,
-  NScrollbar,
-  NPagination,
-} from "naive-ui";
-import {
   computed,
   defineComponent,
   nextTick,
@@ -17,6 +8,16 @@ import {
   ref,
   watch,
 } from "vue";
+
+import {
+  NCard,
+  NCollapseTransition,
+  NConfigProvider,
+  NEmpty,
+  NLayout,
+  NScrollbar,
+  NPagination,
+} from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getLanguage, getNaiveUILocale } from "@/utils/i18n";

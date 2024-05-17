@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { PropType } from "vue";
-
 import { computed, defineComponent, provide } from "vue";
 
 export default defineComponent({

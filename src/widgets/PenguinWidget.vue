@@ -1,6 +1,7 @@
 <script lang="ts">
-import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
 import { defineComponent, ref } from "vue";
+
+import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";

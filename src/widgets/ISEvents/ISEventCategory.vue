@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { PropType } from "vue";
+import { defineComponent } from "vue";
 
 import {
   NButton,
@@ -11,7 +12,6 @@ import {
   NTabPane,
   NTabs,
 } from "naive-ui";
-import { defineComponent } from "vue";
 
 export default defineComponent({
   components: {

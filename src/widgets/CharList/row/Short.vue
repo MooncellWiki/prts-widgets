@@ -1,7 +1,6 @@
 <!-- 元素宽度小于等于800且大于640 -->
 <script lang="ts">
 import type { PropType } from "vue";
-
 import { defineComponent, toRefs } from "vue";
 
 import Avatar from "@/components/Avatar.vue";

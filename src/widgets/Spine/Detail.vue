@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { PropType } from "vue";
-
 import { defineComponent } from "vue";
 function round(x: number) {
   return Math.round(x);

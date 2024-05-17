@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { PropType } from "vue";
-
 import { defineComponent } from "vue";
 
 import { professionMap, sum } from "@/utils/utils";

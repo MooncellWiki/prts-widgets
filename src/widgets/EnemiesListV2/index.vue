@@ -1,13 +1,5 @@
 <script lang="ts">
 import {
-  NButton,
-  NConfigProvider,
-  NDataTable,
-  NInput,
-  NLayout,
-  NPagination,
-} from "naive-ui";
-import {
   computed,
   defineComponent,
   h,
@@ -17,6 +9,15 @@ import {
   ref,
   watch,
 } from "vue";
+
+import {
+  NButton,
+  NConfigProvider,
+  NDataTable,
+  NInput,
+  NLayout,
+  NPagination,
+} from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";

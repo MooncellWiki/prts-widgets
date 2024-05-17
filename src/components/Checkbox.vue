@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { Ref } from "vue";
-
 import { computed, defineComponent, inject } from "vue";
 
 export default defineComponent({

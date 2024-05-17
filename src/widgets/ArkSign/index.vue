@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { type VNodeChild, h, nextTick, ref, watch } from "vue";
+
 import {
   HelpOutlineOutlined,
   KeyboardArrowDownFilled,
@@ -22,7 +24,6 @@ import {
   NSelect,
   useMessage,
 } from "naive-ui";
-import { type VNodeChild, h, nextTick, ref, watch } from "vue";
 import { VueDraggable } from "vue-draggable-plus";
 
 import { STATIC_ENDPOINT } from "@/utils/consts";

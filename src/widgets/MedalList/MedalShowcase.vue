@@ -1,4 +1,6 @@
 <script lang="ts">
+import { PropType, computed, defineComponent, onMounted, ref } from "vue";
+
 import {
   NButton,
   NCard,
@@ -9,7 +11,6 @@ import {
   NLayout,
   NTooltip,
 } from "naive-ui";
-import { PropType, computed, defineComponent, onMounted, ref } from "vue";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";

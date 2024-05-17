@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { PropType } from "vue";
+import { defineComponent, ref } from "vue";
 
 import { HomeSharp } from "@vicons/material";
 import {
@@ -13,7 +14,6 @@ import {
   NLayoutContent,
   NSpace,
 } from "naive-ui";
-import { defineComponent, ref } from "vue";
 
 import { getImagePath } from "@/utils/utils";
 

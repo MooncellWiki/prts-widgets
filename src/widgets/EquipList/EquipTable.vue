@@ -1,6 +1,4 @@
 <script lang="ts">
-import { useVModel } from "@vueuse/core";
-import { DataTableColumns, NDataTable } from "naive-ui";
 import {
   PropType,
   Ref,
@@ -11,6 +9,9 @@ import {
   ref,
   watch,
 } from "vue";
+
+import { useVModel } from "@vueuse/core";
+import { DataTableColumns, NDataTable } from "naive-ui";
 
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";

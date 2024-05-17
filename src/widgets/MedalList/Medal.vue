@@ -1,6 +1,7 @@
 <script lang="ts">
-import { NCard, NConfigProvider, NImage, NTag, NTooltip } from "naive-ui";
 import { defineComponent, ref, type PropType } from "vue";
+
+import { NCard, NConfigProvider, NImage, NTag, NTooltip } from "naive-ui";
 
 import type { Medal } from "./types";
 

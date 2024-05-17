@@ -1,5 +1,4 @@
 <script lang="ts">
-import { NSpin } from "naive-ui";
 import {
   PropType,
   Ref,
@@ -12,6 +11,8 @@ import {
   ref,
   watch,
 } from "vue";
+
+import { NSpin } from "naive-ui";
 
 import { getLanguage } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";

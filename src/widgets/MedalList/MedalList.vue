@@ -1,4 +1,6 @@
 <script lang="ts">
+import { computed, defineComponent, onMounted, ref } from "vue";
+
 import {
   NButton,
   NCard,
@@ -13,7 +15,6 @@ import {
   NPopover,
   NText,
 } from "naive-ui";
-import { computed, defineComponent, onMounted, ref } from "vue";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";

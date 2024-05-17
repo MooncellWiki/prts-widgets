@@ -1,9 +1,5 @@
 <script lang="ts">
 import type { PropType, Ref } from "vue";
-
-import { useBreakpoints, useUrlSearchParams } from "@vueuse/core";
-import Cookies from "js-cookie";
-import { NCollapseTransition } from "naive-ui";
 import {
   computed,
   defineComponent,
@@ -13,6 +9,10 @@ import {
   ref,
   watch,
 } from "vue";
+
+import { useBreakpoints, useUrlSearchParams } from "@vueuse/core";
+import Cookies from "js-cookie";
+import { NCollapseTransition } from "naive-ui";
 
 import Avatar from "@/components/Avatar.vue";
 import Checkbox from "@/components/Checkbox.vue";

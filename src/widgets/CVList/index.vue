@@ -1,6 +1,7 @@
 <script lang="ts">
-import { NConfigProvider, NTabPane, NTabs } from "naive-ui";
 import { defineComponent, nextTick, ref, type PropType } from "vue";
+
+import { NConfigProvider, NTabPane, NTabs } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
