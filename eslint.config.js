@@ -108,8 +108,8 @@ export const imports = [
             "type",
           ],
           pathGroups: [
+            { group: "builtin", pattern: "vue", position: "before" },
             { group: "internal", pattern: "{{@,~}/,#}**" },
-            { pattern: "vue", group: "builtin", position: "before" },
           ],
           "newlines-between": "always",
           alphabetize: {
