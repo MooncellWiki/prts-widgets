@@ -111,6 +111,7 @@ export const imports = [
             { group: "builtin", pattern: "vue", position: "before" },
             { group: "internal", pattern: "{{@,~}/,#}**" },
           ],
+          pathGroupsExcludedImportTypes: [],
           "newlines-between": "always",
           alphabetize: {
             order: "asc",
