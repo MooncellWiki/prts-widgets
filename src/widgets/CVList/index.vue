@@ -7,6 +7,7 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import VoiceLangTab from "./VoiceLangTab.vue";
+
 import type { VoiceLangTypeData } from "./types";
 
 export default defineComponent({

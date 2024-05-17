@@ -10,13 +10,6 @@ import {
   watch,
 } from "vue";
 
-import type {
-  DataTableBaseColumn,
-  DataTableColumn,
-  DataTableColumns,
-  DataTableFilterState,
-  DataTableInst,
-} from "naive-ui";
 import {
   NButton,
   NConfigProvider,
@@ -31,6 +24,14 @@ import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobileSkin } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
+
+import type {
+  DataTableBaseColumn,
+  DataTableColumn,
+  DataTableColumns,
+  DataTableFilterState,
+  DataTableInst,
+} from "naive-ui";
 
 interface EnemyData {
   enemyIndex: string;
@@ -297,7 +298,7 @@ export default defineComponent({
             if (!e.children || e.children.length < 2) continue;
             (e.children[1] as HTMLElement).style.display = "block";
             // @ts-expect-error tippy
-            // eslint-disable-next-line no-undef
+
             tippy6(e.children[0], {
               content: e.children[1],
               arrow: true,

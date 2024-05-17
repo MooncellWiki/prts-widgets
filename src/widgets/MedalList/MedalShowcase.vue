@@ -18,8 +18,9 @@ import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
-import type { MedalMetaData } from "./types";
 import { getMedalMetaData } from "./utils";
+
+import type { MedalMetaData } from "./types";
 
 export default defineComponent({
   components: {

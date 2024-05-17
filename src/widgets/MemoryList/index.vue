@@ -170,7 +170,7 @@ export default defineComponent({
       _calcMemory();
       const latest = onlineDate.value[filteredMemory.value[0].char];
       const ldate = getTargetDate(latest, true);
-      for (let char in onlineDate.value) {
+      for (const char in onlineDate.value) {
         if (getTargetDate(onlineDate.value[char], true) >= ldate)
           latestChar.value.push(char);
       }

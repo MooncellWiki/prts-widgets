@@ -122,7 +122,7 @@ export default defineComponent({
       loading.value = true;
       loadingCount.value += charList.value.length;
       charEquipData.value = [];
-      let promises = charList.value.map((char) => {
+      const promises = charList.value.map((char) => {
         return getEquipData(char.name);
       });
       Promise.all(promises).then((values) => {

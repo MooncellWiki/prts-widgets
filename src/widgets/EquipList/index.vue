@@ -156,7 +156,7 @@ export default defineComponent({
     const charDataTable = computed<Char[]>(() => {
       let list: Char[] = [];
       let skip = pagination.value.pageSize * (pagination.value.page - 1);
-      let size = pagination.value.pageSize;
+      const size = pagination.value.pageSize;
       for (const subtype in filteredCharData.value) {
         list = list.concat(filteredCharData.value[subtype]);
         if (skip > 0 && list.length <= skip) {

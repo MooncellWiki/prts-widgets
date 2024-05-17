@@ -47,6 +47,7 @@ import {
 } from "./getUrl";
 import { filterProfessionList, filterRarityList, sortList } from "./option";
 import { getPlayerBinding, getPlayerInfo } from "./skland";
+
 import type { BindingListItem, Char, PlayerInfo } from "./types";
 
 const isMobile = isMobileSkin();
@@ -96,9 +97,9 @@ const showInfo = ref({
 const charList = ref<Char[]>([]);
 function order() {
   const selectedList: Char[] = [];
-  let result: Char[] = [];
+  const result: Char[] = [];
   for (const charId of Object.keys(charData.value)) {
-    let index = selected.value.indexOf(charId);
+    const index = selected.value.indexOf(charId);
     if (index !== -1) {
       selectedList[index] = charData.value[charId];
       continue;
@@ -296,7 +297,7 @@ function GenerateImg(type: string) {
     height: height,
   };
   html2canvas(shareContent, opts).then(function (canvas) {
-    let imgData = canvas.toDataURL("PNG");
+    const imgData = canvas.toDataURL("PNG");
     if (type == "d") {
       showImgResult.value = true;
     } else if (type == "m") {
@@ -306,8 +307,8 @@ function GenerateImg(type: string) {
   });
 }
 function calcSkillRankShow(skills: Char["skills"], skillId: string) {
-  let index = skills.findIndex((e) => e.id == skillId);
-  let sp = skills[index].specializeLevel;
+  const index = skills.findIndex((e) => e.id == skillId);
+  const sp = skills[index].specializeLevel;
   return sp == 0 ? true : false;
 }
 function calcEquip(char: Char) {

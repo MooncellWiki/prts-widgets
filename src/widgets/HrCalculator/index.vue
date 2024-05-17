@@ -8,7 +8,6 @@ import Avatar from "@/components/Avatar.vue";
 import Checkbox from "@/components/Checkbox.vue";
 import FilterRow from "@/components/FilterRow.vue";
 
-import type { Source } from "./utils";
 import {
   Char,
   all,
@@ -23,6 +22,9 @@ import {
   tag,
   tagIndex,
 } from "./utils";
+
+import type { Source } from "./utils";
+
 // 寻访出不了的都算只能公招出
 function isOnly(s: Source) {
   return !s.obtainMethod.some((v) => v.includes("寻访"));

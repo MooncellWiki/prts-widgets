@@ -27,7 +27,7 @@ export default defineComponent({
       return result;
     });
     const black = computed(() => {
-      let result: Record<string, string> = {};
+      const result: Record<string, string> = {};
       const configBlackBoard = props.map?.options.configBlackBoard || [];
       for (const block of configBlackBoard) {
         const val = block.valueStr;
