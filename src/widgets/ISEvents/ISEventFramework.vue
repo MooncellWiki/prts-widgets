@@ -18,6 +18,7 @@ import { defineComponent, ref } from "vue";
 import { getImagePath } from "@/utils/utils";
 
 import ISEventOption from "./ISEventOption.vue";
+
 interface Option {
   title: string;
   type: string;

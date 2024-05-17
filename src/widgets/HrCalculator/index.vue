@@ -24,6 +24,7 @@ import {
 } from "./utils";
 
 import type { Source } from "./utils";
+
 // 寻访出不了的都算只能公招出
 function isOnly(s: Source) {
   return !s.obtainMethod.some((v) => v.includes("寻访"));
