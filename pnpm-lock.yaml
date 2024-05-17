@@ -105,9 +105,6 @@ importers:
       eslint-config-prettier:
         specifier: ^9.1.0
         version: 9.1.0(eslint@9.2.0)
-      eslint-plugin-antfu:
-        specifier: ^2.2.0
-        version: 2.2.0(eslint@9.2.0)
       eslint-plugin-import-x:
         specifier: ^0.5.0
         version: 0.5.0(eslint@9.2.0)(typescript@5.4.5)
@@ -1924,11 +1921,6 @@ packages:
 
   eslint-import-resolver-node@0.3.9:
     resolution: {integrity: sha512-WFj2isz22JahUv+B788TlO3N6zL3nNJGU8CcZbPZvVEkBPaJdCV4vy5wyghty5ROFbCRnm132v8BScu5/1BQ8g==}
-
-  eslint-plugin-antfu@2.2.0:
-    resolution: {integrity: sha512-QHzHYP+fyfhSkIdcuT9JZ4rCPuJOoHRE27gglPYHlJ6lxB7pO9i45yAy4aurx/rleBuEC27U4c//1Nwtbasj4Q==}
-    peerDependencies:
-      eslint: '*'
 
   eslint-plugin-import-x@0.5.0:
     resolution: {integrity: sha512-C7R8Z4IzxmsoOPMtSzwuOBW5FH6iRlxHR6iTks+MzVlrk3r3TUxokkWTx3ypdj9nGOEP+CG/5e6ebZzHbxgbbQ==}
@@ -5344,11 +5336,6 @@ snapshots:
       resolve: 1.22.8
     transitivePeerDependencies:
       - supports-color
-
-  eslint-plugin-antfu@2.2.0(eslint@9.2.0):
-    dependencies:
-      '@antfu/utils': 0.7.8
-      eslint: 9.2.0
 
   eslint-plugin-import-x@0.5.0(eslint@9.2.0)(typescript@5.4.5):
     dependencies:
