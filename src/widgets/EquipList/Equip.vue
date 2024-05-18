@@ -153,7 +153,7 @@ export default defineComponent({
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor('hp', e[stats[0]] ?? '0'),
+                      color: getStatColor(stats[0], e[stats[0]] ?? '0'),
                     }"
                   >
                     {{ (Number(e[stats[0]]) >= 0 ? "+" : "") + e[stats[0]] }}
@@ -202,7 +202,7 @@ export default defineComponent({
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor('hp', e[stats[0] + '2'] ?? '0'),
+                      color: getStatColor(stats[0], e[stats[0] + '2'] ?? '0'),
                     }"
                   >
                     {{
@@ -244,7 +244,7 @@ export default defineComponent({
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor('hp', e[stats[0] + '3'] ?? '0'),
+                      color: getStatColor(stats[0], e[stats[0] + '3'] ?? '0'),
                     }"
                   >
                     {{

@@ -15,6 +15,11 @@ export interface Char {
   id: number;
 }
 
+export interface CharEquips {
+  char: Char;
+  equips: DOMStringMap[];
+}
+
 export interface CargoEquip {
   opt: string;
   name: string;
@@ -40,4 +45,11 @@ export interface CargoEquip {
   mat3: string;
   mission1: string;
   mission2: string;
+}
+
+export interface EquipRow {
+  name: string;
+  type: string;
+  operator: string;
+  data: DOMStringMap;
 }
