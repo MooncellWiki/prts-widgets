@@ -2,8 +2,9 @@ import "virtual:uno.css";
 import { createApp } from "vue";
 
 import HrCalculator from "../widgets/HrCalculator/index.vue";
-import type { Source } from "../widgets/HrCalculator/utils";
 import { Char } from "../widgets/HrCalculator/utils";
+
+import type { Source } from "../widgets/HrCalculator/utils";
 
 const ele = document.querySelector("#root");
 

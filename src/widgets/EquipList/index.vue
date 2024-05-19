@@ -193,7 +193,7 @@ export default defineComponent({
     };
     const filteredCharEquipData = computed((): Record<string, CharEquips[]> => {
       const s = states.value;
-      let result: Record<string, CharEquips[]> = {};
+      const result: Record<string, CharEquips[]> = {};
       for (const sub in charEquipData.value) {
         const ces = charEquipData.value[sub];
         const temp: CharEquips[] = [];
@@ -242,8 +242,8 @@ export default defineComponent({
         result.sort((x, y) => {
           const mode = sortStates.value.sort[0].mode;
           const order = sortStates.value.sort[0].value == "asc" ? 1 : -1;
-          const numx = Number(x.data[mode + "3"]) ?? 0;
-          const numy = Number(y.data[mode + "3"]) ?? 0;
+          const numx = x.data[mode + "3"] ? Number(x.data[mode + "3"]) : 0;
+          const numy = y.data[mode + "3"] ? Number(y.data[mode + "3"]) : 0;
           return (numx - numy) * order * (statsStyleMap[mode] ?? 1);
         });
       }

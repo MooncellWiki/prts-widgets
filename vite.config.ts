@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import legacy from "@vitejs/plugin-legacy";
@@ -9,10 +9,10 @@ import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
 
 const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
-const BASE_DIR = dirname(fileURLToPath(import.meta.url));
+const BASE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-const entries = readdirSync(join(BASE_DIR, "src/entries/"));
-const templates = readdirSync(join(BASE_DIR, "templates/"));
+const entries = readdirSync(path.join(BASE_DIR, "src/entries/"));
+const templates = readdirSync(path.join(BASE_DIR, "templates/"));
 const nohashEntries = new Set(["DisplayController"]);
 
 const input: Record<string, string> = {};
@@ -36,7 +36,7 @@ export default defineConfig(({ command }) => {
     base: useHtmlMode ? "https://static.prts.wiki/widgets/production" : "/",
     resolve: {
       alias: {
-        "@": resolve(BASE_DIR, "./src"),
+        "@": path.resolve(BASE_DIR, "./src"),
       },
     },
     plugins: [

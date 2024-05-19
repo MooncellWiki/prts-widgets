@@ -60,14 +60,14 @@ export default defineComponent({
   },
   setup(props) {
     const showOperatorSelector = ref(false);
-    let gachaExecutor: GachaExecutor | NewbeeGachaExecutor;
 
     const rarityPickCharDict =
       props.gachaClientPool?.dynMeta?.rarityPickCharDict;
 
-    gachaExecutor = props.newbeeClientPool
-      ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
-      : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
+    const gachaExecutor: GachaExecutor | NewbeeGachaExecutor =
+      props.newbeeClientPool
+        ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
+        : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
 
     const isFesClassic =
       props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC;

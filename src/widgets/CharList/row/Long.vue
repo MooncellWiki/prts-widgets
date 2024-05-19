@@ -6,9 +6,9 @@ import { defineComponent, toRefs } from "vue";
 import Avatar from "@/components/Avatar.vue";
 import { PRTS_BASE_DOMAIN } from "@/utils/consts";
 
-import type { Char } from "../utils";
-
 import { useChar } from "./useChar";
+
+import type { Char } from "../utils";
 
 export default defineComponent({
   name: "Long",

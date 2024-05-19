@@ -5,6 +5,7 @@ import { defineComponent, ref, watch } from "vue";
 import { NButton, NConfigProvider, zhCN } from "naive-ui";
 
 import Spine from "./Spine.vue";
+
 export interface Props {
   prefix: string;
   name: string;

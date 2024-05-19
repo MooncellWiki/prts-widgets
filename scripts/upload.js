@@ -1,13 +1,13 @@
 import fs from "node:fs";
-import { dirname, join, posix } from "node:path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import OSS from "ali-oss";
 
 const BUILD_DIR = "dist";
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const dirents = fs.readdirSync(join(__dirname, `../${BUILD_DIR}/`), {
+const dirents = fs.readdirSync(path.join(__dirname, `../${BUILD_DIR}/`), {
   withFileTypes: true,
 });
 const filesNames = dirents
@@ -27,8 +27,8 @@ const store = new OSS({
 
 for (const file of distSet) {
   const result = await store.put(
-    posix.join(REMOTE_PATH, file),
-    posix.join(`${BUILD_DIR}/`, file),
+    path.posix.join(REMOTE_PATH, file),
+    path.posix.join(`${BUILD_DIR}/`, file),
   );
   console.log("[INFO] Uploaded", result.res.status, result.name);
 }

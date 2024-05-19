@@ -13,6 +13,7 @@ import {
 } from "naive-ui";
 
 import MedalComponent from "./Medal.vue";
+
 import type { Medal, MedalGroup } from "./types";
 function goToLink(link: string) {
   window.open("https://prts.wiki/w/" + link, "_blank");
