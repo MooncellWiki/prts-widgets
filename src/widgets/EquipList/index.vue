@@ -27,6 +27,7 @@ import {
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
+import { isMobileSkin } from "@/utils/utils";
 
 import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
@@ -85,6 +86,7 @@ export default defineComponent({
   },
   setup() {
     const i18nConfig = getNaiveUILocale();
+    const isMobile = isMobileSkin();
     const { theme, toggleDark } = useTheme();
     const locale = getLanguage();
     const hash = useUrlSearchParams("hash");
@@ -342,6 +344,7 @@ export default defineComponent({
 
     return {
       i18nConfig,
+      isMobile,
       theme,
       toggleDark,
       locale,
@@ -413,7 +416,7 @@ export default defineComponent({
               </tr>
               <tr>
                 <div class="my-2">
-                  <NCollapse default-expanded-names="sort">
+                  <NCollapse :default-expanded-names="isMobile ? '' : 'sort'">
                     <NCollapseItem
                       name="sort"
                       :title="customLabel[locale].tableCollapse"

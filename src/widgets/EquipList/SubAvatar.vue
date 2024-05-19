@@ -9,6 +9,7 @@ import { getImagePath } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
 import { getEquipData } from "./equipData";
+
 import type { CharEquips } from "./types";
 
 export default defineComponent({
