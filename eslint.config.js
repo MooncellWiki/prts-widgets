@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import unocss from "@unocss/eslint-config/flat";
 import pluginImport from "eslint-plugin-import-x";
 import configPrettierRecommended from "eslint-plugin-prettier/recommended";
 import pluginUnicorn from "eslint-plugin-unicorn";
@@ -162,4 +163,5 @@ export default [
   ...prettier,
   ...unicorn,
   ...ignores,
+  unocss,
 ];

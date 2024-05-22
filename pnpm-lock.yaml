@@ -81,9 +81,9 @@ importers:
       '@types/tough-cookie':
         specifier: ^4.0.5
         version: 4.0.5
-      '@unocss/eslint-plugin':
-        specifier: ^0.60.2
-        version: 0.60.2(eslint@9.2.0)(typescript@5.4.5)
+      '@unocss/eslint-config':
+        specifier: ^0.60.3
+        version: 0.60.3(eslint@9.2.0)(typescript@5.4.5)
       '@unocss/preset-uno':
         specifier: ^0.60.2
         version: 0.60.2
@@ -1309,11 +1309,22 @@ packages:
     resolution: {integrity: sha512-EEgivE1xEnamAsYMcmjUmLJjOa9dBdV2zygT/blSFyX6rMfA4OuRlZ8hgfeWrHImZGiTXUU0jV2EaRmK9jEImQ==}
     engines: {node: '>=14'}
 
+  '@unocss/config@0.60.3':
+    resolution: {integrity: sha512-3RGD7h3bS4qZA/Khcqhn1EgLgyPc85FSz5rubdywHRdHlpY9sdmuGEJahvqSLMN4MmdYQDmqEIEAJjENrdgZeQ==}
+    engines: {node: '>=14'}
+
   '@unocss/core@0.60.2':
     resolution: {integrity: sha512-9i+eAJAqvy9bv0vrQxUU7VtR+wO6Vfk6dqrPHKRV/vlbwRT18v/C++dQ2L6PLM1CKxgNTeld0iTlpo8J3xZlxQ==}
 
-  '@unocss/eslint-plugin@0.60.2':
-    resolution: {integrity: sha512-F3yZza5cqVJudg6YNp4IxaUWK+9vHVXCMyKDbShi4WUY4fdFwc7c/NU20CnO50K4mB+764K06ocXUr2RsMULlA==}
+  '@unocss/core@0.60.3':
+    resolution: {integrity: sha512-4bBX1pavDl2DSCozEII7bxYGT0IkyO7kKlUuCtooTePWyLjf2F7essdzHkJ00EpNR64kkebR9V0lqBMBo07VPw==}
+
+  '@unocss/eslint-config@0.60.3':
+    resolution: {integrity: sha512-amK7i9F45s10kQx6WXw1fJw5Z9thlsmGj1x3sJsoKa2hD6NkjqCTLKypfisgxljzbBiwkkYJ6Dv8qaJ0bRV2Mg==}
+    engines: {node: '>=14'}
+
+  '@unocss/eslint-plugin@0.60.3':
+    resolution: {integrity: sha512-bLQtUMfzRf/IGZVYvwoiVRMGxYbxnTW8xyRIuLl6Jn5fwi2S4fonzfZL+DQixMJgjidsEzoV7QDnwBVM2c+DpA==}
     engines: {node: '>=14'}
 
   '@unocss/extractor-arbitrary-variants@0.60.2':
@@ -4624,13 +4635,28 @@ snapshots:
       '@unocss/core': 0.60.2
       unconfig: 0.3.13
 
+  '@unocss/config@0.60.3':
+    dependencies:
+      '@unocss/core': 0.60.3
+      unconfig: 0.3.13
+
   '@unocss/core@0.60.2': {}
 
-  '@unocss/eslint-plugin@0.60.2(eslint@9.2.0)(typescript@5.4.5)':
+  '@unocss/core@0.60.3': {}
+
+  '@unocss/eslint-config@0.60.3(eslint@9.2.0)(typescript@5.4.5)':
+    dependencies:
+      '@unocss/eslint-plugin': 0.60.3(eslint@9.2.0)(typescript@5.4.5)
+    transitivePeerDependencies:
+      - eslint
+      - supports-color
+      - typescript
+
+  '@unocss/eslint-plugin@0.60.3(eslint@9.2.0)(typescript@5.4.5)':
     dependencies:
       '@typescript-eslint/utils': 7.9.0(eslint@9.2.0)(typescript@5.4.5)
-      '@unocss/config': 0.60.2
-      '@unocss/core': 0.60.2
+      '@unocss/config': 0.60.3
+      '@unocss/core': 0.60.3
       magic-string: 0.30.10
       synckit: 0.9.0
     transitivePeerDependencies:
