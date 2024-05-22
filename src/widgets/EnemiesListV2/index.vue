@@ -419,8 +419,8 @@ export default defineComponent({
           :href="`/w/${row.enemyLink}`"
         >
           <img
-            class="lazyload"
-            style="width: 65px; height: 65px"
+            class="lazyload min-h-[80px]"
+            style="width: 80px; height: 80px"
             :data-src="getImagePath(`头像_敌人_${row.name}.png`)"
           />
         </a>
