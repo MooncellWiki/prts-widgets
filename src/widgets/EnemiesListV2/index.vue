@@ -24,7 +24,9 @@ import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobileSkin } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
+import { defaultFilterConfig } from "./consts";
 
+import type { EnemyData, FilterConfig } from "./types";
 import type {
   DataTableBaseColumn,
   DataTableColumn,
@@ -32,40 +34,6 @@ import type {
   DataTableFilterState,
   DataTableInst,
 } from "naive-ui";
-
-interface EnemyData {
-  enemyIndex: string;
-  sortId: number;
-  name: string;
-  enemyLink: string;
-  enemyRace: string;
-  enemyLevel: string;
-  attackType: string;
-  damageType: string;
-  motion: string;
-  endure: string;
-  attack: string;
-  defence: string;
-  moveSpeed: string;
-  attackSpeed: string;
-  resistance: string;
-  ability: string;
-}
-
-interface FilterConfig {
-  filters: {
-    [field: string]: {
-      title: string;
-      options: string[];
-    };
-  };
-  groups: {
-    title: string;
-    filters: string[];
-    show: boolean;
-  }[];
-  states: Record<string, string[]>;
-}
 
 export default defineComponent({
   components: {
@@ -93,92 +61,7 @@ export default defineComponent({
       "D",
       "E",
     ];
-    const filterConfig = reactive<FilterConfig>({
-      filters: {
-        enemyLevel: {
-          options: ["普通", "精英", "领袖"],
-          title: "地位",
-        },
-        enemyRace: {
-          options: [
-            "感染生物",
-            "无人机",
-            "萨卡兹",
-            "宿主",
-            "海怪",
-            "法术造物",
-            "化物",
-            "机械",
-            "野生动物",
-            "坍缩体",
-          ],
-          title: "种类",
-        },
-        attackType: {
-          options: ["近战", "远程", "不攻击"],
-          title: "攻击方式",
-        },
-        damageType: {
-          options: ["物理", "法术", "治疗", "无"],
-          title: "伤害类型",
-        },
-        endure: {
-          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
-          title: "生命值",
-        },
-        attack: {
-          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
-          title: "攻击力",
-        },
-        defence: {
-          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
-          title: "防御力",
-        },
-        moveSpeed: {
-          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
-          title: "移动速度",
-        },
-        attackSpeed: {
-          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
-          title: "攻击速度",
-        },
-        resistance: {
-          options: ["SS", "S+", "S", "A+", "A", "B+", "B", "C", "D", "E"],
-          title: "法术抗性",
-        },
-      },
-      groups: [
-        {
-          title: "筛选",
-          filters: ["enemyLevel", "enemyRace", "attackType", "damageType"],
-          show: true,
-        },
-        {
-          title: "六维筛选",
-          filters: [
-            "endure",
-            "attack",
-            "defence",
-            "moveSpeed",
-            "attackSpeed",
-            "resistance",
-          ],
-          show: false,
-        },
-      ],
-      states: {
-        enemyLevel: [],
-        enemyRace: [],
-        attackType: [],
-        damageType: [],
-        endure: [],
-        attack: [],
-        defence: [],
-        moveSpeed: [],
-        attackSpeed: [],
-        resistance: [],
-      },
-    });
+    const filterConfig = reactive<FilterConfig>(defaultFilterConfig);
     const isLoading = ref(true);
     const i18nConfig = getNaiveUILocale();
     const isMobile = isMobileSkin();
@@ -258,7 +141,7 @@ export default defineComponent({
         title,
         key: field,
         defaultSortOrder: false,
-        sorter: (row1, row2) => {
+        sorter: (row1: EnemyData, row2: EnemyData) => {
           const index1 = dimensionPrecedence.indexOf(row1[field].toString());
           const index2 = dimensionPrecedence.indexOf(row2[field].toString());
           if (index1 === -1) {
@@ -271,7 +154,7 @@ export default defineComponent({
         },
         filterOptions: createFilterOptions(field),
         filterOptionValues: filterConfig.states[field],
-        filter(value, row) {
+        filter(value: string | number, row: EnemyData) {
           return row[field] === value.toString();
         },
         renderFilter() {
@@ -283,7 +166,8 @@ export default defineComponent({
     const abilityColumn: DataTableColumn<EnemyData> = {
       title: "能力",
       key: "ability",
-      minWidth: 200,
+      minWidth: 360,
+      resizable: true,
       filter(value, row) {
         return (
           !!~row.ability.indexOf(value.toString()) ||
@@ -325,6 +209,7 @@ export default defineComponent({
         {
           title: "头像",
           key: "icon",
+          minWidth: 80,
           render(row) {
             const img = h("img", {
               "data-src": getImagePath(`头像_敌人_${row.name}.png`),
@@ -342,13 +227,13 @@ export default defineComponent({
               img,
             );
           },
-          minWidth: 80,
         },
         {
           title: "名称",
           key: "name",
           minWidth: 100,
           defaultSortOrder: false,
+          resizable: true,
           sorter: "default",
           render(row) {
             return h(
@@ -366,6 +251,8 @@ export default defineComponent({
         {
           title: "地位",
           key: "enemyLevel",
+          resizable: true,
+          minWidth: 80,
           filterOptions: createFilterOptions("enemyLevel"),
           filterOptionValues: filterConfig.states.enemyLevel,
           filter(value, row) {
@@ -378,6 +265,8 @@ export default defineComponent({
         {
           title: "种类",
           key: "enemyRace",
+          resizable: true,
+          minWidth: 80,
           filterOptions: createFilterOptions("enemyRace"),
           filterOptionValues: filterConfig.states.enemyRace,
           filter(value, row) {
@@ -390,6 +279,8 @@ export default defineComponent({
         {
           title: "攻击方式",
           key: "attackType",
+          resizable: true,
+          minWidth: 105,
           filterOptions: createFilterOptions("attackType"),
           filterOptionValues: filterConfig.states.attackType,
           filter(value, row) {
@@ -402,6 +293,8 @@ export default defineComponent({
         {
           title: "伤害类型",
           key: "damageType",
+          resizable: true,
+          minWidth: 105,
           filterOptions: createFilterOptions("damageType"),
           filterOptionValues: filterConfig.states.damageType,
           filter(value, row) {
@@ -469,7 +362,7 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="mx-auto antialiased">
+    <NLayout class="mx-auto p-2 antialiased">
       <FilterGroup
         v-for="group in filterConfig.groups"
         :key="group.title"
@@ -511,11 +404,12 @@ export default defineComponent({
         v-show="!isIconMode"
         ref="table"
         class="my-2"
-        :row-key="(row) => row.name"
+        :bordered="false"
         :columns="columns"
         :data="enemyData"
         :pagination="pagination"
-        :bordered="false"
+        :row-key="(row) => row.name"
+        striped
         @update:filters="handleUpdateFilter"
       />
       <div v-if="isIconMode">
