@@ -152,7 +152,7 @@ export default defineComponent({
             </div>
           </div>
         </div>
-        <div class="feature head">
+        <div class="head feature">
           <slot />
         </div>
       </div>

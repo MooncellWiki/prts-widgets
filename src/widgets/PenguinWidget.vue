@@ -68,7 +68,7 @@ export default defineComponent({
   >
     <NRadioGroup
       v-model:value="selectedServer"
-      class="w-full mb-2"
+      class="mb-2 w-full"
       name="penguin-server-option-group"
     >
       <NRadioButton
@@ -81,7 +81,7 @@ export default defineComponent({
     <NRadioGroup
       v-if="isAct"
       v-model:value="selectedStage"
-      class="w-full mb-1"
+      class="mb-1 w-full"
       name="penguin-stage-option-group"
     >
       <NRadioButton

@@ -62,14 +62,14 @@ export default defineComponent({
 
 <template>
   <NCard
-    class="w-[calc(100%-0.5rem)] lg:w-[calc(50%-0.5rem)] m-1"
+    class="m-1 w-[calc(100%-0.5rem)] lg:w-[calc(50%-0.5rem)]"
     content-style="padding: 0.5rem;"
     size="small"
     hoverable
   >
-    <div class="flex flex-row justify-center items-center h-full">
+    <div class="h-full flex flex-row items-center justify-center">
       <div
-        class="flex flex-col min-w-[95px] basis-1/5 justify-center items-center"
+        class="min-w-[95px] flex basis-1/5 flex-col items-center justify-center"
       >
         <a :href="link">
           <img
@@ -81,23 +81,23 @@ export default defineComponent({
         </a>
         <span class="text-sm">{{ charMemory.char }}</span>
       </div>
-      <div class="flex flex-col basis-4/5 justify-center items-center">
+      <div class="flex basis-4/5 flex-col items-center justify-center">
         <div
           v-if="isNew"
-          class="flex flex-col w-full bg-orange text-white my-1 text-center"
+          class="my-1 w-full flex flex-col bg-orange text-center text-white"
         >
           有新增密录
         </div>
         <div
           v-for="mmr in charMemory.memories"
           :key="mmr.name"
-          class="flex flex-col w-full"
+          class="w-full flex flex-col"
         >
           <div
-            class="flex text-white w-full text-3 items-center py-[3px] bg-[#313131]"
+            class="w-full flex items-center bg-[#313131] py-[3px] text-3 text-white"
           >
             <div
-              class="flex flex-wrap min-w-[4em] md:min-w-[9em] px-1 b-r-white b-r-solid b-r-1"
+              class="min-w-[4em] flex flex-wrap b-r-1 b-r-white b-r-solid px-1 md:min-w-[9em]"
             >
               <div class="flex items-center">
                 <img width="15" class="pr-1" :src="getSrcElite(mmr.elite)" />
@@ -108,12 +108,12 @@ export default defineComponent({
                 <span class="font-bold">{{ mmr.favor }}%</span>
               </div>
             </div>
-            <div class="flex items-center justify-between mx-1 w-full">
+            <div class="mx-1 w-full flex items-center justify-between">
               <span>{{ mmr.name }}</span>
               <NPopover trigger="hover" placement="top-end">
                 <template #trigger>
                   <div
-                    class="flex justify-center items-center w-[40]"
+                    class="w-[40] flex items-center justify-center"
                     style="
                       border-radius: 3px;
                       background: linear-gradient(0deg, #ffffff38, transparent);
@@ -124,13 +124,13 @@ export default defineComponent({
                   </div>
                 </template>
                 <div
-                  class="flex flex-col items-center w-[200px] p-2 bg-[#2f2f2f]"
+                  class="w-[200px] flex flex-col items-center bg-[#2f2f2f] p-2"
                 >
                   <img :src="getSrcMedal(mmr)" width="100" />
-                  <span class="font-bold py-1 text-white">
+                  <span class="py-1 text-white font-bold">
                     {{ mmr.medal.medal }}
                   </span>
-                  <span class="italic text-3 py-1 text-white">
+                  <span class="py-1 text-3 text-white italic">
                     {{ mmr.medal.desc }}
                   </span>
                 </div>
@@ -144,7 +144,7 @@ export default defineComponent({
                 {{ info.intro }}
               </div>
               <div
-                class="flex flex-basis-1/5 justify-center items-center min-w-[5em]"
+                class="min-w-[5em] flex flex-basis-1/5 items-center justify-center"
               >
                 <a :href="`/w/${info.link}`">
                   <img width="50" :src="srcplay" />

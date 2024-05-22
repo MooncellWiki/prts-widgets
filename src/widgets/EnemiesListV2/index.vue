@@ -469,7 +469,7 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="antialiased mx-auto">
+    <NLayout class="mx-auto antialiased">
       <FilterGroup
         v-for="group in filterConfig.groups"
         :key="group.title"
@@ -502,8 +502,8 @@ export default defineComponent({
         </NButton>
         <div @click="toggleDark()">
           <NButton>
-            <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
-            <span v-else class="text-2xl mdi mdi-brightness-4" />
+            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
+            <span v-else class="mdi mdi-brightness-4 text-2xl" />
           </NButton>
         </div>
       </div>
@@ -531,7 +531,7 @@ export default defineComponent({
           />
         </a>
         <NPagination
-          class="justify-center my-2"
+          class="my-2 justify-center"
           :item-count="filteredEnemyData.length"
           :page="pagination.page"
           :page-size="pagination.pageSize"

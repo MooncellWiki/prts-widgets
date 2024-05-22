@@ -79,7 +79,7 @@ export default defineComponent({
           }
         "
       />
-      <div v-if="showInfo" class="flex items-center justify-center w-full">
+      <div v-if="showInfo" class="w-full flex items-center justify-center">
         <span v-if="locale == LANGUAGES.JA" class="font-bold">
           {{ char.nameJP ?? char.name }}
         </span>

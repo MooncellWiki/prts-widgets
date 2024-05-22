@@ -40,17 +40,17 @@ export default defineComponent({
 </script>
 
 <template>
-  <div class="flex flex-row justify-center items-center">
+  <div class="flex flex-row items-center justify-center">
     <span class="basis-1/8">{{ title }}</span>
-    <div class="flex flex-row items-center basis-7/8">
+    <div class="flex basis-7/8 flex-row items-center">
       <NSelect
         v-model:value="value"
         class="m-1"
         :disabled="disabled"
         :options="options"
-        multiple
         filterable
         clearable
+        multiple
         :placeholder="placeholder"
       />
     </div>

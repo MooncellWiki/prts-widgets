@@ -86,12 +86,12 @@ export default defineComponent({
     <NCard v-if="medalDataList.length > 0">
       <div class="flex flex-col <lg:flex-col">
         <div
-          class="flex <lg:flex-row justify-between p-2.5! m-0! bg-gradient-to-r text-shadow-lg"
+          class="flex justify-between bg-gradient-to-r text-shadow-lg m-0! <lg:flex-row p-2.5!"
           :style="{
             background: groupData.background || 'black',
           }"
         >
-          <h3 class="color-white p-0 px-1 pr-2 mt-0! <lg:p-0! <lg:pt-1!">
+          <h3 class="p-0 px-1 pr-2 color-white mt-0! <lg:p-0! <lg:pt-1!">
             <span :style="groupData.textStyle || { color: 'white' }">
               <span
                 v-if="groupData.customText"
@@ -125,7 +125,7 @@ export default defineComponent({
                   <NButton
                     size="small"
                     color="#2f2f2f"
-                    class="hover:decoration-none color-white! focus:decoration-none"
+                    class="color-white! focus:decoration-none hover:decoration-none"
                     @click="goToLink(groupData.bindEvent[1])"
                   >
                     <div>
@@ -148,7 +148,7 @@ export default defineComponent({
                 <NButton
                   size="small"
                   color="#2f2f2f"
-                  class="hover:decoration-none color-white! focus:decoration-none"
+                  class="color-white! focus:decoration-none hover:decoration-none"
                 >
                   <div>
                     <span class="mdi mdi-flag-variant" />
@@ -162,7 +162,7 @@ export default defineComponent({
         </div>
         <div
           v-if="groupData.deprecateType"
-          class="bg-orange-5 color-white px-2 py-0.5 font-bold"
+          class="bg-orange-5 px-2 py-0.5 color-white font-bold"
         >
           <span class="mdi mdi-vanish" />
           <span v-if="groupData.deprecateType == 'CC'">
@@ -172,7 +172,7 @@ export default defineComponent({
             已复刻过的活动：无法再获得本蚀刻章套组
           </span>
         </div>
-        <div class="flex max-w-full">
+        <div class="max-w-full flex">
           <NImage
             :src="`https://torappu.prts.wiki/assets/medal_diy/${(showTrimed && groupData.isTrim ? 'trim/' : '') + groupData.id}.png`"
             :img-props="{
@@ -192,7 +192,7 @@ export default defineComponent({
           />
         </div>
         <div
-          class="italic whitespace-pre-wrap p-1 text-center <lg:text-sm"
+          class="whitespace-pre-wrap p-1 text-center italic <lg:text-sm"
           :style="{
             background: `linear-gradient(180deg, ${groupData.color}5c, transparent)`,
           }"
@@ -205,7 +205,7 @@ export default defineComponent({
                 <div>共 {{ groupData.medal.length }} 枚，展开套组</div>
                 <div
                   v-if="groupData.hasChangedInRetro"
-                  class="bg-bluegray-6 color-white ml-1 px-1 py-0.5 font-bold text-xs"
+                  class="ml-1 bg-bluegray-6 px-1 py-0.5 text-xs color-white font-bold"
                 >
                   <span class="mdi mdi-information-outline" />
                   复刻时获取条件调整

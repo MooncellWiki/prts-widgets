@@ -52,14 +52,14 @@ export default defineComponent({
       <NTooltip trigger="hover">
         <template #trigger>
           <div class="m-1 cursor-pointer" @click="showSecret = !showSecret">
-            <span v-if="showSecret" class="text-2xl mdi mdi-eye" />
-            <span v-else class="text-2xl mdi mdi-eye-off" />
+            <span v-if="showSecret" class="mdi mdi-eye text-2xl" />
+            <span v-else class="mdi mdi-eye-off text-2xl" />
           </div>
         </template>
         ？？？
       </NTooltip>
     </template>
-    <div class="grid <lg:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid gap-4 <lg:grid-cols-2 lg:grid-cols-4">
       <div v-for="(value, key) in statsData" :key="key">
         <NStatistic :label="value.name" :tabular-nums="true">
           <NNumberAnimation
