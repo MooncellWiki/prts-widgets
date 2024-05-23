@@ -1,16 +1,15 @@
 import { CargoEquip } from "./types";
 import { recoverHTML } from "./utils";
 
-const cache: Record<string, any> = {};
-let got = false;
-export async function getEquipData(name: string): Promise<any> {
-  if (cache[name]) return cache[name];
-  await getEquipDataAll();
-  return cache[name];
+export async function getEquipData(name: string): Promise<DOMStringMap[]> {
+  const result = await getEquipDataAll();
+  return result[name];
 }
 
-export async function getEquipDataAll(): Promise<any> {
-  if (got) return cache;
+export async function getEquipDataAll(): Promise<
+  Record<string, DOMStringMap[]>
+> {
+  const result: Record<string, DOMStringMap[]> = {};
   const resp = await fetch(
     `/api.php?${new URLSearchParams({
       action: "cargoquery",
@@ -86,8 +85,7 @@ export async function getEquipDataAll(): Promise<any> {
         favor: e.favor ?? "???",
       };
     });
-    cache[opt] = map;
+    result[opt] = map;
   }
-  got = true;
-  return cache;
+  return result;
 }

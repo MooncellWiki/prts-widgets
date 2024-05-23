@@ -264,6 +264,8 @@ export const customLabel = {
       default: "默认",
       filterTalent: "新增天赋",
       filterTrait: "特性追加",
+      filterType: "模组类型",
+      other: "其他",
     },
     equipString: {
       mission: "模组解锁任务",
@@ -324,6 +326,8 @@ export const customLabel = {
       default: "預設",
       filterTalent: "新增天賦",
       filterTrait: "特性追加",
+      filterType: "模組類型",
+      other: "其他",
     },
     equipString: {
       mission: "模組解鎖任務",
@@ -384,6 +388,8 @@ export const customLabel = {
       default: "Default",
       filterTalent: "New Talent",
       filterTrait: "New Trait",
+      filterType: "Module Type",
+      other: "Others",
     },
     equipString: {
       mission: "Module Missions",
@@ -444,6 +450,8 @@ export const customLabel = {
       default: "デフォルト",
       filterTalent: "素質開放",
       filterTrait: "特性追加",
+      filterType: "タイプ",
+      other: "その他",
     },
     equipString: {
       mission: "モジュール開放任務",
@@ -505,6 +513,8 @@ export const customLabel = {
       default: "Default",
       filterTalent: "New Talent",
       filterTrait: "New Trait",
+      filterType: "Module Type",
+      other: "Others",
     },
     equipString: {
       mission: "Module Missions",
@@ -622,6 +632,10 @@ export function getFilterOptions(locale: LANGUAGES) {
       value: "trait",
     },
     {
+      label: customLabel[locale].sortOptions.filterType,
+      value: "type",
+    },
+    {
       label: stats(locale, "hp"),
       value: "hp",
     },
@@ -656,15 +670,30 @@ export function getFilterOptions(locale: LANGUAGES) {
   ];
 }
 
-export function getFilterValue(locale: LANGUAGES) {
-  return [
-    {
-      label: customLabel[locale].sortOptions.yes,
-      value: "yes",
-    },
-    {
-      label: customLabel[locale].sortOptions.no,
-      value: "no",
-    },
-  ];
+export function getFilterValue(locale: LANGUAGES, option: string = "all") {
+  return option == "type"
+    ? [
+        {
+          label: "X",
+          value: "x",
+        },
+        {
+          label: "Y",
+          value: "y",
+        },
+        {
+          label: customLabel[locale].sortOptions.other,
+          value: "o",
+        },
+      ]
+    : [
+        {
+          label: customLabel[locale].sortOptions.yes,
+          value: "yes",
+        },
+        {
+          label: customLabel[locale].sortOptions.no,
+          value: "no",
+        },
+      ];
 }

@@ -21,7 +21,12 @@ import { getImagePath } from "@/utils/utils";
 import { colorMap, statsStyleMap } from "./consts";
 import { getEquipData } from "./equipData";
 import { customLabel } from "./i18n";
-import { processLink, processMaterial, updateTippy } from "./utils";
+import {
+  fixAtkRange,
+  processLink,
+  processMaterial,
+  updateTippy,
+} from "./utils";
 
 function getStatColor(type: string, stat: string): string {
   return Number(stat) * (statsStyleMap[type] ?? 1) >= 0 ? "#00B0FF" : "#FF6237";
@@ -65,7 +70,12 @@ export default defineComponent({
           e[v] = e[v]
             ?.replaceAll(/....UNIQ.*?QINU..../g, "")
             .replaceAll("[[分类:对原文有修正的页面]]", "");
+          if (!v.match("mat")) {
+            e[v] = processLink(e[v] ?? "");
+          }
         }
+        if (e.trait?.match(/.START_WIDGET.*?END_WIDGET/g))
+          e.trait = await fixAtkRange(e.trait ?? "", props.name, e.name ?? "");
       }
       const seps = document.querySelectorAll(
         ".majorsep,.minorsep,.term,.iconfilter",
@@ -93,7 +103,6 @@ export default defineComponent({
       getStatColor,
       customLabel,
       processMaterial,
-      processLink,
       loading,
       locale: getLanguage(),
     };
@@ -273,12 +282,12 @@ export default defineComponent({
             <span>
               <span class="mdi mdi-chevron-right"></span>
               &nbsp;
-              <span v-html="processLink(e.mission1 ?? '')"></span>
+              <span v-html="e.mission1"></span>
             </span>
             <span>
               <span class="mdi mdi-chevron-right"></span>
               &nbsp;
-              <span v-html="processLink(e.mission2 ?? '')"></span>
+              <span v-html="e.mission2"></span>
             </span>
           </div>
         </div>

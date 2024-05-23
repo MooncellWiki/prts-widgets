@@ -134,7 +134,6 @@ export default defineComponent({
       sortOption: getSortOptions(locale),
       sortValue: getSortValue(locale),
       filterOption: getFilterOptions(locale),
-      filterValue: getFilterValue(locale),
     };
     const states = ref<Record<string, string[]>>({
       type: [],
@@ -183,14 +182,19 @@ export default defineComponent({
         if (v.mode == "all") return true;
         if (v.mode == "trait") {
           return v.value == "yes" ? data["add"] != null : data["add"] == null;
-        } else if (v.mode == "talent") {
+        }
+        if (v.mode == "type") {
+          const match = !!data["type"]?.match(new RegExp(`-${v.value}`, "i"));
+          const nmatch = !!data["type"]?.match(/-[^xy]/i);
+          return v.value == "x" || v.value == "y" ? match : nmatch;
+        }
+        if (v.mode == "talent") {
           const match =
             !!data["talent2"]?.match("新增天赋") ||
             !!data["talent3"]?.match("新增天赋");
           return v.value == "yes" ? match : !match;
-        } else {
-          return v.value == "yes" ? data[v.mode] != "0" : data[v.mode] == "0";
         }
+        return v.value == "yes" ? data[v.mode] != "0" : data[v.mode] == "0";
       });
     };
     const filteredCharEquipData = computed((): Record<string, CharEquips[]> => {
@@ -260,10 +264,17 @@ export default defineComponent({
         if (k == "filter") {
           const res = typeof v == "string" ? [v] : v;
           sortStates.value.filter = res.map((e) => {
-            return {
-              mode: e.slice(0, -2),
-              value: e.slice(-1) == "y" ? "yes" : "no",
-            };
+            const mode = e.slice(0, -2);
+            const value = e.slice(-1);
+            return mode == "type"
+              ? {
+                  mode: mode,
+                  value: value,
+                }
+              : {
+                  mode: mode,
+                  value: value == "y" ? "yes" : "no",
+                };
           });
         }
         if (k == "type") {
@@ -359,6 +370,7 @@ export default defineComponent({
       sortOptions,
       filteredCharEquipData,
       CharEquipList,
+      getFilterValue,
     };
   },
 });
@@ -470,7 +482,8 @@ export default defineComponent({
                               v-model:value="v.value"
                               class="m-1"
                               :disabled="loadingCount > 0 || v.mode == 'all'"
-                              :options="sortOptions.filterValue"
+                              :options="getFilterValue(locale, v.mode)"
+                              :fallback-option="false"
                             />
                           </div>
                         </div>

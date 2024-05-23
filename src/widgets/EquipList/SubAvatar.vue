@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { PropType, Ref } from "vue";
-import { defineComponent, inject, ref } from "vue";
+import { defineComponent, inject } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
@@ -8,7 +8,6 @@ import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
-import { getEquipData } from "./equipData";
 
 import type { CharEquips } from "./types";
 
@@ -27,25 +26,27 @@ export default defineComponent({
       default: false,
     },
   },
-  emits: ["update:char", "update:show"],
+  emits: ["update:show"],
   setup(props, { emit }) {
-    const charRef = useVModel(props, "char", emit);
     const showInfo = useVModel(props, "show", emit);
     const showChars = inject("showChars") as Ref<string[]>;
-    const equipRef = ref<DOMStringMap[]>([]);
-    const getCharEquip = async () => {
-      equipRef.value = await getEquipData(props.char.char.name);
+    const toggleShow = async (c: CharEquips) => {
+      if (showChars.value.includes(c.char.name)) {
+        showInfo.value = false;
+        showChars.value.splice(
+          showChars.value.findIndex((n) => n == c.char.name),
+          1,
+        );
+      } else {
+        showInfo.value = true;
+        showChars.value.push(c.char.name);
+      }
     };
-    const loading = ref(false);
-    const showEquipList = ref<string[]>([]);
     return {
       getImagePath,
-      charRef,
+      toggleShow,
       showInfo,
       showChars,
-      showEquipList,
-      getCharEquip,
-      loading,
       LANGUAGES,
       locale: getLanguage(),
     };
@@ -58,26 +59,10 @@ export default defineComponent({
     <div class="flex">
       <img
         class="m-[2px] cursor-pointer"
-        :src="getImagePath(`头像_${charRef.char.name}_2.png`)"
+        :src="getImagePath(`头像_${char.char.name}_2.png`)"
         width="60"
         height="60"
-        @click="
-          async () => {
-            if (showChars.includes(char.char.name)) {
-              showInfo = false;
-              showChars.splice(
-                showChars.findIndex((c) => c == char.char.name),
-                1,
-              );
-            } else {
-              loading = true;
-              await getCharEquip();
-              showInfo = true;
-              showChars.push(char.char.name);
-              loading = false;
-            }
-          }
-        "
+        @click="toggleShow(char)"
       />
       <div v-if="showInfo" class="flex items-center justify-center w-full">
         <span v-if="locale == LANGUAGES.JA" class="font-bold">

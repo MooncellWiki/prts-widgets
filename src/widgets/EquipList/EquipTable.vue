@@ -1,8 +1,7 @@
 <script lang="ts">
 import { PropType, defineComponent, h, ref, watch } from "vue";
 
-import { useVModel } from "@vueuse/core";
-import { DataTableColumns, NDataTable, NPagination } from "naive-ui";
+import { DataTableColumns, NDataTable } from "naive-ui";
 
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath, isMobileSkin } from "@/utils/utils";
@@ -85,7 +84,6 @@ const createRowKey = (row: EquipRow) => {
 export default defineComponent({
   components: {
     NDataTable,
-    NPagination,
   },
   props: {
     data: {
@@ -93,8 +91,7 @@ export default defineComponent({
       required: true,
     },
   },
-  emits: ["update:data"],
-  setup(props, { emit }) {
+  setup(props) {
     const isMobile = isMobileSkin();
     const locale = getLanguage();
     const pagination = ref({
@@ -102,28 +99,25 @@ export default defineComponent({
       pageSize: 10,
       pageSizes: customLabel[locale].pagination,
       pageSlot: isMobile ? 5 : 9,
-      pickSize: () => {
-        return isMobile ? "small" : "medium";
+      showSizePicker: true,
+      onUpdatePage: (page: number) => {
+        pagination.value.page = page;
+      },
+      onUpdatePageSize: (size: number) => {
+        pagination.value.pageSize = size;
+        pagination.value.page = 1;
       },
     });
     const loading = ref(false);
-    const createData = (): { data: EquipRow[]; length: number } => {
-      return {
-        data: equipList.value.slice(
-          (pagination.value.page - 1) * pagination.value.pageSize,
-          pagination.value.page * pagination.value.pageSize,
-        ),
-        length: equipList.value.length,
-      };
-    };
-    const equipList = useVModel(props, "data", emit);
     watch(props, () => {
-      pagination.value.page = 1;
+      if (
+        (pagination.value.page - 1) * pagination.value.pageSize >=
+        props.data.length
+      )
+        pagination.value.page = 1;
     });
     return {
-      createData,
       columns,
-      equipList,
       createRowKey,
       loading,
       customLabel,
@@ -134,47 +128,11 @@ export default defineComponent({
 });
 </script>
 <template>
-  <NPagination
-    v-model:page="pagination.page"
-    class="justify-center my-2"
-    :item-count="createData().length"
-    :page-size="pagination.pageSize"
-    :page-sizes="pagination.pageSizes"
-    :page-slot="pagination.pageSlot"
-    :size="pagination.pickSize()"
-    show-size-picker
-    @update:page="
-      (page) => {
-        pagination.page = page;
-      }
-    "
-    @update:page-size="
-      (size) => {
-        pagination.pageSize = size;
-        pagination.page = 1;
-      }
-    "
-  />
   <NDataTable
     :columns="columns(locale)"
-    :data="createData().data"
+    :data="data"
     :loading="loading"
     :row-key="createRowKey"
-    remote
+    :pagination="pagination"
   ></NDataTable>
-  <NPagination
-    v-model:page="pagination.page"
-    class="justify-center my-2"
-    :item-count="createData().length"
-    :page-size="pagination.pageSize"
-    :page-sizes="pagination.pageSizes"
-    :page-slot="pagination.pageSlot"
-    :size="pagination.pickSize()"
-    show-size-picker
-    @update:page-size="
-      () => {
-        pagination.page = 1;
-      }
-    "
-  />
 </template>
