@@ -30,7 +30,7 @@ export default defineComponent({
   setup(props, { emit }) {
     const showInfo = useVModel(props, "show", emit);
     const showChars = inject("showChars") as Ref<string[]>;
-    const toggleShow = async (c: CharEquips) => {
+    const toggleShow = (c: CharEquips) => {
       if (showChars.value.includes(c.char.name)) {
         showInfo.value = false;
         showChars.value.splice(
