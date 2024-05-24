@@ -47,12 +47,12 @@ export default defineComponent({
   <NCard :title="title" header-style="text-align: center;" size="small">
     <template #header-extra>
       <div @click="showRef = !showRef">
-        <span v-if="showRef" class="text-2xl mdi mdi-chevron-up" />
-        <span v-else class="text-2xl mdi mdi-chevron-down" />
+        <span v-if="showRef" class="mdi mdi-chevron-up text-2xl" />
+        <span v-else class="mdi mdi-chevron-down text-2xl" />
       </div>
     </template>
     <NCollapseTransition :show="showRef">
-      <table class="w-full text-left border-collapse">
+      <table class="w-full border-collapse text-left">
         <tbody class="align-baseline">
           <tr v-for="(filter, field) in filters" :key="field">
             <OptionsGroup

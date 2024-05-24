@@ -97,7 +97,7 @@ export default defineComponent({
 <template>
   <div class="container">
     <img
-      class="md:w-10 <sm:w-7 cursor-pointer"
+      class="cursor-pointer <sm:w-7 md:w-10"
       :title="playing ? '暂停' : '播放'"
       :src="playing ? pauseImageSource : playImageSource"
       @click="
@@ -112,7 +112,7 @@ export default defineComponent({
       :download="`${fileName}.wav`"
     >
       <img
-        class="md:w-10 <sm:w-7 cursor-pointer"
+        class="cursor-pointer <sm:w-7 md:w-10"
         title="下载"
         :src="downloadImageSource"
       />

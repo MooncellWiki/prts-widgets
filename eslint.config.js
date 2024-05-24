@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import unocss from "@unocss/eslint-config/flat";
 import pluginImport from "eslint-plugin-import-x";
 import configPrettierRecommended from "eslint-plugin-prettier/recommended";
 import pluginUnicorn from "eslint-plugin-unicorn";
@@ -17,19 +18,17 @@ export const GLOB_TSX = "**/*.?([cm])tsx";
 
 export const GLOB_VUE = "**/*.vue";
 
-export const lintEnv = [
-  {
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: "module",
-      globals: {
-        ...globals.browser,
-        ...globals.commonjs,
-        ...globals.node,
-      },
+export const lintEnv = {
+  languageOptions: {
+    ecmaVersion: 2022,
+    sourceType: "module",
+    globals: {
+      ...globals.browser,
+      ...globals.commonjs,
+      ...globals.node,
     },
   },
-];
+};
 
 export const typescript = tseslint.config({
   extends: [...tseslint.configs.recommended],
@@ -87,40 +86,38 @@ export const vue = [
   },
 ];
 
-export const imports = [
-  {
-    plugins: {
-      import: pluginImport,
-    },
-    rules: {
-      "import/no-named-as-default": "off",
-      "import/order": [
-        "error",
-        {
-          groups: [
-            "builtin",
-            "external",
-            "internal",
-            "parent",
-            "sibling",
-            "index",
-            "object",
-            "type",
-          ],
-          pathGroups: [
-            { group: "builtin", pattern: "vue", position: "before" },
-            { group: "internal", pattern: "{{@,~}/,#}**" },
-          ],
-          pathGroupsExcludedImportTypes: [],
-          "newlines-between": "always",
-          alphabetize: {
-            order: "asc",
-          },
-        },
-      ],
-    },
+export const imports = {
+  plugins: {
+    import: pluginImport,
   },
-];
+  rules: {
+    "import/no-named-as-default": "off",
+    "import/order": [
+      "error",
+      {
+        groups: [
+          "builtin",
+          "external",
+          "internal",
+          "parent",
+          "sibling",
+          "index",
+          "object",
+          "type",
+        ],
+        pathGroups: [
+          { group: "builtin", pattern: "vue", position: "before" },
+          { group: "internal", pattern: "{{@,~}/,#}**" },
+        ],
+        pathGroupsExcludedImportTypes: [],
+        "newlines-between": "always",
+        alphabetize: {
+          order: "asc",
+        },
+      },
+    ],
+  },
+};
 
 export const prettier = [
   configPrettierRecommended,
@@ -147,19 +144,18 @@ export const unicorn = [
   },
 ];
 
-export const ignores = [
-  {
-    ignores: ["**/spine/runtime", "**/.husky"],
-  },
-];
+export const ignores = {
+  ignores: ["**/spine/runtime", "**/.husky", "**/dist"],
+};
 
 export default [
-  ...lintEnv,
+  lintEnv,
   js.configs.recommended,
   ...typescript,
   ...vue,
-  ...imports,
+  imports,
   ...prettier,
   ...unicorn,
-  ...ignores,
+  ignores,
+  unocss,
 ];

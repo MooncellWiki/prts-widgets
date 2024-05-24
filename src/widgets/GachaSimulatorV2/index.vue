@@ -248,7 +248,7 @@ export default defineComponent({
     :date-locale="dateLocale"
   >
     <NLayout class="antialiased">
-      <div class="flex flex-col gap-y-3 mx-2 my-4">
+      <div class="mx-2 my-4 flex flex-col gap-y-3">
         <img class="max-w-[800px]" :src="bannerImageURL" />
         <div
           v-show="showPortaits"
@@ -363,7 +363,7 @@ export default defineComponent({
                 </div>
                 <span
                   v-if="result.count > 1"
-                  class="absolute right-0.5 -bottom-1 text-shadow-base font-bold text-lg color-black"
+                  class="text-shadow-base absolute right-0.5 text-lg color-black font-bold -bottom-1"
                 >
                   {{ result.count }}
                 </span>

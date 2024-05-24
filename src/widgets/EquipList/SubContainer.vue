@@ -61,7 +61,7 @@ export default defineComponent({
 
 <template>
   <NCard
-    class="w-full m-1"
+    class="m-1 w-full"
     header-style="text-align: center;"
     size="small"
     hoverable
@@ -69,25 +69,25 @@ export default defineComponent({
     <template #header>
       <div class="flex items-center justify-center">
         <span
-          class="inline-flex w-[40px] h-[40px] align-text-bottom overflow-hidden justify-center items-center bg-black"
+          class="h-[40px] w-[40px] inline-flex items-center justify-center overflow-hidden bg-black align-text-bottom"
         >
           <img
             class="absolute scale-50"
             :src="getImagePath(`职业分支图标_${title}.png`)"
           />
         </span>
-        <span class="text-center inline-block" style="width: 7em">{{
+        <span class="inline-block text-center" style="width: 7em">{{
           customLabel[locale].subtypeMap[title] ?? title
         }}</span>
       </div>
     </template>
     <template #header-extra>
       <span
-        class="text-xl cursor-pointer mdi mdi-arrow-expand"
+        class="mdi mdi-arrow-expand cursor-pointer text-xl"
         @click="expandAll()"
       />
       <span
-        class="text-xl cursor-pointer mdi mdi-arrow-collapse"
+        class="mdi mdi-arrow-collapse cursor-pointer text-xl"
         @click="collapseAll()"
       />
     </template>

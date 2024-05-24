@@ -77,8 +77,8 @@ export default defineComponent({
     :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
   >
     <div class="max-w-screen-lg">
-      <div v-if="!isSimplified" class="flex mb-1">
-        <FormItem label="选择语音文本差分" class="flex-grow mr-2">
+      <div v-if="!isSimplified" class="mb-1 flex">
+        <FormItem label="选择语音文本差分" class="mr-2 flex-grow">
           <NSelect
             v-model:value="selectedWordLang"
             multiple
@@ -97,11 +97,11 @@ export default defineComponent({
       </div>
       <div
         v-if="isSimplified"
-        class="p-1 text-center font-bold !bg-table border border-solid border-divider rounded shadow overflow-hidden"
+        class="overflow-hidden border border-divider rounded border-solid p-1 text-center font-bold shadow !bg-table"
       >
         <span>{{ tocTitle }}</span>
         <a
-          class="float-right z-1 select-none"
+          class="z-1 float-right select-none"
           @click="
             () => {
               isCollapsed = !isCollapsed;
@@ -113,15 +113,15 @@ export default defineComponent({
       </div>
       <div
         v-show="!isSimplified || !isCollapsed"
-        class="table bg-wikitable border-collapse border border-solid border-divider rounded shadow overflow-hidden"
+        class="table border-collapse overflow-hidden border border-divider rounded border-solid bg-wikitable shadow"
       >
         <div class="table-row-group">
           <div v-for="(ele, index) in voiceData" :key="index">
             <div
-              class="flex font-bold p-1 !bg-table border border-solid border-divider align-middle truncate"
+              class="flex truncate border border-divider border-solid p-1 align-middle font-bold !bg-table"
             >
               <div
-                class="flex-auto justify-self-center self-center text-center"
+                class="flex-auto self-center justify-self-center text-center"
               >
                 {{ ele.title }}
               </div>
@@ -138,7 +138,7 @@ export default defineComponent({
                 />
               </div>
             </div>
-            <div class="p-2 border border-solid border-divider">
+            <div class="border border-divider border-solid p-2">
               <p v-for="(v, i) in selectedWordLang" :key="i">
                 <span
                   :lang="v.includes('日文') ? 'ja' : ''"

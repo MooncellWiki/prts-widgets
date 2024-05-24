@@ -5,7 +5,7 @@ export default defineComponent({});
 </script>
 
 <template>
-  <div class="border border-solid border-divider rounded bg-wikitable">
+  <div class="border border-divider rounded border-solid bg-wikitable">
     <slot />
   </div>
 </template>

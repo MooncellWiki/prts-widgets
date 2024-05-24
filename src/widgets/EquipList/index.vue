@@ -382,7 +382,7 @@ export default defineComponent({
     :date-locale="i18nConfig.dateLocale"
     preflight-style-disabled
   >
-    <NLayout class="md:p-4 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
+    <NLayout class="mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4">
       <NCard
         :title="customLabel[locale].filterTitle"
         header-style="text-align: center;"
@@ -390,16 +390,16 @@ export default defineComponent({
       >
         <template #header-extra>
           <div class="m-1 cursor-pointer" @click="toggleDark()">
-            <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
-            <span v-else class="text-2xl mdi mdi-brightness-4" />
+            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
+            <span v-else class="mdi mdi-brightness-4 text-2xl" />
           </div>
           <div class="m-1 cursor-pointer" @click="filterShow = !filterShow">
-            <span v-if="filterShow" class="text-2xl mdi mdi-chevron-up" />
-            <span v-else class="text-2xl mdi mdi-chevron-down" />
+            <span v-if="filterShow" class="mdi mdi-chevron-up text-2xl" />
+            <span v-else class="mdi mdi-chevron-down text-2xl" />
           </div>
         </template>
         <NCollapseTransition :show="filterShow">
-          <table class="w-full text-left border-collapse">
+          <table class="w-full border-collapse text-left">
             <tbody class="align-baseline">
               <tr>
                 <OptionsGroup
@@ -523,7 +523,7 @@ export default defineComponent({
               :type="listShow ? 'info' : 'default'"
               @click="listShow = true"
             >
-              <span class="text-xl mdi mdi-view-list" />
+              <span class="mdi mdi-view-list text-xl" />
             </NButton>
             <NButton
               secondary
@@ -531,7 +531,7 @@ export default defineComponent({
               :type="listShow ? 'default' : 'info'"
               @click="listShow = false"
             >
-              <span class="text-xl mdi mdi-view-grid" />
+              <span class="mdi mdi-view-grid text-xl" />
             </NButton>
           </NButtonGroup>
         </template>
@@ -549,7 +549,7 @@ export default defineComponent({
             :description="customLabel[locale].emptyDesc"
           >
             <template #icon>
-              <span class="text-5xl mdi mdi-account-filter-outline" />
+              <span class="mdi mdi-account-filter-outline text-5xl" />
             </template>
           </NEmpty>
         </div>

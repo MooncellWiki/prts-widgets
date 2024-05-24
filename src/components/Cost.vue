@@ -40,7 +40,7 @@ export default defineComponent({
 </script>
 
 <template>
-  <div class="flex flex-col justify-center items-center my-8px">
+  <div class="my-8px flex flex-col items-center justify-center">
     <Avatar
       :rarity="rarity - 1"
       :name="name"

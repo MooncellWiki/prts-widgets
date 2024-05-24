@@ -437,8 +437,8 @@ export default defineComponent({
       </div>
 
       <div class="collapsible" @click="toggleCollapse(i)">
-        <span v-if="expanded[i]" class="text-2xl mdi mdi-chevron-up" />
-        <span v-else class="text-2xl mdi mdi-chevron-down" />
+        <span v-if="expanded[i]" class="mdi mdi-chevron-up text-2xl" />
+        <span v-else class="mdi mdi-chevron-down text-2xl" />
       </div>
       <NCollapseTransition :show="expanded[i]">
         <FilterRow

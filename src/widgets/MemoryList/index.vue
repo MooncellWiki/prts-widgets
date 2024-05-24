@@ -224,8 +224,8 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="md:p-4 p-2 antialiased mx-auto lg:max-w-[90rem] max-w-3xl">
-      <table class="w-full text-left border-collapse important-table">
+    <NLayout class="mx-auto max-w-3xl p-2 antialiased lg:max-w-[90rem] md:p-4">
+      <table class="w-full border-collapse text-left important-table">
         <tbody class="align-baseline">
           <tr>
             <OptionsGroup
@@ -236,9 +236,9 @@ export default defineComponent({
             />
           </tr>
           <tr>
-            <div class="flex flex-row justify-center items-center">
+            <div class="flex flex-row items-center justify-center">
               <span class="basis-1/8">排序</span>
-              <div class="flex flex-row items-center basis-7/8 justify-between">
+              <div class="flex basis-7/8 flex-row items-center justify-between">
                 <div class="flex flex-wrap justify-start">
                   <NButton
                     v-for="(item, index) in sortModes"
@@ -275,8 +275,8 @@ export default defineComponent({
               />
               <div class="px-2" @click="toggleDark()">
                 <NButton>
-                  <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
-                  <span v-else class="text-2xl mdi mdi-brightness-4" />
+                  <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
+                  <span v-else class="mdi mdi-brightness-4 text-2xl" />
                 </NButton>
               </div>
             </div>
@@ -284,7 +284,7 @@ export default defineComponent({
         </tbody>
         <NPagination
           v-model:page="pagination.page"
-          class="justify-center my-2"
+          class="my-2 justify-center"
           :item-count="filteredMemory.length"
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"
@@ -294,7 +294,7 @@ export default defineComponent({
           @update:page="calcMemory"
           @update:page-size="onUpdatePageSize"
         />
-        <div class="w-full flex flex-col lg:flex-row flex-wrap">
+        <div class="w-full flex flex-col flex-wrap lg:flex-row">
           <Memory
             v-for="charm in shownMemory"
             :key="charm.char"
@@ -305,12 +305,12 @@ export default defineComponent({
         </div>
         <NEmpty v-if="shownMemory.length === 0" description="无结果">
           <template #icon>
-            <span class="text-5xl mdi mdi-book-search" />
+            <span class="mdi mdi-book-search text-5xl" />
           </template>
         </NEmpty>
         <NPagination
           v-model:page="pagination.page"
-          class="justify-center my-2"
+          class="my-2 justify-center"
           :item-count="filteredMemory.length"
           :page-size="pagination.pageSize"
           :page-sizes="pagination.pageSizes"

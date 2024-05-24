@@ -523,7 +523,7 @@ function calcServerColor(id: string) {
       </div>
     </div>
     <n-card title="数据获取" class="nomobile">
-      <div class="flex items-center flex-wrap">
+      <div class="flex flex-wrap items-center">
         <div class="w-auto">森空岛凭证：</div>
         <div style="width: 300px">
           <n-input v-model:value="credStr" placeholder="请输入您的森空岛凭证" />
@@ -562,7 +562,7 @@ function calcServerColor(id: string) {
           />
         </div>
       </div>
-      <div class="flex items-center flex-wrap" style="margin-top: 15px">
+      <div class="flex flex-wrap items-center" style="margin-top: 15px">
         <div style="margin-bottom: 5px">选择图片质量：</div>
         <div class="flex">
           <n-input-number
@@ -587,7 +587,7 @@ function calcServerColor(id: string) {
           如何获取森空岛凭证
         </n-button>
       </template>
-      <div class="flex items-center flex-wrap">
+      <div class="flex flex-wrap items-center">
         <div class="w-full" style="margin-bottom: 5px">森空岛凭证：</div>
         <div class="w-full flex">
           <n-input
@@ -603,7 +603,7 @@ function calcServerColor(id: string) {
           >
         </div>
       </div>
-      <div class="flex items-center flex-wrap" style="margin-top: 15px">
+      <div class="flex flex-wrap items-center" style="margin-top: 15px">
         <div class="w-full" style="margin-bottom: 5px">选择游戏角色：</div>
         <div class="w-full">
           <n-select
@@ -616,7 +616,7 @@ function calcServerColor(id: string) {
           />
         </div>
       </div>
-      <div class="flex items-center flex-wrap" style="margin-top: 15px">
+      <div class="flex flex-wrap items-center" style="margin-top: 15px">
         <div class="w-full" style="margin-bottom: 5px">选择图片质量：</div>
         <div class="flex">
           <n-input-number
@@ -633,7 +633,7 @@ function calcServerColor(id: string) {
     <n-card title="信息展示" style="margin-top: 10px">
       <n-collapse :default-expanded-names="['1']">
         <n-collapse-item title="自定义签名" name="1">
-          <div class="flex w-full">
+          <div class="w-full flex">
             <n-input
               v-model:value="customSign"
               placeholder="建议不要超过两行"
@@ -761,7 +761,7 @@ function calcServerColor(id: string) {
           >
             <img
               :key="item.skinId"
-              class="lazyload charImg"
+              class="charImg lazyload"
               :data-src="portrait(item.skinId)"
               alt=""
             />

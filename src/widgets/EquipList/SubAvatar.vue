@@ -64,7 +64,7 @@ export default defineComponent({
         height="60"
         @click="toggleShow(char)"
       />
-      <div v-if="showInfo" class="flex items-center justify-center w-full">
+      <div v-if="showInfo" class="w-full flex items-center justify-center">
         <span v-if="locale == LANGUAGES.JA" class="font-bold">
           {{ char.char.nameJP ?? char.char.name }}
         </span>

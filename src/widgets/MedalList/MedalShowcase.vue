@@ -124,7 +124,7 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="antialiased max-w-200">
+    <NLayout class="max-w-200 antialiased">
       <NCard>
         <template #header>
           <img
@@ -137,7 +137,7 @@ export default defineComponent({
             <template #trigger>
               <NButton
                 text
-                class="text-lg decoration-none! align-middle"
+                class="align-middle text-lg decoration-none!"
                 tag="a"
                 href="/w/光荣之路"
               >
@@ -184,18 +184,18 @@ export default defineComponent({
             <NEmpty class="bg-#424242">
               <template #icon>
                 <div class="text-center">
-                  <span class="mdi mdi-lock color-white p-0 font-size-2rem" />
+                  <span class="mdi mdi-lock p-0 font-size-2rem color-white" />
                 </div>
               </template>
               <template #default>
-                <div class="text-center color-white pt-2">
+                <div class="pt-2 text-center color-white">
                   以下内容需要验证权限后查阅<br /><span
                     class="mdi mdi-information-variant-circle"
                   />&nbsp;本活动关联蚀刻章已加密，请自行决定是否查看。
                 </div>
               </template>
               <template #extra>
-                <div class="text-center color-white pb-2">
+                <div class="pb-2 text-center color-white">
                   <NButton
                     color="white"
                     text-color="#424242"

@@ -157,7 +157,7 @@ export default defineComponent({
               >
                 <span
                   v-if="e[stats[0]] != '0'"
-                  class="whitespace-nowrap mx-[0.5em]"
+                  class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
                   <span
@@ -206,7 +206,7 @@ export default defineComponent({
               >
                 <span
                   v-if="e[stats[0] + '2'] != '0'"
-                  class="whitespace-nowrap mx-[0.5em]"
+                  class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
                   <span
@@ -248,7 +248,7 @@ export default defineComponent({
               >
                 <span
                   v-if="e[stats[0] + '3'] != '0'"
-                  class="whitespace-nowrap mx-[0.5em]"
+                  class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
                   <span
@@ -330,7 +330,7 @@ export default defineComponent({
                     <img
                       :src="getImagePath('模组等级_2.png')"
                       height="40"
-                      class="m-1 rankpic"
+                      class="rankpic m-1"
                     />
                   </div>
                   <span v-html="processMaterial(e.mat2 ?? '')"></span>
@@ -342,7 +342,7 @@ export default defineComponent({
                     <img
                       :src="getImagePath('模组等级_3.png')"
                       height="40"
-                      class="m-1 rankpic"
+                      class="rankpic m-1"
                     />
                   </div>
                   <span v-html="processMaterial(e.mat3 ?? '')"></span>

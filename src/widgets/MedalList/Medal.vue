@@ -98,7 +98,7 @@ export default defineComponent({
             }"
           />
         </div>
-        <div class="flex flex-col w-full divide-y!">
+        <div class="w-full flex flex-col divide-y!">
           <div
             :class="[
               'flex',
@@ -109,7 +109,7 @@ export default defineComponent({
               rarityGradient[medalData.rarity],
             ]"
           >
-            <h3 class="color-white p-0 mt-0! <lg:pt-1!">
+            <h3 class="p-0 color-white mt-0! <lg:pt-1!">
               {{ medalData.name }}
             </h3>
             <div>
@@ -124,7 +124,7 @@ export default defineComponent({
             </div>
           </div>
           <div
-            class="p-2.5! grow flex items-center align-middle border-0 border-solid border-[#e5e7eb]"
+            class="flex grow items-center border-0 border-[#e5e7eb] border-solid align-middle p-2.5!"
           >
             <span
               class="whitespace-pre-wrap font-italic"
@@ -132,7 +132,7 @@ export default defineComponent({
             />
           </div>
           <div
-            class="p-2.5! border-0 border-solid border-[#e5e7eb] align-middle"
+            class="border-0 border-[#e5e7eb] border-solid align-middle p-2.5!"
           >
             <div v-if="!medalData.decrypt">
               <NTag
@@ -173,7 +173,7 @@ export default defineComponent({
                   <NTag
                     v-model:checked="showTrimed"
                     checkable
-                    class="bg-gradient-to-b from-[#b2ebf2] to-[#d1c4e9] color-[#2f2f2f]! border-[#565656] font-bold"
+                    class="border-[#565656] from-[#b2ebf2] to-[#d1c4e9] bg-gradient-to-b font-bold color-[#2f2f2f]!"
                     >镀层方式</NTag
                   >
                 </template>

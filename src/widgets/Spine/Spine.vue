@@ -228,14 +228,14 @@ export default defineComponent({
 <template>
   <Card
     :style="{ width: !isMobile() ? 'fit-content' : '' }"
-    class="bg-white relative"
+    class="relative bg-white"
   >
     <div
       :class="{ 'pr-5': !isMobile() }"
       class="m-5 flex flex-wrap justify-around"
     >
       <div
-        class="w-[330px] h-[400px] pr-4 space-y-2 flex flex-col justify-around"
+        class="h-[400px] w-[330px] flex flex-col justify-around pr-4 space-y-2"
       >
         <FormItem label="时装组">
           <NSelect
@@ -372,7 +372,7 @@ export default defineComponent({
         </div>
       </div>
       <div
-        class="overflow-hidden relative"
+        class="relative overflow-hidden"
         :style="{
           width: big ? '1000px' : '300px',
           height: big ? '1000px' : '300px',
@@ -380,7 +380,7 @@ export default defineComponent({
       >
         <NSkeleton
           v-if="isLoading"
-          class="w-full h-full absolute top-0 right-0"
+          class="absolute right-0 top-0 h-full w-full"
         />
         <div
           :style="{
@@ -406,10 +406,10 @@ export default defineComponent({
     </div>
     <div
       v-if="recording"
-      class="absolute top-0 bottom-0 right-0 left-0 h-full flex justify-center items-center"
+      class="absolute bottom-0 left-0 right-0 top-0 h-full flex items-center justify-center"
       :style="{ backgroundColor: 'rgba(0,0,0,0.4)' }"
     >
-      <div class="bg-white p-4 rounded">
+      <div class="rounded bg-white p-4">
         正在导出 {{ name }}-{{ curSkin }}-{{ curModel }}-{{ curAni }}-x{{
           speed
         }}.webm

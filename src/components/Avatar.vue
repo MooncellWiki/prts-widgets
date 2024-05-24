@@ -29,7 +29,7 @@ export default defineComponent({
   <div class="avatar-container" :class="size">
     <a :href="`/w/${name}`">
       <img
-        class="avatar lazyload"
+        class="lazyload avatar"
         :data-src="getImagePath(`头像_${name}.png`)"
       />
       <div class="rarity">

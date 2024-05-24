@@ -184,7 +184,7 @@ export default defineComponent({
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="antialiased mx-auto">
+    <NLayout class="mx-auto antialiased">
       <NCard>
         <template #header>
           <img
@@ -195,24 +195,24 @@ export default defineComponent({
         </template>
         <template #header-extra>
           <div class="mx-1 cursor-pointer" @click="toggleDark()">
-            <span v-if="theme" class="text-2xl mdi mdi-brightness-6" />
-            <span v-else class="text-2xl mdi mdi-brightness-4" />
+            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
+            <span v-else class="mdi mdi-brightness-4 text-2xl" />
           </div>
           <div class="mx-1 cursor-pointer">
             <NPopover trigger="click" raw>
               <template #trigger>
-                <span class="text-2xl mdi mdi-chart-bar" />
+                <span class="mdi mdi-chart-bar text-2xl" />
               </template>
               <MedalStats :medal-meta-data="filteredMedalData" />
             </NPopover>
           </div>
           <div class="mx-1 cursor-pointer" @click="showFilter = !showFilter">
-            <span v-if="showFilter" class="text-2xl mdi mdi-chevron-up" />
-            <span v-else class="text-2xl mdi mdi-chevron-down" />
+            <span v-if="showFilter" class="mdi mdi-chevron-up text-2xl" />
+            <span v-else class="mdi mdi-chevron-down text-2xl" />
           </div>
         </template>
         <NCollapseTransition :show="showFilter">
-          <table class="w-full text-left border-collapse">
+          <table class="w-full border-collapse text-left">
             <tbody class="align-baseline">
               <tr>
                 <OptionsGroup
@@ -254,7 +254,7 @@ export default defineComponent({
             <template #header-extra>
               <span class="<lg:hidden">{{ cate.desc }}</span>
             </template>
-            <span class="lg:hidden p-1">{{ cate.desc }}</span>
+            <span class="p-1 lg:hidden">{{ cate.desc }}</span>
             <NCard v-if="cate.extraDesc" class="mb-2">
               <div v-html="cate.extraDesc"></div>
             </NCard>
@@ -318,17 +318,17 @@ export default defineComponent({
                   <template #icon>
                     <div class="text-center">
                       <span
-                        class="mdi mdi-lock color-white p-0 font-size-2rem"
+                        class="mdi mdi-lock p-0 font-size-2rem color-white"
                       />
                     </div>
                   </template>
                   <template #default>
-                    <div class="text-center color-white pt-2">
+                    <div class="pt-2 text-center color-white">
                       以下内容需要验证权限后查阅
                     </div>
                   </template>
                   <template #extra>
-                    <div class="text-center color-white pb-2">
+                    <div class="pb-2 text-center color-white">
                       <NButton
                         color="white"
                         text-color="#424242"

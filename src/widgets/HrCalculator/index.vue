@@ -225,7 +225,7 @@ export default defineComponent({
         {{ c }}
       </Checkbox>
     </FilterRow>
-    <table class="wikitable w-full mt-2">
+    <table class="wikitable mt-2 w-full">
       <tbody>
         <tr>
           <th style="text-align: left">
@@ -251,13 +251,13 @@ export default defineComponent({
       </tbody>
     </table>
   </div>
-  <div v-if="xs" class="w-full mt-2">
+  <div v-if="xs" class="mt-2 w-full">
     <div
       v-for="data in result"
       :key="data.tags"
-      class="bg-[#f8f9fa] mb-1 shadow shadow-gray-400"
+      class="mb-1 bg-[#f8f9fa] shadow shadow-gray-400"
     >
-      <div class="flex items-center flex-wrap justify-start">
+      <div class="flex flex-wrap items-center justify-start">
         <div v-for="name in number2names(data.tags)" :key="name" class="tag">
           {{ name }}
         </div>
@@ -266,12 +266,12 @@ export default defineComponent({
         <div
           v-for="charIndex in data.charIndict"
           :key="charIndex"
-          class="p-2 m-2 <sm:p-1 <sm:m-1 rounded relative"
+          class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
           :class="`r-${source[charIndex].rarity}`"
         >
           <span
             v-if="isOnly(source[charIndex])"
-            class="absolute top-0 right-0 bg-[#3fbd43] text-white leading-none p-1 rounded z-1 font-bold"
+            class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
             >限</span
           >
           <Avatar
@@ -284,7 +284,7 @@ export default defineComponent({
       </div>
     </div>
   </div>
-  <table v-else class="bg-[#f8f9fa] w-full mt-2">
+  <table v-else class="mt-2 w-full bg-[#f8f9fa]">
     <colgroup>
       <col class="tag-row" />
       <col />
@@ -298,7 +298,7 @@ export default defineComponent({
     <tbody>
       <tr v-for="data in result" :key="data.tags" class="row">
         <td>
-          <div class="flex justify-center items-center flex-wrap">
+          <div class="flex flex-wrap items-center justify-center">
             <div
               v-for="name in number2names(data.tags)"
               :key="name"
@@ -308,16 +308,16 @@ export default defineComponent({
             </div>
           </div>
         </td>
-        <td class="flex flex-wrap flex-1">
+        <td class="flex flex-1 flex-wrap">
           <div
             v-for="charIndex in data.charIndict"
             :key="charIndex"
-            class="p-2 m-2 <sm:p-1 <sm:m-1 rounded relative"
+            class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
             :class="`r-${source[charIndex].rarity}`"
           >
             <span
               v-if="isOnly(source[charIndex])"
-              class="absolute top-0 right-0 bg-[#3fbd43] text-white leading-none p-1 rounded z-1 font-bold"
+              class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
               >限</span
             >
             <Avatar

@@ -139,7 +139,7 @@ export default defineComponent({
       Button: { textColor: '#fff' },
     }"
   >
-    <NSpace class="w-140 max-w-full">
+    <NSpace class="max-w-full w-140">
       <NLayout>
         <NLayoutContent>
           <NBreadcrumb separator=">">
