@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { PropType, Ref } from "vue";
-import { defineComponent, inject, ref } from "vue";
+import { defineComponent, inject } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
@@ -8,9 +8,8 @@ import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
-import { getEquipData } from "./equipData";
 
-import type { Char } from "./types";
+import type { CharEquips } from "./types";
 
 export default defineComponent({
   name: "SubAvatar",
@@ -19,7 +18,7 @@ export default defineComponent({
   },
   props: {
     char: {
-      type: Object as PropType<Char>,
+      type: Object as PropType<CharEquips>,
       required: true,
     },
     show: {
@@ -27,25 +26,27 @@ export default defineComponent({
       default: false,
     },
   },
-  emits: ["update:char", "update:show"],
+  emits: ["update:show"],
   setup(props, { emit }) {
-    const charRef = useVModel(props, "char", emit);
     const showInfo = useVModel(props, "show", emit);
     const showChars = inject("showChars") as Ref<string[]>;
-    const equipRef = ref<DOMStringMap[]>([]);
-    const getCharEquip = async () => {
-      equipRef.value = await getEquipData(props.char.name);
+    const toggleShow = (c: CharEquips) => {
+      if (showChars.value.includes(c.char.name)) {
+        showInfo.value = false;
+        showChars.value.splice(
+          showChars.value.findIndex((n) => n == c.char.name),
+          1,
+        );
+      } else {
+        showInfo.value = true;
+        showChars.value.push(c.char.name);
+      }
     };
-    const loading = ref(false);
-    const showEquipList = ref<string[]>([]);
     return {
       getImagePath,
-      charRef,
+      toggleShow,
       showInfo,
       showChars,
-      showEquipList,
-      getCharEquip,
-      loading,
       LANGUAGES,
       locale: getLanguage(),
     };
@@ -58,42 +59,26 @@ export default defineComponent({
     <div class="flex">
       <img
         class="m-[2px] cursor-pointer"
-        :src="getImagePath(`头像_${charRef.name}_2.png`)"
+        :src="getImagePath(`头像_${char.char.name}_2.png`)"
         width="60"
         height="60"
-        @click="
-          async () => {
-            if (showChars.includes(char.name)) {
-              showInfo = false;
-              showChars.splice(
-                showChars.findIndex((c) => c == char.name),
-                1,
-              );
-            } else {
-              loading = true;
-              await getCharEquip();
-              showInfo = true;
-              showChars.push(char.name);
-              loading = false;
-            }
-          }
-        "
+        @click="toggleShow(char)"
       />
       <div v-if="showInfo" class="w-full flex items-center justify-center">
         <span v-if="locale == LANGUAGES.JA" class="font-bold">
-          {{ char.nameJP ?? char.name }}
+          {{ char.char.nameJP ?? char.char.name }}
         </span>
         <span
           v-else-if="locale == LANGUAGES.EN || locale == LANGUAGES.KO"
           class="font-bold"
         >
-          {{ char.nameEN ?? char.name }}
+          {{ char.char.nameEN ?? char.char.name }}
         </span>
-        <span v-else class="font-bold">{{ char.name }}</span>
+        <span v-else class="font-bold">{{ char.char.name }}</span>
       </div>
     </div>
     <div v-if="showInfo" class="w-full">
-      <Equip :name="char.name"></Equip>
+      <Equip :name="char.char.name" :data="char.equips"></Equip>
     </div>
   </div>
 </template>

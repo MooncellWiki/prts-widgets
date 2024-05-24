@@ -9,7 +9,7 @@ import { getImagePath } from "@/utils/utils";
 
 import SubAvatar from "./SubAvatar.vue";
 import { customLabel } from "./i18n";
-import { Char } from "./types";
+import { CharEquips } from "./types";
 
 export default defineComponent({
   name: "SubContainer",
@@ -23,7 +23,7 @@ export default defineComponent({
       required: true,
     },
     chars: {
-      type: Array as PropType<Char[]>,
+      type: Array as PropType<CharEquips[]>,
       default: () => [],
     },
   },
@@ -32,16 +32,16 @@ export default defineComponent({
     const showChars = inject("showChars") as Ref<string[]>;
     const expandAll = () => {
       for (const char of props.chars) {
-        if (!showChars.value.includes(char.name)) {
-          showChars.value.push(char.name);
+        if (!showChars.value.includes(char.char.name)) {
+          showChars.value.push(char.char.name);
         }
       }
     };
     const collapseAll = () => {
       for (const char of props.chars) {
-        if (showChars.value.includes(char.name)) {
+        if (showChars.value.includes(char.char.name)) {
           showChars.value.splice(
-            showChars.value.findIndex((n) => n == char.name),
+            showChars.value.findIndex((n) => n == char.char.name),
             1,
           );
         }
@@ -61,8 +61,9 @@ export default defineComponent({
 
 <template>
   <NCard
-    class="m-1 w-full"
-    header-style="text-align: center;"
+    class="my-1 w-full"
+    header-style="text-align: center; padding: 10px;"
+    content-style="padding: 6px"
     size="small"
     hoverable
   >
@@ -83,11 +84,11 @@ export default defineComponent({
     </template>
     <template #header-extra>
       <span
-        class="mdi mdi-arrow-expand cursor-pointer text-xl"
+        class="mdi mdi-arrow-expand cursor-pointer p-0.5 text-xl"
         @click="expandAll()"
       />
       <span
-        class="mdi mdi-arrow-collapse cursor-pointer text-xl"
+        class="mdi mdi-arrow-collapse cursor-pointer p-0.5 text-xl"
         @click="collapseAll()"
       />
     </template>
@@ -95,7 +96,7 @@ export default defineComponent({
       <SubAvatar
         v-for="(char, ind) in chars"
         :key="ind"
-        :show="showChars.includes(char.name)"
+        :show="showChars.includes(char.char.name)"
         :char="char"
       />
     </div>

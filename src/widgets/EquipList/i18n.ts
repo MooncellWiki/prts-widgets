@@ -150,44 +150,56 @@ export const customSubtype: Record<string, Record<string, string>> = {
 const customPages = {
   zhCN: [
     {
-      label: "5 角色 / 页",
+      label: "5 / 页",
       value: 5,
     },
     {
-      label: "10 角色 / 页",
+      label: "10 / 页",
       value: 10,
     },
     {
-      label: "25 角色 / 页",
+      label: "25 / 页",
       value: 25,
+    },
+    {
+      label: "50 / 页",
+      value: 50,
     },
   ],
   zhTW: [
     {
-      label: "5 角色 / 頁",
+      label: "5 / 頁",
       value: 5,
     },
     {
-      label: "10 角色 / 頁",
+      label: "10 / 頁",
       value: 10,
     },
     {
-      label: "25 角色 / 頁",
+      label: "25 / 頁",
       value: 25,
+    },
+    {
+      label: "50 / 頁",
+      value: 50,
     },
   ],
   enUS: [
     {
-      label: "5 Char. / Page",
+      label: "5 / Page",
       value: 5,
     },
     {
-      label: "10 Char. / Page",
+      label: "10 / Page",
       value: 10,
     },
     {
-      label: "25 Char. / Page",
+      label: "25 / Page",
       value: 25,
+    },
+    {
+      label: "50 / Page",
+      value: 50,
     },
   ],
   jaJP: [
@@ -203,6 +215,10 @@ const customPages = {
       label: "25 / ページ",
       value: 25,
     },
+    {
+      label: "50 / ページ",
+      value: 50,
+    },
   ],
 };
 
@@ -216,6 +232,9 @@ export const customLabel = {
     subtypeLabel: "职业分支",
     subPlaceholder: "输入或在菜单中选择",
     subtypeMap: customSubtype["zh"],
+    tableCollapse: "排序和筛选",
+    tableSortLabel: "排序",
+    tableFilterLabel: "筛选",
     typeOptions: [
       "先锋",
       "近卫",
@@ -236,6 +255,18 @@ export const customLabel = {
       ["block", "阻挡数"],
       ["atkspd", "攻击速度"],
     ],
+    sortOptions: {
+      yes: "有",
+      no: "无",
+      asc: "升序",
+      desc: "降序",
+      all: "全部",
+      default: "默认",
+      filterTalent: "新增天赋",
+      filterTrait: "特性追加",
+      filterType: "模组类型",
+      other: "其他",
+    },
     equipString: {
       mission: "模组解锁任务",
       condition: "解锁需求与材料消耗",
@@ -260,6 +291,9 @@ export const customLabel = {
     typeLabel: "職業",
     filterTitle: "幹員篩選",
     rarityLabel: "稀有度",
+    tableSortLabel: "排序",
+    tableFilterLabel: "篩選",
+    tableCollapse: "排序和篩選",
     subPlaceholder: "鍵入或在選單中選擇",
     subtypeLabel: "職業分支",
     subtypeMap: customSubtype["zh-tw"],
@@ -283,6 +317,18 @@ export const customLabel = {
       ["block", "阻擋數"],
       ["atkspd", "攻擊速度"],
     ],
+    sortOptions: {
+      yes: "有",
+      no: "無",
+      asc: "遞增",
+      desc: "遞減",
+      all: "全部",
+      default: "預設",
+      filterTalent: "新增天賦",
+      filterTrait: "特性追加",
+      filterType: "模組類型",
+      other: "其他",
+    },
     equipString: {
       mission: "模組解鎖任務",
       condition: "解鎖需求與材料消耗",
@@ -299,7 +345,7 @@ export const customLabel = {
       name: "模組",
       data: "數值",
     },
-    loading: "加載中",
+    loading: "載入中",
   },
   en: {
     pagination: customPages.enUS,
@@ -307,6 +353,9 @@ export const customLabel = {
     typeLabel: "Class",
     filterTitle: "Operators Filter",
     rarityLabel: "Rarity",
+    tableSortLabel: "Sort",
+    tableFilterLabel: "Filter",
+    tableCollapse: "Sorting & Filtering",
     subPlaceholder: "Input or choose from menu",
     subtypeLabel: "Branches",
     subtypeMap: customSubtype["en"],
@@ -330,6 +379,18 @@ export const customLabel = {
       ["block", "Block"],
       ["atkspd", "ASPD"],
     ],
+    sortOptions: {
+      yes: "Yes",
+      no: "No",
+      asc: "Ascending",
+      desc: "Descending",
+      all: "All",
+      default: "Default",
+      filterTalent: "New Talent",
+      filterTrait: "New Trait",
+      filterType: "Module Type",
+      other: "Others",
+    },
     equipString: {
       mission: "Module Missions",
       condition: "Unlock Conditions & Materials",
@@ -354,6 +415,9 @@ export const customLabel = {
     typeLabel: "クラス",
     filterTitle: "オペレーター絞り込み",
     rarityLabel: "レアリティ",
+    tableSortLabel: "並べ替え",
+    tableFilterLabel: "絞り込み",
+    tableCollapse: "並べ替えと絞り込み",
     subPlaceholder: "入力または選択してください",
     subtypeLabel: "クラス細分",
     subtypeMap: customSubtype["ja"],
@@ -377,6 +441,18 @@ export const customLabel = {
       ["block", "ブロック数"],
       ["atkspd", "攻撃速度"],
     ],
+    sortOptions: {
+      yes: "あり",
+      no: "なし",
+      asc: "昇順",
+      desc: "降順",
+      all: "すべて",
+      default: "デフォルト",
+      filterTalent: "素質開放",
+      filterTrait: "特性追加",
+      filterType: "タイプ",
+      other: "その他",
+    },
     equipString: {
       mission: "モジュール開放任務",
       condition: "開放条件と必要素材",
@@ -402,6 +478,9 @@ export const customLabel = {
     typeLabel: "Class",
     filterTitle: "Operators Filter",
     rarityLabel: "Rarity",
+    tableSortLabel: "Sort",
+    tableFilterLabel: "Filter",
+    tableCollapse: "Sorting & Filtering",
     subPlaceholder: "Input or choose in menu",
     subtypeLabel: "Branches",
     subtypeMap: customSubtype["en"],
@@ -425,6 +504,18 @@ export const customLabel = {
       ["block", "Block"],
       ["atkspd", "ASPD"],
     ],
+    sortOptions: {
+      yes: "Yes",
+      no: "No",
+      asc: "Ascending",
+      desc: "Descending",
+      all: "All",
+      default: "Default",
+      filterTalent: "New Talent",
+      filterTrait: "New Trait",
+      filterType: "Module Type",
+      other: "Others",
+    },
     equipString: {
       mission: "Module Missions",
       condition: "Unlock Conditions & Materials",
@@ -469,4 +560,140 @@ export function getFilterRarity(locale: LANGUAGES) {
     title: customLabel[locale].rarityLabel,
     options: ["★4", "★5", "★6"],
   };
+}
+
+function stats(locale: LANGUAGES, type: string): string {
+  const ele = customLabel[locale].statsMap.find((e) => e[0] == type);
+  return ele ? ele[1] : "";
+}
+
+export function getSortOptions(locale: LANGUAGES) {
+  return [
+    {
+      label: customLabel[locale].sortOptions.default,
+      value: "default",
+    },
+    {
+      label: stats(locale, "hp"),
+      value: "hp",
+    },
+    {
+      label: stats(locale, "atk"),
+      value: "atk",
+    },
+    {
+      label: stats(locale, "def"),
+      value: "def",
+    },
+    {
+      label: stats(locale, "res"),
+      value: "res",
+    },
+    {
+      label: stats(locale, "cost"),
+      value: "cost",
+    },
+    {
+      label: stats(locale, "time"),
+      value: "time",
+    },
+    {
+      label: stats(locale, "atkspd"),
+      value: "atkspd",
+    },
+  ];
+}
+
+export function getSortValue(locale: LANGUAGES) {
+  return [
+    {
+      label: customLabel[locale].sortOptions.asc,
+      value: "asc",
+    },
+    {
+      label: customLabel[locale].sortOptions.desc,
+      value: "desc",
+    },
+  ];
+}
+
+export function getFilterOptions(locale: LANGUAGES) {
+  return [
+    {
+      label: customLabel[locale].sortOptions.all,
+      value: "all",
+    },
+    {
+      label: customLabel[locale].sortOptions.filterTalent,
+      value: "talent",
+    },
+    {
+      label: customLabel[locale].sortOptions.filterTrait,
+      value: "trait",
+    },
+    {
+      label: customLabel[locale].sortOptions.filterType,
+      value: "type",
+    },
+    {
+      label: stats(locale, "hp"),
+      value: "hp",
+    },
+    {
+      label: stats(locale, "atk"),
+      value: "atk",
+    },
+    {
+      label: stats(locale, "def"),
+      value: "def",
+    },
+    {
+      label: stats(locale, "res"),
+      value: "res",
+    },
+    {
+      label: stats(locale, "cost"),
+      value: "cost",
+    },
+    {
+      label: stats(locale, "time"),
+      value: "time",
+    },
+    {
+      label: stats(locale, "block"),
+      value: "block",
+    },
+    {
+      label: stats(locale, "atkspd"),
+      value: "atkspd",
+    },
+  ];
+}
+
+export function getFilterValue(locale: LANGUAGES, option: string = "all") {
+  return option == "type"
+    ? [
+        {
+          label: "X",
+          value: "x",
+        },
+        {
+          label: "Y",
+          value: "y",
+        },
+        {
+          label: customLabel[locale].sortOptions.other,
+          value: "o",
+        },
+      ]
+    : [
+        {
+          label: customLabel[locale].sortOptions.yes,
+          value: "yes",
+        },
+        {
+          label: customLabel[locale].sortOptions.no,
+          value: "no",
+        },
+      ];
 }

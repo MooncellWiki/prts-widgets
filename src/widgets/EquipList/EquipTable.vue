@@ -1,37 +1,20 @@
 <script lang="ts">
-import {
-  PropType,
-  Ref,
-  defineComponent,
-  h,
-  inject,
-  onBeforeMount,
-  ref,
-  watch,
-} from "vue";
+import { PropType, defineComponent, h, ref, watch } from "vue";
 
-import { useVModel } from "@vueuse/core";
 import { DataTableColumns, NDataTable } from "naive-ui";
 
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
-import { getImagePath } from "@/utils/utils";
+import { getImagePath, isMobile } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
-import { getEquipData } from "./equipData";
 import { customLabel } from "./i18n";
-import { Char } from "./types";
-
-type EquipRow = {
-  name: string;
-  type: string;
-  operator: string;
-  data: DOMStringMap;
-};
+import { EquipRow } from "./types";
 
 const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
   return [
     {
       type: "expand",
+      width: 30,
       renderExpand: (row) => {
         return h(Equip, {
           name: row.operator,
@@ -95,76 +78,56 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
     },
   ];
 };
+const createRowKey = (row: EquipRow) => {
+  return row.operator + "." + row.name;
+};
 
 export default defineComponent({
   components: {
     NDataTable,
   },
   props: {
-    chars: {
-      type: Array as PropType<Char[]>,
+    data: {
+      type: Array as PropType<EquipRow[]>,
       required: true,
     },
   },
-  emits: ["update:chars"],
-  setup(props, { emit }) {
-    const charEquipData = ref<EquipRow[]>([]);
-    const loading = ref(false);
-    const loadingCount = inject("loadingCount") as Ref<number>;
-    const createData = (): EquipRow[] => {
-      return charEquipData.value;
+  setup(props) {
+    const locale = getLanguage();
+    const pickSize = (): "small" | "medium" => {
+      return isMobile() ? "small" : "medium";
     };
-    const createRowKey = (row: EquipRow) => {
-      return row.operator + "." + row.name;
-    };
-    const charList = useVModel(props, "chars", emit);
-    watch(charList, async () => {
-      loading.value = true;
-      loadingCount.value += charList.value.length;
-      charEquipData.value = [];
-      const promises = charList.value.map((char) => {
-        return getEquipData(char.name);
-      });
-      Promise.all(promises).then((values) => {
-        for (const v of values) {
-          const rawdata = (v ?? {}) as DOMStringMap[];
-          for (const e of rawdata) {
-            charEquipData.value.push({
-              name: e.name ?? "",
-              type: e.type ?? "",
-              operator: e.opt ?? "",
-              data: e ?? [],
-            });
-          }
-        }
-        loading.value = false;
-        loadingCount.value -= charList.value.length;
-      });
+    const pagination = ref({
+      page: 1,
+      pageSize: 10,
+      pageSizes: customLabel[locale].pagination,
+      pageSlot: isMobile() ? 5 : 9,
+      size: pickSize(),
+      showSizePicker: true,
+      onUpdatePage: (page: number) => {
+        pagination.value.page = page;
+      },
+      onUpdatePageSize: (size: number) => {
+        pagination.value.pageSize = size;
+        pagination.value.page = 1;
+      },
     });
-    onBeforeMount(async () => {
-      loading.value = true;
-      loadingCount.value += charList.value.length;
-      for (const c of charList.value) {
-        const rawdata = ((await getEquipData(c.name)) ?? []) as DOMStringMap[];
-        for (const e of rawdata) {
-          charEquipData.value.push({
-            name: e.name ?? "",
-            type: e.type ?? "",
-            operator: e.opt ?? "",
-            data: e ?? [],
-          });
-        }
-        loadingCount.value -= 1;
-      }
-      loading.value = false;
+    const loading = ref(false);
+    watch(props, () => {
+      if (
+        (pagination.value.page - 1) * pagination.value.pageSize >=
+        props.data.length
+      )
+        pagination.value.page = 1;
     });
     return {
-      createData,
       columns,
-      charList,
       createRowKey,
       loading,
-      locale: getLanguage(),
+      customLabel,
+      locale,
+      pagination,
+      isMobile,
     };
   },
 });
@@ -172,9 +135,10 @@ export default defineComponent({
 <template>
   <NDataTable
     :columns="columns(locale)"
-    :data="createData()"
+    :data="data"
     :loading="loading"
+    :size="isMobile() ? 'small' : 'medium'"
     :row-key="createRowKey"
-    remote
+    :pagination="pagination"
   ></NDataTable>
 </template>

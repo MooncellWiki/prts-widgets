@@ -48,6 +48,7 @@ export default defineComponent({
         class="m-1"
         :disabled="disabled"
         :options="options"
+        :fallback-option="false"
         filterable
         clearable
         multiple
