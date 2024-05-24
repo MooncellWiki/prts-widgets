@@ -16,7 +16,7 @@ import { NSpin } from "naive-ui";
 
 import { getLanguage } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-import { getImagePath } from "@/utils/utils";
+import { getImagePath, isMobile } from "@/utils/utils";
 
 import { colorMap, statsStyleMap } from "./consts";
 import { getEquipData } from "./equipData";
@@ -105,6 +105,7 @@ export default defineComponent({
       processMaterial,
       loading,
       locale: getLanguage(),
+      isMobile,
     };
   },
 });
@@ -115,7 +116,7 @@ export default defineComponent({
       v-for="e in content"
       :key="e.name"
       class="modbody"
-      :class="{ simple: simple }"
+      :class="{ simple: simple, mobile: isMobile() }"
     >
       <div class="basicbox" :class="{ nosimple: simple }">
         <div
@@ -367,6 +368,9 @@ export default defineComponent({
   box-sizing: border-box;
   flex-flow: column;
 }
+:deep(.modbody.mobile) {
+  font-size: 95%;
+}
 :deep(.modbody.simple) {
   display: flex;
   width: 100%;
@@ -405,6 +409,12 @@ export default defineComponent({
 }
 :deep(.typepic) {
   height: 30px;
+}
+:deep(.mobile .rankpic) {
+  height: 36px;
+}
+:deep(.mobile .typepic) {
+  height: 27px;
 }
 :deep(.ranktext) {
   flex: 16.5 16.5 16.5%;

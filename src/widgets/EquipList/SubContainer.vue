@@ -61,8 +61,9 @@ export default defineComponent({
 
 <template>
   <NCard
-    class="m-1 w-full"
-    header-style="text-align: center;"
+    class="my-1 w-full"
+    header-style="text-align: center; padding: 10px;"
+    content-style="padding: 6px"
     size="small"
     hoverable
   >
@@ -83,11 +84,11 @@ export default defineComponent({
     </template>
     <template #header-extra>
       <span
-        class="mdi mdi-arrow-expand cursor-pointer text-xl"
+        class="mdi mdi-arrow-expand cursor-pointer p-0.5 text-xl"
         @click="expandAll()"
       />
       <span
-        class="mdi mdi-arrow-collapse cursor-pointer text-xl"
+        class="mdi mdi-arrow-collapse cursor-pointer p-0.5 text-xl"
         @click="collapseAll()"
       />
     </template>

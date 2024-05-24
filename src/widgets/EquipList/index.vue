@@ -27,7 +27,7 @@ import {
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-import { isMobileSkin } from "@/utils/utils";
+import { isMobile } from "@/utils/utils";
 
 import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
@@ -86,7 +86,6 @@ export default defineComponent({
   },
   setup() {
     const i18nConfig = getNaiveUILocale();
-    const isMobile = isMobileSkin();
     const { theme, toggleDark } = useTheme();
     const locale = getLanguage();
     const hash = useUrlSearchParams("hash");
@@ -371,6 +370,9 @@ export default defineComponent({
       filteredCharEquipData,
       CharEquipList,
       getFilterValue,
+      mobileStyle: () => {
+        return isMobile() ? "padding: 5px" : undefined;
+      },
     };
   },
 });
@@ -428,16 +430,16 @@ export default defineComponent({
               </tr>
               <tr>
                 <div class="my-2">
-                  <NCollapse :default-expanded-names="isMobile ? '' : 'sort'">
+                  <NCollapse :default-expanded-names="isMobile() ? '' : 'sort'">
                     <NCollapseItem
                       name="sort"
                       :title="customLabel[locale].tableCollapse"
                     >
-                      <div class="flex flex-row justify-center items-center">
+                      <div class="flex flex-row items-center justify-center">
                         <span class="basis-1/8">
                           {{ customLabel[locale].tableFilterLabel }}
                         </span>
-                        <div class="flex flex-col items-center basis-7/8">
+                        <div class="flex basis-7/8 flex-col items-center">
                           <NButtonGroup size="small">
                             <NButton
                               type="default"
@@ -451,7 +453,7 @@ export default defineComponent({
                                 }
                               "
                             >
-                              <span class="text-xl mdi mdi-plus"></span>
+                              <span class="mdi mdi-plus text-xl"></span>
                             </NButton>
                             <NButton
                               type="default"
@@ -464,13 +466,13 @@ export default defineComponent({
                                 }
                               "
                             >
-                              <span class="text-xl mdi mdi-minus"></span>
+                              <span class="mdi mdi-minus text-xl"></span>
                             </NButton>
                           </NButtonGroup>
                           <div
                             v-for="(v, i) in sortStates.filter"
                             :key="i"
-                            class="flex flex-row items-center w-full"
+                            class="w-full flex flex-row items-center"
                           >
                             <NSelect
                               v-model:value="v.mode"
@@ -488,11 +490,11 @@ export default defineComponent({
                           </div>
                         </div>
                       </div>
-                      <div class="flex flex-row justify-center items-center">
+                      <div class="flex flex-row items-center justify-center">
                         <span class="basis-1/8">
                           {{ customLabel[locale].tableSortLabel }}
                         </span>
-                        <div class="flex flex-row items-center basis-7/8">
+                        <div class="flex basis-7/8 flex-row items-center">
                           <NSelect
                             v-model:value="sortStates.sort[0].mode"
                             class="m-1"
@@ -512,8 +514,8 @@ export default defineComponent({
       <NCard
         title=" "
         header-style="text-align: center;"
+        :content-style="mobileStyle()"
         size="small"
-        class="selectcard"
       >
         <template #header-extra>
           <NButtonGroup size="small">

@@ -4,7 +4,7 @@ import { PropType, defineComponent, h, ref, watch } from "vue";
 import { DataTableColumns, NDataTable } from "naive-ui";
 
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
-import { getImagePath, isMobileSkin } from "@/utils/utils";
+import { getImagePath, isMobile } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
 import { customLabel } from "./i18n";
@@ -14,6 +14,7 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
   return [
     {
       type: "expand",
+      width: 30,
       renderExpand: (row) => {
         return h(Equip, {
           name: row.operator,
@@ -92,13 +93,16 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const isMobile = isMobileSkin();
     const locale = getLanguage();
+    const pickSize = (): "small" | "medium" => {
+      return isMobile() ? "small" : "medium";
+    };
     const pagination = ref({
       page: 1,
       pageSize: 10,
       pageSizes: customLabel[locale].pagination,
-      pageSlot: isMobile ? 5 : 9,
+      pageSlot: isMobile() ? 5 : 9,
+      size: pickSize(),
       showSizePicker: true,
       onUpdatePage: (page: number) => {
         pagination.value.page = page;
@@ -123,6 +127,7 @@ export default defineComponent({
       customLabel,
       locale,
       pagination,
+      isMobile,
     };
   },
 });
@@ -132,6 +137,7 @@ export default defineComponent({
     :columns="columns(locale)"
     :data="data"
     :loading="loading"
+    :size="isMobile() ? 'small' : 'medium'"
     :row-key="createRowKey"
     :pagination="pagination"
   ></NDataTable>
