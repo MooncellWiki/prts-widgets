@@ -1,17 +1,17 @@
-<script lang="ts">
-import { defineComponent, onMounted, ref } from "vue";
+<script lang="ts" setup>
+import { onMounted, ref } from "vue";
 
 import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
 
-import CostVue, { type CostProps } from "@/components/Cost.vue";
+import Cost, { type CostProps } from "@/components/Cost.vue";
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
-interface cost {
+interface CostItem {
   label: string;
   data: Array<CostProps>;
 }
 interface itemCost {
-  costs: Array<cost>;
+  costs: Array<CostItem>;
   total: {
     elite: number;
     skill: number;
@@ -58,50 +58,33 @@ async function query(name: string): Promise<itemCost> {
   }
   total.total = total.elite + total.skill + total.mastery + total.uniequip;
   return {
-    costs: costs.filter(Boolean).reverse() as cost[], // 让六星排到前面
+    costs: costs.filter(Boolean).reverse() as CostItem[], // 让六星排到前面
     total,
   };
 }
-export default defineComponent({
-  components: {
-    Cost: CostVue,
-    NTabs,
-    NTabPane,
-    NButton,
-    NSkeleton,
-    NConfigProvider,
-  },
-  props: {
-    item: String,
-  },
-  setup(props) {
-    const data = ref<itemCost>();
-    const state = ref(Status.req);
-    async function load() {
-      try {
-        state.value = Status.req;
-        const cost = await query(props.item!);
-        data.value = cost;
-        state.value = Status.succ;
-      } catch (error) {
-        console.warn(error);
-        state.value = Status.fail;
-      }
-    }
-    onMounted(async () => {
-      if (!props.item) {
-        console.warn("item empty", props);
-        return;
-      }
-      load();
-    });
-    return {
-      state,
-      data,
-      Status,
-      load,
-    };
-  },
+const props = defineProps<{
+  item: string;
+}>();
+
+const data = ref<itemCost>();
+const state = ref(Status.req);
+async function load() {
+  try {
+    state.value = Status.req;
+    const cost = await query(props.item!);
+    data.value = cost;
+    state.value = Status.succ;
+  } catch (error) {
+    console.warn(error);
+    state.value = Status.fail;
+  }
+}
+onMounted(async () => {
+  if (!props.item) {
+    console.warn("item empty", props);
+    return;
+  }
+  load();
 });
 </script>
 
@@ -111,9 +94,6 @@ export default defineComponent({
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
     :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
   >
-    <!-- <div class="max-w-700px box-border">
-    <Cost ></Cost>
-  </div> -->
     <NButton v-if="state === Status.fail" @click="load">
       加载失败 点击重试
     </NButton>
