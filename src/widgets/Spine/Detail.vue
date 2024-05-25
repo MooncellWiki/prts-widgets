@@ -1,22 +1,13 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent } from "vue";
+<script lang="ts" setup>
 function round(x: number) {
   return Math.round(x);
 }
-export default defineComponent({
-  props: {
-    detailes: Array as PropType<
-      {
-        duration: number;
-        name: string;
-      }[]
-    >,
-  },
-  setup() {
-    return { round };
-  },
-});
+defineProps<{
+  details: {
+    duration: number;
+    name: string;
+  }[];
+}>();
 </script>
 
 <template>
@@ -29,7 +20,7 @@ export default defineComponent({
       </tr>
     </thead>
     <tbody>
-      <tr v-for="detail in detailes" :key="detail.name">
+      <tr v-for="detail in details" :key="detail.name">
         <td>{{ detail.name }}</td>
         <td>{{ detail.duration }}</td>
         <td>{{ round(detail.duration * 30) }}</td>
