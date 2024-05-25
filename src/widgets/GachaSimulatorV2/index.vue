@@ -1,5 +1,5 @@
-<script lang="ts">
-import { PropType, computed, defineComponent, ref, toRaw } from "vue";
+<script lang="ts" setup>
+import { computed, ref, toRaw } from "vue";
 
 import {
   NButton,
@@ -29,215 +29,162 @@ import { getPortraitURL, rarityStringToNumber } from "./utils";
 
 const { locale, dateLocale } = getNaiveUILocale();
 const { theme } = useTheme();
+const props = defineProps<{
+  gachaPoolId: string;
+  gachaBannerFile: string;
+  gachaClientPool?: GachaClientPool;
+  gachaServerPool: GachaServerPool;
+  newbeeClientPool?: NewbeeGachaPoolClientData;
+}>();
 
-export default defineComponent({
-  components: {
-    NConfigProvider,
-    NButton,
-    NCollapseItem,
-    NCollapse,
-    NLayout,
-  },
-  props: {
-    gachaPoolId: {
-      type: String,
-      required: true,
-    },
-    gachaBannerFile: {
-      type: String,
-      required: true,
-    },
-    gachaClientPool: {
-      type: Object as PropType<GachaClientPool>,
-    },
-    gachaServerPool: {
-      type: Object as PropType<GachaServerPool>,
-      required: true,
-    },
-    newbeeClientPool: {
-      type: Object as PropType<NewbeeGachaPoolClientData>,
-    },
-  },
-  setup(props) {
-    const showOperatorSelector = ref(false);
+const showOperatorSelector = ref(false);
 
-    const rarityPickCharDict =
-      props.gachaClientPool?.dynMeta?.rarityPickCharDict;
+const rarityPickCharDict = props.gachaClientPool?.dynMeta?.rarityPickCharDict;
 
-    const gachaExecutor: GachaExecutor | NewbeeGachaExecutor =
-      props.newbeeClientPool
-        ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
-        : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
+const gachaExecutor: GachaExecutor | NewbeeGachaExecutor =
+  props.newbeeClientPool
+    ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
+    : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
 
-    const isFesClassic =
-      props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC;
-    const counter = ref(0);
-    const non6StarCount = ref(0);
-    const results = ref<
-      Record<
-        string,
-        { charId: string; avatarURL: string; rarity: number; count: number }
-      >
-    >({});
+const isFesClassic =
+  props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC;
+const counter = ref(0);
+const non6StarCount = ref(0);
+const results = ref<
+  Record<
+    string,
+    { charId: string; avatarURL: string; rarity: number; count: number }
+  >
+>({});
 
-    const defaultExpandedNames = computed(() =>
-      Array.from(
-        new Set(Object.values(results.value).map((result) => result.rarity)),
-      ),
-    );
-    const overrideExpandedNames = ref<Record<number, boolean>>({});
-    const expandedNames = computed(() => {
-      const final = Array.from(defaultExpandedNames.value);
+const defaultExpandedNames = computed(() =>
+  Array.from(
+    new Set(Object.values(results.value).map((result) => result.rarity)),
+  ),
+);
+const overrideExpandedNames = ref<Record<number, boolean>>({});
+const expandedNames = computed(() => {
+  const final = Array.from(defaultExpandedNames.value);
 
-      for (const [name, expanded] of Object.entries(
-        overrideExpandedNames.value,
-      )) {
-        const index = final.indexOf(Number.parseInt(name));
-        if (expanded) {
-          if (index === -1) final.push(Number.parseInt(name));
-        } else {
-          if (index > -1) final.splice(index, 1);
-        }
-      }
+  for (const [name, expanded] of Object.entries(overrideExpandedNames.value)) {
+    const index = final.indexOf(Number.parseInt(name));
+    if (expanded) {
+      if (index === -1) final.push(Number.parseInt(name));
+    } else {
+      if (index > -1) final.splice(index, 1);
+    }
+  }
 
-      return final;
-    });
-
-    const portraitResult = ref<
-      { charId: string; rarity: number; portraitURL: string }[]
-    >([]);
-    const showPortaits = computed(() => portraitResult.value.length > 0);
-    const buttonDisabled = ref(false);
-    const pricePerTime = props.newbeeClientPool
-      ? props.newbeeClientPool.gachaPrice
-      : 600;
-    const guarantee5Avail = ref(gachaExecutor.state.guarantee5Avail);
-
-    const doGachaOne = () => {
-      const gachaResult = gachaExecutor.doGachaOnce();
-      if (gachaResult === null) {
-        console.error("池子剩余抽取次数已耗尽");
-        buttonDisabled.value = true;
-        return;
-      }
-      const { charId, rarity } = gachaResult;
-      counter.value = gachaExecutor.state.counter;
-      non6StarCount.value = gachaExecutor.state.non6StarCount;
-      guarantee5Avail.value = gachaExecutor.state.guarantee5Avail;
-
-      if (!charId) throw new Error("charId is null");
-
-      if (results.value[charId]) results.value[charId].count++;
-      else
-        results.value[charId] = {
-          charId,
-          rarity,
-          avatarURL: new URL(
-            `/assets/char_avatar/${charId}.png`,
-            TORAPPU_ENDPOINT,
-          ).toString(),
-          count: 1,
-        };
-
-      portraitResult.value.push({
-        charId,
-        rarity,
-        portraitURL: getPortraitURL(charId).toString(),
-      });
-    };
-
-    const doGachaTen = () => {
-      for (let i = 0; i < 10; i++) {
-        doGachaOne();
-      }
-    };
-
-    const clearResults = () => {
-      results.value = {};
-      counter.value = 0;
-      buttonDisabled.value = false;
-      gachaExecutor.resetState();
-      non6StarCount.value = gachaExecutor.state.non6StarCount;
-      guarantee5Avail.value = gachaExecutor.state.guarantee5Avail;
-      portraitResult.value = [];
-      overrideExpandedNames.value = {};
-    };
-
-    const selectedUpInfo = ref<Record<number, string[]>>({});
-    const getSelectedUpCharInfo = () => {
-      const upCharInfo: GachaUpChar = { perCharList: [] };
-      for (const [rarity, charIdList] of Object.entries(
-        toRaw(selectedUpInfo.value),
-      )) {
-        if (charIdList.length === 0) continue;
-        upCharInfo.perCharList.push({
-          rarityRank: Number.parseInt(rarity),
-          charIdList,
-          count: charIdList.length,
-          percent: 0.5 / charIdList.length,
-        });
-      }
-      return upCharInfo;
-    };
-
-    const onImageClicked = (rarity: number, charId: string) => {
-      if (!selectedUpInfo.value[rarity]) selectedUpInfo.value[rarity] = [];
-      if (selectedUpInfo.value[rarity].includes(charId)) {
-        selectedUpInfo.value[rarity] = selectedUpInfo.value[rarity].filter(
-          (id) => id !== charId,
-        );
-      } else {
-        selectedUpInfo.value[rarity].push(charId);
-      }
-      const upCharInfo = getSelectedUpCharInfo();
-      gachaExecutor.upCharInfo = upCharInfo;
-    };
-
-    const onCollapseItemHeaderClicked = (data: {
-      name: number;
-      expanded: boolean;
-      event: MouseEvent;
-    }) => {
-      overrideExpandedNames.value[data.name] = data.expanded;
-    };
-
-    const isCharIdSelected = (rarity: number, charId: string) => {
-      return (
-        selectedUpInfo.value[rarity] &&
-        selectedUpInfo.value[rarity].includes(charId)
-      );
-    };
-
-    return {
-      theme,
-      locale,
-      dateLocale,
-      bannerImageURL: getImagePath(props.gachaBannerFile),
-      results,
-      counter,
-      expandedNames,
-      doGachaOne,
-      doGachaTen,
-      clearResults,
-      displayStars: [5, 4, 3, 2],
-      non6StarCount,
-      buttonDisabled,
-      pricePerTime,
-      portraitResult,
-      getPortraitURL,
-      showPortaits,
-      showOperatorSelector,
-      rarityPickCharDict,
-      rarityStringToNumber,
-      onImageClicked,
-      selectedUpInfo,
-      isCharIdSelected,
-      isFesClassic,
-      guarantee5Avail,
-      onCollapseItemHeaderClicked,
-    };
-  },
+  return final;
 });
+
+const portraitResult = ref<
+  { charId: string; rarity: number; portraitURL: string }[]
+>([]);
+const showPortaits = computed(() => portraitResult.value.length > 0);
+const buttonDisabled = ref(false);
+const pricePerTime = props.newbeeClientPool
+  ? props.newbeeClientPool.gachaPrice
+  : 600;
+const guarantee5Avail = ref(gachaExecutor.state.guarantee5Avail);
+
+const doGachaOne = () => {
+  const gachaResult = gachaExecutor.doGachaOnce();
+  if (gachaResult === null) {
+    console.error("池子剩余抽取次数已耗尽");
+    buttonDisabled.value = true;
+    return;
+  }
+  const { charId, rarity } = gachaResult;
+  counter.value = gachaExecutor.state.counter;
+  non6StarCount.value = gachaExecutor.state.non6StarCount;
+  guarantee5Avail.value = gachaExecutor.state.guarantee5Avail;
+
+  if (!charId) throw new Error("charId is null");
+
+  if (results.value[charId]) results.value[charId].count++;
+  else
+    results.value[charId] = {
+      charId,
+      rarity,
+      avatarURL: new URL(
+        `/assets/char_avatar/${charId}.png`,
+        TORAPPU_ENDPOINT,
+      ).toString(),
+      count: 1,
+    };
+
+  portraitResult.value.push({
+    charId,
+    rarity,
+    portraitURL: getPortraitURL(charId).toString(),
+  });
+};
+
+const doGachaTen = () => {
+  for (let i = 0; i < 10; i++) {
+    doGachaOne();
+  }
+};
+
+const clearResults = () => {
+  results.value = {};
+  counter.value = 0;
+  buttonDisabled.value = false;
+  gachaExecutor.resetState();
+  non6StarCount.value = gachaExecutor.state.non6StarCount;
+  guarantee5Avail.value = gachaExecutor.state.guarantee5Avail;
+  portraitResult.value = [];
+  overrideExpandedNames.value = {};
+};
+
+const selectedUpInfo = ref<Record<number, string[]>>({});
+const getSelectedUpCharInfo = () => {
+  const upCharInfo: GachaUpChar = { perCharList: [] };
+  for (const [rarity, charIdList] of Object.entries(
+    toRaw(selectedUpInfo.value),
+  )) {
+    if (charIdList.length === 0) continue;
+    upCharInfo.perCharList.push({
+      rarityRank: Number.parseInt(rarity),
+      charIdList,
+      count: charIdList.length,
+      percent: 0.5 / charIdList.length,
+    });
+  }
+  return upCharInfo;
+};
+
+const onImageClicked = (rarity: number, charId: string) => {
+  if (!selectedUpInfo.value[rarity]) selectedUpInfo.value[rarity] = [];
+  if (selectedUpInfo.value[rarity].includes(charId)) {
+    selectedUpInfo.value[rarity] = selectedUpInfo.value[rarity].filter(
+      (id) => id !== charId,
+    );
+  } else {
+    selectedUpInfo.value[rarity].push(charId);
+  }
+  const upCharInfo = getSelectedUpCharInfo();
+  gachaExecutor.upCharInfo = upCharInfo;
+};
+
+const onCollapseItemHeaderClicked = (data: {
+  name: number;
+  expanded: boolean;
+  event: MouseEvent;
+}) => {
+  overrideExpandedNames.value[data.name] = data.expanded;
+};
+
+const isCharIdSelected = (rarity: number, charId: string) => {
+  return (
+    selectedUpInfo.value[rarity] &&
+    selectedUpInfo.value[rarity].includes(charId)
+  );
+};
+
+const bannerImageURL = getImagePath(props.gachaBannerFile);
+const displayStars = [5, 4, 3, 2];
 </script>
 
 <template>
