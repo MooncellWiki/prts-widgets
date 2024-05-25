@@ -1,5 +1,5 @@
-<script lang="ts">
-import { computed, defineComponent, onMounted, reactive, ref } from "vue";
+<script lang="ts" setup>
+import { computed, onMounted, reactive, ref } from "vue";
 
 import { debounce } from "lodash-es";
 import {
@@ -21,201 +21,168 @@ import { filterRarity, rarityMap } from "./consts";
 import { CharMemory, Medal } from "./types";
 import { getMemories, getOnlineDate, getTargetDate } from "./utils";
 
-export default defineComponent({
-  components: {
-    NButton,
-    NConfigProvider,
-    NEmpty,
-    NLayout,
-    NInput,
-    NPagination,
-    OptionsGroup,
-    Memory,
-  },
-  setup() {
-    const isMobile = isMobileSkin();
-    const i18nConfig = getNaiveUILocale();
-    const { theme, toggleDark } = useTheme();
-    const states = ref<string[]>([]);
-    const isLoaded = ref(false);
-    const sorting = ref("lmmr");
-    const order = ref(-1);
-    const searchTerm = ref("");
-    const charMemoryData = ref<CharMemory[]>([]);
-    const medalData = ref<Medal[]>([]);
-    const latestChar = ref<string[]>([]);
+const isMobile = isMobileSkin();
+const i18nConfig = getNaiveUILocale();
+const { theme, toggleDark } = useTheme();
+const states = ref<string[]>([]);
+const isLoaded = ref(false);
+const sorting = ref("lmmr");
+const order = ref(-1);
+const searchTerm = ref("");
+const charMemoryData = ref<CharMemory[]>([]);
+const medalData = ref<Medal[]>([]);
+const latestChar = ref<string[]>([]);
 
-    const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
-      let result = 0;
-      let datex: Date;
-      let datey: Date;
-      if (
-        onlineDate.value &&
-        onlineDate.value[mmrx.char] &&
-        onlineDate.value[mmry.char] &&
-        sorting.value !== "opt"
-      ) {
-        const isLatest = sorting.value === "lmmr";
-        datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
-        datey = getTargetDate(onlineDate.value[mmry.char], isLatest);
-      } else {
-        datex = new Date(1);
-        datey = new Date(1);
-      }
-      result =
-        datex.getTime() === datey.getTime()
-          ? Number(mmrx.charID) - Number(mmry.charID)
-          : datex.getTime() - datey.getTime();
-      return order.value ? result * order.value : result * -1;
-    };
-    const filteredMemory = ref<CharMemory[]>([]);
+const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
+  let result = 0;
+  let datex: Date;
+  let datey: Date;
+  if (
+    onlineDate.value &&
+    onlineDate.value[mmrx.char] &&
+    onlineDate.value[mmry.char] &&
+    sorting.value !== "opt"
+  ) {
+    const isLatest = sorting.value === "lmmr";
+    datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
+    datey = getTargetDate(onlineDate.value[mmry.char], isLatest);
+  } else {
+    datex = new Date(1);
+    datey = new Date(1);
+  }
+  result =
+    datex.getTime() === datey.getTime()
+      ? Number(mmrx.charID) - Number(mmry.charID)
+      : datex.getTime() - datey.getTime();
+  return order.value ? result * order.value : result * -1;
+};
+const filteredMemory = ref<CharMemory[]>([]);
 
-    function _calcMemory() {
-      if (states.value.length === 0 && searchTerm.value === "") {
-        filteredMemory.value = charMemoryData.value.toSorted(compareDate);
-      }
+function _calcMemory() {
+  if (states.value.length === 0 && searchTerm.value === "") {
+    filteredMemory.value = charMemoryData.value.toSorted(compareDate);
+  }
 
-      const rarity = states.value;
-      const keyword = searchTerm.value;
-      filteredMemory.value = charMemoryData.value
-        .filter((charm) => {
-          if (rarity.length > 0 && !rarity.includes(rarityMap[charm.rarity]))
-            return false;
+  const rarity = states.value;
+  const keyword = searchTerm.value;
+  filteredMemory.value = charMemoryData.value
+    .filter((charm) => {
+      if (rarity.length > 0 && !rarity.includes(rarityMap[charm.rarity]))
+        return false;
 
-          return (
-            charm.char.includes(keyword) ||
-            charm.memories.some(
-              (memory) =>
-                memory.name.includes(keyword) ||
-                memory.info.some((info) => info.intro.includes(keyword)),
-            )
-          );
-        })
-        .sort(compareDate);
-    }
-    const calcMemory = debounce(_calcMemory, 500);
-    const onlineDate = ref<Record<string, Date[]>>({});
-
-    const pagination = reactive({
-      page: 1,
-      pageSize: 10,
-      pageSizes: [10, 25, 50, 100],
-      pageSlot: isMobile ? 5 : 9,
-    });
-    function onUpdatePageSize(pageSize: number) {
-      pagination.pageSize = pageSize;
-      pagination.page = 1;
-      calcMemory();
-    }
-    const shownMemory = computed(() => {
-      return filteredMemory.value.slice(
-        pagination.pageSize * (pagination.page - 1),
-        pagination.pageSize * pagination.page,
-      );
-    });
-
-    onMounted(async () => {
-      const resp = await fetch(
-        `/api.php?${new URLSearchParams({
-          action: "ask",
-          format: "json",
-          query:
-            "[[分类:拥有干员密录的干员]]|?干员序号|?情报编号|?稀有度|sort=干员序号|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
-          api_version: "2",
-          utf8: "1",
-        })}`,
-      );
-      const json = await resp.json();
-      charMemoryData.value = Object.entries(json.query.results).map(
-        ([key, value]: [string, any]) => {
-          return {
-            char: key,
-            charID: value.printouts["干员序号"][0] as string,
-            charEID: value.printouts["情报编号"][0] as string,
-            rarity: value.printouts["稀有度"][0] as string,
-            memories: [],
-          };
-        },
-      );
-
-      const respMedal = await fetch(
-        `/index.php?${new URLSearchParams({
-          action: "raw",
-          title: "光荣之路/data",
-        })}`,
-      );
-      const jsonMedal = await respMedal.json();
-      medalData.value = Object.entries(jsonMedal.medal)
-        .filter(
-          ([key]: [string, any]) =>
-            jsonMedal.category.storyMedal.medal.includes(key) ||
-            jsonMedal.category.hiddenMedal.medal.includes(key),
+      return (
+        charm.char.includes(keyword) ||
+        charm.memories.some(
+          (memory) =>
+            memory.name.includes(keyword) ||
+            memory.info.some((info) => info.intro.includes(keyword)),
         )
-        .map(([, value]: [string, any]) => {
-          return {
-            medal: value.name as string,
-            id: value.id as string,
-            desc: value.desc as string,
-            method: value.method as string,
-          };
-        });
-      const map = await getMemories(medalData.value);
-      for (const charm of charMemoryData.value) {
-        charm.memories = map[charm.char];
-      }
+      );
+    })
+    .sort(compareDate);
+}
+const calcMemory = debounce(_calcMemory, 500);
+const onlineDate = ref<Record<string, Date[]>>({});
 
-      onlineDate.value = await getOnlineDate();
-      isLoaded.value = true;
-
-      _calcMemory();
-      const latest = onlineDate.value[filteredMemory.value[0].char];
-      const ldate = getTargetDate(latest, true);
-      for (const char in onlineDate.value) {
-        if (getTargetDate(onlineDate.value[char], true) >= ldate)
-          latestChar.value.push(char);
-      }
-    });
-
-    return {
-      theme,
-      sortModes: [
-        { type: "opt", label: "干员上线" },
-        { type: "fmmr", label: "首个密录" },
-        { type: "lmmr", label: "最新密录" },
-      ],
-      orderModes: [
-        { value: 1, icon: "mdi-sort-calendar-descending" },
-        { value: -1, icon: "mdi-sort-calendar-ascending" },
-      ],
-      toggleDark,
-      i18nConfig,
-      filterRarity,
-      states,
-      searchTerm,
-      calcMemory,
-      pagination,
-      onUpdatePageSize,
-      filteredMemory,
-      shownMemory,
-      onlineDate,
-      sorting,
-      order,
-      isLoaded,
-      latestChar,
-      sortMode: (mode: string) => {
-        calcMemory();
-        sorting.value = mode;
-      },
-      orderMode: (mode: number) => {
-        calcMemory();
-        order.value = mode;
-      },
-      pickSize: () => {
-        return isMobile ? "small" : "medium";
-      },
-    };
-  },
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  pageSizes: [10, 25, 50, 100],
+  pageSlot: isMobile ? 5 : 9,
 });
+function onUpdatePageSize(pageSize: number) {
+  pagination.pageSize = pageSize;
+  pagination.page = 1;
+  calcMemory();
+}
+const shownMemory = computed(() => {
+  return filteredMemory.value.slice(
+    pagination.pageSize * (pagination.page - 1),
+    pagination.pageSize * pagination.page,
+  );
+});
+
+onMounted(async () => {
+  const resp = await fetch(
+    `/api.php?${new URLSearchParams({
+      action: "ask",
+      format: "json",
+      query:
+        "[[分类:拥有干员密录的干员]]|?干员序号|?情报编号|?稀有度|sort=干员序号|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
+      api_version: "2",
+      utf8: "1",
+    })}`,
+  );
+  const json = await resp.json();
+  charMemoryData.value = Object.entries(json.query.results).map(
+    ([key, value]: [string, any]) => {
+      return {
+        char: key,
+        charID: value.printouts["干员序号"][0] as string,
+        charEID: value.printouts["情报编号"][0] as string,
+        rarity: value.printouts["稀有度"][0] as string,
+        memories: [],
+      };
+    },
+  );
+
+  const respMedal = await fetch(
+    `/index.php?${new URLSearchParams({
+      action: "raw",
+      title: "光荣之路/data",
+    })}`,
+  );
+  const jsonMedal = await respMedal.json();
+  medalData.value = Object.entries(jsonMedal.medal)
+    .filter(
+      ([key]: [string, any]) =>
+        jsonMedal.category.storyMedal.medal.includes(key) ||
+        jsonMedal.category.hiddenMedal.medal.includes(key),
+    )
+    .map(([, value]: [string, any]) => {
+      return {
+        medal: value.name as string,
+        id: value.id as string,
+        desc: value.desc as string,
+        method: value.method as string,
+      };
+    });
+  const map = await getMemories(medalData.value);
+  for (const charm of charMemoryData.value) {
+    charm.memories = map[charm.char];
+  }
+
+  onlineDate.value = await getOnlineDate();
+  isLoaded.value = true;
+
+  _calcMemory();
+  const latest = onlineDate.value[filteredMemory.value[0].char];
+  const ldate = getTargetDate(latest, true);
+  for (const char in onlineDate.value) {
+    if (getTargetDate(onlineDate.value[char], true) >= ldate)
+      latestChar.value.push(char);
+  }
+});
+const sortModes = [
+  { type: "opt", label: "干员上线" },
+  { type: "fmmr", label: "首个密录" },
+  { type: "lmmr", label: "最新密录" },
+];
+const orderModes = [
+  { value: 1, icon: "mdi-sort-calendar-descending" },
+  { value: -1, icon: "mdi-sort-calendar-ascending" },
+];
+const sortMode = (mode: string) => {
+  calcMemory();
+  sorting.value = mode;
+};
+const orderMode = (mode: number) => {
+  calcMemory();
+  order.value = mode;
+};
+const pickSize = () => {
+  return isMobile ? "small" : "medium";
+};
 </script>
 <template>
   <NConfigProvider
