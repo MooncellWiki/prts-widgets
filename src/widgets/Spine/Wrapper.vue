@@ -3,6 +3,8 @@ import { ref, watch } from "vue";
 
 import { NButton, NConfigProvider, zhCN } from "naive-ui";
 
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
+
 import Spine from "./Spine.vue";
 
 export interface Props {
@@ -31,7 +33,7 @@ watch(props, () => {
 async function load() {
   if (props.id) {
     const resp = await fetch(
-      `https://torappu.prts.wiki/assets/char_spine/${props.id}/meta.json`,
+      `${TORAPPU_ENDPOINT}/assets/char_spine/${props.id}/meta.json`,
     );
     value.value = await resp.json();
   }

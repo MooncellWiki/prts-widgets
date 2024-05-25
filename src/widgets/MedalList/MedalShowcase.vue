@@ -1,5 +1,5 @@
-<script lang="ts">
-import { PropType, computed, defineComponent, onMounted, ref } from "vue";
+<script lang="ts" setup>
+import { computed, onMounted, ref } from "vue";
 
 import {
   NButton,
@@ -21,87 +21,60 @@ import MedalGroupComponent from "./MedalGroup.vue";
 import { getMedalMetaData } from "./utils";
 
 import type { MedalMetaData } from "./types";
-
-export default defineComponent({
-  components: {
-    MedalComponent,
-    MedalGroupComponent,
-    NButton,
-    NCard,
-    NConfigProvider,
-    NLayout,
-    NGrid,
-    NGridItem,
-    NEmpty,
-    NTooltip,
+const props = withDefaults(
+  defineProps<{
+    medalList: string[];
+    medalGroupList: string[];
+    spoiler: boolean;
+  }>(),
+  {
+    medalList: () => [],
+    medalGroupList: () => [],
+    spoiler: false,
   },
-  props: {
-    medalList: {
-      type: Array as PropType<string[]>,
-      default: () => [],
-    },
-    medalGroupList: {
-      type: Array as PropType<string[]>,
-      default: () => [],
-    },
-    spoiler: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  setup(props) {
-    const medalMetaData = ref<MedalMetaData>({
-      medal: {},
-      medalGroup: {},
-      category: {},
-    });
+);
 
-    onMounted(async () => {
-      medalMetaData.value = await getMedalMetaData();
-    });
-
-    const filteredMedalData = computed(() => {
-      const medalGroup = Object.fromEntries(
-        Object.entries(medalMetaData.value.medalGroup).filter(([gid]) => {
-          return props.medalGroupList.includes(gid);
-        }),
-      );
-
-      const medal = Object.fromEntries(
-        Object.entries(medalMetaData.value.medal).filter(([id]) => {
-          return props.medalList.includes(id);
-        }),
-      );
-
-      return {
-        medal,
-        medalGroup,
-      };
-    });
-
-    const generateGroupMedalData = (medalGroupId: string) => {
-      return Object.values(
-        medalMetaData.value.medalGroup[medalGroupId].medal,
-      ).map((id) => {
-        return medalMetaData.value.medal[id];
-      });
-    };
-
-    const spoilerManualUnlocked = ref(!props.spoiler);
-
-    const { theme, toggleDark } = useTheme();
-
-    return {
-      i18nConfig: getNaiveUILocale(),
-      filteredMedalData,
-      spoilerManualUnlocked,
-      theme,
-      toggleDark,
-      getImagePath,
-      generateGroupMedalData,
-    };
-  },
+const medalMetaData = ref<MedalMetaData>({
+  medal: {},
+  medalGroup: {},
+  category: {},
 });
+
+onMounted(async () => {
+  medalMetaData.value = await getMedalMetaData();
+});
+
+const filteredMedalData = computed(() => {
+  const medalGroup = Object.fromEntries(
+    Object.entries(medalMetaData.value.medalGroup).filter(([gid]) => {
+      return props.medalGroupList.includes(gid);
+    }),
+  );
+
+  const medal = Object.fromEntries(
+    Object.entries(medalMetaData.value.medal).filter(([id]) => {
+      return props.medalList.includes(id);
+    }),
+  );
+
+  return {
+    medal,
+    medalGroup,
+  };
+});
+
+const generateGroupMedalData = (medalGroupId: string) => {
+  return Object.values(medalMetaData.value.medalGroup[medalGroupId].medal).map(
+    (id) => {
+      return medalMetaData.value.medal[id];
+    },
+  );
+};
+
+const spoilerManualUnlocked = ref(!props.spoiler);
+
+const { theme } = useTheme();
+const i18nConfig = getNaiveUILocale();
 </script>
 
 <template>

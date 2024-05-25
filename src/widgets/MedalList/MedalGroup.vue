@@ -1,5 +1,5 @@
-<script lang="ts">
-import { computed, defineComponent, ref, type PropType } from "vue";
+<script lang="ts" setup>
+import { computed, ref } from "vue";
 
 import {
   NButton,
@@ -12,52 +12,29 @@ import {
   NTooltip,
 } from "naive-ui";
 
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
+
 import MedalComponent from "./Medal.vue";
 
 import type { Medal, MedalGroup } from "./types";
 function goToLink(link: string) {
   window.open("https://prts.wiki/w/" + link, "_blank");
 }
-export default defineComponent({
-  components: {
-    NButton,
-    NConfigProvider,
-    NCard,
-    NDropdown,
-    NImage,
-    NCollapse,
-    NCollapseItem,
-    NTooltip,
-    MedalComponent,
-  },
-  props: {
-    groupData: {
-      type: Object as PropType<MedalGroup>,
-      required: true,
-    },
+const props = defineProps<{
+  groupData: MedalGroup;
+  medalDataList: Medal[];
+}>();
 
-    medalDataList: {
-      type: Array<Medal>,
-      required: true,
-    },
-  },
-  setup(props) {
-    const eventLinkList = computed(() => {
-      return props.groupData.bindEvent.slice(1).map((value, index) => {
-        return {
-          label: props.groupData.bindEvent[0] + (index > 0 ? " 复刻" : ""),
-          key: value,
-        };
-      });
-    });
-
+const eventLinkList = computed(() => {
+  return props.groupData.bindEvent.slice(1).map((value, index) => {
     return {
-      eventLinkList,
-      goToLink,
-      showTrimed: ref(false),
+      label: props.groupData.bindEvent[0] + (index > 0 ? " 复刻" : ""),
+      key: value,
     };
-  },
+  });
 });
+
+const showTrimed = ref(false);
 </script>
 
 <template>
@@ -174,7 +151,7 @@ export default defineComponent({
         </div>
         <div class="max-w-full flex">
           <NImage
-            :src="`https://torappu.prts.wiki/assets/medal_diy/${(showTrimed && groupData.isTrim ? 'trim/' : '') + groupData.id}.png`"
+            :src="`${TORAPPU_ENDPOINT}/assets/medal_diy/${(showTrimed && groupData.isTrim ? 'trim/' : '') + groupData.id}.png`"
             :img-props="{
               style: {
                 width: '100%',

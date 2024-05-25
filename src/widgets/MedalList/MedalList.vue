@@ -1,5 +1,5 @@
-<script lang="ts">
-import { computed, defineComponent, onMounted, ref } from "vue";
+<script lang="ts" setup>
+import { computed, onMounted, ref } from "vue";
 
 import {
   NButton,
@@ -29,152 +29,109 @@ import { getMedalMetaData } from "./utils";
 import type { MedalMetaData } from "./types";
 import type { CollapseProps } from "naive-ui";
 
-export default defineComponent({
-  components: {
-    OptionsGroup,
-    MedalStats,
-    MedalComponent,
-    MedalGroupComponent,
-    NButton,
-    NCard,
-    NCollapse,
-    NPopover,
-    NCollapseItem,
-    NCollapseTransition,
-    NConfigProvider,
-    NLayout,
-    NGrid,
-    NGridItem,
-    NText,
-    NEmpty,
-  },
-  setup() {
-    const medalMetaData = ref<MedalMetaData>({
-      medal: {},
-      medalGroup: {},
-      category: {},
-    });
-
-    onMounted(async () => {
-      medalMetaData.value = await getMedalMetaData();
-    });
-    const showFilter = ref(true);
-    const filterRarity = {
-      title: "稀有度",
-      options: ["★", "★★", "★★★"],
-    };
-    const rarityMap: Record<string, string> = {
-      "1": "★",
-      "2": "★★",
-      "3": "★★★",
-    };
-    const filterSpecial = {
-      title: "特殊选择",
-      options: ["有镀层"],
-    };
-    const states = ref<Record<string, string[]>>({
-      rarity: [],
-      special: [],
-    });
-    const filteredMedalData = computed(() => {
-      const medal = Object.fromEntries(
-        Object.entries(medalMetaData.value.medal).filter(([, medal]) => {
-          if (
-            states.value.rarity.length > 0 &&
-            states.value.rarity.length < filterRarity.options.length &&
-            !states.value.rarity.includes(rarityMap[medal.rarity.toString()])
-          ) {
-            return false;
-          }
-          if (states.value.special.includes("有镀层")) {
-            return medal.isTrim;
-          }
-
-          return true;
-        }),
-      );
-      const medalList = Object.keys(medal);
-      const medalGroup = Object.fromEntries(
-        Object.entries(medalMetaData.value.medalGroup).map(([key, group]) => {
-          return [
-            key,
-            {
-              ...group,
-              medal: group.medal.filter((medalId) =>
-                medalList.includes(medalId),
-              ),
-            },
-          ];
-        }),
-      );
-      const category = Object.fromEntries(
-        Object.entries(medalMetaData.value.category).map(([key, cate]) => {
-          return [
-            key,
-            {
-              ...cate,
-              medal: cate.medal.filter((medalId) =>
-                medalList.includes(medalId),
-              ),
-            },
-          ];
-        }),
-      );
-
-      return {
-        medal,
-        medalGroup,
-        category,
-      };
-    });
-    const cateNums = computed(() => {
-      return Object.fromEntries(
-        Object.values(filteredMedalData.value.category).map((category) => {
-          return [
-            category.name,
-            [
-              category.medal.length,
-              ...category.medalGroup.map(
-                (groupId) =>
-                  filteredMedalData.value.medalGroup[groupId].medal.length,
-              ),
-            ].reduce((a, b) => a + b, 0),
-          ];
-        }),
-      );
-    });
-    const hiddenCatExpanded = ref(false);
-    const hiddenCatUnlocked = ref(false);
-    const collapseTitleChange: CollapseProps["onItemHeaderClick"] = ({
-      name,
-      expanded,
-    }) => {
-      hiddenCatExpanded.value = name === "加密奖章" && expanded;
-    };
-    const checkMedalExists = (medalId: string) => {
-      return Object.keys(filteredMedalData.value.medal).includes(medalId);
-    };
-    const { theme, toggleDark } = useTheme();
-
-    return {
-      filterRarity,
-      rarityMap,
-      i18nConfig: getNaiveUILocale(),
-      filterSpecial,
-      states,
-      showFilter,
-      collapseTitleChange,
-      hiddenCatExpanded,
-      hiddenCatUnlocked,
-      cateNums,
-      filteredMedalData,
-      checkMedalExists,
-      theme,
-      toggleDark,
-      getImagePath,
-    };
-  },
+const medalMetaData = ref<MedalMetaData>({
+  medal: {},
+  medalGroup: {},
+  category: {},
 });
+
+onMounted(async () => {
+  medalMetaData.value = await getMedalMetaData();
+});
+const showFilter = ref(true);
+const filterRarity = {
+  title: "稀有度",
+  options: ["★", "★★", "★★★"],
+};
+const rarityMap: Record<string, string> = {
+  "1": "★",
+  "2": "★★",
+  "3": "★★★",
+};
+const filterSpecial = {
+  title: "特殊选择",
+  options: ["有镀层"],
+};
+const states = ref<Record<string, string[]>>({
+  rarity: [],
+  special: [],
+});
+const filteredMedalData = computed(() => {
+  const medal = Object.fromEntries(
+    Object.entries(medalMetaData.value.medal).filter(([, medal]) => {
+      if (
+        states.value.rarity.length > 0 &&
+        states.value.rarity.length < filterRarity.options.length &&
+        !states.value.rarity.includes(rarityMap[medal.rarity.toString()])
+      ) {
+        return false;
+      }
+      if (states.value.special.includes("有镀层")) {
+        return medal.isTrim;
+      }
+
+      return true;
+    }),
+  );
+  const medalList = Object.keys(medal);
+  const medalGroup = Object.fromEntries(
+    Object.entries(medalMetaData.value.medalGroup).map(([key, group]) => {
+      return [
+        key,
+        {
+          ...group,
+          medal: group.medal.filter((medalId) => medalList.includes(medalId)),
+        },
+      ];
+    }),
+  );
+  const category = Object.fromEntries(
+    Object.entries(medalMetaData.value.category).map(([key, cate]) => {
+      return [
+        key,
+        {
+          ...cate,
+          medal: cate.medal.filter((medalId) => medalList.includes(medalId)),
+        },
+      ];
+    }),
+  );
+
+  return {
+    medal,
+    medalGroup,
+    category,
+  };
+});
+const cateNums = computed(() => {
+  return Object.fromEntries(
+    Object.values(filteredMedalData.value.category).map((category) => {
+      return [
+        category.name,
+        [
+          category.medal.length,
+          ...category.medalGroup.map(
+            (groupId) =>
+              filteredMedalData.value.medalGroup[groupId].medal.length,
+          ),
+        ].reduce((a, b) => a + b, 0),
+      ];
+    }),
+  );
+});
+const hiddenCatExpanded = ref(false);
+const hiddenCatUnlocked = ref(false);
+const collapseTitleChange: CollapseProps["onItemHeaderClick"] = ({
+  name,
+  expanded,
+}) => {
+  hiddenCatExpanded.value = name === "加密奖章" && expanded;
+};
+const checkMedalExists = (medalId: string) => {
+  return Object.keys(filteredMedalData.value.medal).includes(medalId);
+};
+const { theme, toggleDark } = useTheme();
+const i18nConfig = getNaiveUILocale();
 </script>
 
 <template>

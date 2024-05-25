@@ -1,52 +1,35 @@
-<script lang="ts">
-import { defineComponent, ref, type PropType } from "vue";
+<script lang="ts" setup>
+import { ref } from "vue";
 
 import { NCard, NConfigProvider, NImage, NTag, NTooltip } from "naive-ui";
 
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
+
 import type { Medal } from "./types";
+defineProps<{
+  medalData: Medal;
+}>();
 
-export default defineComponent({
-  components: {
-    NConfigProvider,
-    NCard,
-    NImage,
-    NTag,
-    NTooltip,
-  },
-  props: {
-    medalData: {
-      type: Object as PropType<Medal>,
-      required: true,
-    },
-  },
-  setup() {
-    const rarityGradient: Record<number, string> = {
-      1: "from-[#75655d] to-[#decaa2]",
-      2: "from-[#83898b] to-[#7bb7b7]",
-      3: "from-[#a56e37] to-[#f5c391]",
-    };
+const rarityGradient: Record<number, string> = {
+  1: "from-[#75655d] to-[#decaa2]",
+  2: "from-[#83898b] to-[#7bb7b7]",
+  3: "from-[#a56e37] to-[#f5c391]",
+};
 
-    const rarityStarColor: Record<number, string> = {
-      1: "color-white",
-      2: "color-[#d7ffff]",
-      3: "color-[#ffeebe]",
-    };
+const rarityStarColor: Record<number, string> = {
+  1: "color-white",
+  2: "color-[#d7ffff]",
+  3: "color-[#ffeebe]",
+};
 
-    const rarityImgStyleSet: Record<number, string[]> = {
-      1: ["p-8", "80"],
-      2: ["p-6", "100"],
-      3: ["p-4", "130"],
-    };
+const rarityImgStyleSet: Record<number, string[]> = {
+  1: ["p-8", "80"],
+  2: ["p-6", "100"],
+  3: ["p-4", "130"],
+};
 
-    return {
-      isDecrypt: ref(false),
-      showTrimed: ref(false),
-      rarityGradient,
-      rarityStarColor,
-      rarityImgStyleSet,
-    };
-  },
-});
+const isDecrypt = ref(false);
+const showTrimed = ref(false);
 </script>
 
 <template>
@@ -86,7 +69,7 @@ export default defineComponent({
         >
           <NImage
             :width="rarityImgStyleSet[medalData.rarity][1]"
-            :src="`https://torappu.prts.wiki/assets/medal_icon/${showTrimed && medalData.isTrim ? medalData.trimId : medalData.id}.png`"
+            :src="`${TORAPPU_ENDPOINT}/assets/medal_icon/${showTrimed && medalData.isTrim ? medalData.trimId : medalData.id}.png`"
             show-toolbar-tooltip
             :previewed-img-props="{
               style: {
