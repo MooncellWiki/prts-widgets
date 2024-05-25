@@ -1,7 +1,4 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent } from "vue";
-
+<script lang="ts" setup>
 import {
   NButton,
   NCard,
@@ -12,23 +9,10 @@ import {
   NTabPane,
   NTabs,
 } from "naive-ui";
-
-export default defineComponent({
-  components: {
-    NButton,
-    NCard,
-    NConfigProvider,
-    NSpace,
-    NLayout,
-    NLayoutContent,
-    NTabs,
-    NTabPane,
-  },
-  props: {
-    tabList: Array as PropType<string[]>,
-    eventNameList: Array as PropType<string[][]>,
-  },
-});
+defineProps<{
+  tabList: string[];
+  eventNameList: string[][];
+}>();
 </script>
 
 <template>

@@ -1,6 +1,5 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent, ref } from "vue";
+<script lang="ts" setup>
+import { ref } from "vue";
 
 import { HomeSharp } from "@vicons/material";
 import {
@@ -28,82 +27,57 @@ interface Option {
   dest: number;
   index: number;
 }
-export default defineComponent({
-  components: {
-    NConfigProvider,
-    NBreadcrumb,
-    NBreadcrumbItem,
-    NDropdown,
-    NSpace,
-    NLayout,
-    NLayoutContent,
-    NCard,
-    NIcon,
-    HomeSharp,
-    ISEventOption,
-  },
-  props: {
+const props = withDefaults(
+  defineProps<{
     sceneData: {
-      type: Array as PropType<
-        {
-          etype?: string;
-          name?: string;
-          nav?: string;
-          index?: number;
-          image?: string;
-          text?: string;
-          options: Array<Option>;
-        }[]
-      >,
-      default: () => [],
-    },
-    isTheme: String,
+      etype?: string;
+      name?: string;
+      nav?: string;
+      index?: number;
+      image?: string;
+      text?: string;
+      options: Array<Option>;
+    }[];
+    isTheme: string;
+  }>(),
+  {
+    sceneData: () => [],
   },
-  setup(props) {
-    const sceneNav = ref<Array<number>>([0]);
-    const currentSceneId = ref(0);
-    function jump(id: number) {
-      if (id) {
-        const index = sceneNav.value.indexOf(id);
-        if (index === -1) sceneNav.value.push(id);
-        else if (index + 1 < sceneNav.value.length)
-          sceneNav.value.splice(index + 1);
+);
 
-        currentSceneId.value = id;
-      }
-    }
-    function navJump(index: number) {
-      if (index === sceneNav.value.length - 1) return;
-
-      currentSceneId.value = sceneNav.value[index];
+const sceneNav = ref<Array<number>>([0]);
+const currentSceneId = ref(0);
+function jump(id: number) {
+  if (id) {
+    const index = sceneNav.value.indexOf(id);
+    if (index === -1) sceneNav.value.push(id);
+    else if (index + 1 < sceneNav.value.length)
       sceneNav.value.splice(index + 1);
-    }
-    function optionsToNavDrop(options: Array<Option>) {
-      return options
-        .filter((option) => option.type !== "desc")
-        .map((option) => {
-          return {
-            label: option.title,
-            key: option.index,
-          };
-        });
-    }
-    function dropJump(key: number, navIndex: number) {
-      const option = props.sceneData[sceneNav.value[navIndex]].options[key];
-      navJump(navIndex);
-      jump(option.dest);
-    }
-    return {
-      getImagePath,
-      sceneNav,
-      currentSceneId,
-      jump,
-      navJump,
-      optionsToNavDrop,
-      dropJump,
-    };
-  },
-});
+
+    currentSceneId.value = id;
+  }
+}
+function navJump(index: number) {
+  if (index === sceneNav.value.length - 1) return;
+
+  currentSceneId.value = sceneNav.value[index];
+  sceneNav.value.splice(index + 1);
+}
+function optionsToNavDrop(options: Array<Option>) {
+  return options
+    .filter((option) => option.type !== "desc")
+    .map((option) => {
+      return {
+        label: option.title,
+        key: option.index,
+      };
+    });
+}
+function dropJump(key: number, navIndex: number) {
+  const option = props.sceneData[sceneNav.value[navIndex]].options[key];
+  navJump(navIndex);
+  jump(option.dest);
+}
 </script>
 
 <template>
