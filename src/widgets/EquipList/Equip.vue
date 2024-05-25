@@ -4,7 +4,6 @@ import {
   Ref,
   defineComponent,
   inject,
-  nextTick,
   onBeforeMount,
   onBeforeUpdate,
   onMounted,
@@ -44,7 +43,7 @@ export default defineComponent({
     const loading = ref(false);
     const loadingCount = inject("loadingCount") as Ref<number>;
     const { isDark } = useTheme();
-    watch(isDark, () => {
+    const handleDark = () => {
       const seps = document.querySelectorAll(
         ".majorsep,.minorsep,.term,.iconfilter",
       );
@@ -55,6 +54,9 @@ export default defineComponent({
           ele.classList.remove("dark");
         }
       }
+    };
+    watch(isDark, () => {
+      handleDark();
     });
     onBeforeMount(async () => {
       loading.value = true;
@@ -91,10 +93,12 @@ export default defineComponent({
       loadingCount.value -= 1;
     });
     onMounted(() => {
-      nextTick(updateTippy);
+      updateTippy();
+      handleDark();
     });
     onBeforeUpdate(() => {
-      nextTick(updateTippy);
+      updateTippy();
+      handleDark();
     });
     return {
       colorMap,
@@ -174,16 +178,16 @@ export default defineComponent({
             </div>
             <div class="talent">
               <span v-if="e.add">
-                <span class="font=bold">
+                <span>
                   <span class="mdi mdi-plus-circle"></span>
-                  &nbsp;特性追加：
+                  <span class="font-bold">&nbsp;特性追加：</span>
                   <span v-html="e.trait"></span>
                 </span>
               </span>
               <span v-else>
-                <span class="font=bold">
+                <span>
                   <span class="mdi mdi-arrow-up-drop-circle"></span>
-                  &nbsp;特性更新：
+                  <span class="font-bold">&nbsp;特性更新：</span>
                   <span v-html="e.trait"></span>
                 </span>
               </span>
