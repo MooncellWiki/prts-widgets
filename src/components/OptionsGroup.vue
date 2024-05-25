@@ -1,44 +1,36 @@
-<script lang="ts">
-import { type PropType, defineComponent } from "vue";
-
+<script lang="ts" setup>
 import { useVModel } from "@vueuse/core";
 import { NButton } from "naive-ui";
-
-export default defineComponent({
-  name: "OptionsGroup",
-  components: { NButton },
-  props: {
-    title: String,
-    options: { type: Array as PropType<string[]>, required: true },
-    modelValue: { type: Array as PropType<string[]>, default: () => [] },
-    disabled: { type: Boolean, default: false },
+const props = withDefaults(
+  defineProps<{
+    title?: string;
+    options: string[];
+    modelValue: string[];
+    disabled: boolean;
+  }>(),
+  {
+    modelValue: () => [],
+    disabled: false,
   },
-  emits: ["update:modelValue"],
-  setup(props, { emit }) {
-    const selectedOptions = useVModel(props, "modelValue", emit, {
-      passive: true,
-      deep: true,
-    });
-    const onTagClick = (option: string) => {
-      return selectedOptions.value.includes(option)
-        ? selectedOptions.value.splice(selectedOptions.value.indexOf(option), 1)
-        : selectedOptions.value.push(option);
-    };
-    const selectAll = () => {
-      for (const option of props.options)
-        if (!selectedOptions.value.includes(option))
-          selectedOptions.value.push(option);
-    };
-    const selectNone = () => selectedOptions.value.splice(0);
-
-    return {
-      selectedOptions,
-      selectAll,
-      selectNone,
-      onTagClick,
-    };
-  },
+);
+const emit = defineEmits<{
+  "update:modelValue": [string[]];
+}>();
+const selectedOptions = useVModel(props, "modelValue", emit, {
+  passive: true,
+  deep: true,
 });
+const onTagClick = (option: string) => {
+  return selectedOptions.value.includes(option)
+    ? selectedOptions.value.splice(selectedOptions.value.indexOf(option), 1)
+    : selectedOptions.value.push(option);
+};
+const selectAll = () => {
+  for (const option of props.options)
+    if (!selectedOptions.value.includes(option))
+      selectedOptions.value.push(option);
+};
+const selectNone = () => selectedOptions.value.splice(0);
 </script>
 
 <template>

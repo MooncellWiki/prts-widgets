@@ -1,78 +1,68 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { computed, defineComponent } from "vue";
+<script lang="ts" setup>
+import { computed } from "vue";
 
 import Checkbox from "./Checkbox.vue";
 import CheckboxGroup from "./CheckboxGroup.vue";
-
-export default defineComponent({
-  name: "FilterRow",
-  components: {
-    Checkbox,
-    CheckboxGroup,
+const props = withDefaults(
+  defineProps<{
+    labels?: string[];
+    title?: string;
+    showBoth?: boolean;
+    both?: boolean;
+    noWidth?: boolean;
+    someSelected?: boolean;
+    modelValue?: Record<string, boolean>;
+  }>(),
+  {
+    modelValue: () => ({}),
   },
-  props: {
-    labels: { type: Array<string> },
-    title: String,
-    showBoth: Boolean,
-    both: Boolean,
-    noWidth: Boolean,
-    someSelected: Boolean,
-    modelValue: {
-      type: Object as PropType<Record<string, boolean>>,
-      default: () => ({}),
-    },
-  },
-  emits: ["update:modelValue", "update:both", "all", "clear"],
-  setup(props, { emit, slots }) {
-    const isBoth = computed({
-      get() {
-        return props.both;
-      },
-      set(v) {
-        emit("update:both", v);
-      },
-    });
-    const selected = computed({
-      get() {
-        return props.modelValue;
-      },
-      set(v) {
-        emit("update:modelValue", v);
-      },
-    });
-    const hasSlot = computed(() => {
-      return !!slots.default;
-    });
-    const addAll = () => {
-      if (hasSlot.value) {
-        emit("all");
-        return;
-      }
-      const tmp: Record<string, boolean> = {};
-      if (props.labels)
-        for (const label of props.labels) {
-          tmp[label] = true;
-        }
-      selected.value = tmp;
-    };
-    const removeAll = () => {
-      if (hasSlot.value) {
-        emit("clear");
-        return;
-      }
-      selected.value = {};
-    };
+);
+const emit = defineEmits<{
+  "update:modelValue": [Record<string, boolean>];
+  "update:both": [boolean];
+  all: [];
+  clear: [];
+}>();
+const slots = defineSlots();
 
-    return {
-      selected,
-      addAll,
-      removeAll,
-      isBoth,
-      hasSlot,
-    };
+const isBoth = computed({
+  get() {
+    return props.both;
+  },
+  set(v) {
+    emit("update:both", v);
   },
 });
+const selected = computed({
+  get() {
+    return props.modelValue;
+  },
+  set(v) {
+    emit("update:modelValue", v);
+  },
+});
+const hasSlot = computed(() => {
+  return !!slots.default;
+});
+const addAll = () => {
+  if (hasSlot.value) {
+    emit("all");
+    return;
+  }
+  const tmp: Record<string, boolean> = {};
+  if (props.labels)
+    for (const label of props.labels) {
+      tmp[label] = true;
+    }
+  selected.value = tmp;
+};
+const removeAll = () => {
+  if (hasSlot.value) {
+    emit("clear");
+    return;
+  }
+  selected.value = {};
+};
 </script>
 
 <template>
