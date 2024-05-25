@@ -1,7 +1,6 @@
 <!-- 元素宽度小于等于800且大于640 -->
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent, toRefs } from "vue";
+<script lang="ts" setup>
+import { toRefs } from "vue";
 
 import Avatar from "@/components/Avatar.vue";
 import { PRTS_BASE_DOMAIN } from "@/utils/consts";
@@ -10,33 +9,18 @@ import { useChar } from "./useChar";
 
 import type { Char } from "../utils";
 
-export default defineComponent({
-  name: "Short",
-  components: { Avatar },
-  props: {
-    row: { type: Object as PropType<Char>, required: true },
-    addTrust: Boolean, // 是否加算信赖
-    addPotential: Boolean, // 是否加算潜能
-  },
-  setup(props) {
-    const { addTrust, addPotential } = toRefs(props);
-    const { hp, atk, def, res, cost, reDeploy } = useChar(
-      props.row,
-      addTrust,
-      addPotential,
-    );
+const props = defineProps<{
+  row: Char;
+  addTrust?: boolean; // 是否加算信赖
+  addPotential?: boolean; // 是否加算潜能
+}>();
 
-    return {
-      domain: PRTS_BASE_DOMAIN,
-      hp,
-      atk,
-      def,
-      res,
-      cost,
-      reDeploy,
-    };
-  },
-});
+const { addTrust, addPotential } = toRefs(props);
+const { hp, atk, def, res, cost, reDeploy } = useChar(
+  props.row,
+  addTrust,
+  addPotential,
+);
 </script>
 
 <template>
@@ -50,7 +34,7 @@ export default defineComponent({
     </div>
     <div class="name">
       <div>
-        <a :href="`${domain}/w/${row.zh}`">
+        <a :href="`${PRTS_BASE_DOMAIN}/w/${row.zh}`">
           <div>{{ row.zh }}</div>
         </a>
         <div>{{ row.en }}</div>

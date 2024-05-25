@@ -1,14 +1,6 @@
-<script lang="ts">
-import type { PropType, Ref } from "vue";
-import {
-  computed,
-  defineComponent,
-  nextTick,
-  onBeforeMount,
-  reactive,
-  ref,
-  watch,
-} from "vue";
+<script lang="ts" setup>
+import type { Ref } from "vue";
+import { computed, nextTick, onBeforeMount, reactive, ref, watch } from "vue";
 
 import { useBreakpoints, useUrlSearchParams } from "@vueuse/core";
 import Cookies from "js-cookie";
@@ -52,375 +44,322 @@ function flat(cbt: CheckboxOption[]) {
     return v.label;
   });
 }
+const props = defineProps<{
+  filters: FilterGroup[];
+  source: Char[];
+}>();
 
-export default defineComponent({
-  components: {
-    FilterRow,
-    Checkbox,
-    Pagination,
-    SHead,
-    LHead,
-    Avatar,
-    Card,
-    Long,
-    Short,
-    Half,
-    CheckboxGroup,
-    NCollapseTransition,
-  },
-  props: {
-    filters: {
-      type: Array as PropType<FilterGroup[]>,
-      required: true,
-    },
-    source: {
-      type: Array as PropType<Char[]>,
-      required: true,
-    },
-  },
-  setup(props) {
-    const breakpoints = useBreakpoints({
-      small: 640,
-      big: 1024,
+const breakpoints = useBreakpoints({
+  small: 640,
+  big: 1024,
+});
+const card = breakpoints.smallerOrEqual("small");
+const short = breakpoints.between("small", "big");
+const long = breakpoints.greaterOrEqual("big");
+const fix = ref(false);
+
+const page = ref({
+  index: 1,
+  step: 50,
+});
+const states = reactive<State[][]>(
+  props.filters.map((fg) => {
+    return fg.filter.flatMap((f) => {
+      return {
+        selected: {},
+        both: false,
+        meta: {
+          cbt: f.cbt,
+          title: f.title,
+          field: f.field,
+          groupTitle: fg.title,
+        },
+      };
     });
-    const card = breakpoints.smallerOrEqual("small");
-    const short = breakpoints.between("small", "big");
-    const long = breakpoints.greaterOrEqual("big");
-    const fix = ref(false);
+  }),
+); // 筛选 六维筛选 标志/出身地/团队/种族筛选
+const opFilterExpandState = Cookies.get("opFilterExpandState");
+const expanded: Ref<Array<boolean>> = ref(
+  opFilterExpandState ? JSON.parse(opFilterExpandState) : [true, false, false],
+); // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
 
-    const page = ref({
-      index: 1,
-      step: 50,
+const sortMethod = ref("实装倒序");
+const sortMethods = ref([
+  "实装顺序",
+  "实装倒序",
+  "名称升序",
+  "名称降序",
+  "稀有度升序",
+  "稀有度降序",
+]);
+const searchText = ref("");
+const dataTypes = ref(["满潜能", "满信赖"]);
+const currDataTypes: Ref<Record<string, boolean>> = ref({
+  满潜能: false,
+  满信赖: false,
+});
+const displayModes = ref(["表格", "半身像", "头像"]);
+const currDisplayMode = ref("表格");
+
+const toggleCollapse = (index: number) => {
+  expanded.value[index] = !expanded.value[index];
+  Cookies.set("opFilterExpandState", JSON.stringify(expanded.value), {
+    expires: 365,
+  });
+};
+const onStepChange = ({ n, o }: { n: number; o: number }) => {
+  if (o < n) {
+    page.value.index = Math.ceil((o / n) * page.value.index);
+  } else {
+    if (page.value.index >= 1)
+      page.value.index = ((page.value.index - 1) * o) / n + 1;
+  }
+  page.value.step = n;
+};
+function predicate(filter: State, char: Char) {
+  if (searchText.value) {
+    const tags = ["zh", "en", "ja", "id", "plainFeature"];
+    const text = tags.some((key) => {
+      return (char[key as keyof Char] as string).includes(searchText.value);
     });
-    const states = reactive<State[][]>(
-      props.filters.map((fg) => {
-        return fg.filter.flatMap((f) => {
-          return {
-            selected: {},
-            both: false,
-            meta: {
-              cbt: f.cbt,
-              title: f.title,
-              field: f.field,
-              groupTitle: fg.title,
-            },
-          };
-        });
-      }),
-    ); // 筛选 六维筛选 标志/出身地/团队/种族筛选
-    const opFilterExpandState = Cookies.get("opFilterExpandState");
-    const expanded: Ref<Array<boolean>> = ref(
-      opFilterExpandState
-        ? JSON.parse(opFilterExpandState)
-        : [true, false, false],
-    ); // 筛选 六维筛选 标志/出身地/团队/种族筛选 折叠状态
+    if (!text) return false;
+  }
+  const value = char[filter.meta.field as keyof Char];
 
-    const sortMethod = ref("实装倒序");
-    const sortMethods = ref([
-      "实装顺序",
-      "实装倒序",
-      "名称升序",
-      "名称降序",
-      "稀有度升序",
-      "稀有度降序",
-    ]);
-    const searchText = ref("");
-    const dataTypes = ref(["满潜能", "满信赖"]);
-    const currDataTypes: Ref<Record<string, boolean>> = ref({
-      满潜能: false,
-      满信赖: false,
+  const selected = Object.entries(filter.selected)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+  const range = selected.flatMap((s) => {
+    const option = filter.meta.cbt.find((v) => {
+      if (typeof v === "string") return v === s;
+      return v.label === s;
+    })!;
+    if (typeof option === "string") return [option];
+    return option.value;
+  });
+  if (filter.both) {
+    return range.every((k) => {
+      return (value as string[]).includes(k);
     });
-    const displayModes = ref(["表格", "半身像", "头像"]);
-    const currDisplayMode = ref("表格");
+  }
+  if (range.length === 0) return true;
+  if (filter.meta.title === "稀有度")
+    return filter.selected[`★${1 + char.rarity}`];
+  if (filter.meta.title === "性别") {
+    if (filter.selected["其他"])
+      return (
+        filter.selected[`${char.sex}性`] ||
+        (char.sex !== "男" && char.sex !== "女")
+      );
+    return filter.selected[`${char.sex}性`];
+  }
 
-    const toggleCollapse = (index: number) => {
-      expanded.value[index] = !expanded.value[index];
-      Cookies.set("opFilterExpandState", JSON.stringify(expanded.value), {
-        expires: 365,
-      });
-    };
-    const onStepChange = ({ n, o }: { n: number; o: number }) => {
-      if (o < n) {
-        page.value.index = Math.ceil((o / n) * page.value.index);
-      } else {
-        if (page.value.index >= 1)
-          page.value.index = ((page.value.index - 1) * o) / n + 1;
+  if (filter.meta.cbt.includes("其他")) {
+    // 其他的时候一定没同时满足
+    if (filter.selected["其他"]) {
+      const allValues = new Set(
+        filter.meta.cbt.flatMap((v) => {
+          if (typeof v === "string") return [v];
+          return v.value;
+        }),
+      );
+      if (Array.isArray(value)) {
+        if (range.some((v) => (value as string[]).includes(v))) return true;
+        if (value.some((v) => !allValues.has(v as string))) return true;
+        return false;
       }
-      page.value.step = n;
-    };
-    function predicate(filter: State, char: Char) {
-      if (searchText.value) {
-        const tags = ["zh", "en", "ja", "id", "plainFeature"];
-        const text = tags.some((key) => {
-          return (char[key as keyof Char] as string).includes(searchText.value);
-        });
-        if (!text) return false;
-      }
-      const value = char[filter.meta.field as keyof Char];
-
-      const selected = Object.entries(filter.selected)
-        .filter(([, v]) => v)
-        .map(([k]) => k);
-      const range = selected.flatMap((s) => {
-        const option = filter.meta.cbt.find((v) => {
-          if (typeof v === "string") return v === s;
-          return v.label === s;
-        })!;
-        if (typeof option === "string") return [option];
-        return option.value;
-      });
-      if (filter.both) {
-        return range.every((k) => {
-          return (value as string[]).includes(k);
-        });
-      }
-      if (range.length === 0) return true;
-      if (filter.meta.title === "稀有度")
-        return filter.selected[`★${1 + char.rarity}`];
-      if (filter.meta.title === "性别") {
-        if (filter.selected["其他"])
-          return (
-            filter.selected[`${char.sex}性`] ||
-            (char.sex !== "男" && char.sex !== "女")
-          );
-        return filter.selected[`${char.sex}性`];
-      }
-
-      if (filter.meta.cbt.includes("其他")) {
-        // 其他的时候一定没同时满足
-        if (filter.selected["其他"]) {
-          const allValues = new Set(
-            filter.meta.cbt.flatMap((v) => {
-              if (typeof v === "string") return [v];
-              return v.value;
-            }),
-          );
-          if (Array.isArray(value)) {
-            if (range.some((v) => (value as string[]).includes(v))) return true;
-            if (value.some((v) => !allValues.has(v as string))) return true;
-            return false;
-          }
-          if (range.includes(value as string)) return true;
-          if (!allValues.has(value as string)) return true;
-          return false;
-        }
-        if (Array.isArray(value))
-          return range.some((v) => (value as string[]).includes(v));
-        return range.includes(value as string);
-      }
-      if (Array.isArray(value))
-        return range.some((v) => (value as string[]).includes(v));
-      return range.includes(value as string);
+      if (range.includes(value as string)) return true;
+      if (!allValues.has(value as string)) return true;
+      return false;
     }
-    const oridata = computed(() => {
-      const filters = props.filters;
+    if (Array.isArray(value))
+      return range.some((v) => (value as string[]).includes(v));
+    return range.includes(value as string);
+  }
+  if (Array.isArray(value))
+    return range.some((v) => (value as string[]).includes(v));
+  return range.includes(value as string);
+}
+const oridata = computed(() => {
+  const filters = props.filters;
 
-      const result = props.source.filter((char) => {
-        for (const group of states) {
-          for (const filter of group) {
-            if (!predicate(filter, char)) return false;
-          }
-        }
-        return true;
-      });
-
-      switch (sortMethod.value) {
-        case "实装顺序": {
-          result.sort((a, b) => a.sortId - b.sortId);
-          break;
-        }
-        case "实装倒序": {
-          result.sort((a, b) => b.sortId - a.sortId);
-          break;
-        }
-        case "名称升序": {
-          result.sort((a, b) => a.zh.localeCompare(b.zh, "zh"));
-          break;
-        }
-        case "名称降序": {
-          result.sort((a, b) => b.zh.localeCompare(a.zh, "zh"));
-          break;
-        }
-        case "稀有度升序": {
-          result.sort((a, b) => {
-            const r = a.rarity - b.rarity;
-            if (r === 0) {
-              const classes = filters[0].filter[0].cbt;
-              const o =
-                classes.indexOf(a.profession) - classes.indexOf(b.profession);
-              return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
-            } else {
-              return r;
-            }
-          });
-          break;
-        }
-        case "稀有度降序": {
-          result.sort((a, b) => {
-            const r = b.rarity - a.rarity;
-            if (r === 0) {
-              const classes = filters[0].filter[0].cbt;
-              const o =
-                classes.indexOf(a.profession) - classes.indexOf(b.profession);
-              return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
-            } else {
-              return r;
-            }
-          });
-          break;
-        }
+  const result = props.source.filter((char) => {
+    for (const group of states) {
+      for (const filter of group) {
+        if (!predicate(filter, char)) return false;
       }
-      return result;
-    });
-    watch(oridata, () => {
-      page.value.index = 1;
-    });
-    const data = computed(() => {
-      const start = (page.value.index - 1) * page.value.step;
-
-      return oridata.value.slice(start, start + page.value.step);
-    });
-    const hash = useUrlSearchParams("hash");
-    watch(searchText, () => {
-      // @ts-expect-error string
-      hash._s = searchText.value || undefined;
-    });
-    watch(states, () => {
-      for (const s of states) {
-        for (const element of s) {
-          const selected = Object.entries(element.selected).filter(
-            ([, v]) => v,
-          );
-          if (selected.length === 0) {
-            delete hash[element.meta.field];
-            continue;
-          }
-          const fields = selected.map(([k]) => k.replace("★", "")).join(";");
-          const both = element.both ? "0-" : "1-";
-          hash[element.meta.field] = both + fields;
-        }
-      }
-    });
-    watch(sortMethod, () => {
-      hash._o = `${sortMethods.value.indexOf(sortMethod.value)}`;
-    });
-    watch(
-      currDataTypes,
-      () => {
-        let result = "";
-        if (currDataTypes.value["满潜能"]) result += "p";
-
-        if (currDataTypes.value["满信赖"]) result += "t";
-        // @ts-expect-error string
-        hash._f = result || undefined;
-      },
-      { deep: true },
-    );
-    watch(currDisplayMode, () => {
-      hash._d = `${displayModes.value.indexOf(currDisplayMode.value)}`;
-    });
-    onBeforeMount(() => {
-      // too hard to refactor
-      // eslint-disable-next-line unicorn/no-array-for-each
-      Object.entries(hash).forEach(([k, v]) => {
-        if (k === "_s") {
-          searchText.value = v as string;
-          return;
-        }
-        if (k === "_o") {
-          sortMethod.value = sortMethods.value[Number.parseInt(v as string)];
-          return;
-        }
-        if (k === "_f") {
-          if (v.includes("p")) currDataTypes.value["满潜能"] = true;
-          if (v.includes("t")) currDataTypes.value["满信赖"] = true;
-          return;
-        }
-        if (k === "_d") {
-          currDisplayMode.value =
-            displayModes.value[Number.parseInt(v as string)];
-          return;
-        }
-
-        const both = v[0] === "0";
-        const selected = (v as string).slice(2).split(";");
-        for (const state of states) {
-          for (const element of state) {
-            if (element.meta.field === k) {
-              element.both = both;
-              for (let f of selected) {
-                if (k === "rarity") f = `★${f}`;
-
-                element.selected[f] = true;
-              }
-              return;
-            }
-          }
-        }
-      });
-    });
-
-    function hasSelected(states: State[]) {
-      return states.some((state) => {
-        return Object.values(state.selected).some(Boolean);
-      });
     }
-    const resultTable = ref<HTMLElement>();
-    watch(data, () => {
-      nextTick(() => {
-        try {
-          const elements = resultTable.value?.querySelectorAll(".mc-tooltips");
-          if (!elements) {
-            return;
-          }
-          for (const e of Array.from(elements)) {
-            if (!e.children || e.children.length < 2) continue;
-            (e.children[1] as HTMLElement).style.display = "block";
-            // @ts-expect-error tippy
+    return true;
+  });
 
-            tippy6(e.children[0], {
-              content: e.children[1],
-              arrow: true,
-              theme: "light-border",
-              size: "large",
-              maxWidth: Number.parseInt(
-                (e.children[1] as HTMLElement).dataset.size!,
-              ),
-              trigger:
-                (e.children[1] as HTMLElement).dataset.trigger ||
-                "mouseenter focus",
-            });
-          }
-        } catch (error) {
-          console.error(error);
+  switch (sortMethod.value) {
+    case "实装顺序": {
+      result.sort((a, b) => a.sortId - b.sortId);
+      break;
+    }
+    case "实装倒序": {
+      result.sort((a, b) => b.sortId - a.sortId);
+      break;
+    }
+    case "名称升序": {
+      result.sort((a, b) => a.zh.localeCompare(b.zh, "zh"));
+      break;
+    }
+    case "名称降序": {
+      result.sort((a, b) => b.zh.localeCompare(a.zh, "zh"));
+      break;
+    }
+    case "稀有度升序": {
+      result.sort((a, b) => {
+        const r = a.rarity - b.rarity;
+        if (r === 0) {
+          const classes = filters[0].filter[0].cbt;
+          const o =
+            classes.indexOf(a.profession) - classes.indexOf(b.profession);
+          return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
+        } else {
+          return r;
         }
       });
-    });
-    return {
-      card,
-      short,
-      long,
-      page,
-      states,
-      expanded,
-      sortMethod,
-      sortMethods,
-      searchText,
-      dataTypes,
-      currDataTypes,
-      displayModes,
-      currDisplayMode,
-      oridata,
-      data,
-      fix,
-      flat,
-      hasSelected,
-      toggleCollapse,
-      onStepChange,
-      copyUrl,
-      resultTable,
-    };
+      break;
+    }
+    case "稀有度降序": {
+      result.sort((a, b) => {
+        const r = b.rarity - a.rarity;
+        if (r === 0) {
+          const classes = filters[0].filter[0].cbt;
+          const o =
+            classes.indexOf(a.profession) - classes.indexOf(b.profession);
+          return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
+        } else {
+          return r;
+        }
+      });
+      break;
+    }
+  }
+  return result;
+});
+watch(oridata, () => {
+  page.value.index = 1;
+});
+const data = computed(() => {
+  const start = (page.value.index - 1) * page.value.step;
+
+  return oridata.value.slice(start, start + page.value.step);
+});
+const hash = useUrlSearchParams("hash");
+watch(searchText, () => {
+  // @ts-expect-error string
+  hash._s = searchText.value || undefined;
+});
+watch(states, () => {
+  for (const s of states) {
+    for (const element of s) {
+      const selected = Object.entries(element.selected).filter(([, v]) => v);
+      if (selected.length === 0) {
+        delete hash[element.meta.field];
+        continue;
+      }
+      const fields = selected.map(([k]) => k.replace("★", "")).join(";");
+      const both = element.both ? "0-" : "1-";
+      hash[element.meta.field] = both + fields;
+    }
+  }
+});
+watch(sortMethod, () => {
+  hash._o = `${sortMethods.value.indexOf(sortMethod.value)}`;
+});
+watch(
+  currDataTypes,
+  () => {
+    let result = "";
+    if (currDataTypes.value["满潜能"]) result += "p";
+
+    if (currDataTypes.value["满信赖"]) result += "t";
+    // @ts-expect-error string
+    hash._f = result || undefined;
   },
+  { deep: true },
+);
+watch(currDisplayMode, () => {
+  hash._d = `${displayModes.value.indexOf(currDisplayMode.value)}`;
+});
+onBeforeMount(() => {
+  // too hard to refactor
+  // eslint-disable-next-line unicorn/no-array-for-each
+  Object.entries(hash).forEach(([k, v]) => {
+    if (k === "_s") {
+      searchText.value = v as string;
+      return;
+    }
+    if (k === "_o") {
+      sortMethod.value = sortMethods.value[Number.parseInt(v as string)];
+      return;
+    }
+    if (k === "_f") {
+      if (v.includes("p")) currDataTypes.value["满潜能"] = true;
+      if (v.includes("t")) currDataTypes.value["满信赖"] = true;
+      return;
+    }
+    if (k === "_d") {
+      currDisplayMode.value = displayModes.value[Number.parseInt(v as string)];
+      return;
+    }
+
+    const both = v[0] === "0";
+    const selected = (v as string).slice(2).split(";");
+    for (const state of states) {
+      for (const element of state) {
+        if (element.meta.field === k) {
+          element.both = both;
+          for (let f of selected) {
+            if (k === "rarity") f = `★${f}`;
+
+            element.selected[f] = true;
+          }
+          return;
+        }
+      }
+    }
+  });
+});
+
+function hasSelected(states: State[]) {
+  return states.some((state) => {
+    return Object.values(state.selected).some(Boolean);
+  });
+}
+const resultTable = ref<HTMLElement>();
+watch(data, () => {
+  nextTick(() => {
+    try {
+      const elements = resultTable.value?.querySelectorAll(".mc-tooltips");
+      if (!elements) {
+        return;
+      }
+      for (const e of Array.from(elements)) {
+        if (!e.children || e.children.length < 2) continue;
+        (e.children[1] as HTMLElement).style.display = "block";
+        // @ts-expect-error tippy
+
+        tippy6(e.children[0], {
+          content: e.children[1],
+          arrow: true,
+          theme: "light-border",
+          size: "large",
+          maxWidth: Number.parseInt(
+            (e.children[1] as HTMLElement).dataset.size!,
+          ),
+          trigger:
+            (e.children[1] as HTMLElement).dataset.trigger ||
+            "mouseenter focus",
+        });
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  });
 });
 </script>
 
