@@ -6,7 +6,7 @@ const props = withDefaults(
     title?: string;
     options: string[];
     modelValue: string[];
-    disabled: boolean;
+    disabled?: boolean;
   }>(),
   {
     modelValue: () => [],
