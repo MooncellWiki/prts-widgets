@@ -1,13 +1,5 @@
 <script lang="ts">
-import {
-  defineComponent,
-  computed,
-  ref,
-  onMounted,
-  nextTick,
-  provide,
-  watch,
-} from "vue";
+import { defineComponent, computed, ref, onMounted, provide, watch } from "vue";
 
 import { useUrlSearchParams } from "@vueuse/core";
 import {
@@ -46,7 +38,6 @@ import {
   getLocaleType,
 } from "./i18n";
 import { CharEquips, EquipRow } from "./types";
-import { updateTippy } from "./utils";
 
 interface FilterValue {
   mode: string;
@@ -180,7 +171,7 @@ export default defineComponent({
       return sortStates.value.filter.every((v) => {
         if (v.mode == "all") return true;
         if (v.mode == "trait") {
-          return v.value == "yes" ? data["add"] != null : data["add"] == null;
+          return v.value == "yes" ? !!data["add"] : !data["add"];
         }
         if (v.mode == "type") {
           const match = !!data["type"]?.match(new RegExp(`-${v.value}`, "i"));
@@ -347,9 +338,6 @@ export default defineComponent({
 
       initFromHash();
       loadingCount.value = 0;
-      nextTick(() => {
-        updateTippy();
-      });
     });
 
     return {
