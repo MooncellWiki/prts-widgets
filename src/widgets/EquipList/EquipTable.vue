@@ -1,5 +1,5 @@
-<script lang="ts">
-import { PropType, defineComponent, h, ref, watch } from "vue";
+<script lang="ts" setup>
+import { h, ref, watch } from "vue";
 
 import { DataTableColumns, NDataTable } from "naive-ui";
 
@@ -81,55 +81,36 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
 const createRowKey = (row: EquipRow) => {
   return row.operator + "." + row.name;
 };
+const props = defineProps<{
+  data: EquipRow[];
+}>();
 
-export default defineComponent({
-  components: {
-    NDataTable,
+const locale = getLanguage();
+const pickSize = (): "small" | "medium" => {
+  return isMobile() ? "small" : "medium";
+};
+const pagination = ref({
+  page: 1,
+  pageSize: 10,
+  pageSizes: customLabel[locale].pagination,
+  pageSlot: isMobile() ? 5 : 9,
+  size: pickSize(),
+  showSizePicker: true,
+  onUpdatePage: (page: number) => {
+    pagination.value.page = page;
   },
-  props: {
-    data: {
-      type: Array as PropType<EquipRow[]>,
-      required: true,
-    },
+  onUpdatePageSize: (size: number) => {
+    pagination.value.pageSize = size;
+    pagination.value.page = 1;
   },
-  setup(props) {
-    const locale = getLanguage();
-    const pickSize = (): "small" | "medium" => {
-      return isMobile() ? "small" : "medium";
-    };
-    const pagination = ref({
-      page: 1,
-      pageSize: 10,
-      pageSizes: customLabel[locale].pagination,
-      pageSlot: isMobile() ? 5 : 9,
-      size: pickSize(),
-      showSizePicker: true,
-      onUpdatePage: (page: number) => {
-        pagination.value.page = page;
-      },
-      onUpdatePageSize: (size: number) => {
-        pagination.value.pageSize = size;
-        pagination.value.page = 1;
-      },
-    });
-    const loading = ref(false);
-    watch(props, () => {
-      if (
-        (pagination.value.page - 1) * pagination.value.pageSize >=
-        props.data.length
-      )
-        pagination.value.page = 1;
-    });
-    return {
-      columns,
-      createRowKey,
-      loading,
-      customLabel,
-      locale,
-      pagination,
-      isMobile,
-    };
-  },
+});
+const loading = ref(false);
+watch(props, () => {
+  if (
+    (pagination.value.page - 1) * pagination.value.pageSize >=
+    props.data.length
+  )
+    pagination.value.page = 1;
 });
 </script>
 <template>
