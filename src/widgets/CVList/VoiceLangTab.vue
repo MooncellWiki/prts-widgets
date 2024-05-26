@@ -1,39 +1,19 @@
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
+<script lang="ts" setup>
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+const props = defineProps<{
+  voiceData: Record<string, string[]>;
+  mapping: Record<string, string>;
+  avatarMapping: Record<string, string>;
+  charMapping: Record<string, string>;
+}>();
 
-export default defineComponent({
-  components: {},
-  props: {
-    voiceData: {
-      type: Object as PropType<Record<string, string[]>>,
-      required: true,
-    },
-    mapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
-    avatarMapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
-    charMapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
-  },
-  setup(props) {
-    const getAvatarURL = (voiceId: string) => {
-      const avatarId = props.avatarMapping[voiceId] || voiceId;
-      return new URL(
-        `/assets/char_avatar/${encodeURIComponent(avatarId)}.png`,
-        TORAPPU_ENDPOINT,
-      );
-    };
-    return { getAvatarURL };
-  },
-});
+const getAvatarURL = (voiceId: string) => {
+  const avatarId = props.avatarMapping[voiceId] || voiceId;
+  return new URL(
+    `/assets/char_avatar/${encodeURIComponent(avatarId)}.png`,
+    TORAPPU_ENDPOINT,
+  );
+};
 </script>
 
 <template>
