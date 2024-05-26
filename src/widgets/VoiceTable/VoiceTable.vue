@@ -1,6 +1,5 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent, provide, ref } from "vue";
+<script setup lang="ts">
+import { provide, ref } from "vue";
 
 import { NConfigProvider, NSelect } from "naive-ui";
 
@@ -9,65 +8,39 @@ import FormItem from "@/components/FormItem.vue";
 import VoicePlayer from "./VoicePlayer.vue";
 
 const isSimplified = !decodeURIComponent(document.title).includes("/语音记录");
-
-export default defineComponent({
-  components: {
-    NSelect,
-    NConfigProvider,
-    VoicePlayer,
-    FormItem,
+const props = withDefaults(
+  defineProps<{
+    tocTitle?: string;
+    voiceKey?: string;
+    voiceData: {
+      title?: string;
+      index?: string;
+      fileName?: string;
+      directLinks: Record<string, string>;
+      cond?: string;
+      detail: Record<string, string>;
+    }[];
+    langArr?: string[];
+    voiceBase?: { lang: string; path: string }[];
+  }>(),
+  {
+    langArr: () => [],
+    voiceBase: () => [],
   },
-  props: {
-    tocTitle: String,
-    voiceKey: String,
-    voiceData: Array as PropType<
-      {
-        title?: string;
-        index?: string;
-        fileName?: string;
-        directLinks: {
-          [index: string]: string;
-        };
-        cond?: string;
-        detail: {
-          [index: string]: string;
-        };
-      }[]
-    >,
-    langArr: { type: Array as PropType<string[]>, default: () => [] },
-    voiceBase: {
-      type: Array as PropType<{ lang: string; path: string }[]>,
-      default: () => [],
-    },
-  },
-  setup(props) {
-    const isCollapsed = ref(true);
-    const selectedWordLang = ref(["中文"]);
-    const selectedVoicePath = ref(props.voiceBase[0]?.path || "");
-    const selectedVoiceLang = ref(props.voiceBase[0]?.lang || "");
-    const playKey = ref(-1);
+);
 
-    const onVoicePathUpdate = (
-      newValue: string,
-      newOptions: { lang: string },
-    ) => {
-      selectedVoicePath.value = newValue;
-      selectedVoiceLang.value = newOptions.lang || "";
-    };
+const isCollapsed = ref(true);
+const selectedWordLang = ref(["中文"]);
+const selectedVoicePath = ref(props.voiceBase[0]?.path || "");
+const selectedVoiceLang = ref(props.voiceBase[0]?.lang || "");
+const playKey = ref(-1);
 
-    provide("audioElem", new Audio());
+const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
+  selectedVoicePath.value = newValue;
+  selectedVoiceLang.value = newOptions.lang || "";
+};
 
-    return {
-      isSimplified,
-      isCollapsed,
-      selectedWordLang,
-      selectedVoiceLang,
-      selectedVoicePath,
-      playKey,
-      onVoicePathUpdate,
-    };
-  },
-});
+provide("audioElem", new Audio());
 </script>
 
 <template>
