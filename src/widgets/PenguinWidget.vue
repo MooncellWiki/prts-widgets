@@ -1,62 +1,47 @@
-<script lang="ts">
-import { defineComponent, ref } from "vue";
+<script setup lang="ts">
+import { ref } from "vue";
 
 import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { isMobileSkin } from "@/utils/utils";
+defineProps<{
+  type?: string;
+  id?: string;
+  isAct?: boolean;
+  language?: string;
+}>();
+const { theme } = useTheme();
+const i18nConfig = getNaiveUILocale();
+const isMobile = isMobileSkin();
 
-export default defineComponent({
-  components: { NConfigProvider, NRadioButton, NRadioGroup },
-  props: {
-    type: String,
-    id: String,
-    isAct: Boolean,
-    language: String,
+const servers = [
+  {
+    value: "CN",
+    label: "国服(CN)",
   },
-  setup() {
-    const { theme } = useTheme();
-    const i18nConfig = getNaiveUILocale();
-    const isMobile = isMobileSkin();
-
-    const servers = [
-      {
-        value: "CN",
-        label: "国服(CN)",
-      },
-      {
-        value: "JP",
-        label: "日服(JP)",
-      },
-      {
-        value: "US",
-        label: "美服(US)",
-      },
-      {
-        value: "KR",
-        label: "韩服(KR)",
-      },
-    ];
-    const stages = [
-      { value: "", label: "活动" },
-      { value: "_perm", label: "常驻" },
-      { value: "_rep", label: "复刻" },
-    ];
-
-    const selectedServer = ref(servers[0].value);
-    const selectedStage = ref(stages[0].value);
-    return {
-      theme,
-      i18nConfig,
-      isMobile,
-      selectedServer,
-      selectedStage,
-      servers,
-      stages,
-    };
+  {
+    value: "JP",
+    label: "日服(JP)",
   },
-});
+  {
+    value: "US",
+    label: "美服(US)",
+  },
+  {
+    value: "KR",
+    label: "韩服(KR)",
+  },
+];
+const stages = [
+  { value: "", label: "活动" },
+  { value: "_perm", label: "常驻" },
+  { value: "_rep", label: "复刻" },
+];
+
+const selectedServer = ref(servers[0].value);
+const selectedStage = ref(stages[0].value);
 </script>
 
 <template>
