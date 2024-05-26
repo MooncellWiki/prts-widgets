@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 function round(x: number) {
   return Math.round(x);
 }

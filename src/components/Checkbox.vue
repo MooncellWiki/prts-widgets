@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import type { Ref } from "vue";
 import { computed, inject } from "vue";
 const props = withDefaults(

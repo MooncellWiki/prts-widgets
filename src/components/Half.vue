@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { PRTS_BASE_DOMAIN } from "@/utils/consts";
 import { charListData, getImagePath } from "@/utils/utils";
 defineProps<{

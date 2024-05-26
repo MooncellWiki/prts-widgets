@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 const props = defineProps<{
   voiceData: Record<string, string[]>;

@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { useVModel } from "@vueuse/core";
 import { NCard, NCollapseTransition } from "naive-ui";
 

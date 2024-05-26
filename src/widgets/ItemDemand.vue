@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { onMounted, ref } from "vue";
 
 import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";

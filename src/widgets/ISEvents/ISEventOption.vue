@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { NAvatar, NBadge, NCard } from "naive-ui";
 
 import { getImagePath } from "@/utils/utils";

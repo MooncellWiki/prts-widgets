@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { h, ref, watch } from "vue";
 
 import { DataTableColumns, NDataTable } from "naive-ui";

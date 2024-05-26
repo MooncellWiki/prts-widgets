@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { nextTick, ref } from "vue";
 
 import { NConfigProvider, NTabPane, NTabs } from "naive-ui";

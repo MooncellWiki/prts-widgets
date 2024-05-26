@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import type { Ref } from "vue";
 import { computed, nextTick, onBeforeMount, reactive, ref, watch } from "vue";
 

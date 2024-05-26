@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { useVModel } from "@vueuse/core";
 import { NButton } from "naive-ui";
 const props = withDefaults(

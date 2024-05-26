@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { NTag } from "naive-ui";
 import { TagColor } from "naive-ui/es/tag/src/common-props";
 defineProps<{

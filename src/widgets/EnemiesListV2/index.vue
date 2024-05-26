@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { computed, h, nextTick, onMounted, reactive, ref, watch } from "vue";
 
 import {

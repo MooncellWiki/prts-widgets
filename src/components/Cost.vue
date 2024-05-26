@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { professionMap, sum } from "@/utils/utils";
 
 import Avatar from "./Avatar.vue";

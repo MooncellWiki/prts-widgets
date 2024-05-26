@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from "vue";
 
 import { useBreakpoints } from "@vueuse/core";

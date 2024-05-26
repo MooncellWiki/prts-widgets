@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+<script setup lang="ts">
 import { computed, ref } from "vue";
 
 import { NCard, NNumberAnimation, NStatistic, NTooltip } from "naive-ui";

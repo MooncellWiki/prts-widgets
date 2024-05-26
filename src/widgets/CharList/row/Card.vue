@@ -1,5 +1,5 @@
 <!-- 元素宽度小于等于640px -->
-<script lang="ts" setup>
+<script setup lang="ts">
 import { ref, toRefs } from "vue";
 
 import Avatar from "@/components/Avatar.vue";
