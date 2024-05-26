@@ -1,46 +1,27 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent } from "vue";
-
+<script lang="ts" setup>
 import { useVModel } from "@vueuse/core";
 import { NCard, NCollapseTransition } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
+const props = defineProps<{
+  show?: boolean;
+  title?: string;
+  filters: Record<
+    string,
+    {
+      title: string;
+      options: string[];
+    }
+  >;
+  states: Record<string, string[]>;
+}>();
+const emit = defineEmits<{
+  "update:collapsed": [boolean];
+  "update:states": [Record<string, string[]>];
+}>();
 
-export default defineComponent({
-  name: "FilterGroup",
-  components: {
-    NCard,
-    NCollapseTransition,
-    OptionsGroup,
-  },
-  props: {
-    show: Boolean,
-    title: String,
-    filters: {
-      type: Object as PropType<{
-        [field: string]: {
-          title: string;
-          options: string[];
-        };
-      }>,
-      required: true,
-    },
-    states: {
-      type: Object as PropType<Record<string, string[]>>,
-      required: true,
-    },
-  },
-  emits: ["update:collapsed", "update:states"],
-  setup(props, { emit }) {
-    const showRef = useVModel(props, "show", emit);
-    const statesRef = useVModel(props, "states", emit);
-    return {
-      showRef,
-      statesRef,
-    };
-  },
-});
+const showRef = useVModel(props, "show", emit);
+const statesRef = useVModel(props, "states", emit);
 </script>
 
 <template>
