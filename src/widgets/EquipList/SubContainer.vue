@@ -1,6 +1,6 @@
-<script lang="ts">
-import type { PropType, Ref } from "vue";
-import { defineComponent, inject } from "vue";
+<script lang="ts" setup>
+import type { Ref } from "vue";
+import { inject } from "vue";
 
 import { NCard } from "naive-ui";
 
@@ -10,53 +10,35 @@ import { getImagePath } from "@/utils/utils";
 import SubAvatar from "./SubAvatar.vue";
 import { customLabel } from "./i18n";
 import { CharEquips } from "./types";
+const props = withDefaults(
+  defineProps<{
+    title: string;
+    chars?: CharEquips[];
+  }>(),
+  {
+    chars: () => [],
+  },
+);
 
-export default defineComponent({
-  name: "SubContainer",
-  components: {
-    NCard,
-    SubAvatar,
-  },
-  props: {
-    title: {
-      type: String,
-      required: true,
-    },
-    chars: {
-      type: Array as PropType<CharEquips[]>,
-      default: () => [],
-    },
-  },
-  emits: ["update:charList"],
-  setup(props) {
-    const showChars = inject("showChars") as Ref<string[]>;
-    const expandAll = () => {
-      for (const char of props.chars) {
-        if (!showChars.value.includes(char.char.name)) {
-          showChars.value.push(char.char.name);
-        }
-      }
-    };
-    const collapseAll = () => {
-      for (const char of props.chars) {
-        if (showChars.value.includes(char.char.name)) {
-          showChars.value.splice(
-            showChars.value.findIndex((n) => n == char.char.name),
-            1,
-          );
-        }
-      }
-    };
-    return {
-      getImagePath,
-      expandAll,
-      collapseAll,
-      showChars,
-      customLabel,
-      locale: getLanguage(),
-    };
-  },
-});
+const showChars = inject("showChars") as Ref<string[]>;
+const expandAll = () => {
+  for (const char of props.chars) {
+    if (!showChars.value.includes(char.char.name)) {
+      showChars.value.push(char.char.name);
+    }
+  }
+};
+const collapseAll = () => {
+  for (const char of props.chars) {
+    if (showChars.value.includes(char.char.name)) {
+      showChars.value.splice(
+        showChars.value.findIndex((n) => n == char.char.name),
+        1,
+      );
+    }
+  }
+};
+const locale = getLanguage();
 </script>
 
 <template>
