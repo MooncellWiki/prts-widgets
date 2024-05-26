@@ -1,25 +1,11 @@
-<script lang="ts">
-import { PropType, defineComponent } from "vue";
-
+<script lang="ts" setup>
 import { NTag } from "naive-ui";
 import { TagColor } from "naive-ui/es/tag/src/common-props";
-export default defineComponent({
-  components: { NTag },
-  props: {
-    nickName: {
-      type: String,
-      required: true,
-    },
-    typeColor: {
-      type: Object as PropType<TagColor>,
-      required: true,
-    },
-    channelName: {
-      type: String,
-      required: true,
-    },
-  },
-});
+defineProps<{
+  nickName: string;
+  typeColor: TagColor;
+  channelName: string;
+}>();
 </script>
 <template>
   <div class="flex items-center">

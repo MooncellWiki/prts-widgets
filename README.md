@@ -8,6 +8,7 @@
 
 会逐步迁移一些没人会去搜，而且需要复杂 lua/smw 查询的模板过来
 
+- 签名生成 [Widget:ArkSign/dev](https://prts.wiki/w/Widget:ArkSign/dev)
 - 干员一览 [Widget:CharList/dev](https://prts.wiki/w/Widget:CharList/dev)
 - 配音一览 [Widget:CVList/dev](https://prts.wiki/w/Widget:CVList/dev)
 - 敌人一览 [Widget:EnemiesListV2/dev](https://prts.wiki/w/Widget:EnemiesListV2/dev)
