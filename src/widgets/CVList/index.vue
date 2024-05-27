@@ -43,17 +43,18 @@ if (window.location.hash) {
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <n-tabs v-model:value="valueRef" type="line" animated>
-      <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
-        <VoiceLangTab
-          v-if="data"
-          :voice-data="data[nameToKey[tab]]"
-          :mapping="mapping"
-          :avatar-mapping="avatarMapping"
-          :char-mapping="charMapping"
-        />
-      </n-tab-pane>
-    </n-tabs>
+    <NLayout class="mx-auto p-2 antialiased">
+      <n-tabs v-model:value="valueRef" type="line" animated>
+        <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
+          <VoiceLangTab
+            v-if="data"
+            :voice-data="data[nameToKey[tab]]"
+            :mapping="mapping"
+            :avatar-mapping="avatarMapping"
+            :char-mapping="charMapping"
+          />
+        </n-tab-pane> </n-tabs
+    ></NLayout>
   </NConfigProvider>
 </template>
 
