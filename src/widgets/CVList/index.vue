@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
 
-import { NConfigProvider, NTabPane, NTabs } from "naive-ui";
+import { NConfigProvider, NLayout, NTabPane, NTabs } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
@@ -53,8 +53,9 @@ if (window.location.hash) {
             :avatar-mapping="avatarMapping"
             :char-mapping="charMapping"
           />
-        </n-tab-pane> </n-tabs
-    ></NLayout>
+        </n-tab-pane>
+      </n-tabs>
+    </NLayout>
   </NConfigProvider>
 </template>
 
