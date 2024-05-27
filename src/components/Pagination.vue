@@ -1,48 +1,36 @@
-<script lang="ts">
-import { computed, defineComponent } from "vue";
+<script setup lang="ts">
+import { computed } from "vue";
 
 import Checkbox from "./Checkbox.vue";
 import CheckboxGroup from "./CheckboxGroup.vue";
+const props = defineProps<{
+  length: number;
+  step: number;
+  index: number;
+}>();
+const emit = defineEmits<{
+  "update:index": [number];
+  "update:step": [{ n: number; o: number }];
+}>();
 
-export default defineComponent({
-  name: "Pagination",
-  components: {
-    Checkbox,
-    CheckboxGroup,
+const checkboxCount = computed(() => {
+  return Math.ceil(props.length / props.step);
+});
+
+const cur = computed({
+  get() {
+    return `${props.index}`;
   },
-  props: {
-    length: { type: Number, required: true },
-    step: { type: Number, required: true },
-    index: { type: Number, required: true },
+  set(v) {
+    emit("update:index", Number.parseInt(v));
   },
-  emits: ["update:index", "update:step"],
-  setup(props, { emit }) {
-    const checkboxCount = computed(() => {
-      return Math.ceil(props.length / props.step);
-    });
-
-    const cur = computed({
-      get() {
-        return `${props.index}`;
-      },
-      set(v) {
-        emit("update:index", Number.parseInt(v));
-      },
-    });
-    const curStep = computed({
-      get() {
-        return props.step;
-      },
-      set(v) {
-        emit("update:step", { n: v, o: curStep.value });
-      },
-    });
-
-    return {
-      cur,
-      curStep,
-      checkboxCount,
-    };
+});
+const curStep = computed({
+  get() {
+    return props.step;
+  },
+  set(v) {
+    emit("update:step", { n: v, o: curStep.value });
   },
 });
 </script>

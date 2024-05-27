@@ -1,29 +1,15 @@
-<script lang="ts">
-import { defineComponent } from "vue";
-
+<script setup lang="ts">
 import { NAvatar, NBadge, NCard } from "naive-ui";
 
 import { getImagePath } from "@/utils/utils";
-export default defineComponent({
-  components: {
-    NCard,
-    NAvatar,
-    NBadge,
-  },
-  props: {
-    title: String,
-    type: String,
-    icon: String,
-    desc1: String,
-    desc2: String,
-    isTheme: String,
-  },
-  setup() {
-    return {
-      getImagePath,
-    };
-  },
-});
+defineProps<{
+  title?: string;
+  type?: string;
+  icon?: string;
+  desc1?: string;
+  desc2?: string;
+  isTheme?: string;
+}>();
 </script>
 
 <template>

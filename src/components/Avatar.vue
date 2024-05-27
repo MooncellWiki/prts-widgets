@@ -1,28 +1,11 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent } from "vue";
-
-import { PRTS_BASE_DOMAIN } from "@/utils/consts";
+<script setup lang="ts">
 import { getImagePath } from "@/utils/utils";
-
-export default defineComponent({
-  name: "Avatar",
-  props: {
-    profession: { type: String, required: true },
-    rarity: { type: Number, required: true },
-    name: String,
-    size: {
-      type: String as PropType<"sm" | "xs">,
-      default: "",
-    },
-  },
-  setup() {
-    return {
-      getImagePath,
-      domain: PRTS_BASE_DOMAIN,
-    };
-  },
-});
+defineProps<{
+  profession: string;
+  rarity: number;
+  name?: string;
+  size?: "sm" | "xs";
+}>();
 </script>
 
 <template>

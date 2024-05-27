@@ -1,6 +1,6 @@
-<script lang="ts">
-import type { PropType, Ref } from "vue";
-import { defineComponent, inject } from "vue";
+<script setup lang="ts">
+import type { Ref } from "vue";
+import { inject } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
@@ -10,48 +10,34 @@ import { getImagePath } from "@/utils/utils";
 import Equip from "./Equip.vue";
 
 import type { CharEquips } from "./types";
+const props = withDefaults(
+  defineProps<{
+    char: CharEquips;
+    show?: boolean;
+  }>(),
+  {
+    show: false,
+  },
+);
+const emit = defineEmits<{
+  "update:show": [boolean];
+}>();
 
-export default defineComponent({
-  name: "SubAvatar",
-  components: {
-    Equip,
-  },
-  props: {
-    char: {
-      type: Object as PropType<CharEquips>,
-      required: true,
-    },
-    show: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  emits: ["update:show"],
-  setup(props, { emit }) {
-    const showInfo = useVModel(props, "show", emit);
-    const showChars = inject("showChars") as Ref<string[]>;
-    const toggleShow = (c: CharEquips) => {
-      if (showChars.value.includes(c.char.name)) {
-        showInfo.value = false;
-        showChars.value.splice(
-          showChars.value.findIndex((n) => n == c.char.name),
-          1,
-        );
-      } else {
-        showInfo.value = true;
-        showChars.value.push(c.char.name);
-      }
-    };
-    return {
-      getImagePath,
-      toggleShow,
-      showInfo,
-      showChars,
-      LANGUAGES,
-      locale: getLanguage(),
-    };
-  },
-});
+const showInfo = useVModel(props, "show", emit);
+const showChars = inject("showChars") as Ref<string[]>;
+const toggleShow = (c: CharEquips) => {
+  if (showChars.value.includes(c.char.name)) {
+    showInfo.value = false;
+    showChars.value.splice(
+      showChars.value.findIndex((n) => n == c.char.name),
+      1,
+    );
+  } else {
+    showInfo.value = true;
+    showChars.value.push(c.char.name);
+  }
+};
+const locale = getLanguage();
 </script>
 
 <template>

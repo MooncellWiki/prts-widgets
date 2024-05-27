@@ -1,67 +1,65 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { computed, defineComponent, onMounted, ref } from "vue";
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
 
 import { getImagePath } from "@/utils/utils";
 
 import { TipMap, bgMap, classMap } from "./consts";
-
-export default defineComponent({
-  props: {
-    tile: String,
-    tileHeightType: String,
-    tokens: { type: Array as PropType<string[]> },
-    black: { type: String, default: "" },
+const props = withDefaults(
+  defineProps<{
+    tile: string;
+    tileHeightType: string;
+    tokens: string[];
+    black: string;
+  }>(),
+  {
+    black: "",
   },
-  setup(props) {
-    const self = ref();
-    const style = computed(() => {
-      const result = {} as Record<string, string>;
-      if (bgMap[props.tile!])
-        result.backgroundImage = `url(${getImagePath(bgMap[props.tile!])})`;
+);
 
-      for (const token of props.tokens || []) {
-        if (token && bgMap[token])
-          result.backgroundImage = `url(${getImagePath(bgMap[token])})`;
-      }
+const self = ref();
+const style = computed(() => {
+  const result = {} as Record<string, string>;
+  if (bgMap[props.tile!])
+    result.backgroundImage = `url(${getImagePath(bgMap[props.tile!])})`;
 
-      if (
-        props.tile === "grass" &&
-        (props.tileHeightType === "1" || props.tileHeightType === "HIGHLAND")
-      ) {
-        result.boxShadow = "5px 5px 8px black";
-        result.filter = "brightness(1.15)";
-        result.zIndex = "2";
-      }
+  for (const token of props.tokens || []) {
+    if (token && bgMap[token])
+      result.backgroundImage = `url(${getImagePath(bgMap[token])})`;
+  }
 
-      return result;
+  if (
+    props.tile === "grass" &&
+    (props.tileHeightType === "1" || props.tileHeightType === "HIGHLAND")
+  ) {
+    result.boxShadow = "5px 5px 8px black";
+    result.filter = "brightness(1.15)";
+    result.zIndex = "2";
+  }
+
+  return result;
+});
+
+onMounted(() => {
+  let content = "";
+  if (props.tile && TipMap[props.tile]) content += TipMap[props.tile];
+
+  for (const token of props.tokens || []) {
+    if (token && TipMap[token])
+      content += content ? `<br/> ${TipMap[token]}` : ` ${TipMap[token]}`;
+  }
+
+  if (content.length > 0) {
+    // @ts-expect-error tippy
+
+    tippy6(self.value, {
+      allowHTML: true,
+      content,
+      arrow: true,
+      theme: "light-border",
+      size: "large",
+      maxWidth: 250,
     });
-
-    onMounted(() => {
-      let content = "";
-      if (props.tile && TipMap[props.tile]) content += TipMap[props.tile];
-
-      for (const token of props.tokens || []) {
-        if (token && TipMap[token])
-          content += content ? `<br/> ${TipMap[token]}` : ` ${TipMap[token]}`;
-      }
-
-      if (content.length > 0) {
-        // @ts-expect-error tippy
-
-        tippy6(self.value, {
-          allowHTML: true,
-          content,
-          arrow: true,
-          theme: "light-border",
-          size: "large",
-          maxWidth: 250,
-        });
-      }
-    });
-
-    return { self, style, classMap };
-  },
+  }
 });
 </script>
 

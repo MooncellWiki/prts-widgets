@@ -1,27 +1,18 @@
-<script lang="ts">
-import { defineComponent } from "vue";
-
+<script setup lang="ts">
 import { PRTS_BASE_DOMAIN } from "@/utils/consts";
 import { charListData, getImagePath } from "@/utils/utils";
-
-export default defineComponent({
-  name: "Half",
-  props: {
-    profession: { type: String, required: true },
-    rarity: { type: Number, required: true },
-    logo: { type: String, required: true },
-    zh: String,
-    en: String,
-  },
-  setup() {
-    return { domain: PRTS_BASE_DOMAIN, charListData, getImagePath };
-  },
-});
+defineProps<{
+  profession: string;
+  rarity: number;
+  logo: string;
+  zh?: string;
+  en?: string;
+}>();
 </script>
 
 <template>
   <div class="half-container">
-    <a :href="`${domain}/w/${zh}`">
+    <a :href="`${PRTS_BASE_DOMAIN}/w/${zh}`">
       <div class="uh">
         <img :src="getImagePath(`干员图鉴_uh_${rarity}.png`)" />
       </div>

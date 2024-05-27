@@ -1,7 +1,6 @@
 <!-- 元素宽度小于等于640px -->
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent, ref, toRefs } from "vue";
+<script setup lang="ts">
+import { ref, toRefs } from "vue";
 
 import Avatar from "@/components/Avatar.vue";
 import { PRTS_BASE_DOMAIN } from "@/utils/consts";
@@ -9,36 +8,19 @@ import { PRTS_BASE_DOMAIN } from "@/utils/consts";
 import { useChar } from "./useChar";
 
 import type { Char } from "../utils";
+const props = defineProps<{
+  row: Char;
+  addTrust?: boolean; // 是否加算信赖
+  addPotential?: boolean; // 是否加算潜能
+}>();
 
-export default defineComponent({
-  name: "Card",
-  components: { Avatar },
-  props: {
-    row: { type: Object as PropType<Char>, required: true },
-    addTrust: Boolean, // 是否加算信赖
-    addPotential: Boolean, // 是否加算潜能
-  },
-  setup(props) {
-    const collapsed = ref(true);
-    const { addTrust, addPotential } = toRefs(props);
-    const { hp, atk, def, res, cost, reDeploy } = useChar(
-      props.row,
-      addTrust,
-      addPotential,
-    );
-
-    return {
-      collapsed,
-      hp,
-      atk,
-      def,
-      res,
-      cost,
-      reDeploy,
-      domain: PRTS_BASE_DOMAIN,
-    };
-  },
-});
+const collapsed = ref(true);
+const { addTrust, addPotential } = toRefs(props);
+const { hp, atk, def, res, cost, reDeploy } = useChar(
+  props.row,
+  addTrust,
+  addPotential,
+);
 </script>
 
 <template>
@@ -54,7 +36,7 @@ export default defineComponent({
       <div class="info">
         <div class="name">
           <div class="zh">
-            <a :href="`${domain}/w/${row.zh}`">
+            <a :href="`${PRTS_BASE_DOMAIN}/w/${row.zh}`">
               <div>{{ row.zh }}</div>
             </a>
           </div>

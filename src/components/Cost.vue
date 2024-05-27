@@ -1,7 +1,4 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent } from "vue";
-
+<script setup lang="ts">
 import { professionMap, sum } from "@/utils/utils";
 
 import Avatar from "./Avatar.vue";
@@ -15,28 +12,15 @@ export interface CostProps {
   mastery: [number, number, number]; // 技能专精
   uniequip: number; // 模组
 }
-
-export default defineComponent({
-  components: { Avatar },
-  props: {
-    rarity: { type: Number, required: true },
-    name: String,
-    profession: {
-      type: String as PropType<keyof typeof professionMap>,
-      required: true,
-    },
-    elite: Number, // 精英化
-    skill: Number, // 技能1-7
-    mastery: Array as PropType<number[]> as PropType<[number, number, number]>, // 技能专精
-    uniequip: Number, // 模组
-  },
-  setup() {
-    return {
-      sum,
-      professionMap,
-    };
-  },
-});
+defineProps<{
+  rarity: number;
+  name?: string;
+  profession: keyof typeof professionMap;
+  elite: number; // 精英化
+  skill: number; // 技能1-7
+  mastery: [number, number, number]; // 技能专精
+  uniequip: number; // 模组
+}>();
 </script>
 
 <template>

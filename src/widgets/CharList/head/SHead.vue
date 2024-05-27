@@ -1,11 +1,3 @@
-<script lang="ts">
-import { defineComponent } from "vue";
-
-export default defineComponent({
-  name: "SHead",
-});
-</script>
-
 <template>
   <div id="shead">
     <div id="avatar">头像</div>

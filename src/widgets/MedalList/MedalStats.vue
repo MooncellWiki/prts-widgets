@@ -1,48 +1,28 @@
-<script lang="ts">
-import { computed, defineComponent, ref, type PropType } from "vue";
+<script setup lang="ts">
+import { computed, ref } from "vue";
 
 import { NCard, NNumberAnimation, NStatistic, NTooltip } from "naive-ui";
 
 import type { MedalMetaData } from "./types";
+const props = defineProps<{
+  medalMetaData: MedalMetaData;
+}>();
 
-export default defineComponent({
-  components: {
-    NStatistic,
-    NCard,
-    NNumberAnimation,
-    NTooltip,
-  },
-  props: {
-    medalMetaData: {
-      type: Object as PropType<MedalMetaData>,
-      required: true,
-    },
-  },
-  setup(props) {
-    const showSecret = ref(false);
-    const statsData = computed(() => {
-      const result = {
-        star3: { data: [0, 0], name: "3★蚀刻章", indieEncrypt: true },
-        star2: { data: [0, 0], name: "2★蚀刻章", indieEncrypt: true },
-        star1: { data: [0, 0], name: "1★蚀刻章", indieEncrypt: true },
-        trim: { data: [0, 0], name: "镀层蚀刻章", indieEncrypt: false },
-        all: { data: [0, 0], name: "已有蚀刻章", indieEncrypt: false },
-      };
-      for (const medal of Object.values(props.medalMetaData.medal)) {
-        result.all.data[Number(medal.isHidden)]++;
-        result[`star${medal.rarity as 1 | 2 | 3}`].data[
-          Number(medal.isHidden)
-        ]++;
-        result.trim.data[Number(medal.isHidden)] += Number(medal.isTrim);
-      }
-      return result;
-    });
-
-    return {
-      statsData,
-      showSecret,
-    };
-  },
+const showSecret = ref(false);
+const statsData = computed(() => {
+  const result = {
+    star3: { data: [0, 0], name: "3★蚀刻章", indieEncrypt: true },
+    star2: { data: [0, 0], name: "2★蚀刻章", indieEncrypt: true },
+    star1: { data: [0, 0], name: "1★蚀刻章", indieEncrypt: true },
+    trim: { data: [0, 0], name: "镀层蚀刻章", indieEncrypt: false },
+    all: { data: [0, 0], name: "已有蚀刻章", indieEncrypt: false },
+  };
+  for (const medal of Object.values(props.medalMetaData.medal)) {
+    result.all.data[Number(medal.isHidden)]++;
+    result[`star${medal.rarity as 1 | 2 | 3}`].data[Number(medal.isHidden)]++;
+    result.trim.data[Number(medal.isHidden)] += Number(medal.isTrim);
+  }
+  return result;
 });
 </script>
 

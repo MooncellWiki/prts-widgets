@@ -1,8 +1,6 @@
-<script lang="ts">
+<script setup lang="ts">
 import {
-  PropType,
   Ref,
-  defineComponent,
   inject,
   onBeforeMount,
   onBeforeUpdate,
@@ -30,89 +28,80 @@ import {
 function getStatColor(type: string, stat: string): string {
   return Number(stat) * (statsStyleMap[type] ?? 1) >= 0 ? "#00B0FF" : "#FF6237";
 }
+const props = withDefaults(
+  defineProps<{
+    name: string;
+    data?: DOMStringMap[];
+    simple?: boolean;
+  }>(),
+  {
+    data: () => [],
+    simple: false,
+  },
+);
 
-export default defineComponent({
-  components: { NSpin },
-  props: {
-    name: { type: String, required: true },
-    data: { type: Array as PropType<DOMStringMap[]>, default: () => [] },
-    simple: { type: Boolean, default: false },
-  },
-  setup(props) {
-    const content = ref<DOMStringMap[]>([]);
-    const loading = ref(false);
-    const loadingCount = inject("loadingCount") as Ref<number>;
-    const { isDark } = useTheme();
-    const handleDark = () => {
-      const seps = document.querySelectorAll(
-        ".majorsep,.minorsep,.term,.iconfilter",
-      );
-      for (const ele of Array.from(seps)) {
-        if (isDark.value) {
-          ele.classList.add("dark");
-        } else {
-          ele.classList.remove("dark");
-        }
-      }
-    };
-    watch(isDark, () => {
-      handleDark();
-    });
-    onBeforeMount(async () => {
-      loading.value = true;
-      loadingCount.value += 1;
-      if (props.data.length > 0) {
-        content.value = props.data;
-      } else {
-        const rawdata = await getEquipData(props.name ?? "");
-        content.value = rawdata ?? [];
-      }
-      for (const e of content.value) {
-        for (const v in e) {
-          e[v] = e[v]
-            ?.replaceAll(/....UNIQ.*?QINU..../g, "")
-            .replaceAll("[[分类:对原文有修正的页面]]", "");
-          if (!v.match("mat")) {
-            e[v] = processLink(e[v] ?? "");
-          }
-        }
-        if (e.trait?.match(/.START_WIDGET.*?END_WIDGET/g))
-          e.trait = await fixAtkRange(e.trait ?? "", props.name, e.name ?? "");
-      }
-      const seps = document.querySelectorAll(
-        ".majorsep,.minorsep,.term,.iconfilter",
-      );
-      for (const ele of Array.from(seps)) {
-        if (isDark.value) {
-          ele.classList.add("dark");
-        } else {
-          ele.classList.remove("dark");
-        }
-      }
-      loading.value = false;
-      loadingCount.value -= 1;
-    });
-    onMounted(() => {
-      updateTippy();
-      handleDark();
-    });
-    onBeforeUpdate(() => {
-      updateTippy();
-      handleDark();
-    });
-    return {
-      colorMap,
-      getImagePath,
-      content,
-      getStatColor,
-      customLabel,
-      processMaterial,
-      loading,
-      locale: getLanguage(),
-      isMobile,
-    };
-  },
+const content = ref<DOMStringMap[]>([]);
+const loading = ref(false);
+const loadingCount = inject("loadingCount") as Ref<number>;
+const { isDark } = useTheme();
+const handleDark = () => {
+  const seps = document.querySelectorAll(
+    ".majorsep,.minorsep,.term,.iconfilter",
+  );
+  for (const ele of Array.from(seps)) {
+    if (isDark.value) {
+      ele.classList.add("dark");
+    } else {
+      ele.classList.remove("dark");
+    }
+  }
+};
+watch(isDark, () => {
+  handleDark();
 });
+onBeforeMount(async () => {
+  loading.value = true;
+  loadingCount.value += 1;
+  if (props.data.length > 0) {
+    content.value = props.data;
+  } else {
+    const rawdata = await getEquipData(props.name ?? "");
+    content.value = rawdata ?? [];
+  }
+  for (const e of content.value) {
+    for (const v in e) {
+      e[v] = e[v]
+        ?.replaceAll(/....UNIQ.*?QINU..../g, "")
+        .replaceAll("[[分类:对原文有修正的页面]]", "");
+      if (!v.match("mat")) {
+        e[v] = processLink(e[v] ?? "");
+      }
+    }
+    if (e.trait?.match(/.START_WIDGET.*?END_WIDGET/g))
+      e.trait = await fixAtkRange(e.trait ?? "", props.name, e.name ?? "");
+  }
+  const seps = document.querySelectorAll(
+    ".majorsep,.minorsep,.term,.iconfilter",
+  );
+  for (const ele of Array.from(seps)) {
+    if (isDark.value) {
+      ele.classList.add("dark");
+    } else {
+      ele.classList.remove("dark");
+    }
+  }
+  loading.value = false;
+  loadingCount.value -= 1;
+});
+onMounted(() => {
+  updateTippy();
+  handleDark();
+});
+onBeforeUpdate(() => {
+  updateTippy();
+  handleDark();
+});
+const locale = getLanguage();
 </script>
 <template>
   <NSpin :show="loading">

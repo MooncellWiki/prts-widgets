@@ -1,5 +1,5 @@
-<script lang="ts">
-import { defineComponent, nextTick, ref, type PropType } from "vue";
+<script setup lang="ts">
+import { nextTick, ref } from "vue";
 
 import { NConfigProvider, NTabPane, NTabs } from "naive-ui";
 
@@ -9,53 +9,31 @@ import { useTheme } from "@/utils/theme";
 import VoiceLangTab from "./VoiceLangTab.vue";
 
 import type { VoiceLangTypeData } from "./types";
+const props = defineProps<{
+  data: Record<string, Record<string, string[]>>;
+  langTypes: VoiceLangTypeData;
+  mapping: Record<string, string>;
+  avatarMapping: Record<string, string>;
+  charMapping: Record<string, string>;
+}>();
 
-export default defineComponent({
-  components: { NConfigProvider, NTabs, NTabPane, VoiceLangTab },
-  props: {
-    data: {
-      type: Object as PropType<Record<string, Record<string, string[]>>>,
-      required: true,
-    },
-    langTypes: {
-      type: Object as PropType<VoiceLangTypeData>,
-      required: true,
-    },
-    mapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
-    avatarMapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
-    charMapping: {
-      type: Object as PropType<Record<string, string>>,
-      required: true,
-    },
-  },
-  setup(props) {
-    const { theme } = useTheme();
-    const i18nConfig = getNaiveUILocale();
+const { theme } = useTheme();
+const i18nConfig = getNaiveUILocale();
 
-    const tabs = ref(Object.values(props.langTypes).map((v) => v.name));
-    const valueRef = ref(tabs.value[0]);
+const tabs = ref(Object.values(props.langTypes).map((v) => v.name));
+const valueRef = ref(tabs.value[0]);
 
-    const nameToKey = Object.fromEntries(
-      Object.entries(props.langTypes).map(([key, value]) => [value.name, key]),
-    );
+const nameToKey = Object.fromEntries(
+  Object.entries(props.langTypes).map(([key, value]) => [value.name, key]),
+);
 
-    if (window.location.hash) {
-      const [lang, name] = decodeURIComponent(window.location.hash).split("：");
-      valueRef.value = lang.slice(1);
-      nextTick(() => {
-        document.querySelector(`#${name}`)?.scrollIntoView();
-      });
-    }
-
-    return { theme, i18nConfig, valueRef, tabs, nameToKey };
-  },
-});
+if (window.location.hash) {
+  const [lang, name] = decodeURIComponent(window.location.hash).split("：");
+  valueRef.value = lang.slice(1);
+  nextTick(() => {
+    document.querySelector(`#${name}`)?.scrollIntoView();
+  });
+}
 </script>
 
 <template>

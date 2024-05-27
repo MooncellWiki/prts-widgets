@@ -1,42 +1,25 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { defineComponent } from "vue";
-
+<script setup lang="ts">
 import { useVModel } from "@vueuse/core";
 import { NSelect } from "naive-ui";
 
 import type { SelectGroupOption, SelectOption } from "naive-ui";
-
-export default defineComponent({
-  name: "FilterSub",
-  components: {
-    NSelect,
+const props = withDefaults(
+  defineProps<{
+    title?: string;
+    placeholder?: string;
+    options?: SelectOption[] | SelectGroupOption[];
+    selected: string[];
+    disabled?: boolean;
+  }>(),
+  {
+    options: () => [],
+    disabled: false,
   },
-  props: {
-    title: String,
-    placeholder: String,
-    options: {
-      type: Array as PropType<SelectOption[] | SelectGroupOption[]>,
-      default: () => [],
-    },
-    selected: {
-      type: Array as PropType<string[]>,
-      default: () => [],
-      required: true,
-    },
-    disabled: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  emits: ["update:selected"],
-  setup(props, { emit }) {
-    const value = useVModel(props, "selected", emit);
-    return {
-      value,
-    };
-  },
-});
+);
+const emit = defineEmits<{
+  "update:selected": [string[]];
+}>();
+const value = useVModel(props, "selected", emit);
 </script>
 
 <template>

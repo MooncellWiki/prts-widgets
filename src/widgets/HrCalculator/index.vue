@@ -1,6 +1,5 @@
-<script lang="ts">
-import type { PropType } from "vue";
-import { computed, defineComponent, nextTick, reactive, ref, watch } from "vue";
+<script setup lang="ts">
+import { computed, nextTick, reactive, ref, watch } from "vue";
 
 import { useBreakpoints } from "@vueuse/core";
 
@@ -29,132 +28,107 @@ import type { Source } from "./utils";
 function isOnly(s: Source) {
   return !s.obtainMethod.some((v) => v.includes("寻访"));
 }
-export default defineComponent({
-  components: { Checkbox, FilterRow, Avatar },
-  props: {
-    source: { type: Array as PropType<Source[]>, default: () => [] },
+const props = withDefaults(
+  defineProps<{
+    source?: Source[];
+  }>(),
+  {
+    source: () => [],
   },
-  setup(props) {
-    const breakpoints = useBreakpoints({ xs: 640 });
-    const xs = breakpoints.smallerOrEqual("xs");
-    const value = reactive(new Char(0));
-    const shortcutParam = new URLSearchParams(window.location.search).get(
-      "filter",
-    );
-    const shortcutUrl = computed(
-      () =>
-        `${window.location.origin}${
-          window.location.pathname
-        }?${new URLSearchParams({ filter: value.dump() })}`,
-    );
-    const selected = computed(() => {
-      return all.map((v, i) => {
-        return value.bitmap.get(i) !== 0;
-      });
-    });
-    function onTagClick(i: number) {
-      if (value.bitmap.get(i) === 0) value.bitmap.set(i);
-      else value.bitmap.clear(i);
-    }
+);
 
-    const isClassEmpty = computed(() => {
-      return value.isProfessionEmpty();
-    });
-    const isPositionEmpty = computed(() => {
-      return value.isPositionEmpty();
-    });
-    const isRarityEmpty = computed(() => {
-      return value.isRarityEmpty();
-    });
-    const isTagEmpty = computed(() => {
-      return value.isTagEmpty();
-    });
-    function calc() {
-      const result: Record<number | string, { charIndict: Set<number> }> = {};
-      for (const [charIndex, c] of props.source.entries()) {
-        for (const set of c.subset) {
-          if ((value.bitmap.value | set) !== value.bitmap.value) continue;
-          if (c.rarity === 5 && !can5(set)) continue;
-          if (!result[set]) {
-            result[set] = {
-              charIndict: new Set(),
-            };
-          }
-          result[set].charIndict.add(charIndex);
-        }
-      }
-      const list: Array<{ tags: number; charIndict: number[]; score: number }> =
-        [];
-      for (const k of Object.keys(result)) {
-        const key = Number.parseInt(k);
-        const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
-          return props.source[b].rarity - props.source[a].rarity;
-        });
-
-        let acc = 0;
-        for (const cur of charIndict) {
-          let s = props.source[cur].rarity + 1;
-          if (s === 1) s = 3.5;
-          acc += s;
-        }
-        list.push({
-          tags: key,
-          charIndict,
-          score: acc / charIndict.length,
-        });
-      }
-      list.sort((a, b) => {
-        const rarity = b.score - a.score;
-        if (rarity !== 0) return rarity;
-        return a.charIndict.length - b.charIndict.length;
-      });
-      return list;
-    }
-    const result = ref<
-      Array<{
-        tags: number;
-        charIndict: number[];
-        score: number;
-      }>
-    >([]);
-    watch(value, () => {
-      nextTick(() => {
-        result.value = calc();
-      });
-    });
-    if (shortcutParam) {
-      value.load(shortcutParam);
-      result.value = calc();
-    }
-
-    function copyUrl() {
-      return navigator.clipboard.writeText(shortcutUrl.value);
-    }
-    return {
-      value,
-      shortcutUrl,
-      profession,
-      position,
-      rarity,
-      tag,
-      professionIndex,
-      positionIndex,
-      rarityIndex,
-      tagIndex,
-      selected,
-      onTagClick,
-      isClassEmpty,
-      isPositionEmpty,
-      isRarityEmpty,
-      isTagEmpty,
-      result,
-      number2names,
-      isOnly,
-      copyUrl,
-      xs,
-    };
-  },
+const breakpoints = useBreakpoints({ xs: 640 });
+const xs = breakpoints.smallerOrEqual("xs");
+const value = reactive(new Char(0));
+const shortcutParam = new URLSearchParams(window.location.search).get("filter");
+const shortcutUrl = computed(
+  () =>
+    `${window.location.origin}${
+      window.location.pathname
+    }?${new URLSearchParams({ filter: value.dump() })}`,
+);
+const selected = computed(() => {
+  return all.map((v, i) => {
+    return value.bitmap.get(i) !== 0;
+  });
 });
+function onTagClick(i: number) {
+  if (value.bitmap.get(i) === 0) value.bitmap.set(i);
+  else value.bitmap.clear(i);
+}
+
+const isClassEmpty = computed(() => {
+  return value.isProfessionEmpty();
+});
+const isPositionEmpty = computed(() => {
+  return value.isPositionEmpty();
+});
+const isRarityEmpty = computed(() => {
+  return value.isRarityEmpty();
+});
+const isTagEmpty = computed(() => {
+  return value.isTagEmpty();
+});
+function calc() {
+  const result: Record<number | string, { charIndict: Set<number> }> = {};
+  for (const [charIndex, c] of props.source.entries()) {
+    for (const set of c.subset) {
+      if ((value.bitmap.value | set) !== value.bitmap.value) continue;
+      if (c.rarity === 5 && !can5(set)) continue;
+      if (!result[set]) {
+        result[set] = {
+          charIndict: new Set(),
+        };
+      }
+      result[set].charIndict.add(charIndex);
+    }
+  }
+  const list: Array<{ tags: number; charIndict: number[]; score: number }> = [];
+  for (const k of Object.keys(result)) {
+    const key = Number.parseInt(k);
+    const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
+      return props.source[b].rarity - props.source[a].rarity;
+    });
+
+    let acc = 0;
+    for (const cur of charIndict) {
+      let s = props.source[cur].rarity + 1;
+      if (s === 1) s = 3.5;
+      acc += s;
+    }
+    list.push({
+      tags: key,
+      charIndict,
+      score: acc / charIndict.length,
+    });
+  }
+  list.sort((a, b) => {
+    const rarity = b.score - a.score;
+    if (rarity !== 0) return rarity;
+    return a.charIndict.length - b.charIndict.length;
+  });
+  return list;
+}
+const result = ref<
+  Array<{
+    tags: number;
+    charIndict: number[];
+    score: number;
+  }>
+>([]);
+watch(value, () => {
+  nextTick(() => {
+    result.value = calc();
+  });
+});
+if (shortcutParam) {
+  value.load(shortcutParam);
+  result.value = calc();
+}
+
+function copyUrl() {
+  return navigator.clipboard.writeText(shortcutUrl.value);
+}
 </script>
 
 <template>
