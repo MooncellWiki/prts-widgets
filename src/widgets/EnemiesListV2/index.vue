@@ -28,7 +28,7 @@ import type {
 
 const enemyData = ref<EnemyData[]>([]);
 const keyword = ref("");
-const tableRef = ref<DataTableInst>();
+const tableRef = ref<DataTableInst | null>(null);
 const dimensionPrecedence = [
   "SS",
   "S+",
@@ -360,7 +360,7 @@ const handleUpdateFilter = (
       </div>
       <NDataTable
         v-show="!isIconMode"
-        ref="table"
+        ref="tableRef"
         class="my-2"
         :bordered="false"
         :columns="columns"
