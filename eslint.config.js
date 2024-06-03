@@ -1,5 +1,5 @@
 import js from "@eslint/js";
-import unocss from "@unocss/eslint-config/flat";
+import pluginUnoCSS from "@unocss/eslint-plugin";
 import pluginImport from "eslint-plugin-import-x";
 import configPrettierRecommended from "eslint-plugin-prettier/recommended";
 import pluginUnicorn from "eslint-plugin-unicorn";
@@ -27,6 +27,9 @@ export const lintEnv = {
       ...globals.commonjs,
       ...globals.node,
     },
+  },
+  linterOptions: {
+    reportUnusedDisableDirectives: true,
   },
 };
 
@@ -148,6 +151,19 @@ export const ignores = {
   ignores: ["**/spine/runtime", "**/.husky", "**/dist"],
 };
 
+export const unocss = [
+  {
+    name: "unocss",
+    plugins: {
+      unocss: pluginUnoCSS,
+    },
+    rules: {
+      "unocss/order": "warn",
+      "unocss/blocklist": "error",
+    },
+  },
+];
+
 export default [
   lintEnv,
   js.configs.recommended,
@@ -157,5 +173,5 @@ export default [
   ...prettier,
   ...unicorn,
   ignores,
-  unocss,
+  ...unocss,
 ];
