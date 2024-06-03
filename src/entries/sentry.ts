@@ -8,7 +8,6 @@ Sentry.init({
     Sentry.breadcrumbsIntegration({
       console: false,
     }),
-    Sentry.captureConsoleIntegration(),
     Sentry.contextLinesIntegration(),
     Sentry.browserTracingIntegration(),
     Sentry.httpClientIntegration(),
