@@ -50,8 +50,8 @@ const selectNone = () => selectedOptions.value.splice(0);
           v-for="(option, index) in options"
           :key="index"
           :disabled="disabled"
-          strong
           secondary
+          strong
           :type="selectedOptions.includes(option) ? 'info' : 'default'"
           class="m-1"
           @click="onTagClick(option)"

@@ -1,20 +1,18 @@
 import * as Sentry from "@sentry/browser";
-import {
-  httpClientIntegration,
-  contextLinesIntegration,
-} from "@sentry/integrations";
 
 Sentry.init({
   dsn: location.host.includes("prts")
-    ? "https://dc4bd835a0a1de41d7107d3eb1dbf4e1@ingest.sentry.mooncell.wiki/5"
-    : "https://e95fe8bc65f2c314caeb986d048bed5c@ingest.sentry.mooncell.wiki/6",
+    ? "https://73af36ee35564fe4946285b451a8405a@ingest.sentry.mooncell.wiki/4507366072188928"
+    : "https://01082a530240c908ac0d34ffe79729a2@ingest.sentry.mooncell.wiki/4507366079070208",
   integrations: [
     Sentry.breadcrumbsIntegration({
       console: false,
     }),
+    Sentry.captureConsoleIntegration(),
+    Sentry.contextLinesIntegration(),
     Sentry.browserTracingIntegration(),
-    httpClientIntegration(),
-    contextLinesIntegration(),
+    Sentry.httpClientIntegration(),
+    Sentry.contextLinesIntegration(),
   ],
 
   sampleRate: 0.01,
