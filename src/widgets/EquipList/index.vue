@@ -133,9 +133,11 @@ const updateHash = () => {
   if (states.value.sub.length > 0) {
     hash.sub = states.value.sub.join("-");
   } else delete hash.sub;
-  sortStates.value.sort[0].mode == "default"
-    ? delete hash.sort
-    : (hash.sort = sortStates.value.sort[0].mode);
+  if (sortStates.value.sort[0].mode == "default") {
+    delete hash.sort;
+  } else {
+    hash.sort = sortStates.value.sort[0].mode;
+  }
   hash.filter = sortStates.value.filter
     .filter((v) => {
       return v.mode == "all" ? false : true;
