@@ -151,18 +151,16 @@ export const ignores = {
   ignores: ["**/spine/runtime", "**/.husky", "**/dist"],
 };
 
-export const unocss = [
-  {
-    name: "unocss",
-    plugins: {
-      unocss: pluginUnoCSS,
-    },
-    rules: {
-      "unocss/order": "warn",
-      "unocss/blocklist": "error",
-    },
+export const unocss = {
+  name: "unocss",
+  plugins: {
+    unocss: pluginUnoCSS,
   },
-];
+  rules: {
+    "unocss/order": "warn",
+    "unocss/blocklist": "error",
+  },
+};
 
 export default [
   lintEnv,
@@ -173,5 +171,5 @@ export default [
   ...prettier,
   ...unicorn,
   ignores,
-  ...unocss,
+  unocss,
 ];
