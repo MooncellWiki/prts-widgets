@@ -153,6 +153,7 @@ const updateHash = () => {
     .map((v) => {
       let value = "";
       if (v.mode == "addtime") {
+        v.value = typeof v.value == "string" ? [v.value] : v.value;
         value = (v.value as string[]).join("-");
       } else if (v.mode == "mission2opt") {
         value = v.value as string;
