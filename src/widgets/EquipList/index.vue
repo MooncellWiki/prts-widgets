@@ -420,7 +420,7 @@ onBeforeMount(async () => {
   rawEquipData.value = charData;
   timeData.value = time.map((i) => {
     return {
-      label: new Date(i.time * 1000).toLocaleDateString(),
+      label: new Date(i.time * 1000).toLocaleDateString(locale),
       value: i.time.toString(),
     };
   });

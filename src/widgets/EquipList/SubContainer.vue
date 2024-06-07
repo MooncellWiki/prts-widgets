@@ -68,7 +68,7 @@ const locale = getLanguage();
         }}</span>
       </div>
       <div v-if="groupby == 'time'">
-        {{ new Date(Number(title) * 1000).toLocaleDateString() }}
+        {{ new Date(Number(title) * 1000).toLocaleDateString(locale) }}
       </div>
       <div v-if="groupby == 'opt'">
         <a :href="`/w/${title}`">
