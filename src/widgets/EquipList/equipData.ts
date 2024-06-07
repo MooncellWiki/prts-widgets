@@ -1,4 +1,4 @@
-import { CargoEquip } from "./types";
+import { CargoEquip, EquipTime } from "./types";
 import { recoverHTML } from "./utils";
 
 export async function getEquipData(name: string): Promise<DOMStringMap[]> {
@@ -17,7 +17,7 @@ export async function getEquipDataAll(): Promise<
       limit: "5000",
       tables: "char_mod",
       fields:
-        "_pageName=opt,name=name,type=type,color=color,hp__full=hp,atk__full=atk,def__full=def,res__full=res,time__full=time,cost__full=cost,block__full=block,atkspd__full=atkspd,other__full=other,traitadd=add,trait,talent2,talent3,lv,favor,mat,mat2,mat3,mission1,mission2",
+        "_pageName=opt,name=name,type=type,color=color,hp__full=hp,atk__full=atk,def__full=def,res__full=res,time__full=time,cost__full=cost,block__full=block,atkspd__full=atkspd,other__full=other,traitadd=add,mission2Operation=mission2opt,trait,talent2,talent3,lv,favor,mat,mat2,mat3,mission1,mission2",
     })}`,
   );
   const json: { cargoquery: { title: CargoEquip }[] } = await resp.json();
@@ -78,6 +78,7 @@ export async function getEquipDataAll(): Promise<
         talent3: recoverHTML(e.talent3),
         mission1: recoverHTML(e.mission1),
         mission2: recoverHTML(e.mission2),
+        mission2opt: e.mission2opt,
         mat: recoverHTML(e.mat),
         mat2: recoverHTML(e.mat2),
         mat3: recoverHTML(e.mat3),
@@ -88,4 +89,10 @@ export async function getEquipDataAll(): Promise<
     result[opt] = map;
   }
   return result;
+}
+
+export async function getEquipAddedTime(): Promise<EquipTime[]> {
+  const resp = await fetch(`/rest.php/v1/page/干员模组一览%2Ftime`);
+  const json = await resp.json();
+  return JSON.parse(json.source);
 }

@@ -19,22 +19,37 @@ const props = withDefaults(
     show: false,
   },
 );
+const shadowColor: Record<string, string> = {
+  red: "#ef4444",
+  green: "#84cc16",
+  yellow: "#f59e0b",
+  blue: "#3b82f6",
+  grey: "#52525b",
+};
 const emit = defineEmits<{
   "update:show": [boolean];
 }>();
 
 const showInfo = useVModel(props, "show", emit);
-const showChars = inject("showChars") as Ref<string[]>;
+const showEquips = inject("showEquips") as Ref<string[]>;
 const toggleShow = (c: CharEquips) => {
-  if (showChars.value.includes(c.char.name)) {
+  if (
+    c.equips.some((e) => !!e["name"] && showEquips.value.includes(e["name"]))
+  ) {
+    for (const equip of props.char.equips) {
+      if (!!equip["name"] && showEquips.value.includes(equip["name"])) {
+        const ind = showEquips.value.indexOf(equip["name"]);
+        showEquips.value.splice(ind, 1);
+      }
+    }
     showInfo.value = false;
-    showChars.value.splice(
-      showChars.value.findIndex((n) => n == c.char.name),
-      1,
-    );
   } else {
+    for (const equip of props.char.equips) {
+      if (!!equip["name"] && !showEquips.value.includes(equip["name"])) {
+        showEquips.value.push(equip["name"]);
+      }
+    }
     showInfo.value = true;
-    showChars.value.push(c.char.name);
   }
 };
 const locale = getLanguage();
@@ -43,13 +58,37 @@ const locale = getLanguage();
 <template>
   <div class="flex flex-col" :style="{ width: showInfo ? '100%' : 'auto' }">
     <div class="flex">
-      <img
-        class="m-[2px] cursor-pointer"
-        :src="getImagePath(`头像_${char.char.name}_2.png`)"
-        width="60"
-        height="60"
+      <div
+        class="relative m-[2px] inline-block h-[60px] w-[60px] cursor-pointer"
         @click="toggleShow(char)"
-      />
+      >
+        <img
+          :src="getImagePath(`头像_${char.char.name}_2.png`)"
+          width="60"
+          height="60"
+        />
+        <span class="absolute bottom-[-8%] left-0 font-size-[18px] font-black">
+          <span
+            v-for="e in char.equips"
+            :key="e.name"
+            class="mx-0.5"
+            :style="{
+              filter:
+                `drop-shadow(0 1px 0.8px ${shadowColor[e.color!] ?? 'grey'}) ` +
+                `drop-shadow(0 -1px 0.8px ${shadowColor[e.color!] ?? 'grey'}) ` +
+                `drop-shadow(1px 0 0.8px ${shadowColor[e.color!] ?? 'grey'}) ` +
+                `drop-shadow(-1px 0 0.8px ${shadowColor[e.color!] ?? 'grey'}) `,
+            }"
+          >
+            <img
+              :src="getImagePath(`模组后缀_${e.type?.slice(-1)}.png`)"
+              class="h-[10px] w-[10px]"
+              width="10"
+              height="10"
+            />
+          </span>
+        </span>
+      </div>
       <div v-if="showInfo" class="w-full flex items-center justify-center">
         <span v-if="locale == LANGUAGES.JA" class="font-bold">
           {{ char.char.nameJP ?? char.char.name }}

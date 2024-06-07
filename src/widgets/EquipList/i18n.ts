@@ -232,7 +232,7 @@ export const customLabel = {
     subtypeLabel: "职业分支",
     subPlaceholder: "输入或在菜单中选择",
     subtypeMap: customSubtype["zh"],
-    tableCollapse: "排序和筛选",
+    tableCollapse: "模组排序和筛选",
     tableSortLabel: "排序",
     tableFilterLabel: "筛选",
     typeOptions: [
@@ -258,13 +258,15 @@ export const customLabel = {
     sortOptions: {
       yes: "有",
       no: "无",
-      asc: "升序",
-      desc: "降序",
+      asc: "实装时间升序",
+      desc: "实装时间降序",
       all: "全部",
       default: "默认",
       filterTalent: "新增天赋",
       filterTrait: "特性追加",
       filterType: "模组类型",
+      filterTime: "实装时间",
+      filterOpt: "任务关卡",
       other: "其他",
     },
     equipString: {
@@ -293,7 +295,7 @@ export const customLabel = {
     rarityLabel: "稀有度",
     tableSortLabel: "排序",
     tableFilterLabel: "篩選",
-    tableCollapse: "排序和篩選",
+    tableCollapse: "模組排序和篩選",
     subPlaceholder: "鍵入或在選單中選擇",
     subtypeLabel: "職業分支",
     subtypeMap: customSubtype["zh-tw"],
@@ -320,13 +322,15 @@ export const customLabel = {
     sortOptions: {
       yes: "有",
       no: "無",
-      asc: "遞增",
-      desc: "遞減",
+      asc: "實裝時間遞增",
+      desc: "實裝時間遞減",
       all: "全部",
       default: "預設",
       filterTalent: "新增天賦",
       filterTrait: "特性追加",
       filterType: "模組類型",
+      filterTime: "實裝時間",
+      filterOpt: "任務關卡",
       other: "其他",
     },
     equipString: {
@@ -355,7 +359,7 @@ export const customLabel = {
     rarityLabel: "Rarity",
     tableSortLabel: "Sort",
     tableFilterLabel: "Filter",
-    tableCollapse: "Sorting & Filtering",
+    tableCollapse: "Modules Sorting & Filtering",
     subPlaceholder: "Input or choose from menu",
     subtypeLabel: "Branches",
     subtypeMap: customSubtype["en"],
@@ -382,13 +386,15 @@ export const customLabel = {
     sortOptions: {
       yes: "Yes",
       no: "No",
-      asc: "Ascending",
-      desc: "Descending",
+      asc: "Added Time(Asc.)",
+      desc: "Added Time(Desc.)",
       all: "All",
       default: "Default",
       filterTalent: "New Talent",
       filterTrait: "New Trait",
       filterType: "Module Type",
+      filterTime: "Added Time",
+      filterOpt: "Mission Stage",
       other: "Others",
     },
     equipString: {
@@ -417,7 +423,7 @@ export const customLabel = {
     rarityLabel: "レアリティ",
     tableSortLabel: "並べ替え",
     tableFilterLabel: "絞り込み",
-    tableCollapse: "並べ替えと絞り込み",
+    tableCollapse: "モジュール並べ替えと絞り込み",
     subPlaceholder: "入力または選択してください",
     subtypeLabel: "クラス細分",
     subtypeMap: customSubtype["ja"],
@@ -444,13 +450,15 @@ export const customLabel = {
     sortOptions: {
       yes: "あり",
       no: "なし",
-      asc: "昇順",
-      desc: "降順",
+      asc: "追加時間昇順",
+      desc: "追加時間降順",
       all: "すべて",
       default: "デフォルト",
       filterTalent: "素質開放",
       filterTrait: "特性追加",
       filterType: "タイプ",
+      filterTime: "追加時間",
+      filterOpt: "ミッションステージ",
       other: "その他",
     },
     equipString: {
@@ -480,7 +488,7 @@ export const customLabel = {
     rarityLabel: "Rarity",
     tableSortLabel: "Sort",
     tableFilterLabel: "Filter",
-    tableCollapse: "Sorting & Filtering",
+    tableCollapse: "Module Sorting & Filtering",
     subPlaceholder: "Input or choose in menu",
     subtypeLabel: "Branches",
     subtypeMap: customSubtype["en"],
@@ -507,13 +515,15 @@ export const customLabel = {
     sortOptions: {
       yes: "Yes",
       no: "No",
-      asc: "Ascending",
-      desc: "Descending",
+      asc: "Added Time(Asc.)",
+      desc: "Added Time(Desc.)",
       all: "All",
       default: "Default",
       filterTalent: "New Talent",
       filterTrait: "New Trait",
       filterType: "Module Type",
+      filterTime: "Added Time",
+      filterOpt: "Mission Stage",
       other: "Others",
     },
     equipString: {
@@ -574,6 +584,14 @@ export function getSortOptions(locale: LANGUAGES) {
       value: "default",
     },
     {
+      label: customLabel[locale].sortOptions.asc,
+      value: "asc",
+    },
+    {
+      label: customLabel[locale].sortOptions.desc,
+      value: "desc",
+    },
+    {
       label: stats(locale, "hp"),
       value: "hp",
     },
@@ -604,19 +622,6 @@ export function getSortOptions(locale: LANGUAGES) {
   ];
 }
 
-export function getSortValue(locale: LANGUAGES) {
-  return [
-    {
-      label: customLabel[locale].sortOptions.asc,
-      value: "asc",
-    },
-    {
-      label: customLabel[locale].sortOptions.desc,
-      value: "desc",
-    },
-  ];
-}
-
 export function getFilterOptions(locale: LANGUAGES) {
   return [
     {
@@ -634,6 +639,14 @@ export function getFilterOptions(locale: LANGUAGES) {
     {
       label: customLabel[locale].sortOptions.filterType,
       value: "type",
+    },
+    {
+      label: customLabel[locale].sortOptions.filterTime,
+      value: "addtime",
+    },
+    {
+      label: customLabel[locale].sortOptions.filterOpt,
+      value: "mission2opt",
     },
     {
       label: stats(locale, "hp"),
