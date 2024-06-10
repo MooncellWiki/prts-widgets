@@ -143,7 +143,7 @@ const updateHash = () => {
   } else {
     hash.sort = sortStates.value.sort[0].mode;
   }
-  hash.list = String(listShow.value);
+  hash.list = listShow.value.toString();
   if (listShow.value) delete hash.group;
   else hash.group = group.value;
   hash.filter = sortStates.value.filter
