@@ -93,7 +93,10 @@ export async function getEquipDataAll(): Promise<
 
 export async function getEquipAddedTime(): Promise<EquipTime[]> {
   const resp = await fetch(
-    "https://prts.wiki/index.php?title=%E5%B9%B2%E5%91%98%E6%A8%A1%E7%BB%84%E4%B8%80%E8%A7%88/time&action=raw",
+    `/index.php?${new URLSearchParams({
+      title: "干员模组一览/time",
+      action: "raw",
+    })}`,
   );
   const json = await resp.json();
 
