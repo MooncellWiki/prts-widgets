@@ -62,7 +62,7 @@ export const vue = [
           jsx: true,
         },
         extraFileExtensions: [".vue"],
-        parser: "@typescript-eslint/parser",
+        parser: tseslint.parser,
         sourceType: "module",
       },
     },
