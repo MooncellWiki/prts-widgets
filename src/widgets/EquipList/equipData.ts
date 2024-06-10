@@ -92,7 +92,26 @@ export async function getEquipDataAll(): Promise<
 }
 
 export async function getEquipAddedTime(): Promise<EquipTime[]> {
-  const resp = await fetch(`/rest.php/v1/page/干员模组一览%2Ftime`);
+  const resp = await fetch(
+    "https://prts.wiki/index.php?title=%E5%B9%B2%E5%91%98%E6%A8%A1%E7%BB%84%E4%B8%80%E8%A7%88/time&action=raw",
+  );
   const json = await resp.json();
-  return JSON.parse(json.source);
+
+  return json;
+}
+
+export async function askOperators() {
+  const response = await fetch(
+    `/api.php?${new URLSearchParams({
+      action: "ask",
+      format: "json",
+      query:
+        "[[分类:拥有专属模组的干员]]|?干员外文名|?干员名jp|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
+      api_version: "2",
+      utf8: "1",
+    })}`,
+  );
+  const json = await response.json();
+
+  return json;
 }

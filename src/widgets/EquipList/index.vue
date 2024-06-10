@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeMount, onMounted, provide, watch } from "vue";
+import { computed, onBeforeMount, onMounted, provide, ref, watch } from "vue";
 
 import { useUrlSearchParams } from "@vueuse/core";
 import {
@@ -8,11 +8,11 @@ import {
   NCard,
   NCollapseTransition,
   NConfigProvider,
-  NSelect,
-  NInput,
   NEmpty,
+  NInput,
   NLayout,
   NScrollbar,
+  NSelect,
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
@@ -24,16 +24,16 @@ import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
 import { rarityMap, statsStyleMap } from "./consts";
-import { getEquipAddedTime, getEquipDataAll } from "./equipData";
+import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
 import {
   customLabel,
-  getFilterType,
-  getFilterRarity,
   getFilterOptions,
+  getFilterRarity,
+  getFilterType,
   getFilterValue,
+  getLocaleType,
   getSortOptions,
   getZhType,
-  getLocaleType,
 } from "./i18n";
 import { CharEquips, EquipRow } from "./types";
 
@@ -366,19 +366,11 @@ const initFromHash = () => {
 };
 onBeforeMount(async () => {
   loadingCount.value = 1;
-  const resp = await fetch(
-    `/api.php?${new URLSearchParams({
-      action: "ask",
-      format: "json",
-      query:
-        "[[分类:拥有专属模组的干员]]|?干员外文名|?干员名jp|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
-      api_version: "2",
-      utf8: "1",
-    })}`,
-  );
-  const json = await resp.json();
-  const equips = await getEquipDataAll();
-  const time = await getEquipAddedTime();
+  const [json, equips, time] = await Promise.all([
+    askOperators(),
+    getEquipDataAll(),
+    getEquipAddedTime(),
+  ]);
 
   const charData = Object.entries<Record<string, any>>(
     json.query.results,
