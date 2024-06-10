@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, provide, watch } from "vue";
+import { computed, onBeforeMount, onMounted, provide, ref, watch } from "vue";
 
 import { useUrlSearchParams } from "@vueuse/core";
 import {
   NButton,
   NButtonGroup,
   NCard,
-  NCollapse,
-  NCollapseItem,
   NCollapseTransition,
   NConfigProvider,
-  NSelect,
   NEmpty,
+  NInput,
   NLayout,
   NScrollbar,
+  NSelect,
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
@@ -25,23 +24,22 @@ import EquipTable from "./EquipTable.vue";
 import FilterSub from "./FilterSub.vue";
 import SubContainer from "./SubContainer.vue";
 import { rarityMap, statsStyleMap } from "./consts";
-import { getEquipDataAll } from "./equipData";
+import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
 import {
   customLabel,
-  getFilterType,
-  getFilterRarity,
   getFilterOptions,
+  getFilterRarity,
+  getFilterType,
   getFilterValue,
-  getSortOptions,
-  getSortValue,
-  getZhType,
   getLocaleType,
+  getSortOptions,
+  getZhType,
 } from "./i18n";
 import { CharEquips, EquipRow } from "./types";
 
 interface FilterValue {
   mode: string;
-  value: string;
+  value: string | string[];
 }
 function newFilterItem(): FilterValue {
   return {
@@ -61,10 +59,17 @@ const i18nConfig = getNaiveUILocale();
 const { theme, toggleDark } = useTheme();
 const locale = getLanguage();
 const hash = useUrlSearchParams("hash");
+const timeData = ref<
+  {
+    label: string;
+    value: string;
+  }[]
+>([]);
 const filterShow = ref(true);
+const equipFilterShow = ref(true);
 const listShow = ref(true);
-const showChars = ref<string[]>([]);
-provide("showChars", showChars);
+const showEquips = ref<string[]>([]);
+provide("showEquips", showEquips);
 const loadingCount = ref(0);
 provide("loadingCount", loadingCount);
 
@@ -103,7 +108,6 @@ const options = {
 };
 const sortOptions = {
   sortOption: getSortOptions(locale),
-  sortValue: getSortValue(locale),
   filterOption: getFilterOptions(locale),
 };
 const states = ref<Record<string, string[]>>({
@@ -115,6 +119,7 @@ const sortStates = ref<Record<string, FilterValue[]>>({
   filter: [newFilterItem()],
   sort: [newSortItem()],
 });
+const group = ref("sub");
 const updateHash = () => {
   if (states.value.type.length > 0) {
     hash.type = states.value.type
@@ -138,18 +143,77 @@ const updateHash = () => {
   } else {
     hash.sort = sortStates.value.sort[0].mode;
   }
+  hash.list = listShow.value.toString();
+  if (listShow.value) delete hash.group;
+  else hash.group = group.value;
   hash.filter = sortStates.value.filter
     .filter((v) => {
       return v.mode == "all" ? false : true;
     })
     .map((v) => {
-      return v.mode + "_" + v.value.slice(0, 1);
+      let value = "";
+      if (v.mode == "addtime") {
+        v.value = typeof v.value == "string" ? [v.value] : v.value;
+        value = (v.value as string[]).join("-");
+      } else if (v.mode == "mission2opt") {
+        value = v.value as string;
+      } else {
+        value = (v.value as string).slice(0, 1);
+      }
+      return v.mode + "_" + value;
     });
 };
 watch(states, updateHash, { deep: true });
 watch(sortStates, updateHash, { deep: true });
+watch(listShow, updateHash, { deep: true });
+watch(group, updateHash, { deep: true });
 
-const charEquipData = ref<Record<string, CharEquips[]>>({});
+const rawEquipData = ref<CharEquips[]>([]);
+const charEquipData = computed<Record<string, CharEquips[]>>(() => {
+  const result: Record<string, CharEquips[]> = {};
+  const term = group.value;
+  if (term == "time") {
+    for (const charEquip of rawEquipData.value) {
+      for (const equip of charEquip.equips) {
+        if (!result[equip["addtime"]!]) {
+          result[equip["addtime"]!] = [];
+        }
+        result[equip["addtime"]!].push({
+          char: charEquip.char,
+          equips: [equip],
+        });
+      }
+    }
+  } else if (term == "opt") {
+    for (const charEquip of rawEquipData.value) {
+      for (const equip of charEquip.equips) {
+        if (!result[equip["mission2opt"] ?? "unknown"]) {
+          result[equip["mission2opt"] ?? "unknown"] = [];
+        }
+        result[equip["mission2opt"] ?? "unknown"].push({
+          char: charEquip.char,
+          equips: [equip],
+        });
+      }
+    }
+  } else {
+    for (const charEquip of rawEquipData.value) {
+      if (!result[charEquip.char.subtype]) {
+        result[charEquip.char.subtype] = [];
+      }
+      result[charEquip.char.subtype].push(charEquip);
+    }
+  }
+  for (const key of Object.keys(result)) {
+    result[key].sort((a, b) => {
+      return a.char.rarity === b.char.rarity
+        ? b.char.id - a.char.id
+        : Number.parseInt(b.char.rarity as string) -
+            Number.parseInt(a.char.rarity as string);
+    });
+  }
+  return result;
+});
 const filterData = (data: DOMStringMap): boolean => {
   return sortStates.value.filter.every((v) => {
     if (v.mode == "all") return true;
@@ -167,6 +231,12 @@ const filterData = (data: DOMStringMap): boolean => {
         !!data["talent3"]?.match("新增天赋");
       return v.value == "yes" ? match : !match;
     }
+    if (v.mode == "addtime") {
+      return (v.value as string[]).includes(data[v.mode]!);
+    }
+    if (v.mode == "mission2opt") {
+      return !!data[v.mode]?.match(v.value as string);
+    }
     return v.value == "yes" ? data[v.mode] != "0" : data[v.mode] == "0";
   });
 };
@@ -176,18 +246,15 @@ const filteredCharEquipData = computed((): Record<string, CharEquips[]> => {
   for (const sub in charEquipData.value) {
     const ces = charEquipData.value[sub];
     const temp: CharEquips[] = [];
-    if (s.sub.length > 0 && !s.sub.includes(sub)) continue;
-    if (
-      s.type.length > 0 &&
-      !s.type.includes(getLocaleType(ces[0].char.type, locale))
-    )
-      continue;
     for (const ce of ces) {
-      if (
+      const rarityP =
         s.rarity.length > 0 &&
-        !s.rarity.includes(rarityMap[ce.char.rarity.toString()])
-      )
-        continue;
+        !s.rarity.includes(rarityMap[ce.char.rarity.toString()]);
+      const subP = s.sub.length > 0 && !s.sub.includes(ce.char.subtype);
+      const typeP =
+        s.type.length > 0 &&
+        !s.type.includes(getLocaleType(ce.char.type, locale));
+      if (rarityP || subP || typeP) continue;
       const data = ce.equips.filter((e) => filterData(e));
       if (data.length > 0)
         temp.push({
@@ -211,21 +278,40 @@ const CharEquipList = computed(() => {
             name: e.name ?? "",
             type: e.type ?? "",
             operator: char.char.name,
+            oprarity: char.char.rarity,
+            opid: char.char.id,
             data: e,
           };
         }),
       );
     }
   }
-  if (sortStates.value.sort[0].mode != "default") {
-    result.sort((x, y) => {
+  result.sort((x, y) => {
+    if (sortStates.value.sort[0].mode == "default") {
+      return x.oprarity === y.oprarity
+        ? y.opid - x.opid
+        : Number.parseInt(y.oprarity as string) -
+            Number.parseInt(x.oprarity as string);
+    } else if (sortStates.value.sort[0].mode == "asc") {
+      return x.data["addtime"] === y.data["addtime"]
+        ? y.opid - x.opid
+        : Number.parseInt(x.data["addtime"] ?? "0") -
+            Number.parseInt(y.data["addtime"] ?? "0");
+    } else if (sortStates.value.sort[0].mode == "desc") {
+      return x.data["addtime"] === y.data["addtime"]
+        ? y.opid - x.opid
+        : Number.parseInt(y.data["addtime"] ?? "0") -
+            Number.parseInt(x.data["addtime"] ?? "0");
+    } else {
       const mode = sortStates.value.sort[0].mode;
       const order = sortStates.value.sort[0].value == "asc" ? 1 : -1;
       const numx = x.data[mode + "3"] ? Number(x.data[mode + "3"]) : 0;
       const numy = y.data[mode + "3"] ? Number(y.data[mode + "3"]) : 0;
-      return (numx - numy) * order * (statsStyleMap[mode] ?? 1);
-    });
-  }
+      return numx === numy
+        ? y.opid - x.opid
+        : (numx - numy) * order * (statsStyleMap[mode] ?? 1);
+    }
+  });
   return result;
 });
 
@@ -237,9 +323,16 @@ const initFromHash = () => {
     if (k == "filter") {
       const res = typeof v == "string" ? [v] : v;
       sortStates.value.filter = res.map((e) => {
-        const mode = e.slice(0, -2);
-        const value = e.slice(-1);
-        return mode == "type"
+        const matches = e.match(/^(.*?)_(.*?)$/) as string[];
+        const mode = matches[1];
+        const value = matches[2];
+        if (mode == "addtime") {
+          return {
+            mode: mode,
+            value: value.split("-"),
+          };
+        }
+        return mode == "type" || mode == "mission2opt"
           ? {
               mode: mode,
               value: value,
@@ -263,22 +356,21 @@ const initFromHash = () => {
     if (k == "sub") {
       states.value[k] = (v as string).split("-");
     }
+    if (k == "list") {
+      listShow.value = v == "true" ? true : false;
+    }
+    if (k == "group") {
+      group.value = v as string;
+    }
   }
 };
-onMounted(async () => {
+onBeforeMount(async () => {
   loadingCount.value = 1;
-  const resp = await fetch(
-    `/api.php?${new URLSearchParams({
-      action: "ask",
-      format: "json",
-      query:
-        "[[分类:拥有专属模组的干员]]|?干员外文名|?干员名jp|?子职业|?干员序号|?稀有度|?职业|sort=子职业|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
-      api_version: "2",
-      utf8: "1",
-    })}`,
-  );
-  const json = await resp.json();
-  const equips = (await getEquipDataAll()) as Record<string, DOMStringMap[]>;
+  const [json, equips, time] = await Promise.all([
+    askOperators(),
+    getEquipDataAll(),
+    getEquipAddedTime(),
+  ]);
 
   const charData = Object.entries<Record<string, any>>(
     json.query.results,
@@ -293,31 +385,42 @@ onMounted(async () => {
         rarity: v.printouts["稀有度"][0] as string,
         id: v.printouts["干员序号"][0] as number,
       },
-      equips: equips[k],
+      equips: equips[k]
+        .map((e) => {
+          const t = time.find((et) => {
+            return et.equips.some((i) => {
+              return i.char == k && i.name == e["name"]!;
+            });
+          })?.time;
+          e["addtime"] = String(t ?? 0);
+          return e;
+        })
+        .sort((a, b) => {
+          const atail = a.type?.slice(-1) ?? "";
+          const btail = b.type?.slice(-1) ?? "";
+          if (atail == btail) return 0;
+          if (btail == "Δ") return -1;
+          if (atail == "X" && btail == "Y") return -1;
+          return 1;
+        }),
     };
   });
   for (const i of charData) {
     if (!subProfMap.value[i.char.type]) subProfMap.value[i.char.type] = [];
-
-    if (!charEquipData.value[i.char.subtype])
-      charEquipData.value[i.char.subtype] = [];
-
     if (!~subProfMap.value[i.char.type].indexOf(i.char.subtype))
       subProfMap.value[i.char.type].push(i.char.subtype);
-
-    charEquipData.value[i.char.subtype].push(i);
   }
-  for (const key of Object.keys(charEquipData.value)) {
-    charEquipData.value[key].sort((a, b) => {
-      return a.char.rarity === b.char.rarity
-        ? b.char.id - a.char.id
-        : Number.parseInt(b.char.rarity as string) -
-            Number.parseInt(a.char.rarity as string);
-    });
-  }
-
-  initFromHash();
+  rawEquipData.value = charData;
+  timeData.value = time.map((i) => {
+    return {
+      label: new Date(i.time * 1000).toLocaleDateString(locale),
+      value: i.time.toString(),
+    };
+  });
   loadingCount.value = 0;
+});
+onMounted(() => {
+  initFromHash();
 });
 const mobileStyle = () => {
   return isMobile() ? "padding: 5px" : undefined;
@@ -374,87 +477,111 @@ const mobileStyle = () => {
                   :disabled="loadingCount > 0"
                 />
               </tr>
-              <tr>
-                <div class="my-2">
-                  <NCollapse :default-expanded-names="isMobile() ? '' : 'sort'">
-                    <NCollapseItem
-                      name="sort"
-                      :title="customLabel[locale].tableCollapse"
-                    >
-                      <div class="flex flex-row items-center justify-center">
-                        <span class="basis-1/8">
-                          {{ customLabel[locale].tableFilterLabel }}
-                        </span>
-                        <div class="flex basis-7/8 flex-col items-center">
-                          <NButtonGroup size="small">
-                            <NButton
-                              type="default"
-                              class="my-1"
-                              @click="
-                                () => {
-                                  sortStates.filter.push({
-                                    mode: 'all',
-                                    value: 'yes',
-                                  });
-                                }
-                              "
-                            >
-                              <span class="mdi mdi-plus text-xl"></span>
-                            </NButton>
-                            <NButton
-                              type="default"
-                              class="my-1"
-                              @click="
-                                () => {
-                                  if (sortStates.filter.length > 1) {
-                                    sortStates.filter.pop();
-                                  }
-                                }
-                              "
-                            >
-                              <span class="mdi mdi-minus text-xl"></span>
-                            </NButton>
-                          </NButtonGroup>
-                          <div
-                            v-for="(v, i) in sortStates.filter"
-                            :key="i"
-                            class="w-full flex flex-row items-center"
-                          >
-                            <NSelect
-                              v-model:value="v.mode"
-                              class="m-1"
-                              :disabled="loadingCount > 0"
-                              :options="sortOptions.filterOption"
-                            />
-                            <NSelect
-                              v-model:value="v.value"
-                              class="m-1"
-                              :disabled="loadingCount > 0 || v.mode == 'all'"
-                              :options="getFilterValue(locale, v.mode)"
-                              :fallback-option="false"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div class="flex flex-row items-center justify-center">
-                        <span class="basis-1/8">
-                          {{ customLabel[locale].tableSortLabel }}
-                        </span>
-                        <div class="flex basis-7/8 flex-row items-center">
-                          <NSelect
-                            v-model:value="sortStates.sort[0].mode"
-                            class="m-1"
-                            :disabled="loadingCount > 0 || listShow == false"
-                            :options="sortOptions.sortOption"
-                          />
-                        </div>
-                      </div>
-                    </NCollapseItem>
-                  </NCollapse>
-                </div>
-              </tr>
             </tbody>
           </table>
+        </NCollapseTransition>
+      </NCard>
+      <NCard
+        :title="customLabel[locale].tableCollapse"
+        header-style="text-align: center;"
+        size="small"
+      >
+        <template #header-extra>
+          <div
+            class="m-1 cursor-pointer"
+            @click="equipFilterShow = !equipFilterShow"
+          >
+            <span v-if="filterShow" class="mdi mdi-chevron-up text-2xl" />
+            <span v-else class="mdi mdi-chevron-down text-2xl" />
+          </div>
+        </template>
+        <NCollapseTransition :show="equipFilterShow">
+          <div class="flex flex-row items-center justify-center">
+            <span class="basis-1/8">
+              {{ customLabel[locale].tableFilterLabel }}
+            </span>
+            <div class="flex basis-7/8 flex-col items-center">
+              <NButtonGroup size="small">
+                <NButton
+                  type="default"
+                  class="my-1"
+                  @click="
+                    () => {
+                      sortStates.filter.push({
+                        mode: 'all',
+                        value: 'yes',
+                      });
+                    }
+                  "
+                >
+                  <span class="mdi mdi-plus text-xl"></span>
+                </NButton>
+                <NButton
+                  type="default"
+                  class="my-1"
+                  @click="
+                    () => {
+                      if (sortStates.filter.length > 1) {
+                        sortStates.filter.pop();
+                      }
+                    }
+                  "
+                >
+                  <span class="mdi mdi-minus text-xl"></span>
+                </NButton>
+              </NButtonGroup>
+              <div
+                v-for="(v, i) in sortStates.filter"
+                :key="i"
+                class="w-full flex flex-row items-center"
+              >
+                <NSelect
+                  v-model:value="v.mode"
+                  class="m-1"
+                  :disabled="loadingCount > 0"
+                  :options="sortOptions.filterOption"
+                />
+                <NSelect
+                  v-if="v.mode == 'addtime'"
+                  v-model:value="v.value"
+                  class="m-1"
+                  :disabled="loadingCount > 0"
+                  :options="timeData"
+                  multiple
+                  clearable
+                  :fallback-option="false"
+                />
+                <NInput
+                  v-else-if="v.mode == 'mission2opt'"
+                  v-model:value="v.value as string"
+                  :disabled="loadingCount > 0"
+                  clearable
+                >
+                </NInput>
+                <NSelect
+                  v-else
+                  v-model:value="v.value"
+                  class="m-1"
+                  :disabled="loadingCount > 0 || v.mode == 'all'"
+                  :options="getFilterValue(locale, v.mode)"
+                  :fallback-option="false"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-row items-center justify-center">
+            <span class="basis-1/8">
+              {{ customLabel[locale].tableSortLabel }}
+            </span>
+            <div class="flex basis-7/8 flex-row items-center">
+              <NSelect
+                v-model:value="sortStates.sort[0].mode"
+                class="m-1"
+                :disabled="loadingCount > 0 || listShow == false"
+                :options="sortOptions.sortOption"
+              />
+            </div>
+          </div>
         </NCollapseTransition>
       </NCard>
       <NCard
@@ -464,6 +591,32 @@ const mobileStyle = () => {
         size="small"
       >
         <template #header-extra>
+          <NButtonGroup v-if="!listShow" size="small" class="mx-1">
+            <NButton
+              secondary
+              :disabled="loadingCount > 0"
+              :type="group == 'sub' ? 'info' : 'default'"
+              @click="group = 'sub'"
+            >
+              <span class="mdi mdi-shape text-xl" />
+            </NButton>
+            <NButton
+              secondary
+              :disabled="loadingCount > 0"
+              :type="group == 'time' ? 'info' : 'default'"
+              @click="group = 'time'"
+            >
+              <span class="mdi mdi-clock-time-eight text-xl" />
+            </NButton>
+            <NButton
+              secondary
+              :disabled="loadingCount > 0"
+              :type="group == 'opt' ? 'info' : 'default'"
+              @click="group = 'opt'"
+            >
+              <span class="mdi mdi-sword-cross text-xl" />
+            </NButton>
+          </NButtonGroup>
           <NButtonGroup size="small">
             <NButton
               secondary
@@ -490,6 +643,7 @@ const mobileStyle = () => {
               :key="subtype"
               :chars="chars"
               :title="subtype"
+              :groupby="group"
             />
           </div>
           <NEmpty

@@ -14,27 +14,31 @@ const props = withDefaults(
   defineProps<{
     title: string;
     chars?: CharEquips[];
+    groupby?: string;
   }>(),
   {
     chars: () => [],
+    groupby: () => "sub",
   },
 );
 
-const showChars = inject("showChars") as Ref<string[]>;
+const showEquips = inject("showEquips") as Ref<string[]>;
 const expandAll = () => {
   for (const char of props.chars) {
-    if (!showChars.value.includes(char.char.name)) {
-      showChars.value.push(char.char.name);
+    for (const equip of char.equips) {
+      if (!!equip["name"] && !showEquips.value.includes(equip["name"])) {
+        showEquips.value.push(equip["name"]);
+      }
     }
   }
 };
 const collapseAll = () => {
   for (const char of props.chars) {
-    if (showChars.value.includes(char.char.name)) {
-      showChars.value.splice(
-        showChars.value.findIndex((n) => n == char.char.name),
-        1,
-      );
+    for (const equip of char.equips) {
+      if (!!equip["name"] && showEquips.value.includes(equip["name"])) {
+        const ind = showEquips.value.indexOf(equip["name"]);
+        showEquips.value.splice(ind, 1);
+      }
     }
   }
 };
@@ -50,7 +54,7 @@ const locale = getLanguage();
     hoverable
   >
     <template #header>
-      <div class="flex items-center justify-center">
+      <div v-if="groupby == 'sub'" class="flex items-center justify-center">
         <span
           class="h-[40px] w-[40px] inline-flex items-center justify-center overflow-hidden bg-black align-text-bottom"
         >
@@ -62,6 +66,14 @@ const locale = getLanguage();
         <span class="inline-block text-center" style="width: 7em">{{
           customLabel[locale].subtypeMap[title] ?? title
         }}</span>
+      </div>
+      <div v-if="groupby == 'time'">
+        {{ new Date(Number(title) * 1000).toLocaleDateString(locale) }}
+      </div>
+      <div v-if="groupby == 'opt'">
+        <a :href="`/w/${title}`">
+          {{ title }}
+        </a>
       </div>
     </template>
     <template #header-extra>
@@ -78,7 +90,9 @@ const locale = getLanguage();
       <SubAvatar
         v-for="(char, ind) in chars"
         :key="ind"
-        :show="showChars.includes(char.char.name)"
+        :show="
+          char.equips.some((e) => !!e['name'] && showEquips.includes(e['name']))
+        "
         :char="char"
       />
     </div>

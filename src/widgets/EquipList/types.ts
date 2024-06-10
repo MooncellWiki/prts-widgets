@@ -45,11 +45,22 @@ export interface CargoEquip {
   mat3: string;
   mission1: string;
   mission2: string;
+  mission2opt: string;
 }
 
 export interface EquipRow {
   name: string;
   type: string;
   operator: string;
+  oprarity: string | number;
+  opid: number;
   data: DOMStringMap;
+}
+
+export interface EquipTime {
+  time: number;
+  equips: {
+    char: string;
+    name: string;
+  }[];
 }
