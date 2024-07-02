@@ -59,7 +59,7 @@ const locale = getLanguage();
   <div class="flex flex-col" :style="{ width: showInfo ? '100%' : 'auto' }">
     <div class="flex">
       <div
-        class="relative m-[2px] inline-block h-[60px] w-[60px] cursor-pointer"
+        class="relative m-[2px] inline-block h-[60px] w-[60px] flex-none cursor-pointer"
         @click="toggleShow(char)"
       >
         <img
@@ -82,9 +82,9 @@ const locale = getLanguage();
           >
             <img
               :src="getImagePath(`模组后缀_${e.type?.slice(-1)}.png`)"
-              class="h-[10px] w-[10px]"
-              width="10"
-              height="10"
+              class="h-[9px] w-[9px]"
+              width="9"
+              height="9"
             />
           </span>
         </span>

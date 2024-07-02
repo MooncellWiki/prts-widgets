@@ -1,9 +1,13 @@
 import type { CargoMemory, Medal, Memory } from "./types";
 
 export async function getOnlineDate() {
-  const resp = await fetch("/rest.php/v1/page/干员密录一览%2F密录上线时间");
-  const json = await resp.json();
-  const content = json.source as string;
+  const resp = await fetch(
+    `/index.php?${new URLSearchParams({
+      action: "raw",
+      title: "干员密录一览/密录上线时间",
+    })}`,
+  );
+  const content = await resp.text();
   const temp = content
     .split("\n")
     .map((line) => {
