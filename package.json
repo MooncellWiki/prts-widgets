@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "sourcemap": "source-map-explorer ./dist/*.js",
     "lint": "eslint .",
-    "lint:fix": "eslint --fix .",
+    "lint:fix": "eslint --fix",
     "prepare": "node .husky/install.mjs"
   },
   "dependencies": {
