@@ -1,4 +1,4 @@
-import { RarityRank } from "./types";
+import type { RarityRank } from "./types";
 
 /**
  * https://prts.wiki/id/52144 寻访规则
