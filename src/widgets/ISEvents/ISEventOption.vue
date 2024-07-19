@@ -9,6 +9,7 @@ defineProps<{
   desc1?: string;
   desc2?: string;
   isTheme?: string;
+  customBadgeText?: string;
 }>();
 </script>
 
@@ -51,6 +52,28 @@ defineProps<{
           "
         />
       </NBadge>
+      <NBadge
+        v-if="type === 'custom' && customBadgeText"
+        color="#666666"
+        :offset="[-22.5, 0]"
+      >
+        <NAvatar
+          color="#212121"
+          object-fit="scale-down"
+          :size="45"
+          :src="getImagePath(`${icon}.png`)"
+        />
+        <template #value>
+          <div class="w-max" v-html="customBadgeText"></div>
+        </template>
+      </NBadge>
+      <NAvatar
+        v-else-if="type === 'custom'"
+        color="#212121"
+        object-fit="scale-down"
+        :size="45"
+        :src="getImagePath(`${icon}.png`)"
+      />
     </template>
     <div v-html="desc1" />
     <template v-if="desc2" #footer>

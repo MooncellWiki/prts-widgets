@@ -43,6 +43,8 @@ for (const eventEle of Array.from(eventEles)) {
             desc1: choose.querySelectorAll(".desc1")[0]?.innerHTML,
             desc2: choose.querySelectorAll(".desc2")[0]?.innerHTML,
             dest: chooseData.dest,
+            customBadgeText:
+              choose.querySelectorAll(".customBadgeText")[0]?.innerHTML,
             index,
           };
         }),
