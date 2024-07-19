@@ -26,6 +26,7 @@ interface Option {
   desc2: string;
   dest: number;
   index: number;
+  customBadgeText?: string;
 }
 const props = withDefaults(
   defineProps<{
@@ -174,6 +175,7 @@ function dropJump(key: number, navIndex: number) {
                   :desc1="item.desc1"
                   :desc2="item.desc2"
                   :is-theme="isTheme"
+                  :custom-badge-text="item.customBadgeText"
                   @click="jump(item.dest)"
                 />
               </NSpace>
