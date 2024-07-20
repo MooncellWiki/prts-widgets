@@ -22,6 +22,7 @@ for (const entry of entries) {
 
 const templatesInput: Record<string, string> = {
   sentry: "src/entries/sentry.ts",
+  sw: "src/entries/sw.prts.ts",
   DisplayController: "src/entries/DisplayController.ts",
 };
 for (const template of templates) {
@@ -67,6 +68,7 @@ export default defineConfig(({ command }) => {
           sourcemapBaseUrl: "https://static.prts.wiki/widgets/production/",
           manualChunks(id) {
             if (id.includes("crypto-js")) return;
+            if (id.includes("workbox")) return;
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
             if (id.includes("hammer")) return;
