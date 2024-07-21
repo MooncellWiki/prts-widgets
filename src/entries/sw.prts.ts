@@ -15,6 +15,6 @@ registerRoute(
 );
 registerRoute(/^https:\/\/static\.prts\.wiki/, new CacheFirst());
 
-registerRoute(/^https:\/\/torappu\.prts\.wiki\/assets\//, new CacheFirst());
+// registerRoute(/^https:\/\/torappu\.prts\.wiki\/assets\//, new CacheFirst());
 
 setDefaultHandler(new StaleWhileRevalidate());
