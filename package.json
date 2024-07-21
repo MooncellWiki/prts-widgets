@@ -31,7 +31,9 @@
     "md5": "^2.3.0",
     "naive-ui": "^2.39.0",
     "vue": "^3.4.32",
-    "vue-draggable-plus": "^0.5.2"
+    "vue-draggable-plus": "^0.5.2",
+    "workbox-routing": "^7.1.0",
+    "workbox-strategies": "^7.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.7.0",

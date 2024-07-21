@@ -50,6 +50,12 @@ importers:
       vue-draggable-plus:
         specifier: ^0.5.2
         version: 0.5.2(@types/sortablejs@1.15.8)
+      workbox-routing:
+        specifier: ^7.1.0
+        version: 7.1.0
+      workbox-strategies:
+        specifier: ^7.1.0
+        version: 7.1.0
     devDependencies:
       '@eslint/js':
         specifier: ^9.7.0
@@ -156,6 +162,12 @@ importers:
       vue-tsc:
         specifier: ^2.0.26
         version: 2.0.26(typescript@5.5.3)
+
+  prts:
+    devDependencies:
+      core-js:
+        specifier: ^3.37.1
+        version: 3.37.1
 
 packages:
 
@@ -3505,6 +3517,15 @@ packages:
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
+
+  workbox-core@7.1.0:
+    resolution: {integrity: sha512-5KB4KOY8rtL31nEF7BfvU7FMzKT4B5TkbYa2tzkS+Peqj0gayMT9SytSFtNzlrvMaWgv6y/yvP9C0IbpFjV30Q==}
+
+  workbox-routing@7.1.0:
+    resolution: {integrity: sha512-oOYk+kLriUY2QyHkIilxUlVcFqwduLJB7oRZIENbqPGeBP/3TWHYNNdmGNhz1dvKuw7aqvJ7CQxn27/jprlTdg==}
+
+  workbox-strategies@7.1.0:
+    resolution: {integrity: sha512-/UracPiGhUNehGjRm/tLUQ+9PtWmCbRufWtV0tNrALuf+HZ4F7cmObSEK+E4/Bx1p8Syx2tM+pkIrvtyetdlew==}
 
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
@@ -7244,6 +7265,16 @@ snapshots:
       semver: 5.7.2
 
   word-wrap@1.2.5: {}
+
+  workbox-core@7.1.0: {}
+
+  workbox-routing@7.1.0:
+    dependencies:
+      workbox-core: 7.1.0
+
+  workbox-strategies@7.1.0:
+    dependencies:
+      workbox-core: 7.1.0
 
   wrap-ansi@7.0.0:
     dependencies:
