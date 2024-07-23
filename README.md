@@ -1,4 +1,6 @@
 # PRTS Widgets
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets?ref=badge_shield)
+
 
 ## 推荐开发环境配置
 
@@ -40,3 +42,7 @@ pnpm run build
 # ... 上传 dist/ 至 OSS
 pnpm run update username password
 ```
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets?ref=badge_large)
