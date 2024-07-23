@@ -2,7 +2,7 @@
   "name": "mooncell-widget",
   "type": "module",
   "version": "0.0.0",
-  "packageManager": "pnpm@9.5.0",
+  "packageManager": "pnpm@9.6.0",
   "private": true,
   "scripts": {
     "create": "node scripts/index.js",
@@ -18,7 +18,7 @@
     "prepare": "node .husky/install.mjs"
   },
   "dependencies": {
-    "@sentry/browser": "^8.18.0",
+    "@sentry/browser": "^8.19.0",
     "@urlpack/json": "^2.0.0",
     "@vicons/material": "^0.12.0",
     "@vueuse/core": "^10.11.0",
@@ -30,7 +30,7 @@
     "lodash-es": "^4.17.21",
     "md5": "^2.3.0",
     "naive-ui": "^2.39.0",
-    "vue": "^3.4.32",
+    "vue": "^3.4.33",
     "vue-draggable-plus": "^0.5.2",
     "workbox-routing": "^7.1.0",
     "workbox-strategies": "^7.1.0"
@@ -52,7 +52,7 @@
     "ali-oss": "^6.20.0",
     "eslint": "^9.7.0",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-import-x": "^3.0.1",
+    "eslint-plugin-import-x": "^3.1.0",
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-unicorn": "^54.0.0",
     "eslint-plugin-vue": "^9.27.0",
@@ -65,11 +65,11 @@
     "source-map-explorer": "^2.5.3",
     "terser": "^5.31.3",
     "tough-cookie": "^4.1.4",
-    "typescript": "^5.5.3",
-    "typescript-eslint": "8.0.0-alpha.45",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "8.0.0-alpha.51",
     "unocss": "^0.61.5",
     "vite": "^5.3.4",
     "vue-eslint-parser": "^9.4.3",
-    "vue-tsc": "^2.0.26"
+    "vue-tsc": "^2.0.28"
   }
 }
