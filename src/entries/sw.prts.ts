@@ -15,6 +15,10 @@ registerRoute(
 );
 registerRoute(/^https:\/\/static\.prts\.wiki/, new CacheFirst());
 
-// registerRoute(/^https:\/\/torappu\.prts\.wiki\/assets\//, new CacheFirst());
-
+registerRoute(/^https:\/\/hm\.baidu\.com.*/, new NetworkFirst());
+registerRoute(/^https:\/\/www\.google\.com.*/, new NetworkFirst());
+registerRoute(
+  /^https:\/\/ingest\.sentry\.mooncell\.wiki.*/,
+  new NetworkFirst(),
+);
 setDefaultHandler(new StaleWhileRevalidate());
