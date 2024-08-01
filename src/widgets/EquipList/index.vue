@@ -20,10 +20,10 @@ import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { isMobile } from "@/utils/utils";
 
-import EquipTable from "./EquipTable.vue";
-import FilterSub from "./FilterSub.vue";
-import SubContainer from "./SubContainer.vue";
 import { rarityMap, statsStyleMap } from "./consts";
+import EquipTable from "./equip-conponents/EquipTable.vue";
+import FilterSub from "./equip-conponents/FilterSub.vue";
+import SubContainer from "./equip-conponents/SubContainer.vue";
 import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
 import {
   customLabel,
@@ -222,8 +222,8 @@ const filterData = (data: DOMStringMap): boolean => {
     }
     if (v.mode == "type") {
       const match = !!data["type"]?.match(new RegExp(`-${v.value}`, "i"));
-      const nmatch = !!data["type"]?.match(/-[^xy]/i);
-      return v.value == "x" || v.value == "y" ? match : nmatch;
+      const nmatch = !data["type"]?.match(/-[xyδ]/i);
+      return v.value == "o" ? nmatch : match;
     }
     if (v.mode == "talent") {
       const match =
@@ -386,23 +386,27 @@ onBeforeMount(async () => {
         id: v.printouts["干员序号"][0] as number,
       },
       equips: equips[k]
-        .map((e) => {
-          const t = time.find((et) => {
-            return et.equips.some((i) => {
-              return i.char == k && i.name == e["name"]!;
-            });
-          })?.time;
-          e["addtime"] = String(t ?? 0);
-          return e;
-        })
-        .sort((a, b) => {
-          const atail = a.type?.slice(-1) ?? "";
-          const btail = b.type?.slice(-1) ?? "";
-          if (atail == btail) return 0;
-          if (btail == "Δ") return -1;
-          if (atail == "X" && btail == "Y") return -1;
-          return 1;
-        }),
+        ? equips[k]
+            .map((e) => {
+              const t = time.find((et) => {
+                return et.equips.some((i) => {
+                  return i.char == k && i.name == e["name"]!;
+                });
+              })?.time;
+              e["addtime"] = String(t ?? 0);
+              return e;
+            })
+            .sort((a, b) => {
+              const atail =
+                (a.type?.match(new RegExp(`-(.*)`, "i")) ?? [])[1] ?? "";
+              const btail =
+                (b.type?.match(new RegExp(`-(.*)`, "i")) ?? [])[1] ?? "";
+              if (atail == btail) return 0;
+              if (btail != "X" && btail != "Y") return -1;
+              if (atail == "X" && btail == "Y") return -1;
+              return 1;
+            })
+        : [],
     };
   });
   for (const i of charData) {

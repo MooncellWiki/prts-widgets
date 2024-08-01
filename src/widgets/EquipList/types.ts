@@ -39,7 +39,6 @@ export interface CargoEquip {
   talent2: string;
   talent3: string;
   lv: string;
-  favor: string;
   mat: string;
   mat2: string;
   mat3: string;

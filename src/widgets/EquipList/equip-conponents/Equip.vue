@@ -15,15 +15,17 @@ import { getLanguage } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobile } from "@/utils/utils";
 
-import { colorMap, statsStyleMap } from "./consts";
-import { getEquipData } from "./equipData";
-import { customLabel } from "./i18n";
+import { colorMap, statsStyleMap } from "../consts";
+import { getEquipData } from "../equipData";
+import { customLabel } from "../i18n";
 import {
   fixAtkRange,
   processLink,
   processMaterial,
   updateTippy,
-} from "./utils";
+} from "../utils";
+
+import ETag from "./ETag.vue";
 
 function getStatColor(type: string, stat: string): string {
   return Number(stat) * (statsStyleMap[type] ?? 1) >= 0 ? "#00B0FF" : "#FF6237";
@@ -273,15 +275,18 @@ const locale = getLanguage();
             {{ customLabel[locale].equipString.mission }}
           </div>
           <div class="lineparta flex-col">
-            <span>
+            <span v-if="!!e.mission1">
               <span class="mdi mdi-chevron-right"></span>
               &nbsp;
               <span v-html="e.mission1"></span>
             </span>
-            <span>
+            <span v-if="!!e.mission2">
               <span class="mdi mdi-chevron-right"></span>
               &nbsp;
               <span v-html="e.mission2"></span>
+            </span>
+            <span v-if="!e.mission1 && !e.mission2">
+              {{ customLabel[locale].equipString.nomission }}
             </span>
           </div>
         </div>
@@ -291,55 +296,62 @@ const locale = getLanguage();
             {{ customLabel[locale].equipString.condition }}
           </div>
           <div class="lineparta flex-wrap">
-            <div class="linebox">
-              <div class="linepartb">
-                <span>{{ customLabel[locale].equipString.condStats[0] }}</span>
-                <span>
-                  {{ customLabel[locale].equipString.condStats[1] }}
-                  <span class="font-bold">{{ e.lv }}</span>
-                  {{ customLabel[locale].equipString.condStats[2] }}
-                </span>
-                <span>
-                  {{ customLabel[locale].equipString.condStats[3] }}
-                  <span class="font-bold">{{ e.favor }}</span>
-                  {{ customLabel[locale].equipString.condStats[4] }}
+            <div class="linebox flex-col">
+              <div class="consume">
+                <span class="flex flex-nowrap items-center">
+                  <div class="iconfilter inline-block">
+                    <img
+                      :src="getImagePath('模组等级_1.png')"
+                      height="30"
+                      class="rankpic m-1"
+                    />
+                  </div>
+                  <span>
+                    <ETag type="favor" value="0"></ETag>
+                    <ETag type="lv" :value="e.lv ?? '???'"></ETag>
+                    <ETag
+                      v-if="!!e.mission1 && !!e.mission2"
+                      type="mission"
+                      value=""
+                    ></ETag>
+                    <span v-html="processMaterial(e.mat ?? '')"></span>
+                  </span>
                 </span>
               </div>
+              <div class="minorsep"></div>
               <div class="consume">
-                <span v-html="processMaterial(e.mat ?? '')"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="majorsep" :class="{ nosimple: simple }"></div>
-        <div class="linebox" :class="{ nosimple: simple }">
-          <div class="descr font-bold">
-            {{ customLabel[locale].equipString.upgrade }}
-          </div>
-          <div class="lineparta flex-wrap">
-            <div class="linebox">
-              <div class="consume">
-                <span>
+                <span class="flex flex-nowrap items-center">
                   <div class="iconfilter inline-block">
                     <img
                       :src="getImagePath('模组等级_2.png')"
-                      height="40"
+                      height="30"
                       class="rankpic m-1"
                     />
                   </div>
-                  <span v-html="processMaterial(e.mat2 ?? '')"></span>
+                  <span>
+                    <span>
+                      <ETag type="favor" value="50" />
+                    </span>
+                    <span v-html="processMaterial(e.mat2 ?? '')"></span>
+                  </span>
                 </span>
               </div>
+              <div class="minorsep"></div>
               <div class="consume">
-                <span>
+                <span class="flex flex-nowrap items-center">
                   <div class="iconfilter inline-block">
                     <img
                       :src="getImagePath('模组等级_3.png')"
-                      height="40"
+                      height="30"
                       class="rankpic m-1"
                     />
                   </div>
-                  <span v-html="processMaterial(e.mat3 ?? '')"></span>
+                  <span>
+                    <span>
+                      <ETag type="favor" value="100" />
+                    </span>
+                    <span v-html="processMaterial(e.mat3 ?? '')"></span>
+                  </span>
                 </span>
               </div>
             </div>
@@ -438,15 +450,13 @@ const locale = getLanguage();
   display: flex;
   justify-content: center;
   align-items: center;
-  min-width: 130px;
+  min-width: 140px;
   text-align: center;
 }
 :deep(.consume) {
-  flex: 50 50 50%;
   display: flex;
-  flex-wrap: nowrap;
   align-items: center;
-  min-width: 260px;
+  margin: 5px;
 }
 :deep(.basicbox) {
   display: flex;
@@ -482,7 +492,7 @@ const locale = getLanguage();
 }
 :deep(.minorsep) {
   height: 1px;
-  background-color: lightgray;
+  background-color: rgb(190, 190, 190);
 }
 :deep(.minorsep.simple) {
   height: 1px;

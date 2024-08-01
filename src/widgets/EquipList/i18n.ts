@@ -24,7 +24,7 @@ export const customSubtype: Record<string, Record<string, string>> = {
     教官: "Instructor",
     斗士: "Fighter",
     剑豪: "Swordmaster",
-    武者: "Monoblade",
+    武者: "Soloblade",
     解放者: "Liberator",
     收割者: "Reaper",
     重剑手: "Crusher",
@@ -74,6 +74,7 @@ export const customSubtype: Record<string, Record<string, string>> = {
     傀儡师: "Dollkeeper",
     猎手: "Hunter",
     回环射手: "Loopshooter",
+    炼金师: "Alchemist",
   },
   ja: {
     先锋: "先鋒",
@@ -144,6 +145,7 @@ export const customSubtype: Record<string, Record<string, string>> = {
     行商: "行商人",
     陷阱师: "罠師",
     傀儡师: "傀儡師",
+    //炼金师: alchemist,
   },
 };
 
@@ -271,6 +273,7 @@ export const customLabel = {
     },
     equipString: {
       mission: "模组解锁任务",
+      nomission: "该模组无解锁任务",
       condition: "解锁需求与材料消耗",
       upgrade: "模组升级消耗",
       condStats: [
@@ -335,6 +338,7 @@ export const customLabel = {
     },
     equipString: {
       mission: "模組解鎖任務",
+      nomission: "該模組無解鎖任務",
       condition: "解鎖需求與材料消耗",
       upgrade: "模組升級消耗",
       condStats: [
@@ -399,6 +403,7 @@ export const customLabel = {
     },
     equipString: {
       mission: "Module Missions",
+      nomission: "This module has no module missions.",
       condition: "Unlock Conditions & Materials",
       upgrade: "Upgrade Materials",
       condStats: [
@@ -463,6 +468,7 @@ export const customLabel = {
     },
     equipString: {
       mission: "モジュール開放任務",
+      nomission: "このモジュールは開放任務がありません",
       condition: "開放条件と必要素材",
       upgrade: "モジュール強化素材",
       condStats: [
@@ -528,6 +534,7 @@ export const customLabel = {
     },
     equipString: {
       mission: "Module Missions",
+      nomission: "This module has no module missions.",
       condition: "Unlock Conditions & Materials",
       upgrade: "Upgrade Materials",
       condStats: [
@@ -693,6 +700,10 @@ export function getFilterValue(locale: LANGUAGES, option: string = "all") {
         {
           label: "Y",
           value: "y",
+        },
+        {
+          label: "Δ",
+          value: "δ",
         },
         {
           label: customLabel[locale].sortOptions.other,
