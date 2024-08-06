@@ -14,10 +14,10 @@ export async function getEquipDataAll(): Promise<
     `/api.php?${new URLSearchParams({
       action: "cargoquery",
       format: "json",
-      limit: "5000",
+      limit: "500",
       tables: "char_mod",
       fields:
-        "_pageName=opt,name=name,type=type,color=color,hp__full=hp,atk__full=atk,def__full=def,res__full=res,time__full=time,cost__full=cost,block__full=block,atkspd__full=atkspd,other__full=other,traitadd=add,mission2Operation=mission2opt,trait,talent2,talent3,lv,favor,mat,mat2,mat3,mission1,mission2",
+        "_pageName=opt,name=name,type=type,color=color,hp__full=hp,atk__full=atk,def__full=def,res__full=res,time__full=time,cost__full=cost,block__full=block,atkspd__full=atkspd,other__full=other,traitadd=traitadd,trait=trait,talent2=talent2,talent3=talent3,lv=lv,mat=mat,mat2=mat2,mat3=mat3,charModuleN=charModuleN,mission1=mission1,mission2=mission2,mission2Operation=mission2Operation",
     })}`,
   );
   const json: { cargoquery: { title: CargoEquip }[] } = await resp.json();
@@ -73,17 +73,16 @@ export async function getEquipDataAll(): Promise<
         other2: other[1] ?? "",
         other3: other[2] ?? "",
         add: e.add,
-        trait: recoverHTML(e.trait),
-        talent2: recoverHTML(e.talent2),
-        talent3: recoverHTML(e.talent3),
-        mission1: recoverHTML(e.mission1),
-        mission2: recoverHTML(e.mission2),
-        mission2opt: e.mission2opt,
-        mat: recoverHTML(e.mat),
-        mat2: recoverHTML(e.mat2),
-        mat3: recoverHTML(e.mat3),
+        trait: recoverHTML(e.trait ?? ""),
+        talent2: recoverHTML(e.talent2 ?? ""),
+        talent3: recoverHTML(e.talent3 ?? ""),
+        mission1: recoverHTML(e.mission1 ?? ""),
+        mission2: recoverHTML(e.mission2 ?? ""),
+        mission2opt: e.mission2opt ?? "",
+        mat: recoverHTML(e.mat ?? ""),
+        mat2: recoverHTML(e.mat2 ?? ""),
+        mat3: recoverHTML(e.mat3 ?? ""),
         lv: e.lv ?? "???",
-        favor: e.favor ?? "???",
       };
     });
     result[opt] = map;

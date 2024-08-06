@@ -9,7 +9,7 @@ import { getImagePath } from "@/utils/utils";
 
 import Equip from "./Equip.vue";
 
-import type { CharEquips } from "./types";
+import type { CharEquips } from "../types";
 const props = withDefaults(
   defineProps<{
     char: CharEquips;
@@ -24,6 +24,7 @@ const shadowColor: Record<string, string> = {
   green: "#84cc16",
   yellow: "#f59e0b",
   blue: "#3b82f6",
+  purple: "#7e22ce",
   grey: "#52525b",
 };
 const emit = defineEmits<{

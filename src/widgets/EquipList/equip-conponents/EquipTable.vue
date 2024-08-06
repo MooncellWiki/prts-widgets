@@ -6,9 +6,10 @@ import { DataTableColumns, NDataTable } from "naive-ui";
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath, isMobile } from "@/utils/utils";
 
+import { customLabel } from "../i18n";
+import { EquipRow } from "../types";
+
 import Equip from "./Equip.vue";
-import { customLabel } from "./i18n";
-import { EquipRow } from "./types";
 
 const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
   return [
@@ -51,7 +52,7 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
             h("div", [
               h("img", {
                 src: getImagePath(
-                  `模组类型_${row.type.replace("Δ", "D")}_小图.png`,
+                  `模组类型_${row.type.replace("Δ", "D").replace("α", "A")}_小图.png`,
                 ),
                 width: 60,
                 style: {

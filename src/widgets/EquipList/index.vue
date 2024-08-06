@@ -20,10 +20,10 @@ import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { isMobile } from "@/utils/utils";
 
-import EquipTable from "./EquipTable.vue";
-import FilterSub from "./FilterSub.vue";
-import SubContainer from "./SubContainer.vue";
 import { rarityMap, statsStyleMap } from "./consts";
+import EquipTable from "./equip-conponents/EquipTable.vue";
+import FilterSub from "./equip-conponents/FilterSub.vue";
+import SubContainer from "./equip-conponents/SubContainer.vue";
 import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
 import {
   customLabel,
@@ -175,10 +175,13 @@ const charEquipData = computed<Record<string, CharEquips[]>>(() => {
   if (term == "time") {
     for (const charEquip of rawEquipData.value) {
       for (const equip of charEquip.equips) {
-        if (!result[equip["addtime"]!]) {
-          result[equip["addtime"]!] = [];
+        const { addtime } = equip;
+        if (!addtime) continue;
+
+        if (!result[addtime]) {
+          result[addtime] = [];
         }
-        result[equip["addtime"]!].push({
+        result[addtime].push({
           char: charEquip.char,
           equips: [equip],
         });
@@ -187,10 +190,12 @@ const charEquipData = computed<Record<string, CharEquips[]>>(() => {
   } else if (term == "opt") {
     for (const charEquip of rawEquipData.value) {
       for (const equip of charEquip.equips) {
-        if (!result[equip["mission2opt"] ?? "unknown"]) {
-          result[equip["mission2opt"] ?? "unknown"] = [];
+        const { mission2opt = "unknown" } = equip;
+
+        if (!result[mission2opt]) {
+          result[mission2opt] = [];
         }
-        result[equip["mission2opt"] ?? "unknown"].push({
+        result[mission2opt].push({
           char: charEquip.char,
           equips: [equip],
         });
@@ -216,28 +221,41 @@ const charEquipData = computed<Record<string, CharEquips[]>>(() => {
 });
 const filterData = (data: DOMStringMap): boolean => {
   return sortStates.value.filter.every((v) => {
-    if (v.mode == "all") return true;
-    if (v.mode == "trait") {
-      return v.value == "yes" ? !!data["add"] : !data["add"];
+    switch (v.mode) {
+      case "all": {
+        return true;
+      }
+      case "trait": {
+        const { add } = data;
+
+        return v.value == "yes" ? !!add : !add;
+      }
+      case "type": {
+        const { type } = data;
+        const match = !!type?.match(new RegExp(`-${v.value}`, "i"));
+        const nmatch = !type?.match(/-[xyδ]/i);
+
+        return v.value == "o" ? nmatch : match;
+      }
+      case "talent": {
+        const { talent2 = "", talent3 = "" } = data;
+        const match =
+          talent2.includes("新增天赋") || talent3.includes("新增天赋");
+
+        return v.value == "yes" ? match : !match;
+      }
+      case "addtime": {
+        return v.value.includes(data[v.mode]!);
+      }
+      case "mission2opt": {
+        if (typeof v.value !== "string") return false;
+
+        return !!data[v.mode]?.includes(v.value);
+      }
+      default: {
+        return v.value == "yes" ? data[v.mode] != "0" : data[v.mode] == "0";
+      }
     }
-    if (v.mode == "type") {
-      const match = !!data["type"]?.match(new RegExp(`-${v.value}`, "i"));
-      const nmatch = !!data["type"]?.match(/-[^xy]/i);
-      return v.value == "x" || v.value == "y" ? match : nmatch;
-    }
-    if (v.mode == "talent") {
-      const match =
-        !!data["talent2"]?.match("新增天赋") ||
-        !!data["talent3"]?.match("新增天赋");
-      return v.value == "yes" ? match : !match;
-    }
-    if (v.mode == "addtime") {
-      return (v.value as string[]).includes(data[v.mode]!);
-    }
-    if (v.mode == "mission2opt") {
-      return !!data[v.mode]?.match(v.value as string);
-    }
-    return v.value == "yes" ? data[v.mode] != "0" : data[v.mode] == "0";
   });
 };
 const filteredCharEquipData = computed((): Record<string, CharEquips[]> => {
@@ -293,15 +311,15 @@ const CharEquipList = computed(() => {
         : Number.parseInt(y.oprarity as string) -
             Number.parseInt(x.oprarity as string);
     } else if (sortStates.value.sort[0].mode == "asc") {
-      return x.data["addtime"] === y.data["addtime"]
+      return x.data.addtime === y.data.addtime
         ? y.opid - x.opid
-        : Number.parseInt(x.data["addtime"] ?? "0") -
-            Number.parseInt(y.data["addtime"] ?? "0");
+        : Number.parseInt(x.data.addtime ?? "0") -
+            Number.parseInt(y.data.addtime ?? "0");
     } else if (sortStates.value.sort[0].mode == "desc") {
-      return x.data["addtime"] === y.data["addtime"]
+      return x.data.addtime === y.data.addtime
         ? y.opid - x.opid
-        : Number.parseInt(y.data["addtime"] ?? "0") -
-            Number.parseInt(x.data["addtime"] ?? "0");
+        : Number.parseInt(y.data.addtime ?? "0") -
+            Number.parseInt(x.data.addtime ?? "0");
     } else {
       const mode = sortStates.value.sort[0].mode;
       const order = sortStates.value.sort[0].value == "asc" ? 1 : -1;
@@ -386,23 +404,27 @@ onBeforeMount(async () => {
         id: v.printouts["干员序号"][0] as number,
       },
       equips: equips[k]
-        .map((e) => {
-          const t = time.find((et) => {
-            return et.equips.some((i) => {
-              return i.char == k && i.name == e["name"]!;
-            });
-          })?.time;
-          e["addtime"] = String(t ?? 0);
-          return e;
-        })
-        .sort((a, b) => {
-          const atail = a.type?.slice(-1) ?? "";
-          const btail = b.type?.slice(-1) ?? "";
-          if (atail == btail) return 0;
-          if (btail == "Δ") return -1;
-          if (atail == "X" && btail == "Y") return -1;
-          return 1;
-        }),
+        ? equips[k]
+            .map((e) => {
+              const t = time.find((et) => {
+                return et.equips.some((i) => {
+                  return i.char == k && i.name == e.name!;
+                });
+              })?.time;
+              e.addtime = t?.toString() || "0";
+              return e;
+            })
+            .sort((a, b) => {
+              const atail =
+                (a.type?.match(new RegExp(`-(.*)`, "i")) ?? [])[1] ?? "";
+              const btail =
+                (b.type?.match(new RegExp(`-(.*)`, "i")) ?? [])[1] ?? "";
+              if (atail == btail) return 0;
+              if (btail != "X" && btail != "Y") return -1;
+              if (atail == "X" && btail == "Y") return -1;
+              return 1;
+            })
+        : [],
     };
   });
   for (const i of charData) {
