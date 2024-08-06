@@ -244,7 +244,8 @@ async function importSKLandOperatorDataByUid(uid: string) {
     message.error(error.message);
   }
 }
-function handleChangeUid(value: string, option: BindingListItem) {
+function handleChangeUid(value: string, data: { extraData: BindingListItem }) {
+  const option = data.extraData;
   doctorInfo.value.server = option.channelMasterId;
   importSKLandOperatorDataByUid(value);
 }
