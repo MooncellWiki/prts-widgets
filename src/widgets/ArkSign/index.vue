@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type VNodeChild, h, nextTick, ref, watch } from "vue";
+import { computed, h, nextTick, ref, watch } from "vue";
 
 import {
   HelpOutlineOutlined,
@@ -78,6 +78,13 @@ const customSign = ref("签名内容，建议不超过两行");
 const imgScale = ref(1);
 const credStr = ref(""); //森空岛凭据input
 const bindingList = ref<BindingListItem[]>([]); //绑定列表
+const bindingListOptions = computed(() => {
+  return bindingList.value.map((item) => ({
+    label: item.nickName,
+    value: item.uid,
+    extraData: item,
+  }));
+});
 const selectUid = ref<string>(); //默认uid
 const charData = ref<Record<string, Char>>({});
 const selected = ref<string[]>([]); //选中的干员列表
@@ -242,7 +249,9 @@ function handleChangeUid(value: string, option: BindingListItem) {
   importSKLandOperatorDataByUid(value);
 }
 
-function renderLabel(option: BindingListItem): VNodeChild {
+function renderLabel(data: { extraData: BindingListItem }) {
+  const option = data.extraData;
+
   let typeColor = {};
   if (option.channelMasterId == "1") {
     typeColor = {
@@ -554,9 +563,7 @@ function calcServerColor(id: string) {
         <div style="min-width: 200px; margin-left: 10px">
           <n-select
             v-model:value="selectUid"
-            label-field="nickName"
-            value-field="uid"
-            :options="bindingList"
+            :options="bindingListOptions"
             :render-label="renderLabel"
             @update:value="handleChangeUid"
           />
@@ -608,9 +615,7 @@ function calcServerColor(id: string) {
         <div class="w-full">
           <n-select
             v-model:value="selectUid"
-            label-field="nickName"
-            value-field="uid"
-            :options="bindingList"
+            :options="bindingListOptions"
             :render-label="renderLabel"
             @update:value="handleChangeUid"
           />
