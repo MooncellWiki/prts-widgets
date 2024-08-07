@@ -1,5 +1,4 @@
-import type { Ref } from "vue";
-import { computed } from "vue";
+import { computed, type Ref } from "vue";
 
 import type { Char } from "../utils";
 export function useChar(

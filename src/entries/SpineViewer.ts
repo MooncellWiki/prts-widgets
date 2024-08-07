@@ -8,7 +8,8 @@ import { Spine } from "../widgets/Spine/spine";
 // @ts-expect-error
 window.SpineApi = Spine;
 window.dispatchEvent(new Event("spine_api_ready"));
-async function main() {
+
+function main() {
   const ele = document.querySelector<HTMLElement>("#spine-root");
   let spineData: Props | null = null;
   if (!ele?.dataset.id) {

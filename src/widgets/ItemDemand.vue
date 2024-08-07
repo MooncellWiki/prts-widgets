@@ -79,7 +79,7 @@ async function load() {
     state.value = Status.fail;
   }
 }
-onMounted(async () => {
+onMounted(() => {
   if (!props.item) {
     console.warn("item empty", props);
     return;

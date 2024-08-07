@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { useVModel } from "@vueuse/core";
-import { NSelect } from "naive-ui";
+import { NSelect, type SelectGroupOption, type SelectOption } from "naive-ui";
 
-import type { SelectGroupOption, SelectOption } from "naive-ui";
 const props = withDefaults(
   defineProps<{
     title?: string;

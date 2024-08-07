@@ -8,6 +8,11 @@ import {
   NInput,
   NLayout,
   NPagination,
+  type DataTableBaseColumn,
+  type DataTableColumn,
+  type DataTableColumns,
+  type DataTableFilterState,
+  type DataTableInst,
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
@@ -18,13 +23,6 @@ import FilterGroup from "./FilterGroup.vue";
 import { defaultFilterConfig } from "./consts";
 
 import type { EnemyData, FilterConfig } from "./types";
-import type {
-  DataTableBaseColumn,
-  DataTableColumn,
-  DataTableColumns,
-  DataTableFilterState,
-  DataTableInst,
-} from "naive-ui";
 
 const enemyData = ref<EnemyData[]>([]);
 const keyword = ref("");

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Ref } from "vue";
-import { computed, inject } from "vue";
+import { computed, inject, type Ref } from "vue";
+
 const props = withDefaults(
   defineProps<{
     modelValue?: boolean;

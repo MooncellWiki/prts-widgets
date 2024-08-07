@@ -67,12 +67,23 @@ export function skill(skillId: string) {
     } else if (arr3.includes(skillId)) {
       skillId = "skcom_powerstrike[3]";
     }
-    if (skillId === "skchr_vigna_1") {
-      skillId = "skcom_atk_up[2]";
-    } else if (skillId === "skchr_midn_1") {
-      skillId = "skcom_enchant[1]";
-    } else if (skillId === "skchr_catap_1") {
-      skillId = "skcom_blowrange_up[1]";
+    switch (skillId) {
+      case "skchr_vigna_1": {
+        skillId = "skcom_atk_up[2]";
+
+        break;
+      }
+      case "skchr_midn_1": {
+        skillId = "skcom_enchant[1]";
+
+        break;
+      }
+      case "skchr_catap_1": {
+        skillId = "skcom_blowrange_up[1]";
+
+        break;
+      }
+      // No default
     }
     return `${TORAPPU_ENDPOINT}/assets/skill_icon/skill_icon_${skillId}.png`;
   } else {

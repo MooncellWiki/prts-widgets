@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import type { Ref } from "vue";
-import { computed, nextTick, onBeforeMount, reactive, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeMount,
+  reactive,
+  ref,
+  watch,
+  type Ref,
+} from "vue";
 
 import { useBreakpoints, useUrlSearchParams } from "@vueuse/core";
 import Cookies from "js-cookie";
@@ -35,6 +42,7 @@ interface State {
 function copyUrl() {
   const url = `${location.origin}/w/CHAR${location.hash}`;
   window.navigator.clipboard.writeText(url);
+  // eslint-disable-next-line no-alert
   alert(`链接已复制: ${url}`);
 }
 
@@ -362,7 +370,7 @@ watch(data, () => {
 </script>
 
 <template>
-  <div id="app" ref="app">
+  <div id="app">
     <div v-for="(v, i) in filters" :key="v.title" class="filter">
       <div
         class="filter-title"

@@ -4,7 +4,7 @@ import { CookieJar } from "tough-cookie";
 const entry = "https://prts.wiki/api.php";
 const cookieJar = new CookieJar();
 
-async function request({ method, body, query }) {
+function request({ method, body, query }) {
   return got(entry, {
     method: method || "GET",
     cookieJar,
@@ -101,7 +101,7 @@ export async function edit(
   console.log(resp);
 }
 
-async function view(pagename) {
+function view(pagename) {
   return got(`https://prts.wiki/w/${pagename}`);
 }
 

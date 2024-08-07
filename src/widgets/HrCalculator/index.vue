@@ -20,9 +20,8 @@ import {
   rarityIndex,
   tag,
   tagIndex,
+  type Source,
 } from "./utils";
-
-import type { Source } from "./utils";
 
 // 寻访出不了的都算只能公招出
 function isOnly(s: Source) {
