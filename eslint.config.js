@@ -49,58 +49,58 @@ export const typescript = tseslint.config({
 });
 
 const vueCustomRules = {
-  'vue/block-order': ['error', { order: ['script', 'template', 'style'] }],
+  "vue/block-order": ["error", { order: ["script", "template", "style"] }],
   "vue/component-tags-order": [
     "error",
     {
       order: ["script", "template", "style"],
     },
   ],
-  'vue/custom-event-name-casing': ['error', 'camelCase'],
-  'vue/eqeqeq': ['error', 'smart'],
-  'vue/html-self-closing': [
-    'error',
+  "vue/custom-event-name-casing": ["error", "camelCase"],
+  "vue/eqeqeq": ["error", "smart"],
+  "vue/html-self-closing": [
+    "error",
     {
       html: {
-        component: 'always',
-        normal: 'always',
-        void: 'any',
+        component: "always",
+        normal: "always",
+        void: "any",
       },
-      math: 'always',
-      svg: 'always',
+      math: "always",
+      svg: "always",
     },
   ],
-  'vue/max-attributes-per-line': 'off',
+  "vue/max-attributes-per-line": "off",
 
-  'vue/multi-word-component-names': 'off',
-  'vue/no-constant-condition': 'warn',
-  'vue/no-empty-pattern': 'error',
-  'vue/no-loss-of-precision': 'error',
-  'vue/no-unused-refs': 'error',
-  'vue/no-useless-v-bind': 'error',
+  "vue/multi-word-component-names": "off",
+  "vue/no-constant-condition": "warn",
+  "vue/no-empty-pattern": "error",
+  "vue/no-loss-of-precision": "error",
+  "vue/no-unused-refs": "error",
+  "vue/no-useless-v-bind": "error",
 
   "vue/no-v-html": "off",
-  'vue/object-shorthand': [
-    'error',
-    'always',
+  "vue/object-shorthand": [
+    "error",
+    "always",
     {
       avoidQuotes: true,
       ignoreConstructors: false,
     },
   ],
-  'vue/one-component-per-file': 'off',
-  'vue/padding-line-between-blocks': ['error', 'always'],
-  'vue/prefer-template': 'error',
+  "vue/one-component-per-file": "off",
+  "vue/padding-line-between-blocks": ["error", "always"],
+  "vue/prefer-template": "error",
   "vue/require-default-prop": "off",
-  'vue/require-prop-types': 'off',
-}
+  "vue/require-prop-types": "off",
+};
 
 const vue3Rules = {
   ...pluginVue.configs.base.rules,
-  ...pluginVue.configs['vue3-essential'].rules,
-  ...pluginVue.configs['vue3-strongly-recommended'].rules,
-  ...pluginVue.configs['vue3-recommended'].rules,
-}
+  ...pluginVue.configs["vue3-essential"].rules,
+  ...pluginVue.configs["vue3-strongly-recommended"].rules,
+  ...pluginVue.configs["vue3-recommended"].rules,
+};
 
 export const vue = [
   ...tseslint.config({
@@ -127,7 +127,7 @@ export const vue = [
     processor: pluginVue.processors[".vue"],
     rules: {
       ...vue3Rules,
-      ...vueCustomRules
+      ...vueCustomRules,
     },
   },
 ];
