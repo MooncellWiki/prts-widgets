@@ -112,8 +112,8 @@ function order() {
       continue;
     }
     if (
-      selectFilterProfession.value != "all" &&
-      charInfoMap.value[charId].profession != selectFilterProfession.value
+      selectFilterProfession.value !== "all" &&
+      charInfoMap.value[charId].profession !== selectFilterProfession.value
     ) {
       continue;
     }
@@ -124,7 +124,7 @@ function order() {
       continue;
     }
     if (
-      selectFilterRarity.value != "all" &&
+      selectFilterRarity.value !== "all" &&
       charInfoMap.value[charId].rarity !==
         Number.parseInt(selectFilterRarity.value) - 1
     ) {
@@ -132,22 +132,35 @@ function order() {
     }
     result.push(charData.value[charId]);
   }
-  if (selectSort.value == "level") {
-    result.sort((a, b) => {
-      if (a.evolvePhase == b.evolvePhase) {
-        return a.level == b.level
-          ? charInfoMap.value[a.charId].rarity -
-              charInfoMap.value[b.charId].rarity
-          : a.level - b.level;
-      }
-      return a.evolvePhase - b.evolvePhase;
-    });
-  } else if (selectSort.value == "gainTime") {
-    result.sort((a, b) => a.gainTime - b.gainTime);
-  } else if (selectSort.value == "potentialRank") {
-    result.sort((a, b) => a.potentialRank - b.potentialRank);
-  } else if (selectSort.value == "favorPercent") {
-    result.sort((a, b) => a.favorPercent - b.favorPercent);
+  switch (selectSort.value) {
+    case "level": {
+      result.sort((a, b) => {
+        if (a.evolvePhase === b.evolvePhase) {
+          return a.level === b.level
+            ? charInfoMap.value[a.charId].rarity -
+                charInfoMap.value[b.charId].rarity
+            : a.level - b.level;
+        }
+        return a.evolvePhase - b.evolvePhase;
+      });
+
+      break;
+    }
+    case "gainTime": {
+      result.sort((a, b) => a.gainTime - b.gainTime);
+
+      break;
+    }
+    case "potentialRank": {
+      result.sort((a, b) => a.potentialRank - b.potentialRank);
+
+      break;
+    }
+    case "favorPercent": {
+      result.sort((a, b) => a.favorPercent - b.favorPercent);
+
+      break;
+    }
   }
   if (sortOrder.value) {
     result.reverse();
@@ -190,7 +203,7 @@ function getCredAndSecret(text: string) {
 async function importSKLandOperatorData() {
   try {
     const { cred, secret } = getCredAndSecret(credStr.value);
-    if (cred == undefined || secret == undefined) {
+    if (cred === undefined || secret === undefined) {
       console.log("出错了");
       return false;
     }
@@ -254,13 +267,13 @@ function renderLabel(data: { extraData: BindingListItem }) {
   const option = data.extraData;
 
   let typeColor = {};
-  if (option.channelMasterId == "1") {
+  if (option.channelMasterId === "1") {
     typeColor = {
       color: "#ecffe3",
       borderColor: "#66ccff",
       textColor: "#23c21a",
     };
-  } else if (option.channelMasterId == "2") {
+  } else if (option.channelMasterId === "2") {
     typeColor = {
       color: "#ffe7f4",
       borderColor: "#66ccff",
@@ -308,18 +321,18 @@ function GenerateImg(type: string) {
   };
   html2canvas(shareContent, opts).then(function (canvas) {
     const imgData = canvas.toDataURL("PNG");
-    if (type == "d") {
+    if (type === "d") {
       showImgResult.value = true;
-    } else if (type == "m") {
+    } else if (type === "m") {
       showImgResultM.value = true;
     }
     resultImgUrl.value = imgData;
   });
 }
 function calcSkillRankShow(skills: Char["skills"], skillId: string) {
-  const index = skills.findIndex((e) => e.id == skillId);
+  const index = skills.findIndex((e) => e.id === skillId);
   const sp = skills[index].specializeLevel;
-  return sp == 0 ? true : false;
+  return sp === 0 ? true : false;
 }
 function calcEquip(char: Char) {
   return char.defaultEquipId
@@ -328,7 +341,7 @@ function calcEquip(char: Char) {
 }
 function calcEquipStyle(char: Char) {
   if (char.defaultEquipId) {
-    return equipmentInfoMap.value[char.defaultEquipId].typeIcon == "original"
+    return equipmentInfoMap.value[char.defaultEquipId].typeIcon === "original"
       ? "height:80%"
       : "transform:translateY(-4%);height:100%;";
   } else {
@@ -337,7 +350,9 @@ function calcEquipStyle(char: Char) {
 }
 function calcAvatar(avatar: PlayerInfo["status"]["avatar"]) {
   if (avatar.id) {
-    return avatar.type == "ICON" ? docAvatar(avatar.id) : charAvatar(avatar.id);
+    return avatar.type === "ICON"
+      ? docAvatar(avatar.id)
+      : charAvatar(avatar.id);
   } else {
     return docAvatar("avatar_def_01");
   }
@@ -411,7 +426,6 @@ function calcServerColor(id: string) {
         </div>
         <div class="rightWrapper">
           <VueDraggable
-            ref="el"
             v-model="selected"
             :disabled="disabled"
             :animation="200"

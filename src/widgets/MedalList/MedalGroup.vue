@@ -142,10 +142,10 @@ const showTrimed = ref(false);
           class="bg-orange-5 px-2 py-0.5 color-white font-bold"
         >
           <span class="mdi mdi-vanish" />
-          <span v-if="groupData.deprecateType == 'CC'">
+          <span v-if="groupData.deprecateType === 'CC'">
             危机合约套组：不复刻
           </span>
-          <span v-if="groupData.deprecateType == 'retro'">
+          <span v-if="groupData.deprecateType === 'retro'">
             已复刻过的活动：无法再获得本蚀刻章套组
           </span>
         </div>

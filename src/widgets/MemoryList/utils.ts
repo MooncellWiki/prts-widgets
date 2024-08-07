@@ -49,7 +49,7 @@ function eq(
   favor: string,
 ): boolean {
   return (
-    memory.elite == elite && memory.level == level && memory.favor == favor
+    memory.elite === elite && memory.level === level && memory.favor === favor
   );
 }
 

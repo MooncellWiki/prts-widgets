@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { Ref } from "vue";
-import { inject } from "vue";
+import { inject, type Ref } from "vue";
 
 import { NCard } from "naive-ui";
 
@@ -55,7 +54,7 @@ const locale = getLanguage();
     hoverable
   >
     <template #header>
-      <div v-if="groupby == 'sub'" class="flex items-center justify-center">
+      <div v-if="groupby === 'sub'" class="flex items-center justify-center">
         <span
           class="h-[40px] w-[40px] inline-flex items-center justify-center overflow-hidden bg-black align-text-bottom"
         >
@@ -68,10 +67,10 @@ const locale = getLanguage();
           customLabel[locale].subtypeMap[title] ?? title
         }}</span>
       </div>
-      <div v-if="groupby == 'time'">
+      <div v-if="groupby === 'time'">
         {{ new Date(Number(title) * 1000).toLocaleDateString(locale) }}
       </div>
-      <div v-if="groupby == 'opt'">
+      <div v-if="groupby === 'opt'">
         <a :href="`/w/${title}`">
           {{ title }}
         </a>

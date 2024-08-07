@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { Ref } from "vue";
-import { inject } from "vue";
+import { inject, type Ref } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
@@ -89,11 +88,11 @@ const locale = getLanguage();
         </span>
       </div>
       <div v-if="showInfo" class="w-full flex items-center justify-center">
-        <span v-if="locale == LANGUAGES.JA" class="font-bold">
+        <span v-if="locale === LANGUAGES.JA" class="font-bold">
           {{ char.char.nameJP ?? char.char.name }}
         </span>
         <span
-          v-else-if="locale == LANGUAGES.EN || locale == LANGUAGES.KO"
+          v-else-if="locale === LANGUAGES.EN || locale === LANGUAGES.KO"
           class="font-bold"
         >
           {{ char.char.nameEN ?? char.char.name }}

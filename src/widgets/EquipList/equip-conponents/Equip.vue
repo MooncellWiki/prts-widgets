@@ -153,7 +153,7 @@ const locale = getLanguage();
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[stats[0]] != '0'"
+                  v-if="e[stats[0]] !== '0'"
                   class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
@@ -202,7 +202,7 @@ const locale = getLanguage();
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[`${stats[0]}2`] != '0'"
+                  v-if="e[`${stats[0]}2`] !== '0'"
                   class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
@@ -244,7 +244,7 @@ const locale = getLanguage();
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[`${stats[0]}3`] != '0'"
+                  v-if="e[`${stats[0]}3`] !== '0'"
                   class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;

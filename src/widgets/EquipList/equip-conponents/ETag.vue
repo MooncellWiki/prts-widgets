@@ -13,7 +13,7 @@ defineProps<{
   <NTooltip>
     <template #trigger>
       <div
-        v-if="type == 'lv' || type == 'favor'"
+        v-if="type === 'lv' || type === 'favor'"
         class="pos-relative inline-block"
       >
         <span
@@ -31,7 +31,7 @@ defineProps<{
         <img
           :src="
             getImagePath(
-              `图标_模组需求_${type == 'favor' ? '信赖' : '精英2等级'}.png`,
+              `图标_模组需求_${type === 'favor' ? '信赖' : '精英2等级'}.png`,
             )
           "
           width="50"
@@ -49,10 +49,10 @@ defineProps<{
         </div>
       </div>
     </template>
-    <span v-if="type == 'lv'">
+    <span v-if="type === 'lv'">
       需要达到等级<br />(精英<span class="font-bold">2</span>阶段)
     </span>
-    <span v-if="type == 'favor'">
+    <span v-if="type === 'favor'">
       需要信赖值(<span class="font-bold">%</span>)
     </span>
   </NTooltip>

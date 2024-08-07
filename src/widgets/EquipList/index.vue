@@ -138,7 +138,7 @@ const updateHash = () => {
   if (states.value.sub.length > 0) {
     hash.sub = states.value.sub.join("-");
   } else delete hash.sub;
-  if (sortStates.value.sort[0].mode == "default") {
+  if (sortStates.value.sort[0].mode === "default") {
     delete hash.sort;
   } else {
     hash.sort = sortStates.value.sort[0].mode;
@@ -148,14 +148,14 @@ const updateHash = () => {
   else hash.group = group.value;
   hash.filter = sortStates.value.filter
     .filter((v) => {
-      return v.mode == "all" ? false : true;
+      return v.mode === "all" ? false : true;
     })
     .map((v) => {
       let value = "";
-      if (v.mode == "addtime") {
-        v.value = typeof v.value == "string" ? [v.value] : v.value;
+      if (v.mode === "addtime") {
+        v.value = typeof v.value === "string" ? [v.value] : v.value;
         value = (v.value as string[]).join("-");
-      } else if (v.mode == "mission2opt") {
+      } else if (v.mode === "mission2opt") {
         value = v.value as string;
       } else {
         value = (v.value as string).slice(0, 1);
@@ -172,7 +172,7 @@ const rawEquipData = ref<CharEquips[]>([]);
 const charEquipData = computed<Record<string, CharEquips[]>>(() => {
   const result: Record<string, CharEquips[]> = {};
   const term = group.value;
-  if (term == "time") {
+  if (term === "time") {
     for (const charEquip of rawEquipData.value) {
       for (const equip of charEquip.equips) {
         const { addtime } = equip;
@@ -187,7 +187,7 @@ const charEquipData = computed<Record<string, CharEquips[]>>(() => {
         });
       }
     }
-  } else if (term == "opt") {
+  } else if (term === "opt") {
     for (const charEquip of rawEquipData.value) {
       for (const equip of charEquip.equips) {
         const { mission2opt = "unknown" } = equip;
@@ -228,21 +228,21 @@ const filterData = (data: DOMStringMap): boolean => {
       case "trait": {
         const { add } = data;
 
-        return v.value == "yes" ? !!add : !add;
+        return v.value === "yes" ? !!add : !add;
       }
       case "type": {
         const { type } = data;
         const match = !!type?.match(new RegExp(`-${v.value}`, "i"));
         const nmatch = !type?.match(/-[xyδ]/i);
 
-        return v.value == "o" ? nmatch : match;
+        return v.value === "o" ? nmatch : match;
       }
       case "talent": {
         const { talent2 = "", talent3 = "" } = data;
         const match =
           talent2.includes("新增天赋") || talent3.includes("新增天赋");
 
-        return v.value == "yes" ? match : !match;
+        return v.value === "yes" ? match : !match;
       }
       case "addtime": {
         return v.value.includes(data[v.mode]!);
@@ -253,7 +253,7 @@ const filterData = (data: DOMStringMap): boolean => {
         return !!data[v.mode]?.includes(v.value);
       }
       default: {
-        return v.value == "yes" ? data[v.mode] != "0" : data[v.mode] == "0";
+        return v.value === "yes" ? data[v.mode] !== "0" : data[v.mode] === "0";
       }
     }
   });
@@ -305,29 +305,34 @@ const CharEquipList = computed(() => {
     }
   }
   result.sort((x, y) => {
-    if (sortStates.value.sort[0].mode == "default") {
-      return x.oprarity === y.oprarity
-        ? y.opid - x.opid
-        : Number.parseInt(y.oprarity as string) -
-            Number.parseInt(x.oprarity as string);
-    } else if (sortStates.value.sort[0].mode == "asc") {
-      return x.data.addtime === y.data.addtime
-        ? y.opid - x.opid
-        : Number.parseInt(x.data.addtime ?? "0") -
-            Number.parseInt(y.data.addtime ?? "0");
-    } else if (sortStates.value.sort[0].mode == "desc") {
-      return x.data.addtime === y.data.addtime
-        ? y.opid - x.opid
-        : Number.parseInt(y.data.addtime ?? "0") -
-            Number.parseInt(x.data.addtime ?? "0");
-    } else {
-      const mode = sortStates.value.sort[0].mode;
-      const order = sortStates.value.sort[0].value == "asc" ? 1 : -1;
-      const numx = x.data[`${mode}3`] ? Number(x.data[`${mode}3`]) : 0;
-      const numy = y.data[`${mode}3`] ? Number(y.data[`${mode}3`]) : 0;
-      return numx === numy
-        ? y.opid - x.opid
-        : (numx - numy) * order * (statsStyleMap[mode] ?? 1);
+    switch (sortStates.value.sort[0].mode) {
+      case "default": {
+        return x.oprarity === y.oprarity
+          ? y.opid - x.opid
+          : Number.parseInt(y.oprarity as string) -
+              Number.parseInt(x.oprarity as string);
+      }
+      case "asc": {
+        return x.data.addtime === y.data.addtime
+          ? y.opid - x.opid
+          : Number.parseInt(x.data.addtime ?? "0") -
+              Number.parseInt(y.data.addtime ?? "0");
+      }
+      case "desc": {
+        return x.data.addtime === y.data.addtime
+          ? y.opid - x.opid
+          : Number.parseInt(y.data.addtime ?? "0") -
+              Number.parseInt(x.data.addtime ?? "0");
+      }
+      default: {
+        const mode = sortStates.value.sort[0].mode;
+        const order = sortStates.value.sort[0].value === "asc" ? 1 : -1;
+        const numx = x.data[`${mode}3`] ? Number(x.data[`${mode}3`]) : 0;
+        const numy = y.data[`${mode}3`] ? Number(y.data[`${mode}3`]) : 0;
+        return numx === numy
+          ? y.opid - x.opid
+          : (numx - numy) * order * (statsStyleMap[mode] ?? 1);
+      }
     }
   });
   return result;
@@ -335,49 +340,49 @@ const CharEquipList = computed(() => {
 
 const initFromHash = () => {
   for (const [k, v] of Object.entries(hash)) {
-    if (k == "sort" && v != "default") {
+    if (k === "sort" && v !== "default") {
       sortStates.value.sort[0].mode = v as string;
     }
-    if (k == "filter") {
-      const res = typeof v == "string" ? [v] : v;
+    if (k === "filter") {
+      const res = typeof v === "string" ? [v] : v;
       sortStates.value.filter = res.map((e) => {
         const matches = e.match(/^(.*?)_(.*?)$/) as string[];
         const mode = matches[1];
         const value = matches[2];
-        if (mode == "addtime") {
+        if (mode === "addtime") {
           return {
             mode,
             value: value.split("-"),
           };
         }
-        return mode == "type" || mode == "mission2opt"
+        return mode === "type" || mode === "mission2opt"
           ? {
               mode,
               value,
             }
           : {
               mode,
-              value: value == "y" ? "yes" : "no",
+              value: value === "y" ? "yes" : "no",
             };
       });
     }
-    if (k == "type") {
+    if (k === "type") {
       states.value[k] = (v as string).split("").map((e) => {
         return customLabel[locale].typeOptions[Number(e)];
       });
     }
-    if (k == "rarity") {
+    if (k === "rarity") {
       states.value[k] = (v as string).split("").map((e) => {
         return rarityMap[e];
       });
     }
-    if (k == "sub") {
+    if (k === "sub") {
       states.value[k] = (v as string).split("-");
     }
-    if (k == "list") {
-      listShow.value = v == "true" ? true : false;
+    if (k === "list") {
+      listShow.value = v === "true" ? true : false;
     }
-    if (k == "group") {
+    if (k === "group") {
       group.value = v as string;
     }
   }
@@ -408,20 +413,18 @@ onBeforeMount(async () => {
             .map((e) => {
               const t = time.find((et) => {
                 return et.equips.some((i) => {
-                  return i.char == k && i.name == e.name!;
+                  return i.char === k && i.name === e.name!;
                 });
               })?.time;
               e.addtime = t?.toString() || "0";
               return e;
             })
             .sort((a, b) => {
-              const atail =
-                (a.type?.match(new RegExp(`-(.*)`, "i")) ?? [])[1] ?? "";
-              const btail =
-                (b.type?.match(new RegExp(`-(.*)`, "i")) ?? [])[1] ?? "";
-              if (atail == btail) return 0;
-              if (btail != "X" && btail != "Y") return -1;
-              if (atail == "X" && btail == "Y") return -1;
+              const atail = (a.type?.match(/-(.*)/i) ?? [])[1] ?? "";
+              const btail = (b.type?.match(/-(.*)/i) ?? [])[1] ?? "";
+              if (atail === btail) return 0;
+              if (btail !== "X" && btail !== "Y") return -1;
+              if (atail === "X" && btail === "Y") return -1;
               return 1;
             })
         : [],
@@ -565,7 +568,7 @@ const mobileStyle = () => {
                   :options="sortOptions.filterOption"
                 />
                 <NSelect
-                  v-if="v.mode == 'addtime'"
+                  v-if="v.mode === 'addtime'"
                   v-model:value="v.value"
                   class="m-1"
                   :disabled="loadingCount > 0"
@@ -575,7 +578,7 @@ const mobileStyle = () => {
                   :fallback-option="false"
                 />
                 <NInput
-                  v-else-if="v.mode == 'mission2opt'"
+                  v-else-if="v.mode === 'mission2opt'"
                   v-model:value="v.value as string"
                   :disabled="loadingCount > 0"
                   clearable
@@ -585,7 +588,7 @@ const mobileStyle = () => {
                   v-else
                   v-model:value="v.value"
                   class="m-1"
-                  :disabled="loadingCount > 0 || v.mode == 'all'"
+                  :disabled="loadingCount > 0 || v.mode === 'all'"
                   :options="getFilterValue(locale, v.mode)"
                   :fallback-option="false"
                 />
@@ -600,7 +603,7 @@ const mobileStyle = () => {
               <NSelect
                 v-model:value="sortStates.sort[0].mode"
                 class="m-1"
-                :disabled="loadingCount > 0 || listShow == false"
+                :disabled="loadingCount > 0 || listShow === false"
                 :options="sortOptions.sortOption"
               />
             </div>
@@ -618,7 +621,7 @@ const mobileStyle = () => {
             <NButton
               secondary
               :disabled="loadingCount > 0"
-              :type="group == 'sub' ? 'info' : 'default'"
+              :type="group === 'sub' ? 'info' : 'default'"
               @click="group = 'sub'"
             >
               <span class="mdi mdi-shape text-xl" />
@@ -626,7 +629,7 @@ const mobileStyle = () => {
             <NButton
               secondary
               :disabled="loadingCount > 0"
-              :type="group == 'time' ? 'info' : 'default'"
+              :type="group === 'time' ? 'info' : 'default'"
               @click="group = 'time'"
             >
               <span class="mdi mdi-clock-time-eight text-xl" />
@@ -634,7 +637,7 @@ const mobileStyle = () => {
             <NButton
               secondary
               :disabled="loadingCount > 0"
-              :type="group == 'opt' ? 'info' : 'default'"
+              :type="group === 'opt' ? 'info' : 'default'"
               @click="group = 'opt'"
             >
               <span class="mdi mdi-sword-cross text-xl" />

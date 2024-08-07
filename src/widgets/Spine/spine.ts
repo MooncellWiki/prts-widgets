@@ -95,7 +95,7 @@ export class Spine {
     );
   }
 
-  private async fetchAssets(skel: string, atlas: string): Promise<string[]> {
+  private fetchAssets(skel: string, atlas: string): Promise<string[]> {
     const skelPromise = new Promise<string>((resolve, reject) => {
       this.assetManager.loadBinary(
         skel,
@@ -270,7 +270,7 @@ export class Spine {
     );
   }
 
-  async record(ani: string, name: string): Promise<void> {
+  record(ani: string, name: string): Promise<void> {
     if (!this.activeSkeleton) throw new Error("activeSkeleton is empty");
 
     const stream = this.canvas.captureStream(60);

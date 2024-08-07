@@ -14,6 +14,7 @@ import {
   NLayout,
   NPopover,
   NText,
+  type CollapseProps,
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
@@ -27,7 +28,6 @@ import MedalStats from "./MedalStats.vue";
 import { getMedalMetaData } from "./utils";
 
 import type { MedalMetaData } from "./types";
-import type { CollapseProps } from "naive-ui";
 
 const medalMetaData = ref<MedalMetaData>({
   medal: {},
@@ -197,7 +197,7 @@ const i18nConfig = getNaiveUILocale();
             :name="cate.name"
           >
             <template #header>
-              <NText v-if="cate.name != '加密奖章'" type="default" tag="span">
+              <NText v-if="cate.name !== '加密奖章'" type="default" tag="span">
                 {{ `${cate.name} (${cateNums[cate.name]})` }}
               </NText>
               <NText v-else type="warning" tag="b">
@@ -217,8 +217,8 @@ const i18nConfig = getNaiveUILocale();
             </NCard>
             <NGrid
               v-if="
-                cate.name != '加密奖章' ||
-                (cate.name == '加密奖章' && hiddenCatUnlocked)
+                cate.name !== '加密奖章' ||
+                (cate.name === '加密奖章' && hiddenCatUnlocked)
               "
               cols="1 l:2"
               :x-gap="12"

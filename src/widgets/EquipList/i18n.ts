@@ -580,7 +580,7 @@ export function getFilterRarity(locale: LANGUAGES) {
 }
 
 function stats(locale: LANGUAGES, type: string): string {
-  const ele = customLabel[locale].statsMap.find((e) => e[0] == type);
+  const ele = customLabel[locale].statsMap.find((e) => e[0] === type);
   return ele ? ele[1] : "";
 }
 
@@ -691,7 +691,7 @@ export function getFilterOptions(locale: LANGUAGES) {
 }
 
 export function getFilterValue(locale: LANGUAGES, option: string = "all") {
-  return option == "type"
+  return option === "type"
     ? [
         {
           label: "X",

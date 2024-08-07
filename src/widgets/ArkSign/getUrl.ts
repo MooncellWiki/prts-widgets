@@ -67,11 +67,11 @@ export function skill(skillId: string) {
     } else if (arr3.includes(skillId)) {
       skillId = "skcom_powerstrike[3]";
     }
-    if (skillId == "skchr_vigna_1") {
+    if (skillId === "skchr_vigna_1") {
       skillId = "skcom_atk_up[2]";
-    } else if (skillId == "skchr_midn_1") {
+    } else if (skillId === "skchr_midn_1") {
       skillId = "skcom_enchant[1]";
-    } else if (skillId == "skchr_catap_1") {
+    } else if (skillId === "skchr_catap_1") {
       skillId = "skcom_blowrange_up[1]";
     }
     return `${TORAPPU_ENDPOINT}/assets/skill_icon/skill_icon_${skillId}.png`;
@@ -81,7 +81,7 @@ export function skill(skillId: string) {
 }
 
 export function specialized(skills: Char["skills"], skillId: string) {
-  const index = skills.findIndex((e) => e.id == skillId);
+  const index = skills.findIndex((e) => e.id === skillId);
   const sp = skills[index].specializeLevel;
   return `${TORAPPU_ENDPOINT}/assets/specialized_icon/specialized_tiny_${sp}.png`;
 }

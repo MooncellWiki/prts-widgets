@@ -27,7 +27,7 @@ export function processLink(res: string): string {
   for (const group of result) {
     res = res.replace(
       group[0],
-      `<a href="/w/${group[1]}">${group[2] == "" ? group[1] : group[2]}</a>`,
+      `<a href="/w/${group[1]}">${group[2] === "" ? group[1] : group[2]}</a>`,
     );
   }
   return res;
@@ -46,7 +46,7 @@ export async function fixAtkRange(res: string, char: string, name: string) {
   );
   const json = await resp.json();
   const sections = json.parse?.sections as Array<any>;
-  const sectionIndex = sections.find((v) => v.line == name)?.index;
+  const sectionIndex = sections.find((v) => v.line === name)?.index;
   if (!sectionIndex) return res;
 
   const contentResp = await fetch(
