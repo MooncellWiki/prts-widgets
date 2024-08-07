@@ -6,7 +6,7 @@ export function processMaterial(res: string): string {
   for (const group of result) {
     res = res.replace(
       group[0],
-      `<a href="/w/${group[1]}"><img src="${getImagePath("道具_带框_" + group[1] + ".png")}" width="45" /></a>`,
+      `<a href="/w/${group[1]}"><img src="${getImagePath(`道具_带框_${group[1]}.png`)}" width="45" /></a>`,
     );
   }
   return res;

@@ -160,7 +160,7 @@ const updateHash = () => {
       } else {
         value = (v.value as string).slice(0, 1);
       }
-      return v.mode + "_" + value;
+      return `${v.mode}_${value}`;
     });
 };
 watch(states, updateHash, { deep: true });
@@ -323,8 +323,8 @@ const CharEquipList = computed(() => {
     } else {
       const mode = sortStates.value.sort[0].mode;
       const order = sortStates.value.sort[0].value == "asc" ? 1 : -1;
-      const numx = x.data[mode + "3"] ? Number(x.data[mode + "3"]) : 0;
-      const numy = y.data[mode + "3"] ? Number(y.data[mode + "3"]) : 0;
+      const numx = x.data[`${mode}3`] ? Number(x.data[`${mode}3`]) : 0;
+      const numy = y.data[`${mode}3`] ? Number(y.data[`${mode}3`]) : 0;
       return numx === numy
         ? y.opid - x.opid
         : (numx - numy) * order * (statsStyleMap[mode] ?? 1);
@@ -346,17 +346,17 @@ const initFromHash = () => {
         const value = matches[2];
         if (mode == "addtime") {
           return {
-            mode: mode,
+            mode,
             value: value.split("-"),
           };
         }
         return mode == "type" || mode == "mission2opt"
           ? {
-              mode: mode,
-              value: value,
+              mode,
+              value,
             }
           : {
-              mode: mode,
+              mode,
               value: value == "y" ? "yes" : "no",
             };
       });
@@ -448,6 +448,7 @@ const mobileStyle = () => {
   return isMobile() ? "padding: 5px" : undefined;
 };
 </script>
+
 <template>
   <NConfigProvider
     :theme="theme"

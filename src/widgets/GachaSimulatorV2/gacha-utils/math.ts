@@ -30,7 +30,7 @@ export function weightedRandom<T>(
   for (const [itemIndex, item] of items.entries()) {
     if (cumulativeWeights[itemIndex] >= randomNumber) {
       return {
-        item: item,
+        item,
         index: itemIndex,
       };
     }

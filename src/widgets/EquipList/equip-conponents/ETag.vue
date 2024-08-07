@@ -8,6 +8,7 @@ defineProps<{
   value: string;
 }>();
 </script>
+
 <template>
   <NTooltip>
     <template #trigger>

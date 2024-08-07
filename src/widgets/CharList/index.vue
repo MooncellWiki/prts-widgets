@@ -110,10 +110,8 @@ const toggleCollapse = (index: number) => {
 const onStepChange = ({ n, o }: { n: number; o: number }) => {
   if (o < n) {
     page.value.index = Math.ceil((o / n) * page.value.index);
-  } else {
-    if (page.value.index >= 1)
-      page.value.index = ((page.value.index - 1) * o) / n + 1;
-  }
+  } else if (page.value.index >= 1)
+    page.value.index = ((page.value.index - 1) * o) / n + 1;
   page.value.step = n;
 };
 function predicate(filter: State, char: Char) {

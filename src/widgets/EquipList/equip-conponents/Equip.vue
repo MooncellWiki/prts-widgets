@@ -105,13 +105,14 @@ onBeforeUpdate(() => {
 });
 const locale = getLanguage();
 </script>
+
 <template>
   <NSpin :show="loading">
     <div
       v-for="e in content"
       :key="e.name"
       class="modbody"
-      :class="{ simple: simple, mobile: isMobile() }"
+      :class="{ simple, mobile: isMobile() }"
     >
       <div class="basicbox" :class="{ nosimple: simple }">
         <div
@@ -185,7 +186,7 @@ const locale = getLanguage();
             </div>
           </div>
         </div>
-        <div class="minorsep" :class="{ simple: simple }"></div>
+        <div class="minorsep" :class="{ simple }"></div>
         <div class="singlerank">
           <div class="rankicon iconfilter" :class="{ nosimple: simple }">
             <img
@@ -201,17 +202,17 @@ const locale = getLanguage();
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[stats[0] + '2'] != '0'"
+                  v-if="e[`${stats[0]}2`] != '0'"
                   class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor(stats[0], e[stats[0] + '2'] ?? '0'),
+                      color: getStatColor(stats[0], e[`${stats[0]}2`] ?? '0'),
                     }"
                   >
                     {{
-                      (Number(e[stats[0]]) >= 0 ? "+" : "") + e[stats[0] + "2"]
+                      (Number(e[stats[0]]) >= 0 ? "+" : "") + e[`${stats[0]}2`]
                     }}
                   </span>
                 </span>
@@ -222,12 +223,12 @@ const locale = getLanguage();
               <span class="font=bold">
                 <span class="mdi mdi-asterisk"></span>
                 &nbsp;
-                <span v-html="e['talent' + 2]"></span>
+                <span v-html="e[`talent${2}`]"></span>
               </span>
             </div>
           </div>
         </div>
-        <div class="minorsep" :class="{ simple: simple }"></div>
+        <div class="minorsep" :class="{ simple }"></div>
         <div class="singlerank">
           <div class="rankicon iconfilter" :class="{ nosimple: simple }">
             <img
@@ -243,13 +244,13 @@ const locale = getLanguage();
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[stats[0] + '3'] != '0'"
+                  v-if="e[`${stats[0]}3`] != '0'"
                   class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor(stats[0], e[stats[0] + '3'] ?? '0'),
+                      color: getStatColor(stats[0], e[`${stats[0]}3`] ?? '0'),
                     }"
                   >
                     {{
@@ -264,7 +265,7 @@ const locale = getLanguage();
               <span class="font=bold">
                 <span class="mdi mdi-asterisk"></span>
                 &nbsp;
-                <span v-html="e['talent' + 3]"></span>
+                <span v-html="e[`talent${3}`]"></span>
               </span>
             </div>
           </div>
@@ -362,6 +363,7 @@ const locale = getLanguage();
     <template #description> {{ customLabel[locale].loading }} </template>
   </NSpin>
 </template>
+
 <style scoped>
 :deep(.modbody) {
   display: flex;

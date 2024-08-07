@@ -184,6 +184,7 @@ const pickSize = () => {
   return isMobile ? "small" : "medium";
 };
 </script>
+
 <template>
   <NConfigProvider
     preflight-style-disabled

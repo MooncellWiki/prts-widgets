@@ -19,7 +19,7 @@ async function main() {
   await Promise.allSettled(
     tmpls.map((tmpl) => {
       const name = tmpl.replace(".html", "");
-      let content = fs.readFileSync(
+      const content = fs.readFileSync(
         path.join(__dirname, "../dist/templates/", tmpl),
         {
           encoding: "utf8",

@@ -299,12 +299,12 @@ function GenerateImg(type: string) {
   canvas.getContext("2d")!.scale(scale, scale);
   const opts = {
     scale: 1,
-    canvas: canvas,
+    canvas,
     logging: true,
     allowTaint: true,
     useCORS: true,
-    width: width,
-    height: height,
+    width,
+    height,
   };
   html2canvas(shareContent, opts).then(function (canvas) {
     const imgData = canvas.toDataURL("PNG");
@@ -482,11 +482,9 @@ function calcServerColor(id: string) {
                     <img
                       crossorigin="anonymous"
                       class="skillImg"
-                      :src="
-                        skill(charData[charId].defaultSkillId) +
-                        '?a=' +
-                        new Date().getTime()
-                      "
+                      :src="`${skill(
+                        charData[charId].defaultSkillId,
+                      )}?a=${new Date().getTime()}`"
                       alt=""
                     />
                   </div>
@@ -812,7 +810,7 @@ function calcServerColor(id: string) {
   <n-drawer
     v-model:show="showImgResultM"
     style="height: 60%"
-    :placement="'bottom'"
+    placement="bottom"
   >
     <n-drawer-content title="图片可长按保存" closable>
       <img :src="resultImgUrl" width="100%" />

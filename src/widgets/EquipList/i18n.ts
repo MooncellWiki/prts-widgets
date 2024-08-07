@@ -233,7 +233,7 @@ export const customLabel = {
     rarityLabel: "稀有度",
     subtypeLabel: "职业分支",
     subPlaceholder: "输入或在菜单中选择",
-    subtypeMap: customSubtype["zh"],
+    subtypeMap: customSubtype.zh,
     tableCollapse: "模组排序和筛选",
     tableSortLabel: "排序",
     tableFilterLabel: "筛选",
@@ -366,7 +366,7 @@ export const customLabel = {
     tableCollapse: "Modules Sorting & Filtering",
     subPlaceholder: "Input or choose from menu",
     subtypeLabel: "Branches",
-    subtypeMap: customSubtype["en"],
+    subtypeMap: customSubtype.en,
     typeOptions: [
       "Vanguard",
       "Guard",
@@ -431,7 +431,7 @@ export const customLabel = {
     tableCollapse: "モジュール並べ替えと絞り込み",
     subPlaceholder: "入力または選択してください",
     subtypeLabel: "クラス細分",
-    subtypeMap: customSubtype["ja"],
+    subtypeMap: customSubtype.ja,
     typeOptions: [
       "先鋒",
       "近衛",
@@ -497,7 +497,7 @@ export const customLabel = {
     tableCollapse: "Module Sorting & Filtering",
     subPlaceholder: "Input or choose in menu",
     subtypeLabel: "Branches",
-    subtypeMap: customSubtype["en"],
+    subtypeMap: customSubtype.en,
     typeOptions: [
       "Vanguard",
       "Guard",

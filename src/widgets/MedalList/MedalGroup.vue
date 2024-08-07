@@ -18,7 +18,7 @@ import MedalComponent from "./Medal.vue";
 
 import type { Medal, MedalGroup } from "./types";
 function goToLink(link: string) {
-  window.open("https://prts.wiki/w/" + link, "_blank");
+  window.open(`https://prts.wiki/w/${link}`, "_blank");
 }
 const props = defineProps<{
   groupData: MedalGroup;

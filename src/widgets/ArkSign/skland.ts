@@ -12,7 +12,7 @@ function getSign(path: string, requestParam = "", secret: string) {
 
   const headers = {
     platform: "3",
-    timestamp: timestamp,
+    timestamp,
     dId: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0",
     vName: "1.2.0",
   };
@@ -37,15 +37,15 @@ export async function getPlayerBinding(
   const url = `${host}${path}`;
   const headers = {
     platform: "3",
-    timestamp: timestamp,
+    timestamp,
     dId: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0",
     vName: "1.2.0",
-    cred: cred,
-    sign: sign,
+    cred,
+    sign,
   };
 
   const resp = await fetch(url, {
-    headers: headers,
+    headers,
     method: "get",
   });
   const data: PlayerBindingResp = await resp.json();
@@ -92,15 +92,15 @@ export async function getPlayerInfo(
   // console.log(url)
   const headers = {
     platform: "3",
-    timestamp: timestamp,
+    timestamp,
     dId: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0",
     vName: "1.2.0",
-    cred: cred,
-    sign: sign,
+    cred,
+    sign,
   };
 
   const resp = await fetch(url, {
-    headers: headers,
+    headers,
     method: "get",
   });
   const json: PlayerInfoResp = await resp.json();

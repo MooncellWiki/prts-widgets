@@ -34,20 +34,18 @@ const emit = defineEmits<{
 const showInfo = useVModel(props, "show", emit);
 const showEquips = inject("showEquips") as Ref<string[]>;
 const toggleShow = (c: CharEquips) => {
-  if (
-    c.equips.some((e) => !!e["name"] && showEquips.value.includes(e["name"]))
-  ) {
+  if (c.equips.some((e) => !!e.name && showEquips.value.includes(e.name))) {
     for (const equip of props.char.equips) {
-      if (!!equip["name"] && showEquips.value.includes(equip["name"])) {
-        const ind = showEquips.value.indexOf(equip["name"]);
+      if (!!equip.name && showEquips.value.includes(equip.name)) {
+        const ind = showEquips.value.indexOf(equip.name);
         showEquips.value.splice(ind, 1);
       }
     }
     showInfo.value = false;
   } else {
     for (const equip of props.char.equips) {
-      if (!!equip["name"] && !showEquips.value.includes(equip["name"])) {
-        showEquips.value.push(equip["name"]);
+      if (!!equip.name && !showEquips.value.includes(equip.name)) {
+        showEquips.value.push(equip.name);
       }
     }
     showInfo.value = true;

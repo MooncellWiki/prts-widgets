@@ -7,6 +7,7 @@ defineProps<{
   channelName: string;
 }>();
 </script>
+
 <template>
   <div class="flex items-center">
     {{ nickName }}

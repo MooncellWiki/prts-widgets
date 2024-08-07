@@ -29,6 +29,7 @@ async function textCopy() {
   }
 }
 </script>
+
 <template>
   <div style="margin-bottom: 20px">
     <span class="title">01.</span>
@@ -74,6 +75,7 @@ async function textCopy() {
     把上一步获取的字符串粘贴到“森空岛凭据”输入栏内，点击导入数据按钮即可。
   </div>
 </template>
+
 <style scoped>
 .title {
   font-weight: bold;

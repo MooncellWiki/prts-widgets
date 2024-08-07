@@ -61,7 +61,7 @@ const statsData = computed(() => {
           )"
           :key="index"
         >
-          <NStatistic :label="'加密' + item.name" :tabular-nums="true">
+          <NStatistic :label="`加密${item.name}`" :tabular-nums="true">
             <NNumberAnimation
               active
               :from="0"

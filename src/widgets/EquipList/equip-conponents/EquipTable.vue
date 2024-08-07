@@ -80,7 +80,7 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
   ];
 };
 const createRowKey = (row: EquipRow) => {
-  return row.operator + "." + row.name;
+  return `${row.operator}.${row.name}`;
 };
 const props = defineProps<{
   data: EquipRow[];
@@ -114,6 +114,7 @@ watch(props, () => {
     pagination.value.page = 1;
 });
 </script>
+
 <template>
   <NDataTable
     :columns="columns(locale)"
