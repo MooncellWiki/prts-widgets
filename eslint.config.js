@@ -18,11 +18,7 @@ export const GLOB_TSX = "**/*.?([cm])tsx";
 
 export const GLOB_VUE = "**/*.vue";
 
-export const restrictedSyntaxJs = [
-  "ForInStatement",
-  "LabeledStatement",
-  "WithStatement",
-];
+export const restrictedSyntaxJs = ["LabeledStatement", "WithStatement"];
 
 export const javascript = [
   js.configs.recommended,
