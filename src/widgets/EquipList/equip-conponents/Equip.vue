@@ -118,7 +118,7 @@ const locale = getLanguage();
         <div
           class="modtype"
           :style="{
-            background: colorMap[e.color as string] ?? colorMap['grey'],
+            background: colorMap[e.color as string] ?? colorMap.grey,
           }"
         >
           <div class="flex-none">
@@ -223,7 +223,7 @@ const locale = getLanguage();
               <span class="font=bold">
                 <span class="mdi mdi-asterisk"></span>
                 &nbsp;
-                <span v-html="e[`talent${2}`]"></span>
+                <span v-html="e.talent2"></span>
               </span>
             </div>
           </div>

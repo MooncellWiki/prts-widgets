@@ -90,9 +90,7 @@ const locale = getLanguage();
       <SubAvatar
         v-for="(char, ind) in chars"
         :key="ind"
-        :show="
-          char.equips.some((e) => !!e['name'] && showEquips.includes(e['name']))
-        "
+        :show="char.equips.some((e) => !!e.name && showEquips.includes(e.name))"
         :char="char"
       />
     </div>

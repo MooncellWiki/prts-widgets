@@ -174,6 +174,7 @@ const vueCustomRules = {
     },
   ],
   "vue/custom-event-name-casing": ["error", "camelCase"],
+  "vue/dot-notation": "warn",
   "vue/eqeqeq": ["error", "smart"],
   "vue/html-self-closing": [
     "error",
