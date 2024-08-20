@@ -1,22 +1,25 @@
 export const classMap: Record<string, string> = {
-  start: "fas fa-exclamation-triangle",
-  end: "fas fa-exclamation-triangle",
-  flystart: "fas fa-plane",
-  telin: "fas fa-indent",
-  telout: "fas fa-outdent",
+  start: "mdi mdi-alert", // 侵入点
+  end: "mdi mdi-alert", // 保护目标
+  flystart: "mdi mdi-quadcopter", // 空袭侵入点
+  telin: "mdi mdi-login-variant", // 通道入口
+  telout: "mdi mdi-logout", // 通道出口
   // tokens
-  gtreasure: "fas fa-crown",
-  ballis: "fas fa-exclamation",
-  streasure: "fas fa-crown",
-  airsup: "fas fa-times",
-  wdescp: "fas fa-sign-out-alt",
-  redtower: "fas fa-broadcast-tower",
-  xbbase: "fas fa-chess-rook",
-  poachr: "far fa-dot-circle",
-  ore: "fas fa-radiation",
-  tower: "fas fa-broadcast-tower",
-  xbalis: "fas fa-exclamation",
-  xbbillb: "fas fa-sign",
+  gtreasure: "mdi mdi-crown", // 埋没金属箱
+  //ballis: "fas fa-exclamation", // 弩炮
+  streasure: "mdi mdi-crown-outline", // 宝刺金属箱
+  airsup: "mdi mdi-close-octagon-outline", //可移动战术机库
+  wdescp: "mdi mdi-run", //逃脱点
+  redtower: "mdi mdi-transmission-tower", // 移动战塔
+  xbbase: "mdi mdi-chess-rook", // 基地
+  poachr: "mdi mdi-crosshairs-gps", // 老练猎手
+  ore: "mdi mdi-radioactive", //源石祭坛
+  tower: "mdi mdi-tower-fire", // L-44留声机
+  xbalis: "mdi mdi-bow-arrow", //简易弩台
+  xbhydr: "mdi mdi-star-three-points", //机关石门
+  xbbillb: "mdi mdi-sign-real-estate", // 告示牌
+  roadblock: "mdi mdi-cube", //道路障碍物
+  hiddenstone: "mdi mdi-shield-key", //遗迹残骸
 };
 
 export const TipMap: Record<string, string> = {
@@ -66,12 +69,12 @@ export const TipMap: Record<string, string> = {
     '<b>L-44"留声机"</b><br>我方与敌方可夺取控制权，激活后对敌方造成法术伤害，并可治疗友方单位',
   rmtarms: "<b>R-11a突击动力装甲</b><br>吸收周围实验产物回复技力，技力满时激活",
   xblight: "<b>监视哨站</b><br>可以侦查范围内的视野",
-  xbalis: "<b>简易弩台</b>",
+  xbalis: "<b>简易弩台</b><br>自身前方直线存在我方单位时永久激活，可被击破",
   xbdiam: "<b>澄亮矿脉</b><br>可被采集",
-  xbhydr: "<b>机关石门</b>",
-  xbstation: "<b>号令点</b>",
-  xbmgbird: "<b>喙中奇物</b><br>可被治疗",
-  xbbillb: "<b>告示牌</b>",
+  xbhydr: "<b>机关石门</b><br>被攻破后开启后续区域",
+  xbstation: "<b>号令点</b><br>被攻破后解锁荒废城镇远征",
+  xbmgbird: "<b>喙中奇物</b><br>可被治疗，完全恢复后可获得额外资源",
+  xbbillb: "<b>告示牌</b><br>会记录一些信息",
 };
 
 export const bgMap: Record<string, string> = {
@@ -81,6 +84,7 @@ export const bgMap: Record<string, string> = {
   volcano: "特殊地形_热泵通道.png",
   volspread: "特殊地形_岩浆喷射处.png",
   // tokens
+  ballis: "技能_发射弩箭.png",
   xbwood: "生息演算_资源_木材.png",
   xboverwatch: "头像_装置_监控塔.png",
   vegetation: "生息演算_资源_其他掉落物品.png",

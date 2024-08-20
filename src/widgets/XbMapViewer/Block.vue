@@ -235,15 +235,18 @@ onMounted(() => {
 }
 
 .hiddenstone {
+  /* 遗迹残骸 */
   background-color: dimgray;
   border: 2px solid darkgray;
 }
 
 .streasure span {
+  /* 宝刺金属箱 */
   color: black;
 }
 
 .roadblock {
+  /* 道路障碍物 */
   background-color: slategray;
   border: 2px dotted darkgray;
 }
@@ -264,5 +267,15 @@ onMounted(() => {
 
 .redtower span {
   color: crimson;
+}
+
+.puddle {
+  /* 池沼地块 */
+  background-color: #568fb5;
+}
+
+.steam {
+  /* 隐焰地块 */
+  background-color: #935858;
 }
 </style>
