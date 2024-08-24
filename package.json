@@ -22,7 +22,6 @@
     "@urlpack/json": "^2.0.0",
     "@vicons/material": "^0.12.0",
     "@vueuse/core": "^10.11.1",
-    "@vueuse/router": "^10.11.1",
     "crypto-js": "^4.2.0",
     "hammerjs": "^2.0.8",
     "html2canvas": "^1.4.1",
