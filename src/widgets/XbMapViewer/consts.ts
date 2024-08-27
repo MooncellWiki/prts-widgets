@@ -14,6 +14,8 @@ export const classMap: Record<string, string> = {
   wdescp: "mdi mdi-run", //逃脱点
   redtower: "mdi mdi-transmission-tower", // 移动战塔
   xbbase: "mdi mdi-chess-rook", // 基地
+  xbfdtion: "mdi mdi-chess-rook", // 风沙营垒
+  xbmcv: "mdi mdi-car", // 风沙营垒
   poachr: "mdi mdi-crosshairs-gps", // 老练猎手
   ore: "mdi mdi-radioactive", //源石祭坛
   tower: "mdi mdi-tower-fire", // L-44留声机
@@ -24,6 +26,8 @@ export const classMap: Record<string, string> = {
   hiddenstone: "mdi mdi-shield-key", //遗迹残骸
   xbstation: "mdi mdi-flag-triangle", //号令点
   xbmgbird: "mdi mdi-bird", //喙中奇物
+  hstone: "mdi mdi-cube-outline", //城防路障
+  xbrandprop: "mdi mdi-help-box-outline", //赛虫-随机道具盒
 };
 
 export const TipMap: Record<string, string> = {
@@ -65,7 +69,10 @@ export const TipMap: Record<string, string> = {
   redtower:
     "<b>移动战塔</b><br>敌方老巢，击败该地区的全部老巢使该地区不会刷新精英敌袭",
   xbbase: "<b>基地</b>必须保护的核心，被击败后视为演算失败",
+  xbfdtion: "<b>风沙营垒</b>必须保护的核心，被击败后视为演算失败",
+  xbmcv: "<b>旷野房车</b>在特殊行动中必须保护的核心，被击败后视为本次行动失败",
   xbfarm: "<b>便携式种植槽</b><br>每天产出一定数量的<稻谷>，可部署在低地",
+  xbfarmm: "<b>种植箱集群</b><br>部署后，每个演算日产出一定数量的<稻谷>",
   poachr:
     "<b>老练猎手</b><br>只攻击野生动物，找不到攻击目标时可以闪现移动至周围随机可部署低地，拥有25%的物理和法术闪避",
   ore: "<b>源石祭坛</b><br>周期性向四周释放脉冲波，对我军与敌军造成伤害",
@@ -82,6 +89,18 @@ export const TipMap: Record<string, string> = {
   xbstation: "<b>号令点</b><br>被攻破后解锁荒废城镇远征",
   xbmgbird: "<b>喙中奇物</b><br>可被治疗，完全恢复后可获得额外资源",
   xbbillb: "<b>告示牌</b><br>会记录一些信息",
+  hstone: "<b>城防路障</b><br>可以阻挡多名敌人",
+  xbabal:
+    "<b>追猎发射台</b><br>每受到一定次数攻击，向范围内的一只【野生动物】发射捕猎网，其生命值低于一定比例时被捕获，否则受到一段时间的束缚",
+  xbrandprop:
+    "<b>随机道具盒</b><br>源石虫触碰后获得随机一个本场比赛中可提供的比赛用道具，之后消失一段时间",
+  xbcp: "<b>检查点</b><br>源石虫赛跑时的目标点位，其中靠近出发点的检查点为终点线",
+  xbspd: "<b>加速块</b><br>源石虫经过后会加速",
+  pushtw: "<b>喷拒器</b><br>将前方一名敌人推开",
+  battery: "<b>便携式补给站</b><br>每4秒对友方单位回复3点技力",
+  bondtw: "<b>缚网发射台</b><br>对前方一名敌方释放束缚网，束缚一段时间",
+  eradio:
+    "<b>废热喷口</b><br>对前方范围内所有敌人造成法术伤害并降低移动速度，可通过受击加速启动",
 };
 
 export const bgMap: Record<string, string> = {
@@ -98,8 +117,16 @@ export const bgMap: Record<string, string> = {
   xbstone: "生息演算_资源_石材.png",
   xbiron: "生息演算_资源_铁矿石.png",
   xbfarm: "头像_装置_便携式种植槽.png",
+  xbfarmm: "头像_装置_种植箱集群.png",
   stone: "头像_装置_碎石.png",
   rmtarms: "头像_装置_R-11突击动力装甲.png",
   xblight: "头像_装置_监视哨站.png",
   xbdiam: "生息演算_资源_澄亮石.png",
+  xbabal: "头像_装置_追猎发射台.png",
+  xbspd: "特殊地形_加速块.png",
+  xbcp: "特殊地形_检查点.png",
+  pushtw: "头像_装置_喷拒器.png",
+  battery: "头像_装置_便携式补给站.png",
+  bondtw: "头像_装置_缚网发射台.png",
+  eradio: "头像_装置_废热喷口.png",
 };

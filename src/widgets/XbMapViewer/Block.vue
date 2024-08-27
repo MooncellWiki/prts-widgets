@@ -253,6 +253,11 @@ onMounted(() => {
   border: 2px dotted darkgray;
 }
 
+.hstone span {
+  /* 城防路障 */
+  color: #745d32;
+}
+
 .xbmgbird span {
   /* 喙中奇物 */
   color: #653409;
@@ -265,7 +270,9 @@ onMounted(() => {
 }
 
 .wdescp span, /* 逃脱点 */
-.xbbase span /* 基地 */ {
+.xbbase span, /* 基地 */
+.xbfdtion span, /* 风沙营垒 */
+.xbmcv span /* 矿业房车 */ {
   color: green;
 }
 
@@ -295,5 +302,13 @@ onMounted(() => {
 }
 .steam span {
   color: #973a3a;
+}
+
+.xbrandprop span {
+  color: rgb(255, 229, 194);
+}
+
+.xbcp span {
+  color: rgb(255, 255, 99);
 }
 </style>
