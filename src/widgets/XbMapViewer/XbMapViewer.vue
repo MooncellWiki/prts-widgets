@@ -1,14 +1,31 @@
+<script lang="ts">
+export default {
+  name: "XbMapViewer",
+};
+</script>
+
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
+import { NModal, NButton, NConfigProvider } from "naive-ui";
+
+import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
+
 import Block from "./Block.vue";
-const props = defineProps<{
+
+export interface Props {
   map: {
     options: Record<string, any>;
     mapData: Record<string, any>;
     predefines: Record<string, any>;
   };
-}>();
+  isInModal: boolean;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  isInModal: false,
+});
 
 const tokens = computed(() => {
   const result: Record<string, any> = {};
@@ -62,20 +79,29 @@ function getToken(row: number, col: number) {
 }
 const self = ref<HTMLElement>();
 const fontsize = ref("");
+const bordersize = ref("");
 const width = computed(() => {
   return props.map!.mapData.width ?? props.map!.mapData.map[0].length;
 });
+const showModal = ref(false);
 onMounted(() => {
   if (!self.value || !props.map) return;
 
   fontsize.value = `${
-    (self.value.getBoundingClientRect().width / width.value / 9) * 5
+    (self.value.getBoundingClientRect().width /
+      width.value /
+      (props.isInModal ? 5 : 9)) *
+    5
   }px`;
+
+  bordersize.value = `${width.value <= 25 ? "2px" : "1px"}`;
 });
+const { theme } = useTheme();
+const i18nConfig = getNaiveUILocale();
 </script>
 
 <template>
-  <div id="map" ref="self" class="w-full">
+  <div :id="isInModal ? 'mapmodal' : 'map'" ref="self" class="w-full">
     <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
       <Block
         v-for="(board, n) in row"
@@ -87,15 +113,63 @@ onMounted(() => {
       />
     </div>
   </div>
+  <NConfigProvider
+    v-if="!isInModal && width >= 25"
+    preflight-style-disabled
+    :theme="theme"
+    :locale="i18nConfig.locale"
+    :date-locale="i18nConfig.dateLocale"
+  >
+    <NButton
+      quaternary
+      class="float-right mt-1 h-2em justify-end lt-sm:hidden"
+      @click="showModal = true"
+    >
+      <i class="mdi mdi-magnify-plus-outline"></i> 放大查看
+    </NButton>
+    <NModal
+      v-model:show="showModal"
+      class="custom-card"
+      preset="card"
+      style="width: 100%; max-width: 1200px; height: 100%"
+      size="small"
+      :bordered="false"
+      :block-scroll="false"
+    >
+      <template #header>
+        <i class="mdi mdi-map"></i>
+      </template>
+      <XbMapViewer :map="map" :is-in-modal="true" />
+    </NModal>
+  </NConfigProvider>
 </template>
 
-<style scoped>
-.row {
+<style scoped v-if="!isInModal">
+#map .row {
   display: grid;
   grid-template-columns: repeat(v-bind(width), 1fr);
 }
 
-:deep(.block span) {
+#map :deep(.block span) {
   font-size: v-bind(fontsize);
+}
+
+#map :deep(.block) {
+  border-width: v-bind(bordersize);
+}
+</style>
+
+<style scoped v-else>
+#mapmodal .row {
+  display: grid;
+  grid-template-columns: repeat(v-bind(width), 1fr);
+}
+
+#mapmodal :deep(.block span) {
+  font-size: v-bind(fontsize);
+}
+
+#mapmodal :deep(.block) {
+  border-width: v-bind(bordersize);
 }
 </style>

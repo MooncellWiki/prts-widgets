@@ -196,7 +196,9 @@ onMounted(() => {
   border: 2px dotted dimgray;
 }
 
-.deepsea {
+.deepsea,
+.xbdpsea {
+  /* 清澈水域，为啥有两个得问YJ */
   background-color: steelblue;
   border: 2px dotted darkgray;
 }
@@ -251,31 +253,47 @@ onMounted(() => {
   border: 2px dotted darkgray;
 }
 
+.xbmgbird span {
+  /* 喙中奇物 */
+  color: #653409;
+}
+
 .airsup {
+  /* 空袭侵入点 */
   background-color: indianred;
   border: 2px solid darkred;
 }
 
-.wdescp span,
-.xbbase span {
+.wdescp span, /* 逃脱点 */
+.xbbase span /* 基地 */ {
   color: green;
 }
 
 .tower span {
+  /* 留声机 */
   color: darkslategray;
 }
 
-.redtower span {
+.redtower span /* 移动战塔 */
+.xbstation span /* 号令点 */ {
   color: crimson;
 }
 
+/* 池沼地块 */
 .puddle {
-  /* 池沼地块 */
-  background-color: #568fb5;
+  background-color: #599bd1;
+  border: 2px dotted darkgray;
+}
+.puddle span {
+  color: #82bded;
 }
 
+/* 隐焰地块 */
 .steam {
-  /* 隐焰地块 */
   background-color: #935858;
+  border: 2px dotted darkgray;
+}
+.steam span {
+  color: #973a3a;
 }
 </style>

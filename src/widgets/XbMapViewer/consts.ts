@@ -4,6 +4,8 @@ export const classMap: Record<string, string> = {
   flystart: "mdi mdi-quadcopter", // 空袭侵入点
   telin: "mdi mdi-login-variant", // 通道入口
   telout: "mdi mdi-logout", // 通道出口
+  puddle: "mdi mdi-waves", // 池沼地块
+  steam: "mdi mdi-fire", // 隐焰地块
   // tokens
   gtreasure: "mdi mdi-crown", // 埋没金属箱
   //ballis: "fas fa-exclamation", // 弩炮
@@ -20,6 +22,8 @@ export const classMap: Record<string, string> = {
   xbbillb: "mdi mdi-sign-real-estate", // 告示牌
   roadblock: "mdi mdi-cube", //道路障碍物
   hiddenstone: "mdi mdi-shield-key", //遗迹残骸
+  xbstation: "mdi mdi-flag-triangle", //号令点
+  xbmgbird: "mdi mdi-bird", //喙中奇物
 };
 
 export const TipMap: Record<string, string> = {
@@ -29,6 +33,7 @@ export const TipMap: Record<string, string> = {
   hole: "<b>地穴</b><br>危险的凹陷地形或地面破洞，经过的敌人会摔落至底部直接死亡",
   grass: "<b>草丛</b><br>置于其中的干员不会成为敌军远程攻击的目标",
   deepsea: "<b>清澈水域</b><br>可使用<蟹蟹抽水泵>采集<清水>",
+  xbdpsea: "<b>清澈水域</b><br>可使用<蟹蟹抽水泵>采集<清水>",
   infection:
     "<b>活性源石</b><br>部署于其上的我军和经过的敌军持续受到伤害，但攻击力和攻速大幅度提升",
   corrosion_2: "<b>腐蚀地面</b><br>置于其上的我方单位防御力减半",
@@ -40,7 +45,8 @@ export const TipMap: Record<string, string> = {
     "<b>岩浆喷射处</b><br>每隔一定时间会喷出岩浆，对周围8格内的我方单位造成大量伤害且融化障碍物",
   steam:
     "<b>隐焰</b><br><盛季>和<荒季>时每隔一段时间对其上的任何单位造成无视防御和法术抗性的伤害",
-  puddle: "<b>池沼</b><br><荒季>时会干涸露出地面",
+  puddle:
+    "<b>池沼</b><br>未干涸时具有与<清澈水域>相同的效果，<荒季>时会干涸露出地面",
   // tokens
   xbwood: "<b>杂木林</b><br>可开采<木材>",
   xboverwatch: "<b>监控塔</b><br>可以侦查范围内的视野",
@@ -58,18 +64,19 @@ export const TipMap: Record<string, string> = {
   wdescp: "<b>逃脱点</b><br>部署干员后激活野外支援可进行逃脱",
   redtower:
     "<b>移动战塔</b><br>敌方老巢，击败该地区的全部老巢使该地区不会刷新精英敌袭",
-  xbbase: "<b>基地</b>",
+  xbbase: "<b>基地</b>必须保护的核心，被击败后视为演算失败",
   xbfarm: "<b>便携式种植槽</b><br>每天产出一定数量的<稻谷>，可部署在低地",
   poachr:
     "<b>老练猎手</b><br>只攻击野生动物，找不到攻击目标时可以闪现移动至周围随机可部署低地，拥有25%的物理和法术闪避",
   ore: "<b>源石祭坛</b><br>周期性向四周释放脉冲波，对我军与敌军造成伤害",
   tidectrl: "<b>涨潮控制</b>",
-  stone: "<b>碎石</b><br>改变敌人行径路线",
+  stone: "<b>碎石</b><br>改变敌人行进路线",
   tower:
     '<b>L-44"留声机"</b><br>我方与敌方可夺取控制权，激活后对敌方造成法术伤害，并可治疗友方单位',
   rmtarms: "<b>R-11a突击动力装甲</b><br>吸收周围实验产物回复技力，技力满时激活",
   xblight: "<b>监视哨站</b><br>可以侦查范围内的视野",
-  xbalis: "<b>简易弩台</b><br>自身前方直线存在我方单位时永久激活，可被击破",
+  xbalis:
+    "<b>简易弩台</b><br>自身前方直线存在我方单位时发射弩箭造成物理伤害，可被击破",
   xbdiam: "<b>澄亮矿脉</b><br>可被采集",
   xbhydr: "<b>机关石门</b><br>被攻破后开启后续区域",
   xbstation: "<b>号令点</b><br>被攻破后解锁荒废城镇远征",
