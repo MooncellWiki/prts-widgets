@@ -1,9 +1,3 @@
-<script lang="ts">
-export default {
-  name: "XbMapViewer",
-};
-</script>
-
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
@@ -23,6 +17,9 @@ export interface Props {
   isInModal: boolean;
 }
 
+const { theme } = useTheme();
+const i18nConfig = getNaiveUILocale();
+
 const props = withDefaults(defineProps<Props>(), {
   isInModal: false,
 });
@@ -38,6 +35,7 @@ const tokens = computed(() => {
   }
   return result;
 });
+
 const black = computed(() => {
   const result: Record<string, string> = {};
   const configBlackBoard = props.map?.options.configBlackBoard || [];
@@ -65,30 +63,35 @@ const black = computed(() => {
 
 function getTile(index: number) {
   let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
-  if (a === "floor" || a === "road")
-    a =
-      props.map?.mapData.tiles[index].buildableType === 1 ||
-      props.map?.mapData.tiles[index].buildableType === "MELEE" ||
-      props.map?.mapData.tiles[index].buildableType === "ALL"
-        ? "road"
-        : "floor";
+  if (a === "floor" || a === "road") {
+    const buildableType = props.map?.mapData.tiles[index].buildableType;
+    const isRoad =
+      buildableType === 1 ||
+      buildableType === "MELEE" ||
+      buildableType === "ALL";
+    a = isRoad ? "road" : "floor";
+  }
   return a;
 }
+
 function getToken(row: number, col: number) {
   return tokens.value[`${row}-${col}`];
 }
-const self = ref<HTMLElement>();
+
+const rootRef = ref<HTMLElement>();
 const fontsize = ref("");
 const bordersize = ref("");
 const width = computed(() => {
-  return props.map!.mapData.width ?? props.map!.mapData.map[0].length;
+  const mapData = props.map.mapData;
+  return mapData.width ?? mapData.map[0].length;
 });
 const showModal = ref(false);
+
 onMounted(() => {
-  if (!self.value || !props.map) return;
+  if (!rootRef.value || !props.map) return;
 
   fontsize.value = `${
-    (self.value.getBoundingClientRect().width /
+    (rootRef.value.getBoundingClientRect().width /
       width.value /
       (props.isInModal ? 5 : 9)) *
     5
@@ -96,12 +99,10 @@ onMounted(() => {
 
   bordersize.value = `${width.value <= 25 ? "2px" : "1px"}`;
 });
-const { theme } = useTheme();
-const i18nConfig = getNaiveUILocale();
 </script>
 
 <template>
-  <div :id="isInModal ? 'mapmodal' : 'map'" ref="self" class="w-full">
+  <div :id="isInModal ? 'mapmodal' : 'map'" ref="rootRef" class="w-full">
     <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
       <Block
         v-for="(board, n) in row"
@@ -144,7 +145,7 @@ const i18nConfig = getNaiveUILocale();
   </NConfigProvider>
 </template>
 
-<style scoped v-if="!isInModal">
+<style scoped>
 #map .row {
   display: grid;
   grid-template-columns: repeat(v-bind(width), 1fr);
@@ -157,9 +158,7 @@ const i18nConfig = getNaiveUILocale();
 #map :deep(.block) {
   border-width: v-bind(bordersize);
 }
-</style>
 
-<style scoped v-else>
 #mapmodal .row {
   display: grid;
   grid-template-columns: repeat(v-bind(width), 1fr);
