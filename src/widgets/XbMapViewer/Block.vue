@@ -8,7 +8,7 @@ const props = withDefaults(
   defineProps<{
     tile: string;
     tileHeightType: string;
-    tokens: string[];
+    tokens?: string[];
     black: string;
   }>(),
   {

@@ -14,14 +14,14 @@ export interface Props {
     mapData: Record<string, any>;
     predefines: Record<string, any>;
   };
-  isInModal: boolean;
+  embed?: boolean;
 }
 
 const { theme } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
 const props = withDefaults(defineProps<Props>(), {
-  isInModal: false,
+  embed: false,
 });
 
 const tokens = computed(() => {
@@ -93,7 +93,7 @@ onMounted(() => {
   fontsize.value = `${
     (rootRef.value.getBoundingClientRect().width /
       width.value /
-      (props.isInModal ? 5 : 9)) *
+      (props.embed ? 5 : 9)) *
     5
   }px`;
 
@@ -102,46 +102,47 @@ onMounted(() => {
 </script>
 
 <template>
-  <div :id="isInModal ? 'mapmodal' : 'map'" ref="rootRef" class="w-full">
-    <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
-      <Block
-        v-for="(board, n) in row"
-        :key="i * row.length + n"
-        :tile="getTile(board)"
-        :tile-height-type="map.mapData.tiles[board].heightType.toString()"
-        :tokens="getToken(map.mapData.map.length - 1 - i, n)"
-        :black="black && black[`${map.mapData.map.length - 1 - i}-${n}`]"
-      />
-    </div>
-  </div>
   <NConfigProvider
-    v-if="!isInModal && width >= 25"
     preflight-style-disabled
     :theme="theme"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NButton
-      quaternary
-      class="float-right mt-1 h-2em justify-end lt-sm:hidden"
-      @click="showModal = true"
-    >
-      <i class="mdi mdi-magnify-plus-outline"></i> 放大查看
-    </NButton>
-    <NModal
-      v-model:show="showModal"
-      class="custom-card"
-      preset="card"
-      style="width: 100%; max-width: 1200px; height: 100%"
-      size="small"
-      :bordered="false"
-      :block-scroll="false"
-    >
-      <template #header>
-        <i class="mdi mdi-map"></i>
-      </template>
-      <XbMapViewer :map="map" :is-in-modal="true" />
-    </NModal>
+    <div :id="embed ? 'mapmodal' : 'map'" ref="rootRef" class="w-full">
+      <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
+        <Block
+          v-for="(board, n) in row"
+          :key="i * row.length + n"
+          :tile="getTile(board)"
+          :tile-height-type="map.mapData.tiles[board].heightType.toString()"
+          :tokens="getToken(map.mapData.map.length - 1 - i, n)"
+          :black="black && black[`${map.mapData.map.length - 1 - i}-${n}`]"
+        />
+      </div>
+    </div>
+    <div v-if="!embed && width >= 25">
+      <NButton
+        quaternary
+        class="float-right mt-1 h-2em justify-end lt-sm:hidden"
+        @click="showModal = true"
+      >
+        <i class="mdi mdi-magnify-plus-outline"></i> 放大查看
+      </NButton>
+      <NModal
+        v-model:show="showModal"
+        class="custom-card"
+        preset="card"
+        style="width: 100%; max-width: 1200px; height: 100%"
+        size="small"
+        :bordered="false"
+        :block-scroll="false"
+      >
+        <template #header>
+          <i class="mdi mdi-map"></i>
+        </template>
+        <XbMapViewer :map="map" embed />
+      </NModal>
+    </div>
   </NConfigProvider>
 </template>
 
