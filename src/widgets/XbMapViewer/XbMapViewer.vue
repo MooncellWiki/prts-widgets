@@ -1,14 +1,28 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
+import { NModal, NButton, NConfigProvider } from "naive-ui";
+
+import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
+
 import Block from "./Block.vue";
-const props = defineProps<{
+
+export interface Props {
   map: {
     options: Record<string, any>;
     mapData: Record<string, any>;
     predefines: Record<string, any>;
   };
-}>();
+  embed?: boolean;
+}
+
+const { theme } = useTheme();
+const i18nConfig = getNaiveUILocale();
+
+const props = withDefaults(defineProps<Props>(), {
+  embed: false,
+});
 
 const tokens = computed(() => {
   const result: Record<string, any> = {};
@@ -21,6 +35,7 @@ const tokens = computed(() => {
   }
   return result;
 });
+
 const black = computed(() => {
   const result: Record<string, string> = {};
   const configBlackBoard = props.map?.options.configBlackBoard || [];
@@ -48,54 +63,113 @@ const black = computed(() => {
 
 function getTile(index: number) {
   let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
-  if (a === "floor" || a === "road")
-    a =
-      props.map?.mapData.tiles[index].buildableType === 1 ||
-      props.map?.mapData.tiles[index].buildableType === "MELEE" ||
-      props.map?.mapData.tiles[index].buildableType === "ALL"
-        ? "road"
-        : "floor";
+  if (a === "floor" || a === "road") {
+    const buildableType = props.map?.mapData.tiles[index].buildableType;
+    const isRoad =
+      buildableType === 1 ||
+      buildableType === "MELEE" ||
+      buildableType === "ALL";
+    a = isRoad ? "road" : "floor";
+  }
   return a;
 }
+
 function getToken(row: number, col: number) {
   return tokens.value[`${row}-${col}`];
 }
-const self = ref<HTMLElement>();
+
+const rootRef = ref<HTMLElement>();
 const fontsize = ref("");
+const bordersize = ref("");
 const width = computed(() => {
-  return props.map!.mapData.width ?? props.map!.mapData.map[0].length;
+  const mapData = props.map.mapData;
+  return mapData.width ?? mapData.map[0].length;
 });
+const showModal = ref(false);
+
 onMounted(() => {
-  if (!self.value || !props.map) return;
+  if (!rootRef.value || !props.map) return;
 
   fontsize.value = `${
-    (self.value.getBoundingClientRect().width / width.value / 9) * 5
+    (rootRef.value.getBoundingClientRect().width /
+      width.value /
+      (props.embed ? 5 : 9)) *
+    5
   }px`;
+
+  bordersize.value = `${width.value <= 25 ? "2px" : "1px"}`;
 });
 </script>
 
 <template>
-  <div id="map" ref="self" class="w-full">
-    <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
-      <Block
-        v-for="(board, n) in row"
-        :key="i * row.length + n"
-        :tile="getTile(board)"
-        :tile-height-type="map.mapData.tiles[board].heightType.toString()"
-        :tokens="getToken(map.mapData.map.length - 1 - i, n)"
-        :black="black && black[`${map.mapData.map.length - 1 - i}-${n}`]"
-      />
+  <NConfigProvider
+    preflight-style-disabled
+    :theme="theme"
+    :locale="i18nConfig.locale"
+    :date-locale="i18nConfig.dateLocale"
+  >
+    <div :id="embed ? 'mapmodal' : 'map'" ref="rootRef" class="w-full">
+      <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
+        <Block
+          v-for="(board, n) in row"
+          :key="i * row.length + n"
+          :tile="getTile(board)"
+          :tile-height-type="map.mapData.tiles[board].heightType.toString()"
+          :tokens="getToken(map.mapData.map.length - 1 - i, n)"
+          :black="black && black[`${map.mapData.map.length - 1 - i}-${n}`]"
+        />
+      </div>
     </div>
-  </div>
+    <div v-if="!embed && width >= 25">
+      <NButton
+        quaternary
+        class="float-right mt-1 h-2em justify-end lt-sm:hidden"
+        @click="showModal = true"
+      >
+        <i class="mdi mdi-magnify-plus-outline"></i> 放大查看
+      </NButton>
+      <NModal
+        v-model:show="showModal"
+        class="custom-card"
+        preset="card"
+        style="width: 100%; max-width: 1200px; height: 100%"
+        size="small"
+        :bordered="false"
+        :block-scroll="false"
+      >
+        <template #header>
+          <i class="mdi mdi-map"></i>
+        </template>
+        <XbMapViewer :map="map" embed />
+      </NModal>
+    </div>
+  </NConfigProvider>
 </template>
 
 <style scoped>
-.row {
+#map .row {
   display: grid;
   grid-template-columns: repeat(v-bind(width), 1fr);
 }
 
-:deep(.block span) {
+#map :deep(.block span) {
   font-size: v-bind(fontsize);
+}
+
+#map :deep(.block) {
+  border-width: v-bind(bordersize);
+}
+
+#mapmodal .row {
+  display: grid;
+  grid-template-columns: repeat(v-bind(width), 1fr);
+}
+
+#mapmodal :deep(.block span) {
+  font-size: v-bind(fontsize);
+}
+
+#mapmodal :deep(.block) {
+  border-width: v-bind(bordersize);
 }
 </style>
