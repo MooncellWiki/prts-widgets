@@ -1,6 +1,6 @@
+import { RarityRank } from "../consts";
 import { GachaRuleType, NewbeeGachaPoolClientData } from "../gamedata-types";
 import {
-  RarityRank,
   type GachaAvailChar,
   type GachaPoolClientData as GachaServerPool,
   type GachaUpChar,

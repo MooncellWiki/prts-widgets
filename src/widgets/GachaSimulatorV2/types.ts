@@ -1,3 +1,5 @@
+import { RarityRank } from "./consts";
+
 export interface GachaDBServer {
   gachaPoolClient: Array<GachaPoolClientData>;
 }
@@ -10,16 +12,6 @@ export interface GachaPoolClientData {
 export interface GachaDetail {
   detailInfo: GachaDetailData;
 }
-
-export const RarityRank = {
-  TIER_1: 0,
-  TIER_2: 1,
-  TIER_3: 2,
-  TIER_4: 3,
-  TIER_5: 4,
-  TIER_6: 5,
-  E_NUM: 6,
-};
 
 export enum GachaType {
   TEXT,

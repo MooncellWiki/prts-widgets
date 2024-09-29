@@ -1,4 +1,5 @@
-import { GachaPerAvail, GachaUpChar, RarityRank } from "../types";
+import { RarityRank } from "../consts";
+import { GachaPerAvail, GachaUpChar } from "../types";
 
 import {
   GachaState,

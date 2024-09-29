@@ -1,4 +1,4 @@
-import type { RarityRank } from "./types";
+import { RarityRank } from "./consts";
 
 /**
  * https://prts.wiki/id/52144 寻访规则
@@ -33,6 +33,7 @@ export enum GachaRuleType {
   CLASSIC = "CLASSIC",
   /**
    * 中坚甄选
+   * 选2个6星稀有度内平分50%出率，3个5星稀有度内平分50%出率
    */
   FESCLASSIC = "FESCLASSIC",
 
@@ -51,6 +52,12 @@ export enum GachaRuleType {
    * 带仓检的中坚寻访
    */
   CLASSIC_ATTAIN = "CLASSIC_ATTAIN",
+
+  /**
+   * 定向甄选
+   * 选3个6星稀有度内平分100%出率，3个5星稀有度内平分60%出率
+   */
+  SPECIAL = "SPECIAL",
 
   /**
    * 新人特惠寻访
@@ -281,4 +288,5 @@ export interface GachaData {
   normalGachaItem: [NormalGachaTkt];
   fesGachaPoolRelateItem: [Record<string, FesGachaPoolRelateItem>];
   dicRecruit6StarHint: [Record<string, string>];
+  specialGachaPercentDict: [Record<number, number>];
 }

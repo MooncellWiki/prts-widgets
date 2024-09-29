@@ -1,9 +1,9 @@
+import { RarityRank } from "../consts";
 import {
   GachaRuleType,
   type GachaPoolClientData as GachaClientPool,
 } from "../gamedata-types";
 import {
-  RarityRank,
   type GachaAvailChar,
   type GachaPoolClientData as GachaServerPool,
   type GachaUpChar,
@@ -92,7 +92,7 @@ export class GachaExecutor {
 
     let result = { charId, rarity };
 
-    // 前10次抽卡5星保底
+    // 前 10 次抽卡 5 星保底
     if (shouldApplyEnsure5StarRule(this.state)) {
       const ruleResult = applyEnsure5StarRule(
         this.state,
@@ -142,7 +142,7 @@ export class GachaExecutor {
     if (this.state.results[result.charId]) this.state.results[result.charId]++;
     else this.state.results[result.charId] = 1;
 
-    // 6星计数
+    // 6 星计数
     if (result.rarity === RarityRank.TIER_6) this.state.non6StarCount = 0;
     else this.state.non6StarCount++;
 

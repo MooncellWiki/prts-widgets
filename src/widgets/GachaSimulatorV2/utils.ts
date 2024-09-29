@@ -1,6 +1,6 @@
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
-import { RarityRank } from "./types";
+import { RarityRank } from "./consts";
 
 export function getPortraitURL(charId: string) {
   return new URL(`/assets/char_portrait/${charId}_1.png`, TORAPPU_ENDPOINT);
