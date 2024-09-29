@@ -17,7 +17,6 @@ import { getImagePath } from "@/utils/utils";
 import { GachaExecutor } from "./gacha-utils/base";
 import { NewbeeGachaExecutor } from "./gacha-utils/newbee";
 import {
-  GachaRuleType,
   type GachaPoolClientData as GachaClientPool,
   type NewbeeGachaPoolClientData,
 } from "./gamedata-types";
@@ -46,8 +45,7 @@ const gachaExecutor: GachaExecutor | NewbeeGachaExecutor =
     ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
     : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
 
-const isFesClassic =
-  props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC;
+const hasRarityPickCharDict = Object.keys(rarityPickCharDict).length > 0;
 const counter = ref(0);
 const non6StarCount = ref(0);
 const results = ref<
@@ -89,7 +87,7 @@ const guarantee5Avail = ref(gachaExecutor.state.guarantee5Avail);
 const doGachaOne = () => {
   const gachaResult = gachaExecutor.doGachaOnce();
   if (gachaResult === null) {
-    console.error("池子剩余抽取次数已耗尽");
+    console.error("[doGachaOne]", "池子剩余抽取次数已耗尽");
     buttonDisabled.value = true;
     return;
   }
@@ -239,7 +237,7 @@ const displayStars = [5, 4, 3, 2];
           </NButton>
           <NButton type="error" @click="clearResults()">清空结果</NButton>
           <NButton
-            v-if="isFesClassic"
+            v-if="hasRarityPickCharDict"
             type="info"
             @click="showOperatorSelector = !showOperatorSelector"
           >

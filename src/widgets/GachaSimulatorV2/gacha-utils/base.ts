@@ -115,7 +115,7 @@ export class GachaExecutor {
       )?.charIdList[0];
       if (!up6StarCharId)
         throw new Error(
-          `Empty 6 star upCharId when applying ensureUp6StarRule for gacha rule type ${this.gachaRuleType}`,
+          `[doGachaOnce] Empty 6 star upCharId when applying ensureUp6StarRule for gacha rule type ${this.gachaRuleType}`,
         );
 
       const ruleResult = applyEnsureUp6StarRule(this.state, up6StarCharId);
@@ -134,7 +134,7 @@ export class GachaExecutor {
       );
       if (up5StarUngottenList.length > 0) {
         const charId = up5StarUngottenList[0];
-        console.log("联动保底 5 星角色", charId);
+        console.log("[doGachaOnce]", "联动保底 5 星角色", charId);
         result = { charId, rarity: RarityRank.TIER_5 };
       }
     }
