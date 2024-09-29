@@ -14,9 +14,14 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
+import {
+  FESCLASSIC_GACHA_PERCENT_DICT,
+  SPECIAL_GACHA_PERCENT_DICT,
+} from "./consts";
 import { GachaExecutor } from "./gacha-utils/base";
 import { NewbeeGachaExecutor } from "./gacha-utils/newbee";
 import {
+  GachaRuleType,
   type GachaPoolClientData as GachaClientPool,
   type NewbeeGachaPoolClientData,
 } from "./gamedata-types";
@@ -45,7 +50,7 @@ const gachaExecutor: GachaExecutor | NewbeeGachaExecutor =
     ? new NewbeeGachaExecutor(props.gachaServerPool, props.newbeeClientPool)
     : new GachaExecutor(props.gachaServerPool, props.gachaClientPool);
 
-const hasRarityPickCharDict = Object.keys(rarityPickCharDict).length > 0;
+const hasRarityPickCharDict = Object.keys(rarityPickCharDict || {}).length > 0;
 const counter = ref(0);
 const non6StarCount = ref(0);
 const results = ref<
@@ -141,11 +146,20 @@ const getSelectedUpCharInfo = () => {
     toRaw(selectedUpInfo.value),
   )) {
     if (charIdList.length === 0) continue;
+
+    let percentSum = 0.5;
+    const rarityNum = Number.parseInt(rarity);
+    if (props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC) {
+      percentSum = FESCLASSIC_GACHA_PERCENT_DICT[rarityNum];
+    } else if (props.gachaClientPool?.gachaRuleType === GachaRuleType.SPECIAL) {
+      percentSum = SPECIAL_GACHA_PERCENT_DICT[rarityNum];
+    }
+
     upCharInfo.perCharList.push({
-      rarityRank: Number.parseInt(rarity),
+      rarityRank: rarityNum,
       charIdList,
       count: charIdList.length,
-      percent: 0.5 / charIdList.length,
+      percent: percentSum / charIdList.length,
     });
   }
   return upCharInfo;
@@ -160,8 +174,7 @@ const onImageClicked = (rarity: number, charId: string) => {
   } else {
     selectedUpInfo.value[rarity].push(charId);
   }
-  const upCharInfo = getSelectedUpCharInfo();
-  gachaExecutor.upCharInfo = upCharInfo;
+  gachaExecutor.upCharInfo = getSelectedUpCharInfo();
 };
 
 const onCollapseItemHeaderClicked = (data: {
