@@ -34,7 +34,7 @@ export interface CargoEquip {
   cost: string;
   atkspd: string;
   other: string;
-  add: string;
+  traitadd: string;
   trait: string;
   talent2: string;
   talent3: string;
@@ -44,7 +44,7 @@ export interface CargoEquip {
   mat3: string;
   mission1: string;
   mission2: string;
-  mission2opt: string;
+  mission2Operation: string;
 }
 
 export interface EquipRow {
