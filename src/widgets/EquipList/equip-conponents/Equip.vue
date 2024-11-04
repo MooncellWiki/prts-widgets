@@ -220,9 +220,10 @@ const locale = getLanguage();
               </span>
             </div>
             <div class="talent">
-              <span class="font=bold">
-                <span class="mdi mdi-asterisk"></span>
-                <span v-html="` ${e.talent2}`"></span>
+              <span class="font-bold">
+                <span class="mdi mdi-asterisk"></span>&nbsp;<span
+                  v-html="e.talent2"
+                ></span>
               </span>
             </div>
           </div>
@@ -261,9 +262,9 @@ const locale = getLanguage();
               </span>
             </div>
             <div class="talent">
-              <span class="font=bold">
+              <span class="font-bold">
                 <span class="mdi mdi-asterisk"></span>
-                <span v-html="` ${e.talent3}`"></span>
+                <span v-html="e.talent3"></span>
               </span>
             </div>
           </div>
