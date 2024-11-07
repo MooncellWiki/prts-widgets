@@ -20,10 +20,10 @@ import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { isMobile } from "@/utils/utils";
 
+import EquipTable from "./components/EquipTable.vue";
+import FilterSub from "./components/FilterSub.vue";
+import SubContainer from "./components/SubContainer.vue";
 import { rarityMap, statsStyleMap } from "./consts";
-import EquipTable from "./equip-conponents/EquipTable.vue";
-import FilterSub from "./equip-conponents/FilterSub.vue";
-import SubContainer from "./equip-conponents/SubContainer.vue";
 import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
 import {
   customLabel,
