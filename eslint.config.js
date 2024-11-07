@@ -1,5 +1,5 @@
 import js from "@eslint/js";
-import pluginUnoCSS from "@unocss/eslint-plugin";
+import unocss from "@unocss/eslint-config/flat";
 import pluginImport from "eslint-plugin-import-x";
 import configPrettierRecommended from "eslint-plugin-prettier/recommended";
 import pluginUnicorn from "eslint-plugin-unicorn";
@@ -311,17 +311,6 @@ export const unicorn = [
 
 export const ignores = {
   ignores: ["**/spine/runtime", "**/.husky", "**/dist"],
-};
-
-export const unocss = {
-  name: "unocss",
-  plugins: {
-    unocss: pluginUnoCSS,
-  },
-  rules: {
-    "unocss/order": "warn",
-    "unocss/blocklist": "error",
-  },
 };
 
 export default [
