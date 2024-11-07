@@ -1,3 +1,5 @@
+import { getImagePath } from "@/utils/utils";
+
 export const colorMap: Record<string, string> = {
   red: "#F44336",
   blue: "#2196F3",
@@ -23,3 +25,7 @@ export const rarityMap: Record<string, string> = {
   "4": "★5",
   "5": "★6",
 };
+
+export const tagIconFavor = getImagePath("图标_模组需求_信赖.png");
+
+export const tagIconOther = getImagePath("图标_模组需求_精英2等级.png");
