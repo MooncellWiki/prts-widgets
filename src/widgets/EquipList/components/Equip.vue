@@ -220,10 +220,9 @@ const locale = getLanguage();
               </span>
             </div>
             <div class="talent">
-              <span class="font-bold">
-                <span class="mdi mdi-asterisk"></span>&nbsp;<span
-                  v-html="e.talent2"
-                ></span>
+              <span>
+                <span class="mdi mdi-asterisk"></span>&nbsp;
+                <span v-html="e.talent2"></span>
               </span>
             </div>
           </div>
@@ -262,8 +261,8 @@ const locale = getLanguage();
               </span>
             </div>
             <div class="talent">
-              <span class="font-bold">
-                <span class="mdi mdi-asterisk"></span>
+              <span>
+                <span class="mdi mdi-asterisk"></span>&nbsp;
                 <span v-html="e.talent3"></span>
               </span>
             </div>
@@ -300,7 +299,7 @@ const locale = getLanguage();
             <div class="linebox flex-col">
               <div class="consume">
                 <span class="flex flex-nowrap items-center">
-                  <div class="iconfilter inline-block">
+                  <div class="iconfilter rankicon inline-block">
                     <img
                       :src="getImagePath('模组等级_1.png')"
                       height="30"
@@ -322,7 +321,7 @@ const locale = getLanguage();
               <div class="minorsep"></div>
               <div class="consume">
                 <span class="flex flex-nowrap items-center">
-                  <div class="iconfilter inline-block">
+                  <div class="iconfilter rankicon inline-block">
                     <img
                       :src="getImagePath('模组等级_2.png')"
                       height="30"
@@ -340,7 +339,7 @@ const locale = getLanguage();
               <div class="minorsep"></div>
               <div class="consume">
                 <span class="flex flex-nowrap items-center">
-                  <div class="iconfilter inline-block">
+                  <div class="iconfilter rankicon inline-block">
                     <img
                       :src="getImagePath('模组等级_3.png')"
                       height="30"
