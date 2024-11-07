@@ -9,7 +9,15 @@ export interface Medal {
   isTrim: boolean;
   trimId?: string;
   trimMethod?: string;
-  reward?: string;
+  reward?: Array<Array<string>>;
+  preMedalList: Array<string>;
+  deprecate: boolean;
+}
+
+export interface MiniMedal {
+  name: string;
+  id: string;
+  method: string;
 }
 
 export interface MedalGroup {
@@ -38,7 +46,7 @@ export interface MedalMetaData {
     [key: string]: {
       name: string;
       desc: string;
-      extraDesc?: string;
+      extraDesc?: Array<string>;
       subCategory?: Array<string>;
       medalGroup: Array<string>;
       medal: Array<string>;

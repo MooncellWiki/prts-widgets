@@ -93,6 +93,9 @@ const i18nConfig = getNaiveUILocale();
         borderFocus: '1px solid #d97706',
         borderPressed: '1px solid #b45309',
       },
+      Card: {
+        paddingMedium: '1em',
+      },
     }"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
