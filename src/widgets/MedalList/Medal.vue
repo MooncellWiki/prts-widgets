@@ -1,14 +1,33 @@
 <script setup lang="ts">
 import { ref } from "vue";
 
-import { NCard, NConfigProvider, NImage, NTag, NTooltip } from "naive-ui";
+import {
+  NBadge,
+  NCard,
+  NConfigProvider,
+  NEl,
+  NImage,
+  NTag,
+  NTooltip,
+} from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { getImagePath } from "@/utils/utils";
 
-import type { Medal } from "./types";
-defineProps<{
-  medalData: Medal;
-}>();
+import MiniMedalComponent from "./MiniMedal.vue";
+
+import type { Medal, MiniMedal } from "./types";
+
+withDefaults(
+  defineProps<{
+    medalData: Medal;
+    showDeprecateBadge?: boolean;
+    miniMedalData?: Record<string, MiniMedal>;
+  }>(),
+  {
+    showDeprecateBadge: true,
+  },
+);
 
 const rarityGradient: Record<number, string> = {
   1: "from-[#75655d] to-[#decaa2]",
@@ -23,9 +42,9 @@ const rarityStarColor: Record<number, string> = {
 };
 
 const rarityImgStyleSet: Record<number, string[]> = {
-  1: ["p-8", "80"],
+  1: ["p-8", "100"],
   2: ["p-6", "100"],
-  3: ["p-4", "130"],
+  3: ["p-4", "100"],
 };
 
 const isDecrypt = ref(false);
@@ -39,6 +58,7 @@ const showTrimed = ref(false);
       Card: {
         paddingMedium: '0',
         borderColor: '#adadad',
+        borderRadius: '0',
       },
       Tag: {
         colorCheckable: '#565656',
@@ -55,11 +75,11 @@ const showTrimed = ref(false);
       },
     }"
   >
-    <NCard hoverable>
-      <div class="flex <lg:flex-col">
+    <NCard hoverable class="h-full">
+      <div class="h-full flex <lg:flex-col">
         <div
           :class="[
-            'bg-[#2f2f2f]/86 flex grid-items-center w-190px justify-center min-h-50',
+            'bg-[#2f2f2f]/86 flex grid-items-center justify-center w-20% min-w-120px',
             {
               'bg-gradient-to-b from-[#485a5c] to-[#1d0942]':
                 showTrimed && medalData.isTrim,
@@ -87,20 +107,32 @@ const showTrimed = ref(false);
               'flex',
               'flex-row',
               'justify-between',
-              'p-2.5! m-0! bg-gradient-to-r',
-              'text-shadow-lg',
+              'p-1.5! m-0! bg-gradient-to-r',
               rarityGradient[medalData.rarity],
+              '<lg:p-0! <lg:px-1!',
             ]"
           >
-            <h3 class="p-0 color-white mt-0! <lg:pt-1!">
-              {{ medalData.name }}
+            <h3 class="p-0 mt-0! <lg:pt-1!">
+              <span
+                :class="[
+                  'px-1',
+                  medalData.deprecate && showDeprecateBadge
+                    ? 'color-gray-4 text-shadow-[0_0_5px_var(--un-text-shadow-color),0_0_7px_var(--un-text-shadow-color),0_0_3px_var(--un-text-shadow-color)] text-shadow-color-[#fff]'
+                    : 'color-white text-shadow-[0_0_5px_var(--un-text-shadow-color),0_0_5px_var(--un-text-shadow-color)] text-shadow-color-[#0007]',
+                ]"
+                >{{ medalData.name }}</span
+              >
+              <NBadge
+                v-if="medalData.deprecate && showDeprecateBadge"
+                value="绝版"
+              />
             </h3>
             <div>
               <span
                 v-for="i of medalData.rarity"
                 :key="i"
                 :class="[
-                  'text-xl mdi mdi-star mdi-rotate-45',
+                  'text-xl mdi mdi-star mdi-rotate-45 text-shadow-[2px_2px_5px_#0007,2px_2px_3px_#0002]',
                   rarityStarColor[medalData.rarity],
                 ]"
               />
@@ -115,9 +147,12 @@ const showTrimed = ref(false);
             />
           </div>
           <div
-            class="border-0 border-[#e5e7eb] border-solid align-middle p-2.5!"
+            class="pos-relative border-0 border-[#e5e7eb] border-solid align-middle p-1.5!"
           >
-            <div v-if="!medalData.decrypt">
+            <div
+              v-if="!medalData.decrypt"
+              :class="[medalData.method ? '' : 'flex items-center']"
+            >
               <NTag
                 :color="{
                   color: '#565656',
@@ -125,7 +160,23 @@ const showTrimed = ref(false);
                   borderColor: '#565656',
                 }"
                 >获得方式</NTag
-              ><span class="pl-1" v-html="medalData.method"></span>
+              ><span
+                v-if="medalData.method"
+                class="pl-1"
+                v-html="medalData.method"
+              ></span>
+              <div v-else class="flex items-center pl-1">
+                <div class="pr-1">获得</div>
+                <MiniMedalComponent
+                  v-for="miniMedalId in medalData.preMedalList"
+                  :key="miniMedalId"
+                  :medal-data="
+                    miniMedalData
+                      ? miniMedalData[miniMedalId]
+                      : { name: '', id: '', method: '' }
+                  "
+                />
+              </div>
             </div>
             <div v-else>
               <NTooltip
@@ -163,6 +214,34 @@ const showTrimed = ref(false);
                 点击切换显示{{ showTrimed ? "未镀层" : "镀层" }}章
               </NTooltip>
               <span class="pl-1">{{ medalData.trimMethod }}</span>
+            </div>
+            <div
+              v-if="medalData.reward"
+              class="pos-absolute right-1 top-50% flex transform-translate-y--50% items-center <lg:pos-unset <lg:transform-unset"
+            >
+              <NTag
+                :color="{
+                  color: '#ff7f27',
+                  textColor: 'white',
+                  borderColor: '#ff7f27',
+                }"
+                >随章奖励</NTag
+              >
+              <div v-for="reward in medalData.reward" :key="reward[0]">
+                <NBadge
+                  :value="reward[1]"
+                  color="#2f2f2f"
+                  :offset="['-1em', '3em']"
+                  :show="!(reward[1] === '0' || reward[1] === '')"
+                >
+                  <NEl tag="a" :href="`/w/${reward[2]}`">
+                    <img
+                      :src="getImagePath(reward[0])"
+                      class="inline w-3.5em"
+                    />
+                  </NEl>
+                </NBadge>
+              </div>
             </div>
           </div>
         </div>
