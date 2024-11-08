@@ -151,7 +151,7 @@ const showTrimed = ref(false);
           </div>
         </div>
         <div
-          v-if="groupData.deprecateType"
+          v-if="groupData.deprecateType && showDeprecateBadge"
           :class="[
             'hidden <lg:block!',
             'w-100% px-2 py-0.5 color-white font-bold text-size-xs!',
@@ -169,7 +169,7 @@ const showTrimed = ref(false);
         </div>
         <div class="pos-relative max-w-full flex">
           <div
-            v-if="groupData.deprecateType"
+            v-if="groupData.deprecateType && showDeprecateBadge"
             :class="[
               'pos-absolute <lg:hidden',
               'w-[calc(100%-1rem)] px-2 py-0.5 color-white font-bold',
