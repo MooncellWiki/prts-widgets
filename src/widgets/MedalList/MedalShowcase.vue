@@ -93,6 +93,9 @@ const i18nConfig = getNaiveUILocale();
         borderFocus: '1px solid #d97706',
         borderPressed: '1px solid #b45309',
       },
+      Card: {
+        paddingMedium: '1em',
+      },
     }"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
@@ -161,7 +164,7 @@ const i18nConfig = getNaiveUILocale();
                 </div>
               </template>
               <template #default>
-                <div class="pt-2 text-center color-white">
+                <div class="pt-2 text-center color-white <lg:pt-0">
                   以下内容需要验证权限后查阅<br /><span
                     class="mdi mdi-information-variant-circle"
                   />&nbsp;本活动关联蚀刻章已加密，请自行决定是否查看。

@@ -20,10 +20,16 @@ import type { Medal, MedalGroup } from "./types";
 function goToLink(link: string) {
   window.open(`https://prts.wiki/w/${link}`, "_blank");
 }
-const props = defineProps<{
-  groupData: MedalGroup;
-  medalDataList: Medal[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    groupData: MedalGroup;
+    medalDataList: Medal[];
+    showDeprecateBadge?: boolean;
+  }>(),
+  {
+    showDeprecateBadge: true,
+  },
+);
 
 const eventLinkList = computed(() => {
   return props.groupData.bindEvent.slice(1).map((value, index) => {
@@ -39,11 +45,13 @@ const showTrimed = ref(false);
 
 <template>
   <NConfigProvider
+    v-if="medalDataList.length > 0"
     preflight-style-disabled
     :theme-overrides="{
       Card: {
         paddingMedium: '0',
         borderColor: '#adadad',
+        borderRadius: '0',
       },
       Tag: {
         colorCheckable: '#565656',
@@ -58,17 +66,23 @@ const showTrimed = ref(false);
         toolbarColor: '#000000B3',
         toolbarBorderRadius: '5px',
       },
+      Collapse: {
+        itemMargin: '0',
+        titlePadding: '0.5em',
+      },
     }"
   >
-    <NCard v-if="medalDataList.length > 0">
-      <div class="flex flex-col <lg:flex-col">
+    <NCard class="h-full">
+      <div class="h-full flex flex-col <lg:flex-col">
         <div
-          class="flex justify-between bg-gradient-to-r text-shadow-lg m-0! <lg:flex-row p-2.5!"
+          class="flex justify-between bg-gradient-to-r m-0! <lg:flex-row p-2.5! <lg:p-1!"
           :style="{
             background: groupData.background || 'black',
           }"
         >
-          <h3 class="p-0 px-1 pr-2 color-white mt-0! <lg:p-0! <lg:pt-1!">
+          <h3
+            class="p-0 px-1 pr-2 color-white mt-0! <lg:text-size-sm <lg:p-0! <lg:px-2! <lg:pt-1!"
+          >
             <span :style="groupData.textStyle || { color: 'white' }">
               <span
                 v-if="groupData.customText"
@@ -138,8 +152,13 @@ const showTrimed = ref(false);
           </div>
         </div>
         <div
-          v-if="groupData.deprecateType"
-          class="bg-orange-5 px-2 py-0.5 color-white font-bold"
+          v-if="groupData.deprecateType && showDeprecateBadge"
+          :class="[
+            'hidden <lg:block!',
+            'w-100% px-2 py-0.5 color-white font-bold text-size-xs!',
+            'bg-orange-5',
+            '<lg:p-0',
+          ]"
         >
           <span class="mdi mdi-vanish" />
           <span v-if="groupData.deprecateType === 'CC'">
@@ -149,7 +168,23 @@ const showTrimed = ref(false);
             已复刻过的活动：无法再获得本蚀刻章套组
           </span>
         </div>
-        <div class="max-w-full flex">
+        <div class="pos-relative max-w-full flex">
+          <div
+            v-if="groupData.deprecateType && showDeprecateBadge"
+            :class="[
+              'pos-absolute <lg:hidden',
+              'w-[calc(100%-1rem)] px-2 py-0.5 color-white font-bold',
+              'bg-orange-5 bg-opacity-80',
+            ]"
+          >
+            <span class="mdi mdi-vanish" />
+            <span v-if="groupData.deprecateType === 'CC'">
+              危机合约套组：不复刻
+            </span>
+            <span v-if="groupData.deprecateType === 'retro'">
+              已复刻过的活动：无法再获得本蚀刻章套组
+            </span>
+          </div>
           <NImage
             :src="`${TORAPPU_ENDPOINT}/assets/medal_diy/${(showTrimed && groupData.isTrim ? 'trim/' : '') + groupData.id}.png`"
             :img-props="{
@@ -169,14 +204,14 @@ const showTrimed = ref(false);
           />
         </div>
         <div
-          class="whitespace-pre-wrap p-1 text-center italic <lg:text-sm"
+          class="whitespace-pre-wrap p-1 text-center italic <lg:text-xs"
           :style="{
             background: `linear-gradient(180deg, ${groupData.color}5c, transparent)`,
           }"
           v-html="groupData.desc"
         />
         <NCollapse arrow-placement="right">
-          <NCollapseItem class="m-3! <lg:m-1.5!">
+          <NCollapseItem class="p-1 m-0!">
             <template #header>
               <div class="flex flex-row">
                 <div>共 {{ groupData.medal.length }} 枚，展开套组</div>
@@ -189,9 +224,12 @@ const showTrimed = ref(false);
                 </div>
               </div>
             </template>
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-1">
               <div v-for="(medal, i) in medalDataList" :key="i">
-                <MedalComponent :medal-data="medal" />
+                <MedalComponent
+                  :medal-data="medal"
+                  :show-deprecate-badge="showDeprecateBadge"
+                />
               </div>
             </div>
           </NCollapseItem>

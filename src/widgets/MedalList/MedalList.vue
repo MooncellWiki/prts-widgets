@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 
 import {
+  NAlert,
   NButton,
   NCard,
   NCollapse,
@@ -9,11 +10,11 @@ import {
   NCollapseTransition,
   NConfigProvider,
   NEmpty,
-  NGrid,
-  NGridItem,
+  NFlex,
   NLayout,
   NPopover,
   NText,
+  NTooltip,
   type CollapseProps,
 } from "naive-ui";
 
@@ -50,7 +51,7 @@ const rarityMap: Record<string, string> = {
 };
 const filterSpecial = {
   title: "特殊选择",
-  options: ["有镀层"],
+  options: ["有镀层", "可获得"],
 };
 const states = ref<Record<string, string[]>>({
   rarity: [],
@@ -66,11 +67,15 @@ const filteredMedalData = computed(() => {
       ) {
         return false;
       }
+      let res = true;
+      if (states.value.special.includes("可获得")) {
+        res = res && !medal.deprecate;
+      }
       if (states.value.special.includes("有镀层")) {
-        return medal.isTrim;
+        res = res && medal.isTrim;
       }
 
-      return true;
+      return res;
     }),
   );
   const medalList = Object.keys(medal);
@@ -121,6 +126,7 @@ const cateNums = computed(() => {
 });
 const hiddenCatExpanded = ref(false);
 const hiddenCatUnlocked = ref(false);
+const showDeprecateBadge = ref(true);
 const collapseTitleChange: CollapseProps["onItemHeaderClick"] = ({
   name,
   expanded,
@@ -129,6 +135,23 @@ const collapseTitleChange: CollapseProps["onItemHeaderClick"] = ({
 };
 const checkMedalExists = (medalId: string) => {
   return Object.keys(filteredMedalData.value.medal).includes(medalId);
+};
+const toggleDeprecateBadge = () => {
+  showDeprecateBadge.value = !showDeprecateBadge.value;
+};
+const genPreMedalList = (idList: Array<string>) => {
+  return Object.fromEntries(
+    idList.map((id) => {
+      return [
+        id,
+        {
+          name: medalMetaData.value.medal[id].name,
+          id: medalMetaData.value.medal[id].id,
+          method: medalMetaData.value.medal[id].method,
+        },
+      ];
+    }),
+  );
 };
 const { theme, toggleDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
@@ -140,6 +163,12 @@ const i18nConfig = getNaiveUILocale();
     :theme="theme"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
+    :theme-overrides="{
+      Collapse: {
+        itemMargin: '0',
+        titlePadding: '0.5em',
+      },
+    }"
   >
     <NLayout class="mx-auto antialiased">
       <NCard>
@@ -155,6 +184,21 @@ const i18nConfig = getNaiveUILocale();
             <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
             <span v-else class="mdi mdi-brightness-4 text-2xl" />
           </div>
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <div class="mx-1 cursor-pointer" @click="toggleDeprecateBadge()">
+                <span
+                  v-if="showDeprecateBadge"
+                  class="mdi mdi-minus-circle text-2xl"
+                />
+                <span
+                  v-else
+                  class="mdi mdi-minus-circle-off-outline text-2xl"
+                />
+              </div>
+            </template>
+            点击{{ showDeprecateBadge ? "隐藏" : "显示" }}【绝版】标志
+          </NTooltip>
           <div class="mx-1 cursor-pointer">
             <NPopover trigger="click" raw>
               <template #trigger>
@@ -212,47 +256,55 @@ const i18nConfig = getNaiveUILocale();
               <span class="<lg:hidden">{{ cate.desc }}</span>
             </template>
             <span class="p-1 lg:hidden">{{ cate.desc }}</span>
-            <NCard v-if="cate.extraDesc" class="mb-2">
-              <div v-html="cate.extraDesc"></div>
-            </NCard>
-            <NGrid
+            <NAlert
+              v-if="cate.extraDesc"
+              class="mb-2"
+              :type="cate.name !== '加密奖章' ? 'info' : 'warning'"
+            >
+              <template #header>
+                <b>{{ cate.extraDesc[0] }}</b>
+              </template>
+              <div v-html="cate.extraDesc[1]"></div>
+            </NAlert>
+            <NFlex
               v-if="
                 cate.name !== '加密奖章' ||
                 (cate.name === '加密奖章' && hiddenCatUnlocked)
               "
-              cols="1 l:2"
-              :x-gap="12"
-              :y-gap="8"
               responsive="screen"
+              size="small"
+              align="stretch"
             >
-              <NGridItem
+              <MedalComponent
                 v-for="medalId in cate.medal.filter((medalId) =>
                   checkMedalExists(medalId),
                 )"
                 :key="medalId"
-              >
-                <MedalComponent
-                  :medal-data="filteredMedalData.medal[medalId]"
-                />
-              </NGridItem>
-              <NGridItem
+                :medal-data="filteredMedalData.medal[medalId]"
+                :show-deprecate-badge="showDeprecateBadge"
+                :mini-medal-data="
+                  filteredMedalData.medal[medalId].preMedalList
+                    ? genPreMedalList(
+                        filteredMedalData.medal[medalId].preMedalList,
+                      )
+                    : {}
+                "
+                class="h-auto w-full lg:w-49%"
+              />
+              <MedalGroupComponent
                 v-for="medalGroupId in cate.medalGroup.slice().reverse()"
                 :key="medalGroupId"
-              >
-                <MedalGroupComponent
-                  :group-data="filteredMedalData.medalGroup[medalGroupId]"
-                  :medal-data-list="
-                    filteredMedalData.medalGroup[medalGroupId].medal.map(
-                      (id) => {
-                        return filteredMedalData.medal[id];
-                      },
-                    )
-                  "
-                />
-              </NGridItem>
-              <NGridItem
+                :group-data="filteredMedalData.medalGroup[medalGroupId]"
+                :medal-data-list="
+                  filteredMedalData.medalGroup[medalGroupId].medal.map((id) => {
+                    return filteredMedalData.medal[id];
+                  })
+                "
+                :show-deprecate-badge="showDeprecateBadge"
+                class="h-auto w-full lg:w-49%"
+              />
+              <div
                 v-if="cate.medal.length === 0 && cate.medalGroup.length === 0"
-                span="1 l:2"
               >
                 <NEmpty>
                   <template #default>
@@ -261,43 +313,33 @@ const i18nConfig = getNaiveUILocale();
                     </div>
                   </template>
                 </NEmpty>
-              </NGridItem>
-            </NGrid>
-            <NGrid
-              v-else
-              cols="1 l:2"
-              :x-gap="12"
-              :y-gap="8"
-              responsive="screen"
-            >
-              <NGridItem span="1 l:2">
-                <NEmpty class="bg-#424242">
-                  <template #icon>
-                    <div class="text-center">
-                      <span
-                        class="mdi mdi-lock p-0 font-size-2rem color-white"
-                      />
-                    </div>
-                  </template>
-                  <template #default>
-                    <div class="pt-2 text-center color-white">
-                      以下内容需要验证权限后查阅
-                    </div>
-                  </template>
-                  <template #extra>
-                    <div class="pb-2 text-center color-white">
-                      <NButton
-                        color="white"
-                        text-color="#424242"
-                        @click="hiddenCatUnlocked = true"
-                      >
-                        <span class="mdi mdi-key-variant" />&nbsp;移除加密
-                      </NButton>
-                    </div>
-                  </template>
-                </NEmpty>
-              </NGridItem>
-            </NGrid>
+              </div>
+            </NFlex>
+            <div v-else class="w-full">
+              <NEmpty class="bg-#424242">
+                <template #icon>
+                  <div class="text-center">
+                    <span class="mdi mdi-lock p-0 font-size-2rem color-white" />
+                  </div>
+                </template>
+                <template #default>
+                  <div class="pt-2 text-center color-white <lg:pt-0">
+                    以下内容需要验证权限后查阅
+                  </div>
+                </template>
+                <template #extra>
+                  <div class="pb-2 text-center color-white">
+                    <NButton
+                      color="white"
+                      text-color="#424242"
+                      @click="hiddenCatUnlocked = true"
+                    >
+                      <span class="mdi mdi-key-variant" />&nbsp;移除加密
+                    </NButton>
+                  </div>
+                </template>
+              </NEmpty>
+            </div>
             <!--
             <div
               v-for="medalGroupId in cate.medalGroup.slice().reverse()"
