@@ -117,8 +117,8 @@ const showTrimed = ref(false);
                 :class="[
                   'px-1',
                   medalData.deprecate && showDeprecateBadge
-                    ? 'color-gray-4 text-shadow-[0_0_5px_var(--un-text-shadow-color),0_0_7px_var(--un-text-shadow-color),0_0_3px_var(--un-text-shadow-color)] text-shadow-color-[#fff]'
-                    : 'color-white text-shadow-[0_0_5px_var(--un-text-shadow-color),0_0_5px_var(--un-text-shadow-color)] text-shadow-color-[#0007]',
+                    ? 'color-gray-4 text-shadow-[0_0_5px_#fff,0_0_7px_#fff,0_0_3px_#fff]'
+                    : 'color-white text-shadow-[0_0_5px_#0007,0_0_5px_#0007]',
                 ]"
                 >{{ medalData.name }}</span
               >

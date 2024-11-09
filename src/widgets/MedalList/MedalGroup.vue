@@ -45,6 +45,7 @@ const showTrimed = ref(false);
 
 <template>
   <NConfigProvider
+    v-if="medalDataList.length > 0"
     preflight-style-disabled
     :theme-overrides="{
       Card: {
@@ -71,7 +72,7 @@ const showTrimed = ref(false);
       },
     }"
   >
-    <NCard v-if="medalDataList.length > 0" class="h-full">
+    <NCard class="h-full">
       <div class="h-full flex flex-col <lg:flex-col">
         <div
           class="flex justify-between bg-gradient-to-r m-0! <lg:flex-row p-2.5! <lg:p-1!"
