@@ -164,7 +164,7 @@ const i18nConfig = getNaiveUILocale();
                 </div>
               </template>
               <template #default>
-                <div class="pt-2 text-center color-white">
+                <div class="pt-2 text-center color-white <lg:pt-0">
                   以下内容需要验证权限后查阅<br /><span
                     class="mdi mdi-information-variant-circle"
                   />&nbsp;本活动关联蚀刻章已加密，请自行决定是否查看。

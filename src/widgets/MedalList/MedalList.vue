@@ -315,35 +315,31 @@ const i18nConfig = getNaiveUILocale();
                 </NEmpty>
               </div>
             </NFlex>
-            <NFlex v-else class="w-full">
-              <div class="w-full">
-                <NEmpty class="bg-#424242">
-                  <template #icon>
-                    <div class="text-center">
-                      <span
-                        class="mdi mdi-lock p-0 font-size-2rem color-white"
-                      />
-                    </div>
-                  </template>
-                  <template #default>
-                    <div class="pt-2 text-center color-white">
-                      以下内容需要验证权限后查阅
-                    </div>
-                  </template>
-                  <template #extra>
-                    <div class="pb-2 text-center color-white">
-                      <NButton
-                        color="white"
-                        text-color="#424242"
-                        @click="hiddenCatUnlocked = true"
-                      >
-                        <span class="mdi mdi-key-variant" />&nbsp;移除加密
-                      </NButton>
-                    </div>
-                  </template>
-                </NEmpty>
-              </div>
-            </NFlex>
+            <div v-else class="w-full">
+              <NEmpty class="bg-#424242">
+                <template #icon>
+                  <div class="text-center">
+                    <span class="mdi mdi-lock p-0 font-size-2rem color-white" />
+                  </div>
+                </template>
+                <template #default>
+                  <div class="pt-2 text-center color-white <lg:pt-0">
+                    以下内容需要验证权限后查阅
+                  </div>
+                </template>
+                <template #extra>
+                  <div class="pb-2 text-center color-white">
+                    <NButton
+                      color="white"
+                      text-color="#424242"
+                      @click="hiddenCatUnlocked = true"
+                    >
+                      <span class="mdi mdi-key-variant" />&nbsp;移除加密
+                    </NButton>
+                  </div>
+                </template>
+              </NEmpty>
+            </div>
             <!--
             <div
               v-for="medalGroupId in cate.medalGroup.slice().reverse()"
