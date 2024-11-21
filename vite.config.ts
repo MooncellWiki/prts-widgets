@@ -67,16 +67,24 @@ export default defineConfig(({ command }) => {
         output: {
           sourcemapBaseUrl: "https://static.prts.wiki/widgets/production/",
           manualChunks(id) {
-            if (id.includes("crypto-js")) return;
-            if (id.includes("workbox")) return;
+            if (
+              id.includes("crypto-js") ||
+              id.includes("workbox") ||
+              id.includes("hammer")
+            )
+              return;
+
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
-            if (id.includes("hammer")) return;
-            if (id.includes("node_modules")) return "vendor";
-            if (id.includes("uno")) return "vendor";
-            if (id.includes("src/components/")) return "common";
-            if (id.includes("src/utils/")) return "common";
-            if (id.includes("src/stores/")) return "common";
+            if (id.includes("node_modules") || id.includes("uno"))
+              return "vendor";
+
+            if (
+              id.includes("src/components/") ||
+              id.includes("src/utils/") ||
+              id.includes("src/stores/")
+            )
+              return "common";
           },
           chunkFileNames: "[name].[hash].js",
           entryFileNames: (chunk) =>
