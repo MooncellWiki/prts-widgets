@@ -163,7 +163,7 @@ function dropJump(key: number, navIndex: number) {
             <template #cover>
               <a :href="`/w/File:${sceneData[currentSceneId].image}.png`">
                 <img
-                  class="lazyload img w-140"
+                  class="img w-140"
                   :src="getImagePath(`${sceneData[currentSceneId].image}.png`)"
                 />
               </a>
