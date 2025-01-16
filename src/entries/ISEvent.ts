@@ -27,6 +27,7 @@ for (const eventEle of Array.from(eventEles)) {
       const data = scene.dataset;
       return {
         etype: data.etype,
+        edesc: scene.querySelectorAll(".edesc")[0]?.innerHTML,
         name: data.name,
         nav: data.nav,
         index: data.index,
@@ -40,6 +41,7 @@ for (const eventEle of Array.from(eventEles)) {
             title: chooseData.title,
             type: chooseData.type,
             icon: chooseData.icon,
+            iconId: chooseData.iconid,
             desc1: choose.querySelectorAll(".desc1")[0]?.innerHTML,
             desc2: choose.querySelectorAll(".desc2")[0]?.innerHTML,
             dest: chooseData.dest,
