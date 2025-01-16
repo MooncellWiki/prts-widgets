@@ -23,7 +23,7 @@ defineProps<{
         ? { cursor: 'default' }
         : { cursor: 'pointer', borderColor: '#929292' }
     "
-    :title="title"
+    :title="type === 'guide' ? '' : title"
     size="small"
     :header-style="{ height: '3em' }"
   >
