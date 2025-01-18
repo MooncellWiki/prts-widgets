@@ -22,6 +22,7 @@ interface Option {
   title: string;
   type: string;
   icon: string;
+  iconId?: string;
   desc1: string;
   desc2: string;
   dest: number;
@@ -32,6 +33,7 @@ const props = withDefaults(
   defineProps<{
     sceneData: {
       etype?: string;
+      edesc?: string;
       name?: string;
       nav?: string;
       index?: number;
@@ -100,6 +102,7 @@ function dropJump(key: number, navIndex: number) {
       {{ sceneData[0].name }}
     </span>
   </h3>
+  <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
   <NConfigProvider
     preflight-style-disabled
     :theme-overrides="{
@@ -107,8 +110,12 @@ function dropJump(key: number, navIndex: number) {
         color: '#212121',
         textColor: '#fff',
         titleTextColor: '#fff',
-        borderRadius: '5px',
+        borderRadius: '3px',
         actionColor: '#343434',
+        paddingSmall: '0.8em',
+        lineHeight: '1.5',
+        titleFontSizeSmall: '1rem',
+        fontSizeSmall: '0.8rem',
       },
       Breadcrumb: { itemTextColor: '#A8AFB5' },
       Button: { textColor: '#fff' },
@@ -156,10 +163,8 @@ function dropJump(key: number, navIndex: number) {
             <template #cover>
               <a :href="`/w/File:${sceneData[currentSceneId].image}.png`">
                 <img
-                  class="lazyload img w-140"
-                  :data-src="
-                    getImagePath(`${sceneData[currentSceneId].image}.png`)
-                  "
+                  class="img w-140"
+                  :src="getImagePath(`${sceneData[currentSceneId].image}.png`)"
                 />
               </a>
             </template>
@@ -172,6 +177,7 @@ function dropJump(key: number, navIndex: number) {
                   :title="item.title"
                   :type="item.type"
                   :icon="item.icon"
+                  :icon-id="item.iconId"
                   :desc1="item.desc1"
                   :desc2="item.desc2"
                   :is-theme="isTheme"
