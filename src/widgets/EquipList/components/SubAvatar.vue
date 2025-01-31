@@ -6,6 +6,8 @@ import { useVModel } from "@vueuse/core";
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
+import { shadowColor } from "../consts";
+
 import Equip from "./Equip.vue";
 
 import type { CharEquips } from "../types";
@@ -18,14 +20,6 @@ const props = withDefaults(
     show: false,
   },
 );
-const shadowColor: Record<string, string> = {
-  red: "#ef4444",
-  green: "#84cc16",
-  yellow: "#f59e0b",
-  blue: "#3b82f6",
-  purple: "#7e22ce",
-  grey: "#52525b",
-};
 const emit = defineEmits<{
   "update:show": [boolean];
 }>();

@@ -35,10 +35,12 @@ const props = withDefaults(
     name: string;
     data?: DOMStringMap[];
     simple?: boolean;
+    simplemode?: string;
   }>(),
   {
     data: () => [],
     simple: false,
+    simplemode: "stats",
   },
 );
 
@@ -104,6 +106,10 @@ onBeforeUpdate(() => {
   handleDark();
 });
 const locale = getLanguage();
+const isLatest = (e: any) => e === "yes";
+const modeStats = () => props.simplemode === "stats";
+const modeMission = () => props.simplemode === "mission";
+const modeMaterial = () => false;
 </script>
 
 <template>
@@ -114,6 +120,14 @@ const locale = getLanguage();
       class="modbody"
       :class="{ simple, mobile: isMobile() }"
     >
+      <div
+        class="linebox bg-orange text-center m-0!"
+        :class="{ nosimple: !simple || !isLatest(e.latest) }"
+      >
+        <span class="w-full color-white font-bold">
+          {{ customLabel[locale].equipString.latest }}
+        </span>
+      </div>
       <div class="basicbox" :class="{ nosimple: simple }">
         <div
           class="modtype"
@@ -138,7 +152,7 @@ const locale = getLanguage();
       </div>
       <div class="majorsep" :class="{ nosimple: simple }"></div>
       <div class="rankbox">
-        <div class="singlerank">
+        <div class="singlerank" :class="{ nosimple: simple && !modeStats() }">
           <div class="rankicon iconfilter" :class="{ nosimple: simple }">
             <img
               :src="getImagePath(`模组等级_1.png`)"
@@ -186,8 +200,11 @@ const locale = getLanguage();
             </div>
           </div>
         </div>
-        <div class="minorsep" :class="{ simple }"></div>
-        <div class="singlerank">
+        <div
+          class="minorsep"
+          :class="{ simple, nosimple: simple && !modeStats() }"
+        ></div>
+        <div class="singlerank" :class="{ nosimple: simple && !modeStats() }">
           <div class="rankicon iconfilter" :class="{ nosimple: simple }">
             <img
               :src="getImagePath(`模组等级_2.png`)"
@@ -227,8 +244,11 @@ const locale = getLanguage();
             </div>
           </div>
         </div>
-        <div class="minorsep" :class="{ simple }"></div>
-        <div class="singlerank">
+        <div
+          class="minorsep"
+          :class="{ simple, nosimple: simple && !modeStats() }"
+        ></div>
+        <div class="singlerank" :class="{ nosimple: simple && !modeStats() }">
           <div class="rankicon iconfilter" :class="{ nosimple: simple }">
             <img
               :src="getImagePath(`模组等级_3.png`)"
@@ -269,8 +289,8 @@ const locale = getLanguage();
           </div>
         </div>
         <div class="majorsep" :class="{ nosimple: simple }"></div>
-        <div class="linebox" :class="{ nosimple: simple }">
-          <div class="descr font-bold">
+        <div class="linebox" :class="{ nosimple: simple && !modeMission() }">
+          <div class="descr font-bold" :class="{ nosimple: simple }">
             {{ customLabel[locale].equipString.mission }}
           </div>
           <div class="lineparta flex-col">
@@ -291,15 +311,18 @@ const locale = getLanguage();
           </div>
         </div>
         <div class="majorsep" :class="{ nosimple: simple }"></div>
-        <div class="linebox" :class="{ nosimple: simple }">
-          <div class="descr font-bold">
+        <div class="linebox" :class="{ nosimple: simple && !modeMaterial() }">
+          <div class="descr font-bold" :class="{ nosimple: simple }">
             {{ customLabel[locale].equipString.condition }}
           </div>
           <div class="lineparta flex-wrap">
             <div class="linebox flex-col">
               <div class="consume">
                 <span class="flex flex-nowrap items-center">
-                  <div class="iconfilter rankicon inline-block">
+                  <div
+                    class="iconfilter rankicon inline-block"
+                    :class="{ nosimple: simple }"
+                  >
                     <img
                       :src="getImagePath('模组等级_1.png')"
                       height="30"
@@ -318,10 +341,13 @@ const locale = getLanguage();
                   </span>
                 </span>
               </div>
-              <div class="minorsep"></div>
+              <div class="minorsep" :class="{ simple }"></div>
               <div class="consume">
                 <span class="flex flex-nowrap items-center">
-                  <div class="iconfilter rankicon inline-block">
+                  <div
+                    class="iconfilter rankicon inline-block"
+                    :class="{ nosimple: simple }"
+                  >
                     <img
                       :src="getImagePath('模组等级_2.png')"
                       height="30"
@@ -336,10 +362,13 @@ const locale = getLanguage();
                   </span>
                 </span>
               </div>
-              <div class="minorsep"></div>
+              <div class="minorsep" :class="{ simple }"></div>
               <div class="consume">
-                <span class="flex flex-nowrap items-center">
-                  <div class="iconfilter rankicon inline-block">
+                <span class="flex items-center">
+                  <div
+                    class="iconfilter rankicon inline-block"
+                    :class="{ nosimple: simple }"
+                  >
                     <img
                       :src="getImagePath('模组等级_3.png')"
                       height="30"

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { h, ref, watch } from "vue";
+import { h, inject, Ref, ref, watch } from "vue";
 
 import { DataTableColumns, NDataTable } from "naive-ui";
 
-import { getLanguage, LANGUAGES } from "@/utils/i18n";
+import { getLanguage } from "@/utils/i18n";
 import { getImagePath, isMobile } from "@/utils/utils";
 
 import { customLabel } from "../i18n";
@@ -11,7 +11,7 @@ import { EquipRow } from "../types";
 
 import Equip from "./Equip.vue";
 
-const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
+const columns = (): DataTableColumns<EquipRow> => {
   return [
     {
       type: "expand",
@@ -24,10 +24,10 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
       },
     },
     {
-      title: customLabel[locale].tableTitle.name,
       titleAlign: "center",
       align: "center",
       key: "operator",
+      width: 60,
       render: (row) => {
         return h(
           "div",
@@ -66,7 +66,6 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
       },
     },
     {
-      title: customLabel[locale].tableTitle.data,
       titleAlign: "center",
       key: "data",
       render: (row) => {
@@ -74,6 +73,7 @@ const columns = (locale: LANGUAGES): DataTableColumns<EquipRow> => {
           name: row.operator,
           data: [row.data],
           simple: true,
+          simplemode: simplemode.value,
         });
       },
     },
@@ -106,6 +106,7 @@ const pagination = ref({
   },
 });
 const loading = ref(false);
+const simplemode = inject("simple") as Ref<string>;
 watch(props, () => {
   if (
     (pagination.value.page - 1) * pagination.value.pageSize >=
@@ -117,11 +118,12 @@ watch(props, () => {
 
 <template>
   <NDataTable
-    :columns="columns(locale)"
+    :columns="columns()"
     :data="data"
     :loading="loading"
     :size="isMobile() ? 'small' : 'medium'"
     :row-key="createRowKey"
     :pagination="pagination"
+    class="w-full"
   ></NDataTable>
 </template>
