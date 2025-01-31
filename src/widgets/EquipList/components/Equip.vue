@@ -109,7 +109,6 @@ const locale = getLanguage();
 const isLatest = (e: any) => e === "yes";
 const modeStats = () => props.simplemode === "stats";
 const modeMission = () => props.simplemode === "mission";
-const modeMaterial = () => false;
 </script>
 
 <template>
@@ -311,7 +310,7 @@ const modeMaterial = () => false;
           </div>
         </div>
         <div class="majorsep" :class="{ nosimple: simple }"></div>
-        <div class="linebox" :class="{ nosimple: simple && !modeMaterial() }">
+        <div class="linebox" :class="{ nosimple: simple }">
           <div class="descr font-bold" :class="{ nosimple: simple }">
             {{ customLabel[locale].equipString.condition }}
           </div>
