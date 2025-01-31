@@ -51,6 +51,10 @@ export default defineConfig(({ command }) => {
       visualizer({ sourcemap: true }),
     ],
     server: {
+      cors: {
+        origin:
+          /^https?:\/\/(?:(?:[^:]+\.)?localhost|127\.0\.0\.1|(m\.)?prts\.wiki|\[::1\])(?::\d+)?$/,
+      },
       port: 8080,
       hmr: {
         host: "localhost",
