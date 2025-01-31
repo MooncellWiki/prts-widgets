@@ -10,21 +10,23 @@ export async function getEquipDataAll(): Promise<
   Record<string, DOMStringMap[]>
 > {
   const result: Record<string, DOMStringMap[]> = {};
-  let i = 0;
-  while (true) {
+  let offset = 0;
+  while (offset % 500 === 0) {
     const resp = await fetch(
       `/api.php?${new URLSearchParams({
         action: "cargoquery",
         format: "json",
-        limit: "500",
+        limit: "5000",
         tables: "char_mod",
-        offset: String(i * 500),
+        offset: offset.toString(),
         fields:
           "_pageName=opt,name=name,type=type,color=color,hp__full=hp,atk__full=atk,def__full=def,res__full=res,time__full=time,cost__full=cost,block__full=block,atkspd__full=atkspd,other__full=other,traitadd=traitadd,trait=trait,talent2=talent2,talent3=talent3,lv=lv,mat=mat,mat2=mat2,mat3=mat3,charModuleN=charModuleN,mission1=mission1,mission2=mission2,mission2Operation=mission2Operation",
       })}`,
     );
     const json: { cargoquery: { title: CargoEquip }[] } = await resp.json();
     if (json.cargoquery.length === 0) break;
+
+    offset += json.cargoquery.length;
     const temp: Record<string, CargoEquip[]> = {};
     for (const e of json.cargoquery) {
       if (!temp[e.title.opt]) {
@@ -91,7 +93,6 @@ export async function getEquipDataAll(): Promise<
       });
       result[opt] = map;
     }
-    i++;
   }
   return result;
 }

@@ -106,7 +106,7 @@ onBeforeUpdate(() => {
   handleDark();
 });
 const locale = getLanguage();
-const isLatest = (e: any) => e === "yes";
+const isLatest = (e: string | undefined) => e && e === "yes";
 const modeStats = () => props.simplemode === "stats";
 const modeMission = () => props.simplemode === "mission";
 </script>
