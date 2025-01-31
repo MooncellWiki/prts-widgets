@@ -118,7 +118,7 @@ export const customLabel = {
       asc: "实装时间升序",
       desc: "实装时间降序",
       all: "全部",
-      default: "默认",
+      default: "干员稀有度",
       filterTalent: "新增天赋",
       filterTrait: "特性追加",
       filterType: "模组类型",
@@ -134,6 +134,7 @@ export const customLabel = {
       condTrust: "需要信赖值(%)",
       condLv: "需要达到等级\n(精英2阶段)",
       condMission: "完成本模组所有\n模组解锁任务",
+      latest: "近期更新",
     },
     tableTitle: {
       name: "模组",
@@ -179,7 +180,7 @@ export const customLabel = {
       asc: "實裝時間遞增",
       desc: "實裝時間遞減",
       all: "全部",
-      default: "預設",
+      default: "幹員稀有度",
       filterTalent: "新增天賦",
       filterTrait: "特性追加",
       filterType: "模組類型",
@@ -195,6 +196,7 @@ export const customLabel = {
       condTrust: "需要信賴值(%)",
       condLv: "需要達到等級\n(精英2階段)",
       condMission: "完成本模組所有\n模組解鎖任務",
+      latest: "近期更新",
     },
     tableTitle: {
       name: "模組",
@@ -240,7 +242,7 @@ export const customLabel = {
       asc: "Added Time(Asc.)",
       desc: "Added Time(Desc.)",
       all: "All",
-      default: "Default",
+      default: "Operator Rarity",
       filterTalent: "New Talent",
       filterTrait: "New Trait",
       filterType: "Module Type",
@@ -256,6 +258,7 @@ export const customLabel = {
       condTrust: "Trust (%)",
       condLv: "Lv. (Elite 2)",
       condMission: "Complete all Module Missions\nof this module",
+      latest: "New Module",
     },
     tableTitle: {
       name: "Module",
@@ -301,7 +304,7 @@ export const customLabel = {
       asc: "追加時間昇順",
       desc: "追加時間降順",
       all: "すべて",
-      default: "デフォルト",
+      default: "オペレーターレアリティ",
       filterTalent: "素質開放",
       filterTrait: "特性追加",
       filterType: "タイプ",
@@ -317,6 +320,7 @@ export const customLabel = {
       condTrust: "必要信頼度(%)",
       condLv: "必要レベル\n(昇進2段階)",
       condMission: "このモジュールのすべての\n解放任務を完了する",
+      latest: "最新追加",
     },
     tableTitle: {
       name: "モジュール",
@@ -363,7 +367,7 @@ export const customLabel = {
       asc: "Added Time(Asc.)",
       desc: "Added Time(Desc.)",
       all: "All",
-      default: "Default",
+      default: "Operator Rarity",
       filterTalent: "New Talent",
       filterTrait: "New Trait",
       filterType: "Module Type",
@@ -379,6 +383,7 @@ export const customLabel = {
       condTrust: "Trust (%)",
       condLv: "Lv. (Elite 2)",
       condMission: "Complete all Module Missions\nof this module",
+      latest: "New Module",
     },
     tableTitle: {
       name: "Module",
@@ -541,8 +546,8 @@ export function getFilterValue(locale: LANGUAGES, option: string = "all") {
           value: "δ",
         },
         {
-          label: customLabel[locale].sortOptions.other,
-          value: "o",
+          label: "α",
+          value: "α",
         },
       ]
     : [

@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeMount, onMounted, provide, ref, watch } from "vue";
+import { computed, onBeforeMount, provide, ref } from "vue";
 
-import { useUrlSearchParams } from "@vueuse/core";
 import {
   NButton,
   NButtonGroup,
   NCard,
   NCollapseTransition,
   NConfigProvider,
-  NEmpty,
   NInput,
   NLayout,
   NScrollbar,
@@ -16,15 +14,20 @@ import {
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
-import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
+import { getLanguage, getNaiveUILocale, LANGUAGES } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { isMobile } from "@/utils/utils";
 
+import EquipGroup from "./components/EquipGroup.vue";
 import EquipTable from "./components/EquipTable.vue";
 import FilterSub from "./components/FilterSub.vue";
-import SubContainer from "./components/SubContainer.vue";
 import { rarityMap, statsStyleMap } from "./consts";
-import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
+import {
+  askOperators,
+  getEquipAddedTime,
+  getEquipDataAll,
+  getSubtypeMap,
+} from "./equipData";
 import {
   customLabel,
   getFilterOptions,
@@ -50,7 +53,7 @@ function newFilterItem(): FilterValue {
 
 function newSortItem(): FilterValue {
   return {
-    mode: "default",
+    mode: "desc",
     value: "desc",
   };
 }
@@ -58,7 +61,6 @@ function newSortItem(): FilterValue {
 const i18nConfig = getNaiveUILocale();
 const { theme, toggleDark } = useTheme();
 const locale = getLanguage();
-const hash = useUrlSearchParams("hash");
 const timeData = ref<
   {
     label: string;
@@ -84,17 +86,19 @@ const filteredSubProfMap = computed(() => {
 });
 
 const subOptions = computed(() => {
+  const cLabel = customLabel[locale];
+  const zhLabel = customLabel[LANGUAGES.ZH];
   return {
-    title: customLabel[locale].subtypeLabel,
-    placeholder: customLabel[locale].subPlaceholder,
+    title: cLabel.subtypeLabel,
+    placeholder: cLabel.subPlaceholder,
     options: Object.entries(filteredSubProfMap.value).map(([k, v]) => {
       return {
         type: "group",
-        label: customLabel[locale].subtypeMap[k] ?? k,
+        label: cLabel.typeOptions[zhLabel.typeOptions.indexOf(k)] ?? k,
         key: k,
         children: v.map((subProf) => {
           return {
-            label: customLabel[locale].subtypeMap[subProf] ?? subProf,
+            label: cLabel.subtypeMap[subProf] ?? subProf,
             value: subProf,
           };
         }),
@@ -120,105 +124,10 @@ const sortStates = ref<Record<string, FilterValue[]>>({
   sort: [newSortItem()],
 });
 const group = ref("sub");
-const updateHash = () => {
-  if (states.value.type.length > 0) {
-    hash.type = states.value.type
-      .map((v) => {
-        return customLabel[locale].typeOptions.indexOf(v as string);
-      })
-      .join("");
-  } else delete hash.type;
-  if (states.value.rarity.length > 0) {
-    hash.rarity = states.value.rarity
-      .map((v) => {
-        return Number(v.slice(1)) - 1;
-      })
-      .join("");
-  } else delete hash.rarity;
-  if (states.value.sub.length > 0) {
-    hash.sub = states.value.sub.join("-");
-  } else delete hash.sub;
-  if (sortStates.value.sort[0].mode === "default") {
-    delete hash.sort;
-  } else {
-    hash.sort = sortStates.value.sort[0].mode;
-  }
-  hash.list = listShow.value.toString();
-  if (listShow.value) delete hash.group;
-  else hash.group = group.value;
-  hash.filter = sortStates.value.filter
-    .filter((v) => {
-      return v.mode === "all" ? false : true;
-    })
-    .map((v) => {
-      let value = "";
-      if (v.mode === "addtime") {
-        v.value = typeof v.value === "string" ? [v.value] : v.value;
-        value = (v.value as string[]).join("-");
-      } else if (v.mode === "mission2opt") {
-        value = v.value as string;
-      } else {
-        value = (v.value as string).slice(0, 1);
-      }
-      return `${v.mode}_${value}`;
-    });
-};
-watch(states, updateHash, { deep: true });
-watch(sortStates, updateHash, { deep: true });
-watch(listShow, updateHash, { deep: true });
-watch(group, updateHash, { deep: true });
+const simple = ref("stats");
+provide("simple", simple);
 
 const rawEquipData = ref<CharEquips[]>([]);
-const charEquipData = computed<Record<string, CharEquips[]>>(() => {
-  const result: Record<string, CharEquips[]> = {};
-  const term = group.value;
-  if (term === "time") {
-    for (const charEquip of rawEquipData.value) {
-      for (const equip of charEquip.equips) {
-        const { addtime } = equip;
-        if (!addtime) continue;
-
-        if (!result[addtime]) {
-          result[addtime] = [];
-        }
-        result[addtime].push({
-          char: charEquip.char,
-          equips: [equip],
-        });
-      }
-    }
-  } else if (term === "opt") {
-    for (const charEquip of rawEquipData.value) {
-      for (const equip of charEquip.equips) {
-        const { mission2opt = "unknown" } = equip;
-
-        if (!result[mission2opt]) {
-          result[mission2opt] = [];
-        }
-        result[mission2opt].push({
-          char: charEquip.char,
-          equips: [equip],
-        });
-      }
-    }
-  } else {
-    for (const charEquip of rawEquipData.value) {
-      if (!result[charEquip.char.subtype]) {
-        result[charEquip.char.subtype] = [];
-      }
-      result[charEquip.char.subtype].push(charEquip);
-    }
-  }
-  for (const key of Object.keys(result)) {
-    result[key].sort((a, b) => {
-      return a.char.rarity === b.char.rarity
-        ? b.char.id - a.char.id
-        : Number.parseInt(b.char.rarity as string) -
-            Number.parseInt(a.char.rarity as string);
-    });
-  }
-  return result;
-});
 const filterData = (data: DOMStringMap): boolean => {
   return sortStates.value.filter.every((v) => {
     switch (v.mode) {
@@ -233,7 +142,7 @@ const filterData = (data: DOMStringMap): boolean => {
       case "type": {
         const { type } = data;
         const match = !!type?.match(new RegExp(`-${v.value}`, "i"));
-        const nmatch = !type?.match(/-[xyδ]/i);
+        const nmatch = !type?.match(/-[xyαδ]/i);
 
         return v.value === "o" ? nmatch : match;
       }
@@ -258,51 +167,42 @@ const filterData = (data: DOMStringMap): boolean => {
     }
   });
 };
-const filteredCharEquipData = computed((): Record<string, CharEquips[]> => {
+const filteredEquipData = computed((): CharEquips[] => {
   const s = states.value;
-  const result: Record<string, CharEquips[]> = {};
-  for (const sub in charEquipData.value) {
-    const ces = charEquipData.value[sub];
-    const temp: CharEquips[] = [];
-    for (const ce of ces) {
-      const rarityP =
-        s.rarity.length > 0 &&
-        !s.rarity.includes(rarityMap[ce.char.rarity.toString()]);
-      const subP = s.sub.length > 0 && !s.sub.includes(ce.char.subtype);
-      const typeP =
-        s.type.length > 0 &&
-        !s.type.includes(getLocaleType(ce.char.type, locale));
-      if (rarityP || subP || typeP) continue;
-      const data = ce.equips.filter((e) => filterData(e));
-      if (data.length > 0)
-        temp.push({
-          char: ce.char,
-          equips: data,
-        });
-    }
-    if (temp.length > 0) {
-      result[sub] = temp;
-    }
+  const result: CharEquips[] = [];
+  for (const ce of rawEquipData.value) {
+    const rarityP =
+      s.rarity.length > 0 &&
+      !s.rarity.includes(rarityMap[ce.char.rarity.toString()]);
+    const subP = s.sub.length > 0 && !s.sub.includes(ce.char.subtype);
+    const typeP =
+      s.type.length > 0 &&
+      !s.type.includes(getLocaleType(ce.char.type, locale));
+    if (rarityP || subP || typeP) continue;
+    const data = ce.equips.filter((e) => filterData(e));
+    if (data.length > 0)
+      result.push({
+        char: ce.char,
+        equips: data,
+      });
   }
   return result;
 });
 const CharEquipList = computed(() => {
   const result: EquipRow[] = [];
-  for (const sub in filteredCharEquipData.value) {
-    for (const char of filteredCharEquipData.value[sub]) {
-      result.push(
-        ...char.equips.map((e) => {
-          return {
-            name: e.name ?? "",
-            type: e.type ?? "",
-            operator: char.char.name,
-            oprarity: char.char.rarity,
-            opid: char.char.id,
-            data: e,
-          };
-        }),
-      );
-    }
+  for (const ce of filteredEquipData.value) {
+    result.push(
+      ...ce.equips.map((e) => {
+        return {
+          name: e.name ?? "",
+          type: e.type ?? "",
+          operator: ce.char.name,
+          oprarity: ce.char.rarity,
+          opid: ce.char.id,
+          data: e,
+        };
+      }),
+    );
   }
   result.sort((x, y) => {
     switch (sortStates.value.sort[0].mode) {
@@ -338,61 +238,13 @@ const CharEquipList = computed(() => {
   return result;
 });
 
-const initFromHash = () => {
-  for (const [k, v] of Object.entries(hash)) {
-    if (k === "sort" && v !== "default") {
-      sortStates.value.sort[0].mode = v as string;
-    }
-    if (k === "filter") {
-      const res = typeof v === "string" ? [v] : v;
-      sortStates.value.filter = res.map((e) => {
-        const matches = e.match(/^(.*?)_(.*?)$/) as string[];
-        const mode = matches[1];
-        const value = matches[2];
-        if (mode === "addtime") {
-          return {
-            mode,
-            value: value.split("-"),
-          };
-        }
-        return mode === "type" || mode === "mission2opt"
-          ? {
-              mode,
-              value,
-            }
-          : {
-              mode,
-              value: value === "y" ? "yes" : "no",
-            };
-      });
-    }
-    if (k === "type") {
-      states.value[k] = (v as string).split("").map((e) => {
-        return customLabel[locale].typeOptions[Number(e)];
-      });
-    }
-    if (k === "rarity") {
-      states.value[k] = (v as string).split("").map((e) => {
-        return rarityMap[e];
-      });
-    }
-    if (k === "sub") {
-      states.value[k] = (v as string).split("-");
-    }
-    if (k === "list") {
-      listShow.value = v === "true" ? true : false;
-    }
-    if (k === "group") {
-      group.value = v as string;
-    }
-  }
-};
 onBeforeMount(async () => {
   loadingCount.value = 1;
-  const [json, equips, time] = await Promise.all([
+  const [json, equips, time, subm] = await Promise.all([
     askOperators(),
     getEquipDataAll(),
     getEquipAddedTime(),
+    getSubtypeMap(),
   ]);
 
   const charData = Object.entries<Record<string, any>>(
@@ -417,6 +269,7 @@ onBeforeMount(async () => {
                 });
               })?.time;
               e.addtime = t?.toString() || "0";
+              e.latest = time.at(-1)?.time === t ? "yes" : "no";
               return e;
             })
             .sort((a, b) => {
@@ -442,11 +295,13 @@ onBeforeMount(async () => {
       value: i.time.toString(),
     };
   });
+  customLabel.en.subtypeMap = subm.en;
+  customLabel.ja.subtypeMap = subm.ja;
+  customLabel.ko.subtypeMap = subm.ko;
+  customLabel["zh-tw"].subtypeMap = subm["zh-tw"];
   loadingCount.value = 0;
 });
-onMounted(() => {
-  initFromHash();
-});
+
 const mobileStyle = () => {
   return isMobile() ? "padding: 5px" : undefined;
 };
@@ -517,7 +372,7 @@ const mobileStyle = () => {
             class="m-1 cursor-pointer"
             @click="equipFilterShow = !equipFilterShow"
           >
-            <span v-if="filterShow" class="mdi mdi-chevron-up text-2xl" />
+            <span v-if="equipFilterShow" class="mdi mdi-chevron-up text-2xl" />
             <span v-else class="mdi mdi-chevron-down text-2xl" />
           </div>
         </template>
@@ -573,8 +428,8 @@ const mobileStyle = () => {
                   class="m-1"
                   :disabled="loadingCount > 0"
                   :options="timeData"
-                  multiple
                   clearable
+                  multiple
                   :fallback-option="false"
                 />
                 <NInput
@@ -643,6 +498,24 @@ const mobileStyle = () => {
               <span class="mdi mdi-sword-cross text-xl" />
             </NButton>
           </NButtonGroup>
+          <NButtonGroup v-else size="small" class="mx-1">
+            <NButton
+              secondary
+              :disabled="loadingCount > 0"
+              :type="simple === 'stats' ? 'info' : 'default'"
+              @click="simple = 'stats'"
+            >
+              <span class="mdi mdi-numeric text-xl" />
+            </NButton>
+            <NButton
+              secondary
+              :disabled="loadingCount > 0"
+              :type="simple === 'mission' ? 'info' : 'default'"
+              @click="simple = 'mission'"
+            >
+              <span class="mdi mdi-clipboard-check text-xl" />
+            </NButton>
+          </NButtonGroup>
           <NButtonGroup size="small">
             <NButton
               secondary
@@ -663,23 +536,7 @@ const mobileStyle = () => {
           </NButtonGroup>
         </template>
         <div v-if="!listShow">
-          <div class="w-full flex flex-col flex-wrap">
-            <SubContainer
-              v-for="(chars, subtype) in filteredCharEquipData"
-              :key="subtype"
-              :chars="chars"
-              :title="subtype"
-              :groupby="group"
-            />
-          </div>
-          <NEmpty
-            v-if="Object.keys(filteredCharEquipData).length === 0"
-            :description="customLabel[locale].emptyDesc"
-          >
-            <template #icon>
-              <span class="mdi mdi-account-filter-outline text-5xl" />
-            </template>
-          </NEmpty>
+          <EquipGroup :data="filteredEquipData" :group="group"></EquipGroup>
         </div>
         <div v-else>
           <NScrollbar trigger="none" :x-scrollable="true">

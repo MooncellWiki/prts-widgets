@@ -9,6 +9,15 @@ export const colorMap: Record<string, string> = {
   grey: "#2f2f2f",
 };
 
+export const shadowColor: Record<string, string> = {
+  red: "#ef4444",
+  green: "#84cc16",
+  yellow: "#f59e0b",
+  blue: "#3b82f6",
+  purple: "#7e22ce",
+  grey: "#52525b",
+};
+
 export const statsStyleMap: Record<string, number> = {
   hp: 1,
   atk: 1,
