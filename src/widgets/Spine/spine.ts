@@ -126,9 +126,20 @@ export class Spine {
     const atlas = this.assetManager.get(atlasPath);
     const atlasLoader = new spine.AtlasAttachmentLoader(atlas);
     const skel = this.assetManager.get(skelPath);
-    const skeletonBinary = new spine.SkeletonBinary(atlasLoader);
-    const skeletonData = skeletonBinary.readSkeletonData(skel);
-    const skeleton = new spine.Skeleton(skeletonData);
+    let skeleton: spine.Skeleton;
+    // 如果是 '{' 开头 那应该是个json
+    // 二进制模式的第一个字节是hash的长度 正常应该不会是0x7b
+    // 在char_1028_texas2_epoque_36(缄默德克萨斯 幽兰秘辛)的基建和正面第一次见到
+    if (skel[0] === 0x7b) {
+      const skeletonJson = new spine.SkeletonJson(atlasLoader);
+      const reader = new TextDecoder("utf8");
+      const skeletonData = skeletonJson.readSkeletonData(reader.decode(skel));
+      skeleton = new spine.Skeleton(skeletonData);
+    } else {
+      const skeletonBinary = new spine.SkeletonBinary(atlasLoader);
+      const skeletonData = skeletonBinary.readSkeletonData(skel);
+      skeleton = new spine.Skeleton(skeletonData);
+    }
     if (skinName) skeleton.setSkinByName(skinName);
 
     const bounds = calculateBounds(skeleton);
