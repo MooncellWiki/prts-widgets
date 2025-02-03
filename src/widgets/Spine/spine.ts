@@ -126,9 +126,18 @@ export class Spine {
     const atlas = this.assetManager.get(atlasPath);
     const atlasLoader = new spine.AtlasAttachmentLoader(atlas);
     const skel = this.assetManager.get(skelPath);
-    const skeletonBinary = new spine.SkeletonBinary(atlasLoader);
-    const skeletonData = skeletonBinary.readSkeletonData(skel);
-    const skeleton = new spine.Skeleton(skeletonData);
+    let skeleton: spine.Skeleton;
+    try {
+      const skeletonBinary = new spine.SkeletonBinary(atlasLoader);
+      const skeletonData = skeletonBinary.readSkeletonData(skel);
+      skeleton = new spine.Skeleton(skeletonData);
+    } catch (error) {
+      console.log("parse skel failed try json", error);
+      const skeletonJson = new spine.SkeletonJson(atlasLoader);
+      const reader = new TextDecoder("utf8");
+      const skeletonData = skeletonJson.readSkeletonData(reader.decode(skel));
+      skeleton = new spine.Skeleton(skeletonData);
+    }
     if (skinName) skeleton.setSkinByName(skinName);
 
     const bounds = calculateBounds(skeleton);
