@@ -2,7 +2,7 @@
   "name": "mooncell-widget",
   "type": "module",
   "version": "0.0.0",
-  "packageManager": "pnpm@9.15.5",
+  "packageManager": "pnpm@10.2.0",
   "private": true,
   "scripts": {
     "create": "node scripts/index.js",
