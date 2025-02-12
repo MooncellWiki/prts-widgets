@@ -2,7 +2,7 @@
   "name": "mooncell-widget",
   "type": "module",
   "version": "0.0.0",
-  "packageManager": "pnpm@10.2.0",
+  "packageManager": "pnpm@10.3.0",
   "private": true,
   "scripts": {
     "create": "node scripts/index.js",
@@ -70,5 +70,11 @@
     "vite": "^6.0.11",
     "vue-eslint-parser": "^9.4.3",
     "vue-tsc": "^2.2.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "core-js",
+      "esbuild"
+    ]
   }
 }
