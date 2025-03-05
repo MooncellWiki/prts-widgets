@@ -16,7 +16,7 @@ export const defaultFilterConfig = {
         "机械",
         "野生动物",
         "坍缩体",
-        "其他"
+        "其他",
       ],
       title: "种类",
     },
