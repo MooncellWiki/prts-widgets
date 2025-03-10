@@ -9,7 +9,7 @@ const props = withDefaults(
     tile: string;
     tileHeightType: string;
     tokens?: string[];
-    black: string;
+    black?: string;
   }>(),
   {
     black: "",

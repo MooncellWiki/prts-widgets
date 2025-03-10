@@ -5,7 +5,7 @@ const props = withDefaults(
   defineProps<{
     title?: string;
     options: string[];
-    modelValue: string[];
+    modelValue?: string[];
     disabled?: boolean;
   }>(),
   {

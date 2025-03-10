@@ -29,9 +29,10 @@ interface Option {
   index: number;
   customBadgeText?: string;
 }
+
 const props = withDefaults(
   defineProps<{
-    sceneData: {
+    sceneData?: {
       etype?: string;
       edesc?: string;
       name?: string;
