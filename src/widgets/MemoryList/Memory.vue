@@ -16,7 +16,7 @@ const getSrcElite = (elite: string) =>
 const props = withDefaults(
   defineProps<{
     charMemory: CharMemory;
-    isNew: boolean;
+    isNew?: boolean;
   }>(),
   {
     isNew: false,

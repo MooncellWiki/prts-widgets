@@ -23,9 +23,9 @@ import { getMedalMetaData } from "./utils";
 import type { MedalMetaData } from "./types";
 const props = withDefaults(
   defineProps<{
-    medalList: string[];
-    medalGroupList: string[];
-    spoiler: boolean;
+    medalList?: string[];
+    medalGroupList?: string[];
+    spoiler?: boolean;
   }>(),
   {
     medalList: () => [],
