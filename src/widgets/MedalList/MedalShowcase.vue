@@ -21,6 +21,7 @@ import MedalGroupComponent from "./MedalGroup.vue";
 import { getMedalMetaData } from "./utils";
 
 import type { MedalMetaData } from "./types";
+
 const props = withDefaults(
   defineProps<{
     medalList?: string[];

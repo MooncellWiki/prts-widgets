@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from "vue";
 import { getImagePath } from "@/utils/utils";
 
 import { TipMap, bgMap, classMap } from "./consts";
+
 const props = withDefaults(
   defineProps<{
     tile: string;

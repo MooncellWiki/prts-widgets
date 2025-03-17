@@ -10,6 +10,7 @@ import { customLabel } from "../i18n";
 import { CharEquips } from "../types";
 
 import SubAvatar from "./SubAvatar.vue";
+
 const props = withDefaults(
   defineProps<{
     title: string;

@@ -8,6 +8,7 @@ import { PRTS_BASE_DOMAIN } from "@/utils/consts";
 import { useChar } from "./useChar";
 
 import type { Char } from "../utils";
+
 const props = defineProps<{
   row: Char;
   addTrust?: boolean; // 是否加算信赖

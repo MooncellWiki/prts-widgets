@@ -11,6 +11,7 @@ import { shadowColor } from "../consts";
 import Equip from "./Equip.vue";
 
 import type { CharEquips } from "../types";
+
 const props = withDefaults(
   defineProps<{
     char: CharEquips;
