@@ -12,7 +12,7 @@ defineProps<{
   <div class="avatar-container" :class="size">
     <a :href="`/w/${name}`">
       <img
-        class="lazyload avatar"
+        class="avatar lazyload"
         :data-src="getImagePath(`头像_${name}.png`)"
       />
       <div class="rarity">

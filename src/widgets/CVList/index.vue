@@ -9,6 +9,7 @@ import { useTheme } from "@/utils/theme";
 import VoiceLangTab from "./VoiceLangTab.vue";
 
 import type { VoiceLangTypeData } from "./types";
+
 const props = defineProps<{
   data: Record<string, Record<string, string[]>>;
   langTypes: VoiceLangTypeData;
