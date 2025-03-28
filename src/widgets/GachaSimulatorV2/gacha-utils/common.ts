@@ -7,6 +7,7 @@ export interface GachaConfig {
   guarantee5Count: number;
   guarantee6Up6Avail: number;
   guarantee6Up6Count: number;
+  guarantee6DoubleUp6Count: number;
   guarantee6Avail: number;
   guarantee6Count: number;
   gachaTimes: number;

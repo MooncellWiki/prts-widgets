@@ -11,7 +11,6 @@ import {
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import {
@@ -32,7 +31,6 @@ import {
 import { getPortraitURL, rarityStringToNumber } from "./utils";
 
 const { locale, dateLocale } = getNaiveUILocale();
-const { theme } = useTheme();
 const props = defineProps<{
   gachaPoolId: string;
   gachaBannerFile: string;
@@ -199,7 +197,6 @@ const displayStars = [5, 4, 3, 2];
 <template>
   <NConfigProvider
     preflight-style-disabled
-    :theme="theme"
     :locale="locale"
     :date-locale="dateLocale"
   >

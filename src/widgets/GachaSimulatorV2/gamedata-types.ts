@@ -64,6 +64,20 @@ export enum GachaRuleType {
    * 只能抽取21次 必定至少获得1名6★干员，次数内必定获得至少1名5★以上干员
    */
   NEWBEE = "NEWBEE",
+
+  /**
+   * 常驻双UP标准寻访
+   * - 累计寻访150次，下个6星为两个UP 6星之一
+   * - 累计寻访300次，下个6星为剩下的那个UP 6星
+   */
+  DOUBLE = "DOUBLE",
+
+  /**
+   * 常驻双UP中坚寻访池
+   * - 累计寻访150次，下个6星为两个UP 6星之一
+   * - 累计寻访300次，下个6星为剩下的那个UP 6星
+   */
+  CLASSIC_DOUBLE = "CLASSIC_DOUBLE",
 }
 
 export interface GachaPoolClientData {

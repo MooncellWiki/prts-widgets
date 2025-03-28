@@ -19,6 +19,13 @@ export function shouldApplyEnsure6StarRule(state: GachaState) {
   return state.guarantee6Count && state.guarantee6Avail > 0;
 }
 
+export function hasOneOfUp6StarCharUngotten(
+  state: GachaState,
+  charIds: string[],
+) {
+  return charIds.some((charId) => (state.results[charId] || 0) < 1);
+}
+
 export function hasOneOf5StarCharGotten(
   state: GachaState,
   upCharInfo?: GachaUpChar,
@@ -106,5 +113,34 @@ export function applyEnsureUp6StarRule(state: GachaState, charId: string) {
     console.log("[applyEnsureUp6StarRule]", "触发 Up 6 星保底");
     state.guarantee6Up6Avail--;
     return { charId, rarity: RarityRank.TIER_6 };
+  }
+}
+
+export function applyEnsureDoubleUp6StarRule(
+  state: GachaState,
+  charIds: string[],
+) {
+  for (const charId of charIds) {
+    if (
+      state.counter < state.guarantee6DoubleUp6Count &&
+      state.results[charId] >= 1
+    ) {
+      console.log(
+        "[applyEnsureDoubleUp6StarRule]",
+        `在第 ${state.guarantee6DoubleUp6Count} 抽前已有 ${charId}`,
+      );
+      continue;
+    }
+
+    if (
+      state.counter === state.guarantee6Up6Count ||
+      state.counter === state.guarantee6DoubleUp6Count
+    ) {
+      console.log(
+        "[applyEnsureDoubleUp6StarRule]",
+        `触发 ${state.guarantee6Up6Count} 及 ${state.guarantee6DoubleUp6Count} 抽内 ${charId} 保底`,
+      );
+      return { charId, rarity: RarityRank.TIER_6 };
+    }
   }
 }

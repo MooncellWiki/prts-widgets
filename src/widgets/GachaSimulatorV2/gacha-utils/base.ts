@@ -19,9 +19,11 @@ import {
 } from "./common";
 import {
   applyEnsure5StarRule,
+  applyEnsureDoubleUp6StarRule,
   applyEnsureUp6StarRule,
   getUp5StarUngottenList,
   hasOneOf5StarCharGotten,
+  hasOneOfUp6StarCharUngotten,
   shouldApplyEnsure5StarRule,
   shouldApplyEnsureUp6StarRule,
 } from "./rule";
@@ -46,10 +48,20 @@ export class GachaExecutor {
 
     let guarantee6Up6Avail = 0;
     let guarantee6Up6Count = 0;
+    let guarantee6DoubleUp6Count = 0;
 
     if (this.gachaRuleType === GachaRuleType.SINGLE) {
       guarantee6Up6Avail = 1;
       guarantee6Up6Count = 150;
+    }
+
+    if (
+      this.gachaRuleType === GachaRuleType.DOUBLE ||
+      this.gachaRuleType === GachaRuleType.CLASSIC_DOUBLE
+    ) {
+      guarantee6Up6Avail = 2;
+      guarantee6Up6Count = 150;
+      guarantee6DoubleUp6Count = 300;
     }
 
     if (this.gachaRuleType === GachaRuleType.LINKAGE) {
@@ -63,6 +75,7 @@ export class GachaExecutor {
       guarantee5Count: gachaClientPool.guarantee5Count,
       guarantee6Up6Avail,
       guarantee6Up6Count,
+      guarantee6DoubleUp6Count,
       guarantee6Avail: 0,
       guarantee6Count: 0,
       gachaTimes: Number.POSITIVE_INFINITY,
@@ -120,6 +133,29 @@ export class GachaExecutor {
 
       const ruleResult = applyEnsureUp6StarRule(this.state, up6StarCharId);
       if (ruleResult) result = ruleResult;
+    }
+
+    // DOUBLE 150 抽、300 抽保底双 UP 六星
+    if (
+      this.gachaRuleType === GachaRuleType.DOUBLE ||
+      this.gachaRuleType === GachaRuleType.CLASSIC_DOUBLE
+    ) {
+      const up6StarCharIds = getUpListWithRarity(
+        RarityRank.TIER_6,
+        this.upCharInfo,
+      )?.charIdList;
+      if (!up6StarCharIds)
+        throw new Error(
+          `[doGachaOnce] Empty 6 star upCharId when applying ensureDoubleUp6StarRule for gacha rule type ${this.gachaRuleType}`,
+        );
+
+      if (hasOneOfUp6StarCharUngotten(this.state, up6StarCharIds)) {
+        const ruleResult = applyEnsureDoubleUp6StarRule(
+          this.state,
+          up6StarCharIds,
+        );
+        if (ruleResult) result = ruleResult;
+      }
     }
 
     // LINKAGE 联动多 Up 5 星保底另一 Up 5 星角色
