@@ -47,6 +47,7 @@ export class NewbeeGachaExecutor {
       guarantee5Count: gachaClientPool.gachaTimes,
       guarantee6Up6Avail: -1,
       guarantee6Up6Count: -1,
+      guarantee6DoubleUp6Count: -1,
       guarantee6Avail: 1,
       guarantee6Count: gachaClientPool.gachaTimes,
       gachaTimes: gachaClientPool.gachaTimes,
