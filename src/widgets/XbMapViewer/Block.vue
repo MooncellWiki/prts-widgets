@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 
 import { getImagePath } from "@/utils/utils";
 
-import { blockmap } from "./consts";
+import { type BlockDefine } from "./consts";
 
 const props = withDefaults(
   defineProps<{
@@ -11,6 +11,7 @@ const props = withDefaults(
     tileHeightType: string;
     tokens?: string[];
     black?: string;
+    blockmap: Record<string, BlockDefine>;
   }>(),
   {
     black: "",
@@ -19,17 +20,17 @@ const props = withDefaults(
 
 const self = ref();
 const checkIdInMap = (id: string) => {
-  return id in blockmap;
+  return id in props.blockmap;
 };
 const style = computed(() => {
   const result = {} as Record<string, string>;
 
-  if (checkIdInMap(props.tile!) && blockmap[props.tile!].img)
-    result.backgroundImage = `url(${getImagePath(blockmap[props.tile!].img as string)})`;
+  if (checkIdInMap(props.tile!) && props.blockmap[props.tile!].img)
+    result.backgroundImage = `url(${getImagePath(props.blockmap[props.tile!].img as string)})`;
 
   for (const token of props.tokens || []) {
-    if (token && checkIdInMap(token) && blockmap[token].img)
-      result.backgroundImage = `url(${getImagePath(blockmap[token].img as string)})`;
+    if (token && checkIdInMap(token) && props.blockmap[token].img)
+      result.backgroundImage = `url(${getImagePath(props.blockmap[token].img as string)})`;
   }
 
   if (
@@ -46,14 +47,14 @@ const style = computed(() => {
 
 onMounted(() => {
   let content = "";
-  if (props.tile && checkIdInMap(props.tile) && blockmap[props.tile].desc)
-    content += blockmap[props.tile].desc;
+  if (props.tile && checkIdInMap(props.tile) && props.blockmap[props.tile].desc)
+    content += props.blockmap[props.tile].desc;
 
   for (const token of props.tokens || []) {
-    if (token && checkIdInMap(token) && blockmap[token].desc)
+    if (token && checkIdInMap(token) && props.blockmap[token].desc)
       content += content
-        ? `<br/> ${blockmap[token].desc}`
-        : ` ${blockmap[token].desc}`;
+        ? `<br/> ${props.blockmap[token].desc}`
+        : ` ${props.blockmap[token].desc}`;
   }
 
   if (content.length > 0) {

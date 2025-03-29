@@ -7,6 +7,7 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import Block from "./Block.vue";
+import { getConstData, type XbConstData } from "./consts";
 
 export interface Props {
   map: {
@@ -17,6 +18,12 @@ export interface Props {
   embed?: boolean;
 }
 
+const XbMapConst = ref<XbConstData>({
+  blockmap: {},
+});
+onMounted(async () => {
+  XbMapConst.value = await getConstData();
+});
 const { theme } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
@@ -117,6 +124,7 @@ onMounted(() => {
           :tile-height-type="map.mapData.tiles[board].heightType.toString()"
           :tokens="getToken(map.mapData.map.length - 1 - i, n)"
           :black="black && black[`${map.mapData.map.length - 1 - i}-${n}`]"
+          :blockmap="XbMapConst.blockmap"
         />
       </div>
     </div>

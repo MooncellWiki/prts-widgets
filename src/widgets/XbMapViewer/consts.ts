@@ -1,14 +1,14 @@
-interface blockDefine {
+export interface BlockDefine {
   icon: string | null;
   img: string | null;
   desc: string;
 }
 
-interface xbConstData {
-  blockmap: Record<string, blockDefine>;
+export interface XbConstData {
+  blockmap: Record<string, BlockDefine>;
 }
 
-async function getConstData(): Promise<xbConstData> {
+export async function getConstData(): Promise<XbConstData> {
   const resp = await fetch(
     `/index.php?${new URLSearchParams({
       title: "模板:XbMapViewer/const",
@@ -17,7 +17,3 @@ async function getConstData(): Promise<xbConstData> {
   );
   return await resp.json();
 }
-
-const receivedConst = await getConstData();
-
-export const blockmap: Record<string, blockDefine> = receivedConst.blockmap;
