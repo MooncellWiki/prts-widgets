@@ -90,7 +90,7 @@ onMounted(() => {
     5
   }px`;
 
-  bordersize.value = `${width.value <= 25 ? "2px" : "1px"}`;
+  bordersize.value = width.value <= 25 ? "2px" : "1px";
 });
 </script>
 
