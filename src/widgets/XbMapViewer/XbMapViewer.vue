@@ -108,7 +108,7 @@ onMounted(() => {
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <div :id="embed ? 'mapmodal' : 'map'" ref="rootRef" class="w-full">
+    <div :id="embed ? 'mapmodal' : 'map'" ref="rootRef" class="xbmap w-full">
       <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
         <Block
           v-for="(board, n) in row"
