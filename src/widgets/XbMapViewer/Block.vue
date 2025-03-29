@@ -19,18 +19,17 @@ const props = withDefaults(
 );
 
 const self = ref();
-const checkIdInMap = (id: string) => {
-  return id in props.blockmap;
-};
-const style = computed(() => {
-  const result = {} as Record<string, string>;
 
-  if (checkIdInMap(props.tile!) && props.blockmap[props.tile!].img)
-    result.backgroundImage = `url(${getImagePath(props.blockmap[props.tile!].img as string)})`;
+const style = computed(() => {
+  const result: Record<string, string> = {};
+
+  if (props.blockmap[props.tile!]?.img) {
+    result.backgroundImage = `url(${getImagePath(props.blockmap[props.tile!].img!)})`;
+  }
 
   for (const token of props.tokens || []) {
-    if (token && checkIdInMap(token) && props.blockmap[token].img)
-      result.backgroundImage = `url(${getImagePath(props.blockmap[token].img as string)})`;
+    if (props.blockmap[token]?.img)
+      result.backgroundImage = `url(${getImagePath(props.blockmap[token].img)})`;
   }
 
   if (
@@ -47,11 +46,11 @@ const style = computed(() => {
 
 onMounted(() => {
   let content = "";
-  if (props.tile && checkIdInMap(props.tile) && props.blockmap[props.tile].desc)
+  if (props.tile && props.blockmap[props.tile]?.desc)
     content += props.blockmap[props.tile].desc;
 
   for (const token of props.tokens || []) {
-    if (token && checkIdInMap(token) && props.blockmap[token].desc)
+    if (token && props.blockmap[token]?.desc)
       content += content
         ? `<br/> ${props.blockmap[token].desc}`
         : ` ${props.blockmap[token].desc}`;
@@ -85,13 +84,13 @@ onMounted(() => {
   >
     <template v-if="tokens">
       <template v-for="(token, i) in tokens" :key="i">
-        <span v-if="checkIdInMap(token!) && blockmap[token!].icon">
+        <span v-if="blockmap[token!]?.icon">
           <i :class="blockmap[token!].icon" />
         </span>
       </template>
     </template>
     <template v-else>
-      <span v-if="checkIdInMap(tile!) && blockmap[tile!].icon">
+      <span v-if="blockmap[tile!]?.icon">
         <i :class="blockmap[tile!].icon" />
       </span>
     </template>

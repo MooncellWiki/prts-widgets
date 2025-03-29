@@ -1,6 +1,6 @@
 export interface BlockDefine {
-  icon: string | null;
-  img: string | null;
+  icon?: string;
+  img?: string;
   desc: string;
 }
 
