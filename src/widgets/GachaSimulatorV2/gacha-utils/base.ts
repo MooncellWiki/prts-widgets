@@ -137,8 +137,9 @@ export class GachaExecutor {
 
     // DOUBLE 150 抽、300 抽保底双 UP 六星
     if (
-      this.gachaRuleType === GachaRuleType.DOUBLE ||
-      this.gachaRuleType === GachaRuleType.CLASSIC_DOUBLE
+      (this.gachaRuleType === GachaRuleType.DOUBLE ||
+        this.gachaRuleType === GachaRuleType.CLASSIC_DOUBLE) &&
+      rarity === RarityRank.TIER_6
     ) {
       const up6StarCharIds = getUpListWithRarity(
         RarityRank.TIER_6,
@@ -154,7 +155,10 @@ export class GachaExecutor {
           this.state,
           up6StarCharIds,
         );
-        if (ruleResult) result = ruleResult;
+        if (ruleResult) {
+          this.state.guarantee6Up6Count = this.state.guarantee6DoubleUp6Count;
+          result = ruleResult;
+        }
       }
     }
 
@@ -170,7 +174,6 @@ export class GachaExecutor {
       );
       if (up5StarUngottenList.length > 0) {
         const charId = up5StarUngottenList[0];
-        console.log("[doGachaOnce]", "联动保底 5 星角色", charId);
         result = { charId, rarity: RarityRank.TIER_5 };
       }
     }

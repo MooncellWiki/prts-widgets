@@ -60,17 +60,9 @@ export function applyEnsure5StarRule(
 ) {
   if (state.counter < state.guarantee5Count && rarity >= RarityRank.TIER_5) {
     state.guarantee5Avail--;
-    console.log(
-      "[applyEnsure5StarRule]",
-      `在第 ${state.guarantee5Count} 抽前已有 5 星及以上，已完成保底`,
-    );
   }
 
   if (state.counter === state.guarantee5Count) {
-    console.log(
-      "[applyEnsure5StarRule]",
-      `触发 ${state.guarantee5Count} 抽内 5 星保底`,
-    );
     state.guarantee5Avail--;
     return getRandomCharWithRarity(perAvailList, RarityRank.TIER_5, upCharInfo);
   }
@@ -84,17 +76,9 @@ export function applyEnsure6StarRule(
 ) {
   if (state.counter < state.guarantee6Count && rarity === RarityRank.TIER_6) {
     state.guarantee6Avail--;
-    console.log(
-      "[applyEnsure6StarRule]",
-      `在第 ${state.guarantee6Count} 抽前已有 6 星，已完成保底`,
-    );
   }
 
   if (state.counter === state.guarantee6Count) {
-    console.log(
-      "[applyEnsure6StarRule]",
-      `触发 ${state.guarantee6Count} 抽内 6 星保底`,
-    );
     state.guarantee6Avail--;
     return getRandomCharWithRarity(perAvailList, RarityRank.TIER_6, upCharInfo);
   }
@@ -103,14 +87,9 @@ export function applyEnsure6StarRule(
 export function applyEnsureUp6StarRule(state: GachaState, charId: string) {
   if (state.counter < state.guarantee6Up6Count && state.results[charId] >= 1) {
     state.guarantee6Up6Avail--;
-    console.log(
-      "[applyEnsureUp6StarRule]",
-      `在第 ${state.guarantee6Up6Count} 抽前已有对应 UP 6 星，已完成保底`,
-    );
   }
 
   if (state.counter === state.guarantee6Up6Count) {
-    console.log("[applyEnsureUp6StarRule]", "触发 Up 6 星保底");
     state.guarantee6Up6Avail--;
     return { charId, rarity: RarityRank.TIER_6 };
   }
@@ -121,26 +100,9 @@ export function applyEnsureDoubleUp6StarRule(
   charIds: string[],
 ) {
   for (const charId of charIds) {
-    if (
-      state.counter < state.guarantee6DoubleUp6Count &&
-      state.results[charId] >= 1
-    ) {
-      console.log(
-        "[applyEnsureDoubleUp6StarRule]",
-        `在第 ${state.guarantee6DoubleUp6Count} 抽前已有 ${charId}`,
-      );
-      continue;
-    }
+    if ((state.results[charId] || 0) >= 1) continue;
 
-    if (
-      state.counter === state.guarantee6Up6Count ||
-      state.counter === state.guarantee6DoubleUp6Count
-    ) {
-      console.log(
-        "[applyEnsureDoubleUp6StarRule]",
-        `触发 ${state.guarantee6Up6Count} 及 ${state.guarantee6DoubleUp6Count} 抽内 ${charId} 保底`,
-      );
+    if (state.counter >= state.guarantee6Up6Count)
       return { charId, rarity: RarityRank.TIER_6 };
-    }
   }
 }

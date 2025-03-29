@@ -20,7 +20,12 @@ export interface GachaState extends GachaConfig {
 }
 
 export function createGachaState(config: GachaConfig): GachaState {
-  return { ...config, counter: 0, results: {}, non6StarCount: 0 };
+  return {
+    ...config,
+    counter: 0,
+    results: {},
+    non6StarCount: 0,
+  };
 }
 
 export function getRandomRarity(
