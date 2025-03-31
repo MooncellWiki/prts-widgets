@@ -31,7 +31,7 @@ const parseDirectLinks = (directLinks?: string) => {
   if (!splitted) return langToLink;
 
   for (const directLink of splitted) {
-    const [lang, link] = directLink.split(":");
+    const [lang, link] = directLink.split(":", 1);
     langToLink[lang] = link;
   }
 
