@@ -8112,8 +8112,8 @@ var spine
           page.texture = textureLoader(line)
           page.texture.setFilters(page.minFilter, page.magFilter)
           page.texture.setWraps(page.uWrap, page.vWrap)
-          page.width = page.texture.getImage().width
-          page.height = page.texture.getImage().height
+          // page.width = page.texture.getImage().width
+          // page.height = page.texture.getImage().height
           this.pages.push(page)
         } else {
           var region = new TextureAtlasRegion()
@@ -9436,8 +9436,9 @@ var spine
         height = 0
       if (this.region instanceof spine.TextureAtlasRegion) {
         var region = this.region
-        var textureWidth = region.texture.getImage().width,
-          textureHeight = region.texture.getImage().height
+        var page = this.region.page
+        var textureWidth = page.width,
+          textureHeight = page.height
         switch (region.degrees) {
           case 90:
             u -=
