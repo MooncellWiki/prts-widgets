@@ -2,7 +2,7 @@
   "name": "mooncell-widget",
   "type": "module",
   "version": "0.0.0",
-  "packageManager": "pnpm@10.8.0",
+  "packageManager": "pnpm@10.9.0+sha512.0486e394640d3c1fb3c9d43d49cf92879ff74f8516959c235308f5a8f62e2e19528a65cdc2a3058f587cde71eba3d5b56327c8c33a97e4c4051ca48a10ca2d5f",
   "private": true,
   "scripts": {
     "create": "node scripts/index.js",
@@ -18,7 +18,7 @@
     "prepare": "node .husky/install.mjs"
   },
   "dependencies": {
-    "@sentry/browser": "^9.12.0",
+    "@sentry/browser": "^9.14.0",
     "@urlpack/json": "^2.0.0",
     "@vicons/material": "^0.13.0",
     "@vueuse/core": "^13.1.0",
@@ -35,7 +35,7 @@
     "workbox-strategies": "^7.3.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.24.0",
+    "@eslint/js": "^9.25.1",
     "@types/crypto-js": "^4.2.2",
     "@types/hammerjs": "^2.0.46",
     "@types/js-cookie": "^3.0.6",
@@ -46,12 +46,12 @@
     "@unocss/eslint-config": "^66.0.0",
     "@unocss/preset-uno": "^66.0.0",
     "@unocss/transformer-directives": "^66.0.0",
-    "@vitejs/plugin-legacy": "^6.0.2",
+    "@vitejs/plugin-legacy": "^6.1.0",
     "@vitejs/plugin-vue": "^5.2.3",
     "ali-oss": "^6.22.0",
-    "eslint": "^9.24.0",
+    "eslint": "^9.25.1",
     "eslint-config-prettier": "^10.1.2",
-    "eslint-plugin-import-x": "^4.10.3",
+    "eslint-plugin-import-x": "^4.10.6",
     "eslint-plugin-prettier": "^5.2.6",
     "eslint-plugin-unicorn": "^58.0.0",
     "eslint-plugin-vue": "^10.0.0",
@@ -67,14 +67,15 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "8.29.1",
     "unocss": "^66.0.0",
-    "vite": "^6.2.6",
+    "vite": "^6.3.3",
     "vue-eslint-parser": "^10.1.3",
-    "vue-tsc": "^2.2.8"
+    "vue-tsc": "^2.2.10"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "core-js",
-      "esbuild"
+      "esbuild",
+      "unrs-resolver"
     ]
   }
 }
