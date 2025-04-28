@@ -10,7 +10,7 @@
     "update": "node scripts/update.js",
     "prune": "node scripts/prune.js",
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "sourcemap": "source-map-explorer ./dist/*.js",
     "lint": "eslint .",
