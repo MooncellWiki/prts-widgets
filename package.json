@@ -48,6 +48,7 @@
     "@unocss/transformer-directives": "^66.0.0",
     "@vitejs/plugin-legacy": "^6.1.0",
     "@vitejs/plugin-vue": "^5.2.3",
+    "@vue/tsconfig": "^0.7.0",
     "ali-oss": "^6.22.0",
     "eslint": "^9.25.1",
     "eslint-config-prettier": "^10.1.2",
