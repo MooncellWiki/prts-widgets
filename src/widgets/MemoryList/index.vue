@@ -18,8 +18,9 @@ import { isMobileSkin } from "@/utils/utils";
 
 import Memory from "./Memory.vue";
 import { filterRarity, rarityMap } from "./consts";
-import { CharMemory, Medal } from "./types";
 import { getMemories, getOnlineDate, getTargetDate } from "./utils";
+
+import type { CharMemory, Medal } from "./types";
 
 const isMobile = isMobileSkin();
 const i18nConfig = getNaiveUILocale();

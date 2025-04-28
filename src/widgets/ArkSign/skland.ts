@@ -1,7 +1,7 @@
 import hmacSHA256 from "crypto-js/hmac-sha256";
 import md5 from "crypto-js/md5";
 
-import { PlayerBindingResp, PlayerInfoResp } from "./types";
+import type { PlayerBindingResp, PlayerInfoResp } from "./types";
 
 const host = "https://zonai.skland.com";
 // const playerInfoAPI = '/api/v1/game/player/info'

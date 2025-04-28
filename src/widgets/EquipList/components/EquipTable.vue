@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { h, inject, Ref, ref, watch } from "vue";
+import { h, inject, type Ref, ref, watch } from "vue";
 
-import { DataTableColumns, NDataTable } from "naive-ui";
+import { type DataTableColumns, NDataTable } from "naive-ui";
 
 import { getLanguage } from "@/utils/i18n";
 import { getImagePath, isMobile } from "@/utils/utils";
 
 import { customLabel } from "../i18n";
-import { EquipRow } from "../types";
 
 import Equip from "./Equip.vue";
+
+import type { EquipRow } from "../types";
 
 const columns = (): DataTableColumns<EquipRow> => {
   return [

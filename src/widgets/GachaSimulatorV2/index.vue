@@ -24,11 +24,12 @@ import {
   type GachaPoolClientData as GachaClientPool,
   type NewbeeGachaPoolClientData,
 } from "./gamedata-types";
-import {
-  GachaUpChar,
-  type GachaPoolClientData as GachaServerPool,
-} from "./types";
 import { getPortraitURL, rarityStringToNumber } from "./utils";
+
+import type {
+  GachaPoolClientData as GachaServerPool,
+  GachaUpChar,
+} from "./types";
 
 const { locale, dateLocale } = getNaiveUILocale();
 const props = defineProps<{

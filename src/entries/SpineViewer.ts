@@ -1,7 +1,7 @@
 import "virtual:uno.css";
 import { createApp } from "vue";
 
-import SpineVue, { Props } from "../widgets/Spine/Wrapper.vue";
+import SpineVue, { type Props } from "../widgets/Spine/Wrapper.vue";
 import { Spine } from "../widgets/Spine/spine";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { NTag } from "naive-ui";
-import { TagColor } from "naive-ui/es/tag/src/common-props";
+import { NTag, type TagProps } from "naive-ui";
+
 defineProps<{
   nickName: string;
-  typeColor: TagColor;
+  typeColor: TagProps["color"];
   channelName: string;
 }>();
 </script>

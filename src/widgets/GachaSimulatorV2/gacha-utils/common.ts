@@ -1,6 +1,6 @@
-import { GachaPerAvail, GachaPerChar, GachaUpChar } from "../types";
-
 import { weightedRandom } from "./math";
+
+import type { GachaPerAvail, GachaPerChar, GachaUpChar } from "../types";
 
 export interface GachaConfig {
   guarantee5Avail: number;

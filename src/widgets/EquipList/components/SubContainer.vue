@@ -7,9 +7,10 @@ import { getLanguage } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import { customLabel } from "../i18n";
-import { CharEquips } from "../types";
 
 import SubAvatar from "./SubAvatar.vue";
+
+import type { CharEquips } from "../types";
 
 const props = withDefaults(
   defineProps<{

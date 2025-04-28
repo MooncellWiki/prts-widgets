@@ -1,11 +1,12 @@
 import { RarityRank } from "../consts";
-import { GachaPerAvail, GachaUpChar } from "../types";
 
 import {
-  GachaState,
+  type GachaState,
   getRandomCharWithRarity,
   getUpListWithRarity,
 } from "./common";
+
+import type { GachaPerAvail, GachaUpChar } from "../types";
 
 export function shouldApplyEnsure5StarRule(state: GachaState) {
   return state.guarantee5Count && state.guarantee5Avail > 0;

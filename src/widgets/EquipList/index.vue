@@ -38,7 +38,8 @@ import {
   getSortOptions,
   getZhType,
 } from "./i18n";
-import { CharEquips, EquipRow } from "./types";
+
+import type { CharEquips, EquipRow } from "./types";
 
 interface FilterValue {
   mode: string;

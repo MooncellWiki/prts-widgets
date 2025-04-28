@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {
-  Ref,
+  type Ref,
   inject,
   onBeforeMount,
   onBeforeUpdate,

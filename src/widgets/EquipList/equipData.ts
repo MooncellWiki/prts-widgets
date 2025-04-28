@@ -1,5 +1,6 @@
-import { CargoEquip, EquipTime } from "./types";
 import { recoverHTML } from "./utils";
+
+import type { CargoEquip, EquipTime } from "./types";
 
 export async function getEquipData(name: string): Promise<DOMStringMap[]> {
   const result = await getEquipDataAll();

@@ -6,7 +6,7 @@ import { NCard, NDivider, NPopover } from "naive-ui";
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getImagePath } from "@/utils/utils";
 
-import { CharMemory, Memory } from "./types";
+import type { CharMemory, Memory } from "./types";
 
 const getSrcMedal = (mmr: Memory) =>
   `${TORAPPU_ENDPOINT}/assets/medal_icon/${mmr.medal.id}.png`;

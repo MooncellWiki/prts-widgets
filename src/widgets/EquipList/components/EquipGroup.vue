@@ -6,9 +6,10 @@ import { NEmpty } from "naive-ui";
 import { getLanguage } from "@/utils/i18n";
 
 import { customLabel } from "../i18n";
-import { CharEquips } from "../types";
 
 import SubContainer from "./SubContainer.vue";
+
+import type { CharEquips } from "../types";
 
 const props = defineProps<{
   group: string;
