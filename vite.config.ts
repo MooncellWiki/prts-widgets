@@ -98,7 +98,7 @@ export default defineConfig(({ command }) => {
         plugins: [
           {
             name: "prts",
-            generateBundle(options, bundle) {
+            generateBundle(_options, bundle) {
               const bundles = Object.keys(bundle);
               const fileNames = ["vendor", "naive-ui", "common"].map((name) => {
                 return bundles.find((v) => v.startsWith(name))!;

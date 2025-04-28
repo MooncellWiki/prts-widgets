@@ -47,7 +47,7 @@ const shortcutUrl = computed(
     }?${new URLSearchParams({ filter: value.dump() })}`,
 );
 const selected = computed(() => {
-  return all.map((v, i) => {
+  return all.map((_v, i) => {
     return value.bitmap.get(i) !== 0;
   });
 });
