@@ -31,8 +31,8 @@ const value = useVModel(props, "selected", emit);
         :disabled="disabled"
         :options="options"
         :fallback-option="false"
-        filterable
         clearable
+        filterable
         multiple
         :placeholder="placeholder"
       />
