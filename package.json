@@ -59,7 +59,7 @@
     "globals": "^16.1.0",
     "got": "^14.4.7",
     "husky": "^9.1.7",
-    "lint-staged": "^15.5.2",
+    "lint-staged": "^16.0.0",
     "prettier": "^3.5.3",
     "rollup-plugin-visualizer": "^5.14.0",
     "source-map-explorer": "^2.5.3",
