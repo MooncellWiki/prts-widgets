@@ -13,6 +13,7 @@ import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getNaiveUILocale } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
+import ImageLoading from "./components/ImageLoading.vue";
 import {
   FESCLASSIC_GACHA_PERCENT_DICT,
   SPECIAL_GACHA_PERCENT_DICT,
@@ -213,7 +214,7 @@ const displayStars = [5, 4, 3, 2];
             'bg-gray-700 select-none',
           ]"
         >
-          <img
+          <ImageLoading
             v-for="(char, i) in portraitResult"
             :key="i"
             :class="[

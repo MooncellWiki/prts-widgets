@@ -7,6 +7,7 @@ import {
   type GachaAvailChar,
   type GachaPoolClientData as GachaServerPool,
   type GachaUpChar,
+  type GachaWeightUpChar,
 } from "../types";
 
 import {
@@ -32,6 +33,7 @@ export class GachaExecutor {
   gachaRuleType: GachaRuleType = GachaRuleType.NORMAL;
   availCharInfo: GachaAvailChar;
   upCharInfo: GachaUpChar;
+  weightUpCharInfoList: GachaWeightUpChar[] | null;
   state: GachaState;
   config: GachaConfig;
 
@@ -44,30 +46,39 @@ export class GachaExecutor {
     this.availCharInfo =
       gachaServerPool.gachaPoolDetail.detailInfo.availCharInfo;
     this.upCharInfo = gachaServerPool.gachaPoolDetail.detailInfo.upCharInfo;
+    this.weightUpCharInfoList =
+      gachaServerPool.gachaPoolDetail.detailInfo.weightUpCharInfoList;
     this.gachaRuleType = gachaClientPool.gachaRuleType;
 
     let guarantee6Up6Avail = 0;
     let guarantee6Up6Count = 0;
     let guarantee6DoubleUp6Count = 0;
 
-    if (this.gachaRuleType === GachaRuleType.SINGLE) {
-      guarantee6Up6Avail = 1;
-      guarantee6Up6Count = 150;
-    }
+    switch (this.gachaRuleType) {
+      case GachaRuleType.SINGLE: {
+        guarantee6Up6Avail = 1;
+        guarantee6Up6Count = 150;
+        break;
+      }
 
-    if (
-      this.gachaRuleType === GachaRuleType.DOUBLE ||
-      this.gachaRuleType === GachaRuleType.CLASSIC_DOUBLE
-    ) {
-      guarantee6Up6Avail = 2;
-      guarantee6Up6Count = 150;
-      guarantee6DoubleUp6Count = 300;
-    }
+      case GachaRuleType.DOUBLE:
+      case GachaRuleType.CLASSIC_DOUBLE: {
+        guarantee6Up6Avail = 2;
+        guarantee6Up6Count = 150;
+        guarantee6DoubleUp6Count = 300;
+        break;
+      }
 
-    if (this.gachaRuleType === GachaRuleType.LINKAGE) {
-      guarantee6Up6Avail = 1;
-      guarantee6Up6Count =
-        gachaClientPool.linkageParam.guaranteeTarget6Count || 120;
+      case GachaRuleType.LINKAGE: {
+        guarantee6Up6Avail = 1;
+        guarantee6Up6Count =
+          gachaClientPool.linkageParam.guaranteeTarget6Count || 120;
+        break;
+      }
+
+      default: {
+        break;
+      }
     }
 
     this.config = {
@@ -95,6 +106,7 @@ export class GachaExecutor {
       this.availCharInfo.perAvailList,
       rarity,
       this.upCharInfo,
+      this.weightUpCharInfoList,
     );
 
     if (this.state.counter >= this.config.gachaTimes) {

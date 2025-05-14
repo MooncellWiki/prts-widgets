@@ -39,6 +39,7 @@ export enum GachaRuleType {
 
   /**
    * 限定
+   * 限定池过往六星 UP 5 倍权重 (500)
    */
   LIMITED = "LIMITED",
 

@@ -1,6 +1,11 @@
 import { weightedRandom } from "./math";
 
-import type { GachaPerAvail, GachaPerChar, GachaUpChar } from "../types";
+import type {
+  GachaPerAvail,
+  GachaPerChar,
+  GachaUpChar,
+  GachaWeightUpChar,
+} from "../types";
 
 export interface GachaConfig {
   guarantee5Avail: number;
@@ -71,8 +76,15 @@ export function getUpListWithRarity(rarity: number, upCharInfo?: GachaUpChar) {
 export function calculateCharWeights(
   availList: GachaPerAvail,
   upList?: GachaPerChar,
+  weightUpCharInfoList: GachaWeightUpChar[] | null = null,
 ) {
   const charWeights: Record<string, number> = {};
+  const weightUpCharInfoMap: Record<string, number> = {};
+  if (weightUpCharInfoList) {
+    for (const weightUpCharInfo of weightUpCharInfoList) {
+      weightUpCharInfoMap[weightUpCharInfo.charId] = weightUpCharInfo.weight;
+    }
+  }
 
   let upSumWeight = 0;
   let upCount = 0;
@@ -92,6 +104,13 @@ export function calculateCharWeights(
     charWeights[charId] = remainingWeight;
   }
 
+  for (const [charId, weight] of Object.entries(weightUpCharInfoMap)) {
+    const factor = weight / 100; // 限定池过往六星 UP 5 倍权重 (500)
+    if (charWeights[charId]) {
+      charWeights[charId] = charWeights[charId] * factor;
+    }
+  }
+
   return charWeights;
 }
 
@@ -99,10 +118,15 @@ export function getRandomCharWithRarity(
   perAvailList: GachaPerAvail[],
   rarity: number,
   upCharInfo?: GachaUpChar,
+  weightUpCharInfoList: GachaWeightUpChar[] | null = null,
 ) {
   const availList = getAvailListWithRarity(perAvailList, rarity);
   const upList = getUpListWithRarity(rarity, upCharInfo);
-  const charWeights = calculateCharWeights(availList, upList);
+  const charWeights = calculateCharWeights(
+    availList,
+    upList,
+    weightUpCharInfoList,
+  );
 
   const { item: charId } = weightedRandom(
     Object.keys(charWeights),

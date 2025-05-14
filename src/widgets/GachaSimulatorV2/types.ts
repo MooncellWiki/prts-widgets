@@ -92,7 +92,7 @@ export interface GachaUpChar {
 export interface GachaDetailData {
   availCharInfo: GachaAvailChar;
   upCharInfo: GachaUpChar;
-  weightUpCharInfoList: Array<GachaWeightUpChar>;
+  weightUpCharInfoList: Array<GachaWeightUpChar> | null;
   limitedChar: Array<string>;
   gachaObjList: Array<GachaObject>;
   gachaObjGroupType: GachaObjGroupType;
