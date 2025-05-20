@@ -52,4 +52,7 @@ export interface MedalMetaData {
       medal: Array<string>;
     };
   };
+  groupDeprecateType: {
+    [key: string]: string;
+  };
 }

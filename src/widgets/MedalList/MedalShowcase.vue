@@ -197,6 +197,11 @@ const i18nConfig = getNaiveUILocale();
               v-if="filteredMedalData.medalGroup[medalGroupId]"
               :group-data="filteredMedalData.medalGroup[medalGroupId]"
               :medal-data-list="generateGroupMedalData(medalGroupId)"
+              :deprecate-text="
+                medalMetaData.groupDeprecateType[
+                  filteredMedalData.medalGroup[medalGroupId].deprecateType
+                ]
+              "
             />
           </NGridItem>
         </NGrid>
