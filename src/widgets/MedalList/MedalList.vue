@@ -34,6 +34,7 @@ const medalMetaData = ref<MedalMetaData>({
   medal: {},
   medalGroup: {},
   category: {},
+  groupDeprecateType: {},
 });
 
 onMounted(async () => {
@@ -304,9 +305,11 @@ const i18nConfig = getNaiveUILocale();
                 "
                 :show-deprecate-badge="showDeprecateBadge"
                 :deprecate-text="
-                  medalMetaData.groupDeprecateType[
-                    filteredMedalData.medalGroup[medalGroupId].deprecateType
-                  ]
+                  filteredMedalData.medalGroup[medalGroupId].deprecateType
+                    ? medalMetaData.groupDeprecateType[
+                        filteredMedalData.medalGroup[medalGroupId].deprecateType
+                      ]
+                    : ''
                 "
                 class="h-auto w-full lg:w-49%"
               />

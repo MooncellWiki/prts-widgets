@@ -3,9 +3,9 @@ import { computed, ref } from "vue";
 
 import { NCard, NNumberAnimation, NStatistic, NTooltip } from "naive-ui";
 
-import type { MedalMetaData } from "./types";
+import type { MedalMetaDataCore } from "./types";
 const props = defineProps<{
-  medalMetaData: MedalMetaData;
+  medalMetaData: MedalMetaDataCore;
 }>();
 
 const showSecret = ref(false);

@@ -39,6 +39,7 @@ const medalMetaData = ref<MedalMetaData>({
   medal: {},
   medalGroup: {},
   category: {},
+  groupDeprecateType: {},
 });
 
 onMounted(async () => {
@@ -198,9 +199,11 @@ const i18nConfig = getNaiveUILocale();
               :group-data="filteredMedalData.medalGroup[medalGroupId]"
               :medal-data-list="generateGroupMedalData(medalGroupId)"
               :deprecate-text="
-                medalMetaData.groupDeprecateType[
-                  filteredMedalData.medalGroup[medalGroupId].deprecateType
-                ]
+                filteredMedalData.medalGroup[medalGroupId].deprecateType
+                  ? medalMetaData.groupDeprecateType[
+                      filteredMedalData.medalGroup[medalGroupId].deprecateType
+                    ]
+                  : ''
               "
             />
           </NGridItem>
