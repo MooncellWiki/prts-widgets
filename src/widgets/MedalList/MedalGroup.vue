@@ -26,6 +26,7 @@ const props = withDefaults(
     groupData: MedalGroup;
     medalDataList: Medal[];
     showDeprecateBadge?: boolean;
+    deprecateText?: string;
   }>(),
   {
     showDeprecateBadge: true,
@@ -162,12 +163,7 @@ const showTrimed = ref(false);
           ]"
         >
           <span class="mdi mdi-vanish" />
-          <span v-if="groupData.deprecateType === 'CC'">
-            危机合约套组：不复刻
-          </span>
-          <span v-if="groupData.deprecateType === 'retro'">
-            已复刻过的活动：无法再获得本蚀刻章套组
-          </span>
+          {{ deprecateText }}
         </div>
         <div class="pos-relative max-w-full flex">
           <div
@@ -179,12 +175,7 @@ const showTrimed = ref(false);
             ]"
           >
             <span class="mdi mdi-vanish" />
-            <span v-if="groupData.deprecateType === 'CC'">
-              危机合约套组：不复刻
-            </span>
-            <span v-if="groupData.deprecateType === 'retro'">
-              已复刻过的活动：无法再获得本蚀刻章套组
-            </span>
+            {{ deprecateText }}
           </div>
           <NImage
             :src="`${TORAPPU_ENDPOINT}/assets/medal_diy/${(showTrimed && groupData.isTrim ? 'trim/' : '') + groupData.id}.png`"

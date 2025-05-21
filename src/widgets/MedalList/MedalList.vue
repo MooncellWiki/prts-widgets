@@ -34,6 +34,7 @@ const medalMetaData = ref<MedalMetaData>({
   medal: {},
   medalGroup: {},
   category: {},
+  groupDeprecateType: {},
 });
 
 onMounted(async () => {
@@ -275,22 +276,24 @@ const i18nConfig = getNaiveUILocale();
               size="small"
               align="stretch"
             >
-              <MedalComponent
-                v-for="medalId in cate.medal.filter((medalId) =>
-                  checkMedalExists(medalId),
-                )"
-                :key="medalId"
-                :medal-data="filteredMedalData.medal[medalId]"
-                :show-deprecate-badge="showDeprecateBadge"
-                :mini-medal-data="
-                  filteredMedalData.medal[medalId].preMedalList
-                    ? genPreMedalList(
-                        filteredMedalData.medal[medalId].preMedalList,
-                      )
-                    : {}
-                "
-                class="h-auto w-full lg:w-49%"
-              />
+              <NFlex responsive="screen" size="small" align="stretch">
+                <MedalComponent
+                  v-for="medalId in cate.medal.filter((medalId) =>
+                    checkMedalExists(medalId),
+                  )"
+                  :key="medalId"
+                  :medal-data="filteredMedalData.medal[medalId]"
+                  :show-deprecate-badge="showDeprecateBadge"
+                  :mini-medal-data="
+                    filteredMedalData.medal[medalId].preMedalList
+                      ? genPreMedalList(
+                          filteredMedalData.medal[medalId].preMedalList,
+                        )
+                      : {}
+                  "
+                  class="h-auto w-full lg:w-49%"
+                />
+              </NFlex>
               <MedalGroupComponent
                 v-for="medalGroupId in cate.medalGroup.slice().reverse()"
                 :key="medalGroupId"
@@ -301,6 +304,13 @@ const i18nConfig = getNaiveUILocale();
                   })
                 "
                 :show-deprecate-badge="showDeprecateBadge"
+                :deprecate-text="
+                  filteredMedalData.medalGroup[medalGroupId].deprecateType
+                    ? medalMetaData.groupDeprecateType[
+                        filteredMedalData.medalGroup[medalGroupId].deprecateType
+                      ]
+                    : ''
+                "
                 class="h-auto w-full lg:w-49%"
               />
               <div

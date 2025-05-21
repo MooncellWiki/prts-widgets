@@ -52,4 +52,26 @@ export interface MedalMetaData {
       medal: Array<string>;
     };
   };
+  groupDeprecateType: {
+    [key: string]: string;
+  };
+}
+
+export interface MedalMetaDataCore {
+  medal: {
+    [key: string]: Medal;
+  };
+  medalGroup: {
+    [key: string]: MedalGroup;
+  };
+  category: {
+    [key: string]: {
+      name: string;
+      desc: string;
+      extraDesc?: Array<string>;
+      subCategory?: Array<string>;
+      medalGroup: Array<string>;
+      medal: Array<string>;
+    };
+  };
 }
