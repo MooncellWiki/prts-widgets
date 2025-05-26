@@ -61,7 +61,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
     "prettier": "^3.5.3",
-    "rollup-plugin-visualizer": "^5.14.0",
+    "rollup-plugin-visualizer": "^6.0.0",
     "source-map-explorer": "^2.5.3",
     "terser": "^5.39.2",
     "tough-cookie": "^5.1.2",
