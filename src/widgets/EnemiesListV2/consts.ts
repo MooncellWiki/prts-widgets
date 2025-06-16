@@ -12,6 +12,7 @@ export const defaultFilterConfig = {
         "宿主",
         "海怪",
         "法术造物",
+        "源石造物",
         "化物",
         "机械",
         "野生动物",
