@@ -104,14 +104,6 @@ function toggleLoop() {
   currentAudio.value.control(PlayerAction.ChangeLoop);
 }
 
-function toggleMute() {
-  currentAudio.value.control(PlayerAction.ChangeMute);
-}
-
-function handleVolumeChange(value: number) {
-  currentAudio.value.control(PlayerAction.ChangeVol, value);
-}
-
 function handleSeek(value: number) {
   currentAudio.value.control(PlayerAction.Process, value);
 }
@@ -190,10 +182,8 @@ function formatTime(seconds: number): string {
       </n-tooltip>
 
       <Volume
-        :mute="currentAudio.mute.value"
-        :vol="currentAudio.vol.value"
-        @change-vol="handleVolumeChange"
-        @toggle-mute="toggleMute"
+        v-model:vol="currentAudio.vol.value"
+        v-model:mute="currentAudio.mute.value"
       />
 
       <n-button quaternary circle @click="download()">

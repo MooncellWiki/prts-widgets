@@ -1,10 +1,9 @@
 import { ref, watch, computed, onUnmounted, type Ref } from "vue";
 
+import { useIntervalFn } from "@vueuse/core";
 import { Howl } from "howler";
 
 import { combineAndDownload, downloadFile } from "../utils/dl";
-
-import { useInterval } from "./useInterval";
 
 export enum PlayState {
   Idle = "idle",
@@ -64,7 +63,7 @@ export function useAudio(src: string, p?: number): Audio {
     }
   };
 
-  useInterval(() => {
+  useIntervalFn(() => {
     if (state.value !== PlayState.Playing) return;
 
     if (isCombined.value) {

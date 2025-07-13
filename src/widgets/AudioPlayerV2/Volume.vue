@@ -6,25 +6,19 @@ import {
 } from "@vicons/material";
 import { NButton, NIcon, NTooltip, NSlider } from "naive-ui";
 
-defineProps({
-  vol: {
-    type: Number,
-    default: 100,
-  },
-  mute: {
-    type: Boolean,
-    default: false,
-  },
-});
+const vol = defineModel<number>("vol", { default: 100 });
+const mute = defineModel<boolean>("mute", { default: false });
 
-defineEmits(["changeVol", "toggleMute"]);
+const toggleMute = () => {
+  mute.value = !mute.value;
+};
 </script>
 
 <template>
   <div class="volume-control">
     <n-tooltip>
       <template #trigger>
-        <n-button quaternary circle @click="$emit('toggleMute')">
+        <n-button quaternary circle @click="toggleMute">
           <template #icon>
             <n-icon>
               <VolumeMuteIcon v-if="mute" />
@@ -38,12 +32,11 @@ defineEmits(["changeVol", "toggleMute"]);
     </n-tooltip>
 
     <n-slider
+      v-model:value="vol"
       class="volume-slider"
-      :value="vol"
       :min="0"
       :max="100"
       :disabled="mute"
-      @update:value="$emit('changeVol', $event)"
     />
   </div>
 </template>
