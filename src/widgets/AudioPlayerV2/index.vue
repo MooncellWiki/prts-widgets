@@ -154,19 +154,23 @@ function formatTime(seconds: number): string {
     <div class="control-bar">
       <n-tooltip>
         <template #trigger>
-          <n-button quaternary circle @click="playIconHandler">
-            <template #icon>
-              <n-icon v-if="currentAudio.state.value === 'loading'">
-                <n-spin size="small" />
-              </n-icon>
-              <n-icon v-else-if="currentAudio.state.value === 'playing'">
-                <PauseIcon />
-              </n-icon>
-              <n-icon v-else>
-                <PlayArrowIcon />
-              </n-icon>
-            </template>
-          </n-button>
+          <n-spin :show="currentAudio.state.value === 'loading'" size="small">
+            <n-button
+              quaternary
+              circle
+              :disabled="currentAudio.state.value === 'loading'"
+              @click="playIconHandler"
+            >
+              <template #icon>
+                <n-icon v-if="currentAudio.state.value === 'playing'">
+                  <PauseIcon />
+                </n-icon>
+                <n-icon v-else>
+                  <PlayArrowIcon />
+                </n-icon>
+              </template>
+            </n-button>
+          </n-spin>
         </template>
         {{ playIconToolTip }}
       </n-tooltip>
