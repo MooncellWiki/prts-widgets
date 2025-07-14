@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, type Ref } from "vue";
+import { ref, computed } from "vue";
 
 import {
   PlayArrowFilled as PlayArrowIcon,
@@ -43,7 +43,7 @@ const qualityOptions = [
   { label: "mp3", value: Quality.Low },
 ];
 
-const currentAudio = computed(() => {
+let currentAudio = computed(() => {
   return quality.value === Quality.Low ? low : high;
 });
 
@@ -108,9 +108,12 @@ function handleSeek(value: number) {
   currentAudio.value.control(PlayerAction.Process, value);
 }
 
-function handleQualityChange(value: Ref<Quality>) {
+function handleQualityChange(value: Quality) {
   currentAudio.value.control(PlayerAction.Stop);
-  quality.value = value.value;
+  quality.value = value;
+  currentAudio = computed(() => {
+    return quality.value === Quality.Low ? low : high;
+  });
 }
 
 function download() {
