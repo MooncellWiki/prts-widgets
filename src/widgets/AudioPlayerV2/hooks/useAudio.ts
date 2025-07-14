@@ -135,11 +135,9 @@ export function useAudio(src: string, p?: number): Audio {
         }
 
         if (isCombined.value) {
-          if (introSound.value?.playing()) {
-            loopSound.value?.play();
-          } else {
+          if (process.value < (introSound.value?.duration() || 0)) {
             introSound.value?.play();
-          }
+          } else loopSound.value?.play();
         } else {
           introSound.value?.play();
         }
