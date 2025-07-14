@@ -4,7 +4,6 @@ import { ref, computed } from "vue";
 import {
   PlayArrowFilled as PlayArrowIcon,
   PauseFilled as PauseIcon,
-  SyncOutlined as AutorenewIcon,
   DownloadOutlined as GetAppIcon,
 } from "@vicons/material";
 import {
@@ -58,6 +57,9 @@ const playIconToolTip = computed(() => {
   switch (currentAudio.value.state.value) {
     case PlayState.Idle: {
       return "开始加载";
+    }
+    case PlayState.Loading: {
+      return "加载中...";
     }
     case PlayState.Loaded:
     case PlayState.Stopped: {
@@ -179,9 +181,8 @@ function formatTime(seconds: number): string {
         <template #trigger>
           <n-button quaternary circle :disabled="!playAble" @click="toggleLoop">
             <template #icon>
-              <n-icon :color="currentAudio.loop.value ? 'primary' : undefined">
-                <AutorenewIcon />
-              </n-icon>
+              <span v-if="currentAudio.loop.value" class="mdi mdi-autorenew" />
+              <span v-else class="mdi mdi-autorenew-off" />
             </template>
           </n-button>
         </template>
