@@ -3,7 +3,7 @@ import { ref, watch, computed, onUnmounted, type Ref } from "vue";
 import { useIntervalFn } from "@vueuse/core";
 import { Howl } from "howler";
 
-import { combineAndDownload, downloadFile } from "../utils/dl";
+import { downloadFile } from "../utils/dl";
 
 export enum PlayState {
   Idle = "idle",
@@ -221,7 +221,8 @@ export function useAudio(src: string, p?: number): Audio {
         if (isCombined.value) {
           const introSrc = src.replace("_combine", "_intro");
           const loopSrc = src.replace("_combine", "_loop");
-          combineAndDownload(introSrc, loopSrc);
+          downloadFile(introSrc.split("/").pop() || "audio.mp3", introSrc);
+          downloadFile(loopSrc.split("/").pop() || "audio.mp3", loopSrc);
         } else {
           downloadFile(src.split("/").pop() || "audio.mp3", src);
         }
