@@ -42,7 +42,7 @@ const qualityOptions = [
   { label: "mp3", value: Quality.Low },
 ];
 
-let currentAudio = computed(() => {
+const currentAudio = computed(() => {
   return quality.value === Quality.Low ? low : high;
 });
 
@@ -113,9 +113,6 @@ function handleSeek(value: number) {
 function handleQualityChange(value: Quality) {
   currentAudio.value.control(PlayerAction.Stop);
   quality.value = value;
-  currentAudio = computed(() => {
-    return quality.value === Quality.Low ? low : high;
-  });
 }
 
 function download() {

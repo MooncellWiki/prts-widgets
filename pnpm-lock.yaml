@@ -16,12 +16,6 @@ importers:
       '@sentry/browser':
         specifier: ^9.40.0
         version: 9.40.0
-      '@types/file-saver':
-        specifier: ^2.0.7
-        version: 2.0.7
-      crunker:
-        specifier: ^2.4.0
-        version: 2.4.0
       '@urlpack/json':
         specifier: ^2.0.1
         version: 2.0.1
@@ -1148,9 +1142,6 @@ packages:
 
   '@types/estree@1.0.7':
     resolution: {integrity: sha512-w28IoSUCJpidD/TGviZwwMJckNESJZXFu7NBZ5YJ4mEUnNraUn9Pm8HSZm/jDF1pDWYKspWE7oVphigUPRakIQ==}
-
-  '@types/file-saver@2.0.7':
-    resolution: {integrity: sha512-dNKVfHd/jk0SkR/exKGj2ggkB45MAkzvWCaqLUUgkyjITkGNzH8H+yUwr+BLJUBjZOe9w8X3wgmXhZDRg1ED6A==}
 
   '@types/hammerjs@2.0.46':
     resolution: {integrity: sha512-ynRvcq6wvqexJ9brDMS4BnBLzmr0e14d6ZJTEShTBWKymQiHwlAyGu0ZPEFI2Fh1U53F7tN9ufClWM5KvqkKOw==}
@@ -4343,8 +4334,6 @@ snapshots:
   '@types/crypto-js@4.2.2': {}
 
   '@types/estree@1.0.7': {}
-
-  '@types/file-saver@2.0.7': {}
 
   '@types/hammerjs@2.0.46': {}
 
