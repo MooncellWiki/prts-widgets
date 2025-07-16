@@ -22,8 +22,6 @@
     "@urlpack/json": "^2.0.1",
     "@vicons/material": "^0.13.0",
     "@vueuse/core": "^13.5.0",
-    "crunker": "^2.4.0",
-    "@types/file-saver": "^2.0.7",
     "crypto-js": "^4.2.0",
     "hammerjs": "^2.0.8",
     "howler": "^2.2.4",

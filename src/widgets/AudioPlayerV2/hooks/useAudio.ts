@@ -90,6 +90,7 @@ export function useAudio(src: string, p?: number): Audio {
         if (isCombined.value) {
           introSound.value?.once("load", () => {
             loopSound.value?.once("load", () => {
+              if (state.value !== PlayState.Stopped) return;
               state.value = PlayState.Playing;
               len.value =
                 (introSound.value?.duration() || 0) +
@@ -101,22 +102,21 @@ export function useAudio(src: string, p?: number): Audio {
 
           introSound.value?.on("end", () => {
             if (loopSound.value) {
-              loopSound.value.play();
+              if (state.value !== PlayState.Stopped) loopSound.value.play();
             } else {
               state.value = PlayState.Loaded;
             }
           });
 
           loopSound.value?.on("load", () => {
-            if (loop.value) {
-              loopSound.value?.loop(true);
-            }
+            loopSound.value?.loop(loop.value);
           });
 
           introSound.value?.load();
           loopSound.value?.load();
         } else {
           introSound.value?.once("load", () => {
+            if (state.value !== PlayState.Stopped) return;
             introSound.value?.loop(loop.value);
             introSound.value?.play();
             state.value = PlayState.Playing;

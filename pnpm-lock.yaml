@@ -23,8 +23,8 @@ importers:
         specifier: ^0.13.0
         version: 0.13.0
       '@vueuse/core':
-        specifier: ^13.3.0
-        version: 13.3.0(vue@3.5.16(typescript@5.8.3))
+        specifier: ^13.5.0
+        version: 13.5.0(vue@3.5.17(typescript@5.8.3))
       crypto-js:
         specifier: ^4.2.0
         version: 4.2.0
@@ -1148,9 +1148,6 @@ packages:
 
   '@types/howler@2.2.12':
     resolution: {integrity: sha512-hy769UICzOSdK0Kn1FBk4gN+lswcj1EKRkmiDtMkUGvFfYJzgaDXmVXkSShS2m89ERAatGIPnTUlp2HhfkVo5g==}
-
-  '@types/http-cache-semantics@4.0.4':
-    resolution: {integrity: sha512-1m0bIFVc7eJWyve9S0RnuRgcQqF/Xd5QsUZAZeQFr1Q3/p9JWoQQEqmVy+DPTNpGXwhgIetAoYF8JSc33q29QA==}
 
   '@types/js-cookie@3.0.6':
     resolution: {integrity: sha512-wkw9yd1kEXOPnvEeEV1Go1MmxtBJL0RR79aOTAApecWFVu7w0NNXNqhcWgvw2YgZDYadliXkl14pa3WXw5jlCQ==}
@@ -4338,8 +4335,6 @@ snapshots:
   '@types/hammerjs@2.0.46': {}
 
   '@types/howler@2.2.12': {}
-
-  '@types/http-cache-semantics@4.0.4': {}
 
   '@types/js-cookie@3.0.6': {}
 
