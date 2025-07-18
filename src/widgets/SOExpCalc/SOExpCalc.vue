@@ -23,16 +23,13 @@ import { getImagePath } from "@/utils/utils";
 const i18nConfig = getNaiveUILocale();
 
 const props = defineProps<{
-  exptree: Array<Array<number>>;
+  expMap: number[][];
 }>();
 
 onMounted(() => {
   eliteChange();
 });
 
-const expTree = computed(() => {
-  return props.exptree;
-});
 const eliteStr: Record<number, string[]> = {
   0: ["精英_0_大图.png", "精英0"],
   1: ["精英_1_大图.png", "精英1"],
@@ -60,10 +57,9 @@ const calcExp = computed(() => {
   if (start.level === target.level) {
     return target.exp - start.exp;
   }
-  let totalExp =
-    expTree.value[selectedElite.value][start.level - 1] - start.exp;
+  let totalExp = props.expMap[selectedElite.value][start.level - 1] - start.exp;
   for (let i = start.level + 1; i < target.level; i++) {
-    totalExp += expTree.value[selectedElite.value][i - 1];
+    totalExp += props.expMap[selectedElite.value][i - 1];
   }
   return totalExp + target.exp;
 });
@@ -126,11 +122,11 @@ const eliteChange = () => {
 };
 
 const getMaxLevel = () => {
-  return expTree.value[selectedElite.value].indexOf(-1) + 1;
+  return props.expMap[selectedElite.value].indexOf(-1) + 1;
 };
 
 const getLevelMaxExp = (level: number) => {
-  return expTree.value[selectedElite.value][level - 1] || 0;
+  return props.expMap[selectedElite.value][level - 1] || 0;
 };
 
 const levelChange = (role: "start" | "target") => {
@@ -535,18 +531,18 @@ const expInputChange = (role: "start" | "target") => {
           :single-line="false"
           :striped="true"
           :data="
-            expTree[selectedElite]
+            props.expMap[selectedElite]
               .map((exp, index) => ({
                 level: index + 1,
                 exp: String(exp),
-                totalexp: expTree[selectedElite]
+                totalexp: props.expMap[selectedElite]
                   .slice(0, index)
                   .reduce((a, b) => a + b, 0),
               }))
               .filter(
                 (item) =>
                   item.exp !== '-1' ||
-                  expTree[selectedElite].findIndex((e) => e === -1) ===
+                  props.expMap[selectedElite].findIndex((e) => e === -1) ===
                     item.level - 1,
               )
           "
