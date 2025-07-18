@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { create, login } from "./api.ts";
+import { create, login } from "./api";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

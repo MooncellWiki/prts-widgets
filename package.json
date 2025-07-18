@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",
+    "@types/ali-oss": "^6.16.11",
     "@types/crypto-js": "^4.2.2",
     "@types/hammerjs": "^2.0.46",
     "@types/js-cookie": "^3.0.6",
@@ -77,6 +78,9 @@
       "core-js",
       "esbuild",
       "unrs-resolver"
-    ]
+    ],
+    "patchedDependencies": {
+      "@types/ali-oss": "patches/@types__ali-oss.patch"
+    }
   }
 }
