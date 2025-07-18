@@ -21,13 +21,11 @@ interface WikiApiResponse {
 
 const entry = "https://prts.wiki/api.php";
 
-// Simple cookie storage for maintaining session
 const cookies = new Map<string, string>();
 
 function setCookieFromResponse(response: Response): void {
   const setCookieHeader = response.headers.get("set-cookie");
   if (setCookieHeader) {
-    // Parse set-cookie header and store cookies
     const cookieStrings = setCookieHeader.split(",");
     for (const cookieString of cookieStrings) {
       const [nameValue] = cookieString.trim().split(";");
@@ -54,16 +52,13 @@ async function request({
 }: RequestOptions): Promise<WikiApiResponse> {
   const url = new URL(entry);
 
-  // Add query parameters
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       url.searchParams.append(key, value);
     }
   }
 
-  const headers: HeadersInit = {
-    "User-Agent": "prts-widgets-script",
-  };
+  const headers: HeadersInit = {};
 
   // Add cookies if we have any
   const cookieHeader = getCookieHeader();
@@ -73,7 +68,6 @@ async function request({
 
   let requestBody: BodyInit | undefined;
 
-  // Handle form data
   if (body && method === "POST") {
     const formData = new URLSearchParams();
     for (const [key, value] of Object.entries(body)) {
@@ -93,7 +87,6 @@ async function request({
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 
-  // Store cookies from response
   setCookieFromResponse(response);
 
   return (await response.json()) as WikiApiResponse;
@@ -149,15 +142,14 @@ export async function login(name: string, password: string): Promise<void> {
   });
 
   if (resp.login?.result?.toLowerCase() !== "success") {
-    console.error(JSON.stringify(resp));
-    throw new Error(`Login failed: ${JSON.stringify(resp)}`);
+    throw new Error(`Login failed: ${resp}`);
   }
 }
 
 export async function create(
   pagename: string,
   content: string,
-  summary: string = "by prts-micro-frontends script",
+  summary: string = "by prts-widgets script",
 ): Promise<void> {
   const token = await getCsrfToken();
   const resp = await request({
