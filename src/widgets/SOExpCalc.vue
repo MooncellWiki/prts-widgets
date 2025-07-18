@@ -23,13 +23,15 @@ import { getImagePath } from "@/utils/utils";
 const i18nConfig = getNaiveUILocale();
 
 const props = defineProps<{
-  exptree: string;
+  exptree: Array<Array<number>>;
 }>();
 
+onMounted(() => {
+  eliteChange();
+});
+
 const expTree = computed(() => {
-  return props.exptree
-    .split(";;")
-    .map((estring) => estring.split(",").map(Number));
+  return props.exptree;
 });
 const eliteStr: Record<number, string[]> = {
   0: ["精英_0_大图.png", "精英0"],
@@ -64,6 +66,15 @@ const calcExp = computed(() => {
     totalExp += expTree.value[selectedElite.value][i - 1];
   }
   return totalExp + target.exp;
+});
+const isInvalid = computed(() => {
+  return (
+    Number.isNaN(calcExp.value) ||
+    selectLevel.value.start.level == null ||
+    selectLevel.value.target.level == null ||
+    selectLevel.value.start.exp == null ||
+    selectLevel.value.target.exp == null
+  );
 });
 //---
 const showSOETModal = ref(false);
@@ -105,10 +116,6 @@ const isMobile = computed(() => {
 const getRandomTime = () => {
   return Math.random() * 0.5 + 0.8;
 };
-
-onMounted(() => {
-  eliteChange();
-});
 
 const eliteChange = () => {
   selectLevel.value.maxLevel = getMaxLevel();
@@ -397,9 +404,18 @@ const expInputChange = (role: "start" | "target") => {
         </NFlex>
         <br />
         ※可以使用键盘的上下键来调整等级和经验值。<br />
+
         <NCard class="text-center">
           <div
-            class="from-[#ab983400] to-[#ab983433] bg-gradient-to-b pt-0.5em"
+            :class="[
+              'from-[#ab983400] to-[#ab983433] bg-gradient-to-b pt-0.5em',
+              {
+                'from-[#fc646400] to-[#fc646433]':
+                  selectedElite !== 2 &&
+                  selectLevel.start.level === selectLevel.maxLevel &&
+                  !isInvalid,
+              },
+            ]"
           >
             从 Lv.{{ selectLevel.start.level }} [
             {{
@@ -414,15 +430,7 @@ const expInputChange = (role: "start" | "target") => {
                 : `${selectLevel.target.exp} / ${getLevelMaxExp(selectLevel.target.level)}`
             }}
             ]，需要经验值<br />
-            <div
-              v-if="
-                isNaN(calcExp) ||
-                selectLevel.start.level == null ||
-                selectLevel.target.level == null ||
-                selectLevel.start.exp == null ||
-                selectLevel.target.exp == null
-              "
-            >
+            <div v-if="isInvalid">
               <div class="font-size-1.5em">
                 <i
                   :style="{ '--speed': `${getRandomTime()}s` }"
@@ -462,10 +470,19 @@ const expInputChange = (role: "start" | "target") => {
             </div>
             <div v-else-if="selectLevel.start.level === selectLevel.maxLevel">
               <span class="font-size-1.5em font-bold"> 等级已满 </span><br />
-              <span class="color-[#ff7070] font-bold"
-                ><i class="mdi mdi-alert"></i>
-                继续获得的经验将被丢弃！请尽快完成干员晋升。</span
+              <span
+                v-if="selectedElite !== 2"
+                class="level-max-warn bg-[#ff7070] px-3em color-white font-bold"
               >
+                <i class="mdi mdi-alert"></i>
+                继续获得的经验将被丢弃！请尽快完成干员晋升。
+              </span>
+              <span
+                v-else
+                class="bg-[linear-gradient(to_right,#0000,#f5d003,#0000)] px-5em color-black font-bold"
+              >
+                LEVEL MAX
+              </span>
             </div>
             <div v-else-if="calcExp === -1">
               <span class="font-size-1.5em font-bold"> 已经不用升级了…… </span>
@@ -554,5 +571,23 @@ const expInputChange = (role: "start" | "target") => {
 
 .mdi-spin:before {
   animation: mdi-spin var(--speed) infinite linear;
+}
+
+@keyframes lv-warn {
+  0% {
+    background: #ff7070;
+  }
+
+  50% {
+    background: #e71111;
+  }
+
+  100% {
+    background: #ff7070;
+  }
+}
+
+.level-max-warn {
+  animation: lv-warn 2s ease-in-out 0s infinite;
 }
 </style>
