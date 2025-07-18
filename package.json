@@ -70,7 +70,7 @@
     "unocss": "^66.3.3",
     "vite": "^6.3.5",
     "vue-eslint-parser": "^10.2.0",
-    "vue-tsc": "^2.2.12"
+    "vue-tsc": "^3.0.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
