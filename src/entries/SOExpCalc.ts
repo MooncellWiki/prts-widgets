@@ -40,7 +40,7 @@ async function main() {
     }
 
     const expMap = await getSOExpMapByCharId(ele.dataset.opid);
-    if (!expMap || expMap.length === 0 || expMap?.[0].length === 0) {
+    if (!expMap || expMap.length === 0 || expMap[0]?.length === 0) {
       console.error(
         "Failed to retrieve expMap for operator:",
         ele.dataset.opid,
