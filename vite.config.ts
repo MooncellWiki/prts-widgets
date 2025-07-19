@@ -78,6 +78,7 @@ export default defineConfig(({ command }) => {
             )
               return;
 
+            if (id.includes("commonjsHelpers")) return "commonjsHelpers";
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
             if (id.includes("howler")) return "howler";
