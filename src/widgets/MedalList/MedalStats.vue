@@ -43,13 +43,13 @@ const statsData = computed(() => {
       <div v-for="(value, key) in statsData" :key="key">
         <NStatistic :label="value.name" :tabular-nums="true">
           <NNumberAnimation
-            active
             :from="showSecret && !value.indieEncrypt ? value.data[0] : 0"
             :to="
               value.data[0] +
               (showSecret && !value.indieEncrypt ? value.data[1] : 0)
             "
             show-separator
+            active
           />
           <template #suffix>枚</template>
         </NStatistic>
