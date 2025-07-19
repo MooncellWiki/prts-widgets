@@ -78,14 +78,17 @@ export default defineConfig(({ command }) => {
             )
               return;
 
-            if (id.includes("commonjsHelpers")) return "commonjsHelpers";
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
             if (id.includes("howler")) return "howler";
             if (id.includes("vue-draggable-plus")) return "vue-draggable-plus";
             if (id.includes("html2canvas")) return "html2canvas";
 
-            if (id.includes("node_modules") || id.includes("uno"))
+            if (
+              id.includes("commonjsHelpers") ||
+              id.includes("node_modules") ||
+              id.includes("uno")
+            )
               return "vendor";
 
             if (
