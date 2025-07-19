@@ -380,7 +380,7 @@ const tableData = computed(() =>
                 LEVEL MAX
               </span>
             </div>
-            <div v-else-if="calcExp === -1">
+            <div v-else-if="calcExp < 0">
               <span class="font-size-1.5em font-bold"> 已经不用升级了…… </span>
             </div>
           </div>
