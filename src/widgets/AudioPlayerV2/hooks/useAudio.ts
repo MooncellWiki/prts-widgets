@@ -1,256 +1,260 @@
-import { ref, watch, computed, onUnmounted, type Ref } from "vue";
+import { onUnmounted, ref, watch, type Ref } from "vue";
 
 import { useIntervalFn } from "@vueuse/core";
 import { Howl } from "howler";
 
 import { downloadFile } from "../utils/dl";
 
-export enum PlayState {
-  Idle = "idle",
-  Loading = "loading",
-  Loaded = "loaded",
-  Playing = "playing",
-  Paused = "paused",
-  Stopped = "stopped",
-}
-
-export enum PlayerAction {
-  Load = "load",
-  Play = "play",
-  Pause = "pause",
-  Stop = "stop",
-  ChangeVol = "changeVol",
-  ChangeMute = "changeMute",
-  ChangeLoop = "changeLoop",
-  Process = "process",
-  Download = "download",
-}
+export type PlayState = "idle" | "loading" | "loaded" | "playing" | "paused";
 
 export interface Audio {
-  control: (action: PlayerAction, value?: number) => void;
+  load: () => void;
+  play: () => void;
+  pause: () => void;
+  changeVol: (value: number) => void;
+  changeMute: () => void;
+  changeLoop: () => void;
+  seek: (value: number) => void;
+  download: () => void;
   state: Ref<PlayState>;
   vol: Ref<number>;
   mute: Ref<boolean>;
   loop: Ref<boolean>;
   process: Ref<number>;
   len: Ref<number>;
+  stopped: Ref<boolean>;
 }
-
+function loadPromise(how: Howl): Promise<void> {
+  return new Promise((res) => {
+    how.once("load", () => {
+      res();
+    });
+  });
+}
 export function useAudio(src: string, p?: number): Audio {
-  const state = ref<PlayState>(PlayState.Idle);
+  const state = ref<PlayState>("idle");
   const vol = ref(100);
   const mute = ref(false);
   const loop = ref(false);
   const process = ref(0);
   const len = ref(0);
 
-  const introSound = ref<Howl | null>(null);
-  const loopSound = ref<Howl | null>(null);
+  const stopped = ref(false);
 
-  const isCombined = computed(
-    () => src.includes("_combine") && p !== undefined && p !== 0,
-  );
+  let introSound: Howl | undefined;
+  let loopSound: Howl | undefined;
 
-  const createSounds = () => {
-    if (isCombined.value) {
-      const introSrc = src.replace("_combine", "_intro");
-      const loopSrc = src.replace("_combine", "_loop");
+  const isCombined = src.includes("_combine") && p !== undefined && p !== 0;
+  if (isCombined) {
+    const introSrc = src.replace("_combine", "_intro");
+    const loopSrc = src.replace("_combine", "_loop");
 
-      introSound.value = new Howl({ src: [introSrc], preload: false });
-      loopSound.value = new Howl({ src: [loopSrc], preload: false });
-    } else {
-      introSound.value = new Howl({ src: [src], preload: false });
-    }
-  };
+    introSound = new Howl({ src: [introSrc], preload: false });
+    loopSound = new Howl({ src: [loopSrc], preload: false });
+    Promise.all([loadPromise(introSound!), loadPromise(loopSound!)]).then(
+      () => {
+        console.log("loaded");
+        len.value =
+          (introSound?.duration() || 0) + (loopSound?.duration() || 0);
+        if (stopped.value) {
+          state.value = "loaded";
+          return;
+        }
+        state.value = "playing";
+
+        introSound?.play();
+      },
+    );
+    introSound.on("end", () => {
+      if (loopSound) {
+        if (stopped.value) {
+          state.value = "loaded";
+          return;
+        }
+        loopSound.play();
+      } else {
+        state.value = "loaded";
+      }
+    });
+
+    loopSound?.on("load", () => {
+      loopSound?.loop(loop.value);
+    });
+    loopSound.on("end", () => {
+      if (!loop.value) {
+        state.value = "paused";
+      }
+    });
+  } else {
+    introSound = new Howl({ src: [src], preload: false });
+    introSound?.once("load", () => {
+      len.value = introSound?.duration() || 0;
+      if (stopped.value) {
+        state.value = "loaded";
+        return;
+      }
+      introSound?.loop(loop.value);
+      introSound?.play();
+      state.value = "playing";
+    });
+    introSound.on("end", () => {
+      state.value = "paused";
+    });
+  }
 
   useIntervalFn(() => {
-    if (state.value !== PlayState.Playing) return;
+    if (state.value !== "playing") return;
 
-    if (isCombined.value) {
-      if (introSound.value?.playing()) {
-        process.value = Math.floor(introSound.value.seek() as number);
-      } else if (loopSound.value?.playing()) {
+    if (isCombined) {
+      if (introSound?.playing()) {
+        process.value = Math.floor(introSound.seek() as number);
+      } else if (loopSound?.playing()) {
         process.value =
-          Math.floor(loopSound.value.seek() as number) +
-          (introSound.value?.duration() || 0);
+          Math.floor(loopSound.seek() as number) +
+          (introSound?.duration() || 0);
       }
-    } else if (introSound.value?.playing()) {
-      process.value = Math.floor(introSound.value.seek() as number);
+    } else if (introSound?.playing()) {
+      process.value = Math.floor(introSound.seek() as number);
     }
   }, 50);
 
-  const control = (action: PlayerAction, value?: number) => {
-    switch (action) {
-      case PlayerAction.Load: {
-        if (state.value !== PlayState.Idle) return;
+  const load = () => {
+    if (state.value !== "idle") return;
 
-        state.value = PlayState.Loading;
-        createSounds();
+    state.value = "loading";
 
-        if (isCombined.value) {
-          introSound.value?.once("load", () => {
-            loopSound.value?.once("load", () => {
-              if (state.value !== PlayState.Stopped) return;
-              state.value = PlayState.Playing;
-              len.value =
-                (introSound.value?.duration() || 0) +
-                (loopSound.value?.duration() || 0);
-              introSound.value?.play();
-            });
-            loopSound.value?.load();
-          });
+    if (isCombined) {
+      introSound?.load();
+      loopSound?.load();
+    } else {
+      introSound?.load();
+    }
+  };
 
-          introSound.value?.on("end", () => {
-            if (loopSound.value) {
-              if (state.value !== PlayState.Stopped) loopSound.value.play();
-            } else {
-              state.value = PlayState.Loaded;
-            }
-          });
+  const play = () => {
+    if (state.value === "playing") return;
+    if (state.value === "idle") {
+      load();
+      return;
+    }
 
-          loopSound.value?.on("load", () => {
-            loopSound.value?.loop(loop.value);
-          });
+    if (isCombined) {
+      if (process.value < (introSound?.duration() || 0)) {
+        introSound?.play();
+      } else loopSound?.play();
+    } else {
+      introSound?.play();
+    }
 
-          introSound.value?.load();
-          loopSound.value?.load();
+    state.value = "playing";
+  };
+
+  const pause = () => {
+    introSound?.pause();
+    loopSound?.pause();
+    state.value = "paused";
+  };
+
+  const changeVol = (value: number) => {
+    vol.value = value;
+    introSound?.volume(value / 100);
+    loopSound?.volume(value / 100);
+  };
+
+  const changeMute = () => {
+    mute.value = !mute.value;
+    introSound?.mute(mute.value);
+    loopSound?.mute(mute.value);
+  };
+
+  const changeLoop = () => {
+    loop.value = !loop.value;
+    if (isCombined) {
+      loopSound?.loop(loop.value);
+    } else {
+      introSound?.loop(loop.value);
+    }
+  };
+
+  const seek = (value: number) => {
+    if (isCombined) {
+      const currentProcess = process.value;
+      const introDuration = introSound?.duration() || 0;
+      if (currentProcess < introDuration) {
+        if (value < introDuration) {
+          introSound?.seek(value);
         } else {
-          introSound.value?.once("load", () => {
-            if (state.value !== PlayState.Stopped) return;
-            introSound.value?.loop(loop.value);
-            introSound.value?.play();
-            state.value = PlayState.Playing;
-            len.value = introSound.value?.duration() || 0;
-          });
-
-          introSound.value?.load();
+          introSound?.stop();
+          loopSound?.seek(value - introDuration);
+          loopSound?.play();
         }
-        break;
+      } else if (value > introDuration) {
+        loopSound?.seek(value - introDuration);
+      } else {
+        loopSound?.stop();
+        introSound?.seek(value);
+        introSound?.play();
       }
-      case PlayerAction.Play: {
-        if (state.value === PlayState.Playing) return;
-        if (state.value === PlayState.Idle) {
-          control(PlayerAction.Load);
-          return;
-        }
+    } else {
+      introSound?.seek(value);
+    }
 
-        if (isCombined.value) {
-          if (process.value < (introSound.value?.duration() || 0)) {
-            introSound.value?.play();
-          } else loopSound.value?.play();
-        } else {
-          introSound.value?.play();
-        }
+    process.value = value;
+  };
 
-        state.value = PlayState.Playing;
-        break;
-      }
-
-      case PlayerAction.Pause: {
-        introSound.value?.pause();
-        loopSound.value?.pause();
-        state.value = PlayState.Paused;
-        break;
-      }
-
-      case PlayerAction.Stop: {
-        introSound.value?.stop();
-        loopSound.value?.stop();
-        process.value = 0;
-        state.value = PlayState.Stopped;
-        break;
-      }
-
-      case PlayerAction.ChangeVol: {
-        if (value === undefined) return;
-        vol.value = value;
-        introSound.value?.volume(value / 100);
-        loopSound.value?.volume(value / 100);
-        break;
-      }
-
-      case PlayerAction.ChangeMute: {
-        mute.value = !mute.value;
-        introSound.value?.mute(mute.value);
-        loopSound.value?.mute(mute.value);
-        break;
-      }
-
-      case PlayerAction.ChangeLoop: {
-        loop.value = !loop.value;
-        if (isCombined.value) {
-          loopSound.value?.loop(loop.value);
-        } else {
-          introSound.value?.loop(loop.value);
-        }
-        break;
-      }
-
-      case PlayerAction.Process: {
-        if (value === undefined) return;
-
-        if (isCombined.value) {
-          const currentProcess = process.value;
-          const introDuration = introSound.value?.duration() || 0;
-          if (currentProcess < introDuration) {
-            if (value < introDuration) {
-              introSound.value?.seek(value);
-            } else {
-              introSound.value?.stop();
-              loopSound.value?.seek(value - introDuration);
-              loopSound.value?.play();
-            }
-          } else if (value > introDuration) {
-            loopSound.value?.seek(value - introDuration);
-          } else {
-            loopSound.value?.stop();
-            introSound.value?.seek(value);
-            introSound.value?.play();
-          }
-        } else {
-          introSound.value?.seek(value);
-        }
-
-        process.value = value;
-        break;
-      }
-
-      case PlayerAction.Download: {
-        if (isCombined.value) {
-          const introSrc = src.replace("_combine", "_intro");
-          const loopSrc = src.replace("_combine", "_loop");
-          downloadFile(introSrc.split("/").pop() || "audio.mp3", introSrc);
-          downloadFile(loopSrc.split("/").pop() || "audio.mp3", loopSrc);
-        } else {
-          downloadFile(src.split("/").pop() || "audio.mp3", src);
-        }
-        break;
-      }
+  const download = () => {
+    if (isCombined) {
+      const introSrc = src.replace("_combine", "_intro");
+      const loopSrc = src.replace("_combine", "_loop");
+      downloadFile(introSrc.split("/").pop() || "audio.mp3", introSrc);
+      downloadFile(loopSrc.split("/").pop() || "audio.mp3", loopSrc);
+    } else {
+      downloadFile(src.split("/").pop() || "audio.mp3", src);
     }
   };
 
   onUnmounted(() => {
-    introSound.value?.unload();
-    loopSound.value?.unload();
+    introSound?.unload();
+    loopSound?.unload();
   });
 
   watch(vol, (newVol) => {
-    introSound.value?.volume(newVol / 100);
-    loopSound.value?.volume(newVol / 100);
+    introSound?.volume(newVol / 100);
+    loopSound?.volume(newVol / 100);
   });
 
   watch(mute, (newMute) => {
-    introSound.value?.mute(newMute);
-    loopSound.value?.mute(newMute);
+    introSound?.mute(newMute);
+    loopSound?.mute(newMute);
+  });
+  watch(stopped, () => {
+    if (!stopped.value) {
+      return;
+    }
+    introSound?.stop();
+    loopSound?.stop();
+    process.value = 0;
+    stopped.value = true;
+    if (state.value === "playing") {
+      state.value = "paused";
+    }
   });
 
   return {
-    control,
+    load,
+    play,
+    pause,
+    changeVol,
+    changeMute,
+    changeLoop,
+    seek,
+    download,
     state,
     vol,
     mute,
     loop,
     process,
     len,
+    stopped,
   };
 }

@@ -6,8 +6,7 @@ import AudioPlayerV2 from "../widgets/AudioPlayerV2/index.vue";
 const players: NodeListOf<HTMLElement> =
   document.querySelectorAll("div.audio-player");
 
-// eslint-disable-next-line unicorn/no-array-for-each
-players.forEach((element) => {
+for (const element of Array.from(players)) {
   const props = {
     name: element.dataset?.name || "",
     lowSource: element.dataset?.low || "",
@@ -17,4 +16,4 @@ players.forEach((element) => {
   };
 
   createApp(AudioPlayerV2, props).mount(element);
-});
+}

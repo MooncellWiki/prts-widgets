@@ -1,23 +1,23 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { computed, ref } from "vue";
 
 import {
-  PlayArrowFilled as PlayArrowIcon,
-  PauseFilled as PauseIcon,
   DownloadOutlined as GetAppIcon,
+  PauseFilled as PauseIcon,
+  PlayArrowFilled as PlayArrowIcon,
 } from "@vicons/material";
 import {
   NButton,
-  NIcon,
-  NTooltip,
-  NSelect,
   NCard,
+  NIcon,
+  NSelect,
   NSlider,
   NSpin,
+  NTooltip,
 } from "naive-ui";
 
 import Volume from "./Volume.vue";
-import { useAudio, PlayState, PlayerAction } from "./hooks/useAudio";
+import { useAudio } from "./hooks/useAudio";
 
 enum Quality {
   Low = 0,
@@ -48,27 +48,26 @@ const currentAudio = computed(() => {
 
 const playAble = computed(() => {
   return (
-    currentAudio.value.state.value !== PlayState.Idle &&
-    currentAudio.value.state.value !== PlayState.Loading
+    currentAudio.value.state.value !== "idle" &&
+    currentAudio.value.state.value !== "loading"
   );
 });
 
 const playIconToolTip = computed(() => {
   switch (currentAudio.value.state.value) {
-    case PlayState.Idle: {
+    case "idle": {
       return "开始加载";
     }
-    case PlayState.Loading: {
+    case "loading": {
       return "加载中...";
     }
-    case PlayState.Loaded:
-    case PlayState.Stopped: {
+    case "loaded": {
       return "播放";
     }
-    case PlayState.Playing: {
+    case "playing": {
       return "暂停";
     }
-    case PlayState.Paused: {
+    case "paused": {
       return "继续播放";
     }
     default: {
@@ -80,43 +79,37 @@ const playIconToolTip = computed(() => {
 function playIconHandler() {
   console.log("playIconHandler", currentAudio.value.state);
   switch (currentAudio.value.state.value) {
-    case PlayState.Idle: {
-      currentAudio.value.control(PlayerAction.Load);
+    case "idle": {
+      currentAudio.value.load();
       break;
     }
 
-    case PlayState.Loaded: {
-      currentAudio.value.control(PlayerAction.Play);
+    case "loaded": {
+      currentAudio.value.play();
       break;
     }
 
-    case PlayState.Playing: {
-      currentAudio.value.control(PlayerAction.Pause);
+    case "playing": {
+      currentAudio.value.pause();
       break;
     }
 
-    case PlayState.Paused: {
-      currentAudio.value.control(PlayerAction.Play);
+    case "paused": {
+      currentAudio.value.play();
       break;
     }
   }
 }
 
-function toggleLoop() {
-  currentAudio.value.control(PlayerAction.ChangeLoop);
-}
-
 function handleSeek(value: number) {
-  currentAudio.value.control(PlayerAction.Process, value);
+  currentAudio.value.seek(value);
 }
 
 function handleQualityChange(value: Quality) {
-  currentAudio.value.control(PlayerAction.Stop);
-  quality.value = value;
-}
+  low.stopped.value = value === Quality.High;
+  high.stopped.value = value === Quality.Low;
 
-function download() {
-  currentAudio.value.control(PlayerAction.Download, 0);
+  quality.value = value;
 }
 
 function formatTime(seconds: number): string {
@@ -176,7 +169,12 @@ function formatTime(seconds: number): string {
 
       <n-tooltip :disabled="!playAble">
         <template #trigger>
-          <n-button quaternary circle :disabled="!playAble" @click="toggleLoop">
+          <n-button
+            quaternary
+            circle
+            :disabled="!playAble"
+            @click="currentAudio.changeLoop()"
+          >
             <template #icon>
               <span v-if="currentAudio.loop.value" class="mdi mdi-autorenew" />
               <span v-else class="mdi mdi-autorenew-off" />
@@ -191,7 +189,7 @@ function formatTime(seconds: number): string {
         v-model:mute="currentAudio.mute.value"
       />
 
-      <n-button quaternary circle @click="download()">
+      <n-button quaternary circle @click="currentAudio.download()">
         <template #icon>
           <n-icon>
             <GetAppIcon />
