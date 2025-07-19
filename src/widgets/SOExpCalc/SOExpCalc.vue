@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from "vue";
+import { computed, h, onMounted, onUnmounted, ref } from "vue";
 
 import {
   darkTheme,
@@ -9,10 +9,8 @@ import {
   NConfigProvider,
   NDataTable,
   NFlex,
-  NInputNumber,
   NModal,
   NNumberAnimation,
-  NProgress,
   NRadioButton,
   NRadioGroup,
   NTooltip,
@@ -21,6 +19,8 @@ import {
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
+
+import LevelInput from "./LevelInput.vue";
 
 const i18nConfig = getNaiveUILocale();
 
@@ -109,8 +109,12 @@ const SOETColumns: DataTableColumns<{
 ];
 //--
 const screenWidth = ref(document.body.clientWidth);
-window.addEventListener("resize", () => {
+function onResize() {
   screenWidth.value = document.body.clientWidth;
+}
+window.addEventListener("resize", onResize);
+onUnmounted(() => {
+  window.removeEventListener("resize", onResize);
 });
 const isMobile = computed(() => {
   return screenWidth.value < 500;
@@ -255,170 +259,44 @@ const tableData = computed(() =>
         <br />
         <span class="font-size-lg font-bold">设置起始及目标等级·经验</span>
         <NFlex align="center" :wrap="false" :size="isMobile ? 0 : 'medium'">
-          <!--START-->
-          <NFlex vertical align="center" :size="0">
-            <div>
-              <NProgress
-                type="circle"
-                status="warning"
-                :percentage="
-                  (selectLevel.start.exp /
-                    getLevelMaxExp(selectLevel.start.level)) *
-                  100
-                "
-                :offset-degree="180"
-                :border-radius="0"
-                :fill-border-radius="0"
-                class="mb-3"
-              >
-                <NFlex vertical align="center" :size="0">
-                  <NFlex justify="space-between">
-                    <span>LV</span>
-                    <span class="font-bold">/ {{ selectLevel.maxLevel }}</span>
-                  </NFlex>
-                  <NInputNumber
-                    v-model:value="selectLevel.start.level"
-                    :min="1"
-                    :max="selectLevel.maxLevel"
-                    :show-button="false"
-                    :keyboard="{ ArrowUp: true, ArrowDown: true }"
-                    class="pa-0 text-center"
-                    size="large"
-                    placeholder="1"
-                    @update:value="levelChange('start')"
-                  />
-                </NFlex>
-              </NProgress>
-            </div>
-            <div
-              v-if="selectLevel.start.level !== selectLevel.maxLevel"
-              class="text-center"
+          <LevelInput
+            v-model:level="selectLevel.start.level"
+            v-model:exp="selectLevel.start.exp"
+            :level-max-exp="getLevelMaxExp(selectLevel.start.level)"
+            :max-level="selectLevel.maxLevel"
+            :selected-elite="selectedElite"
+            @update:level="levelChange('start')"
+            @update:exp="() => expInputChange('start')"
+          >
+            <NButton
+              v-if="selectedElite !== 2"
+              size="tiny"
+              strong
+              secondary
+              type="primary"
+              class="w-14em"
+              @click="
+                () => {
+                  selectedElite++;
+                  eliteChange();
+                }
+              "
             >
-              <NInputNumber
-                v-model:value="selectLevel.start.exp"
-                :min="0"
-                :max="getLevelMaxExp(selectLevel.start.level)"
-                class="w-12em text-center"
-                :keyboard="{ ArrowUp: true, ArrowDown: true }"
-                placeholder="1"
-                button-placement="both"
-                :disabled="selectLevel.start.level === selectLevel.maxLevel"
-                @update:value="expInputChange('start')"
-              >
-                <template #suffix>
-                  / {{ getLevelMaxExp(selectLevel.start.level) }}
-                </template>
-              </NInputNumber>
-              [
-              {{
-                (
-                  (selectLevel.start.exp /
-                    getLevelMaxExp(selectLevel.start.level)) *
-                  100
-                ).toFixed(2)
-              }}% ]
-            </div>
-            <div v-else class="text-center">
-              <NInputNumber
-                placeholder="MAX"
-                button-placement="both"
-                :disabled="true"
-                class="w-12em text-center"
-              />
-              <NButton
-                v-if="selectedElite !== 2"
-                size="tiny"
-                strong
-                secondary
-                type="primary"
-                class="w-14em"
-                @click="
-                  () => {
-                    selectedElite++;
-                    eliteChange();
-                  }
-                "
-              >
-                <i class="mdi mdi-chevron-up-box"></i>&nbsp;晋升
-              </NButton>
-              <span v-else> [ ---% ]</span>
-            </div>
-          </NFlex>
-          <!--DECO-->
+              <i class="mdi mdi-chevron-up-box"></i>&nbsp;晋升
+            </NButton>
+            <span v-else> [ ---% ]</span></LevelInput
+          >
           <i class="mdi mdi-arrow-right mb-18 font-size-2.5em"></i>
-          <!--TARGET-->
-          <NFlex vertical align="center" :size="0">
-            <div>
-              <NProgress
-                type="circle"
-                status="warning"
-                :percentage="
-                  (selectLevel.target.exp /
-                    getLevelMaxExp(selectLevel.target.level)) *
-                  100
-                "
-                :offset-degree="180"
-                :border-radius="0"
-                :fill-border-radius="0"
-                class="mb-3"
-              >
-                <NFlex vertical align="center" :size="0">
-                  <NFlex justify="space-between">
-                    <span>LV</span>
-                    <span class="font-bold">/ {{ selectLevel.maxLevel }}</span>
-                  </NFlex>
-                  <NInputNumber
-                    v-model:value="selectLevel.target.level"
-                    :min="1"
-                    :max="selectLevel.maxLevel"
-                    :show-button="false"
-                    :keyboard="{ ArrowUp: true, ArrowDown: true }"
-                    class="pa-0 text-center"
-                    size="large"
-                    placeholder="1"
-                    @update:value="levelChange('target')"
-                  />
-                </NFlex>
-              </NProgress>
-            </div>
-            <div
-              v-if="selectLevel.target.level !== selectLevel.maxLevel"
-              class="text-center"
-            >
-              <NInputNumber
-                v-model:value="selectLevel.target.exp"
-                :min="0"
-                :max="getLevelMaxExp(selectLevel.target.level)"
-                class="w-12em text-center"
-                :keyboard="{ ArrowUp: true, ArrowDown: true }"
-                placeholder="1"
-                button-placement="both"
-                :disabled="selectLevel.target.level === selectLevel.maxLevel"
-                @update:value="expInputChange('target')"
-              >
-                <template #suffix>
-                  / {{ getLevelMaxExp(selectLevel.target.level) }}
-                </template>
-              </NInputNumber>
-              [
-              {{
-                (
-                  (selectLevel.target.exp /
-                    getLevelMaxExp(selectLevel.target.level)) *
-                  100
-                ).toFixed(2)
-              }}% ]
-            </div>
-            <div v-else class="text-center">
-              <NInputNumber
-                placeholder="MAX"
-                button-placement="both"
-                :disabled="true"
-                class="w-12em text-center"
-              />
-              [ ---% ]
-            </div>
-          </NFlex>
+
+          <LevelInput
+            v-model:level="selectLevel.target.level"
+            v-model:exp="selectLevel.target.exp"
+            :max-level="selectLevel.maxLevel"
+            :level-max-exp="getLevelMaxExp(selectLevel.target.level)"
+            :selected-elite="selectedElite"
+            @update:level="levelChange('target')"
+            @update:exp="() => expInputChange('target')"
+          />
         </NFlex>
         <br />
         ※可以使用键盘的上下键来调整等级和经验值。<br />
