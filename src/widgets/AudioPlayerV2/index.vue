@@ -19,10 +19,7 @@ import {
 import Volume from "./Volume.vue";
 import { useAudio } from "./hooks/useAudio";
 import { sec2str } from "./utils/time";
-enum Quality {
-  Low = 0,
-  High = 1,
-}
+type Quality = "wav" | "mp3";
 
 const props = defineProps({
   name: String,
@@ -32,18 +29,18 @@ const props = defineProps({
   p: Number,
 });
 
-const quality = ref<Quality>(Quality.High);
+const quality = ref<Quality>("wav");
 
 const low = useAudio(props.lowSource || "", props.p || 0);
 const high = useAudio(props.highSource || "", props.p || 0);
 
 const qualityOptions = [
-  { label: "wav", value: Quality.High },
-  { label: "mp3", value: Quality.Low },
+  { label: "wav", value: "wav" as Quality },
+  { label: "mp3", value: "mp3" as Quality },
 ];
 
 const currentAudio = computed(() => {
-  return quality.value === Quality.Low ? low : high;
+  return quality.value === "mp3" ? low : high;
 });
 
 const playAble = computed(() => {
@@ -106,8 +103,8 @@ function handleSeek(value: number) {
 }
 
 function handleQualityChange(value: Quality) {
-  low.stopped.value = value === Quality.High;
-  high.stopped.value = value === Quality.Low;
+  low.stopped.value = value === "wav";
+  high.stopped.value = value === "mp3";
 
   quality.value = value;
 }
