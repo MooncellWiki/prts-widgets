@@ -107,14 +107,13 @@ export function useAudio(src: string, p?: number): Audio {
 
     if (isCombined) {
       if (introSound?.playing()) {
-        process.value = Math.floor(introSound.seek() as number);
+        process.value = Math.floor(introSound.seek());
       } else if (loopSound?.playing()) {
         process.value =
-          Math.floor(loopSound.seek() as number) +
-          (introSound?.duration() || 0);
+          Math.floor(loopSound.seek()) + (introSound?.duration() || 0);
       }
     } else if (introSound?.playing()) {
-      process.value = Math.floor(introSound.seek() as number);
+      process.value = Math.floor(introSound.seek());
     }
   }, 50);
 

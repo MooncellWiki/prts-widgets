@@ -34,9 +34,9 @@ const quality = ref<Quality>("wav");
 const low = useAudio(props.lowSource || "", props.p || 0);
 const high = useAudio(props.highSource || "", props.p || 0);
 
-const qualityOptions = [
-  { label: "wav", value: "wav" as Quality },
-  { label: "mp3", value: "mp3" as Quality },
+const qualityOptions: { label: Quality; value: Quality }[] = [
+  { label: "wav", value: "wav" },
+  { label: "mp3", value: "mp3" },
 ];
 
 const currentAudio = computed(() => {
