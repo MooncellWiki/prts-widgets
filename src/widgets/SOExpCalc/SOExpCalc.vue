@@ -16,10 +16,12 @@ import {
   NRadioButton,
   NRadioGroup,
   NTooltip,
+  type DataTableColumns,
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
+
 const i18nConfig = getNaiveUILocale();
 
 const props = defineProps<{
@@ -74,18 +76,22 @@ const isInvalid = computed(() => {
 });
 //---
 const showSOETModal = ref(false);
-const SOETColumns = [
+const SOETColumns: DataTableColumns<{
+  level: number;
+  exp: string;
+  totalexp: number;
+}> = [
   {
     key: "level",
-    align: "center" as const,
-    sorter: "default" as const,
+    align: "center",
+    sorter: "default",
     title() {
       return h("b", "Lv.");
     },
   },
   {
     key: "exp",
-    align: "center" as const,
+    align: "center",
     render(row: { exp: string; totalexp: number }) {
       return row.exp === "-1" ? "——" : `${row.exp}`;
     },
@@ -95,7 +101,7 @@ const SOETColumns = [
   },
   {
     key: "totalexp",
-    align: "center" as const,
+    align: "center",
     title() {
       return h("b", "累计经验");
     },
@@ -146,6 +152,22 @@ const expInputChange = (role: "start" | "target") => {
     levelChange(role);
   }
 };
+
+const tableData = computed(() =>
+  props.expMap[selectedElite.value]
+    .map((exp, index) => ({
+      level: index + 1,
+      exp: String(exp),
+      totalexp: props.expMap[selectedElite.value]
+        .slice(0, index)
+        .reduce((a, b) => a + b, 0),
+    }))
+    .filter(
+      (item) =>
+        item.exp !== "-1" ||
+        props.expMap[selectedElite.value].indexOf(-1) === item.level - 1,
+    ),
+);
 </script>
 
 <template>
@@ -530,22 +552,7 @@ const expInputChange = (role: "start" | "target") => {
           align="center"
           :single-line="false"
           :striped="true"
-          :data="
-            props.expMap[selectedElite]
-              .map((exp, index) => ({
-                level: index + 1,
-                exp: String(exp),
-                totalexp: props.expMap[selectedElite]
-                  .slice(0, index)
-                  .reduce((a, b) => a + b, 0),
-              }))
-              .filter(
-                (item) =>
-                  item.exp !== '-1' ||
-                  props.expMap[selectedElite].findIndex((e) => e === -1) ===
-                    item.level - 1,
-              )
-          "
+          :data="tableData"
           :max-height="500"
         />
       </NFlex>
