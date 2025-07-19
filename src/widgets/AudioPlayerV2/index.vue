@@ -18,7 +18,7 @@ import {
 
 import Volume from "./Volume.vue";
 import { useAudio } from "./hooks/useAudio";
-
+import { sec2str } from "./utils/time";
 enum Quality {
   Low = 0,
   High = 1,
@@ -111,12 +111,6 @@ function handleQualityChange(value: Quality) {
 
   quality.value = value;
 }
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-}
 </script>
 
 <template>
@@ -128,8 +122,8 @@ function formatTime(seconds: number): string {
 
     <div class="slider-group">
       <div class="time-display">
-        {{ formatTime(currentAudio.process.value) }}/{{
-          formatTime(currentAudio.len.value)
+        {{ sec2str(currentAudio.process.value) }}/{{
+          sec2str(currentAudio.len.value)
         }}
       </div>
       <n-slider
@@ -137,7 +131,7 @@ function formatTime(seconds: number): string {
         :disabled="!playAble"
         :value="currentAudio.process.value"
         :min="0"
-        :format-tooltip="formatTime"
+        :format-tooltip="sec2str"
         :max="currentAudio.len.value"
         @update:value="handleSeek"
       />
