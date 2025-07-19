@@ -80,6 +80,10 @@ export default defineConfig(({ command }) => {
 
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
+            if (id.includes("howler")) return "howler";
+            if (id.includes("vue-draggable-plus")) return "vue-draggable-plus";
+            if (id.includes("html2canvas")) return "html2canvas";
+
             if (id.includes("node_modules") || id.includes("uno"))
               return "vendor";
 
@@ -125,6 +129,9 @@ export default defineConfig(({ command }) => {
       },
       assetsDir: ".",
       terserOptions: {
+        format: {
+          comments: false,
+        },
         compress: {
           passes: 10,
         },
