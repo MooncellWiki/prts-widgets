@@ -45,6 +45,9 @@ export interface CargoEquip {
   mission1: string;
   mission2: string;
   mission2Operation: string;
+  cond: string;
+  cond2: string;
+  cond3: string;
 }
 
 export interface EquipRow {

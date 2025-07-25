@@ -21,7 +21,7 @@ export async function getEquipDataAll(): Promise<
         tables: "char_mod",
         offset: offset.toString(),
         fields:
-          "_pageName=opt,name=name,type=type,color=color,hp__full=hp,atk__full=atk,def__full=def,res__full=res,time__full=time,cost__full=cost,block__full=block,atkspd__full=atkspd,other__full=other,traitadd=traitadd,trait=trait,talent2=talent2,talent3=talent3,lv=lv,mat=mat,mat2=mat2,mat3=mat3,charModuleN=charModuleN,mission1=mission1,mission2=mission2,mission2Operation=mission2Operation",
+          "_pageName=opt,name=name,type=type,color=color,hp__full=hp,atk__full=atk,def__full=def,res__full=res,time__full=time,cost__full=cost,block__full=block,atkspd__full=atkspd,other__full=other,traitadd=traitadd,trait=trait,talent2=talent2,talent3=talent3,lv=lv,mat=mat,mat2=mat2,mat3=mat3,charModuleN=charModuleN,mission1=mission1,mission2=mission2,mission2Operation=mission2Operation,cond=cond,cond2=cond2,cond3=cond3",
       })}`,
     );
     const json: { cargoquery: { title: CargoEquip }[] } = await resp.json();
@@ -89,6 +89,9 @@ export async function getEquipDataAll(): Promise<
           mat: recoverHTML(e.mat ?? ""),
           mat2: recoverHTML(e.mat2 ?? ""),
           mat3: recoverHTML(e.mat3 ?? ""),
+          cond: recoverHTML(e.cond ?? ""),
+          cond2: recoverHTML(e.cond2 ?? ""),
+          cond3: recoverHTML(e.cond3 ?? ""),
           lv: e.lv ?? "???",
         };
       });
