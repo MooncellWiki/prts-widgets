@@ -187,6 +187,7 @@ function getSubChooseData(scStr: string) {
         titleFontSize: '0.75rem',
       },
     }"
+    class="ISEventFrame"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
@@ -216,12 +217,10 @@ function getSubChooseData(scStr: string) {
                   </NIcon>
                   <span
                     v-else
-                    :class="[
-                      {
-                        'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
-                          isPrtsInfo(SceneId),
-                      },
-                    ]"
+                    :class="{
+                      'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
+                        isPrtsInfo(SceneId),
+                    }"
                   >
                     <sup v-if="isPrtsInfo(SceneId)">
                       <i class="mdi mdi-rhombus-outline font-size-2"></i>

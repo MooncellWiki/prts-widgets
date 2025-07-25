@@ -41,6 +41,7 @@ defineProps<{
         textColorTextPressed: '#07426D',
       },
     }"
+    class="ISEventCategory"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
@@ -78,30 +79,37 @@ defineProps<{
 </template>
 
 <style>
-.n-breadcrumb .n-breadcrumb-item .n-breadcrumb-item__separator {
+.ISEventFrame .n-breadcrumb .n-breadcrumb-item .n-breadcrumb-item__separator {
   margin: 0 !important;
 }
 
-.n-breadcrumb ul {
+.ISEventFrame .n-breadcrumb ul {
   margin: 0 !important;
   padding: 0.2em !important;
 }
 
-.n-breadcrumb li {
+.ISEventFrame .n-breadcrumb li {
   margin: 0 !important;
 }
 
-.n-collapse
+.ISEventFrame
+  .n-collapse
   .n-collapse-item.n-collapse-item--left-arrow-placement
   .n-collapse-item__header
   .n-collapse-item-arrow {
   margin: 0 !important;
 }
 
-.n-collapse
+.ISEventFrame
+  .n-collapse
   .n-collapse-item
   .n-collapse-item__content-wrapper
   .n-collapse-item__content-inner {
   padding-top: 0.5em !important;
+}
+
+.ISEventCategory a {
+  text-decoration: none;
+  color: unset;
 }
 </style>
