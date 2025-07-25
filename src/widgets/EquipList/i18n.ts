@@ -132,8 +132,8 @@ export const customLabel = {
       condition: "解锁需求与材料消耗",
       upgrade: "模组升级消耗",
       condTrust: "需要信赖值(%)",
-      condLv: "需要达到等级\n(精英2阶段)",
-      condMission: "完成本模组所有\n模组解锁任务",
+      condLv: "需要达到等级(精英2阶段)",
+      condMission: "完成本模组所有模组解锁任务",
       latest: "近期更新",
     },
     tableTitle: {
@@ -194,8 +194,8 @@ export const customLabel = {
       condition: "解鎖需求與材料消耗",
       upgrade: "模組升級消耗",
       condTrust: "需要信賴值(%)",
-      condLv: "需要達到等級\n(精英2階段)",
-      condMission: "完成本模組所有\n模組解鎖任務",
+      condLv: "需要達到等級(精英2階段)",
+      condMission: "完成本模組所有模組解鎖任務",
       latest: "近期更新",
     },
     tableTitle: {
@@ -257,7 +257,7 @@ export const customLabel = {
       upgrade: "Upgrade Materials",
       condTrust: "Trust (%)",
       condLv: "Lv. (Elite 2)",
-      condMission: "Complete all Module Missions\nof this module",
+      condMission: "Complete all Module Missions",
       latest: "New Module",
     },
     tableTitle: {
@@ -309,7 +309,7 @@ export const customLabel = {
       filterTrait: "特性追加",
       filterType: "タイプ",
       filterTime: "追加時間",
-      filterOpt: "ミッションステージ",
+      filterOpt: "任務ステージ",
       other: "その他",
     },
     equipString: {
@@ -318,8 +318,8 @@ export const customLabel = {
       condition: "開放条件と必要素材",
       upgrade: "モジュール強化素材",
       condTrust: "必要信頼度(%)",
-      condLv: "必要レベル\n(昇進2段階)",
-      condMission: "このモジュールのすべての\n解放任務を完了する",
+      condLv: "必要レベル(昇進2段階)",
+      condMission: "すべての解放任務を完成する",
       latest: "最新追加",
     },
     tableTitle: {
