@@ -50,18 +50,22 @@ const columns = (): DataTableColumns<EquipRow> => {
                 width: 60,
               }),
             ),
-            h("div", [
-              h("img", {
-                src: getImagePath(
-                  `模组类型_${row.type.replace("Δ", "D").replace("α", "A")}_小图.png`,
-                ),
-                width: 60,
-                style: {
-                  margin: "5px 0",
-                  backgroundColor: "#2f2f2f",
-                },
-              }),
-            ]),
+            h(
+              "a",
+              { href: `/w/${row.operator}#${row.name}` },
+              h("div", [
+                h("img", {
+                  src: getImagePath(
+                    `模组类型_${row.type.replace("Δ", "D").replace("α", "A")}_小图.png`,
+                  ),
+                  width: 60,
+                  style: {
+                    margin: "5px 0",
+                    backgroundColor: "#2f2f2f",
+                  },
+                }),
+              ]),
+            ),
           ],
         );
       },

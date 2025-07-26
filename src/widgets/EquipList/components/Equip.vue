@@ -328,7 +328,7 @@ const modeMission = () => props.simplemode === "mission";
                       class="rankpic m-1"
                     />
                   </div>
-                  <span>
+                  <span v-if="!e.cond">
                     <ETag type="favor" value="0"></ETag>
                     <ETag type="lv" :value="e.lv ?? '???'"></ETag>
                     <ETag
@@ -338,6 +338,7 @@ const modeMission = () => props.simplemode === "mission";
                     ></ETag>
                     <span v-html="processMaterial(e.mat ?? '')"></span>
                   </span>
+                  <span v-else v-html="e.cond"></span>
                 </span>
               </div>
               <div class="minorsep" :class="{ simple }"></div>
@@ -353,12 +354,13 @@ const modeMission = () => props.simplemode === "mission";
                       class="rankpic m-1"
                     />
                   </div>
-                  <span>
+                  <span v-if="!e.cond2">
                     <span>
                       <ETag type="favor" value="50" />
                     </span>
                     <span v-html="processMaterial(e.mat2 ?? '')"></span>
                   </span>
+                  <span v-else v-html="e.cond2"></span>
                 </span>
               </div>
               <div class="minorsep" :class="{ simple }"></div>
@@ -374,12 +376,13 @@ const modeMission = () => props.simplemode === "mission";
                       class="rankpic m-1"
                     />
                   </div>
-                  <span>
+                  <span v-if="!e.cond3">
                     <span>
                       <ETag type="favor" value="100" />
                     </span>
                     <span v-html="processMaterial(e.mat3 ?? '')"></span>
                   </span>
+                  <span v-else v-html="e.cond3"></span>
                 </span>
               </div>
             </div>
