@@ -87,14 +87,14 @@ function navJump(index: number) {
   sceneNav.value.splice(index + 1);
 }
 function optionsToNavDrop(options: Array<Option>) {
-  const navDrop: sceneNavDropdownOption[] = [];
+  const navDrop: SceneNavDropdownOption[] = [];
   for (const o of options.filter((option) => option.type !== "desc")) {
     const scd = getSubChooseData(o.subChoose || "");
     if (scd.length === 0) {
       navDrop.push({
         label: o.title,
         key: `m-${o.index}`,
-        props: {
+        navData: {
           isSubChoose: false,
           destScene: o.dest,
         },
@@ -106,7 +106,7 @@ function optionsToNavDrop(options: Array<Option>) {
         children.push({
           label: `${d[0]}`,
           key: `s-${o.index}-${d[1]}`,
-          props: {
+          navData: {
             isSubChoose: true,
             destScene: d[1],
           },
@@ -122,16 +122,19 @@ function optionsToNavDrop(options: Array<Option>) {
   return navDrop;
 }
 
-type sceneNavDropdownOption = DropdownOption & {
-  props?: Record<string, any>;
+type SceneNavDropdownOption = DropdownOption & {
+  navData?: {
+    isSubChoose: boolean;
+    destScene: number;
+  };
 };
 function dropJump(
   _key: string,
   navIndex: number,
-  ndropoption: sceneNavDropdownOption,
+  ndropoption: SceneNavDropdownOption,
 ) {
   navJump(navIndex);
-  jump(ndropoption.props?.destScene);
+  jump(ndropoption.navData?.destScene || 0);
 }
 function getSubChooseData(scStr: string) {
   if (scStr === "") {

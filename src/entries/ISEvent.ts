@@ -45,7 +45,7 @@ for (const eventEle of Array.from(eventEles)) {
             iconId: chooseData.iconid,
             desc1: choose.querySelectorAll(".desc1")[0]?.innerHTML,
             desc2: choose.querySelectorAll(".desc2")[0]?.innerHTML,
-            dest: chooseData.dest,
+            dest: Number.parseInt(chooseData.dest || "0"),
             customBadgeText:
               choose.querySelectorAll(".customBadgeText")[0]?.innerHTML,
             subChoose: chooseData.subchoose,
