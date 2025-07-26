@@ -78,37 +78,8 @@ defineProps<{
   </NConfigProvider>
 </template>
 
-<style>
-.ISEventFrame .n-breadcrumb .n-breadcrumb-item .n-breadcrumb-item__separator {
-  margin: 0 !important;
-}
-
-.ISEventFrame .n-breadcrumb ul {
-  margin: 0 !important;
-  padding: 0.2em !important;
-}
-
-.ISEventFrame .n-breadcrumb li {
-  margin: 0 !important;
-}
-
-.ISEventFrame
-  .n-collapse
-  .n-collapse-item.n-collapse-item--left-arrow-placement
-  .n-collapse-item__header
-  .n-collapse-item-arrow {
-  margin: 0 !important;
-}
-
-.ISEventFrame
-  .n-collapse
-  .n-collapse-item
-  .n-collapse-item__content-wrapper
-  .n-collapse-item__content-inner {
-  padding-top: 0.5em !important;
-}
-
-.ISEventCategory a {
+<style scoped>
+a {
   text-decoration: none;
   color: unset;
 }

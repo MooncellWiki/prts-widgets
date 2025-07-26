@@ -101,21 +101,19 @@ function optionsToNavDrop(options: Array<Option>) {
         children: undefined,
       });
     } else {
-      const children: any[] = [];
-      for (const d of scd) {
-        children.push({
-          label: `${d[0]}`,
-          key: `s-${o.index}-${d[1]}`,
-          navData: {
-            isSubChoose: true,
-            destScene: d[1],
-          },
-        });
-      }
       navDrop.push({
         label: o.title,
         key: `m-${o.index}-main`,
-        children,
+        children: scd.map((d) => {
+          return {
+            label: `${d[0]}`,
+            key: `s-${o.index}-${d[1]}`,
+            navData: {
+              isSubChoose: true,
+              destScene: d[1],
+            },
+          };
+        }),
       });
     }
   }
@@ -184,11 +182,6 @@ function getSubChooseData(scStr: string) {
       },
       Breadcrumb: { itemTextColor: '#A8AFB5' },
       Button: { textColor: '#fff' },
-      Collapse: {
-        arrowColor: '#fff',
-        titleTextColor: '#fff',
-        titleFontSize: '0.75rem',
-      },
     }"
     class="ISEventFrame"
   >
@@ -309,3 +302,18 @@ function getSubChooseData(scStr: string) {
     </NSpace>
   </NConfigProvider>
 </template>
+
+<style scoped>
+:deep(.n-breadcrumb .n-breadcrumb-item .n-breadcrumb-item__separator) {
+  margin: 0 !important;
+}
+
+:deep(.n-breadcrumb ul) {
+  margin: 0 !important;
+  padding: 0.2em !important;
+}
+
+:deep(.n-breadcrumb li) {
+  margin: 0 !important;
+}
+</style>
