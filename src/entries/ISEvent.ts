@@ -29,6 +29,7 @@ for (const eventEle of Array.from(eventEles)) {
         etype: data.etype,
         edesc: scene.querySelectorAll(".edesc")[0]?.innerHTML,
         name: data.name,
+        ename: data.ename,
         nav: data.nav,
         index: data.index,
         image: data.image,
@@ -44,12 +45,14 @@ for (const eventEle of Array.from(eventEles)) {
             iconId: chooseData.iconid,
             desc1: choose.querySelectorAll(".desc1")[0]?.innerHTML,
             desc2: choose.querySelectorAll(".desc2")[0]?.innerHTML,
-            dest: chooseData.dest,
+            dest: Number.parseInt(chooseData.dest || "0"),
             customBadgeText:
               choose.querySelectorAll(".customBadgeText")[0]?.innerHTML,
+            subChoose: chooseData.subchoose,
             index,
           };
         }),
+        prtsinfo: data.prtsinfo,
       };
     },
   );
@@ -58,7 +61,7 @@ for (const eventEle of Array.from(eventEles)) {
     sceneCategoryTabList.push(scenes[0].etype);
     sceneCategoryData.push([]);
   }
-  sceneCategoryData.at(-1)?.push(scenes[0].name || "？？？");
+  sceneCategoryData.at(-1)?.push(scenes[0].ename || scenes[0].name || "？？？");
   // creat event
   createApp(ISEventFramework, {
     sceneData: scenes,

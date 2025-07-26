@@ -20,8 +20,10 @@ defineProps<{
   <NConfigProvider
     preflight-style-disabled
     :theme-overrides="{
+      common: {
+        borderRadius: '0',
+      },
       Card: {
-        borderRadius: '5px',
         actionColor: '#343434',
         borderColor: '#ADADAD',
       },
@@ -30,7 +32,8 @@ defineProps<{
         tabTextColorActiveLine: '#4294CF',
         barColor: '#4294CF',
         tabFontWeightActive: 'bold',
-        tabGapSmallLine: '20px',
+        tabGapSmallLine: '1em',
+        tabPaddingSmallLine: '0.3em 0.5em',
       },
       Breadcrumb: { itemTextColor: '#A8AFB5' },
       Button: {
@@ -38,10 +41,15 @@ defineProps<{
         textColorTextPressed: '#07426D',
       },
     }"
+    class="ISEventCategory"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
         <NLayoutContent>
+          <div class="bg-[#2f2f2f] px-2 py-1 c-white">
+            <i class="mdi mdi-information-variant-circle"></i>
+            可以使用鼠标滚轮或手指拖动来滚动分类栏。
+          </div>
           <NCard class="relative" size="small">
             <NTabs type="line" size="small" animated>
               <NTabPane
@@ -69,3 +77,10 @@ defineProps<{
     </NSpace>
   </NConfigProvider>
 </template>
+
+<style scoped>
+a {
+  text-decoration: none;
+  color: unset;
+}
+</style>

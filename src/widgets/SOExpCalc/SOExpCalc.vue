@@ -219,14 +219,15 @@ const tableData = computed(() =>
         特勤经验计算
       </template>
       <template #header-extra>
-        <NTooltip placement="left" trigger="hover">
+        <NTooltip placement="bottom-end" trigger="hover">
           <template #trigger>
             <NButton size="tiny" color="#f5d003" @click="showSOETModal = true">
               <i class="mdi mdi-stairs-box"></i>&nbsp;查看完整升级表
             </NButton>
           </template>
           <i class="mdi mdi-alert"></i
-          >&nbsp;<b>注意：</b>特勤干员经验阶梯与普通干员不同。<br />请勿将特勤干员的经验阶梯与普通干员的经验阶梯混淆。
+          >&nbsp;<b>注意：</b>特勤干员经验阶梯与普通干员不同。
+          <br />请勿将特勤干员的经验阶梯与普通干员的经验阶梯混淆。
         </NTooltip>
       </template>
       <NFlex vertical align="center">
@@ -299,8 +300,10 @@ const tableData = computed(() =>
           />
         </NFlex>
         <br />
-        ※可以使用键盘的上下键来调整等级和经验值。<br />
-
+        <span>
+          <i class="mdi mdi-information-variant-circle"></i>
+          可以使用键盘的上下键来调整等级和经验值。
+        </span>
         <NCard class="text-center">
           <div
             :class="[
@@ -366,13 +369,15 @@ const tableData = computed(() =>
             </div>
             <div v-else-if="selectLevel.start.level === selectLevel.maxLevel">
               <span class="font-size-1.5em font-bold"> 等级已满 </span><br />
-              <span
+              <div
                 v-if="selectedElite !== 2"
-                class="level-max-warn bg-[#ff7070] px-3em color-white font-bold"
+                class="level-max-warn bg-[#ff7070] px-3em color-white font-bold outline-1 outline-white outline"
               >
                 <i class="mdi mdi-alert"></i>
-                继续获得的经验将被丢弃！请尽快完成干员晋升。
-              </span>
+                继续获得的经验将被丢弃！
+                <br v-if="isMobile" />
+                请尽快完成干员晋升。
+              </div>
               <span
                 v-else
                 class="bg-[linear-gradient(to_right,#0000,#f5d003,#0000)] px-5em color-black font-bold"
@@ -400,6 +405,11 @@ const tableData = computed(() =>
         特勤经验全表
       </template>
       <NFlex vertical align="center">
+        <div v-if="isMobile" class="text-center">
+          <i class="mdi mdi-alert"></i
+          >&nbsp;<b>注意：</b>特勤干员经验阶梯与普通干员不同。
+          <br />请勿将特勤干员的经验阶梯与普通干员的经验阶梯混淆。
+        </div>
         <NRadioGroup
           v-model:value="selectedElite"
           name="elite"
@@ -468,7 +478,26 @@ const tableData = computed(() =>
   }
 }
 
+@keyframes lv-warn-outline {
+  0% {
+    outline-offset: 0;
+    outline-color: #fffc;
+  }
+
+  20% {
+    outline-offset: 10px;
+    outline-color: #fff0;
+  }
+
+  100% {
+    outline-offset: 10px;
+    outline-color: #fff0;
+  }
+}
+
 .level-max-warn {
-  animation: lv-warn 2s ease-in-out 0s infinite;
+  animation:
+    lv-warn 2s ease-in-out 0s infinite,
+    lv-warn-outline 2s linear infinite;
 }
 </style>
