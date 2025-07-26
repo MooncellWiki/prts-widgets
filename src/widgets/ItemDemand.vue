@@ -30,8 +30,7 @@ enum Status {
 }
 async function query(name: string): Promise<itemCost> {
   const resp = await fetch(`${TORAPPU_ENDPOINT}/api/v1/item/${name}/demand`);
-  const json = await resp.json();
-  const data: Resp = json.data;
+  const data: Resp = await resp.json();
   const costs = Array.from<{ label: string; data: CostProps[] }>({ length: 6 });
   const total = {
     elite: 0,
