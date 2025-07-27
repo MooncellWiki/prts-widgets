@@ -70,10 +70,7 @@ function jump(id: number) {
 
     currentSceneId.value = id;
 
-    const name =
-      props.sceneData[currentSceneId.value].ename ||
-      props.sceneData[currentSceneId.value].name ||
-      "";
+    const name = props.sceneData[0].ename || props.sceneData[0].name || "";
     const element = document.querySelector(`#${name}`);
     if (element) {
       element.scrollIntoView({ behavior: "smooth" });
