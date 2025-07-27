@@ -291,7 +291,7 @@ export const prettier = [
 ];
 
 export const unicorn = [
-  pluginUnicorn.configs["flat/recommended"],
+  pluginUnicorn.configs.recommended,
   {
     rules: {
       "unicorn/filename-case": "off",
@@ -303,6 +303,7 @@ export const unicorn = [
       "unicorn/number-literal-case": "off",
       "unicorn/no-array-for-each": "warn",
       "unicorn/prefer-global-this": "off",
+      "unicorn/no-array-reverse": "off",
     },
   },
 ];
