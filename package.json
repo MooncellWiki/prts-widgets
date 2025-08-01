@@ -18,7 +18,7 @@
     "prepare": "node .husky/install.mjs"
   },
   "dependencies": {
-    "@sentry/browser": "^9.44.0",
+    "@sentry/browser": "^10.0.0",
     "@urlpack/json": "^2.0.1",
     "@vicons/material": "^0.13.0",
     "@vueuse/core": "^13.6.0",
