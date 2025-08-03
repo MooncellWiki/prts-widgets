@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, ref, watch } from "vue";
+import { computed, h, nextTick, ref, useTemplateRef, watch } from "vue";
 
 import {
   HelpOutlineOutlined,
@@ -90,7 +90,7 @@ const charData = ref<Record<string, Char>>({});
 const selected = ref<string[]>([]); //选中的干员列表
 const charInfoMap = ref<PlayerInfo["charInfoMap"]>({}); //干员信息map
 const equipmentInfoMap = ref<PlayerInfo["equipmentInfoMap"]>({}); //模组map
-const charSignInner = ref<HTMLElement>();
+const charSignInner = useTemplateRef("charSignInner");
 const resultImgHtml = ref(""); //截图Dom
 const showInfo = ref({
   profession: true,
@@ -253,7 +253,11 @@ async function importSKLandOperatorDataByUid(uid: string) {
     doctorInfo.value.avatar = playerInfo.avatar;
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
-    await preCache(document.body);
+    if (!charSignInner.value) {
+      message.error("未找到截图元素，请稍后再试");
+      return;
+    }
+    await preCache(charSignInner.value);
   } catch (error: any) {
     message.error(error.message);
   }
@@ -302,7 +306,7 @@ function clearSelected() {
 //截图
 async function GenerateImg(type: string) {
   message.info("图片生成中，请不要关闭或滚动页面~");
-  const el = document.querySelector("#charSignInner");
+  const el = charSignInner.value;
   if (!el) {
     message.error("图片生成失败，未找到截图元素");
     return;
