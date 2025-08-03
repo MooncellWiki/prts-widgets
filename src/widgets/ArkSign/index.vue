@@ -91,6 +91,7 @@ const selected = ref<string[]>([]); //选中的干员列表
 const charInfoMap = ref<PlayerInfo["charInfoMap"]>({}); //干员信息map
 const equipmentInfoMap = ref<PlayerInfo["equipmentInfoMap"]>({}); //模组map
 const charSignInner = useTemplateRef("charSignInner");
+const rootEle = useTemplateRef("rootEle");
 const resultImgHtml = ref(""); //截图Dom
 const showInfo = ref({
   profession: true,
@@ -253,13 +254,15 @@ async function importSKLandOperatorDataByUid(uid: string) {
     doctorInfo.value.avatar = playerInfo.avatar;
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
-    if (!charSignInner.value) {
-      message.error("未找到截图元素，请稍后再试");
-      return;
-    }
-    await preCache(charSignInner.value);
-  } catch (error: any) {
-    message.error(error.message);
+    nextTick(async () => {
+      if (!rootEle.value) {
+        console.warn("未找到根元素，跳过缓存");
+        return;
+      }
+      await preCache(rootEle.value);
+    });
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error));
   }
 }
 function handleChangeUid(value: string, data: { extraData: BindingListItem }) {
@@ -364,7 +367,7 @@ function calcServerColor(id: string) {
 </script>
 
 <template>
-  <div>
+  <div ref="rootEle">
     <n-alert title="操作指南" type="info" style="margin-bottom: 1em" closable>
       {{
         selected.length > 0
