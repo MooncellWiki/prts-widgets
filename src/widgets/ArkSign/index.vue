@@ -91,7 +91,7 @@ const selected = ref<string[]>([]); //选中的干员列表
 const charInfoMap = ref<PlayerInfo["charInfoMap"]>({}); //干员信息map
 const equipmentInfoMap = ref<PlayerInfo["equipmentInfoMap"]>({}); //模组map
 const charSignInner = useTemplateRef("charSignInner");
-const rootEle = useTemplateRef("rootEle");
+const charListWrapper = useTemplateRef("charListWrapper");
 const resultImgHtml = ref(""); //截图Dom
 const showInfo = ref({
   profession: true,
@@ -233,6 +233,13 @@ async function importSKLandOperatorData() {
     doctorInfo.value.avatar = playerInfo.avatar;
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
+    nextTick(async () => {
+      if (!charListWrapper.value) {
+        console.warn("[importSKLandOperatorData] 未找到根元素，跳过缓存");
+        return;
+      }
+      await preCache(charListWrapper.value);
+    });
     console.log(playerInfo);
   } catch (error: any) {
     message.error(error.message);
@@ -255,11 +262,11 @@ async function importSKLandOperatorDataByUid(uid: string) {
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
     nextTick(async () => {
-      if (!rootEle.value) {
-        console.warn("未找到根元素，跳过缓存");
+      if (!charListWrapper.value) {
+        console.warn("[importSKLandOperatorDataByUid] 未找到根元素，跳过缓存");
         return;
       }
-      await preCache(rootEle.value);
+      await preCache(charListWrapper.value);
     });
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error));
@@ -367,7 +374,7 @@ function calcServerColor(id: string) {
 </script>
 
 <template>
-  <div ref="rootEle">
+  <div>
     <n-alert title="操作指南" type="info" style="margin-bottom: 1em" closable>
       {{
         selected.length > 0
@@ -769,7 +776,7 @@ function calcServerColor(id: string) {
       </div>
       <n-empty v-if="charList.length === 0" description="NO INFO/"></n-empty>
       <div class="flex justify-center">
-        <div class="charListWrapper">
+        <div ref="charListWrapper" class="charListWrapper">
           <div
             v-for="item in charList"
             :key="item.charId"
