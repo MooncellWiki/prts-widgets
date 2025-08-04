@@ -6,7 +6,7 @@ import {
   KeyboardArrowDownFilled,
   KeyboardArrowUpFilled,
 } from "@vicons/material";
-import { preCache, snapdom } from "@zumer/snapdom";
+import { snapdom } from "@zumer/snapdom";
 import {
   NAlert,
   NButton,
@@ -233,13 +233,6 @@ async function importSKLandOperatorData() {
     doctorInfo.value.avatar = playerInfo.avatar;
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
-    nextTick(async () => {
-      if (!charListWrapper.value) {
-        console.warn("[importSKLandOperatorData] 未找到根元素，跳过缓存");
-        return;
-      }
-      await preCache(charListWrapper.value);
-    });
     console.log(playerInfo);
   } catch (error: any) {
     message.error(error.message);
@@ -261,13 +254,6 @@ async function importSKLandOperatorDataByUid(uid: string) {
     doctorInfo.value.avatar = playerInfo.avatar;
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
-    nextTick(async () => {
-      if (!charListWrapper.value) {
-        console.warn("[importSKLandOperatorDataByUid] 未找到根元素，跳过缓存");
-        return;
-      }
-      await preCache(charListWrapper.value);
-    });
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error));
   }
