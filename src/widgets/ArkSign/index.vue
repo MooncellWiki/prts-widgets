@@ -91,7 +91,6 @@ const selected = ref<string[]>([]); //选中的干员列表
 const charInfoMap = ref<PlayerInfo["charInfoMap"]>({}); //干员信息map
 const equipmentInfoMap = ref<PlayerInfo["equipmentInfoMap"]>({}); //模组map
 const charSignInner = useTemplateRef("charSignInner");
-const charListWrapper = useTemplateRef("charListWrapper");
 const resultImgHtml = ref(""); //截图Dom
 const showInfo = ref({
   profession: true,
@@ -762,7 +761,7 @@ function calcServerColor(id: string) {
       </div>
       <n-empty v-if="charList.length === 0" description="NO INFO/"></n-empty>
       <div class="flex justify-center">
-        <div ref="charListWrapper" class="charListWrapper">
+        <div class="charListWrapper">
           <div
             v-for="item in charList"
             :key="item.charId"
