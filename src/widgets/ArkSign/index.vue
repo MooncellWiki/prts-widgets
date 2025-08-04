@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, h, nextTick, ref, watch } from "vue";
+import { computed, h, nextTick, ref, useTemplateRef, watch } from "vue";
 
 import {
   HelpOutlineOutlined,
   KeyboardArrowDownFilled,
   KeyboardArrowUpFilled,
 } from "@vicons/material";
-import html2canvas from "html2canvas";
+import { snapdom } from "@zumer/snapdom";
 import {
   NAlert,
   NButton,
@@ -90,8 +90,8 @@ const charData = ref<Record<string, Char>>({});
 const selected = ref<string[]>([]); //选中的干员列表
 const charInfoMap = ref<PlayerInfo["charInfoMap"]>({}); //干员信息map
 const equipmentInfoMap = ref<PlayerInfo["equipmentInfoMap"]>({}); //模组map
-const charSignInner = ref<HTMLElement>();
-const resultImgUrl = ref(""); //截图URL
+const charSignInner = useTemplateRef("charSignInner");
+const resultImgHtml = ref(""); //截图Dom
 const showInfo = ref({
   profession: true,
   rarity: true,
@@ -253,8 +253,8 @@ async function importSKLandOperatorDataByUid(uid: string) {
     doctorInfo.value.avatar = playerInfo.avatar;
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
-  } catch (error: any) {
-    message.error(error.message);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error));
   }
 }
 function handleChangeUid(value: string, data: { extraData: BindingListItem }) {
@@ -299,35 +299,26 @@ function clearSelected() {
   order();
 }
 //截图
-function GenerateImg(type: string) {
+async function GenerateImg(type: string) {
   message.info("图片生成中，请不要关闭或滚动页面~");
-  const shareContent = charSignInner.value!;
-  const width = shareContent.offsetWidth;
-  const height = shareContent.offsetHeight;
-  const canvas = document.createElement("canvas");
-  const scale = imgScale.value;
-
-  canvas.width = width * scale;
-  canvas.height = height * scale;
-  canvas.getContext("2d")!.scale(scale, scale);
-  const opts = {
-    scale: 1,
-    canvas,
-    logging: true,
-    allowTaint: true,
-    useCORS: true,
-    width,
-    height,
-  };
-  html2canvas(shareContent, opts).then(function (canvas) {
-    const imgData = canvas.toDataURL("PNG");
-    if (type === "d") {
-      showImgResult.value = true;
-    } else if (type === "m") {
-      showImgResultM.value = true;
-    }
-    resultImgUrl.value = imgData;
+  const el = charSignInner.value;
+  if (!el) {
+    message.error("图片生成失败，未找到截图元素");
+    return;
+  }
+  console.log("开始截图", el.clientWidth, el.clientHeight);
+  const result = await snapdom(el as HTMLElement, {
+    scale: imgScale.value,
+    compress: true,
+    fast: true,
   });
+  const imgResult = await result.toPng();
+  resultImgHtml.value = imgResult.outerHTML;
+  if (type === "d") {
+    showImgResult.value = true;
+  } else if (type === "m") {
+    showImgResultM.value = true;
+  }
 }
 function calcSkillRankShow(skills: Char["skills"], skillId: string) {
   const index = skills.findIndex((e) => e.id === skillId);
@@ -377,7 +368,7 @@ function calcServerColor(id: string) {
       }}
     </n-alert>
     <div class="charSign">
-      <div ref="charSignInner" class="charSignInner">
+      <div id="charSignInner" ref="charSignInner" class="charSignInner">
         <div class="circlePoint">
           <img
             crossorigin="anonymous"
@@ -827,7 +818,9 @@ function calcServerColor(id: string) {
     placement="bottom"
   >
     <n-drawer-content title="图片可长按保存" closable>
-      <img :src="resultImgUrl" width="100%" />
+      <div class="charSign">
+        <div id="imgWrapperM" v-html="resultImgHtml"></div>
+      </div>
     </n-drawer-content>
   </n-drawer>
   <n-modal
@@ -847,8 +840,11 @@ function calcServerColor(id: string) {
     style="width: 60%; min-width: 600px"
     title="生成结果"
     :bordered="false"
+    display-directive="show"
   >
-    <img :src="resultImgUrl" width="100%" />
+    <div class="charSign">
+      <div id="imgWrapperD" v-html="resultImgHtml"></div>
+    </div>
   </n-modal>
 </template>
 
@@ -857,7 +853,16 @@ img {
   max-width: initial;
   /*干掉移动前端 */
 }
-
+#imgWrapperD img,
+#imgWrapperM img {
+  width: auto !important;
+  height: 300px !important;
+  max-width: none !important;
+}
+#imgWrapperD,
+#imgWrapperM {
+  margin: auto;
+}
 .ghost {
   opacity: 0.7;
   background: #c8ebfb;
