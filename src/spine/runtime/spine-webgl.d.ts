@@ -449,7 +449,8 @@ declare module spine {
     static emptyAnimation: Animation
     static SUBSEQUENT: number
     static FIRST: number
-    static HOLD: number
+    static HOLD_SUBSEQUENT: number
+    static HOLD_FIRST: number
     static HOLD_MIX: number
     static SETUP: number
     static CURRENT: number
@@ -963,7 +964,7 @@ declare module spine {
     loadJson(clientId: string, path: string): void
     loadTexture(
       clientId: string,
-      textureLoader: (image: HTMLImageElement) => any,
+      textureLoader: (image: HTMLImageElement | ImageBitmap) => any,
       path: string,
     ): void
     get(clientId: string, path: string): any
@@ -1275,9 +1276,9 @@ declare module spine {
 }
 declare module spine {
   abstract class Texture {
-    protected _image: HTMLImageElement
-    constructor(image: HTMLImageElement)
-    getImage(): HTMLImageElement
+    protected _image: HTMLImageElement | ImageBitmap
+    constructor(image: HTMLImageElement | ImageBitmap)
+    getImage(): HTMLImageElement | ImageBitmap
     abstract setFilters(
       minFilter: TextureFilter,
       magFilter: TextureFilter,
@@ -1804,13 +1805,13 @@ declare module spine.webgl {
     static DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL: boolean
     constructor(
       context: ManagedWebGLRenderingContext | WebGLRenderingContext,
-      image: HTMLImageElement,
+      image: HTMLImageElement | ImageBitmap,
       useMipMaps?: boolean,
     )
     setFilters(minFilter: TextureFilter, magFilter: TextureFilter): void
     static validateMagFilter(
       magFilter: TextureFilter,
-    ): TextureFilter.Nearest | TextureFilter.Linear | TextureFilter.Linear
+    ): TextureFilter.Nearest | TextureFilter.Linear
     setWraps(uWrap: TextureWrap, vWrap: TextureWrap): void
     update(useMipMaps: boolean): void
     restore(): void
@@ -2437,13 +2438,18 @@ declare module spine.webgl {
 }
 declare module spine.webgl {
   class ManagedWebGLRenderingContext {
-    canvas: HTMLCanvasElement
+    canvas: HTMLCanvasElement | OffscreenCanvas
     gl: WebGLRenderingContext
     private restorables
     constructor(
-      canvasOrContext: HTMLCanvasElement | WebGLRenderingContext,
+      canvasOrContext:
+        | HTMLCanvasElement
+        | WebGLRenderingContext
+        | EventTarget
+        | WebGL2RenderingContext,
       contextConfig?: any,
     )
+    private setupCanvas
     addRestorable(restorable: Restorable): void
     removeRestorable(restorable: Restorable): void
   }
@@ -2464,4 +2470,5 @@ declare module spine.webgl {
     ): number
   }
 }
+
 export default spine
