@@ -9,11 +9,16 @@ var __extends =
             d.__proto__ = b
           }) ||
         function (d, b) {
-          for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]
+          for (var p in b)
+            if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]
         }
       return extendStatics(d, b)
     }
     return function (d, b) {
+      if (typeof b !== 'function' && b !== null)
+        throw new TypeError(
+          'Class extends value ' + String(b) + ' is not a constructor or null',
+        )
       extendStatics(d, b)
       function __() {
         this.constructor = d
@@ -909,10 +914,11 @@ var spine
       slot,
       attachmentName,
     ) {
-      slot.attachment =
+      slot.setAttachment(
         attachmentName == null
           ? null
-          : skeleton.getAttachment(this.slotIndex, attachmentName)
+          : skeleton.getAttachment(this.slotIndex, attachmentName),
+      )
     }
     return AttachmentTimeline
   })()
@@ -1997,10 +2003,11 @@ var spine
         var slot = slots[i]
         if (slot.attachmentState == setupState) {
           var attachmentName = slot.data.attachmentName
-          slot.attachment =
+          slot.setAttachment(
             attachmentName == null
               ? null
-              : skeleton.getAttachment(slot.data.index, attachmentName)
+              : skeleton.getAttachment(slot.data.index, attachmentName),
+          )
         }
       }
       this.unkeyedState += 2
@@ -2067,7 +2074,11 @@ var spine
               timelineBlend = spine.MixBlend.setup
               alpha = alphaMix
               break
-            case AnimationState.HOLD:
+            case AnimationState.HOLD_SUBSEQUENT:
+              timelineBlend = blend
+              alpha = alphaHold
+              break
+            case AnimationState.HOLD_FIRST:
               timelineBlend = spine.MixBlend.setup
               alpha = alphaHold
               break
@@ -2163,10 +2174,11 @@ var spine
       attachmentName,
       attachments,
     ) {
-      slot.attachment =
+      slot.setAttachment(
         attachmentName == null
           ? null
-          : skeleton.getAttachment(slot.data.index, attachmentName)
+          : skeleton.getAttachment(slot.data.index, attachmentName),
+      )
       if (attachments)
         slot.attachmentState = this.unkeyedState + AnimationState.CURRENT
     }
@@ -2526,8 +2538,9 @@ var spine
       var propertyIDs = this.propertyIDs
       if (to != null && to.holdPrevious) {
         for (var i = 0; i < timelinesCount; i++) {
-          propertyIDs.add(timelines[i].getPropertyId())
-          timelineMode[i] = AnimationState.HOLD
+          timelineMode[i] = propertyIDs.add(timelines[i].getPropertyId())
+            ? AnimationState.HOLD_FIRST
+            : AnimationState.HOLD_SUBSEQUENT
         }
         return
       }
@@ -2553,7 +2566,7 @@ var spine
             }
             break
           }
-          timelineMode[i] = AnimationState.HOLD
+          timelineMode[i] = AnimationState.HOLD_FIRST
         }
       }
     }
@@ -2578,8 +2591,9 @@ var spine
     AnimationState.emptyAnimation = new spine.Animation('<empty>', [], 0)
     AnimationState.SUBSEQUENT = 0
     AnimationState.FIRST = 1
-    AnimationState.HOLD = 2
-    AnimationState.HOLD_MIX = 3
+    AnimationState.HOLD_SUBSEQUENT = 2
+    AnimationState.HOLD_FIRST = 3
+    AnimationState.HOLD_MIX = 4
     AnimationState.SETUP = 1
     AnimationState.CURRENT = 2
     return AnimationState
@@ -3322,6 +3336,8 @@ var spine
           var prx = 0
           if (s > 0.0001) {
             s = Math.abs(pa * pd - pb * pc) / s
+            pa /= this.skeleton.scaleX
+            pc /= this.skeleton.scaleY
             pb = pc * s
             pd = pa * s
             prx = Math.atan2(pc, pa) * spine.MathUtils.radDeg
@@ -3340,7 +3356,7 @@ var spine
           this.b = pa * lb - pb * ld
           this.c = pc * la + pd * lc
           this.d = pc * lb + pd * ld
-          return
+          break
         }
         case spine.TransformMode.NoScale:
         case spine.TransformMode.NoScaleOrReflection: {
@@ -3654,10 +3670,12 @@ var spine
           ty = targetY - bone.worldY
           break
         case spine.TransformMode.NoRotationOrReflection:
-          rotationIK += Math.atan2(pc, pa) * spine.MathUtils.radDeg
-          var ps = Math.abs(pa * pd - pb * pc) / (pa * pa + pc * pc)
-          pb = -pc * ps
-          pd = pa * ps
+          var s = Math.abs(pa * pd - pb * pc) / (pa * pa + pc * pc)
+          var sa = pa / bone.skeleton.scaleX
+          var sc = pc / bone.skeleton.scaleY
+          pb = -sc * s * bone.skeleton.scaleX
+          pd = sa * s * bone.skeleton.scaleY
+          rotationIK += Math.atan2(sc, sa) * spine.MathUtils.radDeg
         default:
           var x = targetX - p.worldX,
             y = targetY - p.worldY
@@ -4548,15 +4566,41 @@ var spine
       var _this = this
       path = this.pathPrefix + path
       if (!this.queueAsset(clientId, textureLoader, path)) return
-      var img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = function (ev) {
-        _this.rawAssets[path] = img
+      var isBrowser = !!(
+        typeof window !== 'undefined' &&
+        typeof navigator !== 'undefined' &&
+        window.document
+      )
+      var isWebWorker = !isBrowser && typeof importScripts !== 'undefined'
+      if (isWebWorker) {
+        var options = { mode: 'cors' }
+        fetch(path, options)
+          .then(function (response) {
+            if (!response.ok) {
+              _this.errors[path] = "Couldn't load image " + path
+            }
+            return response.blob()
+          })
+          .then(function (blob) {
+            return createImageBitmap(blob, {
+              premultiplyAlpha: 'none',
+              colorSpaceConversion: 'none',
+            })
+          })
+          .then(function (bitmap) {
+            _this.rawAssets[path] = bitmap
+          })
+      } else {
+        var img_1 = new Image()
+        img_1.crossOrigin = 'anonymous'
+        img_1.onload = function (ev) {
+          _this.rawAssets[path] = img_1
+        }
+        img_1.onerror = function (ev) {
+          _this.errors[path] = "Couldn't load image " + path
+        }
+        img_1.src = path
       }
-      img.onerror = function (ev) {
-        _this.errors[path] = "Couldn't load image " + path
-      }
-      img.src = path
     }
     SharedAssetManager.prototype.get = function (clientId, path) {
       path = this.pathPrefix + path
@@ -4565,16 +4609,30 @@ var spine
       return clientAssets.assets[path]
     }
     SharedAssetManager.prototype.updateClientAssets = function (clientAssets) {
+      var isBrowser = !!(
+        typeof window !== 'undefined' &&
+        typeof navigator !== 'undefined' &&
+        window.document
+      )
+      var isWebWorker = !isBrowser && typeof importScripts !== 'undefined'
       for (var i = 0; i < clientAssets.toLoad.length; i++) {
         var path = clientAssets.toLoad[i]
         var asset = clientAssets.assets[path]
         if (asset === null || asset === undefined) {
           var rawAsset = this.rawAssets[path]
           if (rawAsset === null || rawAsset === undefined) continue
-          if (rawAsset instanceof HTMLImageElement) {
-            clientAssets.assets[path] = clientAssets.textureLoader(rawAsset)
+          if (isWebWorker) {
+            if (rawAsset instanceof ImageBitmap) {
+              clientAssets.assets[path] = clientAssets.textureLoader(rawAsset)
+            } else {
+              clientAssets.assets[path] = rawAsset
+            }
           } else {
-            clientAssets.assets[path] = rawAsset
+            if (rawAsset instanceof HTMLImageElement) {
+              clientAssets.assets[path] = clientAssets.textureLoader(rawAsset)
+            } else {
+              clientAssets.assets[path] = rawAsset
+            }
           }
         }
       }
@@ -8112,8 +8170,8 @@ var spine
           page.texture = textureLoader(line)
           page.texture.setFilters(page.minFilter, page.magFilter)
           page.texture.setWraps(page.uWrap, page.vWrap)
-          // page.width = page.texture.getImage().width
-          // page.height = page.texture.getImage().height
+          page.width = page.texture.getImage().width
+          page.height = page.texture.getImage().height
           this.pages.push(page)
         } else {
           var region = new TextureAtlasRegion()
@@ -9118,8 +9176,7 @@ var spine
     }
     Pool.prototype.freeAll = function (items) {
       for (var i = 0; i < items.length; i++) {
-        if (items[i].reset) items[i].reset()
-        this.items[i] = items[i]
+        this.free(items[i])
       }
     }
     Pool.prototype.clear = function () {
@@ -9230,7 +9287,7 @@ var spine
   if (!Math.fround) {
     Math.fround = (function (array) {
       return function (x) {
-        return (array[0] = x), array[0]
+        return ((array[0] = x), array[0])
       }
     })(new Float32Array(1))
   }
@@ -9385,7 +9442,7 @@ var spine
       return _this
     }
     BoundingBoxAttachment.prototype.copy = function () {
-      var copy = new BoundingBoxAttachment(name)
+      var copy = new BoundingBoxAttachment(this.name)
       this.copyTo(copy)
       copy.color.setFromColor(this.color)
       return copy
@@ -9404,7 +9461,7 @@ var spine
       return _this
     }
     ClippingAttachment.prototype.copy = function () {
-      var copy = new ClippingAttachment(name)
+      var copy = new ClippingAttachment(this.name)
       this.copyTo(copy)
       copy.endSlot = this.endSlot
       copy.color.setFromColor(this.color)
@@ -9570,7 +9627,7 @@ var spine
       return _this
     }
     PathAttachment.prototype.copy = function () {
-      var copy = new PathAttachment(name)
+      var copy = new PathAttachment(this.name)
       this.copyTo(copy)
       copy.lengths = new Array(this.lengths.length)
       spine.Utils.arrayCopy(
@@ -9611,7 +9668,7 @@ var spine
       return Math.atan2(y, x) * spine.MathUtils.radDeg
     }
     PointAttachment.prototype.copy = function () {
-      var copy = new PointAttachment(name)
+      var copy = new PointAttachment(this.name)
       copy.x = this.x
       copy.y = this.y
       copy.rotation = this.rotation
@@ -9731,7 +9788,7 @@ var spine
       worldVertices[offset + 1] = offsetX * c + offsetY * d + y
     }
     RegionAttachment.prototype.copy = function () {
-      var copy = new RegionAttachment(name)
+      var copy = new RegionAttachment(this.name)
       copy.region = this.region
       copy.rendererObject = this.rendererObject
       copy.path = this.path
@@ -13423,32 +13480,42 @@ var spine
   ;(function (webgl) {
     var ManagedWebGLRenderingContext = (function () {
       function ManagedWebGLRenderingContext(canvasOrContext, contextConfig) {
-        var _this = this
         if (contextConfig === void 0) {
           contextConfig = { alpha: 'true' }
         }
         this.restorables = new Array()
-        if (canvasOrContext instanceof HTMLCanvasElement) {
-          var canvas = canvasOrContext
-          this.gl =
-            canvas.getContext('webgl2', contextConfig) ||
-            canvas.getContext('webgl', contextConfig)
-          this.canvas = canvas
-          canvas.addEventListener('webglcontextlost', function (e) {
-            var event = e
-            if (e) {
-              e.preventDefault()
-            }
-          })
-          canvas.addEventListener('webglcontextrestored', function (e) {
-            for (var i = 0, n = _this.restorables.length; i < n; i++) {
-              _this.restorables[i].restore()
-            }
-          })
+        if (
+          !(
+            canvasOrContext instanceof WebGLRenderingContext ||
+            canvasOrContext instanceof WebGL2RenderingContext
+          )
+        ) {
+          this.setupCanvas(canvasOrContext, contextConfig)
         } else {
           this.gl = canvasOrContext
           this.canvas = this.gl.canvas
         }
+      }
+      ManagedWebGLRenderingContext.prototype.setupCanvas = function (
+        canvas,
+        contextConfig,
+      ) {
+        var _this = this
+        this.gl =
+          canvas.getContext('webgl2', contextConfig) ||
+          canvas.getContext('webgl', contextConfig)
+        this.canvas = canvas
+        canvas.addEventListener('webglcontextlost', function (e) {
+          var event = e
+          if (e) {
+            e.preventDefault()
+          }
+        })
+        canvas.addEventListener('webglcontextrestored', function (e) {
+          for (var i = 0, n = _this.restorables.length; i < n; i++) {
+            _this.restorables[i].restore()
+          }
+        })
       }
       ManagedWebGLRenderingContext.prototype.addRestorable = function (
         restorable,
@@ -13518,4 +13585,6 @@ var spine
     webgl.WebGLBlendModeConverter = WebGLBlendModeConverter
   })((webgl = spine.webgl || (spine.webgl = {})))
 })(spine || (spine = {}))
+
 export default spine
+//# sourceMappingURL=spine-webgl.js.map
