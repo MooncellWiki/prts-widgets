@@ -1,4 +1,3 @@
-/// <reference types="offscreencanvas" />
 declare module spine {
   class Animation {
     name: string

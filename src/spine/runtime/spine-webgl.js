@@ -13587,4 +13587,3 @@ var spine
 })(spine || (spine = {}))
 
 export default spine
-//# sourceMappingURL=spine-webgl.js.map
