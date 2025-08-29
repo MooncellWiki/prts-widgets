@@ -168,12 +168,12 @@ const showTrimed = ref(false);
               <div v-else class="flex items-center pl-1">
                 <div class="pr-1">获得</div>
                 <MiniMedalComponent
-                  v-for="miniMedalId in medalData.preMedalList"
-                  :key="miniMedalId"
+                  v-for="miniMedal in medalData.preMedalList"
+                  :key="miniMedal.id"
                   :medal-data="
                     miniMedalData
-                      ? miniMedalData[miniMedalId]
-                      : { name: '', id: '', method: '' }
+                      ? miniMedalData[miniMedal.id]
+                      : { name: '', picId: '', method: '', isTrim: false }
                   "
                 />
               </div>
