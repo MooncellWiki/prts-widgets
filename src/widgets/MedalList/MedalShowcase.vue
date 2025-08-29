@@ -20,7 +20,7 @@ import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
 import { getMedalMetaData } from "./utils";
 
-import type { MedalMetaData } from "./types";
+import type { MedalMetaData, MiniMedal, PreMedalItem } from "./types";
 
 const props = withDefaults(
   defineProps<{
@@ -59,9 +59,11 @@ const filteredMedalData = computed(() => {
     }),
   );
 
-  const preMedals: Record<string, Record<string, any>> = {};
+  const preMedals: Record<string, Record<string, MiniMedal>> = {};
   for (const parentMedalId of props.medalList) {
-    const entry: [string, Record<string, any>] = [parentMedalId, {}];
+    const entry: PreMedalItem = {
+      [parentMedalId]: {},
+    };
 
     const medal = Object.entries(medalMetaData.value.medal).find(([id]) => {
       return id === parentMedalId;
@@ -69,21 +71,19 @@ const filteredMedalData = computed(() => {
     if (!medal) continue;
 
     for (const preMedalDefine of medal[1].preMedalList) {
-      entry[1][preMedalDefine.id] = {
-        name: medalMetaData.value.medal[preMedalDefine.id].name,
+      const currMedalData = medalMetaData.value.medal[preMedalDefine.id];
+
+      entry[parentMedalId][preMedalDefine.id] = {
+        name: currMedalData.name,
         isTrim: preMedalDefine.isTrim,
-        picId:
-          medalMetaData.value.medal[preMedalDefine.id][
-            preMedalDefine.isTrim ? "trimId" : "id"
-          ],
-        method:
-          medalMetaData.value.medal[preMedalDefine.id][
-            preMedalDefine.isTrim ? "trimMethod" : "method"
-          ],
+        picId: preMedalDefine.isTrim ? currMedalData.trimId : currMedalData.id,
+        method: preMedalDefine.isTrim
+          ? currMedalData.trimMethod
+          : currMedalData.method,
       };
     }
 
-    Object.assign(preMedals, Object.fromEntries([entry]));
+    Object.assign(preMedals, entry);
   }
 
   return {

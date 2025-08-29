@@ -16,8 +16,8 @@ export interface Medal {
 
 export interface MiniMedal {
   name: string;
-  picId: string;
-  method: string;
+  picId?: string;
+  method?: string;
   isTrim: boolean;
 }
 
@@ -74,5 +74,11 @@ export interface MedalMetaDataCore {
       medalGroup: Array<string>;
       medal: Array<string>;
     };
+  };
+}
+
+export interface PreMedalItem {
+  [id: string]: {
+    [preId: string]: MiniMedal;
   };
 }
