@@ -61,29 +61,26 @@ const filteredMedalData = computed(() => {
 
   const preMedals: Record<string, Record<string, any>> = {};
   for (const parentMedalId of props.medalList) {
-    console.log(parentMedalId);
-
     const entry: [string, Record<string, any>] = [parentMedalId, {}];
 
     const medal = Object.entries(medalMetaData.value.medal).find(([id]) => {
       return id === parentMedalId;
     });
+    if (!medal) continue;
 
-    if (medal) {
-      for (const preMedalDefine of medal[1].preMedalList) {
-        entry[1][preMedalDefine.id] = {
-          name: medalMetaData.value.medal[preMedalDefine.id].name,
-          isTrim: preMedalDefine.isTrim,
-          picId:
-            medalMetaData.value.medal[preMedalDefine.id][
-              preMedalDefine.isTrim ? "trimId" : "id"
-            ],
-          method:
-            medalMetaData.value.medal[preMedalDefine.id][
-              preMedalDefine.isTrim ? "trimMethod" : "method"
-            ],
-        };
-      }
+    for (const preMedalDefine of medal[1].preMedalList) {
+      entry[1][preMedalDefine.id] = {
+        name: medalMetaData.value.medal[preMedalDefine.id].name,
+        isTrim: preMedalDefine.isTrim,
+        picId:
+          medalMetaData.value.medal[preMedalDefine.id][
+            preMedalDefine.isTrim ? "trimId" : "id"
+          ],
+        method:
+          medalMetaData.value.medal[preMedalDefine.id][
+            preMedalDefine.isTrim ? "trimMethod" : "method"
+          ],
+      };
     }
 
     Object.assign(preMedals, Object.fromEntries([entry]));

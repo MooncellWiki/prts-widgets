@@ -285,11 +285,7 @@ const i18nConfig = getNaiveUILocale();
                 responsive="screen"
                 size="small"
                 align="stretch"
-                :class="[
-                  {
-                    'w-full': cate.medal.length <= 1,
-                  },
-                ]"
+                :class="cate.medal.length <= 1 ? 'w-full' : ''"
               >
                 <MedalComponent
                   v-for="medalId in cate.medal.filter((medalId) =>
