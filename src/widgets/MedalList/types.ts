@@ -10,14 +10,15 @@ export interface Medal {
   trimId?: string;
   trimMethod?: string;
   reward?: Array<Array<string>>;
-  preMedalList: Array<string>;
+  preMedalList: Array<{ id: string; isTrim: boolean }>;
   deprecate: boolean;
 }
 
 export interface MiniMedal {
   name: string;
-  id: string;
-  method: string;
+  picId?: string;
+  method?: string;
+  isTrim: boolean;
 }
 
 export interface MedalGroup {
@@ -73,5 +74,11 @@ export interface MedalMetaDataCore {
       medalGroup: Array<string>;
       medal: Array<string>;
     };
+  };
+}
+
+export interface PreMedalItem {
+  [id: string]: {
+    [preId: string]: MiniMedal;
   };
 }

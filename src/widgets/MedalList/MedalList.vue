@@ -140,15 +140,20 @@ const checkMedalExists = (medalId: string) => {
 const toggleDeprecateBadge = () => {
   showDeprecateBadge.value = !showDeprecateBadge.value;
 };
-const genPreMedalList = (idList: Array<string>) => {
+const genPreMedalList = (idList: Array<{ id: string; isTrim: boolean }>) => {
   return Object.fromEntries(
-    idList.map((id) => {
+    idList.map((d) => {
       return [
-        id,
+        d.id,
         {
-          name: medalMetaData.value.medal[id].name,
-          id: medalMetaData.value.medal[id].id,
-          method: medalMetaData.value.medal[id].method,
+          name: medalMetaData.value.medal[d.id].name,
+          isTrim: d.isTrim,
+          picId:
+            medalMetaData.value.medal[d.id][d.isTrim ? "trimId" : "id"] || "",
+          method:
+            medalMetaData.value.medal[d.id][
+              d.isTrim ? "trimMethod" : "method"
+            ] || "",
         },
       ];
     }),
@@ -276,7 +281,12 @@ const i18nConfig = getNaiveUILocale();
               size="small"
               align="stretch"
             >
-              <NFlex responsive="screen" size="small" align="stretch">
+              <NFlex
+                responsive="screen"
+                size="small"
+                align="stretch"
+                :class="cate.medal.length <= 1 ? 'w-full' : ''"
+              >
                 <MedalComponent
                   v-for="medalId in cate.medal.filter((medalId) =>
                     checkMedalExists(medalId),
@@ -315,6 +325,7 @@ const i18nConfig = getNaiveUILocale();
               />
               <div
                 v-if="cate.medal.length === 0 && cate.medalGroup.length === 0"
+                class="w-full"
               >
                 <NEmpty>
                   <template #default>

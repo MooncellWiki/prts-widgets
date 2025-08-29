@@ -20,7 +20,7 @@ import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
 import { getMedalMetaData } from "./utils";
 
-import type { MedalMetaData } from "./types";
+import type { MedalMetaData, MiniMedal, PreMedalItem } from "./types";
 
 const props = withDefaults(
   defineProps<{
@@ -59,9 +59,37 @@ const filteredMedalData = computed(() => {
     }),
   );
 
+  const preMedals: Record<string, Record<string, MiniMedal>> = {};
+  for (const parentMedalId of props.medalList) {
+    const entry: PreMedalItem = {
+      [parentMedalId]: {},
+    };
+
+    const medal = Object.entries(medalMetaData.value.medal).find(([id]) => {
+      return id === parentMedalId;
+    });
+    if (!medal) continue;
+
+    for (const preMedalDefine of medal[1].preMedalList) {
+      const currMedalData = medalMetaData.value.medal[preMedalDefine.id];
+
+      entry[parentMedalId][preMedalDefine.id] = {
+        name: currMedalData.name,
+        isTrim: preMedalDefine.isTrim,
+        picId: preMedalDefine.isTrim ? currMedalData.trimId : currMedalData.id,
+        method: preMedalDefine.isTrim
+          ? currMedalData.trimMethod
+          : currMedalData.method,
+      };
+    }
+
+    Object.assign(preMedals, entry);
+  }
+
   return {
     medal,
     medalGroup,
+    preMedals,
   };
 });
 
@@ -191,6 +219,7 @@ const i18nConfig = getNaiveUILocale();
             <MedalComponent
               v-if="filteredMedalData.medal[medalId]"
               :medal-data="filteredMedalData.medal[medalId]"
+              :mini-medal-data="filteredMedalData.preMedals[medalId]"
             />
           </NGridItem>
           <NGridItem v-for="medalGroupId in medalGroupList" :key="medalGroupId">
