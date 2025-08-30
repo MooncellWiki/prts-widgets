@@ -6,28 +6,15 @@ import { NConfigProvider, NSelect } from "naive-ui";
 import FormItem from "@/components/FormItem.vue";
 
 import VoicePlayer from "./VoicePlayer.vue";
+import { ILLUST_SHOW_TYPES, SkinVoiceType } from "./consts";
+
+import type { Props } from "./types";
 
 const isSimplified = !decodeURIComponent(document.title).includes("/语音记录");
-const props = withDefaults(
-  defineProps<{
-    tocTitle?: string;
-    voiceKey?: string;
-    voiceData: {
-      title?: string;
-      index?: string;
-      fileName?: string;
-      directLinks: Record<string, string>;
-      cond?: string;
-      detail: Record<string, string>;
-    }[];
-    langArr?: string[];
-    voiceBase?: { lang: string; path: string }[];
-  }>(),
-  {
-    langArr: () => [],
-    voiceBase: () => [],
-  },
-);
+const props = withDefaults(defineProps<Props>(), {
+  langArr: () => [],
+  voiceBase: () => [],
+});
 
 const isCollapsed = ref(true);
 const selectedWordLang = ref(["中文"]);
@@ -38,6 +25,26 @@ const playKey = ref(-1);
 const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
   selectedVoicePath.value = newValue;
   selectedVoiceLang.value = newOptions.lang || "";
+};
+const getVoicePath = (fileName?: string, placeType?: string) => {
+  if (!fileName) return "";
+
+  const override = props?.overrideVoiceBase?.find(
+    (item) => item.lang === selectedVoiceLang.value,
+  );
+  if (override) {
+    const isInIllustShowTypes = ILLUST_SHOW_TYPES.has(placeType || "");
+    const overrideVoicePath = `${override.path}/${fileName?.replace(/\s/g, "_")}`;
+
+    if (isInIllustShowTypes && override.mode === SkinVoiceType.ILLUST) {
+      return overrideVoicePath;
+    }
+    if (override.mode === SkinVoiceType.ALL) {
+      return overrideVoicePath;
+    }
+  }
+
+  return `${selectedVoicePath.value}/${fileName?.replace(/\s/g, "_")}`;
 };
 
 provide("audioElem", new Audio());
@@ -104,10 +111,7 @@ provide("audioElem", new Audio());
                   v-model:play-key="playKey"
                   :direct-link="ele?.directLinks[selectedVoiceLang]"
                   :voice-id="`${voiceKey}/${ele?.title}`"
-                  :voice-path="`${selectedVoicePath}/${ele?.fileName?.replace(
-                    /\s/g,
-                    '_',
-                  )}`"
+                  :voice-path="getVoicePath(ele.fileName, ele.placeType)"
                 />
               </div>
             </div>

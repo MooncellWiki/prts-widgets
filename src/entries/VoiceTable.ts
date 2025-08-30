@@ -21,6 +21,15 @@ const voiceBase =
       path,
     };
   }) || [];
+const overrideVoiceBase =
+  dataRoot?.dataset?.overrideVoiceBase?.split(",").map((kvp) => {
+    const [lang, mode, path] = kvp.split(":");
+    return {
+      lang,
+      mode: Number(mode),
+      path,
+    };
+  }) || [];
 
 const dataDomList = Array.from(dataEle);
 const voiceData = [];
@@ -60,6 +69,7 @@ for (const dom of dataDomList) {
   const directLinks = parseDirectLinks(dom.dataset.directLinks);
   const cond = dom.dataset?.cond;
   const detail = parseDetail(dom.children);
+  const placeType = dom.dataset?.placeType;
 
   voiceData.push({
     title,
@@ -68,6 +78,7 @@ for (const dom of dataDomList) {
     directLinks,
     cond,
     detail,
+    placeType,
   });
 }
 
@@ -77,7 +88,15 @@ const langArr = Array.from(langSet);
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error;
 window.charVoice = voiceData;
-console.log(dataRoot, voiceData, voiceBase, langSet);
+if (import.meta.env.DEV)
+  console.log(
+    "[VoiceTable] init data:",
+    dataRoot,
+    voiceData,
+    voiceBase,
+    langSet,
+    overrideVoiceBase,
+  );
 
 const isMobile = isMobileSkin();
 if (
@@ -93,6 +112,7 @@ if (
       voiceData,
       langArr,
       voiceBase,
+      overrideVoiceBase,
     }).mount(ele);
   } else {
     createApp(Voice, {
@@ -101,6 +121,7 @@ if (
       voiceData,
       langArr,
       voiceBase,
+      overrideVoiceBase,
     }).mount(ele);
   }
 } else {
