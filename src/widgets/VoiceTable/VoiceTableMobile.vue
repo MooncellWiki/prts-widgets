@@ -25,6 +25,7 @@ const playKey = ref(-1);
 const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
   selectedVoicePath.value = newValue;
   selectedVoiceLang.value = newOptions.lang || "";
+  playKey.value = -1;
 };
 const getVoicePath = (fileName?: string, placeType?: string) => {
   if (!fileName) return "";
@@ -32,14 +33,13 @@ const getVoicePath = (fileName?: string, placeType?: string) => {
   const override = props?.overrideVoiceBase?.find(
     (item) => item.lang === selectedVoiceLang.value,
   );
-  if (override) {
-    const isInIllustShowTypes = ILLUST_SHOW_TYPES.has(placeType || "");
+  if (override && placeType) {
+    const isNotInIllustShowTypes = !ILLUST_SHOW_TYPES.has(placeType);
     const overrideVoicePath = `${override.path}/${fileName?.replace(/\s/g, "_")}`;
-
-    if (isInIllustShowTypes && override.mode === SkinVoiceType.ILLUST) {
-      return overrideVoicePath;
-    }
-    if (override.mode === SkinVoiceType.ALL) {
+    // 罗小黑兼容
+    // 精一（猫形态）：战斗中是人形态语音，战斗外是猫形态语音
+    // 精二（人形态）：ILLUST_SHOW_TYPES 里的语音覆盖精一，战斗内外均为人形态语音
+    if (isNotInIllustShowTypes && override.mode === SkinVoiceType.ILLUST) {
       return overrideVoicePath;
     }
   }

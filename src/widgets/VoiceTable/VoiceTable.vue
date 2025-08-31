@@ -33,7 +33,6 @@ const getVoicePath = (fileName?: string, placeType?: string) => {
   const override = props?.overrideVoiceBase?.find(
     (item) => item.lang === selectedVoiceLang.value,
   );
-  console.log("override", override, placeType);
   if (override && placeType) {
     const isNotInIllustShowTypes = !ILLUST_SHOW_TYPES.has(placeType);
     const overrideVoicePath = `${override.path}/${fileName?.replace(/\s/g, "_")}`;
