@@ -22,9 +22,7 @@ const getAvatarURL = (voiceId: string) => {
 
 const sortedVoiceData = computed(() => {
   const sortedCvNames = Object.keys(props.voiceData).sort(
-    (cvNameA, cvNameB) => {
-      return cvNameA.localeCompare(cvNameB);
-    },
+    (cvNameA, cvNameB) => cvNameA.localeCompare(cvNameB),
   );
 
   const ordered = [];
