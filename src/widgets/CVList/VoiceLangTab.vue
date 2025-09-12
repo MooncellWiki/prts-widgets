@@ -25,10 +25,7 @@ const sortedVoiceData = computed(() => {
     (cvNameA, cvNameB) => cvNameA.localeCompare(cvNameB),
   );
 
-  const ordered = [];
-  for (const cvName of sortedCvNames) {
-    ordered.push({ cvName, voiceIds: props.voiceData[cvName] });
-  }
+  const ordered = sortedCvNames.map(cvName => ({ cvName, voiceIds: props.voiceData[cvName] }));
 
   return ordered;
 });
