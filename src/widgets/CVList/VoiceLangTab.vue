@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { NH2 } from "naive-ui";
+import { computed } from "vue";
+
+import { NDivider, NH2 } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
@@ -17,16 +19,28 @@ const getAvatarURL = (voiceId: string) => {
     TORAPPU_ENDPOINT,
   );
 };
+
+const sortedVoiceData = computed(() => {
+  const sortedCvNames = Object.keys(props.voiceData).sort(
+    (cvNameA, cvNameB) => cvNameA.localeCompare(cvNameB),
+  );
+
+  const ordered = sortedCvNames.map(cvName => ({ cvName, voiceIds: props.voiceData[cvName] }));
+
+  return ordered;
+});
+
+const lastVoiceIdsIndex = computed(() => sortedVoiceData.value.length - 1);
 </script>
 
 <template>
-  <div v-for="(voiceIds, cvName) in voiceData" :key="cvName">
-    <NH2>
-      <span :id="cvName" class="mw-headline">{{ cvName }}</span>
+  <div v-for="(item, index) in sortedVoiceData" :key="item.cvName">
+    <NH2 class="border-b-0">
+      <span :id="item.cvName" class="mw-headline">{{ item.cvName }}</span>
     </NH2>
     <a
-      v-for="voiceId in voiceIds"
-      :key="[cvName, voiceId].join('_')"
+      v-for="voiceId in item.voiceIds"
+      :key="[item.cvName, voiceId].join('_')"
       :href="`/w/${mapping[charMapping[voiceId] || voiceId]}`"
     >
       <img
@@ -36,6 +50,7 @@ const getAvatarURL = (voiceId: string) => {
         width="80"
       />
     </a>
+    <NDivider v-if="index !== lastVoiceIdsIndex" />
   </div>
 </template>
 

@@ -44,7 +44,7 @@ if (window.location.hash) {
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="mx-auto p-2 antialiased">
+    <NLayout class="mx-auto bg-transparent p-2 antialiased">
       <n-tabs v-model:value="valueRef" type="line" animated>
         <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
           <VoiceLangTab
