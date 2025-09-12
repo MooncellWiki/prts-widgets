@@ -8147,11 +8147,10 @@ var spine
       while (true) {
         var line = reader.readLine()
         if (line == null) break
-        line = line.trim()
-        if (line.length == 0) page = null
+        if (line.trim().length == 0) page = null
         else if (!page) {
           page = new TextureAtlasPage()
-          page.name = line
+          page.name = line.trim()
           if (reader.readTuple(tuple) == 2) {
             page.width = parseInt(tuple[0])
             page.height = parseInt(tuple[1])
