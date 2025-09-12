@@ -21,11 +21,14 @@ const getAvatarURL = (voiceId: string) => {
 };
 
 const sortedVoiceData = computed(() => {
-  const sortedCvNames = Object.keys(props.voiceData).sort(
-    (cvNameA, cvNameB) => cvNameA.localeCompare(cvNameB),
+  const sortedCvNames = Object.keys(props.voiceData).sort((cvNameA, cvNameB) =>
+    cvNameA.localeCompare(cvNameB),
   );
 
-  const ordered = sortedCvNames.map(cvName => ({ cvName, voiceIds: props.voiceData[cvName] }));
+  const ordered = sortedCvNames.map((cvName) => ({
+    cvName,
+    voiceIds: props.voiceData[cvName],
+  }));
 
   return ordered;
 });
