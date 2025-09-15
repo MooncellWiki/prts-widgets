@@ -101,4 +101,5 @@ export interface CharSkinData {
 
 export interface SkinTable {
   charSkins: CharSkinData;
+  buildinPatchMap: Record<string, Record<string, string>>;
 }

@@ -12,10 +12,20 @@ async function initSkinTable() {
   const table: SkinTable = await response.json();
   const avatarMapping: Record<string, string> = {};
   const charMapping: Record<string, string> = {};
+
   for (const skin of Object.values(table.charSkins)) {
     if (skin.voiceId) {
       avatarMapping[skin.voiceId] = skin.avatarId;
       charMapping[skin.voiceId] = skin.charId;
+    }
+  }
+
+  const buildinPatchMap = table.buildinPatchMap;
+  if (buildinPatchMap) {
+    for (const charPatch of Object.values(buildinPatchMap)) {
+      for (const [charPatchId, charSkinId] of Object.entries(charPatch)) {
+        avatarMapping[charPatchId] = table.charSkins[charSkinId].avatarId;
+      }
     }
   }
 
@@ -35,9 +45,7 @@ async function initCharMap() {
   const json = await response.json();
   const cargoquery = json.cargoquery;
 
-  const mapping: Record<string, string> = {
-    char_1001_amiya2: "阿米娅(近卫)",
-  };
+  const mapping: Record<string, string> = {};
   for (const query of cargoquery) {
     const { charId, pageName } = query.title;
     if (charId && pageName) {
