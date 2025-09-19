@@ -47,8 +47,8 @@ const isIconMode = ref(!!isMobile);
 const { theme, toggleDark } = useTheme();
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
-  pageSizes: [10, 25, 50, 100],
+  pageSize: 50,
+  pageSizes: [50, 100, 200, 500],
   pageSlot: isMobile ? 5 : 9,
   showSizePicker: true,
   onChange: (page: number) => {
