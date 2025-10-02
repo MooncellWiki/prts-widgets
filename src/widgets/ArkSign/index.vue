@@ -309,7 +309,6 @@ async function GenerateImg(type: string) {
   console.log("开始截图", el.clientWidth, el.clientHeight);
   const result = await snapdom(el as HTMLElement, {
     scale: imgScale.value,
-    compress: true,
     fast: true,
   });
   const imgResult = await result.toPng();
