@@ -2,7 +2,7 @@
   "name": "mooncell-widget",
   "type": "module",
   "version": "0.0.0",
-  "packageManager": "pnpm@10.17.1",
+  "packageManager": "pnpm@10.18.0",
   "private": true,
   "scripts": {
     "create": "tsx scripts/index.ts",
@@ -35,7 +35,7 @@
     "workbox-strategies": "^7.3.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
+    "@eslint/js": "^9.37.0",
     "@types/ali-oss": "^6.16.11",
     "@types/crypto-js": "^4.2.2",
     "@types/hammerjs": "^2.0.46",
@@ -49,9 +49,9 @@
     "@unocss/transformer-directives": "^66.5.2",
     "@vitejs/plugin-legacy": "^7.2.1",
     "@vitejs/plugin-vue": "^6.0.1",
-    "@vue/tsconfig": "^0.7.0",
+    "@vue/tsconfig": "^0.8.1",
     "ali-oss": "^6.23.0",
-    "eslint": "^9.36.0",
+    "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import-x": "^4.16.1",
     "eslint-plugin-prettier": "^5.5.4",
@@ -64,10 +64,10 @@
     "rollup-plugin-visualizer": "^6.0.4",
     "terser": "^5.44.0",
     "tsx": "^4.20.6",
-    "typescript": "~5.8.3",
+    "typescript": "~5.9.3",
     "typescript-eslint": "^8.45.0",
     "unocss": "^66.5.2",
-    "vite": "^7.1.8",
+    "vite": "^7.1.9",
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.1.0"
   },
