@@ -64,7 +64,7 @@
     "prettier": "^3.6.2",
     "rollup-plugin-visualizer": "^6.0.4",
     "terser": "^5.44.0",
-    "tough-cookie": "^5.1.2",
+    "tough-cookie": "^6.0.0",
     "tsx": "^4.20.6",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.45.0",
