@@ -12,6 +12,10 @@ import Equip from "./Equip.vue";
 
 import type { EquipRow } from "../types";
 
+function replaceGreek(res: string) {
+  return res.replace("Δ", "D").replace("α", "A").replace("β", "B");
+}
+
 const columns = (): DataTableColumns<EquipRow> => {
   return [
     {
@@ -56,7 +60,7 @@ const columns = (): DataTableColumns<EquipRow> => {
               h("div", [
                 h("img", {
                   src: getImagePath(
-                    `模组类型_${row.type.replace("Δ", "D").replace("α", "A")}_小图.png`,
+                    `模组类型_${replaceGreek(row.type)}_小图.png`,
                   ),
                   width: 60,
                   style: {
