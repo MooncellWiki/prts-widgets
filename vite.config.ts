@@ -6,7 +6,7 @@ import legacy from "@vitejs/plugin-legacy";
 import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
-import { defineConfig, type UserConfig } from "vite";
+import { defineConfig } from "vite";
 
 const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
 const BASE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +30,7 @@ for (const template of templates) {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command }): UserConfig => {
+export default defineConfig(({ command }) => {
   const useHtmlMode = command === "build";
 
   return {
