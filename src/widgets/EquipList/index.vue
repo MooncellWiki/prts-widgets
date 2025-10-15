@@ -143,9 +143,8 @@ const filterData = (data: DOMStringMap): boolean => {
       case "type": {
         const { type } = data;
         const match = !!type?.match(new RegExp(`-${v.value}`, "i"));
-        const nmatch = !type?.match(/-[xyαδ]/i);
 
-        return v.value === "o" ? nmatch : match;
+        return match;
       }
       case "talent": {
         const { talent2 = "", talent3 = "" } = data;

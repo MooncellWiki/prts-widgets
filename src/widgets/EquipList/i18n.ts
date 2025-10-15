@@ -549,6 +549,10 @@ export function getFilterValue(locale: LANGUAGES, option: string = "all") {
           label: "α",
           value: "α",
         },
+        {
+          label: "β",
+          value: "β",
+        },
       ]
     : [
         {
