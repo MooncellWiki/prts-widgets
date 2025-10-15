@@ -25,7 +25,11 @@ const statesRef = useVModel(props, "states", emit);
 </script>
 
 <template>
-  <NCard :title="title" header-style="text-align: center;" size="small">
+  <NCard
+    v-bind="title ? { title } : {}"
+    header-style="text-align: center;"
+    size="small"
+  >
     <template #header-extra>
       <div @click="showRef = !showRef">
         <span v-if="showRef" class="mdi mdi-chevron-up text-2xl" />
@@ -37,9 +41,10 @@ const statesRef = useVModel(props, "states", emit);
         <tbody class="align-baseline">
           <tr v-for="(filter, field) in filters" :key="field">
             <OptionsGroup
-              v-model="statesRef[field]"
+              v-bind="statesRef[field] ? { modelValue: statesRef[field] } : {}"
               :title="filter.title"
               :options="filter.options"
+              @update:model-value="(v: string[]) => statesRef[field] = v"
             />
           </tr>
         </tbody>

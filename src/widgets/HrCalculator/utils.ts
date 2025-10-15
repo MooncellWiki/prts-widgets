@@ -101,7 +101,10 @@ export class BitMap {
       let tmp = 0;
       const indices = i.getIndict();
       for (const index of indices) {
-        tmp = tmp | (1 << selfIndices[index]);
+        const selfIndex = selfIndices[index];
+        if (selfIndex !== undefined) {
+          tmp = tmp | (1 << selfIndex);
+        }
       }
       if (tmp !== 0) result.push(tmp);
     }
@@ -259,11 +262,14 @@ export function can5(num: number) {
 }
 export function number2names(num: number): string[] {
   const bitmap = new BitMap(num);
-  return bitmap.getIndict().map((v) => {
-    if (v <= tagIndex) return tag[tagIndex - v];
-    if (v <= rarityIndex) return rarity[rarityIndex - v];
-    if (v <= positionIndex) return position[positionIndex - v];
-    if (v <= professionIndex) return profession[professionIndex - v];
-    throw new Error(`unknown: ${v}`);
-  });
+  return bitmap
+    .getIndict()
+    .map((v) => {
+      if (v <= tagIndex) return tag[tagIndex - v];
+      if (v <= rarityIndex) return rarity[rarityIndex - v];
+      if (v <= positionIndex) return position[positionIndex - v];
+      if (v <= professionIndex) return profession[professionIndex - v];
+      throw new Error(`unknown: ${v}`);
+    })
+    .filter((name): name is string => name !== undefined);
 }

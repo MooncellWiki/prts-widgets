@@ -4,7 +4,7 @@ import type { CargoEquip, EquipTime } from "./types";
 
 export async function getEquipData(name: string): Promise<DOMStringMap[]> {
   const result = await getEquipDataAll();
-  return result[name];
+  return result[name] ?? [];
 }
 
 export async function getEquipDataAll(): Promise<
@@ -30,10 +30,14 @@ export async function getEquipDataAll(): Promise<
     offset += json.cargoquery.length;
     const temp: Record<string, CargoEquip[]> = {};
     for (const e of json.cargoquery) {
-      if (!temp[e.title.opt]) {
-        temp[e.title.opt] = [];
+      const optKey = e.title.opt;
+      if (!temp[optKey]) {
+        temp[optKey] = [];
       }
-      temp[e.title.opt].push(e.title);
+      const tempArray = temp[optKey];
+      if (tempArray) {
+        tempArray.push(e.title);
+      }
     }
 
     for (const [opt, ce] of Object.entries(temp)) {

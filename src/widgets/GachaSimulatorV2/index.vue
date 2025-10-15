@@ -150,9 +150,9 @@ const getSelectedUpCharInfo = () => {
     let percentSum = 0.5;
     const rarityNum = Number.parseInt(rarity);
     if (props.gachaClientPool?.gachaRuleType === GachaRuleType.FESCLASSIC) {
-      percentSum = FESCLASSIC_GACHA_PERCENT_DICT[rarityNum];
+      percentSum = FESCLASSIC_GACHA_PERCENT_DICT[rarityNum] ?? 0.5;
     } else if (props.gachaClientPool?.gachaRuleType === GachaRuleType.SPECIAL) {
-      percentSum = SPECIAL_GACHA_PERCENT_DICT[rarityNum];
+      percentSum = SPECIAL_GACHA_PERCENT_DICT[rarityNum] ?? 0.5;
     }
 
     upCharInfo.perCharList.push({

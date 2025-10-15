@@ -186,12 +186,18 @@ export class GachaExecutor {
       );
       if (up5StarUngottenList.length > 0) {
         const charId = up5StarUngottenList[0];
-        result = { charId, rarity: RarityRank.TIER_5 };
+        if (charId) {
+          result = { charId, rarity: RarityRank.TIER_5 };
+        }
       }
     }
 
-    if (this.state.results[result.charId]) this.state.results[result.charId]++;
-    else this.state.results[result.charId] = 1;
+    const existingCount = this.state.results[result.charId];
+    if (existingCount !== undefined) {
+      this.state.results[result.charId] = existingCount + 1;
+    } else {
+      this.state.results[result.charId] = 1;
+    }
 
     // 6 星计数
     if (result.rarity === RarityRank.TIER_6) this.state.non6StarCount = 0;
