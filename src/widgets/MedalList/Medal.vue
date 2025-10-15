@@ -242,7 +242,7 @@ const showTrimed = ref(false);
               >
               <div v-for="reward in medalData.reward" :key="reward[0]">
                 <NBadge
-                  v-bind="reward[1] ? { value: reward[1] } : {}"
+                  :value="reward[1]"
                   color="#2f2f2f"
                   :offset="['-1em', '3em']"
                   :show="!(reward[1] === '0' || reward[1] === '')"

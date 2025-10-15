@@ -447,7 +447,7 @@ function calcServerColor(id: string) {
             @end="onEnd"
           >
             <TransitionGroup
-              v-bind="!drag && { name: 'fade' }"
+              :name="!drag ? 'fade' : undefined"
               type="transition"
               tag="div"
               class="signContainer-inner"
@@ -573,7 +573,7 @@ function calcServerColor(id: string) {
         选择游戏角色：
         <div style="min-width: 200px; margin-left: 10px">
           <n-select
-            v-bind="selectUid !== undefined ? { value: selectUid } : {}"
+            :value="selectUid"
             :options="bindingListOptions"
             :render-label="renderLabel"
             @update:value="handleChangeUid"
@@ -625,7 +625,7 @@ function calcServerColor(id: string) {
         <div class="w-full" style="margin-bottom: 5px">选择游戏角色：</div>
         <div class="w-full">
           <n-select
-            v-bind="selectUid !== undefined ? { value: selectUid } : {}"
+            :value="selectUid"
             :options="bindingListOptions"
             :render-label="renderLabel"
             @update:value="handleChangeUid"

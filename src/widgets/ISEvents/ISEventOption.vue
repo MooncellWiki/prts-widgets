@@ -30,7 +30,7 @@ const showSubChoose = ref(false);
 <template>
   <NCard
     v-if="title || desc1 || desc2"
-    v-bind="type === 'guide' ? {} : { title }"
+    :title="type === 'guide' ? '' : title"
     :style="[
       type === 'desc'
         ? { cursor: 'default' }

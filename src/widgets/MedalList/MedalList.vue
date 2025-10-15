@@ -227,7 +227,7 @@ const i18nConfig = getNaiveUILocale();
             <tbody class="align-baseline">
               <tr>
                 <OptionsGroup
-                  v-bind="states.rarity ? { modelValue: states.rarity } : {}"
+                  :model-value="states.rarity"
                   :title="filterRarity.title"
                   :options="filterRarity.options"
                   @update:model-value="(v: string[]) => (states.rarity = v)"
@@ -235,7 +235,7 @@ const i18nConfig = getNaiveUILocale();
               </tr>
               <tr>
                 <OptionsGroup
-                  v-bind="states.special ? { modelValue: states.special } : {}"
+                  :model-value="states.special"
                   :title="filterSpecial.title"
                   :options="filterSpecial.options"
                   @update:model-value="(v: string[]) => (states.special = v)"
@@ -298,11 +298,7 @@ const i18nConfig = getNaiveUILocale();
                     checkMedalExists(medalId),
                   )"
                   :key="medalId"
-                  v-bind="{
-                    ...(filteredMedalData.medal[medalId]
-                      ? { medalData: filteredMedalData.medal[medalId]! }
-                      : { medalData: {} as any }),
-                  }"
+                  :medal-data="filteredMedalData.medal[medalId]!"
                   :show-deprecate-badge="showDeprecateBadge"
                   :mini-medal-data="
                     (() => {

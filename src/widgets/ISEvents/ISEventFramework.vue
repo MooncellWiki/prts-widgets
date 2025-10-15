@@ -290,12 +290,8 @@ function getSubChooseData(scStr: string) {
                 <ISEventOption
                   v-for="(item, index) in currentScene.options"
                   :key="index"
-                  v-bind="{
-                    ...(item.iconId ? { iconId: item.iconId } : {}),
-                    ...(item.customBadgeText
-                      ? { customBadgeText: item.customBadgeText }
-                      : {}),
-                  }"
+                  :icon-id="item.iconId"
+                  :custom-badge-text="item.customBadgeText"
                   :title="item.title"
                   :type="item.type"
                   :icon="item.icon"

@@ -364,7 +364,7 @@ const mobileStyle = () => {
             <tbody class="align-baseline">
               <tr>
                 <OptionsGroup
-                  v-bind="states.type ? { modelValue: states.type } : {}"
+                  :model-value="states.type"
                   :title="options.type.title"
                   :options="options.type.options"
                   :disabled="loadingCount > 0"
@@ -373,7 +373,7 @@ const mobileStyle = () => {
               </tr>
               <tr>
                 <OptionsGroup
-                  v-bind="states.rarity ? { modelValue: states.rarity } : {}"
+                  :model-value="states.rarity"
                   :title="options.rarity.title"
                   :options="options.rarity.options"
                   :disabled="loadingCount > 0"
@@ -506,9 +506,7 @@ const mobileStyle = () => {
         </NCollapseTransition>
       </NCard>
       <NCard
-        v-bind="{
-          ...(mobileStyle() ? { contentStyle: mobileStyle()! } : {}),
-        }"
+        :content-style="mobileStyle() || undefined"
         title=" "
         header-style="text-align: center;"
         size="small"

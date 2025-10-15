@@ -48,7 +48,7 @@ if (window.location.hash) {
   >
     <NLayout class="mx-auto bg-transparent p-2 antialiased">
       <n-tabs
-        v-bind="valueRef ? { value: valueRef } : {}"
+        :value="valueRef"
         type="line"
         animated
         @update:value="(v: string) => (valueRef = v)"
