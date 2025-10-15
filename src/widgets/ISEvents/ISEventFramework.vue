@@ -286,6 +286,7 @@ function getSubChooseData(scStr: string) {
             ></div>
             <template v-if="currentScene.options.length > 0" #action>
               <NSpace vertical>
+                <!-- Combine optional props to avoid exactOptionalPropertyTypes errors -->
                 <ISEventOption
                   v-for="(item, index) in currentScene.options"
                   :key="index"
