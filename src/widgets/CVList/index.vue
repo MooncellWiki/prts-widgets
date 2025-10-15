@@ -30,7 +30,9 @@ const nameToKey = Object.fromEntries(
 
 if (window.location.hash) {
   const [lang, name] = decodeURIComponent(window.location.hash).split("：");
-  valueRef.value = lang.slice(1);
+  if (lang) {
+    valueRef.value = lang.slice(1);
+  }
   nextTick(() => {
     document.querySelector(`#${name}`)?.scrollIntoView();
   });
@@ -45,11 +47,16 @@ if (window.location.hash) {
     :date-locale="i18nConfig.dateLocale"
   >
     <NLayout class="mx-auto bg-transparent p-2 antialiased">
-      <n-tabs v-model:value="valueRef" type="line" animated>
+      <n-tabs
+        v-bind="valueRef ? { value: valueRef } : {}"
+        type="line"
+        animated
+        @update:value="(v: string) => (valueRef = v)"
+      >
         <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
           <VoiceLangTab
             v-if="data"
-            :voice-data="data[nameToKey[tab]]"
+            :voice-data="data[nameToKey[tab] ?? ''] ?? {}"
             :mapping="mapping"
             :avatar-mapping="avatarMapping"
             :char-mapping="charMapping"

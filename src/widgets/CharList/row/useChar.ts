@@ -8,7 +8,8 @@ export function useChar(
 ) {
   const hp = computed(() => {
     let result = char.hp;
-    if (addTrust.value) result += char.trust[0];
+    const trustHp = char.trust[0];
+    if (addTrust.value && trustHp !== undefined) result += trustHp;
 
     if (addPotential.value) {
       for (const v of char.potential) {
@@ -19,7 +20,8 @@ export function useChar(
   });
   const atk = computed(() => {
     let result = char.atk;
-    if (addTrust.value) result += char.trust[1];
+    const trustAtk = char.trust[1];
+    if (addTrust.value && trustAtk !== undefined) result += trustAtk;
 
     if (addPotential.value) {
       for (const v of char.potential) {
@@ -30,7 +32,8 @@ export function useChar(
   });
   const def = computed(() => {
     let result = char.def;
-    if (addTrust.value) result += char.trust[2];
+    const trustDef = char.trust[2];
+    if (addTrust.value && trustDef !== undefined) result += trustDef;
 
     if (addPotential.value) {
       for (const v of char.potential) {

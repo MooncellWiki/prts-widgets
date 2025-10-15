@@ -16,8 +16,9 @@ export async function getOnlineDate() {
       const extract = line.match(
         /\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)\|\|(.*?)/,
       ) as string[];
+      const match = extract[1]?.match(/\[\[(.*?)\|(.*?)]]/) as string[];
       return [
-        (extract[1].match(/\[\[(.*?)\|(.*?)]]/) as string[])[2] as string,
+        match[2] as string,
         // 第一密录下标：3
         extract.slice(3, -1).map((str) => {
           return new Date(str);
@@ -30,12 +31,14 @@ export async function getOnlineDate() {
 }
 
 export function getTargetDate(dates: Date[], isLatest: boolean) {
-  let latest = dates[0];
+  const firstDate = dates[0];
+  if (!firstDate) return new Date("Invalid Date");
+
+  let latest = firstDate;
   for (const date of dates) {
     if (
-      date.toString() !== "Invalid Date" && isLatest
-        ? date > latest
-        : date < latest
+      date.toString() !== "Invalid Date" &&
+      (isLatest ? date > latest : date < latest)
     )
       latest = date;
   }
@@ -101,10 +104,14 @@ export async function getMemories(
   const json: { cargoquery: { title: CargoMemory }[] } = await resp.json();
   const tmp: Record<string, CargoMemory[]> = {};
   for (const e of json.cargoquery) {
-    if (!tmp[e.title.page]) {
-      tmp[e.title.page] = [];
+    const pageName = e.title.page;
+    if (!tmp[pageName]) {
+      tmp[pageName] = [];
     }
-    tmp[e.title.page].push(e.title);
+    const pageArray = tmp[pageName];
+    if (pageArray) {
+      pageArray.push(e.title);
+    }
   }
   const memoryMap: Record<string, Memory[]> = {};
   for (const [key, memories] of Object.entries(tmp)) {

@@ -23,13 +23,15 @@ const self = ref();
 const style = computed(() => {
   const result: Record<string, string> = {};
 
-  if (props.blockmap[props.tile!]?.img) {
-    result.backgroundImage = `url(${getImagePath(props.blockmap[props.tile!].img!)})`;
+  const tileBlock = props.blockmap[props.tile];
+  if (tileBlock?.img) {
+    result.backgroundImage = `url(${getImagePath(tileBlock.img)})`;
   }
 
   for (const token of props.tokens || []) {
-    if (props.blockmap[token]?.img)
-      result.backgroundImage = `url(${getImagePath(props.blockmap[token].img)})`;
+    const tokenBlock = props.blockmap[token];
+    if (tokenBlock?.img)
+      result.backgroundImage = `url(${getImagePath(tokenBlock.img)})`;
   }
 
   if (
@@ -46,13 +48,14 @@ const style = computed(() => {
 
 onMounted(() => {
   let content = "";
-  if (props.tile && props.blockmap[props.tile]?.desc)
-    content += props.blockmap[props.tile].desc;
+  const tileBlock = props.blockmap[props.tile];
+  if (props.tile && tileBlock?.desc) content += tileBlock.desc;
 
   for (const token of props.tokens || []) {
-    if (token && props.blockmap[token]?.desc)
+    const tokenBlock = props.blockmap[token];
+    if (token && tokenBlock?.desc)
       content += content
-        ? `<br/> ${props.blockmap[token].desc}`
+        ? `<br/> ${tokenBlock.desc}`
         : ` ${props.blockmap[token].desc}`;
   }
 
@@ -84,14 +87,14 @@ onMounted(() => {
   >
     <template v-if="tokens">
       <template v-for="(token, i) in tokens" :key="i">
-        <span v-if="blockmap[token!]?.icon">
-          <i :class="blockmap[token!].icon" />
+        <span v-if="blockmap[token]?.icon">
+          <i :class="blockmap[token]!.icon" />
         </span>
       </template>
     </template>
     <template v-else>
-      <span v-if="blockmap[tile!]?.icon">
-        <i :class="blockmap[tile!].icon" />
+      <span v-if="blockmap[tile]?.icon">
+        <i :class="blockmap[tile]!.icon" />
       </span>
     </template>
   </div>
