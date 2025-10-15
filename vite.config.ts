@@ -117,17 +117,19 @@ export default defineConfig(({ command }) => {
 
               for (const key of Object.keys(bundle)) {
                 const chunk = bundle[key];
-                if (chunk.type !== "chunk") continue;
+                if (!chunk || chunk.type !== "chunk") continue;
 
                 if (chunk.fileName.startsWith("SpineViewer")) {
                   // SpineViewer 不需要改导入路径
                   continue;
                 }
                 for (const name of fileNames) {
-                  chunk.code = chunk.code.replaceAll(
-                    `./${name}`,
-                    `https://static.prts.wiki/widgets/production/${name}`,
-                  );
+                  if (name) {
+                    chunk.code = chunk.code.replaceAll(
+                      `./${name}`,
+                      `https://static.prts.wiki/widgets/production/${name}`,
+                    );
+                  }
                 }
               }
             },

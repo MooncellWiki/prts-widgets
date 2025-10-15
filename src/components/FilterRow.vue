@@ -85,8 +85,8 @@ const removeAll = () => {
       <Checkbox
         v-for="label in labels"
         :key="label"
+        v-bind="noWidth ? { noWidth: true } : {}"
         :value="label"
-        :no-width="noWidth"
       >
         {{ label }}
       </Checkbox>

@@ -57,11 +57,12 @@ for (const eventEle of Array.from(eventEles)) {
     },
   );
   // add new Category
-  if (scenes[0].etype) {
-    sceneCategoryTabList.push(scenes[0].etype);
+  const firstScene = scenes[0];
+  if (firstScene && firstScene.etype) {
+    sceneCategoryTabList.push(firstScene.etype);
     sceneCategoryData.push([]);
   }
-  sceneCategoryData.at(-1)?.push(scenes[0].ename || scenes[0].name || "？？？");
+  sceneCategoryData.at(-1)?.push(firstScene?.ename || firstScene?.name || "？？？");
   // creat event
   createApp(ISEventFramework, {
     sceneData: scenes,
