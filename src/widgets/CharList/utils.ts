@@ -75,7 +75,10 @@ export class Char {
       d.potential?.split("`").map((v) => v.split(",")) || [];
     if (types && values) {
       for (const [i, t] of types.entries()) {
-        this.potential.push({ type: t, value: Number.parseInt(values[i]) });
+        const value = values[i];
+        if (value !== undefined) {
+          this.potential.push({ type: t, value: Number.parseInt(value) });
+        }
       }
     }
     this.trust =

@@ -99,11 +99,11 @@ onMounted(() => {
     <div v-for="(row, i) in map.mapData.map" :key="i" class="row">
       <Block
         v-for="(board, n) in row"
+        v-bind="black && black[`${map.mapData.map.length - 1 - i}-${n}`] ? { black: black[`${map.mapData.map.length - 1 - i}-${n}`] } : {}"
         :key="i * row.length + n"
         :tile="getTile(board)"
         :tile-height-type="map.mapData.tiles[board].heightType.toString()"
         :tokens="getToken(map.mapData.map.length - 1 - i, n)"
-        :black="black && black[`${map.mapData.map.length - 1 - i}-${n}`]"
         :blockmap="xbMapConst.blockmap"
       />
     </div>

@@ -27,6 +27,7 @@ const value = useVModel(props, "selected", emit);
     <div class="flex basis-7/8 flex-row items-center">
       <NSelect
         v-model:value="value"
+        v-bind="placeholder ? { placeholder } : {}"
         class="m-1"
         :disabled="disabled"
         :options="options"
@@ -34,7 +35,6 @@ const value = useVModel(props, "selected", emit);
         clearable
         filterable
         multiple
-        :placeholder="placeholder"
       />
     </div>
   </div>

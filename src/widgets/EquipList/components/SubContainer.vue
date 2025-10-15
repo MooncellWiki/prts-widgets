@@ -66,7 +66,7 @@ const locale = getLanguage();
           />
         </span>
         <span class="inline-block text-center" style="width: 7em">{{
-          customLabel[locale].subtypeMap[title] ?? title
+          customLabel[locale]?.subtypeMap[title] ?? title
         }}</span>
       </div>
       <div v-if="groupby === 'time'">

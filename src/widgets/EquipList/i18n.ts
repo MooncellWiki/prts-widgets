@@ -421,7 +421,8 @@ export function getFilterRarity(locale: LANGUAGES) {
 
 function stats(locale: LANGUAGES, type: string): string {
   const ele = customLabel[locale].statsMap.find((e) => e[0] === type);
-  return ele ? ele[1] : "";
+  const result = ele?.[1];
+  return result !== undefined ? result : "";
 }
 
 export function getSortOptions(locale: LANGUAGES) {

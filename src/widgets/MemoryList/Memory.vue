@@ -118,7 +118,7 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
             </div>
           </div>
           <div v-for="info in mmr.info" :key="info.link" class="flex flex-col">
-            <NDivider v-if="info.link !== mmr.info[0].link" />
+            <NDivider v-if="mmr.info[0] && info.link !== mmr.info[0].link" />
             <div class="flex flex-nowrap px-1 py-2">
               <div class="flex-basis-4/5">
                 {{ info.intro }}

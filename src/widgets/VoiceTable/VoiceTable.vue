@@ -117,9 +117,9 @@ provide("audioElem", new Audio());
               class="table-cell truncate border border-divider rounded border-solid p-1 align-middle"
             >
               <VoicePlayer
+                v-bind="ele.directLinks[selectedVoiceLang] ? { directLink: ele.directLinks[selectedVoiceLang] } : {}"
                 :key="index"
                 v-model:play-key="playKey"
-                :direct-link="ele.directLinks[selectedVoiceLang]"
                 :voice-id="`${voiceKey}/${ele.title}`"
                 :voice-path="getVoicePath(ele.fileName, ele.placeType)"
               />

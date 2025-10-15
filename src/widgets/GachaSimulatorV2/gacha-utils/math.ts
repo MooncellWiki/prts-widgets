@@ -30,7 +30,8 @@ export function weightedRandom<T>(
 
   const randomNumber = maxCumulativeWeight * Math.random();
   for (const [itemIndex, item] of items.entries()) {
-    if (cumulativeWeights[itemIndex] >= randomNumber) {
+    const weight = cumulativeWeights[itemIndex];
+    if (weight !== undefined && weight >= randomNumber) {
       return {
         item,
         index: itemIndex,
