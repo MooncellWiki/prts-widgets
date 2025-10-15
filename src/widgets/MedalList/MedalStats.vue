@@ -21,9 +21,12 @@ const statsData = computed(() => {
     const allData = result.all.data;
     const starData = result[`star${medal.rarity as 1 | 2 | 3}`]?.data;
     const trimData = result.trim.data;
-    if (allData) allData[Number(medal.isHidden)]++;
-    if (starData) starData[Number(medal.isHidden)]++;
-    if (trimData) trimData[Number(medal.isHidden)] += Number(medal.isTrim);
+    const hiddenIndex = Number(medal.isHidden);
+    if (allData && allData[hiddenIndex] !== undefined) allData[hiddenIndex]++;
+    if (starData && starData[hiddenIndex] !== undefined)
+      starData[hiddenIndex]++;
+    if (trimData && trimData[hiddenIndex] !== undefined)
+      trimData[hiddenIndex] += Number(medal.isTrim);
   }
   return result;
 });
@@ -70,7 +73,9 @@ const statsData = computed(() => {
         >
           <NStatistic :label="`加密${item.name}`" :tabular-nums="true">
             <NNumberAnimation
-              v-bind="item.data[1] !== undefined ? { to: item.data[1] } : { to: 0 }"
+              v-bind="
+                item.data[1] !== undefined ? { to: item.data[1] } : { to: 0 }
+              "
               active
               :from="0"
               show-separator

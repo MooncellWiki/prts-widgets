@@ -177,7 +177,7 @@ const showTrimed = ref(false);
                 >
                   <MiniMedalComponent
                     v-if="miniMedalData?.[miniMedal.id]"
-                    :medal-data="miniMedalData[miniMedal.id]"
+                    :medal-data="miniMedalData[miniMedal.id]!"
                   />
                   <MiniMedalComponent
                     v-else

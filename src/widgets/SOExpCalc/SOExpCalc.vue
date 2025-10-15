@@ -59,9 +59,10 @@ const calcExp = computed(() => {
   if (start.level === target.level) {
     return target.exp - start.exp;
   }
-  let totalExp = props.expMap[selectedElite.value][start.level - 1] - start.exp;
+  let totalExp =
+    (props.expMap[selectedElite.value]?.[start.level - 1] ?? 0) - start.exp;
   for (let i = start.level + 1; i < target.level; i++) {
-    totalExp += props.expMap[selectedElite.value][i - 1];
+    totalExp += props.expMap[selectedElite.value]?.[i - 1] ?? 0;
   }
   return totalExp + target.exp;
 });
@@ -132,11 +133,11 @@ const eliteChange = () => {
 };
 
 const getMaxLevel = () => {
-  return props.expMap[selectedElite.value].indexOf(-1) + 1;
+  return (props.expMap[selectedElite.value]?.indexOf(-1) ?? -1) + 1;
 };
 
 const getLevelMaxExp = (level: number) => {
-  return props.expMap[selectedElite.value][level - 1] || 0;
+  return props.expMap[selectedElite.value]?.[level - 1] || 0;
 };
 
 const levelChange = (role: "start" | "target") => {
@@ -157,20 +158,23 @@ const expInputChange = (role: "start" | "target") => {
   }
 };
 
-const tableData = computed(() =>
-  props.expMap[selectedElite.value]
-    .map((exp, index) => ({
-      level: index + 1,
-      exp: String(exp),
-      totalexp: props.expMap[selectedElite.value]
-        .slice(0, index)
-        .reduce((a, b) => a + b, 0),
-    }))
-    .filter(
-      (item) =>
-        item.exp !== "-1" ||
-        props.expMap[selectedElite.value].indexOf(-1) === item.level - 1,
-    ),
+const tableData = computed(
+  () =>
+    props.expMap[selectedElite.value]
+      ?.map((exp, index) => ({
+        level: index + 1,
+        exp: String(exp),
+        totalexp:
+          props.expMap[selectedElite.value]
+            ?.slice(0, index)
+            .reduce((a, b) => a + b, 0) ?? 0,
+      }))
+      .filter(
+        (item) =>
+          item.exp !== "-1" ||
+          (props.expMap[selectedElite.value]?.indexOf(-1) ?? -1) ===
+            item.level - 1,
+      ) ?? [],
 );
 </script>
 
@@ -250,7 +254,7 @@ const tableData = computed(() =>
                 color="#0000"
                 object-fit="scale-down"
                 :size="35"
-                :src="getImagePath(str[0])"
+                :src="getImagePath(str[0] ?? '')"
                 :class="selectedElite === index ? 'filter-invert' : ''"
               />
               {{ str[1] }}
@@ -428,7 +432,7 @@ const tableData = computed(() =>
                 color="#0000"
                 object-fit="scale-down"
                 :size="35"
-                :src="getImagePath(str[0])"
+                :src="getImagePath(str[0] ?? '')"
                 :class="selectedElite === index ? 'filter-invert' : ''"
               />
               {{ str[1] }}

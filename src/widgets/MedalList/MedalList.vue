@@ -300,8 +300,8 @@ const i18nConfig = getNaiveUILocale();
                   :key="medalId"
                   v-bind="{
                     ...(filteredMedalData.medal[medalId]
-                      ? { medalData: filteredMedalData.medal[medalId] }
-                      : {}),
+                      ? { medalData: filteredMedalData.medal[medalId]! }
+                      : { medalData: {} as any }),
                   }"
                   :show-deprecate-badge="showDeprecateBadge"
                   :mini-medal-data="

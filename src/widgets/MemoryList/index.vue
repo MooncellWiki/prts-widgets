@@ -45,8 +45,8 @@ const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
     sorting.value !== "opt"
   ) {
     const isLatest = sorting.value === "lmmr";
-    datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
-    datey = getTargetDate(onlineDate.value[mmry.char], isLatest);
+    datex = getTargetDate(onlineDate.value[mmrx.char]!, isLatest);
+    datey = getTargetDate(onlineDate.value[mmry.char]!, isLatest);
   } else {
     datex = new Date(1);
     datey = new Date(1);
@@ -68,7 +68,7 @@ function _calcMemory() {
   const keyword = searchTerm.value;
   filteredMemory.value = charMemoryData.value
     .filter((charm) => {
-      if (rarity.length > 0 && !rarity.includes(rarityMap[charm.rarity]))
+      if (rarity.length > 0 && !rarity.includes(rarityMap[charm.rarity] ?? ""))
         return false;
 
       return (
@@ -150,17 +150,17 @@ onMounted(async () => {
     });
   const map = await getMemories(medalData.value);
   for (const charm of charMemoryData.value) {
-    charm.memories = map[charm.char];
+    charm.memories = map[charm.char] ?? [];
   }
 
   onlineDate.value = await getOnlineDate();
   isLoaded.value = true;
 
   _calcMemory();
-  const latest = onlineDate.value[filteredMemory.value[0].char];
-  const ldate = getTargetDate(latest, true);
+  const latest = onlineDate.value[filteredMemory.value[0]?.char ?? ""];
+  const ldate = getTargetDate(latest ?? [new Date()], true);
   for (const char in onlineDate.value) {
-    if (getTargetDate(onlineDate.value[char], true) >= ldate)
+    if (getTargetDate(onlineDate.value[char]!, true) >= ldate)
       latestChar.value.push(char);
   }
 });

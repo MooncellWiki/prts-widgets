@@ -47,14 +47,16 @@ const isLoading = ref(true);
 const speed = ref(1);
 const skinList = Object.keys(props.skin!);
 const skinListOptions = skinList.map((v) => ({ label: v, value: v }));
-const curSkin = ref(skinList[0]);
+const curSkin = ref(skinList[0] ?? "");
 const modelList = computed(() => {
-  return Object.keys(props.skin![curSkin.value]).map((v) => ({
+  return Object.keys(props.skin![curSkin.value] || {}).map((v) => ({
     label: v,
     value: v,
   }));
 });
-const curModel = ref(Object.keys(props.skin![skinList[0]])[0]);
+const curModel = ref(
+  Object.keys(props.skin![skinList[0] ?? ""] || {})[0] ?? "",
+);
 const animations = ref<string[]>([]);
 const aniList = computed(() => {
   return animations.value.map((v) => ({ label: v, value: v }));
@@ -64,7 +66,8 @@ const curAni = ref("");
 const isLoop = ref(false);
 async function load() {
   isLoading.value = true;
-  const path = props.prefix + props.skin![curSkin.value][curModel.value].file;
+  const path =
+    props.prefix + (props.skin![curSkin.value]?.[curModel.value]?.file ?? "");
   const { skeleton, state: animationState } = await spineRef.spine!.load(
     `${curSkin.value}-${curModel.value}`,
     `${path}.skel`,
@@ -74,7 +77,7 @@ async function load() {
       y: -200,
       scale: 1,
     },
-    props!.skin![curSkin.value][curModel.value].skin,
+    props!.skin![curSkin.value]?.[curModel.value]?.skin ?? "",
   );
   const names = (animations.value = skeleton.data.animations.map(
     (v) => v.name,
@@ -85,8 +88,8 @@ async function load() {
   }));
   isLoading.value = false;
   spineRef.spine!.play(`${curSkin.value}-${curModel.value}`);
-  animationState.setAnimation(0, names[0], isLoop.value);
-  curAni.value = names[0];
+  animationState.setAnimation(0, names[0] ?? "", isLoop.value);
+  curAni.value = names[0] ?? "";
   animationState.timeScale = speed.value;
 }
 onMounted(() => {
@@ -99,7 +102,7 @@ onMounted(() => {
 const { big } = useEvent(canvas, spineRef);
 function onSelectSkin(e: string) {
   curSkin.value = e;
-  curModel.value = Object.keys(props.skin![e])[0];
+  curModel.value = Object.keys(props.skin![e] || {})[0] ?? "";
   load();
 }
 function onSelectModel(e: string) {
@@ -118,7 +121,7 @@ function onChangeLoop(e: boolean) {
   const state = spineRef.spine?.getCurrent()?.state;
   if (!state) return;
 
-  state.setAnimation(0, state.tracks[0].animation.name, e);
+  state.setAnimation(0, state.tracks[0]?.animation?.name ?? "", e);
 }
 function onChangeColor(e: string) {
   if (!spineRef.spine) return;

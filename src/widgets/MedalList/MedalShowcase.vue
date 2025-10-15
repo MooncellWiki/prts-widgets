@@ -74,12 +74,15 @@ const filteredMedalData = computed(() => {
       const currMedalData = medalMetaData.value.medal[preMedalDefine.id];
       if (!currMedalData) continue;
 
+      if (!entry[parentMedalId]) continue;
       entry[parentMedalId][preMedalDefine.id] = {
         name: currMedalData.name,
         isTrim: preMedalDefine.isTrim,
-        picId: preMedalDefine.isTrim ? (currMedalData.trimId ?? '') : currMedalData.id,
+        picId: preMedalDefine.isTrim
+          ? (currMedalData.trimId ?? "")
+          : currMedalData.id,
         method: preMedalDefine.isTrim
-          ? (currMedalData.trimMethod ?? '')
+          ? (currMedalData.trimMethod ?? "")
           : currMedalData.method,
       };
     }
@@ -230,14 +233,18 @@ const i18nConfig = getNaiveUILocale();
           <NGridItem v-for="medalGroupId in medalGroupList" :key="medalGroupId">
             <MedalGroupComponent
               v-if="filteredMedalData.medalGroup[medalGroupId]"
-              :group-data="filteredMedalData.medalGroup[medalGroupId]"
+              :group-data="filteredMedalData.medalGroup[medalGroupId]!"
               :medal-data-list="generateGroupMedalData(medalGroupId)"
-              :deprecate-text="
-                filteredMedalData.medalGroup[medalGroupId].deprecateType
-                  ? medalMetaData.groupDeprecateType[
-                      filteredMedalData.medalGroup[medalGroupId].deprecateType
-                    ]
-                  : ''
+              v-bind="
+                filteredMedalData.medalGroup[medalGroupId]?.deprecateType
+                  ? {
+                      deprecateText:
+                        medalMetaData.groupDeprecateType[
+                          filteredMedalData.medalGroup[medalGroupId]
+                            ?.deprecateType
+                        ],
+                    }
+                  : {}
               "
             />
           </NGridItem>

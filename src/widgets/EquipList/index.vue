@@ -507,7 +507,7 @@ const mobileStyle = () => {
       </NCard>
       <NCard
         v-bind="{
-          ...(mobileStyle() ? { contentStyle: mobileStyle() } : {}),
+          ...(mobileStyle() ? { contentStyle: mobileStyle()! } : {}),
         }"
         title=" "
         header-style="text-align: center;"
