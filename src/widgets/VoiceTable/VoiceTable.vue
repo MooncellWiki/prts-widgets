@@ -117,7 +117,11 @@ provide("audioElem", new Audio());
               class="table-cell truncate border border-divider rounded border-solid p-1 align-middle"
             >
               <VoicePlayer
-                v-bind="ele.directLinks[selectedVoiceLang] ? { directLink: ele.directLinks[selectedVoiceLang] } : {}"
+                v-bind="
+                  ele.directLinks[selectedVoiceLang]
+                    ? { directLink: ele.directLinks[selectedVoiceLang] }
+                    : {}
+                "
                 :key="index"
                 v-model:play-key="playKey"
                 :voice-id="`${voiceKey}/${ele.title}`"

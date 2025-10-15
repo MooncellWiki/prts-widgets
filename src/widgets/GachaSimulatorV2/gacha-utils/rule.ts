@@ -87,7 +87,11 @@ export function applyEnsure6StarRule(
 
 export function applyEnsureUp6StarRule(state: GachaState, charId: string) {
   const resultCount = state.results[charId];
-  if (state.counter < state.guarantee6Up6Count && resultCount !== undefined && resultCount >= 1) {
+  if (
+    state.counter < state.guarantee6Up6Count &&
+    resultCount !== undefined &&
+    resultCount >= 1
+  ) {
     state.guarantee6Up6Avail--;
   }
 

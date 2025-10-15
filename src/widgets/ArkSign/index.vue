@@ -104,7 +104,7 @@ const showInfo = ref({
 const charList = ref<Char[]>([]);
 const selectedChars = computed(() => {
   return selected.value
-    .map(charId => charData.value[charId])
+    .map((charId) => charData.value[charId])
     .filter((char): char is Char => char !== undefined);
 });
 function order() {
@@ -126,16 +126,12 @@ function order() {
     ) {
       continue;
     }
-    if (
-      selectFilterRarity.value === "3" &&
-      charInfo.rarity >= 3
-    ) {
+    if (selectFilterRarity.value === "3" && charInfo.rarity >= 3) {
       continue;
     }
     if (
       selectFilterRarity.value !== "all" &&
-      charInfo.rarity !==
-        Number.parseInt(selectFilterRarity.value) - 1
+      charInfo.rarity !== Number.parseInt(selectFilterRarity.value) - 1
     ) {
       continue;
     }
@@ -461,11 +457,7 @@ function calcServerColor(id: string) {
                 :key="char.charId"
                 class="charSignItem"
               >
-                <img
-                  class="charImg"
-                  :src="portrait(char.skinId)"
-                  alt=""
-                />
+                <img class="charImg" :src="portrait(char.skinId)" alt="" />
                 <div class="mask"></div>
                 <div class="skillWrapper">
                   <div v-show="showInfo.equip" class="skillIcon">
@@ -487,20 +479,12 @@ function calcServerColor(id: string) {
                     <template v-if="char.defaultSkillId">
                       <img
                         class="skillRank"
-                        :src="
-                          specialized(
-                            char.skills,
-                            char.defaultSkillId,
-                          )
-                        "
+                        :src="specialized(char.skills, char.defaultSkillId)"
                         alt=""
                       />
                       <div
                         v-if="
-                          calcSkillRankShow(
-                            char.skills,
-                            char.defaultSkillId,
-                          )
+                          calcSkillRankShow(char.skills, char.defaultSkillId)
                         "
                         class="skillRank"
                       >
@@ -540,10 +524,7 @@ function calcServerColor(id: string) {
                     />
                   </div>
                 </div>
-                <div
-                  v-if="charInfoMap[char.charId]"
-                  class="topWrapper"
-                >
+                <div v-if="charInfoMap[char.charId]" class="topWrapper">
                   <img
                     v-show="showInfo.profession"
                     class="professionIcon"
@@ -801,10 +782,7 @@ function calcServerColor(id: string) {
               alt=""
             />
             <div class="mask"></div>
-            <div
-              v-if="charInfoMap[item.charId]"
-              class="name"
-            >
+            <div v-if="charInfoMap[item.charId]" class="name">
               {{ charInfoMap[item.charId]!.name }}
             </div>
             <div class="bottomWrapper">
@@ -820,10 +798,7 @@ function calcServerColor(id: string) {
                 />
               </div>
             </div>
-            <div
-              v-if="charInfoMap[item.charId]"
-              class="topWrapper"
-            >
+            <div v-if="charInfoMap[item.charId]" class="topWrapper">
               <img
                 class="professionIcon"
                 :src="profession(charInfoMap[item.charId]!.profession)"

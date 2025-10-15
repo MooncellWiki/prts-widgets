@@ -62,7 +62,9 @@ for (const eventEle of Array.from(eventEles)) {
     sceneCategoryTabList.push(firstScene.etype);
     sceneCategoryData.push([]);
   }
-  sceneCategoryData.at(-1)?.push(firstScene?.ename || firstScene?.name || "？？？");
+  sceneCategoryData
+    .at(-1)
+    ?.push(firstScene?.ename || firstScene?.name || "？？？");
   // creat event
   createApp(ISEventFramework, {
     sceneData: scenes,

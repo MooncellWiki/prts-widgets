@@ -422,7 +422,7 @@ export function getFilterRarity(locale: LANGUAGES) {
 function stats(locale: LANGUAGES, type: string): string {
   const ele = customLabel[locale].statsMap.find((e) => e[0] === type);
   const result = ele?.[1];
-  return result !== undefined ? result : "";
+  return result === undefined ? "" : result;
 }
 
 export function getSortOptions(locale: LANGUAGES) {

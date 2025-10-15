@@ -166,7 +166,7 @@ function getSubChooseData(scStr: string) {
     <span :id="firstScene.ename || firstScene.name" />
     <span
       :id="
-        encodeURI((firstScene.ename || firstScene.name || '')).replace(/%/g, '.')
+        encodeURI(firstScene.ename || firstScene.name || '').replace(/%/g, '.')
       "
       class="mw-headline"
     >
@@ -284,16 +284,17 @@ function getSubChooseData(scStr: string) {
               ]"
               v-html="currentScene.text"
             ></div>
-            <template
-              v-if="currentScene.options.length > 0"
-              #action
-            >
+            <template v-if="currentScene.options.length > 0" #action>
               <NSpace vertical>
                 <ISEventOption
                   v-for="(item, index) in currentScene.options"
                   :key="index"
-                  v-bind="item.iconId ? { iconId: item.iconId } : {}"
-                  v-bind="item.customBadgeText ? { customBadgeText: item.customBadgeText } : {}"
+                  v-bind="{
+                    ...(item.iconId ? { iconId: item.iconId } : {}),
+                    ...(item.customBadgeText
+                      ? { customBadgeText: item.customBadgeText }
+                      : {}),
+                  }"
                   :title="item.title"
                   :type="item.type"
                   :icon="item.icon"
