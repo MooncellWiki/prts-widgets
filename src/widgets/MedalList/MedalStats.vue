@@ -18,9 +18,12 @@ const statsData = computed(() => {
     all: { data: [0, 0], name: "已有蚀刻章", indieEncrypt: false },
   };
   for (const medal of Object.values(props.medalMetaData.medal)) {
-    result.all.data[Number(medal.isHidden)]++;
-    result[`star${medal.rarity as 1 | 2 | 3}`].data[Number(medal.isHidden)]++;
-    result.trim.data[Number(medal.isHidden)] += Number(medal.isTrim);
+    const allData = result.all.data;
+    const starData = result[`star${medal.rarity as 1 | 2 | 3}`]?.data;
+    const trimData = result.trim.data;
+    if (allData) allData[Number(medal.isHidden)]++;
+    if (starData) starData[Number(medal.isHidden)]++;
+    if (trimData) trimData[Number(medal.isHidden)] += Number(medal.isTrim);
   }
   return result;
 });
@@ -43,10 +46,14 @@ const statsData = computed(() => {
       <div v-for="(value, key) in statsData" :key="key">
         <NStatistic :label="value.name" :tabular-nums="true">
           <NNumberAnimation
-            :from="showSecret && !value.indieEncrypt ? value.data[0] : 0"
+            v-bind="
+              showSecret && !value.indieEncrypt && value.data[0] !== undefined
+                ? { from: value.data[0] }
+                : { from: 0 }
+            "
             :to="
-              value.data[0] +
-              (showSecret && !value.indieEncrypt ? value.data[1] : 0)
+              (value.data[0] ?? 0) +
+              (showSecret && !value.indieEncrypt ? (value.data[1] ?? 0) : 0)
             "
             show-separator
             active
@@ -63,9 +70,9 @@ const statsData = computed(() => {
         >
           <NStatistic :label="`加密${item.name}`" :tabular-nums="true">
             <NNumberAnimation
+              v-bind="item.data[1] !== undefined ? { to: item.data[1] } : { to: 0 }"
               active
               :from="0"
-              :to="item.data[1]"
               show-separator
             />
             <template #suffix>枚</template>
