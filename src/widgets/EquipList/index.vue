@@ -184,12 +184,13 @@ const filteredEquipData = computed((): CharEquips[] => {
     const rarityArray = s.rarity;
     const subArray = s.sub;
     const typeArray = s.type;
-    
+
     const rarityP =
       rarityArray &&
       rarityArray.length > 0 &&
       !rarityArray.includes(rarityMap[ce.char.rarity.toString()] ?? "");
-    const subP = subArray && subArray.length > 0 && !subArray.includes(ce.char.subtype);
+    const subP =
+      subArray && subArray.length > 0 && !subArray.includes(ce.char.subtype);
     const typeP =
       typeArray &&
       typeArray.length > 0 &&
@@ -222,11 +223,11 @@ const CharEquipList = computed(() => {
   }
   const sortArray = sortStates.value.sort;
   if (!sortArray || sortArray.length === 0) return result;
-  
+
   result.sort((x, y) => {
     const sortMode = sortArray[0];
     if (!sortMode) return 0;
-    
+
     switch (sortMode.mode) {
       case "default": {
         return x.oprarity === y.oprarity
@@ -367,7 +368,7 @@ const mobileStyle = () => {
                   :title="options.type.title"
                   :options="options.type.options"
                   :disabled="loadingCount > 0"
-                  @update:model-value="(v: string[]) => states.type = v"
+                  @update:model-value="(v: string[]) => (states.type = v)"
                 />
               </tr>
               <tr>
@@ -376,17 +377,19 @@ const mobileStyle = () => {
                   :title="options.rarity.title"
                   :options="options.rarity.options"
                   :disabled="loadingCount > 0"
-                  @update:model-value="(v: string[]) => states.rarity = v"
+                  @update:model-value="(v: string[]) => (states.rarity = v)"
                 />
               </tr>
               <tr>
                 <FilterSub
-                  v-bind="states.sub ? { selected: states.sub } : { selected: [] }"
+                  v-bind="
+                    states.sub ? { selected: states.sub } : { selected: [] }
+                  "
                   :title="subOptions.title"
                   :options="subOptions.options"
                   :placeholder="subOptions.placeholder"
                   :disabled="loadingCount > 0"
-                  @update:selected="(v: string[]) => states.sub = v"
+                  @update:selected="(v: string[]) => (states.sub = v)"
                 />
                 />
               </tr>

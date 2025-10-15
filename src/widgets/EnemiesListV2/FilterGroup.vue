@@ -44,7 +44,7 @@ const statesRef = useVModel(props, "states", emit);
               v-bind="statesRef[field] ? { modelValue: statesRef[field] } : {}"
               :title="filter.title"
               :options="filter.options"
-              @update:model-value="(v: string[]) => statesRef[field] = v"
+              @update:model-value="(v: string[]) => (statesRef[field] = v)"
             />
           </tr>
         </tbody>

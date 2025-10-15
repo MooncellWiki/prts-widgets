@@ -193,11 +193,8 @@ export class GachaExecutor {
     }
 
     const existingCount = this.state.results[result.charId];
-    if (existingCount !== undefined) {
-      this.state.results[result.charId] = existingCount + 1;
-    } else {
-      this.state.results[result.charId] = 1;
-    }
+    this.state.results[result.charId] =
+      existingCount === undefined ? 1 : existingCount + 1;
 
     // 6 星计数
     if (result.rarity === RarityRank.TIER_6) this.state.non6StarCount = 0;

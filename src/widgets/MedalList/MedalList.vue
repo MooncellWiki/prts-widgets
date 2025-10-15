@@ -149,7 +149,7 @@ const genPreMedalList = (idList: Array<{ id: string; isTrim: boolean }>) => {
       .map((d) => {
         const medal = medalMetaData.value.medal[d.id];
         if (!medal) return null;
-        
+
         return [
           d.id,
           {
@@ -230,7 +230,7 @@ const i18nConfig = getNaiveUILocale();
                   v-bind="states.rarity ? { modelValue: states.rarity } : {}"
                   :title="filterRarity.title"
                   :options="filterRarity.options"
-                  @update:model-value="(v: string[]) => states.rarity = v"
+                  @update:model-value="(v: string[]) => (states.rarity = v)"
                 />
               </tr>
               <tr>
@@ -238,7 +238,7 @@ const i18nConfig = getNaiveUILocale();
                   v-bind="states.special ? { modelValue: states.special } : {}"
                   :title="filterSpecial.title"
                   :options="filterSpecial.options"
-                  @update:model-value="(v: string[]) => states.special = v"
+                  @update:model-value="(v: string[]) => (states.special = v)"
                 />
               </tr>
             </tbody>
@@ -298,7 +298,11 @@ const i18nConfig = getNaiveUILocale();
                     checkMedalExists(medalId),
                   )"
                   :key="medalId"
-                  v-bind="filteredMedalData.medal[medalId] ? { medalData: filteredMedalData.medal[medalId] } : {}"
+                  v-bind="
+                    filteredMedalData.medal[medalId]
+                      ? { medalData: filteredMedalData.medal[medalId] }
+                      : {}
+                  "
                   :show-deprecate-badge="showDeprecateBadge"
                   :mini-medal-data="
                     (() => {
@@ -322,7 +326,9 @@ const i18nConfig = getNaiveUILocale();
                       groupData: group,
                       medalDataList: group.medal
                         .map((id) => filteredMedalData.medal[id])
-                        .filter((m): m is NonNullable<typeof m> => m !== undefined),
+                        .filter(
+                          (m): m is NonNullable<typeof m> => m !== undefined,
+                        ),
                       deprecateText: group.deprecateType
                         ? (medalMetaData.groupDeprecateType[
                             group.deprecateType
