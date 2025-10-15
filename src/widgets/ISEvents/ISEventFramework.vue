@@ -55,8 +55,14 @@ const props = withDefaults(
 
 const sceneNav = ref<Array<number>>([0]);
 const currentSceneId = ref(0);
+const firstScene = computed(() => props.sceneData[0]);
+const currentScene = computed(() => props.sceneData[currentSceneId.value]);
+function getScene(sceneId: number) {
+  return props.sceneData[sceneId];
+}
 function isPrtsInfo(sceneId: number) {
-  return props.sceneData[sceneId].prtsinfo !== "";
+  const scene = props.sceneData[sceneId];
+  return scene?.prtsinfo !== "";
 }
 const isCurScenePrtsInfo = computed(() => {
   return isPrtsInfo(currentSceneId.value);
@@ -70,17 +76,23 @@ function jump(id: number) {
 
     currentSceneId.value = id;
 
-    const name = props.sceneData[0].ename || props.sceneData[0].name || "";
-    const element = document.querySelector(`#${name}`);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth" });
+    const first = firstScene.value;
+    if (first) {
+      const name = first.ename || first.name || "";
+      const element = document.querySelector(`#${name}`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
     }
   }
 }
 function navJump(index: number) {
   if (index === sceneNav.value.length - 1) return;
 
-  currentSceneId.value = sceneNav.value[index];
+  const sceneId = sceneNav.value[index];
+  if (sceneId !== undefined) {
+    currentSceneId.value = sceneId;
+  }
   sceneNav.value.splice(index + 1);
 }
 function optionsToNavDrop(options: Array<Option>) {
@@ -95,7 +107,6 @@ function optionsToNavDrop(options: Array<Option>) {
           isSubChoose: false,
           destScene: o.dest,
         },
-        children: undefined,
       });
     } else {
       navDrop.push({
@@ -142,27 +153,27 @@ function getSubChooseData(scStr: string) {
 </script>
 
 <template>
-  <h2 v-if="sceneData[0].etype">
-    <span :id="sceneData[0].etype" />
+  <h2 v-if="firstScene?.etype">
+    <span :id="firstScene.etype" />
     <span
-      :id="encodeURI(sceneData[0].etype).replace(/%/g, '.')"
+      :id="encodeURI(firstScene.etype).replace(/%/g, '.')"
       class="mw-headline"
     >
-      {{ sceneData[0].etype }}
+      {{ firstScene.etype }}
     </span>
   </h2>
-  <h3>
-    <span :id="sceneData[0].ename || sceneData[0].name" />
+  <h3 v-if="firstScene">
+    <span :id="firstScene.ename || firstScene.name" />
     <span
       :id="
-        encodeURI((sceneData[0].ename || sceneData[0].name)!).replace(/%/g, '.')
+        encodeURI((firstScene.ename || firstScene.name || '')).replace(/%/g, '.')
       "
       class="mw-headline"
     >
-      {{ sceneData[0].ename || sceneData[0].name }}
+      {{ firstScene.ename || firstScene.name }}
     </span>
   </h3>
-  <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
+  <div v-if="firstScene?.edesc" v-html="firstScene.edesc"></div>
   <NConfigProvider
     preflight-style-disabled
     :theme-overrides="{
@@ -196,12 +207,13 @@ function getSubChooseData(scStr: string) {
               </template>
               <NDropdown
                 v-if="
-                  sceneData[SceneId].options.length > 0 &&
+                  getScene(SceneId) &&
+                  getScene(SceneId)!.options.length > 0 &&
                   index !== sceneNav.length - 1
                 "
                 placement="bottom-start"
                 :show-arrow="true"
-                :options="optionsToNavDrop(sceneData[SceneId].options)"
+                :options="optionsToNavDrop(getScene(SceneId)!.options)"
                 @select="(k, op) => dropJump(k, index, op)"
               >
                 <div class="trigger">
@@ -218,7 +230,7 @@ function getSubChooseData(scStr: string) {
                     <sup v-if="isPrtsInfo(SceneId)">
                       <i class="mdi mdi-rhombus-outline font-size-2"></i>
                     </sup>
-                    {{ sceneData[SceneId].nav }}
+                    {{ getScene(SceneId)?.nav }}
                   </span>
                 </div>
               </NDropdown>
@@ -238,21 +250,22 @@ function getSubChooseData(scStr: string) {
                   <sup v-if="isPrtsInfo(SceneId)">
                     <i class="mdi mdi-rhombus-outline font-size-2"></i>
                   </sup>
-                  {{ sceneData[SceneId].nav }}
+                  {{ getScene(SceneId)?.nav }}
                 </span>
               </div>
             </NBreadcrumbItem>
           </NBreadcrumb>
           <NCard
+            v-if="currentScene"
             class="relative"
-            :title="sceneData[currentSceneId].name || ''"
+            :title="currentScene.name || ''"
             size="small"
           >
             <template #cover>
-              <a :href="`/w/File:${sceneData[currentSceneId].image}.png`">
+              <a :href="`/w/File:${currentScene.image}.png`">
                 <img
                   class="img w-140"
-                  :src="getImagePath(`${sceneData[currentSceneId].image}.png`)"
+                  :src="getImagePath(`${currentScene.image}.png`)"
                 />
               </a>
             </template>
@@ -269,24 +282,24 @@ function getSubChooseData(scStr: string) {
                   'pa-1 b-1 b-[#0098dca0] b-solid': isCurScenePrtsInfo,
                 },
               ]"
-              v-html="sceneData[currentSceneId].text"
+              v-html="currentScene.text"
             ></div>
             <template
-              v-if="sceneData[currentSceneId].options.length > 0"
+              v-if="currentScene.options.length > 0"
               #action
             >
               <NSpace vertical>
                 <ISEventOption
-                  v-for="(item, index) in sceneData[currentSceneId].options"
+                  v-for="(item, index) in currentScene.options"
                   :key="index"
+                  v-bind="item.iconId ? { iconId: item.iconId } : {}"
+                  v-bind="item.customBadgeText ? { customBadgeText: item.customBadgeText } : {}"
                   :title="item.title"
                   :type="item.type"
                   :icon="item.icon"
-                  :icon-id="item.iconId"
                   :desc1="item.desc1"
                   :desc2="item.desc2"
                   :is-theme="isTheme"
-                  :custom-badge-text="item.customBadgeText"
                   :subchoose="getSubChooseData(item.subChoose ?? '')"
                   :method-jump="jump"
                   @click="jump(item.dest)"
