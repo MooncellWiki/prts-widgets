@@ -71,7 +71,11 @@ export async function getPlayerBinding(
     };
   }
   // 没有就用第一个
-  const { uid, nickName, channelMasterId } = bindingList[0];
+  const firstBinding = bindingList[0];
+  if (!firstBinding) {
+    throw new Error("绑定列表为空");
+  }
+  const { uid, nickName, channelMasterId } = firstBinding;
   return {
     bindingList,
     uid,

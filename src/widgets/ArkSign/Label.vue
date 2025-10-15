@@ -11,7 +11,12 @@ defineProps<{
 <template>
   <div class="flex items-center">
     {{ nickName }}
-    <NTag size="small" :bordered="false" :color="typeColor" class="mx-2">
+    <NTag
+      v-bind="typeColor ? { color: typeColor } : {}"
+      size="small"
+      :bordered="false"
+      class="mx-2"
+    >
       {{ channelName }}
     </NTag>
   </div>

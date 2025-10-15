@@ -102,43 +102,55 @@ const showInfo = ref({
   elite: true,
 });
 const charList = ref<Char[]>([]);
+const selectedChars = computed(() => {
+  return selected.value
+    .map(charId => charData.value[charId])
+    .filter((char): char is Char => char !== undefined);
+});
 function order() {
   const selectedList: Char[] = [];
   const result: Char[] = [];
   for (const charId of Object.keys(charData.value)) {
+    const charDataItem = charData.value[charId];
+    const charInfo = charInfoMap.value[charId];
+    if (!charDataItem || !charInfo) continue;
+
     const index = selected.value.indexOf(charId);
     if (index !== -1) {
-      selectedList[index] = charData.value[charId];
+      selectedList[index] = charDataItem;
       continue;
     }
     if (
       selectFilterProfession.value !== "all" &&
-      charInfoMap.value[charId].profession !== selectFilterProfession.value
+      charInfo.profession !== selectFilterProfession.value
     ) {
       continue;
     }
     if (
       selectFilterRarity.value === "3" &&
-      charInfoMap.value[charId].rarity >= 3
+      charInfo.rarity >= 3
     ) {
       continue;
     }
     if (
       selectFilterRarity.value !== "all" &&
-      charInfoMap.value[charId].rarity !==
+      charInfo.rarity !==
         Number.parseInt(selectFilterRarity.value) - 1
     ) {
       continue;
     }
-    result.push(charData.value[charId]);
+    result.push(charDataItem);
   }
   switch (selectSort.value) {
     case "level": {
       result.sort((a, b) => {
+        const aInfo = charInfoMap.value[a.charId];
+        const bInfo = charInfoMap.value[b.charId];
+        if (!aInfo || !bInfo) return 0;
+
         if (a.evolvePhase === b.evolvePhase) {
           return a.level === b.level
-            ? charInfoMap.value[a.charId].rarity -
-                charInfoMap.value[b.charId].rarity
+            ? aInfo.rarity - bInfo.rarity
             : a.level - b.level;
         }
         return a.evolvePhase - b.evolvePhase;
@@ -198,6 +210,9 @@ function getCredAndSecret(text: string) {
   const textArr = text.split(",");
   const cred = textArr[0];
   const secret = textArr[1];
+  if (!cred || !secret) {
+    throw new Error("凭证格式不正确");
+  }
   return { cred, secret };
 }
 async function importSKLandOperatorData() {
@@ -233,8 +248,9 @@ async function importSKLandOperatorData() {
     doctorInfo.value.level = playerInfo.level;
     clearSelected();
     console.log(playerInfo);
-  } catch (error: any) {
-    message.error(error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    message.error(errorMessage);
   }
 }
 async function importSKLandOperatorDataByUid(uid: string) {
@@ -321,17 +337,25 @@ async function GenerateImg(type: string) {
 }
 function calcSkillRankShow(skills: Char["skills"], skillId: string) {
   const index = skills.findIndex((e) => e.id === skillId);
-  const sp = skills[index].specializeLevel;
+  const skill = skills[index];
+  if (!skill) return false;
+  const sp = skill.specializeLevel;
   return sp === 0 ? true : false;
 }
 function calcEquip(char: Char) {
-  return char.defaultEquipId
-    ? equip(equipmentInfoMap.value[char.defaultEquipId].typeIcon)
+  if (!char.defaultEquipId) {
+    return `${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_none.png`;
+  }
+  const equipInfo = equipmentInfoMap.value[char.defaultEquipId];
+  return equipInfo
+    ? equip(equipInfo.typeIcon)
     : `${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_none.png`;
 }
 function calcEquipStyle(char: Char) {
   if (char.defaultEquipId) {
-    return equipmentInfoMap.value[char.defaultEquipId].typeIcon === "original"
+    const equipInfo = equipmentInfoMap.value[char.defaultEquipId];
+    if (!equipInfo) return "height:100%";
+    return equipInfo.typeIcon === "original"
       ? "height:80%"
       : "transform:translateY(-4%);height:100%;";
   } else {
@@ -427,19 +451,19 @@ function calcServerColor(id: string) {
             @end="onEnd"
           >
             <TransitionGroup
+              v-bind="!drag && { name: 'fade' }"
               type="transition"
               tag="div"
-              :name="!drag ? 'fade' : undefined"
               class="signContainer-inner"
             >
               <div
-                v-for="charId in selected"
-                :key="charId"
+                v-for="char in selectedChars"
+                :key="char.charId"
                 class="charSignItem"
               >
                 <img
                   class="charImg"
-                  :src="portrait(charData[charId].skinId)"
+                  :src="portrait(char.skinId)"
                   alt=""
                 />
                 <div class="mask"></div>
@@ -454,19 +478,19 @@ function calcServerColor(id: string) {
                     </div>
                     <div class="equipIcon">
                       <img
-                        :src="calcEquip(charData[charId])"
-                        :style="calcEquipStyle(charData[charId])"
+                        :src="calcEquip(char)"
+                        :style="calcEquipStyle(char)"
                       />
                     </div>
                   </div>
                   <div v-show="showInfo.skill" class="skillIcon">
-                    <template v-if="charData[charId].defaultSkillId">
+                    <template v-if="char.defaultSkillId">
                       <img
                         class="skillRank"
                         :src="
                           specialized(
-                            charData[charId].skills,
-                            charData[charId].defaultSkillId,
+                            char.skills,
+                            char.defaultSkillId,
                           )
                         "
                         alt=""
@@ -474,20 +498,20 @@ function calcServerColor(id: string) {
                       <div
                         v-if="
                           calcSkillRankShow(
-                            charData[charId].skills,
-                            charData[charId].defaultSkillId,
+                            char.skills,
+                            char.defaultSkillId,
                           )
                         "
                         class="skillRank"
                       >
-                        {{ charData[charId].mainSkillLvl }}
+                        {{ char.mainSkillLvl }}
                       </div>
                     </template>
                     <img
                       crossorigin="anonymous"
                       class="skillImg"
                       :src="`${skill(
-                        charData[charId].defaultSkillId,
+                        char.defaultSkillId,
                       )}?a=${new Date().getTime()}`"
                       alt=""
                     />
@@ -497,35 +521,38 @@ function calcServerColor(id: string) {
                   <div>
                     <img
                       v-show="showInfo.potential"
-                      :src="potential(charData[charId].potentialRank)"
+                      :src="potential(char.potentialRank)"
                       alt=""
                     />
                   </div>
                   <div>
                     <div v-show="showInfo.level" class="level">
-                      <br />{{ charData[charId].level }}
+                      <br />{{ char.level }}
                     </div>
                   </div>
                 </div>
                 <div class="eliteWrapper">
                   <div v-show="showInfo.elite" class="eliteInner">
                     <img
-                      :src="elite(charData[charId].evolvePhase)"
+                      :src="elite(char.evolvePhase)"
                       width="100%"
                       height="auto"
                     />
                   </div>
                 </div>
-                <div class="topWrapper">
+                <div
+                  v-if="charInfoMap[char.charId]"
+                  class="topWrapper"
+                >
                   <img
                     v-show="showInfo.profession"
                     class="professionIcon"
-                    :src="profession(charInfoMap[charId].profession)"
+                    :src="profession(charInfoMap[char.charId]!.profession)"
                   />
                   <img
                     v-show="showInfo.rarity"
                     class="rarityIcon"
-                    :src="starWhite(charInfoMap[charId].rarity)"
+                    :src="starWhite(charInfoMap[char.charId]!.rarity)"
                   />
                 </div>
               </div>
@@ -565,7 +592,7 @@ function calcServerColor(id: string) {
         选择游戏角色：
         <div style="min-width: 200px; margin-left: 10px">
           <n-select
-            v-model:value="selectUid"
+            v-bind="selectUid !== undefined ? { value: selectUid } : {}"
             :options="bindingListOptions"
             :render-label="renderLabel"
             @update:value="handleChangeUid"
@@ -617,7 +644,7 @@ function calcServerColor(id: string) {
         <div class="w-full" style="margin-bottom: 5px">选择游戏角色：</div>
         <div class="w-full">
           <n-select
-            v-model:value="selectUid"
+            v-bind="selectUid !== undefined ? { value: selectUid } : {}"
             :options="bindingListOptions"
             :render-label="renderLabel"
             @update:value="handleChangeUid"
@@ -774,7 +801,12 @@ function calcServerColor(id: string) {
               alt=""
             />
             <div class="mask"></div>
-            <div class="name">{{ charInfoMap[item.charId].name }}</div>
+            <div
+              v-if="charInfoMap[item.charId]"
+              class="name"
+            >
+              {{ charInfoMap[item.charId]!.name }}
+            </div>
             <div class="bottomWrapper">
               <div class="level">{{ item.level }}</div>
               <img :src="potential(item.potentialRank)" alt="" />
@@ -788,14 +820,17 @@ function calcServerColor(id: string) {
                 />
               </div>
             </div>
-            <div class="topWrapper">
+            <div
+              v-if="charInfoMap[item.charId]"
+              class="topWrapper"
+            >
               <img
                 class="professionIcon"
-                :src="profession(charInfoMap[item.charId].profession)"
+                :src="profession(charInfoMap[item.charId]!.profession)"
               />
               <img
                 class="rarityIcon"
-                :src="starYellow(charInfoMap[item.charId].rarity)"
+                :src="starYellow(charInfoMap[item.charId]!.rarity)"
               />
             </div>
             <div v-if="selected.includes(item.charId)" class="selectMask">
