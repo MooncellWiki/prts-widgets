@@ -79,9 +79,15 @@ provide("loadingCount", loadingCount);
 const subProfMap = ref<Record<string, string[]>>({});
 const filteredSubProfMap = computed(() => {
   const map: Record<string, string[]> = {};
-  if (states.value.type.length === 0) return subProfMap.value;
-  for (const t of states.value.type) {
-    map[getZhType(t, locale)] = subProfMap.value[getZhType(t, locale)];
+  const typeArray = states.value.type;
+  if (!typeArray || typeArray.length === 0) return subProfMap.value;
+  for (const t of typeArray) {
+    const zhType = getZhType(t, locale);
+    if (!zhType) continue;
+    const subProfs = subProfMap.value[zhType];
+    if (subProfs) {
+      map[zhType] = subProfs;
+    }
   }
   return map;
 });
@@ -89,6 +95,7 @@ const filteredSubProfMap = computed(() => {
 const subOptions = computed(() => {
   const cLabel = customLabel[locale];
   const zhLabel = customLabel[LANGUAGES.ZH];
+  const subtypeMap = cLabel.subtypeMap;
   return {
     title: cLabel.subtypeLabel,
     placeholder: cLabel.subPlaceholder,
@@ -99,7 +106,7 @@ const subOptions = computed(() => {
         key: k,
         children: v.map((subProf) => {
           return {
-            label: cLabel.subtypeMap[subProf] ?? subProf,
+            label: subtypeMap?.[subProf] ?? subProf,
             value: subProf,
           };
         }),
@@ -130,7 +137,9 @@ provide("simple", simple);
 
 const rawEquipData = ref<CharEquips[]>([]);
 const filterData = (data: DOMStringMap): boolean => {
-  return sortStates.value.filter.every((v) => {
+  const filterArray = sortStates.value.filter;
+  if (!filterArray) return true;
+  return filterArray.every((v) => {
     switch (v.mode) {
       case "all": {
         return true;
@@ -172,13 +181,19 @@ const filteredEquipData = computed((): CharEquips[] => {
   const s = states.value;
   const result: CharEquips[] = [];
   for (const ce of rawEquipData.value) {
+    const rarityArray = s.rarity;
+    const subArray = s.sub;
+    const typeArray = s.type;
+    
     const rarityP =
-      s.rarity.length > 0 &&
-      !s.rarity.includes(rarityMap[ce.char.rarity.toString()]);
-    const subP = s.sub.length > 0 && !s.sub.includes(ce.char.subtype);
+      rarityArray &&
+      rarityArray.length > 0 &&
+      !rarityArray.includes(rarityMap[ce.char.rarity.toString()] ?? "");
+    const subP = subArray && subArray.length > 0 && !subArray.includes(ce.char.subtype);
     const typeP =
-      s.type.length > 0 &&
-      !s.type.includes(getLocaleType(ce.char.type, locale));
+      typeArray &&
+      typeArray.length > 0 &&
+      !typeArray.includes(getLocaleType(ce.char.type, locale) ?? "");
     if (rarityP || subP || typeP) continue;
     const data = ce.equips.filter((e) => filterData(e));
     if (data.length > 0)
@@ -205,8 +220,14 @@ const CharEquipList = computed(() => {
       }),
     );
   }
+  const sortArray = sortStates.value.sort;
+  if (!sortArray || sortArray.length === 0) return result;
+  
   result.sort((x, y) => {
-    switch (sortStates.value.sort[0].mode) {
+    const sortMode = sortArray[0];
+    if (!sortMode) return 0;
+    
+    switch (sortMode.mode) {
       case "default": {
         return x.oprarity === y.oprarity
           ? y.opid - x.opid
@@ -226,8 +247,8 @@ const CharEquipList = computed(() => {
               Number.parseInt(x.data.addtime ?? "0");
       }
       default: {
-        const mode = sortStates.value.sort[0].mode;
-        const order = sortStates.value.sort[0].value === "asc" ? 1 : -1;
+        const mode = sortMode.mode;
+        const order = sortMode.value === "asc" ? 1 : -1;
         const numx = x.data[`${mode}3`] ? Number(x.data[`${mode}3`]) : 0;
         const numy = y.data[`${mode}3`] ? Number(y.data[`${mode}3`]) : 0;
         return numx === numy
@@ -285,9 +306,15 @@ onBeforeMount(async () => {
     };
   });
   for (const i of charData) {
-    if (!subProfMap.value[i.char.type]) subProfMap.value[i.char.type] = [];
-    if (!~subProfMap.value[i.char.type].indexOf(i.char.subtype))
-      subProfMap.value[i.char.type].push(i.char.subtype);
+    const typeKey = i.char.type;
+    const subProfArray = subProfMap.value[typeKey];
+    if (!subProfArray) {
+      subProfMap.value[typeKey] = [];
+    }
+    const currentArray = subProfMap.value[typeKey];
+    if (currentArray && !~currentArray.indexOf(i.char.subtype)) {
+      currentArray.push(i.char.subtype);
+    }
   }
   rawEquipData.value = charData;
   timeData.value = time.map((i) => {
@@ -336,27 +363,31 @@ const mobileStyle = () => {
             <tbody class="align-baseline">
               <tr>
                 <OptionsGroup
-                  v-model="states.type"
+                  v-bind="states.type ? { modelValue: states.type } : {}"
                   :title="options.type.title"
                   :options="options.type.options"
                   :disabled="loadingCount > 0"
+                  @update:model-value="(v: string[]) => states.type = v"
                 />
               </tr>
               <tr>
                 <OptionsGroup
-                  v-model="states.rarity"
+                  v-bind="states.rarity ? { modelValue: states.rarity } : {}"
                   :title="options.rarity.title"
                   :options="options.rarity.options"
                   :disabled="loadingCount > 0"
+                  @update:model-value="(v: string[]) => states.rarity = v"
                 />
               </tr>
               <tr>
                 <FilterSub
-                  v-model:selected="states.sub"
+                  v-bind="states.sub ? { selected: states.sub } : { selected: [] }"
                   :title="subOptions.title"
                   :options="subOptions.options"
                   :placeholder="subOptions.placeholder"
                   :disabled="loadingCount > 0"
+                  @update:selected="(v: string[]) => states.sub = v"
+                />
                 />
               </tr>
             </tbody>
@@ -389,10 +420,13 @@ const mobileStyle = () => {
                   class="my-1"
                   @click="
                     () => {
-                      sortStates.filter.push({
-                        mode: 'all',
-                        value: 'yes',
-                      });
+                      const filterArray = sortStates.filter;
+                      if (filterArray) {
+                        filterArray.push({
+                          mode: 'all',
+                          value: 'yes',
+                        });
+                      }
                     }
                   "
                 >
@@ -403,8 +437,9 @@ const mobileStyle = () => {
                   class="my-1"
                   @click="
                     () => {
-                      if (sortStates.filter.length > 1) {
-                        sortStates.filter.pop();
+                      const filterArray = sortStates.filter;
+                      if (filterArray && filterArray.length > 1) {
+                        filterArray.pop();
                       }
                     }
                   "
@@ -457,6 +492,7 @@ const mobileStyle = () => {
             </span>
             <div class="flex basis-7/8 flex-row items-center">
               <NSelect
+                v-if="sortStates.sort && sortStates.sort[0]"
                 v-model:value="sortStates.sort[0].mode"
                 class="m-1"
                 :disabled="loadingCount > 0 || listShow === false"
@@ -467,9 +503,11 @@ const mobileStyle = () => {
         </NCollapseTransition>
       </NCard>
       <NCard
+        v-bind="{
+          ...(mobileStyle() ? { contentStyle: mobileStyle() } : {}),
+        }"
         title=" "
         header-style="text-align: center;"
-        :content-style="mobileStyle()"
         size="small"
       >
         <template #header-extra>

@@ -61,18 +61,21 @@ const states = ref<Record<string, string[]>>({
 const filteredMedalData = computed(() => {
   const medal = Object.fromEntries(
     Object.entries(medalMetaData.value.medal).filter(([, medal]) => {
+      const rarityArray = states.value.rarity;
       if (
-        states.value.rarity.length > 0 &&
-        states.value.rarity.length < filterRarity.options.length &&
-        !states.value.rarity.includes(rarityMap[medal.rarity.toString()])
+        rarityArray &&
+        rarityArray.length > 0 &&
+        rarityArray.length < filterRarity.options.length &&
+        !rarityArray.includes(rarityMap[medal.rarity.toString()] ?? "")
       ) {
         return false;
       }
       let res = true;
-      if (states.value.special.includes("可获得")) {
+      const specialArray = states.value.special;
+      if (specialArray && specialArray.includes("可获得")) {
         res = res && !medal.deprecate;
       }
-      if (states.value.special.includes("有镀层")) {
+      if (specialArray && specialArray.includes("有镀层")) {
         res = res && medal.isTrim;
       }
 
@@ -116,10 +119,10 @@ const cateNums = computed(() => {
         category.name,
         [
           category.medal.length,
-          ...category.medalGroup.map(
-            (groupId) =>
-              filteredMedalData.value.medalGroup[groupId].medal.length,
-          ),
+          ...category.medalGroup.map((groupId) => {
+            const group = filteredMedalData.value.medalGroup[groupId];
+            return group ? group.medal.length : 0;
+          }),
         ].reduce((a, b) => a + b, 0),
       ];
     }),
@@ -142,21 +145,22 @@ const toggleDeprecateBadge = () => {
 };
 const genPreMedalList = (idList: Array<{ id: string; isTrim: boolean }>) => {
   return Object.fromEntries(
-    idList.map((d) => {
-      return [
-        d.id,
-        {
-          name: medalMetaData.value.medal[d.id].name,
-          isTrim: d.isTrim,
-          picId:
-            medalMetaData.value.medal[d.id][d.isTrim ? "trimId" : "id"] || "",
-          method:
-            medalMetaData.value.medal[d.id][
-              d.isTrim ? "trimMethod" : "method"
-            ] || "",
-        },
-      ];
-    }),
+    idList
+      .map((d) => {
+        const medal = medalMetaData.value.medal[d.id];
+        if (!medal) return null;
+        
+        return [
+          d.id,
+          {
+            name: medal.name,
+            isTrim: d.isTrim,
+            picId: medal[d.isTrim ? "trimId" : "id"] || "",
+            method: medal[d.isTrim ? "trimMethod" : "method"] || "",
+          },
+        ];
+      })
+      .filter((item): item is [string, any] => item !== null),
   );
 };
 const { theme, toggleDark } = useTheme();
@@ -223,16 +227,18 @@ const i18nConfig = getNaiveUILocale();
             <tbody class="align-baseline">
               <tr>
                 <OptionsGroup
-                  v-model="states.rarity"
+                  v-bind="states.rarity ? { modelValue: states.rarity } : {}"
                   :title="filterRarity.title"
                   :options="filterRarity.options"
+                  @update:model-value="(v: string[]) => states.rarity = v"
                 />
               </tr>
               <tr>
                 <OptionsGroup
-                  v-model="states.special"
+                  v-bind="states.special ? { modelValue: states.special } : {}"
                   :title="filterSpecial.title"
                   :options="filterSpecial.options"
+                  @update:model-value="(v: string[]) => states.special = v"
                 />
               </tr>
             </tbody>
@@ -292,14 +298,15 @@ const i18nConfig = getNaiveUILocale();
                     checkMedalExists(medalId),
                   )"
                   :key="medalId"
-                  :medal-data="filteredMedalData.medal[medalId]"
+                  v-bind="filteredMedalData.medal[medalId] ? { medalData: filteredMedalData.medal[medalId] } : {}"
                   :show-deprecate-badge="showDeprecateBadge"
                   :mini-medal-data="
-                    filteredMedalData.medal[medalId].preMedalList
-                      ? genPreMedalList(
-                          filteredMedalData.medal[medalId].preMedalList,
-                        )
-                      : {}
+                    (() => {
+                      const medal = filteredMedalData.medal[medalId];
+                      return medal?.preMedalList
+                        ? genPreMedalList(medal.preMedalList)
+                        : {};
+                    })()
                   "
                   class="h-auto w-full lg:w-49%"
                 />
@@ -307,20 +314,24 @@ const i18nConfig = getNaiveUILocale();
               <MedalGroupComponent
                 v-for="medalGroupId in cate.medalGroup.slice().reverse()"
                 :key="medalGroupId"
-                :group-data="filteredMedalData.medalGroup[medalGroupId]"
-                :medal-data-list="
-                  filteredMedalData.medalGroup[medalGroupId].medal.map((id) => {
-                    return filteredMedalData.medal[id];
-                  })
+                v-bind="
+                  (() => {
+                    const group = filteredMedalData.medalGroup[medalGroupId];
+                    if (!group) return {};
+                    return {
+                      groupData: group,
+                      medalDataList: group.medal
+                        .map((id) => filteredMedalData.medal[id])
+                        .filter((m): m is NonNullable<typeof m> => m !== undefined),
+                      deprecateText: group.deprecateType
+                        ? (medalMetaData.groupDeprecateType[
+                            group.deprecateType
+                          ] ?? '')
+                        : '',
+                    };
+                  })()
                 "
                 :show-deprecate-badge="showDeprecateBadge"
-                :deprecate-text="
-                  filteredMedalData.medalGroup[medalGroupId].deprecateType
-                    ? medalMetaData.groupDeprecateType[
-                        filteredMedalData.medalGroup[medalGroupId].deprecateType
-                      ]
-                    : ''
-                "
                 class="h-auto w-full lg:w-49%"
               />
               <div
