@@ -54,9 +54,7 @@ onMounted(() => {
   for (const token of props.tokens || []) {
     const tokenBlock = props.blockmap[token];
     if (token && tokenBlock?.desc)
-      content += content
-        ? `<br/> ${tokenBlock.desc}`
-        : ` ${props.blockmap[token].desc}`;
+      content += content ? `<br/> ${tokenBlock.desc}` : ` ${tokenBlock.desc}`;
   }
 
   if (content.length > 0) {

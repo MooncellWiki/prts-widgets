@@ -88,7 +88,11 @@ const showTrimed = ref(false);
           ]"
         >
           <NImage
-            :width="rarityImgStyleSet[medalData.rarity][1]"
+            v-bind="
+              rarityImgStyleSet[medalData.rarity]?.[1]
+                ? { width: rarityImgStyleSet[medalData.rarity]![1] }
+                : {}
+            "
             :src="`${TORAPPU_ENDPOINT}/assets/medal_icon/${showTrimed && medalData.isTrim ? medalData.trimId : medalData.id}.png`"
             show-toolbar-tooltip
             :previewed-img-props="{
@@ -167,15 +171,24 @@ const showTrimed = ref(false);
               ></span>
               <div v-else class="flex items-center pl-1">
                 <div class="pr-1">获得</div>
-                <MiniMedalComponent
+                <template
                   v-for="miniMedal in medalData.preMedalList"
                   :key="miniMedal.id"
-                  :medal-data="
-                    miniMedalData
-                      ? miniMedalData[miniMedal.id]
-                      : { name: '', picId: '', method: '', isTrim: false }
-                  "
-                />
+                >
+                  <MiniMedalComponent
+                    v-if="miniMedalData?.[miniMedal.id]"
+                    :medal-data="miniMedalData[miniMedal.id]"
+                  />
+                  <MiniMedalComponent
+                    v-else
+                    :medal-data="{
+                      name: '',
+                      picId: '',
+                      method: '',
+                      isTrim: false,
+                    }"
+                  />
+                </template>
               </div>
             </div>
             <div v-else>
@@ -229,13 +242,14 @@ const showTrimed = ref(false);
               >
               <div v-for="reward in medalData.reward" :key="reward[0]">
                 <NBadge
-                  :value="reward[1]"
+                  v-bind="reward[1] ? { value: reward[1] } : {}"
                   color="#2f2f2f"
                   :offset="['-1em', '3em']"
                   :show="!(reward[1] === '0' || reward[1] === '')"
                 >
                   <NEl tag="a" :href="`/w/${reward[2]}`">
                     <img
+                      v-if="reward[0]"
                       :src="getImagePath(reward[0])"
                       class="inline w-3.5em"
                     />

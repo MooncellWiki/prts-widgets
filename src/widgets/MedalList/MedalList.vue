@@ -298,11 +298,11 @@ const i18nConfig = getNaiveUILocale();
                     checkMedalExists(medalId),
                   )"
                   :key="medalId"
-                  v-bind="
-                    filteredMedalData.medal[medalId]
+                  v-bind="{
+                    ...(filteredMedalData.medal[medalId]
                       ? { medalData: filteredMedalData.medal[medalId] }
-                      : {}
-                  "
+                      : {}),
+                  }"
                   :show-deprecate-badge="showDeprecateBadge"
                   :mini-medal-data="
                     (() => {
@@ -316,12 +316,14 @@ const i18nConfig = getNaiveUILocale();
                 />
               </NFlex>
               <MedalGroupComponent
-                v-for="medalGroupId in cate.medalGroup.slice().reverse()"
+                v-for="medalGroupId in cate.medalGroup
+                  .slice()
+                  .reverse()
+                  .filter((id) => filteredMedalData.medalGroup[id])"
                 :key="medalGroupId"
                 v-bind="
                   (() => {
-                    const group = filteredMedalData.medalGroup[medalGroupId];
-                    if (!group) return {};
+                    const group = filteredMedalData.medalGroup[medalGroupId]!;
                     return {
                       groupData: group,
                       medalDataList: group.medal
@@ -329,11 +331,14 @@ const i18nConfig = getNaiveUILocale();
                         .filter(
                           (m): m is NonNullable<typeof m> => m !== undefined,
                         ),
-                      deprecateText: group.deprecateType
-                        ? (medalMetaData.groupDeprecateType[
-                            group.deprecateType
-                          ] ?? '')
-                        : '',
+                      ...(group.deprecateType
+                        ? {
+                            deprecateText:
+                              medalMetaData.groupDeprecateType[
+                                group.deprecateType
+                              ] ?? '',
+                          }
+                        : {}),
                     };
                   })()
                 "

@@ -78,7 +78,10 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
         if (!result[charEquip.char.subtype]) {
           result[charEquip.char.subtype] = [];
         }
-        result[charEquip.char.subtype].push(charEquip);
+        const subtypeArray = result[charEquip.char.subtype];
+        if (subtypeArray) {
+          subtypeArray.push(charEquip);
+        }
       }
     }
   }

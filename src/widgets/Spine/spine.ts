@@ -294,7 +294,7 @@ export class Spine {
     };
     let started = false;
     const activeSkeleton = this.skeletons[this.activeSkeleton];
-    if (!activeSkeleton) return;
+    if (!activeSkeleton) return Promise.resolve();
     const state = activeSkeleton.state;
 
     state.addListener({

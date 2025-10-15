@@ -506,7 +506,9 @@ const mobileStyle = () => {
         </NCollapseTransition>
       </NCard>
       <NCard
-        v-bind="mobileStyle() ? { contentStyle: mobileStyle() } : {}"
+        v-bind="{
+          ...(mobileStyle() ? { contentStyle: mobileStyle() } : {}),
+        }"
         title=" "
         header-style="text-align: center;"
         size="small"
