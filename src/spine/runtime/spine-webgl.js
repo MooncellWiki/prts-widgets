@@ -6038,6 +6038,9 @@ var spine
     BinaryInput.prototype.readByte = function () {
       return this.buffer.getInt8(this.index++)
     }
+    BinaryInput.prototype.readUnsignedByte = function () {
+      return this.buffer.getUint8(this.index++)
+    }
     BinaryInput.prototype.readShort = function () {
       var value = this.buffer.getInt16(this.index)
       this.index += 2
@@ -6085,7 +6088,7 @@ var spine
       var chars = ''
       var charCount = 0
       for (var i = 0; i < byteCount; ) {
-        var b = this.readByte()
+        var b = this.readUnsignedByte()
         switch (b >> 4) {
           case 12:
           case 13:
