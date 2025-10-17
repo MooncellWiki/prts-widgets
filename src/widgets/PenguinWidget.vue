@@ -40,8 +40,8 @@ const stages = [
   { value: "_rep", label: "复刻" },
 ];
 
-const selectedServer = ref(servers[0].value);
-const selectedStage = ref(stages[0].value);
+const selectedServer = ref(servers[0]?.value ?? "");
+const selectedStage = ref(stages[0]?.value ?? "");
 </script>
 
 <template>

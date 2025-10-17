@@ -37,9 +37,10 @@ const statesRef = useVModel(props, "states", emit);
         <tbody class="align-baseline">
           <tr v-for="(filter, field) in filters" :key="field">
             <OptionsGroup
-              v-model="statesRef[field]"
+              :model-value="statesRef[field]"
               :title="filter.title"
               :options="filter.options"
+              @update:model-value="(v: string[]) => (statesRef[field] = v)"
             />
           </tr>
         </tbody>

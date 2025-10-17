@@ -24,7 +24,10 @@ async function initSkinTable() {
   if (buildinPatchMap) {
     for (const charPatch of Object.values(buildinPatchMap)) {
       for (const [charPatchId, charSkinId] of Object.entries(charPatch)) {
-        avatarMapping[charPatchId] = table.charSkins[charSkinId].avatarId;
+        const charSkin = table.charSkins[charSkinId];
+        if (charSkin) {
+          avatarMapping[charPatchId] = charSkin.avatarId;
+        }
       }
     }
   }
@@ -74,10 +77,13 @@ async function initCharWord() {
     for (const charVoice of Object.values(dict)) {
       const cvName = charVoice.cvName;
       for (const name of cvName) {
-        if (!data[charVoice.voiceLangType][name]) {
-          data[charVoice.voiceLangType][name] = new Set();
+        const langTypeData = data[charVoice.voiceLangType];
+        if (langTypeData) {
+          if (!langTypeData[name]) {
+            langTypeData[name] = new Set();
+          }
+          langTypeData[name].add(charId);
         }
-        data[charVoice.voiceLangType][name].add(charId);
       }
     }
   }

@@ -85,13 +85,15 @@ function calc() {
   const list: Array<{ tags: number; charIndict: number[]; score: number }> = [];
   for (const k of Object.keys(result)) {
     const key = Number.parseInt(k);
-    const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
-      return props.source[b].rarity - props.source[a].rarity;
-    });
+    const charIndict = Array.from(result[key]?.charIndict || []).sort(
+      (a, b) => {
+        return (props.source[b]?.rarity ?? 0) - (props.source[a]?.rarity ?? 0);
+      },
+    );
 
     let acc = 0;
     for (const cur of charIndict) {
-      let s = props.source[cur].rarity + 1;
+      let s = (props.source[cur]?.rarity ?? 0) + 1;
       if (s === 1) s = 3.5;
       acc += s;
     }
@@ -142,7 +144,7 @@ function copyUrl() {
         v-for="(c, i) in rarity"
         :key="c"
         class="m-1"
-        :model-value="selected[rarityIndex - i]"
+        :model-value="selected[rarityIndex - i] ?? false"
         @click="onTagClick(rarityIndex - i)"
       >
         {{ c }}
@@ -157,7 +159,7 @@ function copyUrl() {
       <Checkbox
         v-for="(c, i) in profession"
         :key="c"
-        :model-value="selected[professionIndex - i]"
+        :model-value="selected[professionIndex - i] ?? false"
         class="m-1"
         @click="onTagClick(professionIndex - i)"
       >
@@ -174,7 +176,7 @@ function copyUrl() {
         v-for="(c, i) in position"
         :key="c"
         class="m-1"
-        :model-value="selected[positionIndex - i]"
+        :model-value="selected[positionIndex - i] ?? false"
         @click="onTagClick(positionIndex - i)"
       >
         {{ c }}
@@ -191,7 +193,7 @@ function copyUrl() {
         v-for="(c, i) in tag"
         :key="c"
         class="m-1"
-        :model-value="selected[tagIndex - i]"
+        :model-value="selected[tagIndex - i] ?? false"
         checkable
         @click="onTagClick(tagIndex - i)"
       >
@@ -240,18 +242,18 @@ function copyUrl() {
           v-for="charIndex in data.charIndict"
           :key="charIndex"
           class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
-          :class="`r-${source[charIndex].rarity}`"
+          :class="`r-${source[charIndex]?.rarity ?? 0}`"
         >
           <span
-            v-if="isOnly(source[charIndex])"
+            v-if="isOnly(source[charIndex]!)"
             class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
             >限</span
           >
           <Avatar
             :size="xs ? 'xs' : 'sm'"
-            :profession="source[charIndex].profession"
-            :rarity="source[charIndex].rarity"
-            :name="source[charIndex].zh"
+            :profession="source[charIndex]?.profession ?? ''"
+            :rarity="source[charIndex]?.rarity ?? 0"
+            :name="source[charIndex]?.zh ?? ''"
           />
         </div>
       </div>
@@ -286,18 +288,18 @@ function copyUrl() {
             v-for="charIndex in data.charIndict"
             :key="charIndex"
             class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
-            :class="`r-${source[charIndex].rarity}`"
+            :class="`r-${source[charIndex]?.rarity ?? 0}`"
           >
             <span
-              v-if="isOnly(source[charIndex])"
+              v-if="isOnly(source[charIndex]!)"
               class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
               >限</span
             >
             <Avatar
               :size="xs ? 'xs' : 'sm'"
-              :profession="source[charIndex].profession"
-              :rarity="source[charIndex].rarity"
-              :name="source[charIndex].zh"
+              :profession="source[charIndex]?.profession ?? ''"
+              :rarity="source[charIndex]?.rarity ?? 0"
+              :name="source[charIndex]?.zh ?? ''"
             />
           </div>
         </td>
