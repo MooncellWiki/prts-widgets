@@ -188,8 +188,8 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       minWidth: 80,
       render(row) {
         const img = h("img", {
-          "data-src": getImagePath(`头像_敌人_${row.name}.png`),
-          class: "lazyload",
+          src: getImagePath(`头像_敌人_${row.name}.png`),
+          loading: "lazy",
           style: {
             width: "65px",
             height: "65px",
@@ -375,9 +375,10 @@ const handleUpdateFilter = (
           :href="`/w/${row.enemyLink}`"
         >
           <img
-            class="lazyload min-h-[80px]"
+            class="min-h-[80px]"
             style="width: 80px; height: 80px"
-            :data-src="getImagePath(`头像_敌人_${row.name}.png`)"
+            :src="getImagePath(`头像_敌人_${row.name}.png`)"
+            loading="lazy"
           />
         </a>
         <NPagination

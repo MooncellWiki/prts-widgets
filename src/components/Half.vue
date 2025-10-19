@@ -35,7 +35,7 @@ defineProps<{
         <img :src="charListData.bg(rarity)" />
       </div>
       <div class="operator">
-        <img class="lazyload" :data-src="getImagePath(`半身像_${zh}_1.png`)" />
+        <img :src="getImagePath(`半身像_${zh}_1.png`)" loading="lazy" />
       </div>
       <div class="patch" />
       <div class="logo">
