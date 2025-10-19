@@ -47,9 +47,10 @@ const lastVoiceIdsIndex = computed(() => sortedVoiceData.value.length - 1);
       :href="`/w/${mapping[charMapping[voiceId] || voiceId]}`"
     >
       <img
-        class="lazyload min-h-[80px]"
+        class="min-h-[80px]"
         style="width: 80px; height: 80px"
-        :data-src="getAvatarURL(voiceId).toString()"
+        :src="getAvatarURL(voiceId).toString()"
+        loading="lazy"
         width="80"
       />
     </a>

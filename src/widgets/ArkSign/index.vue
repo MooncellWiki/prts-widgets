@@ -769,8 +769,9 @@ function calcServerColor(id: string) {
           >
             <img
               :key="item.skinId"
-              class="charImg lazyload"
-              :data-src="portrait(item.skinId)"
+              class="charImg"
+              :src="portrait(item.skinId)"
+              loading="lazy"
               alt=""
             />
             <div class="mask"></div>
