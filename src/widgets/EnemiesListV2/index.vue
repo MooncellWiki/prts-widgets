@@ -64,18 +64,18 @@ const filteredEnemyData = computed(() => {
   const searchWord = keyword.value;
   const filteredData = enemyData.value.filter((enemy) => {
     for (const key in filters) {
-      if (filters[key].length > 0) {
+      if (filters[key] && filters[key].length > 0) {
         if (
-          filterConfig.groups[0].filters.includes(key) &&
-          !filters[key].some(
+          filterConfig.groups[0]?.filters.includes(key) &&
+          !filters[key]?.some(
             (filter) =>
               !!~enemy[key as keyof EnemyData].toString().indexOf(filter),
           )
         )
           return false;
         if (
-          filterConfig.groups[1].filters.includes(key) &&
-          !filters[key].includes(enemy[key as keyof EnemyData].toString())
+          filterConfig.groups[1]?.filters.includes(key) &&
+          !filters[key]?.includes(enemy[key as keyof EnemyData].toString())
         )
           return false;
       }
@@ -105,10 +105,12 @@ watch(keyword, () => {
 });
 
 const createFilterOptions = (field: string) => {
-  return filterConfig.filters[field].options.map((option) => ({
-    label: option,
-    value: option,
-  }));
+  return (
+    filterConfig.filters[field]?.options?.map((option) => ({
+      label: option,
+      value: option,
+    })) || []
+  );
 };
 
 const createDimensionalColumn = (
@@ -131,7 +133,7 @@ const createDimensionalColumn = (
       return index1 - index2;
     },
     filterOptions: createFilterOptions(field),
-    filterOptionValues: filterConfig.states[field],
+    filterOptionValues: filterConfig.states[field] ?? null,
     filter(value: string | number, row: EnemyData) {
       return row[field] === value.toString();
     },
@@ -230,7 +232,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       resizable: true,
       minWidth: 80,
       filterOptions: createFilterOptions("enemyLevel"),
-      filterOptionValues: filterConfig.states.enemyLevel,
+      filterOptionValues: filterConfig.states.enemyLevel ?? null,
       filter(value, row) {
         return !!~row.enemyLevel.indexOf(value.toString());
       },
@@ -244,7 +246,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       resizable: true,
       minWidth: 80,
       filterOptions: createFilterOptions("enemyRace"),
-      filterOptionValues: filterConfig.states.enemyRace,
+      filterOptionValues: filterConfig.states.enemyRace ?? null,
       filter(value, row) {
         return !!~row.enemyRace.indexOf(value.toString());
       },
@@ -258,7 +260,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       resizable: true,
       minWidth: 105,
       filterOptions: createFilterOptions("attackType"),
-      filterOptionValues: filterConfig.states.attackType,
+      filterOptionValues: filterConfig.states.attackType ?? null,
       filter(value, row) {
         return !!~row.attackType.indexOf(value.toString());
       },
@@ -272,7 +274,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       resizable: true,
       minWidth: 105,
       filterOptions: createFilterOptions("damageType"),
-      filterOptionValues: filterConfig.states.damageType,
+      filterOptionValues: filterConfig.states.damageType ?? null,
       filter(value, row) {
         return !!~row.damageType.indexOf(value.toString());
       },
@@ -281,12 +283,12 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       },
     },
     abilityColumn,
-    ...filterConfig.groups[1].filters.map((field) =>
+    ...(filterConfig.groups[1]?.filters.map((field) =>
       createDimensionalColumn(
         field as keyof EnemyData,
-        filterConfig.filters[field].title,
+        filterConfig.filters[field]?.title || field,
       ),
-    ),
+    ) || []),
   ];
 };
 
@@ -307,7 +309,8 @@ const handleUpdateFilter = (
   filters: DataTableFilterState,
   sourceColumn: DataTableBaseColumn,
 ) => {
-  abilityColumn.filterOptionValues = filters[sourceColumn.key] as string[];
+  abilityColumn.filterOptionValues =
+    (filters[sourceColumn.key] as string[]) ?? null;
 };
 </script>
 

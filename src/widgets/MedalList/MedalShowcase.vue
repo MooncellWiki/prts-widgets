@@ -72,13 +72,17 @@ const filteredMedalData = computed(() => {
 
     for (const preMedalDefine of medal[1].preMedalList) {
       const currMedalData = medalMetaData.value.medal[preMedalDefine.id];
+      if (!currMedalData) continue;
 
+      if (!entry[parentMedalId]) continue;
       entry[parentMedalId][preMedalDefine.id] = {
         name: currMedalData.name,
         isTrim: preMedalDefine.isTrim,
-        picId: preMedalDefine.isTrim ? currMedalData.trimId : currMedalData.id,
+        picId: preMedalDefine.isTrim
+          ? (currMedalData.trimId ?? "")
+          : currMedalData.id,
         method: preMedalDefine.isTrim
-          ? currMedalData.trimMethod
+          ? (currMedalData.trimMethod ?? "")
           : currMedalData.method,
       };
     }
@@ -94,11 +98,11 @@ const filteredMedalData = computed(() => {
 });
 
 const generateGroupMedalData = (medalGroupId: string) => {
-  return Object.values(medalMetaData.value.medalGroup[medalGroupId].medal).map(
-    (id) => {
-      return medalMetaData.value.medal[id];
-    },
-  );
+  const medalGroup = medalMetaData.value.medalGroup[medalGroupId];
+  if (!medalGroup) return [];
+  return Object.values(medalGroup.medal)
+    .map((id) => medalMetaData.value.medal[id])
+    .filter((m): m is NonNullable<typeof m> => m !== undefined);
 };
 
 const spoilerManualUnlocked = ref(!props.spoiler);
@@ -218,21 +222,29 @@ const i18nConfig = getNaiveUILocale();
           <NGridItem v-for="medalId in medalList" :key="medalId">
             <MedalComponent
               v-if="filteredMedalData.medal[medalId]"
-              :medal-data="filteredMedalData.medal[medalId]"
-              :mini-medal-data="filteredMedalData.preMedals[medalId]"
+              :medal-data="filteredMedalData.medal[medalId]!"
+              v-bind="
+                filteredMedalData.preMedals[medalId]
+                  ? { miniMedalData: filteredMedalData.preMedals[medalId] }
+                  : {}
+              "
             />
           </NGridItem>
           <NGridItem v-for="medalGroupId in medalGroupList" :key="medalGroupId">
             <MedalGroupComponent
               v-if="filteredMedalData.medalGroup[medalGroupId]"
-              :group-data="filteredMedalData.medalGroup[medalGroupId]"
+              :group-data="filteredMedalData.medalGroup[medalGroupId]!"
               :medal-data-list="generateGroupMedalData(medalGroupId)"
-              :deprecate-text="
-                filteredMedalData.medalGroup[medalGroupId].deprecateType
-                  ? medalMetaData.groupDeprecateType[
-                      filteredMedalData.medalGroup[medalGroupId].deprecateType
-                    ]
-                  : ''
+              v-bind="
+                filteredMedalData.medalGroup[medalGroupId]?.deprecateType
+                  ? {
+                      deprecateText:
+                        medalMetaData.groupDeprecateType[
+                          filteredMedalData.medalGroup[medalGroupId]
+                            ?.deprecateType
+                        ],
+                    }
+                  : {}
               "
             />
           </NGridItem>

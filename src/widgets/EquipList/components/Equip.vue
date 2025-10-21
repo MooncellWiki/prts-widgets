@@ -166,16 +166,21 @@ const modeMission = () => props.simplemode === "mission";
                 :key="stats[0]"
               >
                 <span
-                  v-if="e[stats[0]] !== '0'"
+                  v-if="
+                    stats[0] && e[stats[0]] !== '0' && e[stats[0]] !== undefined
+                  "
                   class="mx-[0.5em] whitespace-nowrap"
                 >
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor(stats[0], e[stats[0]] ?? '0'),
+                      color: getStatColor(stats[0] ?? '', e[stats[0]] ?? '0'),
                     }"
                   >
-                    {{ (Number(e[stats[0]]) >= 0 ? "+" : "") + e[stats[0]] }}
+                    {{
+                      (Number(e[stats[0]] ?? "0") >= 0 ? "+" : "") +
+                      (e[stats[0]] ?? "0")
+                    }}
                   </span>
                 </span>
                 <span v-if="e['其他']" v-html="e['其他']"></span>
@@ -224,11 +229,15 @@ const modeMission = () => props.simplemode === "mission";
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor(stats[0], e[`${stats[0]}2`] ?? '0'),
+                      color: getStatColor(
+                        stats[0] ?? '',
+                        e[`${stats[0]}2`] ?? '0',
+                      ),
                     }"
                   >
                     {{
-                      (Number(e[stats[0]]) >= 0 ? "+" : "") + e[`${stats[0]}2`]
+                      (Number(e[stats[0] ?? ""] ?? "0") >= 0 ? "+" : "") +
+                      (e[`${stats[0] ?? ""}2`] ?? "0")
                     }}
                   </span>
                 </span>
@@ -268,11 +277,15 @@ const modeMission = () => props.simplemode === "mission";
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
-                      color: getStatColor(stats[0], e[`${stats[0]}3`] ?? '0'),
+                      color: getStatColor(
+                        stats[0] ?? '',
+                        e[`${stats[0]}3`] ?? '0',
+                      ),
                     }"
                   >
                     {{
-                      (Number(e[stats[0]]) >= 0 ? "+" : "") + e[stats[0] + 3]
+                      (Number(e[stats[0] ?? ""] ?? "0") >= 0 ? "+" : "") +
+                      (e[(stats[0] ?? "") + 3] ?? "0")
                     }}
                   </span>
                 </span>
