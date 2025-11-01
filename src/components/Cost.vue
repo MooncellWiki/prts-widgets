@@ -26,8 +26,8 @@ defineProps<{
 <template>
   <div class="my-8px flex flex-col items-center justify-center">
     <Avatar
-      :rarity="rarity - 1"
       :name="name"
+      :rarity="rarity - 1"
       :profession="professionMap[profession]"
       size="sm"
     />

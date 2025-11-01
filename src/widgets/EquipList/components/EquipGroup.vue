@@ -38,7 +38,10 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
               equips: [equip],
             });
           } else {
-            result[addtime][index].equips.push(equip);
+            const resultItem = result[addtime][index];
+            if (resultItem) {
+              resultItem.equips.push(equip);
+            }
           }
         }
       }
@@ -61,7 +64,10 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
               equips: [equip],
             });
           } else {
-            result[mission2opt][index].equips.push(equip);
+            const resultItem = result[mission2opt][index];
+            if (resultItem) {
+              resultItem.equips.push(equip);
+            }
           }
         }
       }
@@ -72,17 +78,23 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
         if (!result[charEquip.char.subtype]) {
           result[charEquip.char.subtype] = [];
         }
-        result[charEquip.char.subtype].push(charEquip);
+        const subtypeArray = result[charEquip.char.subtype];
+        if (subtypeArray) {
+          subtypeArray.push(charEquip);
+        }
       }
     }
   }
   for (const key of Object.keys(result)) {
-    result[key].sort((a, b) => {
-      return a.char.rarity === b.char.rarity
-        ? b.char.id - a.char.id
-        : Number.parseInt(b.char.rarity as string) -
-            Number.parseInt(a.char.rarity as string);
-    });
+    const resultArray = result[key];
+    if (resultArray) {
+      resultArray.sort((a, b) => {
+        return a.char.rarity === b.char.rarity
+          ? b.char.id - a.char.id
+          : Number.parseInt(b.char.rarity as string) -
+              Number.parseInt(a.char.rarity as string);
+      });
+    }
   }
   return result;
 });
