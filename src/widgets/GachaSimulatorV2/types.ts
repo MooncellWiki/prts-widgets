@@ -1,4 +1,4 @@
-import { RarityRank } from "./consts";
+import type { RarityRank } from "./consts";
 
 export interface GachaDBServer {
   gachaPoolClient: Array<GachaPoolClientData>;

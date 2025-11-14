@@ -1,4 +1,4 @@
-import { RarityRank } from "./consts";
+import type { RarityRank } from "./consts";
 
 /**
  * https://prts.wiki/id/52144 寻访规则

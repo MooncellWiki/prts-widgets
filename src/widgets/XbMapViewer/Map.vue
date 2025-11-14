@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 
 import Block from "./Block.vue";
-import { type XbConstData } from "./consts";
+
+import type { XbConstData } from "./consts";
 
 export interface Props {
   map: {
