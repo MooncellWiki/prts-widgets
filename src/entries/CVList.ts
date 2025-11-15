@@ -62,11 +62,8 @@ async function initCharWord() {
   );
   const table: CharWordTable = await response.json();
   const langTypes = table.voiceLangTypeDict;
-  const data = Object.fromEntries(
-    Object.keys(langTypes).map((langType) => [
-      langType,
-      {} as Record<string, Set<string>>,
-    ]),
+  const data: Record<string, Record<string, Set<string>>> = Object.fromEntries(
+    Object.keys(langTypes).map((langType) => [langType, {}]),
   );
 
   for (const [charId, voiceLang] of Object.entries(table.voiceLangDict)) {

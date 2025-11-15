@@ -2,13 +2,13 @@ export const SpecialOperatorTargetType = {
   NONE: 0,
   ROGUE: 1,
 } as const;
-export type SpecialOperatorTargetType =
+export type SpecialOperatorTargetValueType =
   (typeof SpecialOperatorTargetType)[keyof typeof SpecialOperatorTargetType];
 
 export interface SpecialOperatorBasicData {
   soCharId: string;
   sortId: number;
-  targetType: SpecialOperatorTargetType;
+  targetType: SpecialOperatorTargetValueType;
   targetId: string;
   targetTopicName: string;
   bgId: string;
@@ -29,14 +29,14 @@ export const SpecialOperatorDetailNodeType = {
   MASTER: 4,
   UNIEQUIP: 5,
 } as const;
-export type SpecialOperatorDetailNodeType =
+export type SpecialOperatorDetailNodeValueType =
   (typeof SpecialOperatorDetailNodeType)[keyof typeof SpecialOperatorDetailNodeType];
 
 export interface SpecialOperatorDetailTabData {
   soTabId: string;
   soTabName: string;
   soTabSortId: number;
-  nodeType: SpecialOperatorDetailNodeType;
+  nodeType: SpecialOperatorDetailNodeValueType;
 }
 
 export const EvolvePhase = {
@@ -46,31 +46,31 @@ export const EvolvePhase = {
   PHASE_3: 3,
   E_NUM: 4,
 } as const;
-export type EvolvePhase = (typeof EvolvePhase)[keyof typeof EvolvePhase];
+export type EvolvePhaseValue = (typeof EvolvePhase)[keyof typeof EvolvePhase];
 
 export const SpecialOperatorConditionViewType = {
   TASK: 0,
   EVOLVEPHASE: 1,
 } as const;
-export type SpecialOperatorConditionViewType =
+export type SpecialOperatorConditionViewValueType =
   (typeof SpecialOperatorConditionViewType)[keyof typeof SpecialOperatorConditionViewType];
 
 export interface SpecialOperatorDetailNodeUnlockData {
   nodeId: string;
-  nodeType: SpecialOperatorDetailNodeType;
+  nodeType: SpecialOperatorDetailNodeValueType;
   isInGameMechanics: boolean;
-  unlockEvolvePhase: EvolvePhase;
+  unlockEvolvePhase: EvolvePhaseValue;
   unlockLevel: number;
   unlockTaskId: string;
   frontNodeId: string;
   ifAutoUnlock: boolean;
-  conditionViewType: SpecialOperatorConditionViewType;
+  conditionViewType: SpecialOperatorConditionViewValueType;
   topoOrder: number;
 }
 
 export interface SpecialOperatorDetailEvolveNodeData {
   nodeId: string;
-  toEvolvePhase: EvolvePhase;
+  toEvolvePhase: EvolvePhaseValue;
 }
 
 export interface SpecialOperatorDetailSkillNodeData {
@@ -112,11 +112,11 @@ export interface SpecialOperatorNodePointData {
 }
 
 export interface SpecialOperatorElitePointData {
-  evolvePhase: EvolvePhase;
+  evolvePhase: EvolvePhaseValue;
 }
 
 export interface SpecialOperatorLevelPointData {
-  evolvePhase: EvolvePhase;
+  evolvePhase: EvolvePhaseValue;
   level: number;
 }
 
@@ -155,7 +155,7 @@ export interface SpecialOperatorDetailData {
 }
 
 export interface SpecialOperatorModeData {
-  type: SpecialOperatorTargetType;
+  type: SpecialOperatorTargetValueType;
   typeName: string;
 }
 
@@ -173,14 +173,14 @@ export const MissionType = {
   SPECIAL_OPERATOR: 10,
   SPECIAL_OPERATOR_WEEKLY: 11,
 } as const;
-export type MissionType = (typeof MissionType)[keyof typeof MissionType];
+export type MissionValueType = (typeof MissionType)[keyof typeof MissionType];
 
 export const MissionItemBgType = {
   COMMON: 0,
   Equipment: 1,
   Char: 2,
 } as const;
-export type MissionItemBgType =
+export type MissionItemBgValueType =
   (typeof MissionItemBgType)[keyof typeof MissionItemBgType];
 
 export const ItemType = {
@@ -271,10 +271,10 @@ export const ItemType = {
   EXCLUSIVE_TKT_GACHA_10: 84,
   SO_CHAR_EXP: 85,
 } as const;
-export type ItemType = (typeof ItemType)[keyof typeof ItemType];
+export type ItemValueType = (typeof ItemType)[keyof typeof ItemType];
 
 export interface MissionDisplayRewards {
-  type: ItemType;
+  type: ItemValueType;
   id: string;
   count: number;
 }
@@ -283,8 +283,8 @@ export interface MissionData {
   id: string;
   sortId: number;
   description: string;
-  type: MissionType;
-  itemBgType: MissionItemBgType;
+  type: MissionValueType;
+  itemBgType: MissionItemBgValueType;
   preMissionIds: string[];
   template: string;
   templateType: string;
@@ -304,7 +304,7 @@ export interface MissionData {
 export interface MissionGroup {
   id: string;
   title: string;
-  type: MissionType;
+  type: MissionValueType;
   preMissionGroup: string;
   period: number[];
   rewards: MissionDisplayRewards[];
