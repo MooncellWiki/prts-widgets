@@ -1,6 +1,7 @@
-/* eslint-disable unicorn/no-array-reduce */
 import js from "@eslint/js";
 import unocss from "@unocss/eslint-config/flat";
+import { defineConfig, globalIgnores } from "eslint/config";
+import gitignore from "eslint-config-flat-gitignore";
 import pluginImport from "eslint-plugin-import-x";
 import configPrettierRecommended from "eslint-plugin-prettier/recommended";
 import pluginUnicorn from "eslint-plugin-unicorn";
@@ -12,16 +13,17 @@ import parserVue from "vue-eslint-parser";
 export const GLOB_SRC_EXT = "?([cm])[jt]s?(x)";
 export const GLOB_SRC = "**/*.?([cm])[jt]s?(x)";
 
-export const GLOB_MARKDOWN = "**/*.md";
+export const GLOB_JS = "**/*.?([cm])js";
+export const GLOB_JSX = "**/*.jsx";
 
-export const GLOB_TS = "**/*.?([cm])ts";
-export const GLOB_TSX = "**/*.?([cm])tsx";
+const GLOB_TS = "**/*.?([cm])ts";
+const GLOB_TSX = "**/*.?([cm])tsx";
 
-export const GLOB_VUE = "**/*.vue";
+const GLOB_VUE = "**/*.vue";
 
-export const restrictedSyntaxJs = ["LabeledStatement", "WithStatement"];
+const restrictedSyntaxJs = ["LabeledStatement", "WithStatement"];
 
-export const javascript = [
+const javascript = [
   js.configs.recommended,
   {
     languageOptions: {
@@ -151,20 +153,75 @@ export const javascript = [
   },
 ];
 
-export const typescript = tseslint.config({
+const typescriptCore = defineConfig({
   extends: [...tseslint.configs.recommended],
   files: [GLOB_TS, GLOB_TSX],
-  languageOptions: {
-    parser: tseslint.parser,
-    parserOptions: {
-      sourceType: "module",
-    },
-  },
   rules: {
-    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
+    "@typescript-eslint/consistent-type-assertions": [
+      "error",
+      {
+        assertionStyle: "as",
+        objectLiteralTypeAssertions: "allow-as-parameter",
+      },
+    ],
+    "@typescript-eslint/consistent-type-imports": [
+      "error",
+      { disallowTypeAnnotations: false, fixStyle: "inline-type-imports" },
+    ],
+    "@typescript-eslint/method-signature-style": ["error", "property"], // https://www.totaltypescript.com/method-shorthand-syntax-considered-harmful
+    "@typescript-eslint/no-empty-object-type": "off",
     "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-import-type-side-effects": "error",
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/no-redeclare": "error",
+    "@typescript-eslint/no-unsafe-function-type": "off",
+    "@typescript-eslint/no-unused-expressions": [
+      "error",
+      {
+        allowShortCircuit: true,
+        allowTaggedTemplates: true,
+        allowTernary: true,
+      },
+    ],
+
+    // handled by unused-imports/no-unused-imports
+    "@typescript-eslint/no-unused-vars": "off",
+    "@typescript-eslint/no-useless-constructor": "error",
+    "@typescript-eslint/prefer-as-const": "warn",
+    "@typescript-eslint/prefer-literal-enum-member": [
+      "error",
+      { allowBitwiseExpressions: true },
+    ],
+
+    "no-restricted-syntax": [
+      "error",
+      ...restrictedSyntaxJs,
+      "TSEnumDeclaration[const=true]",
+    ],
   },
 });
+
+const typescript = [
+  ...typescriptCore,
+  {
+    files: ["**/*.d.ts"],
+    name: "typescript/dts-rules",
+    rules: {
+      "eslint-comments/no-unlimited-disable": "off",
+      "import/no-duplicates": "off",
+      "no-restricted-syntax": "off",
+      "unused-imports/no-unused-vars": "off",
+    },
+  },
+  {
+    files: [GLOB_JS, "**/*.cjs"],
+    name: "typescript/cjs-rules",
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+];
 
 const vueCustomRules = {
   "vue/block-order": ["error", { order: ["script", "template", "style"] }],
@@ -208,24 +265,23 @@ const vueCustomRules = {
   "vue/require-prop-types": "off",
 };
 
-const vue3Rules = {
-  ...pluginVue.configs.base.rules,
-  ...pluginVue.configs["flat/essential"]
-    .map((c) => c.rules)
-    .reduce((acc, c) => ({ ...acc, ...c }), {}),
-  ...pluginVue.configs["flat/strongly-recommended"]
-    .map((c) => c.rules)
-    .reduce((acc, c) => ({ ...acc, ...c }), {}),
-  ...pluginVue.configs["flat/recommended"]
-    .map((c) => c.rules)
-    .reduce((acc, c) => ({ ...acc, ...c }), {}),
-};
+const vueTs = typescript
+  .filter((config) => config.name !== "typescript-eslint/base")
+  .map((config) => {
+    return {
+      ...config,
+      files: [GLOB_VUE],
+      name: `sxzz/vue/${config.name?.replace("sxzz/", "") || "anonymous"}`,
+    };
+  });
 
-export const vue = [
-  ...tseslint.config({
-    extends: typescript,
-    files: [GLOB_VUE],
-  }),
+const recommendedRules = pluginVue.configs["flat/recommended"]
+  .map((c) => c.rules)
+  // eslint-disable-next-line unicorn/no-array-reduce
+  .reduce((acc, c) => ({ ...acc, ...c }), {});
+
+const vue = [
+  ...vueTs,
   {
     files: [GLOB_VUE],
     languageOptions: {
@@ -242,13 +298,13 @@ export const vue = [
     },
     processor: pluginVue.processors[".vue"],
     rules: {
-      ...vue3Rules,
+      ...recommendedRules,
       ...vueCustomRules,
     },
   },
 ];
 
-export const imports = {
+const imports = {
   plugins: {
     import: pluginImport,
   },
@@ -281,7 +337,7 @@ export const imports = {
   },
 };
 
-export const prettier = [
+const prettier = [
   configPrettierRecommended,
   {
     rules: {
@@ -290,7 +346,7 @@ export const prettier = [
   },
 ];
 
-export const unicorn = [
+const unicorn = [
   pluginUnicorn.configs.recommended,
   {
     rules: {
@@ -308,17 +364,21 @@ export const unicorn = [
   },
 ];
 
-export const ignores = {
-  ignores: ["**/spine/runtime", "**/.husky", "**/dist"],
-};
+const ignores = [
+  gitignore(),
+  {
+    ignores: ["**/spine/runtime", "**/.husky", "**/dist"],
+  },
+];
 
 export default [
+  gitignore(),
+  ...ignores,
   ...javascript,
   ...typescript,
   ...vue,
   imports,
   ...prettier,
   ...unicorn,
-  ignores,
   unocss,
 ];

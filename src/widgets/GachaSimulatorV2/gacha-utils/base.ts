@@ -3,12 +3,6 @@ import {
   GachaRuleType,
   type GachaPoolClientData as GachaClientPool,
 } from "../gamedata-types";
-import {
-  type GachaAvailChar,
-  type GachaPoolClientData as GachaServerPool,
-  type GachaUpChar,
-  type GachaWeightUpChar,
-} from "../types";
 
 import {
   createGachaState,
@@ -28,6 +22,13 @@ import {
   shouldApplyEnsure5StarRule,
   shouldApplyEnsureUp6StarRule,
 } from "./rule";
+
+import type {
+  GachaAvailChar,
+  GachaPoolClientData as GachaServerPool,
+  GachaUpChar,
+  GachaWeightUpChar,
+} from "../types";
 
 export class GachaExecutor {
   gachaRuleType: GachaRuleType = GachaRuleType.NORMAL;

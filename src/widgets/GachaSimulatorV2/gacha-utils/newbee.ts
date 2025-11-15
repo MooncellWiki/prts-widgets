@@ -3,11 +3,6 @@ import {
   GachaRuleType,
   type NewbeeGachaPoolClientData,
 } from "../gamedata-types";
-import {
-  type GachaAvailChar,
-  type GachaPoolClientData as GachaServerPool,
-  type GachaUpChar,
-} from "../types";
 
 import {
   type GachaConfig,
@@ -22,6 +17,12 @@ import {
   shouldApplyEnsure5StarRule,
   shouldApplyEnsure6StarRule,
 } from "./rule";
+
+import type {
+  GachaAvailChar,
+  GachaPoolClientData as GachaServerPool,
+  GachaUpChar,
+} from "../types";
 
 export class NewbeeGachaExecutor {
   gachaRuleType: GachaRuleType = GachaRuleType.NEWBEE;

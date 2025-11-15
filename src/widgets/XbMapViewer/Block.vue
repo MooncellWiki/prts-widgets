@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 
 import { getImagePath } from "@/utils/utils";
 
-import { type BlockDefine } from "./consts";
+import type { BlockDefine } from "./consts";
 
 const props = withDefaults(
   defineProps<{

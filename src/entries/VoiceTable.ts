@@ -85,7 +85,7 @@ for (const dom of dataDomList) {
 const langArr = Array.from(langSet);
 
 // 挂到window上面给上面的charInfo用
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+
 // @ts-expect-error;
 window.charVoice = voiceData;
 if (import.meta.env.DEV)

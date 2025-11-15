@@ -4,7 +4,6 @@ import { createApp } from "vue";
 import SpineVue, { type Props } from "../widgets/Spine/Wrapper.vue";
 import { Spine } from "../widgets/Spine/spine";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
 window.SpineApi = Spine;
 window.dispatchEvent(new Event("spine_api_ready"));
