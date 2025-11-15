@@ -4,11 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@types/ali-oss':
-    hash: c0b8541e4a9a22662efa7e49bf3f27de1212ab9feb9a150ec876dbd94444a5e8
-    path: patches/@types__ali-oss.patch
-
 importers:
 
   .:
@@ -66,8 +61,8 @@ importers:
         specifier: ^9.39.0
         version: 9.39.0
       '@types/ali-oss':
-        specifier: ^6.16.11
-        version: 6.16.11(patch_hash=c0b8541e4a9a22662efa7e49bf3f27de1212ab9feb9a150ec876dbd94444a5e8)
+        specifier: ^6.16.13
+        version: 6.16.13
       '@types/crypto-js':
         specifier: ^4.2.2
         version: 4.2.2
@@ -1285,8 +1280,8 @@ packages:
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
 
-  '@types/ali-oss@6.16.11':
-    resolution: {integrity: sha512-/AyemPZy93ZXGzEokMsoPFgjH37snpzH4X/fwans/n63HLaCleriCG3PyrkHCPkgHEc9vj9Uo6paqsBN3vJ3OA==}
+  '@types/ali-oss@6.16.13':
+    resolution: {integrity: sha512-Nxxs9JYESnJcVBI9mNv+dFNnbdz15tKS15mwckZqSIM75ttb8GcNYgeNfKG9gsykSIDpbSqcSnEqxdV5vSlbDg==}
 
   '@types/crypto-js@4.2.2':
     resolution: {integrity: sha512-sDOLlVbHhXpAUAL0YHDUUwDZf3iN4Bwi4W6a0W0b+QcAezUbRtH4FVb+9J4h+XFPW7l/gQ9F8qC7P+Ec4k8QVQ==}
@@ -4459,7 +4454,7 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@types/ali-oss@6.16.11(patch_hash=c0b8541e4a9a22662efa7e49bf3f27de1212ab9feb9a150ec876dbd94444a5e8)': {}
+  '@types/ali-oss@6.16.13': {}
 
   '@types/crypto-js@4.2.2': {}
 
