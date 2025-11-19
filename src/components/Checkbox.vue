@@ -6,9 +6,11 @@ const props = withDefaults(
     modelValue?: boolean;
     noWidth?: boolean;
     value?: string;
+    dimmed?: boolean;
   }>(),
   {
     noWidth: false,
+    dimmed: false,
   },
 );
 const emit = defineEmits<{
@@ -38,6 +40,7 @@ const isSelected = computed({
     :class="{
       selected: isSelected,
       'no-width': noWidth,
+      dimmed,
     }"
     class="checkbox-container"
     @click="
@@ -74,5 +77,8 @@ const isSelected = computed({
 }
 .no-width {
   width: initial;
+}
+.dimmed {
+  opacity: 0.45;
 }
 </style>
