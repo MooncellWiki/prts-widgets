@@ -271,7 +271,7 @@ const vueTs = typescript
     return {
       ...config,
       files: [GLOB_VUE],
-      name: `sxzz/vue/${config.name?.replace("sxzz/", "") || "anonymous"}`,
+      name: `vue/${config.name || "anonymous"}`,
     };
   });
 
