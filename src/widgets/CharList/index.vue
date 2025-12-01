@@ -219,7 +219,8 @@ const oridata = computed(() => {
       result.sort((a, b) => {
         const r = a.rarity - b.rarity;
         if (r === 0) {
-          const classes = filters[0].filter[0].cbt;
+          const classes = filters[0]?.filter[0]?.cbt;
+          if (!classes) return 0;
           const o =
             classes.indexOf(a.profession) - classes.indexOf(b.profession);
           return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
@@ -233,7 +234,8 @@ const oridata = computed(() => {
       result.sort((a, b) => {
         const r = b.rarity - a.rarity;
         if (r === 0) {
-          const classes = filters[0].filter[0].cbt;
+          const classes = filters[0]?.filter[0]?.cbt;
+          if (!classes) return 0;
           const o =
             classes.indexOf(a.profession) - classes.indexOf(b.profession);
           return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
@@ -300,7 +302,8 @@ onBeforeMount(() => {
       return;
     }
     if (k === "_o") {
-      sortMethod.value = sortMethods.value[Number.parseInt(v as string)];
+      const index = Number.parseInt(v as string);
+      sortMethod.value = sortMethods.value[index] ?? sortMethods.value[0] ?? "";
       return;
     }
     if (k === "_f") {
@@ -309,7 +312,9 @@ onBeforeMount(() => {
       return;
     }
     if (k === "_d") {
-      currDisplayMode.value = displayModes.value[Number.parseInt(v as string)];
+      const index = Number.parseInt(v as string);
+      currDisplayMode.value =
+        displayModes.value[index] ?? displayModes.value[0] ?? "";
       return;
     }
 
@@ -375,7 +380,7 @@ watch(data, () => {
       <div
         class="filter-title"
         :class="{
-          enabled: hasSelected(states[i].flat()),
+          enabled: hasSelected(states[i]?.flat() || []),
         }"
       >
         {{ v.title }}
@@ -385,12 +390,12 @@ watch(data, () => {
         <span v-if="expanded[i]" class="mdi mdi-chevron-up text-2xl" />
         <span v-else class="mdi mdi-chevron-down text-2xl" />
       </div>
-      <NCollapseTransition :show="expanded[i]">
+      <NCollapseTransition :show="expanded[i] ?? false">
         <FilterRow
           v-for="(v2, i2) in v.filter"
           :key="v2.title"
-          v-model="states[i][i2].selected"
-          v-model:both="states[i][i2].both"
+          v-model="states[i]![i2]!.selected"
+          v-model:both="states[i]![i2]!.both"
           :title="v2.title"
           :labels="flat(v2.cbt)"
           :show-both="v2.both"
@@ -465,8 +470,8 @@ watch(data, () => {
             v-for="v in data"
             :key="v.sortId"
             :row="v"
-            :add-trust="currDataTypes['满信赖']"
-            :add-potential="currDataTypes['满潜能']"
+            :add-trust="currDataTypes['满信赖'] ?? false"
+            :add-potential="currDataTypes['满潜能'] ?? false"
           >
             <div v-html="v.feature" />
           </Short>
@@ -476,8 +481,8 @@ watch(data, () => {
             v-for="v in data"
             :key="v.sortId"
             :row="v"
-            :add-trust="currDataTypes['满信赖']"
-            :add-potential="currDataTypes['满潜能']"
+            :add-trust="currDataTypes['满信赖'] ?? false"
+            :add-potential="currDataTypes['满潜能'] ?? false"
           >
             <div v-html="v.feature" />
           </Long>
@@ -487,8 +492,8 @@ watch(data, () => {
             v-for="v in data"
             :key="v.sortId"
             :row="v"
-            :add-trust="currDataTypes['满信赖']"
-            :add-potential="currDataTypes['满潜能']"
+            :add-trust="currDataTypes['满信赖'] ?? false"
+            :add-potential="currDataTypes['满潜能'] ?? false"
           >
             <div v-html="v.feature" />
           </Card>

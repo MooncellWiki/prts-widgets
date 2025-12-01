@@ -93,7 +93,11 @@ export function skill(skillId: string) {
 
 export function specialized(skills: Char["skills"], skillId: string) {
   const index = skills.findIndex((e) => e.id === skillId);
-  const sp = skills[index].specializeLevel;
+  const skill = skills[index];
+  if (!skill) {
+    return `${TORAPPU_ENDPOINT}/assets/specialized_icon/specialized_tiny_0.png`;
+  }
+  const sp = skill.specializeLevel;
   return `${TORAPPU_ENDPOINT}/assets/specialized_icon/specialized_tiny_${sp}.png`;
 }
 

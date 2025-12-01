@@ -188,11 +188,13 @@ export class Spine {
     this.context.gl.clear(this.context.gl.COLOR_BUFFER_BIT);
 
     // Apply the animation state based on the delta time.
-    const state = this.skeletons[this.activeSkeleton].state;
-    const skeleton = this.skeletons[this.activeSkeleton].skeleton;
-    // const bounds = this.skeletons[this.activeSkeleton].bounds;
-    const premultipliedAlpha =
-      this.skeletons[this.activeSkeleton].premultipliedAlpha;
+    const activeSkeleton = this.skeletons[this.activeSkeleton];
+    if (!activeSkeleton) return;
+
+    const state = activeSkeleton.state;
+    const skeleton = activeSkeleton.skeleton;
+    // const bounds = activeSkeleton.bounds;
+    const premultipliedAlpha = activeSkeleton.premultipliedAlpha;
     state.update(delta);
     state.apply(skeleton);
     skeleton.updateWorldTransform();
@@ -290,7 +292,9 @@ export class Spine {
       chunks.push(e.data);
     };
     let started = false;
-    const state = this.skeletons[this.activeSkeleton].state;
+    const activeSkeleton = this.skeletons[this.activeSkeleton];
+    if (!activeSkeleton) return Promise.resolve();
+    const state = activeSkeleton.state;
 
     state.addListener({
       start: (_) => {

@@ -116,6 +116,7 @@ const showTrimed = ref(false);
               <NTooltip trigger="hover" placement="bottom-end">
                 <template #trigger>
                   <NButton
+                    v-if="groupData.bindEvent[1]"
                     size="small"
                     color="#2f2f2f"
                     class="color-white! focus:decoration-none hover:decoration-none"

@@ -102,8 +102,9 @@ export class NewbeeGachaExecutor {
       if (ruleResult) result = ruleResult;
     }
 
-    if (this.state.results[result.charId]) this.state.results[result.charId]++;
-    else this.state.results[result.charId] = 1;
+    const existingCount = this.state.results[result.charId];
+    this.state.results[result.charId] =
+      existingCount === undefined ? 1 : existingCount + 1;
 
     // 6 星计数
     if (result.rarity === RarityRank.TIER_6) this.state.non6StarCount = 0;
