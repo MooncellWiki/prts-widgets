@@ -109,6 +109,10 @@ const currDataTypes: Ref<Record<string, boolean>> = ref({
 const displayModes = ref(["表格", "半身像", "头像"]);
 const currDisplayMode = ref("表格");
 
+const dimmedMaps: Record<string, any>[][] = reactive(
+  props.filters.map((fg) => fg.filter.map(() => ({}))),
+);
+
 const toggleCollapse = (index: number) => {
   expanded.value[index] = !expanded.value[index];
   Cookies.set("opFilterExpandState", JSON.stringify(expanded.value), {
@@ -246,6 +250,56 @@ const oridata = computed(() => {
   }
   return result;
 });
+
+function computeDimmedMaps() {
+  for (let fi = 0; fi < props.filters.length; fi++) {
+    const fg = props.filters[fi];
+    for (let fj = 0; fj < fg.filter.length; fj++) {
+      const f = fg.filter[fj];
+      const labels = flat(f.cbt);
+      const map: Record<string, boolean> = {};
+
+      // 创建 states 副本
+      const tempStates = states.map((group) =>
+        group.map((s) => ({
+          both: s.both,
+          selected: { ...s.selected },
+          meta: s.meta,
+        })),
+      );
+
+      const originalSelected = tempStates[fi][fj].selected;
+
+      for (const label of labels) {
+        // 临时替换选中项为仅包含当前 label
+        tempStates[fi][fj].selected = { [label]: true };
+
+        const exists = props.source.some((char) => {
+          for (const g of tempStates) {
+            for (const sf of g) {
+              if (!predicate(sf as State, char)) return false;
+            }
+          }
+          return true;
+        });
+        map[label] = !exists;
+      }
+
+      tempStates[fi][fj].selected = originalSelected;
+      dimmedMaps[fi][fj] = map;
+    }
+  }
+}
+
+computeDimmedMaps();
+watch(
+  states,
+  () => {
+    computeDimmedMaps();
+  },
+  { deep: true },
+);
+
 watch(oridata, () => {
   page.value.index = 1;
 });
@@ -395,6 +449,7 @@ watch(data, () => {
           :labels="flat(v2.cbt)"
           :show-both="v2.both"
           :no-width="i === 2"
+          :dimmed-labels="dimmedMaps[i][i2]"
         />
       </NCollapseTransition>
     </div>
