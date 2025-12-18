@@ -106,33 +106,6 @@ export default defineConfig(({ command }) => {
             nohashEntries.has(chunk.name) ? "[name].js" : "[name].[hash].js",
           assetFileNames: "[name].[hash].[ext]",
         },
-        plugins: [
-          {
-            name: "prts",
-            generateBundle(_options, bundle) {
-              const bundles = Object.keys(bundle);
-              const fileNames = ["vendor", "naive-ui", "common"].map((name) => {
-                return bundles.find((v) => v.startsWith(name))!;
-              });
-
-              for (const key of Object.keys(bundle)) {
-                const chunk = bundle[key];
-                if (chunk.type !== "chunk") continue;
-
-                if (chunk.fileName.startsWith("SpineViewer")) {
-                  // SpineViewer 不需要改导入路径
-                  continue;
-                }
-                for (const name of fileNames) {
-                  chunk.code = chunk.code.replaceAll(
-                    `./${name}`,
-                    `https://static.prts.wiki/widgets/production/${name}`,
-                  );
-                }
-              }
-            },
-          },
-        ],
       },
       assetsDir: ".",
       terserOptions: {
