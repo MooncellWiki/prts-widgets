@@ -13,8 +13,7 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "lint:fix": "eslint --fix .",
-    "prepare": "node .husky/install.mjs"
+    "lint:fix": "eslint --fix ."
   },
   "dependencies": {
     "@sentry/browser": "^10.32.1",
@@ -59,7 +58,6 @@
     "eslint-plugin-unicorn": "^60.0.0",
     "eslint-plugin-vue": "^10.6.2",
     "globals": "^16.5.0",
-    "lint-staged": "^16.2.7",
     "prettier": "^3.7.4",
     "rollup-plugin-visualizer": "^6.0.5",
     "simple-git-hooks": "^2.13.1",
