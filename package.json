@@ -59,10 +59,10 @@
     "eslint-plugin-unicorn": "^60.0.0",
     "eslint-plugin-vue": "^10.6.2",
     "globals": "^16.5.0",
-    "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.7.4",
     "rollup-plugin-visualizer": "^6.0.5",
+    "simple-git-hooks": "^2.13.1",
     "terser": "^5.44.1",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
@@ -76,7 +76,16 @@
     "onlyBuiltDependencies": [
       "core-js",
       "esbuild",
+      "simple-git-hooks",
       "unrs-resolver"
+    ]
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpx lint-staged"
+  },
+  "lint-staged": {
+    "**/*.{js,ts,vue,json}": [
+      "eslint --fix --cache"
     ]
   }
 }
