@@ -21,6 +21,7 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import LevelInput from "./LevelInput.vue";
+import { eliteStr } from "./consts";
 
 const i18nConfig = getNaiveUILocale();
 
@@ -32,11 +33,6 @@ onMounted(() => {
   eliteChange();
 });
 
-const eliteStr: Record<number, string[]> = {
-  0: ["精英_0_大图.png", "精英0"],
-  1: ["精英_1_大图.png", "精英1"],
-  2: ["精英_2_大图.png", "精英2"],
-};
 const showSOECModal = ref(false);
 const selectedElite = ref(0);
 const selectLevel = ref({
@@ -240,20 +236,20 @@ const tableData = computed(() =>
           @update:value="eliteChange"
         >
           <NRadioButton
-            v-for="(str, key, index) in eliteStr"
+            v-for="(item, index) in eliteStr"
             :key="index"
             :value="index"
-            :default-checked="key === 0"
+            :default-checked="index === 0"
           >
             <NFlex :size="6">
               <NAvatar
                 color="#0000"
                 object-fit="scale-down"
                 :size="35"
-                :src="getImagePath(str[0])"
+                :src="getImagePath(item.imageName)"
                 :class="selectedElite === index ? 'filter-invert' : ''"
               />
-              {{ str[1] }}
+              {{ item.label }}
             </NFlex>
           </NRadioButton>
         </NRadioGroup>
@@ -418,20 +414,20 @@ const tableData = computed(() =>
           @update:value="eliteChange"
         >
           <NRadioButton
-            v-for="(str, key, index) in eliteStr"
+            v-for="(item, index) in eliteStr"
             :key="index"
             :value="index"
-            :default-checked="key === 0"
+            :default-checked="index === 0"
           >
             <NFlex :size="6">
               <NAvatar
                 color="#0000"
                 object-fit="scale-down"
                 :size="35"
-                :src="getImagePath(str[0])"
+                :src="getImagePath(item.imageName)"
                 :class="selectedElite === index ? 'filter-invert' : ''"
               />
-              {{ str[1] }}
+              {{ item.label }}
             </NFlex>
           </NRadioButton>
         </NRadioGroup>
