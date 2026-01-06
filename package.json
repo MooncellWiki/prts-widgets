@@ -13,7 +13,8 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "lint:fix": "eslint --fix ."
+    "lint:fix": "eslint --fix .",
+    "prepare": "simple-git-hooks"
   },
   "dependencies": {
     "@sentry/browser": "^10.32.1",
