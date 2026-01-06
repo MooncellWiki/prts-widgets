@@ -8,7 +8,14 @@ import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig } from "vite";
 
-const TARGET = ["chrome70", "edge81", "firefox70", "safari12", "ios12"];
+const TARGET = [
+  "edge >= 81",
+  "firefox >= 70",
+  "chrome >= 70",
+  "safari >= 12",
+  "chromeAndroid >= 64",
+  "ios >= 12",
+];
 const BASE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const entries = readdirSync(path.join(BASE_DIR, "src/entries/"));
@@ -44,7 +51,7 @@ export default defineConfig(({ command }) => {
       vue(),
       UnoCSS(),
       legacy({
-        targets: TARGET,
+        modernTargets: TARGET,
         modernPolyfills: true,
         renderLegacyChunks: false,
       }),
@@ -116,7 +123,6 @@ export default defineConfig(({ command }) => {
           passes: 10,
         },
       },
-      target: TARGET,
     },
   };
 });

@@ -4,13 +4,10 @@ import { computed, onMounted, ref } from "vue";
 import Block from "./Block.vue";
 
 import type { XbConstData } from "./consts";
+import type { LevelData } from "./types";
 
 export interface Props {
-  map: {
-    options: Record<string, any>;
-    mapData: Record<string, any>;
-    predefines: Record<string, any>;
-  };
+  map: LevelData;
   embed?: boolean;
   xbMapConst: XbConstData;
 }
