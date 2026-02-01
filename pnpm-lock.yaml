@@ -21,8 +21,8 @@ importers:
         specifier: ^14.2.0
         version: 14.2.0(vue@3.5.27(typescript@5.9.3))
       '@zumer/snapdom':
-        specifier: ^1.9.14
-        version: 1.9.14
+        specifier: ^2.0.2
+        version: 2.0.2
       crypto-js:
         specifier: ^4.2.0
         version: 4.2.0
@@ -1545,8 +1545,8 @@ packages:
     peerDependencies:
       vue: ^3.5.0
 
-  '@zumer/snapdom@1.9.14':
-    resolution: {integrity: sha512-kQARFS/jf+fsIFv9qxfNp8YMeun5tTyhFDk3iv47Lywk5YRldhINWicEZI15fP3FDUCeo8ok+BP0CtnDRFMFRg==}
+  '@zumer/snapdom@2.0.2':
+    resolution: {integrity: sha512-W6quT4lMcPu8Q9O/Q6witSfc6/+xuY8C8yDoHug/+o7zYKCNE/e0I3//XsWDkyq9C0mDE0TAWF/8bwCR7x3gHQ==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -4524,7 +4524,7 @@ snapshots:
     dependencies:
       vue: 3.5.27(typescript@5.9.3)
 
-  '@zumer/snapdom@1.9.14': {}
+  '@zumer/snapdom@2.0.2': {}
 
   acorn-jsx@5.3.2(acorn@8.15.0):
     dependencies:
