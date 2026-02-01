@@ -21,7 +21,7 @@
     "@urlpack/json": "^2.0.1",
     "@vicons/material": "^0.13.0",
     "@vueuse/core": "^14.2.0",
-    "@zumer/snapdom": "^1.9.14",
+    "@zumer/snapdom": "^2.0.2",
     "crypto-js": "^4.2.0",
     "hammerjs": "^2.0.8",
     "howler": "^2.2.4",
