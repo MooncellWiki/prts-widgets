@@ -28,8 +28,9 @@ const showSubChoose = ref(false);
 </script>
 
 <template>
+  <hr v-if="type === 'hr'" class="h-2px bg-white" />
   <NCard
-    v-if="title || desc1 || desc2"
+    v-else-if="title || desc1 || desc2"
     :style="[
       type === 'desc'
         ? { cursor: 'default' }

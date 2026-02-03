@@ -213,7 +213,7 @@ const showTrimed = ref(false);
                 </template>
                 点击切换显示{{ showTrimed ? "未镀层" : "镀层" }}章
               </NTooltip>
-              <span class="pl-1">{{ medalData.trimMethod }}</span>
+              <span class="pl-1" v-html="medalData.trimMethod"></span>
             </div>
             <div
               v-if="medalData.reward"
