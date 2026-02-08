@@ -73,7 +73,7 @@ const changeTab = (name: string) => {
               >
                 <div class="pointer-events-none">
                   <i class="mdi mdi-menu"></i>
-                  Category.
+                  分类
                 </div>
                 <NButton
                   color="#2f2f2f"
@@ -94,7 +94,7 @@ const changeTab = (name: string) => {
                   v-for="tabName in tabList"
                   :key="tabName"
                   size="small"
-                  :quaternary="tabName === curTab ? false : true"
+                  :quaternary="tabName !== curTab"
                   :type="tabName === curTab ? 'info' : 'default'"
                   @click="changeTab(tabName)"
                 >
