@@ -88,15 +88,29 @@ function optionsToNavDrop(options: Array<Option>) {
   for (const o of options.filter((option) => option.type !== "desc")) {
     const scd = getSubChooseData(o.subChoose || "");
     if (scd.length === 0) {
-      navDrop.push({
-        label: o.title,
-        key: `m-${o.index}`,
-        navData: {
-          isSubChoose: false,
-          destScene: o.dest,
-        },
-        children: undefined,
-      });
+      if (o.type === "hr") {
+        navDrop.push({
+          label: o.title,
+          key: `hr-${o.index}`,
+          type: "divider",
+          navData: {
+            isSubChoose: false,
+            destScene: 0,
+          },
+          children: undefined,
+          disabled: true,
+        });
+      } else {
+        navDrop.push({
+          label: o.title,
+          key: `m-${o.index}`,
+          navData: {
+            isSubChoose: false,
+            destScene: o.dest,
+          },
+          children: undefined,
+        });
+      }
     } else {
       navDrop.push({
         label: o.title,
@@ -258,7 +272,7 @@ function getSubChooseData(scStr: string) {
             </template>
             <div
               v-if="isCurScenePrtsInfo"
-              class="b-1 b-[#0098dca0] b-b-transparent b-solid bg-[#0098dc50] px-2 font-size-2.5"
+              class="pointer-events-none b-1 b-[#0098dca0] b-b-transparent b-solid bg-[#0098dc50] px-2 font-size-2.5"
             >
               <i class="mdi mdi-rhombus-outline"></i>
               PRTS info.
