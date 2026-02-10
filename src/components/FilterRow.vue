@@ -12,9 +12,11 @@ const props = withDefaults(
     noWidth?: boolean;
     someSelected?: boolean;
     modelValue?: Record<string, boolean>;
+    dimmedLabels?: Record<string, boolean>;
   }>(),
   {
     modelValue: () => ({}),
+    dimmedLabels: () => ({}),
   },
 );
 const emit = defineEmits<{
@@ -87,6 +89,7 @@ const removeAll = () => {
         :key="label"
         :value="label"
         :no-width="noWidth"
+        :dimmed="dimmedLabels?.[label]"
       >
         {{ label }}
       </Checkbox>
