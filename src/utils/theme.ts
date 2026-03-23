@@ -9,8 +9,7 @@ export const useTheme = () => {
     onChanged(dark: boolean) {
       theme.value = dark ? darkTheme : null;
       const el = document.querySelector("html");
-      if (dark) el?.classList.add("dark");
-      else el?.classList.remove("dark");
+      el?.classList.toggle("dark", dark);
     },
   });
   const toggleDark = useToggle(isDark);

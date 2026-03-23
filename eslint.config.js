@@ -360,6 +360,8 @@ const unicorn = [
       "unicorn/no-array-for-each": "warn",
       "unicorn/prefer-global-this": "off",
       "unicorn/no-array-reverse": "off",
+      "unicorn/no-array-sort": "off",
+      "unicorn/prefer-string-replace-all": "off",
     },
   },
 ];
