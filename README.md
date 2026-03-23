@@ -43,6 +43,6 @@ pnpm run build
 pnpm run update username password
 ```
 
-
 ## License
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets?ref=badge_large)
+
+MIT
