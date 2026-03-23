@@ -53,11 +53,7 @@ const handleDark = () => {
     ".majorsep,.minorsep,.term,.iconfilter",
   );
   for (const ele of Array.from(seps)) {
-    if (isDark.value) {
-      ele.classList.add("dark");
-    } else {
-      ele.classList.remove("dark");
-    }
+    ele.classList.toggle("dark", isDark.value);
   }
 };
 watch(isDark, () => {
@@ -88,11 +84,7 @@ onBeforeMount(async () => {
     ".majorsep,.minorsep,.term,.iconfilter",
   );
   for (const ele of Array.from(seps)) {
-    if (isDark.value) {
-      ele.classList.add("dark");
-    } else {
-      ele.classList.remove("dark");
-    }
+    ele.classList.toggle("dark", isDark.value);
   }
   loading.value = false;
   loadingCount.value -= 1;

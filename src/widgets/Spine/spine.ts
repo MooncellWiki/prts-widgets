@@ -131,7 +131,7 @@ export class Spine {
     // 在char_1028_texas2_epoque_36(缄默德克萨斯 幽兰秘辛)的基建和正面第一次见到
     if (skel[0] === 0x7b) {
       const skeletonJson = new spine.SkeletonJson(atlasLoader);
-      const reader = new TextDecoder("utf8");
+      const reader = new TextDecoder("utf-8");
       const skeletonData = skeletonJson.readSkeletonData(reader.decode(skel));
       skeleton = new spine.Skeleton(skeletonData);
     } else {
