@@ -1,6 +1,4 @@
 # PRTS Widgets
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FMooncellWiki%2Fprts-widgets?ref=badge_shield)
-
 
 ## 推荐开发环境配置
 
