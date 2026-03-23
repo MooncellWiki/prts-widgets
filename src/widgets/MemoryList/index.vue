@@ -35,7 +35,6 @@ const medalData = ref<Medal[]>([]);
 const latestChar = ref<string[]>([]);
 
 const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
-  let result = 0;
   let datex: Date;
   let datey: Date;
   if (
@@ -51,7 +50,7 @@ const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
     datex = new Date(1);
     datey = new Date(1);
   }
-  result =
+  const result =
     datex.getTime() === datey.getTime()
       ? Number(mmrx.charID) - Number(mmry.charID)
       : datex.getTime() - datey.getTime();
