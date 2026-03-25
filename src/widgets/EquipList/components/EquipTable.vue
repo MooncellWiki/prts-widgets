@@ -3,10 +3,9 @@ import { h, inject, type Ref, ref, watch } from "vue";
 
 import { type DataTableColumns, NDataTable } from "naive-ui";
 
-import { getLanguage } from "@/utils/i18n";
 import { getImagePath, isMobile } from "@/utils/utils";
 
-import { customLabel } from "../i18n";
+import { customLabel } from "../consts";
 
 import Equip from "./Equip.vue";
 
@@ -95,14 +94,13 @@ const props = defineProps<{
   data: EquipRow[];
 }>();
 
-const locale = getLanguage();
 const pickSize = (): "small" | "medium" => {
   return isMobile() ? "small" : "medium";
 };
 const pagination = ref({
   page: 1,
   pageSize: 10,
-  pageSizes: customLabel[locale].pagination,
+  pageSizes: customLabel.pagination,
   pageSlot: isMobile() ? 5 : 9,
   size: pickSize(),
   showSizePicker: true,

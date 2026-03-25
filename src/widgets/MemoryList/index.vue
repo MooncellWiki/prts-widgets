@@ -18,9 +18,9 @@ import { isMobileSkin } from "@/utils/utils";
 
 import Memory from "./Memory.vue";
 import { filterRarity, rarityMap } from "./consts";
-import { getMemories, getOnlineDate, getTargetDate } from "./utils";
+import { getMemories } from "./utils";
 
-import type { CharMemory, Medal } from "./types";
+import type { CharMemory, Medal, MemoryTime } from "./types";
 
 const isMobile = isMobileSkin();
 const i18nConfig = getNaiveUILocale();
@@ -32,24 +32,17 @@ const order = ref(-1);
 const searchTerm = ref("");
 const charMemoryData = ref<CharMemory[]>([]);
 const medalData = ref<Medal[]>([]);
-const latestChar = ref<string[]>([]);
 
 const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
-  let datex: Date;
-  let datey: Date;
-  if (
-    onlineDate.value &&
-    onlineDate.value[mmrx.char] &&
-    onlineDate.value[mmry.char] &&
-    sorting.value !== "opt"
-  ) {
-    const isLatest = sorting.value === "lmmr";
-    datex = getTargetDate(onlineDate.value[mmrx.char], isLatest);
-    datey = getTargetDate(onlineDate.value[mmry.char], isLatest);
-  } else {
-    datex = new Date(1);
-    datey = new Date(1);
-  }
+  const [datex, datey] = [mmrx, mmry].map((mmr) => {
+    return sorting.value === "opt"
+      ? new Date(1)
+      : mmr.memories.slice().sort((ma, mb) => {
+          return sorting.value === "lmmr"
+            ? mb.time.getTime() - ma.time.getTime()
+            : ma.time.getTime() - mb.time.getTime();
+        })[0].time;
+  });
   const result =
     datex.getTime() === datey.getTime()
       ? Number(mmrx.charID) - Number(mmry.charID)
@@ -80,9 +73,9 @@ function _calcMemory() {
       );
     })
     .sort(compareDate);
+  pagination.page = 1;
 }
-const calcMemory = debounce(_calcMemory, 500);
-const onlineDate = ref<Record<string, Date[]>>({});
+const calcMemory = debounce(_calcMemory, 300);
 
 const pagination = reactive({
   page: 1,
@@ -101,7 +94,7 @@ const shownMemory = computed(() => {
     pagination.pageSize * pagination.page,
   );
 });
-
+//TODO: 尝试将干员和密录信息整合获取
 onMounted(async () => {
   const resp = await fetch(
     `/api.php?${new URLSearchParams({
@@ -122,6 +115,7 @@ onMounted(async () => {
         charEID: value.printouts["情报编号"][0] as string,
         rarity: value.printouts["稀有度"][0] as string,
         memories: [],
+        stageTime: new Date(),
       };
     },
   );
@@ -133,6 +127,13 @@ onMounted(async () => {
     })}`,
   );
   const jsonMedal = await respMedal.json();
+  const respTime = await fetch(
+    `/index.php?${new URLSearchParams({
+      action: "raw",
+      title: "干员密录一览/time",
+    })}`,
+  );
+  const jsonTime = (await respTime.json()) as MemoryTime[];
   medalData.value = Object.entries(jsonMedal.medal)
     .filter(
       ([key]: [string, any]) =>
@@ -149,19 +150,29 @@ onMounted(async () => {
     });
   const map = await getMemories(medalData.value);
   for (const charm of charMemoryData.value) {
-    charm.memories = map[charm.char];
+    const target = jsonTime.find((c) => c.char === charm.char)!;
+    charm.stageTime = new Date(target.stageTime * 1000);
+    charm.memories = map[charm.char].map((m) => {
+      m.time = new Date(
+        target.stories.find((s) => m.name === s.story)!.time * 1000,
+      );
+      return m;
+    });
+  }
+  const latestDate = Math.max(
+    ...charMemoryData.value.map((charm) => {
+      return Math.max(...charm.memories.map((x) => x.time.getTime()));
+    }),
+  );
+  for (const charm of charMemoryData.value) {
+    for (const m of charm.memories) {
+      if (m.time.getTime() === latestDate) m.isNew = true;
+    }
   }
 
-  onlineDate.value = await getOnlineDate();
   isLoaded.value = true;
 
   _calcMemory();
-  const latest = onlineDate.value[filteredMemory.value[0].char];
-  const ldate = getTargetDate(latest, true);
-  for (const char in onlineDate.value) {
-    if (getTargetDate(onlineDate.value[char], true) >= ldate)
-      latestChar.value.push(char);
-  }
 });
 const sortModes = [
   { type: "opt", label: "干员上线" },
@@ -204,91 +215,98 @@ const pickSize = () => {
             />
           </tr>
           <tr>
-            <div class="flex flex-row items-center justify-center">
-              <span class="basis-1/8">排序</span>
-              <div class="flex basis-7/8 flex-row items-center justify-between">
-                <div class="flex flex-wrap justify-start">
-                  <NButton
-                    v-for="(item, index) in sortModes"
-                    :key="index"
-                    class="m-1"
-                    :disabled="!isLoaded"
-                    :type="sorting === item.type ? 'info' : 'default'"
-                    @click="sortMode(item.type)"
-                    >{{ item.label }}</NButton
-                  >
+            <td>
+              <div class="flex flex-row items-center justify-center">
+                <span class="basis-1/8">排序</span>
+                <div
+                  class="flex basis-7/8 flex-row items-center justify-between"
+                >
+                  <div class="flex flex-wrap justify-start">
+                    <NButton
+                      v-for="(item, index) in sortModes"
+                      :key="index"
+                      class="m-1"
+                      :disabled="!isLoaded"
+                      :type="sorting === item.type ? 'info' : 'default'"
+                      @click="sortMode(item.type)"
+                      >{{ item.label }}</NButton
+                    >
+                  </div>
+                  <div class="flex flex-wrap justify-end">
+                    <NButton
+                      v-for="(item, index) in orderModes"
+                      :key="index"
+                      class="m-1"
+                      :disabled="!isLoaded"
+                      :type="order === item.value ? 'info' : 'default'"
+                      @click="orderMode(item.value)"
+                      ><span :class="['text-2xl mdi', item.icon]"></span>
+                    </NButton>
+                  </div>
                 </div>
-                <div class="flex flex-wrap justify-end">
-                  <NButton
-                    v-for="(item, index) in orderModes"
-                    :key="index"
-                    class="m-1"
-                    :disabled="!isLoaded"
-                    :type="order === item.value ? 'info' : 'default'"
-                    @click="orderMode(item.value)"
-                    ><span :class="['text-2xl mdi', item.icon]"></span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="flex items-center">
+                <NInput
+                  v-model:value="searchTerm"
+                  class="my-2"
+                  type="text"
+                  placeholder="搜索干员名称/密录名称/引言文字"
+                  @update:value="calcMemory"
+                >
+                  <template #prefix>
+                    <span class="mdi mdi-magnify text-lg" />
+                  </template>
+                </NInput>
+                <div class="px-2" @click="toggleDark()">
+                  <NButton>
+                    <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
+                    <span v-else class="mdi mdi-brightness-4 text-2xl" />
                   </NButton>
                 </div>
               </div>
-            </div>
-          </tr>
-          <tr>
-            <div class="flex items-center">
-              <NInput
-                v-model:value="searchTerm"
-                class="my-2"
-                type="text"
-                placeholder="搜索干员名称/密录名称/引言文字"
-                @update:value="calcMemory"
-              />
-              <div class="px-2" @click="toggleDark()">
-                <NButton>
-                  <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-                  <span v-else class="mdi mdi-brightness-4 text-2xl" />
-                </NButton>
-              </div>
-            </div>
+            </td>
           </tr>
         </tbody>
-        <NPagination
-          v-model:page="pagination.page"
-          class="my-2 justify-center"
-          :item-count="filteredMemory.length"
-          :page-size="pagination.pageSize"
-          :page-sizes="pagination.pageSizes"
-          :page-slot="pagination.pageSlot"
-          :size="pickSize()"
-          show-size-picker
-          @update:page="calcMemory"
-          @update:page-size="onUpdatePageSize"
-        />
-        <div class="w-full flex flex-col flex-wrap lg:flex-row">
-          <Memory
-            v-for="charm in shownMemory"
-            :key="charm.char"
-            :char-memory="charm"
-            :is-new="latestChar.includes(charm.char)"
-          >
-          </Memory>
-        </div>
-        <NEmpty v-if="shownMemory.length === 0" description="无结果">
-          <template #icon>
-            <span class="mdi mdi-book-search text-5xl" />
-          </template>
-        </NEmpty>
-        <NPagination
-          v-model:page="pagination.page"
-          class="my-2 justify-center"
-          :item-count="filteredMemory.length"
-          :page-size="pagination.pageSize"
-          :page-sizes="pagination.pageSizes"
-          :page-slot="pagination.pageSlot"
-          :size="pickSize()"
-          show-size-picker
-          @update:page="calcMemory"
-          @update:page-size="onUpdatePageSize"
-        />
       </table>
+      <NPagination
+        v-model:page="pagination.page"
+        class="my-2 justify-center"
+        :item-count="filteredMemory.length"
+        :page-size="pagination.pageSize"
+        :page-sizes="pagination.pageSizes"
+        :page-slot="pagination.pageSlot"
+        :size="pickSize()"
+        show-size-picker
+        @update:page-size="onUpdatePageSize"
+      />
+      <div class="w-full flex flex-col flex-wrap lg:flex-row">
+        <Memory
+          v-for="charm in shownMemory"
+          :key="charm.char"
+          :char-memory="charm"
+        >
+        </Memory>
+      </div>
+      <NEmpty v-if="shownMemory.length === 0" description="无结果">
+        <template #icon>
+          <span class="mdi mdi-book-search text-5xl" />
+        </template>
+      </NEmpty>
+      <NPagination
+        v-model:page="pagination.page"
+        class="my-2 justify-center"
+        :item-count="filteredMemory.length"
+        :page-size="pagination.pageSize"
+        :page-sizes="pagination.pageSizes"
+        :page-slot="pagination.pageSlot"
+        :size="pickSize()"
+        show-size-picker
+        @update:page-size="onUpdatePageSize"
+      />
     </NLayout>
   </NConfigProvider>
 </template>

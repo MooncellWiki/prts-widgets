@@ -3,9 +3,7 @@ import { computed } from "vue";
 
 import { NEmpty } from "naive-ui";
 
-import { getLanguage } from "@/utils/i18n";
-
-import { customLabel } from "../i18n";
+import { customLabel } from "../consts";
 
 import SubContainer from "./SubContainer.vue";
 
@@ -86,8 +84,6 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
   }
   return result;
 });
-
-const locale = getLanguage();
 </script>
 
 <template>
@@ -102,7 +98,7 @@ const locale = getLanguage();
   </div>
   <NEmpty
     v-if="Object.keys(groupedEquipData).length === 0"
-    :description="customLabel[locale].emptyDesc"
+    :description="customLabel.emptyDesc"
   >
     <template #icon>
       <span class="mdi mdi-account-filter-outline text-5xl" />

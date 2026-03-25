@@ -113,20 +113,6 @@ export async function getEquipAddedTime(): Promise<EquipTime[]> {
   return json;
 }
 
-export async function getSubtypeMap(): Promise<
-  Record<string, Record<string, string>>
-> {
-  const resp = await fetch(
-    `/index.php?${new URLSearchParams({
-      title: "干员模组一览/sub",
-      action: "raw",
-    })}`,
-  );
-  const json = await resp.json();
-
-  return json;
-}
-
 export async function askOperators() {
   const response = await fetch(
     `/api.php?${new URLSearchParams({

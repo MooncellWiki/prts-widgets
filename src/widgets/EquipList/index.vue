@@ -14,30 +14,22 @@ import {
 } from "naive-ui";
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
-import { getLanguage, getNaiveUILocale, LANGUAGES } from "@/utils/i18n";
+import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { isMobile } from "@/utils/utils";
 
 import EquipGroup from "./components/EquipGroup.vue";
 import EquipTable from "./components/EquipTable.vue";
 import FilterSub from "./components/FilterSub.vue";
-import { rarityMap, statsStyleMap } from "./consts";
-import {
-  askOperators,
-  getEquipAddedTime,
-  getEquipDataAll,
-  getSubtypeMap,
-} from "./equipData";
 import {
   customLabel,
   getFilterOptions,
-  getFilterRarity,
-  getFilterType,
   getFilterValue,
-  getLocaleType,
   getSortOptions,
-  getZhType,
-} from "./i18n";
+  rarityMap,
+  statsStyleMap,
+} from "./consts";
+import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
 
 import type { CharEquips, EquipRow } from "./types";
 
@@ -81,25 +73,23 @@ const filteredSubProfMap = computed(() => {
   const map: Record<string, string[]> = {};
   if (states.value.type.length === 0) return subProfMap.value;
   for (const t of states.value.type) {
-    map[getZhType(t, locale)] = subProfMap.value[getZhType(t, locale)];
+    map[t] = subProfMap.value[t];
   }
   return map;
 });
 
 const subOptions = computed(() => {
-  const cLabel = customLabel[locale];
-  const zhLabel = customLabel[LANGUAGES.ZH];
   return {
-    title: cLabel.subtypeLabel,
-    placeholder: cLabel.subPlaceholder,
+    title: customLabel.subtypeLabel,
+    placeholder: customLabel.subPlaceholder,
     options: Object.entries(filteredSubProfMap.value).map(([k, v]) => {
       return {
         type: "group",
-        label: cLabel.typeOptions[zhLabel.typeOptions.indexOf(k)] ?? k,
+        label: k,
         key: k,
         children: v.map((subProf) => {
           return {
-            label: cLabel.subtypeMap[subProf] ?? subProf,
+            label: subProf,
             value: subProf,
           };
         }),
@@ -108,12 +98,18 @@ const subOptions = computed(() => {
   };
 });
 const options = {
-  type: getFilterType(locale),
-  rarity: getFilterRarity(locale),
+  type: {
+    title: customLabel.typeLabel,
+    options: customLabel.typeOptions,
+  },
+  rarity: {
+    title: customLabel.rarityLabel,
+    options: ["4★", "5★", "6★"],
+  },
 };
 const sortOptions = {
-  sortOption: getSortOptions(locale),
-  filterOption: getFilterOptions(locale),
+  sortOption: getSortOptions(),
+  filterOption: getFilterOptions(),
 };
 const states = ref<Record<string, string[]>>({
   type: [],
@@ -175,9 +171,7 @@ const filteredEquipData = computed((): CharEquips[] => {
       s.rarity.length > 0 &&
       !s.rarity.includes(rarityMap[ce.char.rarity.toString()]);
     const subP = s.sub.length > 0 && !s.sub.includes(ce.char.subtype);
-    const typeP =
-      s.type.length > 0 &&
-      !s.type.includes(getLocaleType(ce.char.type, locale));
+    const typeP = s.type.length > 0 && !s.type.includes(ce.char.type);
     if (rarityP || subP || typeP) continue;
     const data = ce.equips.filter((e) => filterData(e));
     if (data.length > 0)
@@ -240,11 +234,10 @@ const CharEquipList = computed(() => {
 
 onBeforeMount(async () => {
   loadingCount.value = 1;
-  const [json, equips, time, subm] = await Promise.all([
+  const [json, equips, time] = await Promise.all([
     askOperators(),
     getEquipDataAll(),
     getEquipAddedTime(),
-    getSubtypeMap(),
   ]);
 
   const charData = Object.entries<Record<string, any>>(
@@ -295,10 +288,6 @@ onBeforeMount(async () => {
       value: i.time.toString(),
     };
   });
-  customLabel.en.subtypeMap = subm.en;
-  customLabel.ja.subtypeMap = subm.ja;
-  customLabel.ko.subtypeMap = subm.ko;
-  customLabel["zh-tw"].subtypeMap = subm["zh-tw"];
   loadingCount.value = 0;
 });
 
@@ -316,7 +305,7 @@ const mobileStyle = () => {
   >
     <NLayout class="mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4">
       <NCard
-        :title="customLabel[locale].filterTitle"
+        :title="customLabel.filterTitle"
         header-style="text-align: center;"
         size="small"
       >
@@ -363,7 +352,7 @@ const mobileStyle = () => {
         </NCollapseTransition>
       </NCard>
       <NCard
-        :title="customLabel[locale].tableCollapse"
+        :title="customLabel.tableCollapse"
         header-style="text-align: center;"
         size="small"
       >
@@ -379,7 +368,7 @@ const mobileStyle = () => {
         <NCollapseTransition :show="equipFilterShow">
           <div class="flex flex-row items-center justify-center">
             <span class="basis-1/8">
-              {{ customLabel[locale].tableFilterLabel }}
+              {{ customLabel.tableFilterLabel }}
             </span>
             <div class="flex basis-7/8 flex-col items-center">
               <NButtonGroup size="small">
@@ -444,7 +433,7 @@ const mobileStyle = () => {
                   v-model:value="v.value"
                   class="m-1"
                   :disabled="loadingCount > 0 || v.mode === 'all'"
-                  :options="getFilterValue(locale, v.mode)"
+                  :options="getFilterValue(v.mode)"
                   :fallback-option="false"
                 />
               </div>
@@ -452,7 +441,7 @@ const mobileStyle = () => {
           </div>
           <div class="flex flex-row items-center justify-center">
             <span class="basis-1/8">
-              {{ customLabel[locale].tableSortLabel }}
+              {{ customLabel.tableSortLabel }}
             </span>
             <div class="flex basis-7/8 flex-row items-center">
               <NSelect

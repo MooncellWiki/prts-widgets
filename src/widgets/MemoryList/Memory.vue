@@ -13,15 +13,9 @@ const getSrcMedal = (mmr: Memory) =>
 
 const getSrcElite = (elite: string) =>
   getImagePath(`图标_升级_精英化${elite || "0"}.png`);
-const props = withDefaults(
-  defineProps<{
-    charMemory: CharMemory;
-    isNew?: boolean;
-  }>(),
-  {
-    isNew: false,
-  },
-);
+const props = defineProps<{
+  charMemory: CharMemory;
+}>();
 
 const src = computed(() => {
   const lowRarityImg = getImagePath(`头像_${props.charMemory.char}.png`);
@@ -63,21 +57,21 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
       </div>
       <div class="flex basis-4/5 flex-col items-center justify-center">
         <div
-          v-if="isNew"
-          class="my-1 w-full flex flex-col bg-orange text-center text-white"
-        >
-          有新增密录
-        </div>
-        <div
           v-for="mmr in charMemory.memories"
           :key="mmr.name"
           class="w-full flex flex-col"
         >
           <div
+            v-if="mmr.isNew"
+            class="my-1 w-full flex flex-col bg-orange text-center text-white"
+          >
+            新增密录
+          </div>
+          <div
             class="w-full flex items-center bg-[#313131] py-[3px] text-3 text-white"
           >
             <div
-              class="min-w-[4em] flex flex-wrap b-r-1 b-r-white b-r-solid px-1 md:min-w-[9em]"
+              class="min-w-[4em] flex flex-wrap b-r-1 b-r-white b-r-solid px-1 md:min-w-[9.5em]"
             >
               <div class="flex items-center">
                 <img width="15" class="pr-1" :src="getSrcElite(mmr.elite)" />

@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { NTooltip } from "naive-ui";
 
-import { getLanguage } from "@/utils/i18n";
-
-import { tagIconFavor, tagIconOther } from "../consts";
-import { customLabel } from "../i18n";
+import { customLabel, tagIconFavor, tagIconOther } from "../consts";
 
 defineProps<{
   type: "lv" | "favor" | "mission";
@@ -52,13 +49,13 @@ const getIconSrc = (type: string) => {
       </div>
     </template>
     <div v-if="type === 'lv'">
-      {{ customLabel[getLanguage()].equipString.condLv }}
+      {{ customLabel.equipString.condLv }}
     </div>
     <div v-if="type === 'favor'">
-      {{ customLabel[getLanguage()].equipString.condTrust }}
+      {{ customLabel.equipString.condTrust }}
     </div>
     <div v-if="type === 'mission'">
-      {{ customLabel[getLanguage()].equipString.condMission }}
+      {{ customLabel.equipString.condMission }}
     </div>
   </NTooltip>
 </template>

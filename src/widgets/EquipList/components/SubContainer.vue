@@ -6,8 +6,6 @@ import { NCard } from "naive-ui";
 import { getLanguage } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
-import { customLabel } from "../i18n";
-
 import SubAvatar from "./SubAvatar.vue";
 
 import type { CharEquips } from "../types";
@@ -65,9 +63,9 @@ const locale = getLanguage();
             :src="getImagePath(`职业分支图标_${title}.png`)"
           />
         </span>
-        <span class="inline-block text-center" style="width: 7em">{{
-          customLabel[locale].subtypeMap[title] ?? title
-        }}</span>
+        <span class="inline-block text-center" style="width: 7em">
+          {{ title }}
+        </span>
       </div>
       <div v-if="groupby === 'time'">
         {{ new Date(Number(title) * 1000).toLocaleDateString(locale) }}

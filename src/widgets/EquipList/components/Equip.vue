@@ -11,13 +11,11 @@ import {
 
 import { NSpin } from "naive-ui";
 
-import { getLanguage } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobile } from "@/utils/utils";
 
-import { colorMap, statsStyleMap } from "../consts";
+import { colorMap, customLabel, statsStyleMap } from "../consts";
 import { getEquipData } from "../equipData";
-import { customLabel } from "../i18n";
 import {
   fixAtkRange,
   processLink,
@@ -97,7 +95,6 @@ onBeforeUpdate(() => {
   updateTippy();
   handleDark();
 });
-const locale = getLanguage();
 const isLatest = (e: string | undefined) => e && e === "yes";
 const modeStats = () => props.simplemode === "stats";
 const modeMission = () => props.simplemode === "mission";
@@ -116,7 +113,7 @@ const modeMission = () => props.simplemode === "mission";
         :class="{ nosimple: !simple || !isLatest(e.latest) }"
       >
         <span class="w-full color-white font-bold">
-          {{ customLabel[locale].equipString.latest }}
+          {{ customLabel.equipString.latest }}
         </span>
       </div>
       <div class="basicbox" :class="{ nosimple: simple }">
@@ -153,10 +150,7 @@ const modeMission = () => props.simplemode === "mission";
           </div>
           <div class="rankinfo">
             <div class="ranktext">
-              <span
-                v-for="stats in customLabel[locale].statsMap"
-                :key="stats[0]"
-              >
+              <span v-for="stats in customLabel.statsMap" :key="stats[0]">
                 <span
                   v-if="e[stats[0]] !== '0'"
                   class="mx-[0.5em] whitespace-nowrap"
@@ -205,10 +199,7 @@ const modeMission = () => props.simplemode === "mission";
           </div>
           <div class="rankinfo">
             <div class="ranktext">
-              <span
-                v-for="stats in customLabel[locale].statsMap"
-                :key="stats[0]"
-              >
+              <span v-for="stats in customLabel.statsMap" :key="stats[0]">
                 <span
                   v-if="e[`${stats[0]}2`] !== '0'"
                   class="mx-[0.5em] whitespace-nowrap"
@@ -249,10 +240,7 @@ const modeMission = () => props.simplemode === "mission";
           </div>
           <div class="rankinfo">
             <div class="ranktext">
-              <span
-                v-for="stats in customLabel[locale].statsMap"
-                :key="stats[0]"
-              >
+              <span v-for="stats in customLabel.statsMap" :key="stats[0]">
                 <span
                   v-if="e[`${stats[0]}3`] !== '0'"
                   class="mx-[0.5em] whitespace-nowrap"
@@ -282,7 +270,7 @@ const modeMission = () => props.simplemode === "mission";
         <div class="majorsep" :class="{ nosimple: simple }"></div>
         <div class="linebox" :class="{ nosimple: simple && !modeMission() }">
           <div class="descr font-bold" :class="{ nosimple: simple }">
-            {{ customLabel[locale].equipString.mission }}
+            {{ customLabel.equipString.mission }}
           </div>
           <div class="lineparta flex-col">
             <span v-if="!!e.mission1">
@@ -297,14 +285,14 @@ const modeMission = () => props.simplemode === "mission";
             </span>
             <span v-if="!e.mission1 && !e.mission2">
               <span class="mdi mdi-clipboard-off-outline"></span>
-              {{ customLabel[locale].equipString.nomission }}
+              {{ customLabel.equipString.nomission }}
             </span>
           </div>
         </div>
         <div class="majorsep" :class="{ nosimple: simple }"></div>
         <div class="linebox" :class="{ nosimple: simple }">
           <div class="descr font-bold" :class="{ nosimple: simple }">
-            {{ customLabel[locale].equipString.condition }}
+            {{ customLabel.equipString.condition }}
           </div>
           <div class="lineparta flex-wrap">
             <div class="linebox flex-col">
@@ -382,7 +370,7 @@ const modeMission = () => props.simplemode === "mission";
         </div>
       </div>
     </div>
-    <template #description> {{ customLabel[locale].loading }} </template>
+    <template #description> {{ customLabel.loading }} </template>
   </NSpin>
 </template>
 
