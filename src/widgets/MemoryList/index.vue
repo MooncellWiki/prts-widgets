@@ -18,9 +18,9 @@ import { isMobileSkin } from "@/utils/utils";
 
 import Memory from "./Memory.vue";
 import { filterRarity, rarityMap } from "./consts";
-import { getMemories } from "./utils";
+import { getMemoryData } from "./utils";
 
-import type { CharMemory, Medal, MemoryTime } from "./types";
+import type { CharMemory } from "./types";
 
 const isMobile = isMobileSkin();
 const i18nConfig = getNaiveUILocale();
@@ -31,7 +31,6 @@ const sorting = ref("lmmr");
 const order = ref(-1);
 const searchTerm = ref("");
 const charMemoryData = ref<CharMemory[]>([]);
-const medalData = ref<Medal[]>([]);
 
 const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
   const [datex, datey] = [mmrx, mmry].map((mmr) => {
@@ -94,71 +93,9 @@ const shownMemory = computed(() => {
     pagination.pageSize * pagination.page,
   );
 });
-//TODO: 尝试将干员和密录信息整合获取
-onMounted(async () => {
-  const resp = await fetch(
-    `/api.php?${new URLSearchParams({
-      action: "ask",
-      format: "json",
-      query:
-        "[[分类:拥有干员密录的干员]]|?干员序号|?情报编号|?稀有度|sort=干员序号|order=asc|limit=1000|link=none|link=none|sep=,|propsep=;|format=list",
-      api_version: "2",
-      utf8: "1",
-    })}`,
-  );
-  const json = await resp.json();
-  charMemoryData.value = Object.entries(json.query.results).map(
-    ([key, value]: [string, any]) => {
-      return {
-        char: key,
-        charID: value.printouts["干员序号"][0] as string,
-        charEID: value.printouts["情报编号"][0] as string,
-        rarity: value.printouts["稀有度"][0] as string,
-        memories: [],
-        stageTime: new Date(),
-      };
-    },
-  );
 
-  const respMedal = await fetch(
-    `/index.php?${new URLSearchParams({
-      action: "raw",
-      title: "光荣之路/data",
-    })}`,
-  );
-  const jsonMedal = await respMedal.json();
-  const respTime = await fetch(
-    `/index.php?${new URLSearchParams({
-      action: "raw",
-      title: "干员密录一览/time",
-    })}`,
-  );
-  const jsonTime = (await respTime.json()) as MemoryTime[];
-  medalData.value = Object.entries(jsonMedal.medal)
-    .filter(
-      ([key]: [string, any]) =>
-        jsonMedal.category.storyMedal.medal.includes(key) ||
-        jsonMedal.category.hiddenMedal.medal.includes(key),
-    )
-    .map(([, value]: [string, any]) => {
-      return {
-        medal: value.name as string,
-        id: value.id as string,
-        desc: value.desc as string,
-        method: value.method as string,
-      };
-    });
-  const map = await getMemories(medalData.value);
-  for (const charm of charMemoryData.value) {
-    const target = jsonTime.find((c) => c.char === charm.char)!;
-    charm.stageTime = new Date(target.stageTime * 1000);
-    charm.memories = map[charm.char].map((m) => {
-      m.time = new Date(
-        target.stories.find((s) => m.name === s.story)!.time * 1000,
-      );
-      return m;
-    });
-  }
+onMounted(async () => {
+  charMemoryData.value = await getMemoryData();
   const latestDate = Math.max(
     ...charMemoryData.value.map((charm) => {
       return Math.max(...charm.memories.map((x) => x.time.getTime()));

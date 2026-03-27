@@ -20,7 +20,6 @@ export interface CharMemory {
   charEID: string;
   rarity: string;
   memories: Memory[];
-  stageTime: Date;
 }
 
 export interface Medal {
@@ -31,7 +30,6 @@ export interface Medal {
 }
 
 export interface MemoryTime {
-  char: string;
   stageTime: number;
   stories: {
     story: string;
@@ -39,8 +37,11 @@ export interface MemoryTime {
   }[];
 }
 
-export interface CargoMemory {
+export interface CargoCharMemory {
   page: string;
+  charID: string;
+  charEID: string;
+  rarity: string;
   elite: string;
   level: string;
   favor: string;

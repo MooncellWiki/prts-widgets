@@ -4,9 +4,11 @@ import { computed } from "vue";
 import { NCard, NDivider, NPopover } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import type { CharMemory, Memory } from "./types";
+const { theme } = useTheme();
 
 const getSrcMedal = (mmr: Memory) =>
   `${TORAPPU_ENDPOINT}/assets/medal_icon/${mmr.medal.id}.png`;
@@ -37,6 +39,7 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
 <template>
   <NCard
     class="m-1 w-[calc(100%-0.5rem)] lg:w-[calc(50%-0.5rem)]"
+    :class="{ 'border-[#e0e0e0]!': !theme }"
     content-style="padding: 0.5rem;"
     size="small"
     hoverable
@@ -84,10 +87,15 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
             </div>
             <div class="mx-1 w-full flex items-center justify-between">
               <span>{{ mmr.name }}</span>
-              <NPopover trigger="hover" placement="top-end">
+              <NPopover
+                trigger="hover"
+                placement="top-end"
+                raw
+                :show-arrow="false"
+              >
                 <template #trigger>
                   <div
-                    class="w-[40] flex items-center justify-center"
+                    class="w-[40] flex cursor-help items-center justify-center"
                     style="
                       border-radius: 3px;
                       background: linear-gradient(0deg, #ffffff38, transparent);
@@ -98,7 +106,7 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
                   </div>
                 </template>
                 <div
-                  class="w-[200px] flex flex-col items-center bg-[#2f2f2f] p-2"
+                  class="w-[200px] flex flex-col items-center rd bg-[#2f2f2f] px-3 py-2"
                 >
                   <img :src="getSrcMedal(mmr)" width="100" />
                   <span class="py-1 text-white font-bold">
@@ -113,12 +121,12 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
           </div>
           <div v-for="info in mmr.info" :key="info.link" class="flex flex-col">
             <NDivider v-if="info.link !== mmr.info[0].link" />
-            <div class="flex flex-nowrap px-1 py-2">
-              <div class="flex-basis-4/5">
+            <div class="flex flex-nowrap py-2">
+              <div class="flex-basis-5/6">
                 {{ info.intro }}
               </div>
               <div
-                class="min-w-[5em] flex flex-basis-1/5 items-center justify-center"
+                class="min-w-[4.5em] flex flex-basis-1/6 items-center justify-center"
               >
                 <a :href="`/w/${info.link}`">
                   <img width="50" :src="srcplay" />
