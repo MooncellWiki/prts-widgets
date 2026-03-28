@@ -4,6 +4,8 @@ export interface Memory {
   favor: string;
   name: string;
   medal: Medal;
+  time: Date;
+  isNew: boolean;
   info: MemoryInfo[];
 }
 
@@ -27,8 +29,19 @@ export interface Medal {
   method: string;
 }
 
-export interface CargoMemory {
+export interface MemoryTime {
+  stageTime: number;
+  stories: {
+    story: string;
+    time: number;
+  }[];
+}
+
+export interface CargoCharMemory {
   page: string;
+  charID: string;
+  charEID: string;
+  rarity: string;
   elite: string;
   level: string;
   favor: string;
