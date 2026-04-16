@@ -69,7 +69,7 @@ export default defineConfig(({ command }) => {
       },
     },
     build: {
-      minify: "terser",
+      minify: "oxc",
       sourcemap: true,
       manifest: true,
       cssCodeSplit: false,
@@ -115,14 +115,6 @@ export default defineConfig(({ command }) => {
         },
       },
       assetsDir: ".",
-      terserOptions: {
-        format: {
-          comments: false,
-        },
-        compress: {
-          passes: 10,
-        },
-      },
     },
   };
 });
