@@ -23,6 +23,8 @@ import {
   updateTippy,
 } from "../utils";
 
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
+
 import ETag from "./ETag.vue";
 
 function getStatColor(type: string, stat: string): string {
@@ -125,7 +127,7 @@ const modeMission = () => props.simplemode === "mission";
         >
           <div class="flex-none">
             <img
-              :src="getImagePath(`模组类型_${e.type}.png`)"
+              :src="e.typeIcon ? `${TORAPPU_ENDPOINT}/assets/uniequip_type/${e.typeIcon}.png` : getImagePath(`模组类型_${e.type}.png`)"
               height="30"
               class="typepic"
             />
