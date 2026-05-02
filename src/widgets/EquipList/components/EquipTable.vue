@@ -3,6 +3,7 @@ import { h, inject, type Ref, ref, watch } from "vue";
 
 import { type DataTableColumns, NDataTable } from "naive-ui";
 
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getImagePath, isMobile } from "@/utils/utils";
 
 import { customLabel } from "../consts";
@@ -10,10 +11,6 @@ import { customLabel } from "../consts";
 import Equip from "./Equip.vue";
 
 import type { EquipRow } from "../types";
-
-function replaceGreek(res: string) {
-  return res.replace("Δ", "D").replace("α", "A").replace("β", "B");
-}
 
 const columns = (): DataTableColumns<EquipRow> => {
   return [
@@ -58,9 +55,7 @@ const columns = (): DataTableColumns<EquipRow> => {
               { href: `/w/${row.operator}#${row.name}` },
               h("div", [
                 h("img", {
-                  src: getImagePath(
-                    `模组类型_${replaceGreek(row.type)}_小图.png`,
-                  ),
+                  src: `${TORAPPU_ENDPOINT}/assets/uniequip_direction/${row.data.typeIcon}.png`,
                   width: 60,
                   style: {
                     margin: "5px 0",

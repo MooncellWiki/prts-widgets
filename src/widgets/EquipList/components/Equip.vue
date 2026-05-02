@@ -11,6 +11,7 @@ import {
 
 import { NSpin } from "naive-ui";
 
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobile } from "@/utils/utils";
 
@@ -125,7 +126,7 @@ const modeMission = () => props.simplemode === "mission";
         >
           <div class="flex-none">
             <img
-              :src="getImagePath(`模组类型_${e.type}.png`)"
+              :src="`${TORAPPU_ENDPOINT}/assets/uniequip_type/${e.typeIcon}.png`"
               height="30"
               class="typepic"
             />

@@ -48,6 +48,8 @@ export interface CargoEquip {
   cond: string;
   cond2: string;
   cond3: string;
+  equipIcon: string;
+  typeIcon: string;
 }
 
 export interface EquipRow {

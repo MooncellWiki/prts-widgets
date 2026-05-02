@@ -3,6 +3,7 @@ import { inject, type Ref } from "vue";
 
 import { useVModel } from "@vueuse/core";
 
+import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
@@ -74,7 +75,7 @@ const locale = getLanguage();
             }"
           >
             <img
-              :src="getImagePath(`模组后缀_${e.type?.slice(-1)}.png`)"
+              :src="`${TORAPPU_ENDPOINT}/assets/uniequip_direction/${e.typeIcon}.png`"
               class="h-[9px] w-[9px]"
               width="9"
               height="9"
