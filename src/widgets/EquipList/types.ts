@@ -17,7 +17,7 @@ export interface Char {
 
 export interface CharEquips {
   char: Char;
-  equips: DOMStringMap[];
+  equips: Record<string, string>[];
 }
 
 export interface CargoEquip {
@@ -58,7 +58,7 @@ export interface EquipRow {
   operator: string;
   oprarity: string | number;
   opid: number;
-  data: DOMStringMap;
+  data: Record<string, string>;
 }
 
 export interface EquipTime {

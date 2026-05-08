@@ -75,7 +75,7 @@ export async function fixAtkRange(res: string, char: string, name: string) {
   return res.replaceAll(regexp, range ?? "");
 }
 
-export function updateTippy() {
+export function updateTippy(isDark: boolean) {
   for (const e of Array.from(document.querySelectorAll(".mc-tooltips"))) {
     if (!e.children || e.children.length < 2) continue;
     (e.children[1] as HTMLElement).style.display = "block";
@@ -83,8 +83,9 @@ export function updateTippy() {
     tippy6(e.children[0], {
       content: e.children[1],
       arrow: true,
-      theme: "light-border",
+      theme: isDark ? "dark-border" : "light-border",
       size: "large",
+      interactive: "true",
       maxWidth: Number.parseInt((e.children[1] as HTMLElement).dataset.size!),
       trigger:
         (e.children[1] as HTMLElement).dataset.trigger || "mouseenter focus",
