@@ -32,7 +32,7 @@ function getStatColor(type: string, stat: string): string {
 const props = withDefaults(
   defineProps<{
     name: string;
-    data?: DOMStringMap[];
+    data?: Record<string, string>[];
     simple?: boolean;
     simplemode?: string;
   }>(),
@@ -43,7 +43,7 @@ const props = withDefaults(
   },
 );
 
-const content = ref<DOMStringMap[]>([]);
+const content = ref<Record<string, string>[]>([]);
 const loading = ref(false);
 const loadingCount = inject("loadingCount") as Ref<number>;
 const { isDark } = useTheme();
@@ -89,11 +89,11 @@ onBeforeMount(async () => {
   loadingCount.value -= 1;
 });
 onMounted(() => {
-  updateTippy();
+  updateTippy(isDark.value);
   handleDark();
 });
 onBeforeUpdate(() => {
-  updateTippy();
+  updateTippy(isDark.value);
   handleDark();
 });
 const isLatest = (e: string | undefined) => e && e === "yes";

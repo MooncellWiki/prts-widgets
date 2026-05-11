@@ -125,7 +125,7 @@ const simple = ref("stats");
 provide("simple", simple);
 
 const rawEquipData = ref<CharEquips[]>([]);
-const filterData = (data: DOMStringMap): boolean => {
+const filterData = (data: Record<string, string>): boolean => {
   return sortStates.value.filter.every((v) => {
     switch (v.mode) {
       case "all": {
