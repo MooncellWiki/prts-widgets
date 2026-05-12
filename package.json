@@ -2,7 +2,7 @@
   "name": "mooncell-widget",
   "type": "module",
   "version": "0.0.0",
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@11.1.0",
   "private": true,
   "scripts": {
     "create": "tsx scripts/index.ts",
@@ -70,14 +70,6 @@
     "vite": "^8.0.10",
     "vue-eslint-parser": "^10.4.0",
     "vue-tsc": "^3.2.7"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "core-js",
-      "esbuild",
-      "simple-git-hooks",
-      "unrs-resolver"
-    ]
   },
   "simple-git-hooks": {
     "pre-commit": "pnpx lint-staged"
