@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import {
   NButton,
@@ -19,6 +19,7 @@ import ItemCard from "./ItemCard.vue";
 import {
   defaultFilterConfig,
   obtainApproachAliases,
+  rarityLabelMap,
   sortOptions,
 } from "./consts";
 import { fetchAllItems } from "./itemData";
@@ -32,31 +33,31 @@ const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
 const { theme, toggleDark } = useTheme();
 
-const filterConfig = reactive(defaultFilterConfig);
+const filterConfig = ref(defaultFilterConfig);
 
-const pagination = reactive({
+const pagination = ref({
   page: 1,
   pageSize: 50,
   pageSizes: [50, 100, 200, 500],
   pageSlot: isMobile ? 5 : 9,
   showSizePicker: true,
   onChange: (page: number) => {
-    pagination.page = page;
+    pagination.value.page = page;
   },
   onUpdatePageSize: (pageSize: number) => {
-    pagination.pageSize = pageSize;
-    pagination.page = 1;
+    pagination.value.pageSize = pageSize;
+    pagination.value.page = 1;
   },
 });
 
 const filteredItemData = computed(() => {
-  const { states, sortOrder } = filterConfig;
+  const { states, sortOrder } = filterConfig.value;
   const searchWord = keyword.value.toLowerCase();
 
   let result = itemData.value.filter((item) => {
     if (
       states.rarity.length > 0 &&
-      !states.rarity.includes(String(item.rarity))
+      !states.rarity.some((r) => rarityLabelMap[r] === item.rarity)
     ) {
       return false;
     }
@@ -119,8 +120,8 @@ const filteredItemData = computed(() => {
 
 const paginatedItemData = computed(() =>
   filteredItemData.value.slice(
-    pagination.pageSize * (pagination.page - 1),
-    pagination.pageSize * pagination.page,
+    pagination.value.pageSize * (pagination.value.page - 1),
+    pagination.value.pageSize * pagination.value.page,
   ),
 );
 

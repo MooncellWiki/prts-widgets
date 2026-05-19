@@ -4,7 +4,7 @@ export const defaultFilterConfig: FilterConfig = {
   filters: {
     rarity: {
       title: "稀有度",
-      options: ["0", "1", "2", "3", "4", "5"],
+      options: ["0 (灰)", "1 (绿)", "2 (蓝)", "3 (紫)", "4 (金)", "5 (彩)"],
     },
     category: {
       title: "分类",
@@ -68,6 +68,15 @@ export const defaultFilterConfig: FilterConfig = {
     obtainApproach: [],
   },
   sortOrder: "id_asc",
+};
+
+export const rarityLabelMap: Record<string, number> = {
+  "0 (灰)": 0,
+  "1 (绿)": 1,
+  "2 (蓝)": 2,
+  "3 (紫)": 3,
+  "4 (金)": 4,
+  "5 (彩)": 5,
 };
 
 export const rarityColorMap: Record<number, string> = {
