@@ -16,7 +16,11 @@ import { isMobileSkin } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
 import ItemCard from "./ItemCard.vue";
-import { defaultFilterConfig, obtainApproachAliases, sortOptions } from "./consts";
+import {
+  defaultFilterConfig,
+  obtainApproachAliases,
+  sortOptions,
+} from "./consts";
 import { fetchAllItems } from "./itemData";
 
 import type { ItemData } from "./types";
@@ -50,7 +54,10 @@ const filteredItemData = computed(() => {
   const searchWord = keyword.value.toLowerCase();
 
   let result = itemData.value.filter((item) => {
-    if (states.rarity.length > 0 && !states.rarity.includes(String(item.rarity))) {
+    if (
+      states.rarity.length > 0 &&
+      !states.rarity.includes(String(item.rarity))
+    ) {
       return false;
     }
 
@@ -72,13 +79,12 @@ const filteredItemData = computed(() => {
       if (!hasMatch) return false;
     }
 
-    if (searchWord) {
-      if (
-        !item.name.toLowerCase().includes(searchWord) &&
-        !item.description.toLowerCase().includes(searchWord)
-      ) {
-        return false;
-      }
+    if (
+      searchWord &&
+      !item.name.toLowerCase().includes(searchWord) &&
+      !item.description.toLowerCase().includes(searchWord)
+    ) {
+      return false;
     }
 
     return true;
@@ -86,20 +92,25 @@ const filteredItemData = computed(() => {
 
   result = [...result].sort((a, b) => {
     switch (sortOrder) {
-      case "id_asc":
+      case "id_asc": {
         return a.sortId - b.sortId;
-      case "id_desc":
+      }
+      case "id_desc": {
         return b.sortId - a.sortId;
-      case "rarity_asc":
+      }
+      case "rarity_asc": {
         return a.rarity === b.rarity
           ? a.sortId - b.sortId
           : a.rarity - b.rarity;
-      case "rarity_desc":
+      }
+      case "rarity_desc": {
         return a.rarity === b.rarity
           ? a.sortId - b.sortId
           : b.rarity - a.rarity;
-      default:
+      }
+      default: {
         return 0;
+      }
     }
   });
 

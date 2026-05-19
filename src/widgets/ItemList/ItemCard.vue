@@ -12,17 +12,21 @@ const props = defineProps<{
   item: ItemData;
 }>();
 
-const imgSrc = computed(() =>
-  props.item.forceWikiFile
-    ? getImagePath(`道具_带框_${props.item.name}.png`)
-    : `${TORAPPU_ENDPOINT}/assets/item_icon/${props.item.iconId}.png`,
-);
+const imgSrc = computed(() => {
+  if (props.item.filename === "无") {
+    return getImagePath("无图片占位符.png");
+  }
+  if (props.item.filename) {
+    return getImagePath(props.item.filename);
+  }
+  return `${TORAPPU_ENDPOINT}/assets/item_icon/${props.item.iconId}.png`;
+});
 </script>
 
 <template>
   <NTooltip trigger="hover" :delay="300">
     <template #trigger>
-      <a :href="`/w/${item.name}`" class="inline-block">
+      <a :href="`/w/${item.name}`" class="inline-block text-center">
         <div
           class="item-card relative overflow-hidden rounded"
           :style="{
@@ -36,6 +40,11 @@ const imgSrc = computed(() =>
             class="block"
             style="width: 80px; height: 80px"
           />
+        </div>
+        <div
+          class="mt-1 w-[80px] text-xs text-gray-600 leading-tight dark:text-gray-300"
+        >
+          {{ item.name }}
         </div>
       </a>
     </template>

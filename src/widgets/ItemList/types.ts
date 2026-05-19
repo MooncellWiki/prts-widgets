@@ -10,7 +10,7 @@ export interface ItemData {
   itemId: string;
   sortId: number;
   iconId: string;
-  forceWikiFile: boolean;
+  filename: string;
   darkBackground: boolean;
 }
 
