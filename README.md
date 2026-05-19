@@ -25,6 +25,7 @@
 - 生息演算地图 [Widget:XbMapViewer/dev](https://prts.wiki/w/Widget:XbMapViewer/dev)
 - 特勤经验表 [Widget:SOExpCalc/dev](https://prts.wiki/w/Widget:SOExpCalc/dev)
 - AudioPlayerV2 [Widget:AudioPlayerV2/dev](https://prts.wiki/w/Widget:AudioPlayerV2/dev)
+- 道具一览 [Widget:ItemList/dev](https://prts.wiki/w/Widget:ItemList/dev)
 
 ## 贡献代码
 
