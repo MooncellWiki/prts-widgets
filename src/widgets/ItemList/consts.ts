@@ -64,7 +64,7 @@ export const defaultFilterConfig: FilterConfig = {
   ],
   states: {
     rarity: [],
-    category: [],
+    category: ["材料"],
     obtainApproach: [],
   },
   sortOrder: "id_asc",
