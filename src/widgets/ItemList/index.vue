@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import {
   NButton,
@@ -17,6 +17,7 @@ import { isMobileSkin } from "@/utils/utils";
 import FilterGroup from "./FilterGroup.vue";
 import ItemCard from "./ItemCard.vue";
 import {
+  categoryAliases,
   defaultFilterConfig,
   obtainApproachAliases,
   rarityLabelMap,
@@ -63,7 +64,13 @@ const filteredItemData = computed(() => {
     }
 
     if (states.category.length > 0) {
-      const hasMatch = states.category.some((c) => item.categories.includes(c));
+      const hasMatch = states.category.some((category) => {
+        const aliases = categoryAliases[category];
+        if (aliases) {
+          return aliases.some((alias) => item.categories.includes(alias));
+        }
+        return states.category.some((c) => item.categories.includes(c));
+      });
       if (!hasMatch) return false;
     }
 
@@ -125,6 +132,18 @@ const paginatedItemData = computed(() =>
   ),
 );
 
+watch(
+  () => [
+    filterConfig.value.states,
+    filterConfig.value.sortOrder,
+    keyword.value,
+  ],
+  () => {
+    pagination.value.page = 1;
+  },
+  { deep: true },
+);
+
 onMounted(async () => {
   itemData.value = await fetchAllItems();
   isLoading.value = false;
@@ -154,6 +173,10 @@ onMounted(async () => {
         "
       />
       <div class="my-2 flex items-center gap-2">
+        <div class="w-5em">
+          <span class="mdi mdi-package-variant-closed"></span>
+          {{ filteredItemData.length }}
+        </div>
         <NInput
           v-model:value="keyword"
           type="text"

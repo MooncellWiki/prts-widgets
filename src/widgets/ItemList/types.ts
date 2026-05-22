@@ -6,6 +6,7 @@ export interface ItemData {
   rarity: number;
   category1: string;
   category2: string;
+  category3: string;
   categories: string[];
   itemId: string;
   sortId: number;
