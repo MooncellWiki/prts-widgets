@@ -47,8 +47,7 @@ export async function getImagePathWithRedirect(filename: string) {
       .replace("文件:", "");
   }
 
-  const md5 = MD5(filename);
-  return `${MEDIA_ENDPOINT}/${md5.slice(0, 1)}/${md5.slice(0, 2)}/${filename}`;
+  return getImagePath(filename);
 }
 
 export const professionMap = {
