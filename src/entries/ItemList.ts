@@ -41,9 +41,11 @@ function readItemsFromDOM(): ItemData[] {
       category1: el.dataset.category1 ?? "",
       category2: el.dataset.category2 ?? "",
       category3: el.dataset.category3 ?? "",
-      categories: [el.dataset.category1, el.dataset.category2].filter(
-        Boolean,
-      ) as string[],
+      categories: [
+        el.dataset.category1,
+        el.dataset.category2,
+        el.dataset.category3,
+      ].filter(Boolean) as string[],
       itemId,
       sortId: Number(el.dataset.sortId ?? "0"),
       iconId,
