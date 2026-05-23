@@ -2,6 +2,7 @@ import "virtual:uno.css";
 import { createApp } from "vue";
 
 import { TORAPPU_ENDPOINT } from "../utils/consts";
+import { getImagePath } from "../utils/utils";
 import ItemList from "../widgets/ItemList/index.vue";
 
 import type { ItemData } from "../widgets/ItemList/types";
@@ -24,8 +25,15 @@ function readItemsFromDOM(): ItemData[] {
 
     const filename = el.dataset.filename ?? "";
     const iconId = el.dataset.iconId ?? "";
-    const imgSrc =
-      filename || `${TORAPPU_ENDPOINT}/assets/item_icon/${iconId}.png`;
+    const imgSrc = (() => {
+      if (filename === "") {
+        return iconId === ""
+          ? getImagePath("无图片占位符.png")
+          : `${TORAPPU_ENDPOINT}/assets/item_icon/${iconId}.png`;
+      } else {
+        return filename;
+      }
+    })();
 
     items.push({
       name,
