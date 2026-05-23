@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { NTooltip } from "naive-ui";
 
 import type { ItemData } from "./types";

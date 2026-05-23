@@ -1,8 +1,9 @@
 import "virtual:uno.css";
 import { createApp } from "vue";
 
-import ItemList from "../widgets/ItemList/index.vue";
 import { TORAPPU_ENDPOINT } from "../utils/consts";
+import ItemList from "../widgets/ItemList/index.vue";
+
 import type { ItemData } from "../widgets/ItemList/types";
 
 function readItemsFromDOM(): ItemData[] {
@@ -23,9 +24,8 @@ function readItemsFromDOM(): ItemData[] {
 
     const filename = el.dataset.filename ?? "";
     const iconId = el.dataset.iconId ?? "";
-    const imgSrc = filename
-      ? filename
-      : `${TORAPPU_ENDPOINT}/assets/item_icon/${iconId}.png`;
+    const imgSrc =
+      filename || `${TORAPPU_ENDPOINT}/assets/item_icon/${iconId}.png`;
 
     items.push({
       name,
@@ -41,7 +41,9 @@ function readItemsFromDOM(): ItemData[] {
       category1: el.dataset.category1 ?? "",
       category2: el.dataset.category2 ?? "",
       category3: el.dataset.category3 ?? "",
-      categories: [el.dataset.category1, el.dataset.category2].filter(Boolean) as string[],
+      categories: [el.dataset.category1, el.dataset.category2].filter(
+        Boolean,
+      ) as string[],
       itemId,
       sortId: Number(el.dataset.sortId ?? "0"),
       iconId,
