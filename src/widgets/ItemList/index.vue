@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 
 import {
   NButton,
@@ -23,13 +23,14 @@ import {
   rarityLabelMap,
   sortOptions,
 } from "./consts";
-import { fetchAllItems } from "./itemData";
 
 import type { ItemData } from "./types";
 
-const itemData = ref<ItemData[]>([]);
+const props = defineProps<{
+  items: ItemData[];
+}>();
+
 const keyword = ref("");
-const isLoading = ref(true);
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
 const { theme, toggleDark } = useTheme();
@@ -55,7 +56,7 @@ const filteredItemData = computed(() => {
   const { states, sortOrder } = filterConfig.value;
   const searchWord = keyword.value.toLowerCase();
 
-  let result = itemData.value.filter((item) => {
+  let result = props.items.filter((item) => {
     if (
       states.rarity.length > 0 &&
       !states.rarity.some((r) => rarityLabelMap[r] === item.rarity)
@@ -143,11 +144,6 @@ watch(
   },
   { deep: true },
 );
-
-onMounted(async () => {
-  itemData.value = await fetchAllItems();
-  isLoading.value = false;
-});
 </script>
 
 <template>
@@ -195,29 +191,24 @@ onMounted(async () => {
           </NButton>
         </div>
       </div>
-      <div v-if="isLoading" class="py-8 text-center text-gray-400">
-        加载中...
-      </div>
-      <template v-else>
-        <div class="flex flex-wrap gap-1">
-          <ItemCard
-            v-for="item in paginatedItemData"
-            :key="item.name"
-            :item="item"
-          />
-        </div>
-        <NPagination
-          class="my-2 justify-center"
-          :item-count="filteredItemData.length"
-          :page="pagination.page"
-          :page-size="pagination.pageSize"
-          :page-sizes="pagination.pageSizes"
-          :page-slot="pagination.pageSlot"
-          :show-size-picker="pagination.showSizePicker"
-          @update:page="pagination.onChange"
-          @update:page-size="pagination.onUpdatePageSize"
+      <div class="flex flex-wrap gap-1">
+        <ItemCard
+          v-for="item in paginatedItemData"
+          :key="item.name"
+          :item="item"
         />
-      </template>
+      </div>
+      <NPagination
+        class="my-2 justify-center"
+        :item-count="filteredItemData.length"
+        :page="pagination.page"
+        :page-size="pagination.pageSize"
+        :page-sizes="pagination.pageSizes"
+        :page-slot="pagination.pageSlot"
+        :show-size-picker="pagination.showSizePicker"
+        @update:page="pagination.onChange"
+        @update:page-size="pagination.onUpdatePageSize"
+      />
     </NLayout>
   </NConfigProvider>
 </template>

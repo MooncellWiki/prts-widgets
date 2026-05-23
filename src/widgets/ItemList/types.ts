@@ -1,7 +1,9 @@
 export interface ItemData {
   name: string;
   description: string;
+  descriptionHtml: string;
   usage: string;
+  usageHtml: string;
   obtainApproach: string[];
   rarity: number;
   category1: string;
@@ -13,6 +15,7 @@ export interface ItemData {
   iconId: string;
   filename: string;
   darkBackground: boolean;
+  imgSrc: string;
 }
 
 export interface FilterConfig {
