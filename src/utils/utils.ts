@@ -30,6 +30,26 @@ export function getImagePath(filename: string) {
   return `${MEDIA_ENDPOINT}/${md5.slice(0, 1)}/${md5.slice(0, 2)}/${filename}`;
 }
 
+export async function getImagePathWithRedirect(filename: string) {
+  const resp = await fetch(
+    `/api.php?${new URLSearchParams({
+      action: "query",
+      titles: `File:${filename}`,
+      redirects: "1",
+      format: "json",
+    })}`,
+  );
+  const data = await resp.json();
+
+  if (data.query?.redirects) {
+    filename = (data.query.redirects[0].to || filename)
+      .replaceAll(" ", "_")
+      .replace("文件:", "");
+  }
+
+  return getImagePath(filename);
+}
+
 export const professionMap = {
   PIONEER: "先锋",
   WARRIOR: "近卫",

@@ -12,12 +12,9 @@ export const defaultFilterConfig: FilterConfig = {
         "材料",
         "消耗道具",
         "作战记录",
-        "建材",
-        "建材原材料",
+        "精英化芯片",
         "技巧概要",
-        "芯片",
-        "双芯片",
-        "芯片组",
+        "基建材料",
         "理智药剂",
         "食物",
         "物资补给",
@@ -29,15 +26,11 @@ export const defaultFilterConfig: FilterConfig = {
         "私人信件",
         "文件夹",
         "活动道具",
-        "其它道具组合",
+        "道具组合",
         "干员赠礼",
         "纪念物",
         "可露希尔票券",
-        "其他道具",
-        "其他干员道具",
-        "养成材料组合",
-        "家具收藏包",
-        "形艺特辑组件包",
+        "其他",
       ],
     },
     obtainApproach: {
@@ -86,6 +79,14 @@ export const rarityColorMap: Record<number, string> = {
   3: "#D8B3D8",
   4: "#FFC802",
   5: "#e06c00",
+};
+
+//only needed aliases
+export const categoryAliases: Record<string, string[]> = {
+  精英化芯片: ["芯片", "芯片组", "双芯片"],
+  基建材料: ["建材", "建材原材料"],
+  道具组合: ["养成材料组合", "家具收藏包", "其它道具组合", "形艺特辑组件包"],
+  其他: ["其他道具", "其他干员道具"],
 };
 
 export const obtainApproachAliases: Record<string, string[]> = {
