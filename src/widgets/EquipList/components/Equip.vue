@@ -2,6 +2,7 @@
 import {
   type Ref,
   inject,
+  nextTick,
   onBeforeMount,
   onBeforeUpdate,
   onMounted,
@@ -77,7 +78,28 @@ onBeforeMount(async () => {
       }
     }
     if (e.trait?.match(/.START_WIDGET.*?END_WIDGET/g))
-      e.trait = await fixAtkRange(e.trait ?? "", props.name, e.name ?? "");
+      e.trait = await fixAtkRange(
+        e.trait ?? "",
+        props.name,
+        e.name ?? "",
+        "特性",
+      );
+    if (e.talent2?.match(/.START_WIDGET.*?END_WIDGET/g)) {
+      e.talent2 = await fixAtkRange(
+        e.talent2 ?? "",
+        props.name,
+        e.name ?? "",
+        "天赋2",
+      );
+    }
+    if (e.talent3?.match(/.START_WIDGET.*?END_WIDGET/g)) {
+      e.talent3 = await fixAtkRange(
+        e.talent3 ?? "",
+        props.name,
+        e.name ?? "",
+        "天赋3",
+      );
+    }
   }
   const seps = document.querySelectorAll(
     ".majorsep,.minorsep,.term,.iconfilter",
@@ -85,6 +107,8 @@ onBeforeMount(async () => {
   for (const ele of Array.from(seps)) {
     ele.classList.toggle("dark", isDark.value);
   }
+  await nextTick();
+  updateTippy(isDark.value);
   loading.value = false;
   loadingCount.value -= 1;
 });
@@ -522,6 +546,7 @@ const modeMission = () => props.simplemode === "mission";
   background-color: whitesmoke;
 }
 :deep(.dark.term) {
+  text-shadow: black 0 0 1px !important;
   text-decoration: underline whitesmoke !important;
   color: whitesmoke !important;
 }
