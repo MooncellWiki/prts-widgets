@@ -34,7 +34,12 @@ export function processLink(res: string): string {
 }
 
 // 修复攻击范围Widget异常的临时方法
-export async function fixAtkRange(res: string, char: string, name: string) {
+export async function fixAtkRange(
+  res: string,
+  char: string,
+  name: string,
+  item: string = "特性",
+) {
   const regexp = /.START_WIDGET.*?END_WIDGET/g;
   const resp = await fetch(
     `/api.php?${new URLSearchParams({
@@ -57,7 +62,11 @@ export async function fixAtkRange(res: string, char: string, name: string) {
     })}`,
   );
   const text = await contentResp.text();
-  const rangeType = text.match(/{{攻击范围\|(.*?)}}/)?.at(1) ?? "";
+  const targetText = text.slice(text.search(item));
+  const rangeType =
+    targetText.match(/{{攻击范围\|(.*?)}}/)?.at(1) ??
+    targetText.match(/{{popup\/range\|(.*?)}}/)?.at(1) ??
+    "";
 
   const rangeResp = await fetch(
     `/api.php?${new URLSearchParams({
