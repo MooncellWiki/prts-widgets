@@ -374,7 +374,6 @@ const ignores = [
 ];
 
 export default [
-  gitignore(),
   ...ignores,
   ...javascript,
   ...typescript,
