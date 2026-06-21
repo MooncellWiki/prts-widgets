@@ -364,14 +364,14 @@ const handleUpdateFilter = (
         :columns="columns"
         :data="enemyData"
         :pagination="pagination"
-        :row-key="(row) => row.name"
+        :row-key="(row) => row.sortId"
         striped
         @update:filters="handleUpdateFilter"
       />
       <div v-if="isIconMode">
         <a
           v-for="row in filteredChunkedEnemyData"
-          :key="row.name"
+          :key="row.sortId"
           :href="`/w/${row.enemyLink}`"
         >
           <img
