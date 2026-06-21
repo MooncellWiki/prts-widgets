@@ -85,7 +85,7 @@ async function load() {
   }));
   isLoading.value = false;
   spineRef.spine!.play(`${curSkin.value}-${curModel.value}`);
-  animationState.setAnimation(0, names[0], isLoop.value);
+  spineRef.spine!.setAnimation(names[0], isLoop.value);
   curAni.value = names[0];
   animationState.timeScale = speed.value;
 }
@@ -110,15 +110,14 @@ function onSelectAni(e: string) {
   const cur = spineRef.spine?.getCurrent();
   if (cur) {
     console.log("ani change", cur);
-    cur.state.setAnimation(0, e, isLoop.value);
+    spineRef.spine!.setAnimation(e, isLoop.value);
     cur.state.timeScale = speed.value;
   }
 }
 function onChangeLoop(e: boolean) {
-  const state = spineRef.spine?.getCurrent()?.state;
-  if (!state) return;
+  if (!spineRef.spine?.getCurrent()) return;
 
-  state.setAnimation(0, state.tracks[0].animation.name, e);
+  spineRef.spine.setAnimation(curAni.value, e);
 }
 function onChangeColor(e: string) {
   if (!spineRef.spine) return;
