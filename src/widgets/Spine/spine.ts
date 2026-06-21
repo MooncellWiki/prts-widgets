@@ -4,6 +4,11 @@ import { downloadBlob } from "@/utils/utils";
 function noop() {
   // noop
 }
+
+// 重复播放一次性动画（如 Die）时，在每遍之间插入的小幅交叉淡化（秒）。
+// 经测试 ~0.2s 是较优值：太大反而会和下一遍自身的快速动作重叠、更难看。
+const REPEAT_MIX = 0.2;
+
 interface Skeleton {
   skeleton: spine.Skeleton;
   bounds: {
@@ -12,6 +17,8 @@ interface Skeleton {
   };
   state: spine.AnimationState;
   premultipliedAlpha: boolean;
+  // 当前“循环”动画使用的重新入队监听器，切换动画时需要先移除
+  repeatListener?: spine.AnimationStateListener;
 }
 interface Position {
   x: number;
@@ -238,6 +245,46 @@ export class Spine {
     return this.skeletons[this.activeSkeleton];
   }
 
+  // 设置当前骨架播放的动画。loop 为 true 时不使用 spine 原生 loop：
+  // 原生 loop 会全程复用同一个 TrackEntry，配合 MixBlend.first 让骨骼旋转
+  // 每圈缠绕 360°，一次性动画（如 Die）会被 IK 约束放大成越来越严重的抽搐。
+  // 这里改为每遍重新入队（每次都是全新 TrackEntry，旋转累加器被重置），
+  // 并对“同名动画”设置小幅 mix 抹平首尾帧的姿态跳变。
+  setAnimation(animationName: string, loop: boolean): void {
+    if (!this.activeSkeleton) return;
+
+    const skeleton = this.skeletons[this.activeSkeleton];
+    if (!skeleton) return;
+
+    const { state } = skeleton;
+    // 切换动画前先拆掉上一个循环监听器，避免它继续把旧动画排进队列
+    if (skeleton.repeatListener) {
+      state.removeListener(skeleton.repeatListener);
+      skeleton.repeatListener = undefined;
+    }
+
+    if (!loop) {
+      state.setAnimation(0, animationName, false);
+      return;
+    }
+
+    state.data.setMix(animationName, animationName, REPEAT_MIX);
+    state.setAnimation(0, animationName, false);
+    const listener: spine.AnimationStateListener = {
+      start: noop,
+      interrupt: noop,
+      end: noop,
+      dispose: noop,
+      // 每播完一遍就再排一遍，delay=0 让交叉淡化叠在上一遍缓慢的尾巴上
+      complete: () => {
+        state.addAnimation(0, animationName, false, 0);
+      },
+      event: noop,
+    };
+    state.addListener(listener);
+    skeleton.repeatListener = listener;
+  }
+
   move(x: number, y: number): void {
     console.log(x, y);
     if (!this.activeSkeleton) return;
@@ -290,7 +337,13 @@ export class Spine {
       chunks.push(e.data);
     };
     let started = false;
-    const state = this.skeletons[this.activeSkeleton].state;
+    const skeleton = this.skeletons[this.activeSkeleton];
+    // 录制单遍动画，先移除循环监听器，避免录制中被重新入队
+    if (skeleton.repeatListener) {
+      skeleton.state.removeListener(skeleton.repeatListener);
+      skeleton.repeatListener = undefined;
+    }
+    const state = skeleton.state;
 
     state.addListener({
       start: (_) => {
