@@ -33,7 +33,7 @@ const tip = computed(() => (props.title ? displayTips[props.title] : ""));
   </span>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .voice-title {
   --tip-color: #36c;
   --tip-size: 0.875rem;

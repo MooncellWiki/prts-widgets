@@ -61,6 +61,7 @@
     "globals": "^17.6.0",
     "prettier": "^3.8.4",
     "rollup-plugin-visualizer": "^7.0.1",
+    "sass-embedded": "^1.100.0",
     "simple-git-hooks": "^2.13.1",
     "terser": "^5.48.0",
     "tsx": "^4.22.4",
