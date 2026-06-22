@@ -36,29 +36,35 @@ const tip = computed(() => (props.title ? displayTips[props.title] : ""));
 
 <style scoped>
 .voice-title {
+  --tip-color: #36c;
+  --tip-size: 0.875rem;
+
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.25em;
-}
+  gap: 0.25rem;
 
-.voice-title-tip {
-  display: inline-flex;
-  width: 1em;
-  height: 1em;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #36c;
-  border-radius: 50%;
-  color: #36c;
-  cursor: help;
-  font-size: 0.85em;
-  font-weight: 700;
-  line-height: 1;
-}
+  &-tip {
+    display: inline-flex;
+    width: 1rem;
+    height: 1rem;
 
-.voice-title-tip:focus-visible {
-  outline: 2px solid #36c;
-  outline-offset: 2px;
+    align-items: center;
+    justify-content: center;
+
+    border: 1px solid var(--tip-color);
+    border-radius: 50%;
+
+    color: var(--tip-color);
+    cursor: help;
+
+    font-size: var(--tip-size);
+    font-weight: 700;
+    line-height: 1;
+
+    &:focus-visible {
+      outline: 2px solid var(--tip-color);
+      outline-offset: 0.125rem;
+    }
+  }
 }
 </style>
