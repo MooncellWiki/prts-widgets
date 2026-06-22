@@ -6,6 +6,7 @@ import { NConfigProvider, NSelect } from "naive-ui";
 import FormItem from "@/components/FormItem.vue";
 
 import VoicePlayer from "./VoicePlayer.vue";
+import VoiceTitle from "./VoiceTitle.vue";
 import { ILLUST_SHOW_TYPES, SkinVoiceType } from "./consts";
 
 import type { Props } from "./types";
@@ -103,7 +104,7 @@ provide("audioElem", new Audio());
               <div
                 class="flex-auto self-center justify-self-center text-center"
               >
-                {{ ele.title }}
+                <VoiceTitle :title="ele.title" />
               </div>
               <div>
                 <VoicePlayer
