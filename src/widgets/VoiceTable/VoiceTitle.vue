@@ -22,12 +22,11 @@ const tip = computed(() => (props.title ? displayTips[props.title] : ""));
     <NTooltip v-if="tip" trigger="hover">
       <template #trigger>
         <span
-          class="voice-title-tip"
+          class="voice-title-tip mdi mdi-help-circle-outline color-[var(--darkblue)]"
           role="img"
           tabindex="0"
           aria-label="显示时间说明"
-          >?</span
-        >
+        />
       </template>
       {{ tip }}
     </NTooltip>
