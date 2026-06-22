@@ -4,11 +4,11 @@ import { computed } from "vue";
 import { NCard, NDivider, NPopover } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
-import { useTheme } from "@/utils/theme";
+import { getWikiTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import type { CharMemory, Memory } from "./types";
-const { theme } = useTheme();
+const theme = getWikiTheme();
 
 const getSrcMedal = (mmr: Memory) =>
   `${TORAPPU_ENDPOINT}/assets/medal_icon/${mmr.medal.id}.png`;

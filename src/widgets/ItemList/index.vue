@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue";
 
 import {
-  NButton,
   NConfigProvider,
   NInput,
   NLayout,
@@ -11,7 +10,7 @@ import {
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
 import { isMobileSkin } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
@@ -33,7 +32,8 @@ const props = defineProps<{
 const keyword = ref("");
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
-const { theme, toggleDark } = useTheme();
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 
 const filterConfig = ref(defaultFilterConfig);
 
@@ -153,7 +153,7 @@ watch(
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="mx-auto p-2 antialiased">
+    <NLayout :class="['mx-auto p-2 antialiased', isDark && 'prts-widget-dark']">
       <FilterGroup
         v-for="group in filterConfig.groups"
         :key="group.title"
@@ -184,12 +184,6 @@ watch(
           :options="sortOptions"
           style="width: 160px"
         />
-        <div @click="toggleDark()">
-          <NButton>
-            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-            <span v-else class="mdi mdi-brightness-4 text-2xl" />
-          </NButton>
-        </div>
       </div>
       <div class="flex flex-wrap gap-1">
         <ItemCard
@@ -214,6 +208,7 @@ watch(
 </template>
 
 <style scoped>
+@import "../dark-mode.css";
 :global(.page-道具一览 .backToTop) {
   @apply hidden!;
 }

@@ -13,7 +13,7 @@ import {
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
+import { getWikiTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
@@ -103,7 +103,8 @@ const generateGroupMedalData = (medalGroupId: string) => {
 
 const spoilerManualUnlocked = ref(!props.spoiler);
 
-const { theme } = useTheme();
+const theme = getWikiTheme();
+const isDark = theme !== null;
 const i18nConfig = getNaiveUILocale();
 </script>
 
@@ -130,7 +131,7 @@ const i18nConfig = getNaiveUILocale();
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="max-w-200 antialiased">
+    <NLayout :class="['max-w-200 antialiased', isDark && 'prts-widget-dark']">
       <NCard>
         <template #header>
           <img
@@ -243,6 +244,7 @@ const i18nConfig = getNaiveUILocale();
 </template>
 
 <style scoped>
+@import "../dark-mode.css";
 a {
   color: unset;
 }

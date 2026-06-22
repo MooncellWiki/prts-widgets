@@ -20,7 +20,7 @@ import {
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
@@ -159,7 +159,8 @@ const genPreMedalList = (idList: Array<{ id: string; isTrim: boolean }>) => {
     }),
   );
 };
-const { theme, toggleDark } = useTheme();
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 const i18nConfig = getNaiveUILocale();
 </script>
 
@@ -176,7 +177,7 @@ const i18nConfig = getNaiveUILocale();
       },
     }"
   >
-    <NLayout class="mx-auto antialiased">
+    <NLayout :class="['mx-auto antialiased', isDark && 'prts-widget-dark']">
       <NCard>
         <template #header>
           <img
@@ -186,10 +187,6 @@ const i18nConfig = getNaiveUILocale();
           />&nbsp;&nbsp;光荣之路
         </template>
         <template #header-extra>
-          <div class="mx-1 cursor-pointer" @click="toggleDark()">
-            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-            <span v-else class="mdi mdi-brightness-4 text-2xl" />
-          </div>
           <NTooltip trigger="hover">
             <template #trigger>
               <div class="mx-1 cursor-pointer" @click="toggleDeprecateBadge()">
@@ -384,3 +381,7 @@ const i18nConfig = getNaiveUILocale();
     </NLayout>
   </NConfigProvider>
 </template>
+
+<style scoped>
+@import "../dark-mode.css";
+</style>

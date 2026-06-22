@@ -15,7 +15,7 @@ import {
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
 import { isMobile } from "@/utils/utils";
 
 import EquipGroup from "./components/EquipGroup.vue";
@@ -52,7 +52,8 @@ function newSortItem(): FilterValue {
 }
 
 const i18nConfig = getNaiveUILocale();
-const { theme, toggleDark } = useTheme();
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 const locale = getLanguage();
 const timeData = ref<
   {
@@ -303,17 +304,18 @@ const mobileStyle = () => {
     :date-locale="i18nConfig.dateLocale"
     preflight-style-disabled
   >
-    <NLayout class="mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4">
+    <NLayout
+      :class="[
+        'mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4',
+        isDark && 'prts-widget-dark',
+      ]"
+    >
       <NCard
         :title="customLabel.filterTitle"
         header-style="text-align: center;"
         size="small"
       >
         <template #header-extra>
-          <div class="m-1 cursor-pointer" @click="toggleDark()">
-            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-            <span v-else class="mdi mdi-brightness-4 text-2xl" />
-          </div>
           <div class="m-1 cursor-pointer" @click="filterShow = !filterShow">
             <span v-if="filterShow" class="mdi mdi-chevron-up text-2xl" />
             <span v-else class="mdi mdi-chevron-down text-2xl" />
@@ -536,3 +538,7 @@ const mobileStyle = () => {
     </NLayout>
   </NConfigProvider>
 </template>
+
+<style scoped>
+@import "../dark-mode.css";
+</style>

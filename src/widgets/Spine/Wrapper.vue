@@ -4,6 +4,7 @@ import { ref, watch } from "vue";
 import { NButton, NConfigProvider, zhCN } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
 
 import Spine from "./Spine.vue";
 
@@ -25,6 +26,8 @@ const props = defineProps<{
 }>();
 
 const loaded = ref(false);
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 const value = ref<Props>();
 value.value = props.conf;
 watch(props, () => {
@@ -45,17 +48,24 @@ async function load() {
   <NConfigProvider
     preflight-style-disabled
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
+    :theme="theme"
     :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
     :locale="zhCN"
   >
-    <!-- <n-dialog-provider> -->
-    <Spine
-      v-if="loaded"
-      :prefix="value!.prefix"
-      :name="value!.name"
-      :skin="value!.skin"
-    />
-    <NButton v-else type="info" @click="load"> 点此载入模型 </NButton>
-    <!-- </n-dialog-provider> -->
+    <div :class="['spine-viewer-widget', isDark && 'prts-widget-dark']">
+      <!-- <n-dialog-provider> -->
+      <Spine
+        v-if="loaded"
+        :prefix="value!.prefix"
+        :name="value!.name"
+        :skin="value!.skin"
+      />
+      <NButton v-else type="info" @click="load"> 点此载入模型 </NButton>
+      <!-- </n-dialog-provider> -->
+    </div>
   </NConfigProvider>
 </template>
+
+<style scoped>
+@import "../dark-mode.css";
+</style>

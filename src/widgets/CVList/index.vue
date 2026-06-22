@@ -4,7 +4,7 @@ import { nextTick, ref } from "vue";
 import { NConfigProvider, NLayout, NTabPane, NTabs } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
 
 import VoiceLangTab from "./VoiceLangTab.vue";
 
@@ -18,7 +18,8 @@ const props = defineProps<{
   charMapping: Record<string, string>;
 }>();
 
-const { theme } = useTheme();
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 const i18nConfig = getNaiveUILocale();
 
 const tabs = ref(Object.values(props.langTypes).map((v) => v.name));
@@ -44,7 +45,12 @@ if (window.location.hash) {
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="mx-auto bg-transparent p-2 antialiased">
+    <NLayout
+      :class="[
+        'mx-auto bg-transparent p-2 antialiased',
+        isDark && 'prts-widget-dark',
+      ]"
+    >
       <n-tabs v-model:value="valueRef" type="line" animated>
         <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
           <VoiceLangTab
@@ -60,4 +66,6 @@ if (window.location.hash) {
   </NConfigProvider>
 </template>
 
-<style scoped></style>
+<style scoped>
+@import "../dark-mode.css";
+</style>

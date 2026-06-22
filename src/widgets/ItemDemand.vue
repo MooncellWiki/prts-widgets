@@ -5,6 +5,7 @@ import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
 
 import Cost, { type CostProps } from "@/components/Cost.vue";
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
 
 interface CostItem {
   label: string;
@@ -65,6 +66,8 @@ const props = defineProps<{
   item: string;
 }>();
 
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 const data = ref<itemCost>();
 const state = ref(Status.req);
 async function load() {
@@ -91,44 +94,51 @@ onMounted(() => {
   <NConfigProvider
     preflight-style-disabled
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
+    :theme="theme"
     :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
   >
-    <NButton v-if="state === Status.fail" @click="load">
-      加载失败 点击重试
-    </NButton>
-    <div
-      v-else-if="state === Status.succ && data"
-      class="max-w-700px"
-      content-style="padding: 0;"
-    >
-      <div>
-        <div>精英化：{{ data.total.elite }}</div>
-        <div>技能1→7：{{ data.total.skill }}</div>
-        <div>技能专精：{{ data.total.mastery }}</div>
-        <div>模组：{{ data.total.uniequip }}</div>
-        <div class="font-bold">总计：{{ data.total.total }}</div>
+    <div :class="['item-demand-widget', isDark && 'prts-widget-dark']">
+      <NButton v-if="state === Status.fail" @click="load">
+        加载失败 点击重试
+      </NButton>
+      <div
+        v-else-if="state === Status.succ && data"
+        class="max-w-700px"
+        content-style="padding: 0;"
+      >
+        <div>
+          <div>精英化：{{ data.total.elite }}</div>
+          <div>技能1→7：{{ data.total.skill }}</div>
+          <div>技能专精：{{ data.total.mastery }}</div>
+          <div>模组：{{ data.total.uniequip }}</div>
+          <div class="font-bold">总计：{{ data.total.total }}</div>
+        </div>
+        <NTabs :tabs-padding="20" size="large">
+          <NTabPane
+            v-for="cost in data.costs"
+            :key="cost.label"
+            :name="cost.label"
+            class="grid grid-cols-5 <sm:grid-cols-3"
+          >
+            <Cost
+              v-for="i in cost.data"
+              :key="i.name"
+              :rarity="i.rarity"
+              :name="i.name"
+              :profession="i.profession"
+              :elite="i.elite"
+              :skill="i.skill"
+              :mastery="i.mastery"
+              :uniequip="i.uniequip"
+            />
+          </NTabPane>
+        </NTabs>
       </div>
-      <NTabs :tabs-padding="20" size="large">
-        <NTabPane
-          v-for="cost in data.costs"
-          :key="cost.label"
-          :name="cost.label"
-          class="grid grid-cols-5 <sm:grid-cols-3"
-        >
-          <Cost
-            v-for="i in cost.data"
-            :key="i.name"
-            :rarity="i.rarity"
-            :name="i.name"
-            :profession="i.profession"
-            :elite="i.elite"
-            :skill="i.skill"
-            :mastery="i.mastery"
-            :uniequip="i.uniequip"
-          />
-        </NTabPane>
-      </NTabs>
+      <NSkeleton v-else />
     </div>
-    <NSkeleton v-else />
   </NConfigProvider>
 </template>
+
+<style scoped>
+@import "./dark-mode.css";
+</style>

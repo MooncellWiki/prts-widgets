@@ -12,6 +12,7 @@ import {
 } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { getWikiTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import MiniMedalComponent from "./MiniMedal.vue";
@@ -49,11 +50,13 @@ const rarityImgStyleSet: Record<number, string[]> = {
 
 const isDecrypt = ref(false);
 const showTrimed = ref(false);
+const theme = getWikiTheme();
 </script>
 
 <template>
   <NConfigProvider
     preflight-style-disabled
+    :theme="theme"
     :theme-overrides="{
       Card: {
         paddingMedium: '0',

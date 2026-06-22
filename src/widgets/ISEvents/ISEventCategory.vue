@@ -12,11 +12,16 @@ import {
   NTabPane,
   NTabs,
 } from "naive-ui";
+
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+
 const props = defineProps<{
   tabList: string[];
   eventNameList: string[][];
 }>();
 const curTab = ref(props.tabList[0]);
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 
 const showFullCate = ref(false);
 
@@ -34,6 +39,7 @@ const changeTab = (name: string) => {
   <h2>事件导航</h2>
   <NConfigProvider
     preflight-style-disabled
+    :theme="theme"
     :theme-overrides="{
       common: {
         borderRadius: '0',
@@ -56,7 +62,7 @@ const changeTab = (name: string) => {
         textColorTextPressed: '#07426D',
       },
     }"
-    class="ISEventCategory"
+    :class="['ISEventCategory', isDark && 'prts-widget-dark']"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
@@ -153,6 +159,8 @@ const changeTab = (name: string) => {
 </template>
 
 <style scoped>
+@import "../dark-mode.css";
+@import "./dark-mode.css";
 a {
   text-decoration: none;
   color: unset;

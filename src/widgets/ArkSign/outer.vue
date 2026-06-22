@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { NConfigProvider, NMessageProvider, NModalProvider } from "naive-ui";
 
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+
 import arksignInner from "./index.vue";
+
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 
 const themeOverrides = {
   common: {
@@ -23,11 +28,21 @@ const themeOverrides = {
 </script>
 
 <template>
-  <n-config-provider :theme-overrides="themeOverrides" preflight-style-disabled>
+  <n-config-provider
+    :theme="theme"
+    :theme-overrides="themeOverrides"
+    preflight-style-disabled
+  >
     <n-message-provider>
       <n-modal-provider>
-        <arksignInner />
+        <div :class="isDark && 'prts-widget-dark'">
+          <arksignInner />
+        </div>
       </n-modal-provider>
     </n-message-provider>
   </n-config-provider>
 </template>
+
+<style scoped>
+@import "../dark-mode.css";
+</style>

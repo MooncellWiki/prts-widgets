@@ -15,6 +15,7 @@ import {
   type DropdownOption,
 } from "naive-ui";
 
+import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import ISEventOption from "./ISEventOption.vue";
@@ -55,6 +56,8 @@ const props = withDefaults(
 
 const sceneNav = ref<Array<number>>([0]);
 const currentSceneId = ref(0);
+const theme = getWikiTheme();
+const isDark = isWikiDarkMode();
 function isPrtsInfo(sceneId: number) {
   return props.sceneData[sceneId].prtsinfo !== "";
 }
@@ -179,6 +182,7 @@ function getSubChooseData(scStr: string) {
   <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
   <NConfigProvider
     preflight-style-disabled
+    :theme="theme"
     :theme-overrides="{
       common: {
         borderRadius: '0',
@@ -194,7 +198,7 @@ function getSubChooseData(scStr: string) {
       Breadcrumb: { itemTextColor: '#A8AFB5' },
       Button: { textColor: '#fff' },
     }"
-    class="ISEventFrame"
+    :class="['ISEventFrame', isDark && 'prts-widget-dark']"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
@@ -315,6 +319,8 @@ function getSubChooseData(scStr: string) {
 </template>
 
 <style scoped>
+@import "../dark-mode.css";
+@import "./dark-mode.css";
 :deep(.n-breadcrumb .n-breadcrumb-item .n-breadcrumb-item__separator) {
   margin: 0 !important;
 }

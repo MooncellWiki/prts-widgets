@@ -13,6 +13,7 @@ import {
 } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { getWikiTheme } from "@/utils/theme";
 
 import MedalComponent from "./Medal.vue";
 
@@ -43,12 +44,14 @@ const eventLinkList = computed(() => {
 });
 
 const showTrimed = ref(false);
+const theme = getWikiTheme();
 </script>
 
 <template>
   <NConfigProvider
     v-if="medalDataList.length > 0"
     preflight-style-disabled
+    :theme="theme"
     :theme-overrides="{
       Card: {
         paddingMedium: '0',
