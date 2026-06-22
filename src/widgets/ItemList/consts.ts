@@ -9,6 +9,7 @@ export const defaultFilterConfig: FilterConfig = {
     category: {
       title: "分类",
       options: [
+        "基础道具",
         "材料",
         "消耗道具",
         "作战记录",
