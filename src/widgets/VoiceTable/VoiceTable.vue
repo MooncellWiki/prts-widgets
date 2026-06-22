@@ -6,6 +6,7 @@ import { NConfigProvider, NSelect } from "naive-ui";
 import FormItem from "@/components/FormItem.vue";
 
 import VoicePlayer from "./VoicePlayer.vue";
+import VoiceTitle from "./VoiceTitle.vue";
 import { ILLUST_SHOW_TYPES, SkinVoiceType } from "./consts";
 
 import type { Props } from "./types";
@@ -100,7 +101,7 @@ provide("audioElem", new Audio());
             <div
               class="table-cell truncate border border-divider border-solid p-1 text-center align-middle font-bold !bg-table"
             >
-              {{ ele.title }}
+              <VoiceTitle :title="ele.title" />
             </div>
             <div
               class="w-full table-cell border border-divider rounded border-solid p-2 align-middle"
