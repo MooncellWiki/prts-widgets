@@ -1,14 +1,6 @@
 import spine from "@/spine/runtime/spine-webgl";
 import { downloadBlob } from "@/utils/utils";
 
-function noop() {
-  // noop
-}
-
-// 重复播放一次性动画（如 Die）时，在每遍之间插入的小幅交叉淡化（秒）。
-// 经测试 ~0.2s 是较优值：太大反而会和下一遍自身的快速动作重叠、更难看。
-const REPEAT_MIX = 0.2;
-
 interface Skeleton {
   skeleton: spine.Skeleton;
   bounds: {
@@ -268,18 +260,17 @@ export class Spine {
       return;
     }
 
-    state.data.setMix(animationName, animationName, REPEAT_MIX);
     state.setAnimation(0, animationName, false);
     const listener: spine.AnimationStateListener = {
-      start: noop,
-      interrupt: noop,
-      end: noop,
-      dispose: noop,
+      start: () => {},
+      interrupt: () => {},
+      end: () => {},
+      dispose: () => {},
       // 每播完一遍就再排一遍，delay=0 让交叉淡化叠在上一遍缓慢的尾巴上
       complete: () => {
         state.addAnimation(0, animationName, false, 0);
       },
-      event: noop,
+      event: () => {},
     };
     state.addListener(listener);
     skeleton.repeatListener = listener;
@@ -351,16 +342,16 @@ export class Spine {
         started = true;
         mr.start();
       },
-      end: noop,
-      interrupt: noop,
-      dispose: noop,
+      end: () => {},
+      interrupt: () => {},
+      dispose: () => {},
       complete: (_) => {
         if (!started) return;
 
         console.log("end");
         mr.stop();
       },
-      event: noop,
+      event: () => {},
     });
     state.setAnimation(0, ani, false);
 
