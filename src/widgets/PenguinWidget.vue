@@ -100,5 +100,5 @@ const selectedStage = ref(stages[0].value);
 </template>
 
 <style scoped>
-@import "./dark-mode.css";
+@import "@/styles/dark-mode.scss";
 </style>
