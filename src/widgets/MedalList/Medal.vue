@@ -12,6 +12,7 @@ import {
 } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import MiniMedalComponent from "./MiniMedal.vue";
@@ -49,31 +50,26 @@ const rarityImgStyleSet: Record<number, string[]> = {
 
 const isDecrypt = ref(false);
 const showTrimed = ref(false);
+const { theme, themeOverrides } = useTheme({
+  Card: { paddingMedium: "0", borderColor: "#adadad", borderRadius: "0" },
+  Tag: {
+    colorCheckable: "#565656",
+    textColorCheckable: "white",
+    colorPressedCheckable: "#2E33387A",
+    textColorPressedCheckable: "white",
+    colorChecked: "#1976d2",
+    colorCheckedHover: "#52A5F7",
+    colorCheckedPressed: "#707070FF",
+  },
+  Image: { toolbarColor: "#000000B3", toolbarBorderRadius: "5px" },
+});
 </script>
 
 <template>
   <NConfigProvider
     preflight-style-disabled
-    :theme-overrides="{
-      Card: {
-        paddingMedium: '0',
-        borderColor: '#adadad',
-        borderRadius: '0',
-      },
-      Tag: {
-        colorCheckable: '#565656',
-        textColorCheckable: 'white',
-        colorPressedCheckable: '#2E33387A',
-        textColorPressedCheckable: 'white',
-        colorChecked: '#1976d2',
-        colorCheckedHover: '#52A5F7',
-        colorCheckedPressed: '#707070FF',
-      },
-      Image: {
-        toolbarColor: '#000000B3',
-        toolbarBorderRadius: '5px',
-      },
-    }"
+    :theme="theme"
+    :theme-overrides="themeOverrides"
   >
     <NCard hoverable class="h-full">
       <div class="h-full flex <lg:flex-col">

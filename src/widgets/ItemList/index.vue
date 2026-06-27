@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue";
 
 import {
-  NButton,
   NConfigProvider,
   NInput,
   NLayout,
@@ -33,7 +32,7 @@ const props = defineProps<{
 const keyword = ref("");
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
-const { theme, toggleDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 
 const filterConfig = ref(defaultFilterConfig);
 
@@ -150,10 +149,11 @@ watch(
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="mx-auto p-2 antialiased">
+    <NLayout :class="['mx-auto p-2 antialiased', isDark && 'prts-widget-dark']">
       <FilterGroup
         v-for="group in filterConfig.groups"
         :key="group.title"
@@ -184,12 +184,6 @@ watch(
           :options="sortOptions"
           style="width: 160px"
         />
-        <div @click="toggleDark()">
-          <NButton>
-            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-            <span v-else class="mdi mdi-brightness-4 text-2xl" />
-          </NButton>
-        </div>
       </div>
       <div class="flex flex-wrap gap-1">
         <ItemCard
@@ -214,6 +208,7 @@ watch(
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
 :global(.page-道具一览 .backToTop) {
   @apply hidden!;
 }

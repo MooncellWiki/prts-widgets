@@ -71,9 +71,9 @@ watch(
 </script>
 
 <template>
-  <div class="container">
+  <div class="voice-player container">
     <img
-      class="cursor-pointer <sm:w-7 md:w-10"
+      class="cursor-pointer <sm:w-6 md:w-8"
       :title="playing ? '暂停' : '播放'"
       :src="playing ? pauseImageSource : playImageSource"
       @click="
@@ -88,10 +88,16 @@ watch(
       :download="`${fileName}.wav`"
     >
       <img
-        class="cursor-pointer <sm:w-7 md:w-10"
+        class="cursor-pointer <sm:w-6 md:w-8"
         title="下载"
         :src="downloadImageSource"
       />
     </a>
   </div>
 </template>
+
+<style scoped>
+.prts-widget-dark .voice-player img {
+  filter: invert(1) brightness(1.15);
+}
+</style>

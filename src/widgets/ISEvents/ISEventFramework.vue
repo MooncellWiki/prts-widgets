@@ -15,6 +15,7 @@ import {
   type DropdownOption,
 } from "naive-ui";
 
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import ISEventOption from "./ISEventOption.vue";
@@ -55,6 +56,19 @@ const props = withDefaults(
 
 const sceneNav = ref<Array<number>>([0]);
 const currentSceneId = ref(0);
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { borderRadius: "0" },
+  Card: {
+    color: "#212121",
+    textColor: "#fff",
+    titleTextColor: "#fff",
+    actionColor: "#343434",
+    paddingSmall: "0.6em",
+    lineHeight: "1.4",
+  },
+  Breadcrumb: { itemTextColor: "#A8AFB5" },
+  Button: { textColor: "#fff" },
+});
 function isPrtsInfo(sceneId: number) {
   return props.sceneData[sceneId].prtsinfo !== "";
 }
@@ -179,22 +193,9 @@ function getSubChooseData(scStr: string) {
   <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
   <NConfigProvider
     preflight-style-disabled
-    :theme-overrides="{
-      common: {
-        borderRadius: '0',
-      },
-      Card: {
-        color: '#212121',
-        textColor: '#fff',
-        titleTextColor: '#fff',
-        actionColor: '#343434',
-        paddingSmall: '0.6em',
-        lineHeight: '1.4',
-      },
-      Breadcrumb: { itemTextColor: '#A8AFB5' },
-      Button: { textColor: '#fff' },
-    }"
-    class="ISEventFrame"
+    :theme="theme"
+    :theme-overrides="themeOverrides"
+    :class="['ISEventFrame', isDark && 'prts-widget-dark']"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
@@ -315,6 +316,8 @@ function getSubChooseData(scStr: string) {
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
+@import "./dark-mode.css";
 :deep(.n-breadcrumb .n-breadcrumb-item .n-breadcrumb-item__separator) {
   margin: 0 !important;
 }

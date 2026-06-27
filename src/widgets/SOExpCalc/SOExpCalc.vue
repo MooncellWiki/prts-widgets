@@ -18,12 +18,14 @@ import {
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import LevelInput from "./LevelInput.vue";
 import { eliteStr } from "./consts";
 
 const i18nConfig = getNaiveUILocale();
+const { isDark } = useTheme();
 
 const props = defineProps<{
   expMap: number[][];
@@ -174,6 +176,7 @@ const tableData = computed(() =>
   <NConfigProvider
     preflight-style-disabled
     :theme="darkTheme"
+    :class="isDark && 'prts-widget-dark'"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
     :theme-overrides="{
@@ -445,6 +448,7 @@ const tableData = computed(() =>
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
 .soec-button {
   background: linear-gradient(180deg, black, #ab9834);
   padding: 0.3em;

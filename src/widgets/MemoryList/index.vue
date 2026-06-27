@@ -24,7 +24,7 @@ import type { CharMemory } from "./types";
 
 const isMobile = isMobileSkin();
 const i18nConfig = getNaiveUILocale();
-const { theme, toggleDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const states = ref<string[]>([]);
 const isLoaded = ref(false);
 const sorting = ref("lmmr");
@@ -137,10 +137,16 @@ const pickSize = () => {
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="mx-auto max-w-3xl p-2 antialiased lg:max-w-[90rem] md:p-4">
+    <NLayout
+      :class="[
+        'mx-auto max-w-3xl p-2 antialiased lg:max-w-[90rem] md:p-4',
+        isDark && 'prts-widget-dark',
+      ]"
+    >
       <table class="w-full border-collapse text-left important-table">
         <tbody class="align-baseline">
           <tr>
@@ -198,12 +204,6 @@ const pickSize = () => {
                     <span class="mdi mdi-magnify text-lg" />
                   </template>
                 </NInput>
-                <div class="px-2" @click="toggleDark()">
-                  <NButton>
-                    <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-                    <span v-else class="mdi mdi-brightness-4 text-2xl" />
-                  </NButton>
-                </div>
               </div>
             </td>
           </tr>
@@ -247,3 +247,7 @@ const pickSize = () => {
     </NLayout>
   </NConfigProvider>
 </template>
+
+<style scoped>
+@import "@/styles/dark-mode.scss";
+</style>

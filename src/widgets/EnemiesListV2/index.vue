@@ -44,7 +44,7 @@ const isLoading = ref(true);
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
 const isIconMode = ref(!!isMobile);
-const { theme, toggleDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const pagination = reactive({
   page: 1,
   pageSize: 50,
@@ -162,7 +162,7 @@ const abilityColumn: DataTableColumn<EnemyData> = {
         tippy6(e.children[0], {
           content: e.children[1],
           arrow: true,
-          theme: "light-border",
+          theme: isDark.value ? "dark-border" : "light-border",
           size: "large",
           maxWidth: Number.parseInt(
             (e.children[1] as HTMLElement).dataset.size!,
@@ -315,10 +315,11 @@ const handleUpdateFilter = (
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="mx-auto p-2 antialiased">
+    <NLayout :class="['mx-auto p-2 antialiased', isDark && 'prts-widget-dark']">
       <FilterGroup
         v-for="group in filterConfig.groups"
         :key="group.title"
@@ -349,12 +350,6 @@ const handleUpdateFilter = (
         >
           简
         </NButton>
-        <div @click="toggleDark()">
-          <NButton>
-            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-            <span v-else class="mdi mdi-brightness-4 text-2xl" />
-          </NButton>
-        </div>
       </div>
       <NDataTable
         v-show="!isIconMode"
@@ -398,6 +393,7 @@ const handleUpdateFilter = (
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
 :global(.page-敌人一览 .backToTop) {
   @apply hidden!;
 }

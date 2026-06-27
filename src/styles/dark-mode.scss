@@ -1,0 +1,141 @@
+// 暗色模式补充样式。
+//
+// naive-ui 组件的背景 / 文字 / 边框已由 useTheme() 的 darkThemeOverrides 经主题
+// 配置接管，这里只处理主题配置覆盖不到的部分：
+//   1. 容器自身与原生 / wiki / Tailwind 元素；
+//   2. 暗色下刻意保留的强调色（选中、激活标签、链接等）；
+//   3. Vector 2022 夜间模式下针对容器的高优先级兜底。
+
+$dark: ".prts-widget-dark";
+
+$bg-base: var(--background-color-base, #101418);
+$bg-subtle: var(--background-color-neutral-subtle, #202122);
+$color-base: var(--color-base, #eaecf0);
+$color-subtle: var(--color-subtle, #a2a9b1);
+$border-base: var(--border-color-base, #72777d);
+
+$accent-bg: #233566;
+$accent-border: #88a3e8;
+$accent-tab: #a7c0ff;
+$accent-primary: #6a6aff;
+$accent-link: #88a3e8;
+
+@mixin surface($bg: $bg-base) {
+  background: $bg !important;
+  color: $color-base !important;
+}
+
+// 容器自身与原生 / wiki / Tailwind 元素 —— 基础背景
+:global(#{$dark}),
+:global(#{$dark} .bg-white),
+:global(#{$dark} .bg-wikitable),
+:global(#{$dark} .bg-\[\#f8f9fa\]),
+:global(#{$dark} .bg-\[\#f8f8f8\]),
+:global(#{$dark} .bg-\[\#eaebee\]),
+:global(#{$dark} .my-8px),
+:global(#{$dark} .filter),
+:global(#{$dark} .control),
+:global(#{$dark} .mode),
+:global(#{$dark} .filter-row-container),
+:global(#{$dark} table),
+:global(#{$dark} tbody),
+:global(#{$dark} tr),
+:global(#{$dark} td) {
+  @include surface;
+}
+
+// 表头 / 强调表面 —— 次级背景
+:global(#{$dark} .\!bg-table),
+:global(#{$dark} .filter-title),
+:global(#{$dark} thead),
+:global(#{$dark} th) {
+  @include surface($bg-subtle);
+}
+
+// 原生输入框 / 自定义按钮
+:global(#{$dark} input),
+:global(#{$dark} .btn),
+:global(#{$dark} .filter-row-container .btn) {
+  background: $bg-subtle !important;
+  color: $color-base !important;
+  border-color: $border-base !important;
+}
+
+:global(#{$dark} input::placeholder) {
+  color: $color-subtle !important;
+}
+
+// Tailwind 边框工具类
+:global(#{$dark} .border),
+:global(#{$dark} .border-divider) {
+  border-color: $border-base !important;
+}
+
+// 清除亮色下的阴影
+:global(#{$dark} .checkbox-container),
+:global(#{$dark} .btn),
+:global(#{$dark} .filter),
+:global(#{$dark} .control),
+:global(#{$dark} .filter-title),
+:global(#{$dark} .filter-row-container),
+:global(#{$dark} .row),
+:global(#{$dark} .tag),
+:global(#{$dark} .shadow),
+:global(#{$dark} .shadow-gray-400) {
+  box-shadow: none !important;
+}
+
+// 交互控件未选中态：naive-ui 默认暗色与 wiki 调色板不一致，统一为次级背景
+:global(#{$dark} .n-button:not(.n-button--primary-type):not(.n-button--info-type):not(.n-button--success-type):not(.n-button--warning-type):not(.n-button--error-type)),
+:global(#{$dark} .n-radio-button),
+:global(#{$dark} .n-checkbox) {
+  @include surface($bg-subtle);
+}
+
+// 选中 / 主操作态：暗色下统一的蓝色强调，避免随各组件品牌色漂移
+:global(#{$dark} .n-button--primary-type),
+:global(#{$dark} .n-radio-button--checked),
+:global(#{$dark} .n-checkbox--checked) {
+  background: $accent-bg !important;
+  color: $color-base !important;
+  border-color: $accent-border !important;
+}
+
+// 激活标签页
+:global(#{$dark} .n-tabs-tab--active),
+:global(#{$dark} .n-tabs-tab--active .n-tabs-tab__label) {
+  color: $accent-tab !important;
+}
+
+// 工具类文字与链接
+:global(#{$dark} .text-primary-main) {
+  color: $accent-primary !important;
+}
+
+:global(#{$dark} .text-disabled) {
+  color: $color-subtle !important;
+}
+
+:global(#{$dark} a) {
+  color: $accent-link !important;
+}
+
+// 兜底：Vector 2022 夜间模式下 wiki 自身样式以高优先级重新着色容器，
+// 这里用同等优先级把容器背景覆盖回来（naive-ui 组件背景由主题配置接管）。
+@mixin wiki-night-container($pref) {
+  :global(html.skin-theme-clientpref-#{$pref} body .mw-parser-output #{$dark}),
+  :global(html.skin-theme-clientpref-#{$pref} body .mw-parser-output #{$dark}.n-layout),
+  :global(html.skin-theme-clientpref-#{$pref}
+      body
+      .mw-parser-output
+      #{$dark}.n-layout
+      .n-layout-scroll-container) {
+    @include surface;
+  }
+}
+
+@include wiki-night-container("night");
+
+@media (prefers-color-scheme: dark) {
+  @include wiki-night-container("os");
+}

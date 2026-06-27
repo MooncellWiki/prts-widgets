@@ -4,6 +4,7 @@ import { provide, ref } from "vue";
 import { NConfigProvider, NSelect } from "naive-ui";
 
 import FormItem from "@/components/FormItem.vue";
+import { useTheme } from "@/utils/theme";
 
 import VoicePlayer from "./VoicePlayer.vue";
 import VoiceTitle from "./VoiceTitle.vue";
@@ -22,6 +23,9 @@ const selectedWordLang = ref(["中文"]);
 const selectedVoicePath = ref(props.voiceBase[0]?.path || "");
 const selectedVoiceLang = ref(props.voiceBase[0]?.lang || "");
 const playKey = ref(-1);
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { primaryColor: "#6a6aff" },
+});
 
 const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
   selectedVoicePath.value = newValue;
@@ -55,9 +59,15 @@ provide("audioElem", new Audio());
   <NConfigProvider
     preflight-style-disabled
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
-    :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
+    :theme="theme"
+    :theme-overrides="themeOverrides"
   >
-    <div class="max-w-screen-lg">
+    <div
+      :class="[
+        'voice-table-widget max-w-screen-lg',
+        isDark && 'prts-widget-dark',
+      ]"
+    >
       <div v-if="!isSimplified" class="mb-1 flex">
         <FormItem label="选择语音文本差分" class="mr-2 flex-grow">
           <NSelect
@@ -131,3 +141,7 @@ provide("audioElem", new Audio());
     </div>
   </NConfigProvider>
 </template>
+
+<style scoped>
+@import "@/styles/dark-mode.scss";
+</style>

@@ -6,6 +6,7 @@ import { useBreakpoints } from "@vueuse/core";
 import Avatar from "@/components/Avatar.vue";
 import Checkbox from "@/components/Checkbox.vue";
 import FilterRow from "@/components/FilterRow.vue";
+import { useTheme } from "@/utils/theme";
 
 import {
   Char,
@@ -38,6 +39,7 @@ const props = withDefaults(
 
 const breakpoints = useBreakpoints({ xs: 640 });
 const xs = breakpoints.smallerOrEqual("xs");
+const { isDark } = useTheme();
 const value = reactive(new Char(0));
 const shortcutParam = new URLSearchParams(window.location.search).get("filter");
 const shortcutUrl = computed(
@@ -131,157 +133,112 @@ function copyUrl() {
 </script>
 
 <template>
-  <div>
-    <FilterRow
-      title="资历"
-      :some-selected="!isRarityEmpty"
-      @all="() => value.selectAllRarity()"
-      @clear="() => value.unselectAllRarity()"
-    >
-      <Checkbox
-        v-for="(c, i) in rarity"
-        :key="c"
-        class="m-1"
-        :model-value="selected[rarityIndex - i]"
-        @click="onTagClick(rarityIndex - i)"
+  <div :class="['hr-calculator-widget', isDark && 'prts-widget-dark']">
+    <div>
+      <FilterRow
+        title="资历"
+        :some-selected="!isRarityEmpty"
+        @all="() => value.selectAllRarity()"
+        @clear="() => value.unselectAllRarity()"
       >
-        {{ c }}
-      </Checkbox>
-    </FilterRow>
-    <FilterRow
-      title="职业"
-      :some-selected="!isClassEmpty"
-      @all="() => value.selectAllProfession()"
-      @clear="() => value.unselectAllProfession()"
-    >
-      <Checkbox
-        v-for="(c, i) in profession"
-        :key="c"
-        :model-value="selected[professionIndex - i]"
-        class="m-1"
-        @click="onTagClick(professionIndex - i)"
-      >
-        {{ c }}
-      </Checkbox>
-    </FilterRow>
-    <FilterRow
-      title="位置"
-      :some-selected="!isPositionEmpty"
-      @all="() => value.selectAllPosition()"
-      @clear="() => value.unselectAllPosition()"
-    >
-      <Checkbox
-        v-for="(c, i) in position"
-        :key="c"
-        class="m-1"
-        :model-value="selected[positionIndex - i]"
-        @click="onTagClick(positionIndex - i)"
-      >
-        {{ c }}
-      </Checkbox>
-    </FilterRow>
-
-    <FilterRow
-      title="词缀"
-      :some-selected="!isTagEmpty"
-      @all="() => value.selectAllTag()"
-      @clear="() => value.unselectAllTag()"
-    >
-      <Checkbox
-        v-for="(c, i) in tag"
-        :key="c"
-        class="m-1"
-        :model-value="selected[tagIndex - i]"
-        checkable
-        @click="onTagClick(tagIndex - i)"
-      >
-        {{ c }}
-      </Checkbox>
-    </FilterRow>
-    <table class="wikitable mt-2 w-full">
-      <tbody>
-        <tr>
-          <th style="text-align: left">
-            如需分享筛选结果，请
-            <a @click="copyUrl()">点此复制链接</a>。
-          </th>
-        </tr>
-        <tr>
-          <td>
-            <div
-              style="
-                width: 100%;
-                max-width: 100%;
-                word-break: break-all;
-                word-wrap: break-word;
-                white-space: normal;
-              "
-            >
-              {{ shortcutUrl }}
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-  <div v-if="xs" class="mt-2 w-full">
-    <div
-      v-for="data in result"
-      :key="data.tags"
-      class="mb-1 bg-[#f8f9fa] shadow shadow-gray-400"
-    >
-      <div class="flex flex-wrap items-center justify-start">
-        <div v-for="name in number2names(data.tags)" :key="name" class="tag">
-          {{ name }}
-        </div>
-      </div>
-      <div class="flex flex-wrap">
-        <div
-          v-for="charIndex in data.charIndict"
-          :key="charIndex"
-          class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
-          :class="`r-${source[charIndex].rarity}`"
+        <Checkbox
+          v-for="(c, i) in rarity"
+          :key="c"
+          class="m-1"
+          :model-value="selected[rarityIndex - i]"
+          @click="onTagClick(rarityIndex - i)"
         >
-          <span
-            v-if="isOnly(source[charIndex])"
-            class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
-            >限</span
-          >
-          <Avatar
-            :size="xs ? 'xs' : 'sm'"
-            :profession="source[charIndex].profession"
-            :rarity="source[charIndex].rarity"
-            :name="source[charIndex].zh"
-          />
-        </div>
-      </div>
+          {{ c }}
+        </Checkbox>
+      </FilterRow>
+      <FilterRow
+        title="职业"
+        :some-selected="!isClassEmpty"
+        @all="() => value.selectAllProfession()"
+        @clear="() => value.unselectAllProfession()"
+      >
+        <Checkbox
+          v-for="(c, i) in profession"
+          :key="c"
+          :model-value="selected[professionIndex - i]"
+          class="m-1"
+          @click="onTagClick(professionIndex - i)"
+        >
+          {{ c }}
+        </Checkbox>
+      </FilterRow>
+      <FilterRow
+        title="位置"
+        :some-selected="!isPositionEmpty"
+        @all="() => value.selectAllPosition()"
+        @clear="() => value.unselectAllPosition()"
+      >
+        <Checkbox
+          v-for="(c, i) in position"
+          :key="c"
+          class="m-1"
+          :model-value="selected[positionIndex - i]"
+          @click="onTagClick(positionIndex - i)"
+        >
+          {{ c }}
+        </Checkbox>
+      </FilterRow>
+
+      <FilterRow
+        title="词缀"
+        :some-selected="!isTagEmpty"
+        @all="() => value.selectAllTag()"
+        @clear="() => value.unselectAllTag()"
+      >
+        <Checkbox
+          v-for="(c, i) in tag"
+          :key="c"
+          class="m-1"
+          :model-value="selected[tagIndex - i]"
+          checkable
+          @click="onTagClick(tagIndex - i)"
+        >
+          {{ c }}
+        </Checkbox>
+      </FilterRow>
+      <table class="wikitable mt-2 w-full">
+        <tbody>
+          <tr>
+            <th style="text-align: left">
+              如需分享筛选结果，请
+              <a @click="copyUrl()">点此复制链接</a>。
+            </th>
+          </tr>
+          <tr>
+            <td>
+              <div
+                style="
+                  width: 100%;
+                  max-width: 100%;
+                  word-break: break-all;
+                  word-wrap: break-word;
+                  white-space: normal;
+                "
+              >
+                {{ shortcutUrl }}
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-  </div>
-  <table v-else class="mt-2 w-full bg-[#f8f9fa]">
-    <colgroup>
-      <col class="tag-row" />
-      <col />
-    </colgroup>
-    <thead class="bg-[#eaebee]">
-      <tr>
-        <th>Tags</th>
-        <th>可能出现</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="data in result" :key="data.tags" class="row">
-        <td>
-          <div class="flex flex-wrap items-center justify-center">
-            <div
-              v-for="name in number2names(data.tags)"
-              :key="name"
-              class="tag"
-            >
-              {{ name }}
-            </div>
+    <div v-if="xs" class="mt-2 w-full">
+      <div
+        v-for="data in result"
+        :key="data.tags"
+        class="mb-1 bg-[#f8f9fa] shadow shadow-gray-400"
+      >
+        <div class="flex flex-wrap items-center justify-start">
+          <div v-for="name in number2names(data.tags)" :key="name" class="tag">
+            {{ name }}
           </div>
-        </td>
-        <td class="flex flex-1 flex-wrap">
+        </div>
+        <div class="flex flex-wrap">
           <div
             v-for="charIndex in data.charIndict"
             :key="charIndex"
@@ -300,13 +257,61 @@ function copyUrl() {
               :name="source[charIndex].zh"
             />
           </div>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+        </div>
+      </div>
+    </div>
+    <table v-else class="mt-2 w-full bg-[#f8f9fa]">
+      <colgroup>
+        <col class="tag-row" />
+        <col />
+      </colgroup>
+      <thead class="bg-[#eaebee]">
+        <tr>
+          <th>Tags</th>
+          <th>可能出现</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="data in result" :key="data.tags" class="row">
+          <td>
+            <div class="flex flex-wrap items-center justify-center">
+              <div
+                v-for="name in number2names(data.tags)"
+                :key="name"
+                class="tag"
+              >
+                {{ name }}
+              </div>
+            </div>
+          </td>
+          <td class="flex flex-1 flex-wrap">
+            <div
+              v-for="charIndex in data.charIndict"
+              :key="charIndex"
+              class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
+              :class="`r-${source[charIndex].rarity}`"
+            >
+              <span
+                v-if="isOnly(source[charIndex])"
+                class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
+                >限</span
+              >
+              <Avatar
+                :size="xs ? 'xs' : 'sm'"
+                :profession="source[charIndex].profession"
+                :rarity="source[charIndex].rarity"
+                :name="source[charIndex].zh"
+              />
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
 .tag {
   background-color: #313131;
   color: #ffffff;

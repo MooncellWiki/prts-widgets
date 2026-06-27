@@ -16,22 +16,22 @@ const toggleMute = () => {
 
 <template>
   <div class="volume-control">
-    <n-tooltip>
+    <NTooltip>
       <template #trigger>
-        <n-button quaternary circle @click="toggleMute">
+        <NButton quaternary circle @click="toggleMute">
           <template #icon>
-            <n-icon>
+            <NIcon>
               <VolumeMuteIcon v-if="mute" />
               <VolumeOffIcon v-else-if="vol === 0" />
               <VolumeUpIcon v-else />
-            </n-icon>
+            </NIcon>
           </template>
-        </n-button>
+        </NButton>
       </template>
       {{ mute ? "取消静音" : "静音" }}
-    </n-tooltip>
+    </NTooltip>
 
-    <n-slider
+    <NSlider
       v-model:value="vol"
       class="volume-slider"
       :min="0"

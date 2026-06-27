@@ -11,6 +11,7 @@ import {
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getNaiveUILocale } from "@/utils/i18n";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import ImageLoading from "./components/ImageLoading.vue";
@@ -33,6 +34,7 @@ import type {
 } from "./types";
 
 const { locale, dateLocale } = getNaiveUILocale();
+const { theme, themeOverrides, isDark } = useTheme();
 const props = defineProps<{
   gachaPoolId: string;
   gachaBannerFile: string;
@@ -201,8 +203,12 @@ const displayStars = [5, 4, 3, 2];
     preflight-style-disabled
     :locale="locale"
     :date-locale="dateLocale"
+    :theme="theme"
+    :theme-overrides="themeOverrides"
   >
-    <NLayout class="antialiased">
+    <NLayout
+      :class="['gacha-simulator-v2 antialiased', isDark && 'prts-widget-dark']"
+    >
       <div class="mx-2 my-4 flex flex-col gap-y-3">
         <img class="max-w-[800px]" :src="bannerImageURL" />
         <div
@@ -332,6 +338,7 @@ const displayStars = [5, 4, 3, 2];
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
 .text-shadow-base {
   text-shadow:
     -1px -1px 0 #ffffff,

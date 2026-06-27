@@ -159,7 +159,9 @@ const genPreMedalList = (idList: Array<{ id: string; isTrim: boolean }>) => {
     }),
   );
 };
-const { theme, toggleDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  Collapse: { itemMargin: "0", titlePadding: "0.5em" },
+});
 const i18nConfig = getNaiveUILocale();
 </script>
 
@@ -169,14 +171,9 @@ const i18nConfig = getNaiveUILocale();
     :theme="theme"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
-    :theme-overrides="{
-      Collapse: {
-        itemMargin: '0',
-        titlePadding: '0.5em',
-      },
-    }"
+    :theme-overrides="themeOverrides"
   >
-    <NLayout class="mx-auto antialiased">
+    <NLayout :class="['mx-auto antialiased', isDark && 'prts-widget-dark']">
       <NCard>
         <template #header>
           <img
@@ -186,10 +183,6 @@ const i18nConfig = getNaiveUILocale();
           />&nbsp;&nbsp;光荣之路
         </template>
         <template #header-extra>
-          <div class="mx-1 cursor-pointer" @click="toggleDark()">
-            <span v-if="theme" class="mdi mdi-brightness-6 text-2xl" />
-            <span v-else class="mdi mdi-brightness-4 text-2xl" />
-          </div>
           <NTooltip trigger="hover">
             <template #trigger>
               <div class="mx-1 cursor-pointer" @click="toggleDeprecateBadge()">
@@ -384,3 +377,7 @@ const i18nConfig = getNaiveUILocale();
     </NLayout>
   </NConfigProvider>
 </template>
+
+<style scoped>
+@import "@/styles/dark-mode.scss";
+</style>

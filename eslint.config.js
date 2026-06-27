@@ -263,6 +263,7 @@ const vueCustomRules = {
   "vue/prefer-template": "error",
   "vue/require-default-prop": "off",
   "vue/require-prop-types": "off",
+  "vue/component-name-in-template-casing": ["error", "PascalCase"],
 };
 
 const vueTs = typescript

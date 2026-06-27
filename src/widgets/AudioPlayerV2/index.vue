@@ -9,6 +9,7 @@ import {
 import {
   NButton,
   NCard,
+  NConfigProvider,
   NIcon,
   NSelect,
   NSlider,
@@ -16,9 +17,12 @@ import {
   NTooltip,
 } from "naive-ui";
 
+import { useTheme } from "@/utils/theme";
+
 import Volume from "./Volume.vue";
 import { useAudio } from "./hooks/useAudio";
 import { sec2str } from "./utils/time";
+
 type Quality = "wav" | "mp3";
 
 const props = defineProps({
@@ -30,6 +34,7 @@ const props = defineProps({
 });
 
 const quality = ref<Quality>("wav");
+const { theme, themeOverrides, isDark } = useTheme();
 
 const low = useAudio(props.lowSource || "", props.p || 0);
 const high = useAudio(props.highSource || "", props.p || 0);
@@ -111,94 +116,107 @@ function handleQualityChange(value: Quality) {
 </script>
 
 <template>
-  <n-card :bordered="false" class="audio-player">
-    <div v-if="name || title" class="header">
-      <div v-if="title" class="title" v-html="title"></div>
-      <div v-else class="title">{{ name }}</div>
-    </div>
-
-    <div class="slider-group">
-      <div class="time-display">
-        {{ sec2str(currentAudio.process.value) }}/{{
-          sec2str(currentAudio.len.value)
-        }}
+  <NConfigProvider
+    preflight-style-disabled
+    :theme="theme"
+    :theme-overrides="themeOverrides"
+  >
+    <NCard
+      :bordered="false"
+      :class="['audio-player', isDark && 'prts-widget-dark']"
+    >
+      <div v-if="name || title" class="header">
+        <div v-if="title" class="title" v-html="title"></div>
+        <div v-else class="title">{{ name }}</div>
       </div>
-      <n-slider
-        class="progress-slider"
-        :disabled="!playAble"
-        :value="currentAudio.process.value"
-        :min="0"
-        :format-tooltip="sec2str"
-        :max="currentAudio.len.value"
-        @update:value="handleSeek"
-      />
-    </div>
 
-    <div class="control-bar">
-      <n-tooltip>
-        <template #trigger>
-          <n-spin :show="currentAudio.state.value === 'loading'" size="small">
-            <n-button
+      <div class="slider-group">
+        <div class="time-display">
+          {{ sec2str(currentAudio.process.value) }}/{{
+            sec2str(currentAudio.len.value)
+          }}
+        </div>
+        <NSlider
+          class="progress-slider"
+          :disabled="!playAble"
+          :value="currentAudio.process.value"
+          :min="0"
+          :format-tooltip="sec2str"
+          :max="currentAudio.len.value"
+          @update:value="handleSeek"
+        />
+      </div>
+
+      <div class="control-bar">
+        <NTooltip>
+          <template #trigger>
+            <NSpin :show="currentAudio.state.value === 'loading'" size="small">
+              <NButton
+                quaternary
+                circle
+                :disabled="currentAudio.state.value === 'loading'"
+                @click="playIconHandler"
+              >
+                <template #icon>
+                  <NIcon v-if="currentAudio.state.value === 'playing'">
+                    <PauseIcon />
+                  </NIcon>
+                  <NIcon v-else>
+                    <PlayArrowIcon />
+                  </NIcon>
+                </template>
+              </NButton>
+            </NSpin>
+          </template>
+          {{ playIconToolTip }}
+        </NTooltip>
+
+        <NTooltip :disabled="!playAble">
+          <template #trigger>
+            <NButton
               quaternary
               circle
-              :disabled="currentAudio.state.value === 'loading'"
-              @click="playIconHandler"
+              :disabled="!playAble"
+              @click="currentAudio.changeLoop()"
             >
               <template #icon>
-                <n-icon v-if="currentAudio.state.value === 'playing'">
-                  <PauseIcon />
-                </n-icon>
-                <n-icon v-else>
-                  <PlayArrowIcon />
-                </n-icon>
+                <span
+                  v-if="currentAudio.loop.value"
+                  class="mdi mdi-autorenew"
+                />
+                <span v-else class="mdi mdi-autorenew-off" />
               </template>
-            </n-button>
-          </n-spin>
-        </template>
-        {{ playIconToolTip }}
-      </n-tooltip>
+            </NButton>
+          </template>
+          {{ currentAudio.loop.value ? "循环播放" : "顺序播放" }}
+        </NTooltip>
 
-      <n-tooltip :disabled="!playAble">
-        <template #trigger>
-          <n-button
-            quaternary
-            circle
-            :disabled="!playAble"
-            @click="currentAudio.changeLoop()"
-          >
-            <template #icon>
-              <span v-if="currentAudio.loop.value" class="mdi mdi-autorenew" />
-              <span v-else class="mdi mdi-autorenew-off" />
-            </template>
-          </n-button>
-        </template>
-        {{ currentAudio.loop.value ? "循环播放" : "顺序播放" }}
-      </n-tooltip>
+        <Volume
+          v-model:vol="currentAudio.vol.value"
+          v-model:mute="currentAudio.mute.value"
+        />
 
-      <Volume
-        v-model:vol="currentAudio.vol.value"
-        v-model:mute="currentAudio.mute.value"
-      />
+        <NButton quaternary circle @click="currentAudio.download()">
+          <template #icon>
+            <NIcon>
+              <GetAppIcon />
+            </NIcon>
+          </template>
+        </NButton>
 
-      <n-button quaternary circle @click="currentAudio.download()">
-        <template #icon>
-          <n-icon>
-            <GetAppIcon />
-          </n-icon>
-        </template>
-      </n-button>
-
-      <n-select
-        class="quality-select"
-        :value="quality"
-        :options="qualityOptions"
-        @update:value="handleQualityChange"
-      />
-    </div>
-  </n-card>
+        <NSelect
+          class="quality-select"
+          :value="quality"
+          :options="qualityOptions"
+          @update:value="handleQualityChange"
+        />
+      </div>
+    </NCard>
+  </NConfigProvider>
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
 .audio-player {
   max-width: 800px;
   padding: 16px;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, ref } from "vue";
 
-import { NModal, NButton, NConfigProvider, NSkeleton } from "naive-ui";
+import { NButton, NConfigProvider, NModal, NSkeleton } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
@@ -13,7 +13,7 @@ const xbMapConst = ref<XbConstData>();
 onBeforeMount(async () => {
   xbMapConst.value = await getConstData();
 });
-const { theme } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
 const props = defineProps<Pick<Props, "map">>();
@@ -29,10 +29,11 @@ const showModal = ref(false);
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <template v-if="xbMapConst">
+    <div v-if="xbMapConst" :class="[isDark && 'prts-widget-dark']">
       <Map :map="map" :xb-map-const="xbMapConst"></Map>
       <div v-if="width >= 25">
         <NButton
@@ -56,9 +57,11 @@ const showModal = ref(false);
           <Map :map="map" embed :xb-map-const="xbMapConst"></Map>
         </NModal>
       </div>
-    </template>
+    </div>
     <NSkeleton v-else class="h-xs"></NSkeleton>
   </NConfigProvider>
 </template>
 
-<style scoped></style>
+<style scoped>
+@import "@/styles/dark-mode.scss";
+</style>

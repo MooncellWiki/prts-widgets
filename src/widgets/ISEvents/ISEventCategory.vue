@@ -12,11 +12,28 @@ import {
   NTabPane,
   NTabs,
 } from "naive-ui";
+
+import { useTheme } from "@/utils/theme";
+
 const props = defineProps<{
   tabList: string[];
   eventNameList: string[][];
 }>();
 const curTab = ref(props.tabList[0]);
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { borderRadius: "0" },
+  Card: { actionColor: "#343434", borderColor: "#ADADAD" },
+  Tabs: {
+    tabTextColorHoverLine: "#4294CF",
+    tabTextColorActiveLine: "#4294CF",
+    barColor: "#4294CF",
+    tabFontWeightActive: "bold",
+    tabGapSmallLine: "1em",
+    tabPaddingSmallLine: "0.3em 0.5em",
+  },
+  Breadcrumb: { itemTextColor: "#A8AFB5" },
+  Button: { textColorTextHover: "#4294CF", textColorTextPressed: "#07426D" },
+});
 
 const showFullCate = ref(false);
 
@@ -34,29 +51,9 @@ const changeTab = (name: string) => {
   <h2>事件导航</h2>
   <NConfigProvider
     preflight-style-disabled
-    :theme-overrides="{
-      common: {
-        borderRadius: '0',
-      },
-      Card: {
-        actionColor: '#343434',
-        borderColor: '#ADADAD',
-      },
-      Tabs: {
-        tabTextColorHoverLine: '#4294CF',
-        tabTextColorActiveLine: '#4294CF',
-        barColor: '#4294CF',
-        tabFontWeightActive: 'bold',
-        tabGapSmallLine: '1em',
-        tabPaddingSmallLine: '0.3em 0.5em',
-      },
-      Breadcrumb: { itemTextColor: '#A8AFB5' },
-      Button: {
-        textColorTextHover: '#4294CF',
-        textColorTextPressed: '#07426D',
-      },
-    }"
-    class="ISEventCategory"
+    :theme="theme"
+    :theme-overrides="themeOverrides"
+    :class="['ISEventCategory', isDark && 'prts-widget-dark']"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
@@ -153,6 +150,8 @@ const changeTab = (name: string) => {
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
+@import "./dark-mode.css";
 a {
   text-decoration: none;
   color: unset;

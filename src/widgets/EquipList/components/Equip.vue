@@ -7,7 +7,6 @@ import {
   onBeforeUpdate,
   onMounted,
   ref,
-  watch,
 } from "vue";
 
 import { NSpin } from "naive-ui";
@@ -56,9 +55,6 @@ const handleDark = () => {
     ele.classList.toggle("dark", isDark.value);
   }
 };
-watch(isDark, () => {
-  handleDark();
-});
 onBeforeMount(async () => {
   loading.value = true;
   loadingCount.value += 1;

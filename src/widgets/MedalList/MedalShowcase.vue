@@ -103,7 +103,20 @@ const generateGroupMedalData = (medalGroupId: string) => {
 
 const spoilerManualUnlocked = ref(!props.spoiler);
 
-const { theme } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  Button: {
+    textColorTextHover: "#d97706",
+    textColorTextFocus: "#d97706",
+    textColorTextPressed: "#b45309",
+    textColorHover: "#d97706",
+    textColorFocus: "#d97706",
+    textColorPressed: "#b45309",
+    borderHover: "1px solid #d97706",
+    borderFocus: "1px solid #d97706",
+    borderPressed: "1px solid #b45309",
+  },
+  Card: { paddingMedium: "1em" },
+});
 const i18nConfig = getNaiveUILocale();
 </script>
 
@@ -111,26 +124,11 @@ const i18nConfig = getNaiveUILocale();
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
-    :theme-overrides="{
-      Button: {
-        textColorTextHover: '#d97706',
-        textColorTextFocus: '#d97706',
-        textColorTextPressed: '#b45309',
-        textColorHover: '#d97706',
-        textColorFocus: '#d97706',
-        textColorPressed: '#b45309',
-        borderHover: '1px solid #d97706',
-        borderFocus: '1px solid #d97706',
-        borderPressed: '1px solid #b45309',
-      },
-      Card: {
-        paddingMedium: '1em',
-      },
-    }"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
-    <NLayout class="max-w-200 antialiased">
+    <NLayout :class="['max-w-200 antialiased', isDark && 'prts-widget-dark']">
       <NCard>
         <template #header>
           <img
@@ -139,7 +137,7 @@ const i18nConfig = getNaiveUILocale();
             width="25"
             class="mr-3"
           />
-          <n-tooltip trigger="hover">
+          <NTooltip trigger="hover">
             <template #trigger>
               <NButton
                 text
@@ -151,7 +149,7 @@ const i18nConfig = getNaiveUILocale();
               /></NButton>
             </template>
             点击前往【光荣之路】主页面
-          </n-tooltip>
+          </NTooltip>
         </template>
         <template #header-extra>
           <div v-if="spoiler && spoilerManualUnlocked">
@@ -243,6 +241,7 @@ const i18nConfig = getNaiveUILocale();
 </template>
 
 <style scoped>
+@import "@/styles/dark-mode.scss";
 a {
   color: unset;
 }
