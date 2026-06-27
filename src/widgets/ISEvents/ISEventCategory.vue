@@ -20,7 +20,20 @@ const props = defineProps<{
   eventNameList: string[][];
 }>();
 const curTab = ref(props.tabList[0]);
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { borderRadius: "0" },
+  Card: { actionColor: "#343434", borderColor: "#ADADAD" },
+  Tabs: {
+    tabTextColorHoverLine: "#4294CF",
+    tabTextColorActiveLine: "#4294CF",
+    barColor: "#4294CF",
+    tabFontWeightActive: "bold",
+    tabGapSmallLine: "1em",
+    tabPaddingSmallLine: "0.3em 0.5em",
+  },
+  Breadcrumb: { itemTextColor: "#A8AFB5" },
+  Button: { textColorTextHover: "#4294CF", textColorTextPressed: "#07426D" },
+});
 
 const showFullCate = ref(false);
 
@@ -39,28 +52,7 @@ const changeTab = (name: string) => {
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
-    :theme-overrides="{
-      common: {
-        borderRadius: '0',
-      },
-      Card: {
-        actionColor: '#343434',
-        borderColor: '#ADADAD',
-      },
-      Tabs: {
-        tabTextColorHoverLine: '#4294CF',
-        tabTextColorActiveLine: '#4294CF',
-        barColor: '#4294CF',
-        tabFontWeightActive: 'bold',
-        tabGapSmallLine: '1em',
-        tabPaddingSmallLine: '0.3em 0.5em',
-      },
-      Breadcrumb: { itemTextColor: '#A8AFB5' },
-      Button: {
-        textColorTextHover: '#4294CF',
-        textColorTextPressed: '#07426D',
-      },
-    }"
+    :theme-overrides="themeOverrides"
     :class="['ISEventCategory', isDark && 'prts-widget-dark']"
   >
     <NSpace class="max-w-full w-140">

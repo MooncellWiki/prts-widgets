@@ -5,41 +5,29 @@ import { useTheme } from "@/utils/theme";
 
 import arksignInner from "./index.vue";
 
-const { theme, isDark } = useTheme();
-
-const themeOverrides = {
+const { theme, themeOverrides, isDark } = useTheme({
   common: {
     primaryColor: "#22bbff",
     primaryColorHover: "#91ddff",
     primaryColorPressed: "#91ddff",
   },
-  // Button: {
-  //   textColor: '#ff69b4'
-  // },
-  Select: {
-    peers: {
-      // InternalSelection: {
-      //     textColor: '#FF0000'
-      // }
-    },
-  },
-};
+});
 </script>
 
 <template>
-  <n-config-provider
+  <NConfigProvider
     :theme="theme"
     :theme-overrides="themeOverrides"
     preflight-style-disabled
   >
-    <n-message-provider>
-      <n-modal-provider>
+    <NMessageProvider>
+      <NModalProvider>
         <div :class="isDark && 'prts-widget-dark'">
           <arksignInner />
         </div>
-      </n-modal-provider>
-    </n-message-provider>
-  </n-config-provider>
+      </NModalProvider>
+    </NMessageProvider>
+  </NConfigProvider>
 </template>
 
 <style scoped>

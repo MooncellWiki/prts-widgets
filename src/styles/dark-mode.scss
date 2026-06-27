@@ -1,294 +1,141 @@
-:global(.prts-widget-dark) {
-  background: var(--background-color-base, #101418) !important;
-  color: var(--color-base, #eaecf0) !important;
-  --n-color: var(--background-color-base, #101418) !important;
-  --n-color-modal: var(--background-color-base, #101418) !important;
-  --n-color-popover: var(--background-color-base, #101418) !important;
-  --n-color-target: var(--background-color-neutral-subtle, #202122) !important;
-  --n-border-color: var(--border-color-base, #72777d) !important;
-  --n-text-color: var(--color-base, #eaecf0) !important;
+// 暗色模式补充样式。
+//
+// naive-ui 组件的背景 / 文字 / 边框已由 useTheme() 的 darkThemeOverrides 经主题
+// 配置接管，这里只处理主题配置覆盖不到的部分：
+//   1. 容器自身与原生 / wiki / Tailwind 元素；
+//   2. 暗色下刻意保留的强调色（选中、激活标签、链接等）；
+//   3. Vector 2022 夜间模式下针对容器的高优先级兜底。
+
+$dark: ".prts-widget-dark";
+
+$bg-base: var(--background-color-base, #101418);
+$bg-subtle: var(--background-color-neutral-subtle, #202122);
+$color-base: var(--color-base, #eaecf0);
+$color-subtle: var(--color-subtle, #a2a9b1);
+$border-base: var(--border-color-base, #72777d);
+
+$accent-bg: #233566;
+$accent-border: #88a3e8;
+$accent-tab: #a7c0ff;
+$accent-primary: #6a6aff;
+$accent-link: #88a3e8;
+
+@mixin surface($bg: $bg-base) {
+  background: $bg !important;
+  color: $color-base !important;
 }
 
-:global(.prts-widget-dark.n-layout),
-:global(.prts-widget-dark.n-layout .n-layout-scroll-container),
-:global(.prts-widget-dark.n-card),
-:global(.prts-widget-dark.n-config-provider),
-:global(.prts-widget-dark.n-collapse),
-:global(.prts-widget-dark.n-collapse-item),
-:global(.prts-widget-dark .bg-white),
-:global(.prts-widget-dark .bg-wikitable),
-:global(.prts-widget-dark .bg-\[\#f8f9fa\]),
-:global(.prts-widget-dark .bg-\[\#f8f8f8\]),
-:global(.prts-widget-dark .bg-\[\#eaebee\]),
-:global(.prts-widget-dark .\!bg-table),
-:global(.prts-widget-dark .n-layout),
-:global(.prts-widget-dark .n-layout-scroll-container),
-:global(.prts-widget-dark .n-card),
-:global(.prts-widget-dark .n-card__content),
-:global(.prts-widget-dark .n-config-provider),
-:global(.prts-widget-dark .n-collapse),
-:global(.prts-widget-dark .n-collapse-item),
-:global(.prts-widget-dark .my-8px),
-:global(.prts-widget-dark .n-tab-pane),
-:global(.prts-widget-dark .n-tabs),
-:global(.prts-widget-dark .n-statistic),
-:global(.prts-widget-dark .filter),
-:global(.prts-widget-dark .control),
-:global(.prts-widget-dark .mode),
-:global(.prts-widget-dark .filter-row-container),
-:global(.prts-widget-dark table),
-:global(.prts-widget-dark tbody),
-:global(.prts-widget-dark tr),
-:global(.prts-widget-dark td) {
-  background: var(--background-color-base, #101418) !important;
-  color: var(--color-base, #eaecf0) !important;
+// 容器自身与原生 / wiki / Tailwind 元素 —— 基础背景
+:global(#{$dark}),
+:global(#{$dark} .bg-white),
+:global(#{$dark} .bg-wikitable),
+:global(#{$dark} .bg-\[\#f8f9fa\]),
+:global(#{$dark} .bg-\[\#f8f8f8\]),
+:global(#{$dark} .bg-\[\#eaebee\]),
+:global(#{$dark} .my-8px),
+:global(#{$dark} .filter),
+:global(#{$dark} .control),
+:global(#{$dark} .mode),
+:global(#{$dark} .filter-row-container),
+:global(#{$dark} table),
+:global(#{$dark} tbody),
+:global(#{$dark} tr),
+:global(#{$dark} td) {
+  @include surface;
 }
 
-:global(.prts-widget-dark.n-button),
-:global(.prts-widget-dark .n-button) {
-  --n-color: var(--background-color-neutral-subtle, #202122) !important;
-  --n-color-hover: var(--background-color-neutral-subtle, #202122) !important;
-  --n-color-pressed: var(--background-color-neutral-subtle, #202122) !important;
-  --n-color-focus: var(--background-color-neutral-subtle, #202122) !important;
-  --n-text-color: var(--color-base, #eaecf0) !important;
-  --n-text-color-hover: var(--color-base, #eaecf0) !important;
-  --n-text-color-pressed: var(--color-base, #eaecf0) !important;
-  --n-text-color-focus: var(--color-base, #eaecf0) !important;
-  --n-border: 1px solid var(--border-color-base, #72777d) !important;
-  --n-border-hover: 1px solid var(--border-color-base, #72777d) !important;
-  --n-border-pressed: 1px solid var(--border-color-base, #72777d) !important;
-  --n-border-focus: 1px solid var(--border-color-base, #72777d) !important;
+// 表头 / 强调表面 —— 次级背景
+:global(#{$dark} .\!bg-table),
+:global(#{$dark} .filter-title),
+:global(#{$dark} thead),
+:global(#{$dark} th) {
+  @include surface($bg-subtle);
 }
 
-:global(.prts-widget-dark .\!bg-table),
-:global(.prts-widget-dark .n-card-header),
-:global(.prts-widget-dark .filter-title),
-:global(.prts-widget-dark thead),
-:global(.prts-widget-dark th) {
-  background: var(--background-color-neutral-subtle, #202122) !important;
-  color: var(--color-base, #eaecf0) !important;
+// 原生输入框 / 自定义按钮
+:global(#{$dark} input),
+:global(#{$dark} .btn),
+:global(#{$dark} .filter-row-container .btn) {
+  background: $bg-subtle !important;
+  color: $color-base !important;
+  border-color: $border-base !important;
 }
 
-:global(.prts-widget-dark .n-collapse-item__header),
-:global(.prts-widget-dark .n-collapse-item__header-main),
-:global(.prts-widget-dark .n-collapse-item-arrow),
-:global(.prts-widget-dark .n-collapse-item__content-inner) {
-  background: var(--background-color-base, #101418) !important;
-  color: var(--color-base, #eaecf0) !important;
+:global(#{$dark} input::placeholder) {
+  color: $color-subtle !important;
 }
 
-:global(.prts-widget-dark .n-collapse-item--disabled .n-collapse-item__header),
-:global(.prts-widget-dark .n-collapse-item--disabled .n-collapse-item__header-main),
-:global(.prts-widget-dark .n-collapse-item--disabled .n-collapse-item-arrow) {
-  color: var(--color-subtle, #a2a9b1) !important;
+// Tailwind 边框工具类
+:global(#{$dark} .border),
+:global(#{$dark} .border-divider) {
+  border-color: $border-base !important;
 }
 
-:global(.prts-widget-dark .border),
-:global(.prts-widget-dark .border-divider),
-:global(.prts-widget-dark .n-card),
-:global(.prts-widget-dark .n-collapse),
-:global(.prts-widget-dark .n-collapse-item),
-:global(.prts-widget-dark .n-button),
-:global(.prts-widget-dark .n-radio-button),
-:global(.prts-widget-dark .n-checkbox) {
-  border-color: var(--border-color-base, #72777d) !important;
-}
-
-:global(.prts-widget-dark input),
-:global(.prts-widget-dark .btn),
-:global(.prts-widget-dark .filter-row-container .btn) {
-  background: var(--background-color-neutral-subtle, #202122) !important;
-  color: var(--color-base, #eaecf0) !important;
-  border-color: var(--border-color-base, #72777d) !important;
-}
-
-:global(.prts-widget-dark input::placeholder) {
-  color: var(--color-subtle, #a2a9b1) !important;
-}
-
-:global(.prts-widget-dark .checkbox-container),
-:global(.prts-widget-dark .btn),
-:global(.prts-widget-dark .filter),
-:global(.prts-widget-dark .control),
-:global(.prts-widget-dark .filter-title),
-:global(.prts-widget-dark .filter-row-container),
-:global(.prts-widget-dark .row),
-:global(.prts-widget-dark .tag),
-:global(.prts-widget-dark .shadow),
-:global(.prts-widget-dark .shadow-gray-400) {
+// 清除亮色下的阴影
+:global(#{$dark} .checkbox-container),
+:global(#{$dark} .btn),
+:global(#{$dark} .filter),
+:global(#{$dark} .control),
+:global(#{$dark} .filter-title),
+:global(#{$dark} .filter-row-container),
+:global(#{$dark} .row),
+:global(#{$dark} .tag),
+:global(#{$dark} .shadow),
+:global(#{$dark} .shadow-gray-400) {
   box-shadow: none !important;
 }
 
-:global(.prts-widget-dark .n-button:not(.n-button--primary-type):not(
-    .n-button--info-type
-  ):not(.n-button--success-type):not(.n-button--warning-type):not(
-    .n-button--error-type
-  )),
-:global(.prts-widget-dark .n-radio-button),
-:global(.prts-widget-dark .n-checkbox) {
-  background: var(--background-color-neutral-subtle, #202122) !important;
-  color: var(--color-base, #eaecf0) !important;
+// 交互控件未选中态：naive-ui 默认暗色与 wiki 调色板不一致，统一为次级背景
+:global(#{$dark} .n-button:not(.n-button--primary-type):not(.n-button--info-type):not(.n-button--success-type):not(.n-button--warning-type):not(.n-button--error-type)),
+:global(#{$dark} .n-radio-button),
+:global(#{$dark} .n-checkbox) {
+  @include surface($bg-subtle);
 }
 
-:global(.prts-widget-dark .n-button--primary-type),
-:global(.prts-widget-dark .n-radio-button--checked),
-:global(.prts-widget-dark .n-checkbox--checked) {
-  background: #233566 !important;
-  color: var(--color-base, #eaecf0) !important;
-  border-color: #88a3e8 !important;
+// 选中 / 主操作态：暗色下统一的蓝色强调，避免随各组件品牌色漂移
+:global(#{$dark} .n-button--primary-type),
+:global(#{$dark} .n-radio-button--checked),
+:global(#{$dark} .n-checkbox--checked) {
+  background: $accent-bg !important;
+  color: $color-base !important;
+  border-color: $accent-border !important;
 }
 
-:global(.prts-widget-dark .text-disabled) {
-  color: var(--color-subtle, #a2a9b1) !important;
+// 激活标签页
+:global(#{$dark} .n-tabs-tab--active),
+:global(#{$dark} .n-tabs-tab--active .n-tabs-tab__label) {
+  color: $accent-tab !important;
 }
 
-:global(.prts-widget-dark .n-tabs-tab .n-tabs-tab__label) {
-  color: var(--color-base, #eaecf0) !important;
+// 工具类文字与链接
+:global(#{$dark} .text-primary-main) {
+  color: $accent-primary !important;
 }
 
-:global(.prts-widget-dark .n-tabs-tab--active),
-:global(.prts-widget-dark .n-tabs-tab--active .n-tabs-tab__label) {
-  color: #a7c0ff !important;
+:global(#{$dark} .text-disabled) {
+  color: $color-subtle !important;
 }
 
-:global(.prts-widget-dark .text-primary-main) {
-  color: #6a6aff !important;
+:global(#{$dark} a) {
+  color: $accent-link !important;
 }
 
-:global(.prts-widget-dark a) {
-  color: #88a3e8 !important;
+// 兜底：Vector 2022 夜间模式下 wiki 自身样式以高优先级重新着色容器，
+// 这里用同等优先级把容器背景覆盖回来（naive-ui 组件背景由主题配置接管）。
+@mixin wiki-night-container($pref) {
+  :global(html.skin-theme-clientpref-#{$pref} body .mw-parser-output #{$dark}),
+  :global(html.skin-theme-clientpref-#{$pref} body .mw-parser-output #{$dark}.n-layout),
+  :global(html.skin-theme-clientpref-#{$pref}
+      body
+      .mw-parser-output
+      #{$dark}.n-layout
+      .n-layout-scroll-container) {
+    @include surface;
+  }
 }
 
-:global(html.skin-theme-clientpref-night body .mw-parser-output .prts-widget-dark),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark.prts-widget-dark),
-:global(html.skin-theme-clientpref-night body .mw-parser-output .prts-widget-dark.n-layout),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark.prts-widget-dark.n-layout),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark.prts-widget-dark
-  .n-card),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark.n-layout
-  .n-layout-scroll-container) {
-  background: var(--background-color-base, #101418) !important;
-  color: var(--color-base, #eaecf0) !important;
-}
-
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-collapse-item__header),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-collapse-item__header-main),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-collapse-item-arrow),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-collapse-item__content-inner) {
-  background: var(--background-color-base, #101418) !important;
-  color: var(--color-base, #eaecf0) !important;
-}
-
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-collapse-item--disabled
-  .n-collapse-item__header),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-collapse-item--disabled
-  .n-collapse-item__header-main),
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-collapse-item--disabled
-  .n-collapse-item-arrow) {
-  color: var(--color-base, #eaecf0) !important;
-}
-
-:global(html.skin-theme-clientpref-night
-  body
-  .mw-parser-output
-  .prts-widget-dark
-  .n-button:not(.n-button--primary-type):not(.n-button--info-type):not(
-    .n-button--success-type
-  ):not(.n-button--warning-type):not(.n-button--error-type)) {
-  background: var(--background-color-neutral-subtle, #202122) !important;
-  color: var(--color-base, #eaecf0) !important;
-  border-color: var(--border-color-base, #72777d) !important;
-}
+@include wiki-night-container("night");
 
 @media (prefers-color-scheme: dark) {
-:global(html.skin-theme-clientpref-os body .mw-parser-output .prts-widget-dark),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark.prts-widget-dark),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark.n-layout),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark.prts-widget-dark.n-layout),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark.prts-widget-dark
-    .n-card),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark.n-layout
-    .n-layout-scroll-container) {
-    background: var(--background-color-base, #101418) !important;
-    color: var(--color-base, #eaecf0) !important;
-  }
-
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark
-    .n-collapse-item__header),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark
-    .n-collapse-item__header-main),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark
-    .n-collapse-item-arrow),
-:global(html.skin-theme-clientpref-os
-    body
-    .mw-parser-output
-    .prts-widget-dark
-    .n-collapse-item__content-inner) {
-    background: var(--background-color-base, #101418) !important;
-    color: var(--color-base, #eaecf0) !important;
-  }
+  @include wiki-night-container("os");
 }

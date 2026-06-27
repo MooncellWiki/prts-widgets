@@ -52,7 +52,7 @@ function newSortItem(): FilterValue {
 }
 
 const i18nConfig = getNaiveUILocale();
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const locale = getLanguage();
 const timeData = ref<
   {
@@ -299,6 +299,7 @@ const mobileStyle = () => {
 <template>
   <NConfigProvider
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
     preflight-style-disabled

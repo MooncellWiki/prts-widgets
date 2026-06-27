@@ -359,13 +359,13 @@ function calcServerColor(id: string) {
 
 <template>
   <div>
-    <n-alert title="操作指南" type="info" style="margin-bottom: 1em" closable>
+    <NAlert title="操作指南" type="info" style="margin-bottom: 1em" closable>
       {{
         selected.length > 0
           ? "选择干员后，可以拖拽立绘来进行排序"
           : "导入数据后，在下方干员列表选择喜爱的干员"
       }}
-    </n-alert>
+    </NAlert>
     <div class="charSign">
       <div id="charSignInner" ref="charSignInner" class="charSignInner">
         <div class="circlePoint">
@@ -534,37 +534,37 @@ function calcServerColor(id: string) {
         </div>
       </div>
     </div>
-    <n-card title="数据获取" class="nomobile">
+    <NCard title="数据获取" class="nomobile">
       <div class="flex flex-wrap items-center">
         <div class="w-auto">森空岛凭证：</div>
         <div style="width: 300px">
-          <n-input v-model:value="credStr" placeholder="请输入您的森空岛凭证" />
+          <NInput v-model:value="credStr" placeholder="请输入您的森空岛凭证" />
         </div>
-        <n-button
+        <NButton
           style="margin-left: 10px"
           type="primary"
           @click="importSKLandOperatorData"
         >
           导入数据
-        </n-button>
-        <n-button
+        </NButton>
+        <NButton
           text
           type="primary"
           style="margin-left: 10px"
           @click="modalShow = true"
         >
           <template #icon>
-            <n-icon>
+            <NIcon>
               <HelpOutlineOutlined />
-            </n-icon>
+            </NIcon>
           </template>
           如何获取森空岛凭证
-        </n-button>
+        </NButton>
       </div>
       <div class="flex items-center" style="margin-top: 15px">
         选择游戏角色：
         <div style="min-width: 200px; margin-left: 10px">
-          <n-select
+          <NSelect
             v-model:value="selectUid"
             :options="bindingListOptions"
             :render-label="renderLabel"
@@ -575,48 +575,48 @@ function calcServerColor(id: string) {
       <div class="flex flex-wrap items-center" style="margin-top: 15px">
         <div style="margin-bottom: 5px">选择图片质量：</div>
         <div class="flex">
-          <n-input-number
+          <NInputNumber
             v-model:value="imgScale"
             button-placement="both"
             :min="1"
             :max="5"
             style="margin-right: 10px"
           />
-          <n-button type="primary" @click="GenerateImg('d')">生成图片</n-button>
+          <NButton type="primary" @click="GenerateImg('d')">生成图片</NButton>
         </div>
       </div>
-    </n-card>
-    <n-card v-if="isMobile" title="数据获取">
+    </NCard>
+    <NCard v-if="isMobile" title="数据获取">
       <template #header-extra>
-        <n-button text type="primary" @click="drawerShow = true">
+        <NButton text type="primary" @click="drawerShow = true">
           <template #icon>
-            <n-icon>
+            <NIcon>
               <HelpOutlineOutlined />
-            </n-icon>
+            </NIcon>
           </template>
           如何获取森空岛凭证
-        </n-button>
+        </NButton>
       </template>
       <div class="flex flex-wrap items-center">
         <div class="w-full" style="margin-bottom: 5px">森空岛凭证：</div>
         <div class="w-full flex">
-          <n-input
+          <NInput
             v-model:value="credStr"
             class="flex-1"
             placeholder="请输入您的森空岛凭证"
           />
-          <n-button
+          <NButton
             style="margin-left: 10px"
             type="primary"
             @click="importSKLandOperatorData"
-            >导入数据</n-button
+            >导入数据</NButton
           >
         </div>
       </div>
       <div class="flex flex-wrap items-center" style="margin-top: 15px">
         <div class="w-full" style="margin-bottom: 5px">选择游戏角色：</div>
         <div class="w-full">
-          <n-select
+          <NSelect
             v-model:value="selectUid"
             :options="bindingListOptions"
             :render-label="renderLabel"
@@ -627,58 +627,58 @@ function calcServerColor(id: string) {
       <div class="flex flex-wrap items-center" style="margin-top: 15px">
         <div class="w-full" style="margin-bottom: 5px">选择图片质量：</div>
         <div class="flex">
-          <n-input-number
+          <NInputNumber
             v-model:value="imgScale"
             button-placement="both"
             :min="1"
             :max="5"
             style="margin-right: 10px"
           />
-          <n-button type="primary" @click="GenerateImg('m')">生成图片</n-button>
+          <NButton type="primary" @click="GenerateImg('m')">生成图片</NButton>
         </div>
       </div>
-    </n-card>
-    <n-card title="信息展示" style="margin-top: 10px">
-      <n-collapse :default-expanded-names="['1']">
-        <n-collapse-item title="自定义签名" name="1">
+    </NCard>
+    <NCard title="信息展示" style="margin-top: 10px">
+      <NCollapse :default-expanded-names="['1']">
+        <NCollapseItem title="自定义签名" name="1">
           <div class="w-full flex">
-            <n-input
+            <NInput
               v-model:value="customSign"
               placeholder="建议不要超过两行"
               style="margin-right: 10px"
             />
           </div>
-        </n-collapse-item>
-        <n-collapse-item title="自定义信息展示" name="2">
-          <n-checkbox v-model:checked="showInfo.profession" />
+        </NCollapseItem>
+        <NCollapseItem title="自定义信息展示" name="2">
+          <NCheckbox v-model:checked="showInfo.profession" />
           <span style="margin: 0 20px 0 5px">职业</span>
-          <n-checkbox v-model:checked="showInfo.rarity" />
+          <NCheckbox v-model:checked="showInfo.rarity" />
           <span style="margin: 0 20px 0 5px">星级</span>
-          <n-checkbox v-model:checked="showInfo.elite" />
+          <NCheckbox v-model:checked="showInfo.elite" />
           <span style="margin: 0 20px 0 5px">精英</span>
-          <n-checkbox v-model:checked="showInfo.potential" />
+          <NCheckbox v-model:checked="showInfo.potential" />
           <span style="margin: 0 20px 0 5px">潜能</span>
-          <n-checkbox v-model:checked="showInfo.level" />
+          <NCheckbox v-model:checked="showInfo.level" />
           <span style="margin: 0 20px 0 5px">等级</span>
-          <n-checkbox v-model:checked="showInfo.equip" />
+          <NCheckbox v-model:checked="showInfo.equip" />
           <span style="margin: 0 20px 0 5px">模组</span>
-          <n-checkbox v-model:checked="showInfo.skill" />
+          <NCheckbox v-model:checked="showInfo.skill" />
           <span style="margin: 0 20px 0 5px">技能</span>
-        </n-collapse-item>
-      </n-collapse>
-    </n-card>
-    <n-card title="干员列表" style="margin-top: 10px">
+        </NCollapseItem>
+      </NCollapse>
+    </NCard>
+    <NCard title="干员列表" style="margin-top: 10px">
       <template #header-extra>
-        <n-button
+        <NButton
           v-if="selected.length > 0 && isMobile"
           style="margin-right: 10px"
           size="small"
           type="error"
           tertiary
           @click="clearSelected"
-          >清空已选</n-button
+          >清空已选</NButton
         >
-        <n-button
+        <NButton
           v-if="charList.length > 0 && isMobile"
           secondary
           size="small"
@@ -686,11 +686,11 @@ function calcServerColor(id: string) {
           @click="sortOrder = !sortOrder"
         >
           {{ sortOrder ? "倒序" : "正序" }}
-          <n-icon size="20">
-            <keyboard-arrow-down-filled v-if="!sortOrder" />
-            <keyboard-arrow-up-filled v-else />
-          </n-icon>
-        </n-button>
+          <NIcon size="20">
+            <KeyboardArrowDownFilled v-if="!sortOrder" />
+            <KeyboardArrowUpFilled v-else />
+          </NIcon>
+        </NButton>
       </template>
       <div
         v-if="charList.length > 0 && !isMobile"
@@ -698,37 +698,37 @@ function calcServerColor(id: string) {
         style="margin-bottom: 10px"
       >
         <div style="width: 120px; margin-right: 10px">
-          <n-select
+          <NSelect
             v-model:value="selectFilterProfession"
             :options="filterProfessionList"
           />
         </div>
         <div style="width: 120px; margin-right: 10px">
-          <n-select
+          <NSelect
             v-model:value="selectFilterRarity"
             :options="filterRarityList"
           />
         </div>
         <div style="width: 110px; margin-right: 10px">
-          <n-select v-model:value="selectSort" :options="sortList" />
+          <NSelect v-model:value="selectSort" :options="sortList" />
         </div>
-        <n-button
+        <NButton
           style="margin-right: 10px"
           secondary
           @click="sortOrder = !sortOrder"
         >
           {{ sortOrder ? "倒序排序" : "顺序排序" }}
-          <n-icon size="20">
-            <keyboard-arrow-down-filled v-if="!sortOrder" />
-            <keyboard-arrow-up-filled v-else />
-          </n-icon>
-        </n-button>
-        <n-button
+          <NIcon size="20">
+            <KeyboardArrowDownFilled v-if="!sortOrder" />
+            <KeyboardArrowUpFilled v-else />
+          </NIcon>
+        </NButton>
+        <NButton
           v-if="selected.length > 0"
           type="error"
           tertiary
           @click="clearSelected"
-          >清空已选</n-button
+          >清空已选</NButton
         >
       </div>
       <div
@@ -737,28 +737,28 @@ function calcServerColor(id: string) {
         style="margin-bottom: 10px"
       >
         <div style="width: 30%">
-          <n-select
+          <NSelect
             v-model:value="selectFilterProfession"
             size="small"
             :options="filterProfessionList"
           />
         </div>
         <div style="width: 30%">
-          <n-select
+          <NSelect
             v-model:value="selectFilterRarity"
             size="small"
             :options="filterRarityList"
           />
         </div>
         <div style="width: 30%">
-          <n-select
+          <NSelect
             v-model:value="selectSort"
             size="small"
             :options="sortList"
           />
         </div>
       </div>
-      <n-empty v-if="charList.length === 0" description="NO INFO/"></n-empty>
+      <NEmpty v-if="charList.length === 0" description="NO INFO/"></NEmpty>
       <div class="flex justify-center">
         <div class="charListWrapper">
           <div
@@ -805,25 +805,21 @@ function calcServerColor(id: string) {
           </div>
         </div>
       </div>
-    </n-card>
+    </NCard>
   </div>
-  <n-drawer v-model:show="drawerShow" class="w-full" default-width="100%">
-    <n-drawer-content title="如何获取森空岛凭证" closable>
+  <NDrawer v-model:show="drawerShow" class="w-full" default-width="100%">
+    <NDrawerContent title="如何获取森空岛凭证" closable>
       <howToGetSklandToken />
-    </n-drawer-content>
-  </n-drawer>
-  <n-drawer
-    v-model:show="showImgResultM"
-    style="height: 60%"
-    placement="bottom"
-  >
-    <n-drawer-content title="图片可长按保存" closable>
+    </NDrawerContent>
+  </NDrawer>
+  <NDrawer v-model:show="showImgResultM" style="height: 60%" placement="bottom">
+    <NDrawerContent title="图片可长按保存" closable>
       <div class="charSign">
         <div id="imgWrapperM" v-html="resultImgHtml"></div>
       </div>
-    </n-drawer-content>
-  </n-drawer>
-  <n-modal
+    </NDrawerContent>
+  </NDrawer>
+  <NModal
     v-model:show="modalShow"
     class="custom-card"
     preset="card"
@@ -832,8 +828,8 @@ function calcServerColor(id: string) {
     :bordered="false"
   >
     <howToGetSklandToken />
-  </n-modal>
-  <n-modal
+  </NModal>
+  <NModal
     v-model:show="showImgResult"
     class="custom-card"
     preset="card"
@@ -845,7 +841,7 @@ function calcServerColor(id: string) {
     <div class="charSign">
       <div id="imgWrapperD" v-html="resultImgHtml"></div>
     </div>
-  </n-modal>
+  </NModal>
 </template>
 
 <style lang="css" scoped>

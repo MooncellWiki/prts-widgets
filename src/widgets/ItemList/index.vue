@@ -32,7 +32,7 @@ const props = defineProps<{
 const keyword = ref("");
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 
 const filterConfig = ref(defaultFilterConfig);
 
@@ -149,6 +149,7 @@ watch(
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >

@@ -24,7 +24,7 @@ import type { CharMemory } from "./types";
 
 const isMobile = isMobileSkin();
 const i18nConfig = getNaiveUILocale();
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const states = ref<string[]>([]);
 const isLoaded = ref(false);
 const sorting = ref("lmmr");
@@ -137,6 +137,7 @@ const pickSize = () => {
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >

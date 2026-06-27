@@ -66,7 +66,9 @@ const props = defineProps<{
   item: string;
 }>();
 
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { primaryColor: "#6a6aff" },
+});
 const data = ref<itemCost>();
 const state = ref(Status.req);
 async function load() {
@@ -94,7 +96,7 @@ onMounted(() => {
     preflight-style-disabled
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
     :theme="theme"
-    :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
+    :theme-overrides="themeOverrides"
   >
     <div :class="['item-demand-widget', isDark && 'prts-widget-dark']">
       <NButton v-if="state === Status.fail" @click="load">

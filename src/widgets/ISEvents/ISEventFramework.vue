@@ -56,7 +56,19 @@ const props = withDefaults(
 
 const sceneNav = ref<Array<number>>([0]);
 const currentSceneId = ref(0);
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { borderRadius: "0" },
+  Card: {
+    color: "#212121",
+    textColor: "#fff",
+    titleTextColor: "#fff",
+    actionColor: "#343434",
+    paddingSmall: "0.6em",
+    lineHeight: "1.4",
+  },
+  Breadcrumb: { itemTextColor: "#A8AFB5" },
+  Button: { textColor: "#fff" },
+});
 function isPrtsInfo(sceneId: number) {
   return props.sceneData[sceneId].prtsinfo !== "";
 }
@@ -182,21 +194,7 @@ function getSubChooseData(scStr: string) {
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
-    :theme-overrides="{
-      common: {
-        borderRadius: '0',
-      },
-      Card: {
-        color: '#212121',
-        textColor: '#fff',
-        titleTextColor: '#fff',
-        actionColor: '#343434',
-        paddingSmall: '0.6em',
-        lineHeight: '1.4',
-      },
-      Breadcrumb: { itemTextColor: '#A8AFB5' },
-      Button: { textColor: '#fff' },
-    }"
+    :theme-overrides="themeOverrides"
     :class="['ISEventFrame', isDark && 'prts-widget-dark']"
   >
     <NSpace class="max-w-full w-140">

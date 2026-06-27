@@ -34,7 +34,7 @@ import type {
 } from "./types";
 
 const { locale, dateLocale } = getNaiveUILocale();
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const props = defineProps<{
   gachaPoolId: string;
   gachaBannerFile: string;
@@ -204,6 +204,7 @@ const displayStars = [5, 4, 3, 2];
     :locale="locale"
     :date-locale="dateLocale"
     :theme="theme"
+    :theme-overrides="themeOverrides"
   >
     <NLayout
       :class="['gacha-simulator-v2 antialiased', isDark && 'prts-widget-dark']"

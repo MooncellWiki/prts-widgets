@@ -45,15 +45,15 @@ async function textCopy() {
   <div style="margin-bottom: 20px">
     <span class="title">02.</span>
     按下F12呼出开发者工具，选择控制台（console）页签，输入以下命令：
-    <n-input
+    <NInput
       :value="commandValue"
       size="small"
       type="textarea"
       style="margin-top: 10px"
     />
-    <n-button size="small" type="primary" ghost class="my-2" @click="textCopy">
+    <NButton size="small" type="primary" ghost class="my-2" @click="textCopy">
       复制命令
-    </n-button>
+    </NButton>
     <br />
     <img
       src="https://static.prts.wiki/charinfo/img/skland/step2.jpg"

@@ -13,7 +13,7 @@ defineProps<{
   isAct?: boolean;
   language?: string;
 }>();
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
 
@@ -49,6 +49,7 @@ const selectedStage = ref(stages[0].value);
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >

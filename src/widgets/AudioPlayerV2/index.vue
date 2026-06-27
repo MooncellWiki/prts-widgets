@@ -34,7 +34,7 @@ const props = defineProps({
 });
 
 const quality = ref<Quality>("wav");
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 
 const low = useAudio(props.lowSource || "", props.p || 0);
 const high = useAudio(props.highSource || "", props.p || 0);
@@ -116,8 +116,12 @@ function handleQualityChange(value: Quality) {
 </script>
 
 <template>
-  <NConfigProvider preflight-style-disabled :theme="theme">
-    <n-card
+  <NConfigProvider
+    preflight-style-disabled
+    :theme="theme"
+    :theme-overrides="themeOverrides"
+  >
+    <NCard
       :bordered="false"
       :class="['audio-player', isDark && 'prts-widget-dark']"
     >
@@ -132,7 +136,7 @@ function handleQualityChange(value: Quality) {
             sec2str(currentAudio.len.value)
           }}
         </div>
-        <n-slider
+        <NSlider
           class="progress-slider"
           :disabled="!playAble"
           :value="currentAudio.process.value"
@@ -144,32 +148,32 @@ function handleQualityChange(value: Quality) {
       </div>
 
       <div class="control-bar">
-        <n-tooltip>
+        <NTooltip>
           <template #trigger>
-            <n-spin :show="currentAudio.state.value === 'loading'" size="small">
-              <n-button
+            <NSpin :show="currentAudio.state.value === 'loading'" size="small">
+              <NButton
                 quaternary
                 circle
                 :disabled="currentAudio.state.value === 'loading'"
                 @click="playIconHandler"
               >
                 <template #icon>
-                  <n-icon v-if="currentAudio.state.value === 'playing'">
+                  <NIcon v-if="currentAudio.state.value === 'playing'">
                     <PauseIcon />
-                  </n-icon>
-                  <n-icon v-else>
+                  </NIcon>
+                  <NIcon v-else>
                     <PlayArrowIcon />
-                  </n-icon>
+                  </NIcon>
                 </template>
-              </n-button>
-            </n-spin>
+              </NButton>
+            </NSpin>
           </template>
           {{ playIconToolTip }}
-        </n-tooltip>
+        </NTooltip>
 
-        <n-tooltip :disabled="!playAble">
+        <NTooltip :disabled="!playAble">
           <template #trigger>
-            <n-button
+            <NButton
               quaternary
               circle
               :disabled="!playAble"
@@ -182,32 +186,32 @@ function handleQualityChange(value: Quality) {
                 />
                 <span v-else class="mdi mdi-autorenew-off" />
               </template>
-            </n-button>
+            </NButton>
           </template>
           {{ currentAudio.loop.value ? "循环播放" : "顺序播放" }}
-        </n-tooltip>
+        </NTooltip>
 
         <Volume
           v-model:vol="currentAudio.vol.value"
           v-model:mute="currentAudio.mute.value"
         />
 
-        <n-button quaternary circle @click="currentAudio.download()">
+        <NButton quaternary circle @click="currentAudio.download()">
           <template #icon>
-            <n-icon>
+            <NIcon>
               <GetAppIcon />
-            </n-icon>
+            </NIcon>
           </template>
-        </n-button>
+        </NButton>
 
-        <n-select
+        <NSelect
           class="quality-select"
           :value="quality"
           :options="qualityOptions"
           @update:value="handleQualityChange"
         />
       </div>
-    </n-card>
+    </NCard>
   </NConfigProvider>
 </template>
 

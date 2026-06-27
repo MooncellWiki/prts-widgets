@@ -18,7 +18,7 @@ const props = defineProps<{
   charMapping: Record<string, string>;
 }>();
 
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
 const tabs = ref(Object.values(props.langTypes).map((v) => v.name));
@@ -41,6 +41,7 @@ if (window.location.hash) {
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >
@@ -50,8 +51,8 @@ if (window.location.hash) {
         isDark && 'prts-widget-dark',
       ]"
     >
-      <n-tabs v-model:value="valueRef" type="line" animated>
-        <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab">
+      <NTabs v-model:value="valueRef" type="line" animated>
+        <NTabPane v-for="tab in tabs" :key="tab" :name="tab">
           <VoiceLangTab
             v-if="data"
             :voice-data="data[nameToKey[tab]]"
@@ -59,8 +60,8 @@ if (window.location.hash) {
             :avatar-mapping="avatarMapping"
             :char-mapping="charMapping"
           />
-        </n-tab-pane>
-      </n-tabs>
+        </NTabPane>
+      </NTabs>
     </NLayout>
   </NConfigProvider>
 </template>

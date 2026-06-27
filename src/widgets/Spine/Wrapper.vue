@@ -26,7 +26,9 @@ const props = defineProps<{
 }>();
 
 const loaded = ref(false);
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { primaryColor: "#6a6aff" },
+});
 const value = ref<Props>();
 value.value = props.conf;
 watch(props, () => {
@@ -48,7 +50,7 @@ async function load() {
     preflight-style-disabled
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
     :theme="theme"
-    :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
+    :theme-overrides="themeOverrides"
     :locale="zhCN"
   >
     <div :class="['spine-viewer-widget', isDark && 'prts-widget-dark']">

@@ -44,7 +44,7 @@ const isLoading = ref(true);
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
 const isIconMode = ref(!!isMobile);
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const pagination = reactive({
   page: 1,
   pageSize: 50,
@@ -315,6 +315,7 @@ const handleUpdateFilter = (
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >

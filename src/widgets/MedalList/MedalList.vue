@@ -159,7 +159,9 @@ const genPreMedalList = (idList: Array<{ id: string; isTrim: boolean }>) => {
     }),
   );
 };
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  Collapse: { itemMargin: "0", titlePadding: "0.5em" },
+});
 const i18nConfig = getNaiveUILocale();
 </script>
 
@@ -169,12 +171,7 @@ const i18nConfig = getNaiveUILocale();
     :theme="theme"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
-    :theme-overrides="{
-      Collapse: {
-        itemMargin: '0',
-        titlePadding: '0.5em',
-      },
-    }"
+    :theme-overrides="themeOverrides"
   >
     <NLayout :class="['mx-auto antialiased', isDark && 'prts-widget-dark']">
       <NCard>

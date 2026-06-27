@@ -13,7 +13,7 @@ const xbMapConst = ref<XbConstData>();
 onBeforeMount(async () => {
   xbMapConst.value = await getConstData();
 });
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
 const props = defineProps<Pick<Props, "map">>();
@@ -29,6 +29,7 @@ const showModal = ref(false);
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
+    :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
   >

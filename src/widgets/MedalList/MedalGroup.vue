@@ -44,7 +44,20 @@ const eventLinkList = computed(() => {
 });
 
 const showTrimed = ref(false);
-const { theme } = useTheme();
+const { theme, themeOverrides } = useTheme({
+  Card: { paddingMedium: "0", borderColor: "#adadad", borderRadius: "0" },
+  Tag: {
+    colorCheckable: "#565656",
+    textColorCheckable: "white",
+    colorPressedCheckable: "#2E33387A",
+    textColorPressedCheckable: "white",
+    colorChecked: "#1976d2",
+    colorCheckedHover: "#52A5F7",
+    colorCheckedPressed: "#707070FF",
+  },
+  Image: { toolbarColor: "#000000B3", toolbarBorderRadius: "5px" },
+  Collapse: { itemMargin: "0", titlePadding: "0.5em" },
+});
 </script>
 
 <template>
@@ -52,30 +65,7 @@ const { theme } = useTheme();
     v-if="medalDataList.length > 0"
     preflight-style-disabled
     :theme="theme"
-    :theme-overrides="{
-      Card: {
-        paddingMedium: '0',
-        borderColor: '#adadad',
-        borderRadius: '0',
-      },
-      Tag: {
-        colorCheckable: '#565656',
-        textColorCheckable: 'white',
-        colorPressedCheckable: '#2E33387A',
-        textColorPressedCheckable: 'white',
-        colorChecked: '#1976d2',
-        colorCheckedHover: '#52A5F7',
-        colorCheckedPressed: '#707070FF',
-      },
-      Image: {
-        toolbarColor: '#000000B3',
-        toolbarBorderRadius: '5px',
-      },
-      Collapse: {
-        itemMargin: '0',
-        titlePadding: '0.5em',
-      },
-    }"
+    :theme-overrides="themeOverrides"
   >
     <NCard class="h-full">
       <div class="h-full flex flex-col <lg:flex-col">

@@ -23,7 +23,9 @@ const selectedWordLang = ref(["中文"]);
 const selectedVoicePath = ref(props.voiceBase[0]?.path || "");
 const selectedVoiceLang = ref(props.voiceBase[0]?.lang || "");
 const playKey = ref(-1);
-const { theme, isDark } = useTheme();
+const { theme, themeOverrides, isDark } = useTheme({
+  common: { primaryColor: "#6a6aff" },
+});
 
 const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
   selectedVoicePath.value = newValue;
@@ -58,7 +60,7 @@ provide("audioElem", new Audio());
     preflight-style-disabled
     :breakpoints="{ s: 640, m: 768, lg: 1024, xl: 1280, xxl: 1536 }"
     :theme="theme"
-    :theme-overrides="{ common: { primaryColor: '#6a6aff' } }"
+    :theme-overrides="themeOverrides"
   >
     <div
       :class="[
