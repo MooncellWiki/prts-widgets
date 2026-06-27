@@ -83,4 +83,4 @@ const statsData = computed(() => {
   </NCard>
 </template>
 
-<style></style>
+<style scoped></style>

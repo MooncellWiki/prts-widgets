@@ -96,7 +96,7 @@ watch(
   </div>
 </template>
 
-<style>
+<style scoped>
 .prts-widget-dark .voice-player img {
   filter: invert(1) brightness(1.15);
 }
