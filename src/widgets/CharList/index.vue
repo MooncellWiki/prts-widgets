@@ -523,7 +523,7 @@ watch(data, () => {
 </style>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;

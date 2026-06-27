@@ -1,5 +1,4 @@
-/* eslint-disable unicorn/prefer-string-replace-all */
-import defaultStyle from "../widgets/DisplayController.css?inline";
+import defaultStyle from "@/styles/display-controller.css?inline";
 
 interface DisplayConfig {
   userAgent: string;

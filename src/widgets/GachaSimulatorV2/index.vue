@@ -337,7 +337,7 @@ const displayStars = [5, 4, 3, 2];
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 .text-shadow-base {
   text-shadow:
     -1px -1px 0 #ffffff,

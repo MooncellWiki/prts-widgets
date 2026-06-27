@@ -311,7 +311,7 @@ function copyUrl() {
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 .tag {
   background-color: #313131;
   color: #ffffff;

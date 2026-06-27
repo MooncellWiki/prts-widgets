@@ -243,7 +243,7 @@ const i18nConfig = getNaiveUILocale();
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 a {
   color: unset;
 }

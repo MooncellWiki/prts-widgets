@@ -158,7 +158,7 @@ const changeTab = (name: string) => {
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 @import "./dark-mode.css";
 a {
   text-decoration: none;

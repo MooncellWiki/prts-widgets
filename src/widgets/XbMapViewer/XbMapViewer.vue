@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, ref } from "vue";
 
-import { NModal, NButton, NConfigProvider, NSkeleton } from "naive-ui";
+import { NButton, NConfigProvider, NModal, NSkeleton } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
@@ -62,5 +62,5 @@ const showModal = ref(false);
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 </style>

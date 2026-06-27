@@ -448,7 +448,7 @@ const tableData = computed(() =>
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 .soec-button {
   background: linear-gradient(180deg, black, #ab9834);
   padding: 0.3em;

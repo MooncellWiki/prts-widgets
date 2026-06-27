@@ -212,7 +212,7 @@ function handleQualityChange(value: Quality) {
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 .audio-player {
   max-width: 800px;
   padding: 16px;

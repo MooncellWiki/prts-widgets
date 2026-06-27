@@ -207,7 +207,7 @@ watch(
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 :global(.page-道具一览 .backToTop) {
   @apply hidden!;
 }

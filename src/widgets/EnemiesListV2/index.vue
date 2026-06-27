@@ -392,7 +392,7 @@ const handleUpdateFilter = (
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 :global(.page-敌人一览 .backToTop) {
   @apply hidden!;
 }

@@ -318,7 +318,7 @@ function getSubChooseData(scStr: string) {
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 @import "./dark-mode.css";
 :deep(.n-breadcrumb .n-breadcrumb-item .n-breadcrumb-item__separator) {
   margin: 0 !important;

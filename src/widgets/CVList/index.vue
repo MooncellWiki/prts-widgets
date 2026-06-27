@@ -66,5 +66,5 @@ if (window.location.hash) {
 </template>
 
 <style scoped>
-@import "../dark-mode.css";
+@import "@/styles/dark-mode.scss";
 </style>
