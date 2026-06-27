@@ -287,7 +287,10 @@ var spine
           (time - frameTime) /
             (frames[frame + RotateTimeline.PREV_TIME] - frameTime),
       )
-      var r = frames[frame + RotateTimeline.ROTATION] - prevRotation
+      // 用 32 位浮点复刻原生运行时(C/C++/Unity)的减法。正好 ±180° 的步进
+      // 在 64 位 double 下会算成 179.99999809°,掉到阈值下方让最短路径每段交替
+      // 反向(齿轮忽正忽反);fround 后重新变回 180.0°,被统一塌缩到同一方向。
+      var r = Math.fround(frames[frame + RotateTimeline.ROTATION] - prevRotation)
       r =
         prevRotation +
         (r - (16384 - ((16384.499999999996 - r / 360) | 0)) * 360) * percent
@@ -2241,7 +2244,11 @@ var spine
               (time - frameTime) /
                 (frames[frame + spine.RotateTimeline.PREV_TIME] - frameTime),
           )
-          r2 = frames[frame + spine.RotateTimeline.ROTATION] - prevRotation
+          // 同 RotateTimeline.apply:用 32 位浮点复刻原生运行时的减法,
+          // 避免正好 ±180° 的步进在最短路径上交替反向。
+          r2 = Math.fround(
+            frames[frame + spine.RotateTimeline.ROTATION] - prevRotation,
+          )
           r2 -= (16384 - ((16384.499999999996 - r2 / 360) | 0)) * 360
           r2 = prevRotation + r2 * percent + bone.data.rotation
           r2 -= (16384 - ((16384.499999999996 - r2 / 360) | 0)) * 360
