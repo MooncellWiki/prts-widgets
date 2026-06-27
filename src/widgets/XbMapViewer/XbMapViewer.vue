@@ -4,7 +4,7 @@ import { computed, onBeforeMount, ref } from "vue";
 import { NModal, NButton, NConfigProvider, NSkeleton } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import Map, { type Props } from "./Map.vue";
 import { getConstData, type XbConstData } from "./consts";
@@ -13,8 +13,7 @@ const xbMapConst = ref<XbConstData>();
 onBeforeMount(async () => {
   xbMapConst.value = await getConstData();
 });
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
 const props = defineProps<Pick<Props, "map">>();

@@ -5,7 +5,7 @@ import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
 
 import Cost, { type CostProps } from "@/components/Cost.vue";
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 interface CostItem {
   label: string;
@@ -66,8 +66,7 @@ const props = defineProps<{
   item: string;
 }>();
 
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const data = ref<itemCost>();
 const state = ref(Status.req);
 async function load() {

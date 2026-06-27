@@ -20,7 +20,7 @@ import {
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
@@ -159,8 +159,7 @@ const genPreMedalList = (idList: Array<{ id: string; isTrim: boolean }>) => {
     }),
   );
 };
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 </script>
 

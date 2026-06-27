@@ -17,7 +17,7 @@ import {
   NTooltip,
 } from "naive-ui";
 
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import Volume from "./Volume.vue";
 import { useAudio } from "./hooks/useAudio";
@@ -34,8 +34,7 @@ const props = defineProps({
 });
 
 const quality = ref<Quality>("wav");
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 
 const low = useAudio(props.lowSource || "", props.p || 0);
 const high = useAudio(props.highSource || "", props.p || 0);

@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { NConfigProvider, NMessageProvider, NModalProvider } from "naive-ui";
 
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import arksignInner from "./index.vue";
 
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 
 const themeOverrides = {
   common: {

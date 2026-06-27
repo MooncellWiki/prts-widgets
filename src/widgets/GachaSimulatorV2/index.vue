@@ -11,7 +11,7 @@ import {
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import ImageLoading from "./components/ImageLoading.vue";
@@ -34,8 +34,7 @@ import type {
 } from "./types";
 
 const { locale, dateLocale } = getNaiveUILocale();
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const props = defineProps<{
   gachaPoolId: string;
   gachaBannerFile: string;

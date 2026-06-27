@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
-import { isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import type { BlockDefine } from "./consts";
@@ -20,7 +20,7 @@ const props = withDefaults(
 );
 
 const self = ref();
-const isDark = isWikiDarkMode();
+const { isDark } = useTheme();
 
 const style = computed(() => {
   const result: Record<string, string> = {};
@@ -65,7 +65,7 @@ onMounted(() => {
       allowHTML: true,
       content,
       arrow: true,
-      theme: isDark ? "dark-border" : "light-border",
+      theme: isDark.value ? "dark-border" : "light-border",
       size: "large",
       maxWidth: 250,
     });

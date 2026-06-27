@@ -4,7 +4,7 @@ import { provide, ref } from "vue";
 import { NConfigProvider, NSelect } from "naive-ui";
 
 import FormItem from "@/components/FormItem.vue";
-import { useWikiDarkMode, useWikiTheme } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import VoicePlayer from "./VoicePlayer.vue";
 import VoiceTitle from "./VoiceTitle.vue";
@@ -23,8 +23,7 @@ const selectedWordLang = ref(["中文"]);
 const selectedVoicePath = ref(props.voiceBase[0]?.path || "");
 const selectedVoiceLang = ref(props.voiceBase[0]?.lang || "");
 const playKey = ref(-1);
-const theme = useWikiTheme();
-const isDark = useWikiDarkMode();
+const { theme, isDark } = useTheme();
 
 const onVoicePathUpdate = (newValue: string, newOptions: { lang: string }) => {
   selectedVoicePath.value = newValue;

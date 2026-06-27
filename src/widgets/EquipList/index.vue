@@ -15,7 +15,7 @@ import {
 
 import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { isMobile } from "@/utils/utils";
 
 import EquipGroup from "./components/EquipGroup.vue";
@@ -52,8 +52,7 @@ function newSortItem(): FilterValue {
 }
 
 const i18nConfig = getNaiveUILocale();
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const locale = getLanguage();
 const timeData = ref<
   {

@@ -10,7 +10,7 @@ import {
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { isMobileSkin } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
@@ -32,8 +32,7 @@ const props = defineProps<{
 const keyword = ref("");
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 
 const filterConfig = ref(defaultFilterConfig);
 

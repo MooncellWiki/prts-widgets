@@ -13,7 +13,7 @@ import {
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
@@ -103,8 +103,7 @@ const generateGroupMedalData = (medalGroupId: string) => {
 
 const spoilerManualUnlocked = ref(!props.spoiler);
 
-const theme = getWikiTheme();
-const isDark = theme !== null;
+const { theme, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 </script>
 

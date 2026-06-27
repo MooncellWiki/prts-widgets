@@ -4,7 +4,7 @@ import { ref } from "vue";
 import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { isMobileSkin } from "@/utils/utils";
 
 defineProps<{
@@ -13,8 +13,7 @@ defineProps<{
   isAct?: boolean;
   language?: string;
 }>();
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
 

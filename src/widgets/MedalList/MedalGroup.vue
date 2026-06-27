@@ -13,7 +13,7 @@ import {
 } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
-import { getWikiTheme } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import MedalComponent from "./Medal.vue";
 
@@ -44,7 +44,7 @@ const eventLinkList = computed(() => {
 });
 
 const showTrimed = ref(false);
-const theme = getWikiTheme();
+const { theme } = useTheme();
 </script>
 
 <template>

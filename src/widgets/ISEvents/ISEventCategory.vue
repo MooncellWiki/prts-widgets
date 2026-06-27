@@ -13,15 +13,14 @@ import {
   NTabs,
 } from "naive-ui";
 
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 const props = defineProps<{
   tabList: string[];
   eventNameList: string[][];
 }>();
 const curTab = ref(props.tabList[0]);
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 
 const showFullCate = ref(false);
 

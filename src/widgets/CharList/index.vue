@@ -19,7 +19,7 @@ import CheckboxGroup from "@/components/CheckboxGroup.vue";
 import FilterRow from "@/components/FilterRow.vue";
 import Half from "@/components/Half.vue";
 import Pagination from "@/components/Pagination.vue";
-import { isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import LHead from "./head/LHead.vue";
 import SHead from "./head/SHead.vue";
@@ -66,7 +66,7 @@ const card = breakpoints.smallerOrEqual("small");
 const short = breakpoints.between("small", "big");
 const long = breakpoints.greaterOrEqual("big");
 const fix = ref(false);
-const isDark = isWikiDarkMode();
+const { isDark } = useTheme();
 
 const page = ref({
   index: 1,

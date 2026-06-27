@@ -15,7 +15,7 @@ import {
   type DropdownOption,
 } from "naive-ui";
 
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import ISEventOption from "./ISEventOption.vue";
@@ -56,8 +56,7 @@ const props = withDefaults(
 
 const sceneNav = ref<Array<number>>([0]);
 const currentSceneId = ref(0);
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 function isPrtsInfo(sceneId: number) {
   return props.sceneData[sceneId].prtsinfo !== "";
 }

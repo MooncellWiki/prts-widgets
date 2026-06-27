@@ -16,7 +16,7 @@ import {
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobileSkin } from "@/utils/utils";
 
 import FilterGroup from "./FilterGroup.vue";
@@ -44,8 +44,7 @@ const isLoading = ref(true);
 const i18nConfig = getNaiveUILocale();
 const isMobile = isMobileSkin();
 const isIconMode = ref(!!isMobile);
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const pagination = reactive({
   page: 1,
   pageSize: 50,
@@ -163,7 +162,7 @@ const abilityColumn: DataTableColumn<EnemyData> = {
         tippy6(e.children[0], {
           content: e.children[1],
           arrow: true,
-          theme: isDark ? "dark-border" : "light-border",
+          theme: isDark.value ? "dark-border" : "light-border",
           size: "large",
           maxWidth: Number.parseInt(
             (e.children[1] as HTMLElement).dataset.size!,

@@ -6,7 +6,7 @@ import { useBreakpoints } from "@vueuse/core";
 import Avatar from "@/components/Avatar.vue";
 import Checkbox from "@/components/Checkbox.vue";
 import FilterRow from "@/components/FilterRow.vue";
-import { isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import {
   Char,
@@ -39,7 +39,7 @@ const props = withDefaults(
 
 const breakpoints = useBreakpoints({ xs: 640 });
 const xs = breakpoints.smallerOrEqual("xs");
-const isDark = isWikiDarkMode();
+const { isDark } = useTheme();
 const value = reactive(new Char(0));
 const shortcutParam = new URLSearchParams(window.location.search).get("filter");
 const shortcutUrl = computed(

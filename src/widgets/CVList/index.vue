@@ -4,7 +4,7 @@ import { nextTick, ref } from "vue";
 import { NConfigProvider, NLayout, NTabPane, NTabs } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import VoiceLangTab from "./VoiceLangTab.vue";
 
@@ -18,8 +18,7 @@ const props = defineProps<{
   charMapping: Record<string, string>;
 }>();
 
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
 const tabs = ref(Object.values(props.langTypes).map((v) => v.name));

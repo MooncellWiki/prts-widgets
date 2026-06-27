@@ -4,7 +4,7 @@ import { ref, watch } from "vue";
 import { NButton, NConfigProvider, zhCN } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
-import { getWikiTheme, isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 
 import Spine from "./Spine.vue";
 
@@ -26,8 +26,7 @@ const props = defineProps<{
 }>();
 
 const loaded = ref(false);
-const theme = getWikiTheme();
-const isDark = isWikiDarkMode();
+const { theme, isDark } = useTheme();
 const value = ref<Props>();
 value.value = props.conf;
 watch(props, () => {

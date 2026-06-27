@@ -18,14 +18,14 @@ import {
 } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
-import { isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import LevelInput from "./LevelInput.vue";
 import { eliteStr } from "./consts";
 
 const i18nConfig = getNaiveUILocale();
-const isDark = isWikiDarkMode();
+const { isDark } = useTheme();
 
 const props = defineProps<{
   expMap: number[][];

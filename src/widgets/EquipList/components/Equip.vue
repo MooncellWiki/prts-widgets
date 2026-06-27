@@ -12,7 +12,7 @@ import {
 import { NSpin } from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
-import { isWikiDarkMode } from "@/utils/theme";
+import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobile } from "@/utils/utils";
 
 import { colorMap, customLabel, statsStyleMap } from "../consts";
@@ -46,13 +46,13 @@ const props = withDefaults(
 const content = ref<Record<string, string>[]>([]);
 const loading = ref(false);
 const loadingCount = inject("loadingCount") as Ref<number>;
-const isDark = isWikiDarkMode();
+const { isDark } = useTheme();
 const handleDark = () => {
   const seps = document.querySelectorAll(
     ".majorsep,.minorsep,.term,.iconfilter",
   );
   for (const ele of Array.from(seps)) {
-    ele.classList.toggle("dark", isDark);
+    ele.classList.toggle("dark", isDark.value);
   }
 };
 onBeforeMount(async () => {
@@ -101,19 +101,19 @@ onBeforeMount(async () => {
     ".majorsep,.minorsep,.term,.iconfilter",
   );
   for (const ele of Array.from(seps)) {
-    ele.classList.toggle("dark", isDark);
+    ele.classList.toggle("dark", isDark.value);
   }
   await nextTick();
-  updateTippy(isDark);
+  updateTippy(isDark.value);
   loading.value = false;
   loadingCount.value -= 1;
 });
 onMounted(() => {
-  updateTippy(isDark);
+  updateTippy(isDark.value);
   handleDark();
 });
 onBeforeUpdate(() => {
-  updateTippy(isDark);
+  updateTippy(isDark.value);
   handleDark();
 });
 const isLatest = (e: string | undefined) => e && e === "yes";
