@@ -50,20 +50,12 @@ const tip = computed(() => (props.title ? displayTips[props.title] : ""));
     align-items: center;
     justify-content: center;
 
-    border: 1px solid var(--tip-color);
-    border-radius: 50%;
-
     color: var(--tip-color);
     cursor: help;
 
     font-size: var(--tip-size);
     font-weight: 700;
     line-height: 1;
-
-    &:focus-visible {
-      outline: 2px solid var(--tip-color);
-      outline-offset: 0.125rem;
-    }
   }
 }
 </style>
