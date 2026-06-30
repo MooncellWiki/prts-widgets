@@ -22,11 +22,12 @@ const tip = computed(() => (props.title ? displayTips[props.title] : ""));
     <NTooltip v-if="tip" trigger="hover">
       <template #trigger>
         <span
-          class="voice-title-tip mdi mdi-help-circle-outline color-[var(--darkblue)]"
+          class="voice-title-tip"
           role="img"
           tabindex="0"
           aria-label="显示时间说明"
-        />
+          >?</span
+        >
       </template>
       {{ tip }}
     </NTooltip>
@@ -61,8 +62,8 @@ const tip = computed(() => (props.title ? displayTips[props.title] : ""));
     line-height: 1;
 
     &:focus-visible {
-      outline: 2px solid var(--tip-color);
-      outline-offset: 0.125rem;
+      background: color-mix(in srgb, var(--tip-color) 12%, transparent);
+      outline: 0;
     }
   }
 }
