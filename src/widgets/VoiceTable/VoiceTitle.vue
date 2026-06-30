@@ -35,27 +35,8 @@ const tip = computed(() => (props.title ? displayTips[props.title] : ""));
 
 <style scoped lang="scss">
 .voice-title {
-  --tip-color: #36c;
-  --tip-size: 0.875rem;
-
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-
-  &-tip {
-    display: inline-flex;
-    width: 1rem;
-    height: 1rem;
-
-    align-items: center;
-    justify-content: center;
-
-    color: var(--tip-color);
-    cursor: help;
-
-    font-size: var(--tip-size);
-    font-weight: 700;
-    line-height: 1;
-  }
 }
 </style>
