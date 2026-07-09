@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
 import {
   NButton,
@@ -18,6 +18,7 @@ import { useTheme } from "@/utils/theme";
 const props = defineProps<{
   tabList: string[];
   eventNameList: string[][];
+  eventFloorList: string[][][];
 }>();
 const curTab = ref(props.tabList[0]);
 const { theme, themeOverrides, isDark } = useTheme({
@@ -36,6 +37,36 @@ const { theme, themeOverrides, isDark } = useTheme({
 });
 
 const showFullCate = ref(false);
+const activeFloor = ref("");
+const romanFloorLabels = ["", "I", "II", "III", "IV", "V", "VI", "VII"];
+const eventFloorListDepth = 2;
+const hasFloorData = computed(() =>
+  props.eventFloorList.some((group) =>
+    group.some((floors) => floors.length > 0),
+  ),
+);
+const floorButtons = computed(() => {
+  const floorValues = Array.from(
+    new Set(props.eventFloorList.flat(eventFloorListDepth).filter(Boolean)),
+  ).sort((a, b) => Number(a) - Number(b));
+  return [
+    { label: "全部", value: "" },
+    ...floorValues.map((floor) => ({
+      label: romanFloorLabels[Number(floor)] || floor,
+      value: floor,
+    })),
+  ];
+});
+const visibleEventNameList = computed(() => {
+  if (!activeFloor.value) return props.eventNameList;
+  return props.eventNameList.map((group, groupIndex) =>
+    group.filter((_eventName, eventIndex) =>
+      props.eventFloorList[groupIndex]?.[eventIndex]?.includes(
+        activeFloor.value,
+      ),
+    ),
+  );
+});
 
 const tabChangeAndColseFullCate = () => {
   showFullCate.value = false;
@@ -45,6 +76,55 @@ const changeTab = (name: string) => {
   curTab.value = name;
   showFullCate.value = false;
 };
+
+const changeFloor = (floor: string) => {
+  activeFloor.value = floor;
+};
+
+function applyFloorFilter() {
+  const floor = activeFloor.value;
+  const allEventTitles = new Set(props.eventNameList.flat());
+  const allEventTypes = new Set(props.tabList);
+  const visibleTitles = new Set<string>();
+  const visibleTypes = new Set<string>();
+
+  for (const frame of Array.from(
+    document.querySelectorAll<HTMLElement>(".ISEventFrame"),
+  )) {
+    const floors = (frame.dataset.floors || "").split("|").filter(Boolean);
+    const visible = !floor || floors.includes(floor);
+    frame.style.display = visible ? "" : "none";
+    if (visible) {
+      if (frame.dataset.eventTitle) visibleTitles.add(frame.dataset.eventTitle);
+      if (frame.dataset.eventType) visibleTypes.add(frame.dataset.eventType);
+    }
+  }
+
+  for (const heading of Array.from(
+    document.querySelectorAll<HTMLElement>(
+      ".mw-parser-output h2, .mw-parser-output h3",
+    ),
+  )) {
+    const title = (heading.textContent || "").trim();
+    if (title === "事件导航" || title === "层数筛选") {
+      heading.style.display = "";
+    } else if (allEventTitles.has(title)) {
+      heading.style.display = !floor || visibleTitles.has(title) ? "" : "none";
+    } else if (allEventTypes.has(title)) {
+      heading.style.display = !floor || visibleTypes.has(title) ? "" : "none";
+    }
+  }
+}
+
+watch(
+  activeFloor,
+  () => {
+    nextTick(() => {
+      window.requestAnimationFrame(applyFloorFilter);
+    });
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -129,7 +209,7 @@ const changeTab = (name: string) => {
                 >
                   <NSpace class="max-w-full w-140">
                     <NButton
-                      v-for="eventName in eventNameList![index]"
+                      v-for="eventName in visibleEventNameList[index]"
                       :key="eventName"
                       size="small"
                       quaternary
@@ -145,6 +225,27 @@ const changeTab = (name: string) => {
           </NCard>
         </NLayoutContent>
       </NLayout>
+    </NSpace>
+  </NConfigProvider>
+  <h2 v-if="hasFloorData">层数筛选</h2>
+  <NConfigProvider
+    v-if="hasFloorData"
+    preflight-style-disabled
+    :theme="theme"
+    :theme-overrides="themeOverrides"
+    :class="['ISEventCategory', isDark && 'prts-widget-dark']"
+  >
+    <NSpace class="max-w-full w-140">
+      <NButton
+        v-for="button in floorButtons"
+        :key="button.value || 'all'"
+        size="small"
+        :quaternary="button.value !== activeFloor"
+        :type="button.value === activeFloor ? 'info' : 'default'"
+        @click="changeFloor(button.value)"
+      >
+        {{ button.label }}
+      </NButton>
     </NSpace>
   </NConfigProvider>
 </template>

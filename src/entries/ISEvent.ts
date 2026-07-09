@@ -18,6 +18,7 @@ const isTheme = eventDataRoot?.dataset?.theme;
 // nav app
 const navArea = document.querySelector("#IS-event-nav");
 const sceneCategoryData: string[][] = [];
+const sceneCategoryFloorData: string[][][] = [];
 const sceneCategoryTabList: string[] = [];
 
 // events app
@@ -30,6 +31,10 @@ for (const eventEle of Array.from(eventEles)) {
         edesc: scene.querySelectorAll(".edesc")[0]?.innerHTML,
         name: data.name,
         ename: data.ename,
+        floors: (data.floor || "")
+          .split(",")
+          .map((floor) => floor.trim())
+          .filter(Boolean),
         nav: data.nav,
         index: data.index,
         image: data.image,
@@ -60,16 +65,21 @@ for (const eventEle of Array.from(eventEles)) {
   if (scenes[0].etype) {
     sceneCategoryTabList.push(scenes[0].etype);
     sceneCategoryData.push([]);
+    sceneCategoryFloorData.push([]);
   }
+  const eventType = sceneCategoryTabList.at(-1) || "";
   sceneCategoryData.at(-1)?.push(scenes[0].ename || scenes[0].name || "？？？");
+  sceneCategoryFloorData.at(-1)?.push(scenes[0].floors);
   // creat event
   createApp(ISEventFramework, {
     sceneData: scenes,
+    eventType,
     isTheme,
   }).mount(eventEle);
 }
 
 createApp(ISEventCategory, {
   eventNameList: sceneCategoryData,
+  eventFloorList: sceneCategoryFloorData,
   tabList: sceneCategoryTabList,
 }).mount(navArea!);

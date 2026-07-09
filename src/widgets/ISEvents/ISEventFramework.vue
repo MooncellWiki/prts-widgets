@@ -40,6 +40,7 @@ const props = withDefaults(
       edesc?: string;
       name?: string;
       ename?: string;
+      floors?: string[];
       nav?: string;
       index?: number;
       image?: string;
@@ -47,6 +48,7 @@ const props = withDefaults(
       options: Array<Option>;
       prtsinfo?: string;
     }[];
+    eventType?: string;
     isTheme: string;
   }>(),
   {
@@ -196,6 +198,9 @@ function getSubChooseData(scStr: string) {
     :theme="theme"
     :theme-overrides="themeOverrides"
     :class="['ISEventFrame', isDark && 'prts-widget-dark']"
+    :data-event-title="sceneData[0].ename || sceneData[0].name"
+    :data-event-type="eventType"
+    :data-floors="sceneData[0].floors?.join('|')"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>
