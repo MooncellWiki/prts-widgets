@@ -100,6 +100,15 @@ function applyFloorFilter() {
     }
   }
 
+  for (const description of Array.from(
+    document.querySelectorAll<HTMLElement>(".ISEventDescription"),
+  )) {
+    const floors = (description.dataset.floors || "")
+      .split("|")
+      .filter(Boolean);
+    description.style.display = !floor || floors.includes(floor) ? "" : "none";
+  }
+
   for (const heading of Array.from(
     document.querySelectorAll<HTMLElement>(
       ".mw-parser-output h2, .mw-parser-output h3",

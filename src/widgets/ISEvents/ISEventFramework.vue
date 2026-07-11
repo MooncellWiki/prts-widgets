@@ -192,7 +192,14 @@ function getSubChooseData(scStr: string) {
       {{ sceneData[0].ename || sceneData[0].name }}
     </span>
   </h3>
-  <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
+  <div
+    v-if="sceneData[0].edesc"
+    class="ISEventDescription"
+    :data-event-title="sceneData[0].ename || sceneData[0].name"
+    :data-event-type="eventType"
+    :data-floors="sceneData[0].floors?.join('|')"
+    v-html="sceneData[0].edesc"
+  ></div>
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
