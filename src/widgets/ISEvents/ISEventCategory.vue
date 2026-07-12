@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 
 import {
   NButton,
@@ -15,11 +15,14 @@ import {
 
 import { useTheme } from "@/utils/theme";
 
+import { DataBridge } from "./ISEventDataBridge";
+
 const props = defineProps<{
   tabList: string[];
   eventNameList: string[][];
+  floorList: string[];
 }>();
-const curTab = ref(props.tabList[0]);
+const curCateTab = ref(props.tabList[0]);
 const { theme, themeOverrides, isDark } = useTheme({
   common: { borderRadius: "0" },
   Card: { actionColor: "#343434", borderColor: "#ADADAD" },
@@ -42,13 +45,26 @@ const tabChangeAndColseFullCate = () => {
 };
 
 const changeTab = (name: string) => {
-  curTab.value = name;
+  curCateTab.value = name;
   showFullCate.value = false;
 };
+
+function checkFloorAvil(ename: string) {
+  return (
+    DataBridge.floorSort.curFloorTab === 0 ||
+    DataBridge.floorSort.eventFloorList[ename].includes(
+      DataBridge.floorSort.floorList[DataBridge.floorSort.curFloorTab],
+    )
+  );
+}
+
+onMounted(() => {
+  DataBridge.floorSort.floorList = props.floorList;
+});
 </script>
 
 <template>
-  <h2>事件导航</h2>
+  <h2 id="ISEventNavHeader">事件导航</h2>
   <NConfigProvider
     preflight-style-disabled
     :theme="theme"
@@ -64,53 +80,25 @@ const changeTab = (name: string) => {
             <i class="mdi mdi-menu"></i> 展开所有分类查询。
           </div>
           <NCard class="relative" size="small">
-            <NCollapseTransition :show="showFullCate">
+            <NLayout>
               <div
-                class="flex items-center justify-between bg-[#2f2f2f] px-1 pr-0 font-size-xs c-white"
+                class="border-l-4 border-l-#2f2f2f border-l-solid px-1 font-bold"
               >
-                <div class="pointer-events-none">
-                  <i class="mdi mdi-menu"></i>
-                  分类
-                </div>
-                <NButton
-                  color="#2f2f2f"
-                  size="small"
-                  @click="
-                    () => {
-                      showFullCate = !showFullCate;
-                    }
-                  "
-                >
-                  <i class="mdi mdi-chevron-up"></i>
-                </NButton>
+                分类筛选 | 事件导航
               </div>
-              <NSpace
-                class="bg-darkgray border b-[#2f2f2f50] b-solid from-[#e9e9e9] to-[#e9e9e900] bg-gradient-to-b pa-1.5"
-              >
-                <NButton
-                  v-for="tabName in tabList"
-                  :key="tabName"
-                  size="small"
-                  :quaternary="tabName !== curTab"
-                  :type="tabName === curTab ? 'info' : 'default'"
-                  @click="changeTab(tabName)"
+              <div></div>
+            </NLayout>
+            <NLayout class="my-1">
+              <NCollapseTransition :show="showFullCate">
+                <div
+                  class="flex items-center justify-between bg-[#2f2f2f] px-1 pr-0 font-size-xs c-white"
                 >
-                  {{ tabName }}
-                </NButton>
-              </NSpace>
-            </NCollapseTransition>
-            <NCollapseTransition :show="!showFullCate">
-              <NTabs
-                v-model:value="curTab"
-                type="line"
-                size="small"
-                animated
-                :class="{ 'opacity-50': showFullCate }"
-                @update:value="tabChangeAndColseFullCate"
-              >
-                <template #suffix>
+                  <div class="pointer-events-none">
+                    <i class="mdi mdi-menu"></i>
+                    Category.
+                  </div>
                   <NButton
-                    quaternary
+                    color="#2f2f2f"
                     size="small"
                     @click="
                       () => {
@@ -118,30 +106,97 @@ const changeTab = (name: string) => {
                       }
                     "
                   >
-                    <i class="mdi mdi-menu"></i>
+                    <i class="mdi mdi-chevron-up"></i>
                   </NButton>
-                </template>
-                <NTabPane
-                  v-for="(tabName, index) in tabList"
-                  :key="tabName"
-                  :name="tabName"
-                  @click="tabChangeAndColseFullCate"
+                </div>
+                <NSpace
+                  class="bg-darkgray border b-[#2f2f2f50] b-solid from-[#e9e9e9] to-[#e9e9e900] bg-gradient-to-b pa-1.5"
                 >
-                  <NSpace class="max-w-full w-140">
+                  <NButton
+                    v-for="tabName in tabList"
+                    :key="tabName"
+                    size="small"
+                    :quaternary="tabName !== curCateTab"
+                    :type="tabName === curCateTab ? 'info' : 'default'"
+                    @click="changeTab(tabName)"
+                  >
+                    {{ tabName }}
+                  </NButton>
+                </NSpace>
+              </NCollapseTransition>
+              <NCollapseTransition :show="!showFullCate">
+                <NTabs
+                  v-model:value="curCateTab"
+                  type="line"
+                  size="small"
+                  animated
+                  :class="{ 'opacity-50': showFullCate }"
+                  @update:value="tabChangeAndColseFullCate"
+                >
+                  <template #suffix>
                     <NButton
-                      v-for="eventName in eventNameList![index]"
-                      :key="eventName"
-                      size="small"
                       quaternary
-                      tag="a"
-                      :href="`#${eventName}`"
+                      size="small"
+                      @click="
+                        () => {
+                          showFullCate = !showFullCate;
+                        }
+                      "
                     >
-                      {{ eventName }}
+                      <i class="mdi mdi-menu"></i>
                     </NButton>
-                  </NSpace>
-                </NTabPane>
-              </NTabs>
-            </NCollapseTransition>
+                  </template>
+                  <NTabPane
+                    v-for="(tabName, index) in tabList"
+                    :key="tabName"
+                    :name="tabName"
+                    @click="tabChangeAndColseFullCate"
+                  >
+                    <NSpace class="max-w-full w-140">
+                      <NButton
+                        v-for="eventName in eventNameList![index]"
+                        :key="eventName"
+                        size="small"
+                        quaternary
+                        tag="a"
+                        :href="`#${eventName}`"
+                        :disabled="!checkFloorAvil(eventName)"
+                      >
+                        <span
+                          :class="{
+                            'decoration-line-through':
+                              !checkFloorAvil(eventName),
+                          }"
+                          >{{ eventName }}</span
+                        >
+                      </NButton>
+                    </NSpace>
+                  </NTabPane>
+                </NTabs>
+              </NCollapseTransition>
+            </NLayout>
+            <NLayout>
+              <div class="border-l-4 border-l-#2f2f2f border-l-solid px-1">
+                <b>属层筛选</b>
+                <span class="c-gray">（仅供参考）</span>
+              </div>
+              <NSpace class="my-1" :size="2">
+                <NButton
+                  v-for="(floorName, index) in floorList"
+                  :key="floorName"
+                  size="small"
+                  :quaternary="index !== DataBridge.floorSort.curFloorTab"
+                  :type="
+                    index === DataBridge.floorSort.curFloorTab
+                      ? 'info'
+                      : 'default'
+                  "
+                  @click="DataBridge.floorSort.curFloorTab = index"
+                >
+                  {{ floorName }}
+                </NButton>
+              </NSpace>
+            </NLayout>
           </NCard>
         </NLayoutContent>
       </NLayout>
