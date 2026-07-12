@@ -19,6 +19,7 @@ import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import ISEventOption from "./ISEventOption.vue";
+import { activeFloor, visibleEventTypes } from "./floorFilter";
 
 interface Option {
   title: string;
@@ -77,6 +78,17 @@ function isPrtsInfo(sceneId: number) {
 const isCurScenePrtsInfo = computed(() => {
   return isPrtsInfo(currentSceneId.value);
 });
+const eventTitle = computed(
+  () => props.sceneData[0].ename || props.sceneData[0].name || "",
+);
+const eventFloors = computed(() => props.sceneData[0].floors || []);
+const isEventVisible = computed(
+  () => !activeFloor.value || eventFloors.value.includes(activeFloor.value),
+);
+const isEventTypeVisible = computed(
+  () =>
+    !activeFloor.value || visibleEventTypes.value.has(props.eventType || ""),
+);
 function jump(id: number) {
   if (id) {
     const index = sceneNav.value.indexOf(id);
@@ -86,8 +98,7 @@ function jump(id: number) {
 
     currentSceneId.value = id;
 
-    const name = props.sceneData[0].ename || props.sceneData[0].name || "";
-    const element = document.querySelector(`#${name}`);
+    const element = document.querySelector(`#${eventTitle.value}`);
     if (element) {
       element.scrollIntoView({ behavior: "smooth" });
     }
@@ -172,7 +183,7 @@ function getSubChooseData(scStr: string) {
 </script>
 
 <template>
-  <h2 v-if="sceneData[0].etype">
+  <h2 v-if="sceneData[0].etype" v-show="isEventTypeVisible">
     <span :id="sceneData[0].etype" />
     <span
       :id="encodeURI(sceneData[0].etype).replace(/%/g, '.')"
@@ -181,33 +192,24 @@ function getSubChooseData(scStr: string) {
       {{ sceneData[0].etype }}
     </span>
   </h2>
-  <h3>
-    <span :id="sceneData[0].ename || sceneData[0].name" />
-    <span
-      :id="
-        encodeURI((sceneData[0].ename || sceneData[0].name)!).replace(/%/g, '.')
-      "
-      class="mw-headline"
-    >
-      {{ sceneData[0].ename || sceneData[0].name }}
+  <h3 v-show="isEventVisible">
+    <span :id="eventTitle" />
+    <span :id="encodeURI(eventTitle).replace(/%/g, '.')" class="mw-headline">
+      {{ eventTitle }}
     </span>
   </h3>
   <div
     v-if="sceneData[0].edesc"
+    v-show="isEventVisible"
     class="ISEventDescription"
-    :data-event-title="sceneData[0].ename || sceneData[0].name"
-    :data-event-type="eventType"
-    :data-floors="sceneData[0].floors?.join('|')"
     v-html="sceneData[0].edesc"
   ></div>
   <NConfigProvider
+    v-show="isEventVisible"
     preflight-style-disabled
     :theme="theme"
     :theme-overrides="themeOverrides"
     :class="['ISEventFrame', isDark && 'prts-widget-dark']"
-    :data-event-title="sceneData[0].ename || sceneData[0].name"
-    :data-event-type="eventType"
-    :data-floors="sceneData[0].floors?.join('|')"
   >
     <NSpace class="max-w-full w-140">
       <NLayout>

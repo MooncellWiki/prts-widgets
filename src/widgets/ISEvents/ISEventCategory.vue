@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watchEffect } from "vue";
 
 import {
   NButton,
@@ -14,6 +14,8 @@ import {
 } from "naive-ui";
 
 import { useTheme } from "@/utils/theme";
+
+import { activeFloor, visibleEventTypes } from "./floorFilter";
 
 const props = defineProps<{
   tabList: string[];
@@ -37,7 +39,6 @@ const { theme, themeOverrides, isDark } = useTheme({
 });
 
 const showFullCate = ref(false);
-const activeFloor = ref("");
 const romanFloorLabels = ["", "I", "II", "III", "IV", "V", "VI", "VII"];
 const eventFloorListDepth = 2;
 const hasFloorData = computed(() =>
@@ -67,6 +68,16 @@ const visibleEventNameList = computed(() => {
     ),
   );
 });
+const visibleEventTypeSet = computed(() => {
+  if (!activeFloor.value) return new Set(props.tabList);
+  return new Set(
+    props.tabList.filter((_tabName, groupIndex) =>
+      props.eventFloorList[groupIndex]?.some((floors) =>
+        floors.includes(activeFloor.value),
+      ),
+    ),
+  );
+});
 
 const tabChangeAndColseFullCate = () => {
   showFullCate.value = false;
@@ -81,59 +92,9 @@ const changeFloor = (floor: string) => {
   activeFloor.value = floor;
 };
 
-function applyFloorFilter() {
-  const floor = activeFloor.value;
-  const allEventTitles = new Set(props.eventNameList.flat());
-  const allEventTypes = new Set(props.tabList);
-  const visibleTitles = new Set<string>();
-  const visibleTypes = new Set<string>();
-
-  for (const frame of Array.from(
-    document.querySelectorAll<HTMLElement>(".ISEventFrame"),
-  )) {
-    const floors = (frame.dataset.floors || "").split("|").filter(Boolean);
-    const visible = !floor || floors.includes(floor);
-    frame.style.display = visible ? "" : "none";
-    if (visible) {
-      if (frame.dataset.eventTitle) visibleTitles.add(frame.dataset.eventTitle);
-      if (frame.dataset.eventType) visibleTypes.add(frame.dataset.eventType);
-    }
-  }
-
-  for (const description of Array.from(
-    document.querySelectorAll<HTMLElement>(".ISEventDescription"),
-  )) {
-    const floors = (description.dataset.floors || "")
-      .split("|")
-      .filter(Boolean);
-    description.style.display = !floor || floors.includes(floor) ? "" : "none";
-  }
-
-  for (const heading of Array.from(
-    document.querySelectorAll<HTMLElement>(
-      ".mw-parser-output h2, .mw-parser-output h3",
-    ),
-  )) {
-    const title = (heading.textContent || "").trim();
-    if (title === "事件导航" || title === "层数筛选") {
-      heading.style.display = "";
-    } else if (allEventTitles.has(title)) {
-      heading.style.display = !floor || visibleTitles.has(title) ? "" : "none";
-    } else if (allEventTypes.has(title)) {
-      heading.style.display = !floor || visibleTypes.has(title) ? "" : "none";
-    }
-  }
-}
-
-watch(
-  activeFloor,
-  () => {
-    nextTick(() => {
-      window.requestAnimationFrame(applyFloorFilter);
-    });
-  },
-  { immediate: true },
-);
+watchEffect(() => {
+  visibleEventTypes.value = visibleEventTypeSet.value;
+});
 </script>
 
 <template>
