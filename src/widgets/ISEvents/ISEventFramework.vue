@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { HomeSharp } from "@vicons/material";
 import {
   NBreadcrumb,
   NBreadcrumbItem,
+  NButton,
   NCard,
   NConfigProvider,
   NDropdown,
@@ -19,6 +20,7 @@ import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import ISEventOption from "./ISEventOption.vue";
+import { floorSortStore } from "./store.ts";
 
 interface Option {
   title: string;
@@ -37,6 +39,7 @@ const props = withDefaults(
   defineProps<{
     sceneData?: {
       etype?: string;
+      efloor?: string[];
       edesc?: string;
       name?: string;
       ename?: string;
@@ -89,6 +92,12 @@ function jump(id: number) {
     if (element) {
       element.scrollIntoView({ behavior: "smooth" });
     }
+  }
+}
+function jumpToNav() {
+  const element = document.querySelector(`#ISEventNavHeader`);
+  if (element) {
+    element.scrollIntoView({ behavior: "smooth" });
   }
 }
 function navJump(index: number) {
@@ -167,152 +176,186 @@ function getSubChooseData(scStr: string) {
     return i.split(";");
   });
 }
+onMounted(() => {
+  const ename = props.sceneData[0].ename || props.sceneData[0].name || "";
+  floorSortStore.floorSort.eventFloorList[ename] =
+    props.sceneData[0].efloor || [];
+});
+
+const etype = computed(() => {
+  return props.sceneData[0].etype || "";
+});
+
+const isVisible = computed(() => {
+  return (
+    floorSortStore.floorSort.curFloorTab === 0 ||
+    (!!props.sceneData[0].efloor &&
+      props.sceneData[0].efloor.includes(
+        floorSortStore.floorSort.floorList[
+          floorSortStore.floorSort.curFloorTab
+        ],
+      ))
+  );
+});
+
+const title = computed(() => {
+  return props.sceneData[0].ename || props.sceneData[0].name || "";
+});
 </script>
 
 <template>
-  <h2 v-if="sceneData[0].etype">
-    <span :id="sceneData[0].etype" />
-    <span
-      :id="encodeURI(sceneData[0].etype).replace(/%/g, '.')"
-      class="mw-headline"
-    >
-      {{ sceneData[0].etype }}
+  <h2 v-if="etype">
+    <span :id="etype" />
+    <span :id="encodeURI(etype).replace(/%/g, '.')" class="mw-headline">
+      {{ etype }}
     </span>
   </h2>
-  <h3>
-    <span :id="sceneData[0].ename || sceneData[0].name" />
-    <span
-      :id="
-        encodeURI((sceneData[0].ename || sceneData[0].name)!).replace(/%/g, '.')
-      "
-      class="mw-headline"
+  <div v-if="isVisible">
+    <h3>
+      <span :id="title" />
+      <span :id="encodeURI(title!).replace(/%/g, '.')" class="mw-headline">
+        {{ title }}
+      </span>
+    </h3>
+    <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
+    <NConfigProvider
+      preflight-style-disabled
+      :theme="theme"
+      :theme-overrides="themeOverrides"
+      :class="['ISEventFrame', isDark && 'prts-widget-dark']"
     >
-      {{ sceneData[0].ename || sceneData[0].name }}
-    </span>
-  </h3>
-  <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
-  <NConfigProvider
-    preflight-style-disabled
-    :theme="theme"
-    :theme-overrides="themeOverrides"
-    :class="['ISEventFrame', isDark && 'prts-widget-dark']"
-  >
-    <NSpace class="max-w-full w-140">
-      <NLayout>
-        <NLayoutContent>
-          <NBreadcrumb class="from-[#2f2f2f20] to-[#2f2f2f00] bg-gradient-to-b">
-            <NBreadcrumbItem
-              v-for="(SceneId, index) in sceneNav"
-              :key="index"
-              @click="navJump(index)"
+      <NSpace class="max-w-full w-140">
+        <NLayout>
+          <NLayoutContent>
+            <NSpace
+              class="from-[#2f2f2f20] to-[#2f2f2f00] bg-gradient-to-b"
+              justify="space-between"
             >
-              <template #separator>
-                <div class="scale-x-50">&gt;</div>
-              </template>
-              <NDropdown
-                v-if="
-                  sceneData[SceneId].options.length > 0 &&
-                  index !== sceneNav.length - 1
-                "
-                placement="bottom-start"
-                :show-arrow="true"
-                :options="optionsToNavDrop(sceneData[SceneId].options)"
-                @select="(k, op) => dropJump(k, index, op)"
-              >
-                <div class="trigger">
-                  <NIcon v-if="SceneId === 0">
-                    <HomeSharp />
-                  </NIcon>
-                  <span
-                    v-else
-                    :class="{
-                      'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
-                        isPrtsInfo(SceneId),
-                    }"
-                  >
-                    <sup v-if="isPrtsInfo(SceneId)">
-                      <i class="mdi mdi-rhombus-outline font-size-2"></i>
-                    </sup>
-                    {{ sceneData[SceneId].nav }}
-                  </span>
-                </div>
-              </NDropdown>
-              <div v-else>
-                <NIcon v-if="SceneId === 0">
-                  <HomeSharp />
-                </NIcon>
-                <span
-                  v-else
-                  :class="[
-                    {
-                      'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
-                        isPrtsInfo(SceneId),
-                    },
-                  ]"
-                >
-                  <sup v-if="isPrtsInfo(SceneId)">
-                    <i class="mdi mdi-rhombus-outline font-size-2"></i>
-                  </sup>
-                  {{ sceneData[SceneId].nav }}
-                </span>
-              </div>
-            </NBreadcrumbItem>
-          </NBreadcrumb>
-          <NCard
-            class="relative"
-            :title="sceneData[currentSceneId].name || ''"
-            size="small"
-          >
-            <template #cover>
-              <a :href="`/w/File:${sceneData[currentSceneId].image}.png`">
-                <img
-                  class="img w-140"
-                  :src="getImagePath(`${sceneData[currentSceneId].image}.png`)"
-                />
-              </a>
-            </template>
-            <div
-              v-if="isCurScenePrtsInfo"
-              class="pointer-events-none b-1 b-[#0098dca0] b-b-transparent b-solid bg-[#0098dc50] px-2 font-size-2.5"
-            >
-              <i class="mdi mdi-rhombus-outline"></i>
-              PRTS info.
-            </div>
-            <div
-              :class="[
-                {
-                  'pa-1 b-1 b-[#0098dca0] b-solid': isCurScenePrtsInfo,
-                },
-              ]"
-              v-html="sceneData[currentSceneId].text"
-            ></div>
-            <template
-              v-if="sceneData[currentSceneId].options.length > 0"
-              #action
-            >
-              <NSpace vertical>
-                <ISEventOption
-                  v-for="(item, index) in sceneData[currentSceneId].options"
+              <NBreadcrumb>
+                <NBreadcrumbItem
+                  v-for="(sceneId, index) in sceneNav"
                   :key="index"
-                  :title="item.title"
-                  :type="item.type"
-                  :icon="item.icon"
-                  :icon-id="item.iconId"
-                  :desc1="item.desc1"
-                  :desc2="item.desc2"
-                  :is-theme="isTheme"
-                  :custom-badge-text="item.customBadgeText"
-                  :subchoose="getSubChooseData(item.subChoose ?? '')"
-                  :method-jump="jump"
-                  @click="jump(item.dest)"
-                />
-              </NSpace>
-            </template>
-          </NCard>
-        </NLayoutContent>
-      </NLayout>
-    </NSpace>
-  </NConfigProvider>
+                  @click="navJump(index)"
+                >
+                  <template #separator>
+                    <div class="scale-x-50">&gt;</div>
+                  </template>
+                  <NDropdown
+                    v-if="
+                      sceneData[sceneId].options.length > 0 &&
+                      index !== sceneNav.length - 1
+                    "
+                    placement="bottom-start"
+                    :show-arrow="true"
+                    :options="optionsToNavDrop(sceneData[sceneId].options)"
+                    @select="(k, op) => dropJump(k, index, op)"
+                  >
+                    <div class="trigger">
+                      <NIcon v-if="sceneId === 0">
+                        <HomeSharp />
+                      </NIcon>
+                      <span
+                        v-else
+                        :class="{
+                          'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
+                            isPrtsInfo(sceneId),
+                        }"
+                      >
+                        <sup v-if="isPrtsInfo(sceneId)">
+                          <i class="mdi mdi-rhombus-outline font-size-2"></i>
+                        </sup>
+                        {{ sceneData[sceneId].nav }}
+                      </span>
+                    </div>
+                  </NDropdown>
+                  <div v-else>
+                    <NIcon v-if="sceneId === 0">
+                      <HomeSharp />
+                    </NIcon>
+                    <span
+                      v-else
+                      :class="[
+                        {
+                          'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
+                            isPrtsInfo(sceneId),
+                        },
+                      ]"
+                    >
+                      <sup v-if="isPrtsInfo(sceneId)">
+                        <i class="mdi mdi-rhombus-outline font-size-2"></i>
+                      </sup>
+                      {{ sceneData[sceneId].nav }}
+                    </span>
+                  </div>
+                </NBreadcrumbItem>
+              </NBreadcrumb>
+              <NButton
+                secondary
+                color="#2f2f2f"
+                size="small"
+                @click="jumpToNav"
+              >
+                <i class="mdi mdi-arrow-u-left-top mdi-rotate-90"></i>
+              </NButton>
+            </NSpace>
+            <NCard
+              class="relative"
+              :title="sceneData[currentSceneId].name || ''"
+              size="small"
+            >
+              <template #cover>
+                <a :href="`/w/File:${sceneData[currentSceneId].image}.png`">
+                  <img
+                    class="img w-140"
+                    :src="
+                      getImagePath(`${sceneData[currentSceneId].image}.png`)
+                    "
+                  />
+                </a>
+              </template>
+              <div
+                v-if="isCurScenePrtsInfo"
+                class="pointer-events-none b-1 b-[#0098dca0] b-b-transparent b-solid bg-[#0098dc50] px-2 font-size-2.5"
+              >
+                <i class="mdi mdi-rhombus-outline"></i>
+                PRTS info.
+              </div>
+              <div
+                :class="[
+                  {
+                    'pa-1 b-1 b-[#0098dca0] b-solid': isCurScenePrtsInfo,
+                  },
+                ]"
+                v-html="sceneData[currentSceneId].text"
+              ></div>
+              <template
+                v-if="sceneData[currentSceneId].options.length > 0"
+                #action
+              >
+                <NSpace vertical>
+                  <ISEventOption
+                    v-for="(item, index) in sceneData[currentSceneId].options"
+                    :key="index"
+                    :title="item.title"
+                    :type="item.type"
+                    :icon="item.icon"
+                    :icon-id="item.iconId"
+                    :desc1="item.desc1"
+                    :desc2="item.desc2"
+                    :is-theme="isTheme"
+                    :custom-badge-text="item.customBadgeText"
+                    :subchoose="getSubChooseData(item.subChoose ?? '')"
+                    :method-jump="jump"
+                    @click="jump(item.dest)"
+                  />
+                </NSpace>
+              </template>
+            </NCard>
+          </NLayoutContent>
+        </NLayout>
+      </NSpace>
+    </NConfigProvider>
+  </div>
 </template>
 
 <style scoped>

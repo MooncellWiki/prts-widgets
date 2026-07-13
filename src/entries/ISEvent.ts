@@ -19,6 +19,7 @@ const isTheme = eventDataRoot?.dataset?.theme;
 const navArea = document.querySelector("#IS-event-nav");
 const sceneCategoryData: string[][] = [];
 const sceneCategoryTabList: string[] = [];
+let sceneFloorList: string[] = [];
 
 // events app
 for (const eventEle of Array.from(eventEles)) {
@@ -27,6 +28,7 @@ for (const eventEle of Array.from(eventEles)) {
       const data = scene.dataset;
       return {
         etype: data.etype,
+        efloor: data.efloor?.split(",") || [],
         edesc: scene.querySelectorAll(".edesc")[0]?.innerHTML,
         name: data.name,
         ename: data.ename,
@@ -61,8 +63,13 @@ for (const eventEle of Array.from(eventEles)) {
     sceneCategoryTabList.push(scenes[0].etype);
     sceneCategoryData.push([]);
   }
+  if (scenes[0].efloor) {
+    sceneFloorList.push(...scenes[0].efloor);
+    sceneFloorList = Array.from(new Set(sceneFloorList));
+    sceneFloorList.sort();
+  }
   sceneCategoryData.at(-1)?.push(scenes[0].ename || scenes[0].name || "？？？");
-  // creat event
+  // create event
   createApp(ISEventFramework, {
     sceneData: scenes,
     isTheme,
@@ -72,4 +79,5 @@ for (const eventEle of Array.from(eventEles)) {
 createApp(ISEventCategory, {
   eventNameList: sceneCategoryData,
   tabList: sceneCategoryTabList,
+  floorList: ["ALL", ...sceneFloorList],
 }).mount(navArea!);
