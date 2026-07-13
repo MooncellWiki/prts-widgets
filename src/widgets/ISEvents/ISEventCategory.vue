@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 
 import {
   NButton,
@@ -49,6 +49,37 @@ const changeTab = (name: string) => {
   showFullCate.value = false;
 };
 
+function updateTippy(retry = 0) {
+  const tippy = (
+    globalThis as typeof globalThis & {
+      tippy6?: (
+        target: Element,
+        options: Record<string, string | number | boolean | Element>,
+      ) => void;
+    }
+  ).tippy6;
+  if (!tippy) {
+    if (retry < 20) window.setTimeout(() => updateTippy(retry + 1), 100);
+    return;
+  }
+
+  for (const e of Array.from(document.querySelectorAll(".mc-tooltips"))) {
+    if (!e.children || e.children.length < 2) continue;
+    if ((e.children[0] as Element & { _tippy?: unknown })._tippy) continue;
+    (e.children[1] as HTMLElement).style.display = "block";
+    tippy(e.children[0], {
+      content: e.children[1],
+      arrow: true,
+      theme: isDark.value ? "dark-border" : "light-border",
+      size: "large",
+      interactive: "true",
+      maxWidth: Number.parseInt((e.children[1] as HTMLElement).dataset.size!),
+      trigger:
+        (e.children[1] as HTMLElement).dataset.trigger || "mouseenter focus",
+    });
+  }
+}
+
 function checkFloorAvil(ename: string) {
   return (
     floorSortStore.floorSort.curFloorTab === 0 ||
@@ -60,6 +91,7 @@ function checkFloorAvil(ename: string) {
 
 onMounted(() => {
   floorSortStore.floorSort.floorList = props.floorList;
+  nextTick(updateTippy);
 });
 </script>
 
@@ -84,7 +116,7 @@ onMounted(() => {
               <div
                 class="border-l-4 border-l-#2f2f2f border-l-solid px-1 font-bold"
               >
-                分类筛选 | 事件导航
+                分类筛选
               </div>
               <div></div>
             </NLayout>
@@ -177,8 +209,24 @@ onMounted(() => {
             </NLayout>
             <NLayout>
               <div class="border-l-4 border-l-#2f2f2f border-l-solid px-1">
-                <b>属层筛选</b>
-                <span class="c-gray">（仅供参考）</span>
+                <b>属层筛选</b>&nbsp;
+                <span class="mc-tooltips">
+                  <span
+                    class="term"
+                    style="
+                      text-decoration: underline;
+                      white-space: nowrap;
+                      text-shadow: 0 0 1px;
+                      color: #f59e0b;
+                      cursor: help;
+                    "
+                  >
+                    <i class="mdi mdi-alert-outline"></i>
+                  </span>
+                  <span style="display: none" data-size="350">
+                    层数分类中的全部或部分内容为玩家统计数据，PRTS无法保证内容的时效性与准确性
+                  </span>
+                </span>
               </div>
               <NSpace class="my-1" :size="2">
                 <NButton
