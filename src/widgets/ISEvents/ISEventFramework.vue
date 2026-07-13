@@ -19,8 +19,8 @@ import {
 import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
-import { DataBridge } from "./ISEventDataBridge";
 import ISEventOption from "./ISEventOption.vue";
+import { floorSortStore } from "./store.ts";
 
 interface Option {
   title: string;
@@ -178,41 +178,43 @@ function getSubChooseData(scStr: string) {
 }
 onMounted(() => {
   const ename = props.sceneData[0].ename || props.sceneData[0].name || "";
-  DataBridge.floorSort.eventFloorList[ename] = props.sceneData[0].efloor || [];
+  floorSortStore.floorSort.eventFloorList[ename] =
+    props.sceneData[0].efloor || [];
+});
+
+const etype = computed(() => {
+  return props.sceneData[0].etype || "";
+});
+
+const isVisible = computed(() => {
+  return (
+    floorSortStore.floorSort.curFloorTab === 0 ||
+    (!!props.sceneData[0].efloor &&
+      props.sceneData[0].efloor.includes(
+        floorSortStore.floorSort.floorList[
+          floorSortStore.floorSort.curFloorTab
+        ],
+      ))
+  );
+});
+
+const title = computed(() => {
+  return props.sceneData[0].ename || props.sceneData[0].name || "";
 });
 </script>
 
 <template>
-  <h2 v-if="sceneData[0].etype">
-    <span :id="sceneData[0].etype" />
-    <span
-      :id="encodeURI(sceneData[0].etype).replace(/%/g, '.')"
-      class="mw-headline"
-    >
-      {{ sceneData[0].etype }}
+  <h2 v-if="etype">
+    <span :id="etype" />
+    <span :id="encodeURI(etype).replace(/%/g, '.')" class="mw-headline">
+      {{ etype }}
     </span>
   </h2>
-  <div
-    v-if="
-      DataBridge.floorSort.curFloorTab === 0 ||
-      (!!sceneData[0].efloor &&
-        sceneData[0].efloor.includes(
-          DataBridge.floorSort.floorList[DataBridge.floorSort.curFloorTab],
-        ))
-    "
-  >
+  <div v-if="isVisible">
     <h3>
-      <span :id="sceneData[0].ename || sceneData[0].name" />
-      <span
-        :id="
-          encodeURI((sceneData[0].ename || sceneData[0].name)!).replace(
-            /%/g,
-            '.',
-          )
-        "
-        class="mw-headline"
-      >
-        {{ sceneData[0].ename || sceneData[0].name }}
+      <span :id="title" />
+      <span :id="encodeURI(title!).replace(/%/g, '.')" class="mw-headline">
+        {{ title }}
       </span>
     </h3>
     <div v-if="sceneData[0].edesc" v-html="sceneData[0].edesc"></div>
@@ -231,7 +233,7 @@ onMounted(() => {
             >
               <NBreadcrumb>
                 <NBreadcrumbItem
-                  v-for="(SceneId, index) in sceneNav"
+                  v-for="(sceneId, index) in sceneNav"
                   :key="index"
                   @click="navJump(index)"
                 >
@@ -240,34 +242,34 @@ onMounted(() => {
                   </template>
                   <NDropdown
                     v-if="
-                      sceneData[SceneId].options.length > 0 &&
+                      sceneData[sceneId].options.length > 0 &&
                       index !== sceneNav.length - 1
                     "
                     placement="bottom-start"
                     :show-arrow="true"
-                    :options="optionsToNavDrop(sceneData[SceneId].options)"
+                    :options="optionsToNavDrop(sceneData[sceneId].options)"
                     @select="(k, op) => dropJump(k, index, op)"
                   >
                     <div class="trigger">
-                      <NIcon v-if="SceneId === 0">
+                      <NIcon v-if="sceneId === 0">
                         <HomeSharp />
                       </NIcon>
                       <span
                         v-else
                         :class="{
                           'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
-                            isPrtsInfo(SceneId),
+                            isPrtsInfo(sceneId),
                         }"
                       >
-                        <sup v-if="isPrtsInfo(SceneId)">
+                        <sup v-if="isPrtsInfo(sceneId)">
                           <i class="mdi mdi-rhombus-outline font-size-2"></i>
                         </sup>
-                        {{ sceneData[SceneId].nav }}
+                        {{ sceneData[sceneId].nav }}
                       </span>
                     </div>
                   </NDropdown>
                   <div v-else>
-                    <NIcon v-if="SceneId === 0">
+                    <NIcon v-if="sceneId === 0">
                       <HomeSharp />
                     </NIcon>
                     <span
@@ -275,14 +277,14 @@ onMounted(() => {
                       :class="[
                         {
                           'px-1 bg-[#00638f] b-0.5 b-[#0098dc] b-solid c-white':
-                            isPrtsInfo(SceneId),
+                            isPrtsInfo(sceneId),
                         },
                       ]"
                     >
-                      <sup v-if="isPrtsInfo(SceneId)">
+                      <sup v-if="isPrtsInfo(sceneId)">
                         <i class="mdi mdi-rhombus-outline font-size-2"></i>
                       </sup>
-                      {{ sceneData[SceneId].nav }}
+                      {{ sceneData[sceneId].nav }}
                     </span>
                   </div>
                 </NBreadcrumbItem>

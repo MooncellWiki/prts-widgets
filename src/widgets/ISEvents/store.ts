@@ -1,6 +1,6 @@
 import { reactive } from "vue";
 
-export const DataBridge = reactive<{
+export const floorSortStore = reactive<{
   floorSort: {
     floorList: string[];
     curFloorTab: number;

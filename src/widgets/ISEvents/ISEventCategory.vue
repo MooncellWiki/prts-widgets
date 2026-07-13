@@ -15,7 +15,7 @@ import {
 
 import { useTheme } from "@/utils/theme";
 
-import { DataBridge } from "./ISEventDataBridge";
+import { floorSortStore } from "./store";
 
 const props = defineProps<{
   tabList: string[];
@@ -51,15 +51,15 @@ const changeTab = (name: string) => {
 
 function checkFloorAvil(ename: string) {
   return (
-    DataBridge.floorSort.curFloorTab === 0 ||
-    DataBridge.floorSort.eventFloorList[ename].includes(
-      DataBridge.floorSort.floorList[DataBridge.floorSort.curFloorTab],
+    floorSortStore.floorSort.curFloorTab === 0 ||
+    floorSortStore.floorSort.eventFloorList[ename].includes(
+      floorSortStore.floorSort.floorList[floorSortStore.floorSort.curFloorTab],
     )
   );
 }
 
 onMounted(() => {
-  DataBridge.floorSort.floorList = props.floorList;
+  floorSortStore.floorSort.floorList = props.floorList;
 });
 </script>
 
@@ -185,13 +185,13 @@ onMounted(() => {
                   v-for="(floorName, index) in floorList"
                   :key="floorName"
                   size="small"
-                  :quaternary="index !== DataBridge.floorSort.curFloorTab"
+                  :quaternary="index !== floorSortStore.floorSort.curFloorTab"
                   :type="
-                    index === DataBridge.floorSort.curFloorTab
+                    index === floorSortStore.floorSort.curFloorTab
                       ? 'info'
                       : 'default'
                   "
-                  @click="DataBridge.floorSort.curFloorTab = index"
+                  @click="floorSortStore.floorSort.curFloorTab = index"
                 >
                   {{ floorName }}
                 </NButton>
