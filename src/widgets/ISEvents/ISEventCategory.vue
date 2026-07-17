@@ -11,6 +11,7 @@ import {
   NSpace,
   NTabPane,
   NTabs,
+  NTooltip,
 } from "naive-ui";
 
 import { useTheme } from "@/utils/theme";
@@ -177,8 +178,21 @@ onMounted(() => {
             </NLayout>
             <NLayout>
               <div class="border-l-4 border-l-#2f2f2f border-l-solid px-1">
-                <b>属层筛选</b>
-                <span class="c-gray">（仅供参考）</span>
+                <b>属层筛选</b>&nbsp;
+                <NTooltip
+                  placement="bottom"
+                  trigger="hover"
+                  :style="{ maxWidth: '350px' }"
+                >
+                  <template #trigger>
+                    <span
+                      style="white-space: nowrap; color: #f59e0b; cursor: help"
+                    >
+                      <i class="mdi mdi-alert-outline"></i>
+                    </span>
+                  </template>
+                  层数分类中的全部或部分内容为玩家统计数据，PRTS无法保证内容的时效性与准确性
+                </NTooltip>
               </div>
               <NSpace class="my-1" :size="2">
                 <NButton
