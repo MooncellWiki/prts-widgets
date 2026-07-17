@@ -85,7 +85,7 @@ onMounted(() => {
               <div
                 class="border-l-4 border-l-#2f2f2f border-l-solid px-1 font-bold"
               >
-                分类筛选
+                分类筛选 | 事件导航
               </div>
               <div></div>
             </NLayout>
