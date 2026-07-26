@@ -298,6 +298,7 @@ const mobileStyle = () => {
 
 <template>
   <NConfigProvider
+    inline-theme-disabled
     :theme="theme"
     :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"

@@ -20,6 +20,8 @@ export enum LANGUAGES {
 }
 
 export function getLanguage() {
+  if (typeof navigator === "undefined" || !navigator.language)
+    return LANGUAGES.ZH;
   const language = navigator.language.toLowerCase();
   const locales = [
     LANGUAGES.EN,

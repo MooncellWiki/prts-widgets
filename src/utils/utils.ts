@@ -66,11 +66,13 @@ export function sum(arr: Array<number>) {
 }
 
 export function isMobile(): boolean {
+  if (typeof window === "undefined") return false;
   return /(phone|pad|pod|iphone|ipod|ios|ipad|android|mobile|blackberry|iemobile|mqqbrowser|juc|fennec|wosbrowser|browserng|webos|symbian|windows phone)/i.test(
     window.navigator.userAgent,
   );
 }
 export function isMobileSkin(): boolean {
+  if (typeof document === "undefined") return false;
   return !!document
     .querySelectorAll("body")[0]
     .classList.contains("skin-minerva");

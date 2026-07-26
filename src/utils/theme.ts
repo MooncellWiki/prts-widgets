@@ -7,7 +7,13 @@ import {
   type GlobalThemeOverrides,
 } from "naive-ui";
 
+// Build-time prerendering (see src/prerender/) runs this module in Node,
+// where there is no DOM; fall back to the light theme there.
+const isClient = typeof document !== "undefined";
+
 const isWikiNight = () => {
+  if (!isClient) return false;
+
   const { classList } = document.documentElement;
   if (classList.contains("skin-theme-clientpref-night")) return true;
 
@@ -78,13 +84,15 @@ export const useTheme = (
 } => {
   const isDark = ref(isWikiNight());
 
-  useMutationObserver(
-    document.documentElement,
-    () => {
-      isDark.value = isWikiNight();
-    },
-    { attributeFilter: ["class"] },
-  );
+  if (isClient) {
+    useMutationObserver(
+      document.documentElement,
+      () => {
+        isDark.value = isWikiNight();
+      },
+      { attributeFilter: ["class"] },
+    );
+  }
 
   const theme = computed(() => (isDark.value ? darkTheme : null));
   const themeOverrides = computed(() =>

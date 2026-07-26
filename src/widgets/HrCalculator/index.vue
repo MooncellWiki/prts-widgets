@@ -37,16 +37,22 @@ const props = withDefaults(
   },
 );
 
+// Guarded so the widget shell can be prerendered in Node (src/prerender/).
+const isClient = typeof window !== "undefined";
+
 const breakpoints = useBreakpoints({ xs: 640 });
 const xs = breakpoints.smallerOrEqual("xs");
 const { isDark } = useTheme();
 const value = reactive(new Char(0));
-const shortcutParam = new URLSearchParams(window.location.search).get("filter");
-const shortcutUrl = computed(
-  () =>
-    `${window.location.origin}${
-      window.location.pathname
-    }?${new URLSearchParams({ filter: value.dump() })}`,
+const shortcutParam = isClient
+  ? new URLSearchParams(window.location.search).get("filter")
+  : null;
+const shortcutUrl = computed(() =>
+  isClient
+    ? `${window.location.origin}${
+        window.location.pathname
+      }?${new URLSearchParams({ filter: value.dump() })}`
+    : "",
 );
 const selected = computed(() => {
   return all.map((_v, i) => {
