@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from "vue";
 
-import { useBreakpoints } from "@vueuse/core";
+import { isClient, useBreakpoints } from "@vueuse/core";
 
 import Avatar from "@/components/Avatar.vue";
 import Checkbox from "@/components/Checkbox.vue";
@@ -41,12 +41,16 @@ const breakpoints = useBreakpoints({ xs: 640 });
 const xs = breakpoints.smallerOrEqual("xs");
 const { isDark } = useTheme();
 const value = reactive(new Char(0));
-const shortcutParam = new URLSearchParams(window.location.search).get("filter");
-const shortcutUrl = computed(
-  () =>
-    `${window.location.origin}${
-      window.location.pathname
-    }?${new URLSearchParams({ filter: value.dump() })}`,
+// isClient guards keep the widget shell prerenderable in Node (src/prerender/).
+const shortcutParam = isClient
+  ? new URLSearchParams(window.location.search).get("filter")
+  : null;
+const shortcutUrl = computed(() =>
+  isClient
+    ? `${window.location.origin}${
+        window.location.pathname
+      }?${new URLSearchParams({ filter: value.dump() })}`
+    : "",
 );
 const selected = computed(() => {
   return all.map((_v, i) => {

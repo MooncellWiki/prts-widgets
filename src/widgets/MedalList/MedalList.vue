@@ -168,6 +168,7 @@ const i18nConfig = getNaiveUILocale();
 <template>
   <NConfigProvider
     preflight-style-disabled
+    inline-theme-disabled
     :theme="theme"
     :locale="i18nConfig.locale"
     :date-locale="i18nConfig.dateLocale"
