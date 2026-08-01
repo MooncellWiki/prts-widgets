@@ -72,27 +72,6 @@ export class Spine {
     this.lastFrameTime = 0;
   }
 
-  async load(
-    name: string,
-    skelPath: string,
-    atlasPath: string,
-    position: Position,
-    skinName?: string,
-    premultipliedAlpha = true,
-  ): Promise<Skeleton> {
-    if (this.skeletons[name]) return this.skeletons[name];
-
-    await this.fetchAssets(skelPath, atlasPath);
-    return this.loadSkel(
-      name,
-      skelPath,
-      atlasPath,
-      position,
-      premultipliedAlpha,
-      skinName,
-    );
-  }
-
   private fetchAssets(skel: string, atlas: string): Promise<string[]> {
     const skelPromise = new Promise<string>((resolve, reject) => {
       this.assetManager.loadBinary(
@@ -156,6 +135,27 @@ export class Spine {
     };
     this.position = position;
     return this.skeletons[name];
+  }
+
+  async load(
+    name: string,
+    skelPath: string,
+    atlasPath: string,
+    position: Position,
+    skinName?: string,
+    premultipliedAlpha = true,
+  ): Promise<Skeleton> {
+    if (this.skeletons[name]) return this.skeletons[name];
+
+    await this.fetchAssets(skelPath, atlasPath);
+    return this.loadSkel(
+      name,
+      skelPath,
+      atlasPath,
+      position,
+      premultipliedAlpha,
+      skinName,
+    );
   }
 
   play(activeSkeleton: string): void {

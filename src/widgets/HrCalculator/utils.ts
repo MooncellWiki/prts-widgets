@@ -109,7 +109,27 @@ export class BitMap {
   }
 }
 export class Char {
+  static fromSource(source: Source): Char {
+    const char = new Char();
+    char.bitmap.value = 0;
+    char.bitmap.set(professionIndex - profession.indexOf(source.profession));
+    char.bitmap.set(positionIndex - position.indexOf(source.position));
+    if (source.rarity === 4)
+      char.bitmap.set(rarityIndex - rarity.indexOf("资深干员"));
+    else if (source.rarity === 5)
+      char.bitmap.set(rarityIndex - rarity.indexOf("高级资深干员"));
+    for (const v of source.tag) {
+      if (v === "新手") {
+        char.bitmap.set(rarityIndex - rarity.indexOf("新手"));
+        continue;
+      }
+      char.bitmap.set(tagIndex - tag.indexOf(v));
+    }
+    return char;
+  }
+
   bitmap: BitMap;
+
   constructor(i = 0) {
     this.bitmap = new BitMap(i);
   }
@@ -186,25 +206,6 @@ export class Char {
 
   isTagEmpty() {
     return this.bitmap.range(tagIndex - tag.length, tagIndex) === 0;
-  }
-
-  static fromSource(source: Source): Char {
-    const char = new Char();
-    char.bitmap.value = 0;
-    char.bitmap.set(professionIndex - profession.indexOf(source.profession));
-    char.bitmap.set(positionIndex - position.indexOf(source.position));
-    if (source.rarity === 4)
-      char.bitmap.set(rarityIndex - rarity.indexOf("资深干员"));
-    else if (source.rarity === 5)
-      char.bitmap.set(rarityIndex - rarity.indexOf("高级资深干员"));
-    for (const v of source.tag) {
-      if (v === "新手") {
-        char.bitmap.set(rarityIndex - rarity.indexOf("新手"));
-        continue;
-      }
-      char.bitmap.set(tagIndex - tag.indexOf(v));
-    }
-    return char;
   }
 
   dump(): string {

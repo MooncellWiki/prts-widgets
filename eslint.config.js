@@ -377,7 +377,6 @@ const unicorn = [
       "unicorn/consistent-compound-words": "off",
       "unicorn/no-unreadable-for-of-expression": "off",
       "unicorn/no-declarations-before-early-exit": "off",
-      "unicorn/consistent-class-member-order": "off",
       "unicorn/max-nested-calls": "off",
     },
   },
