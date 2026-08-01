@@ -136,6 +136,7 @@ const pickSize = () => {
 <template>
   <NConfigProvider
     preflight-style-disabled
+    inline-theme-disabled
     :theme="theme"
     :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"

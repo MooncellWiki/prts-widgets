@@ -8,9 +8,11 @@
     "create": "tsx scripts/index.ts",
     "upload": "tsx scripts/upload.ts",
     "update": "tsx scripts/update.ts",
+    "update:ssr": "tsx scripts/update-ssr.ts",
     "prune": "tsx scripts/prune.ts",
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "vue-tsc -b && vite build && pnpm run prerender",
+    "prerender": "vite build -c vite.config.prerender.ts && tsx scripts/prerender.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
@@ -35,6 +37,7 @@
     "workbox-strategies": "^7.4.1"
   },
   "devDependencies": {
+    "@css-render/vue3-ssr": "^0.15.14",
     "@eslint/js": "^10.0.1",
     "@types/ali-oss": "^6.23.3",
     "@types/crypto-js": "^4.2.2",
@@ -51,6 +54,7 @@
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
     "ali-oss": "^6.23.0",
+    "dotenv": "^17.4.2",
     "eslint": "^10.8.0",
     "eslint-config-flat-gitignore": "^2.3.0",
     "eslint-config-prettier": "^10.1.8",

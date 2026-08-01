@@ -3,9 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import OSS from "ali-oss";
+import { config as loadEnv } from "dotenv";
 
 const BUILD_DIR = "dist";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+loadEnv({
+  path: [path.join(__dirname, "../.env.dev"), path.join(__dirname, "../.env")],
+  quiet: true,
+});
 
 const dirents = fs.readdirSync(path.join(__dirname, `../${BUILD_DIR}/`), {
   withFileTypes: true,
