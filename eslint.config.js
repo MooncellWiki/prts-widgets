@@ -279,7 +279,7 @@ const vueTs = typescript
 const recommendedRules = pluginVue.configs["flat/recommended"]
   .map((c) => c.rules)
   // eslint-disable-next-line unicorn/no-array-reduce
-  .reduce((accumulator, c) => ({ ...accumulator, ...c }), {});
+  .reduce((acc, c) => ({ ...acc, ...c }), {});
 
 const vue = [
   ...vueTs,
