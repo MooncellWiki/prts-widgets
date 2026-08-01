@@ -8,6 +8,7 @@
     "create": "tsx scripts/index.ts",
     "upload": "tsx scripts/upload.ts",
     "update": "tsx scripts/update.ts",
+    "update:ssr": "tsx scripts/update-ssr.ts",
     "prune": "tsx scripts/prune.ts",
     "dev": "vite",
     "build": "vue-tsc -b && vite build && pnpm run prerender",
