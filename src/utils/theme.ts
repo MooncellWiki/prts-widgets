@@ -1,6 +1,6 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
 
-import { useMutationObserver } from "@vueuse/core";
+import { isClient, useMutationObserver } from "@vueuse/core";
 import {
   darkTheme,
   type GlobalTheme,
@@ -9,8 +9,6 @@ import {
 
 // Build-time prerendering (see src/prerender/) runs this module in Node,
 // where there is no DOM; fall back to the light theme there.
-const isClient = typeof document !== "undefined";
-
 const isWikiNight = () => {
   if (!isClient) return false;
 

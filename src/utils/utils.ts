@@ -1,3 +1,4 @@
+import { isClient } from "@vueuse/core";
 import MD5 from "md5";
 
 import { MEDIA_ENDPOINT } from "./consts";
@@ -66,13 +67,13 @@ export function sum(arr: Array<number>) {
 }
 
 export function isMobile(): boolean {
-  if (typeof window === "undefined") return false;
+  if (!isClient) return false;
   return /(phone|pad|pod|iphone|ipod|ios|ipad|android|mobile|blackberry|iemobile|mqqbrowser|juc|fennec|wosbrowser|browserng|webos|symbian|windows phone)/i.test(
     window.navigator.userAgent,
   );
 }
 export function isMobileSkin(): boolean {
-  if (typeof document === "undefined") return false;
+  if (!isClient) return false;
   return !!document
     .querySelectorAll("body")[0]
     .classList.contains("skin-minerva");
