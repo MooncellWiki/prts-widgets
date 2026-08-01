@@ -67,9 +67,9 @@ const filteredEnemyData = computed(() => {
       if (filters[key].length > 0) {
         if (
           filterConfig.groups[0].filters.includes(key) &&
-          !filters[key].some(
+          filters[key].every(
             (filter) =>
-              !!~enemy[key as keyof EnemyData].toString().indexOf(filter),
+              !~enemy[key as keyof EnemyData].toString().indexOf(filter),
           )
         )
           return false;

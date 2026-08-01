@@ -69,15 +69,12 @@ async function request({
   let requestBody: BodyInit | undefined;
 
   if (body && method === "POST") {
-    const formData = new URLSearchParams();
-    for (const [key, value] of Object.entries(body)) {
-      formData.append(key, value);
-    }
+    const formData = new URLSearchParams(body);
     requestBody = formData;
     headers["Content-Type"] = "application/x-www-form-urlencoded";
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(url.href, {
     method,
     headers,
     body: requestBody,

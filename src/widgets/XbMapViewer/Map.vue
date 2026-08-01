@@ -22,7 +22,7 @@ const tokens = computed(() => {
   for (const token of tokenInsts) {
     const pos = token.position;
     const coord = `${pos.row}-${pos.col}`;
-    result[coord] = result[coord] ?? [];
+    result[coord] ??= [];
     result[coord].push(token.inst.characterKey.replaceAll(/trap_\d+_/g, ""));
   }
   return result;
@@ -57,10 +57,7 @@ function getTile(index: number) {
   let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
   if (a === "floor" || a === "road") {
     const buildableType = props.map?.mapData.tiles[index].buildableType;
-    const isRoad =
-      buildableType === 1 ||
-      buildableType === "MELEE" ||
-      buildableType === "ALL";
+    const isRoad = [1, "MELEE", "ALL"].includes(buildableType);
     a = isRoad ? "road" : "floor";
   }
   return a;

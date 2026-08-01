@@ -56,11 +56,11 @@ export class BitMap {
   }
 
   set(index: number) {
-    this.value = this.value | (1 << index);
+    this.value |= 1 << index;
   }
 
   clear(index: number) {
-    this.value = this.value ^ (1 << index);
+    this.value ^= 1 << index;
   }
 
   range(lo: number, hi: number) {
@@ -73,7 +73,7 @@ export class BitMap {
     let res = 0;
     let tmp = this.value;
     while (tmp !== 0) {
-      tmp = tmp & (tmp - 1);
+      tmp &= tmp - 1;
       res++;
     }
     return res;
@@ -88,7 +88,7 @@ export class BitMap {
       if ((value & 1) === 1) result.push(index);
 
       index++;
-      value = value >> 1;
+      value >>= 1;
     }
     return result;
   }
@@ -101,7 +101,7 @@ export class BitMap {
       let tmp = 0;
       const indices = i.getIndict();
       for (const index of indices) {
-        tmp = tmp | (1 << selfIndices[index]);
+        tmp |= 1 << selfIndices[index];
       }
       if (tmp !== 0) result.push(tmp);
     }
@@ -115,13 +115,13 @@ export class Char {
   }
 
   selectAllProfession() {
-    for (const [i] of profession.entries()) {
+    for (const i of profession.keys()) {
       this.bitmap.set(professionIndex - i);
     }
   }
 
   unselectAllProfession() {
-    for (const [i] of profession.entries()) {
+    for (const i of profession.keys()) {
       if (this.bitmap.get(professionIndex - i) !== 0)
         this.bitmap.clear(professionIndex - i);
     }
@@ -137,7 +137,7 @@ export class Char {
   }
 
   selectAllPosition() {
-    for (const [i] of position.entries()) {
+    for (const i of position.keys()) {
       this.bitmap.set(positionIndex - i);
     }
   }
@@ -149,20 +149,20 @@ export class Char {
   }
 
   unselectAllPosition() {
-    for (const [i] of position.entries()) {
+    for (const i of position.keys()) {
       if (this.bitmap.get(positionIndex - i) !== 0)
         this.bitmap.clear(positionIndex - i);
     }
   }
 
   selectAllRarity() {
-    for (const [i] of rarity.entries()) {
+    for (const i of rarity.keys()) {
       this.bitmap.set(rarityIndex - i);
     }
   }
 
   unselectAllRarity() {
-    for (const [i] of rarity.entries()) {
+    for (const i of rarity.keys()) {
       if (this.bitmap.get(rarityIndex - i) !== 0)
         this.bitmap.clear(rarityIndex - i);
     }
@@ -173,13 +173,13 @@ export class Char {
   }
 
   selectAllTag() {
-    for (const [i] of tag.entries()) {
+    for (const i of tag.keys()) {
       this.bitmap.set(tagIndex - i);
     }
   }
 
   unselectAllTag() {
-    for (const [i] of tag.entries()) {
+    for (const i of tag.keys()) {
       if (this.bitmap.get(tagIndex - i) !== 0) this.bitmap.clear(tagIndex - i);
     }
   }

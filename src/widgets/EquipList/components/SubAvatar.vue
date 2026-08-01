@@ -31,10 +31,12 @@ const showEquips = inject("showEquips") as Ref<string[]>;
 const toggleShow = (c: CharEquips) => {
   if (c.equips.some((e) => !!e.name && showEquips.value.includes(e.name))) {
     for (const equip of props.char.equips) {
-      if (!!equip.name && showEquips.value.includes(equip.name)) {
-        const ind = showEquips.value.indexOf(equip.name);
-        showEquips.value.splice(ind, 1);
+      if (!equip.name || !showEquips.value.includes(equip.name)) {
+        continue;
       }
+
+      const ind = showEquips.value.indexOf(equip.name);
+      showEquips.value.splice(ind, 1);
     }
     showInfo.value = false;
   } else {

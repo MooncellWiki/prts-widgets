@@ -105,10 +105,10 @@ const charList = ref<Char[]>([]);
 function order() {
   const selectedList: Char[] = [];
   const result: Char[] = [];
-  for (const charId of Object.keys(charData.value)) {
+  for (const [charId, char] of Object.entries(charData.value)) {
     const index = selected.value.indexOf(charId);
     if (index !== -1) {
-      selectedList[index] = charData.value[charId];
+      selectedList[index] = char;
       continue;
     }
     if (
@@ -130,7 +130,7 @@ function order() {
     ) {
       continue;
     }
-    result.push(charData.value[charId]);
+    result.push(char);
   }
   switch (selectSort.value) {
     case "level": {
@@ -334,18 +334,16 @@ function calcEquipStyle(char: Char) {
     return equipmentInfoMap.value[char.defaultEquipId].typeIcon === "original"
       ? "height:80%"
       : "transform:translateY(-4%);height:100%;";
-  } else {
-    return "height:100%";
   }
+  return "height:100%";
 }
 function calcAvatar(avatar: PlayerInfo["status"]["avatar"]) {
   if (avatar.id) {
     return avatar.type === "ICON"
       ? docAvatar(avatar.id)
       : charAvatar(avatar.id);
-  } else {
-    return docAvatar("avatar_def_01");
   }
+  return docAvatar("avatar_def_01");
 }
 function calcServerColor(id: string) {
   if (id === "1") {

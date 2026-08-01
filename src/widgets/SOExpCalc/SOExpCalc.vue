@@ -91,7 +91,7 @@ const SOETColumns: DataTableColumns<{
     key: "exp",
     align: "center",
     render(row: { exp: string; totalexp: number }) {
-      return row.exp === "-1" ? "——" : `${row.exp}`;
+      return row.exp === "-1" ? "——" : row.exp;
     },
     title() {
       return h("b", "升级所需经验");
@@ -107,12 +107,12 @@ const SOETColumns: DataTableColumns<{
 ];
 //--
 const screenWidth = ref(document.body.clientWidth);
-function onResize() {
+const resizeObserver = new ResizeObserver(() => {
   screenWidth.value = document.body.clientWidth;
-}
-window.addEventListener("resize", onResize);
+});
+resizeObserver.observe(document.body);
 onUnmounted(() => {
-  window.removeEventListener("resize", onResize);
+  resizeObserver.disconnect();
 });
 const isMobile = computed(() => {
   return screenWidth.value < 500;
@@ -144,15 +144,17 @@ const levelChange = (role: "start" | "target") => {
 const expInputChange = (role: "start" | "target") => {
   //uplvl
   if (
-    selectLevel.value[role].exp >= getLevelMaxExp(selectLevel.value[role].level)
+    selectLevel.value[role].exp < getLevelMaxExp(selectLevel.value[role].level)
   ) {
-    selectLevel.value[role].level = Math.min(
-      selectLevel.value[role].level + 1,
-      selectLevel.value.maxLevel,
-    );
-    selectLevel.value[role].exp = 0;
-    levelChange(role);
+    return;
   }
+
+  selectLevel.value[role].level = Math.min(
+    selectLevel.value[role].level + 1,
+    selectLevel.value.maxLevel,
+  );
+  selectLevel.value[role].exp = 0;
+  levelChange(role);
 };
 
 const tableData = computed(() =>

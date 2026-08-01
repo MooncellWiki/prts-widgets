@@ -19,7 +19,7 @@ const checkboxCount = computed(() => {
 
 const cur = computed({
   get() {
-    return `${props.index}`;
+    return String(props.index);
   },
   set(v) {
     emit("update:index", Number.parseInt(v));

@@ -71,9 +71,7 @@ export function isMobile(): boolean {
   );
 }
 export function isMobileSkin(): boolean {
-  return !!document
-    .querySelectorAll("body")[0]
-    .classList.contains("skin-minerva");
+  return !!document.querySelector("body")?.classList.contains("skin-minerva");
 }
 export function isFirefox(): boolean {
   return window.navigator.userAgent.includes("Firefox");
