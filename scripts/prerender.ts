@@ -45,7 +45,9 @@ for (const name of Object.keys(shells)) {
     containerPattern,
     (_, open: string, close: string) => `${open}${html}${close}`,
   );
-  if (styles) result = result.replace("</head>", () => `${styles}</head>`);
+  // 注入到 <head> 开头、bundle 样式 <link> 之前:与运行时 css-render 挂载到
+  // document.head(位于正文里 uno 样式之前)的层叠顺序一致,同优先级时 uno 工具类胜出
+  if (styles) result = result.replace("<head>", () => `<head>${styles}`);
 
   fs.writeFileSync(templatePath, result);
   console.log(
