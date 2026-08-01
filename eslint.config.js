@@ -367,6 +367,43 @@ const unicorn = [
   },
 ];
 
+// Vendored engine: a framework-agnostic TypeScript port of the in-game AVG
+// engine (see arknights-story-player). It carries its own verified style and
+// is type-checked strictly; only relax cosmetic lint rules that would force a
+// behavior-neutral rewrite of the imported code.
+const vendoredEngine = {
+  files: ["src/widgets/StoryPlayer/engine/**/*.ts"],
+  rules: {
+    "no-void": "off",
+    "require-await": "off",
+    "no-duplicate-imports": "off",
+    "no-useless-escape": "off",
+    "no-useless-assignment": "off",
+    "unicorn/no-for-loop": "off",
+    "unicorn/no-useless-switch-case": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-reduce": "off",
+    "@typescript-eslint/consistent-type-assertions": "off",
+  },
+};
+
+// Tests for the vendored engine, ported from arknights-story-player. Same
+// rationale as vendoredEngine: mock implementations satisfy an async interface
+// signature (require-await), fixtures embed game-script data with JSON-style
+// double quotes that prettier escapes inside double-quoted strings
+// (no-useless-escape), and panels are mocked with side-effect-free stubs.
+// Relax only the rules these verified fixtures trip.
+const vendoredEngineTests = {
+  files: ["tests/**/*.spec.ts"],
+  rules: {
+    "no-void": "off",
+    "require-await": "off",
+    "no-duplicate-imports": "off",
+    "no-useless-escape": "off",
+    "unicorn/consistent-function-scoping": "off",
+  },
+};
+
 const ignores = [
   gitignore(),
   {
@@ -383,4 +420,6 @@ export default [
   ...prettier,
   ...unicorn,
   unocss,
+  vendoredEngine,
+  vendoredEngineTests,
 ];

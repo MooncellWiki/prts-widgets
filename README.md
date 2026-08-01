@@ -26,6 +26,7 @@
 - 特勤经验表 [Widget:SOExpCalc/dev](https://prts.wiki/w/Widget:SOExpCalc/dev)
 - AudioPlayerV2 [Widget:AudioPlayerV2/dev](https://prts.wiki/w/Widget:AudioPlayerV2/dev)
 - 道具一览 [Widget:ItemList/dev](https://prts.wiki/w/Widget:ItemList/dev)
+- 剧情播放器 [Widget:StoryPlayer/dev](https://prts.wiki/w/Widget:StoryPlayer/dev)
 
 ## 贡献代码
 

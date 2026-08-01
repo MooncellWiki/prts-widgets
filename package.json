@@ -14,6 +14,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepare": "simple-git-hooks"
   },
   "dependencies": {
@@ -29,6 +31,8 @@
     "lodash-es": "^4.18.1",
     "md5": "^2.3.0",
     "naive-ui": "^2.44.1",
+    "@pixi/sound": "^6.0.1",
+    "pixi.js": "8.16.0",
     "vue": "^3.5.39",
     "vue-draggable-plus": "^0.6.1",
     "workbox-routing": "^7.4.1",
@@ -59,6 +63,7 @@
     "eslint-plugin-unicorn": "^64.0.0",
     "eslint-plugin-vue": "^10.9.2",
     "globals": "^17.7.0",
+    "happy-dom": "^18.0.1",
     "prettier": "^3.9.4",
     "rollup-plugin-visualizer": "^7.0.1",
     "sass-embedded": "^1.100.0",
@@ -69,6 +74,7 @@
     "typescript-eslint": "^8.62.1",
     "unocss": "^66.7.4",
     "vite": "^8.1.0",
+    "vitest": "^4.1.10",
     "vue-eslint-parser": "^10.4.1",
     "vue-tsc": "^3.3.5"
   },

@@ -1,0 +1,327 @@
+import { Assets } from "pixi.js";
+
+import { resolveStoryAudioByKey } from "./asset";
+
+import type { Context } from "../context";
+import type { PlayMusicInput, PlaySoundInput, StoryAudio } from "./types";
+import type { IMediaInstance, Sound } from "@pixi/sound";
+
+function nowMs(): number {
+  if (typeof performance !== "undefined") return performance.now();
+  return Date.now();
+}
+
+interface ActivePlayback {
+  identity: string;
+  instance: IMediaInstance | null;
+  sound: Sound;
+}
+
+export class HtmlStoryAudio implements StoryAudio {
+  private readonly context: Context;
+  private destroyed = false;
+  private musicAudio: ActivePlayback | null = null;
+  private musicRequestId = 0;
+  // Native registers a channel in m_channels the moment the executor runs, so a
+  // musicvolume/soundvolume/stop that follows a play command in the same script
+  // always lands. Our playback is async, so the base volume lives here instead
+  // of only on the live IMediaInstance, mirroring m_currentBaseVolume.
+  private musicBaseVolume = 1;
+  private readonly soundBaseVolumes = new Map<string, number>();
+  private readonly soundRequestIds = new Map<string, number>();
+  private readonly soundCache = new Map<string, Sound>();
+  private readonly soundChannels = new Map<string, ActivePlayback>();
+
+  constructor(context: Context) {
+    this.context = context;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+
+    this.stopPlayback(this.musicAudio);
+    this.musicAudio = null;
+
+    for (const sound of this.soundChannels.values()) this.stopPlayback(sound);
+    this.soundChannels.clear();
+    this.soundBaseVolumes.clear();
+    this.soundRequestIds.clear();
+  }
+
+  async playMusic(input: PlayMusicInput): Promise<void> {
+    if (this.destroyed) return;
+
+    const mainUrl = this.resolveAudioUrl(input.key);
+    if (!mainUrl) return;
+
+    const introUrl = input.intro ? this.resolveAudioUrl(input.intro) : null;
+    const identity = `${introUrl ?? ""}\n${mainUrl}`;
+    this.musicBaseVolume = input.volume;
+    if (this.musicAudio?.identity === identity) {
+      this.setVolume(this.musicAudio, input.volume);
+      return;
+    }
+
+    const requestId = ++this.musicRequestId;
+    if (input.delayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+    if (this.destroyed || requestId !== this.musicRequestId) return;
+
+    const next = await this.createPlayback(introUrl ?? mainUrl, identity);
+    if (!next || this.destroyed || requestId !== this.musicRequestId) return;
+
+    const previous = this.musicAudio;
+    const crossfade = previous !== null && input.crossfadeMs > 10;
+    this.musicAudio = next;
+    next.instance = await this.playPlayback(next, {
+      complete: introUrl
+        ? () => {
+            if (this.destroyed || this.musicAudio !== next) return;
+            // The loop half starts at whatever the channel's base volume is by
+            // then, so ducking applied during the intro is not undone.
+            void this.playLoopMusic(mainUrl, identity, requestId);
+          }
+        : undefined,
+      loop: !introUrl,
+      volume: crossfade ? 0 : this.musicBaseVolume,
+    });
+
+    if (previous) {
+      if (crossfade) void this.fadeAndStop(previous, input.crossfadeMs);
+      else this.stopPlayback(previous);
+    }
+    if (crossfade)
+      void this.fadeVolume(next, this.musicBaseVolume, input.crossfadeMs);
+  }
+
+  async stopMusic(fadeMs: number): Promise<void> {
+    this.musicRequestId++;
+    if (!this.musicAudio) return;
+
+    const current = this.musicAudio;
+    if (this.musicAudio === current) this.musicAudio = null;
+    await this.fadeAndStop(current, fadeMs);
+  }
+
+  async playSound(input: PlaySoundInput): Promise<void> {
+    if (this.destroyed) return;
+
+    const url = this.resolveAudioUrl(input.key);
+    if (!url) return;
+
+    // Claim the channel synchronously so a soundvolume/stopsound on the very
+    // next line is not dropped while the asset is still loading.
+    const channel = this.soundChannelName(input.channel);
+    const requestId = (this.soundRequestIds.get(channel) ?? 0) + 1;
+    this.soundRequestIds.set(channel, requestId);
+    this.soundBaseVolumes.set(channel, input.volume);
+
+    if (input.delayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+    if (this.destroyed || this.soundRequestIds.get(channel) !== requestId)
+      return;
+
+    const prev = this.soundChannels.get(channel);
+    if (prev) {
+      this.stopPlayback(prev);
+      this.soundChannels.delete(channel);
+    }
+
+    const sound = await this.createPlayback(url, url);
+    if (
+      !sound ||
+      this.destroyed ||
+      this.soundRequestIds.get(channel) !== requestId
+    )
+      return;
+    this.soundChannels.set(channel, sound);
+
+    const instance = await this.playPlayback(sound, {
+      complete: input.loop
+        ? undefined
+        : () => {
+            if (this.soundChannels.get(channel) === sound)
+              this.soundChannels.delete(channel);
+          },
+      loop: input.loop,
+      volume: this.soundBaseVolumes.get(channel) ?? input.volume,
+    });
+
+    if (this.soundChannels.get(channel) !== sound) {
+      this.stopPlayback(sound);
+      return;
+    }
+
+    sound.instance = instance;
+  }
+
+  async stopSound(channel: string, fadeMs: number): Promise<void> {
+    const channelName = this.soundChannelName(channel);
+    // Cancel any playSound still waiting on its delay or on asset loading.
+    this.soundRequestIds.set(
+      channelName,
+      (this.soundRequestIds.get(channelName) ?? 0) + 1,
+    );
+    this.soundBaseVolumes.delete(channelName);
+
+    const sound = this.soundChannels.get(channelName);
+    if (!sound) return;
+
+    this.soundChannels.delete(channelName);
+    await this.fadeAndStop(sound, fadeMs);
+  }
+
+  async setSoundVolume(
+    channel: string,
+    volume: number,
+    fadeMs: number,
+  ): Promise<void> {
+    const channelName = this.soundChannelName(channel);
+    this.soundBaseVolumes.set(channelName, volume);
+
+    const sound = this.soundChannels.get(channelName);
+    if (!sound) return;
+
+    await this.fadeVolume(sound, volume, fadeMs);
+  }
+
+  async setMusicVolume(volume: number, fadeMs: number): Promise<void> {
+    // The MUSIC channel's base volume is global state that outlives any single
+    // instance, so record it even while the playback is still loading.
+    this.musicBaseVolume = volume;
+    if (!this.musicAudio) return;
+
+    await this.fadeVolume(this.musicAudio, volume, fadeMs);
+  }
+
+  private async createPlayback(
+    url: string,
+    identity: string,
+  ): Promise<ActivePlayback | null> {
+    const sound = await this.getSound(url);
+    if (!sound) return null;
+
+    return {
+      identity,
+      instance: null,
+      sound,
+    };
+  }
+
+  private async fadeVolume(
+    playback: ActivePlayback,
+    targetVolume: number,
+    durationMs: number,
+  ): Promise<void> {
+    const startVolume = this.getVolume(playback);
+    if (durationMs <= 0) {
+      this.setVolume(playback, targetVolume);
+      return;
+    }
+
+    const start = nowMs();
+
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (this.destroyed) {
+          resolve();
+          return;
+        }
+
+        const elapsed = nowMs() - start;
+        const progress = Math.min(1, elapsed / durationMs);
+        this.setVolume(
+          playback,
+          startVolume + (targetVolume - startVolume) * progress,
+        );
+
+        if (progress >= 1) {
+          resolve();
+          return;
+        }
+
+        requestAnimationFrame(tick);
+      };
+
+      requestAnimationFrame(tick);
+    });
+  }
+
+  private async playLoopMusic(
+    url: string,
+    identity: string,
+    requestId: number,
+  ): Promise<void> {
+    const music = await this.createPlayback(url, identity);
+    if (!music || this.destroyed || requestId !== this.musicRequestId) return;
+    this.musicAudio = music;
+    music.instance = await this.playPlayback(music, {
+      loop: true,
+      volume: this.musicBaseVolume,
+    });
+  }
+
+  private async fadeAndStop(
+    playback: ActivePlayback,
+    durationMs: number,
+  ): Promise<void> {
+    await this.fadeVolume(playback, 0, durationMs);
+    this.stopPlayback(playback);
+  }
+
+  private soundChannelName(channel: string): string {
+    return `avgsound_${channel}`;
+  }
+
+  private getVolume(playback: ActivePlayback): number {
+    return playback.instance?.volume ?? 1;
+  }
+
+  private setVolume(playback: ActivePlayback, volume: number): void {
+    if (playback.instance) playback.instance.volume = volume;
+  }
+
+  private stopPlayback(playback: ActivePlayback | null): void {
+    if (!playback) return;
+
+    playback.instance?.stop();
+    playback.instance = null;
+  }
+
+  private async getSound(url: string): Promise<Sound | null> {
+    const existing = this.soundCache.get(url);
+    if (existing) return existing;
+
+    const cached = Assets.get<Sound>(url);
+    if (cached) {
+      this.soundCache.set(url, cached);
+      return cached;
+    }
+
+    try {
+      const loaded = await Assets.load<Sound>(url);
+      this.soundCache.set(url, loaded);
+      return loaded;
+    } catch {
+      return null;
+    }
+  }
+
+  private async playPlayback(
+    playback: ActivePlayback,
+    options: Parameters<Sound["play"]>[0],
+  ): Promise<IMediaInstance | null> {
+    try {
+      const result = playback.sound.play(options);
+      if (result instanceof Promise) return await result.catch(() => null);
+      return result;
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveAudioUrl(key: string): string | null {
+    const raw = resolveStoryAudioByKey(key, this.context.audioVariables);
+    return raw ?? null;
+  }
+}

@@ -88,6 +88,7 @@ export default defineConfig(({ command }) => {
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
             if (id.includes("howler")) return "howler";
+            if (id.includes("pixi")) return "pixi";
             if (
               id.includes("@zumer/snapdom") ||
               id.includes("vue-draggable-plus")
