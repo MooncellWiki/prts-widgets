@@ -22,10 +22,17 @@ export class HtmlStoryAudio implements StoryAudio {
   private destroyed = false;
   private musicAudio: ActivePlayback | null = null;
   private musicRequestId = 0;
-  // Native registers a channel in m_channels the moment the executor runs, so a
-  // musicvolume/soundvolume/stop that follows a play command in the same script
-  // always lands. Our playback is async, so the base volume lives here instead
-  // of only on the live IMediaInstance, mirroring m_currentBaseVolume.
+  /**
+   * Native provenance: `Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand`,
+   * `_ExecuteMusicVolumeCommand`, `_ExecutePlaySoundCommand`,
+   * `_ExecuteSoundVolumeCommand`, `_ExecuteStopMusicCommand`, and
+   * `_ExecuteStopSoundCommand`; downstream `AudioManager` / `AudioChannel`.
+   *
+   * Ports persistent MUSIC and `avgsound_<channel>` base-volume state so a
+   * following volume/stop command observes an in-flight async web load. PIXI
+   * loading and browser playback are web adaptations of the native backend.
+   *
+   */
   private musicBaseVolume = 1;
   private readonly soundBaseVolumes = new Map<string, number>();
   private readonly soundRequestIds = new Map<string, number>();
@@ -77,8 +84,9 @@ export class HtmlStoryAudio implements StoryAudio {
       complete: introUrl
         ? () => {
             if (this.destroyed || this.musicAudio !== next) return;
-            // The loop half starts at whatever the channel's base volume is by
-            // then, so ducking applied during the intro is not undone.
+            // Native provenance: `AudioManager.PlayMusic` / `AudioChannel`.
+            // Preserve the current channel base volume while switching from
+            // intro to loop, so an intervening musicvolume command is retained.
             void this.playLoopMusic(mainUrl, identity, requestId);
           }
         : undefined,
@@ -109,8 +117,9 @@ export class HtmlStoryAudio implements StoryAudio {
     const url = this.resolveAudioUrl(input.key);
     if (!url) return;
 
-    // Claim the channel synchronously so a soundvolume/stopsound on the very
-    // next line is not dropped while the asset is still loading.
+    // Native provenance: `CommonExecutors._GenAVGSoundChannelName` and
+    // `_ExecutePlaySoundCommand`. Ports deterministic channel ownership before
+    // playback begins, so a following soundvolume/stopsound targets this sound.
     const channel = this.soundChannelName(input.channel);
     const requestId = (this.soundRequestIds.get(channel) ?? 0) + 1;
     this.soundRequestIds.set(channel, requestId);
@@ -157,7 +166,8 @@ export class HtmlStoryAudio implements StoryAudio {
 
   async stopSound(channel: string, fadeMs: number): Promise<void> {
     const channelName = this.soundChannelName(channel);
-    // Cancel any playSound still waiting on its delay or on asset loading.
+    // Web adaptation: cancellation also covers pending PIXI loads. The native
+    // command resolves the same named channel through AudioManager.
     this.soundRequestIds.set(
       channelName,
       (this.soundRequestIds.get(channelName) ?? 0) + 1,
@@ -186,8 +196,9 @@ export class HtmlStoryAudio implements StoryAudio {
   }
 
   async setMusicVolume(volume: number, fadeMs: number): Promise<void> {
-    // The MUSIC channel's base volume is global state that outlives any single
-    // instance, so record it even while the playback is still loading.
+    // Native provenance: `CommonExecutors._ExecuteMusicVolumeCommand` and
+    // `AudioChannel.TweenVolume`. MUSIC base volume outlives a playback instance,
+    // so retain it while PIXI is still loading.
     this.musicBaseVolume = volume;
     if (!this.musicAudio) return;
 

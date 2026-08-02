@@ -4,7 +4,16 @@ export type CommandExecutor<TResult> = (
   command: ParsedCommandLine,
 ) => TResult | Promise<TResult>;
 
-/** A command may have multiple subscribers, matching AVGController's executor model. */
+/**
+ * Native provenance: `Torappu.AVG.AVGController._InitExecutors`,
+ * `_GetCommandExecutors`, and `_ExecuteExecutor`.
+ *
+ * Ports the lower-cased command-key lookup and the fact that several active
+ * `ExecutorComponent.GetExecutors` registrations may subscribe to one command.
+ * Waiting/force-end policy remains in `StoryRuntime`; this is only the web
+ * dispatch container.
+ *
+ */
 export class CommandRegistry<TResult> {
   private readonly executors = new Map<
     string,

@@ -55,8 +55,9 @@ function repeat360(value: number): number {
 }
 
 /**
- * AVGUtils.CreateRotateTween (0x1839786B0): the signed sweep handed to
- * DORotate(..., RotateMode.LocalAxisAdd).
+ * Port of `Torappu.AVG.AVGUtils.CreateRotateTween`'s signed sweep for
+ * `AVGImagePanel._ExecuteImageRotate`; this only reproduces the angle choice,
+ * not DOTween's Unity transform tween.
  *
  * `inverse` is a direction switch, not just a sign for `circles`: with
  * `circles = 0` a clockwise rotation still rewrites any positive delta into
@@ -142,8 +143,9 @@ export function buildGridBackgroundRoot(
       root.addChild(sprite);
       offsetY += height;
     }
-    // Native sizeDelta only sums the first two heights, but child placement
-    // continues through all N entries. Pivot mirrors that documented quirk.
+    // `LargeBackgroundPanel._ExecuteVerticalBG` sizes its RectTransform from
+    // the first two heights but still places every child. This PIXI pivot is
+    // the coordinate-system adaptation of that quirk.
     const pivotHeight =
       (input.solidHeights[0] ?? 0) + (input.solidHeights[1] ?? 0);
     root.pivot.set(width / 2, pivotHeight / 2);

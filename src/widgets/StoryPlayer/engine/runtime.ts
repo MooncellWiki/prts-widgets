@@ -276,8 +276,8 @@ function preprocessSkipNodes(
     const line = lines[index];
     if (line.kind !== "command" || line.command !== "skipnode") continue;
 
-    // Native CalSkipMode only recognizes the exact lower-case sentinel;
-    // every other value, including a missing mode, maps to CAN_SKIP.
+    // Native port: Torappu.AVG.AVGStoryCache.CalSkipMode. Only the exact
+    // lower-case sentinel maps to FIRST_CANNOT_SKIP; every other value,
     const mode =
       toString(line.args.mode, "skip") === "nofirstskip"
         ? "nofirstskip"
@@ -321,7 +321,10 @@ export class StoryRuntime {
   private readonly skipNodeLabels: SkipNodeLabel[];
   private skipNodeQueueIndex = 0;
   private readonly skipToIndex: number;
-  /** Mirrors AVGShowItemPanel's single `_slotInUse`, which decides hideitem's return value. */
+  /**
+   * Native port: Torappu.AVG.AVGShowItemPanel's single `_slotInUse`.
+   * It determines whether `_ExecuteHideItem` blocks.
+   */
   private itemSlotInUse = false;
   private theaterMode = false;
   private theaterAutoPlayCache: AutoPlayState | null = null;
@@ -556,12 +559,12 @@ export class StoryRuntime {
   }
 
   /**
-   * AVGUtils.CalculateFadetime (0x183977E80) = animateRatio * fadetime, in ms.
+   * Native port: Torappu.AVG.AVGUtils.CalculateFadetime, adapted from seconds
+   * to milliseconds. It applies animateRatio * fadetime.
    *
    * Only panels implementing IFadeTimeRatio route through it. AVGImagePanel does
    * (background / image / imagerotate); its tween executors bypass it, and the
    * whole LargeBackgroundPanel family (largebg / verticalbg / gridbg /
-   * largebgtween) bypasses it too.
    */
   private calculateFadeMs(seconds: unknown, fallback = 0): number {
     return Math.max(
@@ -866,9 +869,9 @@ export class StoryRuntime {
 
     switch (line.command) {
       case "endtip": {
-        // AVGStoryCache.shouldProcessEndtip (0x1839BBDB0) is a computed property:
-        // (autoPlayMode is button_auto or quick_play) && !isVideoOnly. In manual
-        // mode _ExecuteEndtip returns false without touching any UI.
+        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip and
+        // AVGStoryCache.shouldProcessEndtip. It only shows and blocks in auto
+        // play for non-video-only stories; manual mode is a no-op.
         const shouldProcessEndtip =
           (this.autoPlayMode === "button_auto" ||
             this.autoPlayMode === "quick_play") &&
@@ -882,8 +885,9 @@ export class StoryRuntime {
       }
 
       case "dialog": {
-        // `[Dialog]`, `[name="X"]` and bare narration all reach _ExecuteDialog
-        // under the sentinel command name `dialog`; the multi-param forms
+        // Native port: Torappu.AVG.DialogPanel._ExecuteDialog. `[Dialog]`,
+        // `[name="X"]` and bare narration all reach it under the sentinel `dialog`;
+        // the multi-param forms
         // (`[name="X",avatarId=1]`, `[Delay=2]`, `[imagegroup=...]`) land here
         // too. Only the content-bearing branch resets multiline and blocks; an
         // empty content just hides the box and returns false.
@@ -902,6 +906,8 @@ export class StoryRuntime {
       }
 
       case "delay": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteDelayCommand.
+        // Only `time` is read and is scaled by animateRatio.
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "time"), 0) *
@@ -915,9 +921,8 @@ export class StoryRuntime {
       }
 
       case "video": {
-        // _PlayVideo (0x1839C3920) reads `url` first and uses it verbatim with no
-        // validation; only the `res` fallback goes through CheckVideoExist +
-        // GetVideoFullPath. IsMp4VideoPath has no call sites and gates nothing.
+        // Native port: Torappu.AVG.VideoPanel._ExecuteVideo / _PlayVideo. `url`
+        // takes priority and is used verbatim; only the `res` fallback is resolved
         const url = toString(this.exactArg(args, "url"));
         const res = toString(this.exactArg(args, "res"));
         if (!url && !res) {
@@ -953,12 +958,14 @@ export class StoryRuntime {
       }
 
       case "skiptothis": {
-        // Preprocess-only command. Native explicitly permits it to have no
-        // executor and silently advances when normal playback reaches it.
+        // Native port: Torappu.AVG.AVGController._PreprocessCommands. This is a
+        // preprocess-only command with no executor, so normal playback advances
         return "continue";
       }
 
       case "background": {
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage as registered by
+        // BackgroundPanel. This covers its clear/load-failure and scaled-fade
         const image = toString(this.exactArg(args, "image"));
         const fadeMs = this.calculateFadeMs(this.exactArg(args, "fadetime"));
         const block =
@@ -991,6 +998,7 @@ export class StoryRuntime {
       }
 
       case "backgroundtween": {
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageTween. Duration is
         const duration = this.exactArg(args, "duration");
 
         await this.renderer.setBackgroundTween({
@@ -1012,6 +1020,8 @@ export class StoryRuntime {
       }
 
       case "gridbg": {
+        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG. This
+        // validates a 2×2 tile set and keeps fadetime unscaled.
         const imageGroup = toString(this.exactArg(args, "imagegroup"));
         const cgGroup = toString(this.exactArg(args, "cggroup"));
         const groupSelection = resolveGroupedAssetSelection(
@@ -1075,6 +1085,8 @@ export class StoryRuntime {
       }
 
       case "verticalbg": {
+        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteVerticalBG.
+        // It accepts one width and up to four vertically stacked tiles; fadetime
         const imageGroup = toString(this.exactArg(args, "imagegroup"));
         const cgGroup = toString(this.exactArg(args, "cggroup"));
         const groupSelection = resolveGroupedAssetSelection(
@@ -1137,6 +1149,9 @@ export class StoryRuntime {
       }
 
       case "largebg": {
+        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteImage (the
+        // LargeBackgroundPanel method, not AVGImagePanel's namesake). It composes
+        // two horizontal tiles and keeps fadetime literal.
         const imageGroup = toString(this.exactArg(args, "imagegroup"));
         const cgGroup = toString(this.exactArg(args, "cggroup"));
         const groupSelection = resolveGroupedAssetSelection(
@@ -1210,6 +1225,8 @@ export class StoryRuntime {
       }
 
       case "largeimg": {
+        // Web-only compatibility extension: no native panel registers `largeimg`
+        // in the documented client; native `image` is its closest equivalent.
         const imageGroup = toString(this.arg(args, "imagegroup"));
         const cgGroup = toString(this.arg(args, "cggroup"));
         const groupSelection = resolveGroupedAssetSelection(
@@ -1279,6 +1296,8 @@ export class StoryRuntime {
       }
 
       case "image": {
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage. This is the
+        // foreground-panel registration of the same inherited executor used by
         const image = toString(this.exactArg(args, "image"));
         const fadeMs = this.calculateFadeMs(this.exactArg(args, "fadetime"));
         const block =
@@ -1311,7 +1330,8 @@ export class StoryRuntime {
       }
 
       case "showitem": {
-        // _slotStyles only registers `photo` and `cutin`; `cg` and anything else
+        // Native port: Torappu.AVG.AVGShowItemPanel._ExecuteShowItem. `_slotStyles`
+        // only registers `photo` and `cutin`; `cg` and anything else
         // miss _FindSlotStyle, which logs an error and finishes the command
         // without rendering. Every shipped sample is the default `photo`.
         const style = toString(this.exactArg(args, "style"), "photo");
@@ -1341,6 +1361,7 @@ export class StoryRuntime {
           return "continue";
         }
 
+        // Native port scope: AVGShowItemPanel._ExecuteShowItem / _ExecuteHideItem.
         // Neither executor reads `block`: showitem always returns true, and
         // hideitem returns true only while a slot is actually in use. The photo
         // slot's serialized defaults are _defaultFadeTime 0.5 and
@@ -1374,13 +1395,15 @@ export class StoryRuntime {
       }
 
       case "cgitem": {
+        // Native port: Torappu.AVG.AVGCgItemPanel._ExecuteShowCgItem. This
+        // adapter preserves the id-derived slot key and independent transform
         const image = toString(this.exactArg(args, "image"));
         const id = toString(this.exactArg(args, "id"));
         const key = id ? `${image}_${id}` : image;
         const style = toString(this.exactArg(args, "style"), "cg");
         if (style === "blocker") {
-          // Native uses a scene-resident sprite and deliberately does not put
-          // this instance in m_slotsInUseDict. No shipped story uses it.
+          // Native port scope: AVGCgItemPanel._ShowItem's `blocker` branch uses a
+          // scene-resident sprite and deliberately skips m_slotsInUseDict. No
           this.warn(
             "unsupported_command",
             "cgitem style=blocker uses a native-only scene sprite",
@@ -1436,6 +1459,8 @@ export class StoryRuntime {
       }
 
       case "hidecgitem": {
+        // Native port: Torappu.AVG.AVGCgItemPanel._ExecuteHideCgItem. An omitted
+        // key clears all slots; a supplied image/id selects one.
         const image = toString(this.exactArg(args, "image"));
         const id = toString(this.exactArg(args, "id"));
         const key = image || id ? (id ? `${image}_${id}` : image) : undefined;
@@ -1452,6 +1477,7 @@ export class StoryRuntime {
       }
 
       case "imagetween": {
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageTween. Its duration
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "duration"), 0) * 1000,
@@ -1473,6 +1499,7 @@ export class StoryRuntime {
       }
 
       case "imagerotate": {
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageRotate. Unlike the
         await this.renderer.setImageRotate({
           angleDeg: toNumber(this.exactArg(args, "angle"), 0),
           block: toBoolean(this.exactArg(args, "block"), false),
@@ -1484,6 +1511,8 @@ export class StoryRuntime {
       }
 
       case "largebgtween": {
+        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween.
+        // It transforms the existing large-background container without loading
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "duration"), 0) * 1000,
@@ -1506,6 +1535,7 @@ export class StoryRuntime {
       }
 
       case "largeimgtween": {
+        // Web-only compatibility extension paired with `largeimg`; it has no
         const xScale = toOptionalNumber(this.arg(args, "xscale"));
         const yScale = toOptionalNumber(this.arg(args, "yscale"));
         const x = toOptionalNumber(this.arg(args, "x"));
@@ -1530,6 +1560,8 @@ export class StoryRuntime {
       }
 
       case "blocker": {
+        // Native port: Torappu.AVG.AVGBlockerPanel._ExecuteBlocker. The malformed
+        // default `defualt` is intentional, and fadetime is scaled.
         const styleArg = toString(this.exactArg(args, "style"), "defualt");
         const style =
           styleArg === "slider" || styleArg === "verticalslider"
@@ -1570,7 +1602,8 @@ export class StoryRuntime {
           0,
           Math.round(toNumber(this.exactArg(args, "fadetime"), 0.4) * 1000),
         );
-        // _ExecuteCurtain zeroes its closure's block field on both the
+        // Native port: Torappu.AVG.AVGCurtainPanel._ExecuteCurtain. It zeroes its
+        // closure's block field on both the
         // zero-fadetime and the direction < 0 paths, so only a real curtain tween
         // can block -- the same short circuit blocker has.
         const block =
@@ -1608,8 +1641,8 @@ export class StoryRuntime {
         const rawSlot = toString(args.slot).trim();
         const slot = this.parseCharacterSlot(rawSlot);
         const nameRef = toString(args.name);
-        // _ExecuteCharslot (0x1839A8460): duration defaults to 0.0 and goes through
-        // CalculateFadetime; NeedSkipAnimation is MathUtil.IsZero(duration).
+        // Native port: Torappu.AVG.AVGCharacterslotPanel._ExecuteCharslot. Duration
+        // defaults to 0.0 and goes through CalculateFadetime; zero skips animation.
         const durationMs = Math.round(this.calculateFadeMs(args.duration, 0));
         const block = toBoolean(args.isblock, false);
 
@@ -1712,8 +1745,9 @@ export class StoryRuntime {
         const name2Ref = toString(args.name2);
         const focus = toNumber(args.focus, 0);
         const durationMs = this.calculateFadeMs(args.fadetime, 0.15);
-        // _ExecuteCharacter (0x1839C60D0) reads `isblock`, not `block`, and returns
-        // it raw without registering any tween callback -- returning true would
+        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacter. It reads
+        // `isblock`, not `block`, and returns it raw without registering any tween
+        // callback -- returning true would
         // deadlock the queue since nothing ever calls FinishCommand. Scripts only
         // ever write `block=`, which is not a key this command reads, so the
         // command is effectively never blocking. Reproduce that, not the deadlock.
@@ -1781,6 +1815,8 @@ export class StoryRuntime {
       }
 
       case "characteraction": {
+        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacterAction. It uses
+        // literal fadetime and accepts both legacy block spellings.
         const type = this.parseCharacterActionType(args.type);
         if (!type) {
           this.warn(
@@ -1839,10 +1875,10 @@ export class StoryRuntime {
 
         const nameRef = toString(args.name).trim();
         const resolved = nameRef ? this.resolveCharacterName(nameRef) : null;
+        // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteCharacterCutin.
         // Defaults come from the cutin slot's serialized fields
         // (_defaultFadetime = 0.4, _defaultSlotWidth = 200), not from PRTS's
         // 0.14 / 150. `block` really is the key here, unlike the rest of the
-        // character family, which reads `isblock`.
         const fadeMs = Math.max(
           0,
           Math.round(toNumber(args.fadetime, 0.4) * 1000),
@@ -1886,8 +1922,8 @@ export class StoryRuntime {
       }
 
       case "interlude": {
-        // Native validates with default 0, then constructs CutinParam with
-        // default -1. This makes an omitted channel different from channel=-1.
+        // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteInterlude and
+        // _GenCutinParamWithCommand. Validation uses default 0, while CutinParam
         const checkedChannel = Math.trunc(
           toNumber(this.exactArg(args, "channel"), 0),
         );
@@ -1962,6 +1998,7 @@ export class StoryRuntime {
       }
 
       case "animtext": {
+        // Native port: Torappu.AVG.AVGDisplayableExecutor._ExecuteAnimatedText.
         const rawPosition = this.exactArg(args, "pos");
         const parsedPosition = parseVector2(rawPosition);
         if (rawPosition !== undefined && !parsedPosition)
@@ -1982,6 +2019,7 @@ export class StoryRuntime {
       }
 
       case "avgdisplay": {
+        // Native port: Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable
         const optional = (key: string) =>
           toOptionalNumber(this.exactArg(args, key));
         const rawStyle = toString(this.exactArg(args, "style"));
@@ -2047,6 +2085,8 @@ export class StoryRuntime {
       }
 
       case "playmusic": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand.
+        // Audio calls are asynchronous and do not block the command loop.
         const key = toString(this.exactArg(args, "key"));
         if (!key) {
           this.warn("parse", "playmusic key is empty");
@@ -2078,6 +2118,7 @@ export class StoryRuntime {
       }
 
       case "stopmusic": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopMusicCommand.
         void this.audio.stopMusic(
           Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
         );
@@ -2085,6 +2126,7 @@ export class StoryRuntime {
       }
 
       case "musicvolume": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteMusicVolumeCommand.
         void this.audio.setMusicVolume(
           toNumber(this.exactArg(args, "volume"), 1),
           Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
@@ -2093,6 +2135,8 @@ export class StoryRuntime {
       }
 
       case "playsound": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
+        // Channel defaults to key; the call is non-blocking.
         const key = toString(this.exactArg(args, "key"));
         if (!key) {
           this.warn("parse", "playsound key is empty");
@@ -2117,6 +2161,7 @@ export class StoryRuntime {
       }
 
       case "stopsound": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopSoundCommand.
         const key = toString(this.exactArg(args, "key"));
         void this.audio.stopSound(
           toString(this.exactArg(args, "channel"), key),
@@ -2126,6 +2171,7 @@ export class StoryRuntime {
       }
 
       case "soundvolume": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteSoundVolumeCommand.
         void this.audio.setSoundVolume(
           toString(this.exactArg(args, "channel")),
           toNumber(this.exactArg(args, "volume"), 1),
@@ -2135,6 +2181,8 @@ export class StoryRuntime {
       }
 
       case "cameraeffect": {
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect. This
+        // covers its Grayscale/Colorinverse/Chaos dispatch and scaled fadetime.
         const effect = toString(this.exactArg(args, "effect"));
         const block = toBoolean(this.exactArg(args, "block"), false);
         const keep = toBoolean(this.exactArg(args, "keep"), false);
@@ -2172,6 +2220,7 @@ export class StoryRuntime {
       }
 
       case "camerashake": {
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraShake. Duration,
         await this.renderer.shakeCamera({
           block: toBoolean(this.exactArg(args, "block"), false),
           durationMs:
@@ -2193,6 +2242,7 @@ export class StoryRuntime {
       }
 
       case "focusout": {
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusout. Its duration
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "duration"), 0) * 1000,
@@ -2211,6 +2261,7 @@ export class StoryRuntime {
       }
 
       case "focusparam": {
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This is a
         const effect = toString(this.exactArg(args, "effect"));
         this.renderer.setFocusParam({
           blur: toBoolean(this.exactArg(args, "blur"), true),
@@ -2223,6 +2274,8 @@ export class StoryRuntime {
       }
 
       case "multiline": {
+        // Native port: Torappu.AVG.DialogPanel._ExecuteMultiline. Consecutive
+        // fragments append until `end`; they share the typewriter timing model.
         const text = line.trailingText;
         if (!text) {
           this.renderer.setDialogue("", "");
@@ -2246,6 +2299,8 @@ export class StoryRuntime {
       }
 
       case "subtitle": {
+        // Native port: Torappu.AVG.SubtitlePanel._ExecuteSubtitle. The script's
+        // `delay` parameter is ignored; typing speed is global.
         const text = this.translateText(toString(this.exactArg(args, "text")));
 
         if (!text) {
@@ -2276,6 +2331,8 @@ export class StoryRuntime {
       }
 
       case "sticker": {
+        // Native port: Torappu.AVG.StickerPanel._ExecuteSticker. The state is a
+        // multi-id slot dictionary, with show/append/hide behavior selected by id
         const id = toString(this.exactArg(args, "id"));
         if (!id) {
           this.warn("parse", "sticker id is empty");
@@ -2327,6 +2384,7 @@ export class StoryRuntime {
       }
 
       case "timersticker": {
+        // Native port: Torappu.AVG.StickerPanel._ExcuteTimerSticker. This is a
         await this.renderer.setTimerSticker({
           durationMs:
             Math.max(0, toNumber(this.exactArg(args, "duration"), 1) * 1000) ||
@@ -2346,6 +2404,8 @@ export class StoryRuntime {
       }
 
       case "timerclear": {
+        // Native port: Torappu.AVG.StickerPanel._ExcuteTimerClier / AVGTimerView.
+        // StopTimer hides the reusable slot rather than destroying it.
         await this.renderer.clearTimerSticker({
           durationMs: Math.max(
             0,
@@ -2356,6 +2416,8 @@ export class StoryRuntime {
       }
 
       case "stickerclear": {
+        // Native port: Torappu.AVG.StickerPanel._ExcuteClear / _RecycleStickers.
+        // It clears all sticker slots and also stops the timer-sticker path.
         this.stickerIds.clear();
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
@@ -2365,6 +2427,8 @@ export class StoryRuntime {
       }
 
       case "spellsticker": {
+        // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellSticker.
+        // `block` waits for a click, whose follow-up hides the sticker.
         const id = toString(this.exactArg(args, "id"));
         if (!id) return "continue";
         const action = toString(this.exactArg(args, "action"), "show");
@@ -2393,6 +2457,7 @@ export class StoryRuntime {
       }
 
       case "spellstickerclear": {
+        // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellStickerClear.
         await this.renderer.clearSpellStickers();
         this.pendingInputEffect = null;
         return toBoolean(this.exactArg(args, "block"), false)
@@ -2401,6 +2466,8 @@ export class StoryRuntime {
       }
 
       case "theater": {
+        // Native port: Torappu.AVG.AVGTheaterLabel._ExecuteTheaterNode. Web adapts
+        // the native theater UI mode to autoplay state only.
         const mode = toBoolean(this.exactArg(args, "mode"), true);
         if (mode && !this.theaterMode) {
           this.theaterAutoPlayCache = this.getAutoPlayState();
@@ -2423,6 +2490,8 @@ export class StoryRuntime {
       }
 
       case "decision": {
+        // Native port: Torappu.AVG.DecisionPanel._ExecuteDecision. Selection writes
+        // a value for the command-loop predicate gate; it is not a label jump.
         const autoPlayCache = this.autoPlayMode;
         this.setAutoPlayMode("default");
         this.decisionSelectValue = 0;
@@ -2455,6 +2524,8 @@ export class StoryRuntime {
       }
 
       case "predicate": {
+        // Native port: Torappu.AVG.DecisionPanel._ExecutePredicate. This ghost
+        // command only replaces the current reference-value gate.
         const references = this.exactArg(args, "references");
         this.decisionReferences =
           references === undefined

@@ -5,6 +5,11 @@ import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
 
 import type { Container as ContainerType } from "pixi.js";
 
+/**
+ * Web/PIXI presentation for `Torappu.AVG.DecisionPanel._ExecuteDecision`.
+ * The runtime owns predicate and skip policy; this class only blocks for a
+ * selected value and adapts native option widgets to browser pointer events.
+ */
 export class DecisionPanel {
   private container: Container | null = null;
   private resolve: ((value: number) => void) | null = null;

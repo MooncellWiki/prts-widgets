@@ -13,6 +13,12 @@ import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
 
 import type { Container } from "pixi.js";
 
+/**
+ * Web/PIXI reconstruction of the visual surface used by
+ * `Torappu.AVG.DialogPanel._ExecuteDialog`. Command sequencing, typewriter,
+ * and click semantics remain in the runtime; this class adapts scene-authored
+ * Unity UI layout and text measurement to PIXI.
+ */
 export class DialogPanel {
   private bottomGradient: Sprite | null = null;
   private dialogue: Text | null = null;

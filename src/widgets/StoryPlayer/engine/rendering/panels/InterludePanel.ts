@@ -24,6 +24,11 @@ function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
 }
 
+/**
+ * Port scope: `Torappu.AVG.AVGCharacterCutinPanel._ExecuteInterlude`, including
+ * channel replacement, template masking, and block timing. Containers/masks
+ * are a Web/PIXI adaptation of the native character-cutin prefab hierarchy.
+ */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
 

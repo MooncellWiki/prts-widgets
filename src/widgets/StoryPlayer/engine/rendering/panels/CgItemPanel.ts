@@ -46,6 +46,11 @@ function rgb(color: { r: number; g: number; b: number }): number {
   return (channel(color.r) << 16) | (channel(color.g) << 8) | channel(color.b);
 }
 
+/**
+ * Port scope: `Torappu.AVG.AVGCgItemPanel._ExecuteShowCgItem` and
+ * `_ExecuteHideCgItem`, including independent delayed tracks and clear-all's
+ * non-blocking completion. PIXI sprites substitute for `AVGShowItemCgSlot`.
+ */
 export class CgItemPanel {
   private readonly states = new Map<string, CgItemState>();
 
@@ -98,10 +103,9 @@ export class CgItemPanel {
       );
     };
 
-    // AVGShowItemCgSlot.Show drives Transform.localPosition through DOLocalMove,
-    // and _GenPosByRaw parses "x,y" without touching the sign. That is a
-    // different coordinate space from the sticker text view, which negates y
-    // before writing anchoredPosition -- do not carry that negation over here.
+    // `Torappu.AVG.AVGShowItemCgSlot.Show` drives Transform.localPosition and
+    // `_GenPosByRaw` keeps the raw y sign. PIXI uses sprite.position as the
+    // coordinate-system adaptation, so do not inherit sticker's UI-y inversion.
     if (input.positionFrom && input.positionTo) {
       if (input.positionDurationMs > 0) {
         sprite.position.set(input.positionFrom.x, input.positionFrom.y);
@@ -156,7 +160,8 @@ export class CgItemPanel {
       }
     }
 
-    // Native's rfrom > 0 guard is intentional, despite being surprising.
+    // `AVGCgItemPanel._ExecuteShowCgItem` intentionally guards this branch
+    // with `rfrom > 0`; retain that behavior despite the surprising condition.
     if (input.rotationFrom <= 0) {
       if (input.rotationDurationMs > 0) {
         sprite.angle += input.rotationFrom;
@@ -211,7 +216,7 @@ export class CgItemPanel {
         () => state.root.destroy({ children: true }),
       );
     }
-    // Native clear-all calls FinishCommand immediately even when block=true.
+    // `_ExecuteHideCgItem` completes clear-all immediately even if `block=true`.
   }
 
   targets(key: string): Container[] {

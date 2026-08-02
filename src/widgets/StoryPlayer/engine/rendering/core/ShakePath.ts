@@ -18,7 +18,11 @@ function randomRange(min: number, max: number, random: RandomSource): number {
   return min + (max - min) * random();
 }
 
-/** Build the waypoint array used by DOTween's vector-based Shake overload. */
+/**
+ * Ports the waypoint selection used by
+ * `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake` through DOTween's vector
+ * shake overload. Sampling and scheduling below are a Web/PIXI adaptation.
+ */
 export function buildShakePath(
   durationMs: number,
   input: ShakePathInput,

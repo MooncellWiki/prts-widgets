@@ -19,6 +19,11 @@ function splitContent(content: string): [string, string] {
   return [parts.get(1) ?? "", parts.get(2) ?? ""];
 }
 
+/**
+ * Port scope: `Torappu.AVG.SpellStickerPanel._ExecuteSpellSticker` and
+ * `_ExecuteSpellStickerClear` state transitions. The two supported styles are
+ * lightweight PIXI approximations of their prefab visuals, not Animator ports.
+ */
 export class SpellStickerPanel {
   private readonly orphans = new Set<Container>();
   private readonly views = new Map<string, SpellStickerView>();

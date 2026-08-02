@@ -2,6 +2,11 @@ import { browserAnimationClock } from "../../execution";
 
 import type { AnimationClock } from "../../execution";
 
+/**
+ * Web-only animation adapter. AVG executors create DOTween sequences; callers
+ * preserve their documented command timing while this class uses browser frames
+ * instead of claiming a one-to-one native port.
+ */
 export class TweenRunner {
   constructor(
     private readonly isAlive: () => boolean,

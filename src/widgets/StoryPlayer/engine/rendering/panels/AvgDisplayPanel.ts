@@ -18,6 +18,11 @@ type Tween = (
   complete?: () => void,
 ) => Promise<void>;
 
+/**
+ * Port scope: `Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable`.
+ * It retains id replacement, slot/style routing, and command timing; PIXI
+ * containers and the currently supported `bg` asset are Web adaptations.
+ */
 export class AvgDisplayPanel {
   private readonly states = new Map<string, AvgDisplayState>();
 

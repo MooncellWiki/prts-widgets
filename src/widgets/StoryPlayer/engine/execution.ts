@@ -6,6 +6,14 @@ export interface ExecutionHandle {
   end: (reason?: ExecutionEndReason) => void;
 }
 
+/**
+ * Native provenance: `Torappu.AVG.CommandExecutorWrapper` completion and
+ * force-end lifecycle.
+ *
+ * Ports one-shot command completion with an explicit blocking flag. A Promise
+ * is the web adaptation of native finish callbacks and coroutine resumption.
+ *
+ */
 export function createExecutionHandle(
   blocking: boolean,
   onEnd?: (reason: ExecutionEndReason) => void,

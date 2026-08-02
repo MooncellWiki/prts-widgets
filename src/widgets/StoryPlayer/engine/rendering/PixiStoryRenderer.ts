@@ -150,6 +150,12 @@ interface CurtainRenderState {
   tweenSessionId: number;
 }
 
+/**
+ * Web/PIXI renderer for the AVG command surfaces. Each command method ports
+ * the documented observable state and blocking boundaries, while containers,
+ * filters, and browser timing are adaptations rather than a Unity scene port.
+ * Command-specific native provenance is recorded at the behavior boundaries.
+ */
 export class PixiStoryRenderer implements StoryRenderer {
   private app: Application | null = null;
   private readonly layers = new LayerGraph();
@@ -438,6 +444,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     return this.decisionPanel.show(options, values);
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage` for
+   * the `background` path: replacement, initial transform, cross-fade, and
+   * block boundary. PIXI roots replace the two Unity Image widgets.
+   */
   async setBackground(key: string, input?: BackgroundInput): Promise<void> {
     const texture = await this.textureForImageKey(key, "background");
     if (!texture) return;
@@ -494,6 +505,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageTween`'s foreground
+   * transform semantics. Browser interpolation replaces the DOTween sequence.
+   */
   async setBackgroundTween(input: BackgroundTweenInput): Promise<void> {
     const root = this.backgroundRoot;
     if (!root || root.parent !== this.backgroundLayer) return;
@@ -545,6 +560,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port scope: `Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG` and
+   * `_LoadImage`, including all-or-nothing asset loading and replacement.
+   * `Container` composition is the Web adaptation of Unity RectTransforms.
+   */
   async setGridBackground(input: GridBackgroundInput): Promise<void> {
     const sessionId = ++this.gridBackgroundSessionId;
     this.largeBackgroundTweenSessionId += 1;
@@ -618,6 +638,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Web-only legacy compatibility surface. The investigated client has no
+   * `largeimg` command or corresponding native executor, so this must not be
+   * represented as a port; it remains isolated from the real `image` path.
+   */
   async setLargeImage(input: GridBackgroundInput): Promise<void> {
     const sessionId = ++this.largeImageSessionId;
     this.largeImageTweenSessionId += 1;
@@ -706,6 +731,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage` for
+   * the `image` path. Sprite replacement and fade behavior are preserved;
+   * PIXI geometry is an adaptation of the native Image/RectTransform pair.
+   */
   async setImage(key: string, input?: BackgroundInput): Promise<void> {
     const texture = await this.textureForImageKey(key, "image");
     if (!texture) return;
@@ -786,6 +816,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     await this.interludePanel.run(input);
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGCharacterCutinPanel._ExecuteCharacterCutin`
+   * and `AVGCharacterCutinSlot.Show`/hide fade styles. Crop expansion is
+   * reproduced with PIXI dimensions and masks rather than Unity UI widgets.
+   */
   async setCharacterCutin(input: CharacterCutinInput): Promise<void> {
     if (!this.app) return;
 
@@ -1015,12 +1050,18 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGShowItemPanel._ExecuteShowItem` / `_ShowItem`.
+   * It retains the single-slot replacement and photo fade; PIXI drawing is an
+   * approximation of the serialized show-item prefab.
+   */
   async showItem(input: ShowItemInput): Promise<void> {
     const texture = await this.textureForImageKey(input.key, "image");
     if (!texture) return;
 
-    // AVGShowItemPanel owns a single slot, so a second showitem replaces the
-    // first rather than stacking on top of it.
+    // `AVGShowItemPanel._ExecuteShowItem` owns one slot, so a second showitem
+    // replaces the first rather than stacking on it. See the command evidence
+    // above; PIXI children are only the storage adaptation.
     this.itemLayer.removeChildren();
 
     const sprite = new Sprite(texture);
@@ -1128,6 +1169,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageTween` for the foreground
+   * sprite. PIXI interpolation substitutes for native DOTween.
+   */
   async setImageTween(input: ImageTweenInput): Promise<void> {
     if (!this.imageSprite) return;
 
@@ -1180,6 +1225,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port of `Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween` for
+   * `largebg`; it intentionally uses the panel's direct tween timing.
+   */
   async setLargeBackgroundTween(
     input: LargeBackgroundTweenInput,
   ): Promise<void> {
@@ -1233,6 +1282,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Web-only companion to the legacy `setLargeImage` surface: the investigated
+   * client has no `largeimgtween` executor. It is intentionally not a native
+   * provenance claim.
+   */
   async setLargeImageTween(input: LargeBackgroundTweenInput): Promise<void> {
     const root = this.largeImageRoot;
     if (!root || root.parent !== this.imageLayer) return;
@@ -1284,10 +1338,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageRotate`: rotate the panel
+   * transform rather than its foreground Image, preserving angle across image
+   * swaps. `imageLayer` is the corresponding PIXI adaptation.
+   */
   async setImageRotate(input: ImageRotateInput): Promise<void> {
-    // _ExecuteImageRotate (0x1839B2290) rotates the panel's own _rectTransform,
-    // never the fore image, so the angle survives image swaps and stacks with the
-    // position/scale that imagetween writes onto the sprite.
     const target = this.imageLayer;
     const sessionId = ++this.imageRotateSessionId;
     const startAngle = target.angle;
@@ -1320,6 +1376,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port scope: `Torappu.AVG.CharacterPanel._ExecuteCharacter` and its
+   * character-slot branch. Slot state and transitions are preserved; display
+   * hierarchy and texture composition are Web/PIXI adaptations.
+   */
   async setCharacter(input: CharacterSlotInput): Promise<void> {
     if (this.isCharacterSlotCommand(input)) {
       await this.setCharacterSlot(input);
@@ -1575,6 +1636,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else await run;
   }
 
+  /**
+   * Port scope: `Torappu.AVG.CharacterPanel._ExecuteCharacterAction` and its
+   * move/jump/shake/zoom/exit handlers. Browser tween sampling adapts DOTween,
+   * but keeps the per-action state and completion boundary.
+   */
   async runCharacterAction(input: CharacterActionInput): Promise<void> {
     const state = this.characterSlots.get(
       this.normalizeCharacterSlot(input.slot),
@@ -1822,6 +1888,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGBlockerPanel._ExecuteBlocker`, including the
+   * zero-duration and idempotent inverse branches. A PIXI sprite stands in for
+   * the native blocker view.
+   */
   async setBlocker(input: BlockerInput): Promise<void> {
     const blocker = this.ensureBlocker();
     if (input.style === "default" && input.image) {
@@ -1856,9 +1927,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    // _ExecuteBlocker assigns a literal -1 to the axis rather than negating the
-    // current value, so repeated inverse commands are idempotent; inverse=false
-    // never restores +1, only OnReset does.
+    // `AVGBlockerPanel._ExecuteBlocker` assigns literal -1 rather than negating
+    // the current axis: repeated inverse commands are idempotent, and only reset
     if (input.inverse) {
       if (input.style === "slider") blocker.scale.x = -1;
       else if (input.style === "verticalslider") blocker.scale.y = -1;
@@ -1886,6 +1956,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGCurtainPanel._ExecuteCurtain`. It keeps the
+   * direction state, delayed size/alpha transition, and zero-duration branch;
+   * Graphics rectangles are a Web/PIXI adaptation of `AVGCurtain` widgets.
+   */
   async setCurtain(input: CurtainInput): Promise<void> {
     const direction = input.direction;
     const vector = this.resolveCurtainVector(direction);
@@ -1942,6 +2017,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect` for the
+   * grayscale/inverse branches and their completion behavior. A PIXI color
+   * filter substitutes for `AVGSceneEffectManager`'s camera post-process.
+   */
   async setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
     amount: number,
@@ -2005,13 +2085,13 @@ export class PixiStoryRenderer implements StoryRenderer {
       case "char": {
         return [this.charLayer];
       }
-      // ck_cg_1/2 are registered by the AVGImagePanel base class, i.e. the
-      // `image` command's fore/back images -- not by anything CG-related.
+      // `AVGImagePanel._PostDisplayKey` registers ck_cg_1/2 for `image`'s
+      // fore/back images, not CG objects.
       case "cg": {
         return [this.imageLayer];
       }
-      // ck_lbg_1..4 are registered by LargeBackgroundPanel._PostDisplayKey over
-      // its `_images` list, which only the `largebg` command fills.
+      // `LargeBackgroundPanel._PostDisplayKey` registers ck_lbg_1..4 over its
+      // `_images` list, which only `largebg` fills.
       case "lbg": {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
@@ -2030,6 +2110,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
   }
 
+  /**
+   * Port of `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake`: it moves the
+   * scene root, not independent visual layers. Path sampling is a Web/PIXI
+   * adaptation of DOTween's shake tween.
+   */
   async shakeCamera(input: CameraShakeInput): Promise<void> {
     this.stopCameraShake();
 
@@ -2066,6 +2151,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
   }
 
+  /**
+   * Port scope: `Torappu.AVG.SubtitlePanel._ExecuteSubtitle` normal-playback
+   * semantics. PIXI text/typewriter scheduling adapts `AVGTypeWriterText`;
+   * playback/reader-mode executor variants are intentionally not represented.
+   */
   async setSubtitle(input: SubtitleInput): Promise<void> {
     const subtitle = this.subtitleText;
     if (!subtitle) return;
@@ -2125,6 +2215,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     });
   }
 
+  /**
+   * Port scope: `Torappu.AVG.StickerPanel._ExecuteSticker` and its append,
+   * fade, and typewriter state. PIXI Text replaces the native sticker prefab.
+   */
   async setSticker(input: StickerInput): Promise<void> {
     const sticker = this.ensureStickerText(input.id);
     const wasActive = this.stickerRichChars.has(input.id);
@@ -2190,6 +2284,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel.show(input);
   }
 
+  /**
+   * Port scope: `Torappu.AVG.StickerPanel._ExcuteTimerSticker` (native spelling)
+   * and `AVGTimerView.RenderTimer`. Browser intervals and PIXI text adapt the
+   * native timer view; this command itself never supplies a block boundary.
+   */
   async setTimerSticker(input: TimerStickerInput): Promise<void> {
     const timer = this.ensureTimerStickerText();
     this.clearTimerInterval();

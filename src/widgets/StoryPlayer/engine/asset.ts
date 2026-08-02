@@ -1,5 +1,14 @@
 const TORAPPU_ORIGIN = "https://torappu.prts.wiki";
 
+/**
+ * Native provenance: `Torappu.ResourceRouter.GetBackgroundPath`, `GetImagePath`,
+ * `GetCharacterPath`, `GetItemPath`, `GetMusicPath`, and `GetAudioPath`.
+ *
+ * Ports the AVG asset-family routing. HTTP URLs, extension conversion, and URL
+ * escaping are web delivery adaptations rather than native behavior.
+ *
+ */
+
 function normalizeImageKey(rawKey: string): string {
   return rawKey.trim().toLowerCase();
 }

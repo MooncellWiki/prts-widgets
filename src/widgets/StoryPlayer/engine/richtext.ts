@@ -5,6 +5,16 @@ export interface RichChar {
 
 const COLOR_TAG_RE = /<color=(#[^>]+)>([\s\S]*?)<\/color>/gi;
 
+/**
+ * Native provenance: Unity `UnityEngine.UI.Text` rich-text handling as used by
+ * `Torappu.AVG.AVGTypeWriterText.BeginText` and the dialog/sticker/subtitle
+ * executors.
+ *
+ * Ports only `<color>` spans into PIXI tag styles. Other Unity rich-text tags
+ * remain outside this focused web adaptation.
+ *
+ */
+
 export function parseRichChars(text: string): RichChar[] {
   const re = new RegExp(COLOR_TAG_RE.source, COLOR_TAG_RE.flags);
   const chars: RichChar[] = [];

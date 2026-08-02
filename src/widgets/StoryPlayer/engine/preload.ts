@@ -61,6 +61,16 @@ function addCharacterUrl(urls: Set<string>, rawKey: string): void {
   urls.add(resolveAssetUrl(rawUrl));
 }
 
+/**
+ * Native provenance: the active panels' `IContainsResRefs` collectors,
+ * including `AVGShowItemPanel.InternalResRefCollector.GatherResRefs`,
+ * `AVGCgItemPanel.InternalResRefCollector.GatherResRefs`, and the image /
+ * background / character panel collectors.
+ *
+ * Ports which script commands declare image dependencies. A single eager PIXI
+ * batch substitutes for native asset-reference collection and loading.
+ *
+ */
 function addScriptImageUrls(urls: Set<string>, context: Context): void {
   for (const line of parseScript(context.scriptText ?? context.script)) {
     if (line.kind !== "command") continue;
@@ -120,6 +130,14 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
   }
 }
 
+/**
+ * Native provenance: `Torappu.AVG.InternalMusicRefCollector` and
+ * `Torappu.AVG.InternalSoundRefCollector.GatherResRefs`.
+ *
+ * Ports music key/intro and sound key discovery; browser preload timing and
+ * progress reporting are web-only behavior.
+ *
+ */
 function addScriptAudioUrls(urls: Set<string>, context: Context): void {
   for (const line of parseScript(context.scriptText ?? context.script)) {
     if (line.kind !== "command") continue;
@@ -132,6 +150,15 @@ function addScriptAudioUrls(urls: Set<string>, context: Context): void {
   }
 }
 
+/**
+ * Native provenance: `Torappu.AVG.AVGCharacterslotPanel` character-reference
+ * resolution and `Torappu.ResourceRouter.GetCharacterPath`.
+ *
+ * Ports the story-facing name forms needed to identify character assets. The
+ * `character.json` link-map representation and face-overlay reconstruction are
+ * web asset-pipeline adaptations, not a direct native data structure.
+ *
+ */
 function resolveCharacterSelection(
   context: Context,
   rawRef: string,

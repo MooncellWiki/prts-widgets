@@ -35,7 +35,12 @@ function splitContent(content: string): string[] {
   );
 }
 
-/** Web reconstruction of AVG/AnimateText/group_location_stamp.prefab. */
+/**
+ * Port scope: `Torappu.AVG.AVGDisplayableExecutor._ExecuteAnimatedText` and
+ * the serialized `AVG/AnimateText/group_location_stamp` prefab's visible
+ * timeline. Sprite construction and keyframe playback are a Web/PIXI
+ * adaptation, not a port of Unity Animator internals.
+ */
 export class AnimTextPanel {
   private readonly stamps: StampView[] = [];
   private sessionId = 0;

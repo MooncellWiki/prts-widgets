@@ -1,6 +1,12 @@
 import { Container } from "pixi.js";
 
-/** Owns the stable canvas/layer graph; panels receive only the layer they render into. */
+/**
+ * Web/PIXI adaptation of the scene roots consumed by
+ * `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake` and the AVG panels.
+ * It preserves the documented `SceneCanvas/panel_avg` sibling relationships,
+ * while flattening Unity canvases into PIXI containers rather than porting
+ * Unity's Canvas implementation.
+ */
 export class LayerGraph {
   readonly background = new Container();
   readonly avgDisplayBackground = new Container();

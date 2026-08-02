@@ -6,9 +6,14 @@ import type {
   StoryMetadata,
 } from "./types";
 
-// Mirrors AVGParser.COMMAND_REGEX. Command names are normalized by the game,
-// parameter keys are not.
-// This is the literal Unity regex documented in avg-story-runtime-research.
+/**
+ * Native provenance: `Torappu.AVG.AVGParser.cctor` and
+ * `Torappu.AVG.AVGParser._ParseCommand`.
+ *
+ * Ports the command-tag shape and lower-cased command names. Parameter keys
+ * deliberately retain source case, matching the native parameter dictionary.
+ *
+ */
 const commandRegex = /^\[\s*(?:(.*?)\((.*)\)|(?:([.\|\w]*)|(.*)))\s*\]\s*(.*)/;
 // Param keys are case-sensitive in the native dictionary, so `[Name="X"]` is a
 // dialog line whose `name` lookup misses -- it renders without a speaker rather
@@ -159,6 +164,15 @@ interface LogicalLine {
   raw: string;
 }
 
+/**
+ * Native provenance: `Torappu.AVG.AVGParser._ReadNextBlock` and
+ * `Torappu.AVG.AVGParser.TryParse(string, List<Command>)`.
+ *
+ * Ports backslash continuation, comment/blank-line filtering, and physical
+ * first-line numbering. The web parser intentionally keeps its own lightweight
+ * argument parser rather than embedding Json.NET's complete error surface.
+ *
+ */
 function logicalLines(source: string | readonly string[]): LogicalLine[] {
   const physicalLines =
     typeof source === "string"
@@ -186,6 +200,9 @@ export function parseScript(source: string | readonly string[]): ParsedLine[] {
     const last = lines.at(-1);
     if (!(last?.kind === "command" && last.command === "endtip")) {
       const lineNumber = sourceLines.at(-1)?.lineNumber ?? 1;
+      // Native provenance: `Torappu.AVG.AVGParser.TryParse(string, List<Command>)`
+      // and `Torappu.AVG.AVGUtils.GenerateEndtipCommand`. Ports the implicit
+      // terminal command for a non-empty script.
       lines.push({
         args: { block: true },
         command: "endtip",
@@ -240,8 +257,9 @@ export function parseStory(source: string | readonly string[]): {
           "dont_clear_gameobjectpool_onstart",
         ) === true,
       fitMode: fitMode === "BLACK_MASK" ? "BLACK_MASK" : "DEFAULT",
-      // TryParse reads Story.id out of the HEADER's `key` param; there is no
-      // `id` param, and all 2061 shipped HEADER lines write `key=`.
+      // Native provenance: `Torappu.AVG.AVGParser.TryParse(string, StoryParam,
+      // out Story)`. Ports the HEADER-to-Story metadata mapping: the story id
+      // comes from `key`, rather than the unrelated `id` parameter name.
       id: String(metadataValue(header?.args ?? {}, "key") ?? ""),
       isAutoable:
         typeof autoable === "boolean" ? autoable : !isTutorial && !isVideoOnly,

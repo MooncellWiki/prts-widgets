@@ -446,7 +446,10 @@ describe("StoryRuntime", () => {
   it("clears spellstickers when skipping the story", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
-      createContext(['[spellsticker(id="s",block=true)]<p=1>x</>']),
+      createContext([
+        '[spellsticker(id="s",block=true)]<p=1>x</>',
+        '[skipnode(mode="skip")]',
+      ]),
       renderer,
       new FakeAudio(),
     );
@@ -879,13 +882,13 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("nofirstskip disables story skip for first-read playback", async () => {
+  it("nofirstskip handles first-read skip by jumping to the next protected anchor", async () => {
     const sleep = vi.fn(() => new Promise<void>(() => {}));
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[skipnode(mode="nofirstskip")]',
         "[delay(time=30)]",
+        '[skipnode(mode="nofirstskip")]',
         '[showitem(image="avg_npc_1",x=10,y=20)]',
         '[skipnode(mode="skip")]',
         '[name="A"]ok',
@@ -900,12 +903,46 @@ describe("StoryRuntime", () => {
     await Promise.resolve();
 
     expect(runtime.getState()).toBe("waiting_timer");
-    expect(runtime.canSkipNode()).toBe(false);
+    expect(runtime.canSkipNode()).toBe(true);
     expect(sleep).toHaveBeenCalledWith(30_000);
 
     await runtime.skipNode();
+    await startPromise;
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
+  });
+
+  it("does not lose the active process loop while skip cleanup is asynchronous", async () => {
+    let finishCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
+    const renderer = new FakeRenderer();
+    vi.spyOn(renderer, "clearInterludes").mockReturnValue(cleanup);
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=30)]",
+        '[skipnode(mode="nofirstskip")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { sleep },
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+    const skipPromise = runtime.skipNode();
+    await Promise.resolve();
+
     expect(runtime.getState()).toBe("waiting_timer");
-    void startPromise;
+    finishCleanup();
+    await skipPromise;
+    await startPromise;
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
   it("nofirstskip permits skip after the story has been read", async () => {
@@ -2647,7 +2684,7 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("skipnode does not interrupt dialogue typing", async () => {
+  it("skipnode can finish the story from a dialogue input wait", async () => {
     const sleep = vi.fn(() => new Promise<void>(() => {}));
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -2668,23 +2705,72 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(runtime.getState()).toBe("waiting_input");
-    expect(runtime.canSkipNode()).toBe(false);
+    expect(runtime.canSkipNode()).toBe(true);
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "" });
 
     await runtime.skipNode();
 
-    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getState()).toBe("finished");
     expect(runtime.canSkipNode()).toBe(false);
-    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "" });
+  });
 
-    await runtime.advance();
-    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "hello" });
+  it("prioritizes SkipToThis and resumes from the command after its anchor", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
+      renderer,
+      new FakeAudio(),
+    );
 
-    await runtime.advance();
+    await runtime.start();
+    await runtime.skipNode();
+
     expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "" });
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+  });
 
-    await runtime.advance();
-    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+  it("disables segment skip when the story has no skip anchors", async () => {
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]before', '[name="B"]after']),
+      new FakeRenderer(),
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(runtime.canSkipNode()).toBe(false);
+    await runtime.skipNode();
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("does not expose segment skip during an active command without anchors", async () => {
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
+    const runtime = new StoryRuntime(
+      createContext(["[delay(time=30)]", '[name="A"]unreachable']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep },
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+    expect(runtime.canSkipNode()).toBe(false);
+    await runtime.skipNode();
+    expect(runtime.getState()).toBe("waiting_timer");
+    void startPromise;
+  });
+
+  it("does not jump backward after passing SkipToThis", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(["[SkipToThis]", '[name="A"]after', '[name="B"]later']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 });

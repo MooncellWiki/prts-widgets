@@ -13,6 +13,12 @@ import type { ParsedLine } from "./types";
  *
  * 因此 LogAll 把脚本整理为：顶层条目 + decision 节点（选项 + 共享段 + 各 predicate 分支段），
  * 与玩家实际能走到的路径一一对应，不展开未选择的分支也不引入嵌套怪癖。
+ *
+ * Native provenance: `Torappu.AVG.DecisionCommandPredicator` and
+ * `Torappu.AVG.DecisionPanel._ExecuteDecision` / `_ExecutePredicate`.
+ * This static reader projection ports predicate gating only; the Log All tree,
+ * route expansion, and reader UI are web-only adaptations.
+ *
  */
 
 export interface LogAllTextSpan {

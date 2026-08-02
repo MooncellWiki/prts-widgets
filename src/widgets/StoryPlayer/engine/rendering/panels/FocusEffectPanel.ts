@@ -17,7 +17,12 @@ interface FocusState {
   type: string;
 }
 
-/** Keeps focus state by logical channel and projects it onto the current PIXI display objects. */
+/**
+ * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
+ * `_ExecuteFocusParam` channel state. Applying `BlurFilter` and
+ * `ColorMatrixFilter` per PIXI container is a Web adaptation of the native
+ * `AVGSceneEffectManager` post-processing pipeline.
+ */
 export class FocusEffectPanel {
   private readonly states = new Map<string, FocusState>();
   private readonly filteredTargets = new Set<Container>();
