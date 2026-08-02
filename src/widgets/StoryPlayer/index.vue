@@ -121,7 +121,10 @@ function openLogAll(): void {
     player?.setAutoPlayMode("default");
     syncState();
   }
-  logAllEntries.value = buildLogAll(parseStory(scriptText.value).lines);
+  logAllEntries.value = buildLogAll(
+    parseStory(scriptText.value).lines,
+    context?.audioVariables,
+  );
   showLogAll.value = true;
 }
 

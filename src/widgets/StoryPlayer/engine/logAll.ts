@@ -1,4 +1,5 @@
 import { parseRichChars } from "./richtext";
+import { expandStoryText } from "./textVariables";
 
 import type { ParsedLine } from "./types";
 
@@ -72,8 +73,11 @@ interface MultilineAccumulator {
 }
 
 /** 把含 <color=#xxx>...</color> 的文本拆成连续同色的 span */
-function toSpans(text: string): LogAllTextSpan[] {
-  const chars = parseRichChars(text);
+function toSpans(
+  text: string,
+  variables: Record<string, unknown>,
+): LogAllTextSpan[] {
+  const chars = parseRichChars(expandStoryText(text, variables));
   if (chars.length === 0) return [];
 
   const spans: LogAllTextSpan[] = [];
@@ -123,7 +127,10 @@ function toStringList(value: unknown): string[] {
  * - 裸 [predicate] 弹栈到当前 decision 之外（对齐 runtime 结束分支模式）。
  * 嵌套 decision 因此天然支持：每个 decision 独立持有自己的 shared/branches。
  */
-export function buildLogAll(lines: readonly ParsedLine[]): LogAllEntry[] {
+export function buildLogAll(
+  lines: readonly ParsedLine[],
+  variables: Record<string, unknown> = {},
+): LogAllEntry[] {
   const root: LogAllEntry[] = [];
   let multilineAccum: MultilineAccumulator | null = null;
   /** 当前文本应 append 到的数组栈；栈底恒为 root */
@@ -141,8 +148,8 @@ export function buildLogAll(lines: readonly ParsedLine[]): LogAllEntry[] {
     currentTarget().push({
       kind: "line",
       lineIndex: multilineAccum.lineIndex,
-      speaker: multilineAccum.name,
-      spans: toSpans(multilineAccum.text),
+      speaker: expandStoryText(multilineAccum.name, variables),
+      spans: toSpans(multilineAccum.text, variables),
       source: "multiline",
     });
     multilineAccum = null;
@@ -160,8 +167,8 @@ export function buildLogAll(lines: readonly ParsedLine[]): LogAllEntry[] {
     currentTarget().push({
       kind: "line",
       lineIndex,
-      speaker,
-      spans: toSpans(text),
+      speaker: expandStoryText(speaker, variables),
+      spans: toSpans(text, variables),
       source,
     });
   };
@@ -183,7 +190,9 @@ export function buildLogAll(lines: readonly ParsedLine[]): LogAllEntry[] {
       case "decision": {
         flushMultiline();
 
-        const labels = toStringList(line.args.options);
+        const labels = toStringList(line.args.options).map((label) =>
+          expandStoryText(label, variables),
+        );
         const values = toNumberList(line.args.values);
         if (labels.length === 0 || values.length === 0) break; // 无效 decision，按 runtime 行为忽略（runtime 会 warn 并 continue）
 

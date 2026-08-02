@@ -7,6 +7,7 @@ import {
   parseRichChars,
   richCharsToTaggedText,
 } from "./richtext";
+import { expandStoryText } from "./textVariables";
 
 import type { Context } from "../context";
 import type { RichChar } from "./richtext";
@@ -1971,7 +1972,7 @@ export class StoryRuntime {
         const position = parsedPosition ?? { x: 0, y: 0 };
         await this.renderer.setAnimText({
           block: toBoolean(this.exactArg(args, "block"), false),
-          content: line.trailingText,
+          content: this.translateText(line.trailingText),
           id: toString(this.exactArg(args, "id")),
           name: toString(this.exactArg(args, "name")),
           position,
@@ -2245,7 +2246,7 @@ export class StoryRuntime {
       }
 
       case "subtitle": {
-        const text = toString(this.exactArg(args, "text"));
+        const text = this.translateText(toString(this.exactArg(args, "text")));
 
         if (!text) {
           void this.renderer.clearSubtitle(150);
@@ -2314,7 +2315,7 @@ export class StoryRuntime {
           fadeMs: showFadeMs,
           id,
           sizePx: toNumber(this.exactArg(args, "size"), 24),
-          text: toString(this.exactArg(args, "text")),
+          text: this.translateText(toString(this.exactArg(args, "text"))),
           widthPx: Math.min(
             toNumber(this.exactArg(args, "width"), 1280),
             1280 - x,
@@ -2373,7 +2374,7 @@ export class StoryRuntime {
           : this.renderer.setSpellSticker({
               alpha: clamp(toNumber(this.exactArg(args, "alpha"), 1), 0, 1),
               angle: toOptionalNumber(this.exactArg(args, "angle")),
-              content: line.content,
+              content: this.translateText(line.content),
               id,
               style: toString(this.exactArg(args, "style"), "sami"),
               x: toOptionalNumber(this.exactArg(args, "x")),
@@ -2435,7 +2436,9 @@ export class StoryRuntime {
           return "continue";
         }
 
-        const options = toString(optionsValue).split(";");
+        const options = toString(optionsValue)
+          .split(";")
+          .map((option) => this.translateText(option));
         const values = toString(this.exactArg(args, "values"))
           .split(";")
           .map((value) => {
@@ -2489,7 +2492,8 @@ export class StoryRuntime {
   ): void {
     this.cancelTyping();
 
-    const richChars = parseRichChars(text);
+    const translatedSpeaker = this.translateText(speaker);
+    const richChars = parseRichChars(this.translateText(text));
     this.currentMessageLength = richChars.length;
     this.currentTypingComplete = false;
     const initialDelayMs = this.getTypeWriterDelayMs(delayScale);
@@ -2497,7 +2501,7 @@ export class StoryRuntime {
       const tagged = richCharsToTaggedText(richChars);
       const colors = collectColors(richChars);
       const ts = colors.length > 0 ? buildTagStyles(colors) : undefined;
-      this.renderer.setDialogue(speaker, tagged, ts);
+      this.renderer.setDialogue(translatedSpeaker, tagged, ts);
       this.onTypingComplete();
       return;
     }
@@ -2505,10 +2509,19 @@ export class StoryRuntime {
     const sessionId = ++this.typingSessionId;
     const colors = collectColors(richChars);
     const tagStyles = colors.length > 0 ? buildTagStyles(colors) : undefined;
-    this.typingSession = { id: sessionId, speaker, richChars, tagStyles };
-    this.renderer.setDialogue(speaker, "", tagStyles);
+    this.typingSession = {
+      id: sessionId,
+      speaker: translatedSpeaker,
+      richChars,
+      tagStyles,
+    };
+    this.renderer.setDialogue(translatedSpeaker, "", tagStyles);
 
-    void this.runTyping(sessionId, speaker, richChars, delayScale);
+    void this.runTyping(sessionId, translatedSpeaker, richChars, delayScale);
+  }
+
+  private translateText(text: string): string {
+    return expandStoryText(text, this.context.audioVariables);
   }
 
   private getTypeWriterDelayMs(delayScale: number): number {
