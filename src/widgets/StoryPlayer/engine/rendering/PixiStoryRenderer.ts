@@ -29,7 +29,6 @@ import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
   buildGridBackgroundRoot as buildGridRoot,
-  layoutCover as layoutSpriteCover,
   readCenteredTransform as readRootTransform,
   rotateTweenDelta,
 } from "./core/SceneGeometry";
@@ -161,7 +160,8 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly layers = new LayerGraph();
   private readonly backgroundLayer = this.layers.background;
   private backgroundRoot: Container | null = null;
-  private backgroundSprite: Sprite | null = null;
+  /** Current background visual; exposed for renderer diagnostics and tests. */
+  backgroundSprite: Sprite | null = null;
   private backgroundTweenSessionId = 0;
   private readonly context: Context;
   private readonly charLayer = this.layers.characters;
@@ -239,7 +239,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     widthPx: number;
   } | null = null;
   private subtitleTypingSessionId = 0;
-  private subtitleRichChars: RichChar[] = [];
   private readonly stickerRichChars = new Map<string, RichChar[]>();
   private timerStickerInterval: ReturnType<typeof setInterval> | null = null;
   private timerStickerText: Text | null = null;
@@ -368,7 +367,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.subtitleFadeSessionId += 1;
     this.subtitleTypingTarget = null;
     this.subtitleTypingSessionId += 1;
-    this.subtitleRichChars = [];
     this.stickerRichChars.clear();
     this.videoPanel.destroy();
   }
@@ -1763,7 +1761,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.subtitleTypingSessionId += 1;
     this.subtitleFadeSessionId += 1;
     this.subtitleTypingTarget = null;
-    this.subtitleRichChars = [];
 
     const subtitle = this.subtitleText;
     if (!subtitle) return;
@@ -2181,7 +2178,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     const prevChars: RichChar[] = [];
     const newChars = parseRichChars(input.text);
     const allChars = [...prevChars, ...newChars];
-    this.subtitleRichChars = allChars;
 
     const colors = collectColors(allChars);
     const style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
@@ -2468,7 +2464,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     threshold: number,
   ): Array<{ x: number; y: number }> {
     const output: Array<{ x: number; y: number }> = [];
-    let previous = polygon.at(-1);
+    const last = polygon.at(-1);
+    if (!last) return output;
+    let previous = last;
     let previousInside = this.isCurtainPointInside(previous, vector, threshold);
 
     for (const current of polygon) {
@@ -3279,49 +3277,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     tick();
   }
 
-  private startRotateAction(
-    state: CharacterRenderState,
-    input: CharacterActionInput,
-  ): void {
-    this.stopRotateAction(state);
-    if (input.stop) return;
-
-    const intervalMs = Math.max(1, input.durationMs);
-    const sessionId = state.rotateSessionId;
-    let nextLeft = true;
-    let count = 0;
-    state.rotationDeg = input.rotationFromDeg;
-    this.updateCharacterState(state);
-
-    const tick = (): void => {
-      if (
-        !this.isActiveCharacterState(state) ||
-        state.rotateSessionId !== sessionId
-      )
-        return;
-
-      state.rotationDeg = nextLeft
-        ? input.rotationLeftDeg
-        : input.rotationRightDeg;
-      nextLeft = !nextLeft;
-      this.updateCharacterState(state);
-
-      if (input.times >= 0) {
-        count += 1;
-        if (count > input.times) {
-          state.rotateTimeout = null;
-          state.rotationDeg = 0;
-          this.updateCharacterState(state);
-          return;
-        }
-      }
-
-      state.rotateTimeout = setTimeout(tick, intervalMs);
-    };
-
-    state.rotateTimeout = setTimeout(tick, intervalMs);
-  }
-
   private isActiveCharacterState(
     state: CharacterRenderState,
     transformSessionId?: number,
@@ -3560,14 +3515,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if ((this.stickerTypingSessionIds.get(id) ?? 0) === sessionId)
       this.stickerTypingTargets.delete(id);
-  }
-
-  private layoutCover(
-    sprite: Sprite,
-    x = STORY_WIDTH / 2,
-    y = STORY_HEIGHT / 2,
-  ): void {
-    layoutSpriteCover(sprite, x, y);
   }
 
   private layoutImageForScreenAdapt(

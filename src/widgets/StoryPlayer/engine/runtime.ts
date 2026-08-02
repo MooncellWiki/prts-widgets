@@ -1043,7 +1043,7 @@ export class StoryRuntime {
         const imageKeys = groupSelection.groupValue
           .split("/")
           .map((item) => this.resolveImageKey(item))
-          .filter(Boolean);
+          .filter((key): key is string => key !== null);
         const solidWidths = parseNumberSequence(
           this.exactArg(args, "solidwidth"),
         ).slice(0, 2);
@@ -1108,7 +1108,7 @@ export class StoryRuntime {
         const imageKeys = groupSelection.groupValue
           .split("/")
           .map((item) => this.resolveImageKey(item))
-          .filter(Boolean);
+          .filter((key): key is string => key !== null);
         const solidWidth = toNumber(this.exactArg(args, "solidwidth"), 0);
         const solidWidths = solidWidth > 0 ? [solidWidth] : [];
         const solidHeights = parseNumberSequence(
@@ -1183,7 +1183,7 @@ export class StoryRuntime {
         const imageKeys = groupSelection.groupValue
           .split("/")
           .map((item) => this.resolveImageKey(item))
-          .filter(Boolean);
+          .filter((key): key is string => key !== null);
         const solidWidths = parseNumberSequence(
           this.exactArg(args, "solidwidth"),
         ).slice(0, 2);
@@ -1257,7 +1257,7 @@ export class StoryRuntime {
         const imageKeys = groupSelection.groupValue
           .split("/")
           .map((item) => this.resolveImageKey(item))
-          .filter(Boolean);
+          .filter((key): key is string => key !== null);
         const solidWidths = parseNumberSequence(this.arg(args, "solidwidth"));
         const solidHeights = parseNumberSequence(this.arg(args, "solidheight"));
 
@@ -1704,11 +1704,7 @@ export class StoryRuntime {
             : { circles: Math.trunc(toNumber(args.circles, 0)) }),
           durationMs,
           expression: resolved?.expression,
-          focusMode: this.resolveCharacterSlotFocusMode(
-            args,
-            slot,
-            Boolean(nameRef),
-          ),
+          focusMode: this.resolveCharacterSlotFocusMode(args, Boolean(nameRef)),
           focusSlots: this.resolveCharacterSlotFocusSlots(args),
           ...(args.inverse === undefined
             ? {}
@@ -2753,7 +2749,6 @@ export class StoryRuntime {
 
   private resolveCharacterSlotFocusMode(
     args: StoryCommandArgs,
-    slot: string,
     hasName: boolean,
   ): CharacterSlotInput["focusMode"] | undefined {
     const focus = toString(args.focus).trim().toLowerCase();
@@ -2774,7 +2769,7 @@ export class StoryRuntime {
     const slots = focus
       .split(",")
       .map((value) => this.parseCharacterSlot(value))
-      .filter(Boolean);
+      .filter((slot): slot is string => slot !== undefined);
     return slots.length > 0 ? [...new Set(slots)] : undefined;
   }
 

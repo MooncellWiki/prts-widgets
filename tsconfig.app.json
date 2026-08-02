@@ -31,10 +31,5 @@
     "noUncheckedIndexedAccess": false,
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "tests/**/*.ts"],
-  "exclude": [
-    "src/widgets/StoryPlayer/engine",
-    "src/widgets/StoryPlayer/context.ts"
-  ],
-  "references": [{ "path": "./tsconfig.engine.json" }]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "tests/**/*.ts"]
 }

@@ -257,7 +257,7 @@ export function buildLogAll(
         );
         const labels = references
           .map((ref) => labelByValue.get(ref))
-          .filter(Boolean);
+          .filter((label): label is string => label !== undefined);
 
         // 在当前 decision 下新建分支段，替换栈顶 target
         const branch: LogAllBranch = { entries: [], labels, references };
