@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   FullscreenExitOutlined as FullscreenExitIcon,
   FullscreenOutlined as FullscreenIcon,
+  FeedbackOutlined as FeedbackIcon,
   SubjectFilled as LogAllIcon,
   PauseFilled as PauseIcon,
   PlayArrowFilled as PlayArrowIcon,
@@ -163,6 +164,36 @@ function setAutoPlaySpeedLevel(level: number): void {
   if (!Number.isFinite(level)) return;
   player?.setAutoPlaySpeedLevel(level);
   syncState();
+}
+
+async function openFeedback(): Promise<void> {
+  const currentAutoPlay = player?.getAutoPlayState();
+
+  try {
+    await window.Sentry?.showFeedback?.({
+      widget: "story_player",
+      story_path: props.path,
+      player_state: player?.getState() ?? state.value,
+      auto_play_mode: currentAutoPlay?.mode ?? autoPlayMode.value,
+      button_speed_level:
+        currentAutoPlay?.buttonSpeedLevel ?? buttonSpeedLevel.value,
+      quick_speed_level:
+        currentAutoPlay?.quickSpeedLevel ?? quickSpeedLevel.value,
+      current_speed_level: currentSpeedLevel.value,
+      view_mode: viewMode.value,
+      displayed_line_index: player?.getDisplayedLineIndex() ?? -1,
+      decision_select_value:
+        player?.getDecisionSelectValue() ?? logAllDecisionValue.value,
+      can_skip_node: player?.canSkipNode() ?? canSkipNode.value,
+      preload_ready: preloadReady.value,
+      is_preloading: isPreloading.value,
+      preload_percent: preloadPercent.value,
+      fullscreen: isFullscreen.value,
+      has_script: hasScript.value,
+    });
+  } catch (error) {
+    console.error("[story-player] opening feedback failed:", error);
+  }
 }
 
 async function initAndPreload(): Promise<void> {
@@ -455,6 +486,13 @@ onBeforeUnmount(() => {
                   <NIcon><LogAllIcon /></NIcon>
                 </template>
                 LOG
+              </NButton>
+
+              <NButton size="small" @click="openFeedback">
+                <template #icon>
+                  <NIcon><FeedbackIcon /></NIcon>
+                </template>
+                Feedback
               </NButton>
 
               <NButton
