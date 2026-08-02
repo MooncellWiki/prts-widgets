@@ -97,6 +97,7 @@ const builtinCommandNames = [
   "delay",
   "video",
   "skipnode",
+  "skiptothis",
   "background",
   "backgroundtween",
   "gridbg",
@@ -286,6 +287,12 @@ function preprocessSkipNodes(
   return labels;
 }
 
+function preprocessSkipToIndex(lines: ReturnType<typeof parseScript>): number {
+  return lines.findIndex(
+    (line) => line.kind === "command" && line.command === "skiptothis",
+  );
+}
+
 export class StoryRuntime {
   private readonly audio: StoryAudio;
   private readonly defaultSpeed: AutoSpeed;
@@ -305,11 +312,14 @@ export class StoryRuntime {
   private pendingWait: InterruptibleWait | null = null;
   private pendingWaitId = 0;
   private processing = false;
+  private processingCompletion: Promise<void> | null = null;
+  private resolveProcessingCompletion: (() => void) | null = null;
   private readonly renderer: StoryRenderer;
   private readonly sleep: (ms: number) => Promise<void>;
   private currentSkipMode: SkipMode = "skip";
   private readonly skipNodeLabels: SkipNodeLabel[];
   private skipNodeQueueIndex = 0;
+  private readonly skipToIndex: number;
   /** Mirrors AVGShowItemPanel's single `_slotInUse`, which decides hideitem's return value. */
   private itemSlotInUse = false;
   private theaterMode = false;
@@ -349,6 +359,7 @@ export class StoryRuntime {
     this.audio = audio;
     this.sleep = options.sleep ?? sleepWithTimeout;
     this.skipNodeLabels = preprocessSkipNodes(this.lines);
+    this.skipToIndex = preprocessSkipToIndex(this.lines);
     this.onWarning = options.onWarning;
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
@@ -416,12 +427,12 @@ export class StoryRuntime {
       this.state !== "idle" &&
       this.state !== "error" &&
       this.state !== "finished";
-    const tutorial = this.context.storyMetadata?.isTutorial ?? false;
-    return (
-      running &&
-      !tutorial &&
-      (this.currentSkipMode !== "nofirstskip" || !this.firstRead)
-    );
+    const hasSkipAnchor =
+      this.skipToIndex >= 0 || this.skipNodeLabels.length > 0;
+    // This widget exposes a segment-skip button rather than native's whole
+    // story StopStory action. Keep it disabled when the script has no remaining
+    // SkipToThis/skipnode destination at all.
+    return running && hasSkipAnchor;
   }
 
   async start(): Promise<void> {
@@ -479,25 +490,58 @@ export class StoryRuntime {
   async skipNode(): Promise<void> {
     if (this.destroyed || !this.canSkipNode()) return;
 
-    const nextLabel = this.skipNodeLabels[this.skipNodeQueueIndex];
-    if (nextLabel?.mode === "nofirstskip" && this.firstRead) {
-      // SkipStory writes the anchor's own index, but the command coroutine runs
-      // ++m_executeIndex before fetching, so playback resumes on the line after
-      // the anchor and the skipnode command itself is not re-executed.
-      this.cursor = nextLabel.lineIndex + 1;
-      this.skipNodeQueueIndex += 1;
-      this.currentSkipMode = "nofirstskip";
-    } else {
-      this.cursor = this.lines.length;
+    const hadActiveProcessLoop = this.processing;
+    const activeProcessCompletion = this.processingCompletion;
+    let shouldResume = false;
+
+    // m_executeIndex points at the command currently being waited on while our
+    // cursor already points at the next command, hence cursor <= anchorIndex is
+    // the native m_executeIndex < m_skipToIndex forward-only test.
+    if (this.skipToIndex >= 0 && this.cursor <= this.skipToIndex) {
+      this.cursor = this.skipToIndex + 1;
+      shouldResume = true;
+    } else if (this.skipToIndex >= 0) {
+      // SkipToThis is forward-only. Native does not fall back to skipnode or
+      // StopStory after playback has already crossed the anchor.
+      return;
+    } else if (this.skipToIndex < 0) {
+      const nextLabel = this.skipNodeLabels[this.skipNodeQueueIndex];
+      if (nextLabel) {
+        this.skipNodeQueueIndex += 1;
+        this.currentSkipMode = nextLabel.mode;
+      }
+
+      const tutorial = this.context.storyMetadata?.isTutorial ?? false;
+      const isSkippable =
+        !tutorial &&
+        (this.currentSkipMode !== "nofirstskip" || !this.firstRead);
+      if (nextLabel && !isSkippable) {
+        // Native stores the anchor index and the coroutine's leading increment
+        // resumes at the following command.
+        this.cursor = nextLabel.lineIndex + 1;
+        shouldResume = true;
+      } else {
+        this.cursor = this.lines.length;
+      }
     }
-    this.interruptPendingWait();
+
     this.pendingInputEffect = null;
     await this.renderer.clearInterludes();
     await this.renderer.clearSpellStickers();
-    if (this.state === "waiting_input") {
-      this.cancelTyping();
+
+    this.cancelTyping();
+    if (shouldResume) {
+      this.state = "running";
+    } else if (!hadActiveProcessLoop) {
       this.state = "finished";
     }
+
+    // Establish the destination state before releasing a blocking executor.
+    // Its existing processLoop owns continuation; starting another loop would
+    // race it and can leave state="running" with no loop alive.
+    this.interruptPendingWait();
+    if (hadActiveProcessLoop) await activeProcessCompletion;
+    else if (shouldResume) await this.processLoop();
   }
 
   private getCurrentSpeed(): AutoSpeed {
@@ -577,6 +621,9 @@ export class StoryRuntime {
     if (this.processing) return;
 
     this.processing = true;
+    this.processingCompletion = new Promise<void>((resolve) => {
+      this.resolveProcessingCompletion = resolve;
+    });
 
     try {
       while (!this.destroyed) {
@@ -633,6 +680,9 @@ export class StoryRuntime {
       this.onWarning?.({ cursor: this.cursor, detail, type: "error" });
     } finally {
       this.processing = false;
+      this.resolveProcessingCompletion?.();
+      this.resolveProcessingCompletion = null;
+      this.processingCompletion = null;
     }
   }
 
@@ -898,6 +948,12 @@ export class StoryRuntime {
         const label = this.skipNodeLabels[this.skipNodeQueueIndex];
         this.skipNodeQueueIndex += 1;
         this.currentSkipMode = label?.mode ?? "skip";
+        return "continue";
+      }
+
+      case "skiptothis": {
+        // Preprocess-only command. Native explicitly permits it to have no
+        // executor and silently advances when normal playback reaches it.
         return "continue";
       }
 

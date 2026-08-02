@@ -241,6 +241,18 @@ async function onSkipNode(event?: Event): Promise<void> {
 
   await player.skipNode();
   syncState();
+  if (state.value === "finished") {
+    player.destroy();
+    player = null;
+    context = null;
+    preloadReady.value = false;
+    preloadProgress.value = 0;
+    viewMode.value = "lobby";
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
 }
 
 function onKeydown(event: KeyboardEvent): void {
