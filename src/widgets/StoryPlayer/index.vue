@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 
 import {
+  FullscreenExitOutlined as FullscreenExitIcon,
+  FullscreenOutlined as FullscreenIcon,
   SubjectFilled as LogAllIcon,
   PauseFilled as PauseIcon,
   PlayArrowFilled as PlayArrowIcon,
@@ -10,10 +12,14 @@ import {
 import {
   NButton,
   NButtonGroup,
+  NCard,
   NConfigProvider,
   NIcon,
+  NAlert,
   NSelect,
   NSpace,
+  NSpin,
+  NText,
 } from "naive-ui";
 
 import { useTheme } from "@/utils/theme";
@@ -37,9 +43,12 @@ const props = defineProps<{
   path: string;
 }>();
 
-const { theme, themeOverrides, isDark } = useTheme();
+const { theme, themeOverrides } = useTheme();
 
 const hostRef = ref<HTMLElement | null>(null);
+const fullscreenRootRef = ref<HTMLElement | null>(null);
+const isFullscreen = ref(false);
+const fullscreenEnabled = document.fullscreenEnabled;
 const isPreloading = ref(false);
 const preloadError = ref<string | null>(null);
 const preloadProgress = ref(0);
@@ -50,6 +59,8 @@ const autoPlayMode = ref<AutoPlayMode>("default");
 const buttonSpeedLevel = ref(0);
 const quickSpeedLevel = ref(0);
 const preloadPercent = computed(() => Math.round(preloadProgress.value * 100));
+const viewMode = ref<"lobby" | "text" | "player">("lobby");
+const scriptLoading = ref(false);
 
 const showLogAll = ref(false);
 const logAllEntries = ref<LogAllEntry[]>([]);
@@ -59,8 +70,8 @@ const logAllDecisionValue = ref(0);
 let player: StoryPlayer | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let context: Context | null = null;
-let scriptText: string | null = null;
-const hasScript = computed(() => Boolean(scriptText));
+const scriptText = ref<string | null>(null);
+const hasScript = computed(() => Boolean(scriptText.value));
 
 const controlsDisabled = computed(
   () =>
@@ -103,14 +114,41 @@ function syncState(): void {
 }
 
 function openLogAll(): void {
-  if (!scriptText) return;
+  if (!scriptText.value) return;
+  if (viewMode.value === "lobby") viewMode.value = "text";
   // 打开弹窗时关掉自动播放，方便玩家在弹窗里对照当前显示的句子
   if (autoPlayMode.value !== "default") {
     player?.setAutoPlayMode("default");
     syncState();
   }
-  logAllEntries.value = buildLogAll(parseStory(scriptText).lines);
+  logAllEntries.value = buildLogAll(parseStory(scriptText.value).lines);
   showLogAll.value = true;
+}
+
+function closeLogAll(): void {
+  showLogAll.value = false;
+  if (viewMode.value === "text") viewMode.value = "lobby";
+}
+
+function syncFullscreenState(): void {
+  isFullscreen.value = document.fullscreenElement === fullscreenRootRef.value;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const canvas = hostRef.value?.querySelector("canvas");
+      if (canvas) canvas.style.width = "100%";
+      window.dispatchEvent(new Event("resize"));
+    });
+  });
+}
+
+async function toggleFullscreen(): Promise<void> {
+  try {
+    await (document.fullscreenElement
+      ? document.exitFullscreen()
+      : fullscreenRootRef.value?.requestFullscreen());
+  } catch (error) {
+    console.error("[story-player] fullscreen failed:", error);
+  }
 }
 
 function setAutoPlayMode(mode: AutoPlayMode): void {
@@ -137,7 +175,7 @@ async function initAndPreload(): Promise<void> {
 
   try {
     context = await loadContextByPath(`story/${props.path}`);
-    scriptText = context.scriptText ?? null;
+    scriptText.value = context.scriptText ?? null;
 
     // 对话 UI 字体必须先加载完，否则 PIXI 的 CanvasTextMetrics 会用回退字体
     // 测量，导致 BestFit 字号和长文本 Y 偏移算错。
@@ -165,6 +203,28 @@ async function initAndPreload(): Promise<void> {
   } finally {
     isPreloading.value = false;
   }
+}
+
+async function loadScript(): Promise<void> {
+  scriptLoading.value = true;
+  preloadError.value = null;
+  scriptText.value = null;
+
+  try {
+    scriptText.value = await fetchStoryScriptByPath(`story/${props.path}`);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    preloadError.value = detail || "加载剧情文本失败";
+  } finally {
+    scriptLoading.value = false;
+  }
+}
+
+async function onStartPlay(): Promise<void> {
+  if (!scriptText.value) return;
+  viewMode.value = "player";
+  await nextTick();
+  await initAndPreload();
 }
 
 async function onAdvance(): Promise<void> {
@@ -195,23 +255,17 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(async () => {
+  document.addEventListener("fullscreenchange", syncFullscreenState);
   if (!props.path) {
     preloadError.value = "未提供故事路径（storyTxt）";
     return;
   }
-  // lobby 阶段先拉取剧情脚本文本，让 LOG ALL 无需图片/音频资源即可使用。
-  try {
-    scriptText = await fetchStoryScriptByPath(`story/${props.path}`);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    preloadError.value = detail || "加载剧情文本失败";
-    return;
-  }
-  await nextTick();
-  await initAndPreload();
+  // lobby 阶段只拉取剧情脚本文本；由用户决定是否继续加载完整资源。
+  await loadScript();
 });
 
 onBeforeUnmount(() => {
+  document.removeEventListener("fullscreenchange", syncFullscreenState);
   if (timer) {
     clearInterval(timer);
     timer = null;
@@ -228,138 +282,222 @@ onBeforeUnmount(() => {
     :theme-overrides="themeOverrides"
   >
     <main
-      :class="[
-        'story-player box-border flex min-h-full flex-col items-center gap-3.5 p-6',
-        isDark && 'prts-widget-dark',
-      ]"
+      ref="fullscreenRootRef"
+      class="story-player box-border max-w-full min-h-full w-full flex flex-col items-center"
+      :class="isFullscreen ? 'h-screen gap-0 p-0' : 'gap-3.5 p-6'"
     >
       <section
-        class="relative aspect-video max-w-7xl w-full overflow-hidden border border-slate-400/25 rounded-xl bg-black shadow-[0_14px_40px_rgb(0_0_0/42%)]"
+        class="relative w-full overflow-hidden"
+        :class="
+          isFullscreen
+            ? 'fullscreen-stage-container min-h-0 max-w-none flex flex-1 items-center justify-center bg-black'
+            : 'aspect-video max-w-7xl'
+        "
       >
-        <div
-          ref="hostRef"
-          class="h-full w-full cursor-pointer outline-none"
-          tabindex="0"
-          @click="onAdvance"
-          @keydown="onKeydown"
+        <NCard
+          v-if="viewMode === 'lobby'"
+          class="h-full"
+          title="剧情加载方式"
+          content-style="height: calc(100% - 59px)"
+        >
+          <div
+            v-if="scriptLoading"
+            class="h-full flex items-center justify-center"
+          >
+            <NSpin description="正在加载剧情文本..." />
+          </div>
+
+          <div v-else-if="preloadError">
+            <NAlert type="error" title="加载失败">{{ preloadError }}</NAlert>
+            <NButton class="mt-3" size="small" @click="loadScript"
+              >重试</NButton
+            >
+          </div>
+
+          <div v-else class="h-full flex flex-col items-center justify-center">
+            <NText tag="p" depth="3" class="mt-0 text-sm">
+              完整加载会预载剧情所需的图片、音频等资源；只加载文本不会下载这些资源。
+            </NText>
+            <NSpace>
+              <NButton
+                type="primary"
+                :disabled="!hasScript"
+                @click="onStartPlay"
+              >
+                完整加载
+              </NButton>
+              <NButton :disabled="!hasScript" @click="openLogAll">
+                <template #icon>
+                  <NIcon><LogAllIcon /></NIcon>
+                </template>
+                只加载文本
+              </NButton>
+            </NSpace>
+          </div>
+        </NCard>
+
+        <LogAllPanel
+          v-else-if="viewMode === 'text'"
+          :show="showLogAll"
+          embedded
+          :entries="logAllEntries"
+          :active-line-index="logAllActiveLineIndex"
+          :decision-select-value="logAllDecisionValue"
+          @update:show="closeLogAll"
         />
 
-        <div
-          v-if="isPreloading"
-          class="absolute inset-0 flex flex-col items-center justify-center gap-3.5 bg-slate-950/72 backdrop-blur-[2px]"
-        >
-          <p class="m-0 text-[18px] text-slate-200 tracking-[0.03em]">
-            正在预加载资源 {{ preloadPercent }}%
-          </p>
-        </div>
+        <template v-else>
+          <div
+            class="bg-black"
+            :class="
+              isFullscreen ? 'fullscreen-stage-frame' : 'absolute inset-0'
+            "
+          >
+            <div
+              ref="hostRef"
+              class="h-full w-full cursor-pointer outline-none"
+              tabindex="0"
+              @click="onAdvance"
+              @keydown="onKeydown"
+            />
 
-        <div
-          v-else-if="!preloadReady && preloadError"
-          class="absolute inset-0 flex flex-col items-center justify-center gap-3.5 bg-slate-950/72 backdrop-blur-[2px]"
-        >
-          <p class="m-0 text-[18px] text-slate-200 tracking-[0.03em]">
-            {{ preloadError }}
-          </p>
-        </div>
-
-        <div
-          v-else-if="!preloadReady"
-          class="absolute inset-0 flex flex-col items-center justify-center gap-3.5 bg-slate-950/72 backdrop-blur-[2px]"
-        >
-          <p class="m-0 text-[18px] text-slate-200 tracking-[0.03em]">
-            准备中...
-          </p>
-        </div>
-      </section>
-
-      <section
-        class="max-w-7xl w-full flex flex-wrap items-center justify-between gap-3 border border-slate-400/20 rounded-xl bg-slate-900/70 px-4 py-3 shadow-[0_8px_24px_rgb(0_0_0/28%)]"
-        aria-label="播放控制"
-      >
-        <NSpace align="center" :wrap="true">
-          <span class="text-xs text-slate-400 font-bold tracking-[0.12em]">
-            播放模式
-          </span>
-          <NButtonGroup size="small">
-            <NButton
-              v-for="option in playModeOptions"
-              :key="option.value"
-              :type="autoPlayMode === option.value ? 'warning' : 'default'"
-              :disabled="controlsDisabled"
-              @click="setAutoPlayMode(option.value)"
+            <div
+              v-if="isPreloading"
+              class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[2px]"
             >
-              {{ option.label }}
-            </NButton>
-          </NButtonGroup>
-        </NSpace>
+              <NSpin :description="`正在预加载资源 ${preloadPercent}%`" />
+            </div>
 
-        <NSpace align="center" :wrap="true">
-          <NButton size="small" :disabled="!hasScript" @click="openLogAll">
-            <template #icon>
-              <NIcon><LogAllIcon /></NIcon>
-            </template>
-            LOG ALL
-          </NButton>
+            <div
+              v-else-if="!preloadReady && preloadError"
+              class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 p-6 backdrop-blur-[2px]"
+            >
+              <NAlert type="error" title="资源加载失败">{{
+                preloadError
+              }}</NAlert>
+            </div>
 
-          <NButton
-            size="small"
-            :disabled="!preloadReady"
-            quaternary
-            @click="onAdvance"
-          >
-            <template #icon>
-              <NIcon>
-                <PauseIcon v-if="state === 'running'" />
-                <PlayArrowIcon v-else />
-              </NIcon>
-            </template>
-            {{ state === "running" ? "暂停" : "继续" }}
-          </NButton>
-
-          <NButton
-            size="small"
-            type="warning"
-            :disabled="!(preloadReady && canSkipNode)"
-            @click="onSkipNode"
-          >
-            <template #icon>
-              <NIcon><SkipNextIcon /></NIcon>
-            </template>
-            跳过片段
-          </NButton>
-        </NSpace>
-
-        <NSpace align="center" :wrap="true">
-          <span class="text-xs text-slate-400 font-bold tracking-[0.12em]">
-            播放速度
-          </span>
-          <NSelect
-            size="small"
-            style="width: 96px"
-            :value="currentSpeedLevel"
-            :options="speedOptions"
-            :disabled="controlsDisabled || autoPlayMode === 'default'"
-            @update:value="setAutoPlaySpeedLevel"
-          />
-        </NSpace>
-
-        <p
-          class="m-0 select-none text-xs text-slate-400 tracking-[0.03em] uppercase"
-        >
-          state: {{ state }}
-        </p>
+            <div
+              v-else-if="!preloadReady"
+              class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[2px]"
+            >
+              <NSpin description="准备中..." />
+            </div>
+            <LogAllPanel
+              v-model:show="showLogAll"
+              embedded
+              class="absolute inset-0 z-10"
+              :entries="logAllEntries"
+              :active-line-index="logAllActiveLineIndex"
+              :decision-select-value="logAllDecisionValue"
+            />
+          </div>
+        </template>
       </section>
 
-      <LogAllPanel
-        v-model:show="showLogAll"
-        :entries="logAllEntries"
-        :active-line-index="logAllActiveLineIndex"
-        :decision-select-value="logAllDecisionValue"
-      />
+      <template v-if="viewMode === 'player'">
+        <NCard
+          class="w-full"
+          :class="isFullscreen ? 'max-w-none rounded-none' : 'max-w-7xl'"
+          size="small"
+          aria-label="播放控制"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <NSpace align="center" :wrap="true">
+              <NText depth="3" class="text-xs font-bold tracking-[0.12em]">
+                播放模式
+              </NText>
+              <NButtonGroup size="small">
+                <NButton
+                  v-for="option in playModeOptions"
+                  :key="option.value"
+                  :type="autoPlayMode === option.value ? 'primary' : 'default'"
+                  :disabled="controlsDisabled"
+                  @click="setAutoPlayMode(option.value)"
+                >
+                  {{ option.label }}
+                </NButton>
+              </NButtonGroup>
+            </NSpace>
+
+            <NSpace align="center" :wrap="true">
+              <NButton
+                size="small"
+                :disabled="!fullscreenEnabled"
+                @click="toggleFullscreen"
+              >
+                <template #icon>
+                  <NIcon>
+                    <FullscreenExitIcon v-if="isFullscreen" />
+                    <FullscreenIcon v-else />
+                  </NIcon>
+                </template>
+                {{ isFullscreen ? "退出全屏" : "全屏" }}
+              </NButton>
+
+              <NButton size="small" :disabled="!hasScript" @click="openLogAll">
+                <template #icon>
+                  <NIcon><LogAllIcon /></NIcon>
+                </template>
+                LOG
+              </NButton>
+
+              <NButton
+                size="small"
+                :disabled="!preloadReady"
+                quaternary
+                @click="onAdvance"
+              >
+                <template #icon>
+                  <NIcon>
+                    <PauseIcon v-if="state === 'running'" />
+                    <PlayArrowIcon v-else />
+                  </NIcon>
+                </template>
+                {{ state === "running" ? "暂停" : "继续" }}
+              </NButton>
+
+              <NButton
+                size="small"
+                type="primary"
+                :disabled="!(preloadReady && canSkipNode)"
+                @click="onSkipNode"
+              >
+                <template #icon>
+                  <NIcon><SkipNextIcon /></NIcon>
+                </template>
+                跳过片段
+              </NButton>
+            </NSpace>
+
+            <NSpace align="center" :wrap="true">
+              <NText depth="3" class="text-xs font-bold tracking-[0.12em]">
+                播放速度
+              </NText>
+              <NSelect
+                size="small"
+                style="width: 96px"
+                :value="currentSpeedLevel"
+                :options="speedOptions"
+                :disabled="controlsDisabled || autoPlayMode === 'default'"
+                @update:value="setAutoPlaySpeedLevel"
+              />
+            </NSpace>
+          </div>
+        </NCard>
+      </template>
     </main>
   </NConfigProvider>
 </template>
 
 <style scoped>
-@import "@/styles/dark-mode.scss";
+.fullscreen-stage-container {
+  container-type: size;
+}
+
+.fullscreen-stage-frame {
+  position: relative;
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  height: min(100cqh, calc(100cqw * 9 / 16));
+}
 </style>

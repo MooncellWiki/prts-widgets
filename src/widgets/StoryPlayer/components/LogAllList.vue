@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { NText } from "naive-ui";
+
 import type { LogAllDecisionRoute, LogAllEntry } from "../engine/logAll";
 
 // 纯递归列表（无外壳）：渲染 LogAllEntry 树。
@@ -81,46 +83,54 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
       <div
         v-if="entry.kind === 'line'"
         :data-active-line="isActiveLine(entry) ? '' : undefined"
-        class="leading-relaxed"
-        :class="
-          isActiveLine(entry)
-            ? 'rounded-md border-l-2 border-emerald-400 bg-emerald-400/10 px-2.5 py-1.5'
-            : 'border-l-2 border-transparent'
-        "
+        class="flex items-start leading-relaxed"
       >
-        <em
+        <NText
+          tag="span"
+          type="primary"
+          class="inline-block w-5 shrink-0 text-center"
+          :aria-label="isActiveLine(entry) ? '当前播放位置' : undefined"
+          :aria-hidden="isActiveLine(entry) ? undefined : true"
+        >
+          {{ isActiveLine(entry) ? "▶" : "" }}
+        </NText>
+        <NText
           v-if="entry.speaker"
-          class="mr-2 text-amber-300/90 font-bold not-italic"
-          >{{ entry.speaker }}</em
+          type="primary"
+          tag="strong"
+          class="mr-3 w-24 shrink-0 text-right"
         >
-        <span
-          v-for="(span, si) in entry.spans"
-          :key="si"
-          :style="span.color ? { color: span.color } : undefined"
-          :class="
-            !span.color
-              ? entry.source === 'narration'
-                ? 'text-slate-300'
-                : 'text-slate-100'
-              : undefined
-          "
-          >{{ span.text }}</span
-        >
+          {{ entry.speaker }}
+        </NText>
+        <span v-else class="mr-3 w-24 shrink-0" aria-hidden="true" />
+        <span class="min-w-0 flex-1">
+          <span
+            v-for="(span, si) in entry.spans"
+            :key="si"
+            :style="span.color ? { color: span.color } : undefined"
+            :class="
+              !span.color && entry.source === 'narration'
+                ? 'opacity-75'
+                : undefined
+            "
+            >{{ span.text }}</span
+          >
+        </span>
       </div>
 
       <!-- 所有选项都立即汇合时，压成静态记录，不制造空折叠层。 -->
       <div
         v-else-if="!hasRouteContent(entry.routes)"
-        class="border-l-2 border-cyan-300/25 py-1 pl-3"
+        class="border-l-2 py-1 pl-3"
       >
-        <div class="text-sm text-slate-300">
-          <span class="mr-2 text-cyan-200 font-bold">剧情选择</span>
-          <span class="text-amber-100/80"
+        <div class="text-sm">
+          <NText type="primary" tag="strong" class="mr-2">剧情选择</NText>
+          <span
             >「{{
               entry.options.map((option) => option.label).join(" / ")
             }}」</span
           >
-          <span class="ml-2 text-xs text-slate-500">选择不影响后续剧情</span>
+          <NText depth="3" class="ml-2 text-xs">选择不影响后续剧情</NText>
         </div>
         <div v-if="entry.shared.length > 0" class="mt-2 pl-3">
           <LogAllList
@@ -132,31 +142,24 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
       </div>
 
       <!-- 有实际分叉时，折叠树保留嵌套选择的路径关系。 -->
-      <details
-        v-else
-        open
-        class="group/decision border-l-2 border-cyan-300/35 pl-3"
-      >
+      <details v-else open class="group/decision border-l-2 pl-3">
         <summary
-          class="cursor-pointer list-none py-1 text-sm text-cyan-200 font-bold marker:hidden"
+          class="cursor-pointer list-none py-1 text-sm font-bold marker:hidden"
         >
           <span
-            class="mr-2 inline-block text-cyan-300/60 transition-transform group-open/decision:rotate-90"
+            class="mr-2 inline-block opacity-60 transition-transform group-open/decision:rotate-90"
             >▶</span
           >
           剧情选择
-          <span class="ml-1 text-xs text-slate-500 font-normal"
-            >（{{ entry.options.length }} 项）</span
-          >
+          <NText depth="3" class="ml-1 text-xs font-normal">
+            （{{ entry.options.length }} 项）
+          </NText>
         </summary>
 
         <div class="pb-1 pl-4 pt-2">
-          <div
-            v-if="entry.shared.length > 0"
-            class="mb-3 border-l border-slate-500/35 pl-3"
-          >
+          <div v-if="entry.shared.length > 0" class="mb-3 border-l pl-3">
             <div
-              class="mb-1.5 text-[11px] text-slate-500 font-bold tracking-[0.08em]"
+              class="mb-1.5 text-[11px] font-bold tracking-[0.08em] opacity-60"
             >
               选择前的共同剧情
             </div>
@@ -174,19 +177,19 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
             >
               <details
                 v-if="route.entries.length > 0"
-                class="group/route border-l border-amber-300/30 pl-3"
+                class="group/route border-l pl-3"
               >
                 <summary
-                  class="cursor-pointer list-none py-1 text-sm text-amber-100 font-semibold marker:hidden"
+                  class="cursor-pointer list-none py-1 text-sm font-semibold marker:hidden"
                 >
                   <span
-                    class="mr-2 inline-block text-amber-300/55 transition-transform group-open/route:rotate-90"
+                    class="mr-2 inline-block opacity-55 transition-transform group-open/route:rotate-90"
                     >▶</span
                   >
                   选择「{{ route.labels.join(" / ") }}」
                   <span
                     v-if="route.labels.length > 1"
-                    class="ml-1 text-xs text-slate-500 font-normal"
+                    class="ml-1 text-xs font-normal opacity-60"
                   >
                     （相同去向）
                   </span>
@@ -199,22 +202,17 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
                   />
                 </div>
               </details>
-              <div
-                v-else
-                class="border-l border-slate-500/25 py-1 pl-3 text-sm text-slate-400"
-              >
-                <span class="mr-2 inline-block w-3 text-center text-slate-600"
+              <div v-else class="border-l py-1 pl-3 text-sm opacity-75">
+                <span class="mr-2 inline-block w-3 text-center opacity-60"
                   >—</span
                 >
-                <span class="text-amber-100/70 font-semibold"
+                <span class="font-semibold"
                   >选择「{{ route.labels.join(" / ") }}」</span
                 >
-                <span class="ml-2 text-xs text-slate-500"
-                  >无专属文本，继续后续剧情</span
-                >
+                <span class="ml-2 text-xs">无专属文本，继续后续剧情</span>
                 <span
                   v-if="route.labels.length > 1"
-                  class="ml-1 text-xs text-slate-600"
+                  class="ml-1 text-xs opacity-60"
                 >
                   （相同去向）
                 </span>
@@ -225,7 +223,18 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
       </details>
     </li>
   </ul>
-  <p v-else class="m-0 text-sm text-slate-500 tracking-[0.03em]">
+  <NText v-else tag="p" depth="3" class="m-0 text-sm tracking-[0.03em]">
     没有可显示的对话文本。
-  </p>
+  </NText>
 </template>
+
+<style scoped>
+ul,
+li {
+  list-style: none !important;
+}
+
+li::marker {
+  content: none !important;
+}
+</style>

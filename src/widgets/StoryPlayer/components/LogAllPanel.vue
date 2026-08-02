@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 
-import { NButton, NModal } from "naive-ui";
+import { NCard, NModal } from "naive-ui";
 
 import LogAllList from "./LogAllList.vue";
 
@@ -12,14 +12,11 @@ const props = defineProps<{
   entries: LogAllEntry[];
   activeLineIndex?: number | null;
   decisionSelectValue?: number;
+  embedded?: boolean;
 }>();
 const emit = defineEmits<{ "update:show": [boolean] }>();
 
 const scrollRoot = ref<HTMLElement | null>(null);
-
-function close(): void {
-  emit("update:show", false);
-}
 
 // 当正在显示的行变化时，把它滚动进视图（仅弹窗内、非阻塞）。
 watch(
@@ -35,7 +32,29 @@ watch(
 </script>
 
 <template>
+  <NCard
+    v-if="embedded && show"
+    title="LOG ALL"
+    closable
+    class="h-full"
+    content-style="height: calc(100% - 59px); min-height: 0; overflow-y: auto"
+    @close="emit('update:show', false)"
+  >
+    <template #header-extra>
+      <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
+    </template>
+
+    <div ref="scrollRoot">
+      <LogAllList
+        :entries="entries"
+        :active-line-index="activeLineIndex"
+        :decision-select-value="decisionSelectValue"
+      />
+    </div>
+  </NCard>
+
   <NModal
+    v-else-if="!embedded"
     :show="show"
     preset="card"
     title="LOG ALL"
@@ -46,7 +65,6 @@ watch(
   >
     <template #header-extra>
       <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
-      <NButton size="tiny" class="ml-3" @click="close">关闭</NButton>
     </template>
 
     <div ref="scrollRoot" class="max-h-[70vh] overflow-y-auto py-1">

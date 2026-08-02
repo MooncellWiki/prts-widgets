@@ -2200,6 +2200,7 @@ export class StoryRuntime {
         const y = toNumber(this.exactArg(args, "y"), 0);
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
 
+        this.displayedLineIndex = line.lineNumber;
         await this.renderer.setSubtitle({
           alignment:
             this.parseSubtitleAlignment(this.exactArg(args, "alignment")) ??

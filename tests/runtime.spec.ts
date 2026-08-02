@@ -2367,10 +2367,12 @@ describe("StoryRuntime", () => {
     ]);
     expect(renderer.subtitleClearCalls).toEqual([]);
     expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getDisplayedLineIndex()).toBe(1);
 
     await runtime.advance();
     expect(renderer.subtitleClearCalls).toEqual([150]);
     expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
   });
 
   it("maps sticker and timer sticker commands", async () => {
