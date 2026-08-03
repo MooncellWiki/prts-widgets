@@ -14,7 +14,7 @@ import type {
  * deliberately retain source case, matching the native parameter dictionary.
  *
  */
-const commandRegex = /^\[\s*(?:(.*?)\((.*)\)|(?:([.\|\w]*)|(.*)))\s*\]\s*(.*)/;
+const commandRegex = /^\[\s*(?:(.*?)\((.*)\)|(?:([.|\w]*)|(.*)))\s*\]\s*(.*)/;
 // Param keys are case-sensitive in the native dictionary, so `[Name="X"]` is a
 // dialog line whose `name` lookup misses -- it renders without a speaker rather
 // than treating X as one.

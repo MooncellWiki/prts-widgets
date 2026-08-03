@@ -1,6 +1,4 @@
-import { browserAnimationClock } from "../../execution";
-
-import type { AnimationClock } from "../../execution";
+import { browserAnimationClock, type AnimationClock } from "../../execution";
 
 /**
  * Web-only animation adapter. AVG executors create DOTween sequences; callers

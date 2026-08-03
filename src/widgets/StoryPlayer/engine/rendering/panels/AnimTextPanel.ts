@@ -1,10 +1,14 @@
-import { Assets, Container, Sprite, Text, TextStyle } from "pixi.js";
+import {
+  Assets,
+  Container,
+  Sprite,
+  Text,
+  TextStyle,
+  type Texture,
+} from "pixi.js";
 
 import { STAMP_ASSETS } from "../../../assets";
-import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
-
-import type { AnimTextInput } from "../../types";
-import type { Texture } from "pixi.js";
+import { STORY_HEIGHT, STORY_WIDTH, type AnimTextInput } from "../../types";
 
 const ANIMATION_MS = 5000;
 

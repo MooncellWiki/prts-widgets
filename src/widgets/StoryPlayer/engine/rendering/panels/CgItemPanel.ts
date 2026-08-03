@@ -1,9 +1,6 @@
-import { Container, Sprite } from "pixi.js";
+import { Container, Sprite, type Texture } from "pixi.js";
 
-import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
-
-import type { CgItemInput } from "../../types";
-import type { Texture } from "pixi.js";
+import { STORY_HEIGHT, STORY_WIDTH, type CgItemInput } from "../../types";
 
 type TextureLoader = (key: string) => Promise<Texture | null>;
 type Tween = (
@@ -22,6 +19,10 @@ function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
 }
 
+function colorChannel(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value * 255)));
+}
+
 function easeProgress(raw: number, ease: string): number {
   switch (ease.toLowerCase()) {
     case "linear": {
@@ -33,7 +34,6 @@ function easeProgress(raw: number, ease: string): number {
     case "inoutquad": {
       return raw < 0.5 ? 2 * raw * raw : 1 - (-2 * raw + 2) ** 2 / 2;
     }
-    case "outquad":
     default: {
       return 1 - (1 - raw) * (1 - raw);
     }
@@ -41,9 +41,11 @@ function easeProgress(raw: number, ease: string): number {
 }
 
 function rgb(color: { r: number; g: number; b: number }): number {
-  const channel = (value: number) =>
-    Math.max(0, Math.min(255, Math.round(value * 255)));
-  return (channel(color.r) << 16) | (channel(color.g) << 8) | channel(color.b);
+  return (
+    (colorChannel(color.r) << 16) |
+    (colorChannel(color.g) << 8) |
+    colorChannel(color.b)
+  );
 }
 
 /**

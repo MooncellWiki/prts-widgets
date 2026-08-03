@@ -1,7 +1,6 @@
-import { BlurFilter, ColorMatrixFilter } from "pixi.js";
+import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
 
 import type { FocusOutInput, FocusParamInput } from "../../types";
-import type { Container } from "pixi.js";
 
 type Tween = (
   durationMs: number,

@@ -1,9 +1,10 @@
-import { Container, Sprite } from "pixi.js";
+import { Container, Sprite, type Texture } from "pixi.js";
 
-import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
-
-import type { GridBackgroundInput } from "../../types";
-import type { Texture } from "pixi.js";
+import {
+  STORY_HEIGHT,
+  STORY_WIDTH,
+  type GridBackgroundInput,
+} from "../../types";
 
 export interface CenteredTransform {
   scaleX: number;
@@ -182,19 +183,18 @@ export function buildGridBackgroundRoot(
       })),
     );
   }
-  const totalWidth = rows.reduce(
-    (max, row) =>
-      Math.max(
-        max,
-        row.reduce((sum, item) => sum + item.width, 0),
-      ),
-    0,
-  );
-  const totalHeight = rows.reduce(
-    (sum, row) =>
-      sum + row.reduce((max, item) => Math.max(max, item.height), 0),
-    0,
-  );
+  let totalWidth = 0;
+  let totalHeight = 0;
+  for (const row of rows) {
+    let rowWidth = 0;
+    let rowHeight = 0;
+    for (const item of row) {
+      rowWidth += item.width;
+      rowHeight = Math.max(rowHeight, item.height);
+    }
+    totalWidth = Math.max(totalWidth, rowWidth);
+    totalHeight += rowHeight;
+  }
   let offsetY = 0;
   for (const row of rows) {
     let offsetX = 0;

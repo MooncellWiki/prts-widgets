@@ -1,7 +1,6 @@
-import { Container, Sprite } from "pixi.js";
+import { Container, Sprite, type Texture } from "pixi.js";
 
 import type { AvgDisplayInput, AvgDisplaySlot } from "../../types";
-import type { Texture } from "pixi.js";
 
 interface AvgDisplayState {
   name: string;

@@ -21,9 +21,38 @@ import {
   collectColors,
   parseRichChars,
   richCharsToTaggedText,
+  type RichChar,
 } from "../richtext";
 import { computeLegacyShowItemLayout } from "../showitem";
-import { STORY_HEIGHT, STORY_WIDTH } from "../types";
+import {
+  STORY_HEIGHT,
+  STORY_WIDTH,
+  type AnimTextInput,
+  type AvgDisplayInput,
+  type BackgroundInput,
+  type BackgroundTweenInput,
+  type BlockerInput,
+  type CameraShakeInput,
+  type CgItemInput,
+  type CharacterActionInput,
+  type CharacterCutinInput,
+  type CharacterSlotInput,
+  type CurtainInput,
+  type FocusOutInput,
+  type FocusParamInput,
+  type GridBackgroundInput,
+  type ImageRotateInput,
+  type ImageTweenInput,
+  type InterludeInput,
+  type LargeBackgroundTweenInput,
+  type ShowItemInput,
+  type SpellStickerInput,
+  type StickerInput,
+  type StoryRenderer,
+  type SubtitleInput,
+  type TimerClearInput,
+  type TimerStickerInput,
+} from "../types";
 
 import { LayerGraph } from "./core/LayerGraph";
 import {
@@ -45,34 +74,6 @@ import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { VideoPanel } from "./panels/VideoPanel";
 
 import type { Context } from "../../context";
-import type { RichChar } from "../richtext";
-import type {
-  AnimTextInput,
-  AvgDisplayInput,
-  BackgroundInput,
-  BackgroundTweenInput,
-  BlockerInput,
-  CameraShakeInput,
-  CgItemInput,
-  CharacterActionInput,
-  CharacterCutinInput,
-  CharacterSlotInput,
-  CurtainInput,
-  FocusOutInput,
-  FocusParamInput,
-  GridBackgroundInput,
-  ImageRotateInput,
-  ImageTweenInput,
-  InterludeInput,
-  LargeBackgroundTweenInput,
-  ShowItemInput,
-  SpellStickerInput,
-  StickerInput,
-  StoryRenderer,
-  SubtitleInput,
-  TimerClearInput,
-  TimerStickerInput,
-} from "../types";
 
 function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -439,7 +440,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async showDecision(options: string[], values: number[]): Promise<number> {
-    return this.decisionPanel.show(options, values);
+    return await this.decisionPanel.show(options, values);
   }
 
   /**
@@ -804,6 +805,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.sessionId += 1;
     state.sprite.destroy();
     this.cutinStates.delete(id);
+    await Promise.resolve();
   }
 
   async clearInterludes(): Promise<void> {
@@ -943,7 +945,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const endLeft = centerX + input.offsetX - halfW;
     const endTop = -input.offsetY;
 
-    let fadeStyle = 0;
+    let fadeStyle: number;
     let startLeft = endLeft;
     let startTop = endTop;
 
@@ -1883,6 +1885,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         timer.visible = false;
       },
     );
+    await Promise.resolve();
   }
 
   /**
@@ -2209,6 +2212,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       newChars,
       widthPx: input.widthPx,
     });
+    await Promise.resolve();
   }
 
   /**
@@ -2274,6 +2278,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       newChars,
       widthPx: input.widthPx,
     });
+    await Promise.resolve();
   }
 
   setSpellSticker(input: SpellStickerInput): void {
@@ -2317,6 +2322,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.timerStickerText.text = this.formatTimer(remainingSeconds);
       if (remainingSeconds <= 0) this.clearTimerInterval();
     }, 1000);
+    await Promise.resolve();
   }
 
   private async createUi(): Promise<void> {
@@ -2561,8 +2567,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     const content = new Container();
     visual.addChild(content);
 
-    let sourceWidth = 0;
-    let sourceHeight = 0;
+    let sourceWidth: number;
+    let sourceHeight: number;
 
     if (item.group === -1 && "image" in item && item.image) {
       const texture = await this.textureForCharacterKey(item.image);
@@ -3613,7 +3619,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       return null;
     }
 
-    return this.textureForUrl(rawUrl, kind, key);
+    return await this.textureForUrl(rawUrl, kind, key);
   }
 
   private async textureForCharacterKey(key: string): Promise<Texture | null> {
@@ -3623,14 +3629,14 @@ export class PixiStoryRenderer implements StoryRenderer {
       return null;
     }
 
-    return this.textureForUrl(rawUrl, "character", key);
+    return await this.textureForUrl(rawUrl, "character", key);
   }
 
   private async textureForInterlude(
     input: InterludeInput,
   ): Promise<Texture | null> {
     if (input.type !== 3)
-      return this.textureForImageKey(
+      return await this.textureForImageKey(
         input.name,
         input.type === 2 ? "background" : "image",
       );

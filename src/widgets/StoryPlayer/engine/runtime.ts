@@ -6,11 +6,11 @@ import {
   collectColors,
   parseRichChars,
   richCharsToTaggedText,
+  type RichChar,
 } from "./richtext";
 import { expandStoryText } from "./textVariables";
 
 import type { Context } from "../context";
-import type { RichChar } from "./richtext";
 import type {
   AutoPlayMode,
   AutoPlayState,
@@ -272,8 +272,7 @@ function preprocessSkipNodes(
 ): SkipNodeLabel[] {
   const labels: SkipNodeLabel[] = [];
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
+  for (const [index, line] of lines.entries()) {
     if (line.kind !== "command" || line.command !== "skipnode") continue;
 
     // Native port: Torappu.AVG.AVGStoryCache.CalSkipMode. Only the exact
@@ -757,7 +756,7 @@ export class StoryRuntime {
   }
 
   private async waitInterruptible(ms: number): Promise<boolean> {
-    return this.waitInterruptiblePromise(this.sleep(Math.max(0, ms)));
+    return await this.waitInterruptiblePromise(this.sleep(Math.max(0, ms)));
   }
 
   private resolveCharacterName(
@@ -2020,25 +2019,22 @@ export class StoryRuntime {
           toOptionalNumber(this.exactArg(args, key));
         const rawStyle = toString(this.exactArg(args, "style"));
         const rawSlot = toString(this.exactArg(args, "slot"));
-        const style =
-          (
-            {
-              1: "animetext",
-              2: "spine",
-              3: "effect",
-              4: "bgeffect",
-              5: "bg",
-              6: "animekv",
-              7: "character",
-            } as Record<string, string>
-          )[rawStyle] ?? rawStyle;
-        const slot =
-          (
-            { 1: "bgover", 2: "charover", 3: "cgover" } as Record<
-              string,
-              string
-            >
-          )[rawSlot] ?? rawSlot;
+        const styleMap: Record<string, string> = {
+          1: "animetext",
+          2: "spine",
+          3: "effect",
+          4: "bgeffect",
+          5: "bg",
+          6: "animekv",
+          7: "character",
+        };
+        const slotMap: Record<string, string> = {
+          1: "bgover",
+          2: "charover",
+          3: "cgover",
+        };
+        const style = styleMap[rawStyle] ?? rawStyle;
+        const slot = slotMap[rawSlot] ?? rawSlot;
         // All three avgdisplay features read the same `duration` key and each
         // scales it through CalculateFadetime.
         const durationMs = this.calculateFadeMs(

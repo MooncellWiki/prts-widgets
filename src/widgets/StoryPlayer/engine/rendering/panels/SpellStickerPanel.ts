@@ -1,10 +1,12 @@
-import { Container, Text, TextStyle } from "pixi.js";
+import {
+  Container,
+  Text,
+  TextStyle,
+  type Container as ContainerType,
+} from "pixi.js";
 
 import { DIALOG_FONT_FAMILY } from "../../font";
-import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
-
-import type { SpellStickerInput } from "../../types";
-import type { Container as ContainerType } from "pixi.js";
+import { STORY_HEIGHT, STORY_WIDTH, type SpellStickerInput } from "../../types";
 
 interface SpellStickerView {
   root: Container;

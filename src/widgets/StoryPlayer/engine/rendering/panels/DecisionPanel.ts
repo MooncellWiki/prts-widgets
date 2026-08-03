@@ -1,9 +1,26 @@
-import { Container, Graphics, Text, TextStyle } from "pixi.js";
+import {
+  Container,
+  Graphics,
+  Text,
+  TextStyle,
+  type Container as ContainerType,
+} from "pixi.js";
 
 import { DIALOG_FONT_FAMILY } from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
 
-import type { Container as ContainerType } from "pixi.js";
+function paintButton(
+  background: Graphics,
+  color: number,
+  width: number,
+  height: number,
+): void {
+  background
+    .clear()
+    .roundRect(0, 0, width, height, 4)
+    .fill({ color })
+    .stroke({ color: 0xff_ff_ff, width: 2 });
+}
 
 /**
  * Web/PIXI presentation for `Torappu.AVG.DecisionPanel._ExecuteDecision`.
@@ -37,13 +54,7 @@ export class DecisionPanel {
       button.eventMode = "static";
       button.cursor = "pointer";
       const background = new Graphics();
-      const paint = (color: number) =>
-        background
-          .clear()
-          .roundRect(0, 0, buttonWidth, buttonHeight, 4)
-          .fill({ color })
-          .stroke({ color: 0xff_ff_ff, width: 2 });
-      paint(0x30_30_30);
+      paintButton(background, 0x30_30_30, buttonWidth, buttonHeight);
       const label = new Text({
         style: new TextStyle({
           align: "center",
@@ -56,8 +67,12 @@ export class DecisionPanel {
       label.anchor.set(0.5);
       label.position.set(buttonWidth / 2, buttonHeight / 2);
       button.addChild(background, label);
-      button.on("pointerover", () => paint(0x50_50_50));
-      button.on("pointerout", () => paint(0x30_30_30));
+      button.on("pointerover", () =>
+        paintButton(background, 0x50_50_50, buttonWidth, buttonHeight),
+      );
+      button.on("pointerout", () =>
+        paintButton(background, 0x30_30_30, buttonWidth, buttonHeight),
+      );
       button.on("pointertap", () => {
         const resolve = this.resolve;
         this.clear();

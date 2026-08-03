@@ -1,9 +1,13 @@
-import { Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
+import {
+  Container,
+  Graphics,
+  Sprite,
+  Text,
+  TextStyle,
+  type Texture,
+} from "pixi.js";
 
-import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
-
-import type { InterludeInput } from "../../types";
-import type { Texture } from "pixi.js";
+import { STORY_HEIGHT, STORY_WIDTH, type InterludeInput } from "../../types";
 
 type TextureLoader = (input: InterludeInput) => Promise<Texture | null>;
 type Tween = (
@@ -114,6 +118,7 @@ export class InterludePanel {
     for (const state of this.channels.values())
       state.root.destroy({ children: true });
     this.channels.clear();
+    await Promise.resolve();
   }
 
   destroy(): void {

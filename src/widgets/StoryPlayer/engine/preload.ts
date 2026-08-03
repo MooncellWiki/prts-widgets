@@ -82,9 +82,8 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
     }
     if (line.command === "avgdisplay") {
       const rawStyle = argAsString(line.args.style);
-      const style =
-        ({ 5: "bg", 7: "character" } as Record<string, string>)[rawStyle] ??
-        rawStyle;
+      const styleMap: Record<string, string> = { 5: "bg", 7: "character" };
+      const style = styleMap[rawStyle] ?? rawStyle;
       const name = argAsString(line.args.name);
       if (style === "bg") addImageUrl(urls, name, true);
       else if (style === "character") addCharacterUrl(urls, name);

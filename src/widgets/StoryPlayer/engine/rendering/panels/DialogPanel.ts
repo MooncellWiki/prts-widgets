@@ -5,13 +5,12 @@ import {
   Text,
   TextStyle,
   Texture,
+  type Container,
 } from "pixi.js";
 
 import { DIALOG_FRAME_URL } from "../../../assets";
 import { DIALOG_FONT_FAMILY } from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
-
-import type { Container } from "pixi.js";
 
 /**
  * Web/PIXI reconstruction of the visual surface used by
