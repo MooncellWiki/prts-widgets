@@ -139,7 +139,7 @@ const javascript = [
       "prefer-rest-params": "error",
       "prefer-spread": "error",
       "prefer-template": "error",
-      "require-await": "error",
+      "require-await": "off",
       "require-yield": "error",
       "unicode-bom": ["error", "never"],
       "use-isnan": [
@@ -367,19 +367,6 @@ const unicorn = [
   },
 ];
 
-// StoryPlayer test mocks implement async interfaces without needing to await,
-// and some fixtures embed game-script data containing deliberate escapes.
-const vendoredEngineTests = {
-  files: ["tests/**/*.spec.ts"],
-  rules: {
-    "no-void": "off",
-    "require-await": "off",
-    "no-duplicate-imports": "off",
-    "no-useless-escape": "off",
-    "unicorn/consistent-function-scoping": "off",
-  },
-};
-
 const ignores = [
   gitignore(),
   {
@@ -396,5 +383,4 @@ export default [
   ...prettier,
   ...unicorn,
   unocss,
-  vendoredEngineTests,
 ];

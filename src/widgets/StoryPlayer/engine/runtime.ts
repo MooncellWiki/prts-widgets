@@ -756,7 +756,7 @@ export class StoryRuntime {
   }
 
   private async waitInterruptible(ms: number): Promise<boolean> {
-    return await this.waitInterruptiblePromise(this.sleep(Math.max(0, ms)));
+    return this.waitInterruptiblePromise(this.sleep(Math.max(0, ms)));
   }
 
   private resolveCharacterName(

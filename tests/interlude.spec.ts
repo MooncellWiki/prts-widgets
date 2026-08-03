@@ -32,6 +32,15 @@ function input(overrides: Partial<InterludeInput> = {}): InterludeInput {
   };
 }
 
+async function tweenImmediately(
+  _duration: number,
+  update: (progress: number) => void,
+  complete?: () => void,
+): Promise<void> {
+  update(1);
+  complete?.();
+}
+
 describe("InterludePanel", () => {
   it("reuses a channel, adds an element, toggles it, and clears the channel", async () => {
     const layer = new Container();
@@ -65,15 +74,11 @@ describe("InterludePanel", () => {
 
   it("clears every channel when channel is negative", async () => {
     const layer = new Container();
-    const tween = async (
-      _duration: number,
-      update: (progress: number) => void,
-      complete?: () => void,
-    ): Promise<void> => {
-      update(1);
-      complete?.();
-    };
-    const panel = new InterludePanel(layer, async () => Texture.EMPTY, tween);
+    const panel = new InterludePanel(
+      layer,
+      async () => Texture.EMPTY,
+      tweenImmediately,
+    );
     await panel.run(input({ channel: 3 }));
     await panel.run(input({ channel: 4 }));
 

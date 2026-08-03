@@ -440,7 +440,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async showDecision(options: string[], values: number[]): Promise<number> {
-    return await this.decisionPanel.show(options, values);
+    return this.decisionPanel.show(options, values);
   }
 
   /**
@@ -805,7 +805,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.sessionId += 1;
     state.sprite.destroy();
     this.cutinStates.delete(id);
-    await Promise.resolve();
   }
 
   async clearInterludes(): Promise<void> {
@@ -1885,7 +1884,6 @@ export class PixiStoryRenderer implements StoryRenderer {
         timer.visible = false;
       },
     );
-    await Promise.resolve();
   }
 
   /**
@@ -2212,7 +2210,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       newChars,
       widthPx: input.widthPx,
     });
-    await Promise.resolve();
   }
 
   /**
@@ -2278,7 +2275,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       newChars,
       widthPx: input.widthPx,
     });
-    await Promise.resolve();
   }
 
   setSpellSticker(input: SpellStickerInput): void {
@@ -2322,7 +2318,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.timerStickerText.text = this.formatTimer(remainingSeconds);
       if (remainingSeconds <= 0) this.clearTimerInterval();
     }, 1000);
-    await Promise.resolve();
   }
 
   private async createUi(): Promise<void> {
@@ -3619,7 +3614,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       return null;
     }
 
-    return await this.textureForUrl(rawUrl, kind, key);
+    return this.textureForUrl(rawUrl, kind, key);
   }
 
   private async textureForCharacterKey(key: string): Promise<Texture | null> {
@@ -3629,14 +3624,14 @@ export class PixiStoryRenderer implements StoryRenderer {
       return null;
     }
 
-    return await this.textureForUrl(rawUrl, "character", key);
+    return this.textureForUrl(rawUrl, "character", key);
   }
 
   private async textureForInterlude(
     input: InterludeInput,
   ): Promise<Texture | null> {
     if (input.type !== 3)
-      return await this.textureForImageKey(
+      return this.textureForImageKey(
         input.name,
         input.type === 2 ? "background" : "image",
       );

@@ -118,7 +118,6 @@ export class InterludePanel {
     for (const state of this.channels.values())
       state.root.destroy({ children: true });
     this.channels.clear();
-    await Promise.resolve();
   }
 
   destroy(): void {

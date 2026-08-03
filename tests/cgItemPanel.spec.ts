@@ -30,19 +30,23 @@ function input(key: string, overrides: Partial<CgItemInput> = {}): CgItemInput {
   };
 }
 
-describe("CgItemPanel", () => {
-  const tween = async (
-    _duration: number,
-    update: (progress: number) => void,
-    complete?: () => void,
-  ) => {
-    update(1);
-    complete?.();
-  };
+async function tweenImmediately(
+  _duration: number,
+  update: (progress: number) => void,
+  complete?: () => void,
+): Promise<void> {
+  update(1);
+  complete?.();
+}
 
+describe("CgItemPanel", () => {
   it("keeps different keys and replaces an equal key in place", async () => {
     const layer = new Container();
-    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    const panel = new CgItemPanel(
+      layer,
+      async () => Texture.WHITE,
+      tweenImmediately,
+    );
 
     await panel.show(input("a"));
     const oldA = panel.targets("a")[0];
@@ -62,7 +66,11 @@ describe("CgItemPanel", () => {
 
   it("hides one key or clears all keys independently of block", async () => {
     const layer = new Container();
-    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    const panel = new CgItemPanel(
+      layer,
+      async () => Texture.WHITE,
+      tweenImmediately,
+    );
     await panel.show(input("a"));
     await panel.show(input("b"));
 

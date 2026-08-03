@@ -1082,8 +1082,8 @@ describe("StoryRuntime", () => {
     const sleep = vi.fn(async () => {});
     const runtime = new StoryRuntime(
       createContext([
-        '[character(name=\"avg_npc_1\",block=true,fadetime=0.2,enter=\"left\",blackstart=0.2,blackend=0.8)]',
-        '[name=\"A\"]ok',
+        '[character(name="avg_npc_1",block=true,fadetime=0.2,enter="left",blackstart=0.2,blackend=0.8)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1120,8 +1120,8 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[character(name=\"avg_npc_1\",name2=\"avg_npc_1#1\",focus=1)]',
-        '[name=\"A\"]ok',
+        '[character(name="avg_npc_1",name2="avg_npc_1#1",focus=1)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1288,8 +1288,8 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[charslot(slot=\"m\",name=\"avg_1012_skadiSP_1#2\")]',
-        '[name=\"A\"]ok',
+        '[charslot(slot="m",name="avg_1012_skadiSP_1#2")]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1333,8 +1333,8 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[charslot(slot=\"left\",name=\"avg_npc_1\",duration=0.4,isblock=true)]',
-        '[name=\"A\"]ok',
+        '[charslot(slot="left",name="avg_npc_1",duration=0.4,isblock=true)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1355,9 +1355,9 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[charslot(slot=\"m\",name=\"avg_npc_1\")]',
-        '[charslot(slot=\"middle\",focus=\"none\",posto=\"10,20\",duration=0.2)]',
-        '[name=\"A\"]ok',
+        '[charslot(slot="m",name="avg_npc_1")]',
+        '[charslot(slot="middle",focus="none",posto="10,20",duration=0.2)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1378,10 +1378,7 @@ describe("StoryRuntime", () => {
   it("clears all characters with charslot duration when slot is omitted", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
-      createContext([
-        "[charslot(duration=0.5,isblock=true)]",
-        '[name=\"A\"]ok',
-      ]),
+      createContext(["[charslot(duration=0.5,isblock=true)]", '[name="A"]ok']),
       renderer,
       new FakeAudio(),
     );
@@ -1400,7 +1397,7 @@ describe("StoryRuntime", () => {
         resolveClear = resolve;
       });
     const runtime = new StoryRuntime(
-      createContext(["[charslot(duration=0.5)]", '[name=\"A\"]ok']),
+      createContext(["[charslot(duration=0.5)]", '[name="A"]ok']),
       renderer,
       new FakeAudio(),
     );
@@ -1421,7 +1418,7 @@ describe("StoryRuntime", () => {
       createContext([
         "[camerashake(xstrength=12,ystrength=8)]",
         "[camerashake(duration=0.5,randomness=40,vibrato=18,block=false,stop=true)]",
-        '[name=\"A\"]ok',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1583,7 +1580,7 @@ describe("StoryRuntime", () => {
       createContext([
         "[curtain(direction=0,fillfrom=0.01,fillto=0.2,fadetime=1.5,isblock=true)]",
         "[curtain(direction=4,fillto=0.08,a=0.5,fadetime=0.25,block=true)]",
-        '[name=\"A\"]ok',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1623,7 +1620,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         "[curtain(direction=4,fillfrom=0.18,fillto=0.18,afrom=0,ato=1,fadetime=0.1,block=true)]",
-        '[name=\"A\"]ok',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1649,7 +1646,7 @@ describe("StoryRuntime", () => {
   it("clears all curtains when direction is omitted", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
-      createContext(["[curtain(fadetime=0.3,block=true)]", '[name=\"A\"]ok']),
+      createContext(["[curtain(fadetime=0.3,block=true)]", '[name="A"]ok']),
       renderer,
       new FakeAudio(),
     );
@@ -1961,8 +1958,8 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[characteraction(name=\"left\",type=\"move\",xpos=-200,ypos=60,fadetime=0.1,isblock=true)]',
-        '[name=\"A\"]ok',
+        '[characteraction(name="left",type="move",xpos=-200,ypos=60,fadetime=0.1,isblock=true)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -1997,10 +1994,10 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[characteraction(name=\"middle\",type=\"rotate\",duration=0.5,start=3,leftend=20,rightend=10,times=-1,stop=false)]',
-        '[characteraction(name=\"char_right\",type=\"zoom\",scale=1.2,yscale=0.8,block=true)]',
-        '[characteraction(name=\"r\",type=\"exit\",direction=\"left\",block=false)]',
-        '[name=\"A\"]ok',
+        '[characteraction(name="middle",type="rotate",duration=0.5,start=3,leftend=20,rightend=10,times=-1,stop=false)]',
+        '[characteraction(name="char_right",type="zoom",scale=1.2,yscale=0.8,block=true)]',
+        '[characteraction(name="r",type="exit",direction="left",block=false)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -2054,9 +2051,9 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         "[imagerotate(angle=-5,fadetime=0.1,block=true)]",
-        '[imagerotate(angle=0,fadetime=10,isblock=false,image=\"70_i11\")]',
+        '[imagerotate(angle=0,fadetime=10,isblock=false,image="70_i11")]',
         "[imagerotate]",
-        '[name=\"A\"]ok',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -2311,8 +2308,8 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         "[musicvolume(volume=0.25,fadetime=1.5)]",
-        '[soundvolume(channel=\"b\",volume=0.75,fadetime=0.5)]',
-        '[name=\"A\"]ok',
+        '[soundvolume(channel="b",volume=0.75,fadetime=0.5)]',
+        '[name="A"]ok',
       ]),
       new FakeRenderer(),
       audio,
@@ -2381,9 +2378,9 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[subtitle(text=\"HELLO\",alignment=\"center\",size=24,width=400,x=100,y=200,delay=0.1,fadetime=0.2,multi=true)]',
+        '[subtitle(text="HELLO",alignment="center",size=24,width=400,x=100,y=200,delay=0.1,fadetime=0.2,multi=true)]',
         "[subtitle(fadetime=0.3)]",
-        '[name=\"A\"]ok',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -2417,12 +2414,12 @@ describe("StoryRuntime", () => {
     const sleep = vi.fn(async () => {});
     const runtime = new StoryRuntime(
       createContext([
-        '[sticker(id=\"tip\",text=\"LEFT\",alignment=\"left\",size=20,width=200,x=40,y=60,delay=0.05,multi=true,fadetime=0.1)]',
-        '[sticker(id=\"tip\",fadetime=0.2)]',
+        '[sticker(id="tip",text="LEFT",alignment="left",size=20,width=200,x=40,y=60,delay=0.05,multi=true,fadetime=0.1)]',
+        '[sticker(id="tip",fadetime=0.2)]',
         "[timersticker(x=30,y=90,size=24,time=10)]",
         "[timerclear(afrom=0.8,ato=0.2,duration=0.5)]",
         "[stickerclear]",
-        '[name=\"A\"]ok',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -2480,8 +2477,8 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[subtitle(text=\"HELLO\",alignment=\"center\")]',
-        '[name=\"A\"]ok',
+        '[subtitle(text="HELLO",alignment="center")]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
