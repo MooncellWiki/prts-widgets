@@ -22,7 +22,7 @@ const tokens = computed(() => {
   for (const token of tokenInsts) {
     const pos = token.position;
     const coord = `${pos.row}-${pos.col}`;
-    result[coord] ??= [];
+    result[coord] = result[coord] ?? [];
     result[coord].push(token.inst.characterKey.replaceAll(/trap_\d+_/g, ""));
   }
   return result;

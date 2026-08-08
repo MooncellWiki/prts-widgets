@@ -71,7 +71,7 @@ window.Sentry = {
   captureException: Sentry.captureException,
 };
 
-(window.RLQ ||= []).push([
+(window.RLQ = window.RLQ || []).push([
   "mediawiki.user",
   function () {
     if (window.mw.user.isAnon()) {

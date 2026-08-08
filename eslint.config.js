@@ -378,6 +378,7 @@ const unicorn = [
       "unicorn/no-unreadable-for-of-expression": "off",
       "unicorn/no-declarations-before-early-exit": "off",
       "unicorn/max-nested-calls": "off",
+      "unicorn/logical-assignment-operators": "off",
     },
   },
 ];

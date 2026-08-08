@@ -70,10 +70,10 @@ const filteredMedalData = computed(() => {
       }
       let res = true;
       if (states.value.special.includes("可获得")) {
-        res &&= !medal.deprecate;
+        res = res && !medal.deprecate;
       }
       if (states.value.special.includes("有镀层")) {
-        res &&= medal.isTrim;
+        res = res && medal.isTrim;
       }
 
       return res;
