@@ -90,7 +90,7 @@ export class GachaExecutor {
       guarantee6DoubleUp6Count,
       guarantee6Avail: 0,
       guarantee6Count: 0,
-      gachaTimes: Number.POSITIVE_INFINITY,
+      gachaTimes: Infinity,
     };
 
     this.state = createGachaState(this.config);

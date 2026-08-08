@@ -57,10 +57,7 @@ function getTile(index: number) {
   let a = props.map?.mapData.tiles[index].tileKey.replace("tile_", "");
   if (a === "floor" || a === "road") {
     const buildableType = props.map?.mapData.tiles[index].buildableType;
-    const isRoad =
-      buildableType === 1 ||
-      buildableType === "MELEE" ||
-      buildableType === "ALL";
+    const isRoad = [1, "MELEE", "ALL"].includes(buildableType);
     a = isRoad ? "road" : "floor";
   }
   return a;

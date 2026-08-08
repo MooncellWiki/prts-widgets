@@ -75,7 +75,7 @@ const expandedNames = computed(() => {
     const index = final.indexOf(Number.parseInt(name));
     if (expanded) {
       if (index === -1) final.push(Number.parseInt(name));
-    } else if (index > -1) final.splice(index, 1);
+    } else if (index !== -1) final.splice(index, 1);
   }
 
   return final;
@@ -110,10 +110,8 @@ const doGachaOne = () => {
     results.value[charId] = {
       charId,
       rarity,
-      avatarURL: new URL(
-        `/assets/char_avatar/${charId}.png`,
-        TORAPPU_ENDPOINT,
-      ).toString(),
+      avatarURL: new URL(`/assets/char_avatar/${charId}.png`, TORAPPU_ENDPOINT)
+        .href,
       count: 1,
     };
 

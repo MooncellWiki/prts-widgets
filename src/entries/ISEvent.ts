@@ -29,7 +29,7 @@ for (const eventEle of Array.from(eventEles)) {
       return {
         etype: data.etype,
         efloor: data.efloor?.split(",") || [],
-        edesc: scene.querySelectorAll(".edesc")[0]?.innerHTML,
+        edesc: scene.querySelector(".edesc")?.innerHTML,
         name: data.name,
         ename: data.ename,
         nav: data.nav,
@@ -45,11 +45,11 @@ for (const eventEle of Array.from(eventEles)) {
             type: chooseData.type,
             icon: chooseData.icon,
             iconId: chooseData.iconid,
-            desc1: choose.querySelectorAll(".desc1")[0]?.innerHTML,
-            desc2: choose.querySelectorAll(".desc2")[0]?.innerHTML,
+            desc1: choose.querySelector(".desc1")?.innerHTML,
+            desc2: choose.querySelector(".desc2")?.innerHTML,
             dest: Number.parseInt(chooseData.dest || "0"),
             customBadgeText:
-              choose.querySelectorAll(".customBadgeText")[0]?.innerHTML,
+              choose.querySelector(".customBadgeText")?.innerHTML,
             subChoose: chooseData.subchoose,
             index,
           };
@@ -66,6 +66,7 @@ for (const eventEle of Array.from(eventEles)) {
   if (scenes[0].efloor) {
     sceneFloorList.push(...scenes[0].efloor);
     sceneFloorList = Array.from(new Set(sceneFloorList));
+    // eslint-disable-next-line unicorn/require-array-sort-compare
     sceneFloorList.sort();
   }
   sceneCategoryData.at(-1)?.push(scenes[0].ename || scenes[0].name || "？？？");

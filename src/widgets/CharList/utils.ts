@@ -2,9 +2,8 @@ const getLast = (str: string) => {
   if (str.includes("→")) {
     const arr = str.split("→");
     return Number.parseInt(arr.at(-1)!);
-  } else {
-    return Number.parseInt(str);
   }
+  return Number.parseInt(str);
 };
 
 export class Char {

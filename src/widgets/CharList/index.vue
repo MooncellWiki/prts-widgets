@@ -225,9 +225,8 @@ const oridata = computed(() => {
           const o =
             classes.indexOf(a.profession) - classes.indexOf(b.profession);
           return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
-        } else {
-          return r;
         }
+        return r;
       });
       break;
     }
@@ -239,9 +238,8 @@ const oridata = computed(() => {
           const o =
             classes.indexOf(a.profession) - classes.indexOf(b.profession);
           return o === 0 ? a.zh.localeCompare(b.zh, "zh") : o;
-        } else {
-          return r;
         }
+        return r;
       });
       break;
     }
@@ -276,7 +274,7 @@ watch(states, () => {
   }
 });
 watch(sortMethod, () => {
-  hash._o = `${sortMethods.value.indexOf(sortMethod.value)}`;
+  hash._o = String(sortMethods.value.indexOf(sortMethod.value));
 });
 watch(
   currDataTypes,
@@ -291,46 +289,40 @@ watch(
   { deep: true },
 );
 watch(currDisplayMode, () => {
-  hash._d = `${displayModes.value.indexOf(currDisplayMode.value)}`;
+  hash._d = String(displayModes.value.indexOf(currDisplayMode.value));
 });
 onBeforeMount(() => {
-  // too hard to refactor
-  // eslint-disable-next-line unicorn/no-array-for-each
-  Object.entries(hash).forEach(([k, v]) => {
+  for (const [k, v] of Object.entries(hash)) {
     if (k === "_s") {
       searchText.value = v as string;
-      return;
+      continue;
     }
     if (k === "_o") {
       sortMethod.value = sortMethods.value[Number.parseInt(v as string)];
-      return;
+      continue;
     }
     if (k === "_f") {
       if (v.includes("p")) currDataTypes.value["满潜能"] = true;
       if (v.includes("t")) currDataTypes.value["满信赖"] = true;
-      return;
+      continue;
     }
     if (k === "_d") {
       currDisplayMode.value = displayModes.value[Number.parseInt(v as string)];
-      return;
+      continue;
     }
 
     const both = v[0] === "0";
     const selected = (v as string).slice(2).split(";");
-    for (const state of states) {
-      for (const element of state) {
-        if (element.meta.field === k) {
-          element.both = both;
-          for (let f of selected) {
-            if (k === "rarity") f = `★${f}`;
+    const element = states.flat().find((element) => element.meta.field === k);
+    if (!element) continue;
 
-            element.selected[f] = true;
-          }
-          return;
-        }
-      }
+    element.both = both;
+    for (let f of selected) {
+      if (k === "rarity") f = `★${f}`;
+
+      element.selected[f] = true;
     }
-  });
+  }
 });
 
 function hasSelected(states: State[]) {

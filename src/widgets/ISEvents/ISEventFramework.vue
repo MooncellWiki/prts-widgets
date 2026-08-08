@@ -79,19 +79,20 @@ const isCurScenePrtsInfo = computed(() => {
   return isPrtsInfo(currentSceneId.value);
 });
 function jump(id: number) {
-  if (id) {
-    const index = sceneNav.value.indexOf(id);
-    if (index === -1) sceneNav.value.push(id);
-    else if (index + 1 < sceneNav.value.length)
-      sceneNav.value.splice(index + 1);
+  if (!id) {
+    return;
+  }
 
-    currentSceneId.value = id;
+  const index = sceneNav.value.indexOf(id);
+  if (index === -1) sceneNav.value.push(id);
+  else if (index + 1 < sceneNav.value.length) sceneNav.value.splice(index + 1);
 
-    const name = props.sceneData[0].ename || props.sceneData[0].name || "";
-    const element = document.querySelector(`#${name}`);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth" });
-    }
+  currentSceneId.value = id;
+
+  const name = props.sceneData[0].ename || props.sceneData[0].name || "";
+  const element = document.querySelector(`#${name}`);
+  if (element) {
+    element.scrollIntoView({ behavior: "smooth" });
   }
 }
 function jumpToNav() {
@@ -108,7 +109,9 @@ function navJump(index: number) {
 }
 function optionsToNavDrop(options: Array<Option>) {
   const navDrop: SceneNavDropdownOption[] = [];
-  for (const o of options.filter((option) => option.type !== "desc")) {
+  for (const o of options) {
+    if (o.type === "desc") continue;
+
     const scd = getSubChooseData(o.subChoose || "");
     if (scd.length === 0) {
       if (o.type === "hr") {
@@ -140,7 +143,7 @@ function optionsToNavDrop(options: Array<Option>) {
         key: `m-${o.index}-main`,
         children: scd.map((d) => {
           return {
-            label: `${d[0]}`,
+            label: String(d[0]),
             key: `s-${o.index}-${d[1]}`,
             navData: {
               isSubChoose: true,

@@ -26,7 +26,7 @@ import {
 
 // 寻访出不了的都算只能公招出
 function isOnly(s: Source) {
-  return !s.obtainMethod.some((v) => v.includes("寻访"));
+  return s.obtainMethod.every((v) => !v.includes("寻访"));
 }
 const props = withDefaults(
   defineProps<{

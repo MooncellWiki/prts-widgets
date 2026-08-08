@@ -25,13 +25,12 @@ function setState(value: string, state: boolean) {
   if (stateMap.value[value] && !state) return;
 
   if (!stateMap.value[value] && state) {
-    Object.keys(stateMap.value).find((key) => {
-      if (stateMap.value[key]) {
+    for (const [key, checked] of Object.entries(stateMap.value)) {
+      if (checked) {
         stateMap.value[key] = false;
-        return true;
+        break;
       }
-      return false;
-    });
+    }
     stateMap.value[value] = true;
     emit("update:modelValue", value);
   }
