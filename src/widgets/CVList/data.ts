@@ -19,10 +19,12 @@ async function initSkinTable() {
   const charMapping: Record<string, string> = {};
 
   for (const skin of Object.values(table.charSkins)) {
-    if (skin.voiceId) {
-      avatarMapping[skin.voiceId] = skin.avatarId;
-      charMapping[skin.voiceId] = skin.charId;
+    if (!skin.voiceId) {
+      continue;
     }
+
+    avatarMapping[skin.voiceId] = skin.avatarId;
+    charMapping[skin.voiceId] = skin.charId;
   }
 
   const buildinPatchMap = table.buildinPatchMap;
