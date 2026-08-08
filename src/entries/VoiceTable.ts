@@ -52,10 +52,12 @@ const parseDetail = (children: HTMLCollection) => {
   const detail: Record<string, string> = {};
   const childrenArray = Array.from(children) as Array<HTMLElement>;
   for (const child of childrenArray) {
-    if (child.dataset?.kindName !== undefined) {
-      detail[child.dataset.kindName || ""] = child.innerHTML;
-      langSet.add(child.dataset.kindName || "");
+    if (child.dataset?.kindName === undefined) {
+      continue;
     }
+
+    detail[child.dataset.kindName || ""] = child.innerHTML;
+    langSet.add(child.dataset.kindName || "");
   }
 
   return detail;

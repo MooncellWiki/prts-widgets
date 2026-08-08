@@ -86,9 +86,8 @@ export function skill(skillId: string) {
       // No default
     }
     return `${TORAPPU_ENDPOINT}/assets/skill_icon/skill_icon_${skillId}.png`;
-  } else {
-    return `${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_none.png`;
   }
+  return `${STATIC_ENDPOINT}/charinfo/img/skland/skill_icon_none.png`;
 }
 
 export function specialized(skills: Char["skills"], skillId: string) {

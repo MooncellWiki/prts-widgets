@@ -6,7 +6,8 @@ export function processMaterial(res: string): string {
   for (const group of result) {
     res = res.replace(
       group[0],
-      `<a href="/w/${group[1]}"><img src="${getImagePath(`道具_带框_${group[1]}.png`)}" width="50" /></a>`,
+      () =>
+        `<a href="/w/${group[1]}"><img src="${getImagePath(`道具_带框_${group[1]}.png`)}" width="50" /></a>`,
     );
   }
   return res;
@@ -27,7 +28,8 @@ export function processLink(res: string): string {
   for (const group of result) {
     res = res.replace(
       group[0],
-      `<a href="/w/${group[1]}">${group[2] === "" ? group[1] : group[2]}</a>`,
+      () =>
+        `<a href="/w/${group[1]}">${group[2] === "" ? group[1] : group[2]}</a>`,
     );
   }
   return res;
@@ -81,7 +83,7 @@ export async function fixAtkRange(
   const rangeDoc = new DOMParser().parseFromString(rangeText, "text/html");
   const range = rangeDoc.querySelector("p")?.innerHTML;
 
-  return res.replaceAll(regexp, range ?? "");
+  return res.replaceAll(regexp, () => range ?? "");
 }
 
 export function updateTippy(isDark: boolean) {

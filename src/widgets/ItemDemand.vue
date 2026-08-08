@@ -40,8 +40,7 @@ async function query(name: string): Promise<itemCost> {
     uniequip: 0,
     total: 0,
   };
-  for (const key of Object.keys(data)) {
-    const v = data[key];
+  for (const [key, v] of Object.entries(data)) {
     const cost = costs[v.rarity] || {
       label: `${v.rarity}星`,
       data: [],

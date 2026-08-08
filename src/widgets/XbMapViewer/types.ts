@@ -67,11 +67,7 @@ export enum BuildableType {
 
 // BuildableType can be represented as enum value or string in practice
 export type BuildableTypeValue =
-  | BuildableType
-  | "NONE"
-  | "MELEE"
-  | "RANGED"
-  | "ALL";
+  BuildableType | "NONE" | "MELEE" | "RANGED" | "ALL";
 
 export enum MotionMask {
   NONE = 0,

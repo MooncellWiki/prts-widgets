@@ -35,10 +35,12 @@ const expandAll = () => {
 const collapseAll = () => {
   for (const char of props.chars) {
     for (const equip of char.equips) {
-      if (!!equip.name && showEquips.value.includes(equip.name)) {
-        const ind = showEquips.value.indexOf(equip.name);
-        showEquips.value.splice(ind, 1);
+      if (!equip.name || !showEquips.value.includes(equip.name)) {
+        continue;
       }
+
+      const ind = showEquips.value.indexOf(equip.name);
+      showEquips.value.splice(ind, 1);
     }
   }
 };

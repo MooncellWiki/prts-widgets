@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function main(): Promise<void> {
   if (process.argv[2] === "-h" || process.argv.length < 4) {
-    console.log(String.raw`tsx scripts/update.ts username password`);
+    console.log("tsx scripts/update.ts username password");
     return;
   }
 

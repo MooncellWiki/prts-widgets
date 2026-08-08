@@ -74,8 +74,8 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
       }
     }
   }
-  for (const key of Object.keys(result)) {
-    result[key].sort((a, b) => {
+  for (const value of Object.values(result)) {
+    value.sort((a, b) => {
       return a.char.rarity === b.char.rarity
         ? b.char.id - a.char.id
         : Number.parseInt(b.char.rarity as string) -

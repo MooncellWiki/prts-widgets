@@ -30,9 +30,8 @@ function readItemsFromDOM(): ItemData[] {
         return iconId === ""
           ? getImagePath("无图片占位符.png")
           : `${TORAPPU_ENDPOINT}/assets/item_icon/${iconId}.png`;
-      } else {
-        return filename;
       }
+      return filename;
     })();
 
     items.push({

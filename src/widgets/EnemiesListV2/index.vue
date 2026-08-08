@@ -67,9 +67,9 @@ const filteredEnemyData = computed(() => {
       if (filters[key].length > 0) {
         if (
           filterConfig.groups[0].filters.includes(key) &&
-          !filters[key].some(
+          filters[key].every(
             (filter) =>
-              !!~enemy[key as keyof EnemyData].toString().indexOf(filter),
+              !enemy[key as keyof EnemyData].toString().includes(filter),
           )
         )
           return false;
@@ -81,8 +81,8 @@ const filteredEnemyData = computed(() => {
       }
       if (
         searchWord &&
-        !~enemy.name.indexOf(searchWord) &&
-        !~enemy.ability.indexOf(searchWord)
+        !enemy.name.includes(searchWord) &&
+        !enemy.ability.includes(searchWord)
       )
         return false;
     }
@@ -148,8 +148,8 @@ const abilityColumn: DataTableColumn<EnemyData> = {
   resizable: true,
   filter(value, row) {
     return (
-      !!~row.ability.indexOf(value.toString()) ||
-      !!~row.name.indexOf(value.toString())
+      row.ability.includes(value.toString()) ||
+      row.name.includes(value.toString())
     );
   },
   render(row) {
@@ -232,7 +232,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       filterOptions: createFilterOptions("enemyLevel"),
       filterOptionValues: filterConfig.states.enemyLevel,
       filter(value, row) {
-        return !!~row.enemyLevel.indexOf(value.toString());
+        return row.enemyLevel.includes(value.toString());
       },
       renderFilter() {
         return h("div");
@@ -246,7 +246,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       filterOptions: createFilterOptions("enemyRace"),
       filterOptionValues: filterConfig.states.enemyRace,
       filter(value, row) {
-        return !!~row.enemyRace.indexOf(value.toString());
+        return row.enemyRace.includes(value.toString());
       },
       renderFilter() {
         return h("div");
@@ -260,7 +260,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       filterOptions: createFilterOptions("attackType"),
       filterOptionValues: filterConfig.states.attackType,
       filter(value, row) {
-        return !!~row.attackType.indexOf(value.toString());
+        return row.attackType.includes(value.toString());
       },
       renderFilter() {
         return h("div");
@@ -274,7 +274,7 @@ const createColumns = (): DataTableColumns<EnemyData> => {
       filterOptions: createFilterOptions("damageType"),
       filterOptionValues: filterConfig.states.damageType,
       filter(value, row) {
-        return !!~row.damageType.indexOf(value.toString());
+        return row.damageType.includes(value.toString());
       },
       renderFilter() {
         return h("div");
@@ -314,6 +314,7 @@ const handleUpdateFilter = (
 <template>
   <NConfigProvider
     preflight-style-disabled
+    inline-theme-disabled
     :theme="theme"
     :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"

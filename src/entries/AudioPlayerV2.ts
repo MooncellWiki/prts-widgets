@@ -12,7 +12,7 @@ for (const element of Array.from(players)) {
     lowSource: element.dataset?.low || "",
     highSource: element.dataset?.high || "",
     title: element.innerHTML,
-    p: Number.parseFloat(element.dataset?.p || "0"),
+    p: Number(element.dataset?.p || "0"),
   };
 
   createApp(AudioPlayerV2, props).mount(element);

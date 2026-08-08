@@ -56,11 +56,11 @@ export class BitMap {
   }
 
   set(index: number) {
-    this.value = this.value | (1 << index);
+    this.value |= 1 << index;
   }
 
   clear(index: number) {
-    this.value = this.value ^ (1 << index);
+    this.value ^= 1 << index;
   }
 
   range(lo: number, hi: number) {
@@ -73,7 +73,7 @@ export class BitMap {
     let res = 0;
     let tmp = this.value;
     while (tmp !== 0) {
-      tmp = tmp & (tmp - 1);
+      tmp &= tmp - 1;
       res++;
     }
     return res;
@@ -88,7 +88,7 @@ export class BitMap {
       if ((value & 1) === 1) result.push(index);
 
       index++;
-      value = value >> 1;
+      value >>= 1;
     }
     return result;
   }
@@ -101,7 +101,7 @@ export class BitMap {
       let tmp = 0;
       const indices = i.getIndict();
       for (const index of indices) {
-        tmp = tmp | (1 << selfIndices[index]);
+        tmp |= 1 << selfIndices[index];
       }
       if (tmp !== 0) result.push(tmp);
     }
@@ -109,85 +109,6 @@ export class BitMap {
   }
 }
 export class Char {
-  bitmap: BitMap;
-  constructor(i = 0) {
-    this.bitmap = new BitMap(i);
-  }
-
-  selectAllProfession() {
-    for (const [i] of profession.entries()) {
-      this.bitmap.set(professionIndex - i);
-    }
-  }
-
-  unselectAllProfession() {
-    for (const [i] of profession.entries()) {
-      if (this.bitmap.get(professionIndex - i) !== 0)
-        this.bitmap.clear(professionIndex - i);
-    }
-  }
-
-  isProfessionEmpty() {
-    return (
-      this.bitmap.range(
-        professionIndex - profession.length,
-        professionIndex,
-      ) === 0
-    );
-  }
-
-  selectAllPosition() {
-    for (const [i] of position.entries()) {
-      this.bitmap.set(positionIndex - i);
-    }
-  }
-
-  isPositionEmpty() {
-    return (
-      this.bitmap.range(positionIndex - position.length, positionIndex) === 0
-    );
-  }
-
-  unselectAllPosition() {
-    for (const [i] of position.entries()) {
-      if (this.bitmap.get(positionIndex - i) !== 0)
-        this.bitmap.clear(positionIndex - i);
-    }
-  }
-
-  selectAllRarity() {
-    for (const [i] of rarity.entries()) {
-      this.bitmap.set(rarityIndex - i);
-    }
-  }
-
-  unselectAllRarity() {
-    for (const [i] of rarity.entries()) {
-      if (this.bitmap.get(rarityIndex - i) !== 0)
-        this.bitmap.clear(rarityIndex - i);
-    }
-  }
-
-  isRarityEmpty() {
-    return this.bitmap.range(rarityIndex - rarity.length, rarityIndex) === 0;
-  }
-
-  selectAllTag() {
-    for (const [i] of tag.entries()) {
-      this.bitmap.set(tagIndex - i);
-    }
-  }
-
-  unselectAllTag() {
-    for (const [i] of tag.entries()) {
-      if (this.bitmap.get(tagIndex - i) !== 0) this.bitmap.clear(tagIndex - i);
-    }
-  }
-
-  isTagEmpty() {
-    return this.bitmap.range(tagIndex - tag.length, tagIndex) === 0;
-  }
-
   static fromSource(source: Source): Char {
     const char = new Char();
     char.bitmap.value = 0;
@@ -205,6 +126,86 @@ export class Char {
       char.bitmap.set(tagIndex - tag.indexOf(v));
     }
     return char;
+  }
+
+  bitmap: BitMap;
+
+  constructor(i = 0) {
+    this.bitmap = new BitMap(i);
+  }
+
+  selectAllProfession() {
+    for (const i of profession.keys()) {
+      this.bitmap.set(professionIndex - i);
+    }
+  }
+
+  unselectAllProfession() {
+    for (const i of profession.keys()) {
+      if (this.bitmap.get(professionIndex - i) !== 0)
+        this.bitmap.clear(professionIndex - i);
+    }
+  }
+
+  isProfessionEmpty() {
+    return (
+      this.bitmap.range(
+        professionIndex - profession.length,
+        professionIndex,
+      ) === 0
+    );
+  }
+
+  selectAllPosition() {
+    for (const i of position.keys()) {
+      this.bitmap.set(positionIndex - i);
+    }
+  }
+
+  isPositionEmpty() {
+    return (
+      this.bitmap.range(positionIndex - position.length, positionIndex) === 0
+    );
+  }
+
+  unselectAllPosition() {
+    for (const i of position.keys()) {
+      if (this.bitmap.get(positionIndex - i) !== 0)
+        this.bitmap.clear(positionIndex - i);
+    }
+  }
+
+  selectAllRarity() {
+    for (const i of rarity.keys()) {
+      this.bitmap.set(rarityIndex - i);
+    }
+  }
+
+  unselectAllRarity() {
+    for (const i of rarity.keys()) {
+      if (this.bitmap.get(rarityIndex - i) !== 0)
+        this.bitmap.clear(rarityIndex - i);
+    }
+  }
+
+  isRarityEmpty() {
+    return this.bitmap.range(rarityIndex - rarity.length, rarityIndex) === 0;
+  }
+
+  selectAllTag() {
+    for (const i of tag.keys()) {
+      this.bitmap.set(tagIndex - i);
+    }
+  }
+
+  unselectAllTag() {
+    for (const i of tag.keys()) {
+      if (this.bitmap.get(tagIndex - i) !== 0) this.bitmap.clear(tagIndex - i);
+    }
+  }
+
+  isTagEmpty() {
+    return this.bitmap.range(tagIndex - tag.length, tagIndex) === 0;
   }
 
   dump(): string {

@@ -107,7 +107,7 @@ export function calculateCharWeights(
   for (const [charId, weight] of Object.entries(weightUpCharInfoMap)) {
     const factor = weight / 100; // 限定池过往六星 UP 5 倍权重 (500)
     if (charWeights[charId]) {
-      charWeights[charId] = charWeights[charId] * factor;
+      charWeights[charId] *= factor;
     }
   }
 

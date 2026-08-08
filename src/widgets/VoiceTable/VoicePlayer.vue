@@ -25,7 +25,7 @@ const source = computed(
   () => `//torappu.prts.wiki/assets/audio/${props.voicePath}`,
 );
 const transformSourceURL = (ext: string) =>
-  source.value.replaceAll(".wav", ext);
+  source.value.replaceAll(".wav", () => ext);
 
 const fileName = computed(() => props.voiceId?.split("/").pop());
 const audioHref = computed(

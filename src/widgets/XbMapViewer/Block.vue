@@ -29,7 +29,8 @@ const style = computed(() => {
     result.backgroundImage = `url(${getImagePath(props.blockmap[props.tile!].img!)})`;
   }
 
-  for (const token of props.tokens || []) {
+  const tokens = props.tokens || [];
+  for (const token of tokens) {
     if (props.blockmap[token]?.img)
       result.backgroundImage = `url(${getImagePath(props.blockmap[token].img)})`;
   }
@@ -51,7 +52,8 @@ onMounted(() => {
   if (props.tile && props.blockmap[props.tile]?.desc)
     content += props.blockmap[props.tile].desc;
 
-  for (const token of props.tokens || []) {
+  const tokens = props.tokens || [];
+  for (const token of tokens) {
     if (token && props.blockmap[token]?.desc)
       content += content
         ? `<br/> ${props.blockmap[token].desc}`

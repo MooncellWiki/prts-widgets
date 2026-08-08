@@ -75,7 +75,7 @@ const expandedNames = computed(() => {
     const index = final.indexOf(Number.parseInt(name));
     if (expanded) {
       if (index === -1) final.push(Number.parseInt(name));
-    } else if (index > -1) final.splice(index, 1);
+    } else if (index !== -1) final.splice(index, 1);
   }
 
   return final;
@@ -110,10 +110,8 @@ const doGachaOne = () => {
     results.value[charId] = {
       charId,
       rarity,
-      avatarURL: new URL(
-        `/assets/char_avatar/${charId}.png`,
-        TORAPPU_ENDPOINT,
-      ).toString(),
+      avatarURL: new URL(`/assets/char_avatar/${charId}.png`, TORAPPU_ENDPOINT)
+        .href,
       count: 1,
     };
 
@@ -194,13 +192,16 @@ const isCharIdSelected = (rarity: number, charId: string) => {
   );
 };
 
-const bannerImageURL = getImagePath(props.gachaBannerFile);
+const bannerImageURL = props.gachaBannerFile
+  ? getImagePath(props.gachaBannerFile)
+  : "";
 const displayStars = [5, 4, 3, 2];
 </script>
 
 <template>
   <NConfigProvider
     preflight-style-disabled
+    inline-theme-disabled
     :locale="locale"
     :date-locale="dateLocale"
     :theme="theme"
@@ -210,7 +211,11 @@ const displayStars = [5, 4, 3, 2];
       :class="['gacha-simulator-v2 antialiased', isDark && 'prts-widget-dark']"
     >
       <div class="mx-2 my-4 flex flex-col gap-y-3">
-        <img class="max-w-[800px]" :src="bannerImageURL" />
+        <img
+          v-if="bannerImageURL"
+          class="max-w-[800px]"
+          :src="bannerImageURL"
+        />
         <div
           v-show="showPortaits"
           :class="[

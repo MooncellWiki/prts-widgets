@@ -21,16 +21,18 @@ const selectedOptions = useVModel(props, "modelValue", emit, {
   deep: true,
 });
 const onTagClick = (option: string) => {
-  return selectedOptions.value.includes(option)
-    ? selectedOptions.value.splice(selectedOptions.value.indexOf(option), 1)
-    : selectedOptions.value.push(option);
+  const index = selectedOptions.value.indexOf(option);
+  if (index === -1) selectedOptions.value.push(option);
+  else selectedOptions.value.splice(index, 1);
 };
 const selectAll = () => {
   for (const option of props.options)
     if (!selectedOptions.value.includes(option))
       selectedOptions.value.push(option);
 };
-const selectNone = () => selectedOptions.value.splice(0);
+const selectNone = () => {
+  selectedOptions.value = [];
+};
 </script>
 
 <template>

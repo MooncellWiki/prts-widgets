@@ -58,7 +58,7 @@ const filteredItemData = computed(() => {
   let result = props.items.filter((item) => {
     if (
       states.rarity.length > 0 &&
-      !states.rarity.some((r) => rarityLabelMap[r] === item.rarity)
+      states.rarity.every((r) => rarityLabelMap[r] !== item.rarity)
     ) {
       return false;
     }
@@ -87,15 +87,11 @@ const filteredItemData = computed(() => {
       if (!hasMatch) return false;
     }
 
-    if (
+    return !(
       searchWord &&
       !item.name.toLowerCase().includes(searchWord) &&
       !item.description.toLowerCase().includes(searchWord)
-    ) {
-      return false;
-    }
-
-    return true;
+    );
   });
 
   result = [...result].sort((a, b) => {

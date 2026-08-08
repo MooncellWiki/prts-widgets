@@ -46,7 +46,7 @@ const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
     datex.getTime() === datey.getTime()
       ? Number(mmrx.charID) - Number(mmry.charID)
       : datex.getTime() - datey.getTime();
-  return order.value ? result * order.value : result * -1;
+  return order.value ? result * order.value : -result;
 };
 const filteredMemory = ref<CharMemory[]>([]);
 
@@ -136,6 +136,7 @@ const pickSize = () => {
 <template>
   <NConfigProvider
     preflight-style-disabled
+    inline-theme-disabled
     :theme="theme"
     :theme-overrides="themeOverrides"
     :locale="i18nConfig.locale"
