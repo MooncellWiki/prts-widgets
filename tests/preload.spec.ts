@@ -2,7 +2,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { preloadContextAssets } from "../src/widgets/StoryPlayer/engine/preload";
+import {
+  collectContextAssetManifest,
+  collectContextAssetUrls,
+  preloadContextAssets,
+} from "../src/widgets/StoryPlayer/engine/preload";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 
@@ -101,6 +105,97 @@ function createContext(script: readonly string[]): Context {
 describe("preloadContextAssets", () => {
   beforeEach(() => {
     loadMock.mockClear();
+  });
+
+  it("exposes the deduplicated asset URLs without loading them", () => {
+    const context = createContext([
+      '[background(image="bg_rhodes_day")]',
+      '[background(image="bg_rhodes_day")]',
+      '[image(image="avg_01")]',
+    ]);
+
+    const urls = collectContextAssetUrls(context);
+
+    expect(urls).toEqual(
+      expect.arrayContaining([
+        "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
+        "https://torappu.prts.wiki/assets/avg/images/avg_01.png",
+      ]),
+    );
+    expect(
+      urls.filter(
+        (url) =>
+          url ===
+          "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
+      ),
+    ).toHaveLength(1);
+    expect(urls.some((url) => url.includes("sprite_avg_cutscene.png"))).toBe(
+      false,
+    );
+    expect(loadMock).not.toHaveBeenCalled();
+  });
+
+  it("lists every face for a used base and marks referenced faces", () => {
+    const context = createContext([
+      '[character(name="face_character#1")]',
+      '[charslot(slot="m",name="face_character#2")]',
+    ]);
+    context.linkMap.face_character = {
+      array: [
+        { alias: "default", face: "face/1", group: 0, name: "1$1" },
+        { alias: "smile", face: "face/2", group: 0, name: "2$1" },
+        { alias: "angry", face: "face/3", group: 0, name: "3$1" },
+      ],
+      groups: [
+        {
+          base: "face/base",
+          faceRect: { h: 80, w: 100, x: 120, y: 40 },
+          mode: "face_overlay",
+        },
+      ],
+      pos: { x: 0, y: 0 },
+      size: { x: 0, y: 0 },
+    };
+
+    const manifest = collectContextAssetManifest(context);
+
+    expect(manifest.faceAssets).toEqual([
+      {
+        baseUrl:
+          "https://torappu.prts.wiki/assets/avg/characters/face/base.png",
+        expression: "1$1",
+        faceRect: { h: 80, w: 100, x: 120, y: 40 },
+        faceUrl: "https://torappu.prts.wiki/assets/avg/characters/face/1.png",
+        used: true,
+      },
+      {
+        baseUrl:
+          "https://torappu.prts.wiki/assets/avg/characters/face/base.png",
+        expression: "2$1",
+        faceRect: { h: 80, w: 100, x: 120, y: 40 },
+        faceUrl: "https://torappu.prts.wiki/assets/avg/characters/face/2.png",
+        used: true,
+      },
+      {
+        baseUrl:
+          "https://torappu.prts.wiki/assets/avg/characters/face/base.png",
+        expression: "3$1",
+        faceRect: { h: 80, w: 100, x: 120, y: 40 },
+        faceUrl: "https://torappu.prts.wiki/assets/avg/characters/face/3.png",
+        used: false,
+      },
+    ]);
+    expect(manifest.urls).toEqual(
+      expect.arrayContaining([
+        "https://torappu.prts.wiki/assets/avg/characters/face/base.png",
+        "https://torappu.prts.wiki/assets/avg/characters/face/1.png",
+        "https://torappu.prts.wiki/assets/avg/characters/face/2.png",
+      ]),
+    );
+    expect(manifest.urls).not.toContain(
+      "https://torappu.prts.wiki/assets/avg/characters/face/3.png",
+    );
+    expect(loadMock).not.toHaveBeenCalled();
   });
 
   it("preloads character command portraits using case-insensitive refs", async () => {

@@ -10,6 +10,20 @@ import { parseScript } from "./parser";
 import { DIALOG_FRAME_URL } from "./renderer";
 
 import type { Context } from "../context";
+import type { StoryFaceRect } from "./types";
+
+export interface StoryCharacterFaceAsset {
+  baseUrl: string;
+  expression: string;
+  faceRect: StoryFaceRect;
+  faceUrl: string;
+  used: boolean;
+}
+
+export interface ContextAssetManifest {
+  faceAssets: StoryCharacterFaceAsset[];
+  urls: string[];
+}
 
 function argAsString(raw: unknown): string {
   return typeof raw === "string" ? raw.trim() : "";
@@ -52,13 +66,20 @@ function addAudioUrl(
   urls.add(rawUrl);
 }
 
-function addCharacterUrl(urls: Set<string>, rawKey: string): void {
+function resolveCharacterUrl(rawKey: string): string | null {
   const key = rawKey.trim();
-  if (!key) return;
+  if (!key) return null;
 
   const rawUrl = resolveStoryCharacterAssetByKey(key);
-  if (!rawUrl) return;
-  urls.add(resolveAssetUrl(rawUrl));
+  if (!rawUrl) return null;
+  return resolveAssetUrl(rawUrl);
+}
+
+function addCharacterUrl(urls: Set<string>, rawKey: string): string | null {
+  const url = resolveCharacterUrl(rawKey);
+  if (!url) return null;
+  urls.add(url);
+  return url;
 }
 
 /**
@@ -242,7 +263,43 @@ function resolveCharacterSelection(
   return { base, expression: link.array[0].name };
 }
 
-function addCharacterUrls(urls: Set<string>, context: Context): void {
+function addCharacterUrls(
+  urls: Set<string>,
+  context: Context,
+): StoryCharacterFaceAsset[] {
+  const faceAssets = new Map<string, StoryCharacterFaceAsset>();
+  const addFaceGroup = (
+    link: Context["linkMap"][string],
+    groupIndex: number,
+    baseUrl: string,
+    usedExpression?: string,
+  ): void => {
+    const group = link.groups[groupIndex];
+    if (group?.mode !== "face_overlay") return;
+
+    for (const candidate of link.array) {
+      if (
+        candidate.group !== groupIndex ||
+        !("face" in candidate) ||
+        !candidate.face
+      )
+        continue;
+
+      const faceUrl = resolveCharacterUrl(candidate.face);
+      if (!faceUrl) continue;
+
+      const key = `${baseUrl}\0${faceUrl}\0${group.faceRect.x},${group.faceRect.y},${group.faceRect.w},${group.faceRect.h}`;
+      const previous = faceAssets.get(key);
+      faceAssets.set(key, {
+        baseUrl,
+        expression: previous?.expression ?? candidate.name,
+        faceRect: group.faceRect,
+        faceUrl,
+        used: Boolean(previous?.used || candidate.name === usedExpression),
+      });
+    }
+  };
+
   for (const line of parseScript(context.scriptText ?? context.script)) {
     if (line.kind !== "command") continue;
 
@@ -272,34 +329,61 @@ function addCharacterUrls(urls: Set<string>, context: Context): void {
       if (!item) continue;
 
       if (item.group === -1 && "image" in item && item.image) {
-        addCharacterUrl(urls, item.image);
+        const imageUrl = addCharacterUrl(urls, item.image);
+        if (imageUrl) {
+          for (const [groupIndex, group] of link.groups.entries()) {
+            if (
+              group.mode === "face_overlay" &&
+              resolveCharacterUrl(group.base) === imageUrl
+            )
+              addFaceGroup(link, groupIndex, imageUrl);
+          }
+        }
         continue;
       }
 
       if (!("face" in item) || !item.face || item.group < 0) continue;
 
-      addCharacterUrl(urls, item.face);
-
       const group = link.groups[item.group];
-      if (group?.mode === "face_overlay") addCharacterUrl(urls, group.base);
+      if (group?.mode !== "face_overlay") continue;
+
+      const usedFaceUrl = addCharacterUrl(urls, item.face);
+      const baseUrl = addCharacterUrl(urls, group.base);
+      if (!usedFaceUrl || !baseUrl) continue;
+      addFaceGroup(link, item.group, baseUrl, item.name);
     }
   }
+
+  return [...faceAssets.values()];
 }
 
-function uniqueResolvedUrls(context: Context): string[] {
+export function collectContextAssetManifest(
+  context: Context,
+): ContextAssetManifest {
   const urls = new Set<string>();
   if (context.charMap) {
     for (const rawUrl of Object.values(context.charMap))
       urls.add(resolveAssetUrl(rawUrl));
   }
 
-  addCharacterUrls(urls, context);
+  const faceAssets = addCharacterUrls(urls, context);
 
   addScriptAudioUrls(urls, context);
   addScriptImageUrls(urls, context);
 
+  return { faceAssets, urls: [...urls] };
+}
+
+export function collectContextAssetUrls(context: Context): string[] {
+  return collectContextAssetManifest(context).urls;
+}
+
+function collectPreloadAssetUrls(context: Context): string[] {
+  const urls = new Set(collectContextAssetUrls(context));
+
   // 固定 UI 资源（对话框上下黑条纹理），随每次 preload 一起预热进 pixi Assets 缓存，
-  // renderer 在 createUi 时再 Assets.load 即可命中缓存。
+  // renderer 在 createUi 时再 Assets.load 即可命中缓存。它属于播放器内置资源，
+  // 不应出现在面向用户的剧情资源列表中。
   urls.add(DIALOG_FRAME_URL);
 
   return [...urls];
@@ -309,7 +393,7 @@ export async function preloadContextAssets(
   context: Context,
   onProgress?: (progress: number) => void,
 ): Promise<void> {
-  const urls = uniqueResolvedUrls(context);
+  const urls = collectPreloadAssetUrls(context);
   console.log(`[preload] ${urls.length} unique asset URL(s) collected`);
   if (urls.length === 0) {
     console.warn(
