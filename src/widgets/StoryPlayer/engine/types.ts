@@ -412,14 +412,21 @@ export interface TimerClearInput {
   durationMs: number;
 }
 
+/**
+ * Native provenance: the `AVGCharacterCutinSlot.FadeStyle` /
+ * `AVGShowItemCutinSlot.FadeStyle` enums, whose member names are the literal
+ * `fadestyle` values a script may write. Note the vertical members spell
+ * `bottom` correctly -- misspelling them makes the value unmatchable, which
+ * silently degrades the command to a plain `fade`.
+ */
 export type CharacterCutinFadeStyle =
   | "fade"
   | "horiz_expand_center"
   | "horiz_expand_left2right"
   | "horiz_expand_right2left"
   | "vert_expand_center"
-  | "vert_expand_top2buttom"
-  | "vert_expand_buttom2top";
+  | "vert_expand_top2bottom"
+  | "vert_expand_bottom2top";
 
 export interface CharacterCutinInput {
   block: boolean;

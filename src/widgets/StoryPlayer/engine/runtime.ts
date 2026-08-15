@@ -1913,8 +1913,8 @@ export class StoryRuntime {
           "horiz_expand_left2right",
           "horiz_expand_right2left",
           "vert_expand_center",
-          "vert_expand_top2buttom",
-          "vert_expand_buttom2top",
+          "vert_expand_top2bottom",
+          "vert_expand_bottom2top",
         ] as const;
         const fadeStyle = validFadeStyles.includes(
           fadeStyleRaw as (typeof validFadeStyles)[number],

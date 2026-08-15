@@ -968,11 +968,11 @@ export class PixiStoryRenderer implements StoryRenderer {
         startTop += halfH;
         break;
       }
-      case "vert_expand_top2buttom": {
+      case "vert_expand_top2bottom": {
         fadeStyle = 5;
         break;
       }
-      case "vert_expand_buttom2top": {
+      case "vert_expand_bottom2top": {
         fadeStyle = 6;
         startTop += cropH;
         break;
