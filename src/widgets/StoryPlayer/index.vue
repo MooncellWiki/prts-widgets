@@ -419,8 +419,6 @@ function onLoadLegacyPlayer(): void {
 
   legacyPlayerActive.value = true;
   legacyRoot.style.removeProperty("display");
-  window.data.init();
-  window.system.disabled.init();
 }
 
 async function onStartPlay(): Promise<void> {
