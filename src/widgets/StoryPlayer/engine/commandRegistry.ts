@@ -42,12 +42,4 @@ export class CommandRegistry<TResult> {
     const list = this.executors.get(command.toLowerCase());
     return list ? [...list] : null;
   }
-
-  async execute(command: ParsedCommandLine): Promise<TResult[] | null> {
-    const list = this.executors.get(command.command);
-    if (!list) return null;
-    const results: TResult[] = [];
-    for (const executor of list) results.push(await executor(command));
-    return results;
-  }
 }

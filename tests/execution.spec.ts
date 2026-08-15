@@ -19,11 +19,26 @@ function command(name: string): ParsedCommandLine {
 }
 
 describe("command execution primitives", () => {
-  it("runs multiple subscribers in registration order", async () => {
+  it("returns multiple subscribers in registration order under a folded key", async () => {
     const registry = new CommandRegistry<number>();
-    registry.register("dialog", () => 1);
+    registry.register("Dialog", () => 1);
     registry.register("dialog", async () => 2);
-    await expect(registry.execute(command("dialog"))).resolves.toEqual([1, 2]);
+
+    const executors = registry.get("DIALOG") ?? [];
+    expect(executors).toHaveLength(2);
+    await expect(
+      Promise.all(executors.map((executor) => executor(command("dialog")))),
+    ).resolves.toEqual([1, 2]);
+  });
+
+  it("drops a command key once its last subscriber unregisters", () => {
+    const registry = new CommandRegistry<number>();
+    const unregister = registry.register("Dialog", () => 1);
+
+    expect(registry.has("dialog")).toBe(true);
+    unregister();
+    expect(registry.has("dialog")).toBe(false);
+    expect(registry.get("dialog")).toBeNull();
   });
 
   it("settles an execution handle once with its end reason", async () => {

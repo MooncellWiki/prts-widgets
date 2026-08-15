@@ -65,7 +65,6 @@ export class SpellStickerPanel {
     if (input.xScale !== undefined) view.root.scale.x = input.xScale;
     if (input.yScale !== undefined) view.root.scale.y = input.yScale;
     if (input.angle !== undefined) view.root.angle = input.angle;
-    this.warn?.(`unsupported_visual spellsticker:${style}`);
   }
 
   hide(id: string): void {

@@ -9,6 +9,8 @@ export class VideoPanel {
   private active: HTMLVideoElement | null = null;
   private host: HTMLDivElement | null = null;
   private sessionId = 0;
+  /** Settles the in-flight `play()` promise; `stop()` must not strand it. */
+  private finishActive: (() => void) | null = null;
 
   constructor(
     private readonly uiLayer: Container,
@@ -65,6 +67,7 @@ export class VideoPanel {
         video.removeEventListener("ended", onEnded);
         video.removeEventListener("error", onError);
         if (this.active === video) this.active = null;
+        if (this.finishActive === finishExternally) this.finishActive = null;
         video.pause();
         video.removeAttribute("src");
         video.load();
@@ -76,6 +79,10 @@ export class VideoPanel {
         }
         resolve();
       };
+      // Detaching `src` and calling `load()` does not reliably raise `error`,
+      // so a force-stop has to release this promise itself.
+      const finishExternally = () => finish(false);
+      this.finishActive = finishExternally;
       onEnded = () => finish(false);
       onError = () => finish(true);
       video.addEventListener("ended", onEnded);
@@ -86,6 +93,8 @@ export class VideoPanel {
 
   stop(): void {
     this.sessionId += 1;
+    const finishActive = this.finishActive;
+    this.finishActive = null;
     const video = this.active;
     this.active = null;
     if (video) {
@@ -99,6 +108,7 @@ export class VideoPanel {
       this.host.replaceChildren();
     }
     this.uiLayer.visible = true;
+    finishActive?.();
   }
 
   destroy(): void {

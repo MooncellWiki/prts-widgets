@@ -34,7 +34,10 @@ export class DecisionPanel {
   constructor(private readonly layer: ContainerType) {}
 
   show(options: string[], values: number[]): Promise<number> {
-    this.clear();
+    // Settle any decision this one replaces: `_ExecuteDecision` awaits the
+    // selected value, so dropping the pending resolver would strand the
+    // command loop in `waiting_decision` forever.
+    this.clear(0);
     const container = new Container();
     const overlay = new Graphics()
       .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)

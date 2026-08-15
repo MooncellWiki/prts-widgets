@@ -434,10 +434,15 @@ export class StoryRuntime {
       this.state !== "finished";
     const hasSkipAnchor =
       this.skipToIndex >= 0 || this.skipNodeLabels.length > 0;
+    // SkipToThis is forward-only, so once playback has crossed the anchor
+    // `skipNode` returns without moving: report that as "cannot skip" instead
+    // of leaving an enabled button that does nothing.
+    const skipToPending =
+      this.skipToIndex < 0 || this.cursor <= this.skipToIndex;
     // This widget exposes a segment-skip button rather than native's whole
     // story StopStory action. Keep it disabled when the script has no remaining
     // SkipToThis/skipnode destination at all.
-    return running && hasSkipAnchor;
+    return running && hasSkipAnchor && skipToPending;
   }
 
   async start(): Promise<void> {
@@ -1372,7 +1377,7 @@ export class StoryRuntime {
             line.command,
           );
 
-        const image = toString(this.arg(args, "image"));
+        const image = toString(this.exactArg(args, "image"));
         if (!image) return "continue";
 
         const resolved = this.resolveImageKey(image);

@@ -457,9 +457,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
     this.layoutImageForScreenAdapt(sprite, input?.screenAdapt, true);
+    // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
+    // omitted scale must leave the screen-adapted size alone.
     this.applyCenteredTransform(root, {
-      scaleX: input?.scaleX ?? 1.2,
-      scaleY: input?.scaleY ?? 1.2,
+      scaleX: input?.scaleX ?? 1,
+      scaleY: input?.scaleY ?? 1,
       x: input?.x ?? 0,
       y: input?.y ?? 0,
     });
