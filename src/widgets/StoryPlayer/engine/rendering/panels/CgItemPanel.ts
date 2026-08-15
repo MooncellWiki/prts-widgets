@@ -55,6 +55,13 @@ function rgb(color: { r: number; g: number; b: number }): number {
  * Port scope: `Torappu.AVG.AVGCgItemPanel._ExecuteShowCgItem` and
  * `_ExecuteHideCgItem`, including independent delayed tracks and clear-all's
  * non-blocking completion. PIXI sprites substitute for `AVGShowItemCgSlot`.
+ *
+ * The command's `layer` parameter is deliberately not modelled: although
+ * `AVGShowItemCgSlot.Show` reads it, it only reaches `_OverrideLayer` behind
+ * `m_overrideLayer`, and the sole caller of `SetOverrideLayer` is
+ * `AVGReaderModeCgItemView._ShowItem`. During normal playback the flag stays
+ * false, so stacking follows slot instantiation order -- which is what adding
+ * each root to `layer` in command order already reproduces.
  */
 export class CgItemPanel {
   private readonly states = new Map<string, CgItemState>();
@@ -165,8 +172,12 @@ export class CgItemPanel {
       }
     }
 
-    // `AVGCgItemPanel._ExecuteShowCgItem` intentionally guards this branch
-    // with `rfrom > 0`; retain that behavior despite the surprising condition.
+    // Native provenance: `AVGShowItemCgSlot.Show` (not the panel) gates its
+    // whole rotation block on `!MathUtil.GT(rfrom, 0)`, i.e. `rfrom <= 0`, so
+    // the default `rfrom = -1` always takes it and an explicit positive `rfrom`
+    // disables rotation entirely. `Transform.Rotate` is relative while
+    // `DORotate(..., RotateMode.Fast)` targets an absolute angle; a fresh
+    // sprite sits at 0, so `+= rfrom` then tween to `rto` reproduces both.
     if (input.rotationFrom <= 0) {
       if (input.rotationDurationMs > 0) {
         sprite.angle += input.rotationFrom;
