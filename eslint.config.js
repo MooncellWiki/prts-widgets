@@ -383,6 +383,43 @@ const unicorn = [
   },
 ];
 
+// StoryPlayer 是这套 AVG 引擎的移植层：大量 `void promise` 的 fire-and-forget
+// 命令、按 native 结构而非 lint 偏好组织的类成员和分支。这些放宽只对它和测试
+// 生效，仓库其余部分保持原有强度。
+const storyPlayer = [
+  {
+    files: [
+      "src/widgets/StoryPlayer/**/*.?([cm])[jt]s?(x)",
+      "src/widgets/StoryPlayer/**/*.vue",
+      "tests/**/*.?([cm])[jt]s?(x)",
+    ],
+    rules: {
+      "no-void": ["error", { allowAsStatement: true }],
+      "require-await": "off",
+      "unicorn/consistent-class-member-order": "off",
+      "unicorn/consistent-conditional-object-spread": "off",
+      "unicorn/no-array-fill-with-reference-type": "off",
+      "unicorn/no-return-array-push": "off",
+      "unicorn/no-this-outside-of-class": "off",
+      "unicorn/no-top-level-assignment-in-function": "off",
+      "unicorn/no-unsafe-string-replacement": "off",
+      "unicorn/numeric-separators-style": "off",
+      "unicorn/prefer-continue": "off",
+      "unicorn/prefer-dom-node-replace-children": "off",
+      "unicorn/prefer-early-return": "off",
+      "unicorn/prefer-else-if": "off",
+      "unicorn/prefer-global-number-constants": "off",
+      "unicorn/prefer-hoisting-branch-code": "off",
+      "unicorn/prefer-includes-over-repeated-comparisons": "off",
+      "unicorn/prefer-iterator-to-array": "off",
+      "unicorn/prefer-minimal-ternary": "off",
+      "unicorn/prefer-number-coercion": "off",
+      "unicorn/prefer-promise-with-resolvers": "off",
+      "unicorn/prefer-unicode-code-point-escapes": "off",
+    },
+  },
+];
+
 const ignores = [
   gitignore(),
   {
@@ -399,4 +436,5 @@ export default [
   ...prettier,
   ...unicorn,
   unocss,
+  ...storyPlayer,
 ];

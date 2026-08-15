@@ -1,5 +1,10 @@
 import * as Sentry from "@sentry/browser";
 
+const feedback = Sentry.feedbackIntegration({
+  autoInject: false,
+  colorScheme: "system",
+});
+
 Sentry.init({
   dsn: location.host.includes("prts")
     ? "https://73af36ee35564fe4946285b451a8405a@ingest.sentry.mooncell.wiki/4507366072188928"
@@ -12,6 +17,7 @@ Sentry.init({
     Sentry.browserTracingIntegration(),
     Sentry.httpClientIntegration(),
     Sentry.contextLinesIntegration(),
+    feedback,
   ],
 
   sampleRate: 0.01,
@@ -69,6 +75,11 @@ Sentry.init({
 window.Sentry = {
   showReportDialog: Sentry.showReportDialog,
   captureException: Sentry.captureException,
+  showFeedback: async (tags) => {
+    const form = await feedback.createForm({ tags });
+    form.appendToDom();
+    form.open();
+  },
 };
 
 (window.RLQ = window.RLQ || []).push([
