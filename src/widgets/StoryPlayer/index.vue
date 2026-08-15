@@ -33,11 +33,7 @@ import { useTheme } from "@/utils/theme";
 
 import CharacterFacePreview from "./components/CharacterFacePreview.vue";
 import LogAllPanel from "./components/LogAllPanel.vue";
-import {
-  fetchStoryScriptByPath,
-  loadContextByPath,
-  type Context,
-} from "./context";
+import { loadContextByScript, type Context } from "./context";
 import { createStoryPlayer } from "./engine/createStoryPlayer";
 import { preloadDialogFont } from "./engine/font";
 import { buildLogAll, type LogAllEntry } from "./engine/logAll";
@@ -51,8 +47,8 @@ import {
 import type { AutoPlayMode, PlayerState, StoryPlayer } from "./engine/types";
 
 const props = defineProps<{
-  /** 故事 txt 路径，例如 `activities/ACTIVITY/story.txt` */
-  path: string;
+  /** 剧情 txt 全文，由页面内嵌的 #datas_txt 提供 */
+  script: string;
 }>();
 
 const { theme, themeOverrides } = useTheme();
@@ -72,7 +68,8 @@ const buttonSpeedLevel = ref(0);
 const quickSpeedLevel = ref(0);
 const preloadPercent = computed(() => Math.round(preloadProgress.value * 100));
 const viewMode = ref<"lobby" | "text" | "player">("lobby");
-const scriptLoading = ref(false);
+// 旧版播放器接管后整个组件 UI 都要让位，没有返回入口
+const legacyPlayerActive = ref(false);
 
 const showLogAll = ref(false);
 const logAllEntries = ref<LogAllEntry[]>([]);
@@ -155,7 +152,7 @@ const assetItems = computed<AssetListItem[]>(() =>
 let player: StoryPlayer | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let context: Context | null = null;
-const scriptText = ref<string | null>(null);
+const scriptText = ref<string | null>(props.script || null);
 const hasScript = computed(() => Boolean(scriptText.value));
 
 const controlsDisabled = computed(
@@ -340,7 +337,7 @@ async function openFeedback(): Promise<void> {
   try {
     await window.Sentry?.showFeedback?.({
       widget: "story_player",
-      story_path: props.path,
+      story_id: context?.storyMetadata?.id ?? "",
       player_state: player?.getState() ?? state.value,
       auto_play_mode: currentAutoPlay?.mode ?? autoPlayMode.value,
       button_speed_level:
@@ -370,14 +367,19 @@ async function initAndPreload(): Promise<void> {
     return;
   }
 
+  const script = scriptText.value;
+  if (!script) {
+    preloadError.value = "未提供剧情文本（#datas_txt）";
+    return;
+  }
+
   isPreloading.value = true;
   preloadReady.value = false;
   preloadError.value = null;
   preloadProgress.value = 0;
 
   try {
-    context = await loadContextByPath(`story/${props.path}`);
-    scriptText.value = context.scriptText ?? null;
+    context = await loadContextByScript(script);
 
     // 对话 UI 字体必须先加载完，否则 PIXI 的 CanvasTextMetrics 会用回退字体
     // 测量，导致 BestFit 字号和长文本 Y 偏移算错。
@@ -407,19 +409,18 @@ async function initAndPreload(): Promise<void> {
   }
 }
 
-async function loadScript(): Promise<void> {
-  scriptLoading.value = true;
-  preloadError.value = null;
-  scriptText.value = null;
-
-  try {
-    scriptText.value = await fetchStoryScriptByPath(`story/${props.path}`);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    preloadError.value = detail || "加载剧情文本失败";
-  } finally {
-    scriptLoading.value = false;
+function onLoadLegacyPlayer(): void {
+  const legacyRoot = document.querySelector<HTMLElement>("#old-player");
+  if (!legacyRoot || !window.data?.init || !window.system?.disabled?.init) {
+    preloadError.value =
+      "旧版播放器不可用（页面缺少 #sys_fullscreen 或全局脚本）";
+    return;
   }
+
+  legacyPlayerActive.value = true;
+  legacyRoot.style.removeProperty("display");
+  window.data.init();
+  window.system.disabled.init();
 }
 
 async function onStartPlay(): Promise<void> {
@@ -468,14 +469,11 @@ function onKeydown(event: KeyboardEvent): void {
   });
 }
 
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener("fullscreenchange", syncFullscreenState);
-  if (!props.path) {
-    preloadError.value = "未提供故事路径（storyTxt）";
-    return;
+  if (!scriptText.value) {
+    preloadError.value = "未提供剧情文本（#datas_txt）";
   }
-  // lobby 阶段只拉取剧情脚本文本；由用户决定是否继续加载完整资源。
-  await loadScript();
 });
 
 onBeforeUnmount(() => {
@@ -496,6 +494,7 @@ onBeforeUnmount(() => {
     :theme-overrides="themeOverrides"
   >
     <main
+      v-show="!legacyPlayerActive"
       ref="fullscreenRootRef"
       class="story-player box-border max-w-full min-h-full w-full flex flex-col items-center"
       :class="isFullscreen ? 'h-screen gap-0 p-0' : 'gap-3.5 p-6'"
@@ -514,18 +513,8 @@ onBeforeUnmount(() => {
           title="剧情加载方式"
           content-style="height: calc(100% - 59px)"
         >
-          <div
-            v-if="scriptLoading"
-            class="h-full flex items-center justify-center"
-          >
-            <NSpin description="正在加载剧情文本..." />
-          </div>
-
-          <div v-else-if="preloadError">
+          <div v-if="preloadError">
             <NAlert type="error" title="加载失败">{{ preloadError }}</NAlert>
-            <NButton class="mt-3" size="small" @click="loadScript"
-              >重试</NButton
-            >
           </div>
 
           <div v-else class="h-full flex flex-col items-center justify-center">
@@ -545,6 +534,9 @@ onBeforeUnmount(() => {
                   <NIcon><LogAllIcon /></NIcon>
                 </template>
                 只加载文本
+              </NButton>
+              <NButton :disabled="!hasScript" @click="onLoadLegacyPlayer">
+                加载旧版播放器
               </NButton>
             </NSpace>
           </div>

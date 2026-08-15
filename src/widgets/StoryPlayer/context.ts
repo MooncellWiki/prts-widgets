@@ -37,13 +37,6 @@ function asObject(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function normalizeStoryScriptPath(storyPath: string): string {
-  return storyPath
-    .trim()
-    .replace(/^\/?story\//, "")
-    .replace(/^\/+/, "");
-}
-
 function normalizeCharacterMap(raw: unknown): Record<string, StoryLinkNode> {
   const root = asObject(raw);
   if (!root) return {};
@@ -173,17 +166,6 @@ async function ensureStoryVariables(): Promise<Record<string, unknown>> {
   return { ...cachedStoryAudioVariables };
 }
 
-export async function fetchStoryScriptByPath(
-  storyPath: string,
-): Promise<string> {
-  const normalizedPath = normalizeStoryScriptPath(storyPath);
-  const response = await fetch(storyUrl(`${normalizedPath}.txt`));
-  if (!response.ok)
-    throw new Error(`failed to fetch story script: ${storyPath}`);
-
-  return response.text();
-}
-
 async function fetchStoryCharacterMap(): Promise<
   Record<string, StoryLinkNode>
 > {
@@ -193,10 +175,11 @@ async function fetchStoryCharacterMap(): Promise<
   return normalizeCharacterMap(await response.json());
 }
 
-export async function loadContextByPath(storyPath: string): Promise<Context> {
-  const [audioVariables, scriptText, linkMap] = await Promise.all([
+export async function loadContextByScript(
+  scriptText: string,
+): Promise<Context> {
+  const [audioVariables, linkMap] = await Promise.all([
     ensureStoryVariables(),
-    fetchStoryScriptByPath(storyPath),
     fetchStoryCharacterMap(),
   ]);
 
