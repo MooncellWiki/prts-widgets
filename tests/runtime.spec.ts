@@ -149,7 +149,7 @@ class FakeRenderer implements StoryRenderer {
   clearCgItems(
     key?: string,
     fadeMs = 130,
-    ease = "OutQuad",
+    ease = "Linear",
     block = false,
   ): void {
     this.clearCgItemCalls.push({ block, ease, fadeMs, key });
@@ -2719,7 +2719,7 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCgItemCalls).toEqual([
       {
         block: true,
-        ease: "OutQuad",
+        ease: "Linear",
         fadeMs: 130,
         key: "cgitem_test_left",
       },

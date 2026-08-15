@@ -13,7 +13,7 @@ function input(key: string, overrides: Partial<CgItemInput> = {}): CgItemInput {
     alphaTo: 1,
     assetKey: key,
     block: false,
-    ease: "OutQuad",
+    ease: "Linear",
     height: 0,
     key,
     positionDelayMs: 0,
@@ -74,11 +74,11 @@ describe("CgItemPanel", () => {
     await panel.show(input("a"));
     await panel.show(input("b"));
 
-    await panel.hide("a", 130, "OutQuad", true);
+    await panel.hide("a", 130, "Linear", true);
     expect(panel.targets("a")).toEqual([]);
     expect(panel.targets("b")).toHaveLength(1);
 
-    await panel.hide(undefined, 130, "OutQuad", true);
+    await panel.hide(undefined, 130, "Linear", true);
     expect(panel.targets("")).toEqual([]);
     expect(layer.children).toHaveLength(0);
   });

@@ -1459,7 +1459,9 @@ export class StoryRuntime {
           block: toBoolean(this.exactArg(args, "block"), false),
           colorFrom: colorFrom && colorTo ? colorFrom : undefined,
           colorTo: colorFrom && colorTo ? colorTo : undefined,
-          ease: toString(this.exactArg(args, "ease"), "OutQuad"),
+          // `AVGShowItemCgSlot.Show` defaults `ease` to `Ease.Linear` (= 1),
+          // not to an eased curve.
+          ease: toString(this.exactArg(args, "ease"), "Linear"),
           height: Math.trunc(toNumber(this.exactArg(args, "height"), 0)),
           key,
           positionDelayMs: seconds("pdelay"),
@@ -1490,7 +1492,8 @@ export class StoryRuntime {
             0,
             Math.round(toNumber(this.exactArg(args, "fadetime"), 0.13) * 1000),
           ),
-          toString(this.exactArg(args, "ease"), "OutQuad"),
+          // `AVGShowItemCgSlot.Hide` uses the same `Ease.Linear` fallback.
+          toString(this.exactArg(args, "ease"), "Linear"),
           toBoolean(this.exactArg(args, "block"), false),
         );
         return "continue";

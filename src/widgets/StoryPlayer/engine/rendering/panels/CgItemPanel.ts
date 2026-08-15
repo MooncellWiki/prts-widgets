@@ -25,17 +25,20 @@ function colorChannel(value: number): number {
 
 function easeProgress(raw: number, ease: string): number {
   switch (ease.toLowerCase()) {
-    case "linear": {
-      return raw;
-    }
     case "inquad": {
       return raw * raw;
     }
     case "inoutquad": {
       return raw < 0.5 ? 2 * raw * raw : 1 - (-2 * raw + 2) ** 2 / 2;
     }
-    default: {
+    case "outquad": {
       return 1 - (1 - raw) * (1 - raw);
+    }
+    // `AVGShowItemCgSlot.Show` / `.Hide` read the curve with
+    // `GetEnum<Ease>(param, "ease", Ease.Linear, ignoreCase: false)`, which
+    // also returns that fallback for any name it cannot parse.
+    default: {
+      return raw;
     }
   }
 }
