@@ -75,6 +75,7 @@ class FakeRenderer implements StoryRenderer {
   largeBackgroundTweenCalls: LargeBackgroundTweenInput[] = [];
   largeImageTweenCalls: LargeBackgroundTweenInput[] = [];
   lastDialogue = { speaker: "", text: "" };
+  dialogueTexts: string[] = [];
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
   spellStickerCalls: SpellStickerInput[] = [];
@@ -249,6 +250,7 @@ class FakeRenderer implements StoryRenderer {
 
   setDialogue(speaker: string, text: string): void {
     this.lastDialogue = { speaker, text };
+    this.dialogueTexts.push(text);
   }
 
   async setImage(): Promise<void> {}
@@ -2580,6 +2582,62 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue.text).toBe("onetwo");
     await runtime.advance();
     expect(renderer.lastDialogue.text).toBe("three");
+  });
+
+  it("resumes multiline typing from the characters already on screen", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[multiline(name="A")]ab',
+          '[multiline(name="A",end=true)]cd',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(renderer.lastDialogue.text).toBe("ab");
+
+      renderer.dialogueTexts.length = 0;
+      await runtime.advance();
+      await vi.advanceTimersByTimeAsync(200);
+
+      // Native AppendText keeps the earlier fragment on screen, so the box is
+      // never blanked and "ab" is never retyped character by character.
+      expect(renderer.dialogueTexts).toEqual(["ab", "abc", "abcd"]);
+      expect(renderer.lastDialogue.text).toBe("abcd");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("defaults an omitted multiline delay to the current typewriter delay", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[multiline(name="A")]ab']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      // `GetOrDefault<float>("delay", typeWriterDelay)` makes the ratio
+      // 20ms / 40ms = 0.5, so characters land every 10ms rather than every 20.
+      await vi.advanceTimersByTimeAsync(9);
+      expect(renderer.lastDialogue.text).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.text).toBe("a");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(renderer.lastDialogue.text).toBe("ab");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("treats multiline delay as a ratio of the native 40ms origin delay", async () => {

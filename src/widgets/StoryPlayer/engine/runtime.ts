@@ -340,6 +340,8 @@ export class StoryRuntime {
   private state: PlayerState = "idle";
   private multilineText = "";
   private multilineEnd = false;
+  /** Rich-char count already on screen from earlier multiline fragments. */
+  private multilineShownChars = 0;
   private readonly stickerIds = new Set<string>();
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
 
@@ -576,7 +578,8 @@ export class StoryRuntime {
    * `delay` on sticker is a scale factor against the asset's `originDelay`, not
    * an absolute per-character time: typeWriterDelay = global * delay /
    * originDelay. `delay=0` therefore means "print the whole line at once",
-   * which is what the samples writing delay=0 rely on. Same rule multiline uses.
+   * which is what the samples writing delay=0 rely on. multiline applies the
+   * same ratio but takes a different fallback -- see multilineTypeDelayScale.
    */
   private stickerTypeDelayMs(value: unknown): number {
     const originDelaySeconds = TYPE_WRITER_ORIGIN_DELAY_MS / 1000;
@@ -585,6 +588,24 @@ export class StoryRuntime {
         ? 1
         : toNumber(value, originDelaySeconds) / originDelaySeconds;
     return Math.max(0, this.getCurrentSpeed().typeWriterDelayMs * scale);
+  }
+
+  /**
+   * Native port: `DialogPanel._ExecuteMultiline` resolves the ratio's numerator
+   * with `GetOrDefault<float>("delay", AVGController.typeWriterDelay)` -- the
+   * *current* global delay, not the asset's `originDelay`. The scale is
+   * therefore itself speed-dependent, and an omitted `delay` makes multiline
+   * type faster than a plain dialogue line at every non-default speed level
+   * (0.25x at button-auto level 1). Only the default speed cancels out to 1.
+   */
+  private multilineTypeDelayScale(value: unknown): number {
+    const originDelaySeconds = TYPE_WRITER_ORIGIN_DELAY_MS / 1000;
+    const currentDelaySeconds = this.getCurrentSpeed().typeWriterDelayMs / 1000;
+    const delaySeconds =
+      value === undefined
+        ? currentDelaySeconds
+        : toNumber(value, currentDelaySeconds);
+    return delaySeconds / originDelaySeconds;
   }
 
   private cancelAutoClick(): void {
@@ -2273,20 +2294,21 @@ export class StoryRuntime {
           this.renderer.setDialogue("", "");
           return "continue";
         }
+        // Native port: `AVGTypeWriterText.AppendText` only types the appended
+        // fragment -- `OnReset` runs once, when the first multiline of a run
+        // starts. Resume from what is already on screen instead of blanking
+        // the box and replaying the whole accumulated line.
+        const shownChars = this.multilineShownChars;
         this.multilineText += text;
         this.multilineEnd = toBoolean(this.exactArg(args, "end"), false);
         this.displayedLineIndex = line.lineNumber;
         this.startTypingDialogue(
           toString(this.exactArg(args, "name")),
           this.multilineText,
-          this.exactArg(args, "delay") === undefined
-            ? 1
-            : toNumber(
-                this.exactArg(args, "delay"),
-                TYPE_WRITER_ORIGIN_DELAY_MS / 1000,
-              ) /
-                (TYPE_WRITER_ORIGIN_DELAY_MS / 1000),
+          this.multilineTypeDelayScale(this.exactArg(args, "delay")),
+          shownChars,
         );
+        this.multilineShownChars = this.currentMessageLength;
         return "wait_input";
       }
 
@@ -2552,6 +2574,7 @@ export class StoryRuntime {
     speaker: string,
     text: string,
     delayScale = 1,
+    startIndex = 0,
   ): void {
     this.cancelTyping();
 
@@ -2560,7 +2583,8 @@ export class StoryRuntime {
     this.currentMessageLength = richChars.length;
     this.currentTypingComplete = false;
     const initialDelayMs = this.getTypeWriterDelayMs(delayScale);
-    if (richChars.length === 0 || initialDelayMs <= 0) {
+    const from = clamp(startIndex, 0, richChars.length);
+    if (from >= richChars.length || initialDelayMs <= 0) {
       const tagged = richCharsToTaggedText(richChars);
       const colors = collectColors(richChars);
       const ts = colors.length > 0 ? buildTagStyles(colors) : undefined;
@@ -2578,9 +2602,19 @@ export class StoryRuntime {
       richChars,
       tagStyles,
     };
-    this.renderer.setDialogue(translatedSpeaker, "", tagStyles);
+    this.renderer.setDialogue(
+      translatedSpeaker,
+      richCharsToTaggedText(richChars.slice(0, from)),
+      tagStyles,
+    );
 
-    void this.runTyping(sessionId, translatedSpeaker, richChars, delayScale);
+    void this.runTyping(
+      sessionId,
+      translatedSpeaker,
+      richChars,
+      delayScale,
+      from,
+    );
   }
 
   private translateText(text: string): string {
@@ -2597,8 +2631,9 @@ export class StoryRuntime {
     speaker: string,
     richChars: RichChar[],
     delayScale: number,
+    startIndex = 0,
   ): Promise<void> {
-    for (let index = 0; index < richChars.length; index += 1) {
+    for (let index = startIndex; index < richChars.length; index += 1) {
       if (
         !this.typingSession ||
         this.typingSession.id !== sessionId ||
@@ -2648,6 +2683,7 @@ export class StoryRuntime {
   private resetMultiline(): void {
     this.multilineText = "";
     this.multilineEnd = false;
+    this.multilineShownChars = 0;
   }
 
   private cancelTyping(): void {
