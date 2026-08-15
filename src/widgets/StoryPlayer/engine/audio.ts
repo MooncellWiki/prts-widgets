@@ -80,7 +80,7 @@ export class HtmlStoryAudio implements StoryAudio {
     const previous = this.musicAudio;
     const crossfade = previous !== null && input.crossfadeMs > 10;
     this.musicAudio = next;
-    next.instance = await this.playPlayback(next, {
+    const instance = await this.playPlayback(next, {
       complete: introUrl
         ? () => {
             if (this.destroyed || this.musicAudio !== next) return;
@@ -93,21 +93,29 @@ export class HtmlStoryAudio implements StoryAudio {
       loop: !introUrl,
       volume: crossfade ? 0 : this.musicBaseVolume,
     });
+    // A stopmusic/playmusic landing while `play()` was still pending cannot
+    // reach this instance through `next` yet, so releasing ownership without
+    // stopping it here would leave a looping track nothing can ever silence.
+    const claimed = this.claimPlayback(
+      next,
+      instance,
+      this.musicAudio === next,
+    );
+    if (claimed && crossfade)
+      void this.fadeVolume(next, this.musicBaseVolume, input.crossfadeMs);
 
     if (previous) {
       if (crossfade) void this.fadeAndStop(previous, input.crossfadeMs);
       else this.stopPlayback(previous);
     }
-    if (crossfade)
-      void this.fadeVolume(next, this.musicBaseVolume, input.crossfadeMs);
   }
 
   async stopMusic(fadeMs: number): Promise<void> {
     this.musicRequestId++;
-    if (!this.musicAudio) return;
-
     const current = this.musicAudio;
-    if (this.musicAudio === current) this.musicAudio = null;
+    if (!current) return;
+
+    this.musicAudio = null;
     await this.fadeAndStop(current, fadeMs);
   }
 
@@ -156,12 +164,14 @@ export class HtmlStoryAudio implements StoryAudio {
       volume: this.soundBaseVolumes.get(channel) ?? input.volume,
     });
 
-    if (this.soundChannels.get(channel) !== sound) {
-      this.stopPlayback(sound);
-      return;
-    }
-
-    sound.instance = instance;
+    // A stopsound/playsound landing while `play()` was still pending cannot
+    // reach this instance through `sound` yet, so releasing ownership without
+    // stopping it here would leave a looping sound nothing can ever silence.
+    this.claimPlayback(
+      sound,
+      instance,
+      this.soundChannels.get(channel) === sound,
+    );
   }
 
   async stopSound(channel: string, fadeMs: number): Promise<void> {
@@ -266,10 +276,11 @@ export class HtmlStoryAudio implements StoryAudio {
     const music = await this.createPlayback(url, identity);
     if (!music || this.destroyed || requestId !== this.musicRequestId) return;
     this.musicAudio = music;
-    music.instance = await this.playPlayback(music, {
+    const instance = await this.playPlayback(music, {
       loop: true,
       volume: this.musicBaseVolume,
     });
+    this.claimPlayback(music, instance, this.musicAudio === music);
   }
 
   private async fadeAndStop(
@@ -290,6 +301,25 @@ export class HtmlStoryAudio implements StoryAudio {
 
   private setVolume(playback: ActivePlayback, volume: number): void {
     if (playback.instance) playback.instance.volume = volume;
+  }
+
+  /**
+   * Hand `instance` to `playback` only while it still owns its channel.
+   * Otherwise stop it right here: an instance that was never written back is
+   * unreachable from `stopPlayback`, which reads `playback.instance`.
+   */
+  private claimPlayback(
+    playback: ActivePlayback,
+    instance: IMediaInstance | null,
+    stillOwned: boolean,
+  ): boolean {
+    if (this.destroyed || !stillOwned) {
+      instance?.stop();
+      return false;
+    }
+
+    playback.instance = instance;
+    return true;
   }
 
   private stopPlayback(playback: ActivePlayback | null): void {
