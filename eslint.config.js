@@ -119,7 +119,7 @@ const javascript = [
       "no-useless-backreference": "error",
       "no-useless-catch": "error",
       "no-useless-escape": "error",
-      "no-void": ["error", { allowAsStatement: true }],
+      "no-void": "error",
       "no-with": "error",
       "object-shorthand": [
         "error",
@@ -139,7 +139,7 @@ const javascript = [
       "prefer-rest-params": "error",
       "prefer-spread": "error",
       "prefer-template": "error",
-      "require-await": "off",
+      "require-await": "error",
       "require-yield": "error",
       "unicode-bom": ["error", "never"],
       "use-isnan": [
@@ -379,6 +379,23 @@ const unicorn = [
       "unicorn/no-declarations-before-early-exit": "off",
       "unicorn/max-nested-calls": "off",
       "unicorn/logical-assignment-operators": "off",
+    },
+  },
+];
+
+// StoryPlayer 是这套 AVG 引擎的移植层：大量 `void promise` 的 fire-and-forget
+// 命令、按 native 结构而非 lint 偏好组织的类成员和分支。这些放宽只对它和测试
+// 生效，仓库其余部分保持原有强度。
+const storyPlayer = [
+  {
+    files: [
+      "src/widgets/StoryPlayer/**/*.?([cm])[jt]s?(x)",
+      "src/widgets/StoryPlayer/**/*.vue",
+      "tests/**/*.?([cm])[jt]s?(x)",
+    ],
+    rules: {
+      "no-void": ["error", { allowAsStatement: true }],
+      "require-await": "off",
       "unicorn/consistent-class-member-order": "off",
       "unicorn/consistent-conditional-object-spread": "off",
       "unicorn/no-array-fill-with-reference-type": "off",
@@ -419,4 +436,5 @@ export default [
   ...prettier,
   ...unicorn,
   unocss,
+  ...storyPlayer,
 ];

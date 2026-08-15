@@ -389,12 +389,18 @@ function collectPreloadAssetUrls(context: Context): string[] {
   return [...urls];
 }
 
+// 路径前缀/大小写核对属于开发期诊断,线上每次播放刷几十条日志只是噪音。
+// 资源加载失败仍然照常 warn,那是用户可见问题的线索。
+const debugLog: (...args: unknown[]) => void = import.meta.env.DEV
+  ? (...args) => console.log(...args)
+  : () => {};
+
 export async function preloadContextAssets(
   context: Context,
   onProgress?: (progress: number) => void,
 ): Promise<void> {
   const urls = collectPreloadAssetUrls(context);
-  console.log(`[preload] ${urls.length} unique asset URL(s) collected`);
+  debugLog(`[preload] ${urls.length} unique asset URL(s) collected`);
   if (urls.length === 0) {
     console.warn(
       "[preload] no assets resolved — script may have no collectable commands or resolvers returned empty",
@@ -413,7 +419,7 @@ export async function preloadContextAssets(
           ...urls.slice(-2),
         ];
   for (const [index, url] of preview.entries())
-    console.log(`[preload]   [${index}] ${url}`);
+    debugLog(`[preload]   [${index}] ${url}`);
 
   let lastReported = -1;
   await Assets.load(urls, {
@@ -422,7 +428,7 @@ export async function preloadContextAssets(
       // 只在整百分比变化时打印,避免 100 条资源刷屏。
       if (percent !== lastReported) {
         lastReported = percent;
-        console.log(
+        debugLog(
           `[preload] progress ${percent}% (${Math.round(progress * urls.length)}/${urls.length})`,
         );
       }
@@ -439,5 +445,5 @@ export async function preloadContextAssets(
       );
     },
   });
-  console.log(`[preload] done: ${urls.length} asset(s) resolved`);
+  debugLog(`[preload] done: ${urls.length} asset(s) resolved`);
 }
