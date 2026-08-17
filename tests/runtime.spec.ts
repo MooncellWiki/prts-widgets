@@ -1331,6 +1331,40 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("resolves character refs with whitespace inside the suffix like native", async () => {
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[charslot(slot="m",name="avg_4236_tmslot_1#3 $1")]',
+      '[charslot(slot="l",name="avg_npc_1#1 ")]',
+      '[name="A"]ok',
+    ]);
+    context.linkMap.avg_4236_tmslot_1 = {
+      array: [
+        { alias: "", group: 0, name: "1$1" },
+        { alias: "", group: 0, name: "2$1" },
+        { alias: "", group: 0, name: "3$1" },
+      ],
+      groups: [],
+      pos: { x: 0, y: 0 },
+      size: { x: 0, y: 0 },
+    };
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+
+    await runtime.start();
+
+    expect(renderer.characterCalls[0]).toMatchObject({
+      characterKey: "avg_4236_tmslot_1",
+      expression: "3$1",
+      slot: "m",
+    });
+    expect(renderer.characterCalls[1]).toMatchObject({
+      characterKey: "avg_npc_1",
+      expression: "1$1",
+      slot: "l",
+    });
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
   it("maps charslot slot aliases and duration blocking like legacy runtime", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
