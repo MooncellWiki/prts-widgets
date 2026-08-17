@@ -13,13 +13,12 @@ import CharacterFacePreview from "./CharacterFacePreview.vue";
 import type { StoryCharacterFaceAsset } from "../engine/preload";
 
 const props = defineProps<{
-  show: boolean;
   urls: string[];
   faceAssets: StoryCharacterFaceAsset[];
   /** NModal 的 teleport 目标，全屏播放时需要挂进全屏容器 */
   to?: string | HTMLElement;
 }>();
-const emit = defineEmits<{ "update:show": [boolean] }>();
+const show = defineModel<boolean>("show");
 
 type AssetKind = "audio" | "image" | "other" | "video";
 
@@ -159,14 +158,13 @@ async function downloadSelectedFace(): Promise<void> {
 
 <template>
   <NModal
-    :show="show"
+    v-model:show="show"
     preset="card"
     title="资源列表"
     :to="to"
     style="width: min(860px, 94vw); max-width: min(860px, 94vw)"
     :bordered="false"
     :auto-focus="false"
-    @update:show="emit('update:show', $event)"
   >
     <template #header-extra>
       <NText depth="3" class="text-xs font-normal">
