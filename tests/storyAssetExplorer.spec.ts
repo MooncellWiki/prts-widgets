@@ -1,39 +1,141 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildFaceGallery,
   cargoTextPathIn,
   chunk,
-  normalizeCharacterId,
+  parseCharacterMap,
+  resolveCharacterPreview,
+  resourceTypeLabel,
+  storyResourceImageUrl,
+  characterBaseOfListingId,
 } from "../src/widgets/StoryAssetExplorer/utils";
 
-describe("normalizeCharacterId", () => {
-  it("appends default face and body", () => {
-    expect(normalizeCharacterId("avg_npc_009")).toBe("avg_npc_009#1$1");
-    expect(normalizeCharacterId("char_220_grani#5")).toBe("char_220_grani#5$1");
-    expect(normalizeCharacterId("avg_1014_nearl2_1#2$2")).toBe(
-      "avg_1014_nearl2_1#2$2",
+describe("resourceTypeLabel", () => {
+  it("maps known types to labels", () => {
+    expect(resourceTypeLabel("background")).toBe("背景");
+    expect(resourceTypeLabel("character")).toBe("角色");
+  });
+
+  it("falls back to raw value for unknown types", () => {
+    expect(resourceTypeLabel("unknown")).toBe("unknown");
+  });
+});
+
+describe("storyResourceImageUrl", () => {
+  it("routes backgrounds and images to their folders", () => {
+    expect(storyResourceImageUrl("background", "bg_indoor_2")).toBe(
+      "https://torappu.prts.wiki/assets/avg/background/bg_indoor_2.png",
+    );
+    expect(storyResourceImageUrl("image", "avg_2_2")).toBe(
+      "https://torappu.prts.wiki/assets/avg/images/avg_2_2.png",
     );
   });
 
-  it("returns empty string for blank input", () => {
-    expect(normalizeCharacterId("")).toBe("");
-    expect(normalizeCharacterId(" ".repeat(3))).toBe("");
-  });
-
-  it("absorbs whitespace around suffixes", () => {
-    expect(normalizeCharacterId("avg_npc_366_1#1$1 ")).toBe(
-      "avg_npc_366_1#1$1",
+  it("routes items into the images folder and encodes slashes", () => {
+    expect(storyResourceImageUrl("item", "item_act70_1")).toBe(
+      "https://torappu.prts.wiki/assets/avg/images/item_act70_1.png",
     );
-    expect(normalizeCharacterId("avg_4236_tmslot_1#3 $1")).toBe(
-      "avg_4236_tmslot_1#3$1",
-    );
-    expect(normalizeCharacterId("avg_4236_tmslot_1# 3")).toBe(
-      "avg_4236_tmslot_1#3$1",
+    expect(storyResourceImageUrl("image", "pic/avg main_01")).toBe(
+      "https://torappu.prts.wiki/assets/avg/images/pic/avg%20main_01.png",
     );
   });
 
-  it("keeps unparsable suffix in base", () => {
-    expect(normalizeCharacterId("avg_x#3 4$1")).toBe("avg_x#3 4#1$1");
+  it("returns null for characters", () => {
+    expect(storyResourceImageUrl("character", "avg_npc_009$1")).toBeNull();
+  });
+});
+
+describe("character preview resolution", () => {
+  it("strips body suffix from listing ids", () => {
+    expect(characterBaseOfListingId("avg_npc_009$1")).toBe("avg_npc_009");
+    expect(characterBaseOfListingId("nobody")).toBe("nobody");
+    expect(characterBaseOfListingId("avg_x#3 4$2")).toBe("avg_x#3 4");
+  });
+
+  it("composites face characters and links single-image characters", () => {
+    const links = parseCharacterMap({
+      avg_npc_009: {
+        groups: [],
+        array: [
+          { name: "avg_npc_009", group: -1, image: "avg_npc_009/avg_npc_009" },
+        ],
+      },
+      avg_npc_2202_1: {
+        groups: [
+          {
+            mode: "face_overlay",
+            base: "avg_npc_2202_1/avg_npc_2202_1$1",
+            faceRect: { x: 459, y: 159, w: 130, h: 110 },
+          },
+        ],
+        array: [
+          { name: "1$1", group: 0, face: "avg_npc_2202_1/1$1" },
+          { name: "2$1", group: 0, face: "avg_npc_2202_1/2$1" },
+        ],
+      },
+    });
+
+    expect(resolveCharacterPreview("avg_npc_009$1", links)).toEqual({
+      kind: "single",
+      url: "https://torappu.prts.wiki/assets/avg/characters/avg_npc_009/avg_npc_009.png",
+    });
+    expect(resolveCharacterPreview("avg_npc_2202_1$1", links)).toEqual({
+      kind: "composite",
+      baseUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/avg_npc_2202_1/avg_npc_2202_1%241.png",
+      faceUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/avg_npc_2202_1/1%241.png",
+      faceRect: { x: 459, y: 159, w: 130, h: 110 },
+    });
+    expect(resolveCharacterPreview("missing$1", links)).toBeNull();
+  });
+
+  it("builds a face gallery marking the faces a script uses", () => {
+    const links = parseCharacterMap({
+      avg_1037_amiya3_1: {
+        groups: [
+          {
+            mode: "face_overlay",
+            base: "avg_1037_amiya3_1/avg_1037_amiya3_1$1",
+            faceRect: { x: 100, y: 200, w: 80, h: 90 },
+          },
+        ],
+        array: [
+          { name: "1$1", group: 0, face: "avg_1037_amiya3_1/1$1" },
+          { name: "2$1", group: 0, face: "avg_1037_amiya3_1/2$1" },
+          { name: "10$1", group: 0, face: "avg_1037_amiya3_1/10$1" },
+        ],
+      },
+    });
+
+    const gallery = buildFaceGallery(
+      "avg_1037_amiya3_1$1",
+      ["avg_1037_amiya3_1#1$1", "avg_1037_amiya3_1#10$1"],
+      links,
+    );
+    expect(gallery?.map((face) => [face.expression, face.used])).toEqual([
+      ["1$1", true],
+      ["2$1", false],
+      ["10$1", true],
+    ]);
+    expect(gallery?.[0].baseUrl).toBe(
+      "https://torappu.prts.wiki/assets/avg/characters/avg_1037_amiya3_1/avg_1037_amiya3_1%241.png",
+    );
+
+    // 单图角色与未知角色没有表情差分
+    const singleLinks = parseCharacterMap({
+      avg_npc_009: {
+        groups: [],
+        array: [
+          { name: "avg_npc_009", group: -1, image: "avg_npc_009/avg_npc_009" },
+        ],
+      },
+    });
+    expect(
+      buildFaceGallery("avg_npc_009$1", ["avg_npc_009#1$1"], singleLinks),
+    ).toBeNull();
+    expect(buildFaceGallery("missing$1", [], links)).toBeNull();
   });
 });
 
