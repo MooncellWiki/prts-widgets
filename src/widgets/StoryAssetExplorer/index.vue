@@ -1,21 +1,46 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watchEffect } from "vue";
 
-import { NButton, NConfigProvider, NInput, NSelect, NSkeleton } from "naive-ui";
+import { ImageOutlined as ImageIcon } from "@vicons/material";
+import {
+  NButton,
+  NConfigProvider,
+  NIcon,
+  NImage,
+  NInput,
+  NModal,
+  NSelect,
+  NSkeleton,
+  NTag,
+  NText,
+} from "naive-ui";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { useTheme } from "@/utils/theme";
 
+import CharacterPreview from "./components/CharacterPreview.vue";
+import FaceComposite from "./components/FaceComposite.vue";
 import {
   type CargoStoryRow,
+  type CharacterLinkMap,
+  type CharacterPreview as CharacterPreviewInfo,
+  type FaceGalleryItem,
+  type StoryResourceListResponse,
+  type StoryResourceSummary,
   type StoryResourceType,
   type StoryUsageItem,
   type StoryUsageResponse,
   CARGO_IN_CHUNK,
+  MAX_PAGES,
+  PAGE_LIMIT,
   RESOURCE_TYPE_OPTIONS,
+  buildFaceGallery,
   cargoTextPathIn,
   chunk,
-  normalizeCharacterId,
+  ensureCharacterMap,
+  resolveCharacterPreview,
+  resourceTypeLabel,
+  storyResourceImageUrl,
 } from "./utils";
 
 enum Status {
@@ -29,6 +54,16 @@ interface ResultRow extends StoryUsageItem {
   story?: CargoStoryRow;
 }
 
+interface ResourceCard extends StoryResourceSummary {
+  imageUrl: string | null;
+  character: CharacterPreviewInfo | null;
+}
+
+const TYPE_SELECT_OPTIONS: { label: string; value: string }[] = [
+  { label: "全部类型", value: "" },
+  ...RESOURCE_TYPE_OPTIONS,
+];
+
 const props = defineProps<{
   type?: string;
   id?: string;
@@ -36,16 +71,130 @@ const props = defineProps<{
 
 const { theme, themeOverrides, isDark } = useTheme();
 
-const resourceType = ref<StoryResourceType>(
-  (RESOURCE_TYPE_OPTIONS.find((option) => option.value === props.type)?.value ??
-    "background") as StoryResourceType,
+const resourceType = ref(
+  RESOURCE_TYPE_OPTIONS.some((option) => option.value === props.type)
+    ? (props.type as StoryResourceType)
+    : "",
 );
-const resourceId = ref(props.id ?? "");
+const resourceQuery = ref(props.id ?? "");
 const status = ref(Status.idle);
 const errorMessage = ref("");
-const rows = ref<ResultRow[]>([]);
+const resources = ref<StoryResourceSummary[]>([]);
+const nextCursor = ref<string | null>(null);
+const loadingMore = ref(false);
+const loadMoreError = ref("");
+
+const showDetail = ref(false);
+const detailResource = ref<StoryResourceSummary | null>(null);
+const detailStatus = ref(Status.idle);
+const detailError = ref("");
+const detailRows = ref<ResultRow[]>([]);
 const matchedCount = ref(0);
-const queriedId = ref("");
+
+const showFaces = ref(false);
+const faceScriptPath = ref("");
+const faceItems = ref<FaceGalleryItem[]>([]);
+const faceIndex = ref(0);
+
+const activeFace = computed(
+  () => faceItems.value[faceIndex.value] ?? faceItems.value[0] ?? null,
+);
+
+const detailTitle = computed(() =>
+  detailResource.value
+    ? `${resourceTypeLabel(detailResource.value.type)} · ${detailResource.value.id}`
+    : "使用详情",
+);
+
+const characterLinks = ref<CharacterLinkMap | null>(null);
+
+watchEffect(() => {
+  if (characterLinks.value) return;
+  if (resources.value.every((resource) => resource.type !== "character")) {
+    return;
+  }
+  ensureCharacterMap()
+    .then((map) => {
+      characterLinks.value = map;
+    })
+    .catch((error) => {
+      console.warn(error);
+      // 失败时置空表，避免每次渲染重试 1.3MB 的请求
+      characterLinks.value = new Map();
+    });
+});
+
+const cards = computed<ResourceCard[]>(() =>
+  resources.value.map((resource) => ({
+    ...resource,
+    imageUrl: storyResourceImageUrl(resource.type, resource.id),
+    character:
+      resource.type === "character"
+        ? resolveCharacterPreview(
+            resource.id,
+            characterLinks.value ?? new Map(),
+          )
+        : null,
+  })),
+);
+
+async function fetchResourcePage(
+  type: string,
+  q: string,
+  cursor?: string | null,
+): Promise<StoryResourceListResponse> {
+  const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
+  if (type) params.set("type", type);
+  if (q) params.set("q", q);
+  if (cursor) params.set("cursor", cursor);
+  const resp = await fetch(
+    `${TORAPPU_ENDPOINT}/api/v1/story-resources?${params}`,
+  );
+  if (!resp.ok) {
+    throw new Error(`story-resources ${resp.status}`);
+  }
+  return (await resp.json()) as StoryResourceListResponse;
+}
+
+async function search(): Promise<void> {
+  status.value = Status.loading;
+  errorMessage.value = "";
+  loadMoreError.value = "";
+  try {
+    const data = await fetchResourcePage(
+      resourceType.value,
+      resourceQuery.value.trim(),
+    );
+    resources.value = data.resources;
+    nextCursor.value = data.nextCursor ?? null;
+    status.value = Status.succ;
+  } catch (error) {
+    console.warn(error);
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+    status.value = Status.fail;
+  }
+}
+
+async function loadMore(): Promise<void> {
+  if (!nextCursor.value || loadingMore.value) return;
+  loadingMore.value = true;
+  loadMoreError.value = "";
+  try {
+    const data = await fetchResourcePage(
+      resourceType.value,
+      resourceQuery.value.trim(),
+      nextCursor.value,
+    );
+    resources.value.push(...data.resources);
+    nextCursor.value = data.nextCursor ?? null;
+  } catch (error) {
+    console.warn(error);
+    loadMoreError.value =
+      error instanceof Error ? error.message : String(error);
+  } finally {
+    loadingMore.value = false;
+  }
+}
 
 async function fetchUsageItems(
   type: StoryResourceType,
@@ -53,9 +202,12 @@ async function fetchUsageItems(
 ): Promise<StoryUsageItem[]> {
   const items: StoryUsageItem[] = [];
   let cursor: string | null | undefined;
-  // 上限保护：200/页 * 50 页
-  for (let page = 0; page < 50; page++) {
-    const params = new URLSearchParams({ type, id, limit: "200" });
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      type,
+      id,
+      limit: String(PAGE_LIMIT),
+    });
     if (cursor) params.set("cursor", cursor);
     const resp = await fetch(
       `${TORAPPU_ENDPOINT}/api/v1/story-resource-usages?${params}`,
@@ -64,7 +216,7 @@ async function fetchUsageItems(
       throw new Error(`story-resource-usages ${resp.status}`);
     }
     const data = (await resp.json()) as StoryUsageResponse;
-    items.push(...data.items);
+    items.push(...data.usages);
     cursor = data.nextCursor;
     if (!cursor) break;
   }
@@ -100,34 +252,54 @@ async function fetchCargoStories(
   return map;
 }
 
-async function query() {
-  const raw = resourceId.value.trim();
-  if (raw === "") return;
-  const type = resourceType.value;
-  const id = type === "character" ? normalizeCharacterId(raw) : raw;
-  status.value = Status.loading;
-  errorMessage.value = "";
+async function queryDetail(): Promise<void> {
+  const resource = detailResource.value;
+  if (!resource) return;
+  detailStatus.value = Status.loading;
+  detailError.value = "";
   try {
-    const items = await fetchUsageItems(type, id);
+    const items = await fetchUsageItems(resource.type, resource.id);
     const storyMap = await fetchCargoStories(
       items.map((item) => item.scriptPath),
     );
-    rows.value = items.map((item) => ({
+    detailRows.value = items.map((item) => ({
       ...item,
       story: storyMap.get(item.scriptPath),
     }));
-    matchedCount.value = rows.value.filter((row) => row.story).length;
-    queriedId.value = id;
-    status.value = Status.succ;
+    matchedCount.value = detailRows.value.filter((row) => row.story).length;
+    detailStatus.value = Status.succ;
   } catch (error) {
     console.warn(error);
-    errorMessage.value = error instanceof Error ? error.message : String(error);
-    status.value = Status.fail;
+    detailError.value = error instanceof Error ? error.message : String(error);
+    detailStatus.value = Status.fail;
   }
 }
 
+function openDetail(resource: StoryResourceSummary): void {
+  detailResource.value = resource;
+  showDetail.value = true;
+  queryDetail();
+}
+
+function openFaces(row: ResultRow): void {
+  const resource = detailResource.value;
+  if (!resource || !row.faces || row.faces.length === 0) return;
+  const gallery = buildFaceGallery(
+    resource.id,
+    row.faces,
+    characterLinks.value ?? new Map(),
+  );
+  if (!gallery || gallery.length === 0) return;
+
+  faceScriptPath.value = row.scriptPath;
+  faceItems.value = gallery;
+  const firstUsed = gallery.findIndex((face) => face.used);
+  faceIndex.value = firstUsed === -1 ? 0 : firstUsed;
+  showFaces.value = true;
+}
+
 onMounted(() => {
-  if (props.id) query();
+  search();
 });
 </script>
 
@@ -140,95 +312,353 @@ onMounted(() => {
   >
     <div :class="['story-asset-explorer-widget', isDark && 'prts-widget-dark']">
       <form
-        class="mb-2 flex flex-wrap items-center gap-2"
-        @submit.prevent="query"
+        class="mb-3 flex flex-wrap items-center gap-2"
+        @submit.prevent="search"
       >
         <NSelect
           v-model:value="resourceType"
-          :options="RESOURCE_TYPE_OPTIONS"
+          :options="TYPE_SELECT_OPTIONS"
           class="w-28 shrink-0"
         />
         <NInput
-          v-model:value="resourceId"
+          v-model:value="resourceQuery"
           class="max-w-full w-80"
-          placeholder="资源 ID，如 bg_indoor_2 / avg_npc_009（角色可省略 #表情$差分）"
+          placeholder="资源 ID 关键字，如 bg_indoor_2 / avg_npc_009，留空显示全部"
           clearable
-          @keyup.enter="query"
+          @keyup.enter="search"
         />
         <NButton
           type="primary"
           :loading="status === Status.loading"
-          @click="query"
+          @click="search"
         >
-          查询
+          搜索
         </NButton>
       </form>
 
-      <NButton v-if="status === Status.fail" @click="query">
+      <NButton v-if="status === Status.fail" @click="search">
         加载失败（{{ errorMessage }}） 点击重试
       </NButton>
-      <NSkeleton v-else-if="status === Status.loading" :repeat="2" />
+      <NSkeleton v-else-if="status === Status.loading" :repeat="6" />
       <template v-else-if="status === Status.succ">
-        <div v-if="rows.length > 0" class="mb-2 text-sm">
-          共 {{ rows.length }} 条结果，{{ matchedCount }} 条已关联剧情页面（{{
-            queriedId
-          }}）
+        <div v-if="cards.length === 0" class="text-disabled">
+          没有匹配的资源
         </div>
-        <div v-else class="mb-2 text-disabled">
-          没有剧情文本使用 {{ queriedId }}
-        </div>
-        <div v-if="rows.length > 0" class="overflow-x-auto">
-          <table class="w-full border-collapse text-left">
-            <thead>
-              <tr>
-                <th class="border border-divider px-2 py-1">剧情文本</th>
-                <th
-                  v-if="resourceType === 'character'"
-                  class="border border-divider px-2 py-1"
+        <template v-else>
+          <div
+            class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3"
+          >
+            <article
+              v-for="card in cards"
+              :key="`${card.type}:${card.id}`"
+              class="asset-card min-w-0 flex flex-col overflow-hidden rounded-xl"
+            >
+              <div
+                class="asset-preview asset-preview--transparent flex items-center justify-center"
+              >
+                <NImage
+                  v-if="card.imageUrl"
+                  :src="card.imageUrl"
+                  :alt="card.id"
+                  lazy
+                  object-fit="contain"
+                  show-toolbar-tooltip
+                  class="asset-image h-full w-full overflow-hidden"
+                />
+                <CharacterPreview
+                  v-else-if="card.character"
+                  :preview="card.character"
+                  class="h-full w-full"
+                />
+                <NIcon v-else size="48" :depth="3">
+                  <ImageIcon />
+                </NIcon>
+              </div>
+              <footer class="p-3">
+                <div class="flex items-center justify-between gap-2">
+                  <NTag size="small" :bordered="false">
+                    {{ resourceTypeLabel(card.type) }}
+                  </NTag>
+                  <span class="whitespace-nowrap text-xs text-disabled">
+                    {{ card.scriptCount }} 个剧本
+                  </span>
+                </div>
+                <code
+                  class="mt-2 block break-all text-sm font-medium leading-5"
                 >
-                  显示名
-                </th>
-                <th class="border border-divider px-2 py-1">分类</th>
-                <th class="border border-divider px-2 py-1">所属</th>
-                <th class="border border-divider px-2 py-1">剧情页面</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in rows" :key="row.scriptPath">
-                <td class="break-all border border-divider px-2 py-1">
-                  <code>{{ row.scriptPath }}</code>
-                </td>
-                <td
-                  v-if="resourceType === 'character'"
-                  class="border border-divider px-2 py-1"
+                  {{ card.id }}
+                </code>
+                <NButton
+                  class="mt-3 w-full"
+                  size="small"
+                  secondary
+                  @click="openDetail(card)"
                 >
-                  {{ row.displayNames.join("、") }}
-                </td>
-                <td class="border border-divider px-2 py-1">
-                  {{ row.story?.storyType ?? "-" }}
-                </td>
-                <td class="border border-divider px-2 py-1">
-                  {{ row.story?.storyGroup ?? "-" }}
-                </td>
-                <td class="border border-divider px-2 py-1">
-                  <a
-                    v-if="row.story"
-                    :href="`/w/${row.story.page}`"
-                    target="_blank"
-                  >
-                    {{ row.story.page }}
-                  </a>
-                  <span v-else class="text-disabled">未收录</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                  查看使用
+                </NButton>
+              </footer>
+            </article>
+          </div>
+          <div v-if="nextCursor" class="mt-3 flex flex-col items-center gap-1">
+            <NButton secondary :loading="loadingMore" @click="loadMore">
+              加载更多（已加载 {{ cards.length }} 项）
+            </NButton>
+            <span v-if="loadMoreError" class="text-xs text-red">
+              加载更多失败（{{ loadMoreError }}），请重试
+            </span>
+          </div>
+        </template>
       </template>
+
+      <NModal
+        v-model:show="showDetail"
+        preset="card"
+        :title="detailTitle"
+        style="width: min(1000px, 94vw); max-width: min(1000px, 94vw)"
+        :bordered="false"
+        :auto-focus="false"
+      >
+        <template #header-extra>
+          <NText depth="3" class="text-xs font-normal">
+            共 {{ detailRows.length }} 条结果
+          </NText>
+        </template>
+
+        <NButton
+          v-if="detailStatus === Status.fail"
+          class="w-full"
+          @click="queryDetail"
+        >
+          加载失败（{{ detailError }}） 点击重试
+        </NButton>
+        <NSkeleton v-else-if="detailStatus === Status.loading" :repeat="4" />
+        <template v-else-if="detailStatus === Status.succ">
+          <div v-if="detailRows.length === 0" class="text-disabled">
+            没有剧情文本使用 {{ detailResource?.id }}
+          </div>
+          <template v-else>
+            <div class="mb-2 text-sm">{{ matchedCount }} 条已关联剧情页面</div>
+            <div class="max-h-[70vh] overflow-x-auto">
+              <table class="w-full border-collapse text-left">
+                <thead>
+                  <tr>
+                    <th
+                      v-if="detailResource?.type === 'character'"
+                      class="border border-divider px-2 py-1"
+                    >
+                      显示名
+                    </th>
+                    <th
+                      v-if="detailResource?.type === 'character'"
+                      class="border border-divider px-2 py-1"
+                    >
+                      表情
+                    </th>
+                    <th class="border border-divider px-2 py-1">分类</th>
+                    <th class="border border-divider px-2 py-1">所属</th>
+                    <th class="border border-divider px-2 py-1">剧情页面</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in detailRows" :key="row.scriptPath">
+                    <td
+                      v-if="detailResource?.type === 'character'"
+                      class="border border-divider px-2 py-1"
+                    >
+                      {{ row.displayNames.join("、") }}
+                    </td>
+                    <td
+                      v-if="detailResource?.type === 'character'"
+                      class="border border-divider px-2 py-1"
+                    >
+                      <NButton
+                        v-if="row.faces && row.faces.length > 0"
+                        size="tiny"
+                        secondary
+                        @click="openFaces(row)"
+                      >
+                        表情（{{ row.faces.length }}）
+                      </NButton>
+                      <span v-else class="text-disabled">-</span>
+                    </td>
+                    <td class="border border-divider px-2 py-1">
+                      {{ row.story?.storyType ?? "-" }}
+                    </td>
+                    <td class="border border-divider px-2 py-1">
+                      {{ row.story?.storyGroup ?? "-" }}
+                    </td>
+                    <td
+                      class="border border-divider px-2 py-1"
+                      :title="row.scriptPath"
+                    >
+                      <a
+                        v-if="row.story"
+                        :href="`/w/${row.story.page}`"
+                        target="_blank"
+                      >
+                        {{ row.story.page }}
+                      </a>
+                      <span v-else class="text-disabled">未收录</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+        </template>
+      </NModal>
+
+      <NModal
+        v-model:show="showFaces"
+        preset="card"
+        :title="`${detailResource?.id ?? '角色'} · 表情预览`"
+        style="width: min(1000px, 94vw); max-width: min(1000px, 94vw)"
+        :bordered="false"
+        :auto-focus="false"
+      >
+        <template #header-extra>
+          <NText depth="3" class="text-xs font-normal">
+            共 {{ faceItems.length }} 项
+          </NText>
+        </template>
+
+        <div v-if="activeFace" class="character-face-browser">
+          <section
+            class="face-stage min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl"
+          >
+            <FaceComposite
+              :base-url="activeFace.baseUrl"
+              :face-url="activeFace.faceUrl"
+              :face-rect="activeFace.faceRect"
+              :label="activeFace.expression"
+              class="min-h-[280px] flex-1"
+            />
+            <footer class="face-stage-label p-2 text-center text-sm">
+              {{ activeFace.expression }}
+            </footer>
+          </section>
+
+          <aside class="character-face-options min-h-0" aria-label="脸部差分">
+            <NButton
+              v-for="(face, index) in faceItems"
+              :key="face.faceUrl"
+              class="character-face-option mb-2 w-full last:mb-0 h-auto! p-2!"
+              :type="index === faceIndex ? 'primary' : 'default'"
+              :secondary="index === faceIndex"
+              @click="faceIndex = index"
+            >
+              <div class="min-w-0 w-full flex items-center gap-2 text-left">
+                <div
+                  class="face-option-thumbnail h-12 w-12 flex-none overflow-hidden rounded-md"
+                >
+                  <NImage
+                    :src="face.faceUrl"
+                    :alt="face.expression"
+                    object-fit="contain"
+                    preview-disabled
+                    class="asset-image h-full w-full overflow-hidden"
+                  />
+                </div>
+                <div class="min-w-0 flex-1 break-all text-sm">
+                  <div>{{ face.expression }}</div>
+                  <NTag
+                    v-if="face.used"
+                    class="mt-1 block w-fit"
+                    size="tiny"
+                    type="success"
+                    :bordered="false"
+                  >
+                    剧情使用
+                  </NTag>
+                </div>
+              </div>
+            </NButton>
+          </aside>
+        </div>
+        <div v-else class="text-disabled">没有可展示的表情差分</div>
+      </NModal>
     </div>
   </NConfigProvider>
 </template>
 
 <style scoped>
 @import "@/styles/dark-mode.scss";
+
+.asset-card {
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.asset-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.asset-preview--transparent {
+  background-color: #f4f4f4;
+  background-image:
+    linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
+    linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
+    linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+}
+
+.asset-image :deep(img) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.character-face-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 12px;
+  height: min(70vh, 680px);
+}
+
+.character-face-options {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.face-stage {
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.face-stage-label {
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.face-option-thumbnail {
+  background-color: #f4f4f4;
+  background-image:
+    linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
+    linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
+    linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
+  background-position:
+    0 0,
+    0 6px,
+    6px -6px,
+    -6px 0;
+  background-size: 12px 12px;
+}
+
+@media (max-width: 700px) {
+  .character-face-browser {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(280px, 55vh) minmax(120px, 45vh);
+    height: auto;
+  }
+}
 </style>
