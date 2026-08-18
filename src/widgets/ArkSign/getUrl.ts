@@ -17,7 +17,7 @@ export function docAvatar(id: string) {
 }
 
 export function portrait(skinId: string) {
-  skinId = skinId.toLowerCase();
+  // skinId = skinId.toLowerCase();
   if (skinId.includes("@")) {
     skinId = skinId.replaceAll("@", "_");
     skinId = encodeURIComponent(skinId);

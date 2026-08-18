@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { NInput, NButton, useMessage } from "naive-ui";
+import { NButton, NInput, useMessage } from "naive-ui";
 const message = useMessage();
 const commandValue =
-  "localStorage.getItem('SK_OAUTH_CRED_KEY')+','+localStorage .getItem('SK_TOKEN_CACHE_KEY')";
+  "localStorage.getItem('SK_OAUTH_CRED_KEY')+','+localStorage.getItem('SK_TOKEN_CACHE_KEY')";
 
 async function textCopy() {
   // 如果当前浏览器版本不兼容navigator.clipboard
