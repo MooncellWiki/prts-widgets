@@ -67,7 +67,7 @@
     "eslint-plugin-unicorn": "^72.0.0",
     "eslint-plugin-vue": "^10.10.0",
     "globals": "^17.8.0",
-    "happy-dom": "^18.0.1",
+    "happy-dom": "^20.0.0",
     "prettier": "^3.9.6",
     "rollup-plugin-visualizer": "^7.0.1",
     "sass-embedded": "^1.100.0",
