@@ -6,6 +6,7 @@ import {
   resolveStoryAudioByKey,
   resolveStoryCharacterAssetByKey,
 } from "./asset";
+import { resolveCharacterSelection } from "./characterRef";
 import { parseScript } from "./parser";
 import { DIALOG_FRAME_URL } from "./renderer";
 
@@ -170,99 +171,6 @@ function addScriptAudioUrls(urls: Set<string>, context: Context): void {
   }
 }
 
-/**
- * Native provenance: `Torappu.AVG.AVGCharacterslotPanel` character-reference
- * resolution and `Torappu.ResourceRouter.GetCharacterPath`.
- *
- * Ports the story-facing name forms needed to identify character assets. The
- * `character.json` link-map representation and face-overlay reconstruction are
- * web asset-pipeline adaptations, not a direct native data structure.
- *
- */
-function resolveCharacterSelection(
-  context: Context,
-  rawRef: string,
-): { base: string; expression: string } | null {
-  const cleaned = rawRef.trim();
-  if (!cleaned) return null;
-  const normalized = cleaned.toLowerCase();
-
-  const directLink = context.linkMap[normalized];
-  if (directLink?.array[0]?.name) {
-    return {
-      base: normalized,
-      expression: directLink.array[0].name,
-    };
-  }
-
-  for (const [base, link] of Object.entries(context.linkMap)) {
-    const prefix = `${base}-`;
-    if (!normalized.startsWith(prefix)) continue;
-
-    const expression = normalized.slice(prefix.length);
-    if (!expression) continue;
-
-    const found = link.array.find(
-      (item) => item.name.toLowerCase() === expression,
-    );
-    if (!found) continue;
-
-    return { base, expression: found.name };
-  }
-
-  const match = normalized.match(
-    /^([^@#$]+)(?:#\s*(\d+)\s*(?:\$\s*(\d+)\s*)?|@([\w-]+)|\$\s*(\d+)\s*)?$/,
-  );
-  if (!match) return null;
-
-  const base = match[1];
-  const link = context.linkMap[base];
-  if (!link) return null;
-
-  const hashIndex = match[2] ? Number.parseInt(match[2], 10) : undefined;
-  const hashGroup = match[3] ? Number.parseInt(match[3], 10) : undefined;
-  const alias = match[4];
-  const dollarGroup = match[5] ? Number.parseInt(match[5], 10) : undefined;
-
-  const pickInGroup = (group: number, index = 1): string | null => {
-    const grouped = link.array.filter((entry) =>
-      entry.name.endsWith(`$${group}`),
-    );
-    if (grouped.length === 0) return null;
-    return grouped[Math.max(0, index - 1)]?.name ?? grouped[0].name;
-  };
-
-  if (alias) {
-    const found = link.array.find(
-      (item) => String(item.alias).toLowerCase() === alias,
-    );
-    const expression = found?.name ?? link.array[0]?.name ?? null;
-    if (!expression) return null;
-    return { base, expression };
-  }
-
-  if (hashGroup) {
-    const expression = pickInGroup(hashGroup, hashIndex || 1);
-    if (!expression) return null;
-    return { base, expression };
-  }
-
-  if (dollarGroup) {
-    const expression = pickInGroup(dollarGroup, 1);
-    if (!expression) return null;
-    return { base, expression };
-  }
-
-  if (hashIndex) {
-    const found = link.array[Math.max(0, hashIndex - 1)] ?? link.array[0];
-    if (!found?.name) return null;
-    return { base, expression: found.name };
-  }
-
-  if (!link.array[0]?.name) return null;
-  return { base, expression: link.array[0].name };
-}
-
 function addCharacterUrls(
   urls: Set<string>,
   context: Context,
@@ -317,7 +225,7 @@ function addCharacterUrls(
     for (const nameRef of refs) {
       if (!nameRef) continue;
 
-      const resolved = resolveCharacterSelection(context, nameRef);
+      const resolved = resolveCharacterSelection(context.linkMap, nameRef);
       if (!resolved) continue;
 
       const link = context.linkMap[resolved.base];

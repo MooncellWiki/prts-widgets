@@ -1,4 +1,5 @@
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
+import { resolveCharacterSelection } from "./characterRef";
 import { CommandRegistry } from "./commandRegistry";
 import { parseScript } from "./parser";
 import {
@@ -788,88 +789,7 @@ export class StoryRuntime {
   private resolveCharacterName(
     ref: string,
   ): { base: string; expression: string } | null {
-    const cleaned = ref.trim();
-    if (!cleaned) return null;
-    const normalized = cleaned.toLowerCase();
-
-    const directLink = this.context.linkMap[normalized];
-    if (directLink?.array[0]?.name) {
-      return {
-        base: normalized,
-        expression: directLink.array[0].name,
-      };
-    }
-
-    for (const [base, link] of Object.entries(this.context.linkMap)) {
-      const prefix = `${base}-`;
-      if (!normalized.startsWith(prefix)) continue;
-
-      const expression = normalized.slice(prefix.length);
-      if (!expression) continue;
-
-      const found = link.array.find(
-        (item) => item.name.toLowerCase() === expression,
-      );
-      if (!found) continue;
-
-      return { base, expression: found.name };
-    }
-
-    const match = normalized.match(
-      /^([^@#$]+)(?:#\s*(\d+)\s*(?:\$\s*(\d+)\s*)?|@([\w-]+)|\$\s*(\d+)\s*)?$/,
-    );
-    if (!match) return null;
-
-    const base = match[1];
-    const link = this.context.linkMap[base];
-    if (!link) return null;
-
-    const hashIndex = match[2] ? Number.parseInt(match[2], 10) : undefined;
-    const hashGroup = match[3] ? Number.parseInt(match[3], 10) : undefined;
-    const alias = match[4];
-    const dollarGroup = match[5] ? Number.parseInt(match[5], 10) : undefined;
-
-    const pickInGroup = (group: number, index?: number): string | null => {
-      const grouped = link.array.filter((entry) =>
-        entry.name.endsWith(`$${group}`),
-      );
-      if (grouped.length === 0) return null;
-      const picked = grouped[Math.max(0, (index ?? 1) - 1)] ?? grouped[0];
-      return picked?.name ?? null;
-    };
-
-    if (alias) {
-      const entry = link.array.find(
-        (item) => String(item.alias).toLowerCase() === alias.toLowerCase(),
-      );
-      const expression = entry?.name ?? link.array[0]?.name ?? null;
-      if (!expression) return null;
-      return { base, expression };
-    }
-
-    if (hashGroup) {
-      const expression = pickInGroup(hashGroup, hashIndex);
-      if (!expression) return null;
-      return { base, expression };
-    }
-
-    if (dollarGroup) {
-      const expression = pickInGroup(dollarGroup, 1);
-      if (!expression) return null;
-      return { base, expression };
-    }
-
-    if (hashIndex) {
-      const entry = link.array[Math.max(0, hashIndex - 1)] ?? link.array[0];
-      if (!entry?.name) return null;
-      return { base, expression: entry.name };
-    }
-
-    if (!link.array[0]?.name) return null;
-    return {
-      base,
-      expression: link.array[0].name,
-    };
+    return resolveCharacterSelection(this.context.linkMap, ref);
   }
 
   private executeCommand(line: ParsedCommandLine): Promise<CommandResult> {
