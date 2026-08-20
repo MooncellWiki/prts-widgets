@@ -34,7 +34,7 @@ watch(
 <template>
   <NCard
     v-if="embedded && show"
-    title="LOG ALL"
+    title="全部文本"
     closable
     class="h-full"
     content-style="height: calc(100% - 59px); min-height: 0; overflow-y: auto"
@@ -57,7 +57,7 @@ watch(
     v-else-if="!embedded"
     :show="show"
     preset="card"
-    title="LOG ALL"
+    title="全部文本"
     style="width: min(760px, 94vw); max-width: min(760px, 94vw)"
     :bordered="false"
     :auto-focus="false"

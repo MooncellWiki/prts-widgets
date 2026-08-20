@@ -500,7 +500,7 @@ onBeforeUnmount(() => {
                 <template #icon>
                   <NIcon><LogAllIcon /></NIcon>
                 </template>
-                LOG
+                文本
               </NButton>
 
               <NButton
@@ -518,7 +518,7 @@ onBeforeUnmount(() => {
                 <template #icon>
                   <NIcon><FeedbackIcon /></NIcon>
                 </template>
-                Feedback
+                反馈
               </NButton>
 
               <NButton
