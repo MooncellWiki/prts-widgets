@@ -121,8 +121,13 @@ export function normalizeCharacterMap(
     // uppercase -- char_259_Jessica_1, avg_1029_Yato2_1, npc_2004_Alty,
     // avg_6D5_1, char_362_Saga and friends. Without folding the key those
     // characters never resolve: the portrait stays hidden and the asset is
-    // never preloaded. Native sidesteps this by not lowercasing at all
-    // (AVGCharacterSlot._LoadImage passes the ref straight to GetCharacterPath).
+    // never preloaded.
+    //
+    // Native is case-insensitive here, so folding the key is what actually
+    // matches it. _LoadImage and ResourceRouter.GetCharacterPath do preserve
+    // case, but Torappu.Resource.AB.ABResourceManager._PreprocessAssetPath
+    // lowercases the whole path before hitting m_assetNameToBundleInfoMap,
+    // and all 1779 avg/characters/*.ab entries are already lowercase.
     //
     // Only the map key is folded. `name`, `image` and `face` stay verbatim --
     // they are real asset paths and the renderer matches `entry.name` against
