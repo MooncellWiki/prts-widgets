@@ -37,7 +37,9 @@ function asObject(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function normalizeCharacterMap(raw: unknown): Record<string, StoryLinkNode> {
+export function normalizeCharacterMap(
+  raw: unknown,
+): Record<string, StoryLinkNode> {
   const root = asObject(raw);
   if (!root) return {};
 
@@ -113,7 +115,19 @@ function normalizeCharacterMap(raw: unknown): Record<string, StoryLinkNode> {
       }
     }
 
-    output[base] = {
+    // Story refs are matched case-insensitively (both resolveCharacterName and
+    // resolveCharacterSelection lowercase the ref before looking it up), but
+    // character.json keeps each key's original casing and 27 of them carry
+    // uppercase -- char_259_Jessica_1, avg_1029_Yato2_1, npc_2004_Alty,
+    // avg_6D5_1, char_362_Saga and friends. Without folding the key those
+    // characters never resolve: the portrait stays hidden and the asset is
+    // never preloaded. Native sidesteps this by not lowercasing at all
+    // (AVGCharacterSlot._LoadImage passes the ref straight to GetCharacterPath).
+    //
+    // Only the map key is folded. `name`, `image` and `face` stay verbatim --
+    // they are real asset paths and the renderer matches `entry.name` against
+    // the original-cased expression.
+    output[base.toLowerCase()] = {
       array,
       groups,
       pos: {
