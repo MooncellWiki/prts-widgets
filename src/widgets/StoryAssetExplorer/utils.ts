@@ -107,11 +107,22 @@ export type CharacterPreview =
       faceRect: StoryFaceRect;
     };
 
+interface CharacterOverlayGroup {
+  base: string;
+  faceRect: StoryFaceRect;
+}
+
+interface CharacterLinkItem {
+  group: number;
+  face?: string;
+  image?: string;
+}
+
 interface CharacterLinkNode {
-  faceOverlay?: { base: string; faceRect: StoryFaceRect };
-  /** 表情名（`face$body`，如 `1$1`）→ 脸部差分资源 key，保持文件顺序 */
-  faces: Map<string, string>;
-  singleImage?: string;
+  /** face_overlay 组索引 → 身体底图与脸部区域 */
+  overlays: Map<number, CharacterOverlayGroup>;
+  /** 表情名（`face$body`，如 `1$1`、`10$1`）→ 差分条目，保持文件顺序 */
+  items: Map<string, CharacterLinkItem>;
 }
 
 export type CharacterLinkMap = Map<string, CharacterLinkNode>;
@@ -138,49 +149,35 @@ export function parseCharacterMap(raw: unknown): CharacterLinkMap {
 
     const groupsRaw = Array.isArray(node.groups) ? node.groups : [];
     const arrayRaw = Array.isArray(node.array) ? node.array : [];
-    const faces = new Map<string, string>();
-    let faceOverlay: CharacterLinkNode["faceOverlay"];
-    let singleImage: string | undefined;
+    const overlays = new Map<number, CharacterOverlayGroup>();
+    const items = new Map<string, CharacterLinkItem>();
 
     for (const [groupIndex, rawGroup] of groupsRaw.entries()) {
       const group = asObject(rawGroup);
-      if (!group) continue;
-      if (group.mode === "face_overlay" && typeof group.base === "string") {
-        const rectRaw = asObject(group.faceRect) ?? {};
-        faceOverlay = {
-          base: group.base,
-          faceRect: {
-            x: toFiniteInt(rectRaw.x),
-            y: toFiniteInt(rectRaw.y),
-            w: toFiniteInt(rectRaw.w),
-            h: toFiniteInt(rectRaw.h),
-          },
-        };
-        for (const rawItem of arrayRaw) {
-          const item = asObject(rawItem);
-          if (
-            item?.group === groupIndex &&
-            typeof item.name === "string" &&
-            typeof item.face === "string"
-          ) {
-            faces.set(item.name, item.face);
-          }
-        }
-      }
+      if (!group || group.mode !== "face_overlay") continue;
+      if (typeof group.base !== "string") continue;
+      const rectRaw = asObject(group.faceRect) ?? {};
+      overlays.set(groupIndex, {
+        base: group.base,
+        faceRect: {
+          x: toFiniteInt(rectRaw.x),
+          y: toFiniteInt(rectRaw.y),
+          w: toFiniteInt(rectRaw.w),
+          h: toFiniteInt(rectRaw.h),
+        },
+      });
     }
 
     for (const rawItem of arrayRaw) {
       const item = asObject(rawItem);
-      if (
-        !singleImage &&
-        item?.group === -1 &&
-        typeof item.image === "string"
-      ) {
-        singleImage = item.image;
-      }
+      if (!item || typeof item.name !== "string") continue;
+      const entry: CharacterLinkItem = { group: toFiniteInt(item.group) };
+      if (typeof item.face === "string") entry.face = item.face;
+      if (typeof item.image === "string") entry.image = item.image;
+      if (!items.has(item.name)) items.set(item.name, entry);
     }
 
-    output.set(base, { faceOverlay, faces, singleImage });
+    output.set(base, { overlays, items });
   }
   return output;
 }
@@ -202,18 +199,64 @@ export function ensureCharacterMap(): Promise<CharacterLinkMap> {
   return characterMapState.cache;
 }
 
+interface ParsedCharacterListingId {
+  /** character.json 的 base 键（`#表情` 与 `$body` 后缀都已剥掉） */
+  base: string;
+  /** `#` 后的差分名（`face$body`，如 `10$1`），无 `#` 时为 null */
+  faceName: string | null;
+  /** body 序号（如 `1`），无数字 `$` 后缀时为 null */
+  body: string | null;
+}
+
+function parseCharacterListingId(id: string): ParsedCharacterListingId {
+  const hash = id.indexOf("#");
+  const head = hash === -1 ? id : id.slice(0, hash);
+  const faceName = hash === -1 ? null : id.slice(hash + 1);
+  const dollar = head.lastIndexOf("$");
+  const bodySuffix =
+    dollar !== -1 && /^\d+$/u.test(head.slice(dollar + 1))
+      ? head.slice(dollar + 1)
+      : null;
+  return {
+    base: bodySuffix === null ? head : head.slice(0, dollar),
+    faceName,
+    body: bodySuffix,
+  };
+}
+
 /**
- * 列表接口的角色 id 是 `base$body` 形态（表情后缀已剥掉），
- * 这里再去掉 `$body` 后缀得到 character.json 的 base 键。
+ * 列表接口的角色 id 有两种形态：叠图角色归并为 `base$body`，
+ * 独立全身图差分保留完整 `base#face$body`，这里统一剥成 base 键。
  */
 export function characterBaseOfListingId(id: string): string {
-  const dollar = id.lastIndexOf("$");
-  if (dollar === -1) return id;
-  return /^\d+$/u.test(id.slice(dollar + 1)) ? id.slice(0, dollar) : id;
+  return parseCharacterListingId(id).base;
+}
+
+/** 取 `name` 的数字 body 后缀（`10$1` → `1`），没有则为 null */
+function bodySuffixOf(name: string): string | null {
+  const dollar = name.lastIndexOf("$");
+  if (dollar === -1) return null;
+  const suffix = name.slice(dollar + 1);
+  return /^\d+$/u.test(suffix) ? suffix : null;
 }
 
 function characterAssetUrl(key: string): string {
   return `${TORAPPU_ASSET_BASE}/avg/characters/${encodePathSegments(key)}.png`;
+}
+
+/** 选中 body 对应的叠图组（底图键以 `$body` 结尾），找不到时退回第一个组 */
+function pickOverlayGroup(
+  node: CharacterLinkNode,
+  body: string | null,
+): [index: number, group: CharacterOverlayGroup] | null {
+  const first = node.overlays.entries().next();
+  if (first.done) return null;
+  if (body === null) return first.value;
+
+  for (const entry of node.overlays.entries()) {
+    if (bodySuffixOf(entry[1].base) === body) return entry;
+  }
+  return first.value;
 }
 
 /** 由 character.json 解析角色卡片预览；查不到 base 时返回 null */
@@ -221,25 +264,46 @@ export function resolveCharacterPreview(
   id: string,
   links: CharacterLinkMap,
 ): CharacterPreview | null {
-  const node = links.get(characterBaseOfListingId(id));
+  const { base, faceName, body } = parseCharacterListingId(id);
+  const node = links.get(base);
   if (!node) return null;
 
-  const overlay = node.faceOverlay;
-  const firstFace = node.faces.values().next().value;
-  if (overlay && firstFace) {
-    return {
-      kind: "composite",
-      baseUrl: characterAssetUrl(overlay.base),
-      faceUrl: characterAssetUrl(firstFace),
-      faceRect: overlay.faceRect,
-    };
+  // 带 `#差分` 的 id 精确解析：独立全身图直接用该图，叠图差分取所属组合成
+  if (faceName !== null) {
+    const item = node.items.get(faceName);
+    if (item?.image) {
+      return { kind: "single", url: characterAssetUrl(item.image) };
+    }
+    const overlay = item?.face ? node.overlays.get(item.group) : undefined;
+    if (item?.face && overlay) {
+      return {
+        kind: "composite",
+        baseUrl: characterAssetUrl(overlay.base),
+        faceUrl: characterAssetUrl(item.face),
+        faceRect: overlay.faceRect,
+      };
+    }
   }
 
-  if (node.singleImage) {
-    return {
-      kind: "single",
-      url: characterAssetUrl(node.singleImage),
-    };
+  // `base$body` 形态：取该 body 叠图组与组内第一个表情
+  const overlayEntry = pickOverlayGroup(node, body);
+  if (overlayEntry) {
+    const [groupIndex, overlay] = overlayEntry;
+    for (const item of node.items.values()) {
+      if (item.group !== groupIndex || !item.face) continue;
+      return {
+        kind: "composite",
+        baseUrl: characterAssetUrl(overlay.base),
+        faceUrl: characterAssetUrl(item.face),
+        faceRect: overlay.faceRect,
+      };
+    }
+  }
+
+  for (const item of node.items.values()) {
+    if (item.image) {
+      return { kind: "single", url: characterAssetUrl(item.image) };
+    }
   }
   return null;
 }
@@ -262,24 +326,33 @@ export function buildFaceGallery(
   usedFaceIds: readonly string[],
   links: CharacterLinkMap,
 ): FaceGalleryItem[] | null {
-  const node = links.get(characterBaseOfListingId(bodyId));
-  const overlay = node?.faceOverlay;
-  if (!node || !overlay) return null;
+  const { base, body } = parseCharacterListingId(bodyId);
+  const node = links.get(base);
+  if (!node || node.overlays.size === 0) return null;
 
   const used = new Set(
     usedFaceIds.map((id) => id.slice(id.lastIndexOf("#") + 1)),
   );
-  const items: FaceGalleryItem[] = [];
-  for (const [name, faceKey] of node.faces) {
-    items.push({
-      expression: name,
-      baseUrl: characterAssetUrl(overlay.base),
-      faceUrl: characterAssetUrl(faceKey),
-      faceRect: overlay.faceRect,
-      used: used.has(name),
-    });
-  }
-  return items;
+  const collect = (matchBody: string | null): FaceGalleryItem[] => {
+    const items: FaceGalleryItem[] = [];
+    for (const [name, item] of node.items) {
+      const overlay = item.face ? node.overlays.get(item.group) : undefined;
+      if (!item.face || !overlay) continue;
+      if (matchBody !== null && bodySuffixOf(name) !== matchBody) continue;
+      items.push({
+        expression: name,
+        baseUrl: characterAssetUrl(overlay.base),
+        faceUrl: characterAssetUrl(item.face),
+        faceRect: overlay.faceRect,
+        used: used.has(name),
+      });
+    }
+    return items;
+  };
+
+  // body 过滤结果为空（如差分名不带 `$body`）时退回全部差分
+  const items = body === null ? [] : collect(body);
+  return items.length > 0 ? items : collect(null);
 }
 
 export function chunk<T>(list: T[], size: number): T[][] {
