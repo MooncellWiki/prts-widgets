@@ -8,6 +8,7 @@ import {
   NIcon,
   NImage,
   NInput,
+  NLayout,
   NModal,
   NSelect,
   NSkeleton,
@@ -56,6 +57,7 @@ interface ResultRow extends StoryUsageItem {
 
 interface ResourceCard extends StoryResourceSummary {
   imageUrl: string | null;
+  thumbnailUrl: string | undefined;
   character: CharacterPreviewInfo | null;
 }
 
@@ -63,6 +65,32 @@ const TYPE_SELECT_OPTIONS: { label: string; value: string }[] = [
   { label: "全部类型", value: "" },
   ...RESOURCE_TYPE_OPTIONS,
 ];
+
+// 阿里云 CDN 图片处理：卡片预览区最小 220px 宽（4:3），最长边 480 覆盖 2x DPR；
+// CDN 缩放只缩不放，小于该尺寸的原图不受影响
+const WEBP_PROBE_SRC =
+  "data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=";
+const supportsWebp = ref(false);
+
+function detectWebpSupport(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(true));
+    image.addEventListener("error", () => resolve(false));
+    image.src = WEBP_PROBE_SRC;
+  });
+}
+
+// setup 时立即探测，让结果赶在首屏卡片渲染（需等搜索接口返回）前就绪，避免图片二次加载
+detectWebpSupport().then((supported) => {
+  supportsWebp.value = supported;
+});
+
+const thumbnailQuery = computed(() => {
+  const operations = ["resize,l_480"];
+  if (supportsWebp.value) operations.push("format,webp");
+  return `image_process=${operations.join("/")}`;
+});
 
 const props = defineProps<{
   type?: string;
@@ -125,17 +153,23 @@ watchEffect(() => {
 });
 
 const cards = computed<ResourceCard[]>(() =>
-  resources.value.map((resource) => ({
-    ...resource,
-    imageUrl: storyResourceImageUrl(resource.type, resource.id),
-    character:
-      resource.type === "character"
-        ? resolveCharacterPreview(
-            resource.id,
-            characterLinks.value ?? new Map(),
-          )
-        : null,
-  })),
+  resources.value.map((resource) => {
+    const imageUrl = storyResourceImageUrl(resource.type, resource.id);
+    return {
+      ...resource,
+      imageUrl,
+      thumbnailUrl: imageUrl
+        ? `${imageUrl}?${thumbnailQuery.value}`
+        : undefined,
+      character:
+        resource.type === "character"
+          ? resolveCharacterPreview(
+              resource.id,
+              characterLinks.value ?? new Map(),
+            )
+          : null,
+    };
+  }),
 );
 
 async function fetchResourcePage(
@@ -310,11 +344,8 @@ onMounted(() => {
     :theme="theme"
     :theme-overrides="themeOverrides"
   >
-    <div :class="['story-asset-explorer-widget', isDark && 'prts-widget-dark']">
-      <form
-        class="mb-3 flex flex-wrap items-center gap-2"
-        @submit.prevent="search"
-      >
+    <NLayout :class="['mx-auto p-2 antialiased', isDark && 'prts-widget-dark']">
+      <form class="mb-3 flex items-center gap-2" @submit.prevent="search">
         <NSelect
           v-model:value="resourceType"
           :options="TYPE_SELECT_OPTIONS"
@@ -322,13 +353,14 @@ onMounted(() => {
         />
         <NInput
           v-model:value="resourceQuery"
-          class="max-w-full w-80"
+          class="min-w-0 flex-1"
           placeholder="资源 ID 关键字，如 bg_indoor_2 / avg_npc_009，留空显示全部"
           clearable
           @keyup.enter="search"
         />
         <NButton
           type="primary"
+          class="shrink-0"
           :loading="status === Status.loading"
           @click="search"
         >
@@ -358,7 +390,8 @@ onMounted(() => {
               >
                 <NImage
                   v-if="card.imageUrl"
-                  :src="card.imageUrl"
+                  :src="card.thumbnailUrl"
+                  :preview-src="card.imageUrl"
                   :alt="card.id"
                   lazy
                   object-fit="contain"
@@ -417,6 +450,7 @@ onMounted(() => {
         style="width: min(1000px, 94vw); max-width: min(1000px, 94vw)"
         :bordered="false"
         :auto-focus="false"
+        :block-scroll="false"
       >
         <template #header-extra>
           <NText depth="3" class="text-xs font-normal">
@@ -577,7 +611,7 @@ onMounted(() => {
         </div>
         <div v-else class="text-disabled">没有可展示的表情差分</div>
       </NModal>
-    </div>
+    </NLayout>
   </NConfigProvider>
 </template>
 
