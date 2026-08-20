@@ -1334,8 +1334,11 @@ describe("StoryRuntime", () => {
   it("resolves character refs with whitespace inside the suffix like native", async () => {
     const renderer = new FakeRenderer();
     const context = createContext([
+      // One case per whitespace position the native Int32.TryParse tolerates:
+      // between the index digits and `$`, after `#`, and after `$`.
       '[charslot(slot="m",name="avg_4236_tmslot_1#3 $1")]',
-      '[charslot(slot="l",name="avg_npc_1#1 ")]',
+      '[charslot(slot="l",name="avg_npc_1# 1")]',
+      '[charslot(slot="r",name="avg_4236_tmslot_1$ 1")]',
       '[name="A"]ok',
     ]);
     context.linkMap.avg_4236_tmslot_1 = {
@@ -1361,6 +1364,11 @@ describe("StoryRuntime", () => {
       characterKey: "avg_npc_1",
       expression: "1$1",
       slot: "l",
+    });
+    expect(renderer.characterCalls[2]).toMatchObject({
+      characterKey: "avg_4236_tmslot_1",
+      expression: "1$1",
+      slot: "r",
     });
     expect(runtime.getState()).toBe("waiting_input");
   });
