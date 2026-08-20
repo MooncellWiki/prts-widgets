@@ -18,6 +18,7 @@
     "lint:fix": "eslint --fix .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:story-log": "vitest run -c vitest.config.storylog.ts",
     "prepare": "simple-git-hooks"
   },
   "dependencies": {
