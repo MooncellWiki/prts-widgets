@@ -236,7 +236,7 @@ describe("buildLogAll", () => {
     );
   });
 
-  it("returns an inner all-options convergence to its enclosing option path", () => {
+  it("keeps inner convergence in the outer path when another history skipped the inner decision", () => {
     const entries = run([
       '[decision(options="外A;外B", values="1;2")]',
       '[predicate(references="1")]',
@@ -249,8 +249,39 @@ describe("buildLogAll", () => {
     if (entries[0].kind !== "decision") return;
     const outerARoute = entries[0].routes[0].entries;
     expect(outerARoute[0]).toMatchObject({ kind: "decision" });
-    expect(outerARoute[1]).toMatchObject({ kind: "line", speaker: "内层汇合" });
+    const inner = outerARoute[0];
+    if (inner.kind !== "decision") return;
+    expect(inner.routes[0].entries[0]).toMatchObject({
+      kind: "line",
+      speaker: "内层汇合",
+    });
+    expect(inner.routes[1].entries[0]).toMatchObject({
+      kind: "line",
+      speaker: "内层汇合",
+    });
     expect(entries[0].routes[1].entries).toEqual([]);
+  });
+
+  it("returns the 07-03 nested decision sequence to the root flow", () => {
+    const entries = run([
+      '[decision(options="阿米娅;沉默;凯尔希", values="1;2;3")]',
+      '[predicate(references="1")]',
+      '[name="A"]外层一',
+      '[predicate(references="2")]',
+      '[name="B"]外层二',
+      '[predicate(references="3")]',
+      '[name="C"]外层三',
+      '[decision(options="计划？", values="1")]',
+      '[predicate(references="1")]',
+      '[name="阿米娅"]询问哪方面',
+      '[decision(options="办法;怎么去;直接问好", values="1;2;3")]',
+      '[predicate(references="1;2;3")]',
+      '[name="凯尔希"]罗德岛确实有自己的方法',
+      '[name="后续"]荒野场景',
+    ]);
+
+    expect(entries.at(-2)).toMatchObject({ kind: "line", speaker: "凯尔希" });
+    expect(entries.at(-1)).toMatchObject({ kind: "line", speaker: "后续" });
   });
 
   it("keeps an explicit empty route for an option without a matching predicate", () => {

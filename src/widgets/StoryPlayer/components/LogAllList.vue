@@ -54,6 +54,15 @@ function hasRouteContent(routes: LogAllDecisionRoute[]): boolean {
   return routes.some((route) => route.entries.length > 0);
 }
 
+/** 单选项或所有选项拥有同一去向时，不需要渲染可折叠的分支层。 */
+function isNonBranching(routes: LogAllDecisionRoute[]): boolean {
+  return groupRoutes(routes).length <= 1;
+}
+
+function commonRouteEntries(routes: LogAllDecisionRoute[]): LogAllEntry[] {
+  return routes[0]?.entries ?? [];
+}
+
 /** 某条 line entry 是否对应当前屏幕正在显示的源行 */
 function isActiveLine(entry: LogAllEntry & { kind: "line" }): boolean {
   return (
@@ -118,9 +127,11 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
         </span>
       </div>
 
-      <!-- 所有选项都立即汇合时，压成静态记录，不制造空折叠层。 -->
+      <!-- 单选项或所有选项去向相同时，压成静态记录，不制造无意义的折叠层。 -->
       <div
-        v-else-if="!hasRouteContent(entry.routes)"
+        v-else-if="
+          !hasRouteContent(entry.routes) || isNonBranching(entry.routes)
+        "
         class="border-l-2 py-1 pl-3"
       >
         <div class="text-sm">
@@ -135,6 +146,16 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
         <div v-if="entry.shared.length > 0" class="mt-2 pl-3">
           <LogAllList
             :entries="entry.shared"
+            :active-line-index="activeLineIndex"
+            :decision-select-value="decisionSelectValue"
+          />
+        </div>
+        <div
+          v-if="commonRouteEntries(entry.routes).length > 0"
+          class="mt-2 pl-3"
+        >
+          <LogAllList
+            :entries="commonRouteEntries(entry.routes)"
             :active-line-index="activeLineIndex"
             :decision-select-value="decisionSelectValue"
           />

@@ -143,6 +143,12 @@ export function buildLogAll(
   const targetStack: LogAllEntry[][] = [root];
   /** 与 targetStack 并行：每层对应的 decision 节点（栈底为 null） */
   const decisionStack: (LogAllDecisionEntry | null)[] = [null];
+  // Runtime has one mutable selected value. Keep the set of values that can be
+  // present across all player histories so a convergence is only lifted to the
+  // root when *every* history passes the predicate (including histories that
+  // skipped a gated nested decision).
+  let possibleValues = new Set([0]);
+  let currentReferences: number[] | null = null;
 
   const currentTarget = (): LogAllEntry[] => targetStack.at(-1)!;
   const currentDecision = (): LogAllDecisionEntry | null =>
@@ -215,6 +221,22 @@ export function buildLogAll(
           shared: [],
         };
         currentTarget().push(decision);
+        const decisionIsUnconditional =
+          currentReferences === null ||
+          currentReferences.length === 0 ||
+          [...possibleValues].every((value) =>
+            currentReferences!.includes(value),
+          );
+        const retainedValues = decisionIsUnconditional
+          ? []
+          : [...possibleValues].filter(
+              (value) => !currentReferences!.includes(value),
+            );
+        possibleValues = new Set([
+          ...retainedValues,
+          ...options.map((option) => option.value),
+        ]);
+        currentReferences = null;
         // 新 decision 的执行会覆盖 runtime 中上一组选值，但它本身仍受执行前的
         // predicate 闸门约束。因此若它出现在某个分支段内，结构上必须留在该
         // 分支路径里；随后再以新 decision 为 owner 解释它自己的 predicate。
@@ -228,6 +250,7 @@ export function buildLogAll(
 
         // 裸 [predicate]（无 references）：runtime 设 decisionReferences=null，结束分支模式
         if (!line.paramPresent || line.args.references === undefined) {
+          currentReferences = null;
           // 弹出当前 decision 层（若有），回到外层流
           if (targetStack.length > 1) {
             targetStack.pop();
@@ -237,17 +260,19 @@ export function buildLogAll(
         }
 
         const references = toNumberList(line.args.references);
+        currentReferences = references;
         const owner = currentDecision();
         if (references.length === 0 || !owner) break; // 无 enclosing decision 或 references 为空：忽略
 
-        // references 覆盖当前 decision 的全部选项时，这是常见的显式汇合点。
-        // 从这里开始的内容对所有选项都相同，应回到 decision 的父级流；
-        // 否则紧随其后的新 decision 会被错误显示成每条选项路径的子节点。
-        if (
-          owner.options.every((option) => references.includes(option.value))
-        ) {
-          targetStack.pop();
-          decisionStack.pop();
+        // references 覆盖当前 decision 的全部选项时，这是显式汇合点。
+        // Runtime 只保存一组 decisionSelectValue/decisionReferences：新 decision
+        // 会覆盖旧选择，而不会在内层 decision 结束后恢复外层选择。因此这里
+        // 必须退出全部静态嵌套层，不能只返回父 decision。否则 07-03 这类
+        // “分支内出现新 decision，随后全选项汇合”的脚本会把余下整篇剧情
+        // 错挂到最早的某个选项下面。
+        if ([...possibleValues].every((value) => references.includes(value))) {
+          targetStack.length = 1;
+          decisionStack.length = 1;
           break;
         }
 
