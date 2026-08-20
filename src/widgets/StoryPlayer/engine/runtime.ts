@@ -23,6 +23,8 @@ import type {
   InterludeInput,
   ParsedCommandLine,
   PlayerState,
+  RuntimeChoiceSelection,
+  RuntimeLogPosition,
   RuntimeOptions,
   RuntimeWarning,
   SpellStickerInput,
@@ -307,6 +309,8 @@ export class StoryRuntime {
   private displayedLineIndex: number | null = null;
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
+  /** 实际执行过的全部选择（decisionId = 源行 lineNumber），供 Log All 路径求值 */
+  private readonly choiceHistory: RuntimeChoiceSelection[] = [];
   private destroyed = false;
   private readonly lines: ReturnType<typeof parseScript>;
   private readonly firstRead: boolean;
@@ -387,6 +391,13 @@ export class StoryRuntime {
   /** 最近一次 decision 玩家所选的 value（0 = 未做选择/默认分支） */
   getDecisionSelectValue(): number {
     return this.decisionSelectValue;
+  }
+
+  getLogPosition(): RuntimeLogPosition {
+    return {
+      lineIndex: this.displayedLineIndex,
+      selections: this.choiceHistory.map((selection) => ({ ...selection })),
+    };
   }
 
   getAutoPlayState(): AutoPlayState {
@@ -2462,6 +2473,17 @@ export class StoryRuntime {
         this.state = "waiting_decision";
         const selectedValue = await this.renderer.showDecision(options, values);
         this.decisionSelectValue = selectedValue;
+        // DecisionPanel 按下标渲染按钮，缺省 values 落到 index+1；这里反查
+        // 玩家点的下标，供 Log All 的路径条件求值使用（value 本身会在多个
+        // decision 间复用，不能单独当路径身份）。
+        const optionIndex = values.includes(selectedValue)
+          ? values.indexOf(selectedValue)
+          : options.findIndex((_, index) => index + 1 === selectedValue);
+        this.choiceHistory.push({
+          decisionId: line.lineNumber,
+          optionIndex: Math.max(optionIndex, 0),
+          value: selectedValue,
+        });
         this.setAutoPlayMode(autoPlayCache);
         this.state = "running";
         return "continue";

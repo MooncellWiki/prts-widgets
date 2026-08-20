@@ -99,6 +99,19 @@ export interface AutoPlayState {
   quickSpeedLevel: number;
 }
 
+/** 一次已执行的选择：decisionId 用该 decision 源行的 lineNumber */
+export interface RuntimeChoiceSelection {
+  decisionId: number;
+  optionIndex: number;
+  value: number;
+}
+
+/** 播放器当前播放位置：显示中的源行 + 实际执行过的全部选择历史 */
+export interface RuntimeLogPosition {
+  lineIndex: number | null;
+  selections: RuntimeChoiceSelection[];
+}
+
 export interface RuntimeWarning {
   command?: string;
   cursor: number;
@@ -582,9 +595,11 @@ export interface StoryPlayer {
   canSkipNode: () => boolean;
   destroy: () => void;
   getAutoPlayState: () => AutoPlayState;
-  /** 当前屏幕对话框正在显示的源行 lineNumber；null 表示无显示文本 */
+  /** 最近一次 decision 玩家所选的 value（0 = 未做选择/默认分支） */
   getDecisionSelectValue: () => number;
   getDisplayedLineIndex: () => number | null;
+  /** 当前播放位置：显示中的源行 + 实际执行过的全部选择历史（用于 Log All 路径求值） */
+  getLogPosition: () => RuntimeLogPosition;
   getState: () => PlayerState;
   mount: (host: HTMLElement) => Promise<void>;
   setAutoPlayMode: (mode: AutoPlayMode) => void;

@@ -1040,6 +1040,12 @@ describe("StoryRuntime", () => {
     expect(runtime.getDecisionSelectValue()).toBe(2);
     expect(runtime.getDisplayedLineIndex()).toBe(7);
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "合并" });
+
+    // 选择历史以 decisionId（源行号）+ optionIndex 记录，供 Log All 路径求值
+    expect(runtime.getLogPosition()).toEqual({
+      lineIndex: 7,
+      selections: [{ decisionId: 3, optionIndex: 1, value: 2 }],
+    });
   });
 
   it("shows and hides story items with legacy defaults", async () => {
