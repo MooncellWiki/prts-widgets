@@ -198,6 +198,41 @@ describe("preloadContextAssets", () => {
     expect(loadMock).not.toHaveBeenCalled();
   });
 
+  it("resolves character refs with whitespace inside the suffix like native", () => {
+    const context = createContext([
+      '[charslot(slot="m",name="avg_4236_tmslot_1#3 $1")]',
+    ]);
+    context.linkMap.avg_4236_tmslot_1 = {
+      array: [
+        { alias: "", face: "tmslot/1", group: 0, name: "1$1" },
+        { alias: "", face: "tmslot/2", group: 0, name: "2$1" },
+        { alias: "", face: "tmslot/3", group: 0, name: "3$1" },
+      ],
+      groups: [
+        {
+          base: "tmslot/base",
+          faceRect: { h: 80, w: 100, x: 120, y: 40 },
+          mode: "face_overlay",
+        },
+      ],
+      pos: { x: 0, y: 0 },
+      size: { x: 0, y: 0 },
+    };
+
+    const manifest = collectContextAssetManifest(context);
+
+    expect(
+      manifest.faceAssets.map((asset) => ({
+        expression: asset.expression,
+        used: asset.used,
+      })),
+    ).toEqual([
+      { expression: "1$1", used: false },
+      { expression: "2$1", used: false },
+      { expression: "3$1", used: true },
+    ]);
+  });
+
   it("preloads character command portraits using case-insensitive refs", async () => {
     const progress = vi.fn();
     const context = createContext([

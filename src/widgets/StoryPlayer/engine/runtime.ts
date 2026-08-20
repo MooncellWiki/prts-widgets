@@ -807,14 +807,16 @@ export class StoryRuntime {
       const expression = normalized.slice(prefix.length);
       if (!expression) continue;
 
-      const found = link.array.find((item) => item.name === expression);
+      const found = link.array.find(
+        (item) => item.name.toLowerCase() === expression,
+      );
       if (!found) continue;
 
       return { base, expression: found.name };
     }
 
     const match = normalized.match(
-      /^([^@#$]+)(?:#(\d+)(?:\$(\d+))?|@([\w-]+)|\$(\d+))?$/,
+      /^([^@#$]+)(?:#\s*(\d+)\s*(?:\$\s*(\d+)\s*)?|@([\w-]+)|\$\s*(\d+)\s*)?$/,
     );
     if (!match) return null;
 

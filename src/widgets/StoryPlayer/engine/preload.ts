@@ -211,7 +211,7 @@ function resolveCharacterSelection(
   }
 
   const match = normalized.match(
-    /^([^@#$]+)(?:#(\d+)(?:\$(\d+))?|@([\w-]+)|\$(\d+))?$/,
+    /^([^@#$]+)(?:#\s*(\d+)\s*(?:\$\s*(\d+)\s*)?|@([\w-]+)|\$\s*(\d+)\s*)?$/,
   );
   if (!match) return null;
 
