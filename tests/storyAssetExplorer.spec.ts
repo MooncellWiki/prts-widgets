@@ -47,10 +47,13 @@ describe("storyResourceImageUrl", () => {
 });
 
 describe("character preview resolution", () => {
-  it("strips body suffix from listing ids", () => {
+  it("strips face and body suffixes from listing ids", () => {
     expect(characterBaseOfListingId("avg_npc_009$1")).toBe("avg_npc_009");
     expect(characterBaseOfListingId("nobody")).toBe("nobody");
-    expect(characterBaseOfListingId("avg_x#3 4$2")).toBe("avg_x#3 4");
+    expect(characterBaseOfListingId("avg_x#3 4$2")).toBe("avg_x");
+    expect(characterBaseOfListingId("avg_1038_whitw2_1#10$1")).toBe(
+      "avg_1038_whitw2_1",
+    );
   });
 
   it("composites face characters and links single-image characters", () => {
@@ -89,6 +92,70 @@ describe("character preview resolution", () => {
       faceRect: { x: 459, y: 159, w: 130, h: 110 },
     });
     expect(resolveCharacterPreview("missing$1", links)).toBeNull();
+  });
+
+  it("resolves hash-suffixed standalone images exactly", () => {
+    const links = parseCharacterMap({
+      avg_1038_whitw2_1: {
+        groups: [
+          {
+            mode: "face_overlay",
+            base: "avg_1038_whitw2_1/avg_1038_whitw2_1$1",
+            faceRect: { x: 787, y: 235, w: 236, h: 228 },
+          },
+        ],
+        array: [
+          { name: "1$1", group: 0, face: "avg_1038_whitw2_1/1$1" },
+          { name: "10$1", group: -1, image: "avg_1038_whitw2_1/10$1" },
+        ],
+      },
+    });
+
+    expect(resolveCharacterPreview("avg_1038_whitw2_1#10$1", links)).toEqual({
+      kind: "single",
+      url: "https://torappu.prts.wiki/assets/avg/characters/avg_1038_whitw2_1/10%241.png",
+    });
+    // 未知差分名退回 body 形态的默认预览
+    expect(resolveCharacterPreview("avg_1038_whitw2_1#99$1", links)).toEqual({
+      kind: "composite",
+      baseUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/avg_1038_whitw2_1/avg_1038_whitw2_1%241.png",
+      faceUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/avg_1038_whitw2_1/1%241.png",
+      faceRect: { x: 787, y: 235, w: 236, h: 228 },
+    });
+  });
+
+  it("picks the overlay group matching the body suffix", () => {
+    const links = parseCharacterMap({
+      avg_1038_whitw2_1: {
+        groups: [
+          {
+            mode: "face_overlay",
+            base: "avg_1038_whitw2_1/avg_1038_whitw2_1$1",
+            faceRect: { x: 787, y: 235, w: 236, h: 228 },
+          },
+          {
+            mode: "face_overlay",
+            base: "avg_1038_whitw2_1/avg_1038_whitw2_1$2",
+            faceRect: { x: 787, y: 234, w: 236, h: 229 },
+          },
+        ],
+        array: [
+          { name: "1$1", group: 0, face: "avg_1038_whitw2_1/1$1" },
+          { name: "1$2", group: 1, face: "avg_1038_whitw2_1/1$2" },
+        ],
+      },
+    });
+
+    expect(resolveCharacterPreview("avg_1038_whitw2_1$2", links)).toEqual({
+      kind: "composite",
+      baseUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/avg_1038_whitw2_1/avg_1038_whitw2_1%242.png",
+      faceUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/avg_1038_whitw2_1/1%242.png",
+      faceRect: { x: 787, y: 234, w: 236, h: 229 },
+    });
   });
 
   it("builds a face gallery marking the faces a script uses", () => {
@@ -136,6 +203,42 @@ describe("character preview resolution", () => {
       buildFaceGallery("avg_npc_009$1", ["avg_npc_009#1$1"], singleLinks),
     ).toBeNull();
     expect(buildFaceGallery("missing$1", [], links)).toBeNull();
+  });
+
+  it("limits the face gallery to the queried body", () => {
+    const links = parseCharacterMap({
+      avg_1038_whitw2_1: {
+        groups: [
+          {
+            mode: "face_overlay",
+            base: "avg_1038_whitw2_1/avg_1038_whitw2_1$1",
+            faceRect: { x: 787, y: 235, w: 236, h: 228 },
+          },
+          {
+            mode: "face_overlay",
+            base: "avg_1038_whitw2_1/avg_1038_whitw2_1$2",
+            faceRect: { x: 787, y: 234, w: 236, h: 229 },
+          },
+        ],
+        array: [
+          { name: "1$1", group: 0, face: "avg_1038_whitw2_1/1$1" },
+          { name: "2$1", group: 0, face: "avg_1038_whitw2_1/2$1" },
+          { name: "1$2", group: 1, face: "avg_1038_whitw2_1/1$2" },
+        ],
+      },
+    });
+
+    const gallery = buildFaceGallery(
+      "avg_1038_whitw2_1$2",
+      ["avg_1038_whitw2_1#1$2"],
+      links,
+    );
+    expect(gallery?.map((face) => [face.expression, face.used])).toEqual([
+      ["1$2", true],
+    ]);
+    expect(gallery?.[0].baseUrl).toBe(
+      "https://torappu.prts.wiki/assets/avg/characters/avg_1038_whitw2_1/avg_1038_whitw2_1%242.png",
+    );
   });
 });
 
