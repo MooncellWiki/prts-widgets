@@ -50,15 +50,15 @@ function groupRoutes(routes: LogAllDecisionRoute[]): RouteGroup[] {
   return groups;
 }
 
-function hasRouteContent(routes: LogAllDecisionRoute[]): boolean {
-  return routes.some((route) => route.entries.length > 0);
-}
-
-/** 单选项或所有选项拥有同一去向时，不需要渲染可折叠的分支层。 */
+/**
+ * 单选项、所有选项去向相同、以及所有选项都没有专属文本（此时各 route 同样等价）
+ * 三种情况都不需要渲染可折叠的分支层。
+ */
 function isNonBranching(routes: LogAllDecisionRoute[]): boolean {
   return groupRoutes(routes).length <= 1;
 }
 
+/** 仅在 isNonBranching 为真时有意义：各 route 等价，取任意一条即可。 */
 function commonRouteEntries(routes: LogAllDecisionRoute[]): LogAllEntry[] {
   return routes[0]?.entries ?? [];
 }
@@ -129,9 +129,7 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
 
       <!-- 单选项或所有选项去向相同时，压成静态记录，不制造无意义的折叠层。 -->
       <div
-        v-else-if="
-          !hasRouteContent(entry.routes) || isNonBranching(entry.routes)
-        "
+        v-else-if="isNonBranching(entry.routes)"
         class="border-l-2 py-1 pl-3"
       >
         <div class="text-sm">

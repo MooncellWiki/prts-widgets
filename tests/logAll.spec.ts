@@ -284,6 +284,73 @@ describe("buildLogAll", () => {
     expect(entries.at(-1)).toMatchObject({ kind: "line", speaker: "后续" });
   });
 
+  it("returns a predicate to the outer decision that owns its references", () => {
+    // act3fun_03_end 形状：外层选项 1 的分支里出现一个内层 decision，随后的
+    // predicate 指回外层的 2 / 3。内层 decision 对选了 2/3 的玩家从未执行，
+    // 这些段落必须挂在外层 decision 上，否则会落到投影不出它们的内层节点下。
+    const entries = run([
+      '[decision(options="外1;外2;外3", values="1;2;3")]',
+      '[predicate(references="1")]',
+      '[decision(options="内", values="4")]',
+      '[predicate(references="4")]',
+      '[name="内层"]只有选外1的人看得到',
+      '[predicate(references="2")]',
+      '[name="外2专属"]选外2才看得到',
+      '[predicate(references="3")]',
+      '[name="外3专属"]选外3才看得到',
+    ]);
+
+    if (entries[0].kind !== "decision") return;
+    const outer = entries[0];
+    expect(outer.branches.map((branch) => branch.references)).toEqual([
+      [1],
+      [2],
+      [3],
+    ]);
+    expect(outer.routes[1].entries[0]).toMatchObject({
+      kind: "line",
+      speaker: "外2专属",
+    });
+    expect(outer.routes[2].entries[0]).toMatchObject({
+      kind: "line",
+      speaker: "外3专属",
+    });
+  });
+
+  it("keeps every branch segment reachable from some route", () => {
+    const entries = run([
+      '[decision(options="外1;外2;外3", values="1;2;3")]',
+      '[predicate(references="1")]',
+      '[decision(options="内", values="4")]',
+      '[predicate(references="4")]',
+      '[name="内层"]内层文本',
+      '[predicate(references="2")]',
+      '[name="外2专属"]外层文本',
+    ]);
+
+    const inBranches = new Set<string>();
+    const inRoutes = new Set<string>();
+    const walk = (
+      list: ReturnType<typeof run>,
+      all: Set<string>,
+      shown: Set<string>,
+    ) => {
+      for (const entry of list) {
+        if (entry.kind === "line") {
+          all.add(entry.speaker);
+          shown.add(entry.speaker);
+          continue;
+        }
+        walk(entry.shared, all, shown);
+        for (const branch of entry.branches)
+          walk(branch.entries, all, new Set());
+        for (const route of entry.routes) walk(route.entries, new Set(), shown);
+      }
+    };
+    walk(entries, inBranches, inRoutes);
+    expect([...inBranches].filter((s) => !inRoutes.has(s))).toEqual([]);
+  });
+
   it("keeps an explicit empty route for an option without a matching predicate", () => {
     const entries = run([
       '[decision(options="A;B", values="1;2")]',

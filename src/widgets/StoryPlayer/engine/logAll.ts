@@ -124,6 +124,23 @@ function toStringList(value: unknown): string[] {
 }
 
 /**
+ * 某个 decisionSelectValue 是否能通过 references 闸门。
+ *
+ * Native provenance: `Torappu.AVG.DecisionCommandPredicator.NeedToExecuteCommand`
+ * ——`references` 为空、或选值仍是初始的 0 时一律放行。
+ */
+function valuePassesGate(value: number, references: number[] | null): boolean {
+  if (references === null || references.length === 0) return true;
+
+  return value === 0 || references.includes(value);
+}
+
+/** 所有可能的选值都能通过闸门（即这段脚本对每条玩家路径都会执行） */
+function passesGate(values: Set<number>, references: number[] | null): boolean {
+  return [...values].every((value) => valuePassesGate(value, references));
+}
+
+/**
  * 静态预扫脚本，按 runtime 实际过滤行为整理 decision/predicate 分支。
  *
  * 用一个 target 栈跟踪「当前文本应落入的数组」：
@@ -221,17 +238,11 @@ export function buildLogAll(
           shared: [],
         };
         currentTarget().push(decision);
-        const decisionIsUnconditional =
-          currentReferences === null ||
-          currentReferences.length === 0 ||
-          [...possibleValues].every((value) =>
-            currentReferences!.includes(value),
-          );
-        const retainedValues = decisionIsUnconditional
-          ? []
-          : [...possibleValues].filter(
-              (value) => !currentReferences!.includes(value),
-            );
+        // 被闸门挡住的路径不会执行这条 decision，其选值原样保留；能通过闸门的
+        // 路径则被新 decision 的选项值覆盖。
+        const retainedValues = [...possibleValues].filter(
+          (value) => !valuePassesGate(value, currentReferences),
+        );
         possibleValues = new Set([
           ...retainedValues,
           ...options.map((option) => option.value),
@@ -261,20 +272,37 @@ export function buildLogAll(
 
         const references = toNumberList(line.args.references);
         currentReferences = references;
-        const owner = currentDecision();
-        if (references.length === 0 || !owner) break; // 无 enclosing decision 或 references 为空：忽略
+        if (references.length === 0) break; // references 为空：忽略
 
-        // references 覆盖当前 decision 的全部选项时，这是显式汇合点。
+        // 全部可能取值都能通过闸门时，这是显式汇合点。
         // Runtime 只保存一组 decisionSelectValue/decisionReferences：新 decision
         // 会覆盖旧选择，而不会在内层 decision 结束后恢复外层选择。因此这里
         // 必须退出全部静态嵌套层，不能只返回父 decision。否则 07-03 这类
         // “分支内出现新 decision，随后全选项汇合”的脚本会把余下整篇剧情
         // 错挂到最早的某个选项下面。
-        if ([...possibleValues].every((value) => references.includes(value))) {
+        if (passesGate(possibleValues, references)) {
           targetStack.length = 1;
           decisionStack.length = 1;
           break;
         }
+
+        // references 引用的取值未必属于栈顶 decision：内层 decision 可能被闸门
+        // 整个跳过，此时后续 predicate 指回的是某个更外层 decision 的取值。
+        // 不退到真正拥有这些取值的那一层，分支就会挂在投影不出它的 decision 下
+        // （routes 只收 references 命中 owner 选项值的分支），整段文本会从
+        // Log All 面板里消失。
+        while (
+          decisionStack.length > 1 &&
+          decisionStack
+            .at(-1)!
+            .options.every((option) => !references.includes(option.value))
+        ) {
+          targetStack.pop();
+          decisionStack.pop();
+        }
+
+        const owner = currentDecision();
+        if (!owner) break; // 无 enclosing decision：忽略
 
         // references 映射回所属 decision 的选项文本（value -> label）
         const labelByValue = new Map(
