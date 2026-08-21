@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, h, onMounted, reactive, ref, watch } from "vue";
 
 import {
   NButton,
@@ -152,27 +152,8 @@ const abilityColumn: DataTableColumn<EnemyData> = {
       row.name.includes(value.toString())
     );
   },
+  // 能力里的 .mc-tooltips 由 src/entries/Tooltip.ts 的 MutationObserver 自动挂载
   render(row) {
-    nextTick(() => {
-      for (const e of Array.from(document.querySelectorAll(".mc-tooltips"))) {
-        if (!e.children || e.children.length < 2) continue;
-        (e.children[1] as HTMLElement).style.display = "block";
-        // @ts-expect-error tippy
-
-        tippy6(e.children[0], {
-          content: e.children[1],
-          arrow: true,
-          theme: isDark.value ? "dark-border" : "light-border",
-          size: "large",
-          maxWidth: Number.parseInt(
-            (e.children[1] as HTMLElement).dataset.size!,
-          ),
-          trigger:
-            (e.children[1] as HTMLElement).dataset.trigger ||
-            "mouseenter focus",
-        });
-      }
-    });
     return h("span", { innerHTML: row.ability });
   },
   renderFilter() {

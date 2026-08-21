@@ -1,13 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onBeforeMount,
-  reactive,
-  ref,
-  watch,
-  type Ref,
-} from "vue";
+import { computed, onBeforeMount, reactive, ref, watch, type Ref } from "vue";
 
 import { useBreakpoints, useUrlSearchParams } from "@vueuse/core";
 import Cookies from "js-cookie";
@@ -330,37 +322,6 @@ function hasSelected(states: State[]) {
     return Object.values(state.selected).some(Boolean);
   });
 }
-const resultTable = ref<HTMLElement>();
-watch(data, () => {
-  nextTick(() => {
-    try {
-      const elements = resultTable.value?.querySelectorAll(".mc-tooltips");
-      if (!elements) {
-        return;
-      }
-      for (const e of Array.from(elements)) {
-        if (!e.children || e.children.length < 2) continue;
-        (e.children[1] as HTMLElement).style.display = "block";
-        // @ts-expect-error tippy
-
-        tippy6(e.children[0], {
-          content: e.children[1],
-          arrow: true,
-          theme: "light-border",
-          size: "large",
-          maxWidth: Number.parseInt(
-            (e.children[1] as HTMLElement).dataset.size!,
-          ),
-          trigger:
-            (e.children[1] as HTMLElement).dataset.trigger ||
-            "mouseenter focus",
-        });
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  });
-});
 </script>
 
 <template>
@@ -428,7 +389,6 @@ watch(data, () => {
       <LHead v-else-if="currDisplayMode === '表格' && long" :class="{ fix }" />
       <div
         id="filter-result"
-        ref="resultTable"
         :class="{
           showhead: currDisplayMode === '头像',
           showavatar: currDisplayMode === '半身像',
