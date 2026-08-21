@@ -1,0 +1,81 @@
+/*
+ * tippy 的 dark-border 主题，即 light-border 的夜间配色版本。
+ * 取值与 MediaWiki:Gadget-darkModeFix.css 里针对 tooltip 的覆盖保持一致。
+ *
+ * 注意这里的类名前缀直接写成 tippy6-：npm 包里的 tippy- 前缀由 vite.config.ts 的
+ * tippyNamespace 插件在打包时改写，本文件不在改写范围内。
+ */
+
+.tippy6-box[data-theme~="dark-border"] {
+  background-color: #202122;
+  background-clip: padding-box;
+  border: 1px solid #54595d;
+  color: #eaecf0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+}
+
+.tippy6-box[data-theme~="dark-border"] a {
+  color: #6cb6ff;
+}
+
+.tippy6-box[data-theme~="dark-border"] > .tippy6-arrow::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-color: transparent;
+  border-style: solid;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="top"]
+  > .tippy6-arrow::before {
+  border-top-color: #202122;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="top"]
+  > .tippy6-arrow::after {
+  border-top-color: #54595d;
+  border-width: 7px 7px 0;
+  top: 17px;
+  left: 1px;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="bottom"]
+  > .tippy6-arrow::before {
+  border-bottom-color: #202122;
+  bottom: 16px;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="bottom"]
+  > .tippy6-arrow::after {
+  border-bottom-color: #54595d;
+  border-width: 0 7px 7px;
+  bottom: 17px;
+  left: 1px;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="left"]
+  > .tippy6-arrow::before {
+  border-left-color: #202122;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="left"]
+  > .tippy6-arrow::after {
+  border-left-color: #54595d;
+  border-width: 7px 0 7px 7px;
+  left: 17px;
+  top: 1px;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="right"]
+  > .tippy6-arrow::before {
+  border-right-color: #202122;
+  right: 16px;
+}
+
+.tippy6-box[data-theme~="dark-border"][data-placement^="right"]
+  > .tippy6-arrow::after {
+  border-right-color: #54595d;
+  border-width: 7px 7px 7px 0;
+  right: 17px;
+  top: 1px;
+}
