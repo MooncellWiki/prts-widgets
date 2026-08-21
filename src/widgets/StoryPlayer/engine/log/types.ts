@@ -85,9 +85,10 @@ export interface FlowStats {
   lineCount: number;
   decisionCount: number;
   peakStateCount: number;
-  conditionNodeCount: number;
+  /** 内化过的不同路径条件数 */
+  conditionCount: number;
   emissionCount: number;
-  /** 状态数超限后塌缩过：其后的内容不再区分选择路线 */
+  /** 状态数或条件乘积数超限、塌缩过：部分内容不再区分选择路线 */
   degraded: boolean;
 }
 

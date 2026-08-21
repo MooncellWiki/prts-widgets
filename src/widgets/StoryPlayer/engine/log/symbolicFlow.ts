@@ -459,9 +459,10 @@ export function analyzeStoryFlow(
     decisions,
     emissions,
     stats: {
-      conditionNodeCount: conditions.nodeCount,
+      conditionCount: conditions.size,
       decisionCount,
-      degraded,
+      // 条件乘积数失控与符号状态爆炸共用一套退化契约
+      degraded: degraded || conditions.degraded,
       emissionCount: emissions.length,
       lineCount: lines.length,
       peakStateCount,

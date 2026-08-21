@@ -2,7 +2,6 @@ import { TRUE_CONDITION, type DisplayCondition } from "./condition";
 import { entryContentKey } from "./textEntry";
 
 import type {
-  ChoiceOption,
   DecisionId,
   LogBlock,
   LogConditionalBlock,
@@ -82,7 +81,6 @@ export function buildLogDocument(flow: StoryFlowResult): LogDocument {
 
   // 3. 排列成 block：audience 相同的连续文本合并，choice 独立成块
   const flat: LogBlock[] = [];
-  const inertCache = new Map<string, boolean>();
   let currentLines: LogLineBlock | null = null;
 
   const closeLineBlock = (): void => {
@@ -94,20 +92,14 @@ export function buildLogDocument(flow: StoryFlowResult): LogDocument {
   for (const item of ordered) {
     if (item.kind === "choice") {
       closeLineBlock();
-      const options = item.emission.options;
       flat.push({
         audience: normalizeAudience(item.emission.audience),
         decisionId: item.emission.decisionId,
-        inert: optionsDoNotAffectContent(
-          item.emission.decisionId,
-          options,
-          emissions,
-          conditions,
-          inertCache,
-        ),
+        // 先占位，等全部 audience 定下来再回填
+        inert: false,
         kind: "choice",
         lineIndex: item.emission.lineIndex,
-        options,
+        options: item.emission.options,
       });
       continue;
     }
@@ -123,44 +115,24 @@ export function buildLogDocument(flow: StoryFlowResult): LogDocument {
   }
   closeLineBlock();
 
-  // 4. 连续相同（非全量）audience 的 block 包成条件区块
+  // 4. 回填 inert：规范化后的 audience 里还引用着某个 decision，才说明
+  //    它真的分叉了（不影响可见性的 decision 已被 normalizeByDomains 投影掉）
+  const branching = new Set<DecisionId>();
+  for (const block of flat)
+    for (const decisionId of conditions.referencedDecisions(block.audience))
+      branching.add(decisionId);
+  for (const block of flat)
+    if (block.kind === "choice")
+      block.inert =
+        block.options.length <= 1 || !branching.has(block.decisionId);
+
+  // 5. 连续相同（非全量）audience 的 block 包成条件区块
   return {
     blocks: wrapConditionalRuns(flat),
     conditions,
     decisions,
     degraded: flow.stats.degraded,
   };
-}
-
-/** decision 的任一选项是否对后续可见内容有影响（含后续 choice 的可见性） */
-function optionsDoNotAffectContent(
-  decisionId: DecisionId,
-  options: readonly ChoiceOption[],
-  emissions: StoryFlowResult["emissions"],
-  conditions: StoryFlowResult["conditions"],
-  inertCache: Map<string, boolean>,
-): boolean {
-  if (options.length <= 1) return true;
-  const cacheKey = `${decisionId}`;
-  const cached = inertCache.get(cacheKey);
-  if (cached !== undefined) return cached;
-  const allOptions = options.map((option) => option.optionIndex);
-  const independent = new Map<number, boolean>();
-  const inert = emissions.every((emission) => {
-    if (emission.kind === "choice" && emission.decisionId === decisionId)
-      return true;
-    const known = independent.get(emission.audience);
-    if (known !== undefined) return known;
-    const result = conditions.independentOf(
-      emission.audience,
-      decisionId,
-      allOptions,
-    );
-    independent.set(emission.audience, result);
-    return result;
-  });
-  inertCache.set(cacheKey, inert);
-  return inert;
 }
 
 function wrapConditionalRuns(flat: LogBlock[]): LogBlock[] {
@@ -245,7 +217,6 @@ export function formatConditionLabel(
   >,
 ): string {
   if (display.kind === "always") return "全部路线";
-  if (display.kind === "complex") return "部分选择路线";
 
   const optionLabel = (
     decisionId: DecisionId,
@@ -271,7 +242,9 @@ export function formatConditionLabel(
     return `选择「${parts.join("」，随后选择「")}」`;
   };
 
-  if (display.alternatives.length > 4) return "部分选择路线";
+  // 条件太散（或恒假这种不该出现的形状）就不逐条列了
+  if (display.alternatives.length === 0 || display.alternatives.length > 4)
+    return "部分选择路线";
   return display.alternatives
     .map((alternative) => formatAlternative(alternative.choices))
     .join("，或");

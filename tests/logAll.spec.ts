@@ -695,6 +695,18 @@ describe("ConditionStore", () => {
     expect(store.evaluatePartial(either, new Map([[1, 0]]))).toBe(true);
   });
 
+  it("widens a condition past the product cap to always and marks degraded", () => {
+    const store = new ConditionStore();
+    // 300 个互不相干的选择：谁也吸收不了谁，乘积数直接超上限
+    const many = Array.from({ length: 300 }, (_, index) =>
+      store.choice(index, 0),
+    );
+    expect(store.degraded).toBe(false);
+    // 放宽成恒真而不是抛错：宁可丢掉分支标注，也不能让面板开天窗
+    expect(store.or(many)).toBe(TRUE_CONDITION);
+    expect(store.degraded).toBe(true);
+  });
+
   it("describes DNF products with merged option sets", () => {
     const store = new ConditionStore();
     const merged = store.or([store.choice(1, 0), store.choice(1, 1)]);
