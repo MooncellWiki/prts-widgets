@@ -1,3 +1,5 @@
+import { expandStoryText } from "../textVariables";
+
 import type { ParsedCommandLine } from "../types";
 import type { ChoiceOption } from "./types";
 
@@ -59,9 +61,12 @@ export function passesGate(
  * 无效 decision 也会清空状态，只是不产生选择。
  * 面板按 options 下标渲染按钮，缺省 values 落到 index+1
  * （见 DecisionPanel.show 的 `values[index] ?? index + 1`）。
+ * 标签与 runtime 的 translateText 同源展开（如 `{@nickname}`），
+ * 否则 Log All 会显示播放时不可见的字面占位符。
  */
 export function parseDecision(
   line: ParsedCommandLine,
+  variables: Record<string, unknown> = {},
 ): { options: ChoiceOption[] } | null {
   const optionsValue = line.args.options;
   if (optionsValue === undefined) return null;
@@ -70,7 +75,7 @@ export function parseDecision(
   const values = toIntList(line.args.values);
   return {
     options: labels.map((label, optionIndex) => ({
-      label,
+      label: expandStoryText(label, variables),
       optionIndex,
       value: values[optionIndex] ?? optionIndex + 1,
     })),

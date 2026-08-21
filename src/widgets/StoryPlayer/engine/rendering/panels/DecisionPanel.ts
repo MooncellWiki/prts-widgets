@@ -7,7 +7,7 @@ import {
 } from "pixi.js";
 
 import { DIALOG_FONT_FAMILY } from "../../font";
-import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
+import { STORY_HEIGHT, STORY_WIDTH, type DecisionSelection } from "../../types";
 
 function paintButton(
   background: Graphics,
@@ -22,6 +22,12 @@ function paintButton(
     .stroke({ color: 0xff_ff_ff, width: 2 });
 }
 
+/** 面板未经点击被清除（新 decision 顶替/销毁）时的结算值，与旧 clear(0) 一致 */
+const unclickedSelection = (): DecisionSelection => ({
+  optionIndex: -1,
+  value: 0,
+});
+
 /**
  * Web/PIXI presentation for `Torappu.AVG.DecisionPanel._ExecuteDecision`.
  * The runtime owns predicate and skip policy; this class only blocks for a
@@ -29,15 +35,15 @@ function paintButton(
  */
 export class DecisionPanel {
   private container: Container | null = null;
-  private resolve: ((value: number) => void) | null = null;
+  private resolve: ((selection: DecisionSelection) => void) | null = null;
 
   constructor(private readonly layer: ContainerType) {}
 
-  show(options: string[], values: number[]): Promise<number> {
+  show(options: string[], values: number[]): Promise<DecisionSelection> {
     // Settle any decision this one replaces: `_ExecuteDecision` awaits the
     // selected value, so dropping the pending resolver would strand the
     // command loop in `waiting_decision` forever.
-    this.clear(0);
+    this.clear(unclickedSelection());
     const container = new Container();
     const overlay = new Graphics()
       .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
@@ -79,27 +85,29 @@ export class DecisionPanel {
       button.on("pointertap", () => {
         const resolve = this.resolve;
         this.clear();
-        resolve?.(values[index] ?? index + 1);
+        // 下标在点击点就是唯一的；value 可能在 options 间重复，只能由
+        // runtime 写闸门，不能反查回下标（Log All 高亮依赖下标）。
+        resolve?.({ optionIndex: index, value: values[index] ?? index + 1 });
       });
       container.addChild(button);
     }
     this.layer.addChild(container);
     this.container = container;
-    return new Promise<number>((resolve) => {
+    return new Promise<DecisionSelection>((resolve) => {
       this.resolve = resolve;
     });
   }
 
-  clear(resolveValue?: number): void {
+  clear(selection: DecisionSelection = unclickedSelection()): void {
     const resolve = this.resolve;
     this.resolve = null;
     this.container?.removeFromParent();
     this.container?.destroy({ children: true });
     this.container = null;
-    if (resolveValue !== undefined) resolve?.(resolveValue);
+    resolve?.(selection);
   }
 
   destroy(): void {
-    this.clear(0);
+    this.clear(unclickedSelection());
   }
 }

@@ -106,6 +106,14 @@ export interface RuntimeChoiceSelection {
   value: number;
 }
 
+/** showDecision 的结果：点击的选项下标 + 写入闸门的值（value 会跨 decision 复用，不能反查下标） */
+export interface DecisionSelection {
+  /** 玩家点击的选项下标；-1 表示面板未经点击被清除（跳过/销毁） */
+  optionIndex: number;
+  /** `values[optionIndex] ?? optionIndex + 1`，写入 decisionSelectValue */
+  value: number;
+}
+
 /** 播放器当前播放位置：显示中的源行 + 实际执行过的全部选择历史 */
 export interface RuntimeLogPosition {
   lineIndex: number | null;
@@ -556,7 +564,10 @@ export interface StoryRenderer {
   setSubtitle: (input: SubtitleInput) => Promise<void> | void;
   setTimerSticker: (input: TimerStickerInput) => Promise<void> | void;
   shakeCamera: (input: CameraShakeInput) => Promise<void>;
-  showDecision: (options: string[], values: number[]) => Promise<number>;
+  showDecision: (
+    options: string[],
+    values: number[],
+  ) => Promise<DecisionSelection>;
   stopVideo: () => void;
 }
 

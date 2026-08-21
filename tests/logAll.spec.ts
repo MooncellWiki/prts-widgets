@@ -177,6 +177,36 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     });
   });
 
+  it("expands variable placeholders in decision labels with the playback variables", () => {
+    // 与 runtime 的 translateText 同源：播放时按钮显示展开后的文本，
+    // Log All 的选项行与条件标签不能停留在字面占位符
+    const document = buildLogAll(
+      parseScript([
+        '[decision(options="跟{@speaker}走;独自行动", values="1;2")]', // line 1
+        '[predicate(references="1")]', // line 2
+        '[name="A"]分支A', // line 3
+        '[predicate(references="2")]', // line 4
+        '[name="B"]分支B', // line 5
+        "[predicate]", // line 6
+      ]),
+      { speaker: "Amiya" },
+    );
+
+    const choice = document.blocks[0]!;
+    expect(choice.kind).toBe("choice");
+    if (choice.kind !== "choice") return;
+    expect(choice.options.map((option) => option.label)).toEqual([
+      "跟Amiya走",
+      "独自行动",
+    ]);
+    expect(
+      findConditional(document.blocks, "「跟Amiya走」", document),
+    ).toBeDefined();
+    expect(
+      findConditional(document.blocks, "「独自行动」", document),
+    ).toBeDefined();
+  });
+
   it("projects each option's visible sequence for path filtering", () => {
     const document = run([
       '[decision(options="A;B", values="1;2")]',

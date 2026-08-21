@@ -15,6 +15,7 @@ import type {
   CharacterCutinInput,
   CharacterSlotInput,
   CurtainInput,
+  DecisionSelection,
   FocusOutInput,
   FocusParamInput,
   GridBackgroundInput,
@@ -93,6 +94,7 @@ class FakeRenderer implements StoryRenderer {
   videoStopped = false;
   videoWaiter: Promise<void> = Promise.resolve();
   decisionValue = 0;
+  decisionIndex = -1;
   private resolveVideoWaiter: (() => void) | null = null;
 
   setCameraEffect(
@@ -303,8 +305,8 @@ class FakeRenderer implements StoryRenderer {
     this.shakeCalls.push(input);
   }
 
-  async showDecision(): Promise<number> {
-    return this.decisionValue;
+  async showDecision(): Promise<DecisionSelection> {
+    return { optionIndex: this.decisionIndex, value: this.decisionValue };
   }
 
   stopVideo(): void {
@@ -580,6 +582,7 @@ describe("StoryRuntime", () => {
   it("uses value predicates without treating them as label jumps", async () => {
     const renderer = new FakeRenderer();
     renderer.decisionValue = 2;
+    renderer.decisionIndex = 1;
     const runtime = new StoryRuntime(
       createContext([
         '[decision(options="left;right",values="1;2")]',
@@ -1011,6 +1014,7 @@ describe("StoryRuntime", () => {
   it("exposes the displayed line index and decision selection for logAll highlighting", async () => {
     const renderer = new FakeRenderer();
     renderer.decisionValue = 2;
+    renderer.decisionIndex = 1;
     const runtime = new StoryRuntime(
       createContext([
         '[name="A"]第一句', // line 1 → 显示中
@@ -1045,6 +1049,34 @@ describe("StoryRuntime", () => {
     expect(runtime.getLogPosition()).toEqual({
       lineIndex: 7,
       selections: [{ decisionId: 3, optionIndex: 1, value: 2 }],
+    });
+  });
+
+  it("keeps the clicked option index when option values collide", async () => {
+    const renderer = new FakeRenderer();
+    // values="2;2"：显式值重复；values="2"：显式值与第 2 项的 index+1
+    // 兜底碰撞。两种情况下 value 都无法唯一反查下标，但点击的是第 2 项。
+    renderer.decisionValue = 2;
+    renderer.decisionIndex = 1;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A1;B1", values="2;2")]', // line 1
+        '[decision(options="A2;B2", values="2")]', // line 2
+        '[name="A"]done', // line 3
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(runtime.getDecisionSelectValue()).toBe(2);
+    expect(runtime.getLogPosition()).toEqual({
+      lineIndex: 3,
+      selections: [
+        { decisionId: 1, optionIndex: 1, value: 2 },
+        { decisionId: 2, optionIndex: 1, value: 2 },
+      ],
     });
   });
 

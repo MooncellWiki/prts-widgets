@@ -207,7 +207,7 @@ export function analyzeStoryFlow(
         case "decision": {
           // pending multiline 属于选择前的观众，必须以选择前条件 flush
           const flushed = withFlushedMultiline(state, pending);
-          const parsed = parseDecision(line);
+          const parsed = parseDecision(line, variables);
           if (!parsed) {
             // 无效 decision：runtime 已重置 value/references，但不产生选择
             nextStates.push({
@@ -343,7 +343,7 @@ export function analyzeStoryFlow(
     // decision 行产生一个 choice emission（audience = 执行该 decision 的
     // 全部状态条件之和）；被闸门挡住的路径看不到这个选择框。
     if (line.kind === "command" && line.command === "decision") {
-      const parsed = parseDecision(line);
+      const parsed = parseDecision(line, variables);
       const executing = states.filter((state) => passesGate(state, line));
       if (parsed && executing.length > 0) {
         const choiceEmission: ChoiceEmission = {

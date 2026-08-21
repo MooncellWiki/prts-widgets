@@ -2471,18 +2471,15 @@ export class StoryRuntime {
           });
 
         this.state = "waiting_decision";
-        const selectedValue = await this.renderer.showDecision(options, values);
-        this.decisionSelectValue = selectedValue;
-        // DecisionPanel 按下标渲染按钮，缺省 values 落到 index+1；这里反查
-        // 玩家点的下标，供 Log All 的路径条件求值使用（value 本身会在多个
-        // decision 间复用，不能单独当路径身份）。
-        const optionIndex = values.includes(selectedValue)
-          ? values.indexOf(selectedValue)
-          : options.findIndex((_, index) => index + 1 === selectedValue);
+        const selection = await this.renderer.showDecision(options, values);
+        this.decisionSelectValue = selection.value;
+        // 点击下标由 renderer 直接返回：value 可能在 options 间重复
+        // （显式值相同，或与 index+1 兜底碰撞），反查会记错选项，
+        // Log All 的路径求值与高亮都依赖 optionIndex。
         this.choiceHistory.push({
           decisionId: line.lineNumber,
-          optionIndex: Math.max(optionIndex, 0),
-          value: selectedValue,
+          optionIndex: Math.max(selection.optionIndex, 0),
+          value: selection.value,
         });
         this.setAutoPlayMode(autoPlayCache);
         this.state = "running";
