@@ -84,6 +84,22 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+/**
+ * Canvas 渲染分辨率：逻辑坐标系固定 1280x720，实际像素数按宿主 CSS 尺寸
+ * × devicePixelRatio 反推，避免画布被 CSS 拉伸发糊。取宽高比例的较大值，
+ * 宿主短暂偏离 16:9 时也不会欠采样。
+ */
+function computeDisplayResolution(host: HTMLElement): number {
+  const rect = host.getBoundingClientRect();
+  const cssWidth = rect.width || STORY_WIDTH;
+  const cssHeight = rect.height || STORY_HEIGHT;
+  const devicePixelRatio = window.devicePixelRatio || 1;
+  return Math.max(
+    (cssWidth / STORY_WIDTH) * devicePixelRatio,
+    (cssHeight / STORY_HEIGHT) * devicePixelRatio,
+  );
+}
+
 /** Width of AVGCurtain's `_gradientImg` feather strip, in logical pixels. */
 const CURTAIN_GRADIENT_PX = 20;
 
@@ -159,6 +175,9 @@ interface CurtainRenderState {
  */
 export class PixiStoryRenderer implements StoryRenderer {
   private app: Application | null = null;
+  private resizeHost: HTMLElement | null = null;
+  private resizeListener: (() => void) | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   private readonly layers = new LayerGraph();
   private readonly backgroundLayer = this.layers.background;
   private backgroundRoot: Container | null = null;
@@ -299,6 +318,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       background: "#000000",
       height: STORY_HEIGHT,
       preference: "webgpu",
+      resolution: computeDisplayResolution(host),
       width: STORY_WIDTH,
     });
 
@@ -311,11 +331,42 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.videoPanel.mount(host);
 
     this.app = app;
+    this.watchDisplayResolution(host);
 
     await this.createUi();
     this.layers.attach(app.stage);
 
     this.setDialogue("", "");
+  }
+
+  /**
+   * 跟随宿主尺寸同步画布分辨率。ResizeObserver 覆盖布局变化（窗口缩放、
+   * 全屏切换）；window resize 兜底 devicePixelRatio 变化（页面缩放、跨屏
+   * 拖动），这类变化不一定伴随宿主尺寸变化。
+   */
+  private watchDisplayResolution(host: HTMLElement): void {
+    this.resizeHost = host;
+
+    const listener = () => this.syncDisplayResolution();
+    window.addEventListener("resize", listener);
+    this.resizeListener = () => window.removeEventListener("resize", listener);
+
+    if (typeof ResizeObserver === "undefined") return;
+    this.resizeObserver = new ResizeObserver(listener);
+    this.resizeObserver.observe(host);
+  }
+
+  private syncDisplayResolution(): void {
+    const app = this.app;
+    const host = this.resizeHost;
+    if (!app || !host) return;
+
+    const resolution = computeDisplayResolution(host);
+    if (Math.abs(app.renderer.resolution - resolution) < 0.01) return;
+    app.renderer.resize(STORY_WIDTH, STORY_HEIGHT, resolution);
+    // autoDensity 在 resize 时会把 style 写回 1280x720 逻辑像素，恢复撑满宿主。
+    app.canvas.style.width = "100%";
+    app.canvas.style.height = "100%";
   }
 
   destroy(): void {
@@ -356,6 +407,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.characterSlots.clear();
     for (const state of this.curtains.values()) this.disposeCurtainState(state);
     this.curtains.clear();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.resizeListener?.();
+    this.resizeListener = null;
+    this.resizeHost = null;
     this.app?.destroy(true, { children: true });
     this.app = null;
     this.dialogPanel.destroy();

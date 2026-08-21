@@ -191,14 +191,8 @@ function openAssetList(): void {
 }
 
 function syncFullscreenState(): void {
+  // 画布尺寸与分辨率由渲染器的 ResizeObserver 跟随宿主同步
   isFullscreen.value = document.fullscreenElement === fullscreenRootRef.value;
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const canvas = hostRef.value?.querySelector("canvas");
-      if (canvas) canvas.style.width = "100%";
-      window.dispatchEvent(new Event("resize"));
-    });
-  });
 }
 
 async function toggleFullscreen(): Promise<void> {
