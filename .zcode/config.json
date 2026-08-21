@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "chrome-devtools": {
+        "type": "stdio",
+        "command": "vpx",
+        "args": [
+          "chrome-devtools-mcp",
+          "--autoConnect"
+        ]
+      }
+    }
+  }
+}
