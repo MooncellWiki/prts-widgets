@@ -535,7 +535,7 @@ function crossJoin(left: Product[], right: Product[]): Product[] | null {
       }
       if (!contradiction) {
         output.push(product);
-        if (output.length > 256) return null;
+        if (output.length > MAX_DNF_PRODUCTS) return null;
       }
     }
   }

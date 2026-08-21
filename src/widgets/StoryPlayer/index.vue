@@ -37,7 +37,7 @@ import LogAllPanel from "./components/LogAllPanel.vue";
 import { loadContextByScript, type Context } from "./context";
 import { createStoryPlayer } from "./engine/createStoryPlayer";
 import { preloadDialogFont } from "./engine/font";
-import { buildLogAll } from "./engine/log";
+import { buildLogAll, type LogDocument } from "./engine/log";
 import { parseStory } from "./engine/parser";
 import {
   collectContextAssetManifest,
@@ -45,7 +45,6 @@ import {
   type StoryCharacterFaceAsset,
 } from "./engine/preload";
 
-import type { LogDocument } from "./engine/log/types";
 import type {
   AutoPlayMode,
   PlayerState,
@@ -140,7 +139,27 @@ function syncState(): void {
   }
   const position = player?.getLogPosition();
   logAllActiveLineIndex.value = position?.lineIndex ?? null;
-  logAllSelections.value = position?.selections ?? [];
+  // syncState 每 80ms 跑一次；直接赋新数组会让 Log All 整表重渲染，
+  // 内容没变就保留原引用
+  const selections = position?.selections ?? [];
+  if (!sameSelections(selections, logAllSelections.value))
+    logAllSelections.value = selections;
+}
+
+function sameSelections(
+  left: readonly RuntimeChoiceSelection[],
+  right: readonly RuntimeChoiceSelection[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((selection, index) => {
+      const other = right[index]!;
+      return (
+        selection.decisionId === other.decisionId &&
+        selection.optionIndex === other.optionIndex
+      );
+    })
+  );
 }
 
 function openLogAll(): void {

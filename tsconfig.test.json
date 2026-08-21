@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    // 测试跑在 Node 上（读语料目录），Node 全局只在这个 project 里可见，
+    // 不会漏进 src 的类型检查
+    "types": ["vite/client", "node"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  // src/*.d.ts 提供 window.mw 等全局声明，测试同样需要
+  "include": [
+    "src/**/*.d.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "vitest.config.storylog.ts"
+  ]
+}

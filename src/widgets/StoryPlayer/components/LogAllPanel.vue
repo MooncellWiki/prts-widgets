@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 
-import { NCard, NModal } from "naive-ui";
+import { NCard, NModal, NText } from "naive-ui";
 
 import LogAllList from "./LogAllList.vue";
 
-import type { LogDocument } from "../engine/log/types";
+import type { LogDocument } from "../engine/log";
 import type { RuntimeChoiceSelection } from "../engine/types";
 
 const props = defineProps<{
@@ -26,7 +26,10 @@ watch(
     await nextTick();
     const root = scrollRoot.value;
     if (!root) return;
-    const el = root.querySelector<HTMLElement>("[data-active-line]");
+    // 同一行号可能在多个分支各出现一次，优先定位到确定在当前路径上的那条
+    const el =
+      root.querySelector<HTMLElement>('[data-active-line="exact"]') ??
+      root.querySelector<HTMLElement>("[data-active-line]");
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
   },
 );
@@ -44,6 +47,10 @@ watch(
     <template #header-extra>
       <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
     </template>
+
+    <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
+      分支组合过多，部分内容未按选择路线区分。
+    </NText>
 
     <div ref="scrollRoot">
       <LogAllList
@@ -67,6 +74,10 @@ watch(
     <template #header-extra>
       <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
     </template>
+
+    <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
+      分支组合过多，部分内容未按选择路线区分。
+    </NText>
 
     <div ref="scrollRoot" class="max-h-[70vh] overflow-y-auto py-1">
       <LogAllList
