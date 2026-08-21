@@ -85,21 +85,3 @@ export async function fixAtkRange(
 
   return res.replaceAll(regexp, () => range ?? "");
 }
-
-export function updateTippy(isDark: boolean) {
-  for (const e of Array.from(document.querySelectorAll(".mc-tooltips"))) {
-    if (!e.children || e.children.length < 2) continue;
-    (e.children[1] as HTMLElement).style.display = "block";
-    // @ts-expect-error tippy
-    tippy6(e.children[0], {
-      content: e.children[1],
-      arrow: true,
-      theme: isDark ? "dark-border" : "light-border",
-      size: "large",
-      interactive: "true",
-      maxWidth: Number.parseInt((e.children[1] as HTMLElement).dataset.size!),
-      trigger:
-        (e.children[1] as HTMLElement).dataset.trigger || "mouseenter focus",
-    });
-  }
-}

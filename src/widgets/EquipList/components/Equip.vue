@@ -2,7 +2,6 @@
 import {
   type Ref,
   inject,
-  nextTick,
   onBeforeMount,
   onBeforeUpdate,
   onMounted,
@@ -17,12 +16,7 @@ import { getImagePath, isMobile } from "@/utils/utils";
 
 import { colorMap, customLabel, statsStyleMap } from "../consts";
 import { getEquipData } from "../equipData";
-import {
-  fixAtkRange,
-  processLink,
-  processMaterial,
-  updateTippy,
-} from "../utils";
+import { fixAtkRange, processLink, processMaterial } from "../utils";
 
 import ETag from "./ETag.vue";
 
@@ -103,19 +97,11 @@ onBeforeMount(async () => {
   for (const ele of Array.from(seps)) {
     ele.classList.toggle("dark", isDark.value);
   }
-  await nextTick();
-  updateTippy(isDark.value);
   loading.value = false;
   loadingCount.value -= 1;
 });
-onMounted(() => {
-  updateTippy(isDark.value);
-  handleDark();
-});
-onBeforeUpdate(() => {
-  updateTippy(isDark.value);
-  handleDark();
-});
+onMounted(handleDark);
+onBeforeUpdate(handleDark);
 const isLatest = (e: string | undefined) => e && e === "yes";
 const modeStats = () => props.simplemode === "stats";
 const modeMission = () => props.simplemode === "mission";

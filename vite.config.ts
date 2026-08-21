@@ -6,7 +6,7 @@ import legacy from "@vitejs/plugin-legacy";
 import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 const TARGET = [
   "edge >= 81",
@@ -20,7 +20,49 @@ const BASE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const entries = readdirSync(path.join(BASE_DIR, "src/entries/"));
 const templates = readdirSync(path.join(BASE_DIR, "templates/"));
-const nohashEntries = new Set(["DisplayController"]);
+const nohashEntries = new Set(["sentry", "sw", "DisplayController", "Tooltip"]);
+
+const TIPPY_MODULE_RE = /[/\\]node_modules[/\\]tippy\.js[/\\]/;
+// 改写后必须出现的记号，tippy 升级时用来兜住上游改类名的情况。
+const TIPPY_NAMESPACE_MARKERS = [
+  "tippy6-box",
+  "tippy6-content",
+  "tippy6-backdrop",
+  "tippy6-arrow",
+  "tippy6-svg-arrow",
+  "data-tippy6-root",
+];
+
+/**
+ * 把 npm 包里的 `tippy-` 前缀改写成 `tippy6-`。
+ *
+ * 站内 SMW 自带一份 tippy，占了 `window.tippy` 和 `.tippy-box`，所以 PRTS 一直用的
+ * 是把前缀整体改名成 tippy6 的自定义构建。MediaWiki:Gadget-darkModeFix.css、
+ * 微件:CharShow 的内联样式、MediaWiki:Gadget-TippyRef.css 都按 `tippy6-` 写死了，
+ * 换成 npm 包打包后要继续保持这套命名。
+ */
+function tippyNamespace(): Plugin {
+  return {
+    name: "prts:tippy-namespace",
+    enforce: "pre",
+    transform(code, id) {
+      if (!TIPPY_MODULE_RE.test(id)) return null;
+
+      const transformed = code.replaceAll("tippy-", "tippy6-");
+      if (id.includes("tippy.esm.js")) {
+        const missing = TIPPY_NAMESPACE_MARKERS.filter(
+          (marker) => !transformed.includes(marker),
+        );
+        if (missing.length > 0)
+          throw new Error(
+            `tippy 改名后缺少 ${missing.join("、")}，请确认 tippy 升级后的类名`,
+          );
+      }
+
+      return { code: transformed, map: null };
+    },
+  };
+}
 
 const input: Record<string, string> = {};
 for (const entry of entries) {
@@ -31,6 +73,7 @@ const templatesInput: Record<string, string> = {
   sentry: "src/entries/sentry.ts",
   sw: "src/entries/sw.prts.ts",
   DisplayController: "src/entries/DisplayController.ts",
+  Tooltip: "src/entries/Tooltip.ts",
 };
 for (const template of templates) {
   templatesInput[template.replace(".html", "")] = `templates/${template}`;
@@ -55,6 +98,7 @@ export default defineConfig(({ command }) => {
         modernPolyfills: true,
         renderLegacyChunks: false,
       }),
+      tippyNamespace(),
       visualizer({ sourcemap: true }),
     ],
     server: {
@@ -78,6 +122,10 @@ export default defineConfig(({ command }) => {
         output: {
           sourcemapBaseUrl: "https://static.prts.wiki/widgets/production/",
           manualChunks(id) {
+            // Tooltip 入口是 <head> 里以固定文件名引用的，不能依赖带 hash 的共享
+            // chunk，tippy 必须内联进去。
+            if (TIPPY_MODULE_RE.test(id) || id.includes("@popperjs")) return;
+
             if (
               id.includes("crypto-js") ||
               id.includes("workbox") ||

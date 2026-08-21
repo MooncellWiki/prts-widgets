@@ -60,15 +60,13 @@ onMounted(() => {
         : ` ${props.blockmap[token].desc}`;
   }
 
-  if (content.length > 0) {
-    // @ts-expect-error tippy
-
-    tippy6(self.value, {
+  // 这里的内容不是 .mc-tooltips 结构，仍要自己挂；tippy6 由 src/entries/Tooltip.ts 注入
+  if (content.length > 0 && self.value) {
+    window.tippy6?.(self.value, {
       allowHTML: true,
       content,
       arrow: true,
       theme: isDark.value ? "dark-border" : "light-border",
-      size: "large",
       maxWidth: 250,
     });
   }

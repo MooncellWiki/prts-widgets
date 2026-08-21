@@ -32,6 +32,23 @@
 
 [CONTRIBUTING.md](CONTRIBUTING.md)
 
+## 全站脚本
+
+`src/entries/` 里有几个不对应 `Widget:` 页面的入口，它们由站内按固定文件名引用，所以
+产物不带 hash（见 `vite.config.ts` 的 `nohashEntries`）：
+
+| 入口                   | 产物                   | 引用位置               | 作用                                            |
+| ---------------------- | ---------------------- | ---------------------- | ----------------------------------------------- |
+| `sentry.ts`            | `sentry.js`            | `<head>`               | 前端错误上报                                    |
+| `DisplayController.ts` | `DisplayController.js` | `<head>`               | 森空岛内嵌浏览器的显示调整                      |
+| `Tooltip.ts`           | `Tooltip.js`           | `<head>`               | 全站 tippy（`tippy6`）+ `.mc-tooltips` 自动挂载 |
+| `sw.prts.ts`           | `sw.js`                | wiki 根目录的 `/sw.js` | Service Worker                                  |
+
+这些产物必须自包含（不 import 任何带 hash 的 chunk）：站内引用的是固定 URL，CDN 和浏览器
+会缓存旧版，而 `pnpm run prune` 会把 OSS 上不在本次 `dist/` 里的文件删掉，一旦它们依赖了
+带 hash 的 chunk，缓存里的旧产物就会指向已经被删掉的文件。`vite.config.ts` 的
+`assertSelfContained` 插件在构建时把这条钉死。
+
 ## 发布
 
 > [!WARNING]
