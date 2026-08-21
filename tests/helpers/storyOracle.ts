@@ -14,10 +14,12 @@ import type { ParsedLine } from "../../src/widgets/StoryPlayer/engine/types";
  * - 闸门：value≠0 且 references 非空时，只有 predicate 指令和命中
  *   references 的行能执行；
  * - decision 先重置 value=0/refs=null，options 参数缺失时不产生选择；
- * - 选项按钮按 options 下标渲染，values 缺项落到 index+1；
+ * - 选项按钮按 options 下标渲染；
  * - 对白（含空对白）重置 multiline，空旁白不重置；
  * - multiline 空片段不动累积；sticker/subtitle 的 hidelog/multi 是
- *   web 日志侧规则。
+ *   web 日志侧规则，但两种累积不共用缓冲（原生在 sticker/subtitle 处
+ *   会 _TryEndMultilineMode）；
+ * - decision 的 values 缺项取 0（原生 _GetOptionValue 越界返回 0）。
  */
 
 export interface OracleChoice {
@@ -43,6 +45,8 @@ export type ChoiceProvider = (lineIndex: number, optionCount: number) => number;
 interface MultilineBuffer {
   name: string;
   text: string;
+  /** 累积来源；对白 multiline 与 sticker/subtitle 各自成段 */
+  source: "multiline" | "sticker" | "subtitle";
   lastLineIndex: number;
 }
 
@@ -80,11 +84,18 @@ export function executeStoryPath(
       entries.push({
         lineIndex: pending.lastLineIndex,
         speaker: expandStoryText(pending.name, variables),
-        source: "multiline",
+        source: pending.source,
         text: expandStoryText(pending.text, variables),
       });
     }
     pending = null;
+  };
+
+  /** 换累积来源前先结算旧段（原生在 sticker/subtitle/dialog 处会
+   * _TryEndMultilineMode），否则对白和贴纸文本会粘成一条 */
+  const switchAccumulation = (source: MultilineBuffer["source"]): void => {
+    const current = peek();
+    if (current && current.source !== source) flush();
   };
 
   const append = (
@@ -136,7 +147,8 @@ export function executeStoryPath(
         const labels = toStringValue(line.args.options).split(";");
         const values = toIntList(line.args.values);
         const optionIndex = choose(line.lineNumber, labels.length);
-        const value = values[optionIndex] ?? optionIndex + 1;
+        // values 缺项取 0，与原生 DecisionPanel._GetOptionValue 越界分支一致
+        const value = values[optionIndex] ?? 0;
         selectedValue = value;
         references = null;
         choices.push({ lineIndex: line.lineNumber, optionIndex, value });
@@ -154,9 +166,11 @@ export function executeStoryPath(
       case "multiline": {
         const text = line.trailingText;
         if (!text) break;
+        switchAccumulation("multiline");
         pending = {
           lastLineIndex: line.lineNumber,
           name: peek()?.name ?? toStringValue(line.args.name),
+          source: "multiline",
           text: (peek()?.text ?? "") + text,
         };
         if (line.args.end === true) flush();
@@ -169,9 +183,11 @@ export function executeStoryPath(
         const text = toStringValue(line.args.text);
         if (!text) break;
         if (line.args.multi === true) {
+          switchAccumulation(line.command);
           pending = {
             lastLineIndex: line.lineNumber,
             name: peek()?.name ?? "",
+            source: line.command,
             text: (peek()?.text ?? "") + text,
           };
           break;

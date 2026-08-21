@@ -87,7 +87,9 @@ export class DecisionPanel {
         this.clear();
         // 下标在点击点就是唯一的；value 可能在 options 间重复，只能由
         // runtime 写闸门，不能反查回下标（Log All 高亮依赖下标）。
-        resolve?.({ optionIndex: index, value: values[index] ?? index + 1 });
+        // values 由 runtime 的 parseDecision 逐项解析好传进来，这里的 0
+        // 只是兜底；0 与原生 `_GetOptionValue` 的越界返回值一致。
+        resolve?.({ optionIndex: index, value: values[index] ?? 0 });
       });
       container.addChild(button);
     }

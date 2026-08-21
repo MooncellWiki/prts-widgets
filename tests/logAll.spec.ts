@@ -5,7 +5,10 @@ import {
   TRUE_CONDITION,
 } from "../src/widgets/StoryPlayer/engine/log/condition";
 import {
+  analyzeStoryFlow,
   buildLogAll,
+  buildLogDocument,
+  collectAllEntries,
   formatConditionLabel,
   projectVisibleEntries,
 } from "../src/widgets/StoryPlayer/engine/log/index";
@@ -495,27 +498,126 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     ).toEqual([]);
   });
 
-  it("falls back missing values to option index + 1 (DecisionPanel behavior)", () => {
+  it("falls back missing values to 0 (native _GetOptionValue out-of-range)", () => {
+    // 原生 DecisionPanel._GetOptionValue 越界返回 0（并打
+    // `Decision value index out of range`），0 是「未选择」值，闸门恒放行
     const document = run([
       '[decision(options="A;B;C", values="7")]', // 只有 A 有 value
       '[predicate(references="7")]',
       '[name="A7"]A',
       '[predicate(references="2")]',
-      '[name="B2"]B', // B 的 value 落到 index+1=2
+      '[name="B2"]B', // B 的 value 落到 0
       '[predicate(references="3")]',
       '[name="C3"]C',
       "[predicate]",
     ]);
+    // 选 A：value=7 只放行第一段
+    expect(
+      projectVisibleEntries(document, assignmentOf([[1, 0]])).map(
+        (e) => e.speaker,
+      ),
+    ).toEqual(["A7"]);
+    // 选 B/C：value=0，闸门全开，后面每一段都看得到
     expect(
       projectVisibleEntries(document, assignmentOf([[1, 1]])).map(
         (e) => e.speaker,
       ),
-    ).toEqual(["B2"]);
+    ).toEqual(["A7", "B2", "C3"]);
     expect(
       projectVisibleEntries(document, assignmentOf([[1, 2]])).map(
         (e) => e.speaker,
       ),
-    ).toEqual(["C3"]);
+    ).toEqual(["A7", "B2", "C3"]);
+  });
+
+  it("keeps the story_ghost_2_1 shape (4 options / 3 values) on every route", () => {
+    // 真实语料 obt/memory/story_ghost_2_1.txt:643 的形状：第 4 个选项没有
+    // 显式 value。取 index+1=4 会被 refs=1;2;3 挡掉整条尾巴；取 0 才与原生
+    // 一致——所有选项都看得到后续内容，尾段应是「全部路线」。
+    const document = run([
+      '[decision(options="甲;乙;丙;丁", values="1;2;3")]', // line 1
+      '[predicate(references="1;2;3")]', // line 2
+      '[name="尾"]选完之后的剧情', // line 3
+    ]);
+    const tail = document.blocks.at(-1);
+    expect(tail?.kind).toBe("lines");
+    if (tail?.kind !== "lines") return;
+    expect(tail.audience).toBe(TRUE_CONDITION);
+    for (let optionIndex = 0; optionIndex < 4; optionIndex += 1)
+      expect(
+        projectVisibleEntries(document, assignmentOf([[1, optionIndex]])).map(
+          (e) => e.speaker,
+        ),
+        `option ${optionIndex}`,
+      ).toEqual(["尾"]);
+  });
+
+  it("ends the accumulation on an empty dialogue line (runtime resetMultiline)", () => {
+    // runtime 的 resetMultiline() 在空文本判断之前，空对白同样结束累积
+    const document = run([
+      '[multiline(name="A")]前半段', // line 1
+      '[name="A"]', // line 2 空对白
+      '[multiline(name="A")]后半段', // line 3
+      '[multiline(name="A", end=true)]收尾', // line 4
+    ]);
+    expect(
+      projectVisibleEntries(document, new Map()).map((entry) =>
+        entry.spans.map((span) => span.text).join(""),
+      ),
+    ).toEqual(["前半段", "后半段收尾"]);
+  });
+
+  it("keeps sticker runs out of the dialogue multiline buffer", () => {
+    // main_13-19_beg 的形状：对白 multiline 之后紧跟一串 multi 贴纸。
+    // 共用一个缓冲会把两者粘成一条并把说话人挂到贴纸文本上；原生 reader
+    // mode 在 sticker 处会 _TryEndMultilineMode() 并单独加一条空名字的 cell。
+    const document = run([
+      '[multiline(name="赫德雷")]借你的怀表一用。', // line 1
+      "[dialog]", // line 2 空 content：runtime 不重置累积
+      '[Sticker(id="st1", multi = true, text="怀表在倒转。")]', // line 3
+      '[Sticker(id="st1", multi = true, text="呢喃填满了脑海。")]', // line 4
+      '[name="赫德雷"]它确实吵闹。', // line 5
+    ]);
+    expect(
+      projectVisibleEntries(document, new Map()).map((entry) => [
+        entry.speaker,
+        entry.source,
+        entry.spans.map((span) => span.text).join(""),
+      ]),
+    ).toEqual([
+      ["赫德雷", "multiline", "借你的怀表一用。"],
+      ["", "sticker", "怀表在倒转。呢喃填满了脑海。"],
+      ["赫德雷", "dialogue", "它确实吵闹。"],
+    ]);
+  });
+
+  it("degrades to unconditional text instead of throwing on state explosion", () => {
+    // 上限压到 2 制造塌缩：B 线在 line 5 的 decision 处被闸门挡住，塌缩
+    // 时它还挂着未结算的 multiline —— 这段文本必须先落盘再塌缩。
+    const script = [
+      '[decision(options="A;B", values="1;2")]', // line 1
+      '[predicate(references="2")]', // line 2
+      '[multiline(name="乙")]乙线累积', // line 3 只有 B 执行
+      '[predicate(references="1")]', // line 4
+      '[decision(options="C;D", values="3;4")]', // line 5 A 分裂、B 被挡住
+      '[name="后"]塌缩之后的文本', // line 6
+    ];
+
+    const flow = analyzeStoryFlow(parseScript(script), {}, { maxStates: 2 });
+    expect(flow.stats.degraded).toBe(true);
+
+    const document = buildLogDocument(flow);
+    expect(document.degraded).toBe(true);
+    // 文本一条都不能丢
+    expect(
+      collectAllEntries(document).map((entry) =>
+        entry.spans.map((span) => span.text).join(""),
+      ),
+    ).toEqual(["乙线累积", "塌缩之后的文本"]);
+    // 塌缩之后的内容不再区分选择路线
+    const tail = document.blocks.at(-1);
+    expect(tail?.kind).toBe("lines");
+    expect(tail?.audience).toBe(TRUE_CONDITION);
   });
 
   it("keeps multiline accumulators per path when gated", () => {

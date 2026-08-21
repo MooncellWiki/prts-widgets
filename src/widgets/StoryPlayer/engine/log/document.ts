@@ -128,6 +128,7 @@ export function buildLogDocument(flow: StoryFlowResult): LogDocument {
     blocks: wrapConditionalRuns(flat),
     conditions,
     decisions,
+    degraded: flow.stats.degraded,
   };
 }
 
@@ -230,7 +231,7 @@ export function projectVisibleEntries(
     .map(({ entry }) => entry);
 }
 
-/** 全文档的文本条目（不区分路径），用于回归对比 */
+/** 全文档的文本条目（不区分路径），用于回归对比与「导出全部文本」 */
 export function collectAllEntries(document: LogDocument): LogLineEntry[] {
   return flattenBlocks(document.blocks).map(({ entry }) => entry);
 }

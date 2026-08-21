@@ -95,6 +95,7 @@ class FakeRenderer implements StoryRenderer {
   videoWaiter: Promise<void> = Promise.resolve();
   decisionValue = 0;
   decisionIndex = -1;
+  decisionCalls: { options: string[]; values: number[] }[] = [];
   private resolveVideoWaiter: (() => void) | null = null;
 
   setCameraEffect(
@@ -305,7 +306,11 @@ class FakeRenderer implements StoryRenderer {
     this.shakeCalls.push(input);
   }
 
-  async showDecision(): Promise<DecisionSelection> {
+  async showDecision(
+    options: string[],
+    values: number[],
+  ): Promise<DecisionSelection> {
+    this.decisionCalls.push({ options, values });
     return { optionIndex: this.decisionIndex, value: this.decisionValue };
   }
 
@@ -1054,8 +1059,8 @@ describe("StoryRuntime", () => {
 
   it("keeps the clicked option index when option values collide", async () => {
     const renderer = new FakeRenderer();
-    // values="2;2"：显式值重复；values="2"：显式值与第 2 项的 index+1
-    // 兜底碰撞。两种情况下 value 都无法唯一反查下标，但点击的是第 2 项。
+    // values="2;2"：显式值重复；values="2"：第 2 项落到缺省值 0。
+    // 两种情况下 value 都无法唯一反查下标，但点击的是第 2 项。
     renderer.decisionValue = 2;
     renderer.decisionIndex = 1;
     const runtime = new StoryRuntime(
@@ -1078,6 +1083,49 @@ describe("StoryRuntime", () => {
         { decisionId: 2, optionIndex: 1, value: 2 },
       ],
     });
+  });
+
+  it("resolves decision values through the shared semantics", async () => {
+    const renderer = new FakeRenderer();
+    renderer.decisionIndex = 1;
+    renderer.decisionValue = 0;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B;C", values="7")]', // line 1，只有 A 有显式值
+        '[predicate(references="7")]', // line 2
+        '[name="A"]只有选 A 才看得到', // line 3
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // 面板拿到的是 log/semantics.parseDecision 逐项解析好的 values；
+    // 缺项取 0，与原生 DecisionPanel._GetOptionValue 越界分支一致
+    expect(renderer.decisionCalls[0]).toEqual({
+      options: ["A", "B", "C"],
+      values: [7, 0, 0],
+    });
+  });
+
+  it("does not record a choice when the panel is cleared without a click", async () => {
+    const renderer = new FakeRenderer();
+    // optionIndex=-1：面板被销毁/顶替，玩家没点过；此时闸门值仍是 0
+    renderer.decisionIndex = -1;
+    renderer.decisionValue = 0;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B", values="1;2")]', // line 1
+        '[name="A"]继续', // line 2
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(runtime.getLogPosition().selections).toEqual([]);
   });
 
   it("shows and hides story items with legacy defaults", async () => {

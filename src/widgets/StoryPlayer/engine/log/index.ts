@@ -6,14 +6,8 @@ export {
   formatConditionLabel,
   projectVisibleEntries,
 } from "./document";
-export {
-  initialRuntimeDecisionState,
-  parseDecision,
-  parsePredicateReferences,
-  passesGate,
-} from "./semantics";
 export { analyzeStoryFlow } from "./symbolicFlow";
-export { buildLineEntry, entryContentKey, toSpans } from "./textEntry";
+export type { AnalyzeOptions } from "./symbolicFlow";
 export { buildLogAll } from "./buildLogAll";
 export type { FlowStats, StoryFlowResult } from "./types";
 export type {

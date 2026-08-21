@@ -87,6 +87,8 @@ export interface FlowStats {
   peakStateCount: number;
   conditionNodeCount: number;
   emissionCount: number;
+  /** 状态数超限后塌缩过：其后的内容不再区分选择路线 */
+  degraded: boolean;
 }
 
 export interface StoryFlowResult {
@@ -131,4 +133,6 @@ export interface LogDocument {
   blocks: LogBlock[];
   decisions: Map<DecisionId, DecisionDefinition>;
   conditions: ConditionStore;
+  /** 分析中途塌缩过状态：部分内容未按选择路线区分，UI 需要提示 */
+  degraded: boolean;
 }

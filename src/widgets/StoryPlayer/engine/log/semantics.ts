@@ -10,8 +10,10 @@ import type { ChoiceOption } from "./types";
  * - `Torappu.AVG.DecisionCommandPredicator.NeedToExecuteCommand`（闸门）
  * - `Torappu.AVG.DecisionPanel._ExecuteDecision`（先重置再校验 options）
  * - `Torappu.AVG.DecisionPanel._ExecutePredicate`（只替换 references）
- * 对应 web runtime：`StoryRuntime.processLoop` 的过滤分支与
- * `executeCommand` 的 decision/predicate case。修改 runtime 时必须同步这里。
+ * - `Torappu.AVG.DecisionPanel._GetOptionValue`（越界取 0）
+ *
+ * `StoryRuntime.processLoop` 的闸门与 `executeCommand` 的 decision/predicate
+ * case 直接调用这里，Log All 的符号分析也用同一组函数，两侧不会各自漂移。
  */
 
 /** runtime 中路径的最小状态：单组可变 (selectedValue, references)，无栈 */
@@ -59,8 +61,11 @@ export function passesGate(
  *
  * runtime 在校验 options 之前就重置 selectedValue/references，
  * 无效 decision 也会清空状态，只是不产生选择。
- * 面板按 options 下标渲染按钮，缺省 values 落到 index+1
- * （见 DecisionPanel.show 的 `values[index] ?? index + 1`）。
+ * 面板按 options 下标渲染按钮；values 缺项时取 0，与原生
+ * `DecisionPanel._GetOptionValue` 的越界分支一致（它打
+ * `Decision value index out of range` 并返回 0）。0 是「未选择」值，
+ * 闸门对它恒放行，因此 options 比 values 多的脚本（如
+ * story_ghost_2_1 的 4 选项 / 3 values）在原生里照常播下去。
  * 标签与 runtime 的 translateText 同源展开（如 `{@nickname}`），
  * 否则 Log All 会显示播放时不可见的字面占位符。
  */
@@ -77,7 +82,7 @@ export function parseDecision(
     options: labels.map((label, optionIndex) => ({
       label: expandStoryText(label, variables),
       optionIndex,
-      value: values[optionIndex] ?? optionIndex + 1,
+      value: values[optionIndex] ?? 0,
     })),
   };
 }

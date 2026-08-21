@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  analyzeStoryFlow,
   buildLogAll,
+  buildLogDocument,
   projectVisibleEntries,
 } from "../src/widgets/StoryPlayer/engine/log/index";
 import { parseScript } from "../src/widgets/StoryPlayer/engine/parser";
@@ -22,19 +24,21 @@ const plainText = (raw: string): string =>
     .join("");
 
 /**
- * 全语料回归：对 ../torappu/storage/asset/gamedata/latest/story/ 下全部
- * 剧情文本执行 parse → symbolic analyze → document projection → invariant
- * 校验 → 与独立 runtime oracle 的逐路径对比。
+ * 全语料回归：对剧情文本目录下的全部脚本执行 parse → symbolic analyze →
+ * document projection → 与独立 runtime oracle 的逐路径对比。
  *
  * 该测试较慢（oracle 枚举全部可达选择路径），单独提供：
  *   pnpm test:story-log
- * 语料目录不存在时跳过（CI 按需触发或 nightly）。
+ * 语料默认取仓库同级的 ../torappu/storage/asset/gamedata/latest/story，
+ * 放在别处时用 STORY_CORPUS_ROOT 指定；目录不存在时整组跳过。
  */
 
-const CORPUS_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../torappu/storage/asset/gamedata/latest/story",
-);
+const CORPUS_ROOT =
+  process.env.STORY_CORPUS_ROOT ??
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../torappu/storage/asset/gamedata/latest/story",
+  );
 const MAX_TRACES_PER_FILE = 2000;
 
 function listStoryFiles(root: string): string[] {
@@ -60,14 +64,23 @@ const corpusAvailable = (() => {
 
 describe.skipIf(!corpusAvailable)("story log corpus", () => {
   it.skipIf(!corpusAvailable)(
-    "analyzes every story file without throwing",
+    "analyzes every story file within the symbolic state budget",
     () => {
       const files = listStoryFiles(CORPUS_ROOT);
       expect(files.length).toBeGreaterThan(5000);
+      let peakStateCount = 0;
+      const degraded: string[] = [];
       for (const file of files) {
         const source = readFileSync(file, "utf8");
-        expect(() => buildLogAll(parseScript(source)), file).not.toThrow();
+        const flow = analyzeStoryFlow(parseScript(source));
+        peakStateCount = Math.max(peakStateCount, flow.stats.peakStateCount);
+        if (flow.stats.degraded) degraded.push(file);
+        expect(() => buildLogDocument(flow), file).not.toThrow();
       }
+      // 状态数在真实语料里始终是个位数（decision 会重置 value/refs 并结算
+      // multiline，路径重新汇合）；这里守住规模，别让分析悄悄退化
+      expect(peakStateCount).toBeLessThan(50);
+      expect(degraded).toEqual([]);
     },
     600_000,
   );

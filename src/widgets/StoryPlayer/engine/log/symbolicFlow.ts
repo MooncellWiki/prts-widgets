@@ -12,6 +12,7 @@ import type {
   DecisionDefinition,
   LogEmission,
   LogLineEntry,
+  LogLineSource,
   StoryFlowResult,
 } from "./types";
 import type { ParsedLine } from "../types";
@@ -25,7 +26,8 @@ import type { ParsedLine } from "../types";
  * 生产实现流式构建（只保留当前层状态与 emissions），不落完整
  * layers/transitions；统计信息保留规模监控。
  *
- * 与 runtime 的对齐点（修改 runtime 时必须同步）：
+ * 与 runtime 的对齐点（闸门与 decision/predicate 解析直接复用
+ * ./semantics，runtime 调的是同一组函数）：
  * - gate：predicate 恒过；value=0 恒过；references 空恒过；
  * - decision 先重置 value/references 再校验 options（无效 decision 也重置）；
  * - 被闸门挡住的 decision 完全不执行，旧 value/references 原样保留；
@@ -34,6 +36,13 @@ import type { ParsedLine } from "../types";
  *
  * multiline 累积是路径状态的一部分（受闸门控制的 multiline 只在部分
  * 路径执行），因此累积器按不可变对象处理，decision 分裂后各路径独立演化。
+ * 累积器带 source：对白 multiline 与 sticker/subtitle 的 multi 各自成段，
+ * 换源时先结算旧段（原生 reader mode 在 sticker/subtitle/dialog 处都会
+ * `_TryEndMultilineMode()`），否则两种文本会粘成一条且丢掉说话人。
+ *
+ * 状态数超过上限时不抛错，退化为「无条件全量文本」：先结算各路径的
+ * 累积，再塌缩成一个初始状态（value=0 闸门全开）继续扫完剩余脚本。
+ * Log All 的契约是「显示全部文本」，宁可丢掉分支标注也不能开天窗。
  */
 
 /** 单条符号路径在某一行之前的完整状态 */
@@ -44,9 +53,16 @@ interface SymbolicState {
   multiline: MultilineAccumulator | null;
 }
 
+/** 可累积成一条日志的来源；不同来源不共用缓冲 */
+type AccumulatorSource = Extract<
+  LogLineSource,
+  "multiline" | "sticker" | "subtitle"
+>;
+
 interface MultilineAccumulator {
   name: string;
   text: string;
+  source: AccumulatorSource;
   /** 合成 entry 的 lineIndex，取最后一条累积指令的行号 */
   lastLineIndex: number;
 }
@@ -61,18 +77,26 @@ function stateKey(state: SymbolicState): string {
   const multiline =
     state.multiline === null
       ? "-"
-      : `${state.multiline.lastLineIndex}\u{1}${state.multiline.name}\u{1}${state.multiline.text}`;
+      : `${state.multiline.source}\u{1}${state.multiline.lastLineIndex}\u{1}${state.multiline.name}\u{1}${state.multiline.text}`;
   const references =
     state.references === null ? "-" : state.references.join(",");
   return `${state.selectedValue}\u{2}${references}\u{2}${multiline}`;
 }
 
+/** 符号状态数上限；超过后退化为无条件全量文本（见文件头注释） */
 const MAX_STATES = 10_000;
+
+export interface AnalyzeOptions {
+  /** 覆盖状态上限，仅用于测试退化路径 */
+  maxStates?: number;
+}
 
 export function analyzeStoryFlow(
   lines: readonly ParsedLine[],
   variables: Record<string, unknown> = {},
+  options: AnalyzeOptions = {},
 ): StoryFlowResult {
+  const maxStates = options.maxStates ?? MAX_STATES;
   const conditions = new ConditionStore();
   const decisions = new Map<number, DecisionDefinition>();
   /** 已遇到 decision 的全部选项下标；条件增量投影的可达域 */
@@ -89,8 +113,9 @@ export function analyzeStoryFlow(
 
   let peakStateCount = 1;
   let decisionCount = 0;
+  let degraded = false;
 
-  const mergeStates = (): void => {
+  const mergeStates = (pending: Map<string, PendingText>): void => {
     const byKey = new Map<string, SymbolicState>();
     for (const state of states) {
       const key = stateKey(state);
@@ -111,10 +136,20 @@ export function analyzeStoryFlow(
       condition: conditions.normalizeByDomains(state.condition, domains),
     }));
     peakStateCount = Math.max(peakStateCount, states.length);
-    if (states.length > MAX_STATES)
-      throw new Error(
-        `story log analysis exceeded ${MAX_STATES} symbolic states`,
-      );
+    if (states.length > maxStates) {
+      // 分支组合爆炸：先把各路径的累积按各自条件结算，再塌缩成一个
+      // 初始状态。value=0 闸门全开，剩余脚本按全量文本继续收集，
+      // 面板只是失去分支标注，不会整个打不开。
+      degraded = true;
+      for (const state of states) withFlushedMultiline(state, pending);
+      states = [
+        {
+          condition: conditions.true(),
+          multiline: null,
+          ...initialRuntimeDecisionState(),
+        },
+      ];
+    }
   };
 
   /** 收集当前行各状态产生的同内容文本，合并 audience 后只留一份 */
@@ -141,13 +176,27 @@ export function analyzeStoryFlow(
         state.multiline.lastLineIndex,
         state.multiline.name,
         state.multiline.text,
-        "multiline",
+        state.multiline.source,
         variables,
       ),
       pending,
     );
     return { ...state, multiline: null };
   };
+
+  /**
+   * 换一种累积来源前先结算旧累积。原生 reader mode 在
+   * sticker/subtitle/dialog/animtext/aside 处都会 `_TryEndMultilineMode()`；
+   * 共用一个缓冲会把对白和贴纸文本粘成一条，并丢掉对白的说话人。
+   */
+  const withAccumulationSource = (
+    state: SymbolicState,
+    source: AccumulatorSource,
+    pending: Map<string, PendingText>,
+  ): SymbolicState =>
+    state.multiline && state.multiline.source !== source
+      ? withFlushedMultiline(state, pending)
+      : state;
 
   /** flush pending multiline 后追加一条普通文本 */
   const appendLine = (
@@ -181,10 +230,12 @@ export function analyzeStoryFlow(
       }
 
       if (line.kind === "dialogue") {
-        // 对白显示重置 multiline（空对白在 runtime 也走到 resetMultiline）
+        // runtime 的 resetMultiline() 在空文本判断之前，空对白同样结束累积，
+        // 所以先无条件 flush 再决定是否产生条目
+        const flushed = withFlushedMultiline(state, pending);
         nextStates.push(
           appendLine(
-            state,
+            flushed,
             lineIndex,
             line.speaker,
             line.text,
@@ -260,13 +311,16 @@ export function analyzeStoryFlow(
             nextStates.push(state);
             break;
           }
-          const base = state.multiline ?? {
+          const current = withAccumulationSource(state, "multiline", pending);
+          // name 取该段首片段的（原生 UpdateCell 传 null 不改单元格名）
+          const base = current.multiline ?? {
             lastLineIndex: lineIndex,
             name: typeof line.args.name === "string" ? line.args.name : "",
+            source: "multiline" as const,
             text: "",
           };
           let next: SymbolicState = {
-            ...state,
+            ...current,
             multiline: {
               ...base,
               lastLineIndex: lineIndex,
@@ -292,14 +346,21 @@ export function analyzeStoryFlow(
             break;
           }
           if (line.args.multi === true) {
-            // multi=true 时按 multiline 语义累积（web 日志约定）
-            const base = state.multiline ?? {
+            // multi=true 追加到同一个贴纸，日志上也合成一条（web 约定）；
+            // 但与对白 multiline 分属不同 source，不会互相污染
+            const current = withAccumulationSource(
+              state,
+              line.command,
+              pending,
+            );
+            const base = current.multiline ?? {
               lastLineIndex: lineIndex,
               name: "",
+              source: line.command,
               text: "",
             };
             nextStates.push({
-              ...state,
+              ...current,
               multiline: {
                 ...base,
                 lastLineIndex: lineIndex,
@@ -332,6 +393,17 @@ export function analyzeStoryFlow(
           break;
         }
 
+        case "endtip": {
+          // runtime 只在自动播放下显示 endtip（shouldProcessEndtip），显示时
+          // 才 resetMultiline。是否重置取决于播放时的自动播放状态，静态分析
+          // 判定不了，这里按手动播放（无副作用）处理；全语料里 endtip 之后
+          // 都没有后续累积，两种取法产出的条目完全一致。
+          // endtip 文本本身不进日志——原生 reader mode 有 endtip cell，但 web
+          // runtime 手动播放时根本不显示它，收录反而会多出播放时看不到的行。
+          nextStates.push(state);
+          break;
+        }
+
         default: {
           // 其它控制命令不产生日志条目，也不动日志状态
           nextStates.push(state);
@@ -358,7 +430,7 @@ export function analyzeStoryFlow(
     }
 
     states = nextStates;
-    mergeStates();
+    mergeStates(pending);
 
     for (const { audiences, entry } of pending.values()) {
       emissions.push({
@@ -389,6 +461,7 @@ export function analyzeStoryFlow(
     stats: {
       conditionNodeCount: conditions.nodeCount,
       decisionCount,
+      degraded,
       emissionCount: emissions.length,
       lineCount: lines.length,
       peakStateCount,
