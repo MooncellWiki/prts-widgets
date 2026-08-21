@@ -365,3 +365,5 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/vue,linux,macos,windows,webstorm,visualstudiocode,node
+
+.zcode
