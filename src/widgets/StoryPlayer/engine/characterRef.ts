@@ -30,6 +30,23 @@ export interface CharacterRefSelection {
   expression: string;
 }
 
+/**
+ * Port of `AVGCharacterSlot._GetIdWithoutAliasOrIndex`.
+ *
+ * This is deliberately not the resource base returned by
+ * `parseNativeCharacterRef`: native strips the last `@` first, otherwise the
+ * last `#`, but leaves a standalone `$body` suffix in place. `Set` compares
+ * this value when deciding whether `dontFadeIfSameChar` suppresses a fade.
+ */
+export function nativeCharacterFadeIdentity(ref: string): string {
+  const alias = ref.lastIndexOf("@");
+  if (alias !== -1) return ref.slice(0, alias);
+
+  const index = ref.lastIndexOf("#");
+  if (index === -1) return ref;
+  return ref.slice(0, index);
+}
+
 /** `System.Number.IsWhite`: 0x20 and 0x09..0x0D only -- no NBSP, no U+3000. */
 function isDotNetWhite(text: string, at: number): boolean {
   const code = text.codePointAt(at) ?? -1;

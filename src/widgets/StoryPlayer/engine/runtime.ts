@@ -1,5 +1,8 @@
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
-import { resolveCharacterSelection } from "./characterRef";
+import {
+  nativeCharacterFadeIdentity,
+  resolveCharacterSelection,
+} from "./characterRef";
 import { CommandRegistry } from "./commandRegistry";
 import {
   parseDecision,
@@ -1673,6 +1676,9 @@ export class StoryRuntime {
             : { circles: Math.trunc(toNumber(args.circles, 0)) }),
           durationMs,
           expression: resolved?.expression,
+          fadeIdentity: nameRef
+            ? nativeCharacterFadeIdentity(nameRef)
+            : undefined,
           focusMode: this.resolveCharacterSlotFocusMode(args, Boolean(nameRef)),
           focusSlots: this.resolveCharacterSlotFocusSlots(args),
           ...(args.inverse === undefined
@@ -1772,6 +1778,7 @@ export class StoryRuntime {
             durationMs,
             enterFrom: this.parseEnterDirection(update.enter),
             expression: resolved.expression,
+            fadeIdentity: nativeCharacterFadeIdentity(update.name),
             slot: update.slot,
           });
         }

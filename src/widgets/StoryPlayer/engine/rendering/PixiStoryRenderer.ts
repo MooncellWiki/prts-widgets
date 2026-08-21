@@ -117,6 +117,7 @@ interface CharacterRenderState {
   contentAlpha: number;
   focusBrightness: number;
   expression?: string;
+  fadeIdentity?: string;
   height: number;
   jumpOffsetY: number;
   jumpSessionId: number;
@@ -1455,9 +1456,21 @@ export class PixiStoryRenderer implements StoryRenderer {
     rotationLayer.pivot.set(sourceWidth / 2, sourceHeight / 2);
     rotationLayer.position.set(sourceWidth / 2, sourceHeight / 2);
 
+    const previous = this.characterSlots.get(slot);
     const focusBrightness = input.dimmed ? 0.5 : 1;
     const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
-    const previous = this.characterSlots.get(slot);
+    // Native `AVGCharacterSlot.Set` receives `dontFadeIfSameChar=true` from
+    // `CharacterPanel._ProcessSlot`. It compares `_GetIdWithoutAliasOrIndex`
+    // for the old/new refs and forces only the image fade to zero when that id
+    // is unchanged. Cross-fading two copies of the same body sprite causes a
+    // visible brightness dip, so expression/focus changes must swap at once.
+    const fadeIdentity = input.fadeIdentity ?? input.characterKey;
+    const imageFadeMs =
+      previous?.fadeIdentity === fadeIdentity ? 0 : durationMs;
+    // An explicit enter still moves for the requested duration even when the
+    // same character's expression is swapped instantly.
+    const moveMs = input.enterFrom ? durationMs : 0;
+    const animationMs = Math.max(imageFadeMs, moveMs);
     const state: CharacterRenderState = {
       actionX: 0,
       actionY: 0,
@@ -1469,6 +1482,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       contentAlpha: 1,
       focusBrightness,
       expression: input.expression,
+      fadeIdentity,
       height: sizeY,
       jumpOffsetY: 0,
       jumpSessionId: 0,
@@ -1495,32 +1509,32 @@ export class PixiStoryRenderer implements StoryRenderer {
     };
     this.updateCharacterState(state);
 
-    if (durationMs > 0) {
-      root.alpha = 0;
+    root.alpha = imageFadeMs > 0 ? 0 : 1;
+    if (moveMs > 0) {
       root.x = targetX + enterOffset.x;
       root.y = targetY + enterOffset.y;
-    } else {
-      this.updateCharacterOpacity(state);
     }
 
-    if (previous && durationMs <= 0) this.disposeCharacterState(previous);
+    if (previous && imageFadeMs <= 0) this.disposeCharacterState(previous);
     this.characterSlots.set(slot, state);
     this.charLayer.addChild(root);
 
-    if (previous && durationMs > 0)
-      void this.fadeOutAndRemove(previous.root, durationMs, () =>
+    if (previous && imageFadeMs > 0)
+      void this.fadeOutAndRemove(previous.root, imageFadeMs, () =>
         this.disposeCharacterState(previous),
       );
 
-    if (durationMs > 0) {
+    if (animationMs > 0) {
       const run = this.tween(
-        durationMs,
+        animationMs,
         (progress) => {
-          root.alpha = progress;
-          root.x = targetX + enterOffset.x * (1 - progress);
-          root.y = targetY + enterOffset.y * (1 - progress);
+          root.alpha = imageFadeMs > 0 ? progress : 1;
+          const moveProgress = moveMs > 0 ? progress : 1;
+          root.x = targetX + enterOffset.x * (1 - moveProgress);
+          root.y = targetY + enterOffset.y * (1 - moveProgress);
         },
         () => {
+          root.alpha = 1;
           this.updateCharacterOpacity(state);
           root.x = targetX;
           root.y = targetY;
@@ -2679,6 +2693,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         contentAlpha: 1,
         focusBrightness: 1,
         expression: input.expression,
+        fadeIdentity: input.fadeIdentity ?? input.characterKey,
         height: sizeY,
         jumpOffsetY: 0,
         jumpSessionId: 0,
@@ -2717,6 +2732,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     current.baseY = baseY;
     current.characterKey = input.characterKey;
     current.expression = input.expression;
+    current.fadeIdentity = input.fadeIdentity ?? input.characterKey;
     current.height = sizeY;
     current.root.x = baseX;
     current.root.y = baseY;
