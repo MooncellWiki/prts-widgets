@@ -415,6 +415,33 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     expect(choices.map((c) => c.inert)).toEqual([true, true, false]);
   });
 
+  it("keeps conditions minimal through chained convergences so labels stay readable", () => {
+    // 链式 2 项 decision、每次选择后全覆盖汇合：不做增量投影时，
+    // 后段文本的 audience 会按 2^n 个前缀组合增长（DNF 超过上限后
+    // 标签退化为「部分选择路线」）。每行合并后按可达域投影，
+    // 汇合即归一，条件只剩真正区分可见性的那个 decision。
+    const script: string[] = [];
+    for (let round = 0; round < 10; round += 1) {
+      script.push(
+        `[decision(options="甲${round};乙${round}", values="1;2")]`,
+        '[predicate(references="1;2")]',
+        `[name="汇${round}"]汇合文本`,
+      );
+    }
+    script.push('[predicate(references="1")]', '[name="尾"]尾分支');
+
+    const document = run(script);
+    const tail = findConditional(document.blocks, "甲9", document);
+    expect(tail).toBeDefined();
+    const label = tail
+      ? formatConditionLabel(
+          document.conditions.describe(tail.audience),
+          document.decisions,
+        )
+      : "";
+    expect(label).toBe("选择「甲9」");
+  });
+
   it("resets runtime state for an invalid decision without emitting a choice", () => {
     // options 参数缺失：runtime 先重置 value/references 再 warn，不产生选择。
     // 只有通过 refs=1 闸门的玩家（选 A）会执行这次重置并看到后续文本；

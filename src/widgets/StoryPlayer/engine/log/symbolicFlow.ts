@@ -75,6 +75,8 @@ export function analyzeStoryFlow(
 ): StoryFlowResult {
   const conditions = new ConditionStore();
   const decisions = new Map<number, DecisionDefinition>();
+  /** 已遇到 decision 的全部选项下标；条件增量投影的可达域 */
+  const domains = new Map<number, readonly number[]>();
   const emissions: LogEmission[] = [];
 
   let states: SymbolicState[] = [
@@ -99,7 +101,15 @@ export function analyzeStoryFlow(
       }
       existing.condition = conditions.or([existing.condition, state.condition]);
     }
-    states = [...byKey.values()];
+    // 每行合并后立即按可达域投影。否则连续部分汇合会让条件按组合数
+    // 增长（or 越滚越大），DNF 展开超限后 describe 只能退化成
+    // 「部分选择路线」。就地投影后条件始终保持最小形态：
+    // 全覆盖的 decision 被消掉，比如 or(D1=A∧D2=x, D1=B∧D2=x,
+    // D1=C∧D2=x) → D2=x（每个走到这的玩家都在 D1 做过某种选择）。
+    states = [...byKey.values()].map((state) => ({
+      ...state,
+      condition: conditions.normalizeByDomains(state.condition, domains),
+    }));
     peakStateCount = Math.max(peakStateCount, states.length);
     if (states.length > MAX_STATES)
       throw new Error(
@@ -214,6 +224,10 @@ export function analyzeStoryFlow(
               lineIndex,
               options: parsed.options,
             });
+            domains.set(
+              lineIndex,
+              parsed.options.map((option) => option.optionIndex),
+            );
             decisionCount += 1;
           }
           for (const option of parsed.options) {
