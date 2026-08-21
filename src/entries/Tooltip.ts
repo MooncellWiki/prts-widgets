@@ -28,8 +28,8 @@ const DEFAULT_TRIGGER = "mouseenter focus";
 const LIGHT_THEME = "light-border";
 const DARK_THEME = "dark-border";
 
-// 已挂载过的 `.mc-tooltips`。挂载后 tippy 会把内容节点搬进 popper，`appendTo=parent`
-// 时又会把 popper 插回来，children 结构不再可靠，所以额外记一份。
+// 已挂载过的 `.mc-tooltips`。popper 每次显示都会被插进 DOM（`appendTo=parent` 时就插在
+// `.mc-tooltips` 里），MutationObserver 会因此反复扫到同一批节点，所以额外记一份。
 const mounted = new WeakSet<Element>();
 
 // 与 src/utils/theme.ts 的 isWikiNight 同义。这个入口在 <head> 里以固定文件名加载，
@@ -67,10 +67,15 @@ function mount(root: Element) {
   if (mounted.has(root)) return;
 
   const reference = root.children[0] as ReferenceElement | undefined;
-  const content = root.children[1] as HTMLElement | undefined;
+  const source = root.children[1] as HTMLElement | undefined;
   // reference._tippy：别的脚本（比如切换期间还留着的旧 gadget）已经挂过就不再重复挂
-  if (!reference || !content || reference._tippy) return;
+  if (!reference || !source || reference._tippy) return;
 
+  // tippy 是把 content 节点「搬」进 popper 的（setContent 走 appendChild），直接传原节点
+  // 会把 `.mc-tooltips` 的第二个子节点从文档里摘走。像 CharList 这种先把 DOM 当数据源读
+  // innerHTML 的小部件（#filter-data 在 head 的本入口扫描时就已经解析完了），拿到的就是
+  // 残缺结构。所以传副本，原节点留在原地继续 display:none。
+  const content = source.cloneNode(true) as HTMLElement;
   // 模板:Popup 里内容节点是 display:none 的，交给 tippy 之前要放出来。
   content.style.display = "block";
 
@@ -80,7 +85,8 @@ function mount(root: Element) {
     arrow: true,
     theme: theme || currentTheme(),
     trigger: trigger || DEFAULT_TRIGGER,
-    interactive: Boolean(interactive),
+    // data-interactive 是字符串，"false" 也是真值，得显式比。
+    interactive: interactive !== undefined && interactive !== "false",
   };
 
   const maxWidth = Number.parseInt(size ?? "");
