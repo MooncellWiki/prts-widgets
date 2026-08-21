@@ -20,7 +20,7 @@ const BASE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const entries = readdirSync(path.join(BASE_DIR, "src/entries/"));
 const templates = readdirSync(path.join(BASE_DIR, "templates/"));
-const nohashEntries = new Set(["DisplayController", "Tooltip"]);
+const nohashEntries = new Set(["sentry", "sw", "DisplayController", "Tooltip"]);
 
 const TIPPY_MODULE_RE = /[/\\]node_modules[/\\]tippy\.js[/\\]/;
 // 改写后必须出现的记号，tippy 升级时用来兜住上游改类名的情况。

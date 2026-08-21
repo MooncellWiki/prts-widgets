@@ -34,53 +34,20 @@
 
 ## 全站脚本
 
-`src/entries/` 里有几个不对应 `Widget:` 页面的入口，它们由站内 `<head>` 直接按固定
-文件名引用，所以产物不带 hash（见 `vite.config.ts` 的 `nohashEntries`）：
+`src/entries/` 里有几个不对应 `Widget:` 页面的入口，它们由站内按固定文件名引用，所以
+产物不带 hash（见 `vite.config.ts` 的 `nohashEntries`）：
 
-| 入口                | 产物                   | 作用                                            |
-| ------------------- | ---------------------- | ----------------------------------------------- |
-| `sentry.ts`         | `sentry.<hash>.js`     | 前端错误上报                                    |
-| `DisplayController` | `DisplayController.js` | 森空岛内嵌浏览器的显示调整                      |
-| `Tooltip.ts`        | `Tooltip.js`           | 全站 tippy（`tippy6`）+ `.mc-tooltips` 自动挂载 |
+| 入口                   | 产物                   | 引用位置               | 作用                                            |
+| ---------------------- | ---------------------- | ---------------------- | ----------------------------------------------- |
+| `sentry.ts`            | `sentry.js`            | `<head>`               | 前端错误上报                                    |
+| `DisplayController.ts` | `DisplayController.js` | `<head>`               | 森空岛内嵌浏览器的显示调整                      |
+| `Tooltip.ts`           | `Tooltip.js`           | `<head>`               | 全站 tippy（`tippy6`）+ `.mc-tooltips` 自动挂载 |
+| `sw.prts.ts`           | `sw.js`                | wiki 根目录的 `/sw.js` | Service Worker                                  |
 
-### Tooltip.js
-
-替代站内 `<head>` 里原先手写的两行：
-
-```html
-<link
-  href="https://static.prts.wiki/npm/tippy.js/tippy-light-border.css"
-  rel="stylesheet"
-/>
-<script src="https://static.prts.wiki/npm/tippy.js/tippy.js"></script>
-```
-
-换成：
-
-```html
-<link
-  rel="modulepreload"
-  href="https://static.prts.wiki/widgets/production/Tooltip.js"
-  as="script"
-/>
-<script
-  type="module"
-  crossorigin
-  src="https://static.prts.wiki/widgets/production/Tooltip.js"
-></script>
-```
-
-上线后站内这几个页面就不再需要了，可以清空或从 `MediaWiki:Gadgets-definition` 摘掉：
-
-- `MediaWiki:Gadget-popup.js`（`.mc-tooltips` 的挂载逻辑已经并进 `Tooltip.ts`，并且改成
-  `MutationObserver`，小部件动态渲染出来的 DOM 也会自动挂上）
-- `MediaWiki:Gadget-Tippy.js`、`MediaWiki:Gadget-Tippy-light-border.css`（`ext.gadget.tippy`
-  本来就没在 `Gadgets-definition` 里注册过）
-
-`MediaWiki:Gadget-TippyRef.js`、`微件:MemoryMedalCatcher` 用的 `tippy6` 全局，以及
-`MediaWiki:Gadget-darkModeFix.css`、`微件:CharShow` 里写死的 `.tippy6-*` 类名都保持可用：
-npm 包的 `tippy-` 前缀在打包时会被改写成 `tippy6-`（`vite.config.ts` 的 `tippyNamespace`
-插件），避开 SMW 自带的那份 `window.tippy` / `.tippy-box`。
+这些产物必须自包含（不 import 任何带 hash 的 chunk）：站内引用的是固定 URL，CDN 和浏览器
+会缓存旧版，而 `pnpm run prune` 会把 OSS 上不在本次 `dist/` 里的文件删掉，一旦它们依赖了
+带 hash 的 chunk，缓存里的旧产物就会指向已经被删掉的文件。`vite.config.ts` 的
+`assertSelfContained` 插件在构建时把这条钉死。
 
 ## 发布
 
