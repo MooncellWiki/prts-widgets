@@ -83,13 +83,11 @@ export class DecisionPanel {
         paintButton(background, 0x30_30_30, buttonWidth, buttonHeight),
       );
       button.on("pointertap", () => {
-        const resolve = this.resolve;
-        this.clear();
         // 下标在点击点就是唯一的；value 可能在 options 间重复，只能由
         // runtime 写闸门，不能反查回下标（Log All 高亮依赖下标）。
         // values 由 runtime 的 parseDecision 逐项解析好传进来，这里的 0
         // 只是兜底；0 与原生 `_GetOptionValue` 的越界返回值一致。
-        resolve?.({ optionIndex: index, value: values[index] ?? 0 });
+        this.clear({ optionIndex: index, value: values[index] ?? 0 });
       });
       container.addChild(button);
     }
