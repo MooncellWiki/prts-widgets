@@ -22,8 +22,11 @@ import type { RuntimeChoiceSelection } from "../engine/types";
  *
  * 渲染模型：
  * - lines → 普通文本行（可带路径条件高亮）；
- * - choice → 一行选择记录，当前路径所选选项高亮；
- * - conditional → 带标签的条件区块，不在当前路径上的区块淡化。
+ * - choice → 一行选择记录，与文本行同一套栅格（「剧情选择」占说话人
+ *   槽、选项进内容列）；在条件分栏内时随分栏统一淡化，可见性表达与
+ *   普通文本一致，不单独标注（如 07-03 的「我们有什么计划？」只随
+ *   「凯尔希，合作愉快。」分栏出现）；
+ * - conditional → 带标签的条件区块，标签与内容列对齐，不在当前路径上的区块淡化。
  *
  * 路径条件按 block 求值一次并缓存在 items 里：播放中每 80ms 会同步一次
  * 状态，逐 entry 反复求值会让长剧本的列表明显发烫。
@@ -163,47 +166,58 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
         </div>
       </template>
 
-      <!-- 选择记录：时间线上的一行，当前路径所选选项高亮 -->
+      <!-- 选择记录：与普通文本行同一套栅格，「剧情选择」占说话人槽，
+           选项与备注进内容列，缩进与正文对齐 -->
       <div
         v-else-if="item.kind === 'choice'"
-        class="flex flex-wrap items-baseline"
+        class="flex items-start leading-relaxed"
       >
-        <NText type="primary" tag="strong" class="mr-2 shrink-0"
+        <span class="w-5 shrink-0" aria-hidden="true" />
+        <NText type="primary" tag="strong" class="mr-3 w-24 shrink-0 text-right"
           >剧情选择</NText
         >
-        <span class="shrink-0">
+        <span class="min-w-0 flex-1">
           <template v-for="(option, oi) in item.block.options" :key="oi">
             <span v-if="oi > 0"> / </span>
             <span
               :class="
                 optionSelected(item.block, option.optionIndex)
-                  ? 'rounded bg-primary/15 px-1 font-semibold'
+                  ? 'choice-option-selected rounded px-1 font-semibold'
                   : undefined
               "
               >{{ option.label }}</span
             >
           </template>
+          <NText v-if="item.block.inert" depth="3" class="ml-2 text-xs">
+            {{
+              item.block.options.length > 1 ? "选择不影响后续剧情" : "无分支"
+            }}
+          </NText>
+          <NText
+            v-else-if="!choiceSelected(item.block)"
+            depth="3"
+            class="ml-2 text-xs"
+          >
+            各选项后续文本见下方分栏
+          </NText>
         </span>
-        <NText v-if="item.block.inert" depth="3" class="ml-2 text-xs">
-          {{ item.block.options.length > 1 ? "选择不影响后续剧情" : "无分支" }}
-        </NText>
-        <NText
-          v-else-if="!choiceSelected(item.block)"
-          depth="3"
-          class="ml-2 text-xs"
-        >
-          各选项后续文本见下方分栏
-        </NText>
       </div>
 
-      <!-- 条件区块：带标签的分支内容，非当前路径淡化 -->
+      <!-- 条件区块：带标签的分支内容，非当前路径淡化；标签行走同一套
+           栅格，「选择「...」：」与正文/选项一样从内容列起排 -->
       <div
         v-else
-        class="conditional-block border-primary/40 border-l-2 py-1 pl-3"
+        class="conditional-block py-1 pl-3"
         :class="item.off ? 'opacity-40' : undefined"
       >
-        <div class="mb-1.5 text-xs font-bold tracking-[0.06em] opacity-70">
-          {{ item.label }}：
+        <div class="mb-1.5 flex leading-relaxed">
+          <span class="w-5 shrink-0" aria-hidden="true" />
+          <span class="mr-3 w-24 shrink-0" aria-hidden="true" />
+          <span
+            class="min-w-0 flex-1 text-xs font-bold tracking-[0.06em] opacity-70"
+          >
+            {{ item.label }}：
+          </span>
         </div>
         <LogAllList
           :document="document"
@@ -220,6 +234,25 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
 </template>
 
 <style scoped>
+/* naive-ui 的 primary 不在 uno theme 里，border-primary/bg-primary 生成不了
+   规则；主题色从最近的 naive 组件根（NCard/NModal）继承 --n-color-target。
+   项目没有 preflight，border-width 初始值是 medium 而非 0：边框必须整体在
+   这里声明（同 ArkSign 的 border-left 写法），不能只写 border-l-2 /
+   border-solid 这类单属性 utility，否则其余三边会以默认宽度和 currentColor
+   画出来 */
+.conditional-block {
+  border-left: 2px solid
+    color-mix(in srgb, var(--n-color-target, #18a058) 40%, transparent);
+}
+
+.choice-option-selected {
+  background-color: color-mix(
+    in srgb,
+    var(--n-color-target, #18a058) 15%,
+    transparent
+  );
+}
+
 ul,
 li {
   list-style: none !important;
