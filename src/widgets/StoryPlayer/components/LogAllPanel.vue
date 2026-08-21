@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 
-import { NCard, NModal } from "naive-ui";
+import { NCard, NModal, NText } from "naive-ui";
 
 import LogAllList from "./LogAllList.vue";
 
-import type { LogAllEntry } from "../engine/logAll";
+import type { LogDocument } from "../engine/log";
+import type { RuntimeChoiceSelection } from "../engine/types";
 
 const props = defineProps<{
   show: boolean;
-  entries: LogAllEntry[];
+  document: LogDocument;
   activeLineIndex?: number | null;
-  decisionSelectValue?: number;
+  selections?: RuntimeChoiceSelection[];
   embedded?: boolean;
 }>();
 const emit = defineEmits<{ "update:show": [boolean] }>();
@@ -25,7 +26,10 @@ watch(
     await nextTick();
     const root = scrollRoot.value;
     if (!root) return;
-    const el = root.querySelector<HTMLElement>("[data-active-line]");
+    // 同一行号可能在多个分支各出现一次，优先定位到确定在当前路径上的那条
+    const el =
+      root.querySelector<HTMLElement>('[data-active-line="exact"]') ??
+      root.querySelector<HTMLElement>("[data-active-line]");
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
   },
 );
@@ -34,7 +38,7 @@ watch(
 <template>
   <NCard
     v-if="embedded && show"
-    title="全部文本"
+    title="LOG ALL"
     closable
     class="h-full"
     content-style="height: calc(100% - 59px); min-height: 0; overflow-y: auto"
@@ -44,11 +48,15 @@ watch(
       <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
     </template>
 
+    <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
+      分支组合过多，部分内容未按选择路线区分。
+    </NText>
+
     <div ref="scrollRoot">
       <LogAllList
-        :entries="entries"
+        :document="document"
         :active-line-index="activeLineIndex"
-        :decision-select-value="decisionSelectValue"
+        :selections="selections"
       />
     </div>
   </NCard>
@@ -57,7 +65,7 @@ watch(
     v-else-if="!embedded"
     :show="show"
     preset="card"
-    title="全部文本"
+    title="LOG ALL"
     style="width: min(760px, 94vw); max-width: min(760px, 94vw)"
     :bordered="false"
     :auto-focus="false"
@@ -67,11 +75,15 @@ watch(
       <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
     </template>
 
+    <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
+      分支组合过多，部分内容未按选择路线区分。
+    </NText>
+
     <div ref="scrollRoot" class="max-h-[70vh] overflow-y-auto py-1">
       <LogAllList
-        :entries="entries"
+        :document="document"
         :active-line-index="activeLineIndex"
-        :decision-select-value="decisionSelectValue"
+        :selections="selections"
       />
     </div>
   </NModal>

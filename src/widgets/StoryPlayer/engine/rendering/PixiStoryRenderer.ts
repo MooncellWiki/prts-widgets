@@ -38,6 +38,7 @@ import {
   type CharacterCutinInput,
   type CharacterSlotInput,
   type CurtainInput,
+  type DecisionSelection,
   type FocusOutInput,
   type FocusParamInput,
   type GridBackgroundInput,
@@ -439,7 +440,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.dialogPanel.setDialogue(speaker, text, tagStyles);
   }
 
-  async showDecision(options: string[], values: number[]): Promise<number> {
+  async showDecision(
+    options: string[],
+    values: number[],
+  ): Promise<DecisionSelection> {
     return this.decisionPanel.show(options, values);
   }
 

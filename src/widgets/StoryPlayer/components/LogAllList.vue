@@ -1,226 +1,231 @@
 <script setup lang="ts">
+import { computed } from "vue";
+
 import { NText } from "naive-ui";
 
-import type { LogAllDecisionRoute, LogAllEntry } from "../engine/logAll";
+import {
+  formatConditionLabel,
+  TRUE_CONDITION,
+  type LogBlock,
+  type LogChoiceBlock,
+  type LogConditionalBlock,
+  type LogDocument,
+  type LogLineBlock,
+  type LogLineEntry,
+} from "../engine/log";
 
-// 纯递归列表（无外壳）：渲染 LogAllEntry 树。
-// 外层全屏壳由 LogAllPanel 负责，避免递归实例各自渲染一层全屏遮罩。
+import type { RuntimeChoiceSelection } from "../engine/types";
+
+/**
+ * 时间线式 Log All 列表（无外壳）：按 blocks 顺序渲染 LogDocument。
+ * 外层全屏壳由 LogAllPanel 负责。
+ *
+ * 渲染模型：
+ * - lines → 普通文本行（可带路径条件高亮）；
+ * - choice → 一行选择记录，与文本行同一套栅格（「剧情选择」占说话人
+ *   槽、选项进内容列）；在条件分栏内时随分栏统一淡化，可见性表达与
+ *   普通文本一致，不单独标注（如 07-03 的「我们有什么计划？」只随
+ *   「凯尔希，合作愉快。」分栏出现）；
+ * - conditional → 带标签的条件区块，标签与内容列对齐，不在当前路径上的区块淡化。
+ *
+ * 路径条件按 block 求值一次并缓存在 items 里：播放中每 80ms 会同步一次
+ * 状态，逐 entry 反复求值会让长剧本的列表明显发烫。
+ */
 const props = defineProps<{
-  entries: LogAllEntry[];
+  document: LogDocument;
+  /** 要渲染的 block 列表；递归渲染条件区块的子层时传入，默认为顶层 */
+  blocks?: LogBlock[];
   /** 当前屏幕正在显示的源行 lineNumber；命中时高亮并供外层滚动定位 */
   activeLineIndex?: number | null;
-  /** 最近一次 decision 玩家所选 value；用于只高亮当前路径上的分支副本 */
-  decisionSelectValue?: number;
+  /** runtime 实际执行过的选择历史，用于求值当前路径 */
+  selections?: RuntimeChoiceSelection[];
 }>();
 
-interface RouteGroup {
-  labels: string[];
-  values: number[];
-  entries: LogAllEntry[];
-}
+/** 命中当前播放行：exact = 确实在当前路径上；maybe = 该分支尚未确定 */
+type ActiveMark = "exact" | "maybe";
 
-function hasSameEntries(left: LogAllEntry[], right: LogAllEntry[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every((entry, index) => entry === right[index])
-  );
-}
-
-/**
- * predicate(references="1;2") 等共享路径在 routes 中会分别投影给选项 1 和 2。
- * 展示时把完整结果相同的路径重新合并，任何一处内容不同则保持独立。
- */
-function groupRoutes(routes: LogAllDecisionRoute[]): RouteGroup[] {
-  const groups: RouteGroup[] = [];
-  for (const route of routes) {
-    const group = groups.find((candidate) =>
-      hasSameEntries(candidate.entries, route.entries),
-    );
-    if (group) {
-      group.labels.push(route.option.label);
-      group.values.push(route.option.value);
-    } else {
-      groups.push({
-        entries: route.entries,
-        labels: [route.option.label],
-        values: [route.option.value],
-      });
+type RenderItem =
+  | {
+      kind: "lines";
+      block: LogLineBlock;
+      rows: { entry: LogLineEntry; active?: ActiveMark }[];
     }
-  }
-  return groups;
-}
+  | { kind: "choice"; block: LogChoiceBlock }
+  | {
+      kind: "conditional";
+      block: LogConditionalBlock;
+      label: string;
+      off: boolean;
+    };
 
-function hasRouteContent(routes: LogAllDecisionRoute[]): boolean {
-  return routes.some((route) => route.entries.length > 0);
-}
+const renderBlocks = computed(() => props.blocks ?? props.document.blocks);
 
-/** 某条 line entry 是否对应当前屏幕正在显示的源行 */
-function isActiveLine(entry: LogAllEntry & { kind: "line" }): boolean {
-  return (
-    props.activeLineIndex != null && entry.lineIndex === props.activeLineIndex
-  );
-}
+const assignment = computed(
+  () =>
+    new Map(
+      props.selections?.map((selection) => [
+        selection.decisionId,
+        selection.optionIndex,
+      ]),
+    ),
+);
+
+/** true/false/unknown(null)；false = 明确不在当前路径上 */
+const onPath = (audience: number): boolean | null =>
+  audience === TRUE_CONDITION
+    ? true
+    : props.document.conditions.evaluatePartial(audience, assignment.value);
 
 /**
- * 把 activeLineIndex 透传给子列表时，需要先按 decision 选择过滤：
- * - decision 的 shared（选择前共同剧情）始终透传，因为无条件执行；
- * - 某条 route 仅当它覆盖的选项包含玩家所选值时才透传，避免分支副本误高亮。
+ * 当前播放行标记。同一行号可能在多个分支各有一条，exact 表示这一条确实
+ * 在当前路径上，面板滚动优先定位到它。
  */
-function routeActiveLineIndex(group: RouteGroup): number | null {
-  if (
-    props.decisionSelectValue &&
-    group.values.includes(props.decisionSelectValue)
-  )
-    return props.activeLineIndex ?? null;
-  return null;
-}
+const activeMark = (
+  entry: LogLineEntry,
+  path: boolean | null,
+): ActiveMark | undefined => {
+  if (props.activeLineIndex == null || path === false) return undefined;
+  if (entry.lineIndex !== props.activeLineIndex) return undefined;
+  return path === true ? "exact" : "maybe";
+};
+
+const items = computed<RenderItem[]>(() =>
+  renderBlocks.value.map((block) => {
+    const path = onPath(block.audience);
+    if (block.kind === "lines")
+      return {
+        kind: "lines",
+        block,
+        rows: block.entries.map((entry) => ({
+          entry,
+          active: activeMark(entry, path),
+        })),
+      };
+    if (block.kind === "choice") return { kind: "choice", block };
+    return {
+      kind: "conditional",
+      block,
+      label: formatConditionLabel(
+        props.document.conditions.describe(block.audience),
+        props.document.decisions,
+      ),
+      off: block.audience !== TRUE_CONDITION && path === false,
+    };
+  }),
+);
+
+const optionSelected = (block: LogChoiceBlock, optionIndex: number): boolean =>
+  assignment.value.get(block.decisionId) === optionIndex;
+
+const choiceSelected = (block: LogChoiceBlock): boolean =>
+  assignment.value.has(block.decisionId);
 </script>
 
 <template>
-  <ul v-if="entries.length > 0" class="m-0 list-none p-0 space-y-2.5">
-    <li v-for="(entry, i) in entries" :key="i" class="p-0">
-      <!-- 文本条目：对白 / 旁白 / sticker / subtitle / multiline -->
+  <ul v-if="items.length > 0" class="m-0 list-none p-0 space-y-2.5">
+    <li v-for="(item, i) in items" :key="i" class="p-0">
+      <!-- 文本区块：audience 相同的连续行 -->
+      <template v-if="item.kind === 'lines'">
+        <div
+          v-for="(row, j) in item.rows"
+          :key="j"
+          :data-active-line="row.active"
+          class="flex items-start leading-relaxed"
+        >
+          <NText
+            tag="span"
+            type="primary"
+            class="inline-block w-5 shrink-0 text-center"
+            :aria-label="row.active ? '当前播放位置' : undefined"
+            :aria-hidden="row.active ? undefined : true"
+          >
+            {{ row.active ? "▶" : "" }}
+          </NText>
+          <NText
+            v-if="row.entry.speaker"
+            type="primary"
+            tag="strong"
+            class="mr-3 w-24 shrink-0 text-right"
+          >
+            {{ row.entry.speaker }}
+          </NText>
+          <span v-else class="mr-3 w-24 shrink-0" aria-hidden="true" />
+          <span class="min-w-0 flex-1">
+            <span
+              v-for="(span, si) in row.entry.spans"
+              :key="si"
+              :style="span.color ? { color: span.color } : undefined"
+              :class="
+                !span.color && row.entry.source === 'narration'
+                  ? 'opacity-75'
+                  : undefined
+              "
+              >{{ span.text }}</span
+            >
+          </span>
+        </div>
+      </template>
+
+      <!-- 选择记录：与普通文本行同一套栅格，「剧情选择」占说话人槽，
+           选项与备注进内容列，缩进与正文对齐 -->
       <div
-        v-if="entry.kind === 'line'"
-        :data-active-line="isActiveLine(entry) ? '' : undefined"
+        v-else-if="item.kind === 'choice'"
         class="flex items-start leading-relaxed"
       >
-        <NText
-          tag="span"
-          type="primary"
-          class="inline-block w-5 shrink-0 text-center"
-          :aria-label="isActiveLine(entry) ? '当前播放位置' : undefined"
-          :aria-hidden="isActiveLine(entry) ? undefined : true"
+        <span class="w-5 shrink-0" aria-hidden="true" />
+        <NText type="primary" tag="strong" class="mr-3 w-24 shrink-0 text-right"
+          >剧情选择</NText
         >
-          {{ isActiveLine(entry) ? "▶" : "" }}
-        </NText>
-        <NText
-          v-if="entry.speaker"
-          type="primary"
-          tag="strong"
-          class="mr-3 w-24 shrink-0 text-right"
-        >
-          {{ entry.speaker }}
-        </NText>
-        <span v-else class="mr-3 w-24 shrink-0" aria-hidden="true" />
         <span class="min-w-0 flex-1">
-          <span
-            v-for="(span, si) in entry.spans"
-            :key="si"
-            :style="span.color ? { color: span.color } : undefined"
-            :class="
-              !span.color && entry.source === 'narration'
-                ? 'opacity-75'
-                : undefined
-            "
-            >{{ span.text }}</span
+          <template v-for="(option, oi) in item.block.options" :key="oi">
+            <span v-if="oi > 0"> / </span>
+            <span
+              :class="
+                optionSelected(item.block, option.optionIndex)
+                  ? 'choice-option-selected rounded px-1 font-semibold'
+                  : undefined
+              "
+              >{{ option.label }}</span
+            >
+          </template>
+          <NText v-if="item.block.inert" depth="3" class="ml-2 text-xs">
+            {{
+              item.block.options.length > 1 ? "选择不影响后续剧情" : "无分支"
+            }}
+          </NText>
+          <NText
+            v-else-if="!choiceSelected(item.block)"
+            depth="3"
+            class="ml-2 text-xs"
           >
+            各选项后续文本见下方分栏
+          </NText>
         </span>
       </div>
 
-      <!-- 所有选项都立即汇合时，压成静态记录，不制造空折叠层。 -->
+      <!-- 条件区块：带标签的分支内容，非当前路径淡化；标签行走同一套
+           栅格，「选择「...」：」与正文/选项一样从内容列起排 -->
       <div
-        v-else-if="!hasRouteContent(entry.routes)"
-        class="border-l-2 py-1 pl-3"
+        v-else
+        class="conditional-block py-1 pl-3"
+        :class="item.off ? 'opacity-40' : undefined"
       >
-        <div class="text-sm">
-          <NText type="primary" tag="strong" class="mr-2">剧情选择</NText>
+        <div class="mb-1.5 flex leading-relaxed">
+          <span class="w-5 shrink-0" aria-hidden="true" />
+          <span class="mr-3 w-24 shrink-0" aria-hidden="true" />
           <span
-            >「{{
-              entry.options.map((option) => option.label).join(" / ")
-            }}」</span
+            class="min-w-0 flex-1 text-xs font-bold tracking-[0.06em] opacity-70"
           >
-          <NText depth="3" class="ml-2 text-xs">选择不影响后续剧情</NText>
+            {{ item.label }}：
+          </span>
         </div>
-        <div v-if="entry.shared.length > 0" class="mt-2 pl-3">
-          <LogAllList
-            :entries="entry.shared"
-            :active-line-index="activeLineIndex"
-            :decision-select-value="decisionSelectValue"
-          />
-        </div>
+        <LogAllList
+          :document="document"
+          :blocks="item.block.blocks"
+          :active-line-index="activeLineIndex"
+          :selections="selections"
+        />
       </div>
-
-      <!-- 有实际分叉时，折叠树保留嵌套选择的路径关系。 -->
-      <details v-else open class="group/decision border-l-2 pl-3">
-        <summary
-          class="cursor-pointer list-none py-1 text-sm font-bold marker:hidden"
-        >
-          <span
-            class="mr-2 inline-block opacity-60 transition-transform group-open/decision:rotate-90"
-            >▶</span
-          >
-          剧情选择
-          <NText depth="3" class="ml-1 text-xs font-normal">
-            （{{ entry.options.length }} 项）
-          </NText>
-        </summary>
-
-        <div class="pb-1 pl-4 pt-2">
-          <div v-if="entry.shared.length > 0" class="mb-3 border-l pl-3">
-            <div
-              class="mb-1.5 text-[11px] font-bold tracking-[0.08em] opacity-60"
-            >
-              选择前的共同剧情
-            </div>
-            <LogAllList
-              :entries="entry.shared"
-              :active-line-index="activeLineIndex"
-              :decision-select-value="decisionSelectValue"
-            />
-          </div>
-
-          <div class="space-y-2">
-            <template
-              v-for="(route, routeIndex) in groupRoutes(entry.routes)"
-              :key="routeIndex"
-            >
-              <details
-                v-if="route.entries.length > 0"
-                class="group/route border-l pl-3"
-              >
-                <summary
-                  class="cursor-pointer list-none py-1 text-sm font-semibold marker:hidden"
-                >
-                  <span
-                    class="mr-2 inline-block opacity-55 transition-transform group-open/route:rotate-90"
-                    >▶</span
-                  >
-                  选择「{{ route.labels.join(" / ") }}」
-                  <span
-                    v-if="route.labels.length > 1"
-                    class="ml-1 text-xs font-normal opacity-60"
-                  >
-                    （相同去向）
-                  </span>
-                </summary>
-                <div class="pb-2 pl-5 pt-1.5">
-                  <LogAllList
-                    :entries="route.entries"
-                    :active-line-index="routeActiveLineIndex(route)"
-                    :decision-select-value="decisionSelectValue"
-                  />
-                </div>
-              </details>
-              <div v-else class="border-l py-1 pl-3 text-sm opacity-75">
-                <span class="mr-2 inline-block w-3 text-center opacity-60"
-                  >—</span
-                >
-                <span class="font-semibold"
-                  >选择「{{ route.labels.join(" / ") }}」</span
-                >
-                <span class="ml-2 text-xs">无专属文本，继续后续剧情</span>
-                <span
-                  v-if="route.labels.length > 1"
-                  class="ml-1 text-xs opacity-60"
-                >
-                  （相同去向）
-                </span>
-              </div>
-            </template>
-          </div>
-        </div>
-      </details>
     </li>
   </ul>
   <NText v-else tag="p" depth="3" class="m-0 text-sm tracking-[0.03em]">
@@ -229,6 +234,25 @@ function routeActiveLineIndex(group: RouteGroup): number | null {
 </template>
 
 <style scoped>
+/* naive-ui 的 primary 不在 uno theme 里，border-primary/bg-primary 生成不了
+   规则；主题色从最近的 naive 组件根（NCard/NModal）继承 --n-color-target。
+   项目没有 preflight，border-width 初始值是 medium 而非 0：边框必须整体在
+   这里声明（同 ArkSign 的 border-left 写法），不能只写 border-l-2 /
+   border-solid 这类单属性 utility，否则其余三边会以默认宽度和 currentColor
+   画出来 */
+.conditional-block {
+  border-left: 2px solid
+    color-mix(in srgb, var(--n-color-target, #18a058) 40%, transparent);
+}
+
+.choice-option-selected {
+  background-color: color-mix(
+    in srgb,
+    var(--n-color-target, #18a058) 15%,
+    transparent
+  );
+}
+
 ul,
 li {
   list-style: none !important;

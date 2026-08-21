@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+} from "vue";
 
 import {
   FileDownloadOutlined as ExportIcon,
@@ -30,7 +37,7 @@ import LogAllPanel from "./components/LogAllPanel.vue";
 import { loadContextByScript, type Context } from "./context";
 import { createStoryPlayer } from "./engine/createStoryPlayer";
 import { preloadDialogFont } from "./engine/font";
-import { buildLogAll, type LogAllEntry } from "./engine/logAll";
+import { buildLogAll, type LogDocument } from "./engine/log";
 import { parseStory } from "./engine/parser";
 import {
   collectContextAssetManifest,
@@ -38,7 +45,12 @@ import {
   type StoryCharacterFaceAsset,
 } from "./engine/preload";
 
-import type { AutoPlayMode, PlayerState, StoryPlayer } from "./engine/types";
+import type {
+  AutoPlayMode,
+  PlayerState,
+  RuntimeChoiceSelection,
+  StoryPlayer,
+} from "./engine/types";
 
 const props = defineProps<{
   /** 剧情 txt 全文，由页面内嵌的 #datas_txt 提供 */
@@ -66,9 +78,10 @@ const viewMode = ref<"lobby" | "text" | "player">("lobby");
 const legacyPlayerActive = ref(false);
 
 const showLogAll = ref(false);
-const logAllEntries = ref<LogAllEntry[]>([]);
+// 文档包含 ConditionStore 类实例且只整体替换，用 shallowRef 避免深层解包
+const logAllDocument = shallowRef<LogDocument>(buildLogAll([]));
 const logAllActiveLineIndex = ref<number | null>(null);
-const logAllDecisionValue = ref(0);
+const logAllSelections = ref<RuntimeChoiceSelection[]>([]);
 const showAssetList = ref(false);
 const assetUrls = ref<string[]>([]);
 const characterFaceAssets = ref<StoryCharacterFaceAsset[]>([]);
@@ -124,8 +137,29 @@ function syncState(): void {
     buttonSpeedLevel.value = autoPlay.buttonSpeedLevel;
     quickSpeedLevel.value = autoPlay.quickSpeedLevel;
   }
-  logAllActiveLineIndex.value = player?.getDisplayedLineIndex() ?? null;
-  logAllDecisionValue.value = player?.getDecisionSelectValue() ?? 0;
+  const position = player?.getLogPosition();
+  logAllActiveLineIndex.value = position?.lineIndex ?? null;
+  // syncState 每 80ms 跑一次；直接赋新数组会让 Log All 整表重渲染，
+  // 内容没变就保留原引用
+  const selections = position?.selections ?? [];
+  if (!sameSelections(selections, logAllSelections.value))
+    logAllSelections.value = selections;
+}
+
+function sameSelections(
+  left: readonly RuntimeChoiceSelection[],
+  right: readonly RuntimeChoiceSelection[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((selection, index) => {
+      const other = right[index]!;
+      return (
+        selection.decisionId === other.decisionId &&
+        selection.optionIndex === other.optionIndex
+      );
+    })
+  );
 }
 
 function openLogAll(): void {
@@ -136,7 +170,7 @@ function openLogAll(): void {
     player?.setAutoPlayMode("default");
     syncState();
   }
-  logAllEntries.value = buildLogAll(
+  logAllDocument.value = buildLogAll(
     parseStory(scriptText.value).lines,
     context?.audioVariables,
   );
@@ -204,8 +238,7 @@ async function openFeedback(): Promise<void> {
       current_speed_level: currentSpeedLevel.value,
       view_mode: viewMode.value,
       displayed_line_index: player?.getDisplayedLineIndex() ?? -1,
-      decision_select_value:
-        player?.getDecisionSelectValue() ?? logAllDecisionValue.value,
+      decision_select_value: player?.getDecisionSelectValue() ?? 0,
       can_skip_node: player?.canSkipNode() ?? canSkipNode.value,
       preload_ready: preloadReady.value,
       is_preloading: isPreloading.value,
@@ -401,9 +434,9 @@ onBeforeUnmount(() => {
           v-else-if="viewMode === 'text'"
           :show="showLogAll"
           embedded
-          :entries="logAllEntries"
+          :document="logAllDocument"
           :active-line-index="logAllActiveLineIndex"
-          :decision-select-value="logAllDecisionValue"
+          :selections="logAllSelections"
           @update:show="closeLogAll"
         />
 
@@ -448,9 +481,9 @@ onBeforeUnmount(() => {
               v-model:show="showLogAll"
               embedded
               class="absolute inset-0 z-10"
-              :entries="logAllEntries"
+              :document="logAllDocument"
               :active-line-index="logAllActiveLineIndex"
-              :decision-select-value="logAllDecisionValue"
+              :selections="logAllSelections"
             />
           </div>
         </template>

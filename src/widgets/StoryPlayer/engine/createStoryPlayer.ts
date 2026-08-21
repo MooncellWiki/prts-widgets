@@ -5,7 +5,12 @@ import { PixiStoryRenderer } from "./renderer";
 import { StoryRuntime } from "./runtime";
 
 import type { Context } from "../context";
-import type { AutoPlayMode, PlayerState, StoryPlayer } from "./types";
+import type {
+  AutoPlayMode,
+  PlayerState,
+  RuntimeLogPosition,
+  StoryPlayer,
+} from "./types";
 
 // Register the @pixi/sound loader with PIXI's Assets system. This is a
 // side-effecting import: merely `import type` (as audio.ts does) is erased and
@@ -85,6 +90,10 @@ export function createStoryPlayer(context: Context): StoryPlayer {
 
     getDisplayedLineIndex(): number | null {
       return runtime?.getDisplayedLineIndex() ?? null;
+    },
+
+    getLogPosition(): RuntimeLogPosition {
+      return runtime?.getLogPosition() ?? { lineIndex: null, selections: [] };
     },
 
     getState(): PlayerState {

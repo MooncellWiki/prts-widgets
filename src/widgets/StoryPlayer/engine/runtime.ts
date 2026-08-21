@@ -1,6 +1,11 @@
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
 import { resolveCharacterSelection } from "./characterRef";
 import { CommandRegistry } from "./commandRegistry";
+import {
+  parseDecision,
+  parsePredicateReferences,
+  passesGate,
+} from "./log/semantics";
 import { parseScript } from "./parser";
 import {
   buildTagStyles,
@@ -23,6 +28,8 @@ import type {
   InterludeInput,
   ParsedCommandLine,
   PlayerState,
+  RuntimeChoiceSelection,
+  RuntimeLogPosition,
   RuntimeOptions,
   RuntimeWarning,
   SpellStickerInput,
@@ -307,6 +314,8 @@ export class StoryRuntime {
   private displayedLineIndex: number | null = null;
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
+  /** 实际执行过的全部选择（decisionId = 源行 lineNumber），供 Log All 路径求值 */
+  private readonly choiceHistory: RuntimeChoiceSelection[] = [];
   private destroyed = false;
   private readonly lines: ReturnType<typeof parseScript>;
   private readonly firstRead: boolean;
@@ -387,6 +396,13 @@ export class StoryRuntime {
   /** 最近一次 decision 玩家所选的 value（0 = 未做选择/默认分支） */
   getDecisionSelectValue(): number {
     return this.decisionSelectValue;
+  }
+
+  getLogPosition(): RuntimeLogPosition {
+    return {
+      lineIndex: this.displayedLineIndex,
+      selections: this.choiceHistory.map((selection) => ({ ...selection })),
+    };
   }
 
   getAutoPlayState(): AutoPlayState {
@@ -667,12 +683,15 @@ export class StoryRuntime {
         const line = this.lines[this.cursor];
         this.cursor += 1;
 
+        // 闸门语义与 Log All 的符号分析共用 log/semantics，避免两侧漂移
         if (
-          this.decisionSelectValue !== 0 &&
-          this.decisionReferences !== null &&
-          this.decisionReferences.length > 0 &&
-          !(line.kind === "command" && line.command === "predicate") &&
-          !this.decisionReferences.includes(this.decisionSelectValue)
+          !passesGate(
+            {
+              references: this.decisionReferences,
+              selectedValue: this.decisionSelectValue,
+            },
+            line,
+          )
         ) {
           continue;
         }
@@ -2440,8 +2459,10 @@ export class StoryRuntime {
         this.setAutoPlayMode("default");
         this.decisionSelectValue = 0;
         this.decisionReferences = null;
-        const optionsValue = this.exactArg(args, "options");
-        if (optionsValue === undefined) {
+        // options/values 的解析与 Log All 共用 log/semantics.parseDecision，
+        // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）
+        const parsed = parseDecision(line, this.context.audioVariables);
+        if (!parsed) {
           this.warn(
             "invalid_parameter",
             "decision options parameter is missing",
@@ -2449,19 +2470,23 @@ export class StoryRuntime {
           return "continue";
         }
 
-        const options = toString(optionsValue)
-          .split(";")
-          .map((option) => this.translateText(option));
-        const values = toString(this.exactArg(args, "values"))
-          .split(";")
-          .map((value) => {
-            const parsed = Number.parseInt(value, 10);
-            return Number.isNaN(parsed) ? 0 : parsed;
-          });
+        const options = parsed.options.map((option) => option.label);
+        const values = parsed.options.map((option) => option.value);
 
         this.state = "waiting_decision";
-        const selectedValue = await this.renderer.showDecision(options, values);
-        this.decisionSelectValue = selectedValue;
+        const selection = await this.renderer.showDecision(options, values);
+        this.decisionSelectValue = selection.value;
+        // 点击下标由 renderer 直接返回：value 可能在 options 间重复
+        // （显式值相同，或与缺省值 0 碰撞），反查会记错选项，
+        // Log All 的路径求值与高亮都依赖 optionIndex。
+        // optionIndex < 0 表示面板未经点击被清除（销毁/顶替），此时
+        // decisionSelectValue 仍是 0（闸门全开），不能记成「选了第 1 项」。
+        if (selection.optionIndex >= 0)
+          this.choiceHistory.push({
+            decisionId: line.lineNumber,
+            optionIndex: selection.optionIndex,
+            value: selection.value,
+          });
         this.setAutoPlayMode(autoPlayCache);
         this.state = "running";
         return "continue";
@@ -2470,16 +2495,7 @@ export class StoryRuntime {
       case "predicate": {
         // Native port: Torappu.AVG.DecisionPanel._ExecutePredicate. This ghost
         // command only replaces the current reference-value gate.
-        const references = this.exactArg(args, "references");
-        this.decisionReferences =
-          references === undefined
-            ? null
-            : toString(references)
-                .split(";")
-                .map((value) => {
-                  const parsed = Number.parseInt(value, 10);
-                  return Number.isNaN(parsed) ? 0 : parsed;
-                });
+        this.decisionReferences = parsePredicateReferences(line);
         return "continue";
       }
 
