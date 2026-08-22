@@ -11,6 +11,14 @@ export interface StoryFaceRect {
   y: number;
 }
 
+export interface StoryCharacterFaceAsset {
+  baseUrl: string;
+  expression: string;
+  faceRect: StoryFaceRect;
+  faceUrl: string;
+  used: boolean;
+}
+
 export interface StoryCharacterGroupFaceOverlay {
   base: string;
   faceRect: StoryFaceRect;

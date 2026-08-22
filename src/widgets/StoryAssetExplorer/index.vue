@@ -19,14 +19,13 @@ import {
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { useTheme } from "@/utils/theme";
 
-import CharacterFacePreview from "../StoryPlayer/components/CharacterFacePreview.vue";
+import CharacterFaceBrowserModal from "../StoryPlayer/components/CharacterFaceBrowserModal.vue";
 
 import CharacterPreview from "./components/CharacterPreview.vue";
 import {
   type CargoStoryRow,
   type CharacterLinkMap,
   type CharacterPreview as CharacterPreviewInfo,
-  type FaceGalleryItem,
   type StoryResourceListResponse,
   type StoryResourceSummary,
   type StoryResourceType,
@@ -44,6 +43,8 @@ import {
   resourceTypeLabel,
   storyResourceImageUrl,
 } from "./utils";
+
+import type { StoryCharacterFaceAsset } from "../StoryPlayer/engine/types";
 
 enum Status {
   idle,
@@ -128,13 +129,7 @@ const detailRows = ref<ResultRow[]>([]);
 const matchedCount = ref(0);
 
 const showFaces = ref(false);
-const faceScriptPath = ref("");
-const faceItems = ref<FaceGalleryItem[]>([]);
-const faceIndex = ref(0);
-
-const activeFace = computed(
-  () => faceItems.value[faceIndex.value] ?? faceItems.value[0] ?? null,
-);
+const faceItems = ref<StoryCharacterFaceAsset[]>([]);
 
 const detailTitle = computed(() =>
   detailResource.value
@@ -339,10 +334,7 @@ function openFaces(row: ResultRow): void {
   );
   if (!gallery || gallery.length === 0) return;
 
-  faceScriptPath.value = row.scriptPath;
   faceItems.value = gallery;
-  const firstUsed = gallery.findIndex((face) => face.used);
-  faceIndex.value = firstUsed === -1 ? 0 : firstUsed;
   showFaces.value = true;
 }
 
@@ -556,75 +548,12 @@ onMounted(() => {
         </template>
       </NModal>
 
-      <NModal
+      <CharacterFaceBrowserModal
         v-model:show="showFaces"
-        preset="card"
+        :faces="faceItems"
+        :filename-base="detailResource?.id ?? '角色'"
         :title="`${detailResource?.id ?? '角色'} · 表情预览`"
-        style="width: min(1000px, 94vw); max-width: min(1000px, 94vw)"
-        :bordered="false"
-        :auto-focus="false"
-      >
-        <template #header-extra>
-          <NText depth="3" class="text-xs font-normal">
-            共 {{ faceItems.length }} 项
-          </NText>
-        </template>
-
-        <div v-if="activeFace" class="character-face-browser">
-          <section
-            class="face-stage min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl"
-          >
-            <CharacterFacePreview
-              :base-url="activeFace.baseUrl"
-              :face-url="activeFace.faceUrl"
-              :face-rect="activeFace.faceRect"
-              :label="activeFace.expression"
-              class="min-h-[280px] flex-1"
-            />
-            <footer class="face-stage-label p-2 text-center text-sm">
-              {{ activeFace.expression }}
-            </footer>
-          </section>
-
-          <aside class="character-face-options min-h-0" aria-label="脸部差分">
-            <NButton
-              v-for="(face, index) in faceItems"
-              :key="face.faceUrl"
-              class="character-face-option mb-2 w-full last:mb-0 h-auto! p-2!"
-              :type="index === faceIndex ? 'primary' : 'default'"
-              :secondary="index === faceIndex"
-              @click="faceIndex = index"
-            >
-              <div class="min-w-0 w-full flex items-center gap-2 text-left">
-                <div
-                  class="face-option-thumbnail h-12 w-12 flex-none overflow-hidden rounded-md"
-                >
-                  <NImage
-                    :src="face.faceUrl"
-                    :alt="face.expression"
-                    object-fit="contain"
-                    preview-disabled
-                    class="asset-image h-full w-full overflow-hidden"
-                  />
-                </div>
-                <div class="min-w-0 flex-1 break-all text-sm">
-                  <div>{{ face.expression }}</div>
-                  <NTag
-                    v-if="face.used"
-                    class="mt-1 block w-fit"
-                    size="tiny"
-                    type="success"
-                    :bordered="false"
-                  >
-                    剧情使用
-                  </NTag>
-                </div>
-              </div>
-            </NButton>
-          </aside>
-        </div>
-        <div v-else class="text-disabled">没有可展示的表情差分</div>
-      </NModal>
+      />
     </NLayout>
   </NConfigProvider>
 </template>
@@ -665,48 +594,5 @@ onMounted(() => {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-}
-
-.character-face-browser {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 12px;
-  height: min(70vh, 680px);
-}
-
-.character-face-options {
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.face-stage {
-  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-}
-
-.face-stage-label {
-  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-}
-
-.face-option-thumbnail {
-  background-color: #f4f4f4;
-  background-image:
-    linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
-    linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
-  background-position:
-    0 0,
-    0 6px,
-    6px -6px,
-    -6px 0;
-  background-size: 12px 12px;
-}
-
-@media (max-width: 700px) {
-  .character-face-browser {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(280px, 55vh) minmax(120px, 45vh);
-    height: auto;
-  }
 }
 </style>
