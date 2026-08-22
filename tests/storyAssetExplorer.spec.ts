@@ -32,12 +32,12 @@ describe("storyResourceImageUrl", () => {
     );
   });
 
-  it("routes items into the images folder and encodes slashes", () => {
+  it("routes items into the images folder using StoryPlayer paths", () => {
     expect(storyResourceImageUrl("item", "item_act70_1")).toBe(
       "https://torappu.prts.wiki/assets/avg/images/item_act70_1.png",
     );
     expect(storyResourceImageUrl("image", "pic/avg main_01")).toBe(
-      "https://torappu.prts.wiki/assets/avg/images/pic/avg%20main_01.png",
+      "https://torappu.prts.wiki/assets/avg/images/pic/avg main_01.png",
     );
   });
 
@@ -92,6 +92,31 @@ describe("character preview resolution", () => {
       faceRect: { x: 459, y: 159, w: 130, h: 110 },
     });
     expect(resolveCharacterPreview("missing$1", links)).toBeNull();
+  });
+
+  it("reuses StoryPlayer normalization for mixed-case character bases", () => {
+    const links = parseCharacterMap({
+      char_264_Mountain_1: {
+        groups: [],
+        array: [
+          {
+            name: "char_264_Mountain_1#5",
+            group: -1,
+            image: "char_264_Mountain_1/char_264_Mountain_1#5",
+          },
+        ],
+      },
+    });
+
+    expect(
+      resolveCharacterPreview(
+        "char_264_mountain_1#char_264_Mountain_1#5",
+        links,
+      ),
+    ).toEqual({
+      kind: "single",
+      url: "https://torappu.prts.wiki/assets/avg/characters/char_264_Mountain_1/char_264_Mountain_1%235.png",
+    });
   });
 
   it("resolves hash-suffixed standalone images exactly", () => {
