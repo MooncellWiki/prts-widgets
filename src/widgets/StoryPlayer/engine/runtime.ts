@@ -1715,6 +1715,10 @@ export class StoryRuntime {
         const nameRef = toString(args.name);
         const name2Ref = toString(args.name2);
         const focus = toNumber(args.focus, 0);
+        // Native reads `transtype` once per command via GetOrDefault<int>
+        // (default 0 = ECharTransType.NONE) and shares it across all three
+        // slots.
+        const transType = Math.trunc(toNumber(args.transtype, 0));
         const durationMs = this.calculateFadeMs(args.fadetime, 0.15);
         // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacter. It reads
         // `isblock`, not `block`, and returns it raw without registering any tween
@@ -1780,6 +1784,7 @@ export class StoryRuntime {
             expression: resolved.expression,
             fadeIdentity: nativeCharacterFadeIdentity(update.name),
             slot: update.slot,
+            transType,
           });
         }
 

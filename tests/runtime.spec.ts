@@ -1199,6 +1199,7 @@ describe("StoryRuntime", () => {
         expression: "1$1",
         fadeIdentity: "avg_npc_1",
         slot: "m",
+        transType: 0,
       },
     ]);
     expect(sleep).not.toHaveBeenCalledWith(200);
@@ -1232,6 +1233,7 @@ describe("StoryRuntime", () => {
         expression: "1$1",
         fadeIdentity: "avg_npc_1",
         slot: "l",
+        transType: 0,
       },
       {
         absolutePosition: { x: undefined, y: undefined },
@@ -1245,9 +1247,30 @@ describe("StoryRuntime", () => {
         expression: "1$1",
         fadeIdentity: "avg_npc_1",
         slot: "r",
+        transType: 0,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("passes the native transtype through to the renderer", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[character(name="avg_npc_1",enter="left",transtype=1,fadetime=0.5)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Native reads `transtype` once per command and shares it across all
+    // slots; the default is 0 (ECharTransType.NONE).
+    expect(renderer.characterCalls).toEqual([
+      expect.objectContaining({ enterFrom: "left", transType: 1 }),
+    ]);
   });
 
   it("keeps name2 in the right slot when the primary name is empty", async () => {
