@@ -128,6 +128,68 @@ describe("PixiStoryRenderer", () => {
     expect(current.root.alpha).toBe(0);
   });
 
+  it("swaps the image instantly for an explicit enter without transtype", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test$1",
+      slot: "m",
+    });
+    const previous = renderer.characterSlots.get("m");
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 150,
+      enterFrom: "left",
+      expression: "2$1",
+      fadeIdentity: "avg_test$2",
+      slot: "m",
+    });
+
+    // Native `_ProcessSlot`'s enter branch feeds the fade duration through
+    // `_ProcessDurationWithTransType`, and `transtype`'s default NONE returns
+    // 0 there: the image swaps at once even for a different character -- the
+    // outgoing root is disposed and the incoming one is opaque from frame 0 --
+    // while the move tween still runs for the full duration.
+    const current = renderer.characterSlots.get("m");
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    expect(previous.root.parent).toBeNull();
+    expect(current.root.alpha).toBe(1);
+  });
+
+  it("still fades an explicit enter when transtype is ALPHA_IN", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test$1",
+      slot: "m",
+    });
+    const previous = renderer.characterSlots.get("m");
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 150,
+      enterFrom: "left",
+      expression: "2$1",
+      fadeIdentity: "avg_test$2",
+      slot: "m",
+      transType: 1,
+    });
+
+    // `_ProcessDurationWithTransType` only zeroes the duration for NONE, so an
+    // explicit ALPHA_IN keeps fading while entering.
+    const current = renderer.characterSlots.get("m");
+    expect(renderer.tween).toHaveBeenCalled();
+    expect(previous.root.parent).not.toBeNull();
+    expect(current.root.alpha).toBe(0);
+  });
+
   it("keeps the large background behind the background regardless of update order", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const input = createGridBackgroundInput();

@@ -168,6 +168,15 @@ export interface CharacterSlotInput {
   slot: string;
   stop?: boolean;
   times?: number;
+  /**
+   * Native `CharacterPanel.ECharTransType` read from the `transtype` param of
+   * the `character` command (0 NONE, 1 ALPHA_IN, 2 ALPHA_OUT). The enter
+   * branch of `_ProcessSlot` routes the fade duration through
+   * `_ProcessDurationWithTransType`, which returns 0 for NONE -- the param
+   * default -- so an explicit `enter` without `transtype` swaps the image
+   * instantly; only the position still tweens.
+   */
+  transType?: number;
 }
 
 export interface CharacterActionInput {

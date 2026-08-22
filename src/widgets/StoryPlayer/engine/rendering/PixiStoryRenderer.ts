@@ -1521,8 +1521,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     // is unchanged. Cross-fading two copies of the same body sprite causes a
     // visible brightness dip, so expression/focus changes must swap at once.
     const fadeIdentity = input.fadeIdentity ?? input.characterKey;
-    const imageFadeMs =
-      previous?.fadeIdentity === fadeIdentity ? 0 : durationMs;
+    // Two independent native paths zero only the image fade: same identity
+    // (`dontFadeIfSameChar` above), and the enter branch of `_ProcessSlot`,
+    // which routes the duration through `_ProcessDurationWithTransType` -- it
+    // returns 0 for `ECharTransType.NONE`, and `transtype`'s default is NONE.
+    // So an explicit `enter` without `transtype` swaps the image instantly
+    // even for a different character; the non-enter branch passes
+    // `param.duration` straight to `Set`, hence the `enterFrom` guard.
+    const sameIdentity = previous?.fadeIdentity === fadeIdentity;
+    const instantEnterSwap = Boolean(input.enterFrom) && !input.transType;
+    const imageFadeMs = sameIdentity || instantEnterSwap ? 0 : durationMs;
     // An explicit enter still moves for the requested duration even when the
     // same character's expression is swapped instantly.
     const moveMs = input.enterFrom ? durationMs : 0;
