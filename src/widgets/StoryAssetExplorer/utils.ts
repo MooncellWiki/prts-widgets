@@ -4,7 +4,10 @@ import {
   resolveStoryCharacterAssetByKey,
 } from "../StoryPlayer/engine/asset";
 
-import type { StoryFaceRect } from "../StoryPlayer/engine/types";
+import type {
+  StoryCharacterFaceAsset,
+  StoryFaceRect,
+} from "../StoryPlayer/engine/types";
 
 export type StoryResourceType = "background" | "image" | "item" | "character";
 
@@ -276,14 +279,6 @@ export function resolveCharacterPreview(
   return null;
 }
 
-export interface FaceGalleryItem {
-  expression: string;
-  baseUrl: string;
-  faceUrl: string;
-  faceRect: StoryFaceRect;
-  used: boolean;
-}
-
 /**
  * 组装表情浏览数据：列出该 body 的全部差分并标记本条剧情用到的
  * （`usedFaceIds` 是接口返回的 `base#expression` 列表）。
@@ -293,7 +288,7 @@ export function buildFaceGallery(
   bodyId: string,
   usedFaceIds: readonly string[],
   links: CharacterLinkMap,
-): FaceGalleryItem[] | null {
+): StoryCharacterFaceAsset[] | null {
   const { base, body } = parseCharacterListingId(bodyId);
   const node = links.get(base);
   if (!node || node.overlays.size === 0) return null;
@@ -301,8 +296,8 @@ export function buildFaceGallery(
   const used = new Set(
     usedFaceIds.map((id) => id.slice(id.lastIndexOf("#") + 1)),
   );
-  const collect = (matchBody: string | null): FaceGalleryItem[] => {
-    const items: FaceGalleryItem[] = [];
+  const collect = (matchBody: string | null): StoryCharacterFaceAsset[] => {
+    const items: StoryCharacterFaceAsset[] = [];
     for (const [name, item] of node.items) {
       const overlay = item.face ? node.overlays.get(item.group) : undefined;
       if (!item.face || !overlay) continue;
