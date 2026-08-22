@@ -27,6 +27,31 @@ function createGridBackgroundInput(): GridBackgroundInput {
   };
 }
 
+function createCharacterRenderer(): any {
+  const context: Context = {
+    linkMap: {
+      avg_test: {
+        array: [
+          { alias: "", group: -1, image: "body-1", name: "1$1" },
+          { alias: "", group: -1, image: "body-2", name: "2$1" },
+        ],
+        groups: [],
+        pos: { x: 0, y: 0 },
+        size: { x: 100, y: 200 },
+      },
+    },
+    script: [],
+  };
+  const renderer = new PixiStoryRenderer(context) as any;
+  renderer.buildCharacterVisual = vi.fn(async () => ({
+    sourceHeight: 200,
+    sourceWidth: 100,
+    visual: new Container(),
+  }));
+  renderer.tween = vi.fn(async () => {});
+  return renderer;
+}
+
 describe("PixiStoryRenderer", () => {
   it("dims unfocused characters with tint without making them transparent", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
@@ -44,6 +69,63 @@ describe("PixiStoryRenderer", () => {
     expect(root.alpha).toBe(1);
     expect(visual.alpha).toBe(1);
     expect(visual.tint).toBe(0x80_80_80);
+  });
+
+  it("swaps expressions of the same native character without cross-fading", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test",
+      slot: "m",
+    });
+    const previous = renderer.characterSlots.get("m");
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 150,
+      expression: "2$1",
+      fadeIdentity: "avg_test",
+      slot: "m",
+    });
+
+    const current = renderer.characterSlots.get("m");
+    expect(renderer.tween).not.toHaveBeenCalled();
+    expect(previous.root.parent).toBeNull();
+    expect(current.expression).toBe("2$1");
+    expect(current.root.alpha).toBe(1);
+  });
+
+  it("cross-fades when the native fade identity changes", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test$1",
+      slot: "m",
+    });
+    const previous = renderer.characterSlots.get("m");
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 150,
+      expression: "2$1",
+      fadeIdentity: "avg_test$2",
+      slot: "m",
+    });
+
+    // `_GetIdWithoutAliasOrIndex` keeps a standalone `$body`, so swapping the
+    // body is a real character change: `dontFadeIfSameChar` must not suppress
+    // the fade. The stubbed tween never completes, so the outgoing root is
+    // still parented and the incoming one is still fully transparent.
+    const current = renderer.characterSlots.get("m");
+    expect(renderer.tween).toHaveBeenCalled();
+    expect(previous.root.parent).not.toBeNull();
+    expect(current.root.alpha).toBe(0);
   });
 
   it("keeps the large background behind the background regardless of update order", async () => {

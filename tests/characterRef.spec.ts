@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  nativeCharacterFadeIdentity,
   parseNativeCharacterRef,
   resolveCharacterSelection,
   tryParseInt32,
@@ -56,6 +57,14 @@ describe("tryParseInt32", () => {
   it("rejects anything that is not exactly one integer", () => {
     for (const bad of ["", " ", "abc", "1#3", "3.5", "3 4", "1,000"])
       expect(tryParseInt32(bad)).toBeNull();
+  });
+});
+
+describe("nativeCharacterFadeIdentity", () => {
+  it("strips alias/index suffixes but preserves a standalone body suffix", () => {
+    expect(nativeCharacterFadeIdentity("avg_npc_1#3$2")).toBe("avg_npc_1");
+    expect(nativeCharacterFadeIdentity("avg_npc_1@angry$2")).toBe("avg_npc_1");
+    expect(nativeCharacterFadeIdentity("avg_npc_1$2")).toBe("avg_npc_1$2");
   });
 });
 

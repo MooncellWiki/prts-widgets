@@ -151,6 +151,7 @@ export interface CharacterSlotInput {
   durationMs?: number;
   enterFrom?: "down" | "left" | "right" | "up";
   expression?: string;
+  fadeIdentity?: string;
   focusMode?: "current_only" | "none" | "subset";
   focusSlots?: string[];
   inverse?: boolean;

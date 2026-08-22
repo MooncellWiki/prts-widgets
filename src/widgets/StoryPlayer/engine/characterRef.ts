@@ -30,6 +30,30 @@ export interface CharacterRefSelection {
   expression: string;
 }
 
+/**
+ * Port of `AVGCharacterSlot._GetIdWithoutAliasOrIndex`.
+ *
+ * This is deliberately not the resource base returned by
+ * `parseNativeCharacterRef`: native strips the last `@` first, otherwise the
+ * last `#`, but leaves a standalone `$body` suffix in place. `Set` compares
+ * this value when deciding whether `dontFadeIfSameChar` suppresses a fade.
+ *
+ * Also deliberately not case-folded, unlike `resolveCharacterSelection` below.
+ * That fold stands in for the resource layer, which never sees this value:
+ * `Set` compares `m_currentKey` against the raw script spelling with
+ * `String.op_Equality`, i.e. ordinal. So two commands that spell one character
+ * differently (`avg_1012_skadiSP_1` vs `avg_1012_skadisp_1`) resolve to the
+ * same sprite yet still cross-fade, in native and here alike.
+ */
+export function nativeCharacterFadeIdentity(ref: string): string {
+  const alias = ref.lastIndexOf("@");
+  if (alias !== -1) return ref.slice(0, alias);
+
+  const index = ref.lastIndexOf("#");
+  if (index === -1) return ref;
+  return ref.slice(0, index);
+}
+
 /** `System.Number.IsWhite`: 0x20 and 0x09..0x0D only -- no NBSP, no U+3000. */
 function isDotNetWhite(text: string, at: number): boolean {
   const code = text.codePointAt(at) ?? -1;

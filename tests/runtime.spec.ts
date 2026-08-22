@@ -1197,6 +1197,7 @@ describe("StoryRuntime", () => {
         durationMs: 200,
         enterFrom: "left",
         expression: "1$1",
+        fadeIdentity: "avg_npc_1",
         slot: "m",
       },
     ]);
@@ -1229,6 +1230,7 @@ describe("StoryRuntime", () => {
         durationMs: 150,
         enterFrom: undefined,
         expression: "1$1",
+        fadeIdentity: "avg_npc_1",
         slot: "l",
       },
       {
@@ -1241,6 +1243,7 @@ describe("StoryRuntime", () => {
         durationMs: 150,
         enterFrom: undefined,
         expression: "1$1",
+        fadeIdentity: "avg_npc_1",
         slot: "r",
       },
     ]);
@@ -1397,6 +1400,7 @@ describe("StoryRuntime", () => {
         // charslot's `duration` defaults to 0.0, not to DEFAULT_FADE_TIME.
         durationMs: 0,
         expression: "avg_1012_skadisp_2",
+        fadeIdentity: "avg_1012_skadiSP_1",
         focusMode: "current_only",
         focusSlots: undefined,
         positionFrom: undefined,
