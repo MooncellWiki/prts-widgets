@@ -19,8 +19,9 @@ import {
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { useTheme } from "@/utils/theme";
 
+import CharacterFacePreview from "../StoryPlayer/components/CharacterFacePreview.vue";
+
 import CharacterPreview from "./components/CharacterPreview.vue";
-import FaceComposite from "./components/FaceComposite.vue";
 import {
   type CargoStoryRow,
   type CharacterLinkMap,
@@ -59,6 +60,11 @@ interface ResourceCard extends StoryResourceSummary {
   imageUrl: string | null;
   thumbnailUrl: string | undefined;
   character: CharacterPreviewInfo | null;
+}
+
+interface ResourceSearchCriteria {
+  type: string;
+  query: string;
 }
 
 const TYPE_SELECT_OPTIONS: { label: string; value: string }[] = [
@@ -111,6 +117,8 @@ const resources = ref<StoryResourceSummary[]>([]);
 const nextCursor = ref<string | null>(null);
 const loadingMore = ref(false);
 const loadMoreError = ref("");
+const activeResourceSearch = ref<ResourceSearchCriteria | null>(null);
+const resourceSearchGeneration = ref(0);
 
 const showDetail = ref(false);
 const detailResource = ref<StoryResourceSummary | null>(null);
@@ -173,13 +181,12 @@ const cards = computed<ResourceCard[]>(() =>
 );
 
 async function fetchResourcePage(
-  type: string,
-  q: string,
+  criteria: ResourceSearchCriteria,
   cursor?: string | null,
 ): Promise<StoryResourceListResponse> {
   const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
-  if (type) params.set("type", type);
-  if (q) params.set("q", q);
+  if (criteria.type) params.set("type", criteria.type);
+  if (criteria.query) params.set("q", criteria.query);
   if (cursor) params.set("cursor", cursor);
   const resp = await fetch(
     `${TORAPPU_ENDPOINT}/api/v1/story-resources?${params}`,
@@ -191,18 +198,24 @@ async function fetchResourcePage(
 }
 
 async function search(): Promise<void> {
+  resourceSearchGeneration.value += 1;
+  const generation = resourceSearchGeneration.value;
+  const criteria: ResourceSearchCriteria = {
+    type: resourceType.value,
+    query: resourceQuery.value.trim(),
+  };
   status.value = Status.loading;
   errorMessage.value = "";
   loadMoreError.value = "";
   try {
-    const data = await fetchResourcePage(
-      resourceType.value,
-      resourceQuery.value.trim(),
-    );
+    const data = await fetchResourcePage(criteria);
+    if (generation !== resourceSearchGeneration.value) return;
     resources.value = data.resources;
     nextCursor.value = data.nextCursor ?? null;
+    activeResourceSearch.value = criteria;
     status.value = Status.succ;
   } catch (error) {
+    if (generation !== resourceSearchGeneration.value) return;
     console.warn(error);
     errorMessage.value = error instanceof Error ? error.message : String(error);
     status.value = Status.fail;
@@ -210,18 +223,19 @@ async function search(): Promise<void> {
 }
 
 async function loadMore(): Promise<void> {
-  if (!nextCursor.value || loadingMore.value) return;
+  const cursor = nextCursor.value;
+  const criteria = activeResourceSearch.value;
+  if (!cursor || !criteria || loadingMore.value) return;
+  const generation = resourceSearchGeneration.value;
   loadingMore.value = true;
   loadMoreError.value = "";
   try {
-    const data = await fetchResourcePage(
-      resourceType.value,
-      resourceQuery.value.trim(),
-      nextCursor.value,
-    );
+    const data = await fetchResourcePage(criteria, cursor);
+    if (generation !== resourceSearchGeneration.value) return;
     resources.value.push(...data.resources);
     nextCursor.value = data.nextCursor ?? null;
   } catch (error) {
+    if (generation !== resourceSearchGeneration.value) return;
     console.warn(error);
     loadMoreError.value =
       error instanceof Error ? error.message : String(error);
@@ -560,7 +574,7 @@ onMounted(() => {
           <section
             class="face-stage min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl"
           >
-            <FaceComposite
+            <CharacterFacePreview
               :base-url="activeFace.baseUrl"
               :face-url="activeFace.faceUrl"
               :face-rect="activeFace.faceRect"

@@ -1,3 +1,11 @@
+import { normalizeCharacterMap } from "../StoryPlayer/context";
+import {
+  resolveStoryAssetByKey,
+  resolveStoryCharacterAssetByKey,
+} from "../StoryPlayer/engine/asset";
+
+import type { StoryFaceRect } from "../StoryPlayer/engine/types";
+
 export type StoryResourceType = "background" | "image" | "item" | "character";
 
 export const RESOURCE_TYPE_OPTIONS: {
@@ -30,7 +38,7 @@ export interface StoryResourceListResponse {
 export interface StoryUsageItem {
   scriptPath: string;
   displayNames: string[];
-  /** 该剧情用到的脸部差分（`base#face$body`），仅角色 body 查询时返回 */
+  /** 该剧情用到的实际差分（`base#expression`），仅角色 body 查询时返回 */
   faces?: string[] | null;
 }
 
@@ -59,13 +67,6 @@ const TORAPPU_ASSET_BASE = "https://torappu.prts.wiki/assets";
 
 export const CHARACTER_MAP_URL = `${TORAPPU_ASSET_BASE}/avg/character.json`;
 
-function encodePathSegments(path: string): string {
-  return path
-    .split("/")
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-}
-
 /**
  * 背景与图像类资源的静态图 URL，路径规则与 StoryPlayer 的
  * `resolveStoryAssetByKey` 一致（key 小写，道具同样落在 avg/images 下）。
@@ -75,27 +76,18 @@ export function storyResourceImageUrl(
   type: StoryResourceType,
   id: string,
 ): string | null {
-  const key = id.trim().toLowerCase();
-  if (!key) return null;
   switch (type) {
     case "background": {
-      return `${TORAPPU_ASSET_BASE}/avg/background/${encodePathSegments(key)}.png`;
+      return resolveStoryAssetByKey(id, true);
     }
     case "image":
     case "item": {
-      return `${TORAPPU_ASSET_BASE}/avg/images/${encodePathSegments(key)}.png`;
+      return resolveStoryAssetByKey(id, false);
     }
     default: {
       return null;
     }
   }
-}
-
-export interface StoryFaceRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export type CharacterPreview =
@@ -127,53 +119,27 @@ interface CharacterLinkNode {
 
 export type CharacterLinkMap = Map<string, CharacterLinkNode>;
 
-function toFiniteInt(value: unknown): number {
-  const num = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(num) ? Math.round(num) : 0;
-}
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-/** 归一化 `avg/character.json`，只保留卡片预览需要的字段 */
+/** 复用 StoryPlayer 的归一化结果，只转换成卡片预览所需的 Map 结构 */
 export function parseCharacterMap(raw: unknown): CharacterLinkMap {
   const output: CharacterLinkMap = new Map();
-  const root = asObject(raw);
-  if (!root) return output;
+  const normalized = normalizeCharacterMap(raw);
 
-  for (const [base, rawNode] of Object.entries(root)) {
-    const node = asObject(rawNode);
-    if (!node) continue;
-
-    const groupsRaw = Array.isArray(node.groups) ? node.groups : [];
-    const arrayRaw = Array.isArray(node.array) ? node.array : [];
+  for (const [base, node] of Object.entries(normalized)) {
     const overlays = new Map<number, CharacterOverlayGroup>();
     const items = new Map<string, CharacterLinkItem>();
 
-    for (const [groupIndex, rawGroup] of groupsRaw.entries()) {
-      const group = asObject(rawGroup);
-      if (!group || group.mode !== "face_overlay") continue;
-      if (typeof group.base !== "string") continue;
-      const rectRaw = asObject(group.faceRect) ?? {};
+    for (const [groupIndex, group] of node.groups.entries()) {
+      if (group.mode !== "face_overlay") continue;
       overlays.set(groupIndex, {
         base: group.base,
-        faceRect: {
-          x: toFiniteInt(rectRaw.x),
-          y: toFiniteInt(rectRaw.y),
-          w: toFiniteInt(rectRaw.w),
-          h: toFiniteInt(rectRaw.h),
-        },
+        faceRect: group.faceRect,
       });
     }
 
-    for (const rawItem of arrayRaw) {
-      const item = asObject(rawItem);
-      if (!item || typeof item.name !== "string") continue;
-      const entry: CharacterLinkItem = { group: toFiniteInt(item.group) };
-      if (typeof item.face === "string") entry.face = item.face;
-      if (typeof item.image === "string") entry.image = item.image;
+    for (const item of node.array) {
+      const entry: CharacterLinkItem = { group: item.group };
+      if (item.face) entry.face = item.face;
+      if (item.image) entry.image = item.image;
       if (!items.has(item.name)) items.set(item.name, entry);
     }
 
@@ -226,7 +192,7 @@ function parseCharacterListingId(id: string): ParsedCharacterListingId {
 
 /**
  * 列表接口的角色 id 有两种形态：叠图角色归并为 `base$body`，
- * 独立全身图差分保留完整 `base#face$body`，这里统一剥成 base 键。
+ * 独立全身图差分保留完整 `base#expression`，这里统一剥成 base 键。
  */
 export function characterBaseOfListingId(id: string): string {
   return parseCharacterListingId(id).base;
@@ -241,7 +207,9 @@ function bodySuffixOf(name: string): string | null {
 }
 
 function characterAssetUrl(key: string): string {
-  return `${TORAPPU_ASSET_BASE}/avg/characters/${encodePathSegments(key)}.png`;
+  const url = resolveStoryCharacterAssetByKey(key);
+  if (!url) throw new Error("character asset key is empty");
+  return url;
 }
 
 /** 选中 body 对应的叠图组（底图键以 `$body` 结尾），找不到时退回第一个组 */
@@ -318,7 +286,7 @@ export interface FaceGalleryItem {
 
 /**
  * 组装表情浏览数据：列出该 body 的全部差分并标记本条剧情用到的
- * （`usedFaceIds` 是接口返回的 `base#face$body` 列表）。
+ * （`usedFaceIds` 是接口返回的 `base#expression` 列表）。
  * 角色无 face_overlay（单图角色）或查不到 base 时返回 null。
  */
 export function buildFaceGallery(
