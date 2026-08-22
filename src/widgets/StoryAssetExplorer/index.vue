@@ -32,6 +32,7 @@ import {
   type StoryUsageItem,
   type StoryUsageResponse,
   CARGO_IN_CHUNK,
+  CARGO_ROW_LIMIT,
   MAX_PAGES,
   PAGE_LIMIT,
   RESOURCE_TYPE_OPTIONS,
@@ -123,6 +124,7 @@ const resourceSearchGeneration = ref(0);
 
 const showDetail = ref(false);
 const detailResource = ref<StoryResourceSummary | null>(null);
+const detailGeneration = ref(0);
 const detailStatus = ref(Status.idle);
 const detailError = ref("");
 const detailRows = ref<ResultRow[]>([]);
@@ -277,7 +279,7 @@ async function fetchCargoStories(
       tables: "story",
       fields: "_pageName=page,textPath,storyType,storyGroup",
       where: cargoTextPathIn(group),
-      limit: String(CARGO_IN_CHUNK),
+      limit: String(CARGO_ROW_LIMIT),
     });
     const resp = await fetch(`/api.php?${params}`);
     if (!resp.ok) {
@@ -298,6 +300,10 @@ async function fetchCargoStories(
 async function queryDetail(): Promise<void> {
   const resource = detailResource.value;
   if (!resource) return;
+  // 详情要打两轮网络请求（分页的 usages + 分批的 cargo），连续打开两个资源时
+  // 先发的响应可能后到，覆盖掉当前资源的表格。
+  detailGeneration.value += 1;
+  const generation = detailGeneration.value;
   detailStatus.value = Status.loading;
   detailError.value = "";
   try {
@@ -305,6 +311,7 @@ async function queryDetail(): Promise<void> {
     const storyMap = await fetchCargoStories(
       items.map((item) => item.scriptPath),
     );
+    if (generation !== detailGeneration.value) return;
     detailRows.value = items.map((item) => ({
       ...item,
       story: storyMap.get(item.scriptPath),
@@ -312,6 +319,7 @@ async function queryDetail(): Promise<void> {
     matchedCount.value = detailRows.value.filter((row) => row.story).length;
     detailStatus.value = Status.succ;
   } catch (error) {
+    if (generation !== detailGeneration.value) return;
     console.warn(error);
     detailError.value = error instanceof Error ? error.message : String(error);
     detailStatus.value = Status.fail;
