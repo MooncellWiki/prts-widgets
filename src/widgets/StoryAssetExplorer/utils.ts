@@ -27,6 +27,11 @@ export function resourceTypeLabel(type: string): string {
   );
 }
 
+/**
+ * 以下响应类型对应 ak-asset-storage 的 `/api/v1/story-resources` 与
+ * `/api/v1/story-resource-usages`（见该仓库的 `app/common/schema.d.ts`）。
+ * 跨仓库改字段没有编译期保护，动接口时两边都要过一遍。
+ */
 export interface StoryResourceSummary {
   type: StoryResourceType;
   id: string;
@@ -63,8 +68,15 @@ export const PAGE_LIMIT = 200;
 /** 翻页保护：200/页 * 50 页 */
 export const MAX_PAGES = 50;
 
-/** cargo api.php 单次查询的 IN 列表上限（默认上限 500，留足余量） */
+/** cargo api.php 单次查询的 IN 列表上限（结果上限 500，留足余量） */
 export const CARGO_IN_CHUNK = 100;
+
+/**
+ * cargo 单次查询的结果条数上限。必须大于 `CARGO_IN_CHUNK`：一个 textPath
+ * 理论上可以落在多个剧情页面上，取等就会在那种情况下静默截断，把后面的
+ * textPath 全变成「未收录」。
+ */
+export const CARGO_ROW_LIMIT = 500;
 
 const TORAPPU_ASSET_BASE = "https://torappu.prts.wiki/assets";
 

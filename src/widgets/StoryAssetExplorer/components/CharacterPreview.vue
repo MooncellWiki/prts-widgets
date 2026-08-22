@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { NImage, NSpin } from "naive-ui";
 
@@ -22,6 +22,16 @@ const observer = ref<IntersectionObserver | null>(null);
 
 const displaySrc = computed(() =>
   props.preview.kind === "single" ? props.preview.url : compositeUrl.value,
+);
+
+/**
+ * 内容指纹，而不是 `props.preview` 本身：父级的 `cards` 是 computed，每次重算
+ * 都会产出新对象，按引用 watch 会让每张卡片反复重新合成。
+ */
+const previewKey = computed(() =>
+  props.preview.kind === "single"
+    ? props.preview.url
+    : `${props.preview.baseUrl}|${props.preview.faceUrl}`,
 );
 
 function fetchImage(url: string): Promise<{ image: HTMLImageElement }> {
@@ -100,7 +110,9 @@ async function drawComposite(): Promise<void> {
       rect.h * scale,
     );
 
-    resultUrl.value = URL.createObjectURL(await canvasAsPng(canvas));
+    const encoded = await canvasAsPng(canvas);
+    if (token !== drawToken.value) return;
+    resultUrl.value = URL.createObjectURL(encoded);
     compositeUrl.value = resultUrl.value;
   } catch (error) {
     if (token === drawToken.value) failed.value = true;
@@ -108,7 +120,20 @@ async function drawComposite(): Promise<void> {
   }
 }
 
-onMounted(() => {
+function releaseResult(): void {
+  if (resultUrl.value) URL.revokeObjectURL(resultUrl.value);
+  resultUrl.value = null;
+}
+
+/** 丢弃上一轮合成并重新挂观察器；`preview` 换内容时也要走一遍 */
+function arm(): void {
+  observer.value?.disconnect();
+  observer.value = null;
+  drawToken.value += 1;
+  releaseResult();
+  compositeUrl.value = null;
+  failed.value = false;
+
   if (props.preview.kind !== "composite") {
     return;
   }
@@ -129,12 +154,15 @@ onMounted(() => {
     { rootMargin: "200px" },
   );
   if (hostRef.value) observer.value.observe(hostRef.value);
-});
+}
+
+onMounted(arm);
+watch(previewKey, arm);
 
 onBeforeUnmount(() => {
   drawToken.value++;
   observer.value?.disconnect();
-  if (resultUrl.value) URL.revokeObjectURL(resultUrl.value);
+  releaseResult();
 });
 </script>
 
