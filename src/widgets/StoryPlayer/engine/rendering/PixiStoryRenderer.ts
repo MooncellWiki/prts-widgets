@@ -219,6 +219,11 @@ export class PixiStoryRenderer implements StoryRenderer {
   private imageSprite: Sprite | null = null;
   private imageRotateSessionId = 0;
   private readonly itemLayer = this.layers.items;
+  // Handle on the single show-item slot root, the PIXI stand-in for
+  // `Torappu.AVG.AVGShowItemPanel._slotInUse`. Only this root is swapped by
+  // showItem(); `animtext` shares `itemLayer` but is a separate native panel,
+  // so it must never be dragged along with item swaps.
+  private showItemRoot: Container | null = null;
   private readonly onWarning?: (detail: string) => void;
   private readonly sceneLayer = this.layers.scene;
   private readonly uiLayer = this.layers.ui;
@@ -399,6 +404,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageSprite = null;
     this.imageLayer.removeChildren();
     this.itemLayer.removeChildren();
+    this.showItemRoot = null;
     for (const state of this.cutinStates.values()) state.sprite.destroy();
     this.cutinStates.clear();
     this.cutinStoredPositions.clear();
@@ -1113,82 +1119,119 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Port scope: `Torappu.AVG.AVGShowItemPanel._ExecuteShowItem` / `_ShowItem`.
-   * It retains the single-slot replacement and photo fade; PIXI drawing is an
+   * Port scope: `Torappu.AVG.AVGShowItemPanel._ExecuteShowItem` / `_ShowItem`
+   * (2.7.61 VAs 0x183E5BE10 / 0x183E5C290). Native owns a single slot
+   * (`_slotInUse`): while a slot is on stage the executor hands the NEW
+   * command to the old slot's `Hide` (vtable slot 5), so the old picture
+   * fades out with the NEW command's fadetime, then the `b__0` closure
+   * (`_Reset` + `_ShowItem`, 0x183E62FB0) destroys the slot before the next
+   * picture fades in — both stages block the executor. PIXI drawing is an
    * approximation of the serialized show-item prefab.
    */
   async showItem(input: ShowItemInput): Promise<void> {
-    const texture = await this.textureForImageKey(input.key, "image");
-    if (!texture) return;
+    const chain = async (): Promise<void> => {
+      // Replacement branch of `_ExecuteShowItem`: fade the previous slot out
+      // with the new command's fadetime, then detach it (`_Reset`). A root
+      // already detached from the layer (hideitem / scene reset) mirrors a
+      // cleared `_slotInUse`, so it takes the direct-show branch instead.
+      const previousRoot = this.showItemRoot;
+      this.showItemRoot = null;
+      if (previousRoot?.parent) {
+        const startAlpha = previousRoot.alpha;
+        if (input.fadeMs <= 0) {
+          previousRoot.removeFromParent();
+        } else {
+          await this.tween(
+            input.fadeMs,
+            (progress) => {
+              previousRoot.alpha = startAlpha * (1 - progress);
+            },
+            () => {
+              previousRoot.removeFromParent();
+            },
+          );
+        }
+      }
 
-    // `AVGShowItemPanel._ExecuteShowItem` owns one slot, so a second showitem
-    // replaces the first rather than stacking on it. See the command evidence
-    // above; PIXI children are only the storage adaptation.
-    this.itemLayer.removeChildren();
+      const texture = await this.textureForImageKey(input.key, "image");
+      // `AVGShowItemSlot.Show` (0x183ED3E80) skips only the sprite assignment
+      // when the asset fails to load; the photo slot still plays its fade and
+      // blocks for fadetime. Keep a backdrop-only root instead of bailing out.
+      const sprite = texture ? new Sprite(texture) : null;
+      const layout = texture
+        ? computeLegacyShowItemLayout(texture.width, texture.height)
+        : null;
 
-    const sprite = new Sprite(texture);
-    sprite.anchor.set(0.5);
+      const root = new Container();
+      root.alpha = input.fadeMs > 0 ? 0 : 1;
+      if (input.blackAlpha > 0) {
+        const backdrop = new Graphics();
+        backdrop.rect(0, 0, STORY_WIDTH, STORY_HEIGHT);
+        backdrop.fill({ alpha: input.blackAlpha, color: 0x00_00_00 });
+        root.addChild(backdrop);
+      }
 
-    const layout = computeLegacyShowItemLayout(texture.width, texture.height);
-    sprite.scale.set(layout.scale);
+      if (sprite && layout) {
+        sprite.anchor.set(0.5);
+        sprite.scale.set(layout.scale);
 
-    const border = new Graphics();
-    border.rect(
-      -layout.contentWidth / 2 - layout.borderPx,
-      -layout.contentHeight / 2 - layout.borderPx,
-      layout.contentWidth + layout.borderPx * 2,
-      layout.borderPx,
-    );
-    border.fill(0xff_ff_ff);
-    border.rect(
-      -layout.contentWidth / 2 - layout.borderPx,
-      layout.contentHeight / 2,
-      layout.contentWidth + layout.borderPx * 2,
-      layout.borderPx,
-    );
-    border.fill(0xff_ff_ff);
-    border.rect(
-      -layout.contentWidth / 2 - layout.borderPx,
-      -layout.contentHeight / 2,
-      layout.borderPx,
-      layout.contentHeight,
-    );
-    border.fill(0xff_ff_ff);
-    border.rect(
-      layout.contentWidth / 2,
-      -layout.contentHeight / 2,
-      layout.borderPx,
-      layout.contentHeight,
-    );
-    border.fill(0xff_ff_ff);
+        const border = new Graphics();
+        border.rect(
+          -layout.contentWidth / 2 - layout.borderPx,
+          -layout.contentHeight / 2 - layout.borderPx,
+          layout.contentWidth + layout.borderPx * 2,
+          layout.borderPx,
+        );
+        border.fill(0xff_ff_ff);
+        border.rect(
+          -layout.contentWidth / 2 - layout.borderPx,
+          layout.contentHeight / 2,
+          layout.contentWidth + layout.borderPx * 2,
+          layout.borderPx,
+        );
+        border.fill(0xff_ff_ff);
+        border.rect(
+          -layout.contentWidth / 2 - layout.borderPx,
+          -layout.contentHeight / 2,
+          layout.borderPx,
+          layout.contentHeight,
+        );
+        border.fill(0xff_ff_ff);
+        border.rect(
+          layout.contentWidth / 2,
+          -layout.contentHeight / 2,
+          layout.borderPx,
+          layout.contentHeight,
+        );
+        border.fill(0xff_ff_ff);
 
-    const root = new Container();
-    root.alpha = input.fadeMs > 0 ? 0 : 1;
-    if (input.blackAlpha > 0) {
-      const backdrop = new Graphics();
-      backdrop.rect(0, 0, STORY_WIDTH, STORY_HEIGHT);
-      backdrop.fill({ alpha: input.blackAlpha, color: 0x00_00_00 });
-      root.addChild(backdrop);
-    }
+        const content = new Container();
+        content.position.set(
+          STORY_WIDTH / 2 + input.offsetX,
+          STORY_HEIGHT / 2 + input.offsetY,
+        );
+        content.addChild(border);
+        content.addChild(sprite);
+        root.addChild(content);
+      }
 
-    const content = new Container();
-    content.position.set(
-      STORY_WIDTH / 2 + input.offsetX,
-      STORY_HEIGHT / 2 + input.offsetY,
-    );
-    content.addChild(border);
-    content.addChild(sprite);
-    root.addChild(content);
-    this.itemLayer.addChild(root);
+      // Only the tracked slot root is added here: `animtext` renders into the
+      // same layer but is an independent native panel (`AnimTextPanel`), so it
+      // must survive item swaps instead of being swept by removeChildren().
+      this.showItemRoot = root;
+      this.itemLayer.addChild(root);
 
-    if (input.fadeMs <= 0) return;
+      if (input.fadeMs <= 0) return;
 
-    const run = this.tween(input.fadeMs, (progress) => {
-      root.alpha = progress;
-    });
+      const run = this.tween(input.fadeMs, (progress) => {
+        root.alpha = progress;
+      });
 
-    if (input.block) await run;
-    else void run;
+      await run;
+    };
+
+    if (input.block) await chain();
+    else void chain();
   }
 
   async showCgItem(input: CgItemInput): Promise<void> {

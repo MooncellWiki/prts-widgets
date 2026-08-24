@@ -764,6 +764,31 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("warns and skips a showitem without an image", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext(['[showitem(style="photo")]', '[name="A"]ok']),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // Native `_ShowItem` has no empty-image guard (it would still fade in a
+    // backdrop-only slot); every shipped sample fills `image`, so the web port
+    // warns and skips instead of reproducing the empty-slot fade.
+    expect(renderer.showItemCalls).toEqual([]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "showitem",
+        detail: "showitem: image is empty",
+        type: "invalid_parameter",
+      }),
+    ]);
+  });
+
   it("treats a bracketed key=value tag as an empty dialog line", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
