@@ -22,8 +22,43 @@ function largeBackgroundInitOffset(input: GridBackgroundInput): {
   x: number;
   y: number;
 } {
-  if (input.layout !== "large" || input.initPositionMode === undefined)
-    return { x: 0, y: 0 };
+  if (input.initPositionMode === undefined) return { x: 0, y: 0 };
+
+  if (input.layout === "vertical") {
+    // `_ExecuteVerticalBG` builds widthList = [solidwidth, solidwidth] and
+    // passes the full height list, but the shared `_InitPosition*` helpers
+    // only read entries [0]+[1] (2.7.61: 0x183e7a3b4 / 0x183e7a4fa) — the
+    // same two-tile truncation as the sizeDelta quirk in the builder below.
+    const width = input.solidWidths[0] ?? 0;
+    const heightSum =
+      (input.solidHeights[0] ?? 0) + (input.solidHeights[1] ?? 0);
+    // The conversion baseline is `_offset.sizeDelta.y` (the quirk value
+    // h0+h1), matching the pivot set in the vertical branch of the builder.
+    const centeredY = (nativeY: number) => nativeY + heightSum / 2;
+    switch (input.initPositionMode) {
+      case "center": {
+        return { x: 0, y: centeredY(0) };
+      }
+      case "upperleft": {
+        return {
+          x: (width * 2 - STORY_WIDTH) / 2,
+          y: centeredY((STORY_HEIGHT - heightSum) / 2),
+        };
+      }
+      case "lowercenter": {
+        return { x: 0, y: centeredY((heightSum - STORY_HEIGHT) / 2) };
+      }
+      default: {
+        // default = (width[1] / 2, -height[1] / 2) over the full list.
+        return {
+          x: width / 2,
+          y: centeredY(-(input.solidHeights[1] ?? 0) / 2),
+        };
+      }
+    }
+  }
+
+  if (input.layout !== "large") return { x: 0, y: 0 };
 
   const widths = input.solidWidths;
   const height = input.solidHeights[0] ?? 0;

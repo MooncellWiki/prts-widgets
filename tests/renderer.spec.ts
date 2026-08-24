@@ -311,6 +311,136 @@ describe("PixiStoryRenderer", () => {
     ]);
   });
 
+  it("applies verticalbg initposmode offsets with the two-tile height sum", () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    const build = (initPositionMode: GridBackgroundInput["initPositionMode"]) =>
+      renderer.buildGridBackgroundRoot(
+        {
+          ...createGridBackgroundInput(),
+          imageKeys: ["v1", "v2"],
+          initPositionMode,
+          layout: "vertical",
+          solidHeights: [1454, 1454],
+          solidWidths: [1280],
+          x: 0,
+          y: 0,
+        },
+        [Texture.EMPTY, Texture.EMPTY],
+      );
+
+    const positionOf = (
+      initPositionMode: GridBackgroundInput["initPositionMode"],
+    ) => {
+      const { x, y } = build(initPositionMode).position;
+      return { x, y };
+    };
+
+    // Native builds widthList = [solidwidth, solidwidth] and passes the full
+    // height list, but _InitPosition* only reads entries [0]+[1]; the Pixi
+    // conversion baseline is the same quirk sum (h0+h1) used for the pivot.
+    // center: (0, 0) -> root.position = (640, 360 - 1454).
+    expect(positionOf("center")).toEqual({ x: 640, y: -1094 });
+    // default: (width/2, -height[1]/2) -> root.position = (1280, 360 - 727).
+    expect(positionOf("default")).toEqual({ x: 1280, y: -367 });
+    // lowercenter: (0, (h0+h1-720)/2) -> root.position = (640, 360 - 2548).
+    expect(positionOf("lowercenter")).toEqual({ x: 640, y: -2188 });
+    // upperleft: ((2w-1280)/2, (720-(h0+h1))/2) -> root.position = (1280, 0).
+    expect(positionOf("upperleft")).toEqual({ x: 1280, y: 0 });
+  });
+
+  it("pans verticalbg compositions with largebgtween", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setGridBackground({
+      ...createGridBackgroundInput(),
+      imageKeys: ["v1", "v2"],
+      layout: "vertical",
+      solidHeights: [720, 720],
+      solidWidths: [1280],
+      x: 0,
+      y: 0,
+    });
+
+    // The whole family shares one `_offset` container in native, so the
+    // vertical composition must be registered for largebgtween as well.
+    const root = renderer.gridBackgroundLayer.children[0];
+    expect(renderer.largeBackgroundRoot).toBe(root);
+
+    await renderer.setLargeBackgroundTween({
+      block: false,
+      durationMs: 0,
+      yFrom: 0,
+      yTo: 600,
+    });
+
+    // duration 0 snaps to the target: applyCenteredTransform maps y=600 to
+    // position.y = 360 - 600.
+    expect(root.position.y).toBe(-240);
+  });
+
+  it("clears the layer when a grid background tile fails to load", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    const warnings: string[] = [];
+    renderer.onWarning = (detail: string) => warnings.push(detail);
+    renderer.textureForImageKey = vi
+      .fn()
+      .mockResolvedValueOnce(Texture.EMPTY)
+      .mockResolvedValueOnce(Texture.EMPTY)
+      .mockResolvedValueOnce(Texture.EMPTY)
+      .mockResolvedValue(null);
+
+    const input: GridBackgroundInput = {
+      ...createGridBackgroundInput(),
+      imageKeys: ["v1", "v2"],
+      layout: "vertical",
+      solidHeights: [720, 720],
+      solidWidths: [1280],
+      x: 0,
+      y: 0,
+    };
+    await renderer.setGridBackground(input);
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+
+    await renderer.setGridBackground(input);
+
+    // Native _LoadImage failure logs both errors then _ResetPanel() wipes the
+    // previous composition (all-or-nothing).
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(0);
+    expect(renderer.largeBackgroundRoot).toBeNull();
+    expect(warnings).toContain("grid background tiles failed to load; cleared");
+  });
+
+  it("drops the previous composition immediately when replacing with a fade", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    renderer.tween = vi.fn(async () => {});
+
+    const input: GridBackgroundInput = {
+      ...createGridBackgroundInput(),
+      imageKeys: ["v1", "v2"],
+      layout: "vertical",
+      solidHeights: [720, 720],
+      solidWidths: [1280],
+      x: 0,
+      y: 0,
+    };
+    await renderer.setGridBackground(input);
+    const first = renderer.gridBackgroundLayer.children[0];
+
+    await renderer.setGridBackground({ ...input, fadeMs: 1000 });
+
+    // Native runs _ResetImages() before the new composition fades in, so the
+    // old root is gone at once and the new one starts fully transparent.
+    expect(first.parent).toBeNull();
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+    expect(renderer.gridBackgroundLayer.children[0].alpha).toBe(0);
+  });
+
   it("lays out largebg as exactly two horizontal tiles", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const textures = [

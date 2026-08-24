@@ -1875,6 +1875,7 @@ describe("StoryRuntime", () => {
         block: false,
         fadeMs: 1000,
         imageKeys: ["66_i15_4", "66_i15_3", "66_i15_2", "66_i15_1"],
+        initPositionMode: "default",
         layout: "vertical",
         scaleX: 0.9,
         scaleY: 0.9,
@@ -1907,6 +1908,7 @@ describe("StoryRuntime", () => {
         block: false,
         fadeMs: 0,
         imageKeys: ["69_i12_1", "69_i12_2"],
+        initPositionMode: "default",
         layout: "vertical",
         scaleX: 1,
         scaleY: 1,
@@ -1937,6 +1939,7 @@ describe("StoryRuntime", () => {
         block: false,
         fadeMs: 0,
         imageKeys: ["47_g14_skyovercast_l1", "47_g14_skyovercast_r1"],
+        initPositionMode: "default",
         layout: "vertical",
         scaleX: 1,
         scaleY: 1,
@@ -1964,6 +1967,82 @@ describe("StoryRuntime", () => {
         block: true,
         fadeMs: 3000,
       },
+    ]);
+  });
+
+  it("reads verticalbg initposmode and falls back to default", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[verticalbg(imagegroup="66_i15_4/66_i15_3",solidwidth=1280,solidheight="720/720",initposmode="upperleft")]',
+        '[verticalbg(imagegroup="66_i15_4/66_i15_3",solidwidth=1280,solidheight="720/720",initposmode="diagonal")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // POSITION_INIT_FUNCTION only knows default/center/lowercenter/upperleft;
+    // anything else still lands on the "default" math.
+    expect(
+      renderer.gridBackgroundCalls.map((input) => input.initPositionMode),
+    ).toEqual(["upperleft", "default"]);
+  });
+
+  it("clears the layer when verticalbg validation fails", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        // Five tiles exceed native's SafeCount > 4 check; _ResetPanel() wipes
+        // the previous composition without any fade.
+        '[verticalbg(imagegroup="a/b/c/d/e",solidwidth=1280,solidheight="720/720/720/720/720")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.gridBackgroundCalls).toEqual([]);
+    expect(renderer.gridBackgroundClearCalls).toEqual([
+      { block: false, fadeMs: 0 },
+    ]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "verticalbg",
+        type: "parse",
+      }),
+    ]);
+  });
+
+  it("warns but still renders a single-tile verticalbg", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[verticalbg(imagegroup="solo",solidwidth=1280,solidheight="720")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // Native crashes on heightList[1] (raw get_Item in the sizeDelta quirk);
+    // the web port keeps rendering and only reports the divergence.
+    expect(renderer.gridBackgroundCalls).toHaveLength(1);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "verticalbg",
+        type: "parse",
+      }),
     ]);
   });
 
