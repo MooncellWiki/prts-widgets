@@ -1371,8 +1371,13 @@ export class StoryRuntime {
         const key = id ? `${image}_${id}` : image;
         const style = toString(this.exactArg(args, "style"), "cg");
         if (style === "blocker") {
-          // Native port scope: AVGCgItemPanel._ShowItem's `blocker` branch uses a
-          // scene-resident sprite and deliberately skips m_slotsInUseDict. No
+          // Native port scope: in 2.7.61 `AVGCgItemPanel._ShowItem`
+          // (0x183e35d80) runs its common prefix (instantiate new slot,
+          // dispose the old same-key entry, write m_slotsInUseDict, bind
+          // PostDisplay) for `style="blocker"` as well and only skips the
+          // sprite load, showing the scene-resident blocker prefab instead.
+          // The web player has no such prefab, so the whole command is
+          // deliberately omitted here (corpus usage: 0).
           this.warn(
             "unsupported_command",
             "cgitem style=blocker uses a native-only scene sprite",
@@ -1408,9 +1413,12 @@ export class StoryRuntime {
           block: toBoolean(this.exactArg(args, "block"), false),
           colorFrom: colorFrom && colorTo ? colorFrom : undefined,
           colorTo: colorFrom && colorTo ? colorTo : undefined,
-          // `AVGShowItemCgSlot.Show` defaults `ease` to `Ease.Linear` (= 1),
-          // not to an eased curve.
-          ease: toString(this.exactArg(args, "ease"), "Linear"),
+          // `AVGShowItemCgSlot.Show` (0x183ed1810) reads the curve with
+          // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`.
+          // In DOTween's public `Ease` enum `Linear = 0` and `InSine = 1`,
+          // so the default is InSine (1 - cos(t*pi/2)) -- nearly every
+          // corpus cgitem omits `ease` and therefore eases InSine.
+          ease: toString(this.exactArg(args, "ease"), "InSine"),
           height: Math.trunc(toNumber(this.exactArg(args, "height"), 0)),
           key,
           positionDelayMs: seconds("pdelay"),

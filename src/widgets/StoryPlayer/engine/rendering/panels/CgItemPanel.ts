@@ -12,7 +12,7 @@ type Tween = (
 interface CgItemState {
   root: Container;
   sessionId: number;
-  sprite: Sprite;
+  sprite: Sprite | null;
 }
 
 function lerp(from: number, to: number, progress: number): number {
@@ -24,21 +24,36 @@ function colorChannel(value: number): number {
 }
 
 function easeProgress(raw: number, ease: string): number {
+  // Native provenance: `Torappu.AVG.AVGShowItemCgSlot.Show` (0x183ed1810,
+  // 2.7.61/build 2761) reads the curve with
+  // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`. In DOTween's
+  // public `Ease` enum `Linear = 0` and `InSine = 1`, so the call-site default
+  // -- which `GetEnum` also returns for names it cannot parse -- is InSine
+  // (`1 - cos(t*pi/2)`), not Linear. Production scripts almost never write
+  // `ease` (169/172 corpus cgitem lines), so this default drives nearly every
+  // Ken Burns move. `hidecgitem` passes its own explicit default from
+  // runtime.ts, which keeps that command's behaviour under its own review.
+  // Web adaptation: matching stays case-insensitive (native `ignoreCase:
+  // false`); corpus values use canonical casing, so the fold never triggers
+  // in production.
   switch (ease.toLowerCase()) {
+    case "insine": {
+      return 1 - Math.cos((raw * Math.PI) / 2);
+    }
     case "inquad": {
       return raw * raw;
     }
     case "inoutquad": {
       return raw < 0.5 ? 2 * raw * raw : 1 - (-2 * raw + 2) ** 2 / 2;
     }
+    case "linear": {
+      return raw;
+    }
     case "outquad": {
       return 1 - (1 - raw) * (1 - raw);
     }
-    // `AVGShowItemCgSlot.Show` / `.Hide` read the curve with
-    // `GetEnum<Ease>(param, "ease", Ease.Linear, ignoreCase: false)`, which
-    // also returns that fallback for any name it cannot parse.
     default: {
-      return raw;
+      return 1 - Math.cos((raw * Math.PI) / 2);
     }
   }
 }
@@ -74,122 +89,147 @@ export class CgItemPanel {
   ) {}
 
   async show(input: CgItemInput): Promise<void> {
-    const texture = await this.loadTexture(input.assetKey);
-    if (!texture) {
-      this.onWarning?.(`cgitem asset is missing: ${input.assetKey}`);
-      return;
-    }
-
+    // Native provenance: `Torappu.AVG.AVGCgItemPanel._ShowItem` (0x183e35d80,
+    // 2.7.61/build 2761) instantiates the new slot, instantly `Dispose()`s the
+    // previous same-key entry (no fade), and writes the new entry into
+    // `m_slotsInUseDict` BEFORE any sprite work. Its `_LoadSprite` is a
+    // synchronous cached load (assets are preloaded via
+    // `InternalResRefCollector.GatherResRefs`), so the executor never waits
+    // on I/O. The web port mirrors the command-side ordering -- dispose old,
+    // register the placeholder root -- and only then starts the asynchronous
+    // texture load, so uncached assets stay off the command critical path
+    // (block=false returns before the bytes arrive) and a `hidecgitem`
+    // arriving mid-load still finds the key instead of leaking the sprite.
     this.dispose(input.key);
     const root = new Container();
-    const sprite = new Sprite(texture);
-    sprite.anchor.set(0.5);
-    sprite.setSize(texture.width, texture.height);
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
-    root.addChild(sprite);
     this.layer.addChild(root);
-    const state = { root, sessionId: 1, sprite };
+    const state: CgItemState = { root, sessionId: 1, sprite: null };
     this.states.set(input.key, state);
     const sessionId = state.sessionId;
 
-    if (input.width > 0 && input.height > 0)
-      sprite.setSize(input.width, input.height);
+    const completion = this.loadTexture(input.assetKey).then((texture) => {
+      // The slot was replaced, hidden, or cleared while the texture was in
+      // flight: drop the frames instead of resurrecting a destroyed root.
+      if (this.states.get(input.key) !== state) return;
+      if (state.sessionId !== sessionId) return;
+      if (!texture) {
+        // Web adaptation: native would keep an empty registered slot; the
+        // frontend undoes the pending registration so a failed load leaves
+        // no invisible target behind (the missing asset is already warned).
+        this.onWarning?.(`cgitem asset is missing: ${input.assetKey}`);
+        this.dispose(input.key);
+        return;
+      }
 
-    const runs: Promise<void>[] = [];
-    const run = (
-      delayMs: number,
-      durationMs: number,
-      update: (progress: number) => void,
-    ) => {
-      const totalMs = Math.max(0, delayMs) + Math.max(0, durationMs);
-      runs.push(
-        this.tween(totalMs, (raw) => {
-          if (state.sessionId !== sessionId) return;
-          const elapsed = raw * totalMs;
-          const local =
-            durationMs <= 0
-              ? 1
-              : Math.max(0, Math.min(1, (elapsed - delayMs) / durationMs));
-          update(easeProgress(local, input.ease));
-        }),
-      );
-    };
+      const sprite = new Sprite(texture);
+      state.sprite = sprite;
+      sprite.anchor.set(0.5);
+      sprite.setSize(texture.width, texture.height);
+      root.addChild(sprite);
 
-    // `Torappu.AVG.AVGShowItemCgSlot.Show` drives Transform.localPosition and
-    // `_GenPosByRaw` keeps the raw y sign. PIXI uses sprite.position as the
-    // coordinate-system adaptation, so do not inherit sticker's UI-y inversion.
-    if (input.positionFrom && input.positionTo) {
-      if (input.positionDurationMs > 0) {
-        sprite.position.set(input.positionFrom.x, input.positionFrom.y);
-        run(input.positionDelayMs, input.positionDurationMs, (progress) =>
-          sprite.position.set(
-            lerp(input.positionFrom!.x, input.positionTo!.x, progress),
-            lerp(input.positionFrom!.y, input.positionTo!.y, progress),
-          ),
+      if (input.width > 0 && input.height > 0)
+        sprite.setSize(input.width, input.height);
+
+      const runs: Promise<void>[] = [];
+      const run = (
+        delayMs: number,
+        durationMs: number,
+        update: (progress: number) => void,
+      ) => {
+        const totalMs = Math.max(0, delayMs) + Math.max(0, durationMs);
+        runs.push(
+          this.tween(totalMs, (raw) => {
+            if (state.sessionId !== sessionId) return;
+            const elapsed = raw * totalMs;
+            const local =
+              durationMs <= 0
+                ? 1
+                : Math.max(0, Math.min(1, (elapsed - delayMs) / durationMs));
+            update(easeProgress(local, input.ease));
+          }),
         );
-      } else {
-        sprite.position.set(input.positionTo.x, input.positionTo.y);
-      }
-    }
+      };
 
-    if (input.scaleFrom !== input.scaleTo) {
-      if (input.scaleDurationMs > 0) {
-        sprite.scale.set(input.scaleFrom);
-        run(input.scaleDelayMs, input.scaleDurationMs, (progress) =>
-          sprite.scale.set(lerp(input.scaleFrom, input.scaleTo, progress)),
-        );
-      } else {
-        sprite.scale.set(input.scaleTo);
+      // `Torappu.AVG.AVGShowItemCgSlot.Show` drives Transform.localPosition and
+      // `_GenPosByRaw` keeps the raw y sign. PIXI uses sprite.position as the
+      // coordinate-system adaptation, so do not inherit sticker's UI-y inversion.
+      if (input.positionFrom && input.positionTo) {
+        if (input.positionDurationMs > 0) {
+          sprite.position.set(input.positionFrom.x, input.positionFrom.y);
+          run(input.positionDelayMs, input.positionDurationMs, (progress) =>
+            sprite.position.set(
+              lerp(input.positionFrom!.x, input.positionTo!.x, progress),
+              lerp(input.positionFrom!.y, input.positionTo!.y, progress),
+            ),
+          );
+        } else {
+          sprite.position.set(input.positionTo.x, input.positionTo.y);
+        }
       }
-    }
 
-    if (input.colorFrom && input.colorTo) {
-      if (input.alphaDurationMs > 0) {
-        sprite.tint = rgb(input.colorFrom);
-        sprite.alpha = input.colorFrom.a;
-        run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
-          const color = {
-            a: lerp(input.colorFrom!.a, input.colorTo!.a, progress),
-            b: lerp(input.colorFrom!.b, input.colorTo!.b, progress),
-            g: lerp(input.colorFrom!.g, input.colorTo!.g, progress),
-            r: lerp(input.colorFrom!.r, input.colorTo!.r, progress),
-          };
-          sprite.tint = rgb(color);
-          sprite.alpha = color.a;
-        });
-      } else {
-        sprite.tint = rgb(input.colorTo);
-        sprite.alpha = input.colorTo.a;
+      if (input.scaleFrom !== input.scaleTo) {
+        if (input.scaleDurationMs > 0) {
+          sprite.scale.set(input.scaleFrom);
+          run(input.scaleDelayMs, input.scaleDurationMs, (progress) =>
+            sprite.scale.set(lerp(input.scaleFrom, input.scaleTo, progress)),
+          );
+        } else {
+          sprite.scale.set(input.scaleTo);
+        }
       }
-    } else if (input.alphaFrom !== input.alphaTo) {
-      if (input.alphaDurationMs > 0) {
-        sprite.alpha = input.alphaFrom;
-        run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
-          sprite.alpha = lerp(input.alphaFrom, input.alphaTo, progress);
-        });
-      } else {
-        sprite.alpha = input.alphaTo;
-      }
-    }
 
-    // Native provenance: `AVGShowItemCgSlot.Show` (not the panel) gates its
-    // whole rotation block on `!MathUtil.GT(rfrom, 0)`, i.e. `rfrom <= 0`, so
-    // the default `rfrom = -1` always takes it and an explicit positive `rfrom`
-    // disables rotation entirely. `Transform.Rotate` is relative while
-    // `DORotate(..., RotateMode.Fast)` targets an absolute angle; a fresh
-    // sprite sits at 0, so `+= rfrom` then tween to `rto` reproduces both.
-    if (input.rotationFrom <= 0) {
-      if (input.rotationDurationMs > 0) {
-        sprite.angle += input.rotationFrom;
-        run(0, input.rotationDurationMs, (progress) => {
-          sprite.angle = lerp(input.rotationFrom, input.rotationTo, progress);
-        });
-      } else {
-        sprite.angle += input.rotationTo;
+      if (input.colorFrom && input.colorTo) {
+        if (input.alphaDurationMs > 0) {
+          sprite.tint = rgb(input.colorFrom);
+          sprite.alpha = input.colorFrom.a;
+          run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
+            const color = {
+              a: lerp(input.colorFrom!.a, input.colorTo!.a, progress),
+              b: lerp(input.colorFrom!.b, input.colorTo!.b, progress),
+              g: lerp(input.colorFrom!.g, input.colorTo!.g, progress),
+              r: lerp(input.colorFrom!.r, input.colorTo!.r, progress),
+            };
+            sprite.tint = rgb(color);
+            sprite.alpha = color.a;
+          });
+        } else {
+          sprite.tint = rgb(input.colorTo);
+          sprite.alpha = input.colorTo.a;
+        }
+      } else if (input.alphaFrom !== input.alphaTo) {
+        if (input.alphaDurationMs > 0) {
+          sprite.alpha = input.alphaFrom;
+          run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
+            sprite.alpha = lerp(input.alphaFrom, input.alphaTo, progress);
+          });
+        } else {
+          sprite.alpha = input.alphaTo;
+        }
       }
-    }
 
-    const completion = Promise.all(runs).then(() => {});
+      // Native provenance: `AVGShowItemCgSlot.Show` (not the panel) gates its
+      // whole rotation block on `!MathUtil.GT(rfrom, 0)`, i.e. `rfrom <= 0`, so
+      // the default `rfrom = -1` always takes it and an explicit positive `rfrom`
+      // disables rotation entirely. `Transform.Rotate` is relative while
+      // `DORotate(..., RotateMode.Fast)` targets an absolute angle; a fresh
+      // sprite sits at 0, so `+= rfrom` then tween to `rto` reproduces both.
+      if (input.rotationFrom <= 0) {
+        if (input.rotationDurationMs > 0) {
+          sprite.angle += input.rotationFrom;
+          run(0, input.rotationDurationMs, (progress) => {
+            sprite.angle = lerp(input.rotationFrom, input.rotationTo, progress);
+          });
+        } else {
+          sprite.angle += input.rotationTo;
+        }
+      }
+
+      return Promise.all(runs).then(() => {});
+    });
+    // block=true waits for the whole native Sequence (each track's delay +
+    // duration) -- plus the web-only texture wait; block=false mirrors
+    // ExecutorComponent finishing the command immediately.
     if (input.block) await completion;
     else void completion;
   }
