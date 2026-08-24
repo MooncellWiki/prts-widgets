@@ -1723,14 +1723,17 @@ export class StoryRuntime {
         // ever write `block=`, which is not a key this command reads, so the
         // command is effectively never blocking. Reproduce that, not the deadlock.
         const block = false;
+        // ECharTransType: 0 = NONE, 1 = ALPHA_IN, 2 = ALPHA_OUT. Native default 0.
+        const transType = Math.trunc(toNumber(args.transtype, 0));
         const hasRightCharacter = Boolean(name2Ref);
+        // Native processes slots MIDDLE -> LEFT -> RIGHT (same frame, sync).
         const updates = [
           {
             blackEnd: args.blackend,
             blackStart: args.blackstart,
             enter: args.enter,
-            name: hasRightCharacter ? nameRef : "",
-            slot: "l",
+            name: nameRef && !name2Ref ? nameRef : "",
+            slot: "m",
             x: args.xpos1,
             y: args.ypos1,
           },
@@ -1738,8 +1741,8 @@ export class StoryRuntime {
             blackEnd: args.blackend,
             blackStart: args.blackstart,
             enter: args.enter,
-            name: nameRef && !name2Ref ? nameRef : "",
-            slot: "m",
+            name: hasRightCharacter ? nameRef : "",
+            slot: "l",
             x: args.xpos1,
             y: args.ypos1,
           },
@@ -1765,21 +1768,36 @@ export class StoryRuntime {
             void this.renderer.clearCharacters(update.slot, durationMs);
             continue;
           }
+          const enterFrom = this.parseEnterDirection(update.enter);
+          // Native `_GenPosition`: xpos/ypos are only read as the slide-in
+          // start (a slot-local offset relative to the resting position) when
+          // `enter` is a legal direction, and both coordinates must exist.
+          // Without `enter` the values are never applied. Unity y is up while
+          // the renderer is y-down, so flip y.
+          const enterPosition =
+            enterFrom && update.x !== undefined && update.y !== undefined
+              ? {
+                  x: toNumber(update.x, 0),
+                  y: -toNumber(update.y, 0),
+                }
+              : undefined;
           await this.renderer.setCharacter({
-            absolutePosition: {
-              x: update.x === undefined ? undefined : toNumber(update.x, 0),
-              y: update.y === undefined ? undefined : toNumber(update.y, 0),
-            },
             blackEnd: toNumber(update.blackEnd, Number.NaN),
             blackStart: toNumber(update.blackStart, Number.NaN),
             block,
             characterKey: resolved.base,
-            dimmed: update.slot === "r" ? ![0, 2].includes(focus) : focus > 1,
+            // Native: LEFT/MIDDLE use `(unsigned)focus <= 1 -> focusColor`,
+            // RIGHT uses `(focus & 0xFFFFFFFD) == 0 -> focusColor`.
+            dimmed:
+              update.slot === "r" ? ![0, 2].includes(focus) : focus >>> 0 > 1,
             durationMs,
-            enterFrom: this.parseEnterDirection(update.enter),
+            enterFrom,
+            enterPosition,
             expression: resolved.expression,
             fadeIdentity: nativeCharacterFadeIdentity(update.name),
+            focus,
             slot: update.slot,
+            transType,
           });
         }
 
@@ -2647,14 +2665,11 @@ export class StoryRuntime {
   }
 
   private parseEnterDirection(value: unknown): CharacterSlotInput["enterFrom"] {
-    const normalized = toString(value).toLowerCase();
-    if (
-      normalized === "left" ||
-      normalized === "right" ||
-      normalized === "up" ||
-      normalized === "down"
-    )
-      return normalized;
+    // Native compares the raw string ordinally against the four literals
+    // left/right/up/down; anything else (including "middle") means no enter.
+    const raw = toString(value);
+    if (raw === "left" || raw === "right" || raw === "up" || raw === "down")
+      return raw;
     return undefined;
   }
 

@@ -1489,12 +1489,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     const offsetY = link.pos.y || 0;
 
     // Match legacy char layout semantics in 1280x720 space.
-    const targetX =
-      input.absolutePosition?.x ??
-      (slotBaseX[slot] ?? slotBaseX.m) - sizeX / 2 + offsetX;
-    const targetY =
-      input.absolutePosition?.y ?? STORY_HEIGHT - sizeY / 2 - offsetY;
-    const enterOffset = this.enterOffset(input.enterFrom);
+    const targetX = (slotBaseX[slot] ?? slotBaseX.m) - sizeX / 2 + offsetX;
+    const targetY = STORY_HEIGHT - sizeY / 2 - offsetY;
+    const enterOffset = this.enterOffset(input.enterFrom, input.enterPosition);
     const root = new Container();
     const motionLayer = new Container();
     const rotationLayer = new Container();
@@ -1521,8 +1518,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     // is unchanged. Cross-fading two copies of the same body sprite causes a
     // visible brightness dip, so expression/focus changes must swap at once.
     const fadeIdentity = input.fadeIdentity ?? input.characterKey;
+    // Native `_ProcessSlot`: with an `enter`, the image fade duration goes
+    // through `_ProcessDurationWithTransType(duration, transtype)`, which
+    // returns 0 for ECharTransType.NONE (0) -- i.e. the default enter is a
+    // pure slide with no fade; only ALPHA_IN/ALPHA_OUT fade while sliding.
+    // Without `enter` the raw duration is used. `dontFadeIfSameChar` can
+    // still zero the fade in both paths.
+    const fadeMsForNewImage =
+      input.enterFrom && !input.transType ? 0 : durationMs;
     const imageFadeMs =
-      previous?.fadeIdentity === fadeIdentity ? 0 : durationMs;
+      previous?.fadeIdentity === fadeIdentity ? 0 : fadeMsForNewImage;
     // An explicit enter still moves for the requested duration even when the
     // same character's expression is swapped instantly.
     const moveMs = input.enterFrom ? durationMs : 0;
@@ -1574,6 +1579,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (previous && imageFadeMs <= 0) this.disposeCharacterState(previous);
     this.characterSlots.set(slot, state);
     this.charLayer.addChild(root);
+    this.applyCharacterZOrder(input.focus ?? 0);
 
     if (previous && imageFadeMs > 0)
       void this.fadeOutAndRemove(previous.root, imageFadeMs, () =>
@@ -3009,26 +3015,61 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
-  private enterOffset(direction?: CharacterSlotInput["enterFrom"]): {
+  private enterOffset(
+    direction?: CharacterSlotInput["enterFrom"],
+    position?: { x: number; y: number },
+  ): {
     x: number;
     y: number;
   } {
+    // Explicit xpos/ypos: a slot-local slide-in start, replacing the
+    // direction default (native `_GenPosition` only reads them for a legal
+    // `enter`, and only when both coordinates exist).
+    if (direction && position) return position;
+    // Direction defaults use the native constants HORIZONTAL_OUTSCREEN_DELTA
+    // = 1152 and VERTICAL_OUTSCREEN_DELTA = 1072 (plus the LEFT +200 /
+    // RIGHT -200 slot compensation, which folds into the slot base positions
+    // used for targetX/targetY above).
     switch (direction) {
       case "left": {
-        return { x: -STORY_WIDTH, y: 0 };
+        return { x: -1152, y: 0 };
       }
       case "right": {
-        return { x: STORY_WIDTH, y: 0 };
+        return { x: 1152, y: 0 };
       }
       case "up": {
-        return { x: 0, y: -STORY_HEIGHT };
+        return { x: 0, y: -1072 };
       }
       case "down": {
-        return { x: 0, y: STORY_HEIGHT };
+        return { x: 0, y: 1072 };
       }
       default: {
         return { x: 0, y: 0 };
       }
+    }
+  }
+
+  /**
+   * Native `_ProcessSlot` raises MIDDLE via SetAsLastSibling, then the focused
+   * non-middle slot (ECharSlot LEFT = 1 / RIGHT = 2). With the native
+   * processing order MIDDLE -> LEFT -> RIGHT the resulting bottom-to-top
+   * sibling order is: focus 1 -> [r, m, l], focus 2 -> [l, m, r],
+   * otherwise -> [l, r, m]. Roots mid cross-fade are not tracked slots and
+   * keep their relative place below the active ones.
+   */
+  private applyCharacterZOrder(focus: number): void {
+    const ufocus = focus >>> 0;
+    let order = ["l", "r", "m"];
+    if (ufocus === 1) order = ["r", "m", "l"];
+    else if (ufocus === 2) order = ["l", "m", "r"];
+    const states = order
+      .map((slot) => this.characterSlots.get(slot))
+      .filter((state): state is CharacterRenderState => Boolean(state));
+    const total = this.charLayer.children.length;
+    for (let i = 0; i < states.length; i++) {
+      const root = states[i].root;
+      if (root.parent !== this.charLayer) continue;
+      this.charLayer.setChildIndex(root, total - states.length + i);
     }
   }
 
