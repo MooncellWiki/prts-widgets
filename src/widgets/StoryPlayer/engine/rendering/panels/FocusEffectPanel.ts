@@ -23,6 +23,16 @@ interface FocusState {
  * `_ExecuteFocusParam` channel state. Applying `BlurFilter` and
  * `ColorMatrixFilter` per PIXI container is a Web adaptation of the native
  * `AVGSceneEffectManager` post-processing pipeline.
+ *
+ * Native composites each registered item as "clean image x fully-processed
+ * image" mixed by the channel amount (`AVGSceneFocusOut.Render` +
+ * `mat_blit_ghost`; grayscale/inverse strength is a material constant and
+ * amount only drives the blend -- amount=0.5 is a half mix, not a
+ * half-strength effect). The color filters below reproduce that mix by
+ * feeding `amount` straight into `buildColorEffectMatrix` (see the comment
+ * in `render()` for the shader math). Blur keeps a strength-graded surrogate
+ * for the blend because stock PIXI filters cannot composite two copies of
+ * live content.
  */
 export class FocusEffectPanel {
   private readonly states = new Map<string, FocusState>();
@@ -60,7 +70,11 @@ export class FocusEffectPanel {
       input.durationMs,
       (progress) => {
         if (state.sessionId !== sessionId) return;
-        state.amount = from + (input.to - from) * progress;
+        // Native provenance: `AVGSceneEffectManager._SetEffectAmount` tweens
+        // each channel with `TweenUtils.SmoothStep` (slow at both ends), not
+        // linear time.
+        const eased = progress * progress * (3 - 2 * progress);
+        state.amount = from + (input.to - from) * eased;
         this.render();
       },
       () => {
@@ -79,6 +93,19 @@ export class FocusEffectPanel {
     this.states.clear();
     for (const target of this.filteredTargets) target.filters = [];
     this.filteredTargets.clear();
+  }
+
+  /**
+   * Native provenance: `AVGSceneFocusOut.TryRegister` + `SetWhenBind.Bind`
+   * replay a channel's stored amount the moment a PostDisplay item
+   * (re)registers -- a cgitem displayed after `focusout` already ran picks
+   * up the existing amount immediately. The Web adaptation re-resolves
+   * targets whenever the per-object target set (cgitem panel) changes;
+   * layer-backed types (bg/char/cg/lbg) get this for free because the
+   * filter sits on the layer itself.
+   */
+  refresh(): void {
+    this.render();
   }
 
   private render(): void {

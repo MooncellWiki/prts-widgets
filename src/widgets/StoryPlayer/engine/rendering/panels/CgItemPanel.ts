@@ -58,6 +58,7 @@ export class CgItemPanel {
     private readonly loadTexture: TextureLoader,
     private readonly tween: Tween,
     private readonly onWarning?: (detail: string) => void,
+    private readonly onTargetsChanged?: () => void,
   ) {}
 
   async show(input: CgItemInput): Promise<void> {
@@ -83,6 +84,11 @@ export class CgItemPanel {
       sprite: null,
     };
     this.states.set(input.key, state);
+    // Native provenance: `AVGSceneFocusOut.TryRegister` (a PostDisplayItem
+    // processor) replays a channel's stored amount the moment a cgitem
+    // (re)registers, so items shown after `focusout` already ran -- and
+    // re-shown items -- pick up the blur immediately.
+    this.onTargetsChanged?.();
     const sessionId = state.sessionId;
 
     const completion = this.loadTexture(input.assetKey).then((texture) => {
@@ -272,8 +278,10 @@ export class CgItemPanel {
           if (
             state.hideEpoch === hideEpoch &&
             state.sessionId === sessionAtHide
-          )
+          ) {
             this.dispose(key);
+            this.onTargetsChanged?.();
+          }
         },
       );
       if (block) await task;
@@ -300,6 +308,7 @@ export class CgItemPanel {
           // to stop writes into the destroyed sprite.
           state.sessionId += 1;
           state.root.destroy({ children: true });
+          this.onTargetsChanged?.();
         },
       );
     }
@@ -316,6 +325,7 @@ export class CgItemPanel {
     for (const state of this.states.values())
       state.root.destroy({ children: true });
     this.states.clear();
+    this.onTargetsChanged?.();
   }
 
   destroy(): void {

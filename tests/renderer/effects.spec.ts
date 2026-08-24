@@ -1,8 +1,10 @@
-import { Container } from "pixi.js";
+import { Container, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
+
+import type { CgItemInput } from "../../src/widgets/StoryPlayer/engine/types";
 
 // Turns the -0 that `0 * -1` produces into +0 so `toEqual` stops
 // distinguishing them. Deliberately narrow: `v || 0` would also swallow NaN
@@ -14,6 +16,47 @@ function normalizeZero(values: number[]): number[] {
 function createBlockerRenderer(): any {
   const renderer = createRenderer();
   renderer.layers.attach(new Container());
+  return renderer;
+}
+
+const focusCgItemInput: CgItemInput = {
+  alphaDelayMs: 0,
+  alphaDurationMs: 0,
+  alphaFrom: 1,
+  alphaTo: 1,
+  assetKey: "a",
+  block: false,
+  ease: "Linear",
+  height: 0,
+  key: "a",
+  positionDelayMs: 0,
+  positionDurationMs: 0,
+  rotationDurationMs: 0,
+  rotationFrom: -1,
+  rotationTo: 0,
+  scaleDelayMs: 0,
+  scaleDurationMs: 0,
+  scaleFrom: 1,
+  scaleTo: 1,
+  width: 0,
+};
+
+// Renderer stub for the focusout×cgitem interplay specs: textures resolve
+// instantly and every tween jumps to its completed state.
+function createFocusRenderer(): any {
+  const renderer = createRenderer();
+  renderer.app = {};
+  renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+  renderer.tween = vi.fn(
+    async (
+      _durationMs: number,
+      update: (progress: number) => void,
+      complete?: () => void,
+    ) => {
+      update(1);
+      complete?.();
+    },
+  );
   return renderer;
 }
 
@@ -200,6 +243,61 @@ describe("PixiStoryRenderer", () => {
     expect(normalizeZero(filters[0]!.matrix.slice(0, 5))).toEqual([
       0, 0, 0, 0, 0.5,
     ]);
+  });
+
+  it("resolves focusout channels per native routing rules", async () => {
+    const renderer = createFocusRenderer();
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+
+    // `_GenCfgByType` writes the raw id into `_channel`; an empty id keeps
+    // `IsChannelEmpty` true, so the native executor is a silent no-op.
+    expect(renderer.resolveFocusTargets("cgitem", "")).toEqual([]);
+    expect(renderer.resolveFocusTargets("cgitem", "a")).toHaveLength(1);
+
+    // `customchar` only ever collects custom slots (`m_customInUse`), a
+    // channel set disjoint from the standard l/m/r slots; without a custom
+    // slot system the branch must not fall back to standard slots.
+    expect(renderer.resolveFocusTargets("customchar", "")).toEqual([]);
+    expect(renderer.resolveFocusTargets("customchar", "m")).toEqual([]);
+  });
+
+  it("applies focusout to cgitems displayed after the command", async () => {
+    const renderer = createFocusRenderer();
+
+    // `SetWhenBind` stores the amount before the display object exists and
+    // replays it on registration.
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "a",
+      to: 1,
+      type: "cgitem",
+    });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    expect(
+      (renderer.cgItemPanel.targets("a")[0].filters ?? []).length,
+    ).toBeGreaterThan(0);
+
+    // Re-registration after a hide replays too.
+    await renderer.clearCgItems("a", 0);
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    expect(
+      (renderer.cgItemPanel.targets("a")[0].filters ?? []).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("treats focusout with an empty cgitem id as a native no-op", async () => {
+    const renderer = createFocusRenderer();
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 1,
+      type: "cgitem",
+    });
+
+    expect(renderer.cgItemPanel.targets("a")[0].filters ?? []).toHaveLength(0);
   });
 
   it("draws a curtain as a solid body plus a fixed-width feather strip", async () => {
