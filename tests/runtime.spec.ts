@@ -53,7 +53,7 @@ class FakeRenderer implements StoryRenderer {
   characterCalls: CharacterSlotInput[] = [];
   characterCutinCalls: CharacterCutinInput[] = [];
   clearedSlots: Array<{ fadeMs?: number; slot?: string }> = [];
-  clearItemsCalls: Array<{ block: boolean; fadeMs: number }> = [];
+  clearItemsCalls: Array<{ fadeMs: number; hasSlot: boolean }> = [];
   clearCgItemCalls: Array<{
     block: boolean;
     ease: string;
@@ -145,8 +145,8 @@ class FakeRenderer implements StoryRenderer {
     this.gridBackgroundClearCalls.push({ block, fadeMs });
   }
 
-  clearItems(fadeMs = 0, block = false): void {
-    this.clearItemsCalls.push({ block, fadeMs });
+  clearItems(fadeMs = 0, hasSlot = false): void {
+    this.clearItemsCalls.push({ fadeMs, hasSlot });
   }
 
   clearCgItems(
@@ -1160,9 +1160,61 @@ describe("StoryRuntime", () => {
     ]);
     // hideitem does not read `block` either: it blocks whenever a slot was in
     // use, which it is here because the preceding showitem filled it.
-    expect(renderer.clearItemsCalls).toEqual([{ block: true, fadeMs: 500 }]);
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 500, hasSlot: true }]);
     expect(warnings).toEqual([]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("destroys a lingering show-item slot when playback reaches the story end", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[showitem(image="item_act12side_1")]',
+        '[name="A"]the end',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // The script never runs hideitem; the item stays on screen through the
+    // last dialogue line...
+    expect(renderer.clearItemsCalls).toEqual([]);
+    expect(runtime.getState()).toBe("waiting_input");
+
+    await runtime.advance();
+
+    // ...and the end-of-story reset (native AVGShowItemPanel.OnReset →
+    // _Reset) tears it down without a fade.
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 0, hasSlot: false }]);
+  });
+
+  it("destroys a lingering show-item slot when a skip ends the story", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="skip")]',
+        '[showitem(image="item_act12side_1")]',
+        '[name="A"]skipped',
+        '[skipnode(mode="skip")]',
+        '[name="B"]unreachable',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.clearItemsCalls).toEqual([]);
+
+    await runtime.skipNode();
+
+    // Skipping past the last anchor ends the story, and the native reset
+    // path destroys a live show-item slot on the way out.
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 0, hasSlot: false }]);
   });
 
   it("places a single character in the middle slot without ever blocking", async () => {

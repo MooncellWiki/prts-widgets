@@ -552,6 +552,9 @@ export class StoryRuntime {
         shouldResume = true;
       } else {
         this.cursor = this.lines.length;
+        // Skipping past the last anchor ends the story, and the native reset
+        // path tears a live show-item slot down on the way out.
+        this.resetItemSlot();
       }
     }
 
@@ -666,6 +669,22 @@ export class StoryRuntime {
     this.pendingInputEffect = null;
   }
 
+  /**
+   * Native port: `Torappu.AVG.AVGShowItemPanel.OnReset` → `_Reset`
+   * (GameAssembly 2.7.61 @ 0x183E5C1B0). Story end and reset both funnel
+   * through the native reset path: a live `_slotInUse` gameObject is
+   * destroyed without delay and the reference cleared, so the item image and
+   * its black backdrop never outlive the story. Native also runs this after a
+   * skip cut the story short, hence the skipNode call site.
+   */
+  private resetItemSlot(): void {
+    // Native `_Reset` only acts while `_slotInUse` is non-null; after a
+    // hideitem (or a first reset) the slot is already gone.
+    if (!this.itemSlotInUse) return;
+    this.itemSlotInUse = false;
+    void this.renderer.clearItems(0);
+  }
+
   private async processLoop(): Promise<void> {
     if (this.processing) return;
 
@@ -679,6 +698,9 @@ export class StoryRuntime {
         if (this.cursor >= this.lines.length) {
           this.renderer.clearAnimTexts();
           this.renderer.clearAvgDisplays();
+          // Native end-of-story reset destroys a lingering show-item slot
+          // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
+          this.resetItemSlot();
           this.state = "finished";
           return;
         }
@@ -1351,6 +1373,17 @@ export class StoryRuntime {
       }
 
       case "hideitem": {
+        // Native port: Torappu.AVG.AVGShowItemPanel._ExecuteHideItem
+        // (GameAssembly 2.7.61 @ 0x183E5BCE0). The executor reads no story
+        // parameter for gating (`block` is ignored); no live slot returns
+        // false, a live slot always returns true and blocks until the slot's
+        // Hide tween completes (_Reset + FinishCommand). `fadetime` comes from
+        // the slot's own serialized default (0.5s). Known deviation from
+        // native: the Unity-side gate is the `_slotInUse` object reference,
+        // which showitem sets even when the image asset fails to load (an
+        // empty slot still fades in, blocks, and later fades out); the web
+        // flag is only raised after a rendered showitem, so a failed showitem
+        // turns the following hideitem into a non-blocking no-op.
         const hadItem = this.itemSlotInUse;
         this.itemSlotInUse = false;
         await this.renderer.clearItems(

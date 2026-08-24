@@ -219,6 +219,14 @@ export class PixiStoryRenderer implements StoryRenderer {
   private imageSprite: Sprite | null = null;
   private imageRotateSessionId = 0;
   private readonly itemLayer = this.layers.items;
+  /**
+   * Native port: the renderer-side handle on `Torappu.AVG.AVGShowItemPanel`'s
+   * single `_slotInUse` gameObject. Keeping an explicit reference (instead of
+   * fading every child of itemLayer) matters because the web AnimTextPanel
+   * mounts its stamps on the same layer while native animtext is a separate
+   * panel that hideitem never touches.
+   */
+  private showItemRoot: Container | null = null;
   private readonly onWarning?: (detail: string) => void;
   private readonly sceneLayer = this.layers.scene;
   private readonly uiLayer = this.layers.ui;
@@ -399,6 +407,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageSprite = null;
     this.imageLayer.removeChildren();
     this.itemLayer.removeChildren();
+    this.showItemRoot = null;
     for (const state of this.cutinStates.values()) state.sprite.destroy();
     this.cutinStates.clear();
     this.cutinStoredPositions.clear();
@@ -1125,6 +1134,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     // replaces the first rather than stacking on it. See the command evidence
     // above; PIXI children are only the storage adaptation.
     this.itemLayer.removeChildren();
+    this.showItemRoot = null;
 
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
@@ -1180,6 +1190,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     content.addChild(sprite);
     root.addChild(content);
     this.itemLayer.addChild(root);
+    this.showItemRoot = root;
 
     if (input.fadeMs <= 0) return;
 
@@ -1204,30 +1215,44 @@ export class PixiStoryRenderer implements StoryRenderer {
     await this.cgItemPanel.hide(key, fadeMs, ease, block);
   }
 
-  async clearItems(fadeMs = 0, block = false): Promise<void> {
-    const roots = [...this.itemLayer.children];
-    if (roots.length === 0) return;
+  /**
+   * Port of `Torappu.AVG.AVGShowItemPanel._ExecuteHideItem` dispatching to the
+   * slot's `Hide` (GameAssembly 2.7.61: panel @ 0x183E5BCE0, photo slot
+   * `AVGShowItemPhotoSlot.Hide` @ 0x183ED35E0, cutin slot
+   * `AVGShowItemCutinSlot.Hide` @ 0x183ED2A60). Native photo Hide DOTween-fades
+   * the canvas group to 0 over `fadetime`; cutin Hide instead collapses the
+   * mask via DOSizeDelta plus a parallel black fade -- the web port approximates
+   * both with the shared alpha fade (no shipped sample uses cutin). Only the
+   * show-item root is touched: native animtext is a separate panel, and the
+   * stamps sharing this layer must survive a hideitem. Native photo Hide
+   * unconditionally resets alpha to 1 before fading; the web fade starts from
+   * the root's current alpha, which is equivalent whenever showitem's blocking
+   * fade-in finished first and only diverges if it was interrupted.
+   */
+  async clearItems(fadeMs = 0, hasSlot = false): Promise<void> {
+    const root = this.showItemRoot;
+    if (!root) return;
 
     if (fadeMs <= 0) {
-      for (const root of roots) root.removeFromParent();
+      root.removeFromParent();
+      this.showItemRoot = null;
       return;
     }
 
-    const startAlphas = roots.map((root) => root.alpha);
+    const startAlpha = root.alpha;
     const run = this.tween(
       fadeMs,
       (progress) => {
-        const nextAlpha = 1 - progress;
-        for (const [index, root] of roots.entries()) {
-          root.alpha = startAlphas[index]! * nextAlpha;
-        }
+        root.alpha = startAlpha * (1 - progress);
       },
       () => {
-        for (const root of roots) root.removeFromParent();
+        if (this.showItemRoot !== root) return;
+        root.removeFromParent();
+        this.showItemRoot = null;
       },
     );
 
-    if (block) await run;
+    if (hasSlot) await run;
     else void run;
   }
 

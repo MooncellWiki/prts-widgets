@@ -523,7 +523,13 @@ export interface StoryRenderer {
   ) => Promise<void> | void;
   clearImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearLargeImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
-  clearItems: (fadeMs?: number, block?: boolean) => Promise<void> | void;
+  /**
+   * `hasSlot` mirrors whether `Torappu.AVG.AVGShowItemPanel._slotInUse` was
+   * live (i.e. whether `_ExecuteHideItem` blocks). Deliberately not named
+   * `block`: the native executor never reads the story command's `block`
+   * parameter, and the flag only encodes "a slot exists".
+   */
+  clearItems: (fadeMs?: number, hasSlot?: boolean) => Promise<void> | void;
   clearSticker: (id?: string, fadeMs?: number) => Promise<void> | void;
   clearStickers: (fadeMs?: number) => Promise<void> | void;
   clearSpellStickers: () => Promise<void> | void;
