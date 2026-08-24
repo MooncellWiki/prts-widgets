@@ -421,7 +421,29 @@ export class StoryRuntime {
   private multilineEnd = false;
   /** Rich-char count already on screen from earlier multiline fragments. */
   private multilineShownChars = 0;
-  private readonly stickerIds = new Set<string>();
+  /**
+   * Native port: `StickerPanel.m_stickerDict` — id → live sticker slot. Beyond
+   * membership (show/append/hide routing), each slot carries what the native
+   * view keeps on itself: the last show's layout and typewriter speed (the
+   * append branch must replay them untouched) and the message length that
+   * paces auto-play (`_OnStickerTypeEnd(msgLength)`).
+   */
+  private readonly stickerSlots = new Map<
+    string,
+    {
+      charCount: number;
+      layout: Omit<StickerInput, "append" | "id" | "text">;
+    }
+  >();
+
+  /**
+   * Native port: the pooled `AVGStickerTextView.m_duration`. `RenderSticker`
+   * only writes it when `!isMultiline || duration >= 0`, so a multiline show
+   * (multi=true on a fresh id) with no duration keeps whatever the view
+   * already holds: 0 for a never-shown view (instant), or the fade its last
+   * show/hide wrote for a recycled one.
+   */
+  private readonly stickerFadeMs = new Map<string, number>();
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
 
   constructor(
@@ -797,9 +819,12 @@ export class StoryRuntime {
       // Then every entry of `m_stickerDict` gets `HideSticker(0)` before the
       // dictionary is emptied and `m_currentSticker` nulled. `HideSticker`
       // substitutes 0.15s for any duration <= 0, the same 150ms stickerclear
-      // fades with, and dropping the ids is what lets a reused id show again
-      // instead of being read as the hide half of the toggle.
-      this.stickerIds.clear();
+      // fades with (each recycled view's m_duration is rewritten to it), and
+      // dropping the slots is what lets a reused id show again instead of
+      // being read as the hide half of the toggle.
+      for (const id of this.stickerSlots.keys())
+        this.stickerFadeMs.set(id, 150);
+      this.stickerSlots.clear();
       await this.renderer.clearStickers(150);
     }
 
@@ -848,18 +873,19 @@ export class StoryRuntime {
   }
 
   /**
-   * `delay` on sticker is a scale factor against the asset's `originDelay`, not
-   * an absolute per-character time: typeWriterDelay = global * delay /
-   * originDelay. `delay=0` therefore means "print the whole line at once",
-   * which is what the samples writing delay=0 rely on. multiline applies the
-   * same ratio but takes a different fallback -- see multilineTypeDelayScale.
+   * `delay` on sticker is a scale factor against the asset's `originDelay`
+   * (0.04s), not an absolute per-character time: typeWriterDelay = global *
+   * delay / originDelay. `delay=0` therefore means "print the whole line at
+   * once", which is what the samples writing delay=0 rely on. An omitted
+   * `delay` falls back to `StickerPanel._GenParam`'s 1.0 default — a 25x
+   * slower typewriter (reachable in data, e.g. the fresh-id multiline show in
+   * activities/act23side_02_end.txt:43; appends never re-read it at all).
+   * multiline applies the same ratio but takes a different fallback -- see
+   * multilineTypeDelayScale.
    */
   private stickerTypeDelayMs(value: unknown): number {
     const originDelaySeconds = TYPE_WRITER_ORIGIN_DELAY_MS / 1000;
-    const scale =
-      value === undefined
-        ? 1
-        : toNumber(value, originDelaySeconds) / originDelaySeconds;
+    const scale = toNumber(value, 1) / originDelaySeconds;
     return Math.max(0, this.getCurrentSpeed().typeWriterDelayMs * scale);
   }
 
@@ -2721,8 +2747,10 @@ export class StoryRuntime {
       }
 
       case "sticker": {
-        // Native port: Torappu.AVG.StickerPanel._ExecuteSticker. The state is a
-        // multi-id slot dictionary, with show/append/hide behavior selected by id
+        // Native port: Torappu.AVG.StickerPanel._ExecuteSticker (2.7.61 VA
+        // 0x183e924f0). The state is a multi-id slot dictionary: a dict hit
+        // with multi=true appends, a dict hit with multi=false hides, and a
+        // miss shows.
         const id = toString(this.exactArg(args, "id"));
         if (!id) {
           this.warn("parse", "sticker id is empty");
@@ -2730,46 +2758,112 @@ export class StoryRuntime {
         }
 
         const multi = toBoolean(this.exactArg(args, "multi"), false);
+        const existing = this.stickerSlots.get(id);
         // `block` defaults differ per branch: true when the id is new (show),
         // false once the id already exists (append or hide).
-        const block = toBoolean(
-          this.exactArg(args, "block"),
-          !this.stickerIds.has(id),
-        );
+        const block = toBoolean(this.exactArg(args, "block"), !existing);
         const duration = toNumber(this.exactArg(args, "duration"), -1);
         // RenderSticker keeps `duration` verbatim when it is >= 0 (0 means an
-        // instant show) and only falls back to 0.15 when the parameter is absent.
-        // HideSticker is different: it uses 0.15 for anything <= 0.
-        const showFadeMs = (duration >= 0 ? duration : 0.15) * 1000;
+        // instant show) and only falls back to 0.15 when the parameter is
+        // absent. HideSticker is different: it uses 0.15 for anything <= 0.
         const hideFadeMs = (duration > 0 ? duration : 0.15) * 1000;
-        if (this.stickerIds.has(id) && !multi) {
-          this.stickerIds.delete(id);
+
+        if (existing && !multi) {
+          // Hide branch: TryFinishType completes in-flight typing instantly
+          // (renderer side), HideSticker fades out, the slot leaves the dict,
+          // and RaiseAutoClick(0) keeps auto-play moving with the base wait.
+          this.stickerSlots.delete(id);
+          this.stickerFadeMs.set(id, hideFadeMs);
           await this.renderer.clearSticker(id, hideFadeMs);
+          // The sticker text is the pacing message of the wait that follows,
+          // and a hidden sticker has nothing left to type.
+          this.currentMessageLength = 0;
+          this.currentTypingComplete = true;
+          this.scheduleAutoClick(0);
           return block ? "wait_input" : "continue";
         }
 
+        if (existing) {
+          // Append branch: the executor only calls
+          // AVGStickerTextView.AppendText(view, text) — it never reads
+          // x/y/width/size/alignment/duration/delay, so the view keeps the
+          // layout and typewriter speed of its last show. Replaying the
+          // stored layout (instead of re-defaulting to x=0/y=0) keeps the
+          // letter appends in main 13-05, which omit x/y, in place.
+          const text = this.translateText(
+            toString(this.exactArg(args, "text")),
+          );
+          existing.charCount += parseRichChars(text).length;
+          await this.renderer.setSticker({
+            ...existing.layout,
+            append: true,
+            id,
+            text,
+          } satisfies StickerInput);
+          // Native raises the auto click at typing end with the full message
+          // length; scheduling at the wait boundary is the web adaptation.
+          // The accumulated text also becomes the pacing message of the wait.
+          this.currentMessageLength = existing.charCount;
+          this.currentTypingComplete = true;
+          this.scheduleAutoClick(existing.charCount);
+          return block ? "wait_input" : "continue";
+        }
+
+        // Show branch (dict miss): _GenParam reads the full layout. An empty
+        // translated text or out-of-range coordinates produce an empty param,
+        // which _ExecuteSticker drops silently — no view, and the id never
+        // enters the dict, so a later command on the same id still shows.
+        const text = this.translateText(toString(this.exactArg(args, "text")));
         const x = toNumber(this.exactArg(args, "x"), 0);
         const y = toNumber(this.exactArg(args, "y"), 0);
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
-        this.stickerIds.add(id);
+        if (!text) return "continue";
 
-        await this.renderer.setSticker({
+        // _GenSticker refuses the 21st concurrent sticker (pool + dict >= 20)
+        // and drops the show; production data never goes past single digits,
+        // so warn without dropping.
+        if (this.stickerSlots.size >= 20)
+          this.warn("parse", "avg sticker meets the max num (20)");
+
+        // RenderSticker writes m_duration only when `!isMultiline ||
+        // duration >= 0`: a multiline show (multi=true on a fresh id) with no
+        // duration keeps the pooled view's previous fade — 0 (instant) on a
+        // first display, or the fade its last show/hide wrote on a reuse.
+        const showFadeMs =
+          multi && this.exactArg(args, "duration") === undefined
+            ? (this.stickerFadeMs.get(id) ?? 0)
+            : (duration >= 0 ? duration : 0.15) * 1000;
+
+        const layout = {
           alignment:
             this.parseSubtitleAlignment(this.exactArg(args, "alignment")) ??
             "left",
-          append: multi,
           delayMs: this.stickerTypeDelayMs(this.exactArg(args, "delay")),
           fadeMs: showFadeMs,
-          id,
           sizePx: toNumber(this.exactArg(args, "size"), 24),
-          text: this.translateText(toString(this.exactArg(args, "text"))),
           widthPx: Math.min(
             toNumber(this.exactArg(args, "width"), 1280),
             1280 - x,
           ),
           x,
           y,
+        };
+        const charCount = parseRichChars(text).length;
+        this.stickerSlots.set(id, { charCount, layout });
+        this.stickerFadeMs.set(id, showFadeMs);
+        await this.renderer.setSticker({
+          ...layout,
+          append: false,
+          id,
+          text,
         } satisfies StickerInput);
+        // RaiseAutoClick(msgLength) fires from the typing-end callback
+        // natively; without this bridge a blocking sticker would stall
+        // button-auto / quick-play until a manual click. The sticker text
+        // doubles as the pacing message for a later mode switch mid-wait.
+        this.currentMessageLength = charCount;
+        this.currentTypingComplete = true;
+        this.scheduleAutoClick(charCount);
         return block ? "wait_input" : "continue";
       }
 
@@ -2781,7 +2875,7 @@ export class StoryRuntime {
         // or a lookup miss in the slot dictionary silently continues -- no
         // warning, no block (same silent-miss contract as hidecgitem).
         const id = toString(this.exactArg(args, "id"));
-        if (!id || !this.stickerIds.has(id)) return "continue";
+        if (!id || !this.stickerSlots.has(id)) return "continue";
 
         const join = toBoolean(this.exactArg(args, "join"), false);
         const isend = toBoolean(this.exactArg(args, "isend"), false);
@@ -2901,7 +2995,10 @@ export class StoryRuntime {
       case "stickerclear": {
         // Native port: Torappu.AVG.StickerPanel._ExcuteClear / _RecycleStickers.
         // It clears all sticker slots and also stops the timer-sticker path.
-        this.stickerIds.clear();
+        // The 150ms fade also rewrites each recycled view's m_duration.
+        for (const id of this.stickerSlots.keys())
+          this.stickerFadeMs.set(id, 150);
+        this.stickerSlots.clear();
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
         return toBoolean(this.exactArg(args, "block"), false)
