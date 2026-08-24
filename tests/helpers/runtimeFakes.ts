@@ -53,7 +53,7 @@ export class FakeRenderer implements StoryRenderer {
   characterCutinCalls: CharacterCutinInput[] = [];
   clearCharacterCutinCalls: string[] = [];
   clearedSlots: Array<{ fadeMs?: number; slot?: string }> = [];
-  clearItemsCalls: Array<{ block: boolean; fadeMs: number }> = [];
+  clearItemsCalls: Array<{ fadeMs: number; hasSlot: boolean }> = [];
   clearCgItemCalls: Array<{
     block: boolean;
     ease: string;
@@ -151,8 +151,8 @@ export class FakeRenderer implements StoryRenderer {
     this.gridBackgroundClearCalls.push({ block, fadeMs });
   }
 
-  clearItems(fadeMs = 0, block = false): void {
-    this.clearItemsCalls.push({ block, fadeMs });
+  clearItems(fadeMs = 0, hasSlot = false): void {
+    this.clearItemsCalls.push({ fadeMs, hasSlot });
   }
 
   clearCgItems(

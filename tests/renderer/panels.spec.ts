@@ -176,4 +176,34 @@ describe("PixiStoryRenderer", () => {
     expect(content.position.x).toBe(640 + 30);
     expect(content.position.y).toBe(360 - 40);
   });
+
+  it("clearItems removes only the show-item root and leaves animtext stamps alone", async () => {
+    const renderer = createRenderer();
+    // Native hideitem only fades the show-item slot; animtext is a separate
+    // panel, but the web port mounts both on itemLayer, so clearItems must
+    // track the slot root explicitly instead of fading the whole layer.
+    const itemRoot = new Container();
+    const stamp = new Container();
+    renderer.itemLayer.addChild(stamp);
+    renderer.itemLayer.addChild(itemRoot);
+    renderer.showItemRoot = itemRoot;
+
+    await renderer.clearItems(0);
+
+    expect(itemRoot.parent).toBeNull();
+    expect(renderer.showItemRoot).toBeNull();
+    expect(stamp.parent).toBe(renderer.itemLayer);
+  });
+
+  it("clearItems with no live slot leaves the layer untouched", async () => {
+    const renderer = createRenderer();
+    const stamp = new Container();
+    renderer.itemLayer.addChild(stamp);
+    renderer.showItemRoot = null;
+
+    await renderer.clearItems(0);
+    await renderer.clearItems(500, true);
+
+    expect(stamp.parent).toBe(renderer.itemLayer);
+  });
 });
