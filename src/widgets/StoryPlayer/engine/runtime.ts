@@ -1769,16 +1769,18 @@ export class StoryRuntime {
             continue;
           }
           const enterFrom = this.parseEnterDirection(update.enter);
-          // Native `_GenPosition`: xpos/ypos are only read as the slide-in
-          // start (a slot-local offset relative to the resting position) when
-          // `enter` is a legal direction, and both coordinates must exist.
-          // Without `enter` the values are never applied. Unity y is up while
-          // the renderer is y-down, so flip y.
+          // Native `_ProcessSlotWithParam` takes xpos/ypos as the slide-in
+          // start -- a slot-local offset that `SetCharPos` tweens back to
+          // (0,0) -- but only when `TryGetParam` finds *both*; otherwise it
+          // falls back to `_GenPosition`. Either way `_ProcessSlot` applies
+          // the position only on the `enter` branch, so without a legal
+          // `enter` the values never reach the screen. They are read as
+          // Int32, and Unity y is up while the renderer is y-down.
           const enterPosition =
             enterFrom && update.x !== undefined && update.y !== undefined
               ? {
-                  x: toNumber(update.x, 0),
-                  y: -toNumber(update.y, 0),
+                  x: Math.trunc(toNumber(update.x, 0)),
+                  y: -Math.trunc(toNumber(update.y, 0)),
                 }
               : undefined;
           await this.renderer.setCharacter({

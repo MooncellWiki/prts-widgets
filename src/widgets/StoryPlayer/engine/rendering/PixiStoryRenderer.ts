@@ -86,6 +86,18 @@ function clamp01(value: number): number {
 }
 
 /**
+ * `_GenPosition`'s per-slot term: it cancels each slot's own offset from the
+ * panel centre so a horizontal enter starts at the same absolute x everywhere.
+ */
+const SLOT_ENTER_COMPENSATION: Record<string, number> = { l: 200, r: -200 };
+
+/** DOTween `Ease.OutCubic`, used by `AVGCharacterSlot.SetCharPos`. */
+function easeOutCubic(progress: number): number {
+  const remaining = 1 - progress;
+  return 1 - remaining * remaining * remaining;
+}
+
+/**
  * Canvas 渲染分辨率：逻辑坐标系固定 1280x720，实际像素数按宿主 CSS 尺寸
  * × devicePixelRatio 反推，避免画布被 CSS 拉伸发糊。取宽高比例的较大值，
  * 宿主短暂偏离 16:9 时也不会欠采样。
@@ -1492,7 +1504,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     // Match legacy char layout semantics in 1280x720 space.
     const targetX = (slotBaseX[slot] ?? slotBaseX.m) - sizeX / 2 + offsetX;
     const targetY = STORY_HEIGHT - sizeY / 2 - offsetY;
-    const enterOffset = this.enterOffset(input.enterFrom, input.enterPosition);
+    const enterOffset = this.enterOffset(
+      slot,
+      input.enterFrom,
+      input.enterPosition,
+    );
     const root = new Container();
     const motionLayer = new Container();
     const rotationLayer = new Container();
@@ -1592,7 +1608,10 @@ export class PixiStoryRenderer implements StoryRenderer {
         animationMs,
         (progress) => {
           root.alpha = imageFadeMs > 0 ? progress : 1;
-          const moveProgress = moveMs > 0 ? progress : 1;
+          // Native `SetCharPos` runs the slide as
+          // `DOLocalMove(...).SetEase(Ease.OutCubic)`; the shared tween runner
+          // is linear, so ease the move -- and only the move -- here.
+          const moveProgress = moveMs > 0 ? easeOutCubic(progress) : 1;
           root.x = targetX + enterOffset.x * (1 - moveProgress);
           root.y = targetY + enterOffset.y * (1 - moveProgress);
         },
@@ -2647,9 +2666,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     let sourceWidth: number;
     let sourceHeight: number;
-    // Sprites that make up the character pixels; the black gradient is
-    // clipped per-pixel against each of these textures.
-    const maskTargets: Sprite[] = [];
+    // Every sprite that contributes character pixels, in draw order. Native
+    // composites the face into the *same* material as the body (`SetSprite`
+    // feeds the face through `_HGDynamicTex`) and only then applies
+    // `_BlackStart`/`_BlackEnd`, so the gradient must be baked over the whole
+    // stack -- baking the face alone would leave the body its original colour.
+    const contentSprites: Sprite[] = [];
 
     if (item.group === -1 && "image" in item && item.image) {
       const texture = await this.textureForCharacterKey(item.image);
@@ -2658,7 +2680,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       const sprite = new Sprite(texture);
       sprite.anchor.set(0, 0);
       content.addChild(sprite);
-      maskTargets.push(sprite);
+      contentSprites.push(sprite);
       sourceWidth = texture.width;
       sourceHeight = texture.height;
     } else if (item.group >= 0 && "face" in item && item.face) {
@@ -2679,6 +2701,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       const baseSprite = new Sprite(baseTexture);
       baseSprite.anchor.set(0, 0);
       content.addChild(baseSprite);
+      contentSprites.push(baseSprite);
 
       const faceSprite = new Sprite(faceTexture);
       faceSprite.anchor.set(0, 0);
@@ -2687,7 +2710,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       faceSprite.width = group.faceRect.w;
       faceSprite.height = group.faceRect.h;
       content.addChild(faceSprite);
-      maskTargets.push(faceSprite);
+      contentSprites.push(faceSprite);
 
       sourceWidth = baseTexture.width;
       sourceHeight = baseTexture.height;
@@ -2698,7 +2721,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     this.applyCharacterBlackGradient(
       content,
-      maskTargets,
+      contentSprites,
       sourceWidth,
       sourceHeight,
       blackStart,
@@ -2855,7 +2878,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private applyCharacterBlackGradient(
     content: Container,
-    maskTargets: Sprite[],
+    contentSprites: Sprite[],
     width: number,
     height: number,
     blackStart = Number.NaN,
@@ -2870,7 +2893,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const startY = height * Math.min(start, end);
     const endY = height * Math.max(start, end);
     const texture = this.bakeDarkenedCharacterTexture(
-      maskTargets,
+      contentSprites,
       width,
       height,
       startY,
@@ -2888,14 +2911,14 @@ export class PixiStoryRenderer implements StoryRenderer {
     // composite, yielding dst * (1 - a * p) instead of dst * (1 - a) * p --
     // the shading would fade in with the character and only look right at
     // the end of the fade.
-    for (const target of maskTargets) target.removeFromParent();
+    for (const sprite of contentSprites) sprite.removeFromParent();
     const darkened = new Sprite(texture);
     darkened.anchor.set(0, 0);
     content.addChild(darkened);
   }
 
   private bakeDarkenedCharacterTexture(
-    targets: Sprite[],
+    sprites: Sprite[],
     width: number,
     height: number,
     startY: number,
@@ -2907,21 +2930,25 @@ export class PixiStoryRenderer implements StoryRenderer {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    for (const target of targets) {
-      const resource = target.texture?.source?.resource as
+    for (const sprite of sprites) {
+      const resource = sprite.texture?.source?.resource as
         CanvasImageSource | undefined;
-      if (!resource) continue;
-      const frame = target.texture.frame;
+      // The caller drops the originals in favour of the baked texture, so a
+      // sprite we cannot draw has to abort the whole bake -- skipping it would
+      // silently erase that part of the character instead of just leaving it
+      // undarkened.
+      if (!resource) return null;
+      const frame = sprite.texture.frame;
       ctx.drawImage(
         resource,
         frame.x,
         frame.y,
         frame.width,
         frame.height,
-        target.x,
-        target.y,
-        target.width,
-        target.height,
+        sprite.x,
+        sprite.y,
+        sprite.width,
+        sprite.height,
       );
     }
 
@@ -3076,27 +3103,42 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
+  /**
+   * Port of `CharacterPanel._GenPosition`, which returns the slide-in start as
+   * an `_offset.localPosition` -- a slot-local delta that `SetCharPos(0, 0,
+   * duration)` then tweens back to zero, not an absolute screen position.
+   *
+   * ```
+   * v = slot == LEFT ? 200 : slot == RIGHT ? -200 : 0
+   * "left"  -> (v - 1152, 0)   "right" -> (v + 1152, 0)
+   * "up"    -> (0, 1072)       "down"  -> (0, -1072)
+   * ```
+   *
+   * The LEFT +200 / RIGHT -200 term cancels each slot's own resting offset
+   * from the panel centre (`slotBaseX` is 440/640/840, i.e. 200 apart), so
+   * every slot starts a horizontal enter at the same absolute off-screen x.
+   * Unity y is up while the renderer is y-down, hence the flipped vertical
+   * constants.
+   */
   private enterOffset(
+    slot: string,
     direction?: CharacterSlotInput["enterFrom"],
     position?: { x: number; y: number },
   ): {
     x: number;
     y: number;
   } {
-    // Explicit xpos/ypos: a slot-local slide-in start, replacing the
-    // direction default (native `_GenPosition` only reads them for a legal
-    // `enter`, and only when both coordinates exist).
+    // Explicit xpos/ypos replace `_GenPosition` wholesale -- slot
+    // compensation included -- and native only applies the result for a legal
+    // `enter`, with both coordinates present.
     if (direction && position) return position;
-    // Direction defaults use the native constants HORIZONTAL_OUTSCREEN_DELTA
-    // = 1152 and VERTICAL_OUTSCREEN_DELTA = 1072 (plus the LEFT +200 /
-    // RIGHT -200 slot compensation, which folds into the slot base positions
-    // used for targetX/targetY above).
+    const slotCompensation = SLOT_ENTER_COMPENSATION[slot] ?? 0;
     switch (direction) {
       case "left": {
-        return { x: -1152, y: 0 };
+        return { x: slotCompensation - 1152, y: 0 };
       }
       case "right": {
-        return { x: 1152, y: 0 };
+        return { x: slotCompensation + 1152, y: 0 };
       }
       case "up": {
         return { x: 0, y: -1072 };
@@ -3115,22 +3157,24 @@ export class PixiStoryRenderer implements StoryRenderer {
    * non-middle slot (ECharSlot LEFT = 1 / RIGHT = 2). With the native
    * processing order MIDDLE -> LEFT -> RIGHT the resulting bottom-to-top
    * sibling order is: focus 1 -> [r, m, l], focus 2 -> [l, m, r],
-   * otherwise -> [l, r, m]. Roots mid cross-fade are not tracked slots and
-   * keep their relative place below the active ones.
+   * otherwise -> [l, r, m].
+   *
+   * Raising each tracked root to the top in that order also keeps roots that
+   * are mid cross-fade below the live ones: they are no longer tracked slots,
+   * so nothing lifts them back up. Computing fixed target indices instead
+   * would not -- `setChildIndex` splices, so each move shifts the indices the
+   * later moves were computed against, and an outgoing root ends up wedged
+   * between two live slots.
    */
   private applyCharacterZOrder(focus: number): void {
     const ufocus = focus >>> 0;
     let order = ["l", "r", "m"];
     if (ufocus === 1) order = ["r", "m", "l"];
     else if (ufocus === 2) order = ["l", "m", "r"];
-    const states = order
-      .map((slot) => this.characterSlots.get(slot))
-      .filter((state): state is CharacterRenderState => Boolean(state));
-    const total = this.charLayer.children.length;
-    for (let i = 0; i < states.length; i++) {
-      const root = states[i].root;
-      if (root.parent !== this.charLayer) continue;
-      this.charLayer.setChildIndex(root, total - states.length + i);
+    for (const slot of order) {
+      const root = this.characterSlots.get(slot)?.root;
+      if (!root || root.parent !== this.charLayer) continue;
+      this.charLayer.setChildIndex(root, this.charLayer.children.length - 1);
     }
   }
 

@@ -52,6 +52,41 @@ function createCharacterRenderer(): any {
   return renderer;
 }
 
+function labelled(label: string): Container {
+  const container = new Container();
+  (container as any).label = label;
+  return container;
+}
+
+/** A `face_overlay` character: one body texture plus a face patch. */
+function createFaceOverlayRenderer(baked: Texture): any {
+  const context: Context = {
+    linkMap: {
+      avg_test: {
+        array: [{ alias: "", face: "face-1", group: 0, name: "1$1" }],
+        groups: [
+          {
+            base: "body-1",
+            faceRect: { h: 40, w: 50, x: 10, y: 20 },
+            mode: "face_overlay",
+          },
+        ],
+        pos: { x: 0, y: 0 },
+        size: { x: 100, y: 200 },
+      },
+    },
+    script: [],
+  } as unknown as Context;
+  const renderer = new PixiStoryRenderer(context) as any;
+  const textures: Record<string, Texture> = {
+    "body-1": new Texture({ source: { height: 200, width: 100 } as any }),
+    "face-1": new Texture({ source: { height: 40, width: 50 } as any }),
+  };
+  renderer.textureForCharacterKey = vi.fn(async (key: string) => textures[key]);
+  renderer.bakeDarkenedCharacterTexture = vi.fn(() => baked);
+  return renderer;
+}
+
 describe("PixiStoryRenderer", () => {
   it("bakes the black gradient into the character texture, replacing the sprites", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
@@ -92,6 +127,47 @@ describe("PixiStoryRenderer", () => {
     } finally {
       bakeSpy.mockRestore();
     }
+  });
+
+  it("bakes the black gradient over the body as well as the face", async () => {
+    const baked = new Texture();
+    const renderer = createFaceOverlayRenderer(baked);
+
+    const built = await renderer.buildCharacterVisual("avg_test", "1$1", 0, 1);
+
+    // Native composites the face into the same material as the body
+    // (`AlphaSplitImageHolder.SetSprite` binds it as `_HGDynamicTex`) and only
+    // then applies `_BlackStart`/`_BlackEnd`, so the darkening covers the
+    // whole character. Baking the face alone would leave the body at its
+    // original colour with a darkened patch over the face.
+    const [sprites] = renderer.bakeDarkenedCharacterTexture.mock.calls[0];
+    const bodyTexture = await renderer.textureForCharacterKey("body-1");
+    const faceTexture = await renderer.textureForCharacterKey("face-1");
+    expect(sprites.map((sprite: Sprite) => sprite.texture)).toEqual([
+      bodyTexture,
+      faceTexture,
+    ]);
+    // Draw order matters: the body goes down first, the face patch on top.
+    expect(sprites.map((sprite: Sprite) => [sprite.x, sprite.y])).toEqual([
+      [0, 0],
+      [10, 20],
+    ]);
+
+    const content = built.visual.children[0] as Container;
+    expect(content.children.length).toBe(1);
+    expect((content.children[0] as Sprite).texture).toBe(baked);
+  });
+
+  it("keeps every content sprite when one of them cannot be baked", async () => {
+    const renderer = createFaceOverlayRenderer(new Texture());
+    renderer.bakeDarkenedCharacterTexture = vi.fn(() => null);
+
+    const built = await renderer.buildCharacterVisual("avg_test", "1$1", 0, 1);
+
+    // The originals are only dropped in favour of a baked texture; when the
+    // bake fails the character must stay drawable, just undarkened.
+    const content = built.visual.children[0] as Container;
+    expect(content.children.length).toBe(2);
   });
 
   it("dims unfocused characters with tint without making them transparent", () => {
@@ -167,6 +243,142 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.tween).toHaveBeenCalled();
     expect(previous.root.parent).not.toBeNull();
     expect(current.root.alpha).toBe(0);
+  });
+
+  it("swaps the image instantly for an explicit enter without transtype", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test$1",
+      slot: "m",
+    });
+    const previous = renderer.characterSlots.get("m");
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 150,
+      enterFrom: "left",
+      expression: "2$1",
+      fadeIdentity: "avg_test$2",
+      slot: "m",
+    });
+
+    // Native `_ProcessSlot`'s enter branch feeds the fade duration through
+    // `_ProcessDurationWithTransType`, and `transtype`'s default NONE returns
+    // 0 there: the image swaps at once even for a different character -- the
+    // outgoing root is disposed and the incoming one is opaque from frame 0 --
+    // while the move tween still runs for the full duration.
+    const current = renderer.characterSlots.get("m");
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    expect(previous.root.parent).toBeNull();
+    expect(current.root.alpha).toBe(1);
+  });
+
+  it("still fades an explicit enter when transtype is ALPHA_IN", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test$1",
+      slot: "m",
+    });
+    const previous = renderer.characterSlots.get("m");
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 150,
+      enterFrom: "left",
+      expression: "2$1",
+      fadeIdentity: "avg_test$2",
+      slot: "m",
+      transType: 1,
+    });
+
+    // `_ProcessDurationWithTransType` only zeroes the duration for NONE, so an
+    // explicit ALPHA_IN keeps fading while entering.
+    const current = renderer.characterSlots.get("m");
+    expect(renderer.tween).toHaveBeenCalled();
+    expect(previous.root.parent).not.toBeNull();
+    expect(current.root.alpha).toBe(0);
+  });
+
+  it("offsets the horizontal enter start by each slot's own resting offset", () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    // `_GenPosition` adds +200 for LEFT and -200 for RIGHT before the
+    // 1152 horizontal delta, cancelling the slot's own offset from the panel
+    // centre so all three start at the same absolute off-screen x. The
+    // vertical delta has no such term, and Unity y-up flips to y-down.
+    expect(renderer.enterOffset("l", "left")).toEqual({ x: -952, y: 0 });
+    expect(renderer.enterOffset("m", "left")).toEqual({ x: -1152, y: 0 });
+    expect(renderer.enterOffset("r", "left")).toEqual({ x: -1352, y: 0 });
+    expect(renderer.enterOffset("l", "right")).toEqual({ x: 1352, y: 0 });
+    expect(renderer.enterOffset("r", "right")).toEqual({ x: 952, y: 0 });
+    expect(renderer.enterOffset("l", "up")).toEqual({ x: 0, y: -1072 });
+    expect(renderer.enterOffset("r", "down")).toEqual({ x: 0, y: 1072 });
+    expect(renderer.enterOffset("l", undefined)).toEqual({ x: 0, y: 0 });
+    // Explicit xpos/ypos replace `_GenPosition` outright, slot term included.
+    expect(renderer.enterOffset("l", "left", { x: 12, y: 34 })).toEqual({
+      x: 12,
+      y: 34,
+    });
+  });
+
+  it("eases the enter slide with OutCubic and leaves the fade linear", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 150,
+      enterFrom: "left",
+      expression: "1$1",
+      fadeIdentity: "avg_test$1",
+      slot: "m",
+      transType: 1,
+    });
+
+    const root = renderer.characterSlots.get("m").root;
+    const baseX = root.x + 1152;
+    const [, step] = renderer.tween.mock.calls[0];
+    step(0.5);
+
+    // Native `SetCharPos` slides with `Ease.OutCubic`; at the halfway point
+    // that is 1 - 0.5^3 = 0.875 of the way home, not 0.5.
+    expect(root.x).toBeCloseTo(baseX - 1152 * (1 - 0.875), 5);
+    expect(root.alpha).toBe(0.5);
+  });
+
+  it("keeps a cross-fading character root below the live slots", () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const l = labelled("l");
+    const m = labelled("m");
+    const r = labelled("r");
+    const outgoing = labelled("outgoing");
+    renderer.charLayer.addChild(l, m, outgoing, r);
+    renderer.characterSlots.set("l", { root: l });
+    renderer.characterSlots.set("m", { root: m });
+    renderer.characterSlots.set("r", { root: r });
+
+    const order = () =>
+      renderer.charLayer.children.map((child: any) => child.label);
+
+    // Bottom-to-top: middle always on top, then the focused side slot. The
+    // root left behind by a cross-fade is not a tracked slot, so it must sink
+    // below all three rather than get wedged between them.
+    renderer.applyCharacterZOrder(0);
+    expect(order()).toEqual(["outgoing", "l", "r", "m"]);
+    renderer.applyCharacterZOrder(1);
+    expect(order()).toEqual(["outgoing", "r", "m", "l"]);
+    renderer.applyCharacterZOrder(2);
+    expect(order()).toEqual(["outgoing", "l", "m", "r"]);
+    // `focus` is compared unsigned, so a negative value focuses nothing.
+    renderer.applyCharacterZOrder(-1);
+    expect(order()).toEqual(["outgoing", "l", "r", "m"]);
   });
 
   it("keeps the large background behind the background regardless of update order", async () => {
