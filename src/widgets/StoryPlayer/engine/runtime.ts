@@ -1441,8 +1441,11 @@ export class StoryRuntime {
             0,
             Math.round(toNumber(this.exactArg(args, "fadetime"), 0.13) * 1000),
           ),
-          // `AVGShowItemCgSlot.Hide` uses the same `Ease.Linear` fallback.
-          toString(this.exactArg(args, "ease"), "Linear"),
+          // `AVGShowItemCgSlot.Hide` (0x183ed14a0) reads the curve with
+          // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`: the
+          // default is DOTween `Ease` enum value 1 = InSine (`1-cos(t*pi/2)`,
+          // `Ease.Linear` is 0). All 140 corpus hidecgitem lines omit `ease`.
+          toString(this.exactArg(args, "ease"), "InSine"),
           toBoolean(this.exactArg(args, "block"), false),
         );
         return "continue";
