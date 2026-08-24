@@ -997,6 +997,21 @@ export class StoryRuntime {
           imageGroup,
           cgGroup,
         );
+        // Native always reads `initposmode` (default "default", 2.7.61:
+        // 0x183e76959) and unconditionally rewrites `_initOffset.localPosition`
+        // after assembling the puzzle (0x183e77451-0x183e775ce): a key miss
+        // writes Vector2.zero, the same offset the "center" mode produces.
+        const initPositionModeArg = toString(
+          this.exactArg(args, "initposmode"),
+          "default",
+        );
+        const initPositionMode =
+          initPositionModeArg === "default" ||
+          initPositionModeArg === "upperleft" ||
+          initPositionModeArg === "lowercenter" ||
+          initPositionModeArg === "center"
+            ? initPositionModeArg
+            : "center";
         const fadeMs = Math.max(
           0,
           toNumber(this.exactArg(args, "fadetime"), 0) * 1000,
@@ -1022,6 +1037,10 @@ export class StoryRuntime {
 
         if (imageKeys.length === 0) {
           this.warn("parse", "gridbg imagegroup is empty");
+          // Native treats every empty tile name as a fatal parse error and
+          // calls `_ResetPanel()` (2.7.61: 0x183e77675), which drops the
+          // current picture instead of keeping it around.
+          await this.renderer.clearGridBackground(0);
           return "continue";
         }
 
@@ -1034,6 +1053,10 @@ export class StoryRuntime {
             "parse",
             `gridbg expects ${imageKeys.length} widths/heights, got ${solidWidths.length}/${solidHeights.length}`,
           );
+          // Native logs "[AVG.GridBG] Image Count {0} of GridBG is
+          // incorrect." / "... is empty." then clears the panel via
+          // `_ResetPanel()` and returns false (2.7.61: 0x183e76cb8-0x183e77675).
+          await this.renderer.clearGridBackground(0);
           return "continue";
         }
 
@@ -1042,6 +1065,7 @@ export class StoryRuntime {
           block,
           fadeMs,
           imageKeys,
+          initPositionMode,
           layout: "grid",
           scaleX: toNumber(this.exactArg(args, "xScale"), 1),
           scaleY: toNumber(this.exactArg(args, "yScale"), 1),

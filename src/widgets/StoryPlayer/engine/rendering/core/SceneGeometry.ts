@@ -22,10 +22,49 @@ function largeBackgroundInitOffset(input: GridBackgroundInput): {
   x: number;
   y: number;
 } {
-  if (input.layout !== "large" || input.initPositionMode === undefined)
+  if (
+    (input.layout !== "large" && input.layout !== "grid") ||
+    input.initPositionMode === undefined
+  )
     return { x: 0, y: 0 };
 
   const widths = input.solidWidths;
+
+  if (input.layout === "grid") {
+    // Port of `LargeBackgroundPanel` POSITION_INIT_FUNCTION for `_ExecuteGridBG`
+    // (2.7.61: applied unconditionally at 0x183e77451-0x183e775ce). Native
+    // passes the full width list plus `heightList2 = [heightList[0],
+    // heightList[2]]`, so the `get_Item(0)+get_Item(1)` sums in
+    // `_InitPositionUpperLeft`/`_InitPositionLowerCenter` collapse to
+    // w0+w1 / h0+h1, and `_InitPositionDefault` reads
+    // `(widthList[1]/2, -heightList2[1]/2)` = (w1/2, -h1/2) — the half-tile
+    // offset that anchors the default view on the top row. The `_offset` rect
+    // (`sizeDelta` = (w0+w1, h0+h1), 0x183e76ef8) wraps the 2×2 puzzle
+    // exactly and is center-pivoted, so unlike the "large" row below there is
+    // no pivot compensation: the native Vector2 ports straight in and the
+    // position formula flips y for Pixi's downward axis.
+    const height0 = input.solidHeights[0] ?? 0;
+    const height1 = input.solidHeights[1] ?? 0;
+    const totalHeight = height0 + height1;
+    switch (input.initPositionMode) {
+      case "center": {
+        return { x: 0, y: 0 };
+      }
+      case "upperleft": {
+        return {
+          x: ((widths[0] ?? 0) + (widths[1] ?? 0) - STORY_WIDTH) / 2,
+          y: (STORY_HEIGHT - totalHeight) / 2,
+        };
+      }
+      case "lowercenter": {
+        return { x: 0, y: (totalHeight - STORY_HEIGHT) / 2 };
+      }
+      default: {
+        return { x: (widths[1] ?? 0) / 2, y: -height1 / 2 };
+      }
+    }
+  }
+
   const height = input.solidHeights[0] ?? 0;
   // Unity's children use a top-left anchor/pivot, while the flattened Pixi
   // root uses a centered pivot. The latter already contributes -height / 2,

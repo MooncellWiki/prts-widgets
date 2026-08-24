@@ -623,9 +623,11 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Port scope: `Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG` and
-   * `_LoadImage`, including all-or-nothing asset loading and replacement.
-   * `Container` composition is the Web adaptation of Unity RectTransforms.
+   * Port scope: `Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG` (plus the
+   * `_ExecuteImage`/`_ExecuteVerticalBG` siblings that share this path via
+   * `layout`) and the family `_LoadImage`, including all-or-nothing asset
+   * loading. `Container` composition is the Web adaptation of Unity
+   * RectTransforms.
    */
   async setGridBackground(input: GridBackgroundInput): Promise<void> {
     const sessionId = ++this.gridBackgroundSessionId;
@@ -637,19 +639,34 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
 
-    if (textures.some((texture) => !texture)) return;
+    if (textures.some((texture) => !texture)) {
+      // Native `_LoadImage` failure logs "Failed to load background: [key]"
+      // and "[AVG.GridBG] An error occurred when load image {idx}." (2.7.61:
+      // 0x183e76f79-0x183e77675), then `_ResetPanel()` drops the whole
+      // puzzle instead of keeping the previous one on screen.
+      const missingKeys = input.imageKeys.filter(
+        (_, index) => !textures[index],
+      );
+      this.onWarning?.(`missing grid background: ${missingKeys.join("/")}`);
+      await this.clearGridBackground(0);
+      return;
+    }
 
     const root = this.buildGridBackgroundRoot(input, textures as Texture[]);
     const previous = [...this.gridBackgroundLayer.children];
-    this.largeBackgroundRoot = input.layout === "large" ? root : null;
+    // `_ExecuteImageTween` (largebgtween) tweens the family-shared `_offset`
+    // container regardless of which executor filled it (2.7.61: 0x183e77a94),
+    // so every layout must register itself as the tween target.
+    this.largeBackgroundRoot = root;
+    // Native calls `_ResetImages()` before assembling the new puzzle
+    // (0x183e76b21), so the old one disappears instantly and the replacement
+    // fades in over the now-empty panel — there is no cross-fade.
+    for (const child of previous) child.removeFromParent();
 
     root.alpha = input.fadeMs > 0 ? 0 : 1;
     this.gridBackgroundLayer.addChild(root);
 
-    if (input.fadeMs <= 0) {
-      for (const child of previous) child.removeFromParent();
-      return;
-    }
+    if (input.fadeMs <= 0) return;
 
     const run = this.tween(
       input.fadeMs,
@@ -660,7 +677,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
         root.alpha = 1;
-        for (const child of previous) child.removeFromParent();
       },
     );
 
@@ -2165,7 +2181,8 @@ export class PixiStoryRenderer implements StoryRenderer {
         return [this.imageLayer];
       }
       // `LargeBackgroundPanel._PostDisplayKey` registers ck_lbg_1..4 over its
-      // `_images` list, which only `largebg` fills.
+      // `_images` list; largebg/gridbg/verticalbg all fill those slots, so
+      // whichever family root is active is the target.
       case "lbg": {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
