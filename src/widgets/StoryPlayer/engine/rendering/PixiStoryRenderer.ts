@@ -607,6 +607,15 @@ export class PixiStoryRenderer implements StoryRenderer {
   constructor(context: Context, onWarning?: (detail: string) => void) {
     this.context = context;
     this.onWarning = onWarning;
+    // Native port: `AVGImagePanel` executors transform the panel's own
+    // RectTransform (the scene `panel_image` node), whose pivot is serialized
+    // at (0.5, 0.5) — the panel center, i.e. the 1280x720 screen center.
+    // Anchor `imageLayer` the same way so `imagerotate` tilts the picture in
+    // place instead of orbiting the stage origin. `pivot == position` keeps
+    // the child-space translation identity, so sprites keep their
+    // (STORY_WIDTH/2, STORY_HEIGHT/2) placement semantics.
+    this.imageLayer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+    this.imageLayer.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
     this.dialogPanel = new DialogPanel(this.uiLayer, onWarning);
     this.decisionPanel = new DecisionPanel(this.uiLayer);
@@ -1614,8 +1623,13 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageRotate`: rotate the panel
-   * transform rather than its foreground Image, preserving angle across image
-   * swaps. `imageLayer` is the corresponding PIXI adaptation.
+   * transform (`_rectTransform`, the scene `panel_image` node) rather than its
+   * foreground Image, preserving angle across image swaps. `imageLayer` is the
+   * corresponding PIXI adaptation, with its constructor-time pivot mirroring
+   * the RectTransform's serialized (0.5, 0.5) pivot so the rotation orbits the
+   * panel center instead of the stage origin. Native never resets the angle
+   * except `OnReset` (story start/skip); the widget builds a fresh renderer
+   * per story, so no explicit zeroing is needed here.
    */
   async setImageRotate(input: ImageRotateInput): Promise<void> {
     const target = this.imageLayer;

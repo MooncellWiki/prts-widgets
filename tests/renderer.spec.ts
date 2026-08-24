@@ -1576,6 +1576,45 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.imageSprite.height).toBe(Texture.EMPTY.height);
   });
 
+  it("rotates the image panel around its center instead of the stage origin", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const imageLayer = renderer.imageLayer;
+
+    // Native `panel_image` serializes its RectTransform pivot at (0.5, 0.5) —
+    // the panel center. PIXI's default pivot (0, 0) made every rotation orbit
+    // the stage's top-left corner instead of tilting the picture in place.
+    expect(imageLayer.pivot.x).toBe(640);
+    expect(imageLayer.pivot.y).toBe(360);
+    expect(imageLayer.position.x).toBe(640);
+    expect(imageLayer.position.y).toBe(360);
+
+    const center = new Container();
+    center.position.set(640, 360);
+    imageLayer.addChild(center);
+
+    await renderer.setImageRotate({
+      angleDeg: 180,
+      block: false,
+      circles: 0,
+      durationMs: 0,
+      inverse: false,
+    });
+
+    // CreateRotateTween takes the short way: 0 -> 180 sweeps -180 degrees.
+    expect(imageLayer.angle).toBeCloseTo(-180);
+    const centerGlobal = center.toGlobal({ x: 0, y: 0 });
+    expect(centerGlobal.x).toBeCloseTo(640);
+    expect(centerGlobal.y).toBeCloseTo(360);
+
+    // A sprite at the stage corner swings to the opposite corner, proving the
+    // pivot sits at the screen center rather than the top-left origin.
+    const corner = new Container();
+    imageLayer.addChild(corner);
+    const cornerGlobal = corner.toGlobal({ x: 0, y: 0 });
+    expect(cornerGlobal.x).toBeCloseTo(1280);
+    expect(cornerGlobal.y).toBeCloseTo(720);
+  });
+
   it("applies the strict gridbg xScale and yScale transform", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const root = renderer.buildGridBackgroundRoot(createGridBackgroundInput(), [
