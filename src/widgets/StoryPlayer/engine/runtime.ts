@@ -1118,9 +1118,12 @@ export class StoryRuntime {
       }
 
       case "largebg": {
-        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteImage (the
-        // LargeBackgroundPanel method, not AVGImagePanel's namesake). It composes
-        // two horizontal tiles and keeps fadetime literal.
+        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteImage (2.7.61,
+        // VA 0x183e77ee0; the LargeBackgroundPanel method, not AVGImagePanel's
+        // namesake). It composes two horizontal tiles and keeps fadetime
+        // literal. Every validation/load failure makes native log an error,
+        // call `_ResetPanel()` and return false without blocking — mirrored
+        // below by clearing the grid background before continuing.
         const imageGroup = toString(this.exactArg(args, "imagegroup"));
         const cgGroup = toString(this.exactArg(args, "cggroup"));
         const groupSelection = resolveGroupedAssetSelection(
@@ -1131,12 +1134,17 @@ export class StoryRuntime {
           this.exactArg(args, "initposmode"),
           "default",
         );
+        // Native port: POSITION_INIT_FUNCTION only registers
+        // upperleft/center/lowercenter/default (VA 0x183e7b120). An
+        // unregistered key still writes `_initOffset.localPosition =
+        // (0,0,0)` (VA 0x183e78d10) — the same offset as `center` — so
+        // unknown values fall back to center, not default.
         const initPositionMode =
-          initPositionModeArg === "center" ||
+          initPositionModeArg === "default" ||
           initPositionModeArg === "lowercenter" ||
           initPositionModeArg === "upperleft"
             ? initPositionModeArg
-            : "default";
+            : "center";
         const fadeMs = Math.max(
           0,
           toNumber(this.exactArg(args, "fadetime"), 0) * 1000,
@@ -1156,23 +1164,24 @@ export class StoryRuntime {
         const solidWidths = parseNumberSequence(
           this.exactArg(args, "solidwidth"),
         ).slice(0, 2);
+        // Native port: `solidheight` (float, default 0.0) has no validation —
+        // 0 still lays out a zero-height, invisible composition that runs its
+        // fade and honors block for the full fadetime.
         const solidHeight = toNumber(this.exactArg(args, "solidheight"), 0);
-        const solidHeights = solidHeight > 0 ? [solidHeight] : [];
+        const solidHeights = [solidHeight];
 
         if (imageKeys.length === 0) {
           this.warn("parse", "largebg imagegroup is empty");
+          await this.renderer.clearGridBackground(0);
           return "continue";
         }
 
-        if (
-          imageKeys.length !== 2 ||
-          solidWidths.length !== 2 ||
-          solidHeights.length !== 1
-        ) {
+        if (imageKeys.length !== 2 || solidWidths.length !== 2) {
           this.warn(
             "parse",
             `largebg expects width_count * height_count === image_count, got ${solidWidths.length} * ${solidHeights.length} !== ${imageKeys.length}`,
           );
+          await this.renderer.clearGridBackground(0);
           return "continue";
         }
 
@@ -1183,6 +1192,10 @@ export class StoryRuntime {
           imageKeys,
           initPositionMode,
           layout: "large",
+          // Native port: `_ExecuteImage` calls `_ResetImages()` before
+          // loading, so the previous puzzle disappears immediately and the
+          // new one fades in over the emptied panel (no cross-fade).
+          resetPreviousImmediately: true,
           scaleX: toNumber(this.exactArg(args, "xScale"), 1),
           scaleY: toNumber(this.exactArg(args, "yScale"), 1),
           solidHeights,

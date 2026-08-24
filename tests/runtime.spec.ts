@@ -1988,6 +1988,7 @@ describe("StoryRuntime", () => {
         imageKeys: ["bg_beach_1", "bg_beach_2"],
         initPositionMode: "default",
         layout: "large",
+        resetPreviousImmediately: true,
         scaleX: 1,
         scaleY: 1,
         solidHeights: [720],
@@ -2022,6 +2023,7 @@ describe("StoryRuntime", () => {
         imageKeys: ["61_i12", "61_i11"],
         initPositionMode: "default",
         layout: "large",
+        resetPreviousImmediately: true,
         scaleX: 1,
         scaleY: 0.8,
         solidHeights: [900],
@@ -2035,6 +2037,80 @@ describe("StoryRuntime", () => {
         block: true,
         fadeMs: 200,
       },
+    ]);
+  });
+
+  it("maps unknown largebg initposmode values to the center offset", async () => {
+    // Native port: POSITION_INIT_FUNCTION has no entry for an unknown key, so
+    // `_ExecuteImage` still writes `_initOffset.localPosition = (0,0,0)` (VA
+    // 0x183e78d10) — the same offset as `center`, not `default`.
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[largebg(imagegroup="a/b",solidwidth="1/1",solidheight=720,initposmode="diagonal")]',
+        '[largebg(imagegroup="a/b",solidwidth="1/1",solidheight=720,initposmode="upperleft")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.gridBackgroundCalls.map((call) => call.initPositionMode),
+    ).toEqual(["center", "upperleft"]);
+  });
+
+  it("keeps largebg running with a zero or missing solidheight", async () => {
+    // Native port: `solidheight` (float, default 0.0) has no validation in
+    // `_ExecuteImage`; a zero-height invisible composition still fades in and
+    // still blocks for the full fadetime.
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[largebg(imagegroup="a/b",solidwidth="1/1",solidheight=0,fadetime=1,block=true)]',
+        '[largebg(imagegroup="a/b",solidwidth="1/1",fadetime=0)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.gridBackgroundCalls.map((call) => call.solidHeights),
+    ).toEqual([[0], [0]]);
+    expect(renderer.gridBackgroundCalls.map((call) => call.block)).toEqual([
+      true,
+      false,
+    ]);
+    expect(renderer.gridBackgroundClearCalls).toEqual([]);
+  });
+
+  it("empties the large background panel when largebg validation fails", async () => {
+    // Native port: Count!=2 / empty-tile / bad-width failures make
+    // `_ExecuteImage` log an error, `_ResetPanel()` and return false without
+    // blocking — the previous composition must not survive the failed command.
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[largebg(imagegroup="a/b",solidwidth="1/1",solidheight=720,fadetime=0)]',
+        '[largebg(imagegroup="a/b/c",solidwidth="1/1",solidheight=720,fadetime=0)]',
+        '[largebg(imagegroup="a",solidwidth="1/1",solidheight=720,fadetime=0)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.gridBackgroundCalls).toHaveLength(1);
+    expect(renderer.gridBackgroundClearCalls).toEqual([
+      { block: false, fadeMs: 0 },
+      { block: false, fadeMs: 0 },
     ]);
   });
 
