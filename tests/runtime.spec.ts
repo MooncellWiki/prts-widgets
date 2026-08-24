@@ -2088,6 +2088,95 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("passes largeimg scales through verbatim, including negative mirrors", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",xScale=-1.25,yScale=1.5,fadetime=0)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Case-insensitive keys accept native CamelCase xScale/yScale, and the
+    // negative mirror value must survive (reference: localScale assignment).
+    expect(renderer.gridBackgroundCalls).toEqual([
+      {
+        assetKind: "image",
+        block: false,
+        fadeMs: 0,
+        imageKeys: ["61_i12", "61_i11"],
+        layout: "large",
+        scaleX: -1.25,
+        scaleY: 1.5,
+        solidHeights: [900],
+        solidWidths: [1600, 1600],
+        x: 0,
+        y: 0,
+      },
+    ]);
+  });
+
+  it("defaults largeimg fadetime to zero and normalizes block", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",blok=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // fadetime defaults to 0 like the LargeBackgroundPanel family, and a
+    // zero-duration fade forces block=false (native: fadetime<=0 => !block).
+    expect(renderer.gridBackgroundCalls).toEqual([
+      {
+        assetKind: "image",
+        block: false,
+        fadeMs: 0,
+        imageKeys: ["61_i12", "61_i11"],
+        layout: "large",
+        scaleX: 1,
+        scaleY: 1,
+        solidHeights: [900],
+        solidWidths: [1600, 1600],
+        x: 0,
+        y: 0,
+      },
+    ]);
+  });
+
+  it("resets the large image layer when largeimg breaks the two-tile contract", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[largeimg(imagegroup="a/b/c",solidwidth="1600/1600/1600",solidheight="900",fadetime=0.5,blok=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Reference: LargeBackgroundPanel._ExecuteImage accepts exactly two
+    // horizontal tiles and calls _ResetPanel() on mismatch — the previous
+    // layer is cleared immediately instead of kept.
+    expect(renderer.gridBackgroundCalls).toEqual([]);
+    expect(renderer.gridBackgroundClearCalls).toEqual([
+      {
+        block: false,
+        fadeMs: 0,
+      },
+    ]);
+  });
+
   it("maps characteraction move with legacy slot aliases and block args", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

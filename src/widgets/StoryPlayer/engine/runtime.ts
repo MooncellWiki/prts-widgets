@@ -1194,8 +1194,13 @@ export class StoryRuntime {
       }
 
       case "largeimg": {
-        // Web-only compatibility extension: no native panel registers `largeimg`
-        // in the documented client; native `image` is its closest equivalent.
+        // Web-only compatibility extension: no native panel registers
+        // `largeimg` (re-verified against the 2.7.61 executor tables). Its
+        // parameter set — imagegroup/solidwidth/solidheight two-tile
+        // composition, literal fadetime, cggroup asset switch — is taken from
+        // the LargeBackgroundPanel family (`largebg`), NOT from the native
+        // `image` command, which is single-image and shares no puzzle params;
+        // only the asset domain (avg/images/) follows AVGImagePanel.
         const imageGroup = toString(this.arg(args, "imagegroup"));
         const cgGroup = toString(this.arg(args, "cggroup"));
         const groupSelection = resolveGroupedAssetSelection(
@@ -1203,20 +1208,24 @@ export class StoryRuntime {
           cgGroup,
           "image",
         );
-        const groupValue = groupSelection?.groupValue ?? "";
+        // Like the LargeBackgroundPanel family, fadetime is a literal second
+        // count (calculateFadeMs/animateRatio is bypassed) and defaults to 0.
         const fadeMs = Math.max(
           0,
-          Math.round(
-            toNumber(this.arg(args, "fadetime"), groupValue ? 0.15 : 0) * 1000,
-          ),
+          Math.round(toNumber(this.arg(args, "fadetime"), 0) * 1000),
         );
-        const block = toBoolean(
-          this.arg(args, "blok"),
+        // Legacy alias fallbacks (`blok`/`isblock`) and case-insensitive keys
+        // (`xscale` matching native CamelCase `xScale`) are web-extension
+        // tolerance for fan scripts; the native family reads exact keys only.
+        const block =
+          fadeMs > 0 &&
           toBoolean(
-            this.arg(args, "isblock"),
-            toBoolean(this.arg(args, "block"), false),
-          ),
-        );
+            this.arg(args, "blok"),
+            toBoolean(
+              this.arg(args, "isblock"),
+              toBoolean(this.arg(args, "block"), false),
+            ),
+          );
 
         if (!groupSelection) {
           await this.renderer.clearLargeImage(fadeMs, block);
@@ -1227,24 +1236,33 @@ export class StoryRuntime {
           .split("/")
           .map((item) => this.resolveImageKey(item))
           .filter((key): key is string => key !== null);
-        const solidWidths = parseNumberSequence(this.arg(args, "solidwidth"));
-        const solidHeights = parseNumberSequence(this.arg(args, "solidheight"));
+        const solidWidths = parseNumberSequence(
+          this.arg(args, "solidwidth"),
+        ).slice(0, 2);
+        const solidHeights = parseNumberSequence(
+          this.arg(args, "solidheight"),
+        ).slice(0, 1);
 
+        // Reference behavior: LargeBackgroundPanel._ExecuteImage accepts
+        // exactly two horizontal tiles (imagegroup Count==2, one height) and
+        // resets the panel via _ResetPanel() on any parse failure — the
+        // previous layer is cleared instead of kept.
         if (imageKeys.length === 0) {
           this.warn("parse", "largeimg imagegroup is empty");
+          await this.renderer.clearLargeImage(0);
           return "continue";
         }
 
-        const expectedTileCount = solidWidths.length * solidHeights.length;
         if (
-          solidWidths.length === 0 ||
-          solidHeights.length === 0 ||
-          expectedTileCount !== imageKeys.length
+          imageKeys.length !== 2 ||
+          solidWidths.length !== 2 ||
+          solidHeights.length !== 1
         ) {
           this.warn(
             "parse",
-            `largeimg expects width_count * height_count === image_count, got ${solidWidths.length} * ${solidHeights.length} !== ${imageKeys.length}`,
+            `largeimg expects exactly two horizontal tiles (2 widths x 1 height), got ${imageKeys.length} images / ${solidWidths.length} widths / ${solidHeights.length} heights`,
           );
+          await this.renderer.clearLargeImage(0);
           return "continue";
         }
 
@@ -1254,12 +1272,17 @@ export class StoryRuntime {
           fadeMs,
           imageKeys,
           layout: "large",
-          scaleX: Math.max(0, toNumber(this.arg(args, "xscale"), 1)),
-          scaleY: Math.max(0, toNumber(this.arg(args, "yscale"), 1)),
+          // Negative scales (mirror flips) pass through like the reference's
+          // localScale assignment; no clamping to 0.
+          scaleX: toNumber(this.arg(args, "xscale"), 1),
+          scaleY: toNumber(this.arg(args, "yscale"), 1),
           solidHeights,
           solidWidths,
           x: toNumber(this.arg(args, "x"), 0),
           y: toNumber(this.arg(args, "y"), 0),
+          // initposmode is intentionally not read: largeimg is a web-only
+          // extension, so the largebg initOffset placement has no script
+          // corpus to serve here.
         });
         return "continue";
       }
