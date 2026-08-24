@@ -1,4 +1,4 @@
-import { Container, Sprite, Texture } from "pixi.js";
+import { Container, Sprite, Texture, TilingSprite } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
@@ -773,15 +773,95 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.backgroundSprite.position.y).toBe(0);
   });
 
-  it("keeps the Unity background rect size when screenadapt is omitted", async () => {
+  it("keeps the background at its native sprite size when screenadapt is omitted", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
     await renderer.setBackground("bg_festival_2");
 
+    // Native `_LoadImage` calls Image.SetNativeSize() right after assigning
+    // the sprite (0x183e58688), so an omitted screenadapt keeps the sprite's
+    // native rect -- non-1280x720 art reveals the backing color around it
+    // instead of stretching to the viewport.
+    expect(renderer.backgroundSprite.width).toBe(Texture.EMPTY.width);
+    expect(renderer.backgroundSprite.height).toBe(Texture.EMPTY.height);
+  });
+
+  it("multiplies the native rect by the width and height params", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setBackground("bg_test", { height: 0.5, width: 2.5 });
+
+    // `_LoadImage`: sizeDelta = (native.x * width, native.y * height), both
+    // defaulting to 1.0 (mulss at 0x183e587b0/0x183e587b4 in build 2761).
+    expect(renderer.backgroundSprite.width).toBe(Texture.EMPTY.width * 2.5);
+    expect(renderer.backgroundSprite.height).toBe(Texture.EMPTY.height * 0.5);
+  });
+
+  it("feeds the width/height-multiplied rect into the screenadapt ratio check", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    // A square texture scaled 4x taller is narrower than 16:9, so `coverall`
+    // takes the width-fit branch on the *multiplied* ratio and produces
+    // (1280, 4 * 1280).
+    await renderer.setBackground("bg_test", {
+      height: 4,
+      screenAdapt: "coverall",
+    });
+
     expect(renderer.backgroundSprite.width).toBe(1280);
-    expect(renderer.backgroundSprite.height).toBe(720);
+    expect(renderer.backgroundSprite.height).toBe(
+      (Texture.EMPTY.height * 4 * 1280) / Texture.EMPTY.width,
+    );
+  });
+
+  it("clears the previous background when the texture fails to load", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setBackground("bg_test");
+    const previous = renderer.backgroundRoot;
+    expect(previous.parent).not.toBeNull();
+
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(null);
+    renderer.tween = vi.fn(async () => {});
+
+    await renderer.setBackground("bg_missing", { block: true, fadeMs: 500 });
+
+    // Native `_LoadImage` maps a failed sprite load onto the clear branch:
+    // DOFade(_backImage -> 0) with the command's scaled duration and block
+    // gate, so the old background fades out instead of staying visible.
+    expect(renderer.backgroundRoot).toBeNull();
+    expect(renderer.backgroundSprite).toBeNull();
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    expect(renderer.tween).toHaveBeenCalledWith(
+      500,
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it("tiles the background texture when tiled is true", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setBackground("bg_ri_1", { tiled: true });
+
+    // `_LoadImage`: tiled=true sets Image.type = Tiled, repeating the sprite
+    // inside the final sizeDelta rect; TilingSprite + repeat wrap mode is
+    // the PIXI equivalent.
+    expect(renderer.backgroundSprite).toBeInstanceOf(TilingSprite);
+    expect(Texture.EMPTY.source.style.addressMode).toBe("repeat");
+    // Restore the shared EMPTY texture so the address mode does not leak into
+    // the other specs.
+    Texture.EMPTY.source.style.addressMode = "clamp-to-edge";
   });
 
   it("keeps an image at its asset size when screenadapt is omitted", async () => {

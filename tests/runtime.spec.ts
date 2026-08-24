@@ -2502,7 +2502,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("maps background with strict transform keys and ignores width/height", async () => {
+  it("maps background with strict transform keys and native width/height multipliers", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -2515,6 +2515,8 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
+    // `height`/`width` are the `_LoadImage` sizeDelta multipliers
+    // (GetOrDefault<float>(..., 1.0)); omitted width falls back to 1.
     expect(renderer.backgroundCalls).toEqual([
       {
         input: {
@@ -2522,8 +2524,10 @@ describe("StoryRuntime", () => {
           scaleY: 1,
           block: false,
           fadeMs: 0,
+          height: 1.4,
           screenAdapt: undefined,
           tiled: false,
+          width: 1,
           x: 24,
           y: -36,
         },

@@ -277,6 +277,13 @@ export interface BackgroundInput {
   scaleY: number;
   screenAdapt?: "coverall" | "fill" | "height" | "showall" | "width";
   tiled: boolean;
+  /**
+   * Native `width`/`height` params of `AVGImagePanel._LoadImage`
+   * (GetOrDefault<float>("width", 1.0)): multipliers applied to the
+   * SetNativeSize rect before screenadapt, not pixel sizes.
+   */
+  width?: number;
+  height?: number;
   x: number;
   y: number;
 }
