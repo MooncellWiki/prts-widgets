@@ -129,6 +129,7 @@ const detailStatus = ref(Status.idle);
 const detailError = ref("");
 const detailRows = ref<ResultRow[]>([]);
 const matchedCount = ref(0);
+const detailTruncated = ref("");
 
 const showFaces = ref(false);
 const faceItems = ref<StoryCharacterFaceAsset[]>([]);
@@ -140,9 +141,11 @@ const detailTitle = computed(() =>
 );
 
 const characterLinks = ref<CharacterLinkMap | null>(null);
+const characterMapFailed = ref(false);
 
 watchEffect(() => {
-  if (characterLinks.value) return;
+  // 失败后先停下，避免每次渲染重试 1.3MB 的请求；下一次搜索会解除。
+  if (characterLinks.value || characterMapFailed.value) return;
   if (resources.value.every((resource) => resource.type !== "character")) {
     return;
   }
@@ -152,8 +155,7 @@ watchEffect(() => {
     })
     .catch((error) => {
       console.warn(error);
-      // 失败时置空表，避免每次渲染重试 1.3MB 的请求
-      characterLinks.value = new Map();
+      characterMapFailed.value = true;
     });
 });
 
@@ -204,6 +206,7 @@ async function search(): Promise<void> {
   status.value = Status.loading;
   errorMessage.value = "";
   loadMoreError.value = "";
+  characterMapFailed.value = false;
   try {
     const data = await fetchResourcePage(criteria);
     if (generation !== resourceSearchGeneration.value) return;
@@ -244,7 +247,7 @@ async function loadMore(): Promise<void> {
 async function fetchUsageItems(
   type: StoryResourceType,
   id: string,
-): Promise<StoryUsageItem[]> {
+): Promise<{ items: StoryUsageItem[]; truncated: boolean }> {
   const items: StoryUsageItem[] = [];
   let cursor: string | null | undefined;
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -263,15 +266,17 @@ async function fetchUsageItems(
     const data = (await resp.json()) as StoryUsageResponse;
     items.push(...data.usages);
     cursor = data.nextCursor;
-    if (!cursor) break;
+    if (!cursor) return { items, truncated: false };
   }
-  return items;
+  // 翻页保护兜底：还有 cursor 说明结果被截断，得让用户知道列表不全。
+  return { items, truncated: true };
 }
 
 async function fetchCargoStories(
   paths: string[],
-): Promise<Map<string, CargoStoryRow>> {
+): Promise<{ map: Map<string, CargoStoryRow>; truncated: boolean }> {
   const map = new Map<string, CargoStoryRow>();
+  let truncated = false;
   for (const group of chunk(paths, CARGO_IN_CHUNK)) {
     const params = new URLSearchParams({
       action: "cargoquery",
@@ -285,16 +290,35 @@ async function fetchCargoStories(
     if (!resp.ok) {
       throw new Error(`cargoquery ${resp.status}`);
     }
+    // MediaWiki 出错时照样回 200，错误放在 error 字段里；不查的话整表会静默
+    // 变成「未收录」。
     const json = (await resp.json()) as {
       cargoquery?: { title: CargoStoryRow }[];
+      error?: { code?: string; info?: string };
     };
-    for (const { title } of json.cargoquery ?? []) {
+    if (json.error) {
+      throw new Error(
+        `cargoquery ${json.error.code ?? "error"}: ${json.error.info ?? ""}`,
+      );
+    }
+    const rows = json.cargoquery ?? [];
+    // 取满上限说明这一批可能还有没返回的行。
+    if (rows.length >= CARGO_ROW_LIMIT) truncated = true;
+    for (const { title } of rows) {
       if (!map.has(title.textPath)) {
         map.set(title.textPath, title);
       }
     }
   }
-  return map;
+  return { map, truncated };
+}
+
+/** 两处静默截断都得让用户看见，否则「就这么多」和「被截断了」长得一样。 */
+function truncationNotice(usagesTruncated: boolean, cargoTruncated: boolean) {
+  if (usagesTruncated)
+    return `使用记录超过 ${MAX_PAGES * PAGE_LIMIT} 条，列表已截断`;
+  if (cargoTruncated) return "cargo 查询取满了结果上限，剧情页面关联可能不全";
+  return "";
 }
 
 async function queryDetail(): Promise<void> {
@@ -306,17 +330,22 @@ async function queryDetail(): Promise<void> {
   const generation = detailGeneration.value;
   detailStatus.value = Status.loading;
   detailError.value = "";
+  detailTruncated.value = "";
   try {
-    const items = await fetchUsageItems(resource.type, resource.id);
-    const storyMap = await fetchCargoStories(
-      items.map((item) => item.scriptPath),
+    const usages = await fetchUsageItems(resource.type, resource.id);
+    const stories = await fetchCargoStories(
+      usages.items.map((item) => item.scriptPath),
     );
     if (generation !== detailGeneration.value) return;
-    detailRows.value = items.map((item) => ({
+    detailRows.value = usages.items.map((item) => ({
       ...item,
-      story: storyMap.get(item.scriptPath),
+      story: stories.map.get(item.scriptPath),
     }));
     matchedCount.value = detailRows.value.filter((row) => row.story).length;
+    detailTruncated.value = truncationNotice(
+      usages.truncated,
+      stories.truncated,
+    );
     detailStatus.value = Status.succ;
   } catch (error) {
     if (generation !== detailGeneration.value) return;
@@ -486,6 +515,9 @@ onMounted(() => {
           </div>
           <template v-else>
             <div class="mb-2 text-sm">{{ matchedCount }} 条已关联剧情页面</div>
+            <div v-if="detailTruncated" class="mb-2 text-xs text-red">
+              {{ detailTruncated }}
+            </div>
             <div class="max-h-[70vh] overflow-x-auto">
               <table class="w-full border-collapse text-left">
                 <thead>
@@ -543,6 +575,7 @@ onMounted(() => {
                         v-if="row.story"
                         :href="`/w/${row.story.page}`"
                         target="_blank"
+                        rel="noopener noreferrer"
                       >
                         {{ row.story.page }}
                       </a>
