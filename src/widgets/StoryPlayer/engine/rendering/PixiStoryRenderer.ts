@@ -306,6 +306,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       (key) => this.textureForImageKey(key, "image"),
       (duration, update, complete) => this.tween(duration, update, complete),
       onWarning,
+      // `SetWhenBind` replay hook: re-resolve focus targets whenever the
+      // cgitem target set changes (see FocusEffectPanel.refresh).
+      () => this.focusEffectPanel.refresh(),
     );
   }
 
@@ -2169,14 +2172,24 @@ export class PixiStoryRenderer implements StoryRenderer {
       case "lbg": {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
+      // Native provenance: `_GenCfgByType` writes the raw `id` into the
+      // single `_channel` field for `type="cgitem"`; an empty id leaves
+      // `IsChannelEmpty` true, so `_ExecuteFocusout` is a silent no-op --
+      // it must not fall back to "all items".
       case "cgitem": {
+        if (!id) return [];
         return this.cgItemPanel.targets(id);
       }
+      // Native provenance: `customchar` resolves channels from the custom
+      // character-slot registry (`m_customInUse`) via
+      // `AVGCharacterslotPanel.TryCollectCustomSlotEffectChannels` /
+      // `TryCollectAllCustomSlotEffectChannels` -- a channel set disjoint
+      // from the standard left/middle/right slots. This port has no custom
+      // slot system, so the branch stays a no-op instead of misrouting to
+      // standard slots (which would also double-apply when a `char`
+      // channel is active, since native channel sets never overlap).
       case "customchar": {
-        if (!id)
-          return [...this.characterSlots.values()].map((state) => state.root);
-        const state = this.characterSlots.get(this.normalizeCharacterSlot(id));
-        return state ? [state.root] : [];
+        return [];
       }
       default: {
         return [];

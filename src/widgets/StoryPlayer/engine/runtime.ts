@@ -2211,7 +2211,13 @@ export class StoryRuntime {
       }
 
       case "focusout": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusout. Its duration
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusout. Its
+        // duration is passed through unscaled -- the executor's refs contain
+        // neither get_animateRatio nor CalculateFadetime, so focusout belongs
+        // to the "bypass" family and fast-forward tiers do not shorten its
+        // tween or block wait (unlike calculateFadeMs-based commands). A
+        // `from >= 0` does a zero-duration UpdateEffect before the real
+        // tween, and `block` only gates the command when duration > 0.
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "duration"), 0) * 1000,
@@ -2230,7 +2236,11 @@ export class StoryRuntime {
       }
 
       case "focusparam": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This is a
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
+        // is a config-only write: it sets useBlur / color on the shared
+        // AVGSceneFocusOut Config and marks the command buffer dirty
+        // (MarkEffectImplConfigDirty). It never touches channel amounts and
+        // never blocks -- the executor always returns false.
         const effect = toString(this.exactArg(args, "effect"));
         this.renderer.setFocusParam({
           blur: toBoolean(this.exactArg(args, "blur"), true),

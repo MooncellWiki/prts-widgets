@@ -1,4 +1,9 @@
-import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
+import {
+  BlurFilter,
+  ColorMatrixFilter,
+  type ColorMatrix,
+  type Container,
+} from "pixi.js";
 
 import type { FocusOutInput, FocusParamInput } from "../../types";
 
@@ -16,11 +21,47 @@ interface FocusState {
   type: string;
 }
 
+// Full-strength inverse (out = 1 - c per channel). Written by hand instead of
+// pixi's `negative()`, whose matrix adds source alpha into each channel (a
+// pixi quirk); native `mat_grayscale`/`_Inverse` inverts per channel.
+const INVERSE_MATRIX: ColorMatrix = [
+  -1,
+  0,
+  0,
+  0,
+  1, //
+  0,
+  -1,
+  0,
+  0,
+  1, //
+  0,
+  0,
+  -1,
+  0,
+  1, //
+  0,
+  0,
+  0,
+  1,
+  0,
+];
+
 /**
  * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
  * `_ExecuteFocusParam` channel state. Applying `BlurFilter` and
  * `ColorMatrixFilter` per PIXI container is a Web adaptation of the native
  * `AVGSceneEffectManager` post-processing pipeline.
+ *
+ * Native composites each registered item as "clean image x fully-processed
+ * image" mixed by the channel amount (`AVGSceneFocusOut.Render` +
+ * `mat_blit_ghost`; grayscale/inverse strength is a material constant and
+ * amount only drives the blend -- amount=0.5 is a half mix, not a
+ * half-strength effect). The color filters below reproduce that model
+ * exactly: a full-strength `ColorMatrixFilter` matrix mixed with the clean
+ * pixel through the filter's `alpha` uniform (GL/WGSL both `mix(orig,
+ * processed, uAlpha)`). Blur keeps a strength-graded surrogate for the blend
+ * because stock PIXI filters cannot composite two copies of live content.
  */
 export class FocusEffectPanel {
   private readonly states = new Map<string, FocusState>();
@@ -58,7 +99,11 @@ export class FocusEffectPanel {
       input.durationMs,
       (progress) => {
         if (state.sessionId !== sessionId) return;
-        state.amount = from + (input.to - from) * progress;
+        // Native provenance: `AVGSceneEffectManager._SetEffectAmount` tweens
+        // each channel with `TweenUtils.SmoothStep` (slow at both ends), not
+        // linear time.
+        const eased = progress * progress * (3 - 2 * progress);
+        state.amount = from + (input.to - from) * eased;
         this.render();
       },
       () => {
@@ -77,6 +122,19 @@ export class FocusEffectPanel {
     this.states.clear();
     for (const target of this.filteredTargets) target.filters = [];
     this.filteredTargets.clear();
+  }
+
+  /**
+   * Native provenance: `AVGSceneFocusOut.TryRegister` + `SetWhenBind.Bind`
+   * replay a channel's stored amount the moment a PostDisplay item
+   * (re)registers -- a cgitem displayed after `focusout` already ran picks
+   * up the existing amount immediately. The Web adaptation re-resolves
+   * targets whenever the per-object target set (cgitem panel) changes;
+   * layer-backed types (bg/char/cg/lbg) get this for free because the
+   * filter sits on the layer itself.
+   */
+  refresh(): void {
+    this.render();
   }
 
   private render(): void {
@@ -98,8 +156,11 @@ export class FocusEffectPanel {
         filters.push(new BlurFilter({ strength: amount * 8 }));
       if (amount > 0 && this.config.color !== "None") {
         const color = new ColorMatrixFilter();
-        if (this.config.color === "Grayscale") color.grayscale(amount, false);
-        else color.negative(false);
+        if (this.config.color === "Grayscale") color.grayscale(1, false);
+        else color.matrix = INVERSE_MATRIX;
+        // Ghost blend: amount mixes the clean pixel with the full-strength
+        // processed pixel (see the port-scope note above).
+        color.alpha = amount;
         filters.push(color);
       }
       target.filters = filters;
