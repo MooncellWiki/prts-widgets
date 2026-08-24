@@ -68,6 +68,13 @@ export function passesGate(
  * story_ghost_2_1 的 4 选项 / 3 values）在原生里照常播下去。
  * 标签与 runtime 的 translateText 同源展开（如 `{@nickname}`），
  * 否则 Log All 会显示播放时不可见的字面占位符。
+ *
+ * `&` 禁用前缀（2.7.61 起）：原生 `DecisionPanel._SetupOptionText`
+ * （0x183e718a0）对 `StartsWith("&")` 的选项 `Substring(1)` 剥前缀并置
+ * `interactable=false`，剥完才进 `AVGTextManager.Translate`。这里在共享
+ * 语义层同序处理（先剥 `&` 再 expandStoryText），使 runtime 面板与
+ * Log All 显示同一份玩家可见文本。禁用项仍保留 optionIndex/value：
+ * 原生 predicator 不感知禁用，Log All 的分支枚举也不排除它。
  */
 export function parseDecision(
   line: ParsedCommandLine,
@@ -79,11 +86,15 @@ export function parseDecision(
   const labels = toStringValue(optionsValue).split(";");
   const values = toIntList(line.args.values);
   return {
-    options: labels.map((label, optionIndex) => ({
-      label: expandStoryText(label, variables),
-      optionIndex,
-      value: values[optionIndex] ?? 0,
-    })),
+    options: labels.map((label, optionIndex) => {
+      const disabled = label.startsWith("&");
+      return {
+        disabled,
+        label: expandStoryText(disabled ? label.slice(1) : label, variables),
+        optionIndex,
+        value: values[optionIndex] ?? 0,
+      };
+    }),
   };
 }
 

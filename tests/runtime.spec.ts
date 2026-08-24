@@ -95,7 +95,14 @@ class FakeRenderer implements StoryRenderer {
   videoWaiter: Promise<void> = Promise.resolve();
   decisionValue = 0;
   decisionIndex = -1;
-  decisionCalls: { options: string[]; values: number[] }[] = [];
+  decisionCalls: {
+    disabled: boolean[];
+    options: string[];
+    values: number[];
+  }[] = [];
+  /** 为 true 时 showDecision 挂起等 settleDecision（模拟玩家尚未点击） */
+  holdDecisions = false;
+  private decisionWaiters: Array<(selection: DecisionSelection) => void> = [];
   private resolveVideoWaiter: (() => void) | null = null;
 
   setCameraEffect(
@@ -309,9 +316,24 @@ class FakeRenderer implements StoryRenderer {
   async showDecision(
     options: string[],
     values: number[],
+    disabled?: boolean[],
   ): Promise<DecisionSelection> {
-    this.decisionCalls.push({ options, values });
-    return { optionIndex: this.decisionIndex, value: this.decisionValue };
+    this.decisionCalls.push({ disabled: disabled ?? [], options, values });
+    if (!this.holdDecisions) {
+      return { optionIndex: this.decisionIndex, value: this.decisionValue };
+    }
+    return new Promise<DecisionSelection>((resolve) => {
+      this.decisionWaiters.push(resolve);
+    });
+  }
+
+  /** 按「未点击」结算挂起中的 decision，对应 PixiStoryRenderer.settleDecision */
+  settleDecision(): void {
+    const waiters = this.decisionWaiters;
+    this.decisionWaiters = [];
+    for (const resolve of waiters) {
+      resolve({ optionIndex: -1, value: 0 });
+    }
   }
 
   stopVideo(): void {
@@ -1104,6 +1126,7 @@ describe("StoryRuntime", () => {
     // 面板拿到的是 log/semantics.parseDecision 逐项解析好的 values；
     // 缺项取 0，与原生 DecisionPanel._GetOptionValue 越界分支一致
     expect(renderer.decisionCalls[0]).toEqual({
+      disabled: [false, false, false],
       options: ["A", "B", "C"],
       values: [7, 0, 0],
     });
@@ -1126,6 +1149,115 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(runtime.getLogPosition().selections).toEqual([]);
+  });
+
+  it("settles a pending decision when skipping so the command loop resumes", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B", values="1;2")]', // line 1，挂起等点击
+        '[skipnode(mode="nofirstskip")]', // line 2，首读保护锚点
+        '[name="A"]after', // line 3
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    expect(runtime.getState()).toBe("waiting_decision");
+    expect(runtime.canSkipNode()).toBe(true);
+
+    // 不结算挂起 decision 的话这一步永不返回：processLoop 吊在
+    // showDecision 上，cursor 移动了也无人消费（native 走 ForceCommandEnd）
+    await runtime.skipNode();
+    await startPromise;
+
+    // 未点击结算：value=0（闸门全开）、不记选择历史
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+    expect(runtime.getDecisionSelectValue()).toBe(0);
+    expect(runtime.getLogPosition().selections).toEqual([]);
+  });
+
+  it("finishes the story when skipping past a pending decision to the end", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="skip")]',
+        '[decision(options="A;B", values="1;2")]',
+        '[name="A"]tail',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    expect(runtime.getState()).toBe("waiting_decision");
+
+    await runtime.skipNode();
+    await startPromise;
+
+    expect(runtime.getState()).toBe("finished");
+    expect(runtime.canSkipNode()).toBe(false);
+  });
+
+  it("marks ampersand-prefixed options as disabled and strips the prefix", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="&不可选;可选", values="1;2")]', // line 1
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // `&` 前缀在 log/semantics.parseDecision 剥离（原生 _SetupOptionText），
+    // 面板拿到的是玩家可见文本 + 禁用标记
+    expect(renderer.decisionCalls[0]).toEqual({
+      disabled: [true, false],
+      options: ["不可选", "可选"],
+      values: [1, 2],
+    });
+  });
+
+  it("warns when a decision exceeds the native option capacity", async () => {
+    const warnings: RuntimeWarning[] = [];
+    const onWarning = (warning: RuntimeWarning) => warnings.push(warning);
+    const runtime = new StoryRuntime(
+      createContext(['[decision(options="1;2;3;4;5", values="1;2;3;4;5")]']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    // 原生上限为 DecisionPanel 预制体按钮数，超出打
+    // "[AVG] Too many decision options. Some will be ignored!"
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "decision",
+        type: "invalid_parameter",
+      }),
+    ]);
+
+    const boundaryWarnings: RuntimeWarning[] = [];
+    const boundaryRuntime = new StoryRuntime(
+      createContext(['[decision(options="1;2;3;4", values="1;2;3;4")]']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { onWarning: (warning) => boundaryWarnings.push(warning) },
+    );
+    await boundaryRuntime.start();
+    expect(boundaryWarnings).toEqual([]);
   });
 
   it("shows and hides story items with legacy defaults", async () => {

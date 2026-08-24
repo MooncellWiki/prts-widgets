@@ -19,7 +19,10 @@ import type { ParsedLine } from "../../src/widgets/StoryPlayer/engine/types";
  * - multiline 空片段不动累积；sticker/subtitle 的 hidelog/multi 是
  *   web 日志侧规则，但两种累积不共用缓冲（原生在 sticker/subtitle 处
  *   会 _TryEndMultilineMode）；
- * - decision 的 values 缺项取 0（原生 _GetOptionValue 越界返回 0）。
+ * - decision 的 values 缺项取 0（原生 _GetOptionValue 越界返回 0）；
+ * - 选项文本的 `&` 禁用前缀（原生 _SetupOptionText 剥前缀 +
+ *   interactable=false）只作用于渲染层，不影响分支枚举/取值，oracle
+ *   不解析它。
  */
 
 export interface OracleChoice {

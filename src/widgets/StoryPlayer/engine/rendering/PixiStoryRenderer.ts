@@ -500,8 +500,18 @@ export class PixiStoryRenderer implements StoryRenderer {
   async showDecision(
     options: string[],
     values: number[],
+    disabled?: boolean[],
   ): Promise<DecisionSelection> {
-    return this.decisionPanel.show(options, values);
+    return this.decisionPanel.show(options, values, disabled);
+  }
+
+  /**
+   * Native provenance: skip 路径的 `DecisionPanel.ForceCommandEnd`
+   * （0x183e706b0）——按「未点击」结算挂起中的 decision，让
+   * runtime 挂在 showDecision 上的命令循环得以继续。
+   */
+  settleDecision(): void {
+    this.decisionPanel.clear();
   }
 
   /**

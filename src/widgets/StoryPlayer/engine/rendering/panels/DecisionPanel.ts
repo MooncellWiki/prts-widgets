@@ -39,7 +39,11 @@ export class DecisionPanel {
 
   constructor(private readonly layer: ContainerType) {}
 
-  show(options: string[], values: number[]): Promise<DecisionSelection> {
+  show(
+    options: string[],
+    values: number[],
+    disabledOptions: boolean[] = [],
+  ): Promise<DecisionSelection> {
     // Settle any decision this one replaces: `_ExecuteDecision` awaits the
     // selected value, so dropping the pending resolver would strand the
     // command loop in `waiting_decision` forever.
@@ -58,16 +62,24 @@ export class DecisionPanel {
     const startX = (STORY_WIDTH - buttonWidth) / 2;
 
     for (const [index, option] of options.entries()) {
+      // Native `_SetupOptionText`（0x183e718a0）：`&` 前缀项剥前缀后
+      // `interactable = false`。前缀已在 log/semantics.parseDecision 剥掉，
+      // 这里只负责禁用的呈现：灰底灰字、无手型、不注册指针事件
+      // （按钮保持 passive，点击穿透到遮罩，不会误结算）。
+      const disabled = disabledOptions[index] ?? false;
       const button = new Container();
       button.position.set(startX, startY + index * stride);
-      button.eventMode = "static";
-      button.cursor = "pointer";
       const background = new Graphics();
-      paintButton(background, 0x30_30_30, buttonWidth, buttonHeight);
+      paintButton(
+        background,
+        disabled ? 0x1c_1c_1c : 0x30_30_30,
+        buttonWidth,
+        buttonHeight,
+      );
       const label = new Text({
         style: new TextStyle({
           align: "center",
-          fill: "#ffffff",
+          fill: disabled ? "#8c8c8c" : "#ffffff",
           fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
           fontSize: 20,
         }),
@@ -76,19 +88,23 @@ export class DecisionPanel {
       label.anchor.set(0.5);
       label.position.set(buttonWidth / 2, buttonHeight / 2);
       button.addChild(background, label);
-      button.on("pointerover", () =>
-        paintButton(background, 0x50_50_50, buttonWidth, buttonHeight),
-      );
-      button.on("pointerout", () =>
-        paintButton(background, 0x30_30_30, buttonWidth, buttonHeight),
-      );
-      button.on("pointertap", () => {
-        // 下标在点击点就是唯一的；value 可能在 options 间重复，只能由
-        // runtime 写闸门，不能反查回下标（Log All 高亮依赖下标）。
-        // values 由 runtime 的 parseDecision 逐项解析好传进来，这里的 0
-        // 只是兜底；0 与原生 `_GetOptionValue` 的越界返回值一致。
-        this.clear({ optionIndex: index, value: values[index] ?? 0 });
-      });
+      if (!disabled) {
+        button.eventMode = "static";
+        button.cursor = "pointer";
+        button.on("pointerover", () =>
+          paintButton(background, 0x50_50_50, buttonWidth, buttonHeight),
+        );
+        button.on("pointerout", () =>
+          paintButton(background, 0x30_30_30, buttonWidth, buttonHeight),
+        );
+        button.on("pointertap", () => {
+          // 下标在点击点就是唯一的；value 可能在 options 间重复，只能由
+          // runtime 写闸门，不能反查回下标（Log All 高亮依赖下标）。
+          // values 由 runtime 的 parseDecision 逐项解析好传进来，这里的 0
+          // 只是兜底；0 与原生 `_GetOptionValue` 的越界返回值一致。
+          this.clear({ optionIndex: index, value: values[index] ?? 0 });
+        });
+      }
       container.addChild(button);
     }
     this.layer.addChild(container);

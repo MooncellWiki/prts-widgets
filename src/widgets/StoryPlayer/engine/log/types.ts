@@ -19,6 +19,13 @@ export type OptionIndex = number;
 
 /** decision 的一个选项 */
 export interface ChoiceOption {
+  /**
+   * 是否为 `&` 禁用前缀选项（native `_SetupOptionText`：`StartsWith("&")` →
+   * 剥前缀 + `interactable=false`）。禁用只作用于渲染层：选项仍占一个
+   * optionIndex/value，Log All 的分支枚举不排除它（宁可多列也不丢行）。
+   */
+  disabled: boolean;
+  /** 已剥掉 `&` 禁用前缀、展开变量后的显示文本 */
   label: string;
   optionIndex: OptionIndex;
   /** runtime 中玩家选择该选项后写入 decisionSelectValue 的值 */
