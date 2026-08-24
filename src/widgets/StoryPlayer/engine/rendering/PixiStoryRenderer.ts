@@ -1259,8 +1259,12 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage` for
-   * the `image` path. Sprite replacement and fade behavior are preserved.
+   * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage`
+   * (2.7.61 @0x183e57cf0 / @0x183e58390) for the `image` path. Sprite
+   * replacement, cross-fade and the block boundary are preserved; the
+   * width/height sizeDelta multipliers and the `tiled` Image type are applied
+   * like `_LoadImage` steps 5-9, and a failed texture load falls back to the
+   * clear branch (LogError + fade the old image out) instead of keeping it.
    *
    * Native `_foreImage` is an Image whose RectTransform sizeDelta carries the
    * screenadapt-fit size while a parent transform carries `xScale`/`yScale` as
@@ -1271,14 +1275,37 @@ export class PixiStoryRenderer implements StoryRenderer {
    */
   async setImage(key: string, input?: BackgroundInput): Promise<void> {
     const texture = await this.textureForImageKey(key, "image");
-    if (!texture) return;
+    if (!texture) {
+      // `_LoadImage` on a null sprite logs "Failed to load image: [{0}]"
+      // (textureForUrl already reports it) and takes the clear branch:
+      // DOFade(_backImage → 0), waiting for the fade when block is set.
+      await this.clearImage(input?.fadeMs ?? 0, input?.block ?? false);
+      return;
+    }
 
-    this.imageRotateSessionId += 1;
+    // `_ExecuteImage` only DOKills `_backImage` and its transform; the
+    // panel-level rotation tween from `imagerotate` keeps running across
+    // image swaps and the panel's current angle is preserved. Do NOT bump
+    // imageRotateSessionId here (that would freeze a rotation mid-flight).
     const root = new Container();
-    const sprite = new Sprite(texture);
+    // `_LoadImage`: TryGetParam("tiled", false) switches Image.type between
+    // Tiled and Simple, tiling the sprite inside the final sizeDelta rect;
+    // a repeat-addressed TilingSprite is the PIXI equivalent (same
+    // construction as the background path -- see setBackground).
+    let sprite: Sprite | TilingSprite;
+    if (input?.tiled) {
+      texture.source.style.addressMode = "repeat";
+      sprite = new TilingSprite({ texture });
+    } else {
+      sprite = new Sprite(texture);
+    }
     sprite.anchor.set(0.5);
-    this.layoutImageForScreenAdapt(sprite, input?.screenAdapt);
-    root.addChild(sprite);
+    // Image art keeps the texture's pixel size as the SetNativeSize rect;
+    // the ppu sidecar only covers AVG/Backgrounds keys.
+    this.layoutImageForScreenAdapt(sprite, input?.screenAdapt, {
+      height: input?.height ?? 1,
+      width: input?.width ?? 1,
+    });
     // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
     // omitted scale must leave the screen-adapted size alone.
     this.applyCenteredTransform(root, {
@@ -1287,6 +1314,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       x: input?.x ?? 0,
       y: input?.y ?? 0,
     });
+    root.addChild(sprite);
 
     const previous = this.imageRoot;
     this.imageRoot = root;
@@ -1307,7 +1335,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async clearImage(fadeMs = 0, block = false): Promise<void> {
-    this.imageRotateSessionId += 1;
+    // Same as setImage: the clear branch fades `_backImage` out and never
+    // touches the panel rotation tween, so imagerotate keeps its angle and
+    // any in-flight rotation keeps playing (see setImageRotate).
     const root = this.imageRoot;
     this.imageRoot = null;
     if (!root) return;
