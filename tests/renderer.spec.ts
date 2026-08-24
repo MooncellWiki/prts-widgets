@@ -545,6 +545,63 @@ describe("PixiStoryRenderer", () => {
     ]);
   });
 
+  it("maps largeimgtween ease and loop onto the tween engine", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const root = renderer.buildGridBackgroundRoot(
+      {
+        ...createGridBackgroundInput(),
+        imageKeys: ["tile-0", "tile-1"],
+        layout: "large",
+        solidHeights: [900],
+        solidWidths: [1600, 1600],
+        x: -160,
+      },
+      [Texture.EMPTY, Texture.EMPTY],
+    );
+    const tweenOptions: Array<{
+      ease?: (t: number) => number;
+      loops?: number;
+    }> = [];
+
+    renderer.app = {};
+    renderer.imageLayer.addChild(root);
+    renderer.largeImageRoot = root;
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+        options?: { ease?: (t: number) => number; loops?: number },
+      ) => {
+        tweenOptions.push(options ?? {});
+        step(0.5);
+        done?.();
+      },
+    );
+
+    await renderer.setLargeImageTween({
+      block: true,
+      durationMs: 1000,
+      // ease="6" is the DOTween ordinal syntax: 6 resolves to OutQuad, so
+      // the raw 0.5 step lands at eased 0.75.
+      ease: "6",
+      xFrom: -160,
+      xTo: -720,
+    });
+    await renderer.setLargeImageTween({
+      block: false,
+      durationMs: 1000,
+      loop: true,
+      xFrom: -160,
+      xTo: -720,
+    });
+
+    expect(tweenOptions.map(({ loops }) => loops)).toEqual([1, -1]);
+    expect(tweenOptions[0]?.ease?.(0.5)).toBe(0.75);
+    // No ease argument keeps Ease.Linear (= GetEnum<Ease>("ease", 1)).
+    expect(tweenOptions[1]?.ease?.(0.5)).toBe(0.5);
+  });
+
   it("applies zero-duration largeimgtween immediately and cancels stale tweens", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const root = renderer.buildGridBackgroundRoot(

@@ -2400,6 +2400,8 @@ describe("StoryRuntime", () => {
       {
         block: false,
         durationMs: 25_000,
+        ease: "Linear",
+        loop: false,
         xFrom: 0,
         xScaleFrom: undefined,
         xScaleTo: undefined,
@@ -2412,6 +2414,8 @@ describe("StoryRuntime", () => {
       {
         block: false,
         durationMs: 500,
+        ease: "Linear",
+        loop: false,
         xFrom: undefined,
         xScaleFrom: 0.75,
         xScaleTo: 0.8,
@@ -2422,8 +2426,13 @@ describe("StoryRuntime", () => {
         yTo: undefined,
       },
       {
-        block: true,
-        durationMs: 150,
+        // Omitted `duration` keeps the native-referenced default 0
+        // (GetOrDefault<float>("duration", 0.0)): the command snaps
+        // instantly and never blocks, even with block=true.
+        block: false,
+        durationMs: 0,
+        ease: "Linear",
+        loop: false,
         xFrom: undefined,
         xScaleFrom: undefined,
         xScaleTo: undefined,
@@ -2432,6 +2441,51 @@ describe("StoryRuntime", () => {
         yScaleFrom: undefined,
         yScaleTo: undefined,
         yTo: 360,
+      },
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("keeps playing when largeimgtween combines loop with block", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",x=-160,fadetime=0)]',
+        '[largeimgtween(xFrom=0,xTo=-720,duration=1,block=true,loop=true,ease="OutQuad")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // Native logs the DLog.LogError text verbatim (typos included) and then
+    // hangs waiting for a looping tween's OnComplete; the port keeps the
+    // error but drops block so playback reaches the next line.
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail:
+          "Loop and block both true when tween background! Will cause intinity lop!",
+        type: "invalid_parameter",
+      }),
+    ]);
+    expect(renderer.largeImageTweenCalls).toEqual([
+      {
+        block: false,
+        durationMs: 1000,
+        ease: "OutQuad",
+        loop: true,
+        xFrom: 0,
+        xScaleFrom: undefined,
+        xScaleTo: undefined,
+        xTo: -720,
+        yFrom: undefined,
+        yScaleFrom: undefined,
+        yScaleTo: undefined,
+        yTo: undefined,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");

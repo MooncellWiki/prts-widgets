@@ -287,6 +287,17 @@ export interface ImageRotateInput {
 export interface LargeBackgroundTweenInput {
   block: boolean;
   durationMs: number;
+  /**
+   * Raw `ease` argument: a case-sensitive DOTween `Ease` name or ordinal
+   * string, resolved by the renderer (native `GetEnum<Ease>("ease", 1)`,
+   * default `Ease.Linear`).
+   */
+  ease?: string;
+  /**
+   * `loop=true` maps to native `SetLoops(2*!loop-1)` = -1, an infinite
+   * Restart loop that replays the From pose every cycle.
+   */
+  loop?: boolean;
   xFrom?: number;
   xScaleFrom?: number;
   xScaleTo?: number;

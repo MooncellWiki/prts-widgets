@@ -63,7 +63,11 @@ import {
   rotateTweenDelta,
 } from "./core/SceneGeometry";
 import { buildShakePath, sampleShakePath } from "./core/ShakePath";
-import { TweenRunner } from "./core/TweenRunner";
+import {
+  dotweenEaseCurve,
+  TweenRunner,
+  type TweenRunOptions,
+} from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
 import { CgItemPanel } from "./panels/CgItemPanel";
@@ -1347,7 +1351,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   /**
    * Web-only companion to the legacy `setLargeImage` surface: the investigated
    * client has no `largeimgtween` executor. It is intentionally not a native
-   * provenance claim.
+   * provenance claim; the tween semantics (ease via `GetEnum<Ease>("ease",
+   * 1)`, loops via `SetLoops(2*!loop-1)`) mirror the closest native
+   * relative, `LargeBackgroundPanel._ExecuteImageTween` (`largebgtween`).
    */
   async setLargeImageTween(input: LargeBackgroundTweenInput): Promise<void> {
     const root = this.largeImageRoot;
@@ -1379,6 +1385,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    // The native move and scale DOTweens share one duration, ease and loop
+    // count, so a single merged interpolation is frame-equivalent; loop=true
+    // turns the run into an infinite Restart loop that replays the From pose
+    // every cycle and never completes (block is dropped upstream for loops).
     const run = this.tween(
       input.durationMs,
       (progress) => {
@@ -1393,6 +1403,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (!this.isActiveLargeImage(root, sessionId)) return;
         this.applyCenteredTransform(root, to);
+      },
+      {
+        ease: dotweenEaseCurve(input.ease),
+        loops: input.loop ? -1 : 1,
       },
     );
 
@@ -3747,8 +3761,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     durationMs: number,
     step: (progress: number) => void,
     done?: () => void,
+    options?: TweenRunOptions,
   ): Promise<void> {
-    return this.tweenRunner.run(durationMs, step, done);
+    return this.tweenRunner.run(durationMs, step, done, options);
   }
 }
 
