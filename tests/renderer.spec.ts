@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Texture } from "pixi.js";
+import { Container, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
@@ -53,13 +53,12 @@ function createCharacterRenderer(): any {
 }
 
 describe("PixiStoryRenderer", () => {
-  it("clips the black gradient per-pixel with sprite masks, never containers", () => {
+  it("bakes the black gradient into a silhouette sprite instead of masking", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
-    // The gradient build needs a real 2D canvas context; only the mask
-    // structure matters here, so stub the pixel rasterization.
-    const fillSpy = vi
-      .spyOn(Graphics.prototype, "fill")
-      .mockReturnValue(undefined as never);
+    const baked = new Texture();
+    const bakeSpy = vi
+      .spyOn(renderer, "bakeBlackSilhouetteTexture")
+      .mockReturnValue(baked);
     const visual = new Container();
     const texture = new Texture();
     const body = new Sprite(texture);
@@ -69,18 +68,26 @@ describe("PixiStoryRenderer", () => {
     try {
       renderer.applyCharacterBlackGradient(visual, [body], 100, 200, 0.2, 0.7);
 
-      expect(visual.children.length).toBe(2);
-      const [, overlay] = visual.children;
       // Native darkens character pixels inside the character shader
-      // (`_BlackStart`/`_BlackEnd` material floats); the web overlay must be
-      // alpha-masked by a Sprite sharing the character texture. A Container
-      // mask would fall back to stencil (quad-only) and leak a black
-      // rectangle over transparent regions.
-      expect(overlay.mask).toBeInstanceOf(Sprite);
-      expect(overlay.mask).not.toBe(body);
-      expect((overlay.mask as Sprite).texture).toBe(texture);
+      // (`_BlackStart`/`_BlackEnd` material floats). The web port bakes a
+      // black silhouette (character alpha x gradient alpha) as one sprite;
+      // Pixi masks must not be used -- a Container mask is stencil (quad
+      // only) and a Sprite alpha mask multiplies by the texture's RED
+      // channel, keying the shading to the character's own colors.
+      expect(bakeSpy).toHaveBeenCalledWith(
+        [body],
+        100,
+        200,
+        200 * 0.2,
+        200 * 0.7,
+      );
+      expect(visual.children.length).toBe(1);
+      const silhouette = visual.children[0] as Sprite;
+      expect(silhouette).toBeInstanceOf(Sprite);
+      expect(silhouette.texture).toBe(baked);
+      expect(silhouette.mask ?? null).toBeNull();
     } finally {
-      fillSpy.mockRestore();
+      bakeSpy.mockRestore();
     }
   });
 

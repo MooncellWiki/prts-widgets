@@ -1,6 +1,7 @@
 import {
   Application,
   Assets,
+  CanvasSource,
   ColorMatrixFilter,
   Container,
   FillGradient,
@@ -2868,40 +2869,75 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const startY = height * Math.min(start, end);
     const endY = height * Math.max(start, end);
-    const overlayHeight = Math.max(1, endY);
-    const gradient = new FillGradient({
-      colorStops: [
-        { color: "rgba(0, 0, 0, 1)", offset: 0 },
-        { color: "rgba(0, 0, 0, 1)", offset: startY / overlayHeight },
-        { color: "rgba(0, 0, 0, 0)", offset: 1 },
-      ],
-      end: { x: 0, y: 1 },
-      start: { x: 0, y: 0 },
-      textureSpace: "local",
-      type: "linear",
-    });
+    const texture = this.bakeBlackSilhouetteTexture(
+      maskTargets,
+      width,
+      height,
+      startY,
+      endY,
+    );
+    if (!texture) return;
 
     // Native applies the gradient inside the character shader
     // (`avgCharSplitShader` material floats `_BlackStart`/`_BlackEnd` on the
-    // sprite's own material, AlphaSplitImageHolder.SetSprite), so it darkens
-    // character pixels only and never leaks into transparent regions. The
-    // web port must clip the overlay per-pixel: a Pixi `Container` mask is a
-    // stencil mask (quad geometry, alpha ignored) and would show the full
-    // rectangle, so mask each overlay with a `Sprite` that shares the
-    // character texture (alpha mask, per-pixel).
-    for (const target of maskTargets) {
-      const overlay = new Graphics();
-      overlay.rect(0, 0, width, overlayHeight).fill(gradient);
-      const maskSprite = new Sprite(target.texture);
-      maskSprite.anchor.set(0, 0);
-      maskSprite.x = target.x;
-      maskSprite.y = target.y;
-      maskSprite.width = target.width;
-      maskSprite.height = target.height;
-      visual.addChild(maskSprite);
-      visual.addChild(overlay);
-      overlay.mask = maskSprite;
+    // sprite's own material, AlphaSplitImageHolder.SetSprite), darkening
+    // character pixels only. The web port bakes that as a black silhouette
+    // sprite whose alpha = character alpha x gradient alpha: compositing
+    // black with alpha `a` over color `c` yields `c * (1 - a)`, the same
+    // lerp-to-black the native shader performs. Pixi's mask pipeline cannot
+    // express this: a Container mask is stencil (quad-only, ignores alpha)
+    // and a Sprite alpha mask multiplies by the mask texture's RED channel
+    // (mask.frag `masky.r`), which would key the shading to the character's
+    // own colors.
+    const silhouette = new Sprite(texture);
+    silhouette.anchor.set(0, 0);
+    visual.addChild(silhouette);
+  }
+
+  private bakeBlackSilhouetteTexture(
+    targets: Sprite[],
+    width: number,
+    height: number,
+    startY: number,
+    endY: number,
+  ): Texture | null {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width));
+    canvas.height = Math.max(1, Math.round(height));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    for (const target of targets) {
+      const resource = target.texture?.source?.resource as
+        CanvasImageSource | undefined;
+      if (!resource) continue;
+      const frame = target.texture.frame;
+      ctx.drawImage(
+        resource,
+        frame.x,
+        frame.y,
+        frame.width,
+        frame.height,
+        target.x,
+        target.y,
+        target.width,
+        target.height,
+      );
     }
+
+    ctx.globalCompositeOperation = "source-in";
+    const overlayHeight = Math.max(1, endY);
+    const gradient = ctx.createLinearGradient(0, 0, 0, overlayHeight);
+    gradient.addColorStop(0, "rgba(0, 0, 0, 1)");
+    gradient.addColorStop(
+      Math.min(1, startY / overlayHeight),
+      "rgba(0, 0, 0, 1)",
+    );
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    return new Texture({ source: new CanvasSource({ resource: canvas }) });
   }
 
   private characterSlotFromTransform(
