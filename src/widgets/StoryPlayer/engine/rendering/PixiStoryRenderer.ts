@@ -619,7 +619,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageLayer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.imageLayer.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
-    this.dialogPanel = new DialogPanel(this.uiLayer, onWarning);
+    this.dialogPanel = new DialogPanel(
+      this.uiLayer,
+      onWarning,
+      (durationMs, update, complete) =>
+        this.tween(durationMs, update, complete),
+    );
     this.decisionPanel = new DecisionPanel(this.uiLayer);
     this.interludePanel = new InterludePanel(
       this.cutinLayer,
