@@ -349,6 +349,12 @@ export class StoryRuntime {
   private typingSessionId = 0;
   private quickSpeedLevel = 0;
   private currentMessageLength = 0;
+  /**
+   * Native port: `AVGTypeWriterText.messageLength` is the raw string length
+   * including rich-text tag characters; `RaiseAutoClick` waits on it. The
+   * visible-char `currentMessageLength` drives the multiline cursor instead.
+   */
+  private currentRawMessageLength = 0;
   private currentTypingComplete = false;
   private state: PlayerState = "idle";
   private multilineText = "";
@@ -429,7 +435,7 @@ export class StoryRuntime {
       return;
     }
     if (mode !== "default" && this.currentTypingComplete)
-      this.scheduleAutoClick(this.currentMessageLength);
+      this.scheduleAutoClick(this.currentRawMessageLength);
   }
 
   setAutoPlaySpeedLevel(level: number): void {
@@ -444,7 +450,7 @@ export class StoryRuntime {
 
     this.cancelAutoClick();
     if (this.autoPlayMode !== "default" && this.currentTypingComplete)
-      this.scheduleAutoClick(this.currentMessageLength);
+      this.scheduleAutoClick(this.currentRawMessageLength);
   }
 
   canSkipNode(): boolean {
@@ -501,6 +507,10 @@ export class StoryRuntime {
 
     if (this.finishTypingNow()) {
       this.onTypingComplete();
+      // Native port: _OnClicked checks m_multilineEnd after both branches, so
+      // an `end=true` run is reset by the click that finishes typing too, not
+      // only by the click that actually advances.
+      if (this.multilineEnd) this.resetMultiline();
       return;
     }
     if (this.renderer.finishTextTyping()) {
@@ -2536,8 +2546,10 @@ export class StoryRuntime {
     this.cancelTyping();
 
     const translatedSpeaker = this.translateText(speaker);
-    const richChars = parseRichChars(this.translateText(text));
+    const translatedText = this.translateText(text);
+    const richChars = parseRichChars(translatedText);
     this.currentMessageLength = richChars.length;
+    this.currentRawMessageLength = translatedText.length;
     this.currentTypingComplete = false;
     const initialDelayMs = this.getTypeWriterDelayMs(delayScale);
     const from = clamp(startIndex, 0, richChars.length);
@@ -2621,7 +2633,7 @@ export class StoryRuntime {
 
   private onTypingComplete(): void {
     this.currentTypingComplete = true;
-    this.scheduleAutoClick(this.currentMessageLength);
+    this.scheduleAutoClick(this.currentRawMessageLength);
   }
 
   private finishTypingNow(): boolean {

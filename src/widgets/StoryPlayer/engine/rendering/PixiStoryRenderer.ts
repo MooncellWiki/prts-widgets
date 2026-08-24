@@ -269,7 +269,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.context = context;
     this.onWarning = onWarning;
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
-    this.dialogPanel = new DialogPanel(this.uiLayer, onWarning);
+    this.dialogPanel = new DialogPanel(
+      this.uiLayer,
+      onWarning,
+      (durationMs, update, complete) =>
+        this.tween(durationMs, update, complete),
+    );
     this.decisionPanel = new DecisionPanel(this.uiLayer);
     this.interludePanel = new InterludePanel(
       this.cutinLayer,
