@@ -1653,27 +1653,30 @@ describe("StoryRuntime", () => {
     expect(renderer.characterCalls).toEqual([
       {
         action: undefined,
-        alphaFrom: undefined,
-        alphaTo: undefined,
+        alphaFrom: 0,
+        alphaTo: 1,
         blackEnd: undefined,
         blackStart: undefined,
         block: false,
         characterKey: "avg_1012_skadisp_1",
         // charslot's `duration` defaults to 0.0, not to DEFAULT_FADE_TIME.
         durationMs: 0,
+        deferPlay: false,
         expression: "avg_1012_skadisp_2",
         fadeIdentity: "avg_1012_skadiSP_1",
-        focusMode: "current_only",
-        focusSlots: undefined,
+        // Omitted focus => ["all"] natively: every built-in slot is lit.
+        focusMode: "subset",
+        focusSlots: ["l", "m", "r"],
         nativeKey: "avg_1012_skadiSP_1#2",
         positionFrom: undefined,
         positionTo: undefined,
         posZoom: undefined,
         power: 0,
-        preserveTransform: false,
-        randomness: 90,
+        // GetOrDefault<int>("random", 10) -- DOTween randomness degrees.
+        randomness: 10,
+        // The crossfade length is `duration` itself (here 0), never
+        // `fadetime`, which native charslot never reads.
         replaceFadeMs: 0,
-        resetTransform: true,
         scaleX: undefined,
         scaleY: undefined,
         slot: "m",
@@ -1742,7 +1745,8 @@ describe("StoryRuntime", () => {
     expect(renderer.characterCalls[0]).toMatchObject({
       block: true,
       durationMs: 400,
-      focusMode: "current_only",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
       slot: "l",
     });
     expect(runtime.getState()).toBe("waiting_input");
@@ -1766,9 +1770,104 @@ describe("StoryRuntime", () => {
     expect(renderer.characterCalls).toHaveLength(2);
     expect(renderer.characterCalls[1]).toMatchObject({
       characterKey: undefined,
-      focusMode: "none",
+      // focus="none" is not a native token (`_ProcessFocusArray` only knows
+      // all/left/l/middle/m/right/r/custom/c): it clears every focus flag,
+      // leaving all slots unfocused.
+      focusMode: "subset",
+      focusSlots: [],
       positionTo: { x: 10, y: 20 },
       slot: "m",
+    });
+  });
+
+  it("clears the slot for name=char_empty and keeps the rest of the command", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        // level_main_12-12_end.txt:373 / story_bubble_1_1.txt:502 pattern:
+        // char_empty is SlotCleanChar, not a missing asset.
+        '[charslot(slot="m",name="avg_npc_1")]',
+        '[charslot(slot="l",name="char_empty",focus="all",duration=0.5)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(warnings).toEqual([]);
+    expect(renderer.clearedSlots).toEqual([{ fadeMs: 500, slot: "l" }]);
+    // The command keeps executing after the clean: focus=all is still applied.
+    expect(renderer.characterCalls[1]).toMatchObject({
+      characterKey: undefined,
+      focusSlots: ["l", "m", "r"],
+      slot: "l",
+    });
+  });
+
+  it("keeps running charslot actions when the character asset is missing", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charslot(slot="m",name="avg_npc_1",duration=0.4)]',
+        '[charslot(slot="m",name="avg_missing_1",action="shake",power=5,duration=0.3)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // Native `_LoadImage` failure only nulls m_currentKey; the action/focus
+    // sections still run, so the command is not dropped.
+    expect(warnings).toEqual([
+      expect.objectContaining({ type: "missing_asset" }),
+    ]);
+    expect(renderer.characterCalls[1]).toMatchObject({
+      action: "shake",
+      characterKey: undefined,
+      power: 5,
+      slot: "m",
+    });
+  });
+
+  it("maps charslot random like native GetOrDefault<int> and end=false to deferPlay", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        // level_main_12-05_end.txt:576 pattern: random=true is
+        // Convert.ToInt32(true) = 1, not "enable randomness".
+        '[charslot(slot="m",action="shake",random=true,power=5,times=60,duration=0.3)]',
+        // act23side_02_beg.txt:425 pattern: end=false assembles but never
+        // plays the sequence.
+        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,end=false)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.characterCalls[0]).toMatchObject({
+      randomness: 1,
+      slot: "m",
+    });
+    expect(renderer.characterCalls[1]).toMatchObject({
+      deferPlay: true,
+      // afrom/ato omitted with a name resets to (0, 1): always fade in.
+      alphaFrom: 0,
+      alphaTo: 1,
+      positionFrom: { x: 0, y: -500 },
+      positionTo: { x: 0, y: 0 },
+      replaceFadeMs: 2000,
+      slot: "l",
     });
   });
 

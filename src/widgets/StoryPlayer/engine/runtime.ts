@@ -203,6 +203,19 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+/**
+ * Native port: `Command.GetOrDefault<int>` runs the JSON-boxed parameter value
+ * through `System.Convert.ToInt32`. AVGParser wraps the parameter list in JSON,
+ * so `random=true` arrives as a real boolean and converts to 1 (false to 0) --
+ * it never means "enabled".
+ */
+function toNativeIntParam(value: unknown, fallback: number): number {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (value === "true") return 1;
+  if (value === "false") return 0;
+  return Math.trunc(toNumber(value, fallback));
+}
+
 function toString(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean")
@@ -1856,10 +1869,17 @@ export class StoryRuntime {
         const rawSlot = toString(args.slot).trim();
         const slot = this.parseCharacterSlot(rawSlot);
         const nameRef = toString(args.name);
-        // Native port: Torappu.AVG.AVGCharacterslotPanel._ExecuteCharslot. Duration
-        // defaults to 0.0 and goes through CalculateFadetime; zero skips animation.
+        // Native port: Torappu.AVG.AVGCharacterslotPanel._ExecuteCharslot
+        // (2.7.61, VA 0x183e4d310). Duration defaults to 0.0 and goes through
+        // CalculateFadetime; zero skips animation.
         const durationMs = Math.round(this.calculateFadeMs(args.duration, 0));
         const block = toBoolean(args.isblock, false);
+        // Native reads `end` (default true) only to decide whether the
+        // assembled per-slot Sequence plays (`end=false` fills the cached
+        // sequence but never calls Play, leaving it for a later `end=true`
+        // command on the same slot to fire). It is not a
+        // transform-preservation switch.
+        const deferPlay = toString(args.end).trim().toLowerCase() === "false";
 
         // The clear branch keys off an empty `slot`, never an empty `name`, and it
         // only touches the three built-in slots (custom slots are left alone).
@@ -1885,10 +1905,48 @@ export class StoryRuntime {
           return "continue";
         }
 
-        const resolved = nameRef ? this.resolveCharacterName(nameRef) : null;
-        if (nameRef && !resolved) {
-          this.warn("missing_asset", `character: ${nameRef}`);
-          return "continue";
+        // `name` is never ToLower'd natively, and `_UpdateSeqWithParam`
+        // (0x183e53940) compares it to "char_empty" with an ordinal
+        // String.op_Equality: that value routes to
+        // AVGCharacterSlot.SlotCleanChar (fade the slot's sprite out) and the
+        // action/focus sections keep executing. The later `_LoadImage` on
+        // "char_empty" only fails and nulls m_currentKey.
+        const isEmptyChar = nameRef === "char_empty";
+
+        let resolved: { base: string; expression: string } | null = null;
+        if (nameRef && !isEmptyChar) {
+          resolved = this.resolveCharacterName(nameRef);
+          if (!resolved) {
+            // Native `_LoadImage` failure just logs "[AVG] Error to load
+            // character pic" and nulls m_currentKey; the action/focus sections
+            // of `_UpdateSeqWithParam` still run on whatever the slot shows.
+            // Keep going without the image swap instead of dropping the
+            // whole command.
+            this.warn("missing_asset", `character: ${nameRef}`);
+          }
+        }
+
+        if (isEmptyChar && !deferPlay) {
+          // SlotCleanChar lives inside the same Sequence, so `end=false`
+          // defers the clean together with the rest of the tweens.
+          const clearPromise = this.renderer.clearCharacters(slot, durationMs);
+          if (block) await clearPromise;
+          else void clearPromise;
+        }
+
+        // Native `_UpdateSeqWithParam`: with a `name`, a negative (or
+        // omitted, default -1) afrom or ato resets the pair to (0, 1) -- a
+        // plain named charslot always fades the new art in over `duration`.
+        // Only a nameless command treats -1 as "leave the alpha alone".
+        const rawAlphaFrom =
+          args.afrom === undefined ? -1 : toNumber(args.afrom, -1);
+        const rawAlphaTo = args.ato === undefined ? -1 : toNumber(args.ato, -1);
+        let alphaFrom =
+          rawAlphaFrom >= 0 ? clamp(rawAlphaFrom, 0, 1) : undefined;
+        let alphaTo = rawAlphaTo >= 0 ? clamp(rawAlphaTo, 0, 1) : undefined;
+        if (resolved && (rawAlphaFrom < 0 || rawAlphaTo < 0)) {
+          alphaFrom = 0;
+          alphaTo = 1;
         }
 
         await this.renderer.setCharacter({
@@ -1896,14 +1954,8 @@ export class StoryRuntime {
           ...(args.angle === undefined
             ? {}
             : { angle: toNumber(args.angle, 0) }),
-          alphaFrom:
-            args.afrom === undefined
-              ? undefined
-              : clamp(toNumber(args.afrom, 1), 0, 1),
-          alphaTo:
-            args.ato === undefined
-              ? undefined
-              : clamp(toNumber(args.ato, 1), 0, 1),
+          alphaFrom,
+          alphaTo,
           blackEnd:
             args.bend === undefined
               ? undefined
@@ -1917,12 +1969,13 @@ export class StoryRuntime {
           ...(args.circles === undefined
             ? {}
             : { circles: Math.trunc(toNumber(args.circles, 0)) }),
+          deferPlay,
           durationMs,
           expression: resolved?.expression,
           fadeIdentity: nameRef
             ? nativeCharacterFadeIdentity(nameRef)
             : undefined,
-          focusMode: this.resolveCharacterSlotFocusMode(args, Boolean(nameRef)),
+          focusMode: "subset",
           focusSlots: this.resolveCharacterSlotFocusSlots(args),
           ...(args.inverse === undefined
             ? {}
@@ -1932,14 +1985,12 @@ export class StoryRuntime {
           positionTo: this.parseCharacterSlotPoint(args.posto),
           posZoom: this.parseCharacterSlotPoint(args.poszoom),
           power: Math.max(0, toNumber(args.power, 0)),
-          preserveTransform:
-            toString(args.end).trim().toLowerCase() === "false",
-          randomness: clamp(toNumber(args.random, 90), 0, 100),
-          replaceFadeMs: Math.max(
-            0,
-            Math.round(toNumber(args.fadetime, 0) * 1000),
-          ),
-          resetTransform: toString(args.end).trim().toLowerCase() !== "false",
+          randomness: clamp(toNativeIntParam(args.random, 10), 0, 100),
+          // The crossfade length of an image swap is `duration` itself
+          // (`_SlotSetCharInternal` -> `_GenForeImageTween` /
+          // `_GenBackImageTween`). `fadetime` is not a charslot key at all
+          // (dead parameter in both 2.7.51 and 2.7.61 audits).
+          replaceFadeMs: durationMs,
           scaleX:
             args.xscale === undefined && args.scale === undefined
               ? undefined
@@ -3071,30 +3122,21 @@ export class StoryRuntime {
     };
   }
 
-  private resolveCharacterSlotFocusMode(
-    args: StoryCommandArgs,
-    hasName: boolean,
-  ): CharacterSlotInput["focusMode"] | undefined {
+  private resolveCharacterSlotFocusSlots(args: StoryCommandArgs): string[] {
+    // Native `_ExecuteCharslot` turns an omitted `focus` into ["all"], and
+    // `_ProcessFocusArray` (2.7.61, VA 0x183e50b30) recognizes only
+    // all / left|l / middle|m / right|r / custom|c. There is no "n"/"none"/"a"
+    // branch: an unrecognized value clears all four focus flags and lights
+    // nothing, i.e. every slot goes dim. Custom slots are not modeled, so
+    // "all" maps to the three built-ins.
     const focus = toString(args.focus).trim().toLowerCase();
-    if (!focus) return hasName ? "current_only" : undefined;
-    if (focus === "n" || focus === "none") return "none";
-    if (focus === "a" || focus === "all") return "subset";
-    if (this.resolveCharacterSlotFocusSlots(args)?.length) return "subset";
-    return hasName ? "current_only" : undefined;
-  }
-
-  private resolveCharacterSlotFocusSlots(
-    args: StoryCommandArgs,
-  ): string[] | undefined {
-    const focus = toString(args.focus).trim().toLowerCase();
-    if (!focus) return undefined;
-    if (focus === "a" || focus === "all") return ["l", "m", "r"];
+    if (!focus || focus === "all") return ["l", "m", "r"];
 
     const slots = focus
       .split(",")
       .map((value) => this.parseCharacterSlot(value))
       .filter((slot): slot is string => slot !== undefined);
-    return slots.length > 0 ? [...new Set(slots)] : undefined;
+    return [...new Set(slots)];
   }
 
   private parseCharacterActionSlot(

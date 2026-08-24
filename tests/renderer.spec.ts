@@ -561,6 +561,273 @@ describe("PixiStoryRenderer", () => {
     expect(current.root.alpha).toBe(0);
   });
 
+  it("keeps the slot transform across charslot commands without pos input", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      positionFrom: { x: -300, y: 0 },
+      positionTo: { x: 0, y: 0 },
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+    // The stubbed tween never advances, so the slot sits at `posfrom`.
+    expect(state.actionX).toBe(-300);
+
+    // Native never resets `_offset.localPosition` between charslot commands
+    // (SlotSetCharWithParam uses resetOffsetPos=false), so a bare command
+    // must not snap the character back to the default transform.
+    renderer.tween.mockClear();
+    await renderer.setCharacter({
+      durationMs: 300,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+
+    expect(state.actionX).toBe(-300);
+    // from == to: no transform tween is even started, which also keeps any
+    // still-running tween from a previously deferred command alive.
+    expect(renderer.tween).not.toHaveBeenCalled();
+  });
+
+  it("ignores a bare posto without posfrom or action=jump", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+    state.actionX = 120;
+    renderer.tween.mockClear();
+
+    // level_main_14-02_end.txt:379 pattern (`posto=0`, no posfrom): the
+    // native posFrom sentinel (1,1) never reaches SlotMoveChar, so this is a
+    // no-op instead of a relative move.
+    await renderer.setCharacter({
+      durationMs: 1000,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      positionTo: { x: 400, y: 0 },
+      slot: "m",
+    });
+
+    expect(state.actionX).toBe(120);
+    expect(renderer.tween).not.toHaveBeenCalled();
+  });
+
+  it("skips the whole zoom when poszoom is outside [0,1]", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      action: "zoom",
+      characterKey: "avg_test",
+      durationMs: 400,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      posZoom: { x: 1.5, y: 0.5 },
+      scaleX: 2,
+      scaleY: 2,
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+
+    // CharZoom validates the pivot first: out-of-range means return null --
+    // the scale change is skipped too.
+    expect(state.scaleX).toBe(1);
+    expect(state.scaleY).toBe(1);
+    expect(renderer.tween).not.toHaveBeenCalled();
+  });
+
+  it("dims every slot for unrecognized focus values and relights them for all", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      // level_main_12-05_end.txt:349 pattern: focus="none" is not a native
+      // token, so _ProcessFocusArray clears every flag and lights nothing.
+      focusSlots: [],
+      slot: "l",
+    });
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: [],
+      slot: "r",
+    });
+
+    expect(renderer.characterSlots.get("l")!.focusBrightness).toBe(0.5);
+    expect(renderer.characterSlots.get("r")!.focusBrightness).toBe(0.5);
+
+    // An omitted focus resolves to ["all"]: the next command relights
+    // everything.
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "r",
+    });
+
+    expect(renderer.characterSlots.get("l")!.focusBrightness).toBe(1);
+    expect(renderer.characterSlots.get("r")!.focusBrightness).toBe(1);
+  });
+
+  it("cross-fades a swap over duration with the default (0,1) fade-in", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test",
+      slot: "m",
+    });
+    const previous = renderer.characterSlots.get("m");
+
+    // Story_bubble-style plain swap: no afrom/ato, duration>0. Native resets
+    // the pair to (0,1) and the crossfade length equals `duration`.
+    await renderer.setCharacter({
+      alphaFrom: 0,
+      alphaTo: 1,
+      characterKey: "avg_test",
+      durationMs: 400,
+      expression: "2$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      replaceFadeMs: 400,
+      slot: "m",
+    });
+
+    const current = renderer.characterSlots.get("m");
+    // The incoming sprite sits at afrom until the (stubbed) tween advances,
+    // and the outgoing sprite gets its own fade-out tween.
+    expect(current.contentAlpha).toBe(0);
+    expect(current.visual.alpha).toBe(0);
+    expect(previous.visual.parent).not.toBeNull();
+  });
+
+  it("skips shake entirely when duration is zero", async () => {
+    const renderer = createCharacterRenderer();
+    const shakeSpy = vi
+      .spyOn(renderer, "startShakeAction")
+      .mockImplementation(() => {});
+
+    await renderer.setCharacter({
+      action: "shake",
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      // act22side_02_end.txt:191 pattern: no duration at all.
+      power: 8,
+      randomness: 1,
+      slot: "m",
+      times: 100,
+    });
+
+    // NeedSkipAnimation(duration): the shake branch returns null.
+    expect(shakeSpy).not.toHaveBeenCalled();
+  });
+
+  it("rotates from the standalone angle parameter regardless of action", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      angle: 30,
+      characterKey: "avg_test",
+      durationMs: 400,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+
+    // 2.7.61 drives rotation from the tail `angle` segment of
+    // _UpdateSeqWithParam; `action="rotate"` itself is an unknown action.
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+
+    renderer.tween.mockClear();
+    await renderer.setCharacter({
+      action: "rotate",
+      characterKey: "avg_test",
+      durationMs: 400,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    expect(renderer.tween).not.toHaveBeenCalled();
+  });
+
+  it("defers end=false charslot tweens until the next command on the slot", async () => {
+    const renderer = createCharacterRenderer();
+    const shakeSpy = vi
+      .spyOn(renderer, "startShakeAction")
+      .mockImplementation(() => {});
+
+    // act23side_02_beg.txt:425-426 pattern: an entrance is assembled with
+    // end=false, then a shake command on the same slot plays it.
+    await renderer.setCharacter({
+      alphaFrom: 0,
+      alphaTo: 1,
+      characterKey: "avg_test",
+      deferPlay: true,
+      durationMs: 2000,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      positionFrom: { x: 0, y: -500 },
+      positionTo: { x: 0, y: 0 },
+      replaceFadeMs: 2000,
+      slot: "l",
+    });
+    const state = renderer.characterSlots.get("l");
+    expect(state).toBeTruthy();
+    // The image swap itself is not deferred (SetAlpha(fore, afrom)), but the
+    // move/alpha tweens are: nothing moved yet.
+    expect(state.contentAlpha).toBe(0);
+    expect(state.actionY).toBe(0);
+    expect(renderer.tween).not.toHaveBeenCalled();
+
+    await renderer.setCharacter({
+      action: "shake",
+      durationMs: 2000,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      power: 50,
+      randomness: 90,
+      slot: "l",
+      times: 100,
+    });
+
+    // The deferred entrance now runs (from posfrom / afrom) together with
+    // the triggering shake.
+    expect(state.actionY).toBe(-500);
+    expect(state.contentAlpha).toBe(0);
+    expect(renderer.tween).toHaveBeenCalled();
+    expect(shakeSpy).toHaveBeenCalled();
+    // Nothing is left queued for the slot.
+    expect(renderer.deferredCharacterSlots.get("l")).toBeUndefined();
+  });
+
   it("swaps the image instantly for an explicit enter without transtype", async () => {
     const renderer = createCharacterRenderer();
 

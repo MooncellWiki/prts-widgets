@@ -252,6 +252,16 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly context: Context;
   private readonly charLayer = this.layers.characters;
   private readonly characterSlots = new Map<string, CharacterRenderState>();
+  /**
+   * `charslot` `end=false` inputs waiting for a later end=true command on the
+   * same slot (native caches the assembled per-slot Sequence in
+   * `_GetCachedSlotSeq` and only plays it when a command with `end=true`
+   * appends to it).
+   */
+  private readonly deferredCharacterSlots = new Map<
+    string,
+    CharacterSlotInput[]
+  >();
   private readonly cutinLayer = this.layers.cutins;
   private readonly cutinPanel: CharacterCutinPanel;
 
@@ -1611,22 +1621,79 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private async setCharacterSlot(input: CharacterSlotInput): Promise<void> {
     const slot = this.normalizeCharacterSlot(input.slot);
-    let state = this.characterSlots.get(slot);
-    const hasCharacter = Boolean(input.characterKey && input.expression);
+    const pending = this.deferredCharacterSlots.get(slot) ?? [];
+    this.deferredCharacterSlots.delete(slot);
 
-    if (hasCharacter) {
-      const built = await this.buildCharacterSlotState(input, slot, state);
-      if (!built) return;
-      state = built;
-    }
-
-    if (!state) {
-      if (input.focusMode)
-        this.applyCharacterSlotFocus(input.focusMode, slot, input.focusSlots);
+    if (input.deferPlay) {
+      // Native `_ExecuteCharslot` with end=false: `_UpdateSeqWithParam` fills
+      // the cached per-slot Sequence but never calls Play. The image swap is
+      // NOT deferred (`_SlotSetCharInternal` runs immediately: the incoming
+      // sprite sits at `afrom` and the outgoing one fades out), while every
+      // tween -- afrom->ato alpha, posfrom->posto move, actions, focus color
+      // -- waits inside the sequence until a later end=true command on the
+      // same slot plays it.
+      await this.installDeferredCharacterSlot(input, slot);
+      this.deferredCharacterSlots.set(slot, [...pending, input]);
       return;
     }
 
-    this.applyCharacterSlotFocus(input.focusMode, slot, input.focusSlots);
+    // A triggering command plays the cached Sequence first, then appends its
+    // own tweens (native appends into the same Sequence; replaying the
+    // deferred inputs here is the Web approximation).
+    for (const deferred of pending)
+      await this.playCharacterSlot(deferred, slot, true);
+    await this.playCharacterSlot(input, slot, false);
+  }
+
+  /** end=false path: install instant state, queue the tweens for later. */
+  private async installDeferredCharacterSlot(
+    input: CharacterSlotInput,
+    slot: string,
+  ): Promise<void> {
+    let state = this.characterSlots.get(slot);
+    let swapped = false;
+    if (input.characterKey && input.expression) {
+      const built = await this.buildCharacterSlotState(input, slot, state);
+      if (built) {
+        state = built;
+        swapped = true;
+      }
+    }
+    if (!state) return;
+    // SlotSetCharWithParam's SetAlpha(foreImage, afrom) runs outside the
+    // Sequence, so a swapped-in sprite sits at `afrom` right away. A
+    // nameless SlotChangeAlpha is part of the Sequence and stays deferred.
+    if (swapped && isFiniteNumber(input.alphaFrom)) {
+      state.contentAlpha = input.alphaFrom;
+      this.updateCharacterOpacity(state);
+    }
+  }
+
+  private async playCharacterSlot(
+    input: CharacterSlotInput,
+    slot: string,
+    skipBuildIfSameVisual: boolean,
+  ): Promise<void> {
+    let state = this.characterSlots.get(slot);
+    const hasCharacter = Boolean(input.characterKey && input.expression);
+    const sameVisual =
+      state?.characterKey === input.characterKey &&
+      state?.expression === input.expression;
+
+    if (hasCharacter && !(skipBuildIfSameVisual && sameVisual)) {
+      const built = await this.buildCharacterSlotState(input, slot, state);
+      // A failed `_LoadImage` (missing asset) only nulls m_currentKey; the
+      // action/focus sections still run on the sprite the slot already
+      // shows, so keep the previous state instead of aborting.
+      if (built) state = built;
+    }
+
+    if (!state) {
+      if (input.focusMode) this.applyCharacterSlotFocus(input.focusSlots ?? []);
+      return;
+    }
+
+    if (input.focusMode) this.applyCharacterSlotFocus(input.focusSlots ?? []);
 
     const fromTransform = this.characterSlotFromTransform(state, input);
     const toTransform = this.characterSlotToTransform(
@@ -1642,7 +1709,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.scaleY = fromTransform.scaleY;
     this.updateCharacterState(state);
 
-    if (input.action === "shake" || input.action === "shakemove") {
+    // `_GenSlotActionTw`: NeedSkipAnimation(duration) makes the shake branch
+    // return null -- shake (and shakemove's shake half) only exists with a
+    // positive duration.
+    if (
+      (input.action === "shake" || input.action === "shakemove") &&
+      durationMs > 0
+    ) {
       this.startShakeAction(state, {
         block: false,
         durationMs,
@@ -1668,7 +1741,10 @@ export class PixiStoryRenderer implements StoryRenderer {
         durationMs,
       );
 
-    if (input.action === "rotate" && input.angle !== undefined) {
+    // Native drives rotation from the standalone `angle` parameter segment
+    // at the tail of `_UpdateSeqWithParam`; `action="rotate"` itself is an
+    // unknown action in 2.7.61's `_GenSlotActionTw` (LogError + null).
+    if (input.angle !== undefined) {
       const sessionId = ++state.rotateSessionId;
       const fromAngle = state.rotationDeg;
       const direction = input.inverse ? -1 : 1;
@@ -1686,6 +1762,13 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     this.applyCharacterSlotOpacity(state, input, durationMs);
     if (input.action === "shake") return;
+
+    const transformUnchanged =
+      fromTransform.x === toTransform.x &&
+      fromTransform.y === toTransform.y &&
+      fromTransform.scaleX === toTransform.scaleX &&
+      fromTransform.scaleY === toTransform.scaleY;
+    if (transformUnchanged) return;
 
     const sessionId = ++state.transformSessionId;
     const transformDurationMs = input.action === "setpos" ? 0 : durationMs;
@@ -1786,6 +1869,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   async clearCharacters(slot?: string, fadeMs = 0): Promise<void> {
     if (slot) {
       const normalized = this.normalizeCharacterSlot(slot);
+      // Dropping the slot also drops its cached (possibly still deferred)
+      // Sequence -- a deferred charslot never fires after its slot is gone.
+      this.deferredCharacterSlots.delete(normalized);
       const state = this.characterSlots.get(normalized);
       if (!state) return;
       this.characterSlots.delete(normalized);
@@ -1799,6 +1885,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const states = [...this.characterSlots.values()];
     this.characterSlots.clear();
+    this.deferredCharacterSlots.clear();
     if (fadeMs > 0) {
       await Promise.all(
         states.map((state) =>
@@ -3103,11 +3190,23 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     current.rotationLayer.addChild(built.visual);
 
+    // Native crossfade: `_SlotSetCharInternal` runs the outgoing sprite's
+    // fade-out immediately, while the incoming sprite's afrom->ato tween (the
+    // same tween `applyCharacterSlotOpacity` drives through contentAlpha) is
+    // the crossfade itself. Its length is `duration` -- `fadetime` is not a
+    // charslot key. The incoming visual therefore starts at the current
+    // contentAlpha (set to `afrom` right after by the caller) and only the
+    // outgoing visual gets a dedicated fade here.
     const fadeMs = Math.max(0, Math.round(input.replaceFadeMs ?? 0));
-    if (fadeMs > 0) {
+    // end=false still swaps images now: SetAlpha(fore, afrom) is outside the
+    // Sequence, and the afrom->ato half waits for the deferred play.
+    built.visual.alpha =
+      input.deferPlay && isFiniteNumber(input.alphaFrom)
+        ? input.alphaFrom
+        : current.contentAlpha;
+    if (previousVisual && previousVisual !== built.visual && fadeMs > 0) {
       const sessionId = ++current.replaceFadeSessionId;
-      const previousAlpha = previousVisual?.alpha ?? current.contentAlpha;
-      built.visual.alpha = 0;
+      const previousAlpha = previousVisual.alpha;
       void this.tween(
         fadeMs,
         (progress) => {
@@ -3116,9 +3215,7 @@ export class PixiStoryRenderer implements StoryRenderer {
             current.replaceFadeSessionId !== sessionId
           )
             return;
-          built.visual.alpha = current.contentAlpha * progress;
-          if (previousVisual && previousVisual !== built.visual)
-            previousVisual.alpha = previousAlpha * (1 - progress);
+          previousVisual.alpha = previousAlpha * (1 - progress);
         },
         () => {
           if (
@@ -3126,18 +3223,26 @@ export class PixiStoryRenderer implements StoryRenderer {
             current.replaceFadeSessionId !== sessionId
           )
             return;
-          built.visual.alpha = current.contentAlpha;
-          previousVisual?.removeFromParent();
+          previousVisual.removeFromParent();
         },
       );
     } else {
-      built.visual.alpha = current.contentAlpha;
       previousVisual?.removeFromParent();
     }
 
     return current;
   }
 
+  /**
+   * Web approximation of the greenscreen black band: native feeds
+   * bstart/bend through `CharacterParam` into
+   * `AVGCharacterSlot._LoadImage` (0x183eb4f60) -> `AVGCharacterSpriteHub::
+   * SetImage`, which passes the values to the material verbatim -- unlike
+   * `SlotChangeMask` (the dead `charslotmask` channel), which tweens
+   * `_BlackStart/_BlackEnd` as 1-x. So no inversion belongs here; the exact
+   * band geometry lives in the greenscreen shader, which the DLL cannot
+   * show, and this static top-down gradient is the approximation.
+   */
   private applyCharacterBlackGradient(
     content: Container,
     contentSprites: Sprite[],
@@ -3236,35 +3341,30 @@ export class PixiStoryRenderer implements StoryRenderer {
     state: CharacterRenderState,
     input: CharacterSlotInput,
   ): { scaleX: number; scaleY: number; x: number; y: number } {
-    // `charslot` does NOT share `character`'s key-equality guard. It reaches
-    // the slot through `AVGCharacterSlot._SlotSetCharInternal` @ 0x183eb5830,
-    // whose reset is
-    //   `if (resetOffsetPos && !IsNullOrEmpty(charName)) _offset.pos = zero`
-    // with no `m_currentKey` comparison anywhere -- unlike `Set` @ 0x183eb38a0,
-    // which wraps the same reset in `!op_Equality(m_currentKey, key)`. So a
-    // charslot carrying a name zeroes the offset whatever the character is,
-    // and `end=false` (resetOffsetPos = 0) is the only way to keep it.
-    const preserve =
-      input.resetTransform === false || input.preserveTransform === true;
-    const baseX = preserve ? state.actionX : 0;
-    const baseY = preserve ? state.actionY : 0;
-    const baseScaleX = preserve ? state.scaleX : 1;
-    const baseScaleY = preserve ? state.scaleY : 1;
-
+    // Native never resets a slot's transform between charslot commands:
+    // `_UpdateSeqWithParam` @ 0x183e53940 calls
+    // `SlotSetCharWithParam(slot, options, resetOffsetPos: false)` (literal 0
+    // at the call site), so `_SlotSetCharInternal`'s
+    // `if (resetOffsetPos && !IsNullOrEmpty(charName)) _offset.pos = zero`
+    // never fires on the charslot path and the offset keeps its
+    // localPosition; zoom scale lives on the fore image, which survives
+    // swaps. A command without pos/zoom input therefore starts from whatever
+    // transform the slot currently holds; only an explicit `posfrom` is
+    // absolute (SlotMoveChar sets localPosition = posFrom first).
     if (input.positionFrom) {
       return {
-        scaleX: baseScaleX,
-        scaleY: baseScaleY,
+        scaleX: state.scaleX,
+        scaleY: state.scaleY,
         x: input.positionFrom.x,
         y: input.positionFrom.y,
       };
     }
 
     return {
-      scaleX: baseScaleX,
-      scaleY: baseScaleY,
-      x: baseX,
-      y: baseY,
+      scaleX: state.scaleX,
+      scaleY: state.scaleY,
+      x: state.actionX,
+      y: state.actionY,
     };
   }
 
@@ -3275,7 +3375,11 @@ export class PixiStoryRenderer implements StoryRenderer {
   ): { scaleX: number; scaleY: number; x: number; y: number } {
     let toX = from.x;
     let toY = from.y;
-    if (input.positionTo) {
+    // Native gates the plain move on posFrom != (1,1): a bare `posto`
+    // without `posfrom` (and without action=jump, where `posto` is the
+    // relative landing offset of CharJump) never reaches SlotMoveChar, so it
+    // is a no-op.
+    if (input.positionTo && (input.positionFrom || input.action === "jump")) {
       if (input.positionFrom) {
         toX = input.positionTo.x;
         toY = input.positionTo.y;
@@ -3288,40 +3392,34 @@ export class PixiStoryRenderer implements StoryRenderer {
     let toScaleX = from.scaleX;
     let toScaleY = from.scaleY;
     if (input.action === "zoom") {
-      if (isFiniteNumber(input.scaleX)) toScaleX = input.scaleX;
-      if (isFiniteNumber(input.scaleY)) toScaleY = input.scaleY;
-      if (input.posZoom) {
-        toX += (0.5 - input.posZoom.x) * toScaleX * state.width;
-        toY += (input.posZoom.y - 0.5) * toScaleY * state.height;
+      // CharZoom validates the pivot first: x/y outside [0,1] => return null,
+      // skipping the whole zoom (scale change included). An absent poszoom
+      // defaults to (1,1), which is inside the valid range; the Web port
+      // keeps treating an absent pivot as "no extra shift".
+      const zoom = input.posZoom;
+      const pivotValid =
+        !zoom || (zoom.x >= 0 && zoom.x <= 1 && zoom.y >= 0 && zoom.y <= 1);
+      if (pivotValid) {
+        if (isFiniteNumber(input.scaleX)) toScaleX = input.scaleX;
+        if (isFiniteNumber(input.scaleY)) toScaleY = input.scaleY;
+        if (zoom) {
+          toX += (0.5 - zoom.x) * toScaleX * state.width;
+          toY += (zoom.y - 0.5) * toScaleY * state.height;
+        }
       }
     }
 
     return { scaleX: toScaleX, scaleY: toScaleY, x: toX, y: toY };
   }
 
-  private applyCharacterSlotFocus(
-    focusMode: CharacterSlotInput["focusMode"],
-    slot: string,
-    focusSlots?: string[],
-  ): void {
-    if (!focusMode) return;
-
-    if (focusMode === "none") {
-      const state = this.characterSlots.get(slot);
-      if (!state) return;
-      state.focusBrightness = 0.5;
-      this.updateCharacterOpacity(state);
-      return;
-    }
-
-    const active =
-      focusMode === "current_only"
-        ? new Set([slot])
-        : new Set(
-            (focusSlots ?? []).map((value) =>
-              this.normalizeCharacterSlot(value),
-            ),
-          );
+  private applyCharacterSlotFocus(focusSlots: string[]): void {
+    // Native focus is a full re-resolve on every charslot:
+    // `_ProcessFocusArray` (0x183e50b30) clears all four flags, then lights
+    // only the listed slots; unrecognized values light nothing. Brightness
+    // changes are tweens in the Sequence (SetFocus), applied instantly here.
+    const active = new Set(
+      focusSlots.map((value) => this.normalizeCharacterSlot(value)),
+    );
 
     for (const [slotKey, state] of this.characterSlots.entries()) {
       state.focusBrightness = active.has(slotKey) ? 1 : 0.5;
@@ -3531,8 +3629,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       input.scaleX !== undefined ||
       input.scaleY !== undefined ||
       input.posZoom !== undefined ||
-      input.preserveTransform !== undefined ||
-      input.resetTransform !== undefined ||
+      input.deferPlay !== undefined ||
       input.replaceFadeMs !== undefined ||
       input.power !== undefined ||
       input.randomness !== undefined ||

@@ -167,6 +167,12 @@ export interface CharacterSlotInput {
   block?: boolean;
   characterKey?: string;
   circles?: number;
+  /**
+   * `charslot` 的 `end=false`:native 把整条 Sequence 组装进每槽缓存但不
+   * Play,留给同槽后续 end=true 的命令触发。图片置换本身不延迟
+   * (`_SlotSetCharInternal` 照跑,新图停在 afrom),全部 tween 延迟。
+   */
+  deferPlay?: boolean;
   dimmed?: boolean;
   durationMs?: number;
   enterFrom?: "down" | "left" | "right" | "up";
@@ -174,7 +180,11 @@ export interface CharacterSlotInput {
   expression?: string;
   fadeIdentity?: string;
   focus?: number;
-  focusMode?: "current_only" | "none" | "subset";
+  /**
+   * charslot 的 focus 是全量重刷:`_ProcessFocusArray` 清零后按列表点亮,
+   * 不认识的取值(含 "n"/"none"/"a")= 全部槽 unfocus。focusSlots 为点亮集。
+   */
+  focusMode?: "subset";
   focusSlots?: string[];
   inverse?: boolean;
   /**
@@ -189,10 +199,9 @@ export interface CharacterSlotInput {
   positionTo?: { x: number; y: number };
   posZoom?: { x: number; y: number };
   power?: number;
-  preserveTransform?: boolean;
   randomness?: number;
+  /** 换图 crossfade 时长(native = `duration`,非 `fadetime`) */
   replaceFadeMs?: number;
-  resetTransform?: boolean;
   scaleX?: number;
   scaleY?: number;
   slot: string;
