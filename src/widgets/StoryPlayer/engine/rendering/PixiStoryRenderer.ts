@@ -2697,7 +2697,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
 
     this.applyCharacterBlackGradient(
-      visual,
+      content,
       maskTargets,
       sourceWidth,
       sourceHeight,
@@ -2854,7 +2854,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private applyCharacterBlackGradient(
-    visual: Container,
+    content: Container,
     maskTargets: Sprite[],
     width: number,
     height: number,
@@ -2869,7 +2869,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const startY = height * Math.min(start, end);
     const endY = height * Math.max(start, end);
-    const texture = this.bakeBlackSilhouetteTexture(
+    const texture = this.bakeDarkenedCharacterTexture(
       maskTargets,
       width,
       height,
@@ -2880,21 +2880,21 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     // Native applies the gradient inside the character shader
     // (`avgCharSplitShader` material floats `_BlackStart`/`_BlackEnd` on the
-    // sprite's own material, AlphaSplitImageHolder.SetSprite), darkening
-    // character pixels only. The web port bakes that as a black silhouette
-    // sprite whose alpha = character alpha x gradient alpha: compositing
-    // black with alpha `a` over color `c` yields `c * (1 - a)`, the same
-    // lerp-to-black the native shader performs. Pixi's mask pipeline cannot
-    // express this: a Container mask is stencil (quad-only, ignores alpha)
-    // and a Sprite alpha mask multiplies by the mask texture's RED channel
-    // (mask.frag `masky.r`), which would key the shading to the character's
-    // own colors.
-    const silhouette = new Sprite(texture);
-    silhouette.anchor.set(0, 0);
-    visual.addChild(silhouette);
+    // sprite's own material, AlphaSplitImageHolder.SetSprite), darkening the
+    // texture BEFORE the vertex color multiplies it (fade-in alpha, focus
+    // dim tint). The web port must bake the darkening into the texture
+    // itself: an overlay/mask sibling cannot reproduce that order, because
+    // Pixi multiplies container alpha into each child before the children
+    // composite, yielding dst * (1 - a * p) instead of dst * (1 - a) * p --
+    // the shading would fade in with the character and only look right at
+    // the end of the fade.
+    for (const target of maskTargets) target.removeFromParent();
+    const darkened = new Sprite(texture);
+    darkened.anchor.set(0, 0);
+    content.addChild(darkened);
   }
 
-  private bakeBlackSilhouetteTexture(
+  private bakeDarkenedCharacterTexture(
     targets: Sprite[],
     width: number,
     height: number,
@@ -2925,7 +2925,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       );
     }
 
-    ctx.globalCompositeOperation = "source-in";
+    // source-atop lerps the existing pixels toward the gradient color while
+    // keeping their alpha: out = black * g + c * (1 - g), identical to the
+    // native shader's lerp-to-black.
+    ctx.globalCompositeOperation = "source-atop";
     const overlayHeight = Math.max(1, endY);
     const gradient = ctx.createLinearGradient(0, 0, 0, overlayHeight);
     gradient.addColorStop(0, "rgba(0, 0, 0, 1)");

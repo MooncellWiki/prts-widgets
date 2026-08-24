@@ -53,27 +53,30 @@ function createCharacterRenderer(): any {
 }
 
 describe("PixiStoryRenderer", () => {
-  it("bakes the black gradient into a silhouette sprite instead of masking", () => {
+  it("bakes the black gradient into the character texture, replacing the sprites", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const baked = new Texture();
     const bakeSpy = vi
-      .spyOn(renderer, "bakeBlackSilhouetteTexture")
+      .spyOn(renderer, "bakeDarkenedCharacterTexture")
       .mockReturnValue(baked);
+    const content = new Container();
     const visual = new Container();
+    visual.addChild(content);
     const texture = new Texture();
     const body = new Sprite(texture);
     body.width = 100;
     body.height = 200;
+    content.addChild(body);
 
     try {
-      renderer.applyCharacterBlackGradient(visual, [body], 100, 200, 0.2, 0.7);
+      renderer.applyCharacterBlackGradient(content, [body], 100, 200, 0.2, 0.7);
 
-      // Native darkens character pixels inside the character shader
-      // (`_BlackStart`/`_BlackEnd` material floats). The web port bakes a
-      // black silhouette (character alpha x gradient alpha) as one sprite;
-      // Pixi masks must not be used -- a Container mask is stencil (quad
-      // only) and a Sprite alpha mask multiplies by the texture's RED
-      // channel, keying the shading to the character's own colors.
+      // Native darkens the texture inside the character shader
+      // (`_BlackStart`/`_BlackEnd` material floats) BEFORE vertex color
+      // (fade alpha / dim tint) multiplies it. The web port must therefore
+      // bake the darkening into the texture: any overlay/mask sibling would
+      // have its alpha scaled by the fade progress (dst * (1 - a * p)),
+      // losing the shading at the start of the fade-in.
       expect(bakeSpy).toHaveBeenCalledWith(
         [body],
         100,
@@ -81,11 +84,11 @@ describe("PixiStoryRenderer", () => {
         200 * 0.2,
         200 * 0.7,
       );
-      expect(visual.children.length).toBe(1);
-      const silhouette = visual.children[0] as Sprite;
-      expect(silhouette).toBeInstanceOf(Sprite);
-      expect(silhouette.texture).toBe(baked);
-      expect(silhouette.mask ?? null).toBeNull();
+      expect(content.children.length).toBe(1);
+      const darkened = content.children[0] as Sprite;
+      expect(darkened).toBeInstanceOf(Sprite);
+      expect(darkened.texture).toBe(baked);
+      expect(body.parent).toBeNull();
     } finally {
       bakeSpy.mockRestore();
     }
