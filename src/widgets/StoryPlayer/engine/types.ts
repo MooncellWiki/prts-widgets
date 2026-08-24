@@ -411,6 +411,31 @@ export interface StickerInput extends SubtitleInput {
   id: string;
 }
 
+/**
+ * Native provenance: `Torappu.AVG.StickerPanel._ExecuteStickerTween`
+ * (2.7.61 build 2761, VA 0x183e92110) reads three independent tween groups
+ * via `CommandParser.ParseAnchorPosParam` / `ParseRotateParam` /
+ * `ParseAlphaParam`. A group is only present when its `*to` key exists --
+ * native wraps each group in an `IEmptyable` param and `ExecuteTween` skips
+ * empty groups entirely. `*duration` is in native seconds and is already
+ * scaled to milliseconds by the runtime (the visual equivalent of the native
+ * `Sequence.timeScale = animateRatio` third mode, see the runtime case).
+ */
+export interface StickerTweenInput {
+  alpha?: { durationMs: number; from?: number; to: number };
+  id: string;
+  /** Only an `isend=true` command builds and plays the accumulated sequence. */
+  isend: boolean;
+  /** `join=true` joins the previous step in parallel instead of appending. */
+  join: boolean;
+  position?: {
+    durationMs: number;
+    from?: { x: number; y: number };
+    to: { x: number; y: number };
+  };
+  rotation?: { durationMs: number; from?: number; to: number };
+}
+
 export interface SpellStickerInput {
   alpha: number;
   angle?: number;
@@ -631,6 +656,7 @@ export interface StoryRenderer {
   showItem: (input: ShowItemInput) => Promise<void>;
   showCgItem: (input: CgItemInput) => Promise<void>;
   setSticker: (input: StickerInput) => Promise<void> | void;
+  stickerTween: (input: StickerTweenInput) => Promise<void> | void;
   setSpellSticker: (input: SpellStickerInput) => Promise<void> | void;
   hideSpellSticker: (id: string) => Promise<void> | void;
   setSubtitle: (input: SubtitleInput) => Promise<void> | void;
