@@ -1,4 +1,4 @@
-import { Container, Texture } from "pixi.js";
+import { Container, Texture, TilingSprite } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
@@ -237,6 +237,154 @@ describe("PixiStoryRenderer", () => {
 
     expect(renderer.imageSprite.width).toBe(Texture.EMPTY.width);
     expect(renderer.imageSprite.height).toBe(Texture.EMPTY.height);
+  });
+
+  it("multiplies the native size by width/height before screenadapt", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    // _LoadImage: SetNativeSize, then sizeDelta = (w * width, h * height)
+    // with a 1.0 fallback, before any screenadapt step.
+    await renderer.setImage("avg_5_boom", {
+      block: false,
+      fadeMs: 0,
+      heightMultiplier: 0.5,
+      scaleX: 1,
+      scaleY: 1,
+      tiled: false,
+      widthMultiplier: 2,
+      x: 0,
+      y: 0,
+    });
+
+    expect(renderer.imageSprite.width).toBe(Texture.EMPTY.width * 2);
+    expect(renderer.imageSprite.height).toBe(Texture.EMPTY.height * 0.5);
+  });
+
+  it("feeds the multiplied rect into the screenadapt aspect comparison", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    // A square texture is taller than 16:9, but width=2 flips the multiplied
+    // rect to 2:1, so showall must take the width-fit branch
+    // (`_AdaptScreenShowAll`: target ratio > reference ratio → adapt width).
+    await renderer.setImage("avg_5_boom", {
+      block: false,
+      fadeMs: 0,
+      heightMultiplier: 1,
+      scaleX: 1,
+      scaleY: 1,
+      screenAdapt: "showall",
+      tiled: false,
+      widthMultiplier: 2,
+      x: 0,
+      y: 0,
+    });
+
+    expect(renderer.imageSprite.width).toBe(1280);
+    expect(renderer.imageSprite.height).toBe(
+      (Texture.EMPTY.height * 1280) / (Texture.EMPTY.width * 2),
+    );
+  });
+
+  it("takes the clear branch when the image texture fails to load", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    const clearImage = vi.spyOn(renderer, "clearImage");
+
+    await renderer.setImage("first");
+    expect(renderer.imageSprite).not.toBeNull();
+
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(null);
+    await renderer.setImage("missing", {
+      block: true,
+      fadeMs: 0,
+      scaleX: 1,
+      scaleY: 1,
+      tiled: false,
+      x: 0,
+      y: 0,
+    });
+
+    // _LoadImage on a null sprite logs the failure and fades the old image
+    // out (clear branch) instead of keeping the previous image on screen.
+    expect(clearImage).toHaveBeenCalledWith(0, true);
+    expect(renderer.imageSprite).toBeNull();
+    expect(renderer.imageLayer.children).toHaveLength(0);
+  });
+
+  it("renders a tiled image as a TilingSprite sized to the final rect", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setImage("bg_0_am", {
+      block: false,
+      fadeMs: 0,
+      scaleX: 1,
+      scaleY: 1,
+      tiled: true,
+      x: 0,
+      y: 0,
+    });
+
+    expect(renderer.imageSprite).toBeInstanceOf(TilingSprite);
+    // Image.type = Tiled with no multipliers/adapt tiles at the native size.
+    expect(renderer.imageSprite.width).toBe(Texture.EMPTY.width);
+    expect(renderer.imageSprite.height).toBe(Texture.EMPTY.height);
+
+    await renderer.setImage("bg_0_am", {
+      block: false,
+      fadeMs: 0,
+      scaleX: 1,
+      scaleY: 1,
+      screenAdapt: "fill",
+      tiled: true,
+      x: 0,
+      y: 0,
+    });
+
+    // The tiling rect is the final sizeDelta (native x multipliers x adapt).
+    expect(renderer.imageSprite.width).toBe(1280);
+    expect(renderer.imageSprite.height).toBe(720);
+  });
+
+  it("keeps an in-flight imagerotate tween running across image swaps", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    const rotateSteps: Array<(progress: number) => void> = [];
+    renderer.tween = vi.fn(
+      async (_durationMs: number, step: (progress: number) => void) => {
+        rotateSteps.push(step);
+      },
+    );
+
+    // angle=90 without circles sweeps -270 degrees (AVGUtils.CreateRotateTween).
+    await renderer.setImageRotate({
+      angleDeg: 90,
+      block: false,
+      circles: 0,
+      durationMs: 1000,
+      inverse: false,
+    });
+    rotateSteps.at(-1)!(0.5);
+    expect(renderer.imageLayer.angle).toBe(-135);
+
+    // _ExecuteImage only DOKills the back Image, never the panel rotation
+    // tween: the swap must neither freeze nor reset the rotation.
+    await renderer.setImage("30_i04");
+    rotateSteps.at(-1)!(1);
+    expect(renderer.imageLayer.angle).toBe(-270);
+
+    // The clear branch must not freeze it either.
+    rotateSteps.at(-1)!(0.5);
+    await renderer.clearImage();
+    rotateSteps.at(-1)!(1);
+    expect(renderer.imageLayer.angle).toBe(-270);
   });
 
   it("applies the strict gridbg xScale and yScale transform", () => {
