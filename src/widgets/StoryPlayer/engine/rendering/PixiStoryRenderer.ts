@@ -2646,6 +2646,9 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     let sourceWidth: number;
     let sourceHeight: number;
+    // Sprites that make up the character pixels; the black gradient is
+    // clipped per-pixel against each of these textures.
+    const maskTargets: Sprite[] = [];
 
     if (item.group === -1 && "image" in item && item.image) {
       const texture = await this.textureForCharacterKey(item.image);
@@ -2654,6 +2657,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       const sprite = new Sprite(texture);
       sprite.anchor.set(0, 0);
       content.addChild(sprite);
+      maskTargets.push(sprite);
       sourceWidth = texture.width;
       sourceHeight = texture.height;
     } else if (item.group >= 0 && "face" in item && item.face) {
@@ -2682,6 +2686,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       faceSprite.width = group.faceRect.w;
       faceSprite.height = group.faceRect.h;
       content.addChild(faceSprite);
+      maskTargets.push(faceSprite);
 
       sourceWidth = baseTexture.width;
       sourceHeight = baseTexture.height;
@@ -2692,7 +2697,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     this.applyCharacterBlackGradient(
       visual,
-      content,
+      maskTargets,
       sourceWidth,
       sourceHeight,
       blackStart,
@@ -2849,7 +2854,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private applyCharacterBlackGradient(
     visual: Container,
-    content: Container,
+    maskTargets: Sprite[],
     width: number,
     height: number,
     blackStart = Number.NaN,
@@ -2876,10 +2881,27 @@ export class PixiStoryRenderer implements StoryRenderer {
       type: "linear",
     });
 
-    const overlay = new Graphics();
-    overlay.rect(0, 0, width, overlayHeight).fill(gradient);
-    overlay.mask = content;
-    visual.addChild(overlay);
+    // Native applies the gradient inside the character shader
+    // (`avgCharSplitShader` material floats `_BlackStart`/`_BlackEnd` on the
+    // sprite's own material, AlphaSplitImageHolder.SetSprite), so it darkens
+    // character pixels only and never leaks into transparent regions. The
+    // web port must clip the overlay per-pixel: a Pixi `Container` mask is a
+    // stencil mask (quad geometry, alpha ignored) and would show the full
+    // rectangle, so mask each overlay with a `Sprite` that shares the
+    // character texture (alpha mask, per-pixel).
+    for (const target of maskTargets) {
+      const overlay = new Graphics();
+      overlay.rect(0, 0, width, overlayHeight).fill(gradient);
+      const maskSprite = new Sprite(target.texture);
+      maskSprite.anchor.set(0, 0);
+      maskSprite.x = target.x;
+      maskSprite.y = target.y;
+      maskSprite.width = target.width;
+      maskSprite.height = target.height;
+      visual.addChild(maskSprite);
+      visual.addChild(overlay);
+      overlay.mask = maskSprite;
+    }
   }
 
   private characterSlotFromTransform(

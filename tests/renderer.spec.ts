@@ -1,4 +1,4 @@
-import { Container, Texture } from "pixi.js";
+import { Container, Graphics, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
@@ -53,6 +53,37 @@ function createCharacterRenderer(): any {
 }
 
 describe("PixiStoryRenderer", () => {
+  it("clips the black gradient per-pixel with sprite masks, never containers", () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    // The gradient build needs a real 2D canvas context; only the mask
+    // structure matters here, so stub the pixel rasterization.
+    const fillSpy = vi
+      .spyOn(Graphics.prototype, "fill")
+      .mockReturnValue(undefined as never);
+    const visual = new Container();
+    const texture = new Texture();
+    const body = new Sprite(texture);
+    body.width = 100;
+    body.height = 200;
+
+    try {
+      renderer.applyCharacterBlackGradient(visual, [body], 100, 200, 0.2, 0.7);
+
+      expect(visual.children.length).toBe(2);
+      const [, overlay] = visual.children;
+      // Native darkens character pixels inside the character shader
+      // (`_BlackStart`/`_BlackEnd` material floats); the web overlay must be
+      // alpha-masked by a Sprite sharing the character texture. A Container
+      // mask would fall back to stencil (quad-only) and leak a black
+      // rectangle over transparent regions.
+      expect(overlay.mask).toBeInstanceOf(Sprite);
+      expect(overlay.mask).not.toBe(body);
+      expect((overlay.mask as Sprite).texture).toBe(texture);
+    } finally {
+      fillSpy.mockRestore();
+    }
+  });
+
   it("dims unfocused characters with tint without making them transparent", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const root = new Container();
