@@ -1314,6 +1314,11 @@ export class StoryRuntime {
           return "continue";
         }
         if (style === "cutin")
+          // Native runs `AVGShowItemCutinSlot.Show` (0x183ED2CB0): the mask
+          // expands to `width` (default = the sprite's native width) per
+          // `fadestyle` while the backdrop cross-fades. The cutin animation is
+          // NOT ported — the web port downgrades to the photo alpha fade, so
+          // keep the warning visible instead of pretending parity.
           this.warn(
             "unsupported_visual",
             "showitem style=cutin uses the cutin slot expand animation",
@@ -1321,8 +1326,20 @@ export class StoryRuntime {
             line.command,
           );
 
+        // Native `_ShowItem` (0x183E5C290) never guards an empty `image`
+        // (default ""): it still instantiates the slot and plays the
+        // backdrop-only fade. Every shipped sample fills `image`, so the web
+        // port warns and skips instead of reproducing the empty-slot fade.
         const image = toString(this.exactArg(args, "image"));
-        if (!image) return "continue";
+        if (!image) {
+          this.warn(
+            "invalid_parameter",
+            "showitem: image is empty",
+            line.lineNumber,
+            line.command,
+          );
+          return "continue";
+        }
 
         const resolved = this.resolveImageKey(image);
         if (!resolved) {
@@ -1336,6 +1353,8 @@ export class StoryRuntime {
         // slot's serialized defaults are _defaultFadeTime 0.5 and
         // _defaultBlackAlpha 0.4; offsetx/offsety default to a hardcoded 0.
         await this.renderer.showItem({
+          // The clamp is a web-only guard; native `GetFloat("black", 0.4)`
+          // applies no range constraint.
           blackAlpha: clamp(toNumber(this.exactArg(args, "black"), 0.4), 0, 1),
           block: true,
           fadeMs: Math.max(
