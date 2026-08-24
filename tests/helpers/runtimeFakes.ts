@@ -101,7 +101,14 @@ export class FakeRenderer implements StoryRenderer {
   videoWaiter: Promise<void> = Promise.resolve();
   decisionValue = 0;
   decisionIndex = -1;
-  decisionCalls: { options: string[]; values: number[] }[] = [];
+  decisionCalls: {
+    disabled: boolean[];
+    options: string[];
+    values: number[];
+  }[] = [];
+  /** 为 true 时 showDecision 挂起等 settleDecision（模拟玩家尚未点击） */
+  holdDecisions = false;
+  private decisionWaiters: Array<(selection: DecisionSelection) => void> = [];
   private resolveVideoWaiter: (() => void) | null = null;
 
   setCameraEffect(
@@ -360,9 +367,24 @@ export class FakeRenderer implements StoryRenderer {
   async showDecision(
     options: string[],
     values: number[],
+    disabled?: boolean[],
   ): Promise<DecisionSelection> {
-    this.decisionCalls.push({ options, values });
-    return { optionIndex: this.decisionIndex, value: this.decisionValue };
+    this.decisionCalls.push({ disabled: disabled ?? [], options, values });
+    if (!this.holdDecisions) {
+      return { optionIndex: this.decisionIndex, value: this.decisionValue };
+    }
+    return new Promise<DecisionSelection>((resolve) => {
+      this.decisionWaiters.push(resolve);
+    });
+  }
+
+  /** 按「未点击」结算挂起中的 decision，对应 PixiStoryRenderer.settleDecision */
+  settleDecision(): void {
+    const waiters = this.decisionWaiters;
+    this.decisionWaiters = [];
+    for (const resolve of waiters) {
+      resolve({ optionIndex: -1, value: 0 });
+    }
   }
 
   stopVideo(): void {
