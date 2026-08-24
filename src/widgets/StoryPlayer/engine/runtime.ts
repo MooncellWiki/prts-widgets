@@ -560,6 +560,10 @@ export class StoryRuntime {
     await this.renderer.clearSpellStickers();
 
     this.cancelTyping();
+    // Native ShouldResetOnSkip → DialogPanel.OnReset → typeWriter.OnReset()
+    // clears the message and cursor, so a multiline block that starts right at
+    // the skip landing point must not append to the pre-skip text.
+    this.resetMultiline();
     if (shouldResume) {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
@@ -700,12 +704,12 @@ export class StoryRuntime {
         }
 
         if (line.kind === "dialogue") {
-          this.resetMultiline();
           if (!line.text) {
             this.cancelTyping();
             this.renderer.setDialogue("", "");
             continue;
           }
+          this.resetMultiline();
           this.displayedLineIndex = line.lineNumber;
           this.waitForDialogueInput(line.speaker, line.text);
           return;
