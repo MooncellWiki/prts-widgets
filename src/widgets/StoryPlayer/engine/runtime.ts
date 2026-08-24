@@ -767,6 +767,10 @@ export class StoryRuntime {
     });
   }
 
+  // Web adaptation, intentional deviation: native concatenates the raw key
+  // verbatim (ResourceRouter.GetImagePath @0x183e8ffd0 → AVG/Images/<key>),
+  // but torappu.prts.wiki asset storage is lowercase. Game-data keys are
+  // lowercase anyway, so trim + lowercase only adapts the web asset mapping.
   private resolveImageKey(key: string): string | null {
     const normalized = key.trim().toLowerCase();
     if (!normalized) return null;
@@ -1267,6 +1271,10 @@ export class StoryRuntime {
       case "image": {
         // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage. This is the
         // foreground-panel registration of the same inherited executor used by
+        // the `background` command (AVGImagePanel.GetExecutors @0x183e56250
+        // binds "image" → _ExecuteImage @0x183e57cf0; BackgroundPanel binds
+        // "background" to the same MethodInfo). Covers the clear branch, the
+        // load-failure clear branch, the scaled fade and the block boundary.
         const image = toString(this.exactArg(args, "image"));
         const fadeMs = this.calculateFadeMs(this.exactArg(args, "fadetime"));
         const block =
@@ -1286,12 +1294,17 @@ export class StoryRuntime {
         await this.renderer.setImage(resolved, {
           block,
           fadeMs,
+          // `_LoadImage` multiplies the SetNativeSize'd rect by
+          // GetOrDefault("width"/"height", 1.0) before screenadapt; the keys
+          // are lowercase (unlike xScale/yScale).
+          heightMultiplier: toNumber(this.exactArg(args, "height"), 1),
           scaleX: toNumber(this.exactArg(args, "xScale"), 1),
           scaleY: toNumber(this.exactArg(args, "yScale"), 1),
           screenAdapt: this.parseScreenAdapt(
             this.exactArg(args, "screenadapt"),
           ),
           tiled: toBoolean(this.exactArg(args, "tiled"), false),
+          widthMultiplier: toNumber(this.exactArg(args, "width"), 1),
           x: toNumber(this.exactArg(args, "x"), 0),
           y: toNumber(this.exactArg(args, "y"), 0),
         });

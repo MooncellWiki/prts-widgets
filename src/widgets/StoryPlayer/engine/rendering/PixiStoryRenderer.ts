@@ -9,6 +9,7 @@ import {
   Text,
   TextStyle,
   Texture,
+  TilingSprite,
 } from "pixi.js";
 
 import {
@@ -216,7 +217,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly largeImageRoots = new Set<Container>();
   private largeImageSessionId = 0;
   private largeImageTweenSessionId = 0;
-  private imageSprite: Sprite | null = null;
+  private imageSprite: Sprite | TilingSprite | null = null;
   private imageRotateSessionId = 0;
   private readonly itemLayer = this.layers.items;
   private readonly onWarning?: (detail: string) => void;
@@ -794,18 +795,36 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage` for
-   * the `image` path. Sprite replacement and fade behavior are preserved;
+   * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage`
+   * (2.7.61 @0x183e57cf0 / @0x183e58390) for the `image` path. Sprite
+   * replacement, cross-fade and the block boundary are preserved; the
+   * width/height sizeDelta multipliers and the `tiled` Image type are applied
+   * like `_LoadImage` steps 5-9, and a failed texture load falls back to the
+   * clear branch (LogError + fade the old image out) instead of keeping it.
    * PIXI geometry is an adaptation of the native Image/RectTransform pair.
    */
   async setImage(key: string, input?: BackgroundInput): Promise<void> {
     const texture = await this.textureForImageKey(key, "image");
-    if (!texture) return;
+    if (!texture) {
+      // `_LoadImage` on a null sprite logs "Failed to load image: [{0}]"
+      // (textureForUrl already reports it) and takes the clear branch:
+      // DOFade(_backImage → 0), waiting for the fade when block is set.
+      await this.clearImage(input?.fadeMs ?? 0, input?.block ?? false);
+      return;
+    }
 
-    this.imageRotateSessionId += 1;
-    const sprite = new Sprite(texture);
+    // `_ExecuteImage` only DOKills `_backImage` and its transform; the
+    // panel-level rotation tween from `imagerotate` keeps running across
+    // image swaps and the panel's current angle is preserved. Do NOT bump
+    // imageRotateSessionId here (that would freeze a rotation mid-flight).
+    const sprite = input?.tiled
+      ? new TilingSprite({ texture })
+      : new Sprite(texture);
     sprite.anchor.set(0.5);
-    this.layoutImageForScreenAdapt(sprite, input?.screenAdapt);
+    this.layoutImageForScreenAdapt(sprite, input?.screenAdapt, false, {
+      heightMultiplier: input?.heightMultiplier,
+      widthMultiplier: input?.widthMultiplier,
+    });
     sprite.position.set(
       STORY_WIDTH / 2 + (input?.x ?? 0),
       STORY_HEIGHT / 2 - (input?.y ?? 0),
@@ -832,7 +851,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async clearImage(fadeMs = 0, block = false): Promise<void> {
-    this.imageRotateSessionId += 1;
+    // Same as setImage: the clear branch fades `_backImage` out and never
+    // touches the panel rotation tween, so imagerotate keeps its angle and
+    // any in-flight rotation keeps playing (see setImageRotate).
     const sprite = this.imageSprite;
     this.imageSprite = null;
     if (!sprite) return;
@@ -3597,18 +3618,26 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private layoutImageForScreenAdapt(
-    sprite: Sprite,
+    sprite: Sprite | TilingSprite,
     mode?: BackgroundInput["screenAdapt"],
     useViewportSizeByDefault = false,
+    multipliers?: { heightMultiplier?: number; widthMultiplier?: number },
   ): void {
     const sourceWidth = Math.max(1, sprite.texture.width);
     const sourceHeight = Math.max(1, sprite.texture.height);
-    // Unity swaps Image.sprite without calling SetNativeSize, so the AVG
-    // background Image keeps its scene-authored 1280x720 RectTransform when
-    // screenadapt is omitted. Pixi otherwise defaults to the texture's native
-    // size (many extracted backgrounds are 1024x576), leaving visible borders.
-    let width = useViewportSizeByDefault ? STORY_WIDTH : sourceWidth;
-    let height = useViewportSizeByDefault ? STORY_HEIGHT : sourceHeight;
+    // Native `_LoadImage` (2.7.61 @0x183e58390) calls Image.SetNativeSize()
+    // (@0x183e58688) and then multiplies sizeDelta by the `width`/`height`
+    // params (mulss @0x183e587b0/b4) BEFORE the screenadapt functions run,
+    // so the aspect comparisons below use the multiplied rect. The
+    // `background` path keeps a viewport-sized default instead (a known
+    // web-side deviation from SetNativeSize, tracked separately); the
+    // `image` path matches native by defaulting to the native size.
+    const widthMultiplier = multipliers?.widthMultiplier ?? 1;
+    const heightMultiplier = multipliers?.heightMultiplier ?? 1;
+    const nativeWidth = sourceWidth * widthMultiplier;
+    const nativeHeight = sourceHeight * heightMultiplier;
+    let width = useViewportSizeByDefault ? STORY_WIDTH : nativeWidth;
+    let height = useViewportSizeByDefault ? STORY_HEIGHT : nativeHeight;
 
     if (mode === "fill") {
       width = STORY_WIDTH;
@@ -3616,15 +3645,15 @@ export class PixiStoryRenderer implements StoryRenderer {
     } else if (
       mode === "width" ||
       (mode === "showall" &&
-        sourceWidth / sourceHeight > STORY_WIDTH / STORY_HEIGHT) ||
+        nativeWidth / nativeHeight > STORY_WIDTH / STORY_HEIGHT) ||
       (mode === "coverall" &&
-        sourceWidth / sourceHeight < STORY_WIDTH / STORY_HEIGHT)
+        nativeWidth / nativeHeight < STORY_WIDTH / STORY_HEIGHT)
     ) {
       width = STORY_WIDTH;
-      height = (sourceHeight * STORY_WIDTH) / sourceWidth;
+      height = (nativeHeight * STORY_WIDTH) / nativeWidth;
     } else if (mode === "height" || mode === "showall" || mode === "coverall") {
       height = STORY_HEIGHT;
-      width = (sourceWidth * STORY_HEIGHT) / sourceHeight;
+      width = (nativeWidth * STORY_HEIGHT) / nativeHeight;
     }
 
     sprite.width = width;

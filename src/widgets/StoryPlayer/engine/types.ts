@@ -242,10 +242,17 @@ export interface FocusParamInput {
 export interface BackgroundInput {
   block: boolean;
   fadeMs: number;
+  /**
+   * Native `AVGImagePanel._LoadImage` (2.7.61 @0x183e58390) multiplies the
+   * SetNativeSize'd rect by `GetOrDefault("width"/"height", 1.0)` (mulss
+   * @0x183e587b0/b4) before the screenadapt step. Omitted = multiplier 1.
+   */
+  heightMultiplier?: number;
   scaleX: number;
   scaleY: number;
   screenAdapt?: "coverall" | "fill" | "height" | "showall" | "width";
   tiled: boolean;
+  widthMultiplier?: number;
   x: number;
   y: number;
 }
