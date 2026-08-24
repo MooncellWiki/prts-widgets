@@ -604,3 +604,270 @@ describe("PixiStoryRenderer", () => {
     expect(360 - root.position.y).toBe(0);
   });
 });
+
+function createActionInput(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    block: false,
+    durationMs: 100,
+    power: 0,
+    randomness: 10,
+    rotationFromDeg: 0,
+    rotationLeftDeg: -15,
+    rotationRightDeg: 15,
+    scaleX: 1,
+    scaleY: 1,
+    slot: "m",
+    stop: false,
+    times: 3,
+    xOffset: 0,
+    yOffset: 0,
+    ...overrides,
+  };
+}
+
+async function createSlot(renderer: any, slot: string): Promise<any> {
+  // isActiveCharacterState gates every tween step on the live app.
+  renderer.app ??= {};
+  await renderer.setCharacter({
+    characterKey: "avg_test",
+    durationMs: 0,
+    expression: "1$1",
+    fadeIdentity: "avg_test",
+    slot,
+  });
+  return renderer.characterSlots.get(slot);
+}
+
+describe("PixiStoryRenderer characteraction", () => {
+  it("exits along the native direction table including up and down", async () => {
+    const renderer = createCharacterRenderer();
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        step(1);
+        done?.();
+      },
+    );
+
+    const middle = await createSlot(renderer, "m");
+    await renderer.runCharacterAction(
+      createActionInput({ direction: "left", type: "exit" }),
+    );
+    expect(middle.actionX).toBe(-1152);
+    expect(middle.actionY).toBe(0);
+
+    await renderer.runCharacterAction(
+      createActionInput({ direction: "right", type: "exit" }),
+    );
+    expect(middle.actionX).toBe(1152);
+
+    // Vertical exits apply +/-1072 on the (up-positive) action axis and also
+    // snap the horizontal drift back to the rest anchor.
+    await renderer.runCharacterAction(
+      createActionInput({ direction: "up", type: "exit" }),
+    );
+    expect(middle.actionX).toBe(0);
+    expect(middle.actionY).toBe(1072);
+    await renderer.runCharacterAction(
+      createActionInput({ direction: "down", type: "exit" }),
+    );
+    expect(middle.actionY).toBe(-1072);
+
+    // Unknown directions exit to the (0,0) rest anchor, like _GenExitPosition.
+    await renderer.runCharacterAction(
+      createActionInput({ direction: undefined, type: "exit" }),
+    );
+    expect(middle.actionX).toBe(0);
+    expect(middle.actionY).toBe(0);
+
+    // Slot-specific table rows.
+    const left = await createSlot(renderer, "l");
+    await renderer.runCharacterAction(
+      createActionInput({ direction: "left", slot: "l", type: "exit" }),
+    );
+    expect(left.actionX).toBe(-952);
+    const right = await createSlot(renderer, "r");
+    await renderer.runCharacterAction(
+      createActionInput({ direction: "left", slot: "r", type: "exit" }),
+    );
+    expect(right.actionX).toBe(-1352);
+  });
+
+  it("uses exit xpos/ypos as absolute coordinates when both are present", async () => {
+    const renderer = createCharacterRenderer();
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        step(1);
+        done?.();
+      },
+    );
+    const state = await createSlot(renderer, "m");
+
+    await renderer.runCharacterAction(
+      createActionInput({
+        absolutePosition: { x: 300, y: 200 },
+        direction: "left",
+        type: "exit",
+      }),
+    );
+
+    expect(state.actionX).toBe(300 - state.baseX);
+    expect(state.actionY).toBe(state.baseY - 200);
+  });
+
+  it("treats zoom xpos/ypos as the image pivot and scales around it", async () => {
+    const renderer = createCharacterRenderer();
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        step(1);
+        done?.();
+      },
+    );
+    const state = await createSlot(renderer, "m");
+
+    // avg_test image is 100x200 px; unity pivot y is measured from the
+    // bottom, pixi anchors from the top.
+    await renderer.runCharacterAction(
+      createActionInput({
+        pivot: { x: 0.8, y: 0.2 },
+        scaleX: 2,
+        scaleY: 2,
+        type: "zoom",
+      }),
+    );
+
+    expect(state.pivotX).toBe(80);
+    expect(state.pivotY).toBe(160);
+    expect(state.scaleX).toBe(2);
+    expect(state.rotationLayer.pivot.x).toBe(80);
+    expect(state.rotationLayer.pivot.y).toBe(160);
+    // The pivot stays pinned at the rest-center spot: the layer position
+    // compensates the parent scale (100/2 image-space / 2 scale).
+    expect(state.rotationLayer.position.x).toBeCloseTo(25);
+    expect(state.rotationLayer.position.y).toBeCloseTo(50);
+
+    // A later zoom with the default 0.5/0.5 pivot (what the runtime always
+    // sends when xpos/ypos are absent) re-centers the anchor.
+    await renderer.runCharacterAction(
+      createActionInput({
+        pivot: { x: 0.5, y: 0.5 },
+        scaleX: 1,
+        scaleY: 1,
+        type: "zoom",
+      }),
+    );
+    expect(state.rotationLayer.pivot.x).toBe(50);
+    expect(state.rotationLayer.pivot.y).toBe(100);
+    expect(state.rotationLayer.position.x).toBe(50);
+    expect(state.rotationLayer.position.y).toBe(100);
+  });
+
+  it("awaits the full shake duration when blocking, even with zero power", async () => {
+    const renderer = createCharacterRenderer();
+    await createSlot(renderer, "m");
+    const gates: Array<() => void> = [];
+    renderer.tween = vi.fn(
+      (_durationMs: number, _step: (progress: number) => void) =>
+        new Promise<void>((resolve) => {
+          gates.push(resolve);
+        }),
+    );
+
+    let settled = false;
+    const run = renderer.runCharacterAction(
+      createActionInput({ block: true, durationMs: 400, type: "shake" }),
+    );
+    void run.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Native CharShake always returns a tween of fadeTime, so _AddFinishCommand
+    // blocks on it regardless of the (here zero) shake power.
+    expect(gates).toHaveLength(1);
+    expect(settled).toBe(false);
+
+    for (const gate of gates) gate();
+    await run;
+    expect(settled).toBe(true);
+  });
+
+  it("runs jump as one tween of the fade duration with the jumps inside", async () => {
+    const renderer = createCharacterRenderer();
+    await createSlot(renderer, "m");
+    const tweens: Array<{
+      durationMs: number;
+      step: (progress: number) => void;
+      done?: () => void;
+      resolve: () => void;
+    }> = [];
+    renderer.tween = vi.fn(
+      (
+        durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+      ) =>
+        new Promise<void>((resolve) => {
+          tweens.push({ durationMs, step, done, resolve });
+        }),
+    );
+
+    let settled = false;
+    const run = renderer.runCharacterAction(
+      createActionInput({
+        block: true,
+        durationMs: 400,
+        power: 20,
+        times: 4,
+        type: "jump",
+        xOffset: 100,
+      }),
+    );
+    void run.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Move + jump each take exactly one fadeTime tween; the jump no longer
+    // costs times × durationMs.
+    expect(tweens.map((tween) => tween.durationMs)).toEqual([400, 400]);
+    expect(settled).toBe(false);
+
+    const state = renderer.characterSlots.get("m");
+    const jumpTween = tweens[1]!;
+    jumpTween.step(0.125);
+    expect(state.jumpOffsetY).toBe(20);
+    jumpTween.step(0.25);
+    expect(state.jumpOffsetY).toBe(0);
+    jumpTween.step(0.375);
+    expect(state.jumpOffsetY).toBe(20);
+
+    // Finalize the tweens the way the real TweenRunner does: step(1) + done.
+    for (const tween of tweens) {
+      tween.step(1);
+      tween.done?.();
+      tween.resolve();
+    }
+    await run;
+    expect(settled).toBe(true);
+    expect(state.jumpOffsetY).toBe(0);
+    expect(state.actionX).toBe(100);
+  });
+});

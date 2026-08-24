@@ -1787,8 +1787,13 @@ export class StoryRuntime {
       }
 
       case "characteraction": {
-        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacterAction. It uses
-        // literal fadetime and accepts both legacy block spellings.
+        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacterAction
+        // (0x183E699F0, build 2761). All five branches scale fadetime through
+        // AVGUtils.CalculateFadetime (animateRatio × fadetime) and read the
+        // blocking flag from `isblock` only — `_AddFinishCommand`
+        // (0x183E698E0) never reads `block=` (only the cutin panel does), so
+        // the thousands of legacy `block=` spellings in the corpus stay
+        // non-blocking exactly like the native client.
         const type = this.parseCharacterActionType(args.type);
         if (!type) {
           this.warn(
@@ -1799,28 +1804,88 @@ export class StoryRuntime {
         }
         const slot = this.parseCharacterActionSlot(args.name, type);
 
-        const scaleFallback =
-          args.scale === undefined
-            ? undefined
-            : Math.max(0, toNumber(args.scale, 1));
+        // Per-branch GetOrDefault defaults: exit/zoom fade in for 1.0s while
+        // move/jump/shake default to 0.5s.
+        const fadetimeFallback = type === "exit" || type === "zoom" ? 1 : 0.5;
+        const durationMs = this.calculateFadeMs(
+          this.exactArg(args, "fadetime"),
+          fadetimeFallback,
+        );
+
+        // NeedSkipAnimation (0x183E69680): jump/shake collapse into a plain
+        // move when the scaled fadetime is zero (skip mode or fadetime=0);
+        // the move executor then applies xpos/ypos instantly.
+        const effectiveType: CharacterActionInput["type"] =
+          (type === "jump" || type === "shake") && durationMs <= 0
+            ? "move"
+            : type;
+
+        let pivot: { x: number; y: number } | undefined;
+        if (type === "zoom") {
+          // xpos/ypos are the [0,1] pivot of the character image (default
+          // 0.5/0.5). AVGCharacterSlot.CharZoom (0x183EB2B50) returns null
+          // for pivots outside [0,1], making the whole command a no-op.
+          const pivotX = toNumber(args.xpos, 0.5);
+          const pivotY = toNumber(args.ypos, 0.5);
+          if (pivotX < 0 || pivotX > 1 || pivotY < 0 || pivotY > 1) {
+            this.warn(
+              "parse",
+              `characteraction zoom pivot out of range: xpos=${toString(args.xpos)}, ypos=${toString(args.ypos)}`,
+            );
+            return "continue";
+          }
+          pivot = { x: pivotX, y: pivotY };
+        }
+
+        // Native exit reads xpos/ypos as an absolute target only when BOTH
+        // are present (TryGetParam<int>); otherwise _GenExitPosition ignores
+        // them. `direction` accepts left/right/up/down and defaults to "left"
+        // when the key is missing; an unrecognized value falls through as
+        // undefined (native exits to the (0,0) rest anchor).
+        const hasExitX = this.exactArg(args, "xpos") !== undefined;
+        const hasExitY = this.exactArg(args, "ypos") !== undefined;
+        const parsedDirection = this.parseCharacterActionDirection(
+          args.direction,
+        );
+        const direction =
+          type === "exit"
+            ? (parsedDirection ??
+              (this.exactArg(args, "direction") === undefined
+                ? "left"
+                : undefined))
+            : parsedDirection;
+
+        // `scale` resets to the native 1.0 default when omitted; xscale and
+        // yscale are web extensions (the native panel never reads them).
+        const scaleFallback = Math.max(0, toNumber(args.scale, 1));
         const xScale =
           args.xscale === undefined
             ? scaleFallback
-            : Math.max(0, toNumber(args.xscale, scaleFallback ?? 1));
+            : Math.max(0, toNumber(args.xscale, scaleFallback));
         const yScale =
           args.yscale === undefined
             ? scaleFallback
-            : Math.max(0, toNumber(args.yscale, scaleFallback ?? 1));
+            : Math.max(0, toNumber(args.yscale, scaleFallback));
 
         await this.renderer.runCharacterAction({
-          block: toBoolean(args.block, toBoolean(args.isblock, false)),
-          direction: this.parseCharacterActionDirection(args.direction),
-          durationMs: Math.max(
-            0,
-            Math.round(toNumber(args.fadetime, 0.5) * 1000),
-          ),
-          power: Math.max(0, toNumber(args.power, 0)),
-          randomness: clamp(toNumber(args.randomness, 90), 0, 100),
+          absolutePosition:
+            type === "exit" && hasExitX && hasExitY
+              ? {
+                  x: toNumber(args.xpos, 0),
+                  y: toNumber(args.ypos, 0),
+                }
+              : undefined,
+          block: toBoolean(args.isblock, false),
+          direction,
+          durationMs,
+          pivot,
+          // jump/shake GetOrDefault defaults: power 10, int times 3.
+          power: Math.max(0, toNumber(args.power, 10)),
+          // Native key is `random` (DOShakePosition randomness degrees,
+          // default 10); `randomness=` is not read by the native panel.
+          randomness: toNumber(args.random, 10),
+          // start/leftend/rightend and stop are web extensions kept for
+          // charslot-style scripts; the native panel never reads them.
           rotationFromDeg: toNumber(args.start, 0),
           rotationLeftDeg:
             args.leftend === undefined ? -15 : -toNumber(args.leftend, 15),
@@ -1830,10 +1895,10 @@ export class StoryRuntime {
           scaleY: yScale,
           slot,
           stop: toBoolean(args.stop, false),
-          times: Math.trunc(toNumber(args.times, 1)),
-          type,
-          xOffset: toNumber(args.xpos, 0),
-          yOffset: toNumber(args.ypos, 0),
+          times: Math.trunc(toNumber(args.times, 3)),
+          type: effectiveType,
+          xOffset: type === "zoom" ? 0 : toNumber(args.xpos, 0),
+          yOffset: type === "zoom" ? 0 : toNumber(args.ypos, 0),
         } satisfies CharacterActionInput);
         return "continue";
       }
@@ -2789,7 +2854,18 @@ export class StoryRuntime {
     value: unknown,
   ): CharacterActionInput["direction"] | undefined {
     const normalized = toString(value).trim().toLowerCase();
-    if (normalized === "left" || normalized === "right") return normalized;
+    // _GenExitPosition (0x183E6B670) recognizes exactly left/right/up/down;
+    // anything else resolves to the (0,0) rest anchor (renderer handles
+    // undefined that way). The "left" default for a missing key is applied by
+    // the exit branch, matching GetOrDefault("direction", "left").
+    if (
+      normalized === "down" ||
+      normalized === "left" ||
+      normalized === "right" ||
+      normalized === "up"
+    ) {
+      return normalized;
+    }
     return undefined;
   }
 

@@ -171,10 +171,32 @@ export interface CharacterSlotInput {
 }
 
 export interface CharacterActionInput {
+  /**
+   * Exit-only: present when the command carries BOTH xpos and ypos (native
+   * TryGetParam<int> pair) — absolute story-space coordinates, mirroring the
+   * `character` command's absolutePosition convention.
+   */
+  absolutePosition?: { x: number; y: number };
   block: boolean;
-  direction?: "left" | "right";
+  /**
+   * Native reads `direction` only in the exit branch with GetOrDefault
+   * "left"; `_GenExitPosition` also accepts up/down. Undefined here means the
+   * raw value was not one of the four native directions (native exits to the
+   * slot rest anchor (0,0)).
+   */
+  direction?: "down" | "left" | "right" | "up";
   durationMs: number;
+  /**
+   * Zoom-only: native reads xpos/ypos as the [0,1] RectTransform pivot of the
+   * character image (default 0.5/0.5, y measured from the bottom like Unity).
+   * Runtime rejects out-of-range pivots before dispatch (native no-ops).
+   */
+  pivot?: { x: number; y: number };
   power: number;
+  /**
+   * DOShakePosition randomness. Native key is `random` (int, degrees, default
+   * 10); the web renderer adapts it to a per-tick duty cycle.
+   */
   randomness: number;
   rotationFromDeg: number;
   rotationLeftDeg: number;
