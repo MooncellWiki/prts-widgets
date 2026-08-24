@@ -455,14 +455,31 @@ export type CharacterCutinFadeStyle =
 export interface CharacterCutinInput {
   block: boolean;
   characterKey?: string;
+  /**
+   * Native provenance: when `name` cannot be resolved, native still allocates
+   * the slot and runs its Show/SlotUpdate tween (only AVGCharacterSlot logs
+   * an internal error), so `block` timing must survive a missing character.
+   */
+  characterMissing?: boolean;
+  /**
+   * `_characterSlot.localPosition` keys; `charOffsetY` carries native's
+   * `- maskHeight / 2` correction in the renderer layout math.
+   */
+  charOffsetX: number;
+  charOffsetY: number;
   expression?: string;
+  /** `animateRatio * fadetime` in ms; AVGCharacterCutinSlot is IFadeTimeRatio. */
   fadeMs: number;
   fadeStyle?: CharacterCutinFadeStyle;
-  height: number;
   offsetX: number;
   offsetY: number;
+  /** `_zoomAndPovRectTransform.anchoredPosition = (-povX, -povY)`. */
+  povX: number;
+  povY: number;
   widgetId: string;
+  /** Mask size along the main axis; `_zoomAndPovRectTransform.localScale`. */
   width: number;
+  zoom: number;
 }
 
 export type InterludeElementType = 0 | 1 | 2 | 3;

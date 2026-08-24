@@ -68,6 +68,7 @@ import { TweenRunner } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
 import { CgItemPanel } from "./panels/CgItemPanel";
+import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { FocusEffectPanel } from "./panels/FocusEffectPanel";
@@ -202,21 +203,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly charLayer = this.layers.characters;
   private readonly characterSlots = new Map<string, CharacterRenderState>();
   private readonly cutinLayer = this.layers.cutins;
-  private readonly cutinStates = new Map<
-    string,
-    { fadeStyle: number; sessionId: number; sprite: Sprite }
-  >();
-  private readonly cutinStoredPositions = new Map<
-    string,
-    {
-      endX: number;
-      endY: number;
-      fullHeight: number;
-      fullWidth: number;
-      startX: number;
-      startY: number;
-    }
-  >();
+  private readonly cutinPanel: CharacterCutinPanel;
 
   private readonly curtainLayer = this.layers.curtains;
   private readonly curtains = new Map<number, CurtainRenderState>();
@@ -290,6 +277,12 @@ export class PixiStoryRenderer implements StoryRenderer {
       (durationMs, update, complete) =>
         this.tween(durationMs, update, complete),
       onWarning,
+    );
+    this.cutinPanel = new CharacterCutinPanel(
+      this.cutinLayer,
+      (input) => this.textureForCutinCharacter(input),
+      (durationMs, update, complete) =>
+        this.tween(durationMs, update, complete),
     );
     this.animTextPanel = new AnimTextPanel(
       this.itemLayer,
@@ -412,10 +405,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageSprite = null;
     this.imageLayer.removeChildren();
     this.itemLayer.removeChildren();
-    for (const state of this.cutinStates.values()) state.sprite.destroy();
-    this.cutinStates.clear();
-    this.cutinStoredPositions.clear();
-    this.cutinLayer.removeChildren();
+    this.cutinPanel.destroy();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
     this.characterSlots.clear();
@@ -864,23 +854,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async clearCharacterCutin(widgetId?: string): Promise<void> {
-    if (!widgetId) {
-      for (const state of this.cutinStates.values()) {
-        state.sessionId += 1;
-        state.sprite.destroy();
-      }
-      this.cutinStates.clear();
-      this.cutinLayer.removeChildren();
-      return;
-    }
-
-    const id = `cutin_${widgetId.replace(/ /g, "_")}`;
-    const state = this.cutinStates.get(id);
-    if (!state) return;
-
-    state.sessionId += 1;
-    state.sprite.destroy();
-    this.cutinStates.delete(id);
+    this.cutinPanel.clear(widgetId);
   }
 
   async clearInterludes(): Promise<void> {
@@ -892,95 +866,34 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Port scope: `Torappu.AVG.AVGCharacterCutinPanel._ExecuteCharacterCutin`
-   * and `AVGCharacterCutinSlot.Show`/hide fade styles. Crop expansion is
-   * reproduced with PIXI dimensions and masks rather than Unity UI widgets.
+   * Native port: `Torappu.AVG.AVGCharacterCutinPanel` (build 2761 IDA review):
+   * `GetExecutors` @ 0x183e48f70 registers `charactercutin` ->
+   * `_ExecuteCharacterCutin` @ 0x183e49440, whose five widgetID/name branches
+   * (show / SlotUpdate / hide) live in CharacterCutinPanel together with the
+   * `AVGCharacterCutinSlot` Show/SlotUpdate/Hide geometry.
    */
   async setCharacterCutin(input: CharacterCutinInput): Promise<void> {
     if (!this.app) return;
+    await this.cutinPanel.run(input);
+  }
 
-    if (!input.characterKey || !input.expression) {
-      const id = `cutin_${input.widgetId.replace(/ /g, "_")}`;
-      const existing = this.cutinStates.get(id);
-      if (!existing) return;
+  private async textureForCutinCharacter(
+    input: CharacterCutinInput,
+  ): Promise<Texture | null> {
+    const base = input.characterKey;
+    const expression = input.expression;
+    if (!base || !expression) return null;
 
-      const sessionId = ++existing.sessionId;
-      const fadeStyle = existing.fadeStyle;
-      const sprite = existing.sprite;
-      const durationMs = input.fadeMs;
-
-      if (fadeStyle === 0) {
-        const run = this.tween(
-          durationMs,
-          (progress) => {
-            if (existing.sessionId !== sessionId) return;
-            sprite.alpha = 1 - progress;
-          },
-          () => {
-            if (existing.sessionId !== sessionId) return;
-            sprite.destroy();
-            this.cutinStates.delete(id);
-          },
-        );
-
-        if (input.block) await run;
-        else void run;
-      } else {
-        const stored = this.cutinStoredPositions.get(id);
-        if (!stored) {
-          sprite.destroy();
-          this.cutinStates.delete(id);
-          return;
-        }
-
-        const isHorizontal = fadeStyle >= 1 && fadeStyle <= 3;
-        const run = this.tween(
-          durationMs,
-          (progress) => {
-            if (existing.sessionId !== sessionId) return;
-            if (isHorizontal) {
-              sprite.width = stored.fullWidth * (1 - progress);
-              sprite.x =
-                stored.startX + (stored.endX - stored.startX) * progress;
-              if (sprite.children.length > 0) {
-                const mask = sprite.children[0] as Graphics;
-                mask
-                  .clear()
-                  .rect(0, 0, sprite.width, sprite.height)
-                  .fill(0xff_ff_ff);
-              }
-            } else {
-              sprite.height = stored.fullHeight * (1 - progress);
-              sprite.y =
-                stored.startY + (stored.endY - stored.startY) * progress;
-            }
-          },
-          () => {
-            if (existing.sessionId !== sessionId) return;
-            sprite.destroy();
-            this.cutinStates.delete(id);
-            this.cutinStoredPositions.delete(id);
-          },
-        );
-
-        if (input.block) await run;
-        else void run;
-      }
-      return;
-    }
-
-    const link = this.context.linkMap[input.characterKey];
+    const link = this.context.linkMap[base];
     if (!link) {
-      this.onWarning?.(`missing character base: ${input.characterKey}`);
-      return;
+      this.onWarning?.(`missing character base: ${base}`);
+      return null;
     }
 
-    const item = link.array.find((entry) => entry.name === input.expression);
+    const item = link.array.find((entry) => entry.name === expression);
     if (!item) {
-      this.onWarning?.(
-        `missing character expression: ${input.characterKey}#${input.expression}`,
-      );
-      return;
+      this.onWarning?.(`missing character expression: ${base}#${expression}`);
+      return null;
     }
 
     let assetKey: string | null = null;
@@ -992,137 +905,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
 
     if (!assetKey) {
-      this.onWarning?.(
-        `invalid cutin character: ${input.characterKey}#${input.expression}`,
-      );
-      return;
+      this.onWarning?.(`invalid cutin character: ${base}#${expression}`);
+      return null;
     }
 
-    const texture = await this.textureForCharacterKey(assetKey);
-    if (!texture) return;
-
-    const id = `cutin_${input.widgetId.replace(/ /g, "_")}`;
-    const previous = this.cutinStates.get(id);
-    if (previous) {
-      previous.sessionId += 1;
-      previous.sprite.destroy();
-    }
-
-    const sprite = new Sprite(texture);
-    sprite.anchor.set(0, 0);
-
-    const centerX = STORY_WIDTH / 2;
-    const cropW = input.width;
-    const cropH = input.height;
-    const halfW = cropW / 2;
-    const halfH = cropH / 2;
-
-    const endLeft = centerX + input.offsetX - halfW;
-    const endTop = -input.offsetY;
-
-    let fadeStyle: number;
-    let startLeft = endLeft;
-    let startTop = endTop;
-
-    switch (input.fadeStyle) {
-      case "horiz_expand_center": {
-        fadeStyle = 1;
-        startLeft += halfW;
-        break;
-      }
-      case "horiz_expand_left2right": {
-        fadeStyle = 2;
-        break;
-      }
-      case "horiz_expand_right2left": {
-        fadeStyle = 3;
-        startLeft += cropW;
-        break;
-      }
-      case "vert_expand_center": {
-        fadeStyle = 4;
-        startTop += halfH;
-        break;
-      }
-      case "vert_expand_top2bottom": {
-        fadeStyle = 5;
-        break;
-      }
-      case "vert_expand_bottom2top": {
-        fadeStyle = 6;
-        startTop += cropH;
-        break;
-      }
-      default: {
-        fadeStyle = 0;
-        break;
-      }
-    }
-
-    this.cutinStoredPositions.set(id, {
-      endX: endLeft,
-      endY: endTop,
-      fullHeight: cropH,
-      fullWidth: cropW,
-      startX: startLeft,
-      startY: startTop,
-    });
-
-    const durationMs = input.fadeMs;
-    const sessionId = previous ? previous.sessionId + 1 : 1;
-
-    if (fadeStyle === 0) {
-      sprite.x = endLeft;
-      sprite.y = endTop;
-      sprite.width = cropW;
-      sprite.height = cropH;
-      sprite.alpha = 0;
-      this.cutinLayer.addChild(sprite);
-
-      const state = { fadeStyle, sessionId, sprite };
-      this.cutinStates.set(id, state);
-
-      const run = this.tween(durationMs, (progress) => {
-        if (state.sessionId !== sessionId) return;
-        sprite.alpha = progress;
-      });
-
-      if (input.block) await run;
-      else void run;
-    } else {
-      const isHorizontal = fadeStyle >= 1 && fadeStyle <= 3;
-      sprite.x = startLeft;
-      sprite.y = startTop;
-
-      if (isHorizontal) {
-        sprite.width = 0;
-        sprite.height = cropH;
-      } else {
-        sprite.width = cropW;
-        sprite.height = 0;
-      }
-
-      this.cutinLayer.addChild(sprite);
-
-      const state = { fadeStyle, sessionId, sprite };
-      this.cutinStates.set(id, state);
-
-      const run = this.tween(durationMs, (progress) => {
-        if (state.sessionId !== sessionId) return;
-        if (isHorizontal) {
-          const currentWidth = cropW * progress;
-          sprite.width = currentWidth;
-          sprite.x = startLeft + (endLeft - startLeft) * progress;
-        } else {
-          const currentHeight = cropH * progress;
-          sprite.height = currentHeight;
-          sprite.y = startTop + (endTop - startTop) * progress;
-        }
-      });
-
-      if (input.block) await run;
-      else void run;
-    }
+    return this.textureForCharacterKey(assetKey);
   }
 
   /**
