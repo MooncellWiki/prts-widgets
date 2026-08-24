@@ -88,7 +88,8 @@ pnpm build           # 含 vue-tsc 类型检查
 - `runtime.ts` 与 `PixiStoryRenderer` 的用例按命令族分文件，新用例放进对应文件：
   `tests/runtime/` 下 flow / skip / decision / character / background /
   large-background / effects / text / panels / audio，
-  `tests/renderer/` 下 character / background / large-background / effects / text。
+  `tests/renderer/` 下 character / background / large-background / effects /
+  text / panels。
   runtime 的 `FakeRenderer`/`FakeAudio`/`createContext` 在
   `tests/helpers/runtimeFakes.ts`，renderer 跨文件共用的 helper 在
   `tests/helpers/rendererFixtures.ts`。
