@@ -1,6 +1,7 @@
 import {
   Container,
   Sprite,
+  Text,
   Texture,
   TextureSource,
   TilingSprite,
@@ -1697,5 +1698,98 @@ describe("PixiStoryRenderer blocker", () => {
     expect(renderer.blockerSlideFilter).toBe(filter);
     // The instant color write still routes through the attached filter.
     expect(filter.alpha).toBe(0);
+  });
+});
+
+function createSubtitleRenderer() {
+  const renderer = new PixiStoryRenderer(createContext()) as any;
+  renderer.subtitleText = new Text({
+    style: renderer.createOverlayTextStyle(24, 1280),
+    text: "",
+  });
+  renderer.subtitleText.visible = false;
+  renderer.app = {};
+  renderer.tween = vi.fn(async () => {});
+  renderer.layoutSubtitle = vi.fn();
+  return renderer;
+}
+
+describe("PixiStoryRenderer subtitle", () => {
+  const baseInput = {
+    alignment: "left" as const,
+    delayMs: 0,
+    sizePx: 24,
+    text: "hello",
+    widthPx: 1280,
+    x: 0,
+    y: 100,
+  };
+
+  it("fades a hidden subtitle in but never replays the fade for consecutive ones", async () => {
+    const renderer = createSubtitleRenderer();
+    const subtitle = renderer.subtitleText;
+
+    await renderer.setSubtitle({ ...baseInput });
+    expect(subtitle.visible).toBe(true);
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    expect(renderer.tween.mock.calls[0][0]).toBe(150);
+
+    renderer.tween.mockClear();
+    await renderer.setSubtitle({ ...baseInput, text: "world" });
+    // Native `_SetHiddenInternal`: set_isHidden(false) is a no-op while the
+    // panel is already visible -- seamless text swap, no second fade-in.
+    expect(renderer.tween).not.toHaveBeenCalled();
+    expect(subtitle.text).toBe("world");
+
+    // After a real hide, the next subtitle fades in again.
+    await renderer.clearSubtitle(0);
+    expect(subtitle.visible).toBe(false);
+    await renderer.setSubtitle({ ...baseInput, text: "again" });
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    expect(subtitle.text).toBe("again");
+  });
+
+  it("types against a transparent tail so the full-text layout is fixed from t0", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = createSubtitleRenderer();
+      const onTypingComplete = vi.fn();
+
+      const pending = renderer.setSubtitle({
+        ...baseInput,
+        delayMs: 10,
+        onTypingComplete,
+      });
+      const subtitle = renderer.subtitleText;
+      // t0 already carries the whole message as a hidden span, so wrapping
+      // matches the final layout instead of re-flowing per character.
+      expect(subtitle.text).toBe("<_c00000000>hello</_c00000000>");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(subtitle.text).toBe("h<_c00000000>ello</_c00000000>");
+      await vi.advanceTimersByTimeAsync(40);
+      expect(subtitle.text).toBe("hello");
+      await pending;
+
+      expect(onTypingComplete).toHaveBeenCalledTimes(1);
+      expect(renderer.subtitleTypingTarget).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports instant subtitles as finished and applies per-line alignment", async () => {
+    const renderer = createSubtitleRenderer();
+    const onTypingComplete = vi.fn();
+
+    await renderer.setSubtitle({
+      ...baseInput,
+      alignment: "center",
+      onTypingComplete,
+    });
+
+    expect(onTypingComplete).toHaveBeenCalledTimes(1);
+    // Native TextAnchor.UpperCenter aligns every wrapped line, not just the
+    // block.
+    expect(renderer.subtitleText.style.align).toBe("center");
   });
 });

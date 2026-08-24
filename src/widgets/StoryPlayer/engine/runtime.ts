@@ -745,6 +745,10 @@ export class StoryRuntime {
     await this.renderer.clearInterludes();
     await this.renderer.clearCharacterCutin();
     await this.renderer.clearSpellStickers();
+    // Native: SubtitlePanel.ShouldResetOnSkip() is true, so a skip resets the
+    // panel through OnReset -- alpha to 0 immediately (no tween) plus a
+    // typewriter reset. A stale subtitle must not survive the skip.
+    await this.renderer.clearSubtitle(0);
 
     this.cancelTyping();
     if (shouldResume) {
@@ -2551,11 +2555,19 @@ export class StoryRuntime {
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
 
         this.displayedLineIndex = line.lineNumber;
+        // Native `_OnTypeWriterEnd` (2.7.61 VA 0x183e94e80) raises the auto
+        // click with the subtitle's own `typeWriter.messageLength`. Track the
+        // subtitle in the shared typing state so auto mode both advances when
+        // typing ends naturally and waits for the subtitle's length instead of
+        // the previous dialogue's leftovers.
+        this.cancelTyping();
+        this.currentMessageLength = parseRichChars(text).length;
         await this.renderer.setSubtitle({
           alignment:
             this.parseSubtitleAlignment(this.exactArg(args, "alignment")) ??
             "left",
           delayMs: this.getCurrentSpeed().typeWriterDelayMs,
+          onTypingComplete: () => this.onTypingComplete(),
           sizePx: toNumber(this.exactArg(args, "size"), 24),
           text,
           widthPx: Math.min(

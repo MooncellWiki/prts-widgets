@@ -298,6 +298,19 @@ class FakeRenderer implements StoryRenderer {
   async setSubtitle(input: SubtitleInput): Promise<void> {
     this.subtitleCalls.push(input);
     this.typingActive = input.delayMs > 0;
+    // Faithful to PixiStoryRenderer: an instant subtitle is done typing the
+    // moment it is shown.
+    if (input.delayMs <= 0) input.onTypingComplete?.();
+  }
+
+  /**
+   * Emulates the real renderer clearing its typing target and running the
+   * `SubtitlePanel._OnTypeWriterEnd` callback when the typewriter ends on its
+   * own (as opposed to a click finishing it).
+   */
+  finishSubtitleTypingNaturally(): void {
+    this.typingActive = false;
+    this.subtitleCalls.at(-1)?.onTypingComplete?.();
   }
 
   async setTimerSticker(input: TimerStickerInput): Promise<void> {
@@ -2859,6 +2872,7 @@ describe("StoryRuntime", () => {
       {
         alignment: "center",
         delayMs: 0,
+        onTypingComplete: expect.any(Function),
         sizePx: 24,
         text: "HELLO",
         widthPx: 400,
@@ -2957,6 +2971,62 @@ describe("StoryRuntime", () => {
     await runtime.advance();
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
+  });
+
+  it("auto mode advances a subtitle once its typewriter ends naturally", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[subtitle(text="HELLO",alignment="center")]',
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+
+      await runtime.start();
+      expect(runtime.getState()).toBe("waiting_input");
+
+      runtime.setAutoPlayMode("button_auto");
+      // Enabling auto mid-typing must not fire a click before the typewriter
+      // has ended (native only raises the auto click from _OnTypeWriterEnd).
+      await vi.advanceTimersByTimeAsync(1600);
+      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+
+      renderer.finishSubtitleTypingNaturally();
+      // Auto wait = 1.5s + messageLength(5) * 0.03s = 1.65s; the subtitle's
+      // own length must drive the wait, not the previous message's.
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+      await vi.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the subtitle immediately when skipping the story", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[subtitle(text="HELLO",alignment="center")]',
+        '[skipnode(mode="skip")]',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(runtime.getState()).toBe("waiting_input");
+
+    await runtime.skipNode();
+    // Native OnReset on skip clears the panel immediately (alpha=0, no fade).
+    expect(renderer.subtitleClearCalls).toEqual([0]);
+    expect(runtime.getState()).toBe("finished");
   });
 
   it("click skips typewriter first, then advances", async () => {
