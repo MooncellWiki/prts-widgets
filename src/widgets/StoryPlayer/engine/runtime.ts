@@ -1570,14 +1570,19 @@ export class StoryRuntime {
         const direction = Math.trunc(
           toNumber(this.exactArg(args, "direction"), -1),
         );
-        const fadeMs = Math.max(
-          0,
-          Math.round(toNumber(this.exactArg(args, "fadetime"), 0.4) * 1000),
+        // Native port: `AVGCurtainPanel._ExecuteCurtain` inlines
+        // `scaledFadetime = AVGController.animateRatio * fadetime`
+        // (AVGUtils.CalculateFadetime; the panel implements IFadeTimeRatio),
+        // with fadetime defaulting to the panel's `_defaultFadetime` (0.4).
+        // quick_play (animateRatio 0) therefore always lands in the instant
+        // branch / instant all-side reset below.
+        const fadeMs = this.calculateFadeMs(
+          this.exactArg(args, "fadetime"),
+          0.4,
         );
-        // Native port: Torappu.AVG.AVGCurtainPanel._ExecuteCurtain. It zeroes its
-        // closure's block field on both the
-        // zero-fadetime and the direction < 0 paths, so only a real curtain tween
-        // can block -- the same short circuit blocker has.
+        // It zeroes its closure's block field on both the zero-fadetime and
+        // the direction < 0 paths, so only a real curtain tween can block --
+        // the same short circuit blocker has.
         const block =
           fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false);
 

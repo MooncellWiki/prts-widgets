@@ -1799,6 +1799,72 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("scales curtain fadetime by animateRatio", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[curtain(direction=2,fillfrom=1,fillto=0,fadetime=1.5,block=true)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+
+    // _ExecuteCurtain inlines scaledFadetime = animateRatio * fadetime.
+    expect(renderer.curtainCalls).toEqual([
+      {
+        alphaFrom: undefined,
+        alphaTo: undefined,
+        block: true,
+        delayMs: 0,
+        direction: 2,
+        fadeMs: 750,
+        fillFrom: 1,
+        fillTo: 0,
+        grad: false,
+      },
+    ]);
+  });
+
+  it("drops curtain blocking when animateRatio zeroes the fade", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[curtain(direction=0,fillfrom=1,fillto=0,fadetime=3,block=true)]",
+        "[curtain(fadetime=2,block=true)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0 },
+    );
+
+    await runtime.start();
+
+    // quick_play (animateRatio 0) lands in the instant branches: the
+    // closure's block field is zeroed for the single-side path, direction<0
+    // returns literal false, and a fadetime=3 close can no longer stall the
+    // fast-forward.
+    expect(renderer.curtainCalls).toEqual([
+      {
+        alphaFrom: undefined,
+        alphaTo: undefined,
+        block: false,
+        delayMs: 0,
+        direction: 0,
+        fadeMs: 0,
+        fillFrom: 1,
+        fillTo: 0,
+        grad: false,
+      },
+    ]);
+    expect(renderer.curtainClearCalls).toEqual([{ block: false, fadeMs: 0 }]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
   it("maps gridbg into a tiled background layer", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
