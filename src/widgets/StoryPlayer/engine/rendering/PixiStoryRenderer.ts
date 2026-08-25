@@ -246,6 +246,20 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly cgItemPanel: CgItemPanel;
 
   private blockerSprite: Sprite | null = null;
+  /**
+   * Raw float mirror of the native `_blocker.color` (prefab initial
+   * (0,0,0,0)). Unity `Color` channels are float32 and may exceed 1 -- scripts
+   * write 0-255 endpoints (r=255 white flashes, 7.5k+ occurrences) whose
+   * mid-tween values saturate only at the GPU. Readback and interpolation stay
+   * in raw scale; only the 8-bit tint write clamps.
+   */
+  private blockerColor: { a: number; b: number; g: number; r: number } = {
+    a: 0,
+    b: 0,
+    g: 0,
+    r: 0,
+  };
+  private blockerTweenSessionId = 0;
   private cameraShakeSessionId = 0;
   private cameraShakeWaitResolve: (() => void) | null = null;
   private grayscaleAmount = 0;
@@ -406,6 +420,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     // so it goes back as child 0 rather than being re-appended on each gridbg.
     this.backgroundLayer.addChild(this.gridBackgroundLayer);
     this.blockerSprite = null;
+    // Blocker's closest OnReset equivalent on destroy: drop in-flight tween
+    // callbacks and restore the prefab color (0,0,0,0).
+    this.blockerTweenSessionId += 1;
+    this.blockerColor = { a: 0, b: 0, g: 0, r: 0 };
     this.gridBackgroundSessionId += 1;
     this.largeBackgroundRoot = null;
     this.largeBackgroundTweenSessionId += 1;
@@ -1880,11 +1898,21 @@ export class PixiStoryRenderer implements StoryRenderer {
         }
       }
     } else if (input.style !== "default") {
+      // Native slider/verticalslider clear the sprite and mount the
+      // slide_mask material for a directional wipe (2.7.61 VA 0x183e30860).
+      // The whole-surface fade below is a known visual degradation, recorded
+      // via the unsupported_visual warning rather than ported.
       blocker.texture = Texture.WHITE;
       this.onWarning?.(`unsupported_visual blocker:${input.style}`);
     }
 
-    const current = this.readBlockerColor(blocker);
+    const current = this.readBlockerColor();
+    // `DOKill(_blocker, complete: false)` equivalent (2.7.61 VA 0x183e30522):
+    // a new command kills the previous DOColor mid-flight, so at most one
+    // blocker tween is ever active. Stale step/complete callbacks below are
+    // dropped -- a stale complete with to.a ~= 0 would otherwise reset the
+    // texture and hide the sprite under the new command.
+    const sessionId = ++this.blockerTweenSessionId;
     const from = {
       a: Number.isFinite(input.from.a) ? input.from.a : current.a,
       b: Number.isFinite(input.from.b) ? input.from.b : current.b,
@@ -1910,6 +1938,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       input.fadeMs,
       (progress) => {
+        if (sessionId !== this.blockerTweenSessionId) return;
         this.writeBlockerColor(blocker, {
           a: from.a + (input.to.a - from.a) * progress,
           b: from.b + (input.to.b - from.b) * progress,
@@ -1918,6 +1947,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         });
       },
       () => {
+        if (sessionId !== this.blockerTweenSessionId) return;
         if (Math.abs(input.to.a) <= 1e-6) {
           blocker.texture = Texture.WHITE;
           blocker.visible = false;
@@ -2355,7 +2385,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     blocker.alpha = 0;
 
     this.blockerSprite = blocker;
-    this.worldLayer.addChild(blocker);
+    // Native hierarchy: panel_blocker (sibling 1) renders *below*
+    // panel_curtains (sibling 3), so curtains cover the blocker when both are
+    // up (black-mask pass, 2.7.61 scene layout). Insert just below the
+    // curtains container instead of appending on top of it. The Math.max
+    // guards the un-mounted test harness where curtains has no parent yet;
+    // LayerGraph.attach appends curtains after, preserving the same order.
+    this.worldLayer.addChildAt(
+      blocker,
+      Math.max(this.worldLayer.getChildIndex(this.curtainLayer), 0),
+    );
 
     return blocker;
   }
@@ -3474,26 +3513,32 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.cameraShakeWaitResolve = null;
   }
 
-  private readBlockerColor(blocker: Sprite): {
+  private readBlockerColor(): {
     a: number;
     b: number;
     g: number;
     r: number;
   } {
-    return {
-      a: blocker.alpha,
-      b: (blocker.tint & 0xff) / 255,
-      g: ((blocker.tint >> 8) & 0xff) / 255,
-      r: ((blocker.tint >> 16) & 0xff) / 255,
-    };
+    // Native `_ExecuteBlocker` reads the current `Color` (float32) for the
+    // omitted `*From` channels (2.7.61 VA 0x183e30318). Returning the raw
+    // float mirror keeps full precision and preserves 0-255-scale values
+    // across commands, instead of re-reading the quantized 8-bit tint.
+    return { ...this.blockerColor };
   }
 
   private writeBlockerColor(
     blocker: Sprite,
     color: { a: number; b: number; g: number; r: number },
   ): void {
-    const channel = (value: number) =>
-      Math.round(clamp01(value > 1 ? value / 255 : value) * 255);
+    // Native stores the raw GetFloat values straight into `Color` (float32,
+    // components may exceed 1) and DOColor tweens that raw color; only the GPU
+    // clamps at render time. So a 0-255 endpoint (r=255) saturates the channel
+    // for essentially the whole tween -- the visible fade is the alpha ramp.
+    // Mirror that: keep the raw floats, and clamp just this 8-bit tint write.
+    // (The old per-value `value > 1 ? value / 255 : value` heuristic re-scaled
+    // every intermediate frame, halving mid-fade brightness.)
+    this.blockerColor = { a: color.a, b: color.b, g: color.g, r: color.r };
+    const channel = (value: number) => Math.round(clamp01(value) * 255);
     blocker.tint =
       (channel(color.r) << 16) | (channel(color.g) << 8) | channel(color.b);
     blocker.alpha = clamp01(color.a);

@@ -189,6 +189,12 @@ function createFaceOverlayRenderer(baked: Texture): any {
   return renderer;
 }
 
+function createBlockerRenderer(): any {
+  const renderer = new PixiStoryRenderer(createContext()) as any;
+  renderer.layers.attach(new Container());
+  return renderer;
+}
+
 describe("PixiStoryRenderer", () => {
   it("bakes the black gradient into the character texture, replacing the sprites", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
@@ -1355,5 +1361,126 @@ describe("PixiStoryRenderer", () => {
 
     expect(root.position.x - 640).toBe(-160);
     expect(360 - root.position.y).toBe(0);
+  });
+});
+
+describe("PixiStoryRenderer blocker", () => {
+  interface CapturedTween {
+    complete: () => void;
+    step: (progress: number) => void;
+  }
+
+  function captureTweens(renderer: any): CapturedTween[] {
+    const tweens: CapturedTween[] = [];
+    renderer.tween = vi.fn(
+      (
+        _durationMs: number,
+        step: (progress: number) => void,
+        complete?: () => void,
+      ) => {
+        tweens.push({ complete: complete ?? (() => {}), step });
+        return new Promise<void>(() => {});
+      },
+    );
+    return tweens;
+  }
+
+  it("renders the blocker below the curtains container", async () => {
+    const renderer = createBlockerRenderer();
+
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 0,
+      from: { a: Number.NaN, b: Number.NaN, g: Number.NaN, r: Number.NaN },
+      image: undefined,
+      inverse: false,
+      style: "default",
+      to: { a: 1, b: 0, g: 0, r: 0 },
+    });
+
+    const world = renderer.layers.world as Container;
+    const sprite = renderer.blockerSprite;
+    // Native panel_blocker (sibling 1) renders below panel_curtains
+    // (sibling 3): curtains cover the blocker when both are up.
+    expect(sprite.parent).toBe(world);
+    expect(world.getChildIndex(sprite)).toBeLessThan(
+      world.getChildIndex(renderer.layers.curtains),
+    );
+  });
+
+  it("saturates 0-255 endpoints at the tint write instead of rescaling mid-fade", async () => {
+    const renderer = createBlockerRenderer();
+    const tweens = captureTweens(renderer);
+
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 300,
+      from: { a: 0, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: false,
+      style: "default",
+      to: { a: 1, b: 255, g: 255, r: 255 },
+    });
+
+    const sprite = renderer.blockerSprite;
+    // Halfway the raw channels are 127.5; the GPU-side clamp saturates them,
+    // it does not divide by 255 (which would render mid-gray ~128).
+    tweens[0]!.step(0.5);
+    expect(sprite.tint).toBe(0xff_ff_ff);
+    expect(renderer.readBlockerColor()).toEqual({
+      a: 0.5,
+      b: 127.5,
+      g: 127.5,
+      r: 127.5,
+    });
+
+    // Below 1/255 the channel still ramps briefly before saturating.
+    tweens[0]!.step(0.001);
+    expect((sprite.tint >> 16) & 0xff).toBe(65);
+  });
+
+  it("drops stale tween callbacks once a new blocker command takes over", async () => {
+    const renderer = createBlockerRenderer();
+    const tweens = captureTweens(renderer);
+
+    // First command fades out to a=0; its completion would reset the texture
+    // and hide the sprite.
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 1000,
+      from: { a: 1, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: false,
+      style: "default",
+      to: { a: 0, b: 0, g: 0, r: 0 },
+    });
+    // Second command (DOKill equivalent) takes over while the first tween
+    // would still be mid-flight.
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 1000,
+      from: {
+        a: Number.NaN,
+        b: Number.NaN,
+        g: Number.NaN,
+        r: Number.NaN,
+      },
+      image: undefined,
+      inverse: false,
+      style: "default",
+      to: { a: 0.5, b: 0, g: 0, r: 0 },
+    });
+
+    const sprite = renderer.blockerSprite;
+    expect(sprite.visible).toBe(true);
+
+    tweens[0]!.step(1);
+    expect(renderer.readBlockerColor().a).toBe(1);
+    tweens[0]!.complete();
+    expect(sprite.visible).toBe(true);
+
+    // The active tween keeps writing.
+    tweens[1]!.step(0.5);
+    expect(renderer.readBlockerColor().a).toBe(0.75);
   });
 });
