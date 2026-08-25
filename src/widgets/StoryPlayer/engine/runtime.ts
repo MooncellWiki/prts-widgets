@@ -488,11 +488,22 @@ export class StoryRuntime {
       return;
     }
 
-    if (this.state !== "waiting_input") return;
-
+    // Native port: Torappu.AVG.AVGController.OnClickPress (2.7.61 VA
+    // 0x183E15900) resets the auto play mode to DEFAULT on every non-theater
+    // press, with no regard for what the command loop is currently blocked
+    // on -- a press landing inside a blocking `delay` still flips quick_play's
+    // animateRatio back to 1 so delays enqueued afterwards keep real-time
+    // pacing. The press never interrupts the wait itself (OnClickPress does
+    // not touch the blocking executors), which the waiting_input gate below
+    // preserves: the player has no pause semantics and advance() stays a
+    // no-op for the story flow. Theater presses return before this side
+    // effect (native isTheaterMode early-out at 0x183E159B2).
     if (this.theaterMode) return;
 
     this.setAutoPlayMode("default");
+
+    if (this.state !== "waiting_input") return;
+
     await this.advanceFromClick();
   }
 
