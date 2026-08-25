@@ -335,6 +335,19 @@ interface SkipNodeLabel {
   mode: SkipMode;
 }
 
+/**
+ * Case-insensitive command-argument lookup shared by the standalone
+ * preprocessors and `StoryRuntime.arg`. Keeps parameter keys' source casing
+ * intact while tolerating case variants at read time.
+ */
+function lookupCommandArg(args: StoryCommandArgs, key: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(args, key)) return args[key];
+  const matched = Object.keys(args).find(
+    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+  );
+  return matched === undefined ? undefined : args[matched];
+}
+
 function preprocessSkipNodes(
   lines: ReturnType<typeof parseScript>,
 ): SkipNodeLabel[] {
@@ -343,10 +356,13 @@ function preprocessSkipNodes(
   for (const [index, line] of lines.entries()) {
     if (line.kind !== "command" || line.command !== "skipnode") continue;
 
-    // Native port: Torappu.AVG.AVGStoryCache.CalSkipMode. Only the exact
-    // lower-case sentinel maps to FIRST_CANNOT_SKIP; every other value,
+    // Native port: Torappu.AVG.AVGStoryCache.AddSkipNode (0x183e5eec0) reads
+    // the mode via GetOrDefault("mode", "skip"), then CalSkipMode (0x183e5f180)
+    // maps only the exact lower-case sentinel "nofirstskip" to
+    // FIRST_CANNOT_SKIP; every other value falls back to CAN_SKIP. Key lookup
+    // is case-insensitive like every other command argument.
     const mode =
-      toString(line.args.mode, "skip") === "nofirstskip"
+      toString(lookupCommandArg(line.args, "mode"), "skip") === "nofirstskip"
         ? "nofirstskip"
         : "skip";
     labels.push({ lineIndex: index, mode });
@@ -866,6 +882,12 @@ export class StoryRuntime {
   async skipNode(): Promise<void> {
     if (this.destroyed || !this.canSkipNode()) return;
 
+    // Native port: Torappu.AVG.AVGController.OnSkipBtnClicked (2.7.61
+    // 0x183e16ee0) drops the skip click entirely while autoPlayMode ==
+    // QUICK_PLAY. The brief-confirm panel it shows otherwise is a native-only
+    // UI that this widget intentionally omits.
+    if (this.autoPlayMode === "quick_play") return;
+
     const hadActiveProcessLoop = this.processing;
     const activeProcessCompletion = this.processingCompletion;
     // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
@@ -910,9 +932,17 @@ export class StoryRuntime {
         this.currentSkipMode = nextLabel.mode;
       }
 
-      const tutorial = this.context.storyMetadata?.isTutorial ?? false;
+      // Native port: Torappu.AVG.AVGController.get_isSkippable (2.7.61
+      // 0x183e1f7a0): isRunning && story.isSkippable &&
+      // AVGStoryCache.CheckIfSkippableInCurMode (0x183e5f250). story.isSkippable
+      // is the HEADER `is_skippable` flag -- since 2.7.61 the tutorial gate is
+      // expressed through it (header defaults it to !is_tutorial during
+      // parsing, see parser.ts) instead of a direct !isTutorial check.
+      // CheckIfSkippableInCurMode: a nofirstskip anchor only blocks first
+      // reads.
+      const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
       const isSkippable =
-        !tutorial &&
+        storySkippable &&
         (this.currentSkipMode !== "nofirstskip" || !this.firstRead);
       if (nextLabel && !isSkippable) {
         // Native stores the anchor index and the coroutine's leading increment
@@ -1243,11 +1273,7 @@ export class StoryRuntime {
   }
 
   private arg(args: StoryCommandArgs, key: string): unknown {
-    if (Object.prototype.hasOwnProperty.call(args, key)) return args[key];
-    const matched = Object.keys(args).find(
-      (candidate) => candidate.toLowerCase() === key.toLowerCase(),
-    );
-    return matched === undefined ? undefined : args[matched];
+    return lookupCommandArg(args, key);
   }
 
   private exactArg(args: StoryCommandArgs, key: string): unknown {

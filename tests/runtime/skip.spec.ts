@@ -7,7 +7,27 @@ import {
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
-import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
+import type {
+  RuntimeWarning,
+  StoryMetadata,
+} from "../../src/widgets/StoryPlayer/engine/types";
+
+function storyMetadata(overrides: Partial<StoryMetadata> = {}): StoryMetadata {
+  return {
+    args: {},
+    characterSortType: "BY_GAIN_TIME_DOWN",
+    denyAutoSwitchScene: false,
+    dontClearGameObjectPoolOnStart: false,
+    fitMode: "DEFAULT",
+    id: "",
+    isAutoable: true,
+    isSkippable: true,
+    isTutorial: false,
+    isVideoOnly: false,
+    title: "",
+    ...overrides,
+  };
+}
 
 describe("StoryRuntime", () => {
   it("nofirstskip handles first-read skip by jumping to the next protected anchor", async () => {
@@ -206,49 +226,10 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("resets quick play mode to default after a SkipToThis jump", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[name="A"]before',
-          "[SkipToThis]",
-          '[name="B"]after',
-          '[name="C"]later',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
-
-      // Quick play is enabled before playback starts (switching while a line
-      // waits for input emits the immediate quick click and advances past the
-      // anchor, so the jump window would be gone).
-      runtime.setAutoPlayMode("quick_play");
-      await runtime.start();
-      expect(runtime.getAutoPlayState().mode).toBe("quick_play");
-
-      // Quick gear 0 types at 10ms/char: letting the clock run finishes the
-      // line and leaves the 200ms quick auto click pending.
-      await vi.advanceTimersByTimeAsync(150);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "before" });
-
-      await runtime.skipNode();
-
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
-
-      // The cancelled quick click never fires; "later" only shows on a manual
-      // advance.
-      await vi.advanceTimersByTimeAsync(5000);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
-
-      await runtime.advance();
-      expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+  // 不再有 quick_play 变体：native 2.7.61 OnSkipBtnClicked（0x183e16ee0）在
+  // QUICK_PLAY 下直接丢弃跳过点击，skipNode 对 quick_play 是无操作（见下方
+  // 「ignores skip clicks during quick play」），skiptothis 尾部的模式重置只
+  // 会经 button_auto 等非快速档路径触达。
 
   it("leaves theater mode on a SkipToThis jump but keeps its exit restore", async () => {
     vi.useFakeTimers();
@@ -568,5 +549,135 @@ describe("StoryRuntime", () => {
       { decisionId: 3, optionIndex: 0, value: 3 },
     ]);
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("gates skipping on header is_skippable instead of is_tutorial (2.7.61 get_isSkippable)", async () => {
+    // training_act50side_01_b shape: HEADER carries is_tutorial=true AND
+    // is_skippable=true. Native 2.7.61 AVGController.get_isSkippable only
+    // consults story.isSkippable, so the skip must stop the whole story here;
+    // the pre-2.7.61 !isTutorial gate would wrongly resume at the anchor.
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[skipnode(mode="nofirstskip")]',
+      '[name="A"]x',
+      '[skipnode(mode="skip")]',
+      '[name="B"]y',
+    ]);
+    context.storyMetadata = storyMetadata({
+      isSkippable: true,
+      isTutorial: true,
+    });
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
+  });
+
+  it("resumes at the anchor instead of ending when header marks the story unskippable", async () => {
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[skipnode(mode="skip")]',
+      '[name="A"]x',
+      '[skipnode(mode="skip")]',
+      '[name="B"]y',
+    ]);
+    context.storyMetadata = storyMetadata({ isSkippable: false });
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+      firstRead: false,
+    });
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    // Native SkipStory: get_isSkippable() is false, so it must not
+    // StopStory("Skipped"); it jumps past the dequeued anchor and resumes.
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "y" });
+  });
+
+  it("keeps the auto play mode on a skipnode label jump", async () => {
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=30)]",
+        '[skipnode(mode="nofirstskip")]',
+        '[name="A"]x',
+        '[skipnode(mode="skip")]',
+        '[name="B"]y',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { sleep },
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    // First read hits the nofirstskip anchor: jump past it and resume.
+    await runtime.skipNode();
+    await startPromise;
+    expect(runtime.getState()).toBe("waiting_input");
+
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.skipNode();
+
+    // Native leaves the auto mode untouched on the skipnode branch; only the
+    // skiptothis tail resets it. The second skip ends the story.
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    expect(runtime.getState()).toBe("finished");
+  });
+
+  it("ignores skip clicks during quick play like native OnSkipBtnClicked", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="skip")]',
+        '[video(res="video/02.mp4")]',
+        '[name="A"]x',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+    expect(runtime.getState()).toBe("waiting_video");
+    runtime.setAutoPlayMode("quick_play");
+    expect(runtime.canSkipNode()).toBe(true);
+
+    await runtime.skipNode();
+
+    // Quick play swallows the skip request entirely: the video keeps waiting.
+    expect(runtime.getState()).toBe("waiting_video");
+
+    runtime.setAutoPlayMode("default");
+    await runtime.skipNode();
+    await startPromise;
+    expect(runtime.getState()).toBe("finished");
+  });
+
+  it("reads the skipnode mode key case-insensitively like native GetOrDefault", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]x',
+        '[skipnode(Mode="nofirstskip")]',
+        '[name="B"]y',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    // The uppercase key still resolves to nofirstskip, so a first read can
+    // only jump past the anchor instead of ending the story.
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "y" });
   });
 });
