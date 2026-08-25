@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/browser";
 const feedback = Sentry.feedbackIntegration({
   autoInject: false,
   colorScheme: "system",
+  enableScreenshot: false,
 });
 
 Sentry.init({
