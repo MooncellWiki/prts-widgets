@@ -3319,6 +3319,23 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
   });
 
+  it("clears the timer sticker instantly when skipping", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    // Native skip routes through StickerPanel.OnReset → _RecycleStickers,
+    // whose first step is AVGTimerView.StopTimer(0): instant hide.
+    expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+  });
+
   it("disables segment skip when the story has no skip anchors", async () => {
     const runtime = new StoryRuntime(
       createContext(['[name="A"]before', '[name="B"]after']),

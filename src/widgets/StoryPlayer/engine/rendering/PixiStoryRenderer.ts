@@ -356,9 +356,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   } | null = null;
   private subtitleTypingSessionId = 0;
   private readonly stickerRichChars = new Map<string, RichChar[]>();
+  private timerFadeSessionId = 0;
   private timerStickerInterval: ReturnType<typeof setInterval> | null = null;
   private timerStickerText: Text | null = null;
-  private timerFadeSessionId = 0;
 
   constructor(context: Context, onWarning?: (detail: string) => void) {
     this.context = context;
@@ -1926,12 +1926,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel.hide(id);
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGTimerView.StopTimer` (2.7.61 VA 0x183ed53e0):
+   * `DOKill(_canvas, complete: false)` kills any in-flight fade tween without
+   * completing it, then fades from the current alpha to a hard-coded 0 and
+   * hides (never destroys) the view. The fade session counter is the DOKill
+   * analogue: bumping it here retires the previous fade's step/done callbacks
+   * so a timersticker fade-in still running when timerclear lands cannot keep
+   * writing alpha alongside the fade-out.
+   */
   async clearTimerSticker(input?: TimerClearInput): Promise<void> {
     this.clearTimerInterval();
-    // `AVGTimerView.StopTimer` precedes its fade with
-    // `DOKill(_canvas, complete: false)`; bumping the fade session is the Web
-    // equivalent -- an in-flight timersticker fade stops writing instead of
-    // fighting the fade-out.
     this.timerFadeSessionId += 1;
 
     const timer = this.timerStickerText;
@@ -2470,14 +2475,13 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Port scope: `Torappu.AVG.StickerPanel._ExcuteTimerSticker` (native spelling)
    * and `AVGTimerView.RenderTimer`. Browser intervals and PIXI text adapt the
    * native timer view; this command itself never supplies a block boundary.
+   * RenderTimer precedes its fade with `DOKill(_canvas, complete: true)`: the
+   * fade session bump below retires any in-flight timer fade (e.g. a timerclear
+   * fade-out) before the new fade-in starts writing alpha.
    */
   async setTimerSticker(input: TimerStickerInput): Promise<void> {
     const timer = this.ensureTimerStickerText();
     this.clearTimerInterval();
-    // `AVGTimerView.RenderTimer` precedes every fade with
-    // `DOKill(_canvas, complete: true)`; bumping the fade session is the Web
-    // equivalent -- an in-flight timersticker/timerclear fade stops writing
-    // instead of racing the new one.
     this.timerFadeSessionId += 1;
 
     timer.style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
