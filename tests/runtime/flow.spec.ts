@@ -9,6 +9,12 @@ import {
 
 import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
 
+// 释放足够的微任务队列回合，让 processLoop 在被 resolve 的 sleep 之后
+// 走到下一条命令的 sleep 调用（race/then 链约 5-6 个 tick）。
+async function flushMicrotasks(rounds = 8): Promise<void> {
+  for (let round = 0; round < rounds; round += 1) await Promise.resolve();
+}
+
 describe("StoryRuntime", () => {
   it("enters waiting_input on first dialogue", async () => {
     const renderer = new FakeRenderer();
@@ -51,6 +57,75 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(sleep.mock.calls).toEqual([[500], [0]]);
+  });
+
+  it("resets auto play mode when clicked while a delay blocks, without interrupting it", async () => {
+    const pendingSleeps: Array<() => void> = [];
+    const sleep = vi.fn(
+      () => new Promise<void>((resolve) => pendingSleeps.push(resolve)),
+    );
+    const runtime = new StoryRuntime(
+      createContext(["[delay(time=2)]", "[delay(time=3)]", '[name="A"]done']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep },
+    );
+
+    runtime.setAutoPlayMode("quick_play");
+    const startPromise = runtime.start();
+    await flushMicrotasks();
+
+    // quick_play 的 animateRatio=0 把第一条 delay 折叠成 0ms。
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(sleep).toHaveBeenNthCalledWith(1, 0);
+
+    await runtime.advance();
+
+    // 点击不能打断等待（native OnClickPress 不触碰阻塞执行器），但必须
+    // 把模式重置为 default，让之后入队的 delay 恢复真实时长。
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+
+    pendingSleeps[0]!();
+    await flushMicrotasks();
+
+    expect(sleep).toHaveBeenNthCalledWith(2, 3000);
+
+    pendingSleeps[1]!();
+    await startPromise;
+
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("keeps theater presses inert while a delay blocks", async () => {
+    const pendingSleeps: Array<() => void> = [];
+    const sleep = vi.fn(
+      () => new Promise<void>((resolve) => pendingSleeps.push(resolve)),
+    );
+    const runtime = new StoryRuntime(
+      createContext(["[theater]", "[delay(time=2)]"]),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep },
+    );
+
+    const startPromise = runtime.start();
+    await flushMicrotasks();
+
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+    await runtime.advance();
+
+    // theater 模式下 native OnClickPress 整体早退，连模式重置都不做。
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+    pendingSleeps[0]!();
+    await startPromise;
+
+    // 脚本尾部的隐式 endtip 在 button_auto 下阻塞，与点击无关。
+    expect(runtime.getState()).toBe("waiting_input");
   });
 
   it("uses native defaults for bare theater and restores manual input on exit", async () => {
