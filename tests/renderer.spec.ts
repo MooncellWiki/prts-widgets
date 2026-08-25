@@ -2,14 +2,43 @@ import { Container, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
+import { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
+import type { AnimationClock } from "../src/widgets/StoryPlayer/engine/execution";
 import type { GridBackgroundInput } from "../src/widgets/StoryPlayer/engine/types";
 
 function createContext(): Context {
   return {
     linkMap: {},
     script: [],
+  };
+}
+
+function createManualClock(): {
+  advance: (ms: number) => void;
+  clock: AnimationClock;
+  drainFrame: () => void;
+} {
+  const frames: Array<() => void> = [];
+  let now = 0;
+  const clock: AnimationClock = {
+    cancelFrame: () => {},
+    now: () => now,
+    requestFrame: (callback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+  };
+  return {
+    advance: (ms) => {
+      now += ms;
+    },
+    clock,
+    drainFrame: () => {
+      const frame = frames.shift();
+      if (frame) frame();
+    },
   };
 }
 
@@ -307,6 +336,44 @@ describe("PixiStoryRenderer", () => {
       enterFrom: "left",
     });
     expect(renderer.characterSlots.get("m").actionX).toBe(0);
+  });
+
+  it("eases the cameraeffect grayscale tween with DOTween's default OutQuad", () => {
+    const manual = createManualClock();
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+
+    void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0);
+
+    expect(renderer.grayscaleAmount).toBe(0);
+    manual.advance(500);
+    manual.drainFrame();
+    // Native AVGCameraEffect never calls SetEase, so DOTween.To runs with
+    // DOTween 1.2.760's defaultEaseType=6 (OutQuad): halfway = 0.75, not the
+    // linear 0.5.
+    expect(renderer.grayscaleAmount).toBeCloseTo(0.75);
+    manual.advance(500);
+    manual.drainFrame();
+    expect(renderer.grayscaleAmount).toBe(1);
+  });
+
+  it("starts the grayscale tween from the current amount for any negative initamount", async () => {
+    const manual = createManualClock();
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+
+    await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
+    expect(renderer.grayscaleAmount).toBe(0.6);
+
+    void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, -1);
+
+    // Native _TweenGrayscaleAmount checks MathUtil.LT(initAmount, 0): any
+    // negative initamount means "start from the current grayscale amount",
+    // not an explicit negative start.
+    expect(renderer.grayscaleAmount).toBe(0.6);
+    manual.advance(500);
+    manual.drainFrame();
+    expect(renderer.grayscaleAmount).toBeCloseTo(0.9);
   });
 
   it("swaps expressions of the same native character without cross-fading", async () => {

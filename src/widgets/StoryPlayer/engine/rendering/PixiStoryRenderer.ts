@@ -1950,6 +1950,15 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect` for the
    * grayscale/inverse branches and their completion behavior. A PIXI color
    * filter substitutes for `AVGSceneEffectManager`'s camera post-process.
+   *
+   * Deliberately unported (verified on 2.7.61 / build 2761 IDA decompile):
+   * - Chaos: dual-material distortion, intentionally skipped upstream.
+   * - Reset lifecycle: native `OnReset`/`ShouldResetOnSkip=true` clears the
+   *   effect record on story reset/skip; the web player rebuilds the renderer
+   *   per playback instead, so no explicit reset exists here.
+   * - Colorinverse amount is a shader `_Inverse` float natively (interpolable
+   *   0..1); this command only ever writes 0/1, where `negative()` is
+   *   equivalent.
    */
   async setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
@@ -1964,13 +1973,26 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.updateCameraFilter();
       return;
     }
-    const from = initialAmount ?? this.grayscaleAmount;
+    // Native `_TweenGrayscaleAmount` (2.7.61 VA 0x183E33C60): any negative
+    // initamount (MathUtil.LT(initAmount, 0), not just the omitted key's -1
+    // default) starts from the current grayscale amount via
+    // GetEffectAmount("grayscale", "grayscale"); non-negative values are the
+    // explicit tween start.
+    const from =
+      initialAmount !== undefined && initialAmount >= 0
+        ? initialAmount
+        : this.grayscaleAmount;
     this.grayscaleAmount = from;
     this.updateCameraFilter();
     const run = this.tween(
       durationMs,
       (progress) => {
-        this.grayscaleAmount = from + (amount - from) * progress;
+        // Native: the executor never calls SetEase, so DOTween.To tweens with
+        // DOTween 1.2.760's defaultEaseType = Ease.OutQuad (fast-then-slow),
+        // not linear interpolation. Map 1-(1-t)^2 per frame like the native
+        // setter closure (VA 0x183E48CA0) does.
+        const eased = 1 - (1 - progress) ** 2;
+        this.grayscaleAmount = from + (amount - from) * eased;
         this.updateCameraFilter();
       },
       () => {

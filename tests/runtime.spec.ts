@@ -1818,6 +1818,40 @@ describe("StoryRuntime", () => {
     );
   });
 
+  it("scales cameraeffect fade time by the current-speed animateRatio", async () => {
+    // Native 0x183E327C1: fadetime = raw * AVGController.animateRatio. The
+    // default speed keeps ratio 1, so only ratio-bearing speeds change it.
+    const scaledRenderer = new FakeRenderer();
+    const scaled = new StoryRuntime(
+      createContext([
+        "[cameraeffect(effect=Grayscale,amount=1,fadetime=2,block=true)]",
+        '[name="A"]ok',
+      ]),
+      scaledRenderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await scaled.start();
+
+    expect(scaledRenderer.cameraEffectCalls.at(-1)?.durationMs).toBe(1000);
+
+    const quickRenderer = new FakeRenderer();
+    const quick = new StoryRuntime(
+      createContext([
+        "[cameraeffect(effect=Grayscale,amount=1,fadetime=2,block=true)]",
+        '[name="A"]ok',
+      ]),
+      quickRenderer,
+      new FakeAudio(),
+    );
+
+    quick.setAutoPlayMode("quick_play");
+    await quick.start();
+
+    expect(quickRenderer.cameraEffectCalls.at(-1)?.durationMs).toBe(0);
+  });
+
   it("maps focusout duration, from and native blocking semantics without reading fadetime", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
