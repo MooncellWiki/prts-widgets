@@ -138,9 +138,9 @@ const filterData = (data: Record<string, string>): boolean => {
       }
       case "type": {
         const { type } = data;
-        const match = !!type?.match(new RegExp(`-${v.value}`, "i"));
-
-        return match;
+        return (v.value as string[]).some(
+          (t) => !!type?.match(new RegExp(`-${t}`, "i")),
+        );
       }
       case "talent": {
         const { talent2 = "", talent3 = "" } = data;
@@ -437,6 +437,7 @@ const mobileStyle = () => {
                   class="m-1"
                   :disabled="loadingCount > 0 || v.mode === 'all'"
                   :options="getFilterValue(v.mode)"
+                  :multiple="v.mode === 'type'"
                   :fallback-option="false"
                 />
               </div>
