@@ -1188,7 +1188,6 @@ describe("StoryRuntime", () => {
     // executor never registers a completion callback, so the command never waits.
     expect(renderer.characterCalls).toEqual([
       {
-        absolutePosition: { x: undefined, y: undefined },
         blackEnd: 0.8,
         blackStart: 0.2,
         block: false,
@@ -1196,9 +1195,12 @@ describe("StoryRuntime", () => {
         dimmed: false,
         durationMs: 200,
         enterFrom: "left",
+        enterPosition: undefined,
         expression: "1$1",
         fadeIdentity: "avg_npc_1",
+        focus: 0,
         slot: "m",
+        transType: 0,
       },
     ]);
     expect(sleep).not.toHaveBeenCalledWith(200);
@@ -1221,7 +1223,6 @@ describe("StoryRuntime", () => {
     expect(renderer.clearedSlots).toEqual([{ fadeMs: 150, slot: "m" }]);
     expect(renderer.characterCalls).toEqual([
       {
-        absolutePosition: { x: undefined, y: undefined },
         blackEnd: Number.NaN,
         blackStart: Number.NaN,
         block: false,
@@ -1229,12 +1230,14 @@ describe("StoryRuntime", () => {
         dimmed: false,
         durationMs: 150,
         enterFrom: undefined,
+        enterPosition: undefined,
         expression: "1$1",
         fadeIdentity: "avg_npc_1",
+        focus: 1,
         slot: "l",
+        transType: 0,
       },
       {
-        absolutePosition: { x: undefined, y: undefined },
         blackEnd: Number.NaN,
         blackStart: Number.NaN,
         block: false,
@@ -1242,12 +1245,35 @@ describe("StoryRuntime", () => {
         dimmed: true,
         durationMs: 150,
         enterFrom: undefined,
+        enterPosition: undefined,
         expression: "1$1",
         fadeIdentity: "avg_npc_1",
+        focus: 1,
         slot: "r",
+        transType: 0,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("passes the native transtype through to the renderer", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[character(name="avg_npc_1",enter="left",transtype=1,fadetime=0.5)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Native reads `transtype` once per command via GetOrDefault<int> and
+    // shares it across all three slots; the default is 0 (ECharTransType.NONE).
+    expect(renderer.characterCalls).toEqual([
+      expect.objectContaining({ enterFrom: "left", transType: 1 }),
+    ]);
   });
 
   it("keeps name2 in the right slot when the primary name is empty", async () => {
@@ -1261,8 +1287,8 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(renderer.clearedSlots).toEqual([
-      { fadeMs: 150, slot: "l" },
       { fadeMs: 150, slot: "m" },
+      { fadeMs: 150, slot: "l" },
     ]);
     expect(renderer.characterCalls).toEqual([
       expect.objectContaining({
@@ -1273,11 +1299,13 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("uses exact character parameter keys and explicit positions", async () => {
+  it("ignores xpos/ypos without a legal enter and applies them as slide-in offsets with one", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
         '[character(name="avg_npc_1",Name2="avg_npc_1",xpos1=123,ypos1=456)]',
+        '[character(name="avg_npc_1",enter="left",xpos1=123,ypos1=456)]',
+        '[character(name="avg_npc_1",enter="left",xpos1=123)]',
         '[name="A"]ok',
       ]),
       renderer,
@@ -1286,12 +1314,33 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.characterCalls).toHaveLength(1);
+    expect(renderer.characterCalls).toHaveLength(3);
+    // Native `_GenPosition` never applies xpos/ypos unless `enter` is one of
+    // left/right/up/down, so the first command places normally.
     expect(renderer.characterCalls[0]).toMatchObject({
-      absolutePosition: { x: 123, y: 456 },
+      enterFrom: undefined,
+      enterPosition: undefined,
+      slot: "m",
+    });
+    // With a legal enter and both coordinates, they act as the slot-local
+    // slide-in start (Unity y up -> renderer y down flip).
+    expect(renderer.characterCalls[1]).toMatchObject({
+      enterFrom: "left",
+      enterPosition: { x: 123, y: -456 },
+      slot: "m",
+    });
+    // Both coordinates must exist; a lone xpos1 falls back to the direction
+    // default.
+    expect(renderer.characterCalls[2]).toMatchObject({
+      enterFrom: "left",
+      enterPosition: undefined,
       slot: "m",
     });
     expect(renderer.clearedSlots).toEqual([
+      { fadeMs: 150, slot: "l" },
+      { fadeMs: 150, slot: "r" },
+      { fadeMs: 150, slot: "l" },
+      { fadeMs: 150, slot: "r" },
       { fadeMs: 150, slot: "l" },
       { fadeMs: 150, slot: "r" },
     ]);

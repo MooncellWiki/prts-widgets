@@ -1723,14 +1723,17 @@ export class StoryRuntime {
         // ever write `block=`, which is not a key this command reads, so the
         // command is effectively never blocking. Reproduce that, not the deadlock.
         const block = false;
+        // ECharTransType: 0 = NONE, 1 = ALPHA_IN, 2 = ALPHA_OUT. Native default 0.
+        const transType = Math.trunc(toNumber(args.transtype, 0));
         const hasRightCharacter = Boolean(name2Ref);
+        // Native processes slots MIDDLE -> LEFT -> RIGHT (same frame, sync).
         const updates = [
           {
             blackEnd: args.blackend,
             blackStart: args.blackstart,
             enter: args.enter,
-            name: hasRightCharacter ? nameRef : "",
-            slot: "l",
+            name: nameRef && !name2Ref ? nameRef : "",
+            slot: "m",
             x: args.xpos1,
             y: args.ypos1,
           },
@@ -1738,8 +1741,8 @@ export class StoryRuntime {
             blackEnd: args.blackend,
             blackStart: args.blackstart,
             enter: args.enter,
-            name: nameRef && !name2Ref ? nameRef : "",
-            slot: "m",
+            name: hasRightCharacter ? nameRef : "",
+            slot: "l",
             x: args.xpos1,
             y: args.ypos1,
           },
@@ -1765,21 +1768,38 @@ export class StoryRuntime {
             void this.renderer.clearCharacters(update.slot, durationMs);
             continue;
           }
+          const enterFrom = this.parseEnterDirection(update.enter);
+          // Native `_ProcessSlotWithParam` takes xpos/ypos as the slide-in
+          // start -- a slot-local offset that `SetCharPos` tweens back to
+          // (0,0) -- but only when `TryGetParam` finds *both*; otherwise it
+          // falls back to `_GenPosition`. Either way `_ProcessSlot` applies
+          // the position only on the `enter` branch, so without a legal
+          // `enter` the values never reach the screen. They are read as
+          // Int32, and Unity y is up while the renderer is y-down.
+          const enterPosition =
+            enterFrom && update.x !== undefined && update.y !== undefined
+              ? {
+                  x: Math.trunc(toNumber(update.x, 0)),
+                  y: -Math.trunc(toNumber(update.y, 0)),
+                }
+              : undefined;
           await this.renderer.setCharacter({
-            absolutePosition: {
-              x: update.x === undefined ? undefined : toNumber(update.x, 0),
-              y: update.y === undefined ? undefined : toNumber(update.y, 0),
-            },
             blackEnd: toNumber(update.blackEnd, Number.NaN),
             blackStart: toNumber(update.blackStart, Number.NaN),
             block,
             characterKey: resolved.base,
-            dimmed: update.slot === "r" ? ![0, 2].includes(focus) : focus > 1,
+            // Native: LEFT/MIDDLE use `(unsigned)focus <= 1 -> focusColor`,
+            // RIGHT uses `(focus & 0xFFFFFFFD) == 0 -> focusColor`.
+            dimmed:
+              update.slot === "r" ? ![0, 2].includes(focus) : focus >>> 0 > 1,
             durationMs,
-            enterFrom: this.parseEnterDirection(update.enter),
+            enterFrom,
+            enterPosition,
             expression: resolved.expression,
             fadeIdentity: nativeCharacterFadeIdentity(update.name),
+            focus,
             slot: update.slot,
+            transType,
           });
         }
 
@@ -2647,14 +2667,11 @@ export class StoryRuntime {
   }
 
   private parseEnterDirection(value: unknown): CharacterSlotInput["enterFrom"] {
-    const normalized = toString(value).toLowerCase();
-    if (
-      normalized === "left" ||
-      normalized === "right" ||
-      normalized === "up" ||
-      normalized === "down"
-    )
-      return normalized;
+    // Native compares the raw string ordinally against the four literals
+    // left/right/up/down; anything else (including "middle") means no enter.
+    const raw = toString(value);
+    if (raw === "left" || raw === "right" || raw === "up" || raw === "down")
+      return raw;
     return undefined;
   }
 

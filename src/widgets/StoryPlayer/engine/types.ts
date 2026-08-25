@@ -136,7 +136,6 @@ export interface RuntimeWarning {
 }
 
 export interface CharacterSlotInput {
-  absolutePosition?: { x?: number; y?: number };
   action?:
     "jump" | "move" | "rotate" | "setpos" | "shake" | "shakemove" | "zoom";
   angle?: number;
@@ -150,8 +149,10 @@ export interface CharacterSlotInput {
   dimmed?: boolean;
   durationMs?: number;
   enterFrom?: "down" | "left" | "right" | "up";
+  enterPosition?: { x: number; y: number };
   expression?: string;
   fadeIdentity?: string;
+  focus?: number;
   focusMode?: "current_only" | "none" | "subset";
   focusSlots?: string[];
   inverse?: boolean;
@@ -168,6 +169,7 @@ export interface CharacterSlotInput {
   slot: string;
   stop?: boolean;
   times?: number;
+  transType?: number;
 }
 
 export interface CharacterActionInput {
