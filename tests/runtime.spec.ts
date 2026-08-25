@@ -2916,6 +2916,44 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
   });
 
+  it("resets auto play mode to default after a SkipToThis jump", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+          '[name="C"]later',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+      await runtime.skipNode();
+
+      // Native SkipStory tail: set_autoPlayMode(DEFAULT) + stop the auto
+      // coroutine, so auto playback does not continue past the anchor.
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      // The cancelled button-auto click never fires; "later" only shows on a
+      // manual advance.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      await runtime.advance();
+      expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("disables segment skip when the story has no skip anchors", async () => {
     const runtime = new StoryRuntime(
       createContext(['[name="A"]before', '[name="B"]after']),
