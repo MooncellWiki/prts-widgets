@@ -4,6 +4,30 @@ const feedback = Sentry.feedbackIntegration({
   autoInject: false,
   colorScheme: "system",
   enableScreenshot: false,
+
+  // 中文文案
+  triggerLabel: "问题反馈",
+  triggerAriaLabel: "问题反馈",
+  formTitle: "问题反馈",
+  submitButtonLabel: "提交反馈",
+  cancelButtonLabel: "取消",
+  confirmButtonLabel: "确认",
+  isRequiredLabel: "（必填）",
+  nameLabel: "昵称",
+  namePlaceholder: "你的昵称",
+  emailLabel: "邮箱",
+  emailPlaceholder: "you@example.com",
+  // 截图上传已关闭，这里引导用户改用公开图床链接
+  messageLabel: "问题描述（如需附图，请提供公开图床链接）",
+  messagePlaceholder:
+    "遇到了什么问题？期望的表现是什么？\n" +
+    "如需附上截图，请先上传到公开图床（如 SM.MS、imgur 等），再把图片链接粘贴到这里。",
+  successMessageText: "感谢你的反馈！",
+  errorEmptyMessageText: "反馈内容不能为空",
+  errorNoClientText: "反馈组件未初始化，无法发送反馈。",
+  errorTimeoutText: "无法确认反馈是否发送成功。",
+  errorForbiddenText: "反馈发送失败，当前域名可能不在允许列表中。",
+  errorGenericText: "反馈发送失败，可能是网络问题或浏览器广告拦截插件导致的。",
 });
 
 Sentry.init({
