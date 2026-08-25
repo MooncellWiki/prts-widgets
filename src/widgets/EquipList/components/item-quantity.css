@@ -1,0 +1,44 @@
+[class*="prts-item-quantity-label"] {
+	position: absolute;
+	white-space: nowrap;
+	color: #000 !important;
+	font-weight: bold;
+	line-height: 1.1 !important;
+	text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, -2px -2px 4px #fff, 2px -2px 4px #fff, -2px 2px 4px #fff, 2px 2px 4px #fff;
+}
+
+.prts-item-quantity-label {
+	bottom: -3px;
+	right: 2px;
+	font-size: 10pt;
+}
+
+.prts-item-quantity-label-small {
+	bottom: 0;
+	right: 0;
+	font-size: smaller;
+}
+
+.prts-item-quantity-label-center {
+	bottom: 0;
+	right: 50%;
+	transform: translateX(50%);
+	font-size: smaller;
+}
+
+.prts-item-quantity-label-furniture {
+	bottom: 12%;
+	right: 10%;
+}
+
+html.skin-theme-clientpref-night body [class*="prts-item-quantity-label"] {
+	color: #f1f3f5 !important;
+	text-shadow: -1px -1px 0 #111418, 1px -1px 0 #111418, -1px 1px 0 #111418, 1px 1px 0 #111418, -2px -2px 4px rgba(0, 0, 0, .9), 2px -2px 4px rgba(0, 0, 0, .9), -2px 2px 4px rgba(0, 0, 0, .9), 2px 2px 4px rgba(0, 0, 0, .9) !important;
+}
+
+@media screen and (prefers-color-scheme: dark) {
+	html.skin-theme-clientpref-os body [class*="prts-item-quantity-label"] {
+		color: #f1f3f5 !important;
+		text-shadow: -1px -1px 0 #111418, 1px -1px 0 #111418, -1px 1px 0 #111418, 1px 1px 0 #111418, -2px -2px 4px rgba(0, 0, 0, .9), 2px -2px 4px rgba(0, 0, 0, .9), -2px 2px 4px rgba(0, 0, 0, .9), 2px 2px 4px rgba(0, 0, 0, .9) !important;
+	}
+}

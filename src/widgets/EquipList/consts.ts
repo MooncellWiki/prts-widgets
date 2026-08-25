@@ -30,9 +30,9 @@ export const statsStyleMap: Record<string, number> = {
 };
 
 export const rarityMap: Record<string, string> = {
-  "3": "★4",
-  "4": "★5",
-  "5": "★6",
+  "3": "4★",
+  "4": "5★",
+  "5": "6★",
 };
 
 export const tagIconFavor = getImagePath("图标_模组需求_信赖.png");

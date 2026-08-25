@@ -19,6 +19,7 @@ import { getEquipData } from "../equipData";
 import { fixAtkRange, processLink, processMaterial } from "../utils";
 
 import ETag from "./ETag.vue";
+import "./item-quantity.css";
 
 function getStatColor(type: string, stat: string): string {
   return Number(stat) * (statsStyleMap[type] ?? 1) >= 0 ? "#00B0FF" : "#FF6237";
