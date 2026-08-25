@@ -130,6 +130,7 @@ export interface RuntimeWarning {
     | "invalid_parameter"
     | "missing_asset"
     | "parse"
+    | "unimplemented_command"
     | "unsupported_command"
     | "unsupported_visual"
     | "unknown_command";

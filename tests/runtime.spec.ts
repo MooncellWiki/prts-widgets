@@ -865,6 +865,78 @@ describe("StoryRuntime", () => {
     );
   });
 
+  it("downgrades known-unimplemented tutorial-family commands and dedupes per name", async () => {
+    // 语料样本：obt/tutorial/level/main_00-06.txt:2-3 连续两条 [Tutorial]，
+    // main_01-01.txt:3-4 InputBlocker/PopupDialog 成对出现。教学路径命令族
+    // （tutorial/popupdialog/inputblocker/aside）native 有 executor 但 web 有意
+    // 省略，应降级为 unimplemented_command 且每命令名只告警一次；跳过不阻塞，
+    // 剧情继续推进到后续对白行。
+    const warnings: RuntimeWarning[] = [];
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[Tutorial(focusX=-546, animStyle="Highlight", dialogHead="$avatar_doberm")] 啧，他们还在组织进攻。真是难缠。',
+        '[Tutorial(focusX=-546, animStyle="Highlight", dialogHead="$avatar_amiya")] 博士，战场下方的道路已经被打开。',
+        "[InputBlocker(blockInput=false)]",
+        '[PopupDialog(dialogHead="$avatar_amiya", animStyle="NoWait")] 博士请注意。',
+        "[aside]旁白",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      {
+        onWarning: (warning) => warnings.push(warning),
+      },
+    );
+
+    await runtime.start();
+
+    // 五条命令各自只告警一次，全部为降级类型，不产生 unknown_command。
+    const unimplemented = warnings.filter(
+      (item) => item.type === "unimplemented_command",
+    );
+    expect(unimplemented.map((item) => item.detail)).toEqual([
+      "tutorial",
+      "inputblocker",
+      "popupdialog",
+      "aside",
+    ]);
+    expect(warnings.some((item) => item.type === "unknown_command")).toBe(
+      false,
+    );
+    // 跳过不阻塞：剧情推进到对白行等待输入。
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
+  });
+
+  it("still warns unknown_command for commands outside the known-unimplemented table", async () => {
+    // 教学脚本里 tutorial 家族常与战斗侧命令混排（如 main_01-01.txt 的
+    // Battle.LockFunction）：不在表内的命令必须保持 unknown_command，不能被
+    // 降级分支顺带吞掉。
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[Battle.LockFunction(mask="SYSTEM_MENU_INTERACT")]',
+        '[name="A"]ok',
+      ]),
+      new FakeRenderer(),
+      new FakeAudio(),
+      {
+        onWarning: (warning) => warnings.push(warning),
+      },
+    );
+
+    await runtime.start();
+
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail: "battle.lockfunction",
+        type: "unknown_command",
+      }),
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
   it("blocks on video command until playback completes", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
