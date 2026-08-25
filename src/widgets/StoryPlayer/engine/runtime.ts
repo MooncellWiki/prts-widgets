@@ -749,6 +749,11 @@ export class StoryRuntime {
     // panel through OnReset -- alpha to 0 immediately (no tween) plus a
     // typewriter reset. A stale subtitle must not survive the skip.
     await this.renderer.clearSubtitle(0);
+    // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
+    // `OnReset -> _RecycleStickers`, whose first step is `StopTimer(0)` -- the
+    // countdown hides instantly (the slot itself is kept for reuse). Story end
+    // keeps the timer on screen, matching `OnStoryEnd` (only unbinds Event=5).
+    void this.renderer.clearTimerSticker({ durationMs: 0 });
 
     this.cancelTyping();
     if (shouldResume) {
@@ -2640,6 +2645,10 @@ export class StoryRuntime {
 
       case "timersticker": {
         // Native port: Torappu.AVG.StickerPanel._ExcuteTimerSticker. This is a
+        // single-slot, never-blocking executor (native returns hardcoded
+        // false): the timer view is created once and reused, and only
+        // time/x/y/width/size/duration/afrom/ato are read -- id/text/block
+        // are ignored.
         await this.renderer.setTimerSticker({
           durationMs:
             Math.max(0, toNumber(this.exactArg(args, "duration"), 1) * 1000) ||

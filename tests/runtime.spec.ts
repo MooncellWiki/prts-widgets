@@ -3363,4 +3363,31 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
+
+  it("stops the timer sticker when skipping a node", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]hello',
+        '[skipnode(mode="skip")]',
+        "[timersticker(x=30,y=90,size=24,time=10)]",
+        '[name="B"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.advance();
+
+    expect(renderer.timerStickerCalls).toHaveLength(1);
+    expect(renderer.timerClearCalls).toEqual([]);
+
+    // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
+    // `OnReset -> _RecycleStickers`, whose first step is `StopTimer(0)`.
+    await runtime.skipNode();
+
+    expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
+    expect(runtime.getState()).toBe("finished");
+  });
 });
