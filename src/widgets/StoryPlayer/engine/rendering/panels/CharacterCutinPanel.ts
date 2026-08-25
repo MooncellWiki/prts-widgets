@@ -7,7 +7,22 @@ import {
   type CharacterCutinInput,
 } from "../../types";
 
-type TextureLoader = (input: CharacterCutinInput) => Promise<Texture | null>;
+/**
+ * Character art plus the AVGCharacterSpriteHub layout the game applies on
+ * top of the raw sheet: the Image rect is resized to `size` (here folded
+ * into sprite scale) and shifted by `pos` relative to the slot node.
+ */
+export interface CutinCharacterArt {
+  texture: Texture;
+  offsetX: number;
+  offsetY: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+type TextureLoader = (
+  input: CharacterCutinInput,
+) => Promise<CutinCharacterArt | null>;
 type Tween = (
   durationMs: number,
   update: (progress: number) => void,
@@ -49,9 +64,18 @@ interface CutinLayout {
   zoom: number;
 }
 
+interface CutinChar {
+  /** AVGCharacterSpriteHub pos of this character, applied on re-layouts. */
+  offsetX: number;
+  offsetY: number;
+  sprite: Sprite;
+}
+
 interface CutinSlotState {
+  /** `_defualtBackground` port: the #898989 strip behind the character. */
+  backdrop: Graphics;
   /** Live character sprites; more than one only during a SlotUpdate crossfade. */
-  chars: Sprite[];
+  chars: CutinChar[];
   /** `_characterSlot` identity of the last Set, used to skip no-op crossfades. */
   charIdentity: string;
   /** `_zoomAndPovRectTransform` port: scale = zoom, position = (-povX, povY). */
@@ -151,14 +175,12 @@ export class CharacterCutinPanel {
   ): Promise<void> {
     const state = this.createSlot(input.widgetId, layout, input.fadeStyle);
     // AVGCharacterSlot.Set(name, 0.0, white) swaps the sprite instantly.
-    const texture = input.characterMissing
-      ? null
-      : await this.loadTexture(input);
+    const art = input.characterMissing ? null : await this.loadTexture(input);
     if (this.slots.get(input.widgetId) !== state) return;
-    if (texture) {
+    if (art) {
       this.addCharacter(
         state,
-        texture,
+        art,
         layout,
         input.characterKey,
         input.expression,
@@ -227,14 +249,14 @@ export class CharacterCutinPanel {
     // same identity is visually a no-op, so skip re-adding the sprite.
     const identity = `${input.characterKey}/${input.expression}`;
     const outgoing = [...state.chars];
-    let incoming: Sprite | null = null;
+    let incoming: CutinChar | null = null;
     if (!input.characterMissing && identity !== state.charIdentity) {
-      const texture = await this.loadTexture(input);
+      const art = await this.loadTexture(input);
       if (this.slots.get(input.widgetId) !== state) return;
-      if (texture) {
+      if (art) {
         incoming = this.addCharacter(
           state,
-          texture,
+          art,
           layout,
           input.characterKey,
           input.expression,
@@ -243,7 +265,10 @@ export class CharacterCutinPanel {
       }
     }
     for (const char of state.chars)
-      char.position.set(layout.charX, layout.charY);
+      char.sprite.position.set(
+        layout.charX + char.offsetX,
+        layout.charY - char.offsetY,
+      );
 
     const run = this.tween(
       input.fadeMs,
@@ -265,8 +290,8 @@ export class CharacterCutinPanel {
         state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
         state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
         this.drawMask(state);
-        for (const char of outgoing) char.alpha = 1 - progress;
-        if (incoming) incoming.alpha = progress;
+        for (const char of outgoing) char.sprite.alpha = 1 - progress;
+        if (incoming) incoming.sprite.alpha = progress;
       },
       () => {
         if (state.sessionId !== sessionId) return;
@@ -335,15 +360,26 @@ export class CharacterCutinPanel {
     // anchoredPosition, then Show's layout math positions everything.
     const root = new Container();
     root.position.set(layout.rootX, layout.rootY);
+    // _defualtBackground: sprite_white tinted (0.537, 0.537, 0.537) = #898989,
+    // active whenever the command has no `background` key (Show flips the two
+    // nodes around). It sits under `mask` beside -- not inside --
+    // _zoomAndPovRectTransform, so zoom/pov never move it; the mask clips the
+    // full-canvas rect into the gray strip behind the character. Its `header`
+    // child (black, 70% alpha, anchored +50 above the top edge) lands outside
+    // the 720-tall mask and never shows.
+    const backdrop = new Graphics()
+      .rect(-STORY_WIDTH / 2, -STORY_HEIGHT / 2, STORY_WIDTH, STORY_HEIGHT)
+      .fill(0x89_89_89);
     const content = new Container();
     content.position.set(layout.contentX, layout.contentY);
     content.scale.set(layout.zoom);
     const mask = new Graphics();
-    root.addChild(mask, content);
+    root.addChild(mask, backdrop, content);
     root.mask = mask;
     this.layer.addChild(root);
 
     const state: CutinSlotState = {
+      backdrop,
       chars: [],
       charIdentity: "",
       content,
@@ -361,30 +397,39 @@ export class CharacterCutinPanel {
 
   private addCharacter(
     state: CutinSlotState,
-    texture: Texture,
+    art: CutinCharacterArt,
     layout: CutinLayout,
     characterKey: string | undefined,
     expression: string | undefined,
     alpha: number,
-  ): Sprite {
-    const sprite = new Sprite(texture);
-    // The character keeps its original texture size; only the mask crops it.
-    // Native pivot: `_characterSlot.localPosition = (charOffsetX,
-    // charOffsetY - maskHeight / 2)` parks the character's feet at the mask
-    // bottom when charOffsetY is 0 (y-up in Unity, flipped here).
-    sprite.anchor.set(0.5, 1);
-    sprite.position.set(layout.charX, layout.charY);
+  ): CutinChar {
+    const sprite = new Sprite(art.texture);
+    // The character keeps the hub's native layout: the sheet is scaled to
+    // AVGCharacterSpriteHub.size (SetImage resizes the Image rect) and the
+    // art center lands at the mask-bottom-based slot position plus the hub
+    // pos. Show writes `_characterSlot.localPosition = (charOffsetX,
+    // charOffsetY - maskHeight / 2)`; the prefab's slot_character/offset
+    // child ((0, 360) serialized) is zeroed by AVGCharacterSlot.Set's
+    // resetOffsetPos before the hub pos is applied. Only the mask crops.
+    sprite.anchor.set(0.5);
+    sprite.scale.set(art.scaleX, art.scaleY);
+    sprite.position.set(layout.charX + art.offsetX, layout.charY - art.offsetY);
     sprite.alpha = alpha;
     state.content.addChild(sprite);
-    state.chars.push(sprite);
+    const char: CutinChar = {
+      offsetX: art.offsetX,
+      offsetY: art.offsetY,
+      sprite,
+    };
+    state.chars.push(char);
     state.charIdentity = `${characterKey}/${expression}`;
-    return sprite;
+    return char;
   }
 
-  private removeCharacter(state: CutinSlotState, char: Sprite): void {
+  private removeCharacter(state: CutinSlotState, char: CutinChar): void {
     const index = state.chars.indexOf(char);
     if (index !== -1) state.chars.splice(index, 1);
-    char.destroy();
+    char.sprite.destroy();
   }
 
   private destroySlot(widgetId: string, state: CutinSlotState): void {
@@ -439,9 +484,12 @@ export class CharacterCutinPanel {
  * `align = HORIZONTAL` (the vertical align flavor is unused by the corpus),
  * the slot center sits at screen center + (offsetx, offsety),
  * `_zoomAndPovRectTransform` gets localScale = `zoom` (renamed from `scale`
- * in 2.7.61) and anchoredPosition = (-povX, -povY), and
- * `_characterSlot.localPosition = (charOffsetX, charOffsetY - maskHeight / 2)`.
- * Unity's y-up local space is flipped to PIXI's y-down coordinates here.
+ * in 2.7.61) and anchoredPosition = (-povX, -povY). The character slot node
+ * lands at (charOffsetX, charOffsetY - maskHeight / 2) -- i.e. the mask
+ * bottom edge under the default 720-tall mask; AVGCharacterSpriteHub's own
+ * pos/size (see CutinCharacterArt) then shift/scale each character art from
+ * there. Unity's y-up local space is flipped to PIXI's y-down coordinates
+ * here.
  */
 function layoutFor(input: CharacterCutinInput): CutinLayout {
   const maskH = STORY_HEIGHT;

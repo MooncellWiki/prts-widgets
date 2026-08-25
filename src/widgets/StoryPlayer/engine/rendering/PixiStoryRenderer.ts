@@ -68,7 +68,10 @@ import { TweenRunner } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
 import { CgItemPanel } from "./panels/CgItemPanel";
-import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
+import {
+  CharacterCutinPanel,
+  type CutinCharacterArt,
+} from "./panels/CharacterCutinPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { FocusEffectPanel } from "./panels/FocusEffectPanel";
@@ -879,7 +882,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private async textureForCutinCharacter(
     input: CharacterCutinInput,
-  ): Promise<Texture | null> {
+  ): Promise<CutinCharacterArt | null> {
     const base = input.characterKey;
     const expression = input.expression;
     if (!base || !expression) return null;
@@ -909,7 +912,20 @@ export class PixiStoryRenderer implements StoryRenderer {
       return null;
     }
 
-    return this.textureForCharacterKey(assetKey);
+    const texture = await this.textureForCharacterKey(assetKey);
+    if (!texture) return null;
+    // AVGCharacterSpriteHub.SetImage resizes the character Image to the hub's
+    // serialized size and shifts it by pos; the scene character path applies
+    // the same layout (see buildCharacterSlotState), so the cutin must too.
+    const sizeX = link.size.x || texture.width;
+    const sizeY = link.size.y || texture.height;
+    return {
+      offsetX: link.pos.x || 0,
+      offsetY: link.pos.y || 0,
+      scaleX: sizeX / Math.max(1, texture.width),
+      scaleY: sizeY / Math.max(1, texture.height),
+      texture,
+    };
   }
 
   /**
