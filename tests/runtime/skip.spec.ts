@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
@@ -10,6 +10,19 @@ import {
 import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
+  // Same network-isolating default probe as tests/runtime/flow.spec.ts; see
+  // the comment there.
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ status: 200 })),
+    );
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("nofirstskip handles first-read skip by jumping to the next protected anchor", async () => {
     const sleep = vi.fn(() => new Promise<void>(() => {}));
     const renderer = new FakeRenderer();
@@ -89,9 +102,9 @@ describe("StoryRuntime", () => {
 
     const startPromise = runtime.start();
 
-    await Promise.resolve();
-
-    expect(runtime.getState()).toBe("waiting_video");
+    await vi.waitFor(() => {
+      expect(runtime.getState()).toBe("waiting_video");
+    });
     expect(runtime.canSkipNode()).toBe(true);
 
     await runtime.skipNode();
@@ -100,6 +113,33 @@ describe("StoryRuntime", () => {
     expect(renderer.videoStopped).toBe(true);
     expect(runtime.getState()).toBe("finished");
     expect(runtime.canSkipNode()).toBe(false);
+  });
+
+  it("releases the probe wait when the story is skipped before playback", async () => {
+    const renderer = new FakeRenderer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<{ status: number }>(() => {})),
+    );
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="skip")]',
+        '[video(res="video/02.mp4")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    // The probe is still pending here; skip must not strand the runtime on it.
+    await vi.waitFor(() => expect(runtime.canSkipNode()).toBe(true));
+
+    await runtime.skipNode();
+    await startPromise;
+
+    expect(renderer.videoCalls).toEqual([]);
+    expect(runtime.getState()).toBe("finished");
   });
 
   it("maps unrecognized skipnode modes to can-skip like native CalSkipMode", async () => {
