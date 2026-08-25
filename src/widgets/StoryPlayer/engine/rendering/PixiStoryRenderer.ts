@@ -2974,8 +2974,26 @@ export class PixiStoryRenderer implements StoryRenderer {
     state: CharacterRenderState,
     input: CharacterSlotInput,
   ): { scaleX: number; scaleY: number; x: number; y: number } {
+    // Native `AVGCharacterSlot.Set` only zeroes `_offset` when the character
+    // key CHANGES (`!op_Equality(m_currentKey, key)` guards the reset); a
+    // same-key re-show -- e.g. `character(focus=-1)` right after a
+    // `characteraction` move -- keeps the moved transform. An explicit
+    // transform intent (xpos / action / zoom) still resets: those commands
+    // set the offset absolutely, not relative to the move.
+    const sameKey =
+      input.characterKey === state.characterKey &&
+      input.expression === state.expression;
+    const hasTransformIntent =
+      input.positionFrom !== undefined ||
+      input.positionTo !== undefined ||
+      input.action !== undefined ||
+      input.scaleX !== undefined ||
+      input.scaleY !== undefined ||
+      input.posZoom !== undefined;
     const preserve =
-      input.resetTransform === false || input.preserveTransform === true;
+      (sameKey && !hasTransformIntent) ||
+      input.resetTransform === false ||
+      input.preserveTransform === true;
     const baseX = preserve ? state.actionX : 0;
     const baseY = preserve ? state.actionY : 0;
     const baseScaleX = preserve ? state.scaleX : 1;

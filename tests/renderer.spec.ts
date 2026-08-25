@@ -188,6 +188,48 @@ describe("PixiStoryRenderer", () => {
     expect(visual.tint).toBe(0x80_80_80);
   });
 
+  it("keeps a characteraction move across a same-key character re-show", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test",
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+    // characteraction(type=move) end state: slot offset shifted by +200.
+    state.actionX = 200;
+    state.actionY = 0;
+    renderer.updateCharacterState(state);
+
+    // `character(name=..., focus=-1)` after the move: native Set keeps
+    // `_offset` because the key is unchanged -- no snap back to center.
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      fadeIdentity: "avg_test",
+      slot: "m",
+    });
+
+    expect(state.actionX).toBe(200);
+    expect(state.motionLayer.x).toBe(200);
+
+    // A different expression is a different native key (the #index is part
+    // of m_currentKey): Set zeroes `_offset` before the new art shows.
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "2$1",
+      fadeIdentity: "avg_test",
+      slot: "m",
+    });
+    const replaced = renderer.characterSlots.get("m");
+    expect(replaced.actionX).toBe(0);
+  });
+
   it("swaps expressions of the same native character without cross-fading", async () => {
     const renderer = createCharacterRenderer();
 
