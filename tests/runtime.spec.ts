@@ -436,6 +436,65 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
+  it("keeps spellsticker alpha unset when the param is missing", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[spellsticker(id="s",style="sami",block=false)]<p=1>x</>',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Native _ShowSticker writes CanvasGroup.alpha only via TryGetParam, so
+    // the renderer must receive `undefined` (not a forced 1) and let the view
+    // keep its previous alpha.
+    expect(renderer.spellStickerCalls).toEqual([
+      {
+        alpha: undefined,
+        angle: undefined,
+        content: "<p=1>x</>",
+        id: "s",
+        style: "sami",
+        x: undefined,
+        xScale: undefined,
+        y: undefined,
+        yScale: undefined,
+      },
+    ]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("warns and continues on an empty spellsticker id", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[spellsticker(style="sami",block=true)]<p=1>x</>',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // Native logs "[AVG.SpellSticker] Empty sticker id." and returns false
+    // before reading `block`, so the command neither renders nor blocks.
+    expect(renderer.spellStickerCalls).toEqual([]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail: "spellsticker: empty sticker id",
+        type: "parse",
+      }),
+    ]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
   it("keeps spellstickerclear independent and honors block", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
