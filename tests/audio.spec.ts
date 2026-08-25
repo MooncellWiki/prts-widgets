@@ -144,4 +144,94 @@ describe("HtmlStoryAudio", () => {
     await audio.stopSound("c", 0);
     expect(instance.stopped).toBe(1);
   });
+
+  it("stops the previous instance before waiting out the delay window", async () => {
+    vi.useFakeTimers();
+    try {
+      const audio = new HtmlStoryAudio(context);
+      void audio.playSound({
+        channel: "c",
+        delayMs: 0,
+        key: "k",
+        loop: true,
+        volume: 1,
+      });
+
+      await flush();
+      const first = settleLoad();
+      await flush();
+      const firstInstance = first.settlePlay();
+      await flush();
+      expect(firstInstance.stopped).toBe(0);
+
+      const second = audio.playSound({
+        channel: "c",
+        delayMs: 5000,
+        key: "k2",
+        loop: true,
+        volume: 1,
+      });
+
+      // Native `_PlayAudio<SoundParam>` is synchronous: forceReplay replaces
+      // the channel immediately and `delay` only defers the audible start, so
+      // the outgoing instance must be stopped before the delay elapses.
+      expect(firstInstance.stopped).toBe(1);
+      await flush();
+      // Still inside the delay window: no load for the new key has started.
+      expect(loads.length).toBe(0);
+
+      vi.advanceTimersByTime(5000);
+      await flush();
+      const secondSound = settleLoad();
+      await flush();
+      const secondInstance = secondSound.settlePlay();
+      await flush();
+      await second;
+
+      expect(secondInstance.stopped).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops residual loop channels and cancels pending delayed plays on reset", async () => {
+    vi.useFakeTimers();
+    try {
+      const audio = new HtmlStoryAudio(context);
+      void audio.playSound({
+        channel: "c",
+        delayMs: 0,
+        key: "k",
+        loop: true,
+        volume: 1,
+      });
+
+      await flush();
+      const sound = settleLoad();
+      await flush();
+      const instance = sound.settlePlay();
+      await flush();
+      expect(instance.stopped).toBe(0);
+
+      const delayed = audio.playSound({
+        channel: "d",
+        delayMs: 60_000,
+        key: "k2",
+        loop: true,
+        volume: 1,
+      });
+
+      await audio.stopAllSounds(0);
+      expect(instance.stopped).toBe(1);
+
+      vi.advanceTimersByTime(60_000);
+      await flush();
+      await delayed;
+
+      // The reset cancelled the delayed request, so its load never started.
+      expect(loads.length).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
