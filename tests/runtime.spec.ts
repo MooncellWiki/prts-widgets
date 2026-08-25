@@ -29,6 +29,7 @@ import type {
   SpellStickerInput,
   StickerInput,
   StoryAudio,
+  StoryMetadata,
   StoryRenderer,
   SubtitleInput,
   TimerClearInput,
@@ -364,6 +365,23 @@ class FakeAudio implements StoryAudio {
   }
 
   destroy(): void {}
+}
+
+function storyMetadata(overrides: Partial<StoryMetadata> = {}): StoryMetadata {
+  return {
+    args: {},
+    characterSortType: "BY_GAIN_TIME_DOWN",
+    denyAutoSwitchScene: false,
+    dontClearGameObjectPoolOnStart: false,
+    fitMode: "DEFAULT",
+    id: "",
+    isAutoable: true,
+    isSkippable: true,
+    isTutorial: false,
+    isVideoOnly: false,
+    title: "",
+    ...overrides,
+  };
 }
 
 function createContext(script: readonly string[]): Context {
@@ -1000,6 +1018,160 @@ describe("StoryRuntime", () => {
     expect(warnings).toEqual([]);
     expect(runtime.canSkipNode()).toBe(true);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("gates skipping on header is_skippable instead of is_tutorial (2.7.61 get_isSkippable)", async () => {
+    // training_act50side_01_b shape: HEADER carries is_tutorial=true AND
+    // is_skippable=true. Native 2.7.61 AVGController.get_isSkippable only
+    // consults story.isSkippable, so the skip must stop the whole story here;
+    // the pre-2.7.61 !isTutorial gate would wrongly resume at the anchor.
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[skipnode(mode="nofirstskip")]',
+      '[name="A"]x',
+      '[skipnode(mode="skip")]',
+      '[name="B"]y',
+    ]);
+    context.storyMetadata = storyMetadata({
+      isSkippable: true,
+      isTutorial: true,
+    });
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
+  });
+
+  it("resumes at the anchor instead of ending when header marks the story unskippable", async () => {
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[skipnode(mode="skip")]',
+      '[name="A"]x',
+      '[skipnode(mode="skip")]',
+      '[name="B"]y',
+    ]);
+    context.storyMetadata = storyMetadata({ isSkippable: false });
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+      firstRead: false,
+    });
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    // Native SkipStory: get_isSkippable() is false, so it must not
+    // StopStory("Skipped"); it jumps past the dequeued anchor and resumes.
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "y" });
+  });
+
+  it("resets auto play mode to default on a skiptothis jump", async () => {
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]x', "[skiptothis]", '[name="B"]y']),
+      renderer,
+      new FakeAudio(),
+      { sleep },
+    );
+
+    await runtime.start();
+    runtime.setAutoPlayMode("button_auto");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+    await runtime.skipNode();
+
+    // Native SkipStory's skiptothis tail resets autoPlayMode to DEFAULT.
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "y" });
+  });
+
+  it("keeps the auto play mode on a skipnode label jump", async () => {
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=30)]",
+        '[skipnode(mode="nofirstskip")]',
+        '[name="A"]x',
+        '[skipnode(mode="skip")]',
+        '[name="B"]y',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { sleep },
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    // First read hits the nofirstskip anchor: jump past it and resume.
+    await runtime.skipNode();
+    await startPromise;
+    expect(runtime.getState()).toBe("waiting_input");
+
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.skipNode();
+
+    // Native leaves the auto mode untouched on the skipnode branch; only the
+    // skiptothis tail resets it. The second skip ends the story.
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    expect(runtime.getState()).toBe("finished");
+  });
+
+  it("ignores skip clicks during quick play like native OnSkipBtnClicked", async () => {
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=30)]",
+        '[skipnode(mode="skip")]',
+        '[name="A"]x',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { sleep },
+    );
+
+    runtime.setAutoPlayMode("quick_play");
+    const startPromise = runtime.start();
+    await Promise.resolve();
+    expect(runtime.getState()).toBe("waiting_timer");
+
+    await runtime.skipNode();
+
+    // Quick play swallows the skip request entirely.
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(runtime.canSkipNode()).toBe(true);
+
+    runtime.setAutoPlayMode("default");
+    await runtime.skipNode();
+    await startPromise;
+    expect(runtime.getState()).toBe("finished");
+  });
+
+  it("reads the skipnode mode key case-insensitively like native GetOrDefault", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]x',
+        '[skipnode(Mode="nofirstskip")]',
+        '[name="B"]y',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    // The uppercase key still resolves to nofirstskip, so a first read can
+    // only jump past the anchor instead of ending the story.
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "y" });
   });
 
   it("supports multiline command as dialogue wait", async () => {
