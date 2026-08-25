@@ -3359,18 +3359,31 @@ export class StoryRuntime {
           this.theaterMode = true;
           this.buttonSpeedLevel = 0;
           this.applyScriptAutoPlayMode("button_auto");
-        } else if (!mode && this.theaterAutoPlayCache) {
+        } else if (!mode) {
           // Keyed on the cache (native m_needResumeAutoStatus), not on
           // theaterMode: a SkipToThis jump clears the theater flag but keeps
           // the cache, and native's exit still restores it afterwards.
-          const cached = this.theaterAutoPlayCache;
+          // Native AVGController.SetTheaterMode(false) runs unconditionally while
+          // a story is running (only gate is get_isRunning): _SetTheaterModeStatus's
+          // exit path does _StopAutoClick() first and, when no status was saved
+          // (unpaired exit, !m_needResumeAutoStatus), falls back to
+          // set_autoPlayMode(DEFAULT) instead of restoring. So an unpaired
+          // [theater(mode=false)] resets a running auto-play to manual — not a
+          // no-op. applyScriptAutoPlayMode("default") covers _StopAutoClick() as
+          // well: it cancels the pending auto click when the mode changes, and in
+          // "default" no click is ever scheduled.
           this.theaterMode = false;
+          const cached = this.theaterAutoPlayCache;
           this.theaterAutoPlayCache = null;
-          this.buttonSpeedLevel = cached.buttonSpeedLevel;
-          this.quickSpeedLevel = cached.quickSpeedLevel;
-          this.applyScriptAutoPlayMode(
-            cached.mode === "quick_play" ? "default" : cached.mode,
-          );
+          if (cached) {
+            this.buttonSpeedLevel = cached.buttonSpeedLevel;
+            this.quickSpeedLevel = cached.quickSpeedLevel;
+            this.applyScriptAutoPlayMode(
+              cached.mode === "quick_play" ? "default" : cached.mode,
+            );
+          } else {
+            this.applyScriptAutoPlayMode("default");
+          }
         }
         return "continue";
       }
