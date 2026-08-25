@@ -358,6 +358,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly stickerRichChars = new Map<string, RichChar[]>();
   private timerStickerInterval: ReturnType<typeof setInterval> | null = null;
   private timerStickerText: Text | null = null;
+  private timerFadeSessionId = 0;
 
   constructor(context: Context, onWarning?: (detail: string) => void) {
     this.context = context;
@@ -524,6 +525,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.subtitleText = null;
     this.timerStickerText = null;
     this.clearTimerInterval();
+    this.timerFadeSessionId += 1;
     this.stickerTexts.clear();
     this.stickerFadeSessionIds.clear();
     this.stickerTypingTargets.clear();
@@ -1926,6 +1928,11 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   async clearTimerSticker(input?: TimerClearInput): Promise<void> {
     this.clearTimerInterval();
+    // `AVGTimerView.StopTimer` precedes its fade with
+    // `DOKill(_canvas, complete: false)`; bumping the fade session is the Web
+    // equivalent -- an in-flight timersticker fade stops writing instead of
+    // fighting the fade-out.
+    this.timerFadeSessionId += 1;
 
     const timer = this.timerStickerText;
     if (!timer) return;
@@ -1944,12 +1951,15 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    const fadeSessionId = this.timerFadeSessionId;
     void this.tween(
       input.durationMs,
       (progress) => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha = fromAlpha * (1 - progress);
       },
       () => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha = 0;
         timer.visible = false;
       },
@@ -2464,35 +2474,64 @@ export class PixiStoryRenderer implements StoryRenderer {
   async setTimerSticker(input: TimerStickerInput): Promise<void> {
     const timer = this.ensureTimerStickerText();
     this.clearTimerInterval();
+    // `AVGTimerView.RenderTimer` precedes every fade with
+    // `DOKill(_canvas, complete: true)`; bumping the fade session is the Web
+    // equivalent -- an in-flight timersticker/timerclear fade stops writing
+    // instead of racing the new one.
+    this.timerFadeSessionId += 1;
 
     timer.style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
     timer.alpha = input.fromAlpha;
     timer.visible = true;
     timer.x = input.x;
     timer.y = input.y;
+    // `_StartCountTimer` fires `_TimerTick(0)` once immediately, so the slot
+    // briefly shows 00:00:00 before the first real tick lands.
     timer.text = this.formatTimer(0);
 
+    const fadeSessionId = this.timerFadeSessionId;
     void this.tween(
       input.durationMs > 0 ? input.durationMs : 130,
       (progress) => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha =
           input.fromAlpha + (input.toAlpha - input.fromAlpha) * progress;
       },
       () => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha = input.toAlpha;
       },
     );
 
     if (input.limitSeconds === undefined || input.limitSeconds <= 0) return;
 
-    let remainingSeconds = input.limitSeconds;
-    this.timerStickerInterval = setInterval(() => {
-      remainingSeconds = Math.max(0, remainingSeconds - 1);
-      if (!this.timerStickerText) return;
+    // Native counts down against a wall-clock deadline: `SetCountDown` stores
+    // endTime = start + time*1000 (ms) and `Update` feeds
+    // `_OverrideTimerTaskTick` = `Math.Max(endTime - curTime, 0)` into
+    // `_TimerTick` on every internal tick (~200ms). The first real value
+    // therefore lands within one tick, so the full initial value (time=9999
+    // -> 02:46:39) is visible almost immediately and each value holds for a
+    // whole second. A naive 1s interval that decrements a counter would park
+    // on 00:00:00 for a full second, never show the initial value, and drift
+    // under browser timer throttling.
+    const deadlineMs = Date.now() + input.limitSeconds * 1000;
+    this.timerStickerInterval = setInterval(
+      () => {
+        const remainingSeconds = Math.max(
+          0,
+          Math.ceil((deadlineMs - Date.now()) / 1000),
+        );
+        const timerText = this.timerStickerText;
+        if (!timerText) return;
 
-      this.timerStickerText.text = this.formatTimer(remainingSeconds);
-      if (remainingSeconds <= 0) this.clearTimerInterval();
-    }, 1000);
+        const text = this.formatTimer(remainingSeconds);
+        if (timerText.text !== text) timerText.text = text;
+        if (remainingSeconds <= 0) this.clearTimerInterval();
+      },
+      // 200ms mirrors the native CountDownTask internal tick; the deadline
+      // math makes extra fires harmless (same ceil value, no text rewrite).
+      200,
+    );
   }
 
   private async createUi(): Promise<void> {
@@ -3815,7 +3854,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private formatTimer(totalSeconds: number): string {
-    const hours = Math.floor(totalSeconds / 3600);
+    // `_TimerTick` formats `TimeSpan.FromMilliseconds(...)`; `TimeSpan.Hours`
+    // wraps at 24, so time >= 86400 displays modulo a day (100000 -> 03:46:40).
+    const hours = Math.floor(totalSeconds / 3600) % 24;
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = Math.floor(totalSeconds % 60);
     return [hours, minutes, seconds]
