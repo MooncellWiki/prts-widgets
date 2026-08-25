@@ -540,6 +540,28 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("normalizes numeric avgdisplay style/slot spellings to their aliases", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[avgdisplay(id="9",name="bg_black",style=5,slot=1,duration=1)]',
+        '[avgdisplay(id="9",name="bg_black",style="bg",slot="bgover",duration=1)]',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Native GenTypeFromRaw / GenSlotFromRaw parse integers first, so "5"
+    // and "bg" are the same enum member: both displays must reach the panel
+    // with identical canonical spellings (no holder rebuild in between).
+    expect(renderer.avgDisplayCalls).toEqual([
+      expect.objectContaining({ id: "9", style: "bg", slot: "bgover" }),
+      expect.objectContaining({ id: "9", style: "bg", slot: "bgover" }),
+    ]);
+  });
+
   it("enters waiting_input on first dialogue", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
