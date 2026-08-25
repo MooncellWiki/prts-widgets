@@ -171,6 +171,23 @@ function sleepWithTimeout(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Native port: `VideoManager.CheckVideoExist` (2.7.61 VA 0x183B2FDB0) — the
+ * synchronous `RawResManager.CheckExist` gate of the `res` branch in
+ * `AVGVideoPanel._PlayVideo`. The web approximation is a HEAD probe against
+ * the resolved CDN URL: only a definitive 404/410 reproduces a miss. A probe
+ * that cannot decide (network/CORS failure, any other status) reports
+ * "exists" so the legacy `<video>` error path stays in charge.
+ */
+async function probeVideoAssetWithHead(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: "HEAD" });
+    return response.status !== 404 && response.status !== 410;
+  } catch {
+    return true;
+  }
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -324,6 +341,8 @@ export class StoryRuntime {
   private readonly firstRead: boolean;
   private pendingWait: InterruptibleWait | null = null;
   private pendingWaitId = 0;
+  /** `VideoManager.CheckVideoExist` web approximation; see `probeVideoAssetWithHead`. */
+  private readonly probeVideoAsset: (url: string) => Promise<boolean>;
   private processing = false;
   private processingCompletion: Promise<void> | null = null;
   private resolveProcessingCompletion: (() => void) | null = null;
@@ -373,6 +392,7 @@ export class StoryRuntime {
       typeWriterDelayMs: Math.max(0, Math.round(options.typingIntervalMs ?? 0)),
     };
     this.firstRead = options.firstRead ?? true;
+    this.probeVideoAsset = options.probeVideoAsset ?? probeVideoAssetWithHead;
     this.renderer = renderer;
     this.audio = audio;
     this.sleep = options.sleep ?? sleepWithTimeout;
@@ -890,11 +910,20 @@ export class StoryRuntime {
       }
 
       case "video": {
-        // Native port: Torappu.AVG.VideoPanel._ExecuteVideo / _PlayVideo. `url`
-        // takes priority and is used verbatim; only the `res` fallback is resolved
+        // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
+        // (2.7.61: still the legacy bool executor, consumed by the new
+        // ExecutorComponent.Execute(Command, Action) adapter). `url` takes
+        // priority; an http(s) value is emitted verbatim like native
+        // (0x183E68AAD), while any other value goes through the same CDN
+        // normalization as `res` — a web delivery adaptation, native never
+        // converts `url`.
         const url = toString(this.exactArg(args, "url"));
         const res = toString(this.exactArg(args, "res"));
         if (!url && !res) {
+          // Native: DLog.LogError("[AVG.Video] No url or res!") + return
+          // false → ExecutorComponent.Execute finishes the command
+          // synchronously in the same frame (0x183E45C12); no blocking state
+          // is ever entered.
           this.warn("invalid_parameter", "video: no url or res");
           return "continue";
         }
@@ -907,13 +936,40 @@ export class StoryRuntime {
           return "continue";
         }
 
+        // Native port: VideoManager.CheckVideoExist (0x183B2FDB0) gates the
+        // `res` branch before playback; a miss raises
+        // Toast(NO_VIDEO_MESSAGE) and _PlayVideo returns false so the command
+        // ends in the same frame (0x183E689FC) without blocking. The `url`
+        // branch has no such check in native. Web adaptation: the HEAD probe
+        // (`probeVideoAssetWithHead`) approximates the local RawResManager
+        // lookup; onWarning is the Toast equivalent. Skipping during the
+        // probe releases the wait so the command ends without playing.
+        if (!url) {
+          let assetExists = true;
+          const probeInterrupted = await this.waitInterruptiblePromise(
+            this.probeVideoAsset(resolved).then((exists) => {
+              assetExists = exists;
+            }),
+            () => this.renderer.stopVideo(),
+          );
+          if (probeInterrupted) return "continue";
+          if (!assetExists) {
+            this.warn("missing_asset", `video: ${res}`);
+            return "continue";
+          }
+        }
+
         this.state = "waiting_video";
         const interrupted = await this.waitInterruptiblePromise(
           this.renderer.playVideo(resolved),
           () => this.renderer.stopVideo(),
         );
-        // PLAYEND/ERROR finish on the next frame. Force-end is released by the
-        // wrapper immediately and deliberately bypasses this yield.
+        // Native finishes on PLAYEND/ERROR at the END of the CURRENT frame
+        // (InvokeEndOfFrame → WaitForEndOfFrame; 2.7.61 token-verified — the
+        // IDA shared-body symbol InvokeNextFrame is an ICF-fold alias).
+        // `sleep(0)` is the macro-task web approximation. Force-end is
+        // released by CommandExecutorWrapper.ForceEnd synchronously in-frame
+        // and deliberately bypasses this yield.
         if (!interrupted) await this.sleep(0);
         this.state = "running";
         return "continue";

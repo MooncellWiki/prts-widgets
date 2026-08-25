@@ -624,6 +624,13 @@ export interface RuntimeOptions {
   animateRatio?: number;
   firstRead?: boolean;
   onWarning?: (warning: RuntimeWarning) => void;
+  /**
+   * Native port: `VideoManager.CheckVideoExist` (2.7.61 VA 0x183B2FDB0) —
+   * `RawResManager.CheckExist` gating the `res` branch of
+   * `AVGVideoPanel._PlayVideo` before playback. The web default is a HEAD
+   * probe against the resolved CDN URL; injectable for tests.
+   */
+  probeVideoAsset?: (url: string) => Promise<boolean>;
   sleep?: (ms: number) => Promise<void>;
   typingIntervalMs?: number;
 }
