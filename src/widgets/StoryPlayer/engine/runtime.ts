@@ -345,6 +345,7 @@ export class StoryRuntime {
     speaker: string;
     richChars: RichChar[];
     tagStyles?: Record<string, { fill: string }>;
+    forceVisible: boolean;
   } | null = null;
   private typingSessionId = 0;
   private quickSpeedLevel = 0;
@@ -838,9 +839,15 @@ export class StoryRuntime {
 
     switch (line.command) {
       case "endtip": {
-        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip and
-        // AVGStoryCache.shouldProcessEndtip. It only shows and blocks in auto
-        // play for non-video-only stories; manual mode is a no-op.
+        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip (2.7.61:
+        // 0x183E73AB0) and AVGStoryCache.shouldProcessEndtip (0x183E60C60). It
+        // only shows and blocks in auto play for non-video-only stories; manual
+        // mode is a no-op. In auto play native calls set_isHidden(false) before
+        // BeginText("") (which normalizes null content to the empty string), so
+        // the player sees an EMPTY dialog box (top/bottom bars, no speaker, no
+        // text) that blocks until a manual click -- force the panel visible
+        // instead of the content-derived hide. The `block` parameter is never
+        // read by the executor, matching native.
         const shouldProcessEndtip =
           (this.autoPlayMode === "button_auto" ||
             this.autoPlayMode === "quick_play") &&
@@ -849,7 +856,9 @@ export class StoryRuntime {
 
         this.setAutoPlayMode("default");
         this.resetMultiline();
-        this.startTypingDialogue("", line.content);
+        this.startTypingDialogue("", line.content, 1, 0, {
+          forceVisible: true,
+        });
         return "wait_input";
       }
 
@@ -2528,9 +2537,11 @@ export class StoryRuntime {
     text: string,
     delayScale = 1,
     startIndex = 0,
+    options?: { forceVisible?: boolean },
   ): void {
     this.cancelTyping();
 
+    const forceVisible = options?.forceVisible === true;
     const translatedSpeaker = this.translateText(speaker);
     const richChars = parseRichChars(this.translateText(text));
     this.currentMessageLength = richChars.length;
@@ -2541,7 +2552,12 @@ export class StoryRuntime {
       const tagged = richCharsToTaggedText(richChars);
       const colors = collectColors(richChars);
       const ts = colors.length > 0 ? buildTagStyles(colors) : undefined;
-      this.renderer.setDialogue(translatedSpeaker, tagged, ts);
+      this.renderer.setDialogue(
+        translatedSpeaker,
+        tagged,
+        ts,
+        forceVisible ? { forceVisible: true } : undefined,
+      );
       this.onTypingComplete();
       return;
     }
@@ -2554,11 +2570,13 @@ export class StoryRuntime {
       speaker: translatedSpeaker,
       richChars,
       tagStyles,
+      forceVisible,
     };
     this.renderer.setDialogue(
       translatedSpeaker,
       richCharsToTaggedText(richChars.slice(0, from)),
       tagStyles,
+      forceVisible ? { forceVisible: true } : undefined,
     );
 
     void this.runTyping(
@@ -2567,6 +2585,7 @@ export class StoryRuntime {
       richChars,
       delayScale,
       from,
+      forceVisible,
     );
   }
 
@@ -2585,6 +2604,7 @@ export class StoryRuntime {
     richChars: RichChar[],
     delayScale: number,
     startIndex = 0,
+    forceVisible = false,
   ): Promise<void> {
     for (let index = startIndex; index < richChars.length; index += 1) {
       if (
@@ -2604,7 +2624,12 @@ export class StoryRuntime {
         return;
 
       const visible = richCharsToTaggedText(richChars.slice(0, index + 1));
-      this.renderer.setDialogue(speaker, visible);
+      this.renderer.setDialogue(
+        speaker,
+        visible,
+        undefined,
+        forceVisible ? { forceVisible: true } : undefined,
+      );
     }
 
     const finalDelayMs = this.getTypeWriterDelayMs(delayScale);
@@ -2623,12 +2648,13 @@ export class StoryRuntime {
   private finishTypingNow(): boolean {
     if (!this.typingSession) return false;
 
-    const { speaker, richChars, tagStyles } = this.typingSession;
+    const { speaker, richChars, tagStyles, forceVisible } = this.typingSession;
     this.cancelTyping();
     this.renderer.setDialogue(
       speaker,
       richCharsToTaggedText(richChars),
       tagStyles,
+      forceVisible ? { forceVisible: true } : undefined,
     );
     return true;
   }

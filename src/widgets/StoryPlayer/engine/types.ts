@@ -495,6 +495,19 @@ export interface InterludeInput {
   type: InterludeElementType;
 }
 
+/**
+ * Native provenance: `Torappu.AVG.DialogPanel` visibility is an explicit
+ * `isHidden` state toggled by `set_isHidden`, not derived from content.
+ * `_ExecuteDialog` hides the box for empty content, while `_ExecuteEndtip`
+ * (2.7.61: 0x183E73AB0) calls `set_isHidden(false)` + `BeginText("")` to show
+ * an EMPTY dialog box -- the web panel needs the explicit override to model
+ * that, since it otherwise derives visibility from speaker/text presence.
+ */
+export interface DialogueDisplayOptions {
+  /** Keep the dialog frame visible even with no speaker and no text. */
+  forceVisible?: boolean;
+}
+
 export interface StoryRenderer {
   clearCgItems: (
     key?: string,
@@ -550,6 +563,7 @@ export interface StoryRenderer {
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    options?: DialogueDisplayOptions,
   ) => void;
   setImage: (key: string, input?: BackgroundInput) => Promise<void>;
   setImageRotate: (input: ImageRotateInput) => Promise<void>;

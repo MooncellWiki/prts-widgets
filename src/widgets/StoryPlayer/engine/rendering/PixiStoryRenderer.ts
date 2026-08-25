@@ -39,6 +39,7 @@ import {
   type CharacterSlotInput,
   type CurtainInput,
   type DecisionSelection,
+  type DialogueDisplayOptions,
   type FocusOutInput,
   type FocusParamInput,
   type GridBackgroundInput,
@@ -493,8 +494,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    options?: DialogueDisplayOptions,
   ): void {
-    this.dialogPanel.setDialogue(speaker, text, tagStyles);
+    this.dialogPanel.setDialogue(speaker, text, tagStyles, options);
   }
 
   async showDecision(
