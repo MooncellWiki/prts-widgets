@@ -865,6 +865,39 @@ describe("StoryRuntime", () => {
     );
   });
 
+  it("deduplicates unsupported_command warnings per command name", async () => {
+    // 语料里 bgeffect 生成/清除成对出现（裸 [bgeffect] = native 的瞬时全清
+    // 分支），逐条告警只是噪音：同一命令名只应告警一次。
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[bgeffect(name="$eb_burn", layer=1)]',
+        "[bgeffect]",
+        "[bgeffect(fadetime=2)]",
+        '[effect(name="$e_fire", layer=1)]',
+        "[effect]",
+        '[name="A"]ok',
+      ]),
+      new FakeRenderer(),
+      new FakeAudio(),
+      {
+        onWarning: (warning) => warnings.push(warning),
+      },
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    const unsupported = warnings.filter(
+      (item) => item.type === "unsupported_command",
+    );
+    // 告警顺序与首次命中顺序一致：bgeffect（第 1 行）先于 effect（第 4 行）
+    expect(unsupported.map((item) => item.detail)).toEqual([
+      "bgeffect",
+      "effect",
+    ]);
+  });
+
   it("blocks on video command until playback completes", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
