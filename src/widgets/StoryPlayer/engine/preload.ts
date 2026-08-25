@@ -89,6 +89,14 @@ function addCharacterUrl(urls: Set<string>, rawKey: string): string | null {
  * `AVGCgItemPanel.InternalResRefCollector.GatherResRefs`, and the image /
  * background / character panel collectors.
  *
+ * Deliberately not ported: `AVGBattleEffectPanel`'s collector
+ * `InternalResRefCollector.GatherResRefs` (GameAssembly.dll 2.7.61 / build
+ * 2761, VA 0x183e46d40) routes each `effect`/`bgeffect` `name` through
+ * `ResourceRouter.GetBattleEffectPath` (`AVG/Effects/Battle/<name>` particle
+ * prefabs) into the native story preload. The web player has no such asset
+ * domain and skips those commands with a warning (see
+ * `unsupportedAd8Commands` in runtime.ts), so there is nothing to collect.
+ *
  * Ports which script commands declare image dependencies. A single eager PIXI
  * batch substitutes for native asset-reference collection and loading.
  *

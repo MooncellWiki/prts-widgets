@@ -865,6 +865,41 @@ describe("StoryRuntime", () => {
     );
   });
 
+  it("warns once per unsupported command name, still advancing every line", async () => {
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[Effect(name="$e_spark_01_mid",x=640,y=360)]',
+        '[Effect(name="$e_bladeline_01_large",layer=1)]',
+        // Corpus sample: activities/act28side/level_act28side_st01.txt:416 —
+        // the only movetime user, whose CamelCase xTo never matches native's
+        // case-sensitive `xto` lookup, so even native performs no move.
+        '[Effect(name="$e_fist_hit_01",x=50,xTo=100,movetime=0.3)]',
+        '[name="A"]ok',
+      ]),
+      new FakeRenderer(),
+      new FakeAudio(),
+      {
+        onWarning: (warning) => warnings.push(warning),
+      },
+    );
+
+    await runtime.start();
+
+    // Native `_ExecuteEffect` (2.7.61, VA 0x183e2de80) always returns false,
+    // so every skipped line advances exactly like native; only the first hit
+    // warns to keep high-frequency scripts from flooding the console.
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(
+      warnings.filter((warning) => warning.type === "unsupported_command"),
+    ).toEqual([
+      expect.objectContaining({
+        detail: "effect",
+        type: "unsupported_command",
+      }),
+    ]);
+  });
+
   it("blocks on video command until playback completes", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

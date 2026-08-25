@@ -159,6 +159,22 @@ const builtinCommandNames = [
   "hidecgitem",
 ] as const;
 
+/**
+ * Parsed-but-unrendered Ad8 particle-effect commands. For `effect` the native
+ * executor never blocks either: every return path of `_ExecuteEffect`
+ * (GameAssembly.dll 2.7.61 / build 2761, VA 0x183e2de80; returns at VA
+ * 0x183e2e681/0x183e2e723) is `return false`, and the dispatch layer
+ * `ExecutorComponent.Execute` (VA 0x183e45b10) treats "no executor" and
+ * "executor returned false" identically — both immediately `FinishCommand()`.
+ * So warn-and-continue is advancement-equivalent to native; the only loss is
+ * the particle visuals (`AVG/Effects/Battle/<name>` ParticleEffect prefabs), a
+ * deliberate web omission. `effect` has no cross-command side effects (no
+ * decision value, no signal), so skipping it can never change which branch a
+ * story takes. Warnings fire once per command name (see the `default` branch
+ * of `executeBuiltinCommand`): production scripts use `[Effect(...)]` up to 65
+ * times in one file (obt/main/level_main_14-10_beg.txt), and per-line console
+ * noise would drown real diagnostics.
+ */
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
 
 interface InterruptibleWait {
@@ -357,6 +373,8 @@ export class StoryRuntime {
   private multilineShownChars = 0;
   private readonly stickerIds = new Set<string>();
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
+  /** unsupportedAd8Commands 的告警去重：每命令名只警告一次 */
+  private readonly warnedUnsupportedCommands = new Set<string>();
 
   constructor(
     context: Context,
@@ -2508,7 +2526,15 @@ export class StoryRuntime {
 
       default: {
         if (unsupportedAd8Commands.has(line.command)) {
-          this.warn("unsupported_command", line.command);
+          // Native provenance (`effect`): see the note on
+          // `unsupportedAd8Commands` — `_ExecuteEffect` always returns false
+          // and `ExecutorComponent.Execute` immediately FinishCommand()s, so
+          // skipping without sleeping, rendering, or leaving state matches
+          // native advancement. Warn once per command name.
+          if (!this.warnedUnsupportedCommands.has(line.command)) {
+            this.warnedUnsupportedCommands.add(line.command);
+            this.warn("unsupported_command", line.command);
+          }
           return "continue";
         }
 
