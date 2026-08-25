@@ -114,6 +114,15 @@ export class SpellStickerPanel {
     if (view) view.root.visible = false;
   }
 
+  /**
+   * Native port: `Torappu.AVG.AVGSpellStickerPanel._ClearAll` (2.7.61 VA
+   * 0x183e5d770) destroys only the values left in `m_spellStickerDict`, then
+   * clears both dicts. Orphans created by a style switch were already removed
+   * from that dict, so in the native client they stay visible after
+   * `spellstickerclear` and only disappear when the panel/scene GameObject is
+   * destroyed (a known native leak). Intentional deviation: this port destroys
+   * orphans here as well, so clear actually clears the screen.
+   */
   clear(): void {
     // Intentional deviation from native `_ClearAll` (also used for OnReset /
     // ShouldResetOnSkip): native only scans the id→view dict, so a
