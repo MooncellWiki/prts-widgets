@@ -340,6 +340,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   } | null = null;
   private subtitleTypingSessionId = 0;
   private readonly stickerRichChars = new Map<string, RichChar[]>();
+  private timerFadeSessionId = 0;
   private timerStickerInterval: ReturnType<typeof setInterval> | null = null;
   private timerStickerText: Text | null = null;
 
@@ -508,6 +509,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.subtitleText = null;
     this.timerStickerText = null;
     this.clearTimerInterval();
+    this.timerFadeSessionId += 1;
     this.stickerTexts.clear();
     this.stickerFadeSessionIds.clear();
     this.stickerTypingTargets.clear();
@@ -1908,7 +1910,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel.hide(id);
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGTimerView.StopTimer` (2.7.61 VA 0x183ed53e0):
+   * `DOKill(_canvas, complete: false)` kills any in-flight fade tween without
+   * completing it, then fades from the current alpha to a hard-coded 0 and
+   * hides (never destroys) the view. The fade session counter is the DOKill
+   * analogue: bumping it here retires the previous fade's step/done callbacks
+   * so a timersticker fade-in still running when timerclear lands cannot keep
+   * writing alpha alongside the fade-out.
+   */
   async clearTimerSticker(input?: TimerClearInput): Promise<void> {
+    this.timerFadeSessionId += 1;
     this.clearTimerInterval();
 
     const timer = this.timerStickerText;
@@ -1921,6 +1933,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    const sessionId = this.timerFadeSessionId;
     const fromAlpha = timer.alpha;
     if (input.durationMs <= 0) {
       timer.alpha = 0;
@@ -1931,9 +1944,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     void this.tween(
       input.durationMs,
       (progress) => {
+        if (this.timerFadeSessionId !== sessionId) return;
         timer.alpha = fromAlpha * (1 - progress);
       },
       () => {
+        if (this.timerFadeSessionId !== sessionId) return;
         timer.alpha = 0;
         timer.visible = false;
       },
@@ -2437,6 +2452,9 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Port scope: `Torappu.AVG.StickerPanel._ExcuteTimerSticker` (native spelling)
    * and `AVGTimerView.RenderTimer`. Browser intervals and PIXI text adapt the
    * native timer view; this command itself never supplies a block boundary.
+   * RenderTimer precedes its fade with `DOKill(_canvas, complete: true)`: the
+   * fade session bump below retires any in-flight timer fade (e.g. a timerclear
+   * fade-out) before the new fade-in starts writing alpha.
    */
   async setTimerSticker(input: TimerStickerInput): Promise<void> {
     const timer = this.ensureTimerStickerText();
@@ -2449,13 +2467,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     timer.y = input.y;
     timer.text = this.formatTimer(0);
 
+    this.timerFadeSessionId += 1;
+    const fadeSessionId = this.timerFadeSessionId;
     void this.tween(
       input.durationMs > 0 ? input.durationMs : 130,
       (progress) => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha =
           input.fromAlpha + (input.toAlpha - input.fromAlpha) * progress;
       },
       () => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha = input.toAlpha;
       },
     );

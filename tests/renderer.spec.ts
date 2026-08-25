@@ -13,7 +13,10 @@ import { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/Tw
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 import type { AnimationClock } from "../src/widgets/StoryPlayer/engine/execution";
-import type { GridBackgroundInput } from "../src/widgets/StoryPlayer/engine/types";
+import type {
+  GridBackgroundInput,
+  TimerStickerInput,
+} from "../src/widgets/StoryPlayer/engine/types";
 
 function createContext(): Context {
   return {
@@ -1362,6 +1365,70 @@ describe("PixiStoryRenderer", () => {
 
     expect(root.position.x - 640).toBe(-160);
     expect(360 - root.position.y).toBe(0);
+  });
+
+  it("retires stale timer sticker fades when a new fade starts", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const timer = new Text({ text: "" });
+    timer.alpha = 1;
+    timer.visible = true;
+    renderer.timerStickerText = timer;
+
+    const tweens: Array<{
+      done: (() => void) | undefined;
+      step: (progress: number) => void;
+    }> = [];
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        tweens.push({ done, step });
+      },
+    );
+
+    const input = {
+      durationMs: 1000,
+      fromAlpha: 0,
+      limitSeconds: undefined,
+      sizePx: 24,
+      toAlpha: 1,
+      widthPx: 300,
+      x: 935,
+      y: 80,
+    } satisfies TimerStickerInput;
+
+    // A timersticker fade-in is still mid-flight when timerclear lands, like
+    // native StopTimer's DOKill(_canvas, false) scenario.
+    await renderer.setTimerSticker(input);
+    tweens[0]?.step(0.5);
+    expect(timer.alpha).toBeCloseTo(0.5);
+
+    await renderer.clearTimerSticker({ durationMs: 200 });
+
+    // The retired fade-in can neither keep writing alpha nor snap it to the
+    // fade-in's toAlpha; the fade-out fades the captured alpha down to 0 and
+    // hides the slot on completion.
+    tweens[0]?.step(1);
+    tweens[0]?.done?.();
+    expect(timer.alpha).toBeCloseTo(0.5);
+    tweens[1]?.step(0.5);
+    expect(timer.alpha).toBeCloseTo(0.25);
+    tweens[1]?.done?.();
+    expect(timer.alpha).toBe(0);
+    expect(timer.visible).toBe(false);
+
+    // Symmetrically, a fresh timersticker retires a still-running fade-out:
+    // driving the stale fade-out's completion must not re-hide the slot that
+    // RenderTimer has just made visible again.
+    await renderer.clearTimerSticker({ durationMs: 200 });
+    await renderer.setTimerSticker({ ...input, fromAlpha: 0.3 });
+    tweens[2]?.step(1);
+    tweens[2]?.done?.();
+    expect(timer.visible).toBe(true);
+    tweens[3]?.step(0.5);
+    expect(timer.alpha).toBeCloseTo(0.65);
   });
 });
 

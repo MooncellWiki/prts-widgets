@@ -749,6 +749,11 @@ export class StoryRuntime {
     // panel through OnReset -- alpha to 0 immediately (no tween) plus a
     // typewriter reset. A stale subtitle must not survive the skip.
     await this.renderer.clearSubtitle(0);
+    // Native port: `Torappu.AVG.StickerPanel.ShouldResetOnSkip` (default true)
+    // routes skip into OnReset → _RecycleStickers, whose first step is
+    // `m_currentTimer?.StopTimer(0.0)` — the timer hides instantly and its
+    // countdown task stops, instead of keep ticking on screen after skip.
+    void this.renderer.clearTimerSticker({ durationMs: 0 });
 
     this.cancelTyping();
     if (shouldResume) {
