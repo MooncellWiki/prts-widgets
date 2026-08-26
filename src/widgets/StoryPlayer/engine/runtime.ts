@@ -29,6 +29,7 @@ import type {
   BackgroundInput,
   CharacterActionInput,
   CharacterSlotInput,
+  DecisionPolicy,
   InterludeElementType,
   InterludeInput,
   ParsedCommandLine,
@@ -332,6 +333,8 @@ export class StoryRuntime {
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
+  /** 调试侧注入的自动决策钩子；null = 全部走 DecisionPanel 人工选择 */
+  private decisionPolicy: DecisionPolicy | null = null;
   /** 实际执行过的全部选择（decisionId = 源行 lineNumber），供 Log All 路径求值 */
   private readonly choiceHistory: RuntimeChoiceSelection[] = [];
   private destroyed = false;
@@ -464,6 +467,11 @@ export class StoryRuntime {
       mode: this.autoPlayMode,
       quickSpeedLevel: this.quickSpeedLevel,
     };
+  }
+
+  /** Web 调试适配：注入后 decision 不等面板点击，直接按返回的下标选择 */
+  setDecisionPolicy(policy: DecisionPolicy | null): void {
+    this.decisionPolicy = policy;
   }
 
   setAutoPlayMode(mode: AutoPlayMode): void {
@@ -2570,14 +2578,15 @@ export class StoryRuntime {
       case "decision": {
         // Native port: Torappu.AVG.DecisionPanel._ExecuteDecision. Selection writes
         // a value for the command-loop predicate gate; it is not a label jump.
-        const autoPlayCache = this.autoPlayMode;
-        this.setAutoPlayMode("default");
         this.decisionSelectValue = 0;
         this.decisionReferences = null;
         // options/values 的解析与 Log All 共用 log/semantics.parseDecision，
         // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）
         const parsed = parseDecision(line, this.context.audioVariables);
         if (!parsed) {
+          // 无效 decision 同样先重置 value/references 并切回手动（原生
+          // 在校验 options 之前就重置）
+          this.setAutoPlayMode("default");
           this.warn(
             "invalid_parameter",
             "decision options parameter is missing",
@@ -2588,6 +2597,34 @@ export class StoryRuntime {
         const options = parsed.options.map((option) => option.label);
         const values = parsed.options.map((option) => option.value);
 
+        // Web 调试适配：注入的 decision policy 直接替玩家选择，跳过面板
+        // 等待（无原生对应）。选择历史与 value 写入和面板路径完全一致；
+        // 命中时不翻转自动播放模式，否则快速播放会在第一个 decision
+        // 处被切回手动。
+        const policyPick = this.decisionPolicy?.({
+          decisionId: line.lineNumber,
+          options,
+          values,
+        });
+        if (
+          policyPick !== null &&
+          policyPick !== undefined &&
+          Number.isSafeInteger(policyPick) &&
+          policyPick >= 0 &&
+          policyPick < options.length
+        ) {
+          const value = values[policyPick] ?? 0;
+          this.decisionSelectValue = value;
+          this.choiceHistory.push({
+            decisionId: line.lineNumber,
+            optionIndex: policyPick,
+            value,
+          });
+          return "continue";
+        }
+
+        const autoPlayCache = this.autoPlayMode;
+        this.setAutoPlayMode("default");
         this.state = "waiting_decision";
         const selection = await this.renderer.showDecision(options, values);
         this.decisionSelectValue = selection.value;

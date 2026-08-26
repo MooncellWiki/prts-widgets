@@ -134,6 +134,60 @@ export class ConditionStore {
   }
 
   /**
+   * 取一个满足该条件的赋值：按 decisionId 升序（= 脚本执行顺序），每个
+   * decision 在保持条件可满足的前提下选最小 optionIndex——也就是
+   * 「不影响到达目标的选择一律选第一个」。恒假条件（无乘积）返回 null。
+   *
+   * 与 evaluatePartial 的契约同源：满足某文本 audience 条件的赋值对应一条
+   * 能看到该文本的 runtime 选择历史（LogAllList 的 exact 高亮用的是同一
+   * 等价关系）。domains 缺项的 decision 退化为条件里实际出现过的取值。
+   */
+  satisfyingAssignment(
+    id: number,
+    domains: Map<DecisionId, readonly OptionIndex[]>,
+  ): Map<DecisionId, OptionIndex> | null {
+    let remaining = this.products(id);
+    if (remaining.length === 0) return null;
+
+    const decisionIds = [
+      ...new Set(remaining.flatMap((product) => [...product.keys()])),
+    ].sort((a, b) => a - b);
+    const assignment = new Map<DecisionId, OptionIndex>();
+
+    for (const decisionId of decisionIds) {
+      const domain = [...(domains.get(decisionId) ?? [])].sort((a, b) => a - b);
+      const fallback =
+        domain.length > 0
+          ? domain
+          : [
+              ...new Set(
+                remaining
+                  .filter((product) => product.has(decisionId))
+                  .map((product) => product.get(decisionId)!),
+              ),
+            ].sort((a, b) => a - b);
+      let chosen: OptionIndex | undefined;
+      for (const optionIndex of fallback) {
+        const next = remaining.filter(
+          (product) =>
+            !product.has(decisionId) || product.get(decisionId) === optionIndex,
+        );
+        if (next.length > 0) {
+          chosen = optionIndex;
+          remaining = next;
+          break;
+        }
+      }
+      // 乘积本身自洽（crossJoin 已剔除矛盾组合），选不出只可能来自
+      // domains 与条件不一致，保守按无解处理
+      if (chosen === undefined) return null;
+      assignment.set(decisionId, chosen);
+    }
+
+    return assignment;
+  }
+
+  /**
    * 在“每个 decision 只能取其可达选项”的约束下是否为永真。
    * 用 DFS 逐 decision 赋值并同步过滤乘积，无乘积可匹配时立即剪枝；
    * 缺少域信息时保守返回 false。

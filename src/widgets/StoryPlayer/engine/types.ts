@@ -114,6 +114,16 @@ export interface DecisionSelection {
   value: number;
 }
 
+/**
+ * decision 自动决策钩子（Web 调试侧用，无原生对应）。返回要选的
+ * optionIndex；返回 null 或越界值时回落到 DecisionPanel 人工选择。
+ */
+export type DecisionPolicy = (decision: {
+  decisionId: number;
+  options: readonly string[];
+  values: readonly number[];
+}) => number | null;
+
 /** 播放器当前播放位置：显示中的源行 + 实际执行过的全部选择历史 */
 export interface RuntimeLogPosition {
   lineIndex: number | null;
@@ -666,6 +676,8 @@ export interface StoryPlayer {
   ) => () => void;
   setAutoPlayMode: (mode: AutoPlayMode) => void;
   setAutoPlaySpeedLevel: (level: number) => void;
+  /** 注入/移除 decision 自动决策钩子（调试入口用） */
+  setDecisionPolicy: (policy: DecisionPolicy | null) => void;
   skipNode: () => Promise<void>;
   start: () => Promise<void>;
 }

@@ -23,8 +23,13 @@
 
 export const DIALOG_FONT_FAMILY = "NotoSansHans-Medium";
 export const DIALOG_FONT_WEIGHT = 700;
-export const DIALOG_FONT_URL =
-  "https://static.prts.wiki/SourceHanSansCN-Bold.woff2";
+// FontFace API 以 CORS 模式取字体；static.prts.wiki 的 OSS 桶有 Referer 防盗链
+// 且 403 时不带 CORS 头，产物与其同源时没问题，本地 dev（localhost / prts.wiki
+// 宿主页）会被拦。dev 下改走 vite 同源代理（见 vite.config.ts 的 /debug-static），
+// 生产保持直连。
+export const DIALOG_FONT_URL = import.meta.env.DEV
+  ? "/debug-static/SourceHanSansCN-Bold.woff2"
+  : "https://static.prts.wiki/SourceHanSansCN-Bold.woff2";
 
 let loadPromise: Promise<void> | null = null;
 

@@ -8,6 +8,7 @@ import { StoryRuntime } from "./runtime";
 import type { Context } from "../context";
 import type {
   AutoPlayMode,
+  DecisionPolicy,
   PlayerState,
   RuntimeLogPosition,
   StoryPlayer,
@@ -128,6 +129,10 @@ export function createStoryPlayer(context: Context): StoryPlayer {
 
     setAutoPlaySpeedLevel(level: number): void {
       ensureRuntime().setAutoPlaySpeedLevel(level);
+    },
+
+    setDecisionPolicy(policy: DecisionPolicy | null): void {
+      ensureRuntime().setDecisionPolicy(policy);
     },
 
     async skipNode(): Promise<void> {

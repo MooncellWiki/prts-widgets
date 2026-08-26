@@ -185,6 +185,16 @@ async function ensureStoryVariables(): Promise<Record<string, unknown>> {
   return { ...cachedStoryAudioVariables };
 }
 
+/**
+ * 把调试入口拿到的用户输入解析成剧情 txt 的完整 URL：完整 http(s) 地址原样
+ * 返回，其余按相对 `gamedata/latest/story` 的路径拼接。
+ */
+export function resolveStoryScriptUrl(input: string): string {
+  const trimmed = input.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return storyUrl(trimmed);
+}
+
 async function fetchStoryCharacterMap(): Promise<
   Record<string, StoryLinkNode>
 > {
