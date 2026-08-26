@@ -1957,8 +1957,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    *   effect record on story reset/skip; the web player rebuilds the renderer
    *   per playback instead, so no explicit reset exists here.
    * - Colorinverse amount is a shader `_Inverse` float natively (interpolable
-   *   0..1); this command only ever writes 0/1, where `negative()` is
-   *   equivalent.
+   *   0..1, modeled below as `lerp(prev, 1-prev, inverse)` in the matrix).
    */
   async setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
@@ -2021,10 +2020,51 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if (!this.grayscaleFilter) this.grayscaleFilter = new ColorMatrixFilter();
 
-    this.grayscaleFilter.reset();
-    if (this.grayscaleAmount !== 0)
-      this.grayscaleFilter.grayscale(this.grayscaleAmount, false);
-    if (this.inverseAmount !== 0) this.grayscaleFilter.negative(false);
+    // Native AVGSceneGrayScale blits the scene once with
+    // AVG/[UC]Common/Arts/Materials/mat_grayscale (Torappu/PostEffect/
+    // Grayscale; formula verified against the GLES3 GLSL in the 2.7.51
+    // Android [uc]shaders.ab bundle): `_Params` = (0.299, 0.587, 0.114,
+    // grayAmount) desaturates by Rec.601 luma (amount 0 = identity), and
+    // `_Inverse` lerps toward 1-color. Native applies inverse before the
+    // luma lerp; the reverse order used here is algebraically equivalent
+    // because the Rec.601 weights sum to 1. pixi's grayscale()/negative()
+    // helpers cannot express this — grayscale() is an additive [s,s,s] tint
+    // that clips mid-grays to white near amount 1, and sequential
+    // multiply=false calls overwrite each other — so compose the 4x5 matrix
+    // directly: lerp(color, luma, gray), then lerp(prev, 1-prev, inverse)
+    // which scales rows by (1-2*inverse) and offsets by `inverse`. The alpha
+    // row stays identity on purpose: native's blit replaces the whole target
+    // so its alpha inversion is invisible, while pixi uses filter alpha for
+    // layer compositing.
+    const gray = this.grayscaleAmount;
+    const inverse = this.inverseAmount;
+    const scale = 1 - 2 * inverse;
+    const lumR = 0.299 * gray;
+    const lumG = 0.587 * gray;
+    const lumB = 0.114 * gray;
+    const diag = 1 - gray;
+    this.grayscaleFilter.matrix = [
+      (lumR + diag) * scale,
+      lumG * scale,
+      lumB * scale,
+      0,
+      inverse,
+      lumR * scale,
+      (lumG + diag) * scale,
+      lumB * scale,
+      0,
+      inverse,
+      lumR * scale,
+      lumG * scale,
+      (lumB + diag) * scale,
+      0,
+      inverse,
+      0,
+      0,
+      0,
+      1,
+      0,
+    ];
     this.sceneLayer.filters = [this.grayscaleFilter];
   }
 

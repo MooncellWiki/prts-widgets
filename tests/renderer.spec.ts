@@ -15,6 +15,10 @@ function createContext(): Context {
   };
 }
 
+function normalizeZero(values: number[]): number[] {
+  return values.map((v) => v || 0);
+}
+
 function createManualClock(): {
   advance: (ms: number) => void;
   clock: AnimationClock;
@@ -374,6 +378,54 @@ describe("PixiStoryRenderer", () => {
     manual.advance(500);
     manual.drainFrame();
     expect(renderer.grayscaleAmount).toBeCloseTo(0.9);
+  });
+
+  it("applies grayscale as Rec.601 luma desaturation, not an additive tint", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+
+    // Native AVGSceneGrayScale blits with mat_grayscale and writes
+    // _Params = (0.299, 0.587, 0.114, amount): Rec.601 luma desaturation
+    // where a mid-gray pixel stays mid-gray. pixi's
+    // ColorMatrixFilter.grayscale() builds an additive [s,s,s] matrix that
+    // clips mid-grays to white around amount 1, so the matrix is composed
+    // manually.
+    const matrix = renderer.sceneLayer.filters[0].matrix as number[];
+    expect(matrix.slice(0, 5)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+    expect(matrix.slice(5, 10)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+    expect(matrix.slice(10, 15)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+    expect(matrix.slice(15, 20)).toEqual([0, 0, 0, 1, 0]);
+  });
+
+  it("composes Colorinverse over grayscale like the native _Inverse lerp", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    await renderer.setCameraEffect("Colorinverse", 1, 0, false, true);
+
+    // Native _Inverse lerps each channel toward 1-color in the same blit:
+    // rows scale by -1 with offset 1. (normalizeZero turns the -0 produced
+    // by 0 * -1 into +0, which toEqual distinguishes.)
+    const inverseMatrix = renderer.sceneLayer.filters[0].matrix as number[];
+    expect(normalizeZero(inverseMatrix.slice(0, 5))).toEqual([-1, 0, 0, 0, 1]);
+    expect(normalizeZero(inverseMatrix.slice(5, 10))).toEqual([0, -1, 0, 0, 1]);
+    expect(normalizeZero(inverseMatrix.slice(10, 15))).toEqual([
+      0, 0, -1, 0, 1,
+    ]);
+
+    // With grayscale=1 kept from a previous command, desaturation and
+    // inversion compose into one matrix.
+    await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+    const bothMatrix = renderer.sceneLayer.filters[0].matrix as number[];
+    expect(normalizeZero(bothMatrix.slice(0, 5))).toEqual([
+      -0.299, -0.587, -0.114, 0, 1,
+    ]);
+    expect(normalizeZero(bothMatrix.slice(5, 10))).toEqual([
+      -0.299, -0.587, -0.114, 0, 1,
+    ]);
+    expect(normalizeZero(bothMatrix.slice(10, 15))).toEqual([
+      -0.299, -0.587, -0.114, 0, 1,
+    ]);
   });
 
   it("swaps expressions of the same native character without cross-fading", async () => {
