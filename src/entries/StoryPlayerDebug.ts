@@ -621,11 +621,32 @@ const StoryPlayerDebugShell = defineComponent({
                     },
                     [
                       h("span", `原始脚本 · ${scriptLines.value.length} 行`),
-                      h("span", [
-                        h("span", { class: "text-sky-600" }, "■ 当前行"),
-                        "　",
-                        h("span", { class: "text-amber-500" }, "◆ decision"),
-                        "　点击文本行跳转",
+                      // ■ 字形在部分字体里缺失，当前行图例直接用样式色块；
+                      // 内联 style 而非 uno class：该行的部分 token 偶发
+                      // 不被提取器命中，图例这种单点元素不值得依赖它
+                      h("span", { class: "flex items-center gap-3" }, [
+                        h("span", { class: "flex items-center gap-1" }, [
+                          h("span", {
+                            style: {
+                              background: "rgba(14, 165, 233, 0.2)",
+                              border: "1px solid rgba(2, 132, 199, 0.5)",
+                              borderRadius: "2px",
+                              display: "inline-block",
+                              height: "10px",
+                              width: "20px",
+                            },
+                          }),
+                          "当前行",
+                        ]),
+                        h(
+                          "span",
+                          { class: "flex items-center gap-1 text-amber-500" },
+                          [
+                            h("span", { class: "text-amber-500" }, "◆"),
+                            "decision",
+                          ],
+                        ),
+                        "点击文本行跳转",
                       ]),
                     ],
                   ),
