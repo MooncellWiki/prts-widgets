@@ -52,6 +52,66 @@ function createCharacterRenderer(): any {
   return renderer;
 }
 
+/**
+ * Same fixture, but with a settled tween and a truthy `app`. Character actions
+ * bail out of `isActiveCharacterState` while `app` is null, so a test that
+ * wants to drive a real `characteraction` has to stand one up.
+ */
+function createLiveCharacterRenderer(): any {
+  const renderer = createCharacterRenderer();
+  renderer.app = { stage: new Container() };
+  renderer.tween = vi.fn(
+    async (
+      _durationMs: number,
+      step?: (progress: number) => void,
+      done?: () => void,
+    ) => {
+      step?.(1);
+      done?.();
+    },
+  );
+  return renderer;
+}
+
+/** What runtime.ts builds for `[character(name=..., focus=...)]`. */
+function characterCommand(name: string, expression: string): any {
+  return {
+    blackEnd: Number.NaN,
+    blackStart: Number.NaN,
+    block: false,
+    characterKey: "avg_test",
+    dimmed: false,
+    durationMs: 0,
+    enterFrom: undefined,
+    enterPosition: undefined,
+    expression,
+    fadeIdentity: "avg_test",
+    focus: 0,
+    nativeKey: name,
+    slot: "m",
+    transType: 0,
+  };
+}
+
+/** A `[characteraction(type="move", xpos=..., fadetime=...)]` on the m slot. */
+function moveAction(xOffset: number): any {
+  return {
+    block: true,
+    durationMs: 1000,
+    power: 0,
+    randomness: 90,
+    rotationFromDeg: 0,
+    rotationLeftDeg: -15,
+    rotationRightDeg: 15,
+    slot: "m",
+    stop: false,
+    times: 1,
+    type: "move",
+    xOffset,
+    yOffset: 0,
+  };
+}
+
 function labelled(label: string): Container {
   const container = new Container();
   (container as any).label = label;
@@ -186,6 +246,67 @@ describe("PixiStoryRenderer", () => {
     expect(root.alpha).toBe(1);
     expect(visual.alpha).toBe(1);
     expect(visual.tint).toBe(0x80_80_80);
+  });
+
+  it("keeps a characteraction move across a same-key character re-show", async () => {
+    const renderer = createLiveCharacterRenderer();
+
+    // act12side/level_act12side_01_beg.txt:210-217 -- the move runs, then a
+    // bare `character(focus=-1)` re-shows the same name.
+    await renderer.setCharacter(characterCommand("char_chen", "1$1"));
+    await renderer.runCharacterAction(moveAction(200));
+    expect(renderer.characterSlots.get("m").actionX).toBe(200);
+
+    await renderer.setCharacter(characterCommand("char_chen", "1$1"));
+
+    // `Set` skips the `_offset` reset while `m_currentKey == key`, so the
+    // character holds the +200 the move left it at instead of snapping back.
+    const same = renderer.characterSlots.get("m");
+    expect(same.actionX).toBe(200);
+    expect(same.motionLayer.x).toBe(200);
+  });
+
+  it("zeroes the offset when the character re-shows under a different key", async () => {
+    const renderer = createLiveCharacterRenderer();
+
+    await renderer.setCharacter(characterCommand("char_chen", "1$1"));
+    await renderer.runCharacterAction(moveAction(200));
+
+    // The index is part of `m_currentKey`, so a new expression is a new key
+    // and `Set` runs its reset.
+    await renderer.setCharacter(characterCommand("char_chen#2", "2$1"));
+    expect(renderer.characterSlots.get("m").actionX).toBe(0);
+  });
+
+  it("compares the raw name ref, not the resolved character and expression", async () => {
+    const renderer = createLiveCharacterRenderer();
+
+    await renderer.setCharacter(characterCommand("char_chen", "1$1"));
+    await renderer.runCharacterAction(moveAction(200));
+
+    // `char_chen` and `char_chen#1$1` land on the same base/expression pair,
+    // but `m_currentKey` holds the ref verbatim and `Set` compares it with
+    // `op_Equality` -- so native sees a key change here and resets.
+    await renderer.setCharacter(characterCommand("char_chen#1$1", "1$1"));
+    expect(renderer.characterSlots.get("m").actionX).toBe(0);
+  });
+
+  it("lets an enter slide override an earlier characteraction move", async () => {
+    const renderer = createLiveCharacterRenderer();
+
+    await renderer.setCharacter(characterCommand("char_chen", "1$1"));
+    await renderer.runCharacterAction(moveAction(200));
+
+    // `_ProcessSlot`'s enter branch drives that same `_offset` through
+    // SetCharPos and passes `resetOffsetPos = 0`; the closing
+    // `SetCharPos(0, 0, duration)` still lands it back at the origin, so a
+    // same-key re-show with an `enter` must not keep the move.
+    await renderer.setCharacter({
+      ...characterCommand("char_chen", "1$1"),
+      durationMs: 300,
+      enterFrom: "left",
+    });
+    expect(renderer.characterSlots.get("m").actionX).toBe(0);
   });
 
   it("swaps expressions of the same native character without cross-fading", async () => {

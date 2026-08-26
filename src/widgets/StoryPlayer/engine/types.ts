@@ -156,6 +156,14 @@ export interface CharacterSlotInput {
   focusMode?: "current_only" | "none" | "subset";
   focusSlots?: string[];
   inverse?: boolean;
+  /**
+   * The raw `name` ref, which is what native stores as
+   * `AVGCharacterSlot.m_currentKey` and compares verbatim in `Set`
+   * (@ 0x183eb38a0) to decide whether to reset the slot offset. Distinct from
+   * `fadeIdentity`, which is the alias/index-stripped id used only to skip the
+   * image cross-fade.
+   */
+  nativeKey?: string;
   positionFrom?: { x: number; y: number };
   positionTo?: { x: number; y: number };
   posZoom?: { x: number; y: number };
