@@ -2198,17 +2198,25 @@ export class StoryRuntime {
       }
 
       case "cameraeffect": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect. This
-        // covers its Grayscale/Colorinverse/Chaos dispatch and scaled fadetime.
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect
+        // (2.7.61 VA 0x183E32560): case-sensitive Grayscale/Colorinverse
+        // dispatch. Chaos is intentionally unimplemented and degraded to a
+        // warning upstream (see setCameraEffect's port-scope note).
         const effect = toString(this.exactArg(args, "effect"));
         const block = toBoolean(this.exactArg(args, "block"), false);
         const keep = toBoolean(this.exactArg(args, "keep"), false);
         // AVGCameraEffect._defaultFadetime is serialized as 0.4 on
         // AVGController > AVGCamera_Scene; a 0 default would make every
         // fadetime-less cameraeffect invisible.
+        // Native scales the raw seconds by AVGController.animateRatio
+        // (0x183E327C1) before tweening; apply the same current-speed ratio
+        // as `delay` and `calculateFadeMs` (button_auto keeps 1, quick_play
+        // collapses tweens to instant).
         const fadeMs = Math.max(
           0,
-          toNumber(this.exactArg(args, "fadetime"), 0.4) * 1000,
+          toNumber(this.exactArg(args, "fadetime"), 0.4) *
+            this.getCurrentSpeed().animateRatio *
+            1000,
         );
         if (effect === "Chaos") {
           this.warn("unsupported_visual", "cameraeffect:Chaos");

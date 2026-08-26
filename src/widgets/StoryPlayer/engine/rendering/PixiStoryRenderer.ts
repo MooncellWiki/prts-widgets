@@ -56,6 +56,7 @@ import {
   type TimerStickerInput,
 } from "../types";
 
+import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -1950,6 +1951,14 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect` for the
    * grayscale/inverse branches and their completion behavior. A PIXI color
    * filter substitutes for `AVGSceneEffectManager`'s camera post-process.
+   *
+   * Deliberately unported (verified on 2.7.61 / build 2761 IDA decompile):
+   * - Chaos: dual-material distortion, intentionally skipped upstream.
+   * - Reset lifecycle: native `OnReset`/`ShouldResetOnSkip=true` clears the
+   *   effect record on story reset/skip; the web player rebuilds the renderer
+   *   per playback instead, so no explicit reset exists here.
+   * - Colorinverse amount is a shader `_Inverse` float natively (interpolable
+   *   0..1, modeled below as `lerp(prev, 1-prev, inverse)` in the matrix).
    */
   async setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
@@ -1964,13 +1973,33 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.updateCameraFilter();
       return;
     }
-    const from = initialAmount ?? this.grayscaleAmount;
+    // Native `_TweenGrayscaleAmount` (2.7.61 VA 0x183E33C60): a negative
+    // initamount (not just the omitted key's -1 default) starts from the
+    // current grayscale amount via GetEffectAmount("grayscale", "grayscale");
+    // other values are the explicit tween start. Native tests it with
+    // MathUtil.LT(initAmount, 0), which decompiles to `-1e-5 > initAmount`, so
+    // its real threshold sits an epsilon below 0; the plain `>= 0` here only
+    // differs over [-1e-5, 0), which no story script hits.
+    const from =
+      initialAmount !== undefined && initialAmount >= 0
+        ? initialAmount
+        : this.grayscaleAmount;
     this.grayscaleAmount = from;
     this.updateCameraFilter();
     const run = this.tween(
       durationMs,
       (progress) => {
-        this.grayscaleAmount = from + (amount - from) * progress;
+        // Native: the executor never calls SetEase, so DOTween.To tweens with
+        // DOTween's default ease. This build ships DOTween 1.2.760, whose
+        // cctor (VA 0x18410B0E0) writes defaultEaseType = 6 = Ease.OutQuad
+        // (fast-then-slow), not linear. DOTween.AutoInit does let a
+        // Resources/DOTweenSettings asset overwrite that field, and the asset
+        // lives in the player's resources.assets rather than a hot-update
+        // bundle so it cannot be read here — but OutQuad is also
+        // DOTweenSettings' own default, so the compiled value stands.
+        // DOTween's OutQuad is `-t*(t-2)`, i.e. the 1-(1-t)^2 below.
+        const eased = 1 - (1 - progress) ** 2;
+        this.grayscaleAmount = from + (amount - from) * eased;
         this.updateCameraFilter();
       },
       () => {
@@ -1999,10 +2028,15 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if (!this.grayscaleFilter) this.grayscaleFilter = new ColorMatrixFilter();
 
-    this.grayscaleFilter.reset();
-    if (this.grayscaleAmount !== 0)
-      this.grayscaleFilter.grayscale(this.grayscaleAmount, false);
-    if (this.inverseAmount !== 0) this.grayscaleFilter.negative(false);
+    // Native AVGSceneGrayScale blits the scene once with
+    // AVG/[UC]Common/Arts/Materials/mat_grayscale, writing
+    // `_Params = (0.299, 0.587, 0.114, grayAmount)` and `_Inverse`. See
+    // buildColorEffectMatrix for the shader math and why pixi's
+    // grayscale()/negative() helpers cannot express it.
+    this.grayscaleFilter.matrix = buildColorEffectMatrix(
+      this.grayscaleAmount,
+      this.inverseAmount,
+    );
     this.sceneLayer.filters = [this.grayscaleFilter];
   }
 

@@ -2,14 +2,50 @@ import { Container, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
+import { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
+import type { AnimationClock } from "../src/widgets/StoryPlayer/engine/execution";
 import type { GridBackgroundInput } from "../src/widgets/StoryPlayer/engine/types";
 
 function createContext(): Context {
   return {
     linkMap: {},
     script: [],
+  };
+}
+
+// Turns the -0 that `0 * -1` produces into +0 so `toEqual` stops
+// distinguishing them. Deliberately narrow: `v || 0` would also swallow NaN
+// and let a broken matrix pass.
+function normalizeZero(values: number[]): number[] {
+  return values.map((v) => (v === 0 ? 0 : v));
+}
+
+function createManualClock(): {
+  advance: (ms: number) => void;
+  clock: AnimationClock;
+  drainFrame: () => void;
+} {
+  const frames: Array<() => void> = [];
+  let now = 0;
+  const clock: AnimationClock = {
+    cancelFrame: () => {},
+    now: () => now,
+    requestFrame: (callback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+  };
+  return {
+    advance: (ms) => {
+      now += ms;
+    },
+    clock,
+    drainFrame: () => {
+      const frame = frames.shift();
+      if (frame) frame();
+    },
   };
 }
 
@@ -307,6 +343,152 @@ describe("PixiStoryRenderer", () => {
       enterFrom: "left",
     });
     expect(renderer.characterSlots.get("m").actionX).toBe(0);
+  });
+
+  it("eases the cameraeffect grayscale tween with DOTween's default OutQuad", () => {
+    const manual = createManualClock();
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+
+    void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0);
+
+    expect(renderer.grayscaleAmount).toBe(0);
+    manual.advance(500);
+    manual.drainFrame();
+    // Native AVGCameraEffect never calls SetEase, so DOTween.To runs with
+    // DOTween 1.2.760's defaultEaseType=6 (OutQuad): halfway = 0.75, not the
+    // linear 0.5.
+    expect(renderer.grayscaleAmount).toBeCloseTo(0.75);
+    manual.advance(500);
+    manual.drainFrame();
+    expect(renderer.grayscaleAmount).toBe(1);
+  });
+
+  it("starts the grayscale tween from the current amount for any negative initamount", async () => {
+    const manual = createManualClock();
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+
+    await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
+    expect(renderer.grayscaleAmount).toBe(0.6);
+
+    void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, -1);
+
+    // Native _TweenGrayscaleAmount checks MathUtil.LT(initAmount, 0): any
+    // negative initamount means "start from the current grayscale amount",
+    // not an explicit negative start.
+    expect(renderer.grayscaleAmount).toBe(0.6);
+    manual.advance(500);
+    manual.drainFrame();
+    expect(renderer.grayscaleAmount).toBeCloseTo(0.9);
+  });
+
+  it("starts the grayscale tween from an explicit non-negative initamount", async () => {
+    const manual = createManualClock();
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+
+    await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
+    expect(renderer.grayscaleAmount).toBe(0.6);
+
+    // MathUtil.LT(0.2, 0) is false, so native takes the argument as the tween
+    // start and discards the 0.6 the effect manager currently holds.
+    void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0.2);
+
+    expect(renderer.grayscaleAmount).toBe(0.2);
+    manual.advance(500);
+    manual.drainFrame();
+    expect(renderer.grayscaleAmount).toBeCloseTo(0.8);
+  });
+
+  it("applies grayscale as Rec.601 luma desaturation, not an additive tint", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+
+    // Native AVGSceneGrayScale blits with mat_grayscale and writes
+    // _Params = (0.299, 0.587, 0.114, amount): Rec.601 luma desaturation
+    // where a mid-gray pixel stays mid-gray. pixi's
+    // ColorMatrixFilter.grayscale() builds an additive [s,s,s] matrix that
+    // clips mid-grays to white around amount 1, so the matrix is composed
+    // manually.
+    const matrix = renderer.sceneLayer.filters[0].matrix as number[];
+    expect(matrix.slice(0, 5)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+    expect(matrix.slice(5, 10)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+    expect(matrix.slice(10, 15)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+    expect(matrix.slice(15, 20)).toEqual([0, 0, 0, 1, 0]);
+  });
+
+  it("composes Colorinverse over grayscale like the native _Inverse lerp", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    await renderer.setCameraEffect("Colorinverse", 1, 0, false, true);
+
+    // Native _Inverse lerps each channel toward 1-color in the same blit:
+    // rows scale by -1 with offset 1. (normalizeZero turns the -0 produced
+    // by 0 * -1 into +0, which toEqual distinguishes.)
+    const inverseMatrix = renderer.sceneLayer.filters[0].matrix as number[];
+    expect(normalizeZero(inverseMatrix.slice(0, 5))).toEqual([-1, 0, 0, 0, 1]);
+    expect(normalizeZero(inverseMatrix.slice(5, 10))).toEqual([0, -1, 0, 0, 1]);
+    expect(normalizeZero(inverseMatrix.slice(10, 15))).toEqual([
+      0, 0, -1, 0, 1,
+    ]);
+
+    // With grayscale=1 kept from a previous command, desaturation and
+    // inversion compose into one matrix.
+    await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+    const bothMatrix = renderer.sceneLayer.filters[0].matrix as number[];
+    expect(normalizeZero(bothMatrix.slice(0, 5))).toEqual([
+      -0.299, -0.587, -0.114, 0, 1,
+    ]);
+    expect(normalizeZero(bothMatrix.slice(5, 10))).toEqual([
+      -0.299, -0.587, -0.114, 0, 1,
+    ]);
+    expect(normalizeZero(bothMatrix.slice(10, 15))).toEqual([
+      -0.299, -0.587, -0.114, 0, 1,
+    ]);
+  });
+
+  it("desaturates focusout targets with the same Rec.601 matrix as cameraeffect", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    renderer.setFocusParam({ blur: false, color: "Grayscale" });
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 1,
+      type: "bg",
+    });
+
+    // Native AVGSceneFocusOut.Render blits with the same mat_grayscale
+    // material as AVGSceneGrayScale, so focusout must not fall back to pixi's
+    // additive grayscale() tint either.
+    const filters = renderer.backgroundLayer.filters as { matrix: number[] }[];
+    expect(filters).toHaveLength(1);
+    expect(filters[0]!.matrix.slice(0, 5)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+  });
+
+  it("scales the focusout inverse channel by the focus amount", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    renderer.setFocusParam({ blur: false, color: "Colorinverse" });
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 0.5,
+      type: "bg",
+    });
+
+    // Native keeps `_Inverse` binary and blends the processed target back in
+    // by the per-item amount through mat_blit_ghost; folding the amount into
+    // `_Inverse` models that same lerp, so a half-focused target collapses to
+    // flat mid-grey instead of fully inverting.
+    const filters = renderer.backgroundLayer.filters as { matrix: number[] }[];
+    expect(normalizeZero(filters[0]!.matrix.slice(0, 5))).toEqual([
+      0, 0, 0, 0, 0.5,
+    ]);
   });
 
   it("swaps expressions of the same native character without cross-fading", async () => {
