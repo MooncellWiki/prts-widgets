@@ -8,7 +8,7 @@ import {
   shallowRef,
 } from "vue";
 
-import { NAlert, NButton, NInput, NInputNumber } from "naive-ui";
+import { NAlert, NButton, NInput, NInputNumber, NSplit } from "naive-ui";
 
 import "virtual:uno.css";
 
@@ -494,7 +494,7 @@ const StoryPlayerDebugShell = defineComponent({
     }
 
     return () =>
-      h("div", { class: "flex min-h-full flex-col gap-3 p-4" }, [
+      h("div", { class: "flex h-screen flex-col gap-3 p-4" }, [
         h("div", { class: "flex flex-wrap items-center gap-2" }, [
           h(NInput, {
             value: pathValue.value,
@@ -574,32 +574,43 @@ const StoryPlayerDebugShell = defineComponent({
               { default: () => h("div", { class: "text-xs" }, seekSummary()) },
             )
           : null,
-        h("div", { class: "flex min-h-0 items-start gap-3" }, [
-          h(
-            "div",
-            { class: "min-w-0 flex-1" },
-            scriptText.value
-              ? h(StoryPlayer, {
-                  autoStart: true,
-                  key: scriptEpoch.value,
-                  ref: playerComponent,
-                  script: scriptText.value,
-                })
-              : h(
-                  NAlert,
-                  { type: "info", title: "独立调试页" },
-                  {
-                    default: () =>
-                      "输入剧情路径后加载播放；行号 + 跳转 = 快速播放自动选分支直达该行后切手动。资源与文本都直接来自 torappu.prts.wiki，不需要 prts.wiki 宿主页。",
-                  },
-                ),
-          ),
-          scriptText.value
-            ? h(
+        // 根容器锁死一屏高，页面本身不再滚动；两个 pane 各自内部滚动
+        h(
+          NSplit,
+          {
+            class: "min-h-0 flex-1",
+            defaultSize: 0.68,
+            direction: "horizontal",
+            max: 0.85,
+            min: 0.25,
+          },
+          {
+            1: () =>
+              h(
+                "div",
+                { class: "h-full min-w-0 overflow-y-auto pr-1" },
+                scriptText.value
+                  ? h(StoryPlayer, {
+                      autoStart: true,
+                      key: scriptEpoch.value,
+                      ref: playerComponent,
+                      script: scriptText.value,
+                    })
+                  : h(
+                      NAlert,
+                      { type: "info", title: "独立调试页" },
+                      {
+                        default: () =>
+                          "输入剧情路径后加载播放；行号 + 跳转 = 快速播放自动选分支直达该行后切手动。资源与文本都直接来自 torappu.prts.wiki，不需要 prts.wiki 宿主页。",
+                      },
+                    ),
+              ),
+            2: () =>
+              h(
                 "aside",
                 {
                   class:
-                    "sticky top-4 flex max-h-[calc(100vh-2rem)] w-[420px] shrink-0 flex-col gap-2 rounded border border-gray-200 p-2",
+                    "flex h-full min-w-0 flex-col gap-2 rounded border border-gray-200 p-2",
                 },
                 [
                   h(
@@ -624,14 +635,20 @@ const StoryPlayerDebugShell = defineComponent({
                       ref: scriptPanelRef,
                       class: "min-h-0 flex-1 overflow-y-auto",
                     },
-                    scriptLines.value.map((raw, index) =>
-                      renderScriptLine(raw, index),
-                    ),
+                    scriptText.value
+                      ? scriptLines.value.map((raw, index) =>
+                          renderScriptLine(raw, index),
+                        )
+                      : h(
+                          "div",
+                          { class: "p-2 text-xs text-gray-400" },
+                          "加载剧情后在此显示原始脚本。",
+                        ),
                   ),
                 ],
-              )
-            : null,
-        ]),
+              ),
+          },
+        ),
       ]);
   },
 });
