@@ -104,7 +104,7 @@ const options = {
   },
   rarity: {
     title: customLabel.rarityLabel,
-    options: ["4★", "5★", "6★"],
+    options: Object.values(rarityMap),
   },
 };
 const sortOptions = {
@@ -138,9 +138,11 @@ const filterData = (data: Record<string, string>): boolean => {
       }
       case "type": {
         const { type } = data;
-        return (v.value as string[]).some(
-          (t) => !!type?.match(new RegExp(`-${t}`, "i")),
-        );
+        // 切换 mode 不会重置 value，这里可能还是 newFilterItem() 的字符串默认值
+        const types = Array.isArray(v.value) ? v.value : [];
+        if (types.length === 0) return true;
+
+        return types.some((t) => !!type?.match(new RegExp(`-${t}`, "i")));
       }
       case "talent": {
         const { talent2 = "", talent3 = "" } = data;
@@ -438,6 +440,7 @@ const mobileStyle = () => {
                   :disabled="loadingCount > 0 || v.mode === 'all'"
                   :options="getFilterValue(v.mode)"
                   :multiple="v.mode === 'type'"
+                  :clearable="v.mode === 'type'"
                   :fallback-option="false"
                 />
               </div>
