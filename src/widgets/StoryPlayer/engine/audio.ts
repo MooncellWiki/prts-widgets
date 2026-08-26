@@ -133,16 +133,25 @@ export class HtmlStoryAudio implements StoryAudio {
     this.soundRequestIds.set(channel, requestId);
     this.soundBaseVolumes.set(channel, input.volume);
 
-    if (input.delayMs > 0)
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
-    if (this.destroyed || this.soundRequestIds.get(channel) !== requestId)
-      return;
-
+    // Native provenance: `AudioManager._PlayAudio<SoundParam>` (2.7.61 VA
+    // 0x18458dac0) runs synchronously inside `_ExecutePlaySoundCommand`: the
+    // replayed channel takes its name immediately (forceReplay, no IsSameAudio
+    // short-circuit) and the previous sound on it is hard-stopped at once
+    // (crossFade forced to 0), while `delay` only defers the engine-level
+    // audible start. Stop the outgoing instance before the delay wait so the
+    // channel swap is not postponed by `delay`; a soundvolume/stopsound
+    // landing inside the delay window then resolves to this new request
+    // instead of the outgoing instance.
     const prev = this.soundChannels.get(channel);
     if (prev) {
       this.stopPlayback(prev);
       this.soundChannels.delete(channel);
     }
+
+    if (input.delayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+    if (this.destroyed || this.soundRequestIds.get(channel) !== requestId)
+      return;
 
     const sound = await this.createPlayback(url, url);
     if (
@@ -189,6 +198,27 @@ export class HtmlStoryAudio implements StoryAudio {
 
     this.soundChannels.delete(channelName);
     await this.fadeAndStop(sound, fadeMs);
+  }
+
+  /**
+   * Native provenance: `Torappu.AVG.CommonExecutors.OnReset` → `_ResetAudio`
+   * (2.7.61 VA 0x183e6d2a0 / 0x183e6fb70). Story teardown iterates every
+   * channel playsound registered — the `m_allSoundChannels` HashSet (offset
+   * 0x38) equivalent is `soundChannels`, minus entries stopsound already
+   * removed — stops each with the serialized `_soundDefaultFadeTime` (offset
+   * 0x2C), then clears. One-shot channels self-recycle on completion, so in
+   * practice this fades out residual loop sounds. Pending delayed playsound
+   * requests are cancelled too: native stops their already-created delayed
+   * channel the same way. `destroy()` keeps its hard stop as the
+   * widget-teardown fallback.
+   */
+  async stopAllSounds(fadeMs: number): Promise<void> {
+    this.soundRequestIds.clear();
+    this.soundBaseVolumes.clear();
+
+    const sounds = [...this.soundChannels.values()];
+    this.soundChannels.clear();
+    await Promise.all(sounds.map((sound) => this.fadeAndStop(sound, fadeMs)));
   }
 
   async setSoundVolume(

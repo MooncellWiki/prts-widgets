@@ -632,6 +632,7 @@ export interface StoryAudio {
     volume: number,
     fadeMs: number,
   ) => Promise<void>;
+  stopAllSounds: (fadeMs: number) => Promise<void>;
   stopMusic: (fadeMs: number) => Promise<void>;
   stopSound: (channel: string, fadeMs: number) => Promise<void>;
 }

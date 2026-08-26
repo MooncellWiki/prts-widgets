@@ -102,6 +102,15 @@ const QUICK_AUTO_SPEEDS: readonly AutoSpeed[] = [
   },
 ];
 const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
+/**
+ * Native provenance: `Torappu.AVG.CommonExecutors._soundDefaultFadeTime`
+ * (serialized float, field offset 0x2C) — the fade duration `OnReset` →
+ * `_ResetAudio` uses when the story ends and every residual loop sound
+ * channel is stopped in bulk (2.7.61 VA 0x183e6d2a0 / 0x183e6fb70). The
+ * serialized value lives in Unity asset data rather than the assembly, so
+ * this port fixes 0.4s as a sanctioned fixed default.
+ */
+const SOUND_RESET_FADE_MS = 0.4 * 1000;
 
 const builtinCommandNames = [
   "endtip",
@@ -568,7 +577,7 @@ export class StoryRuntime {
     if (shouldResume) {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
-      this.state = "finished";
+      this.onStoryFinished();
     }
 
     // Establish the destination state before releasing a blocking executor.
@@ -671,6 +680,19 @@ export class StoryRuntime {
     this.pendingInputEffect = null;
   }
 
+  /**
+   * Native provenance: `Torappu.AVG.CommonExecutors.OnReset` → `_ResetAudio`
+   * (2.7.61 VA 0x183e6d2a0 / 0x183e6fb70): story termination fades out every
+   * residual loop sound channel (see `stopAllSounds` in audio.ts) with the
+   * serialized `_soundDefaultFadeTime` instead of leaving it playing until
+   * widget teardown. Fire-and-forget — native OnReset does not block the
+   * finished transition, and one-shot channels have already self-recycled.
+   */
+  private onStoryFinished(): void {
+    this.state = "finished";
+    void this.audio.stopAllSounds(SOUND_RESET_FADE_MS);
+  }
+
   private async processLoop(): Promise<void> {
     if (this.processing) return;
 
@@ -684,7 +706,7 @@ export class StoryRuntime {
         if (this.cursor >= this.lines.length) {
           this.renderer.clearAnimTexts();
           this.renderer.clearAvgDisplays();
-          this.state = "finished";
+          this.onStoryFinished();
           return;
         }
 
@@ -2153,7 +2175,11 @@ export class StoryRuntime {
 
       case "playsound": {
         // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
-        // Channel defaults to key; the call is non-blocking.
+        // Channel defaults to key; the call is non-blocking. Native also
+        // suppresses non-loop sounds when executeMode is Reader/Pure (its
+        // text-only review modes) while loop sounds still play; this player
+        // only has the Normal mode, so that branch is unreachable and
+        // intentionally omitted.
         const key = toString(this.exactArg(args, "key"));
         if (!key) {
           this.warn("parse", "playsound key is empty");

@@ -336,6 +336,7 @@ class FakeAudio implements StoryAudio {
     [];
   stopMusicCalls: number[] = [];
   stopSoundCalls: Array<{ channel: string; fadeMs: number }> = [];
+  stopAllSoundsCalls: number[] = [];
 
   async playMusic(input: PlayMusicInput): Promise<void> {
     this.playMusicCalls.push(input);
@@ -359,6 +360,10 @@ class FakeAudio implements StoryAudio {
 
   async stopMusic(fadeMs: number): Promise<void> {
     this.stopMusicCalls.push(fadeMs);
+  }
+
+  async stopAllSounds(fadeMs: number): Promise<void> {
+    this.stopAllSoundsCalls.push(fadeMs);
   }
 
   async stopSound(channel: string, fadeMs: number): Promise<void> {
@@ -2667,6 +2672,29 @@ describe("StoryRuntime", () => {
       { channel: "", fadeMs: 0, volume: 0.2 },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("fades out residual loop sounds when the story ends", async () => {
+    const audio = new FakeAudio();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[playsound(key="s",volume=1.5,delay=0.3,loop=true)]',
+        '[name="A"]ok',
+      ]),
+      new FakeRenderer(),
+      audio,
+    );
+
+    await runtime.start();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(audio.stopAllSoundsCalls).toEqual([]);
+
+    await runtime.advance();
+
+    expect(runtime.getState()).toBe("finished");
+    // Fixed stand-in for the serialized `_soundDefaultFadeTime` (0.4s) used
+    // by native `CommonExecutors.OnReset` → `_ResetAudio`.
+    expect(audio.stopAllSoundsCalls).toEqual([400]);
   });
 
   it("maps subtitle show and clear commands", async () => {
