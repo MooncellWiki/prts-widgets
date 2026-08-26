@@ -455,14 +455,38 @@ export type CharacterCutinFadeStyle =
 export interface CharacterCutinInput {
   block: boolean;
   characterKey?: string;
+  /**
+   * Native provenance: when `name` cannot be resolved, native still allocates
+   * the slot and runs its Show/SlotUpdate tween (only AVGCharacterSlot logs
+   * an internal error), so `block` timing must survive a missing character.
+   */
+  characterMissing?: boolean;
+  /**
+   * Slot-layout keys. `undefined` means the script omitted the key, which is
+   * load-bearing: Show falls back to the serialized prefab defaults, while
+   * SlotUpdate (@ 0x183eb20a0) passes the slot's live transform as each
+   * `GetFloat`/`GetInt` default, so an omitted key holds its current value
+   * instead of snapping back.
+   *
+   * `_characterSlot.localPosition` keys; `charOffsetY` carries native's
+   * `- maskHeight / 2` correction in the renderer layout math. Only Show
+   * reads them -- SlotUpdate never touches the slot node.
+   */
+  charOffsetX?: number;
+  charOffsetY?: number;
   expression?: string;
+  /** `animateRatio * fadetime` in ms; AVGCharacterCutinSlot is IFadeTimeRatio. */
   fadeMs: number;
   fadeStyle?: CharacterCutinFadeStyle;
-  height: number;
-  offsetX: number;
-  offsetY: number;
+  offsetX?: number;
+  offsetY?: number;
+  /** `_zoomAndPovRectTransform.anchoredPosition = (-povX, -povY)`. */
+  povX?: number;
+  povY?: number;
   widgetId: string;
-  width: number;
+  /** Mask size along the main axis; `_zoomAndPovRectTransform.localScale`. */
+  width?: number;
+  zoom?: number;
 }
 
 export type InterludeElementType = 0 | 1 | 2 | 3;

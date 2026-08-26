@@ -52,6 +52,7 @@ class FakeRenderer implements StoryRenderer {
   }> = [];
   characterCalls: CharacterSlotInput[] = [];
   characterCutinCalls: CharacterCutinInput[] = [];
+  clearCharacterCutinCalls: string[] = [];
   clearedSlots: Array<{ fadeMs?: number; slot?: string }> = [];
   clearItemsCalls: Array<{ block: boolean; fadeMs: number }> = [];
   clearCgItemCalls: Array<{
@@ -182,7 +183,8 @@ class FakeRenderer implements StoryRenderer {
     if (input) this.timerClearCalls.push(input);
   }
 
-  clearCharacterCutin(_widgetId?: string): Promise<void> {
+  clearCharacterCutin(widgetId?: string): Promise<void> {
+    this.clearCharacterCutinCalls.push(widgetId ?? "");
     return Promise.resolve();
   }
 
@@ -1373,6 +1375,112 @@ describe("StoryRuntime", () => {
         type: "parse",
       }),
     ]);
+  });
+
+  it("maps charactercutin slot layout keys and scales fadetime by animateRatio", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charactercutin(widgetID="1",name="avg_npc_1#1",fadetime=0.4,offsetx=-300,offsety=25,width=220,zoom=1.5,povX=-50,povY=30,charOffsetX=5,charOffsetY=-10,fadestyle="horiz_expand_left2right",block=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+
+    expect(renderer.characterCutinCalls).toEqual([
+      {
+        block: true,
+        characterKey: "avg_npc_1",
+        characterMissing: false,
+        charOffsetX: 5,
+        charOffsetY: -10,
+        expression: "1$1",
+        fadeMs: 200,
+        fadeStyle: "horiz_expand_left2right",
+        offsetX: -300,
+        offsetY: 25,
+        povX: -50,
+        povY: 30,
+        widgetId: "1",
+        width: 220,
+        zoom: 1.5,
+      },
+    ]);
+  });
+
+  it("leaves omitted charactercutin layout keys undefined for the panel to resolve", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charactercutin(widgetID="1",name="avg_npc_1#1",width=400)]',
+        '[charactercutin(widgetID="1",name="avg_npc_1#2")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Show and SlotUpdate disagree about what an omitted key means (prefab
+    // default vs. hold the live value), so the runtime must not collapse the
+    // distinction by substituting 200 / 0 / 1 here.
+    expect(renderer.characterCutinCalls[0]).toMatchObject({ width: 400 });
+    expect(renderer.characterCutinCalls[1]).toMatchObject({
+      charOffsetX: undefined,
+      offsetX: undefined,
+      povX: undefined,
+      width: undefined,
+      zoom: undefined,
+    });
+  });
+
+  it("keeps charactercutin block timing when the name cannot be resolved", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charactercutin(widgetID="1",name="avg_ghost#1",fadetime=0.5,block=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // Native still allocates the slot and runs its tween for an unresolvable
+    // name; only the character art is absent.
+    expect(renderer.characterCutinCalls).toHaveLength(1);
+    expect(renderer.characterCutinCalls[0]).toMatchObject({
+      characterMissing: true,
+      fadeMs: 500,
+      widgetId: "1",
+    });
+    expect(warnings).toEqual([
+      expect.objectContaining({ type: "missing_asset" }),
+    ]);
+  });
+
+  it("clears charactercutin slots when skipping the story", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charactercutin(widgetID="1",name="avg_npc_1",block=true)]',
+        '[skipnode(mode="skip")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    await runtime.skipNode();
+    expect(renderer.clearCharacterCutinCalls).toEqual([""]);
   });
 
   it("maps interlude parameters and preserves the native channel default mismatch", async () => {

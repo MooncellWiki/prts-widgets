@@ -556,7 +556,12 @@ export class StoryRuntime {
     }
 
     this.pendingInputEffect = null;
+    // Native port: both executors on AVGCharacterCutinPanel reset on skip --
+    // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
+    // empties the slot pool / _slots before resetting the interlude
+    // controller, so a skipped node must not leave cutin slots behind.
     await this.renderer.clearInterludes();
+    await this.renderer.clearCharacterCutin();
     await this.renderer.clearSpellStickers();
 
     this.cancelTyping();
@@ -1867,19 +1872,25 @@ export class StoryRuntime {
 
         const nameRef = toString(args.name).trim();
         const resolved = nameRef ? this.resolveCharacterName(nameRef) : null;
-        // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteCharacterCutin.
-        // Defaults come from the cutin slot's serialized fields
-        // (_defaultFadetime = 0.4, _defaultSlotWidth = 200), not from PRTS's
-        // 0.14 / 150. `block` really is the key here, unlike the rest of the
-        const fadeMs = Math.max(
-          0,
-          Math.round(toNumber(args.fadetime, 0.4) * 1000),
-        );
+        // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteCharacterCutin
+        // (build 2761: 0x183e49440). Defaults come from the cutin slot's
+        // serialized fields (_defaultFadetime = 0.4, _defaultSlotWidth = 200),
+        // not from PRTS's 0.14 / 150. `block` really is the key here, unlike
+        // the rest of the character family's `isblock`.
+        //
+        // AVGCharacterCutinSlot implements IFadeTimeRatio: every Show /
+        // SlotUpdate / Hide duration is `animateRatio * fadetime` (Show
+        // 0x183eb1320, SlotUpdate 0x183eb20a0, Hide 0x183eb0d80), so fadeMs
+        // must route through calculateFadeMs instead of a bare *1000.
+        const fadeMs = Math.round(this.calculateFadeMs(args.fadetime, 0.4));
         const block = toBoolean(args.block, false);
 
+        // Native: an unresolvable `name` still allocates the slot and runs
+        // its tween (AVGCharacterSlot logs its own error internally), so only
+        // the character art is missing while the block timing survives. Keep
+        // the warning for diagnostics and flag the renderer accordingly.
         if (nameRef && !resolved) {
           this.warn("missing_asset", `charactercutin: ${nameRef}`);
-          return "continue";
         }
 
         const fadeStyleRaw = toString(args.fadestyle).trim().toLowerCase();
@@ -1898,17 +1909,32 @@ export class StoryRuntime {
           ? (fadeStyleRaw as (typeof validFadeStyles)[number])
           : undefined;
 
+        // Native port: slot-layout keys are read verbatim by
+        // AVGCharacterCutinSlot.Show/SlotUpdate (0x183eb1320 / 0x183eb20a0).
+        // 2.7.61 renamed the slot scale key `scale` -> `zoom`;
+        // povX/povY/charOffsetX/charOffsetY keep their CamelCase spelling --
+        // native looks them up in a case-sensitive dictionary.
+        //
+        // These stay `undefined` when absent rather than collapsing to a
+        // default here: Show and SlotUpdate disagree about what an omitted
+        // key means (prefab default vs. hold the slot's current value), and
+        // only the panel knows which branch it is on.
         await this.renderer.setCharacterCutin({
           block,
           characterKey: resolved?.base,
+          characterMissing: Boolean(nameRef) && !resolved,
+          charOffsetX: toOptionalNumber(args.charOffsetX),
+          charOffsetY: toOptionalNumber(args.charOffsetY),
           expression: resolved?.expression,
           fadeMs,
           fadeStyle,
-          height: toNumber(args.height, 540),
-          offsetX: toNumber(args.offsetx, 0),
-          offsetY: toNumber(args.offsety, 0),
+          offsetX: toOptionalNumber(args.offsetx),
+          offsetY: toOptionalNumber(args.offsety),
+          povX: toOptionalNumber(args.povX),
+          povY: toOptionalNumber(args.povY),
           widgetId,
-          width: toNumber(args.width, 200),
+          width: toOptionalNumber(args.width),
+          zoom: toOptionalNumber(args.zoom),
         });
         return "continue";
       }
