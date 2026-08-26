@@ -1684,6 +1684,7 @@ export class StoryRuntime {
           ...(args.inverse === undefined
             ? {}
             : { inverse: toBoolean(args.inverse, false) }),
+          nativeKey: nameRef || undefined,
           positionFrom: this.parseCharacterSlotPoint(args.posfrom),
           positionTo: this.parseCharacterSlotPoint(args.posto),
           posZoom: this.parseCharacterSlotPoint(args.poszoom),
@@ -1798,6 +1799,7 @@ export class StoryRuntime {
             expression: resolved.expression,
             fadeIdentity: nativeCharacterFadeIdentity(update.name),
             focus,
+            nativeKey: update.name,
             slot: update.slot,
             transType,
           });

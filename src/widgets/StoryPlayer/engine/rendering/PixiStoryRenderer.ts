@@ -151,6 +151,12 @@ interface CharacterRenderState {
   jumpOffsetY: number;
   jumpSessionId: number;
   motionLayer: Container;
+  /**
+   * `AVGCharacterSlot.m_currentKey`: the raw `name` ref the slot was last set
+   * with, index and alias included. `Set` compares it verbatim, so it cannot
+   * be reconstructed from the resolved characterKey/expression pair.
+   */
+  nativeKey?: string;
   opacitySessionId: number;
   replaceFadeSessionId: number;
   root: Container;
@@ -1549,9 +1555,28 @@ export class PixiStoryRenderer implements StoryRenderer {
     // same character's expression is swapped instantly.
     const moveMs = input.enterFrom ? durationMs : 0;
     const animationMs = Math.max(imageFadeMs, moveMs);
+    // `AVGCharacterSlot.Set` @ 0x183eb38a0 guards its entire swap branch --
+    // the `_offset` position reset and the localScale reset included -- with
+    // `!op_Equality(m_currentKey, key)`. A re-show under the same key, e.g.
+    // the `character(focus=-1)` that follows a `characteraction move`, never
+    // reaches the reset, so the slot keeps the offset the move left behind.
+    // `m_currentKey` is the raw `name` ref, so `nativeKey` is compared rather
+    // than the resolved base/expression pair: `avg_x` and `avg_x#1$1` can
+    // resolve alike yet are different keys to native.
+    //
+    // An `enter` is exempt. `CharacterPanel._ProcessSlot` @ 0x183e6c1c0 takes
+    // the branch that first calls `SetCharPos(x, y, 0)` -- which writes that
+    // very same `_offset` absolutely (@ 0x183eb3290) -- and then passes
+    // `resetOffsetPos = 0`; the closing `SetCharPos(0, 0, duration)` tweens it
+    // back to the origin. So a slide always overrides an earlier move.
+    const keepsOffset =
+      !input.enterFrom &&
+      previous !== undefined &&
+      input.nativeKey !== undefined &&
+      previous.nativeKey === input.nativeKey;
     const state: CharacterRenderState = {
-      actionX: 0,
-      actionY: 0,
+      actionX: keepsOffset ? previous.actionX : 0,
+      actionY: keepsOffset ? previous.actionY : 0,
       baseScaleX,
       baseScaleY,
       baseX: targetX,
@@ -1565,6 +1590,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       jumpOffsetY: 0,
       jumpSessionId: 0,
       motionLayer,
+      nativeKey: input.nativeKey,
       opacitySessionId: 0,
       replaceFadeSessionId: 0,
       root,
@@ -1572,8 +1598,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       rotationLayer,
       rotateSessionId: 0,
       rotateTimeout: null,
-      scaleX: 1,
-      scaleY: 1,
+      scaleX: keepsOffset ? previous.scaleX : 1,
+      scaleY: keepsOffset ? previous.scaleY : 1,
       shakeOffsetX: 0,
       shakeOffsetY: 0,
       shakeSessionId: 0,
@@ -2789,6 +2815,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         jumpOffsetY: 0,
         jumpSessionId: 0,
         motionLayer,
+        nativeKey: input.nativeKey,
         opacitySessionId: 0,
         replaceFadeSessionId: 0,
         root,
@@ -2825,6 +2852,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     current.expression = input.expression;
     current.fadeIdentity = input.fadeIdentity ?? input.characterKey;
     current.height = sizeY;
+    // `_SlotSetCharInternal` writes `m_currentKey = options.charName` too.
+    current.nativeKey = input.nativeKey;
     current.root.x = baseX;
     current.root.y = baseY;
     current.sourceHeight = built.sourceHeight;
@@ -2974,26 +3003,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     state: CharacterRenderState,
     input: CharacterSlotInput,
   ): { scaleX: number; scaleY: number; x: number; y: number } {
-    // Native `AVGCharacterSlot.Set` only zeroes `_offset` when the character
-    // key CHANGES (`!op_Equality(m_currentKey, key)` guards the reset); a
-    // same-key re-show -- e.g. `character(focus=-1)` right after a
-    // `characteraction` move -- keeps the moved transform. An explicit
-    // transform intent (xpos / action / zoom) still resets: those commands
-    // set the offset absolutely, not relative to the move.
-    const sameKey =
-      input.characterKey === state.characterKey &&
-      input.expression === state.expression;
-    const hasTransformIntent =
-      input.positionFrom !== undefined ||
-      input.positionTo !== undefined ||
-      input.action !== undefined ||
-      input.scaleX !== undefined ||
-      input.scaleY !== undefined ||
-      input.posZoom !== undefined;
+    // `charslot` does NOT share `character`'s key-equality guard. It reaches
+    // the slot through `AVGCharacterSlot._SlotSetCharInternal` @ 0x183eb5830,
+    // whose reset is
+    //   `if (resetOffsetPos && !IsNullOrEmpty(charName)) _offset.pos = zero`
+    // with no `m_currentKey` comparison anywhere -- unlike `Set` @ 0x183eb38a0,
+    // which wraps the same reset in `!op_Equality(m_currentKey, key)`. So a
+    // charslot carrying a name zeroes the offset whatever the character is,
+    // and `end=false` (resetOffsetPos = 0) is the only way to keep it.
     const preserve =
-      (sameKey && !hasTransformIntent) ||
-      input.resetTransform === false ||
-      input.preserveTransform === true;
+      input.resetTransform === false || input.preserveTransform === true;
     const baseX = preserve ? state.actionX : 0;
     const baseY = preserve ? state.actionY : 0;
     const baseScaleX = preserve ? state.scaleX : 1;
