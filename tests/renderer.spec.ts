@@ -15,8 +15,11 @@ function createContext(): Context {
   };
 }
 
+// Turns the -0 that `0 * -1` produces into +0 so `toEqual` stops
+// distinguishing them. Deliberately narrow: `v || 0` would also swallow NaN
+// and let a broken matrix pass.
 function normalizeZero(values: number[]): number[] {
-  return values.map((v) => v || 0);
+  return values.map((v) => (v === 0 ? 0 : v));
 }
 
 function createManualClock(): {
@@ -380,6 +383,24 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.grayscaleAmount).toBeCloseTo(0.9);
   });
 
+  it("starts the grayscale tween from an explicit non-negative initamount", async () => {
+    const manual = createManualClock();
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+
+    await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
+    expect(renderer.grayscaleAmount).toBe(0.6);
+
+    // MathUtil.LT(0.2, 0) is false, so native takes the argument as the tween
+    // start and discards the 0.6 the effect manager currently holds.
+    void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0.2);
+
+    expect(renderer.grayscaleAmount).toBe(0.2);
+    manual.advance(500);
+    manual.drainFrame();
+    expect(renderer.grayscaleAmount).toBeCloseTo(0.8);
+  });
+
   it("applies grayscale as Rec.601 luma desaturation, not an additive tint", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
 
@@ -425,6 +446,48 @@ describe("PixiStoryRenderer", () => {
     ]);
     expect(normalizeZero(bothMatrix.slice(10, 15))).toEqual([
       -0.299, -0.587, -0.114, 0, 1,
+    ]);
+  });
+
+  it("desaturates focusout targets with the same Rec.601 matrix as cameraeffect", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    renderer.setFocusParam({ blur: false, color: "Grayscale" });
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 1,
+      type: "bg",
+    });
+
+    // Native AVGSceneFocusOut.Render blits with the same mat_grayscale
+    // material as AVGSceneGrayScale, so focusout must not fall back to pixi's
+    // additive grayscale() tint either.
+    const filters = renderer.backgroundLayer.filters as { matrix: number[] }[];
+    expect(filters).toHaveLength(1);
+    expect(filters[0]!.matrix.slice(0, 5)).toEqual([0.299, 0.587, 0.114, 0, 0]);
+  });
+
+  it("scales the focusout inverse channel by the focus amount", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+
+    renderer.setFocusParam({ blur: false, color: "Colorinverse" });
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 0.5,
+      type: "bg",
+    });
+
+    // Native keeps `_Inverse` binary and blends the processed target back in
+    // by the per-item amount through mat_blit_ghost; folding the amount into
+    // `_Inverse` models that same lerp, so a half-focused target collapses to
+    // flat mid-grey instead of fully inverting.
+    const filters = renderer.backgroundLayer.filters as { matrix: number[] }[];
+    expect(normalizeZero(filters[0]!.matrix.slice(0, 5))).toEqual([
+      0, 0, 0, 0, 0.5,
     ]);
   });
 

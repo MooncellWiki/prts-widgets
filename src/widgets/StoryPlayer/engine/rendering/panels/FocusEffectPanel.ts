@@ -1,5 +1,7 @@
 import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
 
+import { buildColorEffectMatrix } from "../core/ColorEffectMatrix";
+
 import type { FocusOutInput, FocusParamInput } from "../../types";
 
 type Tween = (
@@ -97,9 +99,20 @@ export class FocusEffectPanel {
       if (amount > 0 && this.config.blur)
         filters.push(new BlurFilter({ strength: amount * 8 }));
       if (amount > 0 && this.config.color !== "None") {
+        // Native `AVGSceneFocusOut.Render` (2.7.61 VA 0x183E859D0) blits with
+        // the same AVG/[UC]Common/Arts/Materials/mat_grayscale material as
+        // `cameraeffect`, writing `_Params = (0.299, 0.587, 0.114,
+        // color == Grayscale)` and `_Inverse = (color == Colorinverse)` — the
+        // channel is binary there, and the per-item focus amount is applied
+        // afterwards by compositing the processed target back through
+        // mat_blit_ghost. That composite is a lerp between the original and
+        // the fully processed pixel, which is exactly what feeding `amount`
+        // into the matrix models, so both channels scale with it.
         const color = new ColorMatrixFilter();
-        if (this.config.color === "Grayscale") color.grayscale(amount, false);
-        else color.negative(false);
+        color.matrix =
+          this.config.color === "Grayscale"
+            ? buildColorEffectMatrix(amount, 0)
+            : buildColorEffectMatrix(0, amount);
         filters.push(color);
       }
       target.filters = filters;

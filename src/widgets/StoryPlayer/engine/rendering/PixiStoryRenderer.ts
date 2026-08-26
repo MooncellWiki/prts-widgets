@@ -56,6 +56,7 @@ import {
   type TimerStickerInput,
 } from "../types";
 
+import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -1972,11 +1973,13 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.updateCameraFilter();
       return;
     }
-    // Native `_TweenGrayscaleAmount` (2.7.61 VA 0x183E33C60): any negative
-    // initamount (MathUtil.LT(initAmount, 0), not just the omitted key's -1
-    // default) starts from the current grayscale amount via
-    // GetEffectAmount("grayscale", "grayscale"); non-negative values are the
-    // explicit tween start.
+    // Native `_TweenGrayscaleAmount` (2.7.61 VA 0x183E33C60): a negative
+    // initamount (not just the omitted key's -1 default) starts from the
+    // current grayscale amount via GetEffectAmount("grayscale", "grayscale");
+    // other values are the explicit tween start. Native tests it with
+    // MathUtil.LT(initAmount, 0), which decompiles to `-1e-5 > initAmount`, so
+    // its real threshold sits an epsilon below 0; the plain `>= 0` here only
+    // differs over [-1e-5, 0), which no story script hits.
     const from =
       initialAmount !== undefined && initialAmount >= 0
         ? initialAmount
@@ -1987,9 +1990,14 @@ export class PixiStoryRenderer implements StoryRenderer {
       durationMs,
       (progress) => {
         // Native: the executor never calls SetEase, so DOTween.To tweens with
-        // DOTween 1.2.760's defaultEaseType = Ease.OutQuad (fast-then-slow),
-        // not linear interpolation. Map 1-(1-t)^2 per frame like the native
-        // setter closure (VA 0x183E48CA0) does.
+        // DOTween's default ease. This build ships DOTween 1.2.760, whose
+        // cctor (VA 0x18410B0E0) writes defaultEaseType = 6 = Ease.OutQuad
+        // (fast-then-slow), not linear. DOTween.AutoInit does let a
+        // Resources/DOTweenSettings asset overwrite that field, and the asset
+        // lives in the player's resources.assets rather than a hot-update
+        // bundle so it cannot be read here — but OutQuad is also
+        // DOTweenSettings' own default, so the compiled value stands.
+        // DOTween's OutQuad is `-t*(t-2)`, i.e. the 1-(1-t)^2 below.
         const eased = 1 - (1 - progress) ** 2;
         this.grayscaleAmount = from + (amount - from) * eased;
         this.updateCameraFilter();
@@ -2021,50 +2029,14 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (!this.grayscaleFilter) this.grayscaleFilter = new ColorMatrixFilter();
 
     // Native AVGSceneGrayScale blits the scene once with
-    // AVG/[UC]Common/Arts/Materials/mat_grayscale (Torappu/PostEffect/
-    // Grayscale; formula verified against the GLES3 GLSL in the 2.7.51
-    // Android [uc]shaders.ab bundle): `_Params` = (0.299, 0.587, 0.114,
-    // grayAmount) desaturates by Rec.601 luma (amount 0 = identity), and
-    // `_Inverse` lerps toward 1-color. Native applies inverse before the
-    // luma lerp; the reverse order used here is algebraically equivalent
-    // because the Rec.601 weights sum to 1. pixi's grayscale()/negative()
-    // helpers cannot express this — grayscale() is an additive [s,s,s] tint
-    // that clips mid-grays to white near amount 1, and sequential
-    // multiply=false calls overwrite each other — so compose the 4x5 matrix
-    // directly: lerp(color, luma, gray), then lerp(prev, 1-prev, inverse)
-    // which scales rows by (1-2*inverse) and offsets by `inverse`. The alpha
-    // row stays identity on purpose: native's blit replaces the whole target
-    // so its alpha inversion is invisible, while pixi uses filter alpha for
-    // layer compositing.
-    const gray = this.grayscaleAmount;
-    const inverse = this.inverseAmount;
-    const scale = 1 - 2 * inverse;
-    const lumR = 0.299 * gray;
-    const lumG = 0.587 * gray;
-    const lumB = 0.114 * gray;
-    const diag = 1 - gray;
-    this.grayscaleFilter.matrix = [
-      (lumR + diag) * scale,
-      lumG * scale,
-      lumB * scale,
-      0,
-      inverse,
-      lumR * scale,
-      (lumG + diag) * scale,
-      lumB * scale,
-      0,
-      inverse,
-      lumR * scale,
-      lumG * scale,
-      (lumB + diag) * scale,
-      0,
-      inverse,
-      0,
-      0,
-      0,
-      1,
-      0,
-    ];
+    // AVG/[UC]Common/Arts/Materials/mat_grayscale, writing
+    // `_Params = (0.299, 0.587, 0.114, grayAmount)` and `_Inverse`. See
+    // buildColorEffectMatrix for the shader math and why pixi's
+    // grayscale()/negative() helpers cannot express it.
+    this.grayscaleFilter.matrix = buildColorEffectMatrix(
+      this.grayscaleAmount,
+      this.inverseAmount,
+    );
     this.sceneLayer.filters = [this.grayscaleFilter];
   }
 
