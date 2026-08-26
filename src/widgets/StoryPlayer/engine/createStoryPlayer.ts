@@ -25,7 +25,7 @@ export function createStoryPlayer(context: Context): StoryPlayer {
   let audio: HtmlStoryAudio | null = null;
   let mounted = false;
   // destroy() 后 mount() 会重建 runtime，闭包暂存保证监听器不丢
-  let displayedLineListener: ((lineIndex: number | null) => void) | null = null;
+  const displayedLineListeners = new Set<(lineIndex: number | null) => void>();
 
   const ensureRuntime = () => {
     if (runtime) return runtime;
@@ -44,8 +44,8 @@ export function createStoryPlayer(context: Context): StoryPlayer {
         ),
       typingIntervalMs: 40,
     });
-    if (displayedLineListener)
-      runtime.onDisplayedLineChange(displayedLineListener);
+    for (const listener of displayedLineListeners)
+      runtime.onDisplayedLineChange(listener);
 
     return runtime;
   };
@@ -96,9 +96,15 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       return runtime?.getDisplayedLineIndex() ?? null;
     },
 
-    onDisplayedLineChange(listener: (lineIndex: number | null) => void): void {
-      displayedLineListener = listener;
-      runtime?.onDisplayedLineChange(listener);
+    onDisplayedLineChange(
+      listener: (lineIndex: number | null) => void,
+    ): () => void {
+      displayedLineListeners.add(listener);
+      const disposeRuntime = runtime?.onDisplayedLineChange(listener);
+      return () => {
+        displayedLineListeners.delete(listener);
+        disposeRuntime?.();
+      };
     },
 
     getLogPosition(): RuntimeLogPosition {

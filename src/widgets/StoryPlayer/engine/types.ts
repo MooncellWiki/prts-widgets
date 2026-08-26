@@ -648,8 +648,10 @@ export interface StoryPlayer {
   getLogPosition: () => RuntimeLogPosition;
   getState: () => PlayerState;
   mount: (host: HTMLElement) => Promise<void>;
-  /** Web 适配（无原生对应）：注册当前显示行变更推送，替代 UI 轮询 getDisplayedLineIndex */
-  onDisplayedLineChange: (listener: (lineIndex: number | null) => void) => void;
+  /** Web 适配（无原生对应）：注册当前显示行变更推送，替代 UI 轮询 getDisplayedLineIndex；返回注销函数 */
+  onDisplayedLineChange: (
+    listener: (lineIndex: number | null) => void,
+  ) => () => void;
   setAutoPlayMode: (mode: AutoPlayMode) => void;
   setAutoPlaySpeedLevel: (level: number) => void;
   skipNode: () => Promise<void>;

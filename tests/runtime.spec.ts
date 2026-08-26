@@ -1088,6 +1088,30 @@ describe("StoryRuntime", () => {
     expect(runtime.getDisplayedLineIndex()).toBe(7);
   });
 
+  it("supports multiple displayed line listeners with independent disposal", async () => {
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]第一句', '[name="B"]第二句']),
+      new FakeRenderer(),
+      new FakeAudio(),
+    );
+    const first: Array<number | null> = [];
+    const second: Array<number | null> = [];
+    // index.vue 的 Log All 高亮与调试页行跟随各自订阅，互不顶替
+    const disposeFirst = runtime.onDisplayedLineChange((lineIndex) =>
+      first.push(lineIndex),
+    );
+    runtime.onDisplayedLineChange((lineIndex) => second.push(lineIndex));
+
+    await runtime.start();
+    expect(first).toEqual([1]);
+    expect(second).toEqual([1]);
+
+    disposeFirst();
+    await runtime.advance();
+    expect(first).toEqual([1]);
+    expect(second).toEqual([1, 2]);
+  });
+
   it("keeps the clicked option index when option values collide", async () => {
     const renderer = new FakeRenderer();
     // values="2;2"：显式值重复；values="2"：第 2 项落到缺省值 0。
