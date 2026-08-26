@@ -52,9 +52,10 @@ function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
 }
 
+/** `_defaultSlotWidth`, the serialized fallback behind the `width` key. */
+const DEFAULT_SLOT_WIDTH = 200;
+
 interface CutinLayout {
-  charX: number;
-  charY: number;
   contentX: number;
   contentY: number;
   maskH: number;
@@ -78,6 +79,13 @@ interface CutinSlotState {
   chars: CutinChar[];
   /** `_characterSlot` identity of the last Set, used to skip no-op crossfades. */
   charIdentity: string;
+  /**
+   * `_characterSlot.localPosition` port. Only Show writes it -- SlotUpdate
+   * @ 0x183eb20a0 never touches the node -- so it survives every update and
+   * each sprite hangs off it plus its own AVGCharacterSpriteHub pos.
+   */
+  charSlotX: number;
+  charSlotY: number;
   /** `_zoomAndPovRectTransform` port: scale = zoom, position = (-povX, povY). */
   content: Container;
   /** `m_showFadeStyle`: the last style stored by Show/SlotUpdate, drives Hide. */
@@ -143,9 +151,8 @@ export class CharacterCutinPanel {
       return;
     }
 
-    const layout = layoutFor(input);
-    if (state) await this.updateSlot(input, state, layout);
-    else await this.showSlot(input, layout);
+    if (state) await this.updateSlot(input, state);
+    else await this.showSlot(input, layoutFor(input));
   }
 
   clear(widgetId?: string): void {
@@ -173,26 +180,19 @@ export class CharacterCutinPanel {
     input: CharacterCutinInput,
     layout: CutinLayout,
   ): Promise<void> {
-    const state = this.createSlot(input.widgetId, layout, input.fadeStyle);
+    // createSlot already seeded the entry state (alpha 0 for `fade`, a
+    // zero-extent mask for the expand styles), so nothing is on screen while
+    // the character texture is still in flight.
+    const state = this.createSlot(input.widgetId, layout, input);
     // AVGCharacterSlot.Set(name, 0.0, white) swaps the sprite instantly.
     const art = input.characterMissing ? null : await this.loadTexture(input);
     if (this.slots.get(input.widgetId) !== state) return;
-    if (art) {
-      this.addCharacter(
-        state,
-        art,
-        layout,
-        input.characterKey,
-        input.expression,
-        1,
-      );
-    }
+    if (art)
+      this.addCharacter(state, art, input.characterKey, input.expression, 1);
 
     const sessionId = ++state.sessionId;
     if (state.fadeStyle === 0) {
       // fade: canvas-group alpha 0 -> 1 with the mask already at full size.
-      state.root.alpha = 0;
-      this.drawMask(state);
       const run = this.tween(input.fadeMs, (progress) => {
         if (state.sessionId !== sessionId) return;
         state.root.alpha = progress;
@@ -204,12 +204,6 @@ export class CharacterCutinPanel {
 
     // Expand styles keep alpha = 1 and grow the mask rect from zero along
     // the style's pivot edge (native DOSizeDelta / DOTween.To).
-    const horizontal = state.fadeStyle >= 1 && state.fadeStyle <= 3;
-    state.maskSize = {
-      h: horizontal ? layout.maskH : 0,
-      w: horizontal ? 0 : layout.maskW,
-    };
-    this.drawMask(state);
     const start = { ...state.maskSize };
     const run = this.tween(input.fadeMs, (progress) => {
       if (state.sessionId !== sessionId) return;
@@ -224,14 +218,12 @@ export class CharacterCutinPanel {
   private async updateSlot(
     input: CharacterCutinInput,
     state: CutinSlotState,
-    layout: CutinLayout,
   ): Promise<void> {
     // Native SlotUpdate reads the current sizeDelta / offset / scale / pov as
     // the tween start; bumping the session freezes any in-flight tween at
     // those captured values, which is the superset native relies on.
     const sessionId = ++state.sessionId;
     state.fadeStyle = fadeStyleId(input.fadeStyle);
-    state.targetSize = { h: layout.maskH, w: layout.maskW };
 
     const start = {
       alpha: state.root.alpha,
@@ -243,32 +235,36 @@ export class CharacterCutinPanel {
       rootY: state.root.y,
       zoom: state.content.scale.x,
     };
+    // Every layout key defaults to the slot's live transform in native
+    // (`GetInt(param, "width", (int)sizeDelta.x)` and friends), so an update
+    // that omits a key holds its current value instead of snapping back to
+    // the command default.
+    const layout = layoutFor(input, start);
+    state.targetSize = { h: layout.maskH, w: layout.maskW };
 
     // AVGCharacterSlot.Set(name, duration, white): the sprite swap crossfades
-    // over the tween duration instead of replacing instantly. Swapping to the
-    // same identity is visually a no-op, so skip re-adding the sprite.
+    // over the tween duration instead of replacing instantly. On a matching
+    // key Set skips its whole swap branch (`!op_Equality(m_currentKey, key)`
+    // guards it), so the current art must stay put -- neither re-mounted nor
+    // faded out.
     const identity = `${input.characterKey}/${input.expression}`;
-    const outgoing = [...state.chars];
+    const keepsCurrentArt =
+      !input.characterMissing && identity === state.charIdentity;
+    const outgoing = keepsCurrentArt ? [] : [...state.chars];
     let incoming: CutinChar | null = null;
-    if (!input.characterMissing && identity !== state.charIdentity) {
+    if (!keepsCurrentArt && !input.characterMissing) {
       const art = await this.loadTexture(input);
       if (this.slots.get(input.widgetId) !== state) return;
       if (art) {
         incoming = this.addCharacter(
           state,
           art,
-          layout,
           input.characterKey,
           input.expression,
           0,
         );
       }
     }
-    for (const char of state.chars)
-      char.sprite.position.set(
-        layout.charX + char.offsetX,
-        layout.charY - char.offsetY,
-      );
 
     const run = this.tween(
       input.fadeMs,
@@ -354,7 +350,7 @@ export class CharacterCutinPanel {
   private createSlot(
     widgetId: string,
     layout: CutinLayout,
-    fadeStyle: CharacterCutinInput["fadeStyle"],
+    input: CharacterCutinInput,
   ): CutinSlotState {
     // Pool allocation equivalent: GameObjectPool.Allocate zeroes the
     // anchoredPosition, then Show's layout math positions everything.
@@ -380,16 +376,33 @@ export class CharacterCutinPanel {
 
     const state: CutinSlotState = {
       backdrop,
-      chars: [],
       charIdentity: "",
+      // Show writes `_characterSlot.localPosition = (charOffsetX,
+      // charOffsetY - maskHeight / 2)`: the slot node is pinned to the mask
+      // bottom edge (Unity y-up flipped for PIXI).
+      charSlotX: input.charOffsetX ?? 0,
+      charSlotY: layout.maskH / 2 - (input.charOffsetY ?? 0),
+      chars: [],
       content,
-      fadeStyle: fadeStyleId(fadeStyle),
+      fadeStyle: fadeStyleId(input.fadeStyle),
       mask,
       maskSize: { h: layout.maskH, w: layout.maskW },
       root,
       sessionId: 0,
       targetSize: { h: layout.maskH, w: layout.maskW },
     };
+    // Entry state, seeded before the caller awaits the character texture:
+    // `fade` starts transparent with a full-size mask, the expand styles keep
+    // alpha = 1 and start from a zero-extent mask. Without this the slot would
+    // render at full size for the frames the texture request takes.
+    if (state.fadeStyle === 0) root.alpha = 0;
+    else {
+      const horizontal = state.fadeStyle >= 1 && state.fadeStyle <= 3;
+      state.maskSize = {
+        h: horizontal ? layout.maskH : 0,
+        w: horizontal ? 0 : layout.maskW,
+      };
+    }
     this.drawMask(state);
     this.slots.set(widgetId, state);
     return state;
@@ -398,7 +411,6 @@ export class CharacterCutinPanel {
   private addCharacter(
     state: CutinSlotState,
     art: CutinCharacterArt,
-    layout: CutinLayout,
     characterKey: string | undefined,
     expression: string | undefined,
     alpha: number,
@@ -406,14 +418,16 @@ export class CharacterCutinPanel {
     const sprite = new Sprite(art.texture);
     // The character keeps the hub's native layout: the sheet is scaled to
     // AVGCharacterSpriteHub.size (SetImage resizes the Image rect) and the
-    // art center lands at the mask-bottom-based slot position plus the hub
-    // pos. Show writes `_characterSlot.localPosition = (charOffsetX,
-    // charOffsetY - maskHeight / 2)`; the prefab's slot_character/offset
+    // art center lands at the slot node (`charSlot*`, pinned to the mask
+    // bottom by Show) plus the hub pos. The prefab's slot_character/offset
     // child ((0, 360) serialized) is zeroed by AVGCharacterSlot.Set's
     // resetOffsetPos before the hub pos is applied. Only the mask crops.
     sprite.anchor.set(0.5);
     sprite.scale.set(art.scaleX, art.scaleY);
-    sprite.position.set(layout.charX + art.offsetX, layout.charY - art.offsetY);
+    sprite.position.set(
+      state.charSlotX + art.offsetX,
+      state.charSlotY - art.offsetY,
+    );
     sprite.alpha = alpha;
     state.content.addChild(sprite);
     const char: CutinChar = {
@@ -459,14 +473,15 @@ export class CharacterCutinPanel {
         break;
       }
     }
+    const targetH = state.targetSize.h;
     let y: number;
     switch (state.fadeStyle) {
       case 5: {
-        y = -STORY_HEIGHT / 2;
+        y = -targetH / 2;
         break;
       }
       case 6: {
-        y = STORY_HEIGHT / 2 - h;
+        y = targetH / 2 - h;
         break;
       }
       default: {
@@ -484,24 +499,48 @@ export class CharacterCutinPanel {
  * `align = HORIZONTAL` (the vertical align flavor is unused by the corpus),
  * the slot center sits at screen center + (offsetx, offsety),
  * `_zoomAndPovRectTransform` gets localScale = `zoom` (renamed from `scale`
- * in 2.7.61) and anchoredPosition = (-povX, -povY). The character slot node
- * lands at (charOffsetX, charOffsetY - maskHeight / 2) -- i.e. the mask
- * bottom edge under the default 720-tall mask; AVGCharacterSpriteHub's own
- * pos/size (see CutinCharacterArt) then shift/scale each character art from
- * there. Unity's y-up local space is flipped to PIXI's y-down coordinates
- * here.
+ * in 2.7.61) and anchoredPosition = (-povX, -povY). Unity's y-up local space
+ * is flipped to PIXI's y-down coordinates here. (`charOffsetX`/`charOffsetY`
+ * live on the slot node instead -- see `CutinSlotState.charSlot*`.)
+ *
+ * `current` carries the SlotUpdate flavour @ 0x183eb20a0: there every key is
+ * read with the slot's live transform as its `GetFloat`/`GetInt` default
+ * (`GetInt(param, "width", (int)sizeDelta.x)`, `GetFloat(param, "offsetx",
+ * localPosition.x)`, ...), so an omitted key holds rather than resets. Show
+ * has no such slot state yet and falls back to the serialized prefab values.
+ *
+ * One native quirk is deliberately not ported: SlotUpdate computes povX as
+ * `-GetFloat("povX", anchoredPosition.x)`, and since anchoredPosition.x is
+ * already `-povX`, omitting the key flips its sign every update. Holding the
+ * current value is what the key's own default was reaching for; no corpus
+ * line hits the difference (0 SlotUpdates omit a pov the Show had set).
  */
-function layoutFor(input: CharacterCutinInput): CutinLayout {
+function layoutFor(
+  input: CharacterCutinInput,
+  current?: CutinLayout,
+): CutinLayout {
   const maskH = STORY_HEIGHT;
+  const fallback = current ?? {
+    contentX: 0,
+    contentY: 0,
+    maskW: DEFAULT_SLOT_WIDTH,
+    rootX: STORY_WIDTH / 2,
+    rootY: STORY_HEIGHT / 2,
+    zoom: 1,
+  };
   return {
-    charX: input.charOffsetX,
-    charY: maskH / 2 - input.charOffsetY,
-    contentX: -input.povX,
-    contentY: input.povY,
+    contentX: input.povX === undefined ? fallback.contentX : -input.povX,
+    contentY: input.povY === undefined ? fallback.contentY : input.povY,
     maskH,
-    maskW: input.width,
-    rootX: STORY_WIDTH / 2 + input.offsetX,
-    rootY: STORY_HEIGHT / 2 - input.offsetY,
-    zoom: input.zoom,
+    maskW: input.width ?? fallback.maskW,
+    rootX:
+      input.offsetX === undefined
+        ? fallback.rootX
+        : STORY_WIDTH / 2 + input.offsetX,
+    rootY:
+      input.offsetY === undefined
+        ? fallback.rootY
+        : STORY_HEIGHT / 2 - input.offsetY,
+    zoom: input.zoom ?? fallback.zoom,
   };
 }

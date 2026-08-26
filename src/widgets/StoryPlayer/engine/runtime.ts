@@ -1911,25 +1911,30 @@ export class StoryRuntime {
 
         // Native port: slot-layout keys are read verbatim by
         // AVGCharacterCutinSlot.Show/SlotUpdate (0x183eb1320 / 0x183eb20a0).
-        // 2.7.61 renamed the slot scale key `scale` -> `zoom` (default 1);
+        // 2.7.61 renamed the slot scale key `scale` -> `zoom`;
         // povX/povY/charOffsetX/charOffsetY keep their CamelCase spelling --
         // native looks them up in a case-sensitive dictionary.
+        //
+        // These stay `undefined` when absent rather than collapsing to a
+        // default here: Show and SlotUpdate disagree about what an omitted
+        // key means (prefab default vs. hold the slot's current value), and
+        // only the panel knows which branch it is on.
         await this.renderer.setCharacterCutin({
           block,
           characterKey: resolved?.base,
           characterMissing: Boolean(nameRef) && !resolved,
-          charOffsetX: toNumber(args.charOffsetX, 0),
-          charOffsetY: toNumber(args.charOffsetY, 0),
+          charOffsetX: toOptionalNumber(args.charOffsetX),
+          charOffsetY: toOptionalNumber(args.charOffsetY),
           expression: resolved?.expression,
           fadeMs,
           fadeStyle,
-          offsetX: toNumber(args.offsetx, 0),
-          offsetY: toNumber(args.offsety, 0),
-          povX: toNumber(args.povX, 0),
-          povY: toNumber(args.povY, 0),
+          offsetX: toOptionalNumber(args.offsetx),
+          offsetY: toOptionalNumber(args.offsety),
+          povX: toOptionalNumber(args.povX),
+          povY: toOptionalNumber(args.povY),
           widgetId,
-          width: toNumber(args.width, 200),
-          zoom: toNumber(args.zoom, 1),
+          width: toOptionalNumber(args.width),
+          zoom: toOptionalNumber(args.zoom),
         });
         return "continue";
       }

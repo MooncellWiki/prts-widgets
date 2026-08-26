@@ -56,6 +56,18 @@ async function instantTween(
   complete?.();
 }
 
+/** A texture loader whose promise the test resolves by hand. */
+function deferredArt(): {
+  loadTexture: () => Promise<CutinCharacterArt>;
+  release: (value: CutinCharacterArt) => void;
+} {
+  let resolve!: (value: CutinCharacterArt) => void;
+  const pending = new Promise<CutinCharacterArt>((r) => {
+    resolve = r;
+  });
+  return { loadTexture: () => pending, release: (v) => resolve(v) };
+}
+
 /** Captures tween callbacks so tests can drive progress manually. */
 function captureTween() {
   const updates: Update[] = [];
@@ -260,8 +272,101 @@ describe("CharacterCutinPanel", () => {
     expect(state.maskSize).toEqual({ h: 720, w: 250 });
     expect(state.root.alpha).toBe(1);
     expect(state.chars).toHaveLength(1);
+    expect(state.chars[0].sprite.alpha).toBe(1);
     expect(loadTexture).toHaveBeenCalledTimes(1);
     expect(layer.children).toHaveLength(1);
+
+    // Drive the tween to completion: a same-key Set skips its whole swap
+    // branch in native, so the art must survive the update rather than being
+    // treated as an outgoing crossfade layer.
+    second.drive(0, 1);
+    expect(state.chars).toHaveLength(1);
+    expect(state.chars[0].sprite.alpha).toBe(1);
+    expect(state.chars[0].sprite.destroyed).toBe(false);
+  });
+
+  it("SlotUpdate keeps the art of a repeated name (story_hibisc_1_1.txt:350/360)", async () => {
+    const layer = new Container();
+    const loadTexture = vi.fn().mockResolvedValue(art(120, 300));
+    const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
+    // Both lines are byte-identical, including `fadetime=0` -- which makes the
+    // tween settle synchronously, so a mishandled crossfade drops the art on
+    // the spot instead of over 400ms.
+    const line = input({
+      fadeStyle: "horiz_expand_center",
+      offsetX: 300,
+      width: 200,
+    });
+
+    await panel.run(line);
+    await panel.run({ ...line });
+
+    const state = (panel as any).slots.get("1");
+    expect(state.chars).toHaveLength(1);
+    expect(state.chars[0].sprite.alpha).toBe(1);
+    // Set never re-loads for a matching key either.
+    expect(loadTexture).toHaveBeenCalledTimes(1);
+  });
+
+  it("SlotUpdate holds layout keys the command omits", async () => {
+    const layer = new Container();
+    const panel = new CharacterCutinPanel(
+      layer,
+      async () => art(120, 300),
+      instantTween,
+    );
+
+    await panel.run(input({ offsetX: -300, povX: -50, width: 400, zoom: 1.5 }));
+    // Native reads every layout key with the live transform as its default
+    // (`GetInt(param, "width", (int)sizeDelta.x)` etc.), so a name-only
+    // update must not animate the slot back to the prefab defaults.
+    await panel.run(
+      input({
+        expression: "2$2",
+        offsetX: undefined,
+        povX: undefined,
+        width: undefined,
+        zoom: undefined,
+      }),
+    );
+
+    const state = (panel as any).slots.get("1");
+    expect(state.root.x).toBe(340);
+    expect(state.maskSize).toEqual({ h: 720, w: 400 });
+    expect(state.content.x).toBe(50);
+    expect(state.content.scale.x).toBe(1.5);
+  });
+
+  it("does not render a full-size slot while the character texture loads", async () => {
+    const layer = new Container();
+    const { loadTexture, release } = deferredArt();
+    const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
+
+    const pending = panel.run(
+      input({ fadeMs: 400, fadeStyle: "horiz_expand_center" }),
+    );
+    // The slot is already in the scene graph, so whatever it looks like here
+    // is what renders for the frames the texture request takes.
+    const state = (panel as any).slots.get("1");
+    expect(state.maskSize).toEqual({ h: 720, w: 0 });
+
+    release(art(120, 300));
+    await pending;
+    expect(state.maskSize).toEqual({ h: 720, w: 200 });
+  });
+
+  it("does not render an opaque fade-style slot while the texture loads", async () => {
+    const layer = new Container();
+    const { loadTexture, release } = deferredArt();
+    const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
+
+    const pending = panel.run(input({ fadeMs: 400 }));
+    const state = (panel as any).slots.get("1");
+    expect(state.root.alpha).toBe(0);
+
+    release(art(120, 300));
+    await pending;
+    expect(state.root.alpha).toBe(1);
   });
 
   it("SlotUpdate crossfades to a new character over the tween duration", async () => {

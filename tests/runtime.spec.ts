@@ -1412,6 +1412,33 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("leaves omitted charactercutin layout keys undefined for the panel to resolve", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charactercutin(widgetID="1",name="avg_npc_1#1",width=400)]',
+        '[charactercutin(widgetID="1",name="avg_npc_1#2")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Show and SlotUpdate disagree about what an omitted key means (prefab
+    // default vs. hold the live value), so the runtime must not collapse the
+    // distinction by substituting 200 / 0 / 1 here.
+    expect(renderer.characterCutinCalls[0]).toMatchObject({ width: 400 });
+    expect(renderer.characterCutinCalls[1]).toMatchObject({
+      charOffsetX: undefined,
+      offsetX: undefined,
+      povX: undefined,
+      width: undefined,
+      zoom: undefined,
+    });
+  });
+
   it("keeps charactercutin block timing when the name cannot be resolved", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
