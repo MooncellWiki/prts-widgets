@@ -409,7 +409,7 @@ const StoryPlayerDebugShell = defineComponent({
       }
     }
 
-    /** 右侧原始脚本的一行 */
+    /** 右侧原始脚本的一行；样式全部来自 debug/StoryPlayer.html 的 spd-* */
     function renderScriptLine(raw: string, index: number) {
       const lineNumber = index + 1;
       const seekable = analysis.value?.seekableLines.has(lineNumber) ?? false;
@@ -419,49 +419,24 @@ const StoryPlayerDebugShell = defineComponent({
         ? seek.value.choices.get(lineNumber)
         : undefined;
 
-      const classes = [
-        "flex",
-        "gap-2",
-        "rounded",
-        "px-1",
-        "py-0.5",
-        "font-mono",
-        "text-xs",
-        "leading-5",
-      ];
-      if (isCurrent) classes.push("bg-sky-500/20", "text-sky-900", "font-bold");
-      else if (seekable)
-        classes.push("cursor-pointer", "hover:bg-gray-100", "text-gray-700");
-      else classes.push("text-gray-400");
+      const classes = ["spd-line"];
+      // 当前行同时也是可点击文本行，hover 样式与普通文本行一致
+      if (isCurrent) classes.push("spd-line-current", "spd-line-text");
+      else if (seekable) classes.push("spd-line-text");
+      else classes.push("spd-line-cmd");
 
       const children = [
-        h(
-          "span",
-          {
-            class: [
-              "w-12",
-              "shrink-0",
-              "text-right",
-              "select-none",
-              "tabular-nums",
-              isCurrent ? "text-sky-700" : "text-gray-400",
-            ].join(" "),
-          },
-          String(lineNumber),
-        ),
+        h("span", { class: "spd-line-no" }, String(lineNumber)),
       ];
       if (isDecision)
         children.push(
           h(
             "span",
             {
-              class: [
-                "shrink-0",
-                "font-sans",
+              class:
                 planned === undefined
-                  ? "text-amber-500/80"
-                  : "font-bold text-amber-600",
-              ].join(" "),
+                  ? "spd-mark"
+                  : "spd-mark spd-mark-planned",
               title:
                 planned === undefined
                   ? "decision 分支点"
@@ -471,11 +446,7 @@ const StoryPlayerDebugShell = defineComponent({
           ),
         );
       children.push(
-        h(
-          "span",
-          { class: "min-w-0 flex-1 break-all whitespace-pre-wrap" },
-          raw.length > 0 ? raw : " ",
-        ),
+        h("span", { class: "spd-line-content" }, raw.length > 0 ? raw : " "),
       );
 
       return h(
@@ -494,8 +465,8 @@ const StoryPlayerDebugShell = defineComponent({
     }
 
     return () =>
-      h("div", { class: "flex h-screen flex-col gap-3 p-4" }, [
-        h("div", { class: "flex flex-wrap items-center gap-2" }, [
+      h("div", { class: "spd-root" }, [
+        h("div", { class: "spd-toolbar" }, [
           h(NInput, {
             value: pathValue.value,
             "onUpdate:value": (value: string) => {
@@ -555,11 +526,7 @@ const StoryPlayerDebugShell = defineComponent({
             )
           : null,
         loadedUrl.value
-          ? h(
-              "div",
-              { class: "text-xs break-all text-gray-400" },
-              loadedUrl.value,
-            )
+          ? h("div", { class: "spd-url" }, loadedUrl.value)
           : null,
         seek.value
           ? h(
@@ -571,14 +538,17 @@ const StoryPlayerDebugShell = defineComponent({
                     ? `快速播放中：当前 L${seek.value.current ?? "?"} → 目标 L${seek.value.target}`
                     : seek.value.message,
               },
-              { default: () => h("div", { class: "text-xs" }, seekSummary()) },
+              {
+                default: () =>
+                  h("div", { class: "spd-alert-detail" }, seekSummary()),
+              },
             )
           : null,
         // 根容器锁死一屏高，页面本身不再滚动；两个 pane 各自内部滚动
         h(
           NSplit,
           {
-            class: "min-h-0 flex-1",
+            class: "spd-main",
             defaultSize: 0.68,
             direction: "horizontal",
             max: 0.85,
@@ -588,7 +558,7 @@ const StoryPlayerDebugShell = defineComponent({
             1: () =>
               h(
                 "div",
-                { class: "h-full min-w-0 overflow-y-auto pr-1" },
+                { class: "spd-player-pane" },
                 scriptText.value
                   ? h(StoryPlayer, {
                       autoStart: true,
@@ -606,68 +576,39 @@ const StoryPlayerDebugShell = defineComponent({
                     ),
               ),
             2: () =>
-              h(
-                "aside",
-                {
-                  class:
-                    "flex h-full min-w-0 flex-col gap-2 rounded border border-gray-200 p-2",
-                },
-                [
-                  h(
-                    "div",
-                    {
-                      class:
-                        "flex items-center justify-between px-1 text-xs text-gray-400",
-                    },
-                    [
-                      h("span", `原始脚本 · ${scriptLines.value.length} 行`),
-                      // ■ 字形在部分字体里缺失，当前行图例直接用样式色块；
-                      // 内联 style 而非 uno class：该行的部分 token 偶发
-                      // 不被提取器命中，图例这种单点元素不值得依赖它
-                      h("span", { class: "flex items-center gap-3" }, [
-                        h("span", { class: "flex items-center gap-1" }, [
-                          h("span", {
-                            style: {
-                              background: "rgba(14, 165, 233, 0.2)",
-                              border: "1px solid rgba(2, 132, 199, 0.5)",
-                              borderRadius: "2px",
-                              display: "inline-block",
-                              height: "10px",
-                              width: "20px",
-                            },
-                          }),
-                          "当前行",
-                        ]),
-                        h(
-                          "span",
-                          { class: "flex items-center gap-1 text-amber-500" },
-                          [
-                            h("span", { class: "text-amber-500" }, "◆"),
-                            "decision",
-                          ],
-                        ),
-                        "点击文本行跳转",
-                      ]),
-                    ],
-                  ),
-                  h(
-                    "div",
-                    {
-                      ref: scriptPanelRef,
-                      class: "min-h-0 flex-1 overflow-y-auto",
-                    },
-                    scriptText.value
-                      ? scriptLines.value.map((raw, index) =>
-                          renderScriptLine(raw, index),
-                        )
-                      : h(
-                          "div",
-                          { class: "p-2 text-xs text-gray-400" },
-                          "加载剧情后在此显示原始脚本。",
-                        ),
-                  ),
-                ],
-              ),
+              h("aside", { class: "spd-script-pane" }, [
+                h("div", { class: "spd-script-header" }, [
+                  h("span", `原始脚本 · ${scriptLines.value.length} 行`),
+                  h("span", { class: "spd-legend" }, [
+                    h("span", { class: "spd-legend-item" }, [
+                      h("span", { class: "spd-swatch" }),
+                      "当前行",
+                    ]),
+                    h(
+                      "span",
+                      { class: "spd-legend-item spd-legend-decision" },
+                      [h("span", {}, "◆"), "decision"],
+                    ),
+                    "点击文本行跳转",
+                  ]),
+                ]),
+                h(
+                  "div",
+                  {
+                    ref: scriptPanelRef,
+                    class: "spd-script-list",
+                  },
+                  scriptText.value
+                    ? scriptLines.value.map((raw, index) =>
+                        renderScriptLine(raw, index),
+                      )
+                    : h(
+                        "div",
+                        { class: "spd-placeholder" },
+                        "加载剧情后在此显示原始脚本。",
+                      ),
+                ),
+              ]),
           },
         ),
       ]);
