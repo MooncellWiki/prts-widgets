@@ -24,6 +24,8 @@ export function createStoryPlayer(context: Context): StoryPlayer {
   let renderer: PixiStoryRenderer | null = null;
   let audio: HtmlStoryAudio | null = null;
   let mounted = false;
+  // destroy() 后 mount() 会重建 runtime，闭包暂存保证监听器不丢
+  let displayedLineListener: ((lineIndex: number | null) => void) | null = null;
 
   const ensureRuntime = () => {
     if (runtime) return runtime;
@@ -42,6 +44,8 @@ export function createStoryPlayer(context: Context): StoryPlayer {
         ),
       typingIntervalMs: 40,
     });
+    if (displayedLineListener)
+      runtime.onDisplayedLineChange(displayedLineListener);
 
     return runtime;
   };
@@ -90,6 +94,11 @@ export function createStoryPlayer(context: Context): StoryPlayer {
 
     getDisplayedLineIndex(): number | null {
       return runtime?.getDisplayedLineIndex() ?? null;
+    },
+
+    onDisplayedLineChange(listener: (lineIndex: number | null) => void): void {
+      displayedLineListener = listener;
+      runtime?.onDisplayedLineChange(listener);
     },
 
     getLogPosition(): RuntimeLogPosition {

@@ -314,7 +314,20 @@ export class StoryRuntime {
   private readonly context: Context;
   private cursor = 0;
   /** 当前屏幕对话框正在显示的源行 lineNumber（cursor-1 那条）。null 表示无显示文本（初始/finished/video-only/纯命令推进） */
-  private displayedLineIndex: number | null = null;
+  private displayedLineIndexValue: number | null = null;
+  /** Web 适配（无原生对应）：显示行变化时的推送回调，UI 用它替代轮询 getDisplayedLineIndex */
+  private displayedLineListener: ((lineIndex: number | null) => void) | null =
+    null;
+
+  private get displayedLineIndex(): number | null {
+    return this.displayedLineIndexValue;
+  }
+
+  private set displayedLineIndex(value: number | null) {
+    if (this.displayedLineIndexValue === value) return;
+    this.displayedLineIndexValue = value;
+    this.displayedLineListener?.(value);
+  }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
   /** 实际执行过的全部选择（decisionId = 源行 lineNumber），供 Log All 路径求值 */
@@ -394,6 +407,11 @@ export class StoryRuntime {
   /** 当前屏幕对话框正在显示的源行 lineNumber；null 表示当前没有显示文本 */
   getDisplayedLineIndex(): number | null {
     return this.displayedLineIndex;
+  }
+
+  /** Web 适配（无原生对应）：注册显示行变更推送；赋值路径不变，经 setter 去重后回调 */
+  onDisplayedLineChange(listener: (lineIndex: number | null) => void): void {
+    this.displayedLineListener = listener;
   }
 
   /** 最近一次 decision 玩家所选的 value（0 = 未做选择/默认分支） */

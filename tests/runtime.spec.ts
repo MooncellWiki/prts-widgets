@@ -1059,6 +1059,35 @@ describe("StoryRuntime", () => {
     });
   });
 
+  it("pushes displayed line index changes to the registered listener", async () => {
+    const renderer = new FakeRenderer();
+    renderer.decisionValue = 2;
+    renderer.decisionIndex = 1;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]第一句', // line 1 → 显示中
+        '[name=""]', // line 2 空对白，不更新显示行
+        '[decision(options="A;B", values="1;2")]', // line 3
+        '[predicate(references="1")]', // line 4
+        '[name="A路"]', // line 5 (被 decisionSelectValue=2 过滤掉)
+        '[predicate(references="2")]', // line 6
+        '[multiline(name="B")]合并', // line 7 → 显示中
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    const pushed: Array<number | null> = [];
+    runtime.onDisplayedLineChange((lineIndex) => pushed.push(lineIndex));
+
+    await runtime.start();
+    // 空对白/decision/predicate 过滤行都不触发推送，只有真正显示的文本行推
+    expect(pushed).toEqual([1]);
+
+    await runtime.advance();
+    expect(pushed).toEqual([1, 7]);
+    expect(runtime.getDisplayedLineIndex()).toBe(7);
+  });
+
   it("keeps the clicked option index when option values collide", async () => {
     const renderer = new FakeRenderer();
     // values="2;2"：显式值重复；values="2"：第 2 项落到缺省值 0。

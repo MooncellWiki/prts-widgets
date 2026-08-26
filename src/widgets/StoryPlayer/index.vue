@@ -138,7 +138,6 @@ function syncState(): void {
     quickSpeedLevel.value = autoPlay.quickSpeedLevel;
   }
   const position = player?.getLogPosition();
-  logAllActiveLineIndex.value = position?.lineIndex ?? null;
   // syncState 每 80ms 跑一次；直接赋新数组会让 Log All 整表重渲染，
   // 内容没变就保留原引用
   const selections = position?.selections ?? [];
@@ -272,6 +271,10 @@ async function initAndPreload(): Promise<void> {
     if (!player && context) {
       player = createStoryPlayer(context);
       await player.mount(hostRef.value);
+      // 当前行号走推送（Web 适配），Log All 高亮即时更新；其余状态仍靠下方轮询
+      player.onDisplayedLineChange(
+        (lineIndex) => (logAllActiveLineIndex.value = lineIndex),
+      );
       syncState();
       if (!timer) timer = setInterval(syncState, 80);
     }
