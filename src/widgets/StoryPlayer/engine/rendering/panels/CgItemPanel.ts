@@ -71,6 +71,7 @@ export class CgItemPanel {
     private readonly loadTexture: TextureLoader,
     private readonly tween: Tween,
     private readonly onWarning?: (detail: string) => void,
+    private readonly onTargetsChanged?: () => void,
   ) {}
 
   async show(input: CgItemInput): Promise<void> {
@@ -90,6 +91,11 @@ export class CgItemPanel {
     this.layer.addChild(root);
     const state = { root, sessionId: 1, sprite };
     this.states.set(input.key, state);
+    // Native provenance: `AVGSceneFocusOut.TryRegister` (a PostDisplayItem
+    // processor) replays a channel's stored amount the moment a cgitem
+    // (re)registers, so items shown after `focusout` already ran -- and
+    // re-shown items -- pick up the blur immediately.
+    this.onTargetsChanged?.();
     const sessionId = state.sessionId;
 
     if (input.width > 0 && input.height > 0)
@@ -212,7 +218,10 @@ export class CgItemPanel {
           state.root.alpha = lerp(startAlpha, 0, easeProgress(raw, ease));
         },
         () => {
-          if (state.sessionId === sessionId) this.dispose(key);
+          if (state.sessionId === sessionId) {
+            this.dispose(key);
+            this.onTargetsChanged?.();
+          }
         },
       );
       if (block) await task;
@@ -229,7 +238,10 @@ export class CgItemPanel {
         (raw) => {
           state.root.alpha = lerp(startAlpha, 0, easeProgress(raw, ease));
         },
-        () => state.root.destroy({ children: true }),
+        () => {
+          state.root.destroy({ children: true });
+          this.onTargetsChanged?.();
+        },
       );
     }
     // `_ExecuteHideCgItem` completes clear-all immediately even if `block=true`.
@@ -245,6 +257,7 @@ export class CgItemPanel {
     for (const state of this.states.values())
       state.root.destroy({ children: true });
     this.states.clear();
+    this.onTargetsChanged?.();
   }
 
   destroy(): void {

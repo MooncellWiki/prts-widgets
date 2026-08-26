@@ -82,4 +82,34 @@ describe("CgItemPanel", () => {
     expect(panel.targets("")).toEqual([]);
     expect(layer.children).toHaveLength(0);
   });
+
+  it("notifies listeners whenever the focus target set changes", async () => {
+    const layer = new Container();
+    let notifications = 0;
+    const panel = new CgItemPanel(
+      layer,
+      async () => Texture.WHITE,
+      tweenImmediately,
+      undefined,
+      () => {
+        notifications += 1;
+      },
+    );
+
+    // `AVGSceneFocusOut.TryRegister` replays a stored amount whenever a
+    // cgitem (re)registers, and deregistration must drop stale filters:
+    // every change of the target set fires the hook.
+    await panel.show(input("a"));
+    expect(notifications).toBe(1);
+    await panel.show(input("a"));
+    expect(notifications).toBe(2);
+
+    await panel.hide("a", 0, "Linear", true);
+    expect(notifications).toBe(3);
+
+    await panel.show(input("b"));
+    expect(notifications).toBe(4);
+    panel.clear();
+    expect(notifications).toBe(5);
+  });
 });

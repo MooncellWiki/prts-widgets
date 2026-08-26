@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
-import type { GridBackgroundInput } from "../src/widgets/StoryPlayer/engine/types";
+import type {
+  CgItemInput,
+  GridBackgroundInput,
+} from "../src/widgets/StoryPlayer/engine/types";
 
 function createContext(): Context {
   return {
@@ -26,6 +29,28 @@ function createGridBackgroundInput(): GridBackgroundInput {
     y: 320,
   };
 }
+
+const cgItemInput: CgItemInput = {
+  alphaDelayMs: 0,
+  alphaDurationMs: 0,
+  alphaFrom: 1,
+  alphaTo: 1,
+  assetKey: "a",
+  block: false,
+  ease: "Linear",
+  height: 0,
+  key: "a",
+  positionDelayMs: 0,
+  positionDurationMs: 0,
+  rotationDurationMs: 0,
+  rotationFrom: -1,
+  rotationTo: 0,
+  scaleDelayMs: 0,
+  scaleDurationMs: 0,
+  scaleFrom: 1,
+  scaleTo: 1,
+  width: 0,
+};
 
 function createCharacterRenderer(): any {
   const context: Context = {
@@ -976,5 +1001,98 @@ describe("PixiStoryRenderer", () => {
 
     expect(root.position.x - 640).toBe(-160);
     expect(360 - root.position.y).toBe(0);
+  });
+
+  it("resolves focusout channels per native routing rules", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        update: (p: number) => void,
+        complete?: () => void,
+      ) => {
+        update(1);
+        complete?.();
+      },
+    );
+
+    await renderer.showCgItem({ ...cgItemInput, key: "a" });
+
+    // `_GenCfgByType` writes the raw id into `_channel`; an empty id keeps
+    // `IsChannelEmpty` true, so the native executor is a silent no-op.
+    expect(renderer.resolveFocusTargets("cgitem", "")).toEqual([]);
+    expect(renderer.resolveFocusTargets("cgitem", "a")).toHaveLength(1);
+
+    // `customchar` only ever collects custom slots (`m_customInUse`), a
+    // channel set disjoint from the standard l/m/r slots; without a custom
+    // slot system the branch must not fall back to standard slots.
+    expect(renderer.resolveFocusTargets("customchar", "")).toEqual([]);
+    expect(renderer.resolveFocusTargets("customchar", "m")).toEqual([]);
+  });
+
+  it("applies focusout to cgitems displayed after the command", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        update: (p: number) => void,
+        complete?: () => void,
+      ) => {
+        update(1);
+        complete?.();
+      },
+    );
+
+    // `SetWhenBind` stores the amount before the display object exists and
+    // replays it on registration.
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "a",
+      to: 1,
+      type: "cgitem",
+    });
+    await renderer.showCgItem({ ...cgItemInput, key: "a" });
+    expect(
+      (renderer.cgItemPanel.targets("a")[0].filters ?? []).length,
+    ).toBeGreaterThan(0);
+
+    // Re-registration after a hide replays too.
+    await renderer.clearCgItems("a", 0);
+    await renderer.showCgItem({ ...cgItemInput, key: "a" });
+    expect(
+      (renderer.cgItemPanel.targets("a")[0].filters ?? []).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("treats focusout with an empty cgitem id as a native no-op", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        update: (p: number) => void,
+        complete?: () => void,
+      ) => {
+        update(1);
+        complete?.();
+      },
+    );
+
+    await renderer.showCgItem({ ...cgItemInput, key: "a" });
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 1,
+      type: "cgitem",
+    });
+
+    expect(renderer.cgItemPanel.targets("a")[0].filters ?? []).toHaveLength(0);
   });
 });
