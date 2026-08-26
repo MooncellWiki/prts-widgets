@@ -113,7 +113,7 @@ const modeMission = () => props.simplemode === "mission";
       v-for="e in content"
       :key="e.name"
       class="modbody"
-      :class="{ simple, mobile: isMobile() }"
+      :class="{ simple, mobile: isMobile(), 'mod-dark': isDark }"
     >
       <div
         class="linebox bg-orange text-center m-0!"
@@ -537,5 +537,56 @@ const modeMission = () => props.simplemode === "mission";
 }
 :deep(.nosimple) {
   display: none;
+}
+
+/* 道具数量角标。mat / cond 字段是 cargo 返回的 wikitext，其 TemplateStyles 占位符
+   在 onBeforeMount 里被剥掉了，角标样式取不到，这里按上游 TemplateStyles 补回。 */
+:deep([class*="prts-item-quantity-label"]) {
+  position: absolute;
+  white-space: nowrap;
+  color: #000 !important;
+  font-weight: bold;
+  line-height: 1.1 !important;
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff,
+    -2px -2px 4px #fff,
+    2px -2px 4px #fff,
+    -2px 2px 4px #fff,
+    2px 2px 4px #fff;
+}
+:deep(.prts-item-quantity-label) {
+  bottom: -3px;
+  right: 2px;
+  font-size: 10pt;
+}
+:deep(.prts-item-quantity-label-small) {
+  bottom: 0;
+  right: 0;
+  font-size: smaller;
+}
+:deep(.prts-item-quantity-label-center) {
+  bottom: 0;
+  right: 50%;
+  transform: translateX(50%);
+  font-size: smaller;
+}
+:deep(.prts-item-quantity-label-furniture) {
+  bottom: 12%;
+  right: 10%;
+}
+.mod-dark :deep([class*="prts-item-quantity-label"]) {
+  color: #f1f3f5 !important;
+  text-shadow:
+    -1px -1px 0 #111418,
+    1px -1px 0 #111418,
+    -1px 1px 0 #111418,
+    1px 1px 0 #111418,
+    -2px -2px 4px rgba(0, 0, 0, 0.9),
+    2px -2px 4px rgba(0, 0, 0, 0.9),
+    -2px 2px 4px rgba(0, 0, 0, 0.9),
+    2px 2px 4px rgba(0, 0, 0, 0.9) !important;
 }
 </style>
