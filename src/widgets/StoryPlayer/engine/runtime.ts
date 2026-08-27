@@ -327,7 +327,22 @@ export class StoryRuntime {
   private set displayedLineIndex(value: number | null) {
     if (this.displayedLineIndexValue === value) return;
     this.displayedLineIndexValue = value;
-    for (const listener of this.displayedLineListeners) listener(value);
+    // 5 个赋值点都在 processLoop 的 try 里，监听器直接抛会被那里的 catch 收成
+    // state="error" 把播放打死。轮询时代 UI 侧的异常伤不到引擎，推送不能倒退。
+    for (const listener of this.displayedLineListeners) {
+      try {
+        listener(value);
+      } catch (error) {
+        this.onWarning?.({
+          cursor: this.cursor,
+          detail:
+            error instanceof Error
+              ? error.message
+              : "displayed line listener error",
+          type: "error",
+        });
+      }
+    }
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;

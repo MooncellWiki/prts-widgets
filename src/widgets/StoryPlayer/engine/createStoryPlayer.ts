@@ -19,13 +19,18 @@ import type {
 // engine owns its own bootstrap.
 sound.disableAutoPause = true;
 
+type DisplayedLineListener = (lineIndex: number | null) => void;
+
 export function createStoryPlayer(context: Context): StoryPlayer {
   let runtime: StoryRuntime | null = null;
   let renderer: PixiStoryRenderer | null = null;
   let audio: HtmlStoryAudio | null = null;
   let mounted = false;
   // destroy() 后 mount() 会重建 runtime，闭包暂存保证监听器不丢
-  const displayedLineListeners = new Set<(lineIndex: number | null) => void>();
+  const displayedLineListeners = new Set<DisplayedLineListener>();
+  // 每个监听器在「当前」runtime 上的注销函数。runtime 重建时这张表整体换新，
+  // 所以注销必须查表，不能用订阅那一刻捕获的值 —— 那个值属于已经丢弃的 runtime。
+  const displayedLineDisposers = new Map<DisplayedLineListener, () => void>();
 
   const ensureRuntime = () => {
     if (runtime) return runtime;
@@ -45,7 +50,10 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       typingIntervalMs: 40,
     });
     for (const listener of displayedLineListeners)
-      runtime.onDisplayedLineChange(listener);
+      displayedLineDisposers.set(
+        listener,
+        runtime.onDisplayedLineChange(listener),
+      );
 
     return runtime;
   };
@@ -82,6 +90,9 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       audio = null;
       renderer = null;
       mounted = false;
+      // 注销函数跟着被丢弃的 runtime 一起作废；监听器本身留在
+      // displayedLineListeners 里等下次 ensureRuntime() 重新挂载
+      displayedLineDisposers.clear();
     },
 
     getAutoPlayState() {
@@ -96,14 +107,17 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       return runtime?.getDisplayedLineIndex() ?? null;
     },
 
-    onDisplayedLineChange(
-      listener: (lineIndex: number | null) => void,
-    ): () => void {
+    onDisplayedLineChange(listener: DisplayedLineListener): () => void {
       displayedLineListeners.add(listener);
-      const disposeRuntime = runtime?.onDisplayedLineChange(listener);
+      if (runtime)
+        displayedLineDisposers.set(
+          listener,
+          runtime.onDisplayedLineChange(listener),
+        );
       return () => {
         displayedLineListeners.delete(listener);
-        disposeRuntime?.();
+        displayedLineDisposers.get(listener)?.();
+        displayedLineDisposers.delete(listener);
       };
     },
 

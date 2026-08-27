@@ -1112,6 +1112,32 @@ describe("StoryRuntime", () => {
     expect(second).toEqual([1, 2]);
   });
 
+  it("isolates a throwing displayed line listener from playback", async () => {
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]第一句', '[name="B"]第二句']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+    const healthy: Array<number | null> = [];
+    // 推送是在 processLoop 的 try 里同步跑的：监听器直接抛会被那里的 catch
+    // 收成 state="error"，一个 UI 侧的坏订阅者就能把整场播放打死
+    runtime.onDisplayedLineChange(() => {
+      throw new Error("UI blew up");
+    });
+    runtime.onDisplayedLineChange((lineIndex) => healthy.push(lineIndex));
+
+    await runtime.start();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(healthy).toEqual([1]);
+    expect(warnings.map((warning) => warning.detail)).toEqual(["UI blew up"]);
+
+    await runtime.advance();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(healthy).toEqual([1, 2]);
+  });
+
   it("keeps the clicked option index when option values collide", async () => {
     const renderer = new FakeRenderer();
     // values="2;2"：显式值重复；values="2"：第 2 项落到缺省值 0。
