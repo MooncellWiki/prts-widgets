@@ -32,6 +32,7 @@ import type {
   DecisionPolicy,
   InterludeElementType,
   InterludeInput,
+  LineSeekUpdate,
   ParsedCommandLine,
   PlayerState,
   RuntimeChoiceSelection,
@@ -330,11 +331,26 @@ export class StoryRuntime {
     if (this.displayedLineIndexValue === value) return;
     this.displayedLineIndexValue = value;
     this.events.emit("displayedLineChange", value);
+    // 行号跳转的到达判断挂在赋值点：这里逐行必发，不会像采样轮询那样
+    // 漏过 quick 最高档下的短行
+    if (this.lineSeek && value === this.lineSeek.target) {
+      const { onUpdate, target } = this.lineSeek;
+      // 先收尾再切模式：否则 setAutoPlayMode 会把这次切换当成人工干预
+      this.closeLineSeek();
+      this.setAutoPlayMode("default");
+      onUpdate({ phase: "reached", target });
+    }
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
   /** 调试侧注入的自动决策钩子；null = 全部走 DecisionPanel 人工选择 */
   private decisionPolicy: DecisionPolicy | null = null;
+  /** 进行中的行号跳转编排（seekToLine）；null = 无跳转 */
+  private lineSeek: {
+    choices: ReadonlyMap<number, number>;
+    onUpdate: (update: LineSeekUpdate) => void;
+    target: number;
+  } | null = null;
   /** 实际执行过的全部选择（decisionId = 源行 lineNumber），供 Log All 路径求值 */
   private readonly choiceHistory: RuntimeChoiceSelection[] = [];
   private destroyed = false;
@@ -474,10 +490,82 @@ export class StoryRuntime {
     this.decisionPolicy = policy;
   }
 
+  /**
+   * Web 调试适配（无原生对应）：编排一次「快速播放直达目标行」。到达
+   * （displayedLineIndex 赋值点逐行检测）、播放结束/出错、或模式被切离
+   * quick_play（人工干预）时收尾并推送终态。返回取消函数：只静默摘掉
+   * 策略，不推终态，UI 自行处理。
+   */
+  seekToLine(
+    target: number,
+    choices: ReadonlyMap<number, number>,
+    onUpdate: (update: LineSeekUpdate) => void,
+  ): () => void {
+    if (this.destroyed || this.state === "finished" || this.state === "error") {
+      onUpdate({
+        phase: "missed",
+        reason: this.state === "error" ? "error" : "finished",
+        target,
+      });
+      return () => {};
+    }
+
+    this.closeLineSeek();
+    this.lineSeek = {
+      choices,
+      onUpdate: (update) => {
+        try {
+          onUpdate(update);
+        } catch (error) {
+          this.onWarning?.({
+            cursor: this.cursor,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "line seek listener error",
+            type: "error",
+          });
+        }
+      },
+      target,
+    };
+    this.decisionPolicy = (decision) => choices.get(decision.decisionId) ?? 0;
+    // 先切模式再设速度：setAutoPlaySpeedLevel 按当前模式写入档位，
+    // default 模式下 quick 的 4 档会被钳到按钮自动的 3 档上限
+    this.setAutoPlayMode("quick_play");
+    this.setAutoPlaySpeedLevel(QUICK_AUTO_SPEEDS.length - 1);
+    this.lineSeek.onUpdate({ phase: "seeking", target });
+    return () => this.closeLineSeek();
+  }
+
+  /** 收尾进行中的行号跳转；带 update 时推送终态（onUpdate 已带异常护栏） */
+  private closeLineSeek(update?: LineSeekUpdate): void {
+    const seek = this.lineSeek;
+    if (!seek) return;
+    this.lineSeek = null;
+    this.decisionPolicy = null;
+    if (update) seek.onUpdate(update);
+  }
+
+  /** 播放走到终态时若仍有跳转在进行，按 missed 收尾 */
+  private finishLineSeekMissed(reason: "finished" | "error"): void {
+    const seek = this.lineSeek;
+    if (seek)
+      this.closeLineSeek({ phase: "missed", reason, target: seek.target });
+  }
+
   setAutoPlayMode(mode: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
     if (this.autoPlayMode === mode) return;
+
+    // 跳转进行中模式被切离 quick_play = 人工干预，中止跳转；模式以本次
+    // 调用为准，不再改
+    if (mode !== "quick_play" && this.lineSeek)
+      this.closeLineSeek({
+        phase: "aborted",
+        target: this.lineSeek.target,
+      });
 
     this.autoPlayMode = mode;
     this.cancelAutoClick();
@@ -531,6 +619,7 @@ export class StoryRuntime {
     // media is owned by the separate entry-video flow in the game host.
     if (this.context.storyMetadata?.isVideoOnly) {
       this.state = "finished";
+      this.finishLineSeekMissed("finished");
       return;
     }
 
@@ -627,6 +716,7 @@ export class StoryRuntime {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
       this.state = "finished";
+      this.finishLineSeekMissed("finished");
     }
 
     // Establish the destination state before releasing a blocking executor.
@@ -723,6 +813,7 @@ export class StoryRuntime {
 
   destroy(): void {
     this.destroyed = true;
+    this.lineSeek = null;
     this.cancelTyping();
     this.cancelAutoClick();
     this.interruptPendingWait();
@@ -745,6 +836,7 @@ export class StoryRuntime {
           this.renderer.clearAnimTexts();
           this.renderer.clearAvgDisplays();
           this.state = "finished";
+          this.finishLineSeekMissed("finished");
           return;
         }
 
@@ -792,6 +884,7 @@ export class StoryRuntime {
       }
     } catch (error) {
       this.state = "error";
+      this.finishLineSeekMissed("error");
       const detail =
         error instanceof Error ? error.message : "unknown runtime error";
       this.onWarning?.({ cursor: this.cursor, detail, type: "error" });

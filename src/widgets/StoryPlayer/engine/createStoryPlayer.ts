@@ -135,6 +135,10 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       ensureRuntime().setDecisionPolicy(policy);
     },
 
+    seekToLine(target, choices, onUpdate) {
+      return ensureRuntime().seekToLine(target, choices, onUpdate);
+    },
+
     async skipNode(): Promise<void> {
       if (!mounted) throw new Error("StoryPlayer is not mounted yet");
       await ensureRuntime().skipNode();

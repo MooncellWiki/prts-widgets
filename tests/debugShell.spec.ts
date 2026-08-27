@@ -80,12 +80,16 @@ describe("StoryPlayerDebugShell UI smoke", () => {
     // 推送第 2 行 → 高亮切到 data-line=2
     stub.player.emit(2);
     await vi.advanceTimersByTimeAsync(0);
-    expect(host.querySelector(".spd-line-current")?.dataset.line).toBe("2");
+    expect(
+      host.querySelector<HTMLElement>(".spd-line-current")?.dataset.line,
+    ).toBe("2");
 
     // 再推第 1 行 → 旧高亮消失，新高亮就位
     stub.player.emit(1);
     await vi.advanceTimersByTimeAsync(0);
-    expect(host.querySelector(".spd-line-current")?.dataset.line).toBe("1");
+    expect(
+      host.querySelector<HTMLElement>(".spd-line-current")?.dataset.line,
+    ).toBe("1");
 
     app.unmount();
     // 卸载时注销订阅

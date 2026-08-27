@@ -19,6 +19,11 @@ import {
 import { parseStory } from "../engine/parser";
 import StoryPlayer from "../index.vue";
 
+import type {
+  LineSeekUpdate,
+  StoryPlayer as StoryPlayerFacade,
+} from "../engine/types";
+
 /**
  * StoryPlayer 独立调试页外壳（仅 dev，由 src/entries/StoryPlayerDebug.ts
  * 挂载，不进 build 产物）：不依赖 prts.wiki 宿主页，直接按路径从
@@ -27,8 +32,9 @@ import StoryPlayer from "../index.vue";
  * 布局：左侧播放器，右侧原始脚本（带行号，标记当前播放行，decision 行
  * 有标记，seek 中的计划选择会标注；点击文本行 = 跳转到该行）。
  *
- * 跳转：从头播放 → 快速模式 4 档 → 按计划自动选 decision（engine/log
- * 求路径）→ 到达目标行切回手动。
+ * 跳转：从头重建播放器 → 引擎侧 seekToLine 编排（quick 4 档 + 按计划
+ * 自动选 decision，engine/log 求路径）→ 到达/播完/人工干预由引擎推送
+ * 终态，无轮询。
  */
 
 defineOptions({ name: "StoryPlayerDebugShell" });
@@ -36,11 +42,8 @@ defineOptions({ name: "StoryPlayerDebugShell" });
 const PATH_PARAM = "path";
 const LINE_PARAM = "line";
 const EXAMPLE_PATH = "obt/main/level_main_00-01_beg.txt";
-/** 快速播放的最高档（quick 模式 0..3 共 4 档） */
-const QUICK_SPEED_MAX_LEVEL = 3;
-const SEEK_POLL_INTERVAL_MS = 120;
 /** 等待播放器创建完成（context/字体预载是异步的）的引导轮询间隔；
- *  就绪后即挂 onDisplayedLineChange 订阅并停表，不再是常驻轮询 */
+ *  就绪后即挂 onDisplayedLineChange 订阅并武装跳转，停表，不再常驻轮询 */
 const PLAYER_WAIT_INTERVAL_MS = 150;
 
 function readQueryParams(): { path: string; line: string } {
@@ -60,14 +63,13 @@ function syncQueryParams(path: string, line: string | null): void {
 }
 
 interface SeekState {
-  /** arming=等 player 就绪并注入策略；seeking=快速播放推进中；其余为终态 */
+  /** arming=等播放器就绪并武装引擎跳转；seeking=快速播放推进中；其余为终态 */
   phase: "arming" | "seeking" | "reached" | "missed" | "aborted" | "error";
   message: string;
   /** 方案里需要显式选择的 decision（decisionId → optionIndex），表外默认第 0 项 */
   choices: Map<number, number>;
   degraded: boolean;
   target: number;
-  current: number | null;
 }
 
 function isSeekActive(
@@ -124,10 +126,12 @@ const scriptPanelRef = ref<HTMLElement | null>(null);
 const seek = shallowRef<SeekState | null>(null);
 /** 播放器正在显示的源行号，右侧面板高亮用 */
 const currentLine = ref<number | null>(null);
-let seekTimer: ReturnType<typeof setInterval> | null = null;
+/** 已规划、等播放器就绪后武装的跳转（onSeek 重建播放器期间的中间态） */
+let pendingSeek: { choices: Map<number, number>; target: number } | null = null;
+/** 引擎侧进行中跳转的取消句柄；null = 未武装/已终态 */
+let cancelLineSeek: (() => void) | null = null;
 let playerWaitTimer: ReturnType<typeof setInterval> | null = null;
 let disposeLineListener: (() => void) | null = null;
-let seekEpoch = 0;
 
 async function loadScript(rawPath: string): Promise<void> {
   const path = rawPath.trim();
@@ -194,7 +198,6 @@ function onSeek(target?: number): void {
   if (line === null || !Number.isSafeInteger(line) || line < 1) {
     seek.value = {
       choices: new Map(),
-      current: null,
       degraded: false,
       message: "请输入有效的行号（≥ 1）",
       phase: "error",
@@ -207,7 +210,6 @@ function onSeek(target?: number): void {
   if ("error" in plan) {
     seek.value = {
       choices: new Map(),
-      current: null,
       degraded: false,
       message: plan.error,
       phase: "error",
@@ -216,73 +218,55 @@ function onSeek(target?: number): void {
     return;
   }
 
-  // 跳转总是从头播放：方案的选择路径以脚本起点为前提
+  // 跳转总是从头播放：方案的选择路径以脚本起点为前提。重建完成
+  // （getPlayer 可用）后由 watchPlayerLine 武装引擎侧的 seekToLine
   resetSeek();
+  pendingSeek = { choices: plan.choices, target: line };
   scriptEpoch.value++;
   seek.value = {
     choices: plan.choices,
-    current: null,
     degraded: plan.degraded,
     message: "等待播放器就绪…",
     phase: "arming",
     target: line,
   };
   syncQueryParams(pathValue.value.trim(), String(line));
-  startSeekTimer();
 }
 
-/** 停表并清空状态；进行中的策略一并从 runtime 摘除 */
+/** 摘掉进行中的跳转（引擎侧策略 + 未武装的 pending）；不改播放模式 */
 function resetSeek(message?: string): void {
-  if (isSeekActive(seek.value))
-    playerComponent.value?.getPlayer()?.setDecisionPolicy(null);
+  cancelLineSeek?.();
+  cancelLineSeek = null;
+  pendingSeek = null;
   seek.value =
     message === undefined
       ? null
       : {
           choices: new Map(),
-          current: null,
           degraded: false,
           message,
           phase: "aborted",
           target: -1,
         };
-  stopSeekTimer();
 }
 
-function startSeekTimer(): void {
-  stopSeekTimer();
-  const epoch = ++seekEpoch;
-  seekTimer = setInterval(() => {
-    if (epoch !== seekEpoch) return;
-    seekTick();
-  }, SEEK_POLL_INTERVAL_MS);
+/** 武装挂起的跳转：策略注入、quick 模式、终态检测全在引擎侧编排 */
+function armPendingSeek(player: StoryPlayerFacade): void {
+  const pending = pendingSeek;
+  if (!pending) return;
+  pendingSeek = null;
+  cancelLineSeek = player.seekToLine(
+    pending.target,
+    pending.choices,
+    onLineSeekUpdate,
+  );
 }
 
-function stopSeekTimer(): void {
-  if (!seekTimer) {
-    return;
-  }
-
-  clearInterval(seekTimer);
-  seekTimer = null;
-}
-
-function seekTick(): void {
+/** 引擎跳转推送 → UI 状态；文案归调试页，引擎只报事实 */
+function onLineSeekUpdate(update: LineSeekUpdate): void {
   const state = seek.value;
-  if (!isSeekActive(state)) return;
-
-  const player = playerComponent.value?.getPlayer();
-  if (!player) return; // 播放器创建/预载中，下一轮再试
-
-  if (state.phase === "arming") {
-    const choices = state.choices;
-    player.setDecisionPolicy(
-      (decision) => choices.get(decision.decisionId) ?? 0,
-    );
-    // 先切模式再设速度：setAutoPlaySpeedLevel 按当前模式写入档位，
-    // default 模式下 4 档会被钳到按钮自动的 3 档上限
-    player.setAutoPlayMode("quick_play");
-    player.setAutoPlaySpeedLevel(QUICK_SPEED_MAX_LEVEL);
+  if (!isSeekActive(state)) return; // 已被手动取消/重置，丢弃迟到通知
+  if (update.phase === "seeking") {
     seek.value = {
       ...state,
       message: "快速播放中，自动选择分支…",
@@ -290,51 +274,32 @@ function seekTick(): void {
     };
     return;
   }
+  cancelLineSeek = null;
+  seek.value = { ...state, message: seekMessage(update), phase: update.phase };
+}
 
-  const playerState = player.getState();
-  if (playerState === "finished" || playerState === "error") {
-    player.setDecisionPolicy(null);
-    seek.value = {
-      ...state,
-      message: `播放已结束（${playerState}），未经过第 ${state.target} 行`,
-      phase: "missed",
-    };
-    stopSeekTimer();
-    return;
-  }
-
-  // 使用者手动点了播放模式按钮：尊重人工干预，停表并摘掉策略
-  if (player.getAutoPlayState().mode !== "quick_play") {
-    player.setDecisionPolicy(null);
-    seek.value = {
-      ...state,
-      message: "检测到手动切换播放模式，已中止跳转",
-      phase: "aborted",
-    };
-    stopSeekTimer();
-    return;
-  }
-
-  const displayed = player.getDisplayedLineIndex();
-  if (state.current !== displayed)
-    seek.value = { ...state, current: displayed };
-
-  if (displayed === state.target) {
-    player.setDecisionPolicy(null);
-    player.setAutoPlayMode("default");
-    seek.value = {
-      ...state,
-      message: `已到达第 ${state.target} 行，切回手动模式`,
-      phase: "reached",
-    };
-    stopSeekTimer();
+function seekMessage(update: LineSeekUpdate): string {
+  const target = seek.value?.target ?? update.target;
+  switch (update.phase) {
+    case "reached": {
+      return `已到达第 ${target} 行，切回手动模式`;
+    }
+    case "missed": {
+      return `播放已结束（${update.reason ?? "finished"}），未经过第 ${target} 行`;
+    }
+    case "aborted": {
+      return "检测到手动切换播放模式，已中止跳转";
+    }
+    default: {
+      return "";
+    }
   }
 }
 
 /**
  * scriptEpoch 变化 = 旧 player 已随 key 销毁、新的异步创建中（context/
- * 字体预载）。引导轮询到 getPlayer() 可用后挂 onDisplayedLineChange 订阅，
- * 当前行高亮由此推送驱动，不再常驻轮询。
+ * 字体预载）。引导轮询到 getPlayer() 可用后挂 onDisplayedLineChange 订阅
+ * （当前行高亮由此推送驱动），并武装挂起的跳转，随即停表，不再常驻轮询。
  */
 function watchPlayerLine(): void {
   disposeLineListener?.();
@@ -355,6 +320,7 @@ function watchPlayerLine(): void {
       currentLine.value = lineIndex;
       scrollCurrentLineIntoView();
     });
+    armPendingSeek(player);
   }, PLAYER_WAIT_INTERVAL_MS);
 }
 
@@ -382,7 +348,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  stopSeekTimer();
+  cancelLineSeek?.();
+  cancelLineSeek = null;
+  pendingSeek = null;
   if (playerWaitTimer) {
     clearInterval(playerWaitTimer);
     playerWaitTimer = null;
@@ -498,7 +466,7 @@ function scriptLineClasses(lineNumber: number): string[] {
       :type="seekAlertType()"
       :title="
         seek.phase === 'seeking'
-          ? `快速播放中：当前 L${seek.current ?? '?'} → 目标 L${seek.target}`
+          ? `快速播放中：当前 L${currentLine ?? '?'} → 目标 L${seek.target}`
           : seek.message
       "
     >
