@@ -636,6 +636,15 @@ export interface StoryAudio {
   stopSound: (channel: string, fadeMs: number) => Promise<void>;
 }
 
+/**
+ * Web 适配（无原生对应）：引擎向 UI 推送的事件表（mitt）。
+ * 以后再有字段需要即时性，往这里加一项即可，不必为每个字段开一条专用通道。
+ */
+export type StoryPlayerEvents = {
+  /** 当前屏幕对话框正在显示的源行 lineNumber；null 表示无显示文本 */
+  displayedLineChange: number | null;
+};
+
 export interface StoryPlayer {
   advance: () => Promise<void>;
   canSkipNode: () => boolean;

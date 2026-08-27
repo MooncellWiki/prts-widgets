@@ -1,3 +1,5 @@
+import mitt, { type Handler } from "mitt";
+
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
 import {
   nativeCharacterFadeIdentity,
@@ -39,6 +41,7 @@ import type {
   StickerInput,
   StoryAudio,
   StoryCommandArgs,
+  StoryPlayerEvents,
   StoryRenderer,
   SubtitleInput,
   TimerClearInput,
@@ -315,10 +318,8 @@ export class StoryRuntime {
   private cursor = 0;
   /** 当前屏幕对话框正在显示的源行 lineNumber（cursor-1 那条）。null 表示无显示文本（初始/finished/video-only/纯命令推进） */
   private displayedLineIndexValue: number | null = null;
-  /** Web 适配（无原生对应）：显示行变化时的推送回调集合，UI 用它们替代轮询 getDisplayedLineIndex */
-  private readonly displayedLineListeners = new Set<
-    (lineIndex: number | null) => void
-  >();
+  /** Web 适配（无原生对应）：引擎向 UI 推送变更的事件总线，UI 用它替代轮询 */
+  private readonly events = mitt<StoryPlayerEvents>();
 
   private get displayedLineIndex(): number | null {
     return this.displayedLineIndexValue;
@@ -327,8 +328,7 @@ export class StoryRuntime {
   private set displayedLineIndex(value: number | null) {
     if (this.displayedLineIndexValue === value) return;
     this.displayedLineIndexValue = value;
-    for (const listener of this.displayedLineListeners)
-      this.notifyDisplayedLine(listener, value);
+    this.events.emit("displayedLineChange", value);
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
@@ -412,26 +412,23 @@ export class StoryRuntime {
   }
 
   /**
-   * 把一次显示行推给单个监听器。5 个赋值点都在 processLoop 的 try 里，监听器直接
-   * 抛会被那里的 catch 收成 state="error" 把播放打死；轮询时代 UI 侧的异常伤不到
-   * 引擎，推送不能倒退，所以这里统一收成 warning。
+   * 把 UI 监听器包成不会反噬引擎的 handler。mitt 的 emit 不吞异常，而 5 个赋值点都
+   * 在 processLoop 的 try 里，监听器直接抛会被那里的 catch 收成 state="error" 把播放
+   * 打死；轮询时代 UI 侧的异常伤不到引擎，推送不能倒退，所以这里统一收成 warning。
    */
-  private notifyDisplayedLine(
-    listener: (lineIndex: number | null) => void,
-    value: number | null,
-  ): void {
-    try {
-      listener(value);
-    } catch (error) {
-      this.onWarning?.({
-        cursor: this.cursor,
-        detail:
-          error instanceof Error
-            ? error.message
-            : "displayed line listener error",
-        type: "error",
-      });
-    }
+  private guardListener<T>(listener: Handler<T>): Handler<T> {
+    return (event) => {
+      try {
+        listener(event);
+      } catch (error) {
+        this.onWarning?.({
+          cursor: this.cursor,
+          detail:
+            error instanceof Error ? error.message : "story listener error",
+          type: "error",
+        });
+      }
+    };
   }
 
   /**
@@ -441,10 +438,11 @@ export class StoryRuntime {
   onDisplayedLineChange(
     listener: (lineIndex: number | null) => void,
   ): () => void {
-    this.displayedLineListeners.add(listener);
-    this.notifyDisplayedLine(listener, this.displayedLineIndex);
+    const handler = this.guardListener(listener);
+    this.events.on("displayedLineChange", handler);
+    handler(this.displayedLineIndex);
     return () => {
-      this.displayedLineListeners.delete(listener);
+      this.events.off("displayedLineChange", handler);
     };
   }
 
@@ -721,6 +719,8 @@ export class StoryRuntime {
     this.cancelAutoClick();
     this.interruptPendingWait();
     this.pendingInputEffect = null;
+    // 销毁后不该再有推送落到 UI 上
+    this.events.all.clear();
   }
 
   private async processLoop(): Promise<void> {
