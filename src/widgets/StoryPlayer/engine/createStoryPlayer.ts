@@ -1,4 +1,5 @@
 import { sound } from "@pixi/sound";
+import mitt, { type Handler } from "mitt";
 
 import { HtmlStoryAudio } from "./audio";
 import { PixiStoryRenderer } from "./renderer";
@@ -10,6 +11,7 @@ import type {
   PlayerState,
   RuntimeLogPosition,
   StoryPlayer,
+  StoryPlayerEvents,
 } from "./types";
 
 // Register the @pixi/sound loader with PIXI's Assets system. This is a
@@ -19,11 +21,17 @@ import type {
 // engine owns its own bootstrap.
 sound.disableAutoPause = true;
 
+type DisplayedLineListener = Handler<StoryPlayerEvents["displayedLineChange"]>;
+
 export function createStoryPlayer(context: Context): StoryPlayer {
   let runtime: StoryRuntime | null = null;
   let renderer: PixiStoryRenderer | null = null;
   let audio: HtmlStoryAudio | null = null;
   let mounted = false;
+  // destroy() 后 mount() 会重建 runtime。事件总线挂在闭包上，每个 runtime 只往它转发
+  // 一次，监听器的生死就与 runtime 无关：旧 runtime 被丢弃时它那份订阅跟着一起没了，
+  // 不需要逐个注销再重挂。
+  const events = mitt<StoryPlayerEvents>();
 
   const ensureRuntime = () => {
     if (runtime) return runtime;
@@ -42,6 +50,11 @@ export function createStoryPlayer(context: Context): StoryPlayer {
         ),
       typingIntervalMs: 40,
     });
+    // 订阅即补发：新 runtime 会立刻推一次自己的当前值（null），重开一局时
+    // 已有监听器的高亮因此自动重置
+    runtime.onDisplayedLineChange((lineIndex) =>
+      events.emit("displayedLineChange", lineIndex),
+    );
 
     return runtime;
   };
@@ -90,6 +103,15 @@ export function createStoryPlayer(context: Context): StoryPlayer {
 
     getDisplayedLineIndex(): number | null {
       return runtime?.getDisplayedLineIndex() ?? null;
+    },
+
+    onDisplayedLineChange(listener: DisplayedLineListener): () => void {
+      events.on("displayedLineChange", listener);
+      // 与 runtime 一致：订阅即补发当前值（尚未 mount 时为 null）
+      listener(runtime?.getDisplayedLineIndex() ?? null);
+      return () => {
+        events.off("displayedLineChange", listener);
+      };
     },
 
     getLogPosition(): RuntimeLogPosition {

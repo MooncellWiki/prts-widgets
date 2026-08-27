@@ -1,0 +1,111 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { createStoryPlayer } from "../src/widgets/StoryPlayer/engine/createStoryPlayer";
+
+import type { Context } from "../src/widgets/StoryPlayer/context";
+
+// createStoryPlayer 只在这三处碰真实的图形/音频栈，happy-dom 下跑不起来。
+// 换成吞掉一切调用的桩后，剩下的 StoryRuntime 是真的，监听器接线才测得准。
+// vi.mock 的工厂在模块体求值前就会被调用，所以桩必须写成会提升的函数声明。
+function noop(): void {}
+
+function noopMethod(): () => void {
+  return noop;
+}
+
+function stubInstance(): object {
+  return new Proxy({}, { get: noopMethod });
+}
+
+vi.mock("@pixi/sound", () => ({ sound: { disableAutoPause: false } }));
+vi.mock("../src/widgets/StoryPlayer/engine/renderer", () => ({
+  PixiStoryRenderer: class {
+    constructor() {
+      return stubInstance();
+    }
+  },
+}));
+vi.mock("../src/widgets/StoryPlayer/engine/audio", () => ({
+  HtmlStoryAudio: class {
+    constructor() {
+      return stubInstance();
+    }
+  },
+}));
+
+function createPlayer(script: readonly string[]) {
+  return createStoryPlayer({
+    audioVariables: {},
+    linkMap: {},
+    script: [...script],
+  } as unknown as Context);
+}
+
+describe("createStoryPlayer", () => {
+  it("replays the current line to a listener that subscribes mid-play", async () => {
+    const player = createPlayer(['[name="A"]第一句', '[name="B"]第二句']);
+    const seen: Array<number | null> = [];
+
+    await player.mount(document.createElement("div"));
+    await player.start();
+    // 订阅即补发：调用方不必自己 getDisplayedLineIndex() 播种
+    player.onDisplayedLineChange((lineIndex) => seen.push(lineIndex));
+
+    expect(seen).toEqual([1]);
+  });
+
+  it("stops pushing after the disposer runs, even across a runtime rebuild", async () => {
+    const player = createPlayer(['[name="A"]第一句', '[name="B"]第二句']);
+    const host = document.createElement("div");
+    const seen: Array<number | null> = [];
+
+    await player.mount(host);
+    const dispose = player.onDisplayedLineChange((lineIndex) =>
+      seen.push(lineIndex),
+    );
+    // destroy() 丢弃 runtime，mount() 建新 runtime 时重新挂上转发者；
+    // 注销只是把监听器从闭包 Set 里摘掉，与 runtime 换代无关
+    player.destroy();
+    await player.mount(host);
+    dispose();
+    seen.length = 0;
+
+    await player.start();
+    expect(seen).toEqual([]);
+  });
+
+  it("stops pushing when the listener was registered before the first mount", async () => {
+    const player = createPlayer(['[name="A"]第一句']);
+    const seen: Array<number | null> = [];
+    // mount 前订阅时还没有 runtime，注销函数不能因此变成空操作
+    const dispose = player.onDisplayedLineChange((lineIndex) =>
+      seen.push(lineIndex),
+    );
+    expect(seen).toEqual([null]);
+
+    await player.mount(document.createElement("div"));
+    dispose();
+    seen.length = 0;
+
+    await player.start();
+    expect(seen).toEqual([]);
+  });
+
+  it("keeps undisposed listeners attached across a runtime rebuild", async () => {
+    const player = createPlayer(['[name="A"]第一句']);
+    const host = document.createElement("div");
+    const seen: Array<number | null> = [];
+
+    await player.mount(host);
+    player.onDisplayedLineChange((lineIndex) => seen.push(lineIndex));
+    player.destroy();
+    await player.mount(host);
+    // 订阅时补发一次 null，重建后新 runtime 又补发一次 —— 重开一局高亮就此重置
+    expect(seen).toEqual([null, null]);
+    seen.length = 0;
+
+    await player.start();
+    expect(seen).toEqual([1]);
+    expect(player.getDisplayedLineIndex()).toBe(1);
+  });
+});

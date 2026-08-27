@@ -1,3 +1,5 @@
+import mitt, { type Handler } from "mitt";
+
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
 import {
   nativeCharacterFadeIdentity,
@@ -39,6 +41,7 @@ import type {
   StickerInput,
   StoryAudio,
   StoryCommandArgs,
+  StoryPlayerEvents,
   StoryRenderer,
   SubtitleInput,
   TimerClearInput,
@@ -314,7 +317,19 @@ export class StoryRuntime {
   private readonly context: Context;
   private cursor = 0;
   /** 当前屏幕对话框正在显示的源行 lineNumber（cursor-1 那条）。null 表示无显示文本（初始/finished/video-only/纯命令推进） */
-  private displayedLineIndex: number | null = null;
+  private displayedLineIndexValue: number | null = null;
+  /** Web 适配（无原生对应）：引擎向 UI 推送变更的事件总线，UI 用它替代轮询 */
+  private readonly events = mitt<StoryPlayerEvents>();
+
+  private get displayedLineIndex(): number | null {
+    return this.displayedLineIndexValue;
+  }
+
+  private set displayedLineIndex(value: number | null) {
+    if (this.displayedLineIndexValue === value) return;
+    this.displayedLineIndexValue = value;
+    this.events.emit("displayedLineChange", value);
+  }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
   /** 实际执行过的全部选择（decisionId = 源行 lineNumber），供 Log All 路径求值 */
@@ -394,6 +409,41 @@ export class StoryRuntime {
   /** 当前屏幕对话框正在显示的源行 lineNumber；null 表示当前没有显示文本 */
   getDisplayedLineIndex(): number | null {
     return this.displayedLineIndex;
+  }
+
+  /**
+   * 把 UI 监听器包成不会反噬引擎的 handler。mitt 的 emit 不吞异常，而 5 个赋值点都
+   * 在 processLoop 的 try 里，监听器直接抛会被那里的 catch 收成 state="error" 把播放
+   * 打死；轮询时代 UI 侧的异常伤不到引擎，推送不能倒退，所以这里统一收成 warning。
+   */
+  private guardListener<T>(listener: Handler<T>): Handler<T> {
+    return (event) => {
+      try {
+        listener(event);
+      } catch (error) {
+        this.onWarning?.({
+          cursor: this.cursor,
+          detail:
+            error instanceof Error ? error.message : "story listener error",
+          type: "error",
+        });
+      }
+    };
+  }
+
+  /**
+   * Web 适配（无原生对应）：注册显示行变更推送；赋值路径不变，经 setter 去重后回调。
+   * 订阅时立即补发一次当前值，调用方不必自己播种。返回注销函数。
+   */
+  onDisplayedLineChange(
+    listener: (lineIndex: number | null) => void,
+  ): () => void {
+    const handler = this.guardListener(listener);
+    this.events.on("displayedLineChange", handler);
+    handler(this.displayedLineIndex);
+    return () => {
+      this.events.off("displayedLineChange", handler);
+    };
   }
 
   /** 最近一次 decision 玩家所选的 value（0 = 未做选择/默认分支） */
@@ -669,6 +719,8 @@ export class StoryRuntime {
     this.cancelAutoClick();
     this.interruptPendingWait();
     this.pendingInputEffect = null;
+    // 销毁后不该再有推送落到 UI 上
+    this.events.all.clear();
   }
 
   private async processLoop(): Promise<void> {

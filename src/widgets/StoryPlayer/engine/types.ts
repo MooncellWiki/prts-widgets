@@ -636,6 +636,15 @@ export interface StoryAudio {
   stopSound: (channel: string, fadeMs: number) => Promise<void>;
 }
 
+/**
+ * Web 适配（无原生对应）：引擎向 UI 推送的事件表（mitt）。
+ * 以后再有字段需要即时性，往这里加一项即可，不必为每个字段开一条专用通道。
+ */
+export type StoryPlayerEvents = {
+  /** 当前屏幕对话框正在显示的源行 lineNumber；null 表示无显示文本 */
+  displayedLineChange: number | null;
+};
+
 export interface StoryPlayer {
   advance: () => Promise<void>;
   canSkipNode: () => boolean;
@@ -648,6 +657,13 @@ export interface StoryPlayer {
   getLogPosition: () => RuntimeLogPosition;
   getState: () => PlayerState;
   mount: (host: HTMLElement) => Promise<void>;
+  /**
+   * Web 适配（无原生对应）：注册当前显示行变更推送，替代 UI 轮询
+   * getDisplayedLineIndex；订阅时立即补发一次当前值。返回注销函数
+   */
+  onDisplayedLineChange: (
+    listener: (lineIndex: number | null) => void,
+  ) => () => void;
   setAutoPlayMode: (mode: AutoPlayMode) => void;
   setAutoPlaySpeedLevel: (level: number) => void;
   skipNode: () => Promise<void>;

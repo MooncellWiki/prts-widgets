@@ -1059,6 +1059,92 @@ describe("StoryRuntime", () => {
     });
   });
 
+  it("pushes displayed line index changes to the registered listener", async () => {
+    const renderer = new FakeRenderer();
+    renderer.decisionValue = 2;
+    renderer.decisionIndex = 1;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]第一句', // line 1 → 显示中
+        '[name=""]', // line 2 空对白，不更新显示行
+        '[decision(options="A;B", values="1;2")]', // line 3
+        '[predicate(references="1")]', // line 4
+        '[name="A路"]', // line 5 (被 decisionSelectValue=2 过滤掉)
+        '[predicate(references="2")]', // line 6
+        '[multiline(name="B")]合并', // line 7 → 显示中
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    const pushed: Array<number | null> = [];
+    // 订阅即补发当前值：此时还没 start，补发的是 null
+    runtime.onDisplayedLineChange((lineIndex) => pushed.push(lineIndex));
+    expect(pushed).toEqual([null]);
+
+    await runtime.start();
+    // 空对白/decision/predicate 过滤行都不触发推送，只有真正显示的文本行推
+    expect(pushed).toEqual([null, 1]);
+
+    await runtime.advance();
+    expect(pushed).toEqual([null, 1, 7]);
+    expect(runtime.getDisplayedLineIndex()).toBe(7);
+  });
+
+  it("supports multiple displayed line listeners with independent disposal", async () => {
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]第一句', '[name="B"]第二句']),
+      new FakeRenderer(),
+      new FakeAudio(),
+    );
+    const first: Array<number | null> = [];
+    const second: Array<number | null> = [];
+    // index.vue 的 Log All 高亮与调试页行跟随各自订阅，互不顶替
+    const disposeFirst = runtime.onDisplayedLineChange((lineIndex) =>
+      first.push(lineIndex),
+    );
+    runtime.onDisplayedLineChange((lineIndex) => second.push(lineIndex));
+
+    await runtime.start();
+    expect(first).toEqual([null, 1]);
+    expect(second).toEqual([null, 1]);
+
+    disposeFirst();
+    await runtime.advance();
+    expect(first).toEqual([null, 1]);
+    expect(second).toEqual([null, 1, 2]);
+  });
+
+  it("isolates a throwing displayed line listener from playback", async () => {
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]第一句', '[name="B"]第二句']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+    const healthy: Array<number | null> = [];
+    // 推送是在 processLoop 的 try 里同步跑的：监听器直接抛会被那里的 catch
+    // 收成 state="error"，一个 UI 侧的坏订阅者就能把整场播放打死
+    runtime.onDisplayedLineChange(() => {
+      throw new Error("UI blew up");
+    });
+    runtime.onDisplayedLineChange((lineIndex) => healthy.push(lineIndex));
+    // 订阅即补发也走同一条守卫路径：补发时抛出同样只记 warning，不会甩给订阅方
+    expect(warnings.map((warning) => warning.detail)).toEqual(["UI blew up"]);
+
+    await runtime.start();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(healthy).toEqual([null, 1]);
+    expect(warnings.map((warning) => warning.detail)).toEqual([
+      "UI blew up",
+      "UI blew up",
+    ]);
+
+    await runtime.advance();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(healthy).toEqual([null, 1, 2]);
+  });
+
   it("keeps the clicked option index when option values collide", async () => {
     const renderer = new FakeRenderer();
     // values="2;2"：显式值重复；values="2"：第 2 项落到缺省值 0。
