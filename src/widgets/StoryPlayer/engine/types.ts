@@ -108,9 +108,9 @@ export interface RuntimeChoiceSelection {
 
 /** showDecision 的结果：点击的选项下标 + 写入闸门的值（value 会跨 decision 复用，不能反查下标） */
 export interface DecisionSelection {
-  /** 玩家点击的选项下标；-1 表示面板未经点击被清除（跳过/销毁） */
+  /** 点击的选项下标；-1 表示面板未经点击被清除（跳过/销毁） */
   optionIndex: number;
-  /** `values[optionIndex] ?? optionIndex + 1`，写入 decisionSelectValue */
+  /** 点击项的 value（`values[optionIndex] ?? 0`，缺项取 0 与原生 `_GetOptionValue` 越界分支一致），写入 decisionSelectValue */
   value: number;
 }
 
@@ -602,7 +602,17 @@ export interface StoryRenderer {
   showDecision: (
     options: string[],
     values: number[],
+    /** 与 options 同长的禁用标记（native `_SetupOptionText` 的 `&` 前缀项 interactable=false） */
+    disabled?: boolean[],
   ) => Promise<DecisionSelection>;
+  /**
+   * 按「未点击」结算挂起中的 decision（`{optionIndex: -1, value: 0}`）。
+   * Native provenance: 2.7.61 的 skip 不走 `DecisionPanel.ShouldResetOnSkip`
+   * （该函数已固定返回 false），而是对阻塞中的 executor 调
+   * `DecisionPanel.ForceCommandEnd`（0x183e706b0）收尾；runtime.skipNode
+   * 用它解开挂在 showDecision 上的命令循环。
+   */
+  settleDecision: () => void;
   stopVideo: () => void;
 }
 

@@ -304,6 +304,16 @@ function preprocessSkipToIndex(lines: ReturnType<typeof parseScript>): number {
   );
 }
 
+/**
+ * Native 的选项渲染上限是 DecisionPanel 预制体上 `_optionRoots` /
+ * `m_optionTexts` 数组的长度（由 prefab 配置，代码里读不出具体值；
+ * 2.7.61 现网语料单条 decision 最多 4 个选项）。超出时原生打
+ * `[AVG] Too many decision options. Some will be ignored!` 并隐藏多余
+ * 按钮；web 侧只降级为 warning、仍全量渲染（与 options 缺失路径同样
+ * 的容错取向）。
+ */
+const DECISION_OPTION_CAPACITY = 4;
+
 export class StoryRuntime {
   private readonly audio: StoryAudio;
   private readonly defaultSpeed: AutoSpeed;
@@ -522,6 +532,9 @@ export class StoryRuntime {
 
     const hadActiveProcessLoop = this.processing;
     const activeProcessCompletion = this.processingCompletion;
+    // 必须在改写 state 之前取样：waiting_decision 时命令循环正挂在
+    // renderer.showDecision 上，skip 要负责替它结算（见下方 settleDecision）。
+    const waitingDecision = this.state === "waiting_decision";
     let shouldResume = false;
 
     // m_executeIndex points at the command currently being waited on while our
@@ -575,6 +588,13 @@ export class StoryRuntime {
     // Its existing processLoop owns continuation; starting another loop would
     // race it and can leave state="running" with no loop alive.
     this.interruptPendingWait();
+    // Native provenance: 2.7.61 的 skip 不再走 DecisionPanel.ShouldResetOnSkip
+    // （该函数恒返回 false），而是对阻塞中的 executor 调
+    // DecisionPanel.ForceCommandEnd（0x183e706b0）收尾。这里等价地按
+    // 「未点击」结算挂起的 decision（{optionIndex:-1, value:0}，闸门对 0
+    // 全开），命令循环随即从被移动的 cursor 继续；不结算的话 processLoop
+    // 永远吊在 showDecision 上，state=running 却无人推进（点选项才能解围）。
+    if (waitingDecision) this.renderer.settleDecision();
     if (hadActiveProcessLoop) await activeProcessCompletion;
     else if (shouldResume) await this.processLoop();
   }
@@ -2516,16 +2536,28 @@ export class StoryRuntime {
       }
 
       case "decision": {
-        // Native port: Torappu.AVG.DecisionPanel._ExecuteDecision. Selection writes
-        // a value for the command-loop predicate gate; it is not a label jump.
+        // Native port: Torappu.AVG.DecisionPanel._ExecuteDecision. Selection
+        // writes a value for the command-loop predicate gate; it is not a
+        // label jump.
+        // 有意省略：native 在 autoPlayMode==QUICK_PLAY 且设置项
+        // AVG_SKIP_DECISION 开启时会 _SetOptionButtonSelect(0) 自动选第
+        // 0 项、不阻塞（0x183e70f9d-0x183e71013）；web 没有游戏内设置
+        // 项，按 AVG_SKIP_DECISION 恒为关处理，总是阻塞等点击。等待期间
+        // 把 autoPlayMode 降级为 default、选择后恢复，也是 web 适配
+        // （native 不降级）。
         const autoPlayCache = this.autoPlayMode;
         this.setAutoPlayMode("default");
         this.decisionSelectValue = 0;
         this.decisionReferences = null;
         // options/values 的解析与 Log All 共用 log/semantics.parseDecision，
-        // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）
+        // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）；
+        // `&` 禁用前缀同样在 parseDecision 剥离并标记 disabled。
         const parsed = parseDecision(line, this.context.audioVariables);
         if (!parsed) {
+          // native 对缺 options 是阻塞语义：LogError "[AVG] No options
+          // parameter for Decision command" 后 return true（面板已激活，
+          // 主播放路径实际卡死，现网脚本不会出现）。web 取容错放行：
+          // 上面的重置已清空分支状态，warn 后继续播。
           this.warn(
             "invalid_parameter",
             "decision options parameter is missing",
@@ -2535,9 +2567,22 @@ export class StoryRuntime {
 
         const options = parsed.options.map((option) => option.label);
         const values = parsed.options.map((option) => option.value);
+        const disabled = parsed.options.map((option) => option.disabled);
+        if (options.length > DECISION_OPTION_CAPACITY) {
+          this.warn(
+            "invalid_parameter",
+            `too many decision options: ${options.length} > native capacity ${DECISION_OPTION_CAPACITY}`,
+            line.lineNumber,
+            "decision",
+          );
+        }
 
         this.state = "waiting_decision";
-        const selection = await this.renderer.showDecision(options, values);
+        const selection = await this.renderer.showDecision(
+          options,
+          values,
+          disabled,
+        );
         this.decisionSelectValue = selection.value;
         // 点击下标由 renderer 直接返回：value 可能在 options 间重复
         // （显式值相同，或与缺省值 0 碰撞），反查会记错选项，
