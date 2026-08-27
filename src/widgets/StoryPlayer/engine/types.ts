@@ -124,7 +124,6 @@ export type DecisionPolicy = (decision: {
   values: readonly number[];
 }) => number | null;
 
-/** 播放器当前播放位置：显示中的源行 + 实际执行过的全部选择历史 */
 /** seekToLine 推送的跳转阶段；reached/missed/aborted 为终态 */
 export type LineSeekPhase = "seeking" | "reached" | "missed" | "aborted";
 
@@ -136,6 +135,7 @@ export interface LineSeekUpdate {
   target: number;
 }
 
+/** 播放器当前播放位置：显示中的源行 + 实际执行过的全部选择历史 */
 export interface RuntimeLogPosition {
   lineIndex: number | null;
   selections: RuntimeChoiceSelection[];
@@ -692,8 +692,9 @@ export interface StoryPlayer {
   /**
    * Web 调试适配（无原生对应）：编排一次「快速播放直达目标行」。注入按
    * choices 的自动决策（表外 decision 默认第 0 项）并以 quick_play 最高档
-   * 推进；到达目标行 / 播完出错 / 模式被切离 quick_play（人工干预）时收尾
-   * 并经 onUpdate 推终态。返回取消函数：静默摘掉策略，不推终态。
+   * 推进；到达目标行（reached）/ 播完出错（missed）/ 使用者自己切走播放
+   * 模式（aborted）时收尾并经 onUpdate 推终态，脚本自身的模式切换不算
+   * 干预。返回取消函数：静默摘掉策略，不推终态。
    */
   seekToLine: (
     target: number,

@@ -8,6 +8,7 @@ import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
 import type { Context } from "../src/widgets/StoryPlayer/context";
 import type {
   DecisionSelection,
+  LineSeekUpdate,
   ShowItemInput,
   StoryAudio,
   StoryRenderer,
@@ -139,6 +140,11 @@ class DecisionFakeRenderer {
     this.lastDialogue = { speaker, text };
   }
 
+  // 自动点击推进（advanceFromClick）必经，不打断打字机
+  finishTextTyping(): boolean {
+    return false;
+  }
+
   destroy(): void {}
 }
 
@@ -247,5 +253,119 @@ describe("StoryRuntime decision policy", () => {
     runtime.setDecisionPolicy(null);
     await runtime.start();
     expect(fake.decisionPanelShown).toBe(1);
+  });
+});
+
+/**
+ * seekToLine 的编排：快速播放 + 自动选分支直达目标行。三种终态各测一遍，
+ * 重点是「谁算人工干预」——脚本自身切播放模式（[theater]、隐式 endtip）
+ * 不能被当成使用者干预，否则跳转会在半路无声中止并甩出错误文案。
+ */
+const seekRuntime = (script: readonly string[]): StoryRuntime =>
+  new StoryRuntime(
+    createContext(script),
+    asRenderer(new DecisionFakeRenderer()),
+    audio,
+    // 自动点击的等待走注入的 sleep，测试里直接放行
+    { sleep: () => Promise.resolve(), typingIntervalMs: 0 },
+  );
+
+/** 等到跳转推出终态；超时说明它卡住了，直接把已收到的通知报出来 */
+async function waitForTerminal(
+  updates: readonly LineSeekUpdate[],
+): Promise<LineSeekUpdate> {
+  for (let tick = 0; tick < 2000; tick += 1) {
+    const terminal = updates.find((update) => update.phase !== "seeking");
+    if (terminal) return terminal;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(`seek did not settle: ${JSON.stringify(updates)}`);
+}
+
+/** 跳转期间被独占、收尾后要还回来的外层 decision 策略（选第 2 项） */
+const outerPolicy = (): number => 1;
+
+describe("StoryRuntime seekToLine", () => {
+  it("fast-forwards to the target line and hands control back to manual", async () => {
+    const runtime = seekRuntime([
+      '[name="A"]一',
+      '[name="A"]二',
+      '[name="A"]三',
+    ]);
+    const updates: LineSeekUpdate[] = [];
+    runtime.seekToLine(3, new Map(), (update) => updates.push(update));
+    expect(updates).toEqual([{ phase: "seeking", target: 3 }]);
+
+    await runtime.start();
+    expect(await waitForTerminal(updates)).toEqual({
+      phase: "reached",
+      target: 3,
+    });
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+  });
+
+  it("keeps seeking across [theater], which switches mode on its own", async () => {
+    // [theater(mode=true)] 切 button_auto，(mode=false) 的缓存恢复又把
+    // quick_play 映射回 default——两次都不是人工干预，跳转要照常推进
+    const runtime = seekRuntime([
+      "[theater(mode=true)]", // line 1
+      '[name="A"]幕布里', // line 2
+      "[theater(mode=false)]", // line 3
+      '[name="A"]目标行', // line 4
+    ]);
+    const updates: LineSeekUpdate[] = [];
+    runtime.seekToLine(4, new Map(), (update) => updates.push(update));
+
+    await runtime.start();
+    expect(await waitForTerminal(updates)).toEqual({
+      phase: "reached",
+      target: 4,
+    });
+  });
+
+  it("reports missed when the whole script plays out without the target", async () => {
+    // parser 会补一条隐式 endtip，它同样要切回手动——不能变成 aborted
+    const runtime = seekRuntime(['[name="A"]一', '[name="A"]二']);
+    const updates: LineSeekUpdate[] = [];
+    runtime.seekToLine(999, new Map(), (update) => updates.push(update));
+
+    await runtime.start();
+    expect(await waitForTerminal(updates)).toEqual({
+      phase: "missed",
+      reason: "finished",
+      target: 999,
+    });
+  });
+
+  it("aborts when the user switches the play mode themselves", async () => {
+    const runtime = seekRuntime(['[name="A"]一', '[name="A"]二']);
+    const updates: LineSeekUpdate[] = [];
+    runtime.seekToLine(2, new Map(), (update) => updates.push(update));
+
+    runtime.setAutoPlayMode("default"); // 公开入口 = 使用者发起
+    expect(updates.at(-1)).toEqual({ phase: "aborted", target: 2 });
+  });
+
+  it("cancels silently and gives the previously injected policy back", async () => {
+    const runtime = seekRuntime([
+      '[decision(options="A;B",values="1;2")]', // line 1
+      '[name="A"]x', // line 2
+    ]);
+    runtime.setDecisionPolicy(outerPolicy);
+
+    const updates: LineSeekUpdate[] = [];
+    const cancel = runtime.seekToLine(2, new Map([[1, 0]]), (update) =>
+      updates.push(update),
+    );
+    cancel();
+
+    // 取消是静默的：只有武装时那条 seeking，没有终态
+    expect(updates).toEqual([{ phase: "seeking", target: 2 }]);
+    // 跳转期间被独占的策略还回来了：外层策略选第 2 项
+    await runtime.start();
+    expect(runtime.getLogPosition().selections).toEqual([
+      { decisionId: 1, optionIndex: 1, value: 2 },
+    ]);
   });
 });

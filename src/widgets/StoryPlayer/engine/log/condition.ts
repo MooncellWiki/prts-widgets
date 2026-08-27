@@ -156,7 +156,8 @@ export class ConditionStore {
 
     for (const decisionId of decisionIds) {
       const domain = [...(domains.get(decisionId) ?? [])].sort((a, b) => a - b);
-      const fallback =
+      // domains 缺项时退化成条件里实际出现过的取值
+      const candidates =
         domain.length > 0
           ? domain
           : [
@@ -167,7 +168,7 @@ export class ConditionStore {
               ),
             ].sort((a, b) => a - b);
       let chosen: OptionIndex | undefined;
-      for (const optionIndex of fallback) {
+      for (const optionIndex of candidates) {
         const next = remaining.filter(
           (product) =>
             !product.has(decisionId) || product.get(decisionId) === optionIndex,

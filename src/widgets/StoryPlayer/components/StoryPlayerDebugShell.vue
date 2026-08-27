@@ -45,6 +45,8 @@ const EXAMPLE_PATH = "obt/main/level_main_00-01_beg.txt";
 /** 等待播放器创建完成（context/字体预载是异步的）的引导轮询间隔；
  *  就绪后即挂 onDisplayedLineChange 订阅并武装跳转，停表，不再常驻轮询 */
 const PLAYER_WAIT_INTERVAL_MS = 150;
+/** 引导轮询的上限：context 拉取失败时播放器永远不会出现，别让表空转 */
+const PLAYER_WAIT_TIMEOUT_MS = 30_000;
 
 function readQueryParams(): { path: string; line: string } {
   const params = new URLSearchParams(window.location.search);
@@ -233,11 +235,18 @@ function onSeek(target?: number): void {
   syncQueryParams(pathValue.value.trim(), String(line));
 }
 
-/** 摘掉进行中的跳转（引擎侧策略 + 未武装的 pending）；不改播放模式 */
+/**
+ * 摘掉进行中的跳转（引擎侧策略 + 未武装的 pending）。已武装的还要把播放
+ * 模式切回手动：seekToLine 把播放器推到了 quick 最高档，只摘策略的话剧情
+ * 会继续狂奔，和 reached 那条路径的收尾也不一致。
+ */
 function resetSeek(message?: string): void {
+  const armed = cancelLineSeek !== null;
   cancelLineSeek?.();
   cancelLineSeek = null;
   pendingSeek = null;
+  // 引擎侧已静默摘掉跳转，此时再切模式不会再冒一条 aborted 通知出来
+  if (armed) playerComponent.value?.getPlayer()?.setAutoPlayMode("default");
   seek.value =
     message === undefined
       ? null
@@ -285,7 +294,9 @@ function seekMessage(update: LineSeekUpdate): string {
       return `已到达第 ${target} 行，切回手动模式`;
     }
     case "missed": {
-      return `播放已结束（${update.reason ?? "finished"}），未经过第 ${target} 行`;
+      return update.reason === "error"
+        ? `播放出错，未经过第 ${target} 行`
+        : `播放已结束，未经过第 ${target} 行`;
     }
     case "aborted": {
       return "检测到手动切换播放模式，已中止跳转";
@@ -304,17 +315,21 @@ function seekMessage(update: LineSeekUpdate): string {
 function watchPlayerLine(): void {
   disposeLineListener?.();
   disposeLineListener = null;
-  if (playerWaitTimer) {
-    clearInterval(playerWaitTimer);
-    playerWaitTimer = null;
-  }
+  stopPlayerWait();
+  let waited = 0;
   playerWaitTimer = setInterval(() => {
     const player = playerComponent.value?.getPlayer();
-    if (!player) return; // 创建/预载中，下一轮再试
-    if (playerWaitTimer) {
-      clearInterval(playerWaitTimer);
-      playerWaitTimer = null;
+    if (!player) {
+      // 创建/预载中，下一轮再试；久等不来（context 拉取失败）就停表报错，
+      // 否则这块表会一直空转，挂起的跳转也永远等不到终态
+      waited += PLAYER_WAIT_INTERVAL_MS;
+      if (waited < PLAYER_WAIT_TIMEOUT_MS) return;
+      stopPlayerWait();
+      if (pendingSeek)
+        resetSeek("播放器未能就绪（资源加载失败？），跳转已取消");
+      return;
     }
+    stopPlayerWait();
     disposeLineListener = player.onDisplayedLineChange((lineIndex) => {
       if (currentLine.value === lineIndex) return;
       currentLine.value = lineIndex;
@@ -322,6 +337,12 @@ function watchPlayerLine(): void {
     });
     armPendingSeek(player);
   }, PLAYER_WAIT_INTERVAL_MS);
+}
+
+function stopPlayerWait(): void {
+  if (!playerWaitTimer) return;
+  clearInterval(playerWaitTimer);
+  playerWaitTimer = null;
 }
 
 /** 只滚右侧面板，不带动整页滚动 */
@@ -351,10 +372,7 @@ onBeforeUnmount(() => {
   cancelLineSeek?.();
   cancelLineSeek = null;
   pendingSeek = null;
-  if (playerWaitTimer) {
-    clearInterval(playerWaitTimer);
-    playerWaitTimer = null;
-  }
+  stopPlayerWait();
   disposeLineListener?.();
   disposeLineListener = null;
 });

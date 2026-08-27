@@ -24,9 +24,9 @@ pnpm dev
   multiline 中间片段会提示改填段末行号。
 - 页面为左右分栏：左侧播放器，右侧原始脚本（带行号；当前播放行高亮并自动
   滚动跟随；decision 行带 ◆ 标记，seek 中的计划选择会显示 ◆→n；点击文本行
-  即跳转到该行）。注意 arming 时必须先 `setAutoPlayMode("quick_play")` 再
-  `setAutoPlaySpeedLevel`——后者按当前模式写档位，顺序反了 4 档会被钳到
-  按钮自动的 3 档上限。
+  即跳转到该行）。档位由 runtime 的 `enterQuickSeekMode` 统一设置：必须先切
+  `quick_play` 再写速度——`setAutoPlaySpeedLevel` 按当前模式写档位，顺序反了
+  4 档会被钳到按钮自动的 3 档上限。
 - 组成：`debug/StoryPlayer.html`（仅 dev 的宿主页，页面级高度样式）+
   `src/entries/StoryPlayerDebug.ts`（薄入口：挂载 shell）+
   `components/StoryPlayerDebugShell.vue`（工具栏 / seek 编排 / 原始脚本面板，
@@ -34,13 +34,24 @@ pnpm dev
   不会进 build 产物，也不会被同步到 wiki。
 - 对话字体走 vite 的 `/debug-static` 代理（`engine/font.ts` 在 DEV 下指向代理
   路径）：static.prts.wiki 的 OSS 桶有 Referer 防盗链且 403 不带 CORS 头，
-  localhost 直连会被拦。
+  localhost 直连会被拦。代理地址必须按 `import.meta.url` 解析成绝对 URL——
+  微件:StoryPlayer/dev 那条链路的文档源是 prts.wiki、只有模块来自
+  localhost:8080，写相对路径会打到 prts.wiki 上 404（同 `assets.ts` 那条规则）。
 - 独立页里"加载旧版播放器"不可用（依赖宿主页的 `#old-player`），Sentry 反馈
   与 `{@nickname}` 用户名同样依赖宿主环境，会走兜底逻辑。
 - 相关引擎钩子（均为 Web 调试适配，宿主页不用）：runtime 的
-  `setDecisionPolicy`（decision 免面板自动选择，命中时不翻转自动播放模式）、
+  `setDecisionPolicy`（decision 免面板自动选择，命中时不翻转自动播放模式——
+  原生 `DecisionPanel._ExecuteDecision` 里也没有任何 SetAutoPlayMode）、
   `ConditionStore.satisfyingAssignment`（DNF 贪心取满足赋值）、index.vue
   `defineExpose` 的 `getPlayer`/`getContext`。
+- **播放模式的切换来源必须分清**（跳转的中止判定挂在这上面）：公开的
+  `setAutoPlayMode` 只给使用者发起的切换用（UI 按钮、`advance()` 的点击推进），
+  跳转进行中被它切离 quick_play 才算人工干预、报 aborted；脚本命令引起的切换
+  （`[theater]` 的 button_auto 与缓存恢复、无效 decision、endtip）一律走
+  `applyAutoPlayMode` / `applyScriptAutoPlayMode`，后者还会在跳转期间把
+  quick_play 夺回来，否则自动点击停摆、跳转再也推不动。endtip 是脚本终点
+  （parser 给每篇补一条隐式的），走到那里还没到目标要先 `finishLineSeekMissed`，
+  不然 missed 终态会被它自己的模式切换盖成 aborted。
 
 ## 数据流
 
