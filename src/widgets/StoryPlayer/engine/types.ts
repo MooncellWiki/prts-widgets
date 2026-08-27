@@ -648,7 +648,10 @@ export interface StoryPlayer {
   getLogPosition: () => RuntimeLogPosition;
   getState: () => PlayerState;
   mount: (host: HTMLElement) => Promise<void>;
-  /** Web 适配（无原生对应）：注册当前显示行变更推送，替代 UI 轮询 getDisplayedLineIndex；返回注销函数 */
+  /**
+   * Web 适配（无原生对应）：注册当前显示行变更推送，替代 UI 轮询
+   * getDisplayedLineIndex；订阅时立即补发一次当前值。返回注销函数
+   */
   onDisplayedLineChange: (
     listener: (lineIndex: number | null) => void,
   ) => () => void;

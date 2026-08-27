@@ -26,11 +26,13 @@ export function createStoryPlayer(context: Context): StoryPlayer {
   let renderer: PixiStoryRenderer | null = null;
   let audio: HtmlStoryAudio | null = null;
   let mounted = false;
-  // destroy() 后 mount() 会重建 runtime，闭包暂存保证监听器不丢
+  // destroy() 后 mount() 会重建 runtime。订阅表挂在闭包上，每个 runtime 只挂一个
+  // 固定转发者，监听器的生死就与 runtime 无关：旧 runtime 被丢弃时它那份订阅跟着
+  // 一起没了，不需要逐个注销再重挂。
   const displayedLineListeners = new Set<DisplayedLineListener>();
-  // 每个监听器在「当前」runtime 上的注销函数。runtime 重建时这张表整体换新，
-  // 所以注销必须查表，不能用订阅那一刻捕获的值 —— 那个值属于已经丢弃的 runtime。
-  const displayedLineDisposers = new Map<DisplayedLineListener, () => void>();
+  const emitDisplayedLine: DisplayedLineListener = (lineIndex) => {
+    for (const listener of displayedLineListeners) listener(lineIndex);
+  };
 
   const ensureRuntime = () => {
     if (runtime) return runtime;
@@ -49,11 +51,9 @@ export function createStoryPlayer(context: Context): StoryPlayer {
         ),
       typingIntervalMs: 40,
     });
-    for (const listener of displayedLineListeners)
-      displayedLineDisposers.set(
-        listener,
-        runtime.onDisplayedLineChange(listener),
-      );
+    // 订阅即补发：新 runtime 会立刻推一次自己的当前值（null），重开一局时
+    // 已有监听器的高亮因此自动重置
+    runtime.onDisplayedLineChange(emitDisplayedLine);
 
     return runtime;
   };
@@ -90,9 +90,6 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       audio = null;
       renderer = null;
       mounted = false;
-      // 注销函数跟着被丢弃的 runtime 一起作废；监听器本身留在
-      // displayedLineListeners 里等下次 ensureRuntime() 重新挂载
-      displayedLineDisposers.clear();
     },
 
     getAutoPlayState() {
@@ -109,15 +106,10 @@ export function createStoryPlayer(context: Context): StoryPlayer {
 
     onDisplayedLineChange(listener: DisplayedLineListener): () => void {
       displayedLineListeners.add(listener);
-      if (runtime)
-        displayedLineDisposers.set(
-          listener,
-          runtime.onDisplayedLineChange(listener),
-        );
+      // 与 runtime 一致：订阅即补发当前值（尚未 mount 时为 null）
+      listener(runtime?.getDisplayedLineIndex() ?? null);
       return () => {
         displayedLineListeners.delete(listener);
-        displayedLineDisposers.get(listener)?.();
-        displayedLineDisposers.delete(listener);
       };
     },
 

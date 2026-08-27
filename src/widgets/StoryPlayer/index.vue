@@ -271,13 +271,11 @@ async function initAndPreload(): Promise<void> {
     if (!player && context) {
       player = createStoryPlayer(context);
       await player.mount(hostRef.value);
-      // 当前行号走推送（Web 适配），Log All 高亮即时更新；其余状态仍靠下方轮询
+      // 当前行号走推送（Web 适配），Log All 高亮即时更新；其余状态仍靠下方轮询。
+      // 订阅即补发当前值，重开一局时高亮不会停在上一局最后一行
       player.onDisplayedLineChange(
         (lineIndex) => (logAllActiveLineIndex.value = lineIndex),
       );
-      // 订阅不补发当前值，而 null -> null 又被 setter 去重掉。重开一局时得手动
-      // 播种，否则高亮会一直停在上一局最后一行，直到新一局显示出第一句。
-      logAllActiveLineIndex.value = player.getDisplayedLineIndex();
       syncState();
       if (!timer) timer = setInterval(syncState, 80);
     }

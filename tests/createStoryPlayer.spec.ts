@@ -42,6 +42,18 @@ function createPlayer(script: readonly string[]) {
 }
 
 describe("createStoryPlayer", () => {
+  it("replays the current line to a listener that subscribes mid-play", async () => {
+    const player = createPlayer(['[name="A"]第一句', '[name="B"]第二句']);
+    const seen: Array<number | null> = [];
+
+    await player.mount(document.createElement("div"));
+    await player.start();
+    // 订阅即补发：调用方不必自己 getDisplayedLineIndex() 播种
+    player.onDisplayedLineChange((lineIndex) => seen.push(lineIndex));
+
+    expect(seen).toEqual([1]);
+  });
+
   it("stops pushing after the disposer runs, even across a runtime rebuild", async () => {
     const player = createPlayer(['[name="A"]第一句', '[name="B"]第二句']);
     const host = document.createElement("div");
@@ -51,11 +63,12 @@ describe("createStoryPlayer", () => {
     const dispose = player.onDisplayedLineChange((lineIndex) =>
       seen.push(lineIndex),
     );
-    // destroy() 丢弃 runtime，mount() 从闭包 Set 里把监听器重新挂到新 runtime 上；
-    // 注销必须摘掉这次新挂的，而不是订阅时捕获的那个已作废的注销函数
+    // destroy() 丢弃 runtime，mount() 建新 runtime 时重新挂上转发者；
+    // 注销只是把监听器从闭包 Set 里摘掉，与 runtime 换代无关
     player.destroy();
     await player.mount(host);
     dispose();
+    seen.length = 0;
 
     await player.start();
     expect(seen).toEqual([]);
@@ -68,9 +81,11 @@ describe("createStoryPlayer", () => {
     const dispose = player.onDisplayedLineChange((lineIndex) =>
       seen.push(lineIndex),
     );
+    expect(seen).toEqual([null]);
 
     await player.mount(document.createElement("div"));
     dispose();
+    seen.length = 0;
 
     await player.start();
     expect(seen).toEqual([]);
@@ -85,6 +100,9 @@ describe("createStoryPlayer", () => {
     player.onDisplayedLineChange((lineIndex) => seen.push(lineIndex));
     player.destroy();
     await player.mount(host);
+    // 订阅时补发一次 null，重建后新 runtime 又补发一次 —— 重开一局高亮就此重置
+    expect(seen).toEqual([null, null]);
+    seen.length = 0;
 
     await player.start();
     expect(seen).toEqual([1]);

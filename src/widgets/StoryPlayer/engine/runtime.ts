@@ -327,22 +327,8 @@ export class StoryRuntime {
   private set displayedLineIndex(value: number | null) {
     if (this.displayedLineIndexValue === value) return;
     this.displayedLineIndexValue = value;
-    // 5 个赋值点都在 processLoop 的 try 里，监听器直接抛会被那里的 catch 收成
-    // state="error" 把播放打死。轮询时代 UI 侧的异常伤不到引擎，推送不能倒退。
-    for (const listener of this.displayedLineListeners) {
-      try {
-        listener(value);
-      } catch (error) {
-        this.onWarning?.({
-          cursor: this.cursor,
-          detail:
-            error instanceof Error
-              ? error.message
-              : "displayed line listener error",
-          type: "error",
-        });
-      }
-    }
+    for (const listener of this.displayedLineListeners)
+      this.notifyDisplayedLine(listener, value);
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
@@ -425,11 +411,38 @@ export class StoryRuntime {
     return this.displayedLineIndex;
   }
 
-  /** Web 适配（无原生对应）：注册显示行变更推送；赋值路径不变，经 setter 去重后回调。返回注销函数 */
+  /**
+   * 把一次显示行推给单个监听器。5 个赋值点都在 processLoop 的 try 里，监听器直接
+   * 抛会被那里的 catch 收成 state="error" 把播放打死；轮询时代 UI 侧的异常伤不到
+   * 引擎，推送不能倒退，所以这里统一收成 warning。
+   */
+  private notifyDisplayedLine(
+    listener: (lineIndex: number | null) => void,
+    value: number | null,
+  ): void {
+    try {
+      listener(value);
+    } catch (error) {
+      this.onWarning?.({
+        cursor: this.cursor,
+        detail:
+          error instanceof Error
+            ? error.message
+            : "displayed line listener error",
+        type: "error",
+      });
+    }
+  }
+
+  /**
+   * Web 适配（无原生对应）：注册显示行变更推送；赋值路径不变，经 setter 去重后回调。
+   * 订阅时立即补发一次当前值，调用方不必自己播种。返回注销函数。
+   */
   onDisplayedLineChange(
     listener: (lineIndex: number | null) => void,
   ): () => void {
     this.displayedLineListeners.add(listener);
+    this.notifyDisplayedLine(listener, this.displayedLineIndex);
     return () => {
       this.displayedLineListeners.delete(listener);
     };

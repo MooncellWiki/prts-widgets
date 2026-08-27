@@ -1077,14 +1077,16 @@ describe("StoryRuntime", () => {
       new FakeAudio(),
     );
     const pushed: Array<number | null> = [];
+    // 订阅即补发当前值：此时还没 start，补发的是 null
     runtime.onDisplayedLineChange((lineIndex) => pushed.push(lineIndex));
+    expect(pushed).toEqual([null]);
 
     await runtime.start();
     // 空对白/decision/predicate 过滤行都不触发推送，只有真正显示的文本行推
-    expect(pushed).toEqual([1]);
+    expect(pushed).toEqual([null, 1]);
 
     await runtime.advance();
-    expect(pushed).toEqual([1, 7]);
+    expect(pushed).toEqual([null, 1, 7]);
     expect(runtime.getDisplayedLineIndex()).toBe(7);
   });
 
@@ -1103,13 +1105,13 @@ describe("StoryRuntime", () => {
     runtime.onDisplayedLineChange((lineIndex) => second.push(lineIndex));
 
     await runtime.start();
-    expect(first).toEqual([1]);
-    expect(second).toEqual([1]);
+    expect(first).toEqual([null, 1]);
+    expect(second).toEqual([null, 1]);
 
     disposeFirst();
     await runtime.advance();
-    expect(first).toEqual([1]);
-    expect(second).toEqual([1, 2]);
+    expect(first).toEqual([null, 1]);
+    expect(second).toEqual([null, 1, 2]);
   });
 
   it("isolates a throwing displayed line listener from playback", async () => {
@@ -1127,15 +1129,20 @@ describe("StoryRuntime", () => {
       throw new Error("UI blew up");
     });
     runtime.onDisplayedLineChange((lineIndex) => healthy.push(lineIndex));
+    // 订阅即补发也走同一条守卫路径：补发时抛出同样只记 warning，不会甩给订阅方
+    expect(warnings.map((warning) => warning.detail)).toEqual(["UI blew up"]);
 
     await runtime.start();
     expect(runtime.getState()).toBe("waiting_input");
-    expect(healthy).toEqual([1]);
-    expect(warnings.map((warning) => warning.detail)).toEqual(["UI blew up"]);
+    expect(healthy).toEqual([null, 1]);
+    expect(warnings.map((warning) => warning.detail)).toEqual([
+      "UI blew up",
+      "UI blew up",
+    ]);
 
     await runtime.advance();
     expect(runtime.getState()).toBe("waiting_input");
-    expect(healthy).toEqual([1, 2]);
+    expect(healthy).toEqual([null, 1, 2]);
   });
 
   it("keeps the clicked option index when option values collide", async () => {
