@@ -29,8 +29,10 @@ import type {
   BackgroundInput,
   CharacterActionInput,
   CharacterSlotInput,
+  DecisionPolicy,
   InterludeElementType,
   InterludeInput,
+  LineSeekUpdate,
   ParsedCommandLine,
   PlayerState,
   RuntimeChoiceSelection,
@@ -329,9 +331,27 @@ export class StoryRuntime {
     if (this.displayedLineIndexValue === value) return;
     this.displayedLineIndexValue = value;
     this.events.emit("displayedLineChange", value);
+    // 行号跳转的到达判断挂在赋值点：这里逐行必发，不会像采样轮询那样
+    // 漏过 quick 最高档下的短行
+    if (this.lineSeek && value === this.lineSeek.target) {
+      const { onUpdate, target } = this.lineSeek;
+      this.closeLineSeek();
+      this.applyAutoPlayMode("default");
+      onUpdate({ phase: "reached", target });
+    }
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
+  /** 调试侧注入的自动决策钩子；null = 全部走 DecisionPanel 人工选择 */
+  private decisionPolicy: DecisionPolicy | null = null;
+  /** 进行中的行号跳转编排（seekToLine）；null = 无跳转 */
+  private lineSeek: {
+    choices: ReadonlyMap<number, number>;
+    onUpdate: (update: LineSeekUpdate) => void;
+    /** 跳转独占 decisionPolicy，收尾时把外部注入的那份还回去 */
+    previousPolicy: DecisionPolicy | null;
+    target: number;
+  } | null = null;
   /** 实际执行过的全部选择（decisionId = 源行 lineNumber），供 Log All 路径求值 */
   private readonly choiceHistory: RuntimeChoiceSelection[] = [];
   private destroyed = false;
@@ -466,7 +486,106 @@ export class StoryRuntime {
     };
   }
 
+  /** Web 调试适配：注入后 decision 不等面板点击，直接按返回的下标选择 */
+  setDecisionPolicy(policy: DecisionPolicy | null): void {
+    // 跳转期间策略归跳转所有，外部注入的先存着，等跳转收尾再接管
+    if (this.lineSeek) this.lineSeek.previousPolicy = policy;
+    else this.decisionPolicy = policy;
+  }
+
+  /**
+   * Web 调试适配（无原生对应）：编排一次「快速播放直达目标行」。三种收尾
+   * 并推送终态：到达（displayedLineIndex 赋值点逐行检测）→ reached；播完
+   * （隐式 endtip）或出错 → missed；使用者自己切走播放模式 → aborted。
+   * 脚本自身的模式切换（[theater] 等）不算干预，见 applyScriptAutoPlayMode。
+   * 返回取消函数：只静默摘掉策略，不推终态，UI 自行处理。
+   */
+  seekToLine(
+    target: number,
+    choices: ReadonlyMap<number, number>,
+    onUpdate: (update: LineSeekUpdate) => void,
+  ): () => void {
+    if (this.destroyed || this.state === "finished" || this.state === "error") {
+      onUpdate({
+        phase: "missed",
+        reason: this.state === "error" ? "error" : "finished",
+        target,
+      });
+      return () => {};
+    }
+
+    this.closeLineSeek();
+    this.lineSeek = {
+      choices,
+      onUpdate: (update) => {
+        try {
+          onUpdate(update);
+        } catch (error) {
+          this.onWarning?.({
+            cursor: this.cursor,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "line seek listener error",
+            type: "error",
+          });
+        }
+      },
+      previousPolicy: this.decisionPolicy,
+      target,
+    };
+    this.decisionPolicy = (decision) => choices.get(decision.decisionId) ?? 0;
+    this.enterQuickSeekMode();
+    this.lineSeek.onUpdate({ phase: "seeking", target });
+    return () => this.closeLineSeek();
+  }
+
+  /** 收尾进行中的行号跳转；带 update 时推送终态（onUpdate 已带异常护栏） */
+  private closeLineSeek(update?: LineSeekUpdate): void {
+    const seek = this.lineSeek;
+    if (!seek) return;
+    this.lineSeek = null;
+    this.decisionPolicy = seek.previousPolicy;
+    if (update) seek.onUpdate(update);
+  }
+
+  /** 跳转的推进档位：quick_play 最高档 */
+  private enterQuickSeekMode(): void {
+    // 先切模式再设速度：setAutoPlaySpeedLevel 按当前模式写入档位，
+    // default 模式下 quick 的 4 档会被钳到按钮自动的 3 档上限
+    this.applyAutoPlayMode("quick_play");
+    this.setAutoPlaySpeedLevel(QUICK_AUTO_SPEEDS.length - 1);
+  }
+
+  /** 播放走到终态时若仍有跳转在进行，按 missed 收尾 */
+  private finishLineSeekMissed(reason: "finished" | "error"): void {
+    const seek = this.lineSeek;
+    if (seek)
+      this.closeLineSeek({ phase: "missed", reason, target: seek.target });
+  }
+
+  /**
+   * 公开入口 = 使用者发起的模式切换（UI 按钮、点击推进）。只有这条路径上
+   * 切离 quick_play 才算人工干预、中止进行中的跳转；脚本命令引起的切换走
+   * applyScriptAutoPlayMode，不会被误判。
+   */
   setAutoPlayMode(mode: AutoPlayMode): void {
+    if (this.destroyed || this.state === "finished" || this.state === "error")
+      return;
+    if (this.autoPlayMode === mode) return;
+
+    // 模式以本次调用为准，不再改
+    if (mode !== "quick_play" && this.lineSeek)
+      this.closeLineSeek({
+        phase: "aborted",
+        target: this.lineSeek.target,
+      });
+
+    this.applyAutoPlayMode(mode);
+  }
+
+  /** 写入模式并重排自动点击；不含跳转的人工干预判定 */
+  private applyAutoPlayMode(mode: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
     if (this.autoPlayMode === mode) return;
@@ -480,6 +599,18 @@ export class StoryRuntime {
     }
     if (mode !== "default" && this.currentTypingComplete)
       this.scheduleAutoClick(this.currentMessageLength);
+  }
+
+  /**
+   * 脚本命令（[theater]、无效 decision）引起的模式切换：不是人工干预，不
+   * 中止跳转。但跳转全靠 quick_play 的自动点击推进，被切走就再也推不动
+   * （[theater(mode=false)] 的缓存恢复还会把 quick_play 映射回 default），
+   * 所以跳转期间由跳转夺回模式所有权——这是 Web 调试适配，非原生行为。
+   */
+  private applyScriptAutoPlayMode(mode: AutoPlayMode): void {
+    this.applyAutoPlayMode(mode);
+    if (this.lineSeek && this.autoPlayMode !== "quick_play")
+      this.enterQuickSeekMode();
   }
 
   setAutoPlaySpeedLevel(level: number): void {
@@ -523,6 +654,7 @@ export class StoryRuntime {
     // media is owned by the separate entry-video flow in the game host.
     if (this.context.storyMetadata?.isVideoOnly) {
       this.state = "finished";
+      this.finishLineSeekMissed("finished");
       return;
     }
 
@@ -619,6 +751,7 @@ export class StoryRuntime {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
       this.state = "finished";
+      this.finishLineSeekMissed("finished");
     }
 
     // Establish the destination state before releasing a blocking executor.
@@ -715,6 +848,7 @@ export class StoryRuntime {
 
   destroy(): void {
     this.destroyed = true;
+    this.lineSeek = null;
     this.cancelTyping();
     this.cancelAutoClick();
     this.interruptPendingWait();
@@ -737,6 +871,7 @@ export class StoryRuntime {
           this.renderer.clearAnimTexts();
           this.renderer.clearAvgDisplays();
           this.state = "finished";
+          this.finishLineSeekMissed("finished");
           return;
         }
 
@@ -784,6 +919,7 @@ export class StoryRuntime {
       }
     } catch (error) {
       this.state = "error";
+      this.finishLineSeekMissed("error");
       const detail =
         error instanceof Error ? error.message : "unknown runtime error";
       this.onWarning?.({ cursor: this.cursor, detail, type: "error" });
@@ -904,7 +1040,10 @@ export class StoryRuntime {
           !(this.context.storyMetadata?.isVideoOnly ?? false);
         if (!shouldProcessEndtip) return "continue";
 
-        this.setAutoPlayMode("default");
+        // parser 给每篇脚本补一条隐式 endtip，走到这里 = 整篇播完了。跳转
+        // 还没到目标就按 missed 收尾，别让下面的模式切换把它变成 aborted
+        this.finishLineSeekMissed("finished");
+        this.applyAutoPlayMode("default");
         this.resetMultiline();
         this.startTypingDialogue("", line.content);
         return "wait_input";
@@ -2551,7 +2690,7 @@ export class StoryRuntime {
           this.theaterAutoPlayCache = this.getAutoPlayState();
           this.theaterMode = true;
           this.buttonSpeedLevel = 0;
-          this.setAutoPlayMode("button_auto");
+          this.applyScriptAutoPlayMode("button_auto");
         } else if (!mode && this.theaterMode) {
           this.theaterMode = false;
           const cached = this.theaterAutoPlayCache;
@@ -2559,7 +2698,7 @@ export class StoryRuntime {
           if (cached) {
             this.buttonSpeedLevel = cached.buttonSpeedLevel;
             this.quickSpeedLevel = cached.quickSpeedLevel;
-            this.setAutoPlayMode(
+            this.applyScriptAutoPlayMode(
               cached.mode === "quick_play" ? "default" : cached.mode,
             );
           }
@@ -2570,14 +2709,16 @@ export class StoryRuntime {
       case "decision": {
         // Native port: Torappu.AVG.DecisionPanel._ExecuteDecision. Selection writes
         // a value for the command-loop predicate gate; it is not a label jump.
-        const autoPlayCache = this.autoPlayMode;
-        this.setAutoPlayMode("default");
         this.decisionSelectValue = 0;
         this.decisionReferences = null;
         // options/values 的解析与 Log All 共用 log/semantics.parseDecision，
         // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）
         const parsed = parseDecision(line, this.context.audioVariables);
         if (!parsed) {
+          // 无效 decision 同样先重置 value/references 并切回手动（原生
+          // 在校验 options 之前就重置：DecisionPanel._ExecuteDecision 在
+          // TryGetParam("options") 之前写 _decisionValue/_referenceValues）
+          this.applyScriptAutoPlayMode("default");
           this.warn(
             "invalid_parameter",
             "decision options parameter is missing",
@@ -2588,6 +2729,35 @@ export class StoryRuntime {
         const options = parsed.options.map((option) => option.label);
         const values = parsed.options.map((option) => option.value);
 
+        // Web 调试适配：注入的 decision policy 直接替玩家选择，跳过面板
+        // 等待（无原生对应）。选择历史与 value 写入和面板路径完全一致；
+        // 命中时不翻转自动播放模式，否则快速播放会在第一个 decision
+        // 处被切回手动。
+        const policyPick = this.decisionPolicy?.({
+          decisionId: line.lineNumber,
+          options,
+          values,
+        });
+        if (
+          policyPick !== null &&
+          policyPick !== undefined &&
+          Number.isSafeInteger(policyPick) &&
+          policyPick >= 0 &&
+          policyPick < options.length
+        ) {
+          const value = values[policyPick] ?? 0;
+          this.decisionSelectValue = value;
+          this.choiceHistory.push({
+            decisionId: line.lineNumber,
+            optionIndex: policyPick,
+            value,
+          });
+          return "continue";
+        }
+
+        const autoPlayCache = this.autoPlayMode;
+        // 面板阻塞等点击，模式在下面原样还回去，跳转不受影响
+        this.applyAutoPlayMode("default");
         this.state = "waiting_decision";
         const selection = await this.renderer.showDecision(options, values);
         this.decisionSelectValue = selection.value;
@@ -2602,7 +2772,7 @@ export class StoryRuntime {
             optionIndex: selection.optionIndex,
             value: selection.value,
           });
-        this.setAutoPlayMode(autoPlayCache);
+        this.applyAutoPlayMode(autoPlayCache);
         this.state = "running";
         return "continue";
       }

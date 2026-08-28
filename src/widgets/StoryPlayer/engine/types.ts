@@ -114,6 +114,27 @@ export interface DecisionSelection {
   value: number;
 }
 
+/**
+ * decision 自动决策钩子（Web 调试侧用，无原生对应）。返回要选的
+ * optionIndex；返回 null 或越界值时回落到 DecisionPanel 人工选择。
+ */
+export type DecisionPolicy = (decision: {
+  decisionId: number;
+  options: readonly string[];
+  values: readonly number[];
+}) => number | null;
+
+/** seekToLine 推送的跳转阶段；reached/missed/aborted 为终态 */
+export type LineSeekPhase = "seeking" | "reached" | "missed" | "aborted";
+
+/** seekToLine 的进度/终态通知 */
+export interface LineSeekUpdate {
+  phase: LineSeekPhase;
+  /** missed 终态的成因：正常播完还是出错 */
+  reason?: "error" | "finished";
+  target: number;
+}
+
 /** 播放器当前播放位置：显示中的源行 + 实际执行过的全部选择历史 */
 export interface RuntimeLogPosition {
   lineIndex: number | null;
@@ -666,6 +687,20 @@ export interface StoryPlayer {
   ) => () => void;
   setAutoPlayMode: (mode: AutoPlayMode) => void;
   setAutoPlaySpeedLevel: (level: number) => void;
+  /** 注入/移除 decision 自动决策钩子（调试入口用） */
+  setDecisionPolicy: (policy: DecisionPolicy | null) => void;
+  /**
+   * Web 调试适配（无原生对应）：编排一次「快速播放直达目标行」。注入按
+   * choices 的自动决策（表外 decision 默认第 0 项）并以 quick_play 最高档
+   * 推进；到达目标行（reached）/ 播完出错（missed）/ 使用者自己切走播放
+   * 模式（aborted）时收尾并经 onUpdate 推终态，脚本自身的模式切换不算
+   * 干预。返回取消函数：静默摘掉策略，不推终态。
+   */
+  seekToLine: (
+    target: number,
+    choices: ReadonlyMap<number, number>,
+    onUpdate: (update: LineSeekUpdate) => void,
+  ) => () => void;
   skipNode: () => Promise<void>;
   start: () => Promise<void>;
 }

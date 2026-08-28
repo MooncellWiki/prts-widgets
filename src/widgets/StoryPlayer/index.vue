@@ -55,6 +55,8 @@ import type {
 const props = defineProps<{
   /** 剧情 txt 全文，由页面内嵌的 #datas_txt 提供 */
   script: string;
+  /** 创建后跳过 lobby 直接加载资源并开始播放（独立调试页用，宿主页不传） */
+  autoStart?: boolean;
 }>();
 
 const { theme, themeOverrides } = useTheme();
@@ -316,6 +318,12 @@ async function onStartPlay(): Promise<void> {
   await initAndPreload();
 }
 
+// autoStart 只是替使用者连按"完整加载"和"开始"，不引入新的启动路径
+async function onAutoStart(): Promise<void> {
+  await onStartPlay();
+  if (preloadReady.value && state.value === "idle") await onAdvance();
+}
+
 async function onAdvance(): Promise<void> {
   if (!player || !preloadReady.value) return;
 
@@ -359,6 +367,12 @@ onMounted(() => {
   document.addEventListener("fullscreenchange", syncFullscreenState);
   if (!scriptText.value) {
     preloadError.value = "未提供剧情文本（#datas_txt）";
+    return;
+  }
+  if (props.autoStart) {
+    onAutoStart().catch((error) => {
+      console.error("[story-player] auto start failed:", error);
+    });
   }
 });
 
@@ -370,6 +384,13 @@ onBeforeUnmount(() => {
   }
   player?.destroy();
   player = null;
+});
+
+// 独立调试入口需要直接驱动 runtime（decision 自动选择、行号定位、快速
+// 播放编排），暴露只读访问器；宿主页不使用。
+defineExpose({
+  getContext: () => context,
+  getPlayer: () => player,
 });
 </script>
 

@@ -28,6 +28,8 @@ export {
 } from "./document";
 export { analyzeStoryFlow } from "./symbolicFlow";
 export type { AnalyzeOptions } from "./symbolicFlow";
+export { planChoicesForLine } from "./seek";
+export type { SeekPlan, SeekPlanResult } from "./seek";
 export type { FlowStats, StoryFlowResult } from "./types";
 export type {
   ChoiceEmission,

@@ -111,6 +111,17 @@ export default defineConfig(({ command }) => {
         host: "localhost",
         protocol: "ws",
       },
+      proxy: {
+        // static.prts.wiki 的 OSS 桶有 Referer 防盗链：localhost 的跨源
+        // FontFace/JSON 请求会被 403（如 StoryPlayer 对话字体），且 403 响应
+        // 不带 CORS 头。dev 下走同源代理并把 Referer 改写成白名单来源。
+        "/debug-static": {
+          target: "https://static.prts.wiki",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/debug-static/, ""),
+          headers: { referer: "https://prts.wiki/" },
+        },
+      },
     },
     build: {
       minify: "oxc",
