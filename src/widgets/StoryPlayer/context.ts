@@ -13,6 +13,14 @@ export interface Context {
   audioVariables?: Record<string, unknown>;
   charMap?: Record<string, string>; // Legacy fallback. New rendering path reads from linkMap(character.json).
   linkMap: Record<string, StoryLinkNode>;
+  /**
+   * AVG background key -> sprite pixelsPerUnit, from `avg/background.json`
+   * (same sidecar family as character.json). The native background rect is
+   * `texture size / ppu * 100` (Image.SetNativeSize), so the renderer needs
+   * the ppu to reproduce it. Absent/empty falls back to texture-size
+   * heuristics in the renderer.
+   */
+  backgroundPpuMap?: Record<string, number>;
 }
 
 function assetUrl(path: string): string {
@@ -204,12 +212,46 @@ async function fetchStoryCharacterMap(): Promise<
   return normalizeCharacterMap(await response.json());
 }
 
+/**
+ * Validates `avg/background.json` into key -> pixelsPerUnit. Keys are folded
+ * lowercase (the pipeline emits the lowercase bundle container names, but the
+ * fold keeps hand-edited or future variants honest); non-finite or
+ * non-positive values are dropped.
+ */
+export function normalizeBackgroundPpuMap(
+  raw: unknown,
+): Record<string, number> {
+  const root = asObject(raw);
+  if (!root) return {};
+
+  const output: Record<string, number> = {};
+  for (const [key, value] of Object.entries(root)) {
+    const ppu = toNumber(value, Number.NaN);
+    if (Number.isFinite(ppu) && ppu > 0) output[key.toLowerCase()] = ppu;
+  }
+
+  return output;
+}
+
+async function fetchBackgroundPpuMap(): Promise<Record<string, number>> {
+  try {
+    const response = await fetch(assetUrl("avg/background.json"));
+    if (!response.ok) return {};
+    return normalizeBackgroundPpuMap(await response.json());
+  } catch {
+    // Missing sidecar is not fatal: the renderer falls back to texture-size
+    // heuristics for the background rect.
+    return {};
+  }
+}
+
 export async function loadContextByScript(
   scriptText: string,
 ): Promise<Context> {
-  const [audioVariables, linkMap] = await Promise.all([
+  const [audioVariables, linkMap, backgroundPpuMap] = await Promise.all([
     ensureStoryVariables(),
     fetchStoryCharacterMap(),
+    fetchBackgroundPpuMap(),
   ]);
 
   return {
@@ -218,5 +260,6 @@ export async function loadContextByScript(
     storyMetadata: parseStory(scriptText).metadata,
     audioVariables,
     linkMap,
+    backgroundPpuMap,
   };
 }

@@ -1,4 +1,10 @@
-import { Container, Sprite, Texture, TilingSprite } from "pixi.js";
+import {
+  Container,
+  Sprite,
+  Texture,
+  TextureSource,
+  TilingSprite,
+} from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PixiStoryRenderer } from "../src/widgets/StoryPlayer/engine/renderer";
@@ -778,14 +784,108 @@ describe("PixiStoryRenderer", () => {
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
-    await renderer.setBackground("bg_festival_2");
-
-    // Native `_LoadImage` calls Image.SetNativeSize() right after assigning
-    // the sprite (0x183e58688), so an omitted screenadapt keeps the sprite's
-    // native rect -- non-1280x720 art reveals the backing color around it
-    // instead of stretching to the viewport.
+    // A key absent from the ppu sidecar with a non-16:9 texture falls back
+    // to the texture size: SetNativeSize semantics with no sidecar entry and
+    // no ppu heuristic to apply.
+    await renderer.setBackground("bg_festival_9x");
     expect(renderer.backgroundSprite.width).toBe(Texture.EMPTY.width);
     expect(renderer.backgroundSprite.height).toBe(Texture.EMPTY.height);
+  });
+
+  it("renders a ppu-tuned background at its sidecar-derived native rect", async () => {
+    const renderer = new PixiStoryRenderer({
+      ...createContext(),
+      backgroundPpuMap: { bg_cher_1: 68.24644470214844 },
+    }) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(
+      new Texture({
+        source: new TextureSource({ height: 576, width: 1024 }),
+      }),
+    );
+
+    // Native SetNativeSize writes sprite.rect / ppu * 100, and AVG
+    // background art ships a tuned per-asset ppu: bg_cher_1 is a 1024x576
+    // texture with ppu 68.2464 that natively renders 1500.44x844 -- the 17%
+    // centered overscan the game shows for
+    // [Background(image="bg_cher_1", width=1, height=1, fadetime=0)] in
+    // obt/main/level_main_01-03_end. Web PNGs carry no ppu metadata, so the
+    // avg/background.json sidecar supplies it.
+    await renderer.setBackground("bg_cher_1");
+
+    expect(renderer.backgroundSprite.width).toBeCloseTo(
+      (1024 / 68.24644470214844) * 100,
+      3,
+    );
+    expect(renderer.backgroundSprite.height).toBeCloseTo(
+      (576 / 68.24644470214844) * 100,
+      3,
+    );
+  });
+
+  it("renders a native-1024x576 background with borders like the game", async () => {
+    const renderer = new PixiStoryRenderer({
+      ...createContext(),
+      backgroundPpuMap: { "33_g4_srctheater": 100 },
+    }) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(
+      new Texture({
+        source: new TextureSource({ height: 576, width: 1024 }),
+      }),
+    );
+
+    // 33_g4_srctheater ships ppu 100, so the game really shows it at
+    // 1024x576 centered with the backing color around it (used without
+    // screenadapt in activities/act21side); filling the canvas here would
+    // diverge from native.
+    await renderer.setBackground("33_g4_srctheater");
+
+    expect(renderer.backgroundSprite.width).toBe(1024);
+    expect(renderer.backgroundSprite.height).toBe(576);
+  });
+
+  it("matches sidecar keys case-insensitively", async () => {
+    const renderer = new PixiStoryRenderer({
+      ...createContext(),
+      backgroundPpuMap: { "21_g9_rhodes_xqoffice": 100 },
+    }) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(
+      new Texture({
+        source: new TextureSource({ height: 576, width: 1024 }),
+      }),
+    );
+
+    // Sidecar keys are the lowercase bundle container names (= web asset
+    // URLs); 99 sprites carry a mixed-case m_Name (21_G9_rhodes_xqoffice,
+    // also ppu 100 -> 1024x576 borders), so a differently-cased story key
+    // must still hit the sidecar rather than the 16:9 fill fallback.
+    await renderer.setBackground("21_G9_rhodes_xqoffice");
+
+    expect(renderer.backgroundSprite.width).toBe(1024);
+    expect(renderer.backgroundSprite.height).toBe(576);
+  });
+
+  it("falls back to the 1280x720 canvas for unknown 16:9 backgrounds", async () => {
+    const renderer = new PixiStoryRenderer({
+      ...createContext(),
+      backgroundPpuMap: { bg_cher_1: 68.24644470214844 },
+    }) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(
+      new Texture({
+        source: new TextureSource({ height: 576, width: 1024 }),
+      }),
+    );
+
+    // A 16:9 key missing from the sidecar (post-sidecar art: every 16:9
+    // background added since 2023 ships a ppu tuned so the native rect is
+    // exactly the reference canvas).
+    await renderer.setBackground("bg_brand_new");
+
+    expect(renderer.backgroundSprite.width).toBe(1280);
+    expect(renderer.backgroundSprite.height).toBe(720);
   });
 
   it("multiplies the native rect by the width and height params", async () => {
@@ -848,7 +948,10 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("tiles the background texture when tiled is true", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = new PixiStoryRenderer({
+      ...createContext(),
+      backgroundPpuMap: { bg_ri_1: 68.24644470214844 },
+    }) as any;
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -856,8 +959,22 @@ describe("PixiStoryRenderer", () => {
 
     // `_LoadImage`: tiled=true sets Image.type = Tiled, repeating the sprite
     // inside the final sizeDelta rect; TilingSprite + repeat wrap mode is
-    // the PIXI equivalent.
+    // the PIXI equivalent. bg_ri_1 is ppu-tuned (native rect = texture
+    // 16x16 / ppu 68.2464 * 100), and each tile spans that native rect
+    // rather than the 16x16 texture pixels (tileScale = 100 / ppu).
     expect(renderer.backgroundSprite).toBeInstanceOf(TilingSprite);
+    expect(renderer.backgroundSprite.width).toBeCloseTo(
+      (Texture.EMPTY.width / 68.24644470214844) * 100,
+      3,
+    );
+    expect(renderer.backgroundSprite.height).toBeCloseTo(
+      (Texture.EMPTY.height / 68.24644470214844) * 100,
+      3,
+    );
+    expect(renderer.backgroundSprite.tileScale.x).toBeCloseTo(
+      100 / 68.24644470214844,
+      6,
+    );
     expect(Texture.EMPTY.source.style.addressMode).toBe("repeat");
     // Restore the shared EMPTY texture so the address mode does not leak into
     // the other specs.
