@@ -1483,4 +1483,147 @@ describe("PixiStoryRenderer blocker", () => {
     tweens[1]!.step(0.5);
     expect(renderer.readBlockerColor().a).toBe(0.75);
   });
+
+  it("mounts the slide mask wipe for slider style with the native material constants", async () => {
+    const renderer = createBlockerRenderer();
+    renderer.blockerMaskSource = {
+      _resourceType: "textureSource",
+      style: {},
+    };
+    const tweens = captureTweens(renderer);
+
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 2000,
+      from: { a: 1, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: false,
+      style: "slider",
+      to: { a: 0, b: 0, g: 0, r: 0 },
+    });
+
+    const sprite = renderer.blockerSprite;
+    const filter = renderer.blockerSlideFilter;
+    expect(filter).not.toBeNull();
+    expect(sprite.filters).toEqual([filter]);
+    // Torappu/UI/AVG/SlideMask material floats: _Slide/_End/_Width.
+    const uniforms = filter.filterUniforms.uniforms;
+    expect(uniforms.uSlide).toBeCloseTo(0.601, 6);
+    expect(uniforms.uEnd).toBeCloseTo(0.641, 6);
+    expect(uniforms.uExtent).toBeCloseTo(0.787, 6);
+    expect(uniforms.uVertical).toBe(0);
+
+    // The tweened raw alpha drives the shader reveal progress; the sprite
+    // itself stays opaque so the filter input rgb is the untinted tint.
+    tweens[0]!.step(0.5);
+    expect(filter.alpha).toBe(0.5);
+    expect(renderer.readBlockerColor().a).toBe(0.5);
+    expect(sprite.alpha).toBe(1);
+  });
+
+  it("switches the wipe axis and extent for verticalslider and mirrors it with inverse", async () => {
+    const renderer = createBlockerRenderer();
+    renderer.blockerMaskSource = {
+      _resourceType: "textureSource",
+      style: {},
+    };
+    captureTweens(renderer);
+
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 2000,
+      from: { a: 1, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: true,
+      style: "verticalslider",
+      to: { a: 0, b: 0, g: 0, r: 0 },
+    });
+
+    const sprite = renderer.blockerSprite;
+    const filter = renderer.blockerSlideFilter;
+    // ENABLE_VERTICAL uses _Height = 1.0 and samples uv.y.
+    expect(filter.isVertical()).toBe(true);
+    expect(filter.filterUniforms.uniforms.uExtent).toBeCloseTo(1, 6);
+    // localScale.y = -1 mirrors the mask coordinate, and the flip keeps the
+    // full-screen coverage (mirrored around the centered anchor).
+    expect(filter.filterUniforms.uniforms.uFlipY).toBe(1);
+    expect(filter.filterUniforms.uniforms.uFlipX).toBe(0);
+    expect(sprite.scale.y).toBeLessThan(0);
+    expect(Math.abs(sprite.height)).toBe(720);
+
+    // inverse = false never resets the sign (only destroy does), and the
+    // next default-style animated command runs _CleanMaterial.
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 500,
+      from: {
+        a: Number.NaN,
+        b: Number.NaN,
+        g: Number.NaN,
+        r: Number.NaN,
+      },
+      image: undefined,
+      inverse: false,
+      style: "default",
+      to: { a: 1, b: 0, g: 0, r: 0 },
+    });
+    expect(renderer.blockerSlideFilter).toBeNull();
+    expect(sprite.filters).toEqual([]);
+    expect(sprite.scale.y).toBeLessThan(0);
+    expect(sprite.alpha).toBeGreaterThan(0);
+  });
+
+  it("keeps the material untouched on the zero-duration slider branch", async () => {
+    const renderer = createBlockerRenderer();
+
+    // A zero-duration slider command runs before _GenTweenerWithParam, so no
+    // material is mounted (and none persisted yet).
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 0,
+      from: { a: 1, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: true,
+      style: "slider",
+      to: { a: 1, b: 0, g: 0, r: 0 },
+    });
+    expect(renderer.blockerSlideFilter).toBeNull();
+
+    // After an animated slider mounts the wipe, a zero-duration command
+    // (slider or default) leaves the material in place.
+    renderer.blockerMaskSource = {
+      _resourceType: "textureSource",
+      style: {},
+    };
+    captureTweens(renderer);
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 1000,
+      from: { a: 1, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: false,
+      style: "slider",
+      to: { a: 0, b: 0, g: 0, r: 0 },
+    });
+    const filter = renderer.blockerSlideFilter;
+    expect(filter).not.toBeNull();
+
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 0,
+      from: {
+        a: Number.NaN,
+        b: Number.NaN,
+        g: Number.NaN,
+        r: Number.NaN,
+      },
+      image: undefined,
+      inverse: false,
+      style: "default",
+      to: { a: 0, b: 0, g: 0, r: 0 },
+    });
+    expect(renderer.blockerSlideFilter).toBe(filter);
+    // The instant color write still routes through the attached filter.
+    expect(filter.alpha).toBe(0);
+  });
 });

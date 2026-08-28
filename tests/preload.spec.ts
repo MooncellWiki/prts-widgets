@@ -34,6 +34,12 @@ vi.mock("pixi.js", () => ({
   Assets: {
     load: loadMock,
   },
+  // SlideMaskFilter(经 PixiStoryRenderer 引入)在 import/首次构造时会用到
+  // 这些导出;本套件不渲染,桩即可。
+  Filter: class {},
+  GlProgram: { from: () => ({}) },
+  GpuProgram: { from: () => ({}) },
+  UniformGroup: class {},
 }));
 
 function createContext(script: readonly string[]): Context {
