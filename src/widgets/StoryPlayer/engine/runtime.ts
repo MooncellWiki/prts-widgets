@@ -960,6 +960,13 @@ export class StoryRuntime {
     });
   }
 
+  /**
+   * Web adaptation, not native behavior: native passes the raw key straight
+   * into `ResourceRouter.GetBackgroundPath` (`AVG/Backgrounds/<key>`). The
+   * frontend trims and lowercases because the web asset router is
+   * case-sensitive while game data keys are lowercase-only, so this only
+   * ever repairs whitespace or capitalization typos.
+   */
   private resolveImageKey(key: string): string | null {
     const normalized = key.trim().toLowerCase();
     if (!normalized) return null;
@@ -1130,7 +1137,9 @@ export class StoryRuntime {
 
       case "background": {
         // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage as registered by
-        // BackgroundPanel. This covers its clear/load-failure and scaled-fade
+        // BackgroundPanel. This covers its clear branch (empty or unresolvable
+        // `image` key) and the animateRatio-scaled cross-fade; a texture load
+        // failure is cleared inside the renderer (see setBackground).
         const image = toString(this.exactArg(args, "image"));
         const fadeMs = this.calculateFadeMs(this.exactArg(args, "fadetime"));
         const block =
@@ -1147,15 +1156,20 @@ export class StoryRuntime {
           return "continue";
         }
 
+        // `_LoadImage` multiplies the SetNativeSize rect by the `width`/
+        // `height` params (GetOrDefault<float>(..., 1.0); the mulss at
+        // 0x183e587b0/0x183e587b4 in build 2761) before screenadapt reads it.
         await this.renderer.setBackground(resolved, {
           block,
           fadeMs,
+          height: toNumber(this.exactArg(args, "height"), 1),
           scaleX: toNumber(this.exactArg(args, "xScale"), 1),
           scaleY: toNumber(this.exactArg(args, "yScale"), 1),
           screenAdapt: this.parseScreenAdapt(
             this.exactArg(args, "screenadapt"),
           ),
           tiled: toBoolean(this.exactArg(args, "tiled"), false),
+          width: toNumber(this.exactArg(args, "width"), 1),
           x: toNumber(this.exactArg(args, "x"), 0),
           y: toNumber(this.exactArg(args, "y"), 0),
         });

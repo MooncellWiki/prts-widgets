@@ -2,7 +2,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { normalizeCharacterMap } from "../src/widgets/StoryPlayer/context";
+import {
+  normalizeBackgroundPpuMap,
+  normalizeCharacterMap,
+} from "../src/widgets/StoryPlayer/context";
 
 describe("normalizeCharacterMap", () => {
   it("keys the link map by the lowercased base so mixed-case entries resolve", () => {
@@ -74,5 +77,40 @@ describe("normalizeCharacterMap", () => {
       face: "npc_2004_Alty/1",
       name: "1$1",
     });
+  });
+});
+
+describe("normalizeBackgroundPpuMap", () => {
+  it("folds keys lowercase and keeps finite positive ppus", () => {
+    const map = normalizeBackgroundPpuMap({
+      bg_cher_1: 68.24644470214844,
+      BG_Woods: 100,
+    });
+
+    expect(map).toEqual({
+      bg_cher_1: 68.24644470214844,
+      bg_woods: 100,
+    });
+  });
+
+  it("drops non-finite and non-positive values instead of throwing", () => {
+    const map = normalizeBackgroundPpuMap({
+      bg_bad_string: "80",
+      bg_bad_null: null,
+      bg_bad_negative: -1,
+      bg_bad_zero: 0,
+      bg_bad_nan: Number.NaN,
+      bg_ok: 80,
+    });
+
+    // "80" is a valid numeric string per toNumber, mirroring how story
+    // params are parsed; only non-numeric junk is dropped.
+    expect(map).toEqual({ bg_bad_string: 80, bg_ok: 80 });
+  });
+
+  it("returns an empty map for non-object payloads", () => {
+    expect(normalizeBackgroundPpuMap(null)).toEqual({});
+    expect(normalizeBackgroundPpuMap([1, 2])).toEqual({});
+    expect(normalizeBackgroundPpuMap("nope")).toEqual({});
   });
 });

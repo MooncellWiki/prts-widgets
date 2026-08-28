@@ -10,6 +10,7 @@ import {
   Text,
   TextStyle,
   Texture,
+  TilingSprite,
 } from "pixi.js";
 
 import {
@@ -207,7 +208,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly backgroundLayer = this.layers.background;
   private backgroundRoot: Container | null = null;
   /** Current background visual; exposed for renderer diagnostics and tests. */
-  backgroundSprite: Sprite | null = null;
+  backgroundSprite: Sprite | TilingSprite | null = null;
   private backgroundTweenSessionId = 0;
   private readonly context: Context;
   private readonly charLayer = this.layers.characters;
@@ -524,13 +525,55 @@ export class PixiStoryRenderer implements StoryRenderer {
    */
   async setBackground(key: string, input?: BackgroundInput): Promise<void> {
     const texture = await this.textureForImageKey(key, "background");
-    if (!texture) return;
+    if (!texture) {
+      // Native `_LoadImage` on a failed sprite load logs "Failed to load
+      // image" and falls into the clear branch: DOFade(_backImage -> 0) with
+      // the same scaled duration and block gate, so the old background fades
+      // out instead of staying visible.
+      await this.clearBackground(input?.fadeMs ?? 0, input?.block ?? false);
+      return;
+    }
 
+    // Simplification vs native: `_ExecuteImage` only DOKills the outgoing
+    // image's transform tween when the cross-fade finishes (OnKill ->
+    // `_ResetImage(_backImage)`), so an in-flight backgroundtween keeps
+    // animating the old image during the fade. Bumping the session id here
+    // freezes that tween one fade early; accepted deviation because both
+    // endpoints (new image cross-faded in, old root removed) still agree.
     this.backgroundTweenSessionId += 1;
     const root = new Container();
-    const sprite = new Sprite(texture);
+    // `_LoadImage`: TryGetParam("tiled", false) switches Image.type between
+    // Tiled and Simple, tiling the sprite inside the final sizeDelta rect; a
+    // repeat-addressed TilingSprite is the PIXI equivalent. The address mode
+    // is set on the Assets-cached texture, which is harmless for the 0..1-UV
+    // simple sprites sharing it.
+    let sprite: Sprite | TilingSprite;
+    if (input?.tiled) {
+      texture.source.style.addressMode = "repeat";
+      sprite = new TilingSprite({ texture });
+    } else {
+      sprite = new Sprite(texture);
+    }
     sprite.anchor.set(0.5);
-    this.layoutImageForScreenAdapt(sprite, input?.screenAdapt, true);
+    const nativeRect = this.nativeBackgroundRect(key, texture);
+    this.layoutImageForScreenAdapt(
+      sprite,
+      input?.screenAdapt,
+      {
+        height: input?.height ?? 1,
+        width: input?.width ?? 1,
+      },
+      nativeRect,
+    );
+    if (sprite instanceof TilingSprite) {
+      // Image.type = Tiled repeats the sprite at its native (ppu-scaled) size
+      // inside the final sizeDelta rect, so each tile spans nativeRect while
+      // the TilingSprite's own width/height stay at that final rect.
+      sprite.tileScale.set(
+        nativeRect[0] / Math.max(1, texture.width),
+        nativeRect[1] / Math.max(1, texture.height),
+      );
+    }
     // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
     // omitted scale must leave the screen-adapted size alone.
     this.applyCenteredTransform(root, {
@@ -3616,19 +3659,65 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.stickerTypingTargets.delete(id);
   }
 
+  /**
+   * The sizeDelta `Image.SetNativeSize()` writes in the CN client:
+   * `sprite.rect / ppu * 100` (canvas.referencePixelsPerUnit = 100), plus it
+   * collapses the prefab's stretch anchors so sizeDelta becomes the real
+   * rect. AVG background art ships a tuned per-asset ppu (80 / 100 /
+   * 68.2464 / ...), so this is generally NOT the texture's pixel size --
+   * e.g. bg_cher_1 (1024x576, ppu 68.2464) natively renders 1500.44x844,
+   * a 17% centered overscan. Web PNGs are texture-sized with no ppu
+   * metadata, so the per-key ppu comes from the `avg/background.json`
+   * sidecar (context.backgroundPpuMap). For keys missing from the sidecar
+   * every 16:9 background added since 2023 ships a ppu tuned to exactly the
+   * 1280x720 canvas, so a 16:9 texture maps to that and anything else keeps
+   * its texture size.
+   */
+  private nativeBackgroundRect(
+    key: string,
+    texture: Texture,
+  ): readonly [number, number] {
+    const width = Math.max(1, texture.width);
+    const height = Math.max(1, texture.height);
+    // Sidecar keys are the lowercase bundle container names (= web asset
+    // URLs); normalize defensively in case a story references a key with
+    // different casing than the bundle.
+    const ppu = this.context.backgroundPpuMap?.[key.toLowerCase()];
+    if (ppu !== undefined && ppu > 0) {
+      return [(width / ppu) * 100, (height / ppu) * 100];
+    }
+    if (Math.abs(width / height - STORY_WIDTH / STORY_HEIGHT) < 0.01) {
+      return [STORY_WIDTH, STORY_HEIGHT];
+    }
+    return [width, height];
+  }
+
+  /**
+   * Native port: `AVGImagePanel._LoadImage` sizes the Image in three steps.
+   * (1) `Image.SetNativeSize()` resets sizeDelta to the sprite's native
+   * display rect (see nativeBackgroundRect -- confirmed called at
+   * 0x183e58688 in build 2761 right after `image.sprite` is assigned).
+   * (2) sizeDelta is multiplied by the `width`/`height` params
+   * (GetOrDefault<float>(..., 1.0); mulss at 0x183e587b0/0x183e587b4).
+   * (3) An optional SCREEN_ADAPT_FUNCTION_MAP entry maps that multiplied
+   * rect against the 1280x720 reference -- the ratio checks read the
+   * post-multiplier sizeDelta too. With screenadapt omitted the rect keeps
+   * the multiplied native size, which still covers the canvas for ppu-tuned
+   * art (most backgrounds) and reveals the backing color only around art
+   * whose native rect is smaller than 1280x720 (e.g. 33_g4_srctheater).
+   */
   private layoutImageForScreenAdapt(
-    sprite: Sprite,
+    sprite: Sprite | TilingSprite,
     mode?: BackgroundInput["screenAdapt"],
-    useViewportSizeByDefault = false,
+    multipliers?: { height: number; width: number },
+    nativeRect?: readonly [number, number],
   ): void {
-    const sourceWidth = Math.max(1, sprite.texture.width);
-    const sourceHeight = Math.max(1, sprite.texture.height);
-    // Unity swaps Image.sprite without calling SetNativeSize, so the AVG
-    // background Image keeps its scene-authored 1280x720 RectTransform when
-    // screenadapt is omitted. Pixi otherwise defaults to the texture's native
-    // size (many extracted backgrounds are 1024x576), leaving visible borders.
-    let width = useViewportSizeByDefault ? STORY_WIDTH : sourceWidth;
-    let height = useViewportSizeByDefault ? STORY_HEIGHT : sourceHeight;
+    const nativeWidth = nativeRect?.[0] ?? Math.max(1, sprite.texture.width);
+    const nativeHeight = nativeRect?.[1] ?? Math.max(1, sprite.texture.height);
+    const sourceWidth = nativeWidth * (multipliers?.width ?? 1);
+    const sourceHeight = nativeHeight * (multipliers?.height ?? 1);
+    let width = sourceWidth;
+    let height = sourceHeight;
 
     if (mode === "fill") {
       width = STORY_WIDTH;
