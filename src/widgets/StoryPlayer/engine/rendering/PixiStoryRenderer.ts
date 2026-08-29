@@ -271,12 +271,25 @@ export class PixiStoryRenderer implements StoryRenderer {
   /**
    * localScale sign persistence for the slider wipe (native `_ExecuteBlocker`
    * assigns literal -1 to the flipped axis; `inverse = false` never resets it,
-   * and only OnReset/destroy restores +1). The sign is kept separately from
-   * `sprite.scale` because PIXI's width setter rewrites the scale magnitude,
-   * and the actual mirror is applied in the shader (SlideMaskFilter uFlip).
+   * and only OnReset/destroy restores +1). The sign is tracked separately from
+   * `sprite.scale` because every `blocker.width`/`height` write recomputes the
+   * magnitude from the new texture, so the sign is the only part worth owning;
+   * the visible mirror is the shader's (SlideMaskFilter uFlip), since the quad
+   * itself is untextured white.
    */
   private blockerScaleSign = { x: 1, y: 1 };
+  /**
+   * `_blocker.material` equivalent: non-null only while the slide wipe is
+   * mounted, so `writeBlockerColor` knows whether alpha belongs to the shader
+   * or to `sprite.alpha`.
+   */
   private blockerSlideFilter: SlideMaskFilter | null = null;
+  /**
+   * The filter instance itself, mirroring the single `slide_mask` Material
+   * `_SetMaterial` re-fetches from the asset loader cache (2.7.61 VA
+   * 0x183e30b60): mounting and unmounting reuses it rather than rebuilding.
+   */
+  private blockerSlideMaterial: SlideMaskFilter | null = null;
   private blockerMaskSource: TextureSource | null = null;
   private blockerMaskSourceFailed = false;
   private cameraShakeSessionId = 0;
@@ -445,6 +458,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.blockerTweenSessionId += 1;
     this.blockerScaleSign = { x: 1, y: 1 };
     this.blockerSlideFilter = null;
+    this.blockerSlideMaterial = null;
     this.blockerColor = { a: 0, b: 0, g: 0, r: 0 };
     this.gridBackgroundSessionId += 1;
     this.largeBackgroundRoot = null;
@@ -1988,9 +2002,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (sessionId !== this.blockerTweenSessionId) return;
         if (Math.abs(input.to.a) <= 1e-6) {
-          // _FinishCommand's _ResetBlockerImg equivalent: swap back to the
-          // plain white quad (and restore its full-screen size, since the
-          // 1x1 Texture.WHITE reuses the previous texture's scale).
+          // _FinishCommand's _ResetBlockerImg equivalent. Native restores the
+          // serialized `_defaultBlocker` sprite (VA 0x183e30af0), not null;
+          // the plain white quad is the standing web approximation of it.
+          // The size write is required because the 1x1 Texture.WHITE would
+          // otherwise inherit the previous texture's scale.
           blocker.texture = Texture.WHITE;
           blocker.width = STORY_WIDTH;
           blocker.height = STORY_HEIGHT;
@@ -2438,20 +2454,26 @@ export class PixiStoryRenderer implements StoryRenderer {
     // Native hierarchy: panel_blocker (sibling 1) renders *below*
     // panel_curtains (sibling 3), so curtains cover the blocker when both are
     // up (black-mask pass, 2.7.61 scene layout). Insert just below the
-    // curtains container instead of appending on top of it. The Math.max
-    // guards the un-mounted test harness where curtains has no parent yet;
-    // LayerGraph.attach appends curtains after, preserving the same order.
+    // curtains container instead of appending on top of it. `indexOf` rather
+    // than `getChildIndex`, which throws when curtains has no parent yet
+    // (LayerGraph.attach runs in mount, so only an un-mounted harness hits
+    // that) -- there, appending is the right fallback.
+    const curtainIndex = this.worldLayer.children.indexOf(this.curtainLayer);
     this.worldLayer.addChildAt(
       blocker,
-      Math.max(this.worldLayer.getChildIndex(this.curtainLayer), 0),
+      curtainIndex === -1 ? this.worldLayer.children.length : curtainIndex,
     );
 
     return blocker;
   }
 
   /**
-   * Re-apply the persistent localScale sign after any width/height write
-   * (PIXI's size setters rewrite the scale magnitude to a positive value).
+   * Push the persistent localScale sign onto the sprite and the wipe shader.
+   * Called after every width/height write, which recomputes the scale
+   * magnitude from the new texture's local bounds (PIXI's size setters do
+   * carry the existing sign across, so this is a no-op re-assert there; it is
+   * load-bearing when `blockerScaleSign` itself just changed, and it is the
+   * single place SlideMaskFilter's uFlip stays in sync).
    */
   private applyBlockerScaleSign(blocker: Sprite): void {
     blocker.scale.x = this.blockerScaleSign.x * Math.abs(blocker.scale.x);
@@ -2485,9 +2507,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     const source = this.blockerMaskSource;
     if (!source) return;
 
-    if (!this.blockerSlideFilter) {
-      this.blockerSlideFilter = new SlideMaskFilter(source);
-    }
+    this.blockerSlideMaterial ??= new SlideMaskFilter(source);
+    this.blockerSlideFilter = this.blockerSlideMaterial;
     this.blockerSlideFilter.setVertical(style === "verticalslider");
     this.applyBlockerScaleSign(blocker);
     blocker.filters = [this.blockerSlideFilter];
@@ -2497,10 +2518,15 @@ export class PixiStoryRenderer implements StoryRenderer {
   private detachBlockerSlideFilter(blocker: Sprite): void {
     if (!this.blockerSlideFilter) return;
     blocker.filters = [];
-    // Null the field so writeBlockerColor returns to sprite.alpha blending;
-    // the mask source stays cached and the filter object is rebuilt on the
-    // next slider command (native re-runs _SetMaterial the same way).
+    // Null the mount so writeBlockerColor returns to sprite.alpha blending;
+    // blockerSlideMaterial keeps the instance for the next slider command,
+    // the way native re-assigns the same cached Material asset.
     this.blockerSlideFilter = null;
+    // While mounted, sprite.alpha was pinned to 1 and the wipe owned the
+    // alpha. Hand it straight back here: the caller's next color write is a
+    // tween step one frame away, so leaving 1 in place flashes a fully opaque
+    // blocker for that frame.
+    blocker.alpha = clamp01(this.blockerColor.a);
   }
 
   private ensureCurtainState(direction: number): CurtainRenderState {

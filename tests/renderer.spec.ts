@@ -1573,6 +1573,78 @@ describe("PixiStoryRenderer blocker", () => {
     expect(sprite.alpha).toBeGreaterThan(0);
   });
 
+  it("hands alpha back to the sprite when the slide wipe is unmounted", async () => {
+    const renderer = createBlockerRenderer();
+    renderer.blockerMaskSource = {
+      _resourceType: "textureSource",
+      style: {},
+    };
+    const tweens = captureTweens(renderer);
+
+    // A non-blocking slider settles mid-alpha (act53side_07_beg:474 and
+    // act47side_05_end:44 are the two block=false sliders in the corpus).
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 2000,
+      from: { a: 0, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: false,
+      style: "slider",
+      to: { a: 0.5, b: 0, g: 0, r: 0 },
+    });
+    tweens[0]!.step(1);
+
+    // _CleanMaterial takes the wipe away; the blocker must drop straight back
+    // to the 0.5 veil rather than sitting fully opaque until the next frame's
+    // tween step lands.
+    await renderer.setBlocker({
+      block: false,
+      fadeMs: 1000,
+      from: { a: Number.NaN, b: Number.NaN, g: Number.NaN, r: Number.NaN },
+      image: undefined,
+      inverse: false,
+      style: "default",
+      to: { a: 1, b: 0, g: 0, r: 0 },
+    });
+
+    const sprite = renderer.blockerSprite;
+    expect(sprite.filters).toEqual([]);
+    expect(sprite.alpha).toBe(0.5);
+  });
+
+  it("reuses the slide filter instance across unmount and remount", async () => {
+    const renderer = createBlockerRenderer();
+    renderer.blockerMaskSource = {
+      _resourceType: "textureSource",
+      style: {},
+    };
+    captureTweens(renderer);
+
+    const slider = {
+      block: false,
+      fadeMs: 1000,
+      from: { a: 0, b: 0, g: 0, r: 0 },
+      image: undefined,
+      inverse: false,
+      style: "slider" as const,
+      to: { a: 1, b: 0, g: 0, r: 0 },
+    };
+    await renderer.setBlocker(slider);
+    const filter = renderer.blockerSlideFilter;
+
+    await renderer.setBlocker({
+      ...slider,
+      style: "default" as const,
+      to: { a: 0, b: 0, g: 0, r: 0 },
+    });
+    expect(renderer.blockerSlideFilter).toBeNull();
+
+    // `_SetMaterial` re-fetches the same cached slide_mask Material; the web
+    // port must not rebuild the shader/UniformGroup per mount either.
+    await renderer.setBlocker(slider);
+    expect(renderer.blockerSlideFilter).toBe(filter);
+  });
+
   it("keeps the material untouched on the zero-duration slider branch", async () => {
     const renderer = createBlockerRenderer();
 
