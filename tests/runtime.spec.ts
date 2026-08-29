@@ -3413,6 +3413,33 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("recycles sticker slots when skipping to the next node", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[Sticker(id="st1",text="up",x=300,y=270,block=true)]',
+        '[skipnode(mode="nofirstskip")]',
+        '[Sticker(id="st1",text="after",x=300,y=270)]',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(renderer.stickerCalls).toHaveLength(1);
+
+    await runtime.skipNode();
+
+    // `_RecycleStickers` hides every entry of `m_stickerDict` with
+    // `HideSticker(0)` -- 0.15s after the substitution -- then empties the
+    // dictionary.
+    expect(renderer.stickersClearCalls).toEqual([150]);
+    // With the ids dropped, the reused "st1" is the show half of the toggle
+    // again rather than a hide.
+    expect(renderer.stickerCalls).toHaveLength(2);
+    expect(renderer.stickerCalls[1]?.text).toBe("after");
+  });
+
   it("leaves the screen alone when the skip ends the story", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -3438,6 +3465,7 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("finished");
     expect(renderer.timerClearCalls).toEqual([]);
+    expect(renderer.stickersClearCalls).toEqual([]);
     expect(renderer.subtitleClearCalls).toEqual([]);
     expect(renderer.spellStickerClearCount).toBe(0);
     expect(renderer.clearCharacterCutinCalls).toEqual([]);

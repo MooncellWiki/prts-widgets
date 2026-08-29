@@ -759,9 +759,17 @@ export class StoryRuntime {
       // typewriter reset. A stale subtitle must not survive the skip.
       await this.renderer.clearSubtitle(0);
       // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
-      // `OnReset -> _RecycleStickers`, whose first step is `StopTimer(0)` --
-      // the timer hides instantly (the slot itself is kept for reuse).
+      // `OnReset -> _RecycleStickers` (0x183e93980), in that function's own
+      // order. First `StopTimer(0)` -- the timer hides instantly, the slot
+      // itself being kept for reuse.
       await this.renderer.clearTimerSticker({ durationMs: 0 });
+      // Then every entry of `m_stickerDict` gets `HideSticker(0)` before the
+      // dictionary is emptied and `m_currentSticker` nulled. `HideSticker`
+      // substitutes 0.15s for any duration <= 0, the same 150ms stickerclear
+      // fades with, and dropping the ids is what lets a reused id show again
+      // instead of being read as the hide half of the toggle.
+      this.stickerIds.clear();
+      await this.renderer.clearStickers(150);
     }
 
     this.cancelTyping();
