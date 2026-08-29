@@ -23,6 +23,7 @@ import {
 import {
   buildTagStyles,
   collectColors,
+  colorTagName,
   parseRichChars,
   richCharsToTaggedText,
   type RichChar,
@@ -109,6 +110,36 @@ const SLOT_ENTER_COMPENSATION: Record<string, number> = { l: 200, r: -200 };
 function easeOutCubic(progress: number): number {
   const remaining = 1 - progress;
   return 1 - remaining * remaining * remaining;
+}
+
+/**
+ * Native `Torappu.AVG.AVGTypeWriterText.BeginText` hides the unrevealed tail
+ * behind a fully transparent `<color=#00000000>` span so the whole message is
+ * laid out (and wrapped) from t0 -- revealing characters never re-wraps the
+ * lines already on screen.
+ */
+const SUBTITLE_HIDDEN_TAIL_COLOR = "#00000000";
+const SUBTITLE_HIDDEN_TAIL_TAG = colorTagName(SUBTITLE_HIDDEN_TAIL_COLOR);
+
+/**
+ * Web-only counterpart to the transparent tail: PIXI's tagged-text drop shadow
+ * pass forces an opaque fill (`CanvasTextGenerator._setupDropShadow`) and never
+ * reads the run's own fill, so an `alpha = 0` run still casts the style's
+ * shadow -- the "hidden" tail would read as legible grey ghost text. Unity
+ * modulates its shadow by vertex alpha instead, so native has nothing to turn
+ * off here. Disabling the shadow per tag hits PIXI's own skip branch and leaves
+ * the measured layout byte-identical.
+ */
+const SUBTITLE_HIDDEN_TAIL_STYLE = {
+  dropShadow: false,
+  fill: SUBTITLE_HIDDEN_TAIL_COLOR,
+} as const;
+
+function subtitleHiddenTail(chars: RichChar[]): RichChar[] {
+  return chars.map(({ char }) => ({
+    char,
+    color: SUBTITLE_HIDDEN_TAIL_COLOR,
+  }));
 }
 
 /**
@@ -310,6 +341,12 @@ export class PixiStoryRenderer implements StoryRenderer {
   >();
   private readonly stickerTypingSessionIds = new Map<string, number>();
   private subtitleFadeSessionId = 0;
+  /**
+   * Native port: `SubtitlePanel._SetHiddenInternal`'s `m_hidden`. Flips the
+   * moment `set_isHidden` is called, while the alpha tween catches up. A
+   * `setSubtitle` on an already-shown panel must not replay the fade-in.
+   */
+  private subtitleHidden = true;
   private subtitleText: Text | null = null;
   private subtitleTypingTarget: {
     alignment: SubtitleInput["alignment"];
@@ -492,6 +529,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.stickerTypingTargets.clear();
     this.stickerTypingSessionIds.clear();
     this.subtitleFadeSessionId += 1;
+    this.subtitleHidden = true;
     this.subtitleTypingTarget = null;
     this.subtitleTypingSessionId += 1;
     this.stickerRichChars.clear();
@@ -1791,6 +1829,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.subtitleTypingSessionId += 1;
     this.subtitleFadeSessionId += 1;
     this.subtitleTypingTarget = null;
+    // Native `set_isHidden(true)` flips `m_hidden` immediately; the fade only
+    // animates the visible alpha towards it.
+    this.subtitleHidden = true;
 
     const subtitle = this.subtitleText;
     if (!subtitle) return;
@@ -2258,22 +2299,36 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (!subtitle) return;
 
     this.subtitleTypingSessionId += 1;
-    this.subtitleFadeSessionId += 1;
     this.subtitleTypingTarget = null;
-    subtitle.alpha = 0;
-    subtitle.visible = true;
 
-    const fadeSessionId = this.subtitleFadeSessionId;
-    void this.tween(
-      150,
-      (progress) => {
-        if (this.subtitleFadeSessionId === fadeSessionId)
-          subtitle.alpha = progress;
-      },
-      () => {
-        if (this.subtitleFadeSessionId === fadeSessionId) subtitle.alpha = 1;
-      },
-    );
+    // Native `SubtitlePanel._SetHiddenInternal` (2.7.61 VA 0x183e94ff0):
+    // `set_isHidden(false)` is a no-op while the panel is already visible, so
+    // consecutive subtitles swap text seamlessly without replaying the 150ms
+    // Linear fade-in. A hidden panel fades in from its current alpha, which
+    // also covers interrupting an in-flight fade-out (DOKill + DOFade).
+    //
+    // The fade session is only bumped when a fade actually starts: native's
+    // no-op branch never reaches DOKill either, so a fade-in that is still
+    // running when the next subtitle arrives must keep animating to 1. Bumping
+    // it unconditionally would orphan that tween and strand the panel at
+    // whatever alpha it had reached.
+    if (this.subtitleHidden) {
+      this.subtitleHidden = false;
+      const startAlpha = subtitle.visible ? subtitle.alpha : 0;
+      subtitle.visible = true;
+      this.subtitleFadeSessionId += 1;
+      const fadeSessionId = this.subtitleFadeSessionId;
+      void this.tween(
+        150,
+        (progress) => {
+          if (this.subtitleFadeSessionId === fadeSessionId)
+            subtitle.alpha = startAlpha + (1 - startAlpha) * progress;
+        },
+        () => {
+          if (this.subtitleFadeSessionId === fadeSessionId) subtitle.alpha = 1;
+        },
+      );
+    }
 
     const prevChars: RichChar[] = [];
     const newChars = parseRichChars(input.text);
@@ -2281,7 +2336,18 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const colors = collectColors(allChars);
     const style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
-    if (colors.length > 0) style.tagStyles = buildTagStyles(colors);
+    // Native maps alignment to TextAnchor.UpperLeft/UpperCenter/UpperRight,
+    // which horizontally aligns *every wrapped line* inside the width box;
+    // PIXI needs the per-line `align` style in addition to the whole-block
+    // offset that layoutSubtitle applies.
+    style.align = input.alignment;
+    // The transparent hidden tail below needs its tag registered while typing,
+    // with the drop shadow disabled so the unrevealed text stays invisible.
+    const tagStyles: NonNullable<TextStyle["tagStyles"]> =
+      buildTagStyles(colors);
+    if (input.delayMs > 0)
+      tagStyles[SUBTITLE_HIDDEN_TAIL_TAG] = { ...SUBTITLE_HIDDEN_TAIL_STYLE };
+    if (Object.keys(tagStyles).length > 0) style.tagStyles = tagStyles;
     subtitle.style = style;
     subtitle.y = input.y;
 
@@ -2289,11 +2355,20 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (input.delayMs <= 0) {
       subtitle.text = fullText;
       this.layoutSubtitle(subtitle, input.x, input.widthPx, input.alignment);
+      // Nothing to type: the typewriter is done the moment the text is shown.
+      input.onTypingComplete?.();
       return;
     }
 
     const sessionId = this.subtitleTypingSessionId;
-    subtitle.text = richCharsToTaggedText(prevChars);
+    // Native `AVGTypeWriterText.BeginText` lays out the full message from t0
+    // by keeping the unrevealed tail in the text wrapped in a fully
+    // transparent <color=#00000000> span; revealing chars never re-wraps the
+    // lines that are already on screen.
+    subtitle.text = richCharsToTaggedText([
+      ...prevChars,
+      ...subtitleHiddenTail(newChars),
+    ]);
     this.layoutSubtitle(subtitle, input.x, input.widthPx, input.alignment);
     this.subtitleTypingTarget = {
       alignment: input.alignment,
@@ -2305,8 +2380,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       alignment: input.alignment,
       baseX: input.x,
       delayMs: input.delayMs,
-      prevChars,
       newChars,
+      onTypingComplete: input.onTypingComplete,
+      prevChars,
       widthPx: input.widthPx,
     });
   }
@@ -3776,8 +3852,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       alignment: SubtitleInput["alignment"];
       baseX: number;
       delayMs: number;
-      prevChars: RichChar[];
       newChars: RichChar[];
+      onTypingComplete?: () => void;
+      prevChars: RichChar[];
       widthPx: number;
     },
   ): Promise<void> {
@@ -3788,9 +3865,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
       if (!this.app || this.subtitleTypingSessionId !== sessionId) return;
 
+      // The transparent tail keeps the full-text line layout fixed while the
+      // visible prefix grows (native BeginText hidden-string port).
       subtitle.text = richCharsToTaggedText([
         ...input.prevChars,
         ...input.newChars.slice(0, index + 1),
+        ...subtitleHiddenTail(input.newChars.slice(index + 1)),
       ]);
       this.layoutSubtitle(
         subtitle,
@@ -3800,8 +3880,13 @@ export class PixiStoryRenderer implements StoryRenderer {
       );
     }
 
-    if (this.subtitleTypingSessionId === sessionId)
+    if (this.subtitleTypingSessionId === sessionId) {
       this.subtitleTypingTarget = null;
+      // Native `SubtitlePanel._OnTypeWriterEnd` (2.7.61 VA 0x183e94e80):
+      // typing that finishes on its own raises the auto click; without this,
+      // auto mode would sit on the subtitle waiting for a manual click.
+      input.onTypingComplete?.();
+    }
   }
 
   private async runStickerTyping(

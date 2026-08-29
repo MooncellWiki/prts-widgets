@@ -389,6 +389,15 @@ export interface CgItemInput {
 export interface SubtitleInput {
   alignment: "center" | "left" | "right";
   delayMs: number;
+  /**
+   * Native port: `Torappu.AVG.SubtitlePanel._OnTypeWriterEnd` (2.7.61 VA
+   * 0x183e94e80). Invoked exactly once when the subtitle typewriter finishes
+   * on its own (or shows instantly with `delayMs <= 0`) so the runtime can
+   * run its `RaiseAutoClick(typeWriter.messageLength)` equivalent. The
+   * click-to-finish path never invokes it -- native `_OnClicked` ->
+   * `TryFinish()` is driven by the runtime's own click handler.
+   */
+  onTypingComplete?: () => void;
   sizePx: number;
   text: string;
   widthPx: number;

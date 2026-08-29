@@ -51,7 +51,7 @@ export function collectColors(chars: RichChar[]): string[] {
   return result;
 }
 
-function colorTagName(color: string): string {
+export function colorTagName(color: string): string {
   return `_c${color.replace("#", "")}`;
 }
 
