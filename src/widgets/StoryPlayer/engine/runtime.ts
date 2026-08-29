@@ -712,6 +712,13 @@ export class StoryRuntime {
     if (this.skipToIndex >= 0 && this.cursor <= this.skipToIndex) {
       this.cursor = this.skipToIndex + 1;
       shouldResume = true;
+      // Native port: Torappu.AVG.AVGController.SkipStory's shared UI tail runs
+      // after the SkipToThis jump and resets set_autoPlayMode(DEFAULT) plus
+      // stops the auto coroutine (2.7.61: 0x183e1a74d / 0x183e1a788), so auto
+      // playback never continues past the anchor. Web adaptation: only the
+      // real jump resets; native also runs this tail for an already-crossed
+      // anchor (a no-op jump), which canSkipNode() precludes here.
+      this.setAutoPlayMode("default");
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.
