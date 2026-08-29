@@ -1363,6 +1363,65 @@ describe("PixiStoryRenderer", () => {
     expect(root.position.x - 640).toBe(-160);
     expect(360 - root.position.y).toBe(0);
   });
+
+  it("applies largeimg input scale instead of the legacy 1.2 override", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setLargeImage({
+      ...createGridBackgroundInput(),
+      fadeMs: 0,
+      imageKeys: ["tile-0", "tile-1"],
+      layout: "large",
+      scaleX: -1.25,
+      scaleY: 0.8,
+      solidHeights: [900],
+      solidWidths: [1600, 1600],
+      x: -160,
+    });
+
+    // The former hard-coded root.scale.set(1.2) discarded the command's
+    // xscale/yscale entirely; the reference applies localScale verbatim.
+    const root = renderer.largeImageRoot;
+    expect(root.scale.x).toBe(-1.25);
+    expect(root.scale.y).toBe(0.8);
+    expect(root.parent).toBe(renderer.imageLayer);
+  });
+
+  it("resets the large image layer when a largeimg tile fails to load", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    const warnings: string[] = [];
+    renderer.onWarning = (detail: string) => warnings.push(detail);
+    renderer.textureForImageKey = vi
+      .fn()
+      .mockResolvedValueOnce(Texture.EMPTY)
+      .mockResolvedValueOnce(null);
+
+    const stale = new Container();
+    renderer.imageLayer.addChild(stale);
+    renderer.largeImageRoots.add(stale);
+    renderer.largeImageRoot = stale;
+
+    await renderer.setLargeImage({
+      ...createGridBackgroundInput(),
+      fadeMs: 0,
+      imageKeys: ["tile-0", "tile-1"],
+      layout: "large",
+      solidHeights: [900],
+      solidWidths: [1600, 1600],
+    });
+
+    // Reference: on any load failure LargeBackgroundPanel logs and resets
+    // the panel, so the previous layer must not survive the failed swap.
+    expect(stale.parent).toBeNull();
+    expect(renderer.largeImageRoot).toBeNull();
+    expect(renderer.largeImageRoots.size).toBe(0);
+    expect(warnings).toContain(
+      "largeimg tile load failed; resetting large image",
+    );
+  });
 });
 
 describe("PixiStoryRenderer blocker", () => {

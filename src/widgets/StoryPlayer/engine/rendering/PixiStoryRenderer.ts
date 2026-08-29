@@ -852,6 +852,9 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Web-only legacy compatibility surface. The investigated client has no
    * `largeimg` command or corresponding native executor, so this must not be
    * represented as a port; it remains isolated from the real `image` path.
+   * Behavioral reference: `LargeBackgroundPanel._ExecuteImage` (`largebg`) —
+   * all-or-nothing two-tile loading, literal fade, panel reset on failure —
+   * adapted to the foreground image layer.
    */
   async setLargeImage(input: GridBackgroundInput): Promise<void> {
     const sessionId = ++this.largeImageSessionId;
@@ -863,11 +866,20 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     if (!this.app || sessionId !== this.largeImageSessionId) return;
 
-    if (textures.some((texture) => !texture)) return;
+    if (textures.some((texture) => !texture)) {
+      // Reference behavior: on any load failure LargeBackgroundPanel logs an
+      // error and resets the panel, clearing what is on screen. Per-tile
+      // warnings already come from textureForImageKey; this surfaces the
+      // all-or-nothing decision and performs the reset.
+      this.onWarning?.("largeimg tile load failed; resetting large image");
+      await this.clearLargeImage(0);
+      return;
+    }
 
     const root = this.buildGridBackgroundRoot(input, textures as Texture[]);
-    // largeimg is a legacy-only command and retains its existing transform.
-    root.scale.set(1.2);
+    // Scale comes from the command's xscale/yscale (negative mirror values
+    // included) via buildGridBackgroundRoot; the previous hard-coded 1.2
+    // override made those parameters entirely ineffective.
     const previous = [...this.largeImageRoots];
     this.largeImageRoot = root;
 
@@ -883,6 +895,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    // Unlike the native `_ResetImages()` (which clears old sprites before the
+    // fade-in, leaving a short blank gap), the outgoing root is kept until the
+    // incoming fade completes — a web-extension cross-fade visual choice.
     const run = this.tween(
       input.fadeMs,
       (progress) => {
