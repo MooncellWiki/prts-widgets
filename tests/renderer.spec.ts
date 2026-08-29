@@ -238,37 +238,45 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
-  it("bakes the black gradient over the body as well as the face", async () => {
+  it("composites the face onto the body before the black gradient bake", async () => {
     const baked = new Texture();
     const renderer = createFaceOverlayRenderer(baked);
+    const composited = new Texture();
+    const compositeSpy = vi
+      .spyOn(renderer, "bakeFaceOverlayTexture")
+      .mockReturnValue(composited);
 
     const built = await renderer.buildCharacterVisual("avg_test", "1$1", 0, 1);
 
     // Native composites the face into the same material as the body
     // (`AlphaSplitImageHolder.SetSprite` binds it as `_HGDynamicTex`) and only
-    // then applies `_BlackStart`/`_BlackEnd`, so the darkening covers the
-    // whole character. Baking the face alone would leave the body at its
-    // original colour with a darkened patch over the face.
-    const [sprites] = renderer.bakeDarkenedCharacterTexture.mock.calls[0];
-    const bodyTexture = await renderer.textureForCharacterKey("body-1");
-    const faceTexture = await renderer.textureForCharacterKey("face-1");
-    expect(sprites.map((sprite: Sprite) => sprite.texture)).toEqual([
-      bodyTexture,
-      faceTexture,
-    ]);
-    // Draw order matters: the body goes down first, the face patch on top.
-    expect(sprites.map((sprite: Sprite) => [sprite.x, sprite.y])).toEqual([
-      [0, 0],
-      [10, 20],
-    ]);
+    // then applies fade alpha and `_BlackStart`/`_BlackEnd`. The web port must
+    // bake the same way: two stacked sprites would each carry a copy of the
+    // fade alpha, making the face region's effective opacity 1-(1-p)^2 -- the
+    // face would fade in ahead of the body.
+    expect(compositeSpy).toHaveBeenCalledWith(
+      "body-1",
+      "face-1",
+      await renderer.textureForCharacterKey("body-1"),
+      await renderer.textureForCharacterKey("face-1"),
+      { h: 40, w: 50, x: 10, y: 20 },
+    );
 
     const content = built.visual.children[0] as Container;
     expect(content.children.length).toBe(1);
+
+    // The black gradient then bakes over the single composited sprite, so the
+    // darkening covers the whole character.
+    const [sprites] = renderer.bakeDarkenedCharacterTexture.mock.calls[0];
+    expect(sprites.length).toBe(1);
+    expect((sprites[0] as Sprite).texture).toBe(composited);
     expect((content.children[0] as Sprite).texture).toBe(baked);
   });
 
-  it("keeps every content sprite when one of them cannot be baked", async () => {
+  it("keeps the composited sprite when the black bake fails", async () => {
     const renderer = createFaceOverlayRenderer(new Texture());
+    const composited = new Texture();
+    renderer.bakeFaceOverlayTexture = vi.fn(() => composited);
     renderer.bakeDarkenedCharacterTexture = vi.fn(() => null);
 
     const built = await renderer.buildCharacterVisual("avg_test", "1$1", 0, 1);
@@ -276,7 +284,8 @@ describe("PixiStoryRenderer", () => {
     // The originals are only dropped in favour of a baked texture; when the
     // bake fails the character must stay drawable, just undarkened.
     const content = built.visual.children[0] as Container;
-    expect(content.children.length).toBe(2);
+    expect(content.children.length).toBe(1);
+    expect((content.children[0] as Sprite).texture).toBe(composited);
   });
 
   it("dims unfocused characters with tint without making them transparent", () => {

@@ -283,6 +283,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly context: Context;
   private readonly charLayer = this.layers.characters;
   private readonly characterSlots = new Map<string, CharacterRenderState>();
+  private readonly faceOverlayTextures = new Map<string, Texture>();
   private readonly cutinLayer = this.layers.cutins;
   private readonly cutinPanel: CharacterCutinPanel;
 
@@ -556,6 +557,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
     this.characterSlots.clear();
+    for (const texture of this.faceOverlayTextures.values())
+      texture.destroy(true);
+    this.faceOverlayTextures.clear();
     for (const state of this.curtains.values()) this.disposeCurtainState(state);
     this.curtains.clear();
     this.resizeObserver?.disconnect();
@@ -2985,9 +2989,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     let sourceHeight: number;
     // Every sprite that contributes character pixels, in draw order. Native
     // composites the face into the *same* material as the body (`SetSprite`
-    // feeds the face through `_HGDynamicTex`) and only then applies
-    // `_BlackStart`/`_BlackEnd`, so the gradient must be baked over the whole
-    // stack -- baking the face alone would leave the body its original colour.
+    // feeds the face through `_HGDynamicTex`), so alpha (`DOColor` on the fore
+    // Image's vertex colour) and `_BlackStart`/`_BlackEnd` multiply the
+    // already-composited pixels. The web port must bake the face onto the body
+    // up front for the same reason: two stacked sprites would each carry the
+    // fade alpha separately, making the face region's effective opacity
+    // 1-(1-p)^2 instead of p -- the face would fade in ahead of the body.
     const contentSprites: Sprite[] = [];
 
     if (item.group === -1 && "image" in item && item.image) {
@@ -3015,20 +3022,19 @@ export class PixiStoryRenderer implements StoryRenderer {
       ]);
       if (!baseTexture || !faceTexture) return null;
 
-      const baseSprite = new Sprite(baseTexture);
-      baseSprite.anchor.set(0, 0);
-      content.addChild(baseSprite);
-      contentSprites.push(baseSprite);
+      const texture = this.bakeFaceOverlayTexture(
+        group.base,
+        item.face,
+        baseTexture,
+        faceTexture,
+        group.faceRect,
+      );
+      if (!texture) return null;
 
-      const faceSprite = new Sprite(faceTexture);
-      faceSprite.anchor.set(0, 0);
-      faceSprite.x = group.faceRect.x;
-      faceSprite.y = group.faceRect.y;
-      faceSprite.width = group.faceRect.w;
-      faceSprite.height = group.faceRect.h;
-      content.addChild(faceSprite);
-      contentSprites.push(faceSprite);
-
+      const sprite = new Sprite(texture);
+      sprite.anchor.set(0, 0);
+      content.addChild(sprite);
+      contentSprites.push(sprite);
       sourceWidth = baseTexture.width;
       sourceHeight = baseTexture.height;
     } else {
@@ -3248,6 +3254,78 @@ export class PixiStoryRenderer implements StoryRenderer {
     const darkened = new Sprite(texture);
     darkened.anchor.set(0, 0);
     content.addChild(darkened);
+  }
+
+  /**
+   * Flattens a `face_overlay` group (body + expression face) into a single
+   * texture. Native renders both through one `avgCharSplitShader` material
+   * (`AlphaSplitImageHolder.SetSprite` 0x183ec5e60: the body is the Image's
+   * own sprite, the face rides the same material's `_HGDynamicTex` with the
+   * `faceOffset` UV transform), so the face is composited *inside* the shader
+   * before the vertex colour multiplies the result. Keeping two stacked Pixi
+   * sprites instead would fade each layer with its own copy of the alpha
+   * (`1-(1-p)^2` over the face) and double-apply `_BlackStart` shading, so the
+   * composite is baked once per (base, face) pair and cached.
+   *
+   * The face texture is stretched to `faceRect` as-is (no aspect-ratio
+   * preservation): the CDN face PNG matches what native maps through the
+   * `faceOffset` scale/offset, verified against the official client.
+   */
+  private bakeFaceOverlayTexture(
+    baseKey: string,
+    faceKey: string,
+    baseTexture: Texture,
+    faceTexture: Texture,
+    faceRect: { x: number; y: number; w: number; h: number },
+  ): Texture | null {
+    const cacheKey = `${baseKey}|${faceKey}`;
+    const cached = this.faceOverlayTextures.get(cacheKey);
+    if (cached) return cached;
+
+    const baseResource = baseTexture.source?.resource as
+      CanvasImageSource | undefined;
+    const faceResource = faceTexture.source?.resource as
+      CanvasImageSource | undefined;
+    // Mirrors bakeDarkenedCharacterTexture: a texture we cannot draw has to
+    // fail the whole bake rather than silently drop the face or the body.
+    if (!baseResource || !faceResource) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(baseTexture.width));
+    canvas.height = Math.max(1, Math.round(baseTexture.height));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const baseFrame = baseTexture.frame;
+    ctx.drawImage(
+      baseResource,
+      baseFrame.x,
+      baseFrame.y,
+      baseFrame.width,
+      baseFrame.height,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    const faceFrame = faceTexture.frame;
+    ctx.drawImage(
+      faceResource,
+      faceFrame.x,
+      faceFrame.y,
+      faceFrame.width,
+      faceFrame.height,
+      faceRect.x,
+      faceRect.y,
+      faceRect.w,
+      faceRect.h,
+    );
+
+    const texture = new Texture({
+      source: new CanvasSource({ resource: canvas }),
+    });
+    this.faceOverlayTextures.set(cacheKey, texture);
+    return texture;
   }
 
   private bakeDarkenedCharacterTexture(
