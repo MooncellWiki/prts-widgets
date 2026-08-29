@@ -22,6 +22,12 @@ export const DIALOG_FRAME_URL = new URL(
   import.meta.url,
 ).href;
 
+/** blocker slider/verticalslider 滑擦蒙版(`slide_left`,avg/[uc]common) */
+export const SLIDE_MASK_TEXTURE_URL = new URL(
+  "assets/ui/slide_mask.png",
+  import.meta.url,
+).href;
+
 /** 地区邮戳（animtext group_location_stamp）各零件贴图 */
 export const STAMP_ASSETS = {
   back_gradient: new URL("assets/ui/back_gradient.png", import.meta.url).href,

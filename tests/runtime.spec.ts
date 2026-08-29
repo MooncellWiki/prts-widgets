@@ -1860,6 +1860,54 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("scales blocker fadetime by animateRatio like native CalculateFadetime", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[Blocker(a=1, r=0,g=0, b=0, fadetime=0.6, block=true)]",
+        '[Blocker(a=0, r=0,g=0, b=0, fadetime=2, style="verticalslider", block=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.blockerCalls.map((call) => [call.fadeMs, call.block]),
+    ).toEqual([
+      [300, true],
+      [1000, true],
+    ]);
+  });
+
+  it("collapses blocker into the native zero-duration branch under quick_play", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[Blocker(a=1, r=0,g=0, b=0, fadetime=0.6, block=true)]",
+        "[Blocker(a=0, r=0,g=0, b=0, fadetime=2, block=true)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      // quick_play speed family has animateRatio = 0; the constructor option
+      // applies the same ratio to the default speed.
+      { animateRatio: 0 },
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.blockerCalls.map((call) => [call.fadeMs, call.block]),
+    ).toEqual([
+      [0, false],
+      [0, false],
+    ]);
+  });
+
   it("keeps cameraeffect values case-sensitive and degrades Chaos structurally", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];

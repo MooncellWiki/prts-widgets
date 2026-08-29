@@ -10,9 +10,11 @@ import {
   Text,
   TextStyle,
   Texture,
+  type TextureSource,
   TilingSprite,
 } from "pixi.js";
 
+import { SLIDE_MASK_TEXTURE_URL } from "../../assets";
 import {
   resolveAssetUrl,
   resolveStoryAssetByKey,
@@ -66,6 +68,7 @@ import {
   rotateTweenDelta,
 } from "./core/SceneGeometry";
 import { buildShakePath, sampleShakePath } from "./core/ShakePath";
+import { SlideMaskFilter } from "./core/SlideMaskFilter";
 import { TweenRunner } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
@@ -89,6 +92,11 @@ function isFiniteNumber(value: number | undefined): value is number {
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+/** Raw float color channel to the 8-bit tint write (the only clamp point). */
+function tintChannel(value: number): number {
+  return Math.round(clamp01(value) * 255);
 }
 
 /**
@@ -246,6 +254,44 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly cgItemPanel: CgItemPanel;
 
   private blockerSprite: Sprite | null = null;
+  /**
+   * Raw float mirror of the native `_blocker.color` (prefab initial
+   * (0,0,0,0)). Unity `Color` channels are float32 and may exceed 1 -- scripts
+   * write 0-255 endpoints (r=255 white flashes, 7.5k+ occurrences) whose
+   * mid-tween values saturate only at the GPU. Readback and interpolation stay
+   * in raw scale; only the 8-bit tint write clamps.
+   */
+  private blockerColor: { a: number; b: number; g: number; r: number } = {
+    a: 0,
+    b: 0,
+    g: 0,
+    r: 0,
+  };
+  private blockerTweenSessionId = 0;
+  /**
+   * localScale sign persistence for the slider wipe (native `_ExecuteBlocker`
+   * assigns literal -1 to the flipped axis; `inverse = false` never resets it,
+   * and only OnReset/destroy restores +1). The sign is tracked separately from
+   * `sprite.scale` because every `blocker.width`/`height` write recomputes the
+   * magnitude from the new texture, so the sign is the only part worth owning;
+   * the visible mirror is the shader's (SlideMaskFilter uFlip), since the quad
+   * itself is untextured white.
+   */
+  private blockerScaleSign = { x: 1, y: 1 };
+  /**
+   * `_blocker.material` equivalent: non-null only while the slide wipe is
+   * mounted, so `writeBlockerColor` knows whether alpha belongs to the shader
+   * or to `sprite.alpha`.
+   */
+  private blockerSlideFilter: SlideMaskFilter | null = null;
+  /**
+   * The filter instance itself, mirroring the single `slide_mask` Material
+   * `_SetMaterial` re-fetches from the asset loader cache (2.7.61 VA
+   * 0x183e30b60): mounting and unmounting reuses it rather than rebuilding.
+   */
+  private blockerSlideMaterial: SlideMaskFilter | null = null;
+  private blockerMaskSource: TextureSource | null = null;
+  private blockerMaskSourceFailed = false;
   private cameraShakeSessionId = 0;
   private cameraShakeWaitResolve: (() => void) | null = null;
   private grayscaleAmount = 0;
@@ -406,6 +452,14 @@ export class PixiStoryRenderer implements StoryRenderer {
     // so it goes back as child 0 rather than being re-appended on each gridbg.
     this.backgroundLayer.addChild(this.gridBackgroundLayer);
     this.blockerSprite = null;
+    // Blocker's closest OnReset equivalent on destroy: drop in-flight tween
+    // callbacks and restore the prefab color (0,0,0,0). OnReset also clears
+    // the slide_mask material and restores localScale = one.
+    this.blockerTweenSessionId += 1;
+    this.blockerScaleSign = { x: 1, y: 1 };
+    this.blockerSlideFilter = null;
+    this.blockerSlideMaterial = null;
+    this.blockerColor = { a: 0, b: 0, g: 0, r: 0 };
     this.gridBackgroundSessionId += 1;
     this.largeBackgroundRoot = null;
     this.largeBackgroundTweenSessionId += 1;
@@ -1875,16 +1929,34 @@ export class PixiStoryRenderer implements StoryRenderer {
           blocker.texture = await Assets.load<Texture>(url);
           blocker.width = STORY_WIDTH;
           blocker.height = STORY_HEIGHT;
+          this.applyBlockerScaleSign(blocker);
         } catch {
           this.onWarning?.(`missing blocker image: ${input.image}`);
         }
       }
     } else if (input.style !== "default") {
+      // Native slider/verticalslider set sprite = null (2.7.61 VA 0x183e30297):
+      // the quad stays full-screen and the SlideMask material draws the wipe.
+      // Texture.WHITE is the web equivalent of Unity's null-sprite white quad.
       blocker.texture = Texture.WHITE;
-      this.onWarning?.(`unsupported_visual blocker:${input.style}`);
+      blocker.width = STORY_WIDTH;
+      blocker.height = STORY_HEIGHT;
+      this.applyBlockerScaleSign(blocker);
+      if (input.fadeMs > 0) {
+        // _GenTweenerWithParam mounts slide_mask only on the animated path
+        // (VA 0x183e30860); the zero-duration branch never touches the
+        // material, so it persists from the previous command.
+        await this.attachBlockerSlideFilter(blocker, input.style);
+      }
     }
 
-    const current = this.readBlockerColor(blocker);
+    const current = this.readBlockerColor();
+    // `DOKill(_blocker, complete: false)` equivalent (2.7.61 VA 0x183e30522):
+    // a new command kills the previous DOColor mid-flight, so at most one
+    // blocker tween is ever active. Stale step/complete callbacks below are
+    // dropped -- a stale complete with to.a ~= 0 would otherwise reset the
+    // texture and hide the sprite under the new command.
+    const sessionId = ++this.blockerTweenSessionId;
     const from = {
       a: Number.isFinite(input.from.a) ? input.from.a : current.a,
       b: Number.isFinite(input.from.b) ? input.from.b : current.b,
@@ -1895,21 +1967,31 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if (input.fadeMs <= 0) {
       // The zero-fadetime path returns before the inverse block, so scale is
-      // untouched here.
+      // untouched here, and before _GenTweenerWithParam, so the material
+      // (slide filter) keeps whatever the previous animated command mounted.
       this.writeBlockerColor(blocker, input.to);
       return;
     }
 
+    // Animated default-style commands call _CleanMaterial (set_material(null))
+    // inside _GenTweenerWithParam; slider styles mounted the filter above.
+    if (input.style === "default") this.detachBlockerSlideFilter(blocker);
+
     // `AVGBlockerPanel._ExecuteBlocker` assigns literal -1 rather than negating
     // the current axis: repeated inverse commands are idempotent, and only reset
+    // via OnReset. The sign lives in blockerScaleSign (PIXI's width setter
+    // rewrites scale magnitudes), and the mask coordinate mirror follows it in
+    // SlideMaskFilter's uFlip uniforms.
     if (input.inverse) {
-      if (input.style === "slider") blocker.scale.x = -1;
-      else if (input.style === "verticalslider") blocker.scale.y = -1;
+      if (input.style === "slider") this.blockerScaleSign.x = -1;
+      else if (input.style === "verticalslider") this.blockerScaleSign.y = -1;
+      this.applyBlockerScaleSign(blocker);
     }
 
     const run = this.tween(
       input.fadeMs,
       (progress) => {
+        if (sessionId !== this.blockerTweenSessionId) return;
         this.writeBlockerColor(blocker, {
           a: from.a + (input.to.a - from.a) * progress,
           b: from.b + (input.to.b - from.b) * progress,
@@ -1918,8 +2000,17 @@ export class PixiStoryRenderer implements StoryRenderer {
         });
       },
       () => {
+        if (sessionId !== this.blockerTweenSessionId) return;
         if (Math.abs(input.to.a) <= 1e-6) {
+          // _FinishCommand's _ResetBlockerImg equivalent. Native restores the
+          // serialized `_defaultBlocker` sprite (VA 0x183e30af0), not null;
+          // the plain white quad is the standing web approximation of it.
+          // The size write is required because the 1x1 Texture.WHITE would
+          // otherwise inherit the previous texture's scale.
           blocker.texture = Texture.WHITE;
+          blocker.width = STORY_WIDTH;
+          blocker.height = STORY_HEIGHT;
+          this.applyBlockerScaleSign(blocker);
           blocker.visible = false;
         }
       },
@@ -2349,15 +2440,93 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (this.blockerSprite) return this.blockerSprite;
 
     const blocker = new Sprite(Texture.WHITE);
+    // Centered anchor: the persistent inverse flip (localScale = -1) mirrors
+    // the quad around its center, exactly like the native stretch-anchored
+    // RectTransform, so coverage stays the full 1280x720 either sign.
+    blocker.anchor.set(0.5);
+    blocker.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     blocker.width = STORY_WIDTH;
     blocker.height = STORY_HEIGHT;
     blocker.tint = 0x00_00_00;
     blocker.alpha = 0;
 
     this.blockerSprite = blocker;
-    this.worldLayer.addChild(blocker);
+    // Native hierarchy: panel_blocker (sibling 1) renders *below*
+    // panel_curtains (sibling 3), so curtains cover the blocker when both are
+    // up (black-mask pass, 2.7.61 scene layout). Insert just below the
+    // curtains container instead of appending on top of it. `indexOf` rather
+    // than `getChildIndex`, which throws when curtains has no parent yet
+    // (LayerGraph.attach runs in mount, so only an un-mounted harness hits
+    // that) -- there, appending is the right fallback.
+    const curtainIndex = this.worldLayer.children.indexOf(this.curtainLayer);
+    this.worldLayer.addChildAt(
+      blocker,
+      curtainIndex === -1 ? this.worldLayer.children.length : curtainIndex,
+    );
 
     return blocker;
+  }
+
+  /**
+   * Push the persistent localScale sign onto the sprite and the wipe shader.
+   * Called after every width/height write, which recomputes the scale
+   * magnitude from the new texture's local bounds (PIXI's size setters do
+   * carry the existing sign across, so this is a no-op re-assert there; it is
+   * load-bearing when `blockerScaleSign` itself just changed, and it is the
+   * single place SlideMaskFilter's uFlip stays in sync).
+   */
+  private applyBlockerScaleSign(blocker: Sprite): void {
+    blocker.scale.x = this.blockerScaleSign.x * Math.abs(blocker.scale.x);
+    blocker.scale.y = this.blockerScaleSign.y * Math.abs(blocker.scale.y);
+    this.blockerSlideFilter?.setFlip(
+      this.blockerScaleSign.x < 0,
+      this.blockerScaleSign.y < 0,
+    );
+  }
+
+  /**
+   * `_SetMaterial(slide_mask)` + ENABLE_VERTICAL keyword equivalent. Loads the
+   * bundled `slide_left` mask once; on failure the wipe degrades to the plain
+   * whole-surface veil (warning) instead of blocking playback.
+   */
+  private async attachBlockerSlideFilter(
+    blocker: Sprite,
+    style: "slider" | "verticalslider",
+  ): Promise<void> {
+    if (!this.blockerMaskSource && !this.blockerMaskSourceFailed) {
+      try {
+        const texture = await Assets.load<Texture>(SLIDE_MASK_TEXTURE_URL);
+        // Native sampler: bilinear + clamp wrap (Texture2D slide_left
+        // settings), which is PIXI's default texture style.
+        this.blockerMaskSource = texture.source;
+      } catch {
+        this.blockerMaskSourceFailed = true;
+        this.onWarning?.("missing blocker slide mask texture");
+      }
+    }
+    const source = this.blockerMaskSource;
+    if (!source) return;
+
+    this.blockerSlideMaterial ??= new SlideMaskFilter(source);
+    this.blockerSlideFilter = this.blockerSlideMaterial;
+    this.blockerSlideFilter.setVertical(style === "verticalslider");
+    this.applyBlockerScaleSign(blocker);
+    blocker.filters = [this.blockerSlideFilter];
+  }
+
+  /** `_CleanMaterial` (set_material(null)) equivalent for default styles. */
+  private detachBlockerSlideFilter(blocker: Sprite): void {
+    if (!this.blockerSlideFilter) return;
+    blocker.filters = [];
+    // Null the mount so writeBlockerColor returns to sprite.alpha blending;
+    // blockerSlideMaterial keeps the instance for the next slider command,
+    // the way native re-assigns the same cached Material asset.
+    this.blockerSlideFilter = null;
+    // While mounted, sprite.alpha was pinned to 1 and the wipe owned the
+    // alpha. Hand it straight back here: the caller's next color write is a
+    // tween step one frame away, so leaving 1 in place flashes a fully opaque
+    // blocker for that frame.
+    blocker.alpha = clamp01(this.blockerColor.a);
   }
 
   private ensureCurtainState(direction: number): CurtainRenderState {
@@ -3474,30 +3643,45 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.cameraShakeWaitResolve = null;
   }
 
-  private readBlockerColor(blocker: Sprite): {
+  private readBlockerColor(): {
     a: number;
     b: number;
     g: number;
     r: number;
   } {
-    return {
-      a: blocker.alpha,
-      b: (blocker.tint & 0xff) / 255,
-      g: ((blocker.tint >> 8) & 0xff) / 255,
-      r: ((blocker.tint >> 16) & 0xff) / 255,
-    };
+    // Native `_ExecuteBlocker` reads the current `Color` (float32) for the
+    // omitted `*From` channels (2.7.61 VA 0x183e30318). Returning the raw
+    // float mirror keeps full precision and preserves 0-255-scale values
+    // across commands, instead of re-reading the quantized 8-bit tint.
+    return { ...this.blockerColor };
   }
 
   private writeBlockerColor(
     blocker: Sprite,
     color: { a: number; b: number; g: number; r: number },
   ): void {
-    const channel = (value: number) =>
-      Math.round(clamp01(value > 1 ? value / 255 : value) * 255);
+    // Native stores the raw GetFloat values straight into `Color` (float32,
+    // components may exceed 1) and DOColor tweens that raw color; only the GPU
+    // clamps at render time. So a 0-255 endpoint (r=255) saturates the channel
+    // for essentially the whole tween -- the visible fade is the alpha ramp.
+    // Mirror that: keep the raw floats, and clamp just this 8-bit tint write.
+    // (The old per-value `value > 1 ? value / 255 : value` heuristic re-scaled
+    // every intermediate frame, halving mid-fade brightness.)
+    this.blockerColor = { a: color.a, b: color.b, g: color.g, r: color.r };
     blocker.tint =
-      (channel(color.r) << 16) | (channel(color.g) << 8) | channel(color.b);
-    blocker.alpha = clamp01(color.a);
-    blocker.visible = blocker.alpha > 0;
+      (tintChannel(color.r) << 16) |
+      (tintChannel(color.g) << 8) |
+      tintChannel(color.b);
+    if (this.blockerSlideFilter) {
+      // SlideMask replaces Image.alpha with the per-pixel wipe: the sprite
+      // stays opaque so the filter input keeps the untinted-dimmed rgb, and
+      // the raw alpha drives the shader's reveal progress directly.
+      this.blockerSlideFilter.alpha = color.a;
+      blocker.alpha = 1;
+    } else {
+      blocker.alpha = clamp01(color.a);
+    }
+    blocker.visible = color.a > 0;
   }
 
   // CharacterAction still uses the legacy per-tick shake model; CameraShake uses ShakePath.

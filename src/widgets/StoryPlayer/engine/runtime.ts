@@ -779,6 +779,9 @@ export class StoryRuntime {
    * Only panels implementing IFadeTimeRatio route through it. AVGImagePanel does
    * (background / image / imagerotate); its tween executors bypass it, and the
    * whole LargeBackgroundPanel family (largebg / verticalbg / gridbg /
+   * largeimgtween) stays outside. AVGBlockerPanel implements it too
+   * (2.7.61 `CalculateFadetime` VA 0x183e2f6d0, inlined into `_ExecuteBlocker`
+   * at 0x183e3040e), so `blocker` also routes through this helper.
    */
   private calculateFadeMs(seconds: unknown, fallback = 0): number {
     return Math.max(
@@ -1743,15 +1746,19 @@ export class StoryRuntime {
 
       case "blocker": {
         // Native port: Torappu.AVG.AVGBlockerPanel._ExecuteBlocker. The malformed
-        // default `defualt` is intentional, and fadetime is scaled.
+        // default `defualt` is intentional. Like every IFadeTimeRatio panel,
+        // blocker routes fadetime through AVGUtils.CalculateFadetime
+        // (`AVGController.animateRatio * fadetime`, 2.7.61 VA 0x183e3040e), so
+        // quick_play (animateRatio = 0) collapses into the native IsZero branch:
+        // instant recolor and a forced non-blocking return.
         const styleArg = toString(this.exactArg(args, "style"), "defualt");
         const style =
           styleArg === "slider" || styleArg === "verticalslider"
             ? styleArg
             : "default";
-        const fadeMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "fadetime"), 0.4) * 1000,
+        const fadeMs = this.calculateFadeMs(
+          this.exactArg(args, "fadetime"),
+          0.4,
         );
 
         await this.renderer.setBlocker({
