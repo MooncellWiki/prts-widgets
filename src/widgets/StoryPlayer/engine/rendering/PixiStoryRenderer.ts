@@ -2485,8 +2485,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     timer.visible = true;
     timer.x = input.x;
     timer.y = input.y;
-    // `_StartCountTimer` fires `_TimerTick(0)` once immediately, so the slot
-    // briefly shows 00:00:00 before the first real tick lands.
+    // `_StartCountTimer` fires `_TimerTick(0)` once immediately and the timer
+    // counts up from there, so the slot reads 00:00:00 until the first whole
+    // second elapses.
     timer.text = this.formatTimer(0);
 
     const fadeSessionId = this.timerFadeSessionId;
@@ -2505,31 +2506,34 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if (input.limitSeconds === undefined || input.limitSeconds <= 0) return;
 
-    // Native counts down against a wall-clock deadline: `SetCountDown` stores
-    // endTime = start + time*1000 (ms) and `Update` feeds
-    // `_OverrideTimerTaskTick` = `Math.Max(endTime - curTime, 0)` into
-    // `_TimerTick` on every internal tick (~200ms). The first real value
-    // therefore lands within one tick, so the full initial value (time=9999
-    // -> 02:46:39) is visible almost immediately and each value holds for a
-    // whole second. A naive 1s interval that decrements a counter would park
-    // on 00:00:00 for a full second, never show the initial value, and drift
-    // under browser timer throttling.
-    const deadlineMs = Date.now() + input.limitSeconds * 1000;
+    // Native is a stopwatch, not a countdown: `SetCountDown` stores
+    // startTime = now, endTime = now + time*1000 (ms) on a wall clock, and
+    // `Update` feeds `_OverrideTimerTaskTick` = `Math.Max(curTime -
+    // startTime, 0)` -- elapsed milliseconds, verified at the instruction
+    // level in build 2761 (an earlier reading of `endTime - curTime` had the
+    // operands swapped) -- into `_TimerTick` =
+    // TimeSpan.FromMilliseconds(...). The text therefore climbs
+    // 00:00:00 -> 00:00:01 -> ...; reaching `time` fires `_TimerEnd`, which
+    // only clears the task, so the display freezes at the cap
+    // (time=9999 -> 02:46:39) and stays visible. Deriving elapsed from the
+    // wall clock also avoids interval drift under browser throttling.
+    const startMs = Date.now();
+    const capSeconds = input.limitSeconds;
     this.timerStickerInterval = setInterval(
       () => {
-        const remainingSeconds = Math.max(
-          0,
-          Math.ceil((deadlineMs - Date.now()) / 1000),
+        const elapsedSeconds = Math.min(
+          capSeconds,
+          Math.floor((Date.now() - startMs) / 1000),
         );
         const timerText = this.timerStickerText;
         if (!timerText) return;
 
-        const text = this.formatTimer(remainingSeconds);
+        const text = this.formatTimer(elapsedSeconds);
         if (timerText.text !== text) timerText.text = text;
-        if (remainingSeconds <= 0) this.clearTimerInterval();
+        if (elapsedSeconds >= capSeconds) this.clearTimerInterval();
       },
-      // 200ms mirrors the native CountDownTask internal tick; the deadline
-      // math makes extra fires harmless (same ceil value, no text rewrite).
+      // 200ms mirrors the native CountDownTask internal tick; the wall-clock
+      // math makes extra fires harmless (same floor value, no text rewrite).
       200,
     );
   }

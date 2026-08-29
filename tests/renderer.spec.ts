@@ -1364,7 +1364,7 @@ describe("PixiStoryRenderer", () => {
     expect(360 - root.position.y).toBe(0);
   });
 
-  it("shows the timer sticker's full initial value instead of parking on 00:00:00", async () => {
+  it("counts the timer sticker up from 00:00:00 like the native stopwatch", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new PixiStoryRenderer(createContext()) as any;
@@ -1392,27 +1392,27 @@ describe("PixiStoryRenderer", () => {
       });
 
       // `AVGTimerView._StartCountTimer` fires `_TimerTick(0)` once
-      // immediately, so 00:00:00 is visible for one internal tick at most.
+      // immediately and the value then counts up from zero -- `time` is a
+      // timeout cap, not the initial value (02:46:39 must never show here).
       expect(timer.text).toBe("00:00:00");
 
-      // The first real value lands within the ~200ms internal tick: the full
-      // initial value (time=9999 -> 02:46:39) shows right away instead of a
-      // whole second of 00:00:00 followed by a skip straight to 02:46:38.
+      // Within the ~200ms internal tick the elapsed value is still 0s; the
+      // first change lands on the whole-second boundary.
       vi.advanceTimersByTime(200);
-      expect(timer.text).toBe("02:46:39");
+      expect(timer.text).toBe("00:00:00");
 
-      // Each value holds for a whole second, and the countdown is
-      // deadline-based, so wall-clock gaps cannot drift it.
+      // Each value climbs by one per second, derived from the wall clock, so
+      // throttled intervals cannot drift it.
       vi.advanceTimersByTime(800);
-      expect(timer.text).toBe("02:46:38");
+      expect(timer.text).toBe("00:00:01");
       vi.advanceTimersByTime(10_000);
-      expect(timer.text).toBe("02:46:28");
+      expect(timer.text).toBe("00:00:11");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("keeps the expired timer visible at 00:00:00 and wraps hours at 24", async () => {
+  it("freezes the timer at the time cap and wraps hours at 24", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new PixiStoryRenderer(createContext()) as any;
@@ -1438,18 +1438,19 @@ describe("PixiStoryRenderer", () => {
       };
 
       // `TimeSpan.Hours` wraps at 24: 100000s renders as 03:46:40.
-      await renderer.setTimerSticker({ ...base, limitSeconds: 100_000 });
-      vi.advanceTimersByTime(200);
-      expect(timer.text).toBe("03:46:40");
+      expect(renderer.formatTimer(100_000)).toBe("03:46:40");
 
-      // `_TimerEnd` only clears the task; the view stays visible at 00:00:00
-      // and the interval stops once the deadline is reached.
+      // Reaching `time` fires `_TimerEnd`, which only clears the task; the
+      // view stays visible frozen at the cap (not 00:00:00) and the interval
+      // stops once the cap is reached.
       await renderer.setTimerSticker({ ...base, limitSeconds: 2 });
       expect(timer.text).toBe("00:00:00");
       vi.advanceTimersByTime(2200);
-      expect(timer.text).toBe("00:00:00");
+      expect(timer.text).toBe("00:00:02");
       expect(timer.visible).toBe(true);
       expect(renderer.timerStickerInterval).toBeNull();
+      vi.advanceTimersByTime(1000);
+      expect(timer.text).toBe("00:00:02");
     } finally {
       vi.useRealTimers();
     }
