@@ -738,22 +738,31 @@ export class StoryRuntime {
     }
 
     this.pendingInputEffect = null;
-    // Native port: both executors on AVGCharacterCutinPanel reset on skip --
-    // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
-    // empties the slot pool / _slots before resetting the interlude
-    // controller, so a skipped node must not leave cutin slots behind.
-    await this.renderer.clearInterludes();
-    await this.renderer.clearCharacterCutin();
-    await this.renderer.clearSpellStickers();
-    // Native: SubtitlePanel.ShouldResetOnSkip() is true, so a skip resets the
-    // panel through OnReset -- alpha to 0 immediately (no tween) plus a
-    // typewriter reset. A stale subtitle must not survive the skip.
-    await this.renderer.clearSubtitle(0);
-    // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
-    // `OnReset -> _RecycleStickers`, whose first step is `StopTimer(0)` -- the
-    // timer hides instantly (the slot itself is kept for reuse). Story end
-    // keeps the timer on screen, matching `OnStoryEnd` (only unbinds Event=5).
-    void this.renderer.clearTimerSticker({ durationMs: 0 });
+    // Native port: AVGController.SkipStory (0x183e1a150) reaches
+    // _ResetComponentsOnSkip (0x183e1d3f0) only on the two paths that keep
+    // playing -- jumping to a SkipToThis anchor, and jumping to the next
+    // skipnode label when get_isSkippable() is false. When the story *is*
+    // skippable in the current mode (or no skip node is left) it takes
+    // StopStory("Skipped") and returns without resetting a single component, so
+    // a skip that ends the story leaves the screen exactly as it was.
+    // `shouldResume` is that same fork.
+    if (shouldResume) {
+      // Native port: both executors on AVGCharacterCutinPanel reset on skip --
+      // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
+      // empties the slot pool / _slots before resetting the interlude
+      // controller, so a skipped node must not leave cutin slots behind.
+      await this.renderer.clearInterludes();
+      await this.renderer.clearCharacterCutin();
+      await this.renderer.clearSpellStickers();
+      // Native: SubtitlePanel.ShouldResetOnSkip() is true, so a skip resets the
+      // panel through OnReset -- alpha to 0 immediately (no tween) plus a
+      // typewriter reset. A stale subtitle must not survive the skip.
+      await this.renderer.clearSubtitle(0);
+      // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
+      // `OnReset -> _RecycleStickers`, whose first step is `StopTimer(0)` --
+      // the timer hides instantly (the slot itself is kept for reuse).
+      await this.renderer.clearTimerSticker({ durationMs: 0 });
+    }
 
     this.cancelTyping();
     if (shouldResume) {

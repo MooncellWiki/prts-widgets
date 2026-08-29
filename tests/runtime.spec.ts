@@ -469,10 +469,12 @@ describe("StoryRuntime", () => {
 
   it("clears spellstickers when skipping the story", async () => {
     const renderer = new FakeRenderer();
+    // nofirstskip on a first read makes get_isSkippable() false, which is the
+    // only fork where SkipStory reaches _ResetComponentsOnSkip.
     const runtime = new StoryRuntime(
       createContext([
         '[spellsticker(id="s",block=true)]<p=1>x</>',
-        '[skipnode(mode="skip")]',
+        '[skipnode(mode="nofirstskip")]',
       ]),
       renderer,
       new FakeAudio(),
@@ -1574,8 +1576,9 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[charactercutin(widgetID="1",name="avg_npc_1",block=true)]',
-        '[skipnode(mode="skip")]',
         '[name="A"]ok',
+        '[skipnode(mode="nofirstskip")]',
+        '[name="B"]later',
       ]),
       renderer,
       new FakeAudio(),
@@ -3014,7 +3017,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[subtitle(text="HELLO",alignment="center")]',
-        '[skipnode(mode="skip")]',
+        '[skipnode(mode="nofirstskip")]',
       ]),
       renderer,
       new FakeAudio(),
@@ -3386,9 +3389,10 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[name="A"]hello',
-        '[skipnode(mode="skip")]',
         "[timersticker(x=30,y=90,size=24,time=10)]",
         '[name="B"]next',
+        '[skipnode(mode="nofirstskip")]',
+        '[name="C"]later',
       ]),
       renderer,
       new FakeAudio(),
@@ -3400,11 +3404,42 @@ describe("StoryRuntime", () => {
     expect(renderer.timerStickerCalls).toHaveLength(1);
     expect(renderer.timerClearCalls).toEqual([]);
 
-    // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
-    // `OnReset -> _RecycleStickers`, whose first step is `StopTimer(0)`.
+    // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping to the next
+    // node fires `OnReset -> _RecycleStickers`, whose first step is
+    // `StopTimer(0)`.
     await runtime.skipNode();
 
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("leaves the screen alone when the skip ends the story", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]hello',
+        "[timersticker(x=30,y=90,size=24,time=10)]",
+        '[name="B"]next',
+        '[skipnode(mode="skip")]',
+        '[name="C"]later',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.advance();
+    expect(renderer.timerStickerCalls).toHaveLength(1);
+
+    // mode="skip" makes get_isSkippable() true, so SkipStory takes
+    // StopStory("Skipped") and returns before _ResetComponentsOnSkip -- native
+    // resets no component at all on that fork.
+    await runtime.skipNode();
+
     expect(runtime.getState()).toBe("finished");
+    expect(renderer.timerClearCalls).toEqual([]);
+    expect(renderer.subtitleClearCalls).toEqual([]);
+    expect(renderer.spellStickerClearCount).toBe(0);
+    expect(renderer.clearCharacterCutinCalls).toEqual([]);
   });
 });
