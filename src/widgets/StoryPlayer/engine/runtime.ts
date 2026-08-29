@@ -1873,13 +1873,18 @@ export class StoryRuntime {
         // (2.7.61, VA 0x183e4d310). Duration defaults to 0.0 and goes through
         // CalculateFadetime; zero skips animation.
         const durationMs = Math.round(this.calculateFadeMs(args.duration, 0));
-        const block = toBoolean(args.isblock, false);
-        // Native reads `end` (default true) only to decide whether the
-        // assembled per-slot Sequence plays (`end=false` fills the cached
-        // sequence but never calls Play, leaving it for a later `end=true`
-        // command on the same slot to fire). It is not a
-        // transform-preservation switch.
-        const deferPlay = toString(args.end).trim().toLowerCase() === "false";
+        // `end` (default true) is neither a transform-preservation switch nor
+        // a defer switch. `_GetCachedSlotSeq` (0x183e4f830) hands back a fresh
+        // `DOTween.Sequence()` whenever the previous one already played, and
+        // `DOTween.Sequence()` (0x184109110) starts it playing because
+        // `defaultAutoPlay` is `AutoPlay.All` (cctor 0x18410b0e0) -- the tweens
+        // run either way. All `end` gates is the
+        // `OnComplete(_SetSeqPlayed)` + `Play()` pair at 0x183e4e501, and the
+        // `isblock` check nested inside it at 0x183e4e56f: on the slot path
+        // `isblock` only ever blocks when `end` is true.
+        const isEnd = toString(args.end).trim().toLowerCase() !== "false";
+        const rawBlock = toBoolean(args.isblock, false);
+        const block = rawBlock && isEnd;
 
         // The clear branch keys off an empty `slot`, never an empty `name`, and it
         // only touches the three built-in slots (custom slots are left alone).
@@ -1888,7 +1893,10 @@ export class StoryRuntime {
             undefined,
             durationMs,
           );
-          if (block) await clearPromise;
+          // This branch returns before the sequence is ever built, so it hands
+          // `isBlock` straight to `_CleanSlotsWithTween` (0x183e4e5c3) without
+          // the `end` gate the slot path has.
+          if (rawBlock) await clearPromise;
           else void clearPromise;
           return "continue";
         }
@@ -1926,9 +1934,7 @@ export class StoryRuntime {
           }
         }
 
-        if (isEmptyChar && !deferPlay) {
-          // SlotCleanChar lives inside the same Sequence, so `end=false`
-          // defers the clean together with the rest of the tweens.
+        if (isEmptyChar) {
           const clearPromise = this.renderer.clearCharacters(slot, durationMs);
           if (block) await clearPromise;
           else void clearPromise;
@@ -1969,7 +1975,6 @@ export class StoryRuntime {
           ...(args.circles === undefined
             ? {}
             : { circles: Math.trunc(toNumber(args.circles, 0)) }),
-          deferPlay,
           durationMs,
           expression: resolved?.expression,
           fadeIdentity: nameRef
@@ -3132,9 +3137,21 @@ export class StoryRuntime {
     const focus = toString(args.focus).trim().toLowerCase();
     if (!focus || focus === "all") return ["l", "m", "r"];
 
+    // The focus tokens are their own vocabulary, not the `slot` vocabulary:
+    // `_ProcessFocusArray` maps "custom"/"c" to `m_focusCustom`, so "c" must
+    // not fall through to the middle slot the way `parseCharacterSlot` maps
+    // it. Custom slots are unmodeled, so those tokens light nothing.
+    const focusSlotTokens: Record<string, string> = {
+      l: "l",
+      left: "l",
+      m: "m",
+      middle: "m",
+      r: "r",
+      right: "r",
+    };
     const slots = focus
       .split(",")
-      .map((value) => this.parseCharacterSlot(value))
+      .map((value) => focusSlotTokens[value.trim()])
       .filter((slot): slot is string => slot !== undefined);
     return [...new Set(slots)];
   }

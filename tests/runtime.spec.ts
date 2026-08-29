@@ -1661,7 +1661,6 @@ describe("StoryRuntime", () => {
         characterKey: "avg_1012_skadisp_1",
         // charslot's `duration` defaults to 0.0, not to DEFAULT_FADE_TIME.
         durationMs: 0,
-        deferPlay: false,
         expression: "avg_1012_skadisp_2",
         fadeIdentity: "avg_1012_skadiSP_1",
         // Omitted focus => ["all"] natively: every built-in slot is lit.
@@ -1837,16 +1836,17 @@ describe("StoryRuntime", () => {
     });
   });
 
-  it("maps charslot random like native GetOrDefault<int> and end=false to deferPlay", async () => {
+  it("maps charslot random like native GetOrDefault<int> and end=false only to blocking", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
         // level_main_12-05_end.txt:576 pattern: random=true is
         // Convert.ToInt32(true) = 1, not "enable randomness".
         '[charslot(slot="m",action="shake",random=true,power=5,times=60,duration=0.3)]',
-        // act23side_02_beg.txt:425 pattern: end=false assembles but never
-        // plays the sequence.
-        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,end=false)]',
+        // act23side_02_beg.txt:552 pattern: `end=false` still animates -- the
+        // sequence auto-plays -- but the isblock check at 0x183e4e56f sits
+        // inside the `end` branch, so it does not block.
+        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,isblock=true,end=false)]',
         '[name="A"]ok',
       ]),
       renderer,
@@ -1860,15 +1860,36 @@ describe("StoryRuntime", () => {
       slot: "m",
     });
     expect(renderer.characterCalls[1]).toMatchObject({
-      deferPlay: true,
       // afrom/ato omitted with a name resets to (0, 1): always fade in.
       alphaFrom: 0,
       alphaTo: 1,
+      block: false,
       positionFrom: { x: 0, y: -500 },
       positionTo: { x: 0, y: 0 },
       replaceFadeMs: 2000,
       slot: "l",
     });
+    // The very same command with end omitted does block.
+    expect(renderer.characterCalls[1]).not.toHaveProperty("deferPlay");
+  });
+
+  it("keeps isblock on the slotless clear branch even with end=false", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        // The clear branch returns before the sequence is built and hands
+        // isBlock straight to _CleanSlotsWithTween (0x183e4e5c3), so it is
+        // not gated on `end` the way the slot path is.
+        "[charslot(duration=0.5,isblock=true,end=false)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.clearedSlots).toEqual([{ fadeMs: 500, slot: undefined }]);
   });
 
   it("clears all characters with charslot duration when slot is omitted", async () => {

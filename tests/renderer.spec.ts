@@ -777,19 +777,17 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.tween).not.toHaveBeenCalled();
   });
 
-  it("defers end=false charslot tweens until the next command on the slot", async () => {
+  it("plays an end=false entrance immediately instead of deferring it", async () => {
     const renderer = createCharacterRenderer();
-    const shakeSpy = vi
-      .spyOn(renderer, "startShakeAction")
-      .mockImplementation(() => {});
 
-    // act23side_02_beg.txt:425-426 pattern: an entrance is assembled with
-    // end=false, then a shake command on the same slot plays it.
+    // act23side_02_beg.txt:425 pattern. `end=false` only skips the
+    // OnComplete(_SetSeqPlayed) + Play() pair; _GetCachedSlotSeq already
+    // handed back an auto-playing DOTween.Sequence, so the entrance runs now.
+    // The runtime therefore hands the renderer no defer flag at all.
     await renderer.setCharacter({
       alphaFrom: 0,
       alphaTo: 1,
       characterKey: "avg_test",
-      deferPlay: true,
       durationMs: 2000,
       expression: "1$1",
       focusMode: "subset",
@@ -799,33 +797,68 @@ describe("PixiStoryRenderer", () => {
       replaceFadeMs: 2000,
       slot: "l",
     });
+
     const state = renderer.characterSlots.get("l");
     expect(state).toBeTruthy();
-    // The image swap itself is not deferred (SetAlpha(fore, afrom)), but the
-    // move/alpha tweens are: nothing moved yet.
-    expect(state.contentAlpha).toBe(0);
-    expect(state.actionY).toBe(0);
-    expect(renderer.tween).not.toHaveBeenCalled();
-
-    await renderer.setCharacter({
-      action: "shake",
-      durationMs: 2000,
-      focusMode: "subset",
-      focusSlots: ["l", "m", "r"],
-      power: 50,
-      randomness: 90,
-      slot: "l",
-      times: 100,
-    });
-
-    // The deferred entrance now runs (from posfrom / afrom) together with
-    // the triggering shake.
+    // The stubbed tween never advances, so the slot sits at posfrom/afrom
+    // with the move and the fade-in both already started.
     expect(state.actionY).toBe(-500);
     expect(state.contentAlpha).toBe(0);
     expect(renderer.tween).toHaveBeenCalled();
-    expect(shakeSpy).toHaveBeenCalled();
-    // Nothing is left queued for the slot.
-    expect(renderer.deferredCharacterSlots.get("l")).toBeUndefined();
+  });
+
+  it("ignores posfrom/posto for zoom and resets the scale without an explicit scale", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+    // Stand in for a completed earlier zoom: the slot is scaled up and the
+    // offset is at rest (native keeps both across commands).
+    state.scaleX = 1.5;
+    state.scaleY = 1.5;
+    state.actionX = 0;
+    renderer.tween.mockClear();
+
+    // act42side_08_end.txt:109 pattern: `action="zoom"` with a pivot but no
+    // `scale`. CharZoom always tweens to `options.scale`, whose default is
+    // 1.0, so this has to start a tween back down to 1 rather than treat the
+    // current 1.5 as the target (which would leave from == to and no tween).
+    await renderer.setCharacter({
+      action: "zoom",
+      characterKey: "avg_test",
+      durationMs: 400,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      posZoom: { x: 0.5, y: 0.5 },
+      slot: "m",
+    });
+    expect(renderer.tween).toHaveBeenCalled();
+
+    // The zoom branch never reaches SlotMoveChar, so posfrom is inert: it must
+    // not snap the slot to -300 the way the plain-move branch would.
+    state.scaleX = 1;
+    state.scaleY = 1;
+    await renderer.setCharacter({
+      action: "zoom",
+      characterKey: "avg_test",
+      durationMs: 400,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      positionFrom: { x: -300, y: 0 },
+      positionTo: { x: 400, y: 0 },
+      slot: "m",
+    });
+
+    expect(state.actionX).toBe(0);
   });
 
   it("swaps the image instantly for an explicit enter without transtype", async () => {

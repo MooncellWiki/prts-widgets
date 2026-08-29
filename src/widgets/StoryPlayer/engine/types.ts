@@ -167,12 +167,6 @@ export interface CharacterSlotInput {
   block?: boolean;
   characterKey?: string;
   circles?: number;
-  /**
-   * `charslot` 的 `end=false`:native 把整条 Sequence 组装进每槽缓存但不
-   * Play,留给同槽后续 end=true 的命令触发。图片置换本身不延迟
-   * (`_SlotSetCharInternal` 照跑,新图停在 afrom),全部 tween 延迟。
-   */
-  deferPlay?: boolean;
   dimmed?: boolean;
   durationMs?: number;
   enterFrom?: "down" | "left" | "right" | "up";
