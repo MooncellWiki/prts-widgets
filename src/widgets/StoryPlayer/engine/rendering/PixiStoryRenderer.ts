@@ -189,21 +189,21 @@ interface CharacterBuiltVisual {
 type StickerTweenStepInput =
   | {
       durationMs: number;
-      from?: { x: number; y: number };
+      from: { x: number; y: number };
       join: boolean;
       kind: "position";
       to: { x: number; y: number };
     }
   | {
       durationMs: number;
-      from?: number;
+      from: number;
       join: boolean;
       kind: "alpha";
       to: number;
     }
   | {
       durationMs: number;
-      from?: number;
+      from: number;
       join: boolean;
       kind: "rotation";
       to: number;
@@ -2585,18 +2585,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const isCurrent = () =>
       (this.stickerTweenSessionIds.get(input.id) ?? 0) === sessionId;
 
-    // `*from` is resolved once at play time, like native AVGTweenFactory
-    // reading the current transform when BuildSequence creates the tweens.
-    const steps = queue.map((step) => {
-      if (step.kind === "position")
-        return {
-          ...step,
-          from: step.from ?? { x: sticker.x, y: sticker.y },
-        };
-      if (step.kind === "alpha")
-        return { ...step, from: step.from ?? sticker.alpha };
-      return { ...step, from: step.from ?? (sticker.rotation * 180) / Math.PI };
-    });
+    const steps = queue;
 
     // Append/Join scheduling: `join` shares the previous step's start,
     // everything else starts after the longest step of its segment ends.
@@ -2628,6 +2617,13 @@ export class PixiStoryRenderer implements StoryRenderer {
       const deg = step.from + (step.to - step.from) * progress;
       sticker.rotation = (deg * Math.PI) / 180;
     };
+
+    // `BuildSequence` creates every tween up front, and each
+    // `AVGTweenFactory._Create*Tween` snaps the transform to that step's
+    // `from` right there -- before the sequence plays and regardless of when
+    // the step's own window opens. So all the snaps happen now, and the
+    // clamped window below keeps a not-yet-started step pinned to `from`.
+    for (const { step } of windows) apply(step, 0);
 
     void this.tween(
       totalMs,

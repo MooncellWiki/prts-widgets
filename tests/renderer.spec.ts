@@ -2142,19 +2142,27 @@ describe("PixiStoryRenderer stickerTween", () => {
       id: "st",
       isend: false,
       join: false,
-      position: { durationMs: 500, to: { x: 300, y: 150 } },
+      position: {
+        durationMs: 500,
+        from: { x: 100, y: 50 },
+        to: { x: 300, y: 150 },
+      },
     });
     expect(tweenCalls).toHaveLength(0);
 
     // isend=true builds and plays: position appended (starts at 0), alpha
     // joined (also starts at 0), so the total is the longest step = 500ms.
     renderer.stickerTween({
-      alpha: { durationMs: 300, to: 0.2 },
+      alpha: { durationMs: 300, from: 1, to: 0.2 },
       id: "st",
       isend: true,
       join: true,
     });
     expect(tweenCalls.map((call) => call.durationMs)).toEqual([500]);
+    // BuildSequence snaps every step to its own `from` before the sequence
+    // plays (each AVGTweenFactory._Create*Tween writes the transform first).
+    expect(sticker.x).toBe(100);
+    expect(sticker.alpha).toBe(1);
 
     tweenCalls[0]!.step(0.5); // 250ms elapsed
     expect(sticker.x).toBe(200);
@@ -2173,9 +2181,11 @@ describe("PixiStoryRenderer stickerTween", () => {
       isend: true,
       join: false,
       position: { durationMs: 200, from: { x: 0, y: 0 }, to: { x: 100, y: 0 } },
-      rotation: { durationMs: 100, to: 90 },
+      rotation: { durationMs: 100, from: 0, to: 90 },
     });
     expect(tweenCalls.map((call) => call.durationMs)).toEqual([500, 300]);
+    // The up-front snap already pulled the sticker back to posfrom.
+    expect(sticker.x).toBe(0);
     tweenCalls[1]!.step(1);
     // Native rotates in degrees (localEulerAngles.z); pixi stores radians.
     expect(sticker.rotation).toBeCloseTo(Math.PI / 2);
@@ -2196,7 +2206,11 @@ describe("PixiStoryRenderer stickerTween", () => {
       id: "st",
       isend: true,
       join: false,
-      position: { durationMs: 100, to: { x: 400, y: 0 } },
+      position: {
+        durationMs: 100,
+        from: { x: 100, y: 50 },
+        to: { x: 400, y: 0 },
+      },
     });
     steps[0]!(0.5);
     expect(sticker.x).toBe(250);
@@ -2208,7 +2222,7 @@ describe("PixiStoryRenderer stickerTween", () => {
       id: "st",
       isend: true,
       join: false,
-      position: { durationMs: 100, to: { x: 0, y: 0 } },
+      position: { durationMs: 100, from: { x: 250, y: 0 }, to: { x: 0, y: 0 } },
     });
     steps[0]!(1);
     expect(sticker.x).toBe(250);

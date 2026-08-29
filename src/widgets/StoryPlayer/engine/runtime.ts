@@ -241,14 +241,6 @@ function parseVector2(value: unknown): { x: number; y: number } | undefined {
  * shorthand (web adaptation -- the native Vector3 parser is stricter, but no
  * shipped script writes the key at all, so the relaxation is harmless).
  */
-function parseVector3Z(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  const parts = value.split(",").map((part) => Number(part.trim()));
-  const z = parts.length >= 3 ? parts.at(-1) : parts[0];
-  return z !== undefined && Number.isFinite(z) ? z : undefined;
-}
-
 function parseCgVector2(value: unknown): { x: number; y: number } | undefined {
   if (typeof value !== "string") return undefined;
   const parts = value.split(",");
@@ -2692,13 +2684,25 @@ export class StoryRuntime {
         const block = toBoolean(this.exactArg(args, "block"), false);
 
         const pto = parseVector2(this.exactArg(args, "pto"));
-        const rto = parseVector3Z(this.exactArg(args, "rto"));
+        // `ParseRotateParam` (0x183eae440) reads `rto`/`rfrom` with
+        // `TryGetParam(cmd, key, ref float)` and drops the value into the z
+        // component of a Vector3 whose x/y stay 0 -- it is a bare float, not
+        // a "x,y,z" triple, and anything that does not parse as a float
+        // leaves the whole group Empty.
+        const rto = toOptionalNumber(this.exactArg(args, "rto"));
         const ato = this.exactArg(args, "ato");
-        await this.renderer.stickerTween({
+        // With every group Empty, `ExecuteTween` returns before touching the
+        // builder, so nothing is pushed and nothing is flushed -- but the
+        // `block && isend` check at 0x183e92416 still runs.
+        const hasGroup =
+          ato !== undefined || pto !== undefined || rto !== undefined;
+        const tween: StickerTweenInput = {
           // A group is emitted only when its `*to` key parses: native wraps
           // each group in an IEmptyable param and ExecuteTween skips empty
-          // groups (missing `*to` yields Empty), while `*from` defaults to
-          // the view's current transform at play time on the renderer side.
+          // groups (missing `*to` yields Empty). `*from` is NOT "the current
+          // value": every CommandParser.Parse*Param initializes it to 0 and
+          // each AVGTweenFactory._Create*Tween snaps the transform to it
+          // before tweening, so an omitted `*from` really is 0.
           ...(ato === undefined
             ? {}
             : {
@@ -2706,7 +2710,7 @@ export class StoryRuntime {
                   durationMs: this.calculateFadeMs(
                     this.exactArg(args, "aduration"),
                   ),
-                  from: toOptionalNumber(this.exactArg(args, "afrom")),
+                  from: toOptionalNumber(this.exactArg(args, "afrom")) ?? 0,
                   to: toNumber(ato, 0),
                 },
               }),
@@ -2720,7 +2724,10 @@ export class StoryRuntime {
                   durationMs: this.calculateFadeMs(
                     this.exactArg(args, "pduration"),
                   ),
-                  from: parseVector2(this.exactArg(args, "pfrom")),
+                  from: parseVector2(this.exactArg(args, "pfrom")) ?? {
+                    x: 0,
+                    y: 0,
+                  },
                   to: pto,
                 },
               }),
@@ -2731,11 +2738,12 @@ export class StoryRuntime {
                   durationMs: this.calculateFadeMs(
                     this.exactArg(args, "rduration"),
                   ),
-                  from: parseVector3Z(this.exactArg(args, "rfrom")),
+                  from: toOptionalNumber(this.exactArg(args, "rfrom")) ?? 0,
                   to: rto,
                 },
               }),
-        } satisfies StickerTweenInput);
+        };
+        if (hasGroup) await this.renderer.stickerTween(tween);
         // Durations go through calculateFadeMs on purpose: native keeps
         // `*duration` literal and scales playback once via
         // `Sequence.timeScale = AVGController.animateRatio`

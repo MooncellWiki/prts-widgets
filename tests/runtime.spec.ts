@@ -3100,7 +3100,11 @@ describe("StoryRuntime", () => {
       createContext([
         '[sticker(id="st1",text="hi",block=false)]',
         '[stickertween(id="st1",pto="300,500",pduration=2,ato=0,aduration=1,join=true,isend=true,block=true)]',
-        '[stickertween(id="st1",rto="0,0,90",rduration=1,isend=true,block=true)]',
+        '[stickertween(id="st1",rto=90,rduration=1,isend=true,block=true)]',
+        // ParseRotateParam reads `rto` as a bare float, so a Vector3-looking
+        // value leaves the group Empty: no tween is pushed at all, yet the
+        // block && isend check still fires.
+        '[stickertween(id="st1",rto="0,0,45",rduration=1,isend=true,block=true)]',
         '[name="A"]after',
       ]),
       renderer,
@@ -3109,35 +3113,38 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.stickerTweenCalls).toEqual([
-      {
-        alpha: { durationMs: 1000, from: undefined, to: 0 },
-        id: "st1",
-        isend: true,
-        join: true,
-        position: { durationMs: 2000, from: undefined, to: { x: 300, y: 500 } },
+    // An omitted `*from` is 0, not the sticker's current value.
+    const moveAndFade = {
+      alpha: { durationMs: 1000, from: 0, to: 0 },
+      id: "st1",
+      isend: true,
+      join: true,
+      position: {
+        durationMs: 2000,
+        from: { x: 0, y: 0 },
+        to: { x: 300, y: 500 },
       },
-    ]);
+    };
+    expect(renderer.stickerTweenCalls).toEqual([moveAndFade]);
 
-    // Both commands hold block && isend, so each waits for a click.
+    // Every command holds block && isend, so each waits for a click.
     expect(runtime.getState()).toBe("waiting_input");
     await runtime.advance();
 
     expect(renderer.stickerTweenCalls).toEqual([
-      {
-        alpha: { durationMs: 1000, from: undefined, to: 0 },
-        id: "st1",
-        isend: true,
-        join: true,
-        position: { durationMs: 2000, from: undefined, to: { x: 300, y: 500 } },
-      },
+      moveAndFade,
       {
         id: "st1",
         isend: true,
         join: false,
-        rotation: { durationMs: 1000, from: undefined, to: 90 },
+        rotation: { durationMs: 1000, from: 0, to: 90 },
       },
     ]);
+    expect(runtime.getState()).toBe("waiting_input");
+    await runtime.advance();
+
+    // The Vector3-shaped rto pushed nothing but still blocked.
+    expect(renderer.stickerTweenCalls).toHaveLength(2);
     expect(runtime.getState()).toBe("waiting_input");
     await runtime.advance();
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
@@ -3190,11 +3197,15 @@ describe("StoryRuntime", () => {
 
     expect(renderer.stickerTweenCalls).toEqual([
       {
-        alpha: { durationMs: 500, from: undefined, to: 1 },
+        alpha: { durationMs: 500, from: 0, to: 1 },
         id: "s",
         isend: true,
         join: false,
-        position: { durationMs: 1000, from: undefined, to: { x: 10, y: 20 } },
+        position: {
+          durationMs: 1000,
+          from: { x: 0, y: 0 },
+          to: { x: 10, y: 20 },
+        },
       },
     ]);
   });

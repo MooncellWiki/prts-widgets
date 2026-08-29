@@ -417,12 +417,16 @@ export interface StickerInput extends SubtitleInput {
  * via `CommandParser.ParseAnchorPosParam` / `ParseRotateParam` /
  * `ParseAlphaParam`. A group is only present when its `*to` key exists --
  * native wraps each group in an `IEmptyable` param and `ExecuteTween` skips
- * empty groups entirely. `*duration` is in native seconds and is already
+ * empty groups entirely. `from` is always a concrete value (an omitted
+ * `*from` parses as 0, never "the current value") and the transform is
+ * snapped to it before the tween starts, matching
+ * `AVGTweenFactory._CreateAlphaTween` / `_CreateAnchorPosTween` /
+ * `_CreateRotateTween`. `*duration` is in native seconds and is already
  * scaled to milliseconds by the runtime (the visual equivalent of the native
  * `Sequence.timeScale = animateRatio` third mode, see the runtime case).
  */
 export interface StickerTweenInput {
-  alpha?: { durationMs: number; from?: number; to: number };
+  alpha?: { durationMs: number; from: number; to: number };
   id: string;
   /** Only an `isend=true` command builds and plays the accumulated sequence. */
   isend: boolean;
@@ -430,10 +434,10 @@ export interface StickerTweenInput {
   join: boolean;
   position?: {
     durationMs: number;
-    from?: { x: number; y: number };
+    from: { x: number; y: number };
     to: { x: number; y: number };
   };
-  rotation?: { durationMs: number; from?: number; to: number };
+  rotation?: { durationMs: number; from: number; to: number };
 }
 
 export interface SpellStickerInput {
