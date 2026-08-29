@@ -738,17 +738,39 @@ export class StoryRuntime {
     }
 
     this.pendingInputEffect = null;
-    // Native port: both executors on AVGCharacterCutinPanel reset on skip --
-    // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
-    // empties the slot pool / _slots before resetting the interlude
-    // controller, so a skipped node must not leave cutin slots behind.
-    await this.renderer.clearInterludes();
-    await this.renderer.clearCharacterCutin();
-    await this.renderer.clearSpellStickers();
-    // Native: SubtitlePanel.ShouldResetOnSkip() is true, so a skip resets the
-    // panel through OnReset -- alpha to 0 immediately (no tween) plus a
-    // typewriter reset. A stale subtitle must not survive the skip.
-    await this.renderer.clearSubtitle(0);
+    // Native port: AVGController.SkipStory (0x183e1a150) reaches
+    // _ResetComponentsOnSkip (0x183e1d3f0) only on the two paths that keep
+    // playing -- jumping to a SkipToThis anchor, and jumping to the next
+    // skipnode label when get_isSkippable() is false. When the story *is*
+    // skippable in the current mode (or no skip node is left) it takes
+    // StopStory("Skipped") and returns without resetting a single component, so
+    // a skip that ends the story leaves the screen exactly as it was.
+    // `shouldResume` is that same fork.
+    if (shouldResume) {
+      // Native port: both executors on AVGCharacterCutinPanel reset on skip --
+      // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
+      // empties the slot pool / _slots before resetting the interlude
+      // controller, so a skipped node must not leave cutin slots behind.
+      await this.renderer.clearInterludes();
+      await this.renderer.clearCharacterCutin();
+      await this.renderer.clearSpellStickers();
+      // Native: SubtitlePanel.ShouldResetOnSkip() is true, so a skip resets the
+      // panel through OnReset -- alpha to 0 immediately (no tween) plus a
+      // typewriter reset. A stale subtitle must not survive the skip.
+      await this.renderer.clearSubtitle(0);
+      // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
+      // `OnReset -> _RecycleStickers` (0x183e93980), in that function's own
+      // order. First `StopTimer(0)` -- the timer hides instantly, the slot
+      // itself being kept for reuse.
+      await this.renderer.clearTimerSticker({ durationMs: 0 });
+      // Then every entry of `m_stickerDict` gets `HideSticker(0)` before the
+      // dictionary is emptied and `m_currentSticker` nulled. `HideSticker`
+      // substitutes 0.15s for any duration <= 0, the same 150ms stickerclear
+      // fades with, and dropping the ids is what lets a reused id show again
+      // instead of being read as the hide half of the toggle.
+      this.stickerIds.clear();
+      await this.renderer.clearStickers(150);
+    }
 
     this.cancelTyping();
     if (shouldResume) {
@@ -2640,6 +2662,10 @@ export class StoryRuntime {
 
       case "timersticker": {
         // Native port: Torappu.AVG.StickerPanel._ExcuteTimerSticker. This is a
+        // single-slot, never-blocking executor (native returns hardcoded
+        // false): the timer view is created once and reused, and only
+        // time/x/y/width/size/duration/afrom/ato are read -- id/text/block
+        // are ignored.
         await this.renderer.setTimerSticker({
           durationMs:
             Math.max(0, toNumber(this.exactArg(args, "duration"), 1) * 1000) ||

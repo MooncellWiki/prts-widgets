@@ -356,6 +356,20 @@ export class PixiStoryRenderer implements StoryRenderer {
   } | null = null;
   private subtitleTypingSessionId = 0;
   private readonly stickerRichChars = new Map<string, RichChar[]>();
+  private timerFadeSessionId = 0;
+  /**
+   * Mirrors `AVGTimerView.m_countTimerTask != null`. It gates the inline
+   * `_TimerTick(0)` that `_StartCountTimer` only fires when it has to build a
+   * task, and it survives a `StopTimer` fade -- native nulls the field from
+   * that fade's OnComplete, not when the fade starts.
+   */
+  private timerTaskActive = false;
+  /**
+   * The pending `StopTimer` OnComplete (`<StopTimer>b__7_0`, VA 0x183ed54f0).
+   * `RenderTimer`'s `DOKill(_canvas, complete: true)` runs it; `StopTimer`'s own
+   * `DOKill(_canvas, complete: false)` discards it.
+   */
+  private timerStopFadeComplete: (() => void) | null = null;
   private timerStickerInterval: ReturnType<typeof setInterval> | null = null;
   private timerStickerText: Text | null = null;
 
@@ -524,6 +538,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.subtitleText = null;
     this.timerStickerText = null;
     this.clearTimerInterval();
+    this.timerFadeSessionId += 1;
+    this.timerStopFadeComplete = null;
+    this.timerTaskActive = false;
     this.stickerTexts.clear();
     this.stickerFadeSessionIds.clear();
     this.stickerTypingTargets.clear();
@@ -1924,34 +1941,65 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel.hide(id);
   }
 
+  /**
+   * Port scope: `Torappu.AVG.AVGTimerView.StopTimer` (2.7.61 VA 0x183ed53e0):
+   * `DOKill(_canvas, complete: false)` kills any in-flight fade tween without
+   * completing it, then fades from the current alpha to a hard-coded 0 and
+   * hides (never destroys) the view. The fade session counter is the DOKill
+   * analogue: bumping it here retires the previous fade's step/done callbacks
+   * so a timersticker fade-in still running when timerclear lands cannot keep
+   * writing alpha alongside the fade-out.
+   */
   async clearTimerSticker(input?: TimerClearInput): Promise<void> {
     this.clearTimerInterval();
+    // `DOKill(_canvas, complete: false)`: an earlier fade is dropped mid-flight,
+    // so a StopTimer fade it may have been running never reaches its OnComplete.
+    this.timerFadeSessionId += 1;
+    this.timerStopFadeComplete = null;
 
     const timer = this.timerStickerText;
-    if (!timer) return;
+    if (!timer) {
+      this.timerTaskActive = false;
+      return;
+    }
 
     if (!input) {
+      this.timerTaskActive = false;
       timer.text = "";
       timer.visible = false;
       timer.alpha = 1;
       return;
     }
 
-    const fromAlpha = timer.alpha;
-    if (input.durationMs <= 0) {
+    // `<StopTimer>b__7_0` is what actually retires the clock: it nulls
+    // `m_countTimerTask` and deactivates the view. Until this runs the slot is
+    // still considered to own a task, which is what makes a timersticker
+    // arriving mid-fade reuse it instead of rebuilding it.
+    const finishStopFade = (): void => {
+      this.timerStopFadeComplete = null;
+      this.clearTimerInterval();
+      this.timerTaskActive = false;
       timer.alpha = 0;
       timer.visible = false;
+    };
+
+    const fromAlpha = timer.alpha;
+    if (input.durationMs <= 0) {
+      finishStopFade();
       return;
     }
 
+    const fadeSessionId = this.timerFadeSessionId;
+    this.timerStopFadeComplete = finishStopFade;
     void this.tween(
       input.durationMs,
       (progress) => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha = fromAlpha * (1 - progress);
       },
       () => {
-        timer.alpha = 0;
-        timer.visible = false;
+        if (this.timerFadeSessionId !== fadeSessionId) return;
+        finishStopFade();
       },
     );
   }
@@ -2460,39 +2508,99 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Port scope: `Torappu.AVG.StickerPanel._ExcuteTimerSticker` (native spelling)
    * and `AVGTimerView.RenderTimer`. Browser intervals and PIXI text adapt the
    * native timer view; this command itself never supplies a block boundary.
+   * The step order below is RenderTimer's own: transform and font first, then
+   * `_StartCountTimer`, then the `_ShowTimer` fade, and only after RenderTimer
+   * returns does `_ExcuteTimerSticker` re-activate the view.
    */
   async setTimerSticker(input: TimerStickerInput): Promise<void> {
     const timer = this.ensureTimerStickerText();
-    this.clearTimerInterval();
 
     timer.style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
-    timer.alpha = input.fromAlpha;
-    timer.visible = true;
     timer.x = input.x;
     timer.y = input.y;
-    timer.text = this.formatTimer(0);
 
+    // RenderTimer guards `_StartCountTimer` with `time > 0`; with the parameter
+    // absent (native default -1) neither the text nor a running clock is
+    // touched.
+    if (input.limitSeconds !== undefined && input.limitSeconds > 0)
+      this.startTimerCountUp(timer, input.limitSeconds);
+
+    // `DOKill(_canvas, complete: true)`, the asymmetric counterpart of
+    // StopTimer's `complete: false`: it *finishes* a timerclear fade still in
+    // flight, which runs `<StopTimer>b__7_0` and nulls `m_countTimerTask` --
+    // discarding the clock restarted just above, so the text stays frozen at
+    // its last value while the view still fades back in.
+    this.timerFadeSessionId += 1;
+    this.timerStopFadeComplete?.();
+
+    timer.alpha = input.fromAlpha;
+    const fadeSessionId = this.timerFadeSessionId;
     void this.tween(
       input.durationMs > 0 ? input.durationMs : 130,
       (progress) => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha =
           input.fromAlpha + (input.toAlpha - input.fromAlpha) * progress;
       },
       () => {
+        if (this.timerFadeSessionId !== fadeSessionId) return;
         timer.alpha = input.toAlpha;
       },
     );
 
-    if (input.limitSeconds === undefined || input.limitSeconds <= 0) return;
+    // `SetActiveIfNecessary(gameObject, true)` trails RenderTimer, so it undoes
+    // the deactivation a completed StopTimer fade may have just performed.
+    timer.visible = true;
+  }
 
-    let remainingSeconds = input.limitSeconds;
-    this.timerStickerInterval = setInterval(() => {
-      remainingSeconds = Math.max(0, remainingSeconds - 1);
-      if (!this.timerStickerText) return;
+  /**
+   * Port scope: `Torappu.AVG.AVGTimerView._StartCountTimer` (2.7.61 VA
+   * 0x183ed5830) plus the `CountDownTask` it drives.
+   *
+   * Native is a stopwatch, not a countdown: `SetCountDown` (0x181cefc50) stores
+   * startTime = now, endTime = now + time*1000 (ms) on a wall clock, and
+   * `Update` feeds `_OverrideTimerTaskTick` = `Math.Max(curTime - startTime, 0)`
+   * -- elapsed milliseconds, verified at the instruction level in build 2761
+   * (an earlier reading of `endTime - curTime` had the operands swapped) -- into
+   * `_TimerTick` = TimeSpan.FromMilliseconds(...). The text therefore climbs
+   * 00:00:00 -> 00:00:01 -> ...; reaching `time` fires `_TimerEnd`, which only
+   * clears the task, so the display freezes at the cap (time=9999 -> 02:46:39)
+   * and stays visible. Deriving elapsed from the wall clock also avoids interval
+   * drift under browser throttling.
+   */
+  private startTimerCountUp(timer: Text, capSeconds: number): void {
+    this.clearTimerInterval();
 
-      this.timerStickerText.text = this.formatTimer(remainingSeconds);
-      if (remainingSeconds <= 0) this.clearTimerInterval();
-    }, 1000);
+    if (!this.timerTaskActive) {
+      // The inline `_TimerTick(0)` that seeds 00:00:00 lives in the branch that
+      // builds the task, so a slot whose clock is still alive is merely re-based
+      // by `SetCountDown` and keeps showing its current value.
+      this.timerTaskActive = true;
+      timer.text = this.formatTimer(0);
+    }
+
+    const startMs = Date.now();
+    this.timerStickerInterval = setInterval(
+      () => {
+        const elapsedSeconds = Math.min(
+          capSeconds,
+          // `Math.Max(..., 0)`: a wall clock can step backwards.
+          Math.max(0, Math.floor((Date.now() - startMs) / 1000)),
+        );
+        const timerText = this.timerStickerText;
+        if (!timerText) return;
+
+        const text = this.formatTimer(elapsedSeconds);
+        if (timerText.text !== text) timerText.text = text;
+        if (elapsedSeconds >= capSeconds) {
+          this.clearTimerInterval();
+          this.timerTaskActive = false;
+        }
+      },
+      // 200ms mirrors the native CountDownTask internal tick; the wall-clock
+      // math makes extra fires harmless (same floor value, no text rewrite).
+      200,
+    );
   }
 
   private async createUi(): Promise<void> {
@@ -3815,7 +3923,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private formatTimer(totalSeconds: number): string {
-    const hours = Math.floor(totalSeconds / 3600);
+    // `_TimerTick` formats `TimeSpan.FromMilliseconds(...)`; `TimeSpan.Hours`
+    // wraps at 24, so time >= 86400 displays modulo a day (100000 -> 03:46:40).
+    const hours = Math.floor(totalSeconds / 3600) % 24;
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = Math.floor(totalSeconds % 60);
     return [hours, minutes, seconds]

@@ -1363,6 +1363,259 @@ describe("PixiStoryRenderer", () => {
     expect(root.position.x - 640).toBe(-160);
     expect(360 - root.position.y).toBe(0);
   });
+
+  it("counts the timer sticker up from 00:00:00 like the native stopwatch", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const timer = {
+        alpha: 1,
+        style: null,
+        text: "",
+        visible: false,
+        x: 0,
+        y: 0,
+      };
+      renderer.timerStickerText = timer;
+      renderer.ensureTimerStickerText = () => timer;
+      renderer.tween = vi.fn(async () => {});
+
+      await renderer.setTimerSticker({
+        durationMs: 0,
+        fromAlpha: 0,
+        limitSeconds: 9999,
+        sizePx: 24,
+        toAlpha: 1,
+        widthPx: 1280,
+        x: 935,
+        y: 80,
+      });
+
+      // `AVGTimerView._StartCountTimer` fires `_TimerTick(0)` once
+      // immediately and the value then counts up from zero -- `time` is a
+      // timeout cap, not the initial value (02:46:39 must never show here).
+      expect(timer.text).toBe("00:00:00");
+
+      // Within the ~200ms internal tick the elapsed value is still 0s; the
+      // first change lands on the whole-second boundary.
+      vi.advanceTimersByTime(200);
+      expect(timer.text).toBe("00:00:00");
+
+      // Each value climbs by one per second, derived from the wall clock, so
+      // throttled intervals cannot drift it.
+      vi.advanceTimersByTime(800);
+      expect(timer.text).toBe("00:00:01");
+      vi.advanceTimersByTime(10_000);
+      expect(timer.text).toBe("00:00:11");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("freezes the timer at the time cap and wraps hours at 24", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const timer = {
+        alpha: 1,
+        style: null,
+        text: "",
+        visible: false,
+        x: 0,
+        y: 0,
+      };
+      renderer.timerStickerText = timer;
+      renderer.ensureTimerStickerText = () => timer;
+      renderer.tween = vi.fn(async () => {});
+      const base = {
+        durationMs: 0,
+        fromAlpha: 0,
+        sizePx: 24,
+        toAlpha: 1,
+        widthPx: 1280,
+        x: 0,
+        y: 0,
+      };
+
+      // `TimeSpan.Hours` wraps at 24: 100000s renders as 03:46:40.
+      expect(renderer.formatTimer(100_000)).toBe("03:46:40");
+
+      // Reaching `time` fires `_TimerEnd`, which only clears the task; the
+      // view stays visible frozen at the cap (not 00:00:00) and the interval
+      // stops once the cap is reached.
+      await renderer.setTimerSticker({ ...base, limitSeconds: 2 });
+      expect(timer.text).toBe("00:00:00");
+      vi.advanceTimersByTime(2200);
+      expect(timer.text).toBe("00:00:02");
+      expect(timer.visible).toBe(true);
+      expect(renderer.timerStickerInterval).toBeNull();
+      vi.advanceTimersByTime(1000);
+      expect(timer.text).toBe("00:00:02");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops stale timer fades when a newer timersticker or clear takes over", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const timer = {
+      alpha: 1,
+      style: null,
+      text: "",
+      visible: false,
+      x: 0,
+      y: 0,
+    };
+    renderer.timerStickerText = timer;
+    renderer.ensureTimerStickerText = () => timer;
+    const tweens: Array<{
+      done: () => void;
+      step: (progress: number) => void;
+    }> = [];
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        tweens.push({ done: done ?? (() => {}), step });
+      },
+    );
+    const base = {
+      durationMs: 1000,
+      fromAlpha: 0,
+      limitSeconds: undefined,
+      sizePx: 24,
+      toAlpha: 1,
+      widthPx: 1280,
+      x: 0,
+      y: 0,
+    };
+
+    // Fade-in half done when timerclear arrives: the stale fade-in's late
+    // step/done must not write alpha after the fade-out took over.
+    await renderer.setTimerSticker(base);
+    tweens[0]!.step(0.5);
+    expect(timer.alpha).toBe(0.5);
+    await renderer.clearTimerSticker({ durationMs: 300 });
+    tweens[0]!.step(1);
+    tweens[0]!.done();
+    expect(timer.alpha).toBe(0.5);
+    tweens[1]!.step(1);
+    tweens[1]!.done();
+    expect(timer.alpha).toBe(0);
+    expect(timer.visible).toBe(false);
+
+    // Fade-out half done when a new timersticker reactivates the slot: the
+    // stale fade-out's done must not re-hide it or clamp its alpha.
+    await renderer.setTimerSticker({ ...base, fromAlpha: 0.4 });
+    expect(timer.visible).toBe(true);
+    await renderer.clearTimerSticker({ durationMs: 300 });
+    tweens[3]!.step(0.5);
+    expect(timer.alpha).toBeCloseTo(0.2);
+    await renderer.setTimerSticker({ ...base, fromAlpha: 0.2, toAlpha: 0.9 });
+    tweens[3]!.step(1);
+    tweens[3]!.done();
+    expect(timer.visible).toBe(true);
+    expect(timer.alpha).toBe(0.2);
+    tweens[4]!.step(1);
+    expect(timer.alpha).toBeCloseTo(0.9);
+  });
+
+  it("lets a completed timerclear fade retire the clock a timersticker just restarted", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const timer = {
+        alpha: 1,
+        style: null,
+        text: "",
+        visible: false,
+        x: 0,
+        y: 0,
+      };
+      renderer.timerStickerText = timer;
+      renderer.ensureTimerStickerText = () => timer;
+      renderer.tween = vi.fn(async () => {});
+      const base = {
+        durationMs: 0,
+        fromAlpha: 0,
+        limitSeconds: 9999,
+        sizePx: 24,
+        toAlpha: 1,
+        widthPx: 1280,
+        x: 0,
+        y: 0,
+      };
+
+      await renderer.setTimerSticker(base);
+      vi.advanceTimersByTime(3000);
+      expect(timer.text).toBe("00:00:03");
+
+      // A fading timerclear has not run `<StopTimer>b__7_0` yet, so the slot
+      // still owns its count task: the next timersticker reuses it (no
+      // 00:00:00 reseed) and RenderTimer's `DOKill(_canvas, complete: true)`
+      // then completes that fade, nulling `m_countTimerTask` outright.
+      await renderer.clearTimerSticker({ durationMs: 2000 });
+      await renderer.setTimerSticker(base);
+
+      expect(timer.text).toBe("00:00:03");
+      expect(timer.visible).toBe(true);
+      expect(renderer.timerStickerInterval).toBeNull();
+      vi.advanceTimersByTime(5000);
+      expect(timer.text).toBe("00:00:03");
+
+      // With the task gone, the following timersticker rebuilds it and the
+      // inline `_TimerTick(0)` reseeds the slot.
+      await renderer.setTimerSticker(base);
+      expect(timer.text).toBe("00:00:00");
+      vi.advanceTimersByTime(1000);
+      expect(timer.text).toBe("00:00:01");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the timer slot untouched when timersticker omits time", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const timer = {
+        alpha: 1,
+        style: null,
+        text: "",
+        visible: false,
+        x: 0,
+        y: 0,
+      };
+      renderer.timerStickerText = timer;
+      renderer.ensureTimerStickerText = () => timer;
+      renderer.tween = vi.fn(async () => {});
+      const base = {
+        durationMs: 0,
+        fromAlpha: 0,
+        sizePx: 24,
+        toAlpha: 1,
+        widthPx: 1280,
+        x: 0,
+        y: 0,
+      };
+
+      await renderer.setTimerSticker({ ...base, limitSeconds: 9999 });
+      vi.advanceTimersByTime(2000);
+      expect(timer.text).toBe("00:00:02");
+
+      // `RenderTimer` skips `_StartCountTimer` unless `time > 0` (native
+      // default -1), so the running clock keeps its original start and the
+      // slot is never reseeded to 00:00:00.
+      await renderer.setTimerSticker(base);
+      expect(timer.text).toBe("00:00:02");
+      vi.advanceTimersByTime(1000);
+      expect(timer.text).toBe("00:00:03");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("PixiStoryRenderer blocker", () => {
