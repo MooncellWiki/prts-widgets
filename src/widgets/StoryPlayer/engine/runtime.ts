@@ -2560,6 +2560,11 @@ export class StoryRuntime {
         // subtitle in the shared typing state so auto mode both advances when
         // typing ends naturally and waits for the subtitle's length instead of
         // the previous dialogue's leftovers.
+        //
+        // `get_messageLength` (VA 0x183ed87e0) returns `m_message.Length` on
+        // the raw, still-marked-up string, so native also bills the
+        // `<color=#......>` characters. We count visible characters instead,
+        // matching how the dialogue path fills `currentMessageLength`.
         this.cancelTyping();
         this.currentMessageLength = parseRichChars(text).length;
         await this.renderer.setSubtitle({

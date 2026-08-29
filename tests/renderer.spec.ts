@@ -1703,15 +1703,21 @@ describe("PixiStoryRenderer blocker", () => {
 
 function createSubtitleRenderer() {
   const renderer = new PixiStoryRenderer(createContext()) as any;
+  const manual = createManualClock();
+  renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
   renderer.subtitleText = new Text({
     style: renderer.createOverlayTextStyle(24, 1280),
     text: "",
   });
   renderer.subtitleText.visible = false;
   renderer.app = {};
-  renderer.tween = vi.fn(async () => {});
   renderer.layoutSubtitle = vi.fn();
-  return renderer;
+  // Count the fades, but keep the real runner behind the spy: stubbing the
+  // tween out entirely hides whether the alpha ever reaches its terminal value.
+  const original = renderer.tween.bind(renderer);
+  const tween = vi.fn((...args: unknown[]) => original(...args));
+  renderer.tween = tween;
+  return { manual, renderer, tween };
 }
 
 describe("PixiStoryRenderer subtitle", () => {
@@ -1726,33 +1732,58 @@ describe("PixiStoryRenderer subtitle", () => {
   };
 
   it("fades a hidden subtitle in but never replays the fade for consecutive ones", async () => {
-    const renderer = createSubtitleRenderer();
+    const { manual, renderer, tween } = createSubtitleRenderer();
     const subtitle = renderer.subtitleText;
 
     await renderer.setSubtitle({ ...baseInput });
     expect(subtitle.visible).toBe(true);
-    expect(renderer.tween).toHaveBeenCalledTimes(1);
-    expect(renderer.tween.mock.calls[0][0]).toBe(150);
+    expect(tween).toHaveBeenCalledTimes(1);
+    expect(tween.mock.calls[0][0]).toBe(150);
+    manual.advance(150);
+    manual.drainFrame();
+    expect(subtitle.alpha).toBe(1);
 
-    renderer.tween.mockClear();
+    tween.mockClear();
     await renderer.setSubtitle({ ...baseInput, text: "world" });
     // Native `_SetHiddenInternal`: set_isHidden(false) is a no-op while the
     // panel is already visible -- seamless text swap, no second fade-in.
-    expect(renderer.tween).not.toHaveBeenCalled();
+    expect(tween).not.toHaveBeenCalled();
     expect(subtitle.text).toBe("world");
+    expect(subtitle.alpha).toBe(1);
 
     // After a real hide, the next subtitle fades in again.
     await renderer.clearSubtitle(0);
     expect(subtitle.visible).toBe(false);
     await renderer.setSubtitle({ ...baseInput, text: "again" });
-    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    expect(tween).toHaveBeenCalledTimes(1);
     expect(subtitle.text).toBe("again");
+  });
+
+  it("lets an interrupted fade-in finish instead of stranding the alpha", async () => {
+    const { manual, renderer, tween } = createSubtitleRenderer();
+    const subtitle = renderer.subtitleText;
+
+    await renderer.setSubtitle({ ...baseInput });
+    manual.advance(30);
+    manual.drainFrame();
+    expect(subtitle.alpha).toBeCloseTo(0.2);
+
+    // quick_play schedules its auto click 25-100ms apart, so the next subtitle
+    // routinely lands inside the 150ms fade. Native's no-op set_isHidden(false)
+    // never reaches DOKill, so the running DOFade keeps going to 1.
+    await renderer.setSubtitle({ ...baseInput, text: "world" });
+    expect(tween).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 4; i += 1) {
+      manual.advance(50);
+      manual.drainFrame();
+    }
+    expect(subtitle.alpha).toBe(1);
   });
 
   it("types against a transparent tail so the full-text layout is fixed from t0", async () => {
     vi.useFakeTimers();
     try {
-      const renderer = createSubtitleRenderer();
+      const { renderer } = createSubtitleRenderer();
       const onTypingComplete = vi.fn();
 
       const pending = renderer.setSubtitle({
@@ -1764,6 +1795,13 @@ describe("PixiStoryRenderer subtitle", () => {
       // t0 already carries the whole message as a hidden span, so wrapping
       // matches the final layout instead of re-flowing per character.
       expect(subtitle.text).toBe("<_c00000000>hello</_c00000000>");
+      // PIXI's tagged-text shadow pass forces an opaque fill and ignores the
+      // run's own, so the tail has to opt out of the drop shadow or every
+      // unrevealed character shows up as legible grey ghosting.
+      expect(subtitle.style.tagStyles._c00000000).toEqual({
+        dropShadow: false,
+        fill: "#00000000",
+      });
       await vi.advanceTimersByTimeAsync(10);
       expect(subtitle.text).toBe("h<_c00000000>ello</_c00000000>");
       await vi.advanceTimersByTimeAsync(40);
@@ -1778,7 +1816,7 @@ describe("PixiStoryRenderer subtitle", () => {
   });
 
   it("reports instant subtitles as finished and applies per-line alignment", async () => {
-    const renderer = createSubtitleRenderer();
+    const { renderer } = createSubtitleRenderer();
     const onTypingComplete = vi.fn();
 
     await renderer.setSubtitle({

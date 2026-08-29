@@ -23,6 +23,7 @@ import {
 import {
   buildTagStyles,
   collectColors,
+  colorTagName,
   parseRichChars,
   richCharsToTaggedText,
   type RichChar,
@@ -118,6 +119,21 @@ function easeOutCubic(progress: number): number {
  * lines already on screen.
  */
 const SUBTITLE_HIDDEN_TAIL_COLOR = "#00000000";
+const SUBTITLE_HIDDEN_TAIL_TAG = colorTagName(SUBTITLE_HIDDEN_TAIL_COLOR);
+
+/**
+ * Web-only counterpart to the transparent tail: PIXI's tagged-text drop shadow
+ * pass forces an opaque fill (`CanvasTextGenerator._setupDropShadow`) and never
+ * reads the run's own fill, so an `alpha = 0` run still casts the style's
+ * shadow -- the "hidden" tail would read as legible grey ghost text. Unity
+ * modulates its shadow by vertex alpha instead, so native has nothing to turn
+ * off here. Disabling the shadow per tag hits PIXI's own skip branch and leaves
+ * the measured layout byte-identical.
+ */
+const SUBTITLE_HIDDEN_TAIL_STYLE = {
+  dropShadow: false,
+  fill: SUBTITLE_HIDDEN_TAIL_COLOR,
+} as const;
 
 function subtitleHiddenTail(chars: RichChar[]): RichChar[] {
   return chars.map(({ char }) => ({
@@ -2283,7 +2299,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (!subtitle) return;
 
     this.subtitleTypingSessionId += 1;
-    this.subtitleFadeSessionId += 1;
     this.subtitleTypingTarget = null;
 
     // Native `SubtitlePanel._SetHiddenInternal` (2.7.61 VA 0x183e94ff0):
@@ -2291,10 +2306,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     // consecutive subtitles swap text seamlessly without replaying the 150ms
     // Linear fade-in. A hidden panel fades in from its current alpha, which
     // also covers interrupting an in-flight fade-out (DOKill + DOFade).
+    //
+    // The fade session is only bumped when a fade actually starts: native's
+    // no-op branch never reaches DOKill either, so a fade-in that is still
+    // running when the next subtitle arrives must keep animating to 1. Bumping
+    // it unconditionally would orphan that tween and strand the panel at
+    // whatever alpha it had reached.
     if (this.subtitleHidden) {
       this.subtitleHidden = false;
       const startAlpha = subtitle.visible ? subtitle.alpha : 0;
       subtitle.visible = true;
+      this.subtitleFadeSessionId += 1;
       const fadeSessionId = this.subtitleFadeSessionId;
       void this.tween(
         150,
@@ -2319,11 +2341,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     // PIXI needs the per-line `align` style in addition to the whole-block
     // offset that layoutSubtitle applies.
     style.align = input.alignment;
-    // The transparent hidden tail below needs its tag registered while typing.
-    const tagStyles = buildTagStyles([
-      ...colors,
-      ...(input.delayMs > 0 ? [SUBTITLE_HIDDEN_TAIL_COLOR] : []),
-    ]);
+    // The transparent hidden tail below needs its tag registered while typing,
+    // with the drop shadow disabled so the unrevealed text stays invisible.
+    const tagStyles: NonNullable<TextStyle["tagStyles"]> =
+      buildTagStyles(colors);
+    if (input.delayMs > 0)
+      tagStyles[SUBTITLE_HIDDEN_TAIL_TAG] = { ...SUBTITLE_HIDDEN_TAIL_STYLE };
     if (Object.keys(tagStyles).length > 0) style.tagStyles = tagStyles;
     subtitle.style = style;
     subtitle.y = input.y;
