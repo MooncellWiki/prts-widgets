@@ -751,7 +751,7 @@ export class StoryRuntime {
     await this.renderer.clearSubtitle(0);
     // `StickerPanel.ShouldResetOnSkip` defaults to true: skipping fires
     // `OnReset -> _RecycleStickers`, whose first step is `StopTimer(0)` -- the
-    // countdown hides instantly (the slot itself is kept for reuse). Story end
+    // timer hides instantly (the slot itself is kept for reuse). Story end
     // keeps the timer on screen, matching `OnStoryEnd` (only unbinds Event=5).
     void this.renderer.clearTimerSticker({ durationMs: 0 });
 
