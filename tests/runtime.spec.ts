@@ -1798,7 +1798,11 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(warnings).toEqual([]);
-    expect(renderer.clearedSlots).toEqual([{ fadeMs: 500, slot: "l" }]);
+    // SlotCleanChar starts a `duration` fade, but _UpdateSeqWithParam then
+    // falls through to SlotSetCharWithParam with the same name: the second
+    // _LoadImage DOKill()s that fade and disables the Image, so the slot is
+    // emptied instantly whatever `duration` says.
+    expect(renderer.clearedSlots).toEqual([{ fadeMs: 0, slot: "l" }]);
     // The command keeps executing after the clean: focus=all is still applied.
     expect(renderer.characterCalls[1]).toMatchObject({
       characterKey: undefined,
@@ -1823,17 +1827,49 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    // Native `_LoadImage` failure only nulls m_currentKey; the action/focus
-    // sections still run, so the command is not dropped.
+    // `_SlotSetCharInternal` swaps before `_LoadImage`: on failure the old
+    // art is already the back Image and fades out over `duration` while the
+    // new fore Image is disabled, so the slot empties -- but the action/focus
+    // sections still run and the command is not dropped.
     expect(warnings).toEqual([
       expect.objectContaining({ type: "missing_asset" }),
     ]);
+    expect(renderer.clearedSlots).toEqual([{ fadeMs: 300, slot: "m" }]);
     expect(renderer.characterCalls[1]).toMatchObject({
       action: "shake",
       characterKey: undefined,
       power: 5,
       slot: "m",
     });
+  });
+
+  it("fades out a nameless charslot that sets afrom without ato", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charslot(slot="m",name="avg_npc_1")]',
+        // story_whitw2_1_1.txt:475 pattern (`afrom=1, posto=0`, no ato): the
+        // nameless branch only gates on afrom >= 0 and passes ato through, so
+        // SlotChangeAlpha tweens toward alpha -1 -- clamped to 0, a fade-out.
+        '[charslot(slot="m",afrom=1,posto=0,duration=0.3)]',
+        // afrom omitted: `GE(alphaFrom, 0)` fails and nothing touches the
+        // alpha, even with an ato.
+        '[charslot(slot="m",ato=0.5,duration=0.3)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.characterCalls[1]).toMatchObject({
+      alphaFrom: 1,
+      alphaTo: 0,
+      slot: "m",
+    });
+    expect(renderer.characterCalls[2].alphaFrom).toBeUndefined();
+    expect(renderer.characterCalls[2].alphaTo).toBeUndefined();
   });
 
   it("maps charslot random like native GetOrDefault<int> and end=false only to blocking", async () => {

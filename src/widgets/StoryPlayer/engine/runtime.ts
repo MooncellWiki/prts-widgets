@@ -213,7 +213,16 @@ function toNativeIntParam(value: unknown, fallback: number): number {
   if (typeof value === "boolean") return value ? 1 : 0;
   if (value === "true") return 1;
   if (value === "false") return 0;
-  return Math.trunc(toNumber(value, fallback));
+  return roundHalfToEven(toNumber(value, fallback));
+}
+
+/** `System.Convert.ToInt32(double)` rounds half to even, not toward zero. */
+function roundHalfToEven(value: number): number {
+  const floor = Math.floor(value);
+  const fraction = value - floor;
+  if (fraction < 0.5) return floor;
+  if (fraction > 0.5) return floor + 1;
+  return floor % 2 === 0 ? floor : floor + 1;
 }
 
 function toString(value: unknown, fallback = ""): string {
@@ -1915,44 +1924,68 @@ export class StoryRuntime {
 
         // `name` is never ToLower'd natively, and `_UpdateSeqWithParam`
         // (0x183e53940) compares it to "char_empty" with an ordinal
-        // String.op_Equality: that value routes to
-        // AVGCharacterSlot.SlotCleanChar (fade the slot's sprite out) and the
-        // action/focus sections keep executing. The later `_LoadImage` on
-        // "char_empty" only fails and nulls m_currentKey.
+        // String.op_Equality. That value runs AVGCharacterSlot.SlotCleanChar
+        // (0x183eb4260) and then still falls through to SlotSetCharWithParam
+        // with the same name: two `_SwapImages` in a row put the old art back
+        // in front, and the second `_LoadImage` (0x183eb4f60) opens with
+        // `DOKill(m_image)` -- killing the fade the first swap started --
+        // before `set_sprite(null)` + `enabled = false`. The slot is emptied
+        // on the spot regardless of `duration`; action/focus keep executing.
         const isEmptyChar = nameRef === "char_empty";
 
         let resolved: { base: string; expression: string } | null = null;
-        if (nameRef && !isEmptyChar) {
+        let clearPromise: Promise<void> | null = null;
+        if (isEmptyChar) {
+          clearPromise = Promise.resolve(
+            this.renderer.clearCharacters(slot, 0),
+          );
+        } else if (nameRef) {
           resolved = this.resolveCharacterName(nameRef);
           if (!resolved) {
-            // Native `_LoadImage` failure just logs "[AVG] Error to load
-            // character pic" and nulls m_currentKey; the action/focus sections
-            // of `_UpdateSeqWithParam` still run on whatever the slot shows.
-            // Keep going without the image swap instead of dropping the
-            // whole command.
+            // `_SlotSetCharInternal` (0x183eb5830) swaps the Images *before*
+            // `_LoadImage`, so a failed load ("[AVG] Error to load character
+            // pic") leaves the old art as the back Image -- which
+            // `_GenBackImageTween(duration).Play()` fades out -- while the new
+            // fore Image is disabled. The slot ends up empty; the action and
+            // focus sections of `_UpdateSeqWithParam` still run.
             this.warn("missing_asset", `character: ${nameRef}`);
+            clearPromise = Promise.resolve(
+              this.renderer.clearCharacters(slot, durationMs),
+            );
           }
         }
-
-        if (isEmptyChar) {
-          const clearPromise = this.renderer.clearCharacters(slot, durationMs);
+        if (clearPromise) {
           if (block) await clearPromise;
           else void clearPromise;
         }
 
-        // Native `_UpdateSeqWithParam`: with a `name`, a negative (or
-        // omitted, default -1) afrom or ato resets the pair to (0, 1) -- a
-        // plain named charslot always fades the new art in over `duration`.
-        // Only a nameless command treats -1 as "leave the alpha alone".
+        // Native `_UpdateSeqWithParam` alpha handling:
+        // - with a `name`, a negative (or omitted, default -1) afrom or ato
+        //   resets the pair to (0, 1): a plain named charslot always fades
+        //   the new art in over `duration`;
+        // - without a `name`, only `GE(afrom, 0)` gates
+        //   `SlotChangeAlpha(afrom, ato, duration)` (0x183eb3d20), and ato is
+        //   passed through as-is. An omitted ato (-1) therefore tweens the
+        //   vertex colour toward alpha -1, which the canvas clamps to 0 -- a
+        //   fade-out (29 corpus lines write `afrom=1` with no ato as an exit,
+        //   e.g. story_whitw2_1_1.txt:475). duration 0 => SetAlpha(fore, ato)
+        //   with the same clamp. Approximated as a fade to 0 over `duration`.
         const rawAlphaFrom =
           args.afrom === undefined ? -1 : toNumber(args.afrom, -1);
         const rawAlphaTo = args.ato === undefined ? -1 : toNumber(args.ato, -1);
-        let alphaFrom =
-          rawAlphaFrom >= 0 ? clamp(rawAlphaFrom, 0, 1) : undefined;
-        let alphaTo = rawAlphaTo >= 0 ? clamp(rawAlphaTo, 0, 1) : undefined;
-        if (resolved && (rawAlphaFrom < 0 || rawAlphaTo < 0)) {
-          alphaFrom = 0;
-          alphaTo = 1;
+        let alphaFrom: number | undefined;
+        let alphaTo: number | undefined;
+        if (resolved) {
+          if (rawAlphaFrom < 0 || rawAlphaTo < 0) {
+            alphaFrom = 0;
+            alphaTo = 1;
+          } else {
+            alphaFrom = clamp(rawAlphaFrom, 0, 1);
+            alphaTo = clamp(rawAlphaTo, 0, 1);
+          }
+        } else if (!nameRef && rawAlphaFrom >= 0) {
+          alphaFrom = clamp(rawAlphaFrom, 0, 1);
+          alphaTo = rawAlphaTo < 0 ? 0 : clamp(rawAlphaTo, 0, 1);
         }
 
         await this.renderer.setCharacter({

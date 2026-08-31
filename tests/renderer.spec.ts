@@ -816,7 +816,7 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.tween).toHaveBeenCalled();
   });
 
-  it("ignores posfrom/posto for zoom and resets the scale without an explicit scale", async () => {
+  it("resets the zoom on a named swap, even one whose zoom carries no scale", async () => {
     const renderer = createCharacterRenderer();
 
     await renderer.setCharacter({
@@ -828,46 +828,215 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     const state = renderer.characterSlots.get("m");
-    // Stand in for a completed earlier zoom: the slot is scaled up and the
-    // offset is at rest (native keeps both across commands).
+    // Stand in for a completed earlier zoom (scale + pivot shift) and a
+    // completed move.
     state.scaleX = 1.5;
     state.scaleY = 1.5;
-    state.actionX = 0;
+    state.zoomShiftX = 25;
+    state.zoomShiftY = -10;
+    state.actionX = -300;
+    const previousVisual = state.visual;
     renderer.tween.mockClear();
 
-    // act42side_08_end.txt:109 pattern: `action="zoom"` with a pivot but no
-    // `scale`. CharZoom always tweens to `options.scale`, whose default is
-    // 1.0, so this has to start a tween back down to 1 rather than treat the
-    // current 1.5 as the target (which would leave from == to and no tween).
+    // act42side_08_end.txt:109 pattern: `name` + `action="zoom"` with a pivot
+    // but no `scale`. `_SetImage` -> GUIUtils.AssignLocalSettings copies the
+    // hub prefab's pivot/localScale onto the fore Image on every load, so the
+    // swap itself resets the zoom; CharZoom then tweens 1 -> 1 (its default
+    // scale), i.e. nothing. The `_offset` move is untouched.
     await renderer.setCharacter({
       action: "zoom",
       characterKey: "avg_test",
       durationMs: 400,
-      expression: "1$1",
+      expression: "2$1",
       focusMode: "subset",
       focusSlots: ["l", "m", "r"],
       posZoom: { x: 0.5, y: 0.5 },
       slot: "m",
     });
-    expect(renderer.tween).toHaveBeenCalled();
+    expect(state.scaleX).toBe(1);
+    expect(state.scaleY).toBe(1);
+    expect(state.zoomShiftX).toBe(0);
+    expect(state.zoomShiftY).toBe(0);
+    expect(state.actionX).toBe(-300);
+    expect(renderer.tween).not.toHaveBeenCalled();
+    // The outgoing Image keeps its own transform while it fades, so the
+    // previous visual carries the old zoom on itself.
+    expect(previousVisual.scale.x).toBeCloseTo(1.5);
+    expect(previousVisual.scale.y).toBeCloseTo(1.5);
+    expect(previousVisual.x).toBeCloseTo(25);
+    expect(previousVisual.y).toBeCloseTo(10);
 
     // The zoom branch never reaches SlotMoveChar, so posfrom is inert: it must
     // not snap the slot to -300 the way the plain-move branch would.
-    state.scaleX = 1;
-    state.scaleY = 1;
+    state.actionX = 0;
     await renderer.setCharacter({
       action: "zoom",
-      characterKey: "avg_test",
       durationMs: 400,
-      expression: "1$1",
       focusMode: "subset",
       focusSlots: ["l", "m", "r"],
       positionFrom: { x: -300, y: 0 },
       positionTo: { x: 400, y: 0 },
       slot: "m",
     });
-
     expect(state.actionX).toBe(0);
+  });
+
+  it("keeps a completed zoom across nameless commands and tweens it back to 1 without a scale", async () => {
+    const renderer = createCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+    state.scaleX = 1.5;
+    state.scaleY = 1.5;
+    renderer.tween.mockClear();
+
+    // No name, no load, no AssignLocalSettings: the fore Image still holds
+    // the old zoom, and `CharZoom(..., options.scale = 1.0, duration)` has
+    // to start a tween back down to 1 rather than treat 1.5 as the target.
+    await renderer.setCharacter({
+      action: "zoom",
+      durationMs: 400,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      posZoom: { x: 0.5, y: 0.5 },
+      slot: "m",
+    });
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies the zoom pivot shift absolutely so repeated zooms do not drift", async () => {
+    const renderer = createLiveCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+
+    // story_tanya_1_1.txt:344-355 pattern: the same zoom re-issued. CharZoom
+    // lerps `rectTransform.pivot` to the given pivot, an absolute target, so
+    // the shift settles at one value instead of stacking per command.
+    const zoom = {
+      action: "zoom" as const,
+      durationMs: 0,
+      focusMode: "subset" as const,
+      focusSlots: ["l", "m", "r"],
+      posZoom: { x: 0.5, y: 0.6 },
+      scaleX: 1.8,
+      scaleY: 1.8,
+      slot: "m",
+    };
+    await renderer.setCharacter(zoom);
+    const shiftY = state.zoomShiftY;
+    expect(shiftY).toBeCloseTo((0.6 - 0.5) * 1.8 * 200);
+    await renderer.setCharacter(zoom);
+    await renderer.setCharacter(zoom);
+    expect(state.zoomShiftY).toBeCloseTo(shiftY);
+    expect(state.scaleX).toBe(1.8);
+    // The shift rides the motion layer next to the `_offset` position.
+    expect(state.motionLayer.y).toBeCloseTo(-shiftY);
+  });
+
+  it("moves jump with duration 0 and shakemove to posto without a posfrom gate", async () => {
+    const renderer = createLiveCharacterRenderer();
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    const state = renderer.characterSlots.get("m");
+
+    // `_GenSlotActionTw`: jump with NeedSkipAnimation(duration) falls back to
+    // `_GenCharslotMove` -> SlotMoveChar(posFrom, posTo, 0) -> localPosition
+    // = posTo, with no (1,1) sentinel gate on this branch.
+    await renderer.setCharacter({
+      action: "jump",
+      durationMs: 0,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      positionTo: { x: 120, y: 30 },
+      slot: "m",
+    });
+    expect(state.actionX).toBe(120);
+    expect(state.actionY).toBe(30);
+
+    // shakemove: SlotMoveChar(posFrom, posTo, duration) verbatim. An absent
+    // posfrom is the (1,1) default, written as-is.
+    await renderer.setCharacter({
+      action: "shakemove",
+      durationMs: 300,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      positionTo: { x: -40, y: 0 },
+      slot: "m",
+    });
+    expect(state.actionX).toBe(-40);
+    expect(state.actionY).toBe(0);
+
+    // A bare jump with a duration lands at localPosition + posTo, and posTo
+    // defaults to (1,1) too.
+    await renderer.setCharacter({
+      action: "jump",
+      durationMs: 300,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    expect(state.actionX).toBe(-39);
+    expect(state.actionY).toBe(1);
+  });
+
+  it("evicts unreferenced face-overlay bakes beyond the cache limit only", () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const entries: Array<{ key: string; texture: any }> = [];
+    for (let index = 0; index < 10; index += 1) {
+      const texture = { destroy: vi.fn() };
+      const key = `base|face-${index}`;
+      renderer.faceOverlayTextures.set(key, { refs: 0, texture });
+      entries.push({ key, texture });
+    }
+    // The two oldest bakes are still drawn by visuals on stage.
+    const pinnedA = new Container();
+    const pinnedB = new Container();
+    renderer.retainFaceOverlay(pinnedA, entries[0].key);
+    renderer.retainFaceOverlay(pinnedB, entries[1].key);
+
+    renderer.trimFaceOverlayCache();
+
+    // 10 entries, limit 8: the oldest *unreferenced* two (indices 2 and 3)
+    // go; the pinned ones stay even though they are older.
+    expect(renderer.faceOverlayTextures.has(entries[0].key)).toBe(true);
+    expect(renderer.faceOverlayTextures.has(entries[1].key)).toBe(true);
+    expect(renderer.faceOverlayTextures.has(entries[2].key)).toBe(false);
+    expect(renderer.faceOverlayTextures.has(entries[3].key)).toBe(false);
+    expect(entries[2].texture.destroy).toHaveBeenCalledWith(true);
+    expect(entries[4].texture.destroy).not.toHaveBeenCalled();
+    expect(renderer.faceOverlayTextures.size).toBe(8);
+
+    // Releasing a pinned visual makes its bake evictable again.
+    renderer.faceOverlayTextures.set("base|face-x", {
+      refs: 0,
+      texture: { destroy: vi.fn() },
+    });
+    renderer.discardCharacterVisual(pinnedA);
+    expect(renderer.faceOverlayTextures.has(entries[0].key)).toBe(false);
+    expect(entries[0].texture.destroy).toHaveBeenCalledWith(true);
+    expect(renderer.faceOverlayTextures.size).toBe(8);
   });
 
   it("swaps the image instantly for an explicit enter without transtype", async () => {
