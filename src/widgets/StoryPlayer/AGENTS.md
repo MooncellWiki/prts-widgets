@@ -32,6 +32,15 @@ pnpm dev
   `components/StoryPlayerDebugShell.vue`（工具栏 / seek 编排 / 原始脚本面板，
   spd-* 样式在其 scoped style 里）。三者都不在 `templates/`，
   不会进 build 产物，也不会被同步到 wiki。
+- 画布抓帧器 `window.__storyRec`（入口安装，实现在 `components/storyRecorder.ts`，
+  chrome-devtools evaluate_script 驱动，无 UI）：`start()/stop()/clear()/status()`
+  返回 JSON 状态、`collect(stride)` 返回整包帧 JSON（配合 evaluate_script 的
+  filePath 直接落盘；解码见 arknights-rev `story-compare/analyze_frames.py decode`）、
+  `snapshot(quality)` 单帧。独立 rAF 循环采集（播放器停在等点击时不再调度渲染，
+  挂播放链会漏尾帧）、输出固定 1280x720（渲染对比规范，官服 1920x1080 帧由分析端
+  norm 到同尺寸）。渲染器 preference:"webgpu"，播放器闲置不 present 时抓帧为空白，
+  `status().suspiciousTail` 报尾部疑似空白帧数——终态帧改用 `snapshot` 或实时页面
+  截图核实。
 - 对话字体走 vite 的 `/debug-static` 代理（`engine/font.ts` 在 DEV 下指向代理
   路径）：static.prts.wiki 的 OSS 桶有 Referer 防盗链且 403 不带 CORS 头，
   localhost 直连会被拦。代理地址必须按 `import.meta.url` 解析成绝对 URL——
