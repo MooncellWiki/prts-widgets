@@ -1,10 +1,26 @@
 <!doctype html>
+<!--
+  StoryPlayer 独立调试页（仅本地 dev 使用，不在 templates/ 里，不进 build 产物）。
+
+  用法：pnpm dev 后打开
+  http://localhost:8080/debug/StoryPlayer.html?path=obt/main/level_main_00-01_beg.txt
+
+  ◆ URL 参数
+  - path：相对 torappu.prts.wiki/gamedata/latest/story 的剧情 txt 路径，也接受
+    完整 URL；页面顶部输入框可直接换脚本。
+  - line：可选的目标行号（文本行的 1-based 源行号，与 Log All 一致），确认后
+    自动快进播放到该行；必须是文本行，multiline 中间片段会提示改填段末行号。
+
+  ◆ 画布抓帧器 window.__storyRec
+  无 UI：start()/stop()/clear()/status() 返回 JSON 状态、collect(stride) 返回
+  整包帧 JSON、snapshot(quality) 单帧。播放器闲置不 present 时抓帧会是空白，
+  终态帧用 snapshot 或页面截图核实。
+-->
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StoryPlayer 独立调试</title>
-    <!-- 仅本地 dev 使用的调试页，不在 templates/ 里，不进 build 产物 -->
     <style>
       /* 页面级高度；组件样式（spd-*）随 StoryPlayerDebugShell.vue 的 scoped style */
       html,
