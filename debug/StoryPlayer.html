@@ -2,70 +2,19 @@
 <!--
   StoryPlayer 独立调试页（仅本地 dev 使用，不在 templates/ 里，不进 build 产物）。
 
-  不依赖 prts.wiki 宿主页的调试入口（不需要 #datas_txt / 微件:StoryPlayer/dev），
-  直接按路径从 torappu.prts.wiki 拉剧情 txt 播放：
-
-    pnpm dev
-    打开 http://localhost:8080/debug/StoryPlayer.html?path=obt/main/level_main_00-01_beg.txt
+  用法：pnpm dev 后打开
+  http://localhost:8080/debug/StoryPlayer.html?path=obt/main/level_main_00-01_beg.txt
 
   ◆ URL 参数
   - path：相对 torappu.prts.wiki/gamedata/latest/story 的剧情 txt 路径，也接受
-    完整 URL；页面顶部输入框可直接换脚本（换脚本会用 key 整体重建播放器）。
-  - line：可选的目标行号（文本行的 1-based 源行号，与 Log All 一致）。确认后
-    从头播放：快速模式 4 档 + setDecisionPolicy 按方案自动选 decision，到达
-    该行后切回手动。方案由 engine/log/seek.ts 的 planChoicesForLine 从
-    analyzeStoryFlow 产物里贪心求出（每个 decision 尽量选第一个选项，被
-    predicate gate 挡住的才选指定项）。目标行必须是文本 emission 的行号，
-    multiline 中间片段会提示改填段末行号。
-
-  ◆ 页面布局
-  左右分栏：左侧播放器，右侧原始脚本（带行号；当前播放行高亮并自动滚动跟随；
-  decision 行带 ◆ 标记，seek 中的计划选择会显示 ◆→n；点击文本行即跳转到该行）。
-  档位由 runtime 的 enterQuickSeekMode 统一设置：必须先切 quick_play 再写速度——
-  setAutoPlaySpeedLevel 按当前模式写档位，顺序反了 4 档会被钳到按钮自动的 3 档上限。
-
-  ◆ 组成
-  本文件（宿主页，页面级高度样式）+ src/entries/StoryPlayerDebug.ts（薄入口：
-  挂载 shell、安装抓帧器）+ components/StoryPlayerDebugShell.vue（工具栏 / seek
-  编排 / 原始脚本面板，spd-* 样式在其 scoped style）。三者都不在 templates/，
-  不会进 build 产物，也不会被同步到 wiki。
+    完整 URL；页面顶部输入框可直接换脚本。
+  - line：可选的目标行号（文本行的 1-based 源行号，与 Log All 一致），确认后
+    自动快进播放到该行；必须是文本行，multiline 中间片段会提示改填段末行号。
 
   ◆ 画布抓帧器 window.__storyRec
-  入口安装，实现在 components/storyRecorder.ts，chrome-devtools evaluate_script
-  驱动，无 UI：start()/stop()/clear()/status() 返回 JSON 状态、collect(stride)
-  返回整包帧 JSON（配合 evaluate_script 的 filePath 直接落盘；解码见 arknights-rev
-  story-compare/analyze_frames.py 的 decode 子命令）、snapshot(quality) 单帧。
-  独立 rAF 循环采集（播放器停在等点击时不再调度渲染，挂在播放链上会漏尾帧）、
-  输出固定 1280x720（渲染对比规范：官服 1920x1080 帧由分析端 norm 到同尺寸）。
-  渲染器 preference 为 webgpu，播放器闲置不 present 时抓帧会是空白，
-  status().suspiciousTail 报尾部疑似空白帧数，终态帧改用 snapshot 或实时页面
-  截图核实。
-
-  ◆ 字体代理
-  对话字体走 vite 的 /debug-static 代理（engine/font.ts 在 DEV 下指向代理路径）：
-  static.prts.wiki 的 OSS 桶有 Referer 防盗链且 403 不带 CORS 头，localhost 直连
-  会被拦。代理地址必须按 import.meta.url 解析成绝对 URL——微件:StoryPlayer/dev
-  那条链路的文档源是 prts.wiki、只有模块来自 localhost:8080，写相对路径会打到
-  prts.wiki 上 404（同 assets.ts 那条规则）。
-
-  ◆ 已知限制
-  独立页里“加载旧版播放器”不可用（依赖宿主页的 #old-player），Sentry 反馈与
-  {@nickname} 用户名同样依赖宿主环境，会走兜底逻辑。
-
-  ◆ 相关引擎钩子（均为 Web 调试适配，宿主页不用）
-  runtime 的 setDecisionPolicy（decision 免面板自动选择，命中时不翻转自动播放
-  模式——原生 DecisionPanel._ExecuteDecision 里也没有任何 SetAutoPlayMode）、
-  ConditionStore.satisfyingAssignment（DNF 贪心取满足赋值）、index.vue
-  defineExpose 的 getPlayer/getContext。
-
-  ◆ 播放模式的切换来源必须分清（跳转的中止判定挂在这上面）
-  公开的 setAutoPlayMode 只给使用者发起的切换用（UI 按钮、advance() 的点击推进），
-  跳转进行中被它切离 quick_play 才算人工干预、报 aborted；脚本命令引起的切换
-  （[theater] 的 button_auto 与缓存恢复、无效 decision、endtip）一律走
-  applyAutoPlayMode / applyScriptAutoPlayMode，后者还会在跳转期间把 quick_play
-  夺回来，否则自动点击停摆、跳转再也推不动。endtip 是脚本终点（parser 给每篇
-  补一条隐式的），走到那里还没到目标要先 finishLineSeekMissed，不然 missed
-  终态会被它自己的模式切换盖成 aborted。
+  无 UI：start()/stop()/clear()/status() 返回 JSON 状态、collect(stride) 返回
+  整包帧 JSON、snapshot(quality) 单帧。播放器闲置不 present 时抓帧会是空白，
+  终态帧用 snapshot 或页面截图核实。
 -->
 <html lang="zh-CN">
   <head>
