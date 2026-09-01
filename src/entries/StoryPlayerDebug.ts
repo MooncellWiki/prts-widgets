@@ -23,10 +23,9 @@ if (ele) {
   console.error("#root not found");
 }
 
-// 画布抓帧器：暴露 window.__storyRec（chrome-devtools evaluate_script 驱动，
-// 见 storyRecorder.ts 文件头）。播放器随换脚本重建，canvas 每次采集现查，
-// 录制可跨重建连续。调试页唯一的 canvas 就是播放器画布（抓帧 offscreen
-// 不挂 DOM）。
+// 画布抓帧器：暴露 window.__storyRec（见 storyRecorder.ts 文件头）。
+// 播放器随换脚本重建，canvas 每次采集现查，录制可跨重建连续。调试页
+// 唯一的 canvas 就是播放器画布（抓帧 offscreen 不挂 DOM）。
 installStoryRecorderApi(
   new StoryRecorder(() => document.querySelector("canvas")),
 );

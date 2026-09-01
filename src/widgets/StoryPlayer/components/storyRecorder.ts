@@ -3,15 +3,13 @@ import { STORY_HEIGHT, STORY_WIDTH } from "../engine/types";
 /**
  * 剧情渲染对比用的画布抓帧器（仅独立调试页使用，不进 build 产物）。
  *
- * 面向「官服 vs web 渲染对比」采集（arknights-rev/story-compare 工具链的 web 侧）：
  * - 独立自续期 rAF 循环采集，不挂在播放器的 rAF 链上——播放器停在等点击时
- *   不再调度渲染，挂在播放链上的抓帧器会漏掉尾部帧（2026-08-31 实测踩坑）。
+ *   不再调度渲染，挂在播放链上的抓帧器会漏掉尾部帧。
  * - 输出固定 1280x720（引擎逻辑分辨率 STORY_WIDTH/HEIGHT，对比规范两侧统一），
  *   不随宿主 CSS/DPR 摆动；官服侧 1920x1080 帧由分析端 norm 到同一尺寸。
  * - 引擎渲染器 preference:"webgpu"，播放器闲置时画布可能不再重新 present，
- *   此时抓到的帧会是空白（同上实测）。无法从外部强制引擎重绘，故提供
- *   suspiciousTail 检测：连续异常小的帧视为疑似空白，UI/调用方据此改用
- *   实时页面截图补终态。
+ *   此时抓到的帧会是空白。无法从外部强制引擎重绘，故提供 suspiciousTail
+ *   检测：连续异常小的帧视为疑似空白，UI/调用方据此改用实时页面截图补终态。
  */
 
 export interface StoryRecorderFrame {
@@ -35,13 +33,13 @@ export interface StoryRecorderOptions {
   height?: number;
 }
 
-/** window.__storyRec 上暴露给 chrome-devtools evaluate_script 的接口 */
+/** window.__storyRec 上暴露的抓帧接口 */
 export interface StoryRecorderApi {
   start: () => object;
   stop: () => object;
   clear: () => object;
   status: () => object;
-  /** 返回 JSON 字符串（evaluate_script 配合 filePath 参数可直接落盘） */
+  /** 返回整包帧 JSON 字符串（stride 抽稀） */
   collect: (stride?: number) => string | null;
   /** 单帧快照，返回 JSON 字符串 */
   snapshot: (quality?: number) => string | null;
@@ -173,7 +171,7 @@ export class StoryRecorder {
     return data ? JSON.stringify({ t: Date.now(), d: data }) : null;
   }
 
-  /** 触发浏览器下载 JSON（人工路径；agent 走 collect 的返回值） */
+  /** 触发浏览器下载 JSON */
   downloadJson(
     filename = `story-frames-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
   ): boolean {
@@ -240,7 +238,7 @@ export class StoryRecorder {
   }
 }
 
-/** 在 window.__storyRec 上挂 agent 友好的平面接口，返回卸载函数 */
+/** 在 window.__storyRec 上挂抓帧接口，返回卸载函数 */
 export function installStoryRecorderApi(recorder: StoryRecorder): () => void {
   const api: StoryRecorderApi = {
     start: () => (recorder.start(), recorder.status()),
