@@ -1022,7 +1022,10 @@ describe("PixiStoryRenderer", () => {
 
     // story_tanya_1_1.txt:344-355 pattern: the same zoom re-issued. CharZoom
     // lerps `rectTransform.pivot` to the given pivot, an absolute target, so
-    // the shift settles at one value instead of stacking per command.
+    // the shift settles at one value instead of stacking per command. The
+    // stored (y-up) shift is the native centre move `scale * (0.5 - pivot) *
+    // size` plus the `(scale - 1) * size / 2` term that cancels the motion
+    // layer's corner-origin growth: (0.5-0.6)*1.8*200 + 0.8*200/2 = 44.
     const zoom = {
       action: "zoom" as const,
       durationMs: 0,
@@ -1035,7 +1038,7 @@ describe("PixiStoryRenderer", () => {
     };
     await renderer.setCharacter(zoom);
     const shiftY = state.zoomShiftY;
-    expect(shiftY).toBeCloseTo((0.6 - 0.5) * 1.8 * 200);
+    expect(shiftY).toBeCloseTo((0.5 - 0.6) * 1.8 * 200 + ((1.8 - 1) * 200) / 2);
     await renderer.setCharacter(zoom);
     await renderer.setCharacter(zoom);
     expect(state.zoomShiftY).toBeCloseTo(shiftY);

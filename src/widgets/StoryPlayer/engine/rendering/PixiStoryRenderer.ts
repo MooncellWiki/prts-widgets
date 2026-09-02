@@ -168,10 +168,10 @@ function characterSlotMove(
 /**
  * The zoom half of a `charslot`: CharZoom (0x183eb2b50) tweens the fore
  * Image's `rectTransform.pivot` to `zoomPos` and its `localScale` to `scale`
- * (setter `<CharZoom>b__1` 0x183ed95a0), both absolute -- re-issuing the same
- * zoom lands on the same transform instead of stacking. The pivot move is
- * approximated as a translation of the scaled sprite. Returns null when the
- * command is not a zoom or CharZoom would reject the pivot.
+ * (setter `<CharZoom>b__1` 0x183ed95a0 lerp-drives both from one 0→1 float,
+ * Ease.Linear), both absolute -- re-issuing the same zoom lands on the same
+ * transform instead of stacking. Returns null when the command is not a zoom
+ * or CharZoom would reject the pivot.
  */
 function characterSlotZoom(
   state: CharacterRenderState,
@@ -181,7 +181,9 @@ function characterSlotZoom(
   // CharZoom validates the pivot first: x/y outside [0,1] => return null,
   // skipping the whole zoom (scale change included). An absent poszoom
   // defaults to (1,1), which is inside the valid range; the Web port keeps
-  // treating an absent pivot as "no extra shift".
+  // treating an absent pivot as (0.5,0.5) ("no pivot move"). Every zoom in
+  // the 2.7.61 corpus writes poszoom, so the native (1,1) default is
+  // unobservable there.
   const zoom = input.posZoom;
   const pivotValid =
     !zoom || (zoom.x >= 0 && zoom.x <= 1 && zoom.y >= 0 && zoom.y <= 1);
@@ -192,6 +194,20 @@ function characterSlotZoom(
   // -- a zoom without `scale` resets it.
   const toScaleX = isFiniteNumber(input.scaleX) ? input.scaleX : 1;
   const toScaleY = isFiniteNumber(input.scaleY) ? input.scaleY : 1;
+  // anchoredPosition is not tweened, and every character prefab ships pivot
+  // (0.5,0.5) / localScale 1 / sizeDelta = character.json size (verified on
+  // avg_npc_2227_1, avg_4225_tanya_1, avg_npc_820_1), so the pivot point
+  // stays where the resting rect was centred: the rect grows `scale`x
+  // around the fixed point at zoomPos, and its centre lands at
+  // `T + scale * (0.5 - zoomPos) * size` (Unity axes). The motion layer
+  // instead scales around the rect's top-left corner, so the shift must
+  // both move the scaled centre there and cancel that corner-origin growth:
+  //   (0.5 - z) * scale * size - (scale - 1) * size / 2
+  // (shiftY is stored in Unity's y-up and negated on apply). Tweening the
+  // shift linearly makes the endpoints exact and leaves a small mid-tween
+  // gap versus native's lerp(scale)*lerp(0.5-pivot) product curve.
+  const pivotX = zoom?.x ?? 0.5;
+  const pivotY = zoom?.y ?? 0.5;
   return {
     from: {
       scaleX: state.scaleX,
@@ -202,8 +218,12 @@ function characterSlotZoom(
     to: {
       scaleX: toScaleX,
       scaleY: toScaleY,
-      shiftX: zoom ? (0.5 - zoom.x) * toScaleX * state.width : 0,
-      shiftY: zoom ? (zoom.y - 0.5) * toScaleY * state.height : 0,
+      shiftX:
+        (0.5 - pivotX) * toScaleX * state.width -
+        ((toScaleX - 1) * state.width) / 2,
+      shiftY:
+        (0.5 - pivotY) * toScaleY * state.height +
+        ((toScaleY - 1) * state.height) / 2,
     },
   };
 }
