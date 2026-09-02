@@ -776,6 +776,58 @@ describe("PixiStoryRenderer", () => {
     expect(previous.visual.parent).not.toBeNull();
   });
 
+  it("clamps a nameless fade toward ato=-1 at the write so it is transparent by half the duration", async () => {
+    const renderer = createCharacterRenderer();
+    renderer.app = { stage: new Container() };
+
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+    renderer.tween.mockClear();
+
+    // story_whitw2_1_1.txt:475 pattern: `afrom=1` with no ato. Native
+    // SlotChangeAlpha runs DOColor toward alpha -1 and the vertex colour
+    // clamps, so the sprite is invisible from duration/2 on.
+    await renderer.setCharacter({
+      alphaFrom: 1,
+      alphaTo: -1,
+      durationMs: 400,
+      focusMode: "subset",
+      focusSlots: ["l", "m", "r"],
+      slot: "m",
+    });
+
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    const [durationMs, step, done] = renderer.tween.mock.calls.at(-1) as [
+      number,
+      (progress: number) => void,
+      () => void,
+    ];
+    expect(durationMs).toBe(400);
+    const state = renderer.characterSlots.get("m");
+
+    step(0.25);
+    expect(state.contentAlpha).toBeCloseTo(0.5);
+    expect(state.visual.alpha).toBeCloseTo(0.5);
+
+    step(0.5);
+    expect(state.contentAlpha).toBeCloseTo(0);
+    expect(state.visual.alpha).toBe(0);
+
+    step(0.75);
+    expect(state.contentAlpha).toBeCloseTo(-0.5);
+    expect(state.visual.alpha).toBe(0);
+
+    done();
+    expect(state.contentAlpha).toBe(-1);
+    expect(state.visual.alpha).toBe(0);
+  });
+
   it("skips shake entirely when duration is zero", async () => {
     const renderer = createCharacterRenderer();
     const shakeSpy = vi

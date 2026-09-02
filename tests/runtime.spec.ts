@@ -1853,7 +1853,10 @@ describe("StoryRuntime", () => {
         '[charslot(slot="m",name="avg_npc_1")]',
         // story_whitw2_1_1.txt:475 pattern (`afrom=1, posto=0`, no ato): the
         // nameless branch only gates on afrom >= 0 and passes ato through, so
-        // SlotChangeAlpha tweens toward alpha -1 -- clamped to 0, a fade-out.
+        // SlotChangeAlpha tweens toward alpha -1 (clamped at the vertex-colour
+        // write, fully transparent by duration/2). The -1 target is handed to
+        // the renderer as-is, and the scalar posto is (0,0) like native's
+        // Vector2.zero fallback.
         '[charslot(slot="m",afrom=1,posto=0,duration=0.3)]',
         // afrom omitted: `GE(alphaFrom, 0)` fails and nothing touches the
         // alpha, even with an ato.
@@ -1868,7 +1871,8 @@ describe("StoryRuntime", () => {
 
     expect(renderer.characterCalls[1]).toMatchObject({
       alphaFrom: 1,
-      alphaTo: 0,
+      alphaTo: -1,
+      positionTo: { x: 0, y: 0 },
       slot: "m",
     });
     expect(renderer.characterCalls[2].alphaFrom).toBeUndefined();

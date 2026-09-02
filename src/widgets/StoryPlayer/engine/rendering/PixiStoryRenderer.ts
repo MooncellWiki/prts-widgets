@@ -145,8 +145,11 @@ function characterSlotMove(
     }
     case "jump": {
       if ((input.durationMs ?? 0) > 0) {
-        // CharJump (0x183eb2690): DOLocalJump to `localPosition + posTo`,
-        // and posTo defaults to (1,1) -- a bare jump drifts one unit.
+        // CharJump (0x183eb2690): DOLocalJump to `localPosition + posTo`.
+        // An omitted posto stays at the (1,1) default -- a bare jump drifts
+        // one unit -- while a posto that is present but not an "x,y" pair
+        // becomes Vector2.zero (0x183e4e2db-0x183e4e322); the runtime hands
+        // that case in as (0,0).
         return {
           from: { x: state.actionX, y: state.actionY },
           to: { x: state.actionX + posTo.x, y: state.actionY + posTo.y },
@@ -403,6 +406,17 @@ export class PixiStoryRenderer implements StoryRenderer {
    * 时刻"完成。`isblock` 等的就是这一刻（OnComplete → FinishCommand，
    * 0x183e4e501）：紧跟 `end=false` 入场之后的 shake 要等两者同时结束，
    * 但各自仍从自己命令的发出时刻起播。
+   *
+   * 复用只在同一帧内成立：`TweenManager.Update(Tween, …)`（0x1841495c0）
+   * 在 tween 首次更新时置 `creationLocked`，此后 `Insert`（0x18411da10）
+   * 只打 `LogAddToLockedSequence` 就返回；播完的 Sequence 又因
+   * `defaultAutoKill`（cctor 0x18410b0e0）失活，而 `end=false` 的从不被标
+   * played，`_GetCachedSlotSeq` 会继续交出这条死 Sequence，Insert 与
+   * OnComplete 都成 no-op。AVG 的 `_DoExecuteCommands`（0x183e2b9c0）把
+   * 连续非阻塞命令在同一次 MoveNext 里跑完，所以相邻命令共享 Sequence；
+   * 隔了对白或阻塞命令之后，native 只等旧 Sequence 的剩余时间。全语料
+   * `end=false` 后接同槽 isblock 的只有相邻两处（act23side_02_beg 425→426、
+   * 555→556），这里按 max(旧 deadline, 自身 duration) 近似，不建模上锁。
    */
   private readonly characterSlotSeqDeadlines = new Map<string, number>();
   private readonly faceOverlayTextures = new Map<
@@ -1793,14 +1807,25 @@ export class PixiStoryRenderer implements StoryRenderer {
     let state = this.characterSlots.get(slot);
     const hasCharacter = Boolean(input.characterKey && input.expression);
 
-    // The deadline is anchored at dispatch time; the block wait at the end
-    // starts once this command's tweens are running, so an async asset load
-    // shifts the wait and its end equally -- native inserts the crossfade
-    // tweens into the same sequence only after the load completes. Every
-    // action contributes `durationMs`: DOLocalJump's duration spans all
-    // `times` jumps (0x183eb2690), and `CharShake`/`CharZoom` are plain
-    // duration-length tweens.
     const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
+
+    if (hasCharacter) {
+      const built = await this.buildCharacterSlotState(input, slot, state);
+      // Only a linkMap miss or a texture load failure lands here; the runtime
+      // already turns an unresolvable `name` into a slot clear (native swaps
+      // the Images before `_LoadImage`, so the old art fades out as the back
+      // Image). Keep whatever the slot shows and still run the action/focus
+      // sections, as `_UpdateSeqWithParam` does after a failed load.
+      if (built) state = built;
+    }
+
+    // The deadline is anchored once the asset is in, i.e. when this command's
+    // tweens actually start (native only inserts the crossfade tweens after
+    // its synchronous load), so a slow load neither shortens the wait of a
+    // later same-slot `isblock` nor this one's. Every action contributes
+    // `durationMs`: DOLocalJump's duration spans all `times` jumps
+    // (0x183eb2690), and `CharShake`/`CharZoom` are plain duration-length
+    // tweens.
     let blockWaitMs = 0;
     if (input.slotSequence) {
       const nowMs = performance.now();
@@ -1812,14 +1837,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       );
       this.characterSlotSeqDeadlines.set(slot, seqDeadlineMs);
       if (input.block) blockWaitMs = seqDeadlineMs - nowMs;
-    }
-
-    if (hasCharacter) {
-      const built = await this.buildCharacterSlotState(input, slot, state);
-      // A failed `_LoadImage` (missing asset) only nulls m_currentKey; the
-      // action/focus sections still run on the sprite the slot already
-      // shows, so keep the previous state instead of aborting.
-      if (built) state = built;
     }
 
     if (!state) {
@@ -3398,7 +3415,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     // contentAlpha (set to `afrom` right after by the caller) and only the
     // outgoing visual gets a dedicated fade here.
     const fadeMs = Math.max(0, Math.round(input.replaceFadeMs ?? 0));
-    built.visual.alpha = current.contentAlpha;
+    built.visual.alpha = clamp01(current.contentAlpha);
     if (previousVisual && previousVisual !== built.visual && fadeMs > 0) {
       const sessionId = ++current.replaceFadeSessionId;
       const previousAlpha = previousVisual.alpha;
@@ -3677,7 +3694,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const hasTo = isFiniteNumber(input.alphaTo);
     if (!hasFrom && !hasTo) return;
 
-    const fromAlpha = hasFrom ? input.alphaFrom! : state.contentAlpha;
+    // `contentAlpha` mirrors the fore Image's vertex alpha, which native lets
+    // overshoot below 0 (a nameless `afrom` fades toward ato = -1); it is only
+    // clamped at the write in updateCharacterOpacity, so a resumed fade starts
+    // from the visible value.
+    const fromAlpha = hasFrom ? input.alphaFrom! : clamp01(state.contentAlpha);
     const toAlpha = hasTo ? input.alphaTo! : fromAlpha;
     state.contentAlpha = fromAlpha;
     this.updateCharacterOpacity(state);
@@ -3820,7 +3841,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   private updateCharacterOpacity(state: CharacterRenderState): void {
     const channel = Math.round(0xff * clamp01(state.focusBrightness));
     state.visual.tint = (channel << 16) | (channel << 8) | channel;
-    state.visual.alpha = state.contentAlpha;
+    // Unity's Color -> Color32 conversion clamps the vertex alpha, so a tween
+    // toward a negative `ato` reads as fully transparent once it crosses 0.
+    state.visual.alpha = clamp01(state.contentAlpha);
   }
 
   private disposeCharacterState(state: CharacterRenderState): void {

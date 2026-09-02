@@ -1928,9 +1928,13 @@ export class StoryRuntime {
         // (0x183eb4260) and then still falls through to SlotSetCharWithParam
         // with the same name: two `_SwapImages` in a row put the old art back
         // in front, and the second `_LoadImage` (0x183eb4f60) opens with
-        // `DOKill(m_image)` -- killing the fade the first swap started --
-        // before `set_sprite(null)` + `enabled = false`. The slot is emptied
-        // on the spot regardless of `duration`; action/focus keep executing.
+        // `DOKill(m_image)`, killing the fade the first swap started. Whether
+        // "char_empty" then resolves to a blank sprite hub (the
+        // `m_currentKey.ToLower() != "char_empty"` guard in
+        // `_SlotSetCharInternal` suggests it does) or fails into
+        // `set_sprite(null)` + `enabled = false`, the old art is gone at once:
+        // the slot is emptied regardless of `duration`; action/focus keep
+        // executing.
         const isEmptyChar = nameRef === "char_empty";
 
         let resolved: { base: string; expression: string } | null = null;
@@ -1966,10 +1970,13 @@ export class StoryRuntime {
         // - without a `name`, only `GE(afrom, 0)` gates
         //   `SlotChangeAlpha(afrom, ato, duration)` (0x183eb3d20), and ato is
         //   passed through as-is. An omitted ato (-1) therefore tweens the
-        //   vertex colour toward alpha -1, which the canvas clamps to 0 -- a
-        //   fade-out (29 corpus lines write `afrom=1` with no ato as an exit,
-        //   e.g. story_whitw2_1_1.txt:475). duration 0 => SetAlpha(fore, ato)
-        //   with the same clamp. Approximated as a fade to 0 over `duration`.
+        //   vertex colour linearly toward alpha -1, which Unity's Color32
+        //   conversion clamps to 0 -- a fade-out that is fully transparent by
+        //   `duration / 2` (29 corpus lines write `afrom=1` with no ato as an
+        //   exit, e.g. story_whitw2_1_1.txt:475). duration 0 =>
+        //   SetAlpha(fore, ato) with the same clamp. The negative target is
+        //   handed through so the renderer reproduces that timing; it clamps
+        //   at the write.
         const rawAlphaFrom =
           args.afrom === undefined ? -1 : toNumber(args.afrom, -1);
         const rawAlphaTo = args.ato === undefined ? -1 : toNumber(args.ato, -1);
@@ -1985,7 +1992,7 @@ export class StoryRuntime {
           }
         } else if (!nameRef && rawAlphaFrom >= 0) {
           alphaFrom = clamp(rawAlphaFrom, 0, 1);
-          alphaTo = rawAlphaTo < 0 ? 0 : clamp(rawAlphaTo, 0, 1);
+          alphaTo = Math.min(1, rawAlphaTo);
         }
 
         await this.renderer.setCharacter({
@@ -2020,7 +2027,14 @@ export class StoryRuntime {
             : { inverse: toBoolean(args.inverse, false) }),
           nativeKey: nameRef || undefined,
           positionFrom: this.parseCharacterSlotPoint(args.posfrom),
-          positionTo: this.parseCharacterSlotPoint(args.posto),
+          // `_ExecuteCharslot` treats a posto that is present but not an
+          // "x,y" pair differently from posfrom/poszoom: those log a parse
+          // error and keep the (1,1) default, posto falls back to
+          // Vector2.zero (0x183e4e2db-0x183e4e322). Scalar `posto=0` lines
+          // in the corpus therefore mean (0,0) natively.
+          positionTo:
+            this.parseCharacterSlotPoint(args.posto) ??
+            (toString(args.posto).trim() ? { x: 0, y: 0 } : undefined),
           posZoom: this.parseCharacterSlotPoint(args.poszoom),
           power: Math.max(0, toNumber(args.power, 0)),
           randomness: clamp(toNativeIntParam(args.random, 10), 0, 100),

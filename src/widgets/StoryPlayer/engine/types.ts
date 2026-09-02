@@ -161,6 +161,12 @@ export interface CharacterSlotInput {
     "jump" | "move" | "rotate" | "setpos" | "shake" | "shakemove" | "zoom";
   angle?: number;
   alphaFrom?: number;
+  /**
+   * May be negative on the charslot path: native passes a nameless command's
+   * `ato` (default -1) straight into `SlotChangeAlpha`, and the renderer
+   * clamps only at the write, so the fade reaches full transparency early
+   * exactly as the vertex-colour tween does.
+   */
   alphaTo?: number;
   blackEnd?: number;
   blackStart?: number;
@@ -202,8 +208,9 @@ export interface CharacterSlotInput {
   /**
    * charslot 专用：该命令的 tween 会进 `AVGCharacterslotPanel` 的每槽缓存
    * Sequence（`_UpdateSeqWithTween` 是 Insert 并行，`_GetCachedSlotSeq`
-   * 0x183e4f830 在 Sequence 未播完前复用它），`isblock` 等整条 Sequence
-   * 完成（OnComplete → FinishCommand），详见 renderer 的
+   * 0x183e4f830 在 Sequence 未被标 played 前复用它；DOTween 的
+   * `creationLocked` 让这种复用只对同一帧内的相邻命令成立），`isblock`
+   * 等整条 Sequence 完成（OnComplete → FinishCommand），详见 renderer 的
    * `characterSlotSeqDeadlines`。`character` 命令走 `CharacterPanel`，
    * tween 不入该 Sequence，不得置位。
    */
