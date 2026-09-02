@@ -604,6 +604,50 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.tween).not.toHaveBeenCalled();
   });
 
+  it("waits out the cached slot sequence for an isblock shake after an end=false enter", async () => {
+    const renderer = createLiveCharacterRenderer();
+
+    // level_act23side_02_beg.txt:425 -- an `end=false` enter leaves a 3s
+    // tween in the slot's cached Sequence (`_GetCachedSlotSeq` reuses it
+    // until its OnComplete marks it played) without blocking the queue.
+    await renderer.setCharacter({
+      alphaFrom: 0,
+      alphaTo: 1,
+      block: false,
+      characterKey: "avg_test",
+      durationMs: 3000,
+      expression: "1$1",
+      fadeIdentity: "avg_test",
+      positionFrom: { x: 0, y: -500 },
+      positionTo: { x: 0, y: 0 },
+      slot: "l",
+      slotSequence: true,
+    });
+
+    // level_act23side_02_beg.txt:426 -- a 1s shake with isblock=true is
+    // INSERTed into the same Sequence (parallel, never Append): it starts at
+    // once, but the block waits for the whole sequence -- the 3s enter, not
+    // the 1s shake (native text onset measured at +2.2s for 2s+2s).
+    renderer.tween.mockClear();
+    await renderer.setCharacter({
+      action: "shake",
+      block: true,
+      durationMs: 1000,
+      power: 50,
+      randomness: 90,
+      slot: "l",
+      slotSequence: true,
+      times: 100,
+    });
+
+    // Shake runs on a timeout, opacity/move/zoom contribute nothing here, so
+    // the single tween call is the isblock wait itself.
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    const waitMs = renderer.tween.mock.calls.at(-1)?.[0] as number;
+    expect(waitMs).toBeGreaterThanOrEqual(2900);
+    expect(waitMs).toBeLessThanOrEqual(3000);
+  });
+
   it("ignores a bare posto without posfrom or action=jump", async () => {
     const renderer = createCharacterRenderer();
 

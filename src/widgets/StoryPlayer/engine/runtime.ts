@@ -2038,6 +2038,7 @@ export class StoryRuntime {
               ? undefined
               : Math.max(0, toNumber(args.yscale, toNumber(args.scale, 1))),
           slot,
+          slotSequence: true,
           stop: toBoolean(args.stop, false),
           times: Math.trunc(toNumber(args.times, 1)),
         });

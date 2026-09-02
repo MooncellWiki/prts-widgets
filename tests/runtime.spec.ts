@@ -1679,6 +1679,9 @@ describe("StoryRuntime", () => {
         scaleX: undefined,
         scaleY: undefined,
         slot: "m",
+        // charslot tweens join the per-slot cached Sequence; `character`
+        // commands (CharacterPanel) leave this unset.
+        slotSequence: true,
         stop: false,
         times: 1,
       },

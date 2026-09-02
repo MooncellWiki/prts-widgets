@@ -394,6 +394,17 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly context: Context;
   private readonly charLayer = this.layers.characters;
   private readonly characterSlots = new Map<string, CharacterRenderState>();
+  /**
+   * 每槽缓存 `DOTween.Sequence` 的完成时刻（`performance.now()` 毫秒）。
+   * `_GetCachedSlotSeq`（0x183e4f830）在 Sequence 未被 `end` 挂的
+   * OnComplete 标记 played 前一直复用同一条，而 `_UpdateSeqWithTween`
+   * （0x183e53fc0）把每条 charslot tween `Insert` 到各自 `delay` 上——
+   * 并行、从不 Append——所以 Sequence 在"全部已插入 tween 的最大结束
+   * 时刻"完成。`isblock` 等的就是这一刻（OnComplete → FinishCommand，
+   * 0x183e4e501）：紧跟 `end=false` 入场之后的 shake 要等两者同时结束，
+   * 但各自仍从自己命令的发出时刻起播。
+   */
+  private readonly characterSlotSeqDeadlines = new Map<string, number>();
   private readonly faceOverlayTextures = new Map<
     string,
     FaceOverlayCacheEntry
@@ -673,6 +684,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
     this.characterSlots.clear();
+    this.characterSlotSeqDeadlines.clear();
     for (const entry of this.faceOverlayTextures.values())
       entry.texture.destroy(true);
     this.faceOverlayTextures.clear();
@@ -1772,12 +1784,35 @@ export class PixiStoryRenderer implements StoryRenderer {
    * `defaultAutoPlay` is `AutoPlay.All` (cctor 0x18410b0e0). `end=false` only
    * skips the `OnComplete(_SetSeqPlayed)` + redundant `Play()` pair at
    * 0x183e4e501, which in turn is what gates `isblock` (0x183e4e56f) -- it
-   * never defers the animation, so nothing is queued here.
+   * never defers the animation, so nothing is queued here. `isblock` instead
+   * waits for the whole cached Sequence (see characterSlotSeqDeadlines), not
+   * for this command's own tweens.
    */
   private async setCharacterSlot(input: CharacterSlotInput): Promise<void> {
     const slot = this.normalizeCharacterSlot(input.slot);
     let state = this.characterSlots.get(slot);
     const hasCharacter = Boolean(input.characterKey && input.expression);
+
+    // The deadline is anchored at dispatch time; the block wait at the end
+    // starts once this command's tweens are running, so an async asset load
+    // shifts the wait and its end equally -- native inserts the crossfade
+    // tweens into the same sequence only after the load completes. Every
+    // action contributes `durationMs`: DOLocalJump's duration spans all
+    // `times` jumps (0x183eb2690), and `CharShake`/`CharZoom` are plain
+    // duration-length tweens.
+    const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
+    let blockWaitMs = 0;
+    if (input.slotSequence) {
+      const nowMs = performance.now();
+      const cachedDeadlineMs = this.characterSlotSeqDeadlines.get(slot) ?? 0;
+      const seqDeadlineMs = Math.max(
+        cachedDeadlineMs,
+        nowMs,
+        nowMs + durationMs,
+      );
+      this.characterSlotSeqDeadlines.set(slot, seqDeadlineMs);
+      if (input.block) blockWaitMs = seqDeadlineMs - nowMs;
+    }
 
     if (hasCharacter) {
       const built = await this.buildCharacterSlotState(input, slot, state);
@@ -1789,12 +1824,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if (!state) {
       if (input.focusMode) this.applyCharacterSlotFocus(input.focusSlots ?? []);
+      if (blockWaitMs > 0) await this.tween(blockWaitMs, () => {});
       return;
     }
 
     if (input.focusMode) this.applyCharacterSlotFocus(input.focusSlots ?? []);
 
-    const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
     const move = characterSlotMove(state, input);
     const zoom = characterSlotZoom(state, input);
 
@@ -1865,13 +1900,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     // resets the zoom but leaves a running move alone, and a command whose
     // from == to starts nothing, so an in-flight tween of either kind
     // survives an unrelated command.
-    const pending: Promise<void>[] = [];
-
     if (move && (move.from.x !== move.to.x || move.from.y !== move.to.y)) {
       const sessionId = ++state.transformSessionId;
       const moveDurationMs = input.action === "setpos" ? 0 : durationMs;
       const { from, to } = move;
-      const run = this.tween(
+      void this.tween(
         moveDurationMs,
         (progress) => {
           if (!this.isActiveCharacterState(state, sessionId)) return;
@@ -1886,8 +1919,6 @@ export class PixiStoryRenderer implements StoryRenderer {
           this.updateCharacterState(state);
         },
       );
-      if (moveDurationMs > 0) pending.push(run);
-      else void run;
     }
 
     if (
@@ -1899,7 +1930,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     ) {
       const sessionId = ++state.zoomSessionId;
       const { from, to } = zoom;
-      const run = this.tween(
+      void this.tween(
         durationMs,
         (progress) => {
           if (
@@ -1926,11 +1957,12 @@ export class PixiStoryRenderer implements StoryRenderer {
           this.updateCharacterState(state);
         },
       );
-      if (durationMs > 0) pending.push(run);
-      else void run;
     }
 
-    if (input.block && pending.length > 0) await Promise.all(pending);
+    // `isblock` waits for the slot's whole cached Sequence -- this command's
+    // shake/jump/rotate tweens included, plus whatever a still-running
+    // `end=false` enter on the same slot left in it -- not just move/zoom.
+    if (blockWaitMs > 0) await this.tween(blockWaitMs, () => {});
   }
 
   /**
