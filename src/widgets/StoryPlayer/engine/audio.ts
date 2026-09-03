@@ -21,6 +21,15 @@ export class HtmlStoryAudio implements StoryAudio {
   private readonly context: Context;
   private destroyed = false;
   private musicAudio: ActivePlayback | null = null;
+  /**
+   * Native provenance: `_ExecuteStopMusicCommand` fades the MUSIC channel but
+   * keeps it registered in `AudioManager.m_channels` until the fade ends, so
+   * a musicvolume/playmusic landing inside the fade window still resolves the
+   * channel and `AudioChannel.TweenVolume` clears `m_stopWhenTweenEnd` — the
+   * pending stop is cancelled. Holds the fading playback while it is still
+   * addressable; `null` once the fade completes or is superseded.
+   */
+  private musicPendingStop: ActivePlayback | null = null;
   private musicRequestId = 0;
   /**
    * Native provenance: `Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand`,
@@ -34,6 +43,14 @@ export class HtmlStoryAudio implements StoryAudio {
    *
    */
   private musicBaseVolume = 1;
+  /**
+   * Native provenance: `AudioChannel.TweenVolume` (`0x183edef70`) replaces the
+   * whole tween state (start/target volume, start/end time) and clears
+   * `m_stopWhenTweenEnd`, so the newest fade command supersedes any in-flight
+   * fade — including one that was going to stop the channel. Modeled by
+   * invalidating the previous fade's token per playback.
+   */
+  private readonly fadeTokens = new WeakMap<ActivePlayback, object>();
   private readonly soundBaseVolumes = new Map<string, number>();
   private readonly soundRequestIds = new Map<string, number>();
   private readonly soundCache = new Map<string, Sound>();
@@ -48,6 +65,7 @@ export class HtmlStoryAudio implements StoryAudio {
 
     this.stopPlayback(this.musicAudio);
     this.musicAudio = null;
+    this.musicPendingStop = null;
 
     for (const sound of this.soundChannels.values()) this.stopPlayback(sound);
     this.soundChannels.clear();
@@ -65,6 +83,10 @@ export class HtmlStoryAudio implements StoryAudio {
     const identity = `${introUrl ?? ""}\n${mainUrl}`;
     this.musicBaseVolume = input.volume;
     if (this.musicAudio?.identity === identity) {
+      // Native provenance: `_PlayAudio` (a) fast path — `set_volume` retargets
+      // the same playing channel instantly and drops a mid-fade stop request
+      // (`m_stopWhenTweenEnd` is cleared by the replaced tween).
+      this.cancelPendingMusicStop(this.musicAudio);
       this.setVolume(this.musicAudio, input.volume);
       return;
     }
@@ -115,8 +137,14 @@ export class HtmlStoryAudio implements StoryAudio {
     const current = this.musicAudio;
     if (!current) return;
 
-    this.musicAudio = null;
-    await this.fadeAndStop(current, fadeMs);
+    // Native provenance: the fading MUSIC channel stays registered (see
+    // `musicPendingStop`), so keep it addressable until the fade either
+    // completes (channel stops and is released) or is superseded.
+    this.musicPendingStop = current;
+    const stopped = await this.fadeAndStop(current, fadeMs);
+    if (this.musicPendingStop !== current) return; // taken over by a newer fade
+    this.musicPendingStop = null;
+    if (stopped && this.musicAudio === current) this.musicAudio = null;
   }
 
   async playSound(input: PlaySoundInput): Promise<void> {
@@ -210,9 +238,16 @@ export class HtmlStoryAudio implements StoryAudio {
     // `AudioChannel.TweenVolume`. MUSIC base volume outlives a playback instance,
     // so retain it while PIXI is still loading.
     this.musicBaseVolume = volume;
-    if (!this.musicAudio) return;
+    const current = this.musicAudio;
+    if (!current) return;
 
-    await this.fadeVolume(this.musicAudio, volume, fadeMs);
+    // Native: the MUSIC channel is still resolvable during a stopmusic fade
+    // (`GetMusicChannel` hits `m_channels`); `TweenVolume` clears
+    // `m_stopWhenTweenEnd`, cancelling the pending stop, and retargets the
+    // tween from the current mid-fade volume — the track keeps playing.
+    this.cancelPendingMusicStop(current);
+
+    await this.fadeVolume(current, volume, fadeMs);
   }
 
   private async createPlayback(
@@ -234,6 +269,20 @@ export class HtmlStoryAudio implements StoryAudio {
     targetVolume: number,
     durationMs: number,
   ): Promise<void> {
+    await this.runFade(
+      playback,
+      targetVolume,
+      durationMs,
+      this.beginFade(playback),
+    );
+  }
+
+  private async runFade(
+    playback: ActivePlayback,
+    targetVolume: number,
+    durationMs: number,
+    token: object,
+  ): Promise<void> {
     const startVolume = this.getVolume(playback);
     if (durationMs <= 0) {
       this.setVolume(playback, targetVolume);
@@ -244,7 +293,7 @@ export class HtmlStoryAudio implements StoryAudio {
 
     await new Promise<void>((resolve) => {
       const tick = () => {
-        if (this.destroyed) {
+        if (this.destroyed || !this.ownsFade(playback, token)) {
           resolve();
           return;
         }
@@ -283,12 +332,41 @@ export class HtmlStoryAudio implements StoryAudio {
     this.claimPlayback(music, instance, this.musicAudio === music);
   }
 
+  /**
+   * Fade to silence, then stop — unless a newer fade (a musicvolume retarget
+   * or a same-track playmusic fast path) took over the playback mid-fade.
+   * Native provenance: `AudioChannel.Update` only stops the channel when the
+   * tween ends with `m_stopWhenTweenEnd` still set.
+   */
   private async fadeAndStop(
     playback: ActivePlayback,
     durationMs: number,
-  ): Promise<void> {
-    await this.fadeVolume(playback, 0, durationMs);
+  ): Promise<boolean> {
+    const token = this.beginFade(playback);
+    await this.runFade(playback, 0, durationMs, token);
+    if (this.destroyed || !this.ownsFade(playback, token)) return false;
     this.stopPlayback(playback);
+    return true;
+  }
+
+  /**
+   * Cancel a pending stopmusic fade on `playback` and retire its fade loop.
+   * Native provenance: `AudioChannel.TweenVolume` clears `m_stopWhenTweenEnd`.
+   */
+  private cancelPendingMusicStop(playback: ActivePlayback): void {
+    if (this.musicPendingStop !== playback) return;
+    this.musicPendingStop = null;
+    this.beginFade(playback);
+  }
+
+  private beginFade(playback: ActivePlayback): object {
+    const token = {};
+    this.fadeTokens.set(playback, token);
+    return token;
+  }
+
+  private ownsFade(playback: ActivePlayback, token: object): boolean {
+    return this.fadeTokens.get(playback) === token;
   }
 
   private soundChannelName(channel: string): string {
