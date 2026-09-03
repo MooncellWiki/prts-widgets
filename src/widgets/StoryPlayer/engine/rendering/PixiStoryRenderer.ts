@@ -203,6 +203,9 @@ interface CharacterRenderState {
    */
   nativeKey?: string;
   opacitySessionId: number;
+  /** Zoom pivot in image pixels (Pixi y-down); undefined = image center. */
+  pivotX?: number;
+  pivotY?: number;
   replaceFadeSessionId: number;
   root: Container;
   rotationDeg: number;
@@ -1721,8 +1724,11 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port scope: `Torappu.AVG.CharacterPanel._ExecuteCharacterAction` and its
-   * move/jump/shake/zoom/exit handlers. Browser tween sampling adapts DOTween,
-   * but keeps the per-action state and completion boundary.
+   * move/jump/shake/zoom/exit handlers (build 2761). Browser tween sampling
+   * adapts DOTween, but keeps the per-action state and the completion
+   * boundary: every branch funnels through `_AddFinishCommand`, so a blocking
+   * command awaits the full native tween duration (shake included, and jump's
+   * move+bounce sequence, not just the move segment).
    */
   async runCharacterAction(input: CharacterActionInput): Promise<void> {
     const state = this.characterSlots.get(
@@ -1745,18 +1751,33 @@ export class PixiStoryRenderer implements StoryRenderer {
         return;
       }
       case "jump": {
-        this.startJumpAction(state, input.power, input.times, input.durationMs);
-        await this.runMoveAction(
+        // Native runs one DOLocalJump tween of durationMs containing `times`
+        // jumps and blocks on that whole tween.
+        const moveRun = this.startMoveAction(
           state,
           input.xOffset,
           input.yOffset,
           input.durationMs,
-          input.block,
         );
+        const jumpRun = this.startJumpAction(
+          state,
+          input.power,
+          input.times,
+          input.durationMs,
+        );
+        if (input.block && input.durationMs > 0) {
+          await Promise.all([moveRun, jumpRun]);
+        }
         return;
       }
       case "shake": {
         this.startShakeAction(state, input);
+        // Native CharShake returns the DOShakePosition tween of durationMs
+        // and _AddFinishCommand blocks on it. `stop` is a web extension with
+        // no tween to wait for.
+        if (input.block && input.durationMs > 0 && !input.stop) {
+          await this.tween(input.durationMs, () => {});
+        }
         return;
       }
       case "zoom": {
@@ -1764,8 +1785,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           state,
           input.scaleX,
           input.scaleY,
-          input.xOffset,
-          input.yOffset,
+          input.pivot,
           input.durationMs,
           input.block,
         );
@@ -1776,7 +1796,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           state,
           input.durationMs,
           input.direction,
-          input.yOffset,
+          input.absolutePosition,
           input.block,
         );
       }
@@ -3089,6 +3109,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     current.nativeKey = input.nativeKey;
     current.root.x = baseX;
     current.root.y = baseY;
+    // A fresh visual is a fresh native _foreImage: its pivot resets to the
+    // center until a later zoom sets it again.
+    current.pivotX = undefined;
+    current.pivotY = undefined;
     current.sourceHeight = built.sourceHeight;
     current.sourceWidth = built.sourceWidth;
     current.visual = built.visual;
@@ -3470,10 +3494,31 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.motionLayer.x = state.actionX + state.shakeOffsetX;
     state.motionLayer.y =
       state.shakeOffsetY - state.actionY - state.jumpOffsetY;
-    state.motionLayer.scale.set(
-      state.baseScaleX * state.scaleX,
-      state.baseScaleY * state.scaleY,
-    );
+    const scaleX = state.baseScaleX * state.scaleX;
+    const scaleY = state.baseScaleY * state.scaleY;
+    state.motionLayer.scale.set(scaleX, scaleY);
+    if (state.pivotX !== undefined && state.pivotY !== undefined) {
+      // Zoom pivot mode: pin the pivot point of the image at the story-space
+      // spot where the image center sits at rest (width/2, height/2 in root
+      // space). Dividing the rotationLayer position by the current scale
+      // cancels the parent scale, so scaling keeps the pivot fixed while the
+      // rest of the image grows around it — the observable of Unity's
+      // rectTransform.pivot + localScale pairing.
+      state.rotationLayer.pivot.set(state.pivotX, state.pivotY);
+      state.rotationLayer.position.set(
+        (state.width / 2 - state.motionLayer.x) / Math.max(scaleX, 1e-6),
+        (state.height / 2 - state.motionLayer.y) / Math.max(scaleY, 1e-6),
+      );
+    } else {
+      state.rotationLayer.pivot.set(
+        state.sourceWidth / 2,
+        state.sourceHeight / 2,
+      );
+      state.rotationLayer.position.set(
+        state.sourceWidth / 2,
+        state.sourceHeight / 2,
+      );
+    }
     state.rotationLayer.rotation = (state.rotationDeg * Math.PI) / 180;
     this.updateCharacterOpacity(state);
   }
@@ -3579,12 +3624,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.disposeCurtainState(state);
   }
 
-  private async runMoveAction(
+  /**
+   * Native port: AVGCharacterSlot.MoveChar (0x183EB2FD0). Relative
+   * displacement (cur + (x, y)); a zero fadeTime applies it instantly and
+   * returns a null tween, which is why `block` only waits when there is a
+   * tween to wait for.
+   */
+  private startMoveAction(
     state: CharacterRenderState,
     xOffset: number,
     yOffset: number,
     durationMs: number,
-    block: boolean,
   ): Promise<void> {
     const fromX = state.actionX;
     const fromY = state.actionY;
@@ -3592,7 +3642,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const toY = fromY + yOffset;
     const sessionId = ++state.transformSessionId;
 
-    const run = this.tween(
+    return this.tween(
       durationMs,
       (progress) => {
         if (!this.isActiveCharacterState(state, sessionId)) return;
@@ -3607,43 +3657,57 @@ export class PixiStoryRenderer implements StoryRenderer {
         this.updateCharacterState(state);
       },
     );
-
-    if (block && durationMs > 0) await run;
   }
 
-  private async runScaleAction(
+  private async runMoveAction(
     state: CharacterRenderState,
-    scaleX: number | undefined,
-    scaleY: number | undefined,
     xOffset: number,
     yOffset: number,
     durationMs: number,
     block: boolean,
   ): Promise<void> {
-    const fromX = state.actionX;
-    const fromY = state.actionY;
+    const run = this.startMoveAction(state, xOffset, yOffset, durationMs);
+    if (block && durationMs > 0) await run;
+  }
+
+  /**
+   * Native port: AVGCharacterSlot.CharZoom (0x183EB2B50). xpos/ypos are the
+   * [0,1] pivot of the character image (runtime already rejected out-of-range
+   * values, which native turns into a whole-command no-op). Setting the pivot
+   * shifts the image so the new pivot lands where the center used to be
+   * (Unity pivot semantics), then localScale tweens linearly around that
+   * pivot. Without a pivot the historical top-left-anchored scaling applies.
+   */
+  private async runScaleAction(
+    state: CharacterRenderState,
+    scaleX: number | undefined,
+    scaleY: number | undefined,
+    pivot: { x: number; y: number } | undefined,
+    durationMs: number,
+    block: boolean,
+  ): Promise<void> {
     const fromScaleX = state.scaleX;
     const fromScaleY = state.scaleY;
-    const toX = fromX + xOffset;
-    const toY = fromY + yOffset;
     const toScaleX = isFiniteNumber(scaleX) ? scaleX : state.scaleX;
     const toScaleY = isFiniteNumber(scaleY) ? scaleY : state.scaleY;
+    if (pivot) {
+      // Unity pivots measure y from the bottom; Pixi anchors from the top.
+      state.pivotX = pivot.x * state.sourceWidth;
+      state.pivotY = (1 - pivot.y) * state.sourceHeight;
+    }
     const sessionId = ++state.transformSessionId;
+    this.updateCharacterState(state);
 
     const run = this.tween(
       durationMs,
       (progress) => {
         if (!this.isActiveCharacterState(state, sessionId)) return;
-        state.actionX = fromX + (toX - fromX) * progress;
-        state.actionY = fromY + (toY - fromY) * progress;
         state.scaleX = fromScaleX + (toScaleX - fromScaleX) * progress;
         state.scaleY = fromScaleY + (toScaleY - fromScaleY) * progress;
         this.updateCharacterState(state);
       },
       () => {
         if (!this.isActiveCharacterState(state, sessionId)) return;
-        state.actionX = toX;
-        state.actionY = toY;
         state.scaleX = toScaleX;
         state.scaleY = toScaleY;
         this.updateCharacterState(state);
@@ -3653,20 +3717,49 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (block && durationMs > 0) await run;
   }
 
+  /**
+   * Native port: CharacterPanel._ExecuteCharacterExit (0x183E69C80) →
+   * _GenExitPosition (0x183E6B670) → AVGCharacterSlot.SetCharPos
+   * (0x183EB3290). The exit table below is verbatim native: displacements
+   * from each slot's rest anchor (l=440/m=640/r=840 in 1280x720 story space;
+   * actionX/actionY are exactly that displacement). Both coordinates are set
+   * absolutely, so a horizontal exit also snaps the vertical drift back to 0.
+   * An unknown direction resolves to (0,0) — the rest anchor.
+   */
   private async runExitAction(
     state: CharacterRenderState,
     durationMs: number,
     direction: CharacterActionInput["direction"],
-    yOffset: number,
+    absolutePosition: { x: number; y: number } | undefined,
     block: boolean,
   ): Promise<void> {
-    const toX =
-      direction === "left"
-        ? -(state.baseX + state.width + 64)
-        : STORY_WIDTH - state.baseX + 64;
+    const exitTable: Record<string, Record<string, [number, number]>> = {
+      l: { left: [-952, 0], right: [1352, 0] },
+      m: { left: [-1152, 0], right: [1152, 0] },
+      r: { left: [-1352, 0], right: [952, 0] },
+    };
+    const verticalTable: Record<string, [number, number]> = {
+      down: [0, -1072],
+      up: [0, 1072],
+    };
+
+    let toX: number;
+    let toY: number;
+    if (absolutePosition) {
+      // Both xpos & ypos present: absolute story-space target, same anchor
+      // convention as the `character` command (actionY is up-positive).
+      toX = absolutePosition.x - state.baseX;
+      toY = state.baseY - absolutePosition.y;
+    } else if (direction === "up" || direction === "down") {
+      [toX, toY] = verticalTable[direction];
+    } else if (direction === "left" || direction === "right") {
+      [toX, toY] = (exitTable[state.slot] ?? exitTable.m)[direction] ?? [0, 0];
+    } else {
+      [toX, toY] = [0, 0];
+    }
+
     const fromX = state.actionX;
     const fromY = state.actionY;
-    const toY = fromY + yOffset;
     const sessionId = ++state.transformSessionId;
 
     const run = this.tween(
@@ -3688,47 +3781,47 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (block && durationMs > 0) await run;
   }
 
+  /**
+   * Native port: AVGCharacterSlot.CharJump (0x183EB2690) — a single
+   * DOLocalJump tween whose total duration is fadeTime with `times` jumps
+   * inside, not `times` separate tweens.
+   */
   private startJumpAction(
     state: CharacterRenderState,
     power: number,
     times: number,
     durationMs: number,
-  ): void {
+  ): Promise<void> {
     const sessionId = ++state.jumpSessionId;
     state.jumpOffsetY = 0;
     this.updateCharacterState(state);
 
-    if (power <= 0 || durationMs <= 0) return;
+    if (power <= 0 || durationMs <= 0) return Promise.resolve();
 
-    const iterations = Math.max(1, times);
-    void (async () => {
-      for (let index = 0; index < iterations; index += 1) {
+    const cycles = Math.max(1, times);
+    return this.tween(
+      durationMs,
+      (progress) => {
         if (
           !this.isActiveCharacterState(state) ||
           state.jumpSessionId !== sessionId
         )
           return;
-
-        await this.tween(durationMs, (progress) => {
-          if (
-            !this.isActiveCharacterState(state) ||
-            state.jumpSessionId !== sessionId
-          )
-            return;
-          const cycle = progress <= 0.5 ? progress / 0.5 : (1 - progress) / 0.5;
-          state.jumpOffsetY = Math.max(0, power * cycle);
-          this.updateCharacterState(state);
-        });
-      }
-
-      if (
-        !this.isActiveCharacterState(state) ||
-        state.jumpSessionId !== sessionId
-      )
-        return;
-      state.jumpOffsetY = 0;
-      this.updateCharacterState(state);
-    })();
+        const phase = (progress * cycles) % 1;
+        const cycle = phase <= 0.5 ? phase / 0.5 : (1 - phase) / 0.5;
+        state.jumpOffsetY = Math.max(0, power * cycle);
+        this.updateCharacterState(state);
+      },
+      () => {
+        if (
+          !this.isActiveCharacterState(state) ||
+          state.jumpSessionId !== sessionId
+        )
+          return;
+        state.jumpOffsetY = 0;
+        this.updateCharacterState(state);
+      },
+    );
   }
 
   private startShakeAction(
@@ -3868,13 +3961,19 @@ export class PixiStoryRenderer implements StoryRenderer {
     blocker.visible = color.a > 0;
   }
 
-  // CharacterAction still uses the legacy per-tick shake model; CameraShake uses ShakePath.
+  /**
+   * CharacterAction still uses this legacy per-tick shake model; CameraShake
+   * uses ShakePath. Web adaptation of DOShakePosition's randomness parameter
+   * (native key `random`, degrees, default 10): the degree value is
+   * reinterpreted as the per-tick chance of a nonzero jolt, so a shake with
+   * the native default still produces sparse jolts over `times` vibrations.
+   */
   private pickShakeOffset(strength: number, randomness: number): number {
     const roll = Math.floor(Math.random() * 99) + 1;
     const directions = [-1, -0.707, 0, 1, 0.707];
     const index =
       roll < randomness ? Math.floor(Math.random() * directions.length) : 0;
-    return directions[index] * strength;
+    return directions[index]! * strength;
   }
 
   private createOverlayTextStyle(fontSize: number, widthPx: number): TextStyle {

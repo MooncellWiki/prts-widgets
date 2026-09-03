@@ -2433,7 +2433,7 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("maps characteraction move with legacy slot aliases and block args", async () => {
+  it("maps characteraction move with legacy slot aliases and isblock", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -2446,27 +2446,139 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
+    // Native defaults: power 10, times 3, random 10, scale 1.0.
     expect(renderer.actionCalls).toEqual([
       {
         block: true,
         direction: undefined,
         durationMs: 100,
-        power: 0,
-        randomness: 90,
+        power: 10,
+        randomness: 10,
         rotationFromDeg: 0,
         rotationLeftDeg: -15,
         rotationRightDeg: 15,
-        scaleX: undefined,
-        scaleY: undefined,
+        scaleX: 1,
+        scaleY: 1,
         slot: "l",
         stop: false,
-        times: 1,
+        times: 3,
         type: "move",
         xOffset: -200,
         yOffset: 60,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("ignores legacy block= and only reads isblock like the native panel", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        // Corpus-dominant spelling: block= is dead weight natively (only the
+        // cutin panel reads it), so these must not stall the player.
+        '[characteraction(name="left",type="move",xpos=100,fadetime=0.2,block=true)]',
+        '[characteraction(name="left",type="move",xpos=-100,fadetime=0.2,block=true,isblock=true)]',
+        '[characteraction(name="left",type="move",xpos=0,fadetime=0.2,isblock=false,block=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.actionCalls.map((action) => action.block)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    // None of the non-blocking moves may stall the runtime.
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("scales characteraction fadetime by animateRatio per native branch defaults", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[characteraction(name="l",type="move",fadetime=0.5)]',
+        '[characteraction(name="l",type="exit",fadetime=0.5)]',
+        '[characteraction(name="l",type="zoom",fadetime=0.5)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+
+    // move defaults to 0.5s, exit/zoom to 1.0s, all halved by animateRatio.
+    expect(renderer.actionCalls.map((action) => action.durationMs)).toEqual([
+      250, 250, 250,
+    ]);
+    // Missing fadetime keeps the per-branch defaults (500 move / 1000 exit).
+    const fallbackRenderer = new FakeRenderer();
+    await new StoryRuntime(
+      createContext([
+        '[characteraction(name="l",type="jump",fadetime=0)]',
+        '[characteraction(name="l",type="exit")]',
+        '[name="A"]ok',
+      ]),
+      fallbackRenderer,
+      new FakeAudio(),
+    ).start();
+    expect(
+      fallbackRenderer.actionCalls.map((action) => action.durationMs),
+    ).toEqual([0, 1000]);
+  });
+
+  it("degenerates jump and shake to an instant move when the scaled fadetime is zero", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[characteraction(name="l",type="jump",xpos=30,ypos=40,power=20,fadetime=0.5)]',
+        '[characteraction(name="l",type="shake",power=20,fadetime=0.5)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      // Quick-play speed: animateRatio 0 → NeedSkipAnimation collapses
+      // jump/shake into _ExecuteCharacterMove with the same xpos/ypos.
+      { animateRatio: 0 },
+    );
+
+    await runtime.start();
+
+    expect(renderer.actionCalls.map((action) => action.type)).toEqual([
+      "move",
+      "move",
+    ]);
+    expect(renderer.actionCalls.map((action) => action.xOffset)).toEqual([
+      30, 0,
+    ]);
+    expect(renderer.actionCalls.map((action) => action.durationMs)).toEqual([
+      0, 0,
+    ]);
+  });
+
+  it("reads the shake randomness from the native random key", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[characteraction(name="l",type="shake",power=5,times=10,fadetime=0.2,random=42)]',
+        '[characteraction(name="l",type="shake",power=5,times=10,fadetime=0.2,randomness=42)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // `randomness=` is not a native key; the second call falls back to 10.
+    expect(renderer.actionCalls.map((action) => action.randomness)).toEqual([
+      42, 10,
+    ]);
   });
 
   it("uses the five strict characteraction branches and native slot fallbacks", async () => {
@@ -2486,11 +2598,14 @@ describe("StoryRuntime", () => {
 
     expect(renderer.actionCalls).toEqual([
       {
-        block: true,
+        // block= is ignored (native reads isblock only); zoom's missing
+        // fadetime defaults to 1.0s and xpos/ypos become the 0.5/0.5 pivot.
+        block: false,
         direction: undefined,
-        durationMs: 500,
-        power: 0,
-        randomness: 90,
+        durationMs: 1000,
+        pivot: { x: 0.5, y: 0.5 },
+        power: 10,
+        randomness: 10,
         rotationFromDeg: 0,
         rotationLeftDeg: -15,
         rotationRightDeg: 15,
@@ -2498,7 +2613,7 @@ describe("StoryRuntime", () => {
         scaleY: 0.8,
         slot: "l",
         stop: false,
-        times: 1,
+        times: 3,
         type: "zoom",
         xOffset: 0,
         yOffset: 0,
@@ -2506,23 +2621,96 @@ describe("StoryRuntime", () => {
       {
         block: false,
         direction: "left",
-        durationMs: 500,
-        power: 0,
-        randomness: 90,
+        durationMs: 1000,
+        power: 10,
+        randomness: 10,
         rotationFromDeg: 0,
         rotationLeftDeg: -15,
         rotationRightDeg: 15,
-        scaleX: undefined,
-        scaleY: undefined,
+        scaleX: 1,
+        scaleY: 1,
         slot: "m",
         stop: false,
-        times: 1,
+        times: 3,
         type: "exit",
         xOffset: 0,
         yOffset: 0,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("defaults the exit direction to left and accepts native up/down", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[characteraction(name="m",type="exit")]',
+        '[characteraction(name="m",type="exit",direction="up")]',
+        '[characteraction(name="m",type="exit",direction="down")]',
+        '[characteraction(name="m",type="exit",direction="sideways")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.actionCalls.map((action) => action.direction)).toEqual([
+      "left",
+      "up",
+      "down",
+      // Non-native directions stay undefined; the renderer maps that to the
+      // native (0,0) rest-anchor exit.
+      undefined,
+    ]);
+  });
+
+  it("treats zoom xpos/ypos as a [0,1] pivot and no-ops out-of-range values", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[characteraction(name="m",type="zoom",xpos=0.8,ypos=0.2,scale=1.5,fadetime=0.1)]',
+        // Corpus spelling (xpos=-1 / ypos=-1): CharZoom rejects the pivot and
+        // the whole command — including the scale change — is a no-op.
+        '[characteraction(name="m",type="zoom",xpos=-1,ypos=-1,scale=0.8,fadetime=0.1,block=true)]',
+        '[characteraction(name="m",type="zoom",xpos=1.5,scale=0.8)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.actionCalls).toHaveLength(1);
+    expect(renderer.actionCalls[0]?.pivot).toEqual({ x: 0.8, y: 0.2 });
+    expect(warnings.filter((warning) => warning.type === "parse")).toHaveLength(
+      2,
+    );
+    // The no-op zoom with block=true must not stall the runtime.
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("uses exit xpos/ypos as absolute coordinates only when both are present", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[characteraction(name="m",type="exit",xpos=300,ypos=200,fadetime=0.1)]',
+        '[characteraction(name="m",type="exit",ypos=200,fadetime=0.1)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.actionCalls.map((action) => action.absolutePosition),
+    ).toEqual([{ x: 300, y: 200 }, undefined]);
   });
 
   it("maps imagerotate strict parameters", async () => {
