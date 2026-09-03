@@ -730,6 +730,93 @@ describe("PixiStoryRenderer", () => {
     );
   });
 
+  it("removes the previous largebg composition before fading in the new one", async () => {
+    // Native port: `_ExecuteImage` (2.7.61, VA 0x183e77ee0) calls
+    // `_ResetImages()` before `_LoadImage`, so a fadetime>0 replacement
+    // starts from an emptied panel — a blank gap while the new puzzle fades
+    // in, never a cross-fade. The never-completing tween keeps that fade
+    // mid-flight.
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.backgroundLayer.addChild(renderer.gridBackgroundLayer);
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    renderer.tween = vi.fn(() => new Promise<void>(() => {}));
+
+    const first = {
+      ...createGridBackgroundInput(),
+      fadeMs: 0,
+      imageKeys: ["l1", "r1"],
+      layout: "large",
+      resetPreviousImmediately: true,
+      solidHeights: [720],
+      solidWidths: [100, 100],
+    };
+    await renderer.setGridBackground(first);
+    const firstRoot = renderer.gridBackgroundLayer.children.at(0);
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+
+    await renderer.setGridBackground({ ...first, fadeMs: 500 });
+
+    expect(firstRoot.parent).toBeNull();
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+    expect(renderer.gridBackgroundLayer.children.at(0).alpha).toBe(0);
+    expect(renderer.largeBackgroundRoot).toBe(
+      renderer.gridBackgroundLayer.children.at(0),
+    );
+  });
+
+  it("keeps the legacy cross-fade for layouts without the immediate reset", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.backgroundLayer.addChild(renderer.gridBackgroundLayer);
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    renderer.tween = vi.fn(() => new Promise<void>(() => {}));
+
+    const input = createGridBackgroundInput();
+    await renderer.setGridBackground({ ...input, fadeMs: 0 });
+    const firstRoot = renderer.gridBackgroundLayer.children.at(0);
+
+    // grid/vertical replacements keep the outgoing composition parented until
+    // the fade completes; their executors adopt the immediate reset in their
+    // own alignment change.
+    await renderer.setGridBackground({ ...input, fadeMs: 500 });
+
+    expect(firstRoot.parent).not.toBeNull();
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(2);
+  });
+
+  it("empties the panel when a largebg tile fails to load", async () => {
+    // Native port: a failed `_LoadImage` logs
+    // "[AVG.LargeBG] An error occurred when load image {0}.", calls
+    // `_ResetPanel()` and returns false without blocking.
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.backgroundLayer.addChild(renderer.gridBackgroundLayer);
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    const input = {
+      ...createGridBackgroundInput(),
+      fadeMs: 0,
+      imageKeys: ["l1", "r1"],
+      layout: "large",
+      resetPreviousImmediately: true,
+      solidHeights: [720],
+      solidWidths: [100, 100],
+    };
+    await renderer.setGridBackground(input);
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+
+    renderer.textureForImageKey = vi
+      .fn()
+      .mockImplementation((key: string) =>
+        key === "r1" ? Promise.resolve(null) : Promise.resolve(Texture.EMPTY),
+      );
+    await renderer.setGridBackground(input);
+
+    expect(renderer.gridBackgroundLayer.children).toHaveLength(0);
+    expect(renderer.largeBackgroundRoot).toBeNull();
+  });
+
   it("draws a curtain as a solid body plus a fixed-width feather strip", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     renderer.app = {};

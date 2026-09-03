@@ -342,6 +342,15 @@ export interface GridBackgroundInput {
   imageKeys: string[];
   initPositionMode?: "center" | "default" | "lowercenter" | "upperleft";
   layout?: "grid" | "large" | "vertical";
+  /**
+   * Native port: `LargeBackgroundPanel._ExecuteImage` (2.7.61, VA 0x183e77ee0)
+   * calls `_ResetImages()` before `_LoadImage`, so the previous tiles vanish
+   * the moment the command executes and the new puzzle fades in over an
+   * emptied panel (a blank gap, not a cross-fade). Opt-in because the shared
+   * grid/vertical executors keep the legacy cross-fade until their own
+   * alignment change.
+   */
+  resetPreviousImmediately?: boolean;
   scaleX: number;
   scaleY: number;
   solidHeights: number[];

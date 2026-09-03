@@ -791,10 +791,24 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Port scope: `Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG` and
    * `_LoadImage`, including all-or-nothing asset loading and replacement.
    * `Container` composition is the Web adaptation of Unity RectTransforms.
+   * Load failures empty the panel like native `_ResetPanel()`; the
+   * largebg-specific immediate reset is opted into via
+   * `resetPreviousImmediately` (see the inline notes below).
    */
   async setGridBackground(input: GridBackgroundInput): Promise<void> {
     const sessionId = ++this.gridBackgroundSessionId;
     this.largeBackgroundTweenSessionId += 1;
+    // Native port: `_ExecuteImage` (2.7.61, VA 0x183e77ee0) calls
+    // `_ResetImages()` before `_LoadImage`, so the previous tiles vanish the
+    // moment the command executes and the new puzzle fades in over an emptied
+    // panel — a blank gap, never a cross-fade. Grid/vertical replacements keep
+    // the legacy cross-fade until their own alignment change, so this reset is
+    // opt-in.
+    if (input.resetPreviousImmediately) {
+      if (input.layout === "large") this.largeBackgroundRoot = null;
+      const previous = [...this.gridBackgroundLayer.children];
+      for (const child of previous) child.removeFromParent();
+    }
     const textures = await Promise.all(
       input.imageKeys.map((key) =>
         this.textureForImageKey(key, input.assetKind ?? "background"),
@@ -802,7 +816,14 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
 
-    if (textures.some((texture) => !texture)) return;
+    if (textures.some((texture) => !texture)) {
+      // Native port: a failed `_LoadImage` makes `_ExecuteImage` log
+      // "[AVG.LargeBG] An error occurred when load image {0}.", call
+      // `_ResetPanel()` and return false without blocking, so the panel is
+      // emptied instead of keeping the previous composition.
+      await this.clearGridBackground(0);
+      return;
+    }
 
     const root = this.buildGridBackgroundRoot(input, textures as Texture[]);
     const previous = [...this.gridBackgroundLayer.children];
@@ -833,6 +854,14 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
+  /**
+   * Native port note: `_ExecuteImage`'s clear branch (imagegroup and cggroup
+   * both empty) runs `DOFade(0, fadetime)` on the panel's CanvasGroup even
+   * when it is already empty, so `block=true` still waits out the fade. The
+   * Web adaptation returns early on an empty panel instead of animating
+   * nothing — an intentional simplification (no shipped script issues a
+   * parameterized clear on an empty panel).
+   */
   async clearGridBackground(fadeMs = 0, block = false): Promise<void> {
     const sessionId = ++this.gridBackgroundSessionId;
     this.largeBackgroundRoot = null;
@@ -2277,7 +2306,9 @@ export class PixiStoryRenderer implements StoryRenderer {
         return [this.imageLayer];
       }
       // `LargeBackgroundPanel._PostDisplayKey` registers ck_lbg_1..4 over its
-      // `_images` list, which only `largebg` fills.
+      // `_images` list, which the whole LargeBackgroundPanel family (largebg /
+      // verticalbg / gridbg) fills. The Web port only tracks the composed
+      // root, so focus effects apply to the whole puzzle rather than one tile.
       case "lbg": {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
