@@ -1294,13 +1294,27 @@ export class StoryRuntime {
 
       case "verticalbg": {
         // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteVerticalBG.
-        // It accepts one width and up to four vertically stacked tiles; fadetime
+        // It accepts one solidwidth float and up to four vertically stacked
+        // tiles; fadetime stays literal (unscaled) like the rest of the family.
+        // `initposmode` is always read (default "default") and its offset is
+        // written unconditionally at the end of the load branch
+        // (2.7.61: 0x183e79e3e-0x183e79f8d).
         const imageGroup = toString(this.exactArg(args, "imagegroup"));
         const cgGroup = toString(this.exactArg(args, "cggroup"));
         const groupSelection = resolveGroupedAssetSelection(
           imageGroup,
           cgGroup,
         );
+        const initPositionModeArg = toString(
+          this.exactArg(args, "initposmode"),
+          "default",
+        );
+        const initPositionMode =
+          initPositionModeArg === "center" ||
+          initPositionModeArg === "lowercenter" ||
+          initPositionModeArg === "upperleft"
+            ? initPositionModeArg
+            : "default";
         const fadeMs = Math.max(
           0,
           toNumber(this.exactArg(args, "fadetime"), 0) * 1000,
@@ -1324,7 +1338,16 @@ export class StoryRuntime {
         ).slice(0, imageKeys.length);
 
         if (imageKeys.length === 0) {
-          this.warn("parse", "verticalbg imagegroup is empty");
+          // Native logs "[AVG.VerticalBG] Image {0} of VerticalBG is Empty."
+          // then `_ResetPanel()` wipes the current composition before the
+          // command fails, so mirror the instant clear here.
+          this.warn(
+            "parse",
+            "verticalbg imagegroup is empty",
+            line.lineNumber,
+            line.command,
+          );
+          await this.renderer.clearGridBackground(0, false);
           return "continue";
         }
 
@@ -1333,11 +1356,30 @@ export class StoryRuntime {
           solidWidths.length !== 1 ||
           solidHeights.length !== imageKeys.length
         ) {
+          // Same native error path: LogError ("Image Count ... incorrect." /
+          // "Height of Image ... is empty/incorrect.") + `_ResetPanel()` (an
+          // instant reset without any fade), clearing the previous backdrop.
           this.warn(
             "parse",
             `verticalbg expects width_count * height_count === image_count, got ${solidWidths.length} * ${solidHeights.length} !== ${imageKeys.length}`,
+            line.lineNumber,
+            line.command,
           );
+          await this.renderer.clearGridBackground(0, false);
           return "continue";
+        }
+
+        if (imageKeys.length === 1) {
+          // Native reads heightList[1] for the panel sizeDelta with a raw
+          // get_Item (2.7.61: 0x183e79b2f-0x183e79b7a), so a single tile
+          // aborts with ArgumentOutOfRangeException. We keep rendering with
+          // the quirk-tolerant pivot but warn to stay observable.
+          this.warn(
+            "parse",
+            "verticalbg with a single tile would crash the native client",
+            line.lineNumber,
+            line.command,
+          );
         }
 
         await this.renderer.setGridBackground({
@@ -1345,6 +1387,7 @@ export class StoryRuntime {
           block,
           fadeMs,
           imageKeys,
+          initPositionMode,
           layout: "vertical",
           scaleX: toNumber(this.exactArg(args, "xScale"), 1),
           scaleY: toNumber(this.exactArg(args, "yScale"), 1),

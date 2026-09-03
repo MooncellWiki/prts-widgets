@@ -788,8 +788,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Port scope: `Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG` and
-   * `_LoadImage`, including all-or-nothing asset loading and replacement.
+   * Port scope: `Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG` /
+   * `_ExecuteVerticalBG` / `_ExecuteImage` (selected via the `layout` input)
+   * and `_LoadImage`, including all-or-nothing asset loading and replacement.
    * `Container` composition is the Web adaptation of Unity RectTransforms.
    */
   async setGridBackground(input: GridBackgroundInput): Promise<void> {
@@ -802,19 +803,33 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
 
-    if (textures.some((texture) => !texture)) return;
+    if (textures.some((texture) => !texture)) {
+      // Native `_LoadImage` logs "Failed to load background: [key]" per tile
+      // and then the command-level "An error occurred when load image {n}."
+      // error before `_ResetPanel()` fails the whole command, wiping whatever
+      // was on screen (all-or-nothing).
+      this.onWarning?.("grid background tiles failed to load; cleared");
+      this.largeBackgroundRoot = null;
+      const stale = [...this.gridBackgroundLayer.children];
+      for (const child of stale) child.removeFromParent();
+      return;
+    }
 
     const root = this.buildGridBackgroundRoot(input, textures as Texture[]);
     const previous = [...this.gridBackgroundLayer.children];
-    this.largeBackgroundRoot = input.layout === "large" ? root : null;
+    // The whole family (largebg / verticalbg / gridbg) shares one `_offset`
+    // container in native, so `largebgtween` must be able to pan vertical and
+    // grid compositions as well; register the root for every layout.
+    this.largeBackgroundRoot = root;
 
     root.alpha = input.fadeMs > 0 ? 0 : 1;
     this.gridBackgroundLayer.addChild(root);
+    // Native runs `_ResetImages()` before the new composition fades in, so a
+    // replacement drops the previous root immediately instead of crossfading
+    // against it; the background layer shows through during the fade.
+    for (const child of previous) child.removeFromParent();
 
-    if (input.fadeMs <= 0) {
-      for (const child of previous) child.removeFromParent();
-      return;
-    }
+    if (input.fadeMs <= 0) return;
 
     const run = this.tween(
       input.fadeMs,
@@ -825,7 +840,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
         root.alpha = 1;
-        for (const child of previous) child.removeFromParent();
       },
     );
 
@@ -2276,8 +2290,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       case "cg": {
         return [this.imageLayer];
       }
-      // `LargeBackgroundPanel._PostDisplayKey` registers ck_lbg_1..4 over its
-      // `_images` list, which only `largebg` fills.
+      // `LargeBackgroundPanel._PostDisplayKey` registers ck_lbg_1..4 over the
+      // family-shared `_images` list, which `_LoadImage` fills for largebg /
+      // verticalbg / gridbg alike.
       case "lbg": {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
