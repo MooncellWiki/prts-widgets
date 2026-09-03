@@ -194,6 +194,28 @@ function planForLine(
   };
 }
 
+/** window.__storySeekPlan 上暴露的跳转方案,供外部自动化消费(native 采集
+ *  侧据此用 frida 自动选分支):decisionId(= 源行号)→ optionIndex,
+ *  表外 decision 默认第 0 项;保留最近一次方案,直到下次跳转覆盖 */
+interface SeekPlanPayload {
+  target: number;
+  choices: Record<string, number>;
+  degraded: boolean;
+}
+
+function exposeSeekPlan(
+  target: number,
+  choices: Map<number, number>,
+  degraded: boolean,
+): void {
+  (window as unknown as { __storySeekPlan?: SeekPlanPayload }).__storySeekPlan =
+    {
+      choices: Object.fromEntries(choices),
+      degraded,
+      target,
+    };
+}
+
 function onSeek(target?: number): void {
   if (target !== undefined) lineValue.value = target;
   const line = lineValue.value;
@@ -224,6 +246,7 @@ function onSeek(target?: number): void {
   // （getPlayer 可用）后由 watchPlayerLine 武装引擎侧的 seekToLine
   resetSeek();
   pendingSeek = { choices: plan.choices, target: line };
+  exposeSeekPlan(line, plan.choices, plan.degraded);
   scriptEpoch.value++;
   seek.value = {
     choices: plan.choices,
