@@ -1741,7 +1741,10 @@ export class StoryRuntime {
       }
 
       case "imagerotate": {
-        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageRotate. Unlike the
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageRotate. Unlike
+        // the panel's tween executors, fadetime routes through
+        // CalculateFadetime (animateRatio scaling, see calculateFadeMs); the
+        // `ease` argument is never read — native hardcodes Ease.Linear.
         await this.renderer.setImageRotate({
           angleDeg: toNumber(this.exactArg(args, "angle"), 0),
           block: toBoolean(this.exactArg(args, "block"), false),
