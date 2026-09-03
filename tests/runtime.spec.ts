@@ -28,6 +28,7 @@ import type {
   ShowItemInput,
   SpellStickerInput,
   StickerInput,
+  StickerTweenInput,
   StoryAudio,
   StoryRenderer,
   SubtitleInput,
@@ -80,6 +81,7 @@ class FakeRenderer implements StoryRenderer {
   dialogueTexts: string[] = [];
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
+  stickerTweenCalls: StickerTweenInput[] = [];
   spellStickerCalls: SpellStickerInput[] = [];
   spellStickerHideCalls: string[] = [];
   spellStickerClearCount = 0;
@@ -289,6 +291,10 @@ class FakeRenderer implements StoryRenderer {
   async setSticker(input: StickerInput): Promise<void> {
     this.stickerCalls.push(input);
     this.typingActive = input.delayMs > 0;
+  }
+
+  stickerTween(input: StickerTweenInput): void {
+    this.stickerTweenCalls.push(input);
   }
 
   setSpellSticker(input: SpellStickerInput): void {
@@ -3249,6 +3255,122 @@ describe("StoryRuntime", () => {
       { append: true, text: "two" },
     ]);
     expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 2000, id: "a" }]);
+  });
+
+  it("maps stickertween parameters and blocks only when block and isend both hold", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="st1",text="hi",block=false)]',
+        '[stickertween(id="st1",pto="300,500",pduration=2,ato=0,aduration=1,join=true,isend=true,block=true)]',
+        '[stickertween(id="st1",rto=90,rduration=1,isend=true,block=true)]',
+        // ParseRotateParam reads `rto` as a bare float, so a Vector3-looking
+        // value leaves the group Empty: no tween is pushed at all, yet the
+        // block && isend check still fires.
+        '[stickertween(id="st1",rto="0,0,45",rduration=1,isend=true,block=true)]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // An omitted `*from` is 0, not the sticker's current value.
+    const moveAndFade = {
+      alpha: { durationMs: 1000, from: 0, to: 0 },
+      id: "st1",
+      isend: true,
+      join: true,
+      position: {
+        durationMs: 2000,
+        from: { x: 0, y: 0 },
+        to: { x: 300, y: 500 },
+      },
+    };
+    expect(renderer.stickerTweenCalls).toEqual([moveAndFade]);
+
+    // Every command holds block && isend, so each waits for a click.
+    expect(runtime.getState()).toBe("waiting_input");
+    await runtime.advance();
+
+    expect(renderer.stickerTweenCalls).toEqual([
+      moveAndFade,
+      {
+        id: "st1",
+        isend: true,
+        join: false,
+        rotation: { durationMs: 1000, from: 0, to: 90 },
+      },
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+    await runtime.advance();
+
+    // The Vector3-shaped rto pushed nothing but still blocked.
+    expect(renderer.stickerTweenCalls).toHaveLength(2);
+    expect(runtime.getState()).toBe("waiting_input");
+    await runtime.advance();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("silently skips missing stickertween ids and never blocks without isend", async () => {
+    const warnings: RuntimeWarning[] = [];
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        // Empty id and unknown id are native silent no-ops even with block.
+        '[stickertween(pto="1,2",isend=true,block=true)]',
+        '[stickertween(id="ghost",pto="1,2",isend=true,block=true)]',
+        '[sticker(id="a",text="one",block=false)]',
+        '[sticker(id="a",block=false)]',
+        // After the hide the id left the slot dictionary, so this misses too.
+        // It also has block=true without isend, which native never blocks on.
+        '[stickertween(id="a",ato=1,aduration=1,block=true)]',
+        '[name="A"]done',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.stickerTweenCalls).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "done" });
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("scales stickertween durations by the animate ratio", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="s",text="x",block=false)]',
+        '[stickertween(id="s",pto="10,20",pduration=2,ato=1,aduration=1,isend=true)]',
+        '[name="A"]end',
+      ]),
+      renderer,
+      new FakeAudio(),
+      // Native keeps durations literal and scales playback via
+      // Sequence.timeScale = animateRatio; duration * ratio is equivalent.
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+
+    expect(renderer.stickerTweenCalls).toEqual([
+      {
+        alpha: { durationMs: 500, from: 0, to: 1 },
+        id: "s",
+        isend: true,
+        join: false,
+        position: {
+          durationMs: 1000,
+          from: { x: 0, y: 0 },
+          to: { x: 10, y: 20 },
+        },
+      },
+    ]);
   });
 
   it("hides an empty name line without blocking", async () => {

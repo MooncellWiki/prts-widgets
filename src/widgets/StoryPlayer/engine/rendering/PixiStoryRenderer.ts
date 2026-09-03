@@ -54,6 +54,7 @@ import {
   type ShowItemInput,
   type SpellStickerInput,
   type StickerInput,
+  type StickerTweenInput,
   type StoryRenderer,
   type SubtitleInput,
   type TimerClearInput,
@@ -331,6 +332,34 @@ interface CharacterBuiltVisual {
   visual: Container;
 }
 
+/**
+ * One accumulated SequenceBuilder.Push step of a sticker tween, in native
+ * push order (position, rotation, alpha). `join` and the per-kind payload
+ * mirror Torappu.AVG's AnimStep { spec, join, seqEnd } composition.
+ */
+type StickerTweenStepInput =
+  | {
+      durationMs: number;
+      from: { x: number; y: number };
+      join: boolean;
+      kind: "position";
+      to: { x: number; y: number };
+    }
+  | {
+      durationMs: number;
+      from: number;
+      join: boolean;
+      kind: "alpha";
+      to: number;
+    }
+  | {
+      durationMs: number;
+      from: number;
+      join: boolean;
+      kind: "rotation";
+      to: number;
+    };
+
 interface CharacterRenderState {
   actionX: number;
   actionY: number;
@@ -533,6 +562,15 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
   >();
   private readonly stickerTypingSessionIds = new Map<string, number>();
+  /**
+   * Pending sticker-tween steps per id. Native: SequenceBuilder accumulates
+   * Push steps until a seqEnd=true step calls BuildSequence (see stickerTween).
+   */
+  private readonly stickerTweenQueues = new Map<
+    string,
+    StickerTweenStepInput[]
+  >();
+  private readonly stickerTweenSessionIds = new Map<string, number>();
   private subtitleFadeSessionId = 0;
   /**
    * Native port: `SubtitlePanel._SetHiddenInternal`'s `m_hidden`. Flips the
@@ -742,6 +780,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.stickerFadeSessionIds.clear();
     this.stickerTypingTargets.clear();
     this.stickerTypingSessionIds.clear();
+    this.stickerTweenQueues.clear();
+    this.stickerTweenSessionIds.clear();
     this.subtitleFadeSessionId += 1;
     this.subtitleHidden = true;
     this.subtitleTypingTarget = null;
@@ -2788,6 +2828,107 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
+   * Native port: Torappu.AVG.StickerPanel._ExecuteStickerTween (2.7.61 build
+   * 2761, VA 0x183e92110) driving AVGStickerTextView.ExecuteTween<T>
+   * (VA 0x184165be0 / 0x184165940). Each non-empty group is one
+   * SequenceBuilder.Push step in native order (position, rotation, alpha);
+   * `isend=false` steps only accumulate, and the first `isend=true` command
+   * builds and plays the whole sequence -- mirrored here by a per-id pending
+   * queue. Web adaptation: instead of a DOTween Sequence, every step gets a
+   * time window inside a single tween of the total duration; a `join` step
+   * starts when the previous step started, otherwise after it ends (DOTween
+   * Join vs Append). Durations were already animateRatio-scaled by the
+   * runtime, which is the documented visual equivalent of the native
+   * `Sequence.timeScale = animateRatio` assignment. Rotation is degrees in
+   * native localEulerAngles and radians in pixi, hence the conversion.
+   */
+  stickerTween(input: StickerTweenInput): void {
+    const queue = this.stickerTweenQueues.get(input.id) ?? [];
+    if (input.position)
+      queue.push({ ...input.position, join: input.join, kind: "position" });
+    if (input.rotation)
+      queue.push({ ...input.rotation, join: input.join, kind: "rotation" });
+    if (input.alpha)
+      queue.push({ ...input.alpha, join: input.join, kind: "alpha" });
+
+    if (!input.isend) {
+      this.stickerTweenQueues.set(input.id, queue);
+      return;
+    }
+
+    this.stickerTweenQueues.delete(input.id);
+    const sticker = this.stickerTexts.get(input.id);
+    if (!sticker || queue.length === 0) return;
+
+    // Starting a new sequence bumps the session: older in-flight sticker
+    // tweens for this id stop applying (native lets two sequences fight over
+    // the transform; skipping that glitch is a deliberate web adaptation).
+    const sessionId = (this.stickerTweenSessionIds.get(input.id) ?? 0) + 1;
+    this.stickerTweenSessionIds.set(input.id, sessionId);
+    const isCurrent = () =>
+      (this.stickerTweenSessionIds.get(input.id) ?? 0) === sessionId;
+
+    const steps = queue;
+
+    // Append/Join scheduling: `join` shares the previous step's start,
+    // everything else starts after the longest step of its segment ends.
+    const windows: Array<{ start: number; step: (typeof steps)[number] }> = [];
+    let segmentStart = 0;
+    let segmentLongest = 0;
+    let open = false;
+    for (const step of steps) {
+      if (!open || !step.join) {
+        segmentStart += segmentLongest;
+        segmentLongest = 0;
+        open = true;
+      }
+      windows.push({ start: segmentStart, step });
+      segmentLongest = Math.max(segmentLongest, step.durationMs);
+    }
+    const totalMs = segmentStart + segmentLongest;
+
+    const apply = (step: (typeof steps)[number], progress: number): void => {
+      if (step.kind === "position") {
+        sticker.x = step.from.x + (step.to.x - step.from.x) * progress;
+        sticker.y = step.from.y + (step.to.y - step.from.y) * progress;
+        return;
+      }
+      if (step.kind === "alpha") {
+        sticker.alpha = step.from + (step.to - step.from) * progress;
+        return;
+      }
+      const deg = step.from + (step.to - step.from) * progress;
+      sticker.rotation = (deg * Math.PI) / 180;
+    };
+
+    // `BuildSequence` creates every tween up front, and each
+    // `AVGTweenFactory._Create*Tween` snaps the transform to that step's
+    // `from` right there -- before the sequence plays and regardless of when
+    // the step's own window opens. So all the snaps happen now, and the
+    // clamped window below keeps a not-yet-started step pinned to `from`.
+    for (const { step } of windows) apply(step, 0);
+
+    void this.tween(
+      totalMs,
+      (progress) => {
+        if (!isCurrent()) return;
+        const elapsed = progress * totalMs;
+        for (const { start, step } of windows) {
+          const local =
+            step.durationMs <= 0
+              ? 1
+              : Math.min(1, Math.max(0, (elapsed - start) / step.durationMs));
+          apply(step, local);
+        }
+      },
+      () => {
+        if (!isCurrent()) return;
+        for (const { step } of windows) apply(step, 1);
+      },
+    );
+  }
+
+  /**
    * Port scope: `Torappu.AVG.StickerPanel._ExcuteTimerSticker` (native spelling)
    * and `AVGTimerView.RenderTimer`. Browser intervals and PIXI text adapt the
    * native timer view; this command itself never supplies a block boundary.
@@ -4194,6 +4335,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.stickerFadeSessionIds.set(
       id,
       (this.stickerFadeSessionIds.get(id) ?? 0) + 1,
+    );
+    // Native: re-showing the same id goes through RenderSticker._ResetView
+    // (0x183ed43b0), which kills the view's running sticker-tween Sequence
+    // (TweenExtensions.Kill(m_seq, false)). Bumping this session makes any
+    // in-flight sticker tween stop applying -- ForceCommandEnd does NOT do
+    // this in native (it only touches m_currentSticker, which stickertween
+    // never writes), so skip/force-end deliberately leaves the tween running.
+    this.stickerTweenSessionIds.set(
+      id,
+      (this.stickerTweenSessionIds.get(id) ?? 0) + 1,
     );
   }
 

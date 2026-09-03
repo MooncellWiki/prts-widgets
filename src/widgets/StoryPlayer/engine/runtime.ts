@@ -41,6 +41,7 @@ import type {
   RuntimeWarning,
   SpellStickerInput,
   StickerInput,
+  StickerTweenInput,
   StoryAudio,
   StoryCommandArgs,
   StoryPlayerEvents,
@@ -150,6 +151,7 @@ const builtinCommandNames = [
   "multiline",
   "subtitle",
   "sticker",
+  "stickertween",
   "timersticker",
   "timerclear",
   "stickerclear",
@@ -254,6 +256,13 @@ function parseVector2(value: unknown): { x: number; y: number } | undefined {
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
 }
 
+/**
+ * Native port: `Torappu.AVG.CommandParser.ParseRotateParam` parses `rto` /
+ * `rfrom` as Vector3 and feeds only the z component to `DORotate`. Scripts
+ * are expected to write "x,y,z"; a bare number is accepted as a z-only
+ * shorthand (web adaptation -- the native Vector3 parser is stricter, but no
+ * shipped script writes the key at all, so the relaxation is harmless).
+ */
 function parseCgVector2(value: unknown): { x: number; y: number } | undefined {
   if (typeof value !== "string") return undefined;
   const parts = value.split(",");
@@ -2762,6 +2771,95 @@ export class StoryRuntime {
           y,
         } satisfies StickerInput);
         return block ? "wait_input" : "continue";
+      }
+
+      case "stickertween": {
+        // Native port: Torappu.AVG.StickerPanel._ExecuteStickerTween
+        // (2.7.61 build 2761, VA 0x183e92110), registered under the plaintext
+        // key "stickertween" in StickerPanel.GetExecutors. It only tweens an
+        // already-shown sticker: `id` comes from TryGetParam and an empty id
+        // or a lookup miss in the slot dictionary silently continues -- no
+        // warning, no block (same silent-miss contract as hidecgitem).
+        const id = toString(this.exactArg(args, "id"));
+        if (!id || !this.stickerIds.has(id)) return "continue";
+
+        const join = toBoolean(this.exactArg(args, "join"), false);
+        const isend = toBoolean(this.exactArg(args, "isend"), false);
+        const block = toBoolean(this.exactArg(args, "block"), false);
+
+        const pto = parseVector2(this.exactArg(args, "pto"));
+        // `ParseRotateParam` (0x183eae440) reads `rto`/`rfrom` with
+        // `TryGetParam(cmd, key, ref float)` and drops the value into the z
+        // component of a Vector3 whose x/y stay 0 -- it is a bare float, not
+        // a "x,y,z" triple, and anything that does not parse as a float
+        // leaves the whole group Empty.
+        const rto = toOptionalNumber(this.exactArg(args, "rto"));
+        const ato = this.exactArg(args, "ato");
+        // With every group Empty, `ExecuteTween` returns before touching the
+        // builder, so nothing is pushed and nothing is flushed -- but the
+        // `block && isend` check at 0x183e92416 still runs.
+        const hasGroup =
+          ato !== undefined || pto !== undefined || rto !== undefined;
+        const tween: StickerTweenInput = {
+          // A group is emitted only when its `*to` key parses: native wraps
+          // each group in an IEmptyable param and ExecuteTween skips empty
+          // groups (missing `*to` yields Empty). `*from` is NOT "the current
+          // value": every CommandParser.Parse*Param initializes it to 0 and
+          // each AVGTweenFactory._Create*Tween snaps the transform to it
+          // before tweening, so an omitted `*from` really is 0.
+          ...(ato === undefined
+            ? {}
+            : {
+                alpha: {
+                  durationMs: this.calculateFadeMs(
+                    this.exactArg(args, "aduration"),
+                  ),
+                  from: toOptionalNumber(this.exactArg(args, "afrom")) ?? 0,
+                  to: toNumber(ato, 0),
+                },
+              }),
+          id,
+          isend,
+          join,
+          ...(pto === undefined
+            ? {}
+            : {
+                position: {
+                  durationMs: this.calculateFadeMs(
+                    this.exactArg(args, "pduration"),
+                  ),
+                  from: parseVector2(this.exactArg(args, "pfrom")) ?? {
+                    x: 0,
+                    y: 0,
+                  },
+                  to: pto,
+                },
+              }),
+          ...(rto === undefined
+            ? {}
+            : {
+                rotation: {
+                  durationMs: this.calculateFadeMs(
+                    this.exactArg(args, "rduration"),
+                  ),
+                  from: toOptionalNumber(this.exactArg(args, "rfrom")) ?? 0,
+                  to: rto,
+                },
+              }),
+        };
+        if (hasGroup) await this.renderer.stickerTween(tween);
+        // Durations go through calculateFadeMs on purpose: native keeps
+        // `*duration` literal and scales playback once via
+        // `Sequence.timeScale = AVGController.animateRatio`
+        // (AVGStickerTextView.ExecuteTween, VA 0x184165be0 / 0x184165940).
+        // Multiplying the duration by the animateRatio captured at execution
+        // time is the documented visually-equivalent adaptation and matches
+        // how the other tween commands behave here.
+        //
+        // Native registers the Event.Click advance only when `block && isend`
+        // both hold (0x183e92416); the other three combinations return false
+        // immediately and the tween keeps playing in the background.
+        return block && isend ? "wait_input" : "continue";
       }
 
       case "timersticker": {

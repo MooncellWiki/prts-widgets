@@ -2661,3 +2661,166 @@ describe("PixiStoryRenderer subtitle", () => {
     expect(renderer.subtitleText.style.align).toBe("center");
   });
 });
+
+// happy-dom cannot measure pixi Text fonts, so the sticker slot becomes a
+// plain transform object; stickerTween only touches x/y/alpha/rotation.
+function createStickerRenderer(): any {
+  const renderer = new PixiStoryRenderer(createContext()) as any;
+  renderer.ensureStickerText = vi.fn((id: string) => {
+    let sticker = renderer.stickerTexts.get(id);
+    if (!sticker) {
+      sticker = { alpha: 1, rotation: 0, visible: false, x: 0, y: 0 };
+      renderer.stickerTexts.set(id, sticker);
+    }
+    return sticker;
+  });
+  return renderer;
+}
+
+async function showSticker(renderer: any, text = "hello"): Promise<any> {
+  await renderer.setSticker({
+    alignment: "left",
+    append: false,
+    delayMs: 0,
+    fadeMs: 0,
+    id: "st",
+    sizePx: 24,
+    text,
+    widthPx: 200,
+    x: 100,
+    y: 50,
+  });
+  return renderer.stickerTexts.get("st");
+}
+
+describe("PixiStoryRenderer stickerTween", () => {
+  it("accumulates sticker tweens until isend and schedules join versus append", async () => {
+    const renderer = createStickerRenderer();
+
+    // fadeMs=0 fades in synchronously while the renderer is unmounted
+    // (TweenRunner completes instantly without an app), so alpha settles at 1.
+    const sticker = await showSticker(renderer);
+
+    const tweenCalls: Array<{
+      done?: () => void;
+      durationMs: number;
+      step: (progress: number) => void;
+    }> = [];
+    renderer.tween = vi.fn(
+      (durationMs: number, step: (p: number) => void, done?: () => void) => {
+        tweenCalls.push({ done, durationMs, step });
+        return Promise.resolve();
+      },
+    );
+
+    // isend=false only accumulates (native SequenceBuilder.Push without a
+    // seqEnd step); nothing plays yet.
+    renderer.stickerTween({
+      id: "st",
+      isend: false,
+      join: false,
+      position: {
+        durationMs: 500,
+        from: { x: 100, y: 50 },
+        to: { x: 300, y: 150 },
+      },
+    });
+    expect(tweenCalls).toHaveLength(0);
+
+    // isend=true builds and plays: position appended (starts at 0), alpha
+    // joined (also starts at 0), so the total is the longest step = 500ms.
+    renderer.stickerTween({
+      alpha: { durationMs: 300, from: 1, to: 0.2 },
+      id: "st",
+      isend: true,
+      join: true,
+    });
+    expect(tweenCalls.map((call) => call.durationMs)).toEqual([500]);
+    // BuildSequence snaps every step to its own `from` before the sequence
+    // plays (each AVGTweenFactory._Create*Tween writes the transform first).
+    expect(sticker.x).toBe(100);
+    expect(sticker.alpha).toBe(1);
+
+    tweenCalls[0]!.step(0.5); // 250ms elapsed
+    expect(sticker.x).toBe(200);
+    expect(sticker.y).toBe(100);
+    expect(sticker.alpha).toBeCloseTo(1 - 0.8 * (250 / 300));
+
+    tweenCalls[0]!.step(1);
+    tweenCalls[0]!.done?.();
+    expect(sticker.x).toBe(300);
+    expect(sticker.y).toBe(150);
+    expect(sticker.alpha).toBeCloseTo(0.2);
+
+    // Append scheduling serializes instead: 200ms position then 100ms rotation.
+    renderer.stickerTween({
+      id: "st",
+      isend: true,
+      join: false,
+      position: { durationMs: 200, from: { x: 0, y: 0 }, to: { x: 100, y: 0 } },
+      rotation: { durationMs: 100, from: 0, to: 90 },
+    });
+    expect(tweenCalls.map((call) => call.durationMs)).toEqual([500, 300]);
+    // The up-front snap already pulled the sticker back to posfrom.
+    expect(sticker.x).toBe(0);
+    tweenCalls[1]!.step(1);
+    // Native rotates in degrees (localEulerAngles.z); pixi stores radians.
+    expect(sticker.rotation).toBeCloseTo(Math.PI / 2);
+    expect(sticker.x).toBe(100);
+  });
+
+  it("invalidates in-flight sticker tweens when a newer tween or re-show lands", async () => {
+    const renderer = createStickerRenderer();
+    const sticker = await showSticker(renderer);
+
+    const steps: Array<(progress: number) => void> = [];
+    renderer.tween = vi.fn((_durationMs: number, step: (p: number) => void) => {
+      steps.push(step);
+      return Promise.resolve();
+    });
+
+    renderer.stickerTween({
+      id: "st",
+      isend: true,
+      join: false,
+      position: {
+        durationMs: 100,
+        from: { x: 100, y: 50 },
+        to: { x: 400, y: 0 },
+      },
+    });
+    steps[0]!(0.5);
+    expect(sticker.x).toBe(250);
+
+    // A newer sequence bumps the session, so the older step stops applying
+    // (native instead lets two DOTween sequences fight over the transform;
+    // skipping that glitch is a deliberate web adaptation).
+    renderer.stickerTween({
+      id: "st",
+      isend: true,
+      join: false,
+      position: { durationMs: 100, from: { x: 250, y: 0 }, to: { x: 0, y: 0 } },
+    });
+    steps[0]!(1);
+    expect(sticker.x).toBe(250);
+    steps[1]!(1);
+    expect(sticker.x).toBe(0);
+
+    // Re-showing the same id goes through RenderSticker._ResetView natively,
+    // which kills m_seq (TweenExtensions.Kill); bumpStickerSessions mirrors it.
+    await renderer.setSticker({
+      alignment: "left",
+      append: false,
+      delayMs: 0,
+      fadeMs: 0,
+      id: "st",
+      sizePx: 24,
+      text: "again",
+      widthPx: 200,
+      x: 0,
+      y: 0,
+    });
+    steps[1]!(0.5);
+    expect(sticker.x).toBe(0);
+  });
+});
