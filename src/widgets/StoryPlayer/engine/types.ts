@@ -310,6 +310,13 @@ export interface BackgroundInput {
 export interface BackgroundTweenInput {
   block: boolean;
   durationMs: number;
+  /**
+   * DOTween `Ease` name or ordinal string (`"OutQuad"`, `"6"`), resolved via
+   * the GetEnum Linear default when missing or unparseable.
+   */
+  ease?: string;
+  /** `SetLoops(2*!loop-1)`: true → infinite Restart loop from the From pose. */
+  loop?: boolean;
   xFrom?: number;
   xScaleFrom?: number;
   xScaleTo?: number;

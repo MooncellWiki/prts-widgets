@@ -1237,15 +1237,34 @@ export class StoryRuntime {
       }
 
       case "backgroundtween": {
-        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageTween. Duration is
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageTween (2.7.61
+        // VA 0x183e57560). Duration bypasses CalculateFadetime/animateRatio
+        // entirely and only takes effect while > 0 — <= 0 completes both
+        // tweens instantly (TweenExtensions.Complete). `ease` is read with
+        // GetEnum<Ease>(param, "ease", default 1 = Linear) and `loop` feeds
+        // SetLoops(2*!loop - 1): true → infinite Restart loop.
         const duration = this.exactArg(args, "duration");
+        const block =
+          toNumber(duration, 0) > 0 &&
+          toBoolean(this.exactArg(args, "block"), false);
+        const loop = toBoolean(this.exactArg(args, "loop"), false);
+        if (block && loop) {
+          // Native logs this (sic) DLog.LogError and still starts the loop,
+          // whose OnComplete(FinishCommand) then never fires. The warning
+          // keeps the native typo "intinity lop" on purpose.
+          this.warn(
+            "invalid_parameter",
+            "Loop and block both true when tween background! Will cause intinity lop!",
+            line.lineNumber,
+            line.command,
+          );
+        }
 
         await this.renderer.setBackgroundTween({
-          // duration defaults to 0.0; <= 0 completes both tweens instantly.
-          block:
-            toNumber(duration, 0) > 0 &&
-            toBoolean(this.exactArg(args, "block"), false),
+          block,
           durationMs: Math.max(0, toNumber(duration, 0) * 1000),
+          ease: toString(this.exactArg(args, "ease"), "Linear"),
+          loop,
           xFrom: toOptionalNumber(this.exactArg(args, "xFrom")),
           xScaleFrom: toOptionalNumber(this.exactArg(args, "xScaleFrom")),
           xScaleTo: toOptionalNumber(this.exactArg(args, "xScaleTo")),
