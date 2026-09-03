@@ -71,7 +71,7 @@ import {
 } from "./core/SceneGeometry";
 import { buildShakePath, sampleShakePath } from "./core/ShakePath";
 import { SlideMaskFilter } from "./core/SlideMaskFilter";
-import { TweenRunner } from "./core/TweenRunner";
+import { TweenRunner, type TweenRunOptions } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
 import { CgItemPanel } from "./panels/CgItemPanel";
@@ -4772,8 +4772,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     durationMs: number,
     step: (progress: number) => void,
     done?: () => void,
+    options?: TweenRunOptions,
   ): Promise<void> {
-    return this.tweenRunner.run(durationMs, step, done);
+    return this.tweenRunner.run(durationMs, step, done, options);
   }
 }
 
