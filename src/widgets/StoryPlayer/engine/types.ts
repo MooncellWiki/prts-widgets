@@ -412,7 +412,9 @@ export interface StickerInput extends SubtitleInput {
 }
 
 export interface SpellStickerInput {
-  alpha: number;
+  // Optional to mirror native TryGetParam: absent alpha leaves a reused
+  // sticker's previous alpha untouched (see SpellStickerPanel.show).
+  alpha?: number;
   angle?: number;
   content: string;
   id: string;

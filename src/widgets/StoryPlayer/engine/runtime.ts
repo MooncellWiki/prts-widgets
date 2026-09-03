@@ -2711,13 +2711,24 @@ export class StoryRuntime {
         // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellSticker.
         // `block` waits for a click, whose follow-up hides the sticker.
         const id = toString(this.exactArg(args, "id"));
-        if (!id) return "continue";
+        if (!id) {
+          // Native logs "[AVG.SpellSticker] Empty sticker id." and returns
+          // false before reading `block`; keep the passthrough silent-ish but
+          // surface a warning for log diffing.
+          this.warn("parse", "spellsticker: empty sticker id");
+          return "continue";
+        }
         const action = toString(this.exactArg(args, "action"), "show");
         const block = toBoolean(this.exactArg(args, "block"), false);
+        // Native `_ShowSticker` inlines `_ApplyAlpha`: CanvasGroup.alpha is
+        // only written when the alpha param exists (TryGetParam + clamp 0..1),
+        // so a reused sticker keeps its previous alpha. Keep the field
+        // optional instead of forcing the default 1.
+        const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
         await (action.toLowerCase() === "hide"
           ? this.renderer.hideSpellSticker(id)
           : this.renderer.setSpellSticker({
-              alpha: clamp(toNumber(this.exactArg(args, "alpha"), 1), 0, 1),
+              alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
               angle: toOptionalNumber(this.exactArg(args, "angle")),
               content: this.translateText(line.content),
               id,
