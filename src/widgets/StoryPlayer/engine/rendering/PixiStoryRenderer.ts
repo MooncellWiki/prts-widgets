@@ -62,6 +62,7 @@ import {
 } from "../types";
 
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
+import { dotweenEaseCurve } from "./core/DotweenEase";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -1501,7 +1502,9 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port of `Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween` for
-   * `largebg`; it intentionally uses the panel's direct tween timing.
+   * `largebg`; it intentionally uses the panel's direct tween timing,
+   * including the `GetEnum<Ease>("ease", 1)` ease curve and the
+   * `SetLoops(2*!loop-1)` loop count.
    */
   async setLargeBackgroundTween(
     input: LargeBackgroundTweenInput,
@@ -1527,6 +1530,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       y: isFiniteNumber(input.yTo) ? input.yTo : current.y,
     };
 
+    // Native never kills a running largebgtween before starting a new one:
+    // overlapping tweens both write `_offset` every frame (the newer one
+    // wins while both run, and a longer older tween resumes writing once the
+    // newer completes). Retiring the previous tween via the session id
+    // instead is a deliberate Web deviation that avoids competing writers.
     const sessionId = ++this.largeBackgroundTweenSessionId;
     this.applyCenteredTransform(root, from);
 
@@ -1535,6 +1543,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    // The native move and scale DOTweens share one duration, ease and loop
+    // count, so a single merged interpolation is frame-equivalent; loop=true
+    // turns the run into an infinite Restart loop that replays the From pose
+    // every cycle and never completes (block is dropped upstream for loops).
     const run = this.tween(
       input.durationMs,
       (progress) => {
@@ -1550,6 +1562,10 @@ export class PixiStoryRenderer implements StoryRenderer {
         if (!this.isActiveLargeBackground(root, sessionId)) return;
         this.applyCenteredTransform(root, to);
       },
+      {
+        ease: dotweenEaseCurve(input.ease),
+        loops: input.loop ? -1 : 1,
+      },
     );
 
     if (input.block) await run;
@@ -1559,7 +1575,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   /**
    * Web-only companion to the legacy `setLargeImage` surface: the investigated
    * client has no `largeimgtween` executor. It is intentionally not a native
-   * provenance claim.
+   * provenance claim; the tween semantics (ease via `GetEnum<Ease>("ease",
+   * 1)`, loops via `SetLoops(2*!loop-1)`) mirror the closest native
+   * relative, `LargeBackgroundPanel._ExecuteImageTween` (`largebgtween`).
    */
   async setLargeImageTween(input: LargeBackgroundTweenInput): Promise<void> {
     const root = this.largeImageRoot;
@@ -1591,6 +1609,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    // The native move and scale DOTweens share one duration, ease and loop
+    // count, so a single merged interpolation is frame-equivalent; loop=true
+    // turns the run into an infinite Restart loop that replays the From pose
+    // every cycle and never completes (block is dropped upstream for loops).
     const run = this.tween(
       input.durationMs,
       (progress) => {
@@ -1605,6 +1627,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (!this.isActiveLargeImage(root, sessionId)) return;
         this.applyCenteredTransform(root, to);
+      },
+      {
+        ease: dotweenEaseCurve(input.ease),
+        loops: input.loop ? -1 : 1,
       },
     );
 
