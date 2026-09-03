@@ -2168,6 +2168,7 @@ describe("StoryRuntime", () => {
           "47_g14_skyovercast_l2",
           "47_g14_skyovercast_r2",
         ],
+        initPositionMode: "default",
         layout: "grid",
         scaleX: 0.5,
         scaleY: 0.75,
@@ -2179,6 +2180,48 @@ describe("StoryRuntime", () => {
     ]);
     expect(renderer.gridBackgroundClearCalls).toEqual([]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("maps gridbg initposmode and treats unknown modes as zero offset", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[gridbg(imagegroup="a/b/c/d",solidwidth="1280/1280",solidheight="720/720",initposmode="upperleft")]',
+        '[gridbg(imagegroup="a/b/c/d",solidwidth="1280/1280",solidheight="720/720",initposmode="unknown")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.gridBackgroundCalls.map((input) => input.initPositionMode),
+    ).toEqual(["upperleft", "center"]);
+  });
+
+  it("clears the grid panel when gridbg validation fails", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[gridbg(imagegroup="a/b/c",solidwidth="1280/1280",solidheight="720/720")]',
+        '[gridbg(imagegroup="a/b/c/d",solidwidth="1280",solidheight="720/720")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Native `_ResetPanel()` (2.7.61: 0x183e77675) drops the current picture
+    // on every malformed grid instead of keeping the previous puzzle.
+    expect(renderer.gridBackgroundCalls).toEqual([]);
+    expect(renderer.gridBackgroundClearCalls).toEqual([
+      { block: false, fadeMs: 0 },
+      { block: false, fadeMs: 0 },
+    ]);
   });
 
   it("clears gridbg independently and supports legacy blok typo", async () => {
