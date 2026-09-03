@@ -62,6 +62,7 @@ import {
 } from "../types";
 
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
+import { dotweenEaseCurve } from "./core/DotweenEase";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -971,9 +972,19 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageTween`'s foreground
-   * transform semantics. Browser interpolation replaces the DOTween sequence.
+   * transform semantics (2.7.61 VA 0x183e57560): From/To defaults read the
+   * current transform, `duration <= 0` snaps to To (Complete), and the move +
+   * scale DOTween pair shares one ease and loop count, so a single merged
+   * interpolation is frame-equivalent. `ease` resolves the command's
+   * GetEnum<Ease> value and `loop` maps SetLoops(2*!loop-1) to an infinite
+   * Restart loop that replays from the From pose each cycle and never
+   * completes. Browser interpolation replaces the DOTween sequence.
    */
   async setBackgroundTween(input: BackgroundTweenInput): Promise<void> {
+    // Native's `_foreImage` is a serialized panel field that always exists,
+    // so the tween (and a blocking one's full-duration wait) would run even
+    // with no background loaded; real scripts always precede this command
+    // with `background`, so returning early here is a Web adaptation.
     const root = this.backgroundRoot;
     if (!root || root.parent !== this.backgroundLayer) return;
 
@@ -1017,6 +1028,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (!this.isActiveBackground(root, sessionId)) return;
         this.applyCenteredTransform(root, to);
+      },
+      {
+        ease: dotweenEaseCurve(input.ease),
+        loops: input.loop ? -1 : 1,
       },
     );
 
