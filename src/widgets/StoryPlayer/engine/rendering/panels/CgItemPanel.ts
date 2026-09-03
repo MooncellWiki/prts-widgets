@@ -31,12 +31,18 @@ function easeProgress(raw: number, ease: string): number {
     case "inoutquad": {
       return raw < 0.5 ? 2 * raw * raw : 1 - (-2 * raw + 2) ** 2 / 2;
     }
+    case "insine": {
+      return 1 - Math.cos((raw * Math.PI) / 2);
+    }
     case "outquad": {
       return 1 - (1 - raw) * (1 - raw);
     }
     // `AVGShowItemCgSlot.Show` / `.Hide` read the curve with
-    // `GetEnum<Ease>(param, "ease", Ease.Linear, ignoreCase: false)`, which
-    // also returns that fallback for any name it cannot parse.
+    // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`: the default
+    // is DOTween `Ease` enum value 1 = InSine (`Ease.Linear` is 0), and the
+    // parser returns that same default for any name it cannot resolve. The
+    // Web port maps only corpus-attested names and keeps a linear fallback
+    // for the rest (hidecgitem lines never write `ease` explicitly).
     default: {
       return raw;
     }
@@ -203,8 +209,20 @@ export class CgItemPanel {
     if (this.states.size === 0) return;
     if (key) {
       const state = this.states.get(key);
+      // Native divergence: with `block=true` and a missing key the native
+      // executor returns true while nobody ever calls `FinishCommand`
+      // (`_ClearItemByKey` returns silently), so the panel stays suspended
+      // until skip/`ForceCommandEnd` rescues it -- a native defect, not
+      // behaviour worth reproducing. The Web port releases immediately.
       if (!state) return;
-      const sessionId = ++state.sessionId;
+      // Native provenance: the hide path performs no DOKill -- base
+      // `AVGShowItemSlot.Hide` (0x183ed3cf0) only stores the callback -- so
+      // the show-side sequence keeps driving position/scale while the fade
+      // runs and until the completing `Dispose` destroys the slot. Do NOT
+      // bump `sessionId` here (that would freeze those writes); only snapshot
+      // it so the completion callback stays inert when a newer `show` has
+      // replaced the slot mid-fade (replacement bumps the id in `dispose`).
+      const sessionAtHide = state.sessionId;
       const startAlpha = state.root.alpha;
       const task = this.tween(
         fadeMs,
@@ -212,7 +230,7 @@ export class CgItemPanel {
           state.root.alpha = lerp(startAlpha, 0, easeProgress(raw, ease));
         },
         () => {
-          if (state.sessionId === sessionId) this.dispose(key);
+          if (state.sessionId === sessionAtHide) this.dispose(key);
         },
       );
       if (block) await task;
@@ -229,7 +247,13 @@ export class CgItemPanel {
         (raw) => {
           state.root.alpha = lerp(startAlpha, 0, easeProgress(raw, ease));
         },
-        () => state.root.destroy({ children: true }),
+        () => {
+          // During the fade show-side writes keep running (native drives the
+          // slots until `Dispose`); once the fade completes, bump the session
+          // to stop writes into the destroyed sprite.
+          state.sessionId += 1;
+          state.root.destroy({ children: true });
+        },
       );
     }
     // `_ExecuteHideCgItem` completes clear-all immediately even if `block=true`.

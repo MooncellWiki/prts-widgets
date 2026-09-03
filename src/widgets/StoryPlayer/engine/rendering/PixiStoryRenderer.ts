@@ -1173,7 +1173,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   async clearCgItems(
     key?: string,
     fadeMs = 130,
-    ease = "Linear",
+    ease = "InSine",
     block = false,
   ): Promise<void> {
     await this.cgItemPanel.hide(key, fadeMs, ease, block);

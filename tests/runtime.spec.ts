@@ -3257,7 +3257,9 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCgItemCalls).toEqual([
       {
         block: true,
-        ease: "Linear",
+        // `AVGShowItemCgSlot.Hide` defaults `ease` to DOTween `Ease` enum
+        // value 1 = InSine, and this line omits `ease`.
+        ease: "InSine",
         fadeMs: 130,
         key: "cgitem_test_left",
       },
