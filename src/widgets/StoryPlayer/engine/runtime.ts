@@ -164,6 +164,24 @@ const builtinCommandNames = [
   "hidecgitem",
 ] as const;
 
+/**
+ * Native provenance: `bgeffect` / `effect` 由 Ad8 外部 SDK 层渲染
+ * （AVGBattleEffectPanel.GetExecutors 注册明文 key "bgeffect" → `_ExcuteBgEffect`，
+ * VA 0x183e2c8c0 / 0x183e2d0d0；2.7.61/build 2761 GameAssembly.dll IDA 反编译复核）。
+ * Web 侧没有对应渲染层，按 warn-only 跳过，这与 native 控制流语义一致：
+ * - `_ExcuteBgEffect` 的清除/生成分支都 `return false`，永不阻塞、不等待
+ *   FinishCommand；分发层 `ExecutorComponent.Execute`（VA 0x183e45b10）对未
+ *   注册命令同样立即 FinishCommand 放行。
+ * - 语料中生成/清除成对出现（最新 story 全量清除分支约占一半，其中裸
+ *   `[bgeffect]` 就是清除），全有或全无的跳过不会产生"特效残留/泄漏"的
+ *   中间态；只实现生成不实现清除反而更糟。
+ *
+ * 未来若实现渲染，先核对两个 native 语义点（2.7.61 实证，2.7.51 历史文档
+ * 曾记错）：`layer` 默认 **-1**（`GetOrDefault<int>("layer", -1)`，VA
+ * 0x183e2d1bd），裸 `[bgeffect]` = 瞬时清空全部层（`_ClearAllBgEffect` 循环
+ * 0..4，layer=5 漏网；此路径不读 fadetime），不是"清 layer 0"；`flip`：
+ * 1 → y+180，2 → x+180（VERTICAL），现网语料两者都出现。
+ */
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
 
 interface InterruptibleWait {
@@ -392,6 +410,12 @@ export class StoryRuntime {
   private multilineShownChars = 0;
   private readonly stickerIds = new Set<string>();
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
+  /**
+   * Web-only（native 无对应概念）：unsupportedAd8Commands 命中过的命令名
+   * 集合，用于每命令名只告警一次。bgeffect/effect 在语料中高频成对出现
+   * （生成+清除，单文件可达数十条），逐条 console.warn 只是噪音。
+   */
+  private readonly warnedUnsupportedCommands = new Set<string>();
 
   constructor(
     context: Context,
@@ -2850,7 +2874,12 @@ export class StoryRuntime {
 
       default: {
         if (unsupportedAd8Commands.has(line.command)) {
-          this.warn("unsupported_command", line.command);
+          // 每命令名只告警一次（Web-only 降噪，见 warnedUnsupportedCommands）；
+          // 跳过本身与 native 的 return false / 立即 FinishCommand 放行一致。
+          if (!this.warnedUnsupportedCommands.has(line.command)) {
+            this.warnedUnsupportedCommands.add(line.command);
+            this.warn("unsupported_command", line.command);
+          }
           return "continue";
         }
 
