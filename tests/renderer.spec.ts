@@ -1743,6 +1743,69 @@ describe("PixiStoryRenderer", () => {
     expect(root.position.x).toBe(380);
   });
 
+  it("maps largebgtween ease and loop onto the tween engine", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const root = renderer.buildGridBackgroundRoot(
+      {
+        ...createGridBackgroundInput(),
+        imageKeys: ["tile-0", "tile-1"],
+        initPositionMode: "default",
+        layout: "large",
+        solidHeights: [720],
+        solidWidths: [920, 920],
+        x: -180,
+        y: 0,
+      },
+      [Texture.EMPTY, Texture.EMPTY],
+    );
+    const tweenOptions: Array<{
+      ease?: (t: number) => number;
+      loops?: number;
+    }> = [];
+    const stepped: number[] = [];
+
+    renderer.app = {};
+    renderer.gridBackgroundLayer.addChild(root);
+    renderer.largeBackgroundRoot = root;
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+        options?: { ease?: (t: number) => number; loops?: number },
+      ) => {
+        tweenOptions.push(options ?? {});
+        step(0.5);
+        stepped.push(renderer.readCenteredTransform(root).x);
+        done?.();
+      },
+    );
+
+    await renderer.setLargeBackgroundTween({
+      block: true,
+      durationMs: 1000,
+      // ease="6" is corpus-attested (act12d0_st02): DOTween ordinal 6
+      // resolves to OutQuad, so the raw 0.5 step lands at eased 0.75.
+      ease: "6",
+      xFrom: -180,
+      xTo: -720,
+    });
+    await renderer.setLargeBackgroundTween({
+      block: false,
+      durationMs: 1000,
+      loop: true,
+      xFrom: -180,
+      xTo: -720,
+    });
+
+    // The mocked engine feeds raw progress to the step callback, so both
+    // passes land on the linear midpoint; the eased curve itself is asserted
+    // on the captured options below (and end-to-end in tweenRunner.spec).
+    expect(stepped).toEqual([-450, -450]);
+    expect(tweenOptions.map(({ loops }) => loops)).toEqual([1, -1]);
+    expect(tweenOptions[0]?.ease?.(0.5)).toBe(0.75);
+  });
+
   it("applies backgroundtween in background transform space", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const root = new Texture({ label: "bg-test" });
@@ -1880,6 +1943,63 @@ describe("PixiStoryRenderer", () => {
       { scaleX: 1, scaleY: 0.899_999_999_999_999_9, x: -440, y: 180 },
       { scaleX: 0.8, scaleY: 0.6, x: -720, y: 360 },
     ]);
+  });
+
+  it("maps largeimgtween ease and loop onto the tween engine", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const root = renderer.buildGridBackgroundRoot(
+      {
+        ...createGridBackgroundInput(),
+        imageKeys: ["tile-0", "tile-1"],
+        layout: "large",
+        solidHeights: [900],
+        solidWidths: [1600, 1600],
+        x: -160,
+      },
+      [Texture.EMPTY, Texture.EMPTY],
+    );
+    const tweenOptions: Array<{
+      ease?: (t: number) => number;
+      loops?: number;
+    }> = [];
+
+    renderer.app = {};
+    renderer.imageLayer.addChild(root);
+    renderer.largeImageRoot = root;
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+        options?: { ease?: (t: number) => number; loops?: number },
+      ) => {
+        tweenOptions.push(options ?? {});
+        step(0.5);
+        done?.();
+      },
+    );
+
+    await renderer.setLargeImageTween({
+      block: true,
+      durationMs: 1000,
+      // ease="6" is the DOTween ordinal syntax: 6 resolves to OutQuad, so
+      // the raw 0.5 step lands at eased 0.75.
+      ease: "6",
+      xFrom: -160,
+      xTo: -720,
+    });
+    await renderer.setLargeImageTween({
+      block: false,
+      durationMs: 1000,
+      loop: true,
+      xFrom: -160,
+      xTo: -720,
+    });
+
+    expect(tweenOptions.map(({ loops }) => loops)).toEqual([1, -1]);
+    expect(tweenOptions[0]?.ease?.(0.5)).toBe(0.75);
+    // No ease argument keeps Ease.Linear (= GetEnum<Ease>("ease", 1)).
+    expect(tweenOptions[1]?.ease?.(0.5)).toBe(0.5);
   });
 
   it("applies zero-duration largeimgtween immediately and cancels stale tweens", async () => {

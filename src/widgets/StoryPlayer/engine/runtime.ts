@@ -1755,15 +1755,37 @@ export class StoryRuntime {
       case "largebgtween": {
         // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween.
         // It transforms the existing large-background container without loading
+        // assets; `duration` is literal seconds (the panel bypasses
+        // CalculateFadetime/animateRatio) and `duration <= 0` forces a
+        // non-blocking snap to the To pose.
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "duration"), 0) * 1000,
         );
+        const block =
+          durationMs > 0 && toBoolean(this.exactArg(args, "block"), false);
+        // `GetBool("loop", false)` feeds SetLoops(2*!loop-1): loop=true runs
+        // the tween as an infinite Restart loop.
+        const loop = toBoolean(this.exactArg(args, "loop"), false);
+        if (block && loop) {
+          // Native DLog.LogError text verbatim (typos and the copied
+          // "tween background" wording included), logged when
+          // effectiveBlock && loop. Native then blocks on a tween that never
+          // completes and the story hangs; we keep the error but drop block
+          // so playback continues.
+          this.warn(
+            "invalid_parameter",
+            "Loop and block both true when tween background! Will cause intinity lop!",
+          );
+        }
 
         await this.renderer.setLargeBackgroundTween({
-          block:
-            durationMs > 0 && toBoolean(this.exactArg(args, "block"), false),
+          block: block && !loop,
           durationMs,
+          // `GetEnum<Ease>("ease", 1)`: DOTween Ease name or ordinal string,
+          // default Linear (= 1).
+          ease: toString(this.exactArg(args, "ease"), "Linear"),
+          loop,
           xFrom: toOptionalNumber(this.exactArg(args, "xFrom")),
           xScaleFrom: toOptionalNumber(this.exactArg(args, "xScaleFrom")),
           xScaleTo: toOptionalNumber(this.exactArg(args, "xScaleTo")),
@@ -1778,17 +1800,50 @@ export class StoryRuntime {
 
       case "largeimgtween": {
         // Web-only compatibility extension paired with `largeimg`; it has no
+        // native executor or registration in the investigated client (2.7.61
+        // has no `largeimgtween` key in any GetExecutors table). Semantics
+        // follow the closest native relative, `largebgtween`
+        // (`Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween`), with two
+        // deliberate Web-only extensions: keys are matched
+        // case-insensitively (`xFrom` and `xfrom` both hit; native reads
+        // exact CamelCase), and the eight tween params fall back to the
+        // static `x`/`y`/`xscale`/`yscale` keys before the current
+        // transform (native always falls back to the current transform).
+        const durationMs = Math.max(
+          0,
+          // Native GetOrDefault<float>("duration", 0.0): omitted duration
+          // snaps instantly instead of tweening.
+          toNumber(this.arg(args, "duration"), 0) * 1000,
+        );
+        const block =
+          durationMs > 0 && toBoolean(this.arg(args, "block"), false);
+        // `GetBool("loop", false)` feeds SetLoops(2*!loop-1): loop=true runs
+        // the tween as an infinite Restart loop.
+        const loop = toBoolean(this.arg(args, "loop"), false);
+        if (block && loop) {
+          // Native DLog.LogError text verbatim (typos and the copied
+          // "tween background" wording included), logged when
+          // effectiveBlock && loop. Native then blocks on a tween that never
+          // completes and the story hangs; we keep the error but drop block
+          // so playback continues.
+          this.warn(
+            "invalid_parameter",
+            "Loop and block both true when tween background! Will cause intinity lop!",
+          );
+        }
+
         const xScale = toOptionalNumber(this.arg(args, "xscale"));
         const yScale = toOptionalNumber(this.arg(args, "yscale"));
         const x = toOptionalNumber(this.arg(args, "x"));
         const y = toOptionalNumber(this.arg(args, "y"));
 
         await this.renderer.setLargeImageTween({
-          block: toBoolean(this.arg(args, "block"), false),
-          durationMs: Math.max(
-            0,
-            toNumber(this.arg(args, "duration"), 0.15) * 1000,
-          ),
+          block: block && !loop,
+          durationMs,
+          // `GetEnum<Ease>("ease", 1)`: DOTween Ease name or ordinal string,
+          // default Linear (= 1).
+          ease: toString(this.arg(args, "ease"), "Linear"),
+          loop,
           xFrom: toOptionalNumber(this.arg(args, "xfrom")) ?? x,
           xScaleFrom: toOptionalNumber(this.arg(args, "xscalefrom")) ?? xScale,
           xScaleTo: toOptionalNumber(this.arg(args, "xscaleto")) ?? xScale,
