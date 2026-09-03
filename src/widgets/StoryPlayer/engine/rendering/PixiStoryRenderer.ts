@@ -62,6 +62,7 @@ import {
 } from "../types";
 
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
+import { dotweenEaseCurve } from "./core/DotweenEase";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -488,7 +489,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly largeImageRoots = new Set<Container>();
   private largeImageSessionId = 0;
   private largeImageTweenSessionId = 0;
-  private imageSprite: Sprite | null = null;
+  private imageRoot: Container | null = null;
+  /** Current foreground visual; exposed for renderer diagnostics and tests. */
+  imageSprite: Sprite | null = null;
   private imageRotateSessionId = 0;
   private readonly itemLayer = this.layers.items;
   private readonly onWarning?: (detail: string) => void;
@@ -749,6 +752,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageSessionId += 1;
     this.largeImageTweenSessionId += 1;
     this.largeImageRoots.clear();
+    this.imageRoot = null;
     this.imageSprite = null;
     this.imageLayer.removeChildren();
     this.itemLayer.removeChildren();
@@ -1197,36 +1201,47 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage` for
-   * the `image` path. Sprite replacement and fade behavior are preserved;
-   * PIXI geometry is an adaptation of the native Image/RectTransform pair.
+   * the `image` path. Sprite replacement and fade behavior are preserved.
+   *
+   * Native `_foreImage` is an Image whose RectTransform sizeDelta carries the
+   * screenadapt-fit size while a parent transform carries `xScale`/`yScale` as
+   * localScale. The root/sprite split reproduces that separation: the adapt
+   * ratio stays on the sprite, `xScale`/`yScale` land on the root, so
+   * `imagetween` scale values live in the native localScale space instead of
+   * being folded into the adapt ratio.
    */
   async setImage(key: string, input?: BackgroundInput): Promise<void> {
     const texture = await this.textureForImageKey(key, "image");
     if (!texture) return;
 
     this.imageRotateSessionId += 1;
+    const root = new Container();
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
     this.layoutImageForScreenAdapt(sprite, input?.screenAdapt);
-    sprite.position.set(
-      STORY_WIDTH / 2 + (input?.x ?? 0),
-      STORY_HEIGHT / 2 - (input?.y ?? 0),
-    );
-    sprite.scale.x *= input?.scaleX ?? 1;
-    sprite.scale.y *= input?.scaleY ?? 1;
+    root.addChild(sprite);
+    // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
+    // omitted scale must leave the screen-adapted size alone.
+    this.applyCenteredTransform(root, {
+      scaleX: input?.scaleX ?? 1,
+      scaleY: input?.scaleY ?? 1,
+      x: input?.x ?? 0,
+      y: input?.y ?? 0,
+    });
 
-    const previous = this.imageSprite;
+    const previous = this.imageRoot;
+    this.imageRoot = root;
     this.imageSprite = sprite;
-    this.imageLayer.addChild(sprite);
+    this.imageLayer.addChild(root);
     const fadeMs = input?.fadeMs ?? 0;
-    sprite.alpha = fadeMs > 0 ? 0 : 1;
+    root.alpha = fadeMs > 0 ? 0 : 1;
     if (fadeMs <= 0) {
       previous?.removeFromParent();
       return;
     }
     const run = this.tween(
       fadeMs,
-      (progress) => (sprite.alpha = progress),
+      (progress) => (root.alpha = progress),
       () => previous?.removeFromParent(),
     );
     if (input?.block) await run;
@@ -1235,18 +1250,19 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   async clearImage(fadeMs = 0, block = false): Promise<void> {
     this.imageRotateSessionId += 1;
-    const sprite = this.imageSprite;
+    const root = this.imageRoot;
+    this.imageRoot = null;
     this.imageSprite = null;
-    if (!sprite) return;
+    if (!root) return;
     if (fadeMs <= 0) {
-      sprite.removeFromParent();
+      root.removeFromParent();
       return;
     }
-    const startAlpha = sprite.alpha;
+    const startAlpha = root.alpha;
     const run = this.tween(
       fadeMs,
-      (progress) => (sprite.alpha = startAlpha * (1 - progress)),
-      () => sprite.removeFromParent(),
+      (progress) => (root.alpha = startAlpha * (1 - progress)),
+      () => root.removeFromParent(),
     );
     if (block) await run;
     else void run;
@@ -1445,54 +1461,61 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageTween` for the foreground
-   * sprite. PIXI interpolation substitutes for native DOTween.
+   * visual. Native tweens `_foreImage.rectTransform` localPosition/localScale
+   * with DOTween; both are reproduced on the image root, whose scale is the
+   * localScale space (`setImage` keeps the screenadapt ratio on the inner
+   * sprite). `ease` is applied to a single eased progress shared by the
+   * position and scale interpolation, matching `SetEase` on both native
+   * tweens. Consecutive `imagetween`s are not cancelled (native never calls
+   * DOKill either; both DOTween instances keep writing the same transform).
+   *
+   * Without a foreground image native dereferences `_foreImage` and throws;
+   * story scripts always precede the tween with `[Image]`, so the silent
+   * return only avoids the equivalent crash.
    */
   async setImageTween(input: ImageTweenInput): Promise<void> {
-    if (!this.imageSprite) return;
+    const root = this.imageRoot;
+    if (!root || root.parent !== this.imageLayer) return;
 
-    const sprite = this.imageSprite;
-    const fromX = isFiniteNumber(input.xFrom)
-      ? STORY_WIDTH / 2 + input.xFrom
-      : sprite.position.x;
-    const fromY = isFiniteNumber(input.yFrom)
-      ? STORY_HEIGHT / 2 - input.yFrom
-      : sprite.position.y;
-    const targetPositionX = isFiniteNumber(input.xTo)
-      ? STORY_WIDTH / 2 + input.xTo
-      : sprite.position.x;
-    const targetPositionY = isFiniteNumber(input.yTo)
-      ? STORY_HEIGHT / 2 - input.yTo
-      : sprite.position.y;
-    const fromScaleX = isFiniteNumber(input.xScaleFrom)
-      ? input.xScaleFrom
-      : sprite.scale.x;
-    const fromScaleY = isFiniteNumber(input.yScaleFrom)
-      ? input.yScaleFrom
-      : sprite.scale.y;
-    const targetX = isFiniteNumber(input.xScaleTo)
-      ? input.xScaleTo
-      : sprite.scale.x;
-    const targetY = isFiniteNumber(input.yScaleTo)
-      ? input.yScaleTo
-      : sprite.scale.y;
+    // From/To default to the same current transform values (native reads the
+    // current localPosition/localScale once for both fallbacks).
+    const current = this.readCenteredTransform(root);
+    const from = {
+      scaleX: isFiniteNumber(input.xScaleFrom)
+        ? input.xScaleFrom
+        : current.scaleX,
+      scaleY: isFiniteNumber(input.yScaleFrom)
+        ? input.yScaleFrom
+        : current.scaleY,
+      x: isFiniteNumber(input.xFrom) ? input.xFrom : current.x,
+      y: isFiniteNumber(input.yFrom) ? input.yFrom : current.y,
+    };
+    const to = {
+      scaleX: isFiniteNumber(input.xScaleTo) ? input.xScaleTo : current.scaleX,
+      scaleY: isFiniteNumber(input.yScaleTo) ? input.yScaleTo : current.scaleY,
+      x: isFiniteNumber(input.xTo) ? input.xTo : current.x,
+      y: isFiniteNumber(input.yTo) ? input.yTo : current.y,
+    };
 
-    sprite.position.set(fromX, fromY);
-    sprite.scale.set(fromScaleX, fromScaleY);
+    // Native jumps to the From transform before starting the tweens, and a
+    // non-positive duration Completes both tweens so the To state lands
+    // immediately.
+    this.applyCenteredTransform(root, from);
 
     if (input.durationMs <= 0) {
-      sprite.scale.set(targetX, targetY);
-      sprite.position.set(targetPositionX, targetPositionY);
+      this.applyCenteredTransform(root, to);
       return;
     }
 
-    const run = this.tween(input.durationMs, (progress) => {
-      const nextX = fromScaleX + (targetX - fromScaleX) * progress;
-      const nextY = fromScaleY + (targetY - fromScaleY) * progress;
-      sprite.scale.set(nextX, nextY);
-      sprite.position.set(
-        fromX + (targetPositionX - fromX) * progress,
-        fromY + (targetPositionY - fromY) * progress,
-      );
+    const ease = dotweenEaseCurve(input.ease);
+    const run = this.tween(input.durationMs, (raw) => {
+      const progress = ease(raw);
+      this.applyCenteredTransform(root, {
+        scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
+        scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
+        x: from.x + (to.x - from.x) * progress,
+        y: from.y + (to.y - from.y) * progress,
+      });
     });
 
     if (input.block) await run;
