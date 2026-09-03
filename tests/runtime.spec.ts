@@ -3264,6 +3264,25 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("defaults cgitem ease to InSine like the native GetEnum call-site default", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[cgitem(image="cgitem_test")]']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.cgItemCalls).toEqual([
+      expect.objectContaining({
+        assetKey: "cgitem_test",
+        ease: "InSine",
+        key: "cgitem_test",
+      }),
+    ]);
+  });
+
   it("maps parameterless hidecgitem to clear-all", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
