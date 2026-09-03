@@ -2791,6 +2791,8 @@ describe("StoryRuntime", () => {
       {
         block: false,
         durationMs: 25_000,
+        ease: "Linear",
+        loop: false,
         xFrom: 0,
         xScaleFrom: undefined,
         xScaleTo: undefined,
@@ -2803,6 +2805,8 @@ describe("StoryRuntime", () => {
       {
         block: false,
         durationMs: 500,
+        ease: "Linear",
+        loop: false,
         xFrom: undefined,
         xScaleFrom: 0.75,
         xScaleTo: 0.8,
@@ -2812,10 +2816,12 @@ describe("StoryRuntime", () => {
         yScaleTo: 0.8,
         yTo: undefined,
       },
-      // `duration` defaults to 0.0, and <= 0 completes both tweens immediately.
+      // `duration` defaults to 0.0, and <= 0 completes both tweens instantly.
       {
         block: false,
         durationMs: 0,
+        ease: "Linear",
+        loop: false,
         xFrom: undefined,
         xScaleFrom: undefined,
         xScaleTo: undefined,
@@ -2828,6 +2834,8 @@ describe("StoryRuntime", () => {
       {
         block: false,
         durationMs: 0,
+        ease: "Linear",
+        loop: false,
         xFrom: undefined,
         xScaleFrom: undefined,
         xScaleTo: undefined,
@@ -2839,6 +2847,55 @@ describe("StoryRuntime", () => {
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("maps backgroundtween ease and loop and warns on loop with block", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[background(image="beach_1")]',
+        '[backgroundtween(xFrom=0,xTo=130,duration=1.5,ease="OutFlash",loop=true,block=false)]',
+        '[backgroundtween(xFrom=-30,xTo=30,duration=3,ease="1",block=false)]',
+        '[backgroundtween(xFrom=0,xTo=50,duration=2,ease="bogus",loop=true,block=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.backgroundTweenCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          durationMs: 1500,
+          ease: "OutFlash",
+          loop: true,
+        }),
+        // `ease="1"` passes through as an ordinal string for the renderer to
+        // resolve (Ease.Linear).
+        expect.objectContaining({ durationMs: 3000, ease: "1", loop: false }),
+        // Unparseable ease names keep the GetEnum Linear default.
+        expect.objectContaining({
+          durationMs: 2000,
+          ease: "bogus",
+          loop: true,
+        }),
+      ]),
+    );
+    // `_ExecuteImageTween` logs this (sic) error when effectiveBlock and loop
+    // are both true, because SetLoops(-1) never reaches
+    // OnComplete(FinishCommand). The typo "intinity lop" is native.
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "backgroundtween",
+        detail:
+          "Loop and block both true when tween background! Will cause intinity lop!",
+        type: "invalid_parameter",
+      }),
+    ]);
   });
 
   it("maps largebgtween with strict CamelCase keys", async () => {
