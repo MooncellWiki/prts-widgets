@@ -323,6 +323,7 @@ export interface BackgroundTweenInput {
 export interface ImageTweenInput {
   block: boolean;
   durationMs: number;
+  ease: string;
   xFrom?: number;
   xScaleFrom?: number;
   xScaleTo?: number;

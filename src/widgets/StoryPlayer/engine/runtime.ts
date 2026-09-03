@@ -1719,15 +1719,33 @@ export class StoryRuntime {
       }
 
       case "imagetween": {
-        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageTween. Its duration
+        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageTween. Its
+        // duration bypasses CalculateFadetime entirely (unlike `image`'s
+        // fadetime), block only takes effect while duration > 0
+        // (effectiveBlock), and `ease` (GetEnum<Ease>, default Linear) is
+        // applied to both the position and scale tweens. `loop=true` would
+        // SetLoops(-1) and restart forever; that infinite loop is
+        // deliberately not ported -- every story in the corpus omits `loop`.
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "duration"), 0) * 1000,
         );
+        const block =
+          durationMs > 0 && toBoolean(this.exactArg(args, "block"), false);
+        if (block && toBoolean(this.exactArg(args, "loop"), false)) {
+          // `_ExecuteImageTween` logs this (sic) error when loop and
+          // effectiveBlock are both true, because SetLoops(-1) never reaches
+          // OnComplete(FinishCommand). The string is shared with
+          // `backgroundtween` and keeps its native typos.
+          this.warn(
+            "invalid_parameter",
+            "Loop and block both true when tween background! Will cause intinity lop!",
+          );
+        }
         await this.renderer.setImageTween({
-          block:
-            durationMs > 0 && toBoolean(this.exactArg(args, "block"), false),
+          block,
           durationMs,
+          ease: toString(this.exactArg(args, "ease"), "Linear"),
           xFrom: toOptionalNumber(this.exactArg(args, "xFrom")),
           xScaleFrom: toOptionalNumber(this.exactArg(args, "xScaleFrom")),
           xScaleTo: toOptionalNumber(this.exactArg(args, "xScaleTo")),

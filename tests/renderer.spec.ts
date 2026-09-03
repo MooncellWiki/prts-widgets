@@ -1576,6 +1576,101 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.imageSprite.height).toBe(Texture.EMPTY.height);
   });
 
+  it("separates screenadapt size from the imagetween localScale space", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    // Native `_foreImage` carries the screenadapt fit in sizeDelta while
+    // imagetween writes localScale: a CG coverall'd to 1280 renders
+    // xScaleTo=1.05 as 1344px, not as textureWidth * 1.05.
+    await renderer.setImage("pic_test", {
+      block: false,
+      fadeMs: 0,
+      scaleX: 1,
+      scaleY: 1,
+      screenAdapt: "coverall",
+      tiled: false,
+      x: 0,
+      y: 0,
+    });
+    const root = renderer.imageRoot;
+    const sprite = renderer.imageSprite;
+    expect(sprite.width).toBe(1280);
+
+    await renderer.setImageTween({
+      block: false,
+      durationMs: 0,
+      ease: "Linear",
+      xScaleFrom: 1,
+      xScaleTo: 1.05,
+    });
+
+    expect(root.scale.x).toBe(1.05);
+    expect(sprite.width).toBe(1280);
+    // Rendered width = adapted sizeDelta * localScale.
+    expect(sprite.width * root.scale.x).toBe(1344);
+  });
+
+  it("falls back to the current root transform for missing From/To", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setImage("ac3_title1", {
+      block: false,
+      fadeMs: 0,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      tiled: false,
+      x: 24,
+      y: -36,
+    });
+
+    // Omitted From/To reuse the current localPosition/localScale (native
+    // reads them once as the shared fallback), so nothing moves.
+    await renderer.setImageTween({
+      block: false,
+      durationMs: 0,
+      ease: "Linear",
+    });
+
+    expect(renderer.imageRoot.scale.x).toBe(1.5);
+    expect(renderer.imageRoot.scale.y).toBe(1.5);
+    expect(renderer.imageRoot.position.x).toBe(640 + 24);
+    expect(renderer.imageRoot.position.y).toBe(360 + 36);
+  });
+
+  it("applies the imagetween ease curve to position and scale", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setImage("ac3_title1");
+    const root = renderer.imageRoot;
+    const samples: Array<{ scaleX: number; x: number }> = [];
+    renderer.tween = vi.fn(
+      async (_durationMs: number, step: (progress: number) => void) => {
+        step(0.25);
+        samples.push({ scaleX: root.scale.x, x: root.position.x });
+      },
+    );
+
+    await renderer.setImageTween({
+      block: true,
+      durationMs: 1000,
+      ease: "InOutCubic",
+      xFrom: 0,
+      xScaleFrom: 1,
+      xScaleTo: 2,
+      xTo: 100,
+    });
+
+    // SetEase applies to both DOLocalMove and DOScale; at raw time 0.25
+    // InOutCubic yields 4 * 0.25^3 = 0.0625.
+    expect(samples).toEqual([{ scaleX: 1.0625, x: 640 + 6.25 }]);
+  });
+
   it("applies the strict gridbg xScale and yScale transform", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const root = renderer.buildGridBackgroundRoot(createGridBackgroundInput(), [
