@@ -1343,6 +1343,190 @@ describe("PixiStoryRenderer", () => {
     expect(gradient.end).toEqual({ x: 640, y: 0 });
   });
 
+  it("draws corner curtains as offset horizontal bands with a dead zone", () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+
+    const draws: unknown[] = [];
+    const state = {
+      alpha: 1,
+      direction: 1,
+      fill: 0.5,
+      grad: false,
+      graphic: {
+        alpha: 1,
+        clear: () => {},
+        poly(points: number[]) {
+          draws.push(points);
+          return this;
+        },
+        fill(style: unknown) {
+          draws.push(style);
+          return this;
+        },
+        visible: false,
+      },
+    };
+
+    renderer.updateCurtainState(state, { x: 1, y: 1 });
+
+    // direction 1 is a native 1600x1600 rect scaled on Y only, hinged above
+    // the stage at y=960.7 and offset right (x 404.7..): fill 0.5 puts the
+    // inner edge at 960.7-800 -- a top band with a horizontal offset,
+    // not a diagonal wipe.
+    expect(state.graphic.visible).toBe(true);
+    expect(draws).toEqual([
+      [404.7, 960.7 - 800, 1280, 960.7 - 800, 1280, 720, 404.7, 720],
+      0x00_00_00,
+    ]);
+
+    // Fills under the hinge offset (240.7/1600 ~= 0.15) stay off-screen and
+    // draw nothing.
+    draws.length = 0;
+    state.fill = 0.14;
+    renderer.updateCurtainState(state, { x: 1, y: 1 });
+    expect(state.graphic.visible).toBe(false);
+    expect(draws).toEqual([]);
+  });
+
+  it("feathers corner curtains vertically on the inner edge only", () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+
+    const draws: unknown[] = [];
+    const state = {
+      alpha: 1,
+      direction: 3,
+      fill: 0.5,
+      grad: true,
+      graphic: {
+        alpha: 1,
+        clear: () => {},
+        poly(points: number[]) {
+          draws.push(points);
+          return this;
+        },
+        fill(style: unknown) {
+          draws.push(style);
+          return this;
+        },
+        visible: false,
+      },
+    };
+
+    renderer.updateCurtainState(state, { x: 1, y: -1 });
+
+    // direction 3 rises from below (hinge y=-218.2): fill 0.5 puts the inner
+    // edge at -218.2+800. The body is the band under the edge, the 20px
+    // feather sits above it, and the gradient axis is vertical.
+    const edge = -218.2 + 800;
+    expect(state.graphic.visible).toBe(true);
+    expect(draws[0]).toEqual([
+      401.5,
+      0,
+      1280,
+      0,
+      1280,
+      edge - 20,
+      401.5,
+      edge - 20,
+    ]);
+    expect(draws[1]).toBe(0x00_00_00);
+    expect(draws[2]).toEqual([
+      401.5,
+      edge - 20,
+      1280,
+      edge - 20,
+      1280,
+      edge,
+      401.5,
+      edge,
+    ]);
+    const gradient = draws[3] as any;
+    expect(gradient.start).toEqual({ x: 0, y: edge - 20 });
+    expect(gradient.end).toEqual({ x: 0, y: edge });
+  });
+
+  it("snaps curtain alpha to 1 when `a` is absent, ignoring leftover alpha", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.tween = vi.fn(async () => {});
+
+    // A previous command left the side at alpha 0.3.
+    await renderer.setCurtain({
+      alphaTo: 0.3,
+      block: false,
+      delayMs: 0,
+      direction: 4,
+      fadeMs: 0,
+      fillFrom: 0.5,
+      fillTo: 0.5,
+      grad: false,
+    });
+    expect(renderer.curtains.get(4).alpha).toBe(0.3);
+
+    // With `a` present but no `afrom`, the tween starts from the alpha
+    // captured *before* the unconditional SetCurtainAlpha(1.0) snap.
+    await renderer.setCurtain({
+      alphaTo: 0.8,
+      block: false,
+      delayMs: 0,
+      direction: 4,
+      fadeMs: 150,
+      fillFrom: 0.5,
+      fillTo: 0.6,
+      grad: false,
+    });
+    expect(renderer.curtains.get(4).alpha).toBe(0.3);
+
+    // Without `a` native snaps to 1.0 before branching, so a bare `afrom`
+    // is never applied and the leftover 0.3 does not survive.
+    await renderer.setCurtain({
+      alphaFrom: 0.2,
+      block: false,
+      delayMs: 0,
+      direction: 4,
+      fadeMs: 0,
+      fillFrom: 0.5,
+      fillTo: 0.5,
+      grad: false,
+    });
+    expect(renderer.curtains.get(4).alpha).toBe(1);
+  });
+
+  it("keeps the grad feather while clearCurtains retracts the sides", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.tween = vi.fn(async () => {});
+    // FillGradient needs a real canvas context; this test is about the input
+    // clearCurtains forwards, not the drawing.
+    renderer.updateCurtainState = vi.fn();
+    const spy = vi.spyOn(renderer, "setCurtain");
+
+    await renderer.setCurtain({
+      block: false,
+      delayMs: 0,
+      direction: 0,
+      fadeMs: 0,
+      fillFrom: 1,
+      fillTo: 0.2,
+      grad: true,
+    });
+    await renderer.clearCurtains(100, false);
+
+    // Native HideCurtain only tweens sizeDelta toward zero; it never touches
+    // alpha or the `_gradientImg` active state.
+    expect(spy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        alphaFrom: 1,
+        alphaTo: 1,
+        direction: 0,
+        fillTo: 0,
+        grad: true,
+      }),
+    );
+  });
+
   it("applies background transforms in a dedicated transform space", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     renderer.app = {};
