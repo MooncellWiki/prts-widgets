@@ -1,5 +1,7 @@
 import { Assets } from "pixi.js";
 
+import { STAMP_ASSETS } from "../assets";
+
 import {
   resolveAssetUrl,
   resolveStoryAssetByKey,
@@ -286,6 +288,12 @@ export function collectContextAssetUrls(context: Context): string[] {
   return collectContextAssetManifest(context).urls;
 }
 
+function scriptUsesAnimText(context: Context): boolean {
+  return parseScript(context.scriptText ?? context.script).some(
+    (line) => line.kind === "command" && line.command === "animtext",
+  );
+}
+
 function collectPreloadAssetUrls(context: Context): string[] {
   const urls = new Set(collectContextAssetUrls(context));
 
@@ -293,6 +301,15 @@ function collectPreloadAssetUrls(context: Context): string[] {
   // renderer 在 createUi 时再 Assets.load 即可命中缓存。它属于播放器内置资源，
   // 不应出现在面向用户的剧情资源列表中。
   urls.add(DIALOG_FRAME_URL);
+
+  // animtext `group_location_stamp` 的 7 张内置贴片同理。native 侧
+  // AVGDisplayableExecutor.InternalResRefCollector.GatherResRefs 对 ANIMATE_TEXT
+  // 落入空分支、不登记任何资源引用（native LoadAsset 同步，印章当帧出现）；
+  // web 的 Assets.load 异步，首次播放会晚 1-2 帧，故在剧本确实使用 animtext 时
+  // 一并预热，让面板内 Assets.load 命中缓存。属 web 适配，非 native 行为移植。
+  if (scriptUsesAnimText(context)) {
+    for (const url of Object.values(STAMP_ASSETS)) urls.add(url);
+  }
 
   return [...urls];
 }
