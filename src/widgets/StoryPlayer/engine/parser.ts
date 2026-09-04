@@ -225,6 +225,74 @@ function metadataValue(
   return args[key];
 }
 
+// Native provenance: `Torappu.AVG.AVGController.FitMode` (dump.cs TypeDefIndex
+// 8072) and `Torappu.UI.CharacterSortType` (TypeDefIndex 14697). HEADER parses
+// both fields through `DotNetExtensionMethods.GetEnum<T>` ->
+// `Enum.Parse(typeof(T), s, ignoreCase: true)`, which resolves purely numeric
+// literals by enum *value*: `fit_mode=1` is BLACK_MASK and `char_sort_type = 5`
+// is BY_GAIN_TIME_DOWN. The bare-number form really occurs in guide stories
+// (e.g. obt/guide/l0-6/0_upgrade_skill.txt:1).
+const FIT_MODE_BY_VALUE: Readonly<Record<number, string>> = {
+  0: "DEFAULT",
+  1: "BLACK_MASK",
+};
+
+const CHARACTER_SORT_TYPE_BY_VALUE: Readonly<Record<number, string>> = {
+  0: "BY_LEVEL_UP",
+  1: "BY_LEVEL_DOWN",
+  2: "BY_RARITY_UP",
+  3: "BY_RARITY_DOWN",
+  4: "BY_GAIN_TIME_UP",
+  5: "BY_GAIN_TIME_DOWN",
+  6: "BY_NAME_UP",
+  7: "BY_NAME_DOWN",
+  8: "BY_COST_UP",
+  9: "BY_COST_DOWN",
+  10: "BY_HP_UP",
+  11: "BY_HP_DOWN",
+  12: "BY_ATK_UP",
+  13: "BY_ATK_DOWN",
+  14: "BY_DEF_UP",
+  15: "BY_DEF_DOWN",
+  16: "BY_RES_UP",
+  17: "BY_RES_DOWN",
+  18: "BY_FAVOR_UP",
+  19: "BY_FAVOR_DOWN",
+  20: "BY_RESPAWN_UP",
+  21: "BY_RESPAWN_DOWN",
+  22: "BY_BLOCKNUM_UP",
+  23: "BY_BLOCKNUM_DOWN",
+  24: "BY_ATKSPEED_UP",
+  25: "BY_ATKSPEED_DOWN",
+  26: "BY_HANDBOOKSTAGE_UP",
+  27: "BY_HANDBOOKSTAGE_DOWN",
+};
+
+/**
+ * Port of `DotNetExtensionMethods.GetEnum<T>` as called from
+ * `AVGParser.TryParse(String, StoryParam, Story&)`: stringify the param value
+ * (native `GetString`), treat the empty string as "use the default" (native
+ * `IsNullOrEmpty` check), resolve integer literals by enum value, and match
+ * member names case-insensitively (native `Enum.Parse(ignoreCase: true)`).
+ *
+ * Web adaptation: native `Enum.Parse` throws on unknown names and fails the
+ * whole story load; the web parser stays lenient and keeps the uppercased
+ * literal / default instead (impl-review P2 #1 deliberately not ported).
+ */
+function resolveEnumName(
+  value: StoryCommandValue | undefined,
+  byValue: Readonly<Record<number, string>>,
+  fallback: string,
+): string {
+  const raw = value === undefined ? "" : String(value);
+  if (raw === "") return fallback;
+  if (/^-?\d+$/.test(raw)) {
+    const byValueName = byValue[Number(raw)];
+    if (byValueName) return byValueName;
+  }
+  return raw.toUpperCase();
+}
+
 export function parseStory(source: string | readonly string[]): {
   lines: ParsedLine[];
   metadata: StoryMetadata;
@@ -233,9 +301,15 @@ export function parseStory(source: string | readonly string[]): {
   const first = lines[0];
   const header =
     first?.kind === "command" && first.command === "header" ? first : undefined;
-  const fitMode = String(
-    metadataValue(header?.args ?? {}, "fit_mode") ?? "DEFAULT",
-  ).toUpperCase();
+  // Native provenance: `GetEnum<FitMode>(header.param, "fit_mode", DEFAULT,
+  // ignoreCase: true)` and `GetEnum<CharacterSortType>(header.param,
+  // "char_sort_type", BY_GAIN_TIME_DOWN, true)` in `AVGParser.TryParse(String,
+  // StoryParam, Story&)` -- numeric literals resolve by enum value.
+  const fitMode = resolveEnumName(
+    metadataValue(header?.args ?? {}, "fit_mode"),
+    FIT_MODE_BY_VALUE,
+    "DEFAULT",
+  );
   const isTutorial = metadataValue(header?.args ?? {}, "is_tutorial") === true;
   const isVideoOnly =
     metadataValue(header?.args ?? {}, "is_video_only") === true;
@@ -245,10 +319,11 @@ export function parseStory(source: string | readonly string[]): {
     lines,
     metadata: {
       args: header?.args ?? {},
-      characterSortType: String(
-        metadataValue(header?.args ?? {}, "char_sort_type") ??
-          "BY_GAIN_TIME_DOWN",
-      ).toUpperCase(),
+      characterSortType: resolveEnumName(
+        metadataValue(header?.args ?? {}, "char_sort_type"),
+        CHARACTER_SORT_TYPE_BY_VALUE,
+        "BY_GAIN_TIME_DOWN",
+      ),
       denyAutoSwitchScene:
         metadataValue(header?.args ?? {}, "deny_auto_switch_scene") === true,
       dontClearGameObjectPoolOnStart:
