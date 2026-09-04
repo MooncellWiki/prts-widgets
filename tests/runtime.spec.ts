@@ -1599,9 +1599,10 @@ describe("StoryRuntime", () => {
     const warnings: RuntimeWarning[] = [];
     const runtime = new StoryRuntime(
       createContext([
-        '[interlude(channel=3,type=2,slot="m",name="bg_test",maskid="square",size="290,320",offset="10,-20",pfrom="1,2",pto="3,4",duration=2,sfrom="1,1",sto="2,2",sduration=1,afrom=0.2,ato=0.8,aduration=0.5,switch=true,block=true)]',
+        '[interlude(channel=3,type=2,slot="m",name="bg_test",maskid="square",size="290,320",offset="10,-20",pfrom="1,2",pto="3,4",duration=2,sfrom="1,1",sto="2,2",sduration=1,afrom=0.2,ato=0.8,aduration=0.5,switch=true,block=true,icharpos="1,2",icharscale="3,4")]',
         "[interlude(clear=true)]",
         "[interlude(channel=-1,clear=true)]",
+        '[interlude(channel=3,type=1,name="cutin_char_1")]',
         '[name="A"]ok',
       ]),
       renderer,
@@ -1611,13 +1612,15 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.interludeCalls).toHaveLength(2);
+    expect(renderer.interludeCalls).toHaveLength(3);
     expect(renderer.interludeCalls[0]).toMatchObject({
       alphaDurationMs: 250,
       alphaFrom: 0.2,
       alphaTo: 0.8,
       block: true,
       channel: 3,
+      dialogCharPos: { x: 1, y: 2 },
+      dialogCharScale: { x: 3, y: 4 },
       durationMs: 1000,
       maskId: "square",
       offset: { x: 10, y: -20 },
@@ -1629,11 +1632,19 @@ describe("StoryRuntime", () => {
       size: { x: 290, y: 320 },
       slot: "m",
       switchOn: true,
+      switchSet: true,
       type: 2,
     });
     expect(renderer.interludeCalls[1]).toMatchObject({
       channel: -1,
       clear: true,
+    });
+    // A command without the switch key must not be treated as switch=false.
+    expect(renderer.interludeCalls[2]).toMatchObject({
+      channel: 3,
+      switchOn: false,
+      switchSet: false,
+      type: 1,
     });
     expect(warnings).toEqual([
       expect.objectContaining({

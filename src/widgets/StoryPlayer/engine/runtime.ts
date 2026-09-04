@@ -2295,6 +2295,9 @@ export class StoryRuntime {
       case "interlude": {
         // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteInterlude and
         // _GenCutinParamWithCommand. Validation uses default 0, while CutinParam
+        // [uses -1]. 2.7.61 adds `icharpos`/`icharscale`: non-empty vectors go
+        // through _EnsureDialogExtra into CutinParam.extra.dialog.charPos/
+        // charScale (consumed by the new CutinTemplateDialogView template).
         const checkedChannel = Math.trunc(
           toNumber(this.exactArg(args, "channel"), 0),
         );
@@ -2340,6 +2343,8 @@ export class StoryRuntime {
           channel,
           charName: toString(this.exactArg(args, "char")),
           clear: toBoolean(this.exactArg(args, "clear"), false),
+          dialogCharPos: parseVector2(this.exactArg(args, "icharpos")),
+          dialogCharScale: parseVector2(this.exactArg(args, "icharscale")),
           direction: toString(this.exactArg(args, "direction")),
           durationMs: duration("duration"),
           maskId: toString(this.exactArg(args, "maskid")),
@@ -2353,6 +2358,10 @@ export class StoryRuntime {
           size: parseVector2(this.exactArg(args, "size")) ?? { x: 0, y: 0 },
           slot: toString(this.exactArg(args, "slot")),
           style: Math.trunc(toNumber(this.exactArg(args, "style"), 0)),
+          // Native `switch` only feeds the template deco TwoStateToggle; a
+          // command without the key must not change any visibility, so the
+          // panel also needs to know whether the key was present at all.
+          switchSet: this.exactArg(args, "switch") !== undefined,
           switchOn: toBoolean(this.exactArg(args, "switch"), false),
           templateSizeDurationMs: duration("tsduration"),
           templateSizeFrom: parseVector2(this.exactArg(args, "tsfrom")) ?? {
