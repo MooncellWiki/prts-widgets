@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
 
@@ -425,6 +425,21 @@ function createContext(script: readonly string[]): Context {
 }
 
 describe("StoryRuntime", () => {
+  // `video(res=...)` probes the resolved CDN URL with a HEAD request before
+  // playback (native `VideoManager.CheckVideoExist` port). Default to an
+  // affirmative probe so the suite never touches the network; probe-specific
+  // cases override the stub inside their body.
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ status: 200 })),
+    );
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("maps spellsticker parameters and hides the blocking view before advancing", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -836,12 +851,12 @@ describe("StoryRuntime", () => {
     );
 
     const startPromise = runtime.start();
-    await Promise.resolve();
-
-    // IsMp4VideoPath has no call sites; the extension gates nothing.
-    expect(renderer.videoCalls).toEqual([
-      "https://torappu.prts.wiki/assets/video/act15side/iw01",
-    ]);
+    await vi.waitFor(() => {
+      // IsMp4VideoPath has no call sites; the extension gates nothing.
+      expect(renderer.videoCalls).toEqual([
+        "https://torappu.prts.wiki/assets/video/act15side/iw01",
+      ]);
+    });
     expect(warnings).toEqual([]);
 
     renderer.finishVideo();
@@ -901,18 +916,129 @@ describe("StoryRuntime", () => {
 
     const startPromise = runtime.start();
 
-    await Promise.resolve();
-
-    expect(runtime.getState()).toBe("waiting_video");
-    expect(renderer.videoCalls).toEqual([
-      "https://torappu.prts.wiki/assets/video/act15side/iw01.mp4",
-    ]);
+    await vi.waitFor(() => {
+      expect(runtime.getState()).toBe("waiting_video");
+      expect(renderer.videoCalls).toEqual([
+        "https://torappu.prts.wiki/assets/video/act15side/iw01.mp4",
+      ]);
+    });
 
     renderer.finishVideo();
     await startPromise;
 
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("ends the video command in-frame when the res existence probe misses", async () => {
+    // Native: CheckVideoExist == false → Toast(NO_VIDEO_MESSAGE) +
+    // _PlayVideo returns false → same-frame FinishCommand; the queue keeps
+    // running without ever entering the blocking video state.
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ status: 404 })),
+    );
+    const runtime = new StoryRuntime(
+      createContext(['[video(res="video/gone.mp4")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.videoCalls).toEqual([]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail: "video: video/gone.mp4",
+        type: "missing_asset",
+      }),
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("keeps the <video> error path when the probe cannot decide", async () => {
+    // Network-level failures (offline, CORS-opaque CDN) must not reproduce
+    // CheckVideoExist == false; the miss is then reported by the <video>
+    // error event as before.
+    const renderer = new FakeRenderer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    const runtime = new StoryRuntime(
+      createContext([
+        '[video(res="video/act15side/IW01.mp4")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await vi.waitFor(() => {
+      expect(renderer.videoCalls).toEqual([
+        "https://torappu.prts.wiki/assets/video/act15side/iw01.mp4",
+      ]);
+    });
+
+    renderer.finishVideo();
+    await startPromise;
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("does not probe the url branch, matching native _PlayVideo", async () => {
+    const fetchMock = vi.fn(async () => ({ status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[video(url="video/Custom.MP4")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await vi.waitFor(() => {
+      expect(renderer.videoCalls).toEqual([
+        "https://torappu.prts.wiki/assets/video/custom.mp4",
+      ]);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    renderer.finishVideo();
+    await startPromise;
+  });
+
+  it("releases the probe wait when the story is skipped before playback", async () => {
+    const renderer = new FakeRenderer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<{ status: number }>(() => {})),
+    );
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="skip")]',
+        '[video(res="video/02.mp4")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    // The probe is still pending here; skip must not strand the runtime on it.
+    await vi.waitFor(() => expect(runtime.canSkipNode()).toBe(true));
+
+    await runtime.skipNode();
+    await startPromise;
+
+    expect(renderer.videoCalls).toEqual([]);
+    expect(runtime.getState()).toBe("finished");
   });
 
   it("nofirstskip handles first-read skip by jumping to the next protected anchor", async () => {
@@ -994,9 +1120,9 @@ describe("StoryRuntime", () => {
 
     const startPromise = runtime.start();
 
-    await Promise.resolve();
-
-    expect(runtime.getState()).toBe("waiting_video");
+    await vi.waitFor(() => {
+      expect(runtime.getState()).toBe("waiting_video");
+    });
     expect(runtime.canSkipNode()).toBe(true);
 
     await runtime.skipNode();
