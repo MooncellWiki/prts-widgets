@@ -3084,11 +3084,13 @@ describe("StoryRuntime", () => {
     expect(renderer.stickerCalls).toEqual([
       {
         alignment: "left",
-        append: true,
+        // Fresh id takes the show branch even with multi=true; as a multiline
+        // show with no duration it keeps the fresh view's 0 fade (instant).
+        append: false,
         // `delay` scales the global typewriter interval (0 here) rather than
         // setting an absolute per-character time.
         delayMs: 0,
-        fadeMs: 150,
+        fadeMs: 0,
         id: "tip",
         sizePx: 20,
         text: "LEFT",
@@ -3235,9 +3237,62 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[sticker(id="a",text="one",block=false)]',
+        '[sticker(id="a",text="one",x=100,y=200,width=300,size=28,alignment="center",delay=0.08,block=false)]',
         '[sticker(id="a",text="two",multi=true,block=false)]',
         '[sticker(id="a",text="ignored",duration=2,block=false)]',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.stickerCalls.map((call) => ({
+        alignment: call.alignment,
+        append: call.append,
+        delayMs: call.delayMs,
+        sizePx: call.sizePx,
+        text: call.text,
+        widthPx: call.widthPx,
+        x: call.x,
+        y: call.y,
+      })),
+    ).toEqual([
+      {
+        alignment: "center",
+        append: false,
+        delayMs: 80,
+        sizePx: 28,
+        text: "one",
+        widthPx: 300,
+        x: 100,
+        y: 200,
+      },
+      // Append reads no layout parameters natively: the stored show layout
+      // and typewriter speed are replayed verbatim (no x=0/y=0 jump).
+      {
+        alignment: "center",
+        append: true,
+        delayMs: 80,
+        sizePx: 28,
+        text: "two",
+        widthPx: 300,
+        x: 100,
+        y: 200,
+      },
+    ]);
+    expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 2000, id: "a" }]);
+  });
+
+  it("drops an empty-text sticker show without registering the id", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="e",block=true)]',
+        '[sticker(id="e",text="late",block=false)]',
+        '[name="B"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -3245,16 +3300,111 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(
-      renderer.stickerCalls.map((call) => ({
-        append: call.append,
-        text: call.text,
-      })),
-    ).toEqual([
-      { append: false, text: "one" },
-      { append: true, text: "two" },
+    // The first show dies in _GenParam (empty textContent): no view, no dict
+    // entry, and no block — so the second command still takes the show branch.
+    expect(renderer.stickerCalls).toEqual([
+      expect.objectContaining({ append: false, id: "e", text: "late" }),
     ]);
-    expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 2000, id: "a" }]);
+    expect(renderer.stickerClearCalls).toEqual([]);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "ok" });
+  });
+
+  it("scales an omitted sticker delay by the native _GenParam default", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="x",delay=0.04,block=false)]',
+        '[sticker(id="b",text="y",block=false)]',
+        '[name="B"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+
+    await runtime.start();
+
+    // delay=0.04 is scale 1 against the 0.04s originDelay; an omitted delay
+    // falls back to 1.0, i.e. 25x the global typewriter interval (40ms here).
+    expect(renderer.stickerCalls.map((call) => call.delayMs)).toEqual([
+      40, 1000,
+    ]);
+  });
+
+  it("keeps a multiline show's previous fade when duration is omitted", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="m",text="first",multi=true,block=false)]',
+        '[sticker(id="m",duration=0.5,block=false)]',
+        '[sticker(id="m",text="again",multi=true,block=false)]',
+        '[name="B"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.stickerCalls.map((call) => call.fadeMs)).toEqual([0, 500]);
+    expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 500, id: "m" }]);
+  });
+
+  it("auto-advances a blocking sticker by its message length", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[sticker(id="a",text="hello",delay=0)]',
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      expect(runtime.getState()).toBe("waiting_input");
+
+      // RaiseAutoClick(msgLength): button-auto level 1 waits 1.5s + 5 chars *
+      // 0.03s before clicking past the sticker (delay=0 prints at once).
+      await vi.advanceTimersByTimeAsync(1649);
+      expect(renderer.lastDialogue.speaker).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("auto-advances a hidden sticker with the base wait only", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[sticker(id="a",text="xy",delay=0,block=false)]',
+          '[sticker(id="a",block=true)]',
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 150, id: "a" }]);
+
+      // The hide branch raises RaiseAutoClick(0): the base 1.5s only, with no
+      // per-character extension.
+      await vi.advanceTimersByTimeAsync(1499);
+      expect(renderer.lastDialogue.speaker).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("maps stickertween parameters and blocks only when block and isend both hold", async () => {

@@ -2193,6 +2193,53 @@ describe("PixiStoryRenderer", () => {
       vi.useRealTimers();
     }
   });
+
+  it("completes in-flight sticker typing before the hide fade", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    // happy-dom cannot measure canvas fonts, and the fade runs through the
+    // frame-driven tween; stub both so the test observes the text state.
+    renderer.layoutSubtitle = vi.fn();
+    let finishFade: (() => void) | null = null;
+    renderer.tween = vi.fn(
+      (
+        _durationMs: number,
+        _step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        finishFade = done ?? null;
+        return Promise.resolve();
+      },
+    );
+    await renderer.setSticker({
+      alignment: "left",
+      append: false,
+      delayMs: 40,
+      fadeMs: 0,
+      id: "a",
+      sizePx: 24,
+      text: "hello",
+      widthPx: 1280,
+      x: 10,
+      y: 20,
+    });
+
+    // Without a mounted app the typing loop parks right after registering its
+    // target, so nothing has been typed yet.
+    const sticker = renderer.stickerTexts.get("a");
+    expect(sticker.text).toBe("");
+    expect(renderer.stickerTypingTargets.has("a")).toBe(true);
+
+    // Hide mid-typing: native runs TryFinishType before HideSticker, so the
+    // full text appears instantly and is what fades out.
+    const hiding = renderer.clearSticker("a", 150);
+    expect(sticker.text).toBe("hello");
+    expect(renderer.stickerTypingTargets.has("a")).toBe(false);
+
+    (finishFade as unknown as () => void)();
+    await hiding;
+    expect(sticker.text).toBe("");
+    expect(sticker.visible).toBe(false);
+  });
 });
 
 describe("PixiStoryRenderer blocker", () => {

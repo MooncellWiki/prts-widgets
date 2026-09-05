@@ -2217,7 +2217,20 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (!sticker) return;
 
     this.bumpStickerSessions(id);
-    this.stickerTypingTargets.delete(id);
+    // Native port: the hide branch runs AVGStickerTextView.TryFinishType
+    // before HideSticker — in-flight typing completes instantly, so the full
+    // text is what fades out, not the partially typed prefix.
+    const typingTarget = this.stickerTypingTargets.get(id);
+    if (typingTarget) {
+      sticker.text = typingTarget.fullText;
+      this.layoutSubtitle(
+        sticker,
+        typingTarget.baseX,
+        typingTarget.widthPx,
+        typingTarget.alignment,
+      );
+      this.stickerTypingTargets.delete(id);
+    }
     this.stickerRichChars.delete(id);
     if (!sticker.visible || !sticker.text) {
       sticker.text = "";
@@ -2761,6 +2774,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   /**
    * Port scope: `Torappu.AVG.StickerPanel._ExecuteSticker` and its append,
    * fade, and typewriter state. PIXI Text replaces the native sticker prefab.
+   * Append must leave the view untouched except for the appended text, so the
+   * caller replays the previous show's layout fields (the runtime stores them
+   * because the native executor's append path reads no layout parameters).
    */
   async setSticker(input: StickerInput): Promise<void> {
     const sticker = this.ensureStickerText(input.id);
