@@ -1,10 +1,17 @@
 /**
- * Native provenance: DOTween `Ease` curves compiled into 2.7.61 (build 2761)
+ * Native provenance: DOTween 1.2.760 compiled into 2.7.71 (build 2771)
  * `GameAssembly.dll` — `DG.Tweening.Core.Easing.EaseManager.Evaluate` @
- * 0x184140b40 (Robert Penner equations) plus the `Flash` helper class @
- * 0x1841433b0-0x1841438a0. `Torappu.AVG` executors select one of these via
- * `SetEase` after `DotNetExtensionMethods.GetEnum<Ease>(param, "ease",
- * Ease.Linear, ignoreCase: false)`.
+ * 0x1841f1170 (Robert Penner equations), `Bounce` @ 0x1841f0180-0x1841f03a0
+ * and `Flash` @ 0x1841f39e0-0x1841f3ed0. `Torappu.AVG` executors select one of
+ * these via `SetEase` after `DotNetExtensionMethods.GetEnum<Ease>(param,
+ * "ease", Ease.Linear, ignoreCase: false)`.
+ *
+ * The overshoot/period the curves receive are the library defaults, because
+ * `TweenSettingsExtensions.SetEase<T>(t, Ease)` @ 0x1848859d0 only assigns
+ * `easeType` (plus an int truncation for the flash eases) and never touches
+ * them: `DOTween..cctor` @ 0x1841bb710 sets `defaultEaseOvershootOrAmplitude =
+ * 1.70158` / `defaultEasePeriod = 0`, and `Tweener.Setup` @ 0x184896a60 copies
+ * both into every tween. Every constant below is folded from those two values.
  *
  * Curves take normalized time in [0, 1]; Back/Elastic curves may legitimately
  * overshoot outside that range.
@@ -31,101 +38,71 @@ function outBounceEase(time: number): number {
   return 7.5625 * t * t + 0.984_375;
 }
 
-const easeBackC1 = 1.701_58;
+/** `DOTween.defaultEaseOvershootOrAmplitude` (cctor @ 0x1841bb710). */
+const defaultOvershootOrAmplitude = 1.701_58;
+
+const easeBackC1 = defaultOvershootOrAmplitude;
 const easeBackC2 = easeBackC1 * 1.525;
 const easeBackC3 = easeBackC1 + 1;
-const easeElasticC4 = (2 * Math.PI) / 3;
-const easeElasticC5 = (2 * Math.PI) / 4.5;
+
+const twoPi = 2 * Math.PI;
+/** `period == 0` sentinel in `Evaluate`: `duration * 0.3` (normalized to 1). */
+const elasticPeriod = 0.3;
+/** The In/Out variant uses `duration * (0.3 * 1.5)` instead. */
+const elasticInOutPeriod = 0.45;
 
 /**
- * Port of `DG.Tweening.Core.Easing.Flash` (2.7.61 `Flash.Ease` @ 0x184143780,
- * `EaseIn` @ 0x184143520, `EaseOut` @ 0x184143640, `EaseInOut` @ 0x1841433b0,
- * `WeightedEase` @ 0x1841438a0). Unlike the Elastic/Back curves, these flash
- * implementations apply no sentinel guards to `overshootOrAmplitude`/`period`,
- * so the library-wide `SetEase(Ease)` defaults (-1 / 0) flow through the math
- * verbatim; with them each wave collapses into the plain quadratic below.
+ * `Evaluate`'s elastic branches only clamp the amplitude to 1 and shift by
+ * `period / 4` when `overshootOrAmplitude < 1`. The library default is
+ * 1.70158, so they take the other branch: the amplitude stays 1.70158 and the
+ * phase shift is `period / 2pi * asin(1 / amplitude)`. (This is why the
+ * textbook `2pi/3` / `2pi/4.5` easings.net constants do not apply here.)
  */
-const FLASH_DEFAULT_AMPLITUDE = -1;
-const FLASH_DEFAULT_PERIOD = 0;
-
-function flashWeightedEase(
-  amplitude: number,
-  period: number,
-  stepIndex: number,
-  dir: number,
-  res: number,
-): number {
-  if (
-    (dir > 0 && (Math.trunc(amplitude) & 1) === 0) ||
-    (dir < 0 && (Math.trunc(amplitude) & 1) !== 0)
-  ) {
-    stepIndex += 1;
-  }
-  let weighted: number;
-  let lerp: number;
-  if (period > 0) {
-    let frac = amplitude - Math.trunc(amplitude);
-    if (dir > 0) {
-      frac = 1 - frac;
-    }
-    lerp = (stepIndex * frac) / amplitude;
-    weighted = ((amplitude - stepIndex) * res) / amplitude;
-  } else if (period < 0) {
-    period = -period;
-    lerp = 0;
-    weighted = (stepIndex * res) / amplitude;
-  } else {
-    return Math.min(1, res);
-  }
-  return Math.min(1, (weighted - res) * period + lerp + res);
+function elasticShift(period: number): number {
+  return (period / twoPi) * Math.asin(1 / defaultOvershootOrAmplitude);
 }
 
-function flashEase(easeVal: (waveProgress: number) => number): EaseCurve {
-  return (time) => {
-    // `time` is normalized, so `duration` is 1 and each wave lasts
-    // `1 / amplitude`.
-    const amplitude = FLASH_DEFAULT_AMPLITUDE;
-    const stepDuration = 1 / amplitude;
-    const step = Math.ceil(time / stepDuration);
-    let stepTime = time - (step - 1) * stepDuration;
-    const dir = 2 * (Math.trunc(step) & 1) - 1;
-    if (dir < 0) {
-      stepTime -= stepDuration;
-    }
-    return flashWeightedEase(
-      amplitude,
-      FLASH_DEFAULT_PERIOD,
-      step,
-      dir,
-      easeVal((dir * stepTime) / stepDuration),
-    );
-  };
+const elasticS = elasticShift(elasticPeriod);
+const elasticInOutS = elasticShift(elasticInOutPeriod);
+
+function inOutQuadEase(time: number): number {
+  return time < 0.5 ? 2 * time * time : 1 - (-2 * time + 2) ** 2 / 2;
 }
 
-function flashInOutVal(waveProgress: number): number {
-  const doubled = waveProgress / 0.5;
-  if (doubled >= 1) {
-    return ((doubled - 1 - 2) * (doubled - 1) - 1) * -0.5;
-  }
-  return doubled * 0.5 * doubled;
+/**
+ * Port of `DG.Tweening.Core.Easing.Flash` (`Ease` @ 0x1841f3db0, `EaseIn` @
+ * 0x1841f3b50, `EaseOut` @ 0x1841f3c70, `EaseInOut` @ 0x1841f39e0,
+ * `WeightedEase` @ 0x1841f3ed0).
+ *
+ * `SetEase<T>(t, Ease)` @ 0x1848859d0 runs `easeOvershootOrAmplitude =
+ * (int)easeOvershootOrAmplitude` for the flash eases, so the 1.70158 library
+ * default arrives as an amplitude of exactly 1 while `easePeriod` keeps its 0
+ * default. Amplitude 1 makes `Flash.Ease` compute a single wave spanning the
+ * whole duration (`stepIndex = 1`, `dir = 1`, wave progress = `time`), and
+ * `WeightedEase` short-circuits its weighting on `period == 0` and returns
+ * `Math.Min(1, res)`. So every flash ease is just its wave equation clamped at
+ * 1 -- the multi-wave machinery is unreachable with the library defaults.
+ */
+function flashEase(wave: EaseCurve): EaseCurve {
+  return (time) => Math.min(1, wave(time));
 }
 
-const dotweenEaseCurves: Record<string, EaseCurve> = {
-  Flash: flashEase((waveProgress) => waveProgress),
+const dotweenEaseCurves = {
+  Flash: flashEase(linearEase),
   InBack: (time) => easeBackC3 * time ** 3 - easeBackC1 * time ** 2,
   InBounce: (time) => 1 - outBounceEase(1 - time),
   InCirc: (time) => 1 - Math.sqrt(1 - time ** 2),
   InCubic: (time) => time ** 3,
-  // Elastic applies its in-curve defaults (`overshootOrAmplitude < 1` → 1,
-  // `period == 0` → duration * 0.3), which collapse to the constants folded
-  // into the equations below.
   InElastic: (time) =>
     time === 0 || time === 1
       ? time
-      : -(2 ** (10 * time - 10)) *
-        Math.sin((10 * time - 10.75) * easeElasticC4),
+      : -(
+          defaultOvershootOrAmplitude *
+          2 ** (10 * (time - 1)) *
+          Math.sin(((time - 1 - elasticS) * twoPi) / elasticPeriod)
+        ),
   InExpo: (time) => (time === 0 ? 0 : 2 ** (10 * time - 10)),
-  InFlash: flashEase((waveProgress) => waveProgress * waveProgress),
+  InFlash: flashEase((time) => time * time),
   InOutBack: (time) =>
     time < 0.5
       ? ((2 * time) ** 2 * ((easeBackC2 + 1) * 2 * time - easeBackC2)) / 2
@@ -145,20 +122,15 @@ const dotweenEaseCurves: Record<string, EaseCurve> = {
     time < 0.5 ? 4 * time ** 3 : 1 - (-2 * time + 2) ** 3 / 2,
   InOutElastic: (time) => {
     if (time === 0 || time === 1) return time;
+    // `Evaluate` doubles the time first, so the wave argument is `2 * time - 1`.
+    const doubled = 2 * time - 1;
+    const wave =
+      defaultOvershootOrAmplitude *
+      Math.sin(((doubled - elasticInOutS) * twoPi) / elasticInOutPeriod);
     if (time < 0.5) {
-      return (
-        -(
-          2 ** (20 * time - 10) *
-          Math.sin((20 * time - 11.125) * easeElasticC5)
-        ) / 2
-      );
+      return -0.5 * (2 ** (10 * doubled) * wave);
     }
-    return (
-      (2 ** (-20 * time + 10) *
-        Math.sin((20 * time - 11.125) * easeElasticC5)) /
-        2 +
-      1
-    );
+    return 2 ** (-10 * doubled) * wave * 0.5 + 1;
   },
   InOutExpo: (time) => {
     if (time === 0) return 0;
@@ -166,9 +138,8 @@ const dotweenEaseCurves: Record<string, EaseCurve> = {
     if (time < 0.5) return 2 ** (20 * time - 10) / 2;
     return (2 - 2 ** (-20 * time + 10)) / 2;
   },
-  InOutFlash: flashEase(flashInOutVal),
-  InOutQuad: (time) =>
-    time < 0.5 ? 2 * time * time : 1 - (-2 * time + 2) ** 2 / 2,
+  InOutFlash: flashEase(inOutQuadEase),
+  InOutQuad: inOutQuadEase,
   InOutQuart: (time) =>
     time < 0.5 ? 8 * time ** 4 : 1 - (-2 * time + 2) ** 4 / 2,
   InOutQuint: (time) =>
@@ -187,23 +158,31 @@ const dotweenEaseCurves: Record<string, EaseCurve> = {
   OutElastic: (time) =>
     time === 0 || time === 1
       ? time
-      : 2 ** (-10 * time) * Math.sin((10 * time - 0.75) * easeElasticC4) + 1,
+      : defaultOvershootOrAmplitude *
+          2 ** (-10 * time) *
+          Math.sin(((time - elasticS) * twoPi) / elasticPeriod) +
+        1,
   OutExpo: (time) => (time === 1 ? 1 : 1 - 2 ** (-10 * time)),
-  OutFlash: flashEase((waveProgress) => (waveProgress - 2) * -waveProgress),
+  OutFlash: flashEase((time) => -time * (time - 2)),
   OutQuad: (time) => 1 - (1 - time) * (1 - time),
   OutQuart: (time) => 1 - (1 - time) ** 4,
   OutQuint: (time) => 1 - (1 - time) ** 5,
   OutSine: (time) => Math.sin((time * Math.PI) / 2),
-};
+} satisfies Record<string, EaseCurve>;
 
 /**
  * DOTween `Ease` ordinal table: `Unset` = 0 through `INTERNAL_Custom` = 37.
- * Out-of-table ordinals keep native's `EaseManager.Evaluate` default branch
- * (`-(t/d) * (t/d - 2)`, the OutQuad parabola); `INTERNAL_Custom` would throw
- * on a null custom ease in native and degrades to Linear here.
+ * `EaseManager.Evaluate` gates its switch on `(uint)(easeType - 1) > 0x24`, so
+ * only 1..37 get a case of their own and everything else — `Unset` included —
+ * falls through to the default branch (`-(t/d) * (t/d - 2)`, the OutQuad
+ * parabola). `INTERNAL_Custom` would throw on a null custom ease in native and
+ * degrades to Linear here.
  */
 const dotweenEaseByOrdinal: readonly EaseCurve[] = [
-  linearEase, // 0: Ease.Unset — GetEnum's parse fallback value.
+  // 0: Ease.Unset — not a switch case, so it lands on the OutQuad default
+  // branch just like any out-of-table ordinal. (`GetEnum`'s own parse fallback
+  // is Ease.Linear = ordinal 1, which the executors pass as the default.)
+  dotweenEaseCurves.OutQuad,
   dotweenEaseCurves.Linear,
   dotweenEaseCurves.InSine,
   dotweenEaseCurves.OutSine,
@@ -243,21 +222,39 @@ const dotweenEaseByOrdinal: readonly EaseCurve[] = [
   linearEase, // 37: Ease.INTERNAL_Custom — no custom ease available.
 ];
 
+const INT32_MIN = -2_147_483_648;
+const INT32_MAX = 2_147_483_647;
+
+/**
+ * Own-property lookup only: `dotweenEaseCurves` is an object literal, so a bare
+ * index would resolve inherited `Object.prototype` members (`"toString"`,
+ * `"valueOf"`, `"__proto__"`, ...) into non-curve values that slip past a
+ * nullish fallback and then throw or poison the progress with NaN.
+ */
+function easeCurveByName(name: string): EaseCurve | undefined {
+  return Object.hasOwn(dotweenEaseCurves, name)
+    ? (dotweenEaseCurves as Record<string, EaseCurve>)[name]
+    : undefined;
+}
+
 /**
  * Resolves the `ease` parameter the way `GetEnum<Ease>(param, "ease",
- * Ease.Linear, ignoreCase: false)` does: enum names match case-sensitively,
- * integer strings (including negatives) parse as ordinals (`"6"` is OutQuad),
- * and anything else falls back to the Ease.Linear default.
+ * Ease.Linear, ignoreCase: false)` does: enum names match case-sensitively and
+ * integer strings (including negatives) parse as ordinals (`"6"` is OutQuad).
+ * Anything `Enum.Parse` would reject — an unknown name, or an integer outside
+ * int32 — throws in native, and `GetEnum` swallows that into a
+ * `DLog.LogError("Can not parse enum ...")` plus the Ease.Linear default.
  */
 export function dotweenEaseCurve(ease: string | undefined): EaseCurve {
   if (ease === undefined) {
     return linearEase;
   }
   if (/^-?\d+$/.test(ease)) {
-    return (
-      dotweenEaseByOrdinal[Number.parseInt(ease, 10)] ??
-      dotweenEaseCurves.OutQuad
-    );
+    const ordinal = Number.parseInt(ease, 10);
+    if (ordinal < INT32_MIN || ordinal > INT32_MAX) {
+      return linearEase;
+    }
+    return dotweenEaseByOrdinal[ordinal] ?? dotweenEaseCurves.OutQuad;
   }
-  return dotweenEaseCurves[ease] ?? linearEase;
+  return easeCurveByName(ease) ?? linearEase;
 }

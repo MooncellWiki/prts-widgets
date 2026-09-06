@@ -1,6 +1,7 @@
 import { Container, Sprite, type Texture } from "pixi.js";
 
 import { STORY_HEIGHT, STORY_WIDTH, type CgItemInput } from "../../types";
+import { dotweenEaseCurve } from "../core/DotweenEase";
 
 type TextureLoader = (key: string) => Promise<Texture | null>;
 type Tween = (
@@ -21,26 +22,6 @@ function lerp(from: number, to: number, progress: number): number {
 
 function colorChannel(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value * 255)));
-}
-
-function easeProgress(raw: number, ease: string): number {
-  switch (ease.toLowerCase()) {
-    case "inquad": {
-      return raw * raw;
-    }
-    case "inoutquad": {
-      return raw < 0.5 ? 2 * raw * raw : 1 - (-2 * raw + 2) ** 2 / 2;
-    }
-    case "outquad": {
-      return 1 - (1 - raw) * (1 - raw);
-    }
-    // `AVGShowItemCgSlot.Show` / `.Hide` read the curve with
-    // `GetEnum<Ease>(param, "ease", Ease.Linear, ignoreCase: false)`, which
-    // also returns that fallback for any name it cannot parse.
-    default: {
-      return raw;
-    }
-  }
 }
 
 function rgb(color: { r: number; g: number; b: number }): number {
@@ -95,6 +76,10 @@ export class CgItemPanel {
     if (input.width > 0 && input.height > 0)
       sprite.setSize(input.width, input.height);
 
+    // `AVGShowItemCgSlot.Show` reads the curve with `GetEnum<Ease>(param,
+    // "ease", Ease.Linear, ignoreCase: false)` — same resolution as every
+    // other AVG tween command, so share the DOTween curve library.
+    const ease = dotweenEaseCurve(input.ease);
     const runs: Promise<void>[] = [];
     const run = (
       delayMs: number,
@@ -110,7 +95,7 @@ export class CgItemPanel {
             durationMs <= 0
               ? 1
               : Math.max(0, Math.min(1, (elapsed - delayMs) / durationMs));
-          update(easeProgress(local, input.ease));
+          update(ease(local));
         }),
       );
     };
@@ -201,6 +186,8 @@ export class CgItemPanel {
     block: boolean,
   ): Promise<void> {
     if (this.states.size === 0) return;
+    // `AVGShowItemCgSlot.Hide` uses the same `GetEnum<Ease>` resolution.
+    const easeCurve = dotweenEaseCurve(ease);
     if (key) {
       const state = this.states.get(key);
       if (!state) return;
@@ -209,7 +196,7 @@ export class CgItemPanel {
       const task = this.tween(
         fadeMs,
         (raw) => {
-          state.root.alpha = lerp(startAlpha, 0, easeProgress(raw, ease));
+          state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
         () => {
           if (state.sessionId === sessionId) this.dispose(key);
@@ -227,7 +214,7 @@ export class CgItemPanel {
       void this.tween(
         fadeMs,
         (raw) => {
-          state.root.alpha = lerp(startAlpha, 0, easeProgress(raw, ease));
+          state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
         () => state.root.destroy({ children: true }),
       );

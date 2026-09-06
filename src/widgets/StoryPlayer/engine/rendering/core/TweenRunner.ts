@@ -13,7 +13,8 @@ export interface TweenRunOptions {
    * DOTween `SetLoops` count: 1 = single pass (default), negative = infinite
    * Restart loop that replays from the start value every cycle and never
    * completes (so `run` only settles once `isAlive` turns false — callers
-   * must not block on it).
+   * must not block on it). Clamped like `SetLoops` @ 0x184885f00: 0 becomes a
+   * single pass and anything below -1 becomes -1.
    */
   loops?: number;
 }
@@ -41,7 +42,9 @@ export class TweenRunner {
       return Promise.resolve();
     }
     const ease = options?.ease ?? linearEase;
-    const loops = options?.loops ?? 1;
+    const requestedLoops = options?.loops ?? 1;
+    const loops =
+      requestedLoops === 0 ? 1 : Math.max(-1, Math.trunc(requestedLoops));
     const totalMs = loops > 0 ? durationMs * loops : Number.POSITIVE_INFINITY;
     return new Promise((resolve) => {
       const start = this.clock.now();
@@ -60,11 +63,7 @@ export class TweenRunner {
         }
         // DOTween's default Restart loop type replays from the start value
         // at every cycle boundary.
-        const cycleProgress =
-          loops === 1
-            ? elapsed / durationMs
-            : (elapsed % durationMs) / durationMs;
-        step(ease(cycleProgress));
+        step(ease((elapsed % durationMs) / durationMs));
         this.clock.requestFrame(tick);
       };
       this.clock.requestFrame(tick);

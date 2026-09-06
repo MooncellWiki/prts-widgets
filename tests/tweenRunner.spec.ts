@@ -72,6 +72,20 @@ describe("TweenRunner ease and loops (DOTween SetEase/SetLoops port)", () => {
     expect(done).toHaveBeenCalledTimes(1);
   });
 
+  it("clamps the loop count like SetLoops", async () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    const progress: number[] = [];
+    // `SetLoops` @ 0x184885f00 rewrites 0 into a single pass.
+    const run = runner.run(1000, (p) => progress.push(p), undefined, {
+      loops: 0,
+    });
+    manual.advance(500);
+    manual.advance(500);
+    await run;
+    expect(progress).toEqual([0.5, 1]);
+  });
+
   it("never completes an infinite loop while alive", async () => {
     const manual = createManualClock();
     let alive = true;
@@ -79,7 +93,8 @@ describe("TweenRunner ease and loops (DOTween SetEase/SetLoops port)", () => {
     const progress: number[] = [];
     const done = vi.fn();
     let settled = false;
-    const run = runner.run(1000, (p) => progress.push(p), done, { loops: -1 });
+    // `SetLoops` also rewrites anything below -1 into the -1 infinite loop.
+    const run = runner.run(1000, (p) => progress.push(p), done, { loops: -4 });
     void run.then(() => {
       settled = true;
     });
