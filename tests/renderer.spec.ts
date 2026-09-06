@@ -1572,8 +1572,8 @@ describe("PixiStoryRenderer", () => {
 
     await renderer.setImage("ac3_title1");
 
-    expect(renderer.imageSprite.width).toBe(Texture.EMPTY.width);
-    expect(renderer.imageSprite.height).toBe(Texture.EMPTY.height);
+    expect(renderer.imageRoot.children[0].width).toBe(Texture.EMPTY.width);
+    expect(renderer.imageRoot.children[0].height).toBe(Texture.EMPTY.height);
   });
 
   it("separates screenadapt size from the imagetween localScale space", async () => {
@@ -1595,7 +1595,9 @@ describe("PixiStoryRenderer", () => {
       y: 0,
     });
     const root = renderer.imageRoot;
-    const sprite = renderer.imageSprite;
+    // The screenadapt fit lives on the inner sprite (native sizeDelta); the
+    // root only carries xScale/yScale (native localScale).
+    const sprite = root.children[0];
     expect(sprite.width).toBe(1280);
 
     await renderer.setImageTween({
@@ -1649,9 +1651,16 @@ describe("PixiStoryRenderer", () => {
     await renderer.setImage("ac3_title1");
     const root = renderer.imageRoot;
     const samples: Array<{ scaleX: number; x: number }> = [];
+    // The curve reaches the runner through TweenRunner's SetEase option, so the
+    // stub has to apply it the way `run` would.
     renderer.tween = vi.fn(
-      async (_durationMs: number, step: (progress: number) => void) => {
-        step(0.25);
+      async (
+        _durationMs: number,
+        step: (progress: number) => void,
+        _done: undefined,
+        options: { ease: (raw: number) => number },
+      ) => {
+        step(options.ease(0.25));
         samples.push({ scaleX: root.scale.x, x: root.position.x });
       },
     );

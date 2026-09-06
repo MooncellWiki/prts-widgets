@@ -490,8 +490,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private largeImageSessionId = 0;
   private largeImageTweenSessionId = 0;
   private imageRoot: Container | null = null;
-  /** Current foreground visual; exposed for renderer diagnostics and tests. */
-  imageSprite: Sprite | null = null;
   private imageRotateSessionId = 0;
   private readonly itemLayer = this.layers.items;
   private readonly onWarning?: (detail: string) => void;
@@ -753,7 +751,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageTweenSessionId += 1;
     this.largeImageRoots.clear();
     this.imageRoot = null;
-    this.imageSprite = null;
     this.imageLayer.removeChildren();
     this.itemLayer.removeChildren();
     this.cutinPanel.destroy();
@@ -1231,7 +1228,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const previous = this.imageRoot;
     this.imageRoot = root;
-    this.imageSprite = sprite;
     this.imageLayer.addChild(root);
     const fadeMs = input?.fadeMs ?? 0;
     root.alpha = fadeMs > 0 ? 0 : 1;
@@ -1252,7 +1248,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageRotateSessionId += 1;
     const root = this.imageRoot;
     this.imageRoot = null;
-    this.imageSprite = null;
     if (!root) return;
     if (fadeMs <= 0) {
       root.removeFromParent();
@@ -1464,9 +1459,9 @@ export class PixiStoryRenderer implements StoryRenderer {
    * visual. Native tweens `_foreImage.rectTransform` localPosition/localScale
    * with DOTween; both are reproduced on the image root, whose scale is the
    * localScale space (`setImage` keeps the screenadapt ratio on the inner
-   * sprite). `ease` is applied to a single eased progress shared by the
-   * position and scale interpolation, matching `SetEase` on both native
-   * tweens. Consecutive `imagetween`s are not cancelled (native never calls
+   * sprite). `ease` goes through the runner's `SetEase` option as a single
+   * eased progress shared by the position and scale interpolation, matching
+   * `SetEase` on both native tweens. Consecutive `imagetween`s are not cancelled (native never calls
    * DOKill either; both DOTween instances keep writing the same transform).
    *
    * Without a foreground image native dereferences `_foreImage` and throws;
@@ -1507,16 +1502,19 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    const ease = dotweenEaseCurve(input.ease);
-    const run = this.tween(input.durationMs, (raw) => {
-      const progress = ease(raw);
-      this.applyCenteredTransform(root, {
-        scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-        scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-        x: from.x + (to.x - from.x) * progress,
-        y: from.y + (to.y - from.y) * progress,
-      });
-    });
+    const run = this.tween(
+      input.durationMs,
+      (progress) => {
+        this.applyCenteredTransform(root, {
+          scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
+          scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
+          x: from.x + (to.x - from.x) * progress,
+          y: from.y + (to.y - from.y) * progress,
+        });
+      },
+      undefined,
+      { ease: dotweenEaseCurve(input.ease) },
+    );
 
     if (input.block) await run;
     else void run;
