@@ -2596,18 +2596,24 @@ export class StoryRuntime {
       }
 
       case "camerashake": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraShake. Duration,
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraShake. Duration
+        // defaults to -1 and falls back to 10s with infinite loops; `fadetime`
+        // is never read. Duration is scaled by AVGController.animateRatio
+        // before anything else (2.7.61 GameAssembly @ 0x183E32E52): the scaled
+        // value drives the loops sign test (scaled >= 0 ? 1 : -1), the 10.0s
+        // fallback, and DOTween's waypoint count. Native then short-circuits on
+        // MathUtil.IsZero(scaled) (0x183E32EFD), so quick-play speeds
+        // (animateRatio = 0) skip the shake entirely; the renderer's
+        // durationMs <= 0 skip reproduces that without blocking.
+        const scaledDuration =
+          toNumber(this.exactArg(args, "duration"), -1) *
+          this.getCurrentSpeed().animateRatio;
         await this.renderer.shakeCamera({
           block: toBoolean(this.exactArg(args, "block"), false),
           durationMs:
-            toNumber(this.exactArg(args, "duration"), -1) < 0
-              ? 10_000
-              : Math.max(
-                  0,
-                  toNumber(this.exactArg(args, "duration"), 0) * 1000,
-                ),
+            scaledDuration < 0 ? 10_000 : Math.max(0, scaledDuration * 1000),
           fadeOut: toBoolean(this.exactArg(args, "fadeout"), false),
-          infinite: toNumber(this.exactArg(args, "duration"), -1) < 0,
+          infinite: scaledDuration < 0,
           randomness: toNumber(this.exactArg(args, "randomness"), 90),
           stop: toBoolean(this.exactArg(args, "stop"), false),
           vibrato: Math.trunc(toNumber(this.exactArg(args, "vibrato"), 10)),
