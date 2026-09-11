@@ -657,6 +657,46 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("resets a running auto play on an unpaired theater exit", async () => {
+    // Native SetTheaterMode(false) executes unconditionally: without a saved
+    // auto status (_SetTheaterModeStatus !m_needResumeAutoStatus branch) it
+    // does _StopAutoClick() + set_autoPlayMode(DEFAULT), so a lone
+    // [theater(mode=false)] drops the player out of auto play instead of
+    // being a no-op (corpus: act25side/level_act25side_02_beg.txt:616).
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]hi',
+          "[theater(mode=false)]",
+          '[name="B"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+
+      // Auto-advance past "hi" (1.5s + 2 chars * 0.03s), through the unpaired
+      // theater exit, onto "next".
+      await vi.advanceTimersByTimeAsync(1560);
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+
+      // Auto was reset to manual: "next" no longer auto-advances.
+      await vi.advanceTimersByTimeAsync(1620);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("auto-advances after the native button-auto delay and stops at endtip", async () => {
     vi.useFakeTimers();
     try {
