@@ -49,6 +49,28 @@ describe("parser", () => {
     expect(output[2]).toMatchObject({ command: "endtip", kind: "command" });
   });
 
+  it("appends the implicit endtip even to an empty command list", () => {
+    // Native TryParse (2.7.61: 0x183E7E450) checks
+    // `commands.Count <= 0 || Last(commands).command != "endtip"`: empty,
+    // whitespace-only, and comment-only scripts also receive the terminal
+    // endtip, so auto play still lands on the blocking end-tip box.
+    for (const source of ["", "  \n\n\t\n", "// only a comment\n\n"]) {
+      const output = parseScript(source);
+      expect(output).toHaveLength(1);
+      expect(output[0]).toMatchObject({
+        command: "endtip",
+        kind: "command",
+        lineNumber: 1,
+      });
+    }
+  });
+
+  it("does not append a duplicate endtip", () => {
+    const output = parseScript(["[endtip]"]);
+    expect(output).toHaveLength(1);
+    expect(output[0]).toMatchObject({ command: "endtip", kind: "command" });
+  });
+
   it("joins continuations before filtering comments and blank lines", () => {
     const output = parseScript(
       '[Character(name="a",\\\n xScale=1.2)]\n // comment\n\ntext',

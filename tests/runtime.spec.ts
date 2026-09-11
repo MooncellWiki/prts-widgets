@@ -16,6 +16,7 @@ import type {
   CharacterSlotInput,
   CurtainInput,
   DecisionSelection,
+  DialogueDisplayOptions,
   FocusOutInput,
   FocusParamInput,
   GridBackgroundInput,
@@ -78,6 +79,7 @@ class FakeRenderer implements StoryRenderer {
   largeBackgroundTweenCalls: LargeBackgroundTweenInput[] = [];
   largeImageTweenCalls: LargeBackgroundTweenInput[] = [];
   lastDialogue = { speaker: "", text: "" };
+  lastDialogueForceVisible = false;
   dialogueTexts: string[] = [];
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
@@ -255,8 +257,14 @@ class FakeRenderer implements StoryRenderer {
     this.actionCalls.push(input);
   }
 
-  setDialogue(speaker: string, text: string): void {
+  setDialogue(
+    speaker: string,
+    text: string,
+    _tagStyles?: Record<string, { fill: string }>,
+    options?: DialogueDisplayOptions,
+  ): void {
     this.lastDialogue = { speaker, text };
+    this.lastDialogueForceVisible = options?.forceVisible === true;
     this.dialogueTexts.push(text);
   }
 
@@ -681,6 +689,57 @@ describe("StoryRuntime", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("shows a visible empty dialog box at endtip in auto play", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]hi']),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+
+      await vi.advanceTimersByTimeAsync(2000);
+
+      // Native _ExecuteEndtip (2.7.61: 0x183E73AB0) calls set_isHidden(false)
+      // before BeginText(""), so auto play ends on a visible EMPTY box (no
+      // speaker, no text) that blocks for a manual click -- not a content-
+      // derived hidden panel.
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+      expect(renderer.lastDialogueForceVisible).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs the implicit endtip of an empty script in auto play", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([""]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    // Native TryParse (2.7.61: 0x183E7E450) appends endtip even when the
+    // command list is empty, so an empty script still shows the blocking
+    // end-tip box in auto play instead of finishing immediately.
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+    expect(renderer.lastDialogueForceVisible).toBe(true);
+
+    await runtime.advance();
+    expect(runtime.getState()).toBe("finished");
   });
 
   it("uses the selected auto speed and manual input disables auto mode", async () => {
