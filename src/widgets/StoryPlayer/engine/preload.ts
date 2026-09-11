@@ -92,6 +92,12 @@ function addCharacterUrl(urls: Set<string>, rawKey: string): string | null {
  * Ports which script commands declare image dependencies. A single eager PIXI
  * batch substitutes for native asset-reference collection and loading.
  *
+ * Deliberately NOT collected: the particle-effect references gathered by
+ * `AVGBattleEffectPanel.InternalResRefCollector.GatherResRefs`
+ * (`AVG/Effects/Background/<name>` for `bgeffect`; VA 0x183e46d40, 2.7.61
+ * build 2761). The runtime treats `bgeffect`/`effect` as warn-only skips
+ * (see `unsupportedAd8Commands` in runtime.ts) — no Ad8 SDK particle layer on
+ * the web, so there is nothing to preload for them.
  */
 function addScriptImageUrls(urls: Set<string>, context: Context): void {
   for (const line of parseScript(context.scriptText ?? context.script)) {
