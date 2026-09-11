@@ -11,6 +11,13 @@ function nowMs(): number {
   return Date.now();
 }
 
+/**
+ * Native port: `AudioChannel.Stop` (VA 0x183ededf0, 2.7.61) takes the
+ * `_Stop()` branch when `fabs(fadetime) <= 0.01` seconds; anything longer
+ * tweens the volume to zero first (tween branch sets `m_stopWhenTweenEnd`).
+ */
+const stopChannelInstantThresholdMs = 10;
+
 interface ActivePlayback {
   identity: string;
   instance: IMediaInstance | null;
@@ -38,6 +45,15 @@ export class HtmlStoryAudio implements StoryAudio {
   private readonly soundRequestIds = new Map<string, number>();
   private readonly soundCache = new Map<string, Sound>();
   private readonly soundChannels = new Map<string, ActivePlayback>();
+  /**
+   * Web adaptation: per-channel epoch for `avgsound_` volume tweens. Bumping
+   * it supersedes an in-flight rAF fade loop, standing in for the native
+   * DOTween replacement in `AudioChannel.TweenVolume` (VA 0x183edef70) /
+   * `AudioChannel.Stop` — which is how a `soundvolume` landing during a
+   * stopsound fade cancels the stop (`m_stopWhenTweenEnd` is cleared).
+   *
+   */
+  private readonly soundFadeEpochs = new Map<string, number>();
 
   constructor(context: Context) {
     this.context = context;
@@ -53,6 +69,7 @@ export class HtmlStoryAudio implements StoryAudio {
     this.soundChannels.clear();
     this.soundBaseVolumes.clear();
     this.soundRequestIds.clear();
+    this.soundFadeEpochs.clear();
   }
 
   async playMusic(input: PlayMusicInput): Promise<void> {
@@ -140,6 +157,11 @@ export class HtmlStoryAudio implements StoryAudio {
 
     const prev = this.soundChannels.get(channel);
     if (prev) {
+      // Native port: `_ExecutePlaySoundCommand` -> `AudioChannel.PlayAudio`
+      // stops the previous instance of the channel immediately (`Stop(0)` ->
+      // `_Stop()`), so a new sound never overlaps a fading old one. The epoch
+      // bump also retires the old instance's in-flight stopsound fade loop.
+      this.bumpSoundFadeEpoch(channel);
       this.stopPlayback(prev);
       this.soundChannels.delete(channel);
     }
@@ -187,8 +209,41 @@ export class HtmlStoryAudio implements StoryAudio {
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
 
+    // Native port: `AudioChannel.Stop` (VA 0x183ededf0, 2.7.61). With
+    // `fabs(fadetime) <= 0.01` it calls `_Stop()` right away; a longer fade
+    // tweens volume to 0 with `m_stopWhenTweenEnd = 1`, and the channel stays
+    // registered in `AudioManager.m_channels` (still playing) until the tween
+    // completes — only then is it removed next `Update`. Keeping the map
+    // entry during the fade matches native: a `soundvolume` on the channel
+    // cancels the stop (`TweenVolume` clears `m_stopWhenTweenEnd`), and a
+    // following `playsound` cuts the fading instance short in `PlayAudio`.
+    if (fadeMs <= stopChannelInstantThresholdMs) {
+      this.bumpSoundFadeEpoch(channelName);
+      this.soundChannels.delete(channelName);
+      this.stopPlayback(sound);
+      return;
+    }
+
+    const epoch = this.bumpSoundFadeEpoch(channelName);
+    await this.fadeVolume(
+      sound,
+      0,
+      fadeMs,
+      () => this.soundFadeEpochs.get(channelName) !== epoch,
+    );
+    // The fade was cancelled by a soundvolume takeover, or the map entry was
+    // replaced by a new playsound (its instance was stopped there); keep the
+    // channel alive either way.
+    if (
+      this.destroyed ||
+      this.soundFadeEpochs.get(channelName) !== epoch ||
+      this.soundChannels.get(channelName) !== sound
+    )
+      return;
+
     this.soundChannels.delete(channelName);
-    await this.fadeAndStop(sound, fadeMs);
+    this.soundFadeEpochs.delete(channelName);
+    this.stopPlayback(sound);
   }
 
   async setSoundVolume(
@@ -202,7 +257,19 @@ export class HtmlStoryAudio implements StoryAudio {
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
 
-    await this.fadeVolume(sound, volume, fadeMs);
+    // Native port: `AudioChannel.TweenVolume` (VA 0x183edef70, 2.7.61) clears
+    // `m_stopWhenTweenEnd` as its third statement, so a `soundvolume` landing
+    // during a stopsound fade-out cancels the stop and the channel keeps
+    // playing toward the new volume (stopsound != soundvolume(0)). The epoch
+    // bump supersedes any older tween on this channel, matching the native
+    // tween replacement semantics.
+    const epoch = this.bumpSoundFadeEpoch(channelName);
+    await this.fadeVolume(
+      sound,
+      volume,
+      fadeMs,
+      () => this.soundFadeEpochs.get(channelName) !== epoch,
+    );
   }
 
   async setMusicVolume(volume: number, fadeMs: number): Promise<void> {
@@ -233,6 +300,10 @@ export class HtmlStoryAudio implements StoryAudio {
     playback: ActivePlayback,
     targetVolume: number,
     durationMs: number,
+    // Web adaptation: native volume tweens replace each other via DOTween;
+    // this optional probe lets a newer tween retire an in-flight rAF loop
+    // without touching the still-playing instance.
+    isCancelled?: () => boolean,
   ): Promise<void> {
     const startVolume = this.getVolume(playback);
     if (durationMs <= 0) {
@@ -244,7 +315,7 @@ export class HtmlStoryAudio implements StoryAudio {
 
     await new Promise<void>((resolve) => {
       const tick = () => {
-        if (this.destroyed) {
+        if (this.destroyed || isCancelled?.()) {
           resolve();
           return;
         }
@@ -293,6 +364,13 @@ export class HtmlStoryAudio implements StoryAudio {
 
   private soundChannelName(channel: string): string {
     return `avgsound_${channel}`;
+  }
+
+  /** Invalidate all in-flight volume tweens for the channel, return the new epoch. */
+  private bumpSoundFadeEpoch(channelName: string): number {
+    const epoch = (this.soundFadeEpochs.get(channelName) ?? 0) + 1;
+    this.soundFadeEpochs.set(channelName, epoch);
+    return epoch;
   }
 
   private getVolume(playback: ActivePlayback): number {
