@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { STAMP_ASSETS } from "../src/widgets/StoryPlayer/assets";
 import {
   collectContextAssetManifest,
   collectContextAssetUrls,
@@ -139,6 +140,28 @@ describe("preloadContextAssets", () => {
       false,
     );
     expect(loadMock).not.toHaveBeenCalled();
+  });
+
+  it("preheats animtext stamp textures only for scripts that use animtext", async () => {
+    const stampUrls = Object.values(STAMP_ASSETS);
+
+    const withAnimText = createContext([
+      '[animtext(id="at1",name="group_location_stamp",style="avg_only_medium",pos="-400,-200",block=false)]<p=2>距离本舰骚乱开始已过去五十七分钟</>',
+    ]);
+    await preloadContextAssets(withAnimText);
+    const loadedWithStamp = loadMock.mock.calls[0]![0] as string[];
+    expect(loadedWithStamp).toEqual(expect.arrayContaining(stampUrls));
+    // 内置贴片不属于剧情资源,不应进入面向用户的资源清单。
+    expect(collectContextAssetUrls(withAnimText)).toEqual(
+      expect.not.arrayContaining(stampUrls),
+    );
+
+    loadMock.mockClear();
+    await preloadContextAssets(
+      createContext(['[background(image="bg_rhodes_day")]']),
+    );
+    const loadedWithoutStamp = loadMock.mock.calls[0]![0] as string[];
+    expect(loadedWithoutStamp).toEqual(expect.not.arrayContaining(stampUrls));
   });
 
   it("lists every face for a used base and marks referenced faces", () => {

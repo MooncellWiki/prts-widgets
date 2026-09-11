@@ -33,10 +33,36 @@ function lerpKeyframes(
   return frames.at(-1)![1];
 }
 
-function splitContent(content: string): string[] {
-  return [...content.matchAll(/<p=\d+>(.*?)<\/>/gs)].map(
-    (match) => match[1] ?? "",
-  );
+/**
+ * Native provenance: `Torappu.FormatUtil.FormatAvgSplitContentTextFromData`
+ * (VA 0x181efb180) → `_HandleAvgSplitContentTextTags` (VA 0x181f017c0), then
+ * `AnimatedTextStampView.InitView` (VA 0x183e244f0):
+ * - the literal two-character `\n` is unescaped into a real newline before
+ *   tag parsing;
+ * - each `<p=N>…</>` contributes dict[N - 1] = inner text (`Int32.TryParse`,
+ *   so only pure digits count as split tags);
+ * - `<p=0>` logs `Avg split content id should start from 1, not 0` and is
+ *   dropped from the dict;
+ * - `InitView` fills slot i via `dict.TryGetValue(i)` — slot i ← `<p=i+1>` by
+ *   index, NOT document order: a stamp that only writes `<p=2>` fills the sub
+ *   slot and leaves the main slot empty.
+ *
+ * Non-`p` rich-text tags are not converted here: the widget rich-text pipeline
+ * (`engine/richtext.ts`) only ports `<color>`, and production animtext data
+ * carries no rich-text tags inside the split content.
+ */
+function splitStampSlots(content: string, onInvalidId?: () => void): string[] {
+  const normalized = content.replaceAll(String.raw`\n`, "\n");
+  const slots: string[] = [];
+  for (const match of normalized.matchAll(/<p=(\d+)>(.*?)<\/>/gs)) {
+    const id = Number.parseInt(match[1]!, 10);
+    if (id === 0) {
+      onInvalidId?.();
+      continue;
+    }
+    slots[id - 1] = match[2] ?? "";
+  }
+  return slots;
 }
 
 /**
@@ -44,6 +70,12 @@ function splitContent(content: string): string[] {
  * the serialized `AVG/AnimateText/group_location_stamp` prefab's visible
  * timeline. Sprite construction and keyframe playback are a Web/PIXI
  * adaptation, not a port of Unity Animator internals.
+ *
+ * `AnimTextInput.id` is intentionally unused: native `InitView` records it
+ * into `m_stampId`, but every targeted-cleanup path is unreachable in 2.7.61
+ * (`clear` is discarded by `_GenParamWithCmd` before reaching the executor,
+ * and no `animtextclean` executor is registered), so stamps are only ever
+ * cleared wholesale (`_CleanAllTextStamps` on reset / script end).
  */
 export class AnimTextPanel {
   private readonly stamps: StampView[] = [];
@@ -60,6 +92,11 @@ export class AnimTextPanel {
   ) {}
 
   async show(input: AnimTextInput): Promise<void> {
+    // Native loads any template via
+    // `ResourceRouter.GetAVGAnimateTextTemplatePath` (`AVG/AnimateText/{0}`,
+    // VA 0x183e8fb60) and LogError+throws when the prefab is missing. This
+    // widget intentionally crops to the only template that exists in the
+    // game data (`group_location_stamp`); other names warn and no-op.
     if (input.name !== "group_location_stamp") {
       this.onWarning?.(`unsupported_visual animtext:${input.name}`);
       return;
@@ -137,7 +174,9 @@ export class AnimTextPanel {
     );
     gradient.anchor.set(0.5);
     gradient.alpha = 0.15;
-    const parts = splitContent(input.content);
+    const parts = splitStampSlots(input.content, () =>
+      this.onWarning?.("animtext split content id should start from 1, not 0"),
+    );
     const main = new Text({
       style: new TextStyle({
         fill: "#ffffff",
