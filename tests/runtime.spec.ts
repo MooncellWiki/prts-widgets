@@ -20,6 +20,7 @@ import type {
   FocusParamInput,
   GridBackgroundInput,
   ImageRotateInput,
+  ImageTweenInput,
   InterludeInput,
   LargeBackgroundTweenInput,
   PlayMusicInput,
@@ -74,6 +75,7 @@ class FakeRenderer implements StoryRenderer {
   gridBackgroundCalls: GridBackgroundInput[] = [];
   gridBackgroundClearCalls: Array<{ block: boolean; fadeMs: number }> = [];
   imageRotateCalls: ImageRotateInput[] = [];
+  imageTweenCalls: ImageTweenInput[] = [];
   interludeCalls: InterludeInput[] = [];
   largeBackgroundTweenCalls: LargeBackgroundTweenInput[] = [];
   largeImageTweenCalls: LargeBackgroundTweenInput[] = [];
@@ -265,7 +267,9 @@ class FakeRenderer implements StoryRenderer {
     this.imageRotateCalls.push(input);
   }
 
-  async setImageTween(): Promise<void> {}
+  async setImageTween(input: ImageTweenInput): Promise<void> {
+    this.imageTweenCalls.push(input);
+  }
   async setInterlude(input: InterludeInput): Promise<void> {
     this.interludeCalls.push(input);
   }
@@ -2839,6 +2843,77 @@ describe("StoryRuntime", () => {
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("maps imagetween ease/loop with native defaults", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        "[ImageTween(xFrom=0,xTo=-720,duration=25,block=false)]",
+        '[ImageTween(xScaleFrom=1,xScaleTo=1.1,duration=15,ease="OutQuad")]',
+        '[ImageTween(xScaleTo=1.2,duration=45,ease="6",block=true,loop=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // `ease` is read via GetEnum<Ease> and defaults to Linear; integer
+    // literals pass through for the renderer's DOTween ordinal table. `loop`
+    // (SetLoops(-1), never finishing) is not ported, and loop+block mirrors
+    // native's LogError word for word, typos included.
+    expect(renderer.imageTweenCalls).toEqual([
+      {
+        block: false,
+        durationMs: 25_000,
+        ease: "Linear",
+        xFrom: 0,
+        xScaleFrom: undefined,
+        xScaleTo: undefined,
+        xTo: -720,
+        yFrom: undefined,
+        yScaleFrom: undefined,
+        yScaleTo: undefined,
+        yTo: undefined,
+      },
+      {
+        block: false,
+        durationMs: 15_000,
+        ease: "OutQuad",
+        xFrom: undefined,
+        xScaleFrom: 1,
+        xScaleTo: 1.1,
+        xTo: undefined,
+        yFrom: undefined,
+        yScaleFrom: undefined,
+        yScaleTo: undefined,
+        yTo: undefined,
+      },
+      {
+        block: true,
+        durationMs: 45_000,
+        ease: "6",
+        xFrom: undefined,
+        xScaleFrom: undefined,
+        xScaleTo: 1.2,
+        xTo: undefined,
+        yFrom: undefined,
+        yScaleFrom: undefined,
+        yScaleTo: undefined,
+        yTo: undefined,
+      },
+    ]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail:
+          "Loop and block both true when tween background! Will cause intinity lop!",
+        type: "invalid_parameter",
+      }),
+    ]);
   });
 
   it("maps largebgtween with strict CamelCase keys", async () => {
