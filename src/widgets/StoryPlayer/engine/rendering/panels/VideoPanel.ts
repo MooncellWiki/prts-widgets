@@ -2,8 +2,10 @@ import type { Container } from "pixi.js";
 
 /**
  * Web adaptation of `Torappu.AVG.AVGVideoPanel._ExecuteVideo` / `_PlayVideo`.
- * It preserves full-screen UI suppression and completion timing, while native
- * Unity video/player lifecycle is represented by an HTMLVideoElement.
+ * It preserves full-screen UI suppression; completion keeps the native
+ * end-of-current-frame FinishCommand timing (`InvokeEndOfFrame` →
+ * `WaitForEndOfFrame`), while native Unity video/player lifecycle is
+ * represented by an HTMLVideoElement.
  */
 export class VideoPanel {
   private active: HTMLVideoElement | null = null;
