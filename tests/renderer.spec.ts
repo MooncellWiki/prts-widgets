@@ -1875,39 +1875,57 @@ describe("PixiStoryRenderer", () => {
   it("applies verticalbg initposmode offsets with the two-tile height sum", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
 
-    const build = (initPositionMode: GridBackgroundInput["initPositionMode"]) =>
+    const build = (
+      initPositionMode: GridBackgroundInput["initPositionMode"],
+      solidHeights: number[],
+      solidWidths: number[],
+    ) =>
       renderer.buildGridBackgroundRoot(
         {
           ...createGridBackgroundInput(),
-          imageKeys: ["v1", "v2"],
+          imageKeys: solidHeights.map((_, index) => `v${index}`),
           initPositionMode,
           layout: "vertical",
-          solidHeights: [1454, 1454],
-          solidWidths: [1280],
+          scaleX: 1,
+          scaleY: 1,
+          solidHeights,
+          solidWidths,
           x: 0,
           y: 0,
         },
-        [Texture.EMPTY, Texture.EMPTY],
+        solidHeights.map(() => Texture.EMPTY),
       );
 
+    // Native builds `widthList = [solidwidth, 0]` -- the family pads the
+    // dimension it lacks with 0, it does not repeat it -- and passes the full
+    // height list, of which `_InitPosition*` reads entries [0]+[1]. The
+    // `_offset` rect (solidwidth x (h0+h1)) is center-pivoted and matches the
+    // Pixi root exactly, so the native Vector2 needs no pivot compensation.
+    // With solidwidth 1000 and heights 500/300 (h0+h1 = 800):
     const positionOf = (
       initPositionMode: GridBackgroundInput["initPositionMode"],
     ) => {
-      const { x, y } = build(initPositionMode).position;
+      const { x, y } = build(initPositionMode, [500, 300], [1000]).position;
       return { x, y };
     };
 
-    // Native builds widthList = [solidwidth, solidwidth] and passes the full
-    // height list, but _InitPosition* only reads entries [0]+[1]; the Pixi
-    // conversion baseline is the same quirk sum (h0+h1) used for the pivot.
-    // center: (0, 0) -> root.position = (640, 360 - 1454).
-    expect(positionOf("center")).toEqual({ x: 640, y: -1094 });
-    // default: (width/2, -height[1]/2) -> root.position = (1280, 360 - 727).
-    expect(positionOf("default")).toEqual({ x: 1280, y: -367 });
-    // lowercenter: (0, (h0+h1-720)/2) -> root.position = (640, 360 - 2548).
-    expect(positionOf("lowercenter")).toEqual({ x: 640, y: -2188 });
-    // upperleft: ((2w-1280)/2, (720-(h0+h1))/2) -> root.position = (1280, 0).
-    expect(positionOf("upperleft")).toEqual({ x: 1280, y: 0 });
+    // center: (0, 0) -> (640, 360).
+    expect(positionOf("center")).toEqual({ x: 640, y: 360 });
+    // default: (widthList[1] / 2, -height[1] / 2) = (0, -150) -> (640, 510).
+    expect(positionOf("default")).toEqual({ x: 640, y: 510 });
+    // upperleft: ((1000 - 1280) / 2, (720 - 800) / 2) = (-140, -40).
+    expect(positionOf("upperleft")).toEqual({ x: 500, y: 400 });
+    // lowercenter: (0, (800 - 720) / 2) = (0, 40) -> (640, 320).
+    expect(positionOf("lowercenter")).toEqual({ x: 640, y: 320 });
+
+    // Corpus shape (level_main_16-18_end.txt:356): N=4 full-screen tiles with
+    // the implicit `default` mode. The offset (0, -h1/2) = (0, -360) centers
+    // the 1280x1440 `_offset` rect at y=720, so the rect spans [0, 1440] and
+    // the top tile lands exactly on the 1280x720 canvas.
+    const corpusRoot = build("default", [720, 720, 720, 720], [1280]);
+    expect(corpusRoot.position.x).toBe(640);
+    expect(corpusRoot.position.y).toBe(720);
+    expect(corpusRoot.pivot.y).toBe(720);
   });
 
   it("pans verticalbg compositions with largebgtween", async () => {

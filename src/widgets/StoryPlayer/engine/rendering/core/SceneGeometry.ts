@@ -45,35 +45,39 @@ function largeBackgroundInitOffset(input: GridBackgroundInput): {
   if (input.initPositionMode === undefined) return { x: 0, y: 0 };
 
   if (input.layout === "vertical") {
-    // `_ExecuteVerticalBG` builds widthList = [solidwidth, solidwidth] and
-    // passes the full height list, but the shared `_InitPosition*` helpers
-    // only read entries [0]+[1] (2.7.61: 0x183e7a3b4 / 0x183e7a4fa) — the
-    // same two-tile truncation as the sizeDelta quirk in the builder below.
-    const width = input.solidWidths[0] ?? 0;
+    // `_ExecuteVerticalBG` (2.7.71 VA 0x183f33260) builds
+    // `widthList = new List<float> { solidwidth, 0f }` (0x183f3412d-
+    // 0x183f34153; the second `Add` takes a register zeroed at 0x183f3357f,
+    // the same zero it uses as the CanvasGroup fade-in start and as the
+    // clear-branch DOFade endValue) and passes the full height list. The
+    // family pads the dimension it does not have with **0** instead of
+    // repeating it -- `_ExecuteImage` pads heights the same way, and only
+    // `_ExecuteGridBG` populates both lists for real.
+    //
+    // The shared `_InitPosition*` helpers only read entries [0]+[1] of each
+    // list, and native's `_offset` rect (`sizeDelta = (solidwidth, h0 + h1)`,
+    // 0x183f33daa, center-pivoted) is exactly the flattened Pixi root, so --
+    // like the grid branch below -- the native Vector2 ports straight in with
+    // no pivot compensation; the caller applies the y flip.
     const heightSum =
       (input.solidHeights[0] ?? 0) + (input.solidHeights[1] ?? 0);
-    // The conversion baseline is `_offset.sizeDelta.y` (the quirk value
-    // h0+h1), matching the pivot set in the vertical branch of the builder.
-    const centeredY = (nativeY: number) => nativeY + heightSum / 2;
     switch (input.initPositionMode) {
       case "center": {
-        return { x: 0, y: centeredY(0) };
+        return { x: 0, y: 0 };
       }
       case "upperleft": {
         return {
-          x: (width * 2 - STORY_WIDTH) / 2,
-          y: centeredY((STORY_HEIGHT - heightSum) / 2),
+          x: ((input.solidWidths[0] ?? 0) - STORY_WIDTH) / 2,
+          y: (STORY_HEIGHT - heightSum) / 2,
         };
       }
       case "lowercenter": {
-        return { x: 0, y: centeredY((heightSum - STORY_HEIGHT) / 2) };
+        return { x: 0, y: (heightSum - STORY_HEIGHT) / 2 };
       }
       default: {
-        // default = (width[1] / 2, -height[1] / 2) over the full list.
-        return {
-          x: width / 2,
-          y: centeredY(-(input.solidHeights[1] ?? 0) / 2),
-        };
+        // (widthList[1] / 2, -heightList[1] / 2); widthList[1] is the padded
+        // 0, so only the second tile height moves the puzzle.
+        return { x: 0, y: -(input.solidHeights[1] ?? 0) / 2 };
       }
     }
   }
