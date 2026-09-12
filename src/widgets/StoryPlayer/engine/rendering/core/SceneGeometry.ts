@@ -18,6 +18,26 @@ const largeBackgroundInitOffsets = new WeakMap<
   { x: number; y: number }
 >();
 
+/**
+ * Port of `LargeBackgroundPanel.POSITION_INIT_FUNCTION` as applied by
+ * `_ExecuteImage` (2.7.71 VA 0x183f32f40-0x183f3308e): the selected
+ * `_InitPosition*` result is written verbatim into
+ * `_initOffset.localPosition`.
+ *
+ * `_ExecuteImage` hands those helpers the parsed `solidwidth` list plus
+ * `new List<float> { solidheight, 0f }` (VA 0x183f33005-0x183f33025; the
+ * second `Add` takes a register zeroed at 0x183f32947). largebg is a single
+ * row, so the second row height is **0**, not a repeat of `solidheight` —
+ * `_InitPositionDefault` reads `height[1]` and `_InitPositionUpperLeft` /
+ * `_InitPositionLowerCenter` sum `height[0] + height[1]`.
+ *
+ * No coordinate conversion is needed on top of that: native's `_offset`
+ * RectTransform gets `sizeDelta = (w0 + w1, solidheight)` (VA 0x183f32c23)
+ * with a centered pivot and the two top-left-pivoted tiles at anchored
+ * positions (0, 0) and (w0, 0), which is exactly the flattened Pixi root
+ * (`buildGridBackgroundRoot` pivots on the same rect). The caller applies the
+ * only remaining difference, Pixi's downward y axis.
+ */
 function largeBackgroundInitOffset(input: GridBackgroundInput): {
   x: number;
   y: number;
@@ -27,25 +47,30 @@ function largeBackgroundInitOffset(input: GridBackgroundInput): {
 
   const widths = input.solidWidths;
   const height = input.solidHeights[0] ?? 0;
-  // Unity's children use a top-left anchor/pivot, while the flattened Pixi
-  // root uses a centered pivot. The latter already contributes -height / 2,
-  // so convert native initOffset.y into that centered coordinate space.
-  const centeredY = (nativeY: number) => nativeY + height / 2;
   switch (input.initPositionMode) {
+    // `_InitPositionCenter` (VA 0x183f34390) returns `Vector2.zero`, and an
+    // unregistered `initposmode` leaves the same zero in place, so this is
+    // also the fallback the runtime maps unknown values onto.
     case "center": {
-      return { x: 0, y: centeredY(0) };
+      return { x: 0, y: 0 };
     }
+    // `_InitPositionUpperLeft` (VA 0x183f34640):
+    // ((width[0] + width[1] - 1280) / 2, (720 - (height[0] + height[1])) / 2).
     case "upperleft": {
       return {
         x: (widths.reduce((sum, width) => sum + width, 0) - STORY_WIDTH) / 2,
-        y: centeredY((STORY_HEIGHT - height * 2) / 2),
+        y: (STORY_HEIGHT - height) / 2,
       };
     }
+    // `_InitPositionLowerCenter` (VA 0x183f34550):
+    // (0, (height[0] + height[1] - 720) / 2).
     case "lowercenter": {
-      return { x: 0, y: centeredY((height * 2 - STORY_HEIGHT) / 2) };
+      return { x: 0, y: (height - STORY_HEIGHT) / 2 };
     }
+    // `_InitPositionDefault` (VA 0x183f34450): (width[1] / 2, -height[1] / 2),
+    // and height[1] is the padded 0.
     default: {
-      return { x: (widths[1] ?? 0) / 2, y: centeredY(-height / 2) };
+      return { x: (widths[1] ?? 0) / 2, y: 0 };
     }
   }
 }
