@@ -730,10 +730,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.backgroundSprite = null;
     this.backgroundTweenSessionId += 1;
     this.backgroundLayer.removeChildren();
+    // panel_large_background is a permanent scene-level sibling in front of
+    // panel_background (LayerGraph.attach), so the grid layer keeps its parent
+    // and only its tile roots need clearing here.
     this.gridBackgroundLayer.removeChildren();
-    // panel_large_background is a permanent sibling in front of panel_background,
-    // so it goes back as child 0 rather than being re-appended on each gridbg.
-    this.backgroundLayer.addChild(this.gridBackgroundLayer);
     this.blockerSprite = null;
     // Blocker's closest OnReset equivalent on destroy: drop in-flight tween
     // callbacks and restore the prefab color (0,0,0,0). OnReset also clears

@@ -1274,34 +1274,35 @@ describe("PixiStoryRenderer", () => {
     expect(order()).toEqual(["outgoing", "l", "r", "m"]);
   });
 
-  it("keeps the large background behind the background regardless of update order", async () => {
+  it("keeps the large background in front of the background regardless of update order", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const input = createGridBackgroundInput();
 
     renderer.app = {};
-    renderer.backgroundLayer.addChild(renderer.gridBackgroundLayer);
+    // Mirror LayerGraph.attach's scene order: background first, grid layer next.
+    renderer.sceneLayer.addChild(renderer.backgroundLayer);
+    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
     // panel_large_background is a permanent sibling in front of panel_background
-    // in SceneCanvas, so it always renders underneath -- executing gridbg after
-    // background must not lift the puzzle above it.
+    // in SceneCanvas (nested Canvas sortingOrder 2 vs 1), so it always renders
+    // on top -- executing background after gridbg must not sink the puzzle
+    // below it.
+    const gridIndex = () =>
+      renderer.sceneLayer.children.indexOf(renderer.gridBackgroundLayer) -
+      renderer.sceneLayer.children.indexOf(renderer.backgroundLayer);
+
     await renderer.setGridBackground(input);
-    expect(renderer.backgroundLayer.children.at(0)).toBe(
-      renderer.gridBackgroundLayer,
-    );
+    expect(gridIndex()).toBeGreaterThan(0);
 
     await renderer.setBackground("bg_test");
-    expect(renderer.backgroundLayer.children.at(0)).toBe(
-      renderer.gridBackgroundLayer,
-    );
+    expect(gridIndex()).toBeGreaterThan(0);
     expect(renderer.backgroundLayer.children.at(-1)).toBe(
       renderer.backgroundRoot,
     );
 
     await renderer.setGridBackground(input);
-    expect(renderer.backgroundLayer.children.at(0)).toBe(
-      renderer.gridBackgroundLayer,
-    );
+    expect(gridIndex()).toBeGreaterThan(0);
     expect(renderer.backgroundLayer.children.at(-1)).toBe(
       renderer.backgroundRoot,
     );
@@ -1315,7 +1316,7 @@ describe("PixiStoryRenderer", () => {
     // mid-flight.
     const renderer = new PixiStoryRenderer(createContext()) as any;
     renderer.app = {};
-    renderer.backgroundLayer.addChild(renderer.gridBackgroundLayer);
+    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
     renderer.tween = vi.fn(() => new Promise<void>(() => {}));
 
@@ -1345,7 +1346,7 @@ describe("PixiStoryRenderer", () => {
   it("keeps the legacy cross-fade for layouts without the immediate reset", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     renderer.app = {};
-    renderer.backgroundLayer.addChild(renderer.gridBackgroundLayer);
+    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
     renderer.tween = vi.fn(() => new Promise<void>(() => {}));
 
@@ -1368,7 +1369,7 @@ describe("PixiStoryRenderer", () => {
     // `_ResetPanel()` and returns false without blocking.
     const renderer = new PixiStoryRenderer(createContext()) as any;
     renderer.app = {};
-    renderer.backgroundLayer.addChild(renderer.gridBackgroundLayer);
+    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
     const input = {

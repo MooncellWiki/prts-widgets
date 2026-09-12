@@ -24,11 +24,15 @@ export class LayerGraph {
   readonly world = new Container();
 
   attach(stage: Container): void {
-    this.background.addChild(this.gridBackground);
-    // Unity SceneCanvas sibling order: large background, background, image,
-    // character cutin/items, then characters. Existing panels are attached to
-    // their nearest stable web equivalent until their strict pass is migrated.
+    // Unity panel_avg sibling order (2.7.71 scene data): background,
+    // panel_background, panel_large_background, panel_bgoverlay, then image /
+    // character layers. The large background renders in front of the normal
+    // background (nested Canvas sortingOrder 2 vs 1), so a later [Background]
+    // must never cover a [largebg] composition. Existing panels are attached
+    // to their nearest stable web equivalent until their strict pass is
+    // migrated.
     this.scene.addChild(this.background);
+    this.scene.addChild(this.gridBackground);
     this.scene.addChild(this.avgDisplayBackground);
     this.scene.addChild(this.images);
     this.scene.addChild(this.avgDisplayCg);
