@@ -24,13 +24,17 @@ export class LayerGraph {
   readonly world = new Container();
 
   attach(stage: Container): void {
-    // Unity panel_avg sibling order (2.7.71 scene data): background,
-    // panel_background, panel_large_background, panel_bgoverlay, then image /
-    // character layers. The large background renders in front of the normal
-    // background (nested Canvas sortingOrder 2 vs 1), so a later [Background]
-    // must never cover a [largebg] composition. Existing panels are attached
-    // to their nearest stable web equivalent until their strict pass is
-    // migrated.
+    // Unity panel_avg children, in nested-Canvas sortingOrder (2.7.71
+    // sharedassets1.assets): background (no Canvas) and panel_common_executors
+    // (non-visual), panel_background 1, panel_large_background 2,
+    // panel_bgoverlay 10, panel_character 61, panel_charoverlay 70,
+    // panel_image 121, panel_showItem 130, panel_cgoverlay 131,
+    // panel_character_cutin 180. Only the first three are strict here: the
+    // large background renders in front of the normal background (2 vs 1), so
+    // a later [Background] must never cover a [largebg] composition. The
+    // layers below panel_bgoverlay still sit at their nearest stable web
+    // equivalent -- notably images/characters are inverted versus native --
+    // until their strict pass is migrated.
     this.scene.addChild(this.background);
     this.scene.addChild(this.gridBackground);
     this.scene.addChild(this.avgDisplayBackground);

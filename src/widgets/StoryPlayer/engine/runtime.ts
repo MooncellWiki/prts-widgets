@@ -1449,7 +1449,7 @@ export class StoryRuntime {
         if (imageKeys.length !== 2 || solidWidths.length !== 2) {
           this.warn(
             "parse",
-            `largebg expects width_count * height_count === image_count, got ${solidWidths.length} * ${solidHeights.length} !== ${imageKeys.length}`,
+            `largebg expects width_count * height_count === image_count, got ${solidWidths.length} * 1 !== ${imageKeys.length}`,
           );
           await this.renderer.clearGridBackground(0);
           return "continue";

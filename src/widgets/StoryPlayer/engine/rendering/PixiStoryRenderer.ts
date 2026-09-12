@@ -1043,7 +1043,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     // the legacy cross-fade until their own alignment change, so this reset is
     // opt-in.
     if (input.resetPreviousImmediately) {
-      if (input.layout === "large") this.largeBackgroundRoot = null;
+      // The reset drops every root in the layer, so a largebg composition
+      // left over from an earlier command goes with it regardless of the
+      // incoming layout -- `largeBackgroundRoot` must not outlive it.
+      this.largeBackgroundRoot = null;
       const previous = [...this.gridBackgroundLayer.children];
       for (const child of previous) child.removeFromParent();
     }
