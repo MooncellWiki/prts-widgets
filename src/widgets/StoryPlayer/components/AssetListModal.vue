@@ -2,15 +2,14 @@
 import { computed, ref } from "vue";
 
 import {
-  DownloadOutlined as DownloadIcon,
   ImageOutlined as ImageIcon,
   InsertDriveFileOutlined as FileIcon,
 } from "@vicons/material";
-import { NButton, NIcon, NImage, NModal, NSpace, NTag, NText } from "naive-ui";
+import { NButton, NIcon, NImage, NModal, NText } from "naive-ui";
 
-import CharacterFacePreview from "./CharacterFacePreview.vue";
+import CharacterFaceBrowserModal from "./CharacterFaceBrowserModal.vue";
 
-import type { StoryCharacterFaceAsset } from "../engine/preload";
+import type { StoryCharacterFaceAsset } from "../engine/types";
 
 const props = defineProps<{
   urls: string[];
@@ -29,15 +28,7 @@ interface AssetListItem {
   url: string;
 }
 
-interface CharacterFacePreviewInstance {
-  exportComposite: () => Promise<Blob>;
-}
-
 const selectedCharacterAsset = ref<AssetListItem | null>(null);
-const selectedCharacterFace = ref<StoryCharacterFaceAsset | null>(null);
-const characterFacePreviewRef = ref<CharacterFacePreviewInstance | null>(null);
-const downloadingAsset = ref<"composite" | "face" | null>(null);
-const assetDownloadError = ref<string | null>(null);
 const showCharacterFaces = ref(false);
 
 function getAssetKind(url: string): AssetKind {
@@ -91,68 +82,7 @@ const assetItems = computed<AssetListItem[]>(() =>
 function openCharacterFaces(asset: AssetListItem): void {
   if (asset.faces.length === 0) return;
   selectedCharacterAsset.value = asset;
-  selectedCharacterFace.value =
-    asset.faces.find((face) => face.used) ?? asset.faces[0] ?? null;
-  assetDownloadError.value = null;
   showCharacterFaces.value = true;
-}
-
-function selectCharacterFace(face: StoryCharacterFaceAsset): void {
-  selectedCharacterFace.value = face;
-  assetDownloadError.value = null;
-}
-
-function safeFilename(raw: string): string {
-  return raw.replace(/[<>:"/\\|?*]/g, "_");
-}
-
-function saveBlob(blob: Blob, filename: string): void {
-  const objectUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = safeFilename(filename);
-  anchor.style.display = "none";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-}
-
-async function downloadSelectedComposite(): Promise<void> {
-  const face = selectedCharacterFace.value;
-  const asset = selectedCharacterAsset.value;
-  if (!face || !asset || !characterFacePreviewRef.value) return;
-
-  downloadingAsset.value = "composite";
-  assetDownloadError.value = null;
-  try {
-    const blob = await characterFacePreviewRef.value.exportComposite();
-    const baseName = asset.name.replace(/\.[^.]+$/, "");
-    saveBlob(blob, `${baseName}_${face.expression}.png`);
-  } catch (error) {
-    console.error("[story-player] composite download failed:", error);
-    assetDownloadError.value = "合成图下载失败";
-  } finally {
-    downloadingAsset.value = null;
-  }
-}
-
-async function downloadSelectedFace(): Promise<void> {
-  const face = selectedCharacterFace.value;
-  if (!face) return;
-
-  downloadingAsset.value = "face";
-  assetDownloadError.value = null;
-  try {
-    const response = await fetch(face.faceUrl);
-    if (!response.ok) throw new Error(`failed to fetch ${face.faceUrl}`);
-    saveBlob(await response.blob(), getAssetName(face.faceUrl, 0));
-  } catch (error) {
-    console.error("[story-player] face download failed:", error);
-    assetDownloadError.value = "脸部差分下载失败";
-  } finally {
-    downloadingAsset.value = null;
-  }
 }
 </script>
 
@@ -253,112 +183,13 @@ async function downloadSelectedFace(): Promise<void> {
     </div>
   </NModal>
 
-  <NModal
+  <CharacterFaceBrowserModal
     v-model:show="showCharacterFaces"
     :to="to"
-    preset="card"
+    :faces="selectedCharacterAsset?.faces ?? []"
+    :filename-base="selectedCharacterAsset?.name ?? '角色'"
     :title="`${selectedCharacterAsset?.name ?? '角色'} · 表情预览`"
-    style="width: min(1000px, 94vw); max-width: min(1000px, 94vw)"
-    :bordered="false"
-    :auto-focus="false"
-  >
-    <template #header-extra>
-      <NText depth="3" class="text-xs font-normal">
-        共 {{ selectedCharacterAsset?.faces.length ?? 0 }} 项
-      </NText>
-    </template>
-
-    <div
-      v-if="selectedCharacterAsset && selectedCharacterFace"
-      class="character-face-browser"
-    >
-      <section
-        class="asset-card min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl"
-      >
-        <CharacterFacePreview
-          ref="characterFacePreviewRef"
-          :base-url="selectedCharacterFace.baseUrl"
-          :face-url="selectedCharacterFace.faceUrl"
-          :face-rect="selectedCharacterFace.faceRect"
-          :label="selectedCharacterFace.expression"
-          class="min-h-[280px] flex-1"
-        />
-
-        <footer class="face-preview-actions p-3">
-          <NSpace :wrap="true">
-            <NButton
-              size="small"
-              type="primary"
-              :loading="downloadingAsset === 'composite'"
-              :disabled="Boolean(downloadingAsset)"
-              @click="downloadSelectedComposite"
-            >
-              <template #icon>
-                <NIcon><DownloadIcon /></NIcon>
-              </template>
-              下载合成图
-            </NButton>
-            <NButton
-              size="small"
-              :loading="downloadingAsset === 'face'"
-              :disabled="Boolean(downloadingAsset)"
-              @click="downloadSelectedFace"
-            >
-              <template #icon>
-                <NIcon><DownloadIcon /></NIcon>
-              </template>
-              下载脸部差分
-            </NButton>
-          </NSpace>
-          <NText
-            v-if="assetDownloadError"
-            type="error"
-            class="mt-2 block text-xs"
-          >
-            {{ assetDownloadError }}
-          </NText>
-        </footer>
-      </section>
-
-      <aside class="character-face-options min-h-0" aria-label="脸部差分">
-        <NButton
-          v-for="face in selectedCharacterAsset.faces"
-          :key="`${face.faceUrl}:${face.expression}`"
-          class="character-face-option mb-2 w-full last:mb-0 h-auto! p-2!"
-          :type="selectedCharacterFace === face ? 'primary' : 'default'"
-          :secondary="selectedCharacterFace === face"
-          :disabled="Boolean(downloadingAsset)"
-          @click="selectCharacterFace(face)"
-        >
-          <div class="min-w-0 w-full flex items-center gap-2 text-left">
-            <div
-              class="face-option-thumbnail h-12 w-12 flex-none overflow-hidden rounded-md"
-            >
-              <NImage
-                :src="face.faceUrl"
-                :alt="face.expression"
-                object-fit="contain"
-                preview-disabled
-                class="asset-image h-full w-full overflow-hidden"
-              />
-            </div>
-            <div class="min-w-0 flex-1 break-all text-sm">
-              <div>{{ face.expression }}</div>
-              <NTag
-                v-if="face.used"
-                class="mt-1 block w-fit"
-                size="tiny"
-                type="success"
-                :bordered="false"
-              >
-                剧情使用
-              </NTag>
-            </div>
-          </div>
-        </NButton>
-      </aside>
-    </div>
-  </NModal>
+  />
 </template>
 
 <style scoped>
@@ -395,56 +226,5 @@ async function downloadSelectedFace(): Promise<void> {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-}
-
-.character-face-browser {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 12px;
-  height: min(70vh, 680px);
-}
-
-.character-face-options {
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.face-preview-actions {
-  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-}
-
-.face-option-thumbnail {
-  background-color: #f4f4f4;
-  background-image:
-    linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
-    linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
-  background-position:
-    0 0,
-    0 6px,
-    6px -6px,
-    -6px 0;
-  background-size: 12px 12px;
-}
-
-@media (max-width: 700px) {
-  .character-face-browser {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(320px, 55vh) auto;
-    height: auto;
-  }
-
-  .character-face-options {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 0 0 4px;
-  }
-
-  .character-face-option {
-    flex: 0 0 180px;
-    margin-bottom: 0;
-  }
 }
 </style>
