@@ -1640,6 +1640,10 @@ export class StoryRuntime {
       case "image": {
         // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage. This is the
         // foreground-panel registration of the same inherited executor used by
+        // the `background` command (AVGImagePanel.GetExecutors @0x183e56250
+        // binds "image" → _ExecuteImage @0x183e57cf0; BackgroundPanel binds
+        // "background" to the same MethodInfo). Covers the clear branch, the
+        // load-failure clear branch, the scaled fade and the block boundary.
         const image = toString(this.exactArg(args, "image"));
         const fadeMs = this.calculateFadeMs(this.exactArg(args, "fadetime"));
         const block =
@@ -1659,12 +1663,17 @@ export class StoryRuntime {
         await this.renderer.setImage(resolved, {
           block,
           fadeMs,
+          // `_LoadImage` multiplies the SetNativeSize rect by the `width`/
+          // `height` params (GetOrDefault<float>(..., 1.0); the mulss at
+          // 0x183e587b0/0x183e587b4 in build 2761) before screenadapt reads it.
+          height: toNumber(this.exactArg(args, "height"), 1),
           scaleX: toNumber(this.exactArg(args, "xScale"), 1),
           scaleY: toNumber(this.exactArg(args, "yScale"), 1),
           screenAdapt: this.parseScreenAdapt(
             this.exactArg(args, "screenadapt"),
           ),
           tiled: toBoolean(this.exactArg(args, "tiled"), false),
+          width: toNumber(this.exactArg(args, "width"), 1),
           x: toNumber(this.exactArg(args, "x"), 0),
           y: toNumber(this.exactArg(args, "y"), 0),
         });
