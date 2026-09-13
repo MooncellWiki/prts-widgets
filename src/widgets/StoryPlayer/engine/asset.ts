@@ -2,12 +2,22 @@ const TORAPPU_ORIGIN = "https://torappu.prts.wiki";
 
 /**
  * Native provenance: `Torappu.ResourceRouter.GetBackgroundPath`, `GetImagePath`,
- * `GetCharacterPath`, `GetItemPath`, `GetMusicPath`, and `GetAudioPath`.
+ * `GetCharacterPath`, `GetItemPath`, `GetMusicPath`, and `GetAudioPath`. The
+ * cutin family comes from `CutinController`'s `Cutin/Characters/{name}` route
+ * (interlude type=1), not `GetImagePath`.
  *
  * Ports the AVG asset-family routing. HTTP URLs, extension conversion, and URL
  * escaping are web delivery adaptations rather than native behavior.
  *
  */
+
+export type StoryAssetFamily = "background" | "image" | "cutin";
+
+const FAMILY_FOLDER: Record<StoryAssetFamily, string> = {
+  background: "background",
+  image: "images",
+  cutin: "cutin",
+};
 
 function normalizeImageKey(rawKey: string): string {
   return rawKey.trim().toLowerCase();
@@ -35,13 +45,12 @@ export function resolveAssetUrl(raw: string): string {
 
 export function resolveStoryAssetByKey(
   rawKey: string,
-  isBackground: boolean,
+  family: StoryAssetFamily,
 ): string | null {
   const key = normalizeImageKey(rawKey);
   if (!key) return null;
 
-  const folder = isBackground ? "background" : "images";
-  return `${TORAPPU_ORIGIN}/assets/avg/${folder}/${key}.png`;
+  return `${TORAPPU_ORIGIN}/assets/avg/${FAMILY_FOLDER[family]}/${key}.png`;
 }
 
 export function resolveStoryCharacterAssetByKey(rawKey: string): string | null {

@@ -5,6 +5,7 @@ import {
   resolveStoryAssetByKey,
   resolveStoryAudioByKey,
   resolveStoryCharacterAssetByKey,
+  type StoryAssetFamily,
 } from "./asset";
 import { resolveCharacterSelection } from "./characterRef";
 import { parseScript } from "./parser";
@@ -44,12 +45,12 @@ function resolveGroupedImageSelection(
 function addImageUrl(
   urls: Set<string>,
   rawKey: string,
-  asBackground: boolean,
+  family: StoryAssetFamily,
 ): void {
   const key = rawKey.trim();
   if (!key) return;
 
-  const rawUrl = resolveStoryAssetByKey(key, asBackground);
+  const rawUrl = resolveStoryAssetByKey(key, family);
   if (!rawUrl) return;
   urls.add(resolveAssetUrl(rawUrl));
 }
@@ -99,7 +100,7 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
 
     const image = argAsString(line.args.image);
     if (line.command === "background") {
-      addImageUrl(urls, image, true);
+      addImageUrl(urls, image, "background");
       continue;
     }
     if (line.command === "avgdisplay") {
@@ -107,7 +108,7 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
       const styleMap: Record<string, string> = { 5: "bg", 7: "character" };
       const style = styleMap[rawStyle] ?? rawStyle;
       const name = argAsString(line.args.name);
-      if (style === "bg") addImageUrl(urls, name, true);
+      if (style === "bg") addImageUrl(urls, name, "background");
       else if (style === "character") addCharacterUrl(urls, name);
       continue;
     }
@@ -117,7 +118,7 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
       line.command === "cgitem" ||
       line.command === "blocker"
     ) {
-      addImageUrl(urls, image, false);
+      addImageUrl(urls, image, "image");
       continue;
     }
     if (line.command === "interlude") {
@@ -125,9 +126,10 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
       const numericType =
         typeof line.args.type === "number" ? line.args.type : Number(type);
       const name = argAsString(line.args.name);
-      if (type === "bg" || numericType === 2) addImageUrl(urls, name, true);
+      if (type === "bg" || numericType === 2)
+        addImageUrl(urls, name, "background");
       else if (type === "uichar" || numericType === 1)
-        addImageUrl(urls, name, false);
+        addImageUrl(urls, name, "cutin");
       continue;
     }
 
@@ -146,7 +148,11 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
       );
       if (!groupSelection) continue;
       for (const key of groupSelection.group.split("/"))
-        addImageUrl(urls, key, groupSelection.asBackground);
+        addImageUrl(
+          urls,
+          key,
+          groupSelection.asBackground ? "background" : "image",
+        );
     }
   }
 }
