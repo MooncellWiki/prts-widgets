@@ -1868,8 +1868,9 @@ describe("PixiStoryRenderer", () => {
       inverse: false,
     });
 
-    // CreateRotateTween takes the short way: 0 -> 180 sweeps -180 degrees.
-    expect(imageLayer.angle).toBeCloseTo(-180);
+    // CreateRotateTween takes the short way: 0 -> 180 sweeps -180 degrees
+    // (clockwise in Unity), i.e. +180 in PIXI's clockwise angle.
+    expect(imageLayer.angle).toBeCloseTo(180);
     const centerGlobal = center.toGlobal({ x: 0, y: 0 });
     expect(centerGlobal.x).toBeCloseTo(640);
     expect(centerGlobal.y).toBeCloseTo(360);
@@ -2012,7 +2013,8 @@ describe("PixiStoryRenderer", () => {
       },
     );
 
-    // angle=90 without circles sweeps -270 degrees (AVGUtils.CreateRotateTween).
+    // angle=90 without circles sweeps -270 degrees in Unity space
+    // (AVGUtils.CreateRotateTween), i.e. +270 in PIXI's clockwise angle.
     await renderer.setImageRotate({
       angleDeg: 90,
       block: false,
@@ -2021,19 +2023,60 @@ describe("PixiStoryRenderer", () => {
       inverse: false,
     });
     rotateSteps.at(-1)!(0.5);
-    expect(renderer.imageLayer.angle).toBe(-135);
+    expect(renderer.imageLayer.angle).toBe(135);
 
     // _ExecuteImage only DOKills the back Image, never the panel rotation
     // tween: the swap must neither freeze nor reset the rotation.
     await renderer.setImage("30_i04");
     rotateSteps.at(-1)!(1);
-    expect(renderer.imageLayer.angle).toBe(-270);
+    expect(renderer.imageLayer.angle).toBe(270);
 
     // The clear branch must not freeze it either.
     rotateSteps.at(-1)!(0.5);
     await renderer.clearImage();
     rotateSteps.at(-1)!(1);
-    expect(renderer.imageLayer.angle).toBe(-270);
+    expect(renderer.imageLayer.angle).toBe(270);
+  });
+
+  it("tilts the image panel clockwise on screen for a negative native angle", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const imageLayer = renderer.imageLayer;
+    const right = new Container();
+    right.position.set(740, 360);
+    imageLayer.addChild(right);
+
+    // level_main_11-01_end:55 `[imagerotate(angle=-4)]`: Unity's z = -4 is a
+    // clockwise tilt (eulerAngles.z grows counter-clockwise, y-up), so a point
+    // right of center must dip below the center line on the y-down stage.
+    await renderer.setImageRotate({
+      angleDeg: -4,
+      block: false,
+      circles: 0,
+      durationMs: 0,
+      inverse: false,
+    });
+
+    expect(imageLayer.angle).toBeCloseTo(4);
+    expect(right.toGlobal({ x: 0, y: 0 }).y).toBeGreaterThan(360);
+
+    // The next sweep reads the current angle back in Unity space: -4 -> 0 is
+    // a +4 delta, which the clockwise default rewrites to -356.
+    const steps: Array<(progress: number) => void> = [];
+    renderer.app = {};
+    renderer.tween = vi.fn(
+      async (_durationMs: number, step: (progress: number) => void) => {
+        steps.push(step);
+      },
+    );
+    await renderer.setImageRotate({
+      angleDeg: 0,
+      block: false,
+      circles: 0,
+      durationMs: 1000,
+      inverse: false,
+    });
+    steps[0]!(1);
+    expect(imageLayer.angle).toBeCloseTo(360);
   });
 
   it("applies the strict gridbg xScale and yScale transform", () => {
