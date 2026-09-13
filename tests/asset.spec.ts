@@ -22,20 +22,26 @@ describe("resolveAssetUrl", () => {
 
 describe("story image resolvers", () => {
   it("resolves plain image key to avg images path", () => {
-    expect(resolveStoryAssetByKey("XyZ_01", false)).toBe(
+    expect(resolveStoryAssetByKey("XyZ_01", "image")).toBe(
       "https://torappu.prts.wiki/assets/avg/images/xyz_01.png",
     );
   });
 
   it("resolves background key with bg_ prefix to avg background path", () => {
-    expect(resolveStoryAssetByKey("bg_lungmen_n", true)).toBe(
+    expect(resolveStoryAssetByKey("bg_lungmen_n", "background")).toBe(
       "https://torappu.prts.wiki/assets/avg/background/bg_lungmen_n.png",
     );
   });
 
   it("resolves background key without bg_ prefix to avg background path", () => {
-    expect(resolveStoryAssetByKey("lungmen_n", true)).toBe(
+    expect(resolveStoryAssetByKey("lungmen_n", "background")).toBe(
       "https://torappu.prts.wiki/assets/avg/background/lungmen_n.png",
+    );
+  });
+
+  it("resolves cutin key to avg cutin path", () => {
+    expect(resolveStoryAssetByKey("cutin_char_9", "cutin")).toBe(
+      "https://torappu.prts.wiki/assets/avg/cutin/cutin_char_9.png",
     );
   });
 });
