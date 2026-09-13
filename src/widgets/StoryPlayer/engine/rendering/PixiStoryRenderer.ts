@@ -1740,11 +1740,17 @@ export class PixiStoryRenderer implements StoryRenderer {
    * panel center instead of the stage origin. Native never resets the angle
    * except `OnReset` (story start/skip); the widget builds a fresh renderer
    * per story, so no explicit zeroing is needed here.
+   *
+   * Unity's eulerAngles.z is counter-clockwise on screen (y-up; a positive
+   * sweep is what CreateRotateTween's `counterClockwise` flag asks for), while
+   * PIXI's `angle` is clockwise (y-down). The sweep is computed in Unity space
+   * and negated at the PIXI boundary, the same axis flip applyCenteredTransform
+   * does for `y`.
    */
   async setImageRotate(input: ImageRotateInput): Promise<void> {
     const target = this.imageLayer;
     const sessionId = ++this.imageRotateSessionId;
-    const startAngle = target.angle;
+    const startAngle = -target.angle;
     const delta = rotateTweenDelta(
       startAngle,
       input.angleDeg,
@@ -1754,7 +1760,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const endAngle = startAngle + delta;
 
     if (input.durationMs <= 0) {
-      target.angle = endAngle;
+      target.angle = -endAngle;
       return;
     }
 
@@ -1762,11 +1768,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       input.durationMs,
       (progress) => {
         if (this.imageRotateSessionId !== sessionId) return;
-        target.angle = startAngle + delta * progress;
+        target.angle = -(startAngle + delta * progress);
       },
       () => {
         if (this.imageRotateSessionId !== sessionId) return;
-        target.angle = endAngle;
+        target.angle = -endAngle;
       },
     );
 
