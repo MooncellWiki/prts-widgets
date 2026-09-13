@@ -1844,6 +1844,87 @@ describe("PixiStoryRenderer", () => {
     expect(runs[1]!.isAlive!()).toBe(false);
   });
 
+  it("rotates the image panel around its center instead of the stage origin", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const imageLayer = renderer.imageLayer;
+
+    // Native `panel_image` serializes its RectTransform pivot at (0.5, 0.5) —
+    // the panel center. PIXI's default pivot (0, 0) made every rotation orbit
+    // the stage's top-left corner instead of tilting the picture in place.
+    expect(imageLayer.pivot.x).toBe(640);
+    expect(imageLayer.pivot.y).toBe(360);
+    expect(imageLayer.position.x).toBe(640);
+    expect(imageLayer.position.y).toBe(360);
+
+    const center = new Container();
+    center.position.set(640, 360);
+    imageLayer.addChild(center);
+
+    await renderer.setImageRotate({
+      angleDeg: 180,
+      block: false,
+      circles: 0,
+      durationMs: 0,
+      inverse: false,
+    });
+
+    // CreateRotateTween takes the short way: 0 -> 180 sweeps -180 degrees
+    // (clockwise in Unity), i.e. +180 in PIXI's clockwise angle.
+    expect(imageLayer.angle).toBeCloseTo(180);
+    const centerGlobal = center.toGlobal({ x: 0, y: 0 });
+    expect(centerGlobal.x).toBeCloseTo(640);
+    expect(centerGlobal.y).toBeCloseTo(360);
+
+    // A sprite at the stage corner swings to the opposite corner, proving the
+    // pivot sits at the screen center rather than the top-left origin.
+    const corner = new Container();
+    imageLayer.addChild(corner);
+    const cornerGlobal = corner.toGlobal({ x: 0, y: 0 });
+    expect(cornerGlobal.x).toBeCloseTo(1280);
+    expect(cornerGlobal.y).toBeCloseTo(720);
+  });
+
+  it("tilts the image panel clockwise on screen for a negative native angle", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const imageLayer = renderer.imageLayer;
+    const right = new Container();
+    right.position.set(740, 360);
+    imageLayer.addChild(right);
+
+    // level_main_11-01_end:55 `[imagerotate(angle=-4)]`: Unity's z = -4 is a
+    // clockwise tilt (eulerAngles.z grows counter-clockwise, y-up), so a point
+    // right of center must dip below the center line on the y-down stage.
+    await renderer.setImageRotate({
+      angleDeg: -4,
+      block: false,
+      circles: 0,
+      durationMs: 0,
+      inverse: false,
+    });
+
+    expect(imageLayer.angle).toBeCloseTo(4);
+    expect(right.toGlobal({ x: 0, y: 0 }).y).toBeGreaterThan(360);
+
+    // The next sweep reads the current angle back in Unity space: -4 -> 0 is
+    // a +4 delta, which the clockwise default rewrites to -356.
+    const steps: Array<(progress: number) => void> = [];
+    renderer.app = {};
+    renderer.tween = vi.fn(
+      async (_durationMs: number, step: (progress: number) => void) => {
+        steps.push(step);
+      },
+    );
+    await renderer.setImageRotate({
+      angleDeg: 0,
+      block: false,
+      circles: 0,
+      durationMs: 1000,
+      inverse: false,
+    });
+    steps[0]!(1);
+    expect(imageLayer.angle).toBeCloseTo(360);
+  });
+
   it("applies the strict gridbg xScale and yScale transform", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const root = renderer.buildGridBackgroundRoot(createGridBackgroundInput(), [
