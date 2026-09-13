@@ -1800,6 +1800,50 @@ describe("PixiStoryRenderer", () => {
     expect(samples).toEqual([{ scaleX: 1.0625, x: 640 + 6.25 }]);
   });
 
+  it("retires only a looping imagetween with its image root", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+
+    await renderer.setImage("ac3_title1");
+    const runs: Array<{ isAlive?: () => boolean; loops?: number }> = [];
+    renderer.tween = vi.fn(
+      async (
+        _durationMs: number,
+        _step: (progress: number) => void,
+        _done: undefined,
+        options?: { isAlive?: () => boolean; loops?: number },
+      ) => {
+        runs.push({ isAlive: options?.isAlive, loops: options?.loops });
+      },
+    );
+
+    await renderer.setImageTween({
+      block: false,
+      durationMs: 1000,
+      ease: "Linear",
+      xTo: 100,
+    });
+    await renderer.setImageTween({
+      block: false,
+      durationMs: 1000,
+      ease: "Linear",
+      loop: true,
+      xTo: 50,
+    });
+
+    // A single pass keeps the runner-wide lifetime; loop=true maps to
+    // SetLoops(-1) and only lives while its root is the foreground image.
+    expect(
+      runs.map(({ isAlive, loops }) => ({ alive: isAlive?.(), loops })),
+    ).toEqual([
+      { alive: undefined, loops: 1 },
+      { alive: true, loops: -1 },
+    ]);
+    await renderer.clearImage();
+    expect(runs[1]!.isAlive!()).toBe(false);
+  });
+
   it("applies the strict gridbg xScale and yScale transform", () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     const root = renderer.buildGridBackgroundRoot(createGridBackgroundInput(), [
@@ -2349,6 +2393,131 @@ describe("PixiStoryRenderer", () => {
       { scaleX: 1.67, scaleY: 1.390_000_000_000_000_1, x: -48, y: 22 },
       { scaleX: 1.3, scaleY: 1.1, x: -120, y: 80 },
     ]);
+  });
+
+  it("routes backgroundtween ease and loop into the tween options", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const root = new Texture({ label: "bg-ease" });
+
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(root);
+    const captured: Array<{
+      durationMs: number;
+      eased: number[];
+      loops: number | undefined;
+    }> = [];
+    const midX: number[] = [];
+    renderer.tween = vi.fn(
+      (
+        durationMs: number,
+        step: (progress: number) => void,
+        _done?: () => void,
+        options?: { ease?: (raw: number) => number; loops?: number },
+      ) => {
+        // Drive a raw midpoint through the curve the renderer resolved from
+        // the `ease` parameter, exactly like TweenRunner would.
+        const eased = [0.5, 1].map((raw) => options?.ease?.(raw) ?? raw);
+        captured.push({ durationMs, eased, loops: options?.loops });
+        step(eased[0]);
+        midX.push(renderer.backgroundRoot.position.x - 640);
+        return Promise.resolve();
+      },
+    );
+
+    await renderer.setBackground("bg_test");
+    await renderer.setBackgroundTween({
+      block: false,
+      durationMs: 1500,
+      ease: "OutQuad",
+      loop: true,
+      xFrom: 0,
+      xTo: 130,
+    });
+
+    // `SetEase(OutQuad)` bends the raw 0.5 midpoint to 0.75, and
+    // `SetLoops(2*!loop-1)` turns loop=true into an infinite Restart loop.
+    expect(captured).toEqual([
+      { durationMs: 1500, eased: [0.75, 1], loops: -1 },
+    ]);
+    // The eased progress reached the transform: 0 + (130 - 0) * 0.75.
+    expect(midX).toEqual([97.5]);
+  });
+
+  it("defaults backgroundtween tween options to Linear single-pass", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const root = new Texture({ label: "bg-ease-default" });
+
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(root);
+    const captured: Array<{ eased: number[]; loops: number | undefined }> = [];
+    renderer.tween = vi.fn(
+      (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+        options?: { ease?: (raw: number) => number; loops?: number },
+      ) => {
+        captured.push({
+          eased: [0.5].map((raw) => options?.ease?.(raw) ?? raw),
+          loops: options?.loops,
+        });
+        step(0.5);
+        done?.();
+        return Promise.resolve();
+      },
+    );
+
+    await renderer.setBackground("bg_test");
+    await renderer.setBackgroundTween({
+      block: false,
+      durationMs: 1000,
+      xFrom: 0,
+      xTo: 100,
+    });
+
+    // Missing ease/loop keeps the native defaults: Ease.Linear, SetLoops(1).
+    expect(captured).toEqual([{ eased: [0.5], loops: 1 }]);
+  });
+
+  it("retires a looping backgroundtween with its background session", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    renderer.textureForImageKey = vi
+      .fn()
+      .mockResolvedValue(new Texture({ label: "bg-loop" }));
+    const checks: Array<() => boolean> = [];
+    renderer.tween = vi.fn(
+      (
+        _durationMs: number,
+        _step: (progress: number) => void,
+        _done?: () => void,
+        options?: { isAlive?: () => boolean },
+      ) => {
+        if (options?.isAlive) checks.push(options.isAlive);
+        return Promise.resolve();
+      },
+    );
+
+    await renderer.setBackground("bg_test");
+    await renderer.setBackgroundTween({
+      block: false,
+      durationMs: 1000,
+      loop: true,
+      xTo: 100,
+    });
+    expect(checks.map((check) => check())).toEqual([true]);
+
+    // Both a newer backgroundtween (session bump) and a replaced background
+    // retire the infinite loop's frames, not just its transform writes.
+    await renderer.setBackgroundTween({
+      block: false,
+      durationMs: 1000,
+      loop: true,
+      xTo: 50,
+    });
+    expect(checks.map((check) => check())).toEqual([false, true]);
+    await renderer.setBackground("bg_other");
+    expect(checks.map((check) => check())).toEqual([false, false]);
   });
 
   it("applies largeimgtween in largeimg transform space", async () => {

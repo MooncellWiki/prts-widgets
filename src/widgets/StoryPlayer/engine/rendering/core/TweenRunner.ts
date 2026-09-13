@@ -10,6 +10,14 @@ export interface TweenRunOptions {
    */
   ease?: EaseCurve;
   /**
+   * Per-run liveness checked alongside the runner's own `isAlive` on every
+   * frame; once it returns false the run settles exactly like a runner
+   * teardown (`done`, then resolve). Infinite loops need it to stop requesting
+   * frames when their target is retired instead of living as long as the
+   * whole renderer.
+   */
+  isAlive?: () => boolean;
+  /**
    * DOTween `SetLoops` count: 1 = single pass (default), negative = infinite
    * Restart loop that replays from the start value every cycle and never
    * completes (so `run` only settles once `isAlive` turns false — callers
@@ -46,10 +54,11 @@ export class TweenRunner {
     const loops =
       requestedLoops === 0 ? 1 : Math.max(-1, Math.trunc(requestedLoops));
     const totalMs = loops > 0 ? durationMs * loops : Number.POSITIVE_INFINITY;
+    const isRunAlive = options?.isAlive;
     return new Promise((resolve) => {
       const start = this.clock.now();
       const tick = () => {
-        if (!this.isAlive()) {
+        if (!this.isAlive() || (isRunAlive && !isRunAlive())) {
           done?.();
           resolve();
           return;
