@@ -74,6 +74,7 @@ class FakeRenderer implements StoryRenderer {
   ) => Promise<void> | void;
   gridBackgroundCalls: GridBackgroundInput[] = [];
   gridBackgroundClearCalls: Array<{ block: boolean; fadeMs: number }> = [];
+  imageCalls: Array<{ input?: BackgroundInput; key: string }> = [];
   imageRotateCalls: ImageRotateInput[] = [];
   imageTweenCalls: ImageTweenInput[] = [];
   interludeCalls: InterludeInput[] = [];
@@ -262,7 +263,9 @@ class FakeRenderer implements StoryRenderer {
     this.dialogueTexts.push(text);
   }
 
-  async setImage(): Promise<void> {}
+  async setImage(key: string, input?: BackgroundInput): Promise<void> {
+    this.imageCalls.push({ input, key });
+  }
   async setImageRotate(input: ImageRotateInput): Promise<void> {
     this.imageRotateCalls.push(input);
   }
@@ -2966,6 +2969,73 @@ describe("StoryRuntime", () => {
           y: -36,
         },
         key: "beach_1",
+      },
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("maps image width/height multipliers and tiled with lowercase keys", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[Image(image="avg_5_boom", width=1, height=1,screenadapt="coverall")]',
+        '[image(image="bg_0_am", tiled=true, fadetime=0, block=false)]',
+        '[image(image="side_i01",width=1.5,Height=2,xScale=1.2)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // `width`/`height` are lowercase in _LoadImage (unlike xScale/yScale);
+    // a CamelCase `Height` must not leak into the multiplier.
+    expect(renderer.imageCalls).toEqual([
+      {
+        input: {
+          block: false,
+          fadeMs: 0,
+          height: 1,
+          scaleX: 1,
+          scaleY: 1,
+          screenAdapt: "coverall",
+          tiled: false,
+          width: 1,
+          x: 0,
+          y: 0,
+        },
+        key: "avg_5_boom",
+      },
+      {
+        input: {
+          block: false,
+          fadeMs: 0,
+          height: 1,
+          scaleX: 1,
+          scaleY: 1,
+          screenAdapt: undefined,
+          tiled: true,
+          width: 1,
+          x: 0,
+          y: 0,
+        },
+        key: "bg_0_am",
+      },
+      {
+        input: {
+          block: false,
+          fadeMs: 0,
+          height: 1,
+          scaleX: 1.2,
+          scaleY: 1,
+          screenAdapt: undefined,
+          tiled: false,
+          width: 1.5,
+          x: 0,
+          y: 0,
+        },
+        key: "side_i01",
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
