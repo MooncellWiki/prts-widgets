@@ -3069,13 +3069,14 @@ describe("StoryRuntime", () => {
 
     // `ease` is read via GetEnum<Ease> and defaults to Linear; integer
     // literals pass through for the renderer's DOTween ordinal table. `loop`
-    // (SetLoops(-1), never finishing) is not ported, and loop+block mirrors
-    // native's LogError word for word, typos included.
+    // maps to SetLoops(-1); loop+block mirrors native's LogError word for
+    // word, typos included, and drops block so playback continues.
     expect(renderer.imageTweenCalls).toEqual([
       {
         block: false,
         durationMs: 25_000,
         ease: "Linear",
+        loop: false,
         xFrom: 0,
         xScaleFrom: undefined,
         xScaleTo: undefined,
@@ -3089,6 +3090,7 @@ describe("StoryRuntime", () => {
         block: false,
         durationMs: 15_000,
         ease: "OutQuad",
+        loop: false,
         xFrom: undefined,
         xScaleFrom: 1,
         xScaleTo: 1.1,
@@ -3099,9 +3101,10 @@ describe("StoryRuntime", () => {
         yTo: undefined,
       },
       {
-        block: true,
+        block: false,
         durationMs: 45_000,
         ease: "6",
+        loop: true,
         xFrom: undefined,
         xScaleFrom: undefined,
         xScaleTo: 1.2,
@@ -3150,7 +3153,10 @@ describe("StoryRuntime", () => {
         // resolve (Ease.Linear).
         expect.objectContaining({ durationMs: 3000, ease: "1", loop: false }),
         // Unparseable ease names keep the GetEnum Linear default.
+        // loop+block still warns, but block is dropped so the never-ending
+        // loop cannot stall playback.
         expect.objectContaining({
+          block: false,
           durationMs: 2000,
           ease: "bogus",
           loop: true,

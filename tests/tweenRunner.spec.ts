@@ -108,4 +108,30 @@ describe("TweenRunner ease and loops (DOTween SetEase/SetLoops port)", () => {
     expect(settled).toBe(true);
     expect(done).toHaveBeenCalledTimes(1);
   });
+
+  it("retires a run once its own isAlive turns false", async () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    let targetAlive = true;
+    const progress: number[] = [];
+    const done = vi.fn();
+    let settled = false;
+    const run = runner.run(1000, (p) => progress.push(p), done, {
+      isAlive: () => targetAlive,
+      loops: -1,
+    });
+    void run.then(() => {
+      settled = true;
+    });
+    manual.advance(1500);
+    expect(progress).toEqual([0.5]);
+    // The runner itself stays alive; the per-run check alone retires the
+    // infinite loop, settling it like a teardown without another step.
+    targetAlive = false;
+    manual.advance(500);
+    await run;
+    expect(settled).toBe(true);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(progress).toEqual([0.5]);
+  });
 });

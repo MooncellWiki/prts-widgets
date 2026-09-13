@@ -972,13 +972,19 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageTween`'s foreground
-   * transform semantics (2.7.61 VA 0x183e57560): From/To defaults read the
-   * current transform, `duration <= 0` snaps to To (Complete), and the move +
-   * scale DOTween pair shares one ease and loop count, so a single merged
+   * transform semantics (2.7.71 VA 0x183f055b0): From/To defaults read the
+   * current transform, `duration <= 0` snaps to To, and the move + scale
+   * DOTween pair shares one ease and loop count, so a single merged
    * interpolation is frame-equivalent. `ease` resolves the command's
    * GetEnum<Ease> value and `loop` maps SetLoops(2*!loop-1) to an infinite
    * Restart loop that replays from the From pose each cycle and never
-   * completes. Browser interpolation replaces the DOTween sequence.
+   * completes (block is dropped upstream for loops). Browser interpolation
+   * replaces the DOTween sequence.
+   *
+   * The zero-duration snap holds for loops too, though not via Complete:
+   * `TweenManager.Complete` @ 0x1841f4830 refuses `loops == -1`, but
+   * `Tweener.DoStartup` @ 0x184893ce0 forces `Ease.INTERNAL_Zero` on any
+   * `duration <= 0` tween, so every update evaluates to the To pose.
    */
   async setBackgroundTween(input: BackgroundTweenInput): Promise<void> {
     // Native's `_foreImage` is a serialized panel field that always exists,
@@ -1031,6 +1037,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       },
       {
         ease: dotweenEaseCurve(input.ease),
+        // The step/done guards already mute a retired session; this also
+        // stops its frames, which an infinite loop would otherwise request
+        // for as long as the renderer lives.
+        isAlive: () => this.isActiveBackground(root, sessionId),
         loops: input.loop ? -1 : 1,
       },
     );
@@ -1504,8 +1514,13 @@ export class PixiStoryRenderer implements StoryRenderer {
    * localScale space (`setImage` keeps the screenadapt ratio on the inner
    * sprite). `ease` goes through the runner's `SetEase` option as a single
    * eased progress shared by the position and scale interpolation, matching
-   * `SetEase` on both native tweens. Consecutive `imagetween`s are not cancelled (native never calls
-   * DOKill either; both DOTween instances keep writing the same transform).
+   * `SetEase` on both native tweens, and `loop` maps SetLoops(2*!loop-1) to
+   * the same infinite Restart loop as `setBackgroundTween` (block is dropped
+   * upstream for loops). Consecutive `imagetween`s are not cancelled (native
+   * never calls DOKill either; both DOTween instances keep writing the same
+   * transform); only an infinite loop is retired once its root stops being
+   * the foreground image, since it would otherwise request frames for as long
+   * as the renderer lives.
    *
    * Without a foreground image native dereferences `_foreImage` and throws;
    * story scripts always precede the tween with `[Image]`, so the silent
@@ -1556,7 +1571,13 @@ export class PixiStoryRenderer implements StoryRenderer {
         });
       },
       undefined,
-      { ease: dotweenEaseCurve(input.ease) },
+      {
+        ease: dotweenEaseCurve(input.ease),
+        // Single passes keep writing an outgoing root until they finish, as
+        // before; only a never-ending loop has to stop with its root.
+        isAlive: input.loop ? () => this.imageRoot === root : undefined,
+        loops: input.loop ? -1 : 1,
+      },
     );
 
     if (input.block) await run;
