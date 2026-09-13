@@ -1884,6 +1884,42 @@ describe("PixiStoryRenderer", () => {
     expect(cornerGlobal.y).toBeCloseTo(720);
   });
 
+  it("anchors tiled image and background tiles at the lower-left corner like Unity", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    renderer.app = {};
+    const tile = new Texture({
+      source: new TextureSource({ height: 300, width: 100 }),
+    });
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(tile);
+    const input = {
+      block: false,
+      fadeMs: 0,
+      height: 2.5,
+      scaleX: 1,
+      scaleY: 1,
+      tiled: true,
+      width: 1,
+      x: 0,
+      y: 0,
+    };
+
+    // Image.GenerateTiledSprite tiles up from the rect's lower-left corner and
+    // clips the top row; PIXI starts at the top-left, so the 750px rect needs
+    // its tile origin shifted by 750 % 300 to land a boundary on the bottom.
+    await renderer.setImage("bg_0_am", input);
+    const imageSprite = renderer.imageRoot.children[0];
+    expect(imageSprite.height).toBe(750);
+    expect(imageSprite.tilePosition.x).toBe(0);
+    expect(imageSprite.tilePosition.y).toBe(150);
+
+    await renderer.setBackground("bg_0_am", input);
+    expect(renderer.backgroundSprite.tilePosition.y).toBe(150);
+
+    // A whole number of tiles needs no shift.
+    await renderer.setImage("bg_0_am", { ...input, height: 2 });
+    expect(renderer.imageRoot.children[0].tilePosition.y).toBe(0);
+  });
+
   it("multiplies the native size by width/height before screenadapt", async () => {
     const renderer = new PixiStoryRenderer(createContext()) as any;
     renderer.app = {};

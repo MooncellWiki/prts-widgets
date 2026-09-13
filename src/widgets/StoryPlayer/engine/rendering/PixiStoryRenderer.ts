@@ -929,6 +929,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         nativeRect[0] / Math.max(1, texture.width),
         nativeRect[1] / Math.max(1, texture.height),
       );
+      this.alignTilesToLowerLeft(sprite);
     }
     // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
     // omitted scale must leave the screen-adapted size alone.
@@ -1306,6 +1307,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       height: input?.height ?? 1,
       width: input?.width ?? 1,
     });
+    if (sprite instanceof TilingSprite) this.alignTilesToLowerLeft(sprite);
     // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
     // omitted scale must leave the screen-adapted size alone.
     this.applyCenteredTransform(root, {
@@ -4817,6 +4819,19 @@ export class PixiStoryRenderer implements StoryRenderer {
     sprite.width = width;
     sprite.height = height;
     sprite.position.set(0, 0);
+  }
+
+  /**
+   * `Image.GenerateTiledSprite` lays tiles out from the rect's lower-left
+   * corner and clips the last row at the top edge, while a TilingSprite starts
+   * at its top-left corner. Shifting the tile origin by the leftover height
+   * puts a tile boundary on the bottom edge like Unity. A no-op whenever the
+   * rect is a whole number of tiles high, which covers every tiled story line
+   * today (none passes screenadapt/width/height, so the rect is one tile).
+   */
+  private alignTilesToLowerLeft(sprite: TilingSprite): void {
+    const tileHeight = sprite.texture.height * sprite.tileScale.y;
+    sprite.tilePosition.set(0, tileHeight > 0 ? sprite.height % tileHeight : 0);
   }
 
   private readCenteredTransform(root: Container): {
