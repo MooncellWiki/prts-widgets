@@ -19,6 +19,7 @@ import {
   resolveAssetUrl,
   resolveStoryAssetByKey,
   resolveStoryCharacterAssetByKey,
+  type StoryAssetFamily,
 } from "../asset";
 import {
   buildTagStyles,
@@ -2445,7 +2446,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   async setBlocker(input: BlockerInput): Promise<void> {
     const blocker = this.ensureBlocker();
     if (input.style === "default" && input.image) {
-      const url = resolveStoryAssetByKey(input.image, false);
+      const url = resolveStoryAssetByKey(input.image, "image");
       if (url) {
         try {
           blocker.texture = await Assets.load<Texture>(url);
@@ -4821,9 +4822,9 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private async textureForImageKey(
     key: string,
-    kind: "background" | "image",
+    kind: StoryAssetFamily,
   ): Promise<Texture | null> {
-    const rawUrl = resolveStoryAssetByKey(key, kind === "background");
+    const rawUrl = resolveStoryAssetByKey(key, kind);
     if (!rawUrl) {
       this.onWarning?.(`missing ${kind}: ${key}`);
       return null;
@@ -4845,11 +4846,14 @@ export class PixiStoryRenderer implements StoryRenderer {
   private async textureForInterlude(
     input: InterludeInput,
   ): Promise<Texture | null> {
-    if (input.type !== 3)
-      return this.textureForImageKey(
-        input.name,
-        input.type === 2 ? "background" : "image",
-      );
+    if (input.type !== 3) {
+      // CutinController routes type 1 (uichar) through Cutin/Characters and
+      // type 2 (bg) through AVG/Backgrounds; only type 3 reuses AVG characters.
+      let kind: StoryAssetFamily = "image";
+      if (input.type === 2) kind = "background";
+      else if (input.type === 1) kind = "cutin";
+      return this.textureForImageKey(input.name, kind);
+    }
 
     const base = input.avatarCharacterKey;
     const expression = input.avatarExpression;
