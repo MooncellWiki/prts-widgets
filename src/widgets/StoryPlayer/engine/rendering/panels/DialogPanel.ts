@@ -24,6 +24,8 @@ export class DialogPanel {
   private panel: Sprite | null = null;
   private speaker: Text | null = null;
   private topGradient: Sprite | null = null;
+  private readonly baseAlphas = new Map<Container, number>();
+  private fadeSessionId = 0;
 
   private static readonly BOTTOM_HEIGHT = 182;
   private static readonly NAME_LEFT = 20.7501;
@@ -37,10 +39,16 @@ export class DialogPanel {
   private static readonly MESSAGE_WIDTH = 735;
   private static readonly MESSAGE_MAX_HEIGHT = 89;
   private static readonly NAME_MAX_HEIGHT = 65;
+  private static readonly HIDE_FADE_MS = 150;
 
   constructor(
     private readonly layer: Container,
     private readonly warn?: (detail: string) => void,
+    private readonly tween?: (
+      durationMs: number,
+      step: (progress: number) => void,
+      done?: () => void,
+    ) => Promise<void>,
   ) {}
 
   async mount(): Promise<void> {
@@ -113,6 +121,9 @@ export class DialogPanel {
     this.panel = panel;
     this.speaker = speaker;
     this.dialogue = dialogue;
+    for (const item of [top, bottom, panel, speaker, dialogue]) {
+      if (item) this.baseAlphas.set(item, item.alpha);
+    }
     if (top) this.layer.addChild(top);
     if (bottom) this.layer.addChild(bottom);
     this.layer.addChild(speaker, dialogue);
@@ -132,16 +143,43 @@ export class DialogPanel {
       this.dialogue.text = text;
     }
     this.applyLayout();
-    const visible = Boolean(speaker || text);
-    for (const item of [
+    const items: Container[] = [
       this.topGradient,
       this.bottomGradient,
       this.panel,
       this.speaker,
       this.dialogue,
-    ]) {
-      if (item) item.visible = visible;
+    ].flatMap((item) => (item ? [item] : []));
+    // Cancel any fade-out still in flight before applying the new visibility.
+    this.fadeSessionId += 1;
+    if (speaker || text) {
+      for (const item of items) {
+        item.alpha = this.baseAlphas.get(item) ?? 1;
+        item.visible = true;
+      }
+      return;
     }
+    // Native port: set_isHidden(true) fades the panel's CanvasGroup out over
+    // 150ms (Linear, unscaled time) instead of hiding it instantly.
+    if (!this.tween) {
+      for (const item of items) item.visible = false;
+      return;
+    }
+    const session = this.fadeSessionId;
+    const startAlphas = items.map((item) => item.alpha);
+    void this.tween(
+      DialogPanel.HIDE_FADE_MS,
+      (progress) => {
+        if (session !== this.fadeSessionId) return;
+        for (const [i, item] of items.entries()) {
+          item.alpha = startAlphas[i]! * (1 - progress);
+        }
+      },
+      () => {
+        if (session !== this.fadeSessionId) return;
+        for (const item of items) item.visible = false;
+      },
+    );
   }
 
   destroy(): void {
@@ -179,6 +217,16 @@ export class DialogPanel {
         STORY_HEIGHT -
         DialogPanel.MESSAGE_TOP -
         Math.max(0, height - DialogPanel.MESSAGE_MAX_HEIGHT);
+      // Native port: _CalcMessageLayoutDelta/_ApplyTextContainerHeight grow
+      // sprite_frame_bottom upward from 182 once the message exceeds the
+      // 89px max height, in step with the message moving up.
+      if (this.bottomGradient) {
+        const bottomHeight =
+          DialogPanel.BOTTOM_HEIGHT +
+          Math.max(0, height - DialogPanel.MESSAGE_MAX_HEIGHT);
+        this.bottomGradient.height = bottomHeight;
+        this.bottomGradient.position.set(0, STORY_HEIGHT - bottomHeight);
+      }
     }
     if (this.speaker) {
       const height = this.speaker.text
