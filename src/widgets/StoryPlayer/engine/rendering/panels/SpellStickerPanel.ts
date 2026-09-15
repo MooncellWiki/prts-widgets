@@ -13,18 +13,25 @@ interface SpellStickerView {
   style: string;
 }
 
-function splitContent(content: string): [string, string] {
+/**
+ * `<p=N>` segments keyed by their 1-based N. Native `FormatUtil.
+ * _HandleAvgSplitContentTextTags` stores `dict[N-1]` and `_ShowSticker`
+ * iterates child Texts by 0-based index, so N maps to the N-th child.
+ */
+function splitContent(content: string): Map<number, string> {
   const parts = new Map<number, string>();
   const pattern = /<p=(\d+)>([\s\S]*?)<\/>/gi;
   for (const match of content.matchAll(pattern))
     parts.set(Number(match[1]), match[2] ?? "");
-  return [parts.get(1) ?? "", parts.get(2) ?? ""];
+  return parts;
 }
 
 /**
- * Port scope: `Torappu.AVG.SpellStickerPanel._ExecuteSpellSticker` and
- * `_ExecuteSpellStickerClear` state transitions. The two supported styles are
- * lightweight PIXI approximations of their prefab visuals, not Animator ports.
+ * Port scope: `Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellSticker` /
+ * `_ShowSticker` / `_HideSticker` / `_GetOrCreateSticker` state transitions.
+ * The two supported styles are lightweight PIXI approximations of their
+ * prefab visuals; native entrances replay a Legacy `Animation` clip per show,
+ * which is a declared omission here (no animator/clip ports).
  */
 export class SpellStickerPanel {
   private readonly orphans = new Set<Container>();
@@ -44,6 +51,9 @@ export class SpellStickerPanel {
 
     let view = this.views.get(input.id);
     if (view && view.style !== style) {
+      // Native `_GetOrCreateSticker`: same id with a different style removes
+      // the dict entry without destroying the GameObject, leaving a visible
+      // orphan that hide/clear-by-id can no longer address.
       this.views.delete(input.id);
       this.orphans.add(view.root);
       view = undefined;
@@ -53,13 +63,23 @@ export class SpellStickerPanel {
       this.views.set(input.id, view);
     }
 
-    const [mainText, subText] = splitContent(input.content);
+    // Native `_ShowSticker` only overwrites child Texts whose index exists in
+    // the split dict (`dict.ContainsKey(i)`), so a segment missing from the
+    // new content keeps the previous text — same optional-write philosophy as
+    // the transform fields below.
+    const parts = splitContent(input.content);
     const main = view.root.getChildByLabel("text_spell_main") as Text;
     const sub = view.root.getChildByLabel("text_spell_sub") as Text;
-    main.text = mainText;
-    sub.text = subText;
+    const mainText = parts.get(1);
+    const subText = parts.get(2);
+    if (mainText !== undefined) main.text = mainText;
+    if (subText !== undefined) sub.text = subText;
     view.root.visible = true;
-    view.root.alpha = Math.max(0, Math.min(1, input.alpha));
+    // Native inlines `_ApplyAlpha`: alpha is written (clamped to 0..1) only
+    // when the param exists; a reused sticker keeps its last alpha. New views
+    // default to PIXI's alpha 1, matching a fresh native CanvasGroup.
+    if (input.alpha !== undefined)
+      view.root.alpha = Math.max(0, Math.min(1, input.alpha));
     if (input.x !== undefined) view.root.x = STORY_WIDTH / 2 + input.x;
     if (input.y !== undefined) view.root.y = STORY_HEIGHT / 2 - input.y;
     if (input.xScale !== undefined) view.root.scale.x = input.xScale;
@@ -73,6 +93,14 @@ export class SpellStickerPanel {
   }
 
   clear(): void {
+    // Intentional deviation from native `_ClearAll` (also used for OnReset /
+    // ShouldResetOnSkip): native only scans the id→view dict, so a
+    // style-switched orphan stays visible on screen until the panel itself is
+    // destroyed. We destroy orphans too — a web player reuses renderer
+    // instances across stories, and a permanently visible leftover past
+    // `spellstickerclear`/skip would leak into later scenes. No corpus sample
+    // switches styles for the same id, so the divergent path is unreachable in
+    // production data.
     for (const view of this.views.values()) this.destroyRoot(view.root);
     for (const root of this.orphans) this.destroyRoot(root);
     this.views.clear();
