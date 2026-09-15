@@ -168,6 +168,31 @@ const builtinCommandNames = [
 
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
 
+/**
+ * Native provenance: gameplay 教学路径命令族——`tutorial` / `popupdialog` /
+ * `inputblocker` 由 `Torappu.AVG.AVGTutorialPanel.GetExecutors`（VA 0x183e63690，
+ * 2.7.61/build 2761 GameAssembly.dll IDA 反编译复核）注册：`"tutorial"` 与
+ * `"popupdialog"` 绑同一个 `_ExecuteTutorial` 委托（行为差异完全由参数集决定），
+ * `"inputblocker"` → `_ExecuteInputBlocker`（VA 0x183e64bd0）。native 侧渲染
+ * 聚光灯/手指引导、教程对白框（AVGTutorialDialog）、输入拦截遮罩并阻塞命令流。
+ *
+ * Web 侧有意省略整套教学 UI/信号系统/挖洞遮罩：全语料统计（gamedata 26-08-07）
+ * 中三条命令 100% 集中在 gameplay 教学脚本（obt/tutorial、obt/guide、活动
+ * guide/training），正常剧情（obt/main、activities/level_*）0 条，剧情回放
+ * widget 不会加载这些脚本。`aside` 同理（DialogPanel.GetExecutors VA 0x183e71df0
+ * 注册 `aside` → `_ExecuteAside`，现网 story 0 样本，见 dialog review #5）。
+ *
+ * 命中时按「已知但未实现」降级告警（`unimplemented_command`，每命令名一次），
+ * 执行语义与 unknown_command 路径一致：静默跳过、不阻塞——native 教学面板虽会
+ * 阻塞，但既然不渲染教学 UI 就没有可解除的阻塞点，放行是唯一安全选择。
+ */
+const knownUnimplementedCommands = new Set([
+  "tutorial",
+  "popupdialog",
+  "inputblocker",
+  "aside",
+]);
+
 interface InterruptibleWait {
   id: number;
   interrupt?: () => void;
@@ -423,6 +448,13 @@ export class StoryRuntime {
   private multilineShownChars = 0;
   private readonly stickerIds = new Set<string>();
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
+  /**
+   * Web-only（native 无对应概念）：knownUnimplementedCommands 中已告警过的
+   * 命令名。教学脚本里同一命令高频成对出现（如 InputBlocker 的 blockInput
+   * true/false 开关对、连续多条 Tutorial），每命令名只告警一次，避免逐条
+   * console.warn 淹没真正需要关注的 unknown_command。
+   */
+  private readonly warnedUnimplementedCommands = new Set<string>();
 
   constructor(
     context: Context,
@@ -1079,6 +1111,18 @@ export class StoryRuntime {
     if (line.command === "header") return Promise.resolve("continue");
     const executors = this.commandRegistry.get(line.command);
     if (executors === null) {
+      // 教学路径命令族（见 knownUnimplementedCommands 声明处的 native
+      // provenance）：native 有 executor 但 web 有意省略，降级为
+      // unimplemented_command 并按命令名去重；跳过语义与 unknown_command
+      // 路径一致（静默放行、不阻塞）。
+      if (knownUnimplementedCommands.has(line.command)) {
+        if (!this.warnedUnimplementedCommands.has(line.command)) {
+          this.warnedUnimplementedCommands.add(line.command);
+          this.warn("unimplemented_command", line.command);
+        }
+        return Promise.resolve("continue");
+      }
+
       this.warn("unknown_command", line.command);
       return Promise.resolve("continue");
     }
