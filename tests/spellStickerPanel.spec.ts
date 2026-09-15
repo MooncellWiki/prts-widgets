@@ -57,5 +57,12 @@ describe("SpellStickerPanel", () => {
 
     panel.clear();
     expect(layer.children).toHaveLength(0);
+
+    // Intentional deviation from native `_ClearAll`: the orphan was already
+    // removed from the dict, so it stays visible in the native client; here
+    // clear() destroys it. Both dicts are cleared, so a re-show after clear
+    // builds a fresh view.
+    panel.show({ alpha: 1, content: "", id: "spell1", style: "sami" });
+    expect(layer.children).toHaveLength(1);
   });
 });
