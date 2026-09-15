@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HtmlStoryAudio } from "../src/widgets/StoryPlayer/engine/audio";
 
@@ -80,6 +80,26 @@ async function flush(): Promise<void> {
 
 const context = { linkMap: {}, script: [] } satisfies Context;
 
+/** Drive `playsound` through the fakes until its instance is live. */
+async function playLoopingSound(
+  audio: HtmlStoryAudio,
+  key: string,
+): Promise<FakeInstance> {
+  void audio.playSound({
+    channel: "c",
+    delayMs: 0,
+    key,
+    loop: true,
+    volume: 1,
+  });
+  await flush();
+  const sound = settleLoad();
+  await flush();
+  const instance = sound.settlePlay();
+  await flush();
+  return instance;
+}
+
 describe("HtmlStoryAudio", () => {
   beforeEach(() => {
     loads.length = 0;
@@ -143,5 +163,102 @@ describe("HtmlStoryAudio", () => {
 
     await audio.stopSound("c", 0);
     expect(instance.stopped).toBe(1);
+  });
+
+  describe("stopsound fade interplay (AudioChannel.m_stopWhenTweenEnd)", () => {
+    beforeEach(() => {
+      // fadeVolume drives both rAF ticks and performance.now(); fake them so
+      // the fade window can be advanced deterministically.
+      vi.useFakeTimers({ toFake: ["performance", "requestAnimationFrame"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("revives a stopsound fade-out when soundvolume lands inside the window", async () => {
+      const audio = new HtmlStoryAudio(context);
+      const instance = await playLoopingSound(audio, "k");
+
+      // Native: `AudioChannel.Stop` (fadetime > 0.01) keeps the channel
+      // registered while fading out (`m_stopWhenTweenEnd = 1`).
+      void audio.stopSound("c", 1000);
+      await flush();
+      await vi.advanceTimersByTimeAsync(480);
+
+      expect(instance.stopped).toBe(0);
+      expect(instance.volume).toBeGreaterThan(0);
+      expect(instance.volume).toBeLessThan(1);
+
+      // Native: `AudioChannel.TweenVolume` zeroes `m_stopWhenTweenEnd`, so
+      // the pending stop is cancelled and the sound tweens to the new volume
+      // from its current mid-fade volume instead of stopping.
+      void audio.setSoundVolume("c", 0.8, 200);
+      await flush();
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(instance.stopped).toBe(0);
+      expect(instance.volume).toBeCloseTo(0.8);
+
+      // The revived channel stays resolvable: a later soundvolume (even with
+      // fadetime=0) keeps acting on it.
+      await audio.setSoundVolume("c", 0.3, 0);
+      expect(instance.stopped).toBe(0);
+      expect(instance.volume).toBe(0.3);
+    });
+
+    it("stops and drops the channel once the stopsound fade finishes uncanceled", async () => {
+      const audio = new HtmlStoryAudio(context);
+      const instance = await playLoopingSound(audio, "k");
+
+      void audio.stopSound("c", 400);
+      await flush();
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(instance.volume).toBe(0);
+      expect(instance.stopped).toBe(1);
+
+      // Channel is gone: a later soundvolume is a silent no-op
+      // (native `AudioManager.GetChannel` miss).
+      await audio.setSoundVolume("c", 0.9, 0);
+      expect(instance.volume).toBe(0);
+      expect(instance.stopped).toBe(1);
+    });
+
+    it("lets a newer stopsound supersede an older stop fade", async () => {
+      const audio = new HtmlStoryAudio(context);
+      const instance = await playLoopingSound(audio, "k");
+
+      void audio.stopSound("c", 1000);
+      await flush();
+      await vi.advanceTimersByTimeAsync(500);
+
+      void audio.stopSound("c", 400);
+      await flush();
+      // Still inside the second fade: the superseded stop fade must not have
+      // stopped the instance early.
+      await vi.advanceTimersByTimeAsync(100);
+      expect(instance.stopped).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(instance.stopped).toBe(1);
+    });
+
+    it("does not let a stale stop fade stop a replacement playsound on the channel", async () => {
+      const audio = new HtmlStoryAudio(context);
+      const first = await playLoopingSound(audio, "k1");
+
+      void audio.stopSound("c", 1000);
+      await flush();
+      await vi.advanceTimersByTimeAsync(200);
+
+      // A same-channel playsound takes the channel over; native `_PlayAudio`
+      // stops the old instance instantly.
+      const second = await playLoopingSound(audio, "k2");
+      expect(first.stopped).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(second.stopped).toBe(0);
+    });
   });
 });
