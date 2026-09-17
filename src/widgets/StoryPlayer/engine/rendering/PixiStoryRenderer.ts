@@ -2318,21 +2318,39 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
+  /**
+   * Native port: the `_ExecuteSticker` hide branch, which runs
+   * `AVGStickerTextView.TryFinishType` before `HideSticker` — in-flight typing
+   * completes instantly, so the full text is what fades out, not the
+   * partially typed prefix.
+   */
   async clearSticker(id?: string, fadeMs = 0): Promise<void> {
     if (!id) {
       await this.clearStickers(fadeMs);
       return;
     }
 
+    this.hideSticker(id, fadeMs, true);
+  }
+
+  /**
+   * Native port: `StickerPanel._RecycleStickers` (stickerclear and the skip
+   * reset) calls `HideSticker(0)` on every view without `TryFinishType`, so
+   * typing is not completed before the fade.
+   */
+  async clearStickers(fadeMs = 0): Promise<void> {
+    this.stickerRichChars.clear();
+    for (const id of this.stickerTexts.keys())
+      this.hideSticker(id, fadeMs, false);
+  }
+
+  private hideSticker(id: string, fadeMs: number, finishTyping: boolean): void {
     const sticker = this.stickerTexts.get(id);
     if (!sticker) return;
 
     this.bumpStickerSessions(id);
-    // Native port: the hide branch runs AVGStickerTextView.TryFinishType
-    // before HideSticker — in-flight typing completes instantly, so the full
-    // text is what fades out, not the partially typed prefix.
     const typingTarget = this.stickerTypingTargets.get(id);
-    if (typingTarget) {
+    if (finishTyping && typingTarget) {
       sticker.text = typingTarget.fullText;
       this.layoutSubtitle(
         sticker,
@@ -2340,8 +2358,8 @@ export class PixiStoryRenderer implements StoryRenderer {
         typingTarget.widthPx,
         typingTarget.alignment,
       );
-      this.stickerTypingTargets.delete(id);
     }
+    this.stickerTypingTargets.delete(id);
     this.stickerRichChars.delete(id);
     if (!sticker.visible || !sticker.text) {
       sticker.text = "";
@@ -2372,12 +2390,6 @@ export class PixiStoryRenderer implements StoryRenderer {
         sticker.alpha = 1;
       },
     );
-  }
-
-  async clearStickers(fadeMs = 0): Promise<void> {
-    this.stickerRichChars.clear();
-    for (const id of this.stickerTexts.keys())
-      await this.clearSticker(id, fadeMs);
   }
 
   clearSpellStickers(): void {
@@ -2930,6 +2942,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (input.delayMs <= 0) {
       sticker.text = fullText;
       this.layoutSubtitle(sticker, input.x, input.widthPx, input.alignment);
+      input.onTypingComplete?.();
       return;
     }
 
@@ -2948,6 +2961,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       delayMs: input.delayMs,
       prevChars,
       newChars,
+      onTypingComplete: input.onTypingComplete,
       widthPx: input.widthPx,
     });
   }
@@ -4675,6 +4689,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       delayMs: number;
       prevChars: RichChar[];
       newChars: RichChar[];
+      onTypingComplete?: () => void;
       widthPx: number;
     },
   ): Promise<void> {
@@ -4700,8 +4715,12 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.layoutSubtitle(sticker, input.baseX, input.widthPx, input.alignment);
     }
 
-    if ((this.stickerTypingSessionIds.get(id) ?? 0) === sessionId)
+    if ((this.stickerTypingSessionIds.get(id) ?? 0) === sessionId) {
       this.stickerTypingTargets.delete(id);
+      // Native `AVGStickerTextView._OnTypeWriterEnd` -> m_OnTypeEnd: only
+      // typing that ends on its own raises the auto click here.
+      input.onTypingComplete?.();
+    }
   }
 
   /**

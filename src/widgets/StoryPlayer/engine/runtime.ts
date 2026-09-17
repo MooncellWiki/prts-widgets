@@ -432,18 +432,18 @@ export class StoryRuntime {
     string,
     {
       charCount: number;
-      layout: Omit<StickerInput, "append" | "id" | "text">;
+      layout: Omit<StickerInput, "append" | "id" | "onTypingComplete" | "text">;
     }
   >();
 
   /**
-   * Native port: the pooled `AVGStickerTextView.m_duration`. `RenderSticker`
-   * only writes it when `!isMultiline || duration >= 0`, so a multiline show
-   * (multi=true on a fresh id) with no duration keeps whatever the view
-   * already holds: 0 for a never-shown view (instant), or the fade its last
-   * show/hide wrote for a recycled one.
+   * Native port: `StickerPanel.m_recyclePool`, reduced to the one piece of
+   * view state that outlives a hide -- `AVGStickerTextView.m_duration`, which
+   * every `HideSticker` overwrites. The pool is a FIFO shared by all ids, so a
+   * multiline show that keeps the view's fade inherits it from whichever view
+   * was recycled first, not from its own id's history.
    */
-  private readonly stickerFadeMs = new Map<string, number>();
+  private readonly stickerPoolFadeMs: number[] = [];
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
 
   constructor(
@@ -819,11 +819,11 @@ export class StoryRuntime {
       // Then every entry of `m_stickerDict` gets `HideSticker(0)` before the
       // dictionary is emptied and `m_currentSticker` nulled. `HideSticker`
       // substitutes 0.15s for any duration <= 0, the same 150ms stickerclear
-      // fades with (each recycled view's m_duration is rewritten to it), and
-      // dropping the slots is what lets a reused id show again instead of
+      // fades with (each view enters the recycle pool with m_duration 0.15),
+      // and dropping the slots is what lets a reused id show again instead of
       // being read as the hide half of the toggle.
-      for (const id of this.stickerSlots.keys())
-        this.stickerFadeMs.set(id, 150);
+      for (let i = 0; i < this.stickerSlots.size; i += 1)
+        this.stickerPoolFadeMs.push(150);
       this.stickerSlots.clear();
       await this.renderer.clearStickers(150);
     }
@@ -2951,16 +2951,16 @@ export class StoryRuntime {
 
         if (existing && !multi) {
           // Hide branch: TryFinishType completes in-flight typing instantly
-          // (renderer side), HideSticker fades out, the slot leaves the dict,
-          // and RaiseAutoClick(0) keeps auto-play moving with the base wait.
+          // (renderer side), HideSticker fades out and writes its fade into
+          // the view's m_duration, the view goes back to the recycle pool,
+          // the slot leaves the dict, and RaiseAutoClick(0) keeps auto-play
+          // moving with the base wait.
           this.stickerSlots.delete(id);
-          this.stickerFadeMs.set(id, hideFadeMs);
+          this.stickerPoolFadeMs.push(hideFadeMs);
           await this.renderer.clearSticker(id, hideFadeMs);
-          // The sticker text is the pacing message of the wait that follows,
-          // and a hidden sticker has nothing left to type.
+          this.cancelTyping();
           this.currentMessageLength = 0;
-          this.currentTypingComplete = true;
-          this.scheduleAutoClick(0);
+          this.onTypingComplete();
           return block ? "wait_input" : "continue";
         }
 
@@ -2979,14 +2979,9 @@ export class StoryRuntime {
             ...existing.layout,
             append: true,
             id,
+            onTypingComplete: this.beginStickerTyping(existing.charCount),
             text,
           } satisfies StickerInput);
-          // Native raises the auto click at typing end with the full message
-          // length; scheduling at the wait boundary is the web adaptation.
-          // The accumulated text also becomes the pacing message of the wait.
-          this.currentMessageLength = existing.charCount;
-          this.currentTypingComplete = true;
-          this.scheduleAutoClick(existing.charCount);
           return block ? "wait_input" : "continue";
         }
 
@@ -3000,19 +2995,24 @@ export class StoryRuntime {
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
         if (!text) return "continue";
 
-        // _GenSticker refuses the 21st concurrent sticker (pool + dict >= 20)
-        // and drops the show; production data never goes past single digits,
-        // so warn without dropping.
-        if (this.stickerSlots.size >= 20)
+        // _GenSticker (2.7.71 VA 0x183f3be10) takes the head of the shared
+        // recycle pool (SafeGet(0) + RemoveAt(0)) whatever id it last served;
+        // only an empty pool instantiates a new view, whose constructor sets
+        // m_duration = 0.15. It refuses that instantiation once pool + dict
+        // >= 20 and drops the show; production data never goes past single
+        // digits, so warn without dropping.
+        const pooledFadeMs = this.stickerPoolFadeMs.shift();
+        if (pooledFadeMs === undefined && this.stickerSlots.size >= 20)
           this.warn("parse", "avg sticker meets the max num (20)");
 
         // RenderSticker writes m_duration only when `!isMultiline ||
         // duration >= 0`: a multiline show (multi=true on a fresh id) with no
-        // duration keeps the pooled view's previous fade — 0 (instant) on a
-        // first display, or the fade its last show/hide wrote on a reuse.
+        // duration keeps the view's previous fade — 0.15 on a new view, or
+        // whatever the last HideSticker wrote on a pooled one (e.g. main
+        // 15-12_end:77, where st2 reuses st1's view hidden with duration=0.5).
         const showFadeMs =
-          multi && this.exactArg(args, "duration") === undefined
-            ? (this.stickerFadeMs.get(id) ?? 0)
+          multi && duration < 0
+            ? (pooledFadeMs ?? 150)
             : (duration >= 0 ? duration : 0.15) * 1000;
 
         const layout = {
@@ -3031,20 +3031,13 @@ export class StoryRuntime {
         };
         const charCount = parseRichChars(text).length;
         this.stickerSlots.set(id, { charCount, layout });
-        this.stickerFadeMs.set(id, showFadeMs);
         await this.renderer.setSticker({
           ...layout,
           append: false,
           id,
+          onTypingComplete: this.beginStickerTyping(charCount),
           text,
         } satisfies StickerInput);
-        // RaiseAutoClick(msgLength) fires from the typing-end callback
-        // natively; without this bridge a blocking sticker would stall
-        // button-auto / quick-play until a manual click. The sticker text
-        // doubles as the pacing message for a later mode switch mid-wait.
-        this.currentMessageLength = charCount;
-        this.currentTypingComplete = true;
-        this.scheduleAutoClick(charCount);
         return block ? "wait_input" : "continue";
       }
 
@@ -3176,9 +3169,9 @@ export class StoryRuntime {
       case "stickerclear": {
         // Native port: Torappu.AVG.StickerPanel._ExcuteClear / _RecycleStickers.
         // It clears all sticker slots and also stops the timer-sticker path.
-        // The 150ms fade also rewrites each recycled view's m_duration.
-        for (const id of this.stickerSlots.keys())
-          this.stickerFadeMs.set(id, 150);
+        // Every view enters the recycle pool with m_duration 0.15.
+        for (let i = 0; i < this.stickerSlots.size; i += 1)
+          this.stickerPoolFadeMs.push(150);
         this.stickerSlots.clear();
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
@@ -3440,6 +3433,24 @@ export class StoryRuntime {
   private onTypingComplete(): void {
     this.currentTypingComplete = true;
     this.scheduleAutoClick(this.currentMessageLength);
+  }
+
+  /**
+   * Native port: `StickerPanel._OnStickerTypeEnd(msgLength)` (2.7.71 VA
+   * 0x183f3c430) raises the auto click from the sticker typewriter's end
+   * callback, never at the command boundary -- a slow sticker (an omitted
+   * `delay` types 25x slower) must finish typing before auto-play moves on.
+   * Like the subtitle path, the sticker takes over the shared typing state;
+   * the returned callback is ignored once a later message has replaced it.
+   */
+  private beginStickerTyping(charCount: number): () => void {
+    this.cancelTyping();
+    this.currentMessageLength = charCount;
+    const sessionId = this.typingSessionId;
+    return () => {
+      if (!this.destroyed && this.typingSessionId === sessionId)
+        this.onTypingComplete();
+    };
   }
 
   private finishTypingNow(): boolean {

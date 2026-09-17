@@ -3007,6 +3007,100 @@ describe("PixiStoryRenderer", () => {
     expect(sticker.text).toBe("");
     expect(sticker.visible).toBe(false);
   });
+
+  it("recycles stickers without finishing their typing", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      renderer.app = {};
+      renderer.layoutSubtitle = vi.fn();
+      renderer.tween = vi.fn(() => Promise.resolve());
+      await renderer.setSticker({
+        alignment: "left",
+        append: false,
+        delayMs: 40,
+        fadeMs: 0,
+        id: "a",
+        sizePx: 24,
+        text: "hello",
+        widthPx: 1280,
+        x: 10,
+        y: 20,
+      });
+      await vi.advanceTimersByTimeAsync(80);
+      const sticker = renderer.stickerTexts.get("a");
+      expect(sticker.text).toBe("he");
+
+      // _RecycleStickers (stickerclear / skip reset) calls HideSticker(0)
+      // with no TryFinishType: the partial text is what fades out.
+      await renderer.clearStickers(150);
+      expect(sticker.text).toBe("he");
+      expect(renderer.stickerTypingTargets.has("a")).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(sticker.text).toBe("he");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports sticker typing end only when the typewriter finishes on its own", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      renderer.app = {};
+      renderer.layoutSubtitle = vi.fn();
+      renderer.tween = vi.fn(() => Promise.resolve());
+      const input = {
+        alignment: "left" as const,
+        append: false,
+        fadeMs: 0,
+        sizePx: 24,
+        widthPx: 1280,
+        x: 0,
+        y: 0,
+      };
+
+      const instant = vi.fn();
+      await renderer.setSticker({
+        ...input,
+        delayMs: 0,
+        id: "a",
+        onTypingComplete: instant,
+        text: "hi",
+      });
+      expect(instant).toHaveBeenCalledTimes(1);
+
+      const typed = vi.fn();
+      await renderer.setSticker({
+        ...input,
+        delayMs: 10,
+        id: "b",
+        onTypingComplete: typed,
+        text: "hi",
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(typed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(typed).toHaveBeenCalledTimes(1);
+
+      // Typing cut short by a hide (TryFinishType) does not report here; the
+      // runtime's hide branch raises its own auto click.
+      const hidden = vi.fn();
+      await renderer.setSticker({
+        ...input,
+        delayMs: 10,
+        id: "c",
+        onTypingComplete: hidden,
+        text: "hey",
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      await renderer.clearSticker("c", 0);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(hidden).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("PixiStoryRenderer blocker", () => {

@@ -295,6 +295,13 @@ class FakeRenderer implements StoryRenderer {
   async setSticker(input: StickerInput): Promise<void> {
     this.stickerCalls.push(input);
     this.typingActive = input.delayMs > 0;
+    if (input.delayMs <= 0) input.onTypingComplete?.();
+  }
+
+  /** Sticker counterpart of finishSubtitleTypingNaturally. */
+  finishStickerTypingNaturally(): void {
+    this.typingActive = false;
+    this.stickerCalls.at(-1)?.onTypingComplete?.();
   }
 
   stickerTween(input: StickerTweenInput): void {
@@ -3525,13 +3532,14 @@ describe("StoryRuntime", () => {
       {
         alignment: "left",
         // Fresh id takes the show branch even with multi=true; as a multiline
-        // show with no duration it keeps the fresh view's 0 fade (instant).
+        // show with no duration it keeps a new view's constructor fade, 0.15s.
         append: false,
         // `delay` scales the global typewriter interval (0 here) rather than
         // setting an absolute per-character time.
         delayMs: 0,
-        fadeMs: 0,
+        fadeMs: 150,
         id: "tip",
+        onTypingComplete: expect.any(Function),
         sizePx: 20,
         text: "LEFT",
         widthPx: 200,
@@ -3787,8 +3795,41 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.stickerCalls.map((call) => call.fadeMs)).toEqual([0, 500]);
+    // A new view starts at the constructor's m_duration 0.15; the reused view
+    // keeps the 0.5 its HideSticker wrote.
+    expect(renderer.stickerCalls.map((call) => call.fadeMs)).toEqual([
+      150, 500,
+    ]);
     expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 500, id: "m" }]);
+  });
+
+  it("inherits the fade from the shared FIFO recycle pool, not the id", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="st1",text="one",block=false)]',
+        '[sticker(id="st2",text="two",block=false)]',
+        '[sticker(id="st1",duration=0.5,block=false)]',
+        '[sticker(id="st2",duration=1,block=false)]',
+        // Pool is [st1's view (0.5), st2's view (1)]: each show takes the head.
+        '[sticker(id="st3",text="three",multi=true,block=false)]',
+        '[sticker(id="st1",text="four",multi=true,block=false)]',
+        // Pool is empty again, so this one instantiates a new view (0.15).
+        '[sticker(id="st2",text="five",multi=true,block=false)]',
+        "[stickerclear]",
+        // stickerclear recycles all three views with HideSticker(0) -> 0.15.
+        '[sticker(id="st4",text="six",multi=true,block=false)]',
+        '[name="B"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.stickerCalls.map((call) => call.fadeMs)).toEqual([
+      150, 150, 500, 1000, 150, 150,
+    ]);
   });
 
   it("auto-advances a blocking sticker by its message length", async () => {
@@ -3842,6 +3883,69 @@ describe("StoryRuntime", () => {
       expect(renderer.lastDialogue.speaker).toBe("");
       await vi.advanceTimersByTimeAsync(1);
       expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds the sticker auto click until its typewriter ends", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          // Omitted delay: 25x the 40ms interval, so typing takes 5s natively.
+          '[sticker(id="a",text="hello")]',
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      expect(renderer.stickerCalls[0]?.delayMs).toBe(1000);
+
+      // _OnStickerTypeEnd fires only when typing ends, so auto-play must not
+      // click through (and cut) the slow typewriter in the meantime.
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(renderer.typingActive).toBe(true);
+      expect(renderer.lastDialogue.speaker).toBe("");
+
+      renderer.finishStickerTypingNaturally();
+      await vi.advanceTimersByTimeAsync(1649);
+      expect(renderer.lastDialogue.speaker).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores a sticker typing end once a later message owns the wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[sticker(id="a",text="hello",block=false)]',
+          '[name="B"]after',
+          '[name="C"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+
+      // The dialogue finishes typing at 240ms and arms its own 1.65s click.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+      // A stale sticker callback must not re-arm (and so delay) that click.
+      renderer.finishStickerTypingNaturally();
+      await vi.advanceTimersByTimeAsync(900);
+      expect(renderer.lastDialogue.speaker).toBe("C");
     } finally {
       vi.useRealTimers();
     }
