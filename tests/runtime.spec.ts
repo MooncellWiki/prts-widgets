@@ -83,6 +83,7 @@ class FakeRenderer implements StoryRenderer {
   dialogueTexts: string[] = [];
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
+  stickerTypeDelayCalls: Array<{ delayMs: number; id: string }> = [];
   stickerTweenCalls: StickerTweenInput[] = [];
   spellStickerCalls: SpellStickerInput[] = [];
   spellStickerHideCalls: string[] = [];
@@ -296,6 +297,10 @@ class FakeRenderer implements StoryRenderer {
     this.stickerCalls.push(input);
     this.typingActive = input.delayMs > 0;
     if (input.delayMs <= 0) input.onTypingComplete?.();
+  }
+
+  setStickerTypeDelay(id: string, delayMs: number): void {
+    this.stickerTypeDelayCalls.push({ delayMs, id });
   }
 
   /** Sticker counterpart of finishSubtitleTypingNaturally. */
@@ -3949,6 +3954,62 @@ describe("StoryRuntime", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("resets the current sticker's typewriter when the global delay changes", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="hello")]',
+        '[sticker(id="a",multi=true,text="more")]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    await runtime.start();
+    // Omitted delay against the 40ms default: 25x slow = 1000ms per char.
+    expect(renderer.stickerCalls[0]?.delayMs).toBe(1000);
+
+    // Mode flips never emit TypeWriterDelayChanged — set_autoPlayMode just
+    // writes the field — so the auto toggle leaves the 25x factor alone
+    // (including the manual click's switch back to default below).
+    runtime.setAutoPlayMode("button_auto");
+    expect(renderer.stickerTypeDelayCalls).toEqual([]);
+
+    // Native _SetTypeWriterDelay (Event 5): the current sticker drops its own
+    // delay factor and takes the *unscaled* delay of the new speed level.
+    runtime.setAutoPlaySpeedLevel(1);
+    expect(renderer.stickerTypeDelayCalls).toEqual([{ delayMs: 10, id: "a" }]);
+
+    // AppendText never rewrites the typewriter, so a later append replays the
+    // reset delay, not the original 25x-slow one. The first click only
+    // TryFinishTypes the in-flight sticker; the second one runs the append.
+    await runtime.advance();
+    await runtime.advance();
+    expect(renderer.stickerCalls[1]?.delayMs).toBe(10);
+  });
+
+  it("drops the sticker delay reset once the current sticker is recycled", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="hi",block=false)]',
+        "[stickerclear]",
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    await runtime.start();
+    expect(renderer.lastDialogue.speaker).toBe("B");
+
+    // _RecycleStickers nulls m_currentSticker, so even a real speed change
+    // (40ms -> quick_play's 10ms) finds nothing to reset.
+    runtime.setAutoPlayMode("quick_play");
+    expect(renderer.stickerTypeDelayCalls).toEqual([]);
   });
 
   it("maps stickertween parameters and blocks only when block and isend both hold", async () => {

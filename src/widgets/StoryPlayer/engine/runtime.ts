@@ -444,6 +444,14 @@ export class StoryRuntime {
    * was recycled first, not from its own id's history.
    */
   private readonly stickerPoolFadeMs: number[] = [];
+  /**
+   * Native port: `StickerPanel.m_currentSticker` — `_ExecuteSticker` points it
+   * at the view of the last show/append (2.7.71 0x183f3b46b) and only
+   * `_RecycleStickers` nulls it; a hide leaves it on the (now hidden) view,
+   * which `_SetTypeWriterDelay` skips via its isHidden guard. The web slot map
+   * mirrors that guard: after a hide the id is gone from `stickerSlots`.
+   */
+  private currentStickerId: string | null = null;
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
 
   constructor(
@@ -677,6 +685,7 @@ export class StoryRuntime {
       );
 
     this.cancelAutoClick();
+    this.resetStickerTypeDelay();
     if (this.autoPlayMode !== "default" && this.currentTypingComplete)
       this.scheduleAutoClick(this.currentMessageLength);
   }
@@ -825,6 +834,7 @@ export class StoryRuntime {
       for (let i = 0; i < this.stickerSlots.size; i += 1)
         this.stickerPoolFadeMs.push(150);
       this.stickerSlots.clear();
+      this.currentStickerId = null;
       await this.renderer.clearStickers(150);
     }
 
@@ -2975,6 +2985,7 @@ export class StoryRuntime {
             toString(this.exactArg(args, "text")),
           );
           existing.charCount += parseRichChars(text).length;
+          this.currentStickerId = id;
           await this.renderer.setSticker({
             ...existing.layout,
             append: true,
@@ -3031,6 +3042,7 @@ export class StoryRuntime {
         };
         const charCount = parseRichChars(text).length;
         this.stickerSlots.set(id, { charCount, layout });
+        this.currentStickerId = id;
         await this.renderer.setSticker({
           ...layout,
           append: false,
@@ -3173,6 +3185,7 @@ export class StoryRuntime {
         for (let i = 0; i < this.stickerSlots.size; i += 1)
           this.stickerPoolFadeMs.push(150);
         this.stickerSlots.clear();
+        this.currentStickerId = null;
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
         return toBoolean(this.exactArg(args, "block"), false)
@@ -3443,6 +3456,30 @@ export class StoryRuntime {
    * Like the subtitle path, the sticker takes over the shared typing state;
    * the returned callback is ignored once a later message has replaced it.
    */
+  /**
+   * Native port: `StickerPanel._SetTypeWriterDelay` (2.7.71 VA 0x183f3c750),
+   * the handler `OnStoryBegin` subscribes to `TypeWriterDelayChanged`
+   * (Event 5). It ignores the event payload and rewrites the current
+   * sticker's typewriter with the *unscaled* `AVGController.typeWriterDelay`
+   * — the sticker's own `delay` factor is discarded — but only while that
+   * view exists and is not hidden. `AVGTypeWriterText.AppendText` never
+   * rewrites the delay, so the reset has to land in the stored layout the
+   * append branch replays as well, not just the in-flight typewriter; the
+   * renderer side is a no-op once typing ended on its own. Wired to
+   * setAutoPlaySpeedLevel only: the event's emitters are the speed-level
+   * setting UIs, while `AVGStoryCache.set_autoPlayMode` (0x183f10fb0) writes
+   * the field plus `_UpdateBlockStatus` and does not emit — so mode flips
+   * (auto toggle, the manual click's switch back to DEFAULT) must not reset.
+   */
+  private resetStickerTypeDelay(): void {
+    const id = this.currentStickerId;
+    const slot = id === null ? undefined : this.stickerSlots.get(id);
+    if (!id || !slot) return;
+    const delayMs = this.getCurrentSpeed().typeWriterDelayMs;
+    slot.layout.delayMs = delayMs;
+    this.renderer.setStickerTypeDelay?.(id, delayMs);
+  }
+
   private beginStickerTyping(charCount: number): () => void {
     this.cancelTyping();
     this.currentMessageLength = charCount;

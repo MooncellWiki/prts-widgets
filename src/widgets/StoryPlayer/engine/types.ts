@@ -700,6 +700,12 @@ export interface StoryRenderer {
   showItem: (input: ShowItemInput) => Promise<void>;
   showCgItem: (input: CgItemInput) => Promise<void>;
   setSticker: (input: StickerInput) => Promise<void> | void;
+  /**
+   * Native port: `StickerPanel._SetTypeWriterDelay` — the TypeWriterDelayChanged
+   * (Event 5) handler retargets the current sticker's in-flight typewriter.
+   * Optional because only renderers with live typing state implement it.
+   */
+  setStickerTypeDelay?: (id: string, delayMs: number) => void;
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
   setSpellSticker: (input: SpellStickerInput) => Promise<void> | void;
   hideSpellSticker: (id: string) => Promise<void> | void;

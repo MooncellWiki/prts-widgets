@@ -559,6 +559,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     {
       alignment: StickerInput["alignment"];
       baseX: number;
+      // Mutable so setStickerTypeDelay can retarget an in-flight typewriter
+      // (native Event 5 writes the view's live AVGTypeWriterText the same way).
+      delay: { delayMs: number };
       fullText: string;
       widthPx: number;
     }
@@ -2949,21 +2952,35 @@ export class PixiStoryRenderer implements StoryRenderer {
     const sessionId = this.stickerTypingSessionIds.get(input.id) ?? 0;
     sticker.text = richCharsToTaggedText(prevChars);
     this.layoutSubtitle(sticker, input.x, input.widthPx, input.alignment);
+    const delay = { delayMs: input.delayMs };
     this.stickerTypingTargets.set(input.id, {
       alignment: input.alignment,
       baseX: input.x,
+      delay,
       fullText,
       widthPx: input.widthPx,
     });
     void this.runStickerTyping(input.id, sessionId, sticker, {
       alignment: input.alignment,
       baseX: input.x,
-      delayMs: input.delayMs,
+      delay,
       prevChars,
       newChars,
       onTypingComplete: input.onTypingComplete,
       widthPx: input.widthPx,
     });
+  }
+
+  /**
+   * Native port: `StickerPanel._SetTypeWriterDelay` (2.7.71 VA 0x183f3c750),
+   * the `TypeWriterDelayChanged` (Event 5) handler `OnStoryBegin` subscribes.
+   * It rewrites the *current* sticker's typewriter delay, so the in-flight
+   * loop picks the new value up from its next character on. No-op once typing
+   * has ended on its own (the target is already gone).
+   */
+  setStickerTypeDelay(id: string, delayMs: number): void {
+    const target = this.stickerTypingTargets.get(id);
+    if (target) target.delay.delayMs = delayMs;
   }
 
   setSpellSticker(input: SpellStickerInput): void {
@@ -4686,7 +4703,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     input: {
       alignment: StickerInput["alignment"];
       baseX: number;
-      delayMs: number;
+      delay: { delayMs: number };
       prevChars: RichChar[];
       newChars: RichChar[];
       onTypingComplete?: () => void;
@@ -4700,7 +4717,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       )
         return;
 
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      // Re-read per character: setStickerTypeDelay may retarget the delay of
+      // an in-flight typewriter mid-word.
+      await new Promise((resolve) => setTimeout(resolve, input.delay.delayMs));
 
       if (
         !this.app ||
