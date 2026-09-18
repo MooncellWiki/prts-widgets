@@ -379,6 +379,11 @@ const unicorn = [
       "unicorn/no-declarations-before-early-exit": "off",
       "unicorn/max-nested-calls": "off",
       "unicorn/logical-assignment-operators": "off",
+      "unicorn/single-line-block-comment-style": "off",
+      "unicorn/prefer-ternary": "off",
+      "unicorn/prefer-combined-guards": "off",
+      "unicorn/prefer-early-return": "off",
+      "unicorn/no-immediate-mutation": "off",
     },
   },
 ];
