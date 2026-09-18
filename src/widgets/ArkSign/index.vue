@@ -846,11 +846,19 @@ img {
   max-width: initial;
   /*干掉移动前端 */
 }
-#imgWrapperD img,
-#imgWrapperM img {
+/*
+ * 结果图是 v-html 插进来的，拿不到 scoped 的 data-v 属性，所以这条规则必须
+ * 用 :deep 才选得中——之前写成 `#imgWrapperD img` 其实一直没生效。
+ *
+ * 必须生效的原因：snapdom 3 返回的 <img> 自带 `width:Npx; height:300px` 内联
+ * 样式，而 arknights 皮肤全局有 `img { max-width: 100% }`。宽度被皮肤夹到容器
+ * 宽、高度却被内联样式钉在 300px，图就横向压扁了。这里统一改成等比缩放贴合宽度。
+ */
+#imgWrapperD :deep(img),
+#imgWrapperM :deep(img) {
   width: auto !important;
-  height: 300px !important;
-  max-width: none !important;
+  height: auto !important;
+  max-width: 100% !important;
 }
 #imgWrapperD,
 #imgWrapperM {
@@ -1324,10 +1332,18 @@ img {
   justify-content: center;
 }
 
+/*
+ * snapdom 截图时会把每个节点的宽度按实测值钉死（这里就是「68」自身的
+ * 22.2188px，一点余量都不留）。arknights 皮肤又全局设了
+ * overflow-wrap: break-word，克隆里只要有半个像素的排版误差就会从数字中间
+ * 断开，出图变成上下两行的「6」「8」。等级号任何情况下都不该换行，这里显式钉住。
+ */
 .doctorLevelText {
   font-size: calc(var(--charSize) * 2);
   color: #f5f5f5;
   transform: translateY(-5%);
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .doctorLevel::after {
