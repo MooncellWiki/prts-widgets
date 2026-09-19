@@ -137,12 +137,7 @@ export default defineConfig(({ command }) => {
             // chunk，tippy 必须内联进去。
             if (TIPPY_MODULE_RE.test(id) || id.includes("@popperjs")) return;
 
-            if (
-              id.includes("crypto-js") ||
-              id.includes("workbox") ||
-              id.includes("hammer")
-            )
-              return;
+            if (id.includes("workbox") || id.includes("hammer")) return;
 
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
