@@ -15,6 +15,15 @@ interface ActivePlayback {
   identity: string;
   instance: IMediaInstance | null;
   sound: Sound;
+  /**
+   * Native provenance: `AudioChannel` tween fields (`m_tweenStartVolume` /
+   * `m_tweenTargetVolume` / `m_tweenStartTime` / `m_tweenEndTime`) form a
+   * single tween slot per channel — a new `AudioChannel.TweenVolume` call
+   * replaces the in-flight tween and restarts it from the current
+   * (mid-tween) volume. Web adaptation: token per playback; incrementing it
+   * invalidates older fade loops, which then resolve without further writes.
+   */
+  fadeToken: number;
 }
 
 export class HtmlStoryAudio implements StoryAudio {
@@ -29,13 +38,24 @@ export class HtmlStoryAudio implements StoryAudio {
    * `_ExecuteStopSoundCommand`; downstream `AudioManager` / `AudioChannel`.
    *
    * Ports persistent MUSIC and `avgsound_<channel>` base-volume state so a
-   * following volume/stop command observes an in-flight async web load. PIXI
-   * loading and browser playback are web adaptations of the native backend.
+   * following volume/stop command observes an in-flight async web load, and
+   * models a fading `stopsound` as a cancellable deferred recycle (native
+   * `AudioChannel.m_stopWhenTweenEnd`), so a same-window `soundvolume`
+   * revives the channel instead of only bookkeeping. PIXI loading and
+   * browser playback are web adaptations of the native backend.
    *
    */
   private musicBaseVolume = 1;
   private readonly soundBaseVolumes = new Map<string, number>();
   private readonly soundRequestIds = new Map<string, number>();
+  /**
+   * Native provenance: `AudioChannel.m_stopWhenTweenEnd`. A channel present
+   * in this map has a `stopsound` fade-out still pending; the value tokenizes
+   * the pending stop so a newer stop on the same channel supersedes an older
+   * one. `AudioChannel.TweenVolume` zeroes the flag, which is what lets a
+   * `soundvolume` command cancel a stop that is still fading out.
+   */
+  private readonly soundPendingStops = new Map<string, object>();
   private readonly soundCache = new Map<string, Sound>();
   private readonly soundChannels = new Map<string, ActivePlayback>();
 
@@ -53,6 +73,7 @@ export class HtmlStoryAudio implements StoryAudio {
     this.soundChannels.clear();
     this.soundBaseVolumes.clear();
     this.soundRequestIds.clear();
+    this.soundPendingStops.clear();
   }
 
   async playMusic(input: PlayMusicInput): Promise<void> {
@@ -187,8 +208,27 @@ export class HtmlStoryAudio implements StoryAudio {
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
 
+    // Native provenance: `AudioChannel.Stop` with |fadetime| > 0.01 keeps the
+    // channel alive in `AudioManager.m_channels` while the fade-out tween runs
+    // (`m_stopWhenTweenEnd = 1`); only when the tween finishes uncanceled does
+    // `AudioManager.Update` stop the channel and drop it from `m_channels`.
+    // Web adaptation: keep the map entry through the fade so a same-window
+    // `soundvolume` can still resolve this channel and cancel the stop; the
+    // token check makes an older stop fade bow out to a newer stop or a
+    // reviving `soundvolume`, and the identity check leaves a replacement
+    // playback (later `playsound` on the same channel) untouched.
+    const stopToken = {};
+    this.soundPendingStops.set(channelName, stopToken);
+    await this.fadeVolume(sound, 0, fadeMs);
+    if (
+      this.soundPendingStops.get(channelName) !== stopToken ||
+      this.soundChannels.get(channelName) !== sound
+    )
+      return;
+
+    this.soundPendingStops.delete(channelName);
+    this.stopPlayback(sound);
     this.soundChannels.delete(channelName);
-    await this.fadeAndStop(sound, fadeMs);
   }
 
   async setSoundVolume(
@@ -202,6 +242,15 @@ export class HtmlStoryAudio implements StoryAudio {
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
 
+    // Native provenance: `CommonExecutors._ExecuteSoundVolumeCommand` resolves
+    // the channel via `AudioManager.GetChannel` even mid-fade-out (the channel
+    // is still registered), and `AudioChannel.TweenVolume` zeroes
+    // `m_stopWhenTweenEnd` — a soundvolume landing inside a stopsound fade
+    // cancels that stop: the sound revives and tweens to the new volume from
+    // its current (mid-fade) volume. Web adaptation: clearing the pending-stop
+    // marker plus fadeVolume's token replacement stands in for the single
+    // tween slot of the native AudioChannel.
+    this.soundPendingStops.delete(channelName);
     await this.fadeVolume(sound, volume, fadeMs);
   }
 
@@ -226,6 +275,7 @@ export class HtmlStoryAudio implements StoryAudio {
       identity,
       instance: null,
       sound,
+      fadeToken: 0,
     };
   }
 
@@ -234,6 +284,10 @@ export class HtmlStoryAudio implements StoryAudio {
     targetVolume: number,
     durationMs: number,
   ): Promise<void> {
+    // Native provenance: `AudioChannel.TweenVolume` overwrites the tween
+    // fields in place, so the newest call owns the channel's single tween
+    // slot; the in-flight tween stops progressing (see `ActivePlayback.fadeToken`).
+    const token = ++playback.fadeToken;
     const startVolume = this.getVolume(playback);
     if (durationMs <= 0) {
       this.setVolume(playback, targetVolume);
@@ -244,7 +298,7 @@ export class HtmlStoryAudio implements StoryAudio {
 
     await new Promise<void>((resolve) => {
       const tick = () => {
-        if (this.destroyed) {
+        if (this.destroyed || playback.fadeToken !== token) {
           resolve();
           return;
         }
