@@ -184,9 +184,6 @@ importers:
       '@zumer/snapdom':
         specifier: ^3.0.0
         version: 3.0.0
-      crypto-js:
-        specifier: ^4.2.0
-        version: 4.2.0
       hammerjs:
         specifier: ^2.0.8
         version: 2.0.8
@@ -236,9 +233,6 @@ importers:
       '@types/ali-oss':
         specifier: ^6.23.3
         version: 6.23.3
-      '@types/crypto-js':
-        specifier: ^4.2.2
-        version: 4.2.2
       '@types/hammerjs':
         specifier: ^2.0.46
         version: 2.0.46
@@ -1514,9 +1508,6 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
-  '@types/crypto-js@4.2.2':
-    resolution: {integrity: sha512-sDOLlVbHhXpAUAL0YHDUUwDZf3iN4Bwi4W6a0W0b+QcAezUbRtH4FVb+9J4h+XFPW7l/gQ9F8qC7P+Ec4k8QVQ==}
-
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
@@ -2155,10 +2146,6 @@ packages:
 
   crypt@0.0.2:
     resolution: {integrity: sha512-mCxBlsHFYh9C+HVpiEacem8FEBnMXgU9gy4zmNC+SXAZNB/1idgp/aulFJ4FgCi7GPEVbfyng092GqL2k2rmow==}
-
-  crypto-js@4.2.0:
-    resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
-    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   css-render@0.15.14:
     resolution: {integrity: sha512-9nF4PdUle+5ta4W5SyZdLCCmFd37uVimSjg1evcTqKJCyvCEEj12WKzOSBNak6r4im4J4iYXKH1OWpUV5LBYFg==}
@@ -4914,8 +4901,6 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
-  '@types/crypto-js@4.2.2': {}
-
   '@types/deep-eql@4.0.2': {}
 
   '@types/earcut@3.0.0': {}
@@ -5644,8 +5629,6 @@ snapshots:
       srvx: 1.0.5
 
   crypt@0.0.2: {}
-
-  crypto-js@4.2.0: {}
 
   css-render@0.15.14:
     dependencies:

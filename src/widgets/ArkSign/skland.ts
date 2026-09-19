@@ -1,5 +1,4 @@
-import hmacSHA256 from "crypto-js/hmac-sha256";
-import md5 from "crypto-js/md5";
+import md5 from "md5";
 
 import type { PlayerBindingResp, PlayerInfoResp } from "./types";
 
@@ -7,7 +6,26 @@ const host = "https://zonai.skland.com";
 // const playerInfoAPI = '/api/v1/game/player/info'
 // const playerBindingAPI = '/api/v1/game/player/binding'
 
-function getSign(path: string, requestParam = "", secret: string) {
+async function hmacSHA256Hex(message: string, secret: string) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(message),
+  );
+  return Array.from(new Uint8Array(signature), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function getSign(path: string, requestParam = "", secret: string) {
   const timestamp = Math.floor(Date.now() / 1000 - 1).toString();
 
   const headers = {
@@ -17,7 +35,7 @@ function getSign(path: string, requestParam = "", secret: string) {
     vName: "1.2.0",
   };
   const message = path + requestParam + timestamp + JSON.stringify(headers);
-  const sign = md5(hmacSHA256(message, secret).toString()).toString();
+  const sign = md5(await hmacSHA256Hex(message, secret));
   return { timestamp, sign };
 }
 export async function getPlayerBinding(
@@ -32,7 +50,7 @@ export async function getPlayerBinding(
   secret = secret.replaceAll(/\s+/g, "");
   secret = secret.replaceAll(/["']/g, "");
 
-  const { timestamp, sign } = getSign(path, requestParam, secret);
+  const { timestamp, sign } = await getSign(path, requestParam, secret);
 
   const url = `${host}${path}`;
   const headers = {
@@ -87,7 +105,7 @@ export async function getPlayerInfo(
   uid: string,
 ) {
   const path = "/api/v1/game/player/info";
-  const { timestamp, sign } = getSign(path, requestParam, secret);
+  const { timestamp, sign } = await getSign(path, requestParam, secret);
   const url = `${host}${path}?${requestParam}`;
   // console.log(url)
   const headers = {
