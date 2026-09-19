@@ -18,6 +18,44 @@ type Tween = (
 ) => Promise<void>;
 
 /**
+ * Canonical style/slot views mirroring AVGDisplayableUtil.GenTypeFromRaw /
+ * GenSlotFromRaw (0x183e39cd0 / 0x183e39ba0, 2.7.61): integers parse first
+ * (no enum range check), then case-sensitive ordinal aliases; everything else
+ * collapses to NONE. AVGDisplayableManager._DisplayInternal (0x183e38f70)
+ * compares these parsed enums when deciding whether an id's holder must be
+ * disposed and rebuilt, so "3" vs "effect" (same enum member) or two unknown
+ * strings (both NONE) must NOT trigger a rebuild -- comparing raw strings
+ * would discard the live entry's position/alpha mid-animation.
+ */
+const STYLE_ENUM: Record<string, string> = {
+  "1": "animetext",
+  "2": "spine",
+  "3": "effect",
+  "4": "bgeffect",
+  "5": "bg",
+  "6": "animekv",
+  "7": "character",
+  animetext: "animetext",
+  animekv: "animekv",
+  bgeffect: "bgeffect",
+  bg: "bg",
+  character: "character",
+  effect: "effect",
+  spine: "spine",
+};
+const SLOT_ENUM: Record<string, string> = {
+  "1": "bgover",
+  "2": "charover",
+  "3": "cgover",
+  bgover: "bgover",
+  cgover: "cgover",
+  charover: "charover",
+};
+const canonicalStyle = (style: string): string => STYLE_ENUM[style] ?? "none";
+const canonicalSlot = (slot: AvgDisplaySlot): string =>
+  SLOT_ENUM[slot] ?? "none";
+
+/**
  * Port scope: `Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable`.
  * It retains id replacement, slot/style routing, and command timing; PIXI
  * containers and the currently supported `bg` asset are Web adaptations.
@@ -57,7 +95,14 @@ export class AvgDisplayPanel {
     }
 
     let state = this.states.get(input.id);
-    if (state && (state.slot !== input.slot || state.style !== input.style)) {
+    // Slot/style change check compares the parsed-enum equivalents (see
+    // STYLE_ENUM above), matching _DisplayInternal's enum comparison instead
+    // of raw strings.
+    if (
+      state &&
+      (canonicalSlot(state.slot) !== canonicalSlot(input.slot) ||
+        canonicalStyle(state.style) !== canonicalStyle(input.style))
+    ) {
       this.remove(input.id);
       state = undefined;
     }
@@ -75,6 +120,15 @@ export class AvgDisplayPanel {
     }
 
     if (state.name !== input.name) {
+      // Divergence (intentional, verified 2.7.61): native
+      // _LoadContentIfNeed (0x183e389c0) compares the holder's GameObject
+      // name -- NOT the command `name` -- so content is generated once per
+      // holder instance and re-displaying a live id with a different `name`
+      // only replays features (the 2.7.51 doc's "name change rebuilds
+      // content" claim does not hold in 2.7.61). We keep rebuilding because
+      // it matches the command's intent; no production story re-names a live
+      // id without an intervening destroy (`[avgdisplay(id="1")]`), so this
+      // divergence is corpus-unreachable.
       for (const child of state.root.removeChildren()) child.destroy();
       state.name = input.name;
       await this.generateContent(state, input);
@@ -102,6 +156,14 @@ export class AvgDisplayPanel {
       input.style === "character";
     const supportsScale = input.style === "animekv";
     const supportsFade = input.style === "bg";
+    // Native port: AVGDisplayableHolder._ApplyFadeFeature (0x183e372e0,
+    // 2.7.61) skips the ENTIRE fade block when CalculateFadetime(duration)
+    // <= 0 -- alpha is left completely untouched, unlike position/scale which
+    // snap straight to the end point on the same branch. Under the
+    // fast-forward gear (animateRatio = 0) every bg fade lands there, so a
+    // dimming overlay must keep its current alpha instead of snapping to
+    // `ato` (default 0, which made duration-less bg displays vanish).
+    const fadeActive = supportsFade && input.durationMs > 0;
     const hasEntry =
       input.style === "animekv" &&
       (input.entryFrom !== undefined || input.entryTo !== undefined);
@@ -114,14 +176,14 @@ export class AvgDisplayPanel {
       input.style === "character"
     )
       root.rotation = (input.rotationZ * Math.PI) / 180;
-    if (supportsFade) root.alpha = input.alphaFrom ?? 1;
+    if (fadeActive) root.alpha = input.alphaFrom ?? 1;
 
     const hasPositionTween =
       supportsPosition && (startX !== endX || startY !== endY);
     const hasScaleTween =
       supportsScale && (startScaleX !== endScaleX || startScaleY !== endScaleY);
     const alphaTo = input.alphaTo ?? 0;
-    const hasFadeTween = supportsFade && root.alpha !== alphaTo;
+    const hasFadeTween = fadeActive && root.alpha !== alphaTo;
     const hasTween =
       input.durationMs > 0 &&
       (hasPositionTween || hasScaleTween || hasFadeTween || hasEntry);
@@ -138,7 +200,7 @@ export class AvgDisplayPanel {
           startScaleX + (endScaleX - startScaleX) * progress,
           startScaleY + (endScaleY - startScaleY) * progress,
         );
-      if (supportsFade)
+      if (fadeActive)
         root.alpha =
           (input.alphaFrom ?? 1) +
           (alphaTo - (input.alphaFrom ?? 1)) * progress;
