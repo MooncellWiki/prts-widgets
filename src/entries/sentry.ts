@@ -1,5 +1,19 @@
 import * as Sentry from "@sentry/browser";
 
+const PRTS_DSN =
+  "https://73af36ee35564fe4946285b451a8405a@ingest.sentry.mooncell.wiki/4507366072188928";
+const FGO_DSN =
+  "https://01082a530240c908ac0d34ffe79729a2@ingest.sentry.mooncell.wiki/4507366079070208";
+
+// 显式白名单，不用 host.includes 猜。未知 host（例如 mooncell.wiki 沙箱站）
+// 拿不到 DSN，Sentry 会以禁用状态启动，不会把数据悄悄记到别的项目名下。
+const DSN_BY_HOST: Record<string, string> = {
+  "prts.wiki": PRTS_DSN,
+  "m.prts.wiki": PRTS_DSN,
+  "fgo.wiki": FGO_DSN,
+  "m.fgo.wiki": FGO_DSN,
+};
+
 const feedback = Sentry.feedbackIntegration({
   autoInject: false,
   colorScheme: "system",
@@ -31,9 +45,7 @@ const feedback = Sentry.feedbackIntegration({
 });
 
 Sentry.init({
-  dsn: location.host.includes("prts")
-    ? "https://73af36ee35564fe4946285b451a8405a@ingest.sentry.mooncell.wiki/4507366072188928"
-    : "https://01082a530240c908ac0d34ffe79729a2@ingest.sentry.mooncell.wiki/4507366079070208",
+  dsn: DSN_BY_HOST[location.host],
   integrations: [
     Sentry.breadcrumbsIntegration({
       console: false,
@@ -41,11 +53,11 @@ Sentry.init({
     Sentry.contextLinesIntegration(),
     Sentry.browserTracingIntegration(),
     Sentry.httpClientIntegration(),
-    Sentry.contextLinesIntegration(),
     feedback,
   ],
 
-  sampleRate: 0.01,
+  // errors 配额 500 万/月，此前 1% 采样只用掉约 10%。提到 5% 后约 12%，仍有余量。
+  sampleRate: 0.05,
 
   ignoreErrors: [
     // ads and statistics
@@ -91,8 +103,9 @@ Sentry.init({
     /webappstoolbarba\.texthelp\.com\//i,
     /metrics\.itunes\.apple\.com\.edgesuite\.net\//i,
   ],
-  // pref
-  tracesSampleRate: 0.0001,
+  // 两站合计约 3660 万 pageload/月。0.02 ≈ 73 万条/月，占 1000 万 transactions
+  // 配额的 7%，算 p75 Web Vitals 样本量绰绰有余；再往上主要是压自家 ingest 带宽。
+  tracesSampleRate: 0.02,
   // Set `tracePropagationTargets` to control for which URLs distributed tracing should be enabled
   tracePropagationTargets: [/^https:\/\/(m\.)?((prts)|(fgo))\.wiki\/.*\.php/],
 });
