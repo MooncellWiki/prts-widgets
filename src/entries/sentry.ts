@@ -51,7 +51,10 @@ Sentry.init({
       console: false,
     }),
     Sentry.contextLinesIntegration(),
-    Sentry.browserTracingIntegration(),
+    // MediaWiki 是 MPA，真实跳转都是整页加载（记为 pageload）。history change 来自
+    // 核心/皮肤/其他 gadget 的 pushState（搜索浮层之类），量测的是 UI 状态变化而非
+    // 页面加载，会以「极快的导航」混进 p75 把数据拉偏，占计费量还有 26~29%。
+    Sentry.browserTracingIntegration({ instrumentNavigation: false }),
     Sentry.httpClientIntegration(),
     feedback,
   ],
@@ -103,8 +106,10 @@ Sentry.init({
     /webappstoolbarba\.texthelp\.com\//i,
     /metrics\.itunes\.apple\.com\.edgesuite\.net\//i,
   ],
-  // 两站合计约 3660 万 pageload/月。0.02 ≈ 73 万条/月，占 1000 万 transactions
-  // 配额的 7%，算 p75 Web Vitals 样本量绰绰有余；再往上主要是压自家 ingest 带宽。
+  // 两站合计约 2450 万 PV/月（对齐百度统计）。0.02 在峰值月约 95 万条、平峰月约
+  // 52 万条，占 1000 万 transactions 配额的 5~10%（含后端 11~18%）。样本量算
+  // p75 Web Vitals 绰绰有余；再往上主要是压自家 ingest 带宽——一条 pageload
+  // transaction 实测平均带约 70 个 span。
   tracesSampleRate: 0.02,
   // Set `tracePropagationTargets` to control for which URLs distributed tracing should be enabled
   tracePropagationTargets: [/^https:\/\/(m\.)?((prts)|(fgo))\.wiki\/.*\.php/],
