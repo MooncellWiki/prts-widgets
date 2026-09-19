@@ -559,6 +559,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     {
       alignment: StickerInput["alignment"];
       baseX: number;
+      // Mutable so setStickerTypeDelay can retarget an in-flight typewriter
+      // (native Event 5 writes the view's live AVGTypeWriterText the same way).
+      delay: { delayMs: number };
       fullText: string;
       widthPx: number;
     }
@@ -2318,16 +2321,47 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
+  /**
+   * Native port: the `_ExecuteSticker` hide branch, which runs
+   * `AVGStickerTextView.TryFinishType` before `HideSticker` — in-flight typing
+   * completes instantly, so the full text is what fades out, not the
+   * partially typed prefix.
+   */
   async clearSticker(id?: string, fadeMs = 0): Promise<void> {
     if (!id) {
       await this.clearStickers(fadeMs);
       return;
     }
 
+    this.hideSticker(id, fadeMs, true);
+  }
+
+  /**
+   * Native port: `StickerPanel._RecycleStickers` (stickerclear and the skip
+   * reset) calls `HideSticker(0)` on every view without `TryFinishType`, so
+   * typing is not completed before the fade.
+   */
+  async clearStickers(fadeMs = 0): Promise<void> {
+    this.stickerRichChars.clear();
+    for (const id of this.stickerTexts.keys())
+      this.hideSticker(id, fadeMs, false);
+  }
+
+  private hideSticker(id: string, fadeMs: number, finishTyping: boolean): void {
     const sticker = this.stickerTexts.get(id);
     if (!sticker) return;
 
     this.bumpStickerSessions(id);
+    const typingTarget = this.stickerTypingTargets.get(id);
+    if (finishTyping && typingTarget) {
+      sticker.text = typingTarget.fullText;
+      this.layoutSubtitle(
+        sticker,
+        typingTarget.baseX,
+        typingTarget.widthPx,
+        typingTarget.alignment,
+      );
+    }
     this.stickerTypingTargets.delete(id);
     this.stickerRichChars.delete(id);
     if (!sticker.visible || !sticker.text) {
@@ -2359,12 +2393,6 @@ export class PixiStoryRenderer implements StoryRenderer {
         sticker.alpha = 1;
       },
     );
-  }
-
-  async clearStickers(fadeMs = 0): Promise<void> {
-    this.stickerRichChars.clear();
-    for (const id of this.stickerTexts.keys())
-      await this.clearSticker(id, fadeMs);
   }
 
   clearSpellStickers(): void {
@@ -2874,6 +2902,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   /**
    * Port scope: `Torappu.AVG.StickerPanel._ExecuteSticker` and its append,
    * fade, and typewriter state. PIXI Text replaces the native sticker prefab.
+   * Append must leave the view untouched except for the appended text, so the
+   * caller replays the previous show's layout fields (the runtime stores them
+   * because the native executor's append path reads no layout parameters).
    */
   async setSticker(input: StickerInput): Promise<void> {
     const sticker = this.ensureStickerText(input.id);
@@ -2914,26 +2945,42 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (input.delayMs <= 0) {
       sticker.text = fullText;
       this.layoutSubtitle(sticker, input.x, input.widthPx, input.alignment);
+      input.onTypingComplete?.();
       return;
     }
 
     const sessionId = this.stickerTypingSessionIds.get(input.id) ?? 0;
     sticker.text = richCharsToTaggedText(prevChars);
     this.layoutSubtitle(sticker, input.x, input.widthPx, input.alignment);
+    const delay = { delayMs: input.delayMs };
     this.stickerTypingTargets.set(input.id, {
       alignment: input.alignment,
       baseX: input.x,
+      delay,
       fullText,
       widthPx: input.widthPx,
     });
     void this.runStickerTyping(input.id, sessionId, sticker, {
       alignment: input.alignment,
       baseX: input.x,
-      delayMs: input.delayMs,
+      delay,
       prevChars,
       newChars,
+      onTypingComplete: input.onTypingComplete,
       widthPx: input.widthPx,
     });
+  }
+
+  /**
+   * Native port: `StickerPanel._SetTypeWriterDelay` (2.7.71 VA 0x183f3c750),
+   * the `TypeWriterDelayChanged` (Event 5) handler `OnStoryBegin` subscribes.
+   * It rewrites the *current* sticker's typewriter delay, so the in-flight
+   * loop picks the new value up from its next character on. No-op once typing
+   * has ended on its own (the target is already gone).
+   */
+  setStickerTypeDelay(id: string, delayMs: number): void {
+    const target = this.stickerTypingTargets.get(id);
+    if (target) target.delay.delayMs = delayMs;
   }
 
   setSpellSticker(input: SpellStickerInput): void {
@@ -4656,9 +4703,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     input: {
       alignment: StickerInput["alignment"];
       baseX: number;
-      delayMs: number;
+      delay: { delayMs: number };
       prevChars: RichChar[];
       newChars: RichChar[];
+      onTypingComplete?: () => void;
       widthPx: number;
     },
   ): Promise<void> {
@@ -4669,7 +4717,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       )
         return;
 
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      // Re-read per character: setStickerTypeDelay may retarget the delay of
+      // an in-flight typewriter mid-word.
+      await new Promise((resolve) => setTimeout(resolve, input.delay.delayMs));
 
       if (
         !this.app ||
@@ -4684,8 +4734,12 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.layoutSubtitle(sticker, input.baseX, input.widthPx, input.alignment);
     }
 
-    if ((this.stickerTypingSessionIds.get(id) ?? 0) === sessionId)
+    if ((this.stickerTypingSessionIds.get(id) ?? 0) === sessionId) {
       this.stickerTypingTargets.delete(id);
+      // Native `AVGStickerTextView._OnTypeWriterEnd` -> m_OnTypeEnd: only
+      // typing that ends on its own raises the auto click here.
+      input.onTypingComplete?.();
+    }
   }
 
   /**

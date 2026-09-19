@@ -2960,6 +2960,193 @@ describe("PixiStoryRenderer", () => {
       vi.useRealTimers();
     }
   });
+
+  it("completes in-flight sticker typing before the hide fade", async () => {
+    const renderer = new PixiStoryRenderer(createContext()) as any;
+    // happy-dom cannot measure canvas fonts, and the fade runs through the
+    // frame-driven tween; stub both so the test observes the text state.
+    renderer.layoutSubtitle = vi.fn();
+    let finishFade: (() => void) | null = null;
+    renderer.tween = vi.fn(
+      (
+        _durationMs: number,
+        _step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        finishFade = done ?? null;
+        return Promise.resolve();
+      },
+    );
+    await renderer.setSticker({
+      alignment: "left",
+      append: false,
+      delayMs: 40,
+      fadeMs: 0,
+      id: "a",
+      sizePx: 24,
+      text: "hello",
+      widthPx: 1280,
+      x: 10,
+      y: 20,
+    });
+
+    // Without a mounted app the typing loop parks right after registering its
+    // target, so nothing has been typed yet.
+    const sticker = renderer.stickerTexts.get("a");
+    expect(sticker.text).toBe("");
+    expect(renderer.stickerTypingTargets.has("a")).toBe(true);
+
+    // Hide mid-typing: native runs TryFinishType before HideSticker, so the
+    // full text appears instantly and is what fades out.
+    const hiding = renderer.clearSticker("a", 150);
+    expect(sticker.text).toBe("hello");
+    expect(renderer.stickerTypingTargets.has("a")).toBe(false);
+
+    (finishFade as unknown as () => void)();
+    await hiding;
+    expect(sticker.text).toBe("");
+    expect(sticker.visible).toBe(false);
+  });
+
+  it("recycles stickers without finishing their typing", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      renderer.app = {};
+      renderer.layoutSubtitle = vi.fn();
+      renderer.tween = vi.fn(() => Promise.resolve());
+      await renderer.setSticker({
+        alignment: "left",
+        append: false,
+        delayMs: 40,
+        fadeMs: 0,
+        id: "a",
+        sizePx: 24,
+        text: "hello",
+        widthPx: 1280,
+        x: 10,
+        y: 20,
+      });
+      await vi.advanceTimersByTimeAsync(80);
+      const sticker = renderer.stickerTexts.get("a");
+      expect(sticker.text).toBe("he");
+
+      // _RecycleStickers (stickerclear / skip reset) calls HideSticker(0)
+      // with no TryFinishType: the partial text is what fades out.
+      await renderer.clearStickers(150);
+      expect(sticker.text).toBe("he");
+      expect(renderer.stickerTypingTargets.has("a")).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(sticker.text).toBe("he");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retargets an in-flight sticker typewriter on setStickerTypeDelay", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      renderer.app = {};
+      renderer.layoutSubtitle = vi.fn();
+      renderer.tween = vi.fn(() => Promise.resolve());
+      const done = vi.fn();
+      await renderer.setSticker({
+        alignment: "left" as const,
+        append: false,
+        delayMs: 30,
+        fadeMs: 0,
+        id: "a",
+        onTypingComplete: done,
+        sizePx: 24,
+        text: "hi!",
+        widthPx: 1280,
+        x: 0,
+        y: 0,
+      });
+
+      // First char steps at the show-time 30ms; its sleep is already armed,
+      // so the retarget below cannot shorten it (native rewrites the
+      // typewriter's delay, not a pending frame).
+      await vi.advanceTimersByTimeAsync(30);
+      expect(done).not.toHaveBeenCalled();
+      renderer.setStickerTypeDelay("a", 5);
+      await vi.advanceTimersByTimeAsync(5);
+      expect(done).not.toHaveBeenCalled();
+      // t=60: second char at the old 30ms; the third sleep is then created
+      // with the retargeted 5ms.
+      await vi.advanceTimersByTimeAsync(25);
+      expect(done).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5);
+      expect(done).toHaveBeenCalledTimes(1);
+
+      // Typing ended on its own: the target is gone, so a later reset (or an
+      // unknown id) is a no-op, never a throw.
+      expect(() => renderer.setStickerTypeDelay("a", 40)).not.toThrow();
+      expect(() => renderer.setStickerTypeDelay("zz", 40)).not.toThrow();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports sticker typing end only when the typewriter finishes on its own", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new PixiStoryRenderer(createContext()) as any;
+      renderer.app = {};
+      renderer.layoutSubtitle = vi.fn();
+      renderer.tween = vi.fn(() => Promise.resolve());
+      const input = {
+        alignment: "left" as const,
+        append: false,
+        fadeMs: 0,
+        sizePx: 24,
+        widthPx: 1280,
+        x: 0,
+        y: 0,
+      };
+
+      const instant = vi.fn();
+      await renderer.setSticker({
+        ...input,
+        delayMs: 0,
+        id: "a",
+        onTypingComplete: instant,
+        text: "hi",
+      });
+      expect(instant).toHaveBeenCalledTimes(1);
+
+      const typed = vi.fn();
+      await renderer.setSticker({
+        ...input,
+        delayMs: 10,
+        id: "b",
+        onTypingComplete: typed,
+        text: "hi",
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(typed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(typed).toHaveBeenCalledTimes(1);
+
+      // Typing cut short by a hide (TryFinishType) does not report here; the
+      // runtime's hide branch raises its own auto click.
+      const hidden = vi.fn();
+      await renderer.setSticker({
+        ...input,
+        delayMs: 10,
+        id: "c",
+        onTypingComplete: hidden,
+        text: "hey",
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      await renderer.clearSticker("c", 0);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(hidden).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("PixiStoryRenderer blocker", () => {
