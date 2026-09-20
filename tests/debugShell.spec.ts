@@ -35,8 +35,6 @@ vi.mock("../src/widgets/StoryPlayer/index.vue", () => ({
         getContext: () => null,
         getPlayer: () => (stub.ready ? stub.player : null),
       });
-      // 静态桩渲染不引用 setup 作用域，正是 unicorn 想提走的形态
-      // eslint-disable-next-line unicorn/consistent-function-scoping
       return () => h("div", { class: "story-player-stub" });
     },
   }),
