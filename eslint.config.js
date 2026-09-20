@@ -4,7 +4,6 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import gitignore from "eslint-config-flat-gitignore";
 import pluginImport from "eslint-plugin-import-x";
 import configPrettierRecommended from "eslint-plugin-prettier/recommended";
-import pluginUnicorn from "eslint-plugin-unicorn";
 import pluginVue from "eslint-plugin-vue";
 import globals from "globals";
 import tseslint from "typescript-eslint";
@@ -278,7 +277,6 @@ const vueTs = typescript
 
 const recommendedRules = pluginVue.configs["flat/recommended"]
   .map((c) => c.rules)
-  // eslint-disable-next-line unicorn/no-array-reduce
   .reduce((acc, c) => ({ ...acc, ...c }), {});
 
 const vue = [
@@ -347,33 +345,8 @@ const prettier = [
   },
 ];
 
-const unicorn = [
-  pluginUnicorn.configs.unopinionated,
-  {
-    rules: {
-      "unicorn/prefer-top-level-await": "off",
-      "unicorn/no-array-reduce": "warn",
-      "unicorn/number-literal-case": "off",
-      "unicorn/no-for-each": "warn",
-      "unicorn/prefer-global-this": "off",
-      "unicorn/no-array-reverse": "off",
-      "unicorn/no-array-sort": "off",
-      "unicorn/prefer-string-replace-all": "off",
-      "unicorn/prefer-split-limit": "off",
-      "unicorn/better-dom-traversing": "off",
-      "unicorn/prefer-await": "off",
-      "unicorn/no-global-object-property-assignment": "off",
-      "unicorn/consistent-compound-words": "off",
-      "unicorn/no-declarations-before-early-exit": "off",
-      "unicorn/prefer-ternary": "off",
-      "unicorn/prefer-early-return": "off",
-    },
-  },
-];
-
 // StoryPlayer 是这套 AVG 引擎的移植层：大量 `void promise` 的 fire-and-forget
-// 命令、按 native 结构而非 lint 偏好组织的类成员和分支。这些放宽只对它和测试
-// 生效，仓库其余部分保持原有强度。
+// 命令。这些放宽只对它和测试生效，仓库其余部分保持原有强度。
 const storyPlayer = [
   {
     files: [
@@ -384,14 +357,6 @@ const storyPlayer = [
     rules: {
       "no-void": ["error", { allowAsStatement: true }],
       "require-await": "off",
-      "unicorn/no-array-fill-with-reference-type": "off",
-      "unicorn/numeric-separators-style": "off",
-      "unicorn/prefer-dom-node-replace-children": "off",
-      "unicorn/prefer-global-number-constants": "off",
-      "unicorn/prefer-minimal-ternary": "off",
-      "unicorn/prefer-number-coercion": "off",
-      "unicorn/prefer-promise-with-resolvers": "off",
-      "unicorn/prefer-unicode-code-point-escapes": "off",
     },
   },
 ];
@@ -410,7 +375,6 @@ export default [
   ...vue,
   imports,
   ...prettier,
-  ...unicorn,
   unocss,
   ...storyPlayer,
 ];
