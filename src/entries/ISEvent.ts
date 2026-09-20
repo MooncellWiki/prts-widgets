@@ -66,7 +66,6 @@ for (const eventEle of Array.from(eventEles)) {
   if (scenes[0].efloor) {
     sceneFloorList.push(...scenes[0].efloor);
     sceneFloorList = Array.from(new Set(sceneFloorList));
-    // eslint-disable-next-line unicorn/require-array-sort-compare
     sceneFloorList.sort();
   }
   sceneCategoryData.at(-1)?.push(scenes[0].ename || scenes[0].name || "？？？");

@@ -74,7 +74,7 @@ Log All 高亮与调试页行跟随都订阅它。
 ```bash
 pnpm test            # 单测（vitest + happy-dom），spec 在仓库根 tests/
 pnpm test:story-log  # 全语料 Log All 回归（约 1-2 分钟；语料缺失整组跳过，不进 CI）
-pnpm lint            # ESLint（prettier + unicorn + import-x，import 按序）
+pnpm lint            # ESLint（prettier + import-x，import 按序）
 pnpm build           # 含 vue-tsc 类型检查
 ```
 
