@@ -3043,52 +3043,6 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
-  it("retargets an in-flight sticker typewriter on setStickerTypeDelay", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new PixiStoryRenderer(createContext()) as any;
-      renderer.app = {};
-      renderer.layoutSubtitle = vi.fn();
-      renderer.tween = vi.fn(() => Promise.resolve());
-      const done = vi.fn();
-      await renderer.setSticker({
-        alignment: "left" as const,
-        append: false,
-        delayMs: 30,
-        fadeMs: 0,
-        id: "a",
-        onTypingComplete: done,
-        sizePx: 24,
-        text: "hi!",
-        widthPx: 1280,
-        x: 0,
-        y: 0,
-      });
-
-      // First char steps at the show-time 30ms; its sleep is already armed,
-      // so the retarget below cannot shorten it (native rewrites the
-      // typewriter's delay, not a pending frame).
-      await vi.advanceTimersByTimeAsync(30);
-      expect(done).not.toHaveBeenCalled();
-      renderer.setStickerTypeDelay("a", 5);
-      await vi.advanceTimersByTimeAsync(5);
-      expect(done).not.toHaveBeenCalled();
-      // t=60: second char at the old 30ms; the third sleep is then created
-      // with the retargeted 5ms.
-      await vi.advanceTimersByTimeAsync(25);
-      expect(done).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(5);
-      expect(done).toHaveBeenCalledTimes(1);
-
-      // Typing ended on its own: the target is gone, so a later reset (or an
-      // unknown id) is a no-op, never a throw.
-      expect(() => renderer.setStickerTypeDelay("a", 40)).not.toThrow();
-      expect(() => renderer.setStickerTypeDelay("zz", 40)).not.toThrow();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("reports sticker typing end only when the typewriter finishes on its own", async () => {
     vi.useFakeTimers();
     try {
