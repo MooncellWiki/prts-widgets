@@ -10,7 +10,11 @@ import {
 
 import { DIALOG_FRAME_URL } from "../../../assets";
 import { DIALOG_FONT_FAMILY } from "../../font";
-import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
+import {
+  type DialogueDisplayOptions,
+  STORY_HEIGHT,
+  STORY_WIDTH,
+} from "../../types";
 
 /**
  * Web/PIXI reconstruction of the visual surface used by
@@ -122,6 +126,7 @@ export class DialogPanel {
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    options?: DialogueDisplayOptions,
   ): void {
     if (this.speaker) {
       this.speaker.text = speaker;
@@ -132,7 +137,10 @@ export class DialogPanel {
       this.dialogue.text = text;
     }
     this.applyLayout();
-    const visible = Boolean(speaker || text);
+    // Native keeps an explicit `isHidden` state on DialogPanel: `_ExecuteDialog`
+    // hides the box for empty content, while `_ExecuteEndtip` calls
+    // `set_isHidden(false)` and shows an empty box (see DialogueDisplayOptions).
+    const visible = options?.forceVisible === true || Boolean(speaker || text);
     for (const item of [
       this.topGradient,
       this.bottomGradient,
