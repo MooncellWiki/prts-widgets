@@ -363,7 +363,7 @@ const storyPlayer = [
 ];
 
 // 单测质量：recommended 兜住"没有断言 / 断言没生效 / it.only 漏进仓库"，
-// 其余几条对应 .agents/skills/frontend-testing-strategy 的断言精度要求。
+// 其余几条收紧断言精度。
 // 只挑能抓真问题的规则，风格类（padding、prefer-strict-equal、max-expects 等）不开。
 const weakMatcher = "断言具体值（toBe / toEqual），不要只证明值存在";
 const tests = [
