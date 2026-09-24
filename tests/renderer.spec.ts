@@ -920,7 +920,7 @@ describe("PixiStoryRenderer", () => {
     expect(state.actionY).toBe(-500);
     expect(state.contentAlpha).toBe(0);
     expect(renderer.tween.mock.calls.map((call: unknown[]) => call[0])).toEqual(
-      [2000],
+      [2000, 2000],
     );
   });
 
@@ -1019,7 +1019,7 @@ describe("PixiStoryRenderer", () => {
     });
     expect(renderer.tween).toHaveBeenCalledTimes(1);
     const [durationMs, , done] = renderer.tween.mock.calls[0];
-    expect(durationMs).toBe(300);
+    expect(durationMs).toBe(400);
     expect(state.scaleX).toBe(1.5);
     done();
     expect(state.scaleX).toBe(1);
