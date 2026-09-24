@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import unocss from "@unocss/eslint-config/flat";
+import vitest from "@vitest/eslint-plugin";
 import { defineConfig, globalIgnores } from "eslint/config";
 import gitignore from "eslint-config-flat-gitignore";
 import pluginImport from "eslint-plugin-import-x";
@@ -361,6 +362,37 @@ const storyPlayer = [
   },
 ];
 
+// 单测质量：recommended 兜住"没有断言 / 断言没生效 / it.only 漏进仓库"，
+// 其余几条对应 .agents/skills/frontend-testing-strategy 的断言精度要求。
+// 只挑能抓真问题的规则，风格类（padding、prefer-strict-equal、max-expects 等）不开。
+const weakMatcher = "断言具体值（toBe / toEqual），不要只证明值存在";
+const tests = [
+  {
+    files: ["tests/**/*.?([cm])[jt]s?(x)"],
+    plugins: { vitest },
+    rules: {
+      ...vitest.configs.recommended.rules,
+      // Vitest 的 expect 第二个参数是失败信息
+      "vitest/valid-expect": ["error", { maxArgs: 2 }],
+      "vitest/hoisted-apis-on-top": "error",
+      "vitest/no-conditional-in-test": "error",
+      "vitest/no-restricted-matchers": [
+        "error",
+        {
+          toBeDefined: weakMatcher,
+          toBeFalsy: weakMatcher,
+          toBeTruthy: weakMatcher,
+        },
+      ],
+      "vitest/no-test-return-statement": "error",
+      "vitest/prefer-called-with": "error",
+      "vitest/prefer-each": "error",
+      "vitest/prefer-vi-mocked": "error",
+      "vitest/require-to-throw-message": "error",
+    },
+  },
+];
+
 const ignores = [
   gitignore(),
   {
@@ -377,4 +409,5 @@ export default [
   ...prettier,
   unocss,
   ...storyPlayer,
+  ...tests,
 ];
