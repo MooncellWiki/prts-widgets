@@ -6,7 +6,7 @@ import {
 } from "../src/widgets/StoryPlayer/engine/rendering/core/ShakePath";
 
 describe("DOTween-compatible shake path", () => {
-  it("builds vibrato * duration waypoints and returns to zero", () => {
+  it("builds vibrato * duration waypoints with fade-out-weighted durations and returns to zero", () => {
     const path = buildShakePath(
       2000,
       {
@@ -24,7 +24,9 @@ describe("DOTween-compatible shake path", () => {
     expect(
       path.reduce((sum, point) => sum + point.durationRatio, 0),
     ).toBeCloseTo(1);
-    expect(path[1].durationRatio).toBeGreaterThan(path[0].durationRatio);
+    // fadeOut weights the waypoints 1, 2, ..., 60 out of their 1830 total.
+    expect(path[0].durationRatio).toBe(1 / 1830);
+    expect(path[1].durationRatio).toBe(2 / 1830);
   });
 
   it("treats randomness as angular deviation instead of a probability", () => {

@@ -13,11 +13,6 @@ describe("resolveAssetUrl", () => {
     );
     expect(url).toBe("https://torappu.prts.wiki/assets/audio/avg/a.mp3");
   });
-
-  it("keeps arbitrary urls unchanged", () => {
-    const raw = "https://torappu.prts.wiki/assets/audio/avg/a.mp3";
-    expect(resolveAssetUrl(raw)).toBe(raw);
-  });
 });
 
 describe("story image resolvers", () => {
@@ -27,17 +22,24 @@ describe("story image resolvers", () => {
     );
   });
 
-  it("resolves background key with bg_ prefix to avg background path", () => {
-    expect(resolveStoryAssetByKey("bg_lungmen_n", "background")).toBe(
-      "https://torappu.prts.wiki/assets/avg/background/bg_lungmen_n.png",
-    );
-  });
-
-  it("resolves background key without bg_ prefix to avg background path", () => {
-    expect(resolveStoryAssetByKey("lungmen_n", "background")).toBe(
-      "https://torappu.prts.wiki/assets/avg/background/lungmen_n.png",
-    );
-  });
+  it.each([
+    {
+      expected:
+        "https://torappu.prts.wiki/assets/avg/background/bg_lungmen_n.png",
+      key: "bg_lungmen_n",
+      name: "with",
+    },
+    {
+      expected: "https://torappu.prts.wiki/assets/avg/background/lungmen_n.png",
+      key: "lungmen_n",
+      name: "without",
+    },
+  ])(
+    "resolves background key $name bg_ prefix to avg background path",
+    ({ expected, key }) => {
+      expect(resolveStoryAssetByKey(key, "background")).toBe(expected);
+    },
+  );
 
   it("resolves cutin key to avg cutin path", () => {
     expect(resolveStoryAssetByKey("cutin_char_9", "cutin")).toBe(

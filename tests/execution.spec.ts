@@ -25,7 +25,6 @@ describe("command execution primitives", () => {
     registry.register("dialog", async () => 2);
 
     const executors = registry.get("DIALOG") ?? [];
-    expect(executors).toHaveLength(2);
     await expect(
       Promise.all(executors.map((executor) => executor(command("dialog")))),
     ).resolves.toEqual([1, 2]);
@@ -47,6 +46,6 @@ describe("command execution primitives", () => {
     handle.end("force_end");
     handle.end("reset");
     await expect(handle.completion).resolves.toBe("force_end");
-    expect(onEnd).toHaveBeenCalledOnce();
+    expect(onEnd).toHaveBeenCalledExactlyOnceWith("force_end");
   });
 });

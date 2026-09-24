@@ -10,8 +10,12 @@ afterEach(() => {
 });
 
 describe("story text variables", () => {
-  it("uses the MediaWiki username and removes Dr. case-insensitively", () => {
-    window.mw = { config: { get: () => "Dr.Kal'tsit" } };
+  it("strips the Dr. prefix from wgUserName and expands {@nickname} case-insensitively", () => {
+    window.mw = {
+      config: {
+        get: (key: string) => (key === "wgUserName" ? "Dr.Kal'tsit" : null),
+      },
+    };
 
     expect(getStoryNickname()).toBe("Kal'tsit");
     expect(expandStoryText("欢迎，{@nickname}。{@nickname}！")).toBe(

@@ -45,28 +45,21 @@ describe("InterludePanel", () => {
   it("reuses a channel, adds an element, toggles it, and clears the channel", async () => {
     const layer = new Container();
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
-    const tween = vi.fn(
-      async (
-        _duration: number,
-        update: (progress: number) => void,
-        complete?: () => void,
-      ) => {
-        update(1);
-        complete?.();
-      },
-    );
-    const panel = new InterludePanel(layer, loadTexture, tween);
+    const panel = new InterludePanel(layer, loadTexture, tweenImmediately);
 
     await panel.run(input());
     expect(layer.children).toHaveLength(1);
 
     await panel.run(input({ name: "avg_test", slot: "m", type: 2 }));
     expect(layer.children).toHaveLength(1);
-    expect(loadTexture).toHaveBeenCalledOnce();
+    expect(loadTexture).toHaveBeenCalledExactlyOnceWith(
+      input({ name: "avg_test", slot: "m", type: 2 }),
+    );
+    const element = (panel as any).channels.get(3).elements.get("m");
+    expect(element.visible).toBe(true);
 
     await panel.run(input({ slot: "m", switchOn: false, type: 2 }));
-    const state = (panel as any).channels.get(3);
-    expect(state.elements.get("m").visible).toBe(false);
+    expect(element.visible).toBe(false);
 
     await panel.run(input({ clear: true }));
     expect(layer.children).toHaveLength(0);
@@ -81,6 +74,7 @@ describe("InterludePanel", () => {
     );
     await panel.run(input({ channel: 3 }));
     await panel.run(input({ channel: 4 }));
+    expect(layer.children).toHaveLength(2);
 
     await panel.run(input({ channel: -1, clear: true }));
     expect(layer.children).toHaveLength(0);

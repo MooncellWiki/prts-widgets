@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DecisionPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/DecisionPanel";
 
 describe("DecisionPanel", () => {
-  it("resolves a pointer selection before clearing the panel", async () => {
+  it("resolves the tapped option's index and value and removes the panel", async () => {
     const layer = new Container();
     const panel = new DecisionPanel(layer);
     const selection = panel.show(

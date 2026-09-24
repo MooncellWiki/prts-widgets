@@ -1,4 +1,10 @@
-import { Container, Graphics, Rectangle, Texture } from "pixi.js";
+import {
+  Container,
+  Rectangle,
+  Texture,
+  type Graphics,
+  type Sprite,
+} from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,6 +15,21 @@ import {
 import type { CharacterCutinInput } from "../src/widgets/StoryPlayer/engine/types";
 
 type Update = (progress: number) => void;
+
+/** The fields of the panel's private per-widget slot state these tests read. */
+interface SlotView {
+  backdrop: Graphics;
+  chars: Array<{ sprite: Sprite }>;
+  content: Container;
+  mask: Graphics;
+  maskSize: { h: number; w: number };
+  root: Container;
+}
+
+/** Reaches the private `slots` map; the only cast into panel internals. */
+function slots(panel: CharacterCutinPanel): Map<string, SlotView> {
+  return (panel as unknown as { slots: Map<string, SlotView> }).slots;
+}
 
 function input(
   overrides: Partial<CharacterCutinInput> = {},
@@ -104,7 +125,7 @@ describe("CharacterCutinPanel", () => {
     expect(root.x).toBe(340);
     expect(root.y).toBe(320);
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     // Mask is width x full canvas height under the default align.
     expect(state.maskSize).toEqual({ h: 720, w: 200 });
     expect(root.mask).toBe(state.mask);
@@ -143,7 +164,7 @@ describe("CharacterCutinPanel", () => {
       }),
     );
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     // _zoomAndPovRectTransform: localScale = zoom, anchoredPosition =
     // (-povX, -povY) in Unity y-up, flipped for PIXI.
     expect(state.content.scale.x).toBe(2);
@@ -173,7 +194,7 @@ describe("CharacterCutinPanel", () => {
 
     await panel.run(input({ offsetX: -300, width: 200 }));
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     const sprite = state.chars[0].sprite;
     expect(sprite.y).toBe(250);
     expect(sprite.x).toBe(0);
@@ -191,16 +212,24 @@ describe("CharacterCutinPanel", () => {
 
     await panel.run(input({}));
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     // _defualtBackground: under the mask (clipped), below the zoomAndPov
     // content, static full-canvas rect -- revealed as the mask expands.
-    expect(state.backdrop).toBeInstanceOf(Graphics);
+    expect(state.backdrop.context.instructions).toMatchObject([
+      { action: "fill", data: { style: { color: 0x89_89_89 } } },
+    ]);
     expect(state.root.mask).toBe(state.mask);
-    expect(state.root.children.indexOf(state.backdrop)).toBeLessThan(
-      state.root.children.indexOf(state.content),
-    );
+    // root children: mask, backdrop, content.
+    expect(state.root.children.indexOf(state.backdrop)).toBe(1);
+    expect(state.root.children.indexOf(state.content)).toBe(2);
     // The backdrop is drawn once at full-canvas size; it never resizes with
     // the mask (native rect is 2560x720, only the mask clips it).
+    expect(state.backdrop.bounds).toMatchObject({
+      maxX: 640,
+      maxY: 360,
+      minX: -640,
+      minY: -360,
+    });
     expect(state.backdrop.scale.x).toBe(1);
     expect(state.backdrop.scale.y).toBe(1);
   });
@@ -223,8 +252,11 @@ describe("CharacterCutinPanel", () => {
     );
     drive(0, 0.5);
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.maskSize).toEqual({ h: 720, w: 100 });
+    // left2right pins the left edge at -width / 2 and grows rightward.
+    expect(state.mask.bounds.minX).toBe(-100);
+    expect(state.mask.bounds.maxX).toBe(0);
     expect(state.root.alpha).toBe(1);
     expect(state.chars[0].sprite.scale.x).toBe(1);
     expect(state.chars[0].sprite.x).toBe(0);
@@ -265,7 +297,7 @@ describe("CharacterCutinPanel", () => {
     );
     second.drive(0, 0.5);
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     // Root glides 340 -> 940, mask width 200 -> 300; no fresh entry replay
     // and no second sprite for the same character identity.
     expect(state.root.x).toBe(640);
@@ -301,7 +333,7 @@ describe("CharacterCutinPanel", () => {
     await panel.run(line);
     await panel.run({ ...line });
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.chars).toHaveLength(1);
     expect(state.chars[0].sprite.alpha).toBe(1);
     // Set never re-loads for a matching key either.
@@ -330,7 +362,7 @@ describe("CharacterCutinPanel", () => {
       }),
     );
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.root.x).toBe(340);
     expect(state.maskSize).toEqual({ h: 720, w: 400 });
     expect(state.content.x).toBe(50);
@@ -347,7 +379,7 @@ describe("CharacterCutinPanel", () => {
     );
     // The slot is already in the scene graph, so whatever it looks like here
     // is what renders for the frames the texture request takes.
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.maskSize).toEqual({ h: 720, w: 0 });
 
     release(art(120, 300));
@@ -361,7 +393,7 @@ describe("CharacterCutinPanel", () => {
     const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
 
     const pending = panel.run(input({ fadeMs: 400 }));
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.root.alpha).toBe(0);
 
     release(art(120, 300));
@@ -390,7 +422,7 @@ describe("CharacterCutinPanel", () => {
     await panel.run(input({ block: false, expression: "2$2", fadeMs: 100 }));
     second.drive(0, 0.5);
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.chars).toHaveLength(2);
     expect(state.chars[0].sprite.alpha).toBeCloseTo(0.5);
     expect(state.chars[1].sprite.alpha).toBeCloseTo(0.5);
@@ -418,7 +450,7 @@ describe("CharacterCutinPanel", () => {
       }),
     );
     drive(0, 1);
-    expect((panel as any).slots.size).toBe(1);
+    expect(slots(panel).size).toBe(1);
 
     await panel.run(
       input({
@@ -431,13 +463,13 @@ describe("CharacterCutinPanel", () => {
     );
     drive(1, 0.5);
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.maskSize).toEqual({ h: 720, w: 100 });
     expect(state.root.alpha).toBe(1);
 
     drive(1, 1);
     // Native b__0 @ 0x183e62c90 recycles the slot and drops the widgetID.
-    expect((panel as any).slots.has("1")).toBe(false);
+    expect(slots(panel).has("1")).toBe(false);
     expect(layer.children).toHaveLength(0);
   });
 
@@ -463,12 +495,12 @@ describe("CharacterCutinPanel", () => {
     );
     drive(1, 0.5);
 
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.root.alpha).toBeCloseTo(0.5);
     expect(state.maskSize).toEqual({ h: 720, w: 200 });
 
     drive(1, 1);
-    expect((panel as any).slots.has("1")).toBe(false);
+    expect(slots(panel).has("1")).toBe(false);
   });
 
   it("still runs the show tween for an unresolvable name to keep block timing", async () => {
@@ -488,13 +520,18 @@ describe("CharacterCutinPanel", () => {
       }),
     );
 
-    expect(tweenSpy).toHaveBeenCalledWith(250, expect.any(Function));
+    // One tween, for the full fadetime.
+    expect(tweenSpy.mock.calls.map(([durationMs]) => durationMs)).toEqual([
+      250,
+    ]);
     expect(loadTexture).not.toHaveBeenCalled();
-    const state = (panel as any).slots.get("1");
+    const state = slots(panel).get("1")!;
     expect(state.chars).toHaveLength(0);
 
+    // Driving that tween fades the (empty) slot in.
     drive(0, 1);
-    expect((panel as any).slots.has("1")).toBe(true);
+    expect(state.root.alpha).toBe(1);
+    expect(slots(panel).has("1")).toBe(true);
   });
 
   it("clear drops one widget or every slot", async () => {
@@ -508,11 +545,11 @@ describe("CharacterCutinPanel", () => {
     await panel.run(input({ widgetId: "1" }));
     await panel.run(input({ widgetId: "2" }));
     panel.clear("1");
-    expect((panel as any).slots.has("1")).toBe(false);
-    expect((panel as any).slots.has("2")).toBe(true);
+    expect(slots(panel).has("1")).toBe(false);
+    expect(slots(panel).has("2")).toBe(true);
 
     panel.clear();
-    expect((panel as any).slots.size).toBe(0);
+    expect(slots(panel).size).toBe(0);
     expect(layer.children).toHaveLength(0);
   });
 });

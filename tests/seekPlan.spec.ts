@@ -7,6 +7,7 @@ import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 import type {
+  DecisionPolicy,
   DecisionSelection,
   LineSeekUpdate,
   ShowItemInput,
@@ -44,7 +45,10 @@ describe("planChoicesForLine", () => {
       "[multiline(end=true)]第三段", // line 3 — 合成条目行号
     ];
     expect(planFor(source, 2)).toEqual({ ok: false, reason: "not_found" });
-    expect(planFor(source, 3).ok).toBe(true);
+    expect(planFor(source, 3)).toEqual({
+      ok: true,
+      plan: { choices: new Map(), degraded: false },
+    });
   });
 
   it("keeps the plan empty when the default first option reaches the target", () => {
@@ -82,12 +86,11 @@ describe("planChoicesForLine", () => {
       '[predicate(references="2")]', // line 4
       '[name="B路"]分支', // line 5
     ];
-    const result = planFor(source, 5);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
     // 方案里只有 gate 需要的 decision；无关 decision 走默认第 0 项
-    expect(result.plan.choices.get(2)).toBe(1);
-    expect(result.plan.choices.has(1)).toBe(false);
+    expect(planFor(source, 5)).toEqual({
+      ok: true,
+      plan: { choices: new Map([[2, 1]]), degraded: false },
+    });
   });
 
   it("passes through nested decisions and picks both required options", () => {
@@ -216,43 +219,25 @@ describe("StoryRuntime decision policy", () => {
     expect(fake.lastDialogue).toEqual({ speaker: "A", text: "done" });
   });
 
-  it("falls back to the panel when the policy returns null or an invalid index", async () => {
-    const nullPolicy = new DecisionFakeRenderer();
-    const first = new StoryRuntime(
-      createContext(['[decision(options="A;B",values="1;2")]', '[name="A"]x']),
-      asRenderer(nullPolicy),
-      audio,
-    );
-    first.setDecisionPolicy(() => null);
-    await first.start();
-    expect(nullPolicy.decisionPanelShown).toBe(1);
-    expect(first.getLogPosition().selections).toEqual([
-      { decisionId: 1, optionIndex: 0, value: 1 },
-    ]);
-
-    const outOfRange = new DecisionFakeRenderer();
-    const second = new StoryRuntime(
-      createContext(['[decision(options="A;B",values="1;2")]', '[name="A"]x']),
-      asRenderer(outOfRange),
-      audio,
-    );
-    second.setDecisionPolicy(() => 99); // 越界 → 回落面板
-    await second.start();
-    expect(outOfRange.decisionPanelShown).toBe(1);
-  });
-
-  it("stops intercepting after the policy is reset to null", async () => {
+  it.each<{ name: string; policies: (DecisionPolicy | null)[] }>([
+    { name: "returns null", policies: [() => null] },
+    { name: "returns an out-of-range index", policies: [() => 99] },
+    { name: "has been reset to null", policies: [() => 1, null] },
+  ])("falls back to the panel when the policy $name", async ({ policies }) => {
     const fake = new DecisionFakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[decision(options="A;B",values="1;2")]', '[name="A"]x']),
       asRenderer(fake),
       audio,
     );
+    for (const policy of policies) runtime.setDecisionPolicy(policy);
 
-    runtime.setDecisionPolicy(() => 1);
-    runtime.setDecisionPolicy(null);
     await runtime.start();
     expect(fake.decisionPanelShown).toBe(1);
+    // 记录的是面板（fake 固定选第 0 项）的结果，而不是策略的
+    expect(runtime.getLogPosition().selections).toEqual([
+      { decisionId: 1, optionIndex: 0, value: 1 },
+    ]);
   });
 });
 
@@ -344,7 +329,10 @@ describe("StoryRuntime seekToLine", () => {
     runtime.seekToLine(2, new Map(), (update) => updates.push(update));
 
     runtime.setAutoPlayMode("default"); // 公开入口 = 使用者发起
-    expect(updates.at(-1)).toEqual({ phase: "aborted", target: 2 });
+    expect(updates).toEqual([
+      { phase: "seeking", target: 2 },
+      { phase: "aborted", target: 2 },
+    ]);
   });
 
   it("cancels silently and gives the previously injected policy back", async () => {

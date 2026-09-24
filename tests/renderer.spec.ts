@@ -22,6 +22,15 @@ function createContext(): Context {
   };
 }
 
+// The specs drive the renderer's private state and methods directly; keep
+// that cast in this one place instead of repeating it in every test.
+function createRenderer(
+  context: Context = createContext(),
+  onWarning?: (detail: string) => void,
+): any {
+  return new PixiStoryRenderer(context, onWarning) as any;
+}
+
 // Turns the -0 that `0 * -1` produces into +0 so `toEqual` stops
 // distinguishing them. Deliberately narrow: `v || 0` would also swallow NaN
 // and let a broken matrix pass.
@@ -85,7 +94,7 @@ function createCharacterRenderer(): any {
     },
     script: [],
   };
-  const renderer = new PixiStoryRenderer(context) as any;
+  const renderer = createRenderer(context);
   renderer.buildCharacterVisual = vi.fn(async () => ({
     sourceHeight: 200,
     sourceWidth: 100,
@@ -180,7 +189,7 @@ function createFaceOverlayRenderer(baked: Texture): any {
     },
     script: [],
   } as unknown as Context;
-  const renderer = new PixiStoryRenderer(context) as any;
+  const renderer = createRenderer(context);
   const textures: Record<string, Texture> = {
     "body-1": new Texture({ source: { height: 200, width: 100 } as any }),
     "face-1": new Texture({ source: { height: 40, width: 50 } as any }),
@@ -191,14 +200,14 @@ function createFaceOverlayRenderer(baked: Texture): any {
 }
 
 function createBlockerRenderer(): any {
-  const renderer = new PixiStoryRenderer(createContext()) as any;
+  const renderer = createRenderer();
   renderer.layers.attach(new Container());
   return renderer;
 }
 
 describe("PixiStoryRenderer", () => {
   it("bakes the black gradient into the character texture, replacing the sprites", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const baked = new Texture();
     const bakeSpy = vi
       .spyOn(renderer, "bakeDarkenedCharacterTexture")
@@ -221,16 +230,9 @@ describe("PixiStoryRenderer", () => {
       // bake the darkening into the texture: any overlay/mask sibling would
       // have its alpha scaled by the fade progress (dst * (1 - a * p)),
       // losing the shading at the start of the fade-in.
-      expect(bakeSpy).toHaveBeenCalledWith(
-        [body],
-        100,
-        200,
-        200 * 0.2,
-        200 * 0.7,
-      );
+      expect(bakeSpy).toHaveBeenCalledWith([body], 100, 200, 40, 140);
       expect(content.children.length).toBe(1);
       const darkened = content.children[0] as Sprite;
-      expect(darkened).toBeInstanceOf(Sprite);
       expect(darkened.texture).toBe(baked);
       expect(body.parent).toBeNull();
     } finally {
@@ -289,7 +291,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("dims unfocused characters with tint without making them transparent", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = new Container();
     const visual = new Container();
     const state = {
@@ -369,7 +371,7 @@ describe("PixiStoryRenderer", () => {
 
   it("eases the cameraeffect grayscale tween with DOTween's default OutQuad", () => {
     const manual = createManualClock();
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
 
     void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0);
@@ -388,7 +390,7 @@ describe("PixiStoryRenderer", () => {
 
   it("starts the grayscale tween from the current amount for any negative initamount", async () => {
     const manual = createManualClock();
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
 
     await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
@@ -407,7 +409,7 @@ describe("PixiStoryRenderer", () => {
 
   it("starts the grayscale tween from an explicit non-negative initamount", async () => {
     const manual = createManualClock();
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
 
     await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
@@ -424,7 +426,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies grayscale as Rec.601 luma desaturation, not an additive tint", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
 
     await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
 
@@ -442,7 +444,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("composes Colorinverse over grayscale like the native _Inverse lerp", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
 
     await renderer.setCameraEffect("Colorinverse", 1, 0, false, true);
 
@@ -472,7 +474,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("desaturates focusout targets with the same Rec.601 matrix as cameraeffect", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
 
     renderer.setFocusParam({ blur: false, color: "Grayscale" });
     await renderer.setFocusOut({
@@ -492,7 +494,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("scales the focusout inverse channel by the focus amount", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
 
     renderer.setFocusParam({ blur: false, color: "Colorinverse" });
     await renderer.setFocusOut({
@@ -565,8 +567,11 @@ describe("PixiStoryRenderer", () => {
     // the fade. The stubbed tween never completes, so the outgoing root is
     // still parented and the incoming one is still fully transparent.
     const current = renderer.characterSlots.get("m");
-    expect(renderer.tween).toHaveBeenCalled();
-    expect(previous.root.parent).not.toBeNull();
+    // One tween fades the outgoing root out, the other fades the incoming in.
+    expect(renderer.tween.mock.calls.map((call: unknown[]) => call[0])).toEqual(
+      [150, 150],
+    );
+    expect(previous.root.parent).toBe(renderer.charLayer);
     expect(current.root.alpha).toBe(0);
   });
 
@@ -752,7 +757,9 @@ describe("PixiStoryRenderer", () => {
       fadeIdentity: "avg_test",
       slot: "m",
     });
-    const previous = renderer.characterSlots.get("m");
+    // The charslot path reuses the slot state, so hold on to the outgoing
+    // visual itself rather than the state that will point at the new one.
+    const previousVisual = renderer.characterSlots.get("m").visual;
 
     // Story_bubble-style plain swap: no afrom/ato, duration>0. Native resets
     // the pair to (0,1) and the crossfade length equals `duration`.
@@ -773,7 +780,10 @@ describe("PixiStoryRenderer", () => {
     // and the outgoing sprite gets its own fade-out tween.
     expect(current.contentAlpha).toBe(0);
     expect(current.visual.alpha).toBe(0);
-    expect(previous.visual.parent).not.toBeNull();
+    expect(previousVisual.parent).toBe(current.rotationLayer);
+    expect(renderer.tween.mock.calls.map((call: unknown[]) => call[0])).toEqual(
+      [400, 400],
+    );
   });
 
   it("clamps a nameless fade toward ato=-1 at the write so it is transparent by half the duration", async () => {
@@ -849,10 +859,11 @@ describe("PixiStoryRenderer", () => {
     });
 
     // NeedSkipAnimation(duration): the shake branch returns null.
+    expect(renderer.characterSlots.get("m").expression).toBe("1$1");
     expect(shakeSpy).not.toHaveBeenCalled();
   });
 
-  it("rotates from the standalone angle parameter regardless of action", async () => {
+  it("rotates from the standalone angle parameter but not from action=rotate", async () => {
     const renderer = createCharacterRenderer();
 
     await renderer.setCharacter({
@@ -904,12 +915,13 @@ describe("PixiStoryRenderer", () => {
     });
 
     const state = renderer.characterSlots.get("l");
-    expect(state).toBeTruthy();
     // The stubbed tween never advances, so the slot sits at posfrom/afrom
     // with the move and the fade-in both already started.
     expect(state.actionY).toBe(-500);
     expect(state.contentAlpha).toBe(0);
-    expect(renderer.tween).toHaveBeenCalled();
+    expect(renderer.tween.mock.calls.map((call: unknown[]) => call[0])).toEqual(
+      [2000, 2000],
+    );
   });
 
   it("resets the zoom on a named swap, even one whose zoom carries no scale", async () => {
@@ -979,6 +991,7 @@ describe("PixiStoryRenderer", () => {
 
   it("keeps a completed zoom across nameless commands and tweens it back to 1 without a scale", async () => {
     const renderer = createCharacterRenderer();
+    renderer.app = { stage: new Container() };
 
     await renderer.setCharacter({
       characterKey: "avg_test",
@@ -1005,6 +1018,12 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     expect(renderer.tween).toHaveBeenCalledTimes(1);
+    const [durationMs, , done] = renderer.tween.mock.calls[0];
+    expect(durationMs).toBe(400);
+    expect(state.scaleX).toBe(1.5);
+    done();
+    expect(state.scaleX).toBe(1);
+    expect(state.scaleY).toBe(1);
   });
 
   it("applies the zoom pivot shift absolutely so repeated zooms do not drift", async () => {
@@ -1037,14 +1056,13 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     };
     await renderer.setCharacter(zoom);
-    const shiftY = state.zoomShiftY;
-    expect(shiftY).toBeCloseTo((0.5 - 0.6) * 1.8 * 200 + ((1.8 - 1) * 200) / 2);
+    expect(state.zoomShiftY).toBeCloseTo(44);
     await renderer.setCharacter(zoom);
     await renderer.setCharacter(zoom);
-    expect(state.zoomShiftY).toBeCloseTo(shiftY);
+    expect(state.zoomShiftY).toBeCloseTo(44);
     expect(state.scaleX).toBe(1.8);
     // The shift rides the motion layer next to the `_offset` position.
-    expect(state.motionLayer.y).toBeCloseTo(-shiftY);
+    expect(state.motionLayer.y).toBeCloseTo(-44);
   });
 
   it("moves jump with duration 0 and shakemove to posto without a posfrom gate", async () => {
@@ -1101,7 +1119,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("evicts unreferenced face-overlay bakes beyond the cache limit only", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const entries: Array<{ key: string; texture: any }> = [];
     for (let index = 0; index < 10; index += 1) {
       const texture = { destroy: vi.fn() };
@@ -1195,13 +1213,15 @@ describe("PixiStoryRenderer", () => {
     // `_ProcessDurationWithTransType` only zeroes the duration for NONE, so an
     // explicit ALPHA_IN keeps fading while entering.
     const current = renderer.characterSlots.get("m");
-    expect(renderer.tween).toHaveBeenCalled();
-    expect(previous.root.parent).not.toBeNull();
+    expect(renderer.tween.mock.calls.map((call: unknown[]) => call[0])).toEqual(
+      [150, 150],
+    );
+    expect(previous.root.parent).toBe(renderer.charLayer);
     expect(current.root.alpha).toBe(0);
   });
 
   it("offsets the horizontal enter start by each slot's own resting offset", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
 
     // `_GenPosition` adds +200 for LEFT and -200 for RIGHT before the
     // 1152 horizontal delta, cancelling the slot's own offset from the panel
@@ -1236,18 +1256,18 @@ describe("PixiStoryRenderer", () => {
     });
 
     const root = renderer.characterSlots.get("m").root;
-    const baseX = root.x + 1152;
     const [, step] = renderer.tween.mock.calls[0];
     step(0.5);
 
     // Native `SetCharPos` slides with `Ease.OutCubic`; at the halfway point
-    // that is 1 - 0.5^3 = 0.875 of the way home, not 0.5.
-    expect(root.x).toBeCloseTo(baseX - 1152 * (1 - 0.875), 5);
+    // that is 1 - 0.5^3 = 0.875 of the way home, not 0.5: the root starts at
+    // 590 - 1152 = -562 and sits 144px short of x = 590 (linear would be 14).
+    expect(root.x).toBeCloseTo(446, 5);
     expect(root.alpha).toBe(0.5);
   });
 
   it("keeps a cross-fading character root below the live slots", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const l = labelled("l");
     const m = labelled("m");
     const r = labelled("r");
@@ -1275,7 +1295,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("keeps the large background in front of the background regardless of update order", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const input = createGridBackgroundInput();
 
     renderer.app = {};
@@ -1293,142 +1313,134 @@ describe("PixiStoryRenderer", () => {
       renderer.sceneLayer.children.indexOf(renderer.backgroundLayer);
 
     await renderer.setGridBackground(input);
-    expect(gridIndex()).toBeGreaterThan(0);
+    expect(gridIndex()).toBe(1);
 
     await renderer.setBackground("bg_test");
-    expect(gridIndex()).toBeGreaterThan(0);
+    expect(gridIndex()).toBe(1);
     expect(renderer.backgroundLayer.children.at(-1)).toBe(
       renderer.backgroundRoot,
     );
 
     await renderer.setGridBackground(input);
-    expect(gridIndex()).toBeGreaterThan(0);
+    expect(gridIndex()).toBe(1);
     expect(renderer.backgroundLayer.children.at(-1)).toBe(
       renderer.backgroundRoot,
     );
   });
 
-  it("removes the previous largebg composition before fading in the new one", async () => {
-    // Native port: `_ExecuteImage` (2.7.61, VA 0x183e77ee0) calls
-    // `_ResetImages()` before `_LoadImage`, so a fadetime>0 replacement
-    // starts from an emptied panel — a blank gap while the new puzzle fades
-    // in, never a cross-fade. The never-completing tween keeps that fade
-    // mid-flight.
-    const renderer = new PixiStoryRenderer(createContext()) as any;
-    renderer.app = {};
-    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
-    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
-    renderer.tween = vi.fn(() => new Promise<void>(() => {}));
-
-    const first = {
-      ...createGridBackgroundInput(),
-      fadeMs: 0,
-      imageKeys: ["l1", "r1"],
-      layout: "large",
-      solidHeights: [720],
-      solidWidths: [100, 100],
-    };
-    await renderer.setGridBackground(first);
-    const firstRoot = renderer.gridBackgroundLayer.children.at(0);
-    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
-
-    await renderer.setGridBackground({ ...first, fadeMs: 500 });
-
-    expect(firstRoot.parent).toBeNull();
-    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
-    expect(renderer.gridBackgroundLayer.children.at(0).alpha).toBe(0);
-    expect(renderer.largeBackgroundRoot).toBe(
-      renderer.gridBackgroundLayer.children.at(0),
-    );
-  });
-
-  it("drops the previous grid/vertical root before fading in the replacement", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
-    renderer.app = {};
-    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
-    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
-    renderer.tween = vi.fn(() => new Promise<void>(() => {}));
-
-    // `_ExecuteGridBG` (0x183e76290) and `_ExecuteVerticalBG` (0x183e79030)
-    // share `_ExecuteImage`'s `_ResetImages()`-before-`_LoadImage` order, so
-    // every family layout drops the outgoing composition the moment the
-    // replacement command executes.
-    for (const layout of ["grid", "vertical"] as const) {
-      const input = {
+  it.each([
+    {
+      input: {
         ...createGridBackgroundInput(),
-        fadeMs: 500,
+        imageKeys: ["l1", "r1"],
+        layout: "large" as const,
+        solidHeights: [720],
+        solidWidths: [100, 100],
+      },
+      name: "largebg",
+    },
+    {
+      input: {
+        ...createGridBackgroundInput(),
         imageKeys: ["t1", "t2", "t3", "t4"],
-        layout,
-      };
-      await renderer.setGridBackground({ ...input, fadeMs: 0 });
-      const firstRoot = renderer.gridBackgroundLayer.children.at(-1);
+        layout: "grid" as const,
+      },
+      name: "gridbg",
+    },
+    {
+      input: {
+        ...createGridBackgroundInput(),
+        imageKeys: ["t1", "t2", "t3", "t4"],
+        layout: "vertical" as const,
+      },
+      name: "verticalbg",
+    },
+  ])(
+    "removes the previous $name composition before fading in the new one",
+    async ({ input }) => {
+      // Native port: `_ExecuteImage` (largebg, 2.7.61 VA 0x183e77ee0),
+      // `_ExecuteGridBG` (0x183e76290) and `_ExecuteVerticalBG` (0x183e79030)
+      // all call `_ResetImages()` before `_LoadImage`, so a fadetime>0
+      // replacement starts from an emptied panel — a blank gap while the new
+      // puzzle fades in, never a cross-fade. The never-completing tween keeps
+      // that fade mid-flight.
+      const renderer = createRenderer();
+      renderer.app = {};
+      renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
+      renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+      renderer.tween = vi.fn(() => new Promise<void>(() => {}));
 
-      await renderer.setGridBackground(input);
+      await renderer.setGridBackground({ ...input, fadeMs: 0 });
+      const firstRoot = renderer.gridBackgroundLayer.children.at(0);
+      expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+
+      await renderer.setGridBackground({ ...input, fadeMs: 500 });
 
       expect(firstRoot.parent).toBeNull();
       expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
       expect(renderer.gridBackgroundLayer.children.at(0).alpha).toBe(0);
-    }
-  });
-
-  it("empties the panel when a largebg tile fails to load", async () => {
-    // Native port: a failed `_LoadImage` logs
-    // "[AVG.LargeBG] An error occurred when load image {0}.", calls
-    // `_ResetPanel()` and returns false without blocking.
-    const renderer = new PixiStoryRenderer(createContext()) as any;
-    renderer.app = {};
-    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
-    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
-
-    const input = {
-      ...createGridBackgroundInput(),
-      fadeMs: 0,
-      imageKeys: ["l1", "r1"],
-      layout: "large",
-      solidHeights: [720],
-      solidWidths: [100, 100],
-    };
-    await renderer.setGridBackground(input);
-    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
-
-    renderer.textureForImageKey = vi
-      .fn()
-      .mockImplementation((key: string) =>
-        key === "r1" ? Promise.resolve(null) : Promise.resolve(Texture.EMPTY),
+      expect(renderer.largeBackgroundRoot).toBe(
+        renderer.gridBackgroundLayer.children.at(0),
       );
-    await renderer.setGridBackground(input);
+    },
+  );
 
-    expect(renderer.gridBackgroundLayer.children).toHaveLength(0);
-    expect(renderer.largeBackgroundRoot).toBeNull();
-  });
-
-  it("empties the panel when a gridbg tile fails to load", async () => {
-    // The load-failure branch is shared with largebg on purpose:
-    // `_ExecuteGridBG` (2.7.71 VA 0x183f304c0) ends a failed `_LoadImage`
-    // with the same `DLog.LogError` + `_ResetPanel()` (VA 0x183f318aa) as
-    // `_ExecuteImage`, so grid/vertical must not keep the previous
-    // composition either -- even though they still cross-fade on success.
-    const renderer = new PixiStoryRenderer(createContext()) as any;
-    renderer.app = {};
-    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
-    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
-
-    const input = { ...createGridBackgroundInput(), fadeMs: 0 };
-    await renderer.setGridBackground(input);
-    expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
-
-    renderer.textureForImageKey = vi
-      .fn()
-      .mockImplementation((key: string) =>
-        key === "r2" ? Promise.resolve(null) : Promise.resolve(Texture.EMPTY),
+  it.each([
+    {
+      input: {
+        ...createGridBackgroundInput(),
+        fadeMs: 0,
+        imageKeys: ["l1", "r1"],
+        layout: "large" as const,
+        solidHeights: [720],
+        solidWidths: [100, 100],
+      },
+      missingKey: "r1",
+      name: "largebg",
+    },
+    {
+      input: { ...createGridBackgroundInput(), fadeMs: 0 },
+      missingKey: "r2",
+      name: "gridbg",
+    },
+  ])(
+    "warns and empties the panel when a $name tile fails to load",
+    async ({ input, missingKey }) => {
+      // Native port: a failed `_LoadImage` logs
+      // "[AVG.LargeBG] An error occurred when load image {0}.", calls
+      // `_ResetPanel()` and returns false without blocking. The branch is
+      // shared on purpose: `_ExecuteGridBG` (2.7.71 VA 0x183f304c0) ends a
+      // failed `_LoadImage` with the same `DLog.LogError` + `_ResetPanel()`
+      // (VA 0x183f318aa) as `_ExecuteImage`, so gridbg must not keep the
+      // previous composition either.
+      const warnings: string[] = [];
+      const renderer = createRenderer(createContext(), (warning) =>
+        warnings.push(warning),
       );
-    await renderer.setGridBackground(input);
+      renderer.app = {};
+      renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
+      renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
-    expect(renderer.gridBackgroundLayer.children).toHaveLength(0);
-  });
+      await renderer.setGridBackground(input);
+      expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+
+      renderer.textureForImageKey = vi
+        .fn()
+        .mockImplementation((key: string) =>
+          key === missingKey
+            ? Promise.resolve(null)
+            : Promise.resolve(Texture.EMPTY),
+        );
+      await renderer.setGridBackground(input);
+
+      expect(warnings).toEqual([`missing grid background: ${missingKey}`]);
+      expect(renderer.gridBackgroundLayer.children).toHaveLength(0);
+      expect(renderer.largeBackgroundRoot).toBeNull();
+    },
+  );
 
   it("draws a curtain as a solid body plus a fixed-width feather strip", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
 
     const fills: unknown[] = [];
@@ -1464,7 +1476,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies background transforms in a dedicated transform space", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1484,7 +1496,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("keeps the background at its native sprite size when screenadapt is omitted", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1492,15 +1504,15 @@ describe("PixiStoryRenderer", () => {
     // to the texture size: SetNativeSize semantics with no sidecar entry and
     // no ppu heuristic to apply.
     await renderer.setBackground("bg_festival_9x");
-    expect(renderer.backgroundSprite.width).toBe(Texture.EMPTY.width);
-    expect(renderer.backgroundSprite.height).toBe(Texture.EMPTY.height);
+    expect(renderer.backgroundSprite.width).toBe(1);
+    expect(renderer.backgroundSprite.height).toBe(1);
   });
 
   it("renders a ppu-tuned background at its sidecar-derived native rect", async () => {
-    const renderer = new PixiStoryRenderer({
+    const renderer = createRenderer({
       ...createContext(),
       backgroundPpuMap: { bg_cher_1: 68.24644470214844 },
-    }) as any;
+    });
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(
       new Texture({
@@ -1517,21 +1529,15 @@ describe("PixiStoryRenderer", () => {
     // avg/background.json sidecar supplies it.
     await renderer.setBackground("bg_cher_1");
 
-    expect(renderer.backgroundSprite.width).toBeCloseTo(
-      (1024 / 68.24644470214844) * 100,
-      3,
-    );
-    expect(renderer.backgroundSprite.height).toBeCloseTo(
-      (576 / 68.24644470214844) * 100,
-      3,
-    );
+    expect(renderer.backgroundSprite.width).toBeCloseTo(1500.4445, 3);
+    expect(renderer.backgroundSprite.height).toBeCloseTo(844, 3);
   });
 
   it("renders a native-1024x576 background with borders like the game", async () => {
-    const renderer = new PixiStoryRenderer({
+    const renderer = createRenderer({
       ...createContext(),
       backgroundPpuMap: { "33_g4_srctheater": 100 },
-    }) as any;
+    });
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(
       new Texture({
@@ -1550,10 +1556,10 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("matches sidecar keys case-insensitively", async () => {
-    const renderer = new PixiStoryRenderer({
+    const renderer = createRenderer({
       ...createContext(),
       backgroundPpuMap: { "21_g9_rhodes_xqoffice": 100 },
-    }) as any;
+    });
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(
       new Texture({
@@ -1572,10 +1578,10 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("falls back to the 1280x720 canvas for unknown 16:9 backgrounds", async () => {
-    const renderer = new PixiStoryRenderer({
+    const renderer = createRenderer({
       ...createContext(),
       backgroundPpuMap: { bg_cher_1: 68.24644470214844 },
-    }) as any;
+    });
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(
       new Texture({
@@ -1593,7 +1599,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("multiplies the native rect by the width and height params", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1601,12 +1607,12 @@ describe("PixiStoryRenderer", () => {
 
     // `_LoadImage`: sizeDelta = (native.x * width, native.y * height), both
     // defaulting to 1.0 (mulss at 0x183e587b0/0x183e587b4 in build 2761).
-    expect(renderer.backgroundSprite.width).toBe(Texture.EMPTY.width * 2.5);
-    expect(renderer.backgroundSprite.height).toBe(Texture.EMPTY.height * 0.5);
+    expect(renderer.backgroundSprite.width).toBe(2.5);
+    expect(renderer.backgroundSprite.height).toBe(0.5);
   });
 
   it("feeds the width/height-multiplied rect into the screenadapt ratio check", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1619,19 +1625,17 @@ describe("PixiStoryRenderer", () => {
     });
 
     expect(renderer.backgroundSprite.width).toBe(1280);
-    expect(renderer.backgroundSprite.height).toBe(
-      (Texture.EMPTY.height * 4 * 1280) / Texture.EMPTY.width,
-    );
+    expect(renderer.backgroundSprite.height).toBe(5120);
   });
 
   it("clears the previous background when the texture fails to load", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
     await renderer.setBackground("bg_test");
     const previous = renderer.backgroundRoot;
-    expect(previous.parent).not.toBeNull();
+    expect(previous.parent).toBe(renderer.backgroundLayer);
 
     renderer.textureForImageKey = vi.fn().mockResolvedValue(null);
     renderer.tween = vi.fn(async () => {});
@@ -1652,10 +1656,10 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("tiles the background texture when tiled is true", async () => {
-    const renderer = new PixiStoryRenderer({
+    const renderer = createRenderer({
       ...createContext(),
       backgroundPpuMap: { bg_ri_1: 68.24644470214844 },
-    }) as any;
+    });
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1665,20 +1669,12 @@ describe("PixiStoryRenderer", () => {
     // inside the final sizeDelta rect; TilingSprite + repeat wrap mode is
     // the PIXI equivalent. bg_ri_1 is ppu-tuned (native rect = texture
     // 16x16 / ppu 68.2464 * 100), and each tile spans that native rect
-    // rather than the 16x16 texture pixels (tileScale = 100 / ppu).
+    // rather than the 16x16 texture pixels (tileScale = 100 / ppu). The 1x1
+    // EMPTY stand-in here therefore spans 100 / 68.2464 = 1.4653.
     expect(renderer.backgroundSprite).toBeInstanceOf(TilingSprite);
-    expect(renderer.backgroundSprite.width).toBeCloseTo(
-      (Texture.EMPTY.width / 68.24644470214844) * 100,
-      3,
-    );
-    expect(renderer.backgroundSprite.height).toBeCloseTo(
-      (Texture.EMPTY.height / 68.24644470214844) * 100,
-      3,
-    );
-    expect(renderer.backgroundSprite.tileScale.x).toBeCloseTo(
-      100 / 68.24644470214844,
-      6,
-    );
+    expect(renderer.backgroundSprite.width).toBeCloseTo(1.4653, 3);
+    expect(renderer.backgroundSprite.height).toBeCloseTo(1.4653, 3);
+    expect(renderer.backgroundSprite.tileScale.x).toBeCloseTo(1.4652778, 6);
     expect(Texture.EMPTY.source.style.addressMode).toBe("repeat");
     // Restore the shared EMPTY texture so the address mode does not leak into
     // the other specs.
@@ -1686,18 +1682,18 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("keeps an image at its asset size when screenadapt is omitted", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
     await renderer.setImage("ac3_title1");
 
-    expect(renderer.imageRoot.children[0].width).toBe(Texture.EMPTY.width);
-    expect(renderer.imageRoot.children[0].height).toBe(Texture.EMPTY.height);
+    expect(renderer.imageRoot.children[0].width).toBe(1);
+    expect(renderer.imageRoot.children[0].height).toBe(1);
   });
 
   it("separates screenadapt size from the imagetween localScale space", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1735,7 +1731,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("falls back to the current root transform for missing From/To", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1759,12 +1755,12 @@ describe("PixiStoryRenderer", () => {
 
     expect(renderer.imageRoot.scale.x).toBe(1.5);
     expect(renderer.imageRoot.scale.y).toBe(1.5);
-    expect(renderer.imageRoot.position.x).toBe(640 + 24);
-    expect(renderer.imageRoot.position.y).toBe(360 + 36);
+    expect(renderer.imageRoot.position.x).toBe(664);
+    expect(renderer.imageRoot.position.y).toBe(396);
   });
 
   it("applies the imagetween ease curve to position and scale", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1797,11 +1793,11 @@ describe("PixiStoryRenderer", () => {
 
     // SetEase applies to both DOLocalMove and DOScale; at raw time 0.25
     // InOutCubic yields 4 * 0.25^3 = 0.0625.
-    expect(samples).toEqual([{ scaleX: 1.0625, x: 640 + 6.25 }]);
+    expect(samples).toEqual([{ scaleX: 1.0625, x: 646.25 }]);
   });
 
   it("retires only a looping imagetween with its image root", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1845,7 +1841,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("rotates the image panel around its center instead of the stage origin", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const imageLayer = renderer.imageLayer;
 
     // Native `panel_image` serializes its RectTransform pivot at (0.5, 0.5) —
@@ -1885,7 +1881,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("tilts the image panel clockwise on screen for a negative native angle", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const imageLayer = renderer.imageLayer;
     const right = new Container();
     right.position.set(740, 360);
@@ -1903,7 +1899,8 @@ describe("PixiStoryRenderer", () => {
     });
 
     expect(imageLayer.angle).toBeCloseTo(4);
-    expect(right.toGlobal({ x: 0, y: 0 }).y).toBeGreaterThan(360);
+    // 100px right of center, tilted 4 degrees: y = 360 + 100 * sin(4deg).
+    expect(right.toGlobal({ x: 0, y: 0 }).y).toBeCloseTo(366.976, 3);
 
     // The next sweep reads the current angle back in Unity space: -4 -> 0 is
     // a +4 delta, which the clockwise default rewrites to -356.
@@ -1926,7 +1923,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("anchors tiled image and background tiles at the lower-left corner like Unity", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     const tile = new Texture({
       source: new TextureSource({ height: 300, width: 100 }),
@@ -1962,7 +1959,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("multiplies the native size by width/height before screenadapt", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -1980,14 +1977,12 @@ describe("PixiStoryRenderer", () => {
       y: 0,
     });
 
-    expect(renderer.imageRoot.children[0].width).toBe(Texture.EMPTY.width * 2);
-    expect(renderer.imageRoot.children[0].height).toBe(
-      Texture.EMPTY.height * 0.5,
-    );
+    expect(renderer.imageRoot.children[0].width).toBe(2);
+    expect(renderer.imageRoot.children[0].height).toBe(0.5);
   });
 
   it("feeds the multiplied rect into the screenadapt aspect comparison", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -2008,19 +2003,17 @@ describe("PixiStoryRenderer", () => {
     });
 
     expect(renderer.imageRoot.children[0].width).toBe(1280);
-    expect(renderer.imageRoot.children[0].height).toBe(
-      (Texture.EMPTY.height * 1280) / (Texture.EMPTY.width * 2),
-    );
+    expect(renderer.imageRoot.children[0].height).toBe(640);
   });
 
   it("takes the clear branch when the image texture fails to load", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
     const clearImage = vi.spyOn(renderer, "clearImage");
 
     await renderer.setImage("first");
-    expect(renderer.imageRoot).not.toBeNull();
+    expect(renderer.imageRoot.parent).toBe(renderer.imageLayer);
 
     renderer.textureForImageKey = vi.fn().mockResolvedValue(null);
     await renderer.setImage("missing", {
@@ -2041,7 +2034,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("renders a tiled image as a TilingSprite sized to the final rect", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -2057,8 +2050,8 @@ describe("PixiStoryRenderer", () => {
 
     expect(renderer.imageRoot.children[0]).toBeInstanceOf(TilingSprite);
     // Image.type = Tiled with no multipliers/adapt tiles at the native size.
-    expect(renderer.imageRoot.children[0].width).toBe(Texture.EMPTY.width);
-    expect(renderer.imageRoot.children[0].height).toBe(Texture.EMPTY.height);
+    expect(renderer.imageRoot.children[0].width).toBe(1);
+    expect(renderer.imageRoot.children[0].height).toBe(1);
 
     await renderer.setImage("bg_0_am", {
       block: false,
@@ -2080,7 +2073,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("keeps an in-flight imagerotate tween running across image swaps", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
     const rotateSteps: Array<(progress: number) => void> = [];
@@ -2117,7 +2110,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies the strict gridbg xScale and yScale transform", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = renderer.buildGridBackgroundRoot(createGridBackgroundInput(), [
       Texture.EMPTY,
       Texture.EMPTY,
@@ -2129,8 +2122,8 @@ describe("PixiStoryRenderer", () => {
     expect(root.scale.y).toBe(0.75);
   });
 
-  it("builds verticalbg as a single-column stacked background", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+  it("places every verticalbg tile, pivots on the first two heights and applies x/y/scale", () => {
+    const renderer = createRenderer();
     const root = renderer.buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
@@ -2153,7 +2146,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("stacks verticalbg tiles from top to bottom", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const textures = [
       new Texture({ label: "tile-0" }),
       new Texture({ label: "tile-1" }),
@@ -2173,7 +2166,6 @@ describe("PixiStoryRenderer", () => {
       textures,
     );
 
-    expect(root.children).toHaveLength(4);
     expect(
       root.children.map((child: any) => ({
         label: child.texture.label,
@@ -2189,7 +2181,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies verticalbg initposmode offsets with the two-tile height sum", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
 
     const build = (
       initPositionMode: GridBackgroundInput["initPositionMode"],
@@ -2245,7 +2237,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("pans verticalbg compositions with largebgtween", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -2277,7 +2269,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("lays out largebg as exactly two horizontal tiles", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const textures = [
       new Texture({ label: "tile-0" }),
       new Texture({ label: "tile-1" }),
@@ -2295,7 +2287,6 @@ describe("PixiStoryRenderer", () => {
       textures,
     );
 
-    expect(root.children).toHaveLength(2);
     expect(
       root.children.map((child: any) => ({
         label: child.texture.label,
@@ -2320,7 +2311,7 @@ describe("PixiStoryRenderer", () => {
     //   lowercenter (0, (500 - 720) / 2)                    -> (0, -110)
     // The Pixi root pivots on the same rect as native's `_offset`, so the
     // only conversion is the flipped y axis: (640 + x, 360 - y).
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const place = (initPositionMode: string) => {
       const root = renderer.buildGridBackgroundRoot(
         {
@@ -2347,7 +2338,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies gridbg initposmode offsets in the centered pivot space", () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const build = (initPositionMode: string) =>
       renderer.buildGridBackgroundRoot(
         {
@@ -2399,7 +2390,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("registers every family layout as the largebgtween target", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -2418,7 +2409,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("moves a gridbg puzzle with largebgtween", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
@@ -2446,36 +2437,8 @@ describe("PixiStoryRenderer", () => {
     expect(root.position.y).toBe(0);
   });
 
-  it("warns and clears the panel when a grid tile fails to load", async () => {
-    const warnings: string[] = [];
-    const renderer = new PixiStoryRenderer(createContext(), (warning) =>
-      warnings.push(warning),
-    ) as any;
-    renderer.app = {};
-    renderer.textureForImageKey = vi
-      .fn()
-      .mockResolvedValueOnce(Texture.EMPTY)
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValue(Texture.EMPTY);
-    const staleRoot = new Container();
-    renderer.gridBackgroundLayer.addChild(staleRoot);
-    renderer.largeBackgroundRoot = staleRoot;
-
-    await renderer.setGridBackground({
-      ...createGridBackgroundInput(),
-      imageKeys: ["l1", "r1", "l2", "r2"],
-      layout: "grid",
-    });
-
-    // Native `_LoadImage` failure logs and calls `_ResetPanel()`: the stale
-    // picture is dropped instead of kept.
-    expect(warnings).toEqual(["missing grid background: r1"]);
-    expect(renderer.gridBackgroundLayer.children).toHaveLength(0);
-    expect(renderer.largeBackgroundRoot).toBeNull();
-  });
-
   it("applies largebgtween in largebg transform space", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = renderer.buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
@@ -2538,7 +2501,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("maps largebgtween ease and loop onto the tween engine", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = renderer.buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
@@ -2601,7 +2564,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies backgroundtween in background transform space", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = new Texture({ label: "bg-test" });
     const snapshots: Array<{
       scaleX: number;
@@ -2668,7 +2631,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("routes backgroundtween ease and loop into the tween options", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = new Texture({ label: "bg-ease" });
 
     renderer.app = {};
@@ -2716,7 +2679,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("defaults backgroundtween tween options to Linear single-pass", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = new Texture({ label: "bg-ease-default" });
 
     renderer.app = {};
@@ -2752,7 +2715,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("retires a looping backgroundtween with its background session", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi
       .fn()
@@ -2793,7 +2756,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies largeimgtween in largeimg transform space", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = renderer.buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
@@ -2865,7 +2828,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("maps largeimgtween ease and loop onto the tween engine", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = renderer.buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
@@ -2922,7 +2885,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies zero-duration largeimgtween immediately and cancels stale tweens", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const root = renderer.buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
@@ -2983,7 +2946,7 @@ describe("PixiStoryRenderer", () => {
   it("counts the timer sticker up from 00:00:00 like the native stopwatch", async () => {
     vi.useFakeTimers();
     try {
-      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const renderer = createRenderer();
       const timer = {
         alpha: 1,
         style: null,
@@ -3031,7 +2994,7 @@ describe("PixiStoryRenderer", () => {
   it("freezes the timer at the time cap and wraps hours at 24", async () => {
     vi.useFakeTimers();
     try {
-      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const renderer = createRenderer();
       const timer = {
         alpha: 1,
         style: null,
@@ -3073,7 +3036,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("drops stale timer fades when a newer timersticker or clear takes over", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     const timer = {
       alpha: 1,
       style: null,
@@ -3141,7 +3104,7 @@ describe("PixiStoryRenderer", () => {
   it("lets a completed timerclear fade retire the clock a timersticker just restarted", async () => {
     vi.useFakeTimers();
     try {
-      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const renderer = createRenderer();
       const timer = {
         alpha: 1,
         style: null,
@@ -3195,7 +3158,7 @@ describe("PixiStoryRenderer", () => {
   it("leaves the timer slot untouched when timersticker omits time", async () => {
     vi.useFakeTimers();
     try {
-      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const renderer = createRenderer();
       const timer = {
         alpha: 1,
         style: null,
@@ -3234,7 +3197,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("completes in-flight sticker typing before the hide fade", async () => {
-    const renderer = new PixiStoryRenderer(createContext()) as any;
+    const renderer = createRenderer();
     // happy-dom cannot measure canvas fonts, and the fade runs through the
     // frame-driven tween; stub both so the test observes the text state.
     renderer.layoutSubtitle = vi.fn();
@@ -3283,7 +3246,7 @@ describe("PixiStoryRenderer", () => {
   it("recycles stickers without finishing their typing", async () => {
     vi.useFakeTimers();
     try {
-      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const renderer = createRenderer();
       renderer.app = {};
       renderer.layoutSubtitle = vi.fn();
       renderer.tween = vi.fn(() => Promise.resolve());
@@ -3318,7 +3281,7 @@ describe("PixiStoryRenderer", () => {
   it("reports sticker typing end only when the typewriter finishes on its own", async () => {
     vi.useFakeTimers();
     try {
-      const renderer = new PixiStoryRenderer(createContext()) as any;
+      const renderer = createRenderer();
       renderer.app = {};
       renderer.layoutSubtitle = vi.fn();
       renderer.tween = vi.fn(() => Promise.resolve());
@@ -3412,11 +3375,11 @@ describe("PixiStoryRenderer blocker", () => {
     const world = renderer.layers.world as Container;
     const sprite = renderer.blockerSprite;
     // Native panel_blocker (sibling 1) renders below panel_curtains
-    // (sibling 3): curtains cover the blocker when both are up.
+    // (sibling 3): curtains cover the blocker when both are up. The web world
+    // (scene, cgItems, curtains) takes the blocker right below the curtains.
     expect(sprite.parent).toBe(world);
-    expect(world.getChildIndex(sprite)).toBeLessThan(
-      world.getChildIndex(renderer.layers.curtains),
-    );
+    expect(world.getChildIndex(sprite)).toBe(2);
+    expect(world.getChildIndex(renderer.layers.curtains)).toBe(3);
   });
 
   it("saturates 0-255 endpoints at the tint write instead of rescaling mid-fade", async () => {
@@ -3515,7 +3478,6 @@ describe("PixiStoryRenderer blocker", () => {
 
     const sprite = renderer.blockerSprite;
     const filter = renderer.blockerSlideFilter;
-    expect(filter).not.toBeNull();
     expect(sprite.filters).toEqual([filter]);
     // Torappu/UI/AVG/SlideMask material floats: _Slide/_End/_Width.
     const uniforms = filter.filterUniforms.uniforms;
@@ -3556,10 +3518,11 @@ describe("PixiStoryRenderer blocker", () => {
     expect(filter.isVertical()).toBe(true);
     expect(filter.filterUniforms.uniforms.uExtent).toBeCloseTo(1, 6);
     // localScale.y = -1 mirrors the mask coordinate, and the flip keeps the
-    // full-screen coverage (mirrored around the centered anchor).
+    // full-screen coverage (mirrored around the centered anchor): the 1x1
+    // white quad stretched to 720 carries the sign as scale.y = -720.
     expect(filter.filterUniforms.uniforms.uFlipY).toBe(1);
     expect(filter.filterUniforms.uniforms.uFlipX).toBe(0);
-    expect(sprite.scale.y).toBeLessThan(0);
+    expect(sprite.scale.y).toBe(-720);
     expect(Math.abs(sprite.height)).toBe(720);
 
     // inverse = false never resets the sign (only destroy does), and the
@@ -3580,8 +3543,8 @@ describe("PixiStoryRenderer blocker", () => {
     });
     expect(renderer.blockerSlideFilter).toBeNull();
     expect(sprite.filters).toEqual([]);
-    expect(sprite.scale.y).toBeLessThan(0);
-    expect(sprite.alpha).toBeGreaterThan(0);
+    expect(sprite.scale.y).toBe(-720);
+    expect(sprite.alpha).toBe(1);
   });
 
   it("hands alpha back to the sprite when the slide wipe is unmounted", async () => {
@@ -3689,7 +3652,7 @@ describe("PixiStoryRenderer blocker", () => {
       to: { a: 0, b: 0, g: 0, r: 0 },
     });
     const filter = renderer.blockerSlideFilter;
-    expect(filter).not.toBeNull();
+    expect(renderer.blockerSprite.filters).toEqual([filter]);
 
     await renderer.setBlocker({
       block: false,
@@ -3712,7 +3675,7 @@ describe("PixiStoryRenderer blocker", () => {
 });
 
 function createSubtitleRenderer() {
-  const renderer = new PixiStoryRenderer(createContext()) as any;
+  const renderer = createRenderer();
   const manual = createManualClock();
   renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
   renderer.subtitleText = new Text({
@@ -3845,7 +3808,7 @@ describe("PixiStoryRenderer subtitle", () => {
 // happy-dom cannot measure pixi Text fonts, so the sticker slot becomes a
 // plain transform object; stickerTween only touches x/y/alpha/rotation.
 function createStickerRenderer(): any {
-  const renderer = new PixiStoryRenderer(createContext()) as any;
+  const renderer = createRenderer();
   renderer.ensureStickerText = vi.fn((id: string) => {
     let sticker = renderer.stickerTexts.get(id);
     if (!sticker) {
@@ -3924,7 +3887,8 @@ describe("PixiStoryRenderer stickerTween", () => {
     tweenCalls[0]!.step(0.5); // 250ms elapsed
     expect(sticker.x).toBe(200);
     expect(sticker.y).toBe(100);
-    expect(sticker.alpha).toBeCloseTo(1 - 0.8 * (250 / 300));
+    // The joined 300ms alpha step is 250/300 of the way from 1 to 0.2.
+    expect(sticker.alpha).toBeCloseTo(0.3333, 4);
 
     tweenCalls[0]!.step(1);
     tweenCalls[0]!.done?.();

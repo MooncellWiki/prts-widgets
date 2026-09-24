@@ -6,7 +6,7 @@ import {
 } from "../src/widgets/StoryPlayer/engine/rendering/core/DotweenEase";
 
 describe("dotweenEaseCurve resolution (GetEnum<Ease> port)", () => {
-  it("resolves enum names case-sensitively", () => {
+  it("resolves enum names case-sensitively and falls back to Linear otherwise", () => {
     expect(dotweenEaseCurve("OutQuad")(0.5)).toBeCloseTo(0.75);
     expect(dotweenEaseCurve("InOutCubic")(0.25)).toBeCloseTo(0.0625);
     expect(dotweenEaseCurve("InQuart")(0.5)).toBeCloseTo(0.0625);
@@ -28,7 +28,7 @@ describe("dotweenEaseCurve resolution (GetEnum<Ease> port)", () => {
     expect(dotweenEaseCurve("OutFlash")(0.4)).toBeCloseTo(0.64);
   });
 
-  it("keeps the native default branch for out-of-enum ordinals", () => {
+  it("keeps the native OutQuad default branch for out-of-enum ordinals but falls back to Linear past int32", () => {
     // EaseManager.Evaluate gates its switch on `(uint)(easeType - 1) > 0x24`;
     // everything else computes the OutQuad parabola (@ 0x1841f1170), not
     // Linear.
@@ -83,14 +83,14 @@ describe("dotweenEaseCurve resolution (GetEnum<Ease> port)", () => {
 });
 
 describe("Flash ease curves (Flash class port, default amplitude/period)", () => {
-  it("collapses each wave to the plain quadratic with SetEase's 1/0 defaults", () => {
+  it("collapses each flash ease to its single wave with SetEase's 1/0 defaults", () => {
     // SetEase truncates overshootOrAmplitude to an int for the flash eases, so
     // the 1.70158 default arrives as 1 -- a single wave -- and WeightedEase
     // short-circuits on period == 0 and returns min(1, wave).
-    expect(dotweenEaseCurve("OutFlash")(0.4)).toBeCloseTo(2 * 0.4 - 0.4 ** 2);
-    expect(dotweenEaseCurve("InFlash")(0.4)).toBeCloseTo(0.4 ** 2);
+    expect(dotweenEaseCurve("OutFlash")(0.4)).toBeCloseTo(0.64);
+    expect(dotweenEaseCurve("InFlash")(0.4)).toBeCloseTo(0.16);
     expect(dotweenEaseCurve("Flash")(0.4)).toBeCloseTo(0.4);
-    expect(dotweenEaseCurve("OutFlash")(0.75)).toBeCloseTo(2 * 0.75 - 0.5625);
+    expect(dotweenEaseCurve("OutFlash")(0.75)).toBeCloseTo(0.9375);
   });
 });
 
@@ -111,7 +111,7 @@ describe("Elastic ease curves (library overshoot/period defaults)", () => {
     expect(dotweenEaseCurve("InOutElastic")(0.6)).toBeCloseTo(1.176_32, 4);
   });
 
-  it("anchors the elastic endpoints native short-circuits", () => {
+  it("anchors the elastic endpoints native short-circuits and InOutElastic's midpoint", () => {
     for (const name of ["InElastic", "OutElastic", "InOutElastic"]) {
       expect(dotweenEaseCurve(name)(0)).toBe(0);
       expect(dotweenEaseCurve(name)(1)).toBe(1);

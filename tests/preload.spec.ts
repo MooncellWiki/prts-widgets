@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DIALOG_FRAME_URL } from "../src/widgets/StoryPlayer/assets";
 import {
   collectContextAssetManifest,
   collectContextAssetUrls,
@@ -120,24 +121,11 @@ describe("preloadContextAssets", () => {
       '[image(image="avg_01")]',
     ]);
 
-    const urls = collectContextAssetUrls(context);
-
-    expect(urls).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
-        "https://torappu.prts.wiki/assets/avg/images/avg_01.png",
-      ]),
-    );
-    expect(
-      urls.filter(
-        (url) =>
-          url ===
-          "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
-      ),
-    ).toHaveLength(1);
-    expect(urls.some((url) => url.includes("sprite_avg_cutscene.png"))).toBe(
-      false,
-    );
+    // 只列剧情资源:对话框黑条纹理(DIALOG_FRAME_URL)是播放器内置资源,不在其中。
+    expect(collectContextAssetUrls(context)).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
+      "https://torappu.prts.wiki/assets/avg/images/avg_01.png",
+    ]);
     expect(loadMock).not.toHaveBeenCalled();
   });
 
@@ -191,16 +179,11 @@ describe("preloadContextAssets", () => {
         used: false,
       },
     ]);
-    expect(manifest.urls).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/characters/face/base.png",
-        "https://torappu.prts.wiki/assets/avg/characters/face/1.png",
-        "https://torappu.prts.wiki/assets/avg/characters/face/2.png",
-      ]),
-    );
-    expect(manifest.urls).not.toContain(
-      "https://torappu.prts.wiki/assets/avg/characters/face/3.png",
-    );
+    expect(manifest.urls).toEqual([
+      "https://torappu.prts.wiki/assets/avg/characters/face/1.png",
+      "https://torappu.prts.wiki/assets/avg/characters/face/base.png",
+      "https://torappu.prts.wiki/assets/avg/characters/face/2.png",
+    ]);
     expect(loadMock).not.toHaveBeenCalled();
   });
 
@@ -249,13 +232,12 @@ describe("preloadContextAssets", () => {
     await preloadContextAssets(context, progress);
 
     expect(loadMock).toHaveBeenCalledTimes(1);
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/characters/avg_1012_skadisp_1/avg_1012_skadisp_2.png",
-        "https://torappu.prts.wiki/assets/avg/characters/char_empty/char_empty.png",
-        "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
-      ]),
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/characters/avg_1012_skadisp_1/avg_1012_skadisp_2.png",
+      "https://torappu.prts.wiki/assets/avg/characters/char_empty/char_empty.png",
+      "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+      DIALOG_FRAME_URL,
+    ]);
     expect(progress).toHaveBeenCalledWith(1);
   });
 
@@ -264,11 +246,10 @@ describe("preloadContextAssets", () => {
 
     await preloadContextAssets(context);
 
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
-      ]),
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
+      DIALOG_FRAME_URL,
+    ]);
   });
 
   it("preloads avgdisplay bg content as a background asset", async () => {
@@ -279,11 +260,10 @@ describe("preloadContextAssets", () => {
 
     await preloadContextAssets(context);
 
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/background/bg_black.png",
-      ]),
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/bg_black.png",
+      DIALOG_FRAME_URL,
+    ]);
   });
 
   it("preloads gridbg tiles as background assets", async () => {
@@ -294,14 +274,13 @@ describe("preloadContextAssets", () => {
     await preloadContextAssets(context);
 
     expect(loadMock).toHaveBeenCalledTimes(1);
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_l1.png",
-        "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_r1.png",
-        "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_l2.png",
-        "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_r2.png",
-      ]),
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_l1.png",
+      "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_r1.png",
+      "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_l2.png",
+      "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_r2.png",
+      DIALOG_FRAME_URL,
+    ]);
   });
 
   it("preloads verticalbg cggroup tiles as image assets", async () => {
@@ -312,12 +291,11 @@ describe("preloadContextAssets", () => {
     await preloadContextAssets(context);
 
     expect(loadMock).toHaveBeenCalledTimes(1);
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/images/69_i12_1.png",
-        "https://torappu.prts.wiki/assets/avg/images/69_i12_2.png",
-      ]),
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/images/69_i12_1.png",
+      "https://torappu.prts.wiki/assets/avg/images/69_i12_2.png",
+      DIALOG_FRAME_URL,
+    ]);
   });
 
   it("prefers imagegroup background tiles when verticalbg also includes cggroup", async () => {
@@ -328,18 +306,11 @@ describe("preloadContextAssets", () => {
     await preloadContextAssets(context);
 
     expect(loadMock).toHaveBeenCalledTimes(1);
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_l1.png",
-        "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_r1.png",
-      ]),
-    );
-    expect(loadMock.mock.calls[0]?.[0]).not.toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/images/47_g14_skyovercast_l1.png",
-        "https://torappu.prts.wiki/assets/avg/images/47_g14_skyovercast_r1.png",
-      ]),
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_l1.png",
+      "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_r1.png",
+      DIALOG_FRAME_URL,
+    ]);
   });
 
   it("preloads largeimg imagegroup tiles as image assets", async () => {
@@ -350,18 +321,11 @@ describe("preloadContextAssets", () => {
     await preloadContextAssets(context);
 
     expect(loadMock).toHaveBeenCalledTimes(1);
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/images/61_i12.png",
-        "https://torappu.prts.wiki/assets/avg/images/61_i11.png",
-      ]),
-    );
-    expect(loadMock.mock.calls[0]?.[0]).not.toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/avg/background/61_i12.png",
-        "https://torappu.prts.wiki/assets/avg/background/61_i11.png",
-      ]),
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/images/61_i12.png",
+      "https://torappu.prts.wiki/assets/avg/images/61_i11.png",
+      DIALOG_FRAME_URL,
+    ]);
   });
 
   it("collects only playmusic key and intro plus playsound key", async () => {
@@ -380,15 +344,11 @@ describe("preloadContextAssets", () => {
 
     await preloadContextAssets(context);
 
-    expect(loadMock.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining([
-        "https://torappu.prts.wiki/assets/audio/avg/music.mp3",
-        "https://torappu.prts.wiki/assets/audio/avg/intro.mp3",
-        "https://torappu.prts.wiki/assets/audio/avg/sound.mp3",
-      ]),
-    );
-    expect(loadMock.mock.calls[0]?.[0]).not.toContain(
-      "https://torappu.prts.wiki/assets/audio/avg/ignored.mp3",
-    );
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/audio/avg/music.mp3",
+      "https://torappu.prts.wiki/assets/audio/avg/intro.mp3",
+      "https://torappu.prts.wiki/assets/audio/avg/sound.mp3",
+      DIALOG_FRAME_URL,
+    ]);
   });
 });

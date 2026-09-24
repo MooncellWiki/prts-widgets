@@ -59,7 +59,7 @@ describe("StoryPlayerDebugShell UI smoke", () => {
     stub.listeners.clear();
   });
 
-  it("renders script lines and drives current-line highlight via subscription", async () => {
+  it("renders script lines, drives current-line highlight via subscription and unsubscribes on unmount", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     const app = createApp(StoryPlayerDebugShell);
@@ -71,8 +71,12 @@ describe("StoryPlayerDebugShell UI smoke", () => {
     stub.ready = true;
     await vi.advanceTimersByTimeAsync(500);
 
-    expect(host.querySelector(".story-player-stub")).not.toBeNull();
-    expect(host.querySelectorAll(".spd-line")).toHaveLength(3);
+    expect(
+      [...host.querySelectorAll(".spd-line-content")].map(
+        (el) => el.textContent,
+      ),
+    ).toEqual(['[name="A"]第一句', '[name="B"]第二句', "[stop]"]);
+    // 订阅只能经由已挂载的播放器 stub 的 getPlayer 挂上
     expect(stub.listeners.size).toBe(1);
 
     // 推送第 2 行 → 高亮切到 data-line=2
