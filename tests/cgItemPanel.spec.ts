@@ -40,7 +40,7 @@ async function tweenImmediately(
 }
 
 describe("CgItemPanel", () => {
-  it("keeps different keys and replaces an equal key in place", async () => {
+  it("keeps different keys and replaces an equal key with a new root", async () => {
     const layer = new Container();
     const panel = new CgItemPanel(
       layer,
@@ -64,7 +64,7 @@ describe("CgItemPanel", () => {
     expect(layer.children).toHaveLength(2);
   });
 
-  it("hides one key or clears all keys independently of block", async () => {
+  it("hides one key, then clears every remaining key", async () => {
     const layer = new Container();
     const panel = new CgItemPanel(
       layer,

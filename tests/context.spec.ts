@@ -69,13 +69,19 @@ describe("normalizeCharacterMap", () => {
       },
     });
 
-    expect(linkMap.npc_2004_alty?.groups[0]).toMatchObject({
-      base: "npc_2004_Alty/base",
-      mode: "face_overlay",
-    });
-    expect(linkMap.npc_2004_alty?.array[0]).toMatchObject({
-      face: "npc_2004_Alty/1",
-      name: "1$1",
+    expect(linkMap).toEqual({
+      npc_2004_alty: {
+        array: [{ alias: "", face: "npc_2004_Alty/1", group: 0, name: "1$1" }],
+        groups: [
+          {
+            base: "npc_2004_Alty/base",
+            faceRect: { h: 80, w: 100, x: 120, y: 40 },
+            mode: "face_overlay",
+          },
+        ],
+        pos: { x: 0, y: 0 },
+        size: { x: 0, y: 0 },
+      },
     });
   });
 });
@@ -93,7 +99,7 @@ describe("normalizeBackgroundPpuMap", () => {
     });
   });
 
-  it("drops non-finite and non-positive values instead of throwing", () => {
+  it("drops null, NaN and non-positive ppus but coerces numeric strings", () => {
     const map = normalizeBackgroundPpuMap({
       bg_bad_string: "80",
       bg_bad_null: null,

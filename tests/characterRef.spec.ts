@@ -76,17 +76,20 @@ describe("parseNativeCharacterRef", () => {
       group: null,
       index: 0,
     });
-    expect(parseNativeCharacterRef("avg_npc_1#3")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1#3")).toEqual({
+      alias: null,
       base: "avg_npc_1",
       group: null,
       index: 2,
     });
-    expect(parseNativeCharacterRef("avg_npc_1$2")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1$2")).toEqual({
+      alias: null,
       base: "avg_npc_1",
       group: 1,
       index: 0,
     });
-    expect(parseNativeCharacterRef("avg_npc_1#3$2")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1#3$2")).toEqual({
+      alias: null,
       base: "avg_npc_1",
       group: 1,
       index: 2,
@@ -95,18 +98,23 @@ describe("parseNativeCharacterRef", () => {
 
   it("absorbs whitespace inside the suffix, as Int32.TryParse does", () => {
     // The one real-world case: level_act53side_03_end.txt.
-    expect(parseNativeCharacterRef("avg_4236_tmslot_1#3 $1")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_4236_tmslot_1#3 $1")).toEqual({
+      alias: null,
       base: "avg_4236_tmslot_1",
       group: 0,
       index: 2,
     });
-    expect(parseNativeCharacterRef("avg_npc_1# 3")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1# 3")).toEqual({
+      alias: null,
       base: "avg_npc_1",
+      group: null,
       index: 2,
     });
-    expect(parseNativeCharacterRef("avg_npc_1$ 2")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1$ 2")).toEqual({
+      alias: null,
       base: "avg_npc_1",
       group: 1,
+      index: 0,
     });
   });
 
@@ -122,7 +130,8 @@ describe("parseNativeCharacterRef", () => {
   });
 
   it("leaves an unparseable $ segment on the base and still strips #", () => {
-    expect(parseNativeCharacterRef("avg_npc_1$1#3")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1$1#3")).toEqual({
+      alias: null,
       base: "avg_npc_1$1",
       group: null,
       index: 2,
@@ -130,28 +139,39 @@ describe("parseNativeCharacterRef", () => {
   });
 
   it("leaves an overflowing index on the base", () => {
-    expect(parseNativeCharacterRef("avg_npc_1#99999999999")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1#99999999999")).toEqual({
+      alias: null,
       base: "avg_npc_1#99999999999",
+      group: null,
       index: 0,
     });
   });
 
   it("accepts a signed index", () => {
-    expect(parseNativeCharacterRef("avg_npc_1#+3")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1#+3")).toEqual({
+      alias: null,
       base: "avg_npc_1",
+      group: null,
       index: 2,
     });
   });
 
   it("leaves a non-numeric # segment on the base", () => {
-    expect(parseNativeCharacterRef("avg_npc_1#abc")).toMatchObject({
+    expect(parseNativeCharacterRef("avg_npc_1#abc")).toEqual({
+      alias: null,
       base: "avg_npc_1#abc",
+      group: null,
       index: 0,
     });
   });
 
   it("keeps the leading @ on the alias, like _TryParseAlias", () => {
-    expect(parseNativeCharacterRef("avg_npc_1@angry")?.alias).toBe("@angry");
+    expect(parseNativeCharacterRef("avg_npc_1@angry")).toEqual({
+      alias: "@angry",
+      base: "avg_npc_1",
+      group: null,
+      index: 0,
+    });
   });
 
   it("returns null only for an empty ref", () => {
@@ -204,7 +224,7 @@ describe("resolveCharacterSelection", () => {
     });
   });
 
-  it("returns null for an unknown base or an empty group", () => {
+  it("returns null for an unknown base, an empty group, or an empty ref", () => {
     expect(resolveCharacterSelection(linkMap, "avg_npc_404")).toBeNull();
     expect(resolveCharacterSelection(linkMap, "avg_npc_1$9")).toBeNull();
     expect(resolveCharacterSelection(linkMap, "")).toBeNull();

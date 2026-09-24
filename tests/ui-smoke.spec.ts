@@ -35,19 +35,15 @@ describe("LogAllList UI smoke", () => {
         }),
     });
     app.mount(host);
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const text = host.textContent ?? "";
-    expect(text).toContain("剧情选择");
-    expect(text).toContain("选A / 选B");
-    expect(text).toContain("共享文本");
-    expect(text).toContain("甲分支");
-    expect(text).toContain("乙分支");
-    expect(text).toContain("选择「选A」"); // 条件标签
-    expect(text).toContain("▶"); // 当前播放行高亮
+    // 选择记录、公共文本、两个带条件标签的分栏、收尾依次渲染；▶ 为当前播放行高亮
+    expect(host.textContent).toBe(
+      "剧情选择选A / 选B公共共享文本选择「选A」： ▶A甲分支选择「选B」： B乙分支后收尾",
+    );
     // 高亮行必须是甲分支（当前路径），不是乙分支
-    const active = host.querySelector("[data-active-line]");
-    expect(active?.textContent).toContain("甲分支");
+    const active = host.querySelector<HTMLElement>("[data-active-line]");
+    expect(active?.dataset.activeLine).toBe("exact");
+    expect(active?.textContent).toBe("▶A甲分支");
     app.unmount();
   });
 
@@ -84,21 +80,23 @@ describe("LogAllList UI smoke", () => {
         }),
     });
     app.mount(host);
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
     // 「我们有什么计划？」与同分支的普通文本（外层三）在同一分栏，
     // 整栏一起淡化
     const choiceBlock = [...host.querySelectorAll(".conditional-block")].find(
       (el) => el.textContent?.includes("我们有什么计划？"),
     );
-    expect(choiceBlock).toBeDefined();
-    expect(choiceBlock?.textContent).toContain("外层三");
+    expect(choiceBlock?.textContent).toBe(
+      "选择「凯尔希」： C外层三剧情选择我们有什么计划？无分支",
+    );
     expect(choiceBlock?.classList.contains("opacity-40")).toBe(true);
     // 汇合后的阿米娅文本保持正常显示（未被淡化）
     const convergeBlock = [...host.querySelectorAll(".conditional-block")].find(
       (el) => el.textContent?.includes("询问哪方面"),
     );
-    expect(convergeBlock).toBeDefined();
+    expect(convergeBlock?.textContent).toBe(
+      "选择「阿米娅 / 凯尔希」： 阿米娅询问哪方面",
+    );
     expect(convergeBlock?.classList.contains("opacity-40")).toBe(false);
     app.unmount();
   });

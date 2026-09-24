@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Char } from "../src/widgets/CharList/utils";
 
@@ -23,10 +23,12 @@ describe("global tooltip does not cannibalize the source DOM", () => {
     expect(tip.children).toHaveLength(2);
     expect((tip.children[1] as HTMLElement).style.display).toBe("none");
 
-    // 小部件随后才把 DOM 当数据源读
+    // 小部件随后才把 DOM 当数据源读；term 上的 aria-expanded 是 tippy
+    // 挂载留下的，证明入口确实扫到了这一行
     const char = new Char(row);
-    expect(char.feature).toContain("术语: 鼓舞");
-    expect(char.feature.match(/<span/g)!.length).toBe(3);
+    expect(char.feature).toBe(
+      '阻挡的敌人被<span class="mc-tooltips"><span class="term" aria-expanded="false">鼓舞</span><span style="display:none" data-size="350" data-interactive="true"><strong>术语: 鼓舞</strong>说明文字</span></span>影响',
+    );
     expect(char.plainFeature).toBe("阻挡的敌人被鼓舞影响");
   });
 
@@ -37,7 +39,6 @@ describe("global tooltip does not cannibalize the source DOM", () => {
       <span class="mc-tooltips" id="on"><span>甲</span><span style="display:none" data-interactive="true">A</span></span>
       <span class="mc-tooltips" id="off"><span>乙</span><span style="display:none" data-interactive="false">B</span></span>
       <span class="mc-tooltips" id="none"><span>丙</span><span style="display:none">C</span></span>`;
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const interactive = (id: string) =>
       (
@@ -46,8 +47,11 @@ describe("global tooltip does not cannibalize the source DOM", () => {
         }
       )._tippy!.props.interactive;
 
-    expect(interactive("on")).toBe(true);
-    expect(interactive("off")).toBe(false);
-    expect(interactive("none")).toBe(false);
+    // MutationObserver 回调是异步的：tippy 挂上之前 _tippy 为空，断言会抛错重试
+    await vi.waitFor(() => {
+      expect(interactive("on")).toBe(true);
+      expect(interactive("off")).toBe(false);
+      expect(interactive("none")).toBe(false);
+    });
   });
 });

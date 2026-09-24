@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SpellStickerPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/SpellStickerPanel";
 
 describe("SpellStickerPanel", () => {
-  it("renders the two native text slots in centered coordinates and hides without removing", () => {
+  it("renders the two native text slots in centered coordinates, hides without removing, and re-shows the same view", () => {
     const layer = new Container();
     const panel = new SpellStickerPanel(layer);
     panel.show({

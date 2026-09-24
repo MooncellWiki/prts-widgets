@@ -44,24 +44,42 @@ const findConditional = (
   return undefined;
 };
 
+/** 顶层条件区块的展示标签，按文档顺序 */
+const conditionalLabels = (document: LogDocument): string[] =>
+  document.blocks.flatMap((block) =>
+    block.kind === "conditional"
+      ? [
+          formatConditionLabel(
+            document.conditions.describe(block.audience),
+            document.decisions,
+          ),
+        ]
+      : [],
+  );
+
 describe("buildLogAll（线性内容）", () => {
   it("collects linear dialogue and narration as flat line entries", () => {
     const document = run(['[name="卢西恩"]你好。', "旁白文本一行。"]);
-    expect(document.blocks).toHaveLength(1);
-    const block = document.blocks[0]!;
-    expect(block.kind).toBe("lines");
-    if (block.kind !== "lines") return;
-    expect(block.audience).toBe(TRUE_CONDITION);
-    expect(block.entries[0]).toMatchObject({
-      lineIndex: 1,
-      speaker: "卢西恩",
-      source: "dialogue",
-    });
-    expect(block.entries[1]).toMatchObject({
-      lineIndex: 2,
-      speaker: "",
-      source: "narration",
-    });
+    expect(document.blocks).toEqual([
+      {
+        audience: TRUE_CONDITION,
+        entries: [
+          {
+            lineIndex: 1,
+            source: "dialogue",
+            speaker: "卢西恩",
+            spans: [{ color: null, text: "你好。" }],
+          },
+          {
+            lineIndex: 2,
+            source: "narration",
+            speaker: "",
+            spans: [{ color: null, text: "旁白文本一行。" }],
+          },
+        ],
+        kind: "lines",
+      },
+    ]);
   });
 
   it("keeps hidelog stickers and subtitles out of the document", () => {
@@ -77,7 +95,11 @@ describe("buildLogAll（线性内容）", () => {
 
   it("skips empty dialogue/narration text", () => {
     const document = run(['[name="卢西恩"]', "", '[name="A"]有内容']);
-    expect(projectVisibleEntries(document, new Map())).toHaveLength(1);
+    expect(
+      projectVisibleEntries(document, new Map()).map(
+        (entry) => entry.lineIndex,
+      ),
+    ).toEqual([3]);
   });
 
   it("stamps each line entry with its source lineNumber (1-based, matches runtime)", () => {
@@ -123,16 +145,26 @@ describe("buildLogAll（线性内容）", () => {
       '[subtitle(text="字幕文本")]',
     ]);
     const entries = projectVisibleEntries(document, new Map());
-    expect(entries.map((e) => e.source)).toEqual(["sticker", "subtitle"]);
+    expect(
+      entries.map((e) => [e.source, e.spans.map((s) => s.text).join("")]),
+    ).toEqual([
+      ["sticker", "贴纸文本"],
+      ["subtitle", "字幕文本"],
+    ]);
   });
 
   it("records dialog-sentinel commands carrying content as dialogue", () => {
     // `[imagegroup=..]文本` 落到 dialog 哨兵命令；runtime 中带 content 时
     // 与对白同样显示并重置 multiline
     const document = run(["[imagegroup=2]画外文本"]);
-    const entries = projectVisibleEntries(document, new Map());
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ source: "dialogue", lineIndex: 1 });
+    expect(projectVisibleEntries(document, new Map())).toEqual([
+      {
+        lineIndex: 1,
+        source: "dialogue",
+        speaker: "",
+        spans: [{ color: null, text: "画外文本" }],
+      },
+    ]);
   });
 });
 
@@ -166,18 +198,12 @@ describe("buildLogAll（decision / predicate 语义）", () => {
 
     const branchA = findConditional(document.blocks, "「选A」", document);
     const branchB = findConditional(document.blocks, "「选B」", document);
-    expect(branchA?.blocks).toHaveLength(1);
-    expect(branchB?.blocks).toHaveLength(1);
-    if (branchA?.blocks[0]?.kind !== "lines") return;
-    expect(branchA.blocks[0].entries[0]).toMatchObject({
-      lineIndex: 4,
-      speaker: "A",
-    });
-    if (branchB?.blocks[0]?.kind !== "lines") return;
-    expect(branchB.blocks[0].entries[0]).toMatchObject({
-      lineIndex: 6,
-      speaker: "B",
-    });
+    expect(branchA?.blocks).toMatchObject([
+      { entries: [{ lineIndex: 4, speaker: "A" }], kind: "lines" },
+    ]);
+    expect(branchB?.blocks).toMatchObject([
+      { entries: [{ lineIndex: 6, speaker: "B" }], kind: "lines" },
+    ]);
   });
 
   it("expands variable placeholders in decision labels with the playback variables", () => {
@@ -202,12 +228,10 @@ describe("buildLogAll（decision / predicate 语义）", () => {
       "跟Amiya走",
       "独自行动",
     ]);
-    expect(
-      findConditional(document.blocks, "「跟Amiya走」", document),
-    ).toBeDefined();
-    expect(
-      findConditional(document.blocks, "「独自行动」", document),
-    ).toBeDefined();
+    expect(conditionalLabels(document)).toEqual([
+      "选择「跟Amiya走」",
+      "选择「独自行动」",
+    ]);
   });
 
   it("projects each option's visible sequence for path filtering", () => {
@@ -242,10 +266,7 @@ describe("buildLogAll（decision / predicate 语义）", () => {
       '[name="C"]C分支文本', // line 5
       "[predicate]",
     ]);
-    expect(
-      findConditional(document.blocks, "「A / B」", document),
-    ).toBeDefined();
-    expect(findConditional(document.blocks, "「C」", document)).toBeDefined();
+    expect(conditionalLabels(document)).toEqual(["选择「A / B」", "选择「C」"]);
     // 选 C 的玩家看不到 AB 段
     expect(
       projectVisibleEntries(document, assignmentOf([[1, 2]])).map(
@@ -341,8 +362,12 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     expect(visible(1)).toEqual(["外2专属"]);
     expect(visible(2)).toEqual(["外3专属"]);
 
-    // 外2 的条件区块存在且标签可读
-    expect(findConditional(document.blocks, "外2", document)).toBeDefined();
+    // 外层三个选项的条件区块都存在且标签可读
+    expect(conditionalLabels(document)).toEqual([
+      "选择「外1」",
+      "选择「外2」",
+      "选择「外3」",
+    ]);
   });
 
   it("keeps inner decision content nested under the outer option path", () => {
@@ -464,15 +489,8 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     script.push('[predicate(references="1")]', '[name="尾"]尾分支');
 
     const document = run(script);
-    const tail = findConditional(document.blocks, "甲9", document);
-    expect(tail).toBeDefined();
-    const label = tail
-      ? formatConditionLabel(
-          document.conditions.describe(tail.audience),
-          document.decisions,
-        )
-      : "";
-    expect(label).toBe("选择「甲9」");
+    // 汇合段全部归一为 TRUE，唯一的条件区块是尾分支
+    expect(conditionalLabels(document)).toEqual(["选择「甲9」"]);
   });
 
   it("resets runtime state for an invalid decision without emitting a choice", () => {
@@ -721,45 +739,55 @@ describe("ConditionStore", () => {
 });
 
 describe("oracle 一致性（单元剧本）", () => {
-  const scripts: readonly (readonly string[])[] = [
-    [
-      '[decision(options="A;B", values="1;2")]',
-      '[name="公共"]共享',
-      '[predicate(references="1")]',
-      '[name="A"]分支A',
-      '[predicate(references="2")]',
-      '[name="B"]分支B',
-      "[predicate]",
-      '[name="后"]之后',
-    ],
-    [
-      '[decision(options="外1;外2;外3", values="1;2;3")]',
-      '[predicate(references="1")]',
-      '[decision(options="内", values="4")]',
-      '[predicate(references="4")]',
-      '[name="内层"]内层文本',
-      '[predicate(references="2")]',
-      '[name="外2专属"]外2',
-      '[predicate(references="3")]',
-      '[name="外3专属"]外3',
-    ],
-    [
-      '[decision(options="A;B", values="1;2")]',
-      '[predicate(references="1")]',
-      '[multiline(name="甲")]一',
-      '[multiline(name="甲", end=true)]二',
-      '[subtitle(text="字幕")]',
-      '[name="对白"]内容',
-    ],
-  ];
-
-  it.each(scripts)(
-    "analyzer matches the independent oracle on every path",
-    (script) => {
+  it.each([
+    {
+      name: "a two-way branch between shared text",
+      pathCount: 2,
+      script: [
+        '[decision(options="A;B", values="1;2")]',
+        '[name="公共"]共享',
+        '[predicate(references="1")]',
+        '[name="A"]分支A',
+        '[predicate(references="2")]',
+        '[name="B"]分支B',
+        "[predicate]",
+        '[name="后"]之后',
+      ],
+    },
+    {
+      name: "outer predicates after a gate-skipped inner decision",
+      pathCount: 3,
+      script: [
+        '[decision(options="外1;外2;外3", values="1;2;3")]',
+        '[predicate(references="1")]',
+        '[decision(options="内", values="4")]',
+        '[predicate(references="4")]',
+        '[name="内层"]内层文本',
+        '[predicate(references="2")]',
+        '[name="外2专属"]外2',
+        '[predicate(references="3")]',
+        '[name="外3专属"]外3',
+      ],
+    },
+    {
+      name: "a gated multiline run followed by subtitle and dialogue",
+      pathCount: 2,
+      script: [
+        '[decision(options="A;B", values="1;2")]',
+        '[predicate(references="1")]',
+        '[multiline(name="甲")]一',
+        '[multiline(name="甲", end=true)]二',
+        '[subtitle(text="字幕")]',
+        '[name="对白"]内容',
+      ],
+    },
+  ])(
+    "analyzer matches the independent oracle on every path: $name",
+    ({ pathCount, script }) => {
       const lines = parseScript(script);
       const document = buildLogAll(lines);
       const traces = enumerateOracleTraces(lines);
-      expect(traces.length).toBeGreaterThan(0);
+      expect(traces).toHaveLength(pathCount);
       for (const trace of traces) {
         const projected = projectVisibleEntries(
           document,

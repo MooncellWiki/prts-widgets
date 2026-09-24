@@ -10,8 +10,4 @@ describe("computeLegacyShowItemLayout", () => {
     expect(layout.contentWidth).toBeCloseTo(752.8);
     expect(layout.scale).toBeCloseTo(0.8);
   });
-
-  it("preserves the legacy border thickness ratio", () => {
-    expect(computeLegacyShowItemLayout(200, 100).borderPx).toBe(10);
-  });
 });

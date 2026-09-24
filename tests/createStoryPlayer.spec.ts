@@ -2,10 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createStoryPlayer } from "../src/widgets/StoryPlayer/engine/createStoryPlayer";
 
-import type { Context } from "../src/widgets/StoryPlayer/context";
-
-// createStoryPlayer 只在这三处碰真实的图形/音频栈，happy-dom 下跑不起来。
+// createStoryPlayer 只在这两处碰真实的图形/音频栈，happy-dom 下跑不起来。
 // 换成吞掉一切调用的桩后，剩下的 StoryRuntime 是真的，监听器接线才测得准。
+// HtmlStoryAudio 不用桩：脚本里没有音频指令，它不会去加载任何资源。
 // vi.mock 的工厂在模块体求值前就会被调用，所以桩必须写成会提升的函数声明。
 function noop(): void {}
 
@@ -25,20 +24,13 @@ vi.mock("../src/widgets/StoryPlayer/engine/renderer", () => ({
     }
   },
 }));
-vi.mock("../src/widgets/StoryPlayer/engine/audio", () => ({
-  HtmlStoryAudio: class {
-    constructor() {
-      return stubInstance();
-    }
-  },
-}));
 
 function createPlayer(script: readonly string[]) {
   return createStoryPlayer({
     audioVariables: {},
     linkMap: {},
     script: [...script],
-  } as unknown as Context);
+  });
 }
 
 describe("createStoryPlayer", () => {
@@ -71,6 +63,7 @@ describe("createStoryPlayer", () => {
     seen.length = 0;
 
     await player.start();
+    expect(player.getDisplayedLineIndex()).toBe(1);
     expect(seen).toEqual([]);
   });
 
@@ -88,6 +81,7 @@ describe("createStoryPlayer", () => {
     seen.length = 0;
 
     await player.start();
+    expect(player.getDisplayedLineIndex()).toBe(1);
     expect(seen).toEqual([]);
   });
 

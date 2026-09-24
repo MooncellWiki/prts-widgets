@@ -602,7 +602,7 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(sleep).toHaveBeenCalledWith(1000);
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(1000);
     expect(runtime.getState()).toBe("waiting_input");
   });
 
@@ -617,8 +617,7 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(sleep).toHaveBeenNthCalledWith(1, 500);
-    expect(sleep).toHaveBeenNthCalledWith(2, 0);
+    expect(sleep.mock.calls).toEqual([[500], [0]]);
   });
 
   it("uses value predicates without treating them as label jumps", async () => {
@@ -661,11 +660,17 @@ describe("StoryRuntime", () => {
       );
 
       const start = runtime.start();
-      await vi.advanceTimersByTimeAsync(1820);
+      await vi.advanceTimersByTimeAsync(1819);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "auto" });
+      await vi.advanceTimersByTimeAsync(1);
       await start;
 
       expect(runtime.getState()).toBe("waiting_input");
       expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "manual" });
+
+      // Theater mode swallows clicks; once it exits a click advances again.
+      await runtime.advance();
+      expect(runtime.getState()).toBe("finished");
     } finally {
       vi.useRealTimers();
     }
@@ -685,7 +690,9 @@ describe("StoryRuntime", () => {
       runtime.setAutoPlayMode("button_auto");
       expect(runtime.getAutoPlayState().mode).toBe("button_auto");
 
-      await vi.advanceTimersByTimeAsync(1560);
+      await vi.advanceTimersByTimeAsync(1559);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "hi" });
+      await vi.advanceTimersByTimeAsync(1);
       await vi.advanceTimersByTimeAsync(200);
       expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
 
@@ -862,7 +869,7 @@ describe("StoryRuntime", () => {
     await startPromise;
   });
 
-  it("prefers url over res and warns when neither is given", async () => {
+  it("warns and plays nothing when video has neither url nor res", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
     const runtime = new StoryRuntime(
@@ -897,9 +904,12 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(runtime.getState()).toBe("waiting_input");
-    expect(warnings.some((item) => item.type === "unsupported_command")).toBe(
-      true,
-    );
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail: "bgeffect",
+        type: "unsupported_command",
+      }),
+    ]);
   });
 
   it("blocks on video command until playback completes", async () => {
@@ -951,7 +961,7 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("waiting_timer");
     expect(runtime.canSkipNode()).toBe(true);
-    expect(sleep).toHaveBeenCalledWith(30_000);
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(30_000);
 
     await runtime.skipNode();
     await startPromise;
@@ -1208,7 +1218,7 @@ describe("StoryRuntime", () => {
     });
   });
 
-  it("resolves decision values through the shared semantics", async () => {
+  it("hands the panel per-option decision values with missing entries defaulting to 0", async () => {
     const renderer = new FakeRenderer();
     renderer.decisionIndex = 1;
     renderer.decisionValue = 0;
@@ -1226,10 +1236,12 @@ describe("StoryRuntime", () => {
 
     // 面板拿到的是 log/semantics.parseDecision 逐项解析好的 values；
     // 缺项取 0，与原生 DecisionPanel._GetOptionValue 越界分支一致
-    expect(renderer.decisionCalls[0]).toEqual({
-      options: ["A", "B", "C"],
-      values: [7, 0, 0],
-    });
+    expect(renderer.decisionCalls).toEqual([
+      {
+        options: ["A", "B", "C"],
+        values: [7, 0, 0],
+      },
+    ]);
   });
 
   it("does not record a choice when the panel is cleared without a click", async () => {
@@ -1248,7 +1260,7 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(runtime.getLogPosition().selections).toEqual([]);
+    expect(runtime.getLogPosition()).toEqual({ lineIndex: 2, selections: [] });
   });
 
   it("shows and hides story items with legacy defaults", async () => {
@@ -1327,7 +1339,7 @@ describe("StoryRuntime", () => {
         transType: 0,
       },
     ]);
-    expect(sleep).not.toHaveBeenCalledWith(200);
+    expect(sleep).not.toHaveBeenCalled();
     expect(runtime.getState()).toBe("waiting_input");
   });
 
@@ -1582,12 +1594,16 @@ describe("StoryRuntime", () => {
     // name; only the character art is absent.
     expect(renderer.characterCutinCalls).toHaveLength(1);
     expect(renderer.characterCutinCalls[0]).toMatchObject({
+      block: true,
       characterMissing: true,
       fadeMs: 500,
       widgetId: "1",
     });
     expect(warnings).toEqual([
-      expect.objectContaining({ type: "missing_asset" }),
+      expect.objectContaining({
+        detail: "charactercutin: avg_ghost#1",
+        type: "missing_asset",
+      }),
     ]);
   });
 
@@ -1855,7 +1871,10 @@ describe("StoryRuntime", () => {
     // new fore Image is disabled, so the slot empties -- but the action/focus
     // sections still run and the command is not dropped.
     expect(warnings).toEqual([
-      expect.objectContaining({ type: "missing_asset" }),
+      expect.objectContaining({
+        detail: "character: avg_missing_1",
+        type: "missing_asset",
+      }),
     ]);
     expect(renderer.clearedSlots).toEqual([{ fadeMs: 300, slot: "m" }]);
     expect(renderer.characterCalls[1]).toMatchObject({
@@ -1910,6 +1929,8 @@ describe("StoryRuntime", () => {
         // sequence auto-plays -- but the isblock check at 0x183e4e56f sits
         // inside the `end` branch, so it does not block.
         '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,isblock=true,end=false)]',
+        // The very same command with end omitted does block.
+        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,isblock=true)]',
         '[name="A"]ok',
       ]),
       renderer,
@@ -1932,65 +1953,58 @@ describe("StoryRuntime", () => {
       replaceFadeMs: 2000,
       slot: "l",
     });
-    // The very same command with end omitted does block.
-    expect(renderer.characterCalls[1]).not.toHaveProperty("deferPlay");
+    expect(renderer.characterCalls[2]).toMatchObject({
+      block: true,
+      slot: "l",
+    });
   });
 
-  it("keeps isblock on the slotless clear branch even with end=false", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        // The clear branch returns before the sequence is built and hands
-        // isBlock straight to _CleanSlotsWithTween (0x183e4e5c3), so it is
-        // not gated on `end` the way the slot path is.
-        "[charslot(duration=0.5,isblock=true,end=false)]",
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-    );
+  it.each([
+    {
+      name: "does not block without isblock",
+      command: "[charslot(duration=0.5)]",
+      stateWhileClearing: "waiting_input",
+    },
+    {
+      name: "blocks with isblock",
+      command: "[charslot(duration=0.5,isblock=true)]",
+      stateWhileClearing: "running",
+    },
+    {
+      // The clear branch returns before the sequence is built and hands
+      // isBlock straight to _CleanSlotsWithTween (0x183e4e5c3), so it is
+      // not gated on `end` the way the slot path is.
+      name: "keeps isblock even with end=false",
+      command: "[charslot(duration=0.5,isblock=true,end=false)]",
+      stateWhileClearing: "running",
+    },
+  ])(
+    "clears all characters over the charslot duration when slot is omitted and $name",
+    async ({ command, stateWhileClearing }) => {
+      let resolveClear: (() => void) | undefined;
+      const renderer = new FakeRenderer();
+      renderer.clearCharactersHandler = () =>
+        new Promise<void>((resolve) => {
+          resolveClear = resolve;
+        });
+      const runtime = new StoryRuntime(
+        createContext([command, '[name="A"]ok']),
+        renderer,
+        new FakeAudio(),
+      );
 
-    await runtime.start();
+      const startPromise = runtime.start();
 
-    expect(renderer.clearedSlots).toEqual([{ fadeMs: 500, slot: undefined }]);
-  });
+      await Promise.resolve();
 
-  it("clears all characters with charslot duration when slot is omitted", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext(["[charslot(duration=0.5,isblock=true)]", '[name="A"]ok']),
-      renderer,
-      new FakeAudio(),
-    );
+      expect(renderer.clearedSlots).toEqual([{ fadeMs: 500, slot: undefined }]);
+      expect(runtime.getState()).toBe(stateWhileClearing);
 
-    await runtime.start();
-
-    expect(renderer.clearedSlots).toEqual([{ fadeMs: 500, slot: undefined }]);
-    expect(runtime.getState()).toBe("waiting_input");
-  });
-
-  it("does not block on full-scene charslot clear unless explicitly requested", async () => {
-    let resolveClear: (() => void) | undefined;
-    const renderer = new FakeRenderer();
-    renderer.clearCharactersHandler = () =>
-      new Promise<void>((resolve) => {
-        resolveClear = resolve;
-      });
-    const runtime = new StoryRuntime(
-      createContext(["[charslot(duration=0.5)]", '[name="A"]ok']),
-      renderer,
-      new FakeAudio(),
-    );
-
-    const startPromise = runtime.start();
-
-    await Promise.resolve();
-
-    expect(runtime.getState()).toBe("waiting_input");
-
-    resolveClear?.();
-    await startPromise;
-  });
+      resolveClear?.();
+      await startPromise;
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
+    },
+  );
 
   it("maps camerashake to native defaults and parameters", async () => {
     const renderer = new FakeRenderer();
@@ -2059,53 +2073,47 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("scales blocker fadetime by animateRatio like native CalculateFadetime", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        "[Blocker(a=1, r=0,g=0, b=0, fadetime=0.6, block=true)]",
-        '[Blocker(a=0, r=0,g=0, b=0, fadetime=2, style="verticalslider", block=true)]',
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-      { animateRatio: 0.5 },
-    );
-
-    await runtime.start();
-
-    expect(
-      renderer.blockerCalls.map((call) => [call.fadeMs, call.block]),
-    ).toEqual([
-      [300, true],
-      [1000, true],
-    ]);
-  });
-
-  it("collapses blocker into the native zero-duration branch under quick_play", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        "[Blocker(a=1, r=0,g=0, b=0, fadetime=0.6, block=true)]",
-        "[Blocker(a=0, r=0,g=0, b=0, fadetime=2, block=true)]",
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
+  it.each([
+    {
+      name: "keeps block",
+      animateRatio: 0.5,
+      expected: [
+        [300, true],
+        [1000, true],
+      ],
+    },
+    {
       // quick_play speed family has animateRatio = 0; the constructor option
       // applies the same ratio to the default speed.
-      { animateRatio: 0 },
-    );
+      name: "drops block at zero duration",
+      animateRatio: 0,
+      expected: [
+        [0, false],
+        [0, false],
+      ],
+    },
+  ])(
+    "scales blocker fadetime by animateRatio $animateRatio like native CalculateFadetime and $name",
+    async ({ animateRatio, expected }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          "[Blocker(a=1, r=0,g=0, b=0, fadetime=0.6, block=true)]",
+          '[Blocker(a=0, r=0,g=0, b=0, fadetime=2, style="verticalslider", block=true)]',
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { animateRatio },
+      );
 
-    await runtime.start();
+      await runtime.start();
 
-    expect(
-      renderer.blockerCalls.map((call) => [call.fadeMs, call.block]),
-    ).toEqual([
-      [0, false],
-      [0, false],
-    ]);
-  });
+      expect(
+        renderer.blockerCalls.map((call) => [call.fadeMs, call.block]),
+      ).toEqual(expected);
+    },
+  );
 
   it("keeps cameraeffect values case-sensitive and degrades Chaos structurally", async () => {
     const renderer = new FakeRenderer();
@@ -2143,12 +2151,12 @@ describe("StoryRuntime", () => {
         keep: true,
       },
     ]);
-    expect(warnings).toContainEqual(
+    expect(warnings).toEqual([
       expect.objectContaining({
         detail: "cameraeffect:Chaos",
         type: "unsupported_visual",
       }),
-    );
+    ]);
   });
 
   it("scales cameraeffect fade time by the current-speed animateRatio", async () => {
@@ -2365,24 +2373,44 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("maps gridbg initposmode and treats unknown modes as zero offset", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        '[gridbg(imagegroup="a/b/c/d",solidwidth="1280/1280",solidheight="720/720",initposmode="upperleft")]',
-        '[gridbg(imagegroup="a/b/c/d",solidwidth="1280/1280",solidheight="720/720",initposmode="unknown")]',
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-    );
+  // Native port: POSITION_INIT_FUNCTION only knows
+  // default/center/lowercenter/upperleft. On a key miss `_ExecuteImage` still
+  // writes `_initOffset.localPosition = (0,0,0)` (VA 0x183e78d10) — the same
+  // offset as `center`, not `default`.
+  it.each([
+    {
+      name: "gridbg",
+      args: 'imagegroup="a/b/c/d",solidwidth="1280/1280",solidheight="720/720"',
+    },
+    {
+      name: "verticalbg",
+      args: 'imagegroup="66_i15_4/66_i15_3",solidwidth=1280,solidheight="720/720"',
+    },
+    {
+      name: "largebg",
+      args: 'imagegroup="a/b",solidwidth="1/1",solidheight=720',
+    },
+  ])(
+    "maps $name initposmode and treats unknown modes as the center offset",
+    async ({ name, args }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[${name}(${args},initposmode="upperleft")]`,
+          `[${name}(${args},initposmode="diagonal")]`,
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
 
-    await runtime.start();
+      await runtime.start();
 
-    expect(
-      renderer.gridBackgroundCalls.map((input) => input.initPositionMode),
-    ).toEqual(["upperleft", "center"]);
-  });
+      expect(
+        renderer.gridBackgroundCalls.map((input) => input.initPositionMode),
+      ).toEqual(["upperleft", "center"]);
+    },
+  );
 
   it("clears the grid panel when gridbg validation fails", async () => {
     const renderer = new FakeRenderer();
@@ -2407,25 +2435,41 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("clears gridbg independently and supports legacy blok typo", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext(["[gridbg(fadetime=2,block=true)]", '[name="A"]ok']),
-      renderer,
-      new FakeAudio(),
-    );
+  it.each([
+    {
+      name: "gridbg",
+      command: "[gridbg(fadetime=2,block=true)]",
+      fadeMs: 2000,
+    },
+    {
+      name: "verticalbg",
+      command: "[verticalbg(fadetime=3,block=true)]",
+      fadeMs: 3000,
+    },
+    {
+      name: "largeimg via the legacy blok typo",
+      command: "[largeimg(fadetime=0.2,blok=true)]",
+      fadeMs: 200,
+    },
+  ])(
+    "clears $name with fadetime and block when no image group is provided",
+    async ({ command, fadeMs }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([command, '[name="A"]ok']),
+        renderer,
+        new FakeAudio(),
+      );
 
-    await runtime.start();
+      await runtime.start();
 
-    expect(renderer.gridBackgroundCalls).toEqual([]);
-    expect(renderer.gridBackgroundClearCalls).toEqual([
-      {
-        block: true,
-        fadeMs: 2000,
-      },
-    ]);
-    expect(runtime.getState()).toBe("waiting_input");
-  });
+      expect(renderer.gridBackgroundCalls).toEqual([]);
+      expect(renderer.gridBackgroundClearCalls).toEqual([
+        { block: true, fadeMs },
+      ]);
+      expect(runtime.getState()).toBe("waiting_input");
+    },
+  );
 
   it("maps verticalbg into a vertically tiled composed background layer", async () => {
     const renderer = new FakeRenderer();
@@ -2522,47 +2566,6 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("clears verticalbg with fade parameters when no image group is provided", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext(["[verticalbg(fadetime=3,block=true)]", '[name="A"]ok']),
-      renderer,
-      new FakeAudio(),
-    );
-
-    await runtime.start();
-
-    expect(renderer.gridBackgroundCalls).toEqual([]);
-    expect(renderer.gridBackgroundClearCalls).toEqual([
-      {
-        block: true,
-        fadeMs: 3000,
-      },
-    ]);
-  });
-
-  it("reads verticalbg initposmode and maps unknown modes to center", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        '[verticalbg(imagegroup="66_i15_4/66_i15_3",solidwidth=1280,solidheight="720/720",initposmode="upperleft")]',
-        '[verticalbg(imagegroup="66_i15_4/66_i15_3",solidwidth=1280,solidheight="720/720",initposmode="diagonal")]',
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-    );
-
-    await runtime.start();
-
-    // POSITION_INIT_FUNCTION only knows default/center/lowercenter/upperleft;
-    // a key miss still writes (0, 0), the same offset "center" produces — the
-    // largebg/gridbg siblings map unknown modes the same way.
-    expect(
-      renderer.gridBackgroundCalls.map((input) => input.initPositionMode),
-    ).toEqual(["upperleft", "center"]);
-  });
-
   it("clears the layer when verticalbg validation fails", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
@@ -2587,6 +2590,8 @@ describe("StoryRuntime", () => {
     expect(warnings).toEqual([
       expect.objectContaining({
         command: "verticalbg",
+        detail:
+          "verticalbg expects width_count * height_count === image_count, got 1 * 5 !== 5",
         type: "parse",
       }),
     ]);
@@ -2609,10 +2614,26 @@ describe("StoryRuntime", () => {
 
     // Native crashes on heightList[1] (raw get_Item in the sizeDelta quirk);
     // the web port keeps rendering and only reports the divergence.
-    expect(renderer.gridBackgroundCalls).toHaveLength(1);
+    expect(renderer.gridBackgroundCalls).toEqual([
+      {
+        assetKind: "background",
+        block: false,
+        fadeMs: 0,
+        imageKeys: ["solo"],
+        initPositionMode: "default",
+        layout: "vertical",
+        scaleX: 1,
+        scaleY: 1,
+        solidHeights: [720],
+        solidWidths: [1280],
+        x: 0,
+        y: 0,
+      },
+    ]);
     expect(warnings).toEqual([
       expect.objectContaining({
         command: "verticalbg",
+        detail: "verticalbg with a single tile would crash the native client",
         type: "parse",
       }),
     ]);
@@ -2687,28 +2708,6 @@ describe("StoryRuntime", () => {
         fadeMs: 200,
       },
     ]);
-  });
-
-  it("maps unknown largebg initposmode values to the center offset", async () => {
-    // Native port: POSITION_INIT_FUNCTION has no entry for an unknown key, so
-    // `_ExecuteImage` still writes `_initOffset.localPosition = (0,0,0)` (VA
-    // 0x183e78d10) — the same offset as `center`, not `default`.
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        '[largebg(imagegroup="a/b",solidwidth="1/1",solidheight=720,initposmode="diagonal")]',
-        '[largebg(imagegroup="a/b",solidwidth="1/1",solidheight=720,initposmode="upperleft")]',
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-    );
-
-    await runtime.start();
-
-    expect(
-      renderer.gridBackgroundCalls.map((call) => call.initPositionMode),
-    ).toEqual(["center", "upperleft"]);
   });
 
   it("keeps largebg running with a zero or missing solidheight", async () => {
@@ -2792,25 +2791,6 @@ describe("StoryRuntime", () => {
       },
     ]);
     expect(renderer.gridBackgroundClearCalls).toEqual([]);
-  });
-
-  it("clears largeimg with fade parameters when no image group is provided", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext(["[largeimg(fadetime=0.2,blok=true)]", '[name="A"]ok']),
-      renderer,
-      new FakeAudio(),
-    );
-
-    await runtime.start();
-
-    expect(renderer.gridBackgroundCalls).toEqual([]);
-    expect(renderer.gridBackgroundClearCalls).toEqual([
-      {
-        block: true,
-        fadeMs: 200,
-      },
-    ]);
   });
 
   it("maps characteraction move with legacy slot aliases and block args", async () => {
@@ -3219,27 +3199,25 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.backgroundTweenCalls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          durationMs: 1500,
-          ease: "OutFlash",
-          loop: true,
-        }),
-        // `ease="1"` passes through as an ordinal string for the renderer to
-        // resolve (Ease.Linear).
-        expect.objectContaining({ durationMs: 3000, ease: "1", loop: false }),
-        // Unparseable ease names keep the GetEnum Linear default.
-        // loop+block still warns, but block is dropped so the never-ending
-        // loop cannot stall playback.
-        expect.objectContaining({
-          block: false,
-          durationMs: 2000,
-          ease: "bogus",
-          loop: true,
-        }),
-      ]),
-    );
+    expect(renderer.backgroundTweenCalls).toEqual([
+      expect.objectContaining({
+        durationMs: 1500,
+        ease: "OutFlash",
+        loop: true,
+      }),
+      // `ease="1"` passes through as an ordinal string for the renderer to
+      // resolve (Ease.Linear).
+      expect.objectContaining({ durationMs: 3000, ease: "1", loop: false }),
+      // Unparseable ease names keep the GetEnum Linear default.
+      // loop+block still warns, but block is dropped so the never-ending
+      // loop cannot stall playback.
+      expect.objectContaining({
+        block: false,
+        durationMs: 2000,
+        ease: "bogus",
+        loop: true,
+      }),
+    ]);
     // `_ExecuteImageTween` logs this (sic) error when effectiveBlock and loop
     // are both true, because SetLoops(-1) never reaches
     // OnComplete(FinishCommand). The typo "intinity lop" is native.
@@ -3316,50 +3294,69 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("keeps playing when largebgtween combines loop with block", async () => {
-    const renderer = new FakeRenderer();
-    const warnings: RuntimeWarning[] = [];
-    const runtime = new StoryRuntime(
-      createContext([
+  it.each([
+    {
+      name: "largebgtween",
+      script: [
         '[largebg(imagegroup="bg_beach_1/bg_beach_2",solidwidth="920/920",solidheight="720",x=-180,fadetime=0)]',
         "[largebgtween(xFrom=0,xTo=-720,duration=1,block=true,loop=true)]",
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-      { onWarning: (warning) => warnings.push(warning) },
-    );
+      ],
+      tweenCalls: (renderer: FakeRenderer) =>
+        renderer.largeBackgroundTweenCalls,
+      ease: "Linear",
+    },
+    {
+      name: "largeimgtween",
+      script: [
+        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",x=-160,fadetime=0)]',
+        '[largeimgtween(xFrom=0,xTo=-720,duration=1,block=true,loop=true,ease="OutQuad")]',
+      ],
+      tweenCalls: (renderer: FakeRenderer) => renderer.largeImageTweenCalls,
+      ease: "OutQuad",
+    },
+  ])(
+    "keeps playing when $name combines loop with block",
+    async ({ script, tweenCalls, ease }) => {
+      const renderer = new FakeRenderer();
+      const warnings: RuntimeWarning[] = [];
+      const runtime = new StoryRuntime(
+        createContext([...script, '[name="A"]ok']),
+        renderer,
+        new FakeAudio(),
+        { onWarning: (warning) => warnings.push(warning) },
+      );
 
-    await runtime.start();
+      await runtime.start();
 
-    // Native logs the DLog.LogError text verbatim (typos included) and then
-    // hangs waiting for a looping tween's OnComplete; the port keeps the
-    // error but drops block so playback reaches the next line.
-    expect(warnings).toEqual([
-      expect.objectContaining({
-        detail:
-          "Loop and block both true when tween background! Will cause intinity lop!",
-        type: "invalid_parameter",
-      }),
-    ]);
-    expect(renderer.largeBackgroundTweenCalls).toEqual([
-      {
-        block: false,
-        durationMs: 1000,
-        ease: "Linear",
-        loop: true,
-        xFrom: 0,
-        xScaleFrom: undefined,
-        xScaleTo: undefined,
-        xTo: -720,
-        yFrom: undefined,
-        yScaleFrom: undefined,
-        yScaleTo: undefined,
-        yTo: undefined,
-      },
-    ]);
-    expect(runtime.getState()).toBe("waiting_input");
-  });
+      // Native logs the DLog.LogError text verbatim (typos included) and then
+      // hangs waiting for a looping tween's OnComplete; the port keeps the
+      // error but drops block so playback reaches the next line.
+      expect(warnings).toEqual([
+        expect.objectContaining({
+          detail:
+            "Loop and block both true when tween background! Will cause intinity lop!",
+          type: "invalid_parameter",
+        }),
+      ]);
+      expect(tweenCalls(renderer)).toEqual([
+        {
+          block: false,
+          durationMs: 1000,
+          ease,
+          loop: true,
+          xFrom: 0,
+          xScaleFrom: undefined,
+          xScaleTo: undefined,
+          xTo: -720,
+          yFrom: undefined,
+          yScaleFrom: undefined,
+          yScaleTo: undefined,
+          yTo: undefined,
+        },
+      ]);
+      expect(runtime.getState()).toBe("waiting_input");
+    },
+  );
 
   it("maps largeimgtween with legacy aliases and current-transform fallbacks", async () => {
     const renderer = new FakeRenderer();
@@ -3422,51 +3419,6 @@ describe("StoryRuntime", () => {
         yScaleFrom: undefined,
         yScaleTo: undefined,
         yTo: 360,
-      },
-    ]);
-    expect(runtime.getState()).toBe("waiting_input");
-  });
-
-  it("keeps playing when largeimgtween combines loop with block", async () => {
-    const renderer = new FakeRenderer();
-    const warnings: RuntimeWarning[] = [];
-    const runtime = new StoryRuntime(
-      createContext([
-        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",x=-160,fadetime=0)]',
-        '[largeimgtween(xFrom=0,xTo=-720,duration=1,block=true,loop=true,ease="OutQuad")]',
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-      { onWarning: (warning) => warnings.push(warning) },
-    );
-
-    await runtime.start();
-
-    // Native logs the DLog.LogError text verbatim (typos included) and then
-    // hangs waiting for a looping tween's OnComplete; the port keeps the
-    // error but drops block so playback reaches the next line.
-    expect(warnings).toEqual([
-      expect.objectContaining({
-        detail:
-          "Loop and block both true when tween background! Will cause intinity lop!",
-        type: "invalid_parameter",
-      }),
-    ]);
-    expect(renderer.largeImageTweenCalls).toEqual([
-      {
-        block: false,
-        durationMs: 1000,
-        ease: "OutQuad",
-        loop: true,
-        xFrom: 0,
-        xScaleFrom: undefined,
-        xScaleTo: undefined,
-        xTo: -720,
-        yFrom: undefined,
-        yScaleFrom: undefined,
-        yScaleTo: undefined,
-        yTo: undefined,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
@@ -3655,14 +3607,20 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
+      { typingIntervalMs: 40 },
     );
 
     await runtime.start();
     expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.typingActive).toBe(true);
 
     await runtime.advance();
+    expect(renderer.typingActive).toBe(false);
     expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
+    expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+
+    await runtime.advance();
+    expect(renderer.lastDialogue.speaker).toBe("A");
   });
 
   it("auto mode advances a subtitle once its typewriter ends naturally", async () => {
@@ -3691,11 +3649,10 @@ describe("StoryRuntime", () => {
       renderer.finishSubtitleTypingNaturally();
       // Auto wait = 1.5s + messageLength(5) * 0.03s = 1.65s; the subtitle's
       // own length must drive the wait, not the previous message's.
-      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(1649);
       expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
-      await vi.advanceTimersByTimeAsync(200);
-      await vi.advanceTimersByTimeAsync(500);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("A");
     } finally {
       vi.useRealTimers();
     }
@@ -3739,7 +3696,7 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "" });
-    expect(sleep).toHaveBeenCalled();
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(30);
 
     await runtime.advance();
     expect(runtime.getState()).toBe("waiting_input");
@@ -4202,54 +4159,45 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("defaults an omitted multiline delay to the current typewriter delay", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[multiline(name="A")]ab']),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
-
-      await runtime.start();
+  it.each([
+    {
       // `GetOrDefault<float>("delay", typeWriterDelay)` makes the ratio
       // 20ms / 40ms = 0.5, so characters land every 10ms rather than every 20.
-      await vi.advanceTimersByTimeAsync(9);
-      expect(renderer.lastDialogue.text).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.text).toBe("a");
-      await vi.advanceTimersByTimeAsync(10);
-      expect(renderer.lastDialogue.text).toBe("ab");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+      name: "omitted (current typewriter delay)",
+      line: '[multiline(name="A")]ab',
+      charMs: 10,
+    },
+    {
+      name: "0.08 (ratio of the 40ms origin)",
+      line: '[multiline(name="A",delay=0.08)]ab',
+      charMs: 40,
+    },
+  ])(
+    "types multiline characters every $charMs ms when delay is $name",
+    async ({ line, charMs }) => {
+      vi.useFakeTimers();
+      try {
+        const renderer = new FakeRenderer();
+        const runtime = new StoryRuntime(
+          createContext([line]),
+          renderer,
+          new FakeAudio(),
+          { typingIntervalMs: 20 },
+        );
 
-  it("treats multiline delay as a ratio of the native 40ms origin delay", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[multiline(name="A",delay=0.08)]ab']),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
-
-      await runtime.start();
-      expect(renderer.lastDialogue.text).toBe("");
-      await vi.advanceTimersByTimeAsync(39);
-      expect(renderer.lastDialogue.text).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.text).toBe("a");
-      await vi.advanceTimersByTimeAsync(40);
-      expect(renderer.lastDialogue.text).toBe("ab");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        await runtime.start();
+        expect(renderer.lastDialogue.text).toBe("");
+        await vi.advanceTimersByTimeAsync(charMs - 1);
+        expect(renderer.lastDialogue.text).toBe("");
+        await vi.advanceTimersByTimeAsync(1);
+        expect(renderer.lastDialogue.text).toBe("a");
+        await vi.advanceTimersByTimeAsync(charMs);
+        expect(renderer.lastDialogue.text).toBe("ab");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("ignores subtitle ghost parameters and falls back invalid alignment to left", async () => {
     const renderer = new FakeRenderer();
@@ -4264,11 +4212,18 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.subtitleCalls[0]).toMatchObject({
-      alignment: "left",
-      delayMs: 25,
-      widthPx: 1280,
-    });
+    expect(renderer.subtitleCalls).toEqual([
+      {
+        alignment: "left",
+        delayMs: 25,
+        onTypingComplete: expect.any(Function),
+        sizePx: 24,
+        text: "x",
+        widthPx: 1280,
+        x: 0,
+        y: 0,
+      },
+    ]);
   });
 
   it("maps cgitem tween parameters and hidecgitem keys with native defaults", async () => {
@@ -4285,11 +4240,15 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(renderer.cgItemCalls).toEqual([
-      expect.objectContaining({
+      {
         alphaDelayMs: 100,
         alphaDurationMs: 1000,
+        alphaFrom: 0,
+        alphaTo: 1,
         assetKey: "cgitem_test",
         block: true,
+        colorFrom: undefined,
+        colorTo: undefined,
         ease: "Linear",
         height: 360,
         key: "cgitem_test_left",
@@ -4298,10 +4257,14 @@ describe("StoryRuntime", () => {
         positionFrom: { x: 1, y: 2 },
         positionTo: { x: 3, y: 4 },
         rotationDurationMs: 4000,
+        rotationFrom: -10,
+        rotationTo: 20,
         scaleDelayMs: 250,
         scaleDurationMs: 3000,
+        scaleFrom: 0.8,
+        scaleTo: 1.2,
         width: 640,
-      }),
+      },
     ]);
     expect(renderer.clearCgItemCalls).toEqual([
       {
@@ -4356,7 +4319,7 @@ describe("StoryRuntime", () => {
     expect(runtime.canSkipNode()).toBe(false);
   });
 
-  it("prioritizes SkipToThis and resumes from the command after its anchor", async () => {
+  it("prioritizes SkipToThis, resumes after its anchor, and clears the timer sticker instantly", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
@@ -4369,29 +4332,16 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
-  });
-
-  it("clears the timer sticker instantly when skipping", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
-      renderer,
-      new FakeAudio(),
-    );
-
-    await runtime.start();
-    await runtime.skipNode();
-
     // Native skip routes through StickerPanel.OnReset → _RecycleStickers,
     // whose first step is AVGTimerView.StopTimer(0): instant hide.
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
-    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
   });
 
   it("disables segment skip when the story has no skip anchors", async () => {
+    const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[name="A"]before', '[name="B"]after']),
-      new FakeRenderer(),
+      renderer,
       new FakeAudio(),
     );
 
@@ -4399,6 +4349,7 @@ describe("StoryRuntime", () => {
     expect(runtime.canSkipNode()).toBe(false);
     await runtime.skipNode();
     expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "before" });
   });
 
   it("does not expose segment skip during an active command without anchors", async () => {
@@ -4460,6 +4411,7 @@ describe("StoryRuntime", () => {
 
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
     expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
   });
 
   it("recycles sticker slots when skipping to the next node", async () => {
