@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 
 import {
   ConditionStore,
@@ -191,7 +191,7 @@ describe("buildLogAll（decision / predicate 语义）", () => {
 
     const choice = document.blocks[0]!;
     expect(choice.kind).toBe("choice");
-    if (choice.kind !== "choice") return;
+    assert(choice.kind === "choice");
     expect(choice.options.map((o) => o.label)).toEqual(["选A", "选B"]);
     expect(choice.audience).toBe(TRUE_CONDITION);
     expect(choice.inert).toBe(false);
@@ -223,7 +223,7 @@ describe("buildLogAll（decision / predicate 语义）", () => {
 
     const choice = document.blocks[0]!;
     expect(choice.kind).toBe("choice");
-    if (choice.kind !== "choice") return;
+    assert(choice.kind === "choice");
     expect(choice.options.map((option) => option.label)).toEqual([
       "跟Amiya走",
       "独自行动",
@@ -306,7 +306,7 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     ]);
     const last = document.blocks.at(-1);
     expect(last?.kind).toBe("lines");
-    if (last?.kind !== "lines") return;
+    assert(last?.kind === "lines");
     expect(last.audience).toBe(TRUE_CONDITION);
     expect(last.entries.map((e) => e.lineIndex)).toEqual([5]);
   });
@@ -332,7 +332,7 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     // 末尾两行是全路线共同内容（覆盖 runtime 里被闸门挡住又放行的怪癖路径）
     const last = document.blocks.at(-1);
     expect(last?.kind).toBe("lines");
-    if (last?.kind !== "lines") return;
+    assert(last?.kind === "lines");
     expect(last.audience).toBe(TRUE_CONDITION);
     expect(last.entries.map((e) => e.speaker)).toEqual(["凯尔希", "后续"]);
   });
@@ -559,7 +559,7 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     ]);
     const tail = document.blocks.at(-1);
     expect(tail?.kind).toBe("lines");
-    if (tail?.kind !== "lines") return;
+    assert(tail?.kind === "lines");
     expect(tail.audience).toBe(TRUE_CONDITION);
     for (let optionIndex = 0; optionIndex < 4; optionIndex += 1)
       expect(
@@ -730,7 +730,7 @@ describe("ConditionStore", () => {
     const merged = store.or([store.choice(1, 0), store.choice(1, 1)]);
     const display = store.describe(merged);
     expect(display.kind).toBe("any");
-    if (display.kind !== "any") return;
+    assert(display.kind === "any");
     expect(display.alternatives).toHaveLength(1);
     expect(display.alternatives[0]!.choices).toEqual([
       { decisionId: 1, optionIndexes: [0, 1] },
