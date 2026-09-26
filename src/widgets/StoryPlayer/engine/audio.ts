@@ -62,23 +62,47 @@ export class HtmlStoryAudio implements StoryAudio {
     if (!mainUrl) return;
 
     const introUrl = input.intro ? this.resolveAudioUrl(input.intro) : null;
-    const identity = `${introUrl ?? ""}\n${mainUrl}`;
+    // Native provenance: `IAudioInfo.IsSameAudio` (interface thunk, slot 0)
+    // compares the (intro, loop) asset-name pair with
+    // `StringComparison.OrdinalIgnoreCase`, so the same-track short-circuit is
+    // case-insensitive. The resolved URL pair is the web-side identity
+    // stand-in, hence the lowercase normalization.
+    const identity = `${(introUrl ?? "").toLowerCase()}\n${mainUrl.toLowerCase()}`;
     this.musicBaseVolume = input.volume;
     if (this.musicAudio?.identity === identity) {
       this.setVolume(this.musicAudio, input.volume);
       return;
     }
 
+    // Native provenance: `AudioManager._PlayAudio<MusicParam>` (2.7.61 build
+    // 2761, VA 0x18458cc30) performs the channel switch synchronously: the
+    // outgoing MUSIC channel is removed from the channel map, renamed to
+    // `<name>_CROSSFADING_<id>`, and `Stop(crossfade, linear)` starts its
+    // fade-out immediately over [0, crossfade]; the incoming channel starts
+    // silent and `TweenVolume(volume, crossfade, delay + crossfade, linear)`
+    // fades it in over [delay+crossfade, delay+2*crossfade]. The two fades are
+    // strictly sequential (total delay + 2*crossfade) and `delay` never
+    // postpones the outgoing fade-out. Detaching `musicAudio` up front is the
+    // web stand-in for the native channel rename: commands landing while the
+    // successor is still loading target the successor's booked volume, not the
+    // already-fading outgoing track.
     const requestId = ++this.musicRequestId;
-    if (input.delayMs > 0)
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+    const previous = this.musicAudio;
+    const crossfade = previous !== null && input.crossfadeMs > 10;
+    if (previous) {
+      this.musicAudio = null;
+      if (crossfade) void this.fadeAndStop(previous, input.crossfadeMs);
+      else this.stopPlayback(previous);
+    }
+
+    const startDelayMs = input.delayMs + (crossfade ? input.crossfadeMs : 0);
+    if (startDelayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, startDelayMs));
     if (this.destroyed || requestId !== this.musicRequestId) return;
 
     const next = await this.createPlayback(introUrl ?? mainUrl, identity);
     if (!next || this.destroyed || requestId !== this.musicRequestId) return;
 
-    const previous = this.musicAudio;
-    const crossfade = previous !== null && input.crossfadeMs > 10;
     this.musicAudio = next;
     const instance = await this.playPlayback(next, {
       complete: introUrl
@@ -101,13 +125,10 @@ export class HtmlStoryAudio implements StoryAudio {
       instance,
       this.musicAudio === next,
     );
+    // Fade-in leg of the sequential crossfade: playback just started silent
+    // after the (delay+crossfade) wait, ramp to the booked volume from here.
     if (claimed && crossfade)
       void this.fadeVolume(next, this.musicBaseVolume, input.crossfadeMs);
-
-    if (previous) {
-      if (crossfade) void this.fadeAndStop(previous, input.crossfadeMs);
-      else this.stopPlayback(previous);
-    }
   }
 
   async stopMusic(fadeMs: number): Promise<void> {
