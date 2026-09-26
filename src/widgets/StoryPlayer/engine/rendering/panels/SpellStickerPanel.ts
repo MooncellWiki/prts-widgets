@@ -8,15 +8,30 @@ import {
 import { DIALOG_FONT_FAMILY } from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH, type SpellStickerInput } from "../../types";
 
+/**
+ * Serialized `m_InputText` of each style prefab's Texts
+ * (`avg/spellsticker/sticker_<style>_fx_spell`), as [main, sub]. Native
+ * `_ShowSticker` inlines `_ApplyFallbackInputText`, which switches TextId-less
+ * Texts to display this input text before the `<p=N>` writes, so a fresh
+ * sticker shows it in any slot its first content leaves out.
+ */
+const PREFAB_INPUT_TEXT = {
+  fire: ["夜雪无痕，噤声。", "Ночной снег без следа, молчи."],
+  sami: ["不是灾异，而是目光。", "er eigi ógæfa, heldr augna máttur."],
+} as const;
+
+type SpellStickerStyle = keyof typeof PREFAB_INPUT_TEXT;
+
 interface SpellStickerView {
   root: Container;
-  style: string;
+  style: SpellStickerStyle;
 }
 
 /**
  * `<p=N>` segments keyed by their 1-based N. Native `FormatUtil.
- * _HandleAvgSplitContentTextTags` stores `dict[N-1]` and `_ShowSticker`
- * iterates child Texts by 0-based index, so N maps to the N-th child.
+ * _HandleAvgSplitContentTextTags` stores `dict[N-1]` and `_ShowSticker` walks
+ * `GetComponentsInChildren<Text>(true)` by 0-based index; both prefabs yield
+ * exactly [text_spell_main, text_spell_sub], so N=1/2 map to those slots.
  */
 function splitContent(content: string): Map<number, string> {
   const parts = new Map<number, string>();
@@ -88,7 +103,10 @@ export class SpellStickerPanel {
     if (input.y !== undefined) view.root.y = STORY_HEIGHT / 2 + input.y;
     if (input.xScale !== undefined) view.root.scale.x = input.xScale;
     if (input.yScale !== undefined) view.root.scale.y = input.yScale;
-    if (input.angle !== undefined) view.root.angle = input.angle;
+    // `_ApplyTransform` writes localEulerAngles.z = angle. Unity's z is
+    // counter-clockwise on screen while PIXI's `angle` is clockwise, so the
+    // same y-up/y-down flip as `y` applies here.
+    if (input.angle !== undefined) view.root.angle = -input.angle;
   }
 
   hide(id: string): void {
@@ -99,12 +117,11 @@ export class SpellStickerPanel {
   clear(): void {
     // Intentional deviation from native `_ClearAll` (also used for OnReset /
     // ShouldResetOnSkip): native only scans the id→view dict, so a
-    // style-switched orphan stays visible on screen until the panel itself is
-    // destroyed. We destroy orphans too — a web player reuses renderer
-    // instances across stories, and a permanently visible leftover past
-    // `spellstickerclear`/skip would leak into later scenes. No corpus sample
-    // switches styles for the same id, so the divergent path is unreachable in
-    // production data.
+    // style-switched orphan survives `spellstickerclear` and skip and stays
+    // visible for the rest of the story, until the panel itself is destroyed.
+    // We destroy orphans too so such a leftover cannot linger over later
+    // scenes. No corpus sample switches styles for the same id, so the
+    // divergent path is unreachable in production data.
     for (const view of this.views.values()) this.destroyRoot(view.root);
     for (const root of this.orphans) this.destroyRoot(root);
     this.views.clear();
@@ -115,10 +132,11 @@ export class SpellStickerPanel {
     this.clear();
   }
 
-  private createView(style: string): SpellStickerView {
+  private createView(style: SpellStickerStyle): SpellStickerView {
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     const sami = style === "sami";
+    const [mainInputText, subInputText] = PREFAB_INPUT_TEXT[style];
     const main = new Text({
       label: "text_spell_main",
       style: new TextStyle({
@@ -128,7 +146,7 @@ export class SpellStickerPanel {
         fontStyle: "italic",
         fontWeight: "bold",
       }),
-      text: "",
+      text: mainInputText,
     });
     main.scale.set(sami ? 0.9 : 1, sami ? 1.1 : 1);
     main.position.set(36, -52);
@@ -141,7 +159,7 @@ export class SpellStickerPanel {
         fontStyle: sami ? "italic" : "normal",
         fontWeight: sami ? "bold" : "normal",
       }),
-      text: "",
+      text: subInputText,
     });
     sub.scale.set(sami ? 0.9 : 0.88, sami ? 1.2 : 1);
     sub.position.set(sami ? -147.5 : -189.4, 19.5);

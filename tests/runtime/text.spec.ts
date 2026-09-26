@@ -94,7 +94,7 @@ describe("StoryRuntime", () => {
     expect(renderer.spellStickerCalls).toEqual([]);
     expect(warnings).toEqual([
       expect.objectContaining({
-        detail: "spellsticker: empty sticker id",
+        detail: "spellsticker id is empty",
         type: "parse",
       }),
     ]);

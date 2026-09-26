@@ -3198,9 +3198,8 @@ export class StoryRuntime {
         const id = toString(this.exactArg(args, "id"));
         if (!id) {
           // Native logs "[AVG.SpellSticker] Empty sticker id." and returns
-          // false before reading `block`; keep the passthrough silent-ish but
-          // surface a warning for log diffing.
-          this.warn("parse", "spellsticker: empty sticker id");
+          // false before reading `block`: nothing renders and nothing blocks.
+          this.warn("parse", "spellsticker id is empty");
           return "continue";
         }
         const action = toString(this.exactArg(args, "action"), "show");

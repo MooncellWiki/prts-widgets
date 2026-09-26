@@ -26,7 +26,9 @@ describe("SpellStickerPanel", () => {
     expect(root.position.y).toBe(380);
     expect(root.scale.x).toBe(1.3);
     expect(root.scale.y).toBe(1.2);
-    expect(root.angle).toBe(5);
+    // Unity localEulerAngles.z is counter-clockwise on screen; PIXI's angle
+    // is clockwise, so the param is negated.
+    expect(root.angle).toBe(-5);
     expect(root.alpha).toBe(1);
     expect((root.getChildByLabel("text_spell_main") as Text).text).toBe("main");
     expect((root.getChildByLabel("text_spell_sub") as Text).text).toBe("sub");
@@ -109,6 +111,29 @@ describe("SpellStickerPanel", () => {
     expect((root.getChildByLabel("text_spell_main") as Text).text).toBe("main");
     expect((root.getChildByLabel("text_spell_sub") as Text).text).toBe(
       "new sub",
+    );
+  });
+
+  it("shows the prefab input text in slots a fresh view's content leaves out", () => {
+    const layer = new Container();
+    const panel = new SpellStickerPanel(layer);
+
+    // Native _ApplyFallbackInputText surfaces each prefab Text's serialized
+    // m_InputText before the <p=N> writes, so only covered slots change.
+    panel.show({ content: "<p=1>main</>", id: "a", style: "fire" });
+    const fire = layer.children[0] as Container;
+    expect((fire.getChildByLabel("text_spell_main") as Text).text).toBe("main");
+    expect((fire.getChildByLabel("text_spell_sub") as Text).text).toBe(
+      "Ночной снег без следа, молчи.",
+    );
+
+    panel.show({ content: "plain", id: "b", style: "sami" });
+    const sami = layer.children[1] as Container;
+    expect((sami.getChildByLabel("text_spell_main") as Text).text).toBe(
+      "不是灾异，而是目光。",
+    );
+    expect((sami.getChildByLabel("text_spell_sub") as Text).text).toBe(
+      "er eigi ógæfa, heldr augna máttur.",
     );
   });
 });
