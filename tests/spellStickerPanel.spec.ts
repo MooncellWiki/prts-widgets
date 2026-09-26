@@ -21,7 +21,9 @@ describe("SpellStickerPanel", () => {
 
     const root = layer.children[0] as Container;
     expect(root.position.x).toBe(510);
-    expect(root.position.y).toBe(340);
+    // Native anchoredPosition = (x, -y) in Unity's y-up space: a positive y
+    // param renders below center, so the PIXI y-down mapping is 360 + y.
+    expect(root.position.y).toBe(380);
     expect(root.scale.x).toBe(1.3);
     expect(root.scale.y).toBe(1.2);
     expect(root.angle).toBe(5);

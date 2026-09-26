@@ -81,7 +81,11 @@ export class SpellStickerPanel {
     if (input.alpha !== undefined)
       view.root.alpha = Math.max(0, Math.min(1, input.alpha));
     if (input.x !== undefined) view.root.x = STORY_WIDTH / 2 + input.x;
-    if (input.y !== undefined) view.root.y = STORY_HEIGHT / 2 - input.y;
+    // Native `_ApplyTransform` writes anchoredPosition = (x, -y) in Unity's
+    // y-up space, so a positive `y` param renders BELOW center on device
+    // (fire stickers' y=283 sits at screenY≈643). Mapping into PIXI's y-down
+    // space is therefore `STORY_HEIGHT / 2 + y`, not a mirrored minus.
+    if (input.y !== undefined) view.root.y = STORY_HEIGHT / 2 + input.y;
     if (input.xScale !== undefined) view.root.scale.x = input.xScale;
     if (input.yScale !== undefined) view.root.scale.y = input.yScale;
     if (input.angle !== undefined) view.root.angle = input.angle;
