@@ -27,6 +27,8 @@
 - AudioPlayerV2 [Widget:AudioPlayerV2/dev](https://prts.wiki/w/Widget:AudioPlayerV2/dev)
 - 道具一览 [Widget:ItemList/dev](https://prts.wiki/w/Widget:ItemList/dev)
 - 剧情播放器 [Widget:StoryPlayer/dev](https://prts.wiki/w/Widget:StoryPlayer/dev)
+- 时装商店 [Widget:SkinShop/dev](https://prts.wiki/w/Widget:SkinShop/dev)
+- 高级凭证区 [Widget:HighShop/dev](https://prts.wiki/w/Widget:HighShop/dev)
 
 ## 贡献代码
 
