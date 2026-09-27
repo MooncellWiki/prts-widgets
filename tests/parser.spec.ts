@@ -130,8 +130,11 @@ describe("parser", () => {
     expect(parseStory("[HEADER(fit_mode=0)] T").metadata.fitMode).toBe(
       "DEFAULT",
     );
-    // Unknown names stay lenient instead of failing the whole load (the native
-    // Enum.Parse would throw).
+    // `Enum.Parse` trims before parsing.
+    expect(parseStory('[HEADER(fit_mode=" 1 ")] T').metadata.fitMode).toBe(
+      "BLACK_MASK",
+    );
+    // `GetEnum` catches the `Enum.Parse` failure and returns the default.
     expect(parseStory('[HEADER(fit_mode="nope")] T').metadata.fitMode).toBe(
       "DEFAULT",
     );
@@ -155,5 +158,26 @@ describe("parser", () => {
     expect(parseStory("[HEADER] T").metadata.characterSortType).toBe(
       "BY_GAIN_TIME_DOWN",
     );
+  });
+
+  it("parses char_sort_type the way Enum.Parse does", () => {
+    const sortType = (value: string) =>
+      parseStory(`[HEADER(char_sort_type=${value})] T`).metadata
+        .characterSortType;
+    // Case-insensitive names, surrounding whitespace trimmed, and a leading
+    // sign accepted on integer literals.
+    expect(sortType('" by_rarity_down "')).toBe("BY_RARITY_DOWN");
+    expect(sortType('"+3"')).toBe("BY_RARITY_DOWN");
+    // Empty string: `GetEnum`'s `IsNullOrEmpty` check returns the default.
+    expect(sortType('""')).toBe("BY_GAIN_TIME_DOWN");
+    // `Enum.Parse` throws on these; `GetEnum` logs and returns the default,
+    // so the story still loads.
+    expect(sortType('"BY_FOO"')).toBe("BY_GAIN_TIME_DOWN");
+    expect(sortType('"  "')).toBe("BY_GAIN_TIME_DOWN");
+    expect(sortType("5.5")).toBe("BY_GAIN_TIME_DOWN");
+    expect(sortType("true")).toBe("BY_GAIN_TIME_DOWN");
+    // In-range integer with no member: native keeps the raw value, which has
+    // no name to report here.
+    expect(sortType("99")).toBe("BY_GAIN_TIME_DOWN");
   });
 });

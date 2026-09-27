@@ -225,9 +225,9 @@ function metadataValue(
   return args[key];
 }
 
-// Native provenance: `Torappu.AVG.AVGController.FitMode` (dump.cs TypeDefIndex
-// 8072) and `Torappu.UI.CharacterSortType` (TypeDefIndex 14697). HEADER parses
-// both fields through `DotNetExtensionMethods.GetEnum<T>` ->
+// Native provenance: `Torappu.AVG.AVGController.FitMode` and
+// `Torappu.UI.CharacterSortType` member values. HEADER parses both fields
+// through `DotNetExtensionMethods.GetEnum<T>` ->
 // `Enum.Parse(typeof(T), s, ignoreCase: true)`, which resolves purely numeric
 // literals by enum *value*: `fit_mode=1` is BLACK_MASK and `char_sort_type = 5`
 // is BY_GAIN_TIME_DOWN. The bare-number form really occurs in guide stories
@@ -269,15 +269,22 @@ const CHARACTER_SORT_TYPE_BY_VALUE: Readonly<Record<number, string>> = {
 };
 
 /**
- * Port of `DotNetExtensionMethods.GetEnum<T>` as called from
- * `AVGParser.TryParse(String, StoryParam, Story&)`: stringify the param value
- * (native `GetString`), treat the empty string as "use the default" (native
- * `IsNullOrEmpty` check), resolve integer literals by enum value, and match
- * member names case-insensitively (native `Enum.Parse(ignoreCase: true)`).
+ * Port of `DotNetExtensionMethods.GetEnum<T>(..., ignoreCase: true)` as called
+ * from `AVGParser.TryParse(String, StoryParam, Story&)`: stringify the param
+ * value (native `GetString` -> `Convert.ToString`), return the default for the
+ * empty string (native `IsNullOrEmpty`), then `Enum.Parse`: trim, resolve a
+ * `[-+]digits` literal by enum value, otherwise match a member name
+ * case-insensitively.
  *
- * Web adaptation: native `Enum.Parse` throws on unknown names and fails the
- * whole story load; the web parser stays lenient and keeps the uppercased
- * literal / default instead (impl-review P2 #1 deliberately not ported).
+ * Anything else (unknown name, whitespace-only, `5.5`, `true`) makes
+ * `Enum.Parse` throw, but `GetEnum` catches it, logs "Can not parse enum ..."
+ * via `DLog.LogError` and returns the default -- the story still loads, so the
+ * default is returned here too (the log line is not ported).
+ *
+ * Web adaptation: an in-range integer with no member (e.g. `99`) survives as
+ * that raw value in native; there is no name to report for it, so it also
+ * takes the default. The comma-joined flags syntax of `Enum.Parse` is not
+ * ported.
  */
 function resolveEnumName(
   value: StoryCommandValue | undefined,
@@ -286,11 +293,12 @@ function resolveEnumName(
 ): string {
   const raw = value === undefined ? "" : String(value);
   if (raw === "") return fallback;
-  if (/^-?\d+$/.test(raw)) {
-    const byValueName = byValue[Number(raw)];
-    if (byValueName) return byValueName;
+  const trimmed = raw.trim();
+  if (/^[-+]?\d+$/.test(trimmed)) {
+    return byValue[Number(trimmed)] ?? fallback;
   }
-  return raw.toUpperCase();
+  const name = trimmed.toUpperCase();
+  return Object.values(byValue).includes(name) ? name : fallback;
 }
 
 export function parseStory(source: string | readonly string[]): {
@@ -304,7 +312,8 @@ export function parseStory(source: string | readonly string[]): {
   // Native provenance: `GetEnum<FitMode>(header.param, "fit_mode", DEFAULT,
   // ignoreCase: true)` and `GetEnum<CharacterSortType>(header.param,
   // "char_sort_type", BY_GAIN_TIME_DOWN, true)` in `AVGParser.TryParse(String,
-  // StoryParam, Story&)` -- numeric literals resolve by enum value.
+  // StoryParam, Story&)` -- numeric literals resolve by enum value and
+  // unparseable values fall back to the default.
   const fitMode = resolveEnumName(
     metadataValue(header?.args ?? {}, "fit_mode"),
     FIT_MODE_BY_VALUE,
