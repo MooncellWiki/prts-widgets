@@ -54,6 +54,7 @@ describe("SpellStickerPanel", () => {
     panel.show({ alpha: 1, content: "", id: "spell1", style: "sami" });
     panel.show({ alpha: 1, content: "", id: "spell1", style: "fire" });
     expect(layer.children).toHaveLength(2);
+    const fire = layer.children[1] as Container;
 
     panel.show({ alpha: 1, content: "", id: "bad", style: "unknown" });
     expect(layer.children).toHaveLength(2);
@@ -64,12 +65,12 @@ describe("SpellStickerPanel", () => {
     panel.clear();
     expect(layer.children).toHaveLength(0);
 
-    // Intentional deviation from native `_ClearAll`: the orphan was already
-    // removed from the dict, so it stays visible in the native client; here
-    // clear() destroys it. Both dicts are cleared, so a re-show after clear
-    // builds a fresh view.
-    panel.show({ alpha: 1, content: "", id: "spell1", style: "sami" });
+    // Like native, clear() also forgets the id→view entry. Re-show with the
+    // id's last style: a stale entry would be reused (its destroyed root never
+    // re-added) instead of building a fresh view.
+    panel.show({ alpha: 1, content: "", id: "spell1", style: "fire" });
     expect(layer.children).toHaveLength(1);
+    expect(layer.children[0]).not.toBe(fire);
   });
 
   it("keeps the previous alpha when the alpha param is missing", () => {
