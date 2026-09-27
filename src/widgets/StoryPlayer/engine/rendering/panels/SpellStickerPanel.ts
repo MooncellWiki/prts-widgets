@@ -43,10 +43,10 @@ function splitContent(content: string): Map<number, string> {
 
 /**
  * Port scope: `Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellSticker` /
- * `_ShowSticker` / `_HideSticker` / `_GetOrCreateSticker` state transitions.
- * The two supported styles are lightweight PIXI approximations of their
- * prefab visuals; native entrances replay a Legacy `Animation` clip per show,
- * which is a declared omission here (no animator/clip ports).
+ * `_ShowSticker` / `_HideSticker` / `_GetOrCreateSticker` / `_ClearAll` state
+ * transitions. The two supported styles are lightweight PIXI approximations of
+ * their prefab visuals; native entrances replay a Legacy `Animation` clip per
+ * show, which is a declared omission here (no animator/clip ports).
  */
 export class SpellStickerPanel {
   private readonly orphans = new Set<Container>();
@@ -115,8 +115,9 @@ export class SpellStickerPanel {
   }
 
   clear(): void {
-    // Intentional deviation from native `_ClearAll` (also used for OnReset /
-    // ShouldResetOnSkip): native only scans the id→view dict, so a
+    // Intentional deviation from native `_ClearAll` (2.7.61 VA 0x183e5d770;
+    // also used for OnReset / ShouldResetOnSkip): native only scans the
+    // id→view dict before clearing it and the style dict, so a
     // style-switched orphan survives `spellstickerclear` and skip and stays
     // visible for the rest of the story, until the panel itself is destroyed.
     // We destroy orphans too so such a leftover cannot linger over later

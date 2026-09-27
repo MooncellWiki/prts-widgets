@@ -54,6 +54,7 @@ describe("SpellStickerPanel", () => {
     panel.show({ alpha: 1, content: "", id: "spell1", style: "sami" });
     panel.show({ alpha: 1, content: "", id: "spell1", style: "fire" });
     expect(layer.children).toHaveLength(2);
+    const fire = layer.children[1] as Container;
 
     panel.show({ alpha: 1, content: "", id: "bad", style: "unknown" });
     expect(layer.children).toHaveLength(2);
@@ -63,6 +64,13 @@ describe("SpellStickerPanel", () => {
     // and would leave them visible; see the comment in clear().
     panel.clear();
     expect(layer.children).toHaveLength(0);
+
+    // Like native, clear() also forgets the id→view entry. Re-show with the
+    // id's last style: a stale entry would be reused (its destroyed root never
+    // re-added) instead of building a fresh view.
+    panel.show({ alpha: 1, content: "", id: "spell1", style: "fire" });
+    expect(layer.children).toHaveLength(1);
+    expect(layer.children[0]).not.toBe(fire);
   });
 
   it("keeps the previous alpha when the alpha param is missing", () => {
