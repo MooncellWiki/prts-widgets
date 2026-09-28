@@ -1,7 +1,10 @@
 import { Container, Text, Texture } from "pixi.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AnimTextPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/AnimTextPanel";
+import {
+  AnimTextPanel,
+  parseSplitContent,
+} from "../src/widgets/StoryPlayer/engine/rendering/panels/AnimTextPanel";
 
 import type { AnimTextInput } from "../src/widgets/StoryPlayer/engine/types";
 
@@ -111,7 +114,7 @@ describe("AnimTextPanel", () => {
       }),
     );
     expect(warning).toHaveBeenCalledWith(
-      "animtext split content id should start from 1, not 0",
+      "animtext split content id should start with 1, not 0",
     );
     expect(main.text).toBe("主行");
     expect(sub.text).toBe("副行");
@@ -136,5 +139,75 @@ describe("AnimTextPanel", () => {
     await panel.show(input({ content: "<p=1>x</>", name: "other" }));
     expect(warning).toHaveBeenCalledWith("unsupported_visual animtext:other");
     expect(layer.children).toHaveLength(1);
+  });
+
+  it("renders <color> spans inside a slot through tag styles", async () => {
+    const layer = new Container();
+    const panel = new AnimTextPanel(layer, pendingTween);
+    const { main } = await stampTexts(
+      panel,
+      layer,
+      input({ content: "<p=1><color=#ff0000>红</color>字</>" }),
+    );
+    expect(main.text).toBe("<_cff0000>红</_cff0000>字");
+    expect(main.style.tagStyles).toEqual({ _cff0000: { fill: "#ff0000" } });
+  });
+});
+
+describe("parseSplitContent", () => {
+  it("parses <p=N> ids like Int32.TryParse", () => {
+    const warning = vi.fn();
+    expect(parseSplitContent("<p= 1 >a</><p=+2>b</>", warning)).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(warning).not.toHaveBeenCalled();
+
+    // N ≤ 0 hits the native LogError; a failed parse or Int32 overflow is
+    // dropped silently.
+    expect(
+      parseSplitContent("<p=-1>x</><p=abc>y</><p=99999999999>z</>", warning),
+    ).toEqual([]);
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledWith(
+      "animtext split content id should start with 1, not 0",
+    );
+  });
+
+  it("keeps the last span for a repeated id", () => {
+    expect(parseSplitContent("<p=1>a</><p=1>b</>")).toEqual(["b"]);
+  });
+
+  it("closes the innermost p/@/$ span on </> and folds it into the parent", () => {
+    expect(parseSplitContent("<p=1>a<p=2>b</>c</>")).toEqual(["abc", "b"]);
+    expect(parseSplitContent("<p=1><$v>A</>B</><p=2>C</>")).toEqual([
+      "AB",
+      "C",
+    ]);
+
+    const warning = vi.fn();
+    expect(parseSplitContent("<p=1><@cc.vup>A</>B</>", warning)).toEqual([
+      "AB",
+    ]);
+    expect(warning).toHaveBeenCalledWith(
+      "unsupported_visual animtext rich text style:@cc.vup",
+    );
+  });
+
+  it("converts color/b/i spans and keeps unknown tags literally", () => {
+    expect(
+      parseSplitContent(
+        "<p=1><color=#ff0000>红</color><b>粗</b><i>斜</i><size=20>大</size></>",
+      ),
+    ).toEqual([
+      "<color=#ff0000>红</color><b>粗</b><i>斜</i><size=20>大</size>",
+    ]);
+  });
+
+  it("stores nothing for spans that never close", () => {
+    expect(parseSplitContent("<p=1>abc")).toEqual([]);
+    // `color` only closes on `</color>`, so the bare `</>` stays inside it and
+    // the enclosing <p=1> never closes.
+    expect(parseSplitContent("<p=1><color=#f00>A</></>")).toEqual([]);
   });
 });
