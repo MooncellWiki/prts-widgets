@@ -86,21 +86,18 @@ describe("AnimTextPanel", () => {
     expect(skipped.sub.visible).toBe(true);
   });
 
-  it(
-    String.raw`unescapes literal \n into a newline before split parsing`,
-    async () => {
-      const layer = new Container();
-      const panel = new AnimTextPanel(layer, pendingTween);
-      const { main } = await stampTexts(
-        panel,
-        layer,
-        input({
-          content: String.raw`<p=1>第一行\n第二行</>`,
-        }),
-      );
-      expect(main.text).toBe("第一行\n第二行");
-    },
-  );
+  it("unescapes literal \\n into a newline before split parsing", async () => {
+    const layer = new Container();
+    const panel = new AnimTextPanel(layer, pendingTween);
+    const { main } = await stampTexts(
+      panel,
+      layer,
+      input({
+        content: String.raw`<p=1>第一行\n第二行</>`,
+      }),
+    );
+    expect(main.text).toBe("第一行\n第二行");
+  });
 
   it("drops <p=0> with a warning and keeps other slots intact", async () => {
     const layer = new Container();
