@@ -43,11 +43,13 @@ export class Char {
   force: string[] = [];
   constructor(ele: HTMLDivElement) {
     const d = ele.dataset;
+    // MediaWiki 1.43 的 Sanitizer 会丢弃含下划线的 data-* 属性，
+    // 模板改用 data-birth-place 等连字符形式（dataset 中为驼峰），旧名仅作兼容
     this.zh = d.zh!;
     this.profession = d.profession!;
     this.rarity = Number.parseInt(d.rarity!);
     this.logo = d.logo || "";
-    this.birthPlace = d.birth_place || "";
+    this.birthPlace = d.birthPlace || d.birth_place || "";
     if (d.nation) this.force.push(d.nation);
     if (d.group) this.force.push(d.group);
     if (d.team) this.force.push(d.team);
@@ -60,14 +62,14 @@ export class Char {
     this.atk = Number.parseInt(d.atk!);
     this.def = Number.parseInt(d.def!);
     this.res = Number.parseInt(d.res!);
-    this.reDeploy = d.re_deploy!;
+    this.reDeploy = d.reDeploy || d.re_deploy || "";
     this.cost = getLast(d.cost!);
     this.block = getLast(d.block!);
     this.interval = d.interval!;
     this.sex = d.sex!;
     this.position = d.position!;
     this.tag = d.tag?.split(" ") || [];
-    this.obtainMethod = d.obtain_method?.split(", ") || [];
+    this.obtainMethod = (d.obtainMethod || d.obtain_method)?.split(", ") || [];
 
     this.potential = [];
     const [types, values] =
