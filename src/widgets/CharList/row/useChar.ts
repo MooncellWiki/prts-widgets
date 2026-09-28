@@ -58,7 +58,8 @@ export function useChar(
     return result;
   });
   const reDeploy = computed(() => {
-    let result = Number.parseInt(char.reDeploy.slice(0, -1));
+    let result = Number.parseInt(char.reDeploy);
+    if (Number.isNaN(result)) return char.reDeploy;
     if (addPotential.value) {
       for (const v of char.potential) {
         if (v.type === "re_deploy") result += v.value;
