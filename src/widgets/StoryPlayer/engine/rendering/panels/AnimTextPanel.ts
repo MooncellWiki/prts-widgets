@@ -8,6 +8,12 @@ import {
 } from "pixi.js";
 
 import { STAMP_ASSETS } from "../../../assets";
+import {
+  buildTagStyles,
+  collectColors,
+  parseRichChars,
+  richCharsToTaggedText,
+} from "../../richtext";
 import { STORY_HEIGHT, STORY_WIDTH, type AnimTextInput } from "../../types";
 
 const ANIMATION_MS = 5000;
@@ -33,10 +39,187 @@ function lerpKeyframes(
   return frames.at(-1)![1];
 }
 
-function splitContent(content: string): string[] {
-  return [...content.matchAll(/<p=\d+>(.*?)<\/>/gs)].map(
-    (match) => match[1] ?? "",
+const SPLIT_TAG_PREFIX = "p=";
+
+/**
+ * Native provenance: `Torappu.SharedFormatUtil.LightStringStream`. Indexes
+ * UTF-16 code units, like the C# string it wraps.
+ */
+class LightStringStream {
+  head = 0;
+
+  constructor(private readonly source: string) {}
+
+  get isEnd(): boolean {
+    return this.head >= this.source.length;
+  }
+
+  read(): string {
+    return this.source[this.head++]!;
+  }
+
+  range(start: number, end: number): string {
+    return this.source.slice(start, end);
+  }
+}
+
+/** Native provenance: `SharedFormatUtil.CheckIfStartTag` (2.7.71 VA 0x186301d80). */
+function isStartTag(tag: string): boolean {
+  return (
+    tag.startsWith("color") ||
+    tag === "b" ||
+    tag === "i" ||
+    tag.startsWith("@") ||
+    tag.startsWith("$") ||
+    tag.startsWith(SPLIT_TAG_PREFIX)
   );
+}
+
+/**
+ * Native provenance: `System.Int32.TryParse(string, out int)` with its default
+ * `NumberStyles.Integer` — leading/trailing white space and a leading sign are
+ * accepted, anything else (or Int32 overflow) fails.
+ */
+function tryParseInt32(raw: string): number | null {
+  const match = /^[\t\n\v\f\r ]*([+-]?\d+)[\t\n\v\f\r ]*$/.exec(raw);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return value >= -2_147_483_648 && value <= 2_147_483_647 ? value : null;
+}
+
+/**
+ * Native provenance: `SharedFormatUtil.RichTextConvertTagsHandler`
+ * (2.7.71 VA 0x186302390). Returns the converted span when `endTag` closes
+ * `startTag`, or `null` to keep scanning. `color`/`b`/`i` close with their own
+ * `</color>`/`</b>`/`</i>`; `@style` and `$` close with the bare `</>`.
+ *
+ * `@style` looks the template up in the common game data's rich-text style
+ * table, which the widget does not load, so it takes native's style-not-found
+ * branch (plain content) and warns.
+ */
+function convertRichTextTag(
+  startTag: string,
+  endTag: string,
+  content: string,
+  onWarning?: (detail: string) => void,
+): string | null {
+  if (startTag.startsWith("@")) {
+    if (endTag !== "/") return null;
+    onWarning?.(`unsupported_visual animtext rich text style:${startTag}`);
+    return content;
+  }
+  if (startTag.startsWith("color")) {
+    if (endTag !== "/color") return null;
+    const color = startTag.slice(startTag.indexOf("=") + 1);
+    return `<color=${color}>${content}</color>`;
+  }
+  if (startTag === "i") return endTag === "/i" ? `<i>${content}</i>` : null;
+  if (startTag === "b") return endTag === "/b" ? `<b>${content}</b>` : null;
+  if (startTag.startsWith("$") && endTag === "/") return content;
+  return null;
+}
+
+/**
+ * Native provenance: `FormatUtil._HandleAvgSplitContentTextTags`
+ * (2.7.71 VA 0x181f108b0). A `<p=N>` span closes only on the bare `</>`; N is
+ * parsed with `Int32.TryParse`, `dict[N - 1] = content` is an upsert (a repeated
+ * N keeps the last span), and N ≤ 0 logs
+ * `[FormatUtil]Avg split content id should start with 1, not 0` without
+ * storing. A failed parse still closes the span, silently.
+ */
+function closeTag(
+  startTag: string | null,
+  endTag: string,
+  content: string,
+  slots: string[],
+  onWarning?: (detail: string) => void,
+): string | null {
+  if (!startTag) return null;
+  if (!startTag.startsWith(SPLIT_TAG_PREFIX))
+    return convertRichTextTag(startTag, endTag, content, onWarning);
+  if (endTag !== "/") return null;
+  const id = tryParseInt32(startTag.slice(SPLIT_TAG_PREFIX.length));
+  if (id !== null) {
+    if (id - 1 >= 0) slots[id - 1] = content;
+    else onWarning?.("animtext split content id should start with 1, not 0");
+  }
+  return content;
+}
+
+/**
+ * Native provenance: `FormatUtil._FormatAvgSplitContentTextTag`
+ * (2.7.71 VA 0x181f0fb50). Recursive descent over `<tag>` tokens: a
+ * recognised start tag opens a nested frame that returns when `closeTag`
+ * accepts an end tag (so `</>` closes the innermost `p=`/`@`/`$` span), an
+ * unrecognised tag is kept literally, and an unclosed frame runs to the end of
+ * the input without storing anything. A nested frame's result is also
+ * appended to its parent, so `<p=1>a<p=2>b</>c</>` yields slot 0 = `abc`.
+ */
+function formatSplitContentTag(
+  stream: LightStringStream,
+  startTag: string | null,
+  slots: string[],
+  onWarning?: (detail: string) => void,
+): string {
+  let output = "";
+  let inTag = false;
+  let tagStart = 0;
+  let tagLength = 0;
+  while (!stream.isEnd) {
+    const char = stream.read();
+    if (char === "<") {
+      if (inTag && tagLength > 0)
+        output += `<${stream.range(tagStart, tagStart + tagLength)}`;
+      tagStart = stream.head;
+      tagLength = 0;
+      inTag = true;
+    } else if (char === ">" && inTag) {
+      inTag = false;
+      const tag = stream.range(tagStart, tagStart + tagLength);
+      tagStart = 0;
+      tagLength = 0;
+      const closed = closeTag(startTag, tag, output, slots, onWarning);
+      if (closed !== null) return closed;
+      output += isStartTag(tag)
+        ? formatSplitContentTag(stream, tag, slots, onWarning)
+        : `<${tag}>`;
+    } else if (inTag) {
+      tagLength += 1;
+    } else {
+      output += char;
+    }
+  }
+  if (tagLength > 0)
+    output += `<${stream.range(tagStart, tagStart + tagLength)}`;
+  return output;
+}
+
+/**
+ * Native provenance: `Torappu.FormatUtil.FormatAvgSplitContentTextFromData`
+ * (2.7.71 VA 0x181f0a270), consumed by `AnimatedTextStampView.InitView`
+ * (2.7.71 VA 0x183ed1470):
+ * - the literal two-character `\n` is unescaped into a real newline before
+ *   tag parsing;
+ * - each closed `<p=N>…</>` stores its (rich-text converted) inner text at
+ *   index N - 1;
+ * - `InitView` fills `_textArray[i]` (serialized prefab order: `text_main`,
+ *   `text_sub`) via `dict.TryGetValue(i)`, `String.Empty` on a miss — slot i ←
+ *   `<p=i+1>` by index, NOT document order: a stamp that only writes `<p=2>`
+ *   fills the sub slot and leaves the main slot empty.
+ */
+export function parseSplitContent(
+  content: string,
+  onWarning?: (detail: string) => void,
+): string[] {
+  const slots: string[] = [];
+  if (!content) return slots;
+  formatSplitContentTag(
+    new LightStringStream(content.replaceAll(String.raw`\n`, "\n")),
+    null,
+    slots,
+    onWarning,
+  );
+  return slots;
 }
 
 /**
@@ -44,6 +227,16 @@ function splitContent(content: string): string[] {
  * the serialized `AVG/AnimateText/group_location_stamp` prefab's visible
  * timeline. Sprite construction and keyframe playback are a Web/PIXI
  * adaptation, not a port of Unity Animator internals.
+ *
+ * `AnimTextInput.id` is intentionally unused: native `InitView` records it
+ * into `m_stampId`, and `_ExecuteAnimatedTextClean` (2.7.71 VA 0x183ecec90)
+ * would dismiss stamps by that id (or all of them for an empty id), but it is
+ * only reached from `_ExecuteAnimatedText`'s `CmdParam.clear` branch — and
+ * `_GenParamWithCmd` (2.7.71 VA 0x183ecf210) reads `clear` without storing it,
+ * so the branch is dead. `GetExecutors` (2.7.71 VA 0x183ece380) registers only
+ * `animtext`/`avgdisplay`, so the `[animtextclean]` lines in story data hit no
+ * executor either. Stamps are therefore only cleared wholesale
+ * (`_CleanAllTextStamps` on reset / script end).
  */
 export class AnimTextPanel {
   private readonly stamps: StampView[] = [];
@@ -60,6 +253,11 @@ export class AnimTextPanel {
   ) {}
 
   async show(input: AnimTextInput): Promise<void> {
+    // Native loads any template via
+    // `ResourceRouter.GetAVGAnimateTextTemplatePath` (`AVG/AnimateText/{0}`,
+    // 2.7.71 VA 0x183f386c0) and LogError+throws when the prefab is missing. This
+    // widget intentionally crops to the only template that exists in the
+    // game data (`group_location_stamp`); other names warn and no-op.
     if (input.name !== "group_location_stamp") {
       this.onWarning?.(`unsupported_visual animtext:${input.name}`);
       return;
@@ -137,23 +335,9 @@ export class AnimTextPanel {
     );
     gradient.anchor.set(0.5);
     gradient.alpha = 0.15;
-    const parts = splitContent(input.content);
-    const main = new Text({
-      style: new TextStyle({
-        fill: "#ffffff",
-        fontFamily: "Noto Sans SC, sans-serif",
-        fontSize: 30,
-      }),
-      text: parts[0] ?? "",
-    });
-    const sub = new Text({
-      style: new TextStyle({
-        fill: "#ffffff",
-        fontFamily: "Noto Sans SC, sans-serif",
-        fontSize: 26,
-      }),
-      text: parts[1] ?? "",
-    });
+    const parts = parseSplitContent(input.content, this.onWarning);
+    const main = this.text(parts[0] ?? "", 30);
+    const sub = this.text(parts[1] ?? "", 26);
     main.anchor.set(0, 0.5);
     sub.anchor.set(0, 0.5);
     main.position.set(0, -20);
@@ -248,6 +432,19 @@ export class AnimTextPanel {
 
   destroy(): void {
     this.clear();
+  }
+
+  /** Renders `<color>` spans through the shared rich-text pipeline. */
+  private text(content: string, fontSize: number): Text {
+    const chars = parseRichChars(content);
+    const colors = collectColors(chars);
+    const style = new TextStyle({
+      fill: "#ffffff",
+      fontFamily: "Noto Sans SC, sans-serif",
+      fontSize,
+    });
+    if (colors.length > 0) style.tagStyles = buildTagStyles(colors);
+    return new Text({ style, text: richCharsToTaggedText(chars) });
   }
 
   private sprite(

@@ -1,5 +1,7 @@
 import { Assets } from "pixi.js";
 
+import { STAMP_ASSETS } from "../assets";
+
 import {
   resolveAssetUrl,
   resolveStoryAssetByKey,
@@ -12,7 +14,7 @@ import { parseScript } from "./parser";
 import { DIALOG_FRAME_URL } from "./renderer";
 
 import type { Context } from "../context";
-import type { StoryFaceRect } from "./types";
+import type { ParsedLine, StoryFaceRect } from "./types";
 
 export interface StoryCharacterFaceAsset {
   baseUrl: string;
@@ -94,8 +96,8 @@ function addCharacterUrl(urls: Set<string>, rawKey: string): string | null {
  * batch substitutes for native asset-reference collection and loading.
  *
  */
-function addScriptImageUrls(urls: Set<string>, context: Context): void {
-  for (const line of parseScript(context.scriptText ?? context.script)) {
+function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
+  for (const line of lines) {
     if (line.kind !== "command") continue;
 
     const image = argAsString(line.args.image);
@@ -165,8 +167,12 @@ function addScriptImageUrls(urls: Set<string>, context: Context): void {
  * progress reporting are web-only behavior.
  *
  */
-function addScriptAudioUrls(urls: Set<string>, context: Context): void {
-  for (const line of parseScript(context.scriptText ?? context.script)) {
+function addScriptAudioUrls(
+  urls: Set<string>,
+  context: Context,
+  lines: ParsedLine[],
+): void {
+  for (const line of lines) {
     if (line.kind !== "command") continue;
 
     if (line.command !== "playmusic" && line.command !== "playsound") continue;
@@ -180,6 +186,7 @@ function addScriptAudioUrls(urls: Set<string>, context: Context): void {
 function addCharacterUrls(
   urls: Set<string>,
   context: Context,
+  lines: ParsedLine[],
 ): StoryCharacterFaceAsset[] {
   const faceAssets = new Map<string, StoryCharacterFaceAsset>();
   const addFaceGroup = (
@@ -214,7 +221,7 @@ function addCharacterUrls(
     }
   };
 
-  for (const line of parseScript(context.scriptText ?? context.script)) {
+  for (const line of lines) {
     if (line.kind !== "command") continue;
 
     const refs: string[] = [];
@@ -271,8 +278,13 @@ function addCharacterUrls(
   return [...faceAssets.values()];
 }
 
-export function collectContextAssetManifest(
+function parseContextScript(context: Context): ParsedLine[] {
+  return parseScript(context.scriptText ?? context.script);
+}
+
+function buildContextAssetManifest(
   context: Context,
+  lines: ParsedLine[],
 ): ContextAssetManifest {
   const urls = new Set<string>();
   if (context.charMap) {
@@ -280,12 +292,18 @@ export function collectContextAssetManifest(
       urls.add(resolveAssetUrl(rawUrl));
   }
 
-  const faceAssets = addCharacterUrls(urls, context);
+  const faceAssets = addCharacterUrls(urls, context, lines);
 
-  addScriptAudioUrls(urls, context);
-  addScriptImageUrls(urls, context);
+  addScriptAudioUrls(urls, context, lines);
+  addScriptImageUrls(urls, lines);
 
   return { faceAssets, urls: [...urls] };
+}
+
+export function collectContextAssetManifest(
+  context: Context,
+): ContextAssetManifest {
+  return buildContextAssetManifest(context, parseContextScript(context));
 }
 
 export function collectContextAssetUrls(context: Context): string[] {
@@ -293,12 +311,24 @@ export function collectContextAssetUrls(context: Context): string[] {
 }
 
 function collectPreloadAssetUrls(context: Context): string[] {
-  const urls = new Set(collectContextAssetUrls(context));
+  const lines = parseContextScript(context);
+  const urls = new Set(buildContextAssetManifest(context, lines).urls);
 
   // 固定 UI 资源（对话框上下黑条纹理），随每次 preload 一起预热进 pixi Assets 缓存，
   // renderer 在 createUi 时再 Assets.load 即可命中缓存。它属于播放器内置资源，
   // 不应出现在面向用户的剧情资源列表中。
   urls.add(DIALOG_FRAME_URL);
+
+  // animtext `group_location_stamp` 的 7 张内置贴片同理。native 侧
+  // AVGDisplayableExecutor.InternalResRefCollector.GatherResRefs 对 ANIMATE_TEXT
+  // 落入空分支、不登记任何资源引用（native LoadAsset 同步，印章当帧出现）；
+  // web 的 Assets.load 异步，首次播放会晚 1-2 帧，故在剧本确实使用 animtext 时
+  // 一并预热，让面板内 Assets.load 命中缓存。属 web 适配，非 native 行为移植。
+  if (
+    lines.some((line) => line.kind === "command" && line.command === "animtext")
+  ) {
+    for (const url of Object.values(STAMP_ASSETS)) urls.add(url);
+  }
 
   return [...urls];
 }
