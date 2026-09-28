@@ -117,4 +117,67 @@ describe("parser", () => {
     const story = parseStory('[HEADER(id="x")] T');
     expect(story.metadata.id).toBe("");
   });
+
+  it("resolves numeric fit_mode literals by enum value like GetEnum", () => {
+    // `Enum.Parse` resolves "1" by value -> FitMode.BLACK_MASK, for both the
+    // bare and quoted spelling.
+    expect(parseStory("[HEADER(fit_mode=1)] T").metadata.fitMode).toBe(
+      "BLACK_MASK",
+    );
+    expect(parseStory('[HEADER(fit_mode="1")] T').metadata.fitMode).toBe(
+      "BLACK_MASK",
+    );
+    expect(parseStory("[HEADER(fit_mode=0)] T").metadata.fitMode).toBe(
+      "DEFAULT",
+    );
+    // `Enum.Parse` trims before parsing.
+    expect(parseStory('[HEADER(fit_mode=" 1 ")] T').metadata.fitMode).toBe(
+      "BLACK_MASK",
+    );
+    // `GetEnum` catches the `Enum.Parse` failure and returns the default.
+    expect(parseStory('[HEADER(fit_mode="nope")] T').metadata.fitMode).toBe(
+      "DEFAULT",
+    );
+  });
+
+  it("normalizes numeric char_sort_type literals to enum names", () => {
+    // Corpus form: obt/guide/l0-6/0_upgrade_skill.txt:1 writes
+    // `char_sort_type = 5`, which is BY_GAIN_TIME_DOWN by enum value.
+    expect(
+      parseStory("[HEADER(char_sort_type = 5)] T").metadata.characterSortType,
+    ).toBe("BY_GAIN_TIME_DOWN");
+    // obt/guide/l0-0/2_make_squad.txt:1 uses the string-name spelling.
+    expect(
+      parseStory('[HEADER(char_sort_type="BY_RARITY_DOWN")] T').metadata
+        .characterSortType,
+    ).toBe("BY_RARITY_DOWN");
+    expect(
+      parseStory("[HEADER(char_sort_type=3)] T").metadata.characterSortType,
+    ).toBe("BY_RARITY_DOWN");
+    // Default: BY_GAIN_TIME_DOWN (5).
+    expect(parseStory("[HEADER] T").metadata.characterSortType).toBe(
+      "BY_GAIN_TIME_DOWN",
+    );
+  });
+
+  it("parses char_sort_type the way Enum.Parse does", () => {
+    const sortType = (value: string) =>
+      parseStory(`[HEADER(char_sort_type=${value})] T`).metadata
+        .characterSortType;
+    // Case-insensitive names, surrounding whitespace trimmed, and a leading
+    // sign accepted on integer literals.
+    expect(sortType('" by_rarity_down "')).toBe("BY_RARITY_DOWN");
+    expect(sortType('"+3"')).toBe("BY_RARITY_DOWN");
+    // Empty string: `GetEnum`'s `IsNullOrEmpty` check returns the default.
+    expect(sortType('""')).toBe("BY_GAIN_TIME_DOWN");
+    // `Enum.Parse` throws on these; `GetEnum` logs and returns the default,
+    // so the story still loads.
+    expect(sortType('"BY_FOO"')).toBe("BY_GAIN_TIME_DOWN");
+    expect(sortType('"  "')).toBe("BY_GAIN_TIME_DOWN");
+    expect(sortType("5.5")).toBe("BY_GAIN_TIME_DOWN");
+    expect(sortType("true")).toBe("BY_GAIN_TIME_DOWN");
+    // In-range integer with no member: native keeps the raw value, which has
+    // no name to report here.
+    expect(sortType("99")).toBe("BY_GAIN_TIME_DOWN");
+  });
 });
