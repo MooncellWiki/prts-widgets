@@ -16,14 +16,17 @@ interface Fade {
   step: (progress: number) => void;
 }
 
-// happy-dom has no 2D canvas, so text measurement is stubbed to a fixed
-// message height.
-async function mountPanel(textHeight = 30) {
+// happy-dom has no 2D canvas, so text measurement is stubbed: "tall" is a
+// 200px message, anything else a single 30px line.
+async function mountPanel() {
   vi.spyOn(Assets, "load").mockResolvedValue(Texture.WHITE as never);
-  vi.spyOn(CanvasTextMetrics, "measureText").mockReturnValue({
-    height: textHeight,
-    width: 0,
-  } as CanvasTextMetrics);
+  vi.spyOn(CanvasTextMetrics, "measureText").mockImplementation((text) => {
+    const metrics: Pick<CanvasTextMetrics, "height" | "width"> = {
+      height: text === "tall" ? 200 : 30,
+      width: 0,
+    };
+    return metrics as CanvasTextMetrics;
+  });
   const fades: Fade[] = [];
   const layer = new Container();
   const panel = new DialogPanel(layer, undefined, (durationMs, step, done) => {
@@ -97,12 +100,27 @@ describe("DialogPanel", () => {
   });
 
   it("moves a tall message up without growing the bottom frame", async () => {
-    const { bottom, dialogue, panel } = await mountPanel(200);
-    panel.setDialogue("A", "long");
+    const { bottom, dialogue, panel } = await mountPanel();
+    panel.setDialogue("A", "", undefined, "tall");
 
     expect(dialogue.y).toBe(720 - 93.5 - (200 - 89));
     // _textContainer only follows the dialog preset / font size settings.
     expect(bottom.height).toBe(182);
     expect(bottom.y).toBe(720 - 182);
+  });
+
+  it("places the message once per command, from its layout text only", async () => {
+    const { dialogue, panel } = await mountPanel();
+    panel.setDialogue("A", "", undefined, "tall");
+    const raised = dialogue.y;
+
+    // Typewriter updates carry no layout text and leave the position alone.
+    panel.setDialogue("A", "t");
+    expect(dialogue.y).toBe(raised);
+
+    // A multiline fragment is measured on its own, even though the box shows
+    // the whole (tall) accumulated run.
+    panel.setDialogue("A", "tall", undefined, "short");
+    expect(dialogue.y).toBe(720 - 93.5);
   });
 });

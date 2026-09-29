@@ -867,8 +867,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    layoutText?: string,
   ): void {
-    this.dialogPanel.setDialogue(speaker, text, tagStyles);
+    this.dialogPanel.setDialogue(speaker, text, tagStyles, layoutText);
   }
 
   hideDialogue(): void {

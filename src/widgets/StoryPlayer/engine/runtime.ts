@@ -2901,11 +2901,14 @@ export class StoryRuntime {
         this.multilineText += text;
         this.multilineEnd = toBoolean(this.exactArg(args, "end"), false);
         this.displayedLineIndex = line.lineNumber;
+        // _CalcMessageLayoutDelta only sees `command.content`, so the message
+        // is placed for this fragment and the accumulated run grows downward.
         this.startTypingDialogue(
           toString(this.exactArg(args, "name")),
           this.multilineText,
           this.multilineTypeDelayScale(this.exactArg(args, "delay")),
           shownChars,
+          text,
         );
         this.multilineShownChars = this.currentMessageLength;
         return "wait_input";
@@ -3387,17 +3390,26 @@ export class StoryRuntime {
     this.state = "waiting_input";
   }
 
+  /**
+   * `layoutText` is what native hands `_CalcMessageLayoutDelta` when the
+   * command executes: the whole line, except that multiline passes only its
+   * newest fragment while `text` carries the accumulated run.
+   */
   private startTypingDialogue(
     speaker: string,
     text: string,
     delayScale = 1,
     startIndex = 0,
+    layoutText = text,
   ): void {
     this.cancelTyping();
 
     const translatedSpeaker = this.translateText(speaker);
     const translatedText = this.translateText(text);
     const richChars = parseRichChars(translatedText);
+    const layout = parseRichChars(this.translateText(layoutText))
+      .map(({ char }) => char)
+      .join("");
     this.currentMessageLength = richChars.length;
     this.currentRawMessageLength = translatedText.length;
     this.currentTypingComplete = false;
@@ -3407,7 +3419,7 @@ export class StoryRuntime {
       const tagged = richCharsToTaggedText(richChars);
       const colors = collectColors(richChars);
       const ts = colors.length > 0 ? buildTagStyles(colors) : undefined;
-      this.renderer.setDialogue(translatedSpeaker, tagged, ts);
+      this.renderer.setDialogue(translatedSpeaker, tagged, ts, layout);
       this.onTypingComplete();
       return;
     }
@@ -3425,6 +3437,7 @@ export class StoryRuntime {
       translatedSpeaker,
       richCharsToTaggedText(richChars.slice(0, from)),
       tagStyles,
+      layout,
     );
 
     void this.runTyping(

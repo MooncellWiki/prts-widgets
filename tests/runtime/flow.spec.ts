@@ -537,6 +537,34 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
   });
 
+  it("lays out each multiline fragment on its own, once per command", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[multiline(name="A")]ab',
+          '[multiline(name="A",end=true)]<color=#ff0000>cd</color>',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(200);
+      await runtime.advance();
+      await vi.advanceTimersByTimeAsync(200);
+
+      // _ExecuteMultiline measures `command.content` alone (tags take no
+      // space), and typing a character never re-places the message.
+      expect(renderer.dialogueLayouts).toEqual(["ab", "cd"]);
+      expect(renderer.dialogueTexts.length).toBeGreaterThan(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("resumes multiline typing from the characters already on screen", async () => {
     vi.useFakeTimers();
     try {

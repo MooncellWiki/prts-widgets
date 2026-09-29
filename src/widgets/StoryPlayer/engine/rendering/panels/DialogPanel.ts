@@ -124,6 +124,7 @@ export class DialogPanel {
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    layoutText?: string,
   ): void {
     if (this.speaker) {
       this.speaker.text = speaker;
@@ -133,7 +134,7 @@ export class DialogPanel {
       if (tagStyles) this.dialogue.style.tagStyles = tagStyles;
       this.dialogue.text = text;
     }
-    this.applyLayout();
+    this.applyLayout(layoutText);
     this.setHidden(false);
   }
 
@@ -201,11 +202,16 @@ export class DialogPanel {
     }
   }
 
-  private applyLayout(): void {
-    if (this.dialogue) {
-      const height = this.dialogue.text
-        ? CanvasTextMetrics.measureText(this.dialogue.text, this.dialogue.style)
-            .height
+  /**
+   * Native port: `_CalcMessageLayoutDelta` + `_ApplyMessagePosition` run once
+   * per command on its own content, not on what the typewriter has revealed:
+   * the message does not creep up mid-typing, and a multiline run is placed
+   * for its newest fragment only. Without `layoutText` the message stays put.
+   */
+  private applyLayout(layoutText?: string): void {
+    if (this.dialogue && layoutText !== undefined) {
+      const height = layoutText
+        ? CanvasTextMetrics.measureText(layoutText, this.dialogue.style).height
         : 0;
       this.dialogue.y =
         STORY_HEIGHT -

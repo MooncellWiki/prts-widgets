@@ -688,10 +688,16 @@ export interface StoryRenderer {
   setGridBackground: (input: GridBackgroundInput) => Promise<void>;
   setLargeImage: (input: GridBackgroundInput) => Promise<void>;
   runCharacterAction: (input: CharacterActionInput) => Promise<void>;
+  /**
+   * `layoutText` (plain, tag-free) places the message the way
+   * `_CalcMessageLayoutDelta` + `_ApplyMessagePosition` do once per command;
+   * typewriter updates omit it and keep the current position.
+   */
   setDialogue: (
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    layoutText?: string,
   ) => void;
   /**
    * `DialogPanel.set_isHidden(true)` from the empty-content branches. Kept
