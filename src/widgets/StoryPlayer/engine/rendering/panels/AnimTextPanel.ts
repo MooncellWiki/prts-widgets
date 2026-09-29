@@ -15,6 +15,12 @@ import {
   DIALOG_FONT_FAMILY,
   DIALOG_FONT_WEIGHT,
 } from "../../font";
+import {
+  buildTagStyles,
+  collectColors,
+  parseRichChars,
+  richCharsToTaggedText,
+} from "../../richtext";
 import { STORY_HEIGHT, STORY_WIDTH, type AnimTextInput } from "../../types";
 
 const ANIMATION_MS = 5000;
@@ -445,24 +451,31 @@ export class AnimTextPanel {
   }
 
   /**
-   * Shows the slot text literally, tags included. Native provenance: both
-   * prefab Texts serialize `m_RichText` 0, and neither `InitView` (2.7.71 VA
-   * 0x183ed1470), the stamp's clips nor any AVG code turns
-   * `supportRichText` on, so the `<color>`/`<b>`/`<i>` spans that
-   * `RichTextConvertTagsHandler` keeps are displayed as text. No tagStyles:
-   * PIXI only parses tag markup when tagStyles is non-empty.
+   * Renders `<color>` spans through the shared rich-text pipeline.
+   *
+   * Intentional deviation: native `group_location_stamp` serializes
+   * `m_RichText` 0 on both Texts, and neither `InitView` (2.7.71 VA
+   * 0x183ed1470), the stamp's clips nor any AVG code turns `supportRichText`
+   * on, so native would show the tags `RichTextConvertTagsHandler` keeps as
+   * literal text. That is a per-prefab setting (the spellsticker prefabs have
+   * it on) and no animtext in the corpus carries tags; tags would only ship in
+   * animtext content once they render in game, so we parse them instead of
+   * betting on the current prefab flag.
    */
   private text(
     content: string,
     fontSize: number,
     font: Pick<TextStyleOptions, "fontFamily" | "fontWeight">,
   ): Text {
+    const chars = parseRichChars(content);
+    const colors = collectColors(chars);
     const style = new TextStyle({
       fill: "#ffffff",
       ...font,
       fontSize,
     });
-    return new Text({ style, text: content });
+    if (colors.length > 0) style.tagStyles = buildTagStyles(colors);
+    return new Text({ style, text: richCharsToTaggedText(chars) });
   }
 
   private sprite(

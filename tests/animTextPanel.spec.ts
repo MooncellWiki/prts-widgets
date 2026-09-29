@@ -141,18 +141,18 @@ describe("AnimTextPanel", () => {
     expect(layer.children).toHaveLength(1);
   });
 
-  it("shows converted tags literally, like native's rich-text-off Texts", async () => {
+  it("renders <color> spans inside a slot through tag styles", async () => {
     const layer = new Container();
     const panel = new AnimTextPanel(layer, pendingTween);
     const { main } = await stampTexts(
       panel,
       layer,
-      input({ content: "<p=1><color=#ff0000>红</color><b>字</b></>" }),
+      input({ content: "<p=1><color=#ff0000>红</color>字</>" }),
     );
-    // Both prefab Texts serialize m_RichText 0 and nothing turns it on, so
-    // the tags are displayed as text instead of colouring the span.
-    expect(main.text).toBe("<color=#ff0000>红</color><b>字</b>");
-    expect(main.style.tagStyles ?? {}).toEqual({});
+    // Intentional deviation from the prefab's m_RichText 0: see
+    // AnimTextPanel.text.
+    expect(main.text).toBe("<_cff0000>红</_cff0000>字");
+    expect(main.style.tagStyles).toEqual({ _cff0000: { fill: "#ff0000" } });
   });
 
   it("uses the prefab's DynFontLoader fonts for the two slots", async () => {
