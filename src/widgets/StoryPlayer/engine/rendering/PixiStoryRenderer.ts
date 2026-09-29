@@ -697,8 +697,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     await this.createUi();
     this.layers.attach(app.stage);
-
-    this.setDialogue("", "");
   }
 
   /**
@@ -871,6 +869,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     tagStyles?: Record<string, { fill: string }>,
   ): void {
     this.dialogPanel.setDialogue(speaker, text, tagStyles);
+  }
+
+  hideDialogue(): void {
+    this.dialogPanel.hide();
   }
 
   async showDecision(

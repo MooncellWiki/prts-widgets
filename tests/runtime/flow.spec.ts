@@ -113,6 +113,33 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("bills rich-text tag characters in the auto-play wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]<color=#ff0000>hi</color>',
+          '[name="B"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+
+      // RaiseAutoClick(typeWriter.messageLength) takes the raw, still
+      // marked-up string: 1.5s + 25 chars * 0.03s, not 2 visible chars.
+      await vi.advanceTimersByTimeAsync(2249);
+      expect(renderer.lastDialogue.speaker).toBe("A");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("uses the selected auto speed and manual input disables auto mode", async () => {
     vi.useFakeTimers();
     try {
@@ -486,6 +513,28 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue.text).toBe("onetwo");
     await runtime.advance();
     expect(renderer.lastDialogue.text).toBe("three");
+  });
+
+  it("keeps the multiline run through an empty-content dialogue line", async () => {
+    const renderer = new FakeRenderer();
+    const hideDialogue = vi.spyOn(renderer, "hideDialogue");
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A")]ab',
+        '[name="A"]',
+        '[multiline(name="A")]cd',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.advance();
+
+    // _ExecuteDialog's empty-content branch only hides the box; the
+    // _ResetMultiline call sits in the content branch.
+    expect(hideDialogue).toHaveBeenCalledExactlyOnceWith();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
   });
 
   it("resumes multiline typing from the characters already on screen", async () => {

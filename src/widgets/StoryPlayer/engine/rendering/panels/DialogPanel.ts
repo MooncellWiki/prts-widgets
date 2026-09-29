@@ -1,11 +1,11 @@
 import {
   Assets,
   CanvasTextMetrics,
+  Container,
   Sprite,
   Text,
   TextStyle,
-  Texture,
-  type Container,
+  type Texture,
 } from "pixi.js";
 
 import { DIALOG_FRAME_URL } from "../../../assets";
@@ -19,12 +19,12 @@ import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
  * Unity UI layout and text measurement to PIXI.
  */
 export class DialogPanel {
-  private bottomGradient: Sprite | null = null;
   private dialogue: Text | null = null;
-  private panel: Sprite | null = null;
   private speaker: Text | null = null;
-  private topGradient: Sprite | null = null;
-  private readonly baseAlphas = new Map<Container, number>();
+  /** Stands in for the CanvasGroup on `panel_dialog`; hiding fades its alpha. */
+  private root: Container | null = null;
+  /** Native `m_hidden`; `OnReset` forces it true with alpha 0, no tween. */
+  private hidden = true;
   private fadeSessionId = 0;
 
   private static readonly BOTTOM_HEIGHT = 182;
@@ -72,15 +72,6 @@ export class DialogPanel {
       this.warn?.("failed ui: sprite_avg_cutscene");
     }
 
-    const panel = new Sprite(Texture.WHITE);
-    Object.assign(panel, {
-      alpha: 0.72,
-      height: 170,
-      tint: 0x00_00_00,
-      width: STORY_WIDTH - 40,
-      x: 20,
-      y: STORY_HEIGHT - 190,
-    });
     const speaker = new Text({
       style: new TextStyle({
         align: "right",
@@ -116,17 +107,17 @@ export class DialogPanel {
       STORY_HEIGHT - DialogPanel.MESSAGE_TOP,
     );
 
-    this.topGradient = top;
-    this.bottomGradient = bottom;
-    this.panel = panel;
+    const root = new Container();
+    root.alpha = 0;
+    root.visible = false;
+    if (top) root.addChild(top);
+    if (bottom) root.addChild(bottom);
+    root.addChild(speaker, dialogue);
+
     this.speaker = speaker;
     this.dialogue = dialogue;
-    for (const item of [top, bottom, panel, speaker, dialogue]) {
-      if (item) this.baseAlphas.set(item, item.alpha);
-    }
-    if (top) this.layer.addChild(top);
-    if (bottom) this.layer.addChild(bottom);
-    this.layer.addChild(speaker, dialogue);
+    this.root = root;
+    this.layer.addChild(root);
   }
 
   setDialogue(
@@ -143,51 +134,54 @@ export class DialogPanel {
       this.dialogue.text = text;
     }
     this.applyLayout();
-    const items: Container[] = [
-      this.topGradient,
-      this.bottomGradient,
-      this.panel,
-      this.speaker,
-      this.dialogue,
-    ].flatMap((item) => (item ? [item] : []));
-    // Cancel any fade-out still in flight before applying the new visibility.
-    this.fadeSessionId += 1;
-    if (speaker || text) {
-      for (const item of items) {
-        item.alpha = this.baseAlphas.get(item) ?? 1;
-        item.visible = true;
-      }
-      return;
-    }
-    // Native port: set_isHidden(true) fades the panel's CanvasGroup out over
-    // 150ms (Linear, unscaled time) instead of hiding it instantly.
-    if (!this.tween) {
-      for (const item of items) item.visible = false;
-      return;
-    }
-    const session = this.fadeSessionId;
-    const startAlphas = items.map((item) => item.alpha);
-    void this.tween(
-      DialogPanel.HIDE_FADE_MS,
-      (progress) => {
-        if (session !== this.fadeSessionId) return;
-        for (const [i, item] of items.entries()) {
-          item.alpha = startAlphas[i]! * (1 - progress);
-        }
-      },
-      () => {
-        if (session !== this.fadeSessionId) return;
-        for (const item of items) item.visible = false;
-      },
-    );
+    this.setHidden(false);
+  }
+
+  /**
+   * Native port: the empty-content branches of `_ExecuteDialog` /
+   * `_ExecuteMultiline` only call `set_isHidden(true)`. `_name`/`_message`
+   * keep the last text, which fades out together with the frame.
+   */
+  hide(): void {
+    this.setHidden(true);
   }
 
   destroy(): void {
-    this.topGradient = null;
-    this.bottomGradient = null;
-    this.panel = null;
+    this.fadeSessionId += 1;
+    this.root = null;
     this.speaker = null;
     this.dialogue = null;
+  }
+
+  /**
+   * Native port: `DialogPanel._SetHiddenInternal(value, force: false)`. A no-op
+   * unless `m_hidden` flips; otherwise DOKill + DOFade the CanvasGroup from its
+   * current alpha to 0/1 over `_hideDuration` (0.15s) with `_hideEase`
+   * (Linear), unscaled -- showing fades in just like hiding fades out.
+   */
+  private setHidden(value: boolean): void {
+    const root = this.root;
+    if (!root || this.hidden === value) return;
+    this.hidden = value;
+    const session = ++this.fadeSessionId;
+    const from = root.alpha;
+    const to = value ? 0 : 1;
+    root.visible = true;
+    if (!this.tween) {
+      root.alpha = to;
+      root.visible = !value;
+      return;
+    }
+    void this.tween(
+      DialogPanel.HIDE_FADE_MS,
+      (progress) => {
+        if (session === this.fadeSessionId)
+          root.alpha = from + (to - from) * progress;
+      },
+      () => {
+        if (session === this.fadeSessionId && value) root.visible = false;
+      },
+    );
   }
 
   private applyNameBestFit(name: string): void {
@@ -217,16 +211,9 @@ export class DialogPanel {
         STORY_HEIGHT -
         DialogPanel.MESSAGE_TOP -
         Math.max(0, height - DialogPanel.MESSAGE_MAX_HEIGHT);
-      // Native port: _CalcMessageLayoutDelta/_ApplyTextContainerHeight grow
-      // sprite_frame_bottom upward from 182 once the message exceeds the
-      // 89px max height, in step with the message moving up.
-      if (this.bottomGradient) {
-        const bottomHeight =
-          DialogPanel.BOTTOM_HEIGHT +
-          Math.max(0, height - DialogPanel.MESSAGE_MAX_HEIGHT);
-        this.bottomGradient.height = bottomHeight;
-        this.bottomGradient.position.set(0, STORY_HEIGHT - bottomHeight);
-      }
+      // The frame does not follow the message: native `_textContainer`
+      // (sprite_frame_bottom) is resized only by `_ApplyTextContainerHeight`
+      // from the dialog preset / font-size settings, so it stays 182px here.
     }
     if (this.speaker) {
       const height = this.speaker.text

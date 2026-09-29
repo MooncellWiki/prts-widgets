@@ -841,10 +841,11 @@ export class StoryRuntime {
     }
 
     this.cancelTyping();
-    // Native ShouldResetOnSkip → DialogPanel.OnReset → typeWriter.OnReset()
-    // clears the message and cursor, so a multiline block that starts right at
-    // the skip landing point must not append to the pre-skip text.
-    this.resetMultiline();
+    // Deliberately no resetMultiline(): DialogPanel.ShouldResetOnSkip()
+    // returns false (2.7.71 VA 0x183f20f70), so _ResetComponentsOnSkip never
+    // calls its OnReset and the skip only ForceEnd()s it (TryFinish). The
+    // multiline run and the typewriter's accumulated m_message survive, and a
+    // multiline right at the landing point appends to the pre-skip text.
     if (shouldResume) {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
@@ -996,7 +997,7 @@ export class StoryRuntime {
         if (line.kind === "dialogue") {
           if (!line.text) {
             this.cancelTyping();
-            this.renderer.setDialogue("", "");
+            this.renderer.hideDialogue();
             continue;
           }
           this.resetMultiline();
@@ -1175,7 +1176,7 @@ export class StoryRuntime {
           return "wait_input";
         }
         this.cancelTyping();
-        this.renderer.setDialogue("", "");
+        this.renderer.hideDialogue();
         return "continue";
       }
 
@@ -2889,7 +2890,7 @@ export class StoryRuntime {
         // fragments append until `end`; they share the typewriter timing model.
         const text = line.trailingText;
         if (!text) {
-          this.renderer.setDialogue("", "");
+          this.renderer.hideDialogue();
           return "continue";
         }
         // Native port: `AVGTypeWriterText.AppendText` only types the appended

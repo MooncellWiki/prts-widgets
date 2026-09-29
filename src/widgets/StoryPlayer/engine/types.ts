@@ -693,6 +693,12 @@ export interface StoryRenderer {
     text: string,
     tagStyles?: Record<string, { fill: string }>,
   ) => void;
+  /**
+   * `DialogPanel.set_isHidden(true)` from the empty-content branches. Kept
+   * apart from `setDialogue` because a typewriter starting at an empty slice
+   * (narration, a fresh multiline) is a shown-but-empty box, not a hidden one.
+   */
+  hideDialogue: () => void;
   setImage: (key: string, input?: BackgroundInput) => Promise<void>;
   setImageRotate: (input: ImageRotateInput) => Promise<void>;
   setImageTween: (input: ImageTweenInput) => Promise<void>;

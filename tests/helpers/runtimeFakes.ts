@@ -77,6 +77,7 @@ export class FakeRenderer implements StoryRenderer {
   largeImageTweenCalls: LargeBackgroundTweenInput[] = [];
   lastDialogue = { speaker: "", text: "" };
   dialogueTexts: string[] = [];
+  dialogueHidden = true;
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
   stickerTweenCalls: StickerTweenInput[] = [];
@@ -254,8 +255,14 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   setDialogue(speaker: string, text: string): void {
+    this.dialogueHidden = false;
     this.lastDialogue = { speaker, text };
     this.dialogueTexts.push(text);
+  }
+
+  hideDialogue(): void {
+    this.dialogueHidden = true;
+    this.lastDialogue = { speaker: "", text: "" };
   }
 
   async setImage(key: string, input?: BackgroundInput): Promise<void> {
