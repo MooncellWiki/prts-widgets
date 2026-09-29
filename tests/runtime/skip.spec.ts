@@ -168,6 +168,81 @@ describe("StoryRuntime", () => {
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
+  it("finishes the interrupted line and ends its command on skip", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]abcd', "[SkipToThis]", '[name="B"]next']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      expect(renderer.lastDialogue.text).toBe("");
+      await runtime.skipNode();
+
+      // SkipStory ForceEnd()s the waiting dialog: ForceCommandEnd is
+      // TryFinish (the full line lands) + _RestoreMessageWidth.
+      expect(renderer.dialogueTexts).toContain("abcd");
+      expect(renderer.finishDialogueCommandCalls).toBe(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an open multiline run across a skip", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A")]ab',
+        "[SkipToThis]",
+        '[multiline(name="A")]cd',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.skipNode();
+
+    // DialogPanel.ShouldResetOnSkip() is false, so the skip leaves its
+    // multiline run and the typewriter's m_message intact: AppendText joins.
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
+  });
+
+  it("closes an end=true multiline run on the click that finishes its typing", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[multiline(name="A",end=true)]ab',
+          "[SkipToThis]",
+          '[multiline(name="A")]cd',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      expect(renderer.lastDialogue.text).toBe("");
+      await runtime.advance();
+      expect(renderer.lastDialogue.text).toBe("ab");
+
+      // _OnClicked checks m_multilineEnd after TryFinish as well, so the run
+      // is already closed when the skip lands on the next multiline.
+      await runtime.skipNode();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "cd" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("disables segment skip when the story has no skip anchors", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

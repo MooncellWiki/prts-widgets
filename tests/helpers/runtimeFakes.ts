@@ -11,6 +11,7 @@ import type {
   CharacterCutinInput,
   CharacterSlotInput,
   CurtainInput,
+  DialogueLayout,
   DecisionSelection,
   FocusOutInput,
   FocusParamInput,
@@ -77,6 +78,9 @@ export class FakeRenderer implements StoryRenderer {
   largeImageTweenCalls: LargeBackgroundTweenInput[] = [];
   lastDialogue = { speaker: "", text: "" };
   dialogueTexts: string[] = [];
+  dialogueLayouts: DialogueLayout[] = [];
+  dialogueHidden = true;
+  finishDialogueCommandCalls = 0;
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
   stickerTweenCalls: StickerTweenInput[] = [];
@@ -253,9 +257,25 @@ export class FakeRenderer implements StoryRenderer {
     this.actionCalls.push(input);
   }
 
-  setDialogue(speaker: string, text: string): void {
+  setDialogue(
+    speaker: string,
+    text: string,
+    _tagStyles?: Record<string, { fill: string }>,
+    layout?: DialogueLayout,
+  ): void {
+    this.dialogueHidden = false;
     this.lastDialogue = { speaker, text };
     this.dialogueTexts.push(text);
+    if (layout) this.dialogueLayouts.push(layout);
+  }
+
+  finishDialogueCommand(): void {
+    this.finishDialogueCommandCalls += 1;
+  }
+
+  hideDialogue(): void {
+    this.dialogueHidden = true;
+    this.lastDialogue = { speaker: "", text: "" };
   }
 
   async setImage(key: string, input?: BackgroundInput): Promise<void> {

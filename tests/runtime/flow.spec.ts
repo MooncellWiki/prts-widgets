@@ -113,6 +113,58 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("bills rich-text tag characters in the auto-play wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]<color=#ff0000>hi</color>',
+          '[name="B"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+
+      // RaiseAutoClick(typeWriter.messageLength) takes the raw, still
+      // marked-up string: 1.5s + 25 chars * 0.03s, not 2 visible chars.
+      await vi.advanceTimersByTimeAsync(2249);
+      expect(renderer.lastDialogue.speaker).toBe("A");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lays out an endtip without the overflow widening", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]hi', "[endtip]完"]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+      await vi.advanceTimersByTimeAsync(2000);
+
+      // _ExecuteEndtip never calls _TryExpandMessageWidthOnOverflow.
+      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "完" });
+      expect(renderer.dialogueLayouts.at(-1)).toEqual({
+        executor: "endtip",
+        text: "完",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("uses the selected auto speed and manual input disables auto mode", async () => {
     vi.useFakeTimers();
     try {
@@ -486,6 +538,133 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue.text).toBe("onetwo");
     await runtime.advance();
     expect(renderer.lastDialogue.text).toBe("three");
+  });
+
+  it("shows an aside as a speakerless line that ends the multiline run", async () => {
+    const warnings: RuntimeWarning[] = [];
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A")]ab',
+        "[aside]<color=#ff0000>旁</color>白",
+        '[multiline(name="A")]cd',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+    await runtime.advance();
+
+    // _ExecuteAside: empty name, _ResetMultiline, message at x = -86.
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue.speaker).toBe("");
+    expect(renderer.dialogueLayouts.at(-1)).toEqual({
+      executor: "aside",
+      text: "旁白",
+    });
+    expect(warnings).toEqual([]);
+
+    await runtime.advance();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "cd" });
+  });
+
+  it("hides the box for an empty aside and keeps the multiline run", async () => {
+    const renderer = new FakeRenderer();
+    const hideDialogue = vi.spyOn(renderer, "hideDialogue");
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A")]ab',
+        "[aside]",
+        '[multiline(name="A")]cd',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.advance();
+
+    expect(hideDialogue).toHaveBeenCalledExactlyOnceWith();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
+  });
+
+  it("keeps the multiline run through an empty-content dialogue line", async () => {
+    const renderer = new FakeRenderer();
+    const hideDialogue = vi.spyOn(renderer, "hideDialogue");
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A")]ab',
+        '[name="A"]',
+        '[multiline(name="A")]cd',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    await runtime.advance();
+
+    // _ExecuteDialog's empty-content branch only hides the box; the
+    // _ResetMultiline call sits in the content branch.
+    expect(hideDialogue).toHaveBeenCalledExactlyOnceWith();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
+  });
+
+  it("ends the DialogPanel command only on the advancing click", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]one', '[name="B"]two']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      // The click that finishes typing is TryFinish only; OnFinish (and its
+      // _RestoreMessageWidth) comes with FinishCommand on the next click.
+      await runtime.advance();
+      expect(renderer.finishDialogueCommandCalls).toBe(0);
+      await runtime.advance();
+      expect(renderer.finishDialogueCommandCalls).toBe(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lays out each multiline fragment on its own, once per command", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[multiline(name="A")]ab',
+          '[multiline(name="A",end=true)]<color=#ff0000>cd</color>',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(200);
+      await runtime.advance();
+      await vi.advanceTimersByTimeAsync(200);
+
+      // _ExecuteMultiline measures `command.content` alone (tags take no
+      // space), and typing a character never re-places the message.
+      expect(renderer.dialogueLayouts).toEqual([
+        { executor: "multiline", text: "ab" },
+        { executor: "multiline", text: "cd" },
+      ]);
+      expect(renderer.dialogueTexts.length).toBeGreaterThan(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resumes multiline typing from the characters already on screen", async () => {

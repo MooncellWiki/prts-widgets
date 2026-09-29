@@ -45,6 +45,7 @@ import {
   type CharacterSlotInput,
   type CurtainInput,
   type DecisionSelection,
+  type DialogueLayout,
   type FocusOutInput,
   type FocusParamInput,
   type GridBackgroundInput,
@@ -619,7 +620,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageLayer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.imageLayer.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
-    this.dialogPanel = new DialogPanel(this.uiLayer, onWarning);
+    this.dialogPanel = new DialogPanel(
+      this.uiLayer,
+      onWarning,
+      (durationMs, update, complete) =>
+        this.tween(durationMs, update, complete),
+    );
     this.decisionPanel = new DecisionPanel(this.uiLayer);
     this.interludePanel = new InterludePanel(
       this.cutinLayer,
@@ -692,8 +698,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     await this.createUi();
     this.layers.attach(app.stage);
-
-    this.setDialogue("", "");
   }
 
   /**
@@ -864,8 +868,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    layout?: DialogueLayout,
   ): void {
-    this.dialogPanel.setDialogue(speaker, text, tagStyles);
+    this.dialogPanel.setDialogue(speaker, text, tagStyles, layout);
+  }
+
+  hideDialogue(): void {
+    this.dialogPanel.hide();
+  }
+
+  finishDialogueCommand(): void {
+    this.dialogPanel.restoreMessageWidth();
   }
 
   async showDecision(

@@ -230,12 +230,12 @@ export function analyzeStoryFlow(
       }
 
       if (line.kind === "dialogue") {
-        // runtime 的 resetMultiline() 在空文本判断之前，空对白同样结束累积，
-        // 所以先无条件 flush 再决定是否产生条目
-        const flushed = withFlushedMultiline(state, pending);
+        // 空对白只隐藏对话框、不结束累积：runtime 的 resetMultiline() 在空文本
+        // 判断之后，原生 reader mode 的 _ProcessDialog 也只在 content 非空时
+        // _TryEndMultilineMode()。appendLine 对空文本原样返回状态
         nextStates.push(
           appendLine(
-            flushed,
+            state,
             lineIndex,
             line.speaker,
             line.text,
@@ -389,6 +389,22 @@ export function analyzeStoryFlow(
                   pending,
                 )
               : state,
+          );
+          break;
+        }
+
+        case "aside": {
+          // 原生 reader mode 的 _ProcessAside：content 非空时结束累积，并记一条
+          // 无说话人的对白格（_HandleAddDialogCell(Empty, …)）；空 content 不动
+          nextStates.push(
+            appendLine(
+              state,
+              lineIndex,
+              "",
+              line.content,
+              "narration",
+              pending,
+            ),
           );
           break;
         }

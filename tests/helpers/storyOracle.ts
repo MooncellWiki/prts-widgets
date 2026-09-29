@@ -125,7 +125,8 @@ export function executeStoryPath(
     if (blocked(line)) continue;
 
     if (line.kind === "dialogue") {
-      flush();
+      // 空对白只隐藏对话框，不结束 multiline 累积
+      if (!line.text) continue;
       append(line.lineNumber, line.speaker, line.text, "dialogue");
       continue;
     }
@@ -204,6 +205,13 @@ export function executeStoryPath(
             line.content,
             "dialogue",
           );
+        break;
+      }
+
+      case "aside": {
+        // 无说话人的对白；空 content 只隐藏对话框
+        if (line.content)
+          append(line.lineNumber, "", line.content, "narration");
         break;
       }
 

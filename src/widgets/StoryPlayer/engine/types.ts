@@ -426,6 +426,24 @@ export interface CgItemInput {
   width: number;
 }
 
+/**
+ * Native `_CalcMessageLayoutDelta` + `_ApplyMessagePosition` input, handed to
+ * `StoryRenderer.setDialogue` once when a DialogPanel command executes.
+ */
+export interface DialogueLayout {
+  /**
+   * The DialogPanel executor running the command. All but `_ExecuteEndtip`
+   * call `_TryExpandMessageWidthOnOverflow`; `_ExecuteAside` places the
+   * message at x = -86 (MESSAGE_ASIDE_X_POS) instead of m_messageOriginXPos.
+   */
+  executor: "aside" | "dialog" | "endtip" | "multiline";
+  /**
+   * Plain (tag-free) `command.content`: the whole line, or only the newest
+   * fragment for multiline.
+   */
+  text: string;
+}
+
 export interface SubtitleInput {
   alignment: "center" | "left" | "right";
   delayMs: number;
@@ -688,11 +706,27 @@ export interface StoryRenderer {
   setGridBackground: (input: GridBackgroundInput) => Promise<void>;
   setLargeImage: (input: GridBackgroundInput) => Promise<void>;
   runCharacterAction: (input: CharacterActionInput) => Promise<void>;
+  /**
+   * `layout` places the message once per command; typewriter updates omit it
+   * and keep the current position.
+   */
   setDialogue: (
     speaker: string,
     text: string,
     tagStyles?: Record<string, { fill: string }>,
+    layout?: DialogueLayout,
   ) => void;
+  /**
+   * `DialogPanel.set_isHidden(true)` from the empty-content branches. Kept
+   * apart from `setDialogue` because a typewriter starting at an empty slice
+   * (narration, a fresh multiline) is a shown-but-empty box, not a hidden one.
+   */
+  hideDialogue: () => void;
+  /**
+   * The waiting DialogPanel command ends (`OnFinish` on the advancing click,
+   * `ForceCommandEnd` on skip): undo `_TryExpandMessageWidthOnOverflow`.
+   */
+  finishDialogueCommand: () => void;
   setImage: (key: string, input?: BackgroundInput) => Promise<void>;
   setImageRotate: (input: ImageRotateInput) => Promise<void>;
   setImageTween: (input: ImageTweenInput) => Promise<void>;
