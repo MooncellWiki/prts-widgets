@@ -168,6 +168,31 @@ describe("StoryRuntime", () => {
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
+  it("finishes the interrupted line and ends its command on skip", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]abcd', "[SkipToThis]", '[name="B"]next']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      expect(renderer.lastDialogue.text).toBe("");
+      await runtime.skipNode();
+
+      // SkipStory ForceEnd()s the waiting dialog: ForceCommandEnd is
+      // TryFinish (the full line lands) + _RestoreMessageWidth.
+      expect(renderer.dialogueTexts).toContain("abcd");
+      expect(renderer.finishDialogueCommandCalls).toBe(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps an open multiline run across a skip", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

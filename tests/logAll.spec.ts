@@ -570,8 +570,9 @@ describe("buildLogAll（decision / predicate 语义）", () => {
       ).toEqual(["尾"]);
   });
 
-  it("ends the accumulation on an empty dialogue line (runtime resetMultiline)", () => {
-    // runtime 的 resetMultiline() 在空文本判断之前，空对白同样结束累积
+  it("keeps the accumulation through an empty dialogue line", () => {
+    // 空对白只隐藏对话框：runtime 的 resetMultiline() 在空文本判断之后，
+    // 原生 reader mode 的 _ProcessDialog 也只在 content 非空时结束累积
     const document = run([
       '[multiline(name="A")]前半段', // line 1
       '[name="A"]', // line 2 空对白
@@ -582,7 +583,30 @@ describe("buildLogAll（decision / predicate 语义）", () => {
       projectVisibleEntries(document, new Map()).map((entry) =>
         entry.spans.map((span) => span.text).join(""),
       ),
-    ).toEqual(["前半段", "后半段收尾"]);
+    ).toEqual(["前半段后半段收尾"]);
+  });
+
+  it("logs an aside as a speakerless line that ends the accumulation", () => {
+    // 原生 reader mode 的 _ProcessAside：content 非空时结束累积并记一条
+    // 无说话人的对白格；空 content 不动累积
+    const document = run([
+      '[multiline(name="A")]前半段', // line 1
+      "[aside]", // line 2 空 aside
+      '[multiline(name="A")]后半段', // line 3
+      "[aside]旁白", // line 4
+      '[multiline(name="A", end=true)]收尾', // line 5
+    ]);
+    expect(
+      projectVisibleEntries(document, new Map()).map((entry) => [
+        entry.speaker,
+        entry.source,
+        entry.spans.map((span) => span.text).join(""),
+      ]),
+    ).toEqual([
+      ["A", "multiline", "前半段后半段"],
+      ["", "narration", "旁白"],
+      ["A", "multiline", "收尾"],
+    ]);
   });
 
   it("keeps sticker runs out of the dialogue multiline buffer", () => {

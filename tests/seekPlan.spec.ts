@@ -148,6 +148,9 @@ class DecisionFakeRenderer {
     return false;
   }
 
+  // 同上：推进时收尾 DialogPanel 命令
+  finishDialogueCommand(): void {}
+
   destroy(): void {}
 }
 

@@ -30,6 +30,7 @@ import type {
   CharacterActionInput,
   CharacterSlotInput,
   DecisionPolicy,
+  DialogueLayout,
   InterludeElementType,
   InterludeInput,
   LineSeekUpdate,
@@ -112,6 +113,7 @@ const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
 const builtinCommandNames = [
   "endtip",
   "dialog",
+  "aside",
   "delay",
   "video",
   "skipnode",
@@ -757,6 +759,9 @@ export class StoryRuntime {
 
     this.cancelAutoClick();
     if (this.multilineEnd) this.resetMultiline();
+    // Native FinishCommand -> DialogPanel.OnFinish -> _RestoreMessageWidth.
+    // Harmless on other waits: only a waiting DialogPanel line can be widened.
+    this.renderer.finishDialogueCommand();
     const inputEffect = this.pendingInputEffect;
     this.pendingInputEffect = null;
     await inputEffect?.();
@@ -812,6 +817,12 @@ export class StoryRuntime {
     // a skip that ends the story leaves the screen exactly as it was.
     // `shouldResume` is that same fork.
     if (shouldResume) {
+      // Native port: SkipStory ForceEnd()s the blocking executors before the
+      // component reset. DialogPanel.ForceCommandEnd (0x183f202b0) is TryFinish
+      // + _RestoreMessageWidth: the interrupted line is shown in full and any
+      // overflow widening is undone.
+      this.finishTypingNow();
+      this.renderer.finishDialogueCommand();
       // Native port: both executors on AVGCharacterCutinPanel reset on skip --
       // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
       // empties the slot pool / _slots before resetting the interlude
@@ -1155,7 +1166,7 @@ export class StoryRuntime {
         this.finishLineSeekMissed("finished");
         this.applyAutoPlayMode("default");
         this.resetMultiline();
-        this.startTypingDialogue("", line.content);
+        this.startTypingDialogue("", line.content, { executor: "endtip" });
         return "wait_input";
       }
 
@@ -1173,6 +1184,22 @@ export class StoryRuntime {
             toString(this.exactArg(args, "name")),
             line.content,
           );
+          return "wait_input";
+        }
+        this.cancelTyping();
+        this.renderer.hideDialogue();
+        return "continue";
+      }
+
+      case "aside": {
+        // Native port: Torappu.AVG.DialogPanel._ExecuteAside. The dialog
+        // executor's two branches without a speaker: the content branch clears
+        // the name, resets multiline and blocks, with the message placed at
+        // x = -86 (see DialogueLayout); an empty content just hides the box.
+        if (line.content) {
+          this.resetMultiline();
+          this.displayedLineIndex = line.lineNumber;
+          this.startTypingDialogue("", line.content, { executor: "aside" });
           return "wait_input";
         }
         this.cancelTyping();
@@ -2906,9 +2933,14 @@ export class StoryRuntime {
         this.startTypingDialogue(
           toString(this.exactArg(args, "name")),
           this.multilineText,
-          this.multilineTypeDelayScale(this.exactArg(args, "delay")),
-          shownChars,
-          text,
+          {
+            delayScale: this.multilineTypeDelayScale(
+              this.exactArg(args, "delay"),
+            ),
+            executor: "multiline",
+            layoutText: text,
+            startIndex: shownChars,
+          },
         );
         this.multilineShownChars = this.currentMessageLength;
         return "wait_input";
@@ -3394,22 +3426,34 @@ export class StoryRuntime {
    * `layoutText` is what native hands `_CalcMessageLayoutDelta` when the
    * command executes: the whole line, except that multiline passes only its
    * newest fragment while `text` carries the accumulated run.
+   * `executor` names the DialogPanel executor (see `DialogueLayout`).
    */
   private startTypingDialogue(
     speaker: string,
     text: string,
-    delayScale = 1,
-    startIndex = 0,
-    layoutText = text,
+    {
+      delayScale = 1,
+      executor = "dialog",
+      layoutText = text,
+      startIndex = 0,
+    }: {
+      delayScale?: number;
+      executor?: DialogueLayout["executor"];
+      layoutText?: string;
+      startIndex?: number;
+    } = {},
   ): void {
     this.cancelTyping();
 
     const translatedSpeaker = this.translateText(speaker);
     const translatedText = this.translateText(text);
     const richChars = parseRichChars(translatedText);
-    const layout = parseRichChars(this.translateText(layoutText))
-      .map(({ char }) => char)
-      .join("");
+    const layout: DialogueLayout = {
+      executor,
+      text: parseRichChars(this.translateText(layoutText))
+        .map(({ char }) => char)
+        .join(""),
+    };
     this.currentMessageLength = richChars.length;
     this.currentRawMessageLength = translatedText.length;
     this.currentTypingComplete = false;
