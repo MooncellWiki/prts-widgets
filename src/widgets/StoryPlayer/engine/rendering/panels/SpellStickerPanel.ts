@@ -5,7 +5,7 @@ import {
   type Container as ContainerType,
 } from "pixi.js";
 
-import { DIALOG_FONT_FAMILY } from "../../font";
+import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH, type SpellStickerInput } from "../../types";
 
 /**
@@ -138,6 +138,9 @@ export class SpellStickerPanel {
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     const sami = style === "sami";
     const [mainInputText, subInputText] = PREFAB_INPUT_TEXT[style];
+    // Prefab fonts come from DynFontLoader: fire loads NotoSansHans-Medium
+    // (main Italic, sub Normal), sami loads 方正特雅宋_GBK / RoHMinSinkStd-UB,
+    // commercial faces the web cannot ship -- sami keeps a bold approximation.
     const main = new Text({
       label: "text_spell_main",
       style: new TextStyle({
@@ -145,7 +148,7 @@ export class SpellStickerPanel {
         fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
         fontSize: sami ? 32 : 24,
         fontStyle: "italic",
-        fontWeight: "bold",
+        fontWeight: sami ? "bold" : DIALOG_FONT_WEIGHT,
       }),
       text: mainInputText,
     });
@@ -158,7 +161,7 @@ export class SpellStickerPanel {
         fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
         fontSize: sami ? 16 : 14,
         fontStyle: sami ? "italic" : "normal",
-        fontWeight: sami ? "bold" : "normal",
+        fontWeight: sami ? "bold" : DIALOG_FONT_WEIGHT,
       }),
       text: subInputText,
     });

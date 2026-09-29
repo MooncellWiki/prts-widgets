@@ -1,6 +1,11 @@
 /**
- * Asset provenance: the AVG default font configured by
- * `Torappu.Resource.AbFontConfig` is `SourceHanSansCN-Bold`.
+ * Asset provenance: the AVG Text components -- `panel_dialog` text_name /
+ * text_message, the `panel_decision` options, `panel_subtitle` and the
+ * `sticker_text` / `timer_sticker_text` prefabs -- serialize the Unity Font
+ * asset `NotoSansHans-Medium` (Noto Sans S Chinese Medium, weight 500,
+ * FontStyle Normal). Their `LocalizeTextUIConfig` only destroys itself on
+ * Start and no `DynFontLoader` sits on them, so nothing swaps the font at
+ * runtime. The file served here is that asset's `m_FontData`, as WOFF2.
  *
  * This module is a web adaptation: it explicitly registers the exported font
  * with the browser before PIXI measures dialogue text. Native loading uses a
@@ -17,12 +22,12 @@
 // 且返回的 Promise resolve 后 measureText 测量的是真实字体 metrics
 // （BestFit / 动态 Y 调整依赖准确测量）。
 // DIALOG_FONT_FAMILY 是 PIXI 内部使用的逻辑名（仅出现在各面板 TextStyle 的
-// fontFamily 里，无 CSS/DOM 引用），与实际加载的字体文件无关。当前加载的是
-// 思源黑体 CN 的 Bold 字重，故 DIALOG_FONT_WEIGHT 为 700；family 名沿用历史
-// 名称只是避免改动各面板。
+// fontFamily 里，无 CSS/DOM 引用）。加载的就是客户端的 NotoSansHans-Medium，
+// 只注册 500 这一个字重：TextStyle 要用 DIALOG_FONT_WEIGHT，写 bold 会让浏览器
+// 合成伪粗体。
 
 export const DIALOG_FONT_FAMILY = "NotoSansHans-Medium";
-export const DIALOG_FONT_WEIGHT = 700;
+export const DIALOG_FONT_WEIGHT = "500";
 // FontFace API 以 CORS 模式取字体；static.prts.wiki 的 OSS 桶有 Referer 防盗链
 // 且 403 时不带 CORS 头，产物与其同源时没问题，localhost 直连会被拦。dev 下改
 // 走 vite 代理（见 vite.config.ts 的 /debug-static），生产保持直连。
@@ -31,9 +36,12 @@ export const DIALOG_FONT_WEIGHT = 700;
 // 那条链路的文档源是 prts.wiki，只有模块从 localhost:8080 加载，相对路径会打到
 // prts.wiki/debug-static 上 404。与 assets.ts 的 `new URL(..., import.meta.url)` 同因。
 // 代理响应带 vite 的 CORS 头（server.cors.origin 放行了 prts.wiki），跨源取得到。
+// 路径必须经变量传入：`new URL("字面量", import.meta.url)` 会被 vite 当成静态
+// 资源改写成 /@fs/debug-static/…，请求到不了代理。
+const DEV_FONT_PATH = "/debug-static/NotoSansHans-Medium.woff2";
 export const DIALOG_FONT_URL = import.meta.env.DEV
-  ? new URL("/debug-static/SourceHanSansCN-Bold.woff2", import.meta.url).href
-  : "https://static.prts.wiki/SourceHanSansCN-Bold.woff2";
+  ? new URL(DEV_FONT_PATH, import.meta.url).href
+  : "https://static.prts.wiki/NotoSansHans-Medium.woff2";
 
 let loadPromise: Promise<void> | null = null;
 
@@ -47,7 +55,7 @@ export function preloadDialogFont(): Promise<void> {
     try {
       const face = new FontFace(DIALOG_FONT_FAMILY, `url(${DIALOG_FONT_URL})`, {
         style: "normal",
-        weight: String(DIALOG_FONT_WEIGHT),
+        weight: DIALOG_FONT_WEIGHT,
         display: "swap",
       });
       await face.load();
