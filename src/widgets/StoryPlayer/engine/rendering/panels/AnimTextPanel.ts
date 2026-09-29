@@ -15,12 +15,6 @@ import {
   DIALOG_FONT_FAMILY,
   DIALOG_FONT_WEIGHT,
 } from "../../font";
-import {
-  buildTagStyles,
-  collectColors,
-  parseRichChars,
-  richCharsToTaggedText,
-} from "../../richtext";
 import { STORY_HEIGHT, STORY_WIDTH, type AnimTextInput } from "../../types";
 
 const ANIMATION_MS = 5000;
@@ -450,21 +444,25 @@ export class AnimTextPanel {
     this.clear();
   }
 
-  /** Renders `<color>` spans through the shared rich-text pipeline. */
+  /**
+   * Shows the slot text literally, tags included. Native provenance: both
+   * prefab Texts serialize `m_RichText` 0, and neither `InitView` (2.7.71 VA
+   * 0x183ed1470), the stamp's clips nor any AVG code turns
+   * `supportRichText` on, so the `<color>`/`<b>`/`<i>` spans that
+   * `RichTextConvertTagsHandler` keeps are displayed as text. No tagStyles:
+   * PIXI only parses tag markup when tagStyles is non-empty.
+   */
   private text(
     content: string,
     fontSize: number,
     font: Pick<TextStyleOptions, "fontFamily" | "fontWeight">,
   ): Text {
-    const chars = parseRichChars(content);
-    const colors = collectColors(chars);
     const style = new TextStyle({
       fill: "#ffffff",
       ...font,
       fontSize,
     });
-    if (colors.length > 0) style.tagStyles = buildTagStyles(colors);
-    return new Text({ style, text: richCharsToTaggedText(chars) });
+    return new Text({ style, text: content });
   }
 
   private sprite(
