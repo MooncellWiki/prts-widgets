@@ -144,4 +144,40 @@ describe("SpellStickerPanel", () => {
       "er eigi ógæfa, heldr augna máttur.",
     );
   });
+
+  it("uses each prefab's DynFontLoader font with its FontStyle", () => {
+    const layer = new Container();
+    const panel = new SpellStickerPanel(layer);
+    panel.show({ content: "", id: "a", style: "fire" });
+    panel.show({ content: "", id: "b", style: "sami" });
+    const font = (root: Container, label: string) => {
+      const { fontFamily, fontStyle, fontWeight } = (
+        root.getChildByLabel(label) as Text
+      ).style;
+      return { fontFamily: [fontFamily].flat()[0], fontStyle, fontWeight };
+    };
+
+    const [fire, sami] = layer.children as Container[];
+    expect(font(fire!, "text_spell_main")).toEqual({
+      fontFamily: "NotoSansHans-Medium",
+      fontStyle: "italic",
+      fontWeight: "500",
+    });
+    expect(font(fire!, "text_spell_sub")).toEqual({
+      fontFamily: "NotoSansHans-Medium",
+      fontStyle: "normal",
+      fontWeight: "500",
+    });
+    // Both sami Texts are FontStyle Italic (2), not Bold: no synthetic bold.
+    expect(font(sami!, "text_spell_main")).toEqual({
+      fontFamily: "方正特雅宋_GBK",
+      fontStyle: "italic",
+      fontWeight: "400",
+    });
+    expect(font(sami!, "text_spell_sub")).toEqual({
+      fontFamily: "RoHMinSinkStd-UB",
+      fontStyle: "italic",
+      fontWeight: "400",
+    });
+  });
 });

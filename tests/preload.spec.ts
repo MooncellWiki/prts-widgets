@@ -14,7 +14,8 @@ import {
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 
-const { loadMock } = vi.hoisted(() => ({
+const { loadMock, samiFontsMock } = vi.hoisted(() => ({
+  samiFontsMock: vi.fn(async () => {}),
   // 对齐 pixi v8 Assets.load 第二参数签名:可以是裸 progress 回调,也可以是
   // LoadOptions({ onProgress, onError, ... })。两种都从 onProgress 求值。
   loadMock: vi.fn(
@@ -44,6 +45,11 @@ vi.mock("pixi.js", () => ({
   GlProgram: { from: () => ({}) },
   GpuProgram: { from: () => ({}) },
   UniformGroup: class {},
+}));
+
+vi.mock("../src/widgets/StoryPlayer/engine/font", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  preloadSamiSpellStickerFonts: samiFontsMock,
 }));
 
 function createContext(script: readonly string[]): Context {
@@ -115,6 +121,7 @@ function createContext(script: readonly string[]): Context {
 describe("preloadContextAssets", () => {
   beforeEach(() => {
     loadMock.mockClear();
+    samiFontsMock.mockClear();
   });
 
   it("exposes the deduplicated asset URLs without loading them", () => {
@@ -152,6 +159,34 @@ describe("preloadContextAssets", () => {
     );
     const loadedWithoutStamp = loadMock.mock.calls[0]![0] as string[];
     expect(loadedWithoutStamp).toEqual(expect.not.arrayContaining(stampUrls));
+  });
+
+  it("loads the sami spellsticker fonts only when a sami sticker is shown", async () => {
+    const preloads = async (script: readonly string[]): Promise<boolean> => {
+      samiFontsMock.mockClear();
+      await preloadContextAssets(createContext(script));
+      return samiFontsMock.mock.calls.length > 0;
+    };
+
+    expect(
+      await preloads([
+        '[spellsticker(id="spell1", action="show", style="sami", block=true)]<p=1>命运啊，张口！</>',
+      ]),
+    ).toBe(true);
+    // runtime 缺省 style 为 sami、比较不区分大小写。
+    expect(await preloads(['[spellsticker(id="spell1")]<p=1>x</>'])).toBe(true);
+    expect(
+      await preloads(['[spellsticker(id="spell1", style="SAMI")]<p=1>x</>']),
+    ).toBe(true);
+
+    expect(
+      await preloads([
+        '[spellsticker(id="spell2", action="show", style="fire", block=true)]<p=1>夜雪无痕，噤声。</>',
+        '[spellsticker(id="spell2", action="hide")]',
+        "[spellstickerclear(block=false)]",
+      ]),
+    ).toBe(false);
+    expect(await preloads(['[background(image="bg_rhodes_day")]'])).toBe(false);
   });
 
   it("lists every face for a used base and marks referenced faces", () => {

@@ -10,6 +10,7 @@ import {
   type StoryAssetFamily,
 } from "./asset";
 import { resolveCharacterSelection } from "./characterRef";
+import { preloadSamiSpellStickerFonts } from "./font";
 import { parseScript } from "./parser";
 import { DIALOG_FRAME_URL } from "./renderer";
 
@@ -310,8 +311,10 @@ export function collectContextAssetUrls(context: Context): string[] {
   return collectContextAssetManifest(context).urls;
 }
 
-function collectPreloadAssetUrls(context: Context): string[] {
-  const lines = parseContextScript(context);
+function collectPreloadAssetUrls(
+  context: Context,
+  lines: ParsedLine[],
+): string[] {
   const urls = new Set(buildContextAssetManifest(context, lines).urls);
 
   // 固定 UI 资源（对话框上下黑条纹理），随每次 preload 一起预热进 pixi Assets 缓存，
@@ -333,6 +336,24 @@ function collectPreloadAssetUrls(context: Context): string[] {
   return [...urls];
 }
 
+/**
+ * 剧本是否会显示萨米 spellsticker，决定要不要加载它那两款大字体。判定与
+ * runtime 的 `spellsticker` 分支一致：`style` 缺省为 sami（不区分大小写），
+ * `action=hide` 只隐藏不显示。native 字体随 story.unity 常驻，按需加载属
+ * web 适配。
+ */
+function showsSamiSpellSticker(lines: ParsedLine[]): boolean {
+  return lines.some((line) => {
+    if (line.kind !== "command" || line.command !== "spellsticker")
+      return false;
+    const { action = "show", style = "sami" } = line.args;
+    return (
+      String(action).toLowerCase() !== "hide" &&
+      String(style).toLowerCase() === "sami"
+    );
+  });
+}
+
 // 路径前缀/大小写核对属于开发期诊断,线上每次播放刷几十条日志只是噪音。
 // 资源加载失败仍然照常 warn,那是用户可见问题的线索。
 const debugLog: (...args: unknown[]) => void = import.meta.env.DEV
@@ -343,12 +364,18 @@ export async function preloadContextAssets(
   context: Context,
   onProgress?: (progress: number) => void,
 ): Promise<void> {
-  const urls = collectPreloadAssetUrls(context);
+  const lines = parseContextScript(context);
+  // 字体与下方的图片/音频并行下载，两条出口都要等它。
+  const fontsReady = showsSamiSpellSticker(lines)
+    ? preloadSamiSpellStickerFonts()
+    : undefined;
+  const urls = collectPreloadAssetUrls(context, lines);
   debugLog(`[preload] ${urls.length} unique asset URL(s) collected`);
   if (urls.length === 0) {
     console.warn(
       "[preload] no assets resolved — script may have no collectable commands or resolvers returned empty",
     );
+    await fontsReady;
     onProgress?.(1);
     return;
   }
@@ -389,5 +416,6 @@ export async function preloadContextAssets(
       );
     },
   });
+  await fontsReady;
   debugLog(`[preload] done: ${urls.length} asset(s) resolved`);
 }
