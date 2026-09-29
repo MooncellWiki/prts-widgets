@@ -1,4 +1,5 @@
 import type { Context } from "../../src/widgets/StoryPlayer/context";
+import type { RichTagStyles } from "../../src/widgets/StoryPlayer/engine/richtext";
 import type {
   AnimTextInput,
   AvgDisplayInput,
@@ -260,7 +261,7 @@ export class FakeRenderer implements StoryRenderer {
   setDialogue(
     speaker: string,
     text: string,
-    _tagStyles?: Record<string, { fill: string }>,
+    _tagStyles?: RichTagStyles,
     layout?: DialogueLayout,
   ): void {
     this.dialogueHidden = false;

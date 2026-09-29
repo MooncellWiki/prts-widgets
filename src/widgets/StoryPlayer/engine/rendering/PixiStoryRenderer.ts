@@ -24,11 +24,11 @@ import {
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
 import {
   buildTagStyles,
-  collectColors,
   colorTagName,
   parseRichChars,
   richCharsToTaggedText,
   type RichChar,
+  type RichTagStyles,
 } from "../richtext";
 import { computeLegacyShowItemLayout } from "../showitem";
 import {
@@ -291,11 +291,10 @@ const SUBTITLE_HIDDEN_TAIL_STYLE = {
   fill: SUBTITLE_HIDDEN_TAIL_COLOR,
 } as const;
 
+// Keeps each char's bold/italic so the hidden tail wraps like the revealed
+// text will: native appends the unrevealed rest with its own tags.
 function subtitleHiddenTail(chars: RichChar[]): RichChar[] {
-  return chars.map(({ char }) => ({
-    char,
-    color: SUBTITLE_HIDDEN_TAIL_COLOR,
-  }));
+  return chars.map((char) => ({ ...char, color: SUBTITLE_HIDDEN_TAIL_COLOR }));
 }
 
 /**
@@ -868,7 +867,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   setDialogue(
     speaker: string,
     text: string,
-    tagStyles?: Record<string, { fill: string }>,
+    tagStyles?: RichTagStyles,
     layout?: DialogueLayout,
   ): void {
     this.dialogPanel.setDialogue(speaker, text, tagStyles, layout);
@@ -2909,7 +2908,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     const newChars = parseRichChars(input.text);
     const allChars = [...prevChars, ...newChars];
 
-    const colors = collectColors(allChars);
     const style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
     // Native maps alignment to TextAnchor.UpperLeft/UpperCenter/UpperRight,
     // which horizontally aligns *every wrapped line* inside the width box;
@@ -2919,7 +2917,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     // The transparent hidden tail below needs its tag registered while typing,
     // with the drop shadow disabled so the unrevealed text stays invisible.
     const tagStyles: NonNullable<TextStyle["tagStyles"]> =
-      buildTagStyles(colors);
+      buildTagStyles(allChars);
     if (input.delayMs > 0)
       tagStyles[SUBTITLE_HIDDEN_TAIL_TAG] = { ...SUBTITLE_HIDDEN_TAIL_STYLE };
     if (Object.keys(tagStyles).length > 0) style.tagStyles = tagStyles;
@@ -2998,9 +2996,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     const allChars = [...prevChars, ...newChars];
     this.stickerRichChars.set(input.id, allChars);
 
-    const colors = collectColors(allChars);
     const style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
-    if (colors.length > 0) style.tagStyles = buildTagStyles(colors);
+    style.tagStyles = buildTagStyles(allChars);
     sticker.style = style;
     sticker.y = input.y;
 

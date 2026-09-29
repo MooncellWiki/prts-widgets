@@ -154,7 +154,11 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
             <span
               v-for="(span, si) in row.entry.spans"
               :key="si"
-              :style="span.color ? { color: span.color } : undefined"
+              :style="{
+                color: span.color ?? undefined,
+                fontWeight: span.bold ? 'bold' : undefined,
+                fontStyle: span.italic ? 'italic' : undefined,
+              }"
               :class="
                 !span.color && row.entry.source === 'narration'
                   ? 'opacity-75'

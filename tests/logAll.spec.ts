@@ -130,6 +130,19 @@ describe("buildLogAll（线性内容）", () => {
     );
   });
 
+  it("flags <b> / <i> spans and keeps the tags out of the text", () => {
+    const document = run([
+      '[name="A"]<i>斜<color=#ff0000>红</color></i><b>粗</b>普通',
+    ]);
+    const entries = projectVisibleEntries(document, new Map());
+    expect(entries[0]!.spans).toEqual([
+      { color: null, italic: true, text: "斜" },
+      { color: "#ff0000", italic: true, text: "红" },
+      { bold: true, color: null, text: "粗" },
+      { color: null, text: "普通" },
+    ]);
+  });
+
   it("preserves color tags as separate spans", () => {
     const document = run(['[name="A"]<color=#ff0000>红</color>普通']);
     const entries = projectVisibleEntries(document, new Map());

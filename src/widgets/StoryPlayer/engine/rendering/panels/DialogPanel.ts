@@ -12,6 +12,8 @@ import { DIALOG_FRAME_URL } from "../../../assets";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH, type DialogueLayout } from "../../types";
 
+import type { RichTagStyles } from "../../richtext";
+
 /**
  * Web/PIXI reconstruction of the visual surface used by
  * `Torappu.AVG.DialogPanel._ExecuteDialog`. Command sequencing, typewriter,
@@ -126,7 +128,7 @@ export class DialogPanel {
   setDialogue(
     speaker: string,
     text: string,
-    tagStyles?: Record<string, { fill: string }>,
+    tagStyles?: RichTagStyles,
     layout?: DialogueLayout,
   ): void {
     if (this.speaker) {

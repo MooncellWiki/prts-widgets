@@ -3,33 +3,29 @@ import { expandStoryText } from "../textVariables";
 
 import type { LogLineEntry, LogLineSource, LogTextSpan } from "./types";
 
-/** 把含 <color=#xxx>...</color> 的文本拆成连续同色的 span */
+/** 把含 <color> / <b> / <i> 的富文本拆成连续同样式的 span */
 export function toSpans(
   text: string,
   variables: Record<string, unknown>,
 ): LogTextSpan[] {
   const chars = parseRichChars(expandStoryText(text, variables));
-  if (chars.length === 0) return [];
-
   const spans: LogTextSpan[] = [];
-  let buffer = "";
-  let currentColor: string | null = null;
+  let current: LogTextSpan | null = null;
 
-  const flush = (): void => {
-    if (buffer) {
-      spans.push({ text: buffer, color: currentColor });
-      buffer = "";
+  for (const { bold, char, color, italic } of chars) {
+    if (
+      !current ||
+      current.color !== color ||
+      Boolean(current.bold) !== bold ||
+      Boolean(current.italic) !== italic
+    ) {
+      current = { text: "", color };
+      if (bold) current.bold = true;
+      if (italic) current.italic = true;
+      spans.push(current);
     }
-  };
-
-  for (const { char, color } of chars) {
-    if (color !== currentColor) {
-      flush();
-      currentColor = color;
-    }
-    buffer += char;
+    current.text += char;
   }
-  flush();
   return spans;
 }
 
@@ -51,7 +47,10 @@ export function buildLineEntry(
 /** entry 的内容身份：同一行在不同路径上只有内容相同才允许合并 audience */
 export function entryContentKey(entry: LogLineEntry): string {
   const spans = entry.spans
-    .map((span) => `${span.color ?? ""}${span.text}`)
+    .map(
+      (span) =>
+        `${span.color ?? ""}${span.bold ? "b" : ""}${span.italic ? "i" : ""}\u{3}${span.text}`,
+    )
     .join("\u{1}");
   return `${entry.lineIndex}\u{2}${entry.speaker}\u{2}${entry.source}\u{2}${spans}`;
 }

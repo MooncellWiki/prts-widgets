@@ -1,3 +1,5 @@
+import type { RichTagStyles } from "./richtext";
+
 export const STORY_WIDTH = 1280;
 export const STORY_HEIGHT = 720;
 
@@ -713,7 +715,7 @@ export interface StoryRenderer {
   setDialogue: (
     speaker: string,
     text: string,
-    tagStyles?: Record<string, { fill: string }>,
+    tagStyles?: RichTagStyles,
     layout?: DialogueLayout,
   ) => void;
   /**
