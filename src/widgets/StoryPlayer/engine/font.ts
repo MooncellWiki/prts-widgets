@@ -7,12 +7,16 @@
  * Start and no `DynFontLoader` sits on them, so nothing swaps the font at
  * runtime.
  *
- * The sami spellsticker prefab's Texts instead name their font through
- * `DynFontLoader._fontName`, resolved by `SceneFontHolder.TryGetFont` against
- * story.unity's `FullFontSelect`: `方正特雅宋_GBK` (FZYaSong-H-GBK, text_spell_main)
- * and `RoHMinSinkStd-UB` (Ro Hon MinSink Std U, text_spell_sub), both Font
- * assets in the APK's sharedassets3 with usWeightClass 400 and no
- * `m_FallbackFonts`.
+ * The spellsticker and animtext prefabs' Texts instead name their font
+ * through `DynFontLoader._fontName`, resolved by `SceneFontHolder.TryGetFont`
+ * against story.unity's `FullFontSelect`, all Font assets without
+ * `m_FallbackFonts`:
+ * - sami spellsticker: `方正特雅宋_GBK` (FZYaSong-H-GBK, text_spell_main) and
+ *   `RoHMinSinkStd-UB` (Ro Hon MinSink Std U, text_spell_sub), both in the
+ *   APK's sharedassets3 with usWeightClass 400;
+ * - animtext `group_location_stamp`: `SourceHanSansCN-Heavy` (sharedassets3,
+ *   usWeightClass 900, text_main) and `NotoSansHans-Medium` (text_sub), both
+ *   FontStyle Normal.
  *
  * Every file served here is the Font asset's `m_FontData`, as WOFF2.
  *
@@ -40,6 +44,8 @@ export const DIALOG_FONT_WEIGHT = "500";
 export const SAMI_MAIN_FONT_FAMILY = "方正特雅宋_GBK";
 export const SAMI_SUB_FONT_FAMILY = "RoHMinSinkStd-UB";
 export const SAMI_FONT_WEIGHT = "400";
+export const ANIMTEXT_MAIN_FONT_FAMILY = "SourceHanSansCN-Heavy";
+export const ANIMTEXT_MAIN_FONT_WEIGHT = "900";
 
 // FontFace API 以 CORS 模式取字体；static.prts.wiki 的 OSS 桶有 Referer 防盗链
 // 且 403 时不带 CORS 头，产物与其同源时没问题，localhost 直连会被拦。dev 下改
@@ -58,20 +64,22 @@ function fontUrl(file: string): string {
     : `https://static.prts.wiki/${file}`;
 }
 
-interface FontSpec {
+export interface FontSpec {
   family: string;
   file: string;
   weight: string;
 }
 
-const DIALOG_FONT: FontSpec = {
+// 文件名取 PostScript 名，只用 ASCII。
+export const DIALOG_FONT: FontSpec = {
   family: DIALOG_FONT_FAMILY,
   file: "NotoSansHans-Medium.woff2",
   weight: DIALOG_FONT_WEIGHT,
 };
 
-// 文件名取 PostScript 名，只用 ASCII。
-const SAMI_FONTS: readonly FontSpec[] = [
+// 以下几款只有部分剧情用到，由 preload.ts 扫描剧本按需加载：萨米两款合计约
+// 7MB，animtext 约 2MB。
+export const SAMI_FONTS: readonly FontSpec[] = [
   {
     family: SAMI_MAIN_FONT_FAMILY,
     file: "FZTYSK--GBK1-0.woff2",
@@ -84,9 +92,16 @@ const SAMI_FONTS: readonly FontSpec[] = [
   },
 ];
 
+export const ANIMTEXT_MAIN_FONT: FontSpec = {
+  family: ANIMTEXT_MAIN_FONT_FAMILY,
+  file: "SourceHanSansCN-Heavy.woff2",
+  weight: ANIMTEXT_MAIN_FONT_WEIGHT,
+};
+
 const loadPromises = new Map<string, Promise<void>>();
 
-function loadFont({ family, file, weight }: FontSpec): Promise<void> {
+/** 同一字体只加载一次；失败只告警并降级到回退字体，返回的 Promise 不会 reject。 */
+export function loadFont({ family, file, weight }: FontSpec): Promise<void> {
   let promise = loadPromises.get(family);
   if (promise) return promise;
 
@@ -113,12 +128,4 @@ function loadFont({ family, file, weight }: FontSpec): Promise<void> {
 
 export function preloadDialogFont(): Promise<void> {
   return loadFont(DIALOG_FONT);
-}
-
-/**
- * 萨米 spellsticker 的两款字体合计约 7MB，只有少数剧情用到，由 preload.ts 在
- * 剧本确实会显示萨米贴纸时才加载。
- */
-export async function preloadSamiSpellStickerFonts(): Promise<void> {
-  await Promise.all(SAMI_FONTS.map(loadFont));
 }

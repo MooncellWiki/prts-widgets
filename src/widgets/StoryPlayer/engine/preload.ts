@@ -10,7 +10,13 @@ import {
   type StoryAssetFamily,
 } from "./asset";
 import { resolveCharacterSelection } from "./characterRef";
-import { preloadSamiSpellStickerFonts } from "./font";
+import {
+  ANIMTEXT_MAIN_FONT,
+  DIALOG_FONT,
+  loadFont,
+  SAMI_FONTS,
+  type FontSpec,
+} from "./font";
 import { parseScript } from "./parser";
 import { DIALOG_FRAME_URL } from "./renderer";
 
@@ -327,20 +333,22 @@ function collectPreloadAssetUrls(
   // 落入空分支、不登记任何资源引用（native LoadAsset 同步，印章当帧出现）；
   // web 的 Assets.load 异步，首次播放会晚 1-2 帧，故在剧本确实使用 animtext 时
   // 一并预热，让面板内 Assets.load 命中缓存。属 web 适配，非 native 行为移植。
-  if (
-    lines.some((line) => line.kind === "command" && line.command === "animtext")
-  ) {
+  if (usesAnimText(lines)) {
     for (const url of Object.values(STAMP_ASSETS)) urls.add(url);
   }
 
   return [...urls];
 }
 
+function usesAnimText(lines: ParsedLine[]): boolean {
+  return lines.some(
+    (line) => line.kind === "command" && line.command === "animtext",
+  );
+}
+
 /**
- * 剧本是否会显示萨米 spellsticker，决定要不要加载它那两款大字体。判定与
- * runtime 的 `spellsticker` 分支一致：`style` 缺省为 sami（不区分大小写），
- * `action=hide` 只隐藏不显示。native 字体随 story.unity 常驻，按需加载属
- * web 适配。
+ * 判定与 runtime 的 `spellsticker` 分支一致：`style` 缺省为 sami（不区分大小
+ * 写），`action=hide` 只隐藏不显示。
  */
 function showsSamiSpellSticker(lines: ParsedLine[]): boolean {
   return lines.some((line) => {
@@ -354,6 +362,17 @@ function showsSamiSpellSticker(lines: ParsedLine[]): boolean {
   });
 }
 
+/**
+ * 剧本要用的字体：对话字体恒需要，animtext 与萨米 spellsticker 的字体只在剧本
+ * 确实用到时才加载。native 字体随 story.unity 常驻，按需加载属 web 适配。
+ */
+function collectPreloadFonts(lines: ParsedLine[]): FontSpec[] {
+  const fonts = [DIALOG_FONT];
+  if (usesAnimText(lines)) fonts.push(ANIMTEXT_MAIN_FONT);
+  if (showsSamiSpellSticker(lines)) fonts.push(...SAMI_FONTS);
+  return fonts;
+}
+
 // 路径前缀/大小写核对属于开发期诊断,线上每次播放刷几十条日志只是噪音。
 // 资源加载失败仍然照常 warn,那是用户可见问题的线索。
 const debugLog: (...args: unknown[]) => void = import.meta.env.DEV
@@ -365,18 +384,29 @@ export async function preloadContextAssets(
   onProgress?: (progress: number) => void,
 ): Promise<void> {
   const lines = parseContextScript(context);
-  // 字体与下方的图片/音频并行下载，两条出口都要等它。
-  const fontsReady = showsSamiSpellSticker(lines)
-    ? preloadSamiSpellStickerFonts()
-    : undefined;
   const urls = collectPreloadAssetUrls(context, lines);
+  const fonts = collectPreloadFonts(lines);
+
+  // 进度按条数计：Assets.load 按已完成的资源条数回报，字体每款也算一条，
+  // 全部完成才到 1。字体与图片/音频并行下载，loadFont 不会 reject。
+  let assetsLoaded = 0;
+  let fontsLoaded = 0;
+  const reportProgress = () =>
+    onProgress?.((assetsLoaded + fontsLoaded) / (urls.length + fonts.length));
+  const fontsReady = Promise.all(
+    fonts.map(async (font) => {
+      await loadFont(font);
+      fontsLoaded += 1;
+      reportProgress();
+    }),
+  );
+
   debugLog(`[preload] ${urls.length} unique asset URL(s) collected`);
   if (urls.length === 0) {
     console.warn(
       "[preload] no assets resolved — script may have no collectable commands or resolvers returned empty",
     );
     await fontsReady;
-    onProgress?.(1);
     return;
   }
 
@@ -403,7 +433,8 @@ export async function preloadContextAssets(
           `[preload] progress ${percent}% (${Math.round(progress * urls.length)}/${urls.length})`,
         );
       }
-      onProgress?.(progress);
+      assetsLoaded = progress * urls.length;
+      reportProgress();
     },
     onError: (error, url) => {
       const urlStr =

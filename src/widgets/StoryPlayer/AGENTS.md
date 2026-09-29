@@ -40,7 +40,7 @@ Log All 高亮与调试页行跟随都订阅它。
 | `engine/commandRegistry.ts` / `execution.ts` | 命令名小写化分发；`ExecutionHandle` 阻塞语义 + 可注入 `AnimationClock` |
 | `engine/asset.ts` | 资源路由到 `torappu.prts.wiki/assets`（bg/images/characters/video/audio、`$var`/`@path` 音频键） |
 | `engine/characterRef.ts` | 角色引用 `$group`/`@alias`/`#index` 解析 + fade identity |
-| `engine/font.ts` | FontFace 显式预载客户端字体（对话 NotoSansHans-Medium；萨米 spellsticker 两款由 preload.ts 按需加载），必须在 PIXI 测量前完成 |
+| `engine/font.ts` | FontFace 显式预载客户端字体（对话 NotoSansHans-Medium；animtext、萨米 spellsticker 的字体由 preload.ts 按需加载并计入进度），必须在 PIXI 测量前完成 |
 | `engine/rendering/PixiStoryRenderer.ts` | `StoryRenderer` 的 PIXI 实现，逻辑坐标恒 1280×720 |
 | `engine/rendering/panels/` | 各命令 UI 面板：Dialog/Decision/Video/Interlude/CgItem/AvgDisplay/AnimText/SpellSticker/FocusEffect |
 | `engine/rendering/core/` | `LayerGraph`（层序）、`TweenRunner`、`Shake-path`（镜头抖动）、`SceneGeometry` |

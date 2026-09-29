@@ -5,9 +5,16 @@ import {
   Text,
   TextStyle,
   type Texture,
+  type TextStyleOptions,
 } from "pixi.js";
 
 import { STAMP_ASSETS } from "../../../assets";
+import {
+  ANIMTEXT_MAIN_FONT_FAMILY,
+  ANIMTEXT_MAIN_FONT_WEIGHT,
+  DIALOG_FONT_FAMILY,
+  DIALOG_FONT_WEIGHT,
+} from "../../font";
 import {
   buildTagStyles,
   collectColors,
@@ -336,8 +343,17 @@ export class AnimTextPanel {
     gradient.anchor.set(0.5);
     gradient.alpha = 0.15;
     const parts = parseSplitContent(input.content, this.onWarning);
-    const main = this.text(parts[0] ?? "", 30);
-    const sub = this.text(parts[1] ?? "", 26);
+    // Prefab fonts come from DynFontLoader: text_main loads
+    // SourceHanSansCN-Heavy, text_sub NotoSansHans-Medium, both FontStyle
+    // Normal.
+    const main = this.text(parts[0] ?? "", 30, {
+      fontFamily: [ANIMTEXT_MAIN_FONT_FAMILY, "sans-serif"],
+      fontWeight: ANIMTEXT_MAIN_FONT_WEIGHT,
+    });
+    const sub = this.text(parts[1] ?? "", 26, {
+      fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
+      fontWeight: DIALOG_FONT_WEIGHT,
+    });
     main.anchor.set(0, 0.5);
     sub.anchor.set(0, 0.5);
     main.position.set(0, -20);
@@ -435,12 +451,16 @@ export class AnimTextPanel {
   }
 
   /** Renders `<color>` spans through the shared rich-text pipeline. */
-  private text(content: string, fontSize: number): Text {
+  private text(
+    content: string,
+    fontSize: number,
+    font: Pick<TextStyleOptions, "fontFamily" | "fontWeight">,
+  ): Text {
     const chars = parseRichChars(content);
     const colors = collectColors(chars);
     const style = new TextStyle({
       fill: "#ffffff",
-      fontFamily: "Noto Sans SC, sans-serif",
+      ...font,
       fontSize,
     });
     if (colors.length > 0) style.tagStyles = buildTagStyles(colors);
