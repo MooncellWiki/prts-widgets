@@ -7,7 +7,6 @@ import {
   buildSources,
   buildTexts,
   htmlToText,
-  langBadge,
   langCode,
   readCvNames,
   unlockText,
@@ -52,31 +51,22 @@ describe("语种名归一", () => {
     expect(langCode("英语")).toBe("en");
     expect(langCode("韩文")).toBe("kr");
     expect(langCode("韩语")).toBe("kr");
-    expect(langCode("中文-方言")).toBe("yue");
+    expect(langCode("中文-方言")).toBe("中-方言");
     expect(langCode("意大利文")).toBe("it");
     expect(langCode("意大利语")).toBe("it");
     expect(langCode("法语")).toBe("fr");
     // 繁体前缀与差分后缀不影响代码；认不出的名字原样返回
-    expect(langCode("繁体中文-方言")).toBe("yue");
+    expect(langCode("繁体中文-方言")).toBe("中-方言");
     expect(langCode("中文-普通话(残余)")).toBe("cn");
     expect(langCode("日语（猫形态）")).toBe("jp");
     expect(langCode("联动")).toBe("联动");
-  });
-
-  it("徽标同设计稿：CN / 粤 / JP，差分后缀另标", () => {
-    expect(langBadge("中文-普通话")).toBe("CN");
-    expect(langBadge("中文-方言")).toBe("粤");
-    expect(langBadge("日语")).toBe("JP");
-    expect(langBadge("日语(猫形态)")).toBe("JP(猫形态)");
-    expect(langBadge("中文-普通话(残余)")).toBe("CN(残余)");
-    expect(langBadge("联动")).toBe("联动");
   });
 
   it("char_info.cv 按语种代码取 CV 名，空名不收", () => {
     expect(readCvNames(CHEN_CV)).toEqual({
       jp: "石上静香",
       cn: "虫虫",
-      yue: "包少爷",
+      "中-方言": "包少爷",
       en: "Amy Lennox",
       kr: "郑侑廷",
     });
@@ -85,14 +75,14 @@ describe("语种名归一", () => {
 });
 
 describe("语种芯片", () => {
-  it("按 |路径= 的顺序列语种，value 是语种名，配徽标与 CV", () => {
+  it("按 |路径= 的顺序列语种，value 是语种名，配 CV", () => {
     const languages = buildLanguages(CHEN_BASE, readCvNames(CHEN_CV));
     expect(languages).toEqual([
-      { value: "日语", label: "日语", badge: "JP", cv: "石上静香" },
-      { value: "中文-普通话", label: "中文-普通话", badge: "CN", cv: "虫虫" },
-      { value: "中文-方言", label: "中文-方言", badge: "粤", cv: "包少爷" },
-      { value: "韩语", label: "韩语", badge: "KR", cv: "郑侑廷" },
-      { value: "英语", label: "英语", badge: "EN", cv: "Amy Lennox" },
+      { value: "日语", label: "日语", cv: "石上静香" },
+      { value: "中文-普通话", label: "中文-普通话", cv: "虫虫" },
+      { value: "中文-方言", label: "中文-方言", cv: "包少爷" },
+      { value: "韩语", label: "韩语", cv: "郑侑廷" },
+      { value: "英语", label: "英语", cv: "Amy Lennox" },
     ]);
   });
 
@@ -107,11 +97,11 @@ describe("语种芯片", () => {
       ],
       { cn: "山新", jp: "花泽香菜" },
     );
-    expect(languages.map((l) => [l.value, l.badge, l.cv])).toEqual([
-      ["日语(猫形态)", "JP(猫形态)", "花泽香菜"],
-      ["中文-普通话(猫形态)", "CN(猫形态)", "山新"],
-      ["中文-普通话", "CN", "山新"],
-      ["中文-普通话(残余)", "CN(残余)", "山新"],
+    expect(languages.map((l) => [l.value, l.cv])).toEqual([
+      ["日语(猫形态)", "花泽香菜"],
+      ["中文-普通话(猫形态)", "山新"],
+      ["中文-普通话", "山新"],
+      ["中文-普通话(残余)", "山新"],
     ]);
   });
 });

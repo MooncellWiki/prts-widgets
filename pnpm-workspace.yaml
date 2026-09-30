@@ -4,3 +4,5 @@ allowBuilds:
   esbuild: true
   simple-git-hooks: true
   unrs-resolver: true
+minimumReleaseAgeExclude:
+  - '@mooncellwiki/prts-design-vue@0.1.2'

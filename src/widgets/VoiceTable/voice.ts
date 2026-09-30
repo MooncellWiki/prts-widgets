@@ -16,7 +16,7 @@ import type { VoiceLanguage } from "@mooncellwiki/prts-design-vue";
  *   - 语言 = 台词文本差分（{{VoiceData/word|<kind>|…}}）：中文 / 日文 / 繁体中文 / 中文-方言 …，可多选同时显示
  *   - 语种 = 音频差分（|路径= 里的语种名）：日语 / 中文-普通话 / 中文-方言 …，单选，决定播放哪份音频
  * 两边叫法不一样（日文 / 日语、中文 / 中文-普通话），CharinfoV2 的 char_info.cv 又是第三套（日文 / 中文-普通话 / 法语），
- * 只在给语种配徽标与 CV 名时归一一下，三处都可能带「(残余)」「(猫形态)」这样的差分后缀。
+ * 只在给语种配 CV 名时归一一下，三处都可能带「(残余)」「(猫形态)」这样的差分后缀。
  */
 
 export interface ParsedLangName {
@@ -31,7 +31,6 @@ export interface ParsedLangName {
 /** 基础名 → 语种代码 */
 const LANG_CODE: Record<string, string> = {
   中: "cn",
-  "中-方言": "yue",
   日: "jp",
   英: "en",
   韩: "kr",
@@ -39,19 +38,6 @@ const LANG_CODE: Record<string, string> = {
   俄: "ru",
   德: "de",
   法: "fr",
-};
-
-/** 语种代码 → 条目标题旁的徽标（同设计稿：CN / 粤 / JP / EN / KR） */
-const BADGE: Record<string, string> = {
-  cn: "CN",
-  yue: "粤",
-  jp: "JP",
-  en: "EN",
-  kr: "KR",
-  it: "IT",
-  ru: "RU",
-  de: "DE",
-  fr: "FR",
 };
 
 /** 游戏内仅限时显示的语音，作为灰标附在标题旁（原来是标题后的问号提示） */
@@ -83,13 +69,6 @@ export function langCode(name: string): string {
   return LANG_CODE[base] ?? base;
 }
 
-/** 语种名 → 徽标：日语 → JP，中文-方言 → 粤，日语(猫形态) → JP(猫形态) */
-export function langBadge(name: string): string {
-  const { base, variant } = parseLangName(name);
-  const badge = BADGE[LANG_CODE[base] ?? ""] ?? base;
-  return variant ? `${badge}(${variant})` : badge;
-}
-
 /** CharinfoV2 内联的 char_info.cv → 按语种代码取 CV 名 */
 export function readCvNames(
   charInfo: { cv?: Record<string, { name?: string } | undefined> } | undefined,
@@ -101,7 +80,7 @@ export function readCvNames(
   return names;
 }
 
-/** 语种芯片（AkVoiceList 的 languages）：按 |路径= 的顺序，value 就是语种名，配徽标与 CV 名 */
+/** 语种芯片（AkVoiceList 的 languages）：按 |路径= 的顺序，value 就是语种名，配 CV 名 */
 export function buildLanguages(
   voiceBase: readonly VoiceBaseItem[],
   cvNames: Record<string, string> = {},
@@ -114,7 +93,6 @@ export function buildLanguages(
     languages.push({
       value: lang,
       label: lang,
-      badge: langBadge(lang),
       cv: cvNames[langCode(lang)],
     });
   }
