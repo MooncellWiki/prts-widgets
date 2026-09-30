@@ -37,6 +37,8 @@ interface FilterValue {
   mode: string;
   value: string | string[];
 }
+const textValue = (v: FilterValue) =>
+  typeof v.value === "string" ? v.value : "";
 function newFilterItem(): FilterValue {
   return {
     mode: "all",
@@ -428,9 +430,10 @@ const mobileStyle = () => {
                 />
                 <NInput
                   v-else-if="v.mode === 'mission2opt'"
-                  v-model:value="v.value as string"
+                  :value="textValue(v)"
                   :disabled="loadingCount > 0"
                   clearable
+                  @update:value="v.value = $event"
                 >
                 </NInput>
                 <NSelect

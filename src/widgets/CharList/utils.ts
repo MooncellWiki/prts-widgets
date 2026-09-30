@@ -1,3 +1,7 @@
+import { convertFeature } from "./feature";
+
+import type { Rarity } from "@mooncellwiki/prts-design-vue";
+
 const getLast = (str: string) => {
   if (str.includes("→")) {
     const arr = str.split("→");
@@ -10,12 +14,16 @@ export class Char {
   zh: string;
   profession: string;
   rarity: number;
+  /** 星级 1–6（rarity 从 0 起） */
+  stars: Rarity;
   logo: string;
   birthPlace: string;
   race: string[];
   en: string;
   ja: string;
   id: string;
+  /** 游戏内 ID（char_002_amiya），取 torappu 资源用；模板没输出时为空 */
+  charId: string;
   hp: number;
   atk: number;
   def: number;
@@ -38,7 +46,11 @@ export class Char {
   adapt: string;
   sortId: number;
   subProfession: string;
+  /** 模板输出的特性 HTML 原文 */
   feature: string;
+  /** 换成设计系统写法的特性 HTML（.ak-rt-kw / .ak-term），见 feature.ts */
+  featureHtml: string;
+  /** 搜索用的纯文本：不含术语提示的正文 */
   plainFeature: string;
   force: string[] = [];
   constructor(ele: HTMLDivElement) {
@@ -48,6 +60,7 @@ export class Char {
     this.zh = d.zh!;
     this.profession = d.profession!;
     this.rarity = Number.parseInt(d.rarity!);
+    this.stars = (this.rarity + 1) as Rarity;
     this.logo = d.logo || "";
     this.birthPlace = d.birthPlace || d.birth_place || "";
     if (d.nation) this.force.push(d.nation);
@@ -58,6 +71,7 @@ export class Char {
     this.en = d.en || "";
     this.ja = d.ja || "";
     this.id = d.id || "";
+    this.charId = d.charId || "";
     this.hp = Number.parseInt(d.hp!);
     this.atk = Number.parseInt(d.atk!);
     this.def = Number.parseInt(d.def!);
@@ -90,6 +104,7 @@ export class Char {
     this.sortId = Number.parseInt(d.sortid!);
     this.subProfession = d.subprofession!;
     this.feature = ele.innerHTML || "";
+    this.featureHtml = convertFeature(ele);
     this.plainFeature = "";
     if (ele.innerHTML) {
       try {

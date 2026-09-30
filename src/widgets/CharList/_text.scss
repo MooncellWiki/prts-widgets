@@ -1,0 +1,26 @@
+// 几种结果视图（表格 / 卡片）和身份块共用的小字样式：scoped 样式各管各的组件，公用的排版放这里 @include
+@mixin sub {
+  display: block;
+  font-size: var(--ak-fs-xs);
+  line-height: 1.35;
+  color: var(--ak-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+// 特性全文；里面的术语（v-html 出来的 .ak-term）要用 :deep 才够得着
+@mixin feature {
+  font-size: var(--ak-fs-xs);
+  line-height: 1.55;
+  color: var(--ak-fg-secondary);
+
+  :deep(.ak-term:focus-visible) {
+    outline: 2px solid var(--ak-focus);
+    outline-offset: 1px;
+  }
+}
+
+@mixin obtain {
+  font-size: var(--ak-fs-xs);
+  line-height: 1.55;
+  color: var(--ak-fg-muted);
+}
