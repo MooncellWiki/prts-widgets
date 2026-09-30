@@ -11,6 +11,7 @@ import {
   QUICK_FIELDS,
   type SortKey,
   type StatKey,
+  View,
   type ViewMode,
 } from "./consts";
 import {
@@ -44,6 +45,10 @@ function loadAdvanced() {
   return adv;
 }
 
+/** 手机上（视口 < 640，同 index.vue 的窄排布）默认头像，其余默认表格；进页面时定下来，之后转屏 / 缩放窗口不跟着变 */
+const initialView = (): ViewMode =>
+  window.innerWidth < 640 ? View.AVATAR : View.TABLE;
+
 /**
  * 干员一览的全部状态：筛选 / 搜索 / 排序 / 数值加算 / 显示方式 / 分页，以及和地址栏 # 参数的同步。
  * 数据（筛选项定义 + 干员）来自模板输出的 DOM，index.vue 挂载时 init() 灌进来，各块组件直接取用。
@@ -51,8 +56,9 @@ function loadAdvanced() {
 export const useCharListStore = defineStore("charList", () => {
   const chars = shallowRef<Char[]>([]);
   const filters = ref<FilterState[]>([]);
+  const defaultView = initialView();
   const state = reactive<HashState & { page: number; step: number }>({
-    ...readHash("", []),
+    ...readHash("", [], defaultView),
     page: 1,
     step: PAGE_STEPS[0],
   });
@@ -147,7 +153,7 @@ export const useCharListStore = defineStore("charList", () => {
   );
 
   /* ── 地址栏 ── */
-  const hash = computed(() => buildHash(filters.value, state));
+  const hash = computed(() => buildHash(filters.value, state, defaultView));
   watch(hash, (h) => {
     if (h === location.hash.slice(1)) return;
     history.replaceState(
@@ -158,7 +164,7 @@ export const useCharListStore = defineStore("charList", () => {
   });
   /** 按地址栏重置筛选与其余状态（挂载时、hashchange 时） */
   function syncFromHash() {
-    Object.assign(state, readHash(location.hash, filters.value));
+    Object.assign(state, readHash(location.hash, filters.value, defaultView));
     normalize();
   }
 

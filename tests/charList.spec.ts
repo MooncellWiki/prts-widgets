@@ -367,6 +367,20 @@ describe("地址栏 # 参数", () => {
     });
     expect(buildHash(again.filters, readHash(hash, again.filters))).toBe(hash);
   });
+
+  it("默认显示方式是头像时（手机）：不带 _d 读成头像，换回表格写 _d=0", () => {
+    const { filters } = setup();
+    const state = readHash("", filters, 2);
+    expect(state.view).toBe(2);
+    expect(buildHash(filters, state, 2)).toBe("");
+
+    const hash = buildHash(filters, { ...state, view: 0 }, 2);
+    expect(hash).toBe("_d=0");
+    expect(readHash(hash, filters, 2).view).toBe(0);
+    // 认不出的退回默认
+    expect(readHash("_d=7", filters, 2).view).toBe(2);
+    expect(readHash("_d=", filters, 2).view).toBe(2);
+  });
 });
 
 describe("特性 HTML", () => {
