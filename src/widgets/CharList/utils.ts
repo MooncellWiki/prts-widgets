@@ -22,6 +22,8 @@ export class Char {
   en: string;
   ja: string;
   id: string;
+  /** 游戏内 ID（char_002_amiya），取 torappu 资源用；模板没输出时为空 */
+  charId: string;
   hp: number;
   atk: number;
   def: number;
@@ -69,6 +71,7 @@ export class Char {
     this.en = d.en || "";
     this.ja = d.ja || "";
     this.id = d.id || "";
+    this.charId = d.charId || "";
     this.hp = Number.parseInt(d.hp!);
     this.atk = Number.parseInt(d.atk!);
     this.def = Number.parseInt(d.def!);

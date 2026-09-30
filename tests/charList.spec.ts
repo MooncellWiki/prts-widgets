@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { avatar, fallbackImage, halfPortrait } from "@/widgets/CharList/assets";
 import { convertFeature } from "@/widgets/CharList/feature";
 import {
   createFilters,
@@ -128,6 +129,49 @@ describe("Char", () => {
     expect(c.birthPlace).toBe("");
     expect(c.reDeploy).toBe("");
     expect(c.obtainMethod).toEqual([]);
+  });
+});
+
+describe("头像 / 半身像地址", () => {
+  const amiya = makeChar({
+    "data-zh": "阿米娅",
+    "data-char-id": "char_002_amiya",
+  });
+
+  it("有游戏内 ID 时从 torappu 取", () => {
+    expect(avatar(amiya)).toBe(
+      "https://torappu.prts.wiki/assets/char_avatar/char_002_amiya.png",
+    );
+    expect(halfPortrait(amiya)).toBe(
+      "https://torappu.prts.wiki/assets/char_portrait/char_002_amiya_1.png",
+    );
+  });
+
+  it("模板没输出 ID 时按中文名走 media", () => {
+    const char = makeChar({ "data-zh": "阿米娅" });
+    expect(avatar(char)).toMatch(
+      /^https:\/\/media\.prts\.wiki\/.\/..\/头像_阿米娅\.png$/,
+    );
+    expect(halfPortrait(char)).toMatch(
+      /^https:\/\/media\.prts\.wiki\/.\/..\/半身像_阿米娅_1\.png$/,
+    );
+  });
+
+  it("torappu 取不到时换成 media 的同一张，且只换一次", () => {
+    const box = document.createElement("div");
+    const img = document.createElement("img");
+    box.append(img);
+    box.addEventListener("error", fallbackImage, true);
+
+    img.src = halfPortrait(amiya);
+    img.dispatchEvent(new Event("error"));
+    const media = img.src;
+    expect(decodeURI(media)).toBe(
+      halfPortrait(makeChar({ "data-zh": "阿米娅" })),
+    );
+
+    img.dispatchEvent(new Event("error"));
+    expect(img.src).toBe(media);
   });
 });
 

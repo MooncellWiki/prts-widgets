@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { avatar, professionBadge, wikiLink } from "../assets";
+import { avatar, fallbackImage, professionBadge, wikiLink } from "../assets";
 
 import type { Char } from "../utils";
 
@@ -14,9 +14,10 @@ defineProps<{ char: Char }>();
     :data-rarity="char.stars"
     tabindex="-1"
     aria-hidden="true"
+    @error.capture="fallbackImage"
   >
     <img
-      :src="avatar(char.zh)"
+      :src="avatar(char)"
       alt=""
       width="48"
       height="48"
