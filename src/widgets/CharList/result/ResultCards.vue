@@ -75,3 +75,107 @@ const origin = (char: Char) =>
     </article>
   </div>
 </template>
+
+<style scoped lang="scss">
+@use "../text";
+
+.ol-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--ak-space-2);
+}
+
+.ol-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--ak-bg-surface);
+  border: 1px solid var(--ak-border);
+  border-top: 3px solid var(--ak-r, var(--ak-border-strong));
+
+  &__head {
+    display: flex;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  &__id {
+    flex: 1;
+    min-width: 0;
+
+    // 英文名 / 分支那几行小字：一行放不下就截断（OpIdent 里面的也算，所以 :deep）
+    :deep(.ol-sub) {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  // 八项数值摊开成 4 × 2 的格
+  &__stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    margin: 0;
+    background: var(--ak-border);
+    border: 1px solid var(--ak-border);
+
+    > div {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 5px 6px;
+      background: var(--ak-bg-surface);
+
+      &.is-sorted {
+        background: var(--ak-accent-subtle);
+      }
+    }
+
+    dt {
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 500;
+      color: var(--ak-fg-muted);
+    }
+
+    dd {
+      margin: 0;
+      font: 700 var(--ak-fs-sm) / 1 var(--ak-font-label);
+      font-variant-numeric: tabular-nums;
+
+      &.is-mod {
+        color: var(--ak-accent);
+      }
+
+      :deep(small) {
+        font-size: 0.78em;
+        font-weight: 400;
+        color: var(--ak-fg-muted);
+      }
+    }
+  }
+
+  p {
+    margin: 0;
+  }
+
+  .ak-tags {
+    gap: 4px;
+  }
+}
+
+.ol-sub {
+  @include text.sub;
+}
+
+.ol-feature {
+  @include text.feature;
+}
+
+.ol-obtain {
+  @include text.obtain;
+}
+</style>

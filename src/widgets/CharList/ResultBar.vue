@@ -94,3 +94,67 @@ async function copyLink() {
     </div>
   </div>
 </template>
+
+<style scoped lang="scss">
+.ol-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 var(--ak-space-3);
+  min-height: 32px;
+
+  &__count {
+    flex: none;
+    font-size: var(--ak-fs-sm);
+    color: var(--ak-fg-muted);
+    white-space: nowrap;
+
+    b {
+      font: 700 var(--ak-fs-h3) / 1 var(--ak-font-label);
+      color: var(--ak-fg);
+      font-variant-numeric: tabular-nums;
+      margin-right: 2px;
+    }
+  }
+
+  &__active {
+    flex: 1 1 200px;
+    min-width: 0;
+    align-items: center;
+
+    .ak-tag {
+      height: 24px;
+    }
+
+    :deep(.ak-tag__remove:focus-visible) {
+      outline: 2px solid var(--ak-focus);
+    }
+  }
+
+  &__tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+
+    .ak-select {
+      width: auto;
+      min-height: 32px;
+      font-size: var(--ak-fs-xs);
+    }
+
+    .ol--narrow & {
+      margin-left: 0;
+      width: 100%;
+      justify-content: space-between;
+    }
+  }
+
+  :deep(.ak-icon) {
+    width: 14px;
+    height: 14px;
+  }
+}
+</style>

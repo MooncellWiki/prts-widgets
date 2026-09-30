@@ -13,3 +13,14 @@ defineProps<{ src: string }>();
     aria-hidden="true"
   />
 </template>
+
+<style scoped lang="scss">
+.ol-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: center / contain no-repeat;
+  mask: center / contain no-repeat;
+}
+</style>

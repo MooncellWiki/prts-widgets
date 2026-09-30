@@ -136,3 +136,142 @@ const ariaSort = (key: SortKey) =>
     </tbody>
   </table>
 </template>
+
+<style scoped lang="scss">
+@use "../text";
+
+.ol-table {
+  table-layout: fixed;
+  width: 100%;
+  font-size: var(--ak-fs-sm);
+
+  // 表头吸顶；Arknights 皮肤上吸在页眉下（别的皮肤没有吸顶的页眉）
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 9px 8px;
+    white-space: nowrap;
+    letter-spacing: 0;
+    text-transform: none;
+
+    .skin-arknights & {
+      top: var(--ak-header-h);
+    }
+  }
+
+  th > .ak-table__sort:hover {
+    color: var(--ak-accent);
+  }
+
+  th.num,
+  td.num {
+    text-align: right;
+  }
+
+  td {
+    border-bottom: 0;
+    padding: 8px 8px 2px;
+    vertical-align: top;
+    line-height: 1.4;
+  }
+
+  // 四维 / 部署四项各成一组
+  :is(th, td).ol-sep {
+    border-left: 1px solid var(--ak-border);
+  }
+
+  td.num {
+    white-space: nowrap;
+    font: 600 var(--ak-fs-sm) / 1.45 var(--ak-font-label);
+    font-variant-numeric: tabular-nums;
+    color: var(--ak-fg);
+
+    :deep(small) {
+      font-size: 0.78em;
+      font-weight: 400;
+      color: var(--ak-fg-muted);
+      margin-left: 1px;
+    }
+
+    // 加算了潜能 / 信赖、与基础值不同的格
+    &.is-mod {
+      color: var(--ak-accent);
+    }
+
+    // 当前排序的那一列
+    &.is-sorted {
+      background: var(--ak-accent-subtle);
+    }
+  }
+
+  tbody tr:hover td {
+    background: none;
+  }
+
+  // 一位干员 = 一个 tbody 两行，悬停时两行一起亮
+  tbody.ol-op {
+    border-top: 1px solid var(--ak-border);
+
+    > tr:last-child > td {
+      padding-top: 0;
+      padding-bottom: 9px;
+    }
+
+    > tr:first-child > td[rowspan] {
+      padding-bottom: 9px;
+    }
+
+    &:hover td {
+      background: var(--ak-bg-hover);
+    }
+
+    &:hover td.num.is-sorted {
+      background: var(--ak-accent-muted);
+    }
+
+    th.ol-c-name {
+      padding: 8px 8px 9px;
+      vertical-align: top;
+      font-weight: 400;
+      text-align: left;
+      border-bottom: 0;
+      line-height: 1.4;
+    }
+  }
+}
+
+.ol-c-avatar {
+  width: 64px;
+}
+
+.ol-c-tags .ak-tags {
+  gap: 4px;
+}
+
+.ol-sub {
+  @include text.sub;
+}
+
+.ol-strong {
+  font-weight: 600;
+}
+
+.ol-branchname {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  > .ol-ico {
+    color: var(--ak-fg-muted);
+  }
+}
+
+.ol-feature {
+  @include text.feature;
+}
+
+.ol-obtain {
+  @include text.obtain;
+}
+</style>

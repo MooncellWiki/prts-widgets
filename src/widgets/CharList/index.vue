@@ -24,12 +24,10 @@ import { useTermTip } from "./useTermTip";
 
 import type { Char, FilterGroup } from "./utils";
 
-import "./style.css";
-
 /**
  * 干员一览（PRTS Design 视觉，对应设计稿 /patterns/operators）：
  * 筛选 → 工具条（搜索 · 排序 · 数值加算 · 显示方式）→ 结果栏（条数 · 已选条件 · 短链接 · 分页）→ 结果。
- * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.ol-* 是这页自己的排布（style.css）。
+ * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.ol-* 是这页自己的排布（各组件的 scoped 样式）。
  * 状态都在 store.ts（pinia）里；根节点标 ak-not-prose，不吃皮肤的正文排版。
  */
 const props = defineProps<{
@@ -120,3 +118,40 @@ const { tip, handlers: tipHandlers } = useTermTip(
     </AkToastProvider>
   </AkScope>
 </template>
+
+<style scoped lang="scss">
+// 窄排布不用 @media：看的是结果区自己的宽度（根节点的 .ol--narrow），各组件的样式里用 `.ol--narrow &` 接
+
+// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
+.ol.ak-scope[data-theme] {
+  background-color: transparent;
+}
+
+// 页眉吸顶只有 Arknights 皮肤有：翻页回到结果开头时让出页眉
+.ol-result {
+  scroll-margin-top: var(--ak-space-3);
+
+  .skin-arknights & {
+    scroll-margin-top: calc(var(--ak-header-h) + var(--ak-space-3));
+  }
+}
+
+.ol-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--ak-space-4) 0 0;
+
+  .ol--narrow & {
+    justify-content: center;
+  }
+}
+
+// 术语提示：按视口定位，不被表格裁掉
+.ol-tip.ak-tooltip {
+  position: fixed;
+  max-width: min(340px, calc(100vw - 16px));
+  white-space: pre-line;
+  line-height: 1.55;
+  pointer-events: none;
+}
+</style>

@@ -87,3 +87,78 @@ const showAddons = computed(
     </AkButtonGroup>
   </div>
 </template>
+
+<style scoped lang="scss">
+.ol-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 var(--ak-space-3);
+  padding: 10px var(--ak-space-3);
+  background: var(--ak-bg-surface-2);
+  border: 1px solid var(--ak-border);
+
+  &__search {
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+}
+
+.ol-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--ak-fs-xs);
+  font-weight: 600;
+  color: var(--ak-fg-muted);
+  white-space: nowrap;
+
+  .ak-select {
+    width: auto;
+    min-height: 36px;
+    color: var(--ak-fg);
+    font-weight: 400;
+  }
+
+  .ak-switch {
+    color: var(--ak-fg);
+    font-weight: 500;
+  }
+}
+
+// 排序项 + 升降：下拉和方向钮贴在一起
+.ol-sort {
+  gap: 0;
+
+  > label {
+    margin-right: 8px;
+  }
+
+  > .ak-btn {
+    margin-left: -1px;
+    min-width: 76px;
+    padding: 0 var(--ak-space-3);
+    font-weight: 500;
+  }
+}
+
+.ol-view {
+  .ak-btn {
+    gap: 6px;
+
+    &[aria-pressed="true"] {
+      --_bg: var(--ak-accent);
+      --_fg: var(--ak-accent-fg);
+      --_bd: var(--ak-accent);
+
+      z-index: 1;
+    }
+  }
+
+  :deep(.ak-icon) {
+    width: 14px;
+    height: 14px;
+  }
+}
+</style>

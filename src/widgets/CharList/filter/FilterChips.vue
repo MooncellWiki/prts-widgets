@@ -102,3 +102,84 @@ const looseBranches = computed(() =>
     </AkChip>
   </template>
 </template>
+
+<style scoped lang="scss">
+.ol-contents {
+  display: contents;
+}
+
+.ak-chip {
+  // 再点一下会筛出 0 条的选项压淡，仍可点
+  &.is-empty:not([aria-pressed="true"]) {
+    opacity: 0.38;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ak-focus);
+    outline-offset: 2px;
+  }
+
+  > .ol-ico {
+    margin-left: -2px;
+  }
+}
+
+// 分支：一职业一行，行首是职业图标
+.ol-branch {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 100%;
+  min-width: 0;
+
+  &__prof {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    color: var(--ak-fg-muted);
+
+    .ol-ico {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  &__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+}
+
+// 稀有度：一颗星 + 数字，星取稀有度色（选中后跟文字）
+.ol-star {
+  width: 11px;
+  height: 11px;
+  background: var(--ak-r-text);
+  clip-path: polygon(
+    50% 0%,
+    61% 35%,
+    98% 35%,
+    68% 57%,
+    79% 91%,
+    50% 70%,
+    21% 91%,
+    32% 57%,
+    2% 35%,
+    39% 35%
+  );
+
+  .ak-chip[aria-pressed="true"] & {
+    background: currentColor;
+  }
+}
+
+.ol-chip--rarity {
+  font-family: var(--ak-font-label);
+  font-weight: 700;
+  gap: 4px;
+}
+</style>

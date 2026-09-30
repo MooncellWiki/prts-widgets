@@ -27,3 +27,44 @@ defineSlots<{
     <AkRarity :value="(char.rarity + 1) as Rarity" />{{ char.id }}
   </span>
 </template>
+
+<style scoped lang="scss">
+@use "../text";
+
+.ol-name {
+  font-weight: 700;
+  font-size: var(--ak-fs-body);
+  line-height: 1.25;
+  color: var(--ak-fg);
+  text-decoration: none;
+
+  &:visited {
+    color: var(--ak-fg);
+  }
+
+  &:hover {
+    color: var(--ak-accent);
+    text-decoration: underline;
+  }
+}
+
+.ol-sub {
+  @include text.sub;
+
+  &--id {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    font: 600 var(--ak-fs-overline) / 1.2 var(--ak-font-label);
+    letter-spacing: 0.04em;
+    color: var(--ak-fg-subtle);
+
+    .ak-rarity {
+      --_c: var(--ak-r-text);
+
+      font-size: 9px;
+    }
+  }
+}
+</style>
