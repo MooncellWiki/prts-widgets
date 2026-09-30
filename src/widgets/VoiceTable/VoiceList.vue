@@ -56,71 +56,31 @@ const kindsId = useId();
 </script>
 
 <template>
-  <div class="voice-table-list">
-    <div
-      v-if="langArr.length"
-      class="voice-table-kinds ak-voice-langs ak-not-prose"
-      role="group"
-      :aria-labelledby="kindsId"
-    >
-      <span :id="kindsId" class="ak-overline">文本</span>
-      <AkChip
-        v-for="kind in langArr"
-        :key="kind"
-        :model-value="selectedKinds.includes(kind)"
-        @update:model-value="(on) => toggleKind(kind, on)"
-      >
-        {{ kind }}
-      </AkChip>
-    </div>
-    <AkVoiceList
-      v-model="lang"
-      class="voice-table-voices"
-      :languages="languages"
-    >
-      <AkVoice
-        v-for="row in rows"
-        :key="row.key"
-        :title="row.title"
-        :code="row.code"
-        :unlock="row.unlock"
-        :text="row.text"
-        :src="row.src"
-        :download="row.download"
-        :download-name="row.downloadName"
-      />
-    </AkVoiceList>
-  </div>
+  <AkVoiceList v-model="lang" :languages="languages">
+    <!-- 文本那排放进 AkVoiceList 的 #toolbar：与语种切换条排一行，放不下时语种整组换行 -->
+    <template v-if="langArr.length" #toolbar>
+      <div class="ak-voice-langs" role="group" :aria-labelledby="kindsId">
+        <span :id="kindsId" class="ak-overline">文本</span>
+        <AkChip
+          v-for="kind in langArr"
+          :key="kind"
+          :model-value="selectedKinds.includes(kind)"
+          @update:model-value="(on) => toggleKind(kind, on)"
+        >
+          {{ kind }}
+        </AkChip>
+      </div>
+    </template>
+    <AkVoice
+      v-for="row in rows"
+      :key="row.key"
+      :title="row.title"
+      :code="row.code"
+      :unlock="row.unlock"
+      :text="row.text"
+      :src="row.src"
+      :download="row.download"
+      :download-name="row.downloadName"
+    />
+  </AkVoiceList>
 </template>
-
-<style scoped>
-/*
- * 文本 / 语种两组选择器排在一行，放不下时语种整组换到第二行（一组自己都放不下时再在组内折行）。
- * AkVoiceList 的根节点是个裸 div，display: contents 让它的切换条和列表直接成为这里的 flex 项。
- */
-.voice-table-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  column-gap: var(--ak-space-4);
-}
-
-.voice-table-list :deep(.voice-table-voices) {
-  display: contents;
-}
-
-.voice-table-list :deep(.ak-voice-langs) {
-  flex: 0 0 auto;
-  max-width: 100%;
-}
-
-.voice-table-list :deep(.ak-voice-list) {
-  flex: 1 0 100%;
-  box-sizing: border-box; /* 100% 基准含 1px 外框，MW 没有全局 border-box 重置 */
-}
-
-/* 多选了几种文本时一种一行；AkVoice 只收一个字符串，这里按换行排 */
-.voice-table-list :deep(.ak-voice__text) {
-  white-space: pre-line;
-}
-</style>
