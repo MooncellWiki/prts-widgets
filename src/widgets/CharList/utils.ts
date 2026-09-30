@@ -120,14 +120,3 @@ export class Char {
     }
   }
 }
-export type CheckboxOption = string | { label: string; value: string[] };
-export interface Filter {
-  title: string;
-  cbt: CheckboxOption[];
-  both: boolean;
-  field: string;
-}
-export interface FilterGroup {
-  title: string;
-  filter: Filter[];
-}

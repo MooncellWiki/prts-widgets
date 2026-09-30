@@ -5,6 +5,7 @@ import { defineStore } from "pinia";
 import {
   ADVANCED_TABS,
   DEFAULT_SORT,
+  FILTERS,
   firstDir,
   isStatKey,
   PAGE_STEPS,
@@ -22,7 +23,6 @@ import {
   normalizeNeedle,
   type FilterState,
 } from "./filter";
-import { FILTER_GROUPS } from "./filterGroups";
 import { buildHash, readHash, type HashState } from "./hash";
 import { sortChars } from "./sort";
 import { charStats, type CharStats } from "./stats";
@@ -52,7 +52,7 @@ const initialView = (): ViewMode =>
 
 /**
  * 干员一览的全部状态：筛选 / 搜索 / 排序 / 数值加算 / 显示方式 / 分页，以及和地址栏 # 参数的同步。
- * 筛选项定义写在 filterGroups.ts；干员数据来自模板输出的 DOM，index.vue 挂载时 init() 灌进来，各块组件直接取用。
+ * 筛选项定义写在 consts.ts；干员数据来自模板输出的 DOM，index.vue 挂载时 init() 灌进来，各块组件直接取用。
  */
 export const useCharListStore = defineStore("charList", () => {
   const chars = shallowRef<Char[]>([]);
@@ -171,7 +171,7 @@ export const useCharListStore = defineStore("charList", () => {
 
   function init(source: Char[]) {
     chars.value = source;
-    filters.value = createFilters(FILTER_GROUPS);
+    filters.value = createFilters(FILTERS);
     syncFromHash();
   }
 

@@ -7,7 +7,7 @@ import {
   halfPortrait,
   professionLine,
 } from "@/widgets/CharList/assets";
-import { BRANCH_KEYS } from "@/widgets/CharList/branchKeys";
+import type { FilterDef } from "@/widgets/CharList/consts";
 import { convertFeature } from "@/widgets/CharList/feature";
 import {
   createFilters,
@@ -17,11 +17,10 @@ import {
   matchFilter,
   matchText,
 } from "@/widgets/CharList/filter";
-import { FILTER_GROUPS } from "@/widgets/CharList/filterGroups";
 import { buildHash, readHash } from "@/widgets/CharList/hash";
 import { sortChars } from "@/widgets/CharList/sort";
 import { charStats, splitUnit } from "@/widgets/CharList/stats";
-import { Char, type FilterGroup } from "@/widgets/CharList/utils";
+import { Char } from "@/widgets/CharList/utils";
 
 function makeChar(attrs: Record<string, string> = {}, html = "") {
   const el = document.createElement("div");
@@ -49,62 +48,35 @@ function makeChar(attrs: Record<string, string> = {}, html = "") {
   return new Char(el);
 }
 
-// 筛选项定义的形状同 filterGroups.ts（只留用得到的几行）
-const GROUPS: FilterGroup[] = [
+// 筛选项定义的形状同 consts.ts 的 FILTERS（只留用得到的几行）
+const DEFS: FilterDef[] = [
+  { title: "职业", field: "profession", options: ["先锋", "近卫", "术师"] },
   {
-    title: "筛选",
-    filter: [
-      {
-        title: "职业",
-        field: "profession",
-        both: false,
-        cbt: ["先锋", "近卫", "术师"],
-      },
-      {
-        title: "分支",
-        field: "subProfession",
-        both: false,
-        cbt: ["尖兵", "强攻手", "扩散术师"],
-      },
-      {
-        title: "稀有度",
-        field: "rarity",
-        both: false,
-        cbt: ["★1", "★2", "★6"],
-      },
-      {
-        title: "性别",
-        field: "sex",
-        both: false,
-        cbt: ["男性", "女性", "其他"],
-      },
-      {
-        title: "词缀",
-        field: "tag",
-        both: true,
-        cbt: ["输出", "群攻", "新手"],
-      },
-    ],
+    title: "分支",
+    field: "subProfession",
+    options: ["尖兵", "强攻手", "扩散术师"],
+  },
+  { title: "稀有度", field: "rarity", options: ["★1", "★2", "★6"] },
+  { title: "性别", field: "sex", options: ["男性", "女性", "其他"] },
+  {
+    title: "词缀",
+    field: "tag",
+    options: ["输出", "群攻", "新手"],
+    canAnd: true,
   },
   {
     title: "势力",
-    filter: [
-      {
-        title: "势力",
-        field: "force",
-        both: false,
-        cbt: [
-          "罗德岛",
-          { label: "龙门", value: ["龙门", "龙门近卫局"] },
-          "其他",
-        ],
-      },
+    field: "force",
+    options: [
+      "罗德岛",
+      { label: "龙门", value: ["龙门", "龙门近卫局"] },
+      "其他",
     ],
   },
 ];
 
 const setup = () => {
-  const filters = createFilters(GROUPS);
+  const filters = createFilters(DEFS);
   const by = (field: string) => filters.find((f) => f.field === field)!;
   return { filters, by };
 };
@@ -205,13 +177,6 @@ describe("分支图标地址", () => {
     expect(branchLine("中坚术师")).toBe(
       "https://torappu.prts.wiki/assets/subprofession_icon/sub_corecaster_icon.png",
     );
-  });
-
-  it("筛选项里的分支都有 key", () => {
-    const branches = FILTER_GROUPS.flatMap((g) => g.filter).find(
-      (f) => f.field === "subProfession",
-    )!.cbt;
-    expect(branches.filter((b) => !(String(b) in BRANCH_KEYS))).toEqual([]);
   });
 
   it("表里没有的分支按中文名走 media", () => {

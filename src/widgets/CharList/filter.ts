@@ -1,4 +1,5 @@
-import type { Char, FilterGroup } from "./utils";
+import type { FilterDef } from "./consts";
+import type { Char } from "./utils";
 
 /** 一行筛选的定义 + 当前选择 */
 export interface FilterState {
@@ -17,27 +18,25 @@ export interface FilterState {
   hasOther: boolean;
 }
 
-export function createFilters(groups: FilterGroup[]): FilterState[] {
-  return groups.flatMap((group) =>
-    group.filter.map((f) => {
-      const values = new Map(
-        f.cbt.map((o): [string, string[]] =>
-          typeof o === "string" ? [o, [o]] : [o.label, o.value],
-        ),
-      );
-      return {
-        title: f.title,
-        field: f.field,
-        canAnd: f.both,
-        and: false,
-        sel: new Set<string>(),
-        labels: Array.from(values.keys()),
-        values,
-        known: new Set(Array.from(values.values()).flat()),
-        hasOther: values.has("其他"),
-      };
-    }),
-  );
+export function createFilters(defs: FilterDef[]): FilterState[] {
+  return defs.map((def) => {
+    const values = new Map(
+      def.options.map((o): [string, string[]] =>
+        typeof o === "string" ? [o, [o]] : [o.label, o.value],
+      ),
+    );
+    return {
+      title: def.title,
+      field: def.field,
+      canAnd: def.canAnd ?? false,
+      and: false,
+      sel: new Set<string>(),
+      labels: Array.from(values.keys()),
+      values,
+      known: new Set(Array.from(values.values()).flat()),
+      hasOther: values.has("其他"),
+    };
+  });
 }
 
 /** 干员是否满足这一行：sel / and 单独传，好拿「再点这一项会怎样」去试 */

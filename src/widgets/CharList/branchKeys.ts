@@ -1,6 +1,6 @@
 /**
  * 分支中文名 → 游戏内 key（uniequip_table 的 subProfDict），torappu 的分支图标按 key 寻址。
- * 次序同 filterGroups.ts 的「分支」行；出了新分支两边一起加，没加的图标照旧按中文名走 media。
+ * 「分支」筛选行的选项也取自这里（次序即显示次序）：出了新分支加在所属职业那一段的末尾。
  */
 export const BRANCH_KEYS: Record<string, string> = {
   尖兵: "pioneer",
