@@ -1,3 +1,5 @@
+import { convertFeature } from "./feature";
+
 const getLast = (str: string) => {
   if (str.includes("→")) {
     const arr = str.split("→");
@@ -38,7 +40,11 @@ export class Char {
   adapt: string;
   sortId: number;
   subProfession: string;
+  /** 模板输出的特性 HTML 原文 */
   feature: string;
+  /** 换成设计系统写法的特性 HTML（.ak-rt-kw / .ak-term），见 feature.ts */
+  featureHtml: string;
+  /** 搜索用的纯文本：不含术语提示的正文 */
   plainFeature: string;
   force: string[] = [];
   constructor(ele: HTMLDivElement) {
@@ -90,6 +96,7 @@ export class Char {
     this.sortId = Number.parseInt(d.sortid!);
     this.subProfession = d.subprofession!;
     this.feature = ele.innerHTML || "";
+    this.featureHtml = convertFeature(ele);
     this.plainFeature = "";
     if (ele.innerHTML) {
       try {

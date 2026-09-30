@@ -1,0 +1,188 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   干员一览 · Operator list —— 这页自己的排布（.ol-*）。
+   组件（.ak-*）的样式来自皮肤 / skins.arknights.components，这里只管筛选面板、工具条、结果栏、结果表怎么摆，
+   颜色 / 间距一律取设计令牌（--ak-*）。对应设计稿 prts-design 的 preview/operators.html。
+   窄排布不用 @media：看的是结果区自己的宽度（index.vue 给根节点加 .ol--narrow），侧栏收起 / 展开都算数。
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ol-contents { display: contents; }
+/* 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底 */
+.ol.ak-scope[data-theme] { background-color: transparent; }
+
+/* ── 1. 筛选 ── */
+.ol-filter { margin: 0 0 var(--ak-space-3); background: var(--ak-bg-surface); border: 1px solid var(--ak-border); }
+.ol-hint { font-size: var(--ak-fs-xs); color: var(--ak-fg-subtle); margin-left: 6px; }
+/* 一行里并排的第二项（稀有度行里的「位置」）：小标签 + 芯片，前面一道竖线 */
+.ol-inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 10px; padding-left: 16px; border-left: 1px solid var(--ak-border); }
+.ol-inline__label { margin-right: 6px; font-weight: 600; font-size: var(--ak-fs-sm); color: var(--ak-fg-secondary); }
+.ol-inline.has-active > .ol-inline__label { color: var(--ak-fg); }
+/* 高级筛选钮：整条是按钮，左缘色条同行标签（里面有已选项时变青） */
+.ol-more { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 var(--ak-space-4) 0 var(--ak-space-3); cursor: pointer; user-select: none;
+  background: var(--ak-bg-surface-2); border-top: 1px solid var(--ak-border); border-left: var(--ak-bar-w) solid var(--ak-border-strong); font-weight: 700; font-size: var(--ak-fs-sm); }
+.ol-more:hover { background: var(--ak-bg-hover); }
+.ol-more:focus-visible { outline: 2px solid var(--ak-focus); outline-offset: -2px; }
+.ol-more.has-active { border-left-color: var(--ak-accent); }
+.ol-more .ak-en { font-size: 10px; color: var(--ak-fg-subtle); }
+.ol-more__what { flex: 1; min-width: 0; font-weight: 400; font-size: var(--ak-fs-xs); color: var(--ak-fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ol-more::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 2px 0 0; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); opacity: .6; transition: transform var(--ak-dur-fast); }
+.ol-more[aria-expanded="true"]::after { transform: rotate(45deg); margin-top: -3px; }
+/* 高级筛选面板（AkTabs 的根 .ak-tabset）：左页签、右内容 */
+.ol-adv.ak-tabset { gap: 0; border-top: 1px solid var(--ak-border); }
+.ol-adv.ak-tabset--left { align-items: stretch; }
+.ol-adv > .ak-tabs--vertical { border-left: 0; border-right: 1px solid var(--ak-border); padding: 6px 0; gap: 0; min-width: 132px; background: var(--ak-bg-surface-2); }
+.ol-adv > .ak-tabs--vertical .ak-tab { margin: 0; padding: 8px var(--ak-space-3) 8px calc(var(--ak-space-3) - 3px + var(--ak-bar-w) - 1px); align-items: center; font-family: inherit; }
+.ol-adv > .ak-tabs .ak-tab:focus-visible { outline: 2px solid var(--ak-focus); outline-offset: -2px; }
+.ol-adv > .ak-tabs .ak-tab small { min-width: 16px; padding: 2px 4px; font-size: 10px; text-align: center; letter-spacing: 0; color: var(--ak-accent-fg); background: var(--ak-accent); }
+.ol-adv > .ol-adv__panel { min-width: 0; min-height: 168px; padding-top: 0; }
+.ol-adv > .ol-adv__panel:focus-visible { outline-offset: -2px; }
+.ol-adv__find { display: block; max-width: 280px; margin: 10px var(--ak-space-3) 2px calc(var(--ak-space-3) + var(--ak-bar-w)); }
+.ol-adv__none { margin: 4px var(--ak-space-3) 10px calc(var(--ak-space-3) + var(--ak-bar-w)); font-size: var(--ak-fs-xs); color: var(--ak-fg-muted); }
+.ol-adv__panel--six .ak-chip { min-width: 64px; justify-content: center; box-sizing: border-box; }   /* 六行选项相同：等宽，上下对成列 */
+.ol--narrow .ol-inline { margin-left: 0; padding-left: 0; border-left: 0; flex-basis: 100%; }
+.ol--narrow .ol-more__what { display: none; }
+.ol--narrow .ol-more::after { margin-left: auto; }
+.ol--narrow .ol-adv > .ak-tabs { padding: 0 4px; }
+.ol--narrow .ol-adv > .ak-tabs .ak-tab { padding: 8px 10px; }
+.ol--narrow .ol-adv > .ol-adv__panel { min-height: 0; }
+.ol--narrow .ol-adv__find { max-width: none; margin-left: var(--ak-space-3); }
+/* 标签列随本组最长的标签（「源石技艺适应性」7 字）定宽，各行对齐；不认 subgrid 的浏览器各行自己定宽 */
+.ol-rows { display: grid; grid-template-columns: max-content minmax(0, 1fr); }
+.ol-row { display: grid; grid-template-columns: max-content minmax(0, 1fr); grid-column: 1 / -1; }
+@supports (grid-template-columns: subgrid) { .ol-row { grid-template-columns: subgrid; } }
+.ol-row + .ol-row { border-top: 1px solid var(--ak-border); }
+.ol-row__label { display: grid; grid-template-columns: auto auto; justify-content: start; align-items: baseline; align-content: start; gap: 4px 10px; padding: 12px var(--ak-space-4) 8px var(--ak-space-3); border-left: var(--ak-bar-w) solid transparent;
+  font-weight: 600; font-size: var(--ak-fs-sm); line-height: 1.4; color: var(--ak-fg-secondary); white-space: nowrap; }
+.ol-row.has-active > .ol-row__label { border-left-color: var(--ak-accent); color: var(--ak-fg); }
+.ol-row__clear { all: unset; font-size: var(--ak-fs-xs); font-weight: 500; color: var(--ak-link); cursor: pointer; }
+.ol-row__clear:hover { text-decoration: underline; }
+.ol-row__clear:focus-visible { outline: 2px solid var(--ak-focus); outline-offset: 2px; }
+.ol-row:not(.has-active) .ol-row__clear { visibility: hidden; }   /* 「清除」横在标签右边；没选中时只藏不撤，标签列的宽度不随选中跳动 */
+.ol-row__label .ak-switch { order: 1; grid-column: 1 / -1; font-weight: 500; color: var(--ak-fg-secondary); }   /* 「同时满足」另起一行 */
+.ol-row__opts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px var(--ak-space-3) 8px 0; min-width: 0; }
+.ol-filter .ak-chip.is-empty:not([aria-pressed="true"]) { opacity: .38; }   /* 再点一下会筛出 0 条的选项压淡，仍可点 */
+.ol-filter .ak-chip:focus-visible { outline: 2px solid var(--ak-focus); outline-offset: 2px; }
+/* 职业 / 分支图标：白线稿当遮罩，颜色取 currentColor（图标地址由 MaskIcon 写在 style 里） */
+.ol-ico { flex: none; width: 16px; height: 16px; background: currentColor; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.ol-filter .ak-chip > .ol-ico { margin-left: -2px; }
+/* 分支：一职业一行，行首是职业图标 */
+.ol-branch { display: flex; align-items: flex-start; gap: 8px; flex: 1 1 100%; min-width: 0; }
+.ol-branch__prof { flex: none; display: grid; place-items: center; width: 28px; height: 28px; color: var(--ak-fg-muted); }
+.ol-branch__prof .ol-ico { width: 20px; height: 20px; }
+.ol-branch__list { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+/* 稀有度：一颗星 + 数字，星取稀有度色（选中后跟文字） */
+.ol-star { width: 11px; height: 11px; background: var(--ak-r-text); clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.ak-chip[aria-pressed="true"] .ol-star { background: currentColor; }
+.ol-chip--rarity { font-family: var(--ak-font-label); font-weight: 700; gap: 4px; }
+.ol--narrow .ol-rows { grid-template-columns: minmax(0, 1fr); }
+.ol--narrow .ol-row { grid-template-columns: minmax(0, 1fr); }
+.ol--narrow .ol-row__label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px var(--ak-space-3) 0 8px; white-space: normal; }
+.ol--narrow .ol-row__label .ak-switch { order: 0; }
+.ol--narrow .ol-row__opts { padding: 8px var(--ak-space-3) 10px calc(8px + var(--ak-bar-w)); }
+.ol--narrow .ol-row.has-active > .ol-row__opts { box-shadow: inset var(--ak-bar-w) 0 0 var(--ak-accent); }   /* 标签在上、选项在下：青条接着往下画满一行 */
+
+/* ── 2. 工具条：搜索 · 排序 · 数值加算 · 显示方式 ── */
+.ol-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 var(--ak-space-3); padding: 10px var(--ak-space-3); background: var(--ak-bg-surface-2); border: 1px solid var(--ak-border); }
+.ol-toolbar__search { flex: 1 1 240px; min-width: 0; }
+.ol-field { display: inline-flex; align-items: center; gap: 8px; font-size: var(--ak-fs-xs); font-weight: 600; color: var(--ak-fg-muted); white-space: nowrap; }
+.ol-field .ak-select { width: auto; min-height: 36px; color: var(--ak-fg); font-weight: 400; }
+.ol-field .ak-switch { color: var(--ak-fg); font-weight: 500; }
+.ol-sort { gap: 0; }
+.ol-sort > label { margin-right: 8px; }
+.ol-sort > .ak-btn { margin-left: -1px; min-width: 76px; padding: 0 var(--ak-space-3); font-weight: 500; }
+.ol-view .ak-btn { gap: 6px; }
+.ol-view .ak-btn[aria-pressed="true"] { --_bg: var(--ak-accent); --_fg: var(--ak-accent-fg); --_bd: var(--ak-accent); z-index: 1; }
+.ol-view .ak-icon { width: 14px; height: 14px; }
+
+/* ── 3. 结果栏：条数 · 已选条件 · 复制短链接 · 每页条数 · 分页 ── */
+.ol-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 var(--ak-space-3); min-height: 32px; }
+.ol-bar__count { flex: none; font-size: var(--ak-fs-sm); color: var(--ak-fg-muted); white-space: nowrap; }
+.ol-bar__count b { font: 700 var(--ak-fs-h3)/1 var(--ak-font-label); color: var(--ak-fg); font-variant-numeric: tabular-nums; margin-right: 2px; }
+.ol-bar__active { flex: 1 1 200px; min-width: 0; align-items: center; }
+.ol-bar__active .ak-tag { height: 24px; }
+.ol-bar__active .ak-tag__remove:focus-visible { outline: 2px solid var(--ak-focus); }
+.ol-bar__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.ol-bar__tools .ak-select { width: auto; min-height: 32px; font-size: var(--ak-fs-xs); }
+.ol-bar .ak-icon, .ol-pager .ak-icon { width: 14px; height: 14px; }
+.ol-foot { display: flex; justify-content: flex-end; margin: var(--ak-space-4) 0 0; }
+/* 手机上分页条铺满一行、页码格等分：左右缘与上面的控件、下面的结果对齐（按内容宽居中会短一截） */
+.ol--narrow .ol-bar__tools { margin-left: 0; width: 100%; justify-content: space-between; }
+.ol--narrow .ol-pager { display: flex; flex: 1 0 100%; }
+.ol--narrow .ol-pager > * { flex: 1 1 0; min-width: 0; text-align: center; }
+.ol--narrow .ol-pager .ak-pagination__item { min-width: 26px; padding: 0 6px; }
+.ol--narrow .ol-foot { justify-content: center; }
+
+/* ── 4. 结果 · 表格 ── */
+/* 页眉吸顶只有 Arknights 皮肤有：那里表头吸在页眉下、翻页回到结果开头时让出页眉；别的皮肤贴视口顶 */
+.ol-result { scroll-margin-top: var(--ak-space-3); }
+.skin-arknights .ol-result { scroll-margin-top: calc(var(--ak-header-h) + var(--ak-space-3)); }
+.ol-table.ak-table { table-layout: fixed; width: 100%; font-size: var(--ak-fs-sm); }
+.ol-table thead th { position: sticky; top: 0; z-index: 2; padding: 9px 8px; white-space: nowrap; letter-spacing: 0; text-transform: none; }
+.skin-arknights .ol-table thead th { top: var(--ak-header-h); }
+.ol-table th.num, .ol-table td.num { text-align: right; }
+.ol-table td { border-bottom: 0; padding: 8px 8px 2px; vertical-align: top; line-height: 1.4; }
+.ol-table tbody.ol-op { border-top: 1px solid var(--ak-border); }
+.ol-table tbody.ol-op > tr:last-child > td { padding-top: 0; padding-bottom: 9px; }
+.ol-table tbody.ol-op > tr:first-child > td[rowspan] { padding-bottom: 9px; }
+.ol-table tbody tr:hover td { background: none; }
+.ol-table tbody.ol-op:hover td { background: var(--ak-bg-hover); }
+.ol-table :is(th, td).ol-sep { border-left: 1px solid var(--ak-border); }   /* 四维 / 部署四项各成一组 */
+.ol-table td.num { white-space: nowrap; font: 600 var(--ak-fs-sm)/1.45 var(--ak-font-label); font-variant-numeric: tabular-nums; color: var(--ak-fg); }
+.ol-table td.num small { font-size: .78em; font-weight: 400; color: var(--ak-fg-muted); margin-left: 1px; }
+.ol-table td.num.is-mod, .ol-card__stats .is-mod { color: var(--ak-accent); }   /* 加算了潜能 / 信赖、与基础值不同的格 */
+.ol-table td.num.is-sorted { background: var(--ak-accent-subtle); }
+.ol-table tbody.ol-op:hover td.num.is-sorted { background: var(--ak-accent-muted); }
+.ol-table th > .ak-table__sort:hover { color: var(--ak-accent); }
+.ol-c-avatar { width: 64px; }
+.ol-table tbody th.ol-c-name { padding: 8px 8px 9px; vertical-align: top; font-weight: 400; text-align: left; border-bottom: 0; line-height: 1.4; }
+.ol-avatar { position: relative; display: block; width: 48px; height: 48px; background: #1d1f20 linear-gradient(180deg, #2b2d2f, #141516); border-bottom: 3px solid var(--ak-r, var(--ak-border-strong)); overflow: hidden; }
+.ol-avatar > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ol-avatar > img.ol-avatar__prof { position: absolute; left: 0; top: 0; width: 16px; height: 16px; }
+.ol-avatar:focus-visible { outline: 2px solid var(--ak-focus); outline-offset: 2px; }
+.ol-name { font-weight: 700; font-size: var(--ak-fs-body); line-height: 1.25; color: var(--ak-fg); text-decoration: none; }
+.ol-name:visited { color: var(--ak-fg); }
+.ol-name:hover { color: var(--ak-accent); text-decoration: underline; }
+.ol-sub { display: block; font-size: var(--ak-fs-xs); line-height: 1.35; color: var(--ak-fg-muted); overflow-wrap: anywhere; }
+.ol-sub--id { display: flex; align-items: center; gap: 6px; margin-top: 2px; font: 600 var(--ak-fs-overline)/1.2 var(--ak-font-label); letter-spacing: .04em; color: var(--ak-fg-subtle); }
+.ol-sub--id .ak-rarity { font-size: 9px; --_c: var(--ak-r-text); }
+.ol-strong { font-weight: 600; }
+.ol-branchname { display: flex; align-items: center; gap: 5px; }
+.ol-branchname > .ol-ico { color: var(--ak-fg-muted); }
+.ol-c-tags .ak-tags { gap: 4px; }
+.ol-feature { font-size: var(--ak-fs-xs); line-height: 1.55; color: var(--ak-fg-secondary); }
+.ol-feature .ak-term:focus-visible { outline: 2px solid var(--ak-focus); outline-offset: 1px; }
+.ol-obtain { font-size: var(--ak-fs-xs); line-height: 1.55; color: var(--ak-fg-muted); }
+
+/* ── 5. 结果 · 卡片（结果区 < 1000 时表格换成它，八项数值直接摊开） ── */
+.ol-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--ak-space-2); }
+.ol-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px; background: var(--ak-bg-surface); border: 1px solid var(--ak-border); border-top: 3px solid var(--ak-r, var(--ak-border-strong)); }
+.ol-card__head { display: flex; gap: 10px; min-width: 0; }
+.ol-card__id { flex: 1; min-width: 0; }
+.ol-card__id .ol-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ol-card__stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin: 0; background: var(--ak-border); border: 1px solid var(--ak-border); }
+.ol-card__stats > div { display: flex; flex-direction: column; gap: 3px; padding: 5px 6px; background: var(--ak-bg-surface); }
+.ol-card__stats > div.is-sorted { background: var(--ak-accent-subtle); }
+.ol-card__stats dt { font-size: 10px; line-height: 1; font-weight: 500; color: var(--ak-fg-muted); }
+.ol-card__stats dd { margin: 0; font: 700 var(--ak-fs-sm)/1 var(--ak-font-label); font-variant-numeric: tabular-nums; }
+.ol-card__stats dd small { font-size: .78em; font-weight: 400; color: var(--ak-fg-muted); }
+.ol-card p { margin: 0; }
+.ol-card .ak-tags { gap: 4px; }
+
+/* ── 6. 结果 · 半身像 / 头像（.ak-op-card 网格） ── */
+.ol-grid--half { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
+.ol-grid--half .ak-op-card__portrait { aspect-ratio: 1 / 2; }
+.ol-grid--half .ak-op-card__portrait > img { object-position: 50% 0; }
+.ol-grid--avatar { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--ak-space-2); }
+/* 按数值排序时卡片角上带上那项数值（游戏干员列表的 dyn_char_sort_info_item：#0098DC 底白字）。放右下角：右上角会压住六颗星 */
+.ol-grid .ak-op-card__badge { top: auto; right: 0; bottom: 0; }
+.ol-sortinfo { display: block; padding: 2px 5px; background: var(--ak-blue-500, #0098dc); color: #fff; font: 700 var(--ak-fs-xs)/1.2 var(--ak-font-label); font-variant-numeric: tabular-nums; }
+.ol-sortinfo small { font-size: .8em; font-weight: 400; }
+/* 名字显示全：放不下就折行，不截断（同一行的卡片等高，短名字下面留白） */
+.ol-grid .ak-op-card { display: flex; flex-direction: column; }
+.ol-grid .ak-op-card__name { flex: 1; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.ol-grid .ak-op-card__prof { width: 22px; height: 22px; }
+.ol-grid .ak-op-card__prof > img { width: 18px; height: 18px; }
+.ol--narrow .ol-grid--half { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--ak-space-2); }
+.ol--narrow .ol-grid--avatar { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+
+/* ── 7. 术语提示（特性里的 {{术语}}）：按视口定位，不被表格裁掉 ── */
+.ol-tip.ak-tooltip { position: fixed; max-width: min(340px, calc(100vw - 16px)); white-space: pre-line; line-height: 1.55; pointer-events: none; }
