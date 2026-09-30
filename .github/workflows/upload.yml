@@ -5,12 +5,13 @@ on:
     branches:
       - main
 
+concurrency:
+  group: upload-dist-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  upload:
+  build:
     runs-on: ubuntu-latest
-    concurrency:
-      group: upload-dist-${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v7
@@ -21,6 +22,30 @@ jobs:
       - name: Build Dist
         run: pnpm run build
 
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
       - name: Upload to OSS
         run: pnpm run upload
         env:
@@ -29,6 +54,22 @@ jobs:
           ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           BUCKET: ${{ secrets.OSS_BUCKET }}
           REMOTE_PATH: ${{ secrets.OSS_REMOTE_PATH }}
+
+  deploy:
+    needs: upload
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
 
       - name: Update PRTS Website
         run: pnpm run update ${{ secrets.PRTS_USERNAME }} ${{ secrets.PRTS_PASSWORD }}
