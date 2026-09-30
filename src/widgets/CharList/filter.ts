@@ -53,7 +53,7 @@ export function matchFilter(
 
   if (and) return range.every((k) => Array.isArray(value) && value.includes(k));
   if (range.length === 0) return true;
-  if (f.field === "rarity") return sel.has(`★${char.rarity + 1}`);
+  if (f.field === "rarity") return sel.has(`★${char.stars}`);
   if (f.field === "sex")
     return (
       sel.has(`${char.sex}性`) ||

@@ -11,7 +11,7 @@ defineProps<{ char: Char }>();
   <a
     class="ol-avatar"
     :href="wikiLink(char.zh)"
-    :data-rarity="char.rarity + 1"
+    :data-rarity="char.stars"
     tabindex="-1"
     aria-hidden="true"
   >

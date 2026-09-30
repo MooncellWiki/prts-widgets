@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AkOpCard, AkOpGrid, type Rarity } from "@mooncellwiki/prts-design-vue";
+import { AkOpCard, AkOpGrid } from "@mooncellwiki/prts-design-vue";
 import { storeToRefs } from "pinia";
 
 import { avatar, halfPortrait, professionBadge, wikiLink } from "../assets";
@@ -29,7 +29,7 @@ const { pageList, sortStat } = storeToRefs(store);
       :name="char.zh"
       :sub="half ? char.en : undefined"
       :avatar="half ? halfPortrait(char.zh) : avatar(char.zh)"
-      :rarity="(char.rarity + 1) as Rarity"
+      :rarity="char.stars"
       :profession="char.profession"
       :profession-icon="professionBadge(char.profession)"
       :size="half ? 'md' : 'sm'"

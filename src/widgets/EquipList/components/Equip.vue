@@ -127,7 +127,7 @@ const modeMission = () => props.simplemode === "mission";
         <div
           class="modtype"
           :style="{
-            background: colorMap[e.color as string] ?? colorMap.grey,
+            background: colorMap[e.color] ?? colorMap.grey,
           }"
         >
           <div class="flex-none">

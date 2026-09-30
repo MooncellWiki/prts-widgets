@@ -27,7 +27,7 @@ const origin = (char: Char) =>
       v-for="char in pageList"
       :key="char.sortId"
       class="ol-card"
-      :data-rarity="char.rarity + 1"
+      :data-rarity="char.stars"
     >
       <div class="ol-card__head">
         <OpAvatar :char="char" />

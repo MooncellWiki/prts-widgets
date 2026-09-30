@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AkRarity, type Rarity } from "@mooncellwiki/prts-design-vue";
+import { AkRarity } from "@mooncellwiki/prts-design-vue";
 
 import { wikiLink } from "../assets";
 
@@ -23,8 +23,8 @@ defineSlots<{
     </template>
   </span>
   <slot />
-  <span class="ol-sub ol-sub--id" :data-rarity="char.rarity + 1">
-    <AkRarity :value="(char.rarity + 1) as Rarity" />{{ char.id }}
+  <span class="ol-sub ol-sub--id" :data-rarity="char.stars">
+    <AkRarity :value="char.stars" />{{ char.id }}
   </span>
 </template>
 

@@ -1,5 +1,7 @@
 import { convertFeature } from "./feature";
 
+import type { Rarity } from "@mooncellwiki/prts-design-vue";
+
 const getLast = (str: string) => {
   if (str.includes("→")) {
     const arr = str.split("→");
@@ -12,6 +14,8 @@ export class Char {
   zh: string;
   profession: string;
   rarity: number;
+  /** 星级 1–6（rarity 从 0 起） */
+  stars: Rarity;
   logo: string;
   birthPlace: string;
   race: string[];
@@ -54,6 +58,7 @@ export class Char {
     this.zh = d.zh!;
     this.profession = d.profession!;
     this.rarity = Number.parseInt(d.rarity!);
+    this.stars = (this.rarity + 1) as Rarity;
     this.logo = d.logo || "";
     this.birthPlace = d.birthPlace || d.birth_place || "";
     if (d.nation) this.force.push(d.nation);

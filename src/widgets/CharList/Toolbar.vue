@@ -43,6 +43,8 @@ const descending = computed(() => state.sort.dir < 0);
 const showAddons = computed(
   () => state.view === View.TABLE || sortStat.value !== null,
 );
+/** AkSelect 给的是 SelectValue，选项都来自 SORT_OPTIONS，就是 SortKey */
+const onSortKey = (key: unknown) => store.setSortKey(key as SortKey);
 </script>
 
 <template>
@@ -60,7 +62,7 @@ const showAddons = computed(
         :id="sortId"
         :model-value="state.sort.key"
         :options="SORT_OPTIONS"
-        @update:model-value="store.setSortKey($event as SortKey)"
+        @update:model-value="onSortKey"
       />
       <AkButton
         :label="`排序方向：${descending ? '降序' : '升序'}，点击切换`"
