@@ -141,6 +141,8 @@ export default defineConfig(({ command }) => {
 
             if (id.includes("sentry")) return "sentry";
             if (id.includes("naive-ui")) return "naive-ui";
+            if (id.includes("@mooncellwiki/prts-design-vue"))
+              return "prts-design";
             if (id.includes("howler")) return "howler";
             if (id.includes("pixi")) return "pixi";
             if (
