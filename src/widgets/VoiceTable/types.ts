@@ -26,4 +26,10 @@ export interface Props {
   langArr?: string[];
   voiceBase?: VoiceBaseItem[];
   overrideVoiceBase?: OverrideVoiceBaseItem[];
+  /** 语种代码（cn / jp / en …）→ CV 名，来自干员页 CharinfoV2 的 char_info.cv */
+  cvNames?: Record<string, string>;
+  /** 干员页里嵌入时默认折叠；独立的 /语音记录 页展开 */
+  collapsible?: boolean;
+  /** 每条出下载图标（只在独立的 /语音记录 页给，同原版） */
+  downloadable?: boolean;
 }

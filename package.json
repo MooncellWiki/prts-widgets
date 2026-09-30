@@ -22,6 +22,7 @@
     "prepare": "simple-git-hooks"
   },
   "dependencies": {
+    "@mooncellwiki/prts-design-vue": "0.1.2",
     "@pixi/sound": "^6.0.1",
     "@sentry/browser": "^10.75.0",
     "@urlpack/json": "^2.0.1",
