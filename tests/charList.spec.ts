@@ -7,7 +7,6 @@ import {
   halfPortrait,
   professionLine,
 } from "@/widgets/CharList/assets";
-import type { FilterDef } from "@/widgets/CharList/consts";
 import { convertFeature } from "@/widgets/CharList/feature";
 import {
   createFilters,
@@ -17,6 +16,7 @@ import {
   matchFilter,
   matchText,
 } from "@/widgets/CharList/filter";
+import type { FilterId } from "@/widgets/CharList/filters";
 import { buildHash, readHash } from "@/widgets/CharList/hash";
 import { sortChars } from "@/widgets/CharList/sort";
 import { charStats, splitUnit } from "@/widgets/CharList/stats";
@@ -48,36 +48,10 @@ function makeChar(attrs: Record<string, string> = {}, html = "") {
   return new Char(el);
 }
 
-// 筛选项定义的形状同 consts.ts 的 FILTERS（只留用得到的几行）
-const DEFS: FilterDef[] = [
-  { title: "职业", field: "profession", options: ["先锋", "近卫", "术师"] },
-  {
-    title: "分支",
-    field: "subProfession",
-    options: ["尖兵", "强攻手", "扩散术师"],
-  },
-  { title: "稀有度", field: "rarity", options: ["★1", "★2", "★6"] },
-  { title: "性别", field: "sex", options: ["男性", "女性", "其他"] },
-  {
-    title: "词缀",
-    field: "tag",
-    options: ["输出", "群攻", "新手"],
-    canAnd: true,
-  },
-  {
-    title: "势力",
-    field: "force",
-    options: [
-      "罗德岛",
-      { label: "龙门", value: ["龙门", "龙门近卫局"] },
-      "其他",
-    ],
-  },
-];
-
 const setup = () => {
-  const filters = createFilters(DEFS);
-  const by = (field: string) => filters.find((f) => f.field === field)!;
+  const filterById = createFilters();
+  const filters = Object.values(filterById);
+  const by = (id: FilterId) => filterById[id];
   return { filters, by };
 };
 
@@ -222,16 +196,16 @@ describe("筛选", () => {
     const { by } = setup();
     const c = makeChar();
     expect(matchFilter(by("profession"), c)).toBe(true);
-    by("profession").sel.add("近卫");
+    by("profession").selection.selected.add("近卫");
     expect(matchFilter(by("profession"), c)).toBe(false);
-    by("profession").sel.add("术师");
+    by("profession").selection.selected.add("术师");
     expect(matchFilter(by("profession"), c)).toBe(true);
   });
 
-  it("稀有度按 ★(rarity+1)，性别按「x性」，其他 = 非男非女", () => {
+  it("稀有度按星级 ID（rarity+1），性别按「x性」，其他 = 非男非女", () => {
     const { by } = setup();
-    expect(matchFilter(by("rarity"), makeChar(), new Set(["★2"]))).toBe(true);
-    expect(matchFilter(by("rarity"), makeChar(), new Set(["★1"]))).toBe(false);
+    expect(matchFilter(by("rarity"), makeChar(), new Set(["2"]))).toBe(true);
+    expect(matchFilter(by("rarity"), makeChar(), new Set(["1"]))).toBe(false);
     expect(matchFilter(by("sex"), makeChar(), new Set(["男性"]))).toBe(true);
     expect(matchFilter(by("sex"), makeChar(), new Set(["其他"]))).toBe(false);
     const robot = makeChar({ "data-sex": "断罪" });
@@ -241,7 +215,7 @@ describe("筛选", () => {
   it("词缀「同时满足」要求全中", () => {
     const { by } = setup();
     const c = makeChar({ "data-tag": "输出 群攻" });
-    const both = new Set(["输出", "新手"]);
+    const both = new Set(["输出", "治疗"]);
     expect(matchFilter(by("tag"), c, both, false)).toBe(true);
     expect(matchFilter(by("tag"), c, both, true)).toBe(false);
     expect(matchFilter(by("tag"), c, new Set(["输出", "群攻"]), true)).toBe(
@@ -249,17 +223,89 @@ describe("筛选", () => {
     );
   });
 
-  it("一个选项管多个值；「其他」= 值不在本行任何选项里", () => {
+  it.each([
+    ["活动获得", "活动获得"],
+    ["记录修复奖励", "活动获得"],
+    ["标准寻访, 礼包购买", "标准寻访"],
+    ["标准寻访, 礼包购买", "其他"],
+  ])("获取途径 %s 匹配 %s", (value, selected) => {
     const { by } = setup();
-    const lgd = makeChar({ "data-nation": "炎", "data-group": "龙门近卫局" });
-    expect(matchFilter(by("force"), lgd, new Set(["龙门"]))).toBe(true);
-    // 「炎」不在选项里，算其他
-    expect(matchFilter(by("force"), lgd, new Set(["其他"]))).toBe(true);
-    const rhodes = makeChar({ "data-nation": "罗德岛" });
-    expect(matchFilter(by("force"), rhodes, new Set(["其他"]))).toBe(false);
-    expect(matchFilter(by("force"), rhodes, new Set(["其他", "罗德岛"]))).toBe(
+    const char = makeChar({ "data-obtain-method": value });
+    expect(matchFilter(by("obtainMethod"), char, new Set([selected]))).toBe(
       true,
     );
+  });
+
+  it("其他不包含已知别名或空数组；可以与普通选项一起选", () => {
+    const { by } = setup();
+    const filter = by("obtainMethod");
+    const known = makeChar({ "data-obtain-method": "记录修复奖励" });
+    expect(matchFilter(filter, known, new Set(["其他"]))).toBe(false);
+    expect(matchFilter(filter, makeChar(), new Set(["其他"]))).toBe(false);
+    expect(matchFilter(filter, known, new Set(["其他", "活动获得"]))).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["汐斯塔（独立城邦）", "汐斯塔"],
+    ["阿戈尔地区", "伊比利亚"],
+    ["东国", "东"],
+    ["因经纪公司要求不公开", "未公开/不公开"],
+    ["不明", "未知"],
+    ["未列出的地方", "其他"],
+    ["", "其他"],
+  ])("出身地 %s 匹配 %s", (value, selected) => {
+    const { by } = setup();
+    const char = makeChar({ "data-birth-place": value });
+    expect(matchFilter(by("birthPlace"), char, new Set([selected]))).toBe(true);
+  });
+
+  it("混合种族既能匹配已知种族也能匹配其他，未知别名不算其他", () => {
+    const { by } = setup();
+    const char = makeChar({ "data-race": "黎博利/未列出的种族" });
+    expect(matchFilter(by("race"), char, new Set(["黎博利"]))).toBe(true);
+    expect(matchFilter(by("race"), char, new Set(["其他"]))).toBe(true);
+    const alias = makeChar({ "data-race": "未知（疑似黎博利）" });
+    expect(matchFilter(by("race"), alias, new Set(["未知"]))).toBe(true);
+    expect(matchFilter(by("race"), alias, new Set(["其他"]))).toBe(false);
+  });
+
+  it.each(["phy", "flex", "tolerance", "plan", "skill", "adapt"] as const)(
+    "六维 %s 共用等级规则，空值和特殊等级归其他",
+    (id) => {
+      const { by } = setup();
+      expect(
+        matchFilter(
+          by(id),
+          makeChar({ [`data-${id}`]: "卓越" }),
+          new Set(["卓越"]),
+        ),
+      ).toBe(true);
+      expect(
+        matchFilter(
+          by(id),
+          makeChar({ [`data-${id}`]: "卓越" }),
+          new Set(["其他"]),
+        ),
+      ).toBe(false);
+      expect(
+        matchFilter(
+          by(id),
+          makeChar({ [`data-${id}`]: "■■" }),
+          new Set(["其他"]),
+        ),
+      ).toBe(true);
+      expect(matchFilter(by(id), makeChar(), new Set(["其他"]))).toBe(true);
+    },
+  );
+
+  it("势力可命中国家、组织或小队", () => {
+    const { by } = setup();
+    const char = makeChar({ "data-nation": "炎", "data-group": "龙门近卫局" });
+    expect(matchFilter(by("force"), char, new Set(["炎"]))).toBe(true);
+    expect(matchFilter(by("force"), char, new Set(["龙门近卫局"]))).toBe(true);
+    expect(matchFilter(by("force"), char, new Set(["罗德岛"]))).toBe(false);
   });
 
   it("搜索名称 / 英文名 / 代号 / 特性，不分大小写，不搜术语提示的正文", () => {
@@ -284,27 +330,46 @@ describe("筛选", () => {
         "data-rarity": "5",
       }),
     ];
-    by("rarity").sel.add("★6");
+    by("rarity").selection.selected.add("6");
     const failed = failedFilters(chars, filters, "");
     // 稀有度筛到只剩近卫 B：职业里术师、先锋是空的；稀有度自己那行不受自己影响
     expect(emptyOptions(by("profession"), failed)).toEqual(
-      new Set(["先锋", "术师"]),
+      new Set(["先锋", "重装", "狙击", "术师", "医疗", "辅助", "特种"]),
     );
-    expect(emptyOptions(by("rarity"), failed)).toEqual(new Set(["★1"]));
+    expect(emptyOptions(by("rarity"), failed)).toEqual(
+      new Set(["1", "3", "4", "5"]),
+    );
+  });
+
+  it("词缀 AND 的置灰在当前选择上加条件，OR 则考察该选项本身", () => {
+    const { filters, by } = setup();
+    const tag = by("tag");
+    const chars = [
+      makeChar({ "data-tag": "输出 群攻" }),
+      makeChar({ "data-tag": "治疗" }),
+    ];
+    tag.selection.selected.add("输出");
+    tag.selection.and = true;
+    const andEmpty = emptyOptions(tag, failedFilters(chars, filters, ""));
+    expect(andEmpty.has("治疗")).toBe(true);
+    expect(andEmpty.has("群攻")).toBe(false);
+    expect(andEmpty.has("输出")).toBe(false);
+    tag.selection.and = false;
+    expect(
+      emptyOptions(tag, failedFilters(chars, filters, "")).has("治疗"),
+    ).toBe(false);
   });
 
   it("选了职业，别的职业名下已选的分支一并取消", () => {
     const { by } = setup();
-    const branchProf = new Map([
-      ["尖兵", "先锋"],
-      ["强攻手", "近卫"],
+    by("subProfession").selection.selected.add("尖兵").add("强攻手");
+    dropOrphanBranches(by("profession"), by("subProfession"));
+    expect(by("subProfession").selection.selected.size).toBe(2); // 没选职业：不动
+    by("profession").selection.selected.add("近卫");
+    dropOrphanBranches(by("profession"), by("subProfession"));
+    expect(Array.from(by("subProfession").selection.selected)).toEqual([
+      "强攻手",
     ]);
-    by("subProfession").sel.add("尖兵").add("强攻手");
-    dropOrphanBranches(by("profession"), by("subProfession"), branchProf);
-    expect(by("subProfession").sel.size).toBe(2); // 没选职业：不动
-    by("profession").sel.add("近卫");
-    dropOrphanBranches(by("profession"), by("subProfession"), branchProf);
-    expect(Array.from(by("subProfession").sel)).toEqual(["强攻手"]);
   });
 });
 
@@ -359,9 +424,12 @@ describe("地址栏 # 参数", () => {
       })}`,
       filters,
     );
-    expect(Array.from(by("profession").sel)).toEqual(["近卫", "术师"]);
-    expect(Array.from(by("rarity").sel)).toEqual(["★6"]);
-    expect(by("tag").and).toBe(true);
+    expect(Array.from(by("profession").selection.selected)).toEqual([
+      "近卫",
+      "术师",
+    ]);
+    expect(Array.from(by("rarity").selection.selected)).toEqual(["6"]);
+    expect(by("tag").selection.and).toBe(true);
     expect(state).toEqual({
       q: "陈",
       sort: { key: "rarity", dir: -1 },
@@ -389,8 +457,8 @@ describe("地址栏 # 参数", () => {
   it("不在选项里的值、没有「同时满足」的行上的 0- 都不认", () => {
     const { filters, by } = setup();
     readHash("profession=0-近卫;不存在", filters);
-    expect(Array.from(by("profession").sel)).toEqual(["近卫"]);
-    expect(by("profession").and).toBe(false);
+    expect(Array.from(by("profession").selection.selected)).toEqual(["近卫"]);
+    expect(by("profession").selection.and).toBe(false);
   });
 
   it("默认状态不写参数；写出去的能原样读回来", () => {
@@ -398,9 +466,9 @@ describe("地址栏 # 参数", () => {
     const state = readHash("", filters);
     expect(buildHash(filters, state)).toBe("");
 
-    by("rarity").sel.add("★6").add("★1");
-    by("tag").sel.add("新手");
-    by("tag").and = true;
+    by("rarity").selection.selected.add("6").add("1");
+    by("tag").selection.selected.add("治疗");
+    by("tag").selection.and = true;
     const hash = buildHash(filters, {
       ...state,
       q: "a b",
@@ -410,7 +478,7 @@ describe("地址栏 # 参数", () => {
     });
     // 选项按筛选项定义里的顺序写，不按点选的先后
     expect(new URLSearchParams(hash).get("rarity")).toBe("1-1;6");
-    expect(new URLSearchParams(hash).get("tag")).toBe("0-新手");
+    expect(new URLSearchParams(hash).get("tag")).toBe("0-治疗");
 
     const again = setup();
     expect(readHash(hash, again.filters)).toEqual({

@@ -1,15 +1,12 @@
-import { computed, reactive, ref, shallowRef, watch } from "vue";
+import { computed, reactive, shallowRef, watch } from "vue";
 
 import { defineStore } from "pinia";
 
 import {
-  ADVANCED_TABS,
   DEFAULT_SORT,
-  FILTERS,
   firstDir,
   isStatKey,
   PAGE_STEPS,
-  QUICK_FIELDS,
   type SortKey,
   type StatKey,
   View,
@@ -23,7 +20,9 @@ import {
   normalizeNeedle,
   type FilterState,
 } from "./filter";
+import { ADVANCED_TABS } from "./filters";
 import { buildHash, readHash, type HashState } from "./hash";
+import { PROFESSION_ORDER, PROFESSIONS } from "./professions";
 import { sortChars } from "./sort";
 import { charStats, type CharStats } from "./stats";
 
@@ -52,11 +51,12 @@ const initialView = (): ViewMode =>
 
 /**
  * 干员一览的全部状态：筛选 / 搜索 / 排序 / 数值加算 / 显示方式 / 分页，以及和地址栏 # 参数的同步。
- * 筛选项定义写在 consts.ts；干员数据来自模板输出的 DOM，index.vue 挂载时 init() 灌进来，各块组件直接取用。
+ * 筛选规则写在 filters.ts，职业与分支定义写在 professions.ts；干员数据来自模板输出的 DOM，index.vue 挂载时 init() 灌进来，各块组件直接取用。
  */
 export const useCharListStore = defineStore("charList", () => {
   const chars = shallowRef<Char[]>([]);
-  const filters = ref<FilterState[]>([]);
+  const filterById = reactive(createFilters());
+  const filters = computed(() => Object.values(filterById));
   const defaultView = initialView();
   const state = reactive<HashState & { page: number; step: number }>({
     ...readHash("", [], defaultView),
@@ -72,35 +72,19 @@ export const useCharListStore = defineStore("charList", () => {
     }
   });
 
-  const byField = (field: string) =>
-    filters.value.find((f) => f.field === field);
-  const profession = computed(() => byField("profession"));
-  const branch = computed(() => byField("subProfession"));
-  /** 职业的次序 = 筛选项里的顺序（先锋 近卫 重装 狙击 术师 医疗 辅助 特种） */
-  const profOrder = computed(() => profession.value?.labels ?? []);
-  /** 分支 → 职业，从数据里推 */
-  const branchProf = computed(
-    () => new Map(chars.value.map((c) => [c.subProfession, c.profession])),
+  const { profession, subProfession: branch } = filterById;
+  const normalize = () => dropOrphanBranches(profession, branch);
+  const branchGroups = computed(() =>
+    PROFESSIONS.filter(
+      (p) =>
+        profession.selection.selected.size === 0 ||
+        profession.selection.selected.has(p.name),
+    ),
   );
-  const normalize = () =>
-    dropOrphanBranches(profession.value, branch.value, branchProf.value);
-
-  /** 高级筛选的页签：没归类的字段落到第一个页签 */
-  const tabs = computed(() => {
-    const listed = new Set([
-      ...QUICK_FIELDS,
-      ...ADVANCED_TABS.flatMap((t) => t.fields),
-    ]);
-    const unlisted = filters.value
-      .map((f) => f.field)
-      .filter((k) => !listed.has(k));
-    return ADVANCED_TABS.map((t, i) => ({
-      ...t,
-      filters: [...t.fields, ...(i === 0 ? unlisted : [])]
-        .map(byField)
-        .filter((f) => f !== undefined),
-    })).filter((t) => t.filters.length > 0);
-  });
+  const tabs = ADVANCED_TABS.map((tab) => ({
+    ...tab,
+    filters: tab.fields.map((id) => filterById[id]),
+  }));
 
   /* ── 筛选 → 排序 → 分页 ── */
   const failed = computed(() =>
@@ -109,9 +93,7 @@ export const useCharListStore = defineStore("charList", () => {
   /** 各行里会筛出 0 条的选项（按字段名取） */
   const empties = computed(
     () =>
-      new Map(
-        filters.value.map((f) => [f.field, emptyOptions(f, failed.value)]),
-      ),
+      new Map(filters.value.map((f) => [f.id, emptyOptions(f, failed.value)])),
   );
   const statsCache = computed(() => {
     const { pot, trust } = state;
@@ -133,7 +115,7 @@ export const useCharListStore = defineStore("charList", () => {
     const stats = isStatKey(state.sort.key)
       ? statsCache.value
       : (char: Char) => charStats(char, false, false);
-    return sortChars(matched, state.sort, profOrder.value, stats);
+    return sortChars(matched, state.sort, PROFESSION_ORDER, stats);
   });
   const pageCount = computed(() =>
     Math.max(1, Math.ceil(list.value.length / state.step)),
@@ -171,26 +153,25 @@ export const useCharListStore = defineStore("charList", () => {
 
   function init(source: Char[]) {
     chars.value = source;
-    filters.value = createFilters(FILTERS);
     syncFromHash();
   }
 
   /* ── 操作 ── */
-  function toggle(f: FilterState, label: string) {
-    if (f.sel.has(label)) f.sel.delete(label);
-    else f.sel.add(label);
+  function toggle(f: FilterState, id: string) {
+    if (f.selection.selected.has(id)) f.selection.selected.delete(id);
+    else f.selection.selected.add(id);
     normalize();
   }
   function clear(f: FilterState) {
-    f.sel.clear();
+    f.selection.selected.clear();
   }
   function setAnd(f: FilterState, and: boolean) {
-    f.and = and;
+    f.selection.and = !!f.def.canAnd && and;
   }
   function reset() {
     for (const f of filters.value) {
-      f.sel.clear();
-      f.and = false;
+      f.selection.selected.clear();
+      f.selection.and = false;
     }
     state.q = "";
   }
@@ -226,8 +207,8 @@ export const useCharListStore = defineStore("charList", () => {
     advanced,
     profession,
     branch,
-    profOrder,
-    branchProf,
+    filterById,
+    branchGroups,
     tabs,
     empties,
     list,
@@ -235,7 +216,6 @@ export const useCharListStore = defineStore("charList", () => {
     pageCount,
     pageList,
     sortStat,
-    byField,
     statsOf,
     init,
     syncFromHash,

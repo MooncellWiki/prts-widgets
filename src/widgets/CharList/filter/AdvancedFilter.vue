@@ -25,15 +25,19 @@ const store = useCharListStore();
 const finds = reactive<Record<string, string>>({});
 const needle = (tab: string) => (finds[tab] ?? "").trim().toLowerCase();
 const selectedCount = (filters: FilterState[]) =>
-  filters.reduce((sum, f) => sum + f.sel.size, 0);
+  filters.reduce((sum, f) => sum + f.selection.selected.size, 0);
 const optionCount = (filters: FilterState[]) =>
-  filters.reduce((sum, f) => sum + f.labels.length, 0);
+  filters.reduce((sum, f) => sum + f.def.options.length, 0);
 const noneFound = (tab: string, filters: FilterState[]) => {
   const q = needle(tab);
   return (
     !!q &&
     !filters.some((f) =>
-      f.labels.some((l) => f.sel.has(l) || l.toLowerCase().includes(q)),
+      f.def.options.some(
+        (option) =>
+          f.selection.selected.has(option.id) ||
+          option.label.toLowerCase().includes(q),
+      ),
     )
   );
 };
@@ -72,7 +76,7 @@ const noneFound = (tab: string, filters: FilterState[]) => {
       <FilterRows>
         <FilterRow
           v-for="f in tab.filters"
-          :key="f.field"
+          :key="f.id"
           :filter="f"
           :find="needle(tab.id)"
         />

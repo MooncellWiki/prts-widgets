@@ -26,12 +26,12 @@ const STEP_OPTIONS = PAGE_STEPS.map((n) => ({ label: `每页 ${n}`, value: n }))
 
 const active = computed(() =>
   filters.value.flatMap((f) =>
-    f.labels
-      .filter((label) => f.sel.has(label))
-      .map((label) => ({
+    f.def.options
+      .filter((option) => f.selection.selected.has(option.id))
+      .map(({ id, label }) => ({
         filter: f,
-        label,
-        text: `${f.title}${f.and ? "（同时）" : ""}：${label}`,
+        id,
+        text: `${f.def.title}${f.selection.and ? "（同时）" : ""}：${label}`,
       })),
   ),
 );
@@ -65,9 +65,9 @@ async function copyLink() {
       </AkTag>
       <AkTag
         v-for="item in active"
-        :key="`${item.filter.field}:${item.label}`"
+        :key="`${item.filter.id}:${item.id}`"
         removable
-        @remove="store.toggle(item.filter, item.label)"
+        @remove="store.toggle(item.filter, item.id)"
       >
         {{ item.text }}
       </AkTag>

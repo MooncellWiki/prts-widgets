@@ -29,15 +29,15 @@ const id = useId();
 
 <template>
   <div
-    :class="['ol-row', { 'has-active': filter.sel.size > 0 }]"
+    :class="['ol-row', { 'has-active': filter.selection.selected.size > 0 }]"
     role="group"
     :aria-labelledby="id"
   >
     <div class="ol-row__label">
-      <span :id="id">{{ filter.title }}</span>
+      <span :id="id">{{ filter.def.title }}</span>
       <AkSwitch
-        v-if="filter.canAnd"
-        :model-value="filter.and"
+        v-if="filter.def.canAnd"
+        :model-value="filter.selection.and"
         size="sm"
         @update:model-value="store.setAnd(filter, $event)"
       >
@@ -46,7 +46,7 @@ const id = useId();
       <button
         type="button"
         class="ol-row__clear"
-        :aria-label="`清除「${filter.title}」的选择`"
+        :aria-label="`清除「${filter.def.title}」的选择`"
         @click="store.clear(filter)"
       >
         清除
