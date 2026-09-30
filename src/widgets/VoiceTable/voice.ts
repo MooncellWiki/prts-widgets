@@ -180,6 +180,16 @@ export function voiceUrl(path: string, fileName: string): string {
   return `${TORAPPU_ENDPOINT}/assets/audio/${path}/${file}`;
 }
 
+/** 下载给 wav 原文件；?filename= 是原版 VoiceTable 的约定，服务端据此写 Content-Disposition */
+export function downloadUrl(
+  path: string,
+  fileName: string,
+  title: string,
+): string {
+  const file = fileName.replace(/\s/g, "_");
+  return `${TORAPPU_ENDPOINT}/assets/audio/${path}/${file}?filename=${encodeURIComponent(title)}.wav`;
+}
+
 /** 每条按语种的音频地址（键 = 语种名）：直链优先，其次 torappu 的 mp3；没有音频的语种不进对象 */
 export function buildSources(
   item: VoiceDataItem,
@@ -198,6 +208,27 @@ export function buildSources(
       );
   }
   return sources;
+}
+
+/** 每条按语种的下载地址（同 buildSources 的键）：直链原样，其次 torappu 的 wav */
+export function buildDownloads(
+  item: VoiceDataItem,
+  voiceBase: readonly VoiceBaseItem[],
+  overrideVoiceBase: readonly OverrideVoiceBaseItem[] = [],
+): Record<string, string> {
+  const downloads: Record<string, string> = {};
+  for (const audio of voiceBase) {
+    if (!audio.lang || !audio.path || audio.lang in downloads) continue;
+    const direct = item.directLinks[audio.lang];
+    if (direct) downloads[audio.lang] = direct;
+    else if (item.fileName)
+      downloads[audio.lang] = downloadUrl(
+        resolveVoicePath(audio, overrideVoiceBase, item.placeType),
+        item.fileName,
+        item.title ?? item.fileName,
+      );
+  }
+  return downloads;
 }
 
 /** 标题旁的灰标：游戏内解锁条件，或限时显示说明 */

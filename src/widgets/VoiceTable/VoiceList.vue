@@ -4,6 +4,7 @@ import { computed, ref, useId } from "vue";
 import { AkChip, AkVoice, AkVoiceList } from "@mooncellwiki/prts-design-vue";
 
 import {
+  buildDownloads,
   buildLanguages,
   buildSources,
   buildText,
@@ -18,6 +19,7 @@ const props = withDefaults(defineProps<Props>(), {
   voiceBase: () => [],
   overrideVoiceBase: () => [],
   cvNames: () => ({}),
+  downloadable: false,
 });
 
 // 文本语种（台词差分）：多选，同时显示，可以一个都不选（只听不看）；默认第一个
@@ -43,6 +45,10 @@ const rows = computed(() =>
     unlock: unlockText(item),
     text: buildText(item, selectedKinds.value),
     src: buildSources(item, props.voiceBase, props.overrideVoiceBase),
+    download: props.downloadable
+      ? buildDownloads(item, props.voiceBase, props.overrideVoiceBase)
+      : undefined,
+    downloadName: item.title ? `${item.title}.wav` : undefined,
   })),
 );
 
@@ -80,6 +86,8 @@ const kindsId = useId();
         :unlock="row.unlock"
         :text="row.text"
         :src="row.src"
+        :download="row.download"
+        :download-name="row.downloadName"
       />
     </AkVoiceList>
   </div>

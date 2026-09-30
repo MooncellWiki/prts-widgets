@@ -109,15 +109,19 @@ if (import.meta.env.DEV)
 const collapsible = !document.title.includes("/语音记录");
 
 /**
- * 样式来自皮肤：Arknights 皮肤已加载全套，这一行是空操作；Vector / Minerva 上
- * 动态加载令牌 + 作用域 + 组件（skins.arknights.components），挂载前等它就位。
+ * 样式来自皮肤：Arknights 皮肤已加载全套，这两个模块是空操作；Vector / Minerva 上
+ * 动态加载令牌 + 作用域 + 组件（skins.arknights.components）与官网字体
+ * （skins.arknights.fonts：芯片 / 编号用的 Bender、Novecento），挂载前等它们就位。
  * 加载失败或超时都照常挂载（无样式总比空白强），只在控制台留一条。
  */
 const STYLE_TIMEOUT = 8000;
 async function mount(root: Element) {
   try {
     await Promise.race([
-      window.mw?.loader?.using?.(["skins.arknights.components"]),
+      window.mw?.loader?.using?.([
+        "skins.arknights.components",
+        "skins.arknights.fonts",
+      ]),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), STYLE_TIMEOUT),
       ),

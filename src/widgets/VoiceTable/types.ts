@@ -30,4 +30,6 @@ export interface Props {
   cvNames?: Record<string, string>;
   /** 干员页里嵌入时默认折叠；独立的 /语音记录 页展开 */
   collapsible?: boolean;
+  /** 每条出下载图标（只在独立的 /语音记录 页给，同原版） */
+  downloadable?: boolean;
 }

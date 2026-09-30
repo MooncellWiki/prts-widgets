@@ -32,6 +32,7 @@ const listProps = () => ({
   voiceBase: props.voiceBase,
   overrideVoiceBase: props.overrideVoiceBase,
   cvNames: props.cvNames,
+  downloadable: !props.collapsible,
 });
 
 /**

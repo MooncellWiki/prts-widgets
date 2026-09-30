@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SkinVoiceType } from "../src/widgets/VoiceTable/consts";
 import {
+  buildDownloads,
   buildLanguages,
   buildSources,
   buildText,
@@ -152,6 +153,24 @@ describe("每条语音的台词与音频", () => {
     });
     // 没有文件名也没有直链：没有音频，播放钮禁用
     expect(buildSources(item({}), CHEN_BASE)).toEqual({});
+  });
+
+  it("下载给 wav 原文件，?filename= 用标题；直链原样", () => {
+    const downloads = buildDownloads(
+      item({
+        title: "任命助理",
+        fileName: "cn_001.wav",
+        placeType: "HOME_PLACE",
+        directLinks: { 日语: "https://example.com/jp/001.mp3" },
+      }),
+      CHEN_BASE.slice(0, 2),
+    );
+    expect(downloads).toEqual({
+      日语: "https://example.com/jp/001.mp3",
+      "中文-普通话":
+        "https://torappu.prts.wiki/assets/audio/voice_cn/char_010_chen/cn_001.wav?filename=%E4%BB%BB%E5%91%BD%E5%8A%A9%E7%90%86.wav",
+    });
+    expect(buildDownloads(item({}), CHEN_BASE)).toEqual({});
   });
 
   it("罗小黑覆盖路径：战斗内语音（不在 ILLUST_SHOW_TYPES）换成人形态目录", () => {
