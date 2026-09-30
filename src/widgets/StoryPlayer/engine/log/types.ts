@@ -41,6 +41,9 @@ export interface LogTextSpan {
   text: string;
   /** 来自 <color=#xxx> 标签；null 表示默认色 */
   color: string | null;
+  /** 来自 <b> / <i> 标签，仅在为 true 时出现 */
+  bold?: true;
+  italic?: true;
 }
 
 export type LogLineSource =

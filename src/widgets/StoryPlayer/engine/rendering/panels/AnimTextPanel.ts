@@ -17,7 +17,6 @@ import {
 } from "../../font";
 import {
   buildTagStyles,
-  collectColors,
   parseRichChars,
   richCharsToTaggedText,
 } from "../../richtext";
@@ -451,7 +450,7 @@ export class AnimTextPanel {
   }
 
   /**
-   * Renders `<color>` spans through the shared rich-text pipeline.
+   * Renders rich-text spans through the shared rich-text pipeline.
    *
    * Intentional deviation: native `group_location_stamp` serializes
    * `m_RichText` 0 on both Texts, and neither `InitView` (2.7.71 VA
@@ -468,13 +467,12 @@ export class AnimTextPanel {
     font: Pick<TextStyleOptions, "fontFamily" | "fontWeight">,
   ): Text {
     const chars = parseRichChars(content);
-    const colors = collectColors(chars);
     const style = new TextStyle({
       fill: "#ffffff",
       ...font,
       fontSize,
     });
-    if (colors.length > 0) style.tagStyles = buildTagStyles(colors);
+    style.tagStyles = buildTagStyles(chars);
     return new Text({ style, text: richCharsToTaggedText(chars) });
   }
 

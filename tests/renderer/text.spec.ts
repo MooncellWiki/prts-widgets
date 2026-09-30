@@ -514,6 +514,34 @@ describe("PixiStoryRenderer subtitle", () => {
     }
   });
 
+  it("renders <i> as italic, types it as zero-width and keeps it in the hidden tail", async () => {
+    vi.useFakeTimers();
+    try {
+      const { renderer } = createSubtitleRenderer();
+      const pending = renderer.setSubtitle({
+        ...baseInput,
+        delayMs: 10,
+        text: "<i>ab</i>c",
+      });
+      const subtitle = renderer.subtitleText;
+      expect(subtitle.style.tagStyles._i).toEqual({ fontStyle: "italic" });
+      // The tail stays italic so it wraps like the text it will reveal.
+      expect(subtitle.text).toBe(
+        "<_i><_c00000000>ab</_c00000000></_i><_c00000000>c</_c00000000>",
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      expect(subtitle.text).toBe(
+        "<_i>a</_i><_i><_c00000000>b</_c00000000></_i><_c00000000>c</_c00000000>",
+      );
+      // Three visible chars, three steps: the tags cost no typing time.
+      await vi.advanceTimersByTimeAsync(20);
+      expect(subtitle.text).toBe("<_i>ab</_i>c");
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reports instant subtitles as finished and applies per-line alignment", async () => {
     const { renderer } = createSubtitleRenderer();
     const onTypingComplete = vi.fn();

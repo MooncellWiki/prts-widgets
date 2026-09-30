@@ -14,10 +14,10 @@ import {
 import { parseScript } from "./parser";
 import {
   buildTagStyles,
-  collectColors,
   parseRichChars,
   richCharsToTaggedText,
   type RichChar,
+  type RichTagStyles,
 } from "./richtext";
 import { expandStoryText } from "./textVariables";
 
@@ -412,7 +412,7 @@ export class StoryRuntime {
     id: number;
     speaker: string;
     richChars: RichChar[];
-    tagStyles?: Record<string, { fill: string }>;
+    tagStyles: RichTagStyles;
   } | null = null;
   private typingSessionId = 0;
   private quickSpeedLevel = 0;
@@ -3460,17 +3460,18 @@ export class StoryRuntime {
     const initialDelayMs = this.getTypeWriterDelayMs(delayScale);
     const from = clamp(startIndex, 0, richChars.length);
     if (from >= richChars.length || initialDelayMs <= 0) {
-      const tagged = richCharsToTaggedText(richChars);
-      const colors = collectColors(richChars);
-      const ts = colors.length > 0 ? buildTagStyles(colors) : undefined;
-      this.renderer.setDialogue(translatedSpeaker, tagged, ts, layout);
+      this.renderer.setDialogue(
+        translatedSpeaker,
+        richCharsToTaggedText(richChars),
+        buildTagStyles(richChars),
+        layout,
+      );
       this.onTypingComplete();
       return;
     }
 
     const sessionId = ++this.typingSessionId;
-    const colors = collectColors(richChars);
-    const tagStyles = colors.length > 0 ? buildTagStyles(colors) : undefined;
+    const tagStyles = buildTagStyles(richChars);
     this.typingSession = {
       id: sessionId,
       speaker: translatedSpeaker,

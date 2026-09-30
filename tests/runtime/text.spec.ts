@@ -159,6 +159,31 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("types dialogue <i> spans as zero-width and renders them as italic runs", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]<i>ab</i>c']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
+
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(200);
+      // Native AVGTypeWriterText skips every tag without a typing step and
+      // closes the open ones on each prefix.
+      expect(renderer.dialogueTexts.filter(Boolean)).toEqual([
+        "<_i>a</_i>",
+        "<_i>ab</_i>",
+        "<_i>ab</_i>c",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("maps subtitle show and clear commands", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
