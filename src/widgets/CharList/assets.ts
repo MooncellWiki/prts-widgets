@@ -1,6 +1,8 @@
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getImagePath } from "@/utils/utils";
 
+import { BRANCH_KEYS } from "./branchKeys";
+
 import type { Char } from "./utils";
 
 // 一页几十上百行都要同一批图标，md5 只算一次
@@ -35,9 +37,13 @@ export const professionLine = (profession: string) => {
     ? `${TORAPPU_ENDPOINT}/assets/profession_icon/icon_profession_${key}.png`
     : media(`图标_职业_透明_${profession}.png`);
 };
-/** 分支白线稿（透明底），同上 */
-export const branchLine = (branch: string) =>
-  media(`职业分支图标_${branch}.png`);
+/** 分支白线稿（透明底），同上：先查表从 torappu 取，表里没有的走 media */
+export const branchLine = (branch: string) => {
+  const key = BRANCH_KEYS[branch];
+  return key
+    ? `${TORAPPU_ENDPOINT}/assets/subprofession_icon/sub_${key}_icon.png`
+    : media(`职业分支图标_${branch}.png`);
+};
 
 // 头像 / 半身像按游戏内 ID 从 torappu 取；模板没给 ID 的（旧缓存页面）照旧按中文名走 media。
 // torappu 上缺图的（升变阿米娅只有 _2）加载失败后由 fallbackImage 换回 media 那张

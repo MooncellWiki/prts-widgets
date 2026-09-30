@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   avatar,
+  branchLine,
   fallbackImage,
   halfPortrait,
   professionLine,
 } from "@/widgets/CharList/assets";
+import { BRANCH_KEYS } from "@/widgets/CharList/branchKeys";
 import { convertFeature } from "@/widgets/CharList/feature";
 import {
   createFilters,
@@ -15,6 +17,7 @@ import {
   matchFilter,
   matchText,
 } from "@/widgets/CharList/filter";
+import { FILTER_GROUPS } from "@/widgets/CharList/filterGroups";
 import { buildHash, readHash } from "@/widgets/CharList/hash";
 import { sortChars } from "@/widgets/CharList/sort";
 import { charStats, splitUnit } from "@/widgets/CharList/stats";
@@ -193,6 +196,27 @@ describe("职业图标地址", () => {
   it("表里没有的职业按中文名走 media", () => {
     expect(professionLine("召唤物")).toMatch(
       /^https:\/\/media\.prts\.wiki\/.\/..\/图标_职业_透明_召唤物\.png$/,
+    );
+  });
+});
+
+describe("分支图标地址", () => {
+  it("查得到 key 的从 torappu 取", () => {
+    expect(branchLine("中坚术师")).toBe(
+      "https://torappu.prts.wiki/assets/subprofession_icon/sub_corecaster_icon.png",
+    );
+  });
+
+  it("筛选项里的分支都有 key", () => {
+    const branches = FILTER_GROUPS.flatMap((g) => g.filter).find(
+      (f) => f.field === "subProfession",
+    )!.cbt;
+    expect(branches.filter((b) => !(String(b) in BRANCH_KEYS))).toEqual([]);
+  });
+
+  it("表里没有的分支按中文名走 media", () => {
+    expect(branchLine("新分支")).toMatch(
+      /^https:\/\/media\.prts\.wiki\/.\/..\/职业分支图标_新分支\.png$/,
     );
   });
 });

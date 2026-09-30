@@ -4,7 +4,7 @@ import type { FilterGroup } from "./utils";
  * 筛选项定义：每行的标题、字段名（对应 Char 上的属性）、选项、有没有「同时满足」。
  * 选项写成 { label, value } = 一个选项管好几个值；带「其他」的行，「其他」= 值不在本行任何选项里。
  * 原先是 wiki 上的 微件:CharList/filter（模板输出到 #filter-filter），现在直接写在这里：
- * 出了新分支 / 新势力改这个文件。怎么归类摆放见 consts.ts。
+ * 出了新分支 / 新势力改这个文件（新分支的图标 key 加到 branchKeys.ts）。怎么归类摆放见 consts.ts。
  */
 export const FILTER_GROUPS: FilterGroup[] = [
   {
