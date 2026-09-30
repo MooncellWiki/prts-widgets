@@ -5,7 +5,7 @@ import {
   buildDownloads,
   buildLanguages,
   buildSources,
-  buildText,
+  buildTexts,
   htmlToText,
   langBadge,
   langCode,
@@ -117,7 +117,7 @@ describe("语种芯片", () => {
 });
 
 describe("每条语音的台词与音频", () => {
-  it("选中的几种语言一种一行，HTML 只留文字，空台词跳过", () => {
+  it("台词按文本差分名组织，HTML 只留文字，空台词不进对象", () => {
     const voice = item({
       detail: {
         中文: "博士，现在起由我担任你的护卫。",
@@ -125,11 +125,10 @@ describe("每条语音的台词与音频", () => {
         繁体中文: "",
       },
     });
-    expect(buildText(voice, ["中文"])).toBe("博士，现在起由我担任你的护卫。");
-    expect(buildText(voice, ["中文", "繁体中文", "英文"])).toBe(
-      "博士，现在起由我担任你的护卫。\nI am quite skilled at teamwork.",
-    );
-    expect(buildText(voice, ["日文"])).toBe("");
+    expect(buildTexts(voice, ["中文", "繁体中文", "英文", "日文"])).toEqual({
+      中文: "博士，现在起由我担任你的护卫。",
+      英文: "I am quite skilled at teamwork.",
+    });
     expect(htmlToText("a&amp;b <span>c</span>")).toBe("a&b c");
   });
 

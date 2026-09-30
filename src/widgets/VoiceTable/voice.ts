@@ -135,15 +135,17 @@ export function htmlToText(html: string): string {
   return text.replace(/\s*\n\s*/g, " ").trim();
 }
 
-/** 选中的几种语言的台词，一种一行（空台词跳过，繁体差分常缺节日语音） */
-export function buildText(
+/** 各文本语种的台词（键 = 文本差分名，AkVoiceList 按选中的几种取）；空台词不进对象，繁体差分常缺节日语音 */
+export function buildTexts(
   item: VoiceDataItem,
   kinds: readonly string[],
-): string {
-  return kinds
-    .map((kind) => htmlToText(item.detail[kind] ?? ""))
-    .filter(Boolean)
-    .join("\n");
+): Record<string, string> {
+  const texts: Record<string, string> = {};
+  for (const kind of kinds) {
+    const text = htmlToText(item.detail[kind] ?? "");
+    if (text) texts[kind] = text;
+  }
+  return texts;
 }
 
 /** 文件名 → 标题行里的编号：CN_001.wav → CN_001 */
