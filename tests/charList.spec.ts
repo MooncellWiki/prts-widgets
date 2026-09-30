@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { avatar, fallbackImage, halfPortrait } from "@/widgets/CharList/assets";
+import {
+  avatar,
+  fallbackImage,
+  halfPortrait,
+  professionLine,
+} from "@/widgets/CharList/assets";
 import { convertFeature } from "@/widgets/CharList/feature";
 import {
   createFilters,
@@ -172,6 +177,23 @@ describe("头像 / 半身像地址", () => {
 
     img.dispatchEvent(new Event("error"));
     expect(img.src).toBe(media);
+  });
+});
+
+describe("职业图标地址", () => {
+  it("八个职业从 torappu 取", () => {
+    expect(professionLine("术师")).toBe(
+      "https://torappu.prts.wiki/assets/profession_icon/icon_profession_caster.png",
+    );
+    expect(professionLine("近卫")).toBe(
+      "https://torappu.prts.wiki/assets/profession_icon/icon_profession_warrior.png",
+    );
+  });
+
+  it("表里没有的职业按中文名走 media", () => {
+    expect(professionLine("召唤物")).toMatch(
+      /^https:\/\/media\.prts\.wiki\/.\/..\/图标_职业_透明_召唤物\.png$/,
+    );
   });
 });
 
