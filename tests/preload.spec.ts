@@ -14,7 +14,8 @@ import {
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 
-const { loadMock } = vi.hoisted(() => ({
+const { loadFontMock, loadMock } = vi.hoisted(() => ({
+  loadFontMock: vi.fn(async (_font: { family: string }) => {}),
   // 对齐 pixi v8 Assets.load 第二参数签名:可以是裸 progress 回调,也可以是
   // LoadOptions({ onProgress, onError, ... })。两种都从 onProgress 求值。
   loadMock: vi.fn(
@@ -44,6 +45,11 @@ vi.mock("pixi.js", () => ({
   GlProgram: { from: () => ({}) },
   GpuProgram: { from: () => ({}) },
   UniformGroup: class {},
+}));
+
+vi.mock("../src/widgets/StoryPlayer/engine/font", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  loadFont: loadFontMock,
 }));
 
 function createContext(script: readonly string[]): Context {
@@ -115,6 +121,8 @@ function createContext(script: readonly string[]): Context {
 describe("preloadContextAssets", () => {
   beforeEach(() => {
     loadMock.mockClear();
+    loadFontMock.mockClear();
+    loadFontMock.mockImplementation(async () => {});
   });
 
   it("exposes the deduplicated asset URLs without loading them", () => {
@@ -152,6 +160,70 @@ describe("preloadContextAssets", () => {
     );
     const loadedWithoutStamp = loadMock.mock.calls[0]![0] as string[];
     expect(loadedWithoutStamp).toEqual(expect.not.arrayContaining(stampUrls));
+  });
+
+  it("loads the dialog font always and the animtext / sami fonts only when used", async () => {
+    const fontsFor = async (script: readonly string[]): Promise<string[]> => {
+      loadFontMock.mockClear();
+      await preloadContextAssets(createContext(script));
+      return loadFontMock.mock.calls.map(([font]) => font.family);
+    };
+
+    expect(await fontsFor(['[background(image="bg_rhodes_day")]'])).toEqual([
+      "NotoSansHans-Medium",
+    ]);
+    expect(
+      await fontsFor([
+        '[animtext(id="at1",name="group_location_stamp",style="avg_both",pos="-400,-200",block=false)]<p=1>主</><p=2>副</>',
+      ]),
+    ).toEqual(["NotoSansHans-Medium", "SourceHanSansCN-Heavy"]);
+
+    const sami = ["NotoSansHans-Medium", "方正特雅宋_GBK", "RoHMinSinkStd-UB"];
+    expect(
+      await fontsFor([
+        '[spellsticker(id="spell1", action="show", style="sami", block=true)]<p=1>命运啊，张口！</>',
+      ]),
+    ).toEqual(sami);
+    // runtime 缺省 style 为 sami、比较不区分大小写。
+    expect(await fontsFor(['[spellsticker(id="spell1")]<p=1>x</>'])).toEqual(
+      sami,
+    );
+    expect(
+      await fontsFor(['[spellsticker(id="spell1", style="SAMI")]<p=1>x</>']),
+    ).toEqual(sami);
+    // 只有火焰贴纸；不写 style 的 hide 不显示贴纸，不算萨米。
+    expect(
+      await fontsFor([
+        '[spellsticker(id="spell2", action="show", style="fire", block=true)]<p=1>夜雪无痕，噤声。</>',
+        '[spellsticker(id="spell2", action="hide")]',
+        "[spellstickerclear(block=false)]",
+      ]),
+    ).toEqual(["NotoSansHans-Medium"]);
+  });
+
+  it("counts each font as one unit and only reports 1 once the fonts are loaded", async () => {
+    let finishFonts!: () => void;
+    const fontsPending = new Promise<void>((resolve) => {
+      finishFonts = resolve;
+    });
+    loadFontMock.mockImplementation(() => fontsPending);
+    const progress = vi.fn();
+
+    const done = preloadContextAssets(
+      createContext([
+        '[background(image="bg_rhodes_day")]',
+        '[spellsticker(id="spell1", style="sami")]<p=1>x</>',
+      ]),
+      progress,
+    );
+    await vi.waitFor(() => expect(loadMock).toHaveBeenCalledTimes(1));
+    // 背景图 + 对话框贴片两条资源已完成，三款字体还在下载：2 / 5。
+    expect(progress).toHaveBeenLastCalledWith(2 / 5);
+    expect(progress).not.toHaveBeenCalledWith(1);
+
+    finishFonts();
+    await done;
+    expect(progress).toHaveBeenLastCalledWith(1);
   });
 
   it("lists every face for a used base and marks referenced faces", () => {

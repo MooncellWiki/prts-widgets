@@ -9,7 +9,7 @@ import {
 } from "pixi.js";
 
 import { DIALOG_FRAME_URL } from "../../../assets";
-import { DIALOG_FONT_FAMILY } from "../../font";
+import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH, type DialogueLayout } from "../../types";
 
 /**
@@ -81,7 +81,7 @@ export class DialogPanel {
         fill: "#929292",
         fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
         fontSize: DialogPanel.NAME_FONT_MAX,
-        fontWeight: "700",
+        fontWeight: DIALOG_FONT_WEIGHT,
       }),
       text: "",
     });
@@ -97,7 +97,7 @@ export class DialogPanel {
         fill: "#ffffff",
         fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
         fontSize: 24,
-        fontWeight: "700",
+        fontWeight: DIALOG_FONT_WEIGHT,
         lineHeight: 0,
         whiteSpace: "pre",
         wordWrap: true,

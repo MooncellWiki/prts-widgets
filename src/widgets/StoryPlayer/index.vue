@@ -263,30 +263,33 @@ async function initAndPreload(): Promise<void> {
   preloadError.value = null;
   preloadProgress.value = 0;
 
+  const host = hostRef.value;
   try {
-    context = await loadContextByScript(script);
+    const storyContext = await loadContextByScript(script);
+    context = storyContext;
 
-    // 对话 UI 字体必须先加载完，否则 PIXI 的 CanvasTextMetrics 会用回退字体
-    // 测量，导致 BestFit 字号和长文本 Y 偏移算错。
-    await preloadDialogFont();
-
-    if (!player && context) {
-      player = createStoryPlayer(context);
-      await player.mount(hostRef.value);
-      // 当前行号走推送（Web 适配），Log All 高亮即时更新；其余状态仍靠下方轮询。
-      // 订阅即补发当前值，重开一局时高亮不会停在上一局最后一行
-      player.onDisplayedLineChange(
-        (lineIndex) => (logAllActiveLineIndex.value = lineIndex),
-      );
-      syncState();
-      if (!timer) timer = setInterval(syncState, 80);
-    }
-
-    if (!context) throw new Error("故事资源未初始化");
-
-    await preloadContextAssets(context, (progress) => {
-      preloadProgress.value = progress;
-    });
+    // 剧情资源与字体（含对话字体）一起开始下载，进度条统计两者。
+    await Promise.all([
+      preloadContextAssets(storyContext, (progress) => {
+        preloadProgress.value = progress;
+      }),
+      (async () => {
+        // 对话 UI 字体必须在 mount 前加载完（与上面是同一个 Promise），否则
+        // PIXI 的 CanvasTextMetrics 会用回退字体测量，导致 BestFit 字号和长文本
+        // Y 偏移算错。
+        await preloadDialogFont();
+        if (player) return;
+        player = createStoryPlayer(storyContext);
+        await player.mount(host);
+        // 当前行号走推送（Web 适配），Log All 高亮即时更新；其余状态仍靠下方轮询。
+        // 订阅即补发当前值，重开一局时高亮不会停在上一局最后一行
+        player.onDisplayedLineChange(
+          (lineIndex) => (logAllActiveLineIndex.value = lineIndex),
+        );
+        syncState();
+        if (!timer) timer = setInterval(syncState, 80);
+      })(),
+    ]);
     preloadProgress.value = 1;
     preloadReady.value = true;
     hostRef.value?.focus();

@@ -6,7 +6,7 @@ import {
   type Container as ContainerType,
 } from "pixi.js";
 
-import { DIALOG_FONT_FAMILY } from "../../font";
+import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH, type DecisionSelection } from "../../types";
 
 function paintButton(
@@ -70,6 +70,7 @@ export class DecisionPanel {
           fill: "#ffffff",
           fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
           fontSize: 20,
+          fontWeight: DIALOG_FONT_WEIGHT,
         }),
         text: option,
       });

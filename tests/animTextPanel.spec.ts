@@ -149,8 +149,38 @@ describe("AnimTextPanel", () => {
       layer,
       input({ content: "<p=1><color=#ff0000>红</color>字</>" }),
     );
+    // Intentional deviation from the prefab's m_RichText 0: see
+    // AnimTextPanel.text.
     expect(main.text).toBe("<_cff0000>红</_cff0000>字");
     expect(main.style.tagStyles).toEqual({ _cff0000: { fill: "#ff0000" } });
+  });
+
+  it("uses the prefab's DynFontLoader fonts for the two slots", async () => {
+    const layer = new Container();
+    const panel = new AnimTextPanel(layer, pendingTween);
+    const { main, sub } = await stampTexts(
+      panel,
+      layer,
+      input({ content: "<p=1>主</><p=2>副</>" }),
+    );
+    const font = ({ style }: Text) => ({
+      fontFamily: [style.fontFamily].flat()[0],
+      fontSize: style.fontSize,
+      fontStyle: style.fontStyle,
+      fontWeight: style.fontWeight,
+    });
+    expect(font(main)).toEqual({
+      fontFamily: "SourceHanSansCN-Heavy",
+      fontSize: 30,
+      fontStyle: "normal",
+      fontWeight: "900",
+    });
+    expect(font(sub)).toEqual({
+      fontFamily: "NotoSansHans-Medium",
+      fontSize: 26,
+      fontStyle: "normal",
+      fontWeight: "500",
+    });
   });
 });
 

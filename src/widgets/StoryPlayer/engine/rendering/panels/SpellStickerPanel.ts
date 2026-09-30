@@ -5,7 +5,13 @@ import {
   type Container as ContainerType,
 } from "pixi.js";
 
-import { DIALOG_FONT_FAMILY } from "../../font";
+import {
+  DIALOG_FONT_FAMILY,
+  DIALOG_FONT_WEIGHT,
+  SAMI_FONT_WEIGHT,
+  SAMI_MAIN_FONT_FAMILY,
+  SAMI_SUB_FONT_FAMILY,
+} from "../../font";
 import { STORY_HEIGHT, STORY_WIDTH, type SpellStickerInput } from "../../types";
 
 /**
@@ -138,14 +144,20 @@ export class SpellStickerPanel {
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     const sami = style === "sami";
     const [mainInputText, subInputText] = PREFAB_INPUT_TEXT[style];
+    // Prefab fonts come from DynFontLoader: fire loads NotoSansHans-Medium
+    // (main Italic, sub Normal), sami loads 方正特雅宋_GBK (main) and
+    // RoHMinSinkStd-UB (sub), both FontStyle Italic and neither Bold. Sami
+    // falls back to serif, the closer generic for these Song/Mincho faces.
     const main = new Text({
       label: "text_spell_main",
       style: new TextStyle({
         fill: "#ffffff",
-        fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
+        fontFamily: sami
+          ? [SAMI_MAIN_FONT_FAMILY, "serif"]
+          : [DIALOG_FONT_FAMILY, "sans-serif"],
         fontSize: sami ? 32 : 24,
         fontStyle: "italic",
-        fontWeight: "bold",
+        fontWeight: sami ? SAMI_FONT_WEIGHT : DIALOG_FONT_WEIGHT,
       }),
       text: mainInputText,
     });
@@ -155,10 +167,12 @@ export class SpellStickerPanel {
       label: "text_spell_sub",
       style: new TextStyle({
         fill: "rgba(255,255,255,0.5608)",
-        fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
+        fontFamily: sami
+          ? [SAMI_SUB_FONT_FAMILY, "serif"]
+          : [DIALOG_FONT_FAMILY, "sans-serif"],
         fontSize: sami ? 16 : 14,
         fontStyle: sami ? "italic" : "normal",
-        fontWeight: sami ? "bold" : "normal",
+        fontWeight: sami ? SAMI_FONT_WEIGHT : DIALOG_FONT_WEIGHT,
       }),
       text: subInputText,
     });

@@ -21,6 +21,7 @@ import {
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
+import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
 import {
   buildTagStyles,
   collectColors,
@@ -4633,8 +4634,10 @@ export class PixiStoryRenderer implements StoryRenderer {
         distance: 0,
       },
       fill: "#ffffff",
-      fontFamily: ["Noto Sans SC", "Microsoft YaHei", "sans-serif"],
+      // panel_subtitle and the sticker / timer prefabs use the dialog font too.
+      fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
       fontSize,
+      fontWeight: DIALOG_FONT_WEIGHT,
       whiteSpace: "pre-line",
       wordWrap: true,
       wordWrapWidth: widthPx,
