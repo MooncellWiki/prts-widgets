@@ -22,7 +22,7 @@ import { useCharListStore } from "./store";
 import { useHostTheme } from "./useHostTheme";
 import { useTermTip } from "./useTermTip";
 
-import type { Char, FilterGroup } from "./utils";
+import type { Char } from "./utils";
 
 /**
  * 干员一览（PRTS Design 视觉，对应设计稿 /patterns/operators）：
@@ -31,12 +31,11 @@ import type { Char, FilterGroup } from "./utils";
  * 状态都在 store.ts（pinia）里；根节点标 ak-not-prose，不吃皮肤的正文排版。
  */
 const props = defineProps<{
-  filters: FilterGroup[];
   source: Char[];
 }>();
 
 const store = useCharListStore();
-store.init(props.filters, props.source);
+store.init(props.source);
 const { state } = store;
 const { list } = storeToRefs(store);
 

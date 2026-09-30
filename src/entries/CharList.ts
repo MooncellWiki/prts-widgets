@@ -3,13 +3,9 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 
 import CharList from "../widgets/CharList/index.vue";
-import { Char, type FilterGroup } from "../widgets/CharList/utils";
+import { Char } from "../widgets/CharList/utils";
 
 const ele = document.querySelector("#root");
-const filters = JSON.parse(
-  document.querySelector("#filter-filter")?.textContent ?? "",
-).filters as FilterGroup[];
-
 const source = Array.from(
   document.querySelector("#filter-data")?.children ?? [],
   (v) => new Char(v as HTMLDivElement),
@@ -27,7 +23,7 @@ if (ele) {
   (window.RLQ = window.RLQ || []).push([
     STYLE_MODULES,
     () => {
-      createApp(CharList, { filters, source }).use(createPinia()).mount(ele);
+      createApp(CharList, { source }).use(createPinia()).mount(ele);
     },
   ]);
 }

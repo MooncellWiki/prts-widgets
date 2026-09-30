@@ -41,7 +41,7 @@ function makeChar(attrs: Record<string, string> = {}, html = "") {
   return new Char(el);
 }
 
-// 筛选项定义的形状同现网 #filter-filter（只留用得到的几行）
+// 筛选项定义的形状同 filterGroups.ts（只留用得到的几行）
 const GROUPS: FilterGroup[] = [
   {
     title: "筛选",

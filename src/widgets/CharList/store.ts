@@ -22,11 +22,12 @@ import {
   normalizeNeedle,
   type FilterState,
 } from "./filter";
+import { FILTER_GROUPS } from "./filterGroups";
 import { buildHash, readHash, type HashState } from "./hash";
 import { sortChars } from "./sort";
 import { charStats, type CharStats } from "./stats";
 
-import type { Char, FilterGroup } from "./utils";
+import type { Char } from "./utils";
 
 /** 高级筛选开没开、停在哪个页签，记在 localStorage */
 const ADVANCED_KEY = "olFilterAdvanced";
@@ -51,7 +52,7 @@ const initialView = (): ViewMode =>
 
 /**
  * 干员一览的全部状态：筛选 / 搜索 / 排序 / 数值加算 / 显示方式 / 分页，以及和地址栏 # 参数的同步。
- * 数据（筛选项定义 + 干员）来自模板输出的 DOM，index.vue 挂载时 init() 灌进来，各块组件直接取用。
+ * 筛选项定义写在 filterGroups.ts；干员数据来自模板输出的 DOM，index.vue 挂载时 init() 灌进来，各块组件直接取用。
  */
 export const useCharListStore = defineStore("charList", () => {
   const chars = shallowRef<Char[]>([]);
@@ -168,9 +169,9 @@ export const useCharListStore = defineStore("charList", () => {
     normalize();
   }
 
-  function init(groups: FilterGroup[], source: Char[]) {
+  function init(source: Char[]) {
     chars.value = source;
-    filters.value = createFilters(groups);
+    filters.value = createFilters(FILTER_GROUPS);
     syncFromHash();
   }
 
