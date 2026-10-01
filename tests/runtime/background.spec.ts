@@ -306,6 +306,28 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("reads a trailing-dot imagetween scale like the other numeric params", async () => {
+    // act26side_07_end.txt:86：`xScaleFrom=1.` 经 DotNetExtensionMethods.GetFloat
+    // 同样走 Convert.ToSingle，读成 1 而不是当作缺省。
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[ImageTween(fadetime=0.5, xScaleFrom=1., yScaleFrom=1, xScaleTo=0.85, yScaleTo=0.85,duration=12)]",
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.imageTweenCalls[0]).toMatchObject({
+      xScaleFrom: 1,
+      xScaleTo: 0.85,
+      yScaleFrom: 1,
+      yScaleTo: 0.85,
+    });
+  });
+
   it("maps backgroundtween ease and loop and warns on loop with block", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];

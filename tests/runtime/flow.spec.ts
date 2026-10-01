@@ -59,6 +59,29 @@ describe("StoryRuntime", () => {
     expect(sleep.mock.calls).toEqual([[500], [0]]);
   });
 
+  it("converts delay time through native Convert.ToSingle's accepted forms", async () => {
+    const sleep = vi.fn(async () => {});
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=true)]",
+        '[delay(time="1e1")]',
+        "[delay(time=.5)]",
+        "[delay(time=2.)]",
+        '[delay(time="abc")]',
+        '[name="A"]done',
+      ]),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep },
+    );
+
+    await runtime.start();
+
+    // bool 转 1/0、指数记法与首尾小数点都按数字读；double.Parse 拒绝的
+    // "abc" 在 native 抛 FormatException，这里温和回落到缺省 0。
+    expect(sleep.mock.calls).toEqual([[1000], [10_000], [500], [2000], [0]]);
+  });
+
   it("resets auto play mode when clicked while a delay blocks, without interrupting it", async () => {
     const pendingSleeps: Array<() => void> = [];
     const sleep = vi.fn(

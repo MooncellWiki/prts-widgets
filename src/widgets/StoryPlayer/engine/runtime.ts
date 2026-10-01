@@ -185,14 +185,19 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Native port: `Command.GetOrDefault<float>` runs the JSON-boxed parameter
- * value through `System.Convert.ToSingle` (2.7.71 `Command.TryGetParam`
- * VA 0x183EF3950) — `true`/`false` convert to 1/0 and exponent-notation
- * strings ("1e2") parse like any JSON number. Values double.Parse rejects
- * (e.g. "abc") throw FormatException in native; the fallback is kept here
- * instead of breaking playback.
+ * Native port: `Command.GetOrDefault<float>` (2.7.71 `Command.TryGetParam`
+ * VA 0x183EF3950) and `DotNetExtensionMethods.GetFloat` (VA 0x1862F7660)
+ * both run the JSON-boxed parameter value through `System.Convert.ToSingle`
+ * — `true`/`false` convert to 1/0 and exponent-notation strings ("1e2")
+ * parse like any JSON number. A trailing decimal point is a number too:
+ * `AVGParser._ParseCommand` deserializes the parameters with Newtonsoft,
+ * whose `JsonTextReader.ParseNumber` hands an unquoted `afrom = 0.` to
+ * `Double.TryParse(NumberStyles.Float)`, so corpus lines such as
+ * level_main_15-01_end.txt:742 read 0, not the fallback. Values double.Parse
+ * rejects (e.g. "abc") throw FormatException in native; `undefined` (the
+ * caller's fallback) is kept here instead of breaking playback.
  */
-function toNumber(value: unknown, fallback = 0): number {
+function toOptionalNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "boolean") return value ? 1 : 0;
   if (
@@ -200,14 +205,11 @@ function toNumber(value: unknown, fallback = 0): number {
     /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(value.trim())
   )
     return Number(value);
-  return fallback;
+  return undefined;
 }
 
-function toOptionalNumber(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && /^-?\d+(?:\.\d+)?$/.test(value))
-    return Number(value);
-  return undefined;
+function toNumber(value: unknown, fallback = 0): number {
+  return toOptionalNumber(value) ?? fallback;
 }
 
 function toBoolean(value: unknown, fallback = false): boolean {
