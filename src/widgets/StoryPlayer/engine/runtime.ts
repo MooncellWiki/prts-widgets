@@ -184,18 +184,32 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && /^-?\d+(?:\.\d+)?$/.test(value))
-    return Number(value);
-  return fallback;
-}
-
+/**
+ * Native port: `Command.GetOrDefault<float>` (2.7.71 `Command.TryGetParam`
+ * VA 0x183EF3950) and `DotNetExtensionMethods.GetFloat` (VA 0x1862F7660)
+ * both run the JSON-boxed parameter value through `System.Convert.ToSingle`
+ * — `true`/`false` convert to 1/0 and exponent-notation strings ("1e2")
+ * parse like any JSON number. A trailing decimal point is a number too:
+ * `AVGParser._ParseCommand` deserializes the parameters with Newtonsoft,
+ * whose `JsonTextReader.ParseNumber` hands an unquoted `afrom = 0.` to
+ * `Double.TryParse(NumberStyles.Float)`, so corpus lines such as
+ * level_main_15-01_end.txt:742 read 0, not the fallback. Values double.Parse
+ * rejects (e.g. "abc") throw FormatException in native; `undefined` (the
+ * caller's fallback) is kept here instead of breaking playback.
+ */
 function toOptionalNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && /^-?\d+(?:\.\d+)?$/.test(value))
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (
+    typeof value === "string" &&
+    /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(value.trim())
+  )
     return Number(value);
   return undefined;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  return toOptionalNumber(value) ?? fallback;
 }
 
 function toBoolean(value: unknown, fallback = false): boolean {
@@ -733,11 +747,22 @@ export class StoryRuntime {
       return;
     }
 
-    if (this.state !== "waiting_input") return;
-
+    // Native port: Torappu.AVG.AVGController.OnClickPress (2.7.61 VA
+    // 0x183E15900) resets the auto play mode to DEFAULT on every non-theater
+    // press, with no regard for what the command loop is currently blocked
+    // on -- a press landing inside a blocking `delay` still flips quick_play's
+    // animateRatio back to 1 so delays enqueued afterwards keep real-time
+    // pacing. The press never interrupts the wait itself (OnClickPress does
+    // not touch the blocking executors), which the waiting_input gate below
+    // preserves: the player has no pause semantics and advance() stays a
+    // no-op for the story flow. Theater presses return before this side
+    // effect (native isTheaterMode early-out at 0x183E159B2).
     if (this.theaterMode) return;
 
     this.setAutoPlayMode("default");
+
+    if (this.state !== "waiting_input") return;
+
     await this.advanceFromClick();
   }
 
@@ -872,13 +897,21 @@ export class StoryRuntime {
     else if (shouldResume) await this.processLoop();
   }
 
+  /**
+   * Native port: `AVGController.get_animateRatio` resolves every gear via
+   * `CollectionExtensions.SafeGet(table, level, default: _dialogDefaultSpeed)`
+   * (2.7.71 VA 0x183ECBA00) — an out-of-range level lands on the default
+   * speed table (animateRatio 1), never on quick gear 0 (ratio 0, which would
+   * keep zeroing delays). Button-auto keeps its gear-0 fallback: both tables
+   * agree on animateRatio and typing there.
+   */
   private getCurrentSpeed(): AutoSpeed {
     if (this.autoPlayMode === "button_auto")
       return (
         BUTTON_AUTO_SPEEDS[this.buttonSpeedLevel] ?? BUTTON_AUTO_SPEEDS[0]!
       );
     if (this.autoPlayMode === "quick_play")
-      return QUICK_AUTO_SPEEDS[this.quickSpeedLevel] ?? QUICK_AUTO_SPEEDS[0]!;
+      return QUICK_AUTO_SPEEDS[this.quickSpeedLevel] ?? this.defaultSpeed;
     return this.defaultSpeed;
   }
 

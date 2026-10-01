@@ -53,6 +53,97 @@ describe("StoryRuntime", () => {
     expect(sleep.mock.calls).toEqual([[500], [0]]);
   });
 
+  it("converts delay time through native Convert.ToSingle's accepted forms", async () => {
+    const sleep = vi.fn(async () => {});
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=true)]",
+        '[delay(time="1e1")]',
+        "[delay(time=.5)]",
+        "[delay(time=2.)]",
+        '[delay(time="abc")]',
+        '[name="A"]done',
+      ]),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep },
+    );
+
+    await runtime.start();
+
+    // bool 转 1/0、指数记法与首尾小数点都按数字读；double.Parse 拒绝的
+    // "abc" 在 native 抛 FormatException，这里温和回落到缺省 0。
+    expect(sleep.mock.calls).toEqual([[1000], [10_000], [500], [2000], [0]]);
+  });
+
+  it("resets auto play mode when clicked while a delay blocks, without interrupting it", async () => {
+    const pendingSleeps: Array<() => void> = [];
+    const sleep = vi.fn(
+      () => new Promise<void>((resolve) => pendingSleeps.push(resolve)),
+    );
+    const runtime = new StoryRuntime(
+      createContext(["[delay(time=2)]", "[delay(time=3)]", '[name="A"]done']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep },
+    );
+
+    runtime.setAutoPlayMode("quick_play");
+    const startPromise = runtime.start();
+
+    // quick_play 的 animateRatio=0 把第一条 delay 折叠成 0ms。
+    await vi.waitFor(() => expect(sleep).toHaveBeenCalledExactlyOnceWith(0));
+    expect(runtime.getState()).toBe("waiting_timer");
+
+    await runtime.advance();
+
+    // 点击不能打断等待（native OnClickPress 不触碰阻塞执行器），但必须
+    // 把模式重置为 default，让之后入队的 delay 恢复真实时长。
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+
+    pendingSleeps[0]!();
+    await vi.waitFor(() => expect(sleep).toHaveBeenCalledTimes(2));
+
+    expect(sleep).toHaveBeenLastCalledWith(3000);
+
+    pendingSleeps[1]!();
+    await startPromise;
+
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("keeps theater presses inert while a delay blocks", async () => {
+    const pendingSleeps: Array<() => void> = [];
+    const sleep = vi.fn(
+      () => new Promise<void>((resolve) => pendingSleeps.push(resolve)),
+    );
+    const runtime = new StoryRuntime(
+      createContext(["[theater]", "[delay(time=2)]"]),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep },
+    );
+
+    const startPromise = runtime.start();
+    await vi.waitFor(() => expect(sleep).toHaveBeenCalledExactlyOnceWith(2000));
+
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+    await runtime.advance();
+
+    // theater 模式下 native OnClickPress 整体早退，连模式重置都不做。
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+    pendingSleeps[0]!();
+    await startPromise;
+
+    // 脚本尾部的隐式 endtip 在 button_auto 下阻塞，与点击无关。
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
   it("uses native defaults for bare theater and restores manual input on exit", async () => {
     vi.useFakeTimers();
     try {

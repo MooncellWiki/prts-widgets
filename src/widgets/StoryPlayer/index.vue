@@ -101,9 +101,10 @@ const controlsDisabled = computed(
     state.value === "error",
 );
 
-// 推进只在这两个状态下有效：runtime.advance() 对 running / waiting_timer /
-// waiting_video / waiting_decision 都是直接返回。播放器没有暂停语义（native 的
-// AVG 全靠点击驱动），所以这个按钮只表达"推进"。
+// 推进只在这两个状态下有效：runtime.advance() 在 running / waiting_timer /
+// waiting_video / waiting_decision 下不推进，只按 native OnClickPress 把自动
+// 播放模式重置为手动。播放器没有暂停语义（native 的 AVG 全靠点击驱动），
+// 所以这个按钮只表达"推进"。
 const canAdvance = computed(
   () =>
     preloadReady.value &&

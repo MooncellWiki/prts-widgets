@@ -43,7 +43,7 @@ Log All 高亮与调试页行跟随都订阅它。
 | `engine/font.ts` | FontFace 显式预载客户端字体（对话 NotoSansHans-Medium；animtext、萨米 spellsticker 的字体由 preload.ts 按需加载并计入进度），必须在 PIXI 测量前完成 |
 | `engine/rendering/PixiStoryRenderer.ts` | `StoryRenderer` 的 PIXI 实现，逻辑坐标恒 1280×720 |
 | `engine/rendering/panels/` | 各命令 UI 面板：Dialog/Decision/Video/Interlude/CgItem/AvgDisplay/AnimText/SpellSticker/FocusEffect |
-| `engine/rendering/core/` | `LayerGraph`（层序）、`TweenRunner`、`Shake-path`（镜头抖动）、`SceneGeometry` |
+| `engine/rendering/core/` | `LayerGraph`（层序）、`TweenRunner`、`Shake-path`（镜头抖动）、`SceneGeometry`、`ClickClaim`（点击归属） |
 | `engine/log/` | `semantics`（与 runtime 共享的纯语义）→ `symbolicFlow`（符号状态 DAG）→ `condition`（DNF 路径条件）→ `document`（UI 投影） |
 | `engine/` 其余 | `richtext`（富文本颜色）、`textVariables`（`{@xxx}` 展开，nickname 取 `wgUserName` 兜底"博士"）、`showitem`（960×540→1280×720）、`audio` |
 | `components/` | LogAllPanel/LogAllList、AssetListModal + CharacterFacePreview |
@@ -61,7 +61,9 @@ Log All 高亮与调试页行跟随都订阅它。
 - **Log All 退化契约**：状态数/条件乘积超限时退化为无条件全量文本，宁丢
   分支标注也不漏行。
 - **无暂停语义**（原生 AVG 全靠点击驱动）：`advance()` 仅在
-  idle/waiting_input 有效。
+  idle/waiting_input 推进；其他阻塞状态下的点击只把自动播放模式重置为手动
+  （对齐 OnClickPress，theater 下连这一步也不做）。画布内可交互对象（决策
+  选项）认领的点击由 `rendering/core/ClickClaim` 截停，不会冒泡成推进点击。
 - **assets.ts 必须用 `new URL('./x.png', import.meta.url)` 字面量**：widget
   跨源加载，普通 import 在 dev 下会 404，字面量才能被 Vite 静态打包。
 - **两处不能删的"怪代码"**：`entries/StoryPlayer.ts` 开头的原型补丁还原
