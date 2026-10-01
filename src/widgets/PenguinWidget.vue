@@ -5,7 +5,6 @@ import { NConfigProvider, NRadioButton, NRadioGroup } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-import { isMobileSkin } from "@/utils/utils";
 
 defineProps<{
   type?: string;
@@ -15,7 +14,6 @@ defineProps<{
 }>();
 const { theme, themeOverrides, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
-const isMobile = isMobileSkin();
 
 const servers = [
   {
@@ -87,14 +85,6 @@ const selectedStage = ref(stages[0].value);
         title="Penguin Statistics Widget"
         frameborder="0"
         loading="lazy"
-        :height="isMobile ? 800 : 600"
-        :width="isMobile ? '95%' : 1000"
-        style="
-          border: 2px solid #ccc;
-          border-radius: 8px;
-          box-shadow: 0 0 10px rgba(0, 0, 0, 0.18);
-          margin: 8px;
-        "
       />
     </div>
   </NConfigProvider>
@@ -102,4 +92,22 @@ const selectedStage = ref(stages[0].value);
 
 <style scoped>
 @import "@/styles/dark-mode.scss";
+
+/* 移动端不一定是 Minerva 皮肤（Arknights 皮肤是响应式的），宽高按可用宽度走，不按皮肤判断 */
+.penguin-widget {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1000px;
+  height: 600px;
+  margin: 8px 0;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.18);
+}
+
+@media screen and (max-width: 640px) {
+  .penguin-widget {
+    height: 800px;
+  }
+}
 </style>
