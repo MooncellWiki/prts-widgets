@@ -895,13 +895,21 @@ export class StoryRuntime {
     else if (shouldResume) await this.processLoop();
   }
 
+  /**
+   * Native port: `AVGController.get_animateRatio` resolves every gear via
+   * `CollectionExtensions.SafeGet(table, level, default: _dialogDefaultSpeed)`
+   * (2.7.71 VA 0x183ECBA00) — an out-of-range level lands on the default
+   * speed table (animateRatio 1), never on quick gear 0 (ratio 0, which would
+   * keep zeroing delays). Button-auto keeps its gear-0 fallback: both tables
+   * agree on animateRatio and typing there.
+   */
   private getCurrentSpeed(): AutoSpeed {
     if (this.autoPlayMode === "button_auto")
       return (
         BUTTON_AUTO_SPEEDS[this.buttonSpeedLevel] ?? BUTTON_AUTO_SPEEDS[0]!
       );
     if (this.autoPlayMode === "quick_play")
-      return QUICK_AUTO_SPEEDS[this.quickSpeedLevel] ?? QUICK_AUTO_SPEEDS[0]!;
+      return QUICK_AUTO_SPEEDS[this.quickSpeedLevel] ?? this.defaultSpeed;
     return this.defaultSpeed;
   }
 
