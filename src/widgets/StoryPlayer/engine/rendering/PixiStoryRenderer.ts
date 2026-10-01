@@ -6,6 +6,7 @@ import {
   Container,
   FillGradient,
   Graphics,
+  Point,
   Sprite,
   Text,
   TextStyle,
@@ -64,6 +65,7 @@ import {
   type TimerStickerInput,
 } from "../types";
 
+import { guardClaimedClicks } from "./core/ClickClaim";
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import { dotweenEaseCurve } from "./core/DotweenEase";
 import { LayerGraph } from "./core/LayerGraph";
@@ -437,6 +439,7 @@ interface CurtainRenderState {
  */
 export class PixiStoryRenderer implements StoryRenderer {
   private app: Application | null = null;
+  private releaseClickGuard: (() => void) | null = null;
   private resizeHost: HTMLElement | null = null;
   private resizeListener: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -694,6 +697,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.videoPanel.mount(host);
 
     this.app = app;
+    // Decision options claim their own press (see ClickClaim): only a click
+    // pressed on no interactive canvas object reaches the host's advance.
+    this.releaseClickGuard = guardClaimedClicks(
+      app.canvas,
+      (clientX, clientY) => {
+        const events = app.renderer.events;
+        const point = new Point();
+        events.mapPositionToPoint(point, clientX, clientY);
+        return Boolean(events.rootBoundary.hitTest(point.x, point.y));
+      },
+    );
     this.watchDisplayResolution(host);
 
     await this.createUi();
@@ -782,6 +796,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.resizeListener?.();
     this.resizeListener = null;
     this.resizeHost = null;
+    this.releaseClickGuard?.();
+    this.releaseClickGuard = null;
     this.app?.destroy(true, { children: true });
     this.app = null;
     this.dialogPanel.destroy();
