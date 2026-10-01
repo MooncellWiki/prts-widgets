@@ -206,6 +206,50 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("resets quick play mode to default after a SkipToThis jump", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+          '[name="C"]later',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      // Quick play is enabled before playback starts (switching while a line
+      // waits for input emits the immediate quick click and advances past the
+      // anchor, so the jump window would be gone).
+      runtime.setAutoPlayMode("quick_play");
+      await runtime.start();
+      expect(runtime.getAutoPlayState().mode).toBe("quick_play");
+
+      // Quick gear 0 types at 10ms/char: letting the clock run finishes the
+      // line and leaves the 200ms quick auto click pending.
+      await vi.advanceTimersByTimeAsync(150);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "before" });
+
+      await runtime.skipNode();
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      // The cancelled quick click never fires; "later" only shows on a manual
+      // advance.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      await runtime.advance();
+      expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("finishes the interrupted line and ends its command on skip", async () => {
     vi.useFakeTimers();
     try {
