@@ -9,12 +9,6 @@ import {
 
 import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
 
-// 释放足够的微任务队列回合，让 processLoop 在被 resolve 的 sleep 之后
-// 走到下一条命令的 sleep 调用（race/then 链约 5-6 个 tick）。
-async function flushMicrotasks(rounds = 8): Promise<void> {
-  for (let round = 0; round < rounds; round += 1) await Promise.resolve();
-}
-
 describe("StoryRuntime", () => {
   it("enters waiting_input on first dialogue", async () => {
     const renderer = new FakeRenderer();
@@ -96,11 +90,10 @@ describe("StoryRuntime", () => {
 
     runtime.setAutoPlayMode("quick_play");
     const startPromise = runtime.start();
-    await flushMicrotasks();
 
     // quick_play 的 animateRatio=0 把第一条 delay 折叠成 0ms。
+    await vi.waitFor(() => expect(sleep).toHaveBeenCalledExactlyOnceWith(0));
     expect(runtime.getState()).toBe("waiting_timer");
-    expect(sleep).toHaveBeenNthCalledWith(1, 0);
 
     await runtime.advance();
 
@@ -110,9 +103,9 @@ describe("StoryRuntime", () => {
     expect(runtime.getAutoPlayState().mode).toBe("default");
 
     pendingSleeps[0]!();
-    await flushMicrotasks();
+    await vi.waitFor(() => expect(sleep).toHaveBeenCalledTimes(2));
 
-    expect(sleep).toHaveBeenNthCalledWith(2, 3000);
+    expect(sleep).toHaveBeenLastCalledWith(3000);
 
     pendingSleeps[1]!();
     await startPromise;
@@ -133,7 +126,7 @@ describe("StoryRuntime", () => {
     );
 
     const startPromise = runtime.start();
-    await flushMicrotasks();
+    await vi.waitFor(() => expect(sleep).toHaveBeenCalledExactlyOnceWith(2000));
 
     expect(runtime.getState()).toBe("waiting_timer");
     expect(runtime.getAutoPlayState().mode).toBe("button_auto");
