@@ -39,6 +39,7 @@ const defaultDisplayConfig: DisplayConfig = {
     // :has() 只放在这里，别加进 display-controller.css：不支持的 WebView 会让整条规则失效
     '#MenuSidebar li:has(a[title^="PRTS:如何帮助我们完善网站"])',
     '#MenuSidebar li:has(a[title="PRTS:反馈与建议"])',
+    '#MenuSidebar li:has(a[title="特殊:最近更改"])',
   ],
   redirectBodyClasses: [
     "page-特殊_创建账户",
