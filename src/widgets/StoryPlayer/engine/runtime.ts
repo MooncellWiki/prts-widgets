@@ -184,9 +184,21 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * Native port: `Command.GetOrDefault<float>` runs the JSON-boxed parameter
+ * value through `System.Convert.ToSingle` (2.7.71 `Command.TryGetParam`
+ * VA 0x183EF3950) — `true`/`false` convert to 1/0 and exponent-notation
+ * strings ("1e2") parse like any JSON number. Values double.Parse rejects
+ * (e.g. "abc") throw FormatException in native; the fallback is kept here
+ * instead of breaking playback.
+ */
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && /^-?\d+(?:\.\d+)?$/.test(value))
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (
+    typeof value === "string" &&
+    /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(value.trim())
+  )
     return Number(value);
   return fallback;
 }
