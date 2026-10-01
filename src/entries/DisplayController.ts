@@ -13,6 +13,7 @@ const defaultDisplayConfig: DisplayConfig = {
   userAgent: "SKLand",
   hiddenClass: "skland-hidden",
   selectors: [
+    // Vector / Minerva
     "#p-personal",
     "#pt-preferences",
     "#p-prts-extra-links",
@@ -29,6 +30,15 @@ const defaultDisplayConfig: DisplayConfig = {
     'a[data-event-name="tabs.talk"]',
     ".last-modified-bar",
     ".flow-board-page",
+    // Arknights
+    "#ak-user-menu",
+    "#p-notifications",
+    "#ak-page-tools",
+    "#footer-info-lastmod",
+    ".ak-footer__col",
+    // :has() 只放在这里，别加进 display-controller.css：不支持的 WebView 会让整条规则失效
+    '#MenuSidebar li:has(a[title^="PRTS:如何帮助我们完善网站"])',
+    '#MenuSidebar li:has(a[title="PRTS:反馈与建议"])',
   ],
   redirectBodyClasses: [
     "page-特殊_创建账户",
@@ -45,7 +55,7 @@ const defaultDisplayConfig: DisplayConfig = {
 
 function removeDOM(selector: string) {
   try {
-    return document.querySelector(selector)?.remove();
+    document.querySelectorAll(selector).forEach((element) => element.remove());
   } catch (error) {
     console.log(
       `[DisplayController] An error occurred while removing ${selector}`,
@@ -68,7 +78,11 @@ function main(config: DisplayConfig) {
   document.head.append(styleEle);
 
   if (navigator.userAgent.includes(config.userAgent)) {
-    if (window.location.hostname === "prts.wiki") {
+    // Arknights 皮肤不分移动域名，m. 退役后会 301 回主域，再往 m. 跳就是死循环
+    const toMobileDomain =
+      window.location.hostname === "prts.wiki" &&
+      !document.body.classList.contains("skin-arknights");
+    if (toMobileDomain) {
       window.location.replace(
         window.location.href.replace("prts.wiki", "m.prts.wiki"),
       );
@@ -76,7 +90,9 @@ function main(config: DisplayConfig) {
 
     for (const page of config.redirectBodyClasses) {
       if (document.body.classList.contains(page))
-        window.location.replace("https://m.prts.wiki");
+        window.location.replace(
+          toMobileDomain ? "https://m.prts.wiki" : window.location.origin,
+        );
     }
 
     for (const selector of config.selectors) {
@@ -91,7 +107,10 @@ function main(config: DisplayConfig) {
       "initial-scale=1.0, user-scalable=no, minimum-scale=0.25, maximum-scale=5.0, width=device-width";
     viewport.setAttribute(
       "content",
-      viewportContent.replace(/user-scalable=yes/g, "user-scalable=no"),
+      // Arknights 的 viewport 不带 user-scalable，要补上
+      viewportContent.includes("user-scalable=")
+        ? viewportContent.replace(/user-scalable=yes/g, "user-scalable=no")
+        : `${viewportContent}, user-scalable=no`,
     );
   } else removeDOM(`.${STYLE_ELEMENT_CLASS}`);
 }

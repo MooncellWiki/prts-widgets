@@ -20,6 +20,14 @@ a[data-event-name="tabs.talk"],
   display: none;
 }
 
+#ak-user-menu,
+#p-notifications,
+#ak-page-tools,
+#footer-info-lastmod,
+.ak-footer__col {
+  display: none;
+}
+
 .page-特殊_创建账户,
 .page-特殊_用户登录,
 .page-PRTS_如何帮助我们完善网站,
