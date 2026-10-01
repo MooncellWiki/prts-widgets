@@ -171,7 +171,7 @@ const ariaSort = (key: SortKey) =>
 
   td {
     border-bottom: 0;
-    padding: 8px 8px 2px;
+    padding: 8px 8px 5px;
     vertical-align: top;
     line-height: 1.4;
   }
@@ -214,8 +214,13 @@ const ariaSort = (key: SortKey) =>
     border-top: 1px solid var(--ak-border);
 
     > tr:last-child > td {
-      padding-top: 0;
+      padding-top: 4px;
       padding-bottom: 9px;
+    }
+
+    // 特性行顶上一条弱线：比干员之间的线弱一级，只画在特性格上
+    > tr:last-child > td.ol-feature {
+      border-top: 1px solid var(--ak-border-subtle);
     }
 
     > tr:first-child > td[rowspan] {
