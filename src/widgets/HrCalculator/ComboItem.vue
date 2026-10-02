@@ -1,20 +1,13 @@
 <script setup lang="ts">
-import { computed } from "vue";
-
 import OpTile from "./OpTile.vue";
 import { isSenior } from "./consts";
 
 import type { Combo } from "./recruit";
 
 /**
- * 一组：左边是标签（游戏的深灰标签钮）+「几位 · 几星到几星」，右边是全部干员；左边的色条 = 保底的稀有度。
+ * 一组：左边是标签（游戏的深灰标签钮），右边是全部干员；左边的色条 = 保底的稀有度。
  */
-const props = defineProps<{ combo: Combo }>();
-
-const range = computed(() => {
-  const { min, ops } = props.combo;
-  return ops[0].star > min ? `${min}–${ops[0].star}` : `${min}`;
-});
+defineProps<{ combo: Combo }>();
 </script>
 
 <template>
@@ -26,9 +19,6 @@ const range = computed(() => {
         :class="['hr-tagbtn', { 'is-senior': isSenior(tag) }]"
       >
         {{ tag }}
-      </span>
-      <span class="hr-combo__meta">
-        {{ combo.ops.length }} 位 · <b>{{ range }}★</b>
       </span>
     </div>
     <div class="hr-combo__ops">
@@ -60,17 +50,6 @@ const range = computed(() => {
     border-right: 1px solid var(--ak-border-subtle);
   }
 
-  &__meta {
-    flex: 1 0 100%;
-    font-size: var(--ak-fs-xs);
-    color: var(--ak-fg-muted);
-
-    b {
-      font: 700 var(--ak-fs-xs) / 1 var(--ak-font-label);
-      color: var(--ak-r-text);
-    }
-  }
-
   &__ops {
     display: flex;
     flex-wrap: wrap;
@@ -86,11 +65,6 @@ const range = computed(() => {
     &__tags {
       padding: 10px var(--ak-space-3) 0;
       border-right: 0;
-    }
-
-    &__meta {
-      flex: none;
-      margin-left: auto;
     }
 
     &__ops {
