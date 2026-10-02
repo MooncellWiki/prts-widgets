@@ -8,6 +8,8 @@ import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig, type Plugin } from "vite";
 
+import { gateTemplate, LEGACY_WIDGETS } from "./scripts/legacy/index.ts";
+
 const TARGET = [
   "edge >= 81",
   "firefox >= 70",
@@ -64,6 +66,29 @@ function tippyNamespace(): Plugin {
   };
 }
 
+/**
+ * 旧皮肤上的干员一览 / 公招计算照旧用改版前的构建产物（清单与原因见 scripts/legacy）。
+ * 把这两个模板里 Vite 注入的 <script> / <link> 换成按皮肤分流的内联引导脚本。
+ * enforce: "post" 的 generateBundle 排在 vite:build-html 之后，这时模板里的标签
+ * （含 plugin-legacy 的 polyfills）已经注入完、地址已经带上 base。
+ */
+function legacySkinGate(): Plugin {
+  return {
+    name: "prts:legacy-skin-gate",
+    apply: "build",
+    enforce: "post",
+    generateBundle(_, bundle) {
+      for (const [name, legacy] of Object.entries(LEGACY_WIDGETS)) {
+        const fileName = `templates/${name}.html`;
+        const asset = bundle[fileName];
+        if (asset?.type !== "asset" || typeof asset.source !== "string")
+          throw new Error(`[legacy-skin-gate] 构建产物里没有 ${fileName}`);
+        asset.source = gateTemplate(asset.source, legacy);
+      }
+    },
+  };
+}
+
 const input: Record<string, string> = {};
 for (const entry of entries) {
   input[entry.replace(".ts", "")] = `src/entries/${entry}`;
@@ -99,6 +124,7 @@ export default defineConfig(({ command }) => {
         renderLegacyChunks: false,
       }),
       tippyNamespace(),
+      legacySkinGate(),
       visualizer({ sourcemap: true }),
     ],
     server: {

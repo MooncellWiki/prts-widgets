@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import OSS from "ali-oss";
 import { config as loadEnv } from "dotenv";
 
+import { legacyFiles } from "./legacy";
+
 const BUILD_DIR = "dist";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +25,10 @@ const filesNames = dirents
 
 const distSet = new Set(filesNames);
 console.log("[INFO] Dist set:", distSet);
+
+// 旧皮肤上的干员一览 / 公招计算直接引改版前的构建产物（见 scripts/legacy），不在本次 dist 里也得留着
+const legacySet = legacyFiles();
+const isLegacy = (name: string) => legacySet.has(name.replace(/\.map$/, ""));
 
 const { REGION, ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET, REMOTE_PATH } =
   process.env;
@@ -62,6 +68,7 @@ const removingFiles = result.objects
   .filter(
     (object) =>
       !distSet.has(object.name.replace(REMOTE_PATH, "")) &&
+      !isLegacy(object.name.replace(REMOTE_PATH, "")) &&
       object.name !== REMOTE_PATH,
   )
   .map((file) => file.name);
