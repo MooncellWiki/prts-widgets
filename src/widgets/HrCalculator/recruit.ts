@@ -19,11 +19,14 @@ export interface Source {
   rarity: number;
   tag: string[];
   zh: string;
+  /** 游戏内 ID（char_002_amiya），取 torappu 头像用；cargo 里没填时为空 */
+  charId: string;
   obtainMethod: string[];
 }
 
 export interface Op {
   zh: string;
+  charId: string;
   star: number;
   /** 职业 + 位置 + 词缀 + 按星级补的资深 / 高级资深 */
   tags: string[];
@@ -55,6 +58,7 @@ export function toOps(source: readonly Source[]): Op[] {
       else if (star === 6) tags.push(TOP);
       return {
         zh: c.zh,
+        charId: c.charId,
         star,
         tags,
         mask: tags.reduce((m, t) => m | bit(t), 0),

@@ -6,7 +6,7 @@ import type { Source } from "../widgets/HrCalculator/recruit";
 
 const ele = document.querySelector("#root");
 
-/** 可公开招募的干员：职业 / 位置 / 稀有度 / 词缀 / 名称 / 获得方式 */
+/** 可公开招募的干员：职业 / 位置 / 稀有度 / 词缀 / 名称 / 游戏内 ID / 获得方式 */
 async function fetchSource(): Promise<Source[]> {
   const resp = await fetch(
     `/api.php?${new URLSearchParams({
@@ -15,7 +15,7 @@ async function fetchSource(): Promise<Source[]> {
       tables: "chara,char_obtain",
       limit: "5000",
       fields:
-        "chara.profession,chara.position,chara.rarity,chara.tag,chara.cn,char_obtain.obtainMethod",
+        "chara.profession,chara.position,chara.rarity,chara.tag,chara.cn,chara.charId,char_obtain.obtainMethod",
       where: 'char_obtain.obtainMethod like "%公开招募%" AND chara.charIndex>0',
       join_on: "chara._pageName=char_obtain._pageName",
     })}`,
@@ -28,6 +28,7 @@ async function fetchSource(): Promise<Source[]> {
       rarity: Number.parseInt(v.rarity),
       tag: v.tag?.split(" ") || [],
       zh: v.cn,
+      charId: v.charId || "",
       obtainMethod: v.obtainMethod?.split(" ") || [],
     }),
   );

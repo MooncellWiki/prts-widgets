@@ -2,6 +2,7 @@ import { createApp, nextTick } from "vue";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { avatar, fallbackImage } from "@/widgets/HrCalculator/assets";
 import HrCalculator from "@/widgets/HrCalculator/index.vue";
 import {
   analyze,
@@ -31,6 +32,7 @@ const op = (
   obtainMethod = ["公开招募", "标准寻访"],
 ): Source => ({
   zh,
+  charId: "",
   rarity: star - 1,
   profession,
   position,
@@ -53,6 +55,35 @@ const OPS = toOps(SOURCE);
 const names = (c: Combo | undefined) => c?.ops.map((o) => o.zh);
 const find = (list: Combo[], ...tags: string[]) =>
   list.find((c) => c.tags.join("+") === tags.join("+"));
+
+describe("头像地址", () => {
+  const amiya = { zh: "阿米娅", charId: "char_002_amiya" };
+
+  it("有游戏内 ID 时从 torappu 取", () => {
+    expect(avatar(amiya)).toBe(
+      "https://torappu.prts.wiki/assets/char_avatar/char_002_amiya.png",
+    );
+  });
+
+  it("cargo 里没填 ID 时按中文名走 media", () => {
+    expect(avatar({ zh: "阿米娅", charId: "" })).toMatch(
+      /^https:\/\/media\.prts\.wiki\/.\/..\/头像_阿米娅\.png$/,
+    );
+  });
+
+  it("torappu 取不到时换成 media 的同一张，且只换一次", () => {
+    const img = document.createElement("img");
+    img.addEventListener("error", fallbackImage);
+
+    img.src = avatar(amiya);
+    img.dispatchEvent(new Event("error"));
+    const media = img.src;
+    expect(decodeURI(media)).toBe(avatar({ zh: "阿米娅", charId: "" }));
+
+    img.dispatchEvent(new Event("error"));
+    expect(img.src).toBe(media);
+  });
+});
 
 describe("toOps", () => {
   it("按星级补稀有标签，从高到低排；寻访出不了的记「限」", () => {
