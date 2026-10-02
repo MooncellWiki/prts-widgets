@@ -31,7 +31,7 @@ function convert(node: Node): string {
 /**
  * 模板输出的特性 HTML → 设计系统的写法。只认现网实际出现的三种节点：
  *   内联 color:#00B0FF 的 span → .ak-rt-kw（关键词色跟主题走）
- *   {{术语}} 的 .mc-tooltips → .ak-term[data-tip]（提示正文转成纯文本，气泡由 useTermTip 画）
+ *   {{术语}} 的 .mc-tooltips → .ak-term[data-tip]（提示正文转成纯文本，气泡由 utils/useHoverTip 画）
  *   其余标签只留文字，<br> 保留
  * 输出里的文字都转义过，可以直接 v-html。
  */

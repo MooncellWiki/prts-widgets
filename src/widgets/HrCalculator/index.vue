@@ -1,376 +1,166 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from "vue";
-
-import { isClient, useBreakpoints } from "@vueuse/core";
-
-import Avatar from "@/components/Avatar.vue";
-import Checkbox from "@/components/Checkbox.vue";
-import FilterRow from "@/components/FilterRow.vue";
-import { useTheme } from "@/utils/theme";
-
 import {
-  Char,
-  all,
-  can5,
-  number2names,
-  position,
-  positionIndex,
-  profession,
-  professionIndex,
-  rarity,
-  rarityIndex,
-  tag,
-  tagIndex,
-  type Source,
-} from "./utils";
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  ref,
+  useTemplateRef,
+  watch,
+} from "vue";
 
-// 寻访出不了的都算只能公招出
-function isOnly(s: Source) {
-  return s.obtainMethod.every((v) => !v.includes("寻访"));
-}
-const props = withDefaults(
-  defineProps<{
-    source?: Source[];
-  }>(),
-  {
-    source: () => [],
+import { AkScope, AkToastProvider } from "@mooncellwiki/prts-design-vue";
+import { isClient, useEventListener } from "@vueuse/core";
+
+import { useHostTheme } from "@/utils/useHostTheme";
+import { useHoverTip } from "@/utils/useHoverTip";
+
+import RecruitTips from "./RecruitTips.vue";
+import ResultView from "./ResultView.vue";
+import TagPanel from "./TagPanel.vue";
+import VerdictBar from "./VerdictBar.vue";
+import { createRecruit, recruitKey } from "./store";
+import { writeQuery } from "./url";
+
+import type { Source } from "./recruit";
+
+/**
+ * 公招计算（PRTS Design 视觉，对应设计稿 /patterns/recruit）。照游戏的招募流程排：
+ * 标签面板（最多 5 个，= 招募位上的 5 格）+ 招募时限（三档，决定稀有度范围）→ 提示 → 结论 → 按「保底几星」分层的组合（每组至多 3 个标签）；
+ * 一个标签都没选时，结果区是保底速查。
+ * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.hr-* 是这页自己的排布（各组件的 scoped 样式）。
+ * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
+ */
+const props = withDefaults(defineProps<{ source?: Source[] }>(), {
+  source: () => [],
+});
+
+const recruit = createRecruit(props.source);
+provide(recruitKey, recruit);
+const { state } = recruit;
+
+/* 地址栏：?filter= 同旧版、?t= 时限；改了就就地换掉（不加历史记录），复制下来的链接与地址栏一致 */
+if (isClient) recruit.load(location.search);
+watch(
+  () => writeQuery(isClient ? location.search : "", state.sel, state.dur),
+  (search) => {
+    if (search !== location.search)
+      history.replaceState(
+        history.state,
+        "",
+        `${location.pathname}${search}${location.hash}`,
+      );
   },
 );
+useEventListener("popstate", () => recruit.load(location.search));
 
-const breakpoints = useBreakpoints({ xs: 640 });
-const xs = breakpoints.smallerOrEqual("xs");
-const { isDark } = useTheme();
-const value = reactive(new Char(0));
-// isClient guards keep the widget shell prerenderable in Node (src/prerender/).
-const shortcutParam = isClient
-  ? new URLSearchParams(window.location.search).get("filter")
-  : null;
-const shortcutUrl = computed(() =>
-  isClient
-    ? `${window.location.origin}${
-        window.location.pathname
-      }?${new URLSearchParams({ filter: value.dump() })}`
-    : "",
+const theme = useHostTheme();
+
+/* 排布看根节点自己的宽度，不看视口（侧栏收起 / 展开都会改变它）：< 760 组合的标签挪到干员上面，< 640 是手机排布 */
+const root = useTemplateRef<HTMLElement>("root");
+const width = ref(Number.POSITIVE_INFINITY);
+let observer: ResizeObserver | undefined;
+onMounted(() => {
+  const el = root.value;
+  if (!el) return;
+  width.value = el.clientWidth;
+  observer = new ResizeObserver(() => {
+    width.value = el.clientWidth;
+  });
+  observer.observe(el);
+});
+onBeforeUnmount(() => observer?.disconnect());
+
+/* 头像取不到（还没上传）：藏掉破图，留下深色底框 */
+function onImageError(e: Event) {
+  if (e.target instanceof HTMLImageElement)
+    e.target.style.visibility = "hidden";
+}
+
+const { tip, handlers: tipHandlers } = useHoverTip(
+  useTemplateRef<HTMLElement>("bubble"),
+  ".hr-op[data-tip]",
 );
-const selected = computed(() => {
-  return all.map((_v, i) => {
-    return value.bitmap.get(i) !== 0;
-  });
-});
-function onTagClick(i: number) {
-  if (value.bitmap.get(i) === 0) value.bitmap.set(i);
-  else value.bitmap.clear(i);
-}
-
-const isClassEmpty = computed(() => {
-  return value.isProfessionEmpty();
-});
-const isPositionEmpty = computed(() => {
-  return value.isPositionEmpty();
-});
-const isRarityEmpty = computed(() => {
-  return value.isRarityEmpty();
-});
-const isTagEmpty = computed(() => {
-  return value.isTagEmpty();
-});
-function calc() {
-  const result: Record<number | string, { charIndict: Set<number> }> = {};
-  for (const [charIndex, c] of props.source.entries()) {
-    for (const set of c.subset) {
-      if ((value.bitmap.value | set) !== value.bitmap.value) continue;
-      if (c.rarity === 5 && !can5(set)) continue;
-      if (!result[set]) {
-        result[set] = {
-          charIndict: new Set(),
-        };
-      }
-      result[set].charIndict.add(charIndex);
-    }
-  }
-  const list: Array<{ tags: number; charIndict: number[]; score: number }> = [];
-  for (const k of Object.keys(result)) {
-    const key = Number.parseInt(k);
-    const charIndict = Array.from(result[key].charIndict).sort((a, b) => {
-      return props.source[b].rarity - props.source[a].rarity;
-    });
-
-    let acc = 0;
-    for (const cur of charIndict) {
-      let s = props.source[cur].rarity + 1;
-      if (s === 1) s = 3.5;
-      acc += s;
-    }
-    list.push({
-      tags: key,
-      charIndict,
-      score: acc / charIndict.length,
-    });
-  }
-  list.sort((a, b) => {
-    const rarity = b.score - a.score;
-    if (rarity !== 0) return rarity;
-    return a.charIndict.length - b.charIndict.length;
-  });
-  return list;
-}
-const result = ref<
-  Array<{
-    tags: number;
-    charIndict: number[];
-    score: number;
-  }>
->([]);
-watch(value, () => {
-  nextTick(() => {
-    result.value = calc();
-  });
-});
-if (shortcutParam) {
-  value.load(shortcutParam);
-  result.value = calc();
-}
-
-function copyUrl() {
-  return navigator.clipboard.writeText(shortcutUrl.value);
-}
 </script>
 
 <template>
-  <div :class="['hr-calculator-widget', isDark && 'prts-widget-dark']">
-    <div>
-      <FilterRow
-        title="资历"
-        :some-selected="!isRarityEmpty"
-        @all="() => value.selectAllRarity()"
-        @clear="() => value.unselectAllRarity()"
-      >
-        <Checkbox
-          v-for="(c, i) in rarity"
-          :key="c"
-          class="m-1"
-          :model-value="selected[rarityIndex - i]"
-          @click="onTagClick(rarityIndex - i)"
-        >
-          {{ c }}
-        </Checkbox>
-      </FilterRow>
-      <FilterRow
-        title="职业"
-        :some-selected="!isClassEmpty"
-        @all="() => value.selectAllProfession()"
-        @clear="() => value.unselectAllProfession()"
-      >
-        <Checkbox
-          v-for="(c, i) in profession"
-          :key="c"
-          :model-value="selected[professionIndex - i]"
-          class="m-1"
-          @click="onTagClick(professionIndex - i)"
-        >
-          {{ c }}
-        </Checkbox>
-      </FilterRow>
-      <FilterRow
-        title="位置"
-        :some-selected="!isPositionEmpty"
-        @all="() => value.selectAllPosition()"
-        @clear="() => value.unselectAllPosition()"
-      >
-        <Checkbox
-          v-for="(c, i) in position"
-          :key="c"
-          class="m-1"
-          :model-value="selected[positionIndex - i]"
-          @click="onTagClick(positionIndex - i)"
-        >
-          {{ c }}
-        </Checkbox>
-      </FilterRow>
-
-      <FilterRow
-        title="词缀"
-        :some-selected="!isTagEmpty"
-        @all="() => value.selectAllTag()"
-        @clear="() => value.unselectAllTag()"
-      >
-        <Checkbox
-          v-for="(c, i) in tag"
-          :key="c"
-          class="m-1"
-          :model-value="selected[tagIndex - i]"
-          checkable
-          @click="onTagClick(tagIndex - i)"
-        >
-          {{ c }}
-        </Checkbox>
-      </FilterRow>
-      <table class="wikitable mt-2 w-full">
-        <tbody>
-          <tr>
-            <th style="text-align: left">
-              如需分享筛选结果，请
-              <a @click="copyUrl()">点此复制链接</a>。
-            </th>
-          </tr>
-          <tr>
-            <td>
-              <div
-                style="
-                  width: 100%;
-                  max-width: 100%;
-                  word-break: break-all;
-                  word-wrap: break-word;
-                  white-space: normal;
-                "
-              >
-                {{ shortcutUrl }}
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div v-if="xs" class="mt-2 w-full">
+  <AkScope class="hr ak-not-prose" :theme="theme" data-no-toggle>
+    <AkToastProvider>
       <div
-        v-for="data in result"
-        :key="data.tags"
-        class="mb-1 bg-[#f8f9fa] shadow shadow-gray-400"
+        ref="root"
+        :class="[
+          'hr-root',
+          { 'hr--compact': width < 760, 'hr--narrow': width < 640 },
+        ]"
+        v-on="tipHandlers"
+        @error.capture="onImageError"
       >
-        <div class="flex flex-wrap items-center justify-start">
-          <div v-for="name in number2names(data.tags)" :key="name" class="tag">
-            {{ name }}
-          </div>
-        </div>
-        <div class="flex flex-wrap">
-          <div
-            v-for="charIndex in data.charIndict"
-            :key="charIndex"
-            class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
-            :class="`r-${source[charIndex].rarity}`"
+        <TagPanel />
+        <RecruitTips />
+        <VerdictBar />
+        <div class="hr-legend">
+          <span
+            ><span class="hr-legend__only">限</span>只能通过公开招募获得</span
           >
-            <span
-              v-if="isOnly(source[charIndex])"
-              class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
-              >限</span
-            >
-            <Avatar
-              :size="xs ? 'xs' : 'sm'"
-              :profession="source[charIndex].profession"
-              :rarity="source[charIndex].rarity"
-              :name="source[charIndex].zh"
-            />
-          </div>
+          <span data-rarity="4">
+            <i />单选这一个标签即可保底（方块颜色 = 保底的稀有度）
+          </span>
         </div>
+        <ResultView />
       </div>
-    </div>
-    <table v-else class="mt-2 w-full bg-[#f8f9fa]">
-      <colgroup>
-        <col class="tag-row" />
-        <col />
-      </colgroup>
-      <thead class="bg-[#eaebee]">
-        <tr>
-          <th>Tags</th>
-          <th>可能出现</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="data in result" :key="data.tags" class="row">
-          <td>
-            <div class="flex flex-wrap items-center justify-center">
-              <div
-                v-for="name in number2names(data.tags)"
-                :key="name"
-                class="tag"
-              >
-                {{ name }}
-              </div>
-            </div>
-          </td>
-          <td class="flex flex-1 flex-wrap">
-            <div
-              v-for="charIndex in data.charIndict"
-              :key="charIndex"
-              class="relative m-2 rounded p-2 <sm:m-1 <sm:p-1"
-              :class="`r-${source[charIndex].rarity}`"
-            >
-              <span
-                v-if="isOnly(source[charIndex])"
-                class="absolute right-0 top-0 z-1 rounded bg-[#3fbd43] p-1 text-white font-bold leading-none"
-                >限</span
-              >
-              <Avatar
-                :size="xs ? 'xs' : 'sm'"
-                :profession="source[charIndex].profession"
-                :rarity="source[charIndex].rarity"
-                :name="source[charIndex].zh"
-              />
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+
+      <div
+        v-if="tip"
+        ref="bubble"
+        class="ak-tooltip hr-tip"
+        role="tooltip"
+        :style="{ left: `${tip.left}px`, top: `${tip.top}px` }"
+      >
+        {{ tip.text }}
+      </div>
+    </AkToastProvider>
+  </AkScope>
 </template>
 
-<style scoped>
-@import "@/styles/dark-mode.scss";
-.tag {
-  background-color: #313131;
-  color: #ffffff;
-  height: 28px;
-  min-width: 40px;
-  padding: 0 8px;
-  display: inline-flex;
-  flex: 0 0 auto;
+<style scoped lang="scss">
+@use "./mixins";
+
+// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
+.hr.ak-scope[data-theme] {
+  background-color: transparent;
+}
+
+.hr-legend {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  vertical-align: middle;
-  box-shadow: 0 3px 5px grey;
-  letter-spacing: 0.08em;
-  text-indent: 0.08em;
-  margin: 4px 4px;
-}
+  gap: 4px 14px;
+  margin: 0 0 var(--ak-space-3);
+  font-size: var(--ak-fs-xs);
+  color: var(--ak-fg-muted);
 
-.row {
-  margin-top: 6px;
-  box-shadow:
-    0 3px 1px -2px rgba(0, 0, 0, 0.2),
-    0 2px 2px 0 rgba(0, 0, 0, 0.14),
-    0 1px 5px 0 rgba(0, 0, 0, 0.12);
-}
+  > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
 
-.tag-row {
-  width: 110px;
-}
+  &__only {
+    @include mixins.only-badge;
+  }
 
-@media screen and (min-width: 700px) {
-  .tag-row {
-    width: 300px;
+  i {
+    width: 7px;
+    height: 7px;
+    background: var(--ak-r);
   }
 }
 
-.r-5 {
-  background: #ff7f27;
-}
-
-.r-4 {
-  background: #ffc90e;
-}
-
-.r-3 {
-  background: #d8b3d8;
-}
-
-.r-2 {
-  background: #09b3f7;
-}
-
-.r-1 {
-  background: #d3db2e;
-}
-.r-0 {
-  background: gray;
+// 干员提示：按视口定位，不被格子裁掉
+.hr-tip.ak-tooltip {
+  position: fixed;
+  max-width: min(300px, calc(100vw - 16px));
+  white-space: pre-line;
+  line-height: 1.55;
+  pointer-events: none;
 }
 </style>

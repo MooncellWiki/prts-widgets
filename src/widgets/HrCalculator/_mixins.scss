@@ -1,0 +1,27 @@
+// 几个组件共用的画法：scoped 样式各管各的组件，公用的放这里 @include
+
+// 两个稀有标签落进格子 / 出现在组合里：游戏 btn_request_r 的深灰底 + 右侧黄色半调网点、黄字
+@mixin senior-btn {
+  color: #ffeb04;
+  background-image:
+    linear-gradient(100deg, var(--ak-gray-800) 25%, transparent 80%),
+    radial-gradient(rgba(255, 216, 0, 0.5) 1.1px, transparent 1.3px);
+  background-size:
+    auto,
+    5px 5px;
+}
+
+// 只能通过公开招募获得：现网的绿色「限」字
+@mixin only-badge {
+  padding: 2px 3px;
+  background: var(--ak-success);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+@mixin focus-ring($offset: 2px) {
+  outline: 2px solid var(--ak-focus);
+  outline-offset: $offset;
+}

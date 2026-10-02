@@ -11,6 +11,7 @@ import { useEventListener } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 
 import { useHostTheme } from "@/utils/useHostTheme";
+import { useHoverTip } from "@/utils/useHoverTip";
 
 import Pager from "./Pager.vue";
 import ResultBar from "./ResultBar.vue";
@@ -21,7 +22,6 @@ import ResultCards from "./result/ResultCards.vue";
 import ResultGrid from "./result/ResultGrid.vue";
 import ResultTable from "./result/ResultTable.vue";
 import { useCharListStore } from "./store";
-import { useTermTip } from "./useTermTip";
 
 import type { Char } from "./utils";
 
@@ -69,8 +69,9 @@ function onImageError(e: Event) {
     e.target.style.visibility = "hidden";
 }
 
-const { tip, handlers: tipHandlers } = useTermTip(
+const { tip, handlers: tipHandlers } = useHoverTip(
   useTemplateRef<HTMLElement>("bubble"),
+  ".ak-term[data-tip]",
 );
 </script>
 
