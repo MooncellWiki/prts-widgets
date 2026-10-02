@@ -11,6 +11,7 @@ import { useEventListener } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 
 import { useHostTheme } from "@/utils/useHostTheme";
+import { useHoverTip } from "@/utils/useHoverTip";
 
 import Pager from "./Pager.vue";
 import ResultBar from "./ResultBar.vue";
@@ -21,7 +22,6 @@ import ResultCards from "./result/ResultCards.vue";
 import ResultGrid from "./result/ResultGrid.vue";
 import ResultTable from "./result/ResultTable.vue";
 import { useCharListStore } from "./store";
-import { useTermTip } from "./useTermTip";
 
 import type { Char } from "./utils";
 
@@ -63,14 +63,9 @@ onBeforeUnmount(() => observer?.disconnect());
 const result = useTemplateRef<HTMLElement>("result");
 const backToResult = () => result.value?.scrollIntoView({ block: "start" });
 
-/* 头像 / 半身像取不到（还没上传）：藏掉破图，留下深色底框 */
-function onImageError(e: Event) {
-  if (e.target instanceof HTMLImageElement)
-    e.target.style.visibility = "hidden";
-}
-
-const { tip, handlers: tipHandlers } = useTermTip(
+const { tip, handlers: tipHandlers } = useHoverTip(
   useTemplateRef<HTMLElement>("bubble"),
+  ".ak-term[data-tip]",
 );
 </script>
 
@@ -86,7 +81,7 @@ const { tip, handlers: tipHandlers } = useTermTip(
         <Toolbar />
         <ResultBar />
 
-        <div ref="result" class="ol-result" @error.capture="onImageError">
+        <div ref="result" class="ol-result">
           <AkEmpty v-if="list.length === 0" title="没有符合条件的干员">
             放宽几项筛选条件，或者<AkButton
               variant="link"

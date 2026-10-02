@@ -1,12 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { createApp, nextTick, type App } from "vue";
 
-import {
-  avatar,
-  branchLine,
-  fallbackImage,
-  halfPortrait,
-  professionLine,
-} from "@/widgets/CharList/assets";
+import { createPinia, disposePinia } from "pinia";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { avatar, halfPortrait } from "@/utils/charImage";
+import { branchLine, professionLine } from "@/widgets/CharList/assets";
+import { View, type ViewMode } from "@/widgets/CharList/consts";
 import { convertFeature } from "@/widgets/CharList/feature";
 import {
   createFilters,
@@ -23,8 +22,10 @@ import {
   type FilterId,
 } from "@/widgets/CharList/filters";
 import { buildHash, readHash } from "@/widgets/CharList/hash";
+import CharList from "@/widgets/CharList/index.vue";
 import { sortChars } from "@/widgets/CharList/sort";
 import { charStats, splitUnit } from "@/widgets/CharList/stats";
+import { useCharListStore } from "@/widgets/CharList/store";
 import { Char } from "@/widgets/CharList/utils";
 
 function makeChar(attrs: Record<string, string> = {}, html = "") {
@@ -91,47 +92,53 @@ describe("Char", () => {
   });
 });
 
-describe("头像 / 半身像地址", () => {
-  const amiya = makeChar({
-    "data-zh": "阿米娅",
-    "data-char-id": "char_002_amiya",
+describe("头像 / 半身像取不到", () => {
+  let app: App | undefined;
+  let pinia: ReturnType<typeof createPinia> | undefined;
+  afterEach(() => {
+    app?.unmount();
+    if (pinia) disposePinia(pinia);
+    app = pinia = undefined;
+    document.body.innerHTML = "";
+    history.replaceState(null, "", "/");
   });
 
-  it("有游戏内 ID 时从 torappu 取", () => {
-    expect(avatar(amiya)).toBe(
-      "https://torappu.prts.wiki/assets/char_avatar/char_002_amiya.png",
-    );
-    expect(halfPortrait(amiya)).toBe(
-      "https://torappu.prts.wiki/assets/char_portrait/char_002_amiya_1.png",
-    );
-  });
+  const amiya = { zh: "阿米娅", charId: "char_002_amiya" };
+  const mount = async (view: ViewMode) => {
+    history.replaceState(null, "", "/");
+    const host = document.createElement("div");
+    document.body.append(host);
+    pinia = createPinia();
+    app = createApp(CharList, {
+      source: [makeChar({ "data-zh": amiya.zh, "data-char-id": amiya.charId })],
+    }).use(pinia);
+    app.mount(host);
+    useCharListStore(pinia).setView(view);
+    await nextTick();
+    return host;
+  };
 
-  it("模板没输出 ID 时按中文名走 media", () => {
-    const char = makeChar({ "data-zh": "阿米娅" });
-    expect(avatar(char)).toMatch(
-      /^https:\/\/media\.prts\.wiki\/.\/..\/头像_阿米娅\.png$/,
-    );
-    expect(halfPortrait(char)).toMatch(
-      /^https:\/\/media\.prts\.wiki\/.\/..\/半身像_阿米娅_1\.png$/,
-    );
-  });
+  it.each([
+    ["表格 / 卡片", View.TABLE, avatar],
+    ["头像", View.AVATAR, avatar],
+    ["半身像", View.HALF, halfPortrait],
+  ] as const)(
+    "%s：torappu 取不到时换回 media 且看得见，media 也取不到才藏掉",
+    async (_, view, url) => {
+      const host = await mount(view);
+      const img = host.querySelector<HTMLImageElement>(
+        `img[src="${url(amiya)}"]`,
+      )!;
+      expect(img).not.toBeNull();
 
-  it("torappu 取不到时换成 media 的同一张，且只换一次", () => {
-    const box = document.createElement("div");
-    const img = document.createElement("img");
-    box.append(img);
-    box.addEventListener("error", fallbackImage, true);
+      img.dispatchEvent(new Event("error"));
+      expect(decodeURI(img.src)).toBe(url({ zh: amiya.zh }));
+      expect(img.style.visibility).toBe("");
 
-    img.src = halfPortrait(amiya);
-    img.dispatchEvent(new Event("error"));
-    const media = img.src;
-    expect(decodeURI(media)).toBe(
-      halfPortrait(makeChar({ "data-zh": "阿米娅" })),
-    );
-
-    img.dispatchEvent(new Event("error"));
-    expect(img.src).toBe(media);
-  });
+      img.dispatchEvent(new Event("error"));
+      expect(img.style.visibility).toBe("hidden");
+    },
+  );
 });
 
 describe("职业图标地址", () => {
