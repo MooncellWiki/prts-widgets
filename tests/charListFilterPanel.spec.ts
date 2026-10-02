@@ -160,7 +160,7 @@ describe("固定职业 / 分支筛选面板", () => {
     await nextTick();
     expect(host.querySelector(".ol-more")?.textContent).toContain("已选 1");
     expect(host.querySelector(".ol-bar__active")?.textContent).toContain(
-      "词缀（同时）：输出",
+      "标签（同时）：输出",
     );
     expect(new URLSearchParams(location.hash.slice(1)).get("tag")).toBe(
       "0-输出",
