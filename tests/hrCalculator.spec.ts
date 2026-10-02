@@ -90,13 +90,27 @@ describe("combosOf", () => {
     expect(names(find(list, "输出", "高级资深干员"))).toEqual(["能天使"]);
   });
 
-  it("按 9:00 算：不出 2★，1★ 只在组合含【支援机械】时算", () => {
-    expect(find(combosOf(OPS, ["新手"]), "新手")).toBeUndefined();
-    expect(names(find(combosOf(OPS, ["先锋"]), "先锋"))).toEqual(["芬"]);
-    expect(names(find(combosOf(OPS, ["近卫"]), "近卫"))).toBeUndefined();
+  it("不按招募时限筛：1★、2★ 照列，但保底按 9:00 算，不被它们拉低", () => {
+    const vanguard = find(combosOf(OPS, ["先锋"]), "先锋");
+    expect(names(vanguard)).toEqual(["芬", "夜刀"]);
+    expect(vanguard?.min).toBe(3);
+    expect(names(find(combosOf(OPS, ["近卫"]), "近卫"))).toEqual(["Castle-3"]);
+    // 整组都低于 3★ 时取最低那一星
+    expect(find(combosOf(OPS, ["新手"]), "新手")?.min).toBe(2);
     const robots = find(combosOf(OPS, ["支援机械"]), "支援机械");
     expect(names(robots)).toEqual(["Lancet-2", "Castle-3"]);
     expect(robots?.min).toBe(1);
+  });
+
+  it("4★ 以上的干员里混着 1★ 支援机械，保底照样是 4★", () => {
+    const ops = toOps([
+      ...SOURCE,
+      op("CONFESS-47", 1, "先锋", "近战位", ["支援机械", "控场"], ["公开招募"]),
+      op("红豆", 4, "先锋", "近战位", ["输出", "控场"]),
+    ]);
+    const control = find(combosOf(ops, ["控场"]), "控场");
+    expect(names(control)).toEqual(["红豆", "CONFESS-47"]);
+    expect(control?.min).toBe(4);
   });
 });
 

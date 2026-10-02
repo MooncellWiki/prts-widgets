@@ -1,12 +1,4 @@
-import {
-  ALL_TAGS,
-  MAX_PICK,
-  MIN_STAR,
-  ROBOT,
-  SENIOR,
-  TOP,
-  isSenior,
-} from "./consts";
+import { ALL_TAGS, MAX_PICK, MIN_STAR, SENIOR, TOP, isSenior } from "./consts";
 
 /** cargoquery 的一行（chara ⋈ char_obtain，见 entries/HrCalculator.ts） */
 export interface Source {
@@ -37,7 +29,7 @@ export interface Combo {
   mask: number;
   /** 星级从高到低 */
   ops: Op[];
-  /** 保底 = 这组里最低的星级 */
+  /** 保底 = 9:00 时这组里最低的星级（见 combosOf） */
   min: number;
 }
 
@@ -64,8 +56,9 @@ export function toOps(source: readonly Source[]): Op[] {
 }
 
 /**
- * 从 tags 里取 1–maxPick 个；一组的干员 = 带齐这几个标签、按 9:00 可能出现的（见 consts.ts 的 MIN_STAR）：
- * 3–5★ 都算，6★ 只在组合含【高级资深干员】时算（同旧版的 can5），1★ 只在组合含【支援机械】时算。
+ * 从 tags 里取 1–maxPick 个；一组的干员 = 带齐这几个标签的，不按招募时限筛：
+ * 1–5★ 都算，6★ 只在组合含【高级资深干员】时算（同旧版的 can5）。
+ * 保底按 9:00 算（见 consts.ts 的 MIN_STAR）：只看 MIN_STAR 以上的；整组都低于 MIN_STAR 时才取最低那一星。
  */
 export function combosOf(
   ops: readonly Op[],
@@ -76,19 +69,19 @@ export function combosOf(
   const walk = (start: number, picked: string[], mask: number) => {
     if (picked.length) {
       const top = (mask & bit(TOP)) !== 0;
-      const robot = (mask & bit(ROBOT)) !== 0;
       const matched = ops.filter(
-        (c) =>
-          (c.mask & mask) === mask &&
-          (c.star === 6 ? top : c.star >= MIN_STAR || (c.star === 1 && robot)),
+        (c) => (c.mask & mask) === mask && (c.star !== 6 || top),
       );
-      if (matched.length)
+      if (matched.length) {
+        const sure = matched.filter((c) => c.star >= MIN_STAR);
+        const floor = sure.length ? sure : matched;
         out.push({
           tags: picked,
           mask,
           ops: matched,
-          min: matched[matched.length - 1].star,
+          min: floor[floor.length - 1].star,
         });
+      }
     }
     if (picked.length < maxPick)
       for (let i = start; i < tags.length; i++)

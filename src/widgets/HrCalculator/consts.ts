@@ -76,7 +76,8 @@ export const isSenior = (tag: string) => tag === TOP || tag === SENIOR;
 export const MAX_PICK = 3;
 
 /**
- * 不选招募时限，一律按 9:00 算：可能出现 3–5★（gacha_table.recruitRarityTable 7:40–9:00 那一段），两个稀有标签此时锁定。
- * 6★ 只在组合含【高级资深干员】时算（specialTagRarityTable）；1★ 只在组合含【支援机械】时算（时限压到 3:50 以内才出），见 recruit.ts 的 combosOf。
+ * 不按招募时限筛干员，1–5★ 都列；6★ 只在组合含【高级资深干员】时出（specialTagRarityTable）。
+ * 保底按 9:00 算：此时只出 3–5★（gacha_table.recruitRarityTable 7:40–9:00 那一段），
+ * 低于 MIN_STAR 的（1★ 支援机械、2★ 新手）要把时限压短才出，不拉低保底，见 recruit.ts 的 combosOf。
  */
 export const MIN_STAR = 3;
