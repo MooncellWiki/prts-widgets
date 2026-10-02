@@ -14,7 +14,6 @@ import { isClient, useEventListener } from "@vueuse/core";
 import { useHostTheme } from "@/utils/useHostTheme";
 import { useHoverTip } from "@/utils/useHoverTip";
 
-import RecruitTips from "./RecruitTips.vue";
 import ResultView from "./ResultView.vue";
 import TagPanel from "./TagPanel.vue";
 import VerdictBar from "./VerdictBar.vue";
@@ -24,9 +23,8 @@ import { writeQuery } from "./url";
 import type { Source } from "./recruit";
 
 /**
- * 公招计算（PRTS Design 视觉，对应设计稿 /patterns/recruit）。照游戏的招募流程排：
- * 标签面板（最多 5 个，= 招募位上的 5 格）+ 招募时限（三档，决定稀有度范围）→ 提示 → 结论 → 按「保底几星」分层的组合（每组至多 3 个标签）；
- * 一个标签都没选时，结果区是保底速查。
+ * 公招计算（PRTS Design 视觉，对应设计稿 /patterns/recruit）：
+ * 标签面板 → 结论 → 全部组合排成一张表（每组至多 3 个标签，保底高的在前）。不选招募时限，一律按 9:00 算（见 consts.ts 的 MIN_STAR）。
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.hr-* 是这页自己的排布（各组件的 scoped 样式）。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
  */
@@ -43,10 +41,10 @@ const recruit = createRecruit(props.source);
 provide(recruitKey, recruit);
 const { state } = recruit;
 
-/* 地址栏：?filter= 同旧版、?t= 时限；改了就就地换掉（不加历史记录），复制下来的链接与地址栏一致 */
+/* 地址栏：?filter= 同旧版；改了就就地换掉（不加历史记录），复制下来的链接与地址栏一致 */
 if (isClient) recruit.load(location.search);
 watch(
-  () => writeQuery(isClient ? location.search : "", state.sel, state.dur),
+  () => writeQuery(isClient ? location.search : "", state.sel),
   (search) => {
     if (search !== location.search)
       history.replaceState(
@@ -93,7 +91,6 @@ const { tip, handlers: tipHandlers } = useHoverTip(
         v-on="tipHandlers"
       >
         <TagPanel />
-        <RecruitTips />
         <VerdictBar />
         <div class="hr-legend">
           <span

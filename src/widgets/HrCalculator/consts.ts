@@ -69,22 +69,14 @@ export const TAG_GROUPS: readonly { title: string; tags: readonly string[] }[] =
   ];
 export const ALL_TAGS = TAG_GROUPS.flatMap((g) => g.tags);
 
-/** 两个稀有标签（specialTagRarityTable 的键）：另一套皮，只在 9:00 锁定 */
+/** 两个稀有标签（specialTagRarityTable 的键）：另一套皮 */
 export const isSenior = (tag: string) => tag === TOP || tag === SENIOR;
 
-/** 游戏：招募位上 5 个标签（服务器下发）；至多选 3 个（RecruitBuildConfigStateBean.MAX_TAG_SELECT_NUM） */
-export const MAX_TAGS = 5;
+/** 游戏：至多选 3 个标签（RecruitBuildConfigStateBean.MAX_TAG_SELECT_NUM） */
 export const MAX_PICK = 3;
 
 /**
- * 招募时限三档 → 可能出现的星级（gacha_table.recruitRarityTable：≤ 3:50 出 1–4★、4:00–7:30 出 2–5★、7:40–9:00 出 3–5★）。
- * 游戏里 1:00–9:00、每 10 分钟一档，但稀有度范围只有这三段。两个稀有标签另算，见 recruit.ts 的 combosOf。
+ * 不选招募时限，一律按 9:00 算：可能出现 3–5★（gacha_table.recruitRarityTable 7:40–9:00 那一段），两个稀有标签此时锁定。
+ * 6★ 只在组合含【高级资深干员】时算（specialTagRarityTable）；1★ 只在组合含【支援机械】时算（时限压到 3:50 以内才出），见 recruit.ts 的 combosOf。
  */
-export const DURATIONS = [
-  { label: "1:00 – 3:50", lo: 1, hi: 4 },
-  { label: "4:00 – 7:30", lo: 2, hi: 5 },
-  { label: "7:40 – 9:00", lo: 3, hi: 5 },
-] as const;
-export type DurIndex = 0 | 1 | 2;
-/** 默认最长一档：两个稀有标签只在 9:00 锁定 */
-export const LONGEST: DurIndex = 2;
+export const MIN_STAR = 3;

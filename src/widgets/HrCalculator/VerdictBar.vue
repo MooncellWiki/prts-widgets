@@ -3,17 +3,16 @@ import { computed } from "vue";
 
 import { AkButton, useToast } from "@mooncellwiki/prts-design-vue";
 
-import { DURATIONS, LONGEST, MAX_TAGS, ROBOT } from "./consts";
+import { ROBOT } from "./consts";
 import { useRecruit } from "./store";
 import { writeQuery } from "./url";
 
-/** 结论先说：几组能保底 4★ 以上、最高几星、是哪一组、还能再选几个；右边「复制分享链接」 */
+/** 结论先说：几组能保底 4★ 以上、最高几星、是哪一组；右边「清空」（下一个招募位从头选）与「复制分享链接」 */
 const recruit = useRecruit();
 const { state, result } = recruit;
 const toast = useToast();
 
-const dur = computed(() => DURATIONS[state.dur]);
-const good = computed(() => result.value.tiers.flatMap((t) => t.combos));
+const good = computed(() => result.value.filter((c) => c.min >= 4));
 const best = computed(() => good.value[0]);
 /** 最高保底的那一组；同保底的不止一组时加「等」 */
 const bestTags = computed(() => {
@@ -24,13 +23,11 @@ const bestTags = computed(() => {
     ? `${tags} 等`
     : tags;
 });
-const left = computed(() => MAX_TAGS - state.sel.size);
 
 async function copyLink() {
   const url = `${location.origin}${location.pathname}${writeQuery(
     location.search,
     state.sel,
-    state.dur,
   )}`;
   try {
     await navigator.clipboard.writeText(url);
@@ -45,13 +42,10 @@ async function copyLink() {
   <div class="hr-bar">
     <p class="hr-verdict" role="status">
       <template v-if="state.sel.size === 0">
-        还没选标签。把招募位上出现的
-        <b>{{ MAX_TAGS }} 个标签</b
-        >点上，就能看到哪几个组合有保底；下面是全部保底组合的速查。
+        还没选标签。把招募位上出现的标签点上，就能看到哪几个组合有保底。
       </template>
-      <template v-else-if="result.list.length === 0">
-        时限 <b>{{ dur.label }}</b
-        >（{{ dur.lo }}–{{ dur.hi }}★）下，这几个标签圈不出任何干员。
+      <template v-else-if="result.length === 0">
+        这几个标签圈不出任何干员。
       </template>
       <template v-else>
         <template v-if="best">
@@ -61,18 +55,23 @@ async function copyLink() {
             >{{ best.min }}★</span
           >（{{ bestTags }}）。
         </template>
-        <template v-else-if="result.robots.length">
+        <template v-else-if="result.some((c) => c.min === 1)">
           没有保底 4★ 以上的组合；选【{{ ROBOT }}】必得 1★ 支援机械。
         </template>
         <template v-else>
-          没有保底 4★ 以上的组合{{
-            state.dur === LONGEST ? "——不选标签也一样，按想要的干员挑即可" : ""
-          }}。
+          没有保底 4★ 以上的组合——不选标签也一样，按想要的干员挑即可。
         </template>
-        <template v-if="left > 0"> 还可以再选 {{ left }} 个标签。</template>
       </template>
     </p>
     <div class="hr-bar__tools">
+      <AkButton
+        size="sm"
+        icon="refresh"
+        :disabled="state.sel.size === 0"
+        @click="recruit.clear()"
+      >
+        清空
+      </AkButton>
       <AkButton variant="ghost" size="sm" icon="link" @click="copyLink">
         复制分享链接
       </AkButton>

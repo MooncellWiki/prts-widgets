@@ -1,20 +1,12 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { AkButton, AkEmpty, AkSpinner } from "@mooncellwiki/prts-design-vue";
 
-import {
-  AkButton,
-  AkEmpty,
-  AkHeading,
-  AkSpinner,
-} from "@mooncellwiki/prts-design-vue";
-
-import ComboTier from "./ComboTier.vue";
+import ComboItem from "./ComboItem.vue";
 import { useRecruit } from "./store";
 
 /**
- * 结果：按「保底几星」分层——保底 6★ / 5★ / 4★ 各一层，整组都是 1★ 的单列「必得支援机械」，
- * 保底 3★ 及以下的收在最后一层「不保底」，前面有保底层时默认收起。
- * 一个标签都没选时是保底速查：全部能保底 4★ 以上的最小组合，排成多列的格子。
+ * 结果：全部组合排在同一张表里，保底高的在前（同保底标签少的在前、干员少的在前），整组都是 1★ 的支援机械排在最后。
+ * 一个标签都没选时不出东西。
  */
 defineProps<{
   /** 干员数据没取到 */
@@ -22,17 +14,7 @@ defineProps<{
 }>();
 
 const recruit = useRecruit();
-const { ops, state, result, reference } = recruit;
-
-const refTiers = computed(() =>
-  [5, 4]
-    .map((min) => ({
-      min,
-      combos: reference.value.filter((c) => c.min === min),
-    }))
-    .filter((t) => t.combos.length > 0),
-);
-const lowMin = computed(() => Math.min(...result.value.low.map((c) => c.min)));
+const { ops, state, result } = recruit;
 
 const reload = () => location.reload();
 </script>
@@ -46,61 +28,24 @@ const reload = () => location.reload();
     <!-- 外壳预渲染与数据还没回来时 -->
     <AkSpinner v-else-if="ops.length === 0" description="正在读取干员数据…" />
 
-    <template v-else-if="state.sel.size === 0">
-      <AkHeading
-        class="hr-ref-head"
-        variant="underline"
-        title="保底速查"
-        en="Guarantees"
-      >
-        <template #extra>时限 9:00 · 共 {{ reference.length }} 组</template>
-      </AkHeading>
-      <ComboTier
-        v-for="t in refTiers"
-        :key="t.min"
-        :rarity="t.min"
-        :title="`保底 ${t.min}★`"
-        :combos="t.combos"
-        :level="3"
-        grid
-      />
-    </template>
-
-    <AkEmpty v-else-if="result.list.length === 0" title="没有可能出现的干员">
-      换一档招募时限，或者<AkButton variant="link" @click="recruit.clear()">
-        清空标签</AkButton
-      >。
-    </AkEmpty>
-
-    <template v-else>
-      <ComboTier
-        v-for="t in result.tiers"
-        :key="t.min"
-        :rarity="t.min"
-        :title="`保底 ${t.min}★`"
-        :combos="t.combos"
-      />
-      <ComboTier
-        v-if="result.robots.length"
-        :rarity="1"
-        title="必得支援机械"
-        :combos="result.robots"
-      />
-      <ComboTier
-        v-if="result.low.length"
-        v-model:open="state.lowOpen"
-        :rarity="lowMin"
-        title="不保底"
-        :count="`${result.low.length} 组 · 最低可能出 ${lowMin}★`"
-        :combos="result.low"
-        :collapsible="result.tiers.length > 0 || result.robots.length > 0"
-      />
+    <template v-else-if="state.sel.size > 0">
+      <AkEmpty v-if="result.length === 0" title="没有可能出现的干员">
+        <AkButton variant="link" @click="recruit.clear()">清空标签</AkButton
+        >再选一次。
+      </AkEmpty>
+      <ol v-else class="hr-combos">
+        <ComboItem v-for="c in result" :key="c.mask" :combo="c" />
+      </ol>
     </template>
   </div>
 </template>
 
 <style scoped lang="scss">
-.hr-ref-head {
-  margin-bottom: var(--ak-space-3);
+.hr-combos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--ak-border);
+  background: var(--ak-bg-surface);
 }
 </style>

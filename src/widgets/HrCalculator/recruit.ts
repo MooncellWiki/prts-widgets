@@ -1,14 +1,11 @@
 import {
   ALL_TAGS,
-  DURATIONS,
-  LONGEST,
   MAX_PICK,
-  NOVICE,
+  MIN_STAR,
   ROBOT,
   SENIOR,
   TOP,
   isSenior,
-  type DurIndex,
 } from "./consts";
 
 /** cargoquery 的一行（chara ⋈ char_obtain，见 entries/HrCalculator.ts） */
@@ -40,8 +37,6 @@ export interface Combo {
   mask: number;
   /** 星级从高到低 */
   ops: Op[];
-  /** 含稀有标签、时限却没拉满 9:00：标签可能被划掉，保底按这一档的下限算 */
-  unsure: boolean;
   /** 保底 = 这组里最低的星级 */
   min: number;
 }
@@ -69,35 +64,30 @@ export function toOps(source: readonly Source[]): Op[] {
 }
 
 /**
- * 从 tags 里取 1–maxPick 个；一组的干员 = 带齐这几个标签、星级落在时限范围里的（recruitRarityTable）。
- * 两个稀有标签把上限抬到自己那一星（specialTagRarityTable，同游戏稀有度块的算法）：
- * 5★ 在范围内或组合含【资深干员】时算，6★ 只在组合含【高级资深干员】时算（同旧版的 can5）。
+ * 从 tags 里取 1–maxPick 个；一组的干员 = 带齐这几个标签、按 9:00 可能出现的（见 consts.ts 的 MIN_STAR）：
+ * 3–5★ 都算，6★ 只在组合含【高级资深干员】时算（同旧版的 can5），1★ 只在组合含【支援机械】时算。
  */
 export function combosOf(
   ops: readonly Op[],
   tags: readonly string[],
-  dur: DurIndex,
   maxPick = MAX_PICK,
 ): Combo[] {
-  const { lo, hi } = DURATIONS[dur];
   const out: Combo[] = [];
   const walk = (start: number, picked: string[], mask: number) => {
     if (picked.length) {
       const top = (mask & bit(TOP)) !== 0;
-      const senior = (mask & bit(SENIOR)) !== 0;
-      const unsure = (top || senior) && dur !== LONGEST;
+      const robot = (mask & bit(ROBOT)) !== 0;
       const matched = ops.filter(
         (c) =>
           (c.mask & mask) === mask &&
-          (c.star === 6 ? top : c.star >= lo && (c.star <= hi || senior)),
+          (c.star === 6 ? top : c.star >= MIN_STAR || (c.star === 1 && robot)),
       );
       if (matched.length)
         out.push({
           tags: picked,
           mask,
           ops: matched,
-          unsure,
-          min: unsure ? lo : matched[matched.length - 1].star,
+          min: matched[matched.length - 1].star,
         });
     }
     if (picked.length < maxPick)
@@ -131,29 +121,12 @@ export const compareCombos = (a: Combo, b: Combo) =>
   a.ops.length - b.ops.length ||
   a.mask - b.mask;
 
-/**
- * 保底速查：全部标签里能保底 4★ 以上的最小组合（9:00）。
- * 不含资质那四个——稀有标签自己就是保底，新手 / 支援机械只出低星。多加标签没把保底抬高的不列。
- */
-export function referenceCombos(ops: readonly Op[]): Combo[] {
-  const skip = new Set([TOP, SENIOR, NOVICE, ROBOT]);
-  const good = combosOf(
-    ops,
-    ALL_TAGS.filter((t) => !skip.has(t)),
-    LONGEST,
-  ).filter((c) => c.min >= 4);
-  return good
-    .filter((c) => !good.some((s) => subOf(s, c) && s.min >= c.min))
-    .sort(compareCombos);
-}
-
-/** 单选就能保底 4★ 以上（9:00）的标签 → 保底星级；稀有标签不算（它们另有一套皮） */
+/** 单选就能保底 4★ 以上的标签 → 保底星级；稀有标签不算（它们另有一套皮） */
 export function soloGuarantees(ops: readonly Op[]): Map<string, number> {
   return new Map(
     combosOf(
       ops,
       ALL_TAGS.filter((t) => !isSenior(t)),
-      LONGEST,
       1,
     )
       .filter((c) => c.min >= 4)
@@ -161,49 +134,6 @@ export function soloGuarantees(ops: readonly Op[]): Map<string, number> {
   );
 }
 
-export interface Analysis {
-  /** 全部组合（已剪枝、已排序） */
-  list: Combo[];
-  /** 保底 6★ / 5★ / 4★ 各一层 */
-  tiers: { min: number; combos: Combo[] }[];
-  /** 整组都是 1★：必得支援机械 */
-  robots: Combo[];
-  /** 保底 3★ 及以下、或时限没拉满的稀有标签组合 */
-  low: Combo[];
-}
-
-/** picked 按面板的次序（ALL_TAGS）给，组合里的标签照这个次序摆 */
-export function analyze(
-  ops: readonly Op[],
-  picked: readonly string[],
-  dur: DurIndex,
-): Analysis {
-  const list = prune(combosOf(ops, picked, dur)).sort(compareCombos);
-  const robots = list.filter((c) => c.ops[0].star === 1);
-  const rest = list.filter((c) => c.ops[0].star !== 1);
-  const good = rest.filter((c) => c.min >= 4 && !c.unsure);
-  return {
-    list,
-    tiers: [6, 5, 4]
-      .map((min) => ({ min, combos: good.filter((c) => c.min === min) }))
-      .filter((t) => t.combos.length > 0),
-    robots,
-    low: rest.filter((c) => c.min < 4 || c.unsure),
-  };
-}
-
-/**
- * 游戏时限下面那排「可获得的干员」稀有度块（BuildConfigRarityViewModel.InitData）：
- * 范围内的星级；选了稀有标签，它对应的那一星标 up、范围上限跟着抬到那一星。
- */
-export function rarityBlocks(dur: DurIndex, sel: ReadonlySet<string>) {
-  const { lo, hi } = DURATIONS[dur];
-  const up = new Set<number>();
-  if (sel.has(SENIOR)) up.add(5);
-  if (sel.has(TOP)) up.add(6);
-  const top = Math.max(hi, ...up);
-  return Array.from({ length: top - lo + 1 }, (_, i) => ({
-    star: lo + i,
-    up: up.has(lo + i),
-  }));
-}
+/** 全部组合（已剪枝、已排序：保底高的在前）；picked 按面板的次序（ALL_TAGS）给，组合里的标签照这个次序摆 */
+export const analyze = (ops: readonly Op[], picked: readonly string[]) =>
+  prune(combosOf(ops, picked)).sort(compareCombos);

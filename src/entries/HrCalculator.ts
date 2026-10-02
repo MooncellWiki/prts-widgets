@@ -39,7 +39,7 @@ async function fetchSource(): Promise<Source[]> {
 /**
  * 样式来自皮肤：Arknights 皮肤已加载全套，这两个模块是空操作；Vector / Minerva 上
  * 动态加载令牌 + 作用域 + 组件（skins.arknights.components）与官网字体
- * （skins.arknights.fonts：时限 / 星级 / 计数用的 Bender），挂载前等它们就位。
+ * （skins.arknights.fonts：星级 / 计数用的 Bender），挂载前等它们就位。
  * 数据与样式并行取。走 RLQ 而不是直接调 mw.loader.using 的原因见 VoiceTable.ts。
  */
 const STYLE_MODULES = ["skins.arknights.components", "skins.arknights.fonts"];

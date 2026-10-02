@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed } from "vue";
 
 import OpTile from "./OpTile.vue";
 import { isSenior } from "./consts";
@@ -7,19 +7,10 @@ import { isSenior } from "./consts";
 import type { Combo } from "./recruit";
 
 /**
- * 一组：左边是标签（游戏的深灰标签钮）+「几位 · 几星到几星」，右边是干员。
- * 一组超过 28 位（单选【资深干员】= 全部 5★）先出 24 位，其余收在「+N」后面。
+ * 一组：左边是标签（游戏的深灰标签钮）+「几位 · 几星到几星」，右边是全部干员；左边的色条 = 保底的稀有度。
  */
 const props = defineProps<{ combo: Combo }>();
 
-const FOLD = 24;
-const expanded = ref(false);
-const folded = computed(
-  () => !expanded.value && props.combo.ops.length > FOLD + 4,
-);
-const shown = computed(() =>
-  folded.value ? props.combo.ops.slice(0, FOLD) : props.combo.ops,
-);
 const range = computed(() => {
   const { min, ops } = props.combo;
   return ops[0].star > min ? `${min}–${ops[0].star}` : `${min}`;
@@ -37,23 +28,11 @@ const range = computed(() => {
         {{ tag }}
       </span>
       <span class="hr-combo__meta">
-        <template v-if="combo.unsure">未拉满 9:00，标签可能被划掉</template>
-        <template v-else>
-          {{ combo.ops.length }} 位 · <b>{{ range }}★</b>
-        </template>
+        {{ combo.ops.length }} 位 · <b>{{ range }}★</b>
       </span>
     </div>
     <div class="hr-combo__ops">
-      <OpTile v-for="op in shown" :key="op.zh" :op="op" />
-      <button
-        v-if="folded"
-        type="button"
-        class="hr-more"
-        :aria-label="`展开其余 ${combo.ops.length - FOLD} 位干员`"
-        @click="expanded = true"
-      >
-        +{{ combo.ops.length - FOLD }}
-      </button>
+      <OpTile v-for="op in combo.ops" :key="op.zh" :op="op" />
     </div>
   </li>
 </template>
@@ -118,30 +97,6 @@ const range = computed(() => {
       border-left: var(--ak-bar-w) solid var(--ak-r, var(--ak-border-strong));
     }
   }
-
-  // 保底速查排成多列的格子：标签在上、干员在下，格子里不画稀有度色条（层标题已经标了）
-  .hr-combos--grid > & {
-    display: flex;
-    flex-direction: column;
-    border-top: 0;
-    box-shadow:
-      1px 0 0 var(--ak-border),
-      0 1px 0 var(--ak-border);
-  }
-
-  .hr-combos--grid > & &__tags {
-    padding: 10px var(--ak-space-3) 0;
-    border: 0;
-  }
-
-  .hr-combos--grid > & &__meta {
-    flex: none;
-    margin-left: auto;
-  }
-
-  .hr-combos--grid > & &__ops {
-    border: 0;
-  }
 }
 
 // 游戏的深灰标签钮（btn_request #313131 白字），去掉投影换成底边
@@ -160,33 +115,6 @@ const range = computed(() => {
 
   &.is-senior {
     @include mixins.senior-btn;
-  }
-}
-
-.hr-more {
-  all: unset;
-  box-sizing: border-box;
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  border: 1px dashed var(--ak-border-strong);
-  color: var(--ak-fg-secondary);
-  font: 700 var(--ak-fs-sm) / 1 var(--ak-font-label);
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--ak-accent);
-    color: var(--ak-accent);
-  }
-
-  &:focus-visible {
-    @include mixins.focus-ring;
-  }
-
-  .hr--narrow & {
-    width: 52px;
-    height: 52px;
   }
 }
 </style>

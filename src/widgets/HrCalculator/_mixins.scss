@@ -1,6 +1,6 @@
 // 几个组件共用的画法：scoped 样式各管各的组件，公用的放这里 @include
 
-// 两个稀有标签落进格子 / 出现在组合里：游戏 btn_request_r 的深灰底 + 右侧黄色半调网点、黄字
+// 两个稀有标签出现在组合里：游戏 btn_request_r 的深灰底 + 右侧黄色半调网点、黄字
 @mixin senior-btn {
   color: #ffeb04;
   background-image:
