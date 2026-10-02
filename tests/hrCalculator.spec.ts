@@ -250,11 +250,14 @@ describe("HrCalculator UI smoke", () => {
     history.replaceState(null, "", "/w/公招计算");
   });
 
-  const mount = async (path = "/w/公招计算", source = SOURCE) => {
+  const mount = async (
+    path = "/w/公招计算",
+    props: { source?: Source[]; failed?: boolean } = { source: SOURCE },
+  ) => {
     history.replaceState(null, "", path);
     const host = document.createElement("div");
     document.body.append(host);
-    app = createApp(HrCalculator, { source });
+    app = createApp(HrCalculator, props);
     app.mount(host);
     await nextTick();
     return host;
@@ -305,7 +308,9 @@ describe("HrCalculator UI smoke", () => {
     const angel = { zh: "能天使", charId: "char_103_angel" };
     const host = await mount(
       `/w/公招计算${writeQuery("", new Set(["高级资深干员"]), 2)}`,
-      SOURCE.map((s) => (s.zh === angel.zh ? { ...s, ...angel } : s)),
+      {
+        source: SOURCE.map((s) => (s.zh === angel.zh ? { ...s, ...angel } : s)),
+      },
     );
     const img = host.querySelector<HTMLImageElement>(
       `img[src="${avatar(angel)}"]`,
@@ -318,5 +323,13 @@ describe("HrCalculator UI smoke", () => {
 
     img.dispatchEvent(new Event("error"));
     expect(img.style.visibility).toBe("hidden");
+  });
+
+  it("干员数据没取到：结果区是失败提示，不再转圈", async () => {
+    const host = await mount(undefined, { failed: true });
+    expect(host.querySelector(".ak-empty")?.textContent).toContain(
+      "干员数据读取失败",
+    );
+    expect(host.querySelector(".ak-spinner")).toBeNull();
   });
 });

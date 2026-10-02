@@ -6,7 +6,7 @@ import type { Source } from "../widgets/HrCalculator/recruit";
 
 const ele = document.querySelector("#root");
 
-/** 可公开招募的干员：职业 / 位置 / 稀有度 / 词缀 / 名称 / 游戏内 ID / 获得方式 */
+/** 可公开招募的干员：职业 / 位置 / 稀有度 / 词缀 / 名称 / 游戏内 ID / 获得方式；API 报错（返回里没有 cargoquery）当失败 */
 async function fetchSource(): Promise<Source[]> {
   const resp = await fetch(
     `/api.php?${new URLSearchParams({
@@ -21,6 +21,8 @@ async function fetchSource(): Promise<Source[]> {
     })}`,
   );
   const json = await resp.json();
+  if (!json.cargoquery)
+    throw new Error(json.error?.info ?? "cargoquery 没有返回数据");
   return json.cargoquery.map(({ title: v }: { title: Record<string, any> }) =>
     Object.freeze({
       profession: v.profession,
@@ -43,11 +45,18 @@ async function fetchSource(): Promise<Source[]> {
 const STYLE_MODULES = ["skins.arknights.components", "skins.arknights.fonts"];
 
 if (ele) {
-  const source = fetchSource();
+  // 取不到数据也照样挂载，结果区换成失败提示——不然预渲染外壳里的 Spinner 会一直转
+  const props = fetchSource().then(
+    (source) => ({ source }),
+    (error) => {
+      console.error("[HrCalculator] 干员数据读取失败", error);
+      return { failed: true };
+    },
+  );
   (window.RLQ = window.RLQ || []).push([
     STYLE_MODULES,
     async () => {
-      createApp(HrCalculator, { source: await source }).mount(ele);
+      createApp(HrCalculator, await props).mount(ele);
     },
   ]);
 } else console.error("#root not found");

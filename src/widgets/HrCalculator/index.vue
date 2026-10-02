@@ -30,9 +30,14 @@ import type { Source } from "./recruit";
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.hr-* 是这页自己的排布（各组件的 scoped 样式）。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
  */
-const props = withDefaults(defineProps<{ source?: Source[] }>(), {
-  source: () => [],
-});
+const props = withDefaults(
+  defineProps<{
+    source?: Source[];
+    /** 干员数据没取到：结果区出失败提示，不再转圈 */
+    failed?: boolean;
+  }>(),
+  { source: () => [] },
+);
 
 const recruit = createRecruit(props.source);
 provide(recruitKey, recruit);
@@ -98,7 +103,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
             <i />单选这一个标签即可保底（方块颜色 = 保底的稀有度）
           </span>
         </div>
-        <ResultView />
+        <ResultView :failed="failed" />
       </div>
 
       <div

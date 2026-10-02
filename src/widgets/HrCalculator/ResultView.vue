@@ -16,6 +16,11 @@ import { useRecruit } from "./store";
  * 保底 3★ 及以下的收在最后一层「不保底」，前面有保底层时默认收起。
  * 一个标签都没选时是保底速查：全部能保底 4★ 以上的最小组合，排成多列的格子。
  */
+defineProps<{
+  /** 干员数据没取到 */
+  failed?: boolean;
+}>();
+
 const recruit = useRecruit();
 const { ops, state, result, reference } = recruit;
 
@@ -28,12 +33,18 @@ const refTiers = computed(() =>
     .filter((t) => t.combos.length > 0),
 );
 const lowMin = computed(() => Math.min(...result.value.low.map((c) => c.min)));
+
+const reload = () => location.reload();
 </script>
 
 <template>
   <div class="hr-result">
+    <AkEmpty v-if="failed" title="干员数据读取失败">
+      <AkButton variant="link" @click="reload">刷新页面</AkButton>再试一次。
+    </AkEmpty>
+
     <!-- 外壳预渲染与数据还没回来时 -->
-    <AkSpinner v-if="ops.length === 0" description="正在读取干员数据…" />
+    <AkSpinner v-else-if="ops.length === 0" description="正在读取干员数据…" />
 
     <template v-else-if="state.sel.size === 0">
       <AkHeading
