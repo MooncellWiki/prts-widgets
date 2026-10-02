@@ -154,23 +154,24 @@ const advancedCount = computed(() =>
     color: var(--ak-fg-subtle);
   }
 
-  // 右端的开合箭头
+  // 右端的开合记号：收起 ＋ / 展开 −，同 .ak-panel--collapsible（不用朝右的箭头——整行右端一个 › 读起来像「进下一页」）
   &::after {
     content: "";
     flex: none;
-    width: 7px;
-    height: 7px;
-    margin: 0 2px 0 auto;
-    border-right: 2px solid currentColor;
-    border-bottom: 2px solid currentColor;
-    transform: rotate(-45deg);
+    width: 10px;
+    height: 10px;
+    margin-left: auto;
+    background:
+      linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
+      linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
     opacity: 0.6;
-    transition: transform var(--ak-dur-fast);
+    transition: background-size var(--ak-dur-fast);
   }
 
   &[aria-expanded="true"]::after {
-    transform: rotate(45deg);
-    margin-top: -3px;
+    background-size:
+      100% 2px,
+      2px 0;
   }
 }
 </style>

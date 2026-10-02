@@ -135,7 +135,8 @@ const origin = (char: Char) =>
     }
 
     dt {
-      font-size: 10px;
+      // 低分屏抬到中文最小字号；宿主皮肤还没有这个变量时照 10px
+      font-size: max(10px, var(--ak-fs-cjk-min, 0px));
       line-height: 1;
       font-weight: 500;
       color: var(--ak-fg-muted);
