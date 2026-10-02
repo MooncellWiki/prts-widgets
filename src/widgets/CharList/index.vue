@@ -10,6 +10,8 @@ import {
 import { useEventListener } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 
+import { useHostTheme } from "@/utils/useHostTheme";
+
 import Pager from "./Pager.vue";
 import ResultBar from "./ResultBar.vue";
 import Toolbar from "./Toolbar.vue";
@@ -19,7 +21,6 @@ import ResultCards from "./result/ResultCards.vue";
 import ResultGrid from "./result/ResultGrid.vue";
 import ResultTable from "./result/ResultTable.vue";
 import { useCharListStore } from "./store";
-import { useHostTheme } from "./useHostTheme";
 import { useTermTip } from "./useTermTip";
 
 import type { Char } from "./utils";

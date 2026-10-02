@@ -1,0 +1,32 @@
+// 外框 / 舞台底 / 左下角提示：载入前的占位（Wrapper）与查看器（SpineViewer）共用，scoped 样式各自 @include。
+// 照设计稿 prts-design preview/_src/pages/operator.html 的 .sv-* 一段，取舍见文档站 /patterns/operator#干员模型
+
+@mixin box {
+  --sv-h: clamp(320px, 44vw, 440px);
+  --sv-ink: 255, 255, 255;
+  position: relative;
+  border: 1px solid var(--ak-border);
+  background: var(--ak-bg-surface);
+}
+
+// 舞台：底色是「背景」那一格选的（默认深色，不随明暗主题——模型在深底上轮廓最清楚），canvas 透明叠在上面；
+// HUD 字色 --sv-ink 由脚本按底色明度给黑 / 白
+@mixin stage {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background-color: var(--sv-bg, #0f0f10);
+  --ak-grid-color: rgba(var(--sv-ink), 0.06);
+  color: rgba(var(--sv-ink), 0.9);
+  outline: 0;
+}
+
+@mixin hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  pointer-events: none;
+  font: 600 max(10px, var(--ak-fs-cjk-min)) / 1 var(--ak-font-label);
+  letter-spacing: 0.08em;
+  color: rgba(var(--sv-ink), 0.42);
+}
