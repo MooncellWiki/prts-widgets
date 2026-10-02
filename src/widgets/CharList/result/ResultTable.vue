@@ -6,6 +6,7 @@ import { branchLine } from "../assets";
 import { STAT_COLS, type SortKey } from "../consts";
 import { useCharListStore } from "../store";
 
+import HiddenBadge from "./HiddenBadge.vue";
 import OpAvatar from "./OpAvatar.vue";
 import OpIdent from "./OpIdent.vue";
 import StatValue from "./StatValue.vue";
@@ -17,7 +18,7 @@ import StatValue from "./StatValue.vue";
  */
 const store = useCharListStore();
 const { state, statsOf } = store;
-const { pageList, sortStat } = storeToRefs(store);
+const { pageList, sortStat, hiddenOnly } = storeToRefs(store);
 
 const ariaSort = (key: SortKey) =>
   state.sort.key === key
@@ -100,7 +101,9 @@ const ariaSort = (key: SortKey) =>
           <StatValue :value="statsOf(char)[col.key]" />
         </td>
         <td class="ol-sep">
-          {{ char.force.join(" · ") }}
+          <!-- 只有隐藏势力命中时，势力字符串后面挂一枚紫标 -->
+          <span>{{ char.force.join(" · ") }}</span>
+          <HiddenBadge v-if="hiddenOnly.has(char)" label="隐藏势力" />
           <span class="ol-sub">
             {{
               [char.birthPlace, char.race.join(" / ")]
@@ -256,6 +259,11 @@ const ariaSort = (key: SortKey) =>
 
 .ol-sub {
   @include text.sub;
+}
+
+// 「隐藏势力」标志与前面的势力字符串之间留一道缝
+.ol-hidden {
+  margin-left: 3px;
 }
 
 .ol-strong {

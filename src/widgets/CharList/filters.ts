@@ -4,17 +4,30 @@ import { BRANCHES, PROFESSION_ORDER } from "./professions";
 
 import type { Char } from "./utils";
 
+/** 匹配一行时可参考的行级开关：目前只有「势力」行用（档案 / 作战、隐藏势力）。 */
+export interface MatchContext {
+  /** 作战模式：读游戏内的 ingameFaction，而不是档案里的 nation / group / team */
+  readonly combat: boolean;
+  /** 作战模式下连 ingameFaction.hidden 一起读 */
+  readonly hidden: boolean;
+}
+
+/** 不看行级开关的行、以及档案模式，共用这一份。 */
+export const DEFAULT_MATCH: MatchContext = { combat: false, hidden: false };
+
 export interface FilterOption {
   /** 旧链接使用的值；独立于显示文字。 */
   readonly id: string;
   readonly label: string;
-  readonly matches: (char: Char) => boolean;
+  readonly matches: (char: Char, ctx: MatchContext) => boolean;
 }
 
 export interface FilterDef {
   readonly title: string;
   readonly options: readonly FilterOption[];
   readonly canAnd?: boolean;
+  /** 这一行有「档案 / 作战」两种查询方式（势力行）：开关由 FilterRow 里的 ForceTools.vue 出 */
+  readonly combat?: boolean;
 }
 
 /** 普通选项与别名合并；是否提供「其他」由调用处明确指定。 */
@@ -51,6 +64,72 @@ const gradeFilter = (
   title,
   options: valueOptions((char) => [getValue(char)], SIX_GRADES, true),
 });
+
+/** 势力标签：档案与作战两种模式共用同一批标签（也是旧链接里的值）。 */
+const FORCE_NAMES = [
+  "罗德岛",
+  "炎",
+  "炎-龙门",
+  "阿戈尔",
+  "玻利瓦尔",
+  "哥伦比亚",
+  "东",
+  "伊比利亚",
+  "卡西米尔",
+  "谢拉格",
+  "拉特兰",
+  "莱塔尼亚",
+  "米诺斯",
+  "雷姆必拓",
+  "萨米",
+  "萨尔贡",
+  "叙拉古",
+  "乌萨斯",
+  "维多利亚",
+  "罗德岛-精英干员",
+  "S.W.E.E.P.",
+  "巴别塔",
+  "深海猎人",
+  "黑钢国际",
+  "格拉斯哥帮",
+  "喀兰贸易",
+  "龙门近卫局",
+  "企鹅物流",
+  "红松骑士团",
+  "莱茵生命",
+  "汐斯塔",
+  "炎-岁",
+  "深池",
+  "塔拉",
+  "行动组A4",
+  "行动预备组A1",
+  "行动预备组A4",
+  "行动预备组A6",
+  "贾维团伙",
+  "使徒",
+  "鲤氏侦探事务所",
+  "彩虹小队",
+  "乌萨斯学生自治团",
+  "莱欧斯小队",
+  "Ave Mujica",
+  "S.E.E.S.",
+] as const;
+
+/**
+ * 势力行：档案模式看模板给的国家 / 组织 / 小队（force）；
+ * 作战模式拿同一个势力标签去比对 ingameFaction 里的元素——标签要正好是数组里的一项，
+ * main 有这一项就算命中；开了隐藏势力，hidden 里的项同样算（两者是「或」，不是互相比对）。
+ */
+const forceOptions = (): FilterOption[] =>
+  FORCE_NAMES.map((name) => ({
+    id: name,
+    label: name,
+    matches: (char, ctx) =>
+      ctx.combat
+        ? char.ingameFaction.main.includes(name) ||
+          (ctx.hidden && char.ingameFaction.hidden.includes(name))
+        : char.force.includes(name),
+  }));
 
 /** 固定筛选规则。键名沿用旧 URL；新增分支在 professions.ts 的所属职业下维护。 */
 export const FILTERS = {
@@ -107,7 +186,7 @@ export const FILTERS = {
     ),
   },
   tag: {
-    title: "词缀",
+    title: "标签",
     options: valueOptions(
       (c) => c.tag,
       [
@@ -140,56 +219,9 @@ export const FILTERS = {
   adapt: gradeFilter("源石技艺适应性", (c) => c.adapt),
   force: {
     title: "势力",
-    options: valueOptions(
-      (c) => c.force,
-      [
-        "罗德岛",
-        "炎",
-        "炎-龙门",
-        "阿戈尔",
-        "玻利瓦尔",
-        "哥伦比亚",
-        "东",
-        "伊比利亚",
-        "卡西米尔",
-        "谢拉格",
-        "拉特兰",
-        "莱塔尼亚",
-        "米诺斯",
-        "雷姆必拓",
-        "萨米",
-        "萨尔贡",
-        "叙拉古",
-        "乌萨斯",
-        "维多利亚",
-        "罗德岛-精英干员",
-        "S.W.E.E.P.",
-        "巴别塔",
-        "深海猎人",
-        "黑钢国际",
-        "格拉斯哥帮",
-        "喀兰贸易",
-        "龙门近卫局",
-        "企鹅物流",
-        "红松骑士团",
-        "莱茵生命",
-        "汐斯塔",
-        "炎-岁",
-        "深池",
-        "塔拉",
-        "行动组A4",
-        "行动预备组A1",
-        "行动预备组A4",
-        "行动预备组A6",
-        "贾维团伙",
-        "使徒",
-        "鲤氏侦探事务所",
-        "彩虹小队",
-        "乌萨斯学生自治团",
-        "莱欧斯小队",
-        "Ave Mujica",
-      ],
-    ),
+    canAnd: true,
+    combat: true,
+    options: forceOptions(),
   },
   birthPlace: {
     title: "出身地",
@@ -318,13 +350,13 @@ export const QUICK_FILTERS: readonly FilterId[] = [
 
 /** 其余筛选固定分到以下页签；每个 FilterId 只能在这里或 QUICK_FILTERS 中出现一次。 */
 export const ADVANCED_TABS: readonly AdvancedTab[] = [
-  { id: "trait", title: "词缀 · 获取", fields: ["tag", "obtainMethod", "sex"] },
+  { id: "trait", title: "标签 · 获取", fields: ["tag", "sex", "obtainMethod"] },
+  { id: "force", title: "势力", fields: ["force"], find: true },
   {
     id: "six",
-    title: "六维",
+    title: "档案六维",
     fields: ["phy", "flex", "tolerance", "plan", "skill", "adapt"],
   },
-  { id: "force", title: "势力", fields: ["force"], find: true },
-  { id: "birth", title: "出身地", fields: ["birthPlace"], find: true },
+  { id: "birth", title: "档案出身地", fields: ["birthPlace"], find: true },
   { id: "race", title: "种族", fields: ["race"], find: true },
 ];

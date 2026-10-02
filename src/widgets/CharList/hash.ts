@@ -22,6 +22,8 @@ export interface HashState {
  *   <字段>=1-近卫;狙击   一行筛选；0- 开头 = 同时满足；稀有度只写数字
  *   _s 搜索 · _f 数值加算（p 满潜能 / t 满信赖）· _d 显示方式 0 表格 / 1 半身像 / 2 头像
  *   _o 排序：0 实装顺序 / 1 倒序 · 2 名称升 / 3 降 · 4 稀有度升 / 5 降；数值列是新加的，写成 hp-d / atk-a
+ *   _fm 势力查询方式：1 = 作战（缺省 = 档案，按 nation / group / team 查）
+ *   _fh 隐藏势力：1 = 作战模式下连 ingameFaction.hidden 一起查（档案模式下无效果）
  * 显示方式的默认值随设备（手机上是头像，见 store.ts），和默认值一样时不写 _d——手机上换回表格写的是 _d=0
  */
 const LEGACY_SORT: SortKey[] = ["time", "name", "rarity"];
@@ -46,6 +48,10 @@ function formatSort(sort: Sort): string {
     : String(legacy * 2 + (sort.dir < 0 ? 1 : 0));
 }
 
+/** 带「档案 / 作战」开关的那一行（势力） */
+const combatFilter = (filters: FilterState[]) =>
+  filters.find((f) => f.def.combat);
+
 /** 按地址栏重置 filters 的选择，返回其余状态；hash 带不带开头的 # 都行 */
 export function readHash(
   hash: string,
@@ -55,6 +61,8 @@ export function readHash(
   for (const f of filters) {
     f.selection.selected.clear();
     f.selection.and = false;
+    f.selection.combat = false;
+    f.selection.hidden = false;
   }
   const state: HashState = {
     q: "",
@@ -72,6 +80,11 @@ export function readHash(
       state.trust = v.includes("t");
     } else if (k === "_d") {
       if (/^[0-2]$/.test(v)) state.view = Number(v) as ViewMode;
+    } else if (k === "_fm" || k === "_fh") {
+      const force = combatFilter(filters);
+      if (!force) continue;
+      if (k === "_fm") force.selection.combat = v === "1";
+      else force.selection.hidden = v === "1";
     } else {
       const f = filters.find((f) => f.id === k);
       if (!f || !/^[01]-/.test(v)) continue;
@@ -96,6 +109,9 @@ export function buildHash(
     const ids = selectedOptions(f).map((option) => option.id);
     p.set(f.id, (f.selection.and ? "0-" : "1-") + ids.join(";"));
   }
+  const force = combatFilter(filters);
+  if (force?.selection.combat) p.set("_fm", "1");
+  if (force?.selection.hidden) p.set("_fh", "1");
   if (state.q) p.set("_s", state.q);
   const sort = formatSort(state.sort);
   if (sort !== formatSort(DEFAULT_SORT)) p.set("_o", sort);
