@@ -23,14 +23,19 @@ const store = useCharListStore();
 const panelId = useId();
 const positionId = useId();
 
-const { profession, branch, advanced } = storeToRefs(store);
-const { rarity, position } = store.filterById;
+const { advanced } = storeToRefs(store);
+const {
+  profession,
+  subProfession: branch,
+  rarity,
+  position,
+} = store.filterById;
 
 /** 没选职业却带着分支（旧的短链接可以这样）时整行照出，不然那个条件看不见也取消不了 */
 const showBranch = computed(
   () =>
-    profession.value.selection.selected.size > 0 ||
-    branch.value.selection.selected.size > 0,
+    profession.selection.selected.size > 0 ||
+    branch.selection.selected.size > 0,
 );
 
 const advancedCount = computed(() =>

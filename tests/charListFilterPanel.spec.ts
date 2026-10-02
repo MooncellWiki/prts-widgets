@@ -73,7 +73,9 @@ describe("固定职业 / 分支筛选面板", () => {
     chip("先锋").click();
     await nextTick();
     expect(groups()).toEqual(["近卫分支"]);
-    expect(Array.from(store.branch.selection.selected)).toEqual([]);
+    expect(
+      Array.from(store.filterById.subProfession.selection.selected),
+    ).toEqual([]);
     expect(
       new URLSearchParams(location.hash.slice(1)).get("subProfession"),
     ).toBeNull();
@@ -87,7 +89,7 @@ describe("固定职业 / 分支筛选面板", () => {
     store.syncFromHash();
     await nextTick();
 
-    expect(store.profession.selection.selected.size).toBe(0);
+    expect(store.filterById.profession.selection.selected.size).toBe(0);
     expect(chip("策士").closest(".ol-branch")?.getAttribute("aria-label")).toBe(
       "先锋分支",
     );
@@ -117,19 +119,39 @@ describe("固定职业 / 分支筛选面板", () => {
       cost: "10",
       block: "1",
     });
-    store.init([new Char(row)]);
+    const misfiled = new Char(row);
+    store.init([misfiled]);
     chip("先锋").click();
     await nextTick();
     expect(chip("策士").closest(".ol-branch")?.getAttribute("aria-label")).toBe(
       "先锋分支",
     );
-    expect(store.list).toEqual([]);
+
+    // 只按分支筛时照干员自己的分支匹配
+    chip("先锋").click();
+    store.toggle(store.filterById.subProfession, "策士");
+    await nextTick();
+    expect(store.list).toEqual([misfiled]);
+
+    // 选近卫：策士固定属于先锋，即使这位干员数据写的是近卫，也要清掉
+    chip("近卫").click();
+    await nextTick();
+    expect(store.filterById.subProfession.selection.selected.size).toBe(0);
+    expect(store.list).toEqual([misfiled]);
 
     history.replaceState(null, "", "/");
     store.init([]);
     await nextTick();
-    expect(store.profession.selection.selected.size).toBe(0);
+    expect(store.filterById.profession.selection.selected.size).toBe(0);
     expect(groups()).toEqual([]);
+  });
+
+  it("不认得的选项 id 不进选择", async () => {
+    // 稀有度的 id 是数字，显示文字 ★6 不是 id
+    store.toggle(store.filterById.rarity, "★6");
+    await nextTick();
+    expect(store.filterById.rarity.selection.selected.size).toBe(0);
+    expect(location.hash).toBe("");
   });
 
   it("高级筛选计数、结果标签和清除共用同一份选择状态", async () => {

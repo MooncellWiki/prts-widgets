@@ -17,7 +17,9 @@ import {
   dropOrphanBranches,
   emptyOptions,
   failedFilters,
+  hasOption,
   normalizeNeedle,
+  setAnd,
   type FilterState,
 } from "./filter";
 import { ADVANCED_TABS } from "./filters";
@@ -158,15 +160,13 @@ export const useCharListStore = defineStore("charList", () => {
 
   /* ── 操作 ── */
   function toggle(f: FilterState, id: string) {
+    if (!hasOption(f, id)) return;
     if (f.selection.selected.has(id)) f.selection.selected.delete(id);
     else f.selection.selected.add(id);
     normalize();
   }
   function clear(f: FilterState) {
     f.selection.selected.clear();
-  }
-  function setAnd(f: FilterState, and: boolean) {
-    f.selection.and = !!f.def.canAnd && and;
   }
   function reset() {
     for (const f of filters.value) {
@@ -205,8 +205,6 @@ export const useCharListStore = defineStore("charList", () => {
     filters,
     state,
     advanced,
-    profession,
-    branch,
     filterById,
     branchGroups,
     tabs,

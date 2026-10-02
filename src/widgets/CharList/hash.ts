@@ -6,8 +6,7 @@ import {
   type SortKey,
   type ViewMode,
 } from "./consts";
-
-import type { FilterState } from "./filter";
+import { hasOption, selectedOptions, setAnd, type FilterState } from "./filter";
 
 /** 写进地址栏的那部分状态（页码、每页条数不进） */
 export interface HashState {
@@ -76,10 +75,9 @@ export function readHash(
     } else {
       const f = filters.find((f) => f.id === k);
       if (!f || !/^[01]-/.test(v)) continue;
-      f.selection.and = !!f.def.canAnd && v[0] === "0";
+      setAnd(f, v[0] === "0");
       for (const id of v.slice(2).split(";")) {
-        if (f.def.options.some((option) => option.id === id))
-          f.selection.selected.add(id);
+        if (hasOption(f, id)) f.selection.selected.add(id);
       }
     }
   }
@@ -95,9 +93,7 @@ export function buildHash(
   const p = new URLSearchParams();
   for (const f of filters) {
     if (f.selection.selected.size === 0) continue;
-    const ids = f.def.options
-      .filter((option) => f.selection.selected.has(option.id))
-      .map((option) => option.id);
+    const ids = selectedOptions(f).map((option) => option.id);
     p.set(f.id, (f.selection.and ? "0-" : "1-") + ids.join(";"));
   }
   if (state.q) p.set("_s", state.q);

@@ -5,9 +5,9 @@ import { AkChip } from "@mooncellwiki/prts-design-vue";
 
 import MaskIcon from "../MaskIcon.vue";
 import { branchLine, professionLine } from "../assets";
+import { optionShown, type FilterState } from "../filter";
 import { useCharListStore } from "../store";
 
-import type { FilterState } from "../filter";
 import type { FilterOption } from "../filters";
 
 /** 一行筛选的选项芯片；职业 / 分支 / 稀有度各有自己的画法 */
@@ -21,9 +21,7 @@ const store = useCharListStore();
 
 const empty = computed(() => store.empties.get(props.filter.id));
 const shown = (option: FilterOption) =>
-  !props.find ||
-  props.filter.selection.selected.has(option.id) ||
-  option.label.toLowerCase().includes(props.find);
+  optionShown(props.filter, option, props.find ?? "");
 const chip = (id: string) => ({
   modelValue: props.filter.selection.selected.has(id),
   class: { "is-empty": empty.value?.has(id) },

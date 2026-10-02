@@ -3,12 +3,11 @@ import { reactive } from "vue";
 
 import { AkSearch, AkTabPane, AkTabs } from "@mooncellwiki/prts-design-vue";
 
+import { normalizeNeedle, optionShown, type FilterState } from "../filter";
 import { useCharListStore } from "../store";
 
 import FilterRow from "./FilterRow.vue";
 import FilterRows from "./FilterRows.vue";
-
-import type { FilterState } from "../filter";
 
 /**
  * 高级筛选面板：左边竖排页签、右边一次只看一类（手机上页签横排）。
@@ -23,7 +22,7 @@ const store = useCharListStore();
 
 /** 各页签「找选项」里输的字 */
 const finds = reactive<Record<string, string>>({});
-const needle = (tab: string) => (finds[tab] ?? "").trim().toLowerCase();
+const needle = (tab: string) => normalizeNeedle(finds[tab] ?? "");
 const selectedCount = (filters: FilterState[]) =>
   filters.reduce((sum, f) => sum + f.selection.selected.size, 0);
 const optionCount = (filters: FilterState[]) =>
@@ -33,11 +32,7 @@ const noneFound = (tab: string, filters: FilterState[]) => {
   return (
     !!q &&
     !filters.some((f) =>
-      f.def.options.some(
-        (option) =>
-          f.selection.selected.has(option.id) ||
-          option.label.toLowerCase().includes(q),
-      ),
+      f.def.options.some((option) => optionShown(f, option, q)),
     )
   );
 };

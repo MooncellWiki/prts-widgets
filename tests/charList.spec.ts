@@ -16,7 +16,12 @@ import {
   matchFilter,
   matchText,
 } from "@/widgets/CharList/filter";
-import type { FilterId } from "@/widgets/CharList/filters";
+import {
+  ADVANCED_TABS,
+  FILTERS,
+  QUICK_FILTERS,
+  type FilterId,
+} from "@/widgets/CharList/filters";
 import { buildHash, readHash } from "@/widgets/CharList/hash";
 import { sortChars } from "@/widgets/CharList/sort";
 import { charStats, splitUnit } from "@/widgets/CharList/stats";
@@ -370,6 +375,14 @@ describe("筛选", () => {
     expect(Array.from(by("subProfession").selection.selected)).toEqual([
       "强攻手",
     ]);
+  });
+
+  it("每行筛选都有位置：常用或高级页签，且只放一处", () => {
+    const placed = [
+      ...QUICK_FILTERS,
+      ...ADVANCED_TABS.flatMap((tab) => tab.fields),
+    ];
+    expect(placed.toSorted()).toEqual(Object.keys(FILTERS).toSorted());
   });
 });
 

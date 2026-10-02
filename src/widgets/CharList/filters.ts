@@ -1,3 +1,5 @@
+import { markRaw } from "vue";
+
 import { BRANCHES, PROFESSION_ORDER } from "./professions";
 
 import type { Char } from "./utils";
@@ -293,6 +295,9 @@ export const FILTERS = {
   },
 } satisfies Record<string, FilterDef>;
 
+// 固定定义不进 Vue 响应式，响应式部分只有各实例的 selection。
+for (const def of Object.values(FILTERS)) markRaw(def);
+
 export type FilterId = keyof typeof FILTERS;
 
 export interface AdvancedTab {
@@ -303,7 +308,15 @@ export interface AdvancedTab {
   find?: boolean;
 }
 
-/** 常用筛选在 FilterPanel 中明确排布，其余固定分到以下页签。 */
+/** 常用筛选，在 FilterPanel 中明确排布。 */
+export const QUICK_FILTERS: readonly FilterId[] = [
+  "profession",
+  "subProfession",
+  "rarity",
+  "position",
+];
+
+/** 其余筛选固定分到以下页签；每个 FilterId 只能在这里或 QUICK_FILTERS 中出现一次。 */
 export const ADVANCED_TABS: readonly AdvancedTab[] = [
   { id: "trait", title: "词缀 · 获取", fields: ["tag", "obtainMethod", "sex"] },
   {

@@ -1,4 +1,9 @@
-import { FILTERS, type FilterDef, type FilterId } from "./filters";
+import {
+  FILTERS,
+  type FilterDef,
+  type FilterId,
+  type FilterOption,
+} from "./filters";
 import { BRANCH_BY_NAME } from "./professions";
 
 import type { Char } from "./utils";
@@ -15,19 +20,51 @@ export interface FilterState {
   selection: FilterSelection;
 }
 
+/** 各行 id → 选项：匹配时按已选的 id 直接取，不用每次扫一遍整行选项。 */
+const OPTION_BY_ID = Object.fromEntries(
+  (Object.keys(FILTERS) as FilterId[]).map((id) => [
+    id,
+    new Map<string, FilterOption>(
+      FILTERS[id].options.map((option) => [option.id, option]),
+    ),
+  ]),
+) as Record<FilterId, ReadonlyMap<string, FilterOption>>;
+
 export function createFilters(): Record<FilterId, FilterState> {
   return Object.fromEntries(
     (Object.keys(FILTERS) as FilterId[]).map((id) => [
       id,
       {
         id,
-        // Vue 不代理固定定义，响应式部分只有 selection。
-        def: Object.freeze(FILTERS[id]),
+        def: FILTERS[id],
         selection: { selected: new Set<string>(), and: false },
       },
     ]),
   ) as Record<FilterId, FilterState>;
 }
+
+/** 这一行有没有这个选项：地址栏和点选都只收认得的 id。 */
+export const hasOption = (f: FilterState, id: string) =>
+  OPTION_BY_ID[f.id].has(id);
+
+/** 「同时满足」只在允许的行上打开。 */
+export function setAnd(f: FilterState, and: boolean) {
+  f.selection.and = !!f.def.canAnd && and;
+}
+
+/** 已选的选项，按定义次序（结果栏标签、地址栏共用）。 */
+export const selectedOptions = (f: FilterState) =>
+  f.def.options.filter((option) => f.selection.selected.has(option.id));
+
+/** 「找选项」：名字里含所找文字的选项才显示，已选的一直显示；needle 已经过 normalizeNeedle。 */
+export const optionShown = (
+  f: FilterState,
+  option: FilterOption,
+  needle: string,
+) =>
+  !needle ||
+  f.selection.selected.has(option.id) ||
+  option.label.toLowerCase().includes(needle);
 
 /** 同一套匹配规则用于结果与选项置灰。 */
 export function matchFilter(
@@ -37,10 +74,10 @@ export function matchFilter(
   and: boolean = f.selection.and,
 ): boolean {
   if (selected.size === 0) return true;
-  const options = f.def.options.filter((option) => selected.has(option.id));
-  return and && f.def.canAnd
-    ? options.every((option) => option.matches(char))
-    : options.some((option) => option.matches(char));
+  const options = OPTION_BY_ID[f.id];
+  const hit = (id: string) => options.get(id)?.matches(char) ?? false;
+  const ids = Array.from(selected);
+  return and ? ids.every(hit) : ids.some(hit);
 }
 
 export const normalizeNeedle = (q: string) => q.trim().toLowerCase();

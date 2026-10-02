@@ -11,6 +11,7 @@ import { storeToRefs } from "pinia";
 
 import Pager from "./Pager.vue";
 import { PAGE_STEPS } from "./consts";
+import { selectedOptions } from "./filter";
 import { useCharListStore } from "./store";
 
 /**
@@ -26,13 +27,11 @@ const STEP_OPTIONS = PAGE_STEPS.map((n) => ({ label: `每页 ${n}`, value: n }))
 
 const active = computed(() =>
   filters.value.flatMap((f) =>
-    f.def.options
-      .filter((option) => f.selection.selected.has(option.id))
-      .map(({ id, label }) => ({
-        filter: f,
-        id,
-        text: `${f.def.title}${f.selection.and ? "（同时）" : ""}：${label}`,
-      })),
+    selectedOptions(f).map(({ id, label }) => ({
+      filter: f,
+      id,
+      text: `${f.def.title}${f.selection.and ? "（同时）" : ""}：${label}`,
+    })),
   ),
 );
 const activeCount = computed(() => active.value.length + (state.q ? 1 : 0));
