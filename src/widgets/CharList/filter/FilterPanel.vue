@@ -23,20 +23,25 @@ const store = useCharListStore();
 const panelId = useId();
 const positionId = useId();
 
-const { profession, branch, tabs, advanced } = storeToRefs(store);
-const rarity = computed(() => store.byField("rarity"));
-const position = computed(() => store.byField("position"));
+const { advanced } = storeToRefs(store);
+const {
+  profession,
+  subProfession: branch,
+  rarity,
+  position,
+} = store.filterById;
 
 /** 没选职业却带着分支（旧的短链接可以这样）时整行照出，不然那个条件看不见也取消不了 */
 const showBranch = computed(
   () =>
-    !!branch.value &&
-    (!!profession.value?.sel.size || branch.value.sel.size > 0),
+    profession.selection.selected.size > 0 ||
+    branch.selection.selected.size > 0,
 );
 
 const advancedCount = computed(() =>
-  tabs.value.reduce(
-    (sum, tab) => sum + tab.filters.reduce((n, f) => n + f.sel.size, 0),
+  store.tabs.reduce(
+    (sum, tab) =>
+      sum + tab.filters.reduce((n, f) => n + f.selection.selected.size, 0),
     0,
   ),
 );
@@ -45,40 +50,39 @@ const advancedCount = computed(() =>
 <template>
   <section class="ol-filter" aria-label="筛选">
     <FilterRows>
-      <FilterRow v-if="profession" :filter="profession" />
-      <FilterRow v-if="branch && showBranch" :filter="branch" />
-      <FilterRow v-if="rarity" :filter="rarity">
+      <FilterRow :filter="profession" />
+      <FilterRow v-if="showBranch" :filter="branch" />
+      <FilterRow :filter="rarity">
         <span
-          v-if="position"
-          :class="['ol-inline', { 'has-active': position.sel.size > 0 }]"
+          :class="[
+            'ol-inline',
+            { 'has-active': position.selection.selected.size > 0 },
+          ]"
           role="group"
           :aria-labelledby="positionId"
         >
           <span :id="positionId" class="ol-inline__label">
-            {{ position.title }}
+            {{ position.def.title }}
           </span>
           <FilterChips :filter="position" />
         </span>
       </FilterRow>
-      <FilterRow v-else-if="position" :filter="position" />
     </FilterRows>
 
-    <template v-if="tabs.length > 0">
-      <button
-        type="button"
-        :class="['ol-more', { 'has-active': advancedCount > 0 }]"
-        :aria-expanded="advanced.open"
-        :aria-controls="panelId"
-        @click="advanced.open = !advanced.open"
-      >
-        <span>高级筛选</span>
-        <span class="ak-en">Advanced</span>
-        <AkTag v-if="advancedCount" size="sm" variant="accent-soft">
-          已选 {{ advancedCount }}
-        </AkTag>
-      </button>
-      <AdvancedFilter v-show="advanced.open" :id="panelId" :narrow="narrow" />
-    </template>
+    <button
+      type="button"
+      :class="['ol-more', { 'has-active': advancedCount > 0 }]"
+      :aria-expanded="advanced.open"
+      :aria-controls="panelId"
+      @click="advanced.open = !advanced.open"
+    >
+      <span>高级筛选</span>
+      <span class="ak-en">Advanced</span>
+      <AkTag v-if="advancedCount" size="sm" variant="accent-soft">
+        已选 {{ advancedCount }}
+      </AkTag>
+    </button>
+    <AdvancedFilter v-show="advanced.open" :id="panelId" :narrow="narrow" />
   </section>
 </template>
 

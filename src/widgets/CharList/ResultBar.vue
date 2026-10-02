@@ -11,6 +11,7 @@ import { storeToRefs } from "pinia";
 
 import Pager from "./Pager.vue";
 import { PAGE_STEPS } from "./consts";
+import { selectedOptions } from "./filter";
 import { useCharListStore } from "./store";
 
 /**
@@ -26,13 +27,11 @@ const STEP_OPTIONS = PAGE_STEPS.map((n) => ({ label: `每页 ${n}`, value: n }))
 
 const active = computed(() =>
   filters.value.flatMap((f) =>
-    f.labels
-      .filter((label) => f.sel.has(label))
-      .map((label) => ({
-        filter: f,
-        label,
-        text: `${f.title}${f.and ? "（同时）" : ""}：${label}`,
-      })),
+    selectedOptions(f).map(({ id, label }) => ({
+      filter: f,
+      id,
+      text: `${f.def.title}${f.selection.and ? "（同时）" : ""}：${label}`,
+    })),
   ),
 );
 const activeCount = computed(() => active.value.length + (state.q ? 1 : 0));
@@ -65,9 +64,9 @@ async function copyLink() {
       </AkTag>
       <AkTag
         v-for="item in active"
-        :key="`${item.filter.field}:${item.label}`"
+        :key="`${item.filter.id}:${item.id}`"
         removable
-        @remove="store.toggle(item.filter, item.label)"
+        @remove="store.toggle(item.filter, item.id)"
       >
         {{ item.text }}
       </AkTag>

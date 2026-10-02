@@ -1,72 +1,83 @@
-import type { Char, FilterGroup } from "./utils";
+import {
+  FILTERS,
+  type FilterDef,
+  type FilterId,
+  type FilterOption,
+} from "./filters";
+import { BRANCH_BY_NAME } from "./professions";
 
-/** 一行筛选的定义 + 当前选择 */
-export interface FilterState {
-  title: string;
-  field: string;
-  /** 这一行有没有「同时满足」（只有词缀行有） */
-  canAnd: boolean;
+import type { Char } from "./utils";
+
+export interface FilterSelection {
+  selected: Set<string>;
   and: boolean;
-  /** 已选的选项（存的是选项的 label） */
-  sel: Set<string>;
-  labels: string[];
-  /** label → 它代表的值（大多数选项就是自己；「其他势力」这类一个选项管好几个值） */
-  values: Map<string, string[]>;
-  /** 本行所有选项覆盖到的值；「其他」= 值不在这里面 */
-  known: Set<string>;
-  hasOther: boolean;
 }
 
-export function createFilters(groups: FilterGroup[]): FilterState[] {
-  return groups.flatMap((group) =>
-    group.filter.map((f) => {
-      const values = new Map(
-        f.cbt.map((o): [string, string[]] =>
-          typeof o === "string" ? [o, [o]] : [o.label, o.value],
-        ),
-      );
-      return {
-        title: f.title,
-        field: f.field,
-        canAnd: f.both,
-        and: false,
-        sel: new Set<string>(),
-        labels: Array.from(values.keys()),
-        values,
-        known: new Set(Array.from(values.values()).flat()),
-        hasOther: values.has("其他"),
-      };
-    }),
-  );
+/** 固定定义只读；每个实例独立维护选择状态。 */
+export interface FilterState {
+  readonly id: FilterId;
+  readonly def: FilterDef;
+  selection: FilterSelection;
 }
 
-/** 干员是否满足这一行：sel / and 单独传，好拿「再点这一项会怎样」去试 */
+/** 各行 id → 选项：匹配时按已选的 id 直接取，不用每次扫一遍整行选项。 */
+const OPTION_BY_ID = Object.fromEntries(
+  (Object.keys(FILTERS) as FilterId[]).map(
+    (id): [FilterId, ReadonlyMap<string, FilterOption>] => [
+      id,
+      new Map(FILTERS[id].options.map((option) => [option.id, option])),
+    ],
+  ),
+) as Record<FilterId, ReadonlyMap<string, FilterOption>>;
+
+export function createFilters(): Record<FilterId, FilterState> {
+  return Object.fromEntries(
+    (Object.keys(FILTERS) as FilterId[]).map((id) => [
+      id,
+      {
+        id,
+        def: FILTERS[id],
+        selection: { selected: new Set<string>(), and: false },
+      },
+    ]),
+  ) as Record<FilterId, FilterState>;
+}
+
+/** 这一行有没有这个选项：地址栏和点选都只收认得的 id。 */
+export const hasOption = (f: FilterState, id: string) =>
+  OPTION_BY_ID[f.id].has(id);
+
+/** 「同时满足」只在允许的行上打开。 */
+export function setAnd(f: FilterState, and: boolean) {
+  f.selection.and = !!f.def.canAnd && and;
+}
+
+/** 已选的选项，按定义次序（结果栏标签、地址栏共用）。 */
+export const selectedOptions = (f: FilterState) =>
+  f.def.options.filter((option) => f.selection.selected.has(option.id));
+
+/** 「找选项」：名字里含所找文字的选项才显示，已选的一直显示；needle 已经过 normalizeNeedle。 */
+export const optionShown = (
+  f: FilterState,
+  option: FilterOption,
+  needle: string,
+) =>
+  !needle ||
+  f.selection.selected.has(option.id) ||
+  option.label.toLowerCase().includes(needle);
+
+/** 同一套匹配规则用于结果与选项置灰。 */
 export function matchFilter(
   f: FilterState,
   char: Char,
-  sel: ReadonlySet<string> = f.sel,
-  and: boolean = f.and,
+  selected: ReadonlySet<string> = f.selection.selected,
+  and: boolean = f.selection.and,
 ): boolean {
-  const value = char[f.field as keyof Char] as string | string[] | number;
-  const range: string[] = [];
-  for (const label of sel) range.push(...(f.values.get(label) ?? []));
-
-  if (and) return range.every((k) => Array.isArray(value) && value.includes(k));
-  if (range.length === 0) return true;
-  if (f.field === "rarity") return sel.has(`★${char.stars}`);
-  if (f.field === "sex")
-    return (
-      sel.has(`${char.sex}性`) ||
-      (sel.has("其他") && char.sex !== "男" && char.sex !== "女")
-    );
-
-  const hit = Array.isArray(value)
-    ? range.some((v) => value.includes(v))
-    : range.includes(value as string);
-  if (hit || !(f.hasOther && sel.has("其他"))) return hit;
-  return Array.isArray(value)
-    ? value.some((v) => !f.known.has(v))
-    : !f.known.has(value as string);
+  if (selected.size === 0) return true;
+  const options = OPTION_BY_ID[f.id];
+  const hit = (id: string) => options.get(id)?.matches(char) ?? false;
+  const ids = Array.from(selected);
+  return and ? ids.every(hit) : ids.some(hit);
 }
 
 export const normalizeNeedle = (q: string) => q.trim().toLowerCase();
@@ -110,24 +121,27 @@ export function emptyOptions(
       others.push(char);
   }
   const out = new Set<string>();
-  for (const label of f.labels) {
-    if (f.sel.has(label)) continue;
-    const sel = f.and ? new Set([...f.sel, label]) : new Set([label]);
-    if (!others.some((char) => matchFilter(f, char, sel, f.and)))
-      out.add(label);
+  for (const { id } of f.def.options) {
+    if (f.selection.selected.has(id)) continue;
+    const sel = f.selection.and
+      ? new Set([...f.selection.selected, id])
+      : new Set([id]);
+    if (!others.some((char) => matchFilter(f, char, sel, f.selection.and)))
+      out.add(id);
   }
   return out;
 }
 
-/** 职业与分支是「且」：选了职业，别的职业名下已选的分支一并取消（留着只会筛出 0 条） */
+/** 选了职业，清除不属于所选职业的分支；单独的分支条件仍可用于旧链接。 */
 export function dropOrphanBranches(
-  profession: FilterState | undefined,
-  branch: FilterState | undefined,
-  branchProf: Map<string, string>,
+  profession: FilterState,
+  branch: FilterState,
 ) {
-  if (!profession || !branch || profession.sel.size === 0) return;
-  for (const label of Array.from(branch.sel)) {
-    const prof = branchProf.get(label);
-    if (prof && !profession.sel.has(prof)) branch.sel.delete(label);
+  const selected = profession.selection.selected;
+  if (selected.size === 0) return;
+  for (const name of branch.selection.selected) {
+    const parent = BRANCH_BY_NAME.get(name)?.profession;
+    if (!parent || !selected.has(parent))
+      branch.selection.selected.delete(name);
   }
 }

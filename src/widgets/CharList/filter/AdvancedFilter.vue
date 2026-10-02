@@ -3,12 +3,11 @@ import { reactive } from "vue";
 
 import { AkSearch, AkTabPane, AkTabs } from "@mooncellwiki/prts-design-vue";
 
+import { normalizeNeedle, optionShown, type FilterState } from "../filter";
 import { useCharListStore } from "../store";
 
 import FilterRow from "./FilterRow.vue";
 import FilterRows from "./FilterRows.vue";
-
-import type { FilterState } from "../filter";
 
 /**
  * 高级筛选面板：左边竖排页签、右边一次只看一类（手机上页签横排）。
@@ -23,17 +22,17 @@ const store = useCharListStore();
 
 /** 各页签「找选项」里输的字 */
 const finds = reactive<Record<string, string>>({});
-const needle = (tab: string) => (finds[tab] ?? "").trim().toLowerCase();
+const needle = (tab: string) => normalizeNeedle(finds[tab] ?? "");
 const selectedCount = (filters: FilterState[]) =>
-  filters.reduce((sum, f) => sum + f.sel.size, 0);
+  filters.reduce((sum, f) => sum + f.selection.selected.size, 0);
 const optionCount = (filters: FilterState[]) =>
-  filters.reduce((sum, f) => sum + f.labels.length, 0);
+  filters.reduce((sum, f) => sum + f.def.options.length, 0);
 const noneFound = (tab: string, filters: FilterState[]) => {
   const q = needle(tab);
   return (
     !!q &&
     !filters.some((f) =>
-      f.labels.some((l) => f.sel.has(l) || l.toLowerCase().includes(q)),
+      f.def.options.some((option) => optionShown(f, option, q)),
     )
   );
 };
@@ -72,7 +71,7 @@ const noneFound = (tab: string, filters: FilterState[]) => {
       <FilterRows>
         <FilterRow
           v-for="f in tab.filters"
-          :key="f.field"
+          :key="f.id"
           :filter="f"
           :find="needle(tab.id)"
         />
