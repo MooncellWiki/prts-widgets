@@ -14,6 +14,7 @@ import {
   AkButton,
   AkButtonGroup,
   AkChip,
+  AkSelect,
   AkSpinner,
 } from "@mooncellwiki/prts-design-vue";
 import {
@@ -57,6 +58,9 @@ const BG = [
 ] as const;
 type BgKey = (typeof BG)[number]["key"] | "custom";
 
+/** 模型多于这个数就收进下拉选择（设计系统 Select 的用法：≤ 5 个、立即生效的视图切换用按钮组） */
+const MODEL_MENU = 5;
+
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 /* ── 选择：时装 × 模型 ── */
@@ -65,6 +69,12 @@ const modelsOf = (s: string) => sortModels(Object.keys(props.conf.skin[s]));
 const skin = ref(skins[0]);
 const model = ref(modelsOf(skins[0])[0]);
 const models = computed(() => modelsOf(skin.value));
+/* 干员只有 正面 / 背面 / 基建 几个，一组按钮一眼看全；敌人一套骨骼可以装几十个 skin（自走车 31 个），排成一行会撑出正文列 */
+const modelOptions = computed(() =>
+  models.value.length > MODEL_MENU
+    ? models.value.map((m) => ({ label: m, value: m }))
+    : null,
+);
 
 /* ── 播放状态 ── */
 const cur = shallowRef<Loaded | null>(null);
@@ -559,7 +569,15 @@ onBeforeUnmount(() => {
       </div>
       <div class="sv__field">
         <span class="ak-overline">模型</span>
-        <AkButtonGroup size="sm" label="模型">
+        <AkSelect
+          v-if="modelOptions"
+          :model-value="model"
+          size="sm"
+          label="模型"
+          :options="modelOptions"
+          @update:model-value="pickModel(String($event))"
+        />
+        <AkButtonGroup v-else size="sm" label="模型">
           <AkButton
             v-for="m in models"
             :key="m"
@@ -749,6 +767,12 @@ onBeforeUnmount(() => {
 
   &:last-child {
     margin-left: auto;
+  }
+
+  // 模型多时的下拉选择：宽度随最长的名字，不撑满
+  > .ak-select {
+    width: auto;
+    min-width: 0;
   }
 }
 
