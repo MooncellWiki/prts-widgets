@@ -2,13 +2,9 @@
 import { AkOpCard, AkOpGrid } from "@mooncellwiki/prts-design-vue";
 import { storeToRefs } from "pinia";
 
-import {
-  avatar,
-  fallbackImage,
-  halfPortrait,
-  professionBadge,
-  wikiLink,
-} from "../assets";
+import { avatar, halfPortrait, onImageError } from "@/utils/charImage";
+
+import { professionBadge, wikiLink } from "../assets";
 import { useCharListStore } from "../store";
 
 import StatValue from "./StatValue.vue";
@@ -30,7 +26,7 @@ const { pageList, sortStat } = storeToRefs(store);
 <template>
   <AkOpGrid
     :class="['ol-grid', half ? 'ol-grid--half' : 'ol-grid--avatar']"
-    @error.capture="fallbackImage"
+    @error.capture="onImageError"
   >
     <AkOpCard
       v-for="char in pageList"

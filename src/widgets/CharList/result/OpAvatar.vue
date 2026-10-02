@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { avatar, fallbackImage, professionBadge, wikiLink } from "../assets";
+import { avatar, onImageError } from "@/utils/charImage";
+
+import { professionBadge, wikiLink } from "../assets";
 
 import type { Char } from "../utils";
 
@@ -14,7 +16,7 @@ defineProps<{ char: Char }>();
     :data-rarity="char.stars"
     tabindex="-1"
     aria-hidden="true"
-    @error.capture="fallbackImage"
+    @error.capture="onImageError"
   >
     <img
       :src="avatar(char)"

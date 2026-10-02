@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { avatar, fallbackImage, wikiLink } from "./assets";
+import { avatar, onImageError } from "@/utils/charImage";
+
+import { wikiLink } from "./assets";
 
 import type { Op } from "./recruit";
 
@@ -32,7 +34,7 @@ const tip = computed(() => {
         height="56"
         loading="lazy"
         decoding="async"
-        @error="fallbackImage"
+        @error="onImageError"
       />
     </span>
     <span v-if="op.only" class="hr-op__only" aria-hidden="true">限</span>

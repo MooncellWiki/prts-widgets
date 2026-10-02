@@ -70,12 +70,6 @@ onMounted(() => {
 });
 onBeforeUnmount(() => observer?.disconnect());
 
-/* 头像取不到（还没上传）：藏掉破图，留下深色底框 */
-function onImageError(e: Event) {
-  if (e.target instanceof HTMLImageElement)
-    e.target.style.visibility = "hidden";
-}
-
 const { tip, handlers: tipHandlers } = useHoverTip(
   useTemplateRef<HTMLElement>("bubble"),
   ".hr-op[data-tip]",
@@ -92,7 +86,6 @@ const { tip, handlers: tipHandlers } = useHoverTip(
           { 'hr--compact': width < 760, 'hr--narrow': width < 640 },
         ]"
         v-on="tipHandlers"
-        @error.capture="onImageError"
       >
         <TagPanel />
         <RecruitTips />

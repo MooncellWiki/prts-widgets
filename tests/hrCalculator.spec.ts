@@ -2,7 +2,7 @@ import { createApp, nextTick } from "vue";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { avatar, fallbackImage } from "@/widgets/HrCalculator/assets";
+import { avatar } from "@/utils/charImage";
 import HrCalculator from "@/widgets/HrCalculator/index.vue";
 import {
   analyze,
@@ -55,35 +55,6 @@ const OPS = toOps(SOURCE);
 const names = (c: Combo | undefined) => c?.ops.map((o) => o.zh);
 const find = (list: Combo[], ...tags: string[]) =>
   list.find((c) => c.tags.join("+") === tags.join("+"));
-
-describe("头像地址", () => {
-  const amiya = { zh: "阿米娅", charId: "char_002_amiya" };
-
-  it("有游戏内 ID 时从 torappu 取", () => {
-    expect(avatar(amiya)).toBe(
-      "https://torappu.prts.wiki/assets/char_avatar/char_002_amiya.png",
-    );
-  });
-
-  it("cargo 里没填 ID 时按中文名走 media", () => {
-    expect(avatar({ zh: "阿米娅", charId: "" })).toMatch(
-      /^https:\/\/media\.prts\.wiki\/.\/..\/头像_阿米娅\.png$/,
-    );
-  });
-
-  it("torappu 取不到时换成 media 的同一张，且只换一次", () => {
-    const img = document.createElement("img");
-    img.addEventListener("error", fallbackImage);
-
-    img.src = avatar(amiya);
-    img.dispatchEvent(new Event("error"));
-    const media = img.src;
-    expect(decodeURI(media)).toBe(avatar({ zh: "阿米娅", charId: "" }));
-
-    img.dispatchEvent(new Event("error"));
-    expect(img.src).toBe(media);
-  });
-});
 
 describe("toOps", () => {
   it("按星级补稀有标签，从高到低排；寻访出不了的记「限」", () => {
@@ -279,11 +250,11 @@ describe("HrCalculator UI smoke", () => {
     history.replaceState(null, "", "/w/公招计算");
   });
 
-  const mount = async (path = "/w/公招计算") => {
+  const mount = async (path = "/w/公招计算", source = SOURCE) => {
     history.replaceState(null, "", path);
     const host = document.createElement("div");
     document.body.append(host);
-    app = createApp(HrCalculator, { source: SOURCE });
+    app = createApp(HrCalculator, { source });
     app.mount(host);
     await nextTick();
     return host;
@@ -328,5 +299,24 @@ describe("HrCalculator UI smoke", () => {
     expect(host.querySelector(".hr-tips")?.textContent).toContain(
       "这条链接带了 6 个标签",
     );
+  });
+
+  it("头像 torappu 取不到时换回 media 且看得见，media 也取不到才藏掉", async () => {
+    const angel = { zh: "能天使", charId: "char_103_angel" };
+    const host = await mount(
+      `/w/公招计算${writeQuery("", new Set(["高级资深干员"]), 2)}`,
+      SOURCE.map((s) => (s.zh === angel.zh ? { ...s, ...angel } : s)),
+    );
+    const img = host.querySelector<HTMLImageElement>(
+      `img[src="${avatar(angel)}"]`,
+    )!;
+    expect(img).not.toBeNull();
+
+    img.dispatchEvent(new Event("error"));
+    expect(decodeURI(img.src)).toBe(avatar({ ...angel, charId: "" }));
+    expect(img.style.visibility).toBe("");
+
+    img.dispatchEvent(new Event("error"));
+    expect(img.style.visibility).toBe("hidden");
   });
 });

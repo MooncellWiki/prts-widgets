@@ -63,12 +63,6 @@ onBeforeUnmount(() => observer?.disconnect());
 const result = useTemplateRef<HTMLElement>("result");
 const backToResult = () => result.value?.scrollIntoView({ block: "start" });
 
-/* 头像 / 半身像取不到（还没上传）：藏掉破图，留下深色底框 */
-function onImageError(e: Event) {
-  if (e.target instanceof HTMLImageElement)
-    e.target.style.visibility = "hidden";
-}
-
 const { tip, handlers: tipHandlers } = useHoverTip(
   useTemplateRef<HTMLElement>("bubble"),
   ".ak-term[data-tip]",
@@ -87,7 +81,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
         <Toolbar />
         <ResultBar />
 
-        <div ref="result" class="ol-result" @error.capture="onImageError">
+        <div ref="result" class="ol-result">
           <AkEmpty v-if="list.length === 0" title="没有符合条件的干员">
             放宽几项筛选条件，或者<AkButton
               variant="link"
