@@ -22,12 +22,12 @@ export interface FilterState {
 
 /** 各行 id → 选项：匹配时按已选的 id 直接取，不用每次扫一遍整行选项。 */
 const OPTION_BY_ID = Object.fromEntries(
-  (Object.keys(FILTERS) as FilterId[]).map((id) => [
-    id,
-    new Map<string, FilterOption>(
-      FILTERS[id].options.map((option) => [option.id, option]),
-    ),
-  ]),
+  (Object.keys(FILTERS) as FilterId[]).map(
+    (id): [FilterId, ReadonlyMap<string, FilterOption>] => [
+      id,
+      new Map(FILTERS[id].options.map((option) => [option.id, option])),
+    ],
+  ),
 ) as Record<FilterId, ReadonlyMap<string, FilterOption>>;
 
 export function createFilters(): Record<FilterId, FilterState> {
