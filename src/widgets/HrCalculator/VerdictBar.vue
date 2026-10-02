@@ -1,28 +1,13 @@
 <script setup lang="ts">
-import { computed } from "vue";
-
 import { AkButton, useToast } from "@mooncellwiki/prts-design-vue";
 
-import { ROBOT } from "./consts";
 import { useRecruit } from "./store";
 import { writeQuery } from "./url";
 
-/** 结论先说：几组能保底 4★ 以上、最高几星、是哪一组；右边「清空」（下一个招募位从头选）与「复制分享链接」 */
+/** 标签面板与结果之间的一行：左边图例，右边「清空」（下一个招募位从头选）与「复制分享链接」 */
 const recruit = useRecruit();
-const { state, result } = recruit;
+const { state } = recruit;
 const toast = useToast();
-
-const good = computed(() => result.value.filter((c) => c.min >= 4));
-const best = computed(() => good.value[0]);
-/** 最高保底的那一组；同保底的不止一组时加「等」 */
-const bestTags = computed(() => {
-  const top = best.value;
-  if (!top) return "";
-  const tags = top.tags.map((t) => `【${t}】`).join(" + ");
-  return good.value.filter((c) => c.min === top.min).length > 1
-    ? `${tags} 等`
-    : tags;
-});
 
 async function copyLink() {
   const url = `${location.origin}${location.pathname}${writeQuery(
@@ -40,29 +25,9 @@ async function copyLink() {
 
 <template>
   <div class="hr-bar">
-    <p class="hr-verdict" role="status">
-      <template v-if="state.sel.size === 0">
-        还没选标签。把招募位上出现的标签点上，就能看到哪几个组合有保底。
-      </template>
-      <template v-else-if="result.length === 0">
-        这几个标签圈不出任何干员。
-      </template>
-      <template v-else>
-        <template v-if="best">
-          <b>{{ good.length }}</b> 组能保底 4★ 以上，最高<span
-            class="hr-star"
-            :data-rarity="best.min"
-            >{{ best.min }}★</span
-          >（{{ bestTags }}）。
-        </template>
-        <template v-else-if="result.some((c) => c.min === 1)">
-          没有保底 4★ 以上的组合；选【{{ ROBOT }}】必得 1★ 支援机械。
-        </template>
-        <template v-else>
-          没有保底 4★ 以上的组合——不选标签也一样，按想要的干员挑即可。
-        </template>
-      </template>
-    </p>
+    <div class="hr-legend">
+      <span><span class="hr-legend__only">限</span>只能通过公开招募获得</span>
+    </div>
     <div class="hr-bar__tools">
       <AkButton
         size="sm"
@@ -72,19 +37,19 @@ async function copyLink() {
       >
         清空
       </AkButton>
-      <AkButton variant="ghost" size="sm" icon="link" @click="copyLink">
-        复制分享链接
-      </AkButton>
+      <AkButton size="sm" icon="link" @click="copyLink">复制分享链接</AkButton>
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
+@use "./mixins";
+
 .hr-bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 12px;
+  align-items: center;
+  gap: 8px 12px;
   margin: var(--ak-space-4) 0 var(--ak-space-3);
   min-height: 32px;
 
@@ -105,23 +70,22 @@ async function copyLink() {
   }
 }
 
-.hr-verdict {
-  flex: 1 1 320px;
-  min-width: 0;
-  margin: 0;
-  font-size: var(--ak-fs-sm);
-  line-height: 1.5;
-  color: var(--ak-fg-secondary);
+.hr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: var(--ak-fs-xs);
+  color: var(--ak-fg-muted);
 
-  b {
-    font-weight: 700;
-    color: var(--ak-fg);
+  > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
   }
-}
 
-.hr-star {
-  font: 700 var(--ak-fs-h3) / 1 var(--ak-font-label);
-  color: var(--ak-r-text);
-  margin: 0 2px;
+  &__only {
+    @include mixins.only-badge;
+  }
 }
 </style>

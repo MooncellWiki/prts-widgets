@@ -1,4 +1,4 @@
-import { ALL_TAGS, MAX_PICK, MIN_STAR, SENIOR, TOP, isSenior } from "./consts";
+import { ALL_TAGS, MAX_PICK, MIN_STAR, SENIOR, TOP } from "./consts";
 
 /** cargoquery 的一行（chara ⋈ char_obtain，见 entries/HrCalculator.ts） */
 export interface Source {
@@ -113,19 +113,6 @@ export const compareCombos = (a: Combo, b: Combo) =>
   a.tags.length - b.tags.length ||
   a.ops.length - b.ops.length ||
   a.mask - b.mask;
-
-/** 单选就能保底 4★ 以上的标签 → 保底星级；稀有标签不算（它们另有一套皮） */
-export function soloGuarantees(ops: readonly Op[]): Map<string, number> {
-  return new Map(
-    combosOf(
-      ops,
-      ALL_TAGS.filter((t) => !isSenior(t)),
-      1,
-    )
-      .filter((c) => c.min >= 4)
-      .map((c) => [c.tags[0], c.min]),
-  );
-}
 
 /** 全部组合（已剪枝、已排序：保底高的在前）；picked 按面板的次序（ALL_TAGS）给，组合里的标签照这个次序摆 */
 export const analyze = (ops: readonly Op[], picked: readonly string[]) =>

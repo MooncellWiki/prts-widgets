@@ -24,7 +24,7 @@ import type { Source } from "./recruit";
 
 /**
  * 公招计算（PRTS Design 视觉，对应设计稿 /patterns/recruit）：
- * 标签面板 → 结论 → 全部组合排成一张表（每组至多 3 个标签，保底高的在前）。不选招募时限，一律按 9:00 算（见 consts.ts 的 MIN_STAR）。
+ * 标签面板 → 图例与工具栏 → 全部组合排成一张表（每组至多 3 个标签，保底高的在前）。不按招募时限筛干员，保底按 9:00 算（见 consts.ts 的 MIN_STAR）。
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.hr-* 是这页自己的排布（各组件的 scoped 样式）。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
  */
@@ -92,14 +92,6 @@ const { tip, handlers: tipHandlers } = useHoverTip(
       >
         <TagPanel />
         <VerdictBar />
-        <div class="hr-legend">
-          <span
-            ><span class="hr-legend__only">限</span>只能通过公开招募获得</span
-          >
-          <span data-rarity="4">
-            <i />单选这一个标签即可保底（方块颜色 = 保底的稀有度）
-          </span>
-        </div>
         <ResultView :failed="failed" />
       </div>
 
@@ -117,37 +109,9 @@ const { tip, handlers: tipHandlers } = useHoverTip(
 </template>
 
 <style scoped lang="scss">
-@use "./mixins";
-
 // 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
 .hr.ak-scope[data-theme] {
   background-color: transparent;
-}
-
-.hr-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 14px;
-  margin: 0 0 var(--ak-space-3);
-  font-size: var(--ak-fs-xs);
-  color: var(--ak-fg-muted);
-
-  > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  &__only {
-    @include mixins.only-badge;
-  }
-
-  i {
-    width: 7px;
-    height: 7px;
-    background: var(--ak-r);
-  }
 }
 
 // 干员提示：按视口定位，不被格子裁掉

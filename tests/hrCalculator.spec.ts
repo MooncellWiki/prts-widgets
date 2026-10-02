@@ -8,7 +8,6 @@ import {
   analyze,
   combosOf,
   prune,
-  soloGuarantees,
   toOps,
   type Combo,
   type Source,
@@ -162,16 +161,6 @@ describe("prune / analyze", () => {
       "3 先锋",
       "1 支援机械",
     ]);
-  });
-});
-
-describe("单选保底", () => {
-  it("单选即可保底的标签带保底星级，稀有标签不算", () => {
-    const solo = soloGuarantees(OPS);
-    expect(solo.get("削弱")).toBe(5);
-    expect(solo.get("输出")).toBe(4);
-    expect(solo.has("资深干员")).toBe(false);
-    expect(solo.has("先锋")).toBe(false);
   });
 });
 

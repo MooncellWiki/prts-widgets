@@ -1,7 +1,7 @@
 import { computed, inject, reactive, type InjectionKey } from "vue";
 
 import { ALL_TAGS } from "./consts";
-import { analyze, soloGuarantees, toOps, type Source } from "./recruit";
+import { analyze, toOps, type Source } from "./recruit";
 import { readQuery } from "./url";
 
 /**
@@ -10,7 +10,6 @@ import { readQuery } from "./url";
  */
 export function createRecruit(source: readonly Source[]) {
   const ops = toOps(source);
-  const solo = soloGuarantees(ops);
   const state = reactive({ sel: new Set<string>() });
 
   /** 按面板的次序 */
@@ -29,7 +28,7 @@ export function createRecruit(source: readonly Source[]) {
     for (const tag of readQuery(search)) state.sel.add(tag);
   }
 
-  return { ops, solo, state, result, toggle, clear, load };
+  return { ops, state, result, toggle, clear, load };
 }
 
 export type Recruit = ReturnType<typeof createRecruit>;
