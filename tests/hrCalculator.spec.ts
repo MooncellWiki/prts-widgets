@@ -3,6 +3,7 @@ import { createApp, nextTick } from "vue";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { avatar } from "@/utils/charImage";
+import { professionBadge, rarityStars } from "@/widgets/HrCalculator/assets";
 import HrCalculator from "@/widgets/HrCalculator/index.vue";
 import {
   analyze,
@@ -373,6 +374,20 @@ describe("HrCalculator UI smoke", () => {
     await nextTick();
     expect(chip(host, "削弱").getAttribute("aria-pressed")).toBe("true");
     expect(readQuery(location.search).size).toBe(7);
+  });
+
+  it("头像同首页干员卡：左上角星级、左下角职业图标", async () => {
+    const host = await mount(
+      `/w/公招计算${writeQuery("", new Set(["高级资深干员"]))}`,
+    );
+    const tile = host.querySelector<HTMLElement>(".hr-op")!;
+    expect(tile.textContent).toContain("能天使");
+    expect(tile.querySelector(".hr-op__stars")?.getAttribute("src")).toBe(
+      rarityStars(6),
+    );
+    expect(tile.querySelector(".hr-op__prof img")?.getAttribute("src")).toBe(
+      professionBadge("狙击"),
+    );
   });
 
   it("头像 torappu 取不到时换回 media 且看得见，media 也取不到才藏掉", async () => {

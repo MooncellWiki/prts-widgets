@@ -1,3 +1,4 @@
+import { media } from "@/utils/charImage";
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { professionMap } from "@/utils/utils";
 
@@ -12,5 +13,11 @@ export function professionLine(tag: string) {
     ? `${TORAPPU_ENDPOINT}/assets/profession_icon/icon_profession_${key}.png`
     : undefined;
 }
+
+/** 头像左下角的职业小图标（游戏头像同款，26px，自带深底），同首页的干员卡、干员一览 */
+export const professionBadge = (profession: string) =>
+  media(`图标_职业_${profession}.png`);
+/** 头像左上角的黄色星级原图（游戏同款，25px 高），同首页的干员卡 */
+export const rarityStars = (star: number) => media(`稀有度_黄_${star - 1}.png`);
 
 export const wikiLink = (zh: string) => `/w/${encodeURIComponent(zh)}`;

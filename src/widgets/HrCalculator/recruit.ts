@@ -26,6 +26,7 @@ export interface Op {
   zh: string;
   charId: string;
   star: number;
+  profession: string;
   /** 职业 + 位置 + 词缀 + 按星级补的资深 / 高级资深 */
   tags: string[];
   mask: number;
@@ -56,6 +57,7 @@ export function toOps(source: readonly Source[]): Op[] {
         zh: c.zh,
         charId: c.charId,
         star,
+        profession: c.profession,
         tags,
         mask: tags.reduce((m, t) => m | bit(t), 0),
         only: c.obtainMethod.every((v) => !v.includes("寻访")),
