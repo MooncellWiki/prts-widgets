@@ -429,7 +429,9 @@ const hasReedition = computed(
   white-space: normal;
 }
 
-.high-shop-banner {
+/* 挂在表格类下：Arknights 皮肤的 .wikitable > tbody > tr:hover > td 悬停底色（0,2,3）
+   比单个类（scoped 后 0,2,0）高，悬停时横幅底色被换成浅灰、只剩白字 */
+.high-shop-table .high-shop-banner {
   height: 30px;
   color: #fff;
   font-weight: bold;
@@ -453,7 +455,7 @@ const hasReedition = computed(
     #ece305;
 }
 
-.kernel-select-bar {
+.high-shop-table .kernel-select-bar {
   position: relative;
   padding-right: 9em;
   color: #fff;
