@@ -11,10 +11,25 @@ function nowMs(): number {
   return Date.now();
 }
 
+/**
+ * Native provenance: `AudioChannel.Stop` (VA 0x183ededf0, 2.7.61) tweens only
+ * when |fadeDuration| > 0.0099999998 seconds; anything shorter calls `_Stop()`
+ * immediately. Web adaptation: the threshold is applied in whole ms.
+ */
+const STOP_INSTANT_FADE_MS = 10;
+
 interface ActivePlayback {
   identity: string;
   instance: IMediaInstance | null;
   sound: Sound;
+  /**
+   * Generation of the volume tween currently driving this playback. Native
+   * provenance: `AudioChannel` keeps a single tween slot — a new
+   * `TweenVolume`/`set_volume` replaces the running tween instead of stacking
+   * on top of it. Every new fade or instant set bumps the counter; an older
+   * rAF loop aborts as soon as it finds itself stale.
+   */
+  fadeGeneration: number;
 }
 
 export class HtmlStoryAudio implements StoryAudio {
@@ -22,6 +37,18 @@ export class HtmlStoryAudio implements StoryAudio {
   private destroyed = false;
   private musicAudio: ActivePlayback | null = null;
   private musicRequestId = 0;
+  /**
+   * Native provenance: `AudioChannel.Stop` (VA 0x183ededf0, 2.7.61) sets
+   * `m_stopWhenTweenEnd = 1` and leaves the channel registered for the whole
+   * fade — `get_isPlaying` (VA 0x183edf9f0) stays true and only
+   * `AudioManager.Update` recycling a `!isPlaying` channel removes it. Web
+   * adaptation: while this flag is set, `musicAudio` is still handed out so a
+   * `musicvolume` (cancels via `AudioChannel.TweenVolume`, VA 0x183edef70,
+   * which clears the flag) or a same-track `playmusic` (cancels via
+   * `AudioChannel.set_volume`, VA 0x183edff50, which clears the tween so the
+   * flag is never consumed) can still cancel the pending stop.
+   */
+  private musicStopPending = false;
   /**
    * Native provenance: `Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand`,
    * `_ExecuteMusicVolumeCommand`, `_ExecutePlaySoundCommand`,
@@ -48,6 +75,7 @@ export class HtmlStoryAudio implements StoryAudio {
 
     this.stopPlayback(this.musicAudio);
     this.musicAudio = null;
+    this.musicStopPending = false;
 
     for (const sound of this.soundChannels.values()) this.stopPlayback(sound);
     this.soundChannels.clear();
@@ -65,6 +93,12 @@ export class HtmlStoryAudio implements StoryAudio {
     const identity = `${introUrl ?? ""}\n${mainUrl}`;
     this.musicBaseVolume = input.volume;
     if (this.musicAudio?.identity === identity) {
+      // Native provenance: `AudioManager._PlayAudio` same-asset short-circuit
+      // (a) → `AudioChannel.set_volume` (VA 0x183edff50): clears the running
+      // tween, so a stopmusic fade in progress is canceled — the pending-stop
+      // flag is never consumed and the track jumps to the new volume and
+      // keeps playing (no reload, no intro replay).
+      this.musicStopPending = false;
       this.setVolume(this.musicAudio, input.volume);
       return;
     }
@@ -115,8 +149,30 @@ export class HtmlStoryAudio implements StoryAudio {
     const current = this.musicAudio;
     if (!current) return;
 
+    // Native provenance: `AudioManager.StopMusic` (VA 0x181980770) →
+    // `AudioChannel.Stop` (VA 0x183ededf0, 2.7.61): a fade longer than 0.01s
+    // schedules a linear tween to zero with `m_stopWhenTweenEnd = 1` while the
+    // channel STAYS registered (`get_isPlaying` keeps reporting true); only
+    // when the tween finishes uncanceled does `_Stop()` run and
+    // `AudioManager.Update` recycle the channel. The web port keeps
+    // `musicAudio` alive during the fade so `musicvolume` / a same-track
+    // `playmusic` can still cancel the stop (see `musicStopPending`).
+    // |fadetime| <= 0.01 maps to `_Stop()` immediately.
+    if (fadeMs <= STOP_INSTANT_FADE_MS) {
+      this.musicAudio = null;
+      this.musicStopPending = false;
+      this.stopPlayback(current);
+      return;
+    }
+
+    this.musicStopPending = true;
+    const fadedOut = await this.fadeVolume(current, 0, fadeMs);
+    if (!fadedOut || !this.musicStopPending || this.musicAudio !== current)
+      return;
+
+    this.musicStopPending = false;
     this.musicAudio = null;
-    await this.fadeAndStop(current, fadeMs);
+    this.stopPlayback(current);
   }
 
   async playSound(input: PlaySoundInput): Promise<void> {
@@ -207,11 +263,16 @@ export class HtmlStoryAudio implements StoryAudio {
 
   async setMusicVolume(volume: number, fadeMs: number): Promise<void> {
     // Native provenance: `CommonExecutors._ExecuteMusicVolumeCommand` and
-    // `AudioChannel.TweenVolume`. MUSIC base volume outlives a playback instance,
-    // so retain it while PIXI is still loading.
+    // `AudioChannel.TweenVolume`. MUSIC base volume outlives a playback
+    // instance, so retain it while PIXI is still loading.
     this.musicBaseVolume = volume;
     if (!this.musicAudio) return;
 
+    // Native provenance: `AudioChannel.TweenVolume` (VA 0x183edef70) clears
+    // `m_stopWhenTweenEnd` on entry, so a musicvolume landing during a
+    // stopmusic fade cancels the pending stop: the new tween replaces the
+    // fade-to-zero and the track keeps playing toward the new volume.
+    this.musicStopPending = false;
     await this.fadeVolume(this.musicAudio, volume, fadeMs);
   }
 
@@ -223,41 +284,48 @@ export class HtmlStoryAudio implements StoryAudio {
     if (!sound) return null;
 
     return {
+      fadeGeneration: 0,
       identity,
       instance: null,
       sound,
     };
   }
 
+  /**
+   * Tween this playback's volume, replacing any tween already running on it
+   * (native `AudioChannel` keeps a single tween slot). Resolves false when
+   * superseded by a newer fade, an instant `set_volume`, or a stop — the
+   * caller must then leave the playback to whoever superseded it.
+   */
   private async fadeVolume(
     playback: ActivePlayback,
     targetVolume: number,
     durationMs: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    const generation = ++playback.fadeGeneration;
     const startVolume = this.getVolume(playback);
     if (durationMs <= 0) {
       this.setVolume(playback, targetVolume);
-      return;
+      return true;
     }
 
     const start = nowMs();
 
-    await new Promise<void>((resolve) => {
+    return await new Promise<boolean>((resolve) => {
       const tick = () => {
-        if (this.destroyed) {
-          resolve();
+        if (this.destroyed || playback.fadeGeneration !== generation) {
+          resolve(false);
           return;
         }
 
         const elapsed = nowMs() - start;
         const progress = Math.min(1, elapsed / durationMs);
-        this.setVolume(
-          playback,
-          startVolume + (targetVolume - startVolume) * progress,
-        );
+        if (playback.instance)
+          playback.instance.volume =
+            startVolume + (targetVolume - startVolume) * progress;
 
         if (progress >= 1) {
-          resolve();
+          resolve(true);
           return;
         }
 
@@ -300,6 +368,10 @@ export class HtmlStoryAudio implements StoryAudio {
   }
 
   private setVolume(playback: ActivePlayback, volume: number): void {
+    // Native provenance: `AudioChannel.set_volume` (VA 0x183edff50) clears
+    // the running tween. Bumping the generation aborts any in-flight rAF
+    // fade loop on this playback.
+    playback.fadeGeneration += 1;
     if (playback.instance) playback.instance.volume = volume;
   }
 
@@ -325,6 +397,8 @@ export class HtmlStoryAudio implements StoryAudio {
   private stopPlayback(playback: ActivePlayback | null): void {
     if (!playback) return;
 
+    // Invalidate any fade loop still targeting this playback (see setVolume).
+    playback.fadeGeneration += 1;
     playback.instance?.stop();
     playback.instance = null;
   }
