@@ -18,6 +18,7 @@ import {
   emptyOptions,
   failedFilters,
   hasOption,
+  hiddenOnlyMatch,
   normalizeNeedle,
   setAnd,
   type FilterState,
@@ -122,6 +123,14 @@ export const useCharListStore = defineStore("charList", () => {
   const pageCount = computed(() =>
     Math.max(1, Math.ceil(list.value.length / state.step)),
   );
+  /** 结果里只有隐藏势力命中的那些干员：表格接在势力后面、卡片挂在右上角（见 result/） */
+  const hiddenOnly = computed(() => {
+    const force = filterById.force;
+    const out = new Set<Char>();
+    for (const char of list.value)
+      if (hiddenOnlyMatch(force, char)) out.add(char);
+    return out;
+  });
   const page = computed(() =>
     Math.min(Math.max(1, state.page), pageCount.value),
   );
@@ -168,6 +177,17 @@ export const useCharListStore = defineStore("charList", () => {
   function clear(f: FilterState) {
     f.selection.selected.clear();
   }
+  /** 「势力」行：档案 / 作战（别的行没有这个开关） */
+  function setCombat(f: FilterState, combat: boolean) {
+    if (!f.def.combat) return;
+    f.selection.combat = !!combat;
+  }
+  /** 「势力」行：作战模式下连 ingameFaction.hidden 一起查 */
+  function setHidden(f: FilterState, hidden: boolean) {
+    if (!f.def.combat) return;
+    f.selection.hidden = !!hidden;
+  }
+  /** 清除全部条件：筛选与搜索回默认；排序 / 显示方式 / 势力的档案·作战开关都不动 */
   function reset() {
     for (const f of filters.value) {
       f.selection.selected.clear();
@@ -210,6 +230,7 @@ export const useCharListStore = defineStore("charList", () => {
     tabs,
     empties,
     list,
+    hiddenOnly,
     page,
     pageCount,
     pageList,
@@ -220,6 +241,8 @@ export const useCharListStore = defineStore("charList", () => {
     toggle,
     clear,
     setAnd,
+    setCombat,
+    setHidden,
     reset,
     setSortKey,
     flipSort,

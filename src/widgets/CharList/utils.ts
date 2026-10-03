@@ -53,6 +53,10 @@ export class Char {
   /** 搜索用的纯文本：不含术语提示的正文 */
   plainFeature: string;
   force: string[] = [];
+  ingameFaction: {
+    main: string[];
+    hidden: string[];
+  };
   constructor(ele: HTMLDivElement) {
     const d = ele.dataset;
     // MediaWiki 1.43 的 Sanitizer 会丢弃含下划线的 data-* 属性，
@@ -66,6 +70,13 @@ export class Char {
     if (d.nation) this.force.push(d.nation);
     if (d.group) this.force.push(d.group);
     if (d.team) this.force.push(d.team);
+    // 模板输出的是 data-ingame-faction / data-ingame-hidden-faction（dataset 里是驼峰），
+    // 一个字段里多个势力用逗号隔开；没有隐藏势力的那一版写成不带值的
+    // data-ingame-hidden-faction，空串要走 else 那一支，不然拆出来是 [""]
+    this.ingameFaction = {
+      main: d.ingameFaction ? d.ingameFaction.split(",") : [],
+      hidden: d.ingameHiddenFaction ? d.ingameHiddenFaction.split(",") : [],
+    };
 
     this.race = (d.race || "").split("/");
     this.en = d.en || "";

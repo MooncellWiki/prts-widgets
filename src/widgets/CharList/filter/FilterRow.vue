@@ -6,12 +6,14 @@ import { AkSwitch } from "@mooncellwiki/prts-design-vue";
 import { useCharListStore } from "../store";
 
 import FilterChips from "./FilterChips.vue";
+import ForceTools from "./ForceTools.vue";
 
 import type { FilterState } from "../filter";
 
 /**
  * 一行筛选 = 标签列 + 选项芯片。选中后标签左缘出青条、露出「清除」；
- * 不设「全选」（全选与不选筛出的是同一批）；「同时满足」只有词缀行有。
+ * 不设「全选」（全选与不选筛出的是同一批）；「同时满足」只有标签行、势力行有，
+ * 势力行另有档案 / 作战、隐藏势力，在选项上面的工具条里（ForceTools.vue）。
  */
 defineProps<{
   filter: FilterState;
@@ -53,6 +55,7 @@ const id = useId();
       </button>
     </div>
     <div class="ol-row__opts">
+      <ForceTools v-if="filter.def.combat" :filter="filter" />
       <FilterChips :filter="filter" :find="find" />
       <slot />
     </div>

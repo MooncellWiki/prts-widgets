@@ -160,7 +160,7 @@ describe("固定职业 / 分支筛选面板", () => {
     await nextTick();
     expect(host.querySelector(".ol-more")?.textContent).toContain("已选 1");
     expect(host.querySelector(".ol-bar__active")?.textContent).toContain(
-      "词缀（同时）：输出",
+      "标签（同时）：输出",
     );
     expect(new URLSearchParams(location.hash.slice(1)).get("tag")).toBe(
       "0-输出",
@@ -171,5 +171,48 @@ describe("固定职业 / 分支筛选面板", () => {
     expect(host.querySelector(".ol-more")?.textContent).not.toContain("已选");
     expect(host.querySelector(".ol-bar__active")?.textContent?.trim()).toBe("");
     expect(location.hash).toBe("");
+  });
+
+  it("势力行：同时满足同标签行一样是开关；隐藏势力只在作战模式出现，两者都进地址栏", async () => {
+    store.advanced.open = true;
+    store.advanced.tab = "force";
+    await nextTick();
+    const row = host.querySelector(".ol-adv__panel--force .ol-row")!;
+    const switches = () =>
+      Array.from(row.querySelectorAll(".ak-switch"), (el) =>
+        el.textContent?.trim(),
+      );
+    const hash = () => new URLSearchParams(location.hash.slice(1));
+    expect(switches()).toEqual(["同时满足"]);
+
+    const combat = Array.from(
+      row.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+    ).find((el) => el.textContent?.trim() === "作战")!;
+    combat.click();
+    await nextTick();
+    expect(switches()).toEqual(["同时满足", "隐藏势力"]);
+    expect(hash().get("_fm")).toBe("1");
+
+    row.querySelectorAll<HTMLInputElement>(".ak-switch input")[1].click();
+    chip("罗德岛").click();
+    await nextTick();
+    expect(hash().get("_fh")).toBe("1");
+    expect(host.querySelector(".ol-bar__active")?.textContent).toContain(
+      "作战势力：罗德岛",
+    );
+  });
+
+  it("干员计数的说明是点开的弹出卡片，链接走 wikiLink", async () => {
+    const trigger = host.querySelector<HTMLButtonElement>(
+      '.ol-bar__num button[aria-label="关于干员计数"]',
+    )!;
+    const card = host.querySelector<HTMLElement>(".ol-bar__num .ak-popover")!;
+    expect(card.hidden).toBe(true);
+    trigger.click();
+    await nextTick();
+    expect(card.hidden).toBe(false);
+    expect(card.querySelector("a")?.getAttribute("href")).toBe(
+      `/w/${encodeURIComponent("阿米娅")}`,
+    );
   });
 });

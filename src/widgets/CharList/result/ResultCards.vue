@@ -4,6 +4,7 @@ import { storeToRefs } from "pinia";
 import { STAT_COLS } from "../consts";
 import { useCharListStore } from "../store";
 
+import HiddenBadge from "./HiddenBadge.vue";
 import OpAvatar from "./OpAvatar.vue";
 import OpIdent from "./OpIdent.vue";
 import StatValue from "./StatValue.vue";
@@ -13,12 +14,15 @@ import type { Char } from "../utils";
 /** 结果 · 卡片：结果区窄于 1000（平板 / 手机）时代替表格，八项数值直接摊开成 4 × 2 的格 */
 const store = useCharListStore();
 const { statsOf } = store;
-const { pageList, sortStat } = storeToRefs(store);
+const { pageList, sortStat, hiddenOnly } = storeToRefs(store);
 
-const origin = (char: Char) =>
-  [char.force.join(" · "), char.birthPlace, char.race.join(" / ")]
+/** 势力后面的一小段出身地 / 种族（「隐藏势力」标志要插在两者中间） */
+const originRest = (char: Char) => {
+  const rest = [char.birthPlace, char.race.join(" / ")]
     .filter(Boolean)
     .join(" · ");
+  return char.force.length > 0 && rest ? ` · ${rest}` : rest;
+};
 </script>
 
 <template>
@@ -67,7 +71,10 @@ const origin = (char: Char) =>
       <!-- featureHtml 是 convertFeature 转义后重新拼的，不是模板原文 -->
       <p class="ol-feature" v-html="char.featureHtml" />
       <p class="ol-obtain">
-        {{ origin(char) }}
+        <!-- 只有隐藏势力命中时，势力字符串后面挂一枚「隐藏势力」标志 -->
+        <span>{{ char.force.join(" · ") }}</span>
+        <HiddenBadge v-if="hiddenOnly.has(char)" />
+        <span>{{ originRest(char) }}</span>
         <template v-if="char.obtainMethod.length > 0">
           <br />{{ char.obtainMethod.join(" · ") }}
         </template>
@@ -178,5 +185,10 @@ const origin = (char: Char) =>
 
 .ol-obtain {
   @include text.obtain;
+}
+
+// 「隐藏势力」标志与前面的势力字符串之间留一道缝
+.ol-hidden {
+  margin-left: 3px;
 }
 </style>

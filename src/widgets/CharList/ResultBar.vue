@@ -3,6 +3,7 @@ import { computed } from "vue";
 
 import {
   AkButton,
+  AkPopover,
   AkSelect,
   AkTag,
   useToast,
@@ -10,13 +11,15 @@ import {
 import { storeToRefs } from "pinia";
 
 import Pager from "./Pager.vue";
+import { wikiLink } from "./assets";
 import { PAGE_STEPS } from "./consts";
-import { selectedOptions } from "./filter";
+import { filterTitle, selectedOptions } from "./filter";
 import { useCharListStore } from "./store";
 
 /**
  * 结果栏：条数 · 已选条件 · 复制短链接 · 每页条数 · 分页。
  * 已选条件在这里再列一遍（可逐个移除）：筛选面板滚出视口后，仍看得到当前结果是怎么筛出来的。
+ * 条数后面的 ⓘ 说明这个数是怎么来的（点开的弹出卡片，里面有链接，所以不用悬停提示）。
  */
 const store = useCharListStore();
 const { state } = store;
@@ -30,7 +33,8 @@ const active = computed(() =>
     selectedOptions(f).map(({ id, label }) => ({
       filter: f,
       id,
-      text: `${f.def.title}${f.selection.and ? "（同时）" : ""}：${label}`,
+      // 势力行切到作战模式时，行名写成「作战势力」
+      text: `${filterTitle(f)}${f.selection.and ? "（同时）" : ""}：${label}`,
     })),
   ),
 );
@@ -50,13 +54,32 @@ async function copyLink() {
 
 <template>
   <div class="ol-bar">
-    <div class="ol-bar__count" role="status">
-      <template v-if="list.length === chars.length">
-        共 <b>{{ chars.length }}</b> 位干员
-      </template>
-      <template v-else>
-        <b>{{ list.length }}</b> / {{ chars.length }} 位干员
-      </template>
+    <div class="ol-bar__num">
+      <span class="ol-bar__count" role="status">
+        <template v-if="list.length === chars.length">
+          共 <b>{{ chars.length }}</b> 位干员
+        </template>
+        <template v-else>
+          <b>{{ list.length }}</b> / {{ chars.length }} 位干员
+        </template>
+      </span>
+      <AkPopover title="关于干员计数" placement="bottom-start">
+        <template #trigger>
+          <AkButton
+            variant="ghost"
+            size="xs"
+            icon="info"
+            label="关于干员计数"
+          />
+        </template>
+        <p class="ol-bar__help-text">
+          本站的干员计数记录的是<b>所有单个个体干员</b>的数量，也即<a
+            class="ol-link"
+            :href="wikiLink('阿米娅')"
+            >阿米娅</a
+          >的不同升变将分别计 1 名干员。
+        </p>
+      </AkPopover>
     </div>
     <div class="ol-bar__active ak-tags">
       <AkTag v-if="state.q" removable @remove="state.q = ''">
@@ -103,8 +126,14 @@ async function copyLink() {
   margin: 0 0 var(--ak-space-3);
   min-height: 32px;
 
-  &__count {
+  &__num {
     flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__count {
     font-size: var(--ak-fs-sm);
     color: var(--ak-fg-muted);
     white-space: nowrap;
@@ -115,6 +144,10 @@ async function copyLink() {
       font-variant-numeric: tabular-nums;
       margin-right: 2px;
     }
+  }
+
+  &__help-text {
+    margin: 0;
   }
 
   &__active {
@@ -154,6 +187,15 @@ async function copyLink() {
   :deep(.ak-icon) {
     width: 14px;
     height: 14px;
+  }
+
+  // 根节点是 ak-not-prose，链接默认继承文字色：照正文链接自己上色
+  .ol-link {
+    color: var(--ak-link);
+
+    &:hover {
+      color: var(--ak-link-hover);
+    }
   }
 }
 </style>

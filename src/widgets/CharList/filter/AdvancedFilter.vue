@@ -64,8 +64,8 @@ const noneFound = (tab: string, filters: FilterState[]) => {
         v-model="finds[tab.id]"
         class="ol-adv__find"
         size="sm"
-        :placeholder="`在 ${optionCount(tab.filters)} 个${tab.title}里找…`"
-        :label="`在${tab.title}选项里查找`"
+        :placeholder="`在 ${optionCount(tab.filters)} 个${tab.title}里搜索…`"
+        :label="`在${tab.title}选项里搜索`"
         autocomplete="off"
       />
       <FilterRows>

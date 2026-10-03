@@ -7,11 +7,13 @@ import { avatar, halfPortrait, onImageError } from "@/utils/charImage";
 import { professionBadge, wikiLink } from "../assets";
 import { useCharListStore } from "../store";
 
+import HiddenBadge from "./HiddenBadge.vue";
 import StatValue from "./StatValue.vue";
 
 /**
  * 结果 · 半身像 / 头像：干员卡网格。
- * 按数值排序时卡片角上带出那项数值（游戏干员列表同款），不然在这两种视图里看不出排的是什么。
+ * 按数值排序时卡片角上带出那项数值（游戏干员列表同款），不然在这两种视图里看不出排的是什么；
+ * 只有隐藏势力命中的干员在右上角挂「隐藏」。
  */
 defineProps<{
   /** 半身像（竖 1 : 2，带英文名）；否则是头像小卡 */
@@ -20,7 +22,7 @@ defineProps<{
 
 const store = useCharListStore();
 const { statsOf } = store;
-const { pageList, sortStat } = storeToRefs(store);
+const { pageList, sortStat, hiddenOnly } = storeToRefs(store);
 </script>
 
 <template>
@@ -40,8 +42,11 @@ const { pageList, sortStat } = storeToRefs(store);
       :size="half ? 'md' : 'sm'"
       :href="wikiLink(char.zh)"
     >
-      <template v-if="sortStat" #badge>
-        <span class="ol-sortinfo">
+      <template v-if="sortStat || hiddenOnly.has(char)" #badge>
+        <!-- 右上角：只有隐藏势力命中 -->
+        <HiddenBadge v-if="hiddenOnly.has(char)" class="ol-hiddenmark" short />
+        <!-- 右下角：按数值排序时带出的那项数值 -->
+        <span v-if="sortStat" class="ol-sortinfo">
           <StatValue :value="statsOf(char)[sortStat]" />
         </span>
       </template>
@@ -102,16 +107,26 @@ const { pageList, sortStat } = storeToRefs(store);
     }
   }
 
-  // 排序数值放右下角：右上角会压住六颗星
+  // 角标容器铺满头像：右上角与右下角各自定位，两枚角标同时出现也不打架；
+  // 不吃指针事件，别挡住卡片自己的悬停 / 点击
   :deep(.ak-op-card__badge) {
-    top: auto;
-    right: 0;
-    bottom: 0;
+    inset: 0;
+    pointer-events: none;
   }
+}
+
+// 只有隐藏势力命中的干员：头像右上角的「隐藏」
+.ol-hiddenmark {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 // 按数值排序时卡片角上带出那项数值（游戏干员列表的 dyn_char_sort_info_item：#0098DC 底白字）
 .ol-sortinfo {
+  position: absolute;
+  right: 0;
+  bottom: 0;
   display: block;
   padding: 2px 5px;
   background: var(--ak-blue-500, #0098dc);

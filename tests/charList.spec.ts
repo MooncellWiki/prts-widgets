@@ -12,6 +12,7 @@ import {
   dropOrphanBranches,
   emptyOptions,
   failedFilters,
+  hiddenOnlyMatch,
   matchFilter,
   matchText,
 } from "@/widgets/CharList/filter";
@@ -320,6 +321,64 @@ describe("筛选", () => {
     expect(matchFilter(by("force"), char, new Set(["罗德岛"]))).toBe(false);
   });
 
+  it("势力 · 作战模式查 ingameFaction.main，开了隐藏势力连 hidden 一起查", () => {
+    const { by } = setup();
+    const force = by("force");
+    const char = makeChar({
+      "data-nation": "阿戈尔",
+      "data-ingame-faction": "罗德岛",
+      "data-ingame-hidden-faction": "深海猎人",
+    });
+    const hit = (id: string) => matchFilter(force, char, new Set([id]));
+    // 档案模式只看 nation / group / team
+    expect(hit("阿戈尔")).toBe(true);
+    expect(hit("罗德岛")).toBe(false);
+
+    force.selection.combat = true;
+    expect(hit("罗德岛")).toBe(true);
+    expect(hit("阿戈尔")).toBe(false);
+    expect(hit("深海猎人")).toBe(false);
+
+    force.selection.hidden = true;
+    expect(hit("深海猎人")).toBe(true);
+  });
+
+  it("游戏内势力逗号分隔；没有隐藏势力时属性不带值，读成空数组", () => {
+    const char = makeChar({
+      "data-ingame-faction": "炎,炎-岁",
+      "data-ingame-hidden-faction": "",
+    });
+    expect(char.ingameFaction).toEqual({ main: ["炎", "炎-岁"], hidden: [] });
+    expect(makeChar().ingameFaction).toEqual({ main: [], hidden: [] });
+  });
+
+  it("「隐藏势力」标志：要算上 hidden 才通过的才挂，同时满足时也算", () => {
+    const { by } = setup();
+    const force = by("force");
+    force.selection.combat = true;
+    force.selection.hidden = true;
+    force.selection.selected.add("罗德岛").add("深海猎人");
+    const both = makeChar({
+      "data-ingame-faction": "罗德岛",
+      "data-ingame-hidden-faction": "深海猎人",
+    });
+    const hiddenOnly = makeChar({ "data-ingame-hidden-faction": "深海猎人" });
+    const mainOnly = makeChar({ "data-ingame-faction": "罗德岛,深海猎人" });
+
+    // 不同时满足：罗德岛在 main 里，不靠 hidden 也能过
+    expect(hiddenOnlyMatch(force, both)).toBe(false);
+    expect(hiddenOnlyMatch(force, hiddenOnly)).toBe(true);
+    expect(hiddenOnlyMatch(force, mainOnly)).toBe(false);
+
+    // 同时满足：深海猎人只在 hidden 里，不算 hidden 就过不了
+    force.selection.and = true;
+    expect(hiddenOnlyMatch(force, both)).toBe(true);
+    expect(hiddenOnlyMatch(force, mainOnly)).toBe(false);
+
+    force.selection.hidden = false;
+    expect(hiddenOnlyMatch(force, both)).toBe(false);
+  });
+
   it("搜索名称 / 英文名 / 代号 / 特性，不分大小写，不搜术语提示的正文", () => {
     const c = makeChar(
       { "data-en": "Lava", "data-id": "RL03" },
@@ -479,6 +538,33 @@ describe("地址栏 # 参数", () => {
     readHash("profession=0-近卫;不存在", filters);
     expect(Array.from(by("profession").selection.selected)).toEqual(["近卫"]);
     expect(by("profession").selection.and).toBe(false);
+  });
+
+  it("势力的作战模式 / 隐藏势力：_fm / _fh，档案模式下不写 _fh", () => {
+    const { filters, by } = setup();
+    const force = by("force");
+    const state = readHash("force=0-罗德岛&_fm=1&_fh=1", filters);
+    expect(force.selection).toMatchObject({
+      and: true,
+      combat: true,
+      hidden: true,
+    });
+    const hash = new URLSearchParams(buildHash(filters, state));
+    expect([hash.get("force"), hash.get("_fm"), hash.get("_fh")]).toEqual([
+      "0-罗德岛",
+      "1",
+      "1",
+    ]);
+
+    // 切回档案：隐藏势力的开关藏起来了，短链接里也不留
+    force.selection.combat = false;
+    expect(buildHash(filters, state)).toBe(
+      new URLSearchParams({ force: "0-罗德岛" }).toString(),
+    );
+
+    // 换一条链接：两样都回到默认
+    readHash("", filters);
+    expect(force.selection).toMatchObject({ combat: false, hidden: false });
   });
 
   it("默认状态不写参数；写出去的能原样读回来", () => {
