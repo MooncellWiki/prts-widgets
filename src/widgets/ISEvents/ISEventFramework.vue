@@ -234,7 +234,8 @@ const title = computed(() => {
               class="from-[#2f2f2f20] to-[#2f2f2f00] bg-gradient-to-b"
               justify="space-between"
             >
-              <NBreadcrumb>
+              <!-- 面包屑是 ul > li：标 ak-not-prose，不吃 Arknights 皮肤正文列表的菱形项目符号（li::before） -->
+              <NBreadcrumb class="ak-not-prose">
                 <NBreadcrumbItem
                   v-for="(sceneId, index) in sceneNav"
                   :key="index"
