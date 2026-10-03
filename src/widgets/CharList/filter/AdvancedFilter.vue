@@ -65,7 +65,7 @@ const noneFound = (tab: string, filters: FilterState[]) => {
         class="ol-adv__find"
         size="sm"
         :placeholder="`在 ${optionCount(tab.filters)} 个${tab.title}里搜索…`"
-        :label="`在${tab.title}选项里查搜索`"
+        :label="`在${tab.title}选项里搜索`"
         autocomplete="off"
       />
       <FilterRows>

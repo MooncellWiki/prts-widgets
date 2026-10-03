@@ -109,9 +109,12 @@ export function buildHash(
     const ids = selectedOptions(f).map((option) => option.id);
     p.set(f.id, (f.selection.and ? "0-" : "1-") + ids.join(";"));
   }
+  // 隐藏势力只在作战模式下有意义：档案模式下开关藏着，也不往短链接里写
   const force = combatFilter(filters);
-  if (force?.selection.combat) p.set("_fm", "1");
-  if (force?.selection.hidden) p.set("_fh", "1");
+  if (force?.selection.combat) {
+    p.set("_fm", "1");
+    if (force.selection.hidden) p.set("_fh", "1");
+  }
   if (state.q) p.set("_s", state.q);
   const sort = formatSort(state.sort);
   if (sort !== formatSort(DEFAULT_SORT)) p.set("_o", sort);

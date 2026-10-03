@@ -44,11 +44,7 @@ const { pageList, sortStat, hiddenOnly } = storeToRefs(store);
     >
       <template v-if="sortStat || hiddenOnly.has(char)" #badge>
         <!-- 右上角：只有隐藏势力命中 -->
-        <HiddenBadge
-          v-if="hiddenOnly.has(char)"
-          class="ol-hiddenmark"
-          label="隐藏"
-        />
+        <HiddenBadge v-if="hiddenOnly.has(char)" class="ol-hiddenmark" short />
         <!-- 右下角：按数值排序时带出的那项数值 -->
         <span v-if="sortStat" class="ol-sortinfo">
           <StatValue :value="statsOf(char)[sortStat]" />

@@ -71,9 +71,9 @@ const originRest = (char: Char) => {
       <!-- featureHtml 是 convertFeature 转义后重新拼的，不是模板原文 -->
       <p class="ol-feature" v-html="char.featureHtml" />
       <p class="ol-obtain">
-        <!-- 只有隐藏势力命中时，势力字符串后面挂一枚紫标 -->
+        <!-- 只有隐藏势力命中时，势力字符串后面挂一枚「隐藏势力」标志 -->
         <span>{{ char.force.join(" · ") }}</span>
-        <HiddenBadge v-if="hiddenOnly.has(char)" label="隐藏势力" />
+        <HiddenBadge v-if="hiddenOnly.has(char)" />
         <span>{{ originRest(char) }}</span>
         <template v-if="char.obtainMethod.length > 0">
           <br />{{ char.obtainMethod.join(" · ") }}

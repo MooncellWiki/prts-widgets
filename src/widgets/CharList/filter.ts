@@ -58,7 +58,7 @@ export function createFilters(): Record<FilterId, FilterState> {
 export const hasOption = (f: FilterState, id: string) =>
   OPTION_BY_ID[f.id].has(id);
 
-/** 「同时」（并选 / 同时）只在允许的行上打开：词缀行是一直有的开关，势力行在工具条里。 */
+/** 「同时满足」只在允许的行上打开（标签、势力）。 */
 export function setAnd(f: FilterState, and: boolean) {
   f.selection.and = !!f.def.canAnd && and;
 }
@@ -78,17 +78,17 @@ export const filterTitle = (f: FilterState) =>
   f.def.combat && f.selection.combat ? `作战${f.def.title}` : f.def.title;
 
 /**
- * 这位干员是不是只有隐藏势力命中了（作战模式 + 开了隐藏势力时才有意义）：
- * 选中的标签一个都不在 ingameFaction.main 里，却至少有一个在 hidden 里。
+ * 这位干员是不是靠隐藏势力才通过的（作战模式 + 开了隐藏势力时才有意义）：
+ * 算上 ingameFaction.hidden 能通过、只看 main 就通不过——
+ * 不选「同时满足」时 = 选中的势力一个都不在 main 里；选了 = 至少有一个只在 hidden 里。
  * 结果里给这些干员挂「隐藏势力」标志——不然看不出他是靠隐藏势力进来的。
  */
 export function hiddenOnlyMatch(f: FilterState, char: Char): boolean {
   if (!f.def.combat || !f.selection.combat || !f.selection.hidden) return false;
-  const tags = Array.from(f.selection.selected);
+  const { selected, and } = f.selection;
   return (
-    tags.length > 0 &&
-    !tags.some((tag) => char.ingameFaction.main.includes(tag)) &&
-    tags.some((tag) => char.ingameFaction.hidden.includes(tag))
+    matchFilter(f, char) &&
+    !matchFilter(f, char, selected, and, { combat: true, hidden: false })
   );
 }
 

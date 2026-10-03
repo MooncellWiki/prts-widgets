@@ -101,9 +101,9 @@ const ariaSort = (key: SortKey) =>
           <StatValue :value="statsOf(char)[col.key]" />
         </td>
         <td class="ol-sep">
-          <!-- 只有隐藏势力命中时，势力字符串后面挂一枚紫标 -->
+          <!-- 只有隐藏势力命中时，势力字符串后面挂一枚「隐藏势力」标志 -->
           <span>{{ char.force.join(" · ") }}</span>
-          <HiddenBadge v-if="hiddenOnly.has(char)" label="隐藏势力" />
+          <HiddenBadge v-if="hiddenOnly.has(char)" />
           <span class="ol-sub">
             {{
               [char.birthPlace, char.race.join(" / ")]
