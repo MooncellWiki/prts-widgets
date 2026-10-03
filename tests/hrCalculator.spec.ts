@@ -8,6 +8,8 @@ import {
   analyze,
   combosOf,
   prune,
+  referenceCombos,
+  soloGuarantees,
   toOps,
   type Combo,
   type Source,
@@ -142,8 +144,8 @@ describe("prune / analyze", () => {
     ]);
   });
 
-  it("全部组合排成一张表：保底高的在前，同保底标签少的在前，支援机械在最后", () => {
-    const list = analyze(OPS, [
+  it("全部组合：保底高的在前，同保底标签少的在前，支援机械在最后", () => {
+    const { list } = analyze(OPS, [
       "高级资深干员",
       "资深干员",
       "支援机械",
@@ -161,6 +163,67 @@ describe("prune / analyze", () => {
       "3 先锋",
       "1 支援机械",
     ]);
+  });
+
+  it("按保底分层；1★ 整组单列「必得支援机械」，其余不保底的收在最后", () => {
+    const r = analyze(OPS, [
+      "高级资深干员",
+      "资深干员",
+      "新手",
+      "支援机械",
+      "先锋",
+      "输出",
+      "生存",
+    ]);
+    const tags = (list: Combo[]) => list.map((c) => c.tags.join("+"));
+    expect(r.tiers.map((t) => [t.min, tags(t.combos)])).toEqual([
+      [6, ["高级资深干员"]],
+      [5, ["资深干员", "资深干员+输出", "资深干员+生存"]],
+      [4, ["输出", "生存"]],
+    ]);
+    expect(tags(r.robots)).toEqual(["支援机械"]);
+    // 整组只有 2★ 新手的也算不保底
+    expect(r.low.map((c) => `${c.min} ${c.tags.join("+")}`)).toEqual([
+      "3 先锋",
+      "2 新手",
+    ]);
+  });
+});
+
+describe("保底速查 / 单选保底", () => {
+  it("只列能保底 4★ 以上的最小组合，不含资质标签", () => {
+    const ref = referenceCombos(OPS);
+    const tags = ref.map((c) => c.tags.join("+"));
+    expect(tags).not.toContain("资深干员");
+    expect(tags).toContain("削弱");
+    expect(tags).toContain("生存");
+    // 输出 已保底 4★；加上近战位把保底抬到 5★ 才列，加上远程位没抬高的不列
+    expect(tags).toContain("近战位+输出");
+    expect(tags).not.toContain("远程位+生存");
+    // 特种 自己就保底 5★，特种 + 生存 不列
+    expect(tags).toContain("特种");
+    expect(tags).not.toContain("特种+生存");
+    expect(ref.every((c) => c.min >= 4)).toBe(true);
+    expect(ref[0].min).toBe(5);
+  });
+
+  it("混着 1★ 支援机械的组合照样列进速查、标上单选保底", () => {
+    const ops = toOps([
+      ...SOURCE,
+      op("CONFESS-47", 1, "先锋", "近战位", ["支援机械", "控场"], ["公开招募"]),
+      op("红豆", 4, "先锋", "近战位", ["输出", "控场"]),
+    ]);
+    expect(find(referenceCombos(ops), "控场")?.min).toBe(4);
+    expect(soloGuarantees(ops).get("控场")).toBe(4);
+  });
+
+  it("单选即可保底的标签带保底星级，稀有标签不算", () => {
+    const solo = soloGuarantees(OPS);
+    expect(solo.get("削弱")).toBe(5);
+    expect(solo.get("输出")).toBe(4);
+    expect(solo.has("资深干员")).toBe(false);
+    expect(solo.has("先锋")).toBe(false);
+    expect(solo.has("支援机械")).toBe(false);
   });
 });
 
@@ -227,9 +290,19 @@ describe("HrCalculator UI smoke", () => {
       (b) => b.textContent?.trim() === tag,
     )!;
 
-  it("没选标签时结果区是空的；点芯片写进地址栏，「清空」全部取消", async () => {
+  const tierHead = (host: HTMLElement, title: string) =>
+    [...host.querySelectorAll<HTMLElement>(".hr-tier__head")].find(
+      (h) => h.querySelector(".hr-tier__title")?.textContent === title,
+    );
+
+  it("没选标签时是保底速查；点芯片写进地址栏，「清空」回到速查", async () => {
     const host = await mount();
-    expect(host.querySelector(".hr-combo")).toBeNull();
+    expect(host.querySelector(".hr-ref-head")?.textContent).toContain(
+      "保底速查",
+    );
+    expect(host.querySelector(".hr-combos--grid .hr-combo")).not.toBeNull();
+    expect(chip(host, "削弱").getAttribute("data-rarity")).toBe("5");
+    expect(chip(host, "先锋").hasAttribute("data-solo")).toBe(false);
     const clear = [
       ...host.querySelectorAll<HTMLButtonElement>(".hr-bar .ak-btn"),
     ].find((b) => b.textContent?.includes("清空"))!;
@@ -238,6 +311,8 @@ describe("HrCalculator UI smoke", () => {
     chip(host, "削弱").click();
     await nextTick();
     expect(chip(host, "削弱").getAttribute("aria-pressed")).toBe("true");
+    expect(host.querySelector(".hr-ref-head")).toBeNull();
+    expect(host.querySelector(".hr-tier__title")?.textContent).toBe("保底 5★");
     expect(host.querySelector(".hr-combo")?.getAttribute("data-rarity")).toBe(
       "5",
     );
@@ -246,8 +321,46 @@ describe("HrCalculator UI smoke", () => {
     clear.click();
     await nextTick();
     expect(chip(host, "削弱").getAttribute("aria-pressed")).toBe("false");
-    expect(host.querySelector(".hr-combo")).toBeNull();
+    expect(host.querySelector(".hr-ref-head")).not.toBeNull();
     expect(location.search).toBe("");
+  });
+
+  it("前面有保底层时「不保底」默认收起，点层标题展开；清空后再选又收起", async () => {
+    const host = await mount(
+      `/w/公招计算${writeQuery("", new Set(["削弱", "先锋"]))}`,
+    );
+    const low = () => tierHead(host, "不保底") as HTMLButtonElement;
+    const list = () =>
+      document.getElementById(low().getAttribute("aria-controls")!)!;
+    expect(low().tagName).toBe("BUTTON");
+    expect(low().getAttribute("aria-expanded")).toBe("false");
+    expect(list().style.display).toBe("none");
+
+    low().click();
+    await nextTick();
+    expect(low().getAttribute("aria-expanded")).toBe("true");
+    expect(list().style.display).toBe("");
+    expect(list().textContent).toContain("先锋");
+
+    const clear = [
+      ...host.querySelectorAll<HTMLButtonElement>(".hr-bar .ak-btn"),
+    ].find((b) => b.textContent?.includes("清空"))!;
+    clear.click();
+    await nextTick();
+    chip(host, "削弱").click();
+    chip(host, "先锋").click();
+    await nextTick();
+    expect(low().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("没有保底层时「不保底」直接展开，不能收起", async () => {
+    const host = await mount(`/w/公招计算${writeQuery("", new Set(["先锋"]))}`);
+    const low = tierHead(host, "不保底")!;
+    expect(low.tagName).not.toBe("BUTTON");
+    expect(host.querySelector(".hr-tier__count")?.textContent).toBe(
+      "1 组 · 最低可能出 3★",
+    );
+    expect(host.querySelector(".hr-combo")).not.toBeNull();
   });
 
   it("标签个数不限", async () => {

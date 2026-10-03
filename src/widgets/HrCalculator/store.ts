@@ -1,7 +1,13 @@
 import { computed, inject, reactive, type InjectionKey } from "vue";
 
 import { ALL_TAGS } from "./consts";
-import { analyze, toOps, type Source } from "./recruit";
+import {
+  analyze,
+  referenceCombos,
+  soloGuarantees,
+  toOps,
+  type Source,
+} from "./recruit";
 import { readQuery } from "./url";
 
 /**
@@ -10,25 +16,34 @@ import { readQuery } from "./url";
  */
 export function createRecruit(source: readonly Source[]) {
   const ops = toOps(source);
-  const state = reactive({ sel: new Set<string>() });
+  const solo = soloGuarantees(ops);
+  const state = reactive({
+    sel: new Set<string>(),
+    /** 「不保底」那一层前面有保底层时默认收起 */
+    lowOpen: false,
+  });
 
   /** 按面板的次序 */
   const picked = computed(() => ALL_TAGS.filter((t) => state.sel.has(t)));
   const result = computed(() => analyze(ops, picked.value));
+  /** 没选标签时才用得到；computed 惰性求值，用到才算 */
+  const reference = computed(() => referenceCombos(ops));
 
   function toggle(tag: string) {
     if (state.sel.has(tag)) state.sel.delete(tag);
     else state.sel.add(tag);
   }
+  /** 下一个招募位从头选：「不保底」那一层也跟着收回去 */
   function clear() {
     state.sel.clear();
+    state.lowOpen = false;
   }
   function load(search: string) {
     state.sel.clear();
     for (const tag of readQuery(search)) state.sel.add(tag);
   }
 
-  return { ops, state, result, toggle, clear, load };
+  return { ops, solo, state, result, reference, toggle, clear, load };
 }
 
 export type Recruit = ReturnType<typeof createRecruit>;

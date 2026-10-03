@@ -4,7 +4,7 @@ import { AkButton, useToast } from "@mooncellwiki/prts-design-vue";
 import { useRecruit } from "./store";
 import { writeQuery } from "./url";
 
-/** 标签面板与结果之间的一行：左边图例，右边「清空」（下一个招募位从头选）与「复制分享链接」 */
+/** 标签面板与结果之间的一行：左边图例（限 / 单选保底方块），右边「清空」（下一个招募位从头选）与「复制分享链接」 */
 const recruit = useRecruit();
 const { state } = recruit;
 const toast = useToast();
@@ -27,6 +27,9 @@ async function copyLink() {
   <div class="hr-bar">
     <div class="hr-legend">
       <span><span class="hr-legend__only">限</span>只能通过公开招募获得</span>
+      <span data-rarity="4">
+        <i />单选这一个标签即可保底（方块颜色 = 保底的稀有度）
+      </span>
     </div>
     <div class="hr-bar__tools">
       <AkButton
@@ -86,6 +89,12 @@ async function copyLink() {
 
   &__only {
     @include mixins.only-badge;
+  }
+
+  i {
+    width: 7px;
+    height: 7px;
+    background: var(--ak-r);
   }
 }
 </style>

@@ -6,6 +6,7 @@ import type { Combo } from "./recruit";
 
 /**
  * 一组：左边是标签（游戏的深灰标签钮），右边是全部干员；左边的色条 = 保底的稀有度。
+ * 保底速查里排成多列的格子：标签在上、干员在下。
  */
 defineProps<{ combo: Combo }>();
 </script>
@@ -70,6 +71,25 @@ defineProps<{ combo: Combo }>();
     &__ops {
       border-left: var(--ak-bar-w) solid var(--ak-r, var(--ak-border-strong));
     }
+  }
+
+  // 保底速查排成多列的格子：标签在上、干员在下，格子里不画稀有度色条（层标题已经标了）
+  .hr-combos--grid > & {
+    display: flex;
+    flex-direction: column;
+    border-top: 0;
+    box-shadow:
+      1px 0 0 var(--ak-border),
+      0 1px 0 var(--ak-border);
+  }
+
+  .hr-combos--grid > & &__tags {
+    padding: 10px var(--ak-space-3) 0;
+    border: 0;
+  }
+
+  .hr-combos--grid > & &__ops {
+    border: 0;
   }
 }
 

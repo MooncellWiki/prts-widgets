@@ -24,7 +24,8 @@ import type { Source } from "./recruit";
 
 /**
  * 公招计算（PRTS Design 视觉，对应设计稿 /patterns/recruit）：
- * 标签面板 → 图例与工具栏 → 全部组合排成一张表（每组至多 3 个标签，保底高的在前）。不按招募时限筛干员，保底按 9:00 算（见 consts.ts 的 MIN_STAR）。
+ * 标签面板 → 图例与工具栏 → 按「保底几星」分层的组合（每组至多 3 个标签，不保底的那层默认收起）；一个标签都没选时，结果区是保底速查。
+ * 不按招募时限筛干员，保底按 9:00 算（见 consts.ts 的 MIN_STAR）。
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.hr-* 是这页自己的排布（各组件的 scoped 样式）。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
  */

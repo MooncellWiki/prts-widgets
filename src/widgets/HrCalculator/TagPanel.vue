@@ -8,13 +8,22 @@ import { TAG_GROUPS, isSenior } from "./consts";
 import { useRecruit } from "./store";
 
 /**
- * 标签面板：四行芯片（资质 / 位置 / 职业 / 词缀），个数不限；清空在面板下面那条工具栏里（VerdictBar）。
+ * 标签面板：四行芯片（资质 / 职业 / 位置 / 词缀，次序同游戏招募页，见 consts.ts 的 TAG_GROUPS），个数不限；清空在面板下面那条工具栏里（VerdictBar）。
  * 两个稀有标签另一套皮，同游戏 recruit_page 的 btn_tag_item：未选金字金框、选中黄底黑字（普通标签选中青底）。
+ * 单选就能保底 4★ 以上的标签，右上角一枚保底稀有度色的小方块。
  */
 const recruit = useRecruit();
-const { state } = recruit;
+const { state, solo } = recruit;
 
 const id = useId();
+
+/** 单选即可保底的标签：右上角一枚稀有度色的小方块 */
+const soloAttrs = (tag: string) => {
+  const min = solo.get(tag);
+  return min
+    ? { "data-solo": "", "data-rarity": min, title: `单选即可保底 ${min}★` }
+    : {};
+};
 </script>
 
 <template>
@@ -36,6 +45,7 @@ const id = useId();
           :key="tag"
           :model-value="state.sel.has(tag)"
           :class="{ 'is-senior': isSenior(tag) }"
+          v-bind="soloAttrs(tag)"
           @update:model-value="recruit.toggle(tag)"
         >
           <i
@@ -139,6 +149,24 @@ const id = useId();
     background: var(--ak-yellow-500);
     border-color: var(--ak-yellow-500);
     color: #1d1f20;
+  }
+
+  // 单选这一个标签就能保底 4★ 以上（9:00）：右上角一枚稀有度色的小方块
+  &[data-solo]::after {
+    content: "";
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    width: 7px;
+    height: 7px;
+    background: var(--ak-r);
+  }
+
+  &[data-solo][aria-pressed="true"]::after {
+    top: 2px;
+    right: 2px;
+    width: 5px;
+    height: 5px;
   }
 }
 
