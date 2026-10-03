@@ -11,7 +11,7 @@ import SpineViewer from "./SpineViewer.vue";
 import type { SpineMeta } from "./types";
 
 /**
- * 未载入时只有一块矮舞台 + 「载入模型」：运行时与模型都等点了再取，同现网。
+ * 未载入时只有一个「载入模型」按钮（同旧版）：运行时与模型都等点了再取。
  * 有 data-id 时从 torappu 取 meta.json，否则用页面里 #SPINEDATA 的那份
  */
 const props = defineProps<{
@@ -50,50 +50,35 @@ async function load() {
 <template>
   <AkScope class="spine-viewer-widget ak-not-prose" :theme="theme">
     <SpineViewer v-if="meta" :conf="meta" />
-    <div v-else class="sv">
-      <div class="sv__stage ak-bg-grid">
-        <AkButton variant="primary" size="lg" :loading="loading" @click="load">
-          载入模型
-        </AkButton>
-        <span class="sv__hint">
-          {{
-            error
-              ? `载入失败（${error}），点按钮重试`
-              : "SpineViewer · 战斗正面 / 背面 · 基建 · 全部时装"
-          }}
-        </span>
-      </div>
+    <div v-else class="sv-load">
+      <AkButton variant="primary" :loading="loading" @click="load">
+        载入模型
+      </AkButton>
+      <span v-if="error" class="sv-load__error">
+        载入失败（{{ error }}），点按钮重试
+      </span>
     </div>
   </AkScope>
 </template>
 
 <style scoped lang="scss">
-@use "./frame";
-
-// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
+// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底。
+// 这些皮肤的正文列不封顶（Vector 宽屏能到 1700），封到 Arknights 皮肤正文列的宽度上下，免得动作列表拉得老长
 .spine-viewer-widget.ak-scope[data-theme] {
   background-color: transparent;
+  max-width: 1000px;
 }
 
-// 未载入：只有一块矮舞台 + 载入钮（模型与运行时都等点了再取）
-.sv {
-  @include frame.box;
+// 未载入：一个按钮，载入失败时旁边一行红字
+.sv-load {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
 }
 
-.sv__stage {
-  @include frame.stage;
-  height: 220px;
-  display: grid;
-  place-items: center;
-}
-
-.sv__hint {
-  @include frame.hint;
-}
-
-@media (max-width: 767px) {
-  .sv__hint {
-    display: none;
-  }
+.sv-load__error {
+  font-size: var(--ak-fs-sm);
+  color: var(--ak-danger);
 }
 </style>

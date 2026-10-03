@@ -29,6 +29,7 @@
     "@vicons/material": "^0.13.0",
     "@vueuse/core": "^15.0.0",
     "@zumer/snapdom": "^3.0.0",
+    "gifenc": "^1.0.3",
     "howler": "^2.2.4",
     "lodash-es": "^4.18.1",
     "md5": "^2.3.0",

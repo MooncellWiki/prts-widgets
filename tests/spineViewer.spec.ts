@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  chainMembers,
   chainOf,
   defaultAnim,
   groupAnims,
@@ -14,6 +15,7 @@ import {
   hsvToHex,
   normalizeHex,
 } from "../src/widgets/SpineViewer/engine/color";
+import { encodeGif, planGif } from "../src/widgets/SpineViewer/engine/gif";
 
 const anim = (name: string, duration = 1) => summarize(name, duration, []);
 const names = (list: { name: string }[]) => list.map((a) => a.name);
@@ -162,6 +164,13 @@ describe("nextInChain", () => {
     expect(nextInChain(list, find("Idle"), true)).toBeNull();
     expect(nextInChain(list, find("Default"), true)).toBeNull();
   });
+
+  it("取景按同一招的几段并起来，从哪一段点进来都一样", () => {
+    const chain = ["Skill_2_Begin", "Skill_2_Loop", "Skill_2_End"];
+    expect(names(chainMembers(list, find("Skill_2_End")))).toEqual(chain);
+    expect(names(chainMembers(list, find("Skill_2_Begin")))).toEqual(chain);
+    expect(names(chainMembers(list, find("Idle")))).toEqual(["Idle"]);
+  });
 });
 
 describe("取色：HSV ↔ #rrggbb", () => {
@@ -193,5 +202,130 @@ describe("取色：HSV ↔ #rrggbb", () => {
     expect(hexToHsv("#808080", 200)).toEqual({ h: 200, s: 0, v: 128 / 255 });
     expect(hexToHsv("#000000", 42).h).toBe(42);
     expect(hexToHsv("#18d1ff", 42).h).toBeCloseTo(191.95, 1);
+  });
+});
+
+describe("planGif：GIF 的帧与帧时长（厘秒）", () => {
+  const sum = (list: number[]) => list.reduce((a, b) => a + b, 0);
+
+  it("30 帧 / 秒排成 3 4 3 3 4 3…，循环时不画最后一帧，总时长不漂", () => {
+    const p = planGif(30, 1, true);
+    expect(p.frames).toEqual([...Array(30).keys()]);
+    expect(p.delays.slice(0, 6)).toEqual([3, 4, 3, 3, 4, 3]);
+    expect(sum(p.delays)).toBe(100);
+  });
+
+  it("播一遍画到最后一帧，末帧停 1 秒", () => {
+    const p = planGif(53, 1, false);
+    expect(p.frames).toHaveLength(54);
+    expect(p.frames.at(-1)).toBe(53);
+    expect(sum(p.delays.slice(0, -1))).toBe(177);
+    expect(p.delays.at(-1)).toBe(100);
+  });
+
+  it("慢放拉长每帧；快到一帧不足 2 厘秒就隔帧取，不足 2 厘秒的尾巴并进前一帧", () => {
+    expect(planGif(30, 0.1, true).delays.slice(0, 3)).toEqual([33, 34, 33]);
+    expect(planGif(30, 1.5, true).frames).toHaveLength(30);
+
+    const fast = planGif(53, 2, true);
+    expect(fast.frames).toEqual(Array.from({ length: 26 }, (_, i) => i * 2));
+    expect(fast.delays.at(-1)).toBe(5);
+    expect(sum(fast.delays)).toBe(88);
+    expect(Math.min(...fast.delays)).toBeGreaterThanOrEqual(2);
+  });
+});
+
+/** 按块走一遍 GIF：帧数、各帧时长（厘秒）与透明标记、循环次数（没有 NETSCAPE 扩展 = 播一遍）、带局部色表的帧数 */
+function parseGif(b: Uint8Array) {
+  const out = {
+    header: String.fromCharCode(...b.subarray(0, 6)),
+    frames: 0,
+    delays: [] as number[],
+    transparent: [] as boolean[],
+    loops: null as number | null,
+    local: 0,
+  };
+  let p = 13;
+  if (b[10] & 0x80) p += 3 << ((b[10] & 7) + 1);
+  const skipBlocks = () => {
+    while (b[p]) p += b[p] + 1;
+    p++;
+  };
+  while (b[p] !== 0x3b) {
+    if (b[p] === 0x21) {
+      if (b[p + 1] === 0xf9) {
+        out.transparent.push(Boolean(b[p + 3] & 1));
+        out.delays.push(b[p + 4] | (b[p + 5] << 8));
+      } else if (
+        String.fromCharCode(...b.subarray(p + 3, p + 14)) === "NETSCAPE2.0"
+      ) {
+        out.loops = b[p + 16] | (b[p + 17] << 8);
+      }
+      p += 2;
+      skipBlocks();
+    } else if (b[p] === 0x2c) {
+      out.frames++;
+      const packed = b[p + 9];
+      p += 10;
+      if (packed & 0x80) {
+        out.local++;
+        p += 3 << ((packed & 7) + 1);
+      }
+      p++;
+      skipBlocks();
+    } else {
+      throw new Error(`第 ${p} 字节不是块开头：${b[p]}`);
+    }
+  }
+  return out;
+}
+
+describe("encodeGif", () => {
+  // 4 × 4：左半边随帧变色，右半边是底（透明底时 alpha 由参数给）
+  const size = 4;
+  const frame = (f: number, alpha: number) => {
+    const px = new Uint8ClampedArray(size * size * 4);
+    for (let i = 0; i < size * size; i++)
+      px.set(
+        i % size < 2 ? [200, f * 20, 40, 255] : [10, 10, 10, alpha],
+        i * 4,
+      );
+    return px;
+  };
+  const parse = async (blob: Blob) =>
+    parseGif(new Uint8Array(await blob.arrayBuffer()));
+
+  it("帧时长、一直循环写进文件，各帧共用全局色表", async () => {
+    const plan = planGif(6, 1, true);
+    const gif = await parse(
+      await encodeGif({
+        size,
+        plan,
+        loop: true,
+        transparent: false,
+        grab: (f) => frame(f, 255),
+      }),
+    );
+    expect(gif.header).toBe("GIF89a");
+    expect(gif.frames).toBe(6);
+    expect(gif.delays).toEqual(plan.delays);
+    expect(gif.loops).toBe(0);
+    expect(gif.local).toBe(0);
+    expect(gif.transparent).not.toContain(true);
+  });
+
+  it("播一遍不写循环；透明底每帧都带透明色", async () => {
+    const gif = await parse(
+      await encodeGif({
+        size,
+        plan: planGif(3, 1, false),
+        loop: false,
+        transparent: true,
+        grab: (f) => frame(f, 60),
+      }),
+    );
+    expect(gif.frames).toBe(4);
+    expect(gif.loops).toBeNull();
+    expect(gif.transparent).toEqual([true, true, true, true]);
   });
 });

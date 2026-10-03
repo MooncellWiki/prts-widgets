@@ -152,6 +152,17 @@ export function groupAnims<T extends AnimSummary>(anims: T[]): AnimGroup<T>[] {
   return [{ title: "", items: groups.flatMap((g) => g.items) }];
 }
 
+/** 同一招的几段（Skill_2_Begin / Skill_2_Loop / Skill_2_End），按出招次序；取景按它们并起来，连播时换段不跳 */
+export function chainMembers<T extends AnimSummary>(
+  anims: T[],
+  current: T,
+): T[] {
+  const stem = chainOf(current.name)[0];
+  return anims
+    .filter((a) => chainOf(a.name)[0] === stem)
+    .sort((a, b) => chainOf(a.name)[1] - chainOf(b.name)[1]);
+}
+
 /**
  * 连播：播完一段接同一招的下一段（Skill_2_Begin → Skill_2_Loop → Skill_2_End），
  * 最后一段播完按「循环」回到第一段或停住；只有一段的动作返回 null
@@ -161,10 +172,7 @@ export function nextInChain<T extends AnimSummary>(
   current: T,
   loop: boolean,
 ): T | null {
-  const stem = chainOf(current.name)[0];
-  const chain = anims
-    .filter((a) => a.duration && chainOf(a.name)[0] === stem)
-    .sort((a, b) => chainOf(a.name)[1] - chainOf(b.name)[1]);
+  const chain = chainMembers(anims, current).filter((a) => a.duration);
   const i = chain.indexOf(current);
   if (chain.length < 2 || i < 0) return null;
   return chain[i + 1] ?? (loop ? chain[0] : null);

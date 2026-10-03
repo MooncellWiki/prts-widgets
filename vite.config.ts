@@ -172,9 +172,11 @@ export default defineConfig(({ command }) => {
             if (id.includes("node_modules/pinia/")) return "pinia";
             if (id.includes("howler")) return "howler";
             if (id.includes("pixi")) return "pixi";
+            // gifenc 是 SpineViewer 导出 GIF 时才动态 import 的，别并进各页都加载的 vendor
             if (
               id.includes("@zumer/snapdom") ||
-              id.includes("vue-draggable-plus")
+              id.includes("vue-draggable-plus") ||
+              id.includes("node_modules/gifenc/")
             )
               return;
 

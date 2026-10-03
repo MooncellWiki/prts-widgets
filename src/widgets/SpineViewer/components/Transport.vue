@@ -4,11 +4,14 @@ import { computed, ref, useTemplateRef } from "vue";
 import {
   AkButton,
   AkButtonGroup,
+  AkIcon,
   AkSelect,
   AkSwitch,
 } from "@mooncellwiki/prts-design-vue";
 
 import { EVENT_LABEL, FPS, type AnimSummary } from "../engine/anims";
+import { GIF_SCALE, type GifKind } from "../engine/gif";
+import { EXPORT } from "../engine/stage";
 
 import SvIcon from "./SvIcon.vue";
 
@@ -21,12 +24,14 @@ const props = defineProps<{
   t: number;
   playing: boolean;
   canWebm: boolean;
+  /** 背景选了透明：提示 GIF 透明底的毛病 */
+  transparent: boolean;
 }>();
 const emit = defineEmits<{
   seek: [time: number];
   step: [delta: number];
   toggle: [];
-  export: [kind: "png" | "webm"];
+  export: [kind: "png" | "webm" | GifKind];
 }>();
 const loop = defineModel<boolean>("loop", { required: true });
 const chain = defineModel<boolean>("chain", { required: true });
@@ -36,6 +41,12 @@ const SPEEDS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2].map((v) => ({
   label: `×${v}`,
   value: v,
 }));
+
+// 2x 的文件约为 GIF 的 3 倍：像素是 4 倍，底色大片相同、压得动（史尔特尔 Skill_3_Idle 实测 2.0 → 6.3 MB）
+const gifTip = (kind: GifKind) => {
+  const n = EXPORT * GIF_SCALE[kind];
+  return `尺寸：${n} × ${n}${kind === "gif2x" ? "，导出文件大小约为 GIF 的 3 倍" : ""}`;
+};
 
 const frame = computed(() => Math.round(props.t * FPS));
 const progress = computed(() =>
@@ -175,21 +186,35 @@ function onSeekInput(e: Event) {
         <span class="ak-overline">导出</span>
         <AkButtonGroup size="sm">
           <AkButton
-            data-ak-tip="当前帧，透明底或所选背景"
+            :data-ak-tip="`尺寸：${EXPORT} × ${EXPORT}`"
             @click="emit('export', 'png')"
           >
             <SvIcon name="download" />PNG
           </AkButton>
           <AkButton
             v-if="canWebm"
-            data-ak-tip="当前动作播一遍，按所选速度"
+            :data-ak-tip="`尺寸：${EXPORT} × ${EXPORT}`"
             @click="emit('export', 'webm')"
           >
             <SvIcon name="download" />WebM
           </AkButton>
+          <AkButton :data-ak-tip="gifTip('gif')" @click="emit('export', 'gif')">
+            <SvIcon name="download" />GIF
+          </AkButton>
+          <AkButton
+            :data-ak-tip="gifTip('gif2x')"
+            @click="emit('export', 'gif2x')"
+          >
+            <SvIcon name="download" />GIF 2x
+          </AkButton>
         </AkButtonGroup>
       </div>
     </div>
+    <p v-if="transparent" class="sv__note">
+      <AkIcon name="warn" />
+      透明底 GIF
+      可能存在以下问题：边缘锯齿，半透明的光效会变实或消失，推荐使用其他格式导出
+    </p>
   </div>
 </template>
 
@@ -341,6 +366,24 @@ function onSeekInput(e: Event) {
   gap: 8px;
 }
 
+// 背景选了透明时的 GIF 提示：贴在导出按钮下面，警示色
+.sv__note {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 0;
+  padding: 0 14px 10px;
+  font-size: var(--ak-fs-xs);
+  color: var(--ak-warning);
+
+  .ak-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+  }
+}
+
 @media (max-width: 767px) {
   .sv__export > .ak-overline {
     display: none;
@@ -358,6 +401,10 @@ function onSeekInput(e: Event) {
   .sv__frame {
     min-width: 0;
     margin-left: auto;
+  }
+
+  .sv__note {
+    justify-content: flex-start;
   }
 }
 </style>

@@ -20,6 +20,8 @@ import {
 import {
   useEventListener,
   useIntersectionObserver,
+  useMutationObserver,
+  usePreferredDark,
   useResizeObserver,
 } from "@vueuse/core";
 
@@ -29,14 +31,25 @@ import SvIcon from "./components/SvIcon.vue";
 import Transport from "./components/Transport.vue";
 import {
   FPS,
+  chainMembers,
   defaultAnim,
   nextInChain,
   sortModels,
   sortSkins,
 } from "./engine/anims";
 import {
+  GIF_SCALE,
+  canvasReader,
+  encodeGif,
+  planGif,
+  type GifKind,
+} from "./engine/gif";
+import {
+  EXPORT,
+  RULER,
   Stage,
   type AnimInfo,
+  type Box,
   type Loaded,
   type Rgba,
   type View,
@@ -85,11 +98,37 @@ const loop = ref(true);
 const chain = ref(false);
 const speed = ref(1);
 const flip = ref(false);
-const bg = ref<BgKey>("dark");
+/** 舞台网格线（CSS 铺的，不进导出）；默认关 */
+const grid = ref(false);
+/*
+ * 背景没手动选过就跟页面：Arknights 皮肤上白天浅色、夜间深色——看令牌解析出来的 color-scheme，
+ * 夜间模式的几种开法（clientpref 类、data-theme、跟随系统）都认，切了不用刷新；别的皮肤（旧版）固定浅色
+ */
+const ARKNIGHTS = document.body.classList.contains("skin-arknights");
+const night = ref(false);
+function syncNight() {
+  night.value =
+    ARKNIGHTS &&
+    getComputedStyle(document.documentElement).colorScheme === "dark";
+}
+syncNight();
+if (ARKNIGHTS) {
+  useMutationObserver(document.documentElement, syncNight, {
+    attributeFilter: ["class", "data-theme"],
+  });
+  watch(usePreferredDark(), syncNight);
+}
+const picked = ref<BgKey | null>(null);
+const bg = computed<BgKey>({
+  get: () => picked.value ?? (night.value ? "dark" : "light"),
+  set: (key) => (picked.value = key),
+});
 const color = ref("#18d1ff");
 const max = ref(false);
-/** 正在导出的 WebM 文件名 */
+/** 正在导出的 WebM / GIF 文件名 */
 const recording = ref<string | null>(null);
+/** 导出遮罩上文件名后面的一句：GIF 的进度 / 出错 */
+const recNote = ref("");
 /** 舞台上的遮罩：载入中 / 载入失败 */
 const veil = ref<{ error: boolean; text: string } | null>(null);
 const hud = ref({ file: "", info: "" });
@@ -97,11 +136,16 @@ const hud = ref({ file: "", info: "" });
 const hitN = ref(0);
 /** 舞台视图的快照（地面线 / 缩放读数用）；平移缩放直接改 stage.view，画完再同步过来 */
 const shown = ref<View & { pct: number }>({ x: 0, y: 0, z: 1, pct: 0 });
+/** 取景框（导出的范围）；cut = 舞台不是正方形（放大 / 手机横屏），要把框画出来 */
+const crop = ref<Box & { cut: boolean }>({ x: 0, y: 0, s: 0, cut: false });
 
 const canvas = useTemplateRef<HTMLCanvasElement>("canvas");
 const stageEl = useTemplateRef<HTMLElement>("stageEl");
+const root = useTemplateRef<HTMLElement>("root");
 let stage: Stage | null = null;
 let home: View = { x: 0, y: 0, z: 1 };
+/** 拖过 / 缩放过：换动作时不再替人取景，双击复位才回到 home */
+let custom = false;
 
 const canWebm =
   typeof MediaRecorder !== "undefined" &&
@@ -116,7 +160,9 @@ function paint() {
   stage.pose(anim.value?.anim ?? null, t.value);
   stage.draw();
   const v = stage.view;
-  const pct = Math.round((v.z / home.z) * 100);
+  // 100% = 取景框 1000 单位的那把尺；动作太大自动缩小时这里会小于 100%
+  const { s: side } = stage.box;
+  const pct = side ? Math.round(((v.z * RULER) / side) * 100) : 0;
   const s = shown.value;
   if (s.x !== v.x || s.y !== v.y || s.z !== v.z || s.pct !== pct)
     shown.value = { ...v, pct };
@@ -212,42 +258,67 @@ function step(d: number) {
   seekTo(clamp(Math.round(t.value * FPS) + d, 0, anim.value.frames) / FPS);
 }
 
-/* ── 动作：换段（连播）时保留时间，点选时从头播 ── */
+/* ── 动作：换段（连播）时保留时间和取景，点选时从头播、重新取景 ── */
 function setAnim(name: string | undefined, keepTime = false) {
   const c = cur.value;
   if (!c) return;
   anim.value =
     c.anims.find((a) => a.name === name) ?? defaultAnim(c.anims) ?? null;
   if (!keepTime) {
+    rehome();
     t.value = 0;
     setPlaying(true);
   }
   paint();
 }
 
-/* ── 取景：原点（脚底）落在舞台横向正中、纵向 80% 处，同一把尺（560 单位 = 舞台高）下各时装 / 模型大小可比；待机姿态装不下才缩 ── */
+/* ── 取景框：舞台正中的正方形（舞台本身就是正方形，放大 / 手机横屏时才比舞台小），导出的就是它 ── */
 function fit() {
   const el = stageEl.value;
   if (!stage || !el) return;
   const r = el.getBoundingClientRect();
   stage.resize(r.width, r.height, Math.min(2, window.devicePixelRatio || 1));
+  crop.value = { ...stage.box, cut: Math.abs(r.width - r.height) > 1 };
 }
-function frame() {
-  const c = cur.value;
-  if (!stage || !c) return;
-  const b = stage.bounds(defaultAnim(c.anims)?.anim ?? null);
-  const { w, h } = stage;
-  const pad = 16;
-  const x = w / 2;
-  const y = h * (model.value === "基建" ? 0.78 : 0.8);
+/*
+ * 取景：框边长 = 1000 骨骼单位（同旧版），原点（脚底）在框里横向正中、纵向 80% 处，各时装 / 模型大小可比。
+ * 当前动作（连同一招的另几段，连播时不跳）全程在这把尺下出框就先平移，平移也装不下才缩小
+ */
+const PAD = 0.03;
+function aim(): View {
+  const c = cur.value!;
+  const { x: X, y: Y, s } = stage!.box;
+  const p = s * PAD;
+  const list = anim.value ? chainMembers(c.anims, anim.value) : [];
+  const b = (list.length ? list : [null])
+    .map((a) => stage!.bounds(a?.anim ?? null))
+    .reduce((u, b) => ({
+      x0: Math.min(u.x0, b.x0),
+      y0: Math.min(u.y0, b.y0),
+      x1: Math.max(u.x1, b.x1),
+      y1: Math.max(u.y1, b.y1),
+    }));
+  const [x0, x1] = flip.value ? [-b.x1, -b.x0] : [b.x0, b.x1];
   const z = Math.min(
-    h / 560,
-    (x - pad) / Math.max(1, -b.x0, b.x1),
-    (y - pad) / Math.max(1, b.y1),
-    (h - y - pad) / Math.max(1, -b.y0),
+    s / RULER,
+    (s - 2 * p) / (x1 - x0),
+    (s - 2 * p) / Math.max(1, b.y1 - b.y0),
   );
-  home = { x, y, z };
-  Object.assign(stage.view, home);
+  return {
+    x: clamp(X + s / 2, X + p - x0 * z, X + s - p - x1 * z),
+    y: clamp(
+      Y + s * (model.value === "基建" ? 0.78 : 0.8),
+      Y + p + b.y1 * z,
+      Y + s - p + b.y0 * z,
+    ),
+    z,
+  };
+}
+/* 换动作 / 翻转后重算 home；拖过、缩放过就只记下，不动当前视图 */
+function rehome() {
+  if (!stage || !cur.value) return;
+  home = aim();
+  if (!custom) Object.assign(stage.view, home);
 }
 
 /* ── 载入一个「时装 × 模型」：沿用同名动作（没有就回到待机），速度 / 循环 / 朝向 / 背景不变 ── */
@@ -285,8 +356,8 @@ async function load() {
     info: `Spine ${loaded.data.version} · ${loaded.data.bones.length} bones`,
   };
   veil.value = null;
+  custom = false;
   fit();
-  frame();
   setAnim(anim.value?.name);
 }
 function pickSkin(s: string) {
@@ -367,9 +438,11 @@ function exportPng() {
   if (!stage || !el) return;
   const name = fileName(`-f${Math.round(t.value * FPS)}.png`);
   stage.clear = exportClear();
+  stage.setOut(EXPORT);
   paint();
-  // toBlob 在调用时就取下画布内容，紧接着把清屏色换回透明再画一遍不影响结果
+  // toBlob 在调用时就取下画布内容，紧接着换回整块舞台、透明清屏再画一遍不影响结果
   el.toBlob((b) => save(b, name));
+  stage.setOut(0);
   stage.clear = [0, 0, 0, 0];
   paint();
 }
@@ -377,6 +450,8 @@ function exportWebm() {
   const el = canvas.value;
   if (!stage || !el || recording.value || !anim.value?.duration) return;
   const chunks: Blob[] = [];
+  // 录制期间画布只画取景框、EXPORT 见方（模板里把画布挪到框上，免得被拉伸）
+  stage.setOut(EXPORT);
   const mr = new MediaRecorder(el.captureStream(60), {
     mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
       ? "video/webm;codecs=vp9"
@@ -389,8 +464,12 @@ function exportWebm() {
     save(new Blob(chunks, { type: "video/webm" }), name);
     recording.value = null;
     onRecordEnd = null;
-    if (stage) stage.clear = [0, 0, 0, 0];
+    if (stage) {
+      stage.clear = [0, 0, 0, 0];
+      stage.setOut(0);
+    }
     t.value = 0;
+    paint();
     setPlaying(true);
   };
   recording.value = name;
@@ -402,30 +481,121 @@ function exportWebm() {
   mr.start();
   setPlaying(true);
 }
+/*
+ * GIF：当前动作逐帧画进取景框、读回来编码（engine/gif.ts），按所选速度；「循环」开着就一直循环，关了播一遍停在最后一帧。
+ * 不走 rAF，导完回到导出前的那一帧和播放状态。透明底只有全透明 / 不透明两档，照样导，播放条下面有提示
+ */
+async function exportGif(kind: GifKind) {
+  const el = canvas.value;
+  const a = anim.value;
+  if (!stage || !el || recording.value || !a?.duration) return;
+  const size = EXPORT * GIF_SCALE[kind];
+  const name = fileName(`-x${speed.value}${kind === "gif2x" ? "@2x" : ""}.gif`);
+  const was = { t: t.value, playing: playing.value };
+  stop();
+  setPlaying(false);
+  recording.value = name;
+  recNote.value = "";
+  stage.clear = exportClear();
+  stage.setOut(size);
+  const read = canvasReader(el, size);
+  try {
+    const gif = await encodeGif({
+      size,
+      plan: planGif(a.frames, speed.value, loop.value),
+      loop: loop.value,
+      transparent: !bgColor.value,
+      grab: (f) => {
+        t.value = f / FPS;
+        paint();
+        return read();
+      },
+      onProgress: (done, total) => (recNote.value = `${done} / ${total} 帧`),
+    });
+    save(gif, name);
+  } catch (err) {
+    recNote.value = `导出失败：${err instanceof Error ? err.message : String(err)}`;
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  recording.value = null;
+  recNote.value = "";
+  stage.clear = [0, 0, 0, 0];
+  stage.setOut(0);
+  t.value = was.t;
+  paint();
+  if (was.playing) setPlaying(true);
+}
+function onExport(kind: "png" | "webm" | GifKind) {
+  if (kind === "png") exportPng();
+  else if (kind === "webm") exportWebm();
+  else exportGif(kind);
+}
 
 /* ── 视图：翻转 / 复位 / 缩放 / 放大 ── */
 function setFlip(on: boolean) {
   flip.value = on;
+  rehome();
   paint();
 }
 function resetView() {
   if (!stage) return;
+  custom = false;
   Object.assign(stage.view, home);
   paint();
 }
 function zoomAt(cx: number, cy: number, k: number) {
   if (!stage) return;
+  custom = true;
   const v = stage.view;
-  const z = clamp(v.z * k, home.z * 0.2, home.z * 8);
+  const u = stage.box.s / RULER;
+  const z = clamp(v.z * k, u * 0.2, u * 8);
   v.x = cx - ((cx - v.x) * z) / v.z;
   v.y = cy - ((cy - v.y) * z) / v.z;
   v.z = z;
   paint();
 }
-/* 放大：整块铺满视口（不用 Fullscreen API——iOS 的 Safari 不给普通元素全屏），页面不滚；Esc 退出 */
-watch(max, (on) => {
-  document.documentElement.style.overflow = on ? "hidden" : "";
-});
+/*
+ * 放大：整块铺满视口（不用 Fullscreen API——iOS 的 Safari 不给普通元素全屏），页面不滚；Esc 退出。
+ * 支持 Popover API 的浏览器再把它提进顶层（top layer）：Vector 的 #bodyContent 是 z-index: 0 的层叠上下文，
+ * 里面的 fixed 元素 z-index 再大也盖不过侧栏和「TOP」按钮；顶层不受祖先层叠上下文管，继承仍跟着 DOM 走（令牌、主题不丢）。
+ * 进不了顶层的旧浏览器：放大期间把会盖上来的侧栏（#mw-panel，MenuSidebar 在里面）和「TOP」按钮（.backToTop）藏起来，退出再放回
+ */
+const COVERS = "#mw-panel, .backToTop";
+let covered: [HTMLElement, string, string][] = [];
+function hideCovers(on: boolean) {
+  for (const [e, v, p] of covered) e.style.setProperty("visibility", v, p);
+  covered = [];
+  if (!on) return;
+  // 用 visibility 而不是 display：TOP 按钮的小工具滚动时会自己改 display，放回时不跟它抢
+  for (const e of document.querySelectorAll<HTMLElement>(COVERS)) {
+    covered.push([
+      e,
+      e.style.getPropertyValue("visibility"),
+      e.style.getPropertyPriority("visibility"),
+    ]);
+    e.style.setProperty("visibility", "hidden", "important");
+  }
+}
+watch(
+  max,
+  (on) => {
+    document.documentElement.style.overflow = on ? "hidden" : "";
+    const el = root.value;
+    if (!el) return;
+    if (!("showPopover" in el)) {
+      hideCovers(on);
+      return;
+    }
+    if (on) {
+      el.popover = "manual";
+      el.showPopover();
+    } else {
+      // 去掉属性浏览器就把它撤出顶层，回到正文里
+      el.removeAttribute("popover");
+    }
+  },
+  { flush: "post" },
+);
 useEventListener(document, "keydown", (e: KeyboardEvent) => {
   if (e.key !== "Escape") return;
   // 先关取色面板（焦点在面板里就还给「自定义」那格），再退出放大
@@ -434,10 +604,16 @@ useEventListener(document, "keydown", (e: KeyboardEvent) => {
     picking.value = false;
   } else if (max.value) max.value = false;
 });
+const cropStyle = computed(() => ({
+  left: `${crop.value.x}px`,
+  top: `${crop.value.y}px`,
+  width: `${crop.value.s}px`,
+  height: `${crop.value.s}px`,
+}));
 const hint = computed(() =>
   max.value
-    ? "拖拽移动 · 滚轮缩放 · 双击复位 · Esc 退出"
-    : "拖拽移动 · Ctrl + 滚轮缩放 · 双击复位",
+    ? `拖拽移动 / 滚轮缩放 / 双击复位 / Esc 退出${crop.value.cut ? " · 框内为导出画面预览" : ""}`
+    : "拖拽移动 / Ctrl + 滚轮缩放 / 双击复位",
 );
 
 /* ── 舞台：单指 / 鼠标拖拽平移，双指捏合缩放，Ctrl / ⌘ + 滚轮（触控板捏合也是它）缩放；放大模式下滚轮直接缩放 ── */
@@ -461,6 +637,7 @@ function onPointerMove(e: PointerEvent) {
   const q = local(e);
   pts.set(e.pointerId, q);
   if (pts.size === 1) {
+    custom = true;
     stage.view.x += q[0] - p[0];
     stage.view.y += q[1] - p[1];
     paint();
@@ -496,10 +673,11 @@ useEventListener(
   },
   { passive: false },
 );
-/* 键盘（舞台获得焦点后）：空格 播放 / 暂停，← → 逐帧，F 翻转，0 复位 */
+/* 键盘（舞台获得焦点后）：空格 播放 / 暂停，← → 逐帧，F 翻转，G 网格线，0 复位。导出中不接（遮罩只挡得住指针），免得改到正在出的画面 */
 function onKeydown(e: KeyboardEvent) {
   if (
     !cur.value ||
+    recording.value ||
     e.target !== stageEl.value ||
     e.ctrlKey ||
     e.metaKey ||
@@ -511,26 +689,29 @@ function onKeydown(e: KeyboardEvent) {
   else if (k === "ArrowLeft") step(-1);
   else if (k === "ArrowRight") step(1);
   else if (k === "f" || k === "F") setFlip(!flip.value);
+  else if (k === "g" || k === "G") grid.value = !grid.value;
   else if (k === "0") resetView();
   else return;
   e.preventDefault();
 }
 
-/* ── 尺寸：画布跟着舞台走（换算成比例保住当前的平移缩放）；只在看得见时重绘 ── */
+/* ── 尺寸：画布跟着舞台走；平移缩放按取景框换算成比例保住（框里的构图不变，进出放大也是）；只在看得见时重绘 ── */
 useResizeObserver(stageEl, () => {
   if (!stage || !cur.value) return;
   const v = stage.view;
-  const was = stage.w
-    ? { fx: v.x / stage.w, fy: v.y / stage.h, k: v.z / home.z }
+  const b = stage.box;
+  const was = b.s
+    ? { fx: (v.x - b.x) / b.s, fy: (v.y - b.y) / b.s, k: v.z / b.s }
     : null;
   fit();
-  frame();
-  if (was)
-    Object.assign(stage.view, {
-      x: was.fx * stage.w,
-      y: was.fy * stage.h,
-      z: was.k * home.z,
-    });
+  home = aim();
+  const n = stage.box;
+  Object.assign(
+    stage.view,
+    was
+      ? { x: n.x + was.fx * n.s, y: n.y + was.fy * n.s, z: was.k * n.s }
+      : home,
+  );
   paint();
 });
 useIntersectionObserver(stageEl, ([entry]) => {
@@ -548,11 +729,12 @@ onBeforeUnmount(() => {
   stop();
   clearTimeout(nudgeTimer);
   if (max.value) document.documentElement.style.overflow = "";
+  hideCovers(false);
 });
 </script>
 
 <template>
-  <div :class="['sv', 'is-ready', { 'is-max': max }]">
+  <div ref="root" :class="['sv', 'is-ready', { 'is-max': max }]">
     <div class="sv__bar">
       <div class="sv__field">
         <span class="ak-overline">时装</span>
@@ -594,27 +776,30 @@ onBeforeUnmount(() => {
     <div class="sv__main">
       <div
         ref="stageEl"
-        class="sv__stage ak-bg-grid"
+        :class="['sv__stage', { 'ak-bg-grid': grid }]"
         tabindex="0"
         :data-bg="bg"
         :style="stageStyle"
-        :aria-label="`${conf.name} 的 Spine 模型：空格 播放 / 暂停，← → 逐帧，F 翻转朝向，0 复位视图`"
+        :aria-label="`${conf.name} 的 Spine 模型：空格 播放 / 暂停，← → 逐帧，F 翻转朝向，G 网格线，0 复位视图`"
         @keydown="onKeydown"
       >
         <canvas
           ref="canvas"
           :class="['sv__canvas', { 'is-dragging': dragging }]"
+          :style="recording ? cropStyle : undefined"
           @pointerdown="onPointerDown"
           @pointermove="onPointerMove"
           @pointerup="onPointerUp"
           @pointercancel="onPointerUp"
           @dblclick="resetView"
         />
-        <!-- 地面：脚底原点处一条线 + 一枚落脚点（游戏里战斗 / 基建小人脚下都有一枚 Shadow）。DOM 画的，不进导出 -->
+        <!-- 地面：一枚落脚点（游戏里战斗 / 基建小人脚下都有一枚 Shadow），开着网格线时脚底原点处再加一条线。DOM 画的，不进导出 -->
         <div
-          class="sv__ground"
+          :class="['sv__ground', { 'has-line': grid }]"
           :style="{ transform: `translate(${shown.x}px, ${shown.y}px)` }"
         />
+        <!-- 取景框：舞台不是正方形时把导出范围框出来、框外压暗。同样不进导出 -->
+        <div v-if="crop.cut" class="sv__crop" :style="cropStyle" />
         <div class="sv__hud">
           <b>{{ hud.file }}</b>
           <span>{{ hud.info }}</span>
@@ -632,6 +817,16 @@ onBeforeUnmount(() => {
             @click="setFlip(!flip)"
           >
             <SvIcon name="flip" />
+          </button>
+          <button
+            type="button"
+            class="sv__tool"
+            :aria-pressed="grid"
+            data-ak-tip="网格线 (G)"
+            aria-label="网格线"
+            @click="grid = !grid"
+          >
+            <SvIcon name="grid" />
           </button>
           <button
             type="button"
@@ -711,12 +906,15 @@ onBeforeUnmount(() => {
       :t="t"
       :playing="playing"
       :can-webm="canWebm"
+      :transparent="!bgColor"
       @seek="seekTo"
       @step="step"
       @toggle="setPlaying(!playing)"
-      @export="(kind) => (kind === 'png' ? exportPng() : exportWebm())"
+      @export="onExport"
     />
-    <div v-if="recording" class="sv__rec">正在导出 {{ recording }}</div>
+    <div v-if="recording" class="sv__rec">
+      正在导出 {{ recording }}{{ recNote && ` · ${recNote}` }}
+    </div>
   </div>
 </template>
 
@@ -735,11 +933,21 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     border: 0;
+    // 顶层里是 [popover]：盖掉浏览器给它的 fit-content 尺寸、内边距、滚动和 CanvasText 字色
+    width: auto;
+    height: auto;
+    padding: 0;
+    overflow: visible;
+    color: inherit;
 
     > .sv__main {
       flex: 1;
-      height: auto;
       min-height: 0;
+      grid-template-columns: minmax(0, 1fr) 272px;
+    }
+
+    .sv__stage {
+      aspect-ratio: auto;
     }
 
     .sv__canvas {
@@ -782,14 +990,20 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
+// 舞台是正方形（导出也是这个画幅），边长随正文列宽、最大 560；动作列表吃掉剩下的宽度，高度跟舞台齐
 .sv__main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 272px;
-  height: var(--sv-h);
+  grid-template-columns: minmax(0, 560px) minmax(272px, 1fr);
+
+  // 列表不参与撑高：行高只由舞台定，列表拉伸到同高、自己滚动
+  > .sv__list {
+    contain: size;
+  }
 }
 
 .sv__stage {
   @include frame.stage;
+  aspect-ratio: 1;
 
   // 透明：棋盘格（两套主题同一副深色格，HUD 仍是白字），导出的 PNG / WebM 是透明底
   &[data-bg="none"] {
@@ -822,6 +1036,15 @@ onBeforeUnmount(() => {
   }
 }
 
+// 取景框：舞台不是正方形时才有（放大 / 手机横屏），框外压暗
+.sv__crop {
+  position: absolute;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px rgba(var(--sv-ink), 0.28),
+    0 0 0 100vmax rgba(0, 0, 0, 0.28);
+}
+
 // 地面：脚底原点处一条线 + 一枚椭圆影子。深底上是一枚淡亮的落脚点，浅底上是影子（--sv-shadow 随底色给）
 .sv__ground {
   position: absolute;
@@ -831,7 +1054,8 @@ onBeforeUnmount(() => {
   height: 0;
   pointer-events: none;
 
-  &::before {
+  // 地面线跟网格线一起开关
+  &.has-line::before {
     content: "";
     position: absolute;
     left: -100vw;
@@ -1047,7 +1271,6 @@ onBeforeUnmount(() => {
 // 手机上顺序改成 选择条 → 舞台 → 时间轴 / 播放条 → 动作列表：播放条贴着舞台（动作列表的 order 在 AnimList 里）
 @media (max-width: 767px) {
   .sv {
-    --sv-h: auto;
     display: flex;
     flex-direction: column;
   }
@@ -1058,10 +1281,15 @@ onBeforeUnmount(() => {
 
   .sv__main {
     display: contents;
+
+    > .sv__list {
+      contain: none;
+    }
   }
 
+  // 正方形，横屏时高度封顶（这时取景框比舞台窄，会框出来）
   .sv__stage {
-    height: min(86vw, 360px);
+    max-height: 75vh;
   }
 
   .sv__hint {
@@ -1070,8 +1298,8 @@ onBeforeUnmount(() => {
 
   .sv.is-max .sv__stage {
     flex: 1;
-    height: auto;
     min-height: 0;
+    max-height: none;
   }
 }
 </style>
