@@ -653,20 +653,12 @@ function onPointerUp(e: PointerEvent) {
   pinch = 0;
   if (!pts.size) dragging.value = false;
 }
-/* 没按 Ctrl 就滚轮：不劫持页面滚动，左下角的提示亮一下 */
-const nudging = ref(false);
-let nudgeTimer = 0;
+/* 没按 Ctrl 就滚轮：不劫持页面滚动 */
 useEventListener(
   canvas,
   "wheel",
   (e: WheelEvent) => {
-    if (!cur.value) return;
-    if (!(e.ctrlKey || e.metaKey || max.value)) {
-      nudging.value = true;
-      clearTimeout(nudgeTimer);
-      nudgeTimer = window.setTimeout(() => (nudging.value = false), 900);
-      return;
-    }
+    if (!cur.value || !(e.ctrlKey || e.metaKey || max.value)) return;
     e.preventDefault();
     const [x, y] = local(e);
     zoomAt(x, y, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)));
@@ -727,7 +719,6 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   stop();
-  clearTimeout(nudgeTimer);
   if (max.value) document.documentElement.style.overflow = "";
   hideCovers(false);
 });
@@ -882,7 +873,7 @@ onBeforeUnmount(() => {
             @update:model-value="onPick"
           />
         </div>
-        <span :class="['sv__hint', { 'is-nudge': nudging }]">{{ hint }}</span>
+        <span class="sv__hint">{{ hint }}</span>
         <div v-if="veil" class="sv__veil">
           <template v-if="veil.error">
             <span>{{ veil.text }}</span>
@@ -1236,12 +1227,6 @@ onBeforeUnmount(() => {
 
 .sv__hint {
   @include frame.hint;
-  transition: color var(--ak-dur-fast);
-
-  // 没按 Ctrl 就滚轮：提示亮一下，页面照常滚动
-  &.is-nudge {
-    color: var(--ak-accent-2);
-  }
 }
 
 .sv__veil {
