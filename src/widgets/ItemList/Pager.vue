@@ -38,20 +38,16 @@ function go(n: number) {
     height: 14px;
   }
 
-  // 窄排布：分页条铺满一行、页码格等分——左右缘与上面的控件、下面的结果对齐
+  // 窄排布：分页条独占一行，页码格居中、大小同桌面（不平分整行）
   .il--narrow & {
     display: flex;
     flex: 1 0 100%;
+    justify-content: center;
 
-    > :deep(*) {
-      flex: 1 1 0;
-      min-width: 0;
-      text-align: center;
-    }
-
+    // 设计系统的页码格是 content-box、靠 min-width: 32px 撑宽，收不动：换成 flex-basis，一行放不下时才收窄，不超框
     :deep(.ak-pagination__item) {
-      min-width: 26px;
-      padding: 0 6px;
+      flex: 0 1 32px;
+      min-width: 0;
     }
   }
 }
