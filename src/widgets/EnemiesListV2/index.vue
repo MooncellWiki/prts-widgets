@@ -1,390 +1,172 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, provide, ref, useTemplateRef } from "vue";
 
 import {
-  NButton,
-  NConfigProvider,
-  NDataTable,
-  NInput,
-  NLayout,
-  NPagination,
-  type DataTableBaseColumn,
-  type DataTableColumn,
-  type DataTableColumns,
-  type DataTableFilterState,
-  type DataTableInst,
-} from "naive-ui";
+  AkButton,
+  AkEmpty,
+  AkScope,
+  AkSpinner,
+  AkToastProvider,
+} from "@mooncellwiki/prts-design-vue";
+import { isClient, useEventListener } from "@vueuse/core";
 
-import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
-import { getImagePath, isMobileSkin } from "@/utils/utils";
+import { useHostTheme } from "@/utils/useHostTheme";
+import { useHoverTip } from "@/utils/useHoverTip";
 
-import FilterGroup from "./FilterGroup.vue";
-import { defaultFilterConfig } from "./consts";
+import Pager from "./Pager.vue";
+import ResultBar from "./ResultBar.vue";
+import Toolbar from "./Toolbar.vue";
+import { View } from "./consts";
+import FilterPanel from "./filter/FilterPanel.vue";
+import ResultCards from "./result/ResultCards.vue";
+import ResultGrid from "./result/ResultGrid.vue";
+import ResultTable from "./result/ResultTable.vue";
+import { createEnemyList, enemyListKey } from "./store";
 
-import type { EnemyData, FilterConfig } from "./types";
+import type { EnemyData } from "./enemy";
 
-const enemyData = ref<EnemyData[]>([]);
-const keyword = ref("");
-const tableRef = ref<DataTableInst | null>(null);
-const dimensionPrecedence = [
-  "SS",
-  "S+",
-  "S",
-  "A+",
-  "A",
-  "B+",
-  "B",
-  "C",
-  "D",
-  "E",
-];
-const filterConfig = reactive<FilterConfig>(defaultFilterConfig);
-const isLoading = ref(true);
-const i18nConfig = getNaiveUILocale();
-const isMobile = isMobileSkin();
-const isIconMode = ref(!!isMobile);
-const { theme, themeOverrides, isDark } = useTheme();
-const pagination = reactive({
-  page: 1,
-  pageSize: 50,
-  pageSizes: [50, 100, 200, 500],
-  pageSlot: isMobile ? 5 : 9,
-  showSizePicker: true,
-  onChange: (page: number) => {
-    pagination.page = page;
-  },
-  onUpdatePageSize: (pageSize: number) => {
-    pagination.pageSize = pageSize;
-    pagination.page = 1;
-  },
-});
-const filteredEnemyData = computed(() => {
-  const filters = filterConfig.states;
-  const searchWord = keyword.value;
-  const filteredData = enemyData.value.filter((enemy) => {
-    for (const key in filters) {
-      if (filters[key].length > 0) {
-        if (
-          filterConfig.groups[0].filters.includes(key) &&
-          filters[key].every(
-            (filter) =>
-              !enemy[key as keyof EnemyData].toString().includes(filter),
-          )
-        )
-          return false;
-        if (
-          filterConfig.groups[1].filters.includes(key) &&
-          !filters[key].includes(enemy[key as keyof EnemyData].toString())
-        )
-          return false;
-      }
-      if (
-        searchWord &&
-        !enemy.name.includes(searchWord) &&
-        !enemy.ability.includes(searchWord)
-      )
-        return false;
-    }
-    return true;
-  });
-  return filteredData;
-});
-const filteredChunkedEnemyData = computed(() =>
-  filteredEnemyData.value.slice(
-    pagination.pageSize * (pagination.page - 1),
-    pagination.pageSize * pagination.page,
-  ),
+/**
+ * 敌人一览（PRTS Design 视觉，排布同干员一览）：
+ * 筛选 → 工具条（搜索 · 排序 · 显示方式）→ 结果栏（条数 · 已选条件 · 复制链接 · 分页）→ 结果。
+ * 筛选项与匹配规则对着游戏的敌人图鉴（见 filter.ts），数据是「敌人一览/数据」那份 JSON（入口取好传进来）。
+ * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.el-* 是这页自己的排布（各组件的 scoped 样式）。
+ * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
+ */
+const props = withDefaults(
+  defineProps<{
+    source?: EnemyData[];
+    /** 敌人数据没取到：结果区出失败提示，不再转圈 */
+    failed?: boolean;
+  }>(),
+  { source: () => [] },
 );
 
-watch(keyword, () => {
-  tableRef.value?.filter({
-    ability: [keyword.value],
-    name: [keyword.value],
+const store = createEnemyList(props.source);
+provide(enemyListKey, store);
+const { enemies, state, list } = store;
+
+/* 分享链接的 # 参数：打开时读一次，之后只在地址栏的 # 变了时再读，不往回写。不带 = 的是页内锚点（#top），不当成清空 */
+const loadHash = () => {
+  if (location.hash.includes("=")) store.load(location.hash);
+};
+if (isClient) loadHash();
+useEventListener("hashchange", loadHash);
+
+const theme = useHostTheme();
+
+/* 排布看结果区自己的宽度，不看视口（侧栏收起 / 展开都会改变它）：< 1000 表格换卡片，< 640 是手机排布 */
+const root = useTemplateRef<HTMLElement>("root");
+const width = ref(Number.POSITIVE_INFINITY);
+let observer: ResizeObserver | undefined;
+onMounted(() => {
+  const el = root.value;
+  if (!el) return;
+  width.value = el.clientWidth;
+  observer = new ResizeObserver(() => {
+    width.value = el.clientWidth;
   });
+  observer.observe(el);
 });
+onBeforeUnmount(() => observer?.disconnect());
 
-const createFilterOptions = (field: string) => {
-  return filterConfig.filters[field].options.map((option) => ({
-    label: option,
-    value: option,
-  }));
-};
+/* 在底部翻页：回到结果开头 */
+const result = useTemplateRef<HTMLElement>("result");
+const backToResult = () => result.value?.scrollIntoView({ block: "start" });
 
-const createDimensionalColumn = (
-  field: keyof EnemyData,
-  title: string,
-): DataTableColumn<EnemyData> => {
-  return {
-    title,
-    key: field,
-    defaultSortOrder: false,
-    sorter: (row1: EnemyData, row2: EnemyData) => {
-      const index1 = dimensionPrecedence.indexOf(row1[field].toString());
-      const index2 = dimensionPrecedence.indexOf(row2[field].toString());
-      if (index1 === -1) {
-        return 1;
-      }
-      if (index2 === -1) {
-        return -1;
-      }
-      return index1 - index2;
-    },
-    filterOptions: createFilterOptions(field),
-    filterOptionValues: filterConfig.states[field],
-    filter(value: string | number, row: EnemyData) {
-      return row[field] === value.toString();
-    },
-    renderFilter() {
-      return h("div");
-    },
-  };
-};
+const reload = () => location.reload();
 
-const abilityColumn: DataTableColumn<EnemyData> = {
-  title: "能力",
-  key: "ability",
-  minWidth: 360,
-  resizable: true,
-  filter(value, row) {
-    return (
-      row.ability.includes(value.toString()) ||
-      row.name.includes(value.toString())
-    );
-  },
-  // 能力里的 .mc-tooltips 由 src/entries/Tooltip.ts 的 MutationObserver 自动挂载
-  render(row) {
-    return h("span", { innerHTML: row.ability });
-  },
-  renderFilter() {
-    return h("div");
-  },
-};
-
-const createColumns = (): DataTableColumns<EnemyData> => {
-  return [
-    {
-      title: "头像",
-      key: "icon",
-      minWidth: 80,
-      render(row) {
-        const img = h("img", {
-          src: getImagePath(`头像_敌人_${row.name}.png`),
-          loading: "lazy",
-          style: {
-            width: "65px",
-            height: "65px",
-          },
-        });
-        return h(
-          "a",
-          {
-            href: `/w/${row.enemyLink}`,
-          },
-          img,
-        );
-      },
-    },
-    {
-      title: "名称",
-      key: "name",
-      minWidth: 100,
-      defaultSortOrder: false,
-      resizable: true,
-      sorter: "default",
-      render(row) {
-        return h(
-          "a",
-          {
-            href: `/w/${row.enemyLink}`,
-          },
-          row.name,
-        );
-      },
-      renderFilter() {
-        return h("div");
-      },
-    },
-    {
-      title: "地位",
-      key: "enemyLevel",
-      resizable: true,
-      minWidth: 80,
-      filterOptions: createFilterOptions("enemyLevel"),
-      filterOptionValues: filterConfig.states.enemyLevel,
-      filter(value, row) {
-        return row.enemyLevel.includes(value.toString());
-      },
-      renderFilter() {
-        return h("div");
-      },
-    },
-    {
-      title: "种类",
-      key: "enemyRace",
-      resizable: true,
-      minWidth: 80,
-      filterOptions: createFilterOptions("enemyRace"),
-      filterOptionValues: filterConfig.states.enemyRace,
-      filter(value, row) {
-        return row.enemyRace.includes(value.toString());
-      },
-      renderFilter() {
-        return h("div");
-      },
-    },
-    {
-      title: "攻击方式",
-      key: "attackType",
-      resizable: true,
-      minWidth: 105,
-      filterOptions: createFilterOptions("attackType"),
-      filterOptionValues: filterConfig.states.attackType,
-      filter(value, row) {
-        return row.attackType.includes(value.toString());
-      },
-      renderFilter() {
-        return h("div");
-      },
-    },
-    {
-      title: "伤害类型",
-      key: "damageType",
-      resizable: true,
-      minWidth: 105,
-      filterOptions: createFilterOptions("damageType"),
-      filterOptionValues: filterConfig.states.damageType,
-      filter(value, row) {
-        return row.damageType.includes(value.toString());
-      },
-      renderFilter() {
-        return h("div");
-      },
-    },
-    abilityColumn,
-    ...filterConfig.groups[1].filters.map((field) =>
-      createDimensionalColumn(
-        field as keyof EnemyData,
-        filterConfig.filters[field].title,
-      ),
-    ),
-  ];
-};
-
-onMounted(async () => {
-  const response = await fetch(
-    `/index.php?${new URLSearchParams({
-      title: "敌人一览/数据",
-      action: "raw",
-      ctype: "application/json",
-    })}`,
-  );
-
-  enemyData.value = await response.json();
-  isLoading.value = false;
-});
-const columns = createColumns();
-const handleUpdateFilter = (
-  filters: DataTableFilterState,
-  sourceColumn: DataTableBaseColumn,
-) => {
-  abilityColumn.filterOptionValues = filters[sourceColumn.key] as string[];
-};
+const { tip, handlers: tipHandlers } = useHoverTip(
+  useTemplateRef<HTMLElement>("bubble"),
+  "[data-tip]",
+);
 </script>
 
 <template>
-  <NConfigProvider
-    preflight-style-disabled
-    inline-theme-disabled
-    :theme="theme"
-    :theme-overrides="themeOverrides"
-    :locale="i18nConfig.locale"
-    :date-locale="i18nConfig.dateLocale"
-  >
-    <NLayout :class="['mx-auto p-2 antialiased', isDark && 'prts-widget-dark']">
-      <FilterGroup
-        v-for="group in filterConfig.groups"
-        :key="group.title"
-        v-model:show="group.show"
-        v-model:states="filterConfig.states"
-        :title="group.title"
-        :filters="
-          Object.fromEntries(
-            Object.entries(filterConfig.filters).filter(([key]) =>
-              group.filters.includes(key),
-            ),
-          )
-        "
-      />
-      <div class="flex items-center">
-        <NInput
-          v-model:value="keyword"
-          class="my-2"
-          type="text"
-          placeholder="搜索敌人名称/描述/能力"
-        />
-        <NButton
-          class="mx-2"
-          strong
-          secondary
-          :type="isIconMode ? 'info' : 'default'"
-          @click="isIconMode = !isIconMode"
-        >
-          简
-        </NButton>
-      </div>
-      <NDataTable
-        v-show="!isIconMode"
-        ref="tableRef"
-        class="my-2"
-        :bordered="false"
-        :columns="columns"
-        :data="enemyData"
-        :pagination="pagination"
-        :row-key="(row) => row.sortId"
-        striped
-        @update:filters="handleUpdateFilter"
-      />
-      <div v-if="isIconMode">
-        <a
-          v-for="row in filteredChunkedEnemyData"
-          :key="row.sortId"
-          :href="`/w/${row.enemyLink}`"
-        >
-          <img
-            class="min-h-[80px]"
-            style="width: 80px; height: 80px"
-            :src="getImagePath(`头像_敌人_${row.name}.png`)"
-            loading="lazy"
+  <AkScope class="el ak-not-prose" :theme="theme" data-no-toggle>
+    <AkToastProvider>
+      <div
+        ref="root"
+        :class="['el-root', { 'el--narrow': width < 640 }]"
+        v-on="tipHandlers"
+      >
+        <FilterPanel />
+        <Toolbar />
+        <ResultBar />
+
+        <div ref="result" class="el-result">
+          <AkEmpty v-if="failed" title="敌人数据读取失败">
+            <AkButton variant="link" @click="reload">刷新页面</AkButton
+            >再试一次。
+          </AkEmpty>
+          <!-- 外壳预渲染与数据还没回来时 -->
+          <AkSpinner
+            v-else-if="enemies.length === 0"
+            description="正在读取敌人数据…"
           />
-        </a>
-        <NPagination
-          class="my-2 justify-center"
-          :item-count="filteredEnemyData.length"
-          :page="pagination.page"
-          :page-size="pagination.pageSize"
-          :page-sizes="pagination.pageSizes"
-          :page-slot="pagination.pageSlot"
-          :show-size-picker="pagination.showSizePicker"
-          @update:page="pagination.onChange"
-          @update:page-size="pagination.onUpdatePageSize"
-        />
+          <AkEmpty v-else-if="list.length === 0" title="没有符合条件的敌人">
+            放宽几项筛选条件，或者<AkButton
+              variant="link"
+              @click="store.reset()"
+            >
+              清除全部条件</AkButton
+            >。
+          </AkEmpty>
+          <ResultGrid v-else-if="state.view === View.GRID" />
+          <ResultCards v-else-if="width < 1000" />
+          <ResultTable v-else />
+        </div>
+
+        <div class="el-foot">
+          <Pager label="分页（底部）" @change="backToResult" />
+        </div>
       </div>
-    </NLayout>
-  </NConfigProvider>
+
+      <div
+        v-if="tip"
+        ref="bubble"
+        class="ak-tooltip el-tip"
+        role="tooltip"
+        :style="{ left: `${tip.left}px`, top: `${tip.top}px` }"
+      >
+        {{ tip.text }}
+      </div>
+    </AkToastProvider>
+  </AkScope>
 </template>
 
-<style scoped>
-@import "@/styles/dark-mode.scss";
-:global(.page-敌人一览 .backToTop) {
-  @apply hidden!;
+<style scoped lang="scss">
+// 窄排布不用 @media：看的是结果区自己的宽度（根节点的 .el--narrow），各组件的样式里用 `.el--narrow &` 接
+
+// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
+.el.ak-scope[data-theme] {
+  background-color: transparent;
 }
 
-.n-data-table :deep(.n-data-table__pagination) {
-  @apply justify-center!;
+// 页眉吸顶只有 Arknights 皮肤有：翻页回到结果开头时让出页眉
+.el-result {
+  scroll-margin-top: var(--ak-space-3);
+
+  .skin-arknights & {
+    scroll-margin-top: calc(var(--ak-header-h) + var(--ak-space-3));
+  }
 }
 
-:deep(.mc-tooltips) {
-  @apply border-b-1 border-b-dotted border-b-black;
+.el-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--ak-space-4) 0 0;
+
+  .el--narrow & {
+    justify-content: center;
+  }
+}
+
+// 术语 / 等级提示：按视口定位，不被表格裁掉
+.el-tip.ak-tooltip {
+  position: fixed;
+  max-width: min(340px, calc(100vw - 16px));
+  white-space: pre-line;
+  line-height: 1.55;
+  pointer-events: none;
 }
 </style>

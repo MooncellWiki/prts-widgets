@@ -1,0 +1,64 @@
+// 几个组件共用的画法：scoped 样式各管各的组件，公用的放这里 @include
+
+@mixin focus-ring($offset: 2px) {
+  outline: 2px solid var(--ak-focus);
+  outline-offset: $offset;
+}
+
+// 地位的颜色，同设计系统的敌人卡（arknights/enemy.css）：精英橙、领袖红；普通没有颜色
+@mixin rank-color {
+  &[data-rank="elite"] {
+    --_rank: var(--ak-orange-500);
+  }
+
+  &[data-rank="boss"] {
+    --_rank: var(--ak-red-700);
+  }
+}
+
+// 小字：编号、类型那几行
+@mixin sub {
+  display: block;
+  font-size: var(--ak-fs-xs);
+  line-height: 1.35;
+  color: var(--ak-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+// 能力全文（v-html 出来的 .el-ab__* / .ak-term，要用 :deep 才够得着）：一行一条，行首的 · / ※ 悬挂在外
+@mixin ability {
+  font-size: var(--ak-fs-xs);
+  line-height: 1.55;
+  color: var(--ak-fg-secondary);
+
+  :deep(.el-ab__line),
+  :deep(.el-ab__title) {
+    display: block;
+  }
+
+  :deep(.el-ab__line) {
+    padding-left: 1em;
+  }
+
+  :deep(.el-ab__line > i) {
+    float: left;
+    width: 1em;
+    margin-left: -1em;
+    font-style: normal;
+    text-align: center;
+    color: var(--ak-fg-subtle);
+  }
+
+  :deep(.el-ab__title) {
+    font-weight: 700;
+    color: var(--ak-fg);
+  }
+
+  :deep(.el-ab__title:not(:first-child)) {
+    margin-top: 4px;
+  }
+
+  :deep(.ak-term:focus-visible) {
+    @include focus-ring(1px);
+  }
+}

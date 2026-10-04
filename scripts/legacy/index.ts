@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 
 /**
- * Arknights 以外的皮肤（Vector / Vector 2022 / Minerva …）上，干员一览、公招计算照旧用改版前的组件。
+ * Arknights 以外的皮肤（Vector / Vector 2022 / Minerva …）上，干员一览、公招计算、敌人一览照旧用改版前的组件。
  *
  * 仓库里不留旧代码，直接引 OSS 上改版前最后一次构建的产物：带 hash 的文件内容不变，upload 只增不删，
- * 它们一直在。构建时 vite.config.ts 的 legacySkinGate 把这两个模板里 Vite 注入的 <script> / <link>
+ * 它们一直在。构建时 vite.config.ts 的 legacySkinGate 把这几个模板里 Vite 注入的 <script> / <link>
  * 换成一段内联引导脚本（renderSkinGate），页面解析到那里时按 body.skin-arknights 挑新版或旧版那组插回原位。
  * 分流口径与 模板:干员筛选 的两份提示框（.ol-notes / .ol-notes-legacy）一致。
  *
- * scripts/prune.ts 按这份清单保留旧产物，删了旧皮肤上这两页就白屏。
+ * scripts/prune.ts 按这份清单保留旧产物，删了旧皮肤上这几页就白屏。
  */
 
 export interface WidgetAssets {
@@ -24,7 +24,10 @@ export interface LegacyWidget {
   revision: number;
   /** 文件名，都在 LEGACY_BASE 下；是入口完整的依赖闭包（没有动态 import，CSS 里没有相对路径资源） */
   assets: WidgetAssets;
-  /** 旧版的预渲染外壳，旧皮肤上换掉 #root 里新版的外壳（新版外壳靠皮肤的组件样式，旧皮肤上没有） */
+  /**
+   * 旧版的预渲染外壳，旧皮肤上换掉 #root 里新版的外壳（新版外壳靠皮肤的组件样式，旧皮肤上没有）；
+   * 空串 = 只清掉新版的外壳，等旧包自己挂载
+   */
   shell?: string;
   /** 旧包启动时从页面上读、模板现在已经不输出的数据块：id → 正文，旧皮肤上补成隐藏的 <div> */
   data?: Record<string, string>;
@@ -72,6 +75,23 @@ export const LEGACY_WIDGETS: Record<string, LegacyWidget> = {
       css: ["style.B-VlHT9M.css"],
     },
     shell: snapshot("HrCalculator.shell.html"),
+  },
+  // 数据（「敌人一览/数据」那份 JSON）新旧两版取的是同一份，不用补。
+  // 旧版的预渲染外壳连同 naive-ui 的内联样式有 120 多 KB，不随模板发给所有人：旧皮肤上清空 #root，等旧包挂载
+  EnemiesListV2: {
+    revision: 433837,
+    assets: {
+      scripts: ["polyfills.D2fCD57O.js", "EnemiesListV2.ObDWedKn.js"],
+      preload: [
+        "modulepreload-polyfill.P2Xu9kJm.js",
+        "rolldown-runtime.hePW80VL.js",
+        "common.DRw64vPv.js",
+        "vendor.CDUGDIF8.js",
+        "naive-ui.DhG7CVhK.js",
+      ],
+      css: ["style.CjOkuTET.css"],
+    },
+    shell: "",
   },
 };
 
@@ -131,7 +151,7 @@ const BOOTSTRAP = `(function (anchor, sets) {
     if (text) el.textContent = text;
     anchor.before(el);
   }
-  if (set.shell) document.getElementById("root").innerHTML = set.shell;
+  if (set.shell != null) document.getElementById("root").innerHTML = set.shell;
   for (var id in set.data) put("div", { id: id, style: "display:none" }, set.data[id]);
   set.css.forEach(function (href) { put("link", { rel: "stylesheet", crossorigin: "", href: href }); });
   set.preload.forEach(function (href) { put("link", { rel: "modulepreload", crossorigin: "", href: href }); });

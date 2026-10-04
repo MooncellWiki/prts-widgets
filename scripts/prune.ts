@@ -26,7 +26,7 @@ const filesNames = dirents
 const distSet = new Set(filesNames);
 console.log("[INFO] Dist set:", distSet);
 
-// 旧皮肤上的干员一览 / 公招计算直接引改版前的构建产物（见 scripts/legacy），不在本次 dist 里也得留着
+// 旧皮肤上的干员一览 / 公招计算 / 敌人一览直接引改版前的构建产物（见 scripts/legacy），不在本次 dist 里也得留着
 const legacySet = legacyFiles();
 const isLegacy = (name: string) => legacySet.has(name.replace(/\.map$/, ""));
 
