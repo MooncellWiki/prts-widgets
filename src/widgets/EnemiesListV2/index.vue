@@ -10,10 +10,10 @@ import {
 } from "@mooncellwiki/prts-design-vue";
 import { isClient, useEventListener } from "@vueuse/core";
 
+import ListPager from "@/components/list/ListPager.vue";
 import { useHostTheme } from "@/utils/useHostTheme";
 import { useHoverTip } from "@/utils/useHoverTip";
 
-import Pager from "./Pager.vue";
 import ResultBar from "./ResultBar.vue";
 import Toolbar from "./Toolbar.vue";
 import { View } from "./consts";
@@ -43,7 +43,7 @@ const props = withDefaults(
 
 const store = createEnemyList(props.source);
 provide(enemyListKey, store);
-const { enemies, state, list } = store;
+const { enemies, state, list, page, pageCount } = store;
 
 /* 分享链接的 # 参数：打开时读一次，之后只在地址栏的 # 变了时再读，不往回写。不带 = 的是页内锚点（#top），不当成清空 */
 const loadHash = () => {
@@ -71,7 +71,10 @@ onBeforeUnmount(() => observer?.disconnect());
 
 /* 在底部翻页：回到结果开头 */
 const result = useTemplateRef<HTMLElement>("result");
-const backToResult = () => result.value?.scrollIntoView({ block: "start" });
+function toPage(n: number) {
+  store.setPage(n);
+  result.value?.scrollIntoView({ block: "start" });
+}
 
 const reload = () => location.reload();
 
@@ -91,7 +94,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
       >
         <FilterPanel />
         <Toolbar />
-        <ResultBar />
+        <ResultBar :narrow="width < 640" />
 
         <div ref="result" class="el-result">
           <AkEmpty v-if="failed" title="敌人数据读取失败">
@@ -117,7 +120,13 @@ const { tip, handlers: tipHandlers } = useHoverTip(
         </div>
 
         <div class="el-foot">
-          <Pager label="分页（底部）" @change="backToResult" />
+          <ListPager
+            :page="page"
+            :page-count="pageCount"
+            label="分页（底部）"
+            :narrow="width < 640"
+            @update:page="toPage"
+          />
         </div>
       </div>
 

@@ -10,10 +10,10 @@ import {
 import { useEventListener } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 
+import ListPager from "@/components/list/ListPager.vue";
 import { useHostTheme } from "@/utils/useHostTheme";
 import { useHoverTip } from "@/utils/useHoverTip";
 
-import Pager from "./Pager.vue";
 import ResultBar from "./ResultBar.vue";
 import Toolbar from "./Toolbar.vue";
 import { View } from "./consts";
@@ -37,7 +37,7 @@ const props = defineProps<{
 const store = useItemListStore();
 store.init(props.source);
 const { state } = store;
-const { list } = storeToRefs(store);
+const { list, page, pageCount } = storeToRefs(store);
 
 useEventListener(window, "hashchange", store.syncFromHash);
 
@@ -60,7 +60,10 @@ onBeforeUnmount(() => observer?.disconnect());
 
 /* 在底部翻页：回到结果开头 */
 const result = useTemplateRef<HTMLElement>("result");
-const backToResult = () => result.value?.scrollIntoView({ block: "start" });
+function toPage(n: number) {
+  store.setPage(n);
+  result.value?.scrollIntoView({ block: "start" });
+}
 
 /* 图标视图的提示：锚点的 data-tip 是道具的次序号 */
 const { tip, handlers: tipHandlers } = useHoverTip(
@@ -85,7 +88,7 @@ const tipItem = computed(() =>
       >
         <FilterPanel :narrow="width < 640" />
         <Toolbar />
-        <ResultBar />
+        <ResultBar :narrow="width < 640" />
 
         <div ref="result" class="il-result">
           <AkEmpty v-if="list.length === 0" title="没有符合条件的道具">
@@ -101,7 +104,13 @@ const tipItem = computed(() =>
         </div>
 
         <div class="il-foot">
-          <Pager label="分页（底部）" @change="backToResult" />
+          <ListPager
+            :page="page"
+            :page-count="pageCount"
+            label="分页（底部）"
+            :narrow="width < 640"
+            @update:page="toPage"
+          />
         </div>
       </div>
 

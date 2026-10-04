@@ -1,30 +1,25 @@
 <script setup lang="ts">
 import { AkIcon, AkPagination } from "@mooncellwiki/prts-design-vue";
-import { storeToRefs } from "pinia";
 
-import { useCharListStore } from "./store";
-
-/** 分页条，结果上下各一条；只有一页时不出 */
-defineProps<{ label: string }>();
-const emit = defineEmits<{ change: [] }>();
-
-const store = useCharListStore();
-const { page, pageCount } = storeToRefs(store);
-
-function go(n: number) {
-  store.setPage(n);
-  emit("change");
-}
+/** 一览页（干员 / 敌人 / 道具一览）的分页条，结果上下各一条；只有一页时不出 */
+defineProps<{
+  page: number;
+  pageCount: number;
+  label: string;
+  /** 窄排布：独占一行，页码格居中 */
+  narrow?: boolean;
+}>();
+defineEmits<{ "update:page": [page: number] }>();
 </script>
 
 <template>
   <AkPagination
     v-if="pageCount > 1"
-    class="ol-pager"
+    :class="['ls-pager', { 'ls-pager--narrow': narrow }]"
     :model-value="page"
     :page-count="pageCount"
     :label="label"
-    @update:model-value="go"
+    @update:model-value="$emit('update:page', $event)"
   >
     <template #prev><AkIcon name="chevron-left" /></template>
     <template #next><AkIcon name="chevron-right" /></template>
@@ -32,14 +27,14 @@ function go(n: number) {
 </template>
 
 <style scoped lang="scss">
-.ol-pager {
+.ls-pager {
   :deep(.ak-icon) {
     width: 14px;
     height: 14px;
   }
 
   // 窄排布：分页条独占一行，页码格居中、大小同桌面（不平分整行）
-  .ol--narrow & {
+  &--narrow {
     display: flex;
     flex: 1 0 100%;
     justify-content: center;

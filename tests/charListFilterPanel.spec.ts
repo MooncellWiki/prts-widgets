@@ -28,7 +28,10 @@ describe("固定职业 / 分支筛选面板", () => {
     app = createApp({
       render: () =>
         h(AkToastProvider, null, {
-          default: () => [h(FilterPanel, { narrow: false }), h(ResultBar)],
+          default: () => [
+            h(FilterPanel, { narrow: false }),
+            h(ResultBar, { narrow: false }),
+          ],
         }),
     });
     app.use(pinia);
@@ -94,7 +97,7 @@ describe("固定职业 / 分支筛选面板", () => {
       "先锋分支",
     );
     expect(chip("策士").getAttribute("aria-pressed")).toBe("true");
-    expect(host.querySelector(".ol-bar__active")?.textContent).toContain(
+    expect(host.querySelector(".ls-bar__active")?.textContent).toContain(
       "稀有度：★6",
     );
     expect(new URLSearchParams(location.hash.slice(1)).get("rarity")).toBe(
@@ -159,7 +162,7 @@ describe("固定职业 / 分支筛选面板", () => {
     store.setAnd(store.filterById.tag, true);
     await nextTick();
     expect(host.querySelector(".ol-more")?.textContent).toContain("已选 1");
-    expect(host.querySelector(".ol-bar__active")?.textContent).toContain(
+    expect(host.querySelector(".ls-bar__active")?.textContent).toContain(
       "标签（同时）：输出",
     );
     expect(new URLSearchParams(location.hash.slice(1)).get("tag")).toBe(
@@ -169,7 +172,7 @@ describe("固定职业 / 分支筛选面板", () => {
     store.reset();
     await nextTick();
     expect(host.querySelector(".ol-more")?.textContent).not.toContain("已选");
-    expect(host.querySelector(".ol-bar__active")?.textContent?.trim()).toBe("");
+    expect(host.querySelector(".ls-bar__active")?.textContent?.trim()).toBe("");
     expect(location.hash).toBe("");
   });
 
@@ -197,16 +200,16 @@ describe("固定职业 / 分支筛选面板", () => {
     chip("罗德岛").click();
     await nextTick();
     expect(hash().get("_fh")).toBe("1");
-    expect(host.querySelector(".ol-bar__active")?.textContent).toContain(
+    expect(host.querySelector(".ls-bar__active")?.textContent).toContain(
       "作战势力：罗德岛",
     );
   });
 
   it("干员计数的说明是点开的弹出卡片，链接走 wikiLink", async () => {
     const trigger = host.querySelector<HTMLButtonElement>(
-      '.ol-bar__num button[aria-label="关于干员计数"]',
+      '.ls-bar__num button[aria-label="关于干员计数"]',
     )!;
-    const card = host.querySelector<HTMLElement>(".ol-bar__num .ak-popover")!;
+    const card = host.querySelector<HTMLElement>(".ls-bar__num .ak-popover")!;
     expect(card.hidden).toBe(true);
     trigger.click();
     await nextTick();

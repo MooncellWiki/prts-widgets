@@ -423,7 +423,7 @@ describe("挂载", () => {
     await mount();
     expect(chip("材料").getAttribute("aria-pressed")).toBe("true");
     expect(cells()).toEqual(["聚合剂", "固源岩"]);
-    expect(host.querySelector(".il-bar__count")?.textContent).toContain("2");
+    expect(host.querySelector(".ls-bar__count")?.textContent).toContain("2");
     expect(location.hash).toBe("");
   });
 
@@ -433,7 +433,7 @@ describe("挂载", () => {
     await nextTick();
     expect(cells()).toEqual(["聚合剂", "固源岩", "阿米娅的信物"]);
     expect(
-      Array.from(host.querySelectorAll(".il-bar__active .ak-tag"), (el) =>
+      Array.from(host.querySelectorAll(".ls-bar__active .ak-tag"), (el) =>
         el.textContent?.replace("✕", "").trim(),
       ),
     ).toEqual(["分类：材料", "分类：信物"]);

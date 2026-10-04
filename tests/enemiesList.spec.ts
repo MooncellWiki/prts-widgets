@@ -361,7 +361,7 @@ describe("EnemiesListV2 UI smoke", () => {
   it("表格按图鉴顺序列出全部敌人；点芯片筛选，不改地址栏", async () => {
     const host = await mount();
     expect(rows(host)).toEqual(names(ENEMIES));
-    expect(host.querySelector(".el-bar__count")?.textContent).toContain("5");
+    expect(host.querySelector(".ls-bar__count")?.textContent).toContain("5");
     // 编号叠在头像上；地位只画成色条，读屏另有文字
     const boss = host.querySelector('tbody[data-rank="boss"]')!;
     expect(boss.querySelector(".el-avatar__index")?.textContent).toBe("W");
@@ -379,7 +379,7 @@ describe("EnemiesListV2 UI smoke", () => {
     expect(chip(host, "领袖").getAttribute("aria-pressed")).toBe("true");
     expect(rows(host)).toEqual(["W", "“皇帝的利刃”"]);
     expect(chip(host, "无人机").classList.contains("is-empty")).toBe(true);
-    expect(host.querySelector(".el-bar .ak-tag")?.textContent).toContain(
+    expect(host.querySelector(".ls-bar .ak-tag")?.textContent).toContain(
       "地位：领袖",
     );
     expect(location.hash).toBe("");
