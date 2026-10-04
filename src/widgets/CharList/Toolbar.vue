@@ -72,7 +72,6 @@ const onSortKey = (key: unknown) => store.setSortKey(key as SortKey);
       </AkButton>
     </div>
     <div v-if="showAddons" class="ol-field" role="group" aria-label="数值加算">
-      数值
       <AkSwitch v-model="state.pot" size="sm">满潜能</AkSwitch>
       <AkSwitch v-model="state.trust" size="sm">满信赖</AkSwitch>
     </div>
