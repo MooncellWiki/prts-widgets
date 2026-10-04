@@ -192,6 +192,39 @@ describe("引导脚本", () => {
     ).toBe("none");
   });
 
+  it.each(["skin-vector skin-vector-legacy", "skin-minerva"])(
+    "旧版敌人一览（%s）：换资源并清掉 #root 里新版的外壳",
+    (skin) => {
+      const legacy = LEGACY_WIDGETS.EnemiesListV2;
+      const page = runGate(
+        gateTemplate(built("EnemiesListV2"), legacy),
+        skin,
+        NEW_SHELL,
+      );
+      expect(page.root.innerHTML).toBe("");
+      expect(page.css).toEqual(legacy.assets.css.map((f) => LEGACY_BASE + f));
+      expect(page.preload).toEqual(
+        legacy.assets.preload.map((f) => LEGACY_BASE + f),
+      );
+      expect(page.modules).toEqual([
+        legacy.assets.scripts
+          .map((f) => `import "${LEGACY_BASE}${f}";`)
+          .join(""),
+      ]);
+      expect(page.allBeforeGate).toBe(true);
+    },
+  );
+
+  it("新版敌人一览：Arknights 皮肤上外壳不动", () => {
+    const page = runGate(
+      gateTemplate(built("EnemiesListV2"), LEGACY_WIDGETS.EnemiesListV2),
+      "skin-arknights",
+      NEW_SHELL,
+    );
+    expect(page.root.innerHTML).toBe(NEW_SHELL);
+    expect(page.css).toEqual([`${BASE}style.EEEEEEEE.css`]);
+  });
+
   it("Arknights 皮肤上不补旧版的数据块", () => {
     runGate(
       gateTemplate(built("CharList"), LEGACY_WIDGETS.CharList),
@@ -202,12 +235,13 @@ describe("引导脚本", () => {
 });
 
 describe("legacyFiles", () => {
-  it("prune 保留两个旧版的全部产物", () => {
+  it("prune 保留各个旧版的全部产物", () => {
     const files = legacyFiles();
     for (const { assets } of Object.values(LEGACY_WIDGETS))
       for (const file of [...assets.scripts, ...assets.preload, ...assets.css])
         expect(files).toContain(file);
     expect(files).toContain("CharList._UhB_qCb.js");
     expect(files).toContain("HrCalculator.Bi5TIb90.js");
+    expect(files).toContain("EnemiesListV2.ObDWedKn.js");
   });
 });
