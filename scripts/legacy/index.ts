@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 /**
- * Arknights 以外的皮肤（Vector / Vector 2022 / Minerva …）上，干员一览、公招计算、敌人一览照旧用改版前的组件。
+ * Arknights 以外的皮肤（Vector / Vector 2022 / Minerva …）上，干员一览、公招计算、敌人一览、道具一览照旧用改版前的组件。
  *
  * 仓库里不留旧代码，直接引 OSS 上改版前最后一次构建的产物：带 hash 的文件内容不变，upload 只增不删，
  * 它们一直在。构建时 vite.config.ts 的 legacySkinGate 把这几个模板里 Vite 注入的 <script> / <link>
@@ -92,6 +92,21 @@ export const LEGACY_WIDGETS: Record<string, LegacyWidget> = {
       css: ["style.CjOkuTET.css"],
     },
     shell: "",
+  },
+  // 没有预渲染外壳；数据（道具一览页面上的 #cargo-data）新旧两版读的是同一块，不用补
+  ItemList: {
+    revision: 433841,
+    assets: {
+      scripts: ["polyfills.D2fCD57O.js", "ItemList.CLwRFmsM.js"],
+      preload: [
+        "modulepreload-polyfill.P2Xu9kJm.js",
+        "rolldown-runtime.hePW80VL.js",
+        "common.DRw64vPv.js",
+        "vendor.CDUGDIF8.js",
+        "naive-ui.DhG7CVhK.js",
+      ],
+      css: ["style.CjOkuTET.css"],
+    },
   },
 };
 
