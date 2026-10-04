@@ -170,7 +170,7 @@ function onSeekInput(e: Event) {
         </AkButton>
       </AkButtonGroup>
       <AkSwitch v-model="loop" size="sm">循环</AkSwitch>
-      <span data-ak-tip="一招的几段接着播：Begin → Loop → End">
+      <span class="sv__tip" data-ak-tip="一招的几段接着播：Begin → Loop → End">
         <AkSwitch v-model="chain" size="sm">连播</AkSwitch>
       </span>
       <label class="sv__speed">
@@ -348,6 +348,11 @@ function onSeekInput(e: Event) {
   .ak-select {
     width: auto;
   }
+}
+
+// 提示挂在外层 span 上（AkSwitch 的属性会落到 input 上）；span 留作行内的话，开关按基线坐进行框里，会比旁边的「循环」高几像素
+.sv__tip {
+  display: inline-flex;
 }
 
 .sv__speed {
