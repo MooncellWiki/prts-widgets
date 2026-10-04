@@ -1,15 +1,8 @@
 <script setup lang="ts">
-import {
-  onBeforeUnmount,
-  onMounted,
-  provide,
-  ref,
-  useTemplateRef,
-  watch,
-} from "vue";
+import { onBeforeUnmount, onMounted, provide, ref, useTemplateRef } from "vue";
 
 import { AkScope, AkToastProvider } from "@mooncellwiki/prts-design-vue";
-import { isClient, useEventListener } from "@vueuse/core";
+import { isClient } from "@vueuse/core";
 
 import { useHostTheme } from "@/utils/useHostTheme";
 import { useHoverTip } from "@/utils/useHoverTip";
@@ -18,7 +11,6 @@ import ResultView from "./ResultView.vue";
 import TagPanel from "./TagPanel.vue";
 import VerdictBar from "./VerdictBar.vue";
 import { createRecruit, recruitKey } from "./store";
-import { writeQuery } from "./url";
 
 import type { Source } from "./recruit";
 
@@ -40,22 +32,9 @@ const props = withDefaults(
 
 const recruit = createRecruit(props.source);
 provide(recruitKey, recruit);
-const { state } = recruit;
 
-/* 地址栏：?filter= 同旧版；改了就就地换掉（不加历史记录），复制下来的链接与地址栏一致 */
+/* 地址栏：?filter= 同旧版，只在打开时读一次、不往回写——刷新页面就是清空（旧版的用法）；分享走工具栏的「复制分享链接」 */
 if (isClient) recruit.load(location.search);
-watch(
-  () => writeQuery(isClient ? location.search : "", state.sel),
-  (search) => {
-    if (search !== location.search)
-      history.replaceState(
-        history.state,
-        "",
-        `${location.pathname}${search}${location.hash}`,
-      );
-  },
-);
-useEventListener("popstate", () => recruit.load(location.search));
 
 const theme = useHostTheme();
 

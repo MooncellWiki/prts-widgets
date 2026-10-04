@@ -296,7 +296,7 @@ describe("HrCalculator UI smoke", () => {
       (h) => h.querySelector(".hr-tier__title")?.textContent === title,
     );
 
-  it("没选标签时是保底速查；点芯片写进地址栏，「清空」回到速查", async () => {
+  it("没选标签时是保底速查；点芯片不改地址栏（刷新即清空），「清空」回到速查", async () => {
     const host = await mount();
     expect(host.querySelector(".hr-ref-head")?.textContent).toContain(
       "保底速查",
@@ -317,7 +317,7 @@ describe("HrCalculator UI smoke", () => {
     expect(host.querySelector(".hr-combo")?.getAttribute("data-rarity")).toBe(
       "5",
     );
-    expect(readQuery(location.search)).toEqual(new Set(["削弱"]));
+    expect(location.search).toBe("");
 
     clear.click();
     await nextTick();
@@ -373,7 +373,9 @@ describe("HrCalculator UI smoke", () => {
     chip(host, "削弱").click();
     await nextTick();
     expect(chip(host, "削弱").getAttribute("aria-pressed")).toBe("true");
-    expect(readQuery(location.search).size).toBe(7);
+    expect(host.querySelectorAll('.ak-chip[aria-pressed="true"]').length).toBe(
+      7,
+    );
   });
 
   it("头像同首页干员卡：左上角星级、左下角职业图标", async () => {
