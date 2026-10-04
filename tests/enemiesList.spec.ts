@@ -1,6 +1,6 @@
 import { createApp, nextTick } from "vue";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { convertAbility } from "@/widgets/EnemiesListV2/ability";
 import {
@@ -319,35 +319,49 @@ describe("分享链接", () => {
 
 describe("EnemiesListV2 UI smoke", () => {
   let app: ReturnType<typeof createApp> | undefined;
-  const clientWidth = Object.getOwnPropertyDescriptor(
-    HTMLElement.prototype,
-    "clientWidth",
-  );
   afterEach(() => {
     app?.unmount();
     app = undefined;
     document.body.innerHTML = "";
     localStorage.clear();
     history.replaceState(null, "", "/w/敌人一览");
-    if (clientWidth)
-      Object.defineProperty(HTMLElement.prototype, "clientWidth", clientWidth);
+    vi.unstubAllGlobals();
   });
 
-  /** happy-dom 不排版，clientWidth 恒为 0；要看宽屏的表格就得垫一个宽度 */
+  /** happy-dom 不排版，ResizeObserver 也不回调（宽度停在挂载前的 +∞）；要看窄屏的卡片就得自己报一个宽度 */
   const mount = async (
     path = "/w/敌人一览",
     props: { source?: EnemyData[]; failed?: boolean } = { source: SOURCE },
     width = 1200,
   ) => {
-    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-      configurable: true,
-      get: () => width,
-    });
+    const report: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private callback: ResizeObserverCallback) {}
+        observe(target: Element) {
+          const size = { inlineSize: width, blockSize: 0 };
+          const entry = {
+            target,
+            borderBoxSize: [size],
+            contentBoxSize: [size],
+            contentRect: { width, height: 0 },
+          } as unknown as ResizeObserverEntry;
+          report.push(() =>
+            this.callback([entry], this as unknown as ResizeObserver),
+          );
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     history.replaceState(null, "", path);
     const host = document.createElement("div");
     document.body.append(host);
     app = createApp(EnemiesListV2, props);
     app.mount(host);
+    await nextTick();
+    for (const fire of report) fire();
     await nextTick();
     return host;
   };

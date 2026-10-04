@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
+import { computed, useTemplateRef } from "vue";
 
 import {
   AkButton,
@@ -7,7 +7,7 @@ import {
   AkScope,
   AkToastProvider,
 } from "@mooncellwiki/prts-design-vue";
-import { useEventListener } from "@vueuse/core";
+import { useElementSize, useEventListener } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 
 import ListPager from "@/components/list/ListPager.vue";
@@ -45,18 +45,12 @@ const theme = useHostTheme();
 
 /* 排布看结果区自己的宽度，不看视口（侧栏收起 / 展开都会改变它）：< 860 列表折成卡片，< 640 是手机排布 */
 const root = useTemplateRef<HTMLElement>("root");
-const width = ref(Number.POSITIVE_INFINITY);
-let observer: ResizeObserver | undefined;
-onMounted(() => {
-  const el = root.value;
-  if (!el) return;
-  width.value = el.clientWidth;
-  observer = new ResizeObserver(() => {
-    width.value = el.clientWidth;
-  });
-  observer.observe(el);
-});
-onBeforeUnmount(() => observer?.disconnect());
+// 挂载前（含外壳预渲染）是 +∞：先按最宽的排布出
+const { width } = useElementSize(
+  root,
+  { width: Number.POSITIVE_INFINITY, height: 0 },
+  { box: "border-box" },
+);
 
 /* 在底部翻页：回到结果开头 */
 const result = useTemplateRef<HTMLElement>("result");

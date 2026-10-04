@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, provide, ref, useTemplateRef } from "vue";
+import { provide, useTemplateRef } from "vue";
 
 import { AkScope, AkToastProvider } from "@mooncellwiki/prts-design-vue";
-import { isClient } from "@vueuse/core";
+import { isClient, useElementSize } from "@vueuse/core";
 
 import { useHostTheme } from "@/utils/useHostTheme";
 import { useHoverTip } from "@/utils/useHoverTip";
@@ -40,18 +40,12 @@ const theme = useHostTheme();
 
 /* 排布看根节点自己的宽度，不看视口（侧栏收起 / 展开都会改变它）：< 760 组合的标签挪到干员上面，< 640 是手机排布 */
 const root = useTemplateRef<HTMLElement>("root");
-const width = ref(Number.POSITIVE_INFINITY);
-let observer: ResizeObserver | undefined;
-onMounted(() => {
-  const el = root.value;
-  if (!el) return;
-  width.value = el.clientWidth;
-  observer = new ResizeObserver(() => {
-    width.value = el.clientWidth;
-  });
-  observer.observe(el);
-});
-onBeforeUnmount(() => observer?.disconnect());
+// 挂载前（含外壳预渲染）是 +∞：先按最宽的排布出
+const { width } = useElementSize(
+  root,
+  { width: Number.POSITIVE_INFINITY, height: 0 },
+  { box: "border-box" },
+);
 
 const { tip, handlers: tipHandlers } = useHoverTip(
   useTemplateRef<HTMLElement>("bubble"),
