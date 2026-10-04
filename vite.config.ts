@@ -67,7 +67,7 @@ function tippyNamespace(): Plugin {
 }
 
 /**
- * 旧皮肤上的干员一览 / 公招计算 / 敌人一览照旧用改版前的构建产物（清单与原因见 scripts/legacy）。
+ * 旧皮肤上的干员一览 / 公招计算 / 敌人一览 / 道具一览照旧用改版前的构建产物（清单与原因见 scripts/legacy）。
  * 把这几个模板里 Vite 注入的 <script> / <link> 换成按皮肤分流的内联引导脚本。
  * enforce: "post" 的 generateBundle 排在 vite:build-html 之后，这时模板里的标签
  * （含 plugin-legacy 的 polyfills）已经注入完、地址已经带上 base。

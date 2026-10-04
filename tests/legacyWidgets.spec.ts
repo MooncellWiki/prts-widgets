@@ -225,6 +225,24 @@ describe("引导脚本", () => {
     expect(page.css).toEqual([`${BASE}style.EEEEEEEE.css`]);
   });
 
+  it("旧版道具一览：只换资源，不动 #root、不补数据块", () => {
+    const legacy = LEGACY_WIDGETS.ItemList;
+    const page = runGate(
+      gateTemplate(built("ItemList"), legacy),
+      "skin-vector",
+    );
+    expect(page.root.innerHTML).toBe("");
+    expect(document.body.querySelectorAll("div:not(#root)")).toHaveLength(0);
+    expect(page.css).toEqual(legacy.assets.css.map((f) => LEGACY_BASE + f));
+    expect(page.preload).toEqual(
+      legacy.assets.preload.map((f) => LEGACY_BASE + f),
+    );
+    expect(page.modules).toEqual([
+      legacy.assets.scripts.map((f) => `import "${LEGACY_BASE}${f}";`).join(""),
+    ]);
+    expect(page.allBeforeGate).toBe(true);
+  });
+
   it("Arknights 皮肤上不补旧版的数据块", () => {
     runGate(
       gateTemplate(built("CharList"), LEGACY_WIDGETS.CharList),
@@ -243,5 +261,6 @@ describe("legacyFiles", () => {
     expect(files).toContain("CharList._UhB_qCb.js");
     expect(files).toContain("HrCalculator.Bi5TIb90.js");
     expect(files).toContain("EnemiesListV2.ObDWedKn.js");
+    expect(files).toContain("ItemList.CLwRFmsM.js");
   });
 });

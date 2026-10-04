@@ -1,74 +1,27 @@
-import "virtual:uno.css";
 import { createApp } from "vue";
 
-import { TORAPPU_ENDPOINT } from "../utils/consts";
-import { getImagePath } from "../utils/utils";
+import { createPinia } from "pinia";
+
 import ItemList from "../widgets/ItemList/index.vue";
-
-import type { ItemData } from "../widgets/ItemList/types";
-
-function readItemsFromDOM(): ItemData[] {
-  const elements = document.querySelectorAll<HTMLDivElement>("#cargo-data>div");
-  const items: ItemData[] = [];
-
-  for (const el of elements) {
-    const name = el.dataset.name ?? "";
-    const itemId = el.dataset.itemId ?? "";
-    if (!itemId) {
-      console.warn("[ItemList] itemId为空,跳过:", name);
-      continue;
-    }
-
-    const obtainMethodEl = el.querySelector<HTMLDivElement>(".obtain-method");
-    const descriptionEl = el.querySelector<HTMLDivElement>(".description");
-    const purposeEl = el.querySelector<HTMLDivElement>(".purpose");
-
-    const filename = el.dataset.filename ?? "";
-    const iconId = el.dataset.iconId ?? "";
-    const imgSrc = (() => {
-      if (filename === "") {
-        return iconId === ""
-          ? getImagePath("无图片占位符.png")
-          : `${TORAPPU_ENDPOINT}/assets/item_icon/${iconId}.png`;
-      }
-      return filename;
-    })();
-
-    items.push({
-      name,
-      description: descriptionEl?.textContent ?? "",
-      descriptionHtml: descriptionEl?.innerHTML ?? "",
-      usage: purposeEl?.textContent ?? "",
-      usageHtml: purposeEl?.innerHTML ?? "",
-      obtainApproach: (obtainMethodEl?.textContent ?? "")
-        .split(/[,、，]/)
-        .map((s) => s.trim())
-        .filter(Boolean),
-      rarity: Number(el.dataset.rarity ?? "0"),
-      category1: el.dataset.category1 ?? "",
-      category2: el.dataset.category2 ?? "",
-      category3: el.dataset.category3 ?? "",
-      categories: [
-        el.dataset.category1,
-        el.dataset.category2,
-        el.dataset.category3,
-      ].filter(Boolean) as string[],
-      itemId,
-      sortId: Number(el.dataset.sortId ?? "0"),
-      iconId,
-      filename,
-      darkBackground: el.dataset.darkBackground === "1",
-      imgSrc,
-    });
-  }
-
-  items.sort((a, b) => a.sortId - b.sortId);
-  return items;
-}
+import { readItems } from "../widgets/ItemList/item";
 
 const ele = document.querySelector("#root");
+/** 道具数据：页面上 #cargo-data 里 模板:道具筛选数据2 输出的每件道具一条 */
+const source = readItems(document.querySelector("#cargo-data"));
+
+/**
+ * 样式来自皮肤：Arknights 皮肤已加载全套，这两个模块是空操作；Vector / Minerva 上
+ * 动态加载令牌 + 作用域 + 组件（skins.arknights.components）与官网字体
+ * （skins.arknights.fonts：条数用的 Bender），挂载前等它们就位。
+ * 走 RLQ 而不是直接调 mw.loader.using 的原因见 VoiceTable.ts。
+ */
+const STYLE_MODULES = ["skins.arknights.components", "skins.arknights.fonts"];
+
 if (ele) {
-  const items = readItemsFromDOM();
-  console.log(items);
-  createApp(ItemList, { items }).mount(ele);
+  (window.RLQ = window.RLQ || []).push([
+    STYLE_MODULES,
+    () => {
+      createApp(ItemList, { source }).use(createPinia()).mount(ele);
+    },
+  ]);
 }

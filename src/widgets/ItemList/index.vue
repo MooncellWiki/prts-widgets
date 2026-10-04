@@ -1,215 +1,187 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 
 import {
-  NConfigProvider,
-  NInput,
-  NLayout,
-  NPagination,
-  NSelect,
-} from "naive-ui";
+  AkButton,
+  AkEmpty,
+  AkScope,
+  AkToastProvider,
+} from "@mooncellwiki/prts-design-vue";
+import { useEventListener } from "@vueuse/core";
+import { storeToRefs } from "pinia";
 
-import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
-import { isMobileSkin } from "@/utils/utils";
+import { useHostTheme } from "@/utils/useHostTheme";
+import { useHoverTip } from "@/utils/useHoverTip";
 
-import FilterGroup from "./FilterGroup.vue";
-import ItemCard from "./ItemCard.vue";
-import {
-  categoryAliases,
-  defaultFilterConfig,
-  obtainApproachAliases,
-  rarityLabelMap,
-  sortOptions,
-} from "./consts";
+import Pager from "./Pager.vue";
+import ResultBar from "./ResultBar.vue";
+import Toolbar from "./Toolbar.vue";
+import { View } from "./consts";
+import FilterPanel from "./filter/FilterPanel.vue";
+import ResultGrid from "./result/ResultGrid.vue";
+import ResultList from "./result/ResultList.vue";
+import { useItemListStore } from "./store";
 
-import type { ItemData } from "./types";
+import type { Item } from "./item";
 
+/**
+ * 道具一览（PRTS Design 视觉，排布同干员一览）：
+ * 筛选 → 工具条（搜索 · 排序 · 显示方式）→ 结果栏（条数 · 已选条件 · 复制链接 · 分页）→ 结果。
+ * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.il-* 是这页自己的排布（各组件的 scoped 样式）。
+ * 状态都在 store.ts（pinia）里；根节点标 ak-not-prose，不吃皮肤的正文排版。
+ */
 const props = defineProps<{
-  items: ItemData[];
+  source: Item[];
 }>();
 
-const keyword = ref("");
-const i18nConfig = getNaiveUILocale();
-const isMobile = isMobileSkin();
-const { theme, themeOverrides, isDark } = useTheme();
+const store = useItemListStore();
+store.init(props.source);
+const { state } = store;
+const { list } = storeToRefs(store);
 
-const filterConfig = ref(defaultFilterConfig);
+useEventListener(window, "hashchange", store.syncFromHash);
 
-const pagination = ref({
-  page: 1,
-  pageSize: 50,
-  pageSizes: [50, 100, 200, 500],
-  pageSlot: isMobile ? 5 : 9,
-  showSizePicker: true,
-  onChange: (page: number) => {
-    pagination.value.page = page;
-  },
-  onUpdatePageSize: (pageSize: number) => {
-    pagination.value.pageSize = pageSize;
-    pagination.value.page = 1;
-  },
-});
+const theme = useHostTheme();
 
-const filteredItemData = computed(() => {
-  const { states, sortOrder } = filterConfig.value;
-  const searchWord = keyword.value.toLowerCase();
-
-  let result = props.items.filter((item) => {
-    if (
-      states.rarity.length > 0 &&
-      states.rarity.every((r) => rarityLabelMap[r] !== item.rarity)
-    ) {
-      return false;
-    }
-
-    if (states.category.length > 0) {
-      const hasMatch = states.category.some((category) => {
-        const aliases = categoryAliases[category];
-        if (aliases) {
-          return aliases.some((alias) => item.categories.includes(alias));
-        }
-        return states.category.some((c) => item.categories.includes(c));
-      });
-      if (!hasMatch) return false;
-    }
-
-    if (states.obtainApproach.length > 0) {
-      const hasMatch = states.obtainApproach.some((approach) => {
-        const aliases = obtainApproachAliases[approach];
-        if (aliases) {
-          return aliases.some((alias) =>
-            item.obtainApproach.some((oa) => oa.includes(alias)),
-          );
-        }
-        return item.obtainApproach.some((oa) => oa.includes(approach));
-      });
-      if (!hasMatch) return false;
-    }
-
-    return !(
-      searchWord &&
-      !item.name.toLowerCase().includes(searchWord) &&
-      !item.description.toLowerCase().includes(searchWord)
-    );
+/* 排布看结果区自己的宽度，不看视口（侧栏收起 / 展开都会改变它）：< 860 列表折成卡片，< 640 是手机排布 */
+const root = useTemplateRef<HTMLElement>("root");
+const width = ref(Number.POSITIVE_INFINITY);
+let observer: ResizeObserver | undefined;
+onMounted(() => {
+  const el = root.value;
+  if (!el) return;
+  width.value = el.clientWidth;
+  observer = new ResizeObserver(() => {
+    width.value = el.clientWidth;
   });
-
-  result = [...result].sort((a, b) => {
-    switch (sortOrder) {
-      case "id_asc": {
-        return a.sortId - b.sortId;
-      }
-      case "id_desc": {
-        return b.sortId - a.sortId;
-      }
-      case "rarity_asc": {
-        return a.rarity === b.rarity
-          ? a.sortId - b.sortId
-          : a.rarity - b.rarity;
-      }
-      case "rarity_desc": {
-        return a.rarity === b.rarity
-          ? a.sortId - b.sortId
-          : b.rarity - a.rarity;
-      }
-      default: {
-        return 0;
-      }
-    }
-  });
-
-  return result;
+  observer.observe(el);
 });
+onBeforeUnmount(() => observer?.disconnect());
 
-const paginatedItemData = computed(() =>
-  filteredItemData.value.slice(
-    pagination.value.pageSize * (pagination.value.page - 1),
-    pagination.value.pageSize * pagination.value.page,
-  ),
+/* 在底部翻页：回到结果开头 */
+const result = useTemplateRef<HTMLElement>("result");
+const backToResult = () => result.value?.scrollIntoView({ block: "start" });
+
+/* 图标视图的提示：锚点的 data-tip 是道具的次序号 */
+const { tip, handlers: tipHandlers } = useHoverTip(
+  useTemplateRef<HTMLElement>("bubble"),
+  ".il-cell[data-tip]",
 );
-
-watch(
-  () => [
-    filterConfig.value.states,
-    filterConfig.value.sortOrder,
-    keyword.value,
-  ],
-  () => {
-    pagination.value.page = 1;
-  },
-  { deep: true },
+const tipItem = computed(() =>
+  tip.value ? props.source[Number(tip.value.text)] : undefined,
 );
 </script>
 
 <template>
-  <NConfigProvider
-    preflight-style-disabled
-    :theme="theme"
-    :theme-overrides="themeOverrides"
-    :locale="i18nConfig.locale"
-    :date-locale="i18nConfig.dateLocale"
-  >
-    <NLayout :class="['mx-auto p-2 antialiased', isDark && 'prts-widget-dark']">
-      <FilterGroup
-        v-for="group in filterConfig.groups"
-        :key="group.title"
-        v-model:show="group.show"
-        v-model:states="filterConfig.states"
-        :title="group.title"
-        :filters="
-          Object.fromEntries(
-            Object.entries(filterConfig.filters).filter(([key]) =>
-              group.filters.includes(key),
-            ),
-          )
-        "
-      />
-      <div class="my-2 flex items-center gap-2">
-        <div class="w-5em">
-          <span class="mdi mdi-package-variant-closed"></span>
-          {{ filteredItemData.length }}
+  <AkScope class="il ak-not-prose" :theme="theme">
+    <AkToastProvider>
+      <div
+        ref="root"
+        :class="[
+          'il-root',
+          { 'il--narrow': width < 640, 'il--compact': width < 860 },
+        ]"
+        v-on="tipHandlers"
+      >
+        <FilterPanel :narrow="width < 640" />
+        <Toolbar />
+        <ResultBar />
+
+        <div ref="result" class="il-result">
+          <AkEmpty v-if="list.length === 0" title="没有符合条件的道具">
+            放宽几项筛选条件，或者<AkButton
+              variant="link"
+              @click="store.reset()"
+            >
+              清除全部条件</AkButton
+            >。
+          </AkEmpty>
+          <ResultList v-else-if="state.view === View.LIST" />
+          <ResultGrid v-else />
         </div>
-        <NInput
-          v-model:value="keyword"
-          type="text"
-          placeholder="搜索道具名称/描述"
-          clearable
-        />
-        <NSelect
-          v-model:value="filterConfig.sortOrder"
-          :options="sortOptions"
-          style="width: 160px"
-        />
+
+        <div class="il-foot">
+          <Pager label="分页（底部）" @change="backToResult" />
+        </div>
       </div>
-      <div class="flex flex-wrap gap-1">
-        <ItemCard
-          v-for="item in paginatedItemData"
-          :key="item.name"
-          :item="item"
+
+      <!-- 用途 / 描述是模板输出的 wikitext 解析结果，原样放回 -->
+      <div
+        v-if="tip && tipItem"
+        ref="bubble"
+        class="ak-tooltip il-tip"
+        role="tooltip"
+        :style="{ left: `${tip.left}px`, top: `${tip.top}px` }"
+      >
+        <b class="il-tip__name">{{ tipItem.name }}</b>
+        <p v-if="tipItem.usage" v-html="tipItem.usageHtml" />
+        <p
+          v-if="tipItem.description"
+          class="il-tip__desc"
+          v-html="tipItem.descriptionHtml"
         />
+        <p v-if="tipItem.obtain.length > 0" class="il-tip__obtain">
+          <span>获取途径</span>{{ tipItem.obtain.join("、") }}
+        </p>
       </div>
-      <NPagination
-        class="my-2 justify-center"
-        :item-count="filteredItemData.length"
-        :page="pagination.page"
-        :page-size="pagination.pageSize"
-        :page-sizes="pagination.pageSizes"
-        :page-slot="pagination.pageSlot"
-        :show-size-picker="pagination.showSizePicker"
-        @update:page="pagination.onChange"
-        @update:page-size="pagination.onUpdatePageSize"
-      />
-    </NLayout>
-  </NConfigProvider>
+    </AkToastProvider>
+  </AkScope>
 </template>
 
-<style scoped>
-@import "@/styles/dark-mode.scss";
-:global(.page-道具一览 .backToTop) {
-  @apply hidden!;
+<style scoped lang="scss">
+// 窄排布不用 @media：看的是结果区自己的宽度（根节点的 .il--narrow / .il--compact），各组件的样式里用 `.il--narrow &` 接
+
+// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
+.il.ak-scope[data-theme] {
+  background-color: transparent;
 }
 
-:deep(.n-pagination) {
-  @apply justify-center!;
+// 页眉吸顶只有 Arknights 皮肤有：翻页回到结果开头时让出页眉
+.il-result {
+  scroll-margin-top: var(--ak-space-3);
+
+  .skin-arknights & {
+    scroll-margin-top: calc(var(--ak-header-h) + var(--ak-space-3));
+  }
+}
+
+.il-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--ak-space-4) 0 0;
+
+  .il--narrow & {
+    justify-content: center;
+  }
+}
+
+// 道具提示：按视口定位，不吃指针事件（里面的链接点不到，要点进列表视图或道具页）
+.il-tip.ak-tooltip {
+  position: fixed;
+  display: grid;
+  gap: 4px;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 8px 12px;
+  line-height: 1.55;
+  pointer-events: none;
+
+  p {
+    margin: 0;
+  }
+}
+
+.il-tip__name {
+  font-size: var(--ak-fs-sm);
+}
+
+// 描述是游戏里的风味文字，比用途弱一级
+.il-tip__desc,
+.il-tip__obtain {
+  opacity: 0.72;
+}
+
+.il-tip__obtain > span {
+  margin-right: 8px;
+  font-weight: 600;
 }
 </style>
