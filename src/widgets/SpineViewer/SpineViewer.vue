@@ -180,17 +180,19 @@ let raf = 0;
 let last = 0;
 let visible = true;
 let onRecordEnd: (() => void) | null = null;
+function running() {
+  return !!(
+    cur.value &&
+    anim.value?.duration &&
+    playing.value &&
+    !veil.value &&
+    (visible || recording.value) &&
+    !document.hidden
+  );
+}
+/* 起播 / 恢复：停着的那段时间不算，从现在起计时 */
 function schedule() {
-  if (
-    raf ||
-    !cur.value ||
-    !anim.value?.duration ||
-    !playing.value ||
-    veil.value ||
-    (!visible && !recording.value) ||
-    document.hidden
-  )
-    return;
+  if (raf || !running()) return;
   last = performance.now();
   raf = requestAnimationFrame((now) => {
     last = Math.min(last, now);
@@ -234,7 +236,8 @@ function tick(now: number) {
     }
   }
   paint();
-  schedule();
+  // 接着播不能走 schedule()：它会把 last 挪到画完之后，这一帧的耗时就不算进动画时间，机器越慢播得越慢
+  if (running()) raf = requestAnimationFrame(tick);
 }
 function stop() {
   cancelAnimationFrame(raf);
