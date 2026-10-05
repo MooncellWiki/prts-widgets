@@ -8,7 +8,9 @@ import { professionBadge, rarityStars, wikiLink } from "./assets";
 import type { Op } from "./recruit";
 
 /**
- * 干员：头像 + 稀有度色条 + 名字，整块链到干员页；悬停 / 聚焦出提示（星级、全部标签，气泡由根组件画）。
+ * 干员：头像 + 名字，整块链到干员页；悬停 / 聚焦出提示（星级、全部标签，气泡由根组件画）。
+ * 头像垫稀有度色的底（同旧版）：一组里混着几种星级时扫一眼底色就能分开。
+ * 底色带渐变，画法照抽卡模拟器：上面稀有度色、往下褪成浅灰，6★ 另是斜向的 奶油 → 橙。
  * 头像同首页的干员卡（AkOpCard）：左上角黄色星级、左下角职业图标，按这里的小头像等比缩小。
  * 只能通过公开招募获得的右上角一枚「限」（现网的绿色「限」字）。
  */
@@ -102,10 +104,15 @@ const tip = computed(() => {
     display: block;
     width: var(--_size);
     height: var(--_size);
-    box-sizing: border-box;
-    background: #1d1f20 linear-gradient(180deg, #2b2d2f, #141516);
-    border-bottom: 3px solid var(--ak-r, var(--ak-border-strong));
+    background: var(--ak-r, var(--ak-gray-800))
+      linear-gradient(180deg, transparent, #e6e5e2);
     overflow: hidden;
+  }
+
+  // 渐变的走向与两头的浅色取自抽卡模拟器（.rarity-5 / .rarity-4），稀有度色换成令牌：
+  // 模拟器自己的 4★ 紫偏灰，这里 1★ 也是灰底，照搬分不开
+  &[data-rarity="6"] &__img {
+    background-image: linear-gradient(32deg, #eee2b8 22%, transparent);
   }
 
   &__avatar {
@@ -116,13 +123,16 @@ const tip = computed(() => {
   }
 
   // 首页干员卡 88px 头像上星级 14px 高、职业图标 22px 底框，这里按头像缩小；
-  // 星级比等比略大（五星不压右上角的「限」）
+  // 星级比等比略大（五星不压右上角的「限」）；垫半透明黑底（同职业图标），黄星压在 5★ 金、2★ 黄绿的底色上也看得清
   &__stars {
     position: absolute;
-    left: 2px;
-    top: 2px;
+    left: 0;
+    top: 0;
+    box-sizing: content-box;
     width: auto;
     height: var(--_stars);
+    padding: 1px;
+    background: rgba(0, 0, 0, 0.6);
   }
 
   &__prof {
