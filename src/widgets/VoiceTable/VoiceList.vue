@@ -9,7 +9,6 @@ import {
   buildSources,
   buildTexts,
   unlockText,
-  voiceCode,
 } from "./voice";
 
 import type { Props } from "./types";
@@ -38,7 +37,6 @@ const rows = computed(() =>
   props.voiceData.map((item, index) => ({
     key: item.index ?? String(index),
     title: item.title ?? "",
-    code: voiceCode(item.fileName),
     unlock: unlockText(item),
     text: buildTexts(item, props.langArr),
     src: buildSources(item, props.voiceBase, props.overrideVoiceBase),
@@ -61,7 +59,6 @@ const rows = computed(() =>
       v-for="row in rows"
       :key="row.key"
       :title="row.title"
-      :code="row.code"
       :unlock="row.unlock"
       :text="row.text"
       :src="row.src"

@@ -10,7 +10,6 @@ import {
   langCode,
   readCvNames,
   unlockText,
-  voiceCode,
 } from "../src/widgets/VoiceTable/voice";
 
 import type { VoiceDataItem } from "../src/widgets/VoiceTable/types";
@@ -191,10 +190,7 @@ describe("每条语音的台词与音频", () => {
     );
   });
 
-  it("编号与灰标", () => {
-    expect(voiceCode("cn_001.wav")).toBe("CN_001");
-    expect(voiceCode("cn 001.wav")).toBe("CN_001");
-    expect(voiceCode(undefined)).toBeUndefined();
+  it("灰标", () => {
     expect(
       unlockText(item({ title: "晋升后交谈1", cond: "提升至精英阶段1以查看" })),
     ).toBe("提升至精英阶段1以查看");

@@ -40,7 +40,7 @@ const LANG_CODE: Record<string, string> = {
   法: "fr",
 };
 
-/** 游戏内仅限时显示的语音，作为灰标附在标题旁（原来是标题后的问号提示） */
+/** 游戏内仅限时显示的语音：和解锁条件一样作为灰标，显示在标题下面一行（原来是标题后的问号提示） */
 export const DISPLAY_TIPS: Record<string, string> = {
   新年祝福: "游戏内仅在每年1月1日-1月4日显示",
   生日: "游戏内仅在每年博士生日显示",
@@ -126,15 +126,6 @@ export function buildTexts(
   return texts;
 }
 
-/** 文件名 → 标题行里的编号：CN_001.wav → CN_001 */
-export function voiceCode(fileName?: string): string | undefined {
-  if (!fileName) return undefined;
-  return fileName
-    .replace(/\s/g, "_")
-    .replace(/\.wav$/i, "")
-    .toUpperCase();
-}
-
 /**
  * 罗小黑兼容：精一（猫形态）战斗中是人形态语音、战斗外是猫形态语音；
  * 精二（人形态）ILLUST_SHOW_TYPES 里的语音覆盖精一，战斗内外均为人形态语音。
@@ -211,7 +202,7 @@ export function buildDownloads(
   return downloads;
 }
 
-/** 标题旁的灰标：游戏内解锁条件，或限时显示说明 */
+/** 标题下面一行的灰标：游戏内解锁条件，或限时显示说明 */
 export function unlockText(item: VoiceDataItem): string | undefined {
   return item.cond || (item.title ? DISPLAY_TIPS[item.title] : undefined);
 }
