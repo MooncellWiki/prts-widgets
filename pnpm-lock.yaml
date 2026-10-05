@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       '@mooncellwiki/prts-design-vue':
-        specifier: 0.1.26
-        version: 0.1.26(vue@3.5.43(typescript@6.0.3))
+        specifier: 0.1.29
+        version: 0.1.29(vue@3.5.43(typescript@6.0.3))
       '@pixi/sound':
         specifier: ^6.0.1
         version: 6.0.1(pixi.js@8.21.0)
@@ -1133,10 +1133,10 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@mooncellwiki/prts-design-vue@0.1.26':
-    resolution: {integrity: sha512-BHaJAAwnFIalMYCwhjD3trGu6yHidcqwAMSf0P8rQLICClwOpLl9tPBZ0k18XQkE3lx/yGuB9gxMdJUU5w7pKQ==}
+  '@mooncellwiki/prts-design-vue@0.1.29':
+    resolution: {integrity: sha512-03TSDDP6ZfqiOHcO71frhRppZu8CWe75MY6wt+dNPlRLVegRWB5ZRPGUoUmRTb306ezs5lIozq3j8wpCv9nu0A==}
     peerDependencies:
-      '@mooncellwiki/prts-design-css': ^0.1.26
+      '@mooncellwiki/prts-design-css': ^0.1.29
       vue: ^3.5.0
     peerDependenciesMeta:
       '@mooncellwiki/prts-design-css':
@@ -4639,7 +4639,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@mooncellwiki/prts-design-vue@0.1.26(vue@3.5.43(typescript@6.0.3))':
+  '@mooncellwiki/prts-design-vue@0.1.29(vue@3.5.43(typescript@6.0.3))':
     dependencies:
       vue: 3.5.43(typescript@6.0.3)
 
