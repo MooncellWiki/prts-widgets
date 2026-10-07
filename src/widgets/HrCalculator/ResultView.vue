@@ -47,12 +47,7 @@ const reload = () => location.reload();
     <AkSpinner v-else-if="ops.length === 0" description="正在读取干员数据…" />
 
     <template v-else-if="state.sel.size === 0">
-      <AkHeading
-        class="hr-ref-head"
-        variant="underline"
-        title="保底速查"
-        en="Guarantees"
-      >
+      <AkHeading class="hr-ref-head" variant="underline" title="保底速查">
         <template #extra>时限 9:00 · 共 {{ reference.length }} 组</template>
       </AkHeading>
       <ComboTier

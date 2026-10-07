@@ -77,7 +77,6 @@ const advancedCount = computed(() =>
       @click="advanced.open = !advanced.open"
     >
       <span>高级筛选</span>
-      <span class="ak-en">Advanced</span>
       <AkTag v-if="advancedCount" size="sm" variant="accent-soft">
         已选 {{ advancedCount }}
       </AkTag>
