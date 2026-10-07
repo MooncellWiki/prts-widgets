@@ -9,8 +9,8 @@ import type { Op } from "./recruit";
 
 /**
  * 干员：头像 + 名字，整块链到干员页；悬停 / 聚焦出提示（星级、全部标签，气泡由根组件画）。
- * 头像垫稀有度色的底（同旧版）：一组里混着几种星级时扫一眼底色就能分开。
- * 底色带渐变，画法照抽卡模拟器：上面稀有度色、往下褪成浅灰，6★ 另是斜向的 奶油 → 橙。
+ * 头像垫稀有度色的渐变底（同旧版）：一组里混着几种星级时扫一眼底色就能分开。
+ * 底就是 .ak-r-avatar（画法照抽卡模拟器，干员卡 / 干员一览的头像同一套）。
  * 头像同首页的干员卡（AkOpCard）：左上角黄色星级、左下角职业图标，按这里的小头像等比缩小。
  * 只能通过公开招募获得的右上角一枚「限」（现网的绿色「限」字）。
  */
@@ -29,7 +29,7 @@ const tip = computed(() => {
     :data-rarity="op.star"
     :data-tip="tip"
   >
-    <span class="hr-op__img" @error.capture="onImageError">
+    <span class="hr-op__img ak-r-avatar" @error.capture="onImageError">
       <img
         class="hr-op__avatar"
         :src="avatar(op)"
@@ -104,15 +104,8 @@ const tip = computed(() => {
     display: block;
     width: var(--_size);
     height: var(--_size);
-    background: var(--ak-r, var(--ak-gray-800))
-      linear-gradient(180deg, transparent, #e6e5e2);
+    // 底色来自 .ak-r-avatar
     overflow: hidden;
-  }
-
-  // 渐变的走向与两头的浅色取自抽卡模拟器（.rarity-5 / .rarity-4），稀有度色换成令牌：
-  // 模拟器自己的 4★ 紫偏灰，这里 1★ 也是灰底，照搬分不开
-  &[data-rarity="6"] &__img {
-    background-image: linear-gradient(32deg, #eee2b8 22%, transparent);
   }
 
   &__avatar {
