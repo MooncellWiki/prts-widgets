@@ -5,13 +5,13 @@ import { professionBadge, wikiLink } from "../assets";
 
 import type { Char } from "../utils";
 
-/** 表格 / 卡片里的小头像：稀有度色底线 + 左上角职业小图标。名字旁边另有链接，这枚不进 Tab 序 */
+/** 表格 / 卡片里的小头像：稀有度色渐变底（.ak-r-avatar，同干员卡）+ 左上角职业小图标。名字旁边另有链接，这枚不进 Tab 序 */
 defineProps<{ char: Char }>();
 </script>
 
 <template>
   <a
-    class="ol-avatar"
+    class="ol-avatar ak-r-avatar"
     :href="wikiLink(char.zh)"
     :data-rarity="char.stars"
     tabindex="-1"
@@ -42,8 +42,7 @@ defineProps<{ char: Char }>();
   display: block;
   width: 48px;
   height: 48px;
-  background: #1d1f20 linear-gradient(180deg, #2b2d2f, #141516);
-  border-bottom: 3px solid var(--ak-r, var(--ak-border-strong));
+  // 底色来自 .ak-r-avatar（稀有度色渐变），头像下面不再拉同色的色条
   overflow: hidden;
 
   > img {
