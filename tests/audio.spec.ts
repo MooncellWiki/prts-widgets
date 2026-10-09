@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HtmlStoryAudio } from "../src/widgets/StoryPlayer/engine/audio";
 
@@ -80,6 +80,41 @@ async function flush(): Promise<void> {
 
 const context = { linkMap: {}, script: [] } satisfies Context;
 
+/** Drive `requestAnimationFrame`-based fades manually with a fake clock. */
+function useManualFadeClock(): { frame: (ms: number) => void } {
+  const frames: FrameRequestCallback[] = [];
+  let clock = 0;
+  vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(
+    (callback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+  );
+  vi.spyOn(performance, "now").mockImplementation(() => clock);
+  return {
+    /** Advance one animation frame worth of fade time. */
+    frame(ms: number): void {
+      clock += ms;
+      const pending = frames.slice();
+      frames.length = 0;
+      for (const callback of pending) callback(clock);
+    },
+  };
+}
+
+async function playMusicTrack(
+  audio: HtmlStoryAudio,
+  volume = 1,
+): Promise<FakeInstance> {
+  void audio.playMusic({ crossfadeMs: 0, delayMs: 0, key: "k", volume });
+  await flush();
+  const sound = settleLoad();
+  await flush();
+  const instance = sound.settlePlay();
+  await flush();
+  return instance;
+}
+
 describe("HtmlStoryAudio", () => {
   beforeEach(() => {
     loads.length = 0;
@@ -143,5 +178,84 @@ describe("HtmlStoryAudio", () => {
 
     await audio.stopSound("c", 0);
     expect(instance.stopped).toBe(1);
+  });
+});
+
+describe("HtmlStoryAudio musicvolume during a stopmusic fade", () => {
+  beforeEach(() => {
+    loads.length = 0;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("cancels the pending stop and retargets the fade (TweenVolume clears m_stopWhenTweenEnd)", async () => {
+    const { frame } = useManualFadeClock();
+    const audio = new HtmlStoryAudio(context);
+    const instance = await playMusicTrack(audio, 1);
+
+    void audio.stopMusic(1000);
+    await flush();
+    frame(500); // halfway down the fade to silence
+    expect(instance.volume).toBeCloseTo(0.5);
+
+    const retargeted = audio.setMusicVolume(0.8, 400);
+    frame(400); // retargeted tween reaches the new volume
+    frame(600); // the retired stop-fade loop must never write again
+    await retargeted;
+    await flush();
+
+    expect(instance.stopped).toBe(0);
+    expect(instance.volume).toBeCloseTo(0.8);
+
+    // The channel was never released, so later volume commands still hit it.
+    await audio.setMusicVolume(0.2, 0);
+    expect(instance.volume).toBe(0.2);
+  });
+
+  it("still stops the music when nothing interrupts the fade", async () => {
+    const { frame } = useManualFadeClock();
+    const audio = new HtmlStoryAudio(context);
+    const instance = await playMusicTrack(audio, 1);
+
+    void audio.stopMusic(1000);
+    await flush();
+    frame(500);
+    frame(500);
+    await flush();
+
+    expect(instance.stopped).toBe(1);
+    expect(instance.volume).toBe(0);
+
+    // Channel released: a later musicvolume is a silent no-op (native
+    // GetMusicChannel returns null once the channel stopped).
+    await audio.setMusicVolume(0.7, 0);
+    expect(instance.volume).toBe(0);
+    expect(instance.stopped).toBe(1);
+  });
+
+  it("retargets instantly on a same-track playmusic inside the fade (_PlayAudio fast path)", async () => {
+    const { frame } = useManualFadeClock();
+    const audio = new HtmlStoryAudio(context);
+    const instance = await playMusicTrack(audio, 1);
+
+    void audio.stopMusic(1000);
+    await flush();
+    frame(500);
+    expect(instance.volume).toBeCloseTo(0.5);
+
+    await audio.playMusic({
+      crossfadeMs: 0,
+      delayMs: 0,
+      key: "k",
+      volume: 0.9,
+    });
+    frame(1000); // the retired stop-fade loop must never write again
+    await flush();
+
+    expect(instance.stopped).toBe(0);
+    expect(instance.volume).toBe(0.9);
+    expect(loads).toHaveLength(0); // fast path: no reload, track keeps playing
   });
 });
