@@ -60,7 +60,6 @@ export const STAT_COLS = [
     interval: true,
   },
   {
-    // 数据源的 enemyDamageRes 是元素伤害抗性，enemyRes 是元素损伤抵抗。
     key: "enemyDamageRes",
     short: "元抗",
     full: "元素抗性",
