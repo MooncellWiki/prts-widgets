@@ -103,7 +103,8 @@ const ENEMIES = SOURCE.map(toEnemy);
 const by = (name: string) => ENEMIES.find((e) => e.name === name)!;
 const names = (list: readonly { name: string }[]) => list.map((e) => e.name);
 
-// 现网「敌人一览/数据」：固化源石巨像的元素抗性为 0（E），损伤抵抗为 10（C）。
+// 现网「敌人一览/数据」：固化源石巨像的元素抗性为 0（E），损伤抵抗为 10（C）；
+// “过灌注”两项都是 15（C）。
 // https://prts.wiki/w/固化源石巨像
 const RESISTANCE_SOURCE = [
   data({}),
@@ -114,6 +115,14 @@ const RESISTANCE_SOURCE = [
     enemyLink: "固化源石巨像",
     enemyRes: "C",
     enemyDamageRes: "E",
+  }),
+  data({
+    enemyIndex: "SFR16",
+    sortId: 3,
+    name: "“过灌注”",
+    enemyLink: "“过灌注”",
+    enemyRes: "C",
+    enemyDamageRes: "C",
   }),
 ];
 
@@ -216,10 +225,10 @@ describe("筛选", () => {
     const selected = new Set(["C"]);
     expect(
       names(enemies.filter((e) => matchFilter(elemental, e, selected))),
-    ).toEqual([]);
+    ).toEqual(["“过灌注”"]);
     expect(
       names(enemies.filter((e) => matchFilter(damage, e, selected))),
-    ).toEqual(["固化源石巨像"]);
+    ).toEqual(["固化源石巨像", "“过灌注”"]);
   });
 
   it("搜索名称 / 编号 / 能力，不分大小写", () => {
@@ -463,10 +472,10 @@ describe("EnemiesListV2 UI smoke", () => {
 
     headers[damageIndex].querySelector<HTMLButtonElement>("button")!.click();
     await nextTick();
-    expect(rows(host)).toEqual(["固化源石巨像", "源石虫"]);
+    expect(rows(host)).toEqual(["固化源石巨像", "“过灌注”", "源石虫"]);
     headers[elementalIndex].querySelector<HTMLButtonElement>("button")!.click();
     await nextTick();
-    expect(rows(host)).toEqual(["源石虫", "固化源石巨像"]);
+    expect(rows(host)).toEqual(["“过灌注”", "源石虫", "固化源石巨像"]);
   });
 
   it("打开分享链接：照 # 参数筛选，带属性筛选时面板展开", async () => {
