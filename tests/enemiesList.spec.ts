@@ -103,6 +103,20 @@ const ENEMIES = SOURCE.map(toEnemy);
 const by = (name: string) => ENEMIES.find((e) => e.name === name)!;
 const names = (list: readonly { name: string }[]) => list.map((e) => e.name);
 
+// 现网「敌人一览/数据」：固化源石巨像的元素抗性为 0（E），损伤抵抗为 10（C）。
+// https://prts.wiki/w/固化源石巨像
+const RESISTANCE_SOURCE = [
+  data({}),
+  data({
+    enemyIndex: "OG11",
+    sortId: 2,
+    name: "固化源石巨像",
+    enemyLink: "固化源石巨像",
+    enemyRes: "C",
+    enemyDamageRes: "E",
+  }),
+];
+
 describe("toEnemy", () => {
   it("拆开攻击方式 / 伤害类型，地位换成色条用的级别，链接指向敌人页", () => {
     const w = by("W");
@@ -192,6 +206,20 @@ describe("筛选", () => {
     expect(
       matchFilter(filterById.endure, by("“皇帝的利刃”"), new Set(GRADES)),
     ).toBe(false);
+  });
+
+  it("元素抗性和损伤抵抗按各自的源数据筛选", () => {
+    const filters = Object.values(createFilters());
+    const elemental = filters.find((f) => f.def.title === "元素抗性")!;
+    const damage = filters.find((f) => f.def.title === "损伤抵抗")!;
+    const enemies = RESISTANCE_SOURCE.map(toEnemy);
+    const selected = new Set(["C"]);
+    expect(
+      names(enemies.filter((e) => matchFilter(elemental, e, selected))),
+    ).toEqual([]);
+    expect(
+      names(enemies.filter((e) => matchFilter(damage, e, selected))),
+    ).toEqual(["固化源石巨像"]);
   });
 
   it("搜索名称 / 编号 / 能力，不分大小写", () => {
@@ -415,6 +443,30 @@ describe("EnemiesListV2 UI smoke", () => {
     await nextTick();
     expect(rows(host)).toEqual(names(ENEMIES));
     expect(head.parentElement?.hasAttribute("aria-sort")).toBe(false);
+  });
+
+  it("元抗、损抗列显示正确的等级，表头按对应抗性排序", async () => {
+    const host = await mount(undefined, { source: RESISTANCE_SOURCE });
+    const headers = [...host.querySelectorAll("thead th")];
+    const elementalIndex = headers.findIndex(
+      (h) => h.textContent?.trim() === "元抗",
+    );
+    const damageIndex = headers.findIndex(
+      (h) => h.textContent?.trim() === "损抗",
+    );
+    const golem = [...host.querySelectorAll("tbody.el-enemy")].find(
+      (body) => body.querySelector(".el-name")?.textContent === "固化源石巨像",
+    )!;
+    const cells = golem.querySelectorAll("tr:first-child > *");
+    expect(cells[elementalIndex].textContent?.trim()).toBe("E");
+    expect(cells[damageIndex].textContent?.trim()).toBe("C");
+
+    headers[damageIndex].querySelector<HTMLButtonElement>("button")!.click();
+    await nextTick();
+    expect(rows(host)).toEqual(["固化源石巨像", "源石虫"]);
+    headers[elementalIndex].querySelector<HTMLButtonElement>("button")!.click();
+    await nextTick();
+    expect(rows(host)).toEqual(["源石虫", "固化源石巨像"]);
   });
 
   it("打开分享链接：照 # 参数筛选，带属性筛选时面板展开", async () => {
