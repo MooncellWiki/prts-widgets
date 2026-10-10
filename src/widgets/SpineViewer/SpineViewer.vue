@@ -12,7 +12,6 @@ import {
 
 import {
   AkButton,
-  AkButtonGroup,
   AkChip,
   AkSelect,
   AkSpinner,
@@ -71,9 +70,6 @@ const BG = [
 ] as const;
 type BgKey = (typeof BG)[number]["key"] | "custom";
 
-/** 模型多于这个数就收进下拉选择（设计系统 Select 的用法：≤ 5 个、立即生效的视图切换用按钮组） */
-const MODEL_MENU = 5;
-
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 /* ── 选择：时装 × 模型 ── */
@@ -82,11 +78,9 @@ const modelsOf = (s: string) => sortModels(Object.keys(props.conf.skin[s]));
 const skin = ref(skins[0]);
 const model = ref(modelsOf(skins[0])[0]);
 const models = computed(() => modelsOf(skin.value));
-/* 干员只有 正面 / 背面 / 基建 几个，一组按钮一眼看全；敌人一套骨骼可以装几十个 skin（自走车 31 个），排成一行会撑出正文列 */
+/* 一律下拉：敌人一套骨骼可以装几十个 skin（自走车 31 个），个数不多的名字也可能长（「0~1塑能基质」），排成一组按钮会撑出正文列 */
 const modelOptions = computed(() =>
-  models.value.length > MODEL_MENU
-    ? models.value.map((m) => ({ label: m, value: m }))
-    : null,
+  models.value.map((m) => ({ label: m, value: m })),
 );
 
 /* ── 播放状态 ── */
@@ -746,24 +740,12 @@ onBeforeUnmount(() => {
       <div class="sv__field">
         <span class="ak-overline">模型</span>
         <AkSelect
-          v-if="modelOptions"
           :model-value="model"
           size="sm"
           label="模型"
           :options="modelOptions"
           @update:model-value="pickModel(String($event))"
         />
-        <AkButtonGroup v-else size="sm" label="模型">
-          <AkButton
-            v-for="m in models"
-            :key="m"
-            :class="{ 'is-active': m === model }"
-            :aria-pressed="m === model"
-            @click="pickModel(m)"
-          >
-            {{ m }}
-          </AkButton>
-        </AkButtonGroup>
       </div>
     </div>
 
@@ -950,7 +932,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// 选择条：时装芯片 + 模型按钮组
+// 选择条：时装芯片 + 模型下拉，都靠左（操作区聚在一起）；一行放不下时整栏换行
 .sv__bar {
   display: flex;
   flex-wrap: wrap;
@@ -967,11 +949,12 @@ onBeforeUnmount(() => {
   gap: 10px;
   min-width: 0;
 
-  &:last-child {
-    margin-left: auto;
+  // 标签不跟着挤：挤了会折成一字一行
+  > .ak-overline {
+    flex: none;
   }
 
-  // 模型多时的下拉选择：宽度随最长的名字，不撑满
+  // 模型下拉：宽度随最长的名字，不撑满
   > .ak-select {
     width: auto;
     min-width: 0;
@@ -1261,10 +1244,6 @@ onBeforeUnmount(() => {
   .sv {
     display: flex;
     flex-direction: column;
-  }
-
-  .sv__field:last-child {
-    margin-left: 0;
   }
 
   .sv__main {
