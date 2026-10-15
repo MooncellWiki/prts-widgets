@@ -250,6 +250,47 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("leaves theater mode on a SkipToThis jump but keeps its exit restore", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          "[theater]",
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+          "[theater(mode=false)]",
+          '[name="C"]later',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      expect(renderer.lastDialogue?.speaker).toBe("A");
+
+      await runtime.skipNode();
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      // Native zeroes isTheaterMode along with the rest of m_storyCache: no
+      // auto click fires, and a click advances instead of being swallowed.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      await runtime.advance();
+      expect(renderer.lastDialogue?.speaker).toBe("C");
+      // The pre-theater auto state lives outside m_storyCache, so the later
+      // [theater(mode=false)] still restores it.
+      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("finishes the interrupted line and ends its command on skip", async () => {
     vi.useFakeTimers();
     try {
