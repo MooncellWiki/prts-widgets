@@ -168,6 +168,129 @@ describe("StoryRuntime", () => {
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
+  it("resets auto play mode to default after a SkipToThis jump", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+          '[name="C"]later',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+      await runtime.skipNode();
+
+      // Native SkipStory tail: set_autoPlayMode(DEFAULT) + stop the auto
+      // coroutine, so auto playback does not continue past the anchor.
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      // The cancelled button-auto click never fires; "later" only shows on a
+      // manual advance.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      await runtime.advance();
+      expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resets quick play mode to default after a SkipToThis jump", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+          '[name="C"]later',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      // Quick play is enabled before playback starts (switching while a line
+      // waits for input emits the immediate quick click and advances past the
+      // anchor, so the jump window would be gone).
+      runtime.setAutoPlayMode("quick_play");
+      await runtime.start();
+      expect(runtime.getAutoPlayState().mode).toBe("quick_play");
+
+      // Quick gear 0 types at 10ms/char: letting the clock run finishes the
+      // line and leaves the 200ms quick auto click pending.
+      await vi.advanceTimersByTimeAsync(150);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "before" });
+
+      await runtime.skipNode();
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      // The cancelled quick click never fires; "later" only shows on a manual
+      // advance.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      await runtime.advance();
+      expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves theater mode on a SkipToThis jump but keeps its exit restore", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          "[theater]",
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+          "[theater(mode=false)]",
+          '[name="C"]later',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      expect(renderer.lastDialogue?.speaker).toBe("A");
+
+      await runtime.skipNode();
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      // Native zeroes isTheaterMode along with the rest of m_storyCache: no
+      // auto click fires, and a click advances instead of being swallowed.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+      await runtime.advance();
+      expect(renderer.lastDialogue?.speaker).toBe("C");
+      // The pre-theater auto state lives outside m_storyCache, so the later
+      // [theater(mode=false)] still restores it.
+      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("finishes the interrupted line and ends its command on skip", async () => {
     vi.useFakeTimers();
     try {

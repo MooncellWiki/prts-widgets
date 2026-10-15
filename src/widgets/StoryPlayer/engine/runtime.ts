@@ -807,6 +807,20 @@ export class StoryRuntime {
     if (this.skipToIndex >= 0 && this.cursor <= this.skipToIndex) {
       this.cursor = this.skipToIndex + 1;
       shouldResume = true;
+      // Native port: Torappu.AVG.AVGController.SkipStory's shared UI tail runs
+      // after the SkipToThis jump and resets set_autoPlayMode(DEFAULT) plus
+      // stops the auto coroutine (2.7.71 VA 0x183ec718d / 0x183ec71de), so auto
+      // playback never continues past the anchor. Web adaptation: only the
+      // real jump resets; native also runs this tail for an already-crossed
+      // anchor (a no-op jump), which canSkipNode() precludes here.
+      this.setAutoPlayMode("default");
+      // The same tail then zeroes the whole m_storyCache (0x183ec7205), theater
+      // flag included, so OnClickPress stops swallowing clicks; leaving
+      // theaterMode set would strand the story with no auto click and no
+      // manual advance. The pre-theater auto state (autoPlayModeCache /
+      // m_needResumeAutoStatus) lives on AVGController outside the cache and
+      // survives: theaterAutoPlayCache is kept for a later [theater(mode=false)].
+      this.theaterMode = false;
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.
@@ -3345,17 +3359,18 @@ export class StoryRuntime {
           this.theaterMode = true;
           this.buttonSpeedLevel = 0;
           this.applyScriptAutoPlayMode("button_auto");
-        } else if (!mode && this.theaterMode) {
-          this.theaterMode = false;
+        } else if (!mode && this.theaterAutoPlayCache) {
+          // Keyed on the cache (native m_needResumeAutoStatus), not on
+          // theaterMode: a SkipToThis jump clears the theater flag but keeps
+          // the cache, and native's exit still restores it afterwards.
           const cached = this.theaterAutoPlayCache;
+          this.theaterMode = false;
           this.theaterAutoPlayCache = null;
-          if (cached) {
-            this.buttonSpeedLevel = cached.buttonSpeedLevel;
-            this.quickSpeedLevel = cached.quickSpeedLevel;
-            this.applyScriptAutoPlayMode(
-              cached.mode === "quick_play" ? "default" : cached.mode,
-            );
-          }
+          this.buttonSpeedLevel = cached.buttonSpeedLevel;
+          this.quickSpeedLevel = cached.quickSpeedLevel;
+          this.applyScriptAutoPlayMode(
+            cached.mode === "quick_play" ? "default" : cached.mode,
+          );
         }
         return "continue";
       }
