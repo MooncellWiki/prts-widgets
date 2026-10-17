@@ -21,15 +21,9 @@ import { parseScript } from "./parser";
 import { DIALOG_FRAME_URL } from "./renderer";
 
 import type { Context } from "../context";
-import type { ParsedLine, StoryFaceRect } from "./types";
+import type { ParsedLine, StoryCharacterFaceAsset } from "./types";
 
-export interface StoryCharacterFaceAsset {
-  baseUrl: string;
-  expression: string;
-  faceRect: StoryFaceRect;
-  faceUrl: string;
-  used: boolean;
-}
+export type { StoryCharacterFaceAsset } from "./types";
 
 export interface ContextAssetManifest {
   faceAssets: StoryCharacterFaceAsset[];
