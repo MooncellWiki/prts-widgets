@@ -180,23 +180,6 @@ function sleepWithTimeout(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Native port: `VideoManager.CheckVideoExist` (2.7.61 VA 0x183B2FDB0) — the
- * synchronous `RawResManager.CheckExist` gate of the `res` branch in
- * `AVGVideoPanel._PlayVideo`. The web approximation is a HEAD probe against
- * the resolved CDN URL: only a definitive 404/410 reproduces a miss. A probe
- * that cannot decide (network/CORS failure, any other status) reports
- * "exists" so the legacy `<video>` error path stays in charge.
- */
-async function probeVideoAssetWithHead(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(url, { method: "HEAD" });
-    return response.status !== 404 && response.status !== 410;
-  } catch {
-    return true;
-  }
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -425,8 +408,6 @@ export class StoryRuntime {
   private readonly firstRead: boolean;
   private pendingWait: InterruptibleWait | null = null;
   private pendingWaitId = 0;
-  /** `VideoManager.CheckVideoExist` web approximation; see `probeVideoAssetWithHead`. */
-  private readonly probeVideoAsset: (url: string) => Promise<boolean>;
   private processing = false;
   private processingCompletion: Promise<void> | null = null;
   private resolveProcessingCompletion: (() => void) | null = null;
@@ -506,7 +487,6 @@ export class StoryRuntime {
       typeWriterDelayMs: Math.max(0, Math.round(options.typingIntervalMs ?? 0)),
     };
     this.firstRead = options.firstRead ?? true;
-    this.probeVideoAsset = options.probeVideoAsset ?? probeVideoAssetWithHead;
     this.renderer = renderer;
     this.audio = audio;
     this.sleep = options.sleep ?? sleepWithTimeout;
@@ -1336,23 +1316,13 @@ export class StoryRuntime {
         // `res` branch before playback; a miss raises
         // Toast(NO_VIDEO_MESSAGE) and _PlayVideo returns false so the command
         // ends in the same frame (0x183E689FC) without blocking. The `url`
-        // branch has no such check in native. Web adaptation: the HEAD probe
-        // (`probeVideoAssetWithHead`) approximates the local RawResManager
-        // lookup; onWarning is the Toast equivalent. Skipping during the
-        // probe releases the wait so the command ends without playing.
-        if (!url) {
-          let assetExists = true;
-          const probeInterrupted = await this.waitInterruptiblePromise(
-            this.probeVideoAsset(resolved).then((exists) => {
-              assetExists = exists;
-            }),
-            () => this.renderer.stopVideo(),
-          );
-          if (probeInterrupted) return "continue";
-          if (!assetExists) {
-            this.warn("missing_asset", `video: ${res}`);
-            return "continue";
-          }
+        // branch has no such check in native. Web adaptation: the existence
+        // answer is HEAD-probed while the context loads
+        // (`findMissingVideoUrls`), so this stays a synchronous lookup like
+        // the native RawResManager one; onWarning is the Toast equivalent.
+        if (!url && this.context.missingVideoUrls?.has(resolved)) {
+          this.warn("missing_asset", `video: ${res}`);
+          return "continue";
         }
 
         this.state = "waiting_video";
