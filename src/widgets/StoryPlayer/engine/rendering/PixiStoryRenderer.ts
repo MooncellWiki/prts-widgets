@@ -1500,10 +1500,13 @@ export class PixiStoryRenderer implements StoryRenderer {
         }
       }
 
-      const texture = await this.textureForImageKey(input.key, "image");
+      const texture = input.key
+        ? await this.textureForImageKey(input.key, "image")
+        : null;
       // `AVGShowItemSlot.Show` (0x183ED3E80) skips only the sprite assignment
-      // when the asset fails to load; the photo slot still plays its fade and
-      // blocks for fadetime. Keep a backdrop-only root instead of bailing out.
+      // when the asset fails to load (an empty `image` included); the photo
+      // slot still plays its fade and blocks for fadetime. Keep a
+      // backdrop-only root instead of bailing out.
       const sprite = texture ? new Sprite(texture) : null;
       const layout = texture
         ? computeLegacyShowItemLayout(texture.width, texture.height)
@@ -1552,10 +1555,12 @@ export class PixiStoryRenderer implements StoryRenderer {
         );
         border.fill(0xff_ff_ff);
 
+        // `offsetx/offsety` land on the Unity `localPosition` (y up), so the
+        // y offset flips into PIXI's y-down space.
         const content = new Container();
         content.position.set(
           STORY_WIDTH / 2 + input.offsetX,
-          STORY_HEIGHT / 2 + input.offsetY,
+          STORY_HEIGHT / 2 - input.offsetY,
         );
         content.addChild(border);
         content.addChild(sprite);

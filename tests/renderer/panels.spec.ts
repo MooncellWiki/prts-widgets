@@ -147,4 +147,33 @@ describe("PixiStoryRenderer", () => {
     await call;
     expect(root.alpha).toBe(1);
   });
+
+  it("skips the texture lookup for an empty image but keeps the backdrop-only slot", async () => {
+    const renderer = createRenderer();
+    renderer.textureForImageKey = vi.fn(
+      async () => new Texture({ label: "item" }),
+    );
+
+    await renderer.showItem(createShowItemInput({ fadeMs: 0, key: null }));
+
+    expect(renderer.textureForImageKey).not.toHaveBeenCalled();
+    expect(renderer.itemLayer.children).toHaveLength(1);
+    expect(renderer.itemLayer.children[0].children).toHaveLength(1);
+  });
+
+  it("maps the Unity y-up offsety into PIXI's y-down stage", async () => {
+    const renderer = createRenderer();
+    renderer.textureForImageKey = vi.fn(
+      async () => new Texture({ label: "item" }),
+    );
+
+    await renderer.showItem(
+      createShowItemInput({ fadeMs: 0, offsetX: 30, offsetY: 40 }),
+    );
+
+    const root = renderer.itemLayer.children[0];
+    const content = root.children.at(-1)!;
+    expect(content.position.x).toBe(640 + 30);
+    expect(content.position.y).toBe(360 - 40);
+  });
 });

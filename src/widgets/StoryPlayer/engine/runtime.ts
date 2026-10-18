@@ -1818,8 +1818,20 @@ export class StoryRuntime {
         // only registers `photo` and `cutin`; `cg` and anything else
         // miss _FindSlotStyle, which logs an error and finishes the command
         // without rendering. Every shipped sample is the default `photo`.
+        const fadeMs = Math.max(
+          0,
+          Math.round(toNumber(this.exactArg(args, "fadetime"), 0.5) * 1000),
+        );
         const style = toString(this.exactArg(args, "style"), "photo");
         if (style !== "photo" && style !== "cutin") {
+          // The style lookup lives in `_ShowItem`, which the replacement branch
+          // only reaches through the old slot's `Hide` -> `b__0` (`_Reset`):
+          // a live slot still fades out with this command's fadetime and is
+          // destroyed before the LogError + FinishCommand.
+          if (this.itemSlotInUse) {
+            this.itemSlotInUse = false;
+            await this.renderer.clearItems(fadeMs, true);
+          }
           this.warn(
             "invalid_parameter",
             `showitem style is not registered: ${style}`,
@@ -1842,25 +1854,19 @@ export class StoryRuntime {
           );
 
         // Native `_ShowItem` (0x183E5C290) never guards an empty `image`
-        // (default ""): it still instantiates the slot and plays the
-        // backdrop-only fade. Every shipped sample fills `image`, so the web
-        // port warns and skips instead of reproducing the empty-slot fade.
+        // (default ""): it still instantiates the slot, the sprite load fails
+        // and the slot plays its backdrop-only fade, blocking like any other
+        // showitem (and filling `_slotInUse` for a later hideitem). A null key
+        // takes the renderer's failed-load path, which draws exactly that.
         const image = toString(this.exactArg(args, "image"));
-        if (!image) {
+        const resolved = this.resolveImageKey(image);
+        if (!resolved)
           this.warn(
             "invalid_parameter",
             "showitem: image is empty",
             line.lineNumber,
             line.command,
           );
-          return "continue";
-        }
-
-        const resolved = this.resolveImageKey(image);
-        if (!resolved) {
-          this.warn("missing_asset", `showitem: ${image}`);
-          return "continue";
-        }
 
         // Native port scope: AVGShowItemPanel._ExecuteShowItem / _ExecuteHideItem.
         // Neither executor reads `block`: showitem always returns true, and
@@ -1872,10 +1878,7 @@ export class StoryRuntime {
           // applies no range constraint.
           blackAlpha: clamp(toNumber(this.exactArg(args, "black"), 0.4), 0, 1),
           block: true,
-          fadeMs: Math.max(
-            0,
-            Math.round(toNumber(this.exactArg(args, "fadetime"), 0.5) * 1000),
-          ),
+          fadeMs,
           key: resolved,
           offsetX: toNumber(this.exactArg(args, "offsetx"), 0),
           offsetY: toNumber(this.exactArg(args, "offsety"), 0),
