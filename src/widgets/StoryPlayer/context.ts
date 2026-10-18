@@ -1,7 +1,11 @@
 import { resolveAssetUrl } from "./engine/asset";
 import { parseStory } from "./engine/parser";
 
-import type { StoryLinkNode, StoryMetadata } from "./engine/types";
+import type {
+  StoryCharacterEntry,
+  StoryLinkNode,
+  StoryMetadata,
+} from "./engine/types";
 
 const RAW_ASSET_BASE = "https://torappu.prts.wiki/assets";
 const STORY_BASE = "https://torappu.prts.wiki/gamedata/latest/story";
@@ -43,6 +47,15 @@ function toNumber(value: unknown, fallback = 0): number {
 function asObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+/** `body`/`index` only count as a pair of integers; older exports have neither. */
+function nativeSlot(
+  item: Record<string, unknown>,
+): Pick<StoryCharacterEntry, "body" | "index"> {
+  const { body, index } = item;
+  if (!Number.isInteger(body) || !Number.isInteger(index)) return {};
+  return { body: body as number, index: index as number };
 }
 
 export function normalizeCharacterMap(
@@ -92,6 +105,7 @@ export function normalizeCharacterMap(
       const name = item.name;
       const alias = typeof item.alias === "string" ? item.alias : "";
       const group = Math.trunc(toNumber(item.group, -1));
+      const slot = nativeSlot(item);
 
       if (group === -1) {
         array.push({
@@ -99,6 +113,7 @@ export function normalizeCharacterMap(
           group: -1,
           image: typeof item.image === "string" ? item.image : name,
           name,
+          ...slot,
         });
         continue;
       }
@@ -109,6 +124,7 @@ export function normalizeCharacterMap(
           face: item.face,
           group,
           name,
+          ...slot,
         });
         continue;
       }
@@ -119,6 +135,7 @@ export function normalizeCharacterMap(
           group: -1,
           image: item.image,
           name,
+          ...slot,
         });
       }
     }
