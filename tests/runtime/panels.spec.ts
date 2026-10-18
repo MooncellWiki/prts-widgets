@@ -119,6 +119,71 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("warns and still plays the backdrop-only slot for a showitem without an image", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[showitem(style="photo")]',
+        "[hideitem]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // Native `_ShowItem` has no empty-image guard: the slot is instantiated,
+    // the sprite load fails and the backdrop-only fade still plays, so the
+    // following hideitem finds a live `_slotInUse` and blocks.
+    expect(renderer.showItemCalls).toEqual([
+      expect.objectContaining({ fadeMs: 500, key: null }),
+    ]);
+    expect(renderer.clearItemsCalls).toEqual([{ block: true, fadeMs: 500 }]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "showitem",
+        detail: "showitem: image is empty",
+        type: "invalid_parameter",
+      }),
+    ]);
+  });
+
+  it("fades a live slot out before rejecting an unregistered showitem style", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[showitem(image="item_a")]',
+        '[showitem(image="item_b",style="cg",fadetime=0.2)]',
+        "[hideitem]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    // The replacement branch runs the old slot's Hide (with the new command's
+    // fadetime) and `_Reset` before `_ShowItem` misses the style, so the later
+    // hideitem has no slot left to block on.
+    expect(renderer.showItemCalls.map((call) => call.key)).toEqual(["item_a"]);
+    expect(renderer.clearItemsCalls).toEqual([
+      { block: true, fadeMs: 200 },
+      { block: false, fadeMs: 500 },
+    ]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail: "showitem style is not registered: cg",
+        type: "invalid_parameter",
+      }),
+    ]);
+  });
+
   it("maps interlude parameters and preserves the native channel default mismatch", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];

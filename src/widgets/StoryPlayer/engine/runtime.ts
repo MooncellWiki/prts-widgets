@@ -1844,8 +1844,20 @@ export class StoryRuntime {
         // only registers `photo` and `cutin`; `cg` and anything else
         // miss _FindSlotStyle, which logs an error and finishes the command
         // without rendering. Every shipped sample is the default `photo`.
+        const fadeMs = Math.max(
+          0,
+          Math.round(toNumber(this.exactArg(args, "fadetime"), 0.5) * 1000),
+        );
         const style = toString(this.exactArg(args, "style"), "photo");
         if (style !== "photo" && style !== "cutin") {
+          // The style lookup lives in `_ShowItem`, which the replacement branch
+          // only reaches through the old slot's `Hide` -> `b__0` (`_Reset`):
+          // a live slot still fades out with this command's fadetime and is
+          // destroyed before the LogError + FinishCommand.
+          if (this.itemSlotInUse) {
+            this.itemSlotInUse = false;
+            await this.renderer.clearItems(fadeMs, true);
+          }
           this.warn(
             "invalid_parameter",
             `showitem style is not registered: ${style}`,
@@ -1855,6 +1867,11 @@ export class StoryRuntime {
           return "continue";
         }
         if (style === "cutin")
+          // Native runs `AVGShowItemCutinSlot.Show` (0x183ED2CB0): the mask
+          // expands to `width` (default = the sprite's native width) per
+          // `fadestyle` while the backdrop cross-fades. The cutin animation is
+          // NOT ported — the web port downgrades to the photo alpha fade, so
+          // keep the warning visible instead of pretending parity.
           this.warn(
             "unsupported_visual",
             "showitem style=cutin uses the cutin slot expand animation",
@@ -1862,14 +1879,20 @@ export class StoryRuntime {
             line.command,
           );
 
+        // Native `_ShowItem` (0x183E5C290) never guards an empty `image`
+        // (default ""): it still instantiates the slot, the sprite load fails
+        // and the slot plays its backdrop-only fade, blocking like any other
+        // showitem (and filling `_slotInUse` for a later hideitem). A null key
+        // takes the renderer's failed-load path, which draws exactly that.
         const image = toString(this.exactArg(args, "image"));
-        if (!image) return "continue";
-
         const resolved = this.resolveImageKey(image);
-        if (!resolved) {
-          this.warn("missing_asset", `showitem: ${image}`);
-          return "continue";
-        }
+        if (!resolved)
+          this.warn(
+            "invalid_parameter",
+            "showitem: image is empty",
+            line.lineNumber,
+            line.command,
+          );
 
         // Native port scope: AVGShowItemPanel._ExecuteShowItem / _ExecuteHideItem.
         // Neither executor reads `block`: showitem always returns true, and
@@ -1877,12 +1900,11 @@ export class StoryRuntime {
         // slot's serialized defaults are _defaultFadeTime 0.5 and
         // _defaultBlackAlpha 0.4; offsetx/offsety default to a hardcoded 0.
         await this.renderer.showItem({
+          // The clamp is a web-only guard; native `GetFloat("black", 0.4)`
+          // applies no range constraint.
           blackAlpha: clamp(toNumber(this.exactArg(args, "black"), 0.4), 0, 1),
           block: true,
-          fadeMs: Math.max(
-            0,
-            Math.round(toNumber(this.exactArg(args, "fadetime"), 0.5) * 1000),
-          ),
+          fadeMs,
           key: resolved,
           offsetX: toNumber(this.exactArg(args, "offsetx"), 0),
           offsetY: toNumber(this.exactArg(args, "offsety"), 0),

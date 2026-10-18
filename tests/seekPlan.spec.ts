@@ -123,7 +123,7 @@ class DecisionFakeRenderer {
     values: [],
   };
   decisionPanelShown = 0;
-  showItemKeys: string[] = [];
+  showItemKeys: (string | null)[] = [];
   lastDialogue = { speaker: "", text: "" };
 
   async showDecision(

@@ -404,7 +404,12 @@ export interface ShowItemInput {
   blackAlpha: number;
   block: boolean;
   fadeMs: number;
-  key: string;
+  /**
+   * Item image key; null for an empty `image`, which native still turns into
+   * a slot whose sprite load fails (backdrop-only fade).
+   */
+  key: string | null;
+  /** Unity UI `localPosition` offset: +x right, +y up. */
   offsetX: number;
   offsetY: number;
 }
