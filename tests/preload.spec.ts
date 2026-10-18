@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DIALOG_FRAME_URL,
+  SHOWITEM_PHOTO_FRAME_URL,
   STAMP_ASSETS,
 } from "../src/widgets/StoryPlayer/assets";
 import {
@@ -160,6 +161,28 @@ describe("preloadContextAssets", () => {
     );
     const loadedWithoutStamp = loadMock.mock.calls[0]![0] as string[];
     expect(loadedWithoutStamp).toEqual(expect.not.arrayContaining(stampUrls));
+  });
+
+  it("preheats the showitem photo frame only for scripts that use showitem", async () => {
+    const withShowItem = createContext([
+      '[showitem(image="item_act12side_1")]',
+    ]);
+    await preloadContextAssets(withShowItem);
+    expect(loadMock.mock.calls[0]![0]).toEqual(
+      expect.arrayContaining([SHOWITEM_PHOTO_FRAME_URL]),
+    );
+    // 内置相框不属于剧情资源,不应进入面向用户的资源清单。
+    expect(collectContextAssetUrls(withShowItem)).toEqual(
+      expect.not.arrayContaining([SHOWITEM_PHOTO_FRAME_URL]),
+    );
+
+    loadMock.mockClear();
+    await preloadContextAssets(
+      createContext(['[background(image="bg_rhodes_day")]']),
+    );
+    expect(loadMock.mock.calls[0]![0]).toEqual(
+      expect.not.arrayContaining([SHOWITEM_PHOTO_FRAME_URL]),
+    );
   });
 
   it("loads the dialog font always and the animtext / sami fonts only when used", async () => {

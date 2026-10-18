@@ -400,18 +400,42 @@ export interface GridBackgroundInput {
 }
 
 export interface ShowItemInput {
-  /** Alpha of the full-screen black backdrop the photo slot puts behind the item. */
+  /** Alpha of the full-screen black backdrop the slot puts behind the item. */
   blackAlpha: number;
   block: boolean;
   fadeMs: number;
   /**
+   * `fadestyle` — read only by the cutin slot (photo ignores it, dead param);
+   * unknown strings degrade to `fade`, matching the native enum default.
+   */
+  fadeStyle?: ShowItemFadeStyle;
+  /**
    * Item image key; null for an empty `image`, which native still turns into
-   * a slot whose sprite load fails (backdrop-only fade).
+   * a slot whose sprite load fails (placeholder-only fade).
    */
   key: string | null;
   /** Unity UI `localPosition` offset: +x right, +y up. */
   offsetX: number;
   offsetY: number;
+  /** Slot selector: `_slotStyles` registers exactly `photo` and `cutin`. */
+  style: "cutin" | "photo";
+  /**
+   * `width` — cutin mask width. Native defaults it to the loaded sprite's
+   * native width (the serialized 100x100 placeholder when the load failed).
+   */
+  width?: number;
+}
+
+/**
+ * `AVGShowItemCutinSlot.FadeStyle` — the same seven members (and ordinals)
+ * as the character cutin slot's enum, so it aliases that type.
+ */
+export type ShowItemFadeStyle = CharacterCutinFadeStyle;
+
+/** Photo-slot frame metrics: the item's native size plus the 9-slice border. */
+export interface ShowItemLayout {
+  frameHeight: number;
+  frameWidth: number;
 }
 
 export interface CgItemInput {
@@ -697,7 +721,13 @@ export interface StoryRenderer {
   ) => Promise<void> | void;
   clearImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearLargeImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
-  clearItems: (fadeMs?: number, block?: boolean) => Promise<void> | void;
+  /**
+   * `hasSlot` mirrors whether `Torappu.AVG.AVGShowItemPanel._slotInUse` was
+   * live (i.e. whether `_ExecuteHideItem` blocks). Deliberately not named
+   * `block`: the native executor never reads the story command's `block`
+   * parameter, and the flag only encodes "a slot exists".
+   */
+  clearItems: (fadeMs?: number, hasSlot?: boolean) => Promise<void> | void;
   clearSticker: (id?: string, fadeMs?: number) => Promise<void> | void;
   clearStickers: (fadeMs?: number) => Promise<void> | void;
   clearSpellStickers: () => Promise<void> | void;

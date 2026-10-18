@@ -171,6 +171,20 @@ const dotweenEaseCurves = {
 } satisfies Record<string, EaseCurve>;
 
 /**
+ * `DOTween.defaultEaseType` — the curve a tween runs on when its creator never
+ * calls `SetEase`. `DOTween..cctor` assigns the literal `6` (2.7.71 @
+ * 0x1841bb710, re-verified on 2.7.81 @ 0x184250040), which is `Ease.OutQuad`
+ * in the 1..37 ordinal table below. `DOTween.Init(DOTweenSettings, ...)`
+ * (2.7.81 @ 0x18424c480, reached via InitCheck/AutoInit) then copies the
+ * `Resources/DOTweenSettings` asset's `defaultEaseType` over it; the 2.7.81
+ * asset serializes `6` as well, so the effective default stays OutQuad. Distinct from `dotweenEaseCurve`'s
+ * `undefined` fallback, which models the `Ease.Linear` default that
+ * `GetEnum<Ease>(param, "ease", Ease.Linear, ...)` hands to executors that
+ * read an `ease` story parameter.
+ */
+export const dotweenDefaultEase: EaseCurve = dotweenEaseCurves.OutQuad;
+
+/**
  * DOTween `Ease` ordinal table: `Unset` = 0 through `INTERNAL_Custom` = 37.
  * `EaseManager.Evaluate` gates its switch on `(uint)(easeType - 1) > 0x24`, so
  * only 1..37 get a case of their own and everything else — `Unset` included —

@@ -101,7 +101,9 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     // The photo slot's serialized defaults: _defaultFadeTime 0.5 and
-    // _defaultBlackAlpha 0.4, with offsetx/offsety hardcoded to 0.
+    // _defaultBlackAlpha 0.4, with offsetx/offsety hardcoded to 0. `width`
+    // falls back to the sprite's native size (signalled as NaN here) and
+    // `fadestyle` stays unset (photo never reads it).
     expect(renderer.showItemCalls).toEqual([
       {
         blackAlpha: 0.4,
@@ -110,16 +112,70 @@ describe("StoryRuntime", () => {
         key: "item_act12side_1",
         offsetX: 0,
         offsetY: 0,
+        style: "photo",
+        width: Number.NaN,
       },
     ]);
     // hideitem does not read `block` either: it blocks whenever a slot was in
     // use, which it is here because the preceding showitem filled it.
-    expect(renderer.clearItemsCalls).toEqual([{ block: true, fadeMs: 500 }]);
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 500, hasSlot: true }]);
     expect(warnings).toEqual([]);
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("warns and still plays the backdrop-only slot for a showitem without an image", async () => {
+  it("destroys a lingering show-item slot when playback reaches the story end", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[showitem(image="item_act12side_1")]',
+        '[name="A"]the end',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // The script never runs hideitem; the item stays on screen through the
+    // last dialogue line...
+    expect(renderer.clearItemsCalls).toEqual([]);
+    expect(runtime.getState()).toBe("waiting_input");
+
+    await runtime.advance();
+
+    // ...and the end-of-story reset (native AVGShowItemPanel.OnReset →
+    // _Reset) tears it down without a fade.
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 0, hasSlot: false }]);
+  });
+
+  it("destroys a lingering show-item slot when a skip ends the story", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="skip")]',
+        '[showitem(image="item_act12side_1")]',
+        '[name="A"]skipped',
+        '[skipnode(mode="skip")]',
+        '[name="B"]unreachable',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.clearItemsCalls).toEqual([]);
+
+    await runtime.skipNode();
+
+    // Skipping past the last anchor ends the story, and the native reset
+    // path destroys a live show-item slot on the way out.
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 0, hasSlot: false }]);
+  });
+
+  it("warns and still plays the placeholder slot for a showitem without an image", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
     const runtime = new StoryRuntime(
@@ -136,12 +192,12 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     // Native `_ShowItem` has no empty-image guard: the slot is instantiated,
-    // the sprite load fails and the backdrop-only fade still plays, so the
+    // the sprite load fails and the placeholder fade still plays, so the
     // following hideitem finds a live `_slotInUse` and blocks.
     expect(renderer.showItemCalls).toEqual([
       expect.objectContaining({ fadeMs: 500, key: null }),
     ]);
-    expect(renderer.clearItemsCalls).toEqual([{ block: true, fadeMs: 500 }]);
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 500, hasSlot: true }]);
     expect(warnings).toEqual([
       expect.objectContaining({
         command: "showitem",
@@ -173,8 +229,8 @@ describe("StoryRuntime", () => {
     // hideitem has no slot left to block on.
     expect(renderer.showItemCalls.map((call) => call.key)).toEqual(["item_a"]);
     expect(renderer.clearItemsCalls).toEqual([
-      { block: true, fadeMs: 200 },
-      { block: false, fadeMs: 500 },
+      { fadeMs: 200, hasSlot: true },
+      { fadeMs: 500, hasSlot: false },
     ]);
     expect(warnings).toEqual([
       expect.objectContaining({

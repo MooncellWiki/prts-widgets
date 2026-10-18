@@ -19,6 +19,7 @@ import {
   type RichChar,
   type RichTagStyles,
 } from "./richtext";
+import { parseShowItemFadeStyle } from "./showitem";
 import { expandStoryText } from "./textVariables";
 
 import type { Context } from "../context";
@@ -859,6 +860,9 @@ export class StoryRuntime {
         shouldResume = true;
       } else {
         this.cursor = this.lines.length;
+        // Skipping past the last anchor ends the story, and the native reset
+        // path tears a live show-item slot down on the way out.
+        this.resetItemSlot();
       }
     }
 
@@ -1034,6 +1038,22 @@ export class StoryRuntime {
     this.events.all.clear();
   }
 
+  /**
+   * Native port: `Torappu.AVG.AVGShowItemPanel.OnReset` → `_Reset`
+   * (GameAssembly 2.7.61 @ 0x183E5C1B0). Story end and reset both funnel
+   * through the native reset path: a live `_slotInUse` gameObject is
+   * destroyed without delay and the reference cleared, so the item image and
+   * its black backdrop never outlive the story. Native also runs this after a
+   * skip cut the story short, hence the skipNode call site.
+   */
+  private resetItemSlot(): void {
+    // Native `_Reset` only acts while `_slotInUse` is non-null; after a
+    // hideitem (or a first reset) the slot is already gone.
+    if (!this.itemSlotInUse) return;
+    this.itemSlotInUse = false;
+    void this.renderer.clearItems(0);
+  }
+
   private async processLoop(): Promise<void> {
     if (this.processing) return;
 
@@ -1047,6 +1067,9 @@ export class StoryRuntime {
         if (this.cursor >= this.lines.length) {
           this.renderer.clearAnimTexts();
           this.renderer.clearAvgDisplays();
+          // Native end-of-story reset destroys a lingering show-item slot
+          // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
+          this.resetItemSlot();
           this.state = "finished";
           this.finishLineSeekMissed("finished");
           return;
@@ -1866,24 +1889,13 @@ export class StoryRuntime {
           );
           return "continue";
         }
-        if (style === "cutin")
-          // Native runs `AVGShowItemCutinSlot.Show` (0x183ED2CB0): the mask
-          // expands to `width` (default = the sprite's native width) per
-          // `fadestyle` while the backdrop cross-fades. The cutin animation is
-          // NOT ported — the web port downgrades to the photo alpha fade, so
-          // keep the warning visible instead of pretending parity.
-          this.warn(
-            "unsupported_visual",
-            "showitem style=cutin uses the cutin slot expand animation",
-            line.lineNumber,
-            line.command,
-          );
 
         // Native `_ShowItem` (0x183E5C290) never guards an empty `image`
         // (default ""): it still instantiates the slot, the sprite load fails
-        // and the slot plays its backdrop-only fade, blocking like any other
-        // showitem (and filling `_slotInUse` for a later hideitem). A null key
-        // takes the renderer's failed-load path, which draws exactly that.
+        // and the slot fades in with only its 100x100 placeholder, blocking
+        // like any other showitem (and filling `_slotInUse` for a later
+        // hideitem). A null key takes the renderer's failed-load path, which
+        // draws exactly that.
         const image = toString(this.exactArg(args, "image"));
         const resolved = this.resolveImageKey(image);
         if (!resolved)
@@ -1900,20 +1912,37 @@ export class StoryRuntime {
         // slot's serialized defaults are _defaultFadeTime 0.5 and
         // _defaultBlackAlpha 0.4; offsetx/offsety default to a hardcoded 0.
         await this.renderer.showItem({
-          // The clamp is a web-only guard; native `GetFloat("black", 0.4)`
-          // applies no range constraint.
-          blackAlpha: clamp(toNumber(this.exactArg(args, "black"), 0.4), 0, 1),
+          // `GetFloat("black", 0.4)` applies no range constraint; out-of-range
+          // values saturate at blend time on the Unity side, and the renderer
+          // clamps at its draw sites to the same effect.
+          blackAlpha: toNumber(this.exactArg(args, "black"), 0.4),
           block: true,
           fadeMs,
+          // `fadestyle`/`width` are read only by the cutin slot's Show; an
+          // unknown fadestyle degrades to `fade` (native enum default).
+          fadeStyle: parseShowItemFadeStyle(
+            toString(this.exactArg(args, "fadestyle")),
+          ),
           key: resolved,
           offsetX: toNumber(this.exactArg(args, "offsetx"), 0),
           offsetY: toNumber(this.exactArg(args, "offsety"), 0),
+          style,
+          width: toNumber(this.exactArg(args, "width"), Number.NaN),
         });
         this.itemSlotInUse = true;
         return "continue";
       }
 
       case "hideitem": {
+        // Native port: Torappu.AVG.AVGShowItemPanel._ExecuteHideItem
+        // (GameAssembly 2.7.61 @ 0x183E5BCE0). The executor reads no story
+        // parameter for gating (`block` is ignored); no live slot returns
+        // false, a live slot always returns true and blocks until the slot's
+        // Hide tween completes (_Reset + FinishCommand). `fadetime` falls back
+        // to the slot's own serialized `_defaultFadeTime` (0.5s). The gate is
+        // the `_slotInUse` reference, which showitem fills even for an empty
+        // or unloadable image (that slot fades in with its placeholder,
+        // blocks, and later fades out), and `itemSlotInUse` follows it.
         const hadItem = this.itemSlotInUse;
         this.itemSlotInUse = false;
         await this.renderer.clearItems(

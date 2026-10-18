@@ -1,6 +1,6 @@
 import { Assets } from "pixi.js";
 
-import { STAMP_ASSETS } from "../assets";
+import { SHOWITEM_PHOTO_FRAME_URL, STAMP_ASSETS } from "../assets";
 
 import {
   resolveAssetUrl,
@@ -333,16 +333,21 @@ function collectPreloadAssetUrls(
   // 落入空分支、不登记任何资源引用（native LoadAsset 同步，印章当帧出现）；
   // web 的 Assets.load 异步，首次播放会晚 1-2 帧，故在剧本确实使用 animtext 时
   // 一并预热，让面板内 Assets.load 命中缓存。属 web 适配，非 native 行为移植。
-  if (usesAnimText(lines)) {
+  if (usesCommand(lines, "animtext")) {
     for (const url of Object.values(STAMP_ASSETS)) urls.add(url);
   }
+
+  // showitem photo slot 的九宫格相框同理：native 是场景内置贴图，web 首次
+  // Assets.load 走网络，会把第一次 showitem 的淡入整体推迟，故剧本用到
+  // showitem 时一并预热。属 web 适配。
+  if (usesCommand(lines, "showitem")) urls.add(SHOWITEM_PHOTO_FRAME_URL);
 
   return [...urls];
 }
 
-function usesAnimText(lines: ParsedLine[]): boolean {
+function usesCommand(lines: ParsedLine[], command: string): boolean {
   return lines.some(
-    (line) => line.kind === "command" && line.command === "animtext",
+    (line) => line.kind === "command" && line.command === command,
   );
 }
 
@@ -368,7 +373,7 @@ function showsSamiSpellSticker(lines: ParsedLine[]): boolean {
  */
 function collectPreloadFonts(lines: ParsedLine[]): FontSpec[] {
   const fonts = [DIALOG_FONT];
-  if (usesAnimText(lines)) fonts.push(ANIMTEXT_MAIN_FONT);
+  if (usesCommand(lines, "animtext")) fonts.push(ANIMTEXT_MAIN_FONT);
   if (showsSamiSpellSticker(lines)) fonts.push(...SAMI_FONTS);
   return fonts;
 }
