@@ -627,6 +627,65 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
+  it("ends the video command in-frame when the res asset is known missing", async () => {
+    // Native: CheckVideoExist == false -> Toast(NO_VIDEO_MESSAGE) +
+    // _PlayVideo returns false -> same-frame FinishCommand; the queue keeps
+    // running without ever entering the blocking video state.
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      {
+        ...createContext(['[video(res="video/Gone.mp4")]', '[name="A"]after']),
+        missingVideoUrls: new Set([
+          "https://torappu.prts.wiki/assets/video/gone.mp4",
+        ]),
+      },
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.videoCalls).toEqual([]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail: "video: video/Gone.mp4",
+        type: "missing_asset",
+      }),
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("does not gate the url branch on the existence check, like native", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      {
+        ...createContext([
+          '[video(url="video/Custom.MP4")]',
+          '[name="A"]after',
+        ]),
+        missingVideoUrls: new Set([
+          "https://torappu.prts.wiki/assets/video/custom.mp4",
+        ]),
+      },
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    expect(runtime.getState()).toBe("waiting_video");
+    expect(renderer.videoCalls).toEqual([
+      "https://torappu.prts.wiki/assets/video/custom.mp4",
+    ]);
+
+    renderer.finishVideo();
+    await startPromise;
+  });
+
   it("supports multiline command as dialogue wait", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

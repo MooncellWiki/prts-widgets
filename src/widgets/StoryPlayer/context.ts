@@ -1,8 +1,10 @@
-import { resolveAssetUrl } from "./engine/asset";
+import { resolveAssetUrl, resolveStoryVideoByKey } from "./engine/asset";
 import { parseStory } from "./engine/parser";
 
 import type {
+  ParsedLine,
   StoryCharacterEntry,
+  StoryCommandArgs,
   StoryLinkNode,
   StoryMetadata,
 } from "./engine/types";
@@ -25,6 +27,11 @@ export interface Context {
    * heuristics in the renderer.
    */
   backgroundPpuMap?: Record<string, number>;
+  /**
+   * Resolved `video(res=...)` URLs the CDN definitively reported missing; see
+   * `findMissingVideoUrls`. Absent/empty means every video is attempted.
+   */
+  missingVideoUrls?: ReadonlySet<string>;
 }
 
 function assetUrl(path: string): string {
@@ -262,21 +269,79 @@ async function fetchBackgroundPpuMap(): Promise<Record<string, number>> {
   }
 }
 
+/** Same exact-key, string-coercing read as the runtime `video` executor. */
+function videoArg(args: StoryCommandArgs, key: "res" | "url"): string {
+  const value = Object.prototype.hasOwnProperty.call(args, key)
+    ? args[key]
+    : undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  return "";
+}
+
+async function videoExists(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: "HEAD" });
+    return response.status !== 404 && response.status !== 410;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Native port: `AVGVideoPanel._PlayVideo` gates only the `res` branch on
+ * `VideoManager.CheckVideoExist` (2.7.81 VA 0x183C810F0), i.e.
+ * `RawResManager.CheckExist(TreatVideoPath(res))` where `TreatVideoPath`
+ * swaps `.mp4` for `.usm`. Native answers synchronously from the local raw-res
+ * manifest; the web has none, so each `res` the command loop can reach is
+ * HEAD-probed once while the context loads (the CDN serves the mp4 transcode,
+ * hence the unswapped URL) and the runtime only does a set lookup.
+ *
+ * Only a definitive 404/410 counts as missing. A probe that cannot decide
+ * (network/CORS failure, any other status) leaves the URL to the `<video>`
+ * error path. `url` takes priority and is never checked natively, and
+ * VIDEO_ONLY stories never enter the command loop, so neither is probed.
+ */
+export async function findMissingVideoUrls(
+  lines: readonly ParsedLine[],
+  metadata: StoryMetadata,
+): Promise<Set<string>> {
+  if (metadata.isVideoOnly) return new Set();
+
+  const urls = new Set<string>();
+  for (const line of lines) {
+    if (line.kind !== "command" || line.command !== "video") continue;
+    if (videoArg(line.args, "url")) continue;
+    const resolved = resolveStoryVideoByKey(videoArg(line.args, "res"));
+    if (resolved) urls.add(resolved);
+  }
+
+  const results = await Promise.all(
+    [...urls].map(async (url) => ({ exists: await videoExists(url), url })),
+  );
+  return new Set(results.filter((r) => !r.exists).map((r) => r.url));
+}
+
 export async function loadContextByScript(
   scriptText: string,
 ): Promise<Context> {
-  const [audioVariables, linkMap, backgroundPpuMap] = await Promise.all([
-    ensureStoryVariables(),
-    fetchStoryCharacterMap(),
-    fetchBackgroundPpuMap(),
-  ]);
+  const { lines, metadata } = parseStory(scriptText);
+  const [audioVariables, linkMap, backgroundPpuMap, missingVideoUrls] =
+    await Promise.all([
+      ensureStoryVariables(),
+      fetchStoryCharacterMap(),
+      fetchBackgroundPpuMap(),
+      findMissingVideoUrls(lines, metadata),
+    ]);
 
   return {
     script: scriptText.replace(/\r\n?/g, "\n").split("\n"),
     scriptText,
-    storyMetadata: parseStory(scriptText).metadata,
+    storyMetadata: metadata,
     audioVariables,
     linkMap,
     backgroundPpuMap,
+    missingVideoUrls,
   };
 }

@@ -1,11 +1,13 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  findMissingVideoUrls,
   normalizeBackgroundPpuMap,
   normalizeCharacterMap,
 } from "../src/widgets/StoryPlayer/context";
+import { parseStory } from "../src/widgets/StoryPlayer/engine/parser";
 
 describe("normalizeCharacterMap", () => {
   it("keys the link map by the lowercased base so mixed-case entries resolve", () => {
@@ -159,5 +161,65 @@ describe("normalizeBackgroundPpuMap", () => {
     expect(normalizeBackgroundPpuMap(null)).toEqual({});
     expect(normalizeBackgroundPpuMap([1, 2])).toEqual({});
     expect(normalizeBackgroundPpuMap("nope")).toEqual({});
+  });
+});
+
+describe("findMissingVideoUrls", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("HEAD-probes each res once and only counts 404/410 as missing", async () => {
+    const statuses: Record<string, number> = {
+      "https://torappu.prts.wiki/assets/video/02.mp4": 200,
+      "https://torappu.prts.wiki/assets/video/forbidden.mp4": 403,
+      "https://torappu.prts.wiki/assets/video/gone.mp4": 404,
+      "https://torappu.prts.wiki/assets/video/old.mp4": 410,
+    };
+    const fetchMock = vi.fn(async (url: string) => {
+      const status = statuses[url];
+      if (status === undefined) throw new TypeError("Failed to fetch");
+      return { status };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { lines, metadata } = parseStory([
+      '[Video(res="video/02.mp4")]',
+      '[video(res="video/02.mp4")]',
+      '[video(res="video/Gone.mp4")]',
+      '[video(res="video/old.mp4")]',
+      '[video(res="video/forbidden.mp4")]',
+      '[video(res="video/offline.mp4")]',
+      // `url` takes priority and native never checks it.
+      '[video(url="video/url.mp4", res="video/shadowed.mp4")]',
+    ]);
+
+    const missing = await findMissingVideoUrls(lines, metadata);
+
+    expect([...missing].sort()).toEqual([
+      "https://torappu.prts.wiki/assets/video/gone.mp4",
+      "https://torappu.prts.wiki/assets/video/old.mp4",
+    ]);
+    expect(fetchMock.mock.calls.map(([url]) => url).sort()).toEqual([
+      "https://torappu.prts.wiki/assets/video/02.mp4",
+      "https://torappu.prts.wiki/assets/video/forbidden.mp4",
+      "https://torappu.prts.wiki/assets/video/gone.mp4",
+      "https://torappu.prts.wiki/assets/video/offline.mp4",
+      "https://torappu.prts.wiki/assets/video/old.mp4",
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(String), {
+      method: "HEAD",
+    });
+  });
+
+  it("skips VIDEO_ONLY stories, which never run the video command", async () => {
+    const fetchMock = vi.fn(async () => ({ status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { lines, metadata } = parseStory([
+      '[HEADER(key="x", is_video_only=true)]',
+      '[Video(res="video/act15side/IW01.mp4")]',
+    ]);
+
+    expect(await findMissingVideoUrls(lines, metadata)).toEqual(new Set());
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

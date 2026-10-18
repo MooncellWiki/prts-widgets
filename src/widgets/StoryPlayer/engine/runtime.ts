@@ -1286,11 +1286,20 @@ export class StoryRuntime {
       }
 
       case "video": {
-        // Native port: Torappu.AVG.VideoPanel._ExecuteVideo / _PlayVideo. `url`
-        // takes priority and is used verbatim; only the `res` fallback is resolved
+        // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
+        // (2.7.61: still the legacy bool executor, consumed by the new
+        // ExecutorComponent.Execute(Command, Action) adapter). `url` takes
+        // priority; an http(s) value is emitted verbatim like native
+        // (0x183E68AAD), while any other value goes through the same CDN
+        // normalization as `res` — a web delivery adaptation, native never
+        // converts `url`.
         const url = toString(this.exactArg(args, "url"));
         const res = toString(this.exactArg(args, "res"));
         if (!url && !res) {
+          // Native: DLog.LogError("[AVG.Video] No url or res!") + return
+          // false → ExecutorComponent.Execute finishes the command
+          // synchronously in the same frame (0x183E45C12); no blocking state
+          // is ever entered.
           this.warn("invalid_parameter", "video: no url or res");
           return "continue";
         }
@@ -1303,13 +1312,30 @@ export class StoryRuntime {
           return "continue";
         }
 
+        // Native port: VideoManager.CheckVideoExist (0x183B2FDB0) gates the
+        // `res` branch before playback; a miss raises
+        // Toast(NO_VIDEO_MESSAGE) and _PlayVideo returns false so the command
+        // ends in the same frame (0x183E689FC) without blocking. The `url`
+        // branch has no such check in native. Web adaptation: the existence
+        // answer is HEAD-probed while the context loads
+        // (`findMissingVideoUrls`), so this stays a synchronous lookup like
+        // the native RawResManager one; onWarning is the Toast equivalent.
+        if (!url && this.context.missingVideoUrls?.has(resolved)) {
+          this.warn("missing_asset", `video: ${res}`);
+          return "continue";
+        }
+
         this.state = "waiting_video";
         const interrupted = await this.waitInterruptiblePromise(
           this.renderer.playVideo(resolved),
           () => this.renderer.stopVideo(),
         );
-        // PLAYEND/ERROR finish on the next frame. Force-end is released by the
-        // wrapper immediately and deliberately bypasses this yield.
+        // Native finishes on PLAYEND/ERROR at the END of the CURRENT frame
+        // (InvokeEndOfFrame → WaitForEndOfFrame; 2.7.61 token-verified — the
+        // IDA shared-body symbol InvokeNextFrame is an ICF-fold alias).
+        // `sleep(0)` is the macro-task web approximation. Force-end is
+        // released by CommandExecutorWrapper.ForceEnd synchronously in-frame
+        // and deliberately bypasses this yield.
         if (!interrupted) await this.sleep(0);
         this.state = "running";
         return "continue";
