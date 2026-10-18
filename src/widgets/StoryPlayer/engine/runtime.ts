@@ -19,6 +19,7 @@ import {
   type RichChar,
   type RichTagStyles,
 } from "./richtext";
+import { parseShowItemFadeStyle } from "./showitem";
 import { expandStoryText } from "./textVariables";
 
 import type { Context } from "../context";
@@ -1888,18 +1889,6 @@ export class StoryRuntime {
           );
           return "continue";
         }
-        if (style === "cutin")
-          // Native runs `AVGShowItemCutinSlot.Show` (0x183ED2CB0): the mask
-          // expands to `width` (default = the sprite's native width) per
-          // `fadestyle` while the backdrop cross-fades. The cutin animation is
-          // NOT ported — the web port downgrades to the photo alpha fade, so
-          // keep the warning visible instead of pretending parity.
-          this.warn(
-            "unsupported_visual",
-            "showitem style=cutin uses the cutin slot expand animation",
-            line.lineNumber,
-            line.command,
-          );
 
         // Native `_ShowItem` (0x183E5C290) never guards an empty `image`
         // (default ""): it still instantiates the slot, the sprite load fails
@@ -1922,14 +1911,22 @@ export class StoryRuntime {
         // slot's serialized defaults are _defaultFadeTime 0.5 and
         // _defaultBlackAlpha 0.4; offsetx/offsety default to a hardcoded 0.
         await this.renderer.showItem({
-          // The clamp is a web-only guard; native `GetFloat("black", 0.4)`
-          // applies no range constraint.
-          blackAlpha: clamp(toNumber(this.exactArg(args, "black"), 0.4), 0, 1),
+          // `GetFloat("black", 0.4)` applies no range constraint; out-of-range
+          // values saturate at blend time on the Unity side, and the renderer
+          // clamps at its draw sites to the same effect.
+          blackAlpha: toNumber(this.exactArg(args, "black"), 0.4),
           block: true,
           fadeMs,
+          // `fadestyle`/`width` are read only by the cutin slot's Show; an
+          // unknown fadestyle degrades to `fade` (native enum default).
+          fadeStyle: parseShowItemFadeStyle(
+            toString(this.exactArg(args, "fadestyle")),
+          ),
           key: resolved,
           offsetX: toNumber(this.exactArg(args, "offsetx"), 0),
           offsetY: toNumber(this.exactArg(args, "offsety"), 0),
+          style,
+          width: toNumber(this.exactArg(args, "width"), Number.NaN),
         });
         this.itemSlotInUse = true;
         return "continue";

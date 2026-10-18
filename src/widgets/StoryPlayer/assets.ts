@@ -28,6 +28,14 @@ export const SLIDE_MASK_TEXTURE_URL = new URL(
   import.meta.url,
 ).href;
 
+/** showitem 道具照片的九宫格相框(`sprite_avg_showItem_photo`,120x409、border=32)。
+ *  它是 AVG 场景 sharedassets 的内置贴图(挂在 photo slot prefab 的 `background`
+ *  子物体上),CDN 热更清单和 PRTS 镜像都不分发,只能随 widget 打包。 */
+export const SHOWITEM_PHOTO_FRAME_URL = new URL(
+  "assets/ui/sprite_avg_showItem_photo.png",
+  import.meta.url,
+).href;
+
 /** 地区邮戳（animtext group_location_stamp）各零件贴图 */
 export const STAMP_ASSETS = {
   back_gradient: new URL("assets/ui/back_gradient.png", import.meta.url).href,

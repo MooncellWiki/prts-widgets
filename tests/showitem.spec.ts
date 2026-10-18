@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { computeLegacyShowItemLayout } from "../src/widgets/StoryPlayer/engine/showitem";
+import {
+  computeShowItemLayout,
+  SHOWITEM_FRAME_BORDER,
+} from "../src/widgets/StoryPlayer/engine/showitem";
 
-describe("computeLegacyShowItemLayout", () => {
-  it("translates the legacy 960x540 showitem sizing into the 1280x720 stage", () => {
-    const layout = computeLegacyShowItemLayout(941, 529);
-    expect(layout.borderPx).toBe(10);
-    expect(layout.contentHeight).toBeCloseTo(423.2);
-    expect(layout.contentWidth).toBeCloseTo(752.8);
-    expect(layout.scale).toBeCloseTo(0.8);
+describe("computeShowItemLayout", () => {
+  it("sizes the nine-slice frame at the native sprite size plus 32px padding per side", () => {
+    const layout = computeShowItemLayout(941, 529);
+
+    // Serialized `sprite_avg_showItem_photo` border and the fitter's 32px
+    // padding per side (2.7.51 APK scene, `slot_showItem_photo`).
+    expect(SHOWITEM_FRAME_BORDER).toBe(32);
+    expect(layout.frameWidth).toBe(941 + 32 * 2);
+    expect(layout.frameHeight).toBe(529 + 32 * 2);
   });
 });

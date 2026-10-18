@@ -101,7 +101,9 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     // The photo slot's serialized defaults: _defaultFadeTime 0.5 and
-    // _defaultBlackAlpha 0.4, with offsetx/offsety hardcoded to 0.
+    // _defaultBlackAlpha 0.4, with offsetx/offsety hardcoded to 0. `width`
+    // falls back to the sprite's native size (signalled as NaN here) and
+    // `fadestyle` stays unset (photo never reads it).
     expect(renderer.showItemCalls).toEqual([
       {
         blackAlpha: 0.4,
@@ -110,6 +112,8 @@ describe("StoryRuntime", () => {
         key: "item_act12side_1",
         offsetX: 0,
         offsetY: 0,
+        style: "photo",
+        width: Number.NaN,
       },
     ]);
     // hideitem does not read `block` either: it blocks whenever a slot was in
