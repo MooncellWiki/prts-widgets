@@ -383,7 +383,9 @@ export class StoryRuntime {
     if (this.lineSeek && value === this.lineSeek.target) {
       const { onUpdate, target } = this.lineSeek;
       this.closeLineSeek();
-      this.applyAutoPlayMode("default");
+      // 落在 [theater] 段内时点击全被吞掉，切手动就卡死：交还 theater 自己的
+      // button_auto，等它的 exit 再按缓存恢复
+      this.applyAutoPlayMode(this.theaterMode ? "button_auto" : "default");
       onUpdate({ phase: "reached", target });
     }
   }
@@ -563,6 +565,11 @@ export class StoryRuntime {
     };
   }
 
+  /** theater 期间模式归 theater 所有，UI 据此禁用模式与速度控件 */
+  isTheaterMode(): boolean {
+    return this.theaterMode;
+  }
+
   /** Web 调试适配：注入后 decision 不等面板点击，直接按返回的下标选择 */
   setDecisionPolicy(policy: DecisionPolicy | null): void {
     // 跳转期间策略归跳转所有，外部注入的先存着，等跳转收尾再接管
@@ -645,10 +652,16 @@ export class StoryRuntime {
    * 公开入口 = 使用者发起的模式切换（UI 按钮、点击推进）。只有这条路径上
    * 切离 quick_play 才算人工干预、中止进行中的跳转；脚本命令引起的切换走
    * applyScriptAutoPlayMode，不会被误判。
+   *
+   * theater 期间原生隐藏 HUD，玩家切不了模式，模式归 theater 所有直到 exit
+   * 按缓存恢复。Web 的公开入口（模式按钮、Log All、调试页摘跳转）还在，这里
+   * 一律落到 theater 自己的 button_auto：切成手动的话点击被吞、自动点击也
+   * 不再调度，剧情就卡死了。
    */
-  setAutoPlayMode(mode: AutoPlayMode): void {
+  setAutoPlayMode(requested: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
+    const mode = this.theaterMode ? "button_auto" : requested;
     if (this.autoPlayMode === mode) return;
 
     // 模式以本次调用为准，不再改
@@ -813,14 +826,17 @@ export class StoryRuntime {
       // playback never continues past the anchor. Web adaptation: only the
       // real jump resets; native also runs this tail for an already-crossed
       // anchor (a no-op jump), which canSkipNode() precludes here.
-      this.setAutoPlayMode("default");
+      //
       // The same tail then zeroes the whole m_storyCache (0x183ec7205), theater
       // flag included, so OnClickPress stops swallowing clicks; leaving
       // theaterMode set would strand the story with no auto click and no
       // manual advance. The pre-theater auto state (autoPlayModeCache /
       // m_needResumeAutoStatus) lives on AVGController outside the cache and
       // survives: theaterAutoPlayCache is kept for a later [theater(mode=false)].
+      // Web order: the flag goes first, since setAutoPlayMode pins an active
+      // theater to button_auto.
       this.theaterMode = false;
+      this.setAutoPlayMode("default");
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.
@@ -3353,39 +3369,34 @@ export class StoryRuntime {
       case "theater": {
         // Native port: Torappu.AVG.AVGTheaterLabel._ExecuteTheaterNode. Web adapts
         // the native theater UI mode to autoplay state only.
+        // AVGController.SetTheaterMode gates only on get_isRunning, so both
+        // branches of _SetTheaterModeStatus (2.7.81 VA 0x183f92420) run
+        // whether or not theater mode is already active.
         const mode = toBoolean(this.exactArg(args, "mode"), true);
-        if (mode && !this.theaterMode) {
+        if (mode) {
+          // _SaveAutoStatus runs on every enter: a nested [theater] re-saves
+          // the theater's own button auto, so the exit then stays in auto.
           this.theaterAutoPlayCache = this.getAutoPlayState();
           this.theaterMode = true;
           this.buttonSpeedLevel = 0;
           this.applyScriptAutoPlayMode("button_auto");
-        } else if (!mode) {
-          // Native AVGController.SetTheaterMode(false) runs unconditionally
-          // while a story is running (the only gate is get_isRunning /
-          // m_story != null): the exit path always executes, whether or not
-          // theater mode is currently active. _SetTheaterModeStatus does
-          // _StopAutoClick() first, then the saved status decides between
-          // restore and reset — the cache below keys on exactly that. It
-          // survives a SkipToThis jump (native m_needResumeAutoStatus): the
-          // jump clears the theater flag but keeps the cache, so a later
-          // [theater(mode=false)] still restores it. Restoring maps a cached
-          // "quick_play" to "default" (native QUICK_PLAY=2 → DEFAULT=0), and
-          // no cache at all falls back to set_autoPlayMode(DEFAULT): an
-          // unpaired [theater(mode=false)] resets a running auto-play to
-          // manual, it is not a no-op. applyScriptAutoPlayMode("default")
-          // covers _StopAutoClick() as well: it cancels the pending auto
-          // click when the mode changes, and in "default" no click is ever
-          // scheduled.
-          this.theaterMode = false;
+        } else {
+          // _StopAutoClick() on every exit, then restore the saved status
+          // (m_needResumeAutoStatus; QUICK_PLAY maps to DEFAULT) or, with
+          // nothing saved, set_autoPlayMode(DEFAULT): an unpaired exit drops
+          // a running auto play to manual. The cache outliving a SkipToThis
+          // jump is covered in skipNode().
+          this.cancelAutoClick();
           const cached = this.theaterAutoPlayCache;
+          this.theaterMode = false;
           this.theaterAutoPlayCache = null;
+          let restoreMode: AutoPlayMode = "default";
           if (cached) {
             this.buttonSpeedLevel = cached.buttonSpeedLevel;
             this.quickSpeedLevel = cached.quickSpeedLevel;
+            if (cached.mode !== "quick_play") restoreMode = cached.mode;
           }
-          this.applyScriptAutoPlayMode(
-            cached && cached.mode !== "quick_play" ? cached.mode : "default",
-          );
+          this.applyScriptAutoPlayMode(restoreMode);
         }
         return "continue";
       }

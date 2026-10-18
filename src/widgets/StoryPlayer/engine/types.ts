@@ -801,6 +801,8 @@ export interface StoryPlayer {
   /** 当前播放位置：显示中的源行 + 实际执行过的全部选择历史（用于 Log All 路径求值） */
   getLogPosition: () => RuntimeLogPosition;
   getState: () => PlayerState;
+  /** theater 期间模式由剧情接管（原生隐藏 HUD），setAutoPlayMode 固定落到 button_auto */
+  isTheaterMode: () => boolean;
   mount: (host: HTMLElement) => Promise<void>;
   /**
    * Web 适配（无原生对应）：注册当前显示行变更推送，替代 UI 轮询
