@@ -176,6 +176,166 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("resets a running auto play on an unpaired theater exit", async () => {
+    // Native SetTheaterMode(false) executes unconditionally: without a saved
+    // auto status (_SetTheaterModeStatus !m_needResumeAutoStatus branch) it
+    // does _StopAutoClick() + set_autoPlayMode(DEFAULT), so a lone
+    // [theater(mode=false)] drops the player out of auto play instead of
+    // being a no-op (corpus: act25side/level_act25side_02_beg.txt:616).
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]hi',
+          "[theater(mode=false)]",
+          '[name="B"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+
+      // Auto-advance past "hi" (1.5s + 2 chars * 0.03s), through the unpaired
+      // theater exit, onto "next".
+      await vi.advanceTimersByTimeAsync(1560);
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+
+      // Auto was reset to manual: "next" no longer auto-advances.
+      await vi.advanceTimersByTimeAsync(1620);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resets a running quick play on an unpaired theater exit", async () => {
+    // Same branch as the button_auto case above: with no saved status the
+    // exit lands on set_autoPlayMode(DEFAULT) regardless of which auto mode
+    // was running when the lone [theater(mode=false)] fired.
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]hi',
+          "[theater(mode=false)]",
+          '[name="B"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("quick_play");
+
+      // Quick play folds the auto wait to ~0.025s: one generous window is
+      // enough to type "hi", auto-click through the unpaired theater exit
+      // and land on "next".
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+
+      // Quick play did not survive the unpaired exit: no further advancing.
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores the saved mode and both speed levels on a paired theater exit", async () => {
+    // _SetTheaterModeStatus enter saves autoPlayModeCache + btnAutoModeCache
+    // and zeroes the button level; the exit puts both back, mapping a cached
+    // QUICK_PLAY to DEFAULT.
+    const runtime = new StoryRuntime(
+      createContext(["[theater]", "[theater(mode=false)]", '[name="B"]manual']),
+      new FakeRenderer(),
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    runtime.setAutoPlaySpeedLevel(2);
+    runtime.setAutoPlayMode("quick_play");
+    runtime.setAutoPlaySpeedLevel(1);
+
+    await runtime.start();
+
+    expect(runtime.getAutoPlayState()).toEqual({
+      buttonSpeedLevel: 2,
+      mode: "default",
+      quickSpeedLevel: 1,
+    });
+  });
+
+  it("re-saves the theater's own button auto on a nested theater enter", async () => {
+    // _SaveAutoStatus runs on every SetTheaterMode(true): the second enter
+    // caches BUTTON_AUTO at level 0, so the exit leaves the story in auto
+    // even though it started in manual.
+    const runtime = new StoryRuntime(
+      createContext([
+        "[theater]",
+        "[theater]",
+        "[theater(mode=false)]",
+        '[name="B"]next',
+      ]),
+      new FakeRenderer(),
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(runtime.isTheaterMode()).toBe(false);
+    expect(runtime.getAutoPlayState()).toMatchObject({
+      buttonSpeedLevel: 0,
+      mode: "button_auto",
+    });
+  });
+
+  it("pins public mode changes to button auto inside theater", async () => {
+    // Native hides the HUD during theater. Web still exposes the mode picker
+    // and Log All's switch to manual; landing in manual would strand the
+    // story, since theater swallows every click.
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          "[theater]",
+          '[name="A"]一',
+          '[name="A"]二',
+          "[theater(mode=false)]",
+          '[name="B"]三',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      expect(runtime.isTheaterMode()).toBe(true);
+
+      runtime.setAutoPlayMode("default");
+      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+      runtime.setAutoPlayMode("quick_play");
+      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+
+      // Still auto-advancing: "一" (1.5s + 0.03s) hands over to "二".
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "二" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("auto-advances after the native button-auto delay and stops at endtip", async () => {
     vi.useFakeTimers();
     try {

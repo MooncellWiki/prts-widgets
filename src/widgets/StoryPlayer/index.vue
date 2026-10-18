@@ -72,6 +72,8 @@ const preloadReady = ref(false);
 const canSkipNode = ref(false);
 const state = ref<PlayerState>("idle");
 const autoPlayMode = ref<AutoPlayMode>("default");
+// theater 期间原生隐藏 HUD，模式与速度归剧情接管
+const theaterMode = ref(false);
 const buttonSpeedLevel = ref(0);
 const quickSpeedLevel = ref(0);
 const preloadPercent = computed(() => Math.round(preloadProgress.value * 100));
@@ -134,6 +136,7 @@ const playModeOptions: ReadonlyArray<{ label: string; value: AutoPlayMode }> = [
 function syncState(): void {
   state.value = player?.getState() ?? "idle";
   canSkipNode.value = player?.canSkipNode() ?? false;
+  theaterMode.value = player?.isTheaterMode() ?? false;
   const autoPlay = player?.getAutoPlayState();
   if (autoPlay) {
     autoPlayMode.value = autoPlay.mode;
@@ -529,7 +532,7 @@ defineExpose({
                   v-for="option in playModeOptions"
                   :key="option.value"
                   :type="autoPlayMode === option.value ? 'primary' : 'default'"
-                  :disabled="controlsDisabled"
+                  :disabled="controlsDisabled || theaterMode"
                   @click="setAutoPlayMode(option.value)"
                 >
                   {{ option.label }}
@@ -611,7 +614,9 @@ defineExpose({
                 style="width: 96px"
                 :value="currentSpeedLevel"
                 :options="speedOptions"
-                :disabled="controlsDisabled || autoPlayMode === 'default'"
+                :disabled="
+                  controlsDisabled || theaterMode || autoPlayMode === 'default'
+                "
                 @update:value="setAutoPlaySpeedLevel"
               />
             </NSpace>

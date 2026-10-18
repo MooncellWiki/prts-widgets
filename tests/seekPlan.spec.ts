@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { planChoicesForLine } from "../src/widgets/StoryPlayer/engine/log/seek";
 import { analyzeStoryFlow } from "../src/widgets/StoryPlayer/engine/log/symbolicFlow";
@@ -310,6 +310,58 @@ describe("StoryRuntime seekToLine", () => {
       phase: "reached",
       target: 4,
     });
+  });
+
+  it("keeps seeking across an unpaired [theater(mode=false)]", async () => {
+    // 无缓存的未配对退出会把 running auto play 重置为 default(flow.spec 的
+    // 未配对用例)。跳转中途落进 default 就再也推不动——applyScriptAutoPlayMode
+    // 的跳转夺回逻辑必须立即切回 quick_play,本用例锁住这一点:卡住的话
+    // waitForTerminal 会超时。目标不能紧跟在 exit 后面:那一行不用自动点击
+    // 也会显示出来,夺回逻辑坏了也照样到达
+    const runtime = seekRuntime([
+      '[name="A"]一', // line 1
+      "[theater(mode=false)]", // line 2:unpaired exit,cache 已空
+      '[name="A"]二', // line 3:要靠自动点击才能推过去
+      '[name="A"]三', // line 4:目标行
+    ]);
+    const updates: LineSeekUpdate[] = [];
+    runtime.seekToLine(4, new Map(), (update) => updates.push(update));
+
+    await runtime.start();
+    expect(await waitForTerminal(updates)).toEqual({
+      phase: "reached",
+      target: 4,
+    });
+    expect(runtime.getDisplayedLineIndex()).toBe(4);
+  });
+
+  it("hands a target inside [theater] back to the theater's button auto", async () => {
+    // theater 段内点击全被吞掉，到达后若照常切手动就再也推不动。交还
+    // button_auto 后剧情自己播到 exit，exit 再把跳转期间缓存的 quick_play
+    // 映射回 default
+    const runtime = seekRuntime([
+      "[theater]", // line 1
+      '[name="A"]一', // line 2
+      '[name="A"]二', // line 3：目标行
+      "[theater(mode=false)]", // line 4
+      '[name="A"]三', // line 5
+    ]);
+    const updates: LineSeekUpdate[] = [];
+    let modeAtReach: string | undefined;
+    runtime.seekToLine(3, new Map(), (update) => {
+      updates.push(update);
+      if (update.phase === "reached")
+        modeAtReach = runtime.getAutoPlayState().mode;
+    });
+
+    await runtime.start();
+    expect(await waitForTerminal(updates)).toEqual({
+      phase: "reached",
+      target: 3,
+    });
+    expect(modeAtReach).toBe("button_auto");
+    await vi.waitFor(() => expect(runtime.getDisplayedLineIndex()).toBe(5));
+    expect(runtime.getAutoPlayState().mode).toBe("default");
   });
 
   it("reports missed when the whole script plays out without the target", async () => {

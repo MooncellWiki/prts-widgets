@@ -123,6 +123,10 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       return runtime?.getState() ?? "idle";
     },
 
+    isTheaterMode(): boolean {
+      return runtime?.isTheaterMode() ?? false;
+    },
+
     setAutoPlayMode(mode: AutoPlayMode): void {
       ensureRuntime().setAutoPlayMode(mode);
     },
