@@ -216,6 +216,44 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("resets a running quick play on an unpaired theater exit", async () => {
+    // Same branch as the button_auto case above: with no saved status the
+    // exit lands on set_autoPlayMode(DEFAULT) regardless of which auto mode
+    // was running when the lone [theater(mode=false)] fired.
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]hi',
+          "[theater(mode=false)]",
+          '[name="B"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      runtime.setAutoPlayMode("quick_play");
+
+      // Quick play folds the auto wait to ~0.025s: one generous window is
+      // enough to type "hi", auto-click through the unpaired theater exit
+      // and land on "next".
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+
+      // Quick play did not survive the unpaired exit: no further advancing.
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+      expect(runtime.getState()).toBe("waiting_input");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("auto-advances after the native button-auto delay and stops at endtip", async () => {
     vi.useFakeTimers();
     try {

@@ -312,6 +312,27 @@ describe("StoryRuntime seekToLine", () => {
     });
   });
 
+  it("keeps seeking across an unpaired [theater(mode=false)]", async () => {
+    // 无缓存的未配对退出会把 running auto play 重置为 default(flow.spec 的
+    // 未配对用例)。跳转中途落进 default 就再也推不动——applyScriptAutoPlayMode
+    // 的跳转夺回逻辑必须立即切回 quick_play,本用例锁住这一点:卡住的话
+    // waitForTerminal 会超时。
+    const runtime = seekRuntime([
+      '[name="A"]一', // line 1
+      "[theater(mode=false)]", // line 2:unpaired exit,cache 已空
+      '[name="A"]二', // line 3:目标行
+    ]);
+    const updates: LineSeekUpdate[] = [];
+    runtime.seekToLine(3, new Map(), (update) => updates.push(update));
+
+    await runtime.start();
+    expect(await waitForTerminal(updates)).toEqual({
+      phase: "reached",
+      target: 3,
+    });
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+  });
+
   it("reports missed when the whole script plays out without the target", async () => {
     // parser 会补一条隐式 endtip，它同样要切回手动——不能变成 aborted
     const runtime = seekRuntime(['[name="A"]一', '[name="A"]二']);

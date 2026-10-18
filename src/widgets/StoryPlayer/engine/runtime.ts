@@ -3360,30 +3360,32 @@ export class StoryRuntime {
           this.buttonSpeedLevel = 0;
           this.applyScriptAutoPlayMode("button_auto");
         } else if (!mode) {
-          // Keyed on the cache (native m_needResumeAutoStatus), not on
-          // theaterMode: a SkipToThis jump clears the theater flag but keeps
-          // the cache, and native's exit still restores it afterwards.
-          // Native AVGController.SetTheaterMode(false) runs unconditionally while
-          // a story is running (only gate is get_isRunning): _SetTheaterModeStatus's
-          // exit path does _StopAutoClick() first and, when no status was saved
-          // (unpaired exit, !m_needResumeAutoStatus), falls back to
-          // set_autoPlayMode(DEFAULT) instead of restoring. So an unpaired
-          // [theater(mode=false)] resets a running auto-play to manual — not a
-          // no-op. applyScriptAutoPlayMode("default") covers _StopAutoClick() as
-          // well: it cancels the pending auto click when the mode changes, and in
-          // "default" no click is ever scheduled.
+          // Native AVGController.SetTheaterMode(false) runs unconditionally
+          // while a story is running (the only gate is get_isRunning /
+          // m_story != null): the exit path always executes, whether or not
+          // theater mode is currently active. _SetTheaterModeStatus does
+          // _StopAutoClick() first, then the saved status decides between
+          // restore and reset — the cache below keys on exactly that. It
+          // survives a SkipToThis jump (native m_needResumeAutoStatus): the
+          // jump clears the theater flag but keeps the cache, so a later
+          // [theater(mode=false)] still restores it. Restoring maps a cached
+          // "quick_play" to "default" (native QUICK_PLAY=2 → DEFAULT=0), and
+          // no cache at all falls back to set_autoPlayMode(DEFAULT): an
+          // unpaired [theater(mode=false)] resets a running auto-play to
+          // manual, it is not a no-op. applyScriptAutoPlayMode("default")
+          // covers _StopAutoClick() as well: it cancels the pending auto
+          // click when the mode changes, and in "default" no click is ever
+          // scheduled.
           this.theaterMode = false;
           const cached = this.theaterAutoPlayCache;
           this.theaterAutoPlayCache = null;
           if (cached) {
             this.buttonSpeedLevel = cached.buttonSpeedLevel;
             this.quickSpeedLevel = cached.quickSpeedLevel;
-            this.applyScriptAutoPlayMode(
-              cached.mode === "quick_play" ? "default" : cached.mode,
-            );
-          } else {
-            this.applyScriptAutoPlayMode("default");
           }
+          this.applyScriptAutoPlayMode(
+            cached && cached.mode !== "quick_play" ? cached.mode : "default",
+          );
         }
         return "continue";
       }
