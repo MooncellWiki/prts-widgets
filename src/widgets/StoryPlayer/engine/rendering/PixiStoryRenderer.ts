@@ -437,6 +437,22 @@ interface CurtainRenderState {
   tweenSessionId: number;
 }
 
+/** A loaded `image_item` sprite at its native size (`SetNativeSize`). */
+function createShowItemSprite(texture: Texture): Sprite {
+  const sprite = new Sprite(texture);
+  sprite.anchor.set(0.5);
+  return sprite;
+}
+
+/**
+ * `image_item` after a failed load: `AVGShowItemSlot.Show` skips both the
+ * sprite assignment and `SetNativeSize`, and a Unity Image without a sprite
+ * still renders its white color as a solid quad at the serialized 100x100.
+ */
+function createShowItemPlaceholder(): Graphics {
+  return new Graphics().rect(-50, -50, 100, 100).fill(0xff_ff_ff);
+}
+
 /**
  * Live state of the cutin show-item slot: the RectMask2D window (`offset` →
  * `mask`, targetW x 720 in canvas units) and the plate/header that stretch
@@ -451,7 +467,11 @@ interface ShowItemCutinState {
   cy: number;
   /** `_showFadeStyle` as stored by the cutin Show and reused by Hide. */
   fadeStyle: ShowItemFadeStyle;
-  /** `header` strip sprite (`sprite_avg_cutscene` tinted black, 200px). */
+  /**
+   * `header` strip (`sprite_avg_cutscene` tinted black at 0.706): a 200px
+   * child of the plate pinned to the window's top edge, rotated 180°, so the
+   * window clips its top 50px and shows 150px fading downward.
+   */
   header: Sprite | null;
   /** Mask window graphics; siblings with the slot container, root coords. */
   mask: Graphics;
@@ -1560,8 +1580,8 @@ export class PixiStoryRenderer implements StoryRenderer {
    * serialized prefab: photo renders the item at native size over the bundled
    * nine-slice `sprite_avg_showItem_photo` frame (item + 32px per side, see
    * engine/showitem.ts); cutin renders the RectMask2D window (0.192-gray
-   * stretch plate + 200px header strip + item) that `fadestyle` expands from
-   * one edge while the black backdrop cross-fades.
+   * stretch plate + header strip + item) that `fadestyle` expands from one
+   * edge while the black backdrop cross-fades.
    */
   async showItem(input: ShowItemInput): Promise<void> {
     const chain = async (): Promise<void> => {
@@ -1586,7 +1606,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       // leaves native `_image` at its serialized 100x100 placeholder
       // (`SetNativeSize` is skipped), which is also the fallback behind the
       // cutin `width` key.
-      const sprite = texture ? new Sprite(texture) : null;
+      const image = texture
+        ? createShowItemSprite(texture)
+        : createShowItemPlaceholder();
       const cutinWidth = Number.isFinite(input.width)
         ? Math.round(input.width!)
         : (texture?.width ?? 100);
@@ -1629,8 +1651,8 @@ export class PixiStoryRenderer implements StoryRenderer {
           contentY,
           fadeStyle,
           headerTexture,
+          image,
           root,
-          sprite,
           targetW: cutinWidth,
         });
         if (cutinExpand) {
@@ -1658,11 +1680,11 @@ export class PixiStoryRenderer implements StoryRenderer {
           });
           return;
         }
-      } else if (frameTexture || sprite) {
+      } else {
         // Prefab child order: `black` (backdrop) < `background` (frame) <
-        // `image_item`, all centered. `offsetx/offsety` move `_image` only,
-        // and the frame's RectTransform fitter tracks it, so the web port
-        // moves frame and sprite as one group.
+        // `image_item`, all centered. `offsetx/offsety` move `_image` only;
+        // the sibling frame's `UICustomAnchor` re-fits it to `image_item`
+        // plus 32px every frame, so the web port moves both as one group.
         const layout = computeShowItemLayout(
           texture ? texture.width : 100,
           texture ? texture.height : 100,
@@ -1682,10 +1704,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           frame.height = layout.frameHeight;
           content.addChild(frame);
         }
-        if (sprite) {
-          sprite.anchor.set(0.5);
-          content.addChild(sprite);
-        }
+        content.addChild(image);
         root.addChild(content);
       }
 
@@ -1718,8 +1737,8 @@ export class PixiStoryRenderer implements StoryRenderer {
   /**
    * Builds the cutin slot subtree: the full-canvas `black` sits outside the
    * mask, while `offset` -> `mask` (RectMask2D) clips the 0.192-gray stretch
-   * plate, the 200px `sprite_avg_cutscene` header strip (tinted black at
-   * 0.706) and the centered item. The window starts at full extent for
+   * plate, its `sprite_avg_cutscene` header strip (tinted black at 0.706)
+   * and the centered item. The window starts at full extent for
    * `fade` and zero extent along the expansion axis otherwise, matching the
    * state Show seeds before its tween starts.
    */
@@ -1729,11 +1748,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     contentY: number;
     fadeStyle: ShowItemFadeStyle;
     headerTexture: Texture | null;
+    image: Container;
     root: Container;
-    sprite: Sprite | null;
     targetW: number;
   }): ShowItemCutinState {
-    // `_offsetTransform` stretches the canvas, so the mask height is 720.
+    // `offset` stretches over the fixed 1280x720 `panel_avg` and Show sizes
+    // the mask to its rect height, so the window is 720 tall.
     const targetH = STORY_HEIGHT;
     const slot = new Container();
     slot.position.set(args.contentX, args.contentY);
@@ -1741,16 +1761,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     slot.addChild(plate);
     let header: Sprite | null = null;
     if (args.headerTexture) {
+      // Pivot bottom-center at 50px above the window top, rotated 180°
+      // around Z: the strip hangs 150px into the window upside down.
       header = new Sprite(args.headerTexture);
+      header.anchor.set(0.5, 1);
+      header.rotation = Math.PI;
       header.tint = 0x00_00_00;
       header.alpha = 0.706;
       header.height = 200;
       slot.addChild(header);
     }
-    if (args.sprite) {
-      args.sprite.anchor.set(0.5);
-      slot.addChild(args.sprite);
-    }
+    slot.addChild(args.image);
     const mask = new Graphics();
     args.root.addChild(mask);
     slot.mask = mask;
@@ -1821,7 +1842,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       .fill(0xff_ff_ff);
     state.plate.clear().rect(x, y, w, h).fill(0x31_31_31);
     if (state.header) {
-      state.header.position.set(x, y);
+      state.header.position.set(x + w / 2, y - 50);
       state.header.width = w;
     }
   }

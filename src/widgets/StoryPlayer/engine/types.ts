@@ -411,7 +411,7 @@ export interface ShowItemInput {
   fadeStyle?: ShowItemFadeStyle;
   /**
    * Item image key; null for an empty `image`, which native still turns into
-   * a slot whose sprite load fails (backdrop-only fade).
+   * a slot whose sprite load fails (placeholder-only fade).
    */
   key: string | null;
   /** Unity UI `localPosition` offset: +x right, +y up. */

@@ -175,7 +175,7 @@ describe("StoryRuntime", () => {
     expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 0, hasSlot: false }]);
   });
 
-  it("warns and still plays the backdrop-only slot for a showitem without an image", async () => {
+  it("warns and still plays the placeholder slot for a showitem without an image", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
     const runtime = new StoryRuntime(
@@ -192,12 +192,12 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     // Native `_ShowItem` has no empty-image guard: the slot is instantiated,
-    // the sprite load fails and the backdrop-only fade still plays, so the
+    // the sprite load fails and the placeholder fade still plays, so the
     // following hideitem finds a live `_slotInUse` and blocks.
     expect(renderer.showItemCalls).toEqual([
       expect.objectContaining({ fadeMs: 500, key: null }),
     ]);
-    expect(renderer.clearItemsCalls).toEqual([{ block: true, fadeMs: 500 }]);
+    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 500, hasSlot: true }]);
     expect(warnings).toEqual([
       expect.objectContaining({
         command: "showitem",
@@ -229,8 +229,8 @@ describe("StoryRuntime", () => {
     // hideitem has no slot left to block on.
     expect(renderer.showItemCalls.map((call) => call.key)).toEqual(["item_a"]);
     expect(renderer.clearItemsCalls).toEqual([
-      { block: true, fadeMs: 200 },
-      { block: false, fadeMs: 500 },
+      { fadeMs: 200, hasSlot: true },
+      { fadeMs: 500, hasSlot: false },
     ]);
     expect(warnings).toEqual([
       expect.objectContaining({

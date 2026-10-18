@@ -1,5 +1,6 @@
 import {
   Container,
+  Graphics,
   NineSliceSprite,
   Sprite,
   Texture,
@@ -142,10 +143,11 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.itemLayer.children).toHaveLength(2);
   });
 
-  it("plays the backdrop-only fade when the item texture fails to load", async () => {
+  it("plays the placeholder fade when the item texture fails to load", async () => {
     const renderer = createRenderer();
     // Both the item texture and the bundled frame texture are unavailable:
-    // the root degrades to the black backdrop alone.
+    // the root keeps the black backdrop and the 100x100 white `image_item`
+    // placeholder a sprite-less Unity Image still draws.
     renderer.showItemFrameTextureFailed = true;
     const { tween, tweens } = createManualTweens();
     renderer.tween = tween;
@@ -157,7 +159,11 @@ describe("PixiStoryRenderer", () => {
     await flushAsync();
     expect(renderer.itemLayer.children).toHaveLength(1);
     const root = renderer.itemLayer.children[0];
-    expect(root.children).toHaveLength(1);
+    expect(root.children).toHaveLength(2);
+    const placeholder = root.children[1].children[0];
+    expect(placeholder).toBeInstanceOf(Graphics);
+    expect(placeholder.width).toBe(100);
+    expect(placeholder.height).toBe(100);
     expect(tweens.map((entry) => entry.durationMs)).toEqual([500]);
     tweens[0].complete();
     await call;
@@ -355,16 +361,55 @@ describe("PixiStoryRenderer", () => {
     expect(stamp.parent).toBe(renderer.itemLayer);
   });
 
-  it("skips the texture lookup for an empty image but keeps the backdrop-only slot", async () => {
+  it("skips the texture lookup for an empty image but keeps the framed placeholder slot", async () => {
     const renderer = createRenderer();
+    renderer.showItemFrameTexture = new Texture({ label: "frame" });
     renderer.textureForImageKey = vi.fn(
       async () => new Texture({ label: "item" }),
     );
 
     await renderer.showItem(createShowItemInput({ fadeMs: 0, key: null }));
 
+    // Native still instantiates the slot: backdrop plus the frame around the
+    // serialized 100x100 white `_image` placeholder, without a sprite.
     expect(renderer.textureForImageKey).not.toHaveBeenCalled();
-    expect(renderer.itemLayer.children).toHaveLength(1);
-    expect(renderer.itemLayer.children[0].children).toHaveLength(1);
+    const root = renderer.itemLayer.children[0];
+    const content = root.children.at(-1)!;
+    expect(content.children).toHaveLength(2);
+    const frame = content.children[0] as NineSliceSprite;
+    expect(frame.width).toBe(100 + 32 * 2);
+    expect(frame.height).toBe(100 + 32 * 2);
+    expect(content.children[1]).toBeInstanceOf(Graphics);
+  });
+
+  it("hangs the cutin header 150px into the window top, rotated 180 degrees", async () => {
+    const renderer = createRenderer();
+    renderer.dialogFrameTexture = new Texture({
+      label: "header",
+      source: new TextureSource({ height: 310, width: 4 }),
+    });
+    renderer.textureForImageKey = vi.fn(
+      async () => new Texture({ label: "item" }),
+    );
+
+    await renderer.showItem(
+      createShowItemInput({ fadeMs: 0, style: "cutin", width: 200 }),
+    );
+
+    // `header` is a 200px child of the plate: pivot bottom-center at 50px
+    // above the window top, rotated 180°, so the mask clips 50px and 150px
+    // hang into the window (upside down) across the full window width.
+    const header = renderer.showItemCutin.header as Sprite;
+    expect(header.rotation).toBeCloseTo(Math.PI);
+    expect(header.anchor.x).toBe(0.5);
+    expect(header.anchor.y).toBe(1);
+    expect(header.width).toBeCloseTo(200);
+    expect(header.height).toBeCloseTo(200);
+    expect(header.position.x).toBeCloseTo(0);
+    expect(header.position.y).toBeCloseTo(-360 - 50);
+    // The 720-tall window spans the stage, so its top edge sits at y = 0.
+    const bounds = header.getBounds();
+    expect(bounds.minY).toBeCloseTo(-50);
+    expect(bounds.maxY).toBeCloseTo(150);
   });
 });

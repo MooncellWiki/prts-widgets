@@ -1892,9 +1892,10 @@ export class StoryRuntime {
 
         // Native `_ShowItem` (0x183E5C290) never guards an empty `image`
         // (default ""): it still instantiates the slot, the sprite load fails
-        // and the slot plays its backdrop-only fade, blocking like any other
-        // showitem (and filling `_slotInUse` for a later hideitem). A null key
-        // takes the renderer's failed-load path, which draws exactly that.
+        // and the slot fades in with only its 100x100 placeholder, blocking
+        // like any other showitem (and filling `_slotInUse` for a later
+        // hideitem). A null key takes the renderer's failed-load path, which
+        // draws exactly that.
         const image = toString(this.exactArg(args, "image"));
         const resolved = this.resolveImageKey(image);
         if (!resolved)
@@ -1937,13 +1938,11 @@ export class StoryRuntime {
         // (GameAssembly 2.7.61 @ 0x183E5BCE0). The executor reads no story
         // parameter for gating (`block` is ignored); no live slot returns
         // false, a live slot always returns true and blocks until the slot's
-        // Hide tween completes (_Reset + FinishCommand). `fadetime` comes from
-        // the slot's own serialized default (0.5s). Known deviation from
-        // native: the Unity-side gate is the `_slotInUse` object reference,
-        // which showitem sets even when the image asset fails to load (an
-        // empty slot still fades in, blocks, and later fades out); the web
-        // flag is only raised after a rendered showitem, so a failed showitem
-        // turns the following hideitem into a non-blocking no-op.
+        // Hide tween completes (_Reset + FinishCommand). `fadetime` falls back
+        // to the slot's own serialized `_defaultFadeTime` (0.5s). The gate is
+        // the `_slotInUse` reference, which showitem fills even for an empty
+        // or unloadable image (that slot fades in with its placeholder,
+        // blocks, and later fades out), and `itemSlotInUse` follows it.
         const hadItem = this.itemSlotInUse;
         this.itemSlotInUse = false;
         await this.renderer.clearItems(
