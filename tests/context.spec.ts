@@ -86,6 +86,47 @@ describe("normalizeCharacterMap", () => {
   });
 });
 
+describe("normalizeCharacterMap body/index", () => {
+  const entries = (array: unknown[]) =>
+    normalizeCharacterMap({
+      avg_npc_9: {
+        array,
+        groups: [],
+        pos: { x: 0, y: 0 },
+        size: { x: 0, y: 0 },
+      },
+    }).avg_npc_9?.array;
+
+  it("keeps the prefab slot of each entry", () => {
+    expect(
+      entries([
+        {
+          alias: "",
+          body: 1,
+          group: -1,
+          image: "a/1$2",
+          index: 3,
+          name: "1$2",
+        },
+      ]),
+    ).toEqual([
+      { alias: "", body: 1, group: -1, image: "a/1$2", index: 3, name: "1$2" },
+    ]);
+  });
+
+  it("drops a slot unless both body and index are integers", () => {
+    const [onlyBody, fractional, text] = entries([
+      { alias: "", body: 1, group: -1, image: "a/1", name: "1" },
+      { alias: "", body: 1, group: -1, image: "a/2", index: 0.5, name: "2" },
+      { alias: "", body: "1", group: -1, image: "a/3", index: 0, name: "3" },
+    ])!;
+    for (const entry of [onlyBody, fractional, text]) {
+      expect(entry).not.toHaveProperty("body");
+      expect(entry).not.toHaveProperty("index");
+    }
+  });
+});
+
 describe("normalizeBackgroundPpuMap", () => {
   it("folds keys lowercase and keeps finite positive ppus", () => {
     const map = normalizeBackgroundPpuMap({

@@ -28,9 +28,16 @@ export type StoryCharacterGroup =
 
 export interface StoryCharacterEntry {
   alias: string;
+  /**
+   * Where the entry sits in the prefab: `spriteGroups[body].sprites[index]`,
+   * the slot `$N#M` addresses. Unrelated to `group`, which indexes the
+   * deduplicated face-overlay `groups`. Absent in older character.json.
+   */
+  body?: number;
   face?: string;
   group: number;
   image?: string;
+  index?: number;
   name: string;
 }
 

@@ -230,3 +230,85 @@ describe("resolveCharacterSelection", () => {
     expect(resolveCharacterSelection(linkMap, "")).toBeNull();
   });
 });
+
+describe("resolveCharacterSelection with body/index slots", () => {
+  // Shaped after avg_npc_1898_1: its faces are named `2$1.` and so on, so
+  // the `$N` name suffix misses them, and the face hub's base sprite (body 0,
+  // index 3) is drawn under the faces rather than listed.
+  const slotted: Record<string, StoryLinkNode> = {
+    avg_npc_9: {
+      array: [
+        {
+          alias: "",
+          body: 0,
+          face: "avg_npc_9/1$1",
+          group: 0,
+          index: 0,
+          name: "1$1",
+        },
+        {
+          alias: "",
+          body: 0,
+          face: "avg_npc_9/2$1.",
+          group: 0,
+          index: 1,
+          name: "2$1.",
+        },
+        {
+          alias: "",
+          body: 0,
+          face: "avg_npc_9/3$1.",
+          group: 0,
+          index: 2,
+          name: "3$1.",
+        },
+        {
+          alias: "",
+          body: 1,
+          group: -1,
+          image: "avg_npc_9/1$2",
+          index: 0,
+          name: "1$2",
+        },
+        {
+          alias: "",
+          body: 1,
+          group: -1,
+          image: "avg_npc_9/2$2",
+          index: 1,
+          name: "2$2",
+        },
+      ],
+      groups: [
+        {
+          base: "avg_npc_9/4$1",
+          faceRect: { h: 10, w: 10, x: 0, y: 0 },
+          mode: "face_overlay",
+        },
+      ],
+      pos: { x: 0, y: 0 },
+      size: { x: 0, y: 0 },
+    },
+  };
+  const pick = (ref: string) =>
+    resolveCharacterSelection(slotted, ref)?.expression;
+
+  it("picks spriteGroups[body].sprites[index] whatever the names end with", () => {
+    expect(pick("avg_npc_9#3$1")).toBe("3$1.");
+    expect(pick("avg_npc_9#2$2")).toBe("2$2");
+    expect(pick("avg_npc_9$2")).toBe("1$2");
+  });
+
+  it("uses body 0 when the ref has no $N, as _LoadImage does", () => {
+    expect(pick("avg_npc_9#2")).toBe("2$1.");
+  });
+
+  it("falls back to body 0 for a body the hub does not have", () => {
+    expect(pick("avg_npc_9#2$9")).toBe("2$1.");
+  });
+
+  it("falls back to the body's first entry for a slot it does not list", () => {
+    expect(pick("avg_npc_9#4$1")).toBe("1$1");
+    expect(pick("avg_npc_9#9$2")).toBe("1$2");
+  });
+});

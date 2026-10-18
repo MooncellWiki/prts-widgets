@@ -1,4 +1,4 @@
-import type { StoryLinkNode } from "./types";
+import type { StoryCharacterEntry, StoryLinkNode } from "./types";
 
 /**
  * Native provenance: `Torappu.AVG.AVGCharacterSlot._LoadImage` and the three
@@ -140,6 +140,29 @@ export function parseNativeCharacterRef(
   return { alias: null, base: value, group, index };
 }
 
+function hasNativeSlot(entry: StoryCharacterEntry): boolean {
+  return entry.body !== undefined && entry.index !== undefined;
+}
+
+/**
+ * Port of `AVGCharacterSpriteHubGroup.SetImage(holder, body, param)`: shows
+ * `spriteGroups[body].sprites[param.index]`, with `_LoadImage` passing body 0
+ * when the ref has no `$N`. Native falls back to body 0 for a body it does not
+ * have ("No body index {0} ... use default instead") and to index 0 for an
+ * index outside the body ("No index {0} for body group {1} ..."). The body's
+ * first listed entry also stands in for slots the link map leaves out (a face
+ * hub's base sprite, empty placeholder rows).
+ */
+function pickNativeSlot(
+  entries: readonly StoryCharacterEntry[],
+  body: number,
+  index: number,
+): StoryCharacterEntry | undefined {
+  let inBody = entries.filter((entry) => entry.body === body);
+  if (inBody.length === 0) inBody = entries.filter((entry) => entry.body === 0);
+  return inBody.find((entry) => entry.index === index) ?? inBody[0];
+}
+
 /**
  * Resolves a story character reference against the `character.json` link map.
  *
@@ -196,6 +219,13 @@ export function resolveCharacterSelection(
     return expression ? { base: parsed.base, expression } : null;
   }
 
+  if (link.array.length > 0 && link.array.every(hasNativeSlot)) {
+    const entry = pickNativeSlot(link.array, parsed.group ?? 0, parsed.index);
+    return entry ? { base: parsed.base, expression: entry.name } : null;
+  }
+
+  // character.json without `body`/`index`: guess the body from the `$N` the
+  // sprite names usually end with, and the slot from the order within it.
   if (parsed.group !== null) {
     const suffix = `$${parsed.group + 1}`;
     const grouped = link.array.filter((entry) => entry.name.endsWith(suffix));
