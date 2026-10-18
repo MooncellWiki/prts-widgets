@@ -73,7 +73,7 @@ import {
 
 import { guardClaimedClicks } from "./core/ClickClaim";
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
-import { dotweenEaseCurve } from "./core/DotweenEase";
+import { dotweenDefaultEase, dotweenEaseCurve } from "./core/DotweenEase";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -1633,24 +1633,29 @@ export class PixiStoryRenderer implements StoryRenderer {
           sprite,
           targetW: cutinWidth,
         });
-        if (cutinExpand && input.fadeMs > 0) {
+        if (cutinExpand) {
           // Expand Show: the canvas group stays opaque, the mask window grows
           // from the style's edge and the black backdrop cross-fades 0 ->
           // black. Native runs DOSizeDelta + DOFade as two tweens of the same
-          // linear fadetime, so one tween drives both here.
+          // fadetime under DOTween's default OutQuad ease (neither SetEase),
+          // so one eased tween drives both here. fadeMs 0 still opens the
+          // window full: the runner settles a 0-duration run at progress 1,
+          // like DOSizeDelta(_, _, 0) completing on the next native frame.
           backdrop.alpha = 0;
           const horizontal = cutin.fadeStyle.startsWith("horiz");
           const state = cutin;
-          const run = this.tween(input.fadeMs, (progress) => {
+          const expand = (progress: number): void => {
             state.maskW = horizontal ? state.targetW * progress : state.targetW;
             state.maskH = horizontal ? state.targetH : state.targetH * progress;
             backdrop.alpha = blackAlpha * progress;
             this.drawShowItemCutinWindow(state);
-          });
+          };
           this.showItemRoot = root;
           this.showItemCutin = cutin;
           this.itemLayer.addChild(root);
-          await run;
+          await this.tween(input.fadeMs, expand, undefined, {
+            ease: dotweenDefaultEase,
+          });
           return;
         }
       } else if (frameTexture || sprite) {
@@ -1695,11 +1700,15 @@ export class PixiStoryRenderer implements StoryRenderer {
 
       // Photo Show and cutin `fade`: the canvas group fades 0 -> 1 while the
       // backdrop is already at `black` (SetAlpha applies it immediately).
-      const run = this.tween(input.fadeMs, (progress) => {
-        root.alpha = progress;
-      });
-
-      await run;
+      // DOFade carries no SetEase, so DOTween's default OutQuad applies.
+      await this.tween(
+        input.fadeMs,
+        (progress) => {
+          root.alpha = progress;
+        },
+        undefined,
+        { ease: dotweenDefaultEase },
+      );
     };
 
     if (input.block) await chain();
@@ -1823,8 +1832,9 @@ export class PixiStoryRenderer implements StoryRenderer {
    * cutin reuses the `_showFadeStyle` stored by its Show — a plain canvas
    * fade from the current alpha for `fade` (no snap), or the mask window
    * collapsing along its expansion axis with a parallel black fade for the
-   * expand styles (root alpha stays 1). `fadeMs <= 0` is an immediate
-   * destroy (`DOFade(_, _, 0)` completes on the next native frame).
+   * expand styles (root alpha stays 1). No native Hide tween calls SetEase,
+   * so every fade runs on DOTween's default OutQuad. `fadeMs <= 0` is an
+   * immediate destroy (`DOFade(_, _, 0)` completes on the next native frame).
    */
   private async hideShowItem(fadeMs: number): Promise<void> {
     const root = this.showItemRoot;
@@ -1843,19 +1853,20 @@ export class PixiStoryRenderer implements StoryRenderer {
       const startH = cutin.maskH;
       const startBlack = cutin.backdrop.alpha;
       const state = cutin;
-      const run = this.tween(
+      const collapse = (progress: number): void => {
+        state.maskW = horizontal ? startW * (1 - progress) : startW;
+        state.maskH = horizontal ? startH : startH * (1 - progress);
+        state.backdrop.alpha = startBlack * (1 - progress);
+        this.drawShowItemCutinWindow(state);
+      };
+      await this.tween(
         fadeMs,
-        (progress) => {
-          state.maskW = horizontal ? startW * (1 - progress) : startW;
-          state.maskH = horizontal ? startH : startH * (1 - progress);
-          state.backdrop.alpha = startBlack * (1 - progress);
-          this.drawShowItemCutinWindow(state);
-        },
+        collapse,
         () => {
           root.removeFromParent();
         },
+        { ease: dotweenDefaultEase },
       );
-      await run;
       return;
     }
 
@@ -1863,7 +1874,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       // `AVGShowItemPhotoSlot.Hide` resets the canvas group to alpha 1
       // before the DOFade; only an interrupted Show ever notices the snap.
       root.alpha = 1;
-      const run = this.tween(
+      await this.tween(
         fadeMs,
         (progress) => {
           root.alpha = 1 - progress;
@@ -1871,15 +1882,15 @@ export class PixiStoryRenderer implements StoryRenderer {
         () => {
           root.removeFromParent();
         },
+        { ease: dotweenDefaultEase },
       );
-      await run;
       return;
     }
 
     // Cutin `fade` Hide: canvas fade from the current alpha; the backdrop
     // under the same canvas group fades with it.
     const startAlpha = root.alpha;
-    const run = this.tween(
+    await this.tween(
       fadeMs,
       (progress) => {
         root.alpha = startAlpha * (1 - progress);
@@ -1887,8 +1898,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         root.removeFromParent();
       },
+      { ease: dotweenDefaultEase },
     );
-    await run;
   }
 
   async showCgItem(input: CgItemInput): Promise<void> {
