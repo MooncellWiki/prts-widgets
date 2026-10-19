@@ -88,7 +88,8 @@ const cur = shallowRef<Loaded | null>(null);
 const anim = shallowRef<AnimInfo | null>(null);
 const t = ref(0);
 const playing = ref(true);
-const loop = ref(true);
+/** 默认关，同现网：播一遍停在最后一帧 */
+const loop = ref(false);
 const chain = ref(false);
 const speed = ref(1);
 const flip = ref(false);
