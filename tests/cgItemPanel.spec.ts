@@ -56,6 +56,28 @@ function manualTween() {
   return { step: (progress: number) => update?.(progress), tween };
 }
 
+// Manual tween driver: index-ordered steps advanced by the test.
+function manualTweenSteps() {
+  const steps: Array<{
+    complete: () => void;
+    resolve: () => void;
+    update: (progress: number) => void;
+  }> = [];
+  const tween = (
+    _durationMs: number,
+    update: (progress: number) => void,
+    complete?: () => void,
+  ): Promise<void> =>
+    new Promise((resolve) => {
+      steps.push({
+        complete: complete ?? ((): void => {}),
+        resolve,
+        update,
+      });
+    });
+  return { steps, tween };
+}
+
 async function flushMicrotasks(): Promise<void> {
   for (let index = 0; index < 5; index++) await Promise.resolve();
 }
@@ -222,5 +244,97 @@ describe("CgItemPanel", () => {
 
     expect(warnings[0]).toContain("cgitem asset is missing: a");
     expect(panel.targets("a")).toEqual([]);
+  });
+
+  it("fades with the native InSine default curve, not linearly", async () => {
+    const layer = new Container();
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    await panel.show(input("a"));
+    const root = panel.targets("a")[0];
+
+    void panel.hide("a", 500, "InSine", false);
+    // InSine(0.5) = 1 - cos(pi/4), so the remaining alpha is cos(pi/4).
+    steps[0].update(0.5);
+    expect(root.alpha).toBeCloseTo(Math.cos(Math.PI / 4), 5);
+    steps[0].update(1);
+    expect(root.alpha).toBeCloseTo(0, 5);
+  });
+
+  it("keeps driving the show tween while a single-key hide fades", async () => {
+    const layer = new Container();
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    await panel.show(
+      input("a", {
+        positionFrom: { x: 0, y: 0 },
+        positionTo: { x: 100, y: 0 },
+        positionDurationMs: 1000,
+      }),
+    );
+    // block=false returns before the mock loader settles; flush so the
+    // sprite exists and the show tween is registered.
+    await flushMicrotasks();
+    const sprite = panel.targets("a")[0].children[0] as Sprite;
+    steps[0].update(0.25);
+    expect(sprite.position.x).toBe(25);
+
+    // Native `AVGShowItemCgSlot.Hide` has no DOKill: the show sequence keeps
+    // driving the slot while the fade runs.
+    void panel.hide("a", 500, "Linear", false);
+    steps[0].update(0.5);
+    expect(sprite.position.x).toBe(50);
+
+    steps[1].update(1);
+    steps[1].complete();
+    expect(panel.targets("a")).toEqual([]);
+    // dispose() bumped the session: a late show-side tick must not touch the
+    // destroyed sprite (Pixi v8 nulls `position` on destroy, so a surviving
+    // write would throw).
+    expect(() => steps[0].update(0.75)).not.toThrow();
+  });
+
+  it("single-key hide does not dispose a slot replaced mid-fade", async () => {
+    const layer = new Container();
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    await panel.show(input("a"));
+    const oldRoot = panel.targets("a")[0];
+
+    void panel.hide("a", 500, "Linear", false);
+    await panel.show(input("a"));
+    const newRoot = panel.targets("a")[0];
+    expect(newRoot).not.toBe(oldRoot);
+
+    steps[0].update(1);
+    steps[0].complete();
+    expect(panel.targets("a")).toEqual([newRoot]);
+    expect(layer.children).toContain(newRoot);
+  });
+
+  it("clear-all keeps driving during the fade and stops after destroy", async () => {
+    const layer = new Container();
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    await panel.show(
+      input("a", {
+        positionFrom: { x: 0, y: 0 },
+        positionTo: { x: 100, y: 0 },
+        positionDurationMs: 1000,
+      }),
+    );
+    await flushMicrotasks();
+    const sprite = panel.targets("a")[0].children[0] as Sprite;
+    steps[0].update(0.5);
+    expect(sprite.position.x).toBe(50);
+
+    await panel.hide(undefined, 500, "Linear", false);
+    steps[0].update(0.75);
+    // Native keeps driving the removed slots until Dispose destroys them.
+    expect(sprite.position.x).toBe(75);
+
+    steps[1].update(1);
+    steps[1].complete();
+    // The fade completion bumped the session: further show-side ticks must
   });
 });

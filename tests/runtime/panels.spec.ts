@@ -332,7 +332,7 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCgItemCalls).toEqual([
       {
         block: true,
-        ease: "Linear",
+        ease: "InSine",
         fadeMs: 130,
         key: "cgitem_test_left",
       },
@@ -390,6 +390,23 @@ describe("StoryRuntime", () => {
     await runtime.start();
     expect(renderer.clearCgItemCalls).toEqual([
       { block: false, ease: "Linear", fadeMs: 1000, key: undefined },
+    ]);
+  });
+
+  it("defaults hidecgitem ease to InSine like the native GetEnum call-site default", async () => {
+    // `AVGShowItemCgSlot.Hide` (0x183ed14a0) reads ease via the same
+    // `GetEnum<Ease>(param, "ease", (Ease)1, ...)` call as Show: the default
+    // and rejected-name fallback is DOTween enum 1 = InSine. All 140 corpus
+    // hidecgitem lines omit `ease`, so every native hide fade runs InSine.
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[hidecgitem(image="cgitem_test")]']),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.clearCgItemCalls).toEqual([
+      { block: false, ease: "InSine", fadeMs: 130, key: "cgitem_test" },
     ]);
   });
 });
