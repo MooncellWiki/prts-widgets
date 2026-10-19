@@ -65,6 +65,19 @@ function nativeSlot(
   return { body: body as number, index: index as number };
 }
 
+/** `bodies` only counts as a list of non-negative integers; anything else is dropped. */
+function bodySpriteCounts(
+  node: Record<string, unknown>,
+): Pick<StoryLinkNode, "bodies"> {
+  const { bodies } = node;
+  if (
+    !Array.isArray(bodies) ||
+    !bodies.every((count) => Number.isInteger(count) && count >= 0)
+  )
+    return {};
+  return { bodies: bodies as number[] };
+}
+
 export function normalizeCharacterMap(
   raw: unknown,
 ): Record<string, StoryLinkNode> {
@@ -166,6 +179,7 @@ export function normalizeCharacterMap(
     // the original-cased expression.
     output[base.toLowerCase()] = {
       array,
+      ...bodySpriteCounts(node),
       groups,
       pos: {
         x: toNumber(posRaw.x, 0),

@@ -31,6 +31,17 @@ export interface CharacterRefSelection {
 }
 
 /**
+ * `native_throws`: the ref makes `AVGCharacterSpriteHubGroup.SetImage` throw
+ * (see `nativeSlotThrows`), so native never shows a sprite for it and stops
+ * the story at that command. Distinct from `missing`, which native survives
+ * with "[AVG] Error to load character pic" and an emptied slot.
+ */
+export type CharacterRefResolution =
+  | { kind: "found"; selection: CharacterRefSelection }
+  | { kind: "missing" }
+  | { kind: "native_throws" };
+
+/**
  * Port of `AVGCharacterSlot._GetIdWithoutAliasOrIndex`.
  *
  * This is deliberately not the resource base returned by
@@ -164,6 +175,36 @@ function pickNativeSlot(
 }
 
 /**
+ * Whether `AVGCharacterSpriteHubGroup.SetImage` throws for `$N#M`. Both of its
+ * bounds guards are off by one (2.7.81 0x18402d4fa body / 0x18402d5cf index,
+ * `cmp; jle`): body falls back to 0 only past `spriteGroups.Length` and index
+ * only past `sprites.Length`, so exactly the length -- or any index into an
+ * empty body -- passes the guard and the array read raises
+ * IndexOutOfRangeException. Nothing between `ExecutorComponent.Execute` and
+ * the `DoExecuteCommands` coroutine catches it, so native stops running the
+ * story there. The `@alias` overload (0x18402d8b0) shares the body guard and
+ * then reads `sprites[0]`, i.e. index 0 here.
+ */
+function nativeSlotThrows(
+  bodies: readonly number[],
+  group: number | null,
+  index: number,
+): boolean {
+  let body = group ?? 0;
+  if (body < 0 || body > bodies.length) body = 0;
+  const count = bodies[body];
+  if (count === undefined) return true;
+  return (index < 0 || index > count ? 0 : index) >= count;
+}
+
+const MISSING: CharacterRefResolution = { kind: "missing" };
+const NATIVE_THROWS: CharacterRefResolution = { kind: "native_throws" };
+
+function found(base: string, expression: string): CharacterRefResolution {
+  return { kind: "found", selection: { base, expression } };
+}
+
+/**
  * Resolves a story character reference against the `character.json` link map.
  *
  * Case folding stands in for native's resource layer: `_LoadImage` preserves
@@ -171,16 +212,19 @@ function pickNativeSlot(
  * before the bundle lookup and every `avg/characters/*.ab` entry is lowercase,
  * so the effective native semantics are case-insensitive.
  */
-export function resolveCharacterSelection(
+export function resolveCharacterRef(
   linkMap: Record<string, StoryLinkNode>,
   rawRef: string,
-): CharacterRefSelection | null {
-  if (!rawRef) return null;
+): CharacterRefResolution {
+  if (!rawRef) return MISSING;
   const normalized = rawRef.toLowerCase();
 
   const directLink = linkMap[normalized];
-  if (directLink?.array[0]?.name)
-    return { base: normalized, expression: directLink.array[0].name };
+  if (directLink?.array[0]?.name) {
+    if (directLink.bodies && nativeSlotThrows(directLink.bodies, null, 0))
+      return NATIVE_THROWS;
+    return found(normalized, directLink.array[0].name);
+  }
 
   // Web-only form: `base-expression` names an entry outright. Native has no
   // such syntax; it is kept for scripts authored against the wiki player.
@@ -191,17 +235,27 @@ export function resolveCharacterSelection(
     const expression = normalized.slice(prefix.length);
     if (!expression) continue;
 
-    const found = link.array.find(
+    const entry = link.array.find(
       (item) => item.name.toLowerCase() === expression,
     );
-    if (found) return { base, expression: found.name };
+    if (entry) return found(base, entry.name);
   }
 
   const parsed = parseNativeCharacterRef(normalized);
-  if (!parsed) return null;
+  if (!parsed) return MISSING;
 
   const link = linkMap[parsed.base];
-  if (!link) return null;
+  if (!link) return MISSING;
+
+  if (
+    link.bodies &&
+    nativeSlotThrows(
+      link.bodies,
+      parsed.group,
+      parsed.alias === null ? parsed.index : 0,
+    )
+  )
+    return NATIVE_THROWS;
 
   if (parsed.alias !== null) {
     // Deviation from native, on purpose. `_TryParseAlias` keeps the leading
@@ -212,16 +266,16 @@ export function resolveCharacterSelection(
     // {1}, use default instead.". Matching the alias is more useful than
     // reproducing that, and no story in the corpus uses the `@` form at all.
     const wanted = parsed.alias.slice(1);
-    const found = link.array.find(
+    const entry = link.array.find(
       (item) => String(item.alias).toLowerCase() === wanted,
     );
-    const expression = found?.name ?? link.array[0]?.name;
-    return expression ? { base: parsed.base, expression } : null;
+    const expression = entry?.name ?? link.array[0]?.name;
+    return expression ? found(parsed.base, expression) : MISSING;
   }
 
   if (link.array.length > 0 && link.array.every(hasNativeSlot)) {
     const entry = pickNativeSlot(link.array, parsed.group ?? 0, parsed.index);
-    return entry ? { base: parsed.base, expression: entry.name } : null;
+    return entry ? found(parsed.base, entry.name) : MISSING;
   }
 
   // character.json without `body`/`index`: guess the body from the `$N` the
@@ -229,11 +283,23 @@ export function resolveCharacterSelection(
   if (parsed.group !== null) {
     const suffix = `$${parsed.group + 1}`;
     const grouped = link.array.filter((entry) => entry.name.endsWith(suffix));
-    if (grouped.length === 0) return null;
+    if (grouped.length === 0) return MISSING;
     const picked = grouped[Math.max(0, parsed.index)] ?? grouped[0];
-    return picked?.name ? { base: parsed.base, expression: picked.name } : null;
+    return picked?.name ? found(parsed.base, picked.name) : MISSING;
   }
 
   const entry = link.array[Math.max(0, parsed.index)] ?? link.array[0];
-  return entry?.name ? { base: parsed.base, expression: entry.name } : null;
+  return entry?.name ? found(parsed.base, entry.name) : MISSING;
+}
+
+/**
+ * `resolveCharacterRef` for callers that only need the sprite: `null` both
+ * when nothing matches and when native throws, since neither shows one.
+ */
+export function resolveCharacterSelection(
+  linkMap: Record<string, StoryLinkNode>,
+  rawRef: string,
+): CharacterRefSelection | null {
+  const resolved = resolveCharacterRef(linkMap, rawRef);
+  return resolved.kind === "found" ? resolved.selection : null;
 }

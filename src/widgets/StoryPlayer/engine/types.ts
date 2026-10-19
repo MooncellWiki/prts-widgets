@@ -13,6 +13,14 @@ export interface StoryFaceRect {
   y: number;
 }
 
+export interface StoryCharacterFaceAsset {
+  baseUrl: string;
+  expression: string;
+  faceRect: StoryFaceRect;
+  faceUrl: string;
+  used: boolean;
+}
+
 export interface StoryCharacterGroupFaceOverlay {
   base: string;
   faceRect: StoryFaceRect;
@@ -43,6 +51,15 @@ export interface StoryCharacterEntry {
 
 export interface StoryLinkNode {
   array: StoryCharacterEntry[];
+  /**
+   * `spriteGroups[body].sprites.Length` for every body of an
+   * `AVGCharacterSpriteHubGroup` prefab, base sprites and placeholder rows
+   * included -- `array` lists neither, so the lengths `SetImage`'s off-by-one
+   * bounds guards compare against are not derivable from it. Absent for a
+   * legacy flat `AVGCharacterSpriteHub` (whose guard is correct) and in older
+   * character.json.
+   */
+  bodies?: number[];
   groups: StoryCharacterGroup[];
   pos: { x: number; y: number };
   size: { x: number; y: number };
