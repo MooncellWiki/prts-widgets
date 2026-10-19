@@ -2055,13 +2055,29 @@ export class StoryRuntime {
         const image = toString(this.exactArg(args, "image"));
         const id = toString(this.exactArg(args, "id"));
         const key = image || id ? (id ? `${image}_${id}` : image) : undefined;
+        // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) resolves the fade as
+        // `GetFloat(param, "fadetime", 0.13)` and then replaces it wholesale
+        // with `Command.TryGetParam(string, out float)` (0x183fbf5a0) when
+        // the script wrote `duration` -- no combining. TryGetParam hits on
+        // key presence and runs `Convert.ToSingle`, so an unparseable value
+        // throws in native; like toNumber, the port keeps fadetime instead of
+        // breaking playback. Clear-all fades every slot through the same
+        // `Hide`, so the override applies there too. It is exclusive to the
+        // CG slot: photo/cutin `Hide` (0x18405fc60 / 0x18405f0e0) read
+        // fadetime only, so `hideitem` is unaffected. Corpus:
+        // act54side/level_act54side_08_beg.txt:540-556 (keyed, duration=3/2)
+        // and act52side/level_act52side_08_end.txt:227 (clear-all,
+        // duration=2).
+        const fadeSeconds =
+          toOptionalNumber(this.exactArg(args, "duration")) ??
+          toNumber(this.exactArg(args, "fadetime"), 0.13);
         await this.renderer.clearCgItems(
           key,
-          Math.max(
-            0,
-            Math.round(toNumber(this.exactArg(args, "fadetime"), 0.13) * 1000),
-          ),
-          // `AVGShowItemCgSlot.Hide` uses the same `Ease.Linear` fallback.
+          Math.max(0, Math.round(fadeSeconds * 1000)),
+          // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) reads the curve
+          // with `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`;
+          // DOTween `Ease` 1 is Linear (`Unset` = 0, `InSine` = 2), the same
+          // default as Show. No corpus hidecgitem line writes `ease`.
           toString(this.exactArg(args, "ease"), "Linear"),
           toBoolean(this.exactArg(args, "block"), false),
         );

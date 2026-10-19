@@ -11,6 +11,12 @@ type Tween = (
 ) => Promise<void>;
 
 interface CgItemState {
+  /**
+   * `AVGShowItemCgSlot.m_animEpoch`: every `Hide` re-binds the slot's
+   * `_onAnimEnd` and bumps the epoch through `_MakeAnimEndCb`, so only the
+   * latest hide on a slot may complete it.
+   */
+  hideEpoch: number;
   root: Container;
   sessionId: number;
   sprite: Sprite | null;
@@ -70,7 +76,12 @@ export class CgItemPanel {
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.layer.addChild(root);
-    const state: CgItemState = { root, sessionId: 1, sprite: null };
+    const state: CgItemState = {
+      hideEpoch: 0,
+      root,
+      sessionId: 1,
+      sprite: null,
+    };
     this.states.set(input.key, state);
     const sessionId = state.sessionId;
 
@@ -212,13 +223,45 @@ export class CgItemPanel {
     ease: string,
     block: boolean,
   ): Promise<void> {
+    // Native provenance (2.7.81 `_ExecuteHideCgItem` 0x183fb05e0 /
+    // `_ClearAllItems` 0x183fafbc0): before fading, native unconditionally
+    // runs `_StopShakeByKey(key)` (keyed path) / `_StopAllShakes()` (clear
+    // all) -- DOKill(complete) on the slot ROOT transform plus zeroing its
+    // anchoredPosition/localPosition. Without `cgitemshake` (not ported, 0
+    // corpus uses) that kills nothing, and the root already sits at its
+    // authored origin, so the step is a visual no-op that the port skips;
+    // the show-side pfrom/pto tween lives on the image child, not the root,
+    // and keeps driving during the fade either way. Revisit if/when
+    // cgitemshake is ported.
     if (this.states.size === 0) return;
-    // `AVGShowItemCgSlot.Hide` uses the same `GetEnum<Ease>` resolution.
+    // `AVGShowItemCgSlot.Hide` uses the same `GetEnum<Ease>` resolution
+    // (`(Ease)1` = Ease.Linear default) as Show.
     const easeCurve = dotweenEaseCurve(ease);
     if (key) {
       const state = this.states.get(key);
+      // Native divergence: with `block=true` and a missing key the native
+      // executor returns true while nobody ever calls `FinishCommand`
+      // (`_ClearItemByKey` returns silently), so the panel stays suspended
+      // until skip/`ForceCommandEnd` rescues it -- a native defect, not
+      // behaviour worth reproducing. The Web port releases immediately.
       if (!state) return;
-      const sessionId = ++state.sessionId;
+      // Native provenance: the hide path performs no DOKill -- base
+      // `AVGShowItemSlot.Hide` (2.7.81 0x184060370) only stores the
+      // callback, and the CG slot's `_MakeAnimEndCb` epoch bump merely mutes
+      // the show sequence's OnComplete -- so the show-side sequence keeps
+      // driving position/scale while the fade runs and until the completing
+      // `Dispose` destroys the slot. Do NOT bump `sessionId` here (that
+      // would freeze those writes); only snapshot it so the completion
+      // callback stays inert when a newer `show` has replaced the slot
+      // mid-fade (replacement bumps the id in `dispose`).
+      const sessionAtHide = state.sessionId;
+      // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) starts a fresh DOFade
+      // without killing an earlier one and completes through
+      // `_MakeAnimEndCb` (0x18405ee40), whose callback only fires while its
+      // epoch is still current. A second hide on the same key (or a later
+      // clear-all) therefore mutes this fade's completion: the slot is
+      // disposed when the latest fade ends, not the first.
+      const hideEpoch = ++state.hideEpoch;
       const startAlpha = state.root.alpha;
       const task = this.tween(
         fadeMs,
@@ -226,7 +269,11 @@ export class CgItemPanel {
           state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
         () => {
-          if (state.sessionId === sessionId) this.dispose(key);
+          if (
+            state.hideEpoch === hideEpoch &&
+            state.sessionId === sessionAtHide
+          )
+            this.dispose(key);
         },
       );
       if (block) await task;
@@ -237,13 +284,23 @@ export class CgItemPanel {
     const entries = [...this.states.entries()];
     this.states.clear();
     for (const [, state] of entries) {
+      // `_ClearAllItems` hides every slot through the same `Hide`, so an
+      // in-flight keyed hide loses its completion here as well; otherwise it
+      // would `dispose` whatever a later `show` registers under that key.
+      state.hideEpoch += 1;
       const startAlpha = state.root.alpha;
       void this.tween(
         fadeMs,
         (raw) => {
           state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
-        () => state.root.destroy({ children: true }),
+        () => {
+          // During the fade show-side writes keep running (native drives the
+          // slots until `Dispose`); once the fade completes, bump the session
+          // to stop writes into the destroyed sprite.
+          state.sessionId += 1;
+          state.root.destroy({ children: true });
+        },
       );
     }
     // `_ExecuteHideCgItem` completes clear-all immediately even if `block=true`.
