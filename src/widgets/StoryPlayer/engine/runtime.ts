@@ -1963,11 +1963,12 @@ export class StoryRuntime {
         const key = id ? `${image}_${id}` : image;
         const style = toString(this.exactArg(args, "style"), "cg");
         if (style === "blocker") {
-          // Native port scope: in 2.7.61 `AVGCgItemPanel._ShowItem`
-          // (0x183e35d80) runs its common prefix (instantiate new slot,
-          // dispose the old same-key entry, write m_slotsInUseDict, bind
-          // PostDisplay) for `style="blocker"` as well and only skips the
-          // sprite load, showing the scene-resident blocker prefab instead.
+          // Native port scope: `AVGCgItemPanel._ShowItem` (2.7.81
+          // 0x183fb12b0) runs its common prefix (instantiate the style's
+          // slot prefab, dispose the old same-key entry, write
+          // m_slotsInUseDict, bind PostDisplay) for `style="blocker"` as
+          // well; it then skips the sprite load, calls the blocker slot's
+          // `Show(command, null, null)` and finishes the command at once.
           // The web player has no such prefab, so the whole command is
           // deliberately omitted here (corpus usage: 0).
           this.warn(
@@ -2005,12 +2006,12 @@ export class StoryRuntime {
           block: toBoolean(this.exactArg(args, "block"), false),
           colorFrom: colorFrom && colorTo ? colorFrom : undefined,
           colorTo: colorFrom && colorTo ? colorTo : undefined,
-          // `AVGShowItemCgSlot.Show` (0x183ed1810) reads the curve with
-          // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`.
-          // In DOTween's public `Ease` enum `Linear = 0` and `InSine = 1`,
-          // so the default is InSine (1 - cos(t*pi/2)) -- nearly every
-          // corpus cgitem omits `ease` and therefore eases InSine.
-          ease: toString(this.exactArg(args, "ease"), "InSine"),
+          // `AVGShowItemCgSlot.Show` (2.7.81 0x18405dde0) reads the curve with
+          // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`. In
+          // DOTween's `Ease` enum `Unset = 0, Linear = 1, InSine = 2`, so the
+          // default is `Ease.Linear`, not an eased curve; 185/188 corpus
+          // cgitem lines omit `ease` and therefore move linearly.
+          ease: toString(this.exactArg(args, "ease"), "Linear"),
           height: Math.trunc(toNumber(this.exactArg(args, "height"), 0)),
           key,
           positionDelayMs: seconds("pdelay"),

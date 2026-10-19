@@ -339,7 +339,9 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("defaults cgitem ease to InSine like the native GetEnum call-site default", async () => {
+  it("defaults cgitem ease to Linear like the native GetEnum call-site default", async () => {
+    // `GetEnum<Ease>(param, "ease", (Ease)1, ...)`: DOTween `Ease` 1 is
+    // Linear (`Unset` is 0, `InSine` is 2).
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[cgitem(image="cgitem_test")]']),
@@ -352,7 +354,7 @@ describe("StoryRuntime", () => {
     expect(renderer.cgItemCalls).toEqual([
       expect.objectContaining({
         assetKey: "cgitem_test",
-        ease: "InSine",
+        ease: "Linear",
         key: "cgitem_test",
       }),
     ]);
