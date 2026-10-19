@@ -104,17 +104,16 @@ describe("CgItemPanel", () => {
     expect(layer.children).toHaveLength(0);
   });
 
-  it("eases the native default InSine curve and falls back to it for unknown names", async () => {
-    // `AVGShowItemCgSlot.Show` (0x183ed1810) reads ease via
-    // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`: the
-    // call-site default (InSine, DOTween `Linear = 0` / `InSine = 1`) is
-    // also returned for names the parser rejects. Explicit "Linear" must
-    // stay linear because hidecgitem passes that default from runtime.ts.
+  it("eases along the named DOTween curve and falls back to Linear for unknown names", async () => {
+    // `AVGShowItemCgSlot.Show` (2.7.81 0x18405dde0) reads ease via
+    // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`; DOTween's
+    // enum is `Unset = 0, Linear = 1, InSine = 2`, so the default and the
+    // rejected-name fallback are both Linear.
     const inSineHalf = 100 * (1 - Math.SQRT1_2);
     const cases = [
-      { ease: "InSine", expected: inSineHalf },
-      { ease: "NoSuchEase", expected: inSineHalf },
       { ease: "Linear", expected: 50 },
+      { ease: "InSine", expected: inSineHalf },
+      { ease: "NoSuchEase", expected: 50 },
     ];
     for (const { ease, expected } of cases) {
       const manual = manualTween();

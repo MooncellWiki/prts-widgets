@@ -1,11 +1,7 @@
 import { Container, Sprite, type Texture } from "pixi.js";
 
 import { STORY_HEIGHT, STORY_WIDTH, type CgItemInput } from "../../types";
-import {
-  dotweenEaseCurve,
-  linearEase,
-  type EaseCurve,
-} from "../core/DotweenEase";
+import { dotweenEaseCurve } from "../core/DotweenEase";
 
 type TextureLoader = (key: string) => Promise<Texture | null>;
 type Tween = (
@@ -22,24 +18,6 @@ interface CgItemState {
 
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
-}
-
-/**
- * `AVGShowItemCgSlot.Show` (0x183ed1810, 2.7.61/build 2761) resolves the
- * curve with `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`. In
- * DOTween's public `Ease` enum `Linear = 0` and `InSine = 1`, so the
- * call-site default -- which `GetEnum` also returns for any name it cannot
- * parse -- is InSine (`1 - cos(t*pi/2)`), not Linear. Production scripts
- * almost never write `ease` (169/172 corpus cgitem lines), so this default
- * drives nearly every Ken Burns move. The shared resolver's Linear fallback
- * models the other AVG call sites (their GetEnum default is Linear), so
- * unresolved names are remapped onto this call site's InSine default.
- */
-function cgEaseCurve(name: string): EaseCurve {
-  const resolved = dotweenEaseCurve(name);
-  return resolved === linearEase && name !== "Linear"
-    ? dotweenEaseCurve("InSine")
-    : resolved;
 }
 
 function colorChannel(value: number): number {
@@ -119,7 +97,12 @@ export class CgItemPanel {
       if (input.width > 0 && input.height > 0)
         sprite.setSize(input.width, input.height);
 
-      const ease = cgEaseCurve(input.ease);
+      // `AVGShowItemCgSlot.Show` (2.7.81 0x18405dde0) reads the curve with
+      // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`; DOTween's
+      // `Ease` enum is `Unset = 0, Linear = 1, InSine = 2, ...`, so this is
+      // the same Ease.Linear default/fallback as every other AVG tween
+      // command and the shared DOTween curve library applies as-is.
+      const ease = dotweenEaseCurve(input.ease);
       const runs: Promise<void>[] = [];
       const run = (
         delayMs: number,
