@@ -185,7 +185,7 @@ interface ParsedCharacterListingId {
   base: string;
   /** `#` 后的差分名（`face$body`，如 `10$1`），无 `#` 时为 null */
   faceName: string | null;
-  /** body 序号（如 `1`），无数字 `$` 后缀时为 null */
+  /** `$N` 后缀（存储端按表情组下标 +1 生成，见 listingGroupIndex），无时为 null */
   body: string | null;
 }
 
@@ -213,12 +213,16 @@ export function characterBaseOfListingId(id: string): string {
   return parseCharacterListingId(id).base;
 }
 
-/** 取 `name` 的数字 body 后缀（`10$1` → `1`），没有则为 null */
-function bodySuffixOf(name: string): string | null {
-  const dollar = name.lastIndexOf("$");
-  if (dollar === -1) return null;
-  const suffix = name.slice(dollar + 1);
-  return /^\d+$/u.test(suffix) ? suffix : null;
+/**
+ * 列表 id 的 `$N` 是存储端按 `entry.group + 1` 拼的（ak-asset-storage 的
+ * `resolved_id`），N-1 就是 character.json 去重表情组的下标，按组下标反解是
+ * 精确的。不能按条目名后缀 `$N` 猜：`avg_npc_1898_1` 的表情名带尾点
+ * （`2$1.`～`7$1.`），后缀匹配不上会把它们全部漏掉（同 StoryPlayer #441）。
+ */
+function listingGroupIndex(body: string | null): number | null {
+  if (body === null) return null;
+  const index = Number(body) - 1;
+  return Number.isInteger(index) && index >= 0 ? index : null;
 }
 
 function characterAssetUrl(key: string): string {
@@ -227,19 +231,17 @@ function characterAssetUrl(key: string): string {
   return url;
 }
 
-/** 选中 body 对应的叠图组（底图键以 `$body` 结尾），找不到时退回第一个组 */
+/** 取 listing `$N` 对应的叠图组（组下标 N-1），没有时退回第一个组 */
 function pickOverlayGroup(
   node: CharacterLinkNode,
-  body: string | null,
+  groupIndex: number | null,
 ): [index: number, group: CharacterOverlayGroup] | null {
   const first = node.overlays.entries().next();
   if (first.done) return null;
-  if (body === null) return first.value;
+  if (groupIndex === null) return first.value;
 
-  for (const entry of node.overlays.entries()) {
-    if (bodySuffixOf(entry[1].base) === body) return entry;
-  }
-  return first.value;
+  const group = node.overlays.get(groupIndex);
+  return group ? [groupIndex, group] : first.value;
 }
 
 /** 由 character.json 解析角色卡片预览；查不到 base 时返回 null */
@@ -268,8 +270,8 @@ export function resolveCharacterPreview(
     }
   }
 
-  // `base$body` 形态：取该 body 叠图组与组内第一个表情
-  const overlayEntry = pickOverlayGroup(node, body);
+  // `base$body` 形态：取该组叠图底图与组内第一个表情
+  const overlayEntry = pickOverlayGroup(node, listingGroupIndex(body));
   if (overlayEntry) {
     const [groupIndex, overlay] = overlayEntry;
     for (const item of node.items.values()) {
@@ -308,12 +310,12 @@ export function buildFaceGallery(
   const used = new Set(
     usedFaceIds.map((id) => id.slice(id.lastIndexOf("#") + 1)),
   );
-  const collect = (matchBody: string | null): StoryCharacterFaceAsset[] => {
+  const collect = (matchGroup: number | null): StoryCharacterFaceAsset[] => {
     const items: StoryCharacterFaceAsset[] = [];
     for (const [name, item] of node.items) {
       const overlay = item.face ? node.overlays.get(item.group) : undefined;
       if (!item.face || !overlay) continue;
-      if (matchBody !== null && bodySuffixOf(name) !== matchBody) continue;
+      if (matchGroup !== null && item.group !== matchGroup) continue;
       items.push({
         expression: name,
         baseUrl: characterAssetUrl(overlay.base),
@@ -325,8 +327,9 @@ export function buildFaceGallery(
     return items;
   };
 
-  // body 过滤结果为空（如差分名不带 `$body`）时退回全部差分
-  const items = body === null ? [] : collect(body);
+  // 组过滤结果为空（列表 id 与本地 character.json 版本错位等）时退回全部差分
+  const groupIndex = listingGroupIndex(body);
+  const items = groupIndex === null ? [] : collect(groupIndex);
   return items.length > 0 ? items : collect(null);
 }
 

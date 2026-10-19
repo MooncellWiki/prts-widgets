@@ -151,7 +151,7 @@ describe("character preview resolution", () => {
     });
   });
 
-  it("picks the overlay group matching the body suffix", () => {
+  it("picks the overlay group by the listing group index", () => {
     const links = parseCharacterMap({
       avg_1038_whitw2_1: {
         groups: [
@@ -180,6 +180,73 @@ describe("character preview resolution", () => {
       faceUrl:
         "https://torappu.prts.wiki/assets/avg/characters/avg_1038_whitw2_1/1%242.png",
       faceRect: { x: 787, y: 234, w: 236, h: 229 },
+    });
+  });
+
+  it("keeps dot-suffixed faces in the gallery (avg_npc_1898_1)", () => {
+    // #441: 表情名带尾点（`2$1.`）时按名字后缀猜 body 会全部漏掉，
+    // 画廊只剩 `1$1`；按 listing 组下标过滤不受名字影响。
+    const links = parseCharacterMap({
+      avg_npc_1898_1: {
+        groups: [
+          {
+            mode: "face_overlay",
+            base: "avg_npc_1898_1/avg_npc_1898_1$1",
+            faceRect: { x: 647, y: 41, w: 131, h: 185 },
+          },
+        ],
+        array: [
+          { name: "1$1", group: 0, face: "avg_npc_1898_1/1$1" },
+          { name: "2$1.", group: 0, face: "avg_npc_1898_1/2$1." },
+          { name: "3$1.", group: 0, face: "avg_npc_1898_1/3$1." },
+        ],
+      },
+    });
+
+    const gallery = buildFaceGallery(
+      "avg_npc_1898_1$1",
+      ["avg_npc_1898_1#1$1", "avg_npc_1898_1#2$1."],
+      links,
+    );
+    expect(gallery?.map((face) => [face.expression, face.used])).toEqual([
+      ["1$1", true],
+      ["2$1.", true],
+      ["3$1.", false],
+    ]);
+  });
+
+  it("resolves a group whose base carries no $N (char_181_flower_1)", () => {
+    const links = parseCharacterMap({
+      char_181_flower_1: {
+        groups: [
+          {
+            mode: "face_overlay",
+            base: "char_181_flower_1/char_181_flower_1",
+            faceRect: { x: 547, y: 196, w: 70, h: 83 },
+          },
+        ],
+        array: [
+          { name: "1", group: 0, face: "char_181_flower_1/1" },
+          { name: "2", group: 0, face: "char_181_flower_1/2" },
+          { name: "3", group: 0, face: "char_181_flower_1/3" },
+        ],
+      },
+    });
+
+    expect(
+      buildFaceGallery(
+        "char_181_flower_1$1",
+        ["char_181_flower_1#2"],
+        links,
+      )?.map((face) => face.expression),
+    ).toEqual(["1", "2", "3"]);
+    expect(resolveCharacterPreview("char_181_flower_1$1", links)).toEqual({
+      kind: "composite",
+      baseUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/char_181_flower_1/char_181_flower_1.png",
+      faceUrl:
+        "https://torappu.prts.wiki/assets/avg/characters/char_181_flower_1/1.png",
+      faceRect: { x: 547, y: 196, w: 70, h: 83 },
     });
   });
 
