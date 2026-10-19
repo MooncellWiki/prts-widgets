@@ -46,7 +46,7 @@ export interface StoryResourceListResponse {
 export interface StoryUsageItem {
   scriptPath: string;
   displayNames: string[];
-  /** 该剧情用到的实际差分（`base#expression`），仅角色 body 查询时返回 */
+  /** 该剧情用到的实际差分（`base#expression`），仅叠图角色（`base$N`）查询时返回 */
   faces?: string[] | null;
 }
 
@@ -128,7 +128,7 @@ interface CharacterLinkItem {
 interface CharacterLinkNode {
   /** face_overlay 组索引 → 身体底图与脸部区域 */
   overlays: Map<number, CharacterOverlayGroup>;
-  /** 表情名（`face$body`，如 `1$1`、`10$1`）→ 差分条目，保持文件顺序 */
+  /** 表情名（如 `1$1`、`10$1`）→ 差分条目，保持文件顺序 */
   items: Map<string, CharacterLinkItem>;
 }
 
@@ -181,12 +181,18 @@ export function ensureCharacterMap(): Promise<CharacterLinkMap> {
 }
 
 interface ParsedCharacterListingId {
-  /** character.json 的 base 键（`#表情` 与 `$body` 后缀都已剥掉） */
+  /** character.json 的 base 键（`#差分` 与 `$N` 后缀都已剥掉） */
   base: string;
-  /** `#` 后的差分名（`face$body`，如 `10$1`），无 `#` 时为 null */
+  /** `#` 后的差分名（如 `10$1`），无 `#` 时为 null */
   faceName: string | null;
-  /** `$N` 后缀（存储端按表情组下标 +1 生成，见 listingGroupIndex），无时为 null */
-  body: string | null;
+  /**
+   * `$N` 反解出的表情组下标 N-1，没有 `$N`（或 N 不是正整数）时为 null。
+   * `$N` 是存储端按 `entry.group + 1` 拼的（ak-asset-storage 的
+   * `resolved_id`），指 character.json 去重后的表情组，不是 prefab body，
+   * 按组下标反解是精确的。不能按条目名后缀 `$N` 猜：`avg_npc_1898_1` 的表情名
+   * 带尾点（`2$1.`～`7$1.`），后缀匹配不上会把它们全部漏掉（同 StoryPlayer #441）。
+   */
+  group: number | null;
 }
 
 function parseCharacterListingId(id: string): ParsedCharacterListingId {
@@ -194,35 +200,22 @@ function parseCharacterListingId(id: string): ParsedCharacterListingId {
   const head = hash === -1 ? id : id.slice(0, hash);
   const faceName = hash === -1 ? null : id.slice(hash + 1);
   const dollar = head.lastIndexOf("$");
-  const bodySuffix =
-    dollar !== -1 && /^\d+$/u.test(head.slice(dollar + 1))
-      ? head.slice(dollar + 1)
-      : null;
+  const suffix = dollar === -1 ? "" : head.slice(dollar + 1);
+  if (!/^\d+$/u.test(suffix)) return { base: head, faceName, group: null };
+  const group = Number(suffix) - 1;
   return {
-    base: bodySuffix === null ? head : head.slice(0, dollar),
+    base: head.slice(0, dollar),
     faceName,
-    body: bodySuffix,
+    group: Number.isInteger(group) && group >= 0 ? group : null,
   };
 }
 
 /**
- * 列表接口的角色 id 有两种形态：叠图角色归并为 `base$body`，
+ * 列表接口的角色 id 有两种形态：叠图角色归并为 `base$N`（N-1 是表情组下标），
  * 独立全身图差分保留完整 `base#expression`，这里统一剥成 base 键。
  */
 export function characterBaseOfListingId(id: string): string {
   return parseCharacterListingId(id).base;
-}
-
-/**
- * 列表 id 的 `$N` 是存储端按 `entry.group + 1` 拼的（ak-asset-storage 的
- * `resolved_id`），N-1 就是 character.json 去重表情组的下标，按组下标反解是
- * 精确的。不能按条目名后缀 `$N` 猜：`avg_npc_1898_1` 的表情名带尾点
- * （`2$1.`～`7$1.`），后缀匹配不上会把它们全部漏掉（同 StoryPlayer #441）。
- */
-function listingGroupIndex(body: string | null): number | null {
-  if (body === null) return null;
-  const index = Number(body) - 1;
-  return Number.isInteger(index) && index >= 0 ? index : null;
 }
 
 function characterAssetUrl(key: string): string {
@@ -249,7 +242,7 @@ export function resolveCharacterPreview(
   id: string,
   links: CharacterLinkMap,
 ): CharacterPreview | null {
-  const { base, faceName, body } = parseCharacterListingId(id);
+  const { base, faceName, group } = parseCharacterListingId(id);
   const node = links.get(base);
   if (!node) return null;
 
@@ -270,8 +263,8 @@ export function resolveCharacterPreview(
     }
   }
 
-  // `base$body` 形态：取该组叠图底图与组内第一个表情
-  const overlayEntry = pickOverlayGroup(node, listingGroupIndex(body));
+  // `base$N` 形态：取该组叠图底图与组内第一个表情
+  const overlayEntry = pickOverlayGroup(node, group);
   if (overlayEntry) {
     const [groupIndex, overlay] = overlayEntry;
     for (const item of node.items.values()) {
@@ -294,16 +287,16 @@ export function resolveCharacterPreview(
 }
 
 /**
- * 组装表情浏览数据：列出该 body 的全部差分并标记本条剧情用到的
+ * 组装表情浏览数据：列出该表情组的全部差分并标记本条剧情用到的
  * （`usedFaceIds` 是接口返回的 `base#expression` 列表）。
  * 角色无 face_overlay（单图角色）或查不到 base 时返回 null。
  */
 export function buildFaceGallery(
-  bodyId: string,
+  listingId: string,
   usedFaceIds: readonly string[],
   links: CharacterLinkMap,
 ): StoryCharacterFaceAsset[] | null {
-  const { base, body } = parseCharacterListingId(bodyId);
+  const { base, group } = parseCharacterListingId(listingId);
   const node = links.get(base);
   if (!node || node.overlays.size === 0) return null;
 
@@ -328,8 +321,7 @@ export function buildFaceGallery(
   };
 
   // 组过滤结果为空（列表 id 与本地 character.json 版本错位等）时退回全部差分
-  const groupIndex = listingGroupIndex(body);
-  const items = groupIndex === null ? [] : collect(groupIndex);
+  const items = group === null ? [] : collect(group);
   return items.length > 0 ? items : collect(null);
 }
 
