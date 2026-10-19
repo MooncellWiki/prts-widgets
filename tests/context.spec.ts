@@ -223,3 +223,19 @@ describe("findMissingVideoUrls", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("normalizeCharacterMap bodies", () => {
+  const node = (bodies: unknown) =>
+    normalizeCharacterMap({
+      avg_npc_9: { array: [], bodies, groups: [], pos: {}, size: {} },
+    }).avg_npc_9;
+
+  it("keeps per-body sprite counts", () => {
+    expect(node([15, 13, 0])?.bodies).toEqual([15, 13, 0]);
+  });
+
+  it("drops bodies unless every count is a non-negative integer", () => {
+    for (const bodies of [undefined, null, 3, [1, -1], [1.5], ["2"]])
+      expect(node(bodies)).not.toHaveProperty("bodies");
+  });
+});

@@ -2,8 +2,9 @@ import mitt, { type Handler } from "mitt";
 
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
 import {
+  type CharacterRefResolution,
   nativeCharacterFadeIdentity,
-  resolveCharacterSelection,
+  resolveCharacterRef,
 } from "./characterRef";
 import { CommandRegistry } from "./commandRegistry";
 import {
@@ -1208,10 +1209,28 @@ export class StoryRuntime {
     return this.waitInterruptiblePromise(this.sleep(Math.max(0, ms)));
   }
 
-  private resolveCharacterName(
+  private resolveCharacterName(ref: string): CharacterRefResolution {
+    return resolveCharacterRef(this.context.linkMap, ref);
+  }
+
+  /**
+   * The ref makes native `SetImage` throw IndexOutOfRangeException, which
+   * nothing catches before the `DoExecuteCommands` coroutine dies: native
+   * stops running the story at this command, with the slot still showing its
+   * previous art. Web adaptation: warn, leave the slot as it is and skip the
+   * rest of the command, but keep playing (as with verticalbg's single tile).
+   */
+  private warnNativeSlotThrows(
     ref: string,
-  ): { base: string; expression: string } | null {
-    return resolveCharacterSelection(this.context.linkMap, ref);
+    line: ParsedCommandLine,
+  ): "continue" {
+    this.warn(
+      "invalid_parameter",
+      `character ${ref} is out of its sprite hub's bounds; native SetImage throws and stops the story here`,
+      line.lineNumber,
+      line.command,
+    );
+    return "continue";
   }
 
   private executeCommand(line: ParsedCommandLine): Promise<CommandResult> {
@@ -2356,7 +2375,10 @@ export class StoryRuntime {
             this.renderer.clearCharacters(slot, 0),
           );
         } else if (nameRef) {
-          resolved = this.resolveCharacterName(nameRef);
+          const resolution = this.resolveCharacterName(nameRef);
+          if (resolution.kind === "native_throws")
+            return this.warnNativeSlotThrows(nameRef, line);
+          resolved = resolution.kind === "found" ? resolution.selection : null;
           if (!resolved) {
             // `_SlotSetCharInternal` (0x183eb5830) swaps the Images *before*
             // `_LoadImage`, so a failed load ("[AVG] Error to load character
@@ -2522,12 +2544,17 @@ export class StoryRuntime {
             void this.renderer.clearCharacters(update.slot, durationMs);
             continue;
           }
-          const resolved = this.resolveCharacterName(update.name);
-          if (!resolved) {
+          const resolution = this.resolveCharacterName(update.name);
+          // Slots run MIDDLE -> LEFT -> RIGHT, so the ones before the throw
+          // have already changed in native too; the rest never run.
+          if (resolution.kind === "native_throws")
+            return this.warnNativeSlotThrows(update.name, line);
+          if (resolution.kind === "missing") {
             this.warn("missing_asset", `character: ${update.name}`);
             void this.renderer.clearCharacters(update.slot, durationMs);
             continue;
           }
+          const resolved = resolution.selection;
           const enterFrom = this.parseEnterDirection(update.enter);
           // Native `_ProcessSlotWithParam` takes xpos/ypos as the slide-in
           // start -- a slot-local offset that `SetCharPos` tweens back to
@@ -2627,7 +2654,11 @@ export class StoryRuntime {
         }
 
         const nameRef = toString(args.name).trim();
-        const resolved = nameRef ? this.resolveCharacterName(nameRef) : null;
+        const resolution = nameRef ? this.resolveCharacterName(nameRef) : null;
+        if (resolution?.kind === "native_throws")
+          return this.warnNativeSlotThrows(nameRef, line);
+        const resolved =
+          resolution?.kind === "found" ? resolution.selection : null;
         // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteCharacterCutin
         // (build 2761: 0x183e49440). Defaults come from the cutin slot's
         // serialized fields (_defaultFadetime = 0.4, _defaultSlotWidth = 200),
@@ -2714,8 +2745,14 @@ export class StoryRuntime {
           channelArg === undefined ? -1 : Math.trunc(toNumber(channelArg, -1));
         const type = parseInterludeType(this.exactArg(args, "type"));
         const name = toString(this.exactArg(args, "name"));
-        const resolvedAvatar =
+        const avatarResolution =
           type === 3 && name ? this.resolveCharacterName(name) : null;
+        if (avatarResolution?.kind === "native_throws")
+          return this.warnNativeSlotThrows(name, line);
+        const resolvedAvatar =
+          avatarResolution?.kind === "found"
+            ? avatarResolution.selection
+            : null;
         if (type === 3 && name && !resolvedAvatar)
           this.warn("missing_asset", `interlude avatar: ${name}`);
 
