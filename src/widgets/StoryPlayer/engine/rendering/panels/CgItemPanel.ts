@@ -11,6 +11,12 @@ type Tween = (
 ) => Promise<void>;
 
 interface CgItemState {
+  /**
+   * `AVGShowItemCgSlot.m_animEpoch`: every `Hide` re-binds the slot's
+   * `_onAnimEnd` and bumps the epoch through `_MakeAnimEndCb`, so only the
+   * latest hide on a slot may complete it.
+   */
+  hideEpoch: number;
   root: Container;
   sessionId: number;
   sprite: Sprite | null;
@@ -70,7 +76,12 @@ export class CgItemPanel {
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.layer.addChild(root);
-    const state: CgItemState = { root, sessionId: 1, sprite: null };
+    const state: CgItemState = {
+      hideEpoch: 0,
+      root,
+      sessionId: 1,
+      sprite: null,
+    };
     this.states.set(input.key, state);
     const sessionId = state.sessionId;
 
@@ -244,6 +255,13 @@ export class CgItemPanel {
       // callback stays inert when a newer `show` has replaced the slot
       // mid-fade (replacement bumps the id in `dispose`).
       const sessionAtHide = state.sessionId;
+      // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) starts a fresh DOFade
+      // without killing an earlier one and completes through
+      // `_MakeAnimEndCb` (0x18405ee40), whose callback only fires while its
+      // epoch is still current. A second hide on the same key (or a later
+      // clear-all) therefore mutes this fade's completion: the slot is
+      // disposed when the latest fade ends, not the first.
+      const hideEpoch = ++state.hideEpoch;
       const startAlpha = state.root.alpha;
       const task = this.tween(
         fadeMs,
@@ -251,7 +269,11 @@ export class CgItemPanel {
           state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
         () => {
-          if (state.sessionId === sessionAtHide) this.dispose(key);
+          if (
+            state.hideEpoch === hideEpoch &&
+            state.sessionId === sessionAtHide
+          )
+            this.dispose(key);
         },
       );
       if (block) await task;
@@ -262,6 +284,10 @@ export class CgItemPanel {
     const entries = [...this.states.entries()];
     this.states.clear();
     for (const [, state] of entries) {
+      // `_ClearAllItems` hides every slot through the same `Hide`, so an
+      // in-flight keyed hide loses its completion here as well; otherwise it
+      // would `dispose` whatever a later `show` registers under that key.
+      state.hideEpoch += 1;
       const startAlpha = state.root.alpha;
       void this.tween(
         fadeMs,

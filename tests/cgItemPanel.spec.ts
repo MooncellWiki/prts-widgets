@@ -318,6 +318,49 @@ describe("CgItemPanel", () => {
     expect(layer.children).toContain(newRoot);
   });
 
+  it("lets the latest hide on a key own the dispose, like native's anim epoch", async () => {
+    // `AVGShowItemCgSlot.Hide` re-binds `_onAnimEnd` and bumps `m_animEpoch`
+    // via `_MakeAnimEndCb`, so the first fade's completion is inert and the
+    // slot goes away when the second fade ends.
+    const layer = new Container();
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    await panel.show(input("a"));
+
+    void panel.hide("a", 1000, "Linear", false);
+    void panel.hide("a", 2000, "Linear", false);
+    steps[0].update(1);
+    steps[0].complete();
+    expect(panel.targets("a")).toHaveLength(1);
+
+    steps[1].update(1);
+    steps[1].complete();
+    expect(panel.targets("a")).toEqual([]);
+    expect(layer.children).toHaveLength(0);
+  });
+
+  it("mutes a keyed hide superseded by clear-all so it cannot dispose a re-shown key", async () => {
+    const layer = new Container();
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+    await panel.show(input("a"));
+
+    void panel.hide("a", 500, "Linear", false);
+    await panel.hide(undefined, 1000, "Linear", false);
+    await panel.show(input("a"));
+    const fresh = panel.targets("a")[0];
+
+    steps[0].update(1);
+    steps[0].complete();
+    expect(panel.targets("a")).toEqual([fresh]);
+    expect(layer.children).toContain(fresh);
+
+    steps[1].update(1);
+    steps[1].complete();
+    expect(panel.targets("a")).toEqual([fresh]);
+    expect(layer.children).toEqual([fresh]);
+  });
+
   it("clear-all keeps driving during the fade and stops after destroy", async () => {
     const layer = new Container();
     const { steps, tween } = manualTweenSteps();
