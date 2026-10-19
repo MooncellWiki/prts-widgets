@@ -229,6 +229,16 @@ export class CgItemPanel {
     ease: string,
     block: boolean,
   ): Promise<void> {
+    // Native provenance (2.7.81 `_ExecuteHideCgItem` 0x183fb05e0 /
+    // `_ClearAllItems` 0x183fafbc0): before fading, native unconditionally
+    // runs `_StopShakeByKey(key)` (keyed path) / `_StopAllShakes()` (clear
+    // all) -- DOKill(complete) on the slot ROOT transform plus zeroing its
+    // anchoredPosition/localPosition. Without `cgitemshake` (not ported, 0
+    // corpus uses) that kills nothing, and the root already sits at its
+    // authored origin, so the step is a visual no-op that the port skips;
+    // the show-side pfrom/pto tween lives on the image child, not the root,
+    // and keeps driving during the fade either way. Revisit if/when
+    // cgitemshake is ported.
     if (this.states.size === 0) return;
     // `AVGShowItemCgSlot.Hide` uses the same `GetEnum<Ease>` resolution,
     // but with (Ease)1 = InSine as the call-site default (runtime.ts passes

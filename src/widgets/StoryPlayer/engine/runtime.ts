@@ -2035,12 +2035,21 @@ export class StoryRuntime {
         const image = toString(this.exactArg(args, "image"));
         const id = toString(this.exactArg(args, "id"));
         const key = image || id ? (id ? `${image}_${id}` : image) : undefined;
+        // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) resolves the fade as
+        // `GetFloat(param, "fadetime", 0.13)` and then replaces it wholesale
+        // with `Command.TryGetParam<float>("duration")` when the script wrote
+        // `duration` -- no combining, and an unparseable duration means the
+        // TryGetParam misses and fadetime stands (toOptionalNumber models
+        // that miss). This override is exclusive to the CG slot: photo/cutin
+        // `Hide` (0x18405fc60 / 0x18405f0e0) read fadetime only, so `hideitem`
+        // is unaffected. act54side/level_act54side_08_beg.txt:540-556 already
+        // hides cgitem_77_i12_* with duration=3/2 instead of fadetime.
+        const fadeSeconds =
+          toOptionalNumber(this.exactArg(args, "duration")) ??
+          toNumber(this.exactArg(args, "fadetime"), 0.13);
         await this.renderer.clearCgItems(
           key,
-          Math.max(
-            0,
-            Math.round(toNumber(this.exactArg(args, "fadetime"), 0.13) * 1000),
-          ),
+          Math.max(0, Math.round(fadeSeconds * 1000)),
           // `AVGShowItemCgSlot.Hide` (0x183ed14a0) reads the curve with
           // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`: the
           // default is DOTween `Ease` enum value 1 = InSine (`1-cos(t*pi/2)`,

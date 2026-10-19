@@ -409,4 +409,27 @@ describe("StoryRuntime", () => {
       { block: false, ease: "InSine", fadeMs: 130, key: "cgitem_test" },
     ]);
   });
+
+  it("lets hidecgitem duration replace fadetime like the native CG-slot Hide", async () => {
+    // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) reads fadetime first and
+    // then overwrites it wholesale with `TryGetParam<float>("duration")` when
+    // the script wrote duration -- an unparseable duration makes the
+    // TryGetParam miss, so fadetime stands. act54side/level_act54side_08_beg.txt
+    // :540-556 hides cgitem_77_i12_* with duration=3/2 and no fadetime. The
+    // override is CG-slot only; photo/cutin Hide (hideitem) read fadetime alone.
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[hidecgitem(image="cgitem_test",fadetime=0.5,duration=2)]',
+        '[hidecgitem(image="cgitem_test",fadetime=0.7,duration=abc)]',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.clearCgItemCalls).toEqual([
+      { block: false, ease: "InSine", fadeMs: 2000, key: "cgitem_test" },
+      { block: false, ease: "InSine", fadeMs: 700, key: "cgitem_test" },
+    ]);
+  });
 });
