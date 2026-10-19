@@ -339,6 +339,25 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("defaults cgitem ease to InSine like the native GetEnum call-site default", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[cgitem(image="cgitem_test")]']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.cgItemCalls).toEqual([
+      expect.objectContaining({
+        assetKey: "cgitem_test",
+        ease: "InSine",
+        key: "cgitem_test",
+      }),
+    ]);
+  });
+
   it("reads a trailing-dot cgitem alpha as a number, not the fallback", async () => {
     // level_main_15-01_end.txt:742 写的就是 `afrom = 0.`：native 的 Newtonsoft
     // 交给 Double.TryParse(NumberStyles.Float) 读成 0，cg 从透明淡入 3 秒；
