@@ -332,7 +332,7 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCgItemCalls).toEqual([
       {
         block: true,
-        ease: "InSine",
+        ease: "Linear",
         fadeMs: 130,
         key: "cgitem_test_left",
       },
@@ -395,11 +395,10 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("defaults hidecgitem ease to InSine like the native GetEnum call-site default", async () => {
-    // `AVGShowItemCgSlot.Hide` (0x183ed14a0) reads ease via the same
-    // `GetEnum<Ease>(param, "ease", (Ease)1, ...)` call as Show: the default
-    // and rejected-name fallback is DOTween enum 1 = InSine. All 140 corpus
-    // hidecgitem lines omit `ease`, so every native hide fade runs InSine.
+  it("defaults hidecgitem ease to Linear like the native GetEnum call-site default", async () => {
+    // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) reads ease via the same
+    // `GetEnum<Ease>(param, "ease", (Ease)1, ...)` call as Show: DOTween
+    // `Ease` 1 is Linear (`Unset` = 0, `InSine` = 2).
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[hidecgitem(image="cgitem_test")]']),
@@ -408,30 +407,34 @@ describe("StoryRuntime", () => {
     );
     await runtime.start();
     expect(renderer.clearCgItemCalls).toEqual([
-      { block: false, ease: "InSine", fadeMs: 130, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 130, key: "cgitem_test" },
     ]);
   });
 
   it("lets hidecgitem duration replace fadetime like the native CG-slot Hide", async () => {
     // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) reads fadetime first and
-    // then overwrites it wholesale with `TryGetParam<float>("duration")` when
-    // the script wrote duration -- an unparseable duration makes the
-    // TryGetParam miss, so fadetime stands. act54side/level_act54side_08_beg.txt
-    // :540-556 hides cgitem_77_i12_* with duration=3/2 and no fadetime. The
-    // override is CG-slot only; photo/cutin Hide (hideitem) read fadetime alone.
+    // then overwrites it wholesale with `TryGetParam(out float)` when the
+    // script wrote duration. Native `Convert.ToSingle` throws on an
+    // unparseable duration; the port keeps fadetime instead. Corpus:
+    // act54side/level_act54side_08_beg.txt:540-556 hides cgitem_77_i12_* with
+    // duration=3/2 and no fadetime, act52side/level_act52side_08_end.txt:227
+    // clears all with duration=2. The override is CG-slot only; photo/cutin
+    // Hide (hideitem) read fadetime alone.
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
         '[hidecgitem(image="cgitem_test",fadetime=0.5,duration=2)]',
         '[hidecgitem(image="cgitem_test",fadetime=0.7,duration=abc)]',
+        "[hidecgitem(duration=2,block=false)]",
       ]),
       renderer,
       new FakeAudio(),
     );
     await runtime.start();
     expect(renderer.clearCgItemCalls).toEqual([
-      { block: false, ease: "InSine", fadeMs: 2000, key: "cgitem_test" },
-      { block: false, ease: "InSine", fadeMs: 700, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 2000, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 700, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 2000, key: undefined },
     ]);
   });
 });

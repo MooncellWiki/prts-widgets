@@ -245,19 +245,26 @@ describe("CgItemPanel", () => {
     expect(panel.targets("a")).toEqual([]);
   });
 
-  it("fades with the native InSine default curve, not linearly", async () => {
-    const layer = new Container();
-    const { steps, tween } = manualTweenSteps();
-    const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
-    await panel.show(input("a"));
-    const root = panel.targets("a")[0];
+  it("fades along the requested DOTween curve", async () => {
+    // runtime.ts passes the native `(Ease)1` = Linear default; an explicit
+    // name such as InSine (1 - cos(pi/4) at the midpoint) is honoured.
+    const cases = [
+      { ease: "Linear", expected: 0.5 },
+      { ease: "InSine", expected: Math.cos(Math.PI / 4) },
+    ];
+    for (const { ease, expected } of cases) {
+      const layer = new Container();
+      const { steps, tween } = manualTweenSteps();
+      const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
+      await panel.show(input("a"));
+      const root = panel.targets("a")[0];
 
-    void panel.hide("a", 500, "InSine", false);
-    // InSine(0.5) = 1 - cos(pi/4), so the remaining alpha is cos(pi/4).
-    steps[0].update(0.5);
-    expect(root.alpha).toBeCloseTo(Math.cos(Math.PI / 4), 5);
-    steps[0].update(1);
-    expect(root.alpha).toBeCloseTo(0, 5);
+      void panel.hide("a", 500, ease, false);
+      steps[0].update(0.5);
+      expect(root.alpha).toBeCloseTo(expected, 5);
+      steps[0].update(1);
+      expect(root.alpha).toBeCloseTo(0, 5);
+    }
   });
 
   it("keeps driving the show tween while a single-key hide fades", async () => {
@@ -334,6 +341,9 @@ describe("CgItemPanel", () => {
 
     steps[1].update(1);
     steps[1].complete();
+    expect(layer.children).toHaveLength(0);
     // The fade completion bumped the session: further show-side ticks must
+    // not touch the destroyed sprite (Pixi v8 nulls `position` on destroy).
+    expect(() => steps[0].update(1)).not.toThrow();
   });
 });

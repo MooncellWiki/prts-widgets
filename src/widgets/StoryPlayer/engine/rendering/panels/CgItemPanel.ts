@@ -223,10 +223,8 @@ export class CgItemPanel {
     // and keeps driving during the fade either way. Revisit if/when
     // cgitemshake is ported.
     if (this.states.size === 0) return;
-    // `AVGShowItemCgSlot.Hide` uses the same `GetEnum<Ease>` resolution,
-    // but with (Ease)1 = InSine as the call-site default (runtime.ts passes
-    // it explicitly), so the shared resolver's Linear fallback only ever
-    // applies to names the corpus never writes.
+    // `AVGShowItemCgSlot.Hide` uses the same `GetEnum<Ease>` resolution
+    // (`(Ease)1` = Ease.Linear default) as Show.
     const easeCurve = dotweenEaseCurve(ease);
     if (key) {
       const state = this.states.get(key);
@@ -237,12 +235,14 @@ export class CgItemPanel {
       // behaviour worth reproducing. The Web port releases immediately.
       if (!state) return;
       // Native provenance: the hide path performs no DOKill -- base
-      // `AVGShowItemSlot.Hide` (0x183ed3cf0) only stores the callback -- so
-      // the show-side sequence keeps driving position/scale while the fade
-      // runs and until the completing `Dispose` destroys the slot. Do NOT
-      // bump `sessionId` here (that would freeze those writes); only snapshot
-      // it so the completion callback stays inert when a newer `show` has
-      // replaced the slot mid-fade (replacement bumps the id in `dispose`).
+      // `AVGShowItemSlot.Hide` (2.7.81 0x184060370) only stores the
+      // callback, and the CG slot's `_MakeAnimEndCb` epoch bump merely mutes
+      // the show sequence's OnComplete -- so the show-side sequence keeps
+      // driving position/scale while the fade runs and until the completing
+      // `Dispose` destroys the slot. Do NOT bump `sessionId` here (that
+      // would freeze those writes); only snapshot it so the completion
+      // callback stays inert when a newer `show` has replaced the slot
+      // mid-fade (replacement bumps the id in `dispose`).
       const sessionAtHide = state.sessionId;
       const startAlpha = state.root.alpha;
       const task = this.tween(
