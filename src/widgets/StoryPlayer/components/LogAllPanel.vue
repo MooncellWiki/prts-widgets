@@ -14,8 +14,13 @@ const props = defineProps<{
   activeLineIndex?: number | null;
   selections?: RuntimeChoiceSelection[];
   embedded?: boolean;
+  /** 文本行可点击发起快进跳转（index.vue 编排重建播放器 + seekToLine） */
+  seekable?: boolean;
 }>();
-const emit = defineEmits<{ "update:show": [boolean] }>();
+const emit = defineEmits<{
+  "update:show": [boolean];
+  seek: [lineIndex: number];
+}>();
 
 const scrollRoot = ref<HTMLElement | null>(null);
 
@@ -45,7 +50,9 @@ watch(
     @close="emit('update:show', false)"
   >
     <template #header-extra>
-      <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
+      <span class="text-xs font-normal opacity-60">
+        全部对话文本（含分支{{ seekable ? "；点击文本行快进" : "" }}）
+      </span>
     </template>
 
     <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
@@ -57,6 +64,8 @@ watch(
         :document="document"
         :active-line-index="activeLineIndex"
         :selections="selections"
+        :seekable="seekable"
+        @seek="(lineIndex) => emit('seek', lineIndex)"
       />
     </div>
   </NCard>
@@ -72,7 +81,9 @@ watch(
     @update:show="emit('update:show', $event)"
   >
     <template #header-extra>
-      <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
+      <span class="text-xs font-normal opacity-60">
+        全部对话文本（含分支{{ seekable ? "；点击文本行快进" : "" }}）
+      </span>
     </template>
 
     <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
@@ -84,6 +95,8 @@ watch(
         :document="document"
         :active-line-index="activeLineIndex"
         :selections="selections"
+        :seekable="seekable"
+        @seek="(lineIndex) => emit('seek', lineIndex)"
       />
     </div>
   </NModal>
