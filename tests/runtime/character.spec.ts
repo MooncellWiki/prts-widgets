@@ -759,3 +759,102 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 });
+
+describe("StoryRuntime refs that make native SetImage throw", () => {
+  // One body of two listed faces plus the face hub's unlisted base sprite:
+  // sprites.Length is 3, so `#4` passes native's off-by-one guard and throws.
+  function run(script: string[]) {
+    const context = createContext([...script, '[name="A"]ok']);
+    context.linkMap.avg_slot_1 = {
+      array: [
+        {
+          alias: "",
+          body: 0,
+          face: "avg_slot_1/1$1",
+          group: 0,
+          index: 0,
+          name: "1$1",
+        },
+        {
+          alias: "",
+          body: 0,
+          face: "avg_slot_1/2$1",
+          group: 0,
+          index: 1,
+          name: "2$1",
+        },
+      ],
+      bodies: [3],
+      groups: [
+        {
+          base: "avg_slot_1/avg_slot_1$1",
+          faceRect: { h: 10, w: 10, x: 0, y: 0 },
+          mode: "face_overlay",
+        },
+      ],
+      pos: { x: 0, y: 0 },
+      size: { x: 100, y: 100 },
+    };
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+      onWarning: (warning) => warnings.push(warning),
+    });
+    return { renderer, runtime, warnings };
+  }
+  const nativeThrows = (ref: string, command: string) =>
+    expect.objectContaining({
+      command,
+      detail: expect.stringContaining(`character ${ref} `),
+      type: "invalid_parameter",
+    });
+
+  it("leaves the charslot untouched and skips the rest of the command", async () => {
+    const { renderer, runtime, warnings } = run([
+      '[charslot(slot="m",name="avg_slot_1#2$1")]',
+      '[charslot(slot="m",name="avg_slot_1#4$1",action="shake",power=5,duration=0.3)]',
+    ]);
+
+    await runtime.start();
+
+    expect(warnings).toEqual([nativeThrows("avg_slot_1#4$1", "charslot")]);
+    expect(renderer.characterCalls).toHaveLength(1);
+    expect(renderer.characterCalls[0]).toMatchObject({ expression: "2$1" });
+    expect(renderer.clearedSlots).toEqual([]);
+    expect(renderer.actionCalls).toEqual([]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("stops a character command at the slot that throws", async () => {
+    const { renderer, runtime, warnings } = run([
+      '[character(name="avg_npc_1",name2="avg_slot_1#4$1")]',
+    ]);
+
+    await runtime.start();
+
+    // MIDDLE is cleared and LEFT is set before RIGHT throws, as in native.
+    expect(warnings).toEqual([nativeThrows("avg_slot_1#4$1", "character")]);
+    expect(renderer.clearedSlots).toEqual([{ fadeMs: 150, slot: "m" }]);
+    expect(renderer.characterCalls).toHaveLength(1);
+    expect(renderer.characterCalls[0]).toMatchObject({
+      characterKey: "avg_npc_1",
+      slot: "l",
+    });
+  });
+
+  it("drops charactercutin and the interlude avatar instead of a fallback sprite", async () => {
+    const { renderer, runtime, warnings } = run([
+      '[charactercutin(widgetID="1",name="avg_slot_1#4$1")]',
+      '[interlude(channel=1,type=3,slot="m",name="avg_slot_1#4")]',
+    ]);
+
+    await runtime.start();
+
+    expect(warnings).toEqual([
+      nativeThrows("avg_slot_1#4$1", "charactercutin"),
+      nativeThrows("avg_slot_1#4", "interlude"),
+    ]);
+    expect(renderer.characterCutinCalls).toEqual([]);
+    expect(renderer.interludeCalls).toEqual([]);
+  });
+});

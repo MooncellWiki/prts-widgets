@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   nativeCharacterFadeIdentity,
   parseNativeCharacterRef,
+  resolveCharacterRef,
   resolveCharacterSelection,
   tryParseInt32,
 } from "../src/widgets/StoryPlayer/engine/characterRef";
@@ -310,5 +311,100 @@ describe("resolveCharacterSelection with body/index slots", () => {
   it("falls back to the body's first entry for a slot it does not list", () => {
     expect(pick("avg_npc_9#4$1")).toBe("1$1");
     expect(pick("avg_npc_9#9$2")).toBe("1$2");
+  });
+});
+
+describe("resolveCharacterRef with bodies", () => {
+  // Body 0: faces at 0 and 1, the face hub's base sprite at 2 (unlisted), so
+  // sprites.Length is 3. Body 1: one whole-body image, Length 1. Body 2: an
+  // empty group.
+  const hub: Record<string, StoryLinkNode> = {
+    avg_npc_9: {
+      array: [
+        {
+          alias: "",
+          body: 0,
+          face: "avg_npc_9/1$1",
+          group: 0,
+          index: 0,
+          name: "1$1",
+        },
+        {
+          alias: "",
+          body: 0,
+          face: "avg_npc_9/2$1",
+          group: 0,
+          index: 1,
+          name: "2$1",
+        },
+        {
+          alias: "",
+          body: 1,
+          group: -1,
+          image: "avg_npc_9/1$2",
+          index: 0,
+          name: "1$2",
+        },
+      ],
+      bodies: [3, 1, 0],
+      groups: [
+        {
+          base: "avg_npc_9/avg_npc_9$1",
+          faceRect: { h: 10, w: 10, x: 0, y: 0 },
+          mode: "face_overlay",
+        },
+      ],
+      pos: { x: 0, y: 0 },
+      size: { x: 0, y: 0 },
+    },
+  };
+  const kind = (ref: string) => resolveCharacterRef(hub, ref).kind;
+
+  it("throws exactly at sprites.Length, falls back to 0 past it", () => {
+    expect(kind("avg_npc_9#3$1")).toBe("found"); // the base sprite slot
+    expect(kind("avg_npc_9#4$1")).toBe("native_throws");
+    expect(resolveCharacterSelection(hub, "avg_npc_9#5$1")?.expression).toBe(
+      "1$1",
+    );
+    expect(kind("avg_npc_9#2$2")).toBe("native_throws");
+    expect(kind("avg_npc_9#3$2")).toBe("found");
+  });
+
+  it("throws exactly at spriteGroups.Length, falls back to body 0 past it", () => {
+    expect(kind("avg_npc_9#1$4")).toBe("native_throws");
+    expect(resolveCharacterSelection(hub, "avg_npc_9#2$5")?.expression).toBe(
+      "2$1",
+    );
+    expect(resolveCharacterSelection(hub, "avg_npc_9#2$0")?.expression).toBe(
+      "2$1",
+    );
+  });
+
+  it("throws for any index into an empty body", () => {
+    expect(kind("avg_npc_9#1$3")).toBe("native_throws");
+    expect(kind("avg_npc_9#0$3")).toBe("native_throws");
+    expect(kind("avg_npc_9$3")).toBe("native_throws");
+  });
+
+  it("checks the bare key and the @alias form against body 0 / sprites[0]", () => {
+    expect(kind("avg_npc_9")).toBe("found");
+    expect(kind("avg_npc_9@smile$3")).toBe("native_throws");
+    expect(kind("avg_npc_9@smile$2")).toBe("found");
+  });
+
+  it("returns null from resolveCharacterSelection when native throws", () => {
+    expect(resolveCharacterSelection(hub, "avg_npc_9#4$1")).toBeNull();
+  });
+
+  it("keeps the old fallbacks when bodies is absent", () => {
+    const { bodies: _, ...withoutBodies } = hub.avg_npc_9!;
+    const legacy = { avg_npc_9: withoutBodies };
+    expect(resolveCharacterRef(legacy, "avg_npc_9#4$1")).toEqual({
+      kind: "found",
+      selection: { base: "avg_npc_9", expression: "1$1" },
+    });
+    expect(resolveCharacterRef(legacy, "avg_ghost#1")).toEqual({
+      kind: "missing",
+    });
   });
 });
