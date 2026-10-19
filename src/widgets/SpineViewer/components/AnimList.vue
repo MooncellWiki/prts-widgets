@@ -7,13 +7,19 @@ import { GLOSS, groupAnims, type AnimSummary } from "../engine/anims";
 
 /**
  * 动作列表：一行一个动作，点了就播（游戏的时装预览也是一排直达按钮 btn_play_enter / special / interact，不是下拉）。
- * 超过 8 个时分组；每行右边是帧数（30 帧 / 秒）与 OnAttack 判定次数——现网 ⓘ 气泡里的「模型动画数据」表就是这一列
+ * 超过 8 个时分组；每行右边是帧数（30 帧 / 秒）与 OnAttack 判定次数——现网 ⓘ 气泡里的「模型动画数据」表就是这一列。
+ * 行里的字要能选中复制（动作名拿去写 wikitext），所以行不是 <button>（按钮里的字拖不出选区），
+ * 是 role="button" 的 div：Enter / 空格照样播；拖选、双击选词时不当作点了这一行
  */
 const props = defineProps<{
   anims: AnimSummary[];
   active?: string;
 }>();
 const emit = defineEmits<{ select: [name: string] }>();
+function onClick(name: string) {
+  if (window.getSelection()?.toString()) return;
+  emit("select", name);
+}
 
 const uid = useId();
 const groups = computed(() =>
@@ -128,14 +134,16 @@ useEventListener(document, "keydown", (e: KeyboardEvent) => {
         <div v-if="group.title" class="sv__group ak-overline">
           {{ group.title }}
         </div>
-        <button
+        <div
           v-for="a in group.items"
           :key="a.name"
-          type="button"
+          role="button"
+          tabindex="0"
           :class="['sv__anim', { 'is-active': a.name === active }]"
           :aria-pressed="a.name === active"
           :aria-describedby="a.hitText ? a.descId : undefined"
-          @click="emit('select', a.name)"
+          @click="onClick(a.name)"
+          @keydown.enter.space.prevent="emit('select', a.name)"
         >
           <span>{{ a.name }}</span>
           <small v-if="GLOSS[a.name]">{{ GLOSS[a.name] }}</small>
@@ -144,7 +152,7 @@ useEventListener(document, "keydown", (e: KeyboardEvent) => {
             >{{ a.frames }} F</i
           >
           <span v-if="a.hitText" :id="a.descId" hidden>{{ a.hitText }}</span>
-        </button>
+        </div>
       </template>
     </div>
     <div
