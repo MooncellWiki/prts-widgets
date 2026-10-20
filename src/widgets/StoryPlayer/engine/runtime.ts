@@ -214,6 +214,22 @@ function toNumber(value: unknown, fallback = 0): number {
   return toOptionalNumber(value) ?? fallback;
 }
 
+/**
+ * System.Convert.ToInt32(double) — banker's rounding, midpoints to even.
+ * Every native int-typed parameter read goes through it
+ * (`Command.TryGetParam<int>` / `GetOrDefault<int>` convert the JSON-boxed
+ * double the same way), so `2.5` becomes 2, `3.5` becomes 4, `-2.5` becomes
+ * -2 — not Math.round or Math.trunc.
+ */
+function toNativeInt(value: unknown, fallback = 0): number {
+  const number = toNumber(value, fallback);
+  const floor = Math.floor(number);
+  const fraction = number - floor;
+  if (fraction > 0.5) return floor + 1;
+  if (fraction < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+
 function toBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -2596,9 +2612,10 @@ export class StoryRuntime {
 
       case "characteraction": {
         // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacterAction
-        // (0x183E699F0, build 2761). All five branches scale fadetime through
-        // AVGUtils.CalculateFadetime (animateRatio × fadetime) and read the
-        // blocking flag from `isblock` only — `_AddFinishCommand`
+        // (0x183E699F0, build 2761; re-verified on 2.7.81 @ 0x183fd6c90 with
+        // zero behavior change). All five branches scale fadetime through
+        // CharacterPanel.CalculateFadetime (animateRatio × fadetime) and read
+        // the blocking flag from `isblock` only — `_AddFinishCommand`
         // (0x183E698E0) never reads `block=` (only the cutin panel does), so
         // the thousands of legacy `block=` spellings in the corpus stay
         // non-blocking exactly like the native client.
@@ -2610,7 +2627,13 @@ export class StoryRuntime {
           );
           return "continue";
         }
-        const slot = this.parseCharacterActionSlot(args.name, type);
+        // GetOrDefault("name", "left"): a missing key resolves through the
+        // "left" arm of each truth table (exit → left slot, others → left),
+        // while an unrecognized value hits the else fallback instead.
+        const slot = this.parseCharacterActionSlot(
+          this.exactArg(args, "name") === undefined ? "left" : args.name,
+          type,
+        );
 
         // Per-branch GetOrDefault defaults: exit/zoom fade in for 1.0s while
         // move/jump/shake default to 0.5s.
@@ -2663,35 +2686,41 @@ export class StoryRuntime {
                 : undefined))
             : parsedDirection;
 
-        // `scale` resets to the native 1.0 default when omitted; xscale and
-        // yscale are web extensions (the native panel never reads them).
-        const scaleFallback = Math.max(0, toNumber(args.scale, 1));
+        // `scale` resets to the native 1.0 default when omitted and passes
+        // through unclamped (native LerpUnclamped accepts negative scale,
+        // which mirrors the sprite); xscale/yscale are web extensions (the
+        // native panel never reads them).
+        const scaleFallback = toNumber(args.scale, 1);
         const xScale =
           args.xscale === undefined
             ? scaleFallback
-            : Math.max(0, toNumber(args.xscale, scaleFallback));
+            : toNumber(args.xscale, scaleFallback);
         const yScale =
           args.yscale === undefined
             ? scaleFallback
-            : Math.max(0, toNumber(args.yscale, scaleFallback));
+            : toNumber(args.yscale, scaleFallback);
 
         await this.renderer.runCharacterAction({
+          // Native reads the pair via TryGetParam<int>, i.e. the JSON doubles
+          // go through Convert.ToInt32's banker's rounding before the cast.
           absolutePosition:
             type === "exit" && hasExitX && hasExitY
               ? {
-                  x: toNumber(args.xpos, 0),
-                  y: toNumber(args.ypos, 0),
+                  x: toNativeInt(args.xpos),
+                  y: toNativeInt(args.ypos),
                 }
               : undefined,
           block: toBoolean(args.isblock, false),
           direction,
           durationMs,
           pivot,
-          // jump/shake GetOrDefault defaults: power 10, int times 3.
-          power: Math.max(0, toNumber(args.power, 10)),
-          // Native key is `random` (DOShakePosition randomness degrees,
+          // jump/shake GetOrDefault defaults: power 10, int times 3. Power is
+          // unclamped — native DOLocalJump/DOShakePosition take it as-is, so
+          // a negative value bounces/shakes downward like the client.
+          power: toNumber(args.power, 10),
+          // Native key is `random` (int, DOShakePosition randomness degrees,
           // default 10); `randomness=` is not read by the native panel.
-          randomness: toNumber(args.random, 10),
+          randomness: toNativeInt(args.random, 10),
           // start/leftend/rightend and stop are web extensions kept for
           // charslot-style scripts; the native panel never reads them.
           rotationFromDeg: toNumber(args.start, 0),
@@ -2703,7 +2732,7 @@ export class StoryRuntime {
           scaleY: yScale,
           slot,
           stop: toBoolean(args.stop, false),
-          times: Math.trunc(toNumber(args.times, 3)),
+          times: toNativeInt(args.times, 3),
           type: effectiveType,
           xOffset: type === "zoom" ? 0 : toNumber(args.xpos, 0),
           yOffset: type === "zoom" ? 0 : toNumber(args.ypos, 0),
@@ -3958,25 +3987,32 @@ export class StoryRuntime {
     value: unknown,
     type: CharacterActionInput["type"],
   ): string {
-    const normalized = toString(value).trim().toLowerCase();
-    if (normalized === "left") return "l";
-    if (normalized === "right") return "r";
-    if (normalized === "middle") return "m";
+    // Native compares GetOrDefault("name", "left") with String.op_Equality:
+    // ordinal, case-sensitive, no trim. The "left" default for a missing key
+    // is applied by the caller (exit's truth table maps "left" to the left
+    // slot, not to the else fallback).
+    const name = toString(value);
+    if (name === "left") return "l";
+    if (name === "right") return "r";
+    if (name === "middle") return "m";
     return type === "exit" ? "m" : "l";
   }
 
   private parseCharacterActionType(
     value: unknown,
   ): CharacterActionInput["type"] | undefined {
-    const normalized = toString(value).trim().toLowerCase();
+    // _ExecuteCharacterAction matches the five literals with
+    // String.op_Equality (ordinal; 2.7.81 @ 0x183fd6c90) — "MOVE" is an
+    // unknown type that logs an error and never blocks, not a match.
+    const type = toString(value);
     if (
-      normalized === "exit" ||
-      normalized === "jump" ||
-      normalized === "move" ||
-      normalized === "shake" ||
-      normalized === "zoom"
+      type === "exit" ||
+      type === "jump" ||
+      type === "move" ||
+      type === "shake" ||
+      type === "zoom"
     ) {
-      return normalized;
+      return type;
     }
     return undefined;
   }
@@ -3984,18 +4020,19 @@ export class StoryRuntime {
   private parseCharacterActionDirection(
     value: unknown,
   ): CharacterActionInput["direction"] | undefined {
-    const normalized = toString(value).trim().toLowerCase();
-    // _GenExitPosition (0x183E6B670) recognizes exactly left/right/up/down;
+    // _GenExitPosition (2.7.81 @ 0x183fd8980) recognizes exactly
+    // left/right/up/down via String.op_Equality (ordinal, case-sensitive);
     // anything else resolves to the (0,0) rest anchor (renderer handles
     // undefined that way). The "left" default for a missing key is applied by
     // the exit branch, matching GetOrDefault("direction", "left").
+    const direction = toString(value);
     if (
-      normalized === "down" ||
-      normalized === "left" ||
-      normalized === "right" ||
-      normalized === "up"
+      direction === "down" ||
+      direction === "left" ||
+      direction === "right" ||
+      direction === "up"
     ) {
-      return normalized;
+      return direction;
     }
     return undefined;
   }

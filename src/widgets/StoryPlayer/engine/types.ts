@@ -271,7 +271,8 @@ export interface CharacterActionInput {
   power: number;
   /**
    * DOShakePosition randomness. Native key is `random` (int, degrees, default
-   * 10); the web renderer adapts it to a per-tick duty cycle.
+   * 10): the radius each shake waypoint's direction jitters around the
+   * previous direction flipped by 180° (DOTween.Shake Full mode).
    */
   randomness: number;
   rotationFromDeg: number;

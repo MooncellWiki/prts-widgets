@@ -73,7 +73,11 @@ import {
 
 import { guardClaimedClicks } from "./core/ClickClaim";
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
-import { dotweenDefaultEase, dotweenEaseCurve } from "./core/DotweenEase";
+import {
+  dotweenDefaultEase,
+  dotweenEaseCurve,
+  linearEase,
+} from "./core/DotweenEase";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -270,10 +274,20 @@ function tintChannel(value: number): number {
  */
 const SLOT_ENTER_COMPENSATION: Record<string, number> = { l: 200, r: -200 };
 
-/** DOTween `Ease.OutCubic`, used by `AVGCharacterSlot.SetCharPos`. */
+/**
+ * DOTween `Ease.OutCubic`, used by `AVGCharacterSlot.SetCharPos` and
+ * `AVGCharacterSlot.MoveChar` (both `DOLocalMove(...).SetEase(Ease.OutCubic)`;
+ * 2.7.81 MoveChar @ 0x184029e30, SetCharPos @ 0x18402a1e0). `easeOutQuad`
+ * below is the DOLocalJump arc ease (2.7.81 DOLocalJump @ 0x184257a20; same
+ * formula as `dotweenDefaultEase` in core/DotweenEase).
+ */
 function easeOutCubic(progress: number): number {
   const remaining = 1 - progress;
   return 1 - remaining * remaining * remaining;
+}
+
+function easeOutQuad(progress: number): number {
+  return 1 - (1 - progress) * (1 - progress);
 }
 
 /**
@@ -2638,8 +2652,9 @@ export class PixiStoryRenderer implements StoryRenderer {
         return;
       }
       case "jump": {
-        // Native runs one DOLocalJump tween of durationMs containing `times`
-        // jumps and blocks on that whole tween.
+        // Native CharJump builds one DOLocalJump Sequence of total durationMs
+        // (linear x move + OutQuad yoyo arcs, see startJumpAction) and blocks
+        // on the whole sequence.
         const moveRun = this.startMoveAction(
           state,
           input.xOffset,
@@ -2658,13 +2673,12 @@ export class PixiStoryRenderer implements StoryRenderer {
         return;
       }
       case "shake": {
-        this.startShakeAction(state, input);
-        // Native CharShake returns the DOShakePosition tween of durationMs
-        // and _AddFinishCommand blocks on it. `stop` is a web extension with
-        // no tween to wait for.
-        if (input.block && input.durationMs > 0 && !input.stop) {
-          await this.tween(input.durationMs, () => {});
-        }
+        // Native CharShake returns the DOShakePosition waypoint tween of
+        // durationMs and _AddFinishCommand blocks on it; the runtime already
+        // degenerated durationMs<=0 to a move, so the tween always exists
+        // here. `stop` is a web extension with no tween to wait for.
+        const shakeRun = this.startShakeAction(state, input);
+        if (input.block && !input.stop) await shakeRun;
         return;
       }
       case "zoom": {
@@ -4721,16 +4735,19 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Native port: AVGCharacterSlot.MoveChar (0x183EB2FD0). Relative
+   * Native port: AVGCharacterSlot.MoveChar (0x184029e30 on 2.7.81). Relative
    * displacement (cur + (x, y)); a zero fadeTime applies it instantly and
    * returns a null tween, which is why `block` only waits when there is a
-   * tween to wait for.
+   * tween to wait for. The tween runs `DOLocalMove(...).SetEase(Ease.OutCubic)`,
+   * so the move branch eases with OutCubic; the jump branch passes its own
+   * linear curve because native DOLocalJump drives the x axis Linear.
    */
   private startMoveAction(
     state: CharacterRenderState,
     xOffset: number,
     yOffset: number,
     durationMs: number,
+    ease: (progress: number) => number = linearEase,
   ): Promise<void> {
     const fromX = state.actionX;
     const fromY = state.actionY;
@@ -4742,8 +4759,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       durationMs,
       (progress) => {
         if (!this.isActiveCharacterState(state, sessionId)) return;
-        state.actionX = fromX + (toX - fromX) * progress;
-        state.actionY = fromY + (toY - fromY) * progress;
+        const eased = ease(progress);
+        state.actionX = fromX + (toX - fromX) * eased;
+        state.actionY = fromY + (toY - fromY) * eased;
         this.updateCharacterState(state);
       },
       () => {
@@ -4762,7 +4780,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     durationMs: number,
     block: boolean,
   ): Promise<void> {
-    const run = this.startMoveAction(state, xOffset, yOffset, durationMs);
+    const run = this.startMoveAction(
+      state,
+      xOffset,
+      yOffset,
+      durationMs,
+      easeOutCubic,
+    );
     if (block && durationMs > 0) await run;
   }
 
@@ -4830,17 +4854,23 @@ export class PixiStoryRenderer implements StoryRenderer {
       },
     );
 
-    if (block && durationMs > 0) await run;
+    // Native CharZoom has no instant branch: DOTween.To with a zero duration
+    // still returns a tween (it completes on the first update), so a blocking
+    // zoom stays blocking even at durationMs 0 — unlike move/exit whose
+    // instant branch returns a null tween and never blocks.
+    if (block) await run;
   }
 
   /**
-   * Native port: CharacterPanel._ExecuteCharacterExit (0x183E69C80) →
-   * _GenExitPosition (0x183E6B670) → AVGCharacterSlot.SetCharPos
-   * (0x183EB3290). The exit table below is verbatim native: displacements
+   * Native port: CharacterPanel._ExecuteCharacterExit (0x183fd6f20 on 2.7.81)
+   * → _GenExitPosition (0x183fd8980) → AVGCharacterSlot.SetCharPos
+   * (0x18402a1e0). The exit table below is verbatim native: displacements
    * from each slot's rest anchor (l=440/m=640/r=840 in 1280x720 story space;
    * actionX/actionY are exactly that displacement). Both coordinates are set
    * absolutely, so a horizontal exit also snaps the vertical drift back to 0.
-   * An unknown direction resolves to (0,0) — the rest anchor.
+   * An unknown direction resolves to (0,0) — the rest anchor. SetCharPos runs
+   * `DOLocalMove(...).SetEase(Ease.OutCubic)` (same tween as the character
+   * enter slide), so the exit path eases with OutCubic too.
    */
   private async runExitAction(
     state: CharacterRenderState,
@@ -4882,8 +4912,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       durationMs,
       (progress) => {
         if (!this.isActiveCharacterState(state, sessionId)) return;
-        state.actionX = fromX + (toX - fromX) * progress;
-        state.actionY = fromY + (toY - fromY) * progress;
+        const eased = easeOutCubic(progress);
+        state.actionX = fromX + (toX - fromX) * eased;
+        state.actionY = fromY + (toY - fromY) * eased;
         this.updateCharacterState(state);
       },
       () => {
@@ -4898,9 +4929,21 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Native port: AVGCharacterSlot.CharJump (0x183EB2690) — a single
-   * DOLocalJump tween whose total duration is fadeTime with `times` jumps
-   * inside, not `times` separate tweens.
+   * Native port: AVGCharacterSlot.CharJump (0x1840294f0 on 2.7.81) →
+   * DOTween DOLocalJump (0x184257a20), which is a Sequence of three tweens
+   * that all start together and last fadeTime in total:
+   * - x: `DOLocalMove`-style tween, `SetEase(Ease.Linear)`, cur.x → cur.x+xpos
+   *   over the whole duration (the horizontal move of the jump);
+   * - y: relative `+jumpPower` tween of duration/(2*times) with
+   *   `SetEase(Ease.OutQuad).SetLoops(2*times, LoopType.Yoyo)` — each jump
+   *   rises OutQuad to jumpPower in half a jump period and replays the same
+   *   eased arc backwards on the way down (`times < 1` clamps to 1);
+   * - z: Linear tween to the unchanged z (a no-op here).
+   * CharJump chains `SetEase(Ease.OutCubic)` on the returned Sequence, but
+   * DOTween ignores a sequence's own ease when driving nested tweens
+   * (`Sequence.ApplyInternalCycle` @ 0x184251d70 forwards only each nested
+   * tween's local time, so every nested ease stays its own), so the effective
+   * motion is exactly the Linear-x + OutQuad-yoyo above.
    */
   private startJumpAction(
     state: CharacterRenderState,
@@ -4912,9 +4955,14 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.jumpOffsetY = 0;
     this.updateCharacterState(state);
 
-    if (power <= 0 || durationMs <= 0) return Promise.resolve();
+    // Native DOLocalJump always creates the y arc tween; a power of 0 is a
+    // flat arc (visual no-op) and a negative power bounces downward, so only
+    // a non-positive duration skips it (the runtime degenerates that case to
+    // a move anyway — this is a defensive guard).
+    if (durationMs <= 0) return Promise.resolve();
 
     const cycles = Math.max(1, times);
+    const halfCycleProgress = 1 / (cycles * 2);
     return this.tween(
       durationMs,
       (progress) => {
@@ -4923,9 +4971,13 @@ export class PixiStoryRenderer implements StoryRenderer {
           state.jumpSessionId !== sessionId
         )
           return;
-        const phase = (progress * cycles) % 1;
-        const cycle = phase <= 0.5 ? phase / 0.5 : (1 - phase) / 0.5;
-        state.jumpOffsetY = Math.max(0, power * cycle);
+        // Position inside the 2*times yoyo cycle list; even cycles play the
+        // OutQuad arc forward, odd cycles replay it backwards.
+        const cyclePos = Math.min(progress, 1) / halfCycleProgress;
+        const cycle = Math.floor(cyclePos);
+        const frac = cyclePos - cycle;
+        const arc = cycle % 2 === 0 ? easeOutQuad(frac) : easeOutQuad(1 - frac);
+        state.jumpOffsetY = power * arc;
         this.updateCharacterState(state);
       },
       () => {
@@ -4940,45 +4992,108 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
+  /**
+   * Native port: AVGCharacterSlot.CharShake (0x184029850 on 2.7.81) →
+   * ShortcutExtensions.DOShakePosition (0x18425cda0) → DOTween.Shake
+   * (0x18424e2d0). The native shake is a waypoint walk, not per-tick noise:
+   * N = max(2, trunc(vibrato × seconds)) waypoints whose direction flips
+   * ~180° (± `randomness` degrees, Full mode) every step, whose amplitude
+   * decays linearly to 0 (fadeOut), and whose last entry is the rest offset;
+   * segments interpolate linearly and their durations grow with (i+1)
+   * weights, re-normalized so the whole walk lasts exactly durationMs.
+   * CharShake's SetEase(OutCubic) warps the walk's global progress on top
+   * (passed as the tween ease); SetIgnoreTimeScale is the runner's default.
+   * X keeps Unity's right-positive axis; Y is stored negated because
+   * motionLayer consumes screen-down-positive y.
+   */
   private startShakeAction(
     state: CharacterRenderState,
     input: CharacterActionInput,
-  ): void {
+  ): Promise<void> {
     this.stopShakeAction(state);
-    if (input.stop || input.power <= 0) return;
+    // `stop` is a web extension: native has no such key, so it only needs to
+    // cancel above without producing a tween.
+    if (input.stop) return Promise.resolve();
 
     const sessionId = state.shakeSessionId;
-    const intervalMs =
-      input.times > 0
-        ? Math.max(1, Math.round(Math.max(input.durationMs, 1) / input.times))
-        : Math.max(1, input.durationMs || 33);
-    let remainingTicks = input.times < 0 ? -1 : Math.max(1, input.times);
+    const durationMs = Math.max(input.durationMs, 0);
+    // vibrato is a frequency (shakes per second), not a count: the waypoint
+    // count comes out of vibrato × duration, truncated, floored at 2.
+    const numShakes = Math.max(
+      2,
+      Math.trunc((input.times * durationMs) / 1000),
+    );
+    const jitterRad = (Math.abs(input.randomness) * Math.PI) / 180;
 
-    const tick = (): void => {
-      if (
-        !this.isActiveCharacterState(state) ||
-        state.shakeSessionId !== sessionId
-      )
-        return;
+    // Waypoints: the walk starts at the rest offset, then N-1 random entries
+    // of Vector3FromAngle(angle, power × (1 - i/N)), then the zero rest
+    // offset again, so the slot lands back exactly. Segment i runs
+    // waypoints[i] → waypoints[i+1].
+    const waypoints: { x: number; y: number }[] = [{ x: 0, y: 0 }];
+    let angle = Math.random() * 2 * Math.PI;
+    for (let i = 0; i < numShakes - 1; i += 1) {
+      if (i > 0) angle += Math.PI + (Math.random() * 2 - 1) * jitterRad;
+      const amplitude = input.power * (1 - i / numShakes);
+      waypoints.push({
+        x: Math.sin(angle) * amplitude,
+        y: Math.cos(angle) * amplitude,
+      });
+    }
+    waypoints.push({ x: 0, y: 0 });
 
-      state.shakeOffsetX = this.pickShakeOffset(input.power, input.randomness);
-      state.shakeOffsetY = this.pickShakeOffset(input.power, input.randomness);
-      this.updateCharacterState(state);
+    // fadeOut=true durations: raw segment i ∝ (i+1), i.e. 2(i+1)/(N(N+1)) ×
+    // duration each after normalization (early shakes are fast, late ones
+    // slow — stacked on top of the linear amplitude decay).
+    const segmentEnds: number[] = [];
+    const totalWeight = (numShakes * (numShakes + 1)) / 2;
+    let accumulated = 0;
+    for (let i = 0; i < numShakes; i += 1) {
+      accumulated += ((i + 1) / totalWeight) * durationMs;
+      segmentEnds.push(accumulated);
+    }
+    segmentEnds[numShakes - 1] = durationMs;
 
-      if (remainingTicks > 0) remainingTicks -= 1;
+    const sampleOffset = (pathMs: number): { x: number; y: number } => {
+      let segment = 0;
+      while (segment < numShakes - 1 && pathMs > segmentEnds[segment]!) {
+        segment += 1;
+      }
+      const startMs = segment === 0 ? 0 : segmentEnds[segment - 1]!;
+      const span = segmentEnds[segment]! - startMs;
+      const progress = span > 0 ? (pathMs - startMs) / span : 1;
+      const from = waypoints[segment]!;
+      const to = waypoints[segment + 1]!;
+      return {
+        x: from.x + (to.x - from.x) * progress,
+        y: from.y + (to.y - from.y) * progress,
+      };
+    };
 
-      if (remainingTicks === 0) {
-        state.shakeTimeout = null;
+    return this.tween(
+      durationMs,
+      (progress) => {
+        if (
+          !this.isActiveCharacterState(state) ||
+          state.shakeSessionId !== sessionId
+        )
+          return;
+        const offset = sampleOffset(progress * durationMs);
+        state.shakeOffsetX = offset.x;
+        state.shakeOffsetY = -offset.y;
+        this.updateCharacterState(state);
+      },
+      () => {
+        if (
+          !this.isActiveCharacterState(state) ||
+          state.shakeSessionId !== sessionId
+        )
+          return;
         state.shakeOffsetX = 0;
         state.shakeOffsetY = 0;
         this.updateCharacterState(state);
-        return;
-      }
-
-      state.shakeTimeout = setTimeout(tick, intervalMs);
-    };
-
-    tick();
+      },
+      { ease: easeOutCubic },
+    );
   }
 
   private isActiveCharacterState(
@@ -5085,21 +5200,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       blocker.alpha = clamp01(color.a);
     }
     blocker.visible = color.a > 0;
-  }
-
-  /**
-   * CharacterAction still uses this legacy per-tick shake model; CameraShake
-   * uses ShakePath. Web adaptation of DOShakePosition's randomness parameter
-   * (native key `random`, degrees, default 10): the degree value is
-   * reinterpreted as the per-tick chance of a nonzero jolt, so a shake with
-   * the native default still produces sparse jolts over `times` vibrations.
-   */
-  private pickShakeOffset(strength: number, randomness: number): number {
-    const roll = Math.floor(Math.random() * 99) + 1;
-    const directions = [-1, -0.707, 0, 1, 0.707];
-    const index =
-      roll < randomness ? Math.floor(Math.random() * directions.length) : 0;
-    return directions[index]! * strength;
   }
 
   private createOverlayTextStyle(fontSize: number, widthPx: number): TextStyle {

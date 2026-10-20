@@ -419,9 +419,9 @@ describe("PixiStoryRenderer", () => {
       times: 100,
     });
 
-    // Shake runs on a timeout, opacity/move/zoom contribute nothing here, so
-    // the single tween call is the isblock wait itself.
-    expect(renderer.tween).toHaveBeenCalledTimes(1);
+    // The shake itself is a waypoint tween (1s) and the isblock wait for the
+    // slot's whole cached Sequence (~3s) is the second, longer one.
+    expect(renderer.tween).toHaveBeenCalledTimes(2);
     const waitMs = renderer.tween.mock.calls.at(-1)?.[0] as number;
     expect(waitMs).toBeGreaterThanOrEqual(2900);
     expect(waitMs).toBeLessThanOrEqual(3000);
@@ -1282,12 +1282,21 @@ describe("PixiStoryRenderer characteraction", () => {
 
     const state = renderer.characterSlots.get("m");
     const jumpTween = tweens[1]!;
+    // The y arc is DOLocalJump's relative OutQuad yoyo (times=4 → 8 half
+    // cycles of progress width 1/8): even half-cycles play Ease.OutQuad
+    // forward, odd ones replay it backwards.
     jumpTween.step(0.125);
     expect(state.jumpOffsetY).toBe(20);
     jumpTween.step(0.25);
     expect(state.jumpOffsetY).toBe(0);
     jumpTween.step(0.375);
     expect(state.jumpOffsetY).toBe(20);
+    // Mid-arc samples: OutQuad(0.5) = 0.75 on the way up and back down
+    // (a linear ramp would read 10 here, a sine arc ~14.1).
+    jumpTween.step(0.0625);
+    expect(state.jumpOffsetY).toBe(15);
+    jumpTween.step(0.1875);
+    expect(state.jumpOffsetY).toBe(15);
 
     // Finalize the tweens the way the real TweenRunner does: step(1) + done.
     for (const tween of tweens) {
@@ -1299,5 +1308,56 @@ describe("PixiStoryRenderer characteraction", () => {
     expect(settled).toBe(true);
     expect(state.jumpOffsetY).toBe(0);
     expect(state.actionX).toBe(100);
+  });
+
+  it("eases move and exit along DOTween Ease.OutCubic, jump's x stays Linear", async () => {
+    const renderer = createLiveCharacterRenderer();
+    await createActionSlot(renderer, "m");
+    const steps: Array<(progress: number) => void> = [];
+    renderer.tween = vi.fn(
+      (
+        _durationMs: number,
+        step: (progress: number) => void,
+        done?: () => void,
+      ) => {
+        steps.push(step);
+        return new Promise<void>((resolve) => {
+          void done;
+          resolve();
+        });
+      },
+    );
+
+    const state = renderer.characterSlots.get("m");
+    // OutCubic(0.25) = 1 - 0.75^3 = 0.578125.
+    await renderer.runCharacterAction(
+      createActionInput({ durationMs: 400, type: "move", xOffset: 200 }),
+    );
+    steps[0]!(0.25);
+    expect(state.actionX).toBe(200 * 0.578125);
+
+    state.actionX = 0;
+    steps.length = 0;
+    await renderer.runCharacterAction(
+      createActionInput({ direction: "left", durationMs: 400, type: "exit" }),
+    );
+    steps[0]!(0.25);
+    expect(state.actionX).toBe(-1152 * 0.578125);
+
+    // DOLocalJump's x tween keeps Ease.Linear even though CharJump chains
+    // SetEase(OutCubic) on the sequence (a sequence's own ease is ignored).
+    state.actionX = 0;
+    steps.length = 0;
+    await renderer.runCharacterAction(
+      createActionInput({
+        durationMs: 400,
+        power: 20,
+        times: 2,
+        type: "jump",
+        xOffset: 200,
+      }),
+    );
+    steps[0]!(0.25);
+    expect(state.actionX).toBe(50);
   });
 });
