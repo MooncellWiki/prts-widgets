@@ -1146,10 +1146,13 @@ describe("PixiStoryRenderer characteraction", () => {
     expect(right.actionX).toBe(-1352);
   });
 
-  it("uses exit xpos/ypos as absolute coordinates when both are present", async () => {
+  it("uses exit xpos/ypos as the SetCharPos offset when both are present", async () => {
     const renderer = createLiveCharacterRenderer();
     const state = await createActionSlot(renderer, "m");
 
+    // SetCharPos writes the pair straight into `_offset.localPosition`, the
+    // same slot-anchor displacement space as the _GenExitPosition rows; it is
+    // not converted from story coordinates.
     await renderer.runCharacterAction(
       createActionInput({
         absolutePosition: { x: 300, y: 200 },
@@ -1158,8 +1161,8 @@ describe("PixiStoryRenderer characteraction", () => {
       }),
     );
 
-    expect(state.actionX).toBe(300 - state.baseX);
-    expect(state.actionY).toBe(state.baseY - 200);
+    expect(state.actionX).toBe(300);
+    expect(state.actionY).toBe(200);
   });
 
   it("treats zoom xpos/ypos as the image pivot and scales around it", async () => {
@@ -1283,20 +1286,28 @@ describe("PixiStoryRenderer characteraction", () => {
     const state = renderer.characterSlots.get("m");
     const jumpTween = tweens[1]!;
     // The y arc is DOLocalJump's relative OutQuad yoyo (times=4 → 8 half
-    // cycles of progress width 1/8): even half-cycles play Ease.OutQuad
-    // forward, odd ones replay it backwards.
-    jumpTween.step(0.125);
-    expect(state.jumpOffsetY).toBe(20);
-    jumpTween.step(0.25);
-    expect(state.jumpOffsetY).toBe(0);
-    jumpTween.step(0.375);
-    expect(state.jumpOffsetY).toBe(20);
+    // cycles of width 1/8 in sequence time): even half-cycles play
+    // Ease.OutQuad forward, odd ones replay it backwards. CharJump's
+    // SetEase(OutCubic) warps that sequence time, so raw progress p samples
+    // the yoyo at OutCubic(p); `atSequenceTime` inverts the warp.
+    const atSequenceTime = (time: number) => 1 - Math.cbrt(1 - time);
+    jumpTween.step(atSequenceTime(0.125));
+    expect(state.jumpOffsetY).toBeCloseTo(20, 9);
+    jumpTween.step(atSequenceTime(0.25));
+    expect(state.jumpOffsetY).toBeCloseTo(0, 9);
+    jumpTween.step(atSequenceTime(0.375));
+    expect(state.jumpOffsetY).toBeCloseTo(20, 9);
     // Mid-arc samples: OutQuad(0.5) = 0.75 on the way up and back down
     // (a linear ramp would read 10 here, a sine arc ~14.1).
-    jumpTween.step(0.0625);
-    expect(state.jumpOffsetY).toBe(15);
-    jumpTween.step(0.1875);
-    expect(state.jumpOffsetY).toBe(15);
+    jumpTween.step(atSequenceTime(0.0625));
+    expect(state.jumpOffsetY).toBeCloseTo(15, 9);
+    jumpTween.step(atSequenceTime(0.1875));
+    expect(state.jumpOffsetY).toBeCloseTo(15, 9);
+    // The warp front-loads the bounces: at a quarter of the wall time the
+    // sequence is already 1 - 0.75^3 = 57.8% through, inside the 5th half
+    // cycle (rising again).
+    jumpTween.step(0.25);
+    expect(state.jumpOffsetY).toBeCloseTo(20 * (1 - (1 - 0.625) ** 2), 9);
 
     // Finalize the tweens the way the real TweenRunner does: step(1) + done.
     for (const tween of tweens) {
@@ -1310,7 +1321,7 @@ describe("PixiStoryRenderer characteraction", () => {
     expect(state.actionX).toBe(100);
   });
 
-  it("eases move and exit along DOTween Ease.OutCubic, jump's x stays Linear", async () => {
+  it("eases move and exit along DOTween Ease.OutCubic, jump through its sequence ease", async () => {
     const renderer = createLiveCharacterRenderer();
     await createActionSlot(renderer, "m");
     const steps: Array<(progress: number) => void> = [];
@@ -1344,9 +1355,12 @@ describe("PixiStoryRenderer characteraction", () => {
     steps[0]!(0.25);
     expect(state.actionX).toBe(-1152 * 0.578125);
 
-    // DOLocalJump's x tween keeps Ease.Linear even though CharJump chains
-    // SetEase(OutCubic) on the sequence (a sequence's own ease is ignored).
+    // DOLocalJump's x tween is Linear and its y displacement is
+    // EasedValue(OutQuad) over the arc tween's elapsed percentage, but
+    // CharJump's SetEase(OutCubic) on the Sequence warps the time both see
+    // (Sequence.DoApplyTween evaluates the sequence ease first).
     state.actionX = 0;
+    state.actionY = 0;
     steps.length = 0;
     await renderer.runCharacterAction(
       createActionInput({
@@ -1355,9 +1369,57 @@ describe("PixiStoryRenderer characteraction", () => {
         times: 2,
         type: "jump",
         xOffset: 200,
+        yOffset: 100,
       }),
     );
     steps[0]!(0.25);
-    expect(state.actionX).toBe(50);
+    expect(state.actionX).toBe(200 * 0.578125);
+    expect(state.actionY).toBe(100 * (1 - (1 - 0.578125) ** 2));
+  });
+
+  it("shakes along DOTween's linear waypoint walk, not an OutCubic-warped one", async () => {
+    const renderer = createLiveCharacterRenderer();
+    const state = await createActionSlot(renderer, "m");
+    const calls: Array<{
+      options?: { ease?: unknown };
+      step: (progress: number) => void;
+    }> = [];
+    renderer.tween = vi.fn(
+      (
+        _durationMs: number,
+        step: (progress: number) => void,
+        _done?: () => void,
+        options?: { ease?: unknown },
+      ) => {
+        calls.push({ options, step });
+        return Promise.resolve();
+      },
+    );
+    // Random 0.5 → start angle 180° and zero Full-mode tilt, so the first
+    // waypoint is exactly (-power, 0).
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      await renderer.runCharacterAction(
+        createActionInput({
+          durationMs: 1000,
+          power: 10,
+          times: 10,
+          type: "shake",
+        }),
+      );
+    } finally {
+      random.mockRestore();
+    }
+
+    // SetShake's startup forces Ease.Linear over CharShake's OutCubic.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.options?.ease).toBeUndefined();
+    // vibrato 10 × 1s = 10 segments weighted 1..10 (sum 55): the first one
+    // ends at 1/55 and is sampled linearly halfway through.
+    calls[0]!.step(1 / 110);
+    expect(state.shakeOffsetX).toBeCloseTo(-5, 9);
+    expect(state.shakeOffsetY).toBeCloseTo(0, 9);
+    calls[0]!.step(1 / 55);
+    expect(state.shakeOffsetX).toBeCloseTo(-10, 9);
   });
 });

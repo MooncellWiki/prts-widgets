@@ -21,7 +21,11 @@ function randomRange(min: number, max: number, random: RandomSource): number {
 /**
  * Ports the waypoint selection used by
  * `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake` through DOTween's vector
- * shake overload. Sampling and scheduling below are a Web/PIXI adaptation.
+ * shake overload, and by `AVGCharacterSlot.CharShake` through
+ * `DOShakePosition` (float strength, `ignoreZAxis = false`, so the same Full
+ * mode tilt applies). Sampling and scheduling below are a Web/PIXI
+ * adaptation; `sampleShakePath` stays linear per segment because the
+ * `SetShake` startup forces Ease.Linear on every shake tween.
  */
 export function buildShakePath(
   durationMs: number,

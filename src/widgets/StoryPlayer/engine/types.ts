@@ -249,8 +249,9 @@ export interface CharacterSlotInput {
 export interface CharacterActionInput {
   /**
    * Exit-only: present when the command carries BOTH xpos and ypos (native
-   * TryGetParam<int> pair) — absolute story-space coordinates, mirroring the
-   * `character` command's absolutePosition convention.
+   * TryGetParam<int> pair). `SetCharPos` writes it as the absolute
+   * `_offset.localPosition` — the slot-anchor displacement (y up) that the
+   * `_GenExitPosition` rows also live in, not story-space coordinates.
    */
   absolutePosition?: { x: number; y: number };
   block: boolean;

@@ -214,22 +214,6 @@ function toNumber(value: unknown, fallback = 0): number {
   return toOptionalNumber(value) ?? fallback;
 }
 
-/**
- * System.Convert.ToInt32(double) — banker's rounding, midpoints to even.
- * Every native int-typed parameter read goes through it
- * (`Command.TryGetParam<int>` / `GetOrDefault<int>` convert the JSON-boxed
- * double the same way), so `2.5` becomes 2, `3.5` becomes 4, `-2.5` becomes
- * -2 — not Math.round or Math.trunc.
- */
-function toNativeInt(value: unknown, fallback = 0): number {
-  const number = toNumber(value, fallback);
-  const floor = Math.floor(number);
-  const fraction = number - floor;
-  if (fraction > 0.5) return floor + 1;
-  if (fraction < 0.5) return floor;
-  return floor % 2 === 0 ? floor : floor + 1;
-}
-
 function toBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -2504,7 +2488,9 @@ export class StoryRuntime {
           slot,
           slotSequence: true,
           stop: toBoolean(args.stop, false),
-          times: Math.trunc(toNumber(args.times, 1)),
+          // GetOrDefault<int>("times", 0): DOShakePosition vibrato for
+          // shake, numJumps (clamped to >= 1 by DOLocalJump) for jump.
+          times: toNativeIntParam(args.times, 0),
         });
         return "continue";
       }
@@ -2668,9 +2654,11 @@ export class StoryRuntime {
           pivot = { x: pivotX, y: pivotY };
         }
 
-        // Native exit reads xpos/ypos as an absolute target only when BOTH
-        // are present (TryGetParam<int>); otherwise _GenExitPosition ignores
-        // them. `direction` accepts left/right/up/down and defaults to "left"
+        // Native exit reads xpos/ypos only when BOTH are present
+        // (TryGetParam<int>) and hands them to SetCharPos in place of the
+        // _GenExitPosition row: an absolute `_offset.localPosition`, i.e. a
+        // displacement from the slot's rest anchor, not story coordinates.
+        // `direction` accepts left/right/up/down and defaults to "left"
         // when the key is missing; an unrecognized value falls through as
         // undefined (native exits to the (0,0) rest anchor).
         const hasExitX = this.exactArg(args, "xpos") !== undefined;
@@ -2706,8 +2694,8 @@ export class StoryRuntime {
           absolutePosition:
             type === "exit" && hasExitX && hasExitY
               ? {
-                  x: toNativeInt(args.xpos),
-                  y: toNativeInt(args.ypos),
+                  x: toNativeIntParam(args.xpos, 0),
+                  y: toNativeIntParam(args.ypos, 0),
                 }
               : undefined,
           block: toBoolean(args.isblock, false),
@@ -2720,7 +2708,7 @@ export class StoryRuntime {
           power: toNumber(args.power, 10),
           // Native key is `random` (int, DOShakePosition randomness degrees,
           // default 10); `randomness=` is not read by the native panel.
-          randomness: toNativeInt(args.random, 10),
+          randomness: toNativeIntParam(args.random, 10),
           // start/leftend/rightend and stop are web extensions kept for
           // charslot-style scripts; the native panel never reads them.
           rotationFromDeg: toNumber(args.start, 0),
@@ -2732,7 +2720,7 @@ export class StoryRuntime {
           scaleY: yScale,
           slot,
           stop: toBoolean(args.stop, false),
-          times: toNativeInt(args.times, 3),
+          times: toNativeIntParam(args.times, 3),
           type: effectiveType,
           xOffset: type === "zoom" ? 0 : toNumber(args.xpos, 0),
           yOffset: type === "zoom" ? 0 : toNumber(args.ypos, 0),

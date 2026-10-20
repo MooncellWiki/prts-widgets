@@ -380,7 +380,8 @@ describe("StoryRuntime", () => {
         // commands (CharacterPanel) leave this unset.
         slotSequence: true,
         stop: false,
-        times: 1,
+        // GetOrDefault<int>("times", 0) -- the shake vibrato / jump count.
+        times: 0,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
@@ -928,7 +929,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("uses exit xpos/ypos as absolute coordinates only when both are present", async () => {
+  it("uses exit xpos/ypos as the SetCharPos target only when both are present", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
