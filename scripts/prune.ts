@@ -30,8 +30,14 @@ console.log("[INFO] Dist set:", distSet);
 const legacySet = legacyFiles();
 const isLegacy = (name: string) => legacySet.has(name.replace(/\.map$/, ""));
 
-const { REGION, ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET, REMOTE_PATH } =
-  process.env;
+const {
+  REGION,
+  ENDPOINT,
+  ACCESS_KEY_ID,
+  ACCESS_KEY_SECRET,
+  BUCKET,
+  REMOTE_PATH,
+} = process.env;
 
 if (
   !REGION ||
@@ -47,6 +53,9 @@ if (
 
 const store = new OSS({
   region: REGION,
+  // CI 跑在海外 runner 上，设 ENDPOINT 走传输加速域名；不设则按 REGION 走普通外网域名
+  endpoint: ENDPOINT,
+  secure: true,
   accessKeyId: ACCESS_KEY_ID,
   accessKeySecret: ACCESS_KEY_SECRET,
   bucket: BUCKET,

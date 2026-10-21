@@ -23,6 +23,7 @@ jobs:
         run: pnpm run prune
         env:
           REGION: ${{ secrets.OSS_REGION }}
+          ENDPOINT: oss-accelerate.aliyuncs.com
           ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           BUCKET: ${{ secrets.OSS_BUCKET }}
