@@ -2855,9 +2855,15 @@ export class StoryRuntime {
           channelArg === undefined ? -1 : Math.trunc(toNumber(channelArg, -1));
         const type = parseInterludeType(this.exactArg(args, "type"));
         const name = toString(this.exactArg(args, "name"));
+        // Native CutinTemplateDialogView._RefreshDialogChar consumes type 3
+        // AND type 1 (both through the AVG portrait pipeline), so resolve the
+        // avatar ref for both. Warnings stay type-3-only: on plain templates
+        // type 1 loads from Cutin/Characters and never touches the avatar.
         const avatarResolution =
-          type === 3 && name ? this.resolveCharacterName(name) : null;
-        if (avatarResolution?.kind === "native_throws")
+          (type === 3 || type === 1) && name
+            ? this.resolveCharacterName(name)
+            : null;
+        if (type === 3 && avatarResolution?.kind === "native_throws")
           return this.warnNativeSlotThrows(name, line);
         const resolvedAvatar =
           avatarResolution?.kind === "found"
