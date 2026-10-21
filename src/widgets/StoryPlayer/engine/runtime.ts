@@ -2513,7 +2513,9 @@ export class StoryRuntime {
           slot,
           slotSequence: true,
           stop: toBoolean(args.stop, false),
-          times: Math.trunc(toNumber(args.times, 1)),
+          // GetOrDefault<int>("times", 0): DOShakePosition vibrato for
+          // shake, numJumps (clamped to >= 1 by DOLocalJump) for jump.
+          times: toNativeIntParam(args.times, 0),
         });
         return "continue";
       }
@@ -2620,8 +2622,14 @@ export class StoryRuntime {
       }
 
       case "characteraction": {
-        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacterAction. It uses
-        // literal fadetime and accepts both legacy block spellings.
+        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacterAction
+        // (0x183E699F0, build 2761; re-verified on 2.7.81 @ 0x183fd6c90 with
+        // zero behavior change). All five branches scale fadetime through
+        // CharacterPanel.CalculateFadetime (animateRatio × fadetime) and read
+        // the blocking flag from `isblock` only — `_AddFinishCommand`
+        // (0x183E698E0) never reads `block=` (only the cutin panel does), so
+        // the thousands of legacy `block=` spellings in the corpus stay
+        // non-blocking exactly like the native client.
         const type = this.parseCharacterActionType(args.type);
         if (!type) {
           this.warn(
@@ -2630,30 +2638,104 @@ export class StoryRuntime {
           );
           return "continue";
         }
-        const slot = this.parseCharacterActionSlot(args.name, type);
+        // GetOrDefault("name", "left"): a missing key resolves through the
+        // "left" arm of each truth table (exit → left slot, others → left),
+        // while an unrecognized value hits the else fallback instead.
+        const slot = this.parseCharacterActionSlot(
+          this.exactArg(args, "name") === undefined ? "left" : args.name,
+          type,
+        );
 
-        const scaleFallback =
-          args.scale === undefined
-            ? undefined
-            : Math.max(0, toNumber(args.scale, 1));
+        // Per-branch GetOrDefault defaults: exit/zoom fade in for 1.0s while
+        // move/jump/shake default to 0.5s.
+        const fadetimeFallback = type === "exit" || type === "zoom" ? 1 : 0.5;
+        const durationMs = this.calculateFadeMs(
+          this.exactArg(args, "fadetime"),
+          fadetimeFallback,
+        );
+
+        // NeedSkipAnimation (0x183E69680): jump/shake collapse into a plain
+        // move when the scaled fadetime is zero (skip mode or fadetime=0);
+        // the move executor then applies xpos/ypos instantly.
+        const effectiveType: CharacterActionInput["type"] =
+          (type === "jump" || type === "shake") && durationMs <= 0
+            ? "move"
+            : type;
+
+        let pivot: { x: number; y: number } | undefined;
+        if (type === "zoom") {
+          // xpos/ypos are the [0,1] pivot of the character image (default
+          // 0.5/0.5). AVGCharacterSlot.CharZoom (0x183EB2B50) returns null
+          // for pivots outside [0,1], making the whole command a no-op.
+          const pivotX = toNumber(args.xpos, 0.5);
+          const pivotY = toNumber(args.ypos, 0.5);
+          if (pivotX < 0 || pivotX > 1 || pivotY < 0 || pivotY > 1) {
+            this.warn(
+              "parse",
+              `characteraction zoom pivot out of range: xpos=${toString(args.xpos)}, ypos=${toString(args.ypos)}`,
+            );
+            return "continue";
+          }
+          pivot = { x: pivotX, y: pivotY };
+        }
+
+        // Native exit reads xpos/ypos only when BOTH are present
+        // (TryGetParam<int>) and hands them to SetCharPos in place of the
+        // _GenExitPosition row: an absolute `_offset.localPosition`, i.e. a
+        // displacement from the slot's rest anchor, not story coordinates.
+        // `direction` accepts left/right/up/down and defaults to "left"
+        // when the key is missing; an unrecognized value falls through as
+        // undefined (native exits to the (0,0) rest anchor).
+        const hasExitX = this.exactArg(args, "xpos") !== undefined;
+        const hasExitY = this.exactArg(args, "ypos") !== undefined;
+        const parsedDirection = this.parseCharacterActionDirection(
+          args.direction,
+        );
+        const direction =
+          type === "exit"
+            ? (parsedDirection ??
+              (this.exactArg(args, "direction") === undefined
+                ? "left"
+                : undefined))
+            : parsedDirection;
+
+        // `scale` resets to the native 1.0 default when omitted and passes
+        // through unclamped (native LerpUnclamped accepts negative scale,
+        // which mirrors the sprite); xscale/yscale are web extensions (the
+        // native panel never reads them).
+        const scaleFallback = toNumber(args.scale, 1);
         const xScale =
           args.xscale === undefined
             ? scaleFallback
-            : Math.max(0, toNumber(args.xscale, scaleFallback ?? 1));
+            : toNumber(args.xscale, scaleFallback);
         const yScale =
           args.yscale === undefined
             ? scaleFallback
-            : Math.max(0, toNumber(args.yscale, scaleFallback ?? 1));
+            : toNumber(args.yscale, scaleFallback);
 
         await this.renderer.runCharacterAction({
-          block: toBoolean(args.block, toBoolean(args.isblock, false)),
-          direction: this.parseCharacterActionDirection(args.direction),
-          durationMs: Math.max(
-            0,
-            Math.round(toNumber(args.fadetime, 0.5) * 1000),
-          ),
-          power: Math.max(0, toNumber(args.power, 0)),
-          randomness: clamp(toNumber(args.randomness, 90), 0, 100),
+          // Native reads the pair via TryGetParam<int>, i.e. the JSON doubles
+          // go through Convert.ToInt32's banker's rounding before the cast.
+          absolutePosition:
+            type === "exit" && hasExitX && hasExitY
+              ? {
+                  x: toNativeIntParam(args.xpos, 0),
+                  y: toNativeIntParam(args.ypos, 0),
+                }
+              : undefined,
+          block: toBoolean(args.isblock, false),
+          direction,
+          durationMs,
+          pivot,
+          // jump/shake GetOrDefault defaults: power 10, int times 3. Power is
+          // unclamped — native DOLocalJump/DOShakePosition take it as-is, so
+          // a negative value bounces/shakes downward like the client.
+          power: toNumber(args.power, 10),
+          // Native key is `random` (int, DOShakePosition randomness degrees,
+          // default 10); `randomness=` is not read by the native panel.
+          randomness: toNativeIntParam(args.random, 10),
+          // start/leftend/rightend and stop are web extensions kept for
+          // charslot-style scripts; the native panel never reads them.
           rotationFromDeg: toNumber(args.start, 0),
           rotationLeftDeg:
             args.leftend === undefined ? -15 : -toNumber(args.leftend, 15),
@@ -2663,10 +2745,10 @@ export class StoryRuntime {
           scaleY: yScale,
           slot,
           stop: toBoolean(args.stop, false),
-          times: Math.trunc(toNumber(args.times, 1)),
-          type,
-          xOffset: toNumber(args.xpos, 0),
-          yOffset: toNumber(args.ypos, 0),
+          times: toNativeIntParam(args.times, 3),
+          type: effectiveType,
+          xOffset: type === "zoom" ? 0 : toNumber(args.xpos, 0),
+          yOffset: type === "zoom" ? 0 : toNumber(args.ypos, 0),
         } satisfies CharacterActionInput);
         return "continue";
       }
@@ -3918,25 +4000,32 @@ export class StoryRuntime {
     value: unknown,
     type: CharacterActionInput["type"],
   ): string {
-    const normalized = toString(value).trim().toLowerCase();
-    if (normalized === "left") return "l";
-    if (normalized === "right") return "r";
-    if (normalized === "middle") return "m";
+    // Native compares GetOrDefault("name", "left") with String.op_Equality:
+    // ordinal, case-sensitive, no trim. The "left" default for a missing key
+    // is applied by the caller (exit's truth table maps "left" to the left
+    // slot, not to the else fallback).
+    const name = toString(value);
+    if (name === "left") return "l";
+    if (name === "right") return "r";
+    if (name === "middle") return "m";
     return type === "exit" ? "m" : "l";
   }
 
   private parseCharacterActionType(
     value: unknown,
   ): CharacterActionInput["type"] | undefined {
-    const normalized = toString(value).trim().toLowerCase();
+    // _ExecuteCharacterAction matches the five literals with
+    // String.op_Equality (ordinal; 2.7.81 @ 0x183fd6c90) — "MOVE" is an
+    // unknown type that logs an error and never blocks, not a match.
+    const type = toString(value);
     if (
-      normalized === "exit" ||
-      normalized === "jump" ||
-      normalized === "move" ||
-      normalized === "shake" ||
-      normalized === "zoom"
+      type === "exit" ||
+      type === "jump" ||
+      type === "move" ||
+      type === "shake" ||
+      type === "zoom"
     ) {
-      return normalized;
+      return type;
     }
     return undefined;
   }
@@ -3944,8 +4033,20 @@ export class StoryRuntime {
   private parseCharacterActionDirection(
     value: unknown,
   ): CharacterActionInput["direction"] | undefined {
-    const normalized = toString(value).trim().toLowerCase();
-    if (normalized === "left" || normalized === "right") return normalized;
+    // _GenExitPosition (2.7.81 @ 0x183fd8980) recognizes exactly
+    // left/right/up/down via String.op_Equality (ordinal, case-sensitive);
+    // anything else resolves to the (0,0) rest anchor (renderer handles
+    // undefined that way). The "left" default for a missing key is applied by
+    // the exit branch, matching GetOrDefault("direction", "left").
+    const direction = toString(value);
+    if (
+      direction === "down" ||
+      direction === "left" ||
+      direction === "right" ||
+      direction === "up"
+    ) {
+      return direction;
+    }
     return undefined;
   }
 

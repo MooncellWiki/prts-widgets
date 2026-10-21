@@ -43,7 +43,7 @@ Log All 高亮与调试页行跟随都订阅它。
 | `engine/font.ts` | FontFace 显式预载客户端字体（对话 NotoSansHans-Medium；animtext、萨米 spellsticker 的字体由 preload.ts 按需加载并计入进度），必须在 PIXI 测量前完成 |
 | `engine/rendering/PixiStoryRenderer.ts` | `StoryRenderer` 的 PIXI 实现，逻辑坐标恒 1280×720 |
 | `engine/rendering/panels/` | 各命令 UI 面板：Dialog/Decision/Video/Interlude/CgItem/AvgDisplay/AnimText/SpellSticker/FocusEffect |
-| `engine/rendering/core/` | `LayerGraph`（层序）、`TweenRunner`、`Shake-path`（镜头抖动）、`SceneGeometry`、`ClickClaim`（点击归属） |
+| `engine/rendering/core/` | `LayerGraph`（层序）、`TweenRunner`、`ShakePath`（镜头与角色抖动）、`SceneGeometry`、`ClickClaim`（点击归属） |
 | `engine/log/` | `semantics`（与 runtime 共享的纯语义）→ `symbolicFlow`（符号状态 DAG）→ `condition`（DNF 路径条件）→ `document`（UI 投影） |
 | `engine/` 其余 | `richtext`（富文本颜色）、`textVariables`（`{@xxx}` 展开，nickname 取 `wgUserName` 兜底"博士"）、`showitem`（道具原生尺寸 + 内置九宫格相框 `sprite_avg_showItem_photo`，见 assets/ui）、`audio` |
 | `components/` | LogAllPanel/LogAllList、AssetListModal + CharacterFacePreview |
