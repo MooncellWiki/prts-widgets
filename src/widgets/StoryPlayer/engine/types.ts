@@ -717,10 +717,9 @@ export interface InterludeInput {
   /**
    * 2.7.61 `icharpos`/`icharscale`: written to CutinParam.extra.dialog.charPos/
    * charScale by `AVGCharacterCutinPanel._GenCutinParamWithCommand` (via
-   * `_EnsureDialogExtra`) and consumed by the new `CutinTemplateDialogView`
-   * template. The Web panel has no dialog template yet, so these are parsed
-   * and forwarded only (forward-looking alignment; 2.7.61 story corpus has
-   * zero usages so far).
+   * `_EnsureDialogExtra`) and consumed by `CutinTemplateDialogView`
+   * `_ApplyDialogCharLayoutOverride` as an `img_char` position offset and
+   * scale multiplier (act54side uses `icharpos`).
    */
   dialogCharPos?: { x: number; y: number };
   dialogCharScale?: { x: number; y: number };
@@ -737,13 +736,6 @@ export interface InterludeInput {
   size: { x: number; y: number };
   slot: string;
   style: number;
-  /**
-   * Whether the `switch` key was present on the command. Native `switch` only
-   * feeds the mask-template deco `TwoStateToggle`
-   * (`CutinTemplateDecoView.Render`); commands without the key must not touch
-   * visibility at all.
-   */
-  switchSet: boolean;
   switchOn: boolean;
   templateSizeDurationMs: number;
   templateSizeFrom: { x: number; y: number };

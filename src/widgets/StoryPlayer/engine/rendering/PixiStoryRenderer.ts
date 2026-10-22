@@ -5503,12 +5503,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   private async textureForInterlude(
     input: InterludeInput,
   ): Promise<Texture | null> {
-    // CutinController routes type 1 (uichar) through Cutin/Characters and
-    // type 2 (bg) through AVG/Backgrounds; only type 3 reuses AVG characters.
-    // Exception: on a CutinTemplateDialogView native _RefreshDialogChar also
-    // takes type 1 through the AVG portrait pipeline, so a type-1 name that
-    // resolved as a character (avatarCharacterKey set) loads from characters.
-    if (input.type !== 3 && !input.avatarCharacterKey) {
+    if (input.type !== 3) {
+      // CutinController routes type 1 (uichar) through Cutin/Characters and
+      // type 2 (bg) through AVG/Backgrounds; only type 3 reuses AVG characters.
       let kind: StoryAssetFamily = "image";
       if (input.type === 2) kind = "background";
       else if (input.type === 1) kind = "cutin";

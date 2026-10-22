@@ -278,18 +278,18 @@ describe("StoryRuntime", () => {
       size: { x: 290, y: 320 },
       slot: "m",
       switchOn: true,
-      switchSet: true,
       type: 2,
     });
     expect(renderer.interludeCalls[1]).toMatchObject({
       channel: -1,
       clear: true,
     });
-    // A command without the switch key must not be treated as switch=false.
+    // `switch` defaults to false (GetOrDefault), and type 1 never resolves
+    // an AVG avatar (Cutin/Characters only).
     expect(renderer.interludeCalls[2]).toMatchObject({
+      avatarCharacterKey: undefined,
       channel: 3,
       switchOn: false,
-      switchSet: false,
       type: 1,
     });
     expect(warnings).toEqual([

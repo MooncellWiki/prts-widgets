@@ -2855,15 +2855,12 @@ export class StoryRuntime {
           channelArg === undefined ? -1 : Math.trunc(toNumber(channelArg, -1));
         const type = parseInterludeType(this.exactArg(args, "type"));
         const name = toString(this.exactArg(args, "name"));
-        // Native CutinTemplateDialogView._RefreshDialogChar consumes type 3
-        // AND type 1 (both through the AVG portrait pipeline), so resolve the
-        // avatar ref for both. Warnings stay type-3-only: on plain templates
-        // type 1 loads from Cutin/Characters and never touches the avatar.
+        // Only type 3 goes through the AVG portrait pipeline: type 1 loads
+        // from Cutin/Characters, also on a CutinTemplateDialogView
+        // (_LoadPortraitImage → ResourceUrls.GetCutinCharPath).
         const avatarResolution =
-          (type === 3 || type === 1) && name
-            ? this.resolveCharacterName(name)
-            : null;
-        if (type === 3 && avatarResolution?.kind === "native_throws")
+          type === 3 && name ? this.resolveCharacterName(name) : null;
+        if (avatarResolution?.kind === "native_throws")
           return this.warnNativeSlotThrows(name, line);
         const resolvedAvatar =
           avatarResolution?.kind === "found"
@@ -2911,10 +2908,8 @@ export class StoryRuntime {
           size: parseVector2(this.exactArg(args, "size")) ?? { x: 0, y: 0 },
           slot: toString(this.exactArg(args, "slot")),
           style: Math.trunc(toNumber(this.exactArg(args, "style"), 0)),
-          // Native `switch` only feeds the template deco TwoStateToggle; a
-          // command without the key must not change any visibility, so the
-          // panel also needs to know whether the key was present at all.
-          switchSet: this.exactArg(args, "switch") !== undefined,
+          // Native `switch` (GetOrDefault false) only feeds the deco
+          // TwoStateToggle, re-rendered on every show/update.
           switchOn: toBoolean(this.exactArg(args, "switch"), false),
           templateSizeDurationMs: duration("tsduration"),
           templateSizeFrom: parseVector2(this.exactArg(args, "tsfrom")) ?? {

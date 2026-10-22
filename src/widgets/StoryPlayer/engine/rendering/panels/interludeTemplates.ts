@@ -21,14 +21,18 @@ import importedClips from "../../../assets/interlude/clips.json";
 // (2026-10-21);动画关键帧见 `assets/interlude/clips.json`(同批 dump)。逆向
 // 记录:arknights-rev `docs/commands/avg-interlude-command.md` §6/§8/§13.1。
 //
+// 坐标:Unity 的 anchoredPosition/localPosition 已换算到 PIXI(y 取反);
+// RectTransform 的 anchor/pivot 折算成父节点内的固定偏移(见各模板注释)。
+//
 // Web 适配(有意近似,非原生行为):
 // - stencil 读写通道(`UIStencilGraphic`/`UIStencilComponent`)用 PIXI
-//   `Graphics` mask 近似:mask 图形挂在模板 root 下,自动跟随模板的
-//   DOScale/位移,元素层(`root_char_*`/`root_bkg_*`)以它裁切。
+//   `Graphics` mask 近似:mask 图形挂在写入者(`_imgMask`/`img_char_mask`)
+//   节点下,自动跟随模板的 DOScale/位移/入场动画;读取者(通道内容层、
+//   vertical 的 `img_unknown`、dialog 的 `img_bg`/`img_char`)以它裁切。
 // - `bg_defaul_gradient` 的渐变 shader 用 `top_gradient` 贴图拉伸近似;
-//   `mask_soft_edge` 软边不移植(矩形硬边)。
-// - deco 的 `TwoStateToggle` 布线(prefab 决定 switch 控制哪层)按"整个 deco
-//   内容层可见性"实现。
+//   `mask_soft_edge` 软边与 dialog `img_char_mask` 的自定义网格按矩形近似。
+// - `group_name` 上的布局组件(随文字伸缩的 name_back/brick)未移植,
+//   name_back 固定 40x40。
 // - 关键帧间插值取线性(原生为 slope 贝塞尔);UI 曲线键距稀疏,视觉差异可忽略。
 
 /** `assets/interlude/clips.json` 的结构(AnimationClip typetree 转写)。 */
@@ -141,7 +145,8 @@ const clipEnd = (name: string): number => {
 
 export const CLIP_SECONDS = {
   squareShow: clipEnd("square_show"),
-  dialogIntro: clipEnd("dialog_left"),
+  dialogIntroLeft: clipEnd("dialog_left"),
+  dialogIntroRight: clipEnd("dialog_right"),
   horiMaskOpen: clipEnd("hori_mask_open"),
   direction: clipEnd("dir_right"),
 } as const;
@@ -199,58 +204,90 @@ export function loadInterludeTextures(): Promise<InterludeTextureSet> {
   return texturePromise;
 }
 
+type Vec2 = { x: number; y: number };
+
+/** dialog `img_char` 的 prefab rect(`_ApplyDialogCharLayoutOverride` 每次恢复)。 */
+export const DIALOG_CHAR_SIZE = 1380;
+
+/** 2.7.61 `CutinTemplateDialogView` 的节点。 */
+export interface DialogNodes {
+  /**
+   * `group_left/right`:`_dialogGroup`(CanvasGroup)兼入场动画根。pivot 在
+   * 左中/右中,节点原点即 pivot,入场的 scale/rotation 绕它进行。
+   */
+  group: Container;
+  /** `img_char_mask`(stencil 写入,入场动画缩放其 y)。 */
+  charMask: Container;
+  /** `img_frame`(入场动画缩放;left 的 prefab localScale.x = -1)。 */
+  frameImg: Container;
+  /** `img_char`:立绘落点,固定 1380x1380 rect。 */
+  charImage: Sprite;
+  /** `img_bg`:type 2 背景落点,固定 rect(不 SetNativeSize)。 */
+  bgImage: Sprite;
+  right: boolean;
+  /** prefab `group_*` 的 anchoredPosition.x(入场动画无 clip 时的静止位)。 */
+  restX: number;
+  /** prefab `img_char` 的 anchoredPosition(char_part 中心系)。 */
+  charBase: Vec2;
+  bgSize: Vec2;
+}
+
 /** 模板内被面板/动画访问的节点集合。 */
 export interface TemplateNodes {
-  /** 模板视觉根(尺寸 = 命令 size 或模板默认;style 0 的 DOScale 作用于此)。 */
+  /** 模板根(`mask_container` 下;面板按 offset 摆放)。 */
   root: Container;
   /**
-   * 视觉层(root 下、maskNode 平级)。native style 1/2 淡的是 `_imgMask`
-   * 图像而 stencil 裁切不受其 alpha 影响;Web 的 fade 只作用视觉层,
-   * 不能让 maskGraphics 的祖先 alpha 变 0(会把元素裁成全空)。
+   * 根节点的水平锚:基类 ShowCutinMask 写 localPosition = offset(相对
+   * mask_container 中心);dialog 写 anchoredPosition = offset,而它的
+   * anchor/pivot 在左中/右中,即贴屏幕左/右边缘。
    */
-  visuals: Container;
-  /** 裁切节点(stencil 写入位的近似);maskGraphics 挂在其下。 */
+  anchor: "center" | "left" | "right";
+  /** `_scaleTrans ?? transform`:style 0/2 的 ts DOScale 与 clear 收缩目标。 */
+  scaleNode: Container;
+  /** scaleNode 的 prefab localScale(`ui_cutin_mask_vertical` 为 (0,1))。 */
+  initialScale: Vec2;
+  /** `_imgMask`(或 dialog 的 `img_char_mask`)所在节点。 */
   maskNode: Container;
-  /** 裁切图形(挂在 maskNode 下,供元素层 `.mask` 使用)。 */
+  /** 裁切图形:基类模板用它裁切通道内容层(root_bkg_* / root_char_*)。 */
   maskGraphics: Graphics;
-  /** `_emptyImg`(`img_unknown`,name 为空时显示的占位立绘)。 */
+  /** 模板配了 `_imgMask`(style 1/2 才 Join 3s DOFade;dialog 无)。 */
+  hasImgMask: boolean;
+  /**
+   * `_animWrapper` + `_animLocs[0]`:style 3 时播放且 m_cutinSeq = null(立即
+   * 完成)。null = 没有 animWrapper,style 3 什么都不播,仍走 1s 地板。
+   */
+  animatorClip: "hori_mask_open" | null;
+  /**
+   * 模板根上 legacy Animation 的默认 clip(`playAutomatically`):实例化即
+   * 播放,与 style 无关(square 模板与其 deco 同挂这一条)。
+   */
+  autoClip: "square_show" | null;
+  /** `_emptyImg`。 */
   emptyImage: Sprite | null;
-  /** `back_shadow`(square show 动画的 SizeDelta/alpha 目标)。 */
-  backShadow: Sprite | null;
-  /** square deco 的 `group_frame_common`(show 动画目标,由 deco 提供)。 */
-  frameGroup: Container | null;
-  /** 模板入场动画;null = 无(unknown maskid 的纯矩形回落不在此列)。 */
-  showClip:
-    "square_show" | "hori_mask_open" | "dialog_left" | "dialog_right" | null;
-  /** 2.7.61 `CutinTemplateDialogView`:type 3/2 的更新转交模板消费。 */
-  consumes: { avatar: boolean; background: boolean };
-  isDialog: boolean;
-  dialog?: {
-    /** `group_left/right`,入场动画作用根。 */
-    group: Container;
-    charMask: Container;
-    frameImg: Container;
-    /** `img_char`(`icharpos`/`icharscale` 与 type 3 立绘落点)。 */
-    charImage: Sprite;
-    /** `img_bg`(type 2 背景落点)。 */
-    bgImage: Sprite;
-    mirrored: boolean;
-  };
+  /** square `back_shadow` 的 sizeDelta 写入(content_mask 随之内缩 36)。 */
+  setBackShadowSize: ((width: number, height: number) => void) | null;
+  /** square `back_shadow` 的 CanvasGroup(alpha 作用到整个子树)。 */
+  backShadowGroup: Container | null;
+  dialog: DialogNodes | null;
   /** 模板默认尺寸(prefab sizeDelta;命令 size≈0 时沿用)。 */
-  defaultSize: { x: number; y: number };
-  /** 按命令 size 重排(各模板锚定规则不同)。 */
+  defaultSize: Vec2;
+  /** 写 sizeDelta 后按各子节点的锚定规则重排。 */
   resize: (width: number, height: number) => void;
 }
 
 export interface DecoNodes {
+  /** deco 根(`deco_container` 下;面板按 offset 摆放)。 */
   root: Container;
-  /** `text_name`(`char` 文字;vertical deco 无此组)。 */
+  /** `text_name`(仅 square deco 有)。 */
   label: Text | null;
-  /** `group_wave`(square deco,show 动画位移目标)。 */
+  /**
+   * `TwoStateToggle.set_selected`:selected 显示 `wave_active`(说话中的波形),
+   * 否则显示 `wave_stop`(静止横线);Awake(`_setWithAwake`)默认未选中。
+   */
+  setSwitch: (selected: boolean) => void;
+  /** square deco 的 `group_wave`/`group_name`/`group_frame_common`(入场动画目标)。 */
   waveGroup: Container | null;
-  /** `group_name`(square deco,show 动画位移目标)。 */
   nameGroup: Container | null;
-  /** `group_frame_common`(square deco,show 动画 SizeDelta 目标)。 */
   frameGroup: Container | null;
 }
 
@@ -266,41 +303,18 @@ function centeredSprite(
   return s;
 }
 
-/** maskNode 下(保留式)重画裁切矩形;不清兄弟节点(content_mask 内还有
- * bg_defaul_gradient/bg_custom_holder 等子层)。 */
+/** 以节点原点为中心(重)画裁切矩形。 */
 function drawMaskRect(g: Graphics, width: number, height: number): void {
+  const w = Math.max(0, width);
+  const h = Math.max(0, height);
   g.clear()
-    .rect(-width / 2, -height / 2, width, height)
+    .rect(-w / 2, -h / 2, w, h)
     .fill(0xff_ff_ff);
 }
 
-/** 通用 resize:mask 矩形 + 内部渐变随模板尺寸更新。 */
-function makeResize(
-  maskGraphics: Graphics,
-  opts: {
-    backShadow?: Sprite;
-    stretchShadow?: boolean;
-    gradient?: Sprite;
-    inset: number;
-  },
-): (width: number, height: number) => void {
-  return (width, height) => {
-    if (opts.stretchShadow && opts.backShadow) {
-      opts.backShadow.width = width;
-      opts.backShadow.height = height;
-    }
-    drawMaskRect(maskGraphics, width - opts.inset, height - opts.inset);
-    if (opts.gradient) {
-      opts.gradient.width = width - opts.inset;
-      opts.gradient.height = height - opts.inset;
-    }
-  };
-}
-
 /**
- * 按原生 prefab 层级建模板。返回 root 尺寸为模板默认值,由面板按命令
- * `size`(≈0 时保持默认)覆盖后调用 `resize`。未知 maskid 返回 null,面板
- * 回落到纯矩形 mask。
+ * 按原生 prefab 层级建模板;未知 maskid 返回 null,面板回落到纯矩形 mask。
+ * 返回时尺寸为 prefab 默认值,面板按命令 `size`(≈0 时保持默认)调用 `resize`。
  */
 export function buildTemplate(
   maskId: string,
@@ -309,68 +323,88 @@ export function buildTemplate(
   const root = new Container();
 
   if (maskId === "group_interclude_vertical_common") {
-    // prefab:root 320x760;back_shadow(拉伸锚定,icon_back)→ content_mask
-    // (sizeDelta -36 即每边内缩 18)→ bg_defaul_gradient + bg_custom_holder;
-    // img_unknown 283x720 居中。无入场动画(vertical_show 是空 clip)。
+    // root 320x760。back_shadow(icon_back,拉伸锚定 = 根尺寸)即 `_scaleTrans`,
+    // 其下 content_mask(`_imgMask`,每边内缩 18)→ bg_defaul_gradient。
+    // img_unknown 283x720 是 root 的直接子节点:不随 ts 缩放,但它是
+    // content_mask 的 stencil 读取者(`_components`),被窗口裁切。
+    const scaleNode = new Container();
     const backShadow = centeredSprite(tex.iconBack, 320, 760);
+    const gradient = centeredSprite(tex.gradientV, 320 - 36, 760 - 36);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
-    const gradient = centeredSprite(tex.gradientV, 320 - 36, 760 - 36);
+    const unknownMask = new Graphics();
+    maskNode.addChild(maskGraphics, unknownMask);
+    scaleNode.addChild(backShadow, gradient, maskNode);
     const unknown = centeredSprite(tex.unknownVertical, 283, 720);
-    const visuals = new Container();
-    visuals.addChild(backShadow, gradient, unknown);
-    root.addChild(visuals, maskNode);
-    maskNode.addChild(maskGraphics);
+    unknown.mask = unknownMask;
+    root.addChild(scaleNode, unknown);
+    const resize = (width: number, height: number): void => {
+      backShadow.width = width;
+      backShadow.height = height;
+      gradient.width = Math.max(0, width - 36);
+      gradient.height = Math.max(0, height - 36);
+      drawMaskRect(maskGraphics, width - 36, height - 36);
+      drawMaskRect(unknownMask, width - 36, height - 36);
+    };
+    resize(320, 760);
     return {
       root,
-      visuals,
+      anchor: "center",
+      scaleNode,
+      initialScale: { x: 1, y: 1 },
       maskNode,
       maskGraphics,
+      hasImgMask: true,
+      animatorClip: null,
+      autoClip: null,
       emptyImage: unknown,
-      backShadow,
-      frameGroup: null,
-      showClip: null,
-      consumes: { avatar: false, background: false },
-      isDialog: false,
+      setBackShadowSize: null,
+      backShadowGroup: null,
+      dialog: null,
       defaultSize: { x: 320, y: 760 },
-      resize: makeResize(maskGraphics, {
-        backShadow,
-        stretchShadow: true,
-        gradient,
-        inset: 36,
-      }),
+      resize,
     };
   }
 
   if (maskId === "group_interclude_square_common") {
-    // prefab:root 300x300;back_shadow 250x250(icon_back,居中)→ content_mask
-    // (内缩 36)→ bg_defaul_gradient + bg_custom_holder → img_unknown 214x214
-    // (挂在 holder 下)。入场动画 avg_interclude_square_common_show(动画细节
-    // 见 applySquareShow;group_frame/name/wave 节点由 deco 提供,经面板接线)。
+    // root 300x300(`_scaleTrans` 为空 → DOScale 作用于 root)。back_shadow
+    // 是居中定尺寸的 250x250(带 CanvasGroup),所以命令 size 只改 root 的
+    // sizeDelta,子节点不随之变化;content_mask(`_imgMask`)拉伸内缩 36 →
+    // 214x214,其下 bg_defaul_gradient + bg_custom_holder/img_unknown(居中
+    // 214x214,不读 stencil)。入场动画见 applySquareShow。
+    const backShadowGroup = new Container();
     const backShadow = centeredSprite(tex.iconBack, 250, 250);
+    const gradient = centeredSprite(tex.gradientV, 214, 214);
+    const unknown = centeredSprite(tex.unknownSquare, 214, 214);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
-    const gradient = centeredSprite(tex.gradientV, 300 - 36, 300 - 36);
-    const holder = new Container();
-    const unknown = centeredSprite(tex.unknownSquare, 214, 214);
-    const visuals = new Container();
-    visuals.addChild(backShadow, gradient, holder);
-    holder.addChild(unknown);
-    root.addChild(visuals, maskNode);
     maskNode.addChild(maskGraphics);
+    backShadowGroup.addChild(backShadow, gradient, unknown, maskNode);
+    root.addChild(backShadowGroup);
+    const setBackShadowSize = (width: number, height: number): void => {
+      backShadow.width = width;
+      backShadow.height = height;
+      gradient.width = Math.max(0, width - 36);
+      gradient.height = Math.max(0, height - 36);
+      drawMaskRect(maskGraphics, width - 36, height - 36);
+    };
+    setBackShadowSize(250, 250);
     return {
       root,
-      visuals,
+      anchor: "center",
+      scaleNode: root,
+      initialScale: { x: 1, y: 1 },
       maskNode,
       maskGraphics,
+      hasImgMask: true,
+      animatorClip: null,
+      autoClip: "square_show",
       emptyImage: unknown,
-      backShadow,
-      frameGroup: null,
-      showClip: "square_show",
-      consumes: { avatar: false, background: false },
-      isDialog: false,
+      setBackShadowSize,
+      backShadowGroup,
+      dialog: null,
       defaultSize: { x: 300, y: 300 },
-      resize: makeResize(maskGraphics, { gradient, inset: 36 }),
+      resize: () => {},
     };
   }
 
@@ -378,29 +412,35 @@ export function buildTemplate(
     maskId === "ui_cutin_mask_vertical" ||
     maskId === "ui_cutin_mask_horizon"
   ) {
-    // prefab:纯 stencil 窗口(vertical 337x788 / horizon 1689x335,唯一子节点
-    // ui_cutin_mask 全拉伸,无贴图)。horizon 伴随 avg_cutin_hori_com_mask
-    // (y 轴 0→1 开幕,见 applyHoriMaskOpen)。
+    // 纯 stencil 窗口:唯一子节点 ui_cutin_mask(`_imgMask`,拉伸,无贴图)。
+    // vertical 337.3x788.5,prefab localScale = (0,1)(style 0 无 ts / style 3
+    // 时保持收起),无 animWrapper;horizon 1689.2x335.27,animWrapper 播
+    // avg_cutin_hori_com_mask(ui_cutin_mask 的 y 开合,见 applyHoriMaskOpen)。
+    const vertical = maskId === "ui_cutin_mask_vertical";
     const maskNode = new Container();
     const maskGraphics = new Graphics();
-    root.addChild(new Container(), maskNode);
     maskNode.addChild(maskGraphics);
+    root.addChild(maskNode);
+    const defaultSize = vertical
+      ? { x: 337.3, y: 788.5 }
+      : { x: 1689.2, y: 335.27 };
+    drawMaskRect(maskGraphics, defaultSize.x, defaultSize.y);
     return {
       root,
-      visuals: root.children[0] as Container,
+      anchor: "center",
+      scaleNode: root,
+      initialScale: vertical ? { x: 0, y: 1 } : { x: 1, y: 1 },
       maskNode,
       maskGraphics,
+      hasImgMask: true,
+      animatorClip: vertical ? null : "hori_mask_open",
+      autoClip: null,
       emptyImage: null,
-      backShadow: null,
-      frameGroup: null,
-      showClip: maskId === "ui_cutin_mask_horizon" ? "hori_mask_open" : null,
-      consumes: { avatar: false, background: false },
-      isDialog: false,
-      defaultSize:
-        maskId === "ui_cutin_mask_vertical"
-          ? { x: 337.3, y: 788.5 }
-          : { x: 1689.2, y: 335.27 },
-      resize: makeResize(maskGraphics, { inset: 0 }),
+      setBackShadowSize: null,
+      backShadowGroup: null,
+      dialog: null,
+      defaultSize,
+      resize: (width, height) => drawMaskRect(maskGraphics, width, height),
     };
   }
 
@@ -408,47 +448,70 @@ export function buildTemplate(
     maskId === "interlude_dialog_left" ||
     maskId === "interlude_dialog_right"
   ) {
-    // prefab(2.7.61 CutinTemplateDialogView):root 1280x720 全屏;
-    // group_left(400x350,+10x)→ char_part{img_char_mask 485x403(+48x),
-    // img_bg 550x570(sprite_grad,-12.23/+17.7),img_char 1380x1380(0,-520)}
-    // + img_frame 473x426(dialogue_frame)。入场动画 avg_dialogue_left/right。
-    // corpus 只用 left;right 按整组镜像近似(全是图像节点,镜像无文字问题)。
-    const mirrored = maskId === "interlude_dialog_right";
+    // 2.7.61 CutinTemplateDialogView。left:root 1280x720,anchor/pivot (0,0.5)
+    // → group_left(anchor/pivot (0,0.5),+10x,400x350)→ char_part(anchor/
+    // pivot (0,0.5),300x300,中心在 group pivot +150)→ img_char_mask
+    // (485x403.4 @+48x,stencil 写入)/ img_bg(550x570 @(-12.23,17.7))/
+    // img_char(1380x1380 @(0,-520))两个读取者;img_frame 473x426 锚在
+    // group 中心(+200)@(0,-12.6),localScale.x = -1。right 是独立 prefab
+    // (锚在右中,char_part 在 group pivot -100、中心 -250,img_char_mask
+    // 485x399.69 @(3,-3.5),img_bg 620.42x590.9 @(120,0),img_frame 不翻转)。
+    const right = maskId === "interlude_dialog_right";
+    const restX = right ? -10 : 10;
     const group = new Container();
-    group.position.set(10, 0);
-    if (mirrored) group.scale.x = -1;
+    group.position.set(restX, 0);
     const charPart = new Container();
+    charPart.position.set(right ? -250 : 150, 0);
     const charMask = new Container();
-    charMask.position.set(48, 0);
-    const bgImage = centeredSprite(tex.dialogGrad, 550, 570);
-    bgImage.position.set(-12.23, -17.7); // native y=+17.7(Unity y 向上),翻转
+    charMask.position.set(right ? 3 : 48, right ? 3.5 : 0);
+    const maskGraphics = new Graphics();
+    drawMaskRect(maskGraphics, 485, right ? 399.69 : 403.4);
+    charMask.addChild(maskGraphics);
+    const bgSize = right ? { x: 620.42, y: 590.9 } : { x: 550, y: 570 };
+    const bgImage = centeredSprite(tex.dialogGrad, bgSize.x, bgSize.y);
+    bgImage.position.set(right ? 120 : -12.23, right ? 0 : -17.7);
+    const charBase = { x: 0, y: 520 };
     const charImage = new Sprite(Texture.EMPTY);
     charImage.anchor.set(0.5);
-    charImage.position.set(0, 520); // native y=-520,翻转
-    const frameImg = centeredSprite(tex.dialogFrame, 473, 426);
-    frameImg.position.set(0, 12.6); // native y=-12.6,翻转
-    const maskNode = new Container();
-    const maskGraphics = new Graphics();
+    charImage.position.set(charBase.x, charBase.y);
+    charImage.visible = false;
+    const charContent = new Container();
+    charContent.addChild(bgImage, charImage);
+    charContent.mask = maskGraphics;
+    charPart.addChild(charMask, charContent);
+    const frameImg = new Container();
+    frameImg.position.set(right ? -200 : 200, 12.6);
+    frameImg.scale.set(right ? 1 : -1, 1);
+    frameImg.addChild(centeredSprite(tex.dialogFrame, 473, 426));
+    group.addChild(charPart, frameImg);
     root.addChild(group);
-    group.addChild(charPart, frameImg, maskNode);
-    maskNode.addChild(maskGraphics);
-    // dialog 的视觉即 group 整体;visuals 指向 group 让 fade/入场一致。
-    charPart.addChild(charMask, bgImage, charImage);
     return {
       root,
-      visuals: group,
-      maskNode,
+      anchor: right ? "right" : "left",
+      scaleNode: root,
+      initialScale: { x: 1, y: 1 },
+      maskNode: charMask,
       maskGraphics,
+      hasImgMask: false,
+      animatorClip: null,
+      autoClip: null,
       emptyImage: null,
-      backShadow: null,
-      frameGroup: null,
-      showClip: mirrored ? "dialog_right" : "dialog_left",
-      consumes: { avatar: true, background: true },
-      isDialog: true,
+      setBackShadowSize: null,
+      backShadowGroup: null,
+      dialog: {
+        group,
+        charMask,
+        frameImg,
+        charImage,
+        bgImage,
+        right,
+        restX,
+        charBase,
+        bgSize,
+      },
       defaultSize: { x: 1280, y: 720 },
-      dialog: { group, charMask, frameImg, charImage, bgImage, mirrored },
-      // 对话框模板自身是内容而非裁切窗;mask 保持空矩形。
-      resize: () => drawMaskRect(maskGraphics, 0, 0),
+      // group 锚在 root 的左中/右中(与 root pivot 重合),root 尺寸不影响布局。
+      resize: () => {},
     };
   }
 
@@ -456,50 +519,74 @@ export function buildTemplate(
 }
 
 /**
- * 按原生 deco prefab 建装饰层(square 版含 frame/name/wave,vertical 版仅
- * wave)。位置为 decoContainer(通道中心)下的 local 坐标,y 已翻转。
+ * wave_shadow + wave_active(4 片 wave_base 80x42,pivot (1,0),x=±4.8,以
+ * scale ±1 镜像成上下左右对称的波形)+ wave_stop(2 片 80x3.98 灰线)。
+ */
+function buildWaves(tex: InterludeTextureSet): {
+  shadow: Sprite;
+  active: Container;
+  stop: Container;
+} {
+  const shadow = centeredSprite(tex.waveShadow, 220.14, 130);
+  shadow.alpha = 0.672;
+  const active = new Container();
+  for (const [x, sx, sy] of [
+    [4.8, 1, 1],
+    [-4.8, -1, 1],
+    [4.8, 1, -1],
+    [-4.8, -1, -1],
+  ] as const) {
+    const w = new Sprite(tex.waveBase);
+    // Unity pivot (1,0) = 右下角;PIXI y 向下,底边即 anchor.y = 1。
+    w.anchor.set(1, 1);
+    w.width = 80;
+    w.height = 42;
+    w.scale.set(w.scale.x * sx, w.scale.y * sy);
+    w.position.set(x, 0);
+    active.addChild(w);
+  }
+  const stop = new Container();
+  for (const [x, sx] of [
+    [4.8, 1],
+    [-4.8, -1],
+  ] as const) {
+    const w = new Sprite(tex.waveBase);
+    w.anchor.set(1, 0.5);
+    w.width = 80;
+    w.height = 3.98;
+    w.scale.x *= sx;
+    w.tint = 0x8c_8c_8c;
+    w.position.set(x, 0);
+    stop.addChild(w);
+  }
+  return { shadow, active, stop };
+}
+
+/**
+ * 按原生 deco prefab 建装饰层(`CutinTemplate._decoPrefab`)。root 的 prefab
+ * 摆位会被 ShowCutinMask 的 `localPosition = offset` 覆盖,故原点即通道
+ * 中心 + offset,与模板根重合。
  */
 export function buildDeco(
   maskId: string,
   tex: InterludeTextureSet,
 ): DecoNodes | null {
-  const buildWaves = (): Container => {
-    // wave_shadow 220x130 @origin;wave_active 4 条 wave_base 80x42(pivot
-    // 右下,x=±4.8);wave_stop 2 条 80x3.98(灰 0.551,pivot 右中)。
-    const g = new Container();
-    const shadow = centeredSprite(tex.waveShadow, 220.14, 130);
-    shadow.alpha = 0.672;
-    const active = new Container();
-    for (const [i, x] of [4.8, -4.8, 4.8, -4.8].entries()) {
-      const w = new Sprite(tex.waveBase);
-      w.anchor.set(1, 1);
-      w.width = 80;
-      w.height = 42;
-      w.position.set(x, i % 2 === 0 ? 42 : 0);
-      active.addChild(w);
-    }
-    const stop = new Container();
-    for (const x of [4.8, -4.8]) {
-      const w = new Sprite(tex.waveBase);
-      w.anchor.set(1, 0.5);
-      w.width = 80;
-      w.height = 3.98;
-      w.tint = 0x8c_8c_8c;
-      w.position.set(x, 21);
-      stop.addChild(w);
-    }
-    g.addChild(shadow, active, stop);
-    return g;
-  };
-
   if (maskId === "group_interclude_vertical_common") {
-    // deco prefab 167.55x100 @ (0,-56.21):仅波形组,无 name/frame。
+    // 167.55x100,localScale (1,1.15):wave_shadow/wave_active/wave_stop 直挂根下,
+    // 无 text_name。
     const root = new Container();
-    root.position.set(0, 56.21);
-    root.addChild(buildWaves());
+    root.scale.set(1, 1.15);
+    const { shadow, active, stop } = buildWaves(tex);
+    root.addChild(shadow, active, stop);
+    const setSwitch = (selected: boolean): void => {
+      active.visible = selected;
+      stop.visible = !selected;
+    };
+    setSwitch(false);
     return {
       root,
       label: null,
+      setSwitch,
       waveGroup: null,
       nameGroup: null,
       frameGroup: null,
@@ -507,15 +594,16 @@ export function buildDeco(
   }
 
   if (maskId === "group_interclude_square_common") {
-    // deco prefab 300x300 @ (-150,53):group_wave @ (0,-136) +
-    // group_frame_common 236x236(interclude_common_frame)+ group_name @
-    // (-145.3,-85.19){name_back(icon_back 40x40)+ text_name(18px、
-    // (0.196,0.196,0.196,1)、MiddleRight、pivot 左中)}。
+    // 300x300:group_wave @(0,-136) localScale (1,0.75) + group_frame_common
+    // 236x236(interclude_common_frame)+ group_name @(-145.3,-85.19)
+    // {name_back(icon_back)+ text_name(18px、(0.196,0.196,0.196)、
+    // MiddleLeft、SourceHanSansCN-Heavy)}。
     const root = new Container();
-    root.position.set(-150, -53);
     const waveGroup = new Container();
     waveGroup.position.set(0, 136);
-    waveGroup.addChild(buildWaves());
+    waveGroup.scale.set(1, 0.75);
+    const { shadow, active, stop } = buildWaves(tex);
+    waveGroup.addChild(shadow, active, stop);
     const frameGroup = new Container();
     frameGroup.addChild(centeredSprite(tex.commonFrame, 236, 236));
     const nameGroup = new Container();
@@ -526,63 +614,70 @@ export function buildDeco(
       style: new TextStyle({
         fill: 0x32_32_32,
         fontSize: 18,
-        fontFamily: "SourceHanSansCN-Bold, sans-serif",
+        fontFamily: "SourceHanSansCN-Heavy, sans-serif",
       }),
     });
     label.anchor.set(0, 0.5);
     nameGroup.addChild(nameBack, label);
     root.addChild(waveGroup, frameGroup, nameGroup);
-    return { root, label, waveGroup, nameGroup, frameGroup };
+    const setSwitch = (selected: boolean): void => {
+      active.visible = selected;
+      stop.visible = !selected;
+    };
+    setSwitch(false);
+    return { root, label, setSwitch, waveGroup, nameGroup, frameGroup };
   }
 
   return null;
 }
 
-/** square deco 入场动画(avg_interclude_square_common_show)在 t 秒的姿态。 */
+/**
+ * avg_interclude_square_common_show 在 t 秒的姿态。模板根与 deco 根的
+ * Animation 都以它为 `playAutomatically` 默认 clip:模板侧只有 back_shadow
+ * 路径命中,deco 侧命中 group_frame_common/group_name/group_wave。
+ */
 export function applySquareShow(
   nodes: {
-    backShadow: Sprite | null;
+    setBackShadowSize: ((width: number, height: number) => void) | null;
+    backShadowGroup: Container | null;
     frameGroup: Container | null;
     nameGroup: Container | null;
     waveGroup: Container | null;
   },
-  templateSize: { x: number; y: number },
   t: number,
 ): void {
-  const { backShadow, frameGroup, nameGroup, waveGroup } = nodes;
-  if (backShadow) {
-    // back_shadow 拉伸锚定:m_SizeDelta 叠加在(动画起点的)模板尺寸之上。
-    backShadow.width =
-      templateSize.x +
-      sample(
-        curve("square_show", "float", "back_shadow", "m_SizeDelta.x"),
-        t,
-        0,
-      );
-    backShadow.height =
-      templateSize.y +
-      sample(
-        curve("square_show", "float", "back_shadow", "m_SizeDelta.y"),
-        t,
-        0,
-      );
-    backShadow.alpha = sample(
+  const { backShadowGroup, frameGroup, nameGroup, waveGroup } = nodes;
+  // back_shadow 居中定尺寸:m_SizeDelta 即绝对尺寸(40.1 → 250)。
+  nodes.setBackShadowSize?.(
+    sample(
+      curve("square_show", "float", "back_shadow", "m_SizeDelta.x"),
+      t,
+      250,
+    ),
+    sample(
+      curve("square_show", "float", "back_shadow", "m_SizeDelta.y"),
+      t,
+      250,
+    ),
+  );
+  if (backShadowGroup) {
+    backShadowGroup.alpha = sample(
       curve("square_show", "float", "back_shadow", "m_Alpha"),
       t,
       1,
     );
   }
   if (frameGroup) {
-    // 居中锚定:SizeDelta 即绝对尺寸。
+    // 居中定尺寸:SizeDelta 即绝对尺寸(子节点 common_frame 拉伸跟随)。
     frameGroup.width = sample(
       curve("square_show", "float", "group_frame_common", "m_SizeDelta.x"),
       t,
-      0,
+      236,
     );
     frameGroup.height = sample(
       curve("square_show", "float", "group_frame_common", "m_SizeDelta.y"),
       t,
-      0,
+      236,
     );
     frameGroup.alpha = sample(
       curve("square_show", "float", "group_frame_common", "m_Alpha"),
@@ -594,7 +689,7 @@ export function applySquareShow(
     nameGroup.position.x = sample(
       curve("square_show", "float", "group_name", "m_AnchoredPosition.x"),
       t,
-      0,
+      -145.3,
     );
     nameGroup.alpha = sample(
       curve("square_show", "float", "group_name", "m_Alpha"),
@@ -606,7 +701,7 @@ export function applySquareShow(
     waveGroup.position.y = -sample(
       curve("square_show", "float", "group_wave", "m_AnchoredPosition.y"),
       t,
-      0,
+      -136,
     );
     waveGroup.alpha = sample(
       curve("square_show", "float", "group_wave", "m_Alpha"),
@@ -616,20 +711,18 @@ export function applySquareShow(
   }
 }
 
-/** 对话框入场动画(avg_dialogue_left/right)在 t 秒的姿态。 */
-export function applyDialogIntro(
-  dialog: NonNullable<TemplateNodes["dialog"]>,
-  t: number,
-): void {
-  const name = dialog.mirrored ? "dialog_right" : "dialog_left";
+/** 对话框入场动画(avg_dialogue_left/right,挂在 group 上)在 t 秒的姿态。 */
+export function applyDialogIntro(dialog: DialogNodes, t: number): void {
+  const name = dialog.right ? "dialog_right" : "dialog_left";
   const { group, charMask, frameImg } = dialog;
   const sc = sampleVec2(curve(name, "scale", ""), t, { x: 1, y: 1 });
-  group.scale.set((dialog.mirrored ? -1 : 1) * sc.x, sc.y);
-  group.rotation = sampleRotZ(curve(name, "rotation", ""), t);
+  group.scale.set(sc.x, sc.y);
+  // Unity z 轴正向为逆时针(y 向上);PIXI rotation 正向为顺时针(y 向下)。
+  group.rotation = -sampleRotZ(curve(name, "rotation", ""), t);
   group.position.x = sample(
     curve(name, "float", "", "m_AnchoredPosition.x"),
     t,
-    0,
+    dialog.restX,
   );
   group.alpha = sample(curve(name, "float", "", "m_Alpha"), t, 1);
   const cm = sampleVec2(curve(name, "scale", "char_part/img_char_mask"), t, {
@@ -637,11 +730,50 @@ export function applyDialogIntro(
     y: 1,
   });
   charMask.scale.set(cm.x, cm.y);
-  const fi = sampleVec2(curve(name, "scale", "img_frame"), t, { x: 1, y: 1 });
-  frameImg.scale.set(dialog.mirrored ? -fi.x : fi.x, fi.y);
+  // clip 的 img_frame 曲线自带 prefab 的 x 符号(left 为 -1)。
+  const fi = sampleVec2(curve(name, "scale", "img_frame"), t, {
+    x: dialog.right ? 1 : -1,
+    y: 1,
+  });
+  frameImg.scale.set(fi.x, fi.y);
 }
 
-/** avg_cutin_hori_com_mask(y 轴 0→1 开幕)在 t 秒的姿态。 */
+/**
+ * `_ApplyDialogCharLayoutOverride`:先恢复缓存的 prefab 布局(1380x1380 @
+ * (0,-520)),再叠加 `icharpos` 偏移(x/y 都加)、按 `icharscale` 乘 localScale。
+ */
+export function layoutDialogChar(
+  dialog: DialogNodes,
+  offset: Vec2,
+  scaleMul: Vec2,
+): void {
+  const img = dialog.charImage;
+  const tw = img.texture.width || 1;
+  const th = img.texture.height || 1;
+  img.scale.set(
+    (DIALOG_CHAR_SIZE / tw) * scaleMul.x,
+    (DIALOG_CHAR_SIZE / th) * scaleMul.y,
+  );
+  img.position.set(dialog.charBase.x + offset.x, dialog.charBase.y - offset.y);
+}
+
+/** `_RefreshDialogBackground`:换图保持 prefab rect;null = 清空并隐藏。 */
+export function setDialogBackground(
+  dialog: DialogNodes,
+  texture: Texture | null,
+): void {
+  const img = dialog.bgImage;
+  if (!texture) {
+    img.visible = false;
+    return;
+  }
+  img.texture = texture;
+  img.width = dialog.bgSize.x;
+  img.height = dialog.bgSize.y;
+  img.visible = true;
+}
+
+/** avg_cutin_hori_com_mask(y 轴 0→1 开幕,1.8s 后合上)在 t 秒的姿态。 */
 export function applyHoriMaskOpen(maskNode: Container, t: number): void {
   const sc = sampleVec2(curve("hori_mask_open", "scale", "ui_cutin_mask"), t, {
     x: 1,
@@ -652,9 +784,8 @@ export function applyHoriMaskOpen(maskNode: Container, t: number): void {
 
 /**
  * `direction=rin/lin` 的通道横扫动画(avg_cutin_hori_{right,left}_in_chanel,
- * 2.083s)在 t 秒的姿态。原生:`_TryPlayAnimation` 命中时对元素 DOKill、
- * 元素 sequence 不播,由通道 animWrapper 接管(scale 弹入 + poz 漂移 + 通道
- * alpha 包络 0→1→0)。
+ * 2.083s)在 t 秒的姿态:root_bkg_* / root_char_* 的 scale 弹入 + poz 漂移,
+ * 通道 CanvasGroup alpha 包络 0→1→0。
  */
 export function applyDirectionClip(
   nodes: {

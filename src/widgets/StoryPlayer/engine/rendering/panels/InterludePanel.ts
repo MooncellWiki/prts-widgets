@@ -17,8 +17,11 @@ import {
   applySquareShow,
   buildDeco,
   buildTemplate,
+  layoutDialogChar,
   loadInterludeTextures,
+  setDialogBackground,
   type DecoNodes,
+  type DialogNodes,
   type TemplateNodes,
 } from "./interludeTemplates";
 
@@ -28,50 +31,65 @@ type Tween = (
   update: (progress: number) => void,
   complete?: () => void,
 ) => Promise<void>;
+type Vec2 = { x: number; y: number };
 
-interface ChannelState {
-  /** 通道根(`cutin_channel` prefab 的近似):位置 = 画布中心 + offset。 */
-  root: Container;
-  /** mask 模板(`CutinTemplate` prefab);null = 未知 maskid 的矩形回落。 */
-  template: TemplateNodes | null;
-  /** deco(`group_interclude_*_deco` prefab)。 */
-  deco: DecoNodes | null;
-  elements: Map<string, Container>;
-  label: Text | null;
-  /** 裁切图形:模板 maskNode 下的 Graphics,或回落路径自己的 Graphics。 */
-  maskGraphics: Graphics;
-  /** 回落路径:按 ratio 重画矩形(native 无此分支,是 Web 的兜底)。 */
-  fallbackMask: boolean;
-  /** `root_bkg_scale`/`root_bkg_poz`(type 2 背景挂点,direction 动画目标)。 */
-  bkgScale: Container;
-  bkgPoz: Container;
-  /** `root_char_scale`/`root_char_poz`(type 1/3 元素挂点,direction 动画目标)。 */
-  charScale: Container;
-  charPoz: Container;
-  /** Current template scale ratio (tracked through ts tweens for clear). */
-  ratio: { x: number; y: number };
-  /** Guards the clear tween; element tweens use per-element sessions. */
-  sessionId: number;
-  /** direction 动画独立守卫(原生 animWrapper 动画不被元素命令打断)。 */
-  directionId: number;
-  size: { x: number; y: number };
+/** `_leftChar`/`_middleChar`/`_rightChar`/`_imgBg`/缓存的 charslot。 */
+interface ElementState {
+  /** 元素节点:DoMove(`_offset`)、DoScale(`_img`)与淡入淡出的共同目标。 */
+  node: Container;
+  sprite: Sprite;
   /**
-   * Guards the template show/scale tween separately: native element commands
-   * DOKill only the element tweens, never the template DOScale, so element
-   * sessions must not cancel it (only clear/recreate does).
+   * 按属性的 tween 世代。native `_ProcessElement` 每条命令新建 Sequence,
+   * 开头的 `DOKill(element)` 杀不到嵌在旧 Sequence 里的 tween(DOTween 的
+   * defaultAutoPlay = All,旧 Sequence 照常跑完),只有同一属性的新 tween
+   * 会在播放期间盖过它。所以只作废新命令写到的属性:第 13 章
+   * `aduration=2, block=false` 淡入后紧跟同元素位移的写法依赖淡入继续。
    */
-  templateSessionId: number;
-  /**
-   * Guards the wrapper/visual clip tweens (dialog intro, square/hori show,
-   * 3s visuals fade): native OnCutinEnd DOKills the animWrapper tweens when
-   * the channel starts hiding, so clear() must kill these too.
-   */
-  clipSessionId: number;
-  /** 模板 `m_cachedName`:`_emptyImg`(占位立绘)只在 name 变化时重判。 */
-  cachedName: string;
+  alphaGen: number;
+  moveGen: number;
+  scaleGen: number;
 }
 
-/** 有 prefab 模板的 maskid(热更包 `avg/[uc]common.ab` 全集)。 */
+interface ChannelState {
+  /** `cutin_channel`:画布中心(anchoredPosition 恒 0),`_group` CanvasGroup。 */
+  root: Container;
+  /** `mask_container`:模板挂点。 */
+  maskContainer: Container;
+  /** stencil 读取层(root_bkg_* + root_char_*),整体由模板 mask 裁切。 */
+  content: Container;
+  bkgScale: Container;
+  bkgPoz: Container;
+  charScale: Container;
+  charPoz: Container;
+  /** `deco_container`。 */
+  decoContainer: Container;
+  template: TemplateNodes | null;
+  deco: DecoNodes | null;
+  /** `CutinTemplateDecoView.m_cachedName`。 */
+  decoName: string;
+  /** 未知 maskid 的矩形回落(native 加载模板失败即无窗口;Web 兜底)。 */
+  fallbackMask: Graphics | null;
+  /** 回落路径的文字标签。 */
+  label: Text | null;
+  elements: Map<string, ElementState>;
+  /** 模板 scaleNode 的当前比例(clear 从这里收缩到 tsto)。 */
+  ratio: Vec2;
+  /** 回落矩形的尺寸。 */
+  size: Vec2;
+  /** scaleNode 上 DOScale 的世代(clear 的收缩接管入场)。 */
+  scaleGen: number;
+  /** 通道 animWrapper 上 direction clip 的世代(重播即替换)。 */
+  directionGen: number;
+  /** dialog 入场 clip 的世代(HideCutinMask 先 _KillDialogIntroTween)。 */
+  introGen: number;
+  /** `CutinTemplate.m_cachedName`。 */
+  cachedName: string;
+  /** `m_dialogCharPosOffset` / `m_dialogCharScaleMul`(只在给出时覆盖)。 */
+  dialogCharOffset: Vec2;
+  dialogCharScale: Vec2;
+}
+
+/** 有 prefab 模板的 maskid(热更包 `avg/[uc]common.ab`)。 */
 const KNOWN_MASK_IDS = new Set([
   "group_interclude_vertical_common",
   "group_interclude_square_common",
@@ -85,88 +103,74 @@ function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
 }
 
-/**
- * 元素级 tween 会话:native 的 DOKill 只作用于当前命令的目标元素,同通道
- * 其它元素(如 `_imgBackground`)的进行中 tween 不受影响;只有 direction
- * 命中(_TryPlayAnimation)才杀通道内全部元素 tween。挂在元素容器上的自增
- * id,元素销毁重建时旧容器的会话随之作废。
- */
-const elementSessions = new WeakMap<Container, number>();
-
-function nextElementSession(element: Container): number {
-  const session = (elementSessions.get(element) ?? 0) + 1;
-  elementSessions.set(element, session);
-  return session;
+/** `CutinTemplate._ShowEmptyImage`:空名或 `char_empty`(忽略大小写)。 */
+function isEmptyName(name: string): boolean {
+  return !name || name.toLowerCase() === "char_empty";
 }
 
 /**
- * Native `_GetImgElementByParam` keeps three disjoint element slots: type 2 is
- * always the channel `_imgBackground` (the slot key is ignored), type 3 is a
- * single cached `CutinAVGCharacterSlot` per channel, and only type 1 picks
- * l/m/r by slot (unknown/empty names fall back to middle). Mirror that with
- * uncollidable keys so a char/uichar command cannot destroy the background
- * element (or vice versa).
+ * Native `_GetImgElementByParam`: type 2 is always the channel `_imgBackground`
+ * and type 3 a single cached `CutinAVGCharacterSlot` (slot ignored); type 1
+ * maps "right"/"r" and "left"/"l", everything else (empty or unknown) to
+ * `_middleChar` without any error. Keys are uncollidable across types.
  */
 function elementKeyFor(input: InterludeInput): string {
   if (input.type === 2) return "\u0000bg";
   if (input.type === 3) return "\u0000avatar";
-  return input.slot || "m";
+  if (input.slot === "right" || input.slot === "r") return "r";
+  if (input.slot === "left" || input.slot === "l") return "l";
+  return "m";
 }
 
 /**
  * Port scope: `Torappu.AVG.AVGCharacterCutinPanel._ExecuteInterlude` /
  * `CutinController` / `CutinChannel` / `CutinTemplate` (2.7.81, build 2781):
  *
- * - Channel begin (`OnCutinBegin` → `CutinTemplate.ShowCutinMask`) builds the
- *   mask-template prefab tree per `maskid` (values transcribed from the
- *   `avg/[uc]common.ab` prefabs; see `interludeTemplates.ts`), applies
- *   size/offset once and owns the show timing: the sequence has a 1s
- *   `AppendInterval` floor, Fade/Both styles join a hardcoded 3s mask fade,
- *   and Scale style runs an independent tsFrom→tsTo DOScale that does not
- *   gate completion; ANIMATOR styles play the template show clip
- *   (square deco reveal / horizon y-open). Begin never reaches
- *   `_ProcessElement`: element params on a create command are dropped for
- *   plain/fallback templates (only the dialog override consumes them).
- * - Channel update (`OnCutinUpdate` → `CutinTemplate.UpdateCutinMask`) only
- *   refreshes the deco (charName/switch) and the `_emptyImg` placeholder on
- *   name changes; it never re-applies size/offset. `switch` feeds the deco
- *   `TwoStateToggle` (`CutinTemplateDecoView.Render`); only the content
- *   layers toggle and only when the key is present.
- * - Elements (`CutinChannel._ProcessElement` → `CutinElement.SetCutinElement`)
- *   run alpha/pos/scale tweens in parallel, each with its own duration
- *   (alpha via aDuration on the Set append, pos via duration, scale via
- *   sDuration); the command completes when all of them finish. DOKill is
- *   scoped to the target element only — a command never cancels a tween that
- *   is still running on another element of the channel (e.g. a long bg fade
- *   keeps going under later char commands). Mount points
- *   mirror the `cutin_channel` prefab: backgrounds under `root_bkg_scale`,
- *   char/uichar under `root_char_scale`, both clipped by the template mask
- *   (stencil channels approximated with a PIXI Graphics mask).
- * - `direction=rin/lin` (`CutinChannel._TryPlayAnimation` →
- *   `avg_cutin_hori_{right,left}_in_chanel`): only the target element's
- *   tweens are killed and the channel animWrapper takes over with a 2.083s
- *   scale/offset/alpha clip. Natively a blocking element update then never
- *   receives its completion callback; we complete at the clip end instead of
- *   hanging.
- * - 2.7.61 `CutinTemplateDialogView` (`interlude_dialog_left/right`):
- *   `ConsumesAvatarUpdates`/`ConsumesBackgroundUpdates` route type 3/2 (and
- *   type 1, which the dialog also takes through the portrait pipeline) into
- *   the template (`img_char`/`img_bg`) instead of `_ProcessElement` — on
- *   begin too (the dialog overrides `ShowCutinMask`); `icharpos`/`icharscale`
- *   override the char transform. The dialog intro clip only plays for
- *   style 3, time-remapped to the command's own `duration` (duration == 0
- *   jumps straight to the end pose — the actual act54side case).
- * - Clear (`CutinTemplate.HideCutinMask`) scales the mask from its current
- *   ratio to `tsto` over tsduration (style 0 path: DOScale to tsTo only,
- *   tsFrom is not reused). Native `OnCutinEnd` DOKills every element tween
- *   and the animWrapper first, so the Web clear invalidates element, template
- *   and clip sessions together.
+ * - Channel layout (`cutin_channel` prefab): the channel sits at the canvas
+ *   centre (`_ProcessChannel` zeroes anchoredPosition); `mask_container`,
+ *   `root_bkg_*`/`root_char_*` and `deco_container` are siblings. `offset`
+ *   only moves the template and the deco (ShowCutinMask), never the
+ *   elements — the corpus bakes the offset into `pfrom/pto` itself.
+ * - Channel begin (`OnCutinBegin` → `ShowCutinMask`, then `_TryPlayAnimation`)
+ *   builds the `maskid` prefab tree (see `interludeTemplates.ts`), writes
+ *   size (|size|² > ε) and offset once, renders the deco and `_emptyImg`, and
+ *   owns completion: the sequence has a 1s `AppendInterval` floor, Fade/Both
+ *   join a 3s DOFade of `_imgMask` (an invisible stencil writer, so only the
+ *   timing is ported) and Scale/Both run an independent tsFrom→tsTo DOScale
+ *   on `_scaleTrans`. ANIMATOR completes immediately only when the template
+ *   has an `_animWrapper` (horizon); square's show clip is a
+ *   `playAutomatically` Animation that runs for every style. Begin never
+ *   reaches `_ProcessElement`; an unknown maskid completes immediately.
+ * - Channel update (`OnCutinUpdate`): type 1/2/3 run `_ProcessElement`, then
+ *   `UpdateCutinMask` re-checks `_emptyImg` on name changes only (empty names
+ *   are ignored) and re-renders the deco: `char` text only when non-empty and
+ *   changed, `switch` (default false) every time on the `TwoStateToggle` that
+ *   flips the wave between `wave_active` (speaking) and `wave_stop`. `switch`
+ *   never touches content visibility.
+ * - Elements (`_ProcessElement` → `SetCutinElement`/`DoMove`/`DoScale`) run
+ *   alpha/pos/scale tweens in parallel with their own durations; earlier
+ *   sequences keep running (see ElementState) and a blocking command waits
+ *   for its own tweens.
+ * - `direction=rin/lin` (`_TryPlayAnimation`) plays the 2.083s channel clip on
+ *   top; natively a blocking element update then never gets its callback, the
+ *   Web completes when the clip and the element tweens end.
+ * - 2.7.61 `CutinTemplateDialogView` (`interlude_dialog_left/right`) overrides
+ *   Show/Update/Hide without calling the base: no deco/`_emptyImg`/size/ts;
+ *   type 2 refreshes `img_bg`, type 3/1 refresh `img_char` (type 3 from the AVG
+ *   portrait, type 1 from Cutin/Characters) with `icharpos`/`icharscale`; the
+ *   intro clip only plays for style 3, remapped to the command `duration`.
+ * - Clear (`OnCutinEnd` → `HideCutinMask`): base templates fade the deco out
+ *   (0.5s) and DOScale `_scaleTrans` from its current ratio to `tsto` (style 0)
+ *   or wait the `_imgMask` fade (other styles); dialogs fade the group to
+ *   `ato` over `aduration` (0.5s default). Running element/clip tweens are not
+ *   reachable by the native DOKills and stop with the recycled channel.
  *
- * Web adaptations (intentional simplifications): the native stencil pass is a
- * rectangular Graphics mask; `bg_defaul_gradient`'s gradient shader is a
- * stretched texture; unknown `maskid`s fall back to the legacy plain
- * rectangle; the deco `TwoStateToggle` wiring also toggles the content layers
- * for visibility parity.
+ * Web adaptations: stencil channels are PIXI Graphics masks; unknown maskids
+ * fall back to the legacy plain rectangle; type 1 on a dialog only feeds the
+ * portrait (the parallel `_ProcessElement` on the channel element is not
+ * ported; corpus has no such command); type 3 avatars keep the texture's
+ * native size centred on the element (the `cutin_charslot` bottom anchor is
+ * not ported).
  */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
@@ -189,136 +193,8 @@ export class InterludePanel {
     }
 
     const existing = this.channels.get(input.channel);
-    const state = existing ?? (await this.createChannel(input));
-    const created = existing === undefined;
-    this.refreshDeco(state, input);
-    this.refreshPlaceholder(state, input);
-
-    // 2.7.61 CutinTemplateDialogView consumes avatar/background updates on
-    // begin AND update (its ShowCutinMask override runs the same refresh), and
-    // owns its show timing — no 1s/3s floor on the dialog path.
-    if (state.template?.isDialog && state.template.dialog) {
-      await this.runDialogUpdate(state, input, created);
-      return;
-    }
-
-    // Native OnCutinUpdate: type 0/unknown never reaches _ProcessElement; with
-    // a plain template the completion callback is not fired either, so a
-    // blocking type-0 update would hang natively. We intentionally complete
-    // immediately instead.
-    if (input.type === 0) {
-      if (created && input.block)
-        await this.tween(this.showMs(input.style), () => {});
-      return;
-    }
-
-    const direction =
-      input.direction === "rin" || input.direction === "lin"
-        ? input.direction
-        : null;
-    if (direction) {
-      await this.runDirection(state, input, direction, created);
-      return;
-    }
-
-    // Native OnCutinBegin never reaches _ProcessElement: on a create command
-    // only the dialog override (runDialogUpdate above) and _TryPlayAnimation
-    // (runDirection above) consume content. Element params on a plain or
-    // fallback template are dropped and completion is just the show sequence.
-    if (created) {
-      if (input.block) await this.tween(this.showMs(input.style), () => {});
-      return;
-    }
-
-    if (input.type === 1 && !input.slot)
-      this.onWarning?.(
-        `interlude element slot is missing (type ${input.type}), falling back to "m"`,
-      );
-    const elementKey = elementKeyFor(input);
-    let element = state.elements.get(elementKey);
-    if (input.name) {
-      const texture = await this.loadTexture(input);
-      if (!texture) {
-        this.onWarning?.(`interlude element asset is missing: ${input.name}`);
-        return;
-      }
-      // 替换元素前先作废旧元素的 tween(native SetCutinElement 的 DOKill)。
-      if (element) {
-        nextElementSession(element);
-        element.destroy({ children: true });
-      }
-      element = new Container();
-      const sprite = new Sprite(texture);
-      sprite.anchor.set(0.5);
-      element.addChild(sprite);
-      // Native CutinImageElement.SetCutinElement: SetNativeSize keeps the
-      // sprite's native dimensions (no window fit); backgrounds mount under
-      // root_bkg_poz, char/uichar under root_char_poz (cutin_channel prefab).
-      (input.type === 2 ? state.bkgPoz : state.charPoz).addChild(element);
-      state.elements.set(elementKey, element);
-      element.alpha = Math.max(input.alphaFrom, 0);
-    }
-    if (!element) {
-      this.onWarning?.(`interlude element slot is missing: ${elementKey}`);
-      return;
-    }
-
-    const el = element;
-    // DOKill 作用域:native 只杀该元素的旧 tween,不碰同通道其它元素。
-    const elementSession = nextElementSession(el);
-    if (input.switchSet) el.visible = input.switchOn;
-    if (input.positionFrom && input.positionTo)
-      el.position.set(input.positionFrom.x, -input.positionFrom.y);
-    if (input.scaleFrom) el.scale.set(input.scaleFrom.x, input.scaleFrom.y);
-
-    // Native _ProcessElement: the SetCutinElement alpha tween (name present)
-    // and the pos/scale tweens each keep their own duration and run in
-    // parallel; the sequence completes when every tween finished.
-    const runs: Array<Promise<void>> = [];
-    if (input.positionFrom && input.positionTo) {
-      const from = input.positionFrom;
-      const to = input.positionTo;
-      runs.push(
-        this.tween(input.durationMs, (progress) => {
-          if (elementSessions.get(el) !== elementSession) return;
-          el.position.set(
-            lerp(from.x, to.x, progress),
-            -lerp(from.y, to.y, progress),
-          );
-        }),
-      );
-    }
-    if (input.scaleFrom && input.scaleTo) {
-      const from = input.scaleFrom;
-      const to = input.scaleTo;
-      runs.push(
-        this.tween(input.scaleDurationMs, (progress) => {
-          if (elementSessions.get(el) !== elementSession) return;
-          el.scale.set(
-            lerp(from.x, to.x, progress),
-            lerp(from.y, to.y, progress),
-          );
-        }),
-      );
-    }
-    if (input.name) {
-      const startAlpha = Math.max(input.alphaFrom, 0);
-      const endAlpha = input.alphaTo >= 0 ? input.alphaTo : 1;
-      runs.push(
-        this.tween(input.alphaDurationMs, (progress) => {
-          if (elementSessions.get(el) !== elementSession) return;
-          el.alpha = lerp(startAlpha, endAlpha, progress);
-        }),
-      );
-    }
-    if (input.block) {
-      const show = created
-        ? this.tween(this.showMs(input.style), () => {})
-        : null;
-      await Promise.all(show ? [show, ...runs] : runs);
-    } else {
-      for (const run of runs) void run;
-    }
+    if (existing) await this.update(existing, input);
+    else await this.begin(input);
   }
 
   async clearAll(): Promise<void> {
@@ -331,83 +207,131 @@ export class InterludePanel {
     void this.clearAll();
   }
 
-  /**
-   * Native CutinTemplate.ShowCutinMask completion floor: the show sequence
-   * always starts with AppendInterval(1.0); Fade/Both styles join a hardcoded
-   * 3s DOFade; ANIMATOR hands completion to the template animation (m_cutinSeq
-   * = null → callback fires immediately).
-   */
-  private showMs(style: number): number {
-    if (style === 3) return 0;
-    return style === 1 || style === 2 ? 3000 : 1000;
+  /** `CutinChannel.OnCutinBegin`。 */
+  private async begin(input: InterludeInput): Promise<void> {
+    const state = await this.createChannel(input);
+    const template = state.template;
+    let showMs = 0;
+    if (template?.dialog) {
+      showMs = this.playDialogIntro(state, template.dialog, input);
+      await this.refreshDialog(state, template.dialog, input);
+    } else if (template) {
+      this.renderDeco(state, input);
+      state.cachedName = input.name;
+      if (template.emptyImage)
+        template.emptyImage.visible = isEmptyName(input.name);
+      showMs = this.showTemplate(state, template, input);
+    } else {
+      this.renderFallbackLabel(state, input);
+      if (
+        input.style === 0 &&
+        (input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0)
+      )
+        this.startScaleEntry(state, input);
+    }
+    // _TryPlayAnimation runs after ShowCutinMask; its clip never gates begin.
+    void this.playDirection(state, input);
+    if (input.block && showMs > 0) await this.tween(showMs, () => {});
+  }
+
+  /** `CutinChannel.OnCutinUpdate`。 */
+  private async update(
+    state: ChannelState,
+    input: InterludeInput,
+  ): Promise<void> {
+    const template = state.template;
+    if (template?.dialog) {
+      // ConsumesAvatar/BackgroundUpdates: type 3/2 skip _ProcessElement and
+      // complete at once; UpdateCutinMask refreshes the dialog images.
+      await this.refreshDialog(state, template.dialog, input);
+      return;
+    }
+
+    // UpdateCutinMask (base): _emptyImg on name change + deco Render.
+    if (template) {
+      if (this.cacheName(state, input.name) && template.emptyImage)
+        template.emptyImage.visible = isEmptyName(input.name);
+      this.renderDeco(state, input);
+    } else {
+      this.renderFallbackLabel(state, input);
+    }
+
+    // Type 0/unknown never reaches _ProcessElement; natively a blocking one
+    // hangs on a plain template, we complete immediately instead.
+    if (input.type < 1 || input.type > 3) return;
+    await this.processElement(state, input);
   }
 
   private async createChannel(input: InterludeInput): Promise<ChannelState> {
     const root = new Container();
-    root.position.set(
-      STORY_WIDTH / 2 + input.offset.x,
-      STORY_HEIGHT / 2 - input.offset.y,
-    );
-    // cutin_channel prefab: root_char_scale/root_char_poz 与
-    // root_bkg_scale/root_bkg_poz 是两组全屏居中容器(仅 direction 动画会
-    // 动它们的 scale/position),元素分别挂在其下。
+    root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+    const maskContainer = new Container();
     const bkgScale = new Container();
     const bkgPoz = new Container();
     bkgScale.addChild(bkgPoz);
     const charScale = new Container();
     const charPoz = new Container();
     charScale.addChild(charPoz);
-    root.addChild(bkgScale, charScale);
+    const content = new Container();
+    content.addChild(bkgScale, charScale);
+    const decoContainer = new Container();
+    root.addChild(maskContainer, content, decoContainer);
     this.layer.addChild(root);
 
     const state: ChannelState = {
       root,
-      template: null,
-      deco: null,
-      elements: new Map(),
-      label: null,
-      maskGraphics: new Graphics(),
-      fallbackMask: true,
+      maskContainer,
+      content,
       bkgScale,
       bkgPoz,
       charScale,
       charPoz,
+      decoContainer,
+      template: null,
+      deco: null,
+      decoName: "",
+      fallbackMask: null,
+      label: null,
+      elements: new Map(),
       ratio: { x: 1, y: 1 },
-      sessionId: 0,
-      directionId: 0,
       size: { ...input.size },
-      templateSessionId: 0,
-      clipSessionId: 0,
+      scaleGen: 0,
+      directionGen: 0,
+      introGen: 0,
       cachedName: "",
+      dialogCharOffset: { x: 0, y: 0 },
+      dialogCharScale: { x: 1, y: 1 },
     };
+    const offsetX = input.offset.x;
+    const offsetY = -input.offset.y;
 
-    // mask 模板:已知 maskid 走 prefab 重建,否则保持矩形回落。
     if (input.maskId && KNOWN_MASK_IDS.has(input.maskId)) {
       try {
         const tex = await loadInterludeTextures();
         const template = buildTemplate(input.maskId, tex);
         if (template) {
           state.template = template;
-          state.fallbackMask = false;
-          // native:size² > ε 才覆写模板 sizeDelta,≈0 沿用 prefab 默认尺寸。
-          const size =
-            input.size.x * input.size.x + input.size.y * input.size.y > 1e-10
-              ? input.size
-              : template.defaultSize;
-          template.resize(size.x, size.y);
-          root.addChildAt(template.root, 0);
-          const deco = buildDeco(input.maskId, tex);
-          if (deco) {
-            state.deco = deco;
-            root.addChild(deco.root);
-            state.label = deco.label;
+          let anchorX = 0;
+          if (template.anchor === "left") anchorX = -STORY_WIDTH / 2;
+          else if (template.anchor === "right") anchorX = STORY_WIDTH / 2;
+          template.root.position.set(anchorX + offsetX, offsetY);
+          if (!template.dialog) {
+            const size =
+              input.size.x * input.size.x + input.size.y * input.size.y >= 1e-10
+                ? input.size
+                : template.defaultSize;
+            template.resize(size.x, size.y);
+            content.mask = template.maskGraphics;
+            const deco = buildDeco(input.maskId, tex);
+            if (deco) {
+              deco.root.position.set(offsetX, offsetY);
+              decoContainer.addChild(deco.root);
+              state.deco = deco;
+            }
           }
-          if (!template.isDialog) {
-            state.maskGraphics = template.maskGraphics;
-            bkgScale.mask = state.maskGraphics;
-            charScale.mask = state.maskGraphics;
-          }
-          this.playShowClip(state, template, input, size);
+          state.ratio = { ...template.initialScale };
+          this.applyRatio(state);
+          maskContainer.addChild(template.root);
         }
       } catch (error) {
         this.onWarning?.(
@@ -416,63 +340,13 @@ export class InterludePanel {
       }
     }
 
-    if (state.fallbackMask) {
-      root.addChildAt(state.maskGraphics, 0);
-    }
-
-    // Native ShowCutinMask style Scale(0): when tsTo has any component > 0 the
-    // template starts at localScale=tsFrom and DOScales to tsTo over
-    // tsduration. Other styles keep scale 1 (their ts keys are ignored).
-    const scaleEntry =
-      input.style === 0 &&
-      (input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0);
-    if (scaleEntry) {
-      const from = input.templateSizeFrom;
-      const to = input.templateSizeTo;
-      state.ratio = { x: from.x, y: from.y };
+    if (!state.template) {
+      const fallback = new Graphics();
+      fallback.position.set(offsetX, offsetY);
+      maskContainer.addChild(fallback);
+      content.mask = fallback;
+      state.fallbackMask = fallback;
       this.applyRatio(state);
-      if (input.templateSizeDurationMs > 0) {
-        const templateSessionId = ++state.templateSessionId;
-        void this.tween(input.templateSizeDurationMs, (progress) => {
-          if (state.templateSessionId !== templateSessionId) return;
-          state.ratio = {
-            x: lerp(from.x, to.x, progress),
-            y: lerp(from.y, to.y, progress),
-          };
-          this.applyRatio(state);
-        });
-      } else {
-        state.ratio = { x: to.x, y: to.y };
-        this.applyRatio(state);
-      }
-    } else if (state.fallbackMask) {
-      this.applyRatio(state);
-    } else {
-      this.applyRatio(state);
-    }
-
-    // Fade/Both 的 3 秒 imgMask 淡入(视觉;完成地板在 showMs)。native 淡的
-    // 是模板的 _imgMask —— 无模板(矩形回落)时无处可淡,跳过。
-    if (
-      (input.style === 1 || input.style === 2) &&
-      state.template &&
-      !state.fallbackMask
-    ) {
-      const target = state.template.visuals;
-      const clipSessionId = state.clipSessionId;
-      target.alpha = 0;
-      void this.tween(3000, (progress) => {
-        if (state.clipSessionId !== clipSessionId) return;
-        target.alpha = progress;
-      });
-    }
-
-    if (!state.label && input.charName && state.fallbackMask) {
-      const label = this.makeLabel(input.charName);
-      state.label = label;
-      root.addChild(label);
-    } else if (state.label && input.charName) {
-      state.label.text = input.charName;
     }
 
     this.channels.set(input.channel, state);
@@ -480,185 +354,239 @@ export class InterludePanel {
   }
 
   /**
-   * style=ANIMATOR(3)/dialog 模板的入场动画(视觉,不阻塞完成)。
-   *
-   * Dialog 入场按 native `_PlayDialogIntro`(build 2781 `0x18145B290`):
-   * 仅 `style==3` 播放;播放速度 = ClipLength / 命令 `duration`,即整段
-   * clip 重映射到命令自己的 duration(已乘 animateRatio);`duration==0`
-   * 时 `AVGUtils.NeedSkipAnimation`(= IsZero)直接采样末姿态,不播动画
-   * —— act54side 的 3 条 dialog 命令都没写 duration,native 即此路径。
+   * Base `CutinTemplate.ShowCutinMask` timing and template visuals; returns the
+   * completion floor of the show sequence in ms.
    */
-  private playShowClip(
+  private showTemplate(
     state: ChannelState,
     template: TemplateNodes,
     input: InterludeInput,
-    size: { x: number; y: number },
-  ): void {
-    if (template.isDialog && template.dialog) {
-      const dialog = template.dialog;
-      if (input.style !== 3) return;
-      if (input.durationMs <= 0) {
-        applyDialogIntro(dialog, CLIP_SECONDS.dialogIntro);
-        return;
-      }
-      const clipSessionId = state.clipSessionId;
-      void this.tween(input.durationMs, (progress) => {
-        if (state.clipSessionId !== clipSessionId) return;
-        applyDialogIntro(dialog, progress * CLIP_SECONDS.dialogIntro);
-      });
-      return;
-    }
-    if (input.style !== 3 || !template.showClip) return;
-    const clipSessionId = state.clipSessionId;
-    if (template.showClip === "square_show") {
-      const durMs = CLIP_SECONDS.squareShow * 1000;
-      if (durMs <= 0) return;
+  ): number {
+    const style = input.style;
+    const tsEntry = input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0;
+    if ((style === 0 || style === 2) && tsEntry)
+      this.startScaleEntry(state, input);
+    else if (style === 1 && template.hasImgMask)
+      this.setRatio(state, { x: 1, y: 1 });
+
+    if (template.autoClip === "square_show") {
+      const seconds = CLIP_SECONDS.squareShow;
       const nodes = {
-        backShadow: template.backShadow,
+        setBackShadowSize: template.setBackShadowSize,
+        backShadowGroup: template.backShadowGroup,
         frameGroup: state.deco?.frameGroup ?? null,
         nameGroup: state.deco?.nameGroup ?? null,
         waveGroup: state.deco?.waveGroup ?? null,
       };
-      void this.tween(durMs, (progress) => {
-        if (state.clipSessionId !== clipSessionId) return;
-        applySquareShow(nodes, size, progress * CLIP_SECONDS.squareShow);
-      });
-    } else if (template.showClip === "hori_mask_open") {
-      const durMs = CLIP_SECONDS.horiMaskOpen * 1000;
-      if (durMs <= 0) return;
-      void this.tween(durMs, (progress) => {
-        if (state.clipSessionId !== clipSessionId) return;
-        applyHoriMaskOpen(
-          template.maskNode,
-          progress * CLIP_SECONDS.horiMaskOpen,
-        );
+      applySquareShow(nodes, 0);
+      void this.tween(seconds * 1000, (progress) => {
+        if (state.root.destroyed) return;
+        applySquareShow(nodes, progress * seconds);
       });
     }
+
+    if (style === 3 && template.animatorClip === "hori_mask_open") {
+      const seconds = CLIP_SECONDS.horiMaskOpen;
+      applyHoriMaskOpen(template.maskNode, 0);
+      void this.tween(seconds * 1000, (progress) => {
+        if (state.root.destroyed) return;
+        applyHoriMaskOpen(template.maskNode, progress * seconds);
+      });
+      return 0;
+    }
+    if ((style === 1 || style === 2) && template.hasImgMask) return 3000;
+    return 1000;
   }
 
-  /**
-   * Native CutinTemplate.UpdateCutinMask: only the deco is refreshed (name
-   * text and the TwoStateToggle); size/offset are never re-applied and the
-   * mask itself never toggles. The Web stand-in for the deco TwoStateToggle
-   * toggles the content layers (deco + elements + name label) visibility.
-   */
-  private refreshDeco(state: ChannelState, input: InterludeInput): void {
-    if (input.switchSet) {
-      if (state.deco) state.deco.root.visible = input.switchOn;
-      for (const element of state.elements.values())
-        element.visible = input.switchOn;
-      if (state.label) state.label.visible = input.switchOn;
-    }
+  /** Style Scale/Both: localScale = tsFrom, DOScale to tsTo (not gating). */
+  private startScaleEntry(state: ChannelState, input: InterludeInput): void {
+    const from = { ...input.templateSizeFrom };
+    const to = { ...input.templateSizeTo };
+    this.setRatio(state, from);
+    const gen = ++state.scaleGen;
+    void this.tween(input.templateSizeDurationMs, (progress) => {
+      if (state.scaleGen !== gen || state.root.destroyed) return;
+      this.setRatio(state, {
+        x: lerp(from.x, to.x, progress),
+        y: lerp(from.y, to.y, progress),
+      });
+    });
+  }
 
-    if (!input.charName) {
-      // CutinTemplateDecoView.Render sets the text every update; an empty
-      // name keeps the (now empty) deco alive.
-      if (state.label) state.label.text = "";
+  private setRatio(state: ChannelState, ratio: Vec2): void {
+    state.ratio = { x: ratio.x, y: ratio.y };
+    this.applyRatio(state);
+  }
+
+  /** 模板:ratio 即 scaleNode.localScale;回落:按 ratio 重画矩形。 */
+  private applyRatio(state: ChannelState): void {
+    if (state.template) {
+      state.template.scaleNode.scale.set(state.ratio.x, state.ratio.y);
       return;
     }
-    if (state.label) {
-      state.label.text = input.charName;
-      return;
+    const w = state.size.x * state.ratio.x;
+    const h = state.size.y * state.ratio.y;
+    state.fallbackMask
+      ?.clear()
+      .rect(-w / 2, -h / 2, w, h)
+      .fill(0xff_ff_ff);
+  }
+
+  /** `CutinTemplate._CacheName`:空名不算变化;忽略大小写比较。 */
+  private cacheName(state: ChannelState, name: string): boolean {
+    if (!name) return false;
+    const changed = state.cachedName.toLowerCase() !== name.toLowerCase();
+    state.cachedName = name;
+    return changed;
+  }
+
+  /** `CutinTemplateDecoView.Render`(ShowCutinMask 与每次 UpdateCutinMask)。 */
+  private renderDeco(state: ChannelState, input: InterludeInput): void {
+    const deco = state.deco;
+    if (!deco) return;
+    if (deco.label && input.charName && input.charName !== state.decoName) {
+      deco.label.text = input.charName;
+      state.decoName = input.charName;
     }
-    if (state.fallbackMask) {
-      // 回落路径没有 deco prefab,补一个文字标签保持旧行为。
-      const label = this.makeLabel(input.charName);
+    deco.setSwitch(input.switchOn);
+  }
+
+  /** 回落路径(无模板、无 deco)沿用旧的文字标签;空 `char` 保留旧文字。 */
+  private renderFallbackLabel(
+    state: ChannelState,
+    input: InterludeInput,
+  ): void {
+    if (!input.charName) return;
+    if (!state.label) {
+      const label = new Text({
+        style: new TextStyle({ fill: 0xff_ff_ff, fontSize: 24 }),
+        text: input.charName,
+      });
+      label.label = "interlude-char";
+      label.anchor.set(0.5);
+      if (state.fallbackMask)
+        label.position.copyFrom(state.fallbackMask.position);
+      state.decoContainer.addChild(label);
       state.label = label;
-      state.root.addChild(label);
     }
+    state.label.text = input.charName;
   }
 
-  /** 模板 `_emptyImg`(`img_unknown` 占位):仅 name 变化时重判可见性。 */
-  private refreshPlaceholder(state: ChannelState, input: InterludeInput): void {
-    if (state.cachedName === input.name) return;
-    state.cachedName = input.name;
-    if (state.template?.emptyImage)
-      state.template.emptyImage.visible = !input.name;
+  private ensureElement(
+    state: ChannelState,
+    key: string,
+    type: number,
+  ): ElementState {
+    const existing = state.elements.get(key);
+    if (existing) return existing;
+    const node = new Container();
+    const sprite = new Sprite();
+    sprite.anchor.set(0.5);
+    node.addChild(sprite);
+    // Inactive until SetCutinElement assigns a sprite.
+    node.visible = false;
+    // cutin_channel prefab: char_img_right sits at (-140, 63) until a DoMove.
+    if (key === "r") node.position.set(-140, -63);
+    (type === 2 ? state.bkgPoz : state.charPoz).addChild(node);
+    const element: ElementState = {
+      node,
+      sprite,
+      alphaGen: 0,
+      moveGen: 0,
+      scaleGen: 0,
+    };
+    state.elements.set(key, element);
+    return element;
   }
 
-  /** 2.7.61 CutinTemplateDialogView:avatar/background 更新转交模板消费。 */
-  private async runDialogUpdate(
+  /** `CutinChannel._ProcessElement`. */
+  private async processElement(
     state: ChannelState,
     input: InterludeInput,
-    created: boolean,
   ): Promise<void> {
-    const dialog = state.template?.dialog;
-    if (!dialog) return;
-    // Native `_RefreshDialogChar` runs for type 3 AND type 1(both through the
-    // AVG portrait pipeline);`_RefreshDialogBackground` for type 2.
-    if ((input.type === 3 || input.type === 1) && input.name) {
+    const element = this.ensureElement(state, elementKeyFor(input), input.type);
+    const node = element.node;
+    const runs: Array<Promise<void>> = [];
+
+    // SetCutinElement (name present): sprite + SetNativeSize; aFrom/aTo are
+    // normalised by _ProcessElement (<0 → 0 / 1); aDuration > 0 fades
+    // aFrom→aTo, otherwise alpha is set to aTo at once.
+    if (input.name) {
       const texture = await this.loadTexture(input);
-      if (texture) {
-        dialog.charImage.texture = texture;
-        dialog.charImage.scale.set(1);
-        // icharpos/icharscale(CutinParam.extra.dialog → _ApplyDialogCharLayout
-        // Override):对 img_char 的位置/缩放覆盖;y 翻转,基准保持 prefab 布局。
-        if (input.dialogCharPos)
-          dialog.charImage.position.set(
-            input.dialogCharPos.x,
-            520 - input.dialogCharPos.y,
-          );
-        if (input.dialogCharScale)
-          dialog.charImage.scale.set(
-            input.dialogCharScale.x,
-            input.dialogCharScale.y,
-          );
-      } else {
-        this.onWarning?.(`interlude dialog avatar is missing: ${input.name}`);
+      if (!texture) {
+        this.onWarning?.(`interlude element asset is missing: ${input.name}`);
+        return;
       }
-    } else if (input.type === 2 && input.name) {
-      const texture = await this.loadTexture(input);
-      if (texture) {
-        // native SetNativeSize:换图后用贴图原生尺寸。
-        dialog.bgImage.texture = texture;
-        dialog.bgImage.scale.set(1);
-      } else {
-        this.onWarning?.(
-          `interlude dialog background is missing: ${input.name}`,
+      if (node.destroyed) return;
+      element.sprite.texture = texture;
+      node.visible = true;
+      const from = Math.max(input.alphaFrom, 0);
+      const to = input.alphaTo >= 0 ? input.alphaTo : 1;
+      const gen = ++element.alphaGen;
+      if (input.alphaDurationMs > 0) {
+        node.alpha = from;
+        runs.push(
+          this.tween(input.alphaDurationMs, (progress) => {
+            if (element.alphaGen !== gen || node.destroyed) return;
+            node.alpha = lerp(from, to, progress);
+          }),
         );
+      } else {
+        node.alpha = to;
       }
+    } else if (node.destroyed) {
+      return;
     }
-    // Native dialog show has no AppendInterval floor: completion is the intro
-    // tween (style 3, remapped to the command `duration`) or immediate.
-    if (created && input.block && input.style === 3 && input.durationMs > 0)
-      await this.tween(input.durationMs, () => {});
+
+    if (input.positionFrom && input.positionTo) {
+      const from = input.positionFrom;
+      const to = input.positionTo;
+      const gen = ++element.moveGen;
+      node.position.set(from.x, -from.y);
+      runs.push(
+        this.tween(input.durationMs, (progress) => {
+          if (element.moveGen !== gen || node.destroyed) return;
+          node.position.set(
+            lerp(from.x, to.x, progress),
+            -lerp(from.y, to.y, progress),
+          );
+        }),
+      );
+    }
+    if (input.scaleFrom && input.scaleTo) {
+      const from = input.scaleFrom;
+      const to = input.scaleTo;
+      const gen = ++element.scaleGen;
+      node.scale.set(from.x, from.y);
+      runs.push(
+        this.tween(input.scaleDurationMs, (progress) => {
+          if (element.scaleGen !== gen || node.destroyed) return;
+          node.scale.set(
+            lerp(from.x, to.x, progress),
+            lerp(from.y, to.y, progress),
+          );
+        }),
+      );
+    }
+
+    const direction = this.playDirection(state, input);
+    if (!input.block) return;
+    await Promise.all(direction ? [direction, ...runs] : runs);
   }
 
   /**
-   * `direction=rin/lin`:`_TryPlayAnimation` 对元素 DOKill 后由通道
-   * animWrapper 播 avg_cutin_hori_{right,left}_in_chanel(2.083s 的 scale 弹
-   * 入 + poz 漂移 + alpha 包络)。带 name 时元素资源照 SetCutinElement 的同
-   * 步段落挂上(即时姿态),但不跑 tween。
+   * `_TryPlayAnimation`: `direction=rin/lin` restarts the channel animWrapper
+   * clip (SampleClipAtBegin + Play). Returns null when there is no direction.
    */
-  private async runDirection(
+  private playDirection(
     state: ChannelState,
     input: InterludeInput,
-    direction: "rin" | "lin",
-    created: boolean,
-  ): Promise<void> {
-    if (input.name && !state.elements.get(elementKeyFor(input))) {
-      const texture = await this.loadTexture(input);
-      if (texture) {
-        const element = new Container();
-        const sprite = new Sprite(texture);
-        sprite.anchor.set(0.5);
-        element.addChild(sprite);
-        (input.type === 2 ? state.bkgPoz : state.charPoz).addChild(element);
-        state.elements.set(elementKeyFor(input), element);
-        element.alpha = Math.max(input.alphaFrom, 0);
-        if (input.positionFrom)
-          element.position.set(input.positionFrom.x, -input.positionFrom.y);
-        if (input.scaleFrom)
-          element.scale.set(input.scaleFrom.x, input.scaleFrom.y);
-        if (input.switchSet) element.visible = input.switchOn;
-      }
-    }
-    // _TryPlayAnimation 命中:native 只 DOKill **参数映射出的那一个元素**
-    // (`_GetImgElementByParam(param)`,type 2 → bg、type 3 → 缓存槽、type 1
-    // → slot),同通道其它元素的进行中 tween 不受影响,由 animWrapper clip
-    // 接管目标元素的姿态。
-    const target = state.elements.get(elementKeyFor(input));
-    if (target) nextElementSession(target);
+  ): Promise<void> | null {
+    const direction =
+      input.direction === "rin" || input.direction === "lin"
+        ? input.direction
+        : null;
+    if (!direction) return null;
     const nodes = {
       alphaTarget: state.root,
       bkgScale: state.bkgScale,
@@ -667,53 +595,87 @@ export class InterludePanel {
       charPoz: state.charPoz,
     };
     const seconds = CLIP_SECONDS.direction;
-    const directionId = ++state.directionId;
-    const apply = (t: number) => applyDirectionClip(nodes, direction, t);
-    apply(0);
-    const run = this.tween(seconds * 1000, (progress) => {
-      if (state.directionId !== directionId) return;
-      apply(progress * seconds);
+    const gen = ++state.directionGen;
+    applyDirectionClip(nodes, direction, 0);
+    return this.tween(seconds * 1000, (progress) => {
+      if (state.directionGen !== gen || state.root.destroyed) return;
+      applyDirectionClip(nodes, direction, progress * seconds);
     });
-    if (created && input.block) {
-      const show = this.tween(this.showMs(input.style), () => {});
-      await Promise.all([show, run]);
-    } else if (input.block) {
-      // Native 在该分支不挂完成回调(阻塞命令会悬挂);Web 在动画结束时完成。
-      await run;
-    } else {
-      void run;
-    }
-  }
-
-  /** 模板路径:ratio 作用于模板根(m 连带 mask 一起缩放);回落路径重画矩形。 */
-  private applyRatio(state: ChannelState): void {
-    if (state.template && !state.fallbackMask) {
-      state.template.root.scale.set(state.ratio.x, state.ratio.y);
-      return;
-    }
-    state.maskGraphics
-      .clear()
-      .rect(
-        (-state.size.x * state.ratio.x) / 2,
-        (-state.size.y * state.ratio.y) / 2,
-        state.size.x * state.ratio.x,
-        state.size.y * state.ratio.y,
-      )
-      .fill(0xff_ff_ff);
   }
 
   /**
-   * Native CutinTemplateDecoView 的文字(`text_name`,18px #323232 右对齐);
-   * 回落路径无 prefab,沿用旧样式。
+   * `_PlayDialogIntro`: style 3 only; speed = ClipLength / duration, so the clip
+   * is remapped onto the command `duration`; `NeedSkipAnimation(duration)`
+   * samples the end pose. Returns the intro length in ms (0 = no tween).
    */
-  private makeLabel(charName: string): Text {
-    const label = new Text({
-      style: new TextStyle({ fill: 0xff_ff_ff, fontSize: 24 }),
-      text: charName,
+  private playDialogIntro(
+    state: ChannelState,
+    dialog: DialogNodes,
+    input: InterludeInput,
+  ): number {
+    if (input.style !== 3) return 0;
+    const seconds = dialog.right
+      ? CLIP_SECONDS.dialogIntroRight
+      : CLIP_SECONDS.dialogIntroLeft;
+    if (input.durationMs <= 0) {
+      applyDialogIntro(dialog, seconds);
+      return 0;
+    }
+    applyDialogIntro(dialog, 0);
+    const gen = ++state.introGen;
+    void this.tween(input.durationMs, (progress) => {
+      if (state.introGen !== gen || state.root.destroyed) return;
+      applyDialogIntro(dialog, progress * seconds);
     });
-    label.label = "interlude-char";
-    label.anchor.set(0.5);
-    return label;
+    return input.durationMs;
+  }
+
+  /**
+   * `_RefreshDialogBackground` (type 2) / `_RefreshDialogChar` (type 3 and 1).
+   */
+  private async refreshDialog(
+    state: ChannelState,
+    dialog: DialogNodes,
+    input: InterludeInput,
+  ): Promise<void> {
+    if (input.type === 2) {
+      if (isEmptyName(input.name)) {
+        setDialogBackground(dialog, null);
+        return;
+      }
+      const texture = await this.loadTexture(input);
+      if (state.root.destroyed) return;
+      if (texture) setDialogBackground(dialog, texture);
+      else
+        this.onWarning?.(
+          `interlude dialog background is missing: ${input.name}`,
+        );
+      return;
+    }
+    if (input.type !== 3 && input.type !== 1) return;
+
+    if (input.dialogCharPos)
+      state.dialogCharOffset = { ...input.dialogCharPos };
+    if (input.dialogCharScale)
+      state.dialogCharScale = { ...input.dialogCharScale };
+    const image = dialog.charImage;
+    if (this.cacheName(state, input.name)) {
+      if (isEmptyName(input.name)) {
+        image.visible = false;
+      } else {
+        const texture = await this.loadTexture(input);
+        if (state.root.destroyed) return;
+        if (texture) {
+          image.texture = texture;
+          image.visible = true;
+        } else {
+          image.visible = false;
+          this.onWarning?.(`interlude dialog avatar is missing: ${input.name}`);
+        }
+      }
+    }
+    if (image.visible)
+      layoutDialogChar(dialog, state.dialogCharOffset, state.dialogCharScale);
   }
 
   private async clear(input: InterludeInput): Promise<void> {
@@ -731,47 +693,69 @@ export class InterludePanel {
         `interlude clear-all aggregates ${states.length} channel completions into one (native fires per channel)`,
       );
     const tasks = states.map(async ([channel, state]) => {
-      const sessionId = ++state.sessionId;
-      state.templateSessionId += 1;
-      state.clipSessionId += 1;
-      state.directionId += 1;
-      // Native OnCutinEnd DOKills every element tween(_leftChar/_rightChar/
-      // _middleChar、_imgBg,最后 _animWrapper)before the hide tween runs;
-      // element sessions die with the channel too.
-      for (const element of state.elements.values())
-        nextElementSession(element);
-      // Native HideCutinMask style 0: DOScale from the current scale to tsTo
-      // over tsduration (tsFrom is not reused); other styles DOFade the mask
-      // image — the visuals layer approximates it (fading the template root
-      // would break the PIXI mask while the clip is still running).
-      const styleFade =
-        input.style !== 0 && state.template && !state.fallbackMask;
-      const from = { ...state.ratio };
-      const to = input.templateSizeTo;
-      const fadeTo = input.alphaTo >= 0 ? input.alphaTo : 0;
-      const fadeFrom = state.template ? state.template.visuals.alpha : 1;
-      const run = this.tween(
-        styleFade ? input.alphaDurationMs : input.templateSizeDurationMs,
-        (progress) => {
-          if (state.sessionId !== sessionId) return;
-          if (styleFade) {
-            state.template!.visuals.alpha = lerp(fadeFrom, fadeTo, progress);
-          } else {
-            state.ratio = {
-              x: lerp(from.x, to.x, progress),
-              y: lerp(from.y, to.y, progress),
-            };
-            this.applyRatio(state);
-          }
-        },
-        () => {
-          state.root.destroy({ children: true });
-          this.channels.delete(channel);
-        },
-      );
+      const run = this.hide(state, input, () => {
+        if (!state.root.destroyed) state.root.destroy({ children: true });
+        if (this.channels.get(channel) === state) this.channels.delete(channel);
+      });
       if (input.block) await run;
       else void run;
     });
     if (input.block) await Promise.all(tasks);
+  }
+
+  /** `CutinChannel.OnCutinEnd` → `HideCutinMask`; `done` recycles the channel. */
+  private hide(
+    state: ChannelState,
+    input: InterludeInput,
+    done: () => void,
+  ): Promise<void> {
+    const template = state.template;
+    if (template?.dialog) {
+      const group = template.dialog.group;
+      state.introGen += 1;
+      const from = group.alpha;
+      const to = input.alphaTo >= 0 ? input.alphaTo : 0;
+      const durationMs =
+        input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
+      return this.tween(
+        durationMs,
+        (progress) => {
+          if (state.root.destroyed) return;
+          group.alpha = lerp(from, to, progress);
+        },
+        done,
+      );
+    }
+
+    if (state.deco) {
+      const deco = state.deco.root;
+      void this.tween(500, (progress) => {
+        if (!deco.destroyed) deco.alpha = 1 - progress;
+      });
+    }
+    const scaleOut = (complete?: () => void): Promise<void> => {
+      const from = { ...state.ratio };
+      const to = { ...input.templateSizeTo };
+      const gen = ++state.scaleGen;
+      return this.tween(
+        input.templateSizeDurationMs,
+        (progress) => {
+          if (state.scaleGen !== gen || state.root.destroyed) return;
+          this.setRatio(state, {
+            x: lerp(from.x, to.x, progress),
+            y: lerp(from.y, to.y, progress),
+          });
+        },
+        complete,
+      );
+    };
+    // Style Scale (and the Web fallback rectangle): DOScale from the current
+    // ratio to tsTo (tsFrom is not reused), completing the hide.
+    if (!template || input.style === 0) return scaleOut(done);
+    // Both: the DOScale runs alongside the _imgMask fade without a callback.
+    if (input.style === 2) void scaleOut();
+    // Other styles complete on DOFade(_imgMask → ato, aduration): only the
+    // timing is visible since _imgMask writes stencil only.
+    return this.tween(input.alphaDurationMs, () => {}, done);
   }
 }
