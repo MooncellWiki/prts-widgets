@@ -2836,6 +2836,9 @@ export class StoryRuntime {
       case "interlude": {
         // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteInterlude and
         // _GenCutinParamWithCommand. Validation uses default 0, while CutinParam
+        // [uses -1]. 2.7.61 adds `icharpos`/`icharscale`: non-empty vectors go
+        // through _EnsureDialogExtra into CutinParam.extra.dialog.charPos/
+        // charScale (consumed by the new CutinTemplateDialogView template).
         const checkedChannel = Math.trunc(
           toNumber(this.exactArg(args, "channel"), 0),
         );
@@ -2852,6 +2855,9 @@ export class StoryRuntime {
           channelArg === undefined ? -1 : Math.trunc(toNumber(channelArg, -1));
         const type = parseInterludeType(this.exactArg(args, "type"));
         const name = toString(this.exactArg(args, "name"));
+        // Only type 3 goes through the AVG portrait pipeline: type 1 loads
+        // from Cutin/Characters, also on a CutinTemplateDialogView
+        // (_LoadPortraitImage → ResourceUrls.GetCutinCharPath).
         const avatarResolution =
           type === 3 && name ? this.resolveCharacterName(name) : null;
         if (avatarResolution?.kind === "native_throws")
@@ -2887,6 +2893,8 @@ export class StoryRuntime {
           channel,
           charName: toString(this.exactArg(args, "char")),
           clear: toBoolean(this.exactArg(args, "clear"), false),
+          dialogCharPos: parseVector2(this.exactArg(args, "icharpos")),
+          dialogCharScale: parseVector2(this.exactArg(args, "icharscale")),
           direction: toString(this.exactArg(args, "direction")),
           durationMs: duration("duration"),
           maskId: toString(this.exactArg(args, "maskid")),
@@ -2900,6 +2908,8 @@ export class StoryRuntime {
           size: parseVector2(this.exactArg(args, "size")) ?? { x: 0, y: 0 },
           slot: toString(this.exactArg(args, "slot")),
           style: Math.trunc(toNumber(this.exactArg(args, "style"), 0)),
+          // Native `switch` (GetOrDefault false) only feeds the deco
+          // TwoStateToggle, re-rendered on every show/update.
           switchOn: toBoolean(this.exactArg(args, "switch"), false),
           templateSizeDurationMs: duration("tsduration"),
           templateSizeFrom: parseVector2(this.exactArg(args, "tsfrom")) ?? {

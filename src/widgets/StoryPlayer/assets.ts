@@ -46,3 +46,39 @@ export const STAMP_ASSETS = {
   icon_comps: new URL("assets/ui/icon_comps.png", import.meta.url).href,
   icon_start: new URL("assets/ui/icon_start.png", import.meta.url).href,
 } as const;
+
+/**
+ * interlude mask 模板贴图(`avg/[uc]common.ab`,CDN 热更包、不在 APK 基包)。
+ * 全部转写自 2.7.81 资源版本 26-10-14 的 bundle 拆包(2026-10-21),prefab
+ * 布局与动画关键帧的对照记录见 arknights-rev `docs/commands/avg-interlude-command.md`
+ * §8.1;模板层级/动画数值在 `engine/rendering/panels/interludeTemplates.ts`。
+ */
+export const INTERLUDE_ASSETS = {
+  icon_back: new URL("assets/ui/interlude/icon_back.png", import.meta.url).href,
+  unknown_vertical: new URL(
+    "assets/ui/interlude/img_interlude_unkown_char_vertical.png",
+    import.meta.url,
+  ).href,
+  unknown_square: new URL(
+    "assets/ui/interlude/img_interlude_unkown_char_square.png",
+    import.meta.url,
+  ).href,
+  common_frame: new URL(
+    "assets/ui/interlude/interclude_common_frame.png",
+    import.meta.url,
+  ).href,
+  wave_base: new URL(
+    "assets/ui/interlude/interclude_wave_base.png",
+    import.meta.url,
+  ).href,
+  wave_shadow: new URL("assets/ui/interlude/wave_shadow.png", import.meta.url)
+    .href,
+  dialog_grad: new URL("assets/ui/interlude/sprite_grad.png", import.meta.url)
+    .href,
+  dialog_frame: new URL(
+    "assets/ui/interlude/dialogue_frame.png",
+    import.meta.url,
+  ).href,
+  gradient_v: new URL("assets/ui/interlude/top_gradient.png", import.meta.url)
+    .href,
+} as const;
