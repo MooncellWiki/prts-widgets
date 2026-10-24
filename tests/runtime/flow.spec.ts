@@ -1112,6 +1112,33 @@ describe("StoryRuntime", () => {
     expect(renderer.dialogueTexts).toEqual(["landed2"]);
   });
 
+  it("lands a warp onto the trailing implicit endtip and finishes", async () => {
+    // The parser always ends a script with the implicit endtip (native
+    // AVGParser._AppendEndTip), so the furthest a warp can land is that
+    // endtip line: gotoIndex = labelIndex + 1 === the endtip's index. Manual
+    // mode skips the endtip as a no-op, so the story finishes with no
+    // dialogue shown -- native MoveNext takes the same consume-then-fetch
+    // path for this in-range target.
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[warp(name="tail")]',
+        '[name="A"]skipped',
+        '[label(name="tail")]',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.dialogueTexts).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
   it("overwrites duplicate label names with the later registration", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

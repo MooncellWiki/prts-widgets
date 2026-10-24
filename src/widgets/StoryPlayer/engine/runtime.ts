@@ -1087,6 +1087,21 @@ export class StoryRuntime {
     void this.renderer.clearItems(0);
   }
 
+  /**
+   * Native port: the shared end path of AVGController.MoveNext's LABEL_94 for
+   * processLoop's two out-of-range exits -- the queue drained, or a consumed
+   * warp cursor past the last line.
+   */
+  private finishPlayback(): void {
+    this.renderer.clearAnimTexts();
+    this.renderer.clearAvgDisplays();
+    // Native end-of-story reset destroys a lingering show-item slot
+    // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
+    this.resetItemSlot();
+    this.state = "finished";
+    this.finishLineSeekMissed("finished");
+  }
+
   private async processLoop(): Promise<void> {
     if (this.processing) return;
 
@@ -1097,29 +1112,33 @@ export class StoryRuntime {
 
     try {
       while (!this.destroyed) {
-        // Native port: Torappu.AVG.AVGController.MoveNext consumes
-        // ICommandFlowController.GotoCommandIndex right after the loop-top
-        // index increment and before fetching the command. This cursor
-        // overwrite is deliberately independent of the decision predicate
-        // gate below (native: flow-controller vs predicator are two separate
-        // MoveNext concerns). Web adaptation: our cursor already points at the
-        // next line to fetch, and an out-of-range warp target (a label on the
-        // last line) finishes the story here instead of throwing like the
-        // native List indexer would.
+        // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
+        // incremented index BEFORE consulting ICommandFlowController
+        // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
+        // 0x183fa6d8c → 0x183fa6ddd): a pending warp cursor only replaces an
+        // in-range index, so a warp on the last line would be dropped by the
+        // story end instead of jumping. Our cursor already points at the next
+        // line to fetch, which folds the increment+bounds pair into the check
+        // below. The overwrite stays independent of the decision predicate
+        // gate further down (native: flow-controller vs predicator are two
+        // separate MoveNext concerns).
+        if (this.cursor >= this.lines.length) {
+          this.finishPlayback();
+          return;
+        }
+
         if (this.gotoIndex >= 0) {
           this.cursor = this.gotoIndex;
           this.gotoIndex = -1;
-        }
-
-        if (this.cursor >= this.lines.length) {
-          this.renderer.clearAnimTexts();
-          this.renderer.clearAvgDisplays();
-          // Native end-of-story reset destroys a lingering show-item slot
-          // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
-          this.resetItemSlot();
-          this.state = "finished";
-          this.finishLineSeekMissed("finished");
-          return;
+          // Web adaptation: native would fetch commands[count] and throw
+          // ArgumentOutOfRangeException. The parser always ends a script with
+          // the implicit endtip (AVGParser._AppendEndTip), so a label can
+          // never be the last line; this guard only covers hand-built line
+          // lists and finishes the story instead of throwing.
+          if (this.cursor >= this.lines.length) {
+            this.finishPlayback();
+            return;
+          }
         }
 
         const line = this.lines[this.cursor];
