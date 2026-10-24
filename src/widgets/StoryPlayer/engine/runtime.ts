@@ -120,6 +120,9 @@ const builtinCommandNames = [
   "video",
   "skipnode",
   "skiptothis",
+  "label",
+  "warp",
+  "gotostage",
   "background",
   "backgroundtween",
   "gridbg",
@@ -358,6 +361,24 @@ function preprocessSkipToIndex(lines: ReturnType<typeof parseScript>): number {
   );
 }
 
+function preprocessLabelMap(
+  lines: ReturnType<typeof parseScript>,
+): Map<string, number> {
+  // Native port: Torappu.AVG.GotoLabelController.PreprocessCommands. It scans
+  // only `label` commands; TryGetParam("name") failing (missing key) makes the
+  // line a silent ignore -- no registration, no warning. RegisterLabel stores
+  // the bare index of the label line itself; the +1 skip offset is applied by
+  // the warp executor (_ExecuteGoto), not here. A repeated name overwrites the
+  // earlier entry (Dictionary set_Item).
+  const labelMap = new Map<string, number>();
+  for (const [index, line] of lines.entries()) {
+    if (line.kind !== "command" || line.command !== "label") continue;
+    if (!Object.prototype.hasOwnProperty.call(line.args, "name")) continue;
+    labelMap.set(toString(line.args.name), index);
+  }
+  return labelMap;
+}
+
 export class StoryRuntime {
   private readonly audio: StoryAudio;
   private readonly defaultSpeed: AutoSpeed;
@@ -419,6 +440,21 @@ export class StoryRuntime {
   private readonly skipNodeLabels: SkipNodeLabel[];
   private skipNodeQueueIndex = 0;
   private readonly skipToIndex: number;
+  /**
+   * Native port: Torappu.AVG.GotoLabelController.m_gotoIndex. One-shot warp
+   * cursor; -1 means "no pending jump". warp sets it, processLoop reads and
+   * resets it before fetching the next command (GotoCommandIndex's read-and-
+   * reset-to--1), so each warp jumps exactly once and two consecutive warps
+   * each take effect.
+   */
+  private gotoIndex = -1;
+  /**
+   * Native port: GotoLabelController.m_labelMap, filled by preprocessLabelMap
+   * (label name -> bare line index). Native clears it only in
+   * AVGGotoLabel.OnReset at story start; ShouldResetOnSkip() returns false
+   * (2.7.81 VA 0x183fc3be0), so a skip keeps both the map and the cursor.
+   */
+  private readonly labelMap: Map<string, number>;
   /**
    * Native port: Torappu.AVG.AVGShowItemPanel's single `_slotInUse`.
    * It determines whether `_ExecuteHideItem` blocks.
@@ -494,6 +530,7 @@ export class StoryRuntime {
     this.sleep = options.sleep ?? sleepWithTimeout;
     this.skipNodeLabels = preprocessSkipNodes(this.lines);
     this.skipToIndex = preprocessSkipToIndex(this.lines);
+    this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
@@ -1055,6 +1092,21 @@ export class StoryRuntime {
     void this.renderer.clearItems(0);
   }
 
+  /**
+   * Native port: AVGController.MoveNext's end-of-story path (the bounds-check
+   * exit at 2.7.81 VA 0x183fa6d3b). processLoop also reuses it for the web-only
+   * guard on an out-of-range warp target, where native would throw instead.
+   */
+  private finishPlayback(): void {
+    this.renderer.clearAnimTexts();
+    this.renderer.clearAvgDisplays();
+    // Native end-of-story reset destroys a lingering show-item slot
+    // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
+    this.resetItemSlot();
+    this.state = "finished";
+    this.finishLineSeekMissed("finished");
+  }
+
   private async processLoop(): Promise<void> {
     if (this.processing) return;
 
@@ -1065,15 +1117,33 @@ export class StoryRuntime {
 
     try {
       while (!this.destroyed) {
+        // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
+        // incremented index BEFORE consulting ICommandFlowController
+        // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
+        // 0x183fa6da4 → 0x183fa6ddd): a pending warp cursor only replaces an
+        // in-range index, so a warp on the last line would be dropped by the
+        // story end instead of jumping. Our cursor already points at the next
+        // line to fetch, which folds the increment+bounds pair into the check
+        // below. The overwrite stays independent of the decision predicate
+        // gate further down (native: flow-controller vs predicator are two
+        // separate MoveNext concerns).
         if (this.cursor >= this.lines.length) {
-          this.renderer.clearAnimTexts();
-          this.renderer.clearAvgDisplays();
-          // Native end-of-story reset destroys a lingering show-item slot
-          // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
-          this.resetItemSlot();
-          this.state = "finished";
-          this.finishLineSeekMissed("finished");
+          this.finishPlayback();
           return;
+        }
+
+        if (this.gotoIndex >= 0) {
+          this.cursor = this.gotoIndex;
+          this.gotoIndex = -1;
+          // Web adaptation: native would fetch commands[count] and throw
+          // ArgumentOutOfRangeException. parseScript always ends a script
+          // with an endtip (AVGParser._AppendEndTip), so a label is never the
+          // last line and this branch is unreachable today; it is only a
+          // defensive guard that finishes the story instead of throwing.
+          if (this.cursor >= this.lines.length) {
+            this.finishPlayback();
+            return;
+          }
         }
 
         const line = this.lines[this.cursor];
@@ -1393,6 +1463,43 @@ export class StoryRuntime {
       case "skiptothis": {
         // Native port: Torappu.AVG.AVGController._PreprocessCommands. This is a
         // preprocess-only command with no executor, so normal playback advances
+        return "continue";
+      }
+
+      case "label": {
+        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteLabel. The native
+        // executor is an empty hotfix shell that always returns false: the
+        // label's whole effect is the preprocess registration done by
+        // preprocessLabelMap, so at run time it is a silent no-op that never
+        // blocks and never warns.
+        return "continue";
+      }
+
+      case "warp": {
+        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteGoto. A missing
+        // `name` key or a labelMap miss is a silent no-op -- no warning, no
+        // exception (every current `[warp(name="chiyu01")]` in the corpus
+        // takes the miss path because no label defines it). On a hit the
+        // one-shot goto cursor becomes the bare label index + 1, i.e. the line
+        // right after the label. Native applies the +1 here too, and MoveNext
+        // fetches the consumed index as-is, the same as processLoop.
+        const name = this.exactArg(args, "name");
+        if (name === undefined) return "continue";
+        const target = this.labelMap.get(toString(name));
+        if (target === undefined) return "continue";
+        this.gotoIndex = target + 1;
+        return "continue";
+      }
+
+      case "gotostage": {
+        // Native port: Torappu.AVG.AVGGotoStagePanel._ExecuteGotoStage. Its
+        // only side effect is a client UI route
+        // (UIRouteUtil.RouteToStage -> the target stage's selection/preview
+        // page); it never ends the story, blocks the queue, or touches the
+        // command index, and an empty/unresolvable target is a silent no-op.
+        // A web story widget has no game shell to route, so the navigation is
+        // intentionally omitted and the `target` param goes unread: the
+        // command just keeps playback moving.
         return "continue";
       }
 

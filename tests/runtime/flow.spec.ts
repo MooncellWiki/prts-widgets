@@ -1047,4 +1047,199 @@ describe("StoryRuntime", () => {
       }
     },
   );
+
+  it("registers labels in preprocess and lets warp jump to the line after the label", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[warp(name="jump")]',
+        '[name="A"]skipped',
+        '[label(name="jump")]',
+        '[name="B"]landed',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.dialogueTexts).toEqual(["landed"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("lets warp jump backward to an earlier label", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[label(name="back")]',
+        '[name="A"]first',
+        '[warp(name="back")]',
+        '[name="B"]never',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "first" });
+
+    await runtime.advance();
+    expect(renderer.dialogueTexts).toEqual(["first", "first"]);
+  });
+
+  it("consumes the one-shot warp cursor so consecutive warps each jump", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[warp(name="a")]',
+        '[name="A"]skipped1',
+        '[label(name="a")]',
+        '[warp(name="b")]',
+        '[name="B"]skipped2',
+        '[label(name="b")]',
+        '[name="C"]landed2',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.dialogueTexts).toEqual(["landed2"]);
+  });
+
+  it("lands a warp onto the trailing implicit endtip and finishes", async () => {
+    // The parser always ends a script with the implicit endtip (native
+    // AVGParser._AppendEndTip), so the furthest a warp can land is that
+    // endtip line: gotoIndex = labelIndex + 1 === the endtip's index. Manual
+    // mode skips the endtip as a no-op, so the story finishes with no
+    // dialogue shown -- native MoveNext takes the same consume-then-fetch
+    // path for this in-range target.
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[warp(name="tail")]',
+        '[name="A"]skipped',
+        '[label(name="tail")]',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.dialogueTexts).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("overwrites duplicate label names with the later registration", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[warp(name="d")]',
+        '[label(name="d")]',
+        '[name="A"]first',
+        '[label(name="d")]',
+        '[name="B"]second',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.dialogueTexts).toEqual(["second"]);
+  });
+
+  it("keeps the decision gate untouched when a warp jumps over a predicate", async () => {
+    // Native MoveNext consumes the flow cursor and then asks the predicator
+    // about the landing command; the predicator's references only change when
+    // a predicate command runs, so the jumped-over predicate never applies.
+    const renderer = new FakeRenderer();
+    renderer.decisionValue = 2;
+    renderer.decisionIndex = 1;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="left;right",values="1;2")]',
+        '[predicate(references="2")]',
+        '[warp(name="g")]',
+        '[predicate(references="1")]',
+        '[label(name="g")]',
+        '[name="B"]right',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "right" });
+  });
+
+  it("treats a warp miss and a missing name as silent no-ops without warnings", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        "[label]",
+        '[warp(name="nowhere")]',
+        "[warp]",
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+    expect(warnings).toEqual([]);
+  });
+
+  it("keeps label lines silent no-ops that do not interrupt playback", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]before',
+        '[label(name="x")]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "before" });
+
+    await runtime.advance();
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+    expect(warnings).toEqual([]);
+  });
+
+  it("keeps gotostage a silent no-op that keeps the story moving", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext(['[Gotostage(target="main_15-02")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+    expect(warnings).toEqual([]);
+  });
 });
