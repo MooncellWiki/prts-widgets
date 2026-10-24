@@ -448,7 +448,12 @@ export class StoryRuntime {
    * each take effect.
    */
   private gotoIndex = -1;
-  /** Native port: GotoLabelController.m_labelMap, filled by preprocessLabelMap (label name -> bare line index). */
+  /**
+   * Native port: GotoLabelController.m_labelMap, filled by preprocessLabelMap
+   * (label name -> bare line index). Native clears it only in
+   * AVGGotoLabel.OnReset at story start; ShouldResetOnSkip() returns false
+   * (2.7.81 VA 0x183fc3be0), so a skip keeps both the map and the cursor.
+   */
   private readonly labelMap: Map<string, number>;
   /**
    * Native port: Torappu.AVG.AVGShowItemPanel's single `_slotInUse`.
@@ -1088,9 +1093,9 @@ export class StoryRuntime {
   }
 
   /**
-   * Native port: the shared end path of AVGController.MoveNext's LABEL_94 for
-   * processLoop's two out-of-range exits -- the queue drained, or a consumed
-   * warp cursor past the last line.
+   * Native port: AVGController.MoveNext's end-of-story path (the bounds-check
+   * exit at 2.7.81 VA 0x183fa6d3b). processLoop also reuses it for the web-only
+   * guard on an out-of-range warp target, where native would throw instead.
    */
   private finishPlayback(): void {
     this.renderer.clearAnimTexts();
@@ -1115,7 +1120,7 @@ export class StoryRuntime {
         // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
         // incremented index BEFORE consulting ICommandFlowController
         // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
-        // 0x183fa6d8c → 0x183fa6ddd): a pending warp cursor only replaces an
+        // 0x183fa6da4 → 0x183fa6ddd): a pending warp cursor only replaces an
         // in-range index, so a warp on the last line would be dropped by the
         // story end instead of jumping. Our cursor already points at the next
         // line to fetch, which folds the increment+bounds pair into the check
@@ -1131,10 +1136,10 @@ export class StoryRuntime {
           this.cursor = this.gotoIndex;
           this.gotoIndex = -1;
           // Web adaptation: native would fetch commands[count] and throw
-          // ArgumentOutOfRangeException. The parser always ends a script with
-          // the implicit endtip (AVGParser._AppendEndTip), so a label can
-          // never be the last line; this guard only covers hand-built line
-          // lists and finishes the story instead of throwing.
+          // ArgumentOutOfRangeException. parseScript always ends a script
+          // with an endtip (AVGParser._AppendEndTip), so a label is never the
+          // last line and this branch is unreachable today; it is only a
+          // defensive guard that finishes the story instead of throwing.
           if (this.cursor >= this.lines.length) {
             this.finishPlayback();
             return;
@@ -1476,8 +1481,8 @@ export class StoryRuntime {
         // exception (every current `[warp(name="chiyu01")]` in the corpus
         // takes the miss path because no label defines it). On a hit the
         // one-shot goto cursor becomes the bare label index + 1, i.e. the line
-        // right after the label; the +1 lives here because processLoop
-        // consumes the cursor as an already-incremented "next line" value.
+        // right after the label. Native applies the +1 here too, and MoveNext
+        // fetches the consumed index as-is, the same as processLoop.
         const name = this.exactArg(args, "name");
         if (name === undefined) return "continue";
         const target = this.labelMap.get(toString(name));

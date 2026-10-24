@@ -1158,6 +1158,31 @@ describe("StoryRuntime", () => {
     expect(renderer.dialogueTexts).toEqual(["second"]);
   });
 
+  it("keeps the decision gate untouched when a warp jumps over a predicate", async () => {
+    // Native MoveNext consumes the flow cursor and then asks the predicator
+    // about the landing command; the predicator's references only change when
+    // a predicate command runs, so the jumped-over predicate never applies.
+    const renderer = new FakeRenderer();
+    renderer.decisionValue = 2;
+    renderer.decisionIndex = 1;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="left;right",values="1;2")]',
+        '[predicate(references="2")]',
+        '[warp(name="g")]',
+        '[predicate(references="1")]',
+        '[label(name="g")]',
+        '[name="B"]right',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "right" });
+  });
+
   it("treats a warp miss and a missing name as silent no-ops without warnings", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
