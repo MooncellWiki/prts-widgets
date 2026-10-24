@@ -37,7 +37,14 @@ import LogAllPanel from "./components/LogAllPanel.vue";
 import { loadContextByScript, type Context } from "./context";
 import { createStoryPlayer } from "./engine/createStoryPlayer";
 import { preloadDialogFont } from "./engine/font";
-import { buildLogAll, type LogDocument } from "./engine/log";
+import {
+  analyzeStoryFlow,
+  buildLogAll,
+  buildLogDocument,
+  planChoicesForLine,
+  type LogDocument,
+  type StoryFlowResult,
+} from "./engine/log";
 import { parseStory } from "./engine/parser";
 import {
   collectContextAssetManifest,
@@ -47,6 +54,7 @@ import {
 
 import type {
   AutoPlayMode,
+  LineSeekUpdate,
   PlayerState,
   RuntimeChoiceSelection,
   StoryPlayer,
@@ -86,6 +94,39 @@ const showLogAll = ref(false);
 const logAllDocument = shallowRef<LogDocument>(buildLogAll([]));
 const logAllActiveLineIndex = ref<number | null>(null);
 const logAllSelections = ref<RuntimeChoiceSelection[]>([]);
+// 行点击跳转（Log All 快进）：文档不含 emissions，planChoicesForLine 需要
+// 完整符号分析产物，openLogAll 时与文档同源存一份；同样含 ConditionStore
+// 实例且只整体替换，shallowRef 约定同上
+const logAllFlow = shallowRef<StoryFlowResult | null>(null);
+
+/** Log All 行跳转状态条（浮在播放器上）；null = 不显示 */
+interface LogSeekNotice {
+  phase: "arming" | "seeking" | "reached" | "missed" | "aborted" | "error";
+  message: string;
+  target: number;
+  /** 符号分析退化过：方案可能不准，需要提示 */
+  degraded: boolean;
+}
+
+const logSeekNotice = shallowRef<LogSeekNotice | null>(null);
+const logSeekActive = computed(
+  () =>
+    logSeekNotice.value?.phase === "arming" ||
+    logSeekNotice.value?.phase === "seeking",
+);
+const logSeekTitle = computed(() => {
+  const notice = logSeekNotice.value;
+  if (!notice) return "";
+  return notice.phase === "seeking"
+    ? `快速播放中：当前 L${logAllActiveLineIndex.value ?? "?"} → 目标 L${notice.target}`
+    : notice.message;
+});
+// onLogAllSeekLine 重建播放器期间挂起的跳转（重建完成即武装）
+let pendingLineSeek: { choices: Map<number, number>; target: number } | null =
+  null;
+// 引擎侧进行中跳转的取消句柄；null = 未武装/已终态
+let cancelLineSeek: (() => void) | null = null;
+let noticeDismissTimer: ReturnType<typeof setTimeout> | null = null;
 const showAssetList = ref(false);
 const assetUrls = ref<string[]>([]);
 const characterFaceAssets = ref<StoryCharacterFaceAsset[]>([]);
@@ -175,11 +216,192 @@ function openLogAll(): void {
     player?.setAutoPlayMode("default");
     syncState();
   }
-  logAllDocument.value = buildLogAll(
+  const flow = analyzeStoryFlow(
     parseStory(scriptText.value).lines,
     context?.audioVariables,
   );
+  logAllFlow.value = flow;
+  logAllDocument.value = buildLogDocument(flow);
   showLogAll.value = true;
+}
+
+/**
+ * Log All 行点击 → 快进到该行（与调试页同一套编排）：planChoicesForLine
+ * 求选择方案 → 从头重建播放器（方案以脚本起点为前提；已就绪的资源在
+ * PIXI 缓存里，二次预载很快）→ 引擎侧 seekToLine 以 quick 最高档推进，
+ * 到达/播完/人工干预由引擎推终态。
+ */
+async function onLogAllSeekLine(target: number): Promise<void> {
+  const flow = logAllFlow.value;
+  if (!flow || !scriptText.value) return;
+  if (isPreloading.value) {
+    logSeekNotice.value = {
+      degraded: false,
+      message: "资源正在加载，稍后再试",
+      phase: "error",
+      target,
+    };
+    return;
+  }
+
+  const plan = planChoicesForLine(flow, target);
+  if (!plan.ok) {
+    logSeekNotice.value = {
+      degraded: false,
+      message: `第 ${target} 行不在可显示文本里，无法跳转`,
+      phase: "error",
+      target,
+    };
+    return;
+  }
+
+  try {
+    teardownLineSeek();
+    pendingLineSeek = { choices: plan.plan.choices, target };
+    logSeekNotice.value = {
+      degraded: plan.plan.degraded,
+      message: "正在重建播放器…",
+      phase: "arming",
+      target,
+    };
+    viewMode.value = "player";
+    showLogAll.value = false;
+    // text 视图过来的路径播放器宿主还没挂出来，先等一帧
+    await nextTick();
+    player?.destroy();
+    player = null;
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    // initAndPreload 自己不抛错（失败落到 preloadError），try/catch 罩的是
+    // 武装/起播阶段的意外异常
+    const rebuilt = await initAndPreload();
+    const pending = pendingLineSeek;
+    pendingLineSeek = null;
+    if (!pending) return;
+    if (!rebuilt || !preloadReady.value) {
+      logSeekNotice.value = {
+        degraded: logSeekNotice.value?.degraded ?? false,
+        message: `播放器未能就绪（${preloadError.value ?? "资源加载失败"}），跳转已取消`,
+        phase: "error",
+        target,
+      };
+      return;
+    }
+    cancelLineSeek = rebuilt.seekToLine(
+      pending.target,
+      pending.choices,
+      onLineSeekUpdate,
+    );
+    // quick 模式自己不会从 idle 起播，补一脚 start；waiting_input 时
+    // enterQuickSeekMode 已在引擎里直接推进
+    if (rebuilt.getState() === "idle") await rebuilt.start();
+    syncState();
+  } catch (error) {
+    pendingLineSeek = null;
+    logSeekNotice.value = {
+      degraded: false,
+      message: `跳转失败：${error instanceof Error ? error.message : String(error)}`,
+      phase: "error",
+      target,
+    };
+  }
+}
+
+/** 引擎跳转推送 → 状态条；reached 稍候自动隐去，其余终态手动关 */
+function onLineSeekUpdate(update: LineSeekUpdate): void {
+  const notice = logSeekNotice.value;
+  // 已被手动取消/重置，丢弃迟到通知
+  if (!notice || !logSeekActive.value) return;
+  if (update.phase === "seeking") {
+    if (notice.phase !== "seeking")
+      logSeekNotice.value = {
+        ...notice,
+        message: "快速播放中，自动选择分支…",
+        phase: "seeking",
+      };
+    return;
+  }
+  cancelLineSeek = null;
+  logSeekNotice.value = {
+    ...notice,
+    message: lineSeekFinishMessage(update),
+    phase: update.phase,
+  };
+  if (update.phase === "reached") scheduleNoticeDismiss(4000);
+}
+
+function lineSeekFinishMessage(update: LineSeekUpdate): string {
+  switch (update.phase) {
+    case "reached": {
+      return `已到达第 ${update.target} 行`;
+    }
+    case "missed": {
+      return update.reason === "error"
+        ? `播放出错，未经过第 ${update.target} 行`
+        : `播放已结束，未经过第 ${update.target} 行`;
+    }
+    case "aborted": {
+      return "已手动切换播放模式，中止跳转";
+    }
+    default: {
+      return "";
+    }
+  }
+}
+
+/** 状态条上的「取消跳转」：先静默摘掉引擎侧编排再切回手动，seekToLine
+ *  把播放器推到了 quick 最高档，只摘策略的话剧情会继续狂奔 */
+function cancelLogAllSeek(): void {
+  const armed = cancelLineSeek !== null;
+  const notice = logSeekNotice.value;
+  teardownLineSeek();
+  if (armed) player?.setAutoPlayMode("default");
+  syncState();
+  logSeekNotice.value = {
+    degraded: notice?.degraded ?? false,
+    message: "已手动取消",
+    phase: "aborted",
+    target: notice?.target ?? -1,
+  };
+}
+
+/** 摘掉进行中/挂起的跳转与自动隐藏计时器（不动状态条本身） */
+function teardownLineSeek(): void {
+  cancelLineSeek?.();
+  cancelLineSeek = null;
+  pendingLineSeek = null;
+  if (noticeDismissTimer) {
+    clearTimeout(noticeDismissTimer);
+    noticeDismissTimer = null;
+  }
+}
+
+function scheduleNoticeDismiss(ms: number): void {
+  if (noticeDismissTimer) clearTimeout(noticeDismissTimer);
+  noticeDismissTimer = setTimeout(() => {
+    noticeDismissTimer = null;
+    logSeekNotice.value = null;
+  }, ms);
+}
+
+function logSeekAlertType(): "error" | "warning" | "success" | "info" {
+  switch (logSeekNotice.value?.phase) {
+    case "reached": {
+      return "success";
+    }
+    case "missed":
+    case "error": {
+      return "error";
+    }
+    case "aborted": {
+      return "warning";
+    }
+    default: {
+      return "info";
+    }
+  }
 }
 
 function closeLogAll(): void {
@@ -250,16 +472,19 @@ async function openFeedback(): Promise<void> {
   }
 }
 
-async function initAndPreload(): Promise<void> {
+/** 预载资源并创建/挂载播放器；返回创建好的播放器（失败/参数缺失为 null，
+ *  详情看 preloadError）。跳转路径用它拿重建产物——player 是模块级可变量，
+ *  TS 的控制流分析不认 initAndPreload 内部的重新赋值 */
+async function initAndPreload(): Promise<StoryPlayer | null> {
   if (!hostRef.value) {
     preloadError.value = "播放器容器未初始化";
-    return;
+    return null;
   }
 
   const script = scriptText.value;
   if (!script) {
     preloadError.value = "未提供剧情文本（#datas_txt）";
-    return;
+    return null;
   }
 
   isPreloading.value = true;
@@ -297,10 +522,12 @@ async function initAndPreload(): Promise<void> {
     preloadProgress.value = 1;
     preloadReady.value = true;
     hostRef.value?.focus();
+    return player;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[story-player] preload failed:", detail, error);
     preloadError.value = detail || "资源加载失败";
+    return null;
   } finally {
     isPreloading.value = false;
   }
@@ -315,6 +542,7 @@ function onLoadLegacyPlayer(): void {
   }
 
   legacyPlayerActive.value = true;
+  teardownLineSeek();
   legacyRoot.style.removeProperty("display");
 }
 
@@ -346,6 +574,7 @@ async function onSkipNode(event?: Event): Promise<void> {
   await player.skipNode();
   syncState();
   if (state.value === "finished") {
+    teardownLineSeek();
     player.destroy();
     player = null;
     context = null;
@@ -389,6 +618,7 @@ onBeforeUnmount(() => {
     clearInterval(timer);
     timer = null;
   }
+  teardownLineSeek();
   player?.destroy();
   player = null;
 });
@@ -460,9 +690,11 @@ defineExpose({
           v-else-if="viewMode === 'text'"
           :show="showLogAll"
           embedded
+          seekable
           :document="logAllDocument"
           :active-line-index="logAllActiveLineIndex"
           :selections="logAllSelections"
+          @seek="onLogAllSeekLine"
           @update:show="closeLogAll"
         />
 
@@ -506,11 +738,51 @@ defineExpose({
             <LogAllPanel
               v-model:show="showLogAll"
               embedded
+              seekable
               class="absolute inset-0 z-10"
               :document="logAllDocument"
               :active-line-index="logAllActiveLineIndex"
               :selections="logAllSelections"
+              @seek="onLogAllSeekLine"
             />
+            <!-- Log All 行跳转状态条：只浮在画面上方，不挡画面中心的推进点击 -->
+            <div
+              v-if="logSeekNotice"
+              class="absolute left-1/2 top-3 z-20 max-w-[88%] w-auto -translate-x-1/2"
+            >
+              <NAlert
+                :type="logSeekAlertType()"
+                :title="logSeekTitle"
+                :closable="!logSeekActive"
+                @close="logSeekNotice = null"
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <NText
+                    v-if="logSeekNotice.degraded"
+                    tag="span"
+                    depth="3"
+                    class="text-xs"
+                  >
+                    剧本分支过多，方案可能不准
+                  </NText>
+                  <NButton
+                    v-if="logSeekActive"
+                    size="tiny"
+                    @click="cancelLogAllSeek"
+                  >
+                    取消跳转
+                  </NButton>
+                  <NText
+                    v-if="logSeekNotice.phase === 'reached'"
+                    tag="span"
+                    depth="3"
+                    class="text-xs"
+                  >
+                    已切回手动模式
+                  </NText>
+                </div>
+              </NAlert>
+            </div>
           </div>
         </template>
       </section>
