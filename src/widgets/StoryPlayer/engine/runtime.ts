@@ -424,6 +424,13 @@ export class StoryRuntime {
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
+  /**
+   * 挂在 DecisionPanel 上等点击的 decision；null = 没有。对象身份即令牌：
+   * skipNode 只结算入口处取样到的那一个（中途被点掉、又走到下一个
+   * decision 时不误结算新面板）。`autoPlayRestore` 是等待结束后还回去的
+   * 模式，skip 的 SkipToThis 路径会把它改成 default。
+   */
+  private pendingDecision: { autoPlayRestore: AutoPlayMode } | null = null;
   /** 调试侧注入的自动决策钩子；null = 全部走 DecisionPanel 人工选择 */
   private decisionPolicy: DecisionPolicy | null = null;
   /** 进行中的行号跳转编排（seekToLine）；null = 无跳转 */
@@ -861,9 +868,9 @@ export class StoryRuntime {
 
     const hadActiveProcessLoop = this.processing;
     const activeProcessCompletion = this.processingCompletion;
-    // 必须在改写 state 之前取样：waiting_decision 时命令循环正挂在
-    // renderer.showDecision 上，skip 要负责替它结算（见下方 settleDecision）。
-    const waitingDecision = this.state === "waiting_decision";
+    // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
+    // 替它结算（见下方 settleDecision）。
+    const pendingDecision = this.pendingDecision;
     let shouldResume = false;
 
     // m_executeIndex points at the command currently being waited on while our
@@ -889,6 +896,9 @@ export class StoryRuntime {
       // theater to button_auto.
       this.theaterMode = false;
       this.setAutoPlayMode("default");
+      // 挂起的 decision 结算后会把进面板前缓存的模式还回去（web 的等待期
+      // 降级），那样 auto 又会越过锚点继续：还原目标一并改成 default。
+      if (pendingDecision) pendingDecision.autoPlayRestore = "default";
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.
@@ -978,13 +988,23 @@ export class StoryRuntime {
     // Its existing processLoop owns continuation; starting another loop would
     // race it and can leave state="running" with no loop alive.
     this.interruptPendingWait();
-    // Native provenance: 2.7.61 的 skip 不再走 DecisionPanel.ShouldResetOnSkip
-    // （该函数恒返回 false），而是对阻塞中的 executor 调
-    // DecisionPanel.ForceCommandEnd（0x183e706b0）收尾。这里等价地按
-    // 「未点击」结算挂起的 decision（{optionIndex:-1, value:0}，闸门对 0
-    // 全开），命令循环随即从被移动的 cursor 继续；不结算的话 processLoop
-    // 永远吊在 showDecision 上，state=running 却无人推进（点选项才能解围）。
-    if (waitingDecision) this.renderer.settleDecision();
+    // Native port: SkipStory（2.7.81 VA 0x183F8EB80）的两条继续播放路径都
+    // 先对 m_blockingExecutors 逐个 ForceEnd() 再 Clear()；
+    // DoExecuteCommands（MoveNext 0x183FA6AD0）只在该列表非空时 yield，
+    // 清空后就从改写过的 m_executeIndex 往下走——decision 的 executor 也
+    // 在这个列表里，所以循环不会吊死。DecisionPanel 自身却不收尾：
+    // ForceCommandEnd（0x183FE0410）除 xLua hotfix 分发外是空函数，
+    // ShouldResetOnSkip（0x183FE09B0）为 false，_ResetComponentsOnSkip 不调
+    // 它的 OnReset，面板留在屏幕上，m_decisionExecutors /
+    // m_currentDecisionCommand 也留着，等迟到的点击走 OnDecisionSelected。
+    // Web 适配：关掉面板并按「未点击」结算（{optionIndex:-1, value:0}）。
+    // 闸门值与 native 一致——_ExecuteDecision 已把 decisionValue 置 0、skip
+    // 不碰它——差别只在 native 玩家还得去点那块残留面板。不结算的话
+    // processLoop 永远吊在 showDecision 上，state=running 却无人推进。
+    // 只结算入口取样到的那个：skip 中途 await 时玩家可能已点掉它，循环
+    // 甚至可能已走到下一个 decision。
+    if (pendingDecision && this.pendingDecision === pendingDecision)
+      this.renderer.settleDecision();
     if (hadActiveProcessLoop) await activeProcessCompletion;
     else if (shouldResume) await this.processLoop();
   }
@@ -3770,7 +3790,6 @@ export class StoryRuntime {
         // 把 autoPlayMode 降级为 default、选择后恢复，也是 web 适配
         // （native 不降级）。
         this.decisionSelectValue = 0;
-        this.decisionSelectValue = 0;
         this.decisionReferences = null;
         // options/values 的解析与 Log All 共用 log/semantics.parseDecision，
         // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）；
@@ -3830,8 +3849,10 @@ export class StoryRuntime {
           return "continue";
         }
 
-        const autoPlayCache = this.autoPlayMode;
-        // 面板阻塞等点击，模式在下面原样还回去，跳转不受影响
+        // 面板阻塞等点击，模式在下面原样还回去（skip 的 SkipToThis 路径
+        // 会改写还原目标），跳转不受影响
+        const pendingDecision = { autoPlayRestore: this.autoPlayMode };
+        this.pendingDecision = pendingDecision;
         this.applyAutoPlayMode("default");
         this.state = "waiting_decision";
         const selection = await this.renderer.showDecision(
@@ -3839,6 +3860,8 @@ export class StoryRuntime {
           values,
           disabled,
         );
+        if (this.pendingDecision === pendingDecision)
+          this.pendingDecision = null;
         this.decisionSelectValue = selection.value;
         // 点击下标由 renderer 直接返回：value 可能在 options 间重复
         // （显式值相同，或与缺省值 0 碰撞），反查会记错选项，
@@ -3851,7 +3874,7 @@ export class StoryRuntime {
             optionIndex: selection.optionIndex,
             value: selection.value,
           });
-        this.applyAutoPlayMode(autoPlayCache);
+        this.applyAutoPlayMode(pendingDecision.autoPlayRestore);
         this.state = "running";
         return "continue";
       }

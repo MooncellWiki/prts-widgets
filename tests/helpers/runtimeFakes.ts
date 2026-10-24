@@ -380,10 +380,15 @@ export class FakeRenderer implements StoryRenderer {
 
   /** 按「未点击」结算挂起中的 decision，对应 PixiStoryRenderer.settleDecision */
   settleDecision(): void {
+    this.pickDecision({ optionIndex: -1, value: 0 });
+  }
+
+  /** 模拟玩家点击挂起中的 decision 选项 */
+  pickDecision(selection: DecisionSelection): void {
     const waiters = this.decisionWaiters;
     this.decisionWaiters = [];
     for (const resolve of waiters) {
-      resolve({ optionIndex: -1, value: 0 });
+      resolve(selection);
     }
   }
 

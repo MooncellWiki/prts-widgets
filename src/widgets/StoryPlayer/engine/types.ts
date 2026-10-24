@@ -843,11 +843,11 @@ export interface StoryRenderer {
     disabled?: boolean[],
   ) => Promise<DecisionSelection>;
   /**
-   * 按「未点击」结算挂起中的 decision（`{optionIndex: -1, value: 0}`）。
-   * Native provenance: 2.7.61 的 skip 不走 `DecisionPanel.ShouldResetOnSkip`
-   * （该函数已固定返回 false），而是对阻塞中的 executor 调
-   * `DecisionPanel.ForceCommandEnd`（0x183e706b0）收尾；runtime.skipNode
-   * 用它解开挂在 showDecision 上的命令循环。
+   * 按「未点击」结算挂起中的 decision（`{optionIndex: -1, value: 0}`），
+   * runtime.skipNode 用它解开挂在 showDecision 上的命令循环。Web 适配：
+   * native SkipStory 清空 m_blockingExecutors 放行命令循环，但
+   * `DecisionPanel.ForceCommandEnd` 为空、`ShouldResetOnSkip` 为 false，
+   * 面板会留在屏幕上；web 选择关掉它。
    */
   settleDecision: () => void;
   stopVideo: () => void;
