@@ -443,4 +443,130 @@ describe("StoryRuntime", () => {
     expect(renderer.spellStickerClearCount).toBe(0);
     expect(renderer.clearCharacterCutinCalls).toEqual([]);
   });
+
+  it("settles a pending decision when skipping so the command loop resumes", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B", values="1;2")]', // line 1，挂起等点击
+        '[skipnode(mode="nofirstskip")]', // line 2，首读保护锚点
+        '[name="A"]after', // line 3
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    expect(runtime.getState()).toBe("waiting_decision");
+    expect(runtime.canSkipNode()).toBe(true);
+
+    // 不结算挂起 decision 的话这一步永不返回：processLoop 吊在
+    // showDecision 上，cursor 移动了也无人消费（native 由 SkipStory 清空
+    // m_blockingExecutors 放行命令循环）
+    await runtime.skipNode();
+    await startPromise;
+
+    // 未点击结算：value=0（闸门全开）、不记选择历史
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+    expect(runtime.getDecisionSelectValue()).toBe(0);
+    expect(runtime.getLogPosition().selections).toEqual([]);
+  });
+
+  it("finishes the story when skipping past a pending decision to the end", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="skip")]',
+        '[decision(options="A;B", values="1;2")]',
+        '[name="A"]tail',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    expect(runtime.getState()).toBe("waiting_decision");
+
+    await runtime.skipNode();
+    await startPromise;
+
+    expect(runtime.getState()).toBe("finished");
+    expect(runtime.canSkipNode()).toBe(false);
+  });
+
+  it("keeps the SkipToThis auto play reset when settling a pending decision", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B", values="1;2")]',
+        "[SkipToThis]",
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    runtime.setAutoPlayMode("button_auto");
+    const startPromise = runtime.start();
+    await Promise.resolve();
+    expect(runtime.getState()).toBe("waiting_decision");
+
+    await runtime.skipNode();
+    await startPromise;
+
+    // Native SkipStory 尾部 set_autoPlayMode(DEFAULT)：decision 结算后不能
+    // 再把进面板前缓存的 button_auto 还回去，否则 auto 会越过锚点继续
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+  });
+
+  it("does not settle a decision reached after the player picked the pending one mid-skip", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B", values="1;2")]', // line 1
+        "[SkipToThis]", // line 2
+        '[decision(options="C;D", values="3;4")]', // line 3
+        '[name="A"]after', // line 4
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    void runtime.start();
+    await Promise.resolve();
+    expect(runtime.getState()).toBe("waiting_decision");
+
+    // skip 同步段已移动 cursor，随后在 renderer 的清理上 await；玩家趁这
+    // 段空隙点掉了第一个 decision，循环从锚点后走到第二个 decision
+    const skipPromise = runtime.skipNode();
+    renderer.pickDecision({ optionIndex: 1, value: 2 });
+    let skipSettled = false;
+    void skipPromise.then(() => (skipSettled = true));
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+
+    // skip 只结算入口取样到的那个 decision：新面板仍在等点击
+    expect(renderer.decisionCalls.map((call) => call.options)).toEqual([
+      ["A", "B"],
+      ["C", "D"],
+    ]);
+    expect(skipSettled).toBe(false);
+
+    renderer.pickDecision({ optionIndex: 0, value: 3 });
+    await skipPromise;
+    expect(runtime.getLogPosition().selections).toEqual([
+      { decisionId: 1, optionIndex: 1, value: 2 },
+      { decisionId: 3, optionIndex: 0, value: 3 },
+    ]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
 });

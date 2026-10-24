@@ -996,8 +996,19 @@ export class PixiStoryRenderer implements StoryRenderer {
   async showDecision(
     options: string[],
     values: number[],
+    disabled?: boolean[],
   ): Promise<DecisionSelection> {
-    return this.decisionPanel.show(options, values);
+    return this.decisionPanel.show(options, values, disabled);
+  }
+
+  /**
+   * 按「未点击」结算挂起中的 decision，让 runtime 挂在 showDecision 上的
+   * 命令循环得以继续。Web 适配：native skip 只清空 m_blockingExecutors 放行
+   * 命令循环，`DecisionPanel.ForceCommandEnd`（2.7.81 VA 0x183FE0410）是空
+   * 函数，面板本身留在屏幕上（见 runtime.skipNode）。
+   */
+  settleDecision(): void {
+    this.decisionPanel.clear();
   }
 
   /**

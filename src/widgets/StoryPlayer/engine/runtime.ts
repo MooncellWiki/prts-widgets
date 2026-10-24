@@ -379,6 +379,16 @@ function preprocessLabelMap(
   return labelMap;
 }
 
+/**
+ * Native 的选项渲染上限是 DecisionPanel 预制体上 `_optionRoots` /
+ * `m_optionTexts` 数组的长度（由 prefab 配置，代码里读不出具体值；
+ * 2.7.61 现网语料单条 decision 最多 4 个选项）。超出时原生打
+ * `[AVG] Too many decision options. Some will be ignored!` 并隐藏多余
+ * 按钮；web 侧只降级为 warning、仍全量渲染（与 options 缺失路径同样
+ * 的容错取向）。
+ */
+const DECISION_OPTION_CAPACITY = 4;
+
 export class StoryRuntime {
   private readonly audio: StoryAudio;
   private readonly defaultSpeed: AutoSpeed;
@@ -414,6 +424,13 @@ export class StoryRuntime {
   }
   private decisionSelectValue = 0;
   private decisionReferences: number[] | null = null;
+  /**
+   * 挂在 DecisionPanel 上等点击的 decision；null = 没有。对象身份即令牌：
+   * skipNode 只结算入口处取样到的那一个（中途被点掉、又走到下一个
+   * decision 时不误结算新面板）。`autoPlayRestore` 是等待结束后还回去的
+   * 模式，skip 的 SkipToThis 路径会把它改成 default。
+   */
+  private pendingDecision: { autoPlayRestore: AutoPlayMode } | null = null;
   /** 调试侧注入的自动决策钩子；null = 全部走 DecisionPanel 人工选择 */
   private decisionPolicy: DecisionPolicy | null = null;
   /** 进行中的行号跳转编排（seekToLine）；null = 无跳转 */
@@ -851,6 +868,9 @@ export class StoryRuntime {
 
     const hadActiveProcessLoop = this.processing;
     const activeProcessCompletion = this.processingCompletion;
+    // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
+    // 替它结算（见下方 settleDecision）。
+    const pendingDecision = this.pendingDecision;
     let shouldResume = false;
 
     // m_executeIndex points at the command currently being waited on while our
@@ -876,6 +896,9 @@ export class StoryRuntime {
       // theater to button_auto.
       this.theaterMode = false;
       this.setAutoPlayMode("default");
+      // 挂起的 decision 结算后会把进面板前缓存的模式还回去（web 的等待期
+      // 降级），那样 auto 又会越过锚点继续：还原目标一并改成 default。
+      if (pendingDecision) pendingDecision.autoPlayRestore = "default";
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.
@@ -965,6 +988,23 @@ export class StoryRuntime {
     // Its existing processLoop owns continuation; starting another loop would
     // race it and can leave state="running" with no loop alive.
     this.interruptPendingWait();
+    // Native port: SkipStory（2.7.81 VA 0x183F8EB80）的两条继续播放路径都
+    // 先对 m_blockingExecutors 逐个 ForceEnd() 再 Clear()；
+    // DoExecuteCommands（MoveNext 0x183FA6AD0）只在该列表非空时 yield，
+    // 清空后就从改写过的 m_executeIndex 往下走——decision 的 executor 也
+    // 在这个列表里，所以循环不会吊死。DecisionPanel 自身却不收尾：
+    // ForceCommandEnd（0x183FE0410）除 xLua hotfix 分发外是空函数，
+    // ShouldResetOnSkip（0x183FE09B0）为 false，_ResetComponentsOnSkip 不调
+    // 它的 OnReset，面板留在屏幕上，m_decisionExecutors /
+    // m_currentDecisionCommand 也留着，等迟到的点击走 OnDecisionSelected。
+    // Web 适配：关掉面板并按「未点击」结算（{optionIndex:-1, value:0}）。
+    // 闸门值与 native 一致——_ExecuteDecision 已把 decisionValue 置 0、skip
+    // 不碰它——差别只在 native 玩家还得去点那块残留面板。不结算的话
+    // processLoop 永远吊在 showDecision 上，state=running 却无人推进。
+    // 只结算入口取样到的那个：skip 中途 await 时玩家可能已点掉它，循环
+    // 甚至可能已走到下一个 decision。
+    if (pendingDecision && this.pendingDecision === pendingDecision)
+      this.renderer.settleDecision();
     if (hadActiveProcessLoop) await activeProcessCompletion;
     else if (shouldResume) await this.processLoop();
   }
@@ -3740,17 +3780,29 @@ export class StoryRuntime {
       }
 
       case "decision": {
-        // Native port: Torappu.AVG.DecisionPanel._ExecuteDecision. Selection writes
-        // a value for the command-loop predicate gate; it is not a label jump.
+        // Native port: Torappu.AVG.DecisionPanel._ExecuteDecision. Selection
+        // writes a value for the command-loop predicate gate; it is not a
+        // label jump.
+        // 有意省略：native 在 autoPlayMode==QUICK_PLAY 且设置项
+        // AVG_SKIP_DECISION 开启时会 _SetOptionButtonSelect(0) 自动选第
+        // 0 项、不阻塞（0x183e70f9d-0x183e71013）；web 没有游戏内设置
+        // 项，按 AVG_SKIP_DECISION 恒为关处理，总是阻塞等点击。等待期间
+        // 把 autoPlayMode 降级为 default、选择后恢复，也是 web 适配
+        // （native 不降级）。
         this.decisionSelectValue = 0;
         this.decisionReferences = null;
         // options/values 的解析与 Log All 共用 log/semantics.parseDecision，
-        // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）
+        // 缺项 value 按原生 `_GetOptionValue` 取 0（闸门对 0 恒放行）；
+        // `&` 禁用前缀同样在 parseDecision 剥离并标记 disabled。
         const parsed = parseDecision(line, this.context.audioVariables);
         if (!parsed) {
           // 无效 decision 同样先重置 value/references 并切回手动（原生
           // 在校验 options 之前就重置：DecisionPanel._ExecuteDecision 在
           // TryGetParam("options") 之前写 _decisionValue/_referenceValues）
+          // native 对缺 options 是阻塞语义：LogError "[AVG] No options
+          // parameter for Decision command" 后 return true（面板已激活，
+          // 主播放路径实际卡死，现网脚本不会出现）。web 取容错放行：
+          // 上面的重置已清空分支状态，warn 后继续播。
           this.applyScriptAutoPlayMode("default");
           this.warn(
             "invalid_parameter",
@@ -3761,6 +3813,15 @@ export class StoryRuntime {
 
         const options = parsed.options.map((option) => option.label);
         const values = parsed.options.map((option) => option.value);
+        const disabled = parsed.options.map((option) => option.disabled);
+        if (options.length > DECISION_OPTION_CAPACITY) {
+          this.warn(
+            "invalid_parameter",
+            `too many decision options: ${options.length} > native capacity ${DECISION_OPTION_CAPACITY}`,
+            line.lineNumber,
+            "decision",
+          );
+        }
 
         // Web 调试适配：注入的 decision policy 直接替玩家选择，跳过面板
         // 等待（无原生对应）。选择历史与 value 写入和面板路径完全一致；
@@ -3788,11 +3849,19 @@ export class StoryRuntime {
           return "continue";
         }
 
-        const autoPlayCache = this.autoPlayMode;
-        // 面板阻塞等点击，模式在下面原样还回去，跳转不受影响
+        // 面板阻塞等点击，模式在下面原样还回去（skip 的 SkipToThis 路径
+        // 会改写还原目标），跳转不受影响
+        const pendingDecision = { autoPlayRestore: this.autoPlayMode };
+        this.pendingDecision = pendingDecision;
         this.applyAutoPlayMode("default");
         this.state = "waiting_decision";
-        const selection = await this.renderer.showDecision(options, values);
+        const selection = await this.renderer.showDecision(
+          options,
+          values,
+          disabled,
+        );
+        if (this.pendingDecision === pendingDecision)
+          this.pendingDecision = null;
         this.decisionSelectValue = selection.value;
         // 点击下标由 renderer 直接返回：value 可能在 options 间重复
         // （显式值相同，或与缺省值 0 碰撞），反查会记错选项，
@@ -3805,7 +3874,7 @@ export class StoryRuntime {
             optionIndex: selection.optionIndex,
             value: selection.value,
           });
-        this.applyAutoPlayMode(autoPlayCache);
+        this.applyAutoPlayMode(pendingDecision.autoPlayRestore);
         this.state = "running";
         return "continue";
       }

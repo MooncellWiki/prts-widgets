@@ -7,6 +7,8 @@ import {
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
+import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
+
 describe("StoryRuntime", () => {
   it("uses value predicates without treating them as label jumps", async () => {
     const renderer = new FakeRenderer();
@@ -121,10 +123,64 @@ describe("StoryRuntime", () => {
     // 缺项取 0，与原生 DecisionPanel._GetOptionValue 越界分支一致
     expect(renderer.decisionCalls).toEqual([
       {
+        disabled: [false, false, false],
         options: ["A", "B", "C"],
         values: [7, 0, 0],
       },
     ]);
+  });
+
+  it("marks ampersand-prefixed options as disabled and strips the prefix", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="&不可选;可选", values="1;2")]', // line 1
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // `&` 前缀在 log/semantics.parseDecision 剥离（原生 _SetupOptionText），
+    // 面板拿到的是玩家可见文本 + 禁用标记
+    expect(renderer.decisionCalls[0]).toEqual({
+      disabled: [true, false],
+      options: ["不可选", "可选"],
+      values: [1, 2],
+    });
+  });
+
+  it("warns when a decision exceeds the native option capacity", async () => {
+    const warnings: RuntimeWarning[] = [];
+    const onWarning = (warning: RuntimeWarning) => warnings.push(warning);
+    const runtime = new StoryRuntime(
+      createContext(['[decision(options="1;2;3;4;5", values="1;2;3;4;5")]']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    // 原生上限为 DecisionPanel 预制体按钮数，超出打
+    // "[AVG] Too many decision options. Some will be ignored!"
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "decision",
+        type: "invalid_parameter",
+      }),
+    ]);
+
+    const boundaryWarnings: RuntimeWarning[] = [];
+    const boundaryRuntime = new StoryRuntime(
+      createContext(['[decision(options="1;2;3;4", values="1;2;3;4")]']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { onWarning: (warning) => boundaryWarnings.push(warning) },
+    );
+    await boundaryRuntime.start();
+    expect(boundaryWarnings).toEqual([]);
   });
 
   it("does not record a choice when the panel is cleared without a click", async () => {
