@@ -383,6 +383,39 @@ describe("PixiStoryRenderer", () => {
       }),
     );
   });
+
+  it("eases the curtain wipe with DOTween's default OutQuad", async () => {
+    const manual = createManualClock();
+    const renderer = createRenderer();
+    renderer.app = {};
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+    // FillGradient needs a real canvas context; this test is about the tween
+    // curve, not the drawing.
+    renderer.updateCurtainState = vi.fn();
+
+    await renderer.setCurtain({
+      block: false,
+      delayMs: 0,
+      direction: 6,
+      fadeMs: 1000,
+      fillFrom: 0,
+      fillTo: 1,
+      grad: false,
+    });
+    const state = renderer.curtains.get(6);
+    expect(state.fill).toBe(0);
+
+    manual.advance(500);
+    manual.drainFrame();
+    // Native SetCurtainSizeTween/SetCurtainAlphaTween never call SetEase, so
+    // both the DOSizeDelta wipe and any DOFade run on DOTween's
+    // defaultEaseType=6 (OutQuad): halfway = 0.75, not the linear 0.5.
+    expect(state.fill).toBeCloseTo(0.75);
+
+    manual.advance(500);
+    manual.drainFrame();
+    expect(state.fill).toBe(1);
+  });
 });
 
 describe("PixiStoryRenderer blocker", () => {

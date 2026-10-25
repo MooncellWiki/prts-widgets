@@ -3156,6 +3156,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     // bump keeps the documented intent (one live tween per side); do not
     // "align" it with the broken 2.7.61 form.
     const sessionId = ++state.tweenSessionId;
+    // Native SetCurtainSizeTween/SetCurtainAlphaTween carry no SetEase, so
+    // both DOSizeDelta and DOFade run on DOTween's default OutQuad (2781
+    // re-verified: DOTween cctor defaultEaseType = 6). Without the explicit
+    // ease the TweenRunner default would be linear.
     const animate = () =>
       this.tween(
         input.fadeMs,
@@ -3172,6 +3176,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           this.updateCurtainState(state, vector);
           if (toFill <= 0) this.removeCurtainState(direction, state);
         },
+        { ease: dotweenDefaultEase },
       );
     const run =
       input.delayMs > 0
