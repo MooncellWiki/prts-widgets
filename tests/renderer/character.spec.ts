@@ -1395,8 +1395,9 @@ describe("PixiStoryRenderer characteraction", () => {
         return Promise.resolve();
       },
     );
-    // Random 0.5 → start angle 180° and zero Full-mode tilt, so the first
-    // waypoint is exactly (-power, 0).
+    // Random 0.5 → start angle 180° and zero Full-mode tilt. The faithful
+    // Vector3FromAngle puts sin on X and cos on Y, so the first waypoint is
+    // exactly (0, -power); the motion layer stores Y negated.
     const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
     try {
       await renderer.runCharacterAction(
@@ -1417,9 +1418,9 @@ describe("PixiStoryRenderer characteraction", () => {
     // vibrato 10 × 1s = 10 segments weighted 1..10 (sum 55): the first one
     // ends at 1/55 and is sampled linearly halfway through.
     calls[0]!.step(1 / 110);
-    expect(state.shakeOffsetX).toBeCloseTo(-5, 9);
-    expect(state.shakeOffsetY).toBeCloseTo(0, 9);
+    expect(state.shakeOffsetX).toBeCloseTo(0, 9);
+    expect(state.shakeOffsetY).toBeCloseTo(5, 9);
     calls[0]!.step(1 / 55);
-    expect(state.shakeOffsetX).toBeCloseTo(-10, 9);
+    expect(state.shakeOffsetY).toBeCloseTo(10, 9);
   });
 });

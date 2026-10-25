@@ -7,6 +7,7 @@ export interface ShakePoint {
 export interface ShakePathInput {
   fadeOut: boolean;
   randomness: number;
+  vectorBased: boolean;
   vibrato: number;
   xStrength: number;
   yStrength: number;
@@ -14,18 +15,62 @@ export interface ShakePathInput {
 
 type RandomSource = () => number;
 
+type Vector3 = { x: number; y: number; z: number };
+
 function randomRange(min: number, max: number, random: RandomSource): number {
   return min + (max - min) * random();
 }
 
+function clampMagnitude(vector: Vector3, maxLength: number): Vector3 {
+  const sqrMagnitude =
+    vector.x * vector.x + vector.y * vector.y + vector.z * vector.z;
+  if (sqrMagnitude <= maxLength * maxLength) return vector;
+  const magnitude = Math.sqrt(sqrMagnitude);
+  return {
+    x: (vector.x / magnitude) * maxLength,
+    y: (vector.y / magnitude) * maxLength,
+    z: (vector.z / magnitude) * maxLength,
+  };
+}
+
+function normalize(vector: Vector3): Vector3 {
+  const magnitude = Math.sqrt(
+    vector.x * vector.x + vector.y * vector.y + vector.z * vector.z,
+  );
+  // Unity's Vector3.Normalize collapses near-zero vectors to zero.
+  if (magnitude <= 1e-5) return { x: 0, y: 0, z: 0 };
+  return {
+    x: vector.x / magnitude,
+    y: vector.y / magnitude,
+    z: vector.z / magnitude,
+  };
+}
+
 /**
- * Ports the waypoint selection used by
- * `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake` through DOTween's vector
- * shake overload, and by `AVGCharacterSlot.CharShake` through
- * `DOShakePosition` (float strength, `ignoreZAxis = false`, so the same Full
- * mode tilt applies). Sampling and scheduling below are a Web/PIXI
- * adaptation; `sampleShakePath` stays linear per segment because the
- * `SetShake` startup forces Ease.Linear on every shake tween.
+ * Ports the waypoint walk of the inner `DG.Tweening.DOTween.Shake` overload
+ * (2.7.81 @ 0x18424e2d0; branch-identical in 2.7.71/2.7.51) used by
+ * `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake` and
+ * `AVGCharacterSlot.CharShake`:
+ *
+ * - `vectorBased: true` — Vector3-strength `DOShakePosition` (CameraShake).
+ *   Radius = |(xStrength, yStrength, 0)|; each waypoint is a full-radius
+ *   direction from `Vector3FromAngle` rotated by `AngleAxis(rnd, up)`, then
+ *   pushed through a per-axis `Vector3.ClampMagnitude` chain whose lengths
+ *   are xStrength / yStrength / 0. The chain only biases the direction —
+ *   the final `Normalize × radius` restores the full magnitude, so per-axis
+ *   strengths shape the shake, they don't cap it (only a 0 strength kills
+ *   its axis).
+ * - `vectorBased: false` — float-strength `DOShakePosition` (CharShake;
+ *   native expands the scalar to (s, s, s) and uses only `.x` as the
+ *   circle radius). The rotated waypoint's Z component, invisible on a 2D
+ *   canvas, is dropped.
+ *
+ * `fadeOut` decays the radius by `radius / count` per waypoint; native also
+ * re-clamps the strength vector to the decayed radius each iteration, which
+ * scales the clamp lengths by the same factor, so multiplying the finished
+ * waypoint by `fade` is exactly equivalent. `sampleShakePath` stays linear
+ * per segment because the `SetShake` startup forces Ease.Linear on every
+ * shake tween.
  */
 export function buildShakePath(
   durationMs: number,
@@ -38,6 +83,9 @@ export function buildShakePath(
     Math.trunc(Math.max(0, input.vibrato) * durationSeconds),
   );
   const randomness = Math.max(0, input.randomness);
+  const radius = input.vectorBased
+    ? Math.sqrt(input.xStrength ** 2 + input.yStrength ** 2)
+    : input.xStrength;
   const rawDurations = Array.from({ length: count }, (_, index) =>
     input.fadeOut ? index + 1 : 1,
   );
@@ -52,15 +100,33 @@ export function buildShakePath(
       angle = angle - 180 + randomRange(-randomness, randomness, random);
 
     const radians = (angle * Math.PI) / 180;
-    // Full mode also rotates the waypoint around Vector3.up by an independent
-    // random angle. CameraShake has zStrength=0, so the resulting Z component
-    // is discarded and only the attenuated X component remains visible.
+    // Full mode draws a second independent random per waypoint and rotates
+    // the direction around Vector3.up; with the input Z already 0 this
+    // leaves Y untouched.
     const tilt = (randomRange(-randomness, randomness, random) * Math.PI) / 180;
+    const sinAngle = Math.sin(radians);
+    const vec = {
+      x: sinAngle * radius * Math.cos(tilt),
+      y: Math.cos(radians) * radius,
+      z: -sinAngle * radius * Math.sin(tilt),
+    };
     const fade = input.fadeOut ? 1 - index / count : 1;
+
+    if (!input.vectorBased)
+      return {
+        durationRatio: rawDuration / durationTotal,
+        x: vec.x * fade,
+        y: vec.y * fade,
+      };
+
+    const xAxis = clampMagnitude(vec, input.xStrength);
+    const yAxis = clampMagnitude({ ...vec, x: xAxis.x }, input.yStrength);
+    // zStrength is hard-coded 0: ClampMagnitude(v, 0) zeroes the axis.
+    const direction = normalize({ x: xAxis.x, y: yAxis.y, z: 0 });
     return {
       durationRatio: rawDuration / durationTotal,
-      x: Math.cos(radians) * Math.cos(tilt) * input.xStrength * fade,
-      y: Math.sin(radians) * input.yStrength * fade,
+      x: direction.x * radius * fade,
+      y: direction.y * radius * fade,
     };
   });
 }
