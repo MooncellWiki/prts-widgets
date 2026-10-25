@@ -29,6 +29,16 @@
 > [!IMPORTANT]  
 > 不要忘记更新 [README.md](README.md) 中的子应用列表
 
+## 在 Wiki 页面里调试
+
+运行 `pnpm dev`，终端会按 `templates/*.html` 列出所有 Widget 的完整 Wiki 调试链接，
+点击对应链接即可。端口被占用时 Vite 仍会自动选择下一个可用端口，所有链接使用实际监听端口。
+
+新建应用的 `/dev` 页面会自动带上开发加载器。
+加载器只读取当前页面 URL 的 `vitePort` 参数，如 `?vitePort=8082`；已有查询参数时
+用 `&vitePort=8082`。没有参数时默认连接 `http://localhost:8080`。
+不同调试页可以通过各自的 URL 连接不同本地实例。加载失败会在页面显示提示，详细错误见控制台。
+
 ## 测试
 
 ```bash

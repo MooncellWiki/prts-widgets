@@ -4,6 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { create, login } from "./api";
+import { devWidget } from "./dev/widget";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,16 +64,7 @@ if (ele?.dataset?.item) {
   );
   console.log(`https://prts.wiki/w/Widget:${name}/doc created`);
 
-  await create(
-    `Widget:${name}/dev`,
-    `
-<includeonly>
-<div id="root"></div>
-<script type="module" src="http://localhost:8080/@vite/client"></script>
-<script type="module" src="http://localhost:8080/src/entries/${name}.ts"></script>
-</includeonly><noinclude>{{#widget:${name}/dev}}</noinclude>
-  `,
-  );
+  await create(`Widget:${name}/dev`, devWidget(name));
   console.log(`https://prts.wiki/w/Widget:${name}/dev created`);
   console.log("success!");
 }
