@@ -161,23 +161,24 @@ const counts = computed(() => {
     line-height: 1.3;
   }
 
+  // 条数用展示字的大写高度数字（lnum），同左边的英文代号：Bender 的数字比汉字、代号都矮一截，一行里对不齐
   &__count {
     margin-left: auto;
     white-space: nowrap;
-    font: 600 var(--ak-fs-xs) / 1 var(--ak-font-label);
+    font: 600 var(--ak-fs-xs) / 1 var(--ak-font-display);
     color: var(--ak-fg-muted);
-    font-variant-numeric: tabular-nums;
+    font-variant-numeric: lining-nums tabular-nums;
   }
 
   // + / −（同设计系统折叠面板 .ak-details > summary::before 的记号与颜色）用两道杠画：
-  // 写成字的话 Bender 里没有「−」（U+2212），换别的字体画出来比「+」低 1.5px，一开一合记号就跳。
-  // 跟在条数后面同一行，边长 = 数字的大写字高（1cap，Bender 是 0.71em）、底边落在基线上：上下沿都和数字齐
+  // 写成字的话「−」（U+2212）与「+」高低随字体而变（Bender 就没有「−」，回退后比「+」低 1.5px），一开一合记号就跳。
+  // 跟在条数后面同一行，边长 = 数字的大写字高（1cap，Novecento 是 0.7em）、底边落在基线上：上下沿都和数字齐
   &__mark {
     position: relative;
     display: inline-block;
-    width: 0.71em;
+    width: 0.7em;
     width: 1cap;
-    height: 0.71em;
+    height: 0.7em;
     height: 1cap;
     margin: 0 3px 0 10px;
     vertical-align: baseline;

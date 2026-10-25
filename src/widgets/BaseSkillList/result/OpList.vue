@@ -125,6 +125,8 @@ const ok = (h: Holding) => stepPass(h, query.value);
   &__label {
     margin: 0 0 6px;
     font: 700 var(--ak-fs-overline) / 1 var(--ak-font-display);
+    // 展示字的数字用大写高度那套（lnum），不然「1」比汉字矮一截；font 简写会重置，写在后面
+    font-variant-numeric: lining-nums;
     letter-spacing: var(--ak-tracking-overline);
     text-transform: uppercase;
     color: var(--ak-fg-subtle);
