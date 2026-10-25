@@ -378,18 +378,45 @@ describe("筛选", () => {
 });
 
 describe("排序", () => {
-  it("游戏顺序 / 效率 / 持有人数 / 技能名，同值按游戏顺序", () => {
+  it("先按设施次序（倒序也不倒设施），组内按游戏顺序 / 效率 / 持有人数 / 技能名，同值按游戏顺序", () => {
     const { buffs, chars } = SOURCE;
-    expect(names(sortBuffs(buffs, { key: "order", dir: -1 }))[0]).toBe(
+    expect(names(sortBuffs(buffs, { key: "order", dir: -1 }))).toEqual([
+      "最高权限",
+      "金属工艺·β",
+      "金属工艺·α",
+      "标准化·α",
+      "合成专家",
       "线索搜集·β",
-    );
-    expect(
-      names(sortBuffs(buffs, { key: "eff", dir: -1 })).slice(0, 3),
-    ).toEqual(["金属工艺·β", "金属工艺·α", "线索搜集·β"]);
-    expect(names(sortBuffs(buffs, { key: "eff", dir: 1 }))[0]).toBe("合成专家");
-    expect(
-      names(sortBuffs(buffs, { key: "holders", dir: -1 })).slice(0, 2),
-    ).toEqual(["金属工艺·α", "线索搜集·β"]);
+      "线索搜集·α",
+    ]);
+    expect(names(sortBuffs(buffs, { key: "eff", dir: -1 }))).toEqual([
+      "最高权限",
+      "金属工艺·β",
+      "金属工艺·α",
+      "标准化·α",
+      "合成专家",
+      "线索搜集·β",
+      "线索搜集·α",
+    ]);
+    expect(names(sortBuffs(buffs, { key: "eff", dir: 1 }))).toEqual([
+      "最高权限",
+      "标准化·α",
+      "金属工艺·α",
+      "金属工艺·β",
+      "合成专家",
+      "线索搜集·α",
+      "线索搜集·β",
+    ]);
+    // 制造站里 标准化·α 与 金属工艺·β 都是一位，同值按游戏顺序
+    expect(names(sortBuffs(buffs, { key: "holders", dir: -1 }))).toEqual([
+      "最高权限",
+      "金属工艺·α",
+      "标准化·α",
+      "金属工艺·β",
+      "合成专家",
+      "线索搜集·β",
+      "线索搜集·α",
+    ]);
     expect(names(sortChars(chars, { key: "order", dir: -1 }))).toEqual([
       "丁",
       "丙",
@@ -489,6 +516,10 @@ describe("BaseSkillList UI smoke", () => {
     [...host.querySelectorAll<HTMLButtonElement>(".ak-chip")].find(
       (b) => b.textContent?.trim() === label,
     )!;
+  const toolButton = (host: HTMLElement, label: string) =>
+    [...host.querySelectorAll<HTMLButtonElement>(".ls-bar__tools button")].find(
+      (b) => b.textContent?.trim() === label,
+    )!;
   const rows = (host: HTMLElement) =>
     [...host.querySelectorAll(".rs-item .rs-name")].map((h) => h.textContent);
   const rowLabels = (host: HTMLElement) =>
@@ -498,12 +529,19 @@ describe("BaseSkillList UI smoke", () => {
 
   it("按设施分组列出全部技能；点芯片筛选并写回地址栏", async () => {
     const host = await mount();
-    expect(rows(host)).toEqual(names(SOURCE.buffs));
     expect(
       [...host.querySelectorAll(".rs-section__title")].map(
         (h) => h.textContent,
       ),
     ).toEqual(["控制中枢", "制造站", "加工站", "会客室"]);
+    // 同现网默认都折叠；全部展开后才是全部技能
+    expect(rows(host)).toEqual([]);
+    toolButton(host, "全部展开").click();
+    await nextTick();
+    expect(rows(host)).toEqual(names(SOURCE.buffs));
+    toolButton(host, "全部折叠").click();
+    await nextTick();
+    expect(rows(host)).toEqual([]);
     // 作用对象行要选了带对象的设施才出
     expect(rowLabels(host)).toEqual([
       "设施",
@@ -522,11 +560,61 @@ describe("BaseSkillList UI smoke", () => {
     expect(location.hash).toBe("#room=1-MANUFACTURE&target=1-exp");
     expect(host.querySelector(".ls-bar__count")?.textContent).toContain("1");
 
-    // 取消设施：作用对象那一段藏起来，里面选着的也清掉
+    // 取消设施：作用对象那一段藏起来，里面选着的也清掉；没了筛选，又都折起来
     chip(host, "制造站").click();
     await nextTick();
     expect(location.hash).toBe("");
-    expect(rows(host)).toHaveLength(SOURCE.buffs.length);
+    expect(rows(host)).toEqual([]);
+  });
+
+  it("设施分组：默认折叠，点组头开合；有筛选 / 搜索时默认展开；技能视图不分页", async () => {
+    const host = await mount();
+    const toggles = () => [
+      ...host.querySelectorAll<HTMLButtonElement>(".rs-section__toggle"),
+    ];
+    expect(toggles().map((b) => b.getAttribute("aria-expanded"))).toEqual([
+      "false",
+      "false",
+      "false",
+      "false",
+    ]);
+    toggles()[1].click();
+    await nextTick();
+    expect(toggles()[1].getAttribute("aria-expanded")).toBe("true");
+    expect(rows(host)).toEqual(["标准化·α", "金属工艺·α", "金属工艺·β"]);
+    expect(
+      host.querySelector(`#${toggles()[1].getAttribute("aria-controls")}`),
+    ).not.toBeNull();
+    toggles()[1].click();
+    await nextTick();
+    expect(rows(host)).toEqual([]);
+
+    // 有了筛选默认都展开，点组头仍可收起
+    chip(host, "精英二").click();
+    await nextTick();
+    expect(rows(host)).toEqual(["金属工艺·β"]);
+    toggles()[0].click();
+    await nextTick();
+    expect(rows(host)).toEqual([]);
+
+    // 没有每页条数与分页
+    expect(host.querySelector(".ls-bar .ak-select")).toBeNull();
+    expect(host.querySelector(".ls-pager, .rs-foot")).toBeNull();
+  });
+
+  it("别的排序也按设施分组，只在组内排，行里不带设施名", async () => {
+    const host = await mount("/w/后勤技能一览#_o=eff-d");
+    toolButton(host, "全部展开").click();
+    await nextTick();
+    expect(
+      [...host.querySelectorAll(".rs-section__title")].map(
+        (h) => h.textContent,
+      ),
+    ).toEqual(["控制中枢", "制造站", "加工站", "会客室"]);
+    expect(rows(host)).toEqual(
+      names(sortBuffs(SOURCE.buffs, { key: "eff", dir: -1 })),
+    );
+    expect(host.querySelector(".rs-item .rs-roomtag")).toBeNull();
   });
 
   it("行里：解锁条件、替换关系、效率、描述的富文本与术语、备注", async () => {
@@ -541,26 +629,35 @@ describe("BaseSkillList UI smoke", () => {
     expect(
       row.querySelector(".rs-note .ak-rt-term")?.getAttribute("data-tip"),
     ).toBe("龙门近卫局：包含以下干员\n陈、星熊");
-    // 持有者条件不一样：按条件分段
+    // 解锁条件在持有者头像左下角（同现网），按条件排；悬停只出干员名
+    expect(row.querySelector(".rs-head .ak-elite")).toBeNull();
+    const holders = [...row.querySelectorAll(".rs-holder")];
+    expect(holders.map((h) => h.getAttribute("title"))).toEqual(["甲", "丁"]);
     expect(
-      [...row.querySelectorAll(".rs-hgroup .ak-elite")].map((e) =>
-        e.textContent?.trim(),
+      holders.map((h) =>
+        h.querySelector(".ak-op-card__elite img")?.getAttribute("alt"),
       ),
     ).toEqual(["精英零", "精英一"]);
-    expect(row.querySelector(".rs-holder")?.getAttribute("data-tip")).toBe(
-      "甲 · 6★ 近卫 · 精英零",
-    );
+    expect(holders[0].hasAttribute("data-tip")).toBe(false);
+  });
+
+  it("持有者头像：「精英零 30 级」在精英图上方补等级", async () => {
+    const host = await mount("/w/后勤技能一览#_s=线索搜集·β");
+    const holders = [...host.querySelectorAll<HTMLElement>(".rs-holder")];
+    expect(holders.map((h) => h.getAttribute("title"))).toEqual(["丙", "乙"]);
+    expect(holders.map((h) => h.style.getPropertyValue("--rs-lv"))).toEqual([
+      '"30"',
+      "",
+    ]);
   });
 
   it("持有者筛选：不符合的压淡不藏，符合的排前面", async () => {
     const host = await mount("/w/后勤技能一览#rarity=1-3&_s=金属工艺·α");
     const holders = [...host.querySelectorAll(".rs-holder")];
-    expect(
-      holders.map((h) => h.getAttribute("data-tip")?.split(" · ")[0]),
-    ).toEqual(["甲", "丁"]);
+    expect(holders.map((h) => h.getAttribute("title"))).toEqual(["丁", "甲"]);
     expect(holders.map((h) => h.classList.contains("is-dim"))).toEqual([
-      true,
       false,
+      true,
     ]);
   });
 

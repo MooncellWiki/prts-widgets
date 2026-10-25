@@ -17,6 +17,10 @@ export const skillIcon = (icon: string) => torappu(`build_skill_icon/${icon}`);
 export const eliteIcon = (phase: number) =>
   torappu(`elite_icon/elite_${phase}`);
 
+/** 精英大图（白色、自带投影，256px 宽），同现网 微件:干员头像 压在头像左下角的那张 */
+export const eliteLarge = (phase: number) =>
+  torappu(`elite_icon/elite_${phase}_large`);
+
 /** 头像右下角的黄色星级原图，同首页的干员卡 */
 export const rarityIcon = (stars: number) =>
   torappu(`rarity_icon/rarity_yellow_${stars - 1}`);

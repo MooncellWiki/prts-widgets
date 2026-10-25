@@ -66,11 +66,13 @@ const groupLabel = computed(
           data-rc
           :style="roomVars(option.room!)"
         >
-          <i
-            class="rs-glyph"
-            :style="glyphStyle(option.room!.glyph)"
-            aria-hidden="true"
-          />{{ option.label }}
+          <span class="rs-gl"
+            ><i
+              class="rs-glyph"
+              :style="glyphStyle(option.room!.glyph)"
+              aria-hidden="true"
+            />{{ option.label }}</span
+          >
         </AkChip>
       </template>
       <template v-else-if="groups">
@@ -101,11 +103,13 @@ const groupLabel = computed(
           :key="option.id"
           v-bind="chip(option)"
         >
-          <img
-            class="rs-chip-elite"
-            :src="eliteIcon(option.phase ?? 0)"
-            alt=""
-          />{{ option.label }}
+          <span class="rs-gl"
+            ><img
+              class="rs-chip-elite"
+              :src="eliteIcon(option.phase ?? 0)"
+              alt=""
+            />{{ option.label }}</span
+          >
         </AkChip>
       </template>
       <template v-else-if="filter.id === 'rarity'">
@@ -128,11 +132,13 @@ const groupLabel = computed(
           :key="option.id"
           v-bind="chip(option)"
         >
-          <i
-            class="rs-glyph"
-            :style="glyphStyle(professionLine(option.id))"
-            aria-hidden="true"
-          />{{ option.label }}
+          <span class="rs-gl"
+            ><i
+              class="rs-glyph"
+              :style="glyphStyle(professionLine(option.id))"
+              aria-hidden="true"
+            />{{ option.label }}</span
+          >
         </AkChip>
       </template>
     </div>
@@ -240,16 +246,17 @@ const groupLabel = computed(
     outline-offset: 2px;
   }
 
-  // 设施线稿取设施色（--rs-room 由 data-rc 选），选中后跟文字；职业线稿一直跟文字
-  > .rs-glyph {
+  // 设施线稿取设施色（--rs-room 由 data-rc 选），选中后跟文字；职业线稿一直跟文字。
+  // 线稿与字的对齐见 index.vue 的 .rs-gl
+  .rs-glyph {
     margin-left: -2px;
   }
 
-  &[data-rc] > .rs-glyph {
+  &[data-rc] .rs-glyph {
     color: var(--rs-room, currentColor);
   }
 
-  &[aria-pressed="true"] > .rs-glyph {
+  &[aria-pressed="true"] .rs-glyph {
     color: currentColor;
   }
 }
@@ -286,15 +293,17 @@ const groupLabel = computed(
   }
 }
 
-// 解锁阶段：精英图标是白色线稿，亮色主题反相（同 .ak-elite），选中后在主色底上照原样
+// 解锁阶段：精英图标是白色线稿，亮色主题反相（同 .ak-elite），选中后在主色底上照原样。
+// 同 .rs-gl 里的线稿，中线对着汉字的字面中线（基线上 0.38em）
 .rs-chip-elite {
   width: 18px;
   height: 14px;
-  margin-left: -4px;
+  margin: 0 6px 0 -4px;
   object-fit: contain;
+  vertical-align: calc(0.38em - 7px);
   filter: var(--ak-glyph-filter);
 
-  .ak-chip[aria-pressed="true"] > & {
+  .ak-chip[aria-pressed="true"] & {
     filter: none;
   }
 }

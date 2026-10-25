@@ -77,9 +77,10 @@ export const firstDir = (key: SortKey): SortDir =>
 export const View = { SKILL: 0, OP: 1 } as const;
 export type ViewMode = (typeof View)[keyof typeof View];
 
+/** 每页条数：只有干员视图分页（技能视图按设施折叠，同现网） */
 export const PAGE_STEPS = [50, 100, 200, 500];
 export const DEFAULT_STEP = 100;
-/** 设施页里嵌着的那份只有一个设施（最多的制造站 113 条）：一页放完 */
+/** 设施页里嵌着的那份只有一个设施的干员：一页放完 */
 export const EMBED_STEP = 200;
 
 /** 持有干员超过这么多位先收起（线索搜集·α 有 10 位，刚好放下） */

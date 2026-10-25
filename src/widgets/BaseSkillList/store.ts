@@ -42,7 +42,7 @@ export function resolveRoom(source: Source, room = ""): Room | undefined {
 }
 
 /**
- * 后勤技能一览的全部状态：筛选 / 搜索 / 排序 / 显示方式 / 分页，结果都由它算出。
+ * 后勤技能一览的全部状态：筛选 / 搜索 / 排序 / 显示方式 / 分页（干员视图）/ 设施分组的开合，结果都由它算出。
  * 根组件 createBaseSkillList 后 provide 下去，子组件 useBaseSkillList 取；不走 pinia——
  * 外壳预渲染（src/prerender/）不装插件，设施页上也可能有不止一份。
  * 指定了 room 是设施页里嵌着的那份：只看这个设施、没有设施那一行、不碰地址栏。
@@ -75,7 +75,7 @@ export function createBaseSkillList(
       )
     : source.chars;
 
-  /* ── 筛选 → 排序 → 分页 ── */
+  /* ── 筛选 → 排序 → 分页（技能视图不分页，按设施折叠） ── */
   const query = computed<Query>(() => ({
     filters,
     needle: normalizeNeedle(state.q),
@@ -106,21 +106,39 @@ export function createBaseSkillList(
     state.view === View.OP ? chars.length : buffs.length,
   );
   const pageCount = computed(() =>
-    Math.max(1, Math.ceil(shown.value / state.step)),
+    state.view === View.OP
+      ? Math.max(1, Math.ceil(shown.value / state.step))
+      : 1,
   );
   const page = computed(() =>
     Math.min(Math.max(1, state.page), pageCount.value),
   );
   const slice = <T>(list: readonly T[]) =>
     list.slice((page.value - 1) * state.step, page.value * state.step);
-  const pageBuffs = computed(() => slice(buffList.value));
   const pageChars = computed(() => slice(charList.value));
   watch([buffList, charList], () => {
     state.page = 1;
   });
 
-  /** 按游戏顺序排时按设施分组（组头吸顶）；设施页里只有一个设施，不分 */
-  const grouped = computed(() => !room && state.sort.key === "order");
+  /** 技能视图始终按设施分组（组头吸顶，排序只在组内排）；设施页里只有一个设施，不分 */
+  const grouped = !room;
+
+  /*
+   * 设施分组的开合：同现网（每个设施一张默认折叠的表）默认都折叠，组头上写着条数；
+   * 有了筛选 / 搜索就默认都展开，不然命中的技能还得一组组点开找。
+   * 点组头翻转这一组（flipped 记和默认不一样的那些），有没有筛选一变就都回到默认。
+   */
+  const narrowed = computed(
+    () => query.value.needle !== "" || rows.some((f) => f.selected.size > 0),
+  );
+  const flipped = reactive(new Set<string>());
+  watch(narrowed, () => flipped.clear());
+  const isOpen = (r: Room) => narrowed.value !== flipped.has(r.id);
+  /** 结果里出现的设施（有组头的那些） */
+  const shownRooms = computed(() => [
+    ...new Set(buffList.value.map((b) => b.room)),
+  ]);
+  const allOpen = computed(() => shownRooms.value.every(isOpen));
 
   /** 作用对象行出哪几个设施的段：一览页上是选着的、带作用对象的设施；设施页上就是这个设施 */
   const targetRooms = computed(() =>
@@ -195,6 +213,15 @@ export function createBaseSkillList(
   function expand(index: number) {
     expanded.add(index);
   }
+  function toggleRoom(r: Room) {
+    if (!flipped.delete(r.id)) flipped.add(r.id);
+  }
+  /** 全部展开 / 全部折叠 */
+  function setAllOpen(open: boolean) {
+    flipped.clear();
+    if (open !== narrowed.value)
+      for (const r of source.rooms) flipped.add(r.id);
+  }
 
   return {
     source,
@@ -214,9 +241,10 @@ export function createBaseSkillList(
     total,
     page,
     pageCount,
-    pageBuffs,
     pageChars,
     grouped,
+    isOpen,
+    allOpen,
     targetRooms,
     hash,
     shareLink,
@@ -230,6 +258,8 @@ export function createBaseSkillList(
     setPage,
     setView,
     expand,
+    toggleRoom,
+    setAllOpen,
   };
 }
 

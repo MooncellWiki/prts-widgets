@@ -89,4 +89,22 @@ html.skin-theme-clientpref-night .rs [data-rc],
   -webkit-mask: center / contain no-repeat;
   mask: center / contain no-repeat;
 }
+
+/*
+ * 线稿 + 汉字：<span class="rs-gl"><i class="rs-glyph" />名字</span>，线稿和字排在同一行里，中线对着汉字的字面中线——
+ * 基线上 0.38em，CJK 字体表意字框（基线下 0.12em ~ 上 0.88em）的中点，思源 / 苹方 / 雅黑都是这个数。
+ * 不用 flex 的 align-items: center：那是按字体的 ascent / descent 居中，各字体不一样，线稿会比字高 0.5–1.5px，
+ * 换个皮肤换个字体又不一样。--rs-gl 是线稿边长，--rs-gl-gap 是线稿与字的间距；em 是字号（线稿继承 .rs-gl 的）。
+ */
+.rs-gl {
+  white-space: nowrap;
+
+  > .rs-glyph {
+    display: inline-block;
+    width: var(--rs-gl, 16px);
+    height: var(--rs-gl, 16px);
+    margin-right: var(--rs-gl-gap, 6px);
+    vertical-align: calc(0.38em - var(--rs-gl, 16px) / 2);
+  }
+}
 </style>

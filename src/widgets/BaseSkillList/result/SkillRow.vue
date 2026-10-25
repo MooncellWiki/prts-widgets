@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, useTemplateRef } from "vue";
 
-import { AkElite } from "@mooncellwiki/prts-design-vue";
-
 import { onImageError } from "@/utils/charImage";
 
-import { eliteIcon } from "../assets";
 import { condText, MAX_HOLDERS } from "../consts";
 import { holderPass } from "../filter";
 import { hasMath, typesetMath } from "../math";
@@ -13,21 +10,17 @@ import { highlight, plainText, renderRichText } from "../richText";
 import { useBaseSkillList } from "../store";
 
 import HolderCard from "./HolderCard.vue";
-import RoomTag from "./RoomTag.vue";
 import SkillTile from "./SkillTile.vue";
 
 import type { Buff, Holding } from "../data";
 
 /**
- * 一行一条技能：方砖 ‖ 名字 · 解锁条件 · 设施 · 效率 / 替换关系 / 描述 / 备注 ‖ 持有干员。三列垂直居中。
- * 解锁条件：持有者都一样（763 条里 729 条）写在技能名旁边；不一样的（线索搜集·β 这类）持有干员按条件分段、段首写条件。
+ * 一行一条技能：方砖 ‖ 名字 · 效率 / 替换关系 / 描述 / 备注 ‖ 持有干员。三列垂直居中。
+ * 设施看组头（结果始终按设施分组），行里不带。
+ * 解锁条件同现网，是持有干员头像左下角的精英图标（各人可以不一样，线索搜集·β 这类）；持有干员按解锁条件排，同条件的稀有度高的在前。
  * 持有干员超过 10 位先收起，点「+N」展开；持有者那三行筛选不符合的压淡、符合的排前面。
  */
-const props = defineProps<{
-  buff: Buff;
-  /** 在设施分组里：不再带设施名 */
-  grouped: boolean;
-}>();
+const props = defineProps<{ buff: Buff }>();
 
 const store = useBaseSkillList();
 const { query, holderFiltered, expanded, source } = store;
@@ -35,21 +28,17 @@ const { query, holderFiltered, expanded, source } = store;
 const needle = computed(() => query.value.needle);
 const passes = (h: Holding) => holderPass(h, query.value);
 
-const holders = computed(() => {
-  const all = props.buff.holders;
-  if (!holderFiltered.value) return all;
-  return [...all].sort((x, y) => Number(passes(y)) - Number(passes(x)));
-});
+/** 数据里是稀有度次序，sort 稳定，按条件排完同条件的仍是稀有度高的在前 */
+const holders = computed(() =>
+  [...props.buff.holders].sort(
+    (x, y) =>
+      (holderFiltered.value ? Number(passes(y)) - Number(passes(x)) : 0) ||
+      x.phase - y.phase ||
+      x.level - y.level,
+  ),
+);
 const dim = (h: Holding) => holderFiltered.value && !passes(h);
 
-/** 出现过的解锁条件，按阶段 / 等级排 */
-const conds = computed(() => {
-  const map = new Map<string, Holding>();
-  for (const h of props.buff.holders) if (!map.has(h.cond)) map.set(h.cond, h);
-  return [...map.values()].sort(
-    (a, b) => a.phase - b.phase || a.level - b.level,
-  );
-});
 const open = computed(() => expanded.has(props.buff.index));
 const visible = computed(() =>
   open.value ? holders.value : holders.value.slice(0, MAX_HOLDERS),
@@ -98,12 +87,6 @@ onMounted(() => {
     <div class="rs-main">
       <div class="rs-head">
         <h3 class="rs-name" v-html="nameHtml" />
-        <AkElite
-          v-if="conds.length === 1"
-          :src="eliteIcon(conds[0].phase)"
-          :text="condText(conds[0].phase, conds[0].level)"
-        />
-        <RoomTag v-if="!grouped && !store.room" :room="buff.room" />
         <span
           v-if="buff.eff !== 0"
           class="rs-eff"
@@ -124,50 +107,32 @@ onMounted(() => {
       <p v-if="noteHtml" ref="note" class="rs-note" v-html="noteHtml" />
     </div>
     <div class="rs-holders" @error.capture="onImageError">
-      <template v-if="conds.length > 1">
-        <div v-for="c in conds" :key="c.cond" class="rs-hgroup">
-          <AkElite
-            :src="eliteIcon(c.phase)"
-            :text="condText(c.phase, c.level)"
-          />
-          <div class="rs-hgroup__list">
-            <HolderCard
-              v-for="h in holders.filter((x) => x.cond === c.cond)"
-              :key="`${h.char.id}:${h.slot}`"
-              :char="h.char"
-              :holding="h"
-              :dim="dim(h)"
-            />
-          </div>
-        </div>
-      </template>
-      <template v-else>
-        <HolderCard
-          v-for="h in visible"
-          :key="`${h.char.id}:${h.slot}`"
-          :char="h.char"
-          :holding="h"
-          :dim="dim(h)"
-        />
-        <button
-          v-if="holders.length > visible.length"
-          type="button"
-          class="rs-holders__more"
-          :aria-label="`展开全部 ${holders.length} 位持有干员`"
-          @click="store.expand(buff.index)"
-        >
-          +{{ holders.length - visible.length }}
-        </button>
-      </template>
+      <HolderCard
+        v-for="h in visible"
+        :key="`${h.char.id}:${h.slot}`"
+        :char="h.char"
+        :holding="h"
+        :dim="dim(h)"
+      />
+      <button
+        v-if="holders.length > visible.length"
+        type="button"
+        class="rs-holders__more"
+        :aria-label="`展开全部 ${holders.length} 位持有干员`"
+        @click="store.expand(buff.index)"
+      >
+        +{{ holders.length - visible.length }}
+      </button>
     </div>
   </article>
 </template>
 
 <style scoped lang="scss">
-// 三列垂直居中：一行描述的行比 64px 的干员卡矮，方砖和文字对着卡的中线；持有干员定宽一列（一行四张卡、多了折行）
+// 三列垂直居中：一行描述的行比 64px 的干员卡矮，方砖和文字对着卡的中线。
+// 持有干员一列随人数变宽：至少四张卡宽（人少的行卡片左缘对齐），人多时放到一行排完，最宽到整行的一半，再多才折行
 .rs-item {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 268px;
+  grid-template-columns: 48px minmax(0, 1fr) fit-content(50%);
   gap: 4px 14px;
   align-items: center;
   padding: 10px var(--ak-space-3);
@@ -197,11 +162,6 @@ onMounted(() => {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-
-  .ak-elite {
-    font-weight: 500;
-    color: var(--ak-fg-secondary);
-  }
 }
 
 .rs-name {
@@ -278,10 +238,12 @@ onMounted(() => {
   flex-wrap: wrap;
   align-content: flex-start;
   gap: 4px;
-  min-width: 0;
+  // 四张卡 + 三道缝：fit-content 的下限
+  min-width: 268px;
 
   .rs--compact & {
     grid-column: 2;
+    min-width: 0;
     margin-top: 4px;
   }
 
@@ -315,30 +277,6 @@ onMounted(() => {
       width: 56px;
       height: 56px;
     }
-  }
-}
-
-// 持有者条件不一样的：按条件分段，段首写条件
-.rs-hgroup {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1 1 100%;
-  min-width: 0;
-
-  & + & {
-    margin-top: 4px;
-  }
-
-  .ak-elite {
-    font-weight: 500;
-    color: var(--ak-fg-muted);
-  }
-
-  &__list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
   }
 }
 </style>

@@ -64,7 +64,7 @@ function toPage(n: number) {
   result.value?.scrollIntoView({ block: "start" });
 }
 
-/* 持有干员 / 效率 / 描述里的术语：锚点带 data-tip，气泡按视口定位，不被分组的框裁掉 */
+/* 效率 / 描述里的术语：锚点带 data-tip，气泡按视口定位，不被分组的框裁掉 */
 const { tip, handlers: tipHandlers } = useHoverTip(
   useTemplateRef<HTMLElement>("bubble"),
   "[data-tip]",
@@ -98,7 +98,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
       <SkillList v-else />
     </div>
 
-    <div class="rs-foot">
+    <div v-if="pageCount > 1" class="rs-foot">
       <ListPager
         :page="page"
         :page-count="pageCount"
