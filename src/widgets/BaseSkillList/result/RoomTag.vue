@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ROOM_GLYPHS } from "../assets";
-import { roomVars } from "../room";
+import { glyphStyle, roomVars } from "../room";
 
 import type { Room } from "../data";
 
@@ -10,12 +9,9 @@ defineProps<{ room: Room }>();
 
 <template>
   <span class="rs-roomtag" data-rc :style="roomVars(room)">
-    <i
-      v-if="room.glyph"
-      class="rs-glyph"
-      :style="{ maskImage: `url(&quot;${ROOM_GLYPHS[room.glyph]}&quot;)` }"
-      aria-hidden="true"
-    />{{ room.name }}
+    <i class="rs-glyph" :style="glyphStyle(room.glyph)" aria-hidden="true" />{{
+      room.name
+    }}
   </span>
 </template>
 

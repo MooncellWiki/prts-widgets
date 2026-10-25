@@ -3,8 +3,8 @@ import { computed, useId } from "vue";
 
 import { AkChip } from "@mooncellwiki/prts-design-vue";
 
-import { eliteIcon, professionLine, ROOM_GLYPHS } from "../assets";
-import { roomVars } from "../room";
+import { eliteIcon, professionLine } from "../assets";
+import { glyphStyle, roomVars } from "../room";
 import { useBaseSkillList } from "../store";
 
 import type { Room } from "../data";
@@ -17,10 +17,8 @@ import type { FilterOption, FilterState } from "../filter";
  */
 const props = defineProps<{
   filter: FilterState;
-  /** 作用对象行：出哪几个设施的段 */
+  /** 作用对象行：出哪几个设施的段（段首的设施名就说明了这一行管哪几个设施） */
   groups?: readonly Room[];
-  /** 标签后面的小字 */
-  hint?: string;
 }>();
 
 const store = useBaseSkillList();
@@ -38,7 +36,6 @@ const optionsOf = (room: Room) =>
 const groupLabel = computed(
   () => (props.groups?.length ?? 0) > 1 || !store.room,
 );
-const mask = (src: string) => ({ maskImage: `url("${src}")` });
 </script>
 
 <template>
@@ -49,7 +46,7 @@ const mask = (src: string) => ({ maskImage: `url("${src}")` });
   >
     <div class="rs-row__label">
       <span :id="id">
-        {{ filter.def.title }}<small v-if="hint"> {{ hint }}</small>
+        {{ filter.def.title }}
       </span>
       <button
         type="button"
@@ -70,9 +67,8 @@ const mask = (src: string) => ({ maskImage: `url("${src}")` });
           :style="roomVars(option.room!)"
         >
           <i
-            v-if="option.room?.glyph"
             class="rs-glyph"
-            :style="mask(ROOM_GLYPHS[option.room.glyph])"
+            :style="glyphStyle(option.room!.glyph)"
             aria-hidden="true"
           />{{ option.label }}
         </AkChip>
@@ -134,7 +130,7 @@ const mask = (src: string) => ({ maskImage: `url("${src}")` });
         >
           <i
             class="rs-glyph"
-            :style="mask(professionLine(option.id))"
+            :style="glyphStyle(professionLine(option.id))"
             aria-hidden="true"
           />{{ option.label }}
         </AkChip>
@@ -170,12 +166,6 @@ const mask = (src: string) => ({ maskImage: `url("${src}")` });
     line-height: 1.4;
     color: var(--ak-fg-secondary);
     white-space: nowrap;
-
-    small {
-      font-weight: 400;
-      font-size: var(--ak-fs-xs);
-      color: var(--ak-fg-muted);
-    }
   }
 
   &.has-active > &__label {

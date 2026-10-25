@@ -5,7 +5,7 @@ import { AkOpCard } from "@mooncellwiki/prts-design-vue";
 
 import { avatar } from "@/utils/charImage";
 
-import { professionBadge, rarityIcon, wikiLink } from "../assets";
+import { professionLine, rarityIcon, wikiLink } from "../assets";
 import { condText, professionName } from "../consts";
 
 import type { Char, Holding } from "../data";
@@ -46,7 +46,7 @@ const tip = computed(() => {
     :rarity="rarity"
     :rarity-icon="rarityIcon(char.stars)"
     :profession="professionName(char.profession)"
-    :profession-icon="professionBadge(char.profession)"
+    :profession-icon="professionLine(char.profession)"
     size="sm"
     :href="wikiLink(char.name)"
     avatar-only

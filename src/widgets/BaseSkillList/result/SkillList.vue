@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { ROOM_GLYPHS } from "../assets";
-import { roomVars } from "../room";
+import { glyphStyle, roomVars } from "../room";
 import { useBaseSkillList } from "../store";
 
 import SkillRow from "./SkillRow.vue";
@@ -46,11 +45,8 @@ const counts = computed(() => {
       >
         <div class="rs-section__head" data-rc :style="roomVars(g.room)">
           <i
-            v-if="g.room.glyph"
             class="rs-glyph"
-            :style="{
-              maskImage: `url(&quot;${ROOM_GLYPHS[g.room.glyph]}&quot;)`,
-            }"
+            :style="glyphStyle(g.room.glyph)"
             aria-hidden="true"
           />
           <h2 class="rs-section__title">{{ g.room.name }}</h2>

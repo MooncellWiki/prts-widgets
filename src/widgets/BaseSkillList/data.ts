@@ -1,6 +1,7 @@
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
-import { condId, ROOM_ORDER, TARGET_LABELS, type Glyph } from "./consts";
+import { roomGlyph } from "./assets";
+import { condId, ROOM_ORDER, TARGET_LABELS } from "./consts";
 import { parseRichText, plainText, type RtNode } from "./richText";
 
 /* ── 游戏数据（torappu 解包的 gamedata，只列用得到的字段）── */
@@ -95,7 +96,8 @@ export interface Room {
   index: number;
   id: string;
   name: string;
-  glyph?: Glyph;
+  /** 设施线稿的地址 */
+  glyph: string;
   /** 亮色主题的设施色：技能名条的底色 */
   color: string;
   /** 暗色主题的设施色：进驻面板的光环色 */
@@ -215,7 +217,7 @@ export function buildSource({
     ]),
   );
 
-  /* 设施：已知的按游戏次序；新出的（有技能但不在表里）接在后面，没有线稿，光环色用技能名条的底色 */
+  /* 设施：已知的按游戏次序；新出的（有技能但不在表里）接在后面，光环色用技能名条的底色 */
   const raws = Object.values(building.buffs);
   const known = new Map<string, (typeof ROOM_ORDER)[number]>(
     ROOM_ORDER.map((r) => [r.id, r]),
@@ -234,7 +236,7 @@ export function buildSource({
       index: rooms.length,
       id,
       name: building.rooms[id]?.name ?? id,
-      glyph: known.get(id)?.glyph,
+      glyph: roomGlyph(id),
       color,
       halo: known.get(id)?.halo ?? color,
       targets: Object.entries(dict)

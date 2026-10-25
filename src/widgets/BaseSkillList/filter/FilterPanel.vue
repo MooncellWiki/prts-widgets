@@ -16,7 +16,7 @@ import FilterRow from "./FilterRow.vue";
 defineProps<{ narrow: boolean }>();
 
 const store = useBaseSkillList();
-const { filters, rows, targetRooms } = store;
+const { rows, targetRooms } = store;
 const rowsId = useId();
 const open = ref(false);
 
@@ -54,9 +54,6 @@ const activeCount = computed(() =>
         :key="f.id"
         :filter="f"
         :groups="f.id === 'target' ? targetRooms : undefined"
-        :hint="
-          f === filters.target && !store.room ? '制造站 / 加工站 / 训练室' : ''
-        "
       />
     </div>
   </section>

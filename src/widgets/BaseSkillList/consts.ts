@@ -2,24 +2,21 @@ import { professionMap } from "@/utils/utils";
 
 /**
  * 有后勤技能的设施，按游戏 rooms 表的次序（同现网页面各章节的次序；活动室 / 电梯 / 走廊没有技能）。
- * glyph = 进驻面板技能图标的白色线稿（arts/building/buffs/buff_icon_hub，assets/building/ 下）；
  * halo = 进驻面板技能图标的光环色（arts/building/buffs/buff_image_config，按 RoomType），暗色主题的设施色。
  * 亮色主题的设施色取这一设施技能名条的底色 buffColor（building_data 里每个设施只有一种），见 data.ts。
  */
 export const ROOM_ORDER = [
-  { id: "CONTROL", glyph: "control", halo: "#00E4D7" },
-  { id: "POWER", glyph: "power", halo: "#8FC31F" },
-  { id: "MANUFACTURE", glyph: "manufacture", halo: "#FFCC00" },
-  { id: "TRADING", glyph: "trading", halo: "#2ABDFF" },
-  { id: "DORMITORY", glyph: "dormitory", halo: "#2AFFED" },
-  { id: "WORKSHOP", glyph: "workshop", halo: "#E3EB00" },
-  { id: "HIRE", glyph: "hire", halo: "#DCDCDC" },
-  { id: "TRAINING", glyph: "training", halo: "#D20039" },
-  { id: "RECYCLE", glyph: "recycle", halo: "#6CCBCB" },
-  { id: "MEETING", glyph: "meeting", halo: "#FF6534" },
+  { id: "CONTROL", halo: "#00E4D7" },
+  { id: "POWER", halo: "#8FC31F" },
+  { id: "MANUFACTURE", halo: "#FFCC00" },
+  { id: "TRADING", halo: "#2ABDFF" },
+  { id: "DORMITORY", halo: "#2AFFED" },
+  { id: "WORKSHOP", halo: "#E3EB00" },
+  { id: "HIRE", halo: "#DCDCDC" },
+  { id: "TRAINING", halo: "#D20039" },
+  { id: "RECYCLE", halo: "#6CCBCB" },
+  { id: "MEETING", halo: "#FF6534" },
 ] as const;
-
-export type Glyph = (typeof ROOM_ORDER)[number]["glyph"];
 
 /** 作用对象（buffSortData.efficiencyTargetDict 的键）在游戏里的叫法：制造站 / 加工站是产物，训练室是职业 */
 export const TARGET_LABELS: Record<string, string> = {
