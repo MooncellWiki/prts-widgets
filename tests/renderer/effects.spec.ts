@@ -17,6 +17,44 @@ function createBlockerRenderer(): any {
   return renderer;
 }
 
+// A CurtainRenderState whose graphic records every poly()/fill() argument.
+function createCurtainGraphicState(
+  direction: number,
+  fill: number,
+  grad: boolean,
+) {
+  const draws: unknown[] = [];
+  const state = {
+    alpha: 1,
+    direction,
+    fill,
+    grad,
+    graphic: {
+      alpha: 1,
+      clear: () => {},
+      poly(points: number[]) {
+        draws.push(points);
+        return this;
+      },
+      fill(style: unknown) {
+        draws.push(style);
+        return this;
+      },
+      visible: false,
+    },
+  };
+  return { draws, state };
+}
+
+// Clipped polygons start wherever the clip enters the stage, so compare
+// vertex sets (rounded to 0.01px) instead of flat arrays.
+function toPointSet(points: number[]): string[] {
+  const set: string[] = [];
+  for (let index = 0; index < points.length; index += 2)
+    set.push(`${points[index]!.toFixed(2)},${points[index + 1]!.toFixed(2)}`);
+  return set.toSorted();
+}
+
 describe("PixiStoryRenderer", () => {
   it("eases the cameraeffect grayscale tween with DOTween's default OutQuad", () => {
     const manual = createManualClock();
@@ -198,6 +236,205 @@ describe("PixiStoryRenderer", () => {
     const gradient = fills[1] as any;
     expect(gradient.start).toEqual({ x: 620, y: 0 });
     expect(gradient.end).toEqual({ x: 640, y: 0 });
+  });
+
+  it("draws corner curtains as 45° wipes hinged past the stage corner", () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    const { draws, state } = createCurtainGraphicState(1, 0.07, false);
+    const vector = renderer.resolveCurtainVector(1);
+
+    // direction 1 is a 1600x1600 rect rotated -45° around a pivot at
+    // (1204.69, -240.69), 116.9px past the top-right corner along the
+    // inward normal: fill 0.07 (112px) never reaches the stage.
+    renderer.updateCurtainState(state, vector);
+    expect(state.graphic.visible).toBe(false);
+    expect(draws).toEqual([]);
+
+    // fill 0.5 puts the inner edge 800 - 116.9px into the stage: the 45°
+    // line y = x - 314.0, not the stage diagonal.
+    state.fill = 0.5;
+    renderer.updateCurtainState(state, vector);
+    expect(state.graphic.visible).toBe(true);
+    expect(draws).toHaveLength(2);
+    expect(toPointSet(draws[0] as number[])).toEqual(
+      toPointSet([314.01, 0, 1280, 0, 1280, 720, 1034.01, 720]),
+    );
+    expect(draws[1]).toBe(0x00_00_00);
+
+    // From fill ~0.957 the rect clears the opposite corner.
+    draws.length = 0;
+    state.fill = 0.96;
+    renderer.updateCurtainState(state, vector);
+    expect(toPointSet(draws[0] as number[])).toEqual(
+      toPointSet([0, 0, 1280, 0, 1280, 720, 0, 720]),
+    );
+  });
+
+  it("feathers corner curtains along the rotated inner edge", () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    const { draws, state } = createCurtainGraphicState(3, 0.5, true);
+    const vector = renderer.resolveCurtainVector(3);
+
+    renderer.updateCurtainState(state, vector);
+
+    // direction 3 hinges at (1201.49, 938.18), 98.8px past the bottom-right
+    // corner; the inner edge sits at hinge . vector + 800. The 20px gradient
+    // is a layout child inside the rect, so the body stops 20px short of the
+    // edge and the feather runs along the 45° normal.
+    const edge = 1201.49 * vector.x + 938.18 * vector.y + 800;
+    expect(state.graphic.visible).toBe(true);
+    expect(draws).toHaveLength(4);
+    expect(draws[1]).toBe(0x00_00_00);
+    const gradient = draws[3] as any;
+    expect(gradient.start.x).toBeCloseTo(vector.x * (edge - 20));
+    expect(gradient.start.y).toBeCloseTo(vector.y * (edge - 20));
+    expect(gradient.end.x).toBeCloseTo(vector.x * edge);
+    expect(gradient.end.y).toBeCloseTo(vector.y * edge);
+
+    // Without `grad` the corner layout has no padding: the body reaches the
+    // inner edge itself.
+    draws.length = 0;
+    state.grad = false;
+    renderer.updateCurtainState(state, vector);
+    expect(draws).toHaveLength(2);
+    const projections = (draws[0] as number[]).flatMap((value, index, all) =>
+      index % 2 === 0 ? [value * vector.x + all[index + 1]! * vector.y] : [],
+    );
+    expect(Math.max(...projections)).toBeCloseTo(edge);
+  });
+
+  it("leaves the straight-edge layout padding empty without grad", () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    const { draws, state } = createCurtainGraphicState(0, 0.25, false);
+
+    // Straight-edge AVGCurtains pad their layout group by 20px on the inner
+    // edge whether or not the gradient is active: a fill=0.25 top curtain is
+    // a 180px rect but only 160px of black.
+    renderer.updateCurtainState(state, { x: 0, y: 1 });
+    expect(draws).toEqual([[0, 160, 0, 0, 1280, 0, 1280, 160], 0x00_00_00]);
+
+    // Under 20px nothing but the (inactive) gradient slot is left.
+    draws.length = 0;
+    state.fill = 0.02;
+    renderer.updateCurtainState(state, { x: 0, y: 1 });
+    expect(state.graphic.visible).toBe(false);
+    expect(draws).toEqual([]);
+  });
+
+  it("snaps curtain alpha to 1 when `a` is absent, ignoring leftover alpha", async () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    renderer.tween = vi.fn(async () => {});
+
+    // A previous command left the side at alpha 0.3.
+    await renderer.setCurtain({
+      alphaTo: 0.3,
+      block: false,
+      delayMs: 0,
+      direction: 4,
+      fadeMs: 0,
+      fillFrom: 0.5,
+      fillTo: 0.5,
+      grad: false,
+    });
+    expect(renderer.curtains.get(4).alpha).toBe(0.3);
+
+    // With `a` present but no `afrom`, the tween starts from the alpha
+    // captured *before* the unconditional SetCurtainAlpha(1.0) snap.
+    await renderer.setCurtain({
+      alphaTo: 0.8,
+      block: false,
+      delayMs: 0,
+      direction: 4,
+      fadeMs: 150,
+      fillFrom: 0.5,
+      fillTo: 0.6,
+      grad: false,
+    });
+    expect(renderer.curtains.get(4).alpha).toBe(0.3);
+
+    // Without `a` native snaps to 1.0 before branching, so a bare `afrom`
+    // is never applied and the leftover 0.3 does not survive.
+    await renderer.setCurtain({
+      alphaFrom: 0.2,
+      block: false,
+      delayMs: 0,
+      direction: 4,
+      fadeMs: 0,
+      fillFrom: 0.5,
+      fillTo: 0.5,
+      grad: false,
+    });
+    expect(renderer.curtains.get(4).alpha).toBe(1);
+  });
+
+  it("keeps the grad feather while clearCurtains retracts the sides", async () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    renderer.tween = vi.fn(async () => {});
+    // FillGradient needs a real canvas context; this test is about the input
+    // clearCurtains forwards, not the drawing.
+    renderer.updateCurtainState = vi.fn();
+    const spy = vi.spyOn(renderer, "setCurtain");
+
+    await renderer.setCurtain({
+      block: false,
+      delayMs: 0,
+      direction: 0,
+      fadeMs: 0,
+      fillFrom: 1,
+      fillTo: 0.2,
+      grad: true,
+    });
+    await renderer.clearCurtains(100, false);
+
+    // Native HideCurtain only tweens sizeDelta toward zero; it never touches
+    // alpha or the `_gradientImg` active state.
+    expect(spy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        alphaFrom: 1,
+        alphaTo: 1,
+        direction: 0,
+        fillTo: 0,
+        grad: true,
+      }),
+    );
+  });
+
+  it("eases the curtain wipe with DOTween's default OutQuad", async () => {
+    const manual = createManualClock();
+    const renderer = createRenderer();
+    renderer.app = {};
+    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+    // FillGradient needs a real canvas context; this test is about the tween
+    // curve, not the drawing.
+    renderer.updateCurtainState = vi.fn();
+
+    await renderer.setCurtain({
+      block: false,
+      delayMs: 0,
+      direction: 6,
+      fadeMs: 1000,
+      fillFrom: 0,
+      fillTo: 1,
+      grad: false,
+    });
+    const state = renderer.curtains.get(6);
+    expect(state.fill).toBe(0);
+
+    manual.advance(500);
+    manual.drainFrame();
+    // Native SetCurtainSizeTween/SetCurtainAlphaTween never call SetEase, so
+    // both the DOSizeDelta wipe and any DOFade run on DOTween's
+    // defaultEaseType=6 (OutQuad): halfway = 0.75, not the linear 0.5.
+    expect(state.fill).toBeCloseTo(0.75);
+
+    manual.advance(500);
+    manual.drainFrame();
+    expect(state.fill).toBe(1);
   });
 });
 

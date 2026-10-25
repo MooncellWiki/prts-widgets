@@ -347,6 +347,29 @@ const CURTAIN_STAGE_CORNERS: ReadonlyArray<{ x: number; y: number }> = [
 ];
 
 /**
+ * Native corner curtains (direction 1/3/5/7): `_GenSizeDeltaWithMultiplior`
+ * scales only the local Y axis of a 1600x1600 AVGCurtain rect, but each
+ * corner rect carries a 45° `m_LocalRotation` (z = ±0.3827) around a pivot
+ * that sits off-stage past its corner. The inner edge therefore sweeps along
+ * the same 45° normal `resolveCurtainVector` returns, at projection
+ * `hinge · vector + 1600 * fill` -- a diagonal wipe, offset by the hinge.
+ * Hinges are the `panel_curtains` pivots (sharedassets1, 2.7.81) in stage
+ * space (y down). They sit 98.8-118.3px past the nearest stage corner, so
+ * fills under ~0.062-0.074 never reach the stage, and the stage is fully
+ * covered from ~0.946-0.958. The ±800px lateral span covers the whole stage
+ * for every corner, so only the inner edge clips.
+ */
+const CURTAIN_CORNER_SIDE = 1600;
+const CURTAIN_CORNER_HINGES: Readonly<
+  Record<number, { x: number; y: number }>
+> = {
+  1: { x: 1204.69, y: -240.69 },
+  3: { x: 1201.49, y: 938.18 },
+  5: { x: 70.11, y: 938.18 },
+  7: { x: 73.31, y: -240.69 },
+};
+
+/**
  * 对话框顶部/底部黑条用到的同一张渐变纹理（APK 中 `sprite_avg_cutscene`，
  * 4×310 RGBA，自上而下 alpha 0→1）。放在 `public/` 下由 Vite 直接服务，
  * 预加载由 preload.ts 把该 URL 加入预加载集来预热 pixi Assets 缓存。
@@ -550,6 +573,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly cutinPanel: CharacterCutinPanel;
 
   private readonly curtainLayer = this.layers.curtains;
+  // Skip semantics: 2.7.61's AVGCurtainPanel.ShouldResetOnSkip returns false
+  // (0x183e54960, literal `xor al, al`), so skipping a segment must NOT clear
+  // curtains -- they only go away via curtain commands or full destroy().
   private readonly curtains = new Map<number, CurtainRenderState>();
   private readonly gridBackgroundLayer = this.layers.gridBackground;
   private gridBackgroundSessionId = 0;
@@ -2770,7 +2796,10 @@ export class PixiStoryRenderer implements StoryRenderer {
           fadeMs,
           fillFrom: state.fill,
           fillTo: 0,
-          grad: false,
+          // Native `HideCurtain` only tweens sizeDelta toward zero; it never
+          // touches alpha or the `_gradientImg` active state, so the 20px
+          // feather must stay on while the curtain retracts.
+          grad: state.grad,
         }),
       ),
     );
@@ -3087,8 +3116,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     const state = this.ensureCurtainState(direction);
     const fromFill = clamp01(input.fillFrom ?? state.fill);
     const toFill = clamp01(input.fillTo);
-    const fromAlpha = clamp01(input.alphaFrom ?? state.alpha);
-    const toAlpha = clamp01(input.alphaTo ?? fromAlpha);
+    // Native port: `_ExecuteCurtain` reads `afrom` (default: the alpha
+    // captured *before* the snap) and then runs `SetCurtainAlpha(1.0)`
+    // unconditionally, before choosing the instant/tween branch. The re-snap
+    // to `afrom` only happens inside the a>=0 alpha tween
+    // (`SetCurtainAlphaTween` snaps afrom while building the sequence). With
+    // `a` absent the curtain therefore presents fully opaque no matter what
+    // alpha an earlier command left behind, and a bare `afrom` is ignored.
+    const capturedAlpha = clamp01(input.alphaFrom ?? state.alpha);
+    const fromAlpha = input.alphaTo === undefined ? 1 : capturedAlpha;
+    const toAlpha =
+      input.alphaTo === undefined ? fromAlpha : clamp01(input.alphaTo);
 
     state.fill = fromFill;
     state.alpha = fromAlpha;
@@ -3103,7 +3141,19 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    // Native never actually cancels the side's previous tween. 2.7.61+ calls
+    // DOKill(curtain component, complete: true) (2.7.81 0x183fc3023), whose
+    // target matches neither tween's (_curtainRect / _canvasGroup); and even
+    // 2.7.51's DOKill(transform, false) could not reach them, because both
+    // tweens are nested in a Sequence and AddActiveTweenToSequence drops
+    // nested tweens from the active list DOKill filters. A stale Sequence
+    // keeps writing sizeDelta/alpha until it ends. The session bump is a
+    // deliberate simplification (newest command owns the side), not a port.
     const sessionId = ++state.tweenSessionId;
+    // Native SetCurtainSizeTween/SetCurtainAlphaTween carry no SetEase, so
+    // both DOSizeDelta and DOFade run on DOTween's default OutQuad (2781
+    // re-verified: DOTween cctor defaultEaseType = 6). Without the explicit
+    // ease the TweenRunner default would be linear.
     const animate = () =>
       this.tween(
         input.fadeMs,
@@ -3120,6 +3170,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           this.updateCurtainState(state, vector);
           if (toFill <= 0) this.removeCurtainState(direction, state);
         },
+        { ease: dotweenDefaultEase },
       );
     const run =
       input.delayMs > 0
@@ -3813,25 +3864,40 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    const threshold = this.curtainThreshold(vector, state.fill);
+    const threshold = this.curtainThreshold(
+      state.direction,
+      vector,
+      state.fill,
+    );
     if (threshold === null) {
       state.graphic.visible = false;
       return;
     }
 
-    state.graphic.visible = true;
-
     // The curtain body is a solid black quad (_curtainImg is sprite_white tinted
     // (0,0,0,1)). `grad` adds a separate CURTAIN_GRADIENT_PX strip on the inner
     // edge, opaque on the curtain side and fully transparent toward the screen
     // centre -- it does not fade the whole body.
-    const bodyEnd = state.grad ? threshold - CURTAIN_GRADIENT_PX : threshold;
+    //
+    // The body length comes from each AVGCurtain's layout group. Straight
+    // edges always pad the inner edge by 20px and their gradient ignores
+    // layout, sitting in that padding -- so without `grad` the inner 20px of
+    // the rect stays empty. Corner layouts have no padding and the gradient
+    // is a 20px layout child, so it only takes room from the body while
+    // active.
+    const inset =
+      state.grad || !CURTAIN_CORNER_HINGES[state.direction]
+        ? CURTAIN_GRADIENT_PX
+        : 0;
+    const bodyEnd = threshold - inset;
     const body = this.buildCurtainBand(vector, null, bodyEnd);
+    const feather = state.grad
+      ? this.buildCurtainBand(vector, bodyEnd, threshold)
+      : [];
+    // Corner hinges sit off-stage, so small fills clip away entirely.
+    state.graphic.visible = body.length >= 6 || feather.length >= 6;
+
     if (body.length >= 6) state.graphic.poly(body).fill(0x00_00_00);
-
-    if (!state.grad) return;
-
-    const feather = this.buildCurtainBand(vector, bodyEnd, threshold);
     if (feather.length < 6) return;
 
     state.graphic.poly(feather).fill(
@@ -3848,13 +3914,26 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
-  /** Projection along `vector` where the curtain's inner edge sits. */
+  /**
+   * Projection along `vector` where the curtain's inner edge sits. Straight
+   * edges hinge on the stage edge, so `fill` spans the stage; corners hinge
+   * off-stage at CURTAIN_CORNER_HINGES and grow by the 1600px native side.
+   */
   private curtainThreshold(
+    direction: number,
     vector: { x: number; y: number },
     fill: number,
   ): number | null {
     const clampedFill = clamp01(fill);
     if (clampedFill <= 0) return null;
+
+    const hinge = CURTAIN_CORNER_HINGES[direction];
+    if (hinge)
+      return (
+        hinge.x * vector.x +
+        hinge.y * vector.y +
+        CURTAIN_CORNER_SIDE * clampedFill
+      );
 
     const projections = CURTAIN_STAGE_CORNERS.map(
       (point) => point.x * vector.x + point.y * vector.y,
@@ -3943,6 +4022,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     };
   }
 
+  /**
+   * Inward half-plane normal per direction, following `_curtainWidgets`
+   * order (0 top, then clockwise). The corner diagonals are the native 45°
+   * rect rotation, not the stage diagonal.
+   */
   private resolveCurtainVector(
     direction: number,
   ): { x: number; y: number } | null {
