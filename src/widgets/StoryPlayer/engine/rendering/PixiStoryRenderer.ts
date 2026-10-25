@@ -348,32 +348,25 @@ const CURTAIN_STAGE_CORNERS: ReadonlyArray<{ x: number; y: number }> = [
 
 /**
  * Native corner curtains (direction 1/3/5/7): `_GenSizeDeltaWithMultiplior`
- * scales only the Y axis of a 1600x1600 rect whose pivot sits off-screen, so
- * they are offset horizontal bands, not diagonal wipes. Values come from the
- * level1 `panel_curtains` scene (AVGCurtain pivot/anchoredPosition): the hinge
- * is 240.7px past the top edge (y=960.7) or 218.2px below the bottom
- * (y=-218.2) -- fills under ~0.14-0.15 never reach the stage and draw
- * nothing -- and the 1600-wide rect is horizontally offset (right corners
- * start around x=402, left ones end around x=873), so even fill=1 never spans
- * the whole stage width. See arknights-rev docs/commands/avg-curtain-command.md
- * §4 for the full per-direction RectTransform table.
+ * scales only the local Y axis of a 1600x1600 AVGCurtain rect, but each
+ * corner rect carries a 45° `m_LocalRotation` (z = ±0.3827) around a pivot
+ * that sits off-stage past its corner. The inner edge therefore sweeps along
+ * the same 45° normal `resolveCurtainVector` returns, at projection
+ * `hinge · vector + 1600 * fill` -- a diagonal wipe, offset by the hinge.
+ * Hinges are the `panel_curtains` pivots (sharedassets1, 2.7.81) in stage
+ * space (y down). They sit 98.8-118.3px past the nearest stage corner, so
+ * fills under ~0.062-0.074 never reach the stage, and the stage is fully
+ * covered from ~0.946-0.958. The ±800px lateral span covers the whole stage
+ * for every corner, so only the inner edge clips.
  */
-interface CurtainCornerSpec {
-  /** The curtain hangs from above the stage (true) or rises from below. */
-  fromTop: boolean;
-  /** Fixed Y of the off-screen hinge edge. */
-  hingeY: number;
-  /** Rect left/right in stage coordinates (may be off-screen). */
-  left: number;
-  right: number;
-}
-
 const CURTAIN_CORNER_SIDE = 1600;
-const CURTAIN_CORNER_SPECS: Readonly<Record<number, CurtainCornerSpec>> = {
-  1: { fromTop: true, hingeY: 960.7, left: 404.7, right: 2004.7 },
-  3: { fromTop: false, hingeY: -218.2, left: 401.5, right: 2001.5 },
-  5: { fromTop: false, hingeY: -218.2, left: -729.9, right: 870.1 },
-  7: { fromTop: true, hingeY: 960.7, left: -726.7, right: 873.3 },
+const CURTAIN_CORNER_HINGES: Readonly<
+  Record<number, { x: number; y: number }>
+> = {
+  1: { x: 1204.69, y: -240.69 },
+  3: { x: 1201.49, y: 938.18 },
+  5: { x: 70.11, y: 938.18 },
+  7: { x: 73.31, y: -240.69 },
 };
 
 /**
@@ -3148,13 +3141,14 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    // Native kills the side's previous tween (2.7.51: DOKill(transform,
-    // false)) before starting the new one. The 2.7.61 build literally calls
-    // DOKill(curtain component, complete: true) at 0x183e54e43, whose target
-    // matches neither tween's actual target (_curtainRect / _canvasGroup), so
-    // the kill is a no-op there -- likely a native regression. The session
-    // bump keeps the documented intent (one live tween per side); do not
-    // "align" it with the broken 2.7.61 form.
+    // Native never actually cancels the side's previous tween. 2.7.61+ calls
+    // DOKill(curtain component, complete: true) (2.7.81 0x183fc3023), whose
+    // target matches neither tween's (_curtainRect / _canvasGroup); and even
+    // 2.7.51's DOKill(transform, false) could not reach them, because both
+    // tweens are nested in a Sequence and AddActiveTweenToSequence drops
+    // nested tweens from the active list DOKill filters. A stale Sequence
+    // keeps writing sizeDelta/alpha until it ends. The session bump is a
+    // deliberate simplification (newest command owns the side), not a port.
     const sessionId = ++state.tweenSessionId;
     // Native SetCurtainSizeTween/SetCurtainAlphaTween carry no SetEase, so
     // both DOSizeDelta and DOFade run on DOTween's default OutQuad (2781
@@ -3870,31 +3864,40 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    const corner = CURTAIN_CORNER_SPECS[state.direction];
-    if (corner) {
-      this.drawCurtainCornerBand(state, corner);
-      return;
-    }
-
-    const threshold = this.curtainThreshold(vector, state.fill);
+    const threshold = this.curtainThreshold(
+      state.direction,
+      vector,
+      state.fill,
+    );
     if (threshold === null) {
       state.graphic.visible = false;
       return;
     }
 
-    state.graphic.visible = true;
-
     // The curtain body is a solid black quad (_curtainImg is sprite_white tinted
     // (0,0,0,1)). `grad` adds a separate CURTAIN_GRADIENT_PX strip on the inner
     // edge, opaque on the curtain side and fully transparent toward the screen
     // centre -- it does not fade the whole body.
-    const bodyEnd = state.grad ? threshold - CURTAIN_GRADIENT_PX : threshold;
+    //
+    // The body length comes from each AVGCurtain's layout group. Straight
+    // edges always pad the inner edge by 20px and their gradient ignores
+    // layout, sitting in that padding -- so without `grad` the inner 20px of
+    // the rect stays empty. Corner layouts have no padding and the gradient
+    // is a 20px layout child, so it only takes room from the body while
+    // active.
+    const inset =
+      state.grad || !CURTAIN_CORNER_HINGES[state.direction]
+        ? CURTAIN_GRADIENT_PX
+        : 0;
+    const bodyEnd = threshold - inset;
     const body = this.buildCurtainBand(vector, null, bodyEnd);
+    const feather = state.grad
+      ? this.buildCurtainBand(vector, bodyEnd, threshold)
+      : [];
+    // Corner hinges sit off-stage, so small fills clip away entirely.
+    state.graphic.visible = body.length >= 6 || feather.length >= 6;
+
     if (body.length >= 6) state.graphic.poly(body).fill(0x00_00_00);
-
-    if (!state.grad) return;
-
-    const feather = this.buildCurtainBand(vector, bodyEnd, threshold);
     if (feather.length < 6) return;
 
     state.graphic.poly(feather).fill(
@@ -3912,97 +3915,25 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Corner-band drawing for direction 1/3/5/7 (see CURTAIN_CORNER_SPECS): the
-   * visible shape is a horizontal band stuck to the top/bottom stage edge with
-   * a horizontal offset, growing as `fill` scales the off-screen-hinged
-   * 1600x1600 rect on Y only. The `grad` feather stays a 20px vertical strip
-   * on the inner edge -- native corner curtains only ever get the vertical
-   * gradient material, so there is no horizontal feather.
+   * Projection along `vector` where the curtain's inner edge sits. Straight
+   * edges hinge on the stage edge, so `fill` spans the stage; corners hinge
+   * off-stage at CURTAIN_CORNER_HINGES and grow by the 1600px native side.
    */
-  private drawCurtainCornerBand(
-    state: CurtainRenderState,
-    spec: CurtainCornerSpec,
-  ): void {
-    const left = Math.max(0, spec.left);
-    const right = Math.min(STORY_WIDTH, spec.right);
-    // `edge` is the inner edge: the only rect edge that moves as fill
-    // animates (the hinge edge is fixed off-screen).
-    const size = CURTAIN_CORNER_SIDE * clamp01(state.fill);
-    const edge = spec.fromTop ? spec.hingeY - size : spec.hingeY + size;
-
-    if (right <= left || (spec.fromTop ? edge >= STORY_HEIGHT : edge <= 0)) {
-      state.graphic.visible = false;
-      return;
-    }
-
-    state.graphic.visible = true;
-
-    const feather = state.grad ? CURTAIN_GRADIENT_PX : 0;
-    const fillBand = (
-      low: number,
-      high: number,
-      style: number | FillGradient,
-    ) => {
-      if (high <= low) return;
-      state.graphic
-        .poly([left, low, right, low, right, high, left, high])
-        .fill(style);
-    };
-
-    if (spec.fromTop) {
-      // Hangs from above: opaque body fills [edge + feather, stage top];
-      // the feather strip [edge, edge + feather] fades downward, opaque on
-      // the body side, transparent at the inner edge.
-      const stripHigh = Math.min(STORY_HEIGHT, edge + feather);
-      fillBand(stripHigh, STORY_HEIGHT, 0x00_00_00);
-      fillBand(
-        edge,
-        stripHigh,
-        this.curtainCornerFeatherGradient(
-          { x: 0, y: stripHigh },
-          { x: 0, y: edge },
-        ),
-      );
-      return;
-    }
-
-    // Rises from below: body fills [stage bottom, edge - feather]; the
-    // feather strip [edge - feather, edge] fades upward toward the centre.
-    const stripLow = Math.max(0, edge - feather);
-    fillBand(0, stripLow, 0x00_00_00);
-    fillBand(
-      stripLow,
-      edge,
-      this.curtainCornerFeatherGradient(
-        { x: 0, y: stripLow },
-        { x: 0, y: edge },
-      ),
-    );
-  }
-
-  private curtainCornerFeatherGradient(
-    opaque: { x: number; y: number },
-    transparent: { x: number; y: number },
-  ): FillGradient {
-    return new FillGradient({
-      colorStops: [
-        { color: "rgba(0, 0, 0, 1)", offset: 0 },
-        { color: "rgba(0, 0, 0, 0)", offset: 1 },
-      ],
-      end: transparent,
-      start: opaque,
-      textureSpace: "global",
-      type: "linear",
-    });
-  }
-
-  /** Projection along `vector` where the curtain's inner edge sits. */
   private curtainThreshold(
+    direction: number,
     vector: { x: number; y: number },
     fill: number,
   ): number | null {
     const clampedFill = clamp01(fill);
     if (clampedFill <= 0) return null;
+
+    const hinge = CURTAIN_CORNER_HINGES[direction];
+    if (hinge)
+      return (
+        hinge.x * vector.x +
+        hinge.y * vector.y +
+        CURTAIN_CORNER_SIDE * clampedFill
+      );
 
     const projections = CURTAIN_STAGE_CORNERS.map(
       (point) => point.x * vector.x + point.y * vector.y,
@@ -4092,10 +4023,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Half-plane sweep vector for the four straight edges (0/2/4/6). Corner
-   * directions 1/3/5/7 still resolve to a non-null vector (validity check)
-   * but draw through CURTAIN_CORNER_SPECS instead -- their diagonal vectors
-   * are unused for drawing.
+   * Inward half-plane normal per direction, following `_curtainWidgets`
+   * order (0 top, then clockwise). The corner diagonals are the native 45°
+   * rect rotation, not the stage diagonal.
    */
   private resolveCurtainVector(
     direction: number,
