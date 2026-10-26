@@ -4,6 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { create, login } from "./api";
+import { assertWidgetName, devWidget } from "./dev/widget";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +16,8 @@ async function index(): Promise<void> {
 
   let name = process.argv[2];
   name = name[0].toUpperCase() + name.slice(1);
+  // 写文件、建页面之前先校验，免得非法名称留下建了一半的状态
+  assertWidgetName(name);
   const username = process.argv[3];
   const password = process.argv[4];
 
@@ -63,16 +66,7 @@ if (ele?.dataset?.item) {
   );
   console.log(`https://prts.wiki/w/Widget:${name}/doc created`);
 
-  await create(
-    `Widget:${name}/dev`,
-    `
-<includeonly>
-<div id="root"></div>
-<script type="module" src="http://localhost:8080/@vite/client"></script>
-<script type="module" src="http://localhost:8080/src/entries/${name}.ts"></script>
-</includeonly><noinclude>{{#widget:${name}/dev}}</noinclude>
-  `,
-  );
+  await create(`Widget:${name}/dev`, devWidget(name));
   console.log(`https://prts.wiki/w/Widget:${name}/dev created`);
   console.log("success!");
 }

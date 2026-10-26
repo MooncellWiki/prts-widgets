@@ -29,6 +29,25 @@
 > [!IMPORTANT]  
 > 不要忘记更新 [README.md](README.md) 中的子应用列表
 
+## 在 Wiki 页面里调试
+
+运行 `pnpm dev`，打开 `https://prts.wiki/w/Widget:<WidgetName>/dev`。
+
+`/dev` 页面按当前页面 URL 的 `vitePort` 参数连接本地 Vite，如 `?vitePort=8082`（已有查询参数时
+用 `&vitePort=8082`），不带参数时连 `http://localhost:8080`。8080 被占用时 Vite 会自动换端口，
+终端会列出带上实际端口的全部调试链接；同时开多个实例时各自用各自的链接即可。
+加载失败的原因见控制台。
+
+`/dev` 页面里加载 Vite 的片段由 `scripts/dev/widget.ts` 生成，新建应用时自动带上。
+改了片段，或者还有页面写死端口时，运行：
+
+```bash
+pnpm exec tsx scripts/dev/sync.ts --dry-run  # 只列出会改哪些页面
+pnpm exec tsx scripts/dev/sync.ts <username> <password>
+```
+
+它只替换页面里加载 Vite 的 `<script>`，根节点和 noinclude 里的测试数据不动；认不出的页面会跳过并列出来。
+
 ## 测试
 
 ```bash

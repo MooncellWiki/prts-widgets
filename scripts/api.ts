@@ -10,6 +10,10 @@ interface WikiApiResponse {
       csrftoken?: string;
       logintoken?: string;
     };
+    pages?: {
+      missing?: boolean;
+      revisions?: { slots: { main: { content: string } } }[];
+    }[];
   };
   login?: {
     result?: string;
@@ -184,6 +188,24 @@ export async function edit(
     },
   });
   console.log(resp);
+}
+
+/** 页面不存在时返回 undefined。 */
+export async function getContent(
+  pagename: string,
+): Promise<string | undefined> {
+  const resp = await request({
+    query: {
+      action: "query",
+      prop: "revisions",
+      rvprop: "content",
+      rvslots: "main",
+      titles: pagename,
+      format: "json",
+      formatversion: "2",
+    },
+  });
+  return resp.query?.pages?.[0]?.revisions?.[0]?.slots.main.content;
 }
 
 async function view(pagename: string): Promise<Response> {
