@@ -11,6 +11,7 @@
     "update:ssr": "tsx scripts/update-ssr.ts",
     "prune": "tsx scripts/prune.ts",
     "dev": "vite",
+    "dev:sync": "tsx scripts/dev/sync.ts",
     "build": "vue-tsc -b && vite build && pnpm run prerender",
     "prerender": "vite build -c vite.config.prerender.ts && tsx scripts/prerender.ts",
     "preview": "vite preview",

@@ -31,13 +31,22 @@
 
 ## 在 Wiki 页面里调试
 
-运行 `pnpm dev`，终端会按 `templates/*.html` 列出所有 Widget 的完整 Wiki 调试链接，
-点击对应链接即可。端口被占用时 Vite 仍会自动选择下一个可用端口，所有链接使用实际监听端口。
+运行 `pnpm dev`，打开 `https://prts.wiki/w/Widget:<WidgetName>/dev`。
 
-新建应用的 `/dev` 页面会自动带上开发加载器。
-加载器只读取当前页面 URL 的 `vitePort` 参数，如 `?vitePort=8082`；已有查询参数时
-用 `&vitePort=8082`。没有参数时默认连接 `http://localhost:8080`。
-不同调试页可以通过各自的 URL 连接不同本地实例。加载失败会在页面显示提示，详细错误见控制台。
+`/dev` 页面按当前页面 URL 的 `vitePort` 参数连接本地 Vite，如 `?vitePort=8082`（已有查询参数时
+用 `&vitePort=8082`），不带参数时连 `http://localhost:8080`。8080 被占用时 Vite 会自动换端口，
+终端会列出带上实际端口的全部调试链接；同时开多个实例时各自用各自的链接即可。
+加载失败的原因见控制台。
+
+`/dev` 页面里加载 Vite 的片段由 `scripts/dev/widget.ts` 生成，新建应用时自动带上。
+改了片段，或者还有页面写死端口时，运行：
+
+```bash
+pnpm dev:sync --dry-run              # 只列出会改哪些页面
+pnpm dev:sync <username> <password>
+```
+
+它只替换页面里加载 Vite 的 `<script>`，根节点和 noinclude 里的测试数据不动；认不出的页面会跳过并列出来。
 
 ## 测试
 
