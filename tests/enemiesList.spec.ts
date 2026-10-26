@@ -481,8 +481,8 @@ describe("EnemiesListV2 UI smoke", () => {
   it("打开分享链接：照 # 参数筛选，带属性筛选时面板展开", async () => {
     const host = await mount("/w/敌人一览#enemyLevel=精英&endure=C&_d=1");
     expect(
-      [...host.querySelectorAll(".el-cell .ak-enemy__name")].map(
-        (el) => el.textContent,
+      [...host.querySelectorAll<HTMLElement>(".el-cell")].map(
+        (el) => el.dataset.tip,
       ),
     ).toEqual(["妖怪"]);
     expect(host.querySelector(".el-cell")?.getAttribute("href")).toBe(
@@ -492,6 +492,33 @@ describe("EnemiesListV2 UI smoke", () => {
       "true",
     );
     expect(chip(host, "C").dataset.tip).toBe("生命值 C：3500 – 5000");
+  });
+
+  it("头像视图只有头像：名字进提示与读屏文字，按属性排序时提示带出等级", async () => {
+    const host = await mount("/w/敌人一览#_d=1&_o=endure-d");
+    const cells = [...host.querySelectorAll<HTMLElement>(".el-cell")];
+    expect(cells).toHaveLength(5);
+    expect(host.querySelector(".el-grid .ak-enemy__name")).toBeNull();
+    const boss = cells.find((el) => el.dataset.tip?.startsWith("W"))!;
+    expect(boss.dataset.tip).toBe("W\n生命值 A+");
+    expect(boss.querySelector(".el-avatar__index")?.textContent).toBe("W");
+    expect(
+      [...boss.querySelectorAll(".ak-sr-only")].map((el) =>
+        el.textContent?.trim(),
+      ),
+    ).toEqual(["W", "领袖"]);
+  });
+
+  it("手机上（视口 < 640）默认头像视图，否则默认表格", async () => {
+    vi.stubGlobal("innerWidth", 390);
+    let host = await mount(undefined, undefined, 390);
+    expect(host.querySelector(".el-grid")).not.toBeNull();
+    expect(host.querySelector(".el-table, .el-cards")).toBeNull();
+    app?.unmount();
+    vi.stubGlobal("innerWidth", 1280);
+    host = await mount();
+    expect(host.querySelector(".el-grid")).toBeNull();
+    expect(host.querySelector(".el-table")).not.toBeNull();
   });
 
   it("页内锚点（不带 =）不当成分享链接，不清空已选的条件", async () => {
