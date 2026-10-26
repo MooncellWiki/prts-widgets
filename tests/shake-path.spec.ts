@@ -31,10 +31,10 @@ describe("DOTween-compatible shake path", () => {
   });
 
   it("keeps every vectorBased waypoint at |(xStrength, yStrength)| whatever the clamp chain does", () => {
-    // Constant random 0.25 → angle 90°, tilt -30°. The per-axis
-    // ClampMagnitude chain biases the direction (waypoint lands on +X) but
-    // the final renormalize restores the full radius sqrt(10² + 6²), which
-    // exceeds xStrength itself — per-axis strengths never cap the magnitude.
+    // Constant random 0.125 → angle 45°, tilt -45°. The per-axis
+    // ClampMagnitude chain biases the direction, but the final renormalize
+    // restores the full radius sqrt(10² + 6²), so the Y component ends up
+    // above yStrength itself — per-axis strengths never cap the magnitude.
     const path = buildShakePath(
       1000,
       {
@@ -45,17 +45,18 @@ describe("DOTween-compatible shake path", () => {
         xStrength: 10,
         yStrength: 6,
       },
-      () => 0.25,
+      () => 0.125,
     );
 
-    expect(path[0].x).toBeCloseTo(Math.sqrt(136));
-    expect(path[0].y).toBeCloseTo(0);
+    expect(path[0].x).toBeCloseTo(8.76309, 5);
+    expect(path[0].y).toBeCloseTo(7.69469, 5);
+    expect(Math.hypot(path[0].x, path[0].y)).toBeCloseTo(Math.sqrt(136));
     expect(path[1]).toMatchObject({ x: 0, y: 0 });
   });
 
   it("treats randomness as angular deviation instead of a probability", () => {
     // randomness 0 → the angle flips by 180° each waypoint; angle 0° puts
-    // the walk on Y at ±|strength|.
+    // the walk on X at ±|strength| (Vector3FromAngle is cos on X).
     const path = buildShakePath(
       1000,
       {
@@ -69,15 +70,15 @@ describe("DOTween-compatible shake path", () => {
       () => 0,
     );
 
-    expect(path[0].y).toBeCloseTo(Math.sqrt(200));
-    expect(path[1].y).toBeCloseTo(-Math.sqrt(200));
-    expect(path[0].x).toBeCloseTo(0);
-    expect(path[1].x).toBeCloseTo(0);
+    expect(path[0].x).toBeCloseTo(Math.sqrt(200));
+    expect(path[1].x).toBeCloseTo(-Math.sqrt(200));
+    expect(path[0].y).toBeCloseTo(0);
+    expect(path[1].y).toBeCloseTo(0);
   });
 
   it("kills the axis whose strength is 0 (ClampMagnitude(v, 0))", () => {
-    // angle 90° keeps the walk on X at the full single-axis magnitude;
-    // yStrength 0 zeroes the Y component of every waypoint.
+    // Angle 60° starts the walk at (5, 8.66); yStrength 0 zeroes the Y
+    // component and the renormalize pushes X back to the full magnitude.
     const path = buildShakePath(
       1000,
       {
@@ -88,13 +89,13 @@ describe("DOTween-compatible shake path", () => {
         xStrength: 10,
         yStrength: 0,
       },
-      () => 0.25,
+      () => 1 / 6,
     );
 
     expect(path[0].x).toBeCloseTo(10);
-    expect(path[0].y).toBe(0);
+    expect(Math.abs(path[0].y)).toBe(0);
     expect(path[1].x).toBeCloseTo(-10);
-    expect(path[1].y).toBe(0);
+    expect(Math.abs(path[1].y)).toBe(0);
   });
 
   it("scales waypoint magnitudes linearly when fading out", () => {
@@ -133,8 +134,9 @@ describe("DOTween-compatible shake path", () => {
       () => 0,
     );
 
-    expect(path[0].y).toBeCloseTo(8);
-    expect(path[1].y).toBeCloseTo(-8);
+    expect(path[0].x).toBeCloseTo(8);
+    expect(path[1].x).toBeCloseTo(-8);
+    expect(path[0].y).toBeCloseTo(0);
   });
 
   it("interpolates continuously between waypoints", () => {

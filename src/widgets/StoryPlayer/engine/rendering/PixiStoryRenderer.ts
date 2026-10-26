@@ -5102,8 +5102,9 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Native port: AVGCharacterSlot.CharShake (0x184029850 on 2.7.81) →
-   * ShortcutExtensions.DOShakePosition float overload (0x18425cda0, expands
-   * strength to (s, s, s)) → DOTween.Shake (0x18424e2d0) with
+   * ShortcutExtensions.DOShakePosition float overload (0x18425cda0) →
+   * DOTween.Shake float overload (0x18424eb10, expands strength to
+   * (s, s, s)) → inner DOTween.Shake (0x18424e2d0) with
    * `ignoreZAxis = false`, `vectorBased = false`, Full randomness mode and
    * fadeOut — the non-vectorBased waypoint walk `buildShakePath` also ports
    * (vibrato = `times` per second, radius = power).

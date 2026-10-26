@@ -104,11 +104,13 @@ export function buildShakePath(
     // the direction around Vector3.up; with the input Z already 0 this
     // leaves Y untouched.
     const tilt = (randomRange(-randomness, randomness, random) * Math.PI) / 180;
-    const sinAngle = Math.sin(radians);
+    // DOTweenUtils.Vector3FromAngle (2.7.81 @ 0x184285500) is
+    // (cos, sin, 0) × magnitude.
+    const cosAngle = Math.cos(radians);
     const vec = {
-      x: sinAngle * radius * Math.cos(tilt),
-      y: Math.cos(radians) * radius,
-      z: -sinAngle * radius * Math.sin(tilt),
+      x: cosAngle * radius * Math.cos(tilt),
+      y: Math.sin(radians) * radius,
+      z: -cosAngle * radius * Math.sin(tilt),
     };
     const fade = input.fadeOut ? 1 - index / count : 1;
 
