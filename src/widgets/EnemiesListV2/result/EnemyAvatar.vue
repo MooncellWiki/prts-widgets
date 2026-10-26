@@ -8,7 +8,7 @@ import type { Enemy } from "../enemy";
 /**
  * 敌人头像：方图原样铺满，图鉴编号叠在左上角的深色条上（游戏敌人图鉴的格子 EnemyHandBookItemView 同款）。
  * 同现网敌人页的头像（.enemyicon）：不垫底色——图四周自带一圈半透明的阴影，垫了底会变成一道实心的黑框；
- * 编号条照它缩进 7 / 130，贴着图的实边。边长由外面用 --el-avatar 定，默认 64；站内还没传图的只留编号。
+ * 编号条照它缩进 7 / 130，贴着图的实边。宽由外面用 --el-avatar 定（可给百分比），默认 64，高随宽；站内还没传图的只留编号。
  */
 defineProps<{ enemy: Enemy }>();
 </script>
@@ -31,7 +31,7 @@ defineProps<{ enemy: Enemy }>();
   position: relative;
   display: block;
   width: var(--el-avatar, 64px);
-  height: var(--el-avatar, 64px);
+  aspect-ratio: 1;
   overflow: hidden;
 
   > img {
