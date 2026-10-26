@@ -13,8 +13,8 @@ async function main(): Promise<void> {
   const dryRun = args.includes("--dry-run");
   const [username, password] = args.filter((arg) => arg !== "--dry-run");
   if (args.includes("-h") || (!dryRun && !password)) {
-    console.log("pnpm dev:sync --dry-run");
-    console.log("pnpm dev:sync username password");
+    console.log("pnpm exec tsx scripts/dev/sync.ts --dry-run");
+    console.log("pnpm exec tsx scripts/dev/sync.ts username password");
     return;
   }
 

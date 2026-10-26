@@ -42,8 +42,8 @@
 改了片段，或者还有页面写死端口时，运行：
 
 ```bash
-pnpm dev:sync --dry-run              # 只列出会改哪些页面
-pnpm dev:sync <username> <password>
+pnpm exec tsx scripts/dev/sync.ts --dry-run  # 只列出会改哪些页面
+pnpm exec tsx scripts/dev/sync.ts <username> <password>
 ```
 
 它只替换页面里加载 Vite 的 `<script>`，根节点和 noinclude 里的测试数据不动；认不出的页面会跳过并列出来。

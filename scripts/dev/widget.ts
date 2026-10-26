@@ -7,7 +7,7 @@ export function assertWidgetName(name: string): void {
 }
 
 /**
- * /dev 页面里从本地 Vite 加载入口的片段。Wiki 上的副本由 `pnpm dev:sync` 按这里更新。
+ * /dev 页面里从本地 Vite 加载入口的片段。Wiki 上的副本用 scripts/dev/sync.ts 按这里更新。
  *
  * 内联 module 脚本本身就是 defer 的，执行时机和原来两个 `<script type="module" src>` 一样。
  * URL 只能指定端口、host 固定 localhost：放开成任意源的话，谁都能构造一个 prts.wiki
