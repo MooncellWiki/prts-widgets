@@ -3313,8 +3313,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port of `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake`: it moves the
-   * scene root, not independent visual layers. Path sampling is a Web/PIXI
-   * adaptation of DOTween's shake tween.
+   * scene root, not independent visual layers. The Vector3-strength
+   * DOShakePosition overload runs the vectorBased branch of DOTween's shake
+   * (`0x18424e2d0` inner overload on 2.7.81), where the per-axis
+   * ClampMagnitude chain only biases direction — each waypoint keeps the
+   * full |(xStrength, yStrength)| magnitude (see ShakePath). Sampling and
+   * scheduling are a Web/PIXI adaptation of the same tween.
    */
   async shakeCamera(input: CameraShakeInput): Promise<void> {
     this.stopCameraShake();
@@ -3322,7 +3326,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (input.stop || input.durationMs <= 0) return;
 
     const sessionId = ++this.cameraShakeSessionId;
-    const path = buildShakePath(input.durationMs, input);
+    const path = buildShakePath(input.durationMs, {
+      ...input,
+      vectorBased: true,
+    });
     const runCycle = async (): Promise<void> => {
       await this.tween(input.durationMs, (progress) => {
         if (sessionId !== this.cameraShakeSessionId) return;
@@ -5095,10 +5102,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Native port: AVGCharacterSlot.CharShake (0x184029850 on 2.7.81) →
-   * ShortcutExtensions.DOShakePosition (0x18425cda0) → DOTween.Shake
-   * (0x18424e2d0) with `ignoreZAxis = false`, Full randomness mode and
-   * fadeOut — the same waypoint walk `buildShakePath` ports for the camera
-   * shake (vibrato = `times` per second, strength = power on both axes).
+   * ShortcutExtensions.DOShakePosition float overload (0x18425cda0) →
+   * DOTween.Shake float overload (0x18424eb10, expands strength to
+   * (s, s, s)) → inner DOTween.Shake (0x18424e2d0) with
+   * `ignoreZAxis = false`, `vectorBased = false`, Full randomness mode and
+   * fadeOut — the non-vectorBased waypoint walk `buildShakePath` also ports
+   * (vibrato = `times` per second, radius = power).
    * CharShake chains SetEase(OutCubic), but DOShakePosition marks the tween
    * `SpecialStartupMode.SetShake`, whose startup hook
    * (`SpecialPluginsUtils.SetShake` @ 0x18427f590) forces `easeType =
@@ -5122,6 +5131,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const path = buildShakePath(durationMs, {
       fadeOut: true,
       randomness: Math.abs(input.randomness),
+      vectorBased: false,
       vibrato: input.times,
       xStrength: input.power,
       yStrength: input.power,
