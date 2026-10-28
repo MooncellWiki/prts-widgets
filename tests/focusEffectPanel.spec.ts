@@ -131,4 +131,43 @@ describe("FocusEffectPanel", () => {
     panel.refresh();
     expect(target.filters[0]).toBeInstanceOf(BlurFilter);
   });
+
+  it("drops a released channel's amount but lets a running tween keep writing", () => {
+    const target = new Container();
+    let step: ((progress: number) => void) | undefined;
+    let finish: (() => void) | undefined;
+    const panel = new FocusEffectPanel(
+      () => [target],
+      async (_duration, update, complete) => {
+        step = update;
+        finish = complete;
+      },
+    );
+
+    void panel.setFocus(
+      input({ durationMs: 1000, id: "a", to: 1, type: "cgitem" }),
+    );
+    step?.(1);
+    expect(target.filters).toHaveLength(1);
+
+    // `BeforeItemDisposed` removes the stored amount; native `TweenAction`
+    // ticks re-create it through `SetAmount`, so the tween still lands.
+    panel.release("cgitem", "a");
+    expect(target.filters).toHaveLength(0);
+    finish?.();
+    expect(target.filters).toHaveLength(1);
+
+    // With no tween left, a release sticks and the next tween starts from 0
+    // (`GetAmount` of a missing entry).
+    panel.release("cgitem", "a");
+    expect(target.filters).toHaveLength(0);
+    panel.setParam({ blur: false, color: "Grayscale" });
+    void panel.setFocus(
+      input({ durationMs: 1000, id: "a", to: 1, type: "cgitem" }),
+    );
+    step?.(0.5);
+    expect([...(target.filters[0] as ColorMatrixFilter).matrix]).toEqual(
+      buildColorEffectMatrix(0.5, 0),
+    );
+  });
 });

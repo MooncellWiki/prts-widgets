@@ -245,27 +245,41 @@ describe("PixiStoryRenderer", () => {
     ]);
   });
 
-  it("resolves focusout channels per native routing rules", async () => {
+  it("treats focusout on an empty channel as a non-blocking native no-op", async () => {
     const renderer = createFocusRenderer();
     await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    renderer.tween.mockClear();
 
-    // `_GenCfgByType` writes the raw id into `_channel`; an empty id keeps
-    // `IsChannelEmpty` true, so the native executor is a silent no-op.
-    expect(renderer.resolveFocusTargets("cgitem", "")).toEqual([]);
-    expect(renderer.resolveFocusTargets("cgitem", "a")).toHaveLength(1);
+    // `_ExecuteFocusout` returns before any `UpdateEffect` when
+    // `IsChannelEmpty()`: an empty cgitem id (not "all items"), `customchar`
+    // without custom slots, or a type missing from `_channels`.
+    for (const [type, id] of [
+      ["cgitem", ""],
+      ["customchar", ""],
+      ["customchar", "m"],
+      ["unknown", "a"],
+    ])
+      await renderer.setFocusOut({
+        block: true,
+        durationMs: 1000,
+        from: 1,
+        id,
+        to: 1,
+        type,
+      });
 
-    // `customchar` only ever collects custom slots (`m_customInUse`), a
-    // channel set disjoint from the standard l/m/r slots; without a custom
-    // slot system the branch must not fall back to standard slots.
-    expect(renderer.resolveFocusTargets("customchar", "")).toEqual([]);
-    expect(renderer.resolveFocusTargets("customchar", "m")).toEqual([]);
+    expect(renderer.tween).not.toHaveBeenCalled();
+    expect(renderer.cgItemPanel.targets("a")[0].filters ?? []).toHaveLength(0);
+    expect(renderer.charLayer.filters ?? []).toHaveLength(0);
   });
 
-  it("applies focusout to cgitems displayed after the command", async () => {
+  it("binds a stored cgitem focus amount on show and drops it on dispose", async () => {
     const renderer = createFocusRenderer();
+    const filtersOf = (key: string) =>
+      renderer.cgItemPanel.targets(key)[0].filters ?? [];
 
     // `SetWhenBind` stores the amount before the display object exists and
-    // replays it on registration.
+    // `TryRegister` replays it on registration.
     await renderer.setFocusOut({
       block: false,
       durationMs: 0,
@@ -274,30 +288,25 @@ describe("PixiStoryRenderer", () => {
       type: "cgitem",
     });
     await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
-    expect(
-      (renderer.cgItemPanel.targets("a")[0].filters ?? []).length,
-    ).toBeGreaterThan(0);
+    expect(filtersOf("a").length).toBeGreaterThan(0);
 
-    // Re-registration after a hide replays too.
+    // `BeforeItemDisposed` removes the stored amount: a re-show after the
+    // hide completes comes back clean.
     await renderer.clearCgItems("a", 0);
     await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
-    expect(
-      (renderer.cgItemPanel.targets("a")[0].filters ?? []).length,
-    ).toBeGreaterThan(0);
-  });
+    expect(filtersOf("a")).toHaveLength(0);
 
-  it("treats focusout with an empty cgitem id as a native no-op", async () => {
-    const renderer = createFocusRenderer();
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    // Same for a same-key replacement, which disposes the old slot first.
     await renderer.setFocusOut({
       block: false,
       durationMs: 0,
-      id: "",
+      id: "a",
       to: 1,
       type: "cgitem",
     });
-
-    expect(renderer.cgItemPanel.targets("a")[0].filters ?? []).toHaveLength(0);
+    expect(filtersOf("a").length).toBeGreaterThan(0);
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    expect(filtersOf("a")).toHaveLength(0);
   });
 
   it("draws a curtain as a solid body plus a fixed-width feather strip", async () => {

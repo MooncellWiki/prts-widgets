@@ -18,6 +18,10 @@ interface FocusState {
   type: string;
 }
 
+function stateKey(type: string, id: string): string {
+  return `${type}\u0000${id}`;
+}
+
 /**
  * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
  * `_ExecuteFocusParam` channel state. Applying `BlurFilter` and
@@ -50,7 +54,7 @@ export class FocusEffectPanel {
   }
 
   async setFocus(input: FocusOutInput): Promise<void> {
-    const key = `${input.type}\u0000${input.id}`;
+    const key = stateKey(input.type, input.id);
     const state = this.states.get(key) ?? {
       amount: 0,
       id: input.id,
@@ -98,13 +102,31 @@ export class FocusEffectPanel {
   /**
    * Native provenance: `AVGSceneFocusOut.TryRegister` + `SetWhenBind.Bind`
    * replay a channel's stored amount the moment a PostDisplay item
-   * (re)registers -- a cgitem displayed after `focusout` already ran picks
-   * up the existing amount immediately. The Web adaptation re-resolves
-   * targets whenever the per-object target set (cgitem panel) changes;
-   * layer-backed types (bg/char/cg/lbg) get this for free because the
-   * filter sits on the layer itself.
+   * registers -- a cgitem displayed after `focusout` already ran picks up
+   * the existing amount immediately. The Web adaptation re-resolves targets
+   * whenever the per-object target set (cgitem panel) changes; layer-backed
+   * types (bg/char/cg/lbg) get this for free because their native handlers
+   * are bound once and kept while the key matches, just as the filter sits
+   * on the layer itself.
    */
   refresh(): void {
+    this.render();
+  }
+
+  /**
+   * Native provenance: `PostDisplayItem.Dispose` runs
+   * `AVGSceneFocusOut.BeforeItemDisposed` (2.7.81 0x184004BB0), which
+   * removes the channel's `SetWhenBind` from `m_amounts`. `GetAmount` then
+   * reads 0, and the next item registered on the channel binds a fresh,
+   * never-set entry, so a hidden-then-reshown (or same-key replaced) cgitem
+   * comes back clean. Resetting the amount reproduces both; a tween still
+   * running on the channel keeps writing, as native `TweenAction` ticks
+   * re-create the entry through `SetAmount`.
+   */
+  release(type: string, id: string): void {
+    const state = this.states.get(stateKey(type, id));
+    if (!state) return;
+    state.amount = 0;
     this.render();
   }
 
