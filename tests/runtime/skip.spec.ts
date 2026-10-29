@@ -616,12 +616,16 @@ describe("StoryRuntime", () => {
   });
 
   it("gates skipping on header is_skippable instead of is_tutorial (2.7.61 get_isSkippable)", async () => {
-    // training_act50side_01_b shape: HEADER carries is_tutorial=true AND
-    // is_skippable=true. Native 2.7.61 AVGController.get_isSkippable only
-    // consults story.isSkippable, so the skip must stop the whole story here;
-    // the pre-2.7.61 !isTutorial gate would wrongly resume at the anchor.
-    // firstRead=false keeps the click reachable: with a live first read the
-    // native button would already be hidden inside the nofirstskip segment.
+    // Forward-looking: a skipnode-only story whose HEADER carries
+    // is_tutorial=true AND is_skippable=true. No current corpus file has this
+    // shape -- the one tutorial story with skipnode anchors,
+    // training_act50side_01_b, also carries [SkipToThis], so SkipStory takes
+    // that branch instead (see the SkipToThis-shape test below). Native
+    // AVGController.get_isSkippable only consults story.isSkippable, so the
+    // skip must stop the whole story here; the old !isTutorial gate would
+    // wrongly resume at the anchor. firstRead=false keeps the click
+    // reachable: with a live first read the native button would already be
+    // hidden inside the nofirstskip segment.
     const renderer = new FakeRenderer();
     const context = createContext([
       '[skipnode(mode="nofirstskip")]',
@@ -642,6 +646,48 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("finished");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
+  });
+
+  it("guards a nofirstskip segment ahead of SkipToThis on first read (training_act50side_01_b shape)", async () => {
+    // Corpus shape: [header(is_skippable=true, is_tutorial=true)], skipnode
+    // nofirstskip L2 / skip L20 / nofirstskip L32, then [SkipToThis] L33.
+    // SkipStory's SkipToThis branch never consults the skip mode, so the
+    // only thing keeping a first read from jumping over the locked L2-L19
+    // segment is the _UpdateSkipStatus button gate.
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[skipnode(mode="nofirstskip")]',
+      '[name="A"]locked',
+      '[skipnode(mode="skip")]',
+      '[name="B"]open',
+      '[skipnode(mode="nofirstskip")]',
+      "[SkipToThis]",
+      '[name="C"]after',
+    ]);
+    context.storyMetadata = storyMetadata({
+      isSkippable: true,
+      isTutorial: true,
+    });
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+
+    await runtime.start();
+
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "locked" });
+    expect(runtime.canSkipNode()).toBe(false);
+    await runtime.skipNode();
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "locked" });
+
+    // The L20-style skip anchor reopens the button; the click then takes the
+    // SkipToThis branch past the trailing nofirstskip anchor.
+    await runtime.advance();
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "open" });
+    expect(runtime.canSkipNode()).toBe(true);
+
+    await runtime.skipNode();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "after" });
+    expect(runtime.canSkipNode()).toBe(false);
   });
 
   it("keeps the skip affordance hidden when header marks the story unskippable", async () => {
@@ -752,7 +798,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("finished");
   });
 
-  it("reads the skipnode mode key case-insensitively like native GetOrDefault", async () => {
+  it("reads the skipnode mode key case-sensitively like the native param dictionary", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -767,9 +813,10 @@ describe("StoryRuntime", () => {
     await runtime.start();
     await runtime.skipNode();
 
-    // The uppercase key still resolves to nofirstskip, so a first read can
-    // only jump past the anchor instead of ending the story.
-    expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "y" });
+    // Command.param is a Json.NET Dictionary<string, object> with the default
+    // ordinal comparer, so AddSkipNode's GetOrDefault("mode", "skip") misses
+    // `Mode` and the anchor is CAN_SKIP: even a first read ends the story.
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
   });
 });

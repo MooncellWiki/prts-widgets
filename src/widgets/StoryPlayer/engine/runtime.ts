@@ -335,19 +335,6 @@ interface SkipNodeLabel {
   mode: SkipMode;
 }
 
-/**
- * Case-insensitive command-argument lookup shared by the standalone
- * preprocessors and `StoryRuntime.arg`. Keeps parameter keys' source casing
- * intact while tolerating case variants at read time.
- */
-function lookupCommandArg(args: StoryCommandArgs, key: string): unknown {
-  if (Object.prototype.hasOwnProperty.call(args, key)) return args[key];
-  const matched = Object.keys(args).find(
-    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
-  );
-  return matched === undefined ? undefined : args[matched];
-}
-
 function preprocessSkipNodes(
   lines: ReturnType<typeof parseScript>,
 ): SkipNodeLabel[] {
@@ -356,13 +343,16 @@ function preprocessSkipNodes(
   for (const [index, line] of lines.entries()) {
     if (line.kind !== "command" || line.command !== "skipnode") continue;
 
-    // Native port: Torappu.AVG.AVGStoryCache.AddSkipNode (0x183e5eec0) reads
-    // the mode via GetOrDefault("mode", "skip"), then CalSkipMode (0x183e5f180)
-    // maps only the exact lower-case sentinel "nofirstskip" to
-    // FIRST_CANNOT_SKIP; every other value falls back to CAN_SKIP. Key lookup
-    // is case-insensitive like every other command argument.
+    // Native port: Torappu.AVG.AVGStoryCache.AddSkipNode (2.7.81 VA
+    // 0x183FCD3E0) reads the mode via GetOrDefault("mode", "skip"), then
+    // CalSkipMode (0x183FCD6A0) maps only the exact lower-case sentinel
+    // "nofirstskip" to FIRST_CANNOT_SKIP; every other value falls back to
+    // CAN_SKIP. The key lookup is exact as well: Command.param is the
+    // Json.NET-deserialized Dictionary<string, object> with the default
+    // ordinal comparer (AVGParser._ParseCommand 0x183FFBB30), so a `Mode=`
+    // spelling misses and reads the "skip" default.
     const mode =
-      toString(lookupCommandArg(line.args, "mode"), "skip") === "nofirstskip"
+      toString(line.args.mode, "skip") === "nofirstskip"
         ? "nofirstskip"
         : "skip";
     labels.push({ lineIndex: index, mode });
@@ -807,9 +797,12 @@ export class StoryRuntime {
     // isRunning && story.isSkippable && AVGStoryCache
     // .CheckIfSkippableInCurMode (0x183FCD770). The last term is nofirstskip's
     // actual enforcement: on a first read inside a locked segment the button
-    // is gone, so the trailing skip anchor can never be dequeued into a
-    // whole-story stop from inside the segment. A header is_skippable=false
-    // story (tutorials) hides the button for everyone.
+    // is gone, so neither the trailing skip anchor can be dequeued into a
+    // whole-story stop nor a SkipToThis jump fired from inside the segment
+    // (training_act50side_01_b: nofirstskip L2 ... SkipToThis L33 -- SkipStory
+    // never checks the mode on its SkipToThis branch, only this gate does).
+    // A header is_skippable=false story (tutorials) hides the button for
+    // everyone.
     const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
     const skippableInCurMode =
       this.currentSkipMode !== "nofirstskip" || !this.firstRead;
@@ -1296,7 +1289,11 @@ export class StoryRuntime {
   }
 
   private arg(args: StoryCommandArgs, key: string): unknown {
-    return lookupCommandArg(args, key);
+    if (Object.prototype.hasOwnProperty.call(args, key)) return args[key];
+    const matched = Object.keys(args).find(
+      (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+    );
+    return matched === undefined ? undefined : args[matched];
   }
 
   private exactArg(args: StoryCommandArgs, key: string): unknown {
