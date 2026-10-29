@@ -5,7 +5,8 @@ import { build } from "vite";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// 分别构建 classic Worker，避免多入口构建把 Workbox 抽成共享 ESM chunk。
+// 两站共用包含 FGO / PRTS 路由的入口，分别输出按站命名的 classic Worker。
+// 单入口 IIFE 构建避免把 Workbox 抽成共享 ESM chunk。
 // Wiki 的 /sw.js 以默认 classic 模式注册，必须是无需外部依赖的单文件。
 for (const site of ["prts", "fgo"] as const) {
   await build({
@@ -22,7 +23,7 @@ for (const site of ["prts", "fgo"] as const) {
       minify: "oxc",
       sourcemap: true,
       lib: {
-        entry: path.join(root, `src/entries/sw.${site}.ts`),
+        entry: path.join(root, "src/entries/sw.prts.ts"),
         name: `${site}ServiceWorker`,
         formats: ["iife"],
         fileName: () => `sw.${site}.js`,

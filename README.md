@@ -40,13 +40,12 @@
 产物不带 hash。普通全站脚本见 `vite.config.ts` 的 `nohashEntries`；Service Worker 由
 `scripts/build-sw.ts` 独立构建：
 
-| 入口                   | 产物                   | 引用位置               | 作用                                            |
-| ---------------------- | ---------------------- | ---------------------- | ----------------------------------------------- |
-| `sentry.ts`            | `sentry.js`            | `<head>`               | 前端错误上报                                    |
-| `DisplayController.ts` | `DisplayController.js` | `<head>`               | 森空岛内嵌浏览器的显示调整                      |
-| `Tooltip.ts`           | `Tooltip.js`           | `<head>`               | 全站 tippy（`tippy6`）+ `.mc-tooltips` 自动挂载 |
-| `sw.prts.ts`           | `sw.prts.js`           | wiki 根目录的 `/sw.js` | Service Worker                                  |
-| `sw.fgo.ts`            | `sw.fgo.js`            | FGO 根目录的 `/sw.js`  | FGO Service Worker                              |
+| 入口                   | 产物                      | 引用位置               | 作用                                            |
+| ---------------------- | ------------------------- | ---------------------- | ----------------------------------------------- |
+| `sentry.ts`            | `sentry.js`               | `<head>`               | 前端错误上报                                    |
+| `DisplayController.ts` | `DisplayController.js`    | `<head>`               | 森空岛内嵌浏览器的显示调整                      |
+| `Tooltip.ts`           | `Tooltip.js`              | `<head>`               | 全站 tippy（`tippy6`）+ `.mc-tooltips` 自动挂载 |
+| `sw.prts.ts`           | `sw.prts.js`、`sw.fgo.js` | wiki 根目录的 `/sw.js` | PRTS / FGO 共用 Service Worker                  |
 
 这些产物必须自包含（不 import 任何带 hash 的 chunk）：站内引用的是固定 URL，CDN 和浏览器
 会缓存旧版，而 `pnpm run prune` 会把 OSS 上不在本次 `dist/` 里的文件删掉，一旦它们依赖了
@@ -62,9 +61,8 @@ pnpm run build:sw
 ```
 
 输出 `dist/sw.prts.js`（PRTS，mooncell 目前共用）和 `dist/sw.fgo.js`，各自将 Workbox 打进
-单个 classic Worker，不依赖共享 ESM chunk 或 `workbox-v6.5.0/`。FGO 保留原有的
-NetworkFirst（页面及 PHP，6 秒网络超时）与 CacheFirst（Sentry / bytecdntp / pstatp）规则。
-Worker 不再通过 UA 判断浏览器版本；浏览器是否注册仍由站点的 Service Worker 能力检测决定。
+单个 classic Worker，不依赖共享 ESM chunk 或 `workbox-v6.5.0/`。两份产物共用 `sw.prts.ts`：
+FGO / PRTS 页面、PHP 请求和 torappu API 使用 NetworkFirst（5 秒网络超时）。
 
 ## 发布
 
