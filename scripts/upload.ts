@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 文件名里带构建 hash（base64url，8 位）的产物内容不可变，可以让 CDN 和浏览器
 // 永久缓存。vite.config.ts 里 nohashEntries 指定的固定文件名入口（sentry.js、
-// sw.js、Tooltip.js、DisplayController.js）是站内按名字引用的，改完要立刻生效，
+// sw.prts.js、sw.fgo.js、Tooltip.js、DisplayController.js）是站内按名字引用的，改完要立刻生效，
 // 所以保持 OSS 默认缓存策略不动。
 const HASHED_FILE_RE = /\.[\w-]{8}\.[^.]+(?:\.map)?$/;
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";

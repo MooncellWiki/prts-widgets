@@ -37,19 +37,34 @@
 ## 全站脚本
 
 `src/entries/` 里有几个不对应 `Widget:` 页面的入口，它们由站内按固定文件名引用，所以
-产物不带 hash（见 `vite.config.ts` 的 `nohashEntries`）：
+产物不带 hash。普通全站脚本见 `vite.config.ts` 的 `nohashEntries`；Service Worker 由
+`scripts/build-sw.ts` 独立构建：
 
 | 入口                   | 产物                   | 引用位置               | 作用                                            |
 | ---------------------- | ---------------------- | ---------------------- | ----------------------------------------------- |
 | `sentry.ts`            | `sentry.js`            | `<head>`               | 前端错误上报                                    |
 | `DisplayController.ts` | `DisplayController.js` | `<head>`               | 森空岛内嵌浏览器的显示调整                      |
 | `Tooltip.ts`           | `Tooltip.js`           | `<head>`               | 全站 tippy（`tippy6`）+ `.mc-tooltips` 自动挂载 |
-| `sw.prts.ts`           | `sw.js`                | wiki 根目录的 `/sw.js` | Service Worker                                  |
+| `sw.prts.ts`           | `sw.prts.js`           | wiki 根目录的 `/sw.js` | Service Worker                                  |
+| `sw.fgo.ts`            | `sw.fgo.js`            | FGO 根目录的 `/sw.js`  | FGO Service Worker                              |
 
 这些产物必须自包含（不 import 任何带 hash 的 chunk）：站内引用的是固定 URL，CDN 和浏览器
 会缓存旧版，而 `pnpm run prune` 会把 OSS 上不在本次 `dist/` 里的文件删掉，一旦它们依赖了
-带 hash 的 chunk，缓存里的旧产物就会指向已经被删掉的文件。`vite.config.ts` 的
-`assertSelfContained` 插件在构建时把这条钉死。
+带 hash 的 chunk，缓存里的旧产物就会指向已经被删掉的文件。
+Worker 通过独立的单入口 IIFE 构建生成 classic 脚本。
+
+### Service Worker
+
+`pnpm run build` 包含 Worker 构建；只构建 Worker 可运行：
+
+```bash
+pnpm run build:sw
+```
+
+输出 `dist/sw.prts.js`（PRTS，mooncell 目前共用）和 `dist/sw.fgo.js`，各自将 Workbox 打进
+单个 classic Worker，不依赖共享 ESM chunk 或 `workbox-v6.5.0/`。FGO 保留原有的
+NetworkFirst（页面及 PHP，6 秒网络超时）与 CacheFirst（Sentry / bytecdntp / pstatp）规则。
+Worker 不再通过 UA 判断浏览器版本；浏览器是否注册仍由站点的 Service Worker 能力检测决定。
 
 ## 发布
 
