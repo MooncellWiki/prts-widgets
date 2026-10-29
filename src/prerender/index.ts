@@ -3,6 +3,7 @@ import { createSSRApp, type Component } from "vue";
 import { setup } from "@css-render/vue3-ssr";
 import { renderToString } from "vue/server-renderer";
 
+import BaseSkillList from "@/widgets/BaseSkillList/index.vue";
 import CVList from "@/widgets/CVList/index.vue";
 import EnemiesListV2 from "@/widgets/EnemiesListV2/index.vue";
 import EquipList from "@/widgets/EquipList/index.vue";
@@ -41,6 +42,7 @@ const emptyGachaClientPool = {
 } as unknown as GachaClientPool;
 
 export const shells: Record<string, ShellEntry> = {
+  BaseSkillList: { component: BaseSkillList, container: "base-skill-list" },
   CVList: { component: CVList },
   EnemiesListV2: { component: EnemiesListV2 },
   EquipList: { component: EquipList },
