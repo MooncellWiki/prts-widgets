@@ -200,13 +200,18 @@ export function parseScript(source: string | readonly string[]): ParsedLine[] {
   if (!(last?.kind === "command" && last.command === "endtip")) {
     const lineNumber = sourceLines.at(-1)?.lineNumber ?? 1;
     // Native provenance: `Torappu.AVG.AVGParser.TryParse(string, List<Command>)`
-    // (2.7.61: 0x183E7E450, plus the extracted `_AppendEndTip` 0x183E7EA10)
-    // and `Torappu.AVG.AVGUtils.GenerateEndtipCommand` (0x183E40F70). Native
-    // appends when `commands.Count <= 0 || Last(commands).command != "endtip"`,
-    // so an EMPTY command list (empty / whitespace-only / comment-only script)
-    // also receives the implicit terminal endtip. The appended line's
-    // `lineNumber` is a web diagnostic only; native `Command` carries no line
-    // number (ctor default 0).
+    // (2.7.61: 0x183E7E450, plus the extracted `_AppendEndTip` 0x183E7EA10;
+    // 2.7.81: TryParse 0x183FFB410, _AppendEndTip 0x183FFB9D0) and
+    // `Torappu.AVG.AVGUtils.GenerateEndtipCommand` (2.7.61: 0x183E40F70;
+    // 2.7.81: 0x183FA2B40). Native appends when the commands list is non-null
+    // and `Count <= 0 || Last(commands).command != "endtip"`, so an EMPTY
+    // command list (empty / whitespace-only / comment-only script) also
+    // receives the implicit terminal endtip. The generated command leaves
+    // `content` null (the executor shows an empty-text dialog) and
+    // `lineNumber` at the ctor default 0 — native `Command` does carry a
+    // `lineNumber` field (2.7.81 offset 0x28) with 1-based values for parsed
+    // commands, so the appended line's `lineNumber` here is a web diagnostic
+    // only.
     lines.push({
       args: { block: true },
       command: "endtip",
