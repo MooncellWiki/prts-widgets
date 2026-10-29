@@ -802,10 +802,27 @@ export class StoryRuntime {
     // of leaving an enabled button that does nothing.
     const skipToPending =
       this.skipToIndex < 0 || this.cursor <= this.skipToIndex;
+    // Native port: AVGController._UpdateSkipStatus (2.7.81 VA 0x183F934E0)
+    // drives the skip button's visibility with get_isSkippable --
+    // isRunning && story.isSkippable && AVGStoryCache
+    // .CheckIfSkippableInCurMode (0x183FCD770). The last term is nofirstskip's
+    // actual enforcement: on a first read inside a locked segment the button
+    // is gone, so the trailing skip anchor can never be dequeued into a
+    // whole-story stop from inside the segment. A header is_skippable=false
+    // story (tutorials) hides the button for everyone.
+    const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
+    const skippableInCurMode =
+      this.currentSkipMode !== "nofirstskip" || !this.firstRead;
     // This widget exposes a segment-skip button rather than native's whole
     // story StopStory action. Keep it disabled when the script has no remaining
     // SkipToThis/skipnode destination at all.
-    return running && hasSkipAnchor && skipToPending;
+    return (
+      running &&
+      hasSkipAnchor &&
+      skipToPending &&
+      storySkippable &&
+      skippableInCurMode
+    );
   }
 
   async start(): Promise<void> {
@@ -921,6 +938,12 @@ export class StoryRuntime {
       // 挂起的 decision 结算后会把进面板前缓存的模式还回去（web 的等待期
       // 降级），那样 auto 又会越过锚点继续：还原目标一并改成 default。
       if (pendingDecision) pendingDecision.autoPlayRestore = "default";
+      // Native tail zeroes the whole m_storyCache, so the skipnode queue and
+      // curSkipMode go with it (2.7.81 SkipStory 0x183F8EB80): later skipnode
+      // executors read EMPTY -- CAN_SKIP -- instead of a stale unconsumed
+      // label stranded behind the jump.
+      this.skipNodeQueueIndex = this.skipNodeLabels.length;
+      this.currentSkipMode = "skip";
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.

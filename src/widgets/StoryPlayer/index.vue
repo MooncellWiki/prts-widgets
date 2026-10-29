@@ -115,7 +115,9 @@ const canAdvance = computed(
 
 // Native OnSkipBtnClicked（2.7.61 反编译 0x183e16ee0）在 quick_play 模式下忽略
 // 跳过点击；runtime.skipNode() 已按此兜底，这里同步禁用按钮，避免出现可点但
-// 无响应的控件。
+// 无响应的控件。canSkipNode 本身已按 native 按钮可见性门控（2.7.81
+// _UpdateSkipStatus 0x183F934E0：isRunning && story.isSkippable &&
+// CheckIfSkippableInCurMode），nofirstskip 首通段内为 false。
 const canSkipStory = computed(
   () => canSkipNode.value && autoPlayMode.value !== "quick_play",
 );

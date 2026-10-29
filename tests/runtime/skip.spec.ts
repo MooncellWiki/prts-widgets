@@ -153,6 +153,7 @@ describe("StoryRuntime", () => {
       renderer,
       new FakeAudio(),
       {
+        firstRead: false,
         sleep,
         typingIntervalMs: 30,
       },
@@ -160,6 +161,9 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
+    // Replay: CheckIfSkippableInCurMode allows nofirstskip once !isFirstRead,
+    // so the button stays available while "hello" waits and the skip dequeues
+    // the trailing skip anchor into a whole-story stop.
     expect(runtime.getState()).toBe("waiting_input");
     expect(runtime.canSkipNode()).toBe(true);
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "" });
@@ -168,6 +172,66 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("finished");
     expect(runtime.canSkipNode()).toBe(false);
+  });
+
+  it("keeps the skip affordance hidden inside a nofirstskip segment on first read", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="nofirstskip")]',
+        '[video(res="video/02.mp4")]',
+        '[skipnode(mode="skip")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const startPromise = runtime.start();
+    await Promise.resolve();
+
+    // Native port: _UpdateSkipStatus (2.7.81 VA 0x183F934E0) drives the skip
+    // button with get_isSkippable, whose CheckIfSkippableInCurMode term turns
+    // false once the nofirstskip anchor executed on a first read. The button
+    // is gone for the whole locked segment -- without this gate the click
+    // would dequeue the trailing skip anchor and end the story, letting a
+    // first read skip the very video nofirstskip is meant to protect.
+    expect(runtime.getState()).toBe("waiting_video");
+    expect(runtime.canSkipNode()).toBe(false);
+
+    await runtime.skipNode();
+
+    // No-op, exactly like clicking a button that is not there.
+    expect(runtime.getState()).toBe("waiting_video");
+    void startPromise;
+  });
+
+  it("re-enables the skip affordance once the trailing skip anchor executes", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[skipnode(mode="nofirstskip")]',
+        '[name="A"]locked',
+        '[skipnode(mode="skip")]',
+        '[name="B"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "locked" });
+    expect(runtime.canSkipNode()).toBe(false);
+
+    // _ExecuteSkipNode on the trailing anchor runs UpdateStorySkipMode, whose
+    // _UpdateSkipStatus call brings the button back with curSkipMode=skip.
+    await runtime.advance();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "ok" });
+    expect(runtime.canSkipNode()).toBe(true);
   });
 
   it("prioritizes SkipToThis, resumes after its anchor, and clears the timer sticker instantly", async () => {
@@ -556,6 +620,8 @@ describe("StoryRuntime", () => {
     // is_skippable=true. Native 2.7.61 AVGController.get_isSkippable only
     // consults story.isSkippable, so the skip must stop the whole story here;
     // the pre-2.7.61 !isTutorial gate would wrongly resume at the anchor.
+    // firstRead=false keeps the click reachable: with a live first read the
+    // native button would already be hidden inside the nofirstskip segment.
     const renderer = new FakeRenderer();
     const context = createContext([
       '[skipnode(mode="nofirstskip")]',
@@ -567,7 +633,9 @@ describe("StoryRuntime", () => {
       isSkippable: true,
       isTutorial: true,
     });
-    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+      firstRead: false,
+    });
 
     await runtime.start();
     await runtime.skipNode();
@@ -576,7 +644,7 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
   });
 
-  it("resumes at the anchor instead of ending when header marks the story unskippable", async () => {
+  it("keeps the skip affordance hidden when header marks the story unskippable", async () => {
     const renderer = new FakeRenderer();
     const context = createContext([
       '[skipnode(mode="skip")]',
@@ -590,12 +658,19 @@ describe("StoryRuntime", () => {
     });
 
     await runtime.start();
+
+    // Native hides the skip button for is_skippable=false stories outright
+    // (get_isSkippable -> _UpdateSkipStatus), and OnSkipBtnClicked re-checks
+    // story.isSkippable, so no skip path exists at all. The runtime keeps the
+    // same re-check inside skipNode() as defense in depth, but the entry gate
+    // must already report the button as absent.
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.canSkipNode()).toBe(false);
+
     await runtime.skipNode();
 
-    // Native SkipStory: get_isSkippable() is false, so it must not
-    // StopStory("Skipped"); it jumps past the dequeued anchor and resumes.
     expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "y" });
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
   });
 
   it("keeps the auto play mode on a skipnode label jump", async () => {
@@ -616,17 +691,34 @@ describe("StoryRuntime", () => {
 
     const startPromise = runtime.start();
     await Promise.resolve();
+    runtime.setAutoPlayMode("button_auto");
 
-    // First read hits the nofirstskip anchor: jump past it and resume.
+    // First read hits the nofirstskip anchor: jump past it and resume. The
+    // skipnode branch never touches the auto mode -- only the skiptothis
+    // tail resets it -- so button_auto survives the jump (the armed auto
+    // click uses the mocked never-resolving sleep and cannot fire here).
     await runtime.skipNode();
     await startPromise;
-    expect(runtime.getState()).toBe("waiting_input");
 
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue?.speaker).toBe("A");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+  });
+
+  it("keeps the auto play mode when the skipnode branch ends the story", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]x', '[skipnode(mode="skip")]', '[name="B"]y']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
     runtime.setAutoPlayMode("button_auto");
     await runtime.skipNode();
 
-    // Native leaves the auto mode untouched on the skipnode branch; only the
-    // skiptothis tail resets it. The second skip ends the story.
+    // Same branch, whole-story stop fork: native takes StopStory("Skipped")
+    // and returns before any auto reset.
     expect(runtime.getAutoPlayState().mode).toBe("button_auto");
     expect(runtime.getState()).toBe("finished");
   });
