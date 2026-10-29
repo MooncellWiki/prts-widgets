@@ -791,6 +791,13 @@ export class PixiStoryRenderer implements StoryRenderer {
       (key) => this.textureForImageKey(key, "image"),
       (duration, update, complete) => this.tween(duration, update, complete),
       onWarning,
+      // A cgitem's focus channel is its key (`_GenCfgByType`): registration
+      // replays the stored amount, disposal drops it (see
+      // FocusEffectPanel.refresh / release).
+      {
+        disposed: (key) => this.focusEffectPanel.release("cgitem", key),
+        registered: () => this.focusEffectPanel.refresh(),
+      },
     );
   }
 
@@ -3248,6 +3255,11 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async setFocusOut(input: FocusOutInput): Promise<void> {
+    // `_ExecuteFocusout` (2.7.81 0x183FAE3A0) returns false right after
+    // `_GenCfgByType` when `EffectConfig.IsChannelEmpty()` holds -- before
+    // the `from` write and the tween -- so an empty channel stores nothing
+    // and never blocks, whatever `duration`/`block` say.
+    if (!this.hasFocusChannels(input.type, input.id)) return;
     await this.focusEffectPanel.setFocus(input);
   }
 
@@ -3276,6 +3288,34 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.sceneLayer.filters = [this.grayscaleFilter];
   }
 
+  /**
+   * `AVGCameraEffect._GenCfgByType` (2.7.81 0x183FAE730) +
+   * `EffectConfig.IsChannelEmpty`: bg/char/cg/lbg look up fixed channel
+   * lists in the static `_channels` table (never empty); `cgitem` writes the
+   * raw `id` into the single `_channel` field, so an empty id is empty rather
+   * than "all items"; `customchar` collects `m_customInUse` custom slots via
+   * `AVGCharacterslotPanel.TryCollect(All)CustomSlotEffectChannels` -- a
+   * channel set disjoint from the standard l/m/r slots, and this port has no
+   * custom slot system, so it is always empty here; any other type misses
+   * `_channels` and is empty too.
+   */
+  private hasFocusChannels(type: string, id: string): boolean {
+    switch (type) {
+      case "bg":
+      case "cg":
+      case "char":
+      case "lbg": {
+        return true;
+      }
+      case "cgitem": {
+        return id !== "";
+      }
+      default: {
+        return false;
+      }
+    }
+  }
+
   private resolveFocusTargets(type: string, id: string): Container[] {
     switch (type) {
       case "bg": {
@@ -3299,12 +3339,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       case "cgitem": {
         return this.cgItemPanel.targets(id);
       }
-      case "customchar": {
-        if (!id)
-          return [...this.characterSlots.values()].map((state) => state.root);
-        const state = this.characterSlots.get(this.normalizeCharacterSlot(id));
-        return state ? [state.root] : [];
-      }
+      // `customchar` and unknown types never get here (hasFocusChannels).
       default: {
         return [];
       }

@@ -1,8 +1,10 @@
-import { Container } from "pixi.js";
+import { Container, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
+
+import type { CgItemInput } from "../../src/widgets/StoryPlayer/engine/types";
 
 // Turns the -0 that `0 * -1` produces into +0 so `toEqual` stops
 // distinguishing them. Deliberately narrow: `v || 0` would also swallow NaN
@@ -14,6 +16,47 @@ function normalizeZero(values: number[]): number[] {
 function createBlockerRenderer(): any {
   const renderer = createRenderer();
   renderer.layers.attach(new Container());
+  return renderer;
+}
+
+const focusCgItemInput: CgItemInput = {
+  alphaDelayMs: 0,
+  alphaDurationMs: 0,
+  alphaFrom: 1,
+  alphaTo: 1,
+  assetKey: "a",
+  block: false,
+  ease: "Linear",
+  height: 0,
+  key: "a",
+  positionDelayMs: 0,
+  positionDurationMs: 0,
+  rotationDurationMs: 0,
+  rotationFrom: -1,
+  rotationTo: 0,
+  scaleDelayMs: 0,
+  scaleDurationMs: 0,
+  scaleFrom: 1,
+  scaleTo: 1,
+  width: 0,
+};
+
+// Renderer stub for the focusout×cgitem interplay specs: textures resolve
+// instantly and every tween jumps to its completed state.
+function createFocusRenderer(): any {
+  const renderer = createRenderer();
+  renderer.app = {};
+  renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+  renderer.tween = vi.fn(
+    async (
+      _durationMs: number,
+      update: (progress: number) => void,
+      complete?: () => void,
+    ) => {
+      update(1);
+      complete?.();
+    },
+  );
   return renderer;
 }
 
@@ -200,6 +243,70 @@ describe("PixiStoryRenderer", () => {
     expect(normalizeZero(filters[0]!.matrix.slice(0, 5))).toEqual([
       0, 0, 0, 0, 0.5,
     ]);
+  });
+
+  it("treats focusout on an empty channel as a non-blocking native no-op", async () => {
+    const renderer = createFocusRenderer();
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    renderer.tween.mockClear();
+
+    // `_ExecuteFocusout` returns before any `UpdateEffect` when
+    // `IsChannelEmpty()`: an empty cgitem id (not "all items"), `customchar`
+    // without custom slots, or a type missing from `_channels`.
+    for (const [type, id] of [
+      ["cgitem", ""],
+      ["customchar", ""],
+      ["customchar", "m"],
+      ["unknown", "a"],
+    ])
+      await renderer.setFocusOut({
+        block: true,
+        durationMs: 1000,
+        from: 1,
+        id,
+        to: 1,
+        type,
+      });
+
+    expect(renderer.tween).not.toHaveBeenCalled();
+    expect(renderer.cgItemPanel.targets("a")[0].filters ?? []).toHaveLength(0);
+    expect(renderer.charLayer.filters ?? []).toHaveLength(0);
+  });
+
+  it("binds a stored cgitem focus amount on show and drops it on dispose", async () => {
+    const renderer = createFocusRenderer();
+    const filtersOf = (key: string) =>
+      renderer.cgItemPanel.targets(key)[0].filters ?? [];
+
+    // `SetWhenBind` stores the amount before the display object exists and
+    // `TryRegister` replays it on registration.
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "a",
+      to: 1,
+      type: "cgitem",
+    });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    expect(filtersOf("a").length).toBeGreaterThan(0);
+
+    // `BeforeItemDisposed` removes the stored amount: a re-show after the
+    // hide completes comes back clean.
+    await renderer.clearCgItems("a", 0);
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    expect(filtersOf("a")).toHaveLength(0);
+
+    // Same for a same-key replacement, which disposes the old slot first.
+    await renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "a",
+      to: 1,
+      type: "cgitem",
+    });
+    expect(filtersOf("a").length).toBeGreaterThan(0);
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    expect(filtersOf("a")).toHaveLength(0);
   });
 
   it("draws a curtain as a solid body plus a fixed-width feather strip", async () => {

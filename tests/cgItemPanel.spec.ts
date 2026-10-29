@@ -344,6 +344,7 @@ describe("CgItemPanel", () => {
     const { steps, tween } = manualTweenSteps();
     const panel = new CgItemPanel(layer, async () => Texture.WHITE, tween);
     await panel.show(input("a"));
+    const old = panel.targets("a")[0];
 
     void panel.hide("a", 500, "Linear", false);
     await panel.hide(undefined, 1000, "Linear", false);
@@ -352,7 +353,9 @@ describe("CgItemPanel", () => {
 
     steps[0].update(1);
     steps[0].complete();
-    expect(panel.targets("a")).toEqual([fresh]);
+    // The old slot is still fading under clear-all (registered until its
+    // own fade-end dispose); the muted keyed hide touched neither.
+    expect(panel.targets("a")).toEqual([fresh, old]);
     expect(layer.children).toContain(fresh);
 
     steps[1].update(1);
@@ -388,5 +391,73 @@ describe("CgItemPanel", () => {
     // The fade completion bumped the session: further show-side ticks must
     // not touch the destroyed sprite (Pixi v8 nulls `position` on destroy).
     expect(() => steps[0].update(1)).not.toThrow();
+  });
+
+  it("reports PostDisplay registration and disposal per key", async () => {
+    const layer = new Container();
+    const events: string[] = [];
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(
+      layer,
+      async () => Texture.WHITE,
+      tween,
+      undefined,
+      {
+        disposed: (key) => events.push(`disposed:${key}`),
+        registered: (key) => events.push(`registered:${key}`),
+      },
+    );
+
+    // `_ShowItem` disposes the previous same-key slot before binding the new
+    // one, so a re-show reports both, in that order.
+    await panel.show(input("a"));
+    await panel.show(input("a"));
+    expect(events).toEqual(["registered:a", "disposed:a", "registered:a"]);
+
+    // A keyed hide disposes only when its fade completes.
+    events.length = 0;
+    void panel.hide("a", 100, "Linear", false);
+    expect(events).toEqual([]);
+    steps.at(-1)!.complete();
+    expect(events).toEqual(["disposed:a"]);
+  });
+
+  it("keeps clear-all slots as targets until their fade-end dispose", async () => {
+    const layer = new Container();
+    const events: string[] = [];
+    const { steps, tween } = manualTweenSteps();
+    const panel = new CgItemPanel(
+      layer,
+      async () => Texture.WHITE,
+      tween,
+      undefined,
+      {
+        disposed: (key) => events.push(`disposed:${key}`),
+        registered: (key) => events.push(`registered:${key}`),
+      },
+    );
+    await panel.show(input("a"));
+    await panel.show(input("b"));
+    const oldA = panel.targets("a")[0];
+    events.length = 0;
+
+    // `_ClearAllItems` empties the dict at once but each slot stays a
+    // registered PostDisplay item until its own fade-end `Dispose`.
+    await panel.hide(undefined, 100, "Linear", false);
+    const [fadeA, fadeB] = steps.slice(-2);
+    expect(panel.targets("a")).toEqual([oldA]);
+    expect(panel.targets("b")).toHaveLength(1);
+
+    // A same-key show during the fade registers alongside the fading slot.
+    await panel.show(input("a"));
+    expect(panel.targets("a")).toHaveLength(2);
+
+    fadeB.complete();
+    expect(panel.targets("b")).toEqual([]);
+    // The newer "a" keeps its channel when the old one finishes fading.
+    fadeA.complete();
+    expect(panel.targets("a")).toHaveLength(1);
+    expect(panel.targets("a")[0]).not.toBe(oldA);
+    expect(events).toEqual(["registered:a", "disposed:b"]);
   });
 });

@@ -22,6 +22,19 @@ interface CgItemState {
   sprite: Sprite | null;
 }
 
+/**
+ * PostDisplay lifecycle of a cgitem slot, for the focus-effect processor.
+ * Native `_ShowItem` binds every new slot through
+ * `AVGSceneEffectManager.BindPostDisplay` (processors' `TryRegister`), and
+ * `SlotInUseItem.Dispose` -- run on same-key replacement, hide completion
+ * and each clear-all fade end -- disposes its `PostDisplayItem`
+ * (processors' `BeforeItemDisposed`).
+ */
+export interface CgItemLifecycle {
+  disposed: (key: string) => void;
+  registered: (key: string) => void;
+}
+
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
 }
@@ -52,12 +65,20 @@ function rgb(color: { r: number; g: number; b: number }): number {
  */
 export class CgItemPanel {
   private readonly states = new Map<string, CgItemState>();
+  /**
+   * Clear-all slots still fading out, mapped to their key. Native
+   * `_ClearAllItems` empties `m_slotsInUseDict` at once but only disposes
+   * each slot at its fade end, so until then the slot stays registered with
+   * the PostDisplay processors (focus effects keep applying).
+   */
+  private readonly fading = new Map<CgItemState, string>();
 
   constructor(
     private readonly layer: Container,
     private readonly loadTexture: TextureLoader,
     private readonly tween: Tween,
     private readonly onWarning?: (detail: string) => void,
+    private readonly lifecycle?: CgItemLifecycle,
   ) {}
 
   async show(input: CgItemInput): Promise<void> {
@@ -83,6 +104,7 @@ export class CgItemPanel {
       sprite: null,
     };
     this.states.set(input.key, state);
+    this.lifecycle?.registered(input.key);
     const sessionId = state.sessionId;
 
     const completion = this.loadTexture(input.assetKey).then((texture) => {
@@ -283,39 +305,59 @@ export class CgItemPanel {
 
     const entries = [...this.states.entries()];
     this.states.clear();
-    for (const [, state] of entries) {
+    for (const [key, state] of entries) {
       // `_ClearAllItems` hides every slot through the same `Hide`, so an
       // in-flight keyed hide loses its completion here as well; otherwise it
       // would `dispose` whatever a later `show` registers under that key.
       state.hideEpoch += 1;
+      this.fading.set(state, key);
       const startAlpha = state.root.alpha;
       void this.tween(
         fadeMs,
         (raw) => {
+          if (!this.fading.has(state)) return;
           state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
         () => {
+          // `clear()` may already have destroyed the slot.
+          if (!this.fading.delete(state)) return;
           // During the fade show-side writes keep running (native drives the
           // slots until `Dispose`); once the fade completes, bump the session
           // to stop writes into the destroyed sprite.
           state.sessionId += 1;
           state.root.destroy({ children: true });
+          // Native `BeforeItemDisposed` removes the channel's stored focus
+          // amount by key, which would also strip a newer slot that `show`
+          // registered under the same key mid-fade and orphan it from later
+          // `focusout` writes -- a native defect; keep the newer slot bound.
+          if (!this.states.has(key)) this.lifecycle?.disposed(key);
         },
       );
     }
     // `_ExecuteHideCgItem` completes clear-all immediately even if `block=true`.
   }
 
+  /**
+   * Roots registered under `key`: the live slot plus any clear-all slot
+   * still fading out (see `fading`).
+   */
   targets(key: string): Container[] {
-    if (!key) return [...this.states.values()].map((state) => state.root);
     const state = this.states.get(key);
-    return state ? [state.root] : [];
+    const roots = state ? [state.root] : [];
+    for (const [fadingState, fadingKey] of this.fading)
+      if (fadingKey === key) roots.push(fadingState.root);
+    return roots;
   }
 
   clear(): void {
-    for (const state of this.states.values())
+    const keys = new Set([...this.states.keys(), ...this.fading.values()]);
+    for (const state of [...this.states.values(), ...this.fading.keys()]) {
+      state.sessionId += 1;
       state.root.destroy({ children: true });
+    }
     this.states.clear();
+    this.fading.clear();
+    for (const key of keys) this.lifecycle?.disposed(key);
   }
 
   destroy(): void {
@@ -328,5 +370,6 @@ export class CgItemPanel {
     state.sessionId += 1;
     state.root.destroy({ children: true });
     this.states.delete(key);
+    this.lifecycle?.disposed(key);
   }
 }
