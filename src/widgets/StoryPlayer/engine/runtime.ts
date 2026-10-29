@@ -1367,9 +1367,14 @@ export class StoryRuntime {
 
     switch (line.command) {
       case "endtip": {
-        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip and
-        // AVGStoryCache.shouldProcessEndtip. It only shows and blocks in auto
-        // play for non-video-only stories; manual mode is a no-op.
+        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip (2.7.81:
+        // 0x183FE39F0) and AVGStoryCache.shouldProcessEndtip (0x183FCF180).
+        // It only shows and blocks in auto play for non-video-only stories;
+        // manual mode is a no-op. The shown dialog is EMPTY name + EMPTY
+        // text: the parser-generated command carries content=null,
+        // TryTranslate(null) returns (true, null) so Translate returns null,
+        // and BeginText normalizes null to String.Empty (2.7.81 verified) —
+        // native shows a bare frame, never any tip copy.
         const shouldProcessEndtip =
           (this.autoPlayMode === "button_auto" ||
             this.autoPlayMode === "quick_play") &&

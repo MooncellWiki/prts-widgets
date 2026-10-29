@@ -148,6 +148,16 @@ describe("DialogPanel", () => {
     expect(dialogue.y).toBe(720 - 93.5 - (100 - 89));
   });
 
+  it("shows an empty box for the endtip with no speaker and no text", async () => {
+    const { fades, panel, root } = await mountPanel();
+    // _ExecuteEndtip (2.7.61: 0x183E73AB0) calls set_isHidden(false) before
+    // BeginText(""), so auto play ends on a visible EMPTY box that blocks
+    // until a manual click -- visibility never derives from content.
+    panel.setDialogue("", "", undefined, layout("", "endtip"));
+    expect(fades).toHaveLength(1);
+    expect(root.visible).toBe(true);
+  });
+
   it("moves an aside's message to x = -86 for that command only", async () => {
     const { dialogue, panel } = await mountPanel();
     panel.setDialogue("", "short", undefined, layout("short", "aside"));
