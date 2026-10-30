@@ -343,8 +343,14 @@ function preprocessSkipNodes(
   for (const [index, line] of lines.entries()) {
     if (line.kind !== "command" || line.command !== "skipnode") continue;
 
-    // Native port: Torappu.AVG.AVGStoryCache.CalSkipMode. Only the exact
-    // lower-case sentinel maps to FIRST_CANNOT_SKIP; every other value,
+    // Native port: Torappu.AVG.AVGStoryCache.AddSkipNode (2.7.81 VA
+    // 0x183FCD3E0) reads the mode via GetOrDefault("mode", "skip"), then
+    // CalSkipMode (0x183FCD6A0) maps only the exact lower-case sentinel
+    // "nofirstskip" to FIRST_CANNOT_SKIP; every other value falls back to
+    // CAN_SKIP. The key lookup is exact as well: Command.param is the
+    // Json.NET-deserialized Dictionary<string, object> with the default
+    // ordinal comparer (AVGParser._ParseCommand 0x183FFBB30), so a `Mode=`
+    // spelling misses and reads the "skip" default.
     const mode =
       toString(line.args.mode, "skip") === "nofirstskip"
         ? "nofirstskip"
@@ -786,10 +792,30 @@ export class StoryRuntime {
     // of leaving an enabled button that does nothing.
     const skipToPending =
       this.skipToIndex < 0 || this.cursor <= this.skipToIndex;
+    // Native port: AVGController._UpdateSkipStatus (2.7.81 VA 0x183F934E0)
+    // drives the skip button's visibility with get_isSkippable --
+    // isRunning && story.isSkippable && AVGStoryCache
+    // .CheckIfSkippableInCurMode (0x183FCD770). The last term is nofirstskip's
+    // actual enforcement: on a first read inside a locked segment the button
+    // is gone, so neither the trailing skip anchor can be dequeued into a
+    // whole-story stop nor a SkipToThis jump fired from inside the segment
+    // (training_act50side_01_b: nofirstskip L2 ... SkipToThis L33 -- SkipStory
+    // never checks the mode on its SkipToThis branch, only this gate does).
+    // A header is_skippable=false story (tutorials) hides the button for
+    // everyone.
+    const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
+    const skippableInCurMode =
+      this.currentSkipMode !== "nofirstskip" || !this.firstRead;
     // This widget exposes a segment-skip button rather than native's whole
     // story StopStory action. Keep it disabled when the script has no remaining
     // SkipToThis/skipnode destination at all.
-    return running && hasSkipAnchor && skipToPending;
+    return (
+      running &&
+      hasSkipAnchor &&
+      skipToPending &&
+      storySkippable &&
+      skippableInCurMode
+    );
   }
 
   async start(): Promise<void> {
@@ -866,6 +892,12 @@ export class StoryRuntime {
   async skipNode(): Promise<void> {
     if (this.destroyed || !this.canSkipNode()) return;
 
+    // Native port: Torappu.AVG.AVGController.OnSkipBtnClicked (2.7.61
+    // 0x183e16ee0) drops the skip click entirely while autoPlayMode ==
+    // QUICK_PLAY. The brief-confirm panel it shows otherwise is a native-only
+    // UI that this widget intentionally omits.
+    if (this.autoPlayMode === "quick_play") return;
+
     const hadActiveProcessLoop = this.processing;
     const activeProcessCompletion = this.processingCompletion;
     // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
@@ -899,6 +931,12 @@ export class StoryRuntime {
       // 挂起的 decision 结算后会把进面板前缓存的模式还回去（web 的等待期
       // 降级），那样 auto 又会越过锚点继续：还原目标一并改成 default。
       if (pendingDecision) pendingDecision.autoPlayRestore = "default";
+      // Native tail zeroes the whole m_storyCache, so the skipnode queue and
+      // curSkipMode go with it (2.7.81 SkipStory 0x183F8EB80): later skipnode
+      // executors read EMPTY -- CAN_SKIP -- instead of a stale unconsumed
+      // label stranded behind the jump.
+      this.skipNodeQueueIndex = this.skipNodeLabels.length;
+      this.currentSkipMode = "skip";
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.
@@ -910,9 +948,17 @@ export class StoryRuntime {
         this.currentSkipMode = nextLabel.mode;
       }
 
-      const tutorial = this.context.storyMetadata?.isTutorial ?? false;
+      // Native port: Torappu.AVG.AVGController.get_isSkippable (2.7.61
+      // 0x183e1f7a0): isRunning && story.isSkippable &&
+      // AVGStoryCache.CheckIfSkippableInCurMode (0x183e5f250). story.isSkippable
+      // is the HEADER `is_skippable` flag -- since 2.7.61 the tutorial gate is
+      // expressed through it (header defaults it to !is_tutorial during
+      // parsing, see parser.ts) instead of a direct !isTutorial check.
+      // CheckIfSkippableInCurMode: a nofirstskip anchor only blocks first
+      // reads.
+      const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
       const isSkippable =
-        !tutorial &&
+        storySkippable &&
         (this.currentSkipMode !== "nofirstskip" || !this.firstRead);
       if (nextLabel && !isSkippable) {
         // Native stores the anchor index and the coroutine's leading increment

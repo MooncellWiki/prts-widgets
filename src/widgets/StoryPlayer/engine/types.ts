@@ -894,6 +894,13 @@ export type StoryPlayerEvents = {
 
 export interface StoryPlayer {
   advance: () => Promise<void>;
+  /**
+   * 跳过按钮可用性，对应 native 的按钮可见性门控（`_UpdateSkipStatus` →
+   * `get_isSkippable`，2.7.81 VA 0x183F934E0 / 0x183F94850）：isRunning &&
+   * story.isSkippable && CheckIfSkippableInCurMode，再叠加 web 适配的
+   * 「还有未越过的 SkipToThis/skipnode 目的地」。nofirstskip 首通段内恒为
+   * false（native 直接藏掉跳过按钮，锁定的视频段不可能被跳过）。
+   */
   canSkipNode: () => boolean;
   destroy: () => void;
   getAutoPlayState: () => AutoPlayState;
