@@ -1,0 +1,47 @@
+<!doctype html>
+<!--
+  StageMap 独立调试页（仅本地 dev 使用，不在 templates/ 里，不进 build 产物）。
+
+  用法：pnpm dev 后打开
+  http://localhost:8080/debug/StageMap.html?levelId=Obt/Main/level_main_01-07&stageId=main_01-07
+
+  ◆ URL 参数
+  - levelId：stage_table 里的 levelId（大小写随意），同 Widget 的 levelId 参数
+  - stageId：可选，关卡 id；带 #f# 时默认选突袭，关卡文件取不到时用它找 map_preview 截图
+  - theme：可选，dark / light，不写跟随系统
+
+  站外没有皮肤：设计系统的样式从 npm 的单文件版取，RLQ 直接执行回调。
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StageMap 独立调试</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@mooncellwiki/prts-design-css@0.1/dist/prts-design.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--ak-bg-canvas);
+      }
+    </style>
+    <script>
+      window.RLQ = { push: ([, callback]) => callback() };
+      const params = new URLSearchParams(location.search);
+      const theme = params.get("theme");
+      if (theme) document.documentElement.dataset.theme = theme;
+    </script>
+  </head>
+  <body class="ak-scope skin-arknights">
+    <div class="stage-map-root"></div>
+    <script>
+      const root = document.querySelector(".stage-map-root");
+      root.dataset.levelId = params.get("levelId") ?? "Obt/Main/level_main_01-07";
+      root.dataset.stageId = params.get("stageId") ?? "";
+    </script>
+    <script type="module" src="/src/entries/StageMap.ts"></script>
+  </body>
+</html>

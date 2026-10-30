@@ -29,6 +29,7 @@
 - 剧情播放器 [Widget:StoryPlayer/dev](https://prts.wiki/w/Widget:StoryPlayer/dev)
 - 时装商店 [Widget:SkinShop/dev](https://prts.wiki/w/Widget:SkinShop/dev)
 - 高级凭证区 [Widget:HighShop/dev](https://prts.wiki/w/Widget:HighShop/dev)
+- 关卡地图 [Widget:StageMap/dev](https://prts.wiki/w/Widget:StageMap/dev)
 
 ## 贡献代码
 
