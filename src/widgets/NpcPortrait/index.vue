@@ -2,6 +2,18 @@
 import { computed, onMounted, ref, watch } from "vue";
 
 import {
+  AkButton,
+  AkChip,
+  AkEmpty,
+  AkScope,
+  AkSpinner,
+  AkTab,
+  AkTabs,
+} from "@mooncellwiki/prts-design-vue";
+
+import { useHostTheme } from "@/utils/useHostTheme";
+
+import {
   buildBodies,
   fileBodies,
   loadCharacterMap,
@@ -43,6 +55,8 @@ const face = computed(() =>
     : undefined,
 );
 const alt = computed(() => props.name || "剧情立绘");
+/** 别的皮肤上按宿主页面的明暗给作用域定主题（见 useHostTheme），Arknights 皮肤上跟皮肤走 */
+const theme = useHostTheme();
 
 const faceStyle = computed(() => {
   const size = baseSize.value;
@@ -100,50 +114,43 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="npc-portrait-viewer">
-    <p v-if="status === 'loading'" class="npc-portrait-viewer__hint">
-      立绘加载中…
-    </p>
-    <p v-else-if="status === 'error'" class="npc-portrait-viewer__hint">
-      立绘加载失败
-      <button type="button" class="npc-portrait-viewer__chip" @click="load">
-        重试
-      </button>
-    </p>
-    <p v-else-if="!body" class="npc-portrait-viewer__hint">
-      该角色暂无剧情立绘
-    </p>
+  <!-- .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components，入口挂载前已加载）；
+       根节点标 ak-not-prose 不吃正文排版，data-no-toggle 让皮肤脚本别替芯片翻状态 -->
+  <AkScope
+    class="npc-portrait-viewer ak-not-prose"
+    :theme="theme"
+    data-no-toggle
+  >
+    <AkSpinner v-if="status === 'loading'" description="立绘加载中…" />
+    <AkEmpty v-else-if="status === 'error'" title="立绘加载失败" icon="warn">
+      <template #extra>
+        <AkButton size="sm" variant="outline" @click="load">重试</AkButton>
+      </template>
+    </AkEmpty>
+    <AkEmpty v-else-if="!body" title="该角色暂无剧情立绘" />
     <template v-else>
-      <div
+      <AkTabs
         v-if="bodies.length > 1"
-        class="npc-portrait-viewer__chips"
-        role="tablist"
-        aria-label="立绘"
+        v-model="bodyIndex"
+        label="立绘"
+        class="npc-portrait-viewer__tabs"
       >
-        <button
+        <AkTab
           v-for="(item, index) in bodies"
           :key="item.id"
-          type="button"
-          role="tab"
-          class="npc-portrait-viewer__chip"
-          :aria-selected="index === bodyIndex"
-          @click="bodyIndex = index"
-        >
-          立绘{{ index + 1 }}
-        </button>
-      </div>
+          :name="index"
+          :tab="`立绘${index + 1}`"
+        />
+      </AkTabs>
 
       <div class="npc-portrait-viewer__stage">
-        <p v-if="imageFailed" class="npc-portrait-viewer__hint">
-          立绘加载失败
-          <button
-            type="button"
-            class="npc-portrait-viewer__chip"
-            @click="retryImage"
-          >
-            重试
-          </button>
-        </p>
+        <AkEmpty v-if="imageFailed" title="立绘加载失败" icon="warn">
+          <template #extra>
+            <AkButton size="sm" variant="outline" @click="retryImage">
+              重试
+            </AkButton>
+          </template>
+        </AkEmpty>
         <a
           v-else-if="body.kind === 'single'"
           :key="`${body.id}@${attempt}`"
@@ -181,41 +188,43 @@ onMounted(load);
         </div>
       </div>
 
+      <!-- 单选芯片组（同设计系统 Chip 文档的「单选」：再点已选中的那枚不取消） -->
       <div
         v-if="body.kind === 'overlay' && body.faces.length > 1"
-        class="npc-portrait-viewer__chips"
-        role="tablist"
+        class="npc-portrait-viewer__faces"
+        role="group"
         aria-label="表情"
       >
-        <span class="npc-portrait-viewer__label">表情</span>
-        <button
+        <span class="npc-portrait-viewer__label" aria-hidden="true">表情</span>
+        <AkChip
           v-for="(item, index) in body.faces"
           :key="item.name"
-          type="button"
-          role="tab"
-          class="npc-portrait-viewer__chip npc-portrait-viewer__chip--small"
-          :aria-selected="index === faceIndex"
-          @click="faceIndex = index"
+          :model-value="index === faceIndex"
+          @update:model-value="faceIndex = index"
         >
           {{ index + 1 }}
-        </button>
+        </AkChip>
       </div>
     </template>
-  </div>
+  </AkScope>
 </template>
 
 <style scoped>
-/* 放在 Vector / Arknights / Minerva 的表格单元格里，明暗主题都用：只用 currentColor 与半透明灰，不写死底色 */
 .npc-portrait-viewer {
   max-width: 300px;
   margin: 0 auto;
-  text-align: center;
 }
 
-.npc-portrait-viewer__hint {
-  margin: 0;
-  padding: 2em 0;
-  opacity: 0.7;
+/* 别的皮肤上作用域带 data-theme，设计系统会连画布底色一起铺；这里嵌在表格单元格里，不要那块底 */
+.npc-portrait-viewer.ak-scope[data-theme] {
+  background-color: transparent;
+}
+
+/* 页签一行不换行（设计系统里溢出就横向滚动）：宽度不往外撑，否则窄屏上会把整张表格的立绘列撑到 300px、挤扁右边两列 */
+.npc-portrait-viewer__tabs {
+  width: 0;
+  min-width: 100%;
+  margin-bottom: var(--ak-space-2);
 }
 
 .npc-portrait-viewer__stage {
@@ -237,45 +246,17 @@ onMounted(load);
   position: absolute;
 }
 
-.npc-portrait-viewer__chips {
+.npc-portrait-viewer__faces {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin: 4px 0;
+  gap: var(--ak-space-1);
+  margin-top: var(--ak-space-2);
 }
 
 .npc-portrait-viewer__label {
-  margin-right: 2px;
-  font-size: 0.85em;
-  opacity: 0.7;
-}
-
-.npc-portrait-viewer__chip {
-  min-width: 2em;
-  padding: 1px 8px;
-  border: 1px solid rgb(128 128 128 / 40%);
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.85em;
-  line-height: 1.6;
-  cursor: pointer;
-}
-
-.npc-portrait-viewer__chip--small {
-  min-width: 1.8em;
-  padding: 0 4px;
-}
-
-.npc-portrait-viewer__chip:hover {
-  border-color: currentColor;
-}
-
-.npc-portrait-viewer__chip[aria-selected="true"] {
-  border-color: currentColor;
-  font-weight: bold;
+  margin-right: var(--ak-space-1);
+  font: 600 var(--ak-fs-xs) / 1 var(--ak-font-body);
+  color: var(--ak-fg-muted);
 }
 </style>

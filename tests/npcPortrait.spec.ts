@@ -363,8 +363,9 @@ describe("NpcPortrait", () => {
     expect(face.style.left).toBe(`${(531 / 1196) * 100}%`);
     expect(face.style.width).toBe(`${(144 / 1196) * 100}%`);
 
-    const faces = host.querySelectorAll('[aria-label="表情"] button');
+    const faces = host.querySelectorAll('[aria-label="表情"] button.ak-chip');
     expect(faces).toHaveLength(2);
+    expect(faces[0].getAttribute("aria-pressed")).toBe("true");
     (faces[1] as HTMLButtonElement).click();
     await nextTick();
     expect(
