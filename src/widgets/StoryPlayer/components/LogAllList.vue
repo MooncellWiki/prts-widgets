@@ -28,6 +28,10 @@ import type { RuntimeChoiceSelection } from "../engine/types";
  *   「凯尔希，合作愉快。」分栏出现）；
  * - conditional → 带标签的条件区块，标签与内容列对齐，不在当前路径上的区块淡化。
  *
+ * seekable 时每个文本行可点击，向父层发 seek（源行号），由 index.vue 编排
+ * 「从头重建播放器 + 快进到该行」（与调试页同一套 planChoicesForLine +
+ * seekToLine）；递归的条件区块同样转发。
+ *
  * 路径条件按 block 求值一次并缓存在 items 里：播放中每 80ms 会同步一次
  * 状态，逐 entry 反复求值会让长剧本的列表明显发烫。
  */
@@ -39,7 +43,11 @@ const props = defineProps<{
   activeLineIndex?: number | null;
   /** runtime 实际执行过的选择历史，用于求值当前路径 */
   selections?: RuntimeChoiceSelection[];
+  /** 文本行可点击发起快进跳转；false = 纯阅读模式 */
+  seekable?: boolean;
 }>();
+
+const emit = defineEmits<{ seek: [lineIndex: number] }>();
 
 /** 命中当前播放行：exact = 确实在当前路径上；maybe = 该分支尚未确定 */
 type ActiveMark = "exact" | "maybe";
@@ -131,6 +139,9 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
           :key="j"
           :data-active-line="row.active"
           class="flex items-start leading-relaxed"
+          :class="seekable ? 'seekable-row cursor-pointer rounded' : undefined"
+          :title="seekable ? '快进到该行' : undefined"
+          @click="seekable && emit('seek', row.entry.lineIndex)"
         >
           <NText
             tag="span"
@@ -228,6 +239,8 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
           :blocks="item.block.blocks"
           :active-line-index="activeLineIndex"
           :selections="selections"
+          :seekable="seekable"
+          @seek="(lineIndex) => emit('seek', lineIndex)"
         />
       </div>
     </li>
@@ -253,6 +266,16 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
   background-color: color-mix(
     in srgb,
     var(--n-color-target, #18a058) 15%,
+    transparent
+  );
+}
+
+/* 可跳转行的 hover 反馈。主题色从最近的 naive 组件根继承（同上面
+   conditional-block 的取色方式），不引入 uno 生成不了的主题 utility */
+.seekable-row:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--n-color-target, #18a058) 12%,
     transparent
   );
 }

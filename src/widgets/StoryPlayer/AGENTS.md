@@ -28,7 +28,9 @@ src/entries/StoryPlayer.ts        # 从 #datas_txt 取剧情 txt，挂载 index.
 
 播放位置由 index.vue 每 80ms `syncState()` 轮询（有引用相等性去重，别改成
 无条件换新数组）；当前显示行例外，由 runtime 的 `onDisplayedLineChange` 推送，
-Log All 高亮与调试页行跟随都订阅它。
+Log All 高亮与调试页行跟随都订阅它。Log All 文本行点击可快进到该行：
+`planChoicesForLine` 求选择方案 → 从头重建播放器（方案以脚本起点为前提，
+资源已缓存所以快）→ `seekToLine` 编排，与调试页 StoryPlayerDebugShell 同一套。
 
 ## 目录导览
 
