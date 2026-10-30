@@ -55,7 +55,7 @@ const columns = (): DataTableColumns<EquipRow> => {
               { href: `/w/${row.operator}#${row.name}` },
               h("div", [
                 h("img", {
-                  src: `${TORAPPU_ENDPOINT}/assets/uniequip_direction/${row.data.typeIcon}.png`,
+                  src: `${TORAPPU_ENDPOINT}/assets/uniequip_direction/${row.data.typeIcon?.toLowerCase()}.png`,
                   width: 60,
                   style: {
                     margin: "5px 0",

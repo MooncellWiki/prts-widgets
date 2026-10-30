@@ -77,7 +77,7 @@ const locale = getLanguage();
             }"
           >
             <img
-              :src="`${TORAPPU_ENDPOINT}/assets/uniequip_extratype/${e.typeIcon?.at(-1)}.png`"
+              :src="`${TORAPPU_ENDPOINT}/assets/uniequip_extratype/${e.typeIcon?.at(-1)?.toLowerCase()}.png`"
               class="h-[9px] w-[9px]"
               width="9"
               height="9"
