@@ -9,6 +9,7 @@ import {
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "./asset";
+import { resolveAvgDisplayStyle } from "./avgDisplay";
 import { resolveCharacterSelection } from "./characterRef";
 import {
   ANIMTEXT_MAIN_FONT,
@@ -107,9 +108,8 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
       continue;
     }
     if (line.command === "avgdisplay") {
-      const rawStyle = argAsString(line.args.style);
-      const styleMap: Record<string, string> = { 5: "bg", 7: "character" };
-      const style = styleMap[rawStyle] ?? rawStyle;
+      // Unquoted `style=5` parses to a number; resolve it like the runtime.
+      const style = resolveAvgDisplayStyle(String(line.args.style ?? ""));
       const name = argAsString(line.args.name);
       if (style === "bg") addImageUrl(urls, name, "background");
       else if (style === "character") addCharacterUrl(urls, name);

@@ -18,44 +18,6 @@ type Tween = (
 ) => Promise<void>;
 
 /**
- * Canonical style/slot views mirroring AVGDisplayableUtil.GenTypeFromRaw /
- * GenSlotFromRaw (0x183e39cd0 / 0x183e39ba0, 2.7.61): integers parse first
- * (no enum range check), then case-sensitive ordinal aliases; everything else
- * collapses to NONE. AVGDisplayableManager._DisplayInternal (0x183e38f70)
- * compares these parsed enums when deciding whether an id's holder must be
- * disposed and rebuilt, so "3" vs "effect" (same enum member) or two unknown
- * strings (both NONE) must NOT trigger a rebuild -- comparing raw strings
- * would discard the live entry's position/alpha mid-animation.
- */
-const STYLE_ENUM: Record<string, string> = {
-  "1": "animetext",
-  "2": "spine",
-  "3": "effect",
-  "4": "bgeffect",
-  "5": "bg",
-  "6": "animekv",
-  "7": "character",
-  animetext: "animetext",
-  animekv: "animekv",
-  bgeffect: "bgeffect",
-  bg: "bg",
-  character: "character",
-  effect: "effect",
-  spine: "spine",
-};
-const SLOT_ENUM: Record<string, string> = {
-  "1": "bgover",
-  "2": "charover",
-  "3": "cgover",
-  bgover: "bgover",
-  cgover: "cgover",
-  charover: "charover",
-};
-const canonicalStyle = (style: string): string => STYLE_ENUM[style] ?? "none";
-const canonicalSlot = (slot: AvgDisplaySlot): string =>
-  SLOT_ENUM[slot] ?? "none";
-
-/**
  * Port scope: `Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable`.
  * It retains id replacement, slot/style routing, and command timing; PIXI
  * containers and the currently supported `bg` asset are Web adaptations.
@@ -95,14 +57,11 @@ export class AvgDisplayPanel {
     }
 
     let state = this.states.get(input.id);
-    // Slot/style change check compares the parsed-enum equivalents (see
-    // STYLE_ENUM above), matching _DisplayInternal's enum comparison instead
-    // of raw strings.
-    if (
-      state &&
-      (canonicalSlot(state.slot) !== canonicalSlot(input.slot) ||
-        canonicalStyle(state.style) !== canonicalStyle(input.style))
-    ) {
+    // _DisplayInternal (2.7.81 VA 0x183F9A5F0) disposes and regenerates the
+    // id's holder when the parsed slot/type enums differ. The runtime already
+    // canonicalizes both through resolveAvgDisplayStyle/Slot (GenTypeFromRaw /
+    // GenSlotFromRaw), so string equality here is that enum comparison.
+    if (state && (state.slot !== input.slot || state.style !== input.style)) {
       this.remove(input.id);
       state = undefined;
     }
@@ -120,15 +79,16 @@ export class AvgDisplayPanel {
     }
 
     if (state.name !== input.name) {
-      // Divergence (intentional, verified 2.7.61): native
-      // _LoadContentIfNeed (0x183e389c0) compares the holder's GameObject
-      // name -- NOT the command `name` -- so content is generated once per
-      // holder instance and re-displaying a live id with a different `name`
-      // only replays features (the 2.7.51 doc's "name change rebuilds
-      // content" claim does not hold in 2.7.61). We keep rebuilding because
-      // it matches the command's intent; no production story re-names a live
-      // id without an intervening destroy (`[avgdisplay(id="1")]`), so this
-      // divergence is corpus-unreachable.
+      // Divergence (intentional, verified 2.7.61 and 2.7.81): native
+      // _LoadContentIfNeed (2.7.81 VA 0x183F9A040, inlined into Display at
+      // 0x183F97E20) compares the holder's GameObject name -- NOT the command
+      // `name` -- so content is generated once per holder instance and
+      // re-displaying a live id with a different `name` only replays features
+      // (the 2.7.51 doc's "name change rebuilds content" claim does not hold
+      // since 2.7.61). We keep rebuilding because it matches the command's
+      // intent; no production story re-names a live id without an intervening
+      // destroy (`[avgdisplay(id="1")]`), so this divergence is
+      // corpus-unreachable.
       for (const child of state.root.removeChildren()) child.destroy();
       state.name = input.name;
       await this.generateContent(state, input);
@@ -156,13 +116,16 @@ export class AvgDisplayPanel {
       input.style === "character";
     const supportsScale = input.style === "animekv";
     const supportsFade = input.style === "bg";
-    // Native port: AVGDisplayableHolder._ApplyFadeFeature (0x183e372e0,
-    // 2.7.61) skips the ENTIRE fade block when CalculateFadetime(duration)
+    // Native port: AVGDisplayableHolder._ApplyFadeFeature (2.7.81 VA
+    // 0x183F98A70) skips the ENTIRE fade block when CalculateFadetime(duration)
     // <= 0 -- alpha is left completely untouched, unlike position/scale which
     // snap straight to the end point on the same branch. Under the
     // fast-forward gear (animateRatio = 0) every bg fade lands there, so a
     // dimming overlay must keep its current alpha instead of snapping to
-    // `ato` (default 0, which made duration-less bg displays vanish).
+    // `ato` (default 0, which made duration-less bg displays vanish). A fresh
+    // holder therefore stays at the prefab alpha: the `displayable_image`
+    // root CanvasGroup ships m_Alpha = 1 (avg/[uc]common.ab), matching a new
+    // PIXI container.
     const fadeActive = supportsFade && input.durationMs > 0;
     const hasEntry =
       input.style === "animekv" &&

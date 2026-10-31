@@ -386,6 +386,21 @@ describe("preloadContextAssets", () => {
     ]);
   });
 
+  it("preloads avgdisplay bg content addressed by a numeric style", async () => {
+    const context = createContext([
+      '[avgdisplay(id="1",style=5,name="bg_black",slot=1)]',
+      '[avgdisplay(id="2",style=" +05 ",name="bg_white",slot="bgover")]',
+    ]);
+
+    await preloadContextAssets(context);
+
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/bg_black.png",
+      "https://torappu.prts.wiki/assets/avg/background/bg_white.png",
+      DIALOG_FRAME_URL,
+    ]);
+  });
+
   it("preloads gridbg tiles as background assets", async () => {
     const context = createContext([
       '[gridbg(imagegroup="47_g14_skyovercast_L1/47_g14_skyovercast_R1/47_g14_skyovercast_L2/47_g14_skyovercast_R2",solidwidth="1280/1280/1280/1280",solidheight="720/720/720/720")]',

@@ -58,12 +58,14 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("normalizes numeric avgdisplay style/slot spellings to their aliases", async () => {
+  it("canonicalizes avgdisplay style/slot like GenTypeFromRaw / GenSlotFromRaw", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[avgdisplay(id="9",name="bg_black",style=5,slot=1,duration=1)]',
-        '[avgdisplay(id="9",name="bg_black",style="bg",slot="bgover",duration=1)]',
+        '[avgdisplay(id="9",name="bg_black",style=5,slot=1)]',
+        '[avgdisplay(id="9",name="bg_black",style=" +05 ",slot="01")]',
+        '[avgdisplay(id="9",name="bg_black",style="bg",slot="bgover")]',
+        '[avgdisplay(id="9",name="bg_black",style="BG",slot="BgOver")]',
       ]),
       renderer,
       new FakeAudio(),
@@ -71,12 +73,16 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    // Native GenTypeFromRaw / GenSlotFromRaw parse integers first, so "5"
-    // and "bg" are the same enum member: both displays must reach the panel
-    // with identical canonical spellings (no holder rebuild in between).
+    // Native parses integers first (Int32.TryParse: surrounding whitespace,
+    // sign and leading zeros allowed), so the first three spellings are the
+    // same BG / BG_OVERLAY members: identical canonical values reach the
+    // panel (no holder rebuild) and pick up the bg fade default 0.1s.
+    // Aliases are case-sensitive, so "BG"/"BgOver" stay raw (NONE).
     expect(renderer.avgDisplayCalls).toEqual([
-      expect.objectContaining({ id: "9", style: "bg", slot: "bgover" }),
-      expect.objectContaining({ id: "9", style: "bg", slot: "bgover" }),
+      expect.objectContaining({ durationMs: 100, slot: "bgover", style: "bg" }),
+      expect.objectContaining({ durationMs: 100, slot: "bgover", style: "bg" }),
+      expect.objectContaining({ durationMs: 100, slot: "bgover", style: "bg" }),
+      expect.objectContaining({ durationMs: 0, slot: "BgOver", style: "BG" }),
     ]);
   });
 
