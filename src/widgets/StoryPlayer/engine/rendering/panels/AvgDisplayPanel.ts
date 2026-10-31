@@ -57,6 +57,10 @@ export class AvgDisplayPanel {
     }
 
     let state = this.states.get(input.id);
+    // _DisplayInternal (2.7.81 VA 0x183F9A5F0) disposes and regenerates the
+    // id's holder when the parsed slot/type enums differ. The runtime already
+    // canonicalizes both through resolveAvgDisplayStyle/Slot (GenTypeFromRaw /
+    // GenSlotFromRaw), so string equality here is that enum comparison.
     if (state && (state.slot !== input.slot || state.style !== input.style)) {
       this.remove(input.id);
       state = undefined;
@@ -75,6 +79,16 @@ export class AvgDisplayPanel {
     }
 
     if (state.name !== input.name) {
+      // Divergence (intentional, verified 2.7.61 and 2.7.81): native
+      // _LoadContentIfNeed (2.7.81 VA 0x183F9A040, inlined into Display at
+      // 0x183F97E20) compares the holder's GameObject name -- NOT the command
+      // `name` -- so content is generated once per holder instance and
+      // re-displaying a live id with a different `name` only replays features
+      // (the 2.7.51 doc's "name change rebuilds content" claim does not hold
+      // since 2.7.61). We keep rebuilding because it matches the command's
+      // intent; no production story re-names a live id without an intervening
+      // destroy (`[avgdisplay(id="1")]`), so this divergence is
+      // corpus-unreachable.
       for (const child of state.root.removeChildren()) child.destroy();
       state.name = input.name;
       await this.generateContent(state, input);
@@ -102,6 +116,17 @@ export class AvgDisplayPanel {
       input.style === "character";
     const supportsScale = input.style === "animekv";
     const supportsFade = input.style === "bg";
+    // Native port: AVGDisplayableHolder._ApplyFadeFeature (2.7.81 VA
+    // 0x183F98A70) skips the ENTIRE fade block when CalculateFadetime(duration)
+    // <= 0 -- alpha is left completely untouched, unlike position/scale which
+    // snap straight to the end point on the same branch. Under the
+    // fast-forward gear (animateRatio = 0) every bg fade lands there, so a
+    // dimming overlay must keep its current alpha instead of snapping to
+    // `ato` (default 0, which made duration-less bg displays vanish). A fresh
+    // holder therefore stays at the prefab alpha: the `displayable_image`
+    // root CanvasGroup ships m_Alpha = 1 (avg/[uc]common.ab), matching a new
+    // PIXI container.
+    const fadeActive = supportsFade && input.durationMs > 0;
     const hasEntry =
       input.style === "animekv" &&
       (input.entryFrom !== undefined || input.entryTo !== undefined);
@@ -114,14 +139,14 @@ export class AvgDisplayPanel {
       input.style === "character"
     )
       root.rotation = (input.rotationZ * Math.PI) / 180;
-    if (supportsFade) root.alpha = input.alphaFrom ?? 1;
+    if (fadeActive) root.alpha = input.alphaFrom ?? 1;
 
     const hasPositionTween =
       supportsPosition && (startX !== endX || startY !== endY);
     const hasScaleTween =
       supportsScale && (startScaleX !== endScaleX || startScaleY !== endScaleY);
     const alphaTo = input.alphaTo ?? 0;
-    const hasFadeTween = supportsFade && root.alpha !== alphaTo;
+    const hasFadeTween = fadeActive && root.alpha !== alphaTo;
     const hasTween =
       input.durationMs > 0 &&
       (hasPositionTween || hasScaleTween || hasFadeTween || hasEntry);
@@ -138,7 +163,7 @@ export class AvgDisplayPanel {
           startScaleX + (endScaleX - startScaleX) * progress,
           startScaleY + (endScaleY - startScaleY) * progress,
         );
-      if (supportsFade)
+      if (fadeActive)
         root.alpha =
           (input.alphaFrom ?? 1) +
           (alphaTo - (input.alphaFrom ?? 1)) * progress;
