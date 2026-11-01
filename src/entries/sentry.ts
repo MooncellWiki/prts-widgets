@@ -46,10 +46,10 @@ const feedback = Sentry.feedbackIntegration({
 
 Sentry.init({
   dsn: DSN_BY_HOST[location.host],
-  integrations: [
-    Sentry.breadcrumbsIntegration({
-      console: false,
-    }),
+  // v11 起 console 面包屑由默认的 Console integration 产生（breadcrumbsIntegration
+  // 不再有 console 选项），要关掉只能把它从默认列表里滤掉。
+  integrations: (defaults) => [
+    ...defaults.filter((integration) => integration.name !== "Console"),
     Sentry.contextLinesIntegration(),
     // MediaWiki 是 MPA，真实跳转都是整页加载（记为 pageload）。history change 来自
     // 核心/皮肤/其他 gadget 的 pushState（搜索浮层之类），量测的是 UI 状态变化而非
