@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // sw.js、Tooltip.js、DisplayController.js）是站内按名字引用的，改完要尽快生效，
 // 只给短缓存。static.prts.wiki 的 CDN 在 /widgets/production/ 上开了「优先遵循
 // 源站缓存策略」，两类文件的 CDN 缓存时长都以这里写进 OSS 的 Cache-Control 为准；
-// 不写的话 CDN 会退回按 Last-Modified 估算（最多 1 小时）。
+// 不写的话 CDN 按该目录规则缓存 1 年，部署后只能手动刷新。
 const HASHED_FILE_RE = /\.[\w-]{8}\.[^.]+(?:\.map)?$/;
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const MUTABLE_CACHE_CONTROL = "public, max-age=300";
