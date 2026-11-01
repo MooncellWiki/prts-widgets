@@ -1,18 +1,12 @@
 name: Setup Node
-description: Setup Node
+description: Setup pnpm and Node.js, then install dependencies
 
 runs:
   using: "composite"
   steps:
-    - name: Install pnpm
-      uses: pnpm/action-setup@v6
-
-    - name: Install Node.js
-      uses: actions/setup-node@v7
+    # pnpm 版本取 package.json 的 packageManager，Node 版本自动读 .node-version，
+    # 随后自动 pnpm install；cache 缓存 pnpm store（lockfile 校验结果总会缓存）。
+    - name: Setup pnpm, Node.js and dependencies
+      uses: pnpm/setup@v3
       with:
-        node-version-file: .node-version
-        cache: 'pnpm'
-
-    - name: Install dependencies
-      shell: bash
-      run: pnpm install
+        cache: true
