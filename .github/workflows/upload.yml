@@ -16,8 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: ./.github/actions/setup-node
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@v3
+        with:
+          cache: true
 
       - name: Build Dist
         run: pnpm run build
@@ -37,8 +39,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: ./.github/actions/setup-node
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@v3
+        with:
+          cache: true
 
       - name: Download dist artifact
         uses: actions/download-artifact@v8
@@ -63,8 +67,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: ./.github/actions/setup-node
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@v3
+        with:
+          cache: true
 
       - name: Download dist artifact
         uses: actions/download-artifact@v8
