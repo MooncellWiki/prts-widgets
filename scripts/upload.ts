@@ -10,10 +10,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 文件名里带构建 hash（base64url，8 位）的产物内容不可变，可以让 CDN 和浏览器
 // 永久缓存。vite.config.ts 里 nohashEntries 指定的固定文件名入口（sentry.js、
-// sw.js、Tooltip.js、DisplayController.js）是站内按名字引用的，改完要立刻生效，
-// 所以保持 OSS 默认缓存策略不动。
+// sw.js、Tooltip.js、DisplayController.js）是站内按名字引用的，改完要尽快生效，
+// 只给短缓存。static.prts.wiki 的 CDN 在 /widgets/production/ 上开了「优先遵循
+// 源站缓存策略」，两类文件的 CDN 缓存时长都以这里写进 OSS 的 Cache-Control 为准；
+// 不写的话 CDN 会退回按 Last-Modified 估算（最多 1 小时）。
 const HASHED_FILE_RE = /\.[\w-]{8}\.[^.]+(?:\.map)?$/;
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const MUTABLE_CACHE_CONTROL = "public, max-age=300";
 
 loadEnv({
   path: [path.join(__dirname, "../.env.dev"), path.join(__dirname, "../.env")],
@@ -63,18 +66,18 @@ const store = new OSS({
 });
 
 for (const file of distSet) {
-  const immutable = HASHED_FILE_RE.test(file);
+  const cacheControl = HASHED_FILE_RE.test(file)
+    ? IMMUTABLE_CACHE_CONTROL
+    : MUTABLE_CACHE_CONTROL;
   const result = await store.put(
     path.posix.join(REMOTE_PATH, file),
     path.posix.join(`${BUILD_DIR}/`, file),
-    immutable
-      ? { headers: { "Cache-Control": IMMUTABLE_CACHE_CONTROL } }
-      : undefined,
+    { headers: { "Cache-Control": cacheControl } },
   );
   console.log(
     "[INFO] Uploaded",
     result.res.status,
     result.name,
-    immutable ? "(immutable)" : "",
+    `(${cacheControl})`,
   );
 }
