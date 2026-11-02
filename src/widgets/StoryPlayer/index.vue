@@ -6,6 +6,7 @@ import {
   onMounted,
   ref,
   shallowRef,
+  watch,
 } from "vue";
 
 import {
@@ -14,10 +15,12 @@ import {
   FullscreenOutlined as FullscreenIcon,
   FeedbackOutlined as FeedbackIcon,
   SubjectFilled as LogAllIcon,
+  MenuFilled as MenuIcon,
   PlayArrowFilled as PlayArrowIcon,
   SkipNextFilled as SkipNextIcon,
 } from "@vicons/material";
 import {
+  darkTheme,
   NButton,
   NButtonGroup,
   NCard,
@@ -28,6 +31,7 @@ import {
   NSpace,
   NSpin,
   NText,
+  type GlobalThemeOverrides,
 } from "naive-ui";
 
 import { useTheme } from "@/utils/theme";
@@ -44,6 +48,7 @@ import {
   preloadContextAssets,
   type StoryCharacterFaceAsset,
 } from "./engine/preload";
+import { useStageFullscreen } from "./fullscreen";
 
 import type {
   AutoPlayMode,
@@ -63,8 +68,12 @@ const { theme, themeOverrides } = useTheme();
 
 const hostRef = ref<HTMLElement | null>(null);
 const fullscreenRootRef = ref<HTMLElement | null>(null);
-const isFullscreen = ref(false);
-const fullscreenEnabled = document.fullscreenEnabled;
+const {
+  isFullscreen,
+  isPseudo: isPseudoFullscreen,
+  toggle: toggleFullscreen,
+  exitNative: exitNativeFullscreen,
+} = useStageFullscreen(fullscreenRootRef);
 const isPreloading = ref(false);
 const preloadError = ref<string | null>(null);
 const preloadProgress = ref(0);
@@ -121,6 +130,20 @@ const canAdvance = computed(
 const canSkipStory = computed(
   () => canSkipNode.value && autoPlayMode.value !== "quick_play",
 );
+
+// 舞台区域尺寸：宽屏统一 16:9。窄屏（竖屏手机）下 16:9 只有两百来像素高，
+// lobby 改按内容自然高度，阅读 LOG ALL 时撑高（story-stage--reading）。
+// 播放器的画布 frame 在 story-stage 里按容器查询保持 16:9 居中，区域变成
+// 什么形状都不会拉伸画布。
+const stageSectionClass = computed(() => {
+  if (viewMode.value === "lobby") return "max-w-7xl sm:aspect-video";
+  if (viewMode.value === "text") return "max-w-7xl story-stage--reading";
+  if (isFullscreen.value) return "story-stage story-stage--fullscreen";
+  return [
+    "story-stage max-w-7xl",
+    showLogAll.value ? "story-stage--reading" : "aspect-video",
+  ];
+});
 
 const currentSpeedLevel = computed(() =>
   autoPlayMode.value === "quick_play"
@@ -204,19 +227,64 @@ function openAssetList(): void {
   showAssetList.value = true;
 }
 
-function syncFullscreenState(): void {
-  // 画布尺寸与分辨率由渲染器的 ResizeObserver 跟随宿主同步
-  isFullscreen.value = document.fullscreenElement === fullscreenRootRef.value;
+// 全屏时控制栏不占布局，改为叠在舞台顶部的 HUD：进入全屏先亮出来让人
+// 知道在哪，闲置一会儿自动收起，只留右上角的呼出按钮。点画面照常推进
+// 剧情并收起 HUD；没有"点画面呼出"——那会和推进抢同一个点击。
+// 画布尺寸与分辨率由渲染器的 ResizeObserver 跟随宿主同步。
+const HUD_AUTO_HIDE_MS = 4000;
+const hudVisible = ref(false);
+let hudTimer: ReturnType<typeof setTimeout> | null = null;
+// 指针停在 HUD 上（鼠标悬停、触摸按下期间）不计时，离开后重新倒计时；
+// 速度下拉菜单 teleport 在 HUD 外面，展开期间同样不能把 HUD 收掉
+let hudHovered = false;
+let hudMenuOpen = false;
+
+// HUD 叠在黑底舞台上，固定用暗色主题，卡片半透明露出底下的画面
+const hudThemeOverrides: GlobalThemeOverrides = {
+  Card: { color: "rgba(0, 0, 0, 0.55)" },
+};
+
+function clearHudTimer(): void {
+  if (hudTimer) clearTimeout(hudTimer);
+  hudTimer = null;
 }
 
-async function toggleFullscreen(): Promise<void> {
-  try {
-    await (document.fullscreenElement
-      ? document.exitFullscreen()
-      : fullscreenRootRef.value?.requestFullscreen());
-  } catch (error) {
-    console.error("[story-player] fullscreen failed:", error);
-  }
+function scheduleHudHide(): void {
+  clearHudTimer();
+  if (!isFullscreen.value || hudHovered || hudMenuOpen) return;
+  hudTimer = setTimeout(() => (hudVisible.value = false), HUD_AUTO_HIDE_MS);
+}
+
+function showHud(): void {
+  hudVisible.value = true;
+  scheduleHudHide();
+}
+
+function hideHud(): void {
+  clearHudTimer();
+  hudVisible.value = false;
+  hudHovered = false;
+}
+
+function onHudHover(hovered: boolean): void {
+  hudHovered = hovered;
+  if (hovered) clearHudTimer();
+  else scheduleHudHide();
+}
+
+function onHudMenuShow(show: boolean): void {
+  hudMenuOpen = show;
+  if (show) clearHudTimer();
+  else scheduleHudHide();
+}
+
+watch(isFullscreen, (fullscreen) => (fullscreen ? showHud() : hideHud()));
+
+function onStageClick(): void {
+  if (isFullscreen.value) hideHud();
+  onAdvance().catch((error) => {
+    console.error("[story-player] advance failed:", error);
+  });
 }
 
 function setAutoPlayMode(mode: AutoPlayMode): void {
@@ -232,6 +300,10 @@ function setAutoPlaySpeedLevel(level: number): void {
 
 async function openFeedback(): Promise<void> {
   const currentAutoPlay = player?.getAutoPlayState();
+  const fullscreen = isFullscreen.value;
+  // Sentry 的反馈表单挂在 body 上，原生全屏时会被全屏元素盖住，先退出。
+  // 网页全屏是普通的 fixed 层，表单的 z-index 比它高，不用退。
+  await exitNativeFullscreen();
 
   try {
     await window.Sentry?.showFeedback?.({
@@ -251,7 +323,7 @@ async function openFeedback(): Promise<void> {
       preload_ready: preloadReady.value,
       is_preloading: isPreloading.value,
       preload_percent: preloadPercent.value,
-      fullscreen: isFullscreen.value,
+      fullscreen,
       has_script: hasScript.value,
     });
   } catch (error) {
@@ -380,7 +452,6 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(() => {
-  document.addEventListener("fullscreenchange", syncFullscreenState);
   if (!scriptText.value) {
     preloadError.value = "未提供剧情文本（#datas_txt）";
     return;
@@ -393,7 +464,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener("fullscreenchange", syncFullscreenState);
+  clearHudTimer();
   if (timer) {
     clearInterval(timer);
     timer = null;
@@ -419,16 +490,19 @@ defineExpose({
     <main
       v-show="!legacyPlayerActive"
       ref="fullscreenRootRef"
-      class="story-player box-border max-w-full min-h-full w-full flex flex-col items-center"
-      :class="isFullscreen ? 'h-screen gap-0 p-0' : 'gap-3.5 p-6'"
+      class="story-player box-border w-full flex flex-col items-center"
+      :class="
+        isFullscreen
+          ? [
+              'story-player--fullscreen',
+              { 'story-player--pseudo-fullscreen': isPseudoFullscreen },
+            ]
+          : 'max-w-full min-h-full gap-3.5 py-3 sm:p-6'
+      "
     >
       <section
         class="relative w-full overflow-hidden"
-        :class="
-          isFullscreen
-            ? 'fullscreen-stage-container min-h-0 max-w-none flex flex-1 items-center justify-center bg-black'
-            : 'aspect-video max-w-7xl'
-        "
+        :class="stageSectionClass"
       >
         <NCard
           v-if="viewMode === 'lobby'"
@@ -465,28 +539,22 @@ defineExpose({
           </div>
         </NCard>
 
+        <!-- 只加载文本时没有播放进度，不传当前行与选择历史 -->
         <LogAllPanel
           v-else-if="viewMode === 'text'"
           :show="showLogAll"
           embedded
           :document="logAllDocument"
-          :active-line-index="logAllActiveLineIndex"
-          :selections="logAllSelections"
           @update:show="closeLogAll"
         />
 
         <template v-else>
-          <div
-            class="bg-black"
-            :class="
-              isFullscreen ? 'fullscreen-stage-frame' : 'absolute inset-0'
-            "
-          >
+          <div class="story-stage-frame bg-black">
             <div
               ref="hostRef"
               class="h-full w-full cursor-pointer outline-none"
               tabindex="0"
-              @click="onAdvance"
+              @click="onStageClick"
               @keydown="onKeydown"
             />
 
@@ -512,126 +580,170 @@ defineExpose({
             >
               <NSpin description="准备中..." />
             </div>
-            <LogAllPanel
-              v-model:show="showLogAll"
-              embedded
-              class="absolute inset-0 z-10"
-              :document="logAllDocument"
-              :active-line-index="logAllActiveLineIndex"
-              :selections="logAllSelections"
-            />
           </div>
+
+          <!-- 盖住整个舞台区域而不只是 16:9 画布：全屏时铺满屏幕，窄屏时
+               跟着区域撑高，阅读宽度不受画布比例限制 -->
+          <LogAllPanel
+            v-model:show="showLogAll"
+            embedded
+            class="absolute inset-0 z-10"
+            :document="logAllDocument"
+            :active-line-index="logAllActiveLineIndex"
+            :selections="logAllSelections"
+          />
         </template>
       </section>
 
-      <template v-if="viewMode === 'player'">
-        <NCard
-          class="w-full"
-          :class="isFullscreen ? 'max-w-none rounded-none' : 'max-w-7xl'"
-          size="small"
-          aria-label="播放控制"
-        >
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <NSpace align="center" :wrap="true">
-              <NText depth="3" class="text-xs font-bold tracking-[0.12em]">
-                播放模式
-              </NText>
-              <NButtonGroup size="small">
-                <NButton
-                  v-for="option in playModeOptions"
-                  :key="option.value"
-                  :type="autoPlayMode === option.value ? 'primary' : 'default'"
-                  :disabled="controlsDisabled || theaterMode"
-                  @click="setAutoPlayMode(option.value)"
+      <!-- 全屏时套暗色主题：控制栏变成叠在黑底舞台上的 HUD -->
+      <NConfigProvider
+        v-if="viewMode === 'player'"
+        abstract
+        :theme="isFullscreen ? darkTheme : undefined"
+        :theme-overrides="isFullscreen ? hudThemeOverrides : undefined"
+      >
+        <Transition name="story-hud">
+          <NCard
+            v-show="!isFullscreen || (hudVisible && !showLogAll)"
+            class="w-full"
+            :class="isFullscreen ? 'story-hud' : 'max-w-7xl'"
+            size="small"
+            :bordered="!isFullscreen"
+            aria-label="播放控制"
+            @pointerenter="onHudHover(true)"
+            @pointerleave="onHudHover(false)"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <NSpace align="center" :wrap="true">
+                <NText
+                  v-if="!isFullscreen"
+                  depth="3"
+                  class="text-xs font-bold tracking-[0.12em]"
                 >
-                  {{ option.label }}
+                  播放模式
+                </NText>
+                <NButtonGroup size="small">
+                  <NButton
+                    v-for="option in playModeOptions"
+                    :key="option.value"
+                    :type="
+                      autoPlayMode === option.value ? 'primary' : 'default'
+                    "
+                    :disabled="controlsDisabled || theaterMode"
+                    @click="setAutoPlayMode(option.value)"
+                  >
+                    {{ option.label }}
+                  </NButton>
+                </NButtonGroup>
+              </NSpace>
+
+              <NSpace align="center" :wrap="true">
+                <NButton size="small" @click="toggleFullscreen">
+                  <template #icon>
+                    <NIcon>
+                      <FullscreenExitIcon v-if="isFullscreen" />
+                      <FullscreenIcon v-else />
+                    </NIcon>
+                  </template>
+                  {{ isFullscreen ? "退出全屏" : "全屏" }}
                 </NButton>
-              </NButtonGroup>
-            </NSpace>
 
-            <NSpace align="center" :wrap="true">
-              <NButton
-                size="small"
-                :disabled="!fullscreenEnabled"
-                @click="toggleFullscreen"
-              >
-                <template #icon>
-                  <NIcon>
-                    <FullscreenExitIcon v-if="isFullscreen" />
-                    <FullscreenIcon v-else />
-                  </NIcon>
-                </template>
-                {{ isFullscreen ? "退出全屏" : "全屏" }}
-              </NButton>
+                <NButton
+                  size="small"
+                  :disabled="!hasScript"
+                  @click="openLogAll"
+                >
+                  <template #icon>
+                    <NIcon><LogAllIcon /></NIcon>
+                  </template>
+                  文本
+                </NButton>
 
-              <NButton size="small" :disabled="!hasScript" @click="openLogAll">
-                <template #icon>
-                  <NIcon><LogAllIcon /></NIcon>
-                </template>
-                文本
-              </NButton>
+                <NButton
+                  size="small"
+                  :disabled="!preloadReady"
+                  @click="openAssetList"
+                >
+                  <template #icon>
+                    <NIcon><ExportIcon /></NIcon>
+                  </template>
+                  导出
+                </NButton>
 
-              <NButton
-                size="small"
-                :disabled="!preloadReady"
-                @click="openAssetList"
-              >
-                <template #icon>
-                  <NIcon><ExportIcon /></NIcon>
-                </template>
-                导出
-              </NButton>
+                <NButton size="small" @click="openFeedback">
+                  <template #icon>
+                    <NIcon><FeedbackIcon /></NIcon>
+                  </template>
+                  反馈
+                </NButton>
 
-              <NButton size="small" @click="openFeedback">
-                <template #icon>
-                  <NIcon><FeedbackIcon /></NIcon>
-                </template>
-                反馈
-              </NButton>
+                <!-- 全屏时点画面就能推进，只在尚未开始时保留入口 -->
+                <NButton
+                  v-if="!isFullscreen || state === 'idle'"
+                  size="small"
+                  :disabled="!canAdvance"
+                  quaternary
+                  @click="onAdvance"
+                >
+                  <template #icon>
+                    <NIcon><PlayArrowIcon /></NIcon>
+                  </template>
+                  {{ state === "idle" ? "开始" : "继续" }}
+                </NButton>
 
-              <NButton
-                size="small"
-                :disabled="!canAdvance"
-                quaternary
-                @click="onAdvance"
-              >
-                <template #icon>
-                  <NIcon><PlayArrowIcon /></NIcon>
-                </template>
-                {{ state === "idle" ? "开始" : "继续" }}
-              </NButton>
+                <NButton
+                  size="small"
+                  type="primary"
+                  :disabled="!(preloadReady && canSkipStory)"
+                  @click="onSkipNode"
+                >
+                  <template #icon>
+                    <NIcon><SkipNextIcon /></NIcon>
+                  </template>
+                  跳过剧情
+                </NButton>
+              </NSpace>
 
-              <NButton
-                size="small"
-                type="primary"
-                :disabled="!(preloadReady && canSkipStory)"
-                @click="onSkipNode"
-              >
-                <template #icon>
-                  <NIcon><SkipNextIcon /></NIcon>
-                </template>
-                跳过剧情
-              </NButton>
-            </NSpace>
+              <NSpace align="center" :wrap="true">
+                <NText
+                  v-if="!isFullscreen"
+                  depth="3"
+                  class="text-xs font-bold tracking-[0.12em]"
+                >
+                  播放速度
+                </NText>
+                <NSelect
+                  size="small"
+                  style="width: 96px"
+                  aria-label="播放速度"
+                  :value="currentSpeedLevel"
+                  :options="speedOptions"
+                  :disabled="
+                    controlsDisabled ||
+                    theaterMode ||
+                    autoPlayMode === 'default'
+                  "
+                  @update:value="setAutoPlaySpeedLevel"
+                  @update:show="onHudMenuShow"
+                />
+              </NSpace>
+            </div>
+          </NCard>
+        </Transition>
 
-            <NSpace align="center" :wrap="true">
-              <NText depth="3" class="text-xs font-bold tracking-[0.12em]">
-                播放速度
-              </NText>
-              <NSelect
-                size="small"
-                style="width: 96px"
-                :value="currentSpeedLevel"
-                :options="speedOptions"
-                :disabled="
-                  controlsDisabled || theaterMode || autoPlayMode === 'default'
-                "
-                @update:value="setAutoPlaySpeedLevel"
-              />
-            </NSpace>
-          </div>
-        </NCard>
-      </template>
+        <NButton
+          v-if="isFullscreen && !hudVisible && !showLogAll"
+          class="story-hud-toggle"
+          circle
+          secondary
+          aria-label="显示播放控制"
+          @click="showHud"
+        >
+          <template #icon>
+            <NIcon><MenuIcon /></NIcon>
+          </template>
+        </NButton>
+      </NConfigProvider>
 
       <AssetListModal
         v-model:show="showAssetList"
@@ -644,13 +756,100 @@ defineExpose({
 </template>
 
 <style scoped>
-.fullscreen-stage-container {
-  container-type: size;
+/* 窄屏（竖屏手机）下 16:9 只有两百来像素高，LOG ALL 放不下：阅读文本时
+   区域改用视口高度，宽屏仍保持 16:9 */
+.story-stage--reading {
+  height: min(70vh, 40rem);
 }
 
-.fullscreen-stage-frame {
+@media (min-width: 640px) {
+  .story-stage--reading {
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+}
+
+/* 舞台区域可能不是 16:9（全屏、窄屏阅读 LOG ALL），画布 frame 按容器查询
+   等比居中，避免画布被拉伸；不支持容器查询的老浏览器退回铺满 */
+.story-stage {
+  container-type: size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #000;
+}
+
+.story-stage-frame {
   position: relative;
-  width: min(100cqw, calc(100cqh * 16 / 9));
-  height: min(100cqh, calc(100cqw * 9 / 16));
+  width: 100%;
+  height: 100%;
+}
+
+@supports (width: 1cqw) {
+  .story-stage-frame {
+    width: min(100cqw, calc(100cqh * 16 / 9));
+    height: min(100cqh, calc(100cqw * 9 / 16));
+  }
+}
+
+.story-player--fullscreen {
+  position: relative;
+  height: 100vh;
+  padding: 0;
+  overflow: hidden;
+  background-color: #000;
+}
+
+/* Fullscreen API 不可用（iPhone Safari）时的网页全屏。z-index 高于
+   Minerva/Vector 的页面层（最高约 450），低于 naive-ui 浮层（2000 起）和
+   Sentry 反馈表单，下拉菜单与弹窗照常显示在上面 */
+.story-player--pseudo-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: auto;
+  height: auto;
+}
+
+.story-stage--fullscreen {
+  position: absolute;
+  inset: 0;
+}
+
+.story-hud {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  padding-top: env(safe-area-inset-top, 0px);
+  border-radius: 0;
+  backdrop-filter: blur(6px);
+}
+
+.story-hud-toggle {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  z-index: 20;
+  opacity: 0.6;
+}
+
+.story-hud-toggle:hover,
+.story-hud-toggle:focus-visible {
+  opacity: 1;
+}
+
+.story-hud-enter-active,
+.story-hud-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.story-hud.story-hud-enter-from,
+.story-hud.story-hud-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
 }
 </style>

@@ -19,7 +19,8 @@ pnpm dev  # 打开 http://localhost:8080/debug/StoryPlayer.html?path=obt/main/le
 
 ```
 src/entries/StoryPlayer.ts        # 从 #datas_txt 取剧情 txt，挂载 index.vue
-  └─ index.vue                    # UI 外壳：lobby/text/player 三种 viewMode、全屏、自动播放
+  └─ index.vue                    # UI 外壳：lobby/text/player 三种 viewMode、全屏 HUD、自动播放
+      ├─ fullscreen.ts            # Fullscreen API + 网页全屏兜底（iPhone），触屏锁横屏
       ├─ context.ts               # 拉 character.json + story_variables.json
       ├─ engine/createStoryPlayer # 组装 parser + runtime + renderer + audio
       ├─ engine/preload.ts        # 静态扫描脚本收集资源，预热 PIXI Assets
