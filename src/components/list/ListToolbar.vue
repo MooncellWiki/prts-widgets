@@ -25,7 +25,8 @@ const props = withDefaults(
     sortDir: number;
     /** 方向钮上的字：[升, 降] */
     dirLabels?: [up: string, down: string];
-    views: { view: V; label: string; icon: IconName }[];
+    /** 显示方式；icon 可省（只有文字的按钮） */
+    views: { view: V; label: string; icon?: IconName }[];
     view: V;
   }>(),
   { dirLabels: () => ["升序", "降序"] },

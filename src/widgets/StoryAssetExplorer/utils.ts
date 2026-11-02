@@ -11,20 +11,140 @@ import type {
 
 export type StoryResourceType = "background" | "image" | "item" | "character";
 
+/** 页签顺序：人物在前（同改版前的「人物 / 其他」） */
 export const RESOURCE_TYPE_OPTIONS: {
   label: string;
   value: StoryResourceType;
+  /** 结果栏「共 N …」的量词 + 名称 */
+  unit: string;
 }[] = [
-  { label: "背景", value: "background" },
-  { label: "图像", value: "image" },
-  { label: "道具", value: "item" },
-  { label: "角色", value: "character" },
+  { label: "角色", value: "character", unit: "个角色" },
+  { label: "背景", value: "background", unit: "张背景" },
+  { label: "图像", value: "image", unit: "张图像" },
+  { label: "道具", value: "item", unit: "个道具" },
 ];
+
+export function isResourceType(value: unknown): value is StoryResourceType {
+  return RESOURCE_TYPE_OPTIONS.some((option) => option.value === value);
+}
 
 export function resourceTypeLabel(type: string): string {
   return (
     RESOURCE_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type
   );
+}
+
+export function resourceTypeUnit(type: StoryResourceType): string {
+  return (
+    RESOURCE_TYPE_OPTIONS.find((option) => option.value === type)?.unit ?? ""
+  );
+}
+
+/**
+ * 角色的分类，同改版前「人物」下的 NPC / Char 两段：按资源名的前缀分。
+ * 干员 = char_<编号> / avg_<编号>（含 avgnew_、avg_char_ 这些早期写法）；
+ * NPC = avg_npc_ / npc_ / avgnew_npc_；剩下的（博士 avg_doc、占位 char_empty 等）归其他。
+ */
+export type CharacterCategory = "operator" | "npc" | "other";
+
+export const CHARACTER_CATEGORIES: {
+  value: CharacterCategory;
+  label: string;
+}[] = [
+  { value: "operator", label: "干员" },
+  { value: "npc", label: "NPC" },
+  { value: "other", label: "其他" },
+];
+
+export function isCharacterCategory(
+  value: unknown,
+): value is CharacterCategory {
+  return CHARACTER_CATEGORIES.some((option) => option.value === value);
+}
+
+const NPC_PREFIX = /^(?:avg_|avgnew_)?npc_/;
+const OPERATOR_PREFIX = /^(?:char_|avg_|avgnew_|avg_char_)\d/;
+
+export function characterCategory(id: string): CharacterCategory {
+  const lower = id.toLowerCase();
+  if (NPC_PREFIX.test(lower)) return "npc";
+  if (OPERATOR_PREFIX.test(lower)) return "operator";
+  return "other";
+}
+
+const idCollator = new Intl.Collator("en", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+/**
+ * 资源名按自然顺序比（avg_npc_9 在 avg_npc_10 前面）。改版前的 DPL 为了这个把
+ * 三位、四位、五位编号拆成几段分别列，这里一个比较函数就够了。
+ */
+export function compareResourceId(a: string, b: string): number {
+  return idCollator.compare(a, b);
+}
+
+/**
+ * 搜索框里的内容 → 小写的资源名关键字。除了直接输资源名，还认这几种贴进来的东西：
+ * - 剧本里的命令：`[charslot(slot="m",name="avg_2026_yu_1#18$1")]`、`[Background(image="bg_x")]`，取引号里的名字；
+ * - wiki 上的文件名：`文件:Avg avg 2026 yu 1-1$1.png`，去掉命名空间、`Avg_` 前缀和扩展名，空格换回下划线。
+ * 文件名里的 `-` 是上传时把 `#` 换掉的（资源名里本来没有 `-`），一律换回 `#`。
+ */
+export function normalizeResourceQuery(raw: string): string {
+  const quoted = /\b(?:name|image|key|res)\s*=\s*"([^"]+)"/iu.exec(raw);
+  let text = (quoted ? quoted[1] : raw).trim();
+  const fileName =
+    /^(?:文件|file|image)\s*:/iu.test(text) ||
+    /\.(?:png|jpe?g|webp)$/iu.test(text);
+  if (fileName) {
+    text = text
+      .replace(/^(?:文件|file|image)\s*:\s*/iu, "")
+      .replace(/\.(?:png|jpe?g|webp)$/iu, "")
+      .replaceAll(" ", "_")
+      .replace(/^avg_/iu, "");
+  }
+  return text.replaceAll("-", "#").toLowerCase();
+}
+
+/**
+ * 叠图角色的某个表情（`base#表情`，剧本里就是这么写的）在列表里归到 `base$N`
+ * （N = 表情所在组的下标 + 1，见 parseCharacterListingId），按资源名搜不到。
+ * 这里按 character.json 把它换成列表里的那一条，顺带记下是哪个表情。
+ * 独立全身图（`base#图名`）列表里本来就是这个名字，不用换，返回 null。
+ */
+export function resolveFaceAlias(
+  query: string,
+  links: CharacterLinkMap | null,
+): { id: string; face: string } | null {
+  const hash = query.indexOf("#");
+  if (!links || hash <= 0) return null;
+  const node = links.get(query.slice(0, hash).toLowerCase());
+  if (!node) return null;
+  const name = query.slice(hash + 1).toLowerCase();
+  for (const [itemName, item] of node.items) {
+    if (itemName.toLowerCase() !== name) continue;
+    if (!item.face || !node.overlays.has(item.group)) return null;
+    return {
+      id: `${query.slice(0, hash).toLowerCase()}$${item.group + 1}`,
+      face: itemName,
+    };
+  }
+  return null;
+}
+
+/**
+ * torappu 的 CDN（阿里云图片处理）缩图：`l_` 按最长边缩，`p_` 按百分比缩。
+ * 只缩不放，原图比目标小时原样返回。
+ */
+export function cdnImageUrl(
+  url: string,
+  operation: string,
+  webp: boolean,
+): string {
+  const operations = [operation];
+  if (webp) operations.push("format,webp");
+  return `${url}?image_process=${operations.join("/")}`;
 }
 
 /**
@@ -167,16 +287,22 @@ const characterMapState: { cache: Promise<CharacterLinkMap> | null } = {
   cache: null,
 };
 
-/** 拉取并缓存 `avg/character.json`（约 1.3MB），仅在出现角色卡片时调用 */
+/**
+ * 拉取并缓存 `avg/character.json`（约 1.3MB，gzip 后约 130KB），只在用到角色时调用。
+ * 失败后清掉缓存，下次调用重新拉。
+ */
 export function ensureCharacterMap(): Promise<CharacterLinkMap> {
-  characterMapState.cache ??= fetch(CHARACTER_MAP_URL).then(
-    async (response) => {
+  characterMapState.cache ??= fetch(CHARACTER_MAP_URL)
+    .then(async (response) => {
       if (!response.ok) {
         throw new Error(`character.json ${response.status}`);
       }
       return parseCharacterMap(await response.json());
-    },
-  );
+    })
+    .catch((error: unknown) => {
+      characterMapState.cache = null;
+      throw error;
+    });
   return characterMapState.cache;
 }
 
@@ -339,4 +465,111 @@ export function cargoTextPathIn(paths: string[]): string {
     (path) => `"${path.replace(/["\\]/gu, String.raw`\$&`)}"`,
   );
   return `textPath IN (${quoted.join(",")})`;
+}
+
+/** 使用详情的一行：接口给的剧本 + cargo 查到的剧情页面（查不到时没有 story） */
+export interface UsageRow extends StoryUsageItem {
+  story?: CargoStoryRow;
+}
+
+export interface UsageGroup {
+  /** 分组键：cargo 的 storyGroup；没收录到剧情页面的是空串 */
+  key: string;
+  rows: UsageRow[];
+  /** 组内出现过的剧情分类（主线 / 支线 / 剧情 / 干员密录），按出现顺序 */
+  types: string[];
+}
+
+/**
+ * 按剧情页面所属的活动 / 章节（cargo 的 storyGroup）分组：组按第一次出现的顺序，
+ * 组内保持接口顺序（剧本路径）。没收录到剧情页面的剧本放在最后一组。
+ */
+export function groupUsages(rows: readonly UsageRow[]): UsageGroup[] {
+  const groups = new Map<string, UsageGroup>();
+  const orphan: UsageGroup = { key: "", rows: [], types: [] };
+  for (const row of rows) {
+    const key = row.story?.storyGroup ?? "";
+    let group = key ? groups.get(key) : orphan;
+    if (!group) {
+      group = { key, rows: [], types: [] };
+      groups.set(key, group);
+    }
+    group.rows.push(row);
+    const type = row.story?.storyType;
+    if (type && !group.types.includes(type)) group.types.push(type);
+  }
+  const list = [...groups.values()];
+  if (orphan.rows.length > 0) list.push(orphan);
+  return list;
+}
+
+/** 接口给的 `base#表情` → 表情名 */
+export function faceNameOf(faceId: string): string {
+  return faceId.slice(faceId.lastIndexOf("#") + 1);
+}
+
+/** 每个表情被几个剧本用到 */
+export function faceUsageCounts(
+  rows: readonly UsageRow[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const face of row.faces ?? []) {
+      const name = faceNameOf(face);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/** 文件名里不能出现的字符换成下划线 */
+export function safeFilename(raw: string): string {
+  return raw.replace(/[<>:"/\\|?*]/gu, "_");
+}
+
+/**
+ * 一条资源的预览图：角色按 character.json 解析（叠图 / 单图），其余直接是静态图。
+ * 角色在 character.json 还没到时返回 undefined（先空着），取失败了就当没有预览。
+ */
+export function resourcePreview(
+  type: StoryResourceType,
+  id: string,
+  links: CharacterLinkMap | null,
+  linksFailed = false,
+): CharacterPreview | null | undefined {
+  if (type === "character") {
+    if (links) return resolveCharacterPreview(id, links);
+    return linksFailed ? null : undefined;
+  }
+  const url = storyResourceImageUrl(type, id);
+  return url ? { kind: "single", url } : null;
+}
+
+/** 缩略图的最长边：背景 / 图像是横图，格子宽；角色 / 道具是方图，格子窄 */
+export function thumbEdge(type: StoryResourceType): number {
+  return type === "background" || type === "image" ? 640 : 320;
+}
+
+/** 把 text 里命中 terms（不分大小写）的部分切出来，给结果里的资源名高亮 */
+export function highlightParts(
+  text: string,
+  terms: readonly string[],
+): { text: string; hit: boolean }[] {
+  const lower = text.toLowerCase();
+  const marks: boolean[] = Array.from({ length: text.length }, () => false);
+  for (const term of terms) {
+    if (!term) continue;
+    let from = lower.indexOf(term);
+    while (from !== -1) {
+      for (let i = from; i < from + term.length; i++) marks[i] = true;
+      from = lower.indexOf(term, from + term.length);
+    }
+  }
+  const parts: { text: string; hit: boolean }[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const last = parts.at(-1);
+    if (last && last.hit === marks[i]) last.text += text[i];
+    else parts.push({ text: text[i], hit: marks[i] });
+  }
+  return parts;
 }
