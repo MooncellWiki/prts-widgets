@@ -118,6 +118,7 @@ export const PROFESSIONS = [
       { name: "傀儡师", iconKey: "dollkeeper" },
       { name: "炼金师", iconKey: "alchemist" },
       { name: "巡空者", iconKey: "skywalker" },
+      { name: "调度者", iconKey: "dispatcher" },
     ],
   },
 ] as const;
