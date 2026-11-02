@@ -181,6 +181,7 @@ export const FILTERS = {
           label: "活动获得",
           values: ["活动获得", "记录修复奖励"],
         },
+        "联动寻访",
       ],
       true,
     ),
