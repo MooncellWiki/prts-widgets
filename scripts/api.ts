@@ -20,10 +20,24 @@ interface WikiApiResponse {
   };
   edit?: {
     result?: string;
+    nochange?: string;
+    newrevid?: number;
+  };
+  error?: {
+    code: string;
+    info: string;
   };
 }
 
+export interface EditResult {
+  nochange: boolean;
+  newrevid?: number;
+}
+
 const entry = "https://prts.wiki/api.php";
+const REQUEST_TIMEOUT_MS = 60_000;
+
+let csrfToken: string | undefined;
 
 const cookies = new Map<string, string>();
 
@@ -82,15 +96,23 @@ async function request({
     method,
     headers,
     body: requestBody,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
+  const text = await response.text();
+  const snippet = () => text.slice(0, 200).replaceAll(/\s+/g, " ");
+
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    throw new Error(`HTTP ${response.status}: ${snippet()}`);
   }
 
   setCookieFromResponse(response);
 
-  return (await response.json()) as WikiApiResponse;
+  try {
+    return JSON.parse(text) as WikiApiResponse;
+  } catch {
+    throw new Error(`响应不是 JSON（HTTP ${response.status}）: ${snippet()}`);
+  }
 }
 
 export async function getCsrfToken(): Promise<string> {
@@ -169,12 +191,13 @@ export async function create(
   console.log(resp);
 }
 
+/** 编辑失败（HTTP 错误、API 返回 error、result 不是 Success）时抛错。 */
 export async function edit(
   pagename: string,
   content: string,
   summary: string = "by prts-widgets script",
-): Promise<void> {
-  const token = await getCsrfToken();
+): Promise<EditResult> {
+  csrfToken ??= await getCsrfToken();
   const resp = await request({
     method: "POST",
     body: {
@@ -183,11 +206,28 @@ export async function edit(
       text: content,
       bot: "1",
       summary,
-      token,
+      token: csrfToken,
       format: "json",
     },
   });
-  console.log(resp);
+
+  if (resp.error) {
+    // 会话被重置后旧 token 会失效，下次调用重新取
+    if (resp.error.code === "badtoken") csrfToken = undefined;
+    throw new Error(
+      `编辑 ${pagename} 失败：${resp.error.code}: ${resp.error.info}`,
+    );
+  }
+  if (resp.edit?.result !== "Success") {
+    throw new Error(
+      `编辑 ${pagename} 失败：${JSON.stringify(resp.edit ?? resp)}`,
+    );
+  }
+
+  return {
+    nochange: resp.edit.nochange !== undefined,
+    newrevid: resp.edit.newrevid,
+  };
 }
 
 /** 页面不存在时返回 undefined。 */
