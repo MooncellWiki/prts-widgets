@@ -873,6 +873,13 @@ export interface StoryAudio {
   destroy: () => void;
   playMusic: (input: PlayMusicInput) => Promise<void>;
   playSound: (input: PlaySoundInput) => Promise<void>;
+  /**
+   * Native port: `CommonExecutors._ResetAudio`(2791 VA 0x1841C6200)—— story
+   * 结束(OnReset)时遍历 `m_allSoundChannels` 对每个残留 SOUND channel 调
+   * `StopChannel(name, _soundDefaultFadeTime)` 再 Clear。MUSIC channel 不在
+   * 清理范围(BGM 由 AudioManager 全局管理,不归 CommonExecutors 本地状态管)。
+   */
+  resetAudio: () => void;
   setMusicVolume: (volume: number, fadeMs: number) => Promise<void>;
   setSoundVolume: (
     channel: string,

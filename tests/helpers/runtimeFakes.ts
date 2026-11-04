@@ -441,6 +441,12 @@ export class FakeAudio implements StoryAudio {
     this.stopSoundCalls.push({ channel, fadeMs });
   }
 
+  resetAudioCalls = 0;
+
+  resetAudio(): void {
+    this.resetAudioCalls += 1;
+  }
+
   destroy(): void {}
 }
 

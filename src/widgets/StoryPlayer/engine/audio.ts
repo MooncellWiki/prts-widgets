@@ -205,6 +205,34 @@ export class HtmlStoryAudio implements StoryAudio {
     });
   }
 
+  /**
+   * Native `_ResetAudio` fades every channel it stops with the serialized
+   * `_soundDefaultFadeTime` = 0.5s, measured off the AVGController prefab's
+   * `panel_common_executors` node — identical on Android 2.7.61 APK
+   * (sharedassets1.assets, MonoBehaviour path_id 4091) and the live PC 2.7.91
+   * client (sharedassets1.assets, path_id 4283, file MD5 matches the CDN
+   * manifest).
+   */
+  resetAudio(): void {
+    // Native provenance: `CommonExecutors.OnReset -> _ResetAudio` (2791 VA
+    // 0x1841C6200): StopChannel(name, 0.5) per channel -> AudioChannel.Stop
+    // 0.5s linear fade-out, then the channel is released. MUSIC is global and
+    // untouched. Web adaptation: a bumped requestId also cancels any
+    // still-pending load of a delayed playsound, which native never races
+    // (its delay is a coroutine).
+    for (const [channelName, sound] of this.soundChannels) {
+      this.soundRequestIds.set(
+        channelName,
+        (this.soundRequestIds.get(channelName) ?? 0) + 1,
+      );
+      this.soundBaseVolumes.delete(channelName);
+      void this.fadeAndStop(sound, 500, () => {
+        if (this.soundChannels.get(channelName) === sound)
+          this.soundChannels.delete(channelName);
+      });
+    }
+  }
+
   async setSoundVolume(
     channel: string,
     volume: number,

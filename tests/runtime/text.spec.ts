@@ -367,6 +367,29 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("finished");
   });
 
+  it("runs the end-of-story audio reset when playback finishes", async () => {
+    const renderer = new FakeRenderer();
+    const audio = new FakeAudio();
+    const runtime = new StoryRuntime(
+      createContext([
+        // A loop ambience with no matching stopsound: only the story-end
+        // OnReset -> _ResetAudio sweep (2791 VA 0x1841C6200) may stop it.
+        '[playsound(key="$burningloop1", loop=true, channel="bgs")]',
+        "[name=A]done",
+      ]),
+      renderer,
+      audio,
+    );
+
+    await runtime.start();
+    await runtime.advance();
+
+    expect(runtime.getState()).toBe("finished");
+    // Exactly once: finishPlayback is the single natural-end entry point,
+    // and the reset must not fire while the story is merely waiting.
+    expect(audio.resetAudioCalls).toBe(1);
+  });
+
   it("uses native sticker id state for show, append, and hide", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

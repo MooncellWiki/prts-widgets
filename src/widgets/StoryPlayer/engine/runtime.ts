@@ -1027,6 +1027,9 @@ export class StoryRuntime {
     if (shouldResume) {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
+      // Story ended by skip with no loop alive to reach finishPlayback();
+      // apply the same end-of-story audio reset it performs.
+      this.audio.resetAudio();
       this.state = "finished";
       this.finishLineSeekMissed("finished");
     }
@@ -1190,6 +1193,11 @@ export class StoryRuntime {
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.resetItemSlot();
+    // Native port: CommonExecutors.OnReset -> _ResetAudio (2791 VA
+    // 0x1841C6200) stops every SOUND channel playsound started and stopsound
+    // did not explicitly stop, so an unterminated loop ambience cannot outlive
+    // the story. MUSIC is global in native and deliberately untouched here.
+    this.audio.resetAudio();
     this.state = "finished";
     this.finishLineSeekMissed("finished");
   }
