@@ -11,7 +11,12 @@ function nowMs(): number {
   return Date.now();
 }
 
+// AudioChannel.Stop takes the immediate branch at or below 0.01 seconds.
+const INSTANT_STOP_MS = 10;
+
 interface ActivePlayback {
+  fadeGeneration: number;
+  volume: number;
   identity: string;
   instance: IMediaInstance | null;
   sound: Sound;
@@ -39,6 +44,9 @@ export class HtmlStoryAudio implements StoryAudio {
   private readonly soundCache = new Map<string, Sound>();
   private readonly soundChannels = new Map<string, ActivePlayback>();
 
+  // Renamed/outgoing channels still belong to the player until their fade ends.
+  private readonly retiring = new Set<ActivePlayback>();
+
   constructor(context: Context) {
     this.context = context;
   }
@@ -50,6 +58,8 @@ export class HtmlStoryAudio implements StoryAudio {
     this.musicAudio = null;
 
     for (const sound of this.soundChannels.values()) this.stopPlayback(sound);
+    for (const sound of this.retiring) this.stopPlayback(sound);
+    this.retiring.clear();
     this.soundChannels.clear();
     this.soundBaseVolumes.clear();
     this.soundRequestIds.clear();
@@ -65,7 +75,7 @@ export class HtmlStoryAudio implements StoryAudio {
     const identity = `${introUrl ?? ""}\n${mainUrl}`;
     this.musicBaseVolume = input.volume;
     if (this.musicAudio?.identity === identity) {
-      this.setVolume(this.musicAudio, input.volume);
+      await this.fadeVolume(this.musicAudio, input.volume, 0);
       return;
     }
 
@@ -80,18 +90,20 @@ export class HtmlStoryAudio implements StoryAudio {
     const previous = this.musicAudio;
     const crossfade = previous !== null && input.crossfadeMs > 10;
     this.musicAudio = next;
+    next.volume = crossfade ? 0 : this.musicBaseVolume;
+    if (previous)
+      void this.retirePlayback(previous, crossfade ? input.crossfadeMs : 0);
+
     const instance = await this.playPlayback(next, {
       complete: introUrl
         ? () => {
-            if (this.destroyed || this.musicAudio !== next) return;
-            // Native provenance: `AudioManager.PlayMusic` / `AudioChannel`.
-            // Preserve the current channel base volume while switching from
-            // intro to loop, so an intervening musicvolume command is retained.
-            void this.playLoopMusic(mainUrl, identity, requestId);
+            next.instance = null;
+            if (!this.destroyed && this.musicAudio === next)
+              void this.playLoopMusic(next, mainUrl);
           }
         : undefined,
       loop: !introUrl,
-      volume: crossfade ? 0 : this.musicBaseVolume,
+      volume: next.volume,
     });
     // A stopmusic/playmusic landing while `play()` was still pending cannot
     // reach this instance through `next` yet, so releasing ownership without
@@ -101,13 +113,8 @@ export class HtmlStoryAudio implements StoryAudio {
       instance,
       this.musicAudio === next,
     );
-    if (claimed && crossfade)
+    if (claimed && crossfade && next.fadeGeneration === 0)
       void this.fadeVolume(next, this.musicBaseVolume, input.crossfadeMs);
-
-    if (previous) {
-      if (crossfade) void this.fadeAndStop(previous, input.crossfadeMs);
-      else this.stopPlayback(previous);
-    }
   }
 
   async stopMusic(fadeMs: number): Promise<void> {
@@ -115,8 +122,9 @@ export class HtmlStoryAudio implements StoryAudio {
     const current = this.musicAudio;
     if (!current) return;
 
-    this.musicAudio = null;
-    await this.fadeAndStop(current, fadeMs);
+    await this.fadeAndStop(current, fadeMs, () => {
+      if (this.musicAudio === current) this.musicAudio = null;
+    });
   }
 
   async playSound(input: PlaySoundInput): Promise<void> {
@@ -152,16 +160,20 @@ export class HtmlStoryAudio implements StoryAudio {
     )
       return;
     this.soundChannels.set(channel, sound);
+    sound.volume = this.soundBaseVolumes.get(channel) ?? input.volume;
 
     const instance = await this.playPlayback(sound, {
       complete: input.loop
         ? undefined
         : () => {
+            // PIXI recycles completed instances. Retire any tween still writing to it.
+            sound.fadeGeneration++;
+            sound.instance = null;
             if (this.soundChannels.get(channel) === sound)
               this.soundChannels.delete(channel);
           },
       loop: input.loop,
-      volume: this.soundBaseVolumes.get(channel) ?? input.volume,
+      volume: sound.volume,
     });
 
     // A stopsound/playsound landing while `play()` was still pending cannot
@@ -187,8 +199,10 @@ export class HtmlStoryAudio implements StoryAudio {
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
 
-    this.soundChannels.delete(channelName);
-    await this.fadeAndStop(sound, fadeMs);
+    await this.fadeAndStop(sound, fadeMs, () => {
+      if (this.soundChannels.get(channelName) === sound)
+        this.soundChannels.delete(channelName);
+    });
   }
 
   async setSoundVolume(
@@ -223,6 +237,8 @@ export class HtmlStoryAudio implements StoryAudio {
     if (!sound) return null;
 
     return {
+      fadeGeneration: 0,
+      volume: 1,
       identity,
       instance: null,
       sound,
@@ -233,10 +249,15 @@ export class HtmlStoryAudio implements StoryAudio {
     playback: ActivePlayback,
     targetVolume: number,
     durationMs: number,
+    onComplete?: () => void,
   ): Promise<void> {
-    const startVolume = this.getVolume(playback);
+    // Native AudioChannel.TweenVolume replaces the entire tween, including
+    // m_stopWhenTweenEnd. Only the current generation can write or finish it.
+    const generation = ++playback.fadeGeneration;
+    const startVolume = playback.volume;
     if (durationMs <= 0) {
       this.setVolume(playback, targetVolume);
+      onComplete?.();
       return;
     }
 
@@ -244,7 +265,7 @@ export class HtmlStoryAudio implements StoryAudio {
 
     await new Promise<void>((resolve) => {
       const tick = () => {
-        if (this.destroyed) {
+        if (this.destroyed || playback.fadeGeneration !== generation) {
           resolve();
           return;
         }
@@ -257,6 +278,7 @@ export class HtmlStoryAudio implements StoryAudio {
         );
 
         if (progress >= 1) {
+          onComplete?.();
           resolve();
           return;
         }
@@ -269,37 +291,54 @@ export class HtmlStoryAudio implements StoryAudio {
   }
 
   private async playLoopMusic(
+    music: ActivePlayback,
     url: string,
-    identity: string,
-    requestId: number,
   ): Promise<void> {
-    const music = await this.createPlayback(url, identity);
-    if (!music || this.destroyed || requestId !== this.musicRequestId) return;
-    this.musicAudio = music;
+    // AudioChannel keeps its tween and stop state across the intro/loop
+    // boundary. Only the PIXI media instance changes.
+    const sound = await this.getSound(url);
+    if (!sound || this.destroyed || this.musicAudio !== music) return;
+    music.sound = sound;
     const instance = await this.playPlayback(music, {
       loop: true,
-      volume: this.musicBaseVolume,
+      volume: music.volume,
     });
     this.claimPlayback(music, instance, this.musicAudio === music);
   }
 
-  private async fadeAndStop(
+  private fadeAndStop(
     playback: ActivePlayback,
     durationMs: number,
+    release?: () => void,
   ): Promise<void> {
-    await this.fadeVolume(playback, 0, durationMs);
-    this.stopPlayback(playback);
+    // AudioChannel.Stop keeps the channel addressable until an uninterrupted
+    // fade reaches zero. A later TweenVolume replaces its stop callback.
+    return this.fadeVolume(
+      playback,
+      0,
+      durationMs <= INSTANT_STOP_MS ? 0 : durationMs,
+      () => {
+        this.stopPlayback(playback);
+        release?.();
+      },
+    );
+  }
+
+  private async retirePlayback(
+    playback: ActivePlayback,
+    fadeMs: number,
+  ): Promise<void> {
+    this.retiring.add(playback);
+    await this.fadeAndStop(playback, fadeMs);
+    this.retiring.delete(playback);
   }
 
   private soundChannelName(channel: string): string {
     return `avgsound_${channel}`;
   }
 
-  private getVolume(playback: ActivePlayback): number {
-    return playback.instance?.volume ?? 1;
-  }
-
   private setVolume(playback: ActivePlayback, volume: number): void {
+    playback.volume = volume;
     if (playback.instance) playback.instance.volume = volume;
   }
 
@@ -319,12 +358,14 @@ export class HtmlStoryAudio implements StoryAudio {
     }
 
     playback.instance = instance;
+    if (instance) instance.volume = playback.volume;
     return true;
   }
 
   private stopPlayback(playback: ActivePlayback | null): void {
     if (!playback) return;
 
+    playback.fadeGeneration++;
     playback.instance?.stop();
     playback.instance = null;
   }
