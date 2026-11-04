@@ -112,6 +112,8 @@ const QUICK_AUTO_SPEEDS: readonly AutoSpeed[] = [
   },
 ];
 const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
+// Web default for CommonExecutors._soundDefaultFadeTime (serialized by Unity).
+const SOUND_RESET_FADE_MS = 400;
 
 const builtinCommandNames = [
   "endtip",
@@ -1027,8 +1029,7 @@ export class StoryRuntime {
     if (shouldResume) {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
-      this.state = "finished";
-      this.finishLineSeekMissed("finished");
+      this.markStoryFinished();
     }
 
     // Establish the destination state before releasing a blocking executor.
@@ -1190,7 +1191,13 @@ export class StoryRuntime {
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.resetItemSlot();
+    this.markStoryFinished();
+  }
+
+  private markStoryFinished(): void {
     this.state = "finished";
+    // CommonExecutors.OnReset → _ResetAudio runs without blocking story end.
+    void this.audio.stopAllSounds(SOUND_RESET_FADE_MS);
     this.finishLineSeekMissed("finished");
   }
 
@@ -3253,7 +3260,8 @@ export class StoryRuntime {
 
       case "playsound": {
         // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
-        // Channel defaults to key; the call is non-blocking.
+        // Channel defaults to key; the call is non-blocking. Native also
+        // suppresses one-shots in Reader/Pure mode. This player runs Normal mode.
         const key = toString(this.exactArg(args, "key"));
         if (!key) {
           this.warn("parse", "playsound key is empty");

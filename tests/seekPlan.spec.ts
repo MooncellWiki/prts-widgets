@@ -175,6 +175,9 @@ class NoopAudio implements StoryAudio {
   stopMusic(): Promise<void> {
     return Promise.resolve();
   }
+  stopAllSounds(): Promise<void> {
+    return Promise.resolve();
+  }
   stopSound(): Promise<void> {
     return Promise.resolve();
   }
