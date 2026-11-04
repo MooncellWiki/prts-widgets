@@ -1,6 +1,7 @@
 import mitt, { type Handler } from "mitt";
 
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
+import { resolveAvgDisplaySlot, resolveAvgDisplayStyle } from "./avgDisplay";
 import {
   type CharacterRefResolution,
   nativeCharacterFadeIdentity,
@@ -3153,24 +3154,12 @@ export class StoryRuntime {
         // Native port: Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable
         const optional = (key: string) =>
           toOptionalNumber(this.exactArg(args, key));
-        const rawStyle = toString(this.exactArg(args, "style"));
-        const rawSlot = toString(this.exactArg(args, "slot"));
-        const styleMap: Record<string, string> = {
-          1: "animetext",
-          2: "spine",
-          3: "effect",
-          4: "bgeffect",
-          5: "bg",
-          6: "animekv",
-          7: "character",
-        };
-        const slotMap: Record<string, string> = {
-          1: "bgover",
-          2: "charover",
-          3: "cgover",
-        };
-        const style = styleMap[rawStyle] ?? rawStyle;
-        const slot = slotMap[rawSlot] ?? rawSlot;
+        const style = resolveAvgDisplayStyle(
+          toString(this.exactArg(args, "style")),
+        );
+        const slot = resolveAvgDisplaySlot(
+          toString(this.exactArg(args, "slot")),
+        );
         // All three avgdisplay features read the same `duration` key and each
         // scales it through CalculateFadetime.
         const durationMs = this.calculateFadeMs(

@@ -58,6 +58,34 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("canonicalizes avgdisplay style/slot like GenTypeFromRaw / GenSlotFromRaw", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[avgdisplay(id="9",name="bg_black",style=5,slot=1)]',
+        '[avgdisplay(id="9",name="bg_black",style=" +05 ",slot="01")]',
+        '[avgdisplay(id="9",name="bg_black",style="bg",slot="bgover")]',
+        '[avgdisplay(id="9",name="bg_black",style="BG",slot="BgOver")]',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    // Native parses integers first (Int32.TryParse: surrounding whitespace,
+    // sign and leading zeros allowed), so the first three spellings are the
+    // same BG / BG_OVERLAY members: identical canonical values reach the
+    // panel (no holder rebuild) and pick up the bg fade default 0.1s.
+    // Aliases are case-sensitive, so "BG"/"BgOver" stay raw (NONE).
+    expect(renderer.avgDisplayCalls).toEqual([
+      expect.objectContaining({ durationMs: 100, slot: "bgover", style: "bg" }),
+      expect.objectContaining({ durationMs: 100, slot: "bgover", style: "bg" }),
+      expect.objectContaining({ durationMs: 100, slot: "bgover", style: "bg" }),
+      expect.objectContaining({ durationMs: 0, slot: "BgOver", style: "BG" }),
+    ]);
+  });
+
   it("rejects showitem styles the panel does not register", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
