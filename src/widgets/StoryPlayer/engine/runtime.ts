@@ -1193,10 +1193,12 @@ export class StoryRuntime {
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.resetItemSlot();
-    // Native port: CommonExecutors.OnReset -> _ResetAudio (2791 VA
-    // 0x1841C6200) stops every SOUND channel playsound started and stopsound
-    // did not explicitly stop, so an unterminated loop ambience cannot outlive
-    // the story. MUSIC is global in native and deliberately untouched here.
+    // Native port: AVGController.OnStoryEnd (2791 VA 0x18416B9C0) calls every
+    // component's OnReset once no new story is running, and
+    // CommonExecutors.OnReset -> _ResetAudio (0x1841C6200) stops every SOUND
+    // channel playsound started and stopsound did not explicitly stop, so an
+    // unterminated loop ambience cannot outlive the story. MUSIC is global in
+    // native and deliberately untouched here.
     this.audio.resetAudio();
     this.state = "finished";
     this.finishLineSeekMissed("finished");

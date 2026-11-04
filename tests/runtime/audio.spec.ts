@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
@@ -77,5 +77,57 @@ describe("StoryRuntime", () => {
       { channel: "", fadeMs: 0, volume: 0.2 },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("runs the end-of-story audio reset when playback finishes", async () => {
+    const audio = new FakeAudio();
+    const runtime = new StoryRuntime(
+      createContext([
+        // A loop ambience with no matching stopsound: only the story-end
+        // OnReset -> _ResetAudio sweep (2791 VA 0x1841C6200) may stop it.
+        '[playsound(key="$burningloop1", loop=true, channel="bgs")]',
+        "[name=A]done",
+      ]),
+      new FakeRenderer(),
+      audio,
+    );
+
+    await runtime.start();
+    // The reset must not fire while the story is merely waiting.
+    expect(audio.resetAudioCalls).toBe(0);
+    await runtime.advance();
+
+    expect(runtime.getState()).toBe("finished");
+    // Exactly once: finishPlayback is the single natural-end entry point.
+    expect(audio.resetAudioCalls).toBe(1);
+  });
+
+  it("runs the end-of-story audio reset once when a skip ends the story", async () => {
+    const audio = new FakeAudio();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[playsound(key="$burningloop1", loop=true, channel="bgs")]',
+        '[skipnode(mode="nofirstskip")]',
+        '[name="A"]hello',
+        '[skipnode(mode="skip")]',
+        '[name="B"]next',
+      ]),
+      new FakeRenderer(),
+      audio,
+      {
+        firstRead: false,
+        sleep: vi.fn(() => new Promise<void>(() => {})),
+        typingIntervalMs: 30,
+      },
+    );
+
+    await runtime.start();
+    expect(audio.resetAudioCalls).toBe(0);
+    // Native SkipStory -> StopStory("Skipped") -> EndStory still reaches
+    // AVGController.OnStoryEnd, whose component OnReset sweep runs _ResetAudio.
+    await runtime.skipNode();
+
+    expect(runtime.getState()).toBe("finished");
+    expect(audio.resetAudioCalls).toBe(1);
   });
 });

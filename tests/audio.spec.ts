@@ -304,3 +304,82 @@ describe("cancelable audio fades", () => {
     expect(loop.instance.stopped).toBe(0);
   });
 });
+
+describe("end-of-story resetAudio", () => {
+  beforeEach(() => {
+    loads.length = 0;
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "requestAnimationFrame", "performance"],
+    });
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  function playLoop(audio: HtmlStoryAudio, delayMs = 0) {
+    return audio.playSound({
+      key: "ambience",
+      volume: 1,
+      channel: "c",
+      loop: true,
+      delayMs,
+    });
+  }
+
+  it("fades live sound channels out over 0.5s, releases them, and leaves music alone", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void audio.playMusic({ key: "bgm", volume: 1, crossfadeMs: 0, delayMs: 0 });
+    const music = await settlePlayback();
+    void playLoop(audio);
+    const { instance } = await settlePlayback();
+
+    audio.resetAudio();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(instance.volume).toBeCloseTo(0.2);
+    expect(instance.stopped).toBe(0);
+    await vi.advanceTimersByTimeAsync(112);
+    expect(instance.stopped).toBe(1);
+
+    await audio.setSoundVolume("c", 0.8, 0);
+    expect(instance.volume).toBe(0);
+    expect(music.instance.volume).toBe(1);
+    expect(music.instance.stopped).toBe(0);
+  });
+
+  it("cancels a delayed playsound on a channel with nothing playing yet", async () => {
+    const audio = new HtmlStoryAudio(context);
+    // e.g. [PlaySound(key="$blizzard", delay=0.4, loop=true, channel="bgs")]
+    // skipped to the end inside its delay.
+    void playLoop(audio, 400);
+    audio.resetAudio();
+    await vi.advanceTimersByTimeAsync(400);
+    await flush();
+    expect(loads).toHaveLength(0);
+  });
+
+  it("cancels a playsound whose load is still in flight", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void playLoop(audio);
+    audio.resetAudio();
+    await flush();
+    const sound = settleLoad();
+    await flush();
+    expect(() => sound.settlePlay()).toThrow("play() was not called");
+  });
+
+  it("leaves a channel the script already stopped on its own fade", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void playLoop(audio);
+    const { instance } = await settlePlayback();
+    // stopsound drops the channel from m_allSoundChannels, so native
+    // _ResetAudio never shortens its fade.
+    void audio.stopSound("c", 3200);
+    await vi.advanceTimersByTimeAsync(1600);
+
+    audio.resetAudio();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(instance.stopped).toBe(0);
+    expect(instance.volume).toBeCloseTo(0.25);
+    await vi.advanceTimersByTimeAsync(800);
+    expect(instance.stopped).toBe(1);
+  });
+});

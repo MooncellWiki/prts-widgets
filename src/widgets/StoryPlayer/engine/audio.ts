@@ -43,6 +43,13 @@ export class HtmlStoryAudio implements StoryAudio {
   private readonly soundRequestIds = new Map<string, number>();
   private readonly soundCache = new Map<string, Sound>();
   private readonly soundChannels = new Map<string, ActivePlayback>();
+  /**
+   * Native provenance: `CommonExecutors.m_allSoundChannels`. playsound adds its
+   * channel as the command executes (before any delay), stopsound removes it,
+   * and `_ResetAudio` sweeps only what is left. A channel the script already
+   * stopped keeps its own fade instead of being cut to the reset fade.
+   */
+  private readonly avgSoundChannels = new Set<string>();
 
   // Renamed/outgoing channels still belong to the player until their fade ends.
   private readonly retiring = new Set<ActivePlayback>();
@@ -61,6 +68,7 @@ export class HtmlStoryAudio implements StoryAudio {
     for (const sound of this.retiring) this.stopPlayback(sound);
     this.retiring.clear();
     this.soundChannels.clear();
+    this.avgSoundChannels.clear();
     this.soundBaseVolumes.clear();
     this.soundRequestIds.clear();
   }
@@ -135,11 +143,13 @@ export class HtmlStoryAudio implements StoryAudio {
 
     // Native provenance: `CommonExecutors._GenAVGSoundChannelName` and
     // `_ExecutePlaySoundCommand`. Ports deterministic channel ownership before
-    // playback begins, so a following soundvolume/stopsound targets this sound.
+    // playback begins, so a following soundvolume/stopsound targets this sound
+    // and the end-of-story `_ResetAudio` sweep reaches a still-delayed one.
     const channel = this.soundChannelName(input.channel);
     const requestId = (this.soundRequestIds.get(channel) ?? 0) + 1;
     this.soundRequestIds.set(channel, requestId);
     this.soundBaseVolumes.set(channel, input.volume);
+    this.avgSoundChannels.add(channel);
 
     if (input.delayMs > 0)
       await new Promise((resolve) => setTimeout(resolve, input.delayMs));
@@ -195,6 +205,7 @@ export class HtmlStoryAudio implements StoryAudio {
       (this.soundRequestIds.get(channelName) ?? 0) + 1,
     );
     this.soundBaseVolumes.delete(channelName);
+    this.avgSoundChannels.delete(channelName);
 
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
@@ -215,22 +226,29 @@ export class HtmlStoryAudio implements StoryAudio {
    */
   resetAudio(): void {
     // Native provenance: `CommonExecutors.OnReset -> _ResetAudio` (2791 VA
-    // 0x1841C6200): StopChannel(name, 0.5) per channel -> AudioChannel.Stop
-    // 0.5s linear fade-out, then the channel is released. MUSIC is global and
-    // untouched. Web adaptation: a bumped requestId also cancels any
-    // still-pending load of a delayed playsound, which native never races
-    // (its delay is a coroutine).
-    for (const [channelName, sound] of this.soundChannels) {
+    // 0x1841C6200): StopChannel(name, 0.5) for each name in
+    // m_allSoundChannels -> AudioChannel.Stop 0.5s linear fade-out, then the
+    // set is cleared. MUSIC is global and untouched.
+    //
+    // Web adaptation: native PlayAudio creates the channel at command time and
+    // only defers playback by `delay`, so the same Stop also kills a playsound
+    // still inside its delay. Here such a request has no ActivePlayback yet;
+    // bumping its requestId cancels it (and any in-flight PIXI load) instead.
+    for (const channelName of this.avgSoundChannels) {
       this.soundRequestIds.set(
         channelName,
         (this.soundRequestIds.get(channelName) ?? 0) + 1,
       );
       this.soundBaseVolumes.delete(channelName);
+
+      const sound = this.soundChannels.get(channelName);
+      if (!sound) continue;
       void this.fadeAndStop(sound, 500, () => {
         if (this.soundChannels.get(channelName) === sound)
           this.soundChannels.delete(channelName);
       });
     }
+    this.avgSoundChannels.clear();
   }
 
   async setSoundVolume(
