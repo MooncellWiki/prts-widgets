@@ -72,28 +72,36 @@ export class HtmlStoryAudio implements StoryAudio {
     if (!mainUrl) return;
 
     const introUrl = input.intro ? this.resolveAudioUrl(input.intro) : null;
-    const identity = `${introUrl ?? ""}\n${mainUrl}`;
+    // IAudioInfo.IsSameAudio compares the (intro, loop) asset names ignoring case.
+    const identity = `${introUrl ?? ""}\n${mainUrl}`.toLowerCase();
     this.musicBaseVolume = input.volume;
     if (this.musicAudio?.identity === identity) {
       await this.fadeVolume(this.musicAudio, input.volume, 0);
       return;
     }
 
+    // Native AudioManager._PlayAudio<MusicParam> renames the outgoing MUSIC
+    // channel and stops it now. Only the incoming track waits for delay, plus
+    // the outgoing fade when crossfading. Commands in that window address
+    // the successor through musicRequestId / musicBaseVolume.
     const requestId = ++this.musicRequestId;
-    if (input.delayMs > 0)
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+    const previous = this.musicAudio;
+    const crossfade = previous !== null && input.crossfadeMs > INSTANT_STOP_MS;
+    if (previous) {
+      this.musicAudio = null;
+      void this.retirePlayback(previous, crossfade ? input.crossfadeMs : 0);
+    }
+
+    const startDelayMs = input.delayMs + (crossfade ? input.crossfadeMs : 0);
+    if (startDelayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, startDelayMs));
     if (this.destroyed || requestId !== this.musicRequestId) return;
 
     const next = await this.createPlayback(introUrl ?? mainUrl, identity);
     if (!next || this.destroyed || requestId !== this.musicRequestId) return;
 
-    const previous = this.musicAudio;
-    const crossfade = previous !== null && input.crossfadeMs > 10;
     this.musicAudio = next;
     next.volume = crossfade ? 0 : this.musicBaseVolume;
-    if (previous)
-      void this.retirePlayback(previous, crossfade ? input.crossfadeMs : 0);
-
     const instance = await this.playPlayback(next, {
       complete: introUrl
         ? () => {

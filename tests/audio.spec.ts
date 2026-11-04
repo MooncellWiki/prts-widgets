@@ -164,6 +164,99 @@ describe("HtmlStoryAudio", () => {
   });
 });
 
+describe("playmusic scheduling", () => {
+  beforeEach(() => {
+    loads.length = 0;
+    vi.useFakeTimers({
+      toFake: ["performance", "requestAnimationFrame", "setTimeout"],
+    });
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  async function startTrack(audio: HtmlStoryAudio, key: string) {
+    void audio.playMusic({ key, volume: 1, crossfadeMs: 0, delayMs: 0 });
+    return (await settlePlayback()).instance;
+  }
+
+  it("fades out now, then starts the new track after delay + crossfade", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(audio, "a");
+    void audio.playMusic({
+      key: "b",
+      volume: 1,
+      crossfadeMs: 320,
+      delayMs: 640,
+    });
+
+    await vi.advanceTimersByTimeAsync(160);
+    expect(first.volume).toBeCloseTo(0.5);
+    await audio.setMusicVolume(0.8, 0);
+    expect(first.volume).toBeCloseTo(0.5);
+    await vi.advanceTimersByTimeAsync(160);
+    expect(first.stopped).toBe(1);
+    await vi.advanceTimersByTimeAsync(639);
+    expect(loads).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const { instance: next } = await settlePlayback();
+    expect(next.volume).toBe(0);
+    await vi.advanceTimersByTimeAsync(160);
+    expect(next.volume).toBeCloseTo(0.4);
+    await vi.advanceTimersByTimeAsync(160);
+    expect(next.volume).toBeCloseTo(0.8);
+  });
+
+  it("cuts immediately at the 10 ms threshold even if the new track has delay", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(audio, "a");
+    void audio.playMusic({
+      key: "b",
+      volume: 0.7,
+      crossfadeMs: 10,
+      delayMs: 320,
+    });
+    expect(first.stopped).toBe(1);
+    expect(loads).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(320);
+    const { instance: next } = await settlePlayback();
+    expect(next.volume).toBe(0.7);
+  });
+
+  it("matches the same track across letter case and cancels a pending stop", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(audio, "https://example.com/Audio/Bgm.ogg");
+    void audio.stopMusic(320);
+    await vi.advanceTimersByTimeAsync(160);
+    void audio.playMusic({
+      key: "https://example.com/audio/bgm.OGG",
+      volume: 0.7,
+      crossfadeMs: 320,
+      delayMs: 640,
+    });
+    expect(first.volume).toBe(0.7);
+    await vi.advanceTimersByTimeAsync(1280);
+    expect(loads).toHaveLength(0);
+    expect(first.stopped).toBe(0);
+  });
+
+  it("destroys the detached outgoing track and cancels the delayed successor", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(audio, "a");
+    void audio.playMusic({
+      key: "b",
+      volume: 1,
+      crossfadeMs: 320,
+      delayMs: 640,
+    });
+    await vi.advanceTimersByTimeAsync(160);
+    audio.destroy();
+    expect(first.stopped).toBe(1);
+    await vi.advanceTimersByTimeAsync(1280);
+    expect(first.stopped).toBe(1);
+    expect(loads).toHaveLength(0);
+  });
+});
+
 describe("cancelable audio fades", () => {
   beforeEach(() => {
     loads.length = 0;
