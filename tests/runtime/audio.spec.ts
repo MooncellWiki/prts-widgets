@@ -8,6 +8,30 @@ import {
 } from "../helpers/runtimeFakes";
 
 describe("StoryRuntime", () => {
+  it.each(["advance", "skipNode"] as const)(
+    "fades residual loop sounds once on story end via %s",
+    async (finish) => {
+      const audio = new FakeAudio();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[playsound(key="s",loop=true)]',
+          '[name="A"]ok',
+          '[skipnode(mode="skip")]',
+        ]),
+        new FakeRenderer(),
+        audio,
+      );
+      await runtime.start();
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(audio.playSoundCalls).toHaveLength(1);
+      expect(runtime.canSkipNode()).toBe(true);
+      expect(audio.resetAudioCalls).toBe(0);
+      await runtime[finish]();
+      expect(runtime.getState()).toBe("finished");
+      expect(audio.resetAudioCalls).toBe(1);
+    },
+  );
+
   it("maps musicvolume and soundvolume commands", async () => {
     const audio = new FakeAudio();
     const runtime = new StoryRuntime(

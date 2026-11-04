@@ -149,16 +149,18 @@ export class HtmlStoryAudio implements StoryAudio {
     this.soundBaseVolumes.set(channel, input.volume);
     this.avgSoundChannels.add(channel);
 
-    if (input.delayMs > 0)
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
-    if (this.destroyed || this.soundRequestIds.get(channel) !== requestId)
-      return;
-
+    // AudioManager._PlayAudio<SoundParam> replaces the channel synchronously;
+    // delay only postpones the new sound's audible start.
     const prev = this.soundChannels.get(channel);
     if (prev) {
       this.stopPlayback(prev);
       this.soundChannels.delete(channel);
     }
+
+    if (input.delayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+    if (this.destroyed || this.soundRequestIds.get(channel) !== requestId)
+      return;
 
     const clip = await this.getSound(url);
     if (

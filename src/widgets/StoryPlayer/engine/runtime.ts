@@ -3259,7 +3259,8 @@ export class StoryRuntime {
 
       case "playsound": {
         // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
-        // Channel defaults to key; the call is non-blocking.
+        // Channel defaults to key; the call is non-blocking. Native also
+        // suppresses one-shots in Reader/Pure mode. This player runs Normal mode.
         const key = toString(this.exactArg(args, "key"));
         if (!key) {
           this.warn("parse", "playsound key is empty");
