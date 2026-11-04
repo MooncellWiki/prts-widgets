@@ -40,7 +40,11 @@ export class HtmlStoryAudio implements StoryAudio {
    */
   private musicBaseVolume = 1;
   private readonly soundBaseVolumes = new Map<string, number>();
-  private readonly soundRequestIds = new Map<string, number>();
+  private readonly soundRequests = new Map<string, symbol>();
+  private readonly soundStopFades = new WeakMap<
+    ActivePlayback,
+    Promise<void>
+  >();
   private readonly soundCache = new Map<string, Sound>();
   private readonly soundChannels = new Map<string, ActivePlayback>();
 
@@ -62,7 +66,7 @@ export class HtmlStoryAudio implements StoryAudio {
     this.retiring.clear();
     this.soundChannels.clear();
     this.soundBaseVolumes.clear();
-    this.soundRequestIds.clear();
+    this.soundRequests.clear();
   }
 
   async playMusic(input: PlayMusicInput): Promise<void> {
@@ -137,27 +141,24 @@ export class HtmlStoryAudio implements StoryAudio {
     // `_ExecutePlaySoundCommand`. Ports deterministic channel ownership before
     // playback begins, so a following soundvolume/stopsound targets this sound.
     const channel = this.soundChannelName(input.channel);
-    const requestId = (this.soundRequestIds.get(channel) ?? 0) + 1;
-    this.soundRequestIds.set(channel, requestId);
+    const request = Symbol(channel);
+    this.soundRequests.set(channel, request);
     this.soundBaseVolumes.set(channel, input.volume);
 
-    if (input.delayMs > 0)
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
-    if (this.destroyed || this.soundRequestIds.get(channel) !== requestId)
-      return;
-
+    // AudioManager._PlayAudio<SoundParam> replaces the channel synchronously;
+    // delay only postpones the new sound's audible start.
     const prev = this.soundChannels.get(channel);
     if (prev) {
       this.stopPlayback(prev);
       this.soundChannels.delete(channel);
     }
 
+    if (input.delayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+    if (this.destroyed || this.soundRequests.get(channel) !== request) return;
+
     const sound = await this.createPlayback(url, url);
-    if (
-      !sound ||
-      this.destroyed ||
-      this.soundRequestIds.get(channel) !== requestId
-    )
+    if (!sound || this.destroyed || this.soundRequests.get(channel) !== request)
       return;
     this.soundChannels.set(channel, sound);
     sound.volume = this.soundBaseVolumes.get(channel) ?? input.volume;
@@ -190,19 +191,32 @@ export class HtmlStoryAudio implements StoryAudio {
     const channelName = this.soundChannelName(channel);
     // Web adaptation: cancellation also covers pending PIXI loads. The native
     // command resolves the same named channel through AudioManager.
-    this.soundRequestIds.set(
-      channelName,
-      (this.soundRequestIds.get(channelName) ?? 0) + 1,
-    );
+    this.soundRequests.delete(channelName);
     this.soundBaseVolumes.delete(channelName);
 
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
 
-    await this.fadeAndStop(sound, fadeMs, () => {
+    const stop = this.fadeAndStop(sound, fadeMs, () => {
       if (this.soundChannels.get(channelName) === sound)
         this.soundChannels.delete(channelName);
     });
+    this.soundStopFades.set(sound, stop);
+    await stop;
+  }
+
+  async stopAllSounds(fadeMs: number): Promise<void> {
+    // CommonExecutors.OnReset → _ResetAudio stops residual AVG sound channels.
+    // Explicit stops already own their fade. Keep their original end time.
+    this.soundRequests.clear();
+    this.soundBaseVolumes.clear();
+    const sounds = [...this.soundChannels.values()];
+    this.soundChannels.clear();
+    await Promise.all(
+      sounds.map((sound) =>
+        this.retirePlayback(sound, fadeMs, this.soundStopFades.get(sound)),
+      ),
+    );
   }
 
   async setSoundVolume(
@@ -216,6 +230,7 @@ export class HtmlStoryAudio implements StoryAudio {
     const sound = this.soundChannels.get(channelName);
     if (!sound) return;
 
+    this.soundStopFades.delete(sound);
     await this.fadeVolume(sound, volume, fadeMs);
   }
 
@@ -327,9 +342,10 @@ export class HtmlStoryAudio implements StoryAudio {
   private async retirePlayback(
     playback: ActivePlayback,
     fadeMs: number,
+    existingStop?: Promise<void>,
   ): Promise<void> {
     this.retiring.add(playback);
-    await this.fadeAndStop(playback, fadeMs);
+    await (existingStop ?? this.fadeAndStop(playback, fadeMs));
     this.retiring.delete(playback);
   }
 

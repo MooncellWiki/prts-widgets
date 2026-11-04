@@ -304,3 +304,124 @@ describe("cancelable audio fades", () => {
     expect(loop.instance.stopped).toBe(0);
   });
 });
+
+describe("playsound delay and story reset", () => {
+  beforeEach(() => {
+    loads.length = 0;
+    vi.useFakeTimers({
+      toFake: ["performance", "requestAnimationFrame", "setTimeout"],
+    });
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  function play(audio: HtmlStoryAudio, key: string, delayMs = 0) {
+    return audio.playSound({
+      channel: "c",
+      key,
+      delayMs,
+      loop: true,
+      volume: 1,
+    });
+  }
+
+  it("replaces the old sound immediately and applies volume commands to the delayed sound", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "first");
+    const first = await settlePlayback();
+    void play(audio, "second", 640);
+    expect(first.instance.stopped).toBe(1);
+    await audio.setSoundVolume("c", 0.4, 0);
+    await vi.advanceTimersByTimeAsync(639);
+    expect(loads).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const second = await settlePlayback();
+    expect(second.instance.volume).toBe(0.4);
+    expect(second.instance.stopped).toBe(0);
+  });
+
+  it("cancels a fading sound's delayed replacement at story end, even if the channel is reused", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "first");
+    const first = await settlePlayback();
+    void audio.stopSound("c", 320);
+    await vi.advanceTimersByTimeAsync(160);
+    const delayed = play(audio, "second", 640);
+    expect(first.instance.stopped).toBe(1);
+    await audio.stopAllSounds(400);
+    void play(audio, "third");
+    const third = await settlePlayback();
+    await vi.advanceTimersByTimeAsync(640);
+    await delayed;
+    expect(loads).toHaveLength(0);
+    expect(third.instance.stopped).toBe(0);
+    expect(first.instance.stopped).toBe(1);
+  });
+
+  it("fades out all residual sounds and leaves music playing", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "loop");
+    const loop = await settlePlayback();
+    void audio.playMusic({ key: "bgm", volume: 1, delayMs: 0, crossfadeMs: 0 });
+    const music = await settlePlayback();
+    void audio.playSound({
+      channel: "d",
+      key: "another",
+      delayMs: 0,
+      loop: true,
+      volume: 1,
+    });
+    const other = await settlePlayback();
+    const reset = audio.stopAllSounds(400);
+    await vi.advanceTimersByTimeAsync(192);
+    expect(loop.instance.volume).toBeCloseTo(0.52);
+    expect(other.instance.volume).toBeCloseTo(0.52);
+    await audio.setSoundVolume("c", 1, 0);
+    await vi.advanceTimersByTimeAsync(208);
+    await reset;
+    expect(loop.instance.stopped).toBe(1);
+    expect(other.instance.stopped).toBe(1);
+    expect(music.instance.stopped).toBe(0);
+  });
+
+  it("keeps a canceled load from claiming a channel reused after reset", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const pending = play(audio, "old");
+    const oldLoad = loads.shift()!;
+    await audio.stopAllSounds(0);
+    void play(audio, "new");
+    const current = await settlePlayback();
+    const staleSound = new FakeSound();
+    const stalePlay = vi.spyOn(staleSound, "play");
+    oldLoad.resolve(staleSound);
+    await flush();
+    expect(stalePlay).not.toHaveBeenCalled();
+    await pending;
+    expect(current.instance.stopped).toBe(0);
+  });
+
+  it("keeps the remaining duration of an explicit stopsound when the story ends", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "loop");
+    const loop = await settlePlayback();
+    void audio.stopSound("c", 320);
+    await vi.advanceTimersByTimeAsync(240);
+    const reset = audio.stopAllSounds(400);
+    await vi.advanceTimersByTimeAsync(80);
+    expect(loop.instance.stopped).toBe(1);
+    await reset;
+  });
+
+  it("hard-stops residual sounds if the player is destroyed during reset", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "loop");
+    const loop = await settlePlayback();
+    const reset = audio.stopAllSounds(400);
+    await vi.advanceTimersByTimeAsync(160);
+    audio.destroy();
+    expect(loop.instance.stopped).toBe(1);
+    await vi.advanceTimersByTimeAsync(400);
+    await reset;
+    expect(loop.instance.stopped).toBe(1);
+  });
+});

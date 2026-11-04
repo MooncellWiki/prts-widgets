@@ -411,6 +411,7 @@ export class FakeAudio implements StoryAudio {
   soundVolumeCalls: Array<{ channel: string; fadeMs: number; volume: number }> =
     [];
   stopMusicCalls: number[] = [];
+  stopAllSoundsCalls: number[] = [];
   stopSoundCalls: Array<{ channel: string; fadeMs: number }> = [];
 
   async playMusic(input: PlayMusicInput): Promise<void> {
@@ -435,6 +436,10 @@ export class FakeAudio implements StoryAudio {
 
   async stopMusic(fadeMs: number): Promise<void> {
     this.stopMusicCalls.push(fadeMs);
+  }
+
+  async stopAllSounds(fadeMs: number): Promise<void> {
+    this.stopAllSoundsCalls.push(fadeMs);
   }
 
   async stopSound(channel: string, fadeMs: number): Promise<void> {
