@@ -96,8 +96,10 @@ export function specialized(skills: Char["skills"], skillId: string) {
   return `${TORAPPU_ENDPOINT}/assets/specialized_icon/specialized_tiny_${sp}.png`;
 }
 
+// 森空岛给的 typeIcon 和游戏表一致，有 `WAH-Y`、`dec-X` 这样带大写的；
+// torappu 的文件名取自资源路径，全是小写
 export function equip(eq: string) {
-  return `${TORAPPU_ENDPOINT}/assets/uniequip_direction/${eq}.png`;
+  return `${TORAPPU_ENDPOINT}/assets/uniequip_direction/${eq.toLowerCase()}.png`;
 }
 
 export const ServerAvatar: Record<string, string> = {

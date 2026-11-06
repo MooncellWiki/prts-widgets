@@ -61,7 +61,6 @@ const statCount = computed(() =>
       @click="advanced.open = !advanced.open"
     >
       <span>属性筛选</span>
-      <span class="ak-en">Attributes</span>
       <AkTag v-if="statCount" size="sm" variant="accent-soft">
         已选 {{ statCount }}
       </AkTag>
@@ -161,11 +160,6 @@ const statCount = computed(() =>
 
   &.has-active {
     border-left-color: var(--ak-accent);
-  }
-
-  .ak-en {
-    font-size: 10px;
-    color: var(--ak-fg-subtle);
   }
 
   // 右端的开合记号：收起 ＋ / 展开 −，同 .ak-panel--collapsible、干员一览的「高级筛选」

@@ -19,7 +19,8 @@ pnpm dev  # 打开 http://localhost:8080/debug/StoryPlayer.html?path=obt/main/le
 
 ```
 src/entries/StoryPlayer.ts        # 从 #datas_txt 取剧情 txt，挂载 index.vue
-  └─ index.vue                    # UI 外壳：lobby/text/player 三种 viewMode、全屏、自动播放
+  └─ index.vue                    # UI 外壳：lobby/text/player 三种 viewMode、全屏 HUD、自动播放
+      ├─ fullscreen.ts            # Fullscreen API + 网页全屏兜底（iPhone），触屏锁横屏
       ├─ context.ts               # 拉 character.json + story_variables.json
       ├─ engine/createStoryPlayer # 组装 parser + runtime + renderer + audio
       ├─ engine/preload.ts        # 静态扫描脚本收集资源，预热 PIXI Assets
@@ -45,7 +46,7 @@ Log All 高亮与调试页行跟随都订阅它。
 | `engine/rendering/panels/` | 各命令 UI 面板：Dialog/Decision/Video/Interlude/CgItem/AvgDisplay/AnimText/SpellSticker/FocusEffect |
 | `engine/rendering/core/` | `LayerGraph`（层序）、`TweenRunner`、`ShakePath`（镜头与角色抖动）、`SceneGeometry`、`ClickClaim`（点击归属） |
 | `engine/log/` | `semantics`（与 runtime 共享的纯语义）→ `symbolicFlow`（符号状态 DAG）→ `condition`（DNF 路径条件）→ `document`（UI 投影） |
-| `engine/` 其余 | `richtext`（富文本颜色）、`textVariables`（`{@xxx}` 展开，nickname 取 `wgUserName` 兜底"博士"）、`showitem`（道具原生尺寸 + 内置九宫格相框 `sprite_avg_showItem_photo`，见 assets/ui）、`audio` |
+| `engine/` 其余 | `richtext`（富文本颜色）、`textVariables`（`{@xxx}` 展开，nickname 取 `wgUserName` 兜底"博士"）、`avgDisplay`（avgdisplay style/slot 枚举归一，runtime 与 preload 共用）、`showitem`（道具原生尺寸 + 内置九宫格相框 `sprite_avg_showItem_photo`，见 assets/ui）、`audio` |
 | `components/` | LogAllPanel/LogAllList、AssetListModal + CharacterFacePreview |
 | `assets.ts` + `assets/ui/` | APK 内置 UI 贴片，随包打包 |
 

@@ -1,6 +1,7 @@
 import mitt, { type Handler } from "mitt";
 
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
+import { resolveAvgDisplaySlot, resolveAvgDisplayStyle } from "./avgDisplay";
 import {
   type CharacterRefResolution,
   nativeCharacterFadeIdentity,
@@ -343,8 +344,14 @@ function preprocessSkipNodes(
   for (const [index, line] of lines.entries()) {
     if (line.kind !== "command" || line.command !== "skipnode") continue;
 
-    // Native port: Torappu.AVG.AVGStoryCache.CalSkipMode. Only the exact
-    // lower-case sentinel maps to FIRST_CANNOT_SKIP; every other value,
+    // Native port: Torappu.AVG.AVGStoryCache.AddSkipNode (2.7.81 VA
+    // 0x183FCD3E0) reads the mode via GetOrDefault("mode", "skip"), then
+    // CalSkipMode (0x183FCD6A0) maps only the exact lower-case sentinel
+    // "nofirstskip" to FIRST_CANNOT_SKIP; every other value falls back to
+    // CAN_SKIP. The key lookup is exact as well: Command.param is the
+    // Json.NET-deserialized Dictionary<string, object> with the default
+    // ordinal comparer (AVGParser._ParseCommand 0x183FFBB30), so a `Mode=`
+    // spelling misses and reads the "skip" default.
     const mode =
       toString(line.args.mode, "skip") === "nofirstskip"
         ? "nofirstskip"
@@ -786,10 +793,30 @@ export class StoryRuntime {
     // of leaving an enabled button that does nothing.
     const skipToPending =
       this.skipToIndex < 0 || this.cursor <= this.skipToIndex;
+    // Native port: AVGController._UpdateSkipStatus (2.7.81 VA 0x183F934E0)
+    // drives the skip button's visibility with get_isSkippable --
+    // isRunning && story.isSkippable && AVGStoryCache
+    // .CheckIfSkippableInCurMode (0x183FCD770). The last term is nofirstskip's
+    // actual enforcement: on a first read inside a locked segment the button
+    // is gone, so neither the trailing skip anchor can be dequeued into a
+    // whole-story stop nor a SkipToThis jump fired from inside the segment
+    // (training_act50side_01_b: nofirstskip L2 ... SkipToThis L33 -- SkipStory
+    // never checks the mode on its SkipToThis branch, only this gate does).
+    // A header is_skippable=false story (tutorials) hides the button for
+    // everyone.
+    const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
+    const skippableInCurMode =
+      this.currentSkipMode !== "nofirstskip" || !this.firstRead;
     // This widget exposes a segment-skip button rather than native's whole
     // story StopStory action. Keep it disabled when the script has no remaining
     // SkipToThis/skipnode destination at all.
-    return running && hasSkipAnchor && skipToPending;
+    return (
+      running &&
+      hasSkipAnchor &&
+      skipToPending &&
+      storySkippable &&
+      skippableInCurMode
+    );
   }
 
   async start(): Promise<void> {
@@ -866,6 +893,12 @@ export class StoryRuntime {
   async skipNode(): Promise<void> {
     if (this.destroyed || !this.canSkipNode()) return;
 
+    // Native port: Torappu.AVG.AVGController.OnSkipBtnClicked (2.7.61
+    // 0x183e16ee0) drops the skip click entirely while autoPlayMode ==
+    // QUICK_PLAY. The brief-confirm panel it shows otherwise is a native-only
+    // UI that this widget intentionally omits.
+    if (this.autoPlayMode === "quick_play") return;
+
     const hadActiveProcessLoop = this.processing;
     const activeProcessCompletion = this.processingCompletion;
     // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
@@ -899,6 +932,12 @@ export class StoryRuntime {
       // 挂起的 decision 结算后会把进面板前缓存的模式还回去（web 的等待期
       // 降级），那样 auto 又会越过锚点继续：还原目标一并改成 default。
       if (pendingDecision) pendingDecision.autoPlayRestore = "default";
+      // Native tail zeroes the whole m_storyCache, so the skipnode queue and
+      // curSkipMode go with it (2.7.81 SkipStory 0x183F8EB80): later skipnode
+      // executors read EMPTY -- CAN_SKIP -- instead of a stale unconsumed
+      // label stranded behind the jump.
+      this.skipNodeQueueIndex = this.skipNodeLabels.length;
+      this.currentSkipMode = "skip";
     } else if (this.skipToIndex >= 0) {
       // SkipToThis is forward-only. Native does not fall back to skipnode or
       // StopStory after playback has already crossed the anchor.
@@ -910,9 +949,17 @@ export class StoryRuntime {
         this.currentSkipMode = nextLabel.mode;
       }
 
-      const tutorial = this.context.storyMetadata?.isTutorial ?? false;
+      // Native port: Torappu.AVG.AVGController.get_isSkippable (2.7.61
+      // 0x183e1f7a0): isRunning && story.isSkippable &&
+      // AVGStoryCache.CheckIfSkippableInCurMode (0x183e5f250). story.isSkippable
+      // is the HEADER `is_skippable` flag -- since 2.7.61 the tutorial gate is
+      // expressed through it (header defaults it to !is_tutorial during
+      // parsing, see parser.ts) instead of a direct !isTutorial check.
+      // CheckIfSkippableInCurMode: a nofirstskip anchor only blocks first
+      // reads.
+      const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
       const isSkippable =
-        !tutorial &&
+        storySkippable &&
         (this.currentSkipMode !== "nofirstskip" || !this.firstRead);
       if (nextLabel && !isSkippable) {
         // Native stores the anchor index and the coroutine's leading increment
@@ -1367,9 +1414,14 @@ export class StoryRuntime {
 
     switch (line.command) {
       case "endtip": {
-        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip and
-        // AVGStoryCache.shouldProcessEndtip. It only shows and blocks in auto
-        // play for non-video-only stories; manual mode is a no-op.
+        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip (2.7.81:
+        // 0x183FE39F0) and AVGStoryCache.shouldProcessEndtip (0x183FCF180).
+        // It only shows and blocks in auto play for non-video-only stories;
+        // manual mode is a no-op. The shown dialog is EMPTY name + EMPTY
+        // text: the parser-generated command carries content=null,
+        // TryTranslate(null) returns (true, null) so Translate returns null,
+        // and BeginText normalizes null to String.Empty (2.7.81 verified) —
+        // native shows a bare frame, never any tip copy.
         const shouldProcessEndtip =
           (this.autoPlayMode === "button_auto" ||
             this.autoPlayMode === "quick_play") &&
@@ -2438,14 +2490,19 @@ export class StoryRuntime {
         const direction = Math.trunc(
           toNumber(this.exactArg(args, "direction"), -1),
         );
-        const fadeMs = Math.max(
-          0,
-          Math.round(toNumber(this.exactArg(args, "fadetime"), 0.4) * 1000),
+        // Native port: `AVGCurtainPanel._ExecuteCurtain` inlines
+        // `scaledFadetime = AVGController.animateRatio * fadetime`
+        // (AVGUtils.CalculateFadetime; the panel implements IFadeTimeRatio),
+        // with fadetime defaulting to the panel's `_defaultFadetime` (0.4).
+        // quick_play (animateRatio 0) therefore always lands in the instant
+        // branch / instant all-side reset below.
+        const fadeMs = this.calculateFadeMs(
+          this.exactArg(args, "fadetime"),
+          0.4,
         );
-        // Native port: Torappu.AVG.AVGCurtainPanel._ExecuteCurtain. It zeroes its
-        // closure's block field on both the
-        // zero-fadetime and the direction < 0 paths, so only a real curtain tween
-        // can block -- the same short circuit blocker has.
+        // It zeroes its closure's block field on both the zero-fadetime and
+        // the direction < 0 paths, so only a real curtain tween can block --
+        // the same short circuit blocker has.
         const block =
           fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false);
 
@@ -3097,24 +3154,12 @@ export class StoryRuntime {
         // Native port: Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable
         const optional = (key: string) =>
           toOptionalNumber(this.exactArg(args, key));
-        const rawStyle = toString(this.exactArg(args, "style"));
-        const rawSlot = toString(this.exactArg(args, "slot"));
-        const styleMap: Record<string, string> = {
-          1: "animetext",
-          2: "spine",
-          3: "effect",
-          4: "bgeffect",
-          5: "bg",
-          6: "animekv",
-          7: "character",
-        };
-        const slotMap: Record<string, string> = {
-          1: "bgover",
-          2: "charover",
-          3: "cgover",
-        };
-        const style = styleMap[rawStyle] ?? rawStyle;
-        const slot = slotMap[rawSlot] ?? rawSlot;
+        const style = resolveAvgDisplayStyle(
+          toString(this.exactArg(args, "style")),
+        );
+        const slot = resolveAvgDisplaySlot(
+          toString(this.exactArg(args, "slot")),
+        );
         // All three avgdisplay features read the same `duration` key and each
         // scales it through CalculateFadetime.
         const durationMs = this.calculateFadeMs(
@@ -3300,18 +3345,24 @@ export class StoryRuntime {
       }
 
       case "camerashake": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraShake. Duration,
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraShake. Duration
+        // defaults to -1 and falls back to 10s with infinite loops; `fadetime`
+        // is never read. Duration is scaled by AVGController.animateRatio
+        // before anything else (2.7.61 GameAssembly @ 0x183E32E52): the scaled
+        // value drives the loops sign test (scaled >= 0 ? 1 : -1), the 10.0s
+        // fallback, and DOTween's waypoint count. Native then short-circuits on
+        // MathUtil.IsZero(scaled) (0x183E32EFD), so quick-play speeds
+        // (animateRatio = 0) skip the shake entirely; the renderer's
+        // durationMs <= 0 skip reproduces that without blocking.
+        const scaledDuration =
+          toNumber(this.exactArg(args, "duration"), -1) *
+          this.getCurrentSpeed().animateRatio;
         await this.renderer.shakeCamera({
           block: toBoolean(this.exactArg(args, "block"), false),
           durationMs:
-            toNumber(this.exactArg(args, "duration"), -1) < 0
-              ? 10_000
-              : Math.max(
-                  0,
-                  toNumber(this.exactArg(args, "duration"), 0) * 1000,
-                ),
+            scaledDuration < 0 ? 10_000 : Math.max(0, scaledDuration * 1000),
           fadeOut: toBoolean(this.exactArg(args, "fadeout"), false),
-          infinite: toNumber(this.exactArg(args, "duration"), -1) < 0,
+          infinite: scaledDuration < 0,
           randomness: toNumber(this.exactArg(args, "randomness"), 90),
           stop: toBoolean(this.exactArg(args, "stop"), false),
           vibrato: Math.trunc(toNumber(this.exactArg(args, "vibrato"), 10)),
@@ -3322,7 +3373,13 @@ export class StoryRuntime {
       }
 
       case "focusout": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusout. Its duration
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusout. Its
+        // duration is passed through unscaled -- the executor's refs contain
+        // neither get_animateRatio nor CalculateFadetime, so focusout belongs
+        // to the "bypass" family and fast-forward tiers do not shorten its
+        // tween or block wait (unlike calculateFadeMs-based commands). A
+        // `from >= 0` does a zero-duration UpdateEffect before the real
+        // tween, and `block` only gates the command when duration > 0.
         const durationMs = Math.max(
           0,
           toNumber(this.exactArg(args, "duration"), 0) * 1000,
@@ -3341,7 +3398,11 @@ export class StoryRuntime {
       }
 
       case "focusparam": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This is a
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
+        // is a config-only write: it sets useBlur / color on the shared
+        // AVGSceneFocusOut Config and marks the command buffer dirty
+        // (MarkEffectImplConfigDirty). It never touches channel amounts and
+        // never blocks -- the executor always returns false.
         const effect = toString(this.exactArg(args, "effect"));
         this.renderer.setFocusParam({
           blur: toBoolean(this.exactArg(args, "blur"), true),

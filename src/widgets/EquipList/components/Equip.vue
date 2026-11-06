@@ -132,7 +132,7 @@ const modeMission = () => props.simplemode === "mission";
         >
           <div class="flex-none">
             <img
-              :src="`${TORAPPU_ENDPOINT}/assets/uniequip_type/${e.typeIcon}.png`"
+              :src="`${TORAPPU_ENDPOINT}/assets/uniequip_type/${e.typeIcon?.toLowerCase()}.png`"
               height="30"
               class="typepic"
             />

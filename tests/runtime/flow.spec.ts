@@ -534,6 +534,32 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
   });
 
+  it("runs the implicit endtip of an empty script in auto play", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([""]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    // Native TryParse (2.7.61: 0x183E7E450) appends endtip even when the
+    // command list is empty, so an empty script still shows the blocking
+    // end-tip box in auto play instead of finishing immediately.
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+    expect(renderer.dialogueLayouts.at(-1)).toEqual({
+      executor: "endtip",
+      text: "",
+    });
+
+    await runtime.advance();
+    expect(runtime.getState()).toBe("finished");
+  });
+
   it("plays a video whose res carries no .mp4 extension", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];

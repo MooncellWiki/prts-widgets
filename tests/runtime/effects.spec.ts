@@ -51,6 +51,79 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("scales camerashake duration by animateRatio before the infinite sign test", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(["[camerashake(duration=2,block=true)]", '[name="A"]done']),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.25 },
+    );
+
+    await runtime.start();
+
+    // Native computes scaled = animateRatio * duration once (0x183E32E52);
+    // loops/durationMs/waypoint count all derive from the scaled value.
+    expect(renderer.shakeCalls).toEqual([
+      {
+        block: true,
+        durationMs: 500,
+        fadeOut: false,
+        infinite: false,
+        randomness: 90,
+        stop: false,
+        vibrato: 10,
+        xStrength: 1,
+        yStrength: 0,
+      },
+    ]);
+  });
+
+  it("skips camerashake entirely at animateRatio 0 like native IsZero", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[camerashake(duration=2,block=true)]",
+        "[camerashake(duration=0.5)]",
+        '[name="A"]done',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0 },
+    );
+
+    await runtime.start();
+
+    // animateRatio 0 collapses every duration (including the -1 default) to
+    // ±0; native MathUtil.IsZero(scaled) returns without shaking or blocking,
+    // and the renderer's durationMs <= 0 skip mirrors that.
+    expect(renderer.shakeCalls).toEqual([
+      {
+        block: true,
+        durationMs: 0,
+        fadeOut: false,
+        infinite: false,
+        randomness: 90,
+        stop: false,
+        vibrato: 10,
+        xStrength: 1,
+        yStrength: 0,
+      },
+      {
+        block: false,
+        durationMs: 0,
+        fadeOut: false,
+        infinite: false,
+        randomness: 90,
+        stop: false,
+        vibrato: 10,
+        xStrength: 1,
+        yStrength: 0,
+      },
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
   it("maps blocker RGBA endpoints, styles, and native zero-duration blocking", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -336,6 +409,72 @@ describe("StoryRuntime", () => {
       },
     ]);
     expect(renderer.curtainCalls).toEqual([]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("scales curtain fadetime by animateRatio", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[curtain(direction=2,fillfrom=1,fillto=0,fadetime=1.5,block=true)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+
+    // _ExecuteCurtain inlines scaledFadetime = animateRatio * fadetime.
+    expect(renderer.curtainCalls).toEqual([
+      {
+        alphaFrom: undefined,
+        alphaTo: undefined,
+        block: true,
+        delayMs: 0,
+        direction: 2,
+        fadeMs: 750,
+        fillFrom: 1,
+        fillTo: 0,
+        grad: false,
+      },
+    ]);
+  });
+
+  it("drops curtain blocking when animateRatio zeroes the fade", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[curtain(direction=0,fillfrom=1,fillto=0,fadetime=3,block=true)]",
+        "[curtain(fadetime=2,block=true)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0 },
+    );
+
+    await runtime.start();
+
+    // quick_play (animateRatio 0) lands in the instant branches: the
+    // closure's block field is zeroed for the single-side path, direction<0
+    // returns literal false, and a fadetime=3 close can no longer stall the
+    // fast-forward.
+    expect(renderer.curtainCalls).toEqual([
+      {
+        alphaFrom: undefined,
+        alphaTo: undefined,
+        block: false,
+        delayMs: 0,
+        direction: 0,
+        fadeMs: 0,
+        fillFrom: 1,
+        fillTo: 0,
+        grad: false,
+      },
+    ]);
+    expect(renderer.curtainClearCalls).toEqual([{ block: false, fadeMs: 0 }]);
     expect(runtime.getState()).toBe("waiting_input");
   });
 });

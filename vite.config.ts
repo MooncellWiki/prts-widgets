@@ -8,6 +8,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import UnoCSS from "unocss/vite";
 import { defineConfig, type Plugin } from "vite";
 
+import { devWidgetLinks } from "./scripts/dev/vite-plugin.ts";
 import { gateTemplate, LEGACY_WIDGETS } from "./scripts/legacy/index.ts";
 
 const TARGET = [
@@ -116,6 +117,12 @@ export default defineConfig(({ command }) => {
       },
     },
     plugins: [
+      devWidgetLinks(
+        templates
+          .filter((name) => name.endsWith(".html"))
+          .map((name) => name.slice(0, -5))
+          .sort(),
+      ),
       vue(),
       UnoCSS(),
       legacy({

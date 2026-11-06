@@ -347,6 +347,29 @@ const CURTAIN_STAGE_CORNERS: ReadonlyArray<{ x: number; y: number }> = [
 ];
 
 /**
+ * Native corner curtains (direction 1/3/5/7): `_GenSizeDeltaWithMultiplior`
+ * scales only the local Y axis of a 1600x1600 AVGCurtain rect, but each
+ * corner rect carries a 45° `m_LocalRotation` (z = ±0.3827) around a pivot
+ * that sits off-stage past its corner. The inner edge therefore sweeps along
+ * the same 45° normal `resolveCurtainVector` returns, at projection
+ * `hinge · vector + 1600 * fill` -- a diagonal wipe, offset by the hinge.
+ * Hinges are the `panel_curtains` pivots (sharedassets1, 2.7.81) in stage
+ * space (y down). They sit 98.8-118.3px past the nearest stage corner, so
+ * fills under ~0.062-0.074 never reach the stage, and the stage is fully
+ * covered from ~0.946-0.958. The ±800px lateral span covers the whole stage
+ * for every corner, so only the inner edge clips.
+ */
+const CURTAIN_CORNER_SIDE = 1600;
+const CURTAIN_CORNER_HINGES: Readonly<
+  Record<number, { x: number; y: number }>
+> = {
+  1: { x: 1204.69, y: -240.69 },
+  3: { x: 1201.49, y: 938.18 },
+  5: { x: 70.11, y: 938.18 },
+  7: { x: 73.31, y: -240.69 },
+};
+
+/**
  * 对话框顶部/底部黑条用到的同一张渐变纹理（APK 中 `sprite_avg_cutscene`，
  * 4×310 RGBA，自上而下 alpha 0→1）。放在 `public/` 下由 Vite 直接服务，
  * 预加载由 preload.ts 把该 URL 加入预加载集来预热 pixi Assets 缓存。
@@ -550,6 +573,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly cutinPanel: CharacterCutinPanel;
 
   private readonly curtainLayer = this.layers.curtains;
+  // Skip semantics: 2.7.61's AVGCurtainPanel.ShouldResetOnSkip returns false
+  // (0x183e54960, literal `xor al, al`), so skipping a segment must NOT clear
+  // curtains -- they only go away via curtain commands or full destroy().
   private readonly curtains = new Map<number, CurtainRenderState>();
   private readonly gridBackgroundLayer = this.layers.gridBackground;
   private gridBackgroundSessionId = 0;
@@ -765,6 +791,13 @@ export class PixiStoryRenderer implements StoryRenderer {
       (key) => this.textureForImageKey(key, "image"),
       (duration, update, complete) => this.tween(duration, update, complete),
       onWarning,
+      // A cgitem's focus channel is its key (`_GenCfgByType`): registration
+      // replays the stored amount, disposal drops it (see
+      // FocusEffectPanel.refresh / release).
+      {
+        disposed: (key) => this.focusEffectPanel.release("cgitem", key),
+        registered: () => this.focusEffectPanel.refresh(),
+      },
     );
   }
 
@@ -2770,7 +2803,10 @@ export class PixiStoryRenderer implements StoryRenderer {
           fadeMs,
           fillFrom: state.fill,
           fillTo: 0,
-          grad: false,
+          // Native `HideCurtain` only tweens sizeDelta toward zero; it never
+          // touches alpha or the `_gradientImg` active state, so the 20px
+          // feather must stay on while the curtain retracts.
+          grad: state.grad,
         }),
       ),
     );
@@ -3087,8 +3123,17 @@ export class PixiStoryRenderer implements StoryRenderer {
     const state = this.ensureCurtainState(direction);
     const fromFill = clamp01(input.fillFrom ?? state.fill);
     const toFill = clamp01(input.fillTo);
-    const fromAlpha = clamp01(input.alphaFrom ?? state.alpha);
-    const toAlpha = clamp01(input.alphaTo ?? fromAlpha);
+    // Native port: `_ExecuteCurtain` reads `afrom` (default: the alpha
+    // captured *before* the snap) and then runs `SetCurtainAlpha(1.0)`
+    // unconditionally, before choosing the instant/tween branch. The re-snap
+    // to `afrom` only happens inside the a>=0 alpha tween
+    // (`SetCurtainAlphaTween` snaps afrom while building the sequence). With
+    // `a` absent the curtain therefore presents fully opaque no matter what
+    // alpha an earlier command left behind, and a bare `afrom` is ignored.
+    const capturedAlpha = clamp01(input.alphaFrom ?? state.alpha);
+    const fromAlpha = input.alphaTo === undefined ? 1 : capturedAlpha;
+    const toAlpha =
+      input.alphaTo === undefined ? fromAlpha : clamp01(input.alphaTo);
 
     state.fill = fromFill;
     state.alpha = fromAlpha;
@@ -3103,7 +3148,19 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    // Native never actually cancels the side's previous tween. 2.7.61+ calls
+    // DOKill(curtain component, complete: true) (2.7.81 0x183fc3023), whose
+    // target matches neither tween's (_curtainRect / _canvasGroup); and even
+    // 2.7.51's DOKill(transform, false) could not reach them, because both
+    // tweens are nested in a Sequence and AddActiveTweenToSequence drops
+    // nested tweens from the active list DOKill filters. A stale Sequence
+    // keeps writing sizeDelta/alpha until it ends. The session bump is a
+    // deliberate simplification (newest command owns the side), not a port.
     const sessionId = ++state.tweenSessionId;
+    // Native SetCurtainSizeTween/SetCurtainAlphaTween carry no SetEase, so
+    // both DOSizeDelta and DOFade run on DOTween's default OutQuad (2781
+    // re-verified: DOTween cctor defaultEaseType = 6). Without the explicit
+    // ease the TweenRunner default would be linear.
     const animate = () =>
       this.tween(
         input.fadeMs,
@@ -3120,6 +3177,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           this.updateCurtainState(state, vector);
           if (toFill <= 0) this.removeCurtainState(direction, state);
         },
+        { ease: dotweenDefaultEase },
       );
     const run =
       input.delayMs > 0
@@ -3197,6 +3255,11 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async setFocusOut(input: FocusOutInput): Promise<void> {
+    // `_ExecuteFocusout` (2.7.81 0x183FAE3A0) returns false right after
+    // `_GenCfgByType` when `EffectConfig.IsChannelEmpty()` holds -- before
+    // the `from` write and the tween -- so an empty channel stores nothing
+    // and never blocks, whatever `duration`/`block` say.
+    if (!this.hasFocusChannels(input.type, input.id)) return;
     await this.focusEffectPanel.setFocus(input);
   }
 
@@ -3225,6 +3288,34 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.sceneLayer.filters = [this.grayscaleFilter];
   }
 
+  /**
+   * `AVGCameraEffect._GenCfgByType` (2.7.81 0x183FAE730) +
+   * `EffectConfig.IsChannelEmpty`: bg/char/cg/lbg look up fixed channel
+   * lists in the static `_channels` table (never empty); `cgitem` writes the
+   * raw `id` into the single `_channel` field, so an empty id is empty rather
+   * than "all items"; `customchar` collects `m_customInUse` custom slots via
+   * `AVGCharacterslotPanel.TryCollect(All)CustomSlotEffectChannels` -- a
+   * channel set disjoint from the standard l/m/r slots, and this port has no
+   * custom slot system, so it is always empty here; any other type misses
+   * `_channels` and is empty too.
+   */
+  private hasFocusChannels(type: string, id: string): boolean {
+    switch (type) {
+      case "bg":
+      case "cg":
+      case "char":
+      case "lbg": {
+        return true;
+      }
+      case "cgitem": {
+        return id !== "";
+      }
+      default: {
+        return false;
+      }
+    }
+  }
+
   private resolveFocusTargets(type: string, id: string): Container[] {
     switch (type) {
       case "bg": {
@@ -3248,12 +3339,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       case "cgitem": {
         return this.cgItemPanel.targets(id);
       }
-      case "customchar": {
-        if (!id)
-          return [...this.characterSlots.values()].map((state) => state.root);
-        const state = this.characterSlots.get(this.normalizeCharacterSlot(id));
-        return state ? [state.root] : [];
-      }
+      // `customchar` and unknown types never get here (hasFocusChannels).
       default: {
         return [];
       }
@@ -3262,8 +3348,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Port of `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake`: it moves the
-   * scene root, not independent visual layers. Path sampling is a Web/PIXI
-   * adaptation of DOTween's shake tween.
+   * scene root, not independent visual layers. The Vector3-strength
+   * DOShakePosition overload runs the vectorBased branch of DOTween's shake
+   * (`0x18424e2d0` inner overload on 2.7.81), where the per-axis
+   * ClampMagnitude chain only biases direction — each waypoint keeps the
+   * full |(xStrength, yStrength)| magnitude (see ShakePath). Sampling and
+   * scheduling are a Web/PIXI adaptation of the same tween.
    */
   async shakeCamera(input: CameraShakeInput): Promise<void> {
     this.stopCameraShake();
@@ -3271,7 +3361,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (input.stop || input.durationMs <= 0) return;
 
     const sessionId = ++this.cameraShakeSessionId;
-    const path = buildShakePath(input.durationMs, input);
+    const path = buildShakePath(input.durationMs, {
+      ...input,
+      vectorBased: true,
+    });
     const runCycle = async (): Promise<void> => {
       await this.tween(input.durationMs, (progress) => {
         if (sessionId !== this.cameraShakeSessionId) return;
@@ -3813,25 +3906,40 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    const threshold = this.curtainThreshold(vector, state.fill);
+    const threshold = this.curtainThreshold(
+      state.direction,
+      vector,
+      state.fill,
+    );
     if (threshold === null) {
       state.graphic.visible = false;
       return;
     }
 
-    state.graphic.visible = true;
-
     // The curtain body is a solid black quad (_curtainImg is sprite_white tinted
     // (0,0,0,1)). `grad` adds a separate CURTAIN_GRADIENT_PX strip on the inner
     // edge, opaque on the curtain side and fully transparent toward the screen
     // centre -- it does not fade the whole body.
-    const bodyEnd = state.grad ? threshold - CURTAIN_GRADIENT_PX : threshold;
+    //
+    // The body length comes from each AVGCurtain's layout group. Straight
+    // edges always pad the inner edge by 20px and their gradient ignores
+    // layout, sitting in that padding -- so without `grad` the inner 20px of
+    // the rect stays empty. Corner layouts have no padding and the gradient
+    // is a 20px layout child, so it only takes room from the body while
+    // active.
+    const inset =
+      state.grad || !CURTAIN_CORNER_HINGES[state.direction]
+        ? CURTAIN_GRADIENT_PX
+        : 0;
+    const bodyEnd = threshold - inset;
     const body = this.buildCurtainBand(vector, null, bodyEnd);
+    const feather = state.grad
+      ? this.buildCurtainBand(vector, bodyEnd, threshold)
+      : [];
+    // Corner hinges sit off-stage, so small fills clip away entirely.
+    state.graphic.visible = body.length >= 6 || feather.length >= 6;
+
     if (body.length >= 6) state.graphic.poly(body).fill(0x00_00_00);
-
-    if (!state.grad) return;
-
-    const feather = this.buildCurtainBand(vector, bodyEnd, threshold);
     if (feather.length < 6) return;
 
     state.graphic.poly(feather).fill(
@@ -3848,13 +3956,26 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
   }
 
-  /** Projection along `vector` where the curtain's inner edge sits. */
+  /**
+   * Projection along `vector` where the curtain's inner edge sits. Straight
+   * edges hinge on the stage edge, so `fill` spans the stage; corners hinge
+   * off-stage at CURTAIN_CORNER_HINGES and grow by the 1600px native side.
+   */
   private curtainThreshold(
+    direction: number,
     vector: { x: number; y: number },
     fill: number,
   ): number | null {
     const clampedFill = clamp01(fill);
     if (clampedFill <= 0) return null;
+
+    const hinge = CURTAIN_CORNER_HINGES[direction];
+    if (hinge)
+      return (
+        hinge.x * vector.x +
+        hinge.y * vector.y +
+        CURTAIN_CORNER_SIDE * clampedFill
+      );
 
     const projections = CURTAIN_STAGE_CORNERS.map(
       (point) => point.x * vector.x + point.y * vector.y,
@@ -3943,6 +4064,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     };
   }
 
+  /**
+   * Inward half-plane normal per direction, following `_curtainWidgets`
+   * order (0 top, then clockwise). The corner diagonals are the native 45°
+   * rect rotation, not the stage diagonal.
+   */
   private resolveCurtainVector(
     direction: number,
   ): { x: number; y: number } | null {
@@ -5011,10 +5137,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /**
    * Native port: AVGCharacterSlot.CharShake (0x184029850 on 2.7.81) →
-   * ShortcutExtensions.DOShakePosition (0x18425cda0) → DOTween.Shake
-   * (0x18424e2d0) with `ignoreZAxis = false`, Full randomness mode and
-   * fadeOut — the same waypoint walk `buildShakePath` ports for the camera
-   * shake (vibrato = `times` per second, strength = power on both axes).
+   * ShortcutExtensions.DOShakePosition float overload (0x18425cda0) →
+   * DOTween.Shake float overload (0x18424eb10, expands strength to
+   * (s, s, s)) → inner DOTween.Shake (0x18424e2d0) with
+   * `ignoreZAxis = false`, `vectorBased = false`, Full randomness mode and
+   * fadeOut — the non-vectorBased waypoint walk `buildShakePath` also ports
+   * (vibrato = `times` per second, radius = power).
    * CharShake chains SetEase(OutCubic), but DOShakePosition marks the tween
    * `SpecialStartupMode.SetShake`, whose startup hook
    * (`SpecialPluginsUtils.SetShake` @ 0x18427f590) forces `easeType =
@@ -5038,6 +5166,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const path = buildShakePath(durationMs, {
       fadeOut: true,
       randomness: Math.abs(input.randomness),
+      vectorBased: false,
       vibrato: input.times,
       xStrength: input.power,
       yStrength: input.power,

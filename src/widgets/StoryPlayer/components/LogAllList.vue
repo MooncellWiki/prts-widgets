@@ -35,7 +35,11 @@ const props = defineProps<{
   document: LogDocument;
   /** 要渲染的 block 列表；递归渲染条件区块的子层时传入，默认为顶层 */
   blocks?: LogBlock[];
-  /** 当前屏幕正在显示的源行 lineNumber；命中时高亮并供外层滚动定位 */
+  /**
+   * 当前屏幕正在显示的源行 lineNumber；命中时高亮并供外层滚动定位。
+   * 不传（undefined）表示没有播放进度可标（只加载文本），不留标记列；
+   * null 表示在播放但还没有显示行
+   */
   activeLineIndex?: number | null;
   /** runtime 实际执行过的选择历史，用于求值当前路径 */
   selections?: RuntimeChoiceSelection[];
@@ -59,6 +63,35 @@ type RenderItem =
     };
 
 const renderBlocks = computed(() => props.blocks ?? props.document.blocks);
+
+/** 说话人列只服务于带说话人的文本行和「剧情选择」行 */
+function usesSpeakerColumn(blocks: readonly LogBlock[]): boolean {
+  return blocks.some((block) => {
+    if (block.kind === "choice") return true;
+    if (block.kind === "lines")
+      return block.entries.some((entry) => Boolean(entry.speaker));
+    return usesSpeakerColumn(block.blocks);
+  });
+}
+
+/**
+ * 栅格列由顶层列表统一决定（子层通过 CSS 变量继承），保证各层缩进对齐：
+ * 没有播放进度可标时不留标记列；整篇都是旁白、也没有选择时不留说话人
+ * 列（如 EG-11 NBT），否则每行左边都空出一百多像素。
+ */
+const hasSpeakerColumn = computed(
+  () => !props.blocks && usesSpeakerColumn(props.document.blocks),
+);
+
+const rootClass = computed(() =>
+  props.blocks
+    ? undefined
+    : {
+        "log-all-list--root": true,
+        "log-all-list--no-marker": props.activeLineIndex === undefined,
+        "log-all-list--no-speaker": !hasSpeakerColumn.value,
+      },
+);
 
 const assignment = computed(
   () =>
@@ -122,7 +155,11 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
 </script>
 
 <template>
-  <ul v-if="items.length > 0" class="m-0 list-none p-0 space-y-2.5">
+  <ul
+    v-if="items.length > 0"
+    class="m-0 list-none p-0 space-y-2.5"
+    :class="rootClass"
+  >
     <li v-for="(item, i) in items" :key="i" class="p-0">
       <!-- 文本区块：audience 相同的连续行 -->
       <template v-if="item.kind === 'lines'">
@@ -130,12 +167,12 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
           v-for="(row, j) in item.rows"
           :key="j"
           :data-active-line="row.active"
-          class="flex items-start leading-relaxed"
+          class="log-row leading-relaxed"
         >
           <NText
             tag="span"
             type="primary"
-            class="inline-block w-5 shrink-0 text-center"
+            class="log-marker text-center"
             :aria-label="row.active ? '当前播放位置' : undefined"
             :aria-hidden="row.active ? undefined : true"
           >
@@ -145,12 +182,16 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
             v-if="row.entry.speaker"
             type="primary"
             tag="strong"
-            class="mr-3 w-24 shrink-0 text-right"
+            class="log-speaker"
           >
             {{ row.entry.speaker }}
           </NText>
-          <span v-else class="mr-3 w-24 shrink-0" aria-hidden="true" />
-          <span class="min-w-0 flex-1">
+          <span
+            v-else
+            class="log-speaker log-speaker--empty"
+            aria-hidden="true"
+          />
+          <span class="log-content">
             <span
               v-for="(span, si) in row.entry.spans"
               :key="si"
@@ -172,15 +213,10 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
 
       <!-- 选择记录：与普通文本行同一套栅格，「剧情选择」占说话人槽，
            选项与备注进内容列，缩进与正文对齐 -->
-      <div
-        v-else-if="item.kind === 'choice'"
-        class="flex items-start leading-relaxed"
-      >
-        <span class="w-5 shrink-0" aria-hidden="true" />
-        <NText type="primary" tag="strong" class="mr-3 w-24 shrink-0 text-right"
-          >剧情选择</NText
-        >
-        <span class="min-w-0 flex-1">
+      <div v-else-if="item.kind === 'choice'" class="log-row leading-relaxed">
+        <span class="log-marker" aria-hidden="true" />
+        <NText type="primary" tag="strong" class="log-speaker">剧情选择</NText>
+        <span class="log-content">
           <template v-for="(option, oi) in item.block.options" :key="oi">
             <span v-if="oi > 0"> / </span>
             <span
@@ -214,11 +250,11 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
         class="conditional-block py-1 pl-3"
         :class="item.off ? 'opacity-40' : undefined"
       >
-        <div class="mb-1.5 flex leading-relaxed">
-          <span class="w-5 shrink-0" aria-hidden="true" />
-          <span class="mr-3 w-24 shrink-0" aria-hidden="true" />
+        <div class="log-row mb-1.5 leading-relaxed">
+          <span class="log-marker" aria-hidden="true" />
+          <span class="log-speaker log-speaker--empty" aria-hidden="true" />
           <span
-            class="min-w-0 flex-1 text-xs font-bold tracking-[0.06em] opacity-70"
+            class="log-content text-xs font-bold tracking-[0.06em] opacity-70"
           >
             {{ item.label }}：
           </span>
@@ -238,6 +274,73 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
 </template>
 
 <style scoped>
+/* 三列栅格：播放标记 | 说话人 | 正文，列宽由顶层列表的 CSS 变量决定（见
+   rootClass）。窄于 30rem（竖屏手机）时按顶层列表的容器宽度切成两列：
+   说话人单独占一行、正文占满标记右侧整列，否则正文列只剩一百多像素、每行
+   五六个字。弹窗、嵌入卡片、全屏都按各自的宽度判断；不支持容器查询的
+   浏览器保持三列。 */
+.log-all-list--root {
+  --log-marker-width: 1.25rem;
+  --log-speaker-width: 6.75rem;
+  container-type: inline-size;
+}
+
+.log-all-list--no-marker {
+  --log-marker-width: 0px;
+}
+
+.log-all-list--no-speaker {
+  --log-speaker-width: 0px;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns:
+    var(--log-marker-width) var(--log-speaker-width)
+    minmax(0, 1fr);
+  align-items: start;
+}
+
+.log-marker {
+  grid-column: 1;
+  overflow: hidden;
+}
+
+.log-speaker {
+  grid-column: 2;
+  margin-right: 0.75rem;
+  text-align: right;
+}
+
+.log-all-list--no-speaker .log-speaker {
+  display: none;
+}
+
+.log-content {
+  grid-column: 3;
+  min-width: 0;
+}
+
+@container (max-width: 30rem) {
+  .log-row {
+    grid-template-columns: var(--log-marker-width) minmax(0, 1fr);
+  }
+
+  .log-speaker {
+    margin-right: 0;
+    text-align: left;
+  }
+
+  .log-speaker--empty {
+    display: none;
+  }
+
+  /* 有说话人时正文按自动排布落到下一行的第二列；没有时紧跟标记 */
+  .log-content {
+    grid-column: 2;
+  }
+}
+
 /* naive-ui 的 primary 不在 uno theme 里，border-primary/bg-primary 生成不了
    规则；主题色从最近的 naive 组件根（NCard/NModal）继承 --n-color-target。
    项目没有 preflight，border-width 初始值是 medium 而非 0：边框必须整体在
@@ -260,6 +363,12 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
 ul,
 li {
   list-style: none !important;
+}
+
+/* Minerva 的 .content ul { padding-left: 1em } 比 .p-0 优先级高，每层列表
+   会多缩进一字宽，正文和卡片标题对不齐 */
+ul {
+  padding: 0 !important;
 }
 
 li::marker {

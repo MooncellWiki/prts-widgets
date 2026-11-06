@@ -47,6 +47,56 @@ describe("LogAllList UI smoke", () => {
     app.unmount();
   });
 
+  it("drops the marker and speaker columns when nothing would fill them", () => {
+    const mountList = (lines: string[], activeLineIndex?: number | null) => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const app = createApp({
+        render: () =>
+          h(NConfigProvider, null, {
+            default: () =>
+              h(LogAllList, {
+                activeLineIndex,
+                document: buildLogAll(parseScript(lines)),
+              }),
+          }),
+      });
+      app.mount(host);
+      const root = host.querySelector("ul")!;
+      return { app, root };
+    };
+
+    // 只加载文本（不传 activeLineIndex）+ 全旁白（EG-11 NBT 形状）：两列都不留
+    const narration = mountList(["旁白一", "旁白二"]);
+    expect(narration.root.classList.contains("log-all-list--no-marker")).toBe(
+      true,
+    );
+    expect(narration.root.classList.contains("log-all-list--no-speaker")).toBe(
+      true,
+    );
+    narration.app.unmount();
+
+    // 播放中（activeLineIndex 为 null 也算在播）且有说话人：两列都保留
+    const dialog = mountList(['[name="阿米娅"]你好', "旁白"], null);
+    expect(dialog.root.classList.contains("log-all-list--no-marker")).toBe(
+      false,
+    );
+    expect(dialog.root.classList.contains("log-all-list--no-speaker")).toBe(
+      false,
+    );
+    dialog.app.unmount();
+
+    // 没有说话人但有「剧情选择」行：说话人列要留给它
+    const choice = mountList([
+      '[decision(options="选A;选B", values="1;2")]',
+      "旁白",
+    ]);
+    expect(choice.root.classList.contains("log-all-list--no-speaker")).toBe(
+      false,
+    );
+    choice.app.unmount();
+  });
+
   it("dims a route-conditional choice box with its branch block like ordinary text", async () => {
     // 07-03 形状：内层单选项 decision 只在外层选项 3 的分支里执行；
     // 选了选项 1/2 的玩家被 refs=3 挡住，看不到这个选择框，
