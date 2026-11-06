@@ -160,7 +160,7 @@ function openCharacterFaces(asset: AssetListItem): void {
             :href="asset.url"
             target="_blank"
             rel="noopener noreferrer"
-            class="line-clamp-2 break-all text-sm font-medium leading-5"
+            class="asset-link line-clamp-2 break-all text-sm font-medium leading-5"
             :title="asset.url"
           >
             {{ asset.name }}
@@ -226,5 +226,16 @@ function openCharacterFaces(asset: AssetListItem): void {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+/* 弹窗挂在播放器根节点里，根节点是 ak-not-prose，Arknights 皮肤上链接默认继承
+   文字色：照正文链接自己上色。播放器没有 AkScope，别的皮肤没有 --ak-* 令牌，
+   不能去掉皮肤限定，那里走宿主默认的链接色 */
+.skin-arknights .asset-link {
+  color: var(--ak-link);
+}
+
+.skin-arknights .asset-link:hover {
+  color: var(--ak-link-hover);
 }
 </style>

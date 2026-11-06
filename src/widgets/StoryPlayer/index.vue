@@ -487,10 +487,11 @@ defineExpose({
     :theme="theme"
     :theme-overrides="themeOverrides"
   >
+    <!-- 根节点标 ak-not-prose，不吃 Arknights 皮肤的正文排版（列表的菱形项目符号 li::before、ul/p 的外边距等） -->
     <main
       v-show="!legacyPlayerActive"
       ref="fullscreenRootRef"
-      class="story-player box-border w-full flex flex-col items-center"
+      class="story-player ak-not-prose box-border w-full flex flex-col items-center"
       :class="
         isFullscreen
           ? [
