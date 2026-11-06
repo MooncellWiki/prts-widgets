@@ -15,6 +15,26 @@ describe("干员头像 / 半身像", () => {
     );
   });
 
+  it("精英二取精英二的头像，精英零 / 一是同一张", () => {
+    expect(avatar(amiya, 2)).toBe(
+      "https://torappu.prts.wiki/assets/char_avatar/char_002_amiya_2.png",
+    );
+    expect(avatar(noId, 2)).toMatch(
+      /^https:\/\/media\.prts\.wiki\/.\/..\/头像_阿米娅_2\.png$/,
+    );
+    expect(avatar(amiya, 0)).toBe(avatar(amiya));
+    expect(avatar(amiya, 1)).toBe(avatar(amiya));
+  });
+
+  it("精英二头像 torappu 取不到时换成 media 的精英二头像", () => {
+    const img = document.createElement("img");
+    img.addEventListener("error", onImageError);
+    img.src = avatar(amiya, 2);
+    img.dispatchEvent(new Event("error"));
+    expect(decodeURI(img.src)).toBe(avatar(noId, 2));
+    expect(img.style.visibility).toBe("");
+  });
+
   it("没有 ID 时按中文名走 media", () => {
     expect(avatar(noId)).toMatch(
       /^https:\/\/media\.prts\.wiki\/.\/..\/头像_阿米娅\.png$/,

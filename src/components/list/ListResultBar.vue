@@ -13,7 +13,8 @@ import ListPager from "./ListPager.vue";
 /**
  * 一览页（干员 / 敌人 / 道具一览）的结果栏：条数 · 已选条件 · 复制链接 · 每页条数 · 分页。
  * 已选条件在这里再列一遍（可逐个移除）：筛选面板滚出视口后，仍看得到当前结果是怎么筛出来的。
- * 条数后面要补说明的（干员一览的 ⓘ）放 #help。
+ * 条数后面要补说明的（干员一览的 ⓘ）放 #help；工具区前面要加按钮的放 #tools。
+ * 不分页的（后勤技能一览的技能视图）steps 不传，不出每页条数；pageCount 为 1 时分页自己不出。
  */
 const props = withDefaults(
   defineProps<{
@@ -24,8 +25,8 @@ const props = withDefaults(
     unit: string;
     /** 已选条件，一项一枚可移除的标签；搜索词另由 v-model:q 给 */
     tags: T[];
-    step: number;
-    steps: readonly number[];
+    step?: number;
+    steps?: readonly number[];
     page: number;
     pageCount: number;
     /** 要复制的链接，点「复制链接」时才取 */
@@ -34,7 +35,7 @@ const props = withDefaults(
     /** 窄排布：工具（复制链接 · 每页条数 · 分页）另起一行、铺满 */
     narrow?: boolean;
   }>(),
-  { copyLabel: "复制链接" },
+  { step: 0, steps: () => [], copyLabel: "复制链接" },
 );
 defineEmits<{
   remove: [tag: T];
@@ -95,10 +96,12 @@ async function copyLink() {
       </AkButton>
     </div>
     <div class="ls-bar__tools">
+      <slot name="tools" />
       <AkButton variant="ghost" size="sm" icon="link" @click="copyLink">
         {{ copyLabel }}
       </AkButton>
       <AkSelect
+        v-if="steps.length > 0"
         :model-value="step"
         :options="stepOptions"
         label="每页条数"
