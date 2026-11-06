@@ -43,7 +43,6 @@ const activeCount = computed(() =>
       @click="open = !open"
     >
       <span>筛选</span>
-      <span class="ak-en">Filter</span>
       <AkTag v-if="activeCount" size="sm" variant="accent-soft">
         已选 {{ activeCount }}
       </AkTag>
@@ -105,11 +104,6 @@ const activeCount = computed(() =>
 
   &.has-active {
     border-left-color: var(--ak-accent);
-  }
-
-  .ak-en {
-    font-size: 10px;
-    color: var(--ak-fg-subtle);
   }
 
   // 右端的开合记号：收起 ＋ / 展开 −，同 .ak-panel--collapsible
