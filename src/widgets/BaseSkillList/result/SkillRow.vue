@@ -129,10 +129,10 @@ onMounted(() => {
 
 <style scoped lang="scss">
 // 三列垂直居中：一行描述的行比 64px 的干员卡矮，方砖和文字对着卡的中线。
-// 持有干员一列随人数变宽：至少四张卡宽（人少的行卡片左缘对齐），人多时放到一行排完，最宽到整行的一半，再多才折行
+// 持有干员定宽一列（四张卡 + 三道缝）：各行卡片左缘对齐，多了折行
 .rs-item {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) fit-content(50%);
+  grid-template-columns: 48px minmax(0, 1fr) 268px;
   gap: 4px 14px;
   align-items: center;
   padding: 10px var(--ak-space-3);
@@ -238,12 +238,10 @@ onMounted(() => {
   flex-wrap: wrap;
   align-content: flex-start;
   gap: 4px;
-  // 四张卡 + 三道缝：fit-content 的下限
-  min-width: 268px;
+  min-width: 0;
 
   .rs--compact & {
     grid-column: 2;
-    min-width: 0;
     margin-top: 4px;
   }
 

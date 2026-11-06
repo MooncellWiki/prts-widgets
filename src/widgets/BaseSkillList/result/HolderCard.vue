@@ -13,7 +13,8 @@ import type { Char, Holding } from "../data";
 /**
  * 干员头像 = 设计系统的干员卡（同首页「亮点干员」：纯头像、不出名字栏）。
  * 角标同现网 微件:干员头像——职业左上、星级右下，技能视图的持有者另在左下压解锁条件的精英大图（游戏原图，垫黑底），
- * 「精英零 30 级」这类在图上方补等级。悬停只出卡自带的 title（干员名），同现网头像链接的 title。
+ * 「精英零 30 级」这类在图上方补等级；精英二解锁的技能头像也换精英二那张（同现网 模板:干员头像）。
+ * 悬停只出卡自带的 title（干员名），同现网头像链接的 title。
  */
 const props = defineProps<{
   char: Char;
@@ -41,7 +42,7 @@ const levelStyle = computed(() =>
     :class="['rs-holder', { 'is-dim': dim }]"
     :style="levelStyle"
     :name="char.name"
-    :avatar="avatar({ zh: char.name, charId: char.id })"
+    :avatar="avatar({ zh: char.name, charId: char.id }, holding?.phase)"
     :rarity="rarity"
     :rarity-icon="rarityIcon(char.stars)"
     :profession="professionName(char.profession)"
@@ -84,22 +85,26 @@ const levelStyle = computed(() =>
     }
   }
 
-  // 精英大图垫设计系统那块半透明黑底（同现网垫黑、同左上职业角标），浅色立绘上也看得清；框同职业角标 18px 见方
+  // 精英大图垫黑（同现网），底色比设计系统的 0.6 深：浅色立绘透上来会吃掉细线。框宽同星条按卡宽取比例，刚好是 6★ 星条留下的位置。
+  // 精英零是空心描边，线宽约图宽的 4%，缩到这么小不足 1 个物理像素，用白色 drop-shadow 描粗一点；
+  // 再粗（0.4px 描两遍）精英零就糊成实心，和精英一分不开了
   :deep(.ak-op-card__elite) {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 1px;
-    width: 18px;
+    width: calc(var(--_w) * 0.34);
     min-width: 0;
     height: auto;
     min-height: 18px;
     padding: 1px;
+    background: rgba(0, 0, 0, 0.8);
 
     > img {
       width: 100%;
       height: auto;
+      filter: drop-shadow(0 0 0.3px #fff);
     }
   }
 

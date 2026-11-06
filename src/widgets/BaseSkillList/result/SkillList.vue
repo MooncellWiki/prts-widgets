@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from "vue";
 
-import { glyphStyle, roomVars } from "../room";
+import { roomGlyphStyle, roomVars } from "../room";
 import { useBaseSkillList } from "../store";
 
 import SkillRow from "./SkillRow.vue";
@@ -10,7 +10,7 @@ import type { Buff, Room } from "../data";
 
 /**
  * 结果 · 技能。不分页，始终按设施分组（排序只在组内排，见 sort.ts），同现网每个设施一张默认折叠的表：
- * 组头 = 设施线稿 + 名字 + 英文代号 + 本组条数（n / 设施总数）+ 开合记号（+ / −，同设计系统折叠面板），点了开合，
+ * 组头 = 设施线稿 + 名字 + 本组条数（n / 设施总数）+ 开合记号（+ / −，同设计系统折叠面板），点了开合，
  * 左缘设施色条，展开后滚动时贴在页眉下面（随时知道看到哪个设施）；行里就不再带设施名。
  * 折起来的组不渲染行。开合的规矩见 store.ts。设施页里只有一个设施，不出组头、不折叠。
  */
@@ -57,11 +57,10 @@ const counts = computed(() => {
             <span class="rs-section__title rs-gl"
               ><i
                 class="rs-glyph"
-                :style="glyphStyle(g.room.glyph)"
+                :style="roomGlyphStyle(g.room)"
                 aria-hidden="true"
               />{{ g.room.name }}</span
             >
-            <span class="ak-en">{{ g.room.id }}</span>
             <span class="rs-section__count"
               >{{ counts.get(g.room) }} / {{ g.room.count
               }}<i class="rs-section__mark" aria-hidden="true"
@@ -142,12 +141,6 @@ const counts = computed(() => {
     .rs-glyph {
       color: var(--rs-room);
     }
-
-    .ak-en {
-      font-size: var(--ak-fs-overline);
-      letter-spacing: var(--ak-tracking-overline);
-      color: var(--ak-fg-subtle);
-    }
   }
 
   // 线稿与名字的对齐见 index.vue 的 .rs-gl。线稿的墨迹约占边长的 78%，20px 时墨迹高 ≈ 15.5px，
@@ -161,7 +154,7 @@ const counts = computed(() => {
     line-height: 1.3;
   }
 
-  // 条数用展示字的大写高度数字（lnum），同左边的英文代号：Bender 的数字比汉字、代号都矮一截，一行里对不齐
+  // 条数用展示字的大写高度数字（lnum）：Bender 的数字比汉字矮一截，一行里对不齐
   &__count {
     margin-left: auto;
     white-space: nowrap;

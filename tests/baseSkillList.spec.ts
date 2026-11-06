@@ -25,6 +25,7 @@ import {
   plainText,
   renderRichText,
 } from "@/widgets/BaseSkillList/richText";
+import { roomGlyphStyle } from "@/widgets/BaseSkillList/room";
 import { sortBuffs, sortChars } from "@/widgets/BaseSkillList/sort";
 import { createBaseSkillList } from "@/widgets/BaseSkillList/store";
 
@@ -377,6 +378,14 @@ describe("筛选", () => {
   });
 });
 
+describe("设施线稿", () => {
+  it("墨迹偏了的训练室挪回中间，别的设施不动", () => {
+    const room = (id: string) => ({ ...SOURCE.rooms[0], id });
+    expect(roomGlyphStyle(room("TRAINING")).transform).toMatch(/^translate\(/);
+    expect(roomGlyphStyle(room("CONTROL")).transform).toBeUndefined();
+  });
+});
+
 describe("排序", () => {
   it("先按设施次序（倒序也不倒设施），组内按游戏顺序 / 效率 / 持有人数 / 技能名，同值按游戏顺序", () => {
     const { buffs, chars } = SOURCE;
@@ -649,6 +658,18 @@ describe("BaseSkillList UI smoke", () => {
       '"30"',
       "",
     ]);
+  });
+
+  it("持有者头像：精英二解锁的技能用精英二头像，干员视图用默认头像", async () => {
+    const avatarOf = (host: HTMLElement) =>
+      host.querySelector(".rs-holder .ak-op-card__portrait > img");
+
+    const skill = await mount("/w/后勤技能一览#_s=金属工艺·β");
+    expect(avatarOf(skill)?.getAttribute("src")).toMatch(/\/char_a_2\.png$/);
+    app?.unmount();
+
+    const op = await mount("/w/后勤技能一览#_s=金属工艺·β&_d=1");
+    expect(avatarOf(op)?.getAttribute("src")).toMatch(/\/char_a\.png$/);
   });
 
   it("持有者筛选：不符合的压淡不藏，符合的排前面", async () => {

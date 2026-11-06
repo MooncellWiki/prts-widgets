@@ -22,10 +22,14 @@ interface Portrayed {
   zh: string;
   charId?: string;
 }
-export const avatar = ({ zh, charId }: Portrayed) =>
-  charId
-    ? torappu(`char_avatar/${charId}.png`, `头像_${zh}.png`)
-    : media(`头像_${zh}.png`);
+/** elite：要这一阶段的头像，同现网 模板:干员头像——只有精英二换图（精英零、精英一是同一张） */
+export const avatar = ({ zh, charId }: Portrayed, elite?: number) => {
+  const stage = elite === 2 ? "_2" : "";
+  const file = `头像_${zh}${stage}.png`;
+  return charId
+    ? torappu(`char_avatar/${charId}${stage}.png`, file)
+    : media(file);
+};
 export const halfPortrait = ({ zh, charId }: Portrayed) =>
   charId
     ? torappu(`char_portrait/${charId}_1.png`, `半身像_${zh}_1.png`)

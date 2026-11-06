@@ -4,7 +4,7 @@ import { computed, useId } from "vue";
 import { AkChip } from "@mooncellwiki/prts-design-vue";
 
 import { eliteIcon, professionLine } from "../assets";
-import { glyphStyle, roomVars } from "../room";
+import { glyphStyle, roomGlyphStyle, roomVars } from "../room";
 import { useBaseSkillList } from "../store";
 
 import type { Room } from "../data";
@@ -69,7 +69,7 @@ const groupLabel = computed(
           <span class="rs-gl"
             ><i
               class="rs-glyph"
-              :style="glyphStyle(option.room!.glyph)"
+              :style="roomGlyphStyle(option.room!)"
               aria-hidden="true"
             />{{ option.label }}</span
           >
