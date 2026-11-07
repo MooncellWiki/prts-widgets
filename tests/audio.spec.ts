@@ -1,20 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resolveStoryAudioByKey } from "../src/widgets/StoryPlayer/engine/asset";
 import { HtmlStoryAudio } from "../src/widgets/StoryPlayer/engine/audio";
+import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
+
+import { createContext, FakeRenderer } from "./helpers/runtimeFakes";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 
 interface Deferred<T> {
   promise: Promise<T>;
+  reject: (reason: Error) => void;
   resolve: (value: T) => void;
 }
 
 function defer<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 /** Minimal stand-in for `@pixi/sound`'s IMediaInstance. */
@@ -35,6 +42,7 @@ class FakeSound {
   readonly instances: FakeInstance[] = [];
   private pending: Deferred<FakeInstance> | null = null;
 
+  playCalls = 0;
   volume = 1;
   complete?: () => void;
 
@@ -42,6 +50,7 @@ class FakeSound {
     volume: number;
     complete?: () => void;
   }): Promise<FakeInstance> {
+    this.playCalls++;
     this.volume = options.volume;
     this.complete = options.complete;
     const pending = defer<FakeInstance>();
@@ -62,10 +71,11 @@ class FakeSound {
 }
 
 const loads: Array<Deferred<FakeSound>> = [];
+const preloaded = new Map<string, FakeSound>();
 
 vi.mock("pixi.js", () => ({
   Assets: {
-    get: () => null,
+    get: (url: string) => preloaded.get(url),
     load: () => {
       const pending = defer<FakeSound>();
       loads.push(pending);
@@ -172,38 +182,157 @@ describe("playmusic scheduling", () => {
     });
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    preloaded.clear();
+    vi.useRealTimers();
+  });
 
   async function startTrack(audio: HtmlStoryAudio, key: string) {
     void audio.playMusic({ key, volume: 1, crossfadeMs: 0, delayMs: 0 });
     return (await settlePlayback()).instance;
   }
 
-  it("fades out now, then starts the new track after delay + crossfade", async () => {
-    const audio = new HtmlStoryAudio(context);
-    const first = await startTrack(audio, "a");
+  function queueNextTrack(audio: HtmlStoryAudio) {
     void audio.playMusic({
       key: "b",
       volume: 1,
       crossfadeMs: 320,
       delayMs: 640,
     });
+    return settleLoad();
+  }
+
+  it("fades out now, then starts the new track after delay + crossfade", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(audio, "a");
+    const nextClip = queueNextTrack(audio);
 
     await vi.advanceTimersByTimeAsync(160);
-    expect(first.volume).toBeCloseTo(0.5);
-    await audio.setMusicVolume(0.8, 0);
     expect(first.volume).toBeCloseTo(0.5);
     await vi.advanceTimersByTimeAsync(160);
     expect(first.stopped).toBe(1);
     await vi.advanceTimersByTimeAsync(639);
-    expect(loads).toHaveLength(0);
+    expect(nextClip.playCalls).toBe(0);
     await vi.advanceTimersByTimeAsync(1);
-    const { instance: next } = await settlePlayback();
+    const { instance: next } = await settlePlayback(nextClip);
     expect(next.volume).toBe(0);
     await vi.advanceTimersByTimeAsync(160);
-    expect(next.volume).toBeCloseTo(0.4);
+    expect(next.volume).toBeCloseTo(0.5);
     await vi.advanceTimersByTimeAsync(160);
-    expect(next.volume).toBeCloseTo(0.8);
+    expect(next.volume).toBe(1);
+  });
+
+  it("replaces the pending fade-in with an immediate musicvolume", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(audio, "a");
+    const nextClip = queueNextTrack(audio);
+    await vi.advanceTimersByTimeAsync(160);
+    await audio.setMusicVolume(0.8, 0);
+    expect(first.volume).toBeCloseTo(0.5);
+
+    await vi.advanceTimersByTimeAsync(800);
+    const { instance } = await settlePlayback(nextClip);
+    expect(instance.volume).toBe(0.8);
+    await vi.advanceTimersByTimeAsync(320);
+    expect(instance.volume).toBe(0.8);
+  });
+
+  it("runs a replacement musicvolume tween on the waiting channel", async () => {
+    const audio = new HtmlStoryAudio(context);
+    await startTrack(audio, "a");
+    const nextClip = queueNextTrack(audio);
+    await vi.advanceTimersByTimeAsync(800);
+    void audio.setMusicVolume(0.8, 320);
+
+    await vi.advanceTimersByTimeAsync(160);
+    const { instance } = await settlePlayback(nextClip);
+    expect(instance.volume).toBeCloseTo(0.4);
+    await vi.advanceTimersByTimeAsync(160);
+    expect(instance.volume).toBe(0.8);
+  });
+
+  it("keeps the pending start time when playmusic repeats the same track", async () => {
+    const audio = new HtmlStoryAudio(context);
+    await startTrack(audio, "a");
+    const nextClip = queueNextTrack(audio);
+    await vi.advanceTimersByTimeAsync(160);
+    void audio.playMusic({ key: "B", volume: 0.7, crossfadeMs: 0, delayMs: 0 });
+
+    await vi.advanceTimersByTimeAsync(799);
+    expect(nextClip.playCalls).toBe(0);
+    expect(loads).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const { instance } = await settlePlayback(nextClip);
+    expect(instance.volume).toBe(0.7);
+  });
+
+  it("uses the waiting MUSIC channel when switching to a third track", async () => {
+    const audio = new HtmlStoryAudio(context);
+    await startTrack(audio, "a");
+    const secondClip = queueNextTrack(audio);
+    await vi.advanceTimersByTimeAsync(160);
+    void audio.playMusic({
+      key: "c",
+      volume: 0.7,
+      crossfadeMs: 320,
+      delayMs: 0,
+    });
+    const thirdClip = settleLoad();
+
+    await vi.advanceTimersByTimeAsync(319);
+    expect(thirdClip.playCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const { instance } = await settlePlayback(thirdClip);
+    expect(instance.volume).toBe(0);
+    await vi.advanceTimersByTimeAsync(800);
+    expect(instance.volume).toBe(0.7);
+    expect(secondClip.playCalls).toBe(0);
+  });
+
+  it("starts a delayed track during a stop fade that ends later", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void audio.playMusic({ key: "a", volume: 1, crossfadeMs: 0, delayMs: 320 });
+    const clip = settleLoad();
+    await vi.advanceTimersByTimeAsync(160);
+    const stopping = audio.stopMusic(640);
+
+    await vi.advanceTimersByTimeAsync(160);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBeCloseTo(0.75);
+    await vi.advanceTimersByTimeAsync(480);
+    await stopping;
+    expect(instance.stopped).toBe(1);
+  });
+
+  it("silences a scheduled track whose stop fade ends before its start", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void audio.playMusic({ key: "a", volume: 1, crossfadeMs: 0, delayMs: 640 });
+    const clip = settleLoad();
+    const stopping = audio.stopMusic(320);
+    await vi.advanceTimersByTimeAsync(640);
+    await stopping;
+    expect(clip.playCalls).toBe(0);
+  });
+
+  it("continues a retiring intro into its loop until the fade ends", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void audio.playMusic({
+      key: "a",
+      intro: "a-intro",
+      volume: 1,
+      crossfadeMs: 0,
+      delayMs: 0,
+    });
+    const intro = await settlePlayback();
+    queueNextTrack(audio);
+    await vi.advanceTimersByTimeAsync(160);
+
+    intro.sound.complete!();
+    const loop = await settlePlayback();
+    expect(loop.instance.volume).toBeCloseTo(0.5);
+    await vi.advanceTimersByTimeAsync(160);
+    expect(loop.instance.volume).toBe(0);
+    expect(loop.instance.stopped).toBe(1);
   });
 
   it("cuts immediately at the 10 ms threshold even if the new track has delay", async () => {
@@ -215,20 +344,36 @@ describe("playmusic scheduling", () => {
       crossfadeMs: 10,
       delayMs: 320,
     });
+    const nextClip = settleLoad();
     expect(first.stopped).toBe(1);
-    expect(loads).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(320);
-    const { instance: next } = await settlePlayback();
+    await vi.advanceTimersByTimeAsync(319);
+    expect(nextClip.playCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const { instance: next } = await settlePlayback(nextClip);
     expect(next.volume).toBe(0.7);
   });
 
-  it("matches the same track across letter case and cancels a pending stop", async () => {
-    const audio = new HtmlStoryAudio(context);
-    const first = await startTrack(audio, "https://example.com/Audio/Bgm.ogg");
+  it("compares both game asset names ignoring case and cancels a stop", async () => {
+    const audio = new HtmlStoryAudio({
+      ...context,
+      audioVariables: {
+        intro: "sound_beta_2/bgm/intro",
+        loop: "sound_beta_2/bgm/loop",
+      },
+    });
+    void audio.playMusic({
+      key: "$loop",
+      intro: "$intro",
+      volume: 1,
+      crossfadeMs: 0,
+      delayMs: 0,
+    });
+    const { instance: first } = await settlePlayback();
     void audio.stopMusic(320);
     await vi.advanceTimersByTimeAsync(160);
     void audio.playMusic({
-      key: "https://example.com/audio/bgm.OGG",
+      key: "$Loop",
+      intro: "$Intro",
       volume: 0.7,
       crossfadeMs: 320,
       delayMs: 640,
@@ -239,21 +384,87 @@ describe("playmusic scheduling", () => {
     expect(first.stopped).toBe(0);
   });
 
-  it("destroys the detached outgoing track and cancels the delayed successor", async () => {
+  it("keeps distinct Web URLs case-sensitive", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(
+      audio,
+      "https://example.com/Bgm.ogg?token=AbC",
+    );
+    const next = await startTrack(
+      audio,
+      "https://example.com/Bgm.ogg?token=aBc",
+    );
+    expect(first.stopped).toBe(1);
+    expect(next.stopped).toBe(0);
+  });
+
+  it("keeps the scripted musicvolume fade when the first clip is already cached", async () => {
+    const story = createContext([
+      '[playMusic(intro="$m_sys_act1mainss_intro", key="$m_sys_act1mainss_loop", volume=0)]',
+      "[musicvolume(volume=0.6, fadetime=4)]",
+      '[name="A"]ok',
+    ]);
+    story.audioVariables = {
+      m_sys_act1mainss_intro: "sound_beta_2/bgm/m_sys_act1mainss_intro",
+      m_sys_act1mainss_loop: "sound_beta_2/bgm/m_sys_act1mainss_loop",
+    };
+    const clip = new FakeSound();
+    preloaded.set(
+      resolveStoryAudioByKey("$m_sys_act1mainss_intro", story.audioVariables)!,
+      clip,
+    );
+    const audio = new HtmlStoryAudio(story);
+    const runtime = new StoryRuntime(story, new FakeRenderer(), audio);
+    await runtime.start();
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBe(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(instance.volume).toBeCloseTo(0.3);
+    runtime.destroy();
+  });
+
+  it("retires the old channel even when the requested key is empty", async () => {
     const audio = new HtmlStoryAudio(context);
     const first = await startTrack(audio, "a");
-    void audio.playMusic({
-      key: "b",
+    await audio.playMusic({ key: "", volume: 1, crossfadeMs: 320, delayMs: 0 });
+    await vi.advanceTimersByTimeAsync(160);
+    expect(first.volume).toBeCloseTo(0.5);
+    await vi.advanceTimersByTimeAsync(160);
+    expect(first.stopped).toBe(1);
+    expect(loads).toHaveLength(0);
+  });
+
+  it("releases a failed incoming channel before a retry", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const failed = audio.playMusic({
+      key: "a",
       volume: 1,
       crossfadeMs: 320,
       delayMs: 640,
     });
+    loads.shift()!.reject(new Error("asset missing"));
+    await failed;
+
+    void audio.playMusic({
+      key: "a",
+      volume: 0.7,
+      crossfadeMs: 320,
+      delayMs: 0,
+    });
+    const { instance } = await settlePlayback();
+    expect(instance.volume).toBe(0.7);
+  });
+
+  it("destroys the detached outgoing track and cancels the delayed successor", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const first = await startTrack(audio, "a");
+    const nextClip = queueNextTrack(audio);
     await vi.advanceTimersByTimeAsync(160);
     audio.destroy();
     expect(first.stopped).toBe(1);
     await vi.advanceTimersByTimeAsync(1280);
     expect(first.stopped).toBe(1);
-    expect(loads).toHaveLength(0);
+    expect(nextClip.playCalls).toBe(0);
   });
 });
 

@@ -79,6 +79,29 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("dispatches an empty music key so audio can retire the old channel", async () => {
+    const audio = new FakeAudio();
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext(["[playmusic(crossfade=0.32)]", '[name="A"]ok']),
+      new FakeRenderer(),
+      audio,
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    expect(audio.playMusicCalls).toEqual([
+      { crossfadeMs: 320, delayMs: 0, intro: undefined, key: "", volume: 1 },
+    ]);
+    expect(onWarning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "parse",
+        detail: "playmusic key is empty",
+      }),
+    );
+  });
+
   it("runs the end-of-story audio reset when playback finishes", async () => {
     const audio = new FakeAudio();
     const runtime = new StoryRuntime(
