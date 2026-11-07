@@ -1,4 +1,4 @@
-import { effectScope } from "vue";
+import { effectScope, type EffectScope } from "vue";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +6,8 @@ import {
   buildHash,
   createExplorer,
   readHash,
+  type Entry,
+  type ExploreResponse,
 } from "../src/widgets/StoryAssetExplorer/store";
 import {
   characterCategory,
@@ -16,7 +18,6 @@ import {
   normalizeResourceQuery,
   parseCharacterMap,
   resolveFaceAlias,
-  type StoryResourceSummary,
   type UsageRow,
 } from "../src/widgets/StoryAssetExplorer/utils";
 
@@ -212,128 +213,224 @@ describe("share link hash", () => {
   });
 });
 
-describe("createExplorer", () => {
-  const RESOURCES: Record<string, StoryResourceSummary[]> = {
-    character: [
-      { type: "character", id: "avg_npc_10", scriptCount: 1 },
-      { type: "character", id: "avg_npc_9", scriptCount: 5 },
-      { type: "character", id: "char_1_a_1#char_1_a_1", scriptCount: 2 },
-      { type: "character", id: "char_1_a_1#char_1_a_2", scriptCount: 7 },
-      { type: "character", id: "avg_doc_1#avg_doc_1", scriptCount: 3 },
-    ],
-    background: [{ type: "background", id: "bg_npc_room", scriptCount: 4 }],
-    image: [],
-    item: [],
+describe("createExplorer server paging", () => {
+  const scopes: EffectScope[] = [];
+  const entry = (id: string): Entry => {
+    const resource = {
+      type: "character" as const,
+      id,
+      base: id,
+      category: "npc" as const,
+      scriptCount: 3,
+    };
+    return { resource, members: [resource], merged: 1, count: 3, face: null };
   };
-
+  const first = entry("avg_npc_9");
+  const second = entry("avg_npc_10");
+  const third = entry("avg_npc_100");
+  function response(overrides: Partial<ExploreResponse> = {}): ExploreResponse {
+    return {
+      entries: [first, second],
+      selection: null,
+      focusIndex: null,
+      total: 3,
+      matchedTotal: 3,
+      page: 1,
+      pageSize: 2,
+      pageCount: 2,
+      counts: { character: 3, background: 7, image: 2, item: 1 },
+      categoryCounts: { npc: 3, operator: 0, other: 0 },
+      updatedAt: "2026-11-07",
+      ...overrides,
+    };
+  }
+  function json(data: ExploreResponse) {
+    return new Response(JSON.stringify(data));
+  }
+  function setup(
+    handler: (url: URL, init?: RequestInit) => Promise<Response> = async () =>
+      json(response()),
+  ) {
+    vi.useFakeTimers();
+    vi.stubGlobal("Image", undefined);
+    const browse = vi.fn((url: string, init?: RequestInit) =>
+      handler(new URL(url), init),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) =>
+        url.includes("/story-resources/explore?")
+          ? browse(url, init)
+          : Promise.resolve(new Response("{}")),
+      ),
+    );
+    const scope = effectScope();
+    scopes.push(scope);
+    const store = scope.run(() => createExplorer({}))!;
+    store.setStep(2);
+    return { store, browse, scope };
+  }
   afterEach(() => {
+    scopes.splice(0).forEach((scope) => scope.stop());
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  async function setup() {
-    // 每个类型分两页给，验证翻页拼接后按自然顺序排
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        const params = new URL(url).searchParams;
-        const all = RESOURCES[params.get("type") ?? ""] ?? [];
-        const second = params.get("cursor") === "next";
-        const half = Math.ceil(all.length / 2);
-        return new Response(
-          JSON.stringify({
-            resources: second ? all.slice(half) : all.slice(0, half),
-            nextCursor: second || all.length < 2 ? null : "next",
-          }),
-        );
-      }),
-    );
-    const scope = effectScope();
-    const store = scope.run(() => createExplorer({}))!;
-    await Promise.all(
-      (["character", "background", "image", "item"] as const).map((type) =>
-        store.loadIndex(type),
-      ),
-    );
-    return store;
-  }
-
-  it("loads every page and sorts naturally", async () => {
-    const store = await setup();
-    expect(store.indexes.character.status).toBe("done");
-    expect(store.indexes.character.items.map((item) => item.id)).toEqual([
-      "avg_doc_1#avg_doc_1",
-      "avg_npc_9",
-      "avg_npc_10",
-      "char_1_a_1#char_1_a_1",
-      "char_1_a_1#char_1_a_2",
-    ]);
+  it("loads one page with all facet counts, without downloading other types or following pages", async () => {
+    const { store, browse } = setup();
+    await store.start();
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(1);
+    expect(store.pageList.value).toEqual([first, second]);
+    expect(store.counts.value.background).toBe(7);
+    expect(store.matchedTotal.value).toBe(3);
+    expect(store.total.value).toBe(3);
+    expect(store.pageCount.value).toBe(2);
   });
 
-  it("merges the images of one character by default", async () => {
-    const store = await setup();
-    expect(store.list.value.map((entry) => entry.resource.id)).toEqual([
-      "avg_doc_1#avg_doc_1",
-      "avg_npc_9",
-      "avg_npc_10",
-      "char_1_a_1#char_1_a_1",
-    ]);
-    const merged = store.list.value[3];
-    expect(merged.merged).toBe(2);
-    expect(merged.count).toBe(7);
-    expect(store.total.value).toBe(4);
-
-    store.state.merge = false;
-    expect(store.list.value).toHaveLength(5);
-  });
-
-  it("filters by category and search, and counts every tab", async () => {
-    const store = await setup();
+  it("sends filtering, grouping and sorting to the server in a single debounced request", async () => {
+    const { store, browse } = setup();
+    await store.start();
     store.state.cat = "npc";
-    expect(store.list.value.map((entry) => entry.resource.id)).toEqual([
-      "avg_npc_9",
-      "avg_npc_10",
-    ]);
-    expect(store.categoryCounts.value).toEqual({
-      operator: 1,
-      npc: 2,
-      other: 1,
-    });
-
-    store.state.cat = "";
-    store.state.q = "NPC";
-    expect(store.counts.value).toEqual({
-      character: 2,
-      background: 1,
-      image: 0,
-      item: 0,
-    });
-  });
-
-  it("sorts by script count and walks the detail through the results", async () => {
-    const store = await setup();
     store.state.merge = false;
     store.setSortKey("count");
-    expect(store.list.value.map((entry) => entry.count)).toEqual([
-      7, 5, 3, 2, 1,
-    ]);
-
-    store.open("avg_npc_9");
-    expect(store.detailIndex.value).toBe(1);
-    store.move(1);
-    expect(store.detail.id).toBe("avg_doc_1#avg_doc_1");
-    store.move(10);
-    expect(store.detail.id).toBe("avg_doc_1#avg_doc_1");
+    store.state.q = "n";
+    await vi.advanceTimersByTimeAsync(200);
+    store.state.q = "npc";
+    await vi.advanceTimersByTimeAsync(249);
+    expect(browse).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(browse).toHaveBeenCalledTimes(2);
+    const params = new URL(browse.mock.calls[1][0]).searchParams;
+    expect(Object.fromEntries(params)).toMatchObject({
+      type: "character",
+      category: "npc",
+      groupBy: "resource",
+      sort: "scriptCount",
+      order: "desc",
+      q: "npc",
+      page: "1",
+    });
   });
 
-  it("keeps the first visible entry when the page size changes", async () => {
-    const store = await setup();
-    store.state.merge = false;
-    store.setStep(2);
-    store.setPage(3);
-    expect(store.pageList.value.map((entry) => entry.resource.id)).toEqual([
-      "char_1_a_1#char_1_a_2",
+  it("uses server union counts and group members without recomputing max or sorting", async () => {
+    const merged = {
+      ...first,
+      members: [first.resource, second.resource],
+      merged: 2,
+      count: 5,
+    };
+    const { store } = setup(async () =>
+      json(response({ entries: [third, merged] })),
+    );
+    await store.start();
+    expect(store.pageList.value.map((item) => item.resource.id)).toEqual([
+      third.resource.id,
+      first.resource.id,
     ]);
-    store.setStep(3);
+    expect(store.pageList.value[1].count).toBe(5);
+    store.open(second.resource.id);
+    expect(store.find(second.resource.id)).toEqual(second.resource);
+    expect(store.detailIndex.value).toBe(1);
+  });
+
+  it("opens shared resources on the correct page without a second startup request", async () => {
+    const { store, browse } = setup(async () =>
+      json(
+        response({
+          entries: [third],
+          page: 2,
+          selection: third,
+          focusIndex: 2,
+        }),
+      ),
+    );
+    store.applyHash({ open: third.resource.id, face: "1$1" });
+    await store.start();
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(1);
+    expect(new URL(browse.mock.calls[0][0]).searchParams.get("focus")).toBe(
+      third.resource.id,
+    );
     expect(store.page.value).toBe(2);
+    expect(store.find(third.resource.id)).toEqual(third.resource);
+    expect(store.detailIndex.value).toBe(2);
+    expect(store.detail.face).toBe("1$1");
+  });
+
+  it("keeps an explicitly shared detail even when it does not match the search", async () => {
+    const { store } = setup(async () =>
+      json(response({ entries: [], matchedTotal: 0, selection: third })),
+    );
+    store.applyHash({ q: "missing", open: third.resource.id });
+    await store.start();
+    expect(store.pageList.value).toEqual([]);
+    expect(store.find(third.resource.id)).toEqual(third.resource);
+    expect(store.detailIndex.value).toBe(-1);
+  });
+
+  it("loads just the adjacent page when navigating across the detail page boundary", async () => {
+    const { store, browse } = setup(async (url) =>
+      json(
+        url.searchParams.get("page") === "2"
+          ? response({ entries: [third], page: 2 })
+          : response(),
+      ),
+    );
+    await store.start();
+    store.open(first.resource.id);
+    await store.move(1);
+    expect(store.detail.id).toBe(second.resource.id);
+    expect(browse).toHaveBeenCalledTimes(1);
+    await store.move(1);
+    await vi.runAllTimersAsync();
+    expect(store.detail.id).toBe(third.resource.id);
+    expect(store.detailIndex.value).toBe(2);
+    expect(browse).toHaveBeenCalledTimes(2);
+    await store.move(1);
+    expect(browse).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts superseded requests and ignores late responses even if transport ignores abort", async () => {
+    let finish!: (value: Response) => void;
+    const old = new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+    const { store, browse } = setup(async (url) =>
+      url.searchParams.get("q") === "new"
+        ? json(response({ entries: [third] }))
+        : old,
+    );
+    const loading = store.start();
+    store.state.q = "new";
+    expect(browse.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(store.pageList.value).toEqual([third]);
+    finish(json(response()));
+    await loading;
+    expect(store.pageList.value).toEqual([third]);
+  });
+
+  it("shows errors and retries only the requested page", async () => {
+    let failed = true;
+    const { store, browse } = setup(async () =>
+      failed ? new Response("", { status: 503 }) : json(response()),
+    );
+    await store.start();
+    expect(store.status.value).toBe("error");
+    expect(store.error.value).toContain("503");
+    failed = false;
+    await store.reload();
+    expect(store.status.value).toBe("done");
+    expect(browse).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels queued searches when the widget unmounts", async () => {
+    const { store, browse, scope } = setup();
+    await store.start();
+    store.state.q = "later";
+    scope.stop();
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(1);
   });
 });

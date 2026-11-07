@@ -23,7 +23,7 @@ function tip(entry: Entry): string {
   if (entry.face) lines.push(`表情 ${entry.face}`);
   lines.push(
     entry.merged > 1
-      ? `${entry.merged} 张立绘 · 最多 ${entry.count} 个剧本`
+      ? `${entry.merged} 张立绘 · ${entry.count} 个剧本`
       : `${entry.count} 个剧本`,
   );
   return lines.join("\n");

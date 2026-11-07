@@ -8,13 +8,11 @@ import ListResultBar from "@/components/list/ListResultBar.vue";
 import { PAGE_STEPS, useExplorer } from "../store";
 import { CHARACTER_CATEGORIES, resourceTypeUnit } from "../utils";
 
-/** 结果栏：条数（索引还在取时带个转圈，没取完出错时给重试）· 已选条件 · 复制链接 · 每页条数 · 分页 */
+/** 结果栏：后端匹配数量 · 已选条件 · 复制链接 · 每页条数 · 分页与请求重试 */
 defineProps<{ narrow: boolean }>();
 
 const store = useExplorer();
-const { state, indexes, list, total, page, pageCount } = store;
-
-const index = computed(() => indexes[state.type]);
+const { state, status, error, matchedTotal, total, page, pageCount } = store;
 
 const tags = computed(() => {
   if (state.type !== "character" || !state.cat) return [];
@@ -30,7 +28,7 @@ const link = () => store.shareLink();
 <template>
   <ListResultBar
     v-model:q="state.q"
-    :shown="list.length"
+    :shown="matchedTotal"
     :total="total"
     :unit="resourceTypeUnit(state.type)"
     :tags="tags"
@@ -46,17 +44,13 @@ const link = () => store.shareLink();
     @update:page="store.setPage"
   >
     <template #help>
-      <span v-if="index.status === 'loading'" class="sae-loading" role="status">
+      <span v-if="status === 'loading'" class="sae-loading" role="status">
         <AkSpinner variant="bars" label="正在载入" />
         载入中
       </span>
-      <span
-        v-else-if="index.status === 'error'"
-        class="sae-loading"
-        role="alert"
-      >
-        没载入完（{{ index.error }}）
-        <AkButton variant="link" size="xs" @click="store.loadIndex(state.type)">
+      <span v-else-if="status === 'error'" class="sae-loading" role="alert">
+        读取失败（{{ error }}）
+        <AkButton variant="link" size="xs" @click="store.reload()">
           重试
         </AkButton>
       </span>

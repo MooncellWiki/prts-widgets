@@ -40,7 +40,17 @@ import UsageTable from "./UsageTable.vue";
  * 改版前点图进的是文件页：大图、原图、文件用途；这里都有，文件用途换成了按剧本反查（准确到每个剧本）。
  */
 const store = useExplorer();
-const { state, detail, indexes, links, linksError, webp, bases, list } = store;
+const {
+  state,
+  detail,
+  status,
+  error,
+  links,
+  linksError,
+  webp,
+  bases,
+  matchedTotal,
+} = store;
 const toast = useToast();
 
 const show = computed({
@@ -50,7 +60,6 @@ const show = computed({
   },
 });
 
-const index = computed(() => indexes[state.type]);
 const resource = computed<Resource | undefined>(() =>
   detail.id ? store.find(detail.id) : undefined,
 );
@@ -132,7 +141,9 @@ const face = computed(() => {
   const items = gallery.value;
   if (!items) return null;
   return (
-    items.find((item) => item.expression === detail.face) ??
+    items.find(
+      (item) => item.expression.toLowerCase() === detail.face?.toLowerCase(),
+    ) ??
     items.find((item) => item.used) ??
     items[0]
   );
@@ -264,11 +275,17 @@ const faceThumb = (url: string) => cdnImageUrl(url, "resize,l_128", webp.value);
 
     <template v-if="!detail.id" />
     <AkSpinner
-      v-else-if="
-        !resource && index.status !== 'done' && index.status !== 'error'
-      "
-      description="正在载入资源列表…"
+      v-else-if="!resource && (status === 'loading' || status === 'idle')"
+      description="正在载入资源…"
     />
+    <AkEmpty
+      v-else-if="!resource && status === 'error'"
+      icon="warn"
+      title="资源读取失败"
+      :description="error"
+    >
+      <AkButton variant="link" @click="store.reload()">重试</AkButton>
+    </AkEmpty>
     <AkEmpty
       v-else-if="!resource"
       icon="search"
@@ -477,19 +494,21 @@ const faceThumb = (url: string) => cdnImageUrl(url, "resize,l_128", webp.value);
         <AkButton
           size="sm"
           icon="chevron-left"
-          :disabled="position <= 0"
+          :disabled="status === 'loading' || position <= 0"
           @click="store.move(-1)"
         >
           上一个
         </AkButton>
         <span v-if="position >= 0" class="sae-detail__pos">
-          {{ position + 1 }} / {{ list.length }}
+          {{ position + 1 }} / {{ matchedTotal }}
         </span>
         <AkButton
           size="sm"
           icon="chevron-right"
           icon-placement="right"
-          :disabled="position < 0 || position >= list.length - 1"
+          :disabled="
+            status === 'loading' || position < 0 || position >= matchedTotal - 1
+          "
           @click="store.move(1)"
         >
           下一个
