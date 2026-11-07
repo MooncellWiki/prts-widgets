@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { useExplorer, type Entry } from "../store";
-import { resourcePreview, thumbEdge, type StoryResourceType } from "../utils";
+import { useExplorer } from "../store";
+import {
+  resourcePreview,
+  thumbEdge,
+  type Entry,
+  type StoryResourceType,
+} from "../utils";
 
 import ResourceImage from "./ResourceImage.vue";
 

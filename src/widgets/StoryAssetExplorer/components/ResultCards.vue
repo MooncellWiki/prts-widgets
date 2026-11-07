@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { useExplorer, type Entry } from "../store";
+import { useExplorer } from "../store";
 import {
   highlightParts,
   resourcePreview,
   thumbEdge,
+  type Entry,
   type StoryResourceType,
 } from "../utils";
 
@@ -75,10 +76,7 @@ const label = (entry: Entry) =>
             <span v-if="entry.merged > 1">
               <b>{{ entry.merged }}</b> 张立绘
             </span>
-            <span v-if="entry.merged > 1">
-              <b>{{ entry.count }}</b> 个剧本
-            </span>
-            <span v-else
+            <span
               ><b>{{ entry.count }}</b> 个剧本</span
             >
           </span>

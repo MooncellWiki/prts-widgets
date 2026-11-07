@@ -41,7 +41,7 @@ export function resourceTypeUnit(type: StoryResourceType): string {
 }
 
 /**
- * 角色的分类，同改版前「人物」下的 NPC / Char 两段：按资源名的前缀分。
+ * 角色的分类，同改版前「人物」下的 NPC / Char 两段：后端按资源名的前缀分（story_resource_catalog）。
  * 干员 = char_<编号> / avg_<编号>（含 avgnew_、avg_char_ 这些早期写法）；
  * NPC = avg_npc_ / npc_ / avgnew_npc_；剩下的（博士 avg_doc、占位 char_empty 等）归其他。
  */
@@ -60,29 +60,6 @@ export function isCharacterCategory(
   value: unknown,
 ): value is CharacterCategory {
   return CHARACTER_CATEGORIES.some((option) => option.value === value);
-}
-
-const NPC_PREFIX = /^(?:avg_|avgnew_)?npc_/;
-const OPERATOR_PREFIX = /^(?:char_|avg_|avgnew_|avg_char_)\d/;
-
-export function characterCategory(id: string): CharacterCategory {
-  const lower = id.toLowerCase();
-  if (NPC_PREFIX.test(lower)) return "npc";
-  if (OPERATOR_PREFIX.test(lower)) return "operator";
-  return "other";
-}
-
-const idCollator = new Intl.Collator("en", {
-  numeric: true,
-  sensitivity: "base",
-});
-
-/**
- * 资源名按自然顺序比（avg_npc_9 在 avg_npc_10 前面）。改版前的 DPL 为了这个把
- * 三位、四位、五位编号拆成几段分别列，这里一个比较函数就够了。
- */
-export function compareResourceId(a: string, b: string): number {
-  return idCollator.compare(a, b);
 }
 
 /**
@@ -108,32 +85,6 @@ export function normalizeResourceQuery(raw: string): string {
 }
 
 /**
- * 叠图角色的某个表情（`base#表情`，剧本里就是这么写的）在列表里归到 `base$N`
- * （N = 表情所在组的下标 + 1，见 parseCharacterListingId），按资源名搜不到。
- * 这里按 character.json 把它换成列表里的那一条，顺带记下是哪个表情。
- * 独立全身图（`base#图名`）列表里本来就是这个名字，不用换，返回 null。
- */
-export function resolveFaceAlias(
-  query: string,
-  links: CharacterLinkMap | null,
-): { id: string; face: string } | null {
-  const hash = query.indexOf("#");
-  if (!links || hash <= 0) return null;
-  const node = links.get(query.slice(0, hash).toLowerCase());
-  if (!node) return null;
-  const name = query.slice(hash + 1).toLowerCase();
-  for (const [itemName, item] of node.items) {
-    if (itemName.toLowerCase() !== name) continue;
-    if (!item.face || !node.overlays.has(item.group)) return null;
-    return {
-      id: `${query.slice(0, hash).toLowerCase()}$${item.group + 1}`,
-      face: itemName,
-    };
-  }
-  return null;
-}
-
-/**
  * torappu 的 CDN（阿里云图片处理）缩图：`l_` 按最长边缩，`p_` 按百分比缩。
  * 只缩不放，原图比目标小时原样返回。
  */
@@ -148,19 +99,48 @@ export function cdnImageUrl(
 }
 
 /**
- * 以下响应类型对应 ak-asset-storage 的 `/api/v1/story-resources` 与
+ * 以下响应类型对应 ak-asset-storage 的 `/api/v1/story-resources/explore` 与
  * `/api/v1/story-resource-usages`（见该仓库的 `app/common/schema.d.ts`）。
  * 跨仓库改字段没有编译期保护，动接口时两边都要过一遍。
  */
-export interface StoryResourceSummary {
+export interface Resource {
   type: StoryResourceType;
   id: string;
   scriptCount: number;
+  /** 角色：character.json 的 base，同一角色的各张立绘归到一起；其他类型为 null */
+  base: string | null;
+  category: CharacterCategory | null;
 }
 
-export interface StoryResourceListResponse {
-  resources: StoryResourceSummary[];
-  nextCursor?: string | null;
+/** 结果里的一格 */
+export interface Entry {
+  resource: Resource;
+  /** 同一角色的全部条目（自然顺序，含自己）；不是角色时只有自己 */
+  members: readonly Resource[];
+  /** 「按角色合并」时这一格代表几张立绘；不合并时为 1 */
+  merged: number;
+  /** 排序用的剧本数：合并时是整个角色去重后的剧本数 */
+  count: number;
+  /** 按 `base#表情` 搜到的：那个表情 */
+  face: string | null;
+}
+
+export interface ExploreResponse {
+  entries: Entry[];
+  /** 请求带 focus 时的那一格，不受筛选和分页影响 */
+  selection: Entry | null;
+  focusIndex: number | null;
+  /** 当前类型不带搜索和分类时的总数 */
+  total: number;
+  matchedTotal: number;
+  /** 各类型的匹配数，不受当前页签影响 */
+  counts: Record<StoryResourceType, number>;
+  /** 角色各分类的匹配数，不受当前分类影响 */
+  categoryCounts: Record<CharacterCategory, number>;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  updatedAt: string | null;
 }
 
 export interface StoryUsageItem {
@@ -334,14 +314,6 @@ function parseCharacterListingId(id: string): ParsedCharacterListingId {
     faceName,
     group: Number.isInteger(group) && group >= 0 ? group : null,
   };
-}
-
-/**
- * 列表接口的角色 id 有两种形态：叠图角色归并为 `base$N`（N-1 是表情组下标），
- * 独立全身图差分保留完整 `base#expression`，这里统一剥成 base 键。
- */
-export function characterBaseOfListingId(id: string): string {
-  return parseCharacterListingId(id).base;
 }
 
 function characterAssetUrl(key: string): string {

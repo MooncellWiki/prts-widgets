@@ -13,7 +13,7 @@ import ListPager from "./ListPager.vue";
 /**
  * 一览页（干员 / 敌人 / 道具一览）的结果栏：条数 · 已选条件 · 复制链接 · 每页条数 · 分页。
  * 已选条件在这里再列一遍（可逐个移除）：筛选面板滚出视口后，仍看得到当前结果是怎么筛出来的。
- * 条数后面要补说明的（干员一览的 ⓘ）放 #help；工具区前面要加按钮的放 #tools。
+ * 条数还不知道时用 #count 换掉；条数后面要补说明的（干员一览的 ⓘ）放 #help；工具区前面要加按钮的放 #tools。
  * 不分页的（后勤技能一览的技能视图）steps 不传，不出每页条数；pageCount 为 1 时分页自己不出。
  */
 const props = withDefaults(
@@ -67,12 +67,14 @@ async function copyLink() {
   <div :class="['ls-bar', { 'ls-bar--narrow': narrow }]">
     <div class="ls-bar__num">
       <span class="ls-bar__count" role="status">
-        <template v-if="shown === total">
-          共 <b>{{ total }}</b> {{ unit }}
-        </template>
-        <template v-else>
-          <b>{{ shown }}</b> / {{ total }} {{ unit }}
-        </template>
+        <slot name="count">
+          <template v-if="shown === total">
+            共 <b>{{ total }}</b> {{ unit }}
+          </template>
+          <template v-else>
+            <b>{{ shown }}</b> / {{ total }} {{ unit }}
+          </template>
+        </slot>
       </span>
       <slot name="help" />
     </div>

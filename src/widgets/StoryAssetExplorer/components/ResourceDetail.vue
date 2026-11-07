@@ -14,7 +14,7 @@ import {
 
 import { wikiFileName } from "../../NpcPortrait/resolve";
 import { composeCharacter, downloadUrl, saveBlob } from "../download";
-import { useExplorer, type Resource } from "../store";
+import { useExplorer } from "../store";
 import {
   assetStorageUrl,
   loadUsages,
@@ -29,6 +29,7 @@ import {
   resourcePreview,
   resourceTypeLabel,
   type CharacterPreview,
+  type Resource,
 } from "../utils";
 
 import ResourceImage from "./ResourceImage.vue";

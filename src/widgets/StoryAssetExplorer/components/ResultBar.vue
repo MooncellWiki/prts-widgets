@@ -8,11 +8,21 @@ import ListResultBar from "@/components/list/ListResultBar.vue";
 import { PAGE_STEPS, useExplorer } from "../store";
 import { CHARACTER_CATEGORIES, resourceTypeUnit } from "../utils";
 
-/** 结果栏：后端匹配数量 · 已选条件 · 复制链接 · 每页条数 · 分页与请求重试 */
+/** 结果栏：后端匹配数量 · 已选条件 · 复制链接 · 每页条数 · 分页。结果还在屏幕上时，请求失败的提示和重试放这里 */
 defineProps<{ narrow: boolean }>();
 
 const store = useExplorer();
-const { state, status, error, matchedTotal, total, page, pageCount } = store;
+const {
+  state,
+  status,
+  error,
+  loaded,
+  matchedTotal,
+  pageList,
+  total,
+  page,
+  pageCount,
+} = store;
 
 const tags = computed(() => {
   if (state.type !== "character" || !state.cat) return [];
@@ -43,12 +53,17 @@ const link = () => store.shareLink();
     @update:step="store.setStep"
     @update:page="store.setPage"
   >
+    <template v-if="!loaded" #count>—</template>
     <template #help>
       <span v-if="status === 'loading'" class="sae-loading" role="status">
         <AkSpinner variant="bars" label="正在载入" />
         载入中
       </span>
-      <span v-else-if="status === 'error'" class="sae-loading" role="alert">
+      <span
+        v-else-if="status === 'error' && pageList.length > 0"
+        class="sae-loading"
+        role="alert"
+      >
         读取失败（{{ error }}）
         <AkButton variant="link" size="xs" @click="store.reload()">
           重试

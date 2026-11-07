@@ -4,54 +4,22 @@ import { AkToastProvider } from "@mooncellwiki/prts-design-vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ResourceDetail from "../src/widgets/StoryAssetExplorer/components/ResourceDetail.vue";
+import StoryAssetExplorer from "../src/widgets/StoryAssetExplorer/index.vue";
 import {
   buildHash,
   createExplorer,
   explorerKey,
   readHash,
-  type Entry,
-  type ExploreResponse,
 } from "../src/widgets/StoryAssetExplorer/store";
 import {
-  characterCategory,
-  compareResourceId,
   faceUsageCounts,
   groupUsages,
   highlightParts,
   normalizeResourceQuery,
-  parseCharacterMap,
-  resolveFaceAlias,
+  type Entry,
+  type ExploreResponse,
   type UsageRow,
 } from "../src/widgets/StoryAssetExplorer/utils";
-
-describe("characterCategory", () => {
-  it("splits characters like the old NPC / Char sections", () => {
-    expect(characterCategory("avg_npc_009")).toBe("npc");
-    expect(characterCategory("avg_npc_1898_1$1")).toBe("npc");
-    expect(characterCategory("npc_2001_aya_1#npc_2001_Aya_1")).toBe("npc");
-    expect(characterCategory("avgnew_npc_140_1$1")).toBe("npc");
-    expect(characterCategory("avg_003_kalts_1$1")).toBe("operator");
-    expect(characterCategory("char_211_adnach_1#char_211_adnach_6")).toBe(
-      "operator",
-    );
-    expect(characterCategory("avgnew_112_siege_1$1")).toBe("operator");
-    expect(characterCategory("avg_char_501_durin_1#x")).toBe("operator");
-    expect(characterCategory("avg_doc_1#avg_doc_1")).toBe("other");
-    expect(characterCategory("char_empty#char_empty")).toBe("other");
-  });
-});
-
-describe("compareResourceId", () => {
-  it("sorts numbers naturally", () => {
-    const ids = ["avg_npc_10", "avg_npc_9", "avg_npc_100", "avg_npc_009_1"];
-    expect(ids.toSorted(compareResourceId)).toEqual([
-      "avg_npc_9",
-      "avg_npc_009_1",
-      "avg_npc_10",
-      "avg_npc_100",
-    ]);
-  });
-});
 
 describe("normalizeResourceQuery", () => {
   it("lowercases plain keywords", () => {
@@ -76,50 +44,6 @@ describe("normalizeResourceQuery", () => {
     expect(normalizeResourceQuery("File:Avg_bg_indoor_2.png")).toBe(
       "bg_indoor_2",
     );
-  });
-});
-
-describe("resolveFaceAlias", () => {
-  const links = parseCharacterMap({
-    avg_003_Kalts_1: {
-      groups: [
-        {
-          mode: "face_overlay",
-          base: "avg_003_kalts_1/avg_003_kalts_1$1",
-          faceRect: { x: 1, y: 2, w: 3, h: 4 },
-        },
-        {
-          mode: "face_overlay",
-          base: "avg_003_kalts_1/avg_003_kalts_1$2",
-          faceRect: { x: 1, y: 2, w: 3, h: 4 },
-        },
-      ],
-      array: [
-        { name: "1$1", group: 0, face: "avg_003_kalts_1/1$1" },
-        { name: "1$2", group: 1, face: "avg_003_kalts_1/1$2" },
-        {
-          name: "avg_003_kalts_2",
-          group: -1,
-          image: "avg_003_kalts_1/avg_003_kalts_2",
-        },
-      ],
-    },
-  });
-
-  it("maps an overlay expression to its body listing", () => {
-    expect(resolveFaceAlias("avg_003_kalts_1#1$2", links)).toEqual({
-      id: "avg_003_kalts_1$2",
-      face: "1$2",
-    });
-  });
-
-  it("leaves standalone images and unknown names alone", () => {
-    expect(resolveFaceAlias("avg_003_kalts_1#avg_003_kalts_2", links)).toBe(
-      null,
-    );
-    expect(resolveFaceAlias("avg_003_kalts_1#9$9", links)).toBe(null);
-    expect(resolveFaceAlias("kalts", links)).toBe(null);
-    expect(resolveFaceAlias("avg_003_kalts_1#1$1", null)).toBe(null);
   });
 });
 
@@ -322,6 +246,149 @@ describe("createExplorer server paging", () => {
       q: "npc",
       page: "1",
     });
+  });
+
+  it("keeps the current page, pager and counts in place until the next page arrives", async () => {
+    let finish!: (value: Response) => void;
+    const { store } = setup((url) =>
+      url.searchParams.get("page") === "2"
+        ? new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(json(response())),
+    );
+    await store.start();
+    store.setPage(2);
+    expect(store.status.value).toBe("loading");
+    expect(store.page.value).toBe(2);
+    expect(store.pageList.value).toEqual([first, second]);
+    expect(store.pageCount.value).toBe(2);
+    expect(store.matchedTotal.value).toBe(3);
+    expect(store.categoryCounts.value.npc).toBe(3);
+    finish(json(response({ entries: [third], page: 2 })));
+    await vi.runAllTimersAsync();
+    expect(store.status.value).toBe("done");
+    expect(store.pageList.value).toEqual([third]);
+  });
+
+  it("keeps the results on screen while a search is debouncing", async () => {
+    const { store, browse } = setup();
+    await store.start();
+    store.state.q = "n";
+    expect(store.status.value).toBe("loading");
+    expect(store.pageList.value).toEqual([first, second]);
+    expect(browse).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the loaded page next to the error when a request fails", async () => {
+    let failed = true;
+    const { store } = setup(async (url) => {
+      if (url.searchParams.get("page") !== "2") return json(response());
+      return failed
+        ? new Response("", { status: 503 })
+        : json(response({ entries: [third], page: 2 }));
+    });
+    await store.start();
+    store.setPage(2);
+    await vi.runAllTimersAsync();
+    expect(store.status.value).toBe("error");
+    expect(store.pageList.value).toEqual([first, second]);
+    expect(store.total.value).toBe(3);
+    failed = false;
+    await store.reload();
+    expect(store.pageList.value).toEqual([third]);
+  });
+
+  it("shows no count until the first response, then keeps it across tab switches", async () => {
+    let finish!: (value: Response) => void;
+    const { store } = setup((url) =>
+      url.searchParams.get("type") === "background"
+        ? new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(json(response())),
+    );
+    expect(store.loaded.value).toBe(false);
+    await store.start();
+    expect(store.loaded.value).toBe(true);
+    store.setType("background");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.pageList.value).toEqual([]);
+    expect(store.counts.value.character).toBe(3);
+    expect(store.matchedTotal.value).toBe(7);
+    expect(store.total.value).toBe(7);
+    expect(store.pageCount.value).toBe(4);
+    finish(json(response({ entries: [third], total: 7, matchedTotal: 7 })));
+    await vi.runAllTimersAsync();
+    expect(store.pageList.value).toEqual([third]);
+  });
+
+  it("does not request again when nothing the server sees has changed", async () => {
+    const { store, browse } = setup();
+    await store.start();
+    store.state.q = "abc";
+    await vi.advanceTimersByTimeAsync(250);
+    expect(browse).toHaveBeenCalledTimes(2);
+    store.state.q = "abc ";
+    store.state.q = "  ABC";
+    store.setSortKey("id");
+    store.applyHash({ sort: { key: "id", dir: 1 } });
+    store.setStep(2);
+    store.setPage(1);
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(2);
+    expect(store.status.value).toBe("done");
+  });
+
+  it("searches the normalized text and caps a long paste", async () => {
+    const { store, browse } = setup();
+    await store.start();
+    store.state.q = '[charslot(slot="m",name="avg_2026_yu_1#18$1")]';
+    await vi.advanceTimersByTimeAsync(250);
+    expect(new URL(browse.mock.calls[1][0]).searchParams.get("q")).toBe(
+      "avg_2026_yu_1#18$1",
+    );
+    store.state.q = "剧".repeat(5000);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(new URL(browse.mock.calls[2][0]).searchParams.get("q")).toHaveLength(
+      512,
+    );
+  });
+
+  it("does not retry a failing character.json on every keystroke", async () => {
+    vi.resetModules();
+    const { createExplorer: createFresh } =
+      await import("../src/widgets/StoryAssetExplorer/store");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.useFakeTimers();
+    vi.stubGlobal("Image", undefined);
+    const fetchMock = vi.fn(async (url: string) =>
+      url.endsWith("/character.json")
+        ? new Response("", { status: 503 })
+        : json(response()),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const scope = effectScope();
+    scopes.push(scope);
+    const store = scope.run(() => createFresh({ type: "background" }))!;
+    const requested = () =>
+      fetchMock.mock.calls.filter(([url]) => url.endsWith("/character.json"))
+        .length;
+    await store.start();
+    expect(requested()).toBe(0);
+    store.setType("character");
+    await nextTick();
+    await vi.runAllTimersAsync();
+    expect(requested()).toBe(1);
+    expect(store.linksError.value).toBe(true);
+    for (const q of ["a", "ab", "abc"]) {
+      store.state.q = q;
+      await vi.advanceTimersByTimeAsync(250);
+    }
+    store.setPage(2);
+    await vi.runAllTimersAsync();
+    expect(requested()).toBe(1);
+    expect(store.linksError.value).toBe(true);
   });
 
   it("uses server union counts and group members without recomputing max or sorting", async () => {
@@ -569,6 +636,89 @@ describe("createExplorer server paging", () => {
     expect(store.status.value).toBe("done");
     expect(store.pageList.value).toEqual([third]);
     expect(store.detail.id).toBeNull();
+  });
+
+  it("retries the target page instead of reading stale entries after a failed move", async () => {
+    let failed = true;
+    const { store, browse } = setup(async (url) => {
+      if (url.searchParams.get("page") !== "2") return json(response());
+      return failed
+        ? new Response("", { status: 503 })
+        : json(response({ entries: [third], page: 2 }));
+    });
+    await store.start();
+    store.open(second.resource.id);
+    await store.move(1);
+    expect(store.status.value).toBe("error");
+    expect(store.page.value).toBe(2);
+    await store.move(1);
+    expect(store.detail.id).toBe(second.resource.id);
+    expect(browse).toHaveBeenCalledTimes(3);
+    failed = false;
+    await store.move(1);
+    expect(store.detail.id).toBe(third.resource.id);
+    expect(store.detailIndex.value).toBe(2);
+  });
+
+  it("locates a card opened while results are out of date", async () => {
+    let failed = false;
+    const { store, browse } = setup(async (url) =>
+      failed && !url.searchParams.has("focus")
+        ? new Response("", { status: 503 })
+        : json(response({ selection: first })),
+    );
+    await store.start();
+    failed = true;
+    store.state.cat = "npc";
+    await vi.runAllTimersAsync();
+    expect(store.status.value).toBe("error");
+    store.open(first.resource.id);
+    expect(new URL(browse.mock.calls[2][0]).searchParams.get("focus")).toBe(
+      first.resource.id,
+    );
+    await vi.runAllTimersAsync();
+    expect(store.status.value).toBe("done");
+  });
+
+  it("leaves the pager mounted and focused while the next page loads", async () => {
+    let finish!: (value: Response) => void;
+    setup((url) =>
+      url.searchParams.get("page") === "2"
+        ? new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(json(response({ pageSize: 60 }))),
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const app = createApp(StoryAssetExplorer);
+    app.mount(host);
+    unmounts.push(() => {
+      app.unmount();
+      host.remove();
+    });
+    await vi.runAllTimersAsync();
+    await nextTick();
+    const pager = host.querySelector('[aria-label="分页（底部）"]')!;
+    const next = [...pager.querySelectorAll("button")].at(-1)!;
+    const cards = host.querySelectorAll(".sae-card").length;
+    expect(cards).toBe(2);
+    expect(host.querySelector(".ls-bar__count")?.textContent).toContain("3");
+    next.focus();
+    next.click();
+    await nextTick();
+    expect(document.activeElement).toBe(next);
+    expect(next.isConnected).toBe(true);
+    expect(host.querySelectorAll(".sae-card")).toHaveLength(cards);
+    expect(host.querySelector(".ls-bar__count")?.textContent).toContain("3");
+    expect(host.querySelector(".sae-result")?.getAttribute("aria-busy")).toBe(
+      "true",
+    );
+    finish(json(response({ entries: [third], page: 2, pageSize: 60 })));
+    await vi.runAllTimersAsync();
+    await nextTick();
+    expect(host.querySelectorAll(".sae-card")).toHaveLength(1);
+    expect(document.activeElement).toBe(next);
   });
 
   it("cancels queued searches when the widget unmounts", async () => {

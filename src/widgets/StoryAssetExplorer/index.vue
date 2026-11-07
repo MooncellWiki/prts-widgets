@@ -41,8 +41,17 @@ const props = defineProps<{
 
 const store = createExplorer({ type: props.type, id: props.id });
 provide(explorerKey, store);
-const { state, status, error, counts, pageList, page, pageCount, query } =
-  store;
+const {
+  state,
+  status,
+  error,
+  loaded,
+  counts,
+  pageList,
+  page,
+  pageCount,
+  query,
+} = store;
 
 /* 分享链接的 # 参数：打开时读一次，之后只在地址栏的 # 变了时再读，不往回写。不带 = 的是页内锚点，不当成清空 */
 const loadHash = () => {
@@ -69,10 +78,9 @@ const activeType = computed({
   set: (value: StoryResourceType) => store.setType(value),
 });
 
-/** 页签数字由同一次浏览响应给出；请求中先空着，避免显示旧筛选的数量 */
+/** 页签数字由浏览响应给出；一次都没取到时空着，之后新响应到之前留着上一次的 */
 function tabCount(value: StoryResourceType): string {
-  if (status.value !== "done") return "";
-  return String(counts.value[value]);
+  return loaded.value ? String(counts.value[value]) : "";
 }
 
 /** 搜不到时，别的类型里有没有 */
@@ -116,11 +124,20 @@ const { tip, handlers: tipHandlers } = useHoverTip(
         <Toolbar />
         <ResultBar :narrow="narrow" />
 
-        <div ref="result" class="sae-result" :aria-busy="status === 'loading'">
-          <AkSpinner
-            v-if="status === 'idle' || status === 'loading'"
-            description="正在读取剧情资源…"
-          />
+        <div
+          ref="result"
+          :class="[
+            'sae-result',
+            {
+              'sae-result--stale': status === 'loading' && pageList.length > 0,
+            },
+          ]"
+          :aria-busy="status === 'loading'"
+        >
+          <template v-if="pageList.length > 0">
+            <ResultWall v-if="state.view === 'wall'" />
+            <ResultCards v-else />
+          </template>
           <AkEmpty
             v-else-if="status === 'error'"
             icon="warn"
@@ -130,7 +147,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
             <AkButton variant="link" @click="store.reload()"> 重试 </AkButton>
           </AkEmpty>
           <AkEmpty
-            v-else-if="pageList.length === 0"
+            v-else-if="status === 'done'"
             icon="search"
             :title="
               query.terms.length > 0
@@ -156,8 +173,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
               >。
             </template>
           </AkEmpty>
-          <ResultWall v-else-if="state.view === 'wall'" />
-          <ResultCards v-else />
+          <AkSpinner v-else description="正在读取剧情资源…" />
         </div>
 
         <div class="sae-foot">
@@ -207,6 +223,12 @@ const { tip, handlers: tipHandlers } = useHoverTip(
 
   .skin-arknights & {
     scroll-margin-top: calc(var(--ak-header-h) + var(--ak-space-3));
+  }
+
+  // 响应慢时才压暗旧结果，快的时候不闪；恢复不走动画
+  &--stale {
+    opacity: 0.6;
+    transition: opacity 0.15s 0.15s;
   }
 }
 
