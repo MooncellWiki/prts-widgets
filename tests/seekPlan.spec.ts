@@ -166,6 +166,7 @@ class NoopAudio implements StoryAudio {
   playSound(): Promise<void> {
     return Promise.resolve();
   }
+  resetAudio(): void {}
   setMusicVolume(): Promise<void> {
     return Promise.resolve();
   }
