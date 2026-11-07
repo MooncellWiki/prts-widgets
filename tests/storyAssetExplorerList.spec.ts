@@ -1,10 +1,13 @@
-import { effectScope, type EffectScope } from "vue";
+import { createApp, effectScope, h, nextTick, type EffectScope } from "vue";
 
+import { AkToastProvider } from "@mooncellwiki/prts-design-vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import ResourceDetail from "../src/widgets/StoryAssetExplorer/components/ResourceDetail.vue";
 import {
   buildHash,
   createExplorer,
+  explorerKey,
   readHash,
   type Entry,
   type ExploreResponse,
@@ -215,6 +218,7 @@ describe("share link hash", () => {
 
 describe("createExplorer server paging", () => {
   const scopes: EffectScope[] = [];
+  const unmounts: (() => void)[] = [];
   const entry = (id: string): Entry => {
     const resource = {
       type: "character" as const,
@@ -261,7 +265,13 @@ describe("createExplorer server paging", () => {
       vi.fn((url: string, init?: RequestInit) =>
         url.includes("/story-resources/explore?")
           ? browse(url, init)
-          : Promise.resolve(new Response("{}")),
+          : Promise.resolve(
+              new Response(
+                url.includes("/story-resource-usages?")
+                  ? '{"usages":[]}'
+                  : "{}",
+              ),
+            ),
       ),
     );
     const scope = effectScope();
@@ -271,6 +281,7 @@ describe("createExplorer server paging", () => {
     return { store, browse, scope };
   }
   afterEach(() => {
+    unmounts.splice(0).forEach((unmount) => unmount());
     scopes.splice(0).forEach((scope) => scope.stop());
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -320,7 +331,7 @@ describe("createExplorer server paging", () => {
       merged: 2,
       count: 5,
     };
-    const { store } = setup(async () =>
+    const { store, browse } = setup(async () =>
       json(response({ entries: [third, merged] })),
     );
     await store.start();
@@ -331,6 +342,45 @@ describe("createExplorer server paging", () => {
     expect(store.pageList.value[1].count).toBe(5);
     store.open(second.resource.id);
     expect(store.find(second.resource.id)).toEqual(second.resource);
+    expect(store.detailIndex.value).toBe(1);
+    expect(browse).toHaveBeenCalledTimes(1);
+  });
+
+  it("locates an unmerged sibling on another page even when its resource is cached", async () => {
+    const sibling = {
+      ...third,
+      resource: { ...third.resource, base: second.resource.base },
+    };
+    const members = [second.resource, sibling.resource];
+    const current = { ...second, members };
+    const target = { ...sibling, members };
+    const { store, browse } = setup(async (url) =>
+      json(
+        url.searchParams.get("focus") === target.resource.id
+          ? response({
+              entries: [target],
+              page: 2,
+              selection: target,
+              focusIndex: 2,
+            })
+          : response({ entries: [first, current] }),
+      ),
+    );
+    store.state.merge = false;
+    await store.start();
+    store.open(current.resource.id);
+    expect(store.find(target.resource.id)).toEqual(target.resource);
+    store.open(target.resource.id);
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(2);
+    expect(new URL(browse.mock.calls[1][0]).searchParams.get("focus")).toBe(
+      target.resource.id,
+    );
+    expect(store.page.value).toBe(2);
+    expect(store.detailIndex.value).toBe(2);
+    await store.move(-1);
+    expect(store.detail.id).toBe(current.resource.id);
+    expect(store.page.value).toBe(1);
     expect(store.detailIndex.value).toBe(1);
   });
 
@@ -423,6 +473,102 @@ describe("createExplorer server paging", () => {
     await store.reload();
     expect(store.status.value).toBe("done");
     expect(browse).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a failed page transition in the cached detail and retries the original target", async () => {
+    let failed = true;
+    const { store, browse } = setup(async (url) => {
+      if (url.searchParams.get("page") !== "2") return json(response());
+      return failed
+        ? new Response("", { status: 503 })
+        : json(response({ entries: [third], page: 2 }));
+    });
+    await store.start();
+    store.open(second.resource.id);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const app = createApp({
+      render: () =>
+        h(AkToastProvider, null, { default: () => h(ResourceDetail) }),
+    });
+    app.provide(explorerKey, store);
+    app.mount(host);
+    unmounts.push(() => {
+      app.unmount();
+      host.remove();
+    });
+    await store.move(1);
+    await nextTick();
+    expect(store.status.value).toBe("error");
+    expect(store.find(second.resource.id)).toEqual(second.resource);
+    const dialog = host.querySelector("dialog")!;
+    expect(dialog.open).toBe(true);
+    expect(dialog.textContent).toContain("资源读取失败");
+    expect(dialog.textContent).toContain("story-resources/explore 503");
+    const retry = [...dialog.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "重试",
+    )!;
+    expect(retry.disabled).toBe(false);
+    failed = false;
+    retry.click();
+    await vi.runAllTimersAsync();
+    expect(store.status.value).toBe("done");
+    expect(store.error.value).toBe("");
+    expect(store.detail.id).toBe(third.resource.id);
+    expect(store.detailIndex.value).toBe(2);
+    expect(dialog.querySelector(".sae-detail__pos")?.textContent).toBe("3 / 3");
+    expect(dialog.textContent).not.toContain("资源读取失败");
+    expect(browse.mock.calls[2][0]).toBe(browse.mock.calls[1][0]);
+    await store.move(-1);
+    expect(store.detail.id).toBe(second.resource.id);
+    expect(store.detailIndex.value).toBe(1);
+  });
+
+  it("discards a failed detail transition when the filters change", async () => {
+    const { store, browse } = setup(async (url) => {
+      if (url.searchParams.get("q") === "new")
+        return json(
+          response({
+            entries: [third],
+            matchedTotal: 1,
+            pageCount: 1,
+            selection: second,
+          }),
+        );
+      return url.searchParams.get("page") === "2"
+        ? new Response("", { status: 503 })
+        : json(response());
+    });
+    await store.start();
+    store.open(second.resource.id);
+    await store.move(1);
+    store.state.q = "new";
+    await vi.advanceTimersByTimeAsync(250);
+    expect(store.status.value).toBe("done");
+    expect(store.detail.id).toBe(second.resource.id);
+    expect(store.pageList.value).toEqual([third]);
+    expect(new URL(browse.mock.calls[2][0]).searchParams.get("focus")).toBe(
+      second.resource.id,
+    );
+  });
+
+  it("does not reopen a closed detail when retrying its failed page request", async () => {
+    let failed = true;
+    const { store } = setup(async (url) => {
+      if (url.searchParams.get("page") !== "2") return json(response());
+      return failed
+        ? new Response("", { status: 503 })
+        : json(response({ entries: [third], page: 2 }));
+    });
+    await store.start();
+    store.open(second.resource.id);
+    await store.move(1);
+    store.close();
+    failed = false;
+    await store.reload();
+    expect(store.status.value).toBe("done");
+    expect(store.pageList.value).toEqual([third]);
+    expect(store.detail.id).toBeNull();
   });
 
   it("cancels queued searches when the widget unmounts", async () => {

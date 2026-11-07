@@ -262,10 +262,13 @@ export function createExplorer(initial: { type?: string; id?: string }) {
   let request = 0;
   let controller: AbortController | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let failedRequest:
+    { focus?: string; moveTo?: number; opened: string | null } | undefined;
 
   function cancel(): void {
     clearTimeout(timer);
     controller?.abort();
+    failedRequest = undefined;
     request++;
   }
 
@@ -313,13 +316,17 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     } catch (cause) {
       if (token !== request || disposed) return;
       console.warn("[StoryAssetExplorer]", cause);
+      failedRequest = { focus, moveTo, opened };
       status.value = "error";
       error.value = cause instanceof Error ? cause.message : String(cause);
     }
   }
 
   function reload(): Promise<void> {
-    return loadPage(detail.id && !find(detail.id) ? detail.id : undefined);
+    // 重试保留原来的定位 / 跨页目标；换筛选或打开别的详情后不再续接旧跳转。
+    if (failedRequest && failedRequest.opened === detail.id)
+      return loadPage(failedRequest.focus, failedRequest.moveTo);
+    return loadPage(detail.id && detailIndex.value < 0 ? detail.id : undefined);
   }
   function start(): Promise<void> {
     if (started) return Promise.resolve();
@@ -403,7 +410,8 @@ export function createExplorer(initial: { type?: string; id?: string }) {
       item.members.some((member) => member.id === id),
     );
     if (entry) selection.value = entry;
-    if (started && !find(id)) loadPage(id);
+    // members 含其他页的同角色立绘，缓存命中不代表它在当前结果页。
+    if (started && detailIndex.value < 0) loadPage(id);
   }
   function close(): void {
     detail.id = null;

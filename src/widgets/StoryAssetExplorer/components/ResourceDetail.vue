@@ -279,12 +279,14 @@ const faceThumb = (url: string) => cdnImageUrl(url, "resize,l_128", webp.value);
       description="正在载入资源…"
     />
     <AkEmpty
-      v-else-if="!resource && status === 'error'"
+      v-else-if="status === 'error'"
       icon="warn"
       title="资源读取失败"
       :description="error"
     >
-      <AkButton variant="link" @click="store.reload()">重试</AkButton>
+      <template #extra>
+        <AkButton variant="link" @click="store.reload()">重试</AkButton>
+      </template>
     </AkEmpty>
     <AkEmpty
       v-else-if="!resource"
