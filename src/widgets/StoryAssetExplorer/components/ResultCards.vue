@@ -76,7 +76,7 @@ const label = (entry: Entry) =>
               <b>{{ entry.merged }}</b> 张立绘
             </span>
             <span v-if="entry.merged > 1">
-              最多 <b>{{ entry.count }}</b> 个剧本
+              <b>{{ entry.count }}</b> 个剧本
             </span>
             <span v-else
               ><b>{{ entry.count }}</b> 个剧本</span
