@@ -27,7 +27,7 @@ import { RESOURCE_TYPE_OPTIONS, type StoryResourceType } from "./utils";
 /**
  * 剧情资源概览（PRTS Design 视觉，排布同干员 / 敌人一览）：
  * 类型页签 → 工具条（搜索 · 排序 · 显示方式 · 角色分类）→ 结果栏（条数 · 已选条件 · 复制链接 · 分页）→ 结果 → 详情对话框。
- * 资源列表是 torappu 的 /api/v1/story-resources，四个类型各自翻页取完（共约 6000 条），搜索 / 排序 / 分类都在前端做；
+ * 资源列表与统计由 torappu 的 /api/v1/story-resources/explore 按页返回，搜索 / 排序 / 分类 / 合并均由后端完成；
  * 详情里的使用记录按需取（/api/v1/story-resource-usages + cargo 的 story 表）。
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.sae-* 是这页自己的排布。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替芯片翻状态。
@@ -41,7 +41,17 @@ const props = defineProps<{
 
 const store = createExplorer({ type: props.type, id: props.id });
 provide(explorerKey, store);
-const { state, indexes, counts, list, page, pageCount, query } = store;
+const {
+  state,
+  status,
+  error,
+  loaded,
+  counts,
+  pageList,
+  page,
+  pageCount,
+  query,
+} = store;
 
 /* 分享链接的 # 参数：打开时读一次，之后只在地址栏的 # 变了时再读，不往回写。不带 = 的是页内锚点，不当成清空 */
 const loadHash = () => {
@@ -50,7 +60,7 @@ const loadHash = () => {
 if (isClient) loadHash();
 useEventListener("hashchange", loadHash);
 
-onMounted(() => store.loadAll());
+onMounted(() => store.start());
 
 const theme = useHostTheme();
 
@@ -68,13 +78,9 @@ const activeType = computed({
   set: (value: StoryResourceType) => store.setType(value),
 });
 
-const index = computed(() => indexes[state.type]);
-
-/** 页签上的数字：取完或取到一部分时给数，一条都还没有时空着 */
+/** 页签数字由浏览响应给出；一次都没取到时空着，之后新响应到之前留着上一次的 */
 function tabCount(value: StoryResourceType): string {
-  const target = indexes[value];
-  if (target.items.length === 0 && target.status !== "done") return "";
-  return String(counts.value[value]);
+  return loaded.value ? String(counts.value[value]) : "";
 }
 
 /** 搜不到时，别的类型里有没有 */
@@ -120,25 +126,28 @@ const { tip, handlers: tipHandlers } = useHoverTip(
 
         <div
           ref="result"
-          class="sae-result"
-          :aria-busy="index.status === 'loading'"
+          :class="[
+            'sae-result',
+            {
+              'sae-result--stale': status === 'loading' && pageList.length > 0,
+            },
+          ]"
+          :aria-busy="status === 'loading'"
         >
-          <AkSpinner
-            v-if="index.items.length === 0 && index.status !== 'error'"
-            description="正在读取剧情资源…"
-          />
+          <template v-if="pageList.length > 0">
+            <ResultWall v-if="state.view === 'wall'" />
+            <ResultCards v-else />
+          </template>
           <AkEmpty
-            v-else-if="index.items.length === 0"
+            v-else-if="status === 'error'"
             icon="warn"
             title="剧情资源读取失败"
-            :description="index.error"
+            :description="error"
           >
-            <AkButton variant="link" @click="store.loadIndex(state.type)">
-              重试
-            </AkButton>
+            <AkButton variant="link" @click="store.reload()"> 重试 </AkButton>
           </AkEmpty>
           <AkEmpty
-            v-else-if="list.length === 0"
+            v-else-if="status === 'done'"
             icon="search"
             :title="
               query.terms.length > 0
@@ -164,8 +173,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
               >。
             </template>
           </AkEmpty>
-          <ResultWall v-else-if="state.view === 'wall'" />
-          <ResultCards v-else />
+          <AkSpinner v-else description="正在读取剧情资源…" />
         </div>
 
         <div class="sae-foot">
@@ -215,6 +223,12 @@ const { tip, handlers: tipHandlers } = useHoverTip(
 
   .skin-arknights & {
     scroll-margin-top: calc(var(--ak-header-h) + var(--ak-space-3));
+  }
+
+  // 响应慢时才压暗旧结果，快的时候不闪；恢复不走动画
+  &--stale {
+    opacity: 0.6;
+    transition: opacity 0.15s 0.15s;
   }
 }
 

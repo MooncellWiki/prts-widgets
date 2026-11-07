@@ -1,7 +1,7 @@
 import {
   computed,
   inject,
-  markRaw,
+  onScopeDispose,
   reactive,
   shallowRef,
   watch,
@@ -11,20 +11,15 @@ import {
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
 import {
-  RESOURCE_TYPE_OPTIONS,
-  characterBaseOfListingId,
-  characterCategory,
-  compareResourceId,
   ensureCharacterMap,
   isCharacterCategory,
   isResourceType,
   normalizeResourceQuery,
-  resolveFaceAlias,
-  PAGE_LIMIT,
   type CharacterCategory,
   type CharacterLinkMap,
-  type StoryResourceListResponse,
-  type StoryResourceSummary,
+  type Entry,
+  type ExploreResponse,
+  type Resource,
   type StoryResourceType,
 } from "./utils";
 
@@ -35,36 +30,6 @@ export interface Sort {
   key: SortKey;
   /** 1 升 / -1 降 */
   dir: 1 | -1;
-}
-
-/** 列表里的一条资源，带上前端算好的字段 */
-export interface Resource extends StoryResourceSummary {
-  /** 小写的资源名，搜索用 */
-  lower: string;
-  /** 角色：character.json 的 base，同一角色的各张立绘归到一起；其他类型为 null */
-  base: string | null;
-  category: CharacterCategory | null;
-}
-
-/** 结果里的一格 */
-export interface Entry {
-  resource: Resource;
-  /** 同一角色的全部条目（自然顺序，含自己）；不是角色时只有自己 */
-  members: readonly Resource[];
-  /** 「按角色合并」时这一格代表几张立绘；不合并时为 1 */
-  merged: number;
-  /** 排序用的剧本数：合并时取各张立绘里最多的那个 */
-  count: number;
-  /** 按 `base#表情` 搜到的：那个表情 */
-  face: string | null;
-}
-
-interface TypeIndex {
-  items: Resource[];
-  status: "idle" | "loading" | "done" | "error";
-  error: string;
-  /** 出错时停在哪一页，重试从这里接着取 */
-  cursor: string | null;
 }
 
 interface ExplorerState {
@@ -86,8 +51,14 @@ export const PAGE_STEPS: Record<ViewMode, readonly number[]> = {
 };
 const DEFAULT_STEP: Record<ViewMode, number> = { card: 60, wall: 200 };
 
-/** 翻页保护：200 / 页 × 100 页，现在全部资源加起来约 6000 条 */
-const INDEX_MAX_PAGES = 100;
+/** 搜索框停手多久才发请求 */
+const SEARCH_DEBOUNCE = 250;
+
+/** 资源名远比这短。粘贴整段文字时截断，别拼出后端不收的超长请求 */
+const MAX_SEARCH_LENGTH = 512;
+
+const EMPTY_COUNTS = { character: 0, background: 0, image: 0, item: 0 };
+const EMPTY_CATEGORIES = { operator: 0, npc: 0, other: 0 };
 
 const WEBP_PROBE_SRC =
   "data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=";
@@ -97,35 +68,16 @@ function probeWebp(): Promise<boolean> {
   if (typeof Image === "undefined") return Promise.resolve(false);
   return new Promise((resolve) => {
     const image = new Image();
-    image.addEventListener("load", () => resolve(image.width > 0));
-    image.addEventListener("error", () => resolve(false));
     // 兜底：什么事件都不来（非浏览器环境）时别把列表一直卡在第一页
-    setTimeout(() => resolve(false), 1000);
+    const timer = setTimeout(() => resolve(false), 1000);
+    const finish = (supported: boolean) => {
+      clearTimeout(timer);
+      resolve(supported);
+    };
+    image.addEventListener("load", () => finish(image.width > 0));
+    image.addEventListener("error", () => finish(false));
     image.src = WEBP_PROBE_SRC;
   });
-}
-
-async function fetchResourcePage(
-  type: StoryResourceType,
-  cursor: string | null,
-): Promise<StoryResourceListResponse> {
-  const params = new URLSearchParams({ type, limit: String(PAGE_LIMIT) });
-  if (cursor) params.set("cursor", cursor);
-  const resp = await fetch(
-    `${TORAPPU_ENDPOINT}/api/v1/story-resources?${params}`,
-  );
-  if (!resp.ok) throw new Error(`story-resources ${resp.status}`);
-  return (await resp.json()) as StoryResourceListResponse;
-}
-
-function toResource(summary: StoryResourceSummary): Resource {
-  const character = summary.type === "character";
-  return {
-    ...summary,
-    lower: summary.id.toLowerCase(),
-    base: character ? characterBaseOfListingId(summary.id).toLowerCase() : null,
-    category: character ? characterCategory(summary.id) : null,
-  };
 }
 
 /** 写进分享链接的状态（# 参数），见 readHash / buildHash */
@@ -216,19 +168,6 @@ export function buildHash(
 }
 
 export function createExplorer(initial: { type?: string; id?: string }) {
-  const emptyIndex = (): TypeIndex => ({
-    items: markRaw([]),
-    status: "idle",
-    error: "",
-    cursor: null,
-  });
-  const indexes = reactive<Record<StoryResourceType, TypeIndex>>({
-    character: emptyIndex(),
-    background: emptyIndex(),
-    image: emptyIndex(),
-    item: emptyIndex(),
-  });
-
   const state = reactive<ExplorerState>({
     type: isResourceType(initial.type) ? initial.type : "character",
     q: initial.id ?? "",
@@ -246,6 +185,18 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     face: null,
   });
 
+  /**
+   * 最近一次成功的响应和它所属的类型。新响应到之前一直留着，
+   * 翻页、搜索、请求失败时结果和分页都不用先消失一次。
+   */
+  const result = shallowRef<
+    (ExploreResponse & { type: StoryResourceType }) | null
+  >(null);
+  /** 详情打开的那一格：可能不在当前页，也可能不符合当前筛选 */
+  const selection = shallowRef<Entry | null>(null);
+  const status = shallowRef<"idle" | "loading" | "done" | "error">("idle");
+  const error = shallowRef("");
+
   const webp = shallowRef(false);
   const webpReady = probeWebp().then((supported) => {
     webp.value = supported;
@@ -261,196 +212,203 @@ export function createExplorer(initial: { type?: string; id?: string }) {
       .then((map) => {
         links.value = map;
       })
-      .catch((error: unknown) => {
-        console.warn("[StoryAssetExplorer] character.json", error);
+      .catch((cause: unknown) => {
+        console.warn("[StoryAssetExplorer] character.json", cause);
         linksError.value = true;
       });
   }
 
-  async function loadIndex(type: StoryResourceType): Promise<void> {
-    const index = indexes[type];
-    if (index.status === "loading" || index.status === "done") return;
-    index.status = "loading";
-    index.error = "";
-    try {
-      // 第一页和 WebP 探测一起等：缩略图第一次渲染时格式就定了
-      let first = true;
-      for (let page = 0; page < INDEX_MAX_PAGES; page++) {
-        const [data] = await Promise.all([
-          fetchResourcePage(type, index.cursor),
-          first ? webpReady : undefined,
-        ]);
-        first = false;
-        // 接口按字节序给，这里换成自然顺序（avg_npc_9 在 avg_npc_10 前）；每页到了就重排一次，边取边显示
-        const items = [...index.items, ...data.resources.map(toResource)];
-        items.sort((a, b) => compareResourceId(a.id, b.id));
-        index.items = markRaw(items);
-        index.cursor = data.nextCursor ?? null;
-        if (!index.cursor) {
-          index.status = "done";
-          return;
-        }
-      }
-      // 翻页保护兜底：还有 cursor 说明没取完，按出错处理，让人看得见
-      throw new Error(`超过 ${INDEX_MAX_PAGES} 页`);
-    } catch (error) {
-      console.warn("[StoryAssetExplorer]", error);
-      index.status = "error";
-      index.error = error instanceof Error ? error.message : String(error);
-    }
-  }
+  // 角色页签的缩略图要 character.json。只在切到角色页签时取，失败了也别跟着每次按键重取
+  watch(
+    () => state.type === "character",
+    (need) => {
+      if (need) loadLinks();
+    },
+  );
 
-  function loadAll(): void {
-    if (needLinks()) loadLinks();
-    // 当前页签先取，其余随后（各自串行翻页，四条链并行）
-    loadIndex(state.type);
-    for (const { value } of RESOURCE_TYPE_OPTIONS)
-      if (value !== state.type) loadIndex(value);
-  }
+  const query = computed(() => ({
+    terms: normalizeResourceQuery(state.q).split(/\s+/u).filter(Boolean),
+  }));
+  /** 发给后端的搜索词：它没变（比如只多打了个空格）就不用重新请求 */
+  const search = computed(() =>
+    query.value.terms.join(" ").slice(0, MAX_SEARCH_LENGTH),
+  );
 
-  /** 每个 base 的全部条目（自然顺序）：详情里的「同一角色」与合并后的一格都从这里取 */
+  /** 当前页签的结果。刚换页签时旧结果不属于它，但类型和分类的计数对哪个页签都成立 */
+  const current = computed(() =>
+    result.value?.type === state.type ? result.value : null,
+  );
+  /** 拿到过数据没有：没有时计数空着，不显示 0 */
+  const loaded = computed(() => result.value !== null);
+  const pageList = computed(() => current.value?.entries ?? []);
+  const counts = computed(() => result.value?.counts ?? EMPTY_COUNTS);
+  const categoryCounts = computed(
+    () => result.value?.categoryCounts ?? EMPTY_CATEGORIES,
+  );
+  const matchedTotal = computed(
+    () => current.value?.matchedTotal ?? counts.value[state.type],
+  );
+  const total = computed(() => current.value?.total ?? matchedTotal.value);
+  /** 分页跟着目标页走，响应没到时就高亮刚点的那页 */
+  const page = computed(() => state.page);
+  const pageCount = computed(
+    () =>
+      current.value?.pageCount ??
+      Math.max(1, Math.ceil(matchedTotal.value / state.step)),
+  );
+
+  /** 当前页加上详情那一格：详情里的资源可能不在当前页 */
+  const knownEntries = computed(() =>
+    selection.value ? [...pageList.value, selection.value] : pageList.value,
+  );
+
+  /** 已知各 base 的全部条目（自然顺序）：详情里的「同一角色」从这里取 */
   const bases = computed(() => {
-    const map = new Map<string, Resource[]>();
-    for (const item of indexes.character.items) {
-      if (!item.base) continue;
-      let list = map.get(item.base);
-      if (!list) {
-        list = [];
-        map.set(item.base, list);
-      }
-      list.push(item);
+    const map = new Map<string, readonly Resource[]>();
+    for (const entry of knownEntries.value) {
+      if (entry.resource.type === state.type && entry.resource.base)
+        map.set(entry.resource.base, entry.members);
     }
     return map;
   });
 
-  const query = computed(() => {
-    const text = normalizeResourceQuery(state.q);
-    const terms = text.split(/\s+/u).filter(Boolean);
-    // 只有一个词、带 # 的才可能是表情名
-    const alias =
-      terms.length === 1 ? resolveFaceAlias(terms[0], links.value) : null;
-    return { terms, alias };
-  });
-
-  // 搜表情名要 character.json；当前是角色页签也要（缩略图）。第一次检查放在 loadAll 里：
-  // 那时地址栏的 # 已经读过，直接打开别的页签就不用先取这 1.3MB
-  const needLinks = () =>
-    state.type === "character" ||
-    query.value.terms.some((term) => term.includes("#"));
-  watch(needLinks, (need) => {
-    if (need) loadLinks();
-  });
-
-  function matches(item: Resource): string | null | false {
-    const { terms, alias } = query.value;
-    if (alias && item.lower === alias.id) return alias.face;
-    return terms.every((term) => item.lower.includes(term)) ? null : false;
+  /** 当前类型里按资源名找 */
+  function find(id: string): Resource | undefined {
+    for (const entry of knownEntries.value) {
+      if (entry.resource.type !== state.type) continue;
+      const item = entry.members.find((member) => member.id === id);
+      if (item) return item;
+    }
+    return undefined;
   }
 
-  /** 某个类型筛出来的格子（未排序）。页签上的数字和结果是同一个口径 */
-  function entriesOf(type: StoryResourceType): Entry[] {
-    const character = type === "character";
-    const entries: Entry[] = [];
-    const seen = new Map<string, Entry>();
-    for (const item of indexes[type].items) {
-      if (character && state.cat && item.category !== state.cat) continue;
-      const face = matches(item);
-      if (face === false) continue;
-      const members = (item.base && bases.value.get(item.base)) || [item];
-      if (character && state.merge && item.base) {
-        // 合并：一个 base 一格，代表图是第一张搜到的（不搜时就是第一张）
-        if (seen.has(item.base)) continue;
-        const entry: Entry = {
-          resource: item,
-          members,
-          merged: members.length,
-          count: Math.max(...members.map((member) => member.scriptCount)),
-          face,
-        };
-        seen.set(item.base, entry);
-        entries.push(entry);
-        continue;
-      }
-      entries.push({
-        resource: item,
-        members,
-        merged: 1,
-        count: item.scriptCount,
-        face,
-      });
-    }
-    return entries;
+  /** 详情里打开的资源在结果里的位置（合并时按它所在的那一格算） */
+  const detailIndex = computed(() => {
+    const data = current.value;
+    if (!data) return -1;
+    const index = data.entries.findIndex(
+      (entry) =>
+        entry.resource.id === detail.id ||
+        (entry.merged > 1 &&
+          entry.members.some((member) => member.id === detail.id)),
+    );
+    return index < 0 ? -1 : (data.page - 1) * data.pageSize + index;
+  });
+
+  let started = false;
+  let disposed = false;
+  let request = 0;
+  let controller: AbortController | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let failedRequest:
+    { focus?: string; moveTo?: number; opened: string | null } | undefined;
+
+  function cancel(): void {
+    clearTimeout(timer);
+    controller?.abort();
+    failedRequest = undefined;
+    request++;
   }
 
-  const counts = computed(
-    () =>
-      Object.fromEntries(
-        RESOURCE_TYPE_OPTIONS.map(({ value }) => [
-          value,
-          entriesOf(value).length,
-        ]),
-      ) as Record<StoryResourceType, number>,
-  );
+  function beginLoading(): void {
+    cancel();
+    status.value = "loading";
+    error.value = "";
+  }
 
-  /** 角色各分类的条数（分类芯片上的数字），不受分类本身影响 */
-  const categoryCounts = computed(() => {
-    const result: Record<CharacterCategory, number> = {
-      operator: 0,
-      npc: 0,
-      other: 0,
-    };
-    const seen = new Set<string>();
-    for (const item of indexes.character.items) {
-      if (matches(item) === false || !item.category) continue;
-      if (state.merge && item.base) {
-        if (seen.has(item.base)) continue;
-        seen.add(item.base);
+  /** 取一页和它的全部统计，不翻 cursor，也不预取别的类型。focus 让后端定位资源，moveTo 是跨页切详情的目标位置 */
+  async function loadPage(focus?: string, moveTo?: number): Promise<void> {
+    if (disposed) return;
+    beginLoading();
+    const token = request;
+    const opened = detail.id;
+    const type = state.type;
+    controller = new AbortController();
+    const params = new URLSearchParams({
+      type,
+      q: search.value,
+      groupBy: state.merge ? "base" : "resource",
+      sort: state.sort.key === "count" ? "scriptCount" : "id",
+      order: state.sort.dir < 0 ? "desc" : "asc",
+      page: String(state.page),
+      pageSize: String(state.step),
+    });
+    if (state.cat) params.set("category", state.cat);
+    if (focus) params.set("focus", focus);
+    try {
+      // 第一页和 WebP 探测一起等：缩略图第一次渲染时格式就定了
+      const [resp] = await Promise.all([
+        fetch(`${TORAPPU_ENDPOINT}/api/v1/story-resources/explore?${params}`, {
+          signal: controller.signal,
+        }),
+        webpReady,
+      ]);
+      if (!resp.ok) throw new Error(`story-resources/explore ${resp.status}`);
+      const data = (await resp.json()) as ExploreResponse;
+      if (token !== request || disposed) return;
+      // 后端可能把超出末页的页码夹回来，或者按 focus 换到资源所在的页
+      state.page = data.page;
+      result.value = { ...data, type };
+      if (focus && detail.id === opened) selection.value = data.selection;
+      status.value = "done";
+      if (moveTo !== undefined && detail.id === opened && opened) {
+        const entry = data.entries[moveTo - (data.page - 1) * data.pageSize];
+        if (entry) open(entry.resource.id, entry.face);
       }
-      result[item.category] += 1;
+    } catch (cause) {
+      if (token !== request || disposed) return;
+      console.warn("[StoryAssetExplorer]", cause);
+      failedRequest = { focus, moveTo, opened };
+      status.value = "error";
+      error.value = cause instanceof Error ? cause.message : String(cause);
     }
-    return result;
-  });
+  }
 
-  const total = computed(() => {
-    const items = indexes[state.type].items;
-    if (state.type !== "character" || !state.merge) return items.length;
-    return bases.value.size;
-  });
+  function reload(): Promise<void> {
+    // 重试保留原来的定位 / 跨页目标；换筛选或打开别的详情后不再续接旧跳转。
+    if (failedRequest && failedRequest.opened === detail.id)
+      return loadPage(failedRequest.focus, failedRequest.moveTo);
+    return loadPage(detail.id ?? undefined);
+  }
 
-  const list = computed(() => {
-    const entries = entriesOf(state.type);
-    const { key, dir } = state.sort;
-    // 索引已经是自然顺序：按资源名排只需看方向；按剧本数排用稳定排序，同数的保持自然顺序
-    if (key === "count") entries.sort((a, b) => (a.count - b.count) * dir);
-    else if (dir < 0) entries.reverse();
-    return entries;
-  });
+  function start(): Promise<void> {
+    if (started) return Promise.resolve();
+    started = true;
+    if (state.type === "character") loadLinks();
+    return loadPage(detail.id ?? undefined);
+  }
 
-  const pageCount = computed(() =>
-    Math.max(1, Math.ceil(list.value.length / state.step)),
-  );
-  const page = computed(() => Math.min(state.page, pageCount.value));
-  const pageList = computed(() =>
-    list.value.slice((page.value - 1) * state.step, page.value * state.step),
-  );
+  /** 筛选变了：回到第一页，等 delay 再取。sync 是为了同一轮里连改几项时先取消旧请求 */
+  function refilter(delay: number): void {
+    if (!started) return;
+    state.page = 1;
+    beginLoading();
+    timer = setTimeout(() => {
+      reload();
+    }, delay);
+  }
 
+  watch(search, () => refilter(SEARCH_DEBOUNCE), { flush: "sync" });
   watch(
-    () => [
-      state.type,
-      state.q,
-      state.cat,
-      state.merge,
-      state.sort.key,
-      state.sort.dir,
+    [
+      () => state.type,
+      () => state.cat,
+      () => state.merge,
+      () => state.sort.key,
+      () => state.sort.dir,
     ],
-    () => {
-      state.page = 1;
-    },
+    () => refilter(0),
+    { flush: "sync" },
   );
+
+  onScopeDispose(() => {
+    disposed = true;
+    cancel();
+  });
 
   function setType(type: StoryResourceType): void {
+    if (state.type !== type) close();
     state.type = type;
-    loadIndex(type);
   }
 
   function setSortKey(key: SortKey): void {
@@ -465,20 +423,23 @@ export function createExplorer(initial: { type?: string; id?: string }) {
   /** 换显示方式：每页条数换成那种方式的默认值，停在原来第一格所在的那页 */
   function setView(view: ViewMode): void {
     if (view === state.view) return;
-    const first = (page.value - 1) * state.step;
     state.view = view;
-    state.step = DEFAULT_STEP[view];
-    state.page = Math.floor(first / state.step) + 1;
+    setStep(DEFAULT_STEP[view]);
   }
 
   function setStep(step: number): void {
-    const first = (page.value - 1) * state.step;
+    if (step === state.step) return;
+    const first = (state.page - 1) * state.step;
     state.step = step;
     state.page = Math.floor(first / step) + 1;
+    if (started) loadPage();
   }
 
   function setPage(n: number): void {
-    state.page = Math.min(Math.max(1, n), pageCount.value);
+    const next = Math.min(Math.max(1, n), pageCount.value);
+    if (next === state.page) return;
+    state.page = next;
+    if (started) loadPage();
   }
 
   function reset(): void {
@@ -486,40 +447,47 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     state.cat = "";
   }
 
-  /** 当前类型里按资源名找 */
-  function find(id: string): Resource | undefined {
-    return indexes[state.type].items.find((item) => item.id === id);
-  }
-
   /** 打开详情；face 是要选中的表情（按表情名搜到时） */
   function open(id: string, face: string | null = null): void {
     detail.id = id;
     detail.face = face;
+    const entry = pageList.value.find((item) =>
+      item.members.some((member) => member.id === id),
+    );
+    if (entry) selection.value = entry;
+    // members 含其他页的同角色立绘，缓存命中不代表它在当前结果页；眼前的结果过时了也要让后端定位
+    if (started && (status.value !== "done" || detailIndex.value < 0))
+      loadPage(id);
   }
 
   function close(): void {
     detail.id = null;
     detail.face = null;
+    selection.value = null;
   }
 
-  /** 详情里打开的资源在结果里的位置（合并时按它所在的那一格算） */
-  const detailIndex = computed(() => {
-    const id = detail.id;
-    if (!id) return -1;
-    return list.value.findIndex(
-      (entry) =>
-        entry.resource.id === id ||
-        (entry.merged > 1 && entry.members.some((member) => member.id === id)),
-    );
-  });
-
-  /** 详情里上一个 / 下一个：沿着当前结果走，结果翻到它所在的那页，关掉详情时停在那里 */
-  function move(delta: number): void {
+  /** 详情里上一个 / 下一个：沿着当前结果走，跨页时只取相邻那一页，关掉详情时停在那里 */
+  async function move(delta: number): Promise<void> {
+    const data = current.value;
     const index = detailIndex.value;
-    const next = list.value[index + delta];
-    if (index < 0 || !next) return;
-    open(next.resource.id, next.face);
-    state.page = Math.floor((index + delta) / state.step) + 1;
+    const target = index + delta;
+    if (
+      !data ||
+      status.value === "loading" ||
+      index < 0 ||
+      target < 0 ||
+      target >= data.matchedTotal
+    )
+      return;
+    // 跨页失败时 state.page 已经是目标页，眼前的 entries 还是旧页：这里只认实际加载的那页
+    const nextPage = Math.floor(target / data.pageSize) + 1;
+    if (nextPage === data.page) {
+      const entry = data.entries[target - (data.page - 1) * data.pageSize];
+      if (entry) open(entry.resource.id, entry.face);
+    } else {
+      state.page = nextPage;
+      await loadPage(undefined, target);
+    }
   }
 
   function applyHash(hash: HashState): void {
@@ -548,9 +516,11 @@ export function createExplorer(initial: { type?: string; id?: string }) {
   }
 
   return {
-    indexes,
     state,
     detail,
+    status,
+    error,
+    loaded,
     webp,
     links,
     linksError,
@@ -559,14 +529,14 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     counts,
     categoryCounts,
     total,
-    list,
+    matchedTotal,
     page,
     pageCount,
     pageList,
     detailIndex,
     shareLink,
-    loadAll,
-    loadIndex,
+    start,
+    reload,
     loadLinks,
     setType,
     setSortKey,

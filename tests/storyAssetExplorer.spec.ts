@@ -8,7 +8,6 @@ import {
   resolveCharacterPreview,
   resourceTypeLabel,
   storyResourceImageUrl,
-  characterBaseOfListingId,
 } from "../src/widgets/StoryAssetExplorer/utils";
 
 describe("resourceTypeLabel", () => {
@@ -47,15 +46,6 @@ describe("storyResourceImageUrl", () => {
 });
 
 describe("character preview resolution", () => {
-  it("strips face and body suffixes from listing ids", () => {
-    expect(characterBaseOfListingId("avg_npc_009$1")).toBe("avg_npc_009");
-    expect(characterBaseOfListingId("nobody")).toBe("nobody");
-    expect(characterBaseOfListingId("avg_x#3 4$2")).toBe("avg_x");
-    expect(characterBaseOfListingId("avg_1038_whitw2_1#10$1")).toBe(
-      "avg_1038_whitw2_1",
-    );
-  });
-
   it("composites face characters and links single-image characters", () => {
     const links = parseCharacterMap({
       avg_npc_009: {

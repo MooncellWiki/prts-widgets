@@ -18,7 +18,7 @@ import { CHARACTER_CATEGORIES, type CharacterCategory } from "../utils";
  * 角色页签多一行：分类（干员 / NPC / 其他）与「按角色合并」。
  */
 const store = useExplorer();
-const { state, categoryCounts } = store;
+const { state, loaded, categoryCounts } = store;
 
 const SORT_OPTIONS: SelectOption[] = [
   { label: "资源名", value: "id" },
@@ -62,14 +62,15 @@ const category = computed({
     <div v-if="state.type === 'character'" class="sae-subrow">
       <AkTabs v-model="category" variant="pill" label="角色分类">
         <AkTab name=""
-          >全部<small>{{ allCount }}</small></AkTab
+          >全部<small v-if="loaded">{{ allCount }}</small></AkTab
         >
         <AkTab
           v-for="option in CHARACTER_CATEGORIES"
           :key="option.value"
           :name="option.value"
         >
-          {{ option.label }}<small>{{ categoryCounts[option.value] }}</small>
+          {{ option.label
+          }}<small v-if="loaded">{{ categoryCounts[option.value] }}</small>
         </AkTab>
       </AkTabs>
       <AkSwitch v-model="state.merge" size="sm" class="sae-subrow__merge">
