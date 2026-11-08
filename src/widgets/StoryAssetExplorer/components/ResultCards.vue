@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { useExplorer } from "../store";
+import { storeToRefs } from "pinia";
+
+import { useExplorerStore } from "../store";
 import {
   highlightParts,
   resourcePreview,
@@ -14,8 +16,9 @@ import ResourceImage from "./ResourceImage.vue";
  * 结果 · 大图：一格 = 缩略图 + 资源名（搜索词高亮）+ 剧本数。整格是按钮，点开详情。
  * 背景 / 图像是横图（16:9），角色 / 道具是方图，两种格子宽度不同。
  */
-const store = useExplorer();
-const { state, pageList, query, links, linksError, webp } = store;
+const store = useExplorerStore();
+const { state } = store;
+const { pageList, query, links, linksError, webp } = storeToRefs(store);
 
 const wide = (type: StoryResourceType) =>
   type === "background" || type === "image";

@@ -1,22 +1,16 @@
-import {
-  computed,
-  inject,
-  onScopeDispose,
-  reactive,
-  shallowRef,
-  watch,
-  type InjectionKey,
-} from "vue";
+import { computed, onScopeDispose, reactive, shallowRef, watch } from "vue";
+
+import { useQuery } from "@pinia/colada";
+import { defineStore } from "pinia";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
+import { characterMapQuery } from "./queries";
 import {
-  ensureCharacterMap,
   isCharacterCategory,
   isResourceType,
   normalizeResourceQuery,
   type CharacterCategory,
-  type CharacterLinkMap,
   type Entry,
   type ExploreResponse,
   type Resource,
@@ -167,10 +161,19 @@ export function buildHash(
   return params.toString();
 }
 
-export function createExplorer(initial: { type?: string; id?: string }) {
+/**
+ * 剧情资源概览的全部状态：页签 / 搜索 / 排序 / 显示方式 / 分类 / 分页、详情，以及浏览接口的请求。
+ * index.vue 先 init() 灌模板参数、读 # 参数，挂载后 start() 发第一次请求，卸载时 $dispose()
+ * （pinia 不会随 app 卸载停掉 store，不 dispose 的话排队中的搜索还会发出去）。
+ *
+ * 浏览接口（/story-resources/explore）在这里手写：后端会按 focus 改页码、失败时要留着上一页、
+ * 跨页切详情和重试要续接目标，这些 Pinia Colada 的 useQuery 都管不了。
+ * character.json 和详情里的请求交给 Colada，见 queries.ts。
+ */
+export const useExplorerStore = defineStore("storyAssetExplorer", () => {
   const state = reactive<ExplorerState>({
-    type: isResourceType(initial.type) ? initial.type : "character",
-    q: initial.id ?? "",
+    type: "character",
+    q: "",
     sort: { ...DEFAULT_SORT },
     view: "card",
     cat: "",
@@ -202,28 +205,18 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     webp.value = supported;
   });
 
-  const links = shallowRef<CharacterLinkMap | null>(null);
-  const linksError = shallowRef(false);
+  /** 挂载后才发请求：init / applyHash 改状态时不取 */
+  const started = shallowRef(false);
 
-  function loadLinks(): void {
-    if (links.value) return;
-    linksError.value = false;
-    ensureCharacterMap()
-      .then((map) => {
-        links.value = map;
-      })
-      .catch((cause: unknown) => {
-        console.warn("[StoryAssetExplorer] character.json", cause);
-        linksError.value = true;
-      });
-  }
-
-  // 角色页签的缩略图要 character.json。只在切到角色页签时取，失败了也别跟着每次按键重取
-  watch(
-    () => state.type === "character",
-    (need) => {
-      if (need) loadLinks();
-    },
+  // 角色页签的缩略图要 character.json。只在角色页签取；key 不随搜索变，失败了也不会跟着每次按键重取
+  const linksQuery = useQuery(() => ({
+    ...characterMapQuery,
+    enabled: started.value && state.type === "character",
+  }));
+  const links = computed(() => linksQuery.data.value ?? null);
+  /** 重取期间不算失败：缩略图先空着，不显示「没有预览」 */
+  const linksError = computed(
+    () => linksQuery.status.value === "error" && !linksQuery.isLoading.value,
   );
 
   const query = computed(() => ({
@@ -295,7 +288,6 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     return index < 0 ? -1 : (data.page - 1) * data.pageSize + index;
   });
 
-  let started = false;
   let disposed = false;
   let request = 0;
   let controller: AbortController | undefined;
@@ -371,16 +363,21 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     return loadPage(detail.id ?? undefined);
   }
 
+  /** 模板参数：初始的类型和搜索词。start() 之前调 */
+  function init(initial: { type?: string; id?: string }): void {
+    if (isResourceType(initial.type)) state.type = initial.type;
+    if (initial.id) state.q = initial.id;
+  }
+
   function start(): Promise<void> {
-    if (started) return Promise.resolve();
-    started = true;
-    if (state.type === "character") loadLinks();
+    if (started.value) return Promise.resolve();
+    started.value = true;
     return loadPage(detail.id ?? undefined);
   }
 
   /** 筛选变了：回到第一页，等 delay 再取。sync 是为了同一轮里连改几项时先取消旧请求 */
   function refilter(delay: number): void {
-    if (!started) return;
+    if (!started.value) return;
     state.page = 1;
     beginLoading();
     timer = setTimeout(() => {
@@ -432,14 +429,14 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     const first = (state.page - 1) * state.step;
     state.step = step;
     state.page = Math.floor(first / step) + 1;
-    if (started) loadPage();
+    if (started.value) loadPage();
   }
 
   function setPage(n: number): void {
     const next = Math.min(Math.max(1, n), pageCount.value);
     if (next === state.page) return;
     state.page = next;
-    if (started) loadPage();
+    if (started.value) loadPage();
   }
 
   function reset(): void {
@@ -456,7 +453,7 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     );
     if (entry) selection.value = entry;
     // members 含其他页的同角色立绘，缓存命中不代表它在当前结果页；眼前的结果过时了也要让后端定位
-    if (started && (status.value !== "done" || detailIndex.value < 0))
+    if (started.value && (status.value !== "done" || detailIndex.value < 0))
       loadPage(id);
   }
 
@@ -535,9 +532,9 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     pageList,
     detailIndex,
     shareLink,
+    init,
     start,
     reload,
-    loadLinks,
     setType,
     setSortKey,
     flipSort,
@@ -551,14 +548,4 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     move,
     applyHash,
   };
-}
-
-export type Explorer = ReturnType<typeof createExplorer>;
-
-export const explorerKey: InjectionKey<Explorer> = Symbol("StoryAssetExplorer");
-
-export function useExplorer(): Explorer {
-  const explorer = inject(explorerKey);
-  if (!explorer) throw new Error("useExplorer() 要在 StoryAssetExplorer 里用");
-  return explorer;
-}
+});

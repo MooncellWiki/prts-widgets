@@ -179,11 +179,13 @@ export default defineConfig(({ command }) => {
             if (id.includes("node_modules/pinia/")) return "pinia";
             if (id.includes("howler")) return "howler";
             if (id.includes("pixi")) return "pixi";
-            // gifenc 是 SpineViewer 导出 GIF 时才动态 import 的，别并进各页都加载的 vendor
+            // gifenc 是 SpineViewer 导出 GIF 时才动态 import 的，别并进各页都加载的 vendor；
+            // @pinia/colada 只有 StoryAssetExplorer 用，也别进 vendor（上面的 pinia 规则匹配不到它）
             if (
               id.includes("@zumer/snapdom") ||
               id.includes("vue-draggable-plus") ||
-              id.includes("node_modules/gifenc/")
+              id.includes("node_modules/gifenc/") ||
+              id.includes("node_modules/@pinia/colada/")
             )
               return;
 
