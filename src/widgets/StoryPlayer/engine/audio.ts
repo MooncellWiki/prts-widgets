@@ -25,10 +25,12 @@ interface MusicPlayback extends Playback {
   loopKey: string;
 }
 
+/**
+ * Fallback identity for a key that resolves to no URL. Resolved URLs already
+ * lowercase game assets and keep the case of Web URLs and @paths.
+ */
 function musicAssetIdentity(rawKey: string): string {
   const key = rawKey.trim();
-  // AssetMusicInfo.IsSameAudio uses OrdinalIgnoreCase for game assets.
-  // Web URLs and @paths preserve case in the resource they address.
   return /^(?:@|https?:\/\/)/i.test(key) ? key : key.toLowerCase();
 }
 
@@ -78,8 +80,15 @@ export class HtmlStoryAudio implements StoryAudio {
   async playMusic(input: PlayMusicInput): Promise<void> {
     if (this.destroyed) return;
 
-    const introKey = musicAssetIdentity(input.intro ?? "");
-    const loopKey = musicAssetIdentity(input.key);
+    // AssetMusicInfo.IsSameAudio compares the substituted intro/loop asset
+    // paths with OrdinalIgnoreCase, so story variables aliasing one asset
+    // name the same music. Compare resolved URLs, not raw script keys.
+    const mainUrl = this.resolveAudioUrl(input.key);
+    const introUrl = input.intro ? this.resolveAudioUrl(input.intro) : null;
+    const introKey = input.intro
+      ? (introUrl ?? musicAssetIdentity(input.intro))
+      : "";
+    const loopKey = mainUrl ?? musicAssetIdentity(input.key);
     const previous = this.musicAudio;
     if (previous?.introKey === introKey && previous.loopKey === loopKey) {
       await this.fadeVolume(previous, input.volume, 0);
@@ -95,9 +104,7 @@ export class HtmlStoryAudio implements StoryAudio {
       void this.fadeOutMusic(previous, input.crossfadeMs);
     }
 
-    const mainUrl = this.resolveAudioUrl(input.key);
     if (!mainUrl) return;
-    const introUrl = input.intro ? this.resolveAudioUrl(input.intro) : null;
     const crossfade = previous !== null && input.crossfadeMs > INSTANT_STOP_MS;
     const next: MusicPlayback = {
       fadeGeneration: 0,

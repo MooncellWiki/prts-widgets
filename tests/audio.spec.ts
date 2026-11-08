@@ -384,6 +384,28 @@ describe("playmusic scheduling", () => {
     expect(first.stopped).toBe(0);
   });
 
+  it("treats story variables aliasing one asset as the same music", async () => {
+    // story_variables.json maps both $m_bat_epic_loop and $epic_loop to this
+    // asset. AssetMusicInfo.IsSameAudio compares the substituted paths.
+    const loopPath = "Sound_Beta_2/Music/beta1_180603/m_bat_epic_loop";
+    const audio = new HtmlStoryAudio({
+      ...context,
+      audioVariables: { epic_loop: loopPath, m_bat_epic_loop: loopPath },
+    });
+    const first = await startTrack(audio, "$m_bat_epic_loop");
+    void audio.playMusic({
+      key: "$epic_loop",
+      volume: 0.7,
+      crossfadeMs: 320,
+      delayMs: 0,
+    });
+
+    expect(first.volume).toBe(0.7);
+    await vi.advanceTimersByTimeAsync(640);
+    expect(loads).toHaveLength(0);
+    expect(first.stopped).toBe(0);
+  });
+
   it("keeps distinct Web URLs case-sensitive", async () => {
     const audio = new HtmlStoryAudio(context);
     const first = await startTrack(
