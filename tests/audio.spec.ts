@@ -93,7 +93,7 @@ describe("playmusic scheduling", () => {
   beforeEach(() => {
     loads.length = 0;
     vi.useFakeTimers({
-      toFake: ["performance", "requestAnimationFrame", "setTimeout"],
+      toFake: ["clearTimeout", "performance", "setTimeout"],
     });
   });
 
@@ -408,7 +408,7 @@ describe("playmusic scheduling", () => {
 describe("cancelable audio fades", () => {
   beforeEach(() => {
     loads.length = 0;
-    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "performance"] });
+    vi.useFakeTimers({ toFake: ["clearTimeout", "performance", "setTimeout"] });
   });
 
   afterEach(() => vi.useRealTimers());
@@ -551,7 +551,7 @@ describe("end-of-story resetAudio", () => {
     loads.length = 0;
     preloaded.clear();
     vi.useFakeTimers({
-      toFake: ["setTimeout", "requestAnimationFrame", "performance"],
+      toFake: ["clearTimeout", "performance", "setTimeout"],
     });
   });
 
@@ -611,6 +611,27 @@ describe("end-of-story resetAudio", () => {
     expect(clip.playCalls).toBe(0);
   });
 
+  it("starts at the elapsed fade volume and stops on natural end without animation frames", async () => {
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    try {
+      const audio = new HtmlStoryAudio(context);
+      const clip = preloadSound("ambience");
+      void playLoop(audio, 310);
+      audio.resetAudio();
+
+      await vi.advanceTimersByTimeAsync(310);
+      const { instance } = await settlePlayback(clip);
+      expect(clip.volume).toBeCloseTo(0.38, 3);
+      await vi.advanceTimersByTimeAsync(90);
+      expect(instance.volume).toBeCloseTo(0.2);
+      expect(instance.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(instance.stopped).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("suppresses a playsound whose load completes after the reset fade deadline", async () => {
     const audio = new HtmlStoryAudio(context);
     const pending = playLoop(audio);
@@ -644,7 +665,7 @@ describe("playsound delay and story reset", () => {
     loads.length = 0;
     preloaded.clear();
     vi.useFakeTimers({
-      toFake: ["performance", "requestAnimationFrame", "setTimeout"],
+      toFake: ["clearTimeout", "performance", "setTimeout"],
     });
   });
 
@@ -807,7 +828,10 @@ describe("playsound delay and story reset", () => {
     try {
       audio.resetAudio();
       const closing = audio.finishSoundFades();
-      await vi.advanceTimersByTimeAsync(499);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(loop.instance.volume).toBeCloseTo(0.2);
+      expect(steps.instance.volume).toBeCloseTo(0.6875);
+      await vi.advanceTimersByTimeAsync(99);
       expect(loop.instance.stopped).toBe(0);
       await vi.advanceTimersByTimeAsync(1);
       expect(loop.instance.stopped).toBe(1);

@@ -13,9 +13,10 @@ function nowMs(): number {
 
 // AudioChannel.Stop takes the immediate branch at or below 0.01 seconds.
 const INSTANT_STOP_MS = 10;
+const VOLUME_UPDATE_MS = 16;
 
 interface Playback {
-  fadeGeneration: number;
+  fade?: { volumeAt: (time: number) => number; cancel: () => void };
   volume: number;
   instance: IMediaInstance | null;
 }
@@ -80,7 +81,7 @@ export class HtmlStoryAudio implements StoryAudio {
     const fades: Promise<void>[] = [];
     for (const [channel, sound] of this.soundChannels) {
       if (sound.stopFade) {
-        fades.push(this.settleStopFade(channel, sound, sound.stopFade));
+        fades.push(sound.stopFade.completion);
       } else {
         this.soundChannels.delete(channel);
         this.stopPlayback(sound);
@@ -88,28 +89,6 @@ export class HtmlStoryAudio implements StoryAudio {
     }
     await Promise.all(fades);
     this.destroy();
-  }
-
-  /**
-   * Web adaptation: fades advance on animation frames, which a hidden tab
-   * suspends while `disableAutoPause` keeps the sound audible. Once the player
-   * view has closed, a timer at the stop deadline ends the sound if its fade
-   * has not.
-   */
-  private async settleStopFade(
-    channel: string,
-    sound: SoundPlayback,
-    stopFade: NonNullable<SoundPlayback["stopFade"]>,
-  ): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, Math.max(0, stopFade.deadline - nowMs()));
-    });
-    await Promise.race([stopFade.completion, timeout]);
-    clearTimeout(timer);
-    if (this.soundChannels.get(channel) !== sound) return;
-    this.soundChannels.delete(channel);
-    this.stopPlayback(sound);
   }
 
   async playMusic(input: PlayMusicInput): Promise<void> {
@@ -142,7 +121,6 @@ export class HtmlStoryAudio implements StoryAudio {
     if (!mainUrl) return;
     const crossfade = previous !== null && input.crossfadeMs > INSTANT_STOP_MS;
     const next: MusicPlayback = {
-      fadeGeneration: 0,
       introKey,
       loopKey,
       instance: null,
@@ -180,7 +158,6 @@ export class HtmlStoryAudio implements StoryAudio {
     const channel = this.soundChannelName(input.channel);
     const previous = this.soundChannels.get(channel);
     const sound: SoundPlayback = {
-      fadeGeneration: 0,
       instance: null,
       volume: input.volume,
     };
@@ -210,12 +187,12 @@ export class HtmlStoryAudio implements StoryAudio {
         ? undefined
         : () => {
             // PIXI recycles completed instances. Retire any tween still writing to it.
-            sound.fadeGeneration++;
+            sound.fade?.cancel();
             sound.instance = null;
             if (ownsChannel()) this.soundChannels.delete(channel);
           },
       loop: input.loop,
-      volume: sound.volume,
+      volume: this.currentVolume(sound),
     });
 
     this.claimPlayback(sound, instance, canStart());
@@ -277,7 +254,7 @@ export class HtmlStoryAudio implements StoryAudio {
     await this.fadeVolume(this.musicAudio, volume, fadeMs);
   }
 
-  private async fadeVolume(
+  private fadeVolume(
     playback: Playback,
     targetVolume: number,
     durationMs: number,
@@ -286,40 +263,50 @@ export class HtmlStoryAudio implements StoryAudio {
       onComplete,
     }: { startTime?: number; onComplete?: () => void } = {},
   ): Promise<void> {
-    // Native AudioChannel.TweenVolume replaces the entire tween, including
-    // m_stopWhenTweenEnd. Only the current generation can write or finish it.
-    const generation = ++playback.fadeGeneration;
-    const startVolume = playback.volume;
+    // Native AudioChannel.TweenVolume takes over at the current volume and
+    // replaces the whole tween, including m_stopWhenTweenEnd.
+    const startVolume = this.currentVolume(playback);
+    playback.fade?.cancel();
     if (durationMs <= 0) {
       this.setVolume(playback, targetVolume);
       onComplete?.();
-      return;
+      return Promise.resolve();
     }
 
-    await new Promise<void>((resolve) => {
+    const endTime = startTime + durationMs;
+    const volumeAt = (time: number) => {
+      const elapsed = time - startTime;
+      const progress = Math.max(0, Math.min(1, elapsed / durationMs));
+      return startVolume + (targetVolume - startVolume) * progress;
+    };
+
+    // Web adaptation: hidden tabs suspend animation frames while audio keeps
+    // playing. A timer advances the fade and completes pending stops.
+    // Commands and playback starts sample the volume from the elapsed time.
+    return new Promise<void>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const settle = () => {
+        clearTimeout(timer);
+        playback.fade = undefined;
+        resolve();
+      };
+      playback.fade = { volumeAt, cancel: settle };
+
       const tick = () => {
-        if (this.destroyed || playback.fadeGeneration !== generation) {
-          resolve();
-          return;
-        }
-
-        const elapsed = nowMs() - startTime;
-        const progress = Math.max(0, Math.min(1, elapsed / durationMs));
-        this.setVolume(
-          playback,
-          startVolume + (targetVolume - startVolume) * progress,
-        );
-
-        if (progress >= 1) {
+        const time = nowMs();
+        if (time >= endTime) {
+          this.setVolume(playback, targetVolume);
+          settle();
           onComplete?.();
-          resolve();
           return;
         }
 
-        requestAnimationFrame(tick);
+        this.setVolume(playback, volumeAt(time));
+        const delay = Math.min(VOLUME_UPDATE_MS, endTime - time);
+        timer = setTimeout(tick, Math.ceil(delay));
       };
 
-      requestAnimationFrame(tick);
+      tick();
     });
   }
 
@@ -354,7 +341,7 @@ export class HtmlStoryAudio implements StoryAudio {
           }
         : undefined,
       loop: !loopUrl,
-      volume: music.volume,
+      volume: this.currentVolume(music),
     });
     this.claimPlayback(music, instance, this.ownsMusic(music));
     if (!instance && this.ownsMusic(music)) await this.fadeOutMusic(music, 0);
@@ -426,6 +413,10 @@ export class HtmlStoryAudio implements StoryAudio {
     return `avgsound_${channel}`;
   }
 
+  private currentVolume(playback: Playback): number {
+    return playback.fade?.volumeAt(nowMs()) ?? playback.volume;
+  }
+
   private setVolume(playback: Playback, volume: number): void {
     playback.volume = volume;
     if (playback.instance) playback.instance.volume = volume;
@@ -447,13 +438,13 @@ export class HtmlStoryAudio implements StoryAudio {
     }
 
     playback.instance = instance;
-    if (instance) instance.volume = playback.volume;
+    if (instance) this.setVolume(playback, this.currentVolume(playback));
   }
 
   private stopPlayback(playback: Playback | null): void {
     if (!playback) return;
 
-    playback.fadeGeneration++;
+    playback.fade?.cancel();
     playback.instance?.stop();
     playback.instance = null;
   }

@@ -47,7 +47,7 @@ beforeEach(() => {
   loads.length = 0;
   preloaded.clear();
   vi.useFakeTimers({
-    toFake: ["performance", "requestAnimationFrame", "setTimeout"],
+    toFake: ["clearTimeout", "performance", "setTimeout"],
   });
 });
 
