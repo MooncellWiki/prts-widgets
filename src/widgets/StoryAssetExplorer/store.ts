@@ -8,8 +8,9 @@ import {
   type InjectionKey,
 } from "vue";
 
-import { TORAPPU_ENDPOINT } from "@/utils/consts";
+import { useTimeoutFn } from "@vueuse/core";
 
+import { fetchExplore, type ExploreQuery } from "./explore";
 import {
   ensureCharacterMap,
   isCharacterCategory,
@@ -78,6 +79,17 @@ function probeWebp(): Promise<boolean> {
     image.addEventListener("error", () => finish(false));
     image.src = WEBP_PROBE_SRC;
   });
+}
+
+/** 一次加载要顺带做的事：focus 让后端定位资源，moveTo 是跨页切详情的目标位置 */
+interface LoadIntent {
+  focus?: string;
+  moveTo?: number;
+}
+
+/** 结果里第 index 格（跨页连续编号，从 0 数）；不在这一页时是 undefined */
+function entryAt(data: ExploreResponse, index: number): Entry | undefined {
+  return data.entries[index - (data.page - 1) * data.pageSize];
 }
 
 /** 写进分享链接的状态（# 参数），见 readHash / buildHash */
@@ -295,70 +307,73 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     return index < 0 ? -1 : (data.page - 1) * data.pageSize + index;
   });
 
-  let started = false;
-  let disposed = false;
-  let request = 0;
+  /** idle：还没 start，筛选变了也不取；disposed：卸载了，什么都不再取 */
+  let phase: "idle" | "running" | "disposed" = "idle";
+  /** 最近一次加载的 controller。被顶掉或卸载时 abort，响应回来时 signal.aborted 就说明它过期了 */
   let controller: AbortController | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let failedRequest:
-    { focus?: string; moveTo?: number; opened: string | null } | undefined;
+  /** 最近一次失败的加载，连同当时打开着的详情：reload 照原样重试 */
+  let failed: { intent: LoadIntent; opened: string | null } | undefined;
+  /** 筛选变了以后排队的加载：搜索等停手，别的等同一轮里改完 */
+  let queueDelay = 0;
+  const queued = useTimeoutFn(reload, () => queueDelay, { immediate: false });
 
-  function cancel(): void {
-    clearTimeout(timer);
+  /** 作废进行中和排队中的加载（之前失败的也不再续接），进入 loading */
+  function supersede(): void {
     controller?.abort();
-    failedRequest = undefined;
-    request++;
-  }
-
-  function beginLoading(): void {
-    cancel();
+    queued.stop();
+    failed = undefined;
     status.value = "loading";
     error.value = "";
   }
 
-  /** 取一页和它的全部统计，不翻 cursor，也不预取别的类型。focus 让后端定位资源，moveTo 是跨页切详情的目标位置 */
-  async function loadPage(focus?: string, moveTo?: number): Promise<void> {
-    if (disposed) return;
-    beginLoading();
-    const token = request;
-    const opened = detail.id;
-    const type = state.type;
-    controller = new AbortController();
-    const params = new URLSearchParams({
-      type,
+  /** 发给后端的查询：当前筛选、排序和分页 */
+  function exploreQuery(focus?: string): ExploreQuery {
+    return {
+      type: state.type,
       q: search.value,
       groupBy: state.merge ? "base" : "resource",
       sort: state.sort.key === "count" ? "scriptCount" : "id",
       order: state.sort.dir < 0 ? "desc" : "asc",
-      page: String(state.page),
-      pageSize: String(state.step),
-    });
-    if (state.cat) params.set("category", state.cat);
-    if (focus) params.set("focus", focus);
+      page: state.page,
+      pageSize: state.step,
+      category: state.cat || undefined,
+      focus,
+    };
+  }
+
+  /**
+   * 取当前这一页和它的全部统计，不翻 cursor，也不预取别的类型；会顶掉进行中的加载。
+   * start 之前和卸载以后什么都不做。
+   */
+  async function load(intent: LoadIntent = {}): Promise<void> {
+    if (phase !== "running") return;
+    supersede();
+    controller = new AbortController();
+    const { signal } = controller;
+    const opened = detail.id;
+    const type = state.type;
     try {
       // 第一页和 WebP 探测一起等：缩略图第一次渲染时格式就定了
-      const [resp] = await Promise.all([
-        fetch(`${TORAPPU_ENDPOINT}/api/v1/story-resources/explore?${params}`, {
-          signal: controller.signal,
-        }),
+      const [data] = await Promise.all([
+        fetchExplore(exploreQuery(intent.focus), signal),
         webpReady,
       ]);
-      if (!resp.ok) throw new Error(`story-resources/explore ${resp.status}`);
-      const data = (await resp.json()) as ExploreResponse;
-      if (token !== request || disposed) return;
+      if (signal.aborted) return;
       // 后端可能把超出末页的页码夹回来，或者按 focus 换到资源所在的页
       state.page = data.page;
       result.value = { ...data, type };
-      if (focus && detail.id === opened) selection.value = data.selection;
+      // 等响应的时候详情换了或关了，就别再动它
+      const stillOpen = detail.id === opened;
+      if (intent.focus && stillOpen) selection.value = data.selection;
       status.value = "done";
-      if (moveTo !== undefined && detail.id === opened && opened) {
-        const entry = data.entries[moveTo - (data.page - 1) * data.pageSize];
+      if (intent.moveTo !== undefined && stillOpen && opened) {
+        const entry = entryAt(data, intent.moveTo);
         if (entry) open(entry.resource.id, entry.face);
       }
     } catch (cause) {
-      if (token !== request || disposed) return;
+      if (signal.aborted) return;
       console.warn("[StoryAssetExplorer]", cause);
-      failedRequest = { focus, moveTo, opened };
+      failed = { intent, opened };
       status.value = "error";
       error.value = cause instanceof Error ? cause.message : String(cause);
     }
@@ -366,26 +381,24 @@ export function createExplorer(initial: { type?: string; id?: string }) {
 
   function reload(): Promise<void> {
     // 重试保留原来的定位 / 跨页目标；换筛选或打开别的详情后不再续接旧跳转。
-    if (failedRequest && failedRequest.opened === detail.id)
-      return loadPage(failedRequest.focus, failedRequest.moveTo);
-    return loadPage(detail.id ?? undefined);
+    if (failed && failed.opened === detail.id) return load(failed.intent);
+    return load({ focus: detail.id ?? undefined });
   }
 
   function start(): Promise<void> {
-    if (started) return Promise.resolve();
-    started = true;
+    if (phase !== "idle") return Promise.resolve();
+    phase = "running";
     if (state.type === "character") loadLinks();
-    return loadPage(detail.id ?? undefined);
+    return load({ focus: detail.id ?? undefined });
   }
 
-  /** 筛选变了：回到第一页，等 delay 再取。sync 是为了同一轮里连改几项时先取消旧请求 */
+  /** 筛选变了：回到第一页，等 delay 再取。watch 用 sync，同一轮里连改几项时先作废旧请求、只排一次 */
   function refilter(delay: number): void {
-    if (!started) return;
+    if (phase !== "running") return;
     state.page = 1;
-    beginLoading();
-    timer = setTimeout(() => {
-      reload();
-    }, delay);
+    supersede();
+    queueDelay = delay;
+    queued.start();
   }
 
   watch(search, () => refilter(SEARCH_DEBOUNCE), { flush: "sync" });
@@ -401,9 +414,10 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     { flush: "sync" },
   );
 
+  // 排队的加载 useTimeoutFn 会自己停
   onScopeDispose(() => {
-    disposed = true;
-    cancel();
+    phase = "disposed";
+    controller?.abort();
   });
 
   function setType(type: StoryResourceType): void {
@@ -432,14 +446,14 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     const first = (state.page - 1) * state.step;
     state.step = step;
     state.page = Math.floor(first / step) + 1;
-    if (started) loadPage();
+    load();
   }
 
   function setPage(n: number): void {
     const next = Math.min(Math.max(1, n), pageCount.value);
     if (next === state.page) return;
     state.page = next;
-    if (started) loadPage();
+    load();
   }
 
   function reset(): void {
@@ -456,8 +470,7 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     );
     if (entry) selection.value = entry;
     // members 含其他页的同角色立绘，缓存命中不代表它在当前结果页；眼前的结果过时了也要让后端定位
-    if (started && (status.value !== "done" || detailIndex.value < 0))
-      loadPage(id);
+    if (status.value !== "done" || detailIndex.value < 0) load({ focus: id });
   }
 
   function close(): void {
@@ -482,11 +495,11 @@ export function createExplorer(initial: { type?: string; id?: string }) {
     // 跨页失败时 state.page 已经是目标页，眼前的 entries 还是旧页：这里只认实际加载的那页
     const nextPage = Math.floor(target / data.pageSize) + 1;
     if (nextPage === data.page) {
-      const entry = data.entries[target - (data.page - 1) * data.pageSize];
+      const entry = entryAt(data, target);
       if (entry) open(entry.resource.id, entry.face);
     } else {
       state.page = nextPage;
-      await loadPage(undefined, target);
+      await load({ moveTo: target });
     }
   }
 

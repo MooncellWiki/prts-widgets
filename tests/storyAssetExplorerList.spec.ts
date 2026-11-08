@@ -729,4 +729,27 @@ describe("createExplorer server paging", () => {
     await vi.runAllTimersAsync();
     expect(browse).toHaveBeenCalledTimes(1);
   });
+
+  it("does not start new requests after the widget unmounts", async () => {
+    const { store, browse, scope } = setup();
+    await store.start();
+    scope.stop();
+    store.setPage(2);
+    store.open(third.resource.id);
+    await store.reload();
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the queued search once a page change has sent it", async () => {
+    const { store, browse } = setup();
+    await store.start();
+    store.state.q = "npc";
+    store.setPage(2);
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(2);
+    expect(
+      Object.fromEntries(new URL(browse.mock.calls[1][0]).searchParams),
+    ).toMatchObject({ q: "npc", page: "2" });
+  });
 });
