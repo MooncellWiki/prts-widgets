@@ -80,7 +80,7 @@ export class HtmlStoryAudio implements StoryAudio {
     const fades: Promise<void>[] = [];
     for (const [channel, sound] of this.soundChannels) {
       if (sound.stopFade) {
-        fades.push(sound.stopFade.completion);
+        fades.push(this.settleStopFade(channel, sound, sound.stopFade));
       } else {
         this.soundChannels.delete(channel);
         this.stopPlayback(sound);
@@ -88,6 +88,28 @@ export class HtmlStoryAudio implements StoryAudio {
     }
     await Promise.all(fades);
     this.destroy();
+  }
+
+  /**
+   * Web adaptation: fades advance on animation frames, which a hidden tab
+   * suspends while `disableAutoPause` keeps the sound audible. Once the player
+   * view has closed, a timer at the stop deadline ends the sound if its fade
+   * has not.
+   */
+  private async settleStopFade(
+    channel: string,
+    sound: SoundPlayback,
+    stopFade: NonNullable<SoundPlayback["stopFade"]>,
+  ): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, Math.max(0, stopFade.deadline - nowMs()));
+    });
+    await Promise.race([stopFade.completion, timeout]);
+    clearTimeout(timer);
+    if (this.soundChannels.get(channel) !== sound) return;
+    this.soundChannels.delete(channel);
+    this.stopPlayback(sound);
   }
 
   async playMusic(input: PlayMusicInput): Promise<void> {

@@ -787,4 +787,36 @@ describe("playsound delay and story reset", () => {
     await vi.advanceTimersByTimeAsync(400);
     expect(loop.instance.stopped).toBe(1);
   });
+
+  it("ends closing fades at their deadlines while animation frames are suspended", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "loop");
+    const loop = await settlePlayback();
+    void audio.playSound({
+      channel: "d",
+      key: "steps",
+      delayMs: 0,
+      loop: true,
+      volume: 1,
+    });
+    const steps = await settlePlayback();
+    void audio.stopSound("d", 1280);
+    // A hidden tab suspends requestAnimationFrame. disableAutoPause keeps the
+    // sounds audible, so the fades alone would never reach their stop.
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    try {
+      audio.resetAudio();
+      const closing = audio.finishSoundFades();
+      await vi.advanceTimersByTimeAsync(499);
+      expect(loop.instance.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(loop.instance.stopped).toBe(1);
+      expect(steps.instance.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(780);
+      expect(steps.instance.stopped).toBe(1);
+      await closing;
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
