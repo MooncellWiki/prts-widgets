@@ -3213,16 +3213,12 @@ export class StoryRuntime {
 
       case "playmusic": {
         // Native port: Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand.
-        // Audio calls are asynchronous and do not block the command loop.
+        // The audio backend retires the current MUSIC channel before loading
+        // the requested asset, including when its key cannot be resolved.
         const key = toString(this.exactArg(args, "key"));
-        if (!key) {
-          this.warn("parse", "playmusic key is empty");
-          return "continue";
-        }
-        if (!this.hasAudioKey(key)) {
+        if (!key) this.warn("parse", "playmusic key is empty");
+        else if (!this.hasAudioKey(key))
           this.warn("missing_asset", `music: ${key}`);
-          return "continue";
-        }
 
         const intro = toString(this.exactArg(args, "intro")) || undefined;
         if (intro && !this.hasAudioKey(intro))
