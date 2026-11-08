@@ -15,14 +15,16 @@ export function createContext(): Context {
 export function createRenderer(
   context: Context = createContext(),
   onWarning?: (detail: string) => void,
+  clock?: AnimationClock,
 ): any {
-  return new PixiStoryRenderer(context, onWarning) as any;
+  return new PixiStoryRenderer(context, onWarning, clock) as any;
 }
 
 export function createManualClock(): {
   advance: (ms: number) => void;
   clock: AnimationClock;
   drainFrame: () => void;
+  drainFrames: () => void;
 } {
   const frames: Array<() => void> = [];
   let now = 0;
@@ -42,6 +44,9 @@ export function createManualClock(): {
     drainFrame: () => {
       const frame = frames.shift();
       if (frame) frame();
+    },
+    drainFrames: () => {
+      for (const frame of frames.splice(0)) frame();
     },
   };
 }

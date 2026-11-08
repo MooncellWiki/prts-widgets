@@ -2549,18 +2549,12 @@ export class StoryRuntime {
         const slot = this.parseCharacterSlot(rawSlot);
         const nameRef = toString(args.name);
         // Native port: Torappu.AVG.AVGCharacterslotPanel._ExecuteCharslot
-        // (2.7.61, VA 0x183e4d310). Duration defaults to 0.0 and goes through
-        // CalculateFadetime; zero skips animation.
+        // (2.7.91, VA 0x1841a3070). CalculateFadetime scales duration.
+        // The raw delay sets the insertion position of each returned tween.
         const durationMs = Math.round(this.calculateFadeMs(args.duration, 0));
-        // `end` (default true) is neither a transform-preservation switch nor
-        // a defer switch. `_GetCachedSlotSeq` (0x183e4f830) hands back a fresh
-        // `DOTween.Sequence()` whenever the previous one already played, and
-        // `DOTween.Sequence()` (0x184109110) starts it playing because
-        // `defaultAutoPlay` is `AutoPlay.All` (cctor 0x18410b0e0) -- the tweens
-        // run either way. All `end` gates is the
-        // `OnComplete(_SetSeqPlayed)` + `Play()` pair at 0x183e4e501, and the
-        // `isblock` check nested inside it at 0x183e4e56f: on the slot path
-        // `isblock` only ever blocks when `end` is true.
+        const delayMs = toNumber(args.delay) * 1000;
+        // DOTween auto-plays the Sequence. `end` gates the completion
+        // callback (_SetSeqPlayed) and whether isblock waits for it.
         const isEnd = toString(args.end).trim().toLowerCase() !== "false";
         const rawBlock = toBoolean(args.isblock, false);
         const block = rawBlock && isEnd;
@@ -2725,7 +2719,10 @@ export class StoryRuntime {
               ? undefined
               : Math.max(0, toNumber(args.yscale, toNumber(args.scale, 1))),
           slot,
-          slotSequence: true,
+          slotSequence: {
+            delayMs: Number.isFinite(delayMs) ? delayMs : 0,
+            end: isEnd,
+          },
           stop: toBoolean(args.stop, false),
           // GetOrDefault<int>("times", 0): DOShakePosition vibrato for
           // shake, numJumps (clamped to >= 1 by DOLocalJump) for jump.

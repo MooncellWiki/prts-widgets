@@ -27,6 +27,7 @@ import {
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
+import { browserAnimationClock, type AnimationClock } from "../execution";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
 import {
   buildTagStyles,
@@ -71,6 +72,7 @@ import {
   type TimerStickerInput,
 } from "../types";
 
+import { CharacterSlotSequence } from "./core/CharacterSlotSequence";
 import { guardClaimedClicks } from "./core/ClickClaim";
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import {
@@ -409,6 +411,12 @@ type StickerTweenStepInput =
       to: number;
     };
 
+type RunCharacterTween = (
+  durationMs: number,
+  step: (progress: number) => void,
+  done?: () => void,
+) => Promise<void>;
+
 interface CharacterRenderState {
   actionX: number;
   actionY: number;
@@ -437,7 +445,6 @@ interface CharacterRenderState {
    * be reconstructed from the resolved characterKey/expression pair.
    */
   nativeKey?: string;
-  opacitySessionId: number;
   replaceFadeSessionId: number;
   root: Container;
   rotationDeg: number;
@@ -541,28 +548,10 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly context: Context;
   private readonly charLayer = this.layers.characters;
   private readonly characterSlots = new Map<string, CharacterRenderState>();
-  /**
-   * 每槽缓存 `DOTween.Sequence` 的完成时刻（`performance.now()` 毫秒）。
-   * `_GetCachedSlotSeq`（0x183e4f830）在 Sequence 未被 `end` 挂的
-   * OnComplete 标记 played 前一直复用同一条，而 `_UpdateSeqWithTween`
-   * （0x183e53fc0）把每条 charslot tween `Insert` 到各自 `delay` 上——
-   * 并行、从不 Append——所以 Sequence 在"全部已插入 tween 的最大结束
-   * 时刻"完成。`isblock` 等的就是这一刻（OnComplete → FinishCommand，
-   * 0x183e4e501）：紧跟 `end=false` 入场之后的 shake 要等两者同时结束，
-   * 但各自仍从自己命令的发出时刻起播。
-   *
-   * 复用只在同一帧内成立：`TweenManager.Update(Tween, …)`（0x1841495c0）
-   * 在 tween 首次更新时置 `creationLocked`，此后 `Insert`（0x18411da10）
-   * 只打 `LogAddToLockedSequence` 就返回；播完的 Sequence 又因
-   * `defaultAutoKill`（cctor 0x18410b0e0）失活，而 `end=false` 的从不被标
-   * played，`_GetCachedSlotSeq` 会继续交出这条死 Sequence，Insert 与
-   * OnComplete 都成 no-op。AVG 的 `_DoExecuteCommands`（0x183e2b9c0）把
-   * 连续非阻塞命令在同一次 MoveNext 里跑完，所以相邻命令共享 Sequence；
-   * 隔了对白或阻塞命令之后，native 只等旧 Sequence 的剩余时间。全语料
-   * `end=false` 后接同槽 isblock 的只有相邻两处（act23side_02_beg 425→426、
-   * 555→556），这里按 max(旧 deadline, 自身 duration) 近似，不建模上锁。
-   */
-  private readonly characterSlotSeqDeadlines = new Map<string, number>();
+  private readonly characterSlotSequences = new Map<
+    string,
+    CharacterSlotSequence
+  >();
   private readonly faceOverlayTextures = new Map<
     string,
     FaceOverlayCacheEntry
@@ -621,7 +610,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly sceneLayer = this.layers.scene;
   private readonly uiLayer = this.layers.ui;
   private readonly worldLayer = this.layers.world;
-  private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
+  private readonly tweenRunner: TweenRunner;
   private readonly videoPanel: VideoPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly decisionPanel: DecisionPanel;
@@ -730,9 +719,14 @@ export class PixiStoryRenderer implements StoryRenderer {
   private timerStickerInterval: ReturnType<typeof setInterval> | null = null;
   private timerStickerText: Text | null = null;
 
-  constructor(context: Context, onWarning?: (detail: string) => void) {
+  constructor(
+    context: Context,
+    onWarning?: (detail: string) => void,
+    private readonly clock: AnimationClock = browserAnimationClock,
+  ) {
     this.context = context;
     this.onWarning = onWarning;
+    this.tweenRunner = new TweenRunner(() => Boolean(this.app), clock);
     // Native port: `AVGImagePanel` executors transform the panel's own
     // RectTransform (the scene `panel_image` node), whose pivot is serialized
     // at (0.5, 0.5) — the panel center, i.e. the 1280x720 screen center.
@@ -914,7 +908,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
     this.characterSlots.clear();
-    this.characterSlotSeqDeadlines.clear();
+    this.clearCharacterSlotSequences();
     for (const entry of this.faceOverlayTextures.values())
       entry.texture.destroy(true);
     this.faceOverlayTextures.clear();
@@ -2409,7 +2403,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       jumpSessionId: 0,
       motionLayer,
       nativeKey: input.nativeKey,
-      opacitySessionId: 0,
       outgoingVisual: null,
       replaceFadeSessionId: 0,
       root,
@@ -2475,23 +2468,19 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /**
-   * Native `_ExecuteCharslot` assembles every tween into the slot's cached
-   * Sequence and plays it right away: `_GetCachedSlotSeq` (0x183e4f830) hands
-   * back a fresh `DOTween.Sequence()` whenever the previous one already ran,
-   * and `DOTween.Sequence()` (0x184109110) starts it playing because
-   * `defaultAutoPlay` is `AutoPlay.All` (cctor 0x18410b0e0). `end=false` only
-   * skips the `OnComplete(_SetSeqPlayed)` + redundant `Play()` pair at
-   * 0x183e4e501, which in turn is what gates `isblock` (0x183e4e56f) -- it
-   * never defers the animation, so nothing is queued here. `isblock` instead
-   * waits for the whole cached Sequence (see characterSlotSeqDeadlines), not
-   * for this command's own tweens.
+   * AVGCharacterslotPanel._ExecuteCharslot (2.7.91 @ 0x1841a3070) builds
+   * tweens with immediate image and start-value writes, then inserts the
+   * tweens into the auto-playing slot Sequence. isblock waits for that
+   * Sequence's completion.
    */
   private async setCharacterSlot(input: CharacterSlotInput): Promise<void> {
     const slot = this.normalizeCharacterSlot(input.slot);
     let state = this.characterSlots.get(slot);
     const hasCharacter = Boolean(input.characterKey && input.expression);
 
-    const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
+    const durationMs = isFiniteNumber(input.durationMs)
+      ? Math.max(0, Math.round(input.durationMs))
+      : 0;
 
     if (hasCharacter) {
       const built = await this.buildCharacterSlotState(input, slot, state);
@@ -2503,29 +2492,23 @@ export class PixiStoryRenderer implements StoryRenderer {
       if (built) state = built;
     }
 
-    // The deadline is anchored once the asset is in, i.e. when this command's
-    // tweens actually start (native only inserts the crossfade tweens after
-    // its synchronous load), so a slow load neither shortens the wait of a
-    // later same-slot `isblock` nor this one's. Every action contributes
-    // `durationMs`: DOLocalJump's duration spans all `times` jumps
-    // (0x183eb2690), and `CharShake`/`CharZoom` are plain duration-length
-    // tweens.
-    let blockWaitMs = 0;
-    if (input.slotSequence) {
-      const nowMs = performance.now();
-      const cachedDeadlineMs = this.characterSlotSeqDeadlines.get(slot) ?? 0;
-      const seqDeadlineMs = Math.max(
-        cachedDeadlineMs,
-        nowMs,
-        nowMs + durationMs,
-      );
-      this.characterSlotSeqDeadlines.set(slot, seqDeadlineMs);
-      if (input.block) blockWaitMs = seqDeadlineMs - nowMs;
-    }
+    const sequence =
+      input.slotSequence && this.app
+        ? this.getCharacterSlotSequence(slot, input.slotSequence.end)
+        : undefined;
+    const delayMs = input.slotSequence?.delayMs ?? 0;
+    const standaloneTween = this.tween.bind(this);
+    const runTween: RunCharacterTween = (duration, step, done) => {
+      if (sequence?.insert(delayMs, duration, step, done))
+        return sequence.completion;
+      // Insert leaves a rejected child in DOTween's active list, where
+      // defaultAutoPlay lets it run on its own.
+      return standaloneTween(duration, step, done);
+    };
 
     if (!state) {
       if (input.focusMode) this.applyCharacterSlotFocus(input.focusSlots ?? []);
-      if (blockWaitMs > 0) await this.tween(blockWaitMs, () => {});
+      if (input.block) await sequence?.completion;
       return;
     }
 
@@ -2550,29 +2533,34 @@ export class PixiStoryRenderer implements StoryRenderer {
       (input.action === "shake" || input.action === "shakemove") &&
       durationMs > 0
     ) {
-      this.startShakeAction(state, {
-        block: false,
-        durationMs,
-        power: Math.max(0, input.power ?? 0),
-        randomness: input.randomness ?? 10,
-        rotationFromDeg: 0,
-        rotationLeftDeg: -15,
-        rotationRightDeg: 15,
-        slot,
-        stop: Boolean(input.stop),
-        times: input.times ?? 0,
-        type: "shake",
-        xOffset: 0,
-        yOffset: 0,
-      });
+      void this.startShakeAction(
+        state,
+        {
+          block: false,
+          durationMs,
+          power: Math.max(0, input.power ?? 0),
+          randomness: input.randomness ?? 10,
+          rotationFromDeg: 0,
+          rotationLeftDeg: -15,
+          rotationRightDeg: 15,
+          slot,
+          stop: Boolean(input.stop),
+          times: input.times ?? 0,
+          type: "shake",
+          xOffset: 0,
+          yOffset: 0,
+        },
+        runTween,
+      );
     }
 
     if (input.action === "jump")
-      this.startJumpAction(
+      void this.startJumpAction(
         state,
         Math.max(0, input.power ?? 0),
         input.times ?? 0,
         durationMs,
+        runTween,
       );
 
     // Native drives rotation from the standalone `angle` parameter segment
@@ -2583,7 +2571,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       const fromAngle = state.rotationDeg;
       const direction = input.inverse ? -1 : 1;
       const toAngle = direction * (input.angle + 360 * (input.circles ?? 0));
-      void this.tween(durationMs, (progress) => {
+      const rotateTween = durationMs > 0 ? runTween : standaloneTween;
+      void rotateTween(durationMs, (progress) => {
         if (
           !this.isActiveCharacterState(state) ||
           state.rotateSessionId !== sessionId
@@ -2594,23 +2583,31 @@ export class PixiStoryRenderer implements StoryRenderer {
       });
     }
 
-    this.applyCharacterSlotOpacity(state, input, durationMs);
+    this.applyCharacterSlotOpacity(state, input, durationMs, runTween);
 
     // The move (`_offset.localPosition`) and the zoom (the fore Image's
-    // pivot/localScale) are independent tweens natively: an image swap
-    // resets the zoom but leaves a running move alone, and a command whose
-    // from == to starts nothing, so an in-flight tween of either kind
-    // survives an unrelated command.
-    if (move && (move.from.x !== move.to.x || move.from.y !== move.to.y)) {
+    // pivot/localScale) are independent. An image swap resets the zoom
+    // while the offset can keep moving.
+    if (
+      move &&
+      (sequence || move.from.x !== move.to.x || move.from.y !== move.to.y)
+    ) {
       const sessionId = ++state.transformSessionId;
       const moveDurationMs = input.action === "setpos" ? 0 : durationMs;
       const { from, to } = move;
-      void this.tween(
+      const moveTween = moveDurationMs > 0 ? runTween : standaloneTween;
+      void moveTween(
         moveDurationMs,
         (progress) => {
           if (!this.isActiveCharacterState(state, sessionId)) return;
-          state.actionX = from.x + (to.x - from.x) * progress;
-          state.actionY = from.y + (to.y - from.y) * progress;
+          // SlotMoveChar and CharJump use OutCubic. The jump Sequence feeds
+          // that time into DOLocalJump's OutQuad y displacement (2.7.91
+          // <DOLocalJump>b__7 @ 0x18443eb70). The arc samples it separately.
+          const xProgress = easeOutCubic(progress);
+          const yProgress =
+            input.action === "jump" ? easeOutQuad(xProgress) : xProgress;
+          state.actionX = from.x + (to.x - from.x) * xProgress;
+          state.actionY = from.y + (to.y - from.y) * yProgress;
           this.updateCharacterState(state);
         },
         () => {
@@ -2624,14 +2621,15 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if (
       zoom &&
-      (zoom.from.scaleX !== zoom.to.scaleX ||
+      (sequence ||
+        zoom.from.scaleX !== zoom.to.scaleX ||
         zoom.from.scaleY !== zoom.to.scaleY ||
         zoom.from.shiftX !== zoom.to.shiftX ||
         zoom.from.shiftY !== zoom.to.shiftY)
     ) {
       const sessionId = ++state.zoomSessionId;
       const { from, to } = zoom;
-      void this.tween(
+      void runTween(
         durationMs,
         (progress) => {
           if (
@@ -2660,10 +2658,30 @@ export class PixiStoryRenderer implements StoryRenderer {
       );
     }
 
-    // `isblock` waits for the slot's whole cached Sequence -- this command's
-    // shake/jump/rotate tweens included, plus whatever a still-running
-    // `end=false` enter on the same slot left in it -- not just move/zoom.
-    if (blockWaitMs > 0) await this.tween(blockWaitMs, () => {});
+    if (input.block) await sequence?.completion;
+  }
+
+  private getCharacterSlotSequence(
+    slot: string,
+    end: boolean,
+  ): CharacterSlotSequence {
+    let sequence = this.characterSlotSequences.get(slot);
+    if (!sequence) {
+      sequence = new CharacterSlotSequence(this.clock);
+      this.characterSlotSequences.set(slot, sequence);
+    }
+    // _GetCachedSlotSeq / _SetSeqPlayed (2.7.91 @ 0x1841a5700 / 0x1841b61f0
+    // completion callback). A Sequence without an end command remains cached
+    // after auto-kill. Its settled promise lets the web queue keep advancing.
+    if (end)
+      sequence.setOnComplete(() => this.characterSlotSequences.delete(slot));
+    return sequence;
+  }
+
+  private clearCharacterSlotSequences(): void {
+    for (const sequence of this.characterSlotSequences.values())
+      sequence.cancel();
+    this.characterSlotSequences.clear();
   }
 
   /**
@@ -2767,6 +2785,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    this.clearCharacterSlotSequences();
     const states = [...this.characterSlots.values()];
     this.characterSlots.clear();
     if (fadeMs > 0) {
@@ -4249,7 +4268,6 @@ export class PixiStoryRenderer implements StoryRenderer {
         jumpSessionId: 0,
         motionLayer,
         nativeKey: input.nativeKey,
-        opacitySessionId: 0,
         outgoingVisual: null,
         replaceFadeSessionId: 0,
         root,
@@ -4619,48 +4637,40 @@ export class PixiStoryRenderer implements StoryRenderer {
     state: CharacterRenderState,
     input: CharacterSlotInput,
     durationMs: number,
+    runTween: RunCharacterTween,
   ): void {
     const hasFrom = isFiniteNumber(input.alphaFrom);
     const hasTo = isFiniteNumber(input.alphaTo);
     if (!hasFrom && !hasTo) return;
 
-    // `contentAlpha` mirrors the fore Image's vertex alpha, which native lets
-    // overshoot below 0 (a nameless `afrom` fades toward ato = -1); it is only
-    // clamped at the write in updateCharacterOpacity, so a resumed fade starts
-    // from the visible value.
     const fromAlpha = hasFrom ? input.alphaFrom! : clamp01(state.contentAlpha);
     const toAlpha = hasTo ? input.alphaTo! : fromAlpha;
-    state.contentAlpha = fromAlpha;
-    this.updateCharacterOpacity(state);
-
-    if (durationMs <= 0 || fromAlpha === toAlpha) {
+    // SlotChangeAlpha writes ato directly at duration 0. A successful named
+    // swap still creates a DOColor tween, which can be inserted at delay.
+    const namedSwap =
+      input.slotSequence && input.characterKey && input.expression;
+    if (durationMs === 0 && !namedSwap) {
       state.contentAlpha = toAlpha;
       this.updateCharacterOpacity(state);
       return;
     }
+    state.contentAlpha = fromAlpha;
+    this.updateCharacterOpacity(state);
+    if (!input.slotSequence && fromAlpha === toAlpha) return;
 
-    const sessionId = ++state.opacitySessionId;
-    void this.tween(
-      durationMs,
-      (progress) => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.opacitySessionId !== sessionId
-        )
-          return;
-        state.contentAlpha = fromAlpha + (toAlpha - fromAlpha) * progress;
-        this.updateCharacterOpacity(state);
-      },
-      () => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.opacitySessionId !== sessionId
-        )
-          return;
-        state.contentAlpha = toAlpha;
-        this.updateCharacterOpacity(state);
-      },
-    );
+    // SlotChangeAlpha / _GenForeImageTween (2.7.91 @ 0x184238040 /
+    // 0x184238ed0) let multiple DOColor tweens write the same Image. Each
+    // reads its start value on first sample. Capture the visual so a later
+    // swap cannot redirect a pending alpha write to the replacement art.
+    const visual = state.visual;
+    let startAlpha: number | undefined;
+    void runTween(durationMs, (progress) => {
+      if (!this.isActiveCharacterState(state) || state.visual !== visual)
+        return;
+      startAlpha ??= state.contentAlpha;
+      state.contentAlpha = startAlpha + (toAlpha - startAlpha) * progress;
+      this.updateCharacterOpacity(state);
+    });
   }
 
   /**
@@ -4777,7 +4787,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private disposeCharacterState(state: CharacterRenderState): void {
-    state.opacitySessionId += 1;
     state.replaceFadeSessionId += 1;
     state.transformSessionId += 1;
     state.zoomSessionId += 1;
@@ -4819,6 +4828,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private isCharacterSlotCommand(input: CharacterSlotInput): boolean {
     return (
+      input.slotSequence !== undefined ||
       input.focusMode !== undefined ||
       input.focusSlots !== undefined ||
       input.positionFrom !== undefined ||
@@ -5092,6 +5102,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     power: number,
     times: number,
     durationMs: number,
+    runTween: RunCharacterTween = this.tween.bind(this),
   ): Promise<void> {
     const sessionId = ++state.jumpSessionId;
     state.jumpOffsetY = 0;
@@ -5105,7 +5116,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const cycles = Math.max(1, times);
     const halfCycleProgress = 1 / (cycles * 2);
-    return this.tween(
+    return runTween(
       durationMs,
       (progress) => {
         if (
@@ -5154,6 +5165,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private startShakeAction(
     state: CharacterRenderState,
     input: CharacterActionInput,
+    runTween: RunCharacterTween = this.tween.bind(this),
   ): Promise<void> {
     this.stopShakeAction(state);
     // `stop` is a web extension: native has no such key, so it only needs to
@@ -5172,7 +5184,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       yStrength: input.power,
     });
 
-    return this.tween(
+    return runTween(
       durationMs,
       (progress) => {
         if (

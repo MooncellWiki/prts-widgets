@@ -232,15 +232,10 @@ export interface CharacterSlotInput {
   scaleY?: number;
   slot: string;
   /**
-   * charslot 专用：该命令的 tween 会进 `AVGCharacterslotPanel` 的每槽缓存
-   * Sequence（`_UpdateSeqWithTween` 是 Insert 并行，`_GetCachedSlotSeq`
-   * 0x183e4f830 在 Sequence 未被标 played 前复用它；DOTween 的
-   * `creationLocked` 让这种复用只对同一帧内的相邻命令成立），`isblock`
-   * 等整条 Sequence 完成（OnComplete → FinishCommand），详见 renderer 的
-   * `characterSlotSeqDeadlines`。`character` 命令走 `CharacterPanel`，
-   * tween 不入该 Sequence，不得置位。
+   * charslot 专用。delayMs 是相对每槽缓存 Sequence 起点的插入位置。
+   * end 为 true 时，Sequence 完成后可换成一条新的 Sequence。
    */
-  slotSequence?: boolean;
+  slotSequence?: { delayMs: number; end: boolean };
   stop?: boolean;
   times?: number;
   transType?: number;
