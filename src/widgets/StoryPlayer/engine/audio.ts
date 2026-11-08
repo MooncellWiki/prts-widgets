@@ -25,6 +25,10 @@ interface MusicPlayback extends Playback {
   loopKey: string;
 }
 
+interface SoundPlayback extends Playback {
+  stopFade?: { deadline: number; completion: Promise<void> };
+}
+
 /**
  * Fallback identity for a key that resolves to no URL. Resolved URLs already
  * lowercase game assets and keep the case of Web URLs and @paths.
@@ -43,10 +47,8 @@ export class HtmlStoryAudio implements StoryAudio {
   private readonly context: Context;
   private destroyed = false;
   private musicAudio: MusicPlayback | null = null;
-  private readonly soundBaseVolumes = new Map<string, number>();
-  private readonly soundRequestIds = new Map<string, number>();
   private readonly soundCache = new Map<string, Sound>();
-  private readonly soundChannels = new Map<string, Playback>();
+  private readonly soundChannels = new Map<string, SoundPlayback>();
   /**
    * Native provenance: `CommonExecutors.m_allSoundChannels`. playsound adds its
    * channel as the command executes (before any delay), stopsound removes it,
@@ -64,17 +66,28 @@ export class HtmlStoryAudio implements StoryAudio {
 
   destroy(): void {
     this.destroyed = true;
-
-    this.stopPlayback(this.musicAudio);
-    this.musicAudio = null;
+    this.stopAllMusic();
 
     for (const sound of this.soundChannels.values()) this.stopPlayback(sound);
-    for (const sound of this.retiring) this.stopPlayback(sound);
-    this.retiring.clear();
     this.soundChannels.clear();
     this.avgSoundChannels.clear();
-    this.soundBaseVolumes.clear();
-    this.soundRequestIds.clear();
+  }
+
+  async finishSoundFades(): Promise<void> {
+    // Web adaptation: the lobby releases music immediately. The audio object
+    // stays alive for the SOUND stops already submitted by the finished story.
+    this.stopAllMusic();
+    const fades: Promise<void>[] = [];
+    for (const [channel, sound] of this.soundChannels) {
+      if (sound.stopFade) {
+        fades.push(sound.stopFade.completion);
+      } else {
+        this.soundChannels.delete(channel);
+        this.stopPlayback(sound);
+      }
+    }
+    await Promise.all(fades);
+    this.destroy();
   }
 
   async playMusic(input: PlayMusicInput): Promise<void> {
@@ -139,42 +152,36 @@ export class HtmlStoryAudio implements StoryAudio {
     const url = this.resolveAudioUrl(input.key);
     if (!url) return;
 
-    // Native provenance: `CommonExecutors._GenAVGSoundChannelName` and
-    // `_ExecutePlaySoundCommand`. Ports deterministic channel ownership before
-    // playback begins, so a following soundvolume/stopsound targets this sound
-    // and the end-of-story `_ResetAudio` sweep reaches a still-delayed one.
+    // _PlayAudio<SoundParam> (2791 VA 0x1846765C0) stops the old sound and
+    // registers its replacement as the command executes. The waiting channel
+    // already has a volume and can receive a tween or a scheduled stop.
     const channel = this.soundChannelName(input.channel);
-    const requestId = (this.soundRequestIds.get(channel) ?? 0) + 1;
-    this.soundRequestIds.set(channel, requestId);
-    this.soundBaseVolumes.set(channel, input.volume);
-    this.avgSoundChannels.add(channel);
-
-    // AudioManager._PlayAudio<SoundParam> replaces the channel synchronously;
-    // delay only postpones the new sound's audible start.
-    const prev = this.soundChannels.get(channel);
-    if (prev) {
-      this.stopPlayback(prev);
-      this.soundChannels.delete(channel);
-    }
-
-    if (input.delayMs > 0)
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
-    if (this.destroyed || this.soundRequestIds.get(channel) !== requestId)
-      return;
-
-    const clip = await this.getSound(url);
-    if (
-      !clip ||
-      this.destroyed ||
-      this.soundRequestIds.get(channel) !== requestId
-    )
-      return;
-    const sound: Playback = {
+    const previous = this.soundChannels.get(channel);
+    const sound: SoundPlayback = {
       fadeGeneration: 0,
       instance: null,
-      volume: this.soundBaseVolumes.get(channel) ?? input.volume,
+      volume: input.volume,
     };
     this.soundChannels.set(channel, sound);
+    this.avgSoundChannels.add(channel);
+    this.stopPlayback(previous ?? null);
+
+    const ownsChannel = () => this.soundChannels.get(channel) === sound;
+    const canStart = () =>
+      ownsChannel() && (!sound.stopFade || nowMs() < sound.stopFade.deadline);
+    const startTime = nowMs() + input.delayMs;
+    const clip = await this.getSound(url);
+    if (!ownsChannel()) return;
+    if (!clip) {
+      this.soundChannels.delete(channel);
+      this.stopPlayback(sound);
+      return;
+    }
+
+    const remainingMs = startTime - nowMs();
+    if (remainingMs > 0)
+      await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
+    if (!canStart()) return;
 
     const instance = await this.playPlayback(clip, {
       complete: input.loop
@@ -183,41 +190,25 @@ export class HtmlStoryAudio implements StoryAudio {
             // PIXI recycles completed instances. Retire any tween still writing to it.
             sound.fadeGeneration++;
             sound.instance = null;
-            if (this.soundChannels.get(channel) === sound)
-              this.soundChannels.delete(channel);
+            if (ownsChannel()) this.soundChannels.delete(channel);
           },
       loop: input.loop,
       volume: sound.volume,
     });
 
-    // A stopsound/playsound landing while `play()` was still pending cannot
-    // reach this instance through `sound` yet, so releasing ownership without
-    // stopping it here would leave a looping sound nothing can ever silence.
-    this.claimPlayback(
-      sound,
-      instance,
-      this.soundChannels.get(channel) === sound,
-    );
+    this.claimPlayback(sound, instance, canStart());
+    if (!instance && ownsChannel()) {
+      this.soundChannels.delete(channel);
+      this.stopPlayback(sound);
+    }
   }
 
   async stopSound(channel: string, fadeMs: number): Promise<void> {
     const channelName = this.soundChannelName(channel);
-    // Web adaptation: cancellation also covers pending PIXI loads. The native
-    // command resolves the same named channel through AudioManager.
-    this.soundRequestIds.set(
-      channelName,
-      (this.soundRequestIds.get(channelName) ?? 0) + 1,
-    );
-    this.soundBaseVolumes.delete(channelName);
     this.avgSoundChannels.delete(channelName);
 
     const sound = this.soundChannels.get(channelName);
-    if (!sound) return;
-
-    await this.fadeAndStop(sound, fadeMs, () => {
-      if (this.soundChannels.get(channelName) === sound)
-        this.soundChannels.delete(channelName);
-    });
+    if (sound) await this.fadeOutSound(channelName, sound, fadeMs);
   }
 
   /**
@@ -234,23 +225,11 @@ export class HtmlStoryAudio implements StoryAudio {
     // m_allSoundChannels -> AudioChannel.Stop 0.5s linear fade-out, then the
     // set is cleared. MUSIC is global and untouched.
     //
-    // Web adaptation: native PlayAudio creates the channel at command time and
-    // only defers playback by `delay`, so the same Stop also kills a playsound
-    // still inside its delay. Here such a request has no Playback yet;
-    // bumping its requestId cancels it (and any in-flight PIXI load) instead.
+    // A scheduled sound can start during the fade. The stop deadline also
+    // guards the start if loading or the delay outlasts the fade.
     for (const channelName of this.avgSoundChannels) {
-      this.soundRequestIds.set(
-        channelName,
-        (this.soundRequestIds.get(channelName) ?? 0) + 1,
-      );
-      this.soundBaseVolumes.delete(channelName);
-
       const sound = this.soundChannels.get(channelName);
-      if (!sound) continue;
-      void this.fadeAndStop(sound, 500, () => {
-        if (this.soundChannels.get(channelName) === sound)
-          this.soundChannels.delete(channelName);
-      });
+      if (sound) void this.fadeOutSound(channelName, sound, 500);
     }
     this.avgSoundChannels.clear();
   }
@@ -260,12 +239,10 @@ export class HtmlStoryAudio implements StoryAudio {
     volume: number,
     fadeMs: number,
   ): Promise<void> {
-    const channelName = this.soundChannelName(channel);
-    this.soundBaseVolumes.set(channelName, volume);
-
-    const sound = this.soundChannels.get(channelName);
+    const sound = this.soundChannels.get(this.soundChannelName(channel));
     if (!sound) return;
 
+    sound.stopFade = undefined;
     await this.fadeVolume(sound, volume, fadeMs);
   }
 
@@ -372,6 +349,7 @@ export class HtmlStoryAudio implements StoryAudio {
     playback: Playback,
     durationMs: number,
     release?: () => void,
+    startTime = nowMs(),
   ): Promise<void> {
     // AudioChannel.Stop keeps the channel addressable until an uninterrupted
     // fade reaches zero. A later TweenVolume replaces its stop callback.
@@ -380,6 +358,7 @@ export class HtmlStoryAudio implements StoryAudio {
       0,
       durationMs <= INSTANT_STOP_MS ? 0 : durationMs,
       {
+        startTime,
         onComplete: () => {
           release?.();
           this.stopPlayback(playback);
@@ -388,11 +367,37 @@ export class HtmlStoryAudio implements StoryAudio {
     );
   }
 
+  private fadeOutSound(
+    channel: string,
+    playback: SoundPlayback,
+    fadeMs: number,
+  ): Promise<void> {
+    const startTime = nowMs();
+    const completion = this.fadeAndStop(
+      playback,
+      fadeMs,
+      () => {
+        if (this.soundChannels.get(channel) === playback)
+          this.soundChannels.delete(channel);
+      },
+      startTime,
+    );
+    playback.stopFade = { deadline: startTime + fadeMs, completion };
+    return completion;
+  }
+
   private fadeOutMusic(playback: MusicPlayback, fadeMs: number): Promise<void> {
     return this.fadeAndStop(playback, fadeMs, () => {
       if (this.musicAudio === playback) this.musicAudio = null;
       this.retiring.delete(playback);
     });
+  }
+
+  private stopAllMusic(): void {
+    this.stopPlayback(this.musicAudio);
+    this.musicAudio = null;
+    for (const music of this.retiring) this.stopPlayback(music);
+    this.retiring.clear();
   }
 
   private soundChannelName(channel: string): string {
