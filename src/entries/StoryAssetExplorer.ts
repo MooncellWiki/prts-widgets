@@ -1,8 +1,6 @@
 import { createApp } from "vue";
 
-import { PiniaColada } from "@pinia/colada";
-import { createPinia } from "pinia";
-
+import { createStores } from "../utils/pinia";
 import StoryAssetExplorer from "../widgets/StoryAssetExplorer/index.vue";
 
 const ele = document.querySelector<HTMLElement>("#root");
@@ -23,8 +21,7 @@ if (ele) {
         type: ele.dataset.type,
         id: ele.dataset.id,
       })
-        .use(createPinia())
-        .use(PiniaColada)
+        .use(createStores())
         .mount(ele);
     },
   ]);

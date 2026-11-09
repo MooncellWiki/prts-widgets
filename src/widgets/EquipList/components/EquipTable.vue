@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, inject, type Ref, ref, watch } from "vue";
+import { h, ref, watch } from "vue";
 
 import { type DataTableColumns, NDataTable } from "naive-ui";
 
@@ -7,6 +7,7 @@ import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getImagePath, isMobile } from "@/utils/utils";
 
 import { customLabel } from "../consts";
+import { useEquipListStore } from "../store";
 
 import Equip from "./Equip.vue";
 
@@ -76,7 +77,7 @@ const columns = (): DataTableColumns<EquipRow> => {
           name: row.operator,
           data: [row.data],
           simple: true,
-          simplemode: simplemode.value,
+          simplemode: store.simple,
         });
       },
     },
@@ -108,7 +109,7 @@ const pagination = ref({
   },
 });
 const loading = ref(false);
-const simplemode = inject("simple") as Ref<string>;
+const store = useEquipListStore();
 watch(props, () => {
   if (
     (pagination.value.page - 1) * pagination.value.pageSize >=

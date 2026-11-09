@@ -177,15 +177,20 @@ export default defineConfig(({ command }) => {
             if (id.includes("@mooncellwiki/prts-design-vue"))
               return "prts-design";
             if (id.includes("node_modules/pinia/")) return "pinia";
+            // Colada 和装它的 src/utils/pinia.ts 单独一块：只用 pinia 的（干员 / 道具一览）不用带上它，
+            // 也别让 src/utils 的 common 引用它们（上面的 pinia 规则匹配不到 @pinia/colada）
+            if (
+              id.includes("node_modules/@pinia/colada/") ||
+              id.includes("src/utils/pinia.ts")
+            )
+              return "pinia-colada";
             if (id.includes("howler")) return "howler";
             if (id.includes("pixi")) return "pixi";
-            // gifenc 是 SpineViewer 导出 GIF 时才动态 import 的，别并进各页都加载的 vendor；
-            // @pinia/colada 只有 StoryAssetExplorer 用，也别进 vendor（上面的 pinia 规则匹配不到它）
+            // gifenc 是 SpineViewer 导出 GIF 时才动态 import 的，别并进各页都加载的 vendor
             if (
               id.includes("@zumer/snapdom") ||
               id.includes("vue-draggable-plus") ||
-              id.includes("node_modules/gifenc/") ||
-              id.includes("node_modules/@pinia/colada/")
+              id.includes("node_modules/gifenc/")
             )
               return;
 

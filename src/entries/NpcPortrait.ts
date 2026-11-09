@@ -1,5 +1,6 @@
 import { createApp } from "vue";
 
+import { createStores, pagePinia } from "../utils/pinia";
 import NpcPortrait from "../widgets/NpcPortrait/index.vue";
 import { observePortraits } from "../widgets/NpcPortrait/observe";
 
@@ -18,10 +19,13 @@ function loadStyles(): Promise<void> {
 
 // 模板:角色考据 在每个条目里放一个占位：
 // <div class="npc-portrait" data-keys="avg_npc_048,avg_npc_1360" data-exclude="…" data-files="…" data-name="…">
+// 每个条目一个 app，共用整页的 pinia：character.json 整页只取一次
 function mount(element: HTMLElement): void {
   const { keys = "", exclude = "", files = "", name = "" } = element.dataset;
   loadStyles().then(() => {
-    createApp(NpcPortrait, { keys, exclude, files, name }).mount(element);
+    createApp(NpcPortrait, { keys, exclude, files, name })
+      .use(createStores({ pinia: pagePinia() }))
+      .mount(element);
   });
 }
 

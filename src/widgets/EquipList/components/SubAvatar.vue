@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { inject, type Ref } from "vue";
-
 import { useVModel } from "@vueuse/core";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
@@ -8,6 +6,7 @@ import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import { shadowColor } from "../consts";
+import { useEquipListStore } from "../store";
 
 import Equip from "./Equip.vue";
 
@@ -27,26 +26,13 @@ const emit = defineEmits<{
 }>();
 
 const showInfo = useVModel(props, "show", emit);
-const showEquips = inject("showEquips") as Ref<string[]>;
+const store = useEquipListStore();
 const toggleShow = (c: CharEquips) => {
-  if (c.equips.some((e) => !!e.name && showEquips.value.includes(e.name))) {
-    for (const equip of props.char.equips) {
-      if (!equip.name || !showEquips.value.includes(equip.name)) {
-        continue;
-      }
-
-      const ind = showEquips.value.indexOf(equip.name);
-      showEquips.value.splice(ind, 1);
-    }
-    showInfo.value = false;
-  } else {
-    for (const equip of props.char.equips) {
-      if (!!equip.name && !showEquips.value.includes(equip.name)) {
-        showEquips.value.push(equip.name);
-      }
-    }
-    showInfo.value = true;
-  }
+  // showInfo 读的是 props.show，刚赋完值读回来还是旧的，先记下来
+  const show = !store.isShown(c);
+  if (show) store.expand([c]);
+  else store.collapse([c]);
+  showInfo.value = show;
 };
 const locale = getLanguage();
 </script>

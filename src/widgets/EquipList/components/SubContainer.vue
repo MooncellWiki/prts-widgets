@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { inject, type Ref } from "vue";
-
 import { NCard } from "naive-ui";
 
 import { getLanguage } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
+
+import { useEquipListStore } from "../store";
 
 import SubAvatar from "./SubAvatar.vue";
 
@@ -22,28 +22,7 @@ const props = withDefaults(
   },
 );
 
-const showEquips = inject("showEquips") as Ref<string[]>;
-const expandAll = () => {
-  for (const char of props.chars) {
-    for (const equip of char.equips) {
-      if (!!equip.name && !showEquips.value.includes(equip.name)) {
-        showEquips.value.push(equip.name);
-      }
-    }
-  }
-};
-const collapseAll = () => {
-  for (const char of props.chars) {
-    for (const equip of char.equips) {
-      if (!equip.name || !showEquips.value.includes(equip.name)) {
-        continue;
-      }
-
-      const ind = showEquips.value.indexOf(equip.name);
-      showEquips.value.splice(ind, 1);
-    }
-  }
-};
+const store = useEquipListStore();
 const locale = getLanguage();
 </script>
 
@@ -81,18 +60,18 @@ const locale = getLanguage();
     <template #header-extra>
       <span
         class="mdi mdi-arrow-expand cursor-pointer p-0.5 text-xl"
-        @click="expandAll()"
+        @click="store.expand(chars)"
       />
       <span
         class="mdi mdi-arrow-collapse cursor-pointer p-0.5 text-xl"
-        @click="collapseAll()"
+        @click="store.collapse(chars)"
       />
     </template>
     <div class="flex flex-wrap">
       <SubAvatar
         v-for="(char, ind) in chars"
         :key="ind"
-        :show="char.equips.some((e) => !!e.name && showEquips.includes(e.name))"
+        :show="store.isShown(char)"
         :char="char"
       />
     </div>

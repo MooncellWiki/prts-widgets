@@ -3,6 +3,7 @@ import { createSSRApp, type Component } from "vue";
 import { setup } from "@css-render/vue3-ssr";
 import { renderToString } from "vue/server-renderer";
 
+import { createStores } from "@/utils/pinia";
 import BaseSkillList from "@/widgets/BaseSkillList/index.vue";
 import CVList from "@/widgets/CVList/index.vue";
 import EnemiesListV2 from "@/widgets/EnemiesListV2/index.vue";
@@ -70,7 +71,11 @@ export async function renderShell(name: string): Promise<RenderedShell | null> {
   const entry = shells[name];
   if (!entry) return null;
 
-  const app = createSSRApp(entry.component, entry.props);
+  // 有的外壳用 pinia / Pinia Colada。预渲染时不取数（enabled: false），查询停在 pending，外壳里是加载中的样子；
+  // 组件里自己写了 enabled 的查询会盖掉这一条，预渲染的组件里别写
+  const app = createSSRApp(entry.component, entry.props).use(
+    createStores({ queryOptions: { enabled: false } }),
+  );
   const { collect } = setup(app);
   const html = await renderToString(app);
 
