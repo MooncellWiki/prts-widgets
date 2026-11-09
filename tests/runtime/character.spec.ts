@@ -378,7 +378,7 @@ describe("StoryRuntime", () => {
         slot: "m",
         // charslot tweens join the per-slot cached Sequence; `character`
         // commands (CharacterPanel) leave this unset.
-        slotSequence: true,
+        slotSequence: { delayMs: 0, end: true },
         stop: false,
         // GetOrDefault<int>("times", 0) -- the shake vibrato / jump count.
         times: 0,
@@ -590,13 +590,14 @@ describe("StoryRuntime", () => {
         // act23side_02_beg.txt:552 pattern: `end=false` still animates -- the
         // sequence auto-plays -- but the isblock check at 0x183e4e56f sits
         // inside the `end` branch, so it does not block.
-        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,isblock=true,end=false)]',
+        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,delay=0.5,isblock=true,end=false)]',
         // The very same command with end omitted does block.
-        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,isblock=true)]',
+        '[charslot(slot="l",name="avg_npc_1",posfrom="0,-500",posto="0,0",duration=2,delay=0.5,isblock=true)]',
         '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
+      { animateRatio: 0.5 },
     );
 
     await runtime.start();
@@ -612,11 +613,14 @@ describe("StoryRuntime", () => {
       block: false,
       positionFrom: { x: 0, y: -500 },
       positionTo: { x: 0, y: 0 },
-      replaceFadeMs: 2000,
+      durationMs: 1000,
+      replaceFadeMs: 1000,
       slot: "l",
+      slotSequence: { delayMs: 500, end: false },
     });
     expect(renderer.characterCalls[2]).toMatchObject({
       block: true,
+      slotSequence: { delayMs: 500, end: true },
       slot: "l",
     });
   });

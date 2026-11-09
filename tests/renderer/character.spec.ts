@@ -1,11 +1,12 @@
 import { Container, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { createRenderer } from "../helpers/rendererFixtures";
+import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
 
 import type { Context } from "../../src/widgets/StoryPlayer/context";
+import type { AnimationClock } from "../../src/widgets/StoryPlayer/engine/execution";
 
-function createCharacterRenderer(): any {
+function createCharacterRenderer(clock?: AnimationClock): any {
   const context: Context = {
     linkMap: {
       avg_test: {
@@ -20,14 +21,28 @@ function createCharacterRenderer(): any {
     },
     script: [],
   };
-  const renderer = createRenderer(context);
+  const renderer = createRenderer(context, undefined, clock);
   renderer.buildCharacterVisual = vi.fn(async () => ({
     sourceHeight: 200,
     sourceWidth: 100,
     visual: new Container(),
   }));
-  renderer.tween = vi.fn(async () => {});
+  if (!clock) renderer.tween = vi.fn(async () => {});
   return renderer;
+}
+
+function createSequencedCharacterRenderer() {
+  const manual = createManualClock();
+  const renderer = createCharacterRenderer(manual.clock);
+  renderer.app = { stage: new Container() };
+  return {
+    frame(ms: number) {
+      manual.advance(ms);
+      manual.drainFrames();
+    },
+    manual,
+    renderer,
+  };
 }
 
 /**
@@ -384,7 +399,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("waits out the cached slot sequence for an isblock shake after an end=false enter", async () => {
-    const renderer = createLiveCharacterRenderer();
+    const { frame, manual, renderer } = createSequencedCharacterRenderer();
 
     // level_act23side_02_beg.txt:425 -- an `end=false` enter leaves a 3s
     // tween in the slot's cached Sequence (`_GetCachedSlotSeq` reuses it
@@ -400,31 +415,231 @@ describe("PixiStoryRenderer", () => {
       positionFrom: { x: 0, y: -500 },
       positionTo: { x: 0, y: 0 },
       slot: "l",
-      slotSequence: true,
+      slotSequence: { delayMs: 0, end: false },
     });
 
     // level_act23side_02_beg.txt:426 -- a 1s shake with isblock=true is
-    // INSERTed into the same Sequence (parallel, never Append): it starts at
-    // once, but the block waits for the whole sequence -- the 3s enter, not
-    // the 1s shake (native text onset measured at +2.2s for 2s+2s).
-    renderer.tween.mockClear();
-    await renderer.setCharacter({
+    // This shake has a 2s insertion offset on the same Sequence. Both
+    // tweens end 3s after the entrance, including when the second command
+    // arrives a few milliseconds later in the same browser frame.
+    manual.advance(5);
+    const wait = renderer.setCharacter({
       action: "shake",
       block: true,
       durationMs: 1000,
       power: 50,
       randomness: 90,
       slot: "l",
-      slotSequence: true,
+      slotSequence: { delayMs: 2000, end: true },
       times: 100,
     });
 
-    // The shake itself is a waypoint tween (1s) and the isblock wait for the
-    // slot's whole cached Sequence (~3s) is the second, longer one.
-    expect(renderer.tween).toHaveBeenCalledTimes(2);
-    const waitMs = renderer.tween.mock.calls.at(-1)?.[0] as number;
-    expect(waitMs).toBeGreaterThanOrEqual(2900);
-    expect(waitMs).toBeLessThanOrEqual(3000);
+    const finished = vi.fn();
+    void wait.then(finished);
+    frame(2994);
+    await Promise.resolve();
+    expect(finished).not.toHaveBeenCalled();
+    frame(1);
+    await wait;
+    expect(finished).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(renderer.characterSlots.get("l").actionY).toBe(0);
+  });
+
+  it("inserts the incoming tweens at delay and starts the outgoing fade immediately", async () => {
+    const { frame, renderer } = createSequencedCharacterRenderer();
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      expression: "1$1",
+      focusMode: "subset",
+      slot: "r",
+    });
+    const state = renderer.characterSlots.get("r");
+    const outgoing = state.visual;
+
+    const ready = renderer.setCharacter({
+      alphaFrom: 0,
+      alphaTo: 1,
+      block: true,
+      characterKey: "avg_test",
+      durationMs: 2500,
+      expression: "2$1",
+      positionFrom: { x: 400, y: 0 },
+      positionTo: { x: -100, y: 0 },
+      replaceFadeMs: 2500,
+      slot: "r",
+      slotSequence: { delayMs: 500, end: true },
+    });
+    await vi.waitFor(() => expect(state.actionX).toBe(400));
+    const finished = vi.fn();
+    void ready.then(finished);
+
+    expect(state.visual).not.toBe(outgoing);
+    expect(state.visual.alpha).toBe(0);
+    frame(499);
+    expect(outgoing.alpha).toBeCloseTo(1 - 499 / 2500);
+    expect(state.visual.alpha).toBe(0);
+    expect(state.actionX).toBe(400);
+
+    frame(626);
+    expect(state.visual.alpha).toBeCloseTo(0.25);
+    expect(state.actionX).toBeCloseTo(400 - 500 * 0.578125);
+    frame(1874);
+    await Promise.resolve();
+    expect(finished).not.toHaveBeenCalled();
+    expect(outgoing.parent).toBeNull();
+    frame(1);
+    await ready;
+    expect(state.visual.alpha).toBe(1);
+    expect(state.actionX).toBe(-100);
+  });
+
+  it.each([
+    { fadeInMs: 500, fadeOutMs: 300, finalAlpha: 1 },
+    { fadeInMs: 300, fadeOutMs: 500, finalAlpha: 0 },
+  ])(
+    "lets overlapping slot fades finish independently ($fadeInMs → $fadeOutMs ms)",
+    async ({ fadeInMs, fadeOutMs, finalAlpha }) => {
+      const { frame, renderer } = createSequencedCharacterRenderer();
+      const slotSequence = { delayMs: 0, end: true };
+      await renderer.setCharacter({
+        alphaFrom: 0,
+        alphaTo: 1,
+        characterKey: "avg_test",
+        durationMs: fadeInMs,
+        expression: "1$1",
+        slot: "l",
+        slotSequence,
+      });
+      await renderer.setCharacter({
+        alphaFrom: 1,
+        alphaTo: 0,
+        durationMs: fadeOutMs,
+        slot: "l",
+        slotSequence,
+      });
+      const state = renderer.characterSlots.get("l");
+
+      expect(state.visual.alpha).toBe(1);
+      frame(250);
+      expect(state.visual.alpha).toBeCloseTo(1 - 250 / fadeOutMs);
+      frame(50);
+      expect(state.visual.alpha).toBeCloseTo(1 - 300 / fadeOutMs);
+      frame(100);
+      expect(state.visual.alpha).toBeCloseTo(
+        fadeOutMs < fadeInMs ? 1 : 1 - 400 / fadeOutMs,
+      );
+      frame(100);
+      expect(state.visual.alpha).toBe(finalAlpha);
+    },
+  );
+
+  it("eases charslot jump displacement and its arc on the delayed timeline", async () => {
+    const { frame, renderer } = createSequencedCharacterRenderer();
+    await renderer.setCharacter({
+      action: "jump",
+      characterKey: "avg_test",
+      durationMs: 1000,
+      expression: "1$1",
+      positionTo: { x: 100, y: 40 },
+      power: 20,
+      slot: "m",
+      slotSequence: { delayMs: 500, end: true },
+      times: 1,
+    });
+    const state = renderer.characterSlots.get("m");
+    frame(499);
+    expect(state.actionX).toBe(0);
+    expect(state.actionY).toBe(0);
+    expect(state.jumpOffsetY).toBe(0);
+    frame(251);
+    expect(state.actionX).toBeCloseTo(100 * 0.578125);
+    expect(state.actionY).toBeCloseTo(40 * 0.822021484375);
+    // OutCubic(0.25) is 0.578125, so the yoyo samples OutQuad(0.84375)
+    // on the descending half.
+    expect(state.jumpOffsetY).toBeCloseTo(20 * (1 - 0.15625 ** 2));
+    frame(750);
+    expect(state.actionX).toBe(100);
+    expect(state.actionY).toBe(40);
+    expect(state.jumpOffsetY).toBe(0);
+  });
+
+  it("plays a child rejected by a locked Sequence on its own", async () => {
+    const { frame, renderer } = createSequencedCharacterRenderer();
+    await renderer.setCharacter({
+      alphaFrom: 0,
+      alphaTo: 1,
+      characterKey: "avg_test",
+      durationMs: 500,
+      expression: "1$1",
+      slot: "r",
+      slotSequence: { delayMs: 0, end: false },
+    });
+    frame(100);
+
+    // Insert fails after the first update. The move starts independently
+    // while isblock waits for the cached fade's remaining 400ms.
+    const ready = renderer.setCharacter({
+      block: true,
+      durationMs: 1000,
+      positionFrom: { x: 0, y: 0 },
+      positionTo: { x: 100, y: 0 },
+      slot: "r",
+      slotSequence: { delayMs: 500, end: true },
+    });
+    const state = renderer.characterSlots.get("r");
+    frame(100);
+    expect(state.actionX).toBeCloseTo(27.1);
+    frame(300);
+    await ready;
+    expect(state.visual.alpha).toBe(1);
+    expect(state.actionX).toBeCloseTo(78.4);
+    frame(600);
+    expect(state.actionX).toBe(100);
+  });
+
+  it("delays a zero-duration named fade while applying the instant move", async () => {
+    const { frame, renderer } = createSequencedCharacterRenderer();
+    await renderer.setCharacter({
+      alphaFrom: 0,
+      alphaTo: 1,
+      characterKey: "avg_test",
+      durationMs: 0,
+      expression: "1$1",
+      positionFrom: { x: -100, y: 0 },
+      positionTo: { x: 20, y: 0 },
+      slot: "m",
+      slotSequence: { delayMs: 500, end: true },
+    });
+    const state = renderer.characterSlots.get("m");
+    expect(state.actionX).toBe(20);
+    frame(499);
+    expect(state.visual.alpha).toBe(0);
+    frame(1);
+    expect(state.visual.alpha).toBe(1);
+  });
+
+  it("settles the cached wait when clearing all slots", async () => {
+    const { frame, renderer } = createSequencedCharacterRenderer();
+    await renderer.setCharacter({
+      characterKey: "avg_test",
+      expression: "1$1",
+      focusMode: "subset",
+      slot: "m",
+    });
+    const ready = renderer.setCharacter({
+      alphaFrom: 1,
+      alphaTo: 0,
+      block: true,
+      durationMs: 1000,
+      slot: "m",
+      slotSequence: { delayMs: 500, end: true },
+    });
+    const oldVisual = renderer.characterSlots.get("m").visual;
+    await renderer.clearCharacters();
+    await ready;
+    frame(1500);
+    expect(oldVisual.alpha).toBe(1);
+    expect(renderer.characterSlots.size).toBe(0);
   });
 
   it("ignores a bare posto without posfrom or action=jump", async () => {
@@ -587,10 +802,9 @@ describe("PixiStoryRenderer", () => {
     });
 
     expect(renderer.tween).toHaveBeenCalledTimes(1);
-    const [durationMs, step, done] = renderer.tween.mock.calls.at(-1) as [
+    const [durationMs, step] = renderer.tween.mock.calls.at(-1) as [
       number,
       (progress: number) => void,
-      () => void,
     ];
     expect(durationMs).toBe(400);
     const state = renderer.characterSlots.get("m");
@@ -607,7 +821,7 @@ describe("PixiStoryRenderer", () => {
     expect(state.contentAlpha).toBeCloseTo(-0.5);
     expect(state.visual.alpha).toBe(0);
 
-    done();
+    step(1);
     expect(state.contentAlpha).toBe(-1);
     expect(state.visual.alpha).toBe(0);
   });
