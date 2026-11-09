@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, provide, useTemplateRef } from "vue";
+import { computed, onMounted, onUnmounted, useTemplateRef } from "vue";
 
 import {
   AkButton,
@@ -11,6 +11,7 @@ import {
   AkToastProvider,
 } from "@mooncellwiki/prts-design-vue";
 import { isClient, useElementSize, useEventListener } from "@vueuse/core";
+import { storeToRefs } from "pinia";
 
 import ListPager from "@/components/list/ListPager.vue";
 import { useHostTheme } from "@/utils/useHostTheme";
@@ -21,7 +22,7 @@ import ResultBar from "./components/ResultBar.vue";
 import ResultCards from "./components/ResultCards.vue";
 import ResultWall from "./components/ResultWall.vue";
 import Toolbar from "./components/Toolbar.vue";
-import { createExplorer, explorerKey, readHash } from "./store";
+import { readHash, useExplorerStore } from "./store";
 import { RESOURCE_TYPE_OPTIONS, type StoryResourceType } from "./utils";
 
 /**
@@ -29,6 +30,7 @@ import { RESOURCE_TYPE_OPTIONS, type StoryResourceType } from "./utils";
  * 类型页签 → 工具条（搜索 · 排序 · 显示方式 · 角色分类）→ 结果栏（条数 · 已选条件 · 复制链接 · 分页）→ 结果 → 详情对话框。
  * 资源列表与统计由 torappu 的 /api/v1/story-resources/explore 按页返回，搜索 / 排序 / 分类 / 合并均由后端完成；
  * 详情里的使用记录按需取（/api/v1/story-resource-usages + cargo 的 story 表）。
+ * 状态都在 store.ts（pinia）里，character.json 与详情里的请求走 Pinia Colada（queries.ts）。
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.sae-* 是这页自己的排布。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替芯片翻状态。
  */
@@ -39,19 +41,11 @@ const props = defineProps<{
   id?: string;
 }>();
 
-const store = createExplorer({ type: props.type, id: props.id });
-provide(explorerKey, store);
-const {
-  state,
-  status,
-  error,
-  loaded,
-  counts,
-  pageList,
-  page,
-  pageCount,
-  query,
-} = store;
+const store = useExplorerStore();
+store.init({ type: props.type, id: props.id });
+const { state } = store;
+const { status, error, loaded, counts, pageList, page, pageCount, query } =
+  storeToRefs(store);
 
 /* 分享链接的 # 参数：打开时读一次，之后只在地址栏的 # 变了时再读，不往回写。不带 = 的是页内锚点，不当成清空 */
 const loadHash = () => {
@@ -61,6 +55,7 @@ if (isClient) loadHash();
 useEventListener("hashchange", loadHash);
 
 onMounted(() => store.start());
+onUnmounted(() => store.$dispose());
 
 const theme = useHostTheme();
 

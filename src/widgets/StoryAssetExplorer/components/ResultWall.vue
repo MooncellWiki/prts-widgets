@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { useExplorer } from "../store";
+import { storeToRefs } from "pinia";
+
+import { useExplorerStore } from "../store";
 import {
   resourcePreview,
   thumbEdge,
@@ -13,8 +15,9 @@ import ResourceImage from "./ResourceImage.vue";
  * 结果 · 小图：同改版前「剧情资源概览」的图墙——只有图，一格挨一格，一屏看得下上百张。
  * 资源名和剧本数放在悬停 / 聚焦的提示里（气泡由根组件画），读屏另给一遍文字；点开是详情。
  */
-const store = useExplorer();
-const { state, pageList, links, linksError, webp } = store;
+const store = useExplorerStore();
+const { state } = store;
+const { pageList, links, linksError, webp } = storeToRefs(store);
 
 const wide = (type: StoryResourceType) =>
   type === "background" || type === "image";

@@ -2,18 +2,19 @@
 import { computed } from "vue";
 
 import { AkButton, AkSpinner } from "@mooncellwiki/prts-design-vue";
+import { storeToRefs } from "pinia";
 
 import ListResultBar from "@/components/list/ListResultBar.vue";
 
-import { PAGE_STEPS, useExplorer } from "../store";
+import { PAGE_STEPS, useExplorerStore } from "../store";
 import { CHARACTER_CATEGORIES, resourceTypeUnit } from "../utils";
 
 /** 结果栏：后端匹配数量 · 已选条件 · 复制链接 · 每页条数 · 分页。结果还在屏幕上时，请求失败的提示和重试放这里 */
 defineProps<{ narrow: boolean }>();
 
-const store = useExplorer();
+const store = useExplorerStore();
+const { state } = store;
 const {
-  state,
   status,
   error,
   loaded,
@@ -22,7 +23,7 @@ const {
   total,
   page,
   pageCount,
-} = store;
+} = storeToRefs(store);
 
 const tags = computed(() => {
   if (state.type !== "character" || !state.cat) return [];

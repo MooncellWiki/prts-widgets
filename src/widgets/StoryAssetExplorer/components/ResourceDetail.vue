@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from "vue";
+import { computed, ref } from "vue";
 
 import {
   AkButton,
@@ -11,16 +11,14 @@ import {
   AkTag,
   useToast,
 } from "@mooncellwiki/prts-design-vue";
+import { useQuery } from "@pinia/colada";
+import { storeToRefs } from "pinia";
 
 import { wikiFileName } from "../../NpcPortrait/resolve";
 import { composeCharacter, downloadUrl, saveBlob } from "../download";
-import { useExplorer } from "../store";
-import {
-  assetStorageUrl,
-  loadUsages,
-  wikiFileExists,
-  type UsageResult,
-} from "../usages";
+import { usagesQuery, wikiFileQuery } from "../queries";
+import { useExplorerStore } from "../store";
+import { assetStorageUrl } from "../usages";
 import {
   CHARACTER_CATEGORIES,
   buildFaceGallery,
@@ -40,18 +38,10 @@ import UsageTable from "./UsageTable.vue";
  * 下面是用到它的剧本。底栏沿着当前结果翻上一个 / 下一个（← / → 键同）。
  * 改版前点图进的是文件页：大图、原图、文件用途；这里都有，文件用途换成了按剧本反查（准确到每个剧本）。
  */
-const store = useExplorer();
-const {
-  state,
-  detail,
-  status,
-  error,
-  links,
-  linksError,
-  webp,
-  bases,
-  matchedTotal,
-} = store;
+const store = useExplorerStore();
+const { state, detail } = store;
+const { status, error, links, linksError, webp, bases, matchedTotal } =
+  storeToRefs(store);
 const toast = useToast();
 
 const show = computed({
@@ -78,34 +68,26 @@ const category = computed(
     )?.label,
 );
 
-// ── 使用的剧本 ──
-const usage = shallowRef<UsageResult | null>(null);
-const usageError = ref("");
-let usageToken = 0;
-
-async function fetchUsages(): Promise<void> {
+// ── 使用的剧本（按资源缓存，见 queries.ts） ──
+const usageQuery = useQuery(() => {
   const current = resource.value;
-  if (!current) return;
-  const token = ++usageToken;
-  usage.value = null;
-  usageError.value = "";
-  try {
-    const result = await loadUsages(current.type, current.id);
-    if (token === usageToken) usage.value = result;
-  } catch (error) {
-    if (token !== usageToken) return;
-    console.warn("[StoryAssetExplorer]", error);
-    usageError.value = error instanceof Error ? error.message : String(error);
-  }
-}
-
-watch(
-  () => resource.value && `${resource.value.type}:${resource.value.id}`,
-  (key) => {
-    if (key) fetchUsages();
-  },
-  { immediate: true },
-);
+  // 没打开资源时 key 随便给一个，enabled 关着不会去取
+  return {
+    ...usagesQuery({
+      type: current?.type ?? state.type,
+      id: current?.id ?? "",
+    }),
+    enabled: current !== undefined,
+  };
+});
+/** 还没取到（含失败后重取）时是 null，出骨架 */
+const usage = computed(() => usageQuery.data.value ?? null);
+/** 重取期间不算失败，先出骨架 */
+const usageError = computed(() => {
+  const cause = usageQuery.error.value;
+  if (!cause || usageQuery.isLoading.value) return "";
+  return cause instanceof Error ? cause.message : String(cause);
+});
 
 /** 剧中名：各剧本里这个角色显示过的名字，按出现次数排 */
 const displayNames = computed(() => {
@@ -194,17 +176,12 @@ const wikiFile = computed(() => {
   const path = item?.face ?? item?.image;
   return path ? wikiFileName(path.split("/")[0], name) : null;
 });
-const wikiFileFound = ref(false);
-watch(
-  wikiFile,
-  async (title) => {
-    wikiFileFound.value = false;
-    if (!title) return;
-    const found = await wikiFileExists(title);
-    if (title === wikiFile.value) wikiFileFound.value = found;
-  },
-  { immediate: true },
-);
+const wikiFileCheck = useQuery(() => ({
+  ...wikiFileQuery(wikiFile.value ?? ""),
+  enabled: wikiFile.value !== null,
+}));
+/** 查到了才出链接；换了文件、还没查完时不出 */
+const wikiFileFound = computed(() => wikiFileCheck.data.value === true);
 
 // ── 操作 ──
 async function copy(text: string, title: string): Promise<void> {
@@ -246,7 +223,7 @@ async function download(part: "image" | "face"): Promise<void> {
 }
 
 // ── 上一个 / 下一个 ──
-const position = computed(() => store.detailIndex.value);
+const position = computed(() => store.detailIndex);
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -467,7 +444,7 @@ const faceThumb = (url: string) => cdnImageUrl(url, "resize,l_128", webp.value);
         </h3>
         <AkMessage v-if="usageError" variant="danger" title="剧本列表没取到">
           {{ usageError }}
-          <AkButton variant="link" size="xs" @click="fetchUsages"
+          <AkButton variant="link" size="xs" @click="usageQuery.refetch()"
             >重试</AkButton
           >
         </AkMessage>

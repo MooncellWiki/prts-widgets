@@ -7,18 +7,20 @@ import {
   AkTabs,
   type SelectOption,
 } from "@mooncellwiki/prts-design-vue";
+import { storeToRefs } from "pinia";
 
 import ListToolbar from "@/components/list/ListToolbar.vue";
 
-import { useExplorer, type SortKey, type ViewMode } from "../store";
+import { useExplorerStore, type SortKey, type ViewMode } from "../store";
 import { CHARACTER_CATEGORIES, type CharacterCategory } from "../utils";
 
 /**
  * 工具条：搜索 · 排序（资源名 / 剧本数 + 升降）· 显示方式（大图 / 小图）；
  * 角色页签多一行：分类（干员 / NPC / 其他）与「按角色合并」。
  */
-const store = useExplorer();
-const { state, loaded, categoryCounts } = store;
+const store = useExplorerStore();
+const { state } = store;
+const { loaded, categoryCounts } = storeToRefs(store);
 
 const SORT_OPTIONS: SelectOption[] = [
   { label: "资源名", value: "id" },

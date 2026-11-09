@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@mooncellwiki/prts-design-vue": "0.1.35",
+    "@pinia/colada": "^1.4.9",
     "@pixi/sound": "^6.0.2",
     "@sentry/browser": "^11.10.0",
     "@urlpack/json": "^2.0.1",

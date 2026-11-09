@@ -1,15 +1,16 @@
-import { createApp, effectScope, h, nextTick, type EffectScope } from "vue";
+import { createApp, h, nextTick, type App, type Component } from "vue";
 
 import { AkToastProvider } from "@mooncellwiki/prts-design-vue";
+import { PiniaColada } from "@pinia/colada";
+import { createPinia, disposePinia, type Pinia } from "pinia";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ResourceDetail from "../src/widgets/StoryAssetExplorer/components/ResourceDetail.vue";
 import StoryAssetExplorer from "../src/widgets/StoryAssetExplorer/index.vue";
 import {
   buildHash,
-  createExplorer,
-  explorerKey,
   readHash,
+  useExplorerStore,
 } from "../src/widgets/StoryAssetExplorer/store";
 import {
   faceUsageCounts,
@@ -140,8 +141,8 @@ describe("share link hash", () => {
   });
 });
 
-describe("createExplorer server paging", () => {
-  const scopes: EffectScope[] = [];
+describe("explorer store server paging", () => {
+  const pinias: Pinia[] = [];
   const unmounts: (() => void)[] = [];
   const entry = (id: string): Entry => {
     const resource = {
@@ -175,6 +176,39 @@ describe("createExplorer server paging", () => {
   function json(data: ExploreResponse) {
     return new Response(JSON.stringify(data));
   }
+  /** 同 entries/StoryAssetExplorer.ts：store 和组件里的 useQuery 要从 app 上取 Pinia Colada 的配置 */
+  function install(app: App, pinia = createPinia()): Pinia {
+    app.use(pinia).use(PiniaColada);
+    if (!pinias.includes(pinia)) pinias.push(pinia);
+    return pinia;
+  }
+  function createStore(initial: { type?: string; id?: string } = {}) {
+    const pinia = install(createApp({ render: () => null }));
+    const store = useExplorerStore(pinia);
+    store.init(initial);
+    return { store, pinia };
+  }
+  /** 挂一个组件；不给 pinia 时用一份新的（组件自己建 store） */
+  function mount(root: Component, pinia?: Pinia) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const app = createApp(root);
+    const used = install(app, pinia);
+    app.mount(host);
+    let mounted = true;
+    const unmount = () => {
+      if (!mounted) return;
+      mounted = false;
+      app.unmount();
+      host.remove();
+    };
+    unmounts.push(unmount);
+    return { host, pinia: used, unmount };
+  }
+  const detailRoot: Component = {
+    render: () =>
+      h(AkToastProvider, null, { default: () => h(ResourceDetail) }),
+  };
   function setup(
     handler: (url: URL, init?: RequestInit) => Promise<Response> = async () =>
       json(response()),
@@ -198,15 +232,13 @@ describe("createExplorer server paging", () => {
             ),
       ),
     );
-    const scope = effectScope();
-    scopes.push(scope);
-    const store = scope.run(() => createExplorer({}))!;
+    const { store, pinia } = createStore();
     store.setStep(2);
-    return { store, browse, scope };
+    return { store, browse, pinia };
   }
   afterEach(() => {
     unmounts.splice(0).forEach((unmount) => unmount());
-    scopes.splice(0).forEach((scope) => scope.stop());
+    pinias.splice(0).forEach((pinia) => disposePinia(pinia));
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -216,11 +248,11 @@ describe("createExplorer server paging", () => {
     await store.start();
     await vi.runAllTimersAsync();
     expect(browse).toHaveBeenCalledTimes(1);
-    expect(store.pageList.value).toEqual([first, second]);
-    expect(store.counts.value.background).toBe(7);
-    expect(store.matchedTotal.value).toBe(3);
-    expect(store.total.value).toBe(3);
-    expect(store.pageCount.value).toBe(2);
+    expect(store.pageList).toEqual([first, second]);
+    expect(store.counts.background).toBe(7);
+    expect(store.matchedTotal).toBe(3);
+    expect(store.total).toBe(3);
+    expect(store.pageCount).toBe(2);
   });
 
   it("sends filtering, grouping and sorting to the server in a single debounced request", async () => {
@@ -259,24 +291,24 @@ describe("createExplorer server paging", () => {
     );
     await store.start();
     store.setPage(2);
-    expect(store.status.value).toBe("loading");
-    expect(store.page.value).toBe(2);
-    expect(store.pageList.value).toEqual([first, second]);
-    expect(store.pageCount.value).toBe(2);
-    expect(store.matchedTotal.value).toBe(3);
-    expect(store.categoryCounts.value.npc).toBe(3);
+    expect(store.status).toBe("loading");
+    expect(store.page).toBe(2);
+    expect(store.pageList).toEqual([first, second]);
+    expect(store.pageCount).toBe(2);
+    expect(store.matchedTotal).toBe(3);
+    expect(store.categoryCounts.npc).toBe(3);
     finish(json(response({ entries: [third], page: 2 })));
     await vi.runAllTimersAsync();
-    expect(store.status.value).toBe("done");
-    expect(store.pageList.value).toEqual([third]);
+    expect(store.status).toBe("done");
+    expect(store.pageList).toEqual([third]);
   });
 
   it("keeps the results on screen while a search is debouncing", async () => {
     const { store, browse } = setup();
     await store.start();
     store.state.q = "n";
-    expect(store.status.value).toBe("loading");
-    expect(store.pageList.value).toEqual([first, second]);
+    expect(store.status).toBe("loading");
+    expect(store.pageList).toEqual([first, second]);
     expect(browse).toHaveBeenCalledTimes(1);
   });
 
@@ -291,12 +323,12 @@ describe("createExplorer server paging", () => {
     await store.start();
     store.setPage(2);
     await vi.runAllTimersAsync();
-    expect(store.status.value).toBe("error");
-    expect(store.pageList.value).toEqual([first, second]);
-    expect(store.total.value).toBe(3);
+    expect(store.status).toBe("error");
+    expect(store.pageList).toEqual([first, second]);
+    expect(store.total).toBe(3);
     failed = false;
     await store.reload();
-    expect(store.pageList.value).toEqual([third]);
+    expect(store.pageList).toEqual([third]);
   });
 
   it("shows no count until the first response, then keeps it across tab switches", async () => {
@@ -308,19 +340,19 @@ describe("createExplorer server paging", () => {
           })
         : Promise.resolve(json(response())),
     );
-    expect(store.loaded.value).toBe(false);
+    expect(store.loaded).toBe(false);
     await store.start();
-    expect(store.loaded.value).toBe(true);
+    expect(store.loaded).toBe(true);
     store.setType("background");
     await vi.advanceTimersByTimeAsync(0);
-    expect(store.pageList.value).toEqual([]);
-    expect(store.counts.value.character).toBe(3);
-    expect(store.matchedTotal.value).toBe(7);
-    expect(store.total.value).toBe(7);
-    expect(store.pageCount.value).toBe(4);
+    expect(store.pageList).toEqual([]);
+    expect(store.counts.character).toBe(3);
+    expect(store.matchedTotal).toBe(7);
+    expect(store.total).toBe(7);
+    expect(store.pageCount).toBe(4);
     finish(json(response({ entries: [third], total: 7, matchedTotal: 7 })));
     await vi.runAllTimersAsync();
-    expect(store.pageList.value).toEqual([third]);
+    expect(store.pageList).toEqual([third]);
   });
 
   it("does not request again when nothing the server sees has changed", async () => {
@@ -337,7 +369,7 @@ describe("createExplorer server paging", () => {
     store.setPage(1);
     await vi.runAllTimersAsync();
     expect(browse).toHaveBeenCalledTimes(2);
-    expect(store.status.value).toBe("done");
+    expect(store.status).toBe("done");
   });
 
   it("searches the normalized text and caps a long paste", async () => {
@@ -356,9 +388,6 @@ describe("createExplorer server paging", () => {
   });
 
   it("does not retry a failing character.json on every keystroke", async () => {
-    vi.resetModules();
-    const { createExplorer: createFresh } =
-      await import("../src/widgets/StoryAssetExplorer/store");
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.useFakeTimers();
     vi.stubGlobal("Image", undefined);
@@ -368,9 +397,7 @@ describe("createExplorer server paging", () => {
         : json(response()),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const scope = effectScope();
-    scopes.push(scope);
-    const store = scope.run(() => createFresh({ type: "background" }))!;
+    const { store } = createStore({ type: "background" });
     const requested = () =>
       fetchMock.mock.calls.filter(([url]) => url.endsWith("/character.json"))
         .length;
@@ -380,7 +407,7 @@ describe("createExplorer server paging", () => {
     await nextTick();
     await vi.runAllTimersAsync();
     expect(requested()).toBe(1);
-    expect(store.linksError.value).toBe(true);
+    expect(store.linksError).toBe(true);
     for (const q of ["a", "ab", "abc"]) {
       store.state.q = q;
       await vi.advanceTimersByTimeAsync(250);
@@ -388,7 +415,7 @@ describe("createExplorer server paging", () => {
     store.setPage(2);
     await vi.runAllTimersAsync();
     expect(requested()).toBe(1);
-    expect(store.linksError.value).toBe(true);
+    expect(store.linksError).toBe(true);
   });
 
   it("uses server union counts and group members without recomputing max or sorting", async () => {
@@ -402,14 +429,14 @@ describe("createExplorer server paging", () => {
       json(response({ entries: [third, merged] })),
     );
     await store.start();
-    expect(store.pageList.value.map((item) => item.resource.id)).toEqual([
+    expect(store.pageList.map((item) => item.resource.id)).toEqual([
       third.resource.id,
       first.resource.id,
     ]);
-    expect(store.pageList.value[1].count).toBe(5);
+    expect(store.pageList[1].count).toBe(5);
     store.open(second.resource.id);
     expect(store.find(second.resource.id)).toEqual(second.resource);
-    expect(store.detailIndex.value).toBe(1);
+    expect(store.detailIndex).toBe(1);
     expect(browse).toHaveBeenCalledTimes(1);
   });
 
@@ -443,12 +470,12 @@ describe("createExplorer server paging", () => {
     expect(new URL(browse.mock.calls[1][0]).searchParams.get("focus")).toBe(
       target.resource.id,
     );
-    expect(store.page.value).toBe(2);
-    expect(store.detailIndex.value).toBe(2);
+    expect(store.page).toBe(2);
+    expect(store.detailIndex).toBe(2);
     await store.move(-1);
     expect(store.detail.id).toBe(current.resource.id);
-    expect(store.page.value).toBe(1);
-    expect(store.detailIndex.value).toBe(1);
+    expect(store.page).toBe(1);
+    expect(store.detailIndex).toBe(1);
   });
 
   it("opens shared resources on the correct page without a second startup request", async () => {
@@ -469,9 +496,9 @@ describe("createExplorer server paging", () => {
     expect(new URL(browse.mock.calls[0][0]).searchParams.get("focus")).toBe(
       third.resource.id,
     );
-    expect(store.page.value).toBe(2);
+    expect(store.page).toBe(2);
     expect(store.find(third.resource.id)).toEqual(third.resource);
-    expect(store.detailIndex.value).toBe(2);
+    expect(store.detailIndex).toBe(2);
     expect(store.detail.face).toBe("1$1");
   });
 
@@ -481,9 +508,9 @@ describe("createExplorer server paging", () => {
     );
     store.applyHash({ q: "missing", open: third.resource.id });
     await store.start();
-    expect(store.pageList.value).toEqual([]);
+    expect(store.pageList).toEqual([]);
     expect(store.find(third.resource.id)).toEqual(third.resource);
-    expect(store.detailIndex.value).toBe(-1);
+    expect(store.detailIndex).toBe(-1);
   });
 
   it("loads just the adjacent page when navigating across the detail page boundary", async () => {
@@ -502,7 +529,7 @@ describe("createExplorer server paging", () => {
     await store.move(1);
     await vi.runAllTimersAsync();
     expect(store.detail.id).toBe(third.resource.id);
-    expect(store.detailIndex.value).toBe(2);
+    expect(store.detailIndex).toBe(2);
     expect(browse).toHaveBeenCalledTimes(2);
     await store.move(1);
     expect(browse).toHaveBeenCalledTimes(2);
@@ -522,10 +549,10 @@ describe("createExplorer server paging", () => {
     store.state.q = "new";
     expect(browse.mock.calls[0][1]?.signal?.aborted).toBe(true);
     await vi.advanceTimersByTimeAsync(250);
-    expect(store.pageList.value).toEqual([third]);
+    expect(store.pageList).toEqual([third]);
     finish(json(response()));
     await loading;
-    expect(store.pageList.value).toEqual([third]);
+    expect(store.pageList).toEqual([third]);
   });
 
   it("shows errors and retries only the requested page", async () => {
@@ -534,17 +561,17 @@ describe("createExplorer server paging", () => {
       failed ? new Response("", { status: 503 }) : json(response()),
     );
     await store.start();
-    expect(store.status.value).toBe("error");
-    expect(store.error.value).toContain("503");
+    expect(store.status).toBe("error");
+    expect(store.error).toContain("503");
     failed = false;
     await store.reload();
-    expect(store.status.value).toBe("done");
+    expect(store.status).toBe("done");
     expect(browse).toHaveBeenCalledTimes(2);
   });
 
   it("shows a failed page transition in the cached detail and retries the original target", async () => {
     let failed = true;
-    const { store, browse } = setup(async (url) => {
+    const { store, browse, pinia } = setup(async (url) => {
       if (url.searchParams.get("page") !== "2") return json(response());
       return failed
         ? new Response("", { status: 503 })
@@ -552,21 +579,10 @@ describe("createExplorer server paging", () => {
     });
     await store.start();
     store.open(second.resource.id);
-    const host = document.createElement("div");
-    document.body.append(host);
-    const app = createApp({
-      render: () =>
-        h(AkToastProvider, null, { default: () => h(ResourceDetail) }),
-    });
-    app.provide(explorerKey, store);
-    app.mount(host);
-    unmounts.push(() => {
-      app.unmount();
-      host.remove();
-    });
+    const { host } = mount(detailRoot, pinia);
     await store.move(1);
     await nextTick();
-    expect(store.status.value).toBe("error");
+    expect(store.status).toBe("error");
     expect(store.find(second.resource.id)).toEqual(second.resource);
     const dialog = host.querySelector("dialog")!;
     expect(dialog.open).toBe(true);
@@ -579,16 +595,16 @@ describe("createExplorer server paging", () => {
     failed = false;
     retry.click();
     await vi.runAllTimersAsync();
-    expect(store.status.value).toBe("done");
-    expect(store.error.value).toBe("");
+    expect(store.status).toBe("done");
+    expect(store.error).toBe("");
     expect(store.detail.id).toBe(third.resource.id);
-    expect(store.detailIndex.value).toBe(2);
+    expect(store.detailIndex).toBe(2);
     expect(dialog.querySelector(".sae-detail__pos")?.textContent).toBe("3 / 3");
     expect(dialog.textContent).not.toContain("资源读取失败");
     expect(browse.mock.calls[2][0]).toBe(browse.mock.calls[1][0]);
     await store.move(-1);
     expect(store.detail.id).toBe(second.resource.id);
-    expect(store.detailIndex.value).toBe(1);
+    expect(store.detailIndex).toBe(1);
   });
 
   it("discards a failed detail transition when the filters change", async () => {
@@ -611,9 +627,9 @@ describe("createExplorer server paging", () => {
     await store.move(1);
     store.state.q = "new";
     await vi.advanceTimersByTimeAsync(250);
-    expect(store.status.value).toBe("done");
+    expect(store.status).toBe("done");
     expect(store.detail.id).toBe(second.resource.id);
-    expect(store.pageList.value).toEqual([third]);
+    expect(store.pageList).toEqual([third]);
     expect(new URL(browse.mock.calls[2][0]).searchParams.get("focus")).toBe(
       second.resource.id,
     );
@@ -633,8 +649,8 @@ describe("createExplorer server paging", () => {
     store.close();
     failed = false;
     await store.reload();
-    expect(store.status.value).toBe("done");
-    expect(store.pageList.value).toEqual([third]);
+    expect(store.status).toBe("done");
+    expect(store.pageList).toEqual([third]);
     expect(store.detail.id).toBeNull();
   });
 
@@ -649,15 +665,15 @@ describe("createExplorer server paging", () => {
     await store.start();
     store.open(second.resource.id);
     await store.move(1);
-    expect(store.status.value).toBe("error");
-    expect(store.page.value).toBe(2);
+    expect(store.status).toBe("error");
+    expect(store.page).toBe(2);
     await store.move(1);
     expect(store.detail.id).toBe(second.resource.id);
     expect(browse).toHaveBeenCalledTimes(3);
     failed = false;
     await store.move(1);
     expect(store.detail.id).toBe(third.resource.id);
-    expect(store.detailIndex.value).toBe(2);
+    expect(store.detailIndex).toBe(2);
   });
 
   it("locates a card opened while results are out of date", async () => {
@@ -671,13 +687,13 @@ describe("createExplorer server paging", () => {
     failed = true;
     store.state.cat = "npc";
     await vi.runAllTimersAsync();
-    expect(store.status.value).toBe("error");
+    expect(store.status).toBe("error");
     store.open(first.resource.id);
     expect(new URL(browse.mock.calls[2][0]).searchParams.get("focus")).toBe(
       first.resource.id,
     );
     await vi.runAllTimersAsync();
-    expect(store.status.value).toBe("done");
+    expect(store.status).toBe("done");
   });
 
   it("leaves the pager mounted and focused while the next page loads", async () => {
@@ -689,14 +705,7 @@ describe("createExplorer server paging", () => {
           })
         : Promise.resolve(json(response({ pageSize: 60 }))),
     );
-    const host = document.createElement("div");
-    document.body.append(host);
-    const app = createApp(StoryAssetExplorer);
-    app.mount(host);
-    unmounts.push(() => {
-      app.unmount();
-      host.remove();
-    });
+    const { host } = mount(StoryAssetExplorer);
     await vi.runAllTimersAsync();
     await nextTick();
     const pager = host.querySelector('[aria-label="分页（底部）"]')!;
@@ -722,11 +731,73 @@ describe("createExplorer server paging", () => {
   });
 
   it("cancels queued searches when the widget unmounts", async () => {
-    const { store, browse, scope } = setup();
-    await store.start();
-    store.state.q = "later";
-    scope.stop();
+    const { browse } = setup();
+    const { pinia, unmount } = mount(StoryAssetExplorer);
     await vi.runAllTimersAsync();
     expect(browse).toHaveBeenCalledTimes(1);
+    useExplorerStore(pinia).state.q = "later";
+    unmount();
+    await vi.runAllTimersAsync();
+    expect(browse).toHaveBeenCalledTimes(1);
+  });
+
+  it("caches usages per resource and refetches a failed one on retry", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { store, pinia } = setup();
+    const fallback = globalThis.fetch;
+    let failed = true;
+    const usages = vi.fn(async (url: string) =>
+      failed
+        ? new Response("", { status: 503 })
+        : new Response(
+            JSON.stringify({
+              usages: [
+                {
+                  scriptPath: `obt/${new URL(url).searchParams.get("id")}`,
+                  displayNames: [],
+                },
+              ],
+            }),
+          ),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) =>
+        url.includes("/story-resource-usages?")
+          ? usages(url)
+          : fallback(url, init),
+      ),
+    );
+    await store.start();
+    const { host } = mount(detailRoot, pinia);
+    const dialog = () => host.querySelector("dialog")!;
+    const settle = async () => {
+      await vi.runAllTimersAsync();
+      await nextTick();
+    };
+
+    store.open(first.resource.id);
+    await settle();
+    expect(usages).toHaveBeenCalledTimes(1);
+    expect(dialog().textContent).toContain("剧本列表没取到");
+
+    failed = false;
+    [...dialog().querySelectorAll("button")]
+      .find((button) => button.textContent?.trim() === "重试")!
+      .click();
+    await settle();
+    expect(usages).toHaveBeenCalledTimes(2);
+    expect(dialog().textContent).not.toContain("剧本列表没取到");
+    expect(dialog().textContent).toContain(`obt/${first.resource.id}`);
+
+    store.open(second.resource.id);
+    await settle();
+    expect(usages).toHaveBeenCalledTimes(3);
+    expect(dialog().textContent).toContain(`obt/${second.resource.id}`);
+
+    store.open(first.resource.id);
+    await settle();
+    expect(usages).toHaveBeenCalledTimes(3);
+    expect(dialog().textContent).toContain(`obt/${first.resource.id}`);
   });
 });

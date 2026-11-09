@@ -97,36 +97,25 @@ function truncationNotice(usagesTruncated: boolean, cargoTruncated: boolean) {
   return "";
 }
 
-const cache = new Map<string, Promise<UsageResult>>();
-
 /**
  * 哪些剧本用了这个资源（torappu 的反查接口，分页取完），再按剧本路径到 cargo 的 story 表查剧情页面。
- * 结果按资源缓存：详情里来回翻不重复请求；失败的不缓存，重试会重新取。
+ * 缓存见 queries.ts 的 usagesQuery：详情里来回翻不重复请求；失败的下次用到时重新取。
  */
-export function loadUsages(
+export async function fetchUsages(
   type: StoryResourceType,
   id: string,
 ): Promise<UsageResult> {
-  const key = `${type}:${id}`;
-  let pending = cache.get(key);
-  if (!pending) {
-    pending = (async () => {
-      const usages = await fetchUsageItems(type, id);
-      const stories = await fetchCargoStories(
-        usages.items.map((item) => item.scriptPath),
-      );
-      return {
-        rows: usages.items.map((item) => ({
-          ...item,
-          story: stories.map.get(item.scriptPath),
-        })),
-        truncated: truncationNotice(usages.truncated, stories.truncated),
-      };
-    })();
-    cache.set(key, pending);
-    pending.catch(() => cache.delete(key));
-  }
-  return pending;
+  const usages = await fetchUsageItems(type, id);
+  const stories = await fetchCargoStories(
+    usages.items.map((item) => item.scriptPath),
+  );
+  return {
+    rows: usages.items.map((item) => ({
+      ...item,
+      story: stories.map.get(item.scriptPath),
+    })),
+    truncated: truncationNotice(usages.truncated, stories.truncated),
+  };
 }
 
 /** torappu 资源库里这个剧本的原文 */
@@ -141,26 +130,23 @@ export function assetStorageUrl(type: StoryResourceType, id: string): string {
   return `${TORAPPU_ENDPOINT}/story?${new URLSearchParams({ type, id })}`;
 }
 
-const fileCache = new Map<string, Promise<boolean>>();
-
-/** wiki 上有没有这个文件（改版前每张图都链到文件页）；查不到或出错都当没有 */
-export function wikiFileExists(title: string): Promise<boolean> {
-  let pending = fileCache.get(title);
-  if (!pending) {
-    const params = new URLSearchParams({
-      action: "query",
-      format: "json",
-      formatversion: "2",
-      titles: `File:${title}`,
-    });
-    pending = fetch(`/api.php?${params}`)
-      .then((resp) => (resp.ok ? resp.json() : null))
-      .then(
-        (json: { query?: { pages?: { missing?: boolean }[] } } | null) =>
-          Boolean(json?.query?.pages?.[0]) && !json?.query?.pages?.[0]?.missing,
-      )
-      .catch(() => false);
-    fileCache.set(title, pending);
+/** wiki 上有没有这个文件（改版前每张图都链到文件页）；查不到或出错都当没有。缓存见 queries.ts 的 wikiFileQuery */
+export async function wikiFileExists(title: string): Promise<boolean> {
+  const params = new URLSearchParams({
+    action: "query",
+    format: "json",
+    formatversion: "2",
+    titles: `File:${title}`,
+  });
+  try {
+    const resp = await fetch(`/api.php?${params}`);
+    if (!resp.ok) return false;
+    const json = (await resp.json()) as {
+      query?: { pages?: { missing?: boolean }[] };
+    };
+    const page = json.query?.pages?.[0];
+    return Boolean(page) && !page?.missing;
+  } catch {
+    return false;
   }
-  return pending;
 }

@@ -263,27 +263,18 @@ export function parseCharacterMap(raw: unknown): CharacterLinkMap {
   return output;
 }
 
-const characterMapState: { cache: Promise<CharacterLinkMap> | null } = {
-  cache: null,
-};
-
 /**
- * 拉取并缓存 `avg/character.json`（约 1.3MB，gzip 后约 130KB），只在用到角色时调用。
- * 失败后清掉缓存，下次调用重新拉。
+ * 拉取 `avg/character.json`（约 1.3MB，gzip 后约 130KB）。缓存与失败重取由 queries.ts 的
+ * characterMapQuery 管，只在用到角色时取。
  */
-export function ensureCharacterMap(): Promise<CharacterLinkMap> {
-  characterMapState.cache ??= fetch(CHARACTER_MAP_URL)
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error(`character.json ${response.status}`);
-      }
-      return parseCharacterMap(await response.json());
-    })
-    .catch((error: unknown) => {
-      characterMapState.cache = null;
-      throw error;
-    });
-  return characterMapState.cache;
+export async function fetchCharacterMap(
+  signal?: AbortSignal,
+): Promise<CharacterLinkMap> {
+  const response = await fetch(CHARACTER_MAP_URL, { signal });
+  if (!response.ok) {
+    throw new Error(`character.json ${response.status}`);
+  }
+  return parseCharacterMap(await response.json());
 }
 
 interface ParsedCharacterListingId {
