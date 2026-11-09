@@ -822,8 +822,9 @@ describe("playsound delay and story reset", () => {
     });
     const steps = await settlePlayback();
     void audio.stopSound("d", 1280);
-    // A hidden tab suspends requestAnimationFrame. disableAutoPause keeps the
-    // sounds audible, so the fades alone would never reach their stop.
+    // A hidden tab suspends requestAnimationFrame while disableAutoPause keeps
+    // the sounds audible. Fades run on timers, so they must still reach their
+    // stops with animation frames stubbed out.
     vi.stubGlobal("requestAnimationFrame", () => 0);
     try {
       audio.resetAudio();
