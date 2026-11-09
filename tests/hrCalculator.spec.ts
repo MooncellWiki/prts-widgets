@@ -1,6 +1,6 @@
 import { createApp, nextTick } from "vue";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { avatar } from "@/utils/charImage";
 import { professionBadge, rarityStars } from "@/widgets/HrCalculator/assets";
@@ -15,12 +15,15 @@ import {
   type Combo,
   type Source,
 } from "@/widgets/HrCalculator/recruit";
+import { recruitSourceQuery } from "@/widgets/HrCalculator/source";
 import {
   decodeFilter,
   encodeFilter,
   readQuery,
   writeQuery,
 } from "@/widgets/HrCalculator/url";
+
+import { installQuery, settleQueries } from "./helpers/queries";
 
 // 词缀 / 获得方式取自现网 cargoquery（chara ⋈ char_obtain），只留用得到的几位
 const op = (
@@ -272,17 +275,25 @@ describe("HrCalculator UI smoke", () => {
     app = undefined;
     document.body.innerHTML = "";
     history.replaceState(null, "", "/w/公招计算");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   const mount = async (
     path = "/w/公招计算",
-    props: { source?: Source[]; failed?: boolean } = { source: SOURCE },
+    data: Source[] | "failed" = SOURCE,
   ) => {
     history.replaceState(null, "", path);
     const host = document.createElement("div");
     document.body.append(host);
-    app = createApp(HrCalculator, props);
+    app = createApp(HrCalculator);
+    installQuery(
+      app,
+      recruitSourceQuery.key,
+      Array.isArray(data) ? { data } : data,
+    );
     app.mount(host);
+    if (data === "failed") await settleQueries();
     await nextTick();
     return host;
   };
@@ -396,9 +407,7 @@ describe("HrCalculator UI smoke", () => {
     const angel = { zh: "能天使", charId: "char_103_angel" };
     const host = await mount(
       `/w/公招计算${writeQuery("", new Set(["高级资深干员"]))}`,
-      {
-        source: SOURCE.map((s) => (s.zh === angel.zh ? { ...s, ...angel } : s)),
-      },
+      SOURCE.map((s) => (s.zh === angel.zh ? { ...s, ...angel } : s)),
     );
     const img = host.querySelector<HTMLImageElement>(
       `img[src="${avatar(angel)}"]`,
@@ -414,7 +423,7 @@ describe("HrCalculator UI smoke", () => {
   });
 
   it("干员数据没取到：结果区是失败提示，不再转圈", async () => {
-    const host = await mount(undefined, { failed: true });
+    const host = await mount(undefined, "failed");
     expect(host.querySelector(".ak-empty")?.textContent).toContain(
       "干员数据读取失败",
     );

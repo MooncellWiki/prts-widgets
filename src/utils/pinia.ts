@@ -1,6 +1,11 @@
 import type { Plugin } from "vue";
 
-import { PiniaColada, type UseQueryOptionsGlobal } from "@pinia/colada";
+import {
+  PiniaColada,
+  useQueryCache,
+  type UseQueryOptions,
+  type UseQueryOptionsGlobal,
+} from "@pinia/colada";
 import { createPinia, type Pinia } from "pinia";
 
 /**
@@ -39,4 +44,17 @@ let shared: Pinia | undefined;
 export function pagePinia(): Pinia {
   shared ??= createPinia();
   return shared;
+}
+
+/**
+ * 挂载前先把查询发出去：入口在等皮肤样式（RLQ）时数据也在取，挂载后组件里 useQuery 同一个 key 会接上这个请求，
+ * 不用等样式到了才开始取。要在 app.use(createStores({ pinia })) 之后调（Colada 的缓存要从 app 上拿默认配置）。
+ * 失败不用管：组件挂载时看到失败的条目会再取一次，之后由组件显示失败、给重试。
+ */
+export function prefetch<TData, TError>(
+  pinia: Pinia,
+  options: UseQueryOptions<TData, TError>,
+): void {
+  const queryCache = useQueryCache(pinia);
+  queryCache.refresh(queryCache.ensure(options)).catch(() => {});
 }

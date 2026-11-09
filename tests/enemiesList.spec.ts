@@ -20,6 +20,9 @@ import {
 import { buildHash, readHash } from "@/widgets/EnemiesListV2/hash";
 import EnemiesListV2 from "@/widgets/EnemiesListV2/index.vue";
 import { sortEnemies } from "@/widgets/EnemiesListV2/sort";
+import { enemySourceQuery } from "@/widgets/EnemiesListV2/source";
+
+import { installQuery, settleQueries } from "./helpers/queries";
 
 // 字段与写法取自现网「敌人一览/数据」，只留用得到的几条
 const data = (over: Partial<EnemyData>): EnemyData => ({
@@ -363,12 +366,13 @@ describe("EnemiesListV2 UI smoke", () => {
     localStorage.clear();
     history.replaceState(null, "", "/w/敌人一览");
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   /** happy-dom 不排版，ResizeObserver 也不回调（宽度停在挂载前的 +∞）；要看窄屏的卡片就得自己报一个宽度 */
   const mount = async (
     path = "/w/敌人一览",
-    props: { source?: EnemyData[]; failed?: boolean } = { source: SOURCE },
+    data: EnemyData[] | "pending" | "failed" = SOURCE,
     width = 1200,
   ) => {
     const report: (() => void)[] = [];
@@ -395,8 +399,14 @@ describe("EnemiesListV2 UI smoke", () => {
     history.replaceState(null, "", path);
     const host = document.createElement("div");
     document.body.append(host);
-    app = createApp(EnemiesListV2, props);
+    app = createApp(EnemiesListV2);
+    installQuery(
+      app,
+      enemySourceQuery.key,
+      Array.isArray(data) ? { data } : data,
+    );
     app.mount(host);
+    if (data === "failed") await settleQueries();
     await nextTick();
     for (const fire of report) fire();
     await nextTick();
@@ -455,7 +465,7 @@ describe("EnemiesListV2 UI smoke", () => {
   });
 
   it("元抗、损抗列显示正确的等级，表头按对应抗性排序", async () => {
-    const host = await mount(undefined, { source: RESISTANCE_SOURCE });
+    const host = await mount(undefined, RESISTANCE_SOURCE);
     const headers = [...host.querySelectorAll("thead th")];
     const elementalIndex = headers.findIndex(
       (h) => h.textContent?.trim() === "元抗",
@@ -550,16 +560,26 @@ describe("EnemiesListV2 UI smoke", () => {
     expect(rows(host)).toHaveLength(5);
   });
 
-  it("数据没取到：结果区是失败提示，不转圈", async () => {
-    const host = await mount(undefined, { failed: true });
+  it("数据没取到：结果区是失败提示，不转圈；点「重新读取」重取", async () => {
+    const host = await mount(undefined, "failed");
     expect(host.querySelector(".ak-empty")?.textContent).toContain(
       "敌人数据读取失败",
     );
     expect(host.querySelector(".ak-spinner")).toBeNull();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(SOURCE))),
+    );
+    host.querySelector<HTMLButtonElement>(".ak-empty button")!.click();
+    await nextTick();
+    expect(host.querySelector(".ak-spinner")).not.toBeNull();
+    await settleQueries();
+    expect(rows(host)).toHaveLength(SOURCE.length);
   });
 
   it("外壳预渲染（没有数据）：筛选面板在，结果区转圈", async () => {
-    const host = await mount(undefined, {});
+    const host = await mount(undefined, "pending");
     expect(chip(host, "领袖").getAttribute("aria-pressed")).toBe("false");
     expect(host.querySelector(".ak-spinner")).not.toBeNull();
   });

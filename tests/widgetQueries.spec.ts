@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { renderShell } from "../src/prerender";
 import { createStores, pagePinia } from "../src/utils/pinia";
+import GachaSimulatorV2 from "../src/widgets/GachaSimulatorV2/index.vue";
 import NpcPortrait from "../src/widgets/NpcPortrait/index.vue";
+import SOExpCalc from "../src/widgets/SOExpCalc/index.vue";
 import HighShop from "../src/widgets/Shop/HighShop.vue";
 import SkinShop from "../src/widgets/Shop/SkinShop.vue";
 
@@ -44,6 +46,7 @@ describe("小部件的 Pinia Colada 查询", () => {
     for (const app of apps.splice(0)) app.unmount();
     for (const pinia of pinias.splice(0)) disposePinia(pinia);
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   /** 同一页上挂一份：每份一个 app，装同一个 pinia（同入口里的 pagePinia） */
@@ -209,11 +212,101 @@ describe("小部件的 Pinia Colada 查询", () => {
     );
   });
 
-  it("外壳预渲染不取数，停在加载中", async () => {
+  it.each([
+    ["CVList", "n-skeleton"],
+    ["EnemiesListV2", "ak-spinner"],
+    ["HrCalculator", "ak-spinner"],
+    ["BaseSkillList", "ak-spinner"],
+    ["GachaSimulatorV2", "n-spin"],
+  ])("外壳预渲染不取数，停在加载中（%s）", async (name, loading) => {
     const count = stubFetch({});
-    const shell = await renderShell("CVList");
+    const shell = await renderShell(name);
     expect(count("")).toBe(0);
-    expect(shell?.html).toContain("n-skeleton");
+    expect(shell?.html).toContain(loading);
+    expect(shell?.html).not.toContain("读取失败");
     expect(shell?.html).not.toContain("加载失败");
+  });
+
+  describe("特勤经验计算", () => {
+    const table = (charId: string, expMap: number[][]) =>
+      new Response(
+        JSON.stringify({
+          operatorDetailData: {
+            [charId]: { specialOperatorExpMap: expMap },
+          },
+        }),
+      );
+    const button = (host: HTMLElement) =>
+      host.querySelector(".soec-button")?.textContent?.trim();
+
+    it("读取中先出按钮占位，到了换成计算器", async () => {
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe() {}
+          disconnect() {}
+        },
+      );
+      stubFetch({
+        special_operator_table: () => table("char_x", [[100, 200, -1]]),
+      });
+      const host = mount(SOExpCalc, { opid: "char_x" }, newPinia());
+      expect(button(host)).toBe("特勤经验计算（读取中…）");
+      await settle();
+      expect(button(host)).toBe("特勤经验计算");
+    });
+
+    it("不是特勤干员时什么都不出", async () => {
+      stubFetch({
+        special_operator_table: () => table("char_x", [[100, -1]]),
+      });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const host = mount(SOExpCalc, { opid: "char_y" }, newPinia());
+      await settle();
+      expect(host.querySelector(".soec-button")).toBeNull();
+    });
+
+    it("读取失败时按钮改成重试，点了重取", async () => {
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe() {}
+          disconnect() {}
+        },
+      );
+      let fail = true;
+      const count = stubFetch({
+        special_operator_table: () =>
+          fail
+            ? new Response("", { status: 500 })
+            : table("char_x", [[100, 200, -1]]),
+      });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const host = mount(SOExpCalc, { opid: "char_x" }, newPinia());
+      await settle();
+      expect(button(host)).toBe("特勤经验计算（读取失败，点此重试）");
+
+      fail = false;
+      host.querySelector<HTMLElement>(".soec-button")!.click();
+      await settle();
+      expect(count("special_operator_table")).toBe(2);
+      expect(button(host)).toBe("特勤经验计算");
+    });
+  });
+
+  it("抽卡模拟器：读取中画出模拟器但点不动，失败时给重试", async () => {
+    stubFetch({
+      "gacha_table.json": () => new Response("", { status: 500 }),
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mount(
+      GachaSimulatorV2,
+      { gachaPoolId: "NORM_1", gachaBannerFile: "" },
+      newPinia(),
+    );
+    expect(host.querySelector(".n-spin-container [inert]")).not.toBeNull();
+    await settle();
+    expect(host.textContent).toContain("卡池数据读取失败，点击重试");
+    expect(host.querySelector("[inert]")).toBeNull();
   });
 });

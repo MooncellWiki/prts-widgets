@@ -22,6 +22,7 @@ import { useTheme } from "@/utils/theme";
 import { getImagePath } from "@/utils/utils";
 
 import LevelInput from "./LevelInput.vue";
+import SOECButton from "./SOECButton.vue";
 import { eliteStr } from "./consts";
 
 const i18nConfig = getNaiveUILocale();
@@ -203,10 +204,7 @@ const tableData = computed(() =>
       },
     }"
   >
-    <div class="soec-button" @click="showSOECModal = true">
-      <i class="mdi mdi-rhombus-outline"></i>
-      特勤经验计算
-    </div>
+    <SOECButton @click="showSOECModal = true" />
     <NModal
       v-model:show="showSOECModal"
       class="h-full max-w-[800px] w-full bg-black"
@@ -451,17 +449,6 @@ const tableData = computed(() =>
 
 <style scoped>
 @import "@/styles/dark-mode.scss";
-.soec-button {
-  background: linear-gradient(180deg, black, #ab9834);
-  padding: 0.3em;
-  color: #fff;
-  box-shadow: 0 3px 4px #0000004d;
-  width: calc(100% - 0.6em);
-  max-width: calc(800px - 0.6em);
-  text-align: center;
-  cursor: pointer;
-}
-
 .mdi-spin:before {
   animation: mdi-spin var(--speed) infinite linear;
 }
