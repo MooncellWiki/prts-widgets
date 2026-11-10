@@ -100,6 +100,7 @@ const assetUrls = ref<string[]>([]);
 const characterFaceAssets = ref<StoryCharacterFaceAsset[]>([]);
 
 let player: StoryPlayer | null = null;
+let closingPlayer: StoryPlayer | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let context: Context | null = null;
 const scriptText = ref<string | null>(props.script || null);
@@ -395,12 +396,14 @@ function onLoadLegacyPlayer(): void {
     return;
   }
 
+  destroyClosingPlayer();
   legacyPlayerActive.value = true;
   legacyRoot.style.removeProperty("display");
 }
 
 async function onStartPlay(): Promise<void> {
   if (!scriptText.value) return;
+  destroyClosingPlayer();
   viewMode.value = "player";
   await nextTick();
   await initAndPreload();
@@ -420,14 +423,21 @@ async function onAdvance(): Promise<void> {
   syncState();
 }
 
+function destroyClosingPlayer(): void {
+  closingPlayer?.destroy();
+  closingPlayer = null;
+}
+
 async function onSkipNode(event?: Event): Promise<void> {
   event?.stopPropagation();
-  if (!player || !preloadReady.value) return;
+  const skippedPlayer = player;
+  if (!skippedPlayer || !preloadReady.value) return;
 
-  await player.skipNode();
+  await skippedPlayer.skipNode();
+  if (player !== skippedPlayer) return;
   syncState();
   if (state.value === "finished") {
-    player.destroy();
+    closingPlayer = skippedPlayer;
     player = null;
     context = null;
     preloadReady.value = false;
@@ -436,6 +446,12 @@ async function onSkipNode(event?: Event): Promise<void> {
     if (timer) {
       clearInterval(timer);
       timer = null;
+    }
+    // 返回大厅后，音效继续走 OnReset 或 stopsound 已提交的淡停。
+    try {
+      await skippedPlayer.closeAfterStory();
+    } finally {
+      if (closingPlayer === skippedPlayer) closingPlayer = null;
     }
   }
 }
@@ -471,6 +487,7 @@ onBeforeUnmount(() => {
   }
   player?.destroy();
   player = null;
+  destroyClosingPlayer();
 });
 
 // 独立调试入口需要直接驱动 runtime（decision 自动选择、行号定位、快速

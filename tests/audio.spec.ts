@@ -4,107 +4,22 @@ import { resolveStoryAudioByKey } from "../src/widgets/StoryPlayer/engine/asset"
 import { HtmlStoryAudio } from "../src/widgets/StoryPlayer/engine/audio";
 import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
 
+import {
+  FakeSound,
+  flush,
+  loads,
+  preloaded,
+  preloadSound,
+  settleLoad,
+  settlePlayback,
+} from "./helpers/fakePixiSound";
 import { createContext, FakeRenderer } from "./helpers/runtimeFakes";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  reject: (reason: Error) => void;
-  resolve: (value: T) => void;
-}
-
-function defer<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: Error) => void;
-  const promise = new Promise<T>((done, fail) => {
-    resolve = done;
-    reject = fail;
-  });
-  return { promise, reject, resolve };
-}
-
-/** Minimal stand-in for `@pixi/sound`'s IMediaInstance. */
-class FakeInstance {
-  stopped = 0;
-  volume = 1;
-  stop(): void {
-    this.stopped += 1;
-  }
-}
-
-/**
- * `Sound.play()` returns a Promise whenever the clip is not preloaded. The
- * window between that call and its resolution is where a concurrent
- * stopsound/playsound can orphan the instance, so the fake keeps it open.
- */
-class FakeSound {
-  readonly instances: FakeInstance[] = [];
-  private pending: Deferred<FakeInstance> | null = null;
-
-  playCalls = 0;
-  volume = 1;
-  complete?: () => void;
-
-  play(options: {
-    volume: number;
-    complete?: () => void;
-  }): Promise<FakeInstance> {
-    this.playCalls++;
-    this.volume = options.volume;
-    this.complete = options.complete;
-    const pending = defer<FakeInstance>();
-    this.pending = pending;
-    return pending.promise;
-  }
-
-  settlePlay(): FakeInstance {
-    const pending = this.pending;
-    if (!pending) throw new Error("play() was not called");
-    this.pending = null;
-    const instance = new FakeInstance();
-    instance.volume = this.volume;
-    this.instances.push(instance);
-    pending.resolve(instance);
-    return instance;
-  }
-}
-
-const loads: Array<Deferred<FakeSound>> = [];
-const preloaded = new Map<string, FakeSound>();
-
-vi.mock("pixi.js", () => ({
-  Assets: {
-    get: (url: string) => preloaded.get(url),
-    load: () => {
-      const pending = defer<FakeSound>();
-      loads.push(pending);
-      return pending.promise;
-    },
-  },
+vi.mock("pixi.js", async () => ({
+  Assets: (await import("./helpers/fakePixiSound")).fakeAssets,
 }));
-
-function settleLoad(): FakeSound {
-  const pending = loads.shift();
-  if (!pending) throw new Error("Assets.load was not called");
-  const sound = new FakeSound();
-  pending.resolve(sound);
-  return sound;
-}
-
-/** Let every already-scheduled microtask (each `await`) run to completion. */
-async function flush(): Promise<void> {
-  for (let index = 0; index < 8; index += 1) await Promise.resolve();
-}
-
-async function settlePlayback(cached?: FakeSound) {
-  await flush();
-  const sound = cached ?? settleLoad();
-  await flush();
-  const instance = sound.settlePlay();
-  await flush();
-  return { instance, sound };
-}
 
 const context = { linkMap: {}, script: [] } satisfies Context;
 
@@ -178,7 +93,7 @@ describe("playmusic scheduling", () => {
   beforeEach(() => {
     loads.length = 0;
     vi.useFakeTimers({
-      toFake: ["performance", "requestAnimationFrame", "setTimeout"],
+      toFake: ["clearTimeout", "performance", "setTimeout"],
     });
   });
 
@@ -493,7 +408,7 @@ describe("playmusic scheduling", () => {
 describe("cancelable audio fades", () => {
   beforeEach(() => {
     loads.length = 0;
-    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "performance"] });
+    vi.useFakeTimers({ toFake: ["clearTimeout", "performance", "setTimeout"] });
   });
 
   afterEach(() => vi.useRealTimers());
@@ -634,8 +549,9 @@ describe("cancelable audio fades", () => {
 describe("end-of-story resetAudio", () => {
   beforeEach(() => {
     loads.length = 0;
+    preloaded.clear();
     vi.useFakeTimers({
-      toFake: ["setTimeout", "requestAnimationFrame", "performance"],
+      toFake: ["clearTimeout", "performance", "setTimeout"],
     });
   });
 
@@ -671,25 +587,59 @@ describe("end-of-story resetAudio", () => {
     expect(music.instance.stopped).toBe(0);
   });
 
-  it("cancels a delayed playsound on a channel with nothing playing yet", async () => {
+  it("lets a delayed sound start during the 500 ms story reset fade", async () => {
     const audio = new HtmlStoryAudio(context);
-    // e.g. [PlaySound(key="$blizzard", delay=0.4, loop=true, channel="bgs")]
-    // skipped to the end inside its delay.
+    const clip = preloadSound("ambience");
     void playLoop(audio, 400);
     audio.resetAudio();
     await vi.advanceTimersByTimeAsync(400);
-    await flush();
-    expect(loads).toHaveLength(0);
+    expect(clip.playCalls).toBe(1);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBeCloseTo(0.2);
+    expect(instance.stopped).toBe(0);
+    await vi.advanceTimersByTimeAsync(112);
+    expect(instance.stopped).toBe(1);
   });
 
-  it("cancels a playsound whose load is still in flight", async () => {
+  it("suppresses a sound due to start at the reset fade deadline", async () => {
     const audio = new HtmlStoryAudio(context);
-    void playLoop(audio);
+    const clip = preloadSound("ambience");
+    const pending = playLoop(audio, 500);
     audio.resetAudio();
-    await flush();
+    await vi.advanceTimersByTimeAsync(500);
+    await pending;
+    expect(clip.playCalls).toBe(0);
+  });
+
+  it("starts at the elapsed fade volume and stops on natural end without animation frames", async () => {
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    try {
+      const audio = new HtmlStoryAudio(context);
+      const clip = preloadSound("ambience");
+      void playLoop(audio, 310);
+      audio.resetAudio();
+
+      await vi.advanceTimersByTimeAsync(310);
+      const { instance } = await settlePlayback(clip);
+      expect(clip.volume).toBeCloseTo(0.38, 3);
+      await vi.advanceTimersByTimeAsync(90);
+      expect(instance.volume).toBeCloseTo(0.2);
+      expect(instance.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(instance.stopped).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("suppresses a playsound whose load completes after the reset fade deadline", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const pending = playLoop(audio);
+    audio.resetAudio();
+    await vi.advanceTimersByTimeAsync(501);
     const sound = settleLoad();
-    await flush();
-    expect(() => sound.settlePlay()).toThrow("play() was not called");
+    await pending;
+    expect(sound.playCalls).toBe(0);
   });
 
   it("leaves a channel the script already stopped on its own fade", async () => {
@@ -707,5 +657,191 @@ describe("end-of-story resetAudio", () => {
     expect(instance.volume).toBeCloseTo(0.25);
     await vi.advanceTimersByTimeAsync(800);
     expect(instance.stopped).toBe(1);
+  });
+});
+
+describe("playsound delay and story reset", () => {
+  beforeEach(() => {
+    loads.length = 0;
+    preloaded.clear();
+    vi.useFakeTimers({
+      toFake: ["clearTimeout", "performance", "setTimeout"],
+    });
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  function play(audio: HtmlStoryAudio, key: string, delayMs = 0) {
+    return audio.playSound({
+      channel: "c",
+      key,
+      delayMs,
+      loop: true,
+      volume: 1,
+    });
+  }
+
+  it("replaces the old sound immediately and applies volume commands to the delayed sound", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "first");
+    const first = await settlePlayback();
+    const nextClip = preloadSound("second");
+    void play(audio, "second", 640);
+    expect(first.instance.stopped).toBe(1);
+    await audio.setSoundVolume("c", 0.4, 0);
+    await vi.advanceTimersByTimeAsync(639);
+    expect(nextClip.playCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const second = await settlePlayback(nextClip);
+    expect(second.instance.volume).toBe(0.4);
+    expect(second.instance.stopped).toBe(0);
+  });
+
+  it("starts a delayed sound partway through a scripted stopsound fade", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const clip = preloadSound("steps");
+    void play(audio, "steps", 320);
+    const stopping = audio.stopSound("c", 640);
+    await vi.advanceTimersByTimeAsync(320);
+    expect(clip.playCalls).toBe(1);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBeCloseTo(0.5);
+    await vi.advanceTimersByTimeAsync(320);
+    await stopping;
+    expect(instance.stopped).toBe(1);
+  });
+
+  it("continues a soundvolume tween through the delayed start", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const clip = preloadSound("steps");
+    void play(audio, "steps", 320);
+    void audio.setSoundVolume("c", 0.2, 640);
+    await vi.advanceTimersByTimeAsync(320);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBeCloseTo(0.6);
+    await vi.advanceTimersByTimeAsync(320);
+    expect(instance.volume).toBeCloseTo(0.2);
+  });
+
+  it("can cancel a stop fade before a delayed sound starts", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const clip = preloadSound("steps");
+    void play(audio, "steps", 320);
+    const stopping = audio.stopSound("c", 160);
+    await vi.advanceTimersByTimeAsync(80);
+    await audio.setSoundVolume("c", 0.8, 0);
+    await vi.advanceTimersByTimeAsync(240);
+    await stopping;
+    expect(clip.playCalls).toBe(1);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBeCloseTo(0.8);
+    expect(instance.stopped).toBe(0);
+  });
+
+  it("cancels a fading sound's delayed replacement at story end, even if the channel is reused", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "first");
+    const first = await settlePlayback();
+    void audio.stopSound("c", 320);
+    await vi.advanceTimersByTimeAsync(160);
+    const delayedClip = preloadSound("second");
+    const delayed = play(audio, "second", 640);
+    expect(first.instance.stopped).toBe(1);
+    audio.resetAudio();
+    void play(audio, "third");
+    const third = await settlePlayback();
+    await vi.advanceTimersByTimeAsync(640);
+    await delayed;
+    expect(delayedClip.playCalls).toBe(0);
+    expect(third.instance.stopped).toBe(0);
+    expect(first.instance.stopped).toBe(1);
+  });
+
+  it("fades out multiple residual sounds and leaves music playing", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "loop");
+    const loop = await settlePlayback();
+    void audio.playMusic({ key: "bgm", volume: 1, delayMs: 0, crossfadeMs: 0 });
+    const music = await settlePlayback();
+    void audio.playSound({
+      channel: "d",
+      key: "another",
+      delayMs: 0,
+      loop: true,
+      volume: 1,
+    });
+    const other = await settlePlayback();
+    audio.resetAudio();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(loop.instance.volume).toBeCloseTo(0.2);
+    expect(other.instance.volume).toBeCloseTo(0.2);
+    await vi.advanceTimersByTimeAsync(112);
+    expect(loop.instance.stopped).toBe(1);
+    expect(other.instance.stopped).toBe(1);
+    expect(music.instance.stopped).toBe(0);
+  });
+
+  it("keeps a canceled load from claiming a channel reused after reset", async () => {
+    const audio = new HtmlStoryAudio(context);
+    const pending = play(audio, "old");
+    const oldLoad = loads.shift()!;
+    audio.resetAudio();
+    void play(audio, "new");
+    const current = await settlePlayback();
+    const staleSound = new FakeSound();
+    const stalePlay = vi.spyOn(staleSound, "play");
+    oldLoad.resolve(staleSound);
+    await flush();
+    expect(stalePlay).not.toHaveBeenCalled();
+    await pending;
+    expect(current.instance.stopped).toBe(0);
+  });
+
+  it("hard-stops residual sounds if the player is destroyed during reset", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "loop");
+    const loop = await settlePlayback();
+    audio.resetAudio();
+    await vi.advanceTimersByTimeAsync(160);
+    audio.destroy();
+    expect(loop.instance.stopped).toBe(1);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(loop.instance.stopped).toBe(1);
+  });
+
+  it("ends closing fades at their deadlines while animation frames are suspended", async () => {
+    const audio = new HtmlStoryAudio(context);
+    void play(audio, "loop");
+    const loop = await settlePlayback();
+    void audio.playSound({
+      channel: "d",
+      key: "steps",
+      delayMs: 0,
+      loop: true,
+      volume: 1,
+    });
+    const steps = await settlePlayback();
+    void audio.stopSound("d", 1280);
+    // A hidden tab suspends requestAnimationFrame while disableAutoPause keeps
+    // the sounds audible. Fades run on timers, so they must still reach their
+    // stops with animation frames stubbed out.
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    try {
+      audio.resetAudio();
+      const closing = audio.finishSoundFades();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(loop.instance.volume).toBeCloseTo(0.2);
+      expect(steps.instance.volume).toBeCloseTo(0.6875);
+      await vi.advanceTimersByTimeAsync(99);
+      expect(loop.instance.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(loop.instance.stopped).toBe(1);
+      expect(steps.instance.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(780);
+      expect(steps.instance.stopped).toBe(1);
+      await closing;
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -909,6 +909,8 @@ export interface StoryPlayer {
    * false（native 直接藏掉跳过按钮，锁定的视频段不可能被跳过）。
    */
   canSkipNode: () => boolean;
+  /** 退出已结束的剧情界面，等待已提交的音效淡停后回收音频。 */
+  closeAfterStory: () => Promise<void>;
   destroy: () => void;
   getAutoPlayState: () => AutoPlayState;
   /** 最近一次 decision 玩家所选的 value（0 = 未做选择/默认分支） */

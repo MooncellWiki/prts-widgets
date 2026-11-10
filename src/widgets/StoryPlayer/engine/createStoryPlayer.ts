@@ -37,6 +37,7 @@ export function createStoryPlayer(context: Context): StoryPlayer {
   const ensureRuntime = () => {
     if (runtime) return runtime;
 
+    audio?.destroy();
     renderer = new PixiStoryRenderer(context, (detail) =>
       console.warn(`[renderer] ${detail}`),
     );
@@ -58,6 +59,14 @@ export function createStoryPlayer(context: Context): StoryPlayer {
     );
 
     return runtime;
+  };
+
+  const disposeRuntime = () => {
+    runtime?.destroy();
+    renderer?.destroy();
+    runtime = null;
+    renderer = null;
+    mounted = false;
   };
 
   return {
@@ -83,15 +92,17 @@ export function createStoryPlayer(context: Context): StoryPlayer {
       return ensureRuntime().canSkipNode();
     },
 
-    destroy(): void {
-      runtime?.destroy();
-      audio?.destroy();
-      renderer?.destroy();
+    async closeAfterStory(): Promise<void> {
+      const closingAudio = audio;
+      disposeRuntime();
+      await closingAudio?.finishSoundFades();
+      if (audio === closingAudio) audio = null;
+    },
 
-      runtime = null;
+    destroy(): void {
+      disposeRuntime();
+      audio?.destroy();
       audio = null;
-      renderer = null;
-      mounted = false;
     },
 
     getAutoPlayState() {
