@@ -586,15 +586,18 @@ describe("StoryRuntime", () => {
     expect(runtime.getAutoPlayState().mode).toBe("default");
   });
 
-  it("does not settle a decision reached after the player picked the pending one mid-skip", async () => {
+  it("cleans up before rendering the destination when a decision is picked mid-skip", async () => {
     const renderer = new FakeRenderer();
     renderer.holdDecisions = true;
+    const clearStickers = vi.spyOn(renderer, "clearStickers");
+    const showSticker = vi.spyOn(renderer, "setSticker");
     const runtime = new StoryRuntime(
       createContext([
-        '[decision(options="A;B", values="1;2")]', // line 1
-        "[SkipToThis]", // line 2
-        '[decision(options="C;D", values="3;4")]', // line 3
-        '[name="A"]after', // line 4
+        '[decision(options="A;B", values="1;2")]',
+        "[SkipToThis]",
+        '[sticker(id="target", text="target", block=false)]',
+        '[decision(options="C;D", values="3;4")]',
+        '[name="A"]after',
       ]),
       renderer,
       new FakeAudio(),
@@ -604,15 +607,14 @@ describe("StoryRuntime", () => {
     await Promise.resolve();
     expect(runtime.getState()).toBe("waiting_decision");
 
-    // skip 同步段已移动 cursor，随后在 renderer 的清理上 await；玩家趁这
-    // 段空隙点掉了第一个 decision，循环从锚点后走到第二个 decision
+    // The old choice can settle while the skip is still resetting components.
     const skipPromise = runtime.skipNode();
     renderer.pickDecision({ optionIndex: 1, value: 2 });
     let skipSettled = false;
     void skipPromise.then(() => (skipSettled = true));
-    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    await vi.waitFor(() => expect(renderer.decisionCalls).toHaveLength(2));
 
-    // skip 只结算入口取样到的那个 decision：新面板仍在等点击
+    expect(clearStickers).toHaveBeenCalledBefore(showSticker);
     expect(renderer.decisionCalls.map((call) => call.options)).toEqual([
       ["A", "B"],
       ["C", "D"],
@@ -624,9 +626,59 @@ describe("StoryRuntime", () => {
     await skipPromise;
     expect(runtime.getLogPosition().selections).toEqual([
       { decisionId: 1, optionIndex: 1, value: 2 },
-      { decisionId: 3, optionIndex: 0, value: 3 },
+      { decisionId: 4, optionIndex: 0, value: 3 },
     ]);
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("discards an input wait returned by the command that was skipped", async () => {
+    let finishSticker!: () => void;
+    const sticker = new Promise<void>((resolve) => {
+      finishSticker = resolve;
+    });
+    const renderer = new FakeRenderer();
+    vi.spyOn(renderer, "setSticker").mockReturnValueOnce(sticker);
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="old", text="old", block=true)]',
+        "[SkipToThis]",
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    const skipped = runtime.skipNode();
+    finishSticker();
+    await Promise.all([started, skipped]);
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("releases a pending decision if skip cleanup rejects", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    vi.spyOn(renderer, "clearInterludes").mockRejectedValueOnce(
+      new Error("reset failed"),
+    );
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B", values="1;2")]',
+        "[SkipToThis]",
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    await expect(runtime.skipNode()).rejects.toThrow("reset failed");
+    await started;
+
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+    expect(runtime.getLogPosition().selections).toEqual([]);
   });
 
   it("gates skipping on header is_skippable instead of is_tutorial (2.7.61 get_isSkippable)", async () => {

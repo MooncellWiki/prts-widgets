@@ -130,6 +130,31 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("parses decision and predicate values as signed Int32s", async () => {
+    const renderer = new FakeRenderer();
+    renderer.decisionIndex = 0;
+    renderer.decisionValue = 1;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B;C;D", values=" +1 ;1.1;2147483648;-2147483648")]',
+        '[predicate(references="1.1;1junk;2147483648")]',
+        '[showitem(image="invalid-reference")]',
+        '[predicate(references=" +1 ")]',
+        '[name="A"]matched',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.decisionCalls[0]?.values).toEqual([
+      1, 0, 0, -2_147_483_648,
+    ]);
+    expect(renderer.showItemCalls).toEqual([]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "matched" });
+  });
+
   it("marks ampersand-prefixed options as disabled and strips the prefix", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -151,7 +176,7 @@ describe("StoryRuntime", () => {
     });
   });
 
-  it("warns when a decision exceeds the native option capacity", async () => {
+  it("warns when a decision exceeds the observed option count", async () => {
     const warnings: RuntimeWarning[] = [];
     const onWarning = (warning: RuntimeWarning) => warnings.push(warning);
     const runtime = new StoryRuntime(

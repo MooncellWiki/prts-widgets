@@ -64,8 +64,9 @@ const toIntList = (value: unknown): number[] =>
   toStringValue(value)
     .split(";")
     .map((chunk) => {
-      const parsed = Number.parseInt(chunk, 10);
-      return Number.isNaN(parsed) ? 0 : parsed;
+      const match = /^[\t\n\v\f\r ]*([+-]?\d+)[\t\n\v\f\r ]*$/.exec(chunk);
+      const parsed = Number(match?.[1]);
+      return parsed >= -2_147_483_648 && parsed <= 2_147_483_647 ? parsed : 0;
     });
 
 export function executeStoryPath(

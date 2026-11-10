@@ -1,3 +1,4 @@
+import { toString, tryParseInt32 } from "../commandParams";
 import { expandStoryText } from "../textVariables";
 
 import type { ParsedCommandLine } from "../types";
@@ -26,20 +27,10 @@ export function initialRuntimeDecisionState(): RuntimeDecisionState {
   return { selectedValue: 0, references: null };
 }
 
-function toStringValue(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean")
-    return String(value);
-  return fallback;
-}
-
 function toIntList(value: unknown): number[] {
-  return toStringValue(value)
+  return toString(value)
     .split(";")
-    .map((segment) => {
-      const parsed = Number.parseInt(segment, 10);
-      return Number.isNaN(parsed) ? 0 : parsed;
-    });
+    .map((segment) => tryParseInt32(segment) ?? 0);
 }
 
 /**
@@ -61,9 +52,8 @@ export function passesGate(
  *
  * runtime 在校验 options 之前就重置 selectedValue/references，
  * 无效 decision 也会清空状态，只是不产生选择。
- * 面板按 options 下标渲染按钮；values 缺项时取 0，与原生
- * `DecisionPanel._GetOptionValue` 的越界分支一致（它打
- * `Decision value index out of range` 并返回 0）。0 是「未选择」值，
+ * 面板按 options 下标渲染按钮。values 缺项或 `Int32.TryParse` 失败时取 0，
+ * 与原生 `DecisionPanel._GetOptionValue` 一致。0 是「未选择」值，
  * 闸门对它恒放行，因此 options 比 values 多的脚本（如
  * story_ghost_2_1 的 4 选项 / 3 values）在原生里照常播下去。
  * 标签与 runtime 的 translateText 同源展开（如 `{@nickname}`），
@@ -83,7 +73,7 @@ export function parseDecision(
   const optionsValue = line.args.options;
   if (optionsValue === undefined) return null;
 
-  const labels = toStringValue(optionsValue).split(";");
+  const labels = toString(optionsValue).split(";");
   const values = toIntList(line.args.values);
   return {
     options: labels.map((label, optionIndex) => {
@@ -100,7 +90,7 @@ export function parseDecision(
 
 /**
  * 解析 predicate 指令：无 references 参数 → null（结束分支模式），
- * 否则按 ";" 拆分（NaN 落到 0，与 runtime 一致）。
+ * 否则按 ";" 拆分，`Int32.TryParse` 失败的项取 0。
  */
 export function parsePredicateReferences(
   line: ParsedCommandLine,

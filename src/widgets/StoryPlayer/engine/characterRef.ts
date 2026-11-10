@@ -1,4 +1,8 @@
+import { tryParseInt32 } from "./commandParams";
+
 import type { StoryCharacterEntry, StoryLinkNode } from "./types";
+
+export { tryParseInt32 };
 
 /**
  * Native provenance: `Torappu.AVG.AVGCharacterSlot._LoadImage` and the three
@@ -63,44 +67,6 @@ export function nativeCharacterFadeIdentity(ref: string): string {
   const index = ref.lastIndexOf("#");
   if (index === -1) return ref;
   return ref.slice(0, index);
-}
-
-/** `System.Number.IsWhite`: 0x20 and 0x09..0x0D only -- no NBSP, no U+3000. */
-function isDotNetWhite(text: string, at: number): boolean {
-  const code = text.codePointAt(at) ?? -1;
-  return code === 0x20 || (code >= 0x09 && code <= 0x0d);
-}
-
-/**
- * `System.Int32.TryParse(String, out Int32)`, i.e. `NumberStyles.Integer` =
- * `AllowLeadingWhite | AllowTrailingWhite | AllowLeadingSign`. Returns `null`
- * where the BCL returns false, which includes Int32 overflow.
- *
- * The whitespace tolerance is not incidental: it is what absorbs authoring
- * typos like `avg_4236_tmslot_1#3 $1` in native, so the port has to keep it.
- */
-export function tryParseInt32(text: string): number | null {
-  let i = 0;
-  while (i < text.length && isDotNetWhite(text, i)) i++;
-
-  let negative = false;
-  if (text[i] === "+" || text[i] === "-") {
-    negative = text[i] === "-";
-    i++;
-  }
-
-  const digitsStart = i;
-  while (i < text.length && text[i]! >= "0" && text[i]! <= "9") i++;
-  if (i === digitsStart) return null;
-
-  const magnitude = Number(text.slice(digitsStart, i));
-
-  while (i < text.length && isDotNetWhite(text, i)) i++;
-  if (i !== text.length) return null;
-
-  const value = negative ? -magnitude : magnitude;
-  if (value < -2147483648 || value > 2147483647) return null;
-  return value;
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   toString,
 } from "./commandParams";
 import { CommandRegistry, type CommandResult } from "./commandRegistry";
+import { createExecutionHandle, type ExecutionHandle } from "./execution";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { StickerPanel } from "./panels/StickerPanel";
@@ -370,6 +371,7 @@ export class StoryRuntime {
   private readonly renderer: StoryRenderer;
   private readonly sleep: (ms: number) => Promise<void>;
   private currentSkipMode: SkipMode = "skip";
+  private skipCleanup: ExecutionHandle | null = null;
   private readonly skipNodeLabels: SkipNodeLabel[];
   private skipNodeQueueIndex = 0;
   private readonly skipToIndex: number;
@@ -395,7 +397,7 @@ export class StoryRuntime {
   private itemSlotInUse = false;
   private theaterMode = false;
   private theaterAutoPlayCache: AutoPlayState | null = null;
-  private textTypingGeneration = 0;
+  private playbackGeneration = 0;
   private quickSpeedLevel = 0;
   /** Raw length from the latest type-end event, including rich-text tags. */
   private lastCompletedTextLength: number | null = null;
@@ -714,6 +716,7 @@ export class StoryRuntime {
 
   canSkipNode(): boolean {
     const running =
+      this.skipCleanup === null &&
       this.state !== "idle" &&
       this.state !== "error" &&
       this.state !== "finished";
@@ -823,15 +826,15 @@ export class StoryRuntime {
     this.cancelAutoClick();
     const inputEffect = this.pendingInputEffect;
     this.pendingInputEffect = null;
-    const generation = this.textTypingGeneration;
+    const generation = this.playbackGeneration;
     try {
       await inputEffect?.();
     } catch (error) {
-      if (!this.destroyed && generation === this.textTypingGeneration)
+      if (!this.destroyed && generation === this.playbackGeneration)
         this.waitingInputCommand = command;
       throw error;
     }
-    if (this.destroyed || generation !== this.textTypingGeneration) return;
+    if (this.destroyed || generation !== this.playbackGeneration) return;
     this.state = "running";
     await this.processLoop();
   }
@@ -845,7 +848,6 @@ export class StoryRuntime {
     // UI that this widget intentionally omits.
     if (this.autoPlayMode === "quick_play") return;
 
-    const hadActiveProcessLoop = this.processing;
     const activeProcessCompletion = this.processingCompletion;
     // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
     // 替它结算（见下方 settleOnSkip）。
@@ -922,61 +924,52 @@ export class StoryRuntime {
 
     this.pendingInputEffect = null;
     this.waitingInputCommand = null;
-    this.cancelTextTyping();
-    // Native port: AVGController.SkipStory (0x183e1a150) reaches
-    // _ResetComponentsOnSkip (0x183e1d3f0) only on the two paths that keep
-    // playing -- jumping to a SkipToThis anchor, and jumping to the next
-    // skipnode label when get_isSkippable() is false. When the story *is*
-    // skippable in the current mode (or no skip node is left) it takes
-    // StopStory("Skipped") and returns without resetting a single component, so
-    // a skip that ends the story leaves the screen exactly as it was.
-    // `shouldResume` is that same fork.
-    if (shouldResume) {
-      // Native SkipStory force-ends the blocking executors before resetting
-      // the components that opt in to a skip reset.
-      this.dialogPanel.forceCommandEnd();
-      // Native port: both executors on AVGCharacterCutinPanel reset on skip --
-      // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
-      // empties the slot pool / _slots before resetting the interlude
-      // controller, so a skipped node must not leave cutin slots behind.
-      await this.renderer.clearInterludes();
-      await this.renderer.clearCharacterCutin();
-      await this.renderer.clearSpellStickers();
-      // Native: SubtitlePanel.ShouldResetOnSkip() is true, so a skip resets the
-      // panel through OnReset -- alpha to 0 immediately (no tween) plus a
-      // typewriter reset. A stale subtitle must not survive the skip.
-      await this.renderer.clearSubtitle(0);
-      await this.stickerPanel.reset();
-    }
+    this.invalidatePlaybackCallbacks();
+    // SkipStory (2791 @ 0x18416E560) force-ends the blockers and resets
+    // components before the coroutine resumes. The StopStory path bypasses
+    // these resets. Web cleanup can yield even as the old executor settles.
+    const cleanup = createExecutionHandle(true);
+    this.skipCleanup = cleanup;
+    let resumedProcess = activeProcessCompletion;
+    try {
+      if (shouldResume) {
+        this.dialogPanel.forceCommandEnd();
+        for (const reset of [
+          // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
+          () => this.renderer.clearInterludes(),
+          () => this.renderer.clearCharacterCutin(),
+          () => this.renderer.clearSpellStickers(),
+          // SubtitlePanel.OnReset cancels typing and hides without a fade.
+          () => this.renderer.clearSubtitle(0),
+          () => this.stickerPanel.reset(),
+        ]) {
+          if (this.destroyed) break;
+          await reset();
+        }
+      }
+    } finally {
+      this.skipCleanup = null;
+      cleanup.end();
+      if (!this.destroyed && this.state !== "error") {
+        this.dialogPanel.stopTypingSilently();
+        if (shouldResume) {
+          this.state = "running";
+        } else if (!activeProcessCompletion) {
+          // StopStory path with no loop alive to run finishPlayback().
+          this.audio.resetAudio();
+          this.state = "finished";
+          this.finishLineSeekMissed("finished");
+        }
 
-    if (
-      pendingDecision &&
-      this.decisionPanel.getPendingDecision() !== pendingDecision
-    ) {
-      // A click during cleanup already let the loop reach the destination.
-      // The new command owns its state and wait.
-      await activeProcessCompletion;
-      return;
+        // The cursor already moved. Release the old wait even if a reset
+        // failed, and let the existing loop own continuation when available.
+        this.interruptPendingWait();
+        this.decisionPanel.settleOnSkip(pendingDecision);
+        if (shouldResume && !resumedProcess)
+          resumedProcess = this.processLoop();
+      }
     }
-
-    this.dialogPanel.stopTypingSilently();
-    if (shouldResume) {
-      this.state = "running";
-    } else if (!hadActiveProcessLoop) {
-      // Story ended by skip with no loop alive to reach finishPlayback();
-      // apply the same end-of-story audio reset it performs.
-      this.audio.resetAudio();
-      this.state = "finished";
-      this.finishLineSeekMissed("finished");
-    }
-
-    // Establish the destination state before releasing a blocking executor.
-    // Its existing processLoop owns continuation; starting another loop would
-    // race it and can leave state="running" with no loop alive.
-    this.interruptPendingWait();
-    this.decisionPanel.settleOnSkip(pendingDecision);
-    if (hadActiveProcessLoop) await activeProcessCompletion;
-    else if (shouldResume) await this.processLoop();
+    if (resumedProcess) await resumedProcess;
   }
 
   /**
@@ -1046,10 +1039,11 @@ export class StoryRuntime {
 
   destroy(): void {
     this.destroyed = true;
+    this.skipCleanup?.end("reset");
     this.lineSeek = null;
     this.decisionPanel.destroy();
     this.dialogPanel.destroy();
-    this.cancelTextTyping();
+    this.invalidatePlaybackCallbacks();
     this.interruptPendingWait();
     this.pendingInputEffect = null;
     // 销毁后不该再有推送落到 UI 上
@@ -1104,6 +1098,10 @@ export class StoryRuntime {
 
     try {
       while (!this.destroyed) {
+        if (this.skipCleanup) {
+          await this.skipCleanup.completion;
+          continue;
+        }
         // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
         // incremented index BEFORE consulting ICommandFlowController
         // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
@@ -1138,11 +1136,14 @@ export class StoryRuntime {
 
         if (!this.decisionPredicator.needToExecuteCommand(line)) continue;
 
+        const generation = this.playbackGeneration;
         const result =
           line.kind === "command"
             ? await this.executeCommand(line)
             : this.dialogPanel.executeTextLine(line);
         if (this.destroyed) return;
+        // A skipped executor can still return a stale input wait.
+        if (generation !== this.playbackGeneration) continue;
         if (result === "wait_input") {
           this.waitingInputCommand =
             line.kind === "command" ? line.command : "dialog";
@@ -3390,17 +3391,17 @@ export class StoryRuntime {
    * invalidates every outstanding callback when the story skips or closes.
    */
   private beginTextTyping(messageLength: number): () => void {
-    const generation = this.textTypingGeneration;
+    const generation = this.playbackGeneration;
     let completed = false;
     return () => {
-      if (completed || this.textTypingGeneration !== generation) return;
+      if (completed || this.playbackGeneration !== generation) return;
       completed = true;
       this.onTypingComplete(messageLength);
     };
   }
 
-  private cancelTextTyping(): void {
-    this.textTypingGeneration += 1;
+  private invalidatePlaybackCallbacks(): void {
+    this.playbackGeneration += 1;
     this.lastCompletedTextLength = null;
     this.cancelAutoClick();
   }

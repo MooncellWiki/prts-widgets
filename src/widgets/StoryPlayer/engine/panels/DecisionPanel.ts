@@ -22,10 +22,10 @@ interface PendingDecision {
   autoPlayRestore: AutoPlayMode;
 }
 
-// Native caps rendered options at the prefab's _optionRoots length and logs
-// "[AVG] Too many decision options. Some will be ignored!" in _SetupOptionText.
-// The web view renders every option and warns beyond the observed capacity.
-const DECISION_OPTION_CAPACITY = 4;
+// _ExecuteDecision (2791 @ 0x1841C7400) logs excess options by comparing
+// against m_optionTexts.Length, which Awake takes from the prefab's
+// _optionRoots. Web renders all options and warns above the corpus maximum.
+const OBSERVED_MAX_DECISION_OPTIONS = 4;
 
 /**
  * Native port: Torappu.AVG.DecisionPanel (2791 GetExecutors @ 0x1841C6FC0).
@@ -62,8 +62,8 @@ export class DecisionPanel {
   /**
    * Native ForceCommandEnd (2791 @ 0x1841C6D40) leaves the panel alone, and
    * ShouldResetOnSkip returns false. Web closes the view as an unclicked
-   * selection to release the command loop. Settle only the decision sampled
-   * at skip entry because a click during cleanup can open a newer view.
+   * selection to release the command loop. The sampled view may already have
+   * settled from a click during cleanup.
    */
   settleOnSkip(pending: PendingDecision | null): void {
     if (pending && this.pendingDecision === pending)
@@ -95,9 +95,9 @@ export class DecisionPanel {
     const options = parsed.options.map((option) => option.label);
     const values = parsed.options.map((option) => option.value);
     const disabled = parsed.options.map((option) => option.disabled);
-    if (options.length > DECISION_OPTION_CAPACITY)
+    if (options.length > OBSERVED_MAX_DECISION_OPTIONS)
       this.playback.warnInvalidParameter(
-        `too many decision options: ${options.length} > native capacity ${DECISION_OPTION_CAPACITY}`,
+        `too many decision options: ${options.length} > observed maximum ${OBSERVED_MAX_DECISION_OPTIONS}`,
         line,
       );
 
