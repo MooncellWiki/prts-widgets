@@ -19,7 +19,7 @@ const id = useId();
 
 /** 单选即可保底的标签：右上角一枚稀有度色的小方块 */
 const soloAttrs = (tag: string) => {
-  const min = solo.get(tag);
+  const min = solo.value.get(tag);
   return min
     ? { "data-solo": "", "data-rarity": min, title: `单选即可保底 ${min}★` }
     : {};

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
+import { useQuery } from "@pinia/colada";
 import { debounce } from "lodash-es";
 import {
   NButton,
@@ -18,7 +19,7 @@ import { isMobileSkin } from "@/utils/utils";
 
 import Memory from "./Memory.vue";
 import { filterRarity, rarityMap } from "./consts";
-import { getMemoryData } from "./utils";
+import { memoryQuery } from "./utils";
 
 import type { CharMemory } from "./types";
 
@@ -26,11 +27,12 @@ const isMobile = isMobileSkin();
 const i18nConfig = getNaiveUILocale();
 const { theme, themeOverrides, isDark } = useTheme();
 const states = ref<string[]>([]);
-const isLoaded = ref(false);
 const sorting = ref("lmmr");
 const order = ref(-1);
 const searchTerm = ref("");
-const charMemoryData = ref<CharMemory[]>([]);
+const { data } = useQuery(memoryQuery);
+const charMemoryData = computed(() => data.value ?? []);
+const isLoaded = computed(() => !!data.value);
 
 const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
   const [datex, datey] = [mmrx, mmry].map((mmr) => {
@@ -94,23 +96,8 @@ const shownMemory = computed(() => {
   );
 });
 
-onMounted(async () => {
-  charMemoryData.value = await getMemoryData();
-  const latestDate = Math.max(
-    ...charMemoryData.value.map((charm) => {
-      return Math.max(...charm.memories.map((x) => x.time.getTime()));
-    }),
-  );
-  for (const charm of charMemoryData.value) {
-    for (const m of charm.memories) {
-      if (m.time.getTime() === latestDate) m.isNew = true;
-    }
-  }
-
-  isLoaded.value = true;
-
-  _calcMemory();
-});
+// 取到数据后先按默认排序列一遍
+watch(data, () => _calcMemory());
 const sortModes = [
   { type: "opt", label: "干员上线" },
   { type: "fmmr", label: "首个密录" },

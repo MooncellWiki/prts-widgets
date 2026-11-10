@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from "vue";
+
 import {
   AkButton,
   AkEmpty,
@@ -6,40 +8,45 @@ import {
   AkSpinner,
   AkToastProvider,
 } from "@mooncellwiki/prts-design-vue";
+import { useQuery } from "@pinia/colada";
 
 import { useHostTheme } from "@/utils/useHostTheme";
 
 import Main from "./Main.vue";
-
-import type { Source } from "./data";
+import { baseSkillSourceQuery } from "./data";
 
 /**
  * 后勤技能一览（PRTS Design 视觉，排布同干员一览 / 道具一览，设计稿见 prts-design 的 /patterns/riic）：
  * 筛选 → 工具条（搜索 · 排序 · 显示方式）→ 结果栏（条数 · 已选条件 · 复制链接 · 分页）→ 结果。
- * 数据直接读游戏的 building_data（入口取好传进来，见 data.ts）；这一层只管作用域、读取中与失败，其余在 Main.vue。
+ * 数据直接读游戏的 building_data（data.ts，入口挂载前先 prefetch）；这一层只管作用域、读取中与失败，其余在 Main.vue。
  * room 指定了设施 = 设施页（罗德岛基建/制造站 …）里嵌着的那份，只看这个设施。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替芯片翻状态。
  */
 withDefaults(
   defineProps<{
-    source?: Source;
-    /** 游戏数据没取到：出失败提示，不再转圈 */
-    failed?: boolean;
     /** 设施的游戏 ID（MANUFACTURE）或名字（制造站） */
     room?: string;
   }>(),
-  { source: undefined, room: "" },
+  { room: "" },
 );
 
+const {
+  data: source,
+  status,
+  isLoading,
+  refetch,
+} = useQuery(baseSkillSourceQuery);
+/** 游戏数据没取到：出失败提示，不再转圈；重取期间转圈 */
+const failed = computed(() => status.value === "error" && !isLoading.value);
+
 const theme = useHostTheme();
-const reload = () => location.reload();
 </script>
 
 <template>
   <AkScope class="rs ak-not-prose" :theme="theme" data-no-toggle>
     <AkToastProvider>
       <AkEmpty v-if="failed" title="后勤技能数据读取失败">
-        <AkButton variant="link" @click="reload">刷新页面</AkButton>再试一次。
+        <AkButton variant="link" @click="refetch()">重新读取</AkButton>
       </AkEmpty>
       <!-- 外壳预渲染与数据还没回来时 -->
       <AkSpinner v-else-if="!source" description="正在读取后勤技能数据…" />

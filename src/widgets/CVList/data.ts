@@ -1,3 +1,5 @@
+import { defineQueryOptions } from "@pinia/colada";
+
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
 import type { CharWordTable, SkinTable, VoiceLangTypeData } from "./types";
@@ -104,7 +106,7 @@ async function initCharWord() {
   return { data, langTypes };
 }
 
-export async function fetchCVListData(): Promise<CVListData> {
+async function fetchCVListData(): Promise<CVListData> {
   const [charWord, charMap, skinTable] = await Promise.all([
     initCharWord(),
     initCharMap(),
@@ -113,3 +115,12 @@ export async function fetchCVListData(): Promise<CVListData> {
 
   return { ...charWord, ...charMap, ...skinTable };
 }
+
+export const cvListQuery = defineQueryOptions({
+  key: ["cv-list"],
+  query: () =>
+    fetchCVListData().catch((error: unknown) => {
+      console.error("[CVList] failed to load data:", error);
+      throw error;
+    }),
+});

@@ -1,10 +1,10 @@
 import { createApp, h, nextTick, type App, type Component } from "vue";
 
 import { AkToastProvider } from "@mooncellwiki/prts-design-vue";
-import { PiniaColada } from "@pinia/colada";
 import { createPinia, disposePinia, type Pinia } from "pinia";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createStores } from "../src/utils/pinia";
 import ResourceDetail from "../src/widgets/StoryAssetExplorer/components/ResourceDetail.vue";
 import StoryAssetExplorer from "../src/widgets/StoryAssetExplorer/index.vue";
 import {
@@ -178,7 +178,7 @@ describe("explorer store server paging", () => {
   }
   /** 同 entries/StoryAssetExplorer.ts：store 和组件里的 useQuery 要从 app 上取 Pinia Colada 的配置 */
   function install(app: App, pinia = createPinia()): Pinia {
-    app.use(pinia).use(PiniaColada);
+    app.use(createStores({ pinia }));
     if (!pinias.includes(pinia)) pinias.push(pinia);
     return pinia;
   }

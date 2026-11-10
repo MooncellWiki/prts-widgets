@@ -1,61 +1,17 @@
 import "virtual:uno.css";
 import { createApp } from "vue";
 
-import { TORAPPU_ENDPOINT, WEEDY_ENDPOINT } from "@/utils/consts";
-import type { GachaData } from "@/widgets/GachaSimulatorV2/gamedata-types";
+import { createStores } from "@/utils/pinia";
 import GachaSimulator from "@/widgets/GachaSimulatorV2/index.vue";
-import type { GachaDBServer } from "@/widgets/GachaSimulatorV2/types";
 
-async function initWeedy(): Promise<GachaDBServer> {
-  const response = await fetch(new URL("/gacha_table.json", WEEDY_ENDPOINT));
-  const data = await response.json();
-
-  return data;
-}
-
-async function initGachaTable(): Promise<GachaData> {
-  const response = await fetch(
-    new URL("/gamedata/latest/excel/gacha_table.json", TORAPPU_ENDPOINT),
-  );
-  const data = await response.json();
-
-  return data;
-}
-
-async function main() {
-  const [gachaServerTable, gachaClientTable] = await Promise.all([
-    initWeedy(),
-    initGachaTable(),
-  ]);
-
-  const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
-  const { gachaPoolId } = gachaDataRoot?.dataset || {};
-  const gachaBannerFile = gachaDataRoot?.dataset.gachaBannerFile?.replace(
-    / /g,
-    "_",
-  );
-
-  const gachaClientPool = gachaClientTable.gachaPoolClient.find(
-    (pool) => pool.gachaPoolId === gachaPoolId,
-  );
-
-  const newbeeClientPool = gachaClientTable.newbeeGachaPoolClient.find(
-    (pool) => pool.gachaPoolId === gachaPoolId,
-  );
-
-  const gachaServerPool = gachaServerTable.gachaPoolClient.find(
-    (pool) => pool.gachaPoolId === gachaPoolId,
-  );
-
-  const ele = document.querySelector("#root");
-  if (ele)
-    createApp(GachaSimulator, {
-      gachaPoolId,
-      gachaBannerFile,
-      gachaClientPool,
-      gachaServerPool,
-      newbeeClientPool,
-    }).mount(ele);
-}
-
-main();
+// 卡池数据在组件里取（GachaSimulatorV2/data.ts），读取中 / 失败 / 重试也在组件里
+const gachaDataRoot = document.querySelector<HTMLElement>("#gacha-data-root");
+const ele = document.querySelector("#root");
+if (ele)
+  createApp(GachaSimulator, {
+    gachaPoolId: gachaDataRoot?.dataset.gachaPoolId ?? "",
+    gachaBannerFile:
+      gachaDataRoot?.dataset.gachaBannerFile?.replace(/ /g, "_") ?? "",
+  })
+    .use(createStores())
+    .mount(ele);

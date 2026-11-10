@@ -17,9 +17,11 @@ import { useRecruit } from "./store";
  * 一个标签都没选时是保底速查：全部能保底 4★ 以上的最小组合，排成多列的格子。
  */
 defineProps<{
-  /** 干员数据没取到 */
+  /** 干员数据没取到：出失败提示，不再转圈 */
   failed?: boolean;
 }>();
+// 查询只放在根组件里：用了 useQuery 的组件在 useId 看来是异步边界，嵌套着用会让 id 重复
+const emit = defineEmits<{ retry: [] }>();
 
 const recruit = useRecruit();
 const { ops, state, result, reference } = recruit;
@@ -33,14 +35,12 @@ const refTiers = computed(() =>
     .filter((t) => t.combos.length > 0),
 );
 const lowMin = computed(() => Math.min(...result.value.low.map((c) => c.min)));
-
-const reload = () => location.reload();
 </script>
 
 <template>
   <div class="hr-result">
     <AkEmpty v-if="failed" title="干员数据读取失败">
-      <AkButton variant="link" @click="reload">刷新页面</AkButton>再试一次。
+      <AkButton variant="link" @click="emit('retry')">重新读取</AkButton>
     </AkEmpty>
 
     <!-- 外壳预渲染与数据还没回来时 -->

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_SORT, View } from "@/widgets/BaseSkillList/consts";
 import {
+  baseSkillSourceQuery,
   buildSource,
   parseNote,
   type BuildingBuffData,
@@ -28,6 +29,8 @@ import {
 import { roomGlyphStyle } from "@/widgets/BaseSkillList/room";
 import { sortBuffs, sortChars } from "@/widgets/BaseSkillList/sort";
 import { createBaseSkillList } from "@/widgets/BaseSkillList/store";
+
+import { installQuery, settleQueries } from "./helpers/queries";
 
 /* 字段与写法取自游戏的 building_data / character_table / gamedata_const，只留用得到的几条 */
 const buff = (
@@ -480,14 +483,16 @@ describe("BaseSkillList UI smoke", () => {
     document.body.innerHTML = "";
     history.replaceState(null, "", "/w/后勤技能一览");
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   /** happy-dom 不排版，ResizeObserver 也不回调（宽度停在挂载前的 +∞）；要看窄排布就得自己报一个宽度 */
   const mount = async (
     path = "/w/后勤技能一览",
-    props: { source?: typeof SOURCE; failed?: boolean; room?: string } = {
-      source: SOURCE,
-    },
+    {
+      data = SOURCE,
+      room,
+    }: { data?: typeof SOURCE | "pending" | "failed"; room?: string } = {},
     width = 1200,
   ) => {
     const report: (() => void)[] = [];
@@ -514,8 +519,14 @@ describe("BaseSkillList UI smoke", () => {
     history.replaceState(null, "", path);
     const host = document.createElement("div");
     document.body.append(host);
-    app = createApp(BaseSkillList, props);
+    app = createApp(BaseSkillList, { room });
+    installQuery(
+      app,
+      baseSkillSourceQuery.key,
+      typeof data === "string" ? data : { data },
+    );
     app.mount(host);
+    if (data === "failed") await settleQueries();
     await nextTick();
     for (const fire of report) fire();
     await nextTick();
@@ -701,7 +712,6 @@ describe("BaseSkillList UI smoke", () => {
 
   it("设施页：没有设施行，作用对象不写段首，不碰地址栏", async () => {
     const host = await mount("/w/罗德岛基建/制造站#概述", {
-      source: SOURCE,
       room: "MANUFACTURE",
     });
     expect(rowLabels(host)).toEqual([
@@ -726,10 +736,10 @@ describe("BaseSkillList UI smoke", () => {
   });
 
   it("读取中转圈，读取失败出提示", async () => {
-    let host = await mount(undefined, {});
+    let host = await mount(undefined, { data: "pending" });
     expect(host.querySelector(".ak-spinner")).not.toBeNull();
     app?.unmount();
-    host = await mount(undefined, { failed: true });
+    host = await mount(undefined, { data: "failed" });
     expect(host.textContent).toContain("后勤技能数据读取失败");
   });
 });

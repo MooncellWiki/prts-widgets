@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-
+import { useQuery } from "@pinia/colada";
 import { NButton, NConfigProvider, NSkeleton, NTabPane, NTabs } from "naive-ui";
 
 import Cost, { type CostProps } from "@/components/Cost.vue";
@@ -24,13 +23,9 @@ interface itemCost {
 interface Resp {
   [index: string]: CostProps;
 }
-enum Status {
-  req,
-  fail,
-  succ,
-}
-async function query(name: string): Promise<itemCost> {
+async function fetchDemand(name: string): Promise<itemCost> {
   const resp = await fetch(`${TORAPPU_ENDPOINT}/api/v1/item/${name}/demand`);
+  if (!resp.ok) throw new Error(`item/${name}/demand ${resp.status}`);
   const data: Resp = await resp.json();
   const costs = Array.from<{ label: string; data: CostProps[] }>({ length: 6 });
   const total = {
@@ -68,26 +63,14 @@ const props = defineProps<{
 const { theme, themeOverrides, isDark } = useTheme({
   common: { primaryColor: "#6a6aff" },
 });
-const data = ref<itemCost>();
-const state = ref(Status.req);
-async function load() {
-  try {
-    state.value = Status.req;
-    const cost = await query(props.item!);
-    data.value = cost;
-    state.value = Status.succ;
-  } catch (error) {
-    console.warn(error);
-    state.value = Status.fail;
-  }
-}
-onMounted(() => {
-  if (!props.item) {
-    console.warn("item empty", props);
-    return;
-  }
-  load();
-});
+const { data, status, isLoading, refetch } = useQuery(() => ({
+  key: ["item-demand", props.item],
+  query: () =>
+    fetchDemand(props.item).catch((error: unknown) => {
+      console.warn(error);
+      throw error;
+    }),
+}));
 </script>
 
 <template>
@@ -98,14 +81,10 @@ onMounted(() => {
     :theme-overrides="themeOverrides"
   >
     <div :class="['item-demand-widget', isDark && 'prts-widget-dark']">
-      <NButton v-if="state === Status.fail" @click="load">
+      <NButton v-if="status === 'error' && !isLoading" @click="refetch()">
         加载失败 点击重试
       </NButton>
-      <div
-        v-else-if="state === Status.succ && data"
-        class="max-w-700px"
-        content-style="padding: 0;"
-      >
+      <div v-else-if="data" class="max-w-700px" content-style="padding: 0;">
         <div>
           <div>精英化：{{ data.total.elite }}</div>
           <div>技能1→7：{{ data.total.skill }}</div>

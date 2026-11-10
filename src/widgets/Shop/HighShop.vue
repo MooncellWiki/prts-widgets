@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, ref } from "vue";
 
+import { useQuery } from "@pinia/colada";
 import { NConfigProvider, NTabPane, NTabs, NTooltip } from "naive-ui";
 
 import { getNaiveUILocale } from "@/utils/i18n";
@@ -14,23 +15,21 @@ import PriceTag from "./components/PriceTag.vue";
 import ShopCard from "./components/ShopCard.vue";
 import SkinAvatar from "./components/SkinAvatar.vue";
 import {
-  getCharInfo,
-  getHighShop,
-  getKernelSelectCount,
-  getSkinGallery,
+  charInfoQuery,
+  highShopQuery,
+  kernelSelectCountQuery,
+  skinGalleryQuery,
 } from "./data";
 import {
-  buildHighShopView,
   formatCstTime,
   isKernelSelectGood,
   kernelSelectIconName,
   wikiImage,
   wikiItemName,
   wikiLink,
-  type HighShopView,
 } from "./utils";
 
-import type { CharInfo, HighGood, SkinGalleryEntry } from "./types";
+import type { CharInfo, HighGood } from "./types";
 
 // 卡片图标区底色，同原 模板:高级凭证区商品一览
 const STANDARD_BG = "linear-gradient(135deg, #ffc107, #0000 70%)";
@@ -40,49 +39,36 @@ const KERNEL_SELECT_BG = "linear-gradient(135deg, #019bdb, #0af9ff 70%)";
 const i18nConfig = getNaiveUILocale();
 const { theme, themeOverrides, isDark } = useTheme();
 
-const view = shallowRef<HighShopView>();
-const chars = shallowRef(new Map<string, CharInfo>());
-const gallery = shallowRef(new Map<string, SkinGalleryEntry>());
-const kernelSelectCount = ref<number | null>(null);
-const updatedAt = ref<Date | null>(null);
-const error = ref("");
+const { data: shop, error } = useQuery(highShopQuery);
+const view = computed(() => shop.value?.view);
+const updatedAt = computed(() => shop.value?.updatedAt ?? null);
 const expanded = ref(false);
 
-onMounted(async () => {
-  try {
-    const shop = await getHighShop();
-    const shopView = buildHighShopView(shop.data);
-    view.value = shopView;
-    updatedAt.value = shop.updatedAt;
-
-    // 以下只影响头像稀有度和甄选人数，失败时保留兜底显示
-    const charIds = [
-      ...[...shopView.standard, ...shopView.kernel]
-        .filter((good) => !isKernelSelectGood(good))
-        .map((good) => good.item!.id),
-      ...shopView.reeditionOperators.map((ladder) => ladder.steps[0].item.id),
-    ];
-    getCharInfo(charIds)
-      .then((result) => (chars.value = result))
-      .catch((error_: unknown) => console.error("[HighShop]", error_));
-    if (shopView.kernelSelect) {
-      getKernelSelectCount(new Date())
-        .then((count) => (kernelSelectCount.value = count))
-        .catch((error_: unknown) => console.error("[HighShop]", error_));
-    }
-  } catch (error_) {
-    console.error("[HighShop]", error_);
-    error.value = error_ instanceof Error ? error_.message : String(error_);
-  }
+// 以下只影响头像稀有度和甄选人数，失败时保留兜底显示
+const charIds = computed(() => {
+  if (!view.value) return [];
+  const { standard, kernel, reeditionOperators } = view.value;
+  return [
+    ...[...standard, ...kernel]
+      .filter((good) => !isKernelSelectGood(good))
+      .map((good) => good.item!.id),
+    ...reeditionOperators.map((ladder) => ladder.steps[0].item.id),
+  ];
 });
-
+const { data: charInfo } = useQuery(() => ({
+  ...charInfoQuery(charIds.value),
+  enabled: !!view.value,
+}));
+const chars = computed(() => charInfo.value ?? new Map<string, CharInfo>());
+const { data: kernelSelectCount } = useQuery(() => ({
+  ...kernelSelectCountQuery,
+  enabled: !!view.value?.kernelSelect,
+}));
 // 往期时装的头像要查 模板:时装回廊，默认折叠，展开时再拉
-watch(expanded, (value) => {
-  if (!value || gallery.value.size > 0) return;
-  getSkinGallery()
-    .then((result) => (gallery.value = result))
-    .catch((error_: unknown) => console.error("[HighShop]", error_));
-});
+const { data: gallery } = useQuery(() => ({
+  ...skinGalleryQuery,
+  enabled: expanded.value,
+}));
 
 function contractOf(charId: string, fallbackName: string, price: number) {
   const info = chars.value.get(charId);
@@ -105,7 +91,7 @@ const reeditionPerOperator = computed(() => {
 const reeditionSkinCards = computed(() =>
   (view.value?.reeditionSkins ?? []).map((good) => ({
     good,
-    entry: gallery.value.get((good.displayName ?? "").trim()),
+    entry: gallery.value?.get((good.displayName ?? "").trim()),
   })),
 );
 
@@ -128,7 +114,7 @@ const hasReedition = computed(
   >
     <div class="high-shop" :class="{ 'prts-widget-dark': isDark }">
       <div v-if="error" class="high-shop-status">
-        高级凭证区数据加载失败：{{ error }}
+        高级凭证区数据加载失败：{{ error.message }}
       </div>
       <div v-else-if="!view" class="high-shop-status">正在加载高级凭证区…</div>
       <template v-else>

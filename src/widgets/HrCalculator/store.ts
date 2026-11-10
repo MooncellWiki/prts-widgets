@@ -1,4 +1,11 @@
-import { computed, inject, reactive, type InjectionKey } from "vue";
+import {
+  computed,
+  inject,
+  reactive,
+  toValue,
+  type InjectionKey,
+  type MaybeRefOrGetter,
+} from "vue";
 
 import { ALL_TAGS } from "./consts";
 import {
@@ -12,11 +19,12 @@ import { readQuery } from "./url";
 
 /**
  * 公招计算的状态：已选标签，结果都由它算出。
- * 根组件 createRecruit 后 provide 下去，子组件 useRecruit 取；不走 pinia——外壳预渲染（src/prerender/）不装插件。
+ * 根组件 createRecruit 后 provide 下去，子组件 useRecruit 取。
+ * source 是响应式的：数据还没到时是空的，标签面板照样出（外壳预渲染也是这样），到了再算结果。
  */
-export function createRecruit(source: readonly Source[]) {
-  const ops = toOps(source);
-  const solo = soloGuarantees(ops);
+export function createRecruit(source: MaybeRefOrGetter<readonly Source[]>) {
+  const ops = computed(() => toOps(toValue(source)));
+  const solo = computed(() => soloGuarantees(ops.value));
   const state = reactive({
     sel: new Set<string>(),
     /** 「不保底」那一层前面有保底层时默认收起 */
@@ -25,9 +33,9 @@ export function createRecruit(source: readonly Source[]) {
 
   /** 按面板的次序 */
   const picked = computed(() => ALL_TAGS.filter((t) => state.sel.has(t)));
-  const result = computed(() => analyze(ops, picked.value));
+  const result = computed(() => analyze(ops.value, picked.value));
   /** 没选标签时才用得到；computed 惰性求值，用到才算 */
-  const reference = computed(() => referenceCombos(ops));
+  const reference = computed(() => referenceCombos(ops.value));
 
   function toggle(tag: string) {
     if (state.sel.has(tag)) state.sel.delete(tag);

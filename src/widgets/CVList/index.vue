@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
+import { useQuery } from "@pinia/colada";
 import {
   NButton,
   NConfigProvider,
@@ -14,29 +15,24 @@ import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 
 import VoiceLangTab from "./VoiceLangTab.vue";
-import { fetchCVListData, type CVListData } from "./data";
+import { cvListQuery } from "./data";
 
 const { theme, themeOverrides, isDark } = useTheme();
 const i18nConfig = getNaiveUILocale();
 
-const state = ref<"loading" | "succ" | "fail">("loading");
-const cvData = ref<CVListData>();
-const tabs = ref<string[]>([]);
-const nameToKey = ref<Record<string, string>>({});
+const { data: cvData, status, isLoading, refetch } = useQuery(cvListQuery);
+const langTypes = computed(() => Object.entries(cvData.value?.langTypes ?? {}));
+const tabs = computed(() => langTypes.value.map(([, value]) => value.name));
+const nameToKey = computed(() =>
+  Object.fromEntries(langTypes.value.map(([key, value]) => [value.name, key])),
+);
 const valueRef = ref("");
 
-async function load() {
-  state.value = "loading";
-  try {
-    const result = await fetchCVListData();
-    cvData.value = result;
-    tabs.value = Object.values(result.langTypes).map((v) => v.name);
-    nameToKey.value = Object.fromEntries(
-      Object.entries(result.langTypes).map(([key, value]) => [value.name, key]),
-    );
+// 取到数据时选第一个页签；地址栏 #语言：声优 跳到那个页签、滚到那位声优
+watch(
+  cvData,
+  () => {
     valueRef.value = tabs.value[0];
-    state.value = "succ";
-
     if (window.location.hash) {
       const [lang, name] = decodeURIComponent(window.location.hash).split("：");
       if (tabs.value.includes(lang.slice(1))) valueRef.value = lang.slice(1);
@@ -44,13 +40,9 @@ async function load() {
         document.querySelector(`#${name}`)?.scrollIntoView();
       });
     }
-  } catch (error) {
-    console.error("[CVList] failed to load data:", error);
-    state.value = "fail";
-  }
-}
-
-onMounted(load);
+  },
+  { once: true },
+);
 </script>
 
 <template>
@@ -68,7 +60,7 @@ onMounted(load);
         isDark && 'prts-widget-dark',
       ]"
     >
-      <template v-if="state === 'succ' && cvData">
+      <template v-if="cvData">
         <NTabs v-model:value="valueRef" type="line" animated>
           <NTabPane v-for="tab in tabs" :key="tab" :name="tab">
             <VoiceLangTab
@@ -80,8 +72,11 @@ onMounted(load);
           </NTabPane>
         </NTabs>
       </template>
-      <div v-else-if="state === 'fail'" class="py-4 text-center">
-        <NButton @click="load()">加载失败，点击重试</NButton>
+      <div
+        v-else-if="status === 'error' && !isLoading"
+        class="py-4 text-center"
+      >
+        <NButton @click="refetch()">加载失败，点击重试</NButton>
       </div>
       <div v-else class="flex flex-col gap-4 py-2">
         <NSkeleton text style="width: 40%; height: 32px" />

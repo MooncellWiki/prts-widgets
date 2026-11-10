@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 
+import { useQuery } from "@pinia/colada";
 import {
   NAlert,
   NButton,
@@ -26,20 +27,10 @@ import { getImagePath } from "@/utils/utils";
 import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
 import MedalStats from "./MedalStats.vue";
-import { getMedalMetaData } from "./utils";
+import { EMPTY_MEDAL_META, medalMetaQuery } from "./utils";
 
-import type { MedalMetaData } from "./types";
-
-const medalMetaData = ref<MedalMetaData>({
-  medal: {},
-  medalGroup: {},
-  category: {},
-  groupDeprecateType: {},
-});
-
-onMounted(async () => {
-  medalMetaData.value = await getMedalMetaData();
-});
+const { data } = useQuery(medalMetaQuery);
+const medalMetaData = computed(() => data.value ?? EMPTY_MEDAL_META);
 const showFilter = ref(true);
 const filterRarity = {
   title: "稀有度",

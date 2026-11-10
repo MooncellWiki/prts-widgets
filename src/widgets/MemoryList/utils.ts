@@ -1,3 +1,5 @@
+import { defineQueryOptions } from "@pinia/colada";
+
 import type {
   CargoCharMemory,
   CharMemory,
@@ -17,7 +19,7 @@ function eq(
   );
 }
 
-export async function getMemoryData() {
+async function getMemoryData() {
   const result: CharMemory[] = [];
   const respMedal = await fetch(
     `/index.php?${new URLSearchParams({
@@ -124,3 +126,25 @@ export async function getMemoryData() {
   }
   return result;
 }
+
+/** 全部干员密录；最新那一批（上线时间最晚的）标上 isNew */
+export const memoryQuery = defineQueryOptions({
+  key: ["memory-list"],
+  query: async () => {
+    try {
+      const data = await getMemoryData();
+      const latest = Math.max(
+        ...data.flatMap((charm) => charm.memories.map((m) => m.time.getTime())),
+      );
+      for (const charm of data) {
+        for (const m of charm.memories) {
+          if (m.time.getTime() === latest) m.isNew = true;
+        }
+      }
+      return data;
+    } catch (error) {
+      console.error("[MemoryList]", error);
+      throw error;
+    }
+  },
+});

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeMount, provide, ref } from "vue";
+import { computed, ref } from "vue";
 
+import { useQuery } from "@pinia/colada";
 import {
   NButton,
   NButtonGroup,
@@ -29,7 +30,8 @@ import {
   rarityMap,
   statsStyleMap,
 } from "./consts";
-import { askOperators, getEquipAddedTime, getEquipDataAll } from "./equipData";
+import { equipListQuery } from "./equipData";
+import { useEquipListStore } from "./store";
 
 import type { CharEquips, EquipRow } from "./types";
 
@@ -56,21 +58,30 @@ function newSortItem(): FilterValue {
 const i18nConfig = getNaiveUILocale();
 const { theme, themeOverrides, isDark } = useTheme();
 const locale = getLanguage();
-const timeData = ref<
-  {
-    label: string;
-    value: string;
-  }[]
->([]);
+const store = useEquipListStore();
+const { data } = useQuery(equipListQuery);
+const rawEquipData = computed(() => data.value?.chars ?? []);
+/** 数据没到（含取数失败）和模组卡片还在处理时，筛选按钮禁用 */
+const busy = computed(() => !data.value || store.processing > 0);
+const timeData = computed(() =>
+  (data.value?.time ?? []).map((i) => ({
+    label: new Date(i.time * 1000).toLocaleDateString(locale),
+    value: i.time.toString(),
+  })),
+);
 const filterShow = ref(true);
 const equipFilterShow = ref(true);
 const listShow = ref(true);
-const showEquips = ref<string[]>([]);
-provide("showEquips", showEquips);
-const loadingCount = ref(0);
-provide("loadingCount", loadingCount);
 
-const subProfMap = ref<Record<string, string[]>>({});
+/** 职业 → 子职业（按干员出现的顺序） */
+const subProfMap = computed(() => {
+  const map: Record<string, string[]> = {};
+  for (const { char } of rawEquipData.value) {
+    const subs = (map[char.type] ??= []);
+    if (!subs.includes(char.subtype)) subs.push(char.subtype);
+  }
+  return map;
+});
 const filteredSubProfMap = computed(() => {
   const map: Record<string, string[]> = {};
   if (states.value.type.length === 0) return subProfMap.value;
@@ -123,10 +134,7 @@ const sortStates = ref<Record<string, FilterValue[]>>({
   sort: [newSortItem()],
 });
 const group = ref("sub");
-const simple = ref("stats");
-provide("simple", simple);
 
-const rawEquipData = ref<CharEquips[]>([]);
 const filterData = (data: Record<string, string>): boolean => {
   return sortStates.value.filter.every((v) => {
     switch (v.mode) {
@@ -236,65 +244,6 @@ const CharEquipList = computed(() => {
   return result;
 });
 
-onBeforeMount(async () => {
-  loadingCount.value = 1;
-  const [json, equips, time] = await Promise.all([
-    askOperators(),
-    getEquipDataAll(),
-    getEquipAddedTime(),
-  ]);
-
-  const charData = Object.entries<Record<string, any>>(
-    json.query.results,
-  ).map<CharEquips>(([k, v]) => {
-    return {
-      char: {
-        name: k,
-        nameEN: v.printouts["干员外文名"][0] as string,
-        nameJP: v.printouts["干员名jp"][0] as string,
-        type: v.printouts["职业"][0] as string,
-        subtype: v.printouts["子职业"][0] as string,
-        rarity: v.printouts["稀有度"][0] as string,
-        id: v.printouts["干员序号"][0] as number,
-      },
-      equips: equips[k]
-        ? equips[k]
-            .map((e) => {
-              const t = time.find((et) => {
-                return et.equips.some((i) => {
-                  return i.char === k && i.name === e.name!;
-                });
-              })?.time;
-              e.addtime = t?.toString() || "0";
-              e.latest = time.at(-1)?.time === t ? "yes" : "no";
-              return e;
-            })
-            .sort((a, b) => {
-              const atail = (a.type?.match(/-(.*)/i) ?? [])[1] ?? "";
-              const btail = (b.type?.match(/-(.*)/i) ?? [])[1] ?? "";
-              if (atail === btail) return 0;
-              if (btail !== "X" && btail !== "Y") return -1;
-              if (atail === "X" && btail === "Y") return -1;
-              return 1;
-            })
-        : [],
-    };
-  });
-  for (const i of charData) {
-    if (!subProfMap.value[i.char.type]) subProfMap.value[i.char.type] = [];
-    if (!~subProfMap.value[i.char.type].indexOf(i.char.subtype))
-      subProfMap.value[i.char.type].push(i.char.subtype);
-  }
-  rawEquipData.value = charData;
-  timeData.value = time.map((i) => {
-    return {
-      label: new Date(i.time * 1000).toLocaleDateString(locale),
-      value: i.time.toString(),
-    };
-  });
-  loadingCount.value = 0;
-});
-
 const mobileStyle = () => {
   return isMobile() ? "padding: 5px" : undefined;
 };
@@ -334,7 +283,7 @@ const mobileStyle = () => {
                   v-model="states.type"
                   :title="options.type.title"
                   :options="options.type.options"
-                  :disabled="loadingCount > 0"
+                  :disabled="busy"
                 />
               </tr>
               <tr>
@@ -342,7 +291,7 @@ const mobileStyle = () => {
                   v-model="states.rarity"
                   :title="options.rarity.title"
                   :options="options.rarity.options"
-                  :disabled="loadingCount > 0"
+                  :disabled="busy"
                 />
               </tr>
               <tr>
@@ -351,7 +300,7 @@ const mobileStyle = () => {
                   :title="subOptions.title"
                   :options="subOptions.options"
                   :placeholder="subOptions.placeholder"
-                  :disabled="loadingCount > 0"
+                  :disabled="busy"
                 />
               </tr>
             </tbody>
@@ -415,14 +364,14 @@ const mobileStyle = () => {
                 <NSelect
                   v-model:value="v.mode"
                   class="m-1"
-                  :disabled="loadingCount > 0"
+                  :disabled="busy"
                   :options="sortOptions.filterOption"
                 />
                 <NSelect
                   v-if="v.mode === 'addtime'"
                   v-model:value="v.value"
                   class="m-1"
-                  :disabled="loadingCount > 0"
+                  :disabled="busy"
                   :options="timeData"
                   clearable
                   multiple
@@ -431,7 +380,7 @@ const mobileStyle = () => {
                 <NInput
                   v-else-if="v.mode === 'mission2opt'"
                   :value="textValue(v)"
-                  :disabled="loadingCount > 0"
+                  :disabled="busy"
                   clearable
                   @update:value="v.value = $event"
                 >
@@ -440,7 +389,7 @@ const mobileStyle = () => {
                   v-else
                   v-model:value="v.value"
                   class="m-1"
-                  :disabled="loadingCount > 0 || v.mode === 'all'"
+                  :disabled="busy || v.mode === 'all'"
                   :options="getFilterValue(v.mode)"
                   :multiple="v.mode === 'type'"
                   :clearable="v.mode === 'type'"
@@ -457,7 +406,7 @@ const mobileStyle = () => {
               <NSelect
                 v-model:value="sortStates.sort[0].mode"
                 class="m-1"
-                :disabled="loadingCount > 0 || listShow === false"
+                :disabled="busy || listShow === false"
                 :options="sortOptions.sortOption"
               />
             </div>
@@ -474,7 +423,7 @@ const mobileStyle = () => {
           <NButtonGroup v-if="!listShow" size="small" class="mx-1">
             <NButton
               secondary
-              :disabled="loadingCount > 0"
+              :disabled="busy"
               :type="group === 'sub' ? 'info' : 'default'"
               @click="group = 'sub'"
             >
@@ -482,7 +431,7 @@ const mobileStyle = () => {
             </NButton>
             <NButton
               secondary
-              :disabled="loadingCount > 0"
+              :disabled="busy"
               :type="group === 'time' ? 'info' : 'default'"
               @click="group = 'time'"
             >
@@ -490,7 +439,7 @@ const mobileStyle = () => {
             </NButton>
             <NButton
               secondary
-              :disabled="loadingCount > 0"
+              :disabled="busy"
               :type="group === 'opt' ? 'info' : 'default'"
               @click="group = 'opt'"
             >
@@ -500,17 +449,17 @@ const mobileStyle = () => {
           <NButtonGroup v-else size="small" class="mx-1">
             <NButton
               secondary
-              :disabled="loadingCount > 0"
-              :type="simple === 'stats' ? 'info' : 'default'"
-              @click="simple = 'stats'"
+              :disabled="busy"
+              :type="store.simple === 'stats' ? 'info' : 'default'"
+              @click="store.simple = 'stats'"
             >
               <span class="mdi mdi-numeric text-xl" />
             </NButton>
             <NButton
               secondary
-              :disabled="loadingCount > 0"
-              :type="simple === 'mission' ? 'info' : 'default'"
-              @click="simple = 'mission'"
+              :disabled="busy"
+              :type="store.simple === 'mission' ? 'info' : 'default'"
+              @click="store.simple = 'mission'"
             >
               <span class="mdi mdi-clipboard-check text-xl" />
             </NButton>
@@ -518,7 +467,7 @@ const mobileStyle = () => {
           <NButtonGroup size="small">
             <NButton
               secondary
-              :disabled="loadingCount > 0"
+              :disabled="busy"
               :type="listShow ? 'info' : 'default'"
               @click="listShow = true"
             >
@@ -526,7 +475,7 @@ const mobileStyle = () => {
             </NButton>
             <NButton
               secondary
-              :disabled="loadingCount > 0"
+              :disabled="busy"
               :type="listShow ? 'default' : 'info'"
               @click="listShow = false"
             >

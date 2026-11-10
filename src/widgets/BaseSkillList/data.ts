@@ -1,3 +1,5 @@
+import { defineQueryOptions } from "@pinia/colada";
+
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 
 import { roomGlyph } from "./assets";
@@ -377,7 +379,7 @@ async function fetchNotes(): Promise<Record<string, NoteData>> {
 }
 
 /** 游戏数据从 torappu 取最新一版（同 SOExpCalc / 抽卡模拟器），备注从站内取 */
-export async function fetchSource(): Promise<Source> {
+async function fetchSource(): Promise<Source> {
   const [building, characters, consts, notes] = await Promise.all([
     excel<BuildingData>("building_data"),
     excel<Record<string, CharacterData>>("character_table"),
@@ -386,3 +388,16 @@ export async function fetchSource(): Promise<Source> {
   ]);
   return buildSource({ building, characters, consts, notes });
 }
+
+/**
+ * 后勤技能数据。入口挂载前就先发出去（prefetch），和皮肤样式一起取；
+ * 设施页上可能有好几份，共用整页的 pinia（pagePinia），只取一次。
+ */
+export const baseSkillSourceQuery = defineQueryOptions({
+  key: ["base-skill-list", "source"],
+  query: () =>
+    fetchSource().catch((error: unknown) => {
+      console.error("[BaseSkillList] 后勤技能数据读取失败", error);
+      throw error;
+    }),
+});

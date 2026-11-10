@@ -2,6 +2,7 @@ import { createApp, nextTick, type App } from "vue";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createStores } from "../src/utils/pinia";
 import NpcPortrait from "../src/widgets/NpcPortrait/index.vue";
 import { observePortraits } from "../src/widgets/NpcPortrait/observe";
 import {
@@ -315,7 +316,7 @@ describe("NpcPortrait", () => {
       vi.fn(async () => new Response(JSON.stringify(RAW))),
     );
     const host = document.createElement("div");
-    app = createApp(NpcPortrait, props);
+    app = createApp(NpcPortrait, props).use(createStores());
     app.mount(host);
     // fetch → json → 渲染
     for (let i = 0; i < 5; i++) await nextTick();

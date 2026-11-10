@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 
 import {
   AkButton,
@@ -10,13 +10,14 @@ import {
   AkTab,
   AkTabs,
 } from "@mooncellwiki/prts-design-vue";
+import { useQuery } from "@pinia/colada";
 
 import { useHostTheme } from "@/utils/useHostTheme";
 
 import {
   buildBodies,
+  characterMapQuery,
   fileBodies,
-  loadCharacterMap,
   parseExclude,
   parseKeys,
   type PortraitBody,
@@ -33,10 +34,42 @@ const props = defineProps<{
   name?: string;
 }>();
 
-type Status = "loading" | "ready" | "error";
-
-const status = ref<Status>("loading");
-const bodies = ref<PortraitBody[]>([]);
+const keys = computed(() => parseKeys(props.keys));
+// 只有手写文件时不用拉 character.json
+const {
+  data: links,
+  error,
+  isLoading,
+  refetch,
+} = useQuery(() => ({
+  ...characterMapQuery,
+  enabled: keys.value.length > 0,
+}));
+/** torappu 的立绘；character.json 还没到时是 null，里面的路径坏了（buildBodies 抛错）时当加载失败 */
+const fromTorappu = computed<PortraitBody[] | "error" | null>(() => {
+  if (keys.value.length === 0) return [];
+  if (!links.value) return null;
+  try {
+    return buildBodies(
+      keys.value,
+      links.value,
+      parseExclude(props.exclude ?? ""),
+    );
+  } catch (error_) {
+    console.warn("[NpcPortrait]", error_);
+    return "error";
+  }
+});
+/** 重取期间不算失败，显示加载中 */
+const status = computed<"loading" | "ready" | "error">(() => {
+  if (Array.isArray(fromTorappu.value)) return "ready";
+  if (fromTorappu.value === "error") return "error";
+  return error.value && !isLoading.value ? "error" : "loading";
+});
+const bodies = computed<PortraitBody[]>(() => [
+  ...(Array.isArray(fromTorappu.value) ? fromTorappu.value : []),
+  ...fileBodies(props.files ?? ""),
+]);
 const bodyIndex = ref(0);
 const faceIndex = ref(0);
 /** 叠图底图的原始尺寸，脸部区域按它换算成百分比 */
@@ -88,29 +121,6 @@ function onBaseLoad(event: Event): void {
   const image = event.target as HTMLImageElement;
   baseSize.value = { width: image.naturalWidth, height: image.naturalHeight };
 }
-
-async function load(): Promise<void> {
-  status.value = "loading";
-  try {
-    const keys = parseKeys(props.keys);
-    // 只有手写文件时不用拉 character.json
-    const fromTorappu =
-      keys.length > 0
-        ? buildBodies(
-            keys,
-            await loadCharacterMap(),
-            parseExclude(props.exclude ?? ""),
-          )
-        : [];
-    bodies.value = [...fromTorappu, ...fileBodies(props.files ?? "")];
-    status.value = "ready";
-  } catch (error) {
-    console.warn("[NpcPortrait]", error);
-    status.value = "error";
-  }
-}
-
-onMounted(load);
 </script>
 
 <template>
@@ -124,7 +134,9 @@ onMounted(load);
     <AkSpinner v-if="status === 'loading'" description="立绘加载中…" />
     <AkEmpty v-else-if="status === 'error'" title="立绘加载失败" icon="warn">
       <template #extra>
-        <AkButton size="sm" variant="outline" @click="load">重试</AkButton>
+        <AkButton size="sm" variant="outline" @click="refetch()">
+          重试
+        </AkButton>
       </template>
     </AkEmpty>
     <AkEmpty v-else-if="!body" title="该角色暂无剧情立绘" />

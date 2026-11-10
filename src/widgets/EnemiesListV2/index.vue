@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { provide, useTemplateRef } from "vue";
+import { computed, provide, useTemplateRef } from "vue";
 
 import {
   AkButton,
@@ -8,6 +8,7 @@ import {
   AkSpinner,
   AkToastProvider,
 } from "@mooncellwiki/prts-design-vue";
+import { useQuery } from "@pinia/colada";
 import { isClient, useElementSize, useEventListener } from "@vueuse/core";
 
 import ListPager from "@/components/list/ListPager.vue";
@@ -21,27 +22,21 @@ import FilterPanel from "./filter/FilterPanel.vue";
 import ResultCards from "./result/ResultCards.vue";
 import ResultGrid from "./result/ResultGrid.vue";
 import ResultTable from "./result/ResultTable.vue";
+import { enemySourceQuery } from "./source";
 import { createEnemyList, enemyListKey } from "./store";
-
-import type { EnemyData } from "./enemy";
 
 /**
  * 敌人一览（PRTS Design 视觉，排布同干员一览）：
  * 筛选 → 工具条（搜索 · 排序 · 显示方式）→ 结果栏（条数 · 已选条件 · 复制链接 · 分页）→ 结果。
- * 筛选项与匹配规则对着游戏的敌人图鉴（见 filter.ts），数据是「敌人一览/数据」那份 JSON（入口取好传进来）。
+ * 筛选项与匹配规则对着游戏的敌人图鉴（见 filter.ts），数据是「敌人一览/数据」那份 JSON（source.ts，入口挂载前先 prefetch）。
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.el-* 是这页自己的排布（各组件的 scoped 样式）。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
  */
-const props = withDefaults(
-  defineProps<{
-    source?: EnemyData[];
-    /** 敌人数据没取到：结果区出失败提示，不再转圈 */
-    failed?: boolean;
-  }>(),
-  { source: () => [] },
-);
+const { data, status, isLoading, refetch } = useQuery(enemySourceQuery);
+/** 敌人数据没取到：结果区出失败提示，不再转圈；重取期间转圈 */
+const failed = computed(() => status.value === "error" && !isLoading.value);
 
-const store = createEnemyList(props.source);
+const store = createEnemyList(() => data.value ?? []);
 provide(enemyListKey, store);
 const { enemies, state, list, page, pageCount } = store;
 
@@ -70,8 +65,6 @@ function toPage(n: number) {
   result.value?.scrollIntoView({ block: "start" });
 }
 
-const reload = () => location.reload();
-
 const { tip, handlers: tipHandlers } = useHoverTip(
   useTemplateRef<HTMLElement>("bubble"),
   "[data-tip]",
@@ -92,8 +85,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
 
         <div ref="result" class="el-result">
           <AkEmpty v-if="failed" title="敌人数据读取失败">
-            <AkButton variant="link" @click="reload">刷新页面</AkButton
-            >再试一次。
+            <AkButton variant="link" @click="refetch()">重新读取</AkButton>
           </AkEmpty>
           <!-- 外壳预渲染与数据还没回来时 -->
           <AkSpinner

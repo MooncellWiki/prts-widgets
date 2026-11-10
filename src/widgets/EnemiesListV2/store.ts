@@ -1,4 +1,12 @@
-import { computed, inject, reactive, watch, type InjectionKey } from "vue";
+import {
+  computed,
+  inject,
+  reactive,
+  toValue,
+  watch,
+  type InjectionKey,
+  type MaybeRefOrGetter,
+} from "vue";
 
 import { isClient } from "@vueuse/core";
 
@@ -44,10 +52,13 @@ const initialView = (): ViewMode =>
 
 /**
  * 敌人一览的全部状态：筛选 / 搜索 / 排序 / 显示方式 / 分页，结果都由它算出。
- * 根组件 createEnemyList 后 provide 下去，子组件 useEnemyList 取；不走 pinia——外壳预渲染（src/prerender/）不装插件。
+ * 根组件 createEnemyList 后 provide 下去，子组件 useEnemyList 取。
+ * source 是响应式的：数据还没到时是空的，筛选面板照样出（外壳预渲染也是这样），到了再算结果。
  */
-export function createEnemyList(source: readonly EnemyData[]) {
-  const enemies = source.map(toEnemy);
+export function createEnemyList(
+  source: MaybeRefOrGetter<readonly EnemyData[]>,
+) {
+  const enemies = computed(() => toValue(source).map(toEnemy));
   const filterById = reactive(createFilters());
   const filters = Object.values(filterById) as FilterState[];
   const quick = QUICK_FILTERS.map((def) => filterById[def.id]) as FilterState[];
@@ -69,7 +80,7 @@ export function createEnemyList(source: readonly EnemyData[]) {
 
   /* ── 筛选 → 排序 → 分页 ── */
   const failed = computed(() =>
-    failedFilters(enemies, filters, normalizeNeedle(state.q)),
+    failedFilters(enemies.value, filters, normalizeNeedle(state.q)),
   );
   /** 各行里会筛出 0 条的选项（按字段名取） */
   const empties = computed(

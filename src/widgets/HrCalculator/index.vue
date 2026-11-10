@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { provide, useTemplateRef } from "vue";
+import { computed, provide, useTemplateRef } from "vue";
 
 import { AkScope, AkToastProvider } from "@mooncellwiki/prts-design-vue";
+import { useQuery } from "@pinia/colada";
 import { isClient, useElementSize } from "@vueuse/core";
 
 import { useHostTheme } from "@/utils/useHostTheme";
@@ -10,9 +11,8 @@ import { useHoverTip } from "@/utils/useHoverTip";
 import ResultView from "./ResultView.vue";
 import TagPanel from "./TagPanel.vue";
 import VerdictBar from "./VerdictBar.vue";
+import { recruitSourceQuery } from "./source";
 import { createRecruit, recruitKey } from "./store";
-
-import type { Source } from "./recruit";
 
 /**
  * 公招计算（PRTS Design 视觉，对应设计稿 /patterns/recruit）：
@@ -21,16 +21,11 @@ import type { Source } from "./recruit";
  * .ak-* 是设计系统组件（样式来自皮肤 / skins.arknights.components），.hr-* 是这页自己的排布（各组件的 scoped 样式）。
  * 根节点标 ak-not-prose，不吃皮肤的正文排版；data-no-toggle 让皮肤脚本别替模板芯片翻状态。
  */
-const props = withDefaults(
-  defineProps<{
-    source?: Source[];
-    /** 干员数据没取到：结果区出失败提示，不再转圈 */
-    failed?: boolean;
-  }>(),
-  { source: () => [] },
-);
-
-const recruit = createRecruit(props.source);
+/* 干员数据：入口挂载前先 prefetch（source.ts）；没到时标签面板照样出，结果区转圈 / 出失败提示（ResultView） */
+const { data, status, isLoading, refetch } = useQuery(recruitSourceQuery);
+/** 重取期间不算失败，结果区转圈 */
+const failed = computed(() => status.value === "error" && !isLoading.value);
+const recruit = createRecruit(() => data.value ?? []);
 provide(recruitKey, recruit);
 
 /* 地址栏：?filter= 同旧版，只在打开时读一次、不往回写——刷新页面就是清空（旧版的用法）；分享走工具栏的「复制分享链接」 */
@@ -66,7 +61,7 @@ const { tip, handlers: tipHandlers } = useHoverTip(
       >
         <TagPanel />
         <VerdictBar />
-        <ResultView :failed="failed" />
+        <ResultView :failed="failed" @retry="refetch()" />
       </div>
 
       <div

@@ -1,12 +1,5 @@
 <script setup lang="ts">
-import {
-  type Ref,
-  inject,
-  onBeforeMount,
-  onBeforeUpdate,
-  onMounted,
-  ref,
-} from "vue";
+import { onBeforeMount, onBeforeUpdate, onMounted, ref } from "vue";
 
 import { NSpin } from "naive-ui";
 
@@ -15,7 +8,7 @@ import { useTheme } from "@/utils/theme";
 import { getImagePath, isMobile } from "@/utils/utils";
 
 import { colorMap, customLabel, statsStyleMap } from "../consts";
-import { getEquipData } from "../equipData";
+import { useEquipListStore } from "../store";
 import { fixAtkRange, processLink, processMaterial } from "../utils";
 
 import ETag from "./ETag.vue";
@@ -26,12 +19,11 @@ function getStatColor(type: string, stat: string): string {
 const props = withDefaults(
   defineProps<{
     name: string;
-    data?: Record<string, string>[];
+    data: Record<string, string>[];
     simple?: boolean;
     simplemode?: string;
   }>(),
   {
-    data: () => [],
     simple: false,
     simplemode: "stats",
   },
@@ -39,7 +31,7 @@ const props = withDefaults(
 
 const content = ref<Record<string, string>[]>([]);
 const loading = ref(false);
-const loadingCount = inject("loadingCount") as Ref<number>;
+const store = useEquipListStore();
 const { isDark } = useTheme();
 const handleDark = () => {
   const seps = document.querySelectorAll(
@@ -51,13 +43,8 @@ const handleDark = () => {
 };
 onBeforeMount(async () => {
   loading.value = true;
-  loadingCount.value += 1;
-  if (props.data.length > 0) {
-    content.value = props.data;
-  } else {
-    const rawdata = await getEquipData(props.name ?? "");
-    content.value = rawdata ?? [];
-  }
+  store.processing += 1;
+  content.value = props.data;
   for (const e of content.value) {
     for (const v in e) {
       e[v] = e[v]
@@ -98,7 +85,7 @@ onBeforeMount(async () => {
     ele.classList.toggle("dark", isDark.value);
   }
   loading.value = false;
-  loadingCount.value -= 1;
+  store.processing -= 1;
 });
 onMounted(handleDark);
 onBeforeUpdate(handleDark);

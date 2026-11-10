@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 
+import { useQuery } from "@pinia/colada";
 import {
   NButton,
   NCard,
@@ -18,9 +19,9 @@ import { getImagePath } from "@/utils/utils";
 
 import MedalComponent from "./Medal.vue";
 import MedalGroupComponent from "./MedalGroup.vue";
-import { getMedalMetaData } from "./utils";
+import { EMPTY_MEDAL_META, medalMetaQuery } from "./utils";
 
-import type { MedalMetaData, MiniMedal, PreMedalItem } from "./types";
+import type { MiniMedal, PreMedalItem } from "./types";
 
 const props = withDefaults(
   defineProps<{
@@ -35,16 +36,8 @@ const props = withDefaults(
   },
 );
 
-const medalMetaData = ref<MedalMetaData>({
-  medal: {},
-  medalGroup: {},
-  category: {},
-  groupDeprecateType: {},
-});
-
-onMounted(async () => {
-  medalMetaData.value = await getMedalMetaData();
-});
+const { data } = useQuery(medalMetaQuery);
+const medalMetaData = computed(() => data.value ?? EMPTY_MEDAL_META);
 
 const filteredMedalData = computed(() => {
   const medalGroup = Object.fromEntries(

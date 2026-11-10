@@ -1,8 +1,9 @@
+import { defineQueryOptions } from "@pinia/colada";
+
 import { getImagePath } from "@/utils/utils";
 
 import {
-  CHARACTER_MAP_URL,
-  parseCharacterMap,
+  fetchCharacterMap,
   type CharacterLinkMap,
 } from "../StoryAssetExplorer/utils";
 import { resolveStoryCharacterAssetByKey } from "../StoryPlayer/engine/asset";
@@ -169,18 +170,15 @@ export function fileBodies(raw: string): PortraitBody[] {
     });
 }
 
-let characterMap: Promise<CharacterLinkMap> | null = null;
-
-/** 整页共用一份 character.json（gzip 后约 130 KB）；失败后清掉缓存，下次重试会重新拉。 */
-export function loadCharacterMap(): Promise<CharacterLinkMap> {
-  characterMap ??= fetch(CHARACTER_MAP_URL)
-    .then(async (response) => {
-      if (!response.ok) throw new Error(`character.json ${response.status}`);
-      return parseCharacterMap(await response.json());
-    })
-    .catch((error: unknown) => {
-      characterMap = null;
+/**
+ * character.json（gzip 后约 130 KB）。每个条目一个 app，都装整页共用的 pinia（见 entries/NpcPortrait.ts），
+ * 整页只取一次；失败的下次用到时（点重试、展开别的条目）重新取。
+ */
+export const characterMapQuery = defineQueryOptions({
+  key: ["npc-portrait", "character-map"],
+  query: ({ signal }) =>
+    fetchCharacterMap(signal).catch((error: unknown) => {
+      console.warn("[NpcPortrait]", error);
       throw error;
-    });
-  return characterMap;
-}
+    }),
+});

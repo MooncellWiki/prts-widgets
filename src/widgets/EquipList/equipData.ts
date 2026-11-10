@@ -1,15 +1,10 @@
+import { defineQueryOptions } from "@pinia/colada";
+
 import { recoverHTML } from "./utils";
 
-import type { CargoEquip, EquipTime } from "./types";
+import type { CargoEquip, CharEquips, EquipTime } from "./types";
 
-export async function getEquipData(
-  name: string,
-): Promise<Record<string, string>[]> {
-  const result = await getEquipDataAll();
-  return result[name];
-}
-
-export async function getEquipDataAll(): Promise<
+async function getEquipDataAll(): Promise<
   Record<string, Record<string, string>[]>
 > {
   const result: Record<string, Record<string, string>[]> = {};
@@ -105,7 +100,7 @@ export async function getEquipDataAll(): Promise<
   return result;
 }
 
-export async function getEquipAddedTime(): Promise<EquipTime[]> {
+async function getEquipAddedTime(): Promise<EquipTime[]> {
   const resp = await fetch(
     `/index.php?${new URLSearchParams({
       title: "干员模组一览/time",
@@ -117,7 +112,7 @@ export async function getEquipAddedTime(): Promise<EquipTime[]> {
   return json;
 }
 
-export async function askOperators() {
+async function askOperators() {
   const response = await fetch(
     `/api.php?${new URLSearchParams({
       action: "ask",
@@ -132,3 +127,62 @@ export async function askOperators() {
 
   return json;
 }
+
+/** 有专属模组的干员和各自的模组（带上线时间、是不是最新一批），以及各批模组的上线时间 */
+async function loadEquipList(): Promise<{
+  chars: CharEquips[];
+  time: EquipTime[];
+}> {
+  const [json, equips, time] = await Promise.all([
+    askOperators(),
+    getEquipDataAll(),
+    getEquipAddedTime(),
+  ]);
+
+  const chars = Object.entries<Record<string, any>>(
+    json.query.results,
+  ).map<CharEquips>(([k, v]) => {
+    return {
+      char: {
+        name: k,
+        nameEN: v.printouts["干员外文名"][0] as string,
+        nameJP: v.printouts["干员名jp"][0] as string,
+        type: v.printouts["职业"][0] as string,
+        subtype: v.printouts["子职业"][0] as string,
+        rarity: v.printouts["稀有度"][0] as string,
+        id: v.printouts["干员序号"][0] as number,
+      },
+      equips: equips[k]
+        ? equips[k]
+            .map((e) => {
+              const t = time.find((et) => {
+                return et.equips.some((i) => {
+                  return i.char === k && i.name === e.name!;
+                });
+              })?.time;
+              e.addtime = t?.toString() || "0";
+              e.latest = time.at(-1)?.time === t ? "yes" : "no";
+              return e;
+            })
+            .sort((a, b) => {
+              const atail = (a.type?.match(/-(.*)/i) ?? [])[1] ?? "";
+              const btail = (b.type?.match(/-(.*)/i) ?? [])[1] ?? "";
+              if (atail === btail) return 0;
+              if (btail !== "X" && btail !== "Y") return -1;
+              if (atail === "X" && btail === "Y") return -1;
+              return 1;
+            })
+        : [],
+    };
+  });
+  return { chars, time };
+}
+
+export const equipListQuery = defineQueryOptions({
+  key: ["equip-list"],
+  query: () =>
+    loadEquipList().catch((error: unknown) => {
+      console.error("[EquipList]", error);
+      throw error;
+    }),
+});
