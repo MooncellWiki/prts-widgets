@@ -8,14 +8,16 @@ import {
   resolveCharacterRef,
 } from "./characterRef";
 import {
+  exactArg,
   parseSubtitleAlignment,
   parseVector2,
   toBoolean,
   toNumber,
   toOptionalNumber,
   toString,
+  TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "./commandParams";
-import { CommandRegistry } from "./commandRegistry";
+import { CommandRegistry, type CommandResult } from "./commandRegistry";
 import {
   parseDecision,
   parsePredicateReferences,
@@ -59,8 +61,6 @@ import type {
   StoryRenderer,
   SubtitleInput,
 } from "./types";
-
-type CommandResult = "continue" | "wait_input";
 
 interface AutoSpeed {
   animateRatio: number;
@@ -116,7 +116,6 @@ const QUICK_AUTO_SPEEDS: readonly AutoSpeed[] = [
     typeWriterDelayMs: 1.25,
   },
 ];
-const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
 
 const builtinCommandNames = [
   "endtip",
@@ -484,6 +483,7 @@ export class StoryRuntime {
         this.beginStickerTyping(count, rawLength),
       calculateFadeMs: (value, fallback) =>
         this.calculateFadeMs(value, fallback),
+      raiseAutoClick: () => this.raiseStickerAutoClick(),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
@@ -1210,9 +1210,7 @@ export class StoryRuntime {
   }
 
   private exactArg(args: StoryCommandArgs, key: string): unknown {
-    return Object.prototype.hasOwnProperty.call(args, key)
-      ? args[key]
-      : undefined;
+    return exactArg(args, key);
   }
 
   private warn(
@@ -3749,6 +3747,19 @@ export class StoryRuntime {
       if (!this.destroyed && this.typingSessionId === sessionId)
         this.onTypingComplete();
     };
+  }
+
+  /**
+   * Native port: the sticker hide branch ends with `_OnStickerTypeEnd(0)`,
+   * i.e. `AVGController.RaiseAutoClick(0)` (2791 `_HideSticker` 0x1841E4250):
+   * the hidden sticker drops the shared typing state and auto-play moves on
+   * with the base wait only.
+   */
+  private raiseStickerAutoClick(): void {
+    this.cancelTyping();
+    this.currentMessageLength = 0;
+    this.currentRawMessageLength = 0;
+    if (!this.destroyed) this.onTypingComplete();
   }
 
   private finishTypingNow(): boolean {

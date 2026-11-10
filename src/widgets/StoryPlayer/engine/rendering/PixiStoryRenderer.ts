@@ -650,6 +650,13 @@ export class PixiStoryRenderer implements StoryRenderer {
   private inverseAmount = 0;
   private grayscaleFilter: ColorMatrixFilter | null = null;
   private readonly stickerViews = new Map<string, StickerView>();
+  /**
+   * Native port: `StickerPanel.m_currentSticker`. `_ExecuteSticker` points it
+   * at whichever view the latest sticker command touched -- the shown, the
+   * appended *and* the hidden one -- and `_RecycleStickers` nulls it. Both
+   * `ForceCommandEnd` and `_OnClicked` only `TryFinishType` this one view.
+   */
+  private currentStickerId: string | null = null;
   private subtitleFadeSessionId = 0;
   /**
    * Native port: `SubtitlePanel._SetHiddenInternal`'s `m_hidden`. Flips the
@@ -833,6 +840,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel.destroy();
     for (const view of this.stickerViews.values()) view.destroy();
     this.stickerViews.clear();
+    this.currentStickerId = null;
     this.focusEffectPanel.destroy();
     this.cgItemPanel.destroy();
     this.backgroundRoot = null;
@@ -935,11 +943,12 @@ export class PixiStoryRenderer implements StoryRenderer {
       return true;
     }
 
-    // Preserve pending-typewriter order, including a reactivated older id.
-    const typingViews = [...this.stickerViews.values()]
-      .filter((view) => view.isTyping)
-      .sort((a, b) => a.typingOrder - b.typingOrder);
-    if (typingViews[0]?.finishTyping()) return true;
+    // Only m_currentSticker is finished; other stickers keep typing.
+    if (
+      this.currentStickerId !== null &&
+      this.stickerViews.get(this.currentStickerId)?.finishTyping()
+    )
+      return true;
 
     return false;
   }
@@ -2804,16 +2813,19 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
+    this.currentStickerId = id;
     this.stickerViews.get(id)?.hide(fadeMs, true);
   }
 
   /**
    * Native port: `StickerPanel._RecycleStickers` (stickerclear and the skip
-   * reset) calls `HideSticker(0)` on every view without `TryFinishType`, so
-   * typing is not completed before the fade.
+   * reset) calls `ResetStickerTransform` + `HideSticker(0)` on every view
+   * without `TryFinishType`, so typing is not completed before the fade, and
+   * then nulls `m_currentSticker`.
    */
   async clearStickers(fadeMs = 0): Promise<void> {
-    for (const view of this.stickerViews.values()) view.hide(fadeMs, false);
+    for (const view of this.stickerViews.values()) view.recycle(fadeMs);
+    this.currentStickerId = null;
   }
 
   clearSpellStickers(): void {
@@ -3378,6 +3390,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /** StickerPanel supplies command inputs; each view owns its visual state. */
   setSticker(input: StickerInput): Promise<void> {
+    this.currentStickerId = input.id;
     return this.ensureStickerView(input.id).show(input);
   }
 
@@ -5040,7 +5053,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       tween: (duration, step, done) => this.tween(duration, step, done),
     });
     this.stickerViews.set(id, view);
-    this.uiLayer.addChild(view.text);
+    this.uiLayer.addChild(view.root);
     return view;
   }
 

@@ -1,17 +1,18 @@
 import {
+  exactArg as arg,
   parseSubtitleAlignment,
   parseVector2,
   toBoolean,
   toNumber,
   toOptionalNumber,
   toString,
+  TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
 import { parseRichChars } from "../richtext";
 
-import type { CommandRegistry } from "../commandRegistry";
+import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
   ParsedCommandLine,
-  StoryCommandArgs,
   StoryRenderer,
   StickerInput,
   StickerTweenInput,
@@ -19,19 +20,14 @@ import type {
   TimerStickerInput,
 } from "../types";
 
-type CommandResult = "continue" | "wait_input";
 interface StickerPlayback {
   beginTyping: (charCount: number, rawLength: number) => () => void;
   calculateFadeMs: (value: unknown, fallback?: number) => number;
+  /** Native `_OnStickerTypeEnd(0)` -> `RaiseAutoClick(0)`. */
+  raiseAutoClick: () => void;
   typeWriterDelayMs: () => number;
   translateText: (text: string) => string;
   warn: (detail: string) => void;
-}
-const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
-function arg(args: StoryCommandArgs, key: string): unknown {
-  return Object.prototype.hasOwnProperty.call(args, key)
-    ? args[key]
-    : undefined;
 }
 
 /**
@@ -143,7 +139,7 @@ export class StickerPanel {
           this.stickerSlots.delete(id);
           this.stickerPoolFadeMs.push(hideFadeMs);
           await this.renderer.clearSticker(id, hideFadeMs);
-          this.playback.beginTyping(0, 0)();
+          this.playback.raiseAutoClick();
           return block ? "wait_input" : "continue";
         }
 
@@ -227,11 +223,11 @@ export class StickerPanel {
 
       case "stickertween": {
         // Native port: Torappu.AVG.StickerPanel._ExecuteStickerTween
-        // (2.7.61 build 2761, VA 0x183e92110), registered under the plaintext
-        // key "stickertween" in StickerPanel.GetExecutors. It only tweens an
-        // already-shown sticker: `id` comes from TryGetParam and an empty id
-        // or a lookup miss in the slot dictionary silently continues -- no
-        // warning, no block (same silent-miss contract as hidecgitem).
+        // (2791 VA 0x1841E2E40; 2.7.61 0x183e92110), registered under the
+        // plaintext key "stickertween" in StickerPanel.GetExecutors. It only
+        // tweens an already-shown sticker: `id` comes from TryGetParam and an
+        // empty id or a lookup miss in the slot dictionary silently continues
+        // -- no warning, no block (same silent-miss contract as hidecgitem).
         const id = toString(arg(args, "id"));
         if (!id || !this.stickerSlots.has(id)) return "continue";
 
@@ -247,11 +243,19 @@ export class StickerPanel {
         // leaves the whole group Empty.
         const rto = toOptionalNumber(arg(args, "rto"));
         const ato = arg(args, "ato");
+        // 2791 pushes a fourth group after alpha: `ParseScaleParam`
+        // (0x1841FF100) reads `sto` / `sfrom` / `sduration` as floats with the
+        // same Empty-unless-`sto` rule, and `_CreateScaleTween` (0x1841FDD40)
+        // drives a uniform x/y localScale (z kept). `sfrom` defaults to 0.
+        const sto = toOptionalNumber(arg(args, "sto"));
         // With every group Empty, `ExecuteTween` returns before touching the
         // builder, so nothing is pushed and nothing is flushed -- but the
         // `block && isend` check at 0x183e92416 still runs.
         const hasGroup =
-          ato !== undefined || pto !== undefined || rto !== undefined;
+          ato !== undefined ||
+          pto !== undefined ||
+          rto !== undefined ||
+          sto !== undefined;
         const tween: StickerTweenInput = {
           // A group is emitted only when its `*to` key parses: native wraps
           // each group in an IEmptyable param and ExecuteTween skips empty
@@ -296,6 +300,17 @@ export class StickerPanel {
                   ),
                   from: toOptionalNumber(arg(args, "rfrom")) ?? 0,
                   to: rto,
+                },
+              }),
+          ...(sto === undefined
+            ? {}
+            : {
+                scale: {
+                  durationMs: this.playback.calculateFadeMs(
+                    arg(args, "sduration"),
+                  ),
+                  from: toOptionalNumber(arg(args, "sfrom")) ?? 0,
+                  to: sto,
                 },
               }),
         };

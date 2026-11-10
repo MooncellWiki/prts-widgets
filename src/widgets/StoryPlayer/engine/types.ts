@@ -575,6 +575,8 @@ export interface StickerTweenInput {
     to: { x: number; y: number };
   };
   rotation?: { durationMs: number; from: number; to: number };
+  /** 2791 `sto` group: uniform x/y scale (`_CreateScaleTween`). */
+  scale?: { durationMs: number; from: number; to: number };
 }
 
 export interface SpellStickerInput {

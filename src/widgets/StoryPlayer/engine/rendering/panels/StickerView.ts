@@ -1,4 +1,4 @@
-import { Text, type TextStyle } from "pixi.js";
+import { Container, Text, type TextStyle } from "pixi.js";
 
 import {
   buildTagStyles,
@@ -26,8 +26,8 @@ interface StickerViewHost {
 }
 /**
  * One accumulated SequenceBuilder.Push step of a sticker tween, in native
- * push order (position, rotation, alpha). `join` and the per-kind payload
- * mirror Torappu.AVG's AnimStep { spec, join, seqEnd } composition.
+ * push order (position, rotation, alpha, scale). `join` and the per-kind
+ * payload mirror Torappu.AVG's AnimStep { spec, join, seqEnd } composition.
  */
 type StickerTweenStepInput =
   | {
@@ -41,14 +41,7 @@ type StickerTweenStepInput =
       durationMs: number;
       from: number;
       join: boolean;
-      kind: "alpha";
-      to: number;
-    }
-  | {
-      durationMs: number;
-      from: number;
-      join: boolean;
-      kind: "rotation";
+      kind: "alpha" | "rotation" | "scale";
       to: number;
     };
 
@@ -56,12 +49,17 @@ type StickerTweenStepInput =
  * Native provenance: AVGStickerTextView (2791 RenderSticker 0x1842459B0).
  * One view owns its text, typing, fade and queued tween lifecycle. Browser
  * timers and the renderer's TweenRunner replace Unity/DOTween scheduling.
+ *
+ * `root` stands in for the view's `_textTransform` + `_canvasGroup`: it sits
+ * at the anchoredPosition RenderSticker writes (x, y), carries every tween
+ * transform (AVGTweenFactory drives anchoredPosition / eulerAngles /
+ * localScale on that rect and DOFade on the canvas group) and the fade alpha.
+ * `text` is the `_message` inside the rect, offset only by its alignment
+ * within `width`, so a position tween and the alignment layout never write
+ * the same coordinate.
  */
 export class StickerView {
-  // Web adaptation: retain the old pending-target Map insertion order across
-  // views, independently of the order in which their ids were first created.
-  private static nextTypingOrder = 0;
-  private typingOrderValue = 0;
+  readonly root = new Container();
   readonly text: Text;
   private destroyed = false;
   private fadeSession = 0;
@@ -71,7 +69,6 @@ export class StickerView {
   private tweenQueue: StickerTweenStepInput[] = [];
   private typingTarget: {
     alignment: StickerInput["alignment"];
-    baseX: number;
     fullText: string;
     widthPx: number;
   } | null = null;
@@ -81,11 +78,8 @@ export class StickerView {
       style: host.createOverlayTextStyle(18, 675),
       text: "",
     });
-    this.text.visible = false;
-  }
-
-  get typingOrder(): number {
-    return this.typingOrderValue;
+    this.root.addChild(this.text);
+    this.root.visible = false;
   }
 
   get isTyping(): boolean {
@@ -98,12 +92,7 @@ export class StickerView {
     if (!target) return false;
     this.typingSession += 1;
     this.text.text = target.fullText;
-    this.host.layoutSubtitle(
-      this.text,
-      target.baseX,
-      target.widthPx,
-      target.alignment,
-    );
+    this.host.layoutSubtitle(this.text, 0, target.widthPx, target.alignment);
     this.typingTarget = null;
     return true;
   }
@@ -113,7 +102,7 @@ export class StickerView {
     this.invalidate();
     this.typingTarget = null;
     this.tweenQueue = [];
-    this.text.destroy();
+    this.root.destroy({ children: true });
   }
 
   private invalidate(): void {
@@ -123,22 +112,47 @@ export class StickerView {
     this.tweenSession += 1;
   }
 
+  /**
+   * Native `_ResetStickerTransform` (0x1842464B0): restores the base
+   * localRotation / localScale cached on the first RenderSticker -- identity
+   * for the prefab. Position is not part of it; RenderSticker rewrites the
+   * anchoredPosition itself and HideSticker leaves it alone.
+   */
+  private resetTransform(): void {
+    this.root.rotation = 0;
+    this.root.scale.set(1, 1);
+  }
+
   async show(input: StickerInput): Promise<void> {
-    const sticker = this.text;
+    const { root, text } = this;
     const wasActive = this.richChars !== null;
-    this.invalidate();
-    sticker.alpha = wasActive ? sticker.alpha : 0;
-    sticker.visible = true;
+    if (input.append && wasActive) {
+      // Native `AVGStickerTextView.AppendText` (0x1842455F0) only hands the
+      // text to the typewriter: the running fade-in (m_animSwitch), the tween
+      // sequence (m_seq) and the transform are left alone. Only the typing
+      // session restarts, so a `block=false` show followed at once by an
+      // append (main 15-04_beg:231) keeps fading in instead of freezing at 0.
+      this.typingSession += 1;
+    } else {
+      // RenderSticker -> _ResetView kills m_seq and resets the transform, then
+      // writes anchoredPosition from the param.
+      this.invalidate();
+      this.resetTransform();
+      root.x = input.x;
+      root.y = input.y;
+    }
+    root.visible = true;
 
     if (!wasActive) {
+      root.alpha = 0;
       const fadeSessionId = this.fadeSession;
       void this.host.tween(
         input.fadeMs,
         (progress) => {
-          if (this.fadeSession === fadeSessionId) sticker.alpha = progress;
+          if (this.fadeSession === fadeSessionId) root.alpha = progress;
         },
         () => {
-          if (this.fadeSession === fadeSessionId) sticker.alpha = 1;
+          if (this.fadeSession === fadeSessionId) root.alpha = 1;
         },
       );
     }
@@ -150,36 +164,27 @@ export class StickerView {
 
     const style = this.host.createOverlayTextStyle(input.sizePx, input.widthPx);
     style.tagStyles = buildTagStyles(allChars);
-    sticker.style = style;
-    sticker.y = input.y;
+    text.style = style;
 
     const fullText = richCharsToTaggedText(allChars);
     if (input.delayMs <= 0) {
-      sticker.text = fullText;
-      this.host.layoutSubtitle(
-        sticker,
-        input.x,
-        input.widthPx,
-        input.alignment,
-      );
+      this.typingTarget = null;
+      text.text = fullText;
+      this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
       input.onTypingComplete?.();
       return;
     }
 
     const sessionId = this.typingSession;
-    sticker.text = richCharsToTaggedText(prevChars);
-    this.host.layoutSubtitle(sticker, input.x, input.widthPx, input.alignment);
-    if (!this.typingTarget)
-      this.typingOrderValue = ++StickerView.nextTypingOrder;
+    text.text = richCharsToTaggedText(prevChars);
+    this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
     this.typingTarget = {
       alignment: input.alignment,
-      baseX: input.x,
       fullText,
       widthPx: input.widthPx,
     };
-    void this.runStickerTyping(sessionId, sticker, {
+    void this.runStickerTyping(sessionId, {
       alignment: input.alignment,
-      baseX: input.x,
       delayMs: input.delayMs,
       prevChars,
       newChars,
@@ -189,66 +194,72 @@ export class StickerView {
   }
 
   hide(fadeMs: number, finishTyping: boolean): void {
-    const sticker = this.text;
+    const { root, text } = this;
 
     this.invalidate();
     const typingTarget = this.typingTarget;
     if (finishTyping && typingTarget) {
-      sticker.text = typingTarget.fullText;
+      text.text = typingTarget.fullText;
       this.host.layoutSubtitle(
-        sticker,
-        typingTarget.baseX,
+        text,
+        0,
         typingTarget.widthPx,
         typingTarget.alignment,
       );
     }
     this.typingTarget = null;
     this.richChars = null;
-    if (!sticker.visible || !sticker.text) {
-      sticker.text = "";
-      sticker.visible = false;
-      sticker.alpha = 1;
+    if (!root.visible || !text.text || fadeMs <= 0) {
+      this.clearVisual();
       return;
     }
 
     const sessionId = this.fadeSession;
-    const startAlpha = sticker.alpha;
-    if (fadeMs <= 0) {
-      sticker.text = "";
-      sticker.visible = false;
-      sticker.alpha = 1;
-      return;
-    }
-
+    const startAlpha = root.alpha;
     void this.host.tween(
       fadeMs,
       (progress) => {
         if (this.fadeSession !== sessionId) return;
-        sticker.alpha = startAlpha * (1 - progress);
+        root.alpha = startAlpha * (1 - progress);
       },
       () => {
         if (this.fadeSession !== sessionId) return;
-        sticker.text = "";
-        sticker.visible = false;
-        sticker.alpha = 1;
+        this.clearVisual();
       },
     );
   }
 
   /**
-   * Native port: Torappu.AVG.StickerPanel._ExecuteStickerTween (2.7.61 build
-   * 2761, VA 0x183e92110) driving AVGStickerTextView.ExecuteTween<T>
-   * (VA 0x184165be0 / 0x184165940). Each non-empty group is one
-   * SequenceBuilder.Push step in native order (position, rotation, alpha);
-   * `isend=false` steps only accumulate, and the first `isend=true` command
-   * builds and plays the whole sequence -- mirrored here by a per-view pending
-   * queue. Web adaptation: instead of a DOTween Sequence, every step gets a
-   * time window inside a single tween of the total duration; a `join` step
-   * starts when the previous step started, otherwise after it ends (DOTween
-   * Join vs Append). Durations were already animateRatio-scaled by the
-   * StickerPanel, which is the documented visual equivalent of the native
-   * `Sequence.timeScale = animateRatio` assignment. Rotation is degrees in
-   * native localEulerAngles and radians in pixi, hence the conversion.
+   * Native `StickerPanel._RecycleStickers` (0x1841E46E0) runs
+   * `ResetStickerTransform` and then `HideSticker(0)` on every live entry of
+   * m_stickerDict -- no TryFinishType, so a partial typewriter is what fades.
+   */
+  recycle(fadeMs: number): void {
+    if (this.richChars !== null) this.resetTransform();
+    this.hide(fadeMs, false);
+  }
+
+  private clearVisual(): void {
+    this.text.text = "";
+    this.root.visible = false;
+    this.root.alpha = 1;
+  }
+
+  /**
+   * Native port: Torappu.AVG.StickerPanel._ExecuteStickerTween (2791
+   * 0x1841E2E40) driving AVGStickerTextView.ExecuteTween<T> (2791
+   * 0x184486F10). Each non-empty group is one SequenceBuilder.Push step in
+   * native order (position, rotation, alpha, scale); `isend=false` steps only
+   * accumulate, and the first `isend=true` command builds and plays the whole
+   * sequence -- mirrored here by a per-view pending queue (native keeps
+   * m_builder on the view as well). Web adaptation: instead of a DOTween
+   * Sequence, every step gets a time window inside a single tween of the total
+   * duration; a `join` step starts when the previous step started, otherwise
+   * after it ends (DOTween Join vs Append). Durations were already
+   * animateRatio-scaled by the StickerPanel, which is the documented visual
+   * equivalent of the native `Sequence.timeScale = animateRatio` assignment.
+   * Rotation is degrees in native localEulerAngles and radians in pixi, hence
+   * the conversion.
    */
   executeTween(input: StickerTweenInput): void {
     const queue = this.tweenQueue;
@@ -258,14 +269,13 @@ export class StickerView {
       queue.push({ ...input.rotation, join: input.join, kind: "rotation" });
     if (input.alpha)
       queue.push({ ...input.alpha, join: input.join, kind: "alpha" });
+    if (input.scale)
+      queue.push({ ...input.scale, join: input.join, kind: "scale" });
 
-    if (!input.isend) {
-      this.tweenQueue = queue;
-      return;
-    }
+    if (!input.isend) return;
 
     this.tweenQueue = [];
-    const sticker = this.text;
+    const { root } = this;
     if (queue.length === 0) return;
 
     // Starting a new sequence bumps the session: older in-flight sticker
@@ -296,16 +306,14 @@ export class StickerView {
 
     const apply = (step: (typeof steps)[number], progress: number): void => {
       if (step.kind === "position") {
-        sticker.x = step.from.x + (step.to.x - step.from.x) * progress;
-        sticker.y = step.from.y + (step.to.y - step.from.y) * progress;
+        root.x = step.from.x + (step.to.x - step.from.x) * progress;
+        root.y = step.from.y + (step.to.y - step.from.y) * progress;
         return;
       }
-      if (step.kind === "alpha") {
-        sticker.alpha = step.from + (step.to - step.from) * progress;
-        return;
-      }
-      const deg = step.from + (step.to - step.from) * progress;
-      sticker.rotation = (deg * Math.PI) / 180;
+      const value = step.from + (step.to - step.from) * progress;
+      if (step.kind === "alpha") root.alpha = value;
+      else if (step.kind === "scale") root.scale.set(value, value);
+      else root.rotation = (value * Math.PI) / 180;
     };
 
     // `BuildSequence` creates every tween up front, and each
@@ -337,10 +345,8 @@ export class StickerView {
 
   private async runStickerTyping(
     sessionId: number,
-    sticker: Text,
     input: {
       alignment: StickerInput["alignment"];
-      baseX: number;
       delayMs: number;
       prevChars: RichChar[];
       newChars: RichChar[];
@@ -348,33 +354,23 @@ export class StickerView {
       widthPx: number;
     },
   ): Promise<void> {
+    const { text } = this;
+    const isCurrent = () =>
+      this.host.isActive() &&
+      !this.destroyed &&
+      this.typingSession === sessionId;
     for (let index = 0; index < input.newChars.length; index += 1) {
-      if (
-        !this.host.isActive() ||
-        this.destroyed ||
-        this.typingSession !== sessionId
-      )
-        return;
+      if (!isCurrent()) return;
 
       await new Promise((resolve) => setTimeout(resolve, input.delayMs));
 
-      if (
-        !this.host.isActive() ||
-        this.destroyed ||
-        this.typingSession !== sessionId
-      )
-        return;
+      if (!isCurrent()) return;
 
-      sticker.text = richCharsToTaggedText([
+      text.text = richCharsToTaggedText([
         ...input.prevChars,
         ...input.newChars.slice(0, index + 1),
       ]);
-      this.host.layoutSubtitle(
-        sticker,
-        input.baseX,
-        input.widthPx,
-        input.alignment,
-      );
+      this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
     }
 
     if (this.typingSession === sessionId) {

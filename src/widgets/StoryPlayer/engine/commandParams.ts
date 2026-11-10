@@ -1,4 +1,19 @@
-import type { SubtitleInput } from "./types";
+import type { StoryCommandArgs, SubtitleInput } from "./types";
+
+/**
+ * `AVGTypeWriterText.originDelay` of the dialogue / sticker typewriter assets
+ * (0.04s). Commands that take a `delay` ratio scale the global
+ * typeWriterDelay by `delay / originDelay`.
+ */
+export const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
+
+/** Exact-key parameter lookup (no case folding), as `Command.TryGetParam`. */
+export function exactArg(args: StoryCommandArgs, key: string): unknown {
+  return Object.prototype.hasOwnProperty.call(args, key)
+    ? args[key]
+    : undefined;
+}
+
 /**
  * Native port: `Command.GetOrDefault<float>` (2.7.71 `Command.TryGetParam`
  * VA 0x183EF3950) and `DotNetExtensionMethods.GetFloat` (VA 0x1862F7660)
