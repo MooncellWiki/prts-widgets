@@ -29,11 +29,10 @@ const unclickedSelection = (): DecisionSelection => ({
 });
 
 /**
- * Web/PIXI presentation for `Torappu.AVG.DecisionPanel._ExecuteDecision`.
- * The runtime owns predicate and skip policy; this class only blocks for a
- * selected value and adapts native option widgets to browser pointer events.
+ * Web adapter for `Torappu.AVG.DecisionPanel`'s option widgets. Presents the
+ * options and returns the clicked index and value through browser events.
  */
-export class DecisionPanel {
+export class DecisionView {
   private container: Container | null = null;
   private resolve: ((selection: DecisionSelection) => void) | null = null;
 
@@ -99,9 +98,8 @@ export class DecisionPanel {
           paintButton(background, 0x30_30_30, buttonWidth, buttonHeight),
         );
         button.on("pointertap", () => {
-          // 下标在点击点就是唯一的；value 可能在 options 间重复，只能由
-          // runtime 写闸门，不能反查回下标（Log All 高亮依赖下标）。
-          // values 由 runtime 的 parseDecision 逐项解析好传进来，这里的 0
+          // Log All 高亮用点击下标，闸门用 value。同一 value 可对应多个选项。
+          // values 由 DecisionPanel 的 parseDecision 逐项解析，这里的 0
           // 只是兜底；0 与原生 `_GetOptionValue` 的越界返回值一致。
           this.clear({ optionIndex: index, value: values[index] ?? 0 });
         });

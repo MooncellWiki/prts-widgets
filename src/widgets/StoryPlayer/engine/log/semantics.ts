@@ -12,8 +12,8 @@ import type { ChoiceOption } from "./types";
  * - `Torappu.AVG.DecisionPanel._ExecutePredicate`（只替换 references）
  * - `Torappu.AVG.DecisionPanel._GetOptionValue`（越界取 0）
  *
- * `StoryRuntime.processLoop` 的闸门与 `executeCommand` 的 decision/predicate
- * case 直接调用这里，Log All 的符号分析也用同一组函数，两侧不会各自漂移。
+ * `DecisionCommandPredicator` 的闸门与 `DecisionPanel` 的命令解析共用这里
+ * 的规则，Log All 的符号分析也调用同一组函数。
  */
 
 /** runtime 中路径的最小状态：单组可变 (selectedValue, references)，无栈 */

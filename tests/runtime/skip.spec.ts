@@ -617,6 +617,7 @@ describe("StoryRuntime", () => {
       ["A", "B"],
       ["C", "D"],
     ]);
+    expect(runtime.getState()).toBe("waiting_decision");
     expect(skipSettled).toBe(false);
 
     renderer.pickDecision({ optionIndex: 0, value: 3 });

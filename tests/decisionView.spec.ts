@@ -1,12 +1,12 @@
 import { Container, type FederatedPointerEvent, type Text } from "pixi.js";
 import { describe, expect, it } from "vitest";
 
-import { DecisionPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/DecisionPanel";
+import { DecisionView } from "../src/widgets/StoryPlayer/engine/rendering/panels/DecisionView";
 
-describe("DecisionPanel", () => {
+describe("DecisionView", () => {
   it("resolves the tapped option's index and value and removes the panel", async () => {
     const layer = new Container();
-    const panel = new DecisionPanel(layer);
+    const panel = new DecisionView(layer);
     const selection = panel.show(
       ["阿米娅，我站在你这边。", "......", "凯尔希，合作愉快。"],
       [1, 2, 3],
@@ -22,7 +22,7 @@ describe("DecisionPanel", () => {
 
   it("renders ampersand options disabled without settling on tap", async () => {
     const layer = new Container();
-    const panel = new DecisionPanel(layer);
+    const panel = new DecisionView(layer);
     // 原生 _SetupOptionText：`&` 前缀项剥前缀 + interactable=false。
     // 前缀由 log/semantics.parseDecision 剥掉，面板只收 disabled 标记。
     const selection = panel.show(["可选", "不可选"], [1, 2], [false, true]);
