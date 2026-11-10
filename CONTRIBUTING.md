@@ -50,6 +50,9 @@ pnpm exec tsx scripts/dev/sync.ts <username> <password>
 
 ## 测试
 
+需要对照原生程序行为审查 PR 时，可配置并手动运行
+[Claude IDA Review](docs/ida-review.md)，通过 Tailscale 连接本地 IDA MCP。
+
 ```bash
 pnpm test        # 单元测试，CI 也跑这一条
 pnpm lint        # ESLint
