@@ -1,5 +1,8 @@
 import type { ParsedCommandLine } from "./types";
 
+/** Executor result: `wait_input` mirrors a native executor returning true. */
+export type CommandResult = "continue" | "wait_input";
+
 export type CommandExecutor<TResult> = (
   command: ParsedCommandLine,
 ) => TResult | Promise<TResult>;

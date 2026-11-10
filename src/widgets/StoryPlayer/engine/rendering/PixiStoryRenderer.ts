@@ -100,6 +100,7 @@ import { DialogPanel } from "./panels/DialogPanel";
 import { FocusEffectPanel } from "./panels/FocusEffectPanel";
 import { InterludePanel } from "./panels/InterludePanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
+import { StickerView } from "./panels/StickerView";
 import { VideoPanel } from "./panels/VideoPanel";
 
 import type { Context } from "../../context";
@@ -381,34 +382,6 @@ interface CharacterBuiltVisual {
   visual: Container;
 }
 
-/**
- * One accumulated SequenceBuilder.Push step of a sticker tween, in native
- * push order (position, rotation, alpha). `join` and the per-kind payload
- * mirror Torappu.AVG's AnimStep { spec, join, seqEnd } composition.
- */
-type StickerTweenStepInput =
-  | {
-      durationMs: number;
-      from: { x: number; y: number };
-      join: boolean;
-      kind: "position";
-      to: { x: number; y: number };
-    }
-  | {
-      durationMs: number;
-      from: number;
-      join: boolean;
-      kind: "alpha";
-      to: number;
-    }
-  | {
-      durationMs: number;
-      from: number;
-      join: boolean;
-      kind: "rotation";
-      to: number;
-    };
-
 interface CharacterRenderState {
   actionX: number;
   actionY: number;
@@ -676,27 +649,14 @@ export class PixiStoryRenderer implements StoryRenderer {
   private grayscaleAmount = 0;
   private inverseAmount = 0;
   private grayscaleFilter: ColorMatrixFilter | null = null;
-  private readonly stickerFadeSessionIds = new Map<string, number>();
-  private readonly stickerTexts = new Map<string, Text>();
-  private readonly stickerTypingTargets = new Map<
-    string,
-    {
-      alignment: StickerInput["alignment"];
-      baseX: number;
-      fullText: string;
-      widthPx: number;
-    }
-  >();
-  private readonly stickerTypingSessionIds = new Map<string, number>();
+  private readonly stickerViews = new Map<string, StickerView>();
   /**
-   * Pending sticker-tween steps per id. Native: SequenceBuilder accumulates
-   * Push steps until a seqEnd=true step calls BuildSequence (see stickerTween).
+   * Native port: `StickerPanel.m_currentSticker`. `_ExecuteSticker` points it
+   * at whichever view the latest sticker command touched -- the shown, the
+   * appended *and* the hidden one -- and `_RecycleStickers` nulls it. Both
+   * `ForceCommandEnd` and `_OnClicked` only `TryFinishType` this one view.
    */
-  private readonly stickerTweenQueues = new Map<
-    string,
-    StickerTweenStepInput[]
-  >();
-  private readonly stickerTweenSessionIds = new Map<string, number>();
+  private currentStickerId: string | null = null;
   private subtitleFadeSessionId = 0;
   /**
    * Native port: `SubtitlePanel._SetHiddenInternal`'s `m_hidden`. Flips the
@@ -712,7 +672,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     widthPx: number;
   } | null = null;
   private subtitleTypingSessionId = 0;
-  private readonly stickerRichChars = new Map<string, RichChar[]>();
   private timerFadeSessionId = 0;
   /**
    * Mirrors `AVGTimerView.m_countTimerTask != null`. It gates the inline
@@ -879,6 +838,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.animTextPanel.destroy();
     this.avgDisplayPanel.destroy();
     this.spellStickerPanel.destroy();
+    for (const view of this.stickerViews.values()) view.destroy();
+    this.stickerViews.clear();
+    this.currentStickerId = null;
     this.focusEffectPanel.destroy();
     this.cgItemPanel.destroy();
     this.backgroundRoot = null;
@@ -936,17 +898,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.timerFadeSessionId += 1;
     this.timerStopFadeComplete = null;
     this.timerTaskActive = false;
-    this.stickerTexts.clear();
-    this.stickerFadeSessionIds.clear();
-    this.stickerTypingTargets.clear();
-    this.stickerTypingSessionIds.clear();
-    this.stickerTweenQueues.clear();
-    this.stickerTweenSessionIds.clear();
     this.subtitleFadeSessionId += 1;
     this.subtitleHidden = true;
     this.subtitleTypingTarget = null;
     this.subtitleTypingSessionId += 1;
-    this.stickerRichChars.clear();
     this.videoPanel.destroy();
   }
 
@@ -988,23 +943,12 @@ export class PixiStoryRenderer implements StoryRenderer {
       return true;
     }
 
-    for (const [id, target] of this.stickerTypingTargets.entries()) {
-      const sticker = this.stickerTexts.get(id);
-      if (!sticker) continue;
-      this.stickerTypingSessionIds.set(
-        id,
-        (this.stickerTypingSessionIds.get(id) ?? 0) + 1,
-      );
-      sticker.text = target.fullText;
-      this.layoutSubtitle(
-        sticker,
-        target.baseX,
-        target.widthPx,
-        target.alignment,
-      );
-      this.stickerTypingTargets.delete(id);
+    // Only m_currentSticker is finished; other stickers keep typing.
+    if (
+      this.currentStickerId !== null &&
+      this.stickerViews.get(this.currentStickerId)?.finishTyping()
+    )
       return true;
-    }
 
     return false;
   }
@@ -2869,66 +2813,19 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    this.hideSticker(id, fadeMs, true);
+    this.currentStickerId = id;
+    this.stickerViews.get(id)?.hide(fadeMs, true);
   }
 
   /**
    * Native port: `StickerPanel._RecycleStickers` (stickerclear and the skip
-   * reset) calls `HideSticker(0)` on every view without `TryFinishType`, so
-   * typing is not completed before the fade.
+   * reset) calls `ResetStickerTransform` + `HideSticker(0)` on every view
+   * without `TryFinishType`, so typing is not completed before the fade, and
+   * then nulls `m_currentSticker`.
    */
   async clearStickers(fadeMs = 0): Promise<void> {
-    this.stickerRichChars.clear();
-    for (const id of this.stickerTexts.keys())
-      this.hideSticker(id, fadeMs, false);
-  }
-
-  private hideSticker(id: string, fadeMs: number, finishTyping: boolean): void {
-    const sticker = this.stickerTexts.get(id);
-    if (!sticker) return;
-
-    this.bumpStickerSessions(id);
-    const typingTarget = this.stickerTypingTargets.get(id);
-    if (finishTyping && typingTarget) {
-      sticker.text = typingTarget.fullText;
-      this.layoutSubtitle(
-        sticker,
-        typingTarget.baseX,
-        typingTarget.widthPx,
-        typingTarget.alignment,
-      );
-    }
-    this.stickerTypingTargets.delete(id);
-    this.stickerRichChars.delete(id);
-    if (!sticker.visible || !sticker.text) {
-      sticker.text = "";
-      sticker.visible = false;
-      sticker.alpha = 1;
-      return;
-    }
-
-    const sessionId = this.stickerFadeSessionIds.get(id) ?? 0;
-    const startAlpha = sticker.alpha;
-    if (fadeMs <= 0) {
-      sticker.text = "";
-      sticker.visible = false;
-      sticker.alpha = 1;
-      return;
-    }
-
-    void this.tween(
-      fadeMs,
-      (progress) => {
-        if ((this.stickerFadeSessionIds.get(id) ?? 0) !== sessionId) return;
-        sticker.alpha = startAlpha * (1 - progress);
-      },
-      () => {
-        if ((this.stickerFadeSessionIds.get(id) ?? 0) !== sessionId) return;
-        sticker.text = "";
-        sticker.visible = false;
-        sticker.alpha = 1;
-      },
-    );
+    for (const view of this.stickerViews.values()) view.recycle(fadeMs);
+    this.currentStickerId = null;
   }
 
   clearSpellStickers(): void {
@@ -3491,178 +3388,18 @@ export class PixiStoryRenderer implements StoryRenderer {
     });
   }
 
-  /**
-   * Port scope: `Torappu.AVG.StickerPanel._ExecuteSticker` and its append,
-   * fade, and typewriter state. PIXI Text replaces the native sticker prefab.
-   * Append must leave the view untouched except for the appended text, so the
-   * caller replays the previous show's layout fields (the runtime stores them
-   * because the native executor's append path reads no layout parameters).
-   */
-  async setSticker(input: StickerInput): Promise<void> {
-    const sticker = this.ensureStickerText(input.id);
-    const wasActive = this.stickerRichChars.has(input.id);
-    this.bumpStickerSessions(input.id);
-    sticker.alpha = wasActive ? sticker.alpha : 0;
-    sticker.visible = true;
-
-    if (!wasActive) {
-      const fadeSessionId = this.stickerFadeSessionIds.get(input.id) ?? 0;
-      void this.tween(
-        input.fadeMs,
-        (progress) => {
-          if ((this.stickerFadeSessionIds.get(input.id) ?? 0) === fadeSessionId)
-            sticker.alpha = progress;
-        },
-        () => {
-          if ((this.stickerFadeSessionIds.get(input.id) ?? 0) === fadeSessionId)
-            sticker.alpha = 1;
-        },
-      );
-    }
-
-    const prevChars = input.append
-      ? (this.stickerRichChars.get(input.id) ?? [])
-      : [];
-    const newChars = parseRichChars(input.text);
-    const allChars = [...prevChars, ...newChars];
-    this.stickerRichChars.set(input.id, allChars);
-
-    const style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
-    style.tagStyles = buildTagStyles(allChars);
-    sticker.style = style;
-    sticker.y = input.y;
-
-    const fullText = richCharsToTaggedText(allChars);
-    if (input.delayMs <= 0) {
-      sticker.text = fullText;
-      this.layoutSubtitle(sticker, input.x, input.widthPx, input.alignment);
-      input.onTypingComplete?.();
-      return;
-    }
-
-    const sessionId = this.stickerTypingSessionIds.get(input.id) ?? 0;
-    sticker.text = richCharsToTaggedText(prevChars);
-    this.layoutSubtitle(sticker, input.x, input.widthPx, input.alignment);
-    this.stickerTypingTargets.set(input.id, {
-      alignment: input.alignment,
-      baseX: input.x,
-      fullText,
-      widthPx: input.widthPx,
-    });
-    void this.runStickerTyping(input.id, sessionId, sticker, {
-      alignment: input.alignment,
-      baseX: input.x,
-      delayMs: input.delayMs,
-      prevChars,
-      newChars,
-      onTypingComplete: input.onTypingComplete,
-      widthPx: input.widthPx,
-    });
+  /** StickerPanel supplies command inputs; each view owns its visual state. */
+  setSticker(input: StickerInput): Promise<void> {
+    this.currentStickerId = input.id;
+    return this.ensureStickerView(input.id).show(input);
   }
 
   setSpellSticker(input: SpellStickerInput): void {
     this.spellStickerPanel.show(input);
   }
 
-  /**
-   * Native port: Torappu.AVG.StickerPanel._ExecuteStickerTween (2.7.61 build
-   * 2761, VA 0x183e92110) driving AVGStickerTextView.ExecuteTween<T>
-   * (VA 0x184165be0 / 0x184165940). Each non-empty group is one
-   * SequenceBuilder.Push step in native order (position, rotation, alpha);
-   * `isend=false` steps only accumulate, and the first `isend=true` command
-   * builds and plays the whole sequence -- mirrored here by a per-id pending
-   * queue. Web adaptation: instead of a DOTween Sequence, every step gets a
-   * time window inside a single tween of the total duration; a `join` step
-   * starts when the previous step started, otherwise after it ends (DOTween
-   * Join vs Append). Durations were already animateRatio-scaled by the
-   * runtime, which is the documented visual equivalent of the native
-   * `Sequence.timeScale = animateRatio` assignment. Rotation is degrees in
-   * native localEulerAngles and radians in pixi, hence the conversion.
-   */
   stickerTween(input: StickerTweenInput): void {
-    const queue = this.stickerTweenQueues.get(input.id) ?? [];
-    if (input.position)
-      queue.push({ ...input.position, join: input.join, kind: "position" });
-    if (input.rotation)
-      queue.push({ ...input.rotation, join: input.join, kind: "rotation" });
-    if (input.alpha)
-      queue.push({ ...input.alpha, join: input.join, kind: "alpha" });
-
-    if (!input.isend) {
-      this.stickerTweenQueues.set(input.id, queue);
-      return;
-    }
-
-    this.stickerTweenQueues.delete(input.id);
-    const sticker = this.stickerTexts.get(input.id);
-    if (!sticker || queue.length === 0) return;
-
-    // Starting a new sequence bumps the session: older in-flight sticker
-    // tweens for this id stop applying (native lets two sequences fight over
-    // the transform; skipping that glitch is a deliberate web adaptation).
-    const sessionId = (this.stickerTweenSessionIds.get(input.id) ?? 0) + 1;
-    this.stickerTweenSessionIds.set(input.id, sessionId);
-    const isCurrent = () =>
-      (this.stickerTweenSessionIds.get(input.id) ?? 0) === sessionId;
-
-    const steps = queue;
-
-    // Append/Join scheduling: `join` shares the previous step's start,
-    // everything else starts after the longest step of its segment ends.
-    const windows: Array<{ start: number; step: (typeof steps)[number] }> = [];
-    let segmentStart = 0;
-    let segmentLongest = 0;
-    let open = false;
-    for (const step of steps) {
-      if (!open || !step.join) {
-        segmentStart += segmentLongest;
-        segmentLongest = 0;
-        open = true;
-      }
-      windows.push({ start: segmentStart, step });
-      segmentLongest = Math.max(segmentLongest, step.durationMs);
-    }
-    const totalMs = segmentStart + segmentLongest;
-
-    const apply = (step: (typeof steps)[number], progress: number): void => {
-      if (step.kind === "position") {
-        sticker.x = step.from.x + (step.to.x - step.from.x) * progress;
-        sticker.y = step.from.y + (step.to.y - step.from.y) * progress;
-        return;
-      }
-      if (step.kind === "alpha") {
-        sticker.alpha = step.from + (step.to - step.from) * progress;
-        return;
-      }
-      const deg = step.from + (step.to - step.from) * progress;
-      sticker.rotation = (deg * Math.PI) / 180;
-    };
-
-    // `BuildSequence` creates every tween up front, and each
-    // `AVGTweenFactory._Create*Tween` snaps the transform to that step's
-    // `from` right there -- before the sequence plays and regardless of when
-    // the step's own window opens. So all the snaps happen now, and the
-    // clamped window below keeps a not-yet-started step pinned to `from`.
-    for (const { step } of windows) apply(step, 0);
-
-    void this.tween(
-      totalMs,
-      (progress) => {
-        if (!isCurrent()) return;
-        const elapsed = progress * totalMs;
-        for (const { start, step } of windows) {
-          const local =
-            step.durationMs <= 0
-              ? 1
-              : Math.min(1, Math.max(0, (elapsed - start) / step.durationMs));
-          apply(step, local);
-        }
-      },
-      () => {
-        if (!isCurrent()) return;
-        for (const { step } of windows) apply(step, 1);
-      },
-    );
+    this.stickerViews.get(input.id)?.executeTween(input);
   }
 
   /**
@@ -5226,27 +4963,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     return true;
   }
 
-  private bumpStickerSessions(id: string): void {
-    this.stickerTypingSessionIds.set(
-      id,
-      (this.stickerTypingSessionIds.get(id) ?? 0) + 1,
-    );
-    this.stickerFadeSessionIds.set(
-      id,
-      (this.stickerFadeSessionIds.get(id) ?? 0) + 1,
-    );
-    // Native: re-showing the same id goes through RenderSticker._ResetView
-    // (0x183ed43b0), which kills the view's running sticker-tween Sequence
-    // (TweenExtensions.Kill(m_seq, false)). Bumping this session makes any
-    // in-flight sticker tween stop applying -- ForceCommandEnd does NOT do
-    // this in native (it only touches m_currentSticker, which stickertween
-    // never writes), so skip/force-end deliberately leaves the tween running.
-    this.stickerTweenSessionIds.set(
-      id,
-      (this.stickerTweenSessionIds.get(id) ?? 0) + 1,
-    );
-  }
-
   private clearTimerInterval(): void {
     if (!this.timerStickerInterval) return;
     clearInterval(this.timerStickerInterval);
@@ -5325,18 +5041,20 @@ export class PixiStoryRenderer implements StoryRenderer {
     });
   }
 
-  private ensureStickerText(id: string): Text {
-    const existing = this.stickerTexts.get(id);
+  private ensureStickerView(id: string): StickerView {
+    const existing = this.stickerViews.get(id);
     if (existing) return existing;
-
-    const sticker = new Text({
-      style: this.createOverlayTextStyle(18, 675),
-      text: "",
+    const view = new StickerView({
+      isActive: () => Boolean(this.app),
+      createOverlayTextStyle: (size, width) =>
+        this.createOverlayTextStyle(size, width),
+      layoutSubtitle: (text, x, width, alignment) =>
+        this.layoutSubtitle(text, x, width, alignment),
+      tween: (duration, step, done) => this.tween(duration, step, done),
     });
-    sticker.visible = false;
-    this.stickerTexts.set(id, sticker);
-    this.uiLayer.addChild(sticker);
-    return sticker;
+    this.stickerViews.set(id, view);
+    this.uiLayer.addChild(view.root);
+    return view;
   }
 
   private ensureTimerStickerText(): Text {
@@ -5424,50 +5142,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       // Native `SubtitlePanel._OnTypeWriterEnd` (2.7.61 VA 0x183e94e80):
       // typing that finishes on its own raises the auto click; without this,
       // auto mode would sit on the subtitle waiting for a manual click.
-      input.onTypingComplete?.();
-    }
-  }
-
-  private async runStickerTyping(
-    id: string,
-    sessionId: number,
-    sticker: Text,
-    input: {
-      alignment: StickerInput["alignment"];
-      baseX: number;
-      delayMs: number;
-      prevChars: RichChar[];
-      newChars: RichChar[];
-      onTypingComplete?: () => void;
-      widthPx: number;
-    },
-  ): Promise<void> {
-    for (let index = 0; index < input.newChars.length; index += 1) {
-      if (
-        !this.app ||
-        (this.stickerTypingSessionIds.get(id) ?? 0) !== sessionId
-      )
-        return;
-
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
-
-      if (
-        !this.app ||
-        (this.stickerTypingSessionIds.get(id) ?? 0) !== sessionId
-      )
-        return;
-
-      sticker.text = richCharsToTaggedText([
-        ...input.prevChars,
-        ...input.newChars.slice(0, index + 1),
-      ]);
-      this.layoutSubtitle(sticker, input.baseX, input.widthPx, input.alignment);
-    }
-
-    if ((this.stickerTypingSessionIds.get(id) ?? 0) === sessionId) {
-      this.stickerTypingTargets.delete(id);
-      // Native `AVGStickerTextView._OnTypeWriterEnd` -> m_OnTypeEnd: only
-      // typing that ends on its own raises the auto click here.
       input.onTypingComplete?.();
     }
   }

@@ -693,6 +693,34 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
+  it("maps the 2791 stickertween scale group from sto/sfrom/sduration", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="st1",text="hi",block=false)]',
+        // `sto` alone makes the group: ParseScaleParam leaves sfrom at 0.
+        '[stickertween(id="st1",sto=1.5,sduration=2,isend=true)]',
+        // A non-float `sto` leaves the group Empty, whatever sfrom says.
+        '[stickertween(id="st1",sto="1,1",sfrom=1,isend=true)]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.stickerTweenCalls).toEqual([
+      {
+        id: "st1",
+        isend: true,
+        join: false,
+        scale: { durationMs: 2000, from: 0, to: 1.5 },
+      },
+    ]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
   it("silently skips missing stickertween ids and never blocks without isend", async () => {
     const warnings: RuntimeWarning[] = [];
     const renderer = new FakeRenderer();

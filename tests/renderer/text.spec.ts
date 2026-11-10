@@ -289,20 +289,20 @@ describe("PixiStoryRenderer", () => {
 
     // Without a mounted app the typing loop parks right after registering its
     // target, so nothing has been typed yet.
-    const sticker = renderer.stickerTexts.get("a");
+    const sticker = renderer.stickerViews.get("a").text;
     expect(sticker.text).toBe("");
-    expect(renderer.stickerTypingTargets.has("a")).toBe(true);
+    expect(renderer.stickerViews.get("a").isTyping).toBe(true);
 
     // Hide mid-typing: native runs TryFinishType before HideSticker, so the
     // full text appears instantly and is what fades out.
     const hiding = renderer.clearSticker("a", 150);
     expect(sticker.text).toBe("hello");
-    expect(renderer.stickerTypingTargets.has("a")).toBe(false);
+    expect(renderer.stickerViews.get("a").isTyping).toBe(false);
 
     (finishFade as unknown as () => void)();
     await hiding;
     expect(sticker.text).toBe("");
-    expect(sticker.visible).toBe(false);
+    expect(renderer.stickerViews.get("a").root.visible).toBe(false);
   });
 
   it("recycles stickers without finishing their typing", async () => {
@@ -325,14 +325,14 @@ describe("PixiStoryRenderer", () => {
         y: 20,
       });
       await vi.advanceTimersByTimeAsync(80);
-      const sticker = renderer.stickerTexts.get("a");
+      const sticker = renderer.stickerViews.get("a").text;
       expect(sticker.text).toBe("he");
 
       // _RecycleStickers (stickerclear / skip reset) calls HideSticker(0)
       // with no TryFinishType: the partial text is what fades out.
       await renderer.clearStickers(150);
       expect(sticker.text).toBe("he");
-      expect(renderer.stickerTypingTargets.has("a")).toBe(false);
+      expect(renderer.stickerViews.get("a").isTyping).toBe(false);
       await vi.advanceTimersByTimeAsync(200);
       expect(sticker.text).toBe("he");
     } finally {
@@ -559,17 +559,13 @@ describe("PixiStoryRenderer subtitle", () => {
   });
 });
 
-// happy-dom cannot measure pixi Text fonts, so the sticker slot becomes a
-// plain transform object; stickerTween only touches x/y/alpha/rotation.
-function createStickerRenderer(): any {
+// happy-dom cannot measure canvas fonts; retain real StickerView instances
+// and stub only text layout, so lifecycle and tween ownership are exercised.
+// The stub stands in for an alignment offset of `alignOffset` inside the rect.
+function createStickerRenderer(alignOffset = 0): any {
   const renderer = createRenderer();
-  renderer.ensureStickerText = vi.fn((id: string) => {
-    let sticker = renderer.stickerTexts.get(id);
-    if (!sticker) {
-      sticker = { alpha: 1, rotation: 0, visible: false, x: 0, y: 0 };
-      renderer.stickerTexts.set(id, sticker);
-    }
-    return sticker;
+  renderer.layoutSubtitle = vi.fn((text, x) => {
+    text.x = x + alignOffset;
   });
   return renderer;
 }
@@ -587,7 +583,8 @@ async function showSticker(renderer: any, text = "hello"): Promise<any> {
     x: 100,
     y: 50,
   });
-  return renderer.stickerTexts.get("st");
+  // Transforms and alpha live on the view's rect (`root`), not on the text.
+  return renderer.stickerViews.get("st").root;
 }
 
 describe("PixiStoryRenderer stickerTween", () => {
@@ -705,7 +702,7 @@ describe("PixiStoryRenderer stickerTween", () => {
     expect(sticker.x).toBe(0);
 
     // Re-showing the same id goes through RenderSticker._ResetView natively,
-    // which kills m_seq (TweenExtensions.Kill); bumpStickerSessions mirrors it.
+    // which kills m_seq (TweenExtensions.Kill); StickerView.invalidate mirrors it.
     await renderer.setSticker({
       alignment: "left",
       append: false,
@@ -720,5 +717,224 @@ describe("PixiStoryRenderer stickerTween", () => {
     });
     steps[1]!(0.5);
     expect(sticker.x).toBe(0);
+  });
+});
+
+describe("StickerView lifecycle", () => {
+  it("finishes only the current sticker's typing (native m_currentSticker)", async () => {
+    const renderer = createStickerRenderer();
+    const input = {
+      alignment: "left" as const,
+      delayMs: 40,
+      fadeMs: 0,
+      sizePx: 24,
+      widthPx: 200,
+      x: 0,
+      y: 0,
+    };
+    const textOf = (id: string) => renderer.stickerViews.get(id).text.text;
+    await renderer.setSticker({ ...input, append: false, id: "a", text: "A" });
+    await renderer.setSticker({ ...input, append: false, id: "b", text: "B" });
+
+    // ForceCommandEnd / _OnClicked only TryFinishType m_currentSticker (the
+    // latest show), so the older "a" keeps typing.
+    expect(renderer.finishTextTyping()).toBe(true);
+    expect(textOf("b")).toBe("B");
+    expect(textOf("a")).toBe("");
+    // The current view is done; an older typing view does not eat the click.
+    expect(renderer.finishTextTyping()).toBe(false);
+
+    // An append moves m_currentSticker back to "a".
+    await renderer.setSticker({ ...input, append: true, id: "a", text: "+" });
+    expect(renderer.finishTextTyping()).toBe(true);
+    expect(textOf("a")).toBe("A+");
+
+    // The hide branch also points m_currentSticker at the hidden view, and
+    // _RecycleStickers nulls it: neither leaves anything to finish.
+    await renderer.setSticker({ ...input, append: false, id: "c", text: "C" });
+    await renderer.clearSticker("a", 0);
+    expect(renderer.finishTextTyping()).toBe(false);
+    expect(renderer.stickerViews.get("c").isTyping).toBe(true);
+    await renderer.clearStickers(0);
+    expect(renderer.finishTextTyping()).toBe(false);
+  });
+
+  it("keeps the fade-in, tween and transform when appending (native AppendText)", async () => {
+    const renderer = createStickerRenderer(40);
+    const tweens: Array<{
+      durationMs: number;
+      step: (progress: number) => void;
+      done?: () => void;
+    }> = [];
+    renderer.tween = vi.fn((durationMs, step, done) => {
+      tweens.push({ durationMs, done, step });
+      return Promise.resolve();
+    });
+    const layout = {
+      alignment: "center" as const,
+      delayMs: 0,
+      fadeMs: 1000,
+      sizePx: 24,
+      widthPx: 1000,
+      x: 80,
+      y: 500,
+    };
+    // level_main_15-04_beg.txt:231-232: a block=false show with duration=1,
+    // then an append on the same id before a single frame has run.
+    await renderer.setSticker({
+      ...layout,
+      append: false,
+      id: "st1",
+      text: "A",
+    });
+    renderer.stickerTween({
+      id: "st1",
+      isend: true,
+      join: false,
+      position: {
+        durationMs: 500,
+        from: { x: 80, y: 500 },
+        to: { x: 280, y: 400 },
+      },
+    });
+    await renderer.setSticker({
+      ...layout,
+      append: true,
+      id: "st1",
+      text: "B",
+    });
+
+    const view = renderer.stickerViews.get("st1");
+    expect(tweens.map((tween) => tween.durationMs)).toEqual([1000, 500]);
+    tweens[0]!.step(0.5);
+    expect(view.root.alpha).toBe(0.5);
+    tweens[0]!.step(1);
+    tweens[0]!.done?.();
+    expect(view.root.alpha).toBe(1);
+
+    // The tween sequence keeps running and the append did not snap the rect
+    // back to the show's x/y; the alignment offset stays on the text.
+    tweens[1]!.step(1);
+    expect(view.root.x).toBe(280);
+    expect(view.root.y).toBe(400);
+    expect(view.text.x).toBe(40);
+    expect(view.text.text).toBe("AB");
+  });
+
+  it("resets rotation and scale on re-show and recycle, not on hide", async () => {
+    const renderer = createStickerRenderer();
+    const root = await showSticker(renderer);
+    renderer.tween = vi.fn((_ms, _step, done) => {
+      done?.();
+      return Promise.resolve();
+    });
+    const spin = () =>
+      renderer.stickerTween({
+        id: "st",
+        isend: true,
+        join: true,
+        rotation: { durationMs: 0, from: 0, to: 90 },
+        scale: { durationMs: 0, from: 0, to: 2 },
+      });
+
+    spin();
+    expect(root.rotation).toBeCloseTo(Math.PI / 2);
+    expect(root.scale.x).toBe(2);
+    expect(root.scale.y).toBe(2);
+    // HideSticker leaves the transform alone.
+    await renderer.clearSticker("st", 150);
+    expect(root.rotation).toBeCloseTo(Math.PI / 2);
+    // RenderSticker -> _ResetView -> _ResetStickerTransform.
+    await showSticker(renderer);
+    expect(root.rotation).toBe(0);
+    expect(root.scale.x).toBe(1);
+
+    spin();
+    // _RecycleStickers resets the transform before HideSticker(0).
+    await renderer.clearStickers(150);
+    expect(root.rotation).toBe(0);
+    expect(root.scale.y).toBe(1);
+  });
+
+  it("pushes the 2791 scale group after alpha", async () => {
+    const renderer = createStickerRenderer();
+    const root = await showSticker(renderer);
+    const steps: Array<(progress: number) => void> = [];
+    renderer.tween = vi.fn((_ms, step) => {
+      steps.push(step);
+      return Promise.resolve();
+    });
+    renderer.stickerTween({
+      alpha: { durationMs: 100, from: 0, to: 1 },
+      id: "st",
+      isend: true,
+      join: false,
+      scale: { durationMs: 100, from: 0, to: 2 },
+    });
+    // Appended after alpha: the scale window opens at 100ms of 200ms, pinned
+    // to its `from` until then (the up-front BuildSequence snap).
+    expect(root.scale.x).toBe(0);
+    steps[0]!(0.5);
+    expect(root.alpha).toBe(1);
+    expect(root.scale.x).toBe(0);
+    steps[0]!(0.75);
+    expect(root.scale.x).toBe(1);
+    expect(root.scale.y).toBe(1);
+  });
+
+  it("isolates view cancellation and drops callbacks after destruction", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = createStickerRenderer();
+      renderer.app = {};
+      const tweens: Array<{
+        step: (progress: number) => void;
+        done?: () => void;
+      }> = [];
+      renderer.tween = vi.fn((_ms, step, done) => {
+        tweens.push({ step, done });
+        return Promise.resolve();
+      });
+      const firstDone = vi.fn();
+      const secondDone = vi.fn();
+      const input = {
+        alignment: "left" as const,
+        append: false,
+        delayMs: 40,
+        fadeMs: 150,
+        sizePx: 24,
+        widthPx: 200,
+        x: 0,
+        y: 0,
+      };
+      await renderer.setSticker({
+        ...input,
+        id: "a",
+        text: "aa",
+        onTypingComplete: firstDone,
+      });
+      await renderer.setSticker({
+        ...input,
+        id: "b",
+        text: "bb",
+        onTypingComplete: secondDone,
+      });
+      const a = renderer.stickerViews.get("a");
+      const b = renderer.stickerViews.get("b");
+      a.destroy();
+      // Stale fade callbacks must not touch a destroyed Pixi Text.
+      expect(() => {
+        tweens[0]!.step(1);
+        tweens[0]!.done?.();
+      }).not.toThrow();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(firstDone).not.toHaveBeenCalled();
+      expect(secondDone).toHaveBeenCalledTimes(1);
+      expect(b.text.text).toBe("bb");
+      expect(b.isTyping).toBe(false);
+      b.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
