@@ -10,9 +10,23 @@ import {
 
 import { DIALOG_FRAME_URL } from "../../../assets";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../../font";
-import { STORY_HEIGHT, STORY_WIDTH, type DialogueLayout } from "../../types";
+import {
+  buildTagStyles,
+  colorTagName,
+  HIDDEN_TEXT_COLOR,
+  richCharsToTaggedText,
+} from "../../richtext";
+import {
+  STORY_HEIGHT,
+  STORY_WIDTH,
+  type DialogueLayout,
+  type DialogueText,
+} from "../../types";
 
-import type { RichTagStyles } from "../../richtext";
+interface DialogueLine {
+  chars: DialogueText["chars"];
+  startIndex: number;
+}
 
 /**
  * Web adapter for the visual responsibilities of `Torappu.AVG.DialogPanel`.
@@ -28,6 +42,9 @@ export class DialogView {
   private fadeSessionId = 0;
   /** Native `m_isMessageWidthExpanded`. */
   private messageWidthExpanded = false;
+  private messageChars: DialogueText["chars"] | null = null;
+  private fullText = "";
+  private wrappedLines: DialogueLine[] | null = null;
 
   private static readonly BOTTOM_HEIGHT = 182;
   private static readonly NAME_LEFT = 20.7501;
@@ -125,20 +142,65 @@ export class DialogView {
 
   setDialogue(
     speaker: string,
-    text: string,
-    tagStyles?: RichTagStyles,
+    { chars, visibleCount }: DialogueText,
     layout?: DialogueLayout,
   ): void {
-    if (this.speaker) {
-      this.speaker.text = speaker;
-      this.applyNameBestFit(speaker);
+    const dialogue = this.dialogue;
+    if (!dialogue) return;
+    const revealing = visibleCount < chars.length;
+    if (this.messageChars !== chars || layout) {
+      this.messageChars = chars;
+      if (this.speaker) {
+        this.speaker.text = speaker;
+        this.applyNameBestFit(speaker);
+      }
+      dialogue.style.tagStyles = {
+        ...buildTagStyles(chars),
+        [colorTagName(HIDDEN_TEXT_COLOR)]: { fill: HIDDEN_TEXT_COLOR },
+      };
+      this.fullText = richCharsToTaggedText(chars);
+      this.applyLayout(layout);
+      this.wrappedLines = revealing ? this.wrapMessage(chars) : null;
     }
-    if (this.dialogue) {
-      if (tagStyles) this.dialogue.style.tagStyles = tagStyles;
-      this.dialogue.text = text;
-    }
-    this.applyLayout(layout);
+    // 2791 AVGTypeWriterText._BeginRevealOrDefer lays out the entire
+    // message before the first quad. Freeze Pixi's full-text line breaks
+    // while the transparent suffix changes the paint runs.
+    dialogue.style.wordWrap = !revealing || this.wrappedLines === null;
+    dialogue.text = revealing
+      ? (this.wrappedLines
+          ?.map(({ chars: line, startIndex }) =>
+            richCharsToTaggedText(line, visibleCount - startIndex),
+          )
+          .join("\n") ?? richCharsToTaggedText(chars, visibleCount))
+      : this.fullText;
     this.setHidden(false);
+  }
+
+  private wrapMessage(chars: DialogueText["chars"]): DialogueLine[] | null {
+    const dialogue = this.dialogue;
+    if (!dialogue) return null;
+    const { lines } = CanvasTextMetrics.measureText(
+      this.fullText,
+      dialogue.style,
+      undefined,
+      true,
+    );
+    // WhiteSpace is "pre". Pixi may trim wrap spaces and CR/LF, so map
+    // each displayed line back to its position in the original text.
+    const plain = chars.map(({ char }) => char).join("");
+    const wrapped: DialogueLine[] = [];
+    let offset = 0;
+    let charIndex = 0;
+    for (const line of lines) {
+      const start = plain.indexOf(line, offset);
+      if (start < 0) return null;
+      const startIndex =
+        charIndex + Array.from(plain.slice(offset, start)).length;
+      charIndex = startIndex + Array.from(line).length;
+      offset = start + line.length;
+      wrapped.push({ chars: chars.slice(startIndex, charIndex), startIndex });
+    }
+    return wrapped;
   }
 
   /**
@@ -201,7 +263,12 @@ export class DialogView {
 
   private measureMessage(text: string): number {
     if (!this.dialogue || !text) return 0;
-    return CanvasTextMetrics.measureText(text, this.dialogue.style).height;
+    return CanvasTextMetrics.measureText(
+      text,
+      this.dialogue.style,
+      undefined,
+      true,
+    ).height;
   }
 
   private applyNameBestFit(name: string): void {

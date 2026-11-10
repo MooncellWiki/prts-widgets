@@ -22,11 +22,14 @@ import type {
 interface StickerPlayback {
   beginTyping: (messageLength: number) => () => void;
   calculateFadeMs: (value: unknown, fallback?: number) => number;
-  /** Native `_OnStickerTypeEnd(0)` -> `RaiseAutoClick(0)`. */
-  raiseAutoClick: () => void;
   typeWriterDelayMs: () => number;
   translateText: (text: string) => string;
   warn: (detail: string) => void;
+}
+
+interface StickerSlot {
+  rawLength: number;
+  layout: Omit<StickerInput, "append" | "id" | "onTypingComplete" | "text">;
 }
 
 /**
@@ -43,13 +46,7 @@ export class StickerPanel {
    * append branch must replay them untouched) and the message length for
    * auto-play (`_OnStickerTypeEnd(msgLength)` bills the raw, marked-up text).
    */
-  private readonly stickerSlots = new Map<
-    string,
-    {
-      rawLength: number;
-      layout: Omit<StickerInput, "append" | "id" | "onTypingComplete" | "text">;
-    }
-  >();
+  private readonly stickerSlots = new Map<string, StickerSlot>();
 
   /**
    * Native port: `StickerPanel.m_recyclePool`, reduced to the one piece of
@@ -102,6 +99,27 @@ export class StickerPanel {
     return Math.max(0, this.playback.typeWriterDelayMs() * scale);
   }
 
+  private setSticker(
+    id: string,
+    text: string,
+    slot: StickerSlot,
+    append: boolean,
+  ): Promise<void> | void {
+    this.stickerSlots.set(id, slot);
+    const onTypeEnd = this.playback.beginTyping(slot.rawLength);
+    return this.renderer.setSticker({
+      ...slot.layout,
+      append,
+      id,
+      // 2791 _OnStickerTypeEnd (0x1841E4640) reports the completing view's
+      // length, even after a different id starts typing.
+      onTypingComplete: () => {
+        if (this.stickerSlots.get(id) === slot) onTypeEnd();
+      },
+      text,
+    });
+  }
+
   private async execute(line: ParsedCommandLine): Promise<CommandResult> {
     const args = line.args;
     switch (line.command) {
@@ -135,8 +153,9 @@ export class StickerPanel {
           // moving with the base wait.
           this.stickerSlots.delete(id);
           this.stickerPoolFadeMs.push(hideFadeMs);
+          const onHidden = this.playback.beginTyping(0);
           await this.renderer.clearSticker(id, hideFadeMs);
-          this.playback.raiseAutoClick();
+          onHidden();
           return block ? "wait_input" : "continue";
         }
 
@@ -148,14 +167,12 @@ export class StickerPanel {
           // stored layout (instead of re-defaulting to x=0/y=0) keeps the
           // letter appends in main 13-05, which omit x/y, in place.
           const text = this.playback.translateText(toString(arg(args, "text")));
-          existing.rawLength += text.length;
-          await this.renderer.setSticker({
-            ...existing.layout,
-            append: true,
+          await this.setSticker(
             id,
-            onTypingComplete: this.playback.beginTyping(existing.rawLength),
             text,
-          } satisfies StickerInput);
+            { ...existing, rawLength: existing.rawLength + text.length },
+            true,
+          );
           return block ? "wait_input" : "continue";
         }
 
@@ -198,17 +215,12 @@ export class StickerPanel {
           x,
           y,
         };
-        this.stickerSlots.set(id, {
-          rawLength: text.length,
-          layout,
-        });
-        await this.renderer.setSticker({
-          ...layout,
-          append: false,
+        await this.setSticker(
           id,
-          onTypingComplete: this.playback.beginTyping(text.length),
           text,
-        } satisfies StickerInput);
+          { rawLength: text.length, layout },
+          false,
+        );
         return block ? "wait_input" : "continue";
       }
 

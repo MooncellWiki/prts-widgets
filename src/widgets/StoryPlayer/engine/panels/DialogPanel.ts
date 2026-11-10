@@ -20,7 +20,6 @@ import type {
 
 interface DialogPlayback {
   beginTyping: (messageLength: number) => () => void;
-  cancelTyping: () => void;
   prepareEndtip: () => boolean;
   setDisplayedLine: (lineNumber: number) => void;
   sleep: (ms: number) => Promise<void>;
@@ -49,10 +48,7 @@ export class DialogPanel {
     >,
     private readonly playback: DialogPlayback,
   ) {
-    this.typeWriter = new AVGTypeWriterText(
-      playback.sleep,
-      playback.typeWriterDelayMs,
-    );
+    this.typeWriter = new AVGTypeWriterText(playback.sleep);
   }
 
   register(registry: CommandRegistry<CommandResult>): void {
@@ -97,16 +93,18 @@ export class DialogPanel {
 
   /**
    * Native ForceCommandEnd (2791 @ 0x1841C8440) reveals the line and restores
-   * its width. The controller is already moving the cursor, so invalidate the
-   * interrupted line's auto click. ShouldResetOnSkip is false: the multiline
-   * run remains available to the next command after the jump.
+   * its width. StoryRuntime invalidates the interrupted line's callback
+   * before force-ending. ShouldResetOnSkip is false, so the multiline run
+   * remains available to the next command after the jump.
    */
   forceCommandEnd(): void {
-    if (this.typeWriter.isTyping) {
-      this.playback.cancelTyping();
-      this.typeWriter.tryFinish();
-    }
+    this.typeWriter.tryFinish();
     this.renderer.finishDialogueCommand();
+  }
+
+  /** Native _SetTypeWriterDelay (2791 @ 0x1841CB4C0) handles ON_SPEED_SET. */
+  onSpeedSet(): void {
+    this.typeWriter.setDelay(this.playback.typeWriterDelayMs());
   }
 
   stopTypingSilently(): void {
@@ -128,7 +126,6 @@ export class DialogPanel {
     // content-bearing command resets the accumulated multiline.
     if (!text) {
       this.stopTypingSilently();
-      this.playback.cancelTyping();
       this.renderer.hideDialogue();
       return "continue";
     }
@@ -198,13 +195,12 @@ export class DialogPanel {
     // Native _OnTypeWriterEnd (2791 @ 0x1841CAE40) passes messageLength to
     // RaiseAutoClick. Count the translated string including markup.
     return this.typeWriter.beginText(translatedText, {
-      delayScale,
+      delayMs: this.playback.typeWriterDelayMs() * delayScale,
       onTypeEnd: this.playback.beginTyping(translatedText.length),
-      render: (visible, tagStyles, initial) =>
+      render: (message, initial) =>
         this.renderer.setDialogue(
           translatedSpeaker,
-          visible,
-          tagStyles,
+          message,
           initial ? layout : undefined,
         ),
       startIndex,

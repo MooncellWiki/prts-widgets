@@ -335,6 +335,7 @@ export class StoryRuntime {
   private readonly defaultSpeed: AutoSpeed;
   private autoPlayMode: AutoPlayMode = "default";
   private autoClickGeneration = 0;
+  private autoClickReady = false;
   private buttonSpeedLevel = 0;
   private readonly commandRegistry = new CommandRegistry<CommandResult>();
   private readonly context: Context;
@@ -422,12 +423,12 @@ export class StoryRuntime {
   private theaterAutoPlayCache: AutoPlayState | null = null;
   private textTypingGeneration = 0;
   private quickSpeedLevel = 0;
-  /** Raw, marked-up length reported by the text command that owns auto-click. */
-  private currentRawMessageLength = 0;
-  private currentTypingComplete = false;
+  /** Raw length from the latest type-end event, including rich-text tags. */
+  private lastCompletedTextLength: number | null = null;
   private state: PlayerState = "idle";
   private readonly dialogPanel: DialogPanel;
   private readonly stickerPanel: StickerPanel;
+  private waitingInputCommand: string | null = null;
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
 
   constructor(
@@ -454,7 +455,6 @@ export class StoryRuntime {
     this.onWarning = options.onWarning;
     this.dialogPanel = new DialogPanel(renderer, {
       beginTyping: (length) => this.beginTextTyping(length),
-      cancelTyping: () => this.cancelTextTyping(),
       prepareEndtip: () => this.prepareEndtip(),
       setDisplayedLine: (lineNumber) => {
         this.displayedLineIndex = lineNumber;
@@ -467,7 +467,6 @@ export class StoryRuntime {
       beginTyping: (length) => this.beginTextTyping(length),
       calculateFadeMs: (value, fallback) =>
         this.calculateFadeMs(value, fallback),
-      raiseAutoClick: () => this.raiseStickerAutoClick(),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
@@ -668,8 +667,8 @@ export class StoryRuntime {
       void this.advanceFromClick();
       return;
     }
-    if (mode !== "default" && this.currentTypingComplete)
-      this.scheduleAutoClick(this.currentRawMessageLength);
+    if (mode !== "default" && this.lastCompletedTextLength !== null)
+      this.scheduleAutoClick(this.lastCompletedTextLength);
   }
 
   /**
@@ -694,9 +693,15 @@ export class StoryRuntime {
         BUTTON_AUTO_SPEEDS.length - 1,
       );
 
+    // 2791 OnSpeedBtnClicked emits ON_SPEED_SET. SetQuickSpeed stores the
+    // level for the next command without rewriting the current typewriter.
+    if (this.autoPlayMode === "button_auto") this.dialogPanel.onSpeedSet();
     this.cancelAutoClick();
-    if (this.autoPlayMode !== "default" && this.currentTypingComplete)
-      this.scheduleAutoClick(this.currentRawMessageLength);
+    if (
+      this.autoPlayMode !== "default" &&
+      this.lastCompletedTextLength !== null
+    )
+      this.scheduleAutoClick(this.lastCompletedTextLength);
   }
 
   canSkipNode(): boolean {
@@ -781,19 +786,44 @@ export class StoryRuntime {
   }
 
   private async advanceFromClick(): Promise<void> {
-    if (this.state !== "waiting_input") return;
-
-    if (this.dialogPanel.finishTypingOnClick()) return;
-    if (this.renderer.finishTextTyping()) {
-      this.onTypingComplete();
+    const command = this.waitingInputCommand;
+    if (this.destroyed || this.state !== "waiting_input" || command === null)
       return;
+
+    // In 2791 only the blocking executor subscribes to ON_CLICK. A
+    // non-blocking sticker can raise an auto click without consuming it.
+    switch (command) {
+      case "aside":
+      case "dialog":
+      case "endtip":
+      case "multiline":
+        if (this.dialogPanel.finishTypingOnClick()) return;
+        this.dialogPanel.finishCommand();
+        break;
+      case "sticker":
+      case "stickerclear":
+      case "stickertween":
+        if (this.renderer.finishTextTyping("sticker")) return;
+        break;
+      case "subtitle":
+        if (this.renderer.finishTextTyping("subtitle")) return;
+        break;
     }
 
+    this.waitingInputCommand = null;
+    this.lastCompletedTextLength = null;
     this.cancelAutoClick();
-    this.dialogPanel.finishCommand();
     const inputEffect = this.pendingInputEffect;
     this.pendingInputEffect = null;
-    await inputEffect?.();
+    const generation = this.textTypingGeneration;
+    try {
+      await inputEffect?.();
+    } catch (error) {
+      if (!this.destroyed && generation === this.textTypingGeneration)
+        this.waitingInputCommand = command;
+      throw error;
+    }
+    if (this.destroyed || generation !== this.textTypingGeneration) return;
     this.state = "running";
     await this.processLoop();
   }
@@ -883,6 +913,8 @@ export class StoryRuntime {
     }
 
     this.pendingInputEffect = null;
+    this.waitingInputCommand = null;
+    this.cancelTextTyping();
     // Native port: AVGController.SkipStory (0x183e1a150) reaches
     // _ResetComponentsOnSkip (0x183e1d3f0) only on the two paths that keep
     // playing -- jumping to a SkipToThis anchor, and jumping to the next
@@ -910,7 +942,6 @@ export class StoryRuntime {
     }
 
     this.dialogPanel.stopTypingSilently();
-    this.cancelTextTyping();
     if (shouldResume) {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
@@ -984,6 +1015,7 @@ export class StoryRuntime {
 
   private cancelAutoClick(): void {
     this.autoClickGeneration += 1;
+    this.autoClickReady = false;
   }
 
   private scheduleAutoClick(messageLength: number): void {
@@ -998,12 +1030,15 @@ export class StoryRuntime {
       if (
         this.destroyed ||
         generation !== this.autoClickGeneration ||
-        this.autoPlayMode === "default" ||
-        this.state !== "waiting_input"
+        this.autoPlayMode === "default"
       ) {
         return;
       }
-      void this.advanceFromClick();
+      if (this.state === "waiting_input") void this.advanceFromClick();
+      // An instantly revealed command and an injected clock can complete
+      // while its executor is returning. Deliver the click after it blocks.
+      else if (this.state === "running" && this.processing)
+        this.autoClickReady = true;
     });
   }
 
@@ -1115,10 +1150,14 @@ export class StoryRuntime {
           line.kind === "command"
             ? await this.executeCommand(line)
             : this.dialogPanel.executeTextLine(line);
+        if (this.destroyed) return;
         if (result === "wait_input") {
+          this.waitingInputCommand =
+            line.kind === "command" ? line.command : "dialog";
           this.state = "waiting_input";
           return;
         }
+        this.autoClickReady = false;
       }
     } catch (error) {
       this.state = "error";
@@ -1131,6 +1170,10 @@ export class StoryRuntime {
       this.resolveProcessingCompletion?.();
       this.resolveProcessingCompletion = null;
       this.processingCompletion = null;
+      if (this.autoClickReady) {
+        this.autoClickReady = false;
+        void this.advanceFromClick();
+      }
     }
   }
 
@@ -3208,7 +3251,8 @@ export class StoryRuntime {
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
 
         this.displayedLineIndex = line.lineNumber;
-        // Native _OnTypeWriterEnd (2.7.61 VA 0x183e94e80) raises the auto
+        if (this.destroyed) return "continue";
+        // Native _OnTypeWriterEnd (2791 VA 0x1841E5A20) raises the auto
         // click with the subtitle's own raw typeWriter.messageLength.
         const onTypingComplete = this.beginTextTyping(text.length);
         await this.renderer.setSubtitle({
@@ -3448,41 +3492,31 @@ export class StoryRuntime {
     return true;
   }
 
-  private onTypingComplete(): void {
-    this.currentTypingComplete = true;
-    this.scheduleAutoClick(this.currentRawMessageLength);
+  private onTypingComplete(messageLength: number): void {
+    if (this.destroyed || this.state === "finished" || this.state === "error")
+      return;
+    this.lastCompletedTextLength = messageLength;
+    this.scheduleAutoClick(messageLength);
   }
 
   /**
-   * Web adaptation of AVGController.RaiseAutoClick: the latest text command
-   * owns the wait. Its typewriter reports completion with the raw length,
-   * and a stale callback from a replaced text view cannot reschedule it.
+   * Native RaiseAutoClick (2791 @ 0x18416BEA0) replaces the timer with each
+   * valid completion. Views own replacement within a session. This token
+   * invalidates every outstanding callback when the story skips or closes.
    */
   private beginTextTyping(messageLength: number): () => void {
-    this.cancelTextTyping();
-    this.currentRawMessageLength = messageLength;
     const generation = this.textTypingGeneration;
+    let completed = false;
     return () => {
-      if (!this.destroyed && this.textTypingGeneration === generation)
-        this.onTypingComplete();
+      if (completed || this.textTypingGeneration !== generation) return;
+      completed = true;
+      this.onTypingComplete(messageLength);
     };
-  }
-
-  /**
-   * Native port: the sticker hide branch ends with `_OnStickerTypeEnd(0)`,
-   * i.e. `AVGController.RaiseAutoClick(0)` (2791 `_HideSticker` 0x1841E4250):
-   * the hidden sticker drops the shared typing state and auto-play moves on
-   * with the base wait only.
-   */
-  private raiseStickerAutoClick(): void {
-    this.cancelTextTyping();
-    this.currentRawMessageLength = 0;
-    if (!this.destroyed) this.onTypingComplete();
   }
 
   private cancelTextTyping(): void {
     this.textTypingGeneration += 1;
-    this.currentTypingComplete = false;
+    this.lastCompletedTextLength = null;
     this.cancelAutoClick();
   }
 

@@ -1,5 +1,6 @@
+import { richCharsToTaggedText } from "../../src/widgets/StoryPlayer/engine/richtext";
+
 import type { Context } from "../../src/widgets/StoryPlayer/context";
-import type { RichTagStyles } from "../../src/widgets/StoryPlayer/engine/richtext";
 import type {
   AnimTextInput,
   AvgDisplayInput,
@@ -13,6 +14,7 @@ import type {
   CharacterSlotInput,
   CurtainInput,
   DialogueLayout,
+  DialogueText,
   DecisionSelection,
   FocusOutInput,
   FocusParamInput,
@@ -205,9 +207,11 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   destroy(): void {}
-  finishTextTyping(): boolean {
+  finishTextTyping(panel: "sticker" | "subtitle"): boolean {
     if (!this.typingActive) return false;
     this.typingActive = false;
+    const calls = panel === "sticker" ? this.stickerCalls : this.subtitleCalls;
+    calls.at(-1)?.onTypingComplete?.();
     return true;
   }
 
@@ -267,10 +271,10 @@ export class FakeRenderer implements StoryRenderer {
 
   setDialogue(
     speaker: string,
-    text: string,
-    _tagStyles?: RichTagStyles,
+    { chars, visibleCount }: DialogueText,
     layout?: DialogueLayout,
   ): void {
+    const text = richCharsToTaggedText(chars.slice(0, visibleCount));
     this.dialogueHidden = false;
     this.lastDialogue = { speaker, text };
     this.dialogueTexts.push(text);

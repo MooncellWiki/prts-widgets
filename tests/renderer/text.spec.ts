@@ -340,7 +340,7 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
-  it("reports sticker typing end only when the typewriter finishes on its own", async () => {
+  it("reports sticker completion on the last character or a typing click", async () => {
     vi.useFakeTimers();
     try {
       const renderer = createRenderer();
@@ -379,6 +379,19 @@ describe("PixiStoryRenderer", () => {
       expect(typed).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(10);
       expect(typed).toHaveBeenCalledTimes(1);
+
+      const clicked = vi.fn();
+      await renderer.setSticker({
+        ...input,
+        delayMs: 10,
+        id: "clicked",
+        onTypingComplete: clicked,
+        text: "hey",
+      });
+      expect(renderer.finishTextTyping("sticker")).toBe(true);
+      expect(clicked).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(clicked).toHaveBeenCalledTimes(1);
 
       // Typing cut short by a hide (TryFinishType) does not report here; the
       // runtime's hide branch raises its own auto click.
@@ -738,25 +751,25 @@ describe("StickerView lifecycle", () => {
 
     // ForceCommandEnd / _OnClicked only TryFinishType m_currentSticker (the
     // latest show), so the older "a" keeps typing.
-    expect(renderer.finishTextTyping()).toBe(true);
+    expect(renderer.finishTextTyping("sticker")).toBe(true);
     expect(textOf("b")).toBe("B");
     expect(textOf("a")).toBe("");
     // The current view is done; an older typing view does not eat the click.
-    expect(renderer.finishTextTyping()).toBe(false);
+    expect(renderer.finishTextTyping("sticker")).toBe(false);
 
     // An append moves m_currentSticker back to "a".
     await renderer.setSticker({ ...input, append: true, id: "a", text: "+" });
-    expect(renderer.finishTextTyping()).toBe(true);
+    expect(renderer.finishTextTyping("sticker")).toBe(true);
     expect(textOf("a")).toBe("A+");
 
     // The hide branch also points m_currentSticker at the hidden view, and
     // _RecycleStickers nulls it: neither leaves anything to finish.
     await renderer.setSticker({ ...input, append: false, id: "c", text: "C" });
     await renderer.clearSticker("a", 0);
-    expect(renderer.finishTextTyping()).toBe(false);
+    expect(renderer.finishTextTyping("sticker")).toBe(false);
     expect(renderer.stickerViews.get("c").isTyping).toBe(true);
     await renderer.clearStickers(0);
-    expect(renderer.finishTextTyping()).toBe(false);
+    expect(renderer.finishTextTyping("sticker")).toBe(false);
   });
 
   it("keeps the fade-in, tween and transform when appending (native AppendText)", async () => {

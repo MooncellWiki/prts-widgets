@@ -160,7 +160,7 @@ describe("StoryRuntime", () => {
       );
 
       const start = runtime.start();
-      await vi.advanceTimersByTimeAsync(1819);
+      await vi.advanceTimersByTimeAsync(1779);
       expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "auto" });
       await vi.advanceTimersByTimeAsync(1);
       await start;
@@ -386,6 +386,54 @@ describe("StoryRuntime", () => {
       expect(renderer.lastDialogue.speaker).toBe("A");
       await vi.advanceTimersByTimeAsync(1);
       expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    "[Dialog]<b></b>",
+    "[multiline(delay=0)]instant",
+    '[sticker(id="a",text="instant",delay=0)]',
+  ])(
+    "delivers an immediate auto click after %s enters its wait",
+    async (line) => {
+      const sleep = vi
+        .fn(() => new Promise<void>(() => {}))
+        .mockResolvedValueOnce(undefined);
+      const runtime = new StoryRuntime(
+        createContext([line, '[name="B"]next']),
+        new FakeRenderer(),
+        new FakeAudio(),
+        { sleep },
+      );
+
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+
+      await vi.waitFor(() => expect(runtime.getDisplayedLineIndex()).toBe(2));
+      runtime.destroy();
+    },
+  );
+
+  it("starts the auto wait on the same tick as the last character", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]ab', '[name="B"]next']),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+
+      // Last glyph at 80ms, then 1500ms + 2 * 30ms.
+      await vi.advanceTimersByTimeAsync(1639);
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ab" });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+      runtime.destroy();
     } finally {
       vi.useRealTimers();
     }
@@ -844,9 +892,10 @@ describe("StoryRuntime", () => {
 
   it("does not start typewriter ticks when a displayed line listener destroys the player", async () => {
     const sleep = vi.fn(async () => {});
+    const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[name="A"]hello']),
-      new FakeRenderer(),
+      renderer,
       new FakeAudio(),
       { sleep, typingIntervalMs: 30 },
     );
@@ -857,6 +906,7 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(sleep).not.toHaveBeenCalled();
+    expect(renderer.dialogueTexts).toEqual([]);
   });
 
   it("hides an empty name line without blocking", async () => {
@@ -1090,6 +1140,33 @@ describe("StoryRuntime", () => {
       }
     },
   );
+
+  it("replaces the active multiline interval when the auto speed changes", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[multiline(name="A",delay=0.08)]abcdef']),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+
+      // Starts at 40 * (0.08 / 0.04) = 80ms. ON_SPEED_SET writes 10ms and
+      // preserves the 15ms already accumulated by the typewriter.
+      await vi.advanceTimersByTimeAsync(15);
+      expect(renderer.lastDialogue.text).toBe("");
+      runtime.setAutoPlaySpeedLevel(1);
+      await vi.advanceTimersByTimeAsync(4);
+      expect(renderer.lastDialogue.text).toBe("a");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.text).toBe("ab");
+      runtime.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("registers labels in preprocess and lets warp jump to the line after the label", async () => {
     const renderer = new FakeRenderer();

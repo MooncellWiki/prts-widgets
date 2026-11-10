@@ -1,108 +1,134 @@
 import { TYPE_WRITER_ORIGIN_DELAY_MS } from "../commandParams";
-import {
-  buildTagStyles,
-  parseRichChars,
-  richCharsToTaggedText,
-  type RichChar,
-  type RichTagStyles,
-} from "../richtext";
+import { parseRichChars } from "../richtext";
 
-type RenderText = (
-  text: string,
-  tagStyles?: RichTagStyles,
-  initial?: boolean,
-) => void;
+import type { DialogueText } from "../types";
+
+type RenderText = (text: DialogueText, initial?: boolean) => void;
+
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 interface TypingSession {
-  delayScale: number;
+  chars: DialogueText["chars"];
+  delayMs: number;
   onTypeEnd: () => void;
   render: RenderText;
-  richChars: RichChar[];
-  tagStyles: RichTagStyles;
+  visibleCount: number;
+  wake?: () => void;
 }
 
 /**
  * Native port: Torappu.AVG.AVGTypeWriterText's BeginText / AppendText,
- * TryFinish and Update. The web clock and tagged-text prefixes stand in for
- * Unity's Update and mesh reveal. Completion leaves input to AVGController.
+ * TryFinish and Update. DialogView uses the entire message for layout and
+ * reveals it by character count in place of Unity's mesh quads.
  */
 export class AVGTypeWriterText {
   private session: TypingSession | null = null;
 
-  constructor(
-    private readonly sleep: (ms: number) => Promise<void>,
-    private readonly typeWriterDelayMs: () => number,
-  ) {}
-
-  get isTyping(): boolean {
-    return this.session !== null;
-  }
+  constructor(private readonly sleep: (ms: number) => Promise<void>) {}
 
   /** For an append, startIndex is the visible length of the previous text. */
   beginText(
     text: string,
     {
-      delayScale,
+      delayMs,
       onTypeEnd,
       render,
       startIndex,
     }: {
-      delayScale: number;
+      delayMs: number;
       onTypeEnd: () => void;
       render: RenderText;
       startIndex: number;
     },
   ): number {
     this.stopTypingSilently();
-    const richChars = parseRichChars(text);
-    const tagStyles = buildTagStyles(richChars);
-    const from = Math.min(Math.max(0, startIndex), richChars.length);
-    if (from >= richChars.length || this.getDelayMs(delayScale) <= 0) {
-      render(richCharsToTaggedText(richChars), tagStyles, true);
+    const chars = parseRichChars(text);
+    const visibleCount = Math.min(Math.max(0, startIndex), chars.length);
+    const interval = delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : delayMs;
+    if (visibleCount >= chars.length || !(interval > 0)) {
+      render({ chars, visibleCount: chars.length }, true);
       onTypeEnd();
     } else {
-      const session = { delayScale, onTypeEnd, render, richChars, tagStyles };
+      const session = {
+        chars,
+        delayMs: interval,
+        onTypeEnd,
+        render,
+        visibleCount,
+      };
       this.session = session;
-      render(richCharsToTaggedText(richChars.slice(0, from)), tagStyles, true);
-      void this.runTyping(session, from);
+      render({ chars, visibleCount }, true);
+      void this.runTyping(session);
     }
-    return richChars.length;
+    return chars.length;
   }
 
   tryFinish(): boolean {
     const session = this.session;
     if (!session) return false;
     this.stopTypingSilently();
-    session.render(richCharsToTaggedText(session.richChars), session.tagStyles);
+    session.render({
+      chars: session.chars,
+      visibleCount: session.chars.length,
+    });
     session.onTypeEnd();
     return true;
   }
 
   stopTypingSilently(): void {
+    const session = this.session;
     this.session = null;
+    session?.wake?.();
   }
 
-  private getDelayMs(delayScale: number): number {
-    const delayMs = this.typeWriterDelayMs() * delayScale;
-    return delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : delayMs;
+  /** Native set_typeWriterDelay replaces the interval and keeps m_typerTime. */
+  setDelay(delayMs: number): void {
+    const session = this.session;
+    if (!session || session.delayMs === delayMs) return;
+    session.delayMs = delayMs;
+    session.wake?.();
   }
 
-  private async runTyping(session: TypingSession, from: number): Promise<void> {
-    const { delayScale, onTypeEnd, render, richChars } = session;
-    for (let index = from; index < richChars.length; index += 1) {
-      if (this.session !== session) return;
-      const delayMs = this.getDelayMs(delayScale);
-      if (delayMs > 0) await this.sleep(delayMs);
-      if (this.session !== session) return;
-      render(richCharsToTaggedText(richChars.slice(0, index + 1)));
-    }
+  private async runTyping(session: TypingSession): Promise<void> {
+    const { chars, render } = session;
+    let elapsedMs = 0;
+    while (this.session === session) {
+      const delayMs = session.delayMs;
+      const waitMs = delayMs - elapsedMs;
+      if (waitMs > 0) {
+        const startedAt = performance.now();
+        const interrupted = new Promise<number>((resolve) => {
+          session.wake = () => resolve(performance.now() - startedAt);
+        });
+        if (Number.isFinite(waitMs)) {
+          const timeoutMs = Math.min(waitMs, MAX_TIMEOUT_MS);
+          elapsedMs += await Promise.race([
+            this.sleep(timeoutMs).then(() =>
+              Math.max(timeoutMs, performance.now() - startedAt),
+            ),
+            interrupted,
+          ]);
+        } else {
+          // An infinite interval only wakes for a speed change or cancellation.
+          elapsedMs += await interrupted;
+        }
+        session.wake = undefined;
+        continue;
+      }
 
-    // Keep the web iterator's final step between reveal and completion.
-    const finalDelayMs = this.getDelayMs(delayScale);
-    if (finalDelayMs > 0) await this.sleep(finalDelayMs);
-    if (this.session === session) {
-      this.stopTypingSilently();
-      onTypeEnd();
+      const remaining = chars.length - session.visibleCount;
+      const count =
+        delayMs > 0
+          ? Math.min(remaining, Math.floor(elapsedMs / delayMs))
+          : remaining;
+      if (count === remaining) {
+        // 2791 _UpdateMeshRevealer (0x184250AA0) completes on the last quad.
+        this.tryFinish();
+        return;
+      }
+      elapsedMs -= count * delayMs;
+      session.visibleCount += count;
+      render({ chars, visibleCount: session.visibleCount });
     }
   }
 }

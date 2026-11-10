@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import { planChoicesForLine } from "../src/widgets/StoryPlayer/engine/log/seek";
 import { analyzeStoryFlow } from "../src/widgets/StoryPlayer/engine/log/symbolicFlow";
 import { parseScript } from "../src/widgets/StoryPlayer/engine/parser";
+import { richCharsToTaggedText } from "../src/widgets/StoryPlayer/engine/richtext";
 import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
 
 import type { Context } from "../src/widgets/StoryPlayer/context";
 import type {
   DecisionPolicy,
   DecisionSelection,
+  DialogueText,
   LineSeekUpdate,
   ShowItemInput,
   StoryAudio,
@@ -139,7 +141,8 @@ class DecisionFakeRenderer {
     this.showItemKeys.push(input.key);
   }
 
-  setDialogue(speaker: string, text: string): void {
+  setDialogue(speaker: string, { chars, visibleCount }: DialogueText): void {
+    const text = richCharsToTaggedText(chars.slice(0, visibleCount));
     this.lastDialogue = { speaker, text };
   }
 

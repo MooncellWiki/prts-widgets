@@ -70,6 +70,7 @@ export class StickerView {
   private typingTarget: {
     alignment: StickerInput["alignment"];
     fullText: string;
+    onTypingComplete?: () => void;
     widthPx: number;
   } | null = null;
 
@@ -86,7 +87,7 @@ export class StickerView {
     return this.typingTarget !== null;
   }
 
-  /** Forced completion never fires the natural type-end callback. */
+  /** Native _OnClicked -> TryFinishType invokes the view's type-end callback. */
   finishTyping(): boolean {
     const target = this.typingTarget;
     if (!target) return false;
@@ -94,6 +95,7 @@ export class StickerView {
     this.text.text = target.fullText;
     this.host.layoutSubtitle(this.text, 0, target.widthPx, target.alignment);
     this.typingTarget = null;
+    target.onTypingComplete?.();
     return true;
   }
 
@@ -181,6 +183,7 @@ export class StickerView {
     this.typingTarget = {
       alignment: input.alignment,
       fullText,
+      onTypingComplete: input.onTypingComplete,
       widthPx: input.widthPx,
     };
     void this.runStickerTyping(sessionId, {
