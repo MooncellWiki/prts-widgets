@@ -842,6 +842,23 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("finished");
   });
 
+  it("does not start typewriter ticks when a displayed line listener destroys the player", async () => {
+    const sleep = vi.fn(async () => {});
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]hello']),
+      new FakeRenderer(),
+      new FakeAudio(),
+      { sleep, typingIntervalMs: 30 },
+    );
+    runtime.onDisplayedLineChange((lineIndex) => {
+      if (lineIndex !== null) runtime.destroy();
+    });
+
+    await runtime.start();
+
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it("hides an empty name line without blocking", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

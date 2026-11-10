@@ -788,6 +788,7 @@ export interface StoryRenderer {
   clearCharacterCutin: (widgetId?: string) => Promise<void>;
   clearInterludes: () => Promise<void>;
   destroy: () => void;
+  /** Reveal any remaining subtitle or current sticker text on a click. */
   finishTextTyping: () => boolean;
   mount: (host: HTMLElement) => Promise<void>;
   playVideo: (url: string) => Promise<void>;

@@ -15,7 +15,6 @@ import {
   toNumber,
   toOptionalNumber,
   toString,
-  TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "./commandParams";
 import { CommandRegistry, type CommandResult } from "./commandRegistry";
 import {
@@ -23,15 +22,9 @@ import {
   parsePredicateReferences,
   passesGate,
 } from "./log/semantics";
+import { DialogPanel } from "./panels/DialogPanel";
 import { StickerPanel } from "./panels/StickerPanel";
 import { parseScript } from "./parser";
-import {
-  buildTagStyles,
-  parseRichChars,
-  richCharsToTaggedText,
-  type RichChar,
-  type RichTagStyles,
-} from "./richtext";
 import { parseShowItemFadeStyle } from "./showitem";
 import { expandStoryText } from "./textVariables";
 
@@ -44,7 +37,6 @@ import type {
   CharacterActionInput,
   CharacterSlotInput,
   DecisionPolicy,
-  DialogueLayout,
   InterludeElementType,
   InterludeInput,
   LineSeekUpdate,
@@ -118,9 +110,6 @@ const QUICK_AUTO_SPEEDS: readonly AutoSpeed[] = [
 ];
 
 const builtinCommandNames = [
-  "endtip",
-  "dialog",
-  "aside",
   "delay",
   "video",
   "skipnode",
@@ -160,7 +149,6 @@ const builtinCommandNames = [
   "camerashake",
   "focusout",
   "focusparam",
-  "multiline",
   "subtitle",
   "spellsticker",
   "spellstickerclear",
@@ -432,27 +420,13 @@ export class StoryRuntime {
   private itemSlotInUse = false;
   private theaterMode = false;
   private theaterAutoPlayCache: AutoPlayState | null = null;
-  private typingSession: {
-    id: number;
-    speaker: string;
-    richChars: RichChar[];
-    tagStyles: RichTagStyles;
-  } | null = null;
-  private typingSessionId = 0;
+  private textTypingGeneration = 0;
   private quickSpeedLevel = 0;
-  private currentMessageLength = 0;
-  /**
-   * Native port: `AVGTypeWriterText.messageLength` is the raw string length
-   * including rich-text tag characters; `RaiseAutoClick` waits on it. The
-   * visible-char `currentMessageLength` drives the multiline cursor instead.
-   */
+  /** Raw, marked-up length reported by the text command that owns auto-click. */
   private currentRawMessageLength = 0;
   private currentTypingComplete = false;
   private state: PlayerState = "idle";
-  private multilineText = "";
-  private multilineEnd = false;
-  /** Rich-char count already on screen from earlier multiline fragments. */
-  private multilineShownChars = 0;
+  private readonly dialogPanel: DialogPanel;
   private readonly stickerPanel: StickerPanel;
   private pendingInputEffect: (() => Promise<void> | void) | null = null;
 
@@ -478,9 +452,19 @@ export class StoryRuntime {
     this.skipToIndex = preprocessSkipToIndex(this.lines);
     this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
+    this.dialogPanel = new DialogPanel(renderer, {
+      beginTyping: (length) => this.beginTextTyping(length),
+      cancelTyping: () => this.cancelTextTyping(),
+      prepareEndtip: () => this.prepareEndtip(),
+      setDisplayedLine: (lineNumber) => {
+        this.displayedLineIndex = lineNumber;
+      },
+      sleep: this.sleep,
+      translateText: (text) => this.translateText(text),
+      typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
+    });
     this.stickerPanel = new StickerPanel(renderer, {
-      beginTyping: (count, rawLength) =>
-        this.beginStickerTyping(count, rawLength),
+      beginTyping: (length) => this.beginTextTyping(length),
       calculateFadeMs: (value, fallback) =>
         this.calculateFadeMs(value, fallback),
       raiseAutoClick: () => this.raiseStickerAutoClick(),
@@ -488,6 +472,7 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
     });
+    this.dialogPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
@@ -798,24 +783,14 @@ export class StoryRuntime {
   private async advanceFromClick(): Promise<void> {
     if (this.state !== "waiting_input") return;
 
-    if (this.finishTypingNow()) {
-      this.onTypingComplete();
-      // Native port: _OnClicked checks m_multilineEnd after both branches, so
-      // an `end=true` run is reset by the click that finishes typing too, not
-      // only by the click that actually advances.
-      if (this.multilineEnd) this.resetMultiline();
-      return;
-    }
+    if (this.dialogPanel.finishTypingOnClick()) return;
     if (this.renderer.finishTextTyping()) {
       this.onTypingComplete();
       return;
     }
 
     this.cancelAutoClick();
-    if (this.multilineEnd) this.resetMultiline();
-    // Native FinishCommand -> DialogPanel.OnFinish -> _RestoreMessageWidth.
-    // Harmless on other waits: only a waiting DialogPanel line can be widened.
-    this.renderer.finishDialogueCommand();
+    this.dialogPanel.finishCommand();
     const inputEffect = this.pendingInputEffect;
     this.pendingInputEffect = null;
     await inputEffect?.();
@@ -917,12 +892,9 @@ export class StoryRuntime {
     // a skip that ends the story leaves the screen exactly as it was.
     // `shouldResume` is that same fork.
     if (shouldResume) {
-      // Native port: SkipStory ForceEnd()s the blocking executors before the
-      // component reset. DialogPanel.ForceCommandEnd (0x183f202b0) is TryFinish
-      // + _RestoreMessageWidth: the interrupted line is shown in full and any
-      // overflow widening is undone.
-      this.finishTypingNow();
-      this.renderer.finishDialogueCommand();
+      // Native SkipStory force-ends the blocking executors before resetting
+      // the components that opt in to a skip reset.
+      this.dialogPanel.forceCommandEnd();
       // Native port: both executors on AVGCharacterCutinPanel reset on skip --
       // ShouldResetOnSkip() @ 0x183e492b0 returns true and _Reset @ 0x183e4af80
       // empties the slot pool / _slots before resetting the interlude
@@ -937,12 +909,8 @@ export class StoryRuntime {
       await this.stickerPanel.reset();
     }
 
-    this.cancelTyping();
-    // Deliberately no resetMultiline(): DialogPanel.ShouldResetOnSkip()
-    // returns false (2.7.71 VA 0x183f20f70), so _ResetComponentsOnSkip never
-    // calls its OnReset and the skip only ForceEnd()s it (TryFinish). The
-    // multiline run and the typewriter's accumulated m_message survive, and a
-    // multiline right at the landing point appends to the pre-skip text.
+    this.dialogPanel.stopTypingSilently();
+    this.cancelTextTyping();
     if (shouldResume) {
       this.state = "running";
     } else if (!hadActiveProcessLoop) {
@@ -1014,24 +982,6 @@ export class StoryRuntime {
     );
   }
 
-  /**
-   * Native port: `DialogPanel._ExecuteMultiline` resolves the ratio's numerator
-   * with `GetOrDefault<float>("delay", AVGController.typeWriterDelay)` -- the
-   * *current* global delay, not the asset's `originDelay`. The scale is
-   * therefore itself speed-dependent, and an omitted `delay` makes multiline
-   * type faster than a plain dialogue line at every non-default speed level
-   * (0.25x at button-auto level 1). Only the default speed cancels out to 1.
-   */
-  private multilineTypeDelayScale(value: unknown): number {
-    const originDelaySeconds = TYPE_WRITER_ORIGIN_DELAY_MS / 1000;
-    const currentDelaySeconds = this.getCurrentSpeed().typeWriterDelayMs / 1000;
-    const delaySeconds =
-      value === undefined
-        ? currentDelaySeconds
-        : toNumber(value, currentDelaySeconds);
-    return delaySeconds / originDelaySeconds;
-  }
-
   private cancelAutoClick(): void {
     this.autoClickGeneration += 1;
   }
@@ -1060,8 +1010,8 @@ export class StoryRuntime {
   destroy(): void {
     this.destroyed = true;
     this.lineSeek = null;
-    this.cancelTyping();
-    this.cancelAutoClick();
+    this.dialogPanel.destroy();
+    this.cancelTextTyping();
     this.interruptPendingWait();
     this.pendingInputEffect = null;
     // 销毁后不该再有推送落到 UI 上
@@ -1161,27 +1111,10 @@ export class StoryRuntime {
           continue;
         }
 
-        if (line.kind === "dialogue") {
-          if (!line.text) {
-            this.cancelTyping();
-            this.renderer.hideDialogue();
-            continue;
-          }
-          this.resetMultiline();
-          this.displayedLineIndex = line.lineNumber;
-          this.waitForDialogueInput(line.speaker, line.text);
-          return;
-        }
-
-        if (line.kind === "narration") {
-          if (!line.text) continue;
-          this.resetMultiline();
-          this.displayedLineIndex = line.lineNumber;
-          this.waitForDialogueInput("", line.text);
-          return;
-        }
-
-        const result = await this.executeCommand(line);
+        const result =
+          line.kind === "command"
+            ? await this.executeCommand(line)
+            : this.dialogPanel.executeTextLine(line);
         if (result === "wait_input") {
           this.state = "waiting_input";
           return;
@@ -1323,67 +1256,6 @@ export class StoryRuntime {
     const args = line.args;
 
     switch (line.command) {
-      case "endtip": {
-        // Native port: Torappu.AVG.DialogPanel._ExecuteEndtip (2.7.81:
-        // 0x183FE39F0) and AVGStoryCache.shouldProcessEndtip (0x183FCF180).
-        // It only shows and blocks in auto play for non-video-only stories;
-        // manual mode is a no-op. The shown dialog is EMPTY name + EMPTY
-        // text: the parser-generated command carries content=null,
-        // TryTranslate(null) returns (true, null) so Translate returns null,
-        // and BeginText normalizes null to String.Empty (2.7.81 verified) —
-        // native shows a bare frame, never any tip copy.
-        const shouldProcessEndtip =
-          (this.autoPlayMode === "button_auto" ||
-            this.autoPlayMode === "quick_play") &&
-          !(this.context.storyMetadata?.isVideoOnly ?? false);
-        if (!shouldProcessEndtip) return "continue";
-
-        // parser 给每篇脚本补一条隐式 endtip，走到这里 = 整篇播完了。跳转
-        // 还没到目标就按 missed 收尾，别让下面的模式切换把它变成 aborted
-        this.finishLineSeekMissed("finished");
-        this.applyAutoPlayMode("default");
-        this.resetMultiline();
-        this.startTypingDialogue("", line.content, { executor: "endtip" });
-        return "wait_input";
-      }
-
-      case "dialog": {
-        // Native port: Torappu.AVG.DialogPanel._ExecuteDialog. `[Dialog]`,
-        // `[name="X"]` and bare narration all reach it under the sentinel `dialog`;
-        // the multi-param forms
-        // (`[name="X",avatarId=1]`, `[Delay=2]`, `[imagegroup=...]`) land here
-        // too. Only the content-bearing branch resets multiline and blocks; an
-        // empty content just hides the box and returns false.
-        if (line.content) {
-          this.resetMultiline();
-          this.displayedLineIndex = line.lineNumber;
-          this.waitForDialogueInput(
-            toString(this.exactArg(args, "name")),
-            line.content,
-          );
-          return "wait_input";
-        }
-        this.cancelTyping();
-        this.renderer.hideDialogue();
-        return "continue";
-      }
-
-      case "aside": {
-        // Native port: Torappu.AVG.DialogPanel._ExecuteAside. The dialog
-        // executor's two branches without a speaker: the content branch clears
-        // the name, resets multiline and blocks, with the message placed at
-        // x = -86 (see DialogueLayout); an empty content just hides the box.
-        if (line.content) {
-          this.resetMultiline();
-          this.displayedLineIndex = line.lineNumber;
-          this.startTypingDialogue("", line.content, { executor: "aside" });
-          return "wait_input";
-        }
-        this.cancelTyping();
-        this.renderer.hideDialogue();
-        return "continue";
-      }
-
       case "delay": {
         // Native port: Torappu.AVG.CommonExecutors._ExecuteDelayCommand.
         // Only `time` is read and is scaled by animateRatio.
@@ -3321,40 +3193,6 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "multiline": {
-        // Native port: Torappu.AVG.DialogPanel._ExecuteMultiline. Consecutive
-        // fragments append until `end`; they share the typewriter timing model.
-        const text = line.trailingText;
-        if (!text) {
-          this.renderer.hideDialogue();
-          return "continue";
-        }
-        // Native port: `AVGTypeWriterText.AppendText` only types the appended
-        // fragment -- `OnReset` runs once, when the first multiline of a run
-        // starts. Resume from what is already on screen instead of blanking
-        // the box and replaying the whole accumulated line.
-        const shownChars = this.multilineShownChars;
-        this.multilineText += text;
-        this.multilineEnd = toBoolean(this.exactArg(args, "end"), false);
-        this.displayedLineIndex = line.lineNumber;
-        // _CalcMessageLayoutDelta only sees `command.content`, so the message
-        // is placed for this fragment and the accumulated run grows downward.
-        this.startTypingDialogue(
-          toString(this.exactArg(args, "name")),
-          this.multilineText,
-          {
-            delayScale: this.multilineTypeDelayScale(
-              this.exactArg(args, "delay"),
-            ),
-            executor: "multiline",
-            layoutText: text,
-            startIndex: shownChars,
-          },
-        );
-        this.multilineShownChars = this.currentMessageLength;
-        return "wait_input";
-      }
-
       case "subtitle": {
         // Native port: Torappu.AVG.SubtitlePanel._ExecuteSubtitle. The script's
         // `delay` parameter is ignored; typing speed is global.
@@ -3370,24 +3208,14 @@ export class StoryRuntime {
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
 
         this.displayedLineIndex = line.lineNumber;
-        // Native `_OnTypeWriterEnd` (2.7.61 VA 0x183e94e80) raises the auto
-        // click with the subtitle's own `typeWriter.messageLength`. Track the
-        // subtitle in the shared typing state so auto mode both advances when
-        // typing ends naturally and waits for the subtitle's length instead of
-        // the previous dialogue's leftovers.
-        //
-        // `get_messageLength` (VA 0x183ed87e0) returns `m_message.Length` on
-        // the raw, still-marked-up string, so native bills the
-        // `<color=#......>` characters in the auto wait; the visible-char
-        // count keeps feeding `currentMessageLength` for the cursor.
-        this.cancelTyping();
-        this.currentMessageLength = parseRichChars(text).length;
-        this.currentRawMessageLength = text.length;
+        // Native _OnTypeWriterEnd (2.7.61 VA 0x183e94e80) raises the auto
+        // click with the subtitle's own raw typeWriter.messageLength.
+        const onTypingComplete = this.beginTextTyping(text.length);
         await this.renderer.setSubtitle({
           alignment:
             parseSubtitleAlignment(this.exactArg(args, "alignment")) ?? "left",
           delayMs: this.getCurrentSpeed().typeWriterDelayMs,
-          onTypingComplete: () => this.onTypingComplete(),
+          onTypingComplete,
           sizePx: toNumber(this.exactArg(args, "size"), 24),
           text,
           widthPx: Math.min(
@@ -3603,126 +3431,21 @@ export class StoryRuntime {
     }
   }
 
-  private waitForDialogueInput(speaker: string, text: string): void {
-    this.startTypingDialogue(speaker, text);
-    this.state = "waiting_input";
-  }
-
-  /**
-   * `layoutText` is what native hands `_CalcMessageLayoutDelta` when the
-   * command executes: the whole line, except that multiline passes only its
-   * newest fragment while `text` carries the accumulated run.
-   * `executor` names the DialogPanel executor (see `DialogueLayout`).
-   */
-  private startTypingDialogue(
-    speaker: string,
-    text: string,
-    {
-      delayScale = 1,
-      executor = "dialog",
-      layoutText = text,
-      startIndex = 0,
-    }: {
-      delayScale?: number;
-      executor?: DialogueLayout["executor"];
-      layoutText?: string;
-      startIndex?: number;
-    } = {},
-  ): void {
-    this.cancelTyping();
-
-    const translatedSpeaker = this.translateText(speaker);
-    const translatedText = this.translateText(text);
-    const richChars = parseRichChars(translatedText);
-    const layout: DialogueLayout = {
-      executor,
-      text: parseRichChars(this.translateText(layoutText))
-        .map(({ char }) => char)
-        .join(""),
-    };
-    this.currentMessageLength = richChars.length;
-    this.currentRawMessageLength = translatedText.length;
-    this.currentTypingComplete = false;
-    const initialDelayMs = this.getTypeWriterDelayMs(delayScale);
-    const from = clamp(startIndex, 0, richChars.length);
-    if (from >= richChars.length || initialDelayMs <= 0) {
-      this.renderer.setDialogue(
-        translatedSpeaker,
-        richCharsToTaggedText(richChars),
-        buildTagStyles(richChars),
-        layout,
-      );
-      this.onTypingComplete();
-      return;
-    }
-
-    const sessionId = ++this.typingSessionId;
-    const tagStyles = buildTagStyles(richChars);
-    this.typingSession = {
-      id: sessionId,
-      speaker: translatedSpeaker,
-      richChars,
-      tagStyles,
-    };
-    this.renderer.setDialogue(
-      translatedSpeaker,
-      richCharsToTaggedText(richChars.slice(0, from)),
-      tagStyles,
-      layout,
-    );
-
-    void this.runTyping(
-      sessionId,
-      translatedSpeaker,
-      richChars,
-      delayScale,
-      from,
-    );
-  }
-
   private translateText(text: string): string {
     return expandStoryText(text, this.context.audioVariables);
   }
 
-  private getTypeWriterDelayMs(delayScale: number): number {
-    const delayMs = this.getCurrentSpeed().typeWriterDelayMs * delayScale;
-    return delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : delayMs;
-  }
-
-  private async runTyping(
-    sessionId: number,
-    speaker: string,
-    richChars: RichChar[],
-    delayScale: number,
-    startIndex = 0,
-  ): Promise<void> {
-    for (let index = startIndex; index < richChars.length; index += 1) {
-      if (
-        !this.typingSession ||
-        this.typingSession.id !== sessionId ||
-        this.destroyed
-      )
-        return;
-
-      const delayMs = this.getTypeWriterDelayMs(delayScale);
-      if (delayMs > 0) await this.sleep(delayMs);
-      if (
-        !this.typingSession ||
-        this.typingSession.id !== sessionId ||
-        this.destroyed
-      )
-        return;
-
-      const visible = richCharsToTaggedText(richChars.slice(0, index + 1));
-      this.renderer.setDialogue(speaker, visible);
-    }
-
-    const finalDelayMs = this.getTypeWriterDelayMs(delayScale);
-    if (finalDelayMs > 0) await this.sleep(finalDelayMs);
-    if (this.typingSession?.id === sessionId) {
-      this.typingSession = null;
-      this.onTypingComplete();
-    }
+  private prepareEndtip(): boolean {
+    // Native port: AVGStoryCache.shouldProcessEndtip (2791 @ 0x1841B84B0).
+    if (
+      this.autoPlayMode === "default" ||
+      this.context.storyMetadata?.isVideoOnly
+    )
+      return false;
+    // Web line seeks end as missed here before the native mode reset.
+    this.finishLineSeekMissed("finished");
+    this.applyAutoPlayMode("default");
+    return true;
   }
 
   private onTypingComplete(): void {
@@ -3731,20 +3454,16 @@ export class StoryRuntime {
   }
 
   /**
-   * Native port: `StickerPanel._OnStickerTypeEnd(msgLength)` (2.7.71 VA
-   * 0x183f3c430) raises the auto click from the sticker typewriter's end
-   * callback, never at the command boundary -- a slow sticker (an omitted
-   * `delay` types 25x slower) must finish typing before auto-play moves on.
-   * Like the subtitle path, the sticker takes over the shared typing state;
-   * the returned callback is ignored once a later message has replaced it.
+   * Web adaptation of AVGController.RaiseAutoClick: the latest text command
+   * owns the wait. Its typewriter reports completion with the raw length,
+   * and a stale callback from a replaced text view cannot reschedule it.
    */
-  private beginStickerTyping(charCount: number, rawLength: number): () => void {
-    this.cancelTyping();
-    this.currentMessageLength = charCount;
-    this.currentRawMessageLength = rawLength;
-    const sessionId = this.typingSessionId;
+  private beginTextTyping(messageLength: number): () => void {
+    this.cancelTextTyping();
+    this.currentRawMessageLength = messageLength;
+    const generation = this.textTypingGeneration;
     return () => {
-      if (!this.destroyed && this.typingSessionId === sessionId)
+      if (!this.destroyed && this.textTypingGeneration === generation)
         this.onTypingComplete();
     };
   }
@@ -3756,34 +3475,13 @@ export class StoryRuntime {
    * with the base wait only.
    */
   private raiseStickerAutoClick(): void {
-    this.cancelTyping();
-    this.currentMessageLength = 0;
+    this.cancelTextTyping();
     this.currentRawMessageLength = 0;
     if (!this.destroyed) this.onTypingComplete();
   }
 
-  private finishTypingNow(): boolean {
-    if (!this.typingSession) return false;
-
-    const { speaker, richChars, tagStyles } = this.typingSession;
-    this.cancelTyping();
-    this.renderer.setDialogue(
-      speaker,
-      richCharsToTaggedText(richChars),
-      tagStyles,
-    );
-    return true;
-  }
-
-  private resetMultiline(): void {
-    this.multilineText = "";
-    this.multilineEnd = false;
-    this.multilineShownChars = 0;
-  }
-
-  private cancelTyping(): void {
-    this.typingSession = null;
-    this.typingSessionId += 1;
+  private cancelTextTyping(): void {
+    this.textTypingGeneration += 1;
     this.currentTypingComplete = false;
     this.cancelAutoClick();
   }

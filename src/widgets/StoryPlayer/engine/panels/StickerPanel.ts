@@ -8,7 +8,6 @@ import {
   toString,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
-import { parseRichChars } from "../richtext";
 
 import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
@@ -21,7 +20,7 @@ import type {
 } from "../types";
 
 interface StickerPlayback {
-  beginTyping: (charCount: number, rawLength: number) => () => void;
+  beginTyping: (messageLength: number) => () => void;
   calculateFadeMs: (value: unknown, fallback?: number) => number;
   /** Native `_OnStickerTypeEnd(0)` -> `RaiseAutoClick(0)`. */
   raiseAutoClick: () => void;
@@ -41,14 +40,12 @@ export class StickerPanel {
    * Native port: `StickerPanel.m_stickerDict` — id → live sticker slot. Beyond
    * membership (show/append/hide routing), each slot carries what the native
    * view keeps on itself: the last show's layout and typewriter speed (the
-   * append branch must replay them untouched) and the message lengths that
-   * pace auto-play (`_OnStickerTypeEnd(msgLength)` bills the raw, still
-   * marked-up string; the visible-char count feeds the multiline cursor).
+   * append branch must replay them untouched) and the message length for
+   * auto-play (`_OnStickerTypeEnd(msgLength)` bills the raw, marked-up text).
    */
   private readonly stickerSlots = new Map<
     string,
     {
-      charCount: number;
       rawLength: number;
       layout: Omit<StickerInput, "append" | "id" | "onTypingComplete" | "text">;
     }
@@ -96,8 +93,8 @@ export class StickerPanel {
    * `delay` falls back to `StickerPanel._GenParam`'s 1.0 default — a 25x
    * slower typewriter (reachable in data, e.g. the fresh-id multiline show in
    * activities/act23side_02_end.txt:43; appends never re-read it at all).
-   * multiline applies the same ratio but takes a different fallback -- see
-   * multilineTypeDelayScale.
+   * DialogPanel's multiline applies the same ratio with the current delay
+   * as its fallback.
    */
   private stickerTypeDelayMs(value: unknown): number {
     const originDelaySeconds = TYPE_WRITER_ORIGIN_DELAY_MS / 1000;
@@ -151,16 +148,12 @@ export class StickerPanel {
           // stored layout (instead of re-defaulting to x=0/y=0) keeps the
           // letter appends in main 13-05, which omit x/y, in place.
           const text = this.playback.translateText(toString(arg(args, "text")));
-          existing.charCount += parseRichChars(text).length;
           existing.rawLength += text.length;
           await this.renderer.setSticker({
             ...existing.layout,
             append: true,
             id,
-            onTypingComplete: this.playback.beginTyping(
-              existing.charCount,
-              existing.rawLength,
-            ),
+            onTypingComplete: this.playback.beginTyping(existing.rawLength),
             text,
           } satisfies StickerInput);
           return block ? "wait_input" : "continue";
@@ -205,9 +198,7 @@ export class StickerPanel {
           x,
           y,
         };
-        const charCount = parseRichChars(text).length;
         this.stickerSlots.set(id, {
-          charCount,
           rawLength: text.length,
           layout,
         });
@@ -215,7 +206,7 @@ export class StickerPanel {
           ...layout,
           append: false,
           id,
-          onTypingComplete: this.playback.beginTyping(charCount, text.length),
+          onTypingComplete: this.playback.beginTyping(text.length),
           text,
         } satisfies StickerInput);
         return block ? "wait_input" : "continue";

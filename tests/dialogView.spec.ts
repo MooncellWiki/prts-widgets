@@ -8,7 +8,7 @@ import {
 } from "pixi.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DialogPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/DialogPanel";
+import { DialogView } from "../src/widgets/StoryPlayer/engine/rendering/panels/DialogView";
 
 import type { DialogueLayout } from "../src/widgets/StoryPlayer/engine/types";
 
@@ -47,7 +47,7 @@ async function mountPanel() {
   );
   const fades: Fade[] = [];
   const layer = new Container();
-  const panel = new DialogPanel(layer, undefined, (durationMs, step, done) => {
+  const panel = new DialogView(layer, undefined, (durationMs, step, done) => {
     fades.push({ done, durationMs, step });
     return Promise.resolve();
   });
@@ -57,7 +57,7 @@ async function mountPanel() {
   return { bottom, dialogue, fades, panel, root };
 }
 
-describe("DialogPanel", () => {
+describe("DialogView", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
