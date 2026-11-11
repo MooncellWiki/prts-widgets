@@ -88,8 +88,7 @@ export class DialogPanel {
     const finishedTyping = this.typeWriter.tryFinish();
     if (this.multilineEnd) this.resetMultiline();
     if (finishedTyping) return;
-    this.renderer.finishDialogueCommand();
-    finishCommand();
+    finishCommand({ onFinish: () => this.renderer.finishDialogueCommand() });
   };
 
   /**

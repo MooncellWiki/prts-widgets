@@ -474,12 +474,13 @@ describe("StoryRuntime", () => {
         new FakeAudio(),
       );
 
-      await runtime.start();
       runtime.setAutoPlayMode("button_auto");
       runtime.setAutoPlaySpeedLevel(1);
+      await runtime.start();
       expect(runtime.getAutoPlayState().buttonSpeedLevel).toBe(1);
 
-      await vi.advanceTimersByTimeAsync(559);
+      // Four glyphs at 10ms, then 500ms + 4 * 15ms at the selected speed.
+      await vi.advanceTimersByTimeAsync(599);
       expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
       await vi.advanceTimersByTimeAsync(1);
       await vi.advanceTimersByTimeAsync(50);
@@ -492,7 +493,7 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("quick mode emits an immediate click and uses its own speed level", async () => {
+  it("quick mode emits an immediate click and keeps the pending wait on a gear change", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new FakeRenderer();
@@ -513,7 +514,10 @@ describe("StoryRuntime", () => {
         mode: "quick_play",
         quickSpeedLevel: 3,
       });
-      await vi.advanceTimersByTimeAsync(25);
+      // "second" finished at 60ms on quick level 0 and queued a 200ms wait.
+      await vi.advanceTimersByTimeAsync(189);
+      expect(runtime.getAutoPlayState().mode).toBe("quick_play");
+      await vi.advanceTimersByTimeAsync(1);
       expect(runtime.getAutoPlayState().mode).toBe("default");
     } finally {
       vi.useRealTimers();
@@ -1015,10 +1019,15 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
   });
 
-  it("ends the DialogPanel command only on the advancing click", async () => {
+  it("restores the DialogPanel width at frame end on the advancing click", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new FakeRenderer();
+      let endFrame: (() => void) | undefined;
+      vi.spyOn(renderer, "onFrameEnd").mockImplementation((callback) => {
+        endFrame = callback;
+        return () => {};
+      });
       const runtime = new StoryRuntime(
         createContext(['[name="A"]one', '[name="B"]two']),
         renderer,
@@ -1031,7 +1040,10 @@ describe("StoryRuntime", () => {
       // _RestoreMessageWidth) comes with FinishCommand on the next click.
       await runtime.advance();
       expect(renderer.finishDialogueCommandCalls).toBe(0);
-      await runtime.advance();
+      const advance = runtime.advance();
+      expect(renderer.finishDialogueCommandCalls).toBe(0);
+      endFrame?.();
+      await advance;
       expect(renderer.finishDialogueCommandCalls).toBe(1);
       expect(renderer.lastDialogue.speaker).toBe("B");
     } finally {

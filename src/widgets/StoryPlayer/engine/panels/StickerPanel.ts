@@ -8,6 +8,7 @@ import {
   toString,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
+import { AVGEvent, type EventPool } from "../eventPool";
 
 import type {
   CommandRegistry,
@@ -32,6 +33,7 @@ interface StickerPlayback {
 }
 
 interface StickerSlot {
+  id: string;
   rawLength: number;
   layout: Omit<StickerInput, "append" | "id" | "onTypingComplete" | "text">;
 }
@@ -51,6 +53,8 @@ export class StickerPanel {
    * auto-play (`_OnStickerTypeEnd(msgLength)` bills the raw, marked-up text).
    */
   private readonly stickerSlots = new Map<string, StickerSlot>();
+  /** Native m_currentSticker, restricted to views that are still visible. */
+  private currentSticker: StickerSlot | null = null;
 
   /**
    * Native port: `StickerPanel.m_recyclePool`, reduced to the one piece of
@@ -77,9 +81,23 @@ export class StickerPanel {
       registry.register(command, (line) => this.execute(line));
   }
 
+  /** Native OnStoryBegin and _SetTypeWriterDelay (2791 @ 0x1841E21F0 / 0x1841E4980). */
+  onStoryBegin(eventPool: EventPool<AVGEvent>): void {
+    eventPool.on(AVGEvent.SpeedSet, () => {
+      const slot = this.currentSticker;
+      if (!slot) return;
+      // AVGStickerTextView.SetTypeWriterDelay (0x184245F70) replaces the
+      // scaled show interval with the global interval, which later appends keep.
+      const delayMs = this.playback.typeWriterDelayMs();
+      slot.layout.delayMs = delayMs;
+      this.renderer.setStickerTypeWriterDelay(slot.id, delayMs);
+    });
+  }
+
   /** Native _OnClicked (2791 @ 0x1841E4500) only finishes the current view. */
   private readonly onClick: WaitForClick = (finishCommand) => {
-    if (!this.renderer.finishStickerTyping()) finishCommand();
+    const slot = this.currentSticker;
+    if (!slot || !this.renderer.finishStickerTyping(slot.id)) finishCommand();
   };
 
   /** Native OnReset -> _RecycleStickers; timer stops before text is recycled. */
@@ -88,6 +106,7 @@ export class StickerPanel {
     for (let i = 0; i < this.stickerSlots.size; i += 1)
       this.stickerPoolFadeMs.push(150);
     this.stickerSlots.clear();
+    this.currentSticker = null;
     await this.renderer.clearStickers(150);
   }
 
@@ -109,12 +128,13 @@ export class StickerPanel {
   }
 
   private setSticker(
-    id: string,
     text: string,
     slot: StickerSlot,
     append: boolean,
   ): Promise<void> | void {
+    const { id } = slot;
     this.stickerSlots.set(id, slot);
+    this.currentSticker = slot;
     const onTypeEnd = this.playback.beginTyping(slot.rawLength);
     return this.renderer.setSticker({
       ...slot.layout,
@@ -161,6 +181,9 @@ export class StickerPanel {
           // the slot leaves the dict, and RaiseAutoClick(0) keeps auto-play
           // moving with the base wait.
           this.stickerSlots.delete(id);
+          // Native points m_currentSticker at the view being hidden, so
+          // neither the speed event nor clicks act on another live sticker.
+          this.currentSticker = null;
           this.stickerPoolFadeMs.push(hideFadeMs);
           const onHidden = this.playback.beginTyping(0);
           await this.renderer.clearSticker(id, hideFadeMs);
@@ -177,7 +200,6 @@ export class StickerPanel {
           // letter appends in main 13-05, which omit x/y, in place.
           const text = this.playback.translateText(toString(arg(args, "text")));
           await this.setSticker(
-            id,
             text,
             { ...existing, rawLength: existing.rawLength + text.length },
             true,
@@ -225,9 +247,8 @@ export class StickerPanel {
           y,
         };
         await this.setSticker(
-          id,
           text,
-          { rawLength: text.length, layout },
+          { id, rawLength: text.length, layout },
           false,
         );
         return block ? this.onClick : "continue";
@@ -380,6 +401,7 @@ export class StickerPanel {
         for (let i = 0; i < this.stickerSlots.size; i += 1)
           this.stickerPoolFadeMs.push(150);
         this.stickerSlots.clear();
+        this.currentSticker = null;
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
         return toBoolean(arg(args, "block"), false) ? this.onClick : "continue";

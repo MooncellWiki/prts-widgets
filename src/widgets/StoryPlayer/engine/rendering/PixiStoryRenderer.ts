@@ -14,6 +14,7 @@ import {
   Texture,
   type TextureSource,
   TilingSprite,
+  UPDATE_PRIORITY,
 } from "pixi.js";
 
 import {
@@ -628,7 +629,6 @@ export class PixiStoryRenderer implements StoryRenderer {
    * appended *and* the hidden one -- and `_RecycleStickers` nulls it. Both
    * `ForceCommandEnd` and `_OnClicked` only `TryFinishType` this one view.
    */
-  private currentStickerId: string | null = null;
   private timerFadeSessionId = 0;
   /**
    * Mirrors `AVGTimerView.m_countTimerTask != null`. It gates the inline
@@ -764,6 +764,19 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.layers.attach(app.stage);
   }
 
+  onFrameEnd(callback: () => void): () => void {
+    const ticker = this.app?.ticker;
+    if (!ticker) {
+      callback();
+      return () => {};
+    }
+    // Pixi's TickerPlugin draws the scene at LOW. UTILITY runs after that draw.
+    ticker.addOnce(callback, undefined, UPDATE_PRIORITY.UTILITY);
+    return () => {
+      if (this.app?.ticker === ticker) ticker.remove(callback);
+    };
+  }
+
   /**
    * 跟随宿主尺寸同步画布分辨率。ResizeObserver 覆盖布局变化（窗口缩放、
    * 全屏切换）；window resize 兜底 devicePixelRatio 变化（页面缩放、跨屏
@@ -804,7 +817,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel.destroy();
     for (const view of this.stickerViews.values()) view.destroy();
     this.stickerViews.clear();
-    this.currentStickerId = null;
     this.focusEffectPanel.destroy();
     this.cgItemPanel.destroy();
     this.backgroundRoot = null;
@@ -889,12 +901,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.videoPanel.stop();
   }
 
-  finishStickerTyping(): boolean {
-    // Only m_currentSticker is finished; other stickers keep typing.
-    return (
-      this.currentStickerId !== null &&
-      (this.stickerViews.get(this.currentStickerId)?.finishTyping() ?? false)
-    );
+  finishStickerTyping(id: string): boolean {
+    return this.stickerViews.get(id)?.finishTyping() ?? false;
   }
 
   setDialogue(
@@ -2712,7 +2720,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       return;
     }
 
-    this.currentStickerId = id;
     this.stickerViews.get(id)?.hide(fadeMs, true);
   }
 
@@ -2720,11 +2727,10 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Native port: `StickerPanel._RecycleStickers` (stickerclear and the skip
    * reset) calls `ResetStickerTransform` + `HideSticker(0)` on every view
    * without `TryFinishType`, so typing is not completed before the fade, and
-   * then nulls `m_currentSticker`.
+   * then StickerPanel nulls `m_currentSticker`.
    */
   async clearStickers(fadeMs = 0): Promise<void> {
     for (const view of this.stickerViews.values()) view.recycle(fadeMs);
-    this.currentStickerId = null;
   }
 
   clearSpellStickers(): void {
@@ -3196,8 +3202,11 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   /** StickerPanel supplies command inputs; each view owns its visual state. */
   setSticker(input: StickerInput): Promise<void> {
-    this.currentStickerId = input.id;
     return this.ensureStickerView(input.id).show(input);
+  }
+
+  setStickerTypeWriterDelay(id: string, delayMs: number): void {
+    this.stickerViews.get(id)?.setTypeWriterDelay(delayMs);
   }
 
   setSpellSticker(input: SpellStickerInput): void {
@@ -4846,7 +4855,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     const existing = this.stickerViews.get(id);
     if (existing) return existing;
     const view = new StickerView({
-      isActive: () => Boolean(this.app),
       createOverlayTextStyle: (size, width) =>
         this.createOverlayTextStyle(size, width),
       layoutSubtitle: (text, x, width, alignment) =>

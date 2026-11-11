@@ -18,6 +18,7 @@ import {
 } from "./commandParams";
 import {
   CommandRegistry,
+  type ClickCompletion,
   type CommandResult,
   type WaitForClick,
 } from "./commandRegistry";
@@ -169,8 +170,13 @@ interface InterruptibleWait {
 
 interface PendingInput {
   dispatching: boolean;
-  effects: Array<() => Promise<void> | void>;
+  effects: ClickCompletion[];
   subscriptions: Set<() => void>;
+}
+
+interface PendingAutoClick {
+  delayMs: number;
+  phase: "awaiting_mode" | "timing" | "elapsed";
 }
 
 function sleepWithTimeout(ms: number): Promise<void> {
@@ -328,8 +334,7 @@ export class StoryRuntime {
   private readonly audio: StoryAudio;
   private readonly defaultSpeed: AutoSpeed;
   private autoPlayMode: AutoPlayMode = "default";
-  private autoClickGeneration = 0;
-  private autoClickReady = false;
+  private pendingAutoClick: PendingAutoClick | null = null;
   private buttonSpeedLevel = 0;
   private readonly commandRegistry = new CommandRegistry<CommandResult>();
   private readonly eventPool = new EventPool<AVGEvent>();
@@ -409,8 +414,6 @@ export class StoryRuntime {
   private theaterAutoPlayCache: AutoPlayState | null = null;
   private playbackGeneration = 0;
   private quickSpeedLevel = 0;
-  /** Raw length from the latest type-end event, including rich-text tags. */
-  private lastCompletedTextLength: number | null = null;
   private state: PlayerState = "idle";
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
@@ -642,10 +645,10 @@ export class StoryRuntime {
 
   /** 跳转的推进档位：quick_play 最高档 */
   private enterQuickSeekMode(): void {
-    // 先切模式再设速度：setAutoPlaySpeedLevel 按当前模式写入档位，
-    // default 模式下 quick 的 4 档会被钳到按钮自动的 3 档上限
+    // Select the gear before QUICK_PLAY emits its immediate click. That
+    // click can finish typing and capture the current gear's auto delay.
+    this.quickSpeedLevel = QUICK_AUTO_SPEEDS.length - 1;
     this.applyAutoPlayMode("quick_play");
-    this.setAutoPlaySpeedLevel(QUICK_AUTO_SPEEDS.length - 1);
   }
 
   /** 播放走到终态时若仍有跳转在进行，按 missed 收尾 */
@@ -669,10 +672,9 @@ export class StoryRuntime {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
     const mode = this.theaterMode ? "button_auto" : requested;
-    if (this.autoPlayMode === mode) return;
 
     // 模式以本次调用为准，不再改
-    if (mode !== "quick_play" && this.lineSeek)
+    if (mode !== this.autoPlayMode && mode !== "quick_play" && this.lineSeek)
       this.closeLineSeek({
         phase: "aborted",
         target: this.lineSeek.target,
@@ -681,25 +683,20 @@ export class StoryRuntime {
     this.applyAutoPlayMode(mode);
   }
 
-  /** 写入模式并重排自动点击；不含跳转的人工干预判定 */
+  /** 写入模式并放行等待自动模式的点击。人工干预由公开入口判断。 */
   private applyAutoPlayMode(mode: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
-    if (this.autoPlayMode === mode) return;
 
+    const modeChanged = this.autoPlayMode !== mode;
     this.autoPlayMode = mode;
-    // 2791 set_autoPlayMode broadcasts the story cache. The UI's
-    // _UpdateAutoPlayModeUI then emits ON_SPEED_SET, and the line being
-    // typed switches to the new mode's delay.
-    this.eventPool.emit(AVGEvent.SpeedSet);
-    this.cancelAutoClick();
-
-    if (mode === "quick_play" && this.state === "waiting_input") {
+    if (modeChanged && mode === "quick_play" && this.state === "waiting_input")
       void this.advanceFromClick();
-      return;
-    }
-    if (mode !== "default" && this.lastCompletedTextLength !== null)
-      this.scheduleAutoClick(this.lastCompletedTextLength);
+    // set_autoPlayMode (2791 @ 0x184175100) emits the quick-play click
+    // before broadcasting the cache. Even setting DEFAULT again on a
+    // manual press runs _UpdateAutoPlayModeUI and emits ON_SPEED_SET.
+    this.eventPool.emit(AVGEvent.SpeedSet);
+    this.resumeAutoClick();
   }
 
   /**
@@ -728,12 +725,6 @@ export class StoryRuntime {
     // button auto, and AVGQuickPlayBtn.OnClick -> SetQuickSpeed ->
     // AVGQuickPlay._SetSpeedBtn for quick play.
     this.eventPool.emit(AVGEvent.SpeedSet);
-    this.cancelAutoClick();
-    if (
-      this.autoPlayMode !== "default" &&
-      this.lastCompletedTextLength !== null
-    )
-      this.scheduleAutoClick(this.lastCompletedTextLength);
   }
 
   canSkipNode(): boolean {
@@ -788,6 +779,7 @@ export class StoryRuntime {
     }
 
     this.dialogPanel.onStoryBegin(this.eventPool);
+    this.stickerPanel.onStoryBegin(this.eventPool);
     this.subtitlePanel.onStoryBegin(this.eventPool);
     this.state = "running";
     await this.processLoop();
@@ -834,14 +826,14 @@ export class StoryRuntime {
     for (const handleClick of handlers) {
       const unsubscribe = this.eventPool.on(AVGEvent.Click, () => {
         if (this.pendingInput !== pending) return;
-        handleClick((effect) => {
+        handleClick((completion) => {
           if (
             this.pendingInput !== pending ||
             !pending.subscriptions.delete(unsubscribe)
           )
             return;
           unsubscribe();
-          if (effect) pending.effects.push(effect);
+          if (completion) pending.effects.push(completion);
         });
       });
       pending.subscriptions.add(unsubscribe);
@@ -877,17 +869,32 @@ export class StoryRuntime {
     if (this.pendingInput !== pending || pending.subscriptions.size > 0) return;
 
     this.pendingInput = null;
-    this.lastCompletedTextLength = null;
-    this.cancelAutoClick();
     const generation = this.playbackGeneration;
+    let cancelFrameEnd: (() => void) | undefined;
     try {
-      // FinishCommand resumes after dispatch, as in native's end-of-frame
-      // callback. Spellsticker can also await its hide before resuming.
-      await Promise.all(pending.effects.map((effect) => effect()));
+      // SubtitlePanel._OnClicked (2791 @ 0x1841E5920) and the other click
+      // handlers invoke FinishCommand at WaitForEndOfFrame. Spellsticker
+      // hides on the click itself, and DialogPanel restores width in OnFinish.
+      const effects = pending.effects.map(({ onClick }) => onClick?.());
+      const frameEnd = new Promise<void>((resolve) => {
+        cancelFrameEnd = this.renderer.onFrameEnd(resolve);
+      });
+      const interrupted = await this.waitInterruptiblePromise(
+        Promise.all([frameEnd, ...effects]),
+      );
+      if (
+        interrupted ||
+        this.destroyed ||
+        generation !== this.playbackGeneration
+      )
+        return;
+      for (const { onFinish } of pending.effects) onFinish?.();
     } catch (error) {
       if (!this.destroyed && generation === this.playbackGeneration)
         this.waitForInput([(finishCommand) => finishCommand()]);
       throw error;
+    } finally {
+      cancelFrameEnd?.();
     }
     if (this.destroyed || generation !== this.playbackGeneration) return;
     this.state = "running";
@@ -1010,10 +1017,7 @@ export class StoryRuntime {
           this.state = "running";
         } else if (!activeProcessCompletion) {
           // StopStory path with no loop alive to run finishPlayback().
-          this.stopPlaybackInput();
-          this.audio.resetAudio();
-          this.state = "finished";
-          this.finishLineSeekMissed("finished");
+          this.finishPlayback();
         }
 
         // The cursor already moved. Release the old wait even if a reset
@@ -1064,32 +1068,45 @@ export class StoryRuntime {
   }
 
   private cancelAutoClick(): void {
-    this.autoClickGeneration += 1;
-    this.autoClickReady = false;
+    this.pendingAutoClick = null;
   }
 
   private scheduleAutoClick(messageLength: number): void {
-    this.cancelAutoClick();
-    if (this.autoPlayMode === "default") return;
-    const generation = this.autoClickGeneration;
     const speed = this.getCurrentSpeed();
-    const delayMs =
-      (speed.autoWaitBaseTime + messageLength * speed.autoWaitTimePerText) *
-      1000;
-    void this.sleep(delayMs).then(() => {
-      if (
-        this.destroyed ||
-        generation !== this.autoClickGeneration ||
-        this.autoPlayMode === "default"
-      ) {
-        return;
-      }
-      if (this.state === "waiting_input") void this.advanceFromClick();
-      // An instantly revealed command and an injected clock can complete
-      // while its executor is returning. Deliver the click after it blocks.
-      else if (this.state === "running" && this.processing)
-        this.autoClickReady = true;
-    });
+    // RaiseAutoClick (2791 @ 0x18416BEA0) captures the delay at type end,
+    // including in DEFAULT. A later type end replaces the entire coroutine.
+    this.pendingAutoClick = {
+      delayMs:
+        (speed.autoWaitBaseTime + messageLength * speed.autoWaitTimePerText) *
+        1000,
+      phase: "awaiting_mode",
+    };
+    this.resumeAutoClick();
+  }
+
+  private resumeAutoClick(): void {
+    // _DoAutoClick (2791 MoveNext @ 0x184180000) gates on non-DEFAULT
+    // before and after the real-time wait. Mode and gear changes keep its delay.
+    const pending = this.pendingAutoClick;
+    if (!pending || this.autoPlayMode === "default") return;
+    if (pending.phase === "awaiting_mode") {
+      pending.phase = "timing";
+      void this.sleep(pending.delayMs).then(() => {
+        if (this.pendingAutoClick !== pending) return;
+        pending.phase = "elapsed";
+        this.resumeAutoClick();
+      });
+      return;
+    }
+    // An injected clock can expire while the executor is still returning.
+    // Let processLoop bind its click handler before delivering the event.
+    if (
+      pending.phase !== "elapsed" ||
+      (this.processing && this.state === "running")
+    )
+      return;
+    this.pendingAutoClick = null;
+    if (this.state === "waiting_input") void this.advanceFromClick();
   }
 
   destroy(): void {
@@ -1138,6 +1155,8 @@ export class StoryRuntime {
    */
   private finishPlayback(): void {
     this.stopPlaybackInput();
+    // AVGController.OnStoryEnd (2791 @ 0x18416B9C0) calls SubtitlePanel.OnReset.
+    void this.subtitlePanel.reset();
     this.renderer.clearAnimTexts();
     this.renderer.clearAvgDisplays();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1214,7 +1233,11 @@ export class StoryRuntime {
           this.waitForInput(Array.isArray(result) ? result : [result]);
           return;
         }
-        this.autoClickReady = false;
+        if (
+          this.pendingAutoClick?.phase === "elapsed" &&
+          this.autoPlayMode !== "default"
+        )
+          this.cancelAutoClick();
       }
     } catch (error) {
       this.state = "error";
@@ -1228,10 +1251,7 @@ export class StoryRuntime {
       this.resolveProcessingCompletion?.();
       this.resolveProcessingCompletion = null;
       this.processingCompletion = null;
-      if (this.autoClickReady) {
-        this.autoClickReady = false;
-        void this.advanceFromClick();
-      }
+      this.resumeAutoClick();
     }
   }
 
@@ -1287,7 +1307,7 @@ export class StoryRuntime {
   }
 
   private async waitInterruptiblePromise(
-    task: Promise<void>,
+    task: Promise<unknown>,
     interrupt?: () => void,
   ): Promise<boolean> {
     const id = ++this.pendingWaitId;
@@ -1299,11 +1319,11 @@ export class StoryRuntime {
       };
     });
 
-    const completed = await Promise.race([task.then(() => false), interrupted]);
-
-    if (this.pendingWait?.id === id) this.pendingWait = null;
-
-    return completed;
+    try {
+      return await Promise.race([task.then(() => false), interrupted]);
+    } finally {
+      if (this.pendingWait?.id === id) this.pendingWait = null;
+    }
   }
 
   private async waitInterruptible(ms: number): Promise<boolean> {
@@ -3334,7 +3354,7 @@ export class StoryRuntime {
           finishCommand(
             action.toLowerCase() === "hide"
               ? undefined
-              : () => this.renderer.hideSpellSticker(id),
+              : { onClick: () => this.renderer.hideSpellSticker(id) },
           );
       }
 
@@ -3413,7 +3433,6 @@ export class StoryRuntime {
   private onTypingComplete(messageLength: number): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
-    this.lastCompletedTextLength = messageLength;
     this.scheduleAutoClick(messageLength);
   }
 
@@ -3434,7 +3453,6 @@ export class StoryRuntime {
 
   private invalidatePlaybackCallbacks(): void {
     this.playbackGeneration += 1;
-    this.lastCompletedTextLength = null;
     this.cancelAutoClick();
   }
 

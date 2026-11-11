@@ -1,12 +1,17 @@
 import type { ParsedCommandLine } from "./types";
 
-type FinishCommand = (effect?: () => Promise<void> | void) => void;
+export interface ClickCompletion {
+  onClick?: () => Promise<void> | void;
+  onFinish?: () => void;
+}
+
+type FinishCommand = (completion?: ClickCompletion) => void;
 
 /**
  * Web adaptation of an executor returning true and subscribing to ON_CLICK.
  * The runtime binds this handler while the command blocks. The handler calls
- * FinishCommand synchronously on the advancing click and can supply cleanup
- * for the runtime to await before resuming.
+ * FinishCommand synchronously to request completion at the end of the frame.
+ * A panel can supply work for the click itself or its OnFinish callback.
  */
 export type WaitForClick = (finishCommand: FinishCommand) => void;
 export type CommandResult = "continue" | WaitForClick;

@@ -1,3 +1,4 @@
+import { Ticker, UPDATE_PRIORITY } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
@@ -5,6 +6,24 @@ import { parseRichChars } from "../../src/widgets/StoryPlayer/engine/richtext";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
 
 describe("PixiStoryRenderer", () => {
+  it("runs frame-end callbacks after the scene draws and only once", () => {
+    const renderer = createRenderer();
+    const ticker = new Ticker();
+    renderer.app = { ticker };
+    const order: string[] = [];
+    try {
+      ticker.add(() => order.push("draw"), undefined, UPDATE_PRIORITY.LOW);
+      renderer.onFrameEnd(() => order.push("finish"));
+      const cancel = renderer.onFrameEnd(() => order.push("cancelled"));
+      cancel();
+      ticker.update(16);
+      ticker.update(32);
+      expect(order).toEqual(["draw", "finish", "draw"]);
+    } finally {
+      ticker.destroy();
+    }
+  });
+
   it("counts the timer sticker up from 00:00:00 like the native stopwatch", async () => {
     vi.useFakeTimers();
     try {
@@ -388,7 +407,7 @@ describe("PixiStoryRenderer", () => {
         onTypingComplete: clicked,
         text: "hey",
       });
-      expect(renderer.finishStickerTyping()).toBe(true);
+      expect(renderer.finishStickerTyping("clicked")).toBe(true);
       expect(clicked).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(50);
       expect(clicked).toHaveBeenCalledTimes(1);
@@ -687,7 +706,7 @@ describe("PixiStoryRenderer stickerTween", () => {
 });
 
 describe("StickerView lifecycle", () => {
-  it("finishes only the current sticker's typing (native m_currentSticker)", async () => {
+  it("finishes only the requested sticker's typing", async () => {
     const renderer = createStickerRenderer();
     const input = {
       alignment: "left" as const,
@@ -702,27 +721,63 @@ describe("StickerView lifecycle", () => {
     await renderer.setSticker({ ...input, append: false, id: "a", text: "A" });
     await renderer.setSticker({ ...input, append: false, id: "b", text: "B" });
 
-    // ForceCommandEnd / _OnClicked only TryFinishType m_currentSticker (the
-    // latest show), so the older "a" keeps typing.
-    expect(renderer.finishStickerTyping()).toBe(true);
+    expect(renderer.finishStickerTyping("b")).toBe(true);
     expect(textOf("b")).toBe("B");
     expect(textOf("a")).toBe("");
-    // The current view is done; an older typing view does not eat the click.
-    expect(renderer.finishStickerTyping()).toBe(false);
+    expect(renderer.finishStickerTyping("b")).toBe(false);
 
-    // An append moves m_currentSticker back to "a".
     await renderer.setSticker({ ...input, append: true, id: "a", text: "+" });
-    expect(renderer.finishStickerTyping()).toBe(true);
+    expect(renderer.finishStickerTyping("a")).toBe(true);
     expect(textOf("a")).toBe("A+");
 
-    // The hide branch also points m_currentSticker at the hidden view, and
-    // _RecycleStickers nulls it: neither leaves anything to finish.
     await renderer.setSticker({ ...input, append: false, id: "c", text: "C" });
     await renderer.clearSticker("a", 0);
-    expect(renderer.finishStickerTyping()).toBe(false);
+    expect(renderer.finishStickerTyping("a")).toBe(false);
     expect(renderer.stickerViews.get("c").isTyping).toBe(true);
     await renderer.clearStickers(0);
-    expect(renderer.finishStickerTyping()).toBe(false);
+    expect(renderer.finishStickerTyping("c")).toBe(false);
+  });
+
+  it("retimes a visible sticker without losing its accumulated typing time", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = createStickerRenderer();
+      const complete = vi.fn();
+      const input = {
+        alignment: "left" as const,
+        append: false,
+        delayMs: 80,
+        fadeMs: 0,
+        sizePx: 24,
+        text: "ABCDE",
+        widthPx: 200,
+        x: 0,
+        y: 0,
+      };
+      await renderer.setSticker({ ...input, id: "old" });
+      await renderer.setSticker({
+        ...input,
+        id: "current",
+        onTypingComplete: complete,
+      });
+      const old = renderer.stickerViews.get("old");
+      const current = renderer.stickerViews.get("current");
+      await vi.advanceTimersByTimeAsync(35);
+      expect(current.text.text).toBe("");
+
+      renderer.setStickerTypeWriterDelay("current", 10);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(current.text.text).toBe("ABC");
+      await vi.advanceTimersByTimeAsync(14);
+      expect(current.text.text).toBe("ABCD");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(current.text.text).toBe("ABCDE");
+      expect(complete).toHaveBeenCalledExactlyOnceWith();
+      expect(old.text.text).toBe("");
+      await renderer.clearStickers();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the fade-in, tween and transform when appending (native AppendText)", async () => {

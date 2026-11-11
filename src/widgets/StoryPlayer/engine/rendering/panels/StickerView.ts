@@ -1,5 +1,6 @@
 import { Container, Text, type TextStyle } from "pixi.js";
 
+import { AVGTypeWriterText } from "../../panels/AVGTypeWriterText";
 import {
   buildTagStyles,
   parseRichChars,
@@ -10,7 +11,6 @@ import {
 import type { StickerInput, StickerTweenInput } from "../../types";
 
 interface StickerViewHost {
-  isActive: () => boolean;
   createOverlayTextStyle: (size: number, width: number) => TextStyle;
   layoutSubtitle: (
     text: Text,
@@ -61,18 +61,13 @@ type StickerTweenStepInput =
 export class StickerView {
   readonly root = new Container();
   readonly text: Text;
-  private destroyed = false;
+  private readonly typeWriter = new AVGTypeWriterText(
+    (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  );
   private fadeSession = 0;
-  private typingSession = 0;
   private tweenSession = 0;
   private richChars: RichChar[] | null = null;
   private tweenQueue: StickerTweenStepInput[] = [];
-  private typingTarget: {
-    alignment: StickerInput["alignment"];
-    fullText: string;
-    onTypingComplete?: () => void;
-    widthPx: number;
-  } | null = null;
 
   constructor(private readonly host: StickerViewHost) {
     this.text = new Text({
@@ -84,31 +79,26 @@ export class StickerView {
   }
 
   get isTyping(): boolean {
-    return this.typingTarget !== null;
+    return this.typeWriter.isTyping;
   }
 
   /** Native _OnClicked -> TryFinishType invokes the view's type-end callback. */
   finishTyping(): boolean {
-    const target = this.typingTarget;
-    if (!target) return false;
-    this.typingSession += 1;
-    this.text.text = target.fullText;
-    this.host.layoutSubtitle(this.text, 0, target.widthPx, target.alignment);
-    this.typingTarget = null;
-    target.onTypingComplete?.();
-    return true;
+    return this.typeWriter.tryFinish();
+  }
+
+  setTypeWriterDelay(delayMs: number): void {
+    this.typeWriter.setDelay(delayMs);
   }
 
   destroy(): void {
-    this.destroyed = true;
     this.invalidate();
-    this.typingTarget = null;
+    this.typeWriter.stopTypingSilently();
     this.tweenQueue = [];
     this.root.destroy({ children: true });
   }
 
   private invalidate(): void {
-    this.typingSession += 1;
     this.fadeSession += 1;
     // RenderSticker/HideSticker kill the current tween; ForceEnd only types.
     this.tweenSession += 1;
@@ -128,14 +118,9 @@ export class StickerView {
   async show(input: StickerInput): Promise<void> {
     const { root, text } = this;
     const wasActive = this.richChars !== null;
-    if (input.append && wasActive) {
-      // Native `AVGStickerTextView.AppendText` (0x1842455F0) only hands the
-      // text to the typewriter: the running fade-in (m_animSwitch), the tween
-      // sequence (m_seq) and the transform are left alone. Only the typing
-      // session restarts, so a `block=false` show followed at once by an
-      // append (main 15-04_beg:231) keeps fading in instead of freezing at 0.
-      this.typingSession += 1;
-    } else {
+    // Native AppendText (0x1842455F0) leaves the fade, tween and transform
+    // alone. Only a fresh show invalidates their sessions.
+    if (!input.append || !wasActive) {
       // RenderSticker -> _ResetView kills m_seq and resets the transform, then
       // writes anchoredPosition from the param.
       this.invalidate();
@@ -168,31 +153,14 @@ export class StickerView {
     style.tagStyles = buildTagStyles(allChars);
     text.style = style;
 
-    const fullText = richCharsToTaggedText(allChars);
-    if (input.delayMs <= 0) {
-      this.typingTarget = null;
-      text.text = fullText;
-      this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
-      input.onTypingComplete?.();
-      return;
-    }
-
-    const sessionId = this.typingSession;
-    text.text = richCharsToTaggedText(prevChars);
-    this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
-    this.typingTarget = {
-      alignment: input.alignment,
-      fullText,
-      onTypingComplete: input.onTypingComplete,
-      widthPx: input.widthPx,
-    };
-    void this.runStickerTyping(sessionId, {
-      alignment: input.alignment,
+    this.typeWriter.beginText(allChars, {
       delayMs: input.delayMs,
-      prevChars,
-      newChars,
-      onTypingComplete: input.onTypingComplete,
-      widthPx: input.widthPx,
+      onTypeEnd: () => input.onTypingComplete?.(),
+      render: ({ chars, visibleCount }) => {
+        text.text = richCharsToTaggedText(chars.slice(0, visibleCount));
+        this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
+      },
+      startIndex: prevChars.length,
     });
   }
 
@@ -200,17 +168,9 @@ export class StickerView {
     const { root, text } = this;
 
     this.invalidate();
-    const typingTarget = this.typingTarget;
-    if (finishTyping && typingTarget) {
-      text.text = typingTarget.fullText;
-      this.host.layoutSubtitle(
-        text,
-        0,
-        typingTarget.widthPx,
-        typingTarget.alignment,
-      );
-    }
-    this.typingTarget = null;
+    // The hide executor raises its own auto click with length zero.
+    if (finishTyping) this.typeWriter.tryFinish(false);
+    else this.typeWriter.stopTypingSilently();
     this.richChars = null;
     if (!root.visible || !text.text || fadeMs <= 0) {
       this.clearVisual();
@@ -344,43 +304,5 @@ export class StickerView {
         for (const { step } of windows) apply(step, 1);
       },
     );
-  }
-
-  private async runStickerTyping(
-    sessionId: number,
-    input: {
-      alignment: StickerInput["alignment"];
-      delayMs: number;
-      prevChars: RichChar[];
-      newChars: RichChar[];
-      onTypingComplete?: () => void;
-      widthPx: number;
-    },
-  ): Promise<void> {
-    const { text } = this;
-    const isCurrent = () =>
-      this.host.isActive() &&
-      !this.destroyed &&
-      this.typingSession === sessionId;
-    for (let index = 0; index < input.newChars.length; index += 1) {
-      if (!isCurrent()) return;
-
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
-
-      if (!isCurrent()) return;
-
-      text.text = richCharsToTaggedText([
-        ...input.prevChars,
-        ...input.newChars.slice(0, index + 1),
-      ]);
-      this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
-    }
-
-    if (this.typingSession === sessionId) {
-      this.typingTarget = null;
-      // Native `AVGStickerTextView._OnTypeWriterEnd` -> m_OnTypeEnd: only
-      // typing that ends on its own raises the auto click here.
-      input.onTypingComplete?.();
-    }
   }
 }

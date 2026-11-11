@@ -26,9 +26,13 @@ export class AVGTypeWriterText {
 
   constructor(private readonly sleep: (ms: number) => Promise<void>) {}
 
+  get isTyping(): boolean {
+    return this.session !== null;
+  }
+
   /** For an append, startIndex is the visible length of the previous text. */
   beginText(
-    text: string,
+    text: string | TypewriterText["chars"],
     {
       delayMs,
       onTypeEnd,
@@ -42,7 +46,7 @@ export class AVGTypeWriterText {
     },
   ): number {
     this.stopTypingSilently();
-    const chars = parseRichChars(text);
+    const chars = typeof text === "string" ? parseRichChars(text) : text;
     const visibleCount = Math.min(Math.max(0, startIndex), chars.length);
     const interval = delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : delayMs;
     if (visibleCount >= chars.length || !(interval > 0)) {
@@ -63,7 +67,7 @@ export class AVGTypeWriterText {
     return chars.length;
   }
 
-  tryFinish(): boolean {
+  tryFinish(invokeTypeEnd = true): boolean {
     const session = this.session;
     if (!session) return false;
     this.stopTypingSilently();
@@ -71,7 +75,7 @@ export class AVGTypeWriterText {
       chars: session.chars,
       visibleCount: session.chars.length,
     });
-    session.onTypeEnd();
+    if (invokeTypeEnd) session.onTypeEnd();
     return true;
   }
 

@@ -86,6 +86,7 @@ export class FakeRenderer implements StoryRenderer {
   finishDialogueCommandCalls = 0;
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
+  stickerDelayChanges: Array<{ id: string; delayMs: number }> = [];
   stickerTweenCalls: StickerTweenInput[] = [];
   spellStickerCalls: SpellStickerInput[] = [];
   spellStickerHideCalls: string[] = [];
@@ -209,11 +210,18 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   destroy(): void {}
-  finishStickerTyping(): boolean {
+  finishStickerTyping(id: string): boolean {
     if (!this.typingActive) return false;
+    const input = this.stickerCalls.findLast((sticker) => sticker.id === id);
+    if (!input) return false;
     this.typingActive = false;
-    this.stickerCalls.at(-1)?.onTypingComplete?.();
+    input.onTypingComplete?.();
     return true;
+  }
+
+  onFrameEnd(callback: () => void): () => void {
+    callback();
+    return () => {};
   }
 
   async mount(): Promise<void> {}
@@ -327,6 +335,10 @@ export class FakeRenderer implements StoryRenderer {
     this.stickerCalls.push(input);
     this.typingActive = input.delayMs > 0;
     if (input.delayMs <= 0) input.onTypingComplete?.();
+  }
+
+  setStickerTypeWriterDelay(id: string, delayMs: number): void {
+    this.stickerDelayChanges.push({ id, delayMs });
   }
 
   finishStickerTypingNaturally(): void {

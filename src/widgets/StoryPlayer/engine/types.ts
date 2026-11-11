@@ -786,9 +786,11 @@ export interface StoryRenderer {
   clearCharacterCutin: (widgetId?: string) => Promise<void>;
   clearInterludes: () => Promise<void>;
   destroy: () => void;
-  /** Reveal the remaining text of StickerPanel's current sticker. */
-  finishStickerTyping: () => boolean;
+  /** Reveal the remaining text of the selected sticker. */
+  finishStickerTyping: (id: string) => boolean;
   mount: (host: HTMLElement) => Promise<void>;
+  /** Run once after the next scene render and return a cancellation callback. */
+  onFrameEnd: (callback: () => void) => () => void;
   playVideo: (url: string) => Promise<void>;
   setAnimText: (input: AnimTextInput) => Promise<void>;
   setAvgDisplay: (input: AvgDisplayInput) => Promise<void>;
@@ -830,6 +832,7 @@ export interface StoryRenderer {
   showItem: (input: ShowItemInput) => Promise<void>;
   showCgItem: (input: CgItemInput) => Promise<void>;
   setSticker: (input: StickerInput) => Promise<void> | void;
+  setStickerTypeWriterDelay: (id: string, delayMs: number) => void;
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
   setSpellSticker: (input: SpellStickerInput) => Promise<void> | void;
   hideSpellSticker: (id: string) => Promise<void> | void;

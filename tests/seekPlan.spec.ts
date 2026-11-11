@@ -149,6 +149,13 @@ class DecisionFakeRenderer {
   // 自动点击推进时收尾 DialogPanel 命令
   finishDialogueCommand(): void {}
 
+  onFrameEnd(callback: () => void): () => void {
+    callback();
+    return () => {};
+  }
+
+  clearSubtitle(): void {}
+
   destroy(): void {}
 }
 

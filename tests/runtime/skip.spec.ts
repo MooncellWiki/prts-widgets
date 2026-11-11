@@ -490,14 +490,14 @@ describe("StoryRuntime", () => {
     expect(renderer.timerStickerCalls).toHaveLength(1);
 
     // mode="skip" makes get_isSkippable() true, so SkipStory takes
-    // StopStory("Skipped") and returns before _ResetComponentsOnSkip -- native
-    // resets no component at all on that fork.
+    // StopStory("Skipped") and returns before _ResetComponentsOnSkip.
+    // SubtitlePanel is still cleared by the later OnStoryEnd reset.
     await runtime.skipNode();
 
     expect(runtime.getState()).toBe("finished");
     expect(renderer.timerClearCalls).toEqual([]);
     expect(renderer.stickersClearCalls).toEqual([]);
-    expect(renderer.subtitleClearCalls).toEqual([]);
+    expect(renderer.subtitleClearCalls).toEqual([0]);
     expect(renderer.spellStickerClearCount).toBe(0);
     expect(renderer.clearCharacterCutinCalls).toEqual([]);
   });
