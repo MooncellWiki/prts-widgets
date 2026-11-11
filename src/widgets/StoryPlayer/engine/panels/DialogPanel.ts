@@ -5,11 +5,16 @@ import {
   toString,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
+import { AVGEvent, type EventPool } from "../eventPool";
 import { parseRichChars } from "../richtext";
 
 import { AVGTypeWriterText } from "./AVGTypeWriterText";
 
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
+import type {
+  CommandRegistry,
+  CommandResult,
+  WaitForClick,
+} from "../commandRegistry";
 import type {
   DialogueLayout,
   ParsedCommandLine,
@@ -78,18 +83,14 @@ export class DialogPanel {
     );
   }
 
-  /** Native _OnClicked (2791 @ 0x1841CAD30), while the typewriter is active. */
-  finishTypingOnClick(): boolean {
-    if (!this.typeWriter.tryFinish()) return false;
+  /** Native _OnClicked (2791 @ 0x1841CAD30) and OnFinish. */
+  private readonly onClick: WaitForClick = (finishCommand) => {
+    const finishedTyping = this.typeWriter.tryFinish();
     if (this.multilineEnd) this.resetMultiline();
-    return true;
-  }
-
-  /** The advancing click ends the command and restores the original width. */
-  finishCommand(): void {
-    if (this.multilineEnd) this.resetMultiline();
+    if (finishedTyping) return;
     this.renderer.finishDialogueCommand();
-  }
+    finishCommand();
+  };
 
   /**
    * Native ForceCommandEnd (2791 @ 0x1841C8440) reveals the line and restores
@@ -103,8 +104,10 @@ export class DialogPanel {
   }
 
   /** Native _SetTypeWriterDelay (2791 @ 0x1841CB4C0) handles ON_SPEED_SET. */
-  onSpeedSet(): void {
-    this.typeWriter.setDelay(this.playback.typeWriterDelayMs());
+  onStoryBegin(eventPool: EventPool<AVGEvent>): void {
+    eventPool.on(AVGEvent.SpeedSet, () =>
+      this.typeWriter.setDelay(this.playback.typeWriterDelayMs()),
+    );
   }
 
   stopTypingSilently(): void {
@@ -132,7 +135,7 @@ export class DialogPanel {
     this.resetMultiline();
     this.playback.setDisplayedLine(lineNumber);
     this.beginText(speaker, text, executor);
-    return "wait_input";
+    return this.onClick;
   }
 
   private executeMultiline(line: ParsedCommandLine): CommandResult {
@@ -161,7 +164,7 @@ export class DialogPanel {
         startIndex: this.multilineShownChars,
       },
     );
-    return "wait_input";
+    return this.onClick;
   }
 
   private executeEndtip(line: ParsedCommandLine): CommandResult {
@@ -171,7 +174,7 @@ export class DialogPanel {
     if (!this.playback.prepareEndtip()) return "continue";
     this.resetMultiline();
     this.beginText("", line.content, "endtip");
-    return "wait_input";
+    return this.onClick;
   }
 
   private beginText(

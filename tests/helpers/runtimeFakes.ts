@@ -14,7 +14,6 @@ import type {
   CharacterSlotInput,
   CurtainInput,
   DialogueLayout,
-  DialogueText,
   DecisionSelection,
   FocusOutInput,
   FocusParamInput,
@@ -23,6 +22,7 @@ import type {
   ImageTweenInput,
   InterludeInput,
   LargeBackgroundTweenInput,
+  OverlayTextLayout,
   PlayMusicInput,
   PlaySoundInput,
   ShowItemInput,
@@ -31,9 +31,9 @@ import type {
   StickerTweenInput,
   StoryAudio,
   StoryRenderer,
-  SubtitleInput,
   TimerClearInput,
   TimerStickerInput,
+  TypewriterText,
 } from "../../src/widgets/StoryPlayer/engine/types";
 
 export class FakeRenderer implements StoryRenderer {
@@ -92,8 +92,9 @@ export class FakeRenderer implements StoryRenderer {
   spellStickerClearCount = 0;
   stickerClearCalls: Array<{ fadeMs: number; id?: string }> = [];
   stickersClearCalls: number[] = [];
-  subtitleCalls: SubtitleInput[] = [];
+  subtitleCalls: Array<OverlayTextLayout & { text: string }> = [];
   subtitleClearCalls: number[] = [];
+  subtitleText = "";
   shakeCalls: CameraShakeInput[] = [];
   timerClearCalls: TimerClearInput[] = [];
   timerStickerCalls: TimerStickerInput[] = [];
@@ -191,6 +192,7 @@ export class FakeRenderer implements StoryRenderer {
 
   clearSubtitle(fadeMs = 0): void {
     this.subtitleClearCalls.push(fadeMs);
+    this.subtitleText = "";
   }
 
   clearTimerSticker(input?: TimerClearInput): void {
@@ -207,11 +209,10 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   destroy(): void {}
-  finishTextTyping(panel: "sticker" | "subtitle"): boolean {
+  finishStickerTyping(): boolean {
     if (!this.typingActive) return false;
     this.typingActive = false;
-    const calls = panel === "sticker" ? this.stickerCalls : this.subtitleCalls;
-    calls.at(-1)?.onTypingComplete?.();
+    this.stickerCalls.at(-1)?.onTypingComplete?.();
     return true;
   }
 
@@ -271,7 +272,7 @@ export class FakeRenderer implements StoryRenderer {
 
   setDialogue(
     speaker: string,
-    { chars, visibleCount }: DialogueText,
+    { chars, visibleCount }: TypewriterText,
     layout?: DialogueLayout,
   ): void {
     const text = richCharsToTaggedText(chars.slice(0, visibleCount));
@@ -328,7 +329,6 @@ export class FakeRenderer implements StoryRenderer {
     if (input.delayMs <= 0) input.onTypingComplete?.();
   }
 
-  /** Sticker counterpart of finishSubtitleTypingNaturally. */
   finishStickerTypingNaturally(): void {
     this.typingActive = false;
     this.stickerCalls.at(-1)?.onTypingComplete?.();
@@ -342,22 +342,16 @@ export class FakeRenderer implements StoryRenderer {
     this.spellStickerCalls.push(input);
   }
 
-  async setSubtitle(input: SubtitleInput): Promise<void> {
-    this.subtitleCalls.push(input);
-    this.typingActive = input.delayMs > 0;
-    // Faithful to PixiStoryRenderer: an instant subtitle is done typing the
-    // moment it is shown.
-    if (input.delayMs <= 0) input.onTypingComplete?.();
-  }
-
-  /**
-   * Emulates the real renderer clearing its typing target and running the
-   * `SubtitlePanel._OnTypeWriterEnd` callback when the typewriter ends on its
-   * own (as opposed to a click finishing it).
-   */
-  finishSubtitleTypingNaturally(): void {
-    this.typingActive = false;
-    this.subtitleCalls.at(-1)?.onTypingComplete?.();
+  setSubtitle(
+    { chars, visibleCount }: TypewriterText,
+    layout?: OverlayTextLayout,
+  ): void {
+    if (layout)
+      this.subtitleCalls.push({
+        ...layout,
+        text: richCharsToTaggedText(chars),
+      });
+    this.subtitleText = richCharsToTaggedText(chars.slice(0, visibleCount));
   }
 
   async setTimerSticker(input: TimerStickerInput): Promise<void> {

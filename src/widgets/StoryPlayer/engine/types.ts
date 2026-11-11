@@ -523,35 +523,27 @@ export interface DialogueLayout {
   text: string;
 }
 
-export interface DialogueText {
+export interface TypewriterText {
   /** The complete message, including the characters yet to be revealed. */
   chars: readonly RichChar[];
   visibleCount: number;
 }
 
-export interface SubtitleInput {
+export interface OverlayTextLayout {
   alignment: "center" | "left" | "right";
-  delayMs: number;
-  /**
-   * Native port: `Torappu.AVG.SubtitlePanel._OnTypeWriterEnd` (2.7.61 VA
-   * 0x183e94e80). Invoked exactly once when the subtitle typewriter finishes
-   * on its own (or shows instantly with `delayMs <= 0`) so the runtime can
-   * run its `RaiseAutoClick(typeWriter.messageLength)` equivalent. The
-   * click-to-finish path never invokes it -- native `_OnClicked` ->
-   * `TryFinish()` is driven by the runtime's own click handler.
-   */
-  onTypingComplete?: () => void;
   sizePx: number;
-  text: string;
   widthPx: number;
   x: number;
   y: number;
 }
 
-export interface StickerInput extends SubtitleInput {
+export interface StickerInput extends OverlayTextLayout {
   append: boolean;
+  delayMs: number;
   fadeMs: number;
   id: string;
+  onTypingComplete?: () => void;
+  text: string;
 }
 
 /**
@@ -794,8 +786,8 @@ export interface StoryRenderer {
   clearCharacterCutin: (widgetId?: string) => Promise<void>;
   clearInterludes: () => Promise<void>;
   destroy: () => void;
-  /** Reveal remaining text on the panel whose command is waiting for input. */
-  finishTextTyping: (panel: "sticker" | "subtitle") => boolean;
+  /** Reveal the remaining text of StickerPanel's current sticker. */
+  finishStickerTyping: () => boolean;
   mount: (host: HTMLElement) => Promise<void>;
   playVideo: (url: string) => Promise<void>;
   setAnimText: (input: AnimTextInput) => Promise<void>;
@@ -815,7 +807,7 @@ export interface StoryRenderer {
    */
   setDialogue: (
     speaker: string,
-    text: DialogueText,
+    text: TypewriterText,
     layout?: DialogueLayout,
   ) => void;
   /**
@@ -841,7 +833,8 @@ export interface StoryRenderer {
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
   setSpellSticker: (input: SpellStickerInput) => Promise<void> | void;
   hideSpellSticker: (id: string) => Promise<void> | void;
-  setSubtitle: (input: SubtitleInput) => Promise<void> | void;
+  /** The initial reveal supplies layout. Later reveals keep that layout. */
+  setSubtitle: (text: TypewriterText, layout?: OverlayTextLayout) => void;
   setTimerSticker: (input: TimerStickerInput) => Promise<void> | void;
   shakeCamera: (input: CameraShakeInput) => Promise<void>;
   showDecision: (

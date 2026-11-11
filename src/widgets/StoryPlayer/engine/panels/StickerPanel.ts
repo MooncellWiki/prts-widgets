@@ -9,7 +9,11 @@ import {
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
 
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
+import type {
+  CommandRegistry,
+  CommandResult,
+  WaitForClick,
+} from "../commandRegistry";
 import type {
   ParsedCommandLine,
   StoryRenderer,
@@ -72,6 +76,11 @@ export class StickerPanel {
     ])
       registry.register(command, (line) => this.execute(line));
   }
+
+  /** Native _OnClicked (2791 @ 0x1841E4500) only finishes the current view. */
+  private readonly onClick: WaitForClick = (finishCommand) => {
+    if (!this.renderer.finishStickerTyping()) finishCommand();
+  };
 
   /** Native OnReset -> _RecycleStickers; timer stops before text is recycled. */
   async reset(): Promise<void> {
@@ -156,7 +165,7 @@ export class StickerPanel {
           const onHidden = this.playback.beginTyping(0);
           await this.renderer.clearSticker(id, hideFadeMs);
           onHidden();
-          return block ? "wait_input" : "continue";
+          return block ? this.onClick : "continue";
         }
 
         if (existing) {
@@ -173,7 +182,7 @@ export class StickerPanel {
             { ...existing, rawLength: existing.rawLength + text.length },
             true,
           );
-          return block ? "wait_input" : "continue";
+          return block ? this.onClick : "continue";
         }
 
         // Show branch (dict miss): _GenParam reads the full layout. An empty
@@ -221,7 +230,7 @@ export class StickerPanel {
           { rawLength: text.length, layout },
           false,
         );
-        return block ? "wait_input" : "continue";
+        return block ? this.onClick : "continue";
       }
 
       case "stickertween": {
@@ -329,7 +338,7 @@ export class StickerPanel {
         // Native registers the Event.Click advance only when `block && isend`
         // both hold (0x183e92416); the other three combinations return false
         // immediately and the tween keeps playing in the background.
-        return block && isend ? "wait_input" : "continue";
+        return block && isend ? this.onClick : "continue";
       }
 
       case "timersticker": {
@@ -373,7 +382,7 @@ export class StickerPanel {
         this.stickerSlots.clear();
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
-        return toBoolean(arg(args, "block"), false) ? "wait_input" : "continue";
+        return toBoolean(arg(args, "block"), false) ? this.onClick : "continue";
       }
 
       default:

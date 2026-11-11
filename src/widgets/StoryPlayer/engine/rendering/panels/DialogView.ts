@@ -20,11 +20,11 @@ import {
   STORY_HEIGHT,
   STORY_WIDTH,
   type DialogueLayout,
-  type DialogueText,
+  type TypewriterText,
 } from "../../types";
 
 interface DialogueLine {
-  chars: DialogueText["chars"];
+  chars: TypewriterText["chars"];
   startIndex: number;
 }
 
@@ -42,7 +42,7 @@ export class DialogView {
   private fadeSessionId = 0;
   /** Native `m_isMessageWidthExpanded`. */
   private messageWidthExpanded = false;
-  private messageChars: DialogueText["chars"] | null = null;
+  private messageChars: TypewriterText["chars"] | null = null;
   private fullText = "";
   private wrappedLines: DialogueLine[] | null = null;
 
@@ -142,7 +142,7 @@ export class DialogView {
 
   setDialogue(
     speaker: string,
-    { chars, visibleCount }: DialogueText,
+    { chars, visibleCount }: TypewriterText,
     layout?: DialogueLayout,
   ): void {
     const dialogue = this.dialogue;
@@ -176,7 +176,7 @@ export class DialogView {
     this.setHidden(false);
   }
 
-  private wrapMessage(chars: DialogueText["chars"]): DialogueLine[] | null {
+  private wrapMessage(chars: TypewriterText["chars"]): DialogueLine[] | null {
     const dialogue = this.dialogue;
     if (!dialogue) return null;
     const { lines } = CanvasTextMetrics.measureText(

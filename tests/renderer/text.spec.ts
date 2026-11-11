@@ -1,7 +1,7 @@
-import { Text } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { parseRichChars } from "../../src/widgets/StoryPlayer/engine/richtext";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
 
 describe("PixiStoryRenderer", () => {
@@ -388,7 +388,7 @@ describe("PixiStoryRenderer", () => {
         onTypingComplete: clicked,
         text: "hey",
       });
-      expect(renderer.finishTextTyping("sticker")).toBe(true);
+      expect(renderer.finishStickerTyping()).toBe(true);
       expect(clicked).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(50);
       expect(clicked).toHaveBeenCalledTimes(1);
@@ -417,37 +417,33 @@ function createSubtitleRenderer() {
   const renderer = createRenderer();
   const manual = createManualClock();
   renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
-  renderer.subtitleText = new Text({
-    style: renderer.createOverlayTextStyle(24, 1280),
-    text: "",
-  });
-  renderer.subtitleText.visible = false;
-  renderer.app = {};
   renderer.layoutSubtitle = vi.fn();
-  // Count the fades, but keep the real runner behind the spy: stubbing the
-  // tween out entirely hides whether the alpha ever reaches its terminal value.
+  renderer.subtitleView.mount();
+  const subtitle = renderer.uiLayer.children.at(-1);
+  // Count the fades while keeping the real runner so alpha reaches its target.
   const original = renderer.tween.bind(renderer);
   const tween = vi.fn((...args: unknown[]) => original(...args));
   renderer.tween = tween;
-  return { manual, renderer, tween };
+  return { manual, renderer, subtitle, tween };
 }
 
 describe("PixiStoryRenderer subtitle", () => {
-  const baseInput = {
+  const layout = {
     alignment: "left" as const,
-    delayMs: 0,
     sizePx: 24,
-    text: "hello",
     widthPx: 1280,
     x: 0,
     y: 100,
   };
+  const reveal = (text: string, visibleCount?: number) => {
+    const chars = parseRichChars(text);
+    return { chars, visibleCount: visibleCount ?? chars.length };
+  };
 
   it("fades a hidden subtitle in but never replays the fade for consecutive ones", async () => {
-    const { manual, renderer, tween } = createSubtitleRenderer();
-    const subtitle = renderer.subtitleText;
+    const { manual, renderer, subtitle, tween } = createSubtitleRenderer();
 
-    await renderer.setSubtitle({ ...baseInput });
+    renderer.setSubtitle(reveal("hello"), layout);
     expect(subtitle.visible).toBe(true);
     expect(tween).toHaveBeenCalledTimes(1);
     expect(tween.mock.calls[0][0]).toBe(150);
@@ -456,34 +452,30 @@ describe("PixiStoryRenderer subtitle", () => {
     expect(subtitle.alpha).toBe(1);
 
     tween.mockClear();
-    await renderer.setSubtitle({ ...baseInput, text: "world" });
-    // Native `_SetHiddenInternal`: set_isHidden(false) is a no-op while the
-    // panel is already visible -- seamless text swap, no second fade-in.
+    renderer.setSubtitle(reveal("world"), layout);
+    // Native set_isHidden(false) is a no-op while already visible.
     expect(tween).not.toHaveBeenCalled();
     expect(subtitle.text).toBe("world");
     expect(subtitle.alpha).toBe(1);
 
-    // After a real hide, the next subtitle fades in again.
     await renderer.clearSubtitle(0);
     expect(subtitle.visible).toBe(false);
-    await renderer.setSubtitle({ ...baseInput, text: "again" });
+    expect(subtitle.alpha).toBe(0);
+    renderer.setSubtitle(reveal("again"), layout);
     expect(tween).toHaveBeenCalledTimes(1);
     expect(subtitle.text).toBe("again");
   });
 
-  it("lets an interrupted fade-in finish instead of stranding the alpha", async () => {
-    const { manual, renderer, tween } = createSubtitleRenderer();
-    const subtitle = renderer.subtitleText;
+  it("lets the ongoing fade-in finish when the next subtitle arrives", () => {
+    const { manual, renderer, subtitle, tween } = createSubtitleRenderer();
 
-    await renderer.setSubtitle({ ...baseInput });
+    renderer.setSubtitle(reveal("hello"), layout);
     manual.advance(30);
     manual.drainFrame();
     expect(subtitle.alpha).toBeCloseTo(0.2);
 
-    // quick_play schedules its auto click 25-100ms apart, so the next subtitle
-    // routinely lands inside the 150ms fade. Native's no-op set_isHidden(false)
-    // never reaches DOKill, so the running DOFade keeps going to 1.
-    await renderer.setSubtitle({ ...baseInput, text: "world" });
+    // In quick play the next subtitle can arrive during the 150ms fade.
+    renderer.setSubtitle(reveal("world"), layout);
     expect(tween).toHaveBeenCalledTimes(1);
     for (let i = 0; i < 4; i += 1) {
       manual.advance(50);
@@ -492,83 +484,44 @@ describe("PixiStoryRenderer subtitle", () => {
     expect(subtitle.alpha).toBe(1);
   });
 
-  it("types against a transparent tail so the full-text layout is fixed from t0", async () => {
-    vi.useFakeTimers();
-    try {
-      const { renderer } = createSubtitleRenderer();
-      const onTypingComplete = vi.fn();
+  it("keeps the transparent tail in the layout without letting it cast a shadow", () => {
+    const { renderer, subtitle } = createSubtitleRenderer();
+    const { chars } = reveal("hello");
 
-      const pending = renderer.setSubtitle({
-        ...baseInput,
-        delayMs: 10,
-        onTypingComplete,
-      });
-      const subtitle = renderer.subtitleText;
-      // t0 already carries the whole message as a hidden span, so wrapping
-      // matches the final layout instead of re-flowing per character.
-      expect(subtitle.text).toBe("<_c00000000>hello</_c00000000>");
-      // PIXI's tagged-text shadow pass forces an opaque fill and ignores the
-      // run's own, so the tail has to opt out of the drop shadow or every
-      // unrevealed character shows up as legible grey ghosting.
-      expect(subtitle.style.tagStyles._c00000000).toEqual({
-        dropShadow: false,
-        fill: "#00000000",
-      });
-      await vi.advanceTimersByTimeAsync(10);
-      expect(subtitle.text).toBe("h<_c00000000>ello</_c00000000>");
-      await vi.advanceTimersByTimeAsync(40);
-      expect(subtitle.text).toBe("hello");
-      await pending;
-
-      expect(onTypingComplete).toHaveBeenCalledTimes(1);
-      expect(renderer.subtitleTypingTarget).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("renders <i> as italic, types it as zero-width and keeps it in the hidden tail", async () => {
-    vi.useFakeTimers();
-    try {
-      const { renderer } = createSubtitleRenderer();
-      const pending = renderer.setSubtitle({
-        ...baseInput,
-        delayMs: 10,
-        text: "<i>ab</i>c",
-      });
-      const subtitle = renderer.subtitleText;
-      expect(subtitle.style.tagStyles._i).toEqual({ fontStyle: "italic" });
-      // The tail stays italic so it wraps like the text it will reveal.
-      expect(subtitle.text).toBe(
-        "<_i><_c00000000>ab</_c00000000></_i><_c00000000>c</_c00000000>",
-      );
-      await vi.advanceTimersByTimeAsync(10);
-      expect(subtitle.text).toBe(
-        "<_i>a</_i><_i><_c00000000>b</_c00000000></_i><_c00000000>c</_c00000000>",
-      );
-      // Three visible chars, three steps: the tags cost no typing time.
-      await vi.advanceTimersByTimeAsync(20);
-      expect(subtitle.text).toBe("<_i>ab</_i>c");
-      await pending;
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("reports instant subtitles as finished and applies per-line alignment", async () => {
-    const { renderer } = createSubtitleRenderer();
-    const onTypingComplete = vi.fn();
-
-    await renderer.setSubtitle({
-      ...baseInput,
-      alignment: "center",
-      onTypingComplete,
+    renderer.setSubtitle({ chars, visibleCount: 0 }, layout);
+    expect(subtitle.text).toBe("<_c00000000>hello</_c00000000>");
+    expect(subtitle.style.tagStyles._c00000000).toEqual({
+      dropShadow: false,
+      fill: "#00000000",
     });
+    renderer.setSubtitle({ chars, visibleCount: 1 });
+    expect(subtitle.text).toBe("h<_c00000000>ello</_c00000000>");
+    renderer.setSubtitle({ chars, visibleCount: 5 });
+    expect(subtitle.text).toBe("hello");
+  });
 
-    expect(onTypingComplete).toHaveBeenCalledTimes(1);
-    // Native TextAnchor.UpperCenter aligns every wrapped line, not just the
-    // block.
-    expect(renderer.subtitleText.style.align).toBe("center");
+  it("keeps italic text italic while it is hidden and applies per-line alignment", () => {
+    const { renderer, subtitle } = createSubtitleRenderer();
+    const { chars } = reveal("<i>ab</i>c");
+
+    renderer.setSubtitle(
+      { chars, visibleCount: 0 },
+      {
+        ...layout,
+        alignment: "center",
+      },
+    );
+    expect(subtitle.style.align).toBe("center");
+    expect(subtitle.style.tagStyles._i).toEqual({ fontStyle: "italic" });
+    expect(subtitle.text).toBe(
+      "<_i><_c00000000>ab</_c00000000></_i><_c00000000>c</_c00000000>",
+    );
+    renderer.setSubtitle({ chars, visibleCount: 1 });
+    expect(subtitle.text).toBe(
+      "<_i>a</_i><_i><_c00000000>b</_c00000000></_i><_c00000000>c</_c00000000>",
+    );
+    renderer.setSubtitle({ chars, visibleCount: 3 });
+    expect(subtitle.text).toBe("<_i>ab</_i>c");
   });
 });
 
@@ -751,25 +704,25 @@ describe("StickerView lifecycle", () => {
 
     // ForceCommandEnd / _OnClicked only TryFinishType m_currentSticker (the
     // latest show), so the older "a" keeps typing.
-    expect(renderer.finishTextTyping("sticker")).toBe(true);
+    expect(renderer.finishStickerTyping()).toBe(true);
     expect(textOf("b")).toBe("B");
     expect(textOf("a")).toBe("");
     // The current view is done; an older typing view does not eat the click.
-    expect(renderer.finishTextTyping("sticker")).toBe(false);
+    expect(renderer.finishStickerTyping()).toBe(false);
 
     // An append moves m_currentSticker back to "a".
     await renderer.setSticker({ ...input, append: true, id: "a", text: "+" });
-    expect(renderer.finishTextTyping("sticker")).toBe(true);
+    expect(renderer.finishStickerTyping()).toBe(true);
     expect(textOf("a")).toBe("A+");
 
     // The hide branch also points m_currentSticker at the hidden view, and
     // _RecycleStickers nulls it: neither leaves anything to finish.
     await renderer.setSticker({ ...input, append: false, id: "c", text: "C" });
     await renderer.clearSticker("a", 0);
-    expect(renderer.finishTextTyping("sticker")).toBe(false);
+    expect(renderer.finishStickerTyping()).toBe(false);
     expect(renderer.stickerViews.get("c").isTyping).toBe(true);
     await renderer.clearStickers(0);
-    expect(renderer.finishTextTyping("sticker")).toBe(false);
+    expect(renderer.finishStickerTyping()).toBe(false);
   });
 
   it("keeps the fade-in, tween and transform when appending (native AppendText)", async () => {

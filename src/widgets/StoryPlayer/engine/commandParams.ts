@@ -1,4 +1,4 @@
-import type { StoryCommandArgs, SubtitleInput } from "./types";
+import type { OverlayTextLayout, StoryCommandArgs } from "./types";
 
 /**
  * `AVGTypeWriterText.originDelay` of the dialogue / sticker typewriter assets
@@ -106,7 +106,7 @@ export function parseVector2(
 
 export function parseSubtitleAlignment(
   value: unknown,
-): SubtitleInput["alignment"] | undefined {
+): OverlayTextLayout["alignment"] | undefined {
   const normalized = toString(value).toLowerCase();
   if (
     normalized === "left" ||

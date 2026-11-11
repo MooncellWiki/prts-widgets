@@ -1,14 +1,14 @@
 import { TYPE_WRITER_ORIGIN_DELAY_MS } from "../commandParams";
 import { parseRichChars } from "../richtext";
 
-import type { DialogueText } from "../types";
+import type { TypewriterText } from "../types";
 
-type RenderText = (text: DialogueText, initial?: boolean) => void;
+type RenderText = (text: TypewriterText, initial?: boolean) => void;
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 interface TypingSession {
-  chars: DialogueText["chars"];
+  chars: TypewriterText["chars"];
   delayMs: number;
   onTypeEnd: () => void;
   render: RenderText;
@@ -18,8 +18,8 @@ interface TypingSession {
 
 /**
  * Native port: Torappu.AVG.AVGTypeWriterText's BeginText / AppendText,
- * TryFinish and Update. DialogView uses the entire message for layout and
- * reveals it by character count in place of Unity's mesh quads.
+ * TryFinish and Update. The views use the entire message for layout and
+ * reveal it by character count in place of Unity's mesh quads.
  */
 export class AVGTypeWriterText {
   private session: TypingSession | null = null;

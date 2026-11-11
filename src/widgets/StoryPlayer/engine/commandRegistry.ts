@@ -1,7 +1,15 @@
 import type { ParsedCommandLine } from "./types";
 
-/** Executor result: `wait_input` mirrors a native executor returning true. */
-export type CommandResult = "continue" | "wait_input";
+type FinishCommand = (effect?: () => Promise<void> | void) => void;
+
+/**
+ * Web adaptation of an executor returning true and subscribing to ON_CLICK.
+ * The runtime binds this handler while the command blocks. The handler calls
+ * FinishCommand synchronously on the advancing click and can supply cleanup
+ * for the runtime to await before resuming.
+ */
+export type WaitForClick = (finishCommand: FinishCommand) => void;
+export type CommandResult = "continue" | WaitForClick;
 
 export type CommandExecutor<TResult> = (
   command: ParsedCommandLine,

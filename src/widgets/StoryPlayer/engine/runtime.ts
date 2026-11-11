@@ -10,18 +10,23 @@ import {
 } from "./characterRef";
 import {
   exactArg,
-  parseSubtitleAlignment,
   parseVector2,
   toBoolean,
   toNumber,
   toOptionalNumber,
   toString,
 } from "./commandParams";
-import { CommandRegistry, type CommandResult } from "./commandRegistry";
+import {
+  CommandRegistry,
+  type CommandResult,
+  type WaitForClick,
+} from "./commandRegistry";
+import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { StickerPanel } from "./panels/StickerPanel";
+import { SubtitlePanel } from "./panels/SubtitlePanel";
 import { parseScript } from "./parser";
 import { parseShowItemFadeStyle } from "./showitem";
 import { expandStoryText } from "./textVariables";
@@ -48,7 +53,6 @@ import type {
   StoryCommandArgs,
   StoryPlayerEvents,
   StoryRenderer,
-  SubtitleInput,
 } from "./types";
 
 interface AutoSpeed {
@@ -146,7 +150,6 @@ const builtinCommandNames = [
   "camerashake",
   "focusout",
   "focusparam",
-  "subtitle",
   "spellsticker",
   "spellstickerclear",
   "theater",
@@ -162,6 +165,12 @@ interface InterruptibleWait {
   id: number;
   interrupt?: () => void;
   resolve: () => void;
+}
+
+interface PendingInput {
+  dispatching: boolean;
+  effects: Array<() => Promise<void> | void>;
+  subscriptions: Set<() => void>;
 }
 
 function sleepWithTimeout(ms: number): Promise<void> {
@@ -323,6 +332,7 @@ export class StoryRuntime {
   private autoClickReady = false;
   private buttonSpeedLevel = 0;
   private readonly commandRegistry = new CommandRegistry<CommandResult>();
+  private readonly eventPool = new EventPool<AVGEvent>();
   private readonly context: Context;
   private cursor = 0;
   /** 当前屏幕对话框正在显示的源行 lineNumber（cursor-1 那条）。null 表示无显示文本（初始/finished/video-only/纯命令推进） */
@@ -405,8 +415,8 @@ export class StoryRuntime {
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly stickerPanel: StickerPanel;
-  private waitingInputCommand: string | null = null;
-  private pendingInputEffect: (() => Promise<void> | void) | null = null;
+  private readonly subtitlePanel: SubtitlePanel;
+  private pendingInput: PendingInput | null = null;
 
   constructor(
     context: Context,
@@ -475,9 +485,21 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
     });
+    this.subtitlePanel = new SubtitlePanel(renderer, {
+      beginTyping: (length) => this.beginTextTyping(length),
+      setDisplayedLine: (lineNumber) => {
+        const generation = this.playbackGeneration;
+        this.displayedLineIndex = lineNumber;
+        return !this.destroyed && generation === this.playbackGeneration;
+      },
+      sleep: this.sleep,
+      translateText: (text) => this.translateText(text),
+      typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
+    });
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
+    this.subtitlePanel.register(this.commandRegistry);
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -669,7 +691,7 @@ export class StoryRuntime {
     // 2791 set_autoPlayMode broadcasts the story cache. The UI's
     // _UpdateAutoPlayModeUI then emits ON_SPEED_SET, and the line being
     // typed switches to the new mode's delay.
-    this.dialogPanel.onSpeedSet();
+    this.eventPool.emit(AVGEvent.SpeedSet);
     this.cancelAutoClick();
 
     if (mode === "quick_play" && this.state === "waiting_input") {
@@ -705,7 +727,7 @@ export class StoryRuntime {
     // 2791 emits ON_SPEED_SET on both speed buttons: OnSpeedBtnClicked for
     // button auto, and AVGQuickPlayBtn.OnClick -> SetQuickSpeed ->
     // AVGQuickPlay._SetSpeedBtn for quick play.
-    this.dialogPanel.onSpeedSet();
+    this.eventPool.emit(AVGEvent.SpeedSet);
     this.cancelAutoClick();
     if (
       this.autoPlayMode !== "default" &&
@@ -765,6 +787,8 @@ export class StoryRuntime {
       return;
     }
 
+    this.dialogPanel.onStoryBegin(this.eventPool);
+    this.subtitlePanel.onStoryBegin(this.eventPool);
     this.state = "running";
     await this.processLoop();
   }
@@ -796,42 +820,73 @@ export class StoryRuntime {
     await this.advanceFromClick();
   }
 
+  /**
+   * Native executors listen to ON_CLICK until FinishCommand. Bind the Web
+   * executor callbacks after dispatch so a stale async result cannot leave
+   * behind a listener when a skip moved the cursor.
+   */
+  private waitForInput(handlers: readonly WaitForClick[]): void {
+    const pending: PendingInput = {
+      dispatching: false,
+      effects: [],
+      subscriptions: new Set(),
+    };
+    for (const handleClick of handlers) {
+      const unsubscribe = this.eventPool.on(AVGEvent.Click, () => {
+        if (this.pendingInput !== pending) return;
+        handleClick((effect) => {
+          if (
+            this.pendingInput !== pending ||
+            !pending.subscriptions.delete(unsubscribe)
+          )
+            return;
+          unsubscribe();
+          if (effect) pending.effects.push(effect);
+        });
+      });
+      pending.subscriptions.add(unsubscribe);
+    }
+    this.pendingInput = pending;
+    this.state = "waiting_input";
+  }
+
+  private cancelInputWait(): void {
+    const pending = this.pendingInput;
+    this.pendingInput = null;
+    for (const unsubscribe of pending?.subscriptions ?? []) unsubscribe();
+  }
+
   private async advanceFromClick(): Promise<void> {
-    const command = this.waitingInputCommand;
-    if (this.destroyed || this.state !== "waiting_input" || command === null)
+    const pending = this.pendingInput;
+    if (
+      this.destroyed ||
+      this.state !== "waiting_input" ||
+      !pending ||
+      pending.dispatching
+    )
       return;
 
-    // In 2791 only the blocking executor subscribes to ON_CLICK. A
-    // non-blocking sticker can raise an auto click without consuming it.
-    switch (command) {
-      case "aside":
-      case "dialog":
-      case "endtip":
-      case "multiline":
-        if (this.dialogPanel.finishTypingOnClick()) return;
-        this.dialogPanel.finishCommand();
-        break;
-      case "sticker":
-      case "stickerclear":
-      case "stickertween":
-        if (this.renderer.finishTextTyping("sticker")) return;
-        break;
-      case "subtitle":
-        if (this.renderer.finishTextTyping("subtitle")) return;
-        break;
+    // OnClickPress and _DoAutoClick both emit ON_CLICK. A click that only
+    // reveals text leaves the executor subscribed for the advancing click.
+    pending.dispatching = true;
+    try {
+      this.eventPool.emit(AVGEvent.Click);
+    } finally {
+      pending.dispatching = false;
     }
+    if (this.pendingInput !== pending || pending.subscriptions.size > 0) return;
 
-    this.waitingInputCommand = null;
+    this.pendingInput = null;
     this.lastCompletedTextLength = null;
     this.cancelAutoClick();
-    const inputEffect = this.pendingInputEffect;
-    this.pendingInputEffect = null;
     const generation = this.playbackGeneration;
     try {
-      await inputEffect?.();
+      // FinishCommand resumes after dispatch, as in native's end-of-frame
+      // callback. Spellsticker can also await its hide before resuming.
+      await Promise.all(pending.effects.map((effect) => effect()));
     } catch (error) {
       if (!this.destroyed && generation === this.playbackGeneration)
-        this.waitingInputCommand = command;
+        this.waitForInput([(finishCommand) => finishCommand()]);
       throw error;
     }
     if (this.destroyed || generation !== this.playbackGeneration) return;
@@ -922,8 +977,7 @@ export class StoryRuntime {
       }
     }
 
-    this.pendingInputEffect = null;
-    this.waitingInputCommand = null;
+    this.cancelInputWait();
     this.invalidatePlaybackCallbacks();
     // SkipStory (2791 @ 0x18416E560) force-ends the blockers and resets
     // components before the coroutine resumes. The StopStory path bypasses
@@ -934,13 +988,13 @@ export class StoryRuntime {
     try {
       if (shouldResume) {
         this.dialogPanel.forceCommandEnd();
+        this.subtitlePanel.forceCommandEnd();
         for (const reset of [
           // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
           () => this.renderer.clearInterludes(),
           () => this.renderer.clearCharacterCutin(),
           () => this.renderer.clearSpellStickers(),
-          // SubtitlePanel.OnReset cancels typing and hides without a fade.
-          () => this.renderer.clearSubtitle(0),
+          () => this.subtitlePanel.reset(),
           () => this.stickerPanel.reset(),
         ]) {
           if (this.destroyed) break;
@@ -956,6 +1010,7 @@ export class StoryRuntime {
           this.state = "running";
         } else if (!activeProcessCompletion) {
           // StopStory path with no loop alive to run finishPlayback().
+          this.stopPlaybackInput();
           this.audio.resetAudio();
           this.state = "finished";
           this.finishLineSeekMissed("finished");
@@ -1043,11 +1098,21 @@ export class StoryRuntime {
     this.lineSeek = null;
     this.decisionPanel.destroy();
     this.dialogPanel.destroy();
+    this.stopPlaybackInput();
     this.invalidatePlaybackCallbacks();
     this.interruptPendingWait();
-    this.pendingInputEffect = null;
     // 销毁后不该再有推送落到 UI 上
     this.events.all.clear();
+  }
+
+  private stopPlaybackInput(): void {
+    this.cancelInputWait();
+    // The Web runtime handles one story. Clear its story-long ON_SPEED_SET
+    // subscriptions together when that story ends.
+    this.eventPool.clear();
+    this.dialogPanel.stopTypingSilently();
+    this.subtitlePanel.stopTypingSilently();
+    this.cancelAutoClick();
   }
 
   /**
@@ -1072,6 +1137,7 @@ export class StoryRuntime {
    * guard on an out-of-range warp target, where native would throw instead.
    */
   private finishPlayback(): void {
+    this.stopPlaybackInput();
     this.renderer.clearAnimTexts();
     this.renderer.clearAvgDisplays();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1144,16 +1210,15 @@ export class StoryRuntime {
         if (this.destroyed) return;
         // A skipped executor can still return a stale input wait.
         if (generation !== this.playbackGeneration) continue;
-        if (result === "wait_input") {
-          this.waitingInputCommand =
-            line.kind === "command" ? line.command : "dialog";
-          this.state = "waiting_input";
+        if (result !== "continue") {
+          this.waitForInput(Array.isArray(result) ? result : [result]);
           return;
         }
         this.autoClickReady = false;
       }
     } catch (error) {
       this.state = "error";
+      this.stopPlaybackInput();
       this.finishLineSeekMissed("error");
       const detail =
         error instanceof Error ? error.message : "unknown runtime error";
@@ -1269,7 +1334,9 @@ export class StoryRuntime {
     return "continue";
   }
 
-  private executeCommand(line: ParsedCommandLine): Promise<CommandResult> {
+  private executeCommand(
+    line: ParsedCommandLine,
+  ): Promise<CommandResult | WaitForClick[]> {
     // HEADER remains in Story.commands but has no registered executor.
     if (line.command === "header") return Promise.resolve("continue");
     const executors = this.commandRegistry.get(line.command);
@@ -1282,7 +1349,10 @@ export class StoryRuntime {
       return result instanceof Promise ? result : Promise.resolve(result);
     }
     return Promise.all(executors.map((executor) => executor(line))).then(
-      (results) => (results.includes("wait_input") ? "wait_input" : "continue"),
+      (results) => {
+        const handlers = results.filter((result) => result !== "continue");
+        return handlers.length > 0 ? handlers : "continue";
+      },
     );
   }
 
@@ -3229,42 +3299,6 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "subtitle": {
-        // Native port: Torappu.AVG.SubtitlePanel._ExecuteSubtitle. The script's
-        // `delay` parameter is ignored; typing speed is global.
-        const text = this.translateText(toString(this.exactArg(args, "text")));
-
-        if (!text) {
-          void this.renderer.clearSubtitle(150);
-          return "continue";
-        }
-
-        const x = toNumber(this.exactArg(args, "x"), 0);
-        const y = toNumber(this.exactArg(args, "y"), 0);
-        if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
-
-        this.displayedLineIndex = line.lineNumber;
-        if (this.destroyed) return "continue";
-        // Native _OnTypeWriterEnd (2791 VA 0x1841E5A20) raises the auto
-        // click with the subtitle's own raw typeWriter.messageLength.
-        const onTypingComplete = this.beginTextTyping(text.length);
-        await this.renderer.setSubtitle({
-          alignment:
-            parseSubtitleAlignment(this.exactArg(args, "alignment")) ?? "left",
-          delayMs: this.getCurrentSpeed().typeWriterDelayMs,
-          onTypingComplete,
-          sizePx: toNumber(this.exactArg(args, "size"), 24),
-          text,
-          widthPx: Math.min(
-            toNumber(this.exactArg(args, "width"), 1280),
-            1280 - x,
-          ),
-          x,
-          y,
-        } satisfies SubtitleInput);
-        return "wait_input";
-      }
-
       case "spellsticker": {
         // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellSticker.
         // `block` waits for a click, whose follow-up hides the sticker.
@@ -3295,22 +3329,20 @@ export class StoryRuntime {
               y: toOptionalNumber(this.exactArg(args, "y")),
               yScale: toOptionalNumber(this.exactArg(args, "yScale")),
             } satisfies SpellStickerInput));
-        if (block) {
-          this.pendingInputEffect =
+        if (!block) return "continue";
+        return (finishCommand) =>
+          finishCommand(
             action.toLowerCase() === "hide"
-              ? null
-              : () => this.renderer.hideSpellSticker(id);
-          return "wait_input";
-        }
-        return "continue";
+              ? undefined
+              : () => this.renderer.hideSpellSticker(id),
+          );
       }
 
       case "spellstickerclear": {
         // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellStickerClear.
         await this.renderer.clearSpellStickers();
-        this.pendingInputEffect = null;
         return toBoolean(this.exactArg(args, "block"), false)
-          ? "wait_input"
+          ? (finishCommand) => finishCommand()
           : "continue";
       }
 

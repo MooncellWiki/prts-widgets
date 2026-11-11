@@ -10,7 +10,7 @@ import type { Context } from "../src/widgets/StoryPlayer/context";
 import type {
   DecisionPolicy,
   DecisionSelection,
-  DialogueText,
+  TypewriterText,
   LineSeekUpdate,
   ShowItemInput,
   StoryAudio,
@@ -141,17 +141,12 @@ class DecisionFakeRenderer {
     this.showItemKeys.push(input.key);
   }
 
-  setDialogue(speaker: string, { chars, visibleCount }: DialogueText): void {
+  setDialogue(speaker: string, { chars, visibleCount }: TypewriterText): void {
     const text = richCharsToTaggedText(chars.slice(0, visibleCount));
     this.lastDialogue = { speaker, text };
   }
 
-  // 自动点击推进（advanceFromClick）必经，不打断打字机
-  finishTextTyping(): boolean {
-    return false;
-  }
-
-  // 同上：推进时收尾 DialogPanel 命令
+  // 自动点击推进时收尾 DialogPanel 命令
   finishDialogueCommand(): void {}
 
   destroy(): void {}

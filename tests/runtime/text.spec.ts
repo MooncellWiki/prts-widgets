@@ -201,8 +201,6 @@ describe("StoryRuntime", () => {
     expect(renderer.subtitleCalls).toEqual([
       {
         alignment: "center",
-        delayMs: 0,
-        onTypingComplete: expect.any(Function),
         sizePx: 24,
         text: "HELLO",
         widthPx: 400,
@@ -301,10 +299,10 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
     expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.typingActive).toBe(true);
+    expect(renderer.subtitleText).toBe("");
 
     await runtime.advance();
-    expect(renderer.typingActive).toBe(false);
+    expect(renderer.subtitleText).toBe("HELLO");
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
 
@@ -330,18 +328,52 @@ describe("StoryRuntime", () => {
       expect(runtime.getState()).toBe("waiting_input");
 
       runtime.setAutoPlayMode("button_auto");
-      // Enabling auto mid-typing must not fire a click before the typewriter
-      // has ended (native only raises the auto click from _OnTypeWriterEnd).
-      await vi.advanceTimersByTimeAsync(1600);
+      await vi.advanceTimersByTimeAsync(199);
+      expect(renderer.subtitleText).toBe("HELL");
       expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
 
-      renderer.finishSubtitleTypingNaturally();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.subtitleText).toBe("HELLO");
       // Auto wait = 1.5s + messageLength(5) * 0.03s = 1.65s; the subtitle's
       // own length must drive the wait, not the previous message's.
       await vi.advanceTimersByTimeAsync(1649);
       expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
       await vi.advanceTimersByTimeAsync(1);
       expect(renderer.lastDialogue.speaker).toBe("A");
+      runtime.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("applies the new speed to the subtitle already on screen", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[subtitle(text="HELLO")]', '[name="A"]after']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(45);
+      expect(renderer.subtitleText).toBe("H");
+
+      // Gear 1 changes the interval to 10ms and retains the 5ms accumulated
+      // toward the next character. Typing finishes 35ms after the switch.
+      runtime.setAutoPlayMode("button_auto");
+      runtime.setAutoPlaySpeedLevel(1);
+      await vi.advanceTimersByTimeAsync(34);
+      expect(renderer.subtitleText).toBe("HELL");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.subtitleText).toBe("HELLO");
+
+      await vi.advanceTimersByTimeAsync(574);
+      expect(renderer.lastDialogue.speaker).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("A");
+      runtime.destroy();
     } finally {
       vi.useRealTimers();
     }
@@ -365,6 +397,34 @@ describe("StoryRuntime", () => {
     // Native OnReset on skip clears the panel immediately (alpha=0, no fade).
     expect(renderer.subtitleClearCalls).toEqual([0]);
     expect(runtime.getState()).toBe("finished");
+  });
+
+  it("drops the skipped subtitle's click wait before starting the next line", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[subtitle(text="old")]',
+        "[SkipToThis]",
+        '[subtitle(text="new")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { sleep: () => new Promise(() => {}), typingIntervalMs: 40 },
+    );
+
+    await runtime.start();
+    await runtime.skipNode();
+    expect(renderer.subtitleClearCalls).toEqual([0]);
+    expect(renderer.subtitleText).toBe("");
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+
+    await runtime.advance();
+    expect(renderer.subtitleText).toBe("new");
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+    await runtime.advance();
+    expect(runtime.getDisplayedLineIndex()).toBe(4);
+    runtime.destroy();
   });
 
   it("uses native sticker id state for show, append, and hide", async () => {
@@ -838,13 +898,14 @@ describe("StoryRuntime", () => {
 
   it("ignores subtitle ghost parameters and falls back invalid alignment to left", async () => {
     const renderer = new FakeRenderer();
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
     const runtime = new StoryRuntime(
       createContext([
         '[subtitle(text="x",alignment="middle",delay=9,fadetime=9,multi=true)]',
       ]),
       renderer,
       new FakeAudio(),
-      { typingIntervalMs: 25 },
+      { sleep, typingIntervalMs: 25 },
     );
 
     await runtime.start();
@@ -852,8 +913,6 @@ describe("StoryRuntime", () => {
     expect(renderer.subtitleCalls).toEqual([
       {
         alignment: "left",
-        delayMs: 25,
-        onTypingComplete: expect.any(Function),
         sizePx: 24,
         text: "x",
         widthPx: 1280,
@@ -861,6 +920,8 @@ describe("StoryRuntime", () => {
         y: 0,
       },
     ]);
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(25);
+    runtime.destroy();
   });
 
   it("stops the timer sticker when skipping a node", async () => {
