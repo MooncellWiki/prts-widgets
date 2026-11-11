@@ -34,8 +34,12 @@ interface StickerPlayback {
 
 interface StickerSlot {
   id: string;
+  multiline: boolean;
   rawLength: number;
-  layout: Omit<StickerInput, "append" | "id" | "onTypingComplete" | "text">;
+  layout: Omit<
+    StickerInput,
+    "append" | "id" | "onTypingComplete" | "resetText" | "text"
+  >;
 }
 
 /**
@@ -137,7 +141,7 @@ export class StickerPanel {
   private setSticker(
     text: string,
     slot: StickerSlot,
-    append: boolean,
+    options: Pick<StickerInput, "append" | "resetText">,
   ): Promise<void> | void {
     const { id } = slot;
     this.stickerSlots.set(id, slot);
@@ -145,7 +149,7 @@ export class StickerPanel {
     const onTypeEnd = this.playback.beginTyping(slot.rawLength);
     return this.renderer.setSticker({
       ...slot.layout,
-      append,
+      ...options,
       id,
       // 2791 _OnStickerTypeEnd (0x1841E4640) reports the completing view's
       // length, even after a different id starts typing.
@@ -206,10 +210,14 @@ export class StickerPanel {
           // stored layout (instead of re-defaulting to x=0/y=0) keeps the
           // letter appends in main 13-05, which omit x/y, in place.
           const text = this.playback.translateText(toString(arg(args, "text")));
+          // AVGTypeWriterText.AppendText (2791 @ 0x18424F1C0) clears a
+          // single-line message before starting the multiline run.
+          const rawLength =
+            (existing.multiline ? existing.rawLength : 0) + text.length;
           await this.setSticker(
             text,
-            { ...existing, rawLength: existing.rawLength + text.length },
-            true,
+            { ...existing, multiline: true, rawLength },
+            { append: true, resetText: !existing.multiline },
           );
           return block ? this.clickWait : "continue";
         }
@@ -255,8 +263,8 @@ export class StickerPanel {
         };
         await this.setSticker(
           text,
-          { id, rawLength: text.length, layout },
-          false,
+          { id, layout, multiline: multi, rawLength: text.length },
+          { append: false },
         );
         return block ? this.clickWait : "continue";
       }

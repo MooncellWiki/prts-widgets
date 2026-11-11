@@ -350,8 +350,9 @@ export class FakeRenderer implements StoryRenderer {
     this.stickerTweenCalls.push(input);
   }
 
-  setSpellSticker(input: SpellStickerInput): void {
+  async setSpellSticker(input: SpellStickerInput): Promise<number | undefined> {
     this.spellStickerCalls.push(input);
+    return undefined;
   }
 
   setSubtitle(

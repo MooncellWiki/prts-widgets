@@ -543,6 +543,8 @@ export interface StickerInput extends OverlayTextLayout {
   fadeMs: number;
   id: string;
   onTypingComplete?: () => void;
+  /** The first multiline append starts a new message in the existing view. */
+  resetText?: boolean;
   text: string;
 }
 
@@ -834,7 +836,10 @@ export interface StoryRenderer {
   setSticker: (input: StickerInput) => Promise<void> | void;
   setStickerTypeWriterDelay: (id: string, delayMs: number) => void;
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
-  setSpellSticker: (input: SpellStickerInput) => Promise<void> | void;
+  /** Returns the native show clip's duration in milliseconds when available. */
+  setSpellSticker: (
+    input: SpellStickerInput,
+  ) => Promise<number | undefined> | number | undefined;
   hideSpellSticker: (id: string) => Promise<void> | void;
   /** The initial reveal supplies layout. Later reveals keep that layout. */
   setSubtitle: (text: TypewriterText, layout?: OverlayTextLayout) => void;

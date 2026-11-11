@@ -60,6 +60,45 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
   });
 
+  it.each([
+    { skipAtMs: 20, remainingMs: 1530 },
+    { skipAtMs: 540, remainingMs: 1030 },
+  ])(
+    "carries the auto click across a protected skip at $skipAtMs ms",
+    async ({ skipAtMs, remainingMs }) => {
+      vi.useFakeTimers();
+      try {
+        const renderer = new FakeRenderer();
+        const runtime = new StoryRuntime(
+          createContext([
+            '[subtitle(text="A")]',
+            '[skipnode(mode="nofirstskip")]',
+            "[stickerclear(block=true)]",
+            '[name="B"]after',
+          ]),
+          renderer,
+          new FakeAudio(),
+        );
+        runtime.setAutoPlayMode("button_auto");
+        await runtime.start();
+        await vi.advanceTimersByTimeAsync(skipAtMs);
+        await runtime.skipNode();
+        expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+        expect(runtime.getState()).toBe("waiting_input");
+
+        // The subtitle schedules its 1530ms wait on its 40ms type-end or
+        // when ForceCommandEnd reveals it during the jump.
+        await vi.advanceTimersByTimeAsync(remainingMs - 1);
+        expect(renderer.lastDialogue.speaker).toBe("");
+        await vi.advanceTimersByTimeAsync(1);
+        expect(renderer.lastDialogue.speaker).toBe("B");
+        runtime.destroy();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("does not lose the active process loop while skip cleanup is asynchronous", async () => {
     let finishCleanup!: () => void;
     const cleanup = new Promise<void>((resolve) => {
@@ -718,11 +757,11 @@ describe("StoryRuntime", () => {
 
   it("drops the click follow-up of a skipped blocking spellsticker", async () => {
     let finishSticker!: () => void;
-    const sticker = new Promise<void>((resolve) => {
-      finishSticker = resolve;
+    const sticker = new Promise<number>((resolve) => {
+      finishSticker = () => resolve(1750);
     });
     const renderer = new FakeRenderer();
-    vi.spyOn(renderer, "setSpellSticker").mockReturnValueOnce(sticker as never);
+    vi.spyOn(renderer, "setSpellSticker").mockReturnValueOnce(sticker);
     const runtime = new StoryRuntime(
       createContext([
         '[spellsticker(id="s",block=true)]<p=1>old</>',

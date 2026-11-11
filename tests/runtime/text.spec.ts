@@ -118,6 +118,38 @@ describe("StoryRuntime", () => {
   });
 
   it.each([
+    '[spellsticker(id="s",action="hide",block=true)]',
+    "[spellstickerclear(block=true)]",
+  ])("captures the base auto wait for %s in manual mode", async (command) => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[name="A"]${"X".repeat(100)}`,
+          command,
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      await runtime.start();
+      await runtime.advance();
+      expect(runtime.getState()).toBe("waiting_input");
+      runtime.setAutoPlaySpeedLevel(2);
+      runtime.setAutoPlayMode("button_auto");
+
+      await vi.advanceTimersByTimeAsync(1499);
+      expect(renderer.lastDialogue.speaker).toBe("A");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+      runtime.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
     // ForceCommandEnd hides m_blockingStickerId before OnReset clears all.
     { action: "show", hiddenBeforeClear: ["s"] },
     // A blocking hide leaves no blocking id, so only the executor hides.
@@ -786,6 +818,38 @@ describe("StoryRuntime", () => {
       expect(renderer.lastDialogue.speaker).toBe("");
       await vi.advanceTimersByTimeAsync(1);
       expect(renderer.lastDialogue.speaker).toBe("B");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bills only the new multiline message when an existing sticker switches to multi", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[sticker(id="s",text="OLD",delay=0,block=false)]',
+          '[sticker(id="s",text="NEW",multi=true,block=false)]',
+          '[sticker(id="s",text="+",multi=true,block=true)]',
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      expect(renderer.stickerCalls.slice(1)).toMatchObject([
+        { append: true, resetText: true },
+        { append: true, resetText: false },
+      ]);
+
+      // The final message is NEW+, which queues 1500 + 4 * 30 ms.
+      await vi.advanceTimersByTimeAsync(1619);
+      expect(renderer.lastDialogue.speaker).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+      runtime.destroy();
     } finally {
       vi.useRealTimers();
     }

@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { parseRichChars } from "../../src/widgets/StoryPlayer/engine/richtext";
+import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
+import { createContext, FakeAudio } from "../helpers/runtimeFakes";
 
 describe("PixiStoryRenderer", () => {
   it("runs frame-end callbacks after the scene draws and only once", () => {
@@ -21,6 +23,40 @@ describe("PixiStoryRenderer", () => {
       expect(order).toEqual(["draw", "finish", "draw"]);
     } finally {
       ticker.destroy();
+    }
+  });
+
+  it("auto-advances consecutive blocking spellstickers using the show clips", async () => {
+    vi.useFakeTimers();
+    const context = createContext([
+      '[spellsticker(id="s",style="SAMI",block=true)]<p=1>A</>',
+      '[spellsticker(id="f",style="fire",block=true)]<p=1>B</>',
+      '[name="A"]after',
+    ]);
+    const renderer = createRenderer(context);
+    const show = vi.spyOn(renderer, "setSpellSticker");
+    const hide = vi.spyOn(renderer, "hideSpellSticker");
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    try {
+      runtime.setAutoPlayMode("button_auto");
+      runtime.setAutoPlaySpeedLevel(2);
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(1749);
+      expect(show).toHaveBeenCalledTimes(1);
+      expect(hide).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(show).toHaveBeenCalledTimes(2);
+      expect(hide.mock.calls).toEqual([["s"]]);
+
+      await vi.advanceTimersByTimeAsync(1515);
+      expect(hide.mock.calls).toEqual([["s"]]);
+      await vi.advanceTimersByTimeAsync(2);
+      expect(hide.mock.calls).toEqual([["s"], ["f"]]);
+      expect(runtime.getDisplayedLineIndex()).toBe(3);
+    } finally {
+      runtime.destroy();
+      renderer.destroy();
+      vi.useRealTimers();
     }
   });
 
@@ -780,50 +816,57 @@ describe("StickerView lifecycle", () => {
     }
   });
 
-  it("appends from the visible prefix of a sticker that is still typing", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = createStickerRenderer();
-      const firstComplete = vi.fn();
-      const appendComplete = vi.fn();
-      const layout = {
-        alignment: "left" as const,
-        delayMs: 40,
-        fadeMs: 0,
-        id: "st1",
-        sizePx: 24,
-        widthPx: 200,
-        x: 0,
-        y: 0,
-      };
-      await renderer.setSticker({
-        ...layout,
-        append: false,
-        onTypingComplete: firstComplete,
-        text: "HELLO",
-      });
-      const { text } = renderer.stickerViews.get("st1");
-      await vi.advanceTimersByTimeAsync(55);
-      expect(text.text).toBe("H");
+  it.each([
+    { resetText: false, initial: "H", next: "HE", full: "HELLO!" },
+    { resetText: true, initial: "", next: "!", full: "!" },
+  ])(
+    "continues or resets the sticker's visible prefix (resetText=$resetText)",
+    async ({ resetText, initial, next, full }) => {
+      vi.useFakeTimers();
+      try {
+        const renderer = createStickerRenderer();
+        const firstComplete = vi.fn();
+        const appendComplete = vi.fn();
+        const layout = {
+          alignment: "left" as const,
+          delayMs: 40,
+          fadeMs: 0,
+          id: "st1",
+          sizePx: 24,
+          widthPx: 200,
+          x: 0,
+          y: 0,
+        };
+        await renderer.setSticker({
+          ...layout,
+          append: false,
+          onTypingComplete: firstComplete,
+          text: "HELLO",
+        });
+        const { text } = renderer.stickerViews.get("st1");
+        await vi.advanceTimersByTimeAsync(55);
+        expect(text.text).toBe("H");
 
-      await renderer.setSticker({
-        ...layout,
-        append: true,
-        onTypingComplete: appendComplete,
-        text: "!",
-      });
-      await vi.advanceTimersByTimeAsync(39);
-      expect(text.text).toBe("H");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(text.text).toBe("HE");
-      await vi.advanceTimersByTimeAsync(160);
-      expect(text.text).toBe("HELLO!");
-      expect(firstComplete).not.toHaveBeenCalled();
-      expect(appendComplete).toHaveBeenCalledExactlyOnceWith();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        await renderer.setSticker({
+          ...layout,
+          append: true,
+          onTypingComplete: appendComplete,
+          resetText,
+          text: "!",
+        });
+        await vi.advanceTimersByTimeAsync(39);
+        expect(text.text).toBe(initial);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(text.text).toBe(next);
+        await vi.advanceTimersByTimeAsync(160);
+        expect(text.text).toBe(full);
+        expect(firstComplete).not.toHaveBeenCalled();
+        expect(appendComplete).toHaveBeenCalledExactlyOnceWith();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("keeps the fade-in, tween and transform when appending (native AppendText)", async () => {
     const renderer = createStickerRenderer(40);

@@ -15,18 +15,22 @@ import {
 import { STORY_HEIGHT, STORY_WIDTH, type SpellStickerInput } from "../../types";
 
 /**
- * Serialized `m_InputText` of each style prefab's Texts
- * (`avg/spellsticker/sticker_<style>_fx_spell`), as [main, sub]. Native
- * `_ShowSticker` inlines `_ApplyFallbackInputText`, which switches TextId-less
- * Texts to display this input text before the `<p=N>` writes, so a fresh
- * sticker shows it in any slot its first content leaves out.
+ * Each style's serialized Text inputs [main, sub] and Legacy Animation show
+ * clip length from 2791 sharedassets1.assets. _ShowSticker uses these inputs
+ * for TextId-less slots before applying the command's `<p=N>` overrides.
  */
-const PREFAB_INPUT_TEXT = {
-  fire: ["夜雪无痕，噤声。", "Ночной снег без следа, молчи."],
-  sami: ["不是灾异，而是目光。", "er eigi ógæfa, heldr augna máttur."],
+const PREFABS = {
+  fire: {
+    inputText: ["夜雪无痕，噤声。", "Ночной снег без следа, молчи."],
+    showDurationMs: 1516.66665,
+  },
+  sami: {
+    inputText: ["不是灾异，而是目光。", "er eigi ógæfa, heldr augna máttur."],
+    showDurationMs: 1750,
+  },
 } as const;
 
-type SpellStickerStyle = keyof typeof PREFAB_INPUT_TEXT;
+type SpellStickerStyle = keyof typeof PREFABS;
 
 interface SpellStickerView {
   root: Container;
@@ -63,7 +67,7 @@ export class SpellStickerPanel {
     private readonly warn?: (detail: string) => void,
   ) {}
 
-  show(input: SpellStickerInput): void {
+  show(input: SpellStickerInput): number | undefined {
     const style = input.style.toLowerCase();
     if (style !== "sami" && style !== "fire") {
       this.warn?.(`missing spellsticker style: ${input.style}`);
@@ -113,6 +117,7 @@ export class SpellStickerPanel {
     // counter-clockwise on screen while PIXI's `angle` is clockwise, so the
     // same y-up/y-down flip as `y` applies here.
     if (input.angle !== undefined) view.root.angle = -input.angle;
+    return PREFABS[style].showDurationMs;
   }
 
   hide(id: string): void {
@@ -143,7 +148,7 @@ export class SpellStickerPanel {
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     const sami = style === "sami";
-    const [mainInputText, subInputText] = PREFAB_INPUT_TEXT[style];
+    const [mainInputText, subInputText] = PREFABS[style].inputText;
     // Prefab fonts come from DynFontLoader: fire loads NotoSansHans-Medium
     // (main Italic, sub Normal), sami loads 方正特雅宋_GBK (main) and
     // RoHMinSinkStd-UB (sub), both FontStyle Italic and neither Bold. Sami

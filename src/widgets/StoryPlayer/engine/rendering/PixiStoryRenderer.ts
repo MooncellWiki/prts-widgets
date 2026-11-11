@@ -3197,8 +3197,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.stickerViews.get(id)?.setTypeWriterDelay(delayMs);
   }
 
-  setSpellSticker(input: SpellStickerInput): void {
-    this.spellStickerPanel.show(input);
+  setSpellSticker(input: SpellStickerInput): number | undefined {
+    return this.spellStickerPanel.show(input);
   }
 
   stickerTween(input: StickerTweenInput): void {

@@ -96,9 +96,9 @@ export class DialogPanel {
 
   /**
    * Native ForceCommandEnd (2791 @ 0x1841C8440) reveals the line and restores
-   * its width. StoryRuntime invalidates the interrupted line's callback
-   * before force-ending. ShouldResetOnSkip is false, so the multiline run
-   * remains available to the next command after the jump.
+   * its width. The type-end callback can raise an auto click during a
+   * protected skip. ShouldResetOnSkip is false, so the multiline run remains
+   * available to the next command after the jump.
    */
   private forceCommandEnd(): void {
     this.typeWriter.tryFinish();

@@ -984,9 +984,9 @@ export class StoryRuntime {
       }
     }
 
-    const interruptedInput = this.pendingInput;
+    const keepAutoClick = shouldResume && this.skipToIndex < 0;
+    const interruptedInput = shouldResume ? this.pendingInput : null;
     this.cancelInputWait();
-    this.invalidatePlaybackCallbacks();
     // SkipStory (2791 @ 0x18416E560) force-ends the blockers and resets
     // components before the coroutine resumes. The StopStory path bypasses
     // these resets. Web cleanup can yield even as the old executor settles.
@@ -994,9 +994,16 @@ export class StoryRuntime {
     this.skipCleanup = cleanup;
     let resumedProcess = activeProcessCompletion;
     try {
-      if (shouldResume) {
+      try {
+        // The protected skipnode branch keeps the auto-click coroutine.
+        // ForceCommandEnd can replace it before the old callbacks expire.
         for (const handler of interruptedInput?.handlers ?? [])
           handler.forceEnd?.();
+      } finally {
+        this.playbackGeneration += 1;
+        if (!keepAutoClick) this.cancelAutoClick();
+      }
+      if (shouldResume) {
         for (const reset of [
           // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
           () => this.renderer.clearInterludes(),
@@ -1072,14 +1079,14 @@ export class StoryRuntime {
     this.pendingAutoClick = null;
   }
 
-  private scheduleAutoClick(messageLength: number): void {
-    const speed = this.getCurrentSpeed();
-    // RaiseAutoClick (2791 @ 0x18416BEA0) captures the delay at type end,
-    // including in DEFAULT. A later type end replaces the entire coroutine.
+  private scheduleAutoClick(
+    delayMs = this.getCurrentSpeed().autoWaitBaseTime * 1000,
+  ): void {
+    if (this.destroyed || this.state === "finished" || this.state === "error")
+      return;
+    // RaiseAutoClick (2791 @ 0x18416C3F0) replaces the coroutine even in DEFAULT.
     this.pendingAutoClick = {
-      delayMs:
-        (speed.autoWaitBaseTime + messageLength * speed.autoWaitTimePerText) *
-        1000,
+      delayMs,
       phase: "awaiting_mode",
     };
     this.resumeAutoClick();
@@ -1117,7 +1124,7 @@ export class StoryRuntime {
     this.decisionPanel.destroy();
     this.dialogPanel.destroy();
     this.stopPlaybackInput();
-    this.invalidatePlaybackCallbacks();
+    this.playbackGeneration += 1;
     this.interruptPendingWait();
     // 销毁后不该再有推送落到 UI 上
     this.events.all.clear();
@@ -3331,32 +3338,41 @@ export class StoryRuntime {
           this.warn("parse", "spellsticker id is empty");
           return "continue";
         }
-        const action = toString(this.exactArg(args, "action"), "show");
+        const hide =
+          toString(this.exactArg(args, "action"), "show").toLowerCase() ===
+          "hide";
         const block = toBoolean(this.exactArg(args, "block"), false);
         // Native `_ShowSticker` inlines `_ApplyAlpha`: CanvasGroup.alpha is
         // only written when the alpha param exists (TryGetParam + clamp 0..1),
         // so a reused sticker keeps its previous alpha. Keep the field
         // optional instead of forcing the default 1.
         const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
-        await (action.toLowerCase() === "hide"
-          ? this.renderer.hideSpellSticker(id)
-          : this.renderer.setSpellSticker({
-              alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
-              angle: toOptionalNumber(this.exactArg(args, "angle")),
-              content: this.translateText(line.content),
-              id,
-              style: toString(this.exactArg(args, "style"), "sami"),
-              x: toOptionalNumber(this.exactArg(args, "x")),
-              xScale: toOptionalNumber(this.exactArg(args, "xScale")),
-              y: toOptionalNumber(this.exactArg(args, "y")),
-              yScale: toOptionalNumber(this.exactArg(args, "yScale")),
-            } satisfies SpellStickerInput));
-        if (!block) return "continue";
-        // A blocking show stores m_blockingStickerId; a blocking hide clears
-        // it. _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) both hide
-        // that id, and the click hides it before the frame-end finish.
-        if (action.toLowerCase() === "hide")
-          return { handleClick: (finishCommand) => finishCommand() };
+        const generation = this.playbackGeneration;
+        let showDurationMs: number | undefined;
+        if (hide) {
+          await this.renderer.hideSpellSticker(id);
+        } else {
+          showDurationMs = await this.renderer.setSpellSticker({
+            alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
+            angle: toOptionalNumber(this.exactArg(args, "angle")),
+            content: this.translateText(line.content),
+            id,
+            style: toString(this.exactArg(args, "style"), "sami"),
+            x: toOptionalNumber(this.exactArg(args, "x")),
+            xScale: toOptionalNumber(this.exactArg(args, "xScale")),
+            y: toOptionalNumber(this.exactArg(args, "y")),
+            yScale: toOptionalNumber(this.exactArg(args, "yScale")),
+          } satisfies SpellStickerInput);
+        }
+        if (!block || generation !== this.playbackGeneration) return "continue";
+        // _ExecuteSpellSticker (2791 @ 0x1841B37F0) raises the auto click
+        // with the show clip's length and falls back to the base wait.
+        this.scheduleAutoClick(
+          (showDurationMs ?? 0) > 0 ? showDurationMs : undefined,
+        );
+        // _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) hide the
+        // blocking show by ID. A hide command already hid it during execution.
+        if (hide) return { handleClick: (finishCommand) => finishCommand() };
         const hideBlocking = () => this.renderer.hideSpellSticker(id);
         return {
           handleClick: (finishCommand) =>
@@ -3366,11 +3382,14 @@ export class StoryRuntime {
       }
 
       case "spellstickerclear": {
-        // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellStickerClear.
+        // _ExecuteSpellStickerClear (2791 @ 0x1841B35D0) raises an auto click
+        // with length zero when the command blocks.
+        const block = toBoolean(this.exactArg(args, "block"), false);
+        const generation = this.playbackGeneration;
         await this.renderer.clearSpellStickers();
-        return toBoolean(this.exactArg(args, "block"), false)
-          ? { handleClick: (finishCommand) => finishCommand() }
-          : "continue";
+        if (!block || generation !== this.playbackGeneration) return "continue";
+        this.scheduleAutoClick();
+        return { handleClick: (finishCommand) => finishCommand() };
       }
 
       case "theater": {
@@ -3438,9 +3457,11 @@ export class StoryRuntime {
   }
 
   private onTypingComplete(messageLength: number): void {
-    if (this.destroyed || this.state === "finished" || this.state === "error")
-      return;
-    this.scheduleAutoClick(messageLength);
+    const speed = this.getCurrentSpeed();
+    this.scheduleAutoClick(
+      (speed.autoWaitBaseTime + messageLength * speed.autoWaitTimePerText) *
+        1000,
+    );
   }
 
   /**
@@ -3456,11 +3477,6 @@ export class StoryRuntime {
       completed = true;
       this.onTypingComplete(messageLength);
     };
-  }
-
-  private invalidatePlaybackCallbacks(): void {
-    this.playbackGeneration += 1;
-    this.cancelAutoClick();
   }
 
   private parseEnterDirection(value: unknown): CharacterSlotInput["enterFrom"] {
