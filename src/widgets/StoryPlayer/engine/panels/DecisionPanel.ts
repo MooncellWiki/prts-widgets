@@ -4,22 +4,16 @@ import type { Context } from "../../context";
 import type { DecisionCommandPredicator } from "../DecisionCommandPredicator";
 import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
-  AutoPlayMode,
   DecisionPolicy,
   ParsedCommandLine,
   StoryRenderer,
 } from "../types";
 
 interface DecisionPlayback {
-  beginWait: () => AutoPlayMode;
-  finishWait: (autoPlayRestore: AutoPlayMode) => void;
   pickOption: DecisionPolicy;
   resetAutoPlayMode: () => void;
+  setWaiting: (waiting: boolean) => void;
   warnInvalidParameter: (detail: string, line?: ParsedCommandLine) => void;
-}
-
-interface PendingDecision {
-  autoPlayRestore: AutoPlayMode;
 }
 
 // _ExecuteDecision (2791 @ 0x1841C7400) logs excess options by comparing
@@ -33,7 +27,7 @@ const OBSERVED_MAX_DECISION_OPTIONS = 4;
  * The web view delivers the selection and the controller owns playback mode.
  */
 export class DecisionPanel {
-  private pendingDecision: PendingDecision | null = null;
+  private pendingDecision: symbol | null = null;
   private destroyed = false;
 
   constructor(
@@ -55,7 +49,7 @@ export class DecisionPanel {
     });
   }
 
-  getPendingDecision(): PendingDecision | null {
+  getPendingDecision(): symbol | null {
     return this.pendingDecision;
   }
 
@@ -65,7 +59,7 @@ export class DecisionPanel {
    * selection to release the command loop. The sampled view may already have
    * settled from a click during cleanup.
    */
-  settleOnSkip(pending: PendingDecision | null): void {
+  settleOnSkip(pending: symbol | null): void {
     if (pending && this.pendingDecision === pending)
       this.renderer.settleDecision();
   }
@@ -123,8 +117,9 @@ export class DecisionPanel {
       return "continue";
     }
 
-    const pending = { autoPlayRestore: this.playback.beginWait() };
+    const pending = Symbol();
     this.pendingDecision = pending;
+    this.playback.setWaiting(true);
     try {
       const selection = await this.renderer.showDecision(
         options,
@@ -134,7 +129,7 @@ export class DecisionPanel {
       if (this.pendingDecision !== pending) return "continue";
       this.pendingDecision = null;
       this.predicator.applySelection(line.lineNumber, selection);
-      this.playback.finishWait(pending.autoPlayRestore);
+      this.playback.setWaiting(false);
       return "continue";
     } finally {
       if (this.pendingDecision === pending) this.pendingDecision = null;

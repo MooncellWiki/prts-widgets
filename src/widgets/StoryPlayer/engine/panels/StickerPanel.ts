@@ -94,11 +94,18 @@ export class StickerPanel {
     });
   }
 
-  /** Native _OnClicked (2791 @ 0x1841E4500) only finishes the current view. */
-  private readonly onClick: WaitForClick = (finishCommand) => {
-    const slot = this.currentSticker;
-    if (!slot || !this.renderer.finishStickerTyping(slot.id)) finishCommand();
+  /** Native _OnClicked (2791 @ 0x1841E4500) and ForceCommandEnd (0x1841E1C10). */
+  private readonly clickWait: WaitForClick = {
+    handleClick: (finishCommand) => {
+      if (!this.finishCurrentStickerTyping()) finishCommand();
+    },
+    forceEnd: () => this.finishCurrentStickerTyping(),
   };
+
+  private finishCurrentStickerTyping(): boolean {
+    const slot = this.currentSticker;
+    return slot ? this.renderer.finishStickerTyping(slot.id) : false;
+  }
 
   /** Native OnReset -> _RecycleStickers; timer stops before text is recycled. */
   async reset(): Promise<void> {
@@ -188,7 +195,7 @@ export class StickerPanel {
           const onHidden = this.playback.beginTyping(0);
           await this.renderer.clearSticker(id, hideFadeMs);
           onHidden();
-          return block ? this.onClick : "continue";
+          return block ? this.clickWait : "continue";
         }
 
         if (existing) {
@@ -204,7 +211,7 @@ export class StickerPanel {
             { ...existing, rawLength: existing.rawLength + text.length },
             true,
           );
-          return block ? this.onClick : "continue";
+          return block ? this.clickWait : "continue";
         }
 
         // Show branch (dict miss): _GenParam reads the full layout. An empty
@@ -251,7 +258,7 @@ export class StickerPanel {
           { id, rawLength: text.length, layout },
           false,
         );
-        return block ? this.onClick : "continue";
+        return block ? this.clickWait : "continue";
       }
 
       case "stickertween": {
@@ -359,7 +366,7 @@ export class StickerPanel {
         // Native registers the Event.Click advance only when `block && isend`
         // both hold (0x183e92416); the other three combinations return false
         // immediately and the tween keeps playing in the background.
-        return block && isend ? this.onClick : "continue";
+        return block && isend ? this.clickWait : "continue";
       }
 
       case "timersticker": {
@@ -404,7 +411,9 @@ export class StickerPanel {
         this.currentSticker = null;
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
-        return toBoolean(arg(args, "block"), false) ? this.onClick : "continue";
+        return toBoolean(arg(args, "block"), false)
+          ? this.clickWait
+          : "continue";
       }
 
       default:

@@ -9,11 +9,14 @@ type FinishCommand = (completion?: ClickCompletion) => void;
 
 /**
  * Web adaptation of an executor returning true and subscribing to ON_CLICK.
- * The runtime binds this handler while the command blocks. The handler calls
- * FinishCommand synchronously to request completion at the end of the frame.
- * A panel can supply work for the click itself or its OnFinish callback.
+ * The click handler calls FinishCommand to request completion at frame end.
+ * The runtime keeps the executor's ForceEnd callback until completion.
  */
-export type WaitForClick = (finishCommand: FinishCommand) => void;
+export interface WaitForClick {
+  handleClick: (finishCommand: FinishCommand) => void;
+  forceEnd?: () => void;
+}
+
 export type CommandResult = "continue" | WaitForClick;
 
 export type CommandExecutor<TResult> = (

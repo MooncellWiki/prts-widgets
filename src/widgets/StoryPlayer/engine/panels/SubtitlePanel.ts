@@ -59,11 +59,6 @@ export class SubtitlePanel {
     );
   }
 
-  /** Native ForceCommandEnd reveals the text, leaving visibility to OnReset. */
-  forceCommandEnd(): void {
-    this.typeWriter.tryFinish();
-  }
-
   /** Native OnReset (2791 @ 0x1841E4E50) immediately hides the panel. */
   reset(): Promise<void> | void {
     this.stopTypingSilently();
@@ -75,8 +70,12 @@ export class SubtitlePanel {
   }
 
   /** Native _OnClicked: one click finishes typing, the next finishes the command. */
-  private readonly onClick: WaitForClick = (finishCommand) => {
-    if (!this.typeWriter.tryFinish()) finishCommand();
+  private readonly clickWait: WaitForClick = {
+    handleClick: (finishCommand) => {
+      if (!this.typeWriter.tryFinish()) finishCommand();
+    },
+    // Native ForceCommandEnd (2791 @ 0x1841E4BA0) leaves visibility to OnReset.
+    forceEnd: () => this.typeWriter.tryFinish(),
   };
 
   private executeSubtitle(line: ParsedCommandLine): CommandResult {
@@ -113,6 +112,6 @@ export class SubtitlePanel {
         this.renderer.setSubtitle(message, initial ? layout : undefined),
       startIndex: 0,
     });
-    return this.onClick;
+    return this.clickWait;
   }
 }

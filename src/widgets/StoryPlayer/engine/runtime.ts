@@ -171,6 +171,7 @@ interface InterruptibleWait {
 interface PendingInput {
   dispatching: boolean;
   effects: ClickCompletion[];
+  handlers: readonly WaitForClick[];
   subscriptions: Set<() => void>;
 }
 
@@ -448,22 +449,13 @@ export class StoryRuntime {
       renderer,
       context,
       {
-        beginWait: () => {
-          // Web adaptation: suspend auto-play while a manual choice is open.
-          // _ExecuteDecision (2791 @ 0x1841C7400) keeps the mode, so the
-          // suspension skips ON_SPEED_SET and a non-blocking sticker keeps
-          // typing at its own interval.
-          const autoPlayRestore = this.autoPlayMode;
-          this.applyAutoPlayMode("default", { emitSpeedSet: false });
-          this.state = "waiting_decision";
-          return autoPlayRestore;
-        },
-        finishWait: (mode) => {
-          this.applyAutoPlayMode(mode, { emitSpeedSet: false });
-          this.state = "running";
-        },
         pickOption: (decision) => this.decisionPolicy?.(decision) ?? null,
         resetAutoPlayMode: () => this.applyScriptAutoPlayMode("default"),
+        setWaiting: (waiting) => {
+          // _ExecuteDecision (2791 @ 0x1841C7400) waits for an option while
+          // leaving the auto-click clock and its playback mode alone.
+          this.state = waiting ? "waiting_decision" : "running";
+        },
         warnInvalidParameter: (detail, line) =>
           this.warn(
             "invalid_parameter",
@@ -687,10 +679,7 @@ export class StoryRuntime {
   }
 
   /** 写入模式并放行等待自动模式的点击。人工干预由公开入口判断。 */
-  private applyAutoPlayMode(
-    mode: AutoPlayMode,
-    { emitSpeedSet = true }: { emitSpeedSet?: boolean } = {},
-  ): void {
+  private applyAutoPlayMode(mode: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
 
@@ -701,7 +690,7 @@ export class StoryRuntime {
     // set_autoPlayMode (2791 @ 0x184175100) emits the quick-play click
     // before broadcasting the cache. Even setting DEFAULT again on a
     // manual press runs _UpdateAutoPlayModeUI and emits ON_SPEED_SET.
-    if (emitSpeedSet) this.eventPool.emit(AVGEvent.SpeedSet);
+    this.eventPool.emit(AVGEvent.SpeedSet);
     this.resumeAutoClick();
   }
 
@@ -827,9 +816,10 @@ export class StoryRuntime {
     const pending: PendingInput = {
       dispatching: false,
       effects: [],
+      handlers,
       subscriptions: new Set(),
     };
-    for (const handleClick of handlers) {
+    for (const { handleClick } of handlers) {
       const unsubscribe = this.eventPool.on(AVGEvent.Click, () => {
         if (this.pendingInput !== pending) return;
         handleClick((completion) => {
@@ -860,7 +850,8 @@ export class StoryRuntime {
       this.destroyed ||
       this.state !== "waiting_input" ||
       !pending ||
-      pending.dispatching
+      pending.dispatching ||
+      pending.subscriptions.size === 0
     )
       return;
 
@@ -874,7 +865,7 @@ export class StoryRuntime {
     }
     if (this.pendingInput !== pending || pending.subscriptions.size > 0) return;
 
-    this.pendingInput = null;
+    // Keep the blockers available to SkipStory until their frame-end finish.
     const generation = this.playbackGeneration;
     let cancelFrameEnd: (() => void) | undefined;
     try {
@@ -897,12 +888,18 @@ export class StoryRuntime {
       for (const { onFinish } of pending.effects) onFinish?.();
     } catch (error) {
       if (!this.destroyed && generation === this.playbackGeneration)
-        this.waitForInput([(finishCommand) => finishCommand()]);
+        this.waitForInput(
+          pending.handlers.map(({ forceEnd }) => ({
+            forceEnd,
+            handleClick: (finishCommand) => finishCommand(),
+          })),
+        );
       throw error;
     } finally {
       cancelFrameEnd?.();
     }
     if (this.destroyed || generation !== this.playbackGeneration) return;
+    this.pendingInput = null;
     this.state = "running";
     await this.processLoop();
   }
@@ -945,9 +942,6 @@ export class StoryRuntime {
       // theater to button_auto.
       this.theaterMode = false;
       this.setAutoPlayMode("default");
-      // 挂起的 decision 结算后会把进面板前缓存的模式还回去（web 的等待期
-      // 降级），那样 auto 又会越过锚点继续：还原目标一并改成 default。
-      if (pendingDecision) pendingDecision.autoPlayRestore = "default";
       // Native tail zeroes the whole m_storyCache, so the skipnode queue and
       // curSkipMode go with it (2.7.81 SkipStory 0x183F8EB80): later skipnode
       // executors read EMPTY -- CAN_SKIP -- instead of a stale unconsumed
@@ -990,6 +984,7 @@ export class StoryRuntime {
       }
     }
 
+    const interruptedInput = this.pendingInput;
     this.cancelInputWait();
     this.invalidatePlaybackCallbacks();
     // SkipStory (2791 @ 0x18416E560) force-ends the blockers and resets
@@ -1000,8 +995,8 @@ export class StoryRuntime {
     let resumedProcess = activeProcessCompletion;
     try {
       if (shouldResume) {
-        this.dialogPanel.forceCommandEnd();
-        this.subtitlePanel.forceCommandEnd();
+        for (const handler of interruptedInput?.handlers ?? [])
+          handler.forceEnd?.();
         for (const reset of [
           // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
           () => this.renderer.clearInterludes(),
@@ -3357,19 +3352,21 @@ export class StoryRuntime {
               yScale: toOptionalNumber(this.exactArg(args, "yScale")),
             } satisfies SpellStickerInput));
         if (!block) return "continue";
-        return (finishCommand) =>
-          finishCommand(
-            action.toLowerCase() === "hide"
-              ? undefined
-              : { onClick: () => this.renderer.hideSpellSticker(id) },
-          );
+        return {
+          handleClick: (finishCommand) =>
+            finishCommand(
+              action.toLowerCase() === "hide"
+                ? undefined
+                : { onClick: () => this.renderer.hideSpellSticker(id) },
+            ),
+        };
       }
 
       case "spellstickerclear": {
         // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellStickerClear.
         await this.renderer.clearSpellStickers();
         return toBoolean(this.exactArg(args, "block"), false)
-          ? (finishCommand) => finishCommand()
+          ? { handleClick: (finishCommand) => finishCommand() }
           : "continue";
       }
 

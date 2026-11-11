@@ -252,6 +252,43 @@ describe("StoryRuntime", () => {
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
+  it.each([
+    { block: true, finishedIds: ["current"] },
+    { block: false, finishedIds: [] },
+  ])(
+    "only finishes a blocking sticker before skip recycling (block=$block)",
+    async ({ block, finishedIds }) => {
+      const renderer = new FakeRenderer();
+      const finishTyping = vi.spyOn(renderer, "finishStickerTyping");
+      const recycle = vi
+        .spyOn(renderer, "clearStickers")
+        .mockImplementationOnce(() => {
+          expect(finishTyping.mock.calls.map(([id]) => id)).toEqual(
+            finishedIds,
+          );
+        });
+      const runtime = new StoryRuntime(
+        createContext([
+          '[sticker(id="background",text="background",delay=0.04,block=false)]',
+          `[sticker(id="current",text="HELLO",delay=0.04,block=${block})]`,
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+
+      await runtime.start();
+      await runtime.skipNode();
+
+      expect(recycle).toHaveBeenCalledExactlyOnceWith(150);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+      runtime.destroy();
+    },
+  );
+
   it("resets auto play mode to default after a SkipToThis jump", async () => {
     vi.useFakeTimers();
     try {
@@ -359,6 +396,28 @@ describe("StoryRuntime", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("force-ends the dialog if skipping before its click completes at frame end", async () => {
+    const renderer = new FakeRenderer();
+    const cancel = vi.fn();
+    vi.spyOn(renderer, "onFrameEnd").mockReturnValueOnce(cancel);
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    const clicked = runtime.advance();
+    expect(renderer.finishDialogueCommandCalls).toBe(0);
+    await runtime.skipNode();
+    await clicked;
+
+    expect(cancel).toHaveBeenCalledExactlyOnceWith();
+    expect(renderer.finishDialogueCommandCalls).toBe(1);
+    expect(renderer.lastDialogue.speaker).toBe("B");
+    runtime.destroy();
   });
 
   it("keeps an open multiline run across a skip during typing", async () => {
@@ -576,12 +635,12 @@ describe("StoryRuntime", () => {
     const startPromise = runtime.start();
     await Promise.resolve();
     expect(runtime.getState()).toBe("waiting_decision");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
 
     await runtime.skipNode();
     await startPromise;
 
-    // Native SkipStory 尾部 set_autoPlayMode(DEFAULT)：decision 结算后不能
-    // 再把进面板前缓存的 button_auto 还回去，否则 auto 会越过锚点继续
+    // Native SkipStory resets to DEFAULT before resuming at the destination.
     expect(runtime.getState()).toBe("waiting_input");
     expect(runtime.getAutoPlayState().mode).toBe("default");
   });

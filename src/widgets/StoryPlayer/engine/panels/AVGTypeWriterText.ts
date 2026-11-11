@@ -30,7 +30,11 @@ export class AVGTypeWriterText {
     return this.session !== null;
   }
 
-  /** For an append, startIndex is the visible length of the previous text. */
+  get typingVisibleCount(): number | undefined {
+    return this.session?.visibleCount;
+  }
+
+  /** For an append, startIndex is the number of characters already revealed. */
   beginText(
     text: string | TypewriterText["chars"],
     {

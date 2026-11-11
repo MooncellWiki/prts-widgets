@@ -780,6 +780,51 @@ describe("StickerView lifecycle", () => {
     }
   });
 
+  it("appends from the visible prefix of a sticker that is still typing", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = createStickerRenderer();
+      const firstComplete = vi.fn();
+      const appendComplete = vi.fn();
+      const layout = {
+        alignment: "left" as const,
+        delayMs: 40,
+        fadeMs: 0,
+        id: "st1",
+        sizePx: 24,
+        widthPx: 200,
+        x: 0,
+        y: 0,
+      };
+      await renderer.setSticker({
+        ...layout,
+        append: false,
+        onTypingComplete: firstComplete,
+        text: "HELLO",
+      });
+      const { text } = renderer.stickerViews.get("st1");
+      await vi.advanceTimersByTimeAsync(55);
+      expect(text.text).toBe("H");
+
+      await renderer.setSticker({
+        ...layout,
+        append: true,
+        onTypingComplete: appendComplete,
+        text: "!",
+      });
+      await vi.advanceTimersByTimeAsync(39);
+      expect(text.text).toBe("H");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(text.text).toBe("HE");
+      await vi.advanceTimersByTimeAsync(160);
+      expect(text.text).toBe("HELLO!");
+      expect(firstComplete).not.toHaveBeenCalled();
+      expect(appendComplete).toHaveBeenCalledExactlyOnceWith();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the fade-in, tween and transform when appending (native AppendText)", async () => {
     const renderer = createStickerRenderer(40);
     const tweens: Array<{

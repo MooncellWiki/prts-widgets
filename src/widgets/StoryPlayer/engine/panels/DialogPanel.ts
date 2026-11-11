@@ -84,11 +84,14 @@ export class DialogPanel {
   }
 
   /** Native _OnClicked (2791 @ 0x1841CAD30) and OnFinish. */
-  private readonly onClick: WaitForClick = (finishCommand) => {
-    const finishedTyping = this.typeWriter.tryFinish();
-    if (this.multilineEnd) this.resetMultiline();
-    if (finishedTyping) return;
-    finishCommand({ onFinish: () => this.renderer.finishDialogueCommand() });
+  private readonly clickWait: WaitForClick = {
+    handleClick: (finishCommand) => {
+      const finishedTyping = this.typeWriter.tryFinish();
+      if (this.multilineEnd) this.resetMultiline();
+      if (finishedTyping) return;
+      finishCommand({ onFinish: () => this.renderer.finishDialogueCommand() });
+    },
+    forceEnd: () => this.forceCommandEnd(),
   };
 
   /**
@@ -97,7 +100,7 @@ export class DialogPanel {
    * before force-ending. ShouldResetOnSkip is false, so the multiline run
    * remains available to the next command after the jump.
    */
-  forceCommandEnd(): void {
+  private forceCommandEnd(): void {
     this.typeWriter.tryFinish();
     this.renderer.finishDialogueCommand();
   }
@@ -134,7 +137,7 @@ export class DialogPanel {
     this.resetMultiline();
     this.playback.setDisplayedLine(lineNumber);
     this.beginText(speaker, text, executor);
-    return this.onClick;
+    return this.clickWait;
   }
 
   private executeMultiline(line: ParsedCommandLine): CommandResult {
@@ -163,7 +166,7 @@ export class DialogPanel {
         startIndex: this.multilineShownChars,
       },
     );
-    return this.onClick;
+    return this.clickWait;
   }
 
   private executeEndtip(line: ParsedCommandLine): CommandResult {
@@ -173,7 +176,7 @@ export class DialogPanel {
     if (!this.playback.prepareEndtip()) return "continue";
     this.resetMultiline();
     this.beginText("", line.content, "endtip");
-    return this.onClick;
+    return this.clickWait;
   }
 
   private beginText(

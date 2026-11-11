@@ -147,6 +147,11 @@ export class StickerView {
     const prevChars = input.append ? (this.richChars ?? []) : [];
     const newChars = parseRichChars(input.text);
     const allChars = [...prevChars, ...newChars];
+    // AVGTypeWriterText.AppendText (2791 @ 0x18424F1C0) keeps the reveal
+    // position and resets the time accumulated toward the next character.
+    const startIndex = input.append
+      ? (this.typeWriter.typingVisibleCount ?? prevChars.length)
+      : 0;
     this.richChars = allChars;
 
     const style = this.host.createOverlayTextStyle(input.sizePx, input.widthPx);
@@ -160,7 +165,7 @@ export class StickerView {
         text.text = richCharsToTaggedText(chars.slice(0, visibleCount));
         this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
       },
-      startIndex: prevChars.length,
+      startIndex,
     });
   }
 
