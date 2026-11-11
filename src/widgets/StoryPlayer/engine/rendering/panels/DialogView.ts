@@ -10,17 +10,29 @@ import {
 
 import { DIALOG_FRAME_URL } from "../../../assets";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../../font";
-import { STORY_HEIGHT, STORY_WIDTH, type DialogueLayout } from "../../types";
+import {
+  buildTagStyles,
+  colorTagName,
+  HIDDEN_TEXT_COLOR,
+  richCharsToTaggedText,
+} from "../../richtext";
+import {
+  STORY_HEIGHT,
+  STORY_WIDTH,
+  type DialogueLayout,
+  type DialogueText,
+} from "../../types";
 
-import type { RichTagStyles } from "../../richtext";
+interface DialogueLine {
+  chars: DialogueText["chars"];
+  startIndex: number;
+}
 
 /**
- * Web/PIXI reconstruction of the visual surface used by
- * `Torappu.AVG.DialogPanel._ExecuteDialog`. Command sequencing, typewriter,
- * and click semantics remain in the runtime; this class adapts scene-authored
- * Unity UI layout and text measurement to PIXI.
+ * Web adapter for the visual responsibilities of `Torappu.AVG.DialogPanel`.
+ * Adapts Unity's CanvasGroup, layout and text measurement to PIXI.
  */
-export class DialogPanel {
+export class DialogView {
   private dialogue: Text | null = null;
   private speaker: Text | null = null;
   /** Stands in for the CanvasGroup on `panel_dialog`; hiding fades its alpha. */
@@ -30,6 +42,9 @@ export class DialogPanel {
   private fadeSessionId = 0;
   /** Native `m_isMessageWidthExpanded`. */
   private messageWidthExpanded = false;
+  private messageChars: DialogueText["chars"] | null = null;
+  private fullText = "";
+  private wrappedLines: DialogueLine[] | null = null;
 
   private static readonly BOTTOM_HEIGHT = 182;
   private static readonly NAME_LEFT = 20.7501;
@@ -71,8 +86,8 @@ export class DialogPanel {
       top.alpha = 0.7059;
       bottom = new Sprite(texture);
       bottom.width = STORY_WIDTH;
-      bottom.height = DialogPanel.BOTTOM_HEIGHT;
-      bottom.position.set(0, STORY_HEIGHT - DialogPanel.BOTTOM_HEIGHT);
+      bottom.height = DialogView.BOTTOM_HEIGHT;
+      bottom.position.set(0, STORY_HEIGHT - DialogView.BOTTOM_HEIGHT);
     } catch {
       this.warn?.("failed ui: sprite_avg_cutscene");
     }
@@ -82,15 +97,15 @@ export class DialogPanel {
         align: "right",
         fill: "#929292",
         fontFamily: [DIALOG_FONT_FAMILY, "sans-serif"],
-        fontSize: DialogPanel.NAME_FONT_MAX,
+        fontSize: DialogView.NAME_FONT_MAX,
         fontWeight: DIALOG_FONT_WEIGHT,
       }),
       text: "",
     });
     speaker.anchor.set(1, 0);
     speaker.position.set(
-      DialogPanel.NAME_LEFT + DialogPanel.NAME_WIDTH,
-      STORY_HEIGHT - DialogPanel.BOTTOM_HEIGHT + DialogPanel.NAME_TOP,
+      DialogView.NAME_LEFT + DialogView.NAME_WIDTH,
+      STORY_HEIGHT - DialogView.BOTTOM_HEIGHT + DialogView.NAME_TOP,
     );
     const dialogue = new Text({
       style: new TextStyle({
@@ -103,13 +118,13 @@ export class DialogPanel {
         lineHeight: 0,
         whiteSpace: "pre",
         wordWrap: true,
-        wordWrapWidth: DialogPanel.MESSAGE_WIDTH,
+        wordWrapWidth: DialogView.MESSAGE_WIDTH,
       }),
       text: "",
     });
     dialogue.position.set(
-      STORY_WIDTH * DialogPanel.MESSAGE_ANCHOR_X + DialogPanel.MESSAGE_LEFT,
-      STORY_HEIGHT - DialogPanel.MESSAGE_TOP,
+      STORY_WIDTH * DialogView.MESSAGE_ANCHOR_X + DialogView.MESSAGE_LEFT,
+      STORY_HEIGHT - DialogView.MESSAGE_TOP,
     );
 
     const root = new Container();
@@ -127,20 +142,65 @@ export class DialogPanel {
 
   setDialogue(
     speaker: string,
-    text: string,
-    tagStyles?: RichTagStyles,
+    { chars, visibleCount }: DialogueText,
     layout?: DialogueLayout,
   ): void {
-    if (this.speaker) {
-      this.speaker.text = speaker;
-      this.applyNameBestFit(speaker);
+    const dialogue = this.dialogue;
+    if (!dialogue) return;
+    const revealing = visibleCount < chars.length;
+    if (this.messageChars !== chars || layout) {
+      this.messageChars = chars;
+      if (this.speaker) {
+        this.speaker.text = speaker;
+        this.applyNameBestFit(speaker);
+      }
+      dialogue.style.tagStyles = {
+        ...buildTagStyles(chars),
+        [colorTagName(HIDDEN_TEXT_COLOR)]: { fill: HIDDEN_TEXT_COLOR },
+      };
+      this.fullText = richCharsToTaggedText(chars);
+      this.applyLayout(layout);
+      this.wrappedLines = revealing ? this.wrapMessage(chars) : null;
     }
-    if (this.dialogue) {
-      if (tagStyles) this.dialogue.style.tagStyles = tagStyles;
-      this.dialogue.text = text;
-    }
-    this.applyLayout(layout);
+    // 2791 AVGTypeWriterText._BeginRevealOrDefer lays out the entire
+    // message before the first quad. Freeze Pixi's full-text line breaks
+    // while the transparent suffix changes the paint runs.
+    dialogue.style.wordWrap = !revealing || this.wrappedLines === null;
+    dialogue.text = revealing
+      ? (this.wrappedLines
+          ?.map(({ chars: line, startIndex }) =>
+            richCharsToTaggedText(line, visibleCount - startIndex),
+          )
+          .join("\n") ?? richCharsToTaggedText(chars, visibleCount))
+      : this.fullText;
     this.setHidden(false);
+  }
+
+  private wrapMessage(chars: DialogueText["chars"]): DialogueLine[] | null {
+    const dialogue = this.dialogue;
+    if (!dialogue) return null;
+    const { lines } = CanvasTextMetrics.measureText(
+      this.fullText,
+      dialogue.style,
+      undefined,
+      true,
+    );
+    // WhiteSpace is "pre". Pixi may trim wrap spaces and CR/LF, so map
+    // each displayed line back to its position in the original text.
+    const plain = chars.map(({ char }) => char).join("");
+    const wrapped: DialogueLine[] = [];
+    let offset = 0;
+    let charIndex = 0;
+    for (const line of lines) {
+      const start = plain.indexOf(line, offset);
+      if (start < 0) return null;
+      const startIndex =
+        charIndex + Array.from(plain.slice(offset, start)).length;
+      charIndex = startIndex + Array.from(line).length;
+      offset = start + line.length;
+      wrapped.push({ chars: chars.slice(startIndex, charIndex), startIndex });
+    }
+    return wrapped;
   }
 
   /**
@@ -159,7 +219,7 @@ export class DialogPanel {
    */
   restoreMessageWidth(): void {
     if (!this.dialogue || !this.messageWidthExpanded) return;
-    this.dialogue.style.wordWrapWidth = DialogPanel.MESSAGE_WIDTH;
+    this.dialogue.style.wordWrapWidth = DialogView.MESSAGE_WIDTH;
     this.messageWidthExpanded = false;
   }
 
@@ -190,7 +250,7 @@ export class DialogPanel {
       return;
     }
     void this.tween(
-      DialogPanel.HIDE_FADE_MS,
+      DialogView.HIDE_FADE_MS,
       (progress) => {
         if (session === this.fadeSessionId)
           root.alpha = from + (to - from) * progress;
@@ -203,21 +263,26 @@ export class DialogPanel {
 
   private measureMessage(text: string): number {
     if (!this.dialogue || !text) return 0;
-    return CanvasTextMetrics.measureText(text, this.dialogue.style).height;
+    return CanvasTextMetrics.measureText(
+      text,
+      this.dialogue.style,
+      undefined,
+      true,
+    ).height;
   }
 
   private applyNameBestFit(name: string): void {
     if (!this.speaker) return;
     for (
-      let size = DialogPanel.NAME_FONT_MAX;
-      size >= DialogPanel.NAME_FONT_MIN;
+      let size = DialogView.NAME_FONT_MAX;
+      size >= DialogView.NAME_FONT_MIN;
       size -= 1
     ) {
       this.speaker.style.fontSize = size;
       if (
         !name ||
         CanvasTextMetrics.measureText(name, this.speaker.style).width <=
-          DialogPanel.NAME_WIDTH
+          DialogView.NAME_WIDTH
       )
         return;
     }
@@ -232,10 +297,10 @@ export class DialogPanel {
   private applyLayout(layout?: DialogueLayout): void {
     if (this.dialogue && layout) {
       this.dialogue.x =
-        STORY_WIDTH * DialogPanel.MESSAGE_ANCHOR_X +
+        STORY_WIDTH * DialogView.MESSAGE_ANCHOR_X +
         (layout.executor === "aside"
-          ? DialogPanel.MESSAGE_ASIDE_LEFT
-          : DialogPanel.MESSAGE_LEFT);
+          ? DialogView.MESSAGE_ASIDE_LEFT
+          : DialogView.MESSAGE_LEFT);
       let height = this.measureMessage(layout.text);
       // Native port: `_TryExpandMessageWidthOnOverflow`. Once the content
       // reaches the max height (warnDelta = height - 89 >= 0), widen the
@@ -244,18 +309,18 @@ export class DialogPanel {
       // command; `restoreMessageWidth` undoes it. `_ExecuteEndtip` skips it.
       if (
         layout.executor !== "endtip" &&
-        height - DialogPanel.MESSAGE_MAX_HEIGHT >= 0 &&
+        height - DialogView.MESSAGE_MAX_HEIGHT >= 0 &&
         !this.messageWidthExpanded
       ) {
         this.dialogue.style.wordWrapWidth =
-          DialogPanel.MESSAGE_WIDTH + this.dialogue.style.fontSize;
+          DialogView.MESSAGE_WIDTH + this.dialogue.style.fontSize;
         this.messageWidthExpanded = true;
         height = this.measureMessage(layout.text);
       }
       this.dialogue.y =
         STORY_HEIGHT -
-        DialogPanel.MESSAGE_TOP -
-        Math.max(0, height - DialogPanel.MESSAGE_MAX_HEIGHT);
+        DialogView.MESSAGE_TOP -
+        Math.max(0, height - DialogView.MESSAGE_MAX_HEIGHT);
       // The frame does not follow the message: native `_textContainer`
       // (sprite_frame_bottom) is resized only by `_ApplyTextContainerHeight`
       // from the dialog preset / font-size settings, so it stays 182px here.
@@ -267,9 +332,9 @@ export class DialogPanel {
         : 0;
       this.speaker.y =
         STORY_HEIGHT -
-        DialogPanel.BOTTOM_HEIGHT +
-        DialogPanel.NAME_TOP -
-        Math.max(0, height - DialogPanel.NAME_MAX_HEIGHT);
+        DialogView.BOTTOM_HEIGHT +
+        DialogView.NAME_TOP -
+        Math.max(0, height - DialogView.NAME_MAX_HEIGHT);
     }
   }
 }

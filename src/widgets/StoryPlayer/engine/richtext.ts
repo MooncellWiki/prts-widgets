@@ -104,6 +104,7 @@ export function colorTagName(color: string): string {
 
 const BOLD_TAG = "_b";
 const ITALIC_TAG = "_i";
+export const HIDDEN_TEXT_COLOR = "#00000000";
 
 function runTags({ bold, color, italic }: RichChar): string[] {
   const tags: string[] = [];
@@ -116,16 +117,21 @@ function runTags({ bold, color, italic }: RichChar): string[] {
 /**
  * Serializes chars as PIXI tagged text: each run of identical style is wrapped
  * in nested `_b` / `_i` / color tags (PIXI merges nested tag styles), so the
- * output of any prefix is balanced, like the closers native appends while
- * typing.
+ * output of any prefix is balanced. A reveal can keep the suffix in the
+ * layout with a transparent fill while preserving its font styles.
  */
-export function richCharsToTaggedText(chars: RichChar[]): string {
+export function richCharsToTaggedText(
+  chars: readonly RichChar[],
+  visibleCount = chars.length,
+): string {
   const parts: string[] = [];
   let runKey: string | null = null;
   let runClosers = "";
 
-  for (const char of chars) {
-    const tags = runTags(char);
+  for (const [index, char] of chars.entries()) {
+    const tags = runTags(
+      index < visibleCount ? char : { ...char, color: HIDDEN_TEXT_COLOR },
+    );
     const key = tags.join(" ");
     if (key !== runKey) {
       parts.push(runClosers);
@@ -144,7 +150,7 @@ export function richCharsToTaggedText(chars: RichChar[]): string {
 }
 
 /** The `tagStyles` needed by `richCharsToTaggedText(chars)`; empty if none. */
-export function buildTagStyles(chars: RichChar[]): RichTagStyles {
+export function buildTagStyles(chars: readonly RichChar[]): RichTagStyles {
   const styles: RichTagStyles = {};
   for (const { bold, color, italic } of chars) {
     if (bold) styles[BOLD_TAG] = { fontWeight: "bold" };

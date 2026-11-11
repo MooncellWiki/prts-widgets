@@ -34,7 +34,6 @@ import {
   parseRichChars,
   richCharsToTaggedText,
   type RichChar,
-  type RichTagStyles,
 } from "../richtext";
 import { computeShowItemLayout, SHOWITEM_FRAME_BORDER } from "../showitem";
 import {
@@ -53,6 +52,7 @@ import {
   type CurtainInput,
   type DecisionSelection,
   type DialogueLayout,
+  type DialogueText,
   type FocusOutInput,
   type FocusParamInput,
   type GridBackgroundInput,
@@ -96,7 +96,7 @@ import {
   type CutinCharacterArt,
 } from "./panels/CharacterCutinPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
-import { DialogPanel } from "./panels/DialogPanel";
+import { DialogView } from "./panels/DialogView";
 import { FocusEffectPanel } from "./panels/FocusEffectPanel";
 import { InterludePanel } from "./panels/InterludePanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
@@ -585,7 +585,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private showItemFrameTexture: Texture | null = null;
   private showItemFrameTextureFailed = false;
   /**
-   * Dialog gradient texture, shared with DialogPanel and reused by the cutin
+   * Dialog gradient texture, shared with DialogView and reused by the cutin
    * slot's `header` strip (`sprite_avg_cutscene` tinted black at 0.706).
    */
   private dialogFrameTexture: Texture | null = null;
@@ -596,7 +596,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly worldLayer = this.layers.world;
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
   private readonly videoPanel: VideoPanel;
-  private readonly dialogPanel: DialogPanel;
+  private readonly dialogView: DialogView;
   private readonly decisionPanel: DecisionPanel;
   private readonly interludePanel: InterludePanel;
   private readonly animTextPanel: AnimTextPanel;
@@ -669,6 +669,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     alignment: SubtitleInput["alignment"];
     baseX: number;
     fullText: string;
+    onTypingComplete?: () => void;
     widthPx: number;
   } | null = null;
   private subtitleTypingSessionId = 0;
@@ -702,7 +703,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageLayer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.imageLayer.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
-    this.dialogPanel = new DialogPanel(
+    this.dialogView = new DialogView(
       this.uiLayer,
       onWarning,
       (durationMs, update, complete) =>
@@ -891,7 +892,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.releaseClickGuard = null;
     this.app?.destroy(true, { children: true });
     this.app = null;
-    this.dialogPanel.destroy();
+    this.dialogView.destroy();
     this.subtitleText = null;
     this.timerStickerText = null;
     this.clearTimerInterval();
@@ -929,45 +930,44 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.videoPanel.stop();
   }
 
-  finishTextTyping(): boolean {
-    if (this.subtitleText && this.subtitleTypingTarget) {
-      this.subtitleTypingSessionId += 1;
-      this.subtitleText.text = this.subtitleTypingTarget.fullText;
-      this.layoutSubtitle(
-        this.subtitleText,
-        this.subtitleTypingTarget.baseX,
-        this.subtitleTypingTarget.widthPx,
-        this.subtitleTypingTarget.alignment,
+  finishTextTyping(panel: "sticker" | "subtitle"): boolean {
+    if (panel === "sticker") {
+      // Only m_currentSticker is finished; other stickers keep typing.
+      return (
+        this.currentStickerId !== null &&
+        (this.stickerViews.get(this.currentStickerId)?.finishTyping() ?? false)
       );
-      this.subtitleTypingTarget = null;
-      return true;
     }
 
-    // Only m_currentSticker is finished; other stickers keep typing.
-    if (
-      this.currentStickerId !== null &&
-      this.stickerViews.get(this.currentStickerId)?.finishTyping()
-    )
-      return true;
-
-    return false;
+    const target = this.subtitleTypingTarget;
+    if (!this.subtitleText || !target) return false;
+    this.subtitleTypingSessionId += 1;
+    this.subtitleText.text = target.fullText;
+    this.layoutSubtitle(
+      this.subtitleText,
+      target.baseX,
+      target.widthPx,
+      target.alignment,
+    );
+    this.subtitleTypingTarget = null;
+    target.onTypingComplete?.();
+    return true;
   }
 
   setDialogue(
     speaker: string,
-    text: string,
-    tagStyles?: RichTagStyles,
+    text: DialogueText,
     layout?: DialogueLayout,
   ): void {
-    this.dialogPanel.setDialogue(speaker, text, tagStyles, layout);
+    this.dialogView.setDialogue(speaker, text, layout);
   }
 
   hideDialogue(): void {
-    this.dialogPanel.hide();
+    this.dialogView.hide();
   }
 
   finishDialogueCommand(): void {
-    this.dialogPanel.restoreMessageWidth();
+    this.dialogView.restoreMessageWidth();
   }
 
   async showDecision(
@@ -3375,6 +3375,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       alignment: input.alignment,
       baseX: input.x,
       fullText,
+      onTypingComplete: input.onTypingComplete,
       widthPx: input.widthPx,
     };
     void this.runSubtitleTyping(sessionId, subtitle, {
@@ -3502,7 +3503,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private async createUi(): Promise<void> {
-    await this.dialogPanel.mount();
+    await this.dialogView.mount();
     this.subtitleText = new Text({
       style: this.createOverlayTextStyle(18, 675),
       text: "",

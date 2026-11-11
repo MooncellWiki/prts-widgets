@@ -608,13 +608,13 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("ignores a sticker typing end once a later message owns the wait", async () => {
+  it("reschedules an auto click when an earlier live sticker finishes", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new FakeRenderer();
       const runtime = new StoryRuntime(
         createContext([
-          '[sticker(id="a",text="hello",block=false)]',
+          '[sticker(id="a",text="0123456789",block=false)]',
           '[name="B"]after',
           '[name="C"]next',
         ]),
@@ -625,16 +625,71 @@ describe("StoryRuntime", () => {
       runtime.setAutoPlayMode("button_auto");
       await runtime.start();
 
-      // The dialogue finishes typing at 240ms and arms its own 1.65s click.
+      // The dialogue finishes typing at 200ms and arms a 1.65s click.
       await vi.advanceTimersByTimeAsync(1000);
       expect(renderer.lastDialogue.speaker).toBe("B");
-      // A stale sticker callback must not re-arm (and so delay) that click.
+      // The live sticker replaces it with 1.5s + 10 * 30ms from now.
       renderer.finishStickerTypingNaturally();
-      await vi.advanceTimersByTimeAsync(900);
+      await vi.advanceTimersByTimeAsync(1799);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+      await vi.advanceTimersByTimeAsync(1);
       expect(renderer.lastDialogue.speaker).toBe("C");
+      runtime.destroy();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("ignores a replaced sticker callback and leaves a non-blocking sticker typing on the dialog click", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[sticker(id="a",text="one",multi=true,block=false)]',
+          '[sticker(id="a",text="two",multi=true,block=false)]',
+          '[name="B"]after',
+          '[name="C"]next',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+
+      await vi.advanceTimersByTimeAsync(1000);
+      renderer.stickerCalls[0]!.onTypingComplete?.();
+      await vi.advanceTimersByTimeAsync(850);
+      expect(renderer.lastDialogue.speaker).toBe("C");
+      expect(renderer.typingActive).toBe(true);
+      runtime.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a blocking stickertween finish its panel's current sticker on click", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="hello",block=false)]',
+        '[stickertween(id="a",pto="300,500",block=true,isend=true)]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    await runtime.start();
+    expect(renderer.typingActive).toBe(true);
+
+    await runtime.advance();
+    expect(runtime.getDisplayedLineIndex()).toBeNull();
+    expect(renderer.typingActive).toBe(false);
+
+    await runtime.advance();
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+    runtime.destroy();
   });
 
   it("maps stickertween parameters and blocks only when block and isend both hold", async () => {

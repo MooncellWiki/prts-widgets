@@ -361,24 +361,37 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("keeps an open multiline run across a skip", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        '[multiline(name="A")]ab',
-        "[SkipToThis]",
-        '[multiline(name="A")]cd',
-      ]),
-      renderer,
-      new FakeAudio(),
-    );
+  it("keeps an open multiline run across a skip during typing", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          '[multiline(name="A",delay=0.08)]ab',
+          "[SkipToThis]",
+          '[multiline(name="B",delay=0.04)]cd',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
 
-    await runtime.start();
-    await runtime.skipNode();
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(renderer.lastDialogue.text).toBe("");
 
-    // DialogPanel.ShouldResetOnSkip() is false, so the skip leaves its
-    // multiline run and the typewriter's m_message intact: AppendText joins.
-    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
+      // ForceCommandEnd reveals "ab" and the new command appends to it.
+      await runtime.skipNode();
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "ab" });
+
+      // The earlier typewriter tick wakes between the two new reveals. Only
+      // the landing command can update the view once the skip has completed.
+      await vi.advanceTimersByTimeAsync(100);
+      expect(renderer.dialogueTexts).toEqual(["", "ab", "ab", "abc", "abcd"]);
+      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "abcd" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("closes an end=true multiline run on the click that finishes its typing", async () => {

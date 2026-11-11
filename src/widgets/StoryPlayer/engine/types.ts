@@ -1,4 +1,4 @@
-import type { RichTagStyles } from "./richtext";
+import type { RichChar } from "./richtext";
 
 export const STORY_WIDTH = 1280;
 export const STORY_HEIGHT = 720;
@@ -523,6 +523,12 @@ export interface DialogueLayout {
   text: string;
 }
 
+export interface DialogueText {
+  /** The complete message, including the characters yet to be revealed. */
+  chars: readonly RichChar[];
+  visibleCount: number;
+}
+
 export interface SubtitleInput {
   alignment: "center" | "left" | "right";
   delayMs: number;
@@ -788,7 +794,8 @@ export interface StoryRenderer {
   clearCharacterCutin: (widgetId?: string) => Promise<void>;
   clearInterludes: () => Promise<void>;
   destroy: () => void;
-  finishTextTyping: () => boolean;
+  /** Reveal remaining text on the panel whose command is waiting for input. */
+  finishTextTyping: (panel: "sticker" | "subtitle") => boolean;
   mount: (host: HTMLElement) => Promise<void>;
   playVideo: (url: string) => Promise<void>;
   setAnimText: (input: AnimTextInput) => Promise<void>;
@@ -808,13 +815,12 @@ export interface StoryRenderer {
    */
   setDialogue: (
     speaker: string,
-    text: string,
-    tagStyles?: RichTagStyles,
+    text: DialogueText,
     layout?: DialogueLayout,
   ) => void;
   /**
    * `DialogPanel.set_isHidden(true)` from the empty-content branches. Kept
-   * apart from `setDialogue` because a typewriter starting at an empty slice
+   * apart from `setDialogue` because a typewriter starting at zero visible characters
    * (narration, a fresh multiline) is a shown-but-empty box, not a hidden one.
    */
   hideDialogue: () => void;
