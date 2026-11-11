@@ -288,12 +288,6 @@ function easeOutQuad(progress: number): number {
 }
 
 /**
- * Native `Torappu.AVG.AVGTypeWriterText.BeginText` hides the unrevealed tail
- * behind a fully transparent `<color=#00000000>` span so the whole message is
- * laid out (and wrapped) from t0 -- revealing characters never re-wraps the
- * lines already on screen.
- */
-/**
  * Canvas 渲染分辨率：逻辑坐标系固定 1280x720，实际像素数按宿主 CSS 尺寸
  * × devicePixelRatio 反推，避免画布被 CSS 拉伸发糊。取宽高比例的较大值，
  * 宿主短暂偏离 16:9 时也不会欠采样。
@@ -623,12 +617,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private inverseAmount = 0;
   private grayscaleFilter: ColorMatrixFilter | null = null;
   private readonly stickerViews = new Map<string, StickerView>();
-  /**
-   * Native port: `StickerPanel.m_currentSticker`. `_ExecuteSticker` points it
-   * at whichever view the latest sticker command touched -- the shown, the
-   * appended *and* the hidden one -- and `_RecycleStickers` nulls it. Both
-   * `ForceCommandEnd` and `_OnClicked` only `TryFinishType` this one view.
-   */
   private timerFadeSessionId = 0;
   /**
    * Mirrors `AVGTimerView.m_countTimerTask != null`. It gates the inline
