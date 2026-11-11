@@ -288,6 +288,33 @@ describe("StoryRuntime", () => {
     expect(renderer.dialogueTexts).toEqual([]);
   });
 
+  it("keeps a typing sticker's interval while a decision suspends auto play", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="typing",delay=0.2,block=false)]',
+        '[decision(options="A;B",values="1;2")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+
+    const started = runtime.start();
+    await vi.waitFor(() => expect(runtime.getState()).toBe("waiting_decision"));
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    renderer.pickDecision({ optionIndex: 0, value: 1 });
+    await started;
+
+    // _ExecuteDecision (2791 @ 0x1841C7400) leaves the auto mode alone, so
+    // the web-only suspension must not emit ON_SPEED_SET to the sticker.
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    expect(renderer.stickerDelayChanges).toEqual([]);
+    runtime.destroy();
+  });
+
   it("ignores a queued decision selection after destroy", async () => {
     const renderer = new FakeRenderer();
     renderer.holdDecisions = true;

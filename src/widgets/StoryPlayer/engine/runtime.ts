@@ -450,13 +450,16 @@ export class StoryRuntime {
       {
         beginWait: () => {
           // Web adaptation: suspend auto-play while a manual choice is open.
+          // _ExecuteDecision (2791 @ 0x1841C7400) keeps the mode, so the
+          // suspension skips ON_SPEED_SET and a non-blocking sticker keeps
+          // typing at its own interval.
           const autoPlayRestore = this.autoPlayMode;
-          this.applyAutoPlayMode("default");
+          this.applyAutoPlayMode("default", { emitSpeedSet: false });
           this.state = "waiting_decision";
           return autoPlayRestore;
         },
         finishWait: (mode) => {
-          this.applyAutoPlayMode(mode);
+          this.applyAutoPlayMode(mode, { emitSpeedSet: false });
           this.state = "running";
         },
         pickOption: (decision) => this.decisionPolicy?.(decision) ?? null,
@@ -684,7 +687,10 @@ export class StoryRuntime {
   }
 
   /** 写入模式并放行等待自动模式的点击。人工干预由公开入口判断。 */
-  private applyAutoPlayMode(mode: AutoPlayMode): void {
+  private applyAutoPlayMode(
+    mode: AutoPlayMode,
+    { emitSpeedSet = true }: { emitSpeedSet?: boolean } = {},
+  ): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
 
@@ -695,7 +701,7 @@ export class StoryRuntime {
     // set_autoPlayMode (2791 @ 0x184175100) emits the quick-play click
     // before broadcasting the cache. Even setting DEFAULT again on a
     // manual press runs _UpdateAutoPlayModeUI and emits ON_SPEED_SET.
-    this.eventPool.emit(AVGEvent.SpeedSet);
+    if (emitSpeedSet) this.eventPool.emit(AVGEvent.SpeedSet);
     this.resumeAutoClick();
   }
 
