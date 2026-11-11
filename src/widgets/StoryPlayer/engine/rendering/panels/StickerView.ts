@@ -149,6 +149,9 @@ export class StickerView {
     const allChars = [...prevChars, ...newChars];
     // AVGTypeWriterText.AppendText (2791 @ 0x18424F1C0) keeps the reveal
     // position and resets the time accumulated toward the next character.
+    // Native first runs _ClearMessage on a view shown through BeginText
+    // (m_isMultiline false), dropping its text. Web keeps that text because
+    // no corpus story appends to a sticker shown without multi.
     const startIndex = input.append
       ? (this.typeWriter.typingVisibleCount ?? prevChars.length)
       : 0;

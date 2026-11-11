@@ -9,10 +9,10 @@
  * the canvas. PIXI already fires `pointertap` on `pointerup`, the decision
  * settles in the microtasks right after it, and only then does the browser
  * dispatch `click`, which would bubble up and be taken for an advance press
- * as well (resetting the auto play mode the decision just restored). The
- * press owner is therefore decided on `pointerdown`, mirroring UGUI's
- * raycast: a click whose press landed on an interactive canvas object stops
- * at `target` instead of bubbling to the host.
+ * as well. That press would reset the auto play mode to DEFAULT, which
+ * picking an option leaves alone. The press owner is therefore decided on
+ * `pointerdown`, mirroring UGUI's raycast: a click whose press landed on an
+ * interactive canvas object stops at `target` instead of bubbling to the host.
  */
 export function guardClaimedClicks(
   target: HTMLElement,

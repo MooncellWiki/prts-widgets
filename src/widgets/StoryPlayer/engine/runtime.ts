@@ -3352,13 +3352,16 @@ export class StoryRuntime {
               yScale: toOptionalNumber(this.exactArg(args, "yScale")),
             } satisfies SpellStickerInput));
         if (!block) return "continue";
+        // A blocking show stores m_blockingStickerId; a blocking hide clears
+        // it. _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) both hide
+        // that id, and the click hides it before the frame-end finish.
+        if (action.toLowerCase() === "hide")
+          return { handleClick: (finishCommand) => finishCommand() };
+        const hideBlocking = () => this.renderer.hideSpellSticker(id);
         return {
           handleClick: (finishCommand) =>
-            finishCommand(
-              action.toLowerCase() === "hide"
-                ? undefined
-                : { onClick: () => this.renderer.hideSpellSticker(id) },
-            ),
+            finishCommand({ onClick: hideBlocking }),
+          forceEnd: hideBlocking,
         };
       }
 

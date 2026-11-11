@@ -117,23 +117,36 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("clears spellstickers when skipping the story", async () => {
-    const renderer = new FakeRenderer();
-    // nofirstskip on a first read makes get_isSkippable() false, which is the
-    // only fork where SkipStory reaches _ResetComponentsOnSkip.
-    const runtime = new StoryRuntime(
-      createContext([
-        '[spellsticker(id="s",block=true)]<p=1>x</>',
-        '[skipnode(mode="nofirstskip")]',
-      ]),
-      renderer,
-      new FakeAudio(),
-    );
-    await runtime.start();
-    await runtime.skipNode();
-    expect(renderer.spellStickerClearCount).toBe(1);
-    expect(renderer.spellStickerHideCalls).toEqual([]);
-  });
+  it.each([
+    // ForceCommandEnd hides m_blockingStickerId before OnReset clears all.
+    { action: "show", hiddenBeforeClear: ["s"] },
+    // A blocking hide leaves no blocking id, so only the executor hides.
+    { action: "hide", hiddenBeforeClear: ["s"] },
+  ])(
+    "force-ends a blocking spellsticker $action before the skip reset clears it",
+    async ({ action, hiddenBeforeClear }) => {
+      const renderer = new FakeRenderer();
+      const clear = vi
+        .spyOn(renderer, "clearSpellStickers")
+        .mockImplementationOnce(() => {
+          expect(renderer.spellStickerHideCalls).toEqual(hiddenBeforeClear);
+        });
+      // nofirstskip on a first read makes get_isSkippable() false, which is
+      // the only fork where SkipStory reaches _ResetComponentsOnSkip.
+      const runtime = new StoryRuntime(
+        createContext([
+          `[spellsticker(id="s",action="${action}",block=true)]<p=1>x</>`,
+          '[skipnode(mode="nofirstskip")]',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      await runtime.start();
+      await runtime.skipNode();
+      expect(clear).toHaveBeenCalledExactlyOnceWith();
+      expect(renderer.spellStickerHideCalls).toEqual(hiddenBeforeClear);
+    },
+  );
 
   it("maps animtext prefab parameters and content without honoring ghost parameters", async () => {
     const renderer = new FakeRenderer();
