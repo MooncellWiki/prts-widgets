@@ -657,6 +657,39 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
+  it("drops the click follow-up of a skipped blocking spellsticker", async () => {
+    let finishSticker!: () => void;
+    const sticker = new Promise<void>((resolve) => {
+      finishSticker = resolve;
+    });
+    const renderer = new FakeRenderer();
+    vi.spyOn(renderer, "setSpellSticker").mockReturnValueOnce(sticker as never);
+    const runtime = new StoryRuntime(
+      createContext([
+        '[spellsticker(id="s",block=true)]<p=1>old</>',
+        "[SkipToThis]",
+        '[spellsticker(id="s",block=false)]<p=1>new</>',
+        '[name="A"]after',
+        '[name="A"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    const skipped = runtime.skipNode();
+    finishSticker();
+    await Promise.all([started, skipped]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+
+    await runtime.advance();
+    await runtime.advance();
+
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "next" });
+    // The destination sticker shares the id; the stale hide must not land.
+    expect(renderer.spellStickerHideCalls).toEqual([]);
+  });
+
   it("releases a pending decision if skip cleanup rejects", async () => {
     const renderer = new FakeRenderer();
     renderer.holdDecisions = true;

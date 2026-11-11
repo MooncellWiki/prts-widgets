@@ -1142,8 +1142,13 @@ export class StoryRuntime {
             ? await this.executeCommand(line)
             : this.dialogPanel.executeTextLine(line);
         if (this.destroyed) return;
-        // A skipped executor can still return a stale input wait.
-        if (generation !== this.playbackGeneration) continue;
+        // A skipped executor can still return a stale input wait. Drop the
+        // click follow-up it registered with it (spellsticker block), or the
+        // first click at the destination would replay it.
+        if (generation !== this.playbackGeneration) {
+          if (result === "wait_input") this.pendingInputEffect = null;
+          continue;
+        }
         if (result === "wait_input") {
           this.waitingInputCommand =
             line.kind === "command" ? line.command : "dialog";

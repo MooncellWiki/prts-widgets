@@ -7,8 +7,8 @@ import {
   parseNativeCharacterRef,
   resolveCharacterRef,
   resolveCharacterSelection,
-  tryParseInt32,
 } from "../src/widgets/StoryPlayer/engine/characterRef";
+import { tryParseInt32 } from "../src/widgets/StoryPlayer/engine/commandParams";
 
 import type { StoryLinkNode } from "../src/widgets/StoryPlayer/engine/types";
 

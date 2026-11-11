@@ -257,7 +257,9 @@ describe("StoryRuntime", () => {
     ]);
     expect(warnings).toEqual([
       expect.objectContaining({
+        command: "decision",
         detail: "decision options parameter is missing",
+        lineNumber: 3,
         type: "invalid_parameter",
       }),
     ]);
