@@ -661,6 +661,10 @@ export class StoryRuntime {
     if (this.autoPlayMode === mode) return;
 
     this.autoPlayMode = mode;
+    // 2791 set_autoPlayMode broadcasts the story cache. The UI's
+    // _UpdateAutoPlayModeUI then emits ON_SPEED_SET, and the line being
+    // typed switches to the new mode's delay.
+    this.dialogPanel.onSpeedSet();
     this.cancelAutoClick();
 
     if (mode === "quick_play" && this.state === "waiting_input") {
@@ -693,9 +697,10 @@ export class StoryRuntime {
         BUTTON_AUTO_SPEEDS.length - 1,
       );
 
-    // 2791 OnSpeedBtnClicked emits ON_SPEED_SET. SetQuickSpeed stores the
-    // level for the next command without rewriting the current typewriter.
-    if (this.autoPlayMode === "button_auto") this.dialogPanel.onSpeedSet();
+    // 2791 emits ON_SPEED_SET on both speed buttons: OnSpeedBtnClicked for
+    // button auto, and AVGQuickPlayBtn.OnClick -> SetQuickSpeed ->
+    // AVGQuickPlay._SetSpeedBtn for quick play.
+    this.dialogPanel.onSpeedSet();
     this.cancelAutoClick();
     if (
       this.autoPlayMode !== "default" &&

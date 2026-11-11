@@ -1168,6 +1168,60 @@ describe("StoryRuntime", () => {
     }
   });
 
+  it("rewrites the active dialogue interval when the quick speed changes", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]abcdef']),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("quick_play");
+      await runtime.start();
+
+      // Quick level 0 types at 10ms. AVGQuickPlay._SetSpeedBtn emits
+      // ON_SPEED_SET, so level 3 (1.25ms) applies to the current line and
+      // keeps the 5ms left over after the first character.
+      await vi.advanceTimersByTimeAsync(15);
+      expect(renderer.lastDialogue.text).toBe("a");
+      runtime.setAutoPlaySpeedLevel(3);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(renderer.lastDialogue.text).toBe("abcde");
+      runtime.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rewrites the active dialogue interval when the auto mode changes", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(['[name="A"]abcdef']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+      runtime.setAutoPlaySpeedLevel(1);
+      await runtime.start();
+
+      // Manual mode types at 40ms. Switching to button auto broadcasts the
+      // story cache, and the UI emits ON_SPEED_SET with level 1's 10ms.
+      await vi.advanceTimersByTimeAsync(15);
+      expect(renderer.lastDialogue.text).toBe("");
+      runtime.setAutoPlayMode("button_auto");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(renderer.lastDialogue.text).toBe("a");
+      await vi.advanceTimersByTimeAsync(5);
+      expect(renderer.lastDialogue.text).toBe("ab");
+      runtime.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("registers labels in preprocess and lets warp jump to the line after the label", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
