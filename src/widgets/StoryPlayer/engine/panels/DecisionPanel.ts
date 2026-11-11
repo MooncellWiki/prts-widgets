@@ -88,6 +88,7 @@ export class DecisionPanel {
       this.playback.resetAutoPlayMode();
       this.playback.warnInvalidParameter(
         "decision options parameter is missing",
+        line,
       );
       return "continue";
     }

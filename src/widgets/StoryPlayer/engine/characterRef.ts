@@ -2,8 +2,6 @@ import { tryParseInt32 } from "./commandParams";
 
 import type { StoryCharacterEntry, StoryLinkNode } from "./types";
 
-export { tryParseInt32 };
-
 /**
  * Native provenance: `Torappu.AVG.AVGCharacterSlot._LoadImage` and the three
  * private helpers it inlines -- `_TryParseBody` (`$`), `_TryParseAlias` (`@`)

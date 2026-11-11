@@ -1227,7 +1227,8 @@ export class StoryRuntime {
             ? await this.executeCommand(line)
             : this.dialogPanel.executeTextLine(line);
         if (this.destroyed) return;
-        // A skipped executor can still return a stale input wait.
+        // A skipped executor can still return a stale input wait. Its click
+        // follow-up (spellsticker block) travels with the dropped handler.
         if (generation !== this.playbackGeneration) continue;
         if (result !== "continue") {
           this.waitForInput(Array.isArray(result) ? result : [result]);
