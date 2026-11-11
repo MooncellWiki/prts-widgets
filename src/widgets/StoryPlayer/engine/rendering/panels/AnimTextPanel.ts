@@ -9,6 +9,7 @@ import {
 } from "pixi.js";
 
 import { STAMP_ASSETS } from "../../../assets";
+import { tryParseInt32 } from "../../commandParams";
 import {
   ANIMTEXT_MAIN_FONT_FAMILY,
   ANIMTEXT_MAIN_FONT_WEIGHT,
@@ -79,18 +80,6 @@ function isStartTag(tag: string): boolean {
     tag.startsWith("$") ||
     tag.startsWith(SPLIT_TAG_PREFIX)
   );
-}
-
-/**
- * Native provenance: `System.Int32.TryParse(string, out int)` with its default
- * `NumberStyles.Integer` — leading/trailing white space and a leading sign are
- * accepted, anything else (or Int32 overflow) fails.
- */
-function tryParseInt32(raw: string): number | null {
-  const match = /^[\t\n\v\f\r ]*([+-]?\d+)[\t\n\v\f\r ]*$/.exec(raw);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return value >= -2_147_483_648 && value <= 2_147_483_647 ? value : null;
 }
 
 /**

@@ -14,6 +14,41 @@ export function exactArg(args: StoryCommandArgs, key: string): unknown {
     : undefined;
 }
 
+/** `System.Number.IsWhite` accepts space and the ASCII characters 0x09–0x0D. */
+function isDotNetWhite(text: string, at: number): boolean {
+  const code = text.codePointAt(at) ?? -1;
+  return code === 0x20 || (code >= 0x09 && code <= 0x0d);
+}
+
+/**
+ * Native port of `System.Int32.TryParse` with `NumberStyles.Integer`.
+ * Accepts leading and trailing whitespace and a leading sign. Invalid input
+ * or values outside the signed 32-bit range return null.
+ */
+export function tryParseInt32(text: string): number | null {
+  let i = 0;
+  while (i < text.length && isDotNetWhite(text, i)) i++;
+
+  let negative = false;
+  if (text[i] === "+" || text[i] === "-") {
+    negative = text[i] === "-";
+    i++;
+  }
+
+  const digitsStart = i;
+  while (i < text.length && text[i]! >= "0" && text[i]! <= "9") i++;
+  if (i === digitsStart) return null;
+
+  const magnitude = Number(text.slice(digitsStart, i));
+
+  while (i < text.length && isDotNetWhite(text, i)) i++;
+  if (i !== text.length) return null;
+
+  const value = negative ? -magnitude : magnitude;
+  if (value < -2_147_483_648 || value > 2_147_483_647) return null;
+  return value;
+}
+
 /**
  * Native port: `Command.GetOrDefault<float>` (2.7.71 `Command.TryGetParam`
  * VA 0x183EF3950) and `DotNetExtensionMethods.GetFloat` (VA 0x1862F7660)

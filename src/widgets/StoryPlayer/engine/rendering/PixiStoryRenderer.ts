@@ -95,7 +95,7 @@ import {
   CharacterCutinPanel,
   type CutinCharacterArt,
 } from "./panels/CharacterCutinPanel";
-import { DecisionPanel } from "./panels/DecisionPanel";
+import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
 import { FocusEffectPanel } from "./panels/FocusEffectPanel";
 import { InterludePanel } from "./panels/InterludePanel";
@@ -597,7 +597,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
   private readonly videoPanel: VideoPanel;
   private readonly dialogView: DialogView;
-  private readonly decisionPanel: DecisionPanel;
+  private readonly decisionView: DecisionView;
   private readonly interludePanel: InterludePanel;
   private readonly animTextPanel: AnimTextPanel;
   private readonly avgDisplayPanel: AvgDisplayPanel;
@@ -709,7 +709,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       (durationMs, update, complete) =>
         this.tween(durationMs, update, complete),
     );
-    this.decisionPanel = new DecisionPanel(this.uiLayer);
+    this.decisionView = new DecisionView(this.uiLayer);
     this.interludePanel = new InterludePanel(
       this.cutinLayer,
       (input) => this.textureForInterlude(input),
@@ -834,7 +834,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   destroy(): void {
     this.stopVideo();
     this.stopCameraShake();
-    this.decisionPanel.destroy();
+    this.decisionView.destroy();
     this.interludePanel.destroy();
     this.animTextPanel.destroy();
     this.avgDisplayPanel.destroy();
@@ -975,17 +975,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     values: number[],
     disabled?: boolean[],
   ): Promise<DecisionSelection> {
-    return this.decisionPanel.show(options, values, disabled);
+    return this.decisionView.show(options, values, disabled);
   }
 
-  /**
-   * 按「未点击」结算挂起中的 decision，让 runtime 挂在 showDecision 上的
-   * 命令循环得以继续。Web 适配：native skip 只清空 m_blockingExecutors 放行
-   * 命令循环，`DecisionPanel.ForceCommandEnd`（2.7.81 VA 0x183FE0410）是空
-   * 函数，面板本身留在屏幕上（见 runtime.skipNode）。
-   */
   settleDecision(): void {
-    this.decisionPanel.clear();
+    this.decisionView.clear();
   }
 
   /**

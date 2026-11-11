@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
@@ -130,6 +130,31 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("parses decision and predicate values as signed Int32s", async () => {
+    const renderer = new FakeRenderer();
+    renderer.decisionIndex = 0;
+    renderer.decisionValue = 1;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B;C;D", values=" +1 ;1.1;2147483648;-2147483648")]',
+        '[predicate(references="1.1;1junk;2147483648")]',
+        '[showitem(image="invalid-reference")]',
+        '[predicate(references=" +1 ")]',
+        '[name="A"]matched',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.decisionCalls[0]?.values).toEqual([
+      1, 0, 0, -2_147_483_648,
+    ]);
+    expect(renderer.showItemCalls).toEqual([]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "matched" });
+  });
+
   it("marks ampersand-prefixed options as disabled and strips the prefix", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -151,7 +176,7 @@ describe("StoryRuntime", () => {
     });
   });
 
-  it("warns when a decision exceeds the native option capacity", async () => {
+  it("warns when a decision exceeds the observed option count", async () => {
     const warnings: RuntimeWarning[] = [];
     const onWarning = (warning: RuntimeWarning) => warnings.push(warning);
     const runtime = new StoryRuntime(
@@ -200,5 +225,88 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(runtime.getLogPosition()).toEqual({ lineIndex: 2, selections: [] });
+  });
+
+  it("clears the gate and warns when a decision is missing options", async () => {
+    const renderer = new FakeRenderer();
+    renderer.decisionIndex = 1;
+    renderer.decisionValue = 2;
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B",values="1;2")]',
+        '[predicate(references="2")]',
+        '[decision(values="9")]',
+        '[predicate(references="1")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+    runtime.setAutoPlayMode("button_auto");
+
+    await runtime.start();
+
+    expect(renderer.decisionCalls).toHaveLength(1);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(runtime.getDecisionSelectValue()).toBe(0);
+    expect(runtime.getLogPosition().selections).toEqual([
+      { decisionId: 1, optionIndex: 1, value: 2 },
+    ]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        command: "decision",
+        detail: "decision options parameter is missing",
+        lineNumber: 3,
+        type: "invalid_parameter",
+      }),
+    ]);
+  });
+
+  it("settles a pending decision once when destroying the runtime", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const settleDecision = vi.spyOn(renderer, "settleDecision");
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B",values="1;2")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    expect(runtime.getState()).toBe("waiting_decision");
+    runtime.destroy();
+    runtime.destroy();
+
+    expect(settleDecision).toHaveBeenCalledTimes(1);
+    await started;
+    expect(renderer.dialogueTexts).toEqual([]);
+  });
+
+  it("ignores a queued decision selection after destroy", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B",values="1;2")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    renderer.pickDecision({ optionIndex: 1, value: 2 });
+    runtime.destroy();
+    await started;
+
+    expect(runtime.getDecisionSelectValue()).toBe(0);
+    expect(runtime.getLogPosition().selections).toEqual([]);
+    expect(renderer.dialogueTexts).toEqual([]);
   });
 });

@@ -561,6 +561,29 @@ describe("buildLogAll（decision / predicate 语义）", () => {
     ).toEqual(["A7", "B2", "C3"]);
   });
 
+  it("uses native Int32 parsing for decision values and predicate references", () => {
+    const lines = parseScript([
+      '[decision(options="A;B", values=" +1 ;2147483648")]',
+      '[predicate(references="1.1")]',
+      '[name="A"]invalid reference',
+      '[predicate(references=" +1 ")]',
+      '[name="A"]matching reference',
+    ]);
+    const document = buildLogAll(lines);
+    const traces = enumerateOracleTraces(lines);
+    const expectedLines = [[5], [3, 5]];
+    expect(
+      traces.map((trace) => trace.entries.map((entry) => entry.lineIndex)),
+    ).toEqual(expectedLines);
+    expect(
+      expectedLines.map((_, optionIndex) =>
+        projectVisibleEntries(document, assignmentOf([[1, optionIndex]])).map(
+          (entry) => entry.lineIndex,
+        ),
+      ),
+    ).toEqual(expectedLines);
+  });
+
   it("keeps the story_ghost_2_1 shape (4 options / 3 values) on every route", () => {
     // 真实语料 obt/memory/story_ghost_2_1.txt:643 的形状：第 4 个选项没有
     // 显式 value。取 index+1=4 会被 refs=1;2;3 挡掉整条尾巴；取 0 才与原生
