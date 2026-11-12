@@ -3,89 +3,131 @@ import { Graphics, Sprite, type Texture } from "pixi.js";
 import {
   exactArg,
   roundHalfToEven,
-  toNumber,
   toString,
+  tryParseInt32,
 } from "../../commandParams";
-import { parseShowItemFadeStyle } from "../../showitem";
-import {
-  STORY_HEIGHT,
-  type ShowItemFadeStyle,
-  type StoryCommandArgs,
-} from "../../types";
+import { parseShowItemFadeStyle, ShowItemFadeStyle } from "../../showitem";
+import { STORY_HEIGHT, type StoryCommandArgs } from "../../types";
 
 import { ShowItemSlot } from "./ShowItemSlot";
+
+/** GetInt @ 0x186941320 converts the boxed parameter via Convert.ToInt32. */
+function readWidth(args: StoryCommandArgs): number | undefined {
+  const value = exactArg(args, "width");
+  if (value === undefined) return undefined;
+  const width =
+    typeof value === "string"
+      ? tryParseInt32(value)
+      : roundHalfToEven(Number(value));
+  if (
+    width === null ||
+    !Number.isInteger(width) ||
+    width < -2_147_483_648 ||
+    width > 2_147_483_647
+  )
+    throw new RangeError(
+      `Invalid showitem width ${JSON.stringify(value)}. Expected an Int32.`,
+    );
+  return width;
+}
 
 /** AVGShowItemCutinSlot (2791 Show @ 0x184244230, Hide @ 0x184243FE0). */
 export class ShowItemCutinSlot extends ShowItemSlot {
   private readonly mask = new Graphics();
   private readonly plate = new Graphics();
   private header: Sprite | null = null;
-  private fadeStyle: ShowItemFadeStyle = "fade";
-  private targetWidth = 0;
+  private fadeStyle = ShowItemFadeStyle.fade;
+  private width: number | undefined;
   private maskWidth = 0;
   private maskHeight = 0;
 
-  protected prepareShow(
-    args: StoryCommandArgs,
-    decoration: Texture | null,
-  ): (progress: number) => void {
-    this.fadeStyle =
-      parseShowItemFadeStyle(toString(exactArg(args, "fadestyle"))) ?? "fade";
-    const width = toNumber(exactArg(args, "width"), Number.NaN);
-    this.targetWidth = Number.isFinite(width)
-      ? roundHalfToEven(width)
-      : this.image.width;
+  protected prepareShow(args: StoryCommandArgs): (progress: number) => void {
+    this.fadeStyle = parseShowItemFadeStyle(
+      toString(exactArg(args, "fadestyle")),
+    );
+    this.width = readWidth(args);
     this.content.addChildAt(this.plate, 0);
     this.root.addChildAt(this.mask, 1);
     this.content.mask = this.mask;
-    if (decoration) {
-      // The upside-down header is 200px tall, with 50px above the mask.
-      const header = new Sprite(decoration);
-      header.anchor.set(0.5, 1);
-      header.rotation = Math.PI;
-      header.tint = 0x00_00_00;
-      header.alpha = 0.706;
-      header.height = 200;
-      this.content.addChildAt(header, 1);
-      this.header = header;
-    }
+    this.drawInitialWindow();
 
-    if (this.fadeStyle === "fade") {
+    if (this.fadeStyle === ShowItemFadeStyle.fade) {
       this.root.alpha = 0;
-      this.drawWindow(this.targetWidth, STORY_HEIGHT);
       return this.fadeIn;
     }
 
     // Native runs DOSizeDelta and DOFade in parallel with the same duration.
     const blackAlpha = this.backdrop.alpha;
-    const horizontal = this.fadeStyle.startsWith("horiz");
+    const horizontal = this.horizontal;
     this.root.alpha = 1;
-    const expand = (progress: number) => {
+    this.backdrop.alpha = 0;
+    return (progress) => {
       this.backdrop.alpha = blackAlpha * progress;
       this.drawWindow(
         horizontal ? this.targetWidth * progress : this.targetWidth,
         horizontal ? STORY_HEIGHT : STORY_HEIGHT * progress,
       );
     };
-    expand(0);
-    return expand;
   }
 
   protected prepareHide(): (progress: number) => void {
-    if (this.fadeStyle === "fade") return this.fadeOut();
+    if (this.fadeStyle === ShowItemFadeStyle.fade) return this.fadeOut();
 
-    const horizontal = this.fadeStyle.startsWith("horiz");
-    const width = this.maskWidth;
-    const height = this.maskHeight;
-    const blackAlpha = this.backdrop.alpha;
+    const horizontal = this.horizontal;
+    let from: { width: number; height: number; blackAlpha: number } | undefined;
     return (progress) => {
+      // DOSizeDelta and DOFade each sample their start on the first update.
+      from ??= {
+        width: this.maskWidth,
+        height: this.maskHeight,
+        blackAlpha: this.backdrop.alpha,
+      };
       const remaining = 1 - progress;
-      this.backdrop.alpha = blackAlpha * remaining;
+      this.backdrop.alpha = from.blackAlpha * remaining;
       this.drawWindow(
-        horizontal ? width * remaining : width,
-        horizontal ? height : height * remaining,
+        horizontal ? from.width * remaining : from.width,
+        horizontal ? from.height : from.height * remaining,
       );
     };
+  }
+
+  protected override setImage(texture: Texture): void {
+    super.setImage(texture);
+    this.drawInitialWindow();
+  }
+
+  protected setDecoration(texture: Texture): void {
+    // The upside-down header is 200px tall, with 50px above the mask.
+    const header = new Sprite(texture);
+    header.anchor.set(0.5, 1);
+    header.rotation = Math.PI;
+    header.tint = 0x00_00_00;
+    header.alpha = 0.706;
+    header.height = 200;
+    this.content.addChildAt(header, 1);
+    this.header = header;
+    this.drawWindow(this.maskWidth, this.maskHeight);
+  }
+
+  private get targetWidth(): number {
+    return this.width ?? Math.trunc(this.image.width);
+  }
+
+  private get horizontal(): boolean {
+    return (
+      this.fadeStyle >= ShowItemFadeStyle.horiz_expand_center &&
+      this.fadeStyle <= ShowItemFadeStyle.horiz_expand_right2left
+    );
+  }
+
+  private drawInitialWindow(): void {
+    const horizontal = this.horizontal;
+    this.drawWindow(
+      horizontal ? 0 : this.targetWidth,
+      horizontal || this.fadeStyle === ShowItemFadeStyle.fade
+        ? STORY_HEIGHT
+        : 0,
+    );
   }
 
   private drawWindow(width: number, height: number): void {
@@ -93,11 +135,11 @@ export class ShowItemCutinSlot extends ShowItemSlot {
     this.maskHeight = height;
     let x: number;
     switch (this.fadeStyle) {
-      case "horiz_expand_left2right":
-        x = -this.targetWidth / 2;
+      case ShowItemFadeStyle.horiz_expand_left2right:
+        x = -Math.trunc(this.targetWidth / 2);
         break;
-      case "horiz_expand_right2left":
-        x = this.targetWidth / 2 - width;
+      case ShowItemFadeStyle.horiz_expand_right2left:
+        x = Math.trunc(this.targetWidth / 2) - width;
         break;
       default:
         x = -width / 2;
@@ -105,10 +147,10 @@ export class ShowItemCutinSlot extends ShowItemSlot {
     }
     let y: number;
     switch (this.fadeStyle) {
-      case "vert_expand_top2bottom":
+      case ShowItemFadeStyle.vert_expand_top2bottom:
         y = -STORY_HEIGHT / 2;
         break;
-      case "vert_expand_bottom2top":
+      case ShowItemFadeStyle.vert_expand_bottom2top:
         y = STORY_HEIGHT / 2 - height;
         break;
       default:

@@ -3,7 +3,7 @@ import type { RichChar } from "./richtext";
 export const STORY_WIDTH = 1280;
 export const STORY_HEIGHT = 720;
 
-export type StoryCommandValue = boolean | number | string;
+export type StoryCommandValue = boolean | number | string | null;
 export type StoryCommandArgs = Record<string, StoryCommandValue>;
 
 export interface StoryFaceRect {
@@ -442,7 +442,7 @@ export interface GridBackgroundInput {
 
 /** The slot instance held by `AVGShowItemPanel._slotInUse`. */
 export interface StoryShowItemSlot {
-  /** Starts Show after loading art. onEnd reports the animation completion. */
+  /** Registers Show and loads the art. onEnd reports animation completion. */
   show: (
     args: StoryCommandArgs,
     key: string | null,
@@ -451,12 +451,6 @@ export interface StoryShowItemSlot {
   hide: (args: StoryCommandArgs, onEnd: () => void) => void;
   destroy: () => void;
 }
-
-/**
- * `AVGShowItemCutinSlot.FadeStyle` — the same seven members (and ordinals)
- * as the character cutin slot's enum, so it aliases that type.
- */
-export type ShowItemFadeStyle = CharacterCutinFadeStyle;
 
 /** Photo-slot frame metrics: the item's native size plus the 9-slice border. */
 export interface ShowItemLayout {

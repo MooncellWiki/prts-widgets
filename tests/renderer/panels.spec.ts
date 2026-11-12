@@ -8,15 +8,18 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  TweenRunner,
+  type TweenRunOptions,
+} from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
-import { createRenderer } from "../helpers/rendererFixtures";
+import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
 import {
   createContext,
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
-import type { TweenRunOptions } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../src/widgets/StoryPlayer/engine/types";
 
 interface ManualTween {
@@ -211,6 +214,74 @@ describe("ShowItemSlot rendering", () => {
     expect(hidden).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    {
+      style: "photo",
+      fadestyle: 0,
+      initialAlpha: 1,
+      alpha: 0.2916,
+      black: 0.4,
+      width: 200,
+    },
+    {
+      style: "cutin",
+      fadestyle: 0,
+      initialAlpha: 0.19,
+      alpha: 0.2916,
+      black: 0.4,
+      width: 200,
+    },
+    {
+      style: "cutin",
+      fadestyle: 2,
+      initialAlpha: 1,
+      alpha: 1,
+      black: 0.11664,
+      width: 58.32,
+    },
+  ])(
+    "samples the $style/$fadestyle Hide start on the first overlapping frame",
+    async ({ style, fadestyle, initialAlpha, alpha, black, width }) => {
+      const { createRuntime, layer, renderer } = createShowItemRenderer();
+      const { advance, clock, drainFrame } = createManualClock();
+      const runner = new TweenRunner(() => true, clock);
+      renderer.tween = runner.run.bind(runner);
+      renderer.textureForImageKey = vi.fn(
+        async () =>
+          new Texture({
+            source: new TextureSource({ height: 100, width: 200 }),
+          }),
+      );
+      const runtime = createRuntime([
+        `[showitem(image="item_a",style="${style}",fadestyle=${fadestyle},width=200,fadetime=1)]`,
+        "[SkipToThis]",
+        "[hideitem(fadetime=1)]",
+        '[name="A"]ok',
+      ]);
+      const started = runtime.start();
+      await flushAsync();
+      const root = layer.children[0]!;
+      advance(100);
+      drainFrame();
+
+      const skipped = runtime.skipNode();
+      await flushAsync();
+      expect(root.alpha).toBeCloseTo(initialAlpha);
+
+      // OutQuad at 20% is 0.36. The old Show writes it first, then Hide
+      // samples that value and applies its own 10% elapsed progress (0.19).
+      advance(100);
+      drainFrame();
+      drainFrame();
+      expect(root.alpha).toBeCloseTo(alpha);
+      expect(root.children[0]!.alpha).toBeCloseTo(black);
+      expect(root.children[1]!.width).toBeCloseTo(width);
+      expect(runtime.getState()).toBe("running");
+      runtime.destroy();
+      await Promise.all([started, skipped]);
+    },
+  );
+
   it("plays cutin fade over the full-width mask and hides from current alpha", async () => {
     const { createSlot, layer, renderer, tweens } = createShowItemRenderer();
     renderer.textureForImageKey = vi.fn(
@@ -237,7 +308,12 @@ describe("ShowItemSlot rendering", () => {
     expect(root.parent).toBeNull();
   });
 
-  it.each([2, "2", " horiz_expand_left2right "])(
+  it.each([
+    2,
+    "2",
+    " horiz_expand_left2right ",
+    "fade, horiz_expand_left2right",
+  ])(
     "expands and collapses the cutin window for fadestyle %s",
     async (fadestyle) => {
       const { createSlot, layer, tweens } = createShowItemRenderer();
@@ -268,6 +344,55 @@ describe("ShowItemSlot rendering", () => {
     },
   );
 
+  it.each([7, -1])(
+    "expands vertically for unnamed fadestyle %s",
+    async (fadestyle) => {
+      const { createSlot, layer, tweens } = createShowItemRenderer();
+      await createSlot("cutin").show(
+        { fadestyle, width: 200 },
+        "item_a",
+        vi.fn(),
+      );
+      const root = layer.children[0]!;
+      const mask = root.children[1]!;
+      expect(root.alpha).toBe(1);
+      expect(mask.width).toBe(200);
+      expect(mask.height).toBe(0);
+      tweens[0]!.step(0.5);
+      expect(mask.height).toBeCloseTo(360);
+      expect(mask.getLocalBounds().minY).toBeCloseTo(180);
+    },
+  );
+
+  it.each([
+    { raw: "200.5", width: 200 },
+    { raw: '" +201 "', width: 201 },
+    { raw: "2e2", width: 200 },
+    { raw: "null", width: 0 },
+    { raw: "true", width: 1 },
+  ])("uses the native Int32 width for $raw", async ({ raw, width }) => {
+    const { createRuntime, layer } = createShowItemRenderer();
+    await createRuntime([
+      `[showitem(image="item_a",style="cutin",width=${raw},fadetime=0)]`,
+      '[name="A"]ok',
+    ]).start();
+    expect(layer.children[0]!.children[1]!.width).toBe(width);
+  });
+
+  it.each(['"200.5"', '"2e2"', '"null"', "2147483648"])(
+    "fails the cutin command when width %s cannot convert to Int32",
+    async (raw) => {
+      const { createRuntime, layer } = createShowItemRenderer();
+      const runtime = createRuntime([
+        `[showitem(image="item_a",style="cutin",width=${raw},fadetime=0)]`,
+        '[name="A"]ok',
+      ]);
+      await runtime.start();
+      expect(runtime.getState()).toBe("error");
+      expect(layer.children).toHaveLength(0);
+    },
+  );
+
   it("clears a fading slot and discards its pending replacement on destroy", async () => {
     const { createRuntime, layer, renderer, tweens } = createShowItemRenderer();
     const runtime = createRuntime([
@@ -291,6 +416,7 @@ describe("ShowItemSlot rendering", () => {
     renderer.textureForImageKey = vi.fn(() => texture.promise);
     const runtime = createRuntime(['[showitem(image="item_a",fadetime=0)]']);
     const started = runtime.start();
+    expect(layer.children).toHaveLength(1);
     expect(renderer.textureForImageKey).toHaveBeenCalledExactlyOnceWith(
       "item_a",
       "image",
@@ -302,6 +428,39 @@ describe("ShowItemSlot rendering", () => {
     await flushAsync();
     expect(layer.children).toHaveLength(0);
   });
+
+  it.each(["photo", "cutin"])(
+    "fades out the pending %s slot when a skip lands on hideitem",
+    async (style) => {
+      const { createRuntime, layer, renderer, tweens } =
+        createShowItemRenderer();
+      const texture = Promise.withResolvers<Texture>();
+      renderer.textureForImageKey = vi.fn(() => texture.promise);
+      const runtime = createRuntime([
+        `[showitem(image="item_a",style="${style}",fadestyle=2,width=200)]`,
+        "[SkipToThis]",
+        "[hideitem(fadetime=0.25)]",
+        '[name="A"]ok',
+      ]);
+      const started = runtime.start();
+      const root = layer.children[0]!;
+      const image = root.children.at(-1)!.children.at(-1) as Sprite;
+      expect(image.texture).toBe(Texture.WHITE);
+      const skipped = runtime.skipNode();
+      await flushAsync();
+      expect(tweens.map((entry) => entry.durationMs)).toEqual([250]);
+      expect(runtime.getState()).toBe("running");
+
+      texture.resolve(new Texture({ label: "late texture" }));
+      await flushAsync();
+      expect(image.texture).toBe(Texture.WHITE);
+      expect(tweens).toHaveLength(1);
+      tweens[0]!.complete();
+      await Promise.all([started, skipped]);
+      expect(root.parent).toBeNull();
+      expect(runtime.getState()).toBe("waiting_input");
+    },
+  );
 
   it("keeps a framed placeholder without looking up an empty image", async () => {
     const { createSlot, layer, renderer } = createShowItemRenderer();

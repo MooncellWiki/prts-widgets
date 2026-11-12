@@ -1,4 +1,8 @@
-import type { OverlayTextLayout, StoryCommandArgs } from "./types";
+import type {
+  OverlayTextLayout,
+  StoryCommandArgs,
+  StoryCommandValue,
+} from "./types";
 
 /**
  * `AVGTypeWriterText.originDelay` of the dialogue / sticker typewriter assets
@@ -8,7 +12,10 @@ import type { OverlayTextLayout, StoryCommandArgs } from "./types";
 export const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
 
 /** Exact-key parameter lookup (no case folding), as `Command.TryGetParam`. */
-export function exactArg(args: StoryCommandArgs, key: string): unknown {
+export function exactArg(
+  args: StoryCommandArgs,
+  key: string,
+): StoryCommandValue | undefined {
   return Object.prototype.hasOwnProperty.call(args, key)
     ? args[key]
     : undefined;

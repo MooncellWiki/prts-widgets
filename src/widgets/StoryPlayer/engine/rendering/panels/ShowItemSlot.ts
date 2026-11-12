@@ -19,9 +19,10 @@ export interface ShowItemSlotHost {
 }
 
 function readFadeMs(args: StoryCommandArgs): number {
+  const value = exactArg(args, "fadetime");
   return Math.max(
     0,
-    Math.round(toNumber(exactArg(args, "fadetime"), 0.5) * 1000),
+    Math.round((value === null ? 0 : toNumber(value, 0.5)) * 1000),
   );
 }
 
@@ -54,24 +55,26 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
   ): Promise<void> {
     this.onAnimEnd = onEnd;
     this.showing = true;
-    const texture = key ? await this.host.loadImage(key) : null;
-    if (!this.showing) return;
-    const decoration = await this.host.loadDecoration();
-    if (!this.showing) return;
-
-    if (texture) {
-      this.image.texture = texture;
-      this.image.setSize(texture.width, texture.height);
-    }
     // Both prefab transforms use Unity's upward Y axis.
     this.content.position.set(
       STORY_WIDTH / 2 + toNumber(exactArg(args, "offsetx")),
       STORY_HEIGHT / 2 - toNumber(exactArg(args, "offsety")),
     );
-    const black = toNumber(exactArg(args, "black"), 0.4);
+    const blackArg = exactArg(args, "black");
+    const black = blackArg === null ? 0 : toNumber(blackArg, 0.4);
     this.backdrop.alpha = Math.max(0, Math.min(1, black));
-    const step = this.prepareShow(args, decoration);
+    const step = this.prepareShow(args);
+    // The native prefab exists before the synchronous sprite load. On Web,
+    // Hide can animate the placeholder while the texture request is pending.
     this.host.layer.addChild(this.root);
+
+    const texture = key ? await this.host.loadImage(key) : null;
+    if (!this.showing) return;
+    if (texture) this.setImage(texture);
+    const decoration = await this.host.loadDecoration();
+    if (!this.showing) return;
+    if (decoration) this.setDecoration(decoration);
+
     this.animate(readFadeMs(args), step);
   }
 
@@ -94,18 +97,27 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
 
   protected abstract prepareShow(
     args: StoryCommandArgs,
-    decoration: Texture | null,
   ): (progress: number) => void;
 
   protected abstract prepareHide(): (progress: number) => void;
+
+  protected abstract setDecoration(texture: Texture): void;
+
+  protected setImage(texture: Texture): void {
+    this.image.texture = texture;
+    this.image.setSize(texture.width, texture.height);
+  }
 
   protected fadeIn = (progress: number): void => {
     this.root.alpha = progress;
   };
 
   protected fadeOut(): (progress: number) => void {
-    const from = this.root.alpha;
+    // DOTween reads the getter in DoStartup @ 0x1847E69D0. An older Show
+    // can update the canvas group earlier in the same frame.
+    let from: number | undefined;
     return (progress) => {
+      from ??= this.root.alpha;
       this.root.alpha = from * (1 - progress);
     };
   }

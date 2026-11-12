@@ -87,7 +87,10 @@ function parseValue(raw: string): StoryCommandValue {
   }
   if (value === "true") return true;
   if (value === "false") return false;
-  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
+  if (value === "null") return null;
+  // Preserve the boxed value type produced by Newtonsoft for GetInt/GetEnum.
+  if (/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value))
+    return Number(value);
   return value;
 }
 

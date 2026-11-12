@@ -57,7 +57,8 @@ export class ShowItemPanel {
     line: ParsedCommandLine,
     finish: () => void,
   ): Promise<void> {
-    const style = toString(exactArg(line.args, "style"), "photo");
+    const styleArg = exactArg(line.args, "style");
+    const style = styleArg === undefined ? "photo" : toString(styleArg);
     const slot = this.renderer.createShowItemSlot(style);
     if (!slot) {
       this.playback.warnInvalidParameter(

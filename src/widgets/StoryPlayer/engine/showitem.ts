@@ -19,37 +19,44 @@
 // `sprite_avg_cutscene` (0,0,0,0.706) — pivot bottom-center 50px above the
 // window top and rotated 180°, so 150px of it hangs into the window upside
 // down — and the centered item; `fadestyle` drives which edge the window
-// expands from (see the renderer's cutin state).
+// expands from.
 
 import { tryParseInt32 } from "./commandParams";
 
-import type { ShowItemFadeStyle, ShowItemLayout } from "./types";
+import type { ShowItemLayout } from "./types";
 
-export type { ShowItemFadeStyle, ShowItemLayout };
+export type { ShowItemLayout };
 
 export const SHOWITEM_FRAME_BORDER = 32;
 
-/** `AVGShowItemCutinSlot.FadeStyle` member names in ordinal order. */
-const FADE_STYLES: readonly ShowItemFadeStyle[] = [
-  "fade",
-  "horiz_expand_center",
-  "horiz_expand_left2right",
-  "horiz_expand_right2left",
-  "vert_expand_center",
-  "vert_expand_top2bottom",
-  "vert_expand_bottom2top",
-];
+/** `AVGShowItemCutinSlot.FadeStyle` member names and values. */
+export enum ShowItemFadeStyle {
+  fade = 0,
+  horiz_expand_center = 1,
+  horiz_expand_left2right = 2,
+  horiz_expand_right2left = 3,
+  vert_expand_center = 4,
+  vert_expand_top2bottom = 5,
+  vert_expand_bottom2top = 6,
+}
 
-/** 2791 CutinSlot.Show (0x184244230) uses case-sensitive GetEnum. */
-export function parseShowItemFadeStyle(
-  raw: string | undefined,
-): ShowItemFadeStyle | undefined {
-  const value = raw?.trim();
-  if (!value) return undefined;
-  const ordinal = tryParseInt32(value);
-  return ordinal === null
-    ? FADE_STYLES.find((style) => style === value)
-    : FADE_STYLES[ordinal];
+/**
+ * 2791 GetEnum @ 0x1846BAC50 uses case-sensitive Enum.Parse, including
+ * unnamed Int32 values and comma-separated names. Its catch path logs and
+ * returns the supplied default (fade).
+ */
+export function parseShowItemFadeStyle(raw: string): ShowItemFadeStyle {
+  const ordinal = tryParseInt32(raw.trim());
+  if (ordinal !== null) return ordinal;
+
+  let result = ShowItemFadeStyle.fade;
+  for (const member of raw.split(",")) {
+    const name = member.trim() as keyof typeof ShowItemFadeStyle;
+    const value = ShowItemFadeStyle[name];
+    if (typeof value !== "number") return ShowItemFadeStyle.fade;
+    result |= value;
+  }
+  return result;
 }
 
 export function computeShowItemLayout(
