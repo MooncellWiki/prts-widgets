@@ -558,9 +558,8 @@ export interface StickerInput extends OverlayTextLayout {
  * `*from` parses as 0, never "the current value") and the transform is
  * snapped to it before the tween starts, matching
  * `AVGTweenFactory._CreateAlphaTween` / `_CreateAnchorPosTween` /
- * `_CreateRotateTween`. `*duration` is in native seconds and is already
- * scaled to milliseconds by the runtime (the visual equivalent of the native
- * `Sequence.timeScale = animateRatio` third mode, see the runtime case).
+ * `_CreateRotateTween`. The runtime converts the script durations to
+ * milliseconds. The view applies the sequence's playback rate at `isend`.
  */
 export interface StickerTweenInput {
   alpha?: { durationMs: number; from: number; to: number };
@@ -577,6 +576,8 @@ export interface StickerTweenInput {
   rotation?: { durationMs: number; from: number; to: number };
   /** 2791 `sto` group: uniform x/y scale (`_CreateScaleTween`). */
   scale?: { durationMs: number; from: number; to: number };
+  /** Playback rate for the completed sequence. A zero rate leaves it at the start. */
+  timeScale?: number;
 }
 
 export interface SpellStickerInput {
@@ -972,6 +973,7 @@ export interface RuntimeOptions {
   animateRatio?: number;
   firstRead?: boolean;
   onWarning?: (warning: RuntimeWarning) => void;
+  /** Override the browser yield after a video completes. */
   sleep?: (ms: number) => Promise<void>;
   typingIntervalMs?: number;
 }

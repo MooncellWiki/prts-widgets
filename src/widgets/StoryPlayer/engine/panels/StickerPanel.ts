@@ -25,8 +25,8 @@ import type {
 } from "../types";
 
 interface StickerPlayback {
+  animateRatio: () => number;
   beginTyping: (messageLength: number) => () => void;
-  calculateFadeMs: (value: unknown, fallback?: number) => number;
   playbackGeneration: () => number;
   typeWriterDelayMs: () => number;
   translateText: (text: string) => string;
@@ -331,6 +331,8 @@ export class StickerPanel {
           pto !== undefined ||
           rto !== undefined ||
           sto !== undefined;
+        const durationMs = (key: string) =>
+          Math.max(0, toNumber(arg(args, key), 0) * 1000);
         const tween: StickerTweenInput = {
           // A group is emitted only when its `*to` key parses: native wraps
           // each group in an IEmptyable param and ExecuteTween skips empty
@@ -342,9 +344,7 @@ export class StickerPanel {
             ? {}
             : {
                 alpha: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "aduration"),
-                  ),
+                  durationMs: durationMs("aduration"),
                   from: toOptionalNumber(arg(args, "afrom")) ?? 0,
                   to: toNumber(ato, 0),
                 },
@@ -356,9 +356,7 @@ export class StickerPanel {
             ? {}
             : {
                 position: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "pduration"),
-                  ),
+                  durationMs: durationMs("pduration"),
                   from: parseVector2(arg(args, "pfrom")) ?? {
                     x: 0,
                     y: 0,
@@ -370,9 +368,7 @@ export class StickerPanel {
             ? {}
             : {
                 rotation: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "rduration"),
-                  ),
+                  durationMs: durationMs("rduration"),
                   from: toOptionalNumber(arg(args, "rfrom")) ?? 0,
                   to: rto,
                 },
@@ -381,22 +377,15 @@ export class StickerPanel {
             ? {}
             : {
                 scale: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "sduration"),
-                  ),
+                  durationMs: durationMs("sduration"),
                   from: toOptionalNumber(arg(args, "sfrom")) ?? 0,
                   to: sto,
                 },
               }),
+          // AVGStickerTextView.ExecuteTween (2791 @ 0x184486F10) sets the
+          // playback rate once, when the final command builds the sequence.
+          timeScale: this.playback.animateRatio(),
         };
-        // Durations go through calculateFadeMs on purpose: native keeps
-        // `*duration` literal and scales playback once via
-        // `Sequence.timeScale = AVGController.animateRatio`
-        // (AVGStickerTextView.ExecuteTween, VA 0x184165be0 / 0x184165940).
-        // Multiplying the duration by the animateRatio captured at execution
-        // time is the documented visually-equivalent adaptation and matches
-        // how the other tween commands behave here.
-        //
         // Native registers the Event.Click advance only when `block && isend`
         // both hold (0x183e92416); the other three combinations return false
         // immediately and the tween keeps playing in the background.

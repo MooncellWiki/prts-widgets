@@ -247,9 +247,8 @@ export class StickerView {
    * m_builder on the view as well). Web adaptation: instead of a DOTween
    * Sequence, every step gets a time window inside a single tween of the total
    * duration; a `join` step starts when the previous step started, otherwise
-   * after it ends (DOTween Join vs Append). Durations were already
-   * animateRatio-scaled by the StickerPanel, which is the documented visual
-   * equivalent of the native `Sequence.timeScale = animateRatio` assignment.
+   * after it ends (DOTween Join vs Append). Build those windows from the
+   * script durations and apply the final command's Sequence.timeScale once.
    * Rotation is degrees in native localEulerAngles and radians in pixi, hence
    * the conversion.
    */
@@ -315,8 +314,12 @@ export class StickerView {
     // clamped window below keeps a not-yet-started step pinned to `from`.
     for (const { step } of windows) apply(step, 0);
 
+    // TweenManager.Update (2791 @ 0x1844679F0) leaves a zero-rate sequence
+    // at its starting values. Positive rates scale the elapsed time.
+    const timeScale = input.timeScale ?? 1;
+    if (timeScale <= 0) return;
     void this.host.tween(
-      totalMs,
+      totalMs / timeScale,
       (progress) => {
         if (!isCurrent()) return;
         const elapsed = progress * totalMs;

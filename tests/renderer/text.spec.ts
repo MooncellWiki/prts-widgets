@@ -1,3 +1,5 @@
+import { setImmediate } from "node:timers/promises";
+
 import { Ticker, UPDATE_PRIORITY } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,7 +13,134 @@ function transparentText(text: string): string {
   return `<_c00000000>${text}</_c00000000>`;
 }
 
+function createTickerPlayback(script: string[]) {
+  const context = createContext(script);
+  const renderer = createRenderer(context);
+  const ticker = new Ticker();
+  ticker.lastTime = 0;
+  renderer.app = { ticker };
+  const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+    typingIntervalMs: 40,
+  });
+  return {
+    destroy() {
+      runtime.destroy();
+      renderer.app = null;
+      ticker.destroy();
+      renderer.destroy();
+    },
+    renderer,
+    runtime,
+    ticker,
+  };
+}
+
 describe("PixiStoryRenderer", () => {
+  it("waits for a frame even when Delay is zero", async () => {
+    vi.useFakeTimers();
+    const { destroy, runtime, ticker } = createTickerPlayback([
+      "[delay(time=0)]",
+      '[name="A"]after',
+    ]);
+    try {
+      const started = runtime.start();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(runtime.getState()).toBe("waiting_timer");
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+
+      const draw = vi.fn(() => runtime.getDisplayedLineIndex());
+      ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+      ticker.update(16);
+      expect(draw).toHaveReturnedWith(2);
+      await started;
+    } finally {
+      destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("force-ends SkipToThis at the old speed and begins the destination after Update", async () => {
+    const { destroy, renderer, runtime, ticker } = createTickerPlayback([
+      '[name="A"]A',
+      "[SkipToThis]",
+      '[name="B"]B',
+    ]);
+    const setDialogue = vi.spyOn(renderer, "setDialogue");
+    const finishMode = vi.fn(() => runtime.getAutoPlayState().mode);
+    vi.spyOn(renderer, "finishDialogueCommand").mockImplementation(finishMode);
+    try {
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      ticker.update(16);
+      const skipped = runtime.skipNode();
+      await setImmediate();
+
+      expect(finishMode).toHaveReturnedWith("button_auto");
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(runtime.getDisplayedLineIndex()).toBe(1);
+
+      const draw = vi.fn(() => [
+        runtime.getDisplayedLineIndex(),
+        setDialogue.mock.lastCall?.[1],
+      ]);
+      ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+      ticker.update(64);
+      expect(draw).toHaveReturnedWith([
+        3,
+        expect.objectContaining({ visibleCount: 0 }),
+      ]);
+      await skipped;
+    } finally {
+      destroy();
+    }
+  });
+
+  it.each(["[theater(mode=true)]", "[stopmusic]"])(
+    "continues after %s before drawing the resumed frame",
+    async (command) => {
+      const { destroy, runtime, ticker } = createTickerPlayback([
+        '[name="A"]A',
+        command,
+        '[name="B"]B',
+      ]);
+      try {
+        await runtime.start();
+        ticker.update(48);
+        const advancing = runtime.advance();
+        ticker.update(64);
+
+        const draw = vi.fn(() => runtime.getDisplayedLineIndex());
+        ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+        ticker.update(80);
+        expect(draw).toHaveReturnedWith(3);
+        await advancing;
+      } finally {
+        destroy();
+      }
+    },
+  );
+
+  it("leaves a new sticker sequence at its start in quick play", async () => {
+    const { destroy, renderer, runtime, ticker } = createTickerPlayback([
+      '[sticker(id="s",text="A",duration=0,block=false)]',
+      '[stickertween(id="s",sfrom=1.25,sto=2,sduration=1,isend=true)]',
+      '[name="B"]B',
+    ]);
+    renderer.layoutSubtitle = vi.fn();
+    const tween = vi.spyOn(renderer, "tween");
+    try {
+      runtime.setAutoPlayMode("quick_play");
+      await runtime.start();
+      // The only tween is the sticker's zero-duration fade-in.
+      expect(tween).toHaveBeenCalledTimes(1);
+      ticker.update(1000);
+      const { scale } = renderer.stickerViews.get("s").root;
+      expect([scale.x, scale.y]).toEqual([1.25, 1.25]);
+    } finally {
+      destroy();
+    }
+  });
+
   it("runs frame-end callbacks after the scene draws and only once", () => {
     const renderer = createRenderer();
     const ticker = new Ticker();
@@ -922,6 +1051,7 @@ describe("PixiStoryRenderer stickerTween", () => {
         from: { x: 100, y: 50 },
         to: { x: 300, y: 150 },
       },
+      timeScale: 0,
     });
     expect(tweenCalls).toHaveLength(0);
 
@@ -932,14 +1062,15 @@ describe("PixiStoryRenderer stickerTween", () => {
       id: "st",
       isend: true,
       join: true,
+      timeScale: 0.5,
     });
-    expect(tweenCalls.map((call) => call.durationMs)).toEqual([500]);
+    expect(tweenCalls.map((call) => call.durationMs)).toEqual([1000]);
     // BuildSequence snaps every step to its own `from` before the sequence
     // plays (each AVGTweenFactory._Create*Tween writes the transform first).
     expect(sticker.x).toBe(100);
     expect(sticker.alpha).toBe(1);
 
-    tweenCalls[0]!.step(0.5); // 250ms elapsed
+    tweenCalls[0]!.step(0.5); // 500ms wall time, 250ms sequence time
     expect(sticker.x).toBe(200);
     expect(sticker.y).toBe(100);
     // The joined 300ms alpha step is 250/300 of the way from 1 to 0.2.
@@ -959,7 +1090,7 @@ describe("PixiStoryRenderer stickerTween", () => {
       position: { durationMs: 200, from: { x: 0, y: 0 }, to: { x: 100, y: 0 } },
       rotation: { durationMs: 100, from: 0, to: 90 },
     });
-    expect(tweenCalls.map((call) => call.durationMs)).toEqual([500, 300]);
+    expect(tweenCalls.map((call) => call.durationMs)).toEqual([1000, 300]);
     // The up-front snap already pulled the sticker back to posfrom.
     expect(sticker.x).toBe(0);
     tweenCalls[1]!.step(1);

@@ -1,3 +1,5 @@
+import { setImmediate } from "node:timers/promises";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
@@ -203,7 +205,10 @@ describe("StoryRuntime", () => {
         await runtime.start();
         const advancing = clicked ? runtime.advance() : undefined;
         expect(renderer.spellStickerHideCalls).toHaveLength(hidesBeforeSkip);
-        await runtime.skipNode();
+        const skipping = runtime.skipNode();
+        await setImmediate();
+        await renderer.frames.advance(16);
+        await skipping;
         await advancing;
         expect(clear).toHaveBeenCalledExactlyOnceWith();
         expect(renderer.spellStickerHideCalls).toEqual(["s"]);
@@ -1026,6 +1031,7 @@ describe("StoryRuntime", () => {
         from: { x: 0, y: 0 },
         to: { x: 300, y: 500 },
       },
+      timeScale: 1,
     };
     expect(renderer.stickerTweenCalls).toEqual([moveAndFade]);
 
@@ -1040,6 +1046,7 @@ describe("StoryRuntime", () => {
         isend: true,
         join: false,
         rotation: { durationMs: 1000, from: 0, to: 90 },
+        timeScale: 1,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
@@ -1075,6 +1082,7 @@ describe("StoryRuntime", () => {
         isend: true,
         join: false,
         scale: { durationMs: 2000, from: 0, to: 1.5 },
+        timeScale: 1,
       },
     ]);
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
@@ -1108,7 +1116,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("scales stickertween durations by the animate ratio", async () => {
+  it("passes script durations and the sequence playback rate to stickertween", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -1118,8 +1126,6 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      // Native keeps durations literal and scales playback via
-      // Sequence.timeScale = animateRatio; duration * ratio is equivalent.
       { animateRatio: 0.5 },
     );
 
@@ -1127,15 +1133,16 @@ describe("StoryRuntime", () => {
 
     expect(renderer.stickerTweenCalls).toEqual([
       {
-        alpha: { durationMs: 500, from: 0, to: 1 },
+        alpha: { durationMs: 1000, from: 0, to: 1 },
         id: "s",
         isend: true,
         join: false,
         position: {
-          durationMs: 1000,
+          durationMs: 2000,
           from: { x: 0, y: 0 },
           to: { x: 10, y: 20 },
         },
+        timeScale: 0.5,
       },
     ]);
   });

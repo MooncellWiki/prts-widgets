@@ -24,75 +24,87 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "hello" });
   });
 
-  it("runs delay with provided sleep handler", async () => {
-    const sleep = vi.fn(async () => {});
+  it("starts the delay deadline on its first frame poll", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
     const runtime = new StoryRuntime(
       createContext(["[Delay(time=1)]", '[name="A"]done']),
-      new FakeRenderer(),
+      renderer,
       new FakeAudio(),
-      { sleep },
     );
 
-    await runtime.start();
-
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(1000);
+    const started = runtime.start();
+    await renderer.frames.advance(16, 999);
+    expect(runtime.getState()).toBe("waiting_timer");
+    await renderer.frames.advance(1);
+    await started;
     expect(runtime.getState()).toBe("waiting_input");
   });
 
   it("scales delay once by animateRatio and yields a frame for zero", async () => {
-    const sleep = vi.fn(async () => {});
-    const runtime = new StoryRuntime(
-      createContext(["[delay(time=2)]", "[delay(time=0)]", '[name="A"]done']),
-      new FakeRenderer(),
-      new FakeAudio(),
-      { animateRatio: 0.25, sleep },
-    );
-
-    await runtime.start();
-
-    expect(sleep.mock.calls).toEqual([[500], [0]]);
-  });
-
-  it("converts delay time through native Convert.ToSingle's accepted forms", async () => {
-    const sleep = vi.fn(async () => {});
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new FakeAudio();
+    const stopMusic = vi.spyOn(audio, "stopMusic");
     const runtime = new StoryRuntime(
       createContext([
-        "[delay(time=true)]",
-        '[delay(time="1e1")]',
-        "[delay(time=.5)]",
-        "[delay(time=2.)]",
-        '[delay(time="abc")]',
+        "[delay(time=2)]",
+        "[stopmusic]",
+        "[delay(time=0)]",
         '[name="A"]done',
       ]),
-      new FakeRenderer(),
-      new FakeAudio(),
-      { sleep },
+      renderer,
+      audio,
+      { animateRatio: 0.25 },
     );
 
-    await runtime.start();
+    const started = runtime.start();
+    await renderer.frames.advance(16, 499);
+    expect(stopMusic).not.toHaveBeenCalled();
+    await renderer.frames.advance(1);
+    expect(stopMusic).toHaveBeenCalledExactlyOnceWith(0);
+    expect(runtime.getState()).toBe("waiting_timer");
+    await renderer.frames.advance(16);
+    await started;
+    expect(runtime.getState()).toBe("waiting_input");
+  });
 
-    // bool 转 1/0、指数记法与首尾小数点都按数字读；double.Parse 拒绝的
-    // "abc" 在 native 抛 FormatException，这里温和回落到缺省 0。
-    expect(sleep.mock.calls).toEqual([[1000], [10_000], [500], [2000], [0]]);
+  it.each([
+    { time: "true", beforeDeadline: [16, 999] },
+    { time: '"1e1"', beforeDeadline: [16, 9999] },
+    { time: ".5", beforeDeadline: [16, 499] },
+    { time: "2.", beforeDeadline: [16, 1999] },
+    { time: '"abc"', beforeDeadline: [] },
+  ])("converts delay(time=$time)", async ({ time, beforeDeadline }) => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext([`[delay(time=${time})]`, '[name="A"]done']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    await renderer.frames.advance(...beforeDeadline);
+    expect(runtime.getState()).toBe("waiting_timer");
+    await renderer.frames.advance(1);
+    await started;
+    expect(runtime.getState()).toBe("waiting_input");
   });
 
   it("resets auto play mode when clicked while a delay blocks, without interrupting it", async () => {
-    const pendingSleeps: Array<() => void> = [];
-    const sleep = vi.fn(
-      () => new Promise<void>((resolve) => pendingSleeps.push(resolve)),
-    );
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
     const runtime = new StoryRuntime(
       createContext(["[delay(time=2)]", "[delay(time=3)]", '[name="A"]done']),
-      new FakeRenderer(),
+      renderer,
       new FakeAudio(),
-      { sleep },
     );
 
     runtime.setAutoPlayMode("quick_play");
     const startPromise = runtime.start();
 
     // quick_play 的 animateRatio=0 把第一条 delay 折叠成 0ms。
-    await vi.waitFor(() => expect(sleep).toHaveBeenCalledExactlyOnceWith(0));
     expect(runtime.getState()).toBe("waiting_timer");
 
     await runtime.advance();
@@ -102,31 +114,25 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_timer");
     expect(runtime.getAutoPlayState().mode).toBe("default");
 
-    pendingSleeps[0]!();
-    await vi.waitFor(() => expect(sleep).toHaveBeenCalledTimes(2));
-
-    expect(sleep).toHaveBeenLastCalledWith(3000);
-
-    pendingSleeps[1]!();
+    await renderer.frames.advance(16);
+    await renderer.frames.advance(16, 2999);
+    expect(runtime.getState()).toBe("waiting_timer");
+    await renderer.frames.advance(1);
     await startPromise;
 
     expect(runtime.getState()).toBe("waiting_input");
   });
 
   it("keeps theater presses inert while a delay blocks", async () => {
-    const pendingSleeps: Array<() => void> = [];
-    const sleep = vi.fn(
-      () => new Promise<void>((resolve) => pendingSleeps.push(resolve)),
-    );
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
     const runtime = new StoryRuntime(
       createContext(["[theater]", "[delay(time=2)]"]),
-      new FakeRenderer(),
+      renderer,
       new FakeAudio(),
-      { sleep },
     );
 
     const startPromise = runtime.start();
-    await vi.waitFor(() => expect(sleep).toHaveBeenCalledExactlyOnceWith(2000));
 
     expect(runtime.getState()).toBe("waiting_timer");
     expect(runtime.getAutoPlayState().mode).toBe("button_auto");
@@ -137,7 +143,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_timer");
     expect(runtime.getAutoPlayState().mode).toBe("button_auto");
 
-    pendingSleeps[0]!();
+    await renderer.frames.advance(16, 2000);
     await startPromise;
 
     // 脚本尾部的隐式 endtip 在 button_auto 下阻塞，与点击无关。

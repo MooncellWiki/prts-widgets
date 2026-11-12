@@ -23,8 +23,12 @@ export interface WaitForDecision {
   closeDecision: () => void;
 }
 
-export type InputWait = WaitForClick | WaitForDecision;
-export type CommandResult = "continue" | InputWait;
+export interface WaitForDelay {
+  delayMs: number;
+}
+
+export type CommandWait = WaitForClick | WaitForDecision | WaitForDelay;
+export type CommandResult = "continue" | CommandWait;
 
 export type CommandExecutor<TResult> = (
   command: ParsedCommandLine,

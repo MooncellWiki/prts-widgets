@@ -20,7 +20,7 @@ import {
   CommandRegistry,
   type ClickCompletion,
   type CommandResult,
-  type InputWait,
+  type CommandWait,
   type WaitForClick,
   type WaitForDecision,
 } from "./commandRegistry";
@@ -179,6 +179,12 @@ interface PendingAutoClick {
   deadlineMs?: number;
   delayMs: number;
   phase: "awaiting_mode" | "timing" | "elapsed";
+}
+
+interface PendingDelay {
+  deadlineMs?: number;
+  delayMs: number;
+  finish: () => void;
 }
 
 function sleepWithTimeout(ms: number): Promise<void> {
@@ -422,8 +428,9 @@ export class StoryRuntime {
   private readonly dialogPanel: DialogPanel;
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
+  private pendingDelay: PendingDelay | null = null;
   private pendingInput: PendingInput | null = null;
-  private resumeAfterInput: (() => void) | null = null;
+  private resumeCommands: (() => void) | null = null;
 
   constructor(
     context: Context,
@@ -473,9 +480,8 @@ export class StoryRuntime {
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
     this.stickerPanel = new StickerPanel(renderer, {
+      animateRatio: () => this.getCurrentSpeed().animateRatio,
       beginTyping: (length) => this.beginTextTyping(length),
-      calculateFadeMs: (value, fallback) =>
-        this.calculateFadeMs(value, fallback),
       playbackGeneration: () => this.playbackGeneration,
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
@@ -850,7 +856,7 @@ export class StoryRuntime {
   private cancelInputWait(): void {
     const pending = this.pendingInput;
     this.pendingInput = null;
-    this.resumeAfterInput = null;
+    this.resumeCommands = null;
     for (const unsubscribe of pending?.subscriptions ?? []) unsubscribe();
   }
 
@@ -981,7 +987,7 @@ export class StoryRuntime {
         this.state = "running";
         // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blocker
         // list on the next coroutine update. Run the loop in that update.
-        this.resumeAfterInput = () => resolve(this.processLoop());
+        this.resumeCommands = () => resolve(this.processLoop());
       } catch (error) {
         reject(error);
       }
@@ -998,42 +1004,17 @@ export class StoryRuntime {
     if (this.autoPlayMode === "quick_play") return;
 
     const activeProcessCompletion = this.processingCompletion;
+    const skipToThis = this.skipToIndex >= 0;
     let shouldResume = false;
 
     // m_executeIndex points at the command currently being waited on while our
     // cursor already points at the next command, hence cursor <= anchorIndex is
     // the native m_executeIndex < m_skipToIndex forward-only test.
-    if (this.skipToIndex >= 0 && this.cursor <= this.skipToIndex) {
+    if (skipToThis) {
+      if (this.cursor > this.skipToIndex) return;
       this.cursor = this.skipToIndex + 1;
       shouldResume = true;
-      // Native port: Torappu.AVG.AVGController.SkipStory's shared UI tail runs
-      // after the SkipToThis jump and resets set_autoPlayMode(DEFAULT) plus
-      // stops the auto coroutine (2.7.71 VA 0x183ec718d / 0x183ec71de), so auto
-      // playback never continues past the anchor. Web adaptation: only the
-      // real jump resets; native also runs this tail for an already-crossed
-      // anchor (a no-op jump), which canSkipNode() precludes here.
-      //
-      // The same tail then zeroes the whole m_storyCache (0x183ec7205), theater
-      // flag included, so OnClickPress stops swallowing clicks; leaving
-      // theaterMode set would strand the story with no auto click and no
-      // manual advance. The pre-theater auto state (autoPlayModeCache /
-      // m_needResumeAutoStatus) lives on AVGController outside the cache and
-      // survives: theaterAutoPlayCache is kept for a later [theater(mode=false)].
-      // Web order: the flag goes first, since setAutoPlayMode pins an active
-      // theater to button_auto.
-      this.theaterMode = false;
-      this.setAutoPlayMode("default");
-      // Native tail zeroes the whole m_storyCache, so the skipnode queue and
-      // curSkipMode go with it (2.7.81 SkipStory 0x183F8EB80): later skipnode
-      // executors read EMPTY -- CAN_SKIP -- instead of a stale unconsumed
-      // label stranded behind the jump.
-      this.skipNodeQueueIndex = this.skipNodeLabels.length;
-      this.currentSkipMode = "skip";
-    } else if (this.skipToIndex >= 0) {
-      // SkipToThis is forward-only. Native does not fall back to skipnode or
-      // StopStory after playback has already crossed the anchor.
-      return;
-    } else if (this.skipToIndex < 0) {
+    } else {
       const nextLabel = this.skipNodeLabels[this.skipNodeQueueIndex];
       if (nextLabel) {
         this.skipNodeQueueIndex += 1;
@@ -1065,7 +1046,6 @@ export class StoryRuntime {
       }
     }
 
-    const keepAutoClick = shouldResume && this.skipToIndex < 0;
     const interruptedInput = shouldResume ? this.pendingInput : null;
     this.cancelInputWait();
     // SkipStory (2791 @ 0x18416E560) force-ends the blockers and resets
@@ -1082,7 +1062,16 @@ export class StoryRuntime {
           handler.forceEnd?.();
       } finally {
         this.playbackGeneration += 1;
-        if (!keepAutoClick) this.cancelAutoClick();
+        if (skipToThis) {
+          // SkipStory resets the mode and story cache after ForceEnd.
+          // Clear the Web theater flag first so setAutoPlayMode accepts
+          // DEFAULT. The pre-theater mode cache lives outside the story cache.
+          this.theaterMode = false;
+          this.setAutoPlayMode("default");
+          this.skipNodeQueueIndex = this.skipNodeLabels.length;
+          this.currentSkipMode = "skip";
+        }
+        if (skipToThis || !shouldResume) this.cancelAutoClick();
       }
       if (shouldResume) {
         for (const reset of [
@@ -1098,25 +1087,46 @@ export class StoryRuntime {
         }
       }
     } finally {
-      this.skipCleanup = null;
-      cleanup.end();
-      if (!this.destroyed && this.state !== "error") {
-        this.dialogPanel.stopTypingSilently();
-        if (shouldResume) {
-          this.state = "running";
-        } else if (!activeProcessCompletion) {
-          // StopStory path with no loop alive to run finishPlayback().
+      // An async executor can finish while the reset is in progress. Release
+      // its wait and let its loop unwind before starting the destination.
+      this.dialogPanel.stopTypingSilently();
+      this.interruptPendingWait();
+      if (shouldResume) await activeProcessCompletion;
+      if (shouldResume && !this.destroyed && this.state !== "error") {
+        resumedProcess = this.resumeSkipOnFrame(cleanup);
+      } else {
+        this.skipCleanup = null;
+        cleanup.end();
+        if (
+          !this.destroyed &&
+          this.state !== "error" &&
+          !activeProcessCompletion
+        )
           this.finishPlayback();
-        }
-
-        // The cursor already moved. Release the old wait even if a reset
-        // failed, and let the existing loop own continuation when available.
-        this.interruptPendingWait();
-        if (shouldResume && !resumedProcess)
-          resumedProcess = this.processLoop();
       }
     }
     if (resumedProcess) await resumedProcess;
+  }
+
+  private resumeSkipOnFrame(cleanup: ExecutionHandle): Promise<void> {
+    return new Promise((resolve) => {
+      const cancelUpdate = this.renderer.onFrameUpdate(() => {
+        cancelUpdate();
+        // SkipStory clears the blockers. _DoExecuteCommands.MoveNext
+        // (2791 @ 0x184180280) sees that on its next poll, after Update.
+        this.resumeCommands = () => {
+          this.skipCleanup = null;
+          cleanup.end();
+          this.state = "running";
+          resolve(this.processLoop());
+        };
+      });
+      void cleanup.completion.then((reason) => {
+        if (reason !== "reset") return;
+        cancelUpdate();
+        resolve();
+      });
+    });
   }
 
   /**
@@ -1172,10 +1182,17 @@ export class StoryRuntime {
   }
 
   private pollAfterUpdate(nowMs: number): void {
-    if (this.skipCleanup) return;
-    const resume = this.resumeAfterInput;
-    this.resumeAfterInput = null;
+    const delay = this.pendingDelay;
+    const resume = this.resumeCommands;
+    this.resumeCommands = null;
     resume?.();
+    if (!this.skipCleanup && delay && this.pendingDelay === delay) {
+      // WaitForSecondsRealtime initializes the deadline on its first poll.
+      // A delay created by this frame's continuation starts on a later poll.
+      delay.deadlineMs ??= nowMs + delay.delayMs;
+      if (nowMs >= delay.deadlineMs) delay.finish();
+    }
+    if (this.skipCleanup) return;
 
     const pending = this.pendingAutoClick;
     if (!pending) return;
@@ -1273,10 +1290,8 @@ export class StoryRuntime {
 
     try {
       while (!this.destroyed) {
-        if (this.skipCleanup) {
-          await this.skipCleanup.completion;
-          continue;
-        }
+        if (this.skipCleanup)
+          return this.skipCleanup.completion.then(() => undefined);
         // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
         // incremented index BEFORE consulting ICommandFlowController
         // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
@@ -1326,6 +1341,8 @@ export class StoryRuntime {
           const waits = Array.isArray(result) ? result : [result];
           const decision = waits.find((wait) => "showDecision" in wait);
           if (decision) return this.waitForDecision(decision);
+          const delay = waits.find((wait) => "delayMs" in wait);
+          if (delay) return this.waitForDelay(delay.delayMs);
           this.waitForInput(waits.filter((wait) => "handleClick" in wait));
           return;
         }
@@ -1420,8 +1437,23 @@ export class StoryRuntime {
     }
   }
 
-  private async waitInterruptible(ms: number): Promise<boolean> {
-    return this.waitInterruptiblePromise(this.sleep(Math.max(0, ms)));
+  private async waitForDelay(delayMs: number): Promise<void> {
+    this.state = "waiting_timer";
+    await this.waitInterruptiblePromise(
+      new Promise<void>((resolve) => {
+        this.pendingDelay = {
+          delayMs,
+          finish: () => {
+            this.pendingDelay = null;
+            this.state = "running";
+            resolve(this.processLoop());
+          },
+        };
+      }),
+      () => {
+        this.pendingDelay = null;
+      },
+    );
   }
 
   private resolveCharacterName(ref: string): CharacterRefResolution {
@@ -1450,7 +1482,7 @@ export class StoryRuntime {
 
   private executeCommand(
     line: ParsedCommandLine,
-  ): CommandResult | InputWait[] | Promise<CommandResult | InputWait[]> {
+  ): CommandResult | CommandWait[] | Promise<CommandResult | CommandWait[]> {
     // HEADER remains in Story.commands but has no registered executor.
     if (line.command === "header") return "continue";
     const executors = this.commandRegistry.get(line.command);
@@ -1546,27 +1578,229 @@ export class StoryRuntime {
     return render instanceof Promise ? render.then(complete) : complete();
   }
 
-  private async executeBuiltinCommand(
+  private executeBuiltinCommand(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
+    const args = line.args;
+
+    // The native command loop runs synchronous executors through the next
+    // blocker in the same update. Keep these results synchronous.
+    switch (line.command) {
+      case "delay":
+        // CommonExecutors._ExecuteDelayCommand (2791 @ 0x1841C3EF0)
+        // starts WaitForSecondsRealtime even when the scaled time is zero.
+        return { delayMs: this.calculateFadeMs(this.exactArg(args, "time")) };
+
+      case "skipnode": {
+        const label = this.skipNodeLabels[this.skipNodeQueueIndex];
+        this.skipNodeQueueIndex += 1;
+        this.currentSkipMode = label?.mode ?? "skip";
+        return "continue";
+      }
+
+      case "skiptothis": {
+        // Native port: Torappu.AVG.AVGController._PreprocessCommands. This is a
+        // preprocess-only command with no executor, so normal playback advances
+        return "continue";
+      }
+
+      case "label": {
+        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteLabel. The native
+        // executor is an empty hotfix shell that always returns false: the
+        // label's whole effect is the preprocess registration done by
+        // preprocessLabelMap, so at run time it is a silent no-op that never
+        // blocks and never warns.
+        return "continue";
+      }
+
+      case "warp": {
+        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteGoto. A missing
+        // `name` key or a labelMap miss is a silent no-op -- no warning, no
+        // exception (every current `[warp(name="chiyu01")]` in the corpus
+        // takes the miss path because no label defines it). On a hit the
+        // one-shot goto cursor becomes the bare label index + 1, i.e. the line
+        // right after the label. Native applies the +1 here too, and MoveNext
+        // fetches the consumed index as-is, the same as processLoop.
+        const name = this.exactArg(args, "name");
+        if (name === undefined) return "continue";
+        const target = this.labelMap.get(toString(name));
+        if (target === undefined) return "continue";
+        this.gotoIndex = target + 1;
+        return "continue";
+      }
+
+      case "gotostage": {
+        // Native port: Torappu.AVG.AVGGotoStagePanel._ExecuteGotoStage. Its
+        // only side effect is a client UI route
+        // (UIRouteUtil.RouteToStage -> the target stage's selection/preview
+        // page); it never ends the story, blocks the queue, or touches the
+        // command index, and an empty/unresolvable target is a silent no-op.
+        // A web story widget has no game shell to route, so the navigation is
+        // intentionally omitted and the `target` param goes unread: the
+        // command just keeps playback moving.
+        return "continue";
+      }
+
+      case "playmusic": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand.
+        // The audio backend retires the current MUSIC channel before loading
+        // the requested asset, including when its key cannot be resolved.
+        const key = toString(this.exactArg(args, "key"));
+        if (!key) this.warn("parse", "playmusic key is empty");
+        else if (!this.hasAudioKey(key))
+          this.warn("missing_asset", `music: ${key}`);
+
+        const intro = toString(this.exactArg(args, "intro")) || undefined;
+        if (intro && !this.hasAudioKey(intro))
+          this.warn("missing_asset", `music intro: ${intro}`);
+
+        void this.audio.playMusic({
+          crossfadeMs: Math.max(
+            0,
+            toNumber(this.exactArg(args, "crossfade"), 0.4) * 1000,
+          ),
+          delayMs: Math.max(
+            0,
+            toNumber(this.exactArg(args, "delay"), 0) * 1000,
+          ),
+          intro,
+          key,
+          volume: toNumber(this.exactArg(args, "volume"), 1),
+        });
+        return "continue";
+      }
+
+      case "stopmusic": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopMusicCommand.
+        void this.audio.stopMusic(
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "musicvolume": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteMusicVolumeCommand.
+        void this.audio.setMusicVolume(
+          toNumber(this.exactArg(args, "volume"), 1),
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "playsound": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
+        // Channel defaults to key; the call is non-blocking. Native also
+        // suppresses one-shots in Reader/Pure mode. This player runs Normal mode.
+        const key = toString(this.exactArg(args, "key"));
+        if (!key) {
+          this.warn("parse", "playsound key is empty");
+          return "continue";
+        }
+        if (!this.hasAudioKey(key)) {
+          this.warn("missing_asset", `sound: ${key}`);
+          return "continue";
+        }
+
+        void this.audio.playSound({
+          channel: toString(this.exactArg(args, "channel"), key),
+          delayMs: Math.max(
+            0,
+            toNumber(this.exactArg(args, "delay"), 0) * 1000,
+          ),
+          key,
+          loop: toBoolean(this.exactArg(args, "loop"), false),
+          volume: toNumber(this.exactArg(args, "volume"), 1),
+        });
+        return "continue";
+      }
+
+      case "stopsound": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopSoundCommand.
+        const key = toString(this.exactArg(args, "key"));
+        void this.audio.stopSound(
+          toString(this.exactArg(args, "channel"), key),
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "soundvolume": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteSoundVolumeCommand.
+        void this.audio.setSoundVolume(
+          toString(this.exactArg(args, "channel")),
+          toNumber(this.exactArg(args, "volume"), 1),
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "focusparam": {
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
+        // is a config-only write: it sets useBlur / color on the shared
+        // AVGSceneFocusOut Config and marks the command buffer dirty
+        // (MarkEffectImplConfigDirty). It never touches channel amounts and
+        // never blocks -- the executor always returns false.
+        const effect = toString(this.exactArg(args, "effect"));
+        this.renderer.setFocusParam({
+          blur: toBoolean(this.exactArg(args, "blur"), true),
+          color:
+            effect === "Grayscale" || effect === "Colorinverse"
+              ? effect
+              : "None",
+        });
+        return "continue";
+      }
+
+      case "theater": {
+        // Native port: Torappu.AVG.AVGTheaterLabel._ExecuteTheaterNode. Web adapts
+        // the native theater UI mode to autoplay state only.
+        // AVGController.SetTheaterMode gates only on get_isRunning, so both
+        // branches of _SetTheaterModeStatus (2.7.81 VA 0x183f92420) run
+        // whether or not theater mode is already active.
+        const mode = toBoolean(this.exactArg(args, "mode"), true);
+        if (mode) {
+          // _SaveAutoStatus runs on every enter: a nested [theater] re-saves
+          // the theater's own button auto, so the exit then stays in auto.
+          this.theaterAutoPlayCache = this.getAutoPlayState();
+          this.theaterMode = true;
+          this.buttonSpeedLevel = 0;
+          this.applyScriptAutoPlayMode("button_auto");
+        } else {
+          // _StopAutoClick() on every exit, then restore the saved status
+          // (m_needResumeAutoStatus; QUICK_PLAY maps to DEFAULT) or, with
+          // nothing saved, set_autoPlayMode(DEFAULT): an unpaired exit drops
+          // a running auto play to manual. The cache outliving a SkipToThis
+          // jump is covered in skipNode().
+          this.cancelAutoClick();
+          const cached = this.theaterAutoPlayCache;
+          this.theaterMode = false;
+          this.theaterAutoPlayCache = null;
+          let restoreMode: AutoPlayMode = "default";
+          if (cached) {
+            this.buttonSpeedLevel = cached.buttonSpeedLevel;
+            this.quickSpeedLevel = cached.quickSpeedLevel;
+            if (cached.mode !== "quick_play") restoreMode = cached.mode;
+          }
+          this.applyScriptAutoPlayMode(restoreMode);
+        }
+        return "continue";
+      }
+
+      default:
+        if (unsupportedAd8Commands.has(line.command)) {
+          this.warn("unsupported_command", line.command);
+          return "continue";
+        }
+        return this.executeRenderCommand(line);
+    }
+  }
+
+  private async executeRenderCommand(
     line: ParsedCommandLine,
   ): Promise<CommandResult> {
     const args = line.args;
 
     switch (line.command) {
-      case "delay": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteDelayCommand.
-        // Only `time` is read and is scaled by animateRatio.
-        const durationMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "time"), 0) *
-            this.getCurrentSpeed().animateRatio *
-            1000,
-        );
-        this.state = "waiting_timer";
-        await this.waitInterruptible(durationMs);
-        this.state = "running";
-        return "continue";
-      }
-
       case "video": {
         // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
         // (2.7.61: still the legacy bool executor, consumed by the new
@@ -1620,56 +1854,6 @@ export class StoryRuntime {
         // and deliberately bypasses this yield.
         if (!interrupted) await this.sleep(0);
         this.state = "running";
-        return "continue";
-      }
-
-      case "skipnode": {
-        const label = this.skipNodeLabels[this.skipNodeQueueIndex];
-        this.skipNodeQueueIndex += 1;
-        this.currentSkipMode = label?.mode ?? "skip";
-        return "continue";
-      }
-
-      case "skiptothis": {
-        // Native port: Torappu.AVG.AVGController._PreprocessCommands. This is a
-        // preprocess-only command with no executor, so normal playback advances
-        return "continue";
-      }
-
-      case "label": {
-        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteLabel. The native
-        // executor is an empty hotfix shell that always returns false: the
-        // label's whole effect is the preprocess registration done by
-        // preprocessLabelMap, so at run time it is a silent no-op that never
-        // blocks and never warns.
-        return "continue";
-      }
-
-      case "warp": {
-        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteGoto. A missing
-        // `name` key or a labelMap miss is a silent no-op -- no warning, no
-        // exception (every current `[warp(name="chiyu01")]` in the corpus
-        // takes the miss path because no label defines it). On a hit the
-        // one-shot goto cursor becomes the bare label index + 1, i.e. the line
-        // right after the label. Native applies the +1 here too, and MoveNext
-        // fetches the consumed index as-is, the same as processLoop.
-        const name = this.exactArg(args, "name");
-        if (name === undefined) return "continue";
-        const target = this.labelMap.get(toString(name));
-        if (target === undefined) return "continue";
-        this.gotoIndex = target + 1;
-        return "continue";
-      }
-
-      case "gotostage": {
-        // Native port: Torappu.AVG.AVGGotoStagePanel._ExecuteGotoStage. Its
-        // only side effect is a client UI route
-        // (UIRouteUtil.RouteToStage -> the target stage's selection/preview
-        // page); it never ends the story, blocks the queue, or touches the
-        // command index, and an empty/unresolvable target is a silent no-op.
-        // A web story widget has no game shell to route, so the navigation is
-        // intentionally omitted and the `target` param goes unread: the
-        // command just keeps playback moving.
         return "continue";
       }
 
@@ -3279,99 +3463,6 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "playmusic": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand.
-        // The audio backend retires the current MUSIC channel before loading
-        // the requested asset, including when its key cannot be resolved.
-        const key = toString(this.exactArg(args, "key"));
-        if (!key) this.warn("parse", "playmusic key is empty");
-        else if (!this.hasAudioKey(key))
-          this.warn("missing_asset", `music: ${key}`);
-
-        const intro = toString(this.exactArg(args, "intro")) || undefined;
-        if (intro && !this.hasAudioKey(intro))
-          this.warn("missing_asset", `music intro: ${intro}`);
-
-        void this.audio.playMusic({
-          crossfadeMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "crossfade"), 0.4) * 1000,
-          ),
-          delayMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "delay"), 0) * 1000,
-          ),
-          intro,
-          key,
-          volume: toNumber(this.exactArg(args, "volume"), 1),
-        });
-        return "continue";
-      }
-
-      case "stopmusic": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopMusicCommand.
-        void this.audio.stopMusic(
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "musicvolume": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteMusicVolumeCommand.
-        void this.audio.setMusicVolume(
-          toNumber(this.exactArg(args, "volume"), 1),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "playsound": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
-        // Channel defaults to key; the call is non-blocking. Native also
-        // suppresses one-shots in Reader/Pure mode. This player runs Normal mode.
-        const key = toString(this.exactArg(args, "key"));
-        if (!key) {
-          this.warn("parse", "playsound key is empty");
-          return "continue";
-        }
-        if (!this.hasAudioKey(key)) {
-          this.warn("missing_asset", `sound: ${key}`);
-          return "continue";
-        }
-
-        void this.audio.playSound({
-          channel: toString(this.exactArg(args, "channel"), key),
-          delayMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "delay"), 0) * 1000,
-          ),
-          key,
-          loop: toBoolean(this.exactArg(args, "loop"), false),
-          volume: toNumber(this.exactArg(args, "volume"), 1),
-        });
-        return "continue";
-      }
-
-      case "stopsound": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopSoundCommand.
-        const key = toString(this.exactArg(args, "key"));
-        void this.audio.stopSound(
-          toString(this.exactArg(args, "channel"), key),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "soundvolume": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteSoundVolumeCommand.
-        void this.audio.setSoundVolume(
-          toString(this.exactArg(args, "channel")),
-          toNumber(this.exactArg(args, "volume"), 1),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
       case "cameraeffect": {
         // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect
         // (2.7.61 VA 0x183E32560): case-sensitive Grayscale/Colorinverse
@@ -3472,67 +3563,9 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "focusparam": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
-        // is a config-only write: it sets useBlur / color on the shared
-        // AVGSceneFocusOut Config and marks the command buffer dirty
-        // (MarkEffectImplConfigDirty). It never touches channel amounts and
-        // never blocks -- the executor always returns false.
-        const effect = toString(this.exactArg(args, "effect"));
-        this.renderer.setFocusParam({
-          blur: toBoolean(this.exactArg(args, "blur"), true),
-          color:
-            effect === "Grayscale" || effect === "Colorinverse"
-              ? effect
-              : "None",
-        });
-        return "continue";
-      }
-
-      case "theater": {
-        // Native port: Torappu.AVG.AVGTheaterLabel._ExecuteTheaterNode. Web adapts
-        // the native theater UI mode to autoplay state only.
-        // AVGController.SetTheaterMode gates only on get_isRunning, so both
-        // branches of _SetTheaterModeStatus (2.7.81 VA 0x183f92420) run
-        // whether or not theater mode is already active.
-        const mode = toBoolean(this.exactArg(args, "mode"), true);
-        if (mode) {
-          // _SaveAutoStatus runs on every enter: a nested [theater] re-saves
-          // the theater's own button auto, so the exit then stays in auto.
-          this.theaterAutoPlayCache = this.getAutoPlayState();
-          this.theaterMode = true;
-          this.buttonSpeedLevel = 0;
-          this.applyScriptAutoPlayMode("button_auto");
-        } else {
-          // _StopAutoClick() on every exit, then restore the saved status
-          // (m_needResumeAutoStatus; QUICK_PLAY maps to DEFAULT) or, with
-          // nothing saved, set_autoPlayMode(DEFAULT): an unpaired exit drops
-          // a running auto play to manual. The cache outliving a SkipToThis
-          // jump is covered in skipNode().
-          this.cancelAutoClick();
-          const cached = this.theaterAutoPlayCache;
-          this.theaterMode = false;
-          this.theaterAutoPlayCache = null;
-          let restoreMode: AutoPlayMode = "default";
-          if (cached) {
-            this.buttonSpeedLevel = cached.buttonSpeedLevel;
-            this.quickSpeedLevel = cached.quickSpeedLevel;
-            if (cached.mode !== "quick_play") restoreMode = cached.mode;
-          }
-          this.applyScriptAutoPlayMode(restoreMode);
-        }
-        return "continue";
-      }
-
-      default: {
-        if (unsupportedAd8Commands.has(line.command)) {
-          this.warn("unsupported_command", line.command);
-          return "continue";
-        }
-
+      default:
         this.warn("unknown_command", line.command);
         return "continue";
-      }
     }
   }
 

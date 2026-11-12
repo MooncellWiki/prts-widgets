@@ -1,3 +1,5 @@
+import { setImmediate } from "node:timers/promises";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
@@ -31,7 +33,6 @@ function storyMetadata(overrides: Partial<StoryMetadata> = {}): StoryMetadata {
 
 describe("StoryRuntime", () => {
   it("nofirstskip handles first-read skip by jumping to the next protected anchor", async () => {
-    const sleep = vi.fn(() => new Promise<void>(() => {}));
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -43,7 +44,6 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      { sleep },
     );
 
     const startPromise = runtime.start();
@@ -52,7 +52,6 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("waiting_timer");
     expect(runtime.canSkipNode()).toBe(true);
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(30_000);
 
     await runtime.skipNode();
     await startPromise;
@@ -86,13 +85,16 @@ describe("StoryRuntime", () => {
       runtime.setAutoPlayMode("button_auto");
       await runtime.start();
       await renderer.frames.advance(...beforeSkip);
-      await runtime.skipNode();
+      const skipping = runtime.skipNode();
+      await setImmediate();
+      await renderer.frames.advance(afterSkip[0] ?? 0);
+      await skipping;
       expect(runtime.getAutoPlayState().mode).toBe("button_auto");
       expect(runtime.getState()).toBe("waiting_input");
 
       // The subtitle captures a 1530ms wait at type-end, or when
       // ForceCommandEnd reveals it during the jump.
-      await renderer.frames.advance(...afterSkip, remainingMs - 1);
+      await renderer.frames.advance(...afterSkip.slice(1), remainingMs - 1);
       expect(renderer.lastDialogue.speaker).toBe("");
       await renderer.frames.advance(1, 16, 16);
       expect(renderer.lastDialogue.speaker).toBe("B");
@@ -100,12 +102,11 @@ describe("StoryRuntime", () => {
     },
   );
 
-  it("does not lose the active process loop while skip cleanup is asynchronous", async () => {
+  it("waits for asynchronous skip cleanup before resuming a skipped delay", async () => {
     let finishCleanup!: () => void;
     const cleanup = new Promise<void>((resolve) => {
       finishCleanup = resolve;
     });
-    const sleep = vi.fn(() => new Promise<void>(() => {}));
     const renderer = new FakeRenderer();
     vi.spyOn(renderer, "clearInterludes").mockReturnValue(cleanup);
     const runtime = new StoryRuntime(
@@ -116,7 +117,6 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      { sleep },
     );
 
     const startPromise = runtime.start();
@@ -292,6 +292,25 @@ describe("StoryRuntime", () => {
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
+  it("cancels a queued skip continuation when the player is destroyed", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    const skipping = runtime.skipNode();
+    await setImmediate();
+    runtime.destroy();
+    await skipping;
+
+    await renderer.frames.advance(16);
+    expect(runtime.getDisplayedLineIndex()).toBe(1);
+  });
+
   it.each([true, false])(
     "only force-finishes a blocking sticker on skip (block=%s)",
     async (block) => {
@@ -454,7 +473,10 @@ describe("StoryRuntime", () => {
         await renderer.frames.advance(...framesBeforeSkip);
         expect(renderer.finishDialogueCommandCalls).toBe(finishedBeforeSkip);
 
-        await runtime.skipNode();
+        const skipping = runtime.skipNode();
+        await setImmediate();
+        await renderer.frames.advance(16);
+        await skipping;
         await clicked;
         renderer.frames.step(16);
         expect(renderer.finishDialogueCommandCalls).toBe(1);
@@ -535,12 +557,10 @@ describe("StoryRuntime", () => {
   });
 
   it("does not expose segment skip during an active command without anchors", async () => {
-    const sleep = vi.fn(() => new Promise<void>(() => {}));
     const runtime = new StoryRuntime(
       createContext(["[delay(time=30)]", '[name="A"]unreachable']),
       new FakeRenderer(),
       new FakeAudio(),
-      { sleep },
     );
 
     const startPromise = runtime.start();
@@ -548,7 +568,8 @@ describe("StoryRuntime", () => {
     expect(runtime.canSkipNode()).toBe(false);
     await runtime.skipNode();
     expect(runtime.getState()).toBe("waiting_timer");
-    void startPromise;
+    runtime.destroy();
+    await startPromise;
   });
 
   it("does not jump backward after passing SkipToThis", async () => {
@@ -945,7 +966,6 @@ describe("StoryRuntime", () => {
   });
 
   it("keeps the auto play mode on a skipnode label jump", async () => {
-    const sleep = vi.fn(() => new Promise<void>(() => {}));
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -957,7 +977,6 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      { sleep },
     );
 
     const startPromise = runtime.start();
@@ -966,8 +985,7 @@ describe("StoryRuntime", () => {
 
     // First read hits the nofirstskip anchor: jump past it and resume. The
     // skipnode branch never touches the auto mode -- only the skiptothis
-    // tail resets it -- so button_auto survives the jump (the armed auto
-    // click uses the mocked never-resolving sleep and cannot fire here).
+    // tail resets it -- so button_auto survives the jump.
     await runtime.skipNode();
     await startPromise;
 
