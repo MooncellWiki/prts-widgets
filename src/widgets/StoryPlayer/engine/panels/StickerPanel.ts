@@ -135,7 +135,9 @@ export class StickerPanel {
   private stickerTypeDelayMs(value: unknown): number {
     const originDelaySeconds = TYPE_WRITER_ORIGIN_DELAY_MS / 1000;
     const scale = toNumber(value, 1) / originDelaySeconds;
-    return Math.max(0, this.playback.typeWriterDelayMs() * scale);
+    // AVGTypeWriterText.Update (2791 @ 0x18424FA30) uses originDelay
+    // when the scaled interval is negative.
+    return this.playback.typeWriterDelayMs() * scale;
   }
 
   private setSticker(

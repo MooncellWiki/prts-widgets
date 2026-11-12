@@ -391,11 +391,7 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it.each([
-    "[Dialog]<b></b>",
-    "[multiline(delay=0)]instant",
-    '[sticker(id="a",text="instant",delay=0)]',
-  ])(
+  it.each(["[Dialog]<b></b>", '[sticker(id="a",text="instant",delay=0)]'])(
     "delivers an immediate auto click after %s enters its wait",
     async (line) => {
       const sleep = vi
@@ -415,6 +411,30 @@ describe("StoryRuntime", () => {
       runtime.destroy();
     },
   );
+
+  it("lets the first click finish a zero-delay multiline before its update", async () => {
+    vi.useFakeTimers();
+    try {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext(["[multiline(delay=0)]instant", '[name="B"]next']),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+
+      await runtime.start();
+      expect(renderer.lastDialogue.text).toBe("");
+      await runtime.advance();
+      expect(renderer.lastDialogue.text).toBe("instant");
+      expect(runtime.getDisplayedLineIndex()).toBe(1);
+      await runtime.advance();
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
+      runtime.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("starts the auto wait on the same tick as the last character", async () => {
     vi.useFakeTimers();

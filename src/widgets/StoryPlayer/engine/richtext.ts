@@ -84,6 +84,9 @@ export function parseRichChars(
     const bold = active.some((tag) => tag.kind === "b");
     const italic = active.some((tag) => tag.kind === "i");
     for (const char of segment) {
+      // The 2791 sticker iterators step through UTF-16 code units. Keep
+      // the surrogate pair together in Pixi and count its first step.
+      if (char.length === 2) onIteratorStep?.(chars.length);
       chars.push({ bold, char, color, italic });
       onIteratorStep?.(chars.length);
     }

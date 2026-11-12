@@ -41,12 +41,14 @@ export class AVGTypeWriterText {
     text: string | TypewriterText["chars"],
     {
       delayMs,
+      deferZeroDelay = false,
       iteratorSteps,
       onTypeEnd,
       render,
       startIndex,
     }: {
       delayMs: number;
+      deferZeroDelay?: boolean;
       iteratorSteps?: readonly number[];
       onTypeEnd: () => void;
       render: RenderText;
@@ -64,7 +66,10 @@ export class AVGTypeWriterText {
     // sticker's string iterators (0x18425E880 / 0x18425E2A0) yield the
     // full message again and then return false to signal completion.
     const endStep = iteratorSteps ? iteratorSteps.length + 2 : chars.length;
-    if (!iteratorSteps && (step === endStep || !(interval > 0))) {
+    if (
+      !iteratorSteps &&
+      (step === endStep || (interval === 0 && !deferZeroDelay))
+    ) {
       render({ chars, visibleCount: chars.length }, true);
       onTypeEnd();
     } else {
@@ -118,9 +123,9 @@ export class AVGTypeWriterText {
   private async runTyping(session: TypingSession): Promise<void> {
     const { chars, render } = session;
     let elapsedMs = 0;
-    if (session.iteratorSteps && session.delayMs === 0) {
+    if (session.delayMs === 0) {
       // BeginText enters typing immediately. A later Update consumes the
-      // zero-delay iterator and invokes the completion callback.
+      // zero-delay text and invokes the completion callback.
       const startedAt = performance.now();
       await this.sleep(0);
       elapsedMs = performance.now() - startedAt;

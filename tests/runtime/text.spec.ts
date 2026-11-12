@@ -756,6 +756,7 @@ describe("StoryRuntime", () => {
       createContext([
         '[sticker(id="a",text="x",delay=0.04,block=false)]',
         '[sticker(id="b",text="y",block=false)]',
+        '[sticker(id="c",text="z",delay=-0.04,block=false)]',
         '[name="B"]ok',
       ]),
       renderer,
@@ -768,7 +769,7 @@ describe("StoryRuntime", () => {
     // delay=0.04 is scale 1 against the 0.04s originDelay; an omitted delay
     // falls back to 1.0, i.e. 25x the global typewriter interval (40ms here).
     expect(renderer.stickerCalls.map((call) => call.delayMs)).toEqual([
-      40, 1000,
+      40, 1000, -40,
     ]);
   });
 

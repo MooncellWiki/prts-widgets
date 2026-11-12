@@ -451,6 +451,18 @@ describe("PixiStoryRenderer", () => {
       expect(view.isTyping).toBe(false);
       expect(typed).toHaveBeenCalledExactlyOnceWith();
 
+      await renderer.setSticker({
+        ...input,
+        delayMs: -10,
+        id: "surrogate",
+        text: "😀A",
+      });
+      const surrogate = renderer.stickerViews.get("surrogate");
+      await vi.advanceTimersByTimeAsync(40);
+      expect(surrogate.text.text).toBe(transparentText("😀A"));
+      await vi.advanceTimersByTimeAsync(40);
+      expect(surrogate.text.text).toBe(`😀${transparentText("A")}`);
+
       const clicked = vi.fn();
       await renderer.setSticker({
         ...input,

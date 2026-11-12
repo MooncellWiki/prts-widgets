@@ -1,7 +1,7 @@
 import {
   exactArg,
   toBoolean,
-  toNumber,
+  toOptionalNumber,
   toString,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
@@ -152,15 +152,16 @@ export class DialogPanel {
     // _ExecuteMultiline defaults `delay` to the current global delay in
     // seconds before dividing by originDelay (40ms). A missing delay at
     // button-auto level 1 therefore types at 0.25x the usual interval.
-    const delaySeconds = toNumber(
-      exactArg(line.args, "delay"),
-      this.playback.typeWriterDelayMs() / 1000,
-    );
+    const scriptedDelay = toOptionalNumber(exactArg(line.args, "delay"));
+    const delaySeconds =
+      scriptedDelay ?? this.playback.typeWriterDelayMs() / 1000;
     this.multilineShownChars = this.beginText(
       toString(exactArg(line.args, "name")),
       this.multilineText,
       "multiline",
       {
+        // BeginText types even at an explicit zero until the next Update.
+        deferZeroDelay: scriptedDelay === 0,
         delayScale: delaySeconds / (TYPE_WRITER_ORIGIN_DELAY_MS / 1000),
         layoutText: text,
         startIndex: this.multilineShownChars,
@@ -183,7 +184,12 @@ export class DialogPanel {
     speaker: string,
     text: string,
     executor: DialogueLayout["executor"],
-    { delayScale = 1, layoutText = text, startIndex = 0 } = {},
+    {
+      deferZeroDelay = false,
+      delayScale = 1,
+      layoutText = text,
+      startIndex = 0,
+    } = {},
   ): number {
     // A displayed-line listener can destroy the player before typing starts.
     if (this.destroyed) return 0;
@@ -201,6 +207,7 @@ export class DialogPanel {
     // RaiseAutoClick. Count the translated string including markup.
     return this.typeWriter.beginText(translatedText, {
       delayMs: this.playback.typeWriterDelayMs() * delayScale,
+      deferZeroDelay,
       onTypeEnd: this.playback.beginTyping(translatedText.length),
       render: (message, initial) =>
         this.renderer.setDialogue(
