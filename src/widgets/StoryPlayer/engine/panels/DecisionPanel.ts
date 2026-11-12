@@ -12,7 +12,6 @@ import type {
 interface DecisionPlayback {
   pickOption: DecisionPolicy;
   resetAutoPlayMode: () => void;
-  setWaiting: (waiting: boolean) => void;
   warnInvalidParameter: (detail: string, line?: ParsedCommandLine) => void;
 }
 
@@ -27,7 +26,6 @@ const OBSERVED_MAX_DECISION_OPTIONS = 4;
  * The web view delivers the selection and the controller owns playback mode.
  */
 export class DecisionPanel {
-  private pendingDecision: symbol | null = null;
   private destroyed = false;
 
   constructor(
@@ -49,31 +47,11 @@ export class DecisionPanel {
     });
   }
 
-  getPendingDecision(): symbol | null {
-    return this.pendingDecision;
-  }
-
-  /**
-   * Native ForceCommandEnd (2791 @ 0x1841C6D40) leaves the panel alone, and
-   * ShouldResetOnSkip returns false. Web closes the view as an unclicked
-   * selection to release the command loop. The sampled view may already have
-   * settled from a click during cleanup.
-   */
-  settleOnSkip(pending: symbol | null): void {
-    if (pending && this.pendingDecision === pending)
-      this.renderer.settleDecision();
-  }
-
   destroy(): void {
     this.destroyed = true;
-    const pending = this.pendingDecision;
-    this.pendingDecision = null;
-    if (pending) this.renderer.settleDecision();
   }
 
-  private async executeDecision(
-    line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+  private executeDecision(line: ParsedCommandLine): CommandResult {
     // _ExecuteDecision (2791 @ 0x1841C7400) resets the gate before checking
     // options. The web player warns and continues for a missing options key.
     this.predicator.beginDecision();
@@ -117,22 +95,12 @@ export class DecisionPanel {
       return "continue";
     }
 
-    const pending = Symbol();
-    this.pendingDecision = pending;
-    this.playback.setWaiting(true);
-    try {
-      const selection = await this.renderer.showDecision(
-        options,
-        values,
-        disabled,
-      );
-      if (this.pendingDecision !== pending) return "continue";
-      this.pendingDecision = null;
-      this.predicator.applySelection(line.lineNumber, selection);
-      this.playback.setWaiting(false);
-      return "continue";
-    } finally {
-      if (this.pendingDecision === pending) this.pendingDecision = null;
-    }
+    return {
+      applySelection: (selection) =>
+        this.predicator.applySelection(line.lineNumber, selection),
+      closeDecision: () => this.renderer.settleDecision(),
+      showDecision: (onSelect) =>
+        this.renderer.showDecision(options, values, disabled, onSelect),
+    };
   }
 }

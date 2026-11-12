@@ -113,9 +113,10 @@ export class FakeRenderer implements StoryRenderer {
     options: string[];
     values: number[];
   }[] = [];
-  /** 为 true 时 showDecision 挂起等 settleDecision（模拟玩家尚未点击） */
+  /** 为 true 时等测试用例主动点选。 */
   holdDecisions = false;
-  private decisionWaiters: Array<(selection: DecisionSelection) => void> = [];
+  private onDecisionSelected: ((selection: DecisionSelection) => void) | null =
+    null;
   private resolveVideoWaiter: (() => void) | null = null;
 
   setCameraEffect(
@@ -383,32 +384,25 @@ export class FakeRenderer implements StoryRenderer {
     this.shakeCalls.push(input);
   }
 
-  async showDecision(
+  showDecision(
     options: string[],
     values: number[],
-    disabled?: boolean[],
-  ): Promise<DecisionSelection> {
-    this.decisionCalls.push({ disabled: disabled ?? [], options, values });
-    if (!this.holdDecisions) {
-      return { optionIndex: this.decisionIndex, value: this.decisionValue };
-    }
-    return new Promise<DecisionSelection>((resolve) => {
-      this.decisionWaiters.push(resolve);
-    });
+    disabled: boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ): void {
+    this.decisionCalls.push({ disabled, options, values });
+    if (this.holdDecisions) this.onDecisionSelected = onSelect;
+    else
+      onSelect({ optionIndex: this.decisionIndex, value: this.decisionValue });
   }
 
-  /** 按「未点击」结算挂起中的 decision，对应 PixiStoryRenderer.settleDecision */
   settleDecision(): void {
-    this.pickDecision({ optionIndex: -1, value: 0 });
+    this.onDecisionSelected = null;
   }
 
   /** 模拟玩家点击挂起中的 decision 选项 */
   pickDecision(selection: DecisionSelection): void {
-    const waiters = this.decisionWaiters;
-    this.decisionWaiters = [];
-    for (const resolve of waiters) {
-      resolve(selection);
-    }
+    this.onDecisionSelected?.(selection);
   }
 
   stopVideo(): void {

@@ -616,9 +616,8 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_decision");
     expect(runtime.canSkipNode()).toBe(true);
 
-    // 不结算挂起 decision 的话这一步永不返回：processLoop 吊在
-    // showDecision 上，cursor 移动了也无人消费（native 由 SkipStory 清空
-    // m_blockingExecutors 放行命令循环）
+    // 跳段关闭挂起的决策并放行命令循环。2791 SkipStory 清空
+    // m_blockingExecutors，Web 同时关闭等待中的视图。
     await runtime.skipNode();
     await startPromise;
 
@@ -679,6 +678,38 @@ describe("StoryRuntime", () => {
     // Native SkipStory resets to DEFAULT before resuming at the destination.
     expect(runtime.getState()).toBe("waiting_input");
     expect(runtime.getAutoPlayState().mode).toBe("default");
+  });
+
+  it("cancels a selected decision's pending frame-end completion on skip", async () => {
+    const renderer = new FakeRenderer();
+    renderer.holdDecisions = true;
+    let endFrame: (() => void) | undefined;
+    const cancel = vi.fn();
+    vi.spyOn(renderer, "onFrameEnd").mockImplementationOnce((callback) => {
+      endFrame = callback;
+      return cancel;
+    });
+    const runtime = new StoryRuntime(
+      createContext([
+        '[decision(options="A;B", values="1;2")]',
+        "[SkipToThis]",
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    renderer.pickDecision({ optionIndex: 1, value: 2 });
+    await runtime.skipNode();
+    await started;
+
+    expect(cancel).toHaveBeenCalledExactlyOnceWith();
+    endFrame?.();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+    expect(runtime.getDecisionSelectValue()).toBe(2);
+    runtime.destroy();
   });
 
   it("cleans up before rendering the destination when a decision is picked mid-skip", async () => {

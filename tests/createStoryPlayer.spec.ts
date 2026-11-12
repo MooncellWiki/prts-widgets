@@ -4,8 +4,6 @@ import { createStoryPlayer } from "../src/widgets/StoryPlayer/engine/createStory
 
 import { FakeRenderer } from "./helpers/runtimeFakes";
 
-import type { DecisionSelection } from "../src/widgets/StoryPlayer/engine/types";
-
 // 使用实际的 StoryRuntime。图形和 @pixi/sound 用桩以便在 happy-dom 中运行。
 vi.mock("@pixi/sound", () => ({ sound: { disableAutoPause: false } }));
 vi.mock("../src/widgets/StoryPlayer/engine/renderer", async () => {
@@ -27,10 +25,9 @@ describe("createStoryPlayer", () => {
       '[decision(options="A;B",values="1;2")]',
       '[name="A"]after',
     ]);
-    const choice = Promise.withResolvers<DecisionSelection>();
     const showDecision = vi
       .spyOn(FakeRenderer.prototype, "showDecision")
-      .mockReturnValueOnce(choice.promise);
+      .mockImplementationOnce(() => {});
     try {
       await player.mount(document.createElement("div"));
       player.setAutoPlayMode("button_auto");
@@ -42,13 +39,12 @@ describe("createStoryPlayer", () => {
       expect(player.getState()).toBe("waiting_decision");
       expect(player.getAutoPlayState().mode).toBe("button_auto");
 
-      choice.resolve({ optionIndex: 0, value: 1 });
+      showDecision.mock.calls[0]![3]({ optionIndex: 0, value: 1 });
       await started;
       expect(player.getDisplayedLineIndex()).toBe(2);
       expect(player.getAutoPlayState().mode).toBe("button_auto");
     } finally {
       player.destroy();
-      choice.resolve({ optionIndex: -1, value: 0 });
       showDecision.mockRestore();
     }
   });

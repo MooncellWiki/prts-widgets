@@ -132,7 +132,7 @@ export interface RuntimeChoiceSelection {
   value: number;
 }
 
-/** showDecision 的结果：点击的选项下标 + 写入闸门的值（value 会跨 decision 复用，不能反查下标） */
+/** 点击的选项下标和写入闸门的值。不同选项可复用 value。 */
 export interface DecisionSelection {
   /** 点击的选项下标；-1 表示面板未经点击被清除（跳过/销毁） */
   optionIndex: number;
@@ -861,14 +861,12 @@ export interface StoryRenderer {
     options: string[],
     values: number[],
     /** 与 options 同长的禁用标记（native `_SetupOptionText` 的 `&` 前缀项 interactable=false） */
-    disabled?: boolean[],
-  ) => Promise<DecisionSelection>;
+    disabled: boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ) => void;
   /**
-   * 按「未点击」结算挂起中的 decision（`{optionIndex: -1, value: 0}`），
-   * DecisionPanel 用它解开挂在 showDecision 上的命令循环。Web 适配：
-   * native SkipStory 清空 m_blockingExecutors 放行命令循环，但
-   * `DecisionPanel.ForceCommandEnd` 为空、`ShouldResetOnSkip` 为 false，
-   * 面板会留在屏幕上；web 选择关掉它。
+   * 在决策帧末结算、跳段或销毁时关闭面板。跳段关闭面板是 Web 适配，
+   * 2791 的 DecisionPanel.ForceCommandEnd 为空，ShouldResetOnSkip 为 false。
    */
   settleDecision: () => void;
   stopVideo: () => void;

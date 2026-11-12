@@ -1,4 +1,4 @@
-import type { ParsedCommandLine } from "./types";
+import type { DecisionSelection, ParsedCommandLine } from "./types";
 
 export interface ClickCompletion {
   onClick?: () => Promise<void> | void;
@@ -17,7 +17,14 @@ export interface WaitForClick {
   forceEnd?: () => void;
 }
 
-export type CommandResult = "continue" | WaitForClick;
+export interface WaitForDecision {
+  showDecision: (onSelect: (selection: DecisionSelection) => void) => void;
+  applySelection: (selection: DecisionSelection) => void;
+  closeDecision: () => void;
+}
+
+export type InputWait = WaitForClick | WaitForDecision;
+export type CommandResult = "continue" | InputWait;
 
 export type CommandExecutor<TResult> = (
   command: ParsedCommandLine,

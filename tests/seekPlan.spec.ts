@@ -133,14 +133,18 @@ class DecisionFakeRenderer {
   showItemKeys: (string | null)[] = [];
   lastDialogue = { speaker: "", text: "" };
 
-  async showDecision(
+  showDecision(
     options: readonly string[],
     values: readonly number[],
-  ): Promise<DecisionSelection> {
+    _disabled: readonly boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ): void {
     this.decisionPanelShown += 1;
     this.decisionCalls = { options: [...options], values: [...values] };
-    return { optionIndex: 0, value: values[0] ?? 0 };
+    onSelect({ optionIndex: 0, value: values[0] ?? 0 });
   }
+
+  settleDecision(): void {}
 
   async showItem(input: ShowItemInput): Promise<void> {
     this.showItemKeys.push(input.key);

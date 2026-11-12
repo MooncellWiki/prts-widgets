@@ -20,7 +20,9 @@ import {
   CommandRegistry,
   type ClickCompletion,
   type CommandResult,
+  type InputWait,
   type WaitForClick,
+  type WaitForDecision,
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
@@ -151,8 +153,6 @@ const builtinCommandNames = [
   "camerashake",
   "focusout",
   "focusparam",
-  "spellsticker",
-  "spellstickerclear",
   "theater",
   "bgeffect",
   "cgitem",
@@ -454,11 +454,6 @@ export class StoryRuntime {
       {
         pickOption: (decision) => this.decisionPolicy?.(decision) ?? null,
         resetAutoPlayMode: () => this.applyScriptAutoPlayMode("default"),
-        setWaiting: (waiting) => {
-          // _ExecuteDecision (2791 @ 0x1841C7400) waits for an option while
-          // leaving the auto-click clock and its playback mode alone.
-          this.state = waiting ? "waiting_decision" : "running";
-        },
         warnInvalidParameter: (detail, line) =>
           this.warn(
             "invalid_parameter",
@@ -500,6 +495,12 @@ export class StoryRuntime {
     this.dialogPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
+    this.commandRegistry.register("spellsticker", (line) =>
+      this.executeSpellSticker(line),
+    );
+    this.commandRegistry.register("spellstickerclear", (line) =>
+      this.executeSpellStickerClear(line),
+    );
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -893,21 +894,17 @@ export class StoryRuntime {
 
       await this.waitInterruptiblePromise(
         new Promise<void>((resolve, reject) => {
-          cancelFrameEnd = this.renderer.onFrameEnd(() => {
-            if (this.pendingInput !== pending) return;
-            try {
+          cancelFrameEnd = this.finishInputAtFrameEnd(
+            () => {
+              if (this.pendingInput !== pending) return false;
               for (const { onFinish } of pending.effects) onFinish?.();
-            } catch (error) {
-              reject(error);
-              return;
-            }
-            if (this.pendingInput !== pending) return;
-            this.pendingInput = null;
-            this.state = "running";
-            // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its
-            // blocker list again on the next coroutine update.
-            this.resumeAfterInput = () => resolve(this.processLoop());
-          });
+              if (this.pendingInput !== pending) return false;
+              this.pendingInput = null;
+              return true;
+            },
+            resolve,
+            reject,
+          );
         }),
       );
     } catch (error) {
@@ -924,6 +921,73 @@ export class StoryRuntime {
     }
   }
 
+  private async waitForDecision(decision: WaitForDecision): Promise<void> {
+    const generation = this.playbackGeneration;
+    this.state = "waiting_decision";
+    let open = true;
+    let selected = false;
+    let cancelFrameEnd: (() => void) | undefined;
+    const close = () => {
+      if (!open) return;
+      open = false;
+      decision.closeDecision();
+    };
+
+    try {
+      await this.waitInterruptiblePromise(
+        new Promise<void>((resolve, reject) => {
+          decision.showDecision((selection) => {
+            if (!open || selected || this.destroyed) return;
+            selected = true;
+            try {
+              // OnDecisionSelected (2791 @ 0x184169F40) records the choice
+              // immediately. InternalCommand.Finish schedules FinishCommand
+              // via InvokeEndOfFrame (0x1841C7340).
+              decision.applySelection(selection);
+              if (this.skipCleanup) return;
+              cancelFrameEnd = this.finishInputAtFrameEnd(
+                () => {
+                  if (!open || this.skipCleanup) return false;
+                  close();
+                  return true;
+                },
+                resolve,
+                reject,
+              );
+            } catch (error) {
+              reject(error);
+            }
+          });
+        }),
+        close,
+      );
+    } catch (error) {
+      if (!this.destroyed && generation === this.playbackGeneration)
+        this.failPlayback(error);
+    } finally {
+      cancelFrameEnd?.();
+      close();
+    }
+  }
+
+  private finishInputAtFrameEnd(
+    onFinish: () => boolean,
+    resolve: (continuation: Promise<void>) => void,
+    reject: (error: unknown) => void,
+  ): () => void {
+    return this.renderer.onFrameEnd(() => {
+      try {
+        if (!onFinish() || this.destroyed) return;
+        this.state = "running";
+        // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blocker
+        // list on the next coroutine update. Run the loop in that update.
+        this.resumeAfterInput = () => resolve(this.processLoop());
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
   async skipNode(): Promise<void> {
     if (this.destroyed || !this.canSkipNode()) return;
 
@@ -934,9 +998,6 @@ export class StoryRuntime {
     if (this.autoPlayMode === "quick_play") return;
 
     const activeProcessCompletion = this.processingCompletion;
-    // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
-    // 替它结算（见下方 settleOnSkip）。
-    const pendingDecision = this.decisionPanel.getPendingDecision();
     let shouldResume = false;
 
     // m_executeIndex points at the command currently being waited on while our
@@ -1051,7 +1112,6 @@ export class StoryRuntime {
         // The cursor already moved. Release the old wait even if a reset
         // failed, and let the existing loop own continuation when available.
         this.interruptPendingWait();
-        this.decisionPanel.settleOnSkip(pendingDecision);
         if (shouldResume && !resumedProcess)
           resumedProcess = this.processLoop();
       }
@@ -1263,23 +1323,30 @@ export class StoryRuntime {
         // follow-up (spellsticker block) travels with the dropped handler.
         if (generation !== this.playbackGeneration) continue;
         if (result !== "continue") {
-          this.waitForInput(Array.isArray(result) ? result : [result]);
+          const waits = Array.isArray(result) ? result : [result];
+          const decision = waits.find((wait) => "showDecision" in wait);
+          if (decision) return this.waitForDecision(decision);
+          this.waitForInput(waits.filter((wait) => "handleClick" in wait));
           return;
         }
       }
     } catch (error) {
-      this.state = "error";
-      this.stopPlaybackInput();
-      this.finishLineSeekMissed("error");
-      const detail =
-        error instanceof Error ? error.message : "unknown runtime error";
-      this.onWarning?.({ cursor: this.cursor, detail, type: "error" });
+      this.failPlayback(error);
     } finally {
       this.processing = false;
       this.resolveProcessingCompletion?.();
       this.resolveProcessingCompletion = null;
       this.processingCompletion = null;
     }
+  }
+
+  private failPlayback(error: unknown): void {
+    this.state = "error";
+    this.stopPlaybackInput();
+    this.finishLineSeekMissed("error");
+    const detail =
+      error instanceof Error ? error.message : "unknown runtime error";
+    this.onWarning?.({ cursor: this.cursor, detail, type: "error" });
   }
 
   private arg(args: StoryCommandArgs, key: string): unknown {
@@ -1383,7 +1450,7 @@ export class StoryRuntime {
 
   private executeCommand(
     line: ParsedCommandLine,
-  ): CommandResult | Promise<CommandResult | WaitForClick[]> {
+  ): CommandResult | InputWait[] | Promise<CommandResult | InputWait[]> {
     // HEADER remains in Story.commands but has no registered executor.
     if (line.command === "header") return "continue";
     const executors = this.commandRegistry.get(line.command);
@@ -1392,12 +1459,91 @@ export class StoryRuntime {
       return "continue";
     }
     if (executors.length === 1) return executors[0]!(line);
-    return Promise.all(executors.map((executor) => executor(line))).then(
-      (results) => {
-        const handlers = results.filter((result) => result !== "continue");
-        return handlers.length > 0 ? handlers : "continue";
-      },
-    );
+    const combine = (results: CommandResult[]) => {
+      const waits = results.filter((result) => result !== "continue");
+      return waits.length > 0 ? waits : "continue";
+    };
+    const results = executors.map((executor) => executor(line));
+    return results.every(
+      (result): result is CommandResult => !(result instanceof Promise),
+    )
+      ? combine(results)
+      : Promise.all(results).then(combine);
+  }
+
+  private executeSpellSticker(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
+    // Native _ExecuteSpellSticker (2791 @ 0x1841B37F0) displays or hides the
+    // view inline. Keep synchronous renderers on the same command-loop turn.
+    const { args } = line;
+    const id = toString(this.exactArg(args, "id"));
+    if (!id) {
+      this.warn("parse", "spellsticker id is empty");
+      return "continue";
+    }
+    const hide =
+      toString(this.exactArg(args, "action"), "show").toLowerCase() === "hide";
+    const block = toBoolean(this.exactArg(args, "block"), false);
+    // Native _ShowSticker writes alpha only when supplied, preserving the
+    // previous alpha when reusing a sticker.
+    const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
+    const generation = this.playbackGeneration;
+    const render = hide
+      ? this.renderer.hideSpellSticker(id)
+      : this.renderer.setSpellSticker({
+          alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
+          angle: toOptionalNumber(this.exactArg(args, "angle")),
+          content: this.translateText(line.content),
+          id,
+          style: toString(this.exactArg(args, "style"), "sami"),
+          x: toOptionalNumber(this.exactArg(args, "x")),
+          xScale: toOptionalNumber(this.exactArg(args, "xScale")),
+          y: toOptionalNumber(this.exactArg(args, "y")),
+          yScale: toOptionalNumber(this.exactArg(args, "yScale")),
+        } satisfies SpellStickerInput);
+
+    const complete = (durationMs: number | void): CommandResult => {
+      if (!block || generation !== this.playbackGeneration) return "continue";
+      // Use the show clip's length, falling back to the base auto wait.
+      this.scheduleAutoClick(
+        typeof durationMs === "number" && durationMs > 0
+          ? durationMs
+          : undefined,
+      );
+      // _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) hide the
+      // blocking show by ID and clear it before another callback can hide.
+      if (hide) return { handleClick: (finishCommand) => finishCommand() };
+      let blockingStickerId: string | null = id;
+      const hideBlocking = () => {
+        if (blockingStickerId === null) return;
+        const stickerId = blockingStickerId;
+        blockingStickerId = null;
+        return this.renderer.hideSpellSticker(stickerId);
+      };
+      return {
+        handleClick: (finishCommand) =>
+          finishCommand({ onClick: hideBlocking }),
+        forceEnd: hideBlocking,
+      };
+    };
+    return render instanceof Promise ? render.then(complete) : complete(render);
+  }
+
+  private executeSpellStickerClear(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
+    // _ExecuteSpellStickerClear (2791 @ 0x1841B35D0) clears inline and
+    // raises an auto click with length zero when the command blocks.
+    const block = toBoolean(this.exactArg(line.args, "block"), false);
+    const generation = this.playbackGeneration;
+    const render = this.renderer.clearSpellStickers();
+    const complete = (): CommandResult => {
+      if (!block || generation !== this.playbackGeneration) return "continue";
+      this.scheduleAutoClick();
+      return { handleClick: (finishCommand) => finishCommand() };
+    };
+    return render instanceof Promise ? render.then(complete) : complete();
   }
 
   private async executeBuiltinCommand(
@@ -3341,77 +3487,6 @@ export class StoryRuntime {
               : "None",
         });
         return "continue";
-      }
-
-      case "spellsticker": {
-        // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellSticker.
-        // `block` waits for a click, whose follow-up hides the sticker.
-        const id = toString(this.exactArg(args, "id"));
-        if (!id) {
-          // Native logs "[AVG.SpellSticker] Empty sticker id." and returns
-          // false before reading `block`: nothing renders and nothing blocks.
-          this.warn("parse", "spellsticker id is empty");
-          return "continue";
-        }
-        const hide =
-          toString(this.exactArg(args, "action"), "show").toLowerCase() ===
-          "hide";
-        const block = toBoolean(this.exactArg(args, "block"), false);
-        // Native `_ShowSticker` inlines `_ApplyAlpha`: CanvasGroup.alpha is
-        // only written when the alpha param exists (TryGetParam + clamp 0..1),
-        // so a reused sticker keeps its previous alpha. Keep the field
-        // optional instead of forcing the default 1.
-        const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
-        const generation = this.playbackGeneration;
-        let showDurationMs: number | undefined;
-        if (hide) {
-          await this.renderer.hideSpellSticker(id);
-        } else {
-          showDurationMs = await this.renderer.setSpellSticker({
-            alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
-            angle: toOptionalNumber(this.exactArg(args, "angle")),
-            content: this.translateText(line.content),
-            id,
-            style: toString(this.exactArg(args, "style"), "sami"),
-            x: toOptionalNumber(this.exactArg(args, "x")),
-            xScale: toOptionalNumber(this.exactArg(args, "xScale")),
-            y: toOptionalNumber(this.exactArg(args, "y")),
-            yScale: toOptionalNumber(this.exactArg(args, "yScale")),
-          } satisfies SpellStickerInput);
-        }
-        if (!block || generation !== this.playbackGeneration) return "continue";
-        // _ExecuteSpellSticker (2791 @ 0x1841B37F0) raises the auto click
-        // with the show clip's length and falls back to the base wait.
-        this.scheduleAutoClick(
-          (showDurationMs ?? 0) > 0 ? showDurationMs : undefined,
-        );
-        // _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) hide the
-        // blocking show by ID and clear it before the next callback can hide.
-        // A hide command already hid it during execution.
-        if (hide) return { handleClick: (finishCommand) => finishCommand() };
-        let blockingStickerId: string | null = id;
-        const hideBlocking = () => {
-          if (blockingStickerId === null) return;
-          const stickerId = blockingStickerId;
-          blockingStickerId = null;
-          return this.renderer.hideSpellSticker(stickerId);
-        };
-        return {
-          handleClick: (finishCommand) =>
-            finishCommand({ onClick: hideBlocking }),
-          forceEnd: hideBlocking,
-        };
-      }
-
-      case "spellstickerclear": {
-        // _ExecuteSpellStickerClear (2791 @ 0x1841B35D0) raises an auto click
-        // with length zero when the command blocks.
-        const block = toBoolean(this.exactArg(args, "block"), false);
-        const generation = this.playbackGeneration;
-        await this.renderer.clearSpellStickers();
-        if (!block || generation !== this.playbackGeneration) return "continue";
-        this.scheduleAutoClick();
-        return { handleClick: (finishCommand) => finishCommand() };
       }
 
       case "theater": {

@@ -191,6 +191,102 @@ describe("PixiStoryRenderer", () => {
     },
   );
 
+  it("keeps a decision blocking through the draw when an old auto click is due", async () => {
+    const context = createContext([
+      '[sticker(id="s",text="typing",duration=0,block=false)]',
+      '[decision(options="A;B",values="1;2")]',
+      `[subtitle(text="${"X".repeat(240)}")]`,
+    ]);
+    const renderer = createRenderer(context);
+    renderer.layoutSubtitle = vi.fn();
+    const ticker = new Ticker();
+    ticker.lastTime = 0;
+    renderer.app = { ticker };
+    const setSubtitle = vi.spyOn(renderer, "setSubtitle");
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    try {
+      runtime.setAutoPlayMode("button_auto");
+      runtime.setAutoPlaySpeedLevel(1);
+      const started = runtime.start();
+      ticker.update(16); // First WaitUntil passes.
+      ticker.update(32); // Start the 590 ms wait from the sticker's type end.
+      ticker.update(622); // The auto click will fire on the next update.
+
+      const decision = renderer.decisionView.container;
+      const stopUpdate = renderer.onFrameUpdate(() => {
+        stopUpdate();
+        decision.children[1].emit("pointertap");
+      });
+      const draw = vi.fn(() => ({
+        decisionVisible: renderer.decisionView.container === decision,
+        selection: runtime.getDecisionSelectValue(),
+        state: runtime.getState(),
+      }));
+      ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+      ticker.update(638);
+      expect(draw).toHaveReturnedWith({
+        decisionVisible: true,
+        selection: 1,
+        state: "waiting_decision",
+      });
+      expect(renderer.decisionView.container).toBeNull();
+      expect(setSubtitle).not.toHaveBeenCalled();
+
+      ticker.update(654); // Resume the command loop before drawing.
+      expect(setSubtitle).toHaveBeenLastCalledWith(
+        expect.objectContaining({ visibleCount: 0 }),
+        expect.any(Object),
+      );
+      ticker.update(670);
+      expect(setSubtitle).toHaveBeenLastCalledWith(
+        expect.objectContaining({ visibleCount: 1 }),
+        undefined,
+      );
+      await started;
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      ticker.destroy();
+      renderer.destroy();
+    }
+  });
+
+  it("continues after synchronous spellsticker commands before drawing", async () => {
+    const context = createContext([
+      '[name="A"]A',
+      '[spellsticker(id="s",block=false)]<p=1>Spell</>',
+      '[spellsticker(id="s",action="hide",block=false)]',
+      "[spellstickerclear(block=false)]",
+      '[name="B"]next',
+    ]);
+    const renderer = createRenderer(context);
+    const ticker = new Ticker();
+    ticker.lastTime = 0;
+    renderer.app = { ticker };
+    const clear = vi.spyOn(renderer, "clearSpellStickers");
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    try {
+      await runtime.start();
+      ticker.update(48);
+      const advancing = runtime.advance();
+      ticker.update(64);
+
+      const draw = vi.fn(() => ({
+        cleared: clear.mock.calls.length,
+        line: runtime.getDisplayedLineIndex(),
+      }));
+      ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+      ticker.update(80);
+      expect(draw).toHaveReturnedWith({ cleared: 1, line: 5 });
+      await advancing;
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      ticker.destroy();
+      renderer.destroy();
+    }
+  });
+
   it("auto-advances consecutive blocking spellstickers using the show clips", async () => {
     const context = createContext([
       '[spellsticker(id="s",style="SAMI",block=true)]<p=1>A</>',

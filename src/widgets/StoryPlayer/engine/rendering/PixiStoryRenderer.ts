@@ -930,12 +930,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.dialogView.restoreMessageWidth();
   }
 
-  async showDecision(
+  showDecision(
     options: string[],
     values: number[],
-    disabled?: boolean[],
-  ): Promise<DecisionSelection> {
-    return this.decisionView.show(options, values, disabled);
+    disabled: boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ): void {
+    this.decisionView.show(options, values, disabled, onSelect);
   }
 
   settleDecision(): void {
