@@ -61,41 +61,42 @@ describe("StoryRuntime", () => {
   });
 
   it.each([
-    { skipAtMs: 20, remainingMs: 1531 },
-    { skipAtMs: 540, remainingMs: 1032 },
+    { skipAtMs: 20, beforeSkip: [20], afterSkip: [16, 16], remainingMs: 1530 },
+    {
+      skipAtMs: 540,
+      beforeSkip: [41, 16, 483],
+      afterSkip: [],
+      remainingMs: 1047,
+    },
   ])(
     "carries the auto click across a protected skip at $skipAtMs ms",
-    async ({ skipAtMs, remainingMs }) => {
-      vi.useFakeTimers();
-      try {
-        const renderer = new FakeRenderer();
-        const runtime = new StoryRuntime(
-          createContext([
-            '[subtitle(text="A")]',
-            '[skipnode(mode="nofirstskip")]',
-            "[stickerclear(block=true)]",
-            '[name="B"]after',
-          ]),
-          renderer,
-          new FakeAudio(),
-        );
-        runtime.setAutoPlayMode("button_auto");
-        await runtime.start();
-        await vi.advanceTimersByTimeAsync(skipAtMs);
-        await runtime.skipNode();
-        expect(runtime.getAutoPlayState().mode).toBe("button_auto");
-        expect(runtime.getState()).toBe("waiting_input");
+    async ({ beforeSkip, afterSkip, remainingMs }) => {
+      const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
+      const runtime = new StoryRuntime(
+        createContext([
+          '[subtitle(text="A")]',
+          '[skipnode(mode="nofirstskip")]',
+          "[stickerclear(block=true)]",
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      await renderer.frames.advance(...beforeSkip);
+      await runtime.skipNode();
+      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+      expect(runtime.getState()).toBe("waiting_input");
 
-        // The subtitle captures a 1530ms wait at type-end, or when
-        // ForceCommandEnd reveals it during the jump. Include the fake frames.
-        await vi.advanceTimersByTimeAsync(remainingMs - 1);
-        expect(renderer.lastDialogue.speaker).toBe("");
-        await vi.advanceTimersByTimeAsync(1);
-        expect(renderer.lastDialogue.speaker).toBe("B");
-        runtime.destroy();
-      } finally {
-        vi.useRealTimers();
-      }
+      // The subtitle captures a 1530ms wait at type-end, or when
+      // ForceCommandEnd reveals it during the jump.
+      await renderer.frames.advance(...afterSkip, remainingMs - 1);
+      expect(renderer.lastDialogue.speaker).toBe("");
+      await renderer.frames.advance(1, 16, 16);
+      expect(renderer.lastDialogue.speaker).toBe("B");
+      runtime.destroy();
     },
   );
 
@@ -330,41 +331,36 @@ describe("StoryRuntime", () => {
   );
 
   it("resets auto play mode to default after a SkipToThis jump", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[name="A"]before',
-          "[SkipToThis]",
-          '[name="B"]after',
-          '[name="C"]later',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]before',
+        "[SkipToThis]",
+        '[name="B"]after',
+        '[name="C"]later',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
 
-      await runtime.start();
-      runtime.setAutoPlayMode("button_auto");
-      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    await runtime.start();
+    runtime.setAutoPlayMode("button_auto");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
 
-      await runtime.skipNode();
+    await runtime.skipNode();
 
-      // Native SkipStory tail: set_autoPlayMode(DEFAULT) + stop the auto
-      // coroutine, so auto playback does not continue past the anchor.
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+    // Native SkipStory tail: set_autoPlayMode(DEFAULT) + stop the auto
+    // coroutine, so auto playback does not continue past the anchor.
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
 
-      // The cancelled button-auto click never fires; "later" only shows on a
-      // manual advance.
-      await vi.advanceTimersByTimeAsync(5000);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+    // The cancelled button-auto click never fires; "later" only shows on a
+    // manual advance.
+    await renderer.frames.advance(16, 16, 5000, 16, 16);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
 
-      await runtime.advance();
-      expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
-    } finally {
-      vi.useRealTimers();
-    }
+    await runtime.advance();
+    expect(renderer.lastDialogue).toEqual({ speaker: "C", text: "later" });
   });
 
   // 不再有 quick_play 变体：native 2.7.61 OnSkipBtnClicked（0x183e16ee0）在
@@ -373,44 +369,39 @@ describe("StoryRuntime", () => {
   // 会经 button_auto 等非快速档路径触达。
 
   it("leaves theater mode on a SkipToThis jump but keeps its exit restore", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          "[theater]",
-          '[name="A"]before',
-          "[SkipToThis]",
-          '[name="B"]after',
-          "[theater(mode=false)]",
-          '[name="C"]later',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[theater]",
+        '[name="A"]before',
+        "[SkipToThis]",
+        '[name="B"]after',
+        "[theater(mode=false)]",
+        '[name="C"]later',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
 
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
-      expect(renderer.lastDialogue?.speaker).toBe("A");
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    expect(renderer.lastDialogue?.speaker).toBe("A");
 
-      await runtime.skipNode();
+    await runtime.skipNode();
 
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
 
-      // Native zeroes isTheaterMode along with the rest of m_storyCache: no
-      // auto click fires, and a click advances instead of being swallowed.
-      await vi.advanceTimersByTimeAsync(5000);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+    // Native zeroes isTheaterMode along with the rest of m_storyCache: no
+    // auto click fires, and a click advances instead of being swallowed.
+    await renderer.frames.advance(16, 16, 5000, 16, 16);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
 
-      await runtime.advance();
-      expect(renderer.lastDialogue?.speaker).toBe("C");
-      // The pre-theater auto state lives outside m_storyCache, so the later
-      // [theater(mode=false)] still restores it.
-      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
-    } finally {
-      vi.useRealTimers();
-    }
+    await runtime.advance();
+    expect(renderer.lastDialogue?.speaker).toBe("C");
+    // The pre-theater auto state lives outside m_storyCache, so the later
+    // [theater(mode=false)] still restores it.
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
   });
 
   it("finishes the interrupted line and ends its command on skip", async () => {
@@ -438,89 +429,94 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("force-ends the dialog if skipping before its click completes at frame end", async () => {
+  it.each([
+    { phase: "before frame end", framesBeforeSkip: [], finishedBeforeSkip: 0 },
+    { phase: "after frame end", framesBeforeSkip: [16], finishedBeforeSkip: 1 },
+  ])(
+    "cancels a pending advance on a skip $phase",
+    async ({ framesBeforeSkip, finishedBeforeSkip }) => {
+      const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
+      const runtime = new StoryRuntime(
+        createContext([
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+          '[name="C"]later',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      try {
+        await runtime.start();
+        renderer.frames.step(16);
+        const clicked = runtime.advance();
+        await renderer.frames.advance(...framesBeforeSkip);
+        expect(renderer.finishDialogueCommandCalls).toBe(finishedBeforeSkip);
+
+        await runtime.skipNode();
+        await clicked;
+        renderer.frames.step(16);
+        expect(renderer.finishDialogueCommandCalls).toBe(1);
+        expect(runtime.getState()).toBe("waiting_input");
+        expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+      } finally {
+        runtime.destroy();
+      }
+    },
+  );
+
+  it("keeps an open multiline run across a skip during typing", async () => {
     const renderer = new FakeRenderer();
-    const cancel = vi.fn();
-    vi.spyOn(renderer, "onFrameEnd").mockReturnValueOnce(cancel);
     const runtime = new StoryRuntime(
-      createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
+      createContext([
+        '[multiline(name="A",delay=0.08)]ab',
+        "[SkipToThis]",
+        '[multiline(name="B",delay=0.04)]cd',
+      ]),
       renderer,
       new FakeAudio(),
+      { typingIntervalMs: 20 },
     );
 
     await runtime.start();
-    const clicked = runtime.advance();
-    expect(renderer.finishDialogueCommandCalls).toBe(0);
+    renderer.frames.step(10);
+    expect(renderer.lastDialogue.text).toBe("");
+
+    // ForceCommandEnd reveals "ab" and the new command appends to it.
     await runtime.skipNode();
-    await clicked;
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "ab" });
 
-    expect(cancel).toHaveBeenCalledExactlyOnceWith();
-    expect(renderer.finishDialogueCommandCalls).toBe(1);
-    expect(renderer.lastDialogue.speaker).toBe("B");
-    runtime.destroy();
-  });
-
-  it("keeps an open multiline run across a skip during typing", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[multiline(name="A",delay=0.08)]ab',
-          "[SkipToThis]",
-          '[multiline(name="B",delay=0.04)]cd',
-        ]),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
-
-      await runtime.start();
-      await vi.advanceTimersByTimeAsync(10);
-      expect(renderer.lastDialogue.text).toBe("");
-
-      // ForceCommandEnd reveals "ab" and the new command appends to it.
-      await runtime.skipNode();
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "ab" });
-
-      // The earlier typewriter tick wakes between the two new reveals. Only
-      // the landing command can update the view once the skip has completed.
-      await vi.advanceTimersByTimeAsync(100);
-      expect(renderer.dialogueTexts).toEqual(["", "ab", "ab", "abc", "abcd"]);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "abcd" });
-    } finally {
-      vi.useRealTimers();
-    }
+    // Only the landing command can update the view after the jump.
+    renderer.frames.step(20);
+    renderer.frames.step(20);
+    expect(renderer.dialogueTexts).toEqual(["", "ab", "ab", "abc", "abcd"]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "abcd" });
   });
 
   it("closes an end=true multiline run on the click that finishes its typing", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[multiline(name="A",end=true)]ab',
-          "[SkipToThis]",
-          '[multiline(name="A")]cd',
-        ]),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A",end=true)]ab',
+        "[SkipToThis]",
+        '[multiline(name="A")]cd',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 20 },
+    );
 
-      await runtime.start();
-      expect(renderer.lastDialogue.text).toBe("");
-      await runtime.advance();
-      expect(renderer.lastDialogue.text).toBe("ab");
+    await runtime.start();
+    expect(renderer.lastDialogue.text).toBe("");
+    await runtime.advance();
+    expect(renderer.lastDialogue.text).toBe("ab");
 
-      // _OnClicked checks m_multilineEnd after TryFinish as well, so the run
-      // is already closed when the skip lands on the next multiline.
-      await runtime.skipNode();
-      await vi.advanceTimersByTimeAsync(200);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "cd" });
-    } finally {
-      vi.useRealTimers();
-    }
+    // _OnClicked checks m_multilineEnd after TryFinish as well, so the run
+    // is already closed when the skip lands on the next multiline.
+    await runtime.skipNode();
+    renderer.frames.step(200);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "cd" });
   });
 
   it("disables segment skip when the story has no skip anchors", async () => {

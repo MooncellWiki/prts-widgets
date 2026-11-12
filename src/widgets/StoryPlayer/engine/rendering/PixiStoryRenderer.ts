@@ -13,6 +13,7 @@ import {
   TextStyle,
   Texture,
   type TextureSource,
+  type Ticker,
   TilingSprite,
   UPDATE_PRIORITY,
 } from "pixi.js";
@@ -53,6 +54,7 @@ import {
   type ImageTweenInput,
   type InterludeInput,
   type LargeBackgroundTweenInput,
+  type PlaybackFrame,
   type ShowItemFadeStyle,
   type ShowItemInput,
   type SpellStickerInput,
@@ -754,10 +756,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   onFrameEnd(callback: () => void): () => void {
     const ticker = this.app?.ticker;
-    if (!ticker) {
-      callback();
-      return () => {};
-    }
+    if (!ticker) throw new Error("Story renderer is not mounted");
     // Pixi's TickerPlugin draws the scene at LOW. UTILITY runs after that draw.
     ticker.addOnce(callback, undefined, UPDATE_PRIORITY.UTILITY);
     return () => {
@@ -766,22 +765,24 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   onFrameUpdate(
-    callback: () => void,
+    callback: (frame: PlaybackFrame) => void,
     phase: "update" | "afterUpdate" = "update",
   ): () => void {
     const ticker = this.app?.ticker;
-    if (!ticker) {
-      const timeout = setTimeout(callback, 0);
-      return () => clearTimeout(timeout);
-    }
+    if (!ticker) throw new Error("Story renderer is not mounted");
     // Unity's WaitUntil checks after component updates. Run it before LOW draws.
     const priority =
       phase === "afterUpdate"
         ? UPDATE_PRIORITY.NORMAL - 1
         : UPDATE_PRIORITY.NORMAL;
-    ticker.addOnce(callback, undefined, priority);
+    const update = (tick: Ticker) =>
+      callback({
+        deltaMs: tick.elapsedMS,
+        nowMs: tick.lastTime + tick.elapsedMS,
+      });
+    ticker.add(update, undefined, priority);
     return () => {
-      if (this.app?.ticker === ticker) ticker.remove(callback);
+      if (this.app?.ticker === ticker) ticker.remove(update);
     };
   }
 

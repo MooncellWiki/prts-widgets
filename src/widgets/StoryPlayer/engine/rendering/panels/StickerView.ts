@@ -52,8 +52,8 @@ type StickerTweenStepInput =
 
 /**
  * Native provenance: AVGStickerTextView (2791 RenderSticker 0x1842459B0).
- * One view owns its text, typing, fade and queued tween lifecycle. Browser
- * timers and the renderer's TweenRunner replace Unity/DOTween scheduling.
+ * One view owns its text, typing, fade and queued tween lifecycle. The
+ * renderer supplies frame updates and the TweenRunner for DOTween fades.
  *
  * `root` stands in for the view's `_textTransform` + `_canvasGroup`: it sits
  * at the anchoredPosition RenderSticker writes (x, y), carries every tween
@@ -67,9 +67,8 @@ export class StickerView {
   readonly root = new Container();
   readonly text: Text;
   // The 2791 sticker_text prefab has no ITypeWriterRevealer.
-  private readonly typeWriter = new AVGTypeWriterText(
-    (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    (update) => this.host.onFrameUpdate(update),
+  private readonly typeWriter = new AVGTypeWriterText((update) =>
+    this.host.onFrameUpdate(update),
   );
   private fadeSession = 0;
   private tweenSession = 0;

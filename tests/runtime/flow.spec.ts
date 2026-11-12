@@ -145,35 +145,29 @@ describe("StoryRuntime", () => {
   });
 
   it("uses native defaults for bare theater and restores manual input on exit", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          "[theater]",
-          '[name="A"]auto',
-          "[theater(mode=false)]",
-          '[name="B"]manual',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[theater]",
+        '[name="A"]auto',
+        "[theater(mode=false)]",
+        '[name="B"]manual',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
 
-      const start = runtime.start();
-      await vi.advanceTimersByTimeAsync(1779);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "auto" });
-      await vi.advanceTimersByTimeAsync(3);
-      await start;
+    await runtime.start();
+    await renderer.frames.advance(161, 16, 1619);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "auto" });
+    await renderer.frames.advance(1, 16, 16);
 
-      expect(runtime.getState()).toBe("waiting_input");
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "manual" });
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "manual" });
 
-      // Theater mode swallows clicks; once it exits a click advances again.
-      await runtime.advance();
-      expect(runtime.getState()).toBe("finished");
-    } finally {
-      vi.useRealTimers();
-    }
+    // Theater mode swallows clicks; once it exits a click advances again.
+    await runtime.advance();
+    expect(runtime.getState()).toBe("finished");
   });
 
   it("resets a running auto play on an unpaired theater exit", async () => {
@@ -182,76 +176,63 @@ describe("StoryRuntime", () => {
     // does _StopAutoClick() + set_autoPlayMode(DEFAULT), so a lone
     // [theater(mode=false)] drops the player out of auto play instead of
     // being a no-op (corpus: act25side/level_act25side_02_beg.txt:616).
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[name="A"]hi',
-          "[theater(mode=false)]",
-          '[name="B"]next',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]hi',
+        "[theater(mode=false)]",
+        '[name="B"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
 
-      await runtime.start();
-      runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    runtime.setAutoPlayMode("button_auto");
 
-      // Auto-advance past "hi" (1.5s + 2 chars * 0.03s), through the unpaired
-      // theater exit, onto "next".
-      await vi.advanceTimersByTimeAsync(1560);
-      await vi.advanceTimersByTimeAsync(200);
+    // Auto-advance past "hi" (1.5s + 2 chars * 0.03s), through the unpaired
+    // theater exit, onto "next".
+    await renderer.frames.advance(16, 16, 1560, 16, 16);
 
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
-      expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+    expect(runtime.getState()).toBe("waiting_input");
 
-      // Auto was reset to manual: "next" no longer auto-advances.
-      await vi.advanceTimersByTimeAsync(1620);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
-      expect(runtime.getState()).toBe("waiting_input");
-    } finally {
-      vi.useRealTimers();
-    }
+    // Auto was reset to manual: "next" no longer auto-advances.
+    await renderer.frames.advance(1620, 16, 16);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+    expect(runtime.getState()).toBe("waiting_input");
   });
 
   it("resets a running quick play on an unpaired theater exit", async () => {
     // Same branch as the button_auto case above: with no saved status the
     // exit lands on set_autoPlayMode(DEFAULT) regardless of which auto mode
     // was running when the lone [theater(mode=false)] fired.
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[name="A"]hi',
-          "[theater(mode=false)]",
-          '[name="B"]next',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[name="A"]hi',
+        "[theater(mode=false)]",
+        '[name="B"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
 
-      await runtime.start();
-      runtime.setAutoPlayMode("quick_play");
+    await runtime.start();
+    runtime.setAutoPlayMode("quick_play");
 
-      // Quick play folds the auto wait to ~0.025s: one generous window is
-      // enough to type "hi", auto-click through the unpaired theater exit
-      // and land on "next".
-      await vi.advanceTimersByTimeAsync(500);
+    // Entering quick play clicks past the finished "hi" immediately.
+    await renderer.frames.advance(16, 16);
 
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
-      expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+    expect(runtime.getState()).toBe("waiting_input");
 
-      // Quick play did not survive the unpaired exit: no further advancing.
-      await vi.advanceTimersByTimeAsync(2000);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
-      expect(runtime.getState()).toBe("waiting_input");
-    } finally {
-      vi.useRealTimers();
-    }
+    // Quick play did not survive the unpaired exit: no further advancing.
+    await renderer.frames.advance(2000, 16, 16);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+    expect(runtime.getState()).toBe("waiting_input");
   });
 
   it("restores the saved mode and both speed levels on a paired theater exit", async () => {
@@ -305,247 +286,205 @@ describe("StoryRuntime", () => {
     // Native hides the HUD during theater. Web still exposes the mode picker
     // and Log All's switch to manual; landing in manual would strand the
     // story, since theater swallows every click.
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          "[theater]",
-          '[name="A"]一',
-          '[name="A"]二',
-          "[theater(mode=false)]",
-          '[name="B"]三',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[theater]",
+        '[name="A"]一',
+        '[name="A"]二',
+        "[theater(mode=false)]",
+        '[name="B"]三',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
 
-      await runtime.start();
-      expect(runtime.isTheaterMode()).toBe(true);
+    await runtime.start();
+    expect(runtime.isTheaterMode()).toBe(true);
 
-      runtime.setAutoPlayMode("default");
-      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
-      runtime.setAutoPlayMode("quick_play");
-      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    runtime.setAutoPlayMode("default");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    runtime.setAutoPlayMode("quick_play");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
 
-      // Still auto-advancing: "一" (1.5s + 0.03s) hands over to "二".
-      await vi.advanceTimersByTimeAsync(2000);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "二" });
-    } finally {
-      vi.useRealTimers();
-    }
+    // Still auto-advancing: "一" (1.5s + 0.03s) hands over to "二".
+    await renderer.frames.advance(41, 16, 1530, 16, 16, 41);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "二" });
   });
 
   it("auto-advances after the native button-auto delay and stops at endtip", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]hi', '[name="B"]next']),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]hi', '[name="B"]next']),
+      renderer,
+      new FakeAudio(),
+    );
 
-      await runtime.start();
-      runtime.setAutoPlayMode("button_auto");
-      expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    await runtime.start();
+    runtime.setAutoPlayMode("button_auto");
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
 
-      await vi.advanceTimersByTimeAsync(1559);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "hi" });
-      await vi.advanceTimersByTimeAsync(1);
-      await vi.advanceTimersByTimeAsync(200);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+    await renderer.frames.advance(16, 16, 1559);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "hi" });
+    await renderer.frames.advance(1, 16, 16, 161);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
 
-      await vi.advanceTimersByTimeAsync(1620);
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-      expect(runtime.getState()).toBe("waiting_input");
-    } finally {
-      vi.useRealTimers();
-    }
+    await renderer.frames.advance(16, 1620, 16, 16);
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    expect(runtime.getState()).toBe("waiting_input");
   });
 
   it("bills rich-text tag characters in the auto-play wait", async () => {
-    vi.useFakeTimers();
-    try {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]<color=#ff0000>hi</color>', '[name="B"]next']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    runtime.setAutoPlayMode("button_auto");
+
+    // RaiseAutoClick(typeWriter.messageLength) takes the raw, still
+    // marked-up string: 1.5s + 25 chars * 0.03s, not 2 visible chars.
+    await renderer.frames.advance(16, 16, 2249);
+    expect(renderer.lastDialogue.speaker).toBe("A");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("B");
+  });
+
+  it.each(["[Dialog]<b></b>", '[sticker(id="a",text="instant",delay=0)]'])(
+    "delivers the auto click after %s enters its wait",
+    async (line) => {
       const renderer = new FakeRenderer();
       const runtime = new StoryRuntime(
-        createContext([
-          '[name="A"]<color=#ff0000>hi</color>',
-          '[name="B"]next',
-        ]),
+        createContext([line, '[name="B"]next']),
         renderer,
         new FakeAudio(),
       );
 
-      await runtime.start();
-      runtime.setAutoPlayMode("button_auto");
-
-      // RaiseAutoClick(typeWriter.messageLength) takes the raw, still
-      // marked-up string: 1.5s + 25 chars * 0.03s, not 2 visible chars.
-      await vi.advanceTimersByTimeAsync(2249);
-      expect(renderer.lastDialogue.speaker).toBe("A");
-      await vi.advanceTimersByTimeAsync(2);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it.each(["[Dialog]<b></b>", '[sticker(id="a",text="instant",delay=0)]'])(
-    "delivers an immediate auto click after %s enters its wait",
-    async (line) => {
-      const sleep = vi
-        .fn(() => new Promise<void>(() => {}))
-        .mockResolvedValueOnce(undefined);
-      const runtime = new StoryRuntime(
-        createContext([line, '[name="B"]next']),
-        new FakeRenderer(),
-        new FakeAudio(),
-        { sleep },
-      );
-
       runtime.setAutoPlayMode("button_auto");
       await runtime.start();
 
-      await vi.waitFor(() => expect(runtime.getDisplayedLineIndex()).toBe(2));
+      expect(runtime.getState()).toBe("waiting_input");
+      await renderer.frames.advance(16, 16, 1710, 16, 16);
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
       runtime.destroy();
     },
   );
 
   it("lets the first click finish a zero-delay multiline before its update", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const cancelUpdate = vi.fn();
-      vi.spyOn(renderer, "onFrameUpdate").mockReturnValue(cancelUpdate);
-      const runtime = new StoryRuntime(
-        createContext(["[multiline(delay=0)]instant", '[name="B"]next']),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 40 },
-      );
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(["[multiline(delay=0)]instant", '[name="B"]next']),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
 
-      await runtime.start();
-      expect(renderer.lastDialogue.text).toBe("");
-      await runtime.advance();
-      expect(cancelUpdate).toHaveBeenCalledExactlyOnceWith();
-      expect(renderer.lastDialogue.text).toBe("instant");
-      expect(runtime.getDisplayedLineIndex()).toBe(1);
-      await runtime.advance();
-      expect(runtime.getDisplayedLineIndex()).toBe(2);
-      runtime.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
+    await runtime.start();
+    expect(renderer.lastDialogue.text).toBe("");
+    await runtime.advance();
+    expect(renderer.lastDialogue.text).toBe("instant");
+    expect(runtime.getDisplayedLineIndex()).toBe(1);
+    const advance = runtime.advance();
+    await renderer.frames.advance(16, 16);
+    await advance;
+    expect(runtime.getDisplayedLineIndex()).toBe(2);
+    runtime.destroy();
   });
 
   it("schedules the auto wait when the last character appears", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]ab', '[name="B"]next']),
-        renderer,
-        new FakeAudio(),
-      );
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]ab', '[name="B"]next']),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
 
-      // Last glyph at 80ms, then 1500ms + 2 * 30ms. The fake frame checks
-      // each add 1ms because they are queued from timer callbacks.
-      await vi.advanceTimersByTimeAsync(1641);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ab" });
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-      runtime.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
+    renderer.frames.step(80);
+    expect(renderer.lastDialogue.text).toBe("a");
+    renderer.frames.step(1); // last glyph and the first WaitUntil
+    await renderer.frames.advance(16, 1559);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ab" });
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("B");
+    runtime.destroy();
   });
 
   it("lays out an endtip without the overflow widening", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]hi', "[endtip]完"]),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]hi', "[endtip]完"]),
+      renderer,
+      new FakeAudio(),
+    );
 
-      await runtime.start();
-      runtime.setAutoPlayMode("button_auto");
-      await vi.advanceTimersByTimeAsync(2000);
+    await runtime.start();
+    runtime.setAutoPlayMode("button_auto");
+    await renderer.frames.advance(16, 16, 1560, 16, 16, 16);
 
-      // _ExecuteEndtip never calls _TryExpandMessageWidthOnOverflow.
-      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "完" });
-      expect(renderer.dialogueLayouts.at(-1)).toEqual({
-        executor: "endtip",
-        text: "完",
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    // _ExecuteEndtip never calls _TryExpandMessageWidthOnOverflow.
+    expect(renderer.lastDialogue).toEqual({ speaker: "", text: "完" });
+    expect(renderer.dialogueLayouts.at(-1)).toEqual({
+      executor: "endtip",
+      text: "完",
+    });
   });
 
   it("uses the selected auto speed and manual input disables auto mode", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]abcd', '[name="B"]next']),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]abcd', '[name="B"]next']),
+      renderer,
+      new FakeAudio(),
+    );
 
-      runtime.setAutoPlayMode("button_auto");
-      runtime.setAutoPlaySpeedLevel(1);
-      await runtime.start();
-      expect(runtime.getAutoPlayState().buttonSpeedLevel).toBe(1);
+    runtime.setAutoPlayMode("button_auto");
+    runtime.setAutoPlaySpeedLevel(1);
+    await runtime.start();
+    expect(runtime.getAutoPlayState().buttonSpeedLevel).toBe(1);
 
-      // Four glyphs at 10ms, then 500ms + 4 * 15ms at the selected speed.
-      await vi.advanceTimersByTimeAsync(599);
-      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
-      await vi.advanceTimersByTimeAsync(1);
-      await vi.advanceTimersByTimeAsync(50);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
+    // Four glyphs at 10ms, then 500ms + 4 * 15ms at the selected speed.
+    await renderer.frames.advance(41, 16, 559);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "abcd" });
+    await renderer.frames.advance(1, 16, 16, 41);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
 
-      await runtime.advance();
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-    } finally {
-      vi.useRealTimers();
-    }
+    const advance = runtime.advance();
+    await renderer.frames.advance(16, 16);
+    await advance;
+    expect(runtime.getAutoPlayState().mode).toBe("default");
   });
 
   it("quick mode emits an immediate click and keeps the pending wait on a gear change", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]first', '[name="B"]second']),
-        renderer,
-        new FakeAudio(),
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]first', '[name="B"]second']),
+      renderer,
+      new FakeAudio(),
+    );
 
-      await runtime.start();
-      runtime.setAutoPlayMode("quick_play");
-      await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(70);
-      expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "second" });
+    await runtime.start();
+    runtime.setAutoPlayMode("quick_play");
+    await renderer.frames.advance(16, 16, 61, 16);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "second" });
 
-      runtime.setAutoPlaySpeedLevel(3);
-      expect(runtime.getAutoPlayState()).toMatchObject({
-        mode: "quick_play",
-        quickSpeedLevel: 3,
-      });
-      // "second" finished at 60ms on quick level 0 and queued a 200ms wait.
-      await vi.advanceTimersByTimeAsync(189);
-      expect(runtime.getAutoPlayState().mode).toBe("quick_play");
-      await vi.advanceTimersByTimeAsync(3);
-      expect(runtime.getAutoPlayState().mode).toBe("default");
-    } finally {
-      vi.useRealTimers();
-    }
+    runtime.setAutoPlaySpeedLevel(3);
+    expect(runtime.getAutoPlayState()).toMatchObject({
+      mode: "quick_play",
+      quickSpeedLevel: 3,
+    });
+    // "second" queued a 200ms wait on quick level 0.
+    await renderer.frames.advance(199);
+    expect(runtime.getAutoPlayState().mode).toBe("quick_play");
+    await renderer.frames.advance(1, 16, 16);
+    expect(runtime.getAutoPlayState().mode).toBe("default");
   });
 
   it("does not run normal commands for video-only story metadata", async () => {
@@ -610,17 +549,11 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
   });
 
-  it.each([
-    { action: "click", cancelledUpdates: 1 },
-    { action: "update", cancelledUpdates: 0 },
-  ] as const)(
-    "finishes the empty endtip's typewriter on the first $action",
-    async ({ action, cancelledUpdates }) => {
+  it.each(["click", "update"] as const)(
+    "finishes the empty endtip's typewriter on the first %s",
+    async (action) => {
       const renderer = new FakeRenderer();
-      const cancelUpdate = vi.fn();
-      const onFrameUpdate = vi
-        .spyOn(renderer, "onFrameUpdate")
-        .mockReturnValue(cancelUpdate);
+      renderer.frames.manual = true;
       const runtime = new StoryRuntime(
         createContext([""]),
         renderer,
@@ -638,17 +571,16 @@ describe("StoryRuntime", () => {
         executor: "endtip",
         text: "",
       });
-      expect(onFrameUpdate).toHaveBeenCalledTimes(1);
-
       const finishTyping = {
         click: () => runtime.advance(),
-        update: onFrameUpdate.mock.calls[0]![0],
+        update: () => renderer.frames.step(16),
       };
       await finishTyping[action]();
       expect(runtime.getState()).toBe("waiting_input");
-      expect(cancelUpdate).toHaveBeenCalledTimes(cancelledUpdates);
 
-      await runtime.advance();
+      const advance = runtime.advance();
+      await renderer.frames.advance(16, 16);
+      await advance;
       expect(runtime.getState()).toBe("finished");
       runtime.destroy();
     },
@@ -907,15 +839,12 @@ describe("StoryRuntime", () => {
   });
 
   it("click skips typewriter first, then advances", async () => {
-    const sleep = vi.fn(() => new Promise<void>(() => {}));
-
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[name="A"]hello']),
       renderer,
       new FakeAudio(),
       {
-        sleep,
         typingIntervalMs: 30,
       },
     );
@@ -924,7 +853,6 @@ describe("StoryRuntime", () => {
 
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "" });
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(30);
 
     await runtime.advance();
     expect(runtime.getState()).toBe("waiting_input");
@@ -937,13 +865,12 @@ describe("StoryRuntime", () => {
   });
 
   it("does not start typewriter ticks when a displayed line listener destroys the player", async () => {
-    const sleep = vi.fn(async () => {});
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[name="A"]hello']),
       renderer,
       new FakeAudio(),
-      { sleep, typingIntervalMs: 30 },
+      { typingIntervalMs: 30 },
     );
     runtime.onDisplayedLineChange((lineIndex) => {
       if (lineIndex !== null) runtime.destroy();
@@ -951,7 +878,7 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(sleep).not.toHaveBeenCalled();
+    renderer.frames.step(60);
     expect(renderer.dialogueTexts).toEqual([]);
   });
 
@@ -1062,97 +989,81 @@ describe("StoryRuntime", () => {
   });
 
   it("restores the DialogPanel width at frame end on the advancing click", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      let endFrame: (() => void) | undefined;
-      vi.spyOn(renderer, "onFrameEnd").mockImplementation((callback) => {
-        endFrame = callback;
-        return () => {};
-      });
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]one', '[name="B"]two']),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]one', '[name="B"]two']),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 20 },
+    );
 
-      await runtime.start();
-      // The click that finishes typing is TryFinish only; OnFinish (and its
-      // _RestoreMessageWidth) comes with FinishCommand on the next click.
-      await runtime.advance();
-      expect(renderer.finishDialogueCommandCalls).toBe(0);
-      const advance = runtime.advance();
-      expect(renderer.finishDialogueCommandCalls).toBe(0);
-      endFrame?.();
-      await advance;
-      expect(renderer.finishDialogueCommandCalls).toBe(1);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-    } finally {
-      vi.useRealTimers();
-    }
+    await runtime.start();
+    // The click that finishes typing is TryFinish only; OnFinish (and its
+    // _RestoreMessageWidth) comes with FinishCommand on the next click.
+    await runtime.advance();
+    expect(renderer.finishDialogueCommandCalls).toBe(0);
+    const advance = runtime.advance();
+    expect(renderer.finishDialogueCommandCalls).toBe(0);
+    renderer.frames.step(16);
+    expect(renderer.finishDialogueCommandCalls).toBe(1);
+    expect(renderer.lastDialogue.speaker).toBe("A");
+    renderer.frames.step(16);
+    await advance;
+    expect(renderer.lastDialogue.speaker).toBe("B");
   });
 
   it("lays out each multiline fragment on its own, once per command", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[multiline(name="A")]ab',
-          '[multiline(name="A",end=true)]<color=#ff0000>cd</color>',
-        ]),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A")]ab',
+        '[multiline(name="A",end=true)]<color=#ff0000>cd</color>',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 20 },
+    );
 
-      await runtime.start();
-      await vi.advanceTimersByTimeAsync(200);
-      await runtime.advance();
-      await vi.advanceTimersByTimeAsync(200);
+    await runtime.start();
+    renderer.frames.step(200);
+    await runtime.advance();
+    renderer.frames.step(200);
 
-      // _ExecuteMultiline measures `command.content` alone (tags take no
-      // space), and typing a character never re-places the message.
-      expect(renderer.dialogueLayouts).toEqual([
-        { executor: "multiline", text: "ab" },
-        { executor: "multiline", text: "cd" },
-      ]);
-      expect(renderer.dialogueTexts.length).toBeGreaterThan(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    // _ExecuteMultiline measures `command.content` alone (tags take no
+    // space), and typing a character never re-places the message.
+    expect(renderer.dialogueLayouts).toEqual([
+      { executor: "multiline", text: "ab" },
+      { executor: "multiline", text: "cd" },
+    ]);
+    expect(renderer.dialogueTexts.length).toBeGreaterThan(2);
   });
 
   it("resumes multiline typing from the characters already on screen", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[multiline(name="A")]ab',
-          '[multiline(name="A",end=true)]cd',
-        ]),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[multiline(name="A")]ab',
+        '[multiline(name="A",end=true)]cd',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 20 },
+    );
 
-      await runtime.start();
-      await vi.advanceTimersByTimeAsync(200);
-      expect(renderer.lastDialogue.text).toBe("ab");
+    await runtime.start();
+    renderer.frames.step(200);
+    expect(renderer.lastDialogue.text).toBe("ab");
 
-      renderer.dialogueTexts.length = 0;
-      await runtime.advance();
-      await vi.advanceTimersByTimeAsync(200);
+    renderer.dialogueTexts.length = 0;
+    await runtime.advance();
+    renderer.frames.step(10);
+    renderer.frames.step(10);
 
-      // Native AppendText keeps the earlier fragment on screen, so the box is
-      // never blanked and "ab" is never retyped character by character.
-      expect(renderer.dialogueTexts).toEqual(["ab", "abc", "abcd"]);
-      expect(renderer.lastDialogue.text).toBe("abcd");
-    } finally {
-      vi.useRealTimers();
-    }
+    // Native AppendText keeps the earlier fragment on screen, so the box is
+    // never blanked and "ab" is never retyped character by character.
+    expect(renderer.dialogueTexts).toEqual(["ab", "abc", "abcd"]);
+    expect(renderer.lastDialogue.text).toBe("abcd");
   });
 
   it.each([
@@ -1171,109 +1082,95 @@ describe("StoryRuntime", () => {
   ])(
     "types multiline characters every $charMs ms when delay is $name",
     async ({ line, charMs }) => {
-      vi.useFakeTimers();
-      try {
-        const renderer = new FakeRenderer();
-        const runtime = new StoryRuntime(
-          createContext([line]),
-          renderer,
-          new FakeAudio(),
-          { typingIntervalMs: 20 },
-        );
+      const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
+      const runtime = new StoryRuntime(
+        createContext([line]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 20 },
+      );
 
-        await runtime.start();
-        expect(renderer.lastDialogue.text).toBe("");
-        await vi.advanceTimersByTimeAsync(charMs - 1);
-        expect(renderer.lastDialogue.text).toBe("");
-        await vi.advanceTimersByTimeAsync(1);
-        expect(renderer.lastDialogue.text).toBe("a");
-        await vi.advanceTimersByTimeAsync(charMs);
-        expect(renderer.lastDialogue.text).toBe("ab");
-      } finally {
-        vi.useRealTimers();
-      }
+      await runtime.start();
+      expect(renderer.lastDialogue.text).toBe("");
+      renderer.frames.step(charMs);
+      expect(renderer.lastDialogue.text).toBe("");
+      renderer.frames.step(1);
+      expect(renderer.lastDialogue.text).toBe("a");
+      renderer.frames.step(charMs);
+      expect(renderer.lastDialogue.text).toBe("ab");
     },
   );
 
   it("replaces the active multiline interval when the auto speed changes", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[multiline(name="A",delay=0.08)]abcdef']),
-        renderer,
-        new FakeAudio(),
-      );
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[multiline(name="A",delay=0.08)]abcdef']),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
 
-      // Starts at 40 * (0.08 / 0.04) = 80ms. ON_SPEED_SET writes 10ms and
-      // preserves the 15ms already accumulated by the typewriter.
-      await vi.advanceTimersByTimeAsync(15);
-      expect(renderer.lastDialogue.text).toBe("");
-      runtime.setAutoPlaySpeedLevel(1);
-      await vi.advanceTimersByTimeAsync(4);
-      expect(renderer.lastDialogue.text).toBe("a");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.text).toBe("ab");
-      runtime.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
+    // Starts at 40 * (0.08 / 0.04) = 80ms. ON_SPEED_SET writes 10ms and
+    // preserves the 15ms already accumulated by the typewriter.
+    renderer.frames.step(15);
+    expect(renderer.lastDialogue.text).toBe("");
+    runtime.setAutoPlaySpeedLevel(1);
+    renderer.frames.step(5);
+    expect(renderer.lastDialogue.text).toBe("a");
+    renderer.frames.step(1);
+    expect(renderer.lastDialogue.text).toBe("ab");
+    runtime.destroy();
   });
 
   it("rewrites the active dialogue interval when the quick speed changes", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]abcdef']),
-        renderer,
-        new FakeAudio(),
-      );
-      runtime.setAutoPlayMode("quick_play");
-      await runtime.start();
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]abcdef']),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("quick_play");
+    await runtime.start();
 
-      // Quick level 0 types at 10ms. AVGQuickPlay._SetSpeedBtn emits
-      // ON_SPEED_SET, so level 3 (1.25ms) applies to the current line and
-      // keeps the 5ms left over after the first character.
-      await vi.advanceTimersByTimeAsync(15);
-      expect(renderer.lastDialogue.text).toBe("a");
-      runtime.setAutoPlaySpeedLevel(3);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(renderer.lastDialogue.text).toBe("abcde");
-      runtime.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
+    // Quick level 0 types at 10ms. AVGQuickPlay._SetSpeedBtn emits
+    // ON_SPEED_SET, so level 3 (1.25ms) applies to the current line and
+    // keeps the 5ms left over after the first character.
+    renderer.frames.step(15);
+    expect(renderer.lastDialogue.text).toBe("a");
+    runtime.setAutoPlaySpeedLevel(3);
+    expect(renderer.lastDialogue.text).toBe("a");
+    renderer.frames.step(0.5);
+    expect(renderer.lastDialogue.text).toBe("abcde");
+    runtime.destroy();
   });
 
   it("rewrites the active dialogue interval when the auto mode changes", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]abcdef']),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 40 },
-      );
-      runtime.setAutoPlaySpeedLevel(1);
-      await runtime.start();
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]abcdef']),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    runtime.setAutoPlaySpeedLevel(1);
+    await runtime.start();
 
-      // Manual mode types at 40ms. Switching to button auto broadcasts the
-      // story cache, and the UI emits ON_SPEED_SET with level 1's 10ms.
-      await vi.advanceTimersByTimeAsync(15);
-      expect(renderer.lastDialogue.text).toBe("");
-      runtime.setAutoPlayMode("button_auto");
-      await vi.advanceTimersByTimeAsync(0);
-      expect(renderer.lastDialogue.text).toBe("a");
-      await vi.advanceTimersByTimeAsync(5);
-      expect(renderer.lastDialogue.text).toBe("ab");
-      runtime.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
+    // Manual mode types at 40ms. Switching to button auto broadcasts the
+    // story cache, and the UI emits ON_SPEED_SET with level 1's 10ms.
+    renderer.frames.step(15);
+    expect(renderer.lastDialogue.text).toBe("");
+    runtime.setAutoPlayMode("button_auto");
+    expect(renderer.lastDialogue.text).toBe("");
+    renderer.frames.step(1);
+    expect(renderer.lastDialogue.text).toBe("a");
+    renderer.frames.step(5);
+    expect(renderer.lastDialogue.text).toBe("ab");
+    runtime.destroy();
   });
 
   it("registers labels in preprocess and lets warp jump to the line after the label", async () => {
@@ -1294,7 +1191,7 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.dialogueTexts).toEqual(["landed"]);
+    expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["landed"]);
     expect(warnings).toEqual([]);
   });
 
@@ -1315,7 +1212,7 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "first" });
 
     await runtime.advance();
-    expect(renderer.dialogueTexts).toEqual(["first", "first"]);
+    expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["first", "first"]);
   });
 
   it("consumes the one-shot warp cursor so consecutive warps each jump", async () => {
@@ -1337,7 +1234,7 @@ describe("StoryRuntime", () => {
     await runtime.start();
 
     expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.dialogueTexts).toEqual(["landed2"]);
+    expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["landed2"]);
   });
 
   it("lands a warp onto the trailing implicit endtip and finishes", async () => {
@@ -1383,7 +1280,7 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.dialogueTexts).toEqual(["second"]);
+    expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["second"]);
   });
 
   it("keeps the decision gate untouched when a warp jumps over a predicate", async () => {

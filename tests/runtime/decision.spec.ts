@@ -294,12 +294,9 @@ describe("StoryRuntime", () => {
   ])(
     "keeps the sticker's auto-click clock during a decision held for $choiceWaitMs ms",
     async ({ choiceWaitMs, expectedChars }) => {
-      vi.useFakeTimers();
       const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
       renderer.holdDecisions = true;
-      const sleep = vi.fn(
-        (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
-      );
       const subtitle = "X".repeat(240);
       const runtime = new StoryRuntime(
         createContext([
@@ -309,31 +306,29 @@ describe("StoryRuntime", () => {
         ]),
         renderer,
         new FakeAudio(),
-        { sleep, typingIntervalMs: 40 },
+        { typingIntervalMs: 40 },
       );
       try {
         runtime.setAutoPlayMode("button_auto");
         runtime.setAutoPlaySpeedLevel(1);
         const started = runtime.start();
-        await vi.advanceTimersByTimeAsync(0);
+        await renderer.frames.advance(0);
         expect(runtime.getState()).toBe("waiting_decision");
         expect(runtime.getAutoPlayState().mode).toBe("button_auto");
         expect(renderer.stickerDelayChanges).toEqual([]);
         expect(renderer.typingActive).toBe(false);
-        expect(sleep).toHaveBeenCalledExactlyOnceWith(590);
-        await vi.advanceTimersByTimeAsync(choiceWaitMs);
+        await renderer.frames.advance(16, 16, choiceWaitMs, 16);
         expect(runtime.getState()).toBe("waiting_decision");
         renderer.pickDecision({ optionIndex: 0, value: 1 });
         await started;
 
         // The 590ms click can reach the subtitle if it is already waiting.
         // A click that expired during the choice has no listener.
-        await vi.advanceTimersByTimeAsync(1680);
+        await renderer.frames.advance(1681, 1);
         expect(renderer.subtitleText).toHaveLength(expectedChars);
         expect(renderer.stickerDelayChanges).toEqual([]);
       } finally {
         runtime.destroy();
-        vi.useRealTimers();
       }
     },
   );

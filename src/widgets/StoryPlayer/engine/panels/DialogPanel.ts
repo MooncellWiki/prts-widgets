@@ -27,7 +27,6 @@ interface DialogPlayback {
   beginTyping: (messageLength: number) => () => void;
   prepareEndtip: () => boolean;
   setDisplayedLine: (lineNumber: number) => void;
-  sleep: (ms: number) => Promise<void>;
   translateText: (text: string) => string;
   typeWriterDelayMs: () => number;
 }
@@ -53,7 +52,7 @@ export class DialogPanel {
     >,
     private readonly playback: DialogPlayback,
   ) {
-    this.typeWriter = new AVGTypeWriterText(playback.sleep, (update) =>
+    this.typeWriter = new AVGTypeWriterText((update) =>
       renderer.onFrameUpdate(update),
     );
   }
@@ -162,8 +161,6 @@ export class DialogPanel {
       this.multilineText,
       "multiline",
       {
-        // BeginText types even at an explicit zero until the next Update.
-        deferZeroDelay: scriptedDelay === 0,
         delayScale: delaySeconds / (TYPE_WRITER_ORIGIN_DELAY_MS / 1000),
         layoutText: text,
         startIndex: this.multilineShownChars,
@@ -186,12 +183,7 @@ export class DialogPanel {
     speaker: string,
     text: string,
     executor: DialogueLayout["executor"],
-    {
-      deferZeroDelay = false,
-      delayScale = 1,
-      layoutText = text,
-      startIndex = 0,
-    } = {},
+    { delayScale = 1, layoutText = text, startIndex = 0 } = {},
   ): number {
     // A displayed-line listener can destroy the player before typing starts.
     if (this.destroyed) return 0;
@@ -209,7 +201,6 @@ export class DialogPanel {
     // RaiseAutoClick. Count the translated string including markup.
     return this.typeWriter.beginText(translatedText, {
       delayMs: this.playback.typeWriterDelayMs() * delayScale,
-      deferZeroDelay,
       onTypeEnd: this.playback.beginTyping(translatedText.length),
       render: (message, initial) =>
         this.renderer.setDialogue(

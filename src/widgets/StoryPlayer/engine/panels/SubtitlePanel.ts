@@ -20,7 +20,6 @@ interface SubtitlePlayback {
   beginTyping: (messageLength: number) => () => void;
   /** False if notifying the Web UI invalidated this line (skip or destroy). */
   setDisplayedLine: (lineNumber: number) => boolean;
-  sleep: (ms: number) => Promise<void>;
   translateText: (text: string) => string;
   typeWriterDelayMs: () => number;
 }
@@ -40,7 +39,7 @@ export class SubtitlePanel {
     >,
     private readonly playback: SubtitlePlayback,
   ) {
-    this.typeWriter = new AVGTypeWriterText(playback.sleep, (update) =>
+    this.typeWriter = new AVGTypeWriterText((update) =>
       renderer.onFrameUpdate(update),
     );
   }

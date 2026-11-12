@@ -1,5 +1,7 @@
 import { richCharsToTaggedText } from "../../src/widgets/StoryPlayer/engine/richtext";
 
+import { PlaybackTestFrames } from "./playbackFrames";
+
 import type { Context } from "../../src/widgets/StoryPlayer/context";
 import type {
   AnimTextInput,
@@ -37,6 +39,7 @@ import type {
 } from "../../src/widgets/StoryPlayer/engine/types";
 
 export class FakeRenderer implements StoryRenderer {
+  readonly frames = new PlaybackTestFrames();
   animTextCalls: AnimTextInput[] = [];
   avgDisplayCalls: AvgDisplayInput[] = [];
   actionCalls: CharacterActionInput[] = [];
@@ -220,13 +223,13 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   onFrameEnd(callback: () => void): () => void {
-    callback();
-    return () => {};
+    return this.frames.onFrameEnd(callback);
   }
 
-  onFrameUpdate(callback: () => void): () => void {
-    const timeout = setTimeout(callback, 0);
-    return () => clearTimeout(timeout);
+  onFrameUpdate(
+    ...args: Parameters<StoryRenderer["onFrameUpdate"]>
+  ): () => void {
+    return this.frames.onFrameUpdate(...args);
   }
 
   async mount(): Promise<void> {}

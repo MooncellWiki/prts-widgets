@@ -745,6 +745,13 @@ export interface InterludeInput {
   type: InterludeElementType;
 }
 
+export interface PlaybackFrame {
+  /** Unscaled elapsed time since the previous frame. */
+  readonly deltaMs: number;
+  /** Monotonic real time at this frame. */
+  readonly nowMs: number;
+}
+
 export interface StoryRenderer {
   clearCgItems: (
     key?: string,
@@ -793,9 +800,9 @@ export interface StoryRenderer {
   mount: (host: HTMLElement) => Promise<void>;
   /** Run once after the next scene render and return a cancellation callback. */
   onFrameEnd: (callback: () => void) => () => void;
-  /** Run once before the scene renders and return a cancellation callback. */
+  /** Subscribe to a phase before the scene renders. Returns an unsubscribe function. */
   onFrameUpdate: (
-    callback: () => void,
+    callback: (frame: PlaybackFrame) => void,
     phase?: "update" | "afterUpdate",
   ) => () => void;
   playVideo: (url: string) => Promise<void>;

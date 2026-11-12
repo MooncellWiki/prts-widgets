@@ -176,7 +176,7 @@ interface PendingInput {
 }
 
 interface PendingAutoClick {
-  cancelFrameCheck?: () => void;
+  deadlineMs?: number;
   delayMs: number;
   phase: "awaiting_mode" | "timing" | "elapsed";
 }
@@ -337,6 +337,7 @@ export class StoryRuntime {
   private readonly defaultSpeed: AutoSpeed;
   private autoPlayMode: AutoPlayMode = "default";
   private pendingAutoClick: PendingAutoClick | null = null;
+  private stopFramePolling: (() => void) | null = null;
   private buttonSpeedLevel = 0;
   private readonly commandRegistry = new CommandRegistry<CommandResult>();
   private readonly eventPool = new EventPool<AVGEvent>();
@@ -422,6 +423,7 @@ export class StoryRuntime {
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
   private pendingInput: PendingInput | null = null;
+  private resumeAfterInput: (() => void) | null = null;
 
   constructor(
     context: Context,
@@ -472,7 +474,6 @@ export class StoryRuntime {
       setDisplayedLine: (lineNumber) => {
         this.displayedLineIndex = lineNumber;
       },
-      sleep: this.sleep,
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
@@ -492,7 +493,6 @@ export class StoryRuntime {
         this.displayedLineIndex = lineNumber;
         return !this.destroyed && generation === this.playbackGeneration;
       },
-      sleep: this.sleep,
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
@@ -680,7 +680,7 @@ export class StoryRuntime {
     this.applyAutoPlayMode(mode);
   }
 
-  /** 写入模式并放行等待自动模式的点击。人工干预由公开入口判断。 */
+  /** 写入模式并广播速度变化。自动点击在 Update 后读取模式。 */
   private applyAutoPlayMode(mode: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
@@ -692,7 +692,6 @@ export class StoryRuntime {
     // Setting DEFAULT again on a manual press still runs
     // _UpdateAutoPlayModeUI and emits ON_SPEED_SET.
     this.eventPool.emit(AVGEvent.SpeedSet);
-    this.resumeAutoClick();
   }
 
   /**
@@ -709,13 +708,17 @@ export class StoryRuntime {
 
   setAutoPlaySpeedLevel(level: number): void {
     const normalized = Math.max(0, Math.trunc(level));
-    if (this.autoPlayMode === "quick_play")
-      this.quickSpeedLevel = Math.min(normalized, QUICK_AUTO_SPEEDS.length - 1);
-    else
+    if (this.autoPlayMode === "quick_play") {
+      const quickLevel = Math.min(normalized, QUICK_AUTO_SPEEDS.length - 1);
+      // AVGQuickPlayBtn.OnClick (2791 @ 0x1841AEB60) ignores the active gear.
+      if (quickLevel === this.quickSpeedLevel) return;
+      this.quickSpeedLevel = quickLevel;
+    } else {
       this.buttonSpeedLevel = Math.min(
         normalized,
         BUTTON_AUTO_SPEEDS.length - 1,
       );
+    }
 
     // 2791 emits ON_SPEED_SET on both speed buttons: OnSpeedBtnClicked for
     // button auto, and AVGQuickPlayBtn.OnClick -> SetQuickSpeed ->
@@ -777,6 +780,10 @@ export class StoryRuntime {
     this.dialogPanel.onStoryBegin(this.eventPool);
     this.stickerPanel.onStoryBegin(this.eventPool);
     this.subtitlePanel.onStoryBegin(this.eventPool);
+    this.stopFramePolling = this.renderer.onFrameUpdate(
+      ({ nowMs }) => this.pollAfterUpdate(nowMs),
+      "afterUpdate",
+    );
     this.state = "running";
     await this.processLoop();
   }
@@ -842,6 +849,7 @@ export class StoryRuntime {
   private cancelInputWait(): void {
     const pending = this.pendingInput;
     this.pendingInput = null;
+    this.resumeAfterInput = null;
     for (const unsubscribe of pending?.subscriptions ?? []) unsubscribe();
   }
 
@@ -873,20 +881,35 @@ export class StoryRuntime {
       // SubtitlePanel._OnClicked (2791 @ 0x1841E5920) and the other click
       // handlers invoke FinishCommand at WaitForEndOfFrame. Spellsticker
       // hides on the click itself, and DialogPanel restores width in OnFinish.
-      const effects = pending.effects.map(({ onClick }) => onClick?.());
-      const frameEnd = new Promise<void>((resolve) => {
-        cancelFrameEnd = this.renderer.onFrameEnd(resolve);
-      });
-      const interrupted = await this.waitInterruptiblePromise(
-        Promise.all([frameEnd, ...effects]),
-      );
+      const effects = pending.effects
+        .map(({ onClick }) => onClick?.())
+        .filter((effect) => effect !== undefined);
       if (
-        interrupted ||
-        this.destroyed ||
-        generation !== this.playbackGeneration
+        effects.length > 0 &&
+        (await this.waitInterruptiblePromise(Promise.all(effects)))
       )
         return;
-      for (const { onFinish } of pending.effects) onFinish?.();
+      if (this.pendingInput !== pending) return;
+
+      await this.waitInterruptiblePromise(
+        new Promise<void>((resolve, reject) => {
+          cancelFrameEnd = this.renderer.onFrameEnd(() => {
+            if (this.pendingInput !== pending) return;
+            try {
+              for (const { onFinish } of pending.effects) onFinish?.();
+            } catch (error) {
+              reject(error);
+              return;
+            }
+            if (this.pendingInput !== pending) return;
+            this.pendingInput = null;
+            this.state = "running";
+            // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its
+            // blocker list again on the next coroutine update.
+            this.resumeAfterInput = () => resolve(this.processLoop());
+          });
+        }),
+      );
     } catch (error) {
       if (!this.destroyed && generation === this.playbackGeneration)
         this.waitForInput(
@@ -899,10 +922,6 @@ export class StoryRuntime {
     } finally {
       cancelFrameEnd?.();
     }
-    if (this.destroyed || generation !== this.playbackGeneration) return;
-    this.pendingInput = null;
-    this.state = "running";
-    await this.processLoop();
   }
 
   async skipNode(): Promise<void> {
@@ -1077,9 +1096,7 @@ export class StoryRuntime {
   }
 
   private cancelAutoClick(): void {
-    const pending = this.pendingAutoClick;
     this.pendingAutoClick = null;
-    pending?.cancelFrameCheck?.();
   }
 
   private scheduleAutoClick(
@@ -1088,43 +1105,36 @@ export class StoryRuntime {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
     // RaiseAutoClick (2791 @ 0x18416C3F0) replaces the coroutine even in DEFAULT.
-    this.cancelAutoClick();
     this.pendingAutoClick = {
       delayMs,
       phase: "awaiting_mode",
     };
-    this.resumeAutoClick();
   }
 
-  private resumeAutoClick(): void {
-    const pending = this.pendingAutoClick;
-    if (
-      !pending ||
-      pending.cancelFrameCheck ||
-      pending.phase === "timing" ||
-      this.autoPlayMode === "default"
-    )
-      return;
+  private pollAfterUpdate(nowMs: number): void {
+    if (this.skipCleanup) return;
+    const resume = this.resumeAfterInput;
+    this.resumeAfterInput = null;
+    resume?.();
 
-    // _DoAutoClick (2791 MoveNext @ 0x184180000) yields WaitUntil on both
-    // sides of the real-time wait. Check the mode after component updates.
-    pending.cancelFrameCheck = this.renderer.onFrameUpdate(() => {
-      pending.cancelFrameCheck = undefined;
-      if (this.pendingAutoClick !== pending || this.autoPlayMode === "default")
+    const pending = this.pendingAutoClick;
+    if (!pending) return;
+    // _DoAutoClick (2791 @ 0x184180000): WaitUntil, WaitForSecondsRealtime,
+    // then a separate WaitUntil. keepWaiting (0x186DE4C30) initializes the
+    // real-time deadline on its first poll.
+    switch (pending.phase) {
+      case "awaiting_mode":
+        if (this.autoPlayMode !== "default") pending.phase = "timing";
         return;
-      if (pending.phase === "elapsed") {
+      case "timing":
+        pending.deadlineMs ??= nowMs + pending.delayMs;
+        if (nowMs >= pending.deadlineMs) pending.phase = "elapsed";
+        return;
+      case "elapsed":
+        if (this.autoPlayMode === "default") return;
         this.pendingAutoClick = null;
         void this.advanceFromClick();
-        return;
-      }
-
-      pending.phase = "timing";
-      void this.sleep(pending.delayMs).then(() => {
-        if (this.pendingAutoClick !== pending) return;
-        pending.phase = "elapsed";
-        this.resumeAutoClick();
-      });
-    }, "afterUpdate");
+    }
   }
 
   destroy(): void {
@@ -1141,6 +1151,8 @@ export class StoryRuntime {
   }
 
   private stopPlaybackInput(): void {
+    this.stopFramePolling?.();
+    this.stopFramePolling = null;
     this.cancelInputWait();
     // The Web runtime handles one story. Clear its story-long ON_SPEED_SET
     // subscriptions together when that story ends.
@@ -1240,10 +1252,12 @@ export class StoryRuntime {
         if (!this.decisionPredicator.needToExecuteCommand(line)) continue;
 
         const generation = this.playbackGeneration;
-        const result =
+        const execution =
           line.kind === "command"
-            ? await this.executeCommand(line)
+            ? this.executeCommand(line)
             : this.dialogPanel.executeTextLine(line);
+        const result =
+          execution instanceof Promise ? await execution : execution;
         if (this.destroyed) return;
         // A skipped executor can still return a stale input wait. Its click
         // follow-up (spellsticker block) travels with the dropped handler.
@@ -1369,18 +1383,15 @@ export class StoryRuntime {
 
   private executeCommand(
     line: ParsedCommandLine,
-  ): Promise<CommandResult | WaitForClick[]> {
+  ): CommandResult | Promise<CommandResult | WaitForClick[]> {
     // HEADER remains in Story.commands but has no registered executor.
-    if (line.command === "header") return Promise.resolve("continue");
+    if (line.command === "header") return "continue";
     const executors = this.commandRegistry.get(line.command);
     if (executors === null) {
       this.warn("unknown_command", line.command);
-      return Promise.resolve("continue");
+      return "continue";
     }
-    if (executors.length === 1) {
-      const result = executors[0]!(line);
-      return result instanceof Promise ? result : Promise.resolve(result);
-    }
+    if (executors.length === 1) return executors[0]!(line);
     return Promise.all(executors.map((executor) => executor(line))).then(
       (results) => {
         const handlers = results.filter((result) => result !== "continue");
