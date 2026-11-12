@@ -30,7 +30,7 @@ interface ManualTween {
 
 function createShowItemRenderer() {
   const renderer = createRenderer();
-  const layer: Container = renderer.itemLayer;
+  const layer: Container = renderer.layers.showItems;
   const tweens: ManualTween[] = [];
   renderer.showItemFrameTextureFailed = true;
   renderer.dialogFrameTextureFailed = true;
@@ -102,8 +102,11 @@ describe("ShowItemSlot rendering", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("starts the next show directly once hideitem has removed the old slot", async () => {
-    const { createRuntime, layer, tweens } = createShowItemRenderer();
+  it("finishes zero-duration Show and Hide on separate tween updates", async () => {
+    const { createRuntime, layer, renderer } = createShowItemRenderer();
+    const { advance, clock, drainFrame } = createManualClock();
+    const runner = new TweenRunner(() => true, clock);
+    renderer.tween = runner.run.bind(runner);
     const runtime = createRuntime([
       '[showitem(image="item_a",fadetime=0)]',
       "[hideitem(fadetime=0)]",
@@ -112,16 +115,55 @@ describe("ShowItemSlot rendering", () => {
     ]);
     const started = runtime.start();
     await flushAsync();
+    const first = layer.children[0]!;
+    expect(first.alpha).toBe(0);
+    expect(runtime.getState()).toBe("running");
 
-    expect(tweens.map((entry) => entry.durationMs)).toEqual([300]);
-    tweens[0]!.complete();
+    advance(16);
+    drainFrame();
+    await flushAsync();
+    expect(layer.children).toEqual([first]);
+    expect(first.alpha).toBe(1);
+
+    advance(16);
+    drainFrame();
+    await flushAsync();
+    const second = layer.children[0]!;
+    expect(first.destroyed).toBe(true);
+    expect(second.alpha).toBe(0);
+    expect(runtime.getState()).toBe("running");
+
+    advance(300);
+    drainFrame();
     await started;
-    expect(layer.children).toHaveLength(1);
+    expect(layer.children).toEqual([second]);
+    expect(second.alpha).toBe(1);
+    expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("keeps animtext on the shared layer when swapping and hiding items", async () => {
-    const { createRuntime, layer } = createShowItemRenderer();
-    const animTextRoot = layer.addChild(new Container());
+  it("renders item slots in the 2791 scene order and keeps animtext independent", async () => {
+    const { createRuntime, layer, renderer, tweens } = createShowItemRenderer();
+    const layers = renderer.layers;
+    layers.attach(new Container());
+    const { animTexts, scene, world } = layers;
+    expect(scene.getChildIndex(layer)).toBeGreaterThan(
+      scene.getChildIndex(layers.characters),
+    );
+    expect(scene.getChildIndex(layer)).toBeLessThan(
+      scene.getChildIndex(layers.avgDisplayCg),
+    );
+    expect(scene.getChildIndex(layer)).toBeLessThan(
+      scene.getChildIndex(layers.cutins),
+    );
+
+    const blocker = renderer.ensureBlocker();
+    expect(world.getChildIndex(animTexts)).toBeGreaterThan(
+      world.getChildIndex(blocker),
+    );
+    expect(world.getChildIndex(animTexts)).toBeLessThan(
+      world.getChildIndex(layers.curtains),
+    );
+    const animTextRoot = animTexts.addChild(new Container());
     const runtime = createRuntime([
       '[showitem(image="item_a",fadetime=0)]',
       '[showitem(image="item_b",fadetime=0)]',
@@ -130,19 +172,27 @@ describe("ShowItemSlot rendering", () => {
       '[name="A"]after hide',
     ]);
 
-    await runtime.start();
-    expect(layer.children[0]).toBe(animTextRoot);
-    expect(layer.children).toHaveLength(2);
-    await runtime.advance();
-    expect(layer.children).toEqual([animTextRoot]);
+    const started = runtime.start();
+    for (let i = 0; i < 3; i += 1) {
+      await flushAsync();
+      tweens[i]!.complete();
+    }
+    await started;
+    expect(layer.children).toHaveLength(1);
+
+    const advanced = runtime.advance();
+    await flushAsync();
+    tweens[3]!.complete();
+    await advanced;
+    expect(layer.children).toHaveLength(0);
+    expect(animTexts.children).toEqual([animTextRoot]);
   });
 
-  it("leaves the shared layer alone when hideitem has no slot", async () => {
+  it("does not start a tween when hideitem has no slot", async () => {
     const { createRuntime, layer, tweens } = createShowItemRenderer();
-    const stamp = layer.addChild(new Container());
     await createRuntime(["[hideitem]", '[name="A"]ok']).start();
 
-    expect(layer.children).toEqual([stamp]);
+    expect(layer.children).toHaveLength(0);
     expect(tweens).toHaveLength(0);
   });
 
@@ -364,19 +414,58 @@ describe("ShowItemSlot rendering", () => {
     },
   );
 
+  it("clamps the cutin backdrop after interpolating its alpha", async () => {
+    const { createSlot, layer, tweens } = createShowItemRenderer();
+    const slot = createSlot("cutin");
+    await slot.show({ black: 2, fadestyle: 2, width: 200 }, "item_a", vi.fn());
+    const backdrop = layer.children[0]!.children[0]!;
+
+    tweens[0]!.step(0.25);
+    expect(backdrop.alpha).toBeCloseTo(0.5);
+    tweens[0]!.complete();
+    expect(backdrop.alpha).toBe(1);
+
+    slot.hide({}, () => slot.destroy());
+    tweens[1]!.step(0.25);
+    expect(backdrop.alpha).toBe(1);
+    tweens[1]!.step(0.75);
+    expect(backdrop.alpha).toBeCloseTo(0.5);
+    tweens[1]!.complete();
+  });
+
   it.each([
     { raw: "200.5", width: 200 },
     { raw: '" +201 "', width: 201 },
     { raw: "2e2", width: 200 },
+    { raw: "0xC8", width: 200 },
+    { raw: "0310", width: 200 },
     { raw: "null", width: 0 },
     { raw: "true", width: 1 },
   ])("uses the native Int32 width for $raw", async ({ raw, width }) => {
-    const { createRuntime, layer } = createShowItemRenderer();
-    await createRuntime([
+    const { createRuntime, layer, tweens } = createShowItemRenderer();
+    const started = createRuntime([
       `[showitem(image="item_a",style="cutin",width=${raw},fadetime=0)]`,
       '[name="A"]ok',
     ]).start();
+    await flushAsync();
+    tweens[0]!.complete();
+    await started;
     expect(layer.children[0]!.children[1]!.width).toBe(width);
+  });
+
+  it("culls a cutin window with negative width and keeps its backdrop", async () => {
+    const { createRuntime, layer, tweens } = createShowItemRenderer();
+    const started = createRuntime([
+      '[showitem(image="item_a",style="cutin",width=0xFFFFFFFFFFFFFF38,fadetime=0)]',
+      '[name="A"]ok',
+    ]).start();
+    await flushAsync();
+    tweens[0]!.complete();
+    await started;
+
+    const [backdrop, , content] = layer.children[0]!.children;
+    expect(content!.renderable).toBe(false);
+    expect(backdrop!.alpha).toBeCloseTo(0.4);
   });
 
   it.each(['"200.5"', '"2e2"', '"null"', "2147483648"])(
@@ -401,11 +490,13 @@ describe("ShowItemSlot rendering", () => {
     ]);
     const started = runtime.start();
     await flushAsync();
-    expect(tweens).toHaveLength(1);
+    tweens[0]!.complete();
+    await flushAsync();
+    expect(tweens.map((entry) => entry.durationMs)).toEqual([0, 300]);
 
     runtime.destroy();
     await started;
-    tweens[0]!.complete();
+    tweens[1]!.complete();
     expect(renderer.textureForImageKey).toHaveBeenCalledTimes(1);
     expect(layer.children).toHaveLength(0);
   });
@@ -429,9 +520,19 @@ describe("ShowItemSlot rendering", () => {
     expect(layer.children).toHaveLength(0);
   });
 
-  it.each(["photo", "cutin"])(
-    "fades out the pending %s slot when a skip lands on hideitem",
-    async (style) => {
+  const textureOutcomes = {
+    resolves: () => new Texture({ label: "late texture" }),
+    rejects: () => {
+      throw new Error("late texture load failure");
+    },
+  };
+  it.each([
+    { style: "photo", outcome: "resolves" },
+    { style: "cutin", outcome: "resolves" },
+    { style: "photo", outcome: "rejects" },
+  ] as const)(
+    "fades out a pending $style slot after a skip when its load $outcome",
+    async ({ style, outcome }) => {
       const { createRuntime, layer, renderer, tweens } =
         createShowItemRenderer();
       const texture = Promise.withResolvers<Texture>();
@@ -451,10 +552,11 @@ describe("ShowItemSlot rendering", () => {
       expect(tweens.map((entry) => entry.durationMs)).toEqual([250]);
       expect(runtime.getState()).toBe("running");
 
-      texture.resolve(new Texture({ label: "late texture" }));
+      texture.resolve(Promise.resolve().then(textureOutcomes[outcome]));
       await flushAsync();
       expect(image.texture).toBe(Texture.WHITE);
       expect(tweens).toHaveLength(1);
+      expect(root.parent).toBe(layer);
       tweens[0]!.complete();
       await Promise.all([started, skipped]);
       expect(root.parent).toBeNull();

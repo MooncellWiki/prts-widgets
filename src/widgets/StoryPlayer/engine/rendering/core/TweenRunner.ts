@@ -4,6 +4,8 @@ import { linearEase, type EaseCurve } from "./DotweenEase";
 
 /** Optional DOTween `SetEase`/`SetLoops` behaviour for {@link TweenRunner.run}. */
 export interface TweenRunOptions {
+  /** Run a zero-duration tween on the next update, like DOTween. */
+  deferZeroDuration?: boolean;
   /**
    * Curve applied to each loop cycle's raw progress, mirroring DOTween's
    * `SetEase(ease)`; defaults to Linear.
@@ -44,7 +46,7 @@ export class TweenRunner {
     done?: () => void,
     options?: TweenRunOptions,
   ): Promise<void> {
-    if (durationMs <= 0) {
+    if (durationMs <= 0 && !options?.deferZeroDuration) {
       step(1);
       done?.();
       return Promise.resolve();
@@ -64,7 +66,7 @@ export class TweenRunner {
           return;
         }
         const elapsed = this.clock.now() - start;
-        if (elapsed >= totalMs) {
+        if (durationMs <= 0 || elapsed >= totalMs) {
           step(ease(1));
           done?.();
           resolve();

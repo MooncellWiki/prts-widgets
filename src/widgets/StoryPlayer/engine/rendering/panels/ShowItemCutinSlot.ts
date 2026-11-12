@@ -56,13 +56,14 @@ export class ShowItemCutinSlot extends ShowItemSlot {
       return this.fadeIn;
     }
 
-    // Native runs DOSizeDelta and DOFade in parallel with the same duration.
-    const blackAlpha = this.backdrop.alpha;
+    // The native DOSizeDelta and DOFade use the same duration. Web samples
+    // both together on the browser clock.
+    const blackAlpha = this.backdropAlpha;
     const horizontal = this.horizontal;
     this.root.alpha = 1;
-    this.backdrop.alpha = 0;
+    this.backdropAlpha = 0;
     return (progress) => {
-      this.backdrop.alpha = blackAlpha * progress;
+      this.backdropAlpha = blackAlpha * progress;
       this.drawWindow(
         horizontal ? this.targetWidth * progress : this.targetWidth,
         horizontal ? STORY_HEIGHT : STORY_HEIGHT * progress,
@@ -80,10 +81,10 @@ export class ShowItemCutinSlot extends ShowItemSlot {
       from ??= {
         width: this.maskWidth,
         height: this.maskHeight,
-        blackAlpha: this.backdrop.alpha,
+        blackAlpha: this.backdropAlpha,
       };
       const remaining = 1 - progress;
-      this.backdrop.alpha = from.blackAlpha * remaining;
+      this.backdropAlpha = from.blackAlpha * remaining;
       this.drawWindow(
         horizontal ? from.width * remaining : from.width,
         horizontal ? from.height : from.height * remaining,
@@ -133,6 +134,9 @@ export class ShowItemCutinSlot extends ShowItemSlot {
   private drawWindow(width: number, height: number): void {
     this.maskWidth = width;
     this.maskHeight = height;
+    // Clipping.FindCullAndClipWorldRect @ 0x186E764B0 rejects empty and
+    // inverted rectangles. The backdrop sits outside the clipped subtree.
+    this.content.renderable = width > 0 && height > 0;
     let x: number;
     switch (this.fadeStyle) {
       case ShowItemFadeStyle.horiz_expand_left2right:

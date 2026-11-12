@@ -20,10 +20,7 @@ export interface ShowItemSlotHost {
 
 function readFadeMs(args: StoryCommandArgs): number {
   const value = exactArg(args, "fadetime");
-  return Math.max(
-    0,
-    Math.round((value === null ? 0 : toNumber(value, 0.5)) * 1000),
-  );
+  return Math.max(0, (value === null ? 0 : toNumber(value, 0.5)) * 1000);
 }
 
 /**
@@ -32,11 +29,12 @@ function readFadeMs(args: StoryCommandArgs): number {
  */
 export abstract class ShowItemSlot implements StoryShowItemSlot {
   protected readonly root = new Container();
-  protected readonly backdrop = new Graphics()
+  private readonly backdrop = new Graphics()
     .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
     .fill(0x00_00_00);
   protected readonly content = new Container();
   protected readonly image = new Sprite(Texture.WHITE);
+  private backdropColorAlpha = 0;
   private onAnimEnd: (() => void) | null = null;
   private showing = false;
 
@@ -62,18 +60,26 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     );
     const blackArg = exactArg(args, "black");
     const black = blackArg === null ? 0 : toNumber(blackArg, 0.4);
-    this.backdrop.alpha = Math.max(0, Math.min(1, black));
+    this.backdropAlpha = black;
     const step = this.prepareShow(args);
     // The native prefab exists before the synchronous sprite load. On Web,
     // Hide can animate the placeholder while the texture request is pending.
     this.host.layer.addChild(this.root);
 
-    const texture = key ? await this.host.loadImage(key) : null;
-    if (!this.showing) return;
-    if (texture) this.setImage(texture);
-    const decoration = await this.host.loadDecoration();
-    if (!this.showing) return;
-    if (decoration) this.setDecoration(decoration);
+    try {
+      const [texture, decoration] = await Promise.all([
+        key ? this.host.loadImage(key) : null,
+        this.host.loadDecoration(),
+      ]);
+      if (!this.showing || this.root.parent !== this.host.layer) return;
+      if (texture) this.setImage(texture);
+      if (decoration) this.setDecoration(decoration);
+    } catch (error) {
+      // A skip can hand this slot to Hide while its Web assets are pending.
+      // A late load failure must leave that Hide in charge of cleanup.
+      if (this.showing) throw error;
+      return;
+    }
 
     this.animate(readFadeMs(args), step);
   }
@@ -82,7 +88,7 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     this.showing = false;
     this.onAnimEnd = onEnd;
     const fadeMs = readFadeMs(args);
-    if (!this.root.parent || fadeMs <= 0) {
+    if (!this.root.parent) {
       this.finishAnimation();
       return;
     }
@@ -108,6 +114,17 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     this.image.setSize(texture.width, texture.height);
   }
 
+  protected get backdropAlpha(): number {
+    return this.backdropColorAlpha;
+  }
+
+  protected set backdropAlpha(value: number) {
+    // DOTween ColorPlugin @ 0x18444A560 interpolates the raw Graphic.color
+    // alpha. Unity clamps it when packing Color32 for the UI vertex.
+    this.backdropColorAlpha = value;
+    this.backdrop.alpha = Math.max(0, Math.min(1, value));
+  }
+
   protected fadeIn = (progress: number): void => {
     this.root.alpha = progress;
   };
@@ -123,11 +140,6 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
   }
 
   private animate(durationMs: number, step: (progress: number) => void): void {
-    if (durationMs <= 0) {
-      step(1);
-      this.finishAnimation();
-      return;
-    }
     void this.host.tween(
       durationMs,
       step,
@@ -135,6 +147,8 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
         if (this.root.parent === this.host.layer) this.finishAnimation();
       },
       {
+        // 2791 TweenManager.Update @ 0x1844679F0 also completes duration 0 here.
+        deferZeroDuration: true,
         ease: dotweenDefaultEase,
         isAlive: () => this.root.parent === this.host.layer,
       },

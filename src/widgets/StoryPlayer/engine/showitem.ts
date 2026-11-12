@@ -1,6 +1,6 @@
 // Native slot metrics, measured from the serialized scene
-// (`slot_showItem_photo` / `slot_showItem_cutin` prefabs, 2.7.51 APK
-// sharedassets1, re-checked against 2.7.81):
+// (`slot_showItem_photo` / `slot_showItem_cutin` prefabs in PC 2.7.91
+// sharedassets1.assets):
 //
 // SceneCanvas runs a 1280x720 ScaleWithScreenSize scaler — the stage's exact
 // logical size — and every slot ancestor is scale 1, so the base `Show`

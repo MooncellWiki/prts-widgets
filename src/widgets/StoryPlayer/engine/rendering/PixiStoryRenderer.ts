@@ -482,7 +482,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private largeImageTweenSessionId = 0;
   private imageRoot: Container | null = null;
   private imageRotateSessionId = 0;
-  private readonly itemLayer = this.layers.items;
   /**
    * Bundled nine-slice texture of the serialized `sprite_avg_showItem_photo`
    * photo frame (native scene asset; CDN and the PRTS mirror do not carry
@@ -616,7 +615,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         this.tween(durationMs, update, complete),
     );
     this.animTextPanel = new AnimTextPanel(
-      this.itemLayer,
+      this.layers.animTexts,
       (durationMs, update, complete) =>
         this.tween(durationMs, update, complete),
       onWarning,
@@ -793,7 +792,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageRoots.clear();
     this.imageRoot = null;
     this.imageLayer.removeChildren();
-    this.itemLayer.removeChildren();
+    this.layers.showItems.removeChildren();
     this.cutinPanel.destroy();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
@@ -1465,7 +1464,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   createShowItemSlot(style: string): StoryShowItemSlot | null {
     const host = {
-      layer: this.itemLayer,
+      layer: this.layers.showItems,
       loadImage: (key: string) => this.textureForImageKey(key, "image"),
       tween: (...args: Parameters<TweenRunner["run"]>) => this.tween(...args),
     };
@@ -2941,17 +2940,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     blocker.alpha = 0;
 
     this.blockerSprite = blocker;
-    // Native hierarchy: panel_blocker (sibling 1) renders *below*
-    // panel_curtains (sibling 3), so curtains cover the blocker when both are
-    // up (black-mask pass, 2.7.61 scene layout). Insert just below the
-    // curtains container instead of appending on top of it. `indexOf` rather
-    // than `getChildIndex`, which throws when curtains has no parent yet
-    // (LayerGraph.attach runs in mount, so only an un-mounted harness hits
-    // that) -- there, appending is the right fallback.
-    const curtainIndex = this.worldLayer.children.indexOf(this.curtainLayer);
+    // 2791 UICanvas siblings draw panel_blocker before panel_displayable
+    // and panel_curtains. The layer may be unattached in renderer tests.
+    const stampIndex = this.worldLayer.children.indexOf(this.layers.animTexts);
     this.worldLayer.addChildAt(
       blocker,
-      curtainIndex === -1 ? this.worldLayer.children.length : curtainIndex,
+      stampIndex === -1 ? this.worldLayer.children.length : stampIndex,
     );
 
     return blocker;

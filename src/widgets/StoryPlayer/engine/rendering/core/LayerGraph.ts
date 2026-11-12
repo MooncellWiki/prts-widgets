@@ -18,37 +18,34 @@ export class LayerGraph {
   readonly curtains = new Container();
   readonly gridBackground = new Container();
   readonly images = new Container();
-  readonly items = new Container();
+  readonly animTexts = new Container();
+  readonly showItems = new Container();
   readonly scene = new Container();
   readonly ui = new Container();
   readonly world = new Container();
 
   attach(stage: Container): void {
-    // Unity panel_avg children, in nested-Canvas sortingOrder (2.7.71
-    // sharedassets1.assets): background (no Canvas) and panel_common_executors
-    // (non-visual), panel_background 1, panel_large_background 2,
-    // panel_bgoverlay 10, panel_character 61, panel_charoverlay 70,
-    // panel_image 121, panel_showItem 130, panel_cgoverlay 131,
-    // panel_character_cutin 180. Only the first three are strict here: the
-    // large background renders in front of the normal background (2 vs 1), so
-    // a later [Background] must never cover a [largebg] composition. The
-    // layers below panel_bgoverlay still sit at their nearest stable web
-    // equivalent -- notably images/characters are inverted versus native --
-    // until their strict pass is migrated.
+    // 2791 sharedassets1 SceneCanvas sort orders: background 1, large
+    // background 2, bgoverlay 10, character 61, charoverlay 70, image 121,
+    // showItem 130, cgoverlay 131, character_cutin 180. Web image stacking
+    // still uses the legacy position below characters.
     this.scene.addChild(this.background);
     this.scene.addChild(this.gridBackground);
     this.scene.addChild(this.avgDisplayBackground);
     this.scene.addChild(this.images);
-    this.scene.addChild(this.avgDisplayCg);
-    this.scene.addChild(this.cutins);
-    this.scene.addChild(this.items);
     this.scene.addChild(this.characters);
     this.scene.addChild(this.avgDisplayCharacter);
+    this.scene.addChild(this.showItems);
+    this.scene.addChild(this.avgDisplayCg);
+    this.scene.addChild(this.cutins);
     this.world.addChild(this.scene);
     // CgItemCanvas is a separate root canvas after SceneCanvas, so it sits
     // outside `scene`: camerashake moves AVGCameraEffect._sceneRoot, which is
     // the SceneCanvas-side panel_avg only, and must not drag CG items along.
     this.world.addChild(this.cgItems);
+    // UICanvas/panel_displayable draws animtext above the scene and blocker,
+    // below panel_curtains. SceneCanvas camera effects apply only to scene.
+    this.world.addChild(this.animTexts);
     this.world.addChild(this.curtains);
     stage.addChild(this.world);
     stage.addChild(this.ui);
