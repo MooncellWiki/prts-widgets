@@ -1,3 +1,5 @@
+import { setImmediate } from "node:timers/promises";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
@@ -40,6 +42,34 @@ describe("StoryRuntime", () => {
     await runtime.advance();
     expect(renderer.spellStickerHideCalls).toEqual(["spell1"]);
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+  });
+
+  it("emits a click when quick play is selected again during a blocking spellsticker", async () => {
+    vi.useFakeTimers();
+    const renderer = new FakeRenderer();
+    vi.spyOn(renderer, "setSpellSticker").mockResolvedValueOnce(1750);
+    const runtime = new StoryRuntime(
+      createContext([
+        '[spellsticker(id="s",style="sami",block=true)]<p=1>A</>',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    try {
+      runtime.setAutoPlayMode("quick_play");
+      await runtime.start();
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(renderer.spellStickerHideCalls).toEqual([]);
+
+      runtime.setAutoPlayMode("quick_play");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(renderer.spellStickerHideCalls).toEqual(["s"]);
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
+    } finally {
+      runtime.destroy();
+      vi.useRealTimers();
+    }
   });
 
   it("keeps spellsticker alpha unset when the param is missing", async () => {
@@ -117,23 +147,76 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("clears spellstickers when skipping the story", async () => {
+  it.each([
+    '[spellsticker(id="s",action="hide",block=true)]',
+    "[spellstickerclear(block=true)]",
+  ])("captures the base auto wait for %s in manual mode", async (command) => {
     const renderer = new FakeRenderer();
-    // nofirstskip on a first read makes get_isSkippable() false, which is the
-    // only fork where SkipStory reaches _ResetComponentsOnSkip.
     const runtime = new StoryRuntime(
       createContext([
-        '[spellsticker(id="s",block=true)]<p=1>x</>',
-        '[skipnode(mode="nofirstskip")]',
+        `[name="A"]${"X".repeat(100)}`,
+        command,
+        '[name="B"]after',
       ]),
       renderer,
       new FakeAudio(),
     );
     await runtime.start();
-    await runtime.skipNode();
-    expect(renderer.spellStickerClearCount).toBe(1);
-    expect(renderer.spellStickerHideCalls).toEqual([]);
+    await runtime.advance();
+    expect(runtime.getState()).toBe("waiting_input");
+    runtime.setAutoPlaySpeedLevel(2);
+    runtime.setAutoPlayMode("button_auto");
+
+    await renderer.frames.advance(16, 16, 1499);
+    expect(renderer.lastDialogue.speaker).toBe("A");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("B");
+    runtime.destroy();
   });
+
+  it.each([
+    // ForceCommandEnd hides m_blockingStickerId before OnReset clears all.
+    { action: "show", clicked: false, hidesBeforeSkip: 0 },
+    // A blocking hide leaves no blocking id, so only the executor hides.
+    { action: "hide", clicked: false, hidesBeforeSkip: 1 },
+    // _OnClicked clears the blocking id even before frame-end completion.
+    { action: "show", clicked: true, hidesBeforeSkip: 1 },
+  ])(
+    "hides a blocking spellsticker $action once before the skip reset (clicked=$clicked)",
+    async ({ action, clicked, hidesBeforeSkip }) => {
+      const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
+      const clear = vi
+        .spyOn(renderer, "clearSpellStickers")
+        .mockImplementationOnce(() => {
+          expect(renderer.spellStickerHideCalls).toEqual(["s"]);
+        });
+      // nofirstskip on a first read takes the protected skip branch and
+      // reaches _ResetComponentsOnSkip.
+      const runtime = new StoryRuntime(
+        createContext([
+          `[spellsticker(id="s",action="${action}",block=true)]<p=1>x</>`,
+          '[skipnode(mode="nofirstskip")]',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      try {
+        await runtime.start();
+        const advancing = clicked ? runtime.advance() : undefined;
+        expect(renderer.spellStickerHideCalls).toHaveLength(hidesBeforeSkip);
+        const skipping = runtime.skipNode();
+        await setImmediate();
+        await renderer.frames.advance(16);
+        await skipping;
+        await advancing;
+        expect(clear).toHaveBeenCalledExactlyOnceWith();
+        expect(renderer.spellStickerHideCalls).toEqual(["s"]);
+      } finally {
+        runtime.destroy();
+      }
+    },
+  );
 
   it("maps animtext prefab parameters and content without honoring ghost parameters", async () => {
     const renderer = new FakeRenderer();
@@ -160,28 +243,23 @@ describe("StoryRuntime", () => {
   });
 
   it("types dialogue <i> spans as zero-width and renders them as italic runs", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext(['[name="A"]<i>ab</i>c']),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 20 },
-      );
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]<i>ab</i>c']),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 20 },
+    );
 
-      await runtime.start();
-      await vi.advanceTimersByTimeAsync(200);
-      // Native AVGTypeWriterText skips every tag without a typing step and
-      // closes the open ones on each prefix.
-      expect(renderer.dialogueTexts.filter(Boolean)).toEqual([
-        "<_i>a</_i>",
-        "<_i>ab</_i>",
-        "<_i>ab</_i>c",
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
+    await runtime.start();
+    await renderer.frames.advance(21, 20, 20);
+    // Native AVGTypeWriterText skips every tag without a typing step and
+    // closes the open ones on each prefix.
+    expect(renderer.dialogueTexts.filter(Boolean)).toEqual([
+      "<_i>a</_i>",
+      "<_i>ab</_i>",
+      "<_i>ab</_i>c",
+    ]);
   });
 
   it("maps subtitle show and clear commands", async () => {
@@ -201,8 +279,6 @@ describe("StoryRuntime", () => {
     expect(renderer.subtitleCalls).toEqual([
       {
         alignment: "center",
-        delayMs: 0,
-        onTypingComplete: expect.any(Function),
         sizePx: 24,
         text: "HELLO",
         widthPx: 400,
@@ -289,6 +365,8 @@ describe("StoryRuntime", () => {
 
   it("click finishes subtitle typing before advancing", async () => {
     const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const onFrameEnd = vi.spyOn(renderer, "onFrameEnd");
     const runtime = new StoryRuntime(
       createContext([
         '[subtitle(text="HELLO",alignment="center")]',
@@ -301,50 +379,152 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
     expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.typingActive).toBe(true);
+    expect(renderer.subtitleText).toBe("");
 
     await runtime.advance();
-    expect(renderer.typingActive).toBe(false);
+    expect(renderer.subtitleText).toBe("HELLO");
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
 
+    const advance = runtime.advance();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue.speaker).toBe("");
     await runtime.advance();
+    expect(onFrameEnd).toHaveBeenCalledTimes(1);
+    renderer.frames.step(16);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    renderer.frames.step(16);
+    await advance;
     expect(renderer.lastDialogue.speaker).toBe("A");
   });
 
   it("auto mode advances a subtitle once its typewriter ends naturally", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[subtitle(text="HELLO",alignment="center")]',
-          '[name="A"]ok',
-        ]),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 40 },
-      );
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[subtitle(text="HELLO",alignment="center")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
 
-      await runtime.start();
-      expect(runtime.getState()).toBe("waiting_input");
+    await runtime.start();
+    expect(runtime.getState()).toBe("waiting_input");
 
-      runtime.setAutoPlayMode("button_auto");
-      // Enabling auto mid-typing must not fire a click before the typewriter
-      // has ended (native only raises the auto click from _OnTypeWriterEnd).
-      await vi.advanceTimersByTimeAsync(1600);
-      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+    runtime.setAutoPlayMode("button_auto");
+    renderer.frames.step(200);
+    expect(renderer.subtitleText).toBe("HELL");
+    expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
 
-      renderer.finishSubtitleTypingNaturally();
-      // Auto wait = 1.5s + messageLength(5) * 0.03s = 1.65s; the subtitle's
-      // own length must drive the wait, not the previous message's.
-      await vi.advanceTimersByTimeAsync(1649);
-      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.speaker).toBe("A");
-    } finally {
-      vi.useRealTimers();
-    }
+    renderer.frames.step(1);
+    expect(renderer.subtitleText).toBe("HELLO");
+    // Auto wait = 1.5s + messageLength(5) * 0.03s = 1.65s; the subtitle's
+    // own length must drive the wait, not the previous message's.
+    await renderer.frames.advance(16, 1649);
+    expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("A");
+    runtime.destroy();
+  });
+
+  it("applies the new speed to the subtitle already on screen", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[subtitle(text="HELLO")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    await runtime.start();
+    renderer.frames.step(45);
+    expect(renderer.subtitleText).toBe("H");
+
+    // Gear 1 changes the interval to 10ms and retains the 5ms accumulated
+    // toward the next character. Update uses a strict interval comparison.
+    runtime.setAutoPlayMode("button_auto");
+    runtime.setAutoPlaySpeedLevel(1);
+    renderer.frames.step(35);
+    expect(renderer.subtitleText).toBe("HELL");
+    renderer.frames.step(1);
+    expect(renderer.subtitleText).toBe("HELLO");
+
+    await renderer.frames.advance(16, 574);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("A");
+    runtime.destroy();
+  });
+
+  it("keeps the subtitle's scheduled auto deadline when changing gears after typing", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[subtitle(text="HELLO")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    await renderer.frames.advance(201, 16, 300);
+    expect(renderer.subtitleText).toBe("HELLO");
+
+    runtime.setAutoPlaySpeedLevel(1);
+    // Type-end captures 1650ms. The wait starts and releases
+    // on frame updates. The new gear applies to later RaiseAutoClick calls.
+    await renderer.frames.advance(1349);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("A");
+    runtime.destroy();
+  });
+
+  it("holds a subtitle's auto click in manual mode before and after its captured wait", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[subtitle(text="HELLO")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    runtime.setAutoPlaySpeedLevel(1);
+    await runtime.start();
+    await renderer.frames.advance(2500);
+    expect(renderer.subtitleText).toBe("HELLO");
+    expect(renderer.lastDialogue.speaker).toBe("");
+
+    runtime.setAutoPlayMode("button_auto");
+    await renderer.frames.advance(16, 16, 900);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    runtime.setAutoPlayMode("default");
+    await renderer.frames.advance(1000, 16);
+    expect(renderer.lastDialogue.speaker).toBe("");
+
+    runtime.setAutoPlayMode("button_auto");
+    await renderer.frames.advance(16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("A");
+    runtime.destroy();
+  });
+
+  it("hides a subtitle at story end without an explicit close command", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[subtitle(text="HELLO")]']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(renderer.subtitleText).toBe("HELLO");
+    await runtime.advance();
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.subtitleText).toBe("");
+    expect(renderer.subtitleClearCalls).toEqual([0]);
   });
 
   it("clears the subtitle immediately when skipping the story", async () => {
@@ -352,7 +532,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[subtitle(text="HELLO",alignment="center")]',
-        '[skipnode(mode="nofirstskip")]',
+        '[skipnode(mode="skip")]',
       ]),
       renderer,
       new FakeAudio(),
@@ -362,9 +542,136 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
 
     await runtime.skipNode();
-    // Native OnReset on skip clears the panel immediately (alpha=0, no fade).
     expect(renderer.subtitleClearCalls).toEqual([0]);
     expect(runtime.getState()).toBe("finished");
+  });
+
+  it("drops the skipped subtitle's click wait before starting the next line", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[subtitle(text="old")]',
+        "[SkipToThis]",
+        '[subtitle(text="new")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { sleep: () => new Promise(() => {}), typingIntervalMs: 40 },
+    );
+
+    await runtime.start();
+    await runtime.skipNode();
+    expect(renderer.subtitleClearCalls).toEqual([0]);
+    expect(renderer.subtitleText).toBe("");
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+
+    await runtime.advance();
+    expect(renderer.subtitleText).toBe("new");
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+    await runtime.advance();
+    expect(runtime.getDisplayedLineIndex()).toBe(4);
+    runtime.destroy();
+  });
+
+  it("cancels a subtitle's pending frame-end completion when skipping", async () => {
+    const renderer = new FakeRenderer();
+    let endFrame: (() => void) | undefined;
+    const cancel = vi.fn();
+    vi.spyOn(renderer, "onFrameEnd").mockImplementationOnce((callback) => {
+      endFrame = callback;
+      return cancel;
+    });
+    const runtime = new StoryRuntime(
+      createContext([
+        '[subtitle(text="old")]',
+        "[SkipToThis]",
+        '[subtitle(text="new")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    const advance = runtime.advance();
+    await runtime.skipNode();
+    await advance;
+    expect(cancel).toHaveBeenCalledExactlyOnceWith();
+    endFrame?.();
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+    expect(renderer.subtitleText).toBe("new");
+    await runtime.advance();
+    expect(runtime.getDisplayedLineIndex()).toBe(4);
+  });
+
+  it("updates only the current sticker and keeps its new delay when appending", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="old",delay=0.2,block=false)]',
+        '[sticker(id="b",text="current",delay=0.2)]',
+        '[sticker(id="b",multi=true,text="append",block=true)]',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    expect(renderer.stickerCalls.map(({ delayMs }) => delayMs)).toEqual([
+      200, 200,
+    ]);
+
+    runtime.setAutoPlaySpeedLevel(1);
+    expect(renderer.stickerDelayChanges).toEqual([{ id: "b", delayMs: 10 }]);
+    renderer.finishStickerTypingNaturally();
+    await renderer.frames.advance(16, 16, 605, 16, 16);
+    expect(renderer.stickerCalls.at(-1)).toMatchObject({
+      append: true,
+      delayMs: 10,
+      id: "b",
+    });
+    runtime.destroy();
+  });
+
+  it("keeps the current sticker's script delay when the quick gear is reselected", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[sticker(id="a",text="hello",delay=1,block=true)]']),
+      renderer,
+      new FakeAudio(),
+    );
+    try {
+      runtime.setAutoPlayMode("quick_play");
+      await runtime.start();
+      expect(renderer.stickerCalls[0]?.delayMs).toBe(250);
+      runtime.setAutoPlaySpeedLevel(0);
+      expect(renderer.stickerDelayChanges).toEqual([]);
+      runtime.setAutoPlaySpeedLevel(1);
+      expect(renderer.stickerDelayChanges).toEqual([{ id: "a", delayMs: 5 }]);
+    } finally {
+      runtime.destroy();
+    }
+  });
+
+  it("refreshes the current sticker interval on a click in manual mode", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="first",delay=0.2)]',
+        '[sticker(id="a",text="append",multi=true,block=true)]',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+
+    await runtime.start();
+    expect(renderer.stickerCalls[0]?.delayMs).toBe(200);
+    await runtime.advance();
+    expect(renderer.stickerDelayChanges).toEqual([{ id: "a", delayMs: 40 }]);
+    await runtime.advance();
+    expect(renderer.stickerCalls[1]?.delayMs).toBe(40);
   });
 
   it("uses native sticker id state for show, append, and hide", async () => {
@@ -450,6 +757,7 @@ describe("StoryRuntime", () => {
       createContext([
         '[sticker(id="a",text="x",delay=0.04,block=false)]',
         '[sticker(id="b",text="y",block=false)]',
+        '[sticker(id="c",text="z",delay=-0.04,block=false)]',
         '[name="B"]ok',
       ]),
       renderer,
@@ -462,7 +770,7 @@ describe("StoryRuntime", () => {
     // delay=0.04 is scale 1 against the 0.04s originDelay; an omitted delay
     // falls back to 1.0, i.e. 25x the global typewriter interval (40ms here).
     expect(renderer.stickerCalls.map((call) => call.delayMs)).toEqual([
-      40, 1000,
+      40, 1000, -40,
     ]);
   });
 
@@ -519,156 +827,160 @@ describe("StoryRuntime", () => {
   });
 
   it("auto-advances a blocking sticker by its message length", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[sticker(id="a",text="hello",delay=0)]',
-          '[name="B"]after',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
-      expect(runtime.getState()).toBe("waiting_input");
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="hello",delay=0)]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    expect(runtime.getState()).toBe("waiting_input");
 
-      // RaiseAutoClick(msgLength): button-auto level 1 waits 1.5s + 5 chars *
-      // 0.03s before clicking past the sticker (delay=0 prints at once).
-      await vi.advanceTimersByTimeAsync(1649);
-      expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-    } finally {
-      vi.useRealTimers();
-    }
+    // RaiseAutoClick(msgLength): button-auto level 1 waits 1.5s + 5 chars *
+    // 0.03s before clicking past the sticker (delay=0 prints at once).
+    await renderer.frames.advance(16, 16, 1649);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("B");
+  });
+
+  it("bills only the new multiline message when an existing sticker switches to multi", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="s",text="OLD",delay=0,block=false)]',
+        '[sticker(id="s",text="NEW",multi=true,block=false)]',
+        '[sticker(id="s",text="+",multi=true,block=true)]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    expect(renderer.stickerCalls.slice(1)).toMatchObject([
+      { append: true, resetText: true },
+      { append: true, resetText: false },
+    ]);
+
+    // The final message is NEW+, which queues 1500 + 4 * 30 ms.
+    await renderer.frames.advance(16, 16, 1619);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("B");
+    runtime.destroy();
   });
 
   it("auto-advances a hidden sticker with the base wait only", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[sticker(id="a",text="xy",delay=0,block=false)]',
-          '[sticker(id="a",block=true)]',
-          '[name="B"]after',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
-      expect(runtime.getState()).toBe("waiting_input");
-      expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 150, id: "a" }]);
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="xy",delay=0,block=false)]',
+        '[sticker(id="a",block=true)]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.stickerClearCalls).toEqual([{ fadeMs: 150, id: "a" }]);
 
-      // The hide branch raises RaiseAutoClick(0): the base 1.5s only, with no
-      // per-character extension.
-      await vi.advanceTimersByTimeAsync(1499);
-      expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-    } finally {
-      vi.useRealTimers();
-    }
+    // The hide branch raises RaiseAutoClick(0): the base 1.5s only, with no
+    // per-character extension.
+    await renderer.frames.advance(16, 16, 1499);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("B");
   });
 
   it("holds the sticker auto click until its typewriter ends", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          // Omitted delay: 25x the 40ms interval, so typing takes 5s natively.
-          '[sticker(id="a",text="hello")]',
-          '[name="B"]after',
-        ]),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 40 },
-      );
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
-      expect(renderer.stickerCalls[0]?.delayMs).toBe(1000);
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        // Omitted delay: 25x the 40ms interval, so typing takes 5s natively.
+        '[sticker(id="a",text="hello")]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    expect(renderer.stickerCalls[0]?.delayMs).toBe(1000);
 
-      // _OnStickerTypeEnd fires only when typing ends, so auto-play must not
-      // click through (and cut) the slow typewriter in the meantime.
-      await vi.advanceTimersByTimeAsync(4000);
-      expect(renderer.typingActive).toBe(true);
-      expect(renderer.lastDialogue.speaker).toBe("");
+    // _OnStickerTypeEnd fires only when typing ends, so auto-play must not
+    // click through (and cut) the slow typewriter in the meantime.
+    await renderer.frames.advance(16, 16, 4000, 16);
+    expect(renderer.typingActive).toBe(true);
+    expect(renderer.lastDialogue.speaker).toBe("");
 
-      renderer.finishStickerTypingNaturally();
-      await vi.advanceTimersByTimeAsync(1649);
-      expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-    } finally {
-      vi.useRealTimers();
-    }
+    renderer.finishStickerTypingNaturally();
+    await renderer.frames.advance(16, 16, 1649);
+    expect(renderer.lastDialogue.speaker).toBe("");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("B");
   });
 
-  it("reschedules an auto click when an earlier live sticker finishes", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[sticker(id="a",text="0123456789",block=false)]',
-          '[name="B"]after',
-          '[name="C"]next',
-        ]),
-        renderer,
-        new FakeAudio(),
-        { typingIntervalMs: 40 },
-      );
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
-
-      // The dialogue finishes typing at 200ms and arms a 1.65s click.
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-      // The live sticker replaces it with 1.5s + 10 * 30ms from now.
-      renderer.finishStickerTypingNaturally();
-      await vi.advanceTimersByTimeAsync(1799);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(renderer.lastDialogue.speaker).toBe("C");
-      runtime.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
+  it("lets dialogue completion replace the preceding non-blocking sticker's auto click", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="0123456789",block=false)]',
+        '[name="B"]after',
+        '[name="C"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { typingIntervalMs: 40 },
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    expect(renderer.typingActive).toBe(false);
+    // The sticker starts waiting while the dialogue is still typing.
+    await renderer.frames.advance(16, 16);
+    expect(renderer.lastDialogue.text).toBe("");
+    // The last glyph replaces the sticker's 1.8s wait with 1.65s.
+    await renderer.frames.advance(169, 16, 1649);
+    expect(renderer.lastDialogue.speaker).toBe("B");
+    await renderer.frames.advance(1, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("C");
+    runtime.destroy();
   });
 
-  it("ignores a replaced sticker callback and leaves a non-blocking sticker typing on the dialog click", async () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          '[sticker(id="a",text="one",multi=true,block=false)]',
-          '[sticker(id="a",text="two",multi=true,block=false)]',
-          '[name="B"]after',
-          '[name="C"]next',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
-      runtime.setAutoPlayMode("button_auto");
-      await runtime.start();
+  it("ignores delayed callbacks from a completed non-blocking sticker show and append", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        '[sticker(id="a",text="one",multi=true,block=false)]',
+        '[sticker(id="a",text="two",multi=true,block=false)]',
+        '[name="B"]after',
+        '[name="C"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
 
-      await vi.advanceTimersByTimeAsync(1000);
-      renderer.stickerCalls[0]!.onTypingComplete?.();
-      await vi.advanceTimersByTimeAsync(850);
-      expect(renderer.lastDialogue.speaker).toBe("C");
-      expect(renderer.typingActive).toBe(true);
-      runtime.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
+    await renderer.frames.advance(201, 16, 1000);
+    renderer.stickerCalls[0]!.onTypingComplete?.();
+    renderer.stickerCalls[1]!.onTypingComplete?.();
+    await renderer.frames.advance(650, 16, 16);
+    expect(renderer.lastDialogue.speaker).toBe("C");
+    expect(renderer.typingActive).toBe(false);
+    runtime.destroy();
   });
 
-  it("lets a blocking stickertween finish its panel's current sticker on click", async () => {
+  it("advances a blocking stickertween in one click after a non-blocking sticker", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -681,9 +993,6 @@ describe("StoryRuntime", () => {
       { typingIntervalMs: 40 },
     );
     await runtime.start();
-    expect(renderer.typingActive).toBe(true);
-
-    await runtime.advance();
     expect(runtime.getDisplayedLineIndex()).toBeNull();
     expect(renderer.typingActive).toBe(false);
 
@@ -722,6 +1031,7 @@ describe("StoryRuntime", () => {
         from: { x: 0, y: 0 },
         to: { x: 300, y: 500 },
       },
+      timeScale: 1,
     };
     expect(renderer.stickerTweenCalls).toEqual([moveAndFade]);
 
@@ -736,6 +1046,7 @@ describe("StoryRuntime", () => {
         isend: true,
         join: false,
         rotation: { durationMs: 1000, from: 0, to: 90 },
+        timeScale: 1,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
@@ -771,6 +1082,7 @@ describe("StoryRuntime", () => {
         isend: true,
         join: false,
         scale: { durationMs: 2000, from: 0, to: 1.5 },
+        timeScale: 1,
       },
     ]);
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
@@ -804,7 +1116,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("scales stickertween durations by the animate ratio", async () => {
+  it("passes script durations and the sequence playback rate to stickertween", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -814,8 +1126,6 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      // Native keeps durations literal and scales playback via
-      // Sequence.timeScale = animateRatio; duration * ratio is equivalent.
       { animateRatio: 0.5 },
     );
 
@@ -823,45 +1133,53 @@ describe("StoryRuntime", () => {
 
     expect(renderer.stickerTweenCalls).toEqual([
       {
-        alpha: { durationMs: 500, from: 0, to: 1 },
+        alpha: { durationMs: 1000, from: 0, to: 1 },
         id: "s",
         isend: true,
         join: false,
         position: {
-          durationMs: 1000,
+          durationMs: 2000,
           from: { x: 0, y: 0 },
           to: { x: 10, y: 20 },
         },
+        timeScale: 0.5,
       },
     ]);
   });
 
-  it("ignores subtitle ghost parameters and falls back invalid alignment to left", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        '[subtitle(text="x",alignment="middle",delay=9,fadetime=9,multi=true)]',
-      ]),
-      renderer,
-      new FakeAudio(),
-      { typingIntervalMs: 25 },
-    );
+  it.each(["middle", "CENTER", "RIGHT"])(
+    "ignores subtitle ghost parameters and falls back from %s alignment to left",
+    async (alignment) => {
+      const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
+      const runtime = new StoryRuntime(
+        createContext([
+          `[subtitle(text="x",alignment="${alignment}",delay=9,fadetime=9,multi=true)]`,
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 25 },
+      );
 
-    await runtime.start();
+      await runtime.start();
 
-    expect(renderer.subtitleCalls).toEqual([
-      {
-        alignment: "left",
-        delayMs: 25,
-        onTypingComplete: expect.any(Function),
-        sizePx: 24,
-        text: "x",
-        widthPx: 1280,
-        x: 0,
-        y: 0,
-      },
-    ]);
-  });
+      expect(renderer.subtitleCalls).toEqual([
+        {
+          alignment: "left",
+          sizePx: 24,
+          text: "x",
+          widthPx: 1280,
+          x: 0,
+          y: 0,
+        },
+      ]);
+      renderer.frames.step(25);
+      expect(renderer.subtitleText).toBe("");
+      renderer.frames.step(1);
+      expect(renderer.subtitleText).toBe("x");
+      runtime.destroy();
+    },
+  );
 
   it("stops the timer sticker when skipping a node", async () => {
     const renderer = new FakeRenderer();

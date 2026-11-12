@@ -1,5 +1,7 @@
 import { PixiStoryRenderer } from "../../src/widgets/StoryPlayer/engine/renderer";
 
+import { PlaybackTestFrames } from "./playbackFrames";
+
 import type { Context } from "../../src/widgets/StoryPlayer/context";
 import type { AnimationClock } from "../../src/widgets/StoryPlayer/engine/execution";
 
@@ -16,7 +18,25 @@ export function createRenderer(
   context: Context = createContext(),
   onWarning?: (detail: string) => void,
 ): any {
-  return new PixiStoryRenderer(context, onWarning) as any;
+  const renderer = new PixiStoryRenderer(context, onWarning);
+  const frames = new PlaybackTestFrames();
+  const onFrameEnd = renderer.onFrameEnd.bind(renderer);
+  const onFrameUpdate = renderer.onFrameUpdate.bind(renderer);
+  return Object.assign(renderer, {
+    frames,
+    onFrameEnd: ((callback) =>
+      (renderer as any).app?.ticker
+        ? onFrameEnd(callback)
+        : frames.onFrameEnd(
+            callback,
+          )) satisfies PixiStoryRenderer["onFrameEnd"],
+    onFrameUpdate: ((...args) =>
+      (renderer as any).app?.ticker
+        ? onFrameUpdate(...args)
+        : frames.onFrameUpdate(
+            ...args,
+          )) satisfies PixiStoryRenderer["onFrameUpdate"],
+  }) as any;
 }
 
 export function createManualClock(): {

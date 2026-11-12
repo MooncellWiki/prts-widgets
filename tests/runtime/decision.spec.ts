@@ -288,9 +288,56 @@ describe("StoryRuntime", () => {
     expect(renderer.dialogueTexts).toEqual([]);
   });
 
+  it.each([
+    { choiceWaitMs: 100, expectedChars: 240 },
+    { choiceWaitMs: 2000, expectedChars: 168 },
+  ])(
+    "keeps the sticker's auto-click clock during a decision held for $choiceWaitMs ms",
+    async ({ choiceWaitMs, expectedChars }) => {
+      const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
+      renderer.holdDecisions = true;
+      const subtitle = "X".repeat(240);
+      const runtime = new StoryRuntime(
+        createContext([
+          '[sticker(id="a",text="typing",delay=0.2,block=false)]',
+          '[decision(options="A;B",values="1;2")]',
+          `[subtitle(text="${subtitle}")]`,
+        ]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
+      try {
+        runtime.setAutoPlayMode("button_auto");
+        runtime.setAutoPlaySpeedLevel(1);
+        const started = runtime.start();
+        await renderer.frames.advance(0);
+        expect(runtime.getState()).toBe("waiting_decision");
+        expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+        expect(renderer.stickerDelayChanges).toEqual([]);
+        expect(renderer.typingActive).toBe(false);
+        await renderer.frames.advance(16, 16, choiceWaitMs, 16);
+        expect(runtime.getState()).toBe("waiting_decision");
+        renderer.pickDecision({ optionIndex: 0, value: 1 });
+        await renderer.frames.advance(16, 16);
+        await started;
+
+        // The 590ms click can reach the subtitle if it is already waiting.
+        // A click that expired during the choice has no listener.
+        await renderer.frames.advance(1681, 1);
+        expect(renderer.subtitleText).toHaveLength(expectedChars);
+        expect(renderer.stickerDelayChanges).toEqual([]);
+      } finally {
+        runtime.destroy();
+      }
+    },
+  );
+
   it("ignores a queued decision selection after destroy", async () => {
     const renderer = new FakeRenderer();
     renderer.holdDecisions = true;
+    const showDecision = vi.spyOn(renderer, "showDecision");
     const runtime = new StoryRuntime(
       createContext([
         '[decision(options="A;B",values="1;2")]',
@@ -301,8 +348,9 @@ describe("StoryRuntime", () => {
     );
 
     const started = runtime.start();
-    renderer.pickDecision({ optionIndex: 1, value: 2 });
+    const select = showDecision.mock.calls[0]![3];
     runtime.destroy();
+    select({ optionIndex: 1, value: 2 });
     await started;
 
     expect(runtime.getDecisionSelectValue()).toBe(0);

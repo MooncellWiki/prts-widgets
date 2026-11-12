@@ -6,13 +6,10 @@
  * option never reaches OnClickPress.
  *
  * Web adaptation: the host advances on the DOM `click` of the element hosting
- * the canvas. PIXI already fires `pointertap` on `pointerup`, the decision
- * settles in the microtasks right after it, and only then does the browser
- * dispatch `click`, which would bubble up and be taken for an advance press
- * as well (resetting the auto play mode the decision just restored). The
- * press owner is therefore decided on `pointerdown`, mirroring UGUI's
- * raycast: a click whose press landed on an interactive canvas object stops
- * at `target` instead of bubbling to the host.
+ * the canvas. PIXI delivers option selection through `pointertap`, and the
+ * browser also sends a DOM `click`. Capture the press owner on `pointerdown`,
+ * mirroring UGUI's raycast. A press on an interactive canvas object is
+ * consumed at `target` even if the view closes before the DOM click arrives.
  */
 export function guardClaimedClicks(
   target: HTMLElement,

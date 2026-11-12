@@ -132,7 +132,7 @@ export interface RuntimeChoiceSelection {
   value: number;
 }
 
-/** showDecision 的结果：点击的选项下标 + 写入闸门的值（value 会跨 decision 复用，不能反查下标） */
+/** 点击的选项下标和写入闸门的值。不同选项可复用 value。 */
 export interface DecisionSelection {
   /** 点击的选项下标；-1 表示面板未经点击被清除（跳过/销毁） */
   optionIndex: number;
@@ -523,35 +523,29 @@ export interface DialogueLayout {
   text: string;
 }
 
-export interface DialogueText {
+export interface TypewriterText {
   /** The complete message, including the characters yet to be revealed. */
   chars: readonly RichChar[];
   visibleCount: number;
 }
 
-export interface SubtitleInput {
+export interface OverlayTextLayout {
   alignment: "center" | "left" | "right";
-  delayMs: number;
-  /**
-   * Native port: `Torappu.AVG.SubtitlePanel._OnTypeWriterEnd` (2.7.61 VA
-   * 0x183e94e80). Invoked exactly once when the subtitle typewriter finishes
-   * on its own (or shows instantly with `delayMs <= 0`) so the runtime can
-   * run its `RaiseAutoClick(typeWriter.messageLength)` equivalent. The
-   * click-to-finish path never invokes it -- native `_OnClicked` ->
-   * `TryFinish()` is driven by the runtime's own click handler.
-   */
-  onTypingComplete?: () => void;
   sizePx: number;
-  text: string;
   widthPx: number;
   x: number;
   y: number;
 }
 
-export interface StickerInput extends SubtitleInput {
+export interface StickerInput extends OverlayTextLayout {
   append: boolean;
+  delayMs: number;
   fadeMs: number;
   id: string;
+  onTypingComplete?: () => void;
+  /** The first multiline append starts a new message in the existing view. */
+  resetText?: boolean;
+  text: string;
 }
 
 /**
@@ -564,9 +558,8 @@ export interface StickerInput extends SubtitleInput {
  * `*from` parses as 0, never "the current value") and the transform is
  * snapped to it before the tween starts, matching
  * `AVGTweenFactory._CreateAlphaTween` / `_CreateAnchorPosTween` /
- * `_CreateRotateTween`. `*duration` is in native seconds and is already
- * scaled to milliseconds by the runtime (the visual equivalent of the native
- * `Sequence.timeScale = animateRatio` third mode, see the runtime case).
+ * `_CreateRotateTween`. The runtime converts the script durations to
+ * milliseconds. The view applies the sequence's playback rate at `isend`.
  */
 export interface StickerTweenInput {
   alpha?: { durationMs: number; from: number; to: number };
@@ -583,6 +576,8 @@ export interface StickerTweenInput {
   rotation?: { durationMs: number; from: number; to: number };
   /** 2791 `sto` group: uniform x/y scale (`_CreateScaleTween`). */
   scale?: { durationMs: number; from: number; to: number };
+  /** Playback rate for the completed sequence. A zero rate leaves it at the start. */
+  timeScale?: number;
 }
 
 export interface SpellStickerInput {
@@ -751,6 +746,13 @@ export interface InterludeInput {
   type: InterludeElementType;
 }
 
+export interface PlaybackFrame {
+  /** Unscaled elapsed time since the previous frame. */
+  readonly deltaMs: number;
+  /** Monotonic real time at this frame. */
+  readonly nowMs: number;
+}
+
 export interface StoryRenderer {
   clearCgItems: (
     key?: string,
@@ -794,9 +796,16 @@ export interface StoryRenderer {
   clearCharacterCutin: (widgetId?: string) => Promise<void>;
   clearInterludes: () => Promise<void>;
   destroy: () => void;
-  /** Reveal remaining text on the panel whose command is waiting for input. */
-  finishTextTyping: (panel: "sticker" | "subtitle") => boolean;
+  /** Reveal the remaining text of the selected sticker. */
+  finishStickerTyping: (id: string) => boolean;
   mount: (host: HTMLElement) => Promise<void>;
+  /** Run once after the next scene render and return a cancellation callback. */
+  onFrameEnd: (callback: () => void) => () => void;
+  /** Subscribe to a phase before the scene renders. Returns an unsubscribe function. */
+  onFrameUpdate: (
+    callback: (frame: PlaybackFrame) => void,
+    phase?: "update" | "afterUpdate",
+  ) => () => void;
   playVideo: (url: string) => Promise<void>;
   setAnimText: (input: AnimTextInput) => Promise<void>;
   setAvgDisplay: (input: AvgDisplayInput) => Promise<void>;
@@ -815,7 +824,7 @@ export interface StoryRenderer {
    */
   setDialogue: (
     speaker: string,
-    text: DialogueText,
+    text: TypewriterText,
     layout?: DialogueLayout,
   ) => void;
   /**
@@ -838,24 +847,27 @@ export interface StoryRenderer {
   showItem: (input: ShowItemInput) => Promise<void>;
   showCgItem: (input: CgItemInput) => Promise<void>;
   setSticker: (input: StickerInput) => Promise<void> | void;
+  setStickerTypeWriterDelay: (id: string, delayMs: number) => void;
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
-  setSpellSticker: (input: SpellStickerInput) => Promise<void> | void;
+  /** Returns the native show clip's duration in milliseconds when available. */
+  setSpellSticker: (
+    input: SpellStickerInput,
+  ) => Promise<number | undefined> | number | undefined;
   hideSpellSticker: (id: string) => Promise<void> | void;
-  setSubtitle: (input: SubtitleInput) => Promise<void> | void;
+  /** The initial reveal supplies layout. Later reveals keep that layout. */
+  setSubtitle: (text: TypewriterText, layout?: OverlayTextLayout) => void;
   setTimerSticker: (input: TimerStickerInput) => Promise<void> | void;
   shakeCamera: (input: CameraShakeInput) => Promise<void>;
   showDecision: (
     options: string[],
     values: number[],
     /** 与 options 同长的禁用标记（native `_SetupOptionText` 的 `&` 前缀项 interactable=false） */
-    disabled?: boolean[],
-  ) => Promise<DecisionSelection>;
+    disabled: boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ) => void;
   /**
-   * 按「未点击」结算挂起中的 decision（`{optionIndex: -1, value: 0}`），
-   * DecisionPanel 用它解开挂在 showDecision 上的命令循环。Web 适配：
-   * native SkipStory 清空 m_blockingExecutors 放行命令循环，但
-   * `DecisionPanel.ForceCommandEnd` 为空、`ShouldResetOnSkip` 为 false，
-   * 面板会留在屏幕上；web 选择关掉它。
+   * 在决策帧末结算、跳段或销毁时关闭面板。跳段关闭面板是 Web 适配，
+   * 2791 的 DecisionPanel.ForceCommandEnd 为空，ShouldResetOnSkip 为 false。
    */
   settleDecision: () => void;
   stopVideo: () => void;
@@ -961,6 +973,7 @@ export interface RuntimeOptions {
   animateRatio?: number;
   firstRead?: boolean;
   onWarning?: (warning: RuntimeWarning) => void;
+  /** Override the browser yield after a video completes. */
   sleep?: (ms: number) => Promise<void>;
   typingIntervalMs?: number;
 }

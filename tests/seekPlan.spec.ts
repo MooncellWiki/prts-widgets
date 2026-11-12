@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { planChoicesForLine } from "../src/widgets/StoryPlayer/engine/log/seek";
 import { analyzeStoryFlow } from "../src/widgets/StoryPlayer/engine/log/symbolicFlow";
@@ -6,11 +6,14 @@ import { parseScript } from "../src/widgets/StoryPlayer/engine/parser";
 import { richCharsToTaggedText } from "../src/widgets/StoryPlayer/engine/richtext";
 import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
 
+import { PlaybackTestFrames } from "./helpers/playbackFrames";
+import { FakeRenderer } from "./helpers/runtimeFakes";
+
 import type { Context } from "../src/widgets/StoryPlayer/context";
 import type {
   DecisionPolicy,
   DecisionSelection,
-  DialogueText,
+  TypewriterText,
   LineSeekUpdate,
   ShowItemInput,
   StoryAudio,
@@ -120,6 +123,8 @@ describe("planChoicesForLine", () => {
 
 /** 只实现 decision-policy 测试脚本会用到的渲染方法（其余走不到） */
 class DecisionFakeRenderer {
+  private readonly frames = new PlaybackTestFrames();
+  readonly onFrameUpdate = this.frames.onFrameUpdate;
   decisionCalls: { options: string[]; values: number[] } = {
     options: [],
     values: [],
@@ -128,31 +133,34 @@ class DecisionFakeRenderer {
   showItemKeys: (string | null)[] = [];
   lastDialogue = { speaker: "", text: "" };
 
-  async showDecision(
+  showDecision(
     options: readonly string[],
     values: readonly number[],
-  ): Promise<DecisionSelection> {
+    _disabled: readonly boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ): void {
     this.decisionPanelShown += 1;
     this.decisionCalls = { options: [...options], values: [...values] };
-    return { optionIndex: 0, value: values[0] ?? 0 };
+    onSelect({ optionIndex: 0, value: values[0] ?? 0 });
   }
+
+  settleDecision(): void {}
 
   async showItem(input: ShowItemInput): Promise<void> {
     this.showItemKeys.push(input.key);
   }
 
-  setDialogue(speaker: string, { chars, visibleCount }: DialogueText): void {
+  setDialogue(speaker: string, { chars, visibleCount }: TypewriterText): void {
     const text = richCharsToTaggedText(chars.slice(0, visibleCount));
     this.lastDialogue = { speaker, text };
   }
 
-  // 自动点击推进（advanceFromClick）必经，不打断打字机
-  finishTextTyping(): boolean {
-    return false;
-  }
-
-  // 同上：推进时收尾 DialogPanel 命令
+  // 自动点击推进时收尾 DialogPanel 命令
   finishDialogueCommand(): void {}
+
+  readonly onFrameEnd = this.frames.onFrameEnd;
+
+  clearSubtitle(): void {}
 
   destroy(): void {}
 }
@@ -253,23 +261,24 @@ describe("StoryRuntime decision policy", () => {
  * 重点是「谁算人工干预」——脚本自身切播放模式（[theater]、隐式 endtip）
  * 不能被当成使用者干预，否则跳转会在半路无声中止并甩出错误文案。
  */
-const seekRuntime = (script: readonly string[]): StoryRuntime =>
-  new StoryRuntime(
-    createContext(script),
-    asRenderer(new DecisionFakeRenderer()),
-    audio,
-    // 自动点击的等待走注入的 sleep，测试里直接放行
-    { sleep: () => Promise.resolve(), typingIntervalMs: 0 },
-  );
+const seekRuntime = (script: readonly string[]) => {
+  const renderer = new FakeRenderer();
+  renderer.frames.manual = true;
+  return {
+    frames: renderer.frames,
+    runtime: new StoryRuntime(createContext(script), renderer, audio),
+  };
+};
 
 /** 等到跳转推出终态；超时说明它卡住了，直接把已收到的通知报出来 */
 async function waitForTerminal(
   updates: readonly LineSeekUpdate[],
+  frames: PlaybackTestFrames,
 ): Promise<LineSeekUpdate> {
-  for (let tick = 0; tick < 2000; tick += 1) {
+  for (let tick = 0; tick < 100; tick += 1) {
     const terminal = updates.find((update) => update.phase !== "seeking");
     if (terminal) return terminal;
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await frames.advance(100);
   }
   throw new Error(`seek did not settle: ${JSON.stringify(updates)}`);
 }
@@ -279,7 +288,7 @@ const outerPolicy = (): number => 1;
 
 describe("StoryRuntime seekToLine", () => {
   it("fast-forwards to the target line and hands control back to manual", async () => {
-    const runtime = seekRuntime([
+    const { runtime, frames } = seekRuntime([
       '[name="A"]一',
       '[name="A"]二',
       '[name="A"]三',
@@ -289,7 +298,7 @@ describe("StoryRuntime seekToLine", () => {
     expect(updates).toEqual([{ phase: "seeking", target: 3 }]);
 
     await runtime.start();
-    expect(await waitForTerminal(updates)).toEqual({
+    expect(await waitForTerminal(updates, frames)).toEqual({
       phase: "reached",
       target: 3,
     });
@@ -300,7 +309,7 @@ describe("StoryRuntime seekToLine", () => {
   it("keeps seeking across [theater], which switches mode on its own", async () => {
     // [theater(mode=true)] 切 button_auto，(mode=false) 的缓存恢复又把
     // quick_play 映射回 default——两次都不是人工干预，跳转要照常推进
-    const runtime = seekRuntime([
+    const { runtime, frames } = seekRuntime([
       "[theater(mode=true)]", // line 1
       '[name="A"]幕布里', // line 2
       "[theater(mode=false)]", // line 3
@@ -310,7 +319,7 @@ describe("StoryRuntime seekToLine", () => {
     runtime.seekToLine(4, new Map(), (update) => updates.push(update));
 
     await runtime.start();
-    expect(await waitForTerminal(updates)).toEqual({
+    expect(await waitForTerminal(updates, frames)).toEqual({
       phase: "reached",
       target: 4,
     });
@@ -322,7 +331,7 @@ describe("StoryRuntime seekToLine", () => {
     // 的跳转夺回逻辑必须立即切回 quick_play,本用例锁住这一点:卡住的话
     // waitForTerminal 会超时。目标不能紧跟在 exit 后面:那一行不用自动点击
     // 也会显示出来,夺回逻辑坏了也照样到达
-    const runtime = seekRuntime([
+    const { runtime, frames } = seekRuntime([
       '[name="A"]一', // line 1
       "[theater(mode=false)]", // line 2:unpaired exit,cache 已空
       '[name="A"]二', // line 3:要靠自动点击才能推过去
@@ -332,7 +341,7 @@ describe("StoryRuntime seekToLine", () => {
     runtime.seekToLine(4, new Map(), (update) => updates.push(update));
 
     await runtime.start();
-    expect(await waitForTerminal(updates)).toEqual({
+    expect(await waitForTerminal(updates, frames)).toEqual({
       phase: "reached",
       target: 4,
     });
@@ -343,7 +352,7 @@ describe("StoryRuntime seekToLine", () => {
     // theater 段内点击全被吞掉，到达后若照常切手动就再也推不动。交还
     // button_auto 后剧情自己播到 exit，exit 再把跳转期间缓存的 quick_play
     // 映射回 default
-    const runtime = seekRuntime([
+    const { runtime, frames } = seekRuntime([
       "[theater]", // line 1
       '[name="A"]一', // line 2
       '[name="A"]二', // line 3：目标行
@@ -359,23 +368,24 @@ describe("StoryRuntime seekToLine", () => {
     });
 
     await runtime.start();
-    expect(await waitForTerminal(updates)).toEqual({
+    expect(await waitForTerminal(updates, frames)).toEqual({
       phase: "reached",
       target: 3,
     });
     expect(modeAtReach).toBe("button_auto");
-    await vi.waitFor(() => expect(runtime.getDisplayedLineIndex()).toBe(5));
+    await frames.advance(100, 100, 1600, 100, 100);
+    expect(runtime.getDisplayedLineIndex()).toBe(5);
     expect(runtime.getAutoPlayState().mode).toBe("default");
   });
 
   it("reports missed when the whole script plays out without the target", async () => {
     // parser 会补一条隐式 endtip，它同样要切回手动——不能变成 aborted
-    const runtime = seekRuntime(['[name="A"]一', '[name="A"]二']);
+    const { runtime, frames } = seekRuntime(['[name="A"]一', '[name="A"]二']);
     const updates: LineSeekUpdate[] = [];
     runtime.seekToLine(999, new Map(), (update) => updates.push(update));
 
     await runtime.start();
-    expect(await waitForTerminal(updates)).toEqual({
+    expect(await waitForTerminal(updates, frames)).toEqual({
       phase: "missed",
       reason: "finished",
       target: 999,
@@ -383,7 +393,7 @@ describe("StoryRuntime seekToLine", () => {
   });
 
   it("aborts when the user switches the play mode themselves", async () => {
-    const runtime = seekRuntime(['[name="A"]一', '[name="A"]二']);
+    const { runtime } = seekRuntime(['[name="A"]一', '[name="A"]二']);
     const updates: LineSeekUpdate[] = [];
     runtime.seekToLine(2, new Map(), (update) => updates.push(update));
 
@@ -395,7 +405,7 @@ describe("StoryRuntime seekToLine", () => {
   });
 
   it("cancels silently and gives the previously injected policy back", async () => {
-    const runtime = seekRuntime([
+    const { runtime } = seekRuntime([
       '[decision(options="A;B",values="1;2")]', // line 1
       '[name="A"]x', // line 2
     ]);

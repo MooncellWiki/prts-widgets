@@ -10,18 +10,26 @@ import {
 } from "./characterRef";
 import {
   exactArg,
-  parseSubtitleAlignment,
   parseVector2,
   toBoolean,
   toNumber,
   toOptionalNumber,
   toString,
 } from "./commandParams";
-import { CommandRegistry, type CommandResult } from "./commandRegistry";
+import {
+  CommandRegistry,
+  type ClickCompletion,
+  type CommandResult,
+  type CommandWait,
+  type WaitForClick,
+  type WaitForDecision,
+} from "./commandRegistry";
+import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { StickerPanel } from "./panels/StickerPanel";
+import { SubtitlePanel } from "./panels/SubtitlePanel";
 import { parseScript } from "./parser";
 import { parseShowItemFadeStyle } from "./showitem";
 import { expandStoryText } from "./textVariables";
@@ -48,7 +56,6 @@ import type {
   StoryCommandArgs,
   StoryPlayerEvents,
   StoryRenderer,
-  SubtitleInput,
 } from "./types";
 
 interface AutoSpeed {
@@ -146,9 +153,6 @@ const builtinCommandNames = [
   "camerashake",
   "focusout",
   "focusparam",
-  "subtitle",
-  "spellsticker",
-  "spellstickerclear",
   "theater",
   "bgeffect",
   "cgitem",
@@ -162,6 +166,25 @@ interface InterruptibleWait {
   id: number;
   interrupt?: () => void;
   resolve: () => void;
+}
+
+interface PendingInput {
+  dispatching: boolean;
+  effects: ClickCompletion[];
+  handlers: readonly WaitForClick[];
+  subscriptions: Set<() => void>;
+}
+
+interface PendingAutoClick {
+  deadlineMs?: number;
+  delayMs: number;
+  phase: "awaiting_mode" | "timing" | "elapsed";
+}
+
+interface PendingDelay {
+  deadlineMs?: number;
+  delayMs: number;
+  finish: () => void;
 }
 
 function sleepWithTimeout(ms: number): Promise<void> {
@@ -319,10 +342,11 @@ export class StoryRuntime {
   private readonly audio: StoryAudio;
   private readonly defaultSpeed: AutoSpeed;
   private autoPlayMode: AutoPlayMode = "default";
-  private autoClickGeneration = 0;
-  private autoClickReady = false;
+  private pendingAutoClick: PendingAutoClick | null = null;
+  private stopFramePolling: (() => void) | null = null;
   private buttonSpeedLevel = 0;
   private readonly commandRegistry = new CommandRegistry<CommandResult>();
+  private readonly eventPool = new EventPool<AVGEvent>();
   private readonly context: Context;
   private cursor = 0;
   /** 当前屏幕对话框正在显示的源行 lineNumber（cursor-1 那条）。null 表示无显示文本（初始/finished/video-only/纯命令推进） */
@@ -399,14 +423,14 @@ export class StoryRuntime {
   private theaterAutoPlayCache: AutoPlayState | null = null;
   private playbackGeneration = 0;
   private quickSpeedLevel = 0;
-  /** Raw length from the latest type-end event, including rich-text tags. */
-  private lastCompletedTextLength: number | null = null;
   private state: PlayerState = "idle";
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly stickerPanel: StickerPanel;
-  private waitingInputCommand: string | null = null;
-  private pendingInputEffect: (() => Promise<void> | void) | null = null;
+  private readonly subtitlePanel: SubtitlePanel;
+  private pendingDelay: PendingDelay | null = null;
+  private pendingInput: PendingInput | null = null;
+  private resumeCommands: (() => void) | null = null;
 
   constructor(
     context: Context,
@@ -435,17 +459,6 @@ export class StoryRuntime {
       renderer,
       context,
       {
-        beginWait: () => {
-          // Web adaptation: suspend auto-play while a manual choice is open.
-          const autoPlayRestore = this.autoPlayMode;
-          this.applyAutoPlayMode("default");
-          this.state = "waiting_decision";
-          return autoPlayRestore;
-        },
-        finishWait: (mode) => {
-          this.applyAutoPlayMode(mode);
-          this.state = "running";
-        },
         pickOption: (decision) => this.decisionPolicy?.(decision) ?? null,
         resetAutoPlayMode: () => this.applyScriptAutoPlayMode("default"),
         warnInvalidParameter: (detail, line) =>
@@ -463,21 +476,37 @@ export class StoryRuntime {
       setDisplayedLine: (lineNumber) => {
         this.displayedLineIndex = lineNumber;
       },
-      sleep: this.sleep,
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
     this.stickerPanel = new StickerPanel(renderer, {
+      animateRatio: () => this.getCurrentSpeed().animateRatio,
       beginTyping: (length) => this.beginTextTyping(length),
-      calculateFadeMs: (value, fallback) =>
-        this.calculateFadeMs(value, fallback),
+      playbackGeneration: () => this.playbackGeneration,
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
     });
+    this.subtitlePanel = new SubtitlePanel(renderer, {
+      beginTyping: (length) => this.beginTextTyping(length),
+      setDisplayedLine: (lineNumber) => {
+        const generation = this.playbackGeneration;
+        this.displayedLineIndex = lineNumber;
+        return !this.destroyed && generation === this.playbackGeneration;
+      },
+      translateText: (text) => this.translateText(text),
+      typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
+    });
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
+    this.subtitlePanel.register(this.commandRegistry);
+    this.commandRegistry.register("spellsticker", (line) =>
+      this.executeSpellSticker(line),
+    );
+    this.commandRegistry.register("spellstickerclear", (line) =>
+      this.executeSpellStickerClear(line),
+    );
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -620,10 +649,10 @@ export class StoryRuntime {
 
   /** 跳转的推进档位：quick_play 最高档 */
   private enterQuickSeekMode(): void {
-    // 先切模式再设速度：setAutoPlaySpeedLevel 按当前模式写入档位，
-    // default 模式下 quick 的 4 档会被钳到按钮自动的 3 档上限
+    // Select the gear before QUICK_PLAY emits its immediate click. That
+    // click can finish typing and capture the current gear's auto delay.
+    this.quickSpeedLevel = QUICK_AUTO_SPEEDS.length - 1;
     this.applyAutoPlayMode("quick_play");
-    this.setAutoPlaySpeedLevel(QUICK_AUTO_SPEEDS.length - 1);
   }
 
   /** 播放走到终态时若仍有跳转在进行，按 missed 收尾 */
@@ -647,10 +676,9 @@ export class StoryRuntime {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
     const mode = this.theaterMode ? "button_auto" : requested;
-    if (this.autoPlayMode === mode) return;
 
     // 模式以本次调用为准，不再改
-    if (mode !== "quick_play" && this.lineSeek)
+    if (mode !== this.autoPlayMode && mode !== "quick_play" && this.lineSeek)
       this.closeLineSeek({
         phase: "aborted",
         target: this.lineSeek.target,
@@ -659,25 +687,18 @@ export class StoryRuntime {
     this.applyAutoPlayMode(mode);
   }
 
-  /** 写入模式并重排自动点击；不含跳转的人工干预判定 */
+  /** 写入模式并广播速度变化。自动点击在 Update 后读取模式。 */
   private applyAutoPlayMode(mode: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
-    if (this.autoPlayMode === mode) return;
 
     this.autoPlayMode = mode;
-    // 2791 set_autoPlayMode broadcasts the story cache. The UI's
-    // _UpdateAutoPlayModeUI then emits ON_SPEED_SET, and the line being
-    // typed switches to the new mode's delay.
-    this.dialogPanel.onSpeedSet();
-    this.cancelAutoClick();
-
-    if (mode === "quick_play" && this.state === "waiting_input") {
-      void this.advanceFromClick();
-      return;
-    }
-    if (mode !== "default" && this.lastCompletedTextLength !== null)
-      this.scheduleAutoClick(this.lastCompletedTextLength);
+    // set_autoPlayMode (2791 @ 0x184175100) emits a click on every QUICK_PLAY
+    // assignment before broadcasting the cache.
+    if (mode === "quick_play") void this.advanceFromClick();
+    // Setting DEFAULT again on a manual press still runs
+    // _UpdateAutoPlayModeUI and emits ON_SPEED_SET.
+    this.eventPool.emit(AVGEvent.SpeedSet);
   }
 
   /**
@@ -694,24 +715,22 @@ export class StoryRuntime {
 
   setAutoPlaySpeedLevel(level: number): void {
     const normalized = Math.max(0, Math.trunc(level));
-    if (this.autoPlayMode === "quick_play")
-      this.quickSpeedLevel = Math.min(normalized, QUICK_AUTO_SPEEDS.length - 1);
-    else
+    if (this.autoPlayMode === "quick_play") {
+      const quickLevel = Math.min(normalized, QUICK_AUTO_SPEEDS.length - 1);
+      // AVGQuickPlayBtn.OnClick (2791 @ 0x1841AEB60) ignores the active gear.
+      if (quickLevel === this.quickSpeedLevel) return;
+      this.quickSpeedLevel = quickLevel;
+    } else {
       this.buttonSpeedLevel = Math.min(
         normalized,
         BUTTON_AUTO_SPEEDS.length - 1,
       );
+    }
 
     // 2791 emits ON_SPEED_SET on both speed buttons: OnSpeedBtnClicked for
     // button auto, and AVGQuickPlayBtn.OnClick -> SetQuickSpeed ->
     // AVGQuickPlay._SetSpeedBtn for quick play.
-    this.dialogPanel.onSpeedSet();
-    this.cancelAutoClick();
-    if (
-      this.autoPlayMode !== "default" &&
-      this.lastCompletedTextLength !== null
-    )
-      this.scheduleAutoClick(this.lastCompletedTextLength);
+    this.eventPool.emit(AVGEvent.SpeedSet);
   }
 
   canSkipNode(): boolean {
@@ -765,6 +784,13 @@ export class StoryRuntime {
       return;
     }
 
+    this.dialogPanel.onStoryBegin(this.eventPool);
+    this.stickerPanel.onStoryBegin(this.eventPool);
+    this.subtitlePanel.onStoryBegin(this.eventPool);
+    this.stopFramePolling = this.renderer.onFrameUpdate(
+      ({ nowMs }) => this.pollAfterUpdate(nowMs),
+      "afterUpdate",
+    );
     this.state = "running";
     await this.processLoop();
   }
@@ -796,47 +822,176 @@ export class StoryRuntime {
     await this.advanceFromClick();
   }
 
+  /**
+   * Native executors listen to ON_CLICK until FinishCommand. Bind the Web
+   * executor callbacks after dispatch so a stale async result cannot leave
+   * behind a listener when a skip moved the cursor.
+   */
+  private waitForInput(handlers: readonly WaitForClick[]): void {
+    const pending: PendingInput = {
+      dispatching: false,
+      effects: [],
+      handlers,
+      subscriptions: new Set(),
+    };
+    for (const { handleClick } of handlers) {
+      const unsubscribe = this.eventPool.on(AVGEvent.Click, () => {
+        if (this.pendingInput !== pending) return;
+        handleClick((completion) => {
+          if (
+            this.pendingInput !== pending ||
+            !pending.subscriptions.delete(unsubscribe)
+          )
+            return;
+          unsubscribe();
+          if (completion) pending.effects.push(completion);
+        });
+      });
+      pending.subscriptions.add(unsubscribe);
+    }
+    this.pendingInput = pending;
+    this.state = "waiting_input";
+  }
+
+  private cancelInputWait(): void {
+    const pending = this.pendingInput;
+    this.pendingInput = null;
+    this.resumeCommands = null;
+    for (const unsubscribe of pending?.subscriptions ?? []) unsubscribe();
+  }
+
   private async advanceFromClick(): Promise<void> {
-    const command = this.waitingInputCommand;
-    if (this.destroyed || this.state !== "waiting_input" || command === null)
+    const pending = this.pendingInput;
+    if (
+      this.destroyed ||
+      this.state !== "waiting_input" ||
+      !pending ||
+      pending.dispatching ||
+      pending.subscriptions.size === 0
+    )
       return;
 
-    // In 2791 only the blocking executor subscribes to ON_CLICK. A
-    // non-blocking sticker can raise an auto click without consuming it.
-    switch (command) {
-      case "aside":
-      case "dialog":
-      case "endtip":
-      case "multiline":
-        if (this.dialogPanel.finishTypingOnClick()) return;
-        this.dialogPanel.finishCommand();
-        break;
-      case "sticker":
-      case "stickerclear":
-      case "stickertween":
-        if (this.renderer.finishTextTyping("sticker")) return;
-        break;
-      case "subtitle":
-        if (this.renderer.finishTextTyping("subtitle")) return;
-        break;
-    }
-
-    this.waitingInputCommand = null;
-    this.lastCompletedTextLength = null;
-    this.cancelAutoClick();
-    const inputEffect = this.pendingInputEffect;
-    this.pendingInputEffect = null;
-    const generation = this.playbackGeneration;
+    // OnClickPress and _DoAutoClick both emit ON_CLICK. A click that only
+    // reveals text leaves the executor subscribed for the advancing click.
+    pending.dispatching = true;
     try {
-      await inputEffect?.();
+      this.eventPool.emit(AVGEvent.Click);
+    } finally {
+      pending.dispatching = false;
+    }
+    if (this.pendingInput !== pending || pending.subscriptions.size > 0) return;
+
+    // Keep the blockers available to SkipStory until their frame-end finish.
+    const generation = this.playbackGeneration;
+    let cancelFrameEnd: (() => void) | undefined;
+    try {
+      // SubtitlePanel._OnClicked (2791 @ 0x1841E5920) and the other click
+      // handlers invoke FinishCommand at WaitForEndOfFrame. Spellsticker
+      // hides on the click itself, and DialogPanel restores width in OnFinish.
+      const effects = pending.effects
+        .map(({ onClick }) => onClick?.())
+        .filter((effect) => effect !== undefined);
+      if (
+        effects.length > 0 &&
+        (await this.waitInterruptiblePromise(Promise.all(effects)))
+      )
+        return;
+      if (this.pendingInput !== pending) return;
+
+      await this.waitInterruptiblePromise(
+        new Promise<void>((resolve, reject) => {
+          cancelFrameEnd = this.finishInputAtFrameEnd(
+            () => {
+              if (this.pendingInput !== pending) return false;
+              for (const { onFinish } of pending.effects) onFinish?.();
+              if (this.pendingInput !== pending) return false;
+              this.pendingInput = null;
+              return true;
+            },
+            resolve,
+            reject,
+          );
+        }),
+      );
     } catch (error) {
       if (!this.destroyed && generation === this.playbackGeneration)
-        this.waitingInputCommand = command;
+        this.waitForInput(
+          pending.handlers.map(({ forceEnd }) => ({
+            forceEnd,
+            handleClick: (finishCommand) => finishCommand(),
+          })),
+        );
       throw error;
+    } finally {
+      cancelFrameEnd?.();
     }
-    if (this.destroyed || generation !== this.playbackGeneration) return;
-    this.state = "running";
-    await this.processLoop();
+  }
+
+  private async waitForDecision(decision: WaitForDecision): Promise<void> {
+    const generation = this.playbackGeneration;
+    this.state = "waiting_decision";
+    let open = true;
+    let selected = false;
+    let cancelFrameEnd: (() => void) | undefined;
+    const close = () => {
+      if (!open) return;
+      open = false;
+      decision.closeDecision();
+    };
+
+    try {
+      await this.waitInterruptiblePromise(
+        new Promise<void>((resolve, reject) => {
+          decision.showDecision((selection) => {
+            if (!open || selected || this.destroyed) return;
+            selected = true;
+            try {
+              // OnDecisionSelected (2791 @ 0x184169F40) records the choice
+              // immediately. InternalCommand.Finish schedules FinishCommand
+              // via InvokeEndOfFrame (0x1841C7340).
+              decision.applySelection(selection);
+              if (this.skipCleanup) return;
+              cancelFrameEnd = this.finishInputAtFrameEnd(
+                () => {
+                  if (!open || this.skipCleanup) return false;
+                  close();
+                  return true;
+                },
+                resolve,
+                reject,
+              );
+            } catch (error) {
+              reject(error);
+            }
+          });
+        }),
+        close,
+      );
+    } catch (error) {
+      if (!this.destroyed && generation === this.playbackGeneration)
+        this.failPlayback(error);
+    } finally {
+      cancelFrameEnd?.();
+      close();
+    }
+  }
+
+  private finishInputAtFrameEnd(
+    onFinish: () => boolean,
+    resolve: (continuation: Promise<void>) => void,
+    reject: (error: unknown) => void,
+  ): () => void {
+    return this.renderer.onFrameEnd(() => {
+      try {
+        if (!onFinish() || this.destroyed) return;
+        this.state = "running";
+        // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blocker
+        // list on the next coroutine update. Run the loop in that update.
+        this.resumeCommands = () => resolve(this.processLoop());
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
   async skipNode(): Promise<void> {
@@ -849,48 +1004,17 @@ export class StoryRuntime {
     if (this.autoPlayMode === "quick_play") return;
 
     const activeProcessCompletion = this.processingCompletion;
-    // 入口处取样：此时命令循环若挂在 renderer.showDecision 上，skip 要负责
-    // 替它结算（见下方 settleOnSkip）。
-    const pendingDecision = this.decisionPanel.getPendingDecision();
+    const skipToThis = this.skipToIndex >= 0;
     let shouldResume = false;
 
     // m_executeIndex points at the command currently being waited on while our
     // cursor already points at the next command, hence cursor <= anchorIndex is
     // the native m_executeIndex < m_skipToIndex forward-only test.
-    if (this.skipToIndex >= 0 && this.cursor <= this.skipToIndex) {
+    if (skipToThis) {
+      if (this.cursor > this.skipToIndex) return;
       this.cursor = this.skipToIndex + 1;
       shouldResume = true;
-      // Native port: Torappu.AVG.AVGController.SkipStory's shared UI tail runs
-      // after the SkipToThis jump and resets set_autoPlayMode(DEFAULT) plus
-      // stops the auto coroutine (2.7.71 VA 0x183ec718d / 0x183ec71de), so auto
-      // playback never continues past the anchor. Web adaptation: only the
-      // real jump resets; native also runs this tail for an already-crossed
-      // anchor (a no-op jump), which canSkipNode() precludes here.
-      //
-      // The same tail then zeroes the whole m_storyCache (0x183ec7205), theater
-      // flag included, so OnClickPress stops swallowing clicks; leaving
-      // theaterMode set would strand the story with no auto click and no
-      // manual advance. The pre-theater auto state (autoPlayModeCache /
-      // m_needResumeAutoStatus) lives on AVGController outside the cache and
-      // survives: theaterAutoPlayCache is kept for a later [theater(mode=false)].
-      // Web order: the flag goes first, since setAutoPlayMode pins an active
-      // theater to button_auto.
-      this.theaterMode = false;
-      this.setAutoPlayMode("default");
-      // 挂起的 decision 结算后会把进面板前缓存的模式还回去（web 的等待期
-      // 降级），那样 auto 又会越过锚点继续：还原目标一并改成 default。
-      if (pendingDecision) pendingDecision.autoPlayRestore = "default";
-      // Native tail zeroes the whole m_storyCache, so the skipnode queue and
-      // curSkipMode go with it (2.7.81 SkipStory 0x183F8EB80): later skipnode
-      // executors read EMPTY -- CAN_SKIP -- instead of a stale unconsumed
-      // label stranded behind the jump.
-      this.skipNodeQueueIndex = this.skipNodeLabels.length;
-      this.currentSkipMode = "skip";
-    } else if (this.skipToIndex >= 0) {
-      // SkipToThis is forward-only. Native does not fall back to skipnode or
-      // StopStory after playback has already crossed the anchor.
-      return;
-    } else if (this.skipToIndex < 0) {
+    } else {
       const nextLabel = this.skipNodeLabels[this.skipNodeQueueIndex];
       if (nextLabel) {
         this.skipNodeQueueIndex += 1;
@@ -922,9 +1046,8 @@ export class StoryRuntime {
       }
     }
 
-    this.pendingInputEffect = null;
-    this.waitingInputCommand = null;
-    this.invalidatePlaybackCallbacks();
+    const interruptedInput = shouldResume ? this.pendingInput : null;
+    this.cancelInputWait();
     // SkipStory (2791 @ 0x18416E560) force-ends the blockers and resets
     // components before the coroutine resumes. The StopStory path bypasses
     // these resets. Web cleanup can yield even as the old executor settles.
@@ -932,15 +1055,31 @@ export class StoryRuntime {
     this.skipCleanup = cleanup;
     let resumedProcess = activeProcessCompletion;
     try {
+      try {
+        // The protected skipnode branch keeps the auto-click coroutine.
+        // ForceCommandEnd can replace it before the old callbacks expire.
+        for (const handler of interruptedInput?.handlers ?? [])
+          handler.forceEnd?.();
+      } finally {
+        this.playbackGeneration += 1;
+        if (skipToThis) {
+          // SkipStory resets the mode and story cache after ForceEnd.
+          // Clear the Web theater flag first so setAutoPlayMode accepts
+          // DEFAULT. The pre-theater mode cache lives outside the story cache.
+          this.theaterMode = false;
+          this.setAutoPlayMode("default");
+          this.skipNodeQueueIndex = this.skipNodeLabels.length;
+          this.currentSkipMode = "skip";
+        }
+        if (skipToThis || !shouldResume) this.cancelAutoClick();
+      }
       if (shouldResume) {
-        this.dialogPanel.forceCommandEnd();
         for (const reset of [
           // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
           () => this.renderer.clearInterludes(),
           () => this.renderer.clearCharacterCutin(),
           () => this.renderer.clearSpellStickers(),
-          // SubtitlePanel.OnReset cancels typing and hides without a fade.
-          () => this.renderer.clearSubtitle(0),
+          () => this.subtitlePanel.reset(),
           () => this.stickerPanel.reset(),
         ]) {
           if (this.destroyed) break;
@@ -948,28 +1087,46 @@ export class StoryRuntime {
         }
       }
     } finally {
-      this.skipCleanup = null;
-      cleanup.end();
-      if (!this.destroyed && this.state !== "error") {
-        this.dialogPanel.stopTypingSilently();
-        if (shouldResume) {
-          this.state = "running";
-        } else if (!activeProcessCompletion) {
-          // StopStory path with no loop alive to run finishPlayback().
-          this.audio.resetAudio();
-          this.state = "finished";
-          this.finishLineSeekMissed("finished");
-        }
-
-        // The cursor already moved. Release the old wait even if a reset
-        // failed, and let the existing loop own continuation when available.
-        this.interruptPendingWait();
-        this.decisionPanel.settleOnSkip(pendingDecision);
-        if (shouldResume && !resumedProcess)
-          resumedProcess = this.processLoop();
+      // An async executor can finish while the reset is in progress. Release
+      // its wait and let its loop unwind before starting the destination.
+      this.dialogPanel.stopTypingSilently();
+      this.interruptPendingWait();
+      if (shouldResume) await activeProcessCompletion;
+      if (shouldResume && !this.destroyed && this.state !== "error") {
+        resumedProcess = this.resumeSkipOnFrame(cleanup);
+      } else {
+        this.skipCleanup = null;
+        cleanup.end();
+        if (
+          !this.destroyed &&
+          this.state !== "error" &&
+          !activeProcessCompletion
+        )
+          this.finishPlayback();
       }
     }
     if (resumedProcess) await resumedProcess;
+  }
+
+  private resumeSkipOnFrame(cleanup: ExecutionHandle): Promise<void> {
+    return new Promise((resolve) => {
+      const cancelUpdate = this.renderer.onFrameUpdate(() => {
+        cancelUpdate();
+        // SkipStory clears the blockers. _DoExecuteCommands.MoveNext
+        // (2791 @ 0x184180280) sees that on its next poll, after Update.
+        this.resumeCommands = () => {
+          this.skipCleanup = null;
+          cleanup.end();
+          this.state = "running";
+          resolve(this.processLoop());
+        };
+      });
+      void cleanup.completion.then((reason) => {
+        if (reason !== "reset") return;
+        cancelUpdate();
+        resolve();
+      });
+    });
   }
 
   /**
@@ -1009,32 +1166,52 @@ export class StoryRuntime {
   }
 
   private cancelAutoClick(): void {
-    this.autoClickGeneration += 1;
-    this.autoClickReady = false;
+    this.pendingAutoClick = null;
   }
 
-  private scheduleAutoClick(messageLength: number): void {
-    this.cancelAutoClick();
-    if (this.autoPlayMode === "default") return;
-    const generation = this.autoClickGeneration;
-    const speed = this.getCurrentSpeed();
-    const delayMs =
-      (speed.autoWaitBaseTime + messageLength * speed.autoWaitTimePerText) *
-      1000;
-    void this.sleep(delayMs).then(() => {
-      if (
-        this.destroyed ||
-        generation !== this.autoClickGeneration ||
-        this.autoPlayMode === "default"
-      ) {
+  private scheduleAutoClick(
+    delayMs = this.getCurrentSpeed().autoWaitBaseTime * 1000,
+  ): void {
+    if (this.destroyed || this.state === "finished" || this.state === "error")
+      return;
+    // RaiseAutoClick (2791 @ 0x18416C3F0) replaces the coroutine even in DEFAULT.
+    this.pendingAutoClick = {
+      delayMs,
+      phase: "awaiting_mode",
+    };
+  }
+
+  private pollAfterUpdate(nowMs: number): void {
+    const delay = this.pendingDelay;
+    const resume = this.resumeCommands;
+    this.resumeCommands = null;
+    resume?.();
+    if (!this.skipCleanup && delay && this.pendingDelay === delay) {
+      // WaitForSecondsRealtime initializes the deadline on its first poll.
+      // A delay created by this frame's continuation starts on a later poll.
+      delay.deadlineMs ??= nowMs + delay.delayMs;
+      if (nowMs >= delay.deadlineMs) delay.finish();
+    }
+    if (this.skipCleanup) return;
+
+    const pending = this.pendingAutoClick;
+    if (!pending) return;
+    // _DoAutoClick (2791 @ 0x184180000): WaitUntil, WaitForSecondsRealtime,
+    // then a separate WaitUntil. keepWaiting (0x186DE4C30) initializes the
+    // real-time deadline on its first poll.
+    switch (pending.phase) {
+      case "awaiting_mode":
+        if (this.autoPlayMode !== "default") pending.phase = "timing";
         return;
-      }
-      if (this.state === "waiting_input") void this.advanceFromClick();
-      // An instantly revealed command and an injected clock can complete
-      // while its executor is returning. Deliver the click after it blocks.
-      else if (this.state === "running" && this.processing)
-        this.autoClickReady = true;
-    });
+      case "timing":
+        pending.deadlineMs ??= nowMs + pending.delayMs;
+        if (nowMs >= pending.deadlineMs) pending.phase = "elapsed";
+        return;
+      case "elapsed":
+        if (this.autoPlayMode === "default") return;
+        this.pendingAutoClick = null;
+        void this.advanceFromClick();
+    }
   }
 
   destroy(): void {
@@ -1043,11 +1220,23 @@ export class StoryRuntime {
     this.lineSeek = null;
     this.decisionPanel.destroy();
     this.dialogPanel.destroy();
-    this.invalidatePlaybackCallbacks();
+    this.stopPlaybackInput();
+    this.playbackGeneration += 1;
     this.interruptPendingWait();
-    this.pendingInputEffect = null;
     // 销毁后不该再有推送落到 UI 上
     this.events.all.clear();
+  }
+
+  private stopPlaybackInput(): void {
+    this.stopFramePolling?.();
+    this.stopFramePolling = null;
+    this.cancelInputWait();
+    // The Web runtime handles one story. Clear its story-long ON_SPEED_SET
+    // subscriptions together when that story ends.
+    this.eventPool.clear();
+    this.dialogPanel.stopTypingSilently();
+    this.subtitlePanel.stopTypingSilently();
+    this.cancelAutoClick();
   }
 
   /**
@@ -1072,6 +1261,9 @@ export class StoryRuntime {
    * guard on an out-of-range warp target, where native would throw instead.
    */
   private finishPlayback(): void {
+    this.stopPlaybackInput();
+    // AVGController.OnStoryEnd (2791 @ 0x18416B9C0) calls SubtitlePanel.OnReset.
+    void this.subtitlePanel.reset();
     this.renderer.clearAnimTexts();
     this.renderer.clearAvgDisplays();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1098,10 +1290,8 @@ export class StoryRuntime {
 
     try {
       while (!this.destroyed) {
-        if (this.skipCleanup) {
-          await this.skipCleanup.completion;
-          continue;
-        }
+        if (this.skipCleanup)
+          return this.skipCleanup.completion.then(() => undefined);
         // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
         // incremented index BEFORE consulting ICommandFlowController
         // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
@@ -1137,42 +1327,43 @@ export class StoryRuntime {
         if (!this.decisionPredicator.needToExecuteCommand(line)) continue;
 
         const generation = this.playbackGeneration;
-        const result =
+        const execution =
           line.kind === "command"
-            ? await this.executeCommand(line)
+            ? this.executeCommand(line)
             : this.dialogPanel.executeTextLine(line);
+        const result =
+          execution instanceof Promise ? await execution : execution;
         if (this.destroyed) return;
-        // A skipped executor can still return a stale input wait. Drop the
-        // click follow-up it registered with it (spellsticker block), or the
-        // first click at the destination would replay it.
-        if (generation !== this.playbackGeneration) {
-          if (result === "wait_input") this.pendingInputEffect = null;
-          continue;
-        }
-        if (result === "wait_input") {
-          this.waitingInputCommand =
-            line.kind === "command" ? line.command : "dialog";
-          this.state = "waiting_input";
+        // A skipped executor can still return a stale input wait. Its click
+        // follow-up (spellsticker block) travels with the dropped handler.
+        if (generation !== this.playbackGeneration) continue;
+        if (result !== "continue") {
+          const waits = Array.isArray(result) ? result : [result];
+          const decision = waits.find((wait) => "showDecision" in wait);
+          if (decision) return this.waitForDecision(decision);
+          const delay = waits.find((wait) => "delayMs" in wait);
+          if (delay) return this.waitForDelay(delay.delayMs);
+          this.waitForInput(waits.filter((wait) => "handleClick" in wait));
           return;
         }
-        this.autoClickReady = false;
       }
     } catch (error) {
-      this.state = "error";
-      this.finishLineSeekMissed("error");
-      const detail =
-        error instanceof Error ? error.message : "unknown runtime error";
-      this.onWarning?.({ cursor: this.cursor, detail, type: "error" });
+      this.failPlayback(error);
     } finally {
       this.processing = false;
       this.resolveProcessingCompletion?.();
       this.resolveProcessingCompletion = null;
       this.processingCompletion = null;
-      if (this.autoClickReady) {
-        this.autoClickReady = false;
-        void this.advanceFromClick();
-      }
     }
+  }
+
+  private failPlayback(error: unknown): void {
+    this.state = "error";
+    this.stopPlaybackInput();
+    this.finishLineSeekMissed("error");
+    const detail =
+      error instanceof Error ? error.message : "unknown runtime error";
+    this.onWarning?.({ cursor: this.cursor, detail, type: "error" });
   }
 
   private arg(args: StoryCommandArgs, key: string): unknown {
@@ -1227,7 +1418,7 @@ export class StoryRuntime {
   }
 
   private async waitInterruptiblePromise(
-    task: Promise<void>,
+    task: Promise<unknown>,
     interrupt?: () => void,
   ): Promise<boolean> {
     const id = ++this.pendingWaitId;
@@ -1239,15 +1430,30 @@ export class StoryRuntime {
       };
     });
 
-    const completed = await Promise.race([task.then(() => false), interrupted]);
-
-    if (this.pendingWait?.id === id) this.pendingWait = null;
-
-    return completed;
+    try {
+      return await Promise.race([task.then(() => false), interrupted]);
+    } finally {
+      if (this.pendingWait?.id === id) this.pendingWait = null;
+    }
   }
 
-  private async waitInterruptible(ms: number): Promise<boolean> {
-    return this.waitInterruptiblePromise(this.sleep(Math.max(0, ms)));
+  private async waitForDelay(delayMs: number): Promise<void> {
+    this.state = "waiting_timer";
+    await this.waitInterruptiblePromise(
+      new Promise<void>((resolve) => {
+        this.pendingDelay = {
+          delayMs,
+          finish: () => {
+            this.pendingDelay = null;
+            this.state = "running";
+            resolve(this.processLoop());
+          },
+        };
+      }),
+      () => {
+        this.pendingDelay = null;
+      },
+    );
   }
 
   private resolveCharacterName(ref: string): CharacterRefResolution {
@@ -1274,44 +1480,327 @@ export class StoryRuntime {
     return "continue";
   }
 
-  private executeCommand(line: ParsedCommandLine): Promise<CommandResult> {
+  private executeCommand(
+    line: ParsedCommandLine,
+  ): CommandResult | CommandWait[] | Promise<CommandResult | CommandWait[]> {
     // HEADER remains in Story.commands but has no registered executor.
-    if (line.command === "header") return Promise.resolve("continue");
+    if (line.command === "header") return "continue";
     const executors = this.commandRegistry.get(line.command);
     if (executors === null) {
       this.warn("unknown_command", line.command);
-      return Promise.resolve("continue");
+      return "continue";
     }
-    if (executors.length === 1) {
-      const result = executors[0]!(line);
-      return result instanceof Promise ? result : Promise.resolve(result);
-    }
-    return Promise.all(executors.map((executor) => executor(line))).then(
-      (results) => (results.includes("wait_input") ? "wait_input" : "continue"),
-    );
+    if (executors.length === 1) return executors[0]!(line);
+    const combine = (results: CommandResult[]) => {
+      const waits = results.filter((result) => result !== "continue");
+      return waits.length > 0 ? waits : "continue";
+    };
+    const results = executors.map((executor) => executor(line));
+    return results.every(
+      (result): result is CommandResult => !(result instanceof Promise),
+    )
+      ? combine(results)
+      : Promise.all(results).then(combine);
   }
 
-  private async executeBuiltinCommand(
+  private executeSpellSticker(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
+    // Native _ExecuteSpellSticker (2791 @ 0x1841B37F0) displays or hides the
+    // view inline. Keep synchronous renderers on the same command-loop turn.
+    const { args } = line;
+    const id = toString(this.exactArg(args, "id"));
+    if (!id) {
+      this.warn("parse", "spellsticker id is empty");
+      return "continue";
+    }
+    const hide =
+      toString(this.exactArg(args, "action"), "show").toLowerCase() === "hide";
+    const block = toBoolean(this.exactArg(args, "block"), false);
+    // Native _ShowSticker writes alpha only when supplied, preserving the
+    // previous alpha when reusing a sticker.
+    const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
+    const generation = this.playbackGeneration;
+    const render = hide
+      ? this.renderer.hideSpellSticker(id)
+      : this.renderer.setSpellSticker({
+          alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
+          angle: toOptionalNumber(this.exactArg(args, "angle")),
+          content: this.translateText(line.content),
+          id,
+          style: toString(this.exactArg(args, "style"), "sami"),
+          x: toOptionalNumber(this.exactArg(args, "x")),
+          xScale: toOptionalNumber(this.exactArg(args, "xScale")),
+          y: toOptionalNumber(this.exactArg(args, "y")),
+          yScale: toOptionalNumber(this.exactArg(args, "yScale")),
+        } satisfies SpellStickerInput);
+
+    const complete = (durationMs: number | void): CommandResult => {
+      if (!block || generation !== this.playbackGeneration) return "continue";
+      // Use the show clip's length, falling back to the base auto wait.
+      this.scheduleAutoClick(
+        typeof durationMs === "number" && durationMs > 0
+          ? durationMs
+          : undefined,
+      );
+      // _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) hide the
+      // blocking show by ID and clear it before another callback can hide.
+      if (hide) return { handleClick: (finishCommand) => finishCommand() };
+      let blockingStickerId: string | null = id;
+      const hideBlocking = () => {
+        if (blockingStickerId === null) return;
+        const stickerId = blockingStickerId;
+        blockingStickerId = null;
+        return this.renderer.hideSpellSticker(stickerId);
+      };
+      return {
+        handleClick: (finishCommand) =>
+          finishCommand({ onClick: hideBlocking }),
+        forceEnd: hideBlocking,
+      };
+    };
+    return render instanceof Promise ? render.then(complete) : complete(render);
+  }
+
+  private executeSpellStickerClear(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
+    // _ExecuteSpellStickerClear (2791 @ 0x1841B35D0) clears inline and
+    // raises an auto click with length zero when the command blocks.
+    const block = toBoolean(this.exactArg(line.args, "block"), false);
+    const generation = this.playbackGeneration;
+    const render = this.renderer.clearSpellStickers();
+    const complete = (): CommandResult => {
+      if (!block || generation !== this.playbackGeneration) return "continue";
+      this.scheduleAutoClick();
+      return { handleClick: (finishCommand) => finishCommand() };
+    };
+    return render instanceof Promise ? render.then(complete) : complete();
+  }
+
+  private executeBuiltinCommand(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
+    const args = line.args;
+
+    // The native command loop runs synchronous executors through the next
+    // blocker in the same update. Keep these results synchronous.
+    switch (line.command) {
+      case "delay":
+        // CommonExecutors._ExecuteDelayCommand (2791 @ 0x1841C3EF0)
+        // starts WaitForSecondsRealtime even when the scaled time is zero.
+        return { delayMs: this.calculateFadeMs(this.exactArg(args, "time")) };
+
+      case "skipnode": {
+        const label = this.skipNodeLabels[this.skipNodeQueueIndex];
+        this.skipNodeQueueIndex += 1;
+        this.currentSkipMode = label?.mode ?? "skip";
+        return "continue";
+      }
+
+      case "skiptothis": {
+        // Native port: Torappu.AVG.AVGController._PreprocessCommands. This is a
+        // preprocess-only command with no executor, so normal playback advances
+        return "continue";
+      }
+
+      case "label": {
+        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteLabel. The native
+        // executor is an empty hotfix shell that always returns false: the
+        // label's whole effect is the preprocess registration done by
+        // preprocessLabelMap, so at run time it is a silent no-op that never
+        // blocks and never warns.
+        return "continue";
+      }
+
+      case "warp": {
+        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteGoto. A missing
+        // `name` key or a labelMap miss is a silent no-op -- no warning, no
+        // exception (every current `[warp(name="chiyu01")]` in the corpus
+        // takes the miss path because no label defines it). On a hit the
+        // one-shot goto cursor becomes the bare label index + 1, i.e. the line
+        // right after the label. Native applies the +1 here too, and MoveNext
+        // fetches the consumed index as-is, the same as processLoop.
+        const name = this.exactArg(args, "name");
+        if (name === undefined) return "continue";
+        const target = this.labelMap.get(toString(name));
+        if (target === undefined) return "continue";
+        this.gotoIndex = target + 1;
+        return "continue";
+      }
+
+      case "gotostage": {
+        // Native port: Torappu.AVG.AVGGotoStagePanel._ExecuteGotoStage. Its
+        // only side effect is a client UI route
+        // (UIRouteUtil.RouteToStage -> the target stage's selection/preview
+        // page); it never ends the story, blocks the queue, or touches the
+        // command index, and an empty/unresolvable target is a silent no-op.
+        // A web story widget has no game shell to route, so the navigation is
+        // intentionally omitted and the `target` param goes unread: the
+        // command just keeps playback moving.
+        return "continue";
+      }
+
+      case "playmusic": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand.
+        // The audio backend retires the current MUSIC channel before loading
+        // the requested asset, including when its key cannot be resolved.
+        const key = toString(this.exactArg(args, "key"));
+        if (!key) this.warn("parse", "playmusic key is empty");
+        else if (!this.hasAudioKey(key))
+          this.warn("missing_asset", `music: ${key}`);
+
+        const intro = toString(this.exactArg(args, "intro")) || undefined;
+        if (intro && !this.hasAudioKey(intro))
+          this.warn("missing_asset", `music intro: ${intro}`);
+
+        void this.audio.playMusic({
+          crossfadeMs: Math.max(
+            0,
+            toNumber(this.exactArg(args, "crossfade"), 0.4) * 1000,
+          ),
+          delayMs: Math.max(
+            0,
+            toNumber(this.exactArg(args, "delay"), 0) * 1000,
+          ),
+          intro,
+          key,
+          volume: toNumber(this.exactArg(args, "volume"), 1),
+        });
+        return "continue";
+      }
+
+      case "stopmusic": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopMusicCommand.
+        void this.audio.stopMusic(
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "musicvolume": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteMusicVolumeCommand.
+        void this.audio.setMusicVolume(
+          toNumber(this.exactArg(args, "volume"), 1),
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "playsound": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
+        // Channel defaults to key; the call is non-blocking. Native also
+        // suppresses one-shots in Reader/Pure mode. This player runs Normal mode.
+        const key = toString(this.exactArg(args, "key"));
+        if (!key) {
+          this.warn("parse", "playsound key is empty");
+          return "continue";
+        }
+        if (!this.hasAudioKey(key)) {
+          this.warn("missing_asset", `sound: ${key}`);
+          return "continue";
+        }
+
+        void this.audio.playSound({
+          channel: toString(this.exactArg(args, "channel"), key),
+          delayMs: Math.max(
+            0,
+            toNumber(this.exactArg(args, "delay"), 0) * 1000,
+          ),
+          key,
+          loop: toBoolean(this.exactArg(args, "loop"), false),
+          volume: toNumber(this.exactArg(args, "volume"), 1),
+        });
+        return "continue";
+      }
+
+      case "stopsound": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopSoundCommand.
+        const key = toString(this.exactArg(args, "key"));
+        void this.audio.stopSound(
+          toString(this.exactArg(args, "channel"), key),
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "soundvolume": {
+        // Native port: Torappu.AVG.CommonExecutors._ExecuteSoundVolumeCommand.
+        void this.audio.setSoundVolume(
+          toString(this.exactArg(args, "channel")),
+          toNumber(this.exactArg(args, "volume"), 1),
+          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
+        );
+        return "continue";
+      }
+
+      case "focusparam": {
+        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
+        // is a config-only write: it sets useBlur / color on the shared
+        // AVGSceneFocusOut Config and marks the command buffer dirty
+        // (MarkEffectImplConfigDirty). It never touches channel amounts and
+        // never blocks -- the executor always returns false.
+        const effect = toString(this.exactArg(args, "effect"));
+        this.renderer.setFocusParam({
+          blur: toBoolean(this.exactArg(args, "blur"), true),
+          color:
+            effect === "Grayscale" || effect === "Colorinverse"
+              ? effect
+              : "None",
+        });
+        return "continue";
+      }
+
+      case "theater": {
+        // Native port: Torappu.AVG.AVGTheaterLabel._ExecuteTheaterNode. Web adapts
+        // the native theater UI mode to autoplay state only.
+        // AVGController.SetTheaterMode gates only on get_isRunning, so both
+        // branches of _SetTheaterModeStatus (2.7.81 VA 0x183f92420) run
+        // whether or not theater mode is already active.
+        const mode = toBoolean(this.exactArg(args, "mode"), true);
+        if (mode) {
+          // _SaveAutoStatus runs on every enter: a nested [theater] re-saves
+          // the theater's own button auto, so the exit then stays in auto.
+          this.theaterAutoPlayCache = this.getAutoPlayState();
+          this.theaterMode = true;
+          this.buttonSpeedLevel = 0;
+          this.applyScriptAutoPlayMode("button_auto");
+        } else {
+          // _StopAutoClick() on every exit, then restore the saved status
+          // (m_needResumeAutoStatus; QUICK_PLAY maps to DEFAULT) or, with
+          // nothing saved, set_autoPlayMode(DEFAULT): an unpaired exit drops
+          // a running auto play to manual. The cache outliving a SkipToThis
+          // jump is covered in skipNode().
+          this.cancelAutoClick();
+          const cached = this.theaterAutoPlayCache;
+          this.theaterMode = false;
+          this.theaterAutoPlayCache = null;
+          let restoreMode: AutoPlayMode = "default";
+          if (cached) {
+            this.buttonSpeedLevel = cached.buttonSpeedLevel;
+            this.quickSpeedLevel = cached.quickSpeedLevel;
+            if (cached.mode !== "quick_play") restoreMode = cached.mode;
+          }
+          this.applyScriptAutoPlayMode(restoreMode);
+        }
+        return "continue";
+      }
+
+      default:
+        if (unsupportedAd8Commands.has(line.command)) {
+          this.warn("unsupported_command", line.command);
+          return "continue";
+        }
+        return this.executeRenderCommand(line);
+    }
+  }
+
+  private async executeRenderCommand(
     line: ParsedCommandLine,
   ): Promise<CommandResult> {
     const args = line.args;
 
     switch (line.command) {
-      case "delay": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteDelayCommand.
-        // Only `time` is read and is scaled by animateRatio.
-        const durationMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "time"), 0) *
-            this.getCurrentSpeed().animateRatio *
-            1000,
-        );
-        this.state = "waiting_timer";
-        await this.waitInterruptible(durationMs);
-        this.state = "running";
-        return "continue";
-      }
-
       case "video": {
         // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
         // (2.7.61: still the legacy bool executor, consumed by the new
@@ -1365,56 +1854,6 @@ export class StoryRuntime {
         // and deliberately bypasses this yield.
         if (!interrupted) await this.sleep(0);
         this.state = "running";
-        return "continue";
-      }
-
-      case "skipnode": {
-        const label = this.skipNodeLabels[this.skipNodeQueueIndex];
-        this.skipNodeQueueIndex += 1;
-        this.currentSkipMode = label?.mode ?? "skip";
-        return "continue";
-      }
-
-      case "skiptothis": {
-        // Native port: Torappu.AVG.AVGController._PreprocessCommands. This is a
-        // preprocess-only command with no executor, so normal playback advances
-        return "continue";
-      }
-
-      case "label": {
-        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteLabel. The native
-        // executor is an empty hotfix shell that always returns false: the
-        // label's whole effect is the preprocess registration done by
-        // preprocessLabelMap, so at run time it is a silent no-op that never
-        // blocks and never warns.
-        return "continue";
-      }
-
-      case "warp": {
-        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteGoto. A missing
-        // `name` key or a labelMap miss is a silent no-op -- no warning, no
-        // exception (every current `[warp(name="chiyu01")]` in the corpus
-        // takes the miss path because no label defines it). On a hit the
-        // one-shot goto cursor becomes the bare label index + 1, i.e. the line
-        // right after the label. Native applies the +1 here too, and MoveNext
-        // fetches the consumed index as-is, the same as processLoop.
-        const name = this.exactArg(args, "name");
-        if (name === undefined) return "continue";
-        const target = this.labelMap.get(toString(name));
-        if (target === undefined) return "continue";
-        this.gotoIndex = target + 1;
-        return "continue";
-      }
-
-      case "gotostage": {
-        // Native port: Torappu.AVG.AVGGotoStagePanel._ExecuteGotoStage. Its
-        // only side effect is a client UI route
-        // (UIRouteUtil.RouteToStage -> the target stage's selection/preview
-        // page); it never ends the story, blocks the queue, or touches the
-        // command index, and an empty/unresolvable target is a silent no-op.
-        // A web story widget has no game shell to route, so the navigation is
-        // intentionally omitted and the `target` param goes unread: the
-        // command just keeps playback moving.
         return "continue";
       }
 
@@ -3024,99 +3463,6 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "playmusic": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand.
-        // The audio backend retires the current MUSIC channel before loading
-        // the requested asset, including when its key cannot be resolved.
-        const key = toString(this.exactArg(args, "key"));
-        if (!key) this.warn("parse", "playmusic key is empty");
-        else if (!this.hasAudioKey(key))
-          this.warn("missing_asset", `music: ${key}`);
-
-        const intro = toString(this.exactArg(args, "intro")) || undefined;
-        if (intro && !this.hasAudioKey(intro))
-          this.warn("missing_asset", `music intro: ${intro}`);
-
-        void this.audio.playMusic({
-          crossfadeMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "crossfade"), 0.4) * 1000,
-          ),
-          delayMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "delay"), 0) * 1000,
-          ),
-          intro,
-          key,
-          volume: toNumber(this.exactArg(args, "volume"), 1),
-        });
-        return "continue";
-      }
-
-      case "stopmusic": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopMusicCommand.
-        void this.audio.stopMusic(
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "musicvolume": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteMusicVolumeCommand.
-        void this.audio.setMusicVolume(
-          toNumber(this.exactArg(args, "volume"), 1),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "playsound": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
-        // Channel defaults to key; the call is non-blocking. Native also
-        // suppresses one-shots in Reader/Pure mode. This player runs Normal mode.
-        const key = toString(this.exactArg(args, "key"));
-        if (!key) {
-          this.warn("parse", "playsound key is empty");
-          return "continue";
-        }
-        if (!this.hasAudioKey(key)) {
-          this.warn("missing_asset", `sound: ${key}`);
-          return "continue";
-        }
-
-        void this.audio.playSound({
-          channel: toString(this.exactArg(args, "channel"), key),
-          delayMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "delay"), 0) * 1000,
-          ),
-          key,
-          loop: toBoolean(this.exactArg(args, "loop"), false),
-          volume: toNumber(this.exactArg(args, "volume"), 1),
-        });
-        return "continue";
-      }
-
-      case "stopsound": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopSoundCommand.
-        const key = toString(this.exactArg(args, "key"));
-        void this.audio.stopSound(
-          toString(this.exactArg(args, "channel"), key),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "soundvolume": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteSoundVolumeCommand.
-        void this.audio.setSoundVolume(
-          toString(this.exactArg(args, "channel")),
-          toNumber(this.exactArg(args, "volume"), 1),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
       case "cameraeffect": {
         // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect
         // (2.7.61 VA 0x183E32560): case-sensitive Grayscale/Colorinverse
@@ -3217,152 +3563,9 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "focusparam": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
-        // is a config-only write: it sets useBlur / color on the shared
-        // AVGSceneFocusOut Config and marks the command buffer dirty
-        // (MarkEffectImplConfigDirty). It never touches channel amounts and
-        // never blocks -- the executor always returns false.
-        const effect = toString(this.exactArg(args, "effect"));
-        this.renderer.setFocusParam({
-          blur: toBoolean(this.exactArg(args, "blur"), true),
-          color:
-            effect === "Grayscale" || effect === "Colorinverse"
-              ? effect
-              : "None",
-        });
-        return "continue";
-      }
-
-      case "subtitle": {
-        // Native port: Torappu.AVG.SubtitlePanel._ExecuteSubtitle. The script's
-        // `delay` parameter is ignored; typing speed is global.
-        const text = this.translateText(toString(this.exactArg(args, "text")));
-
-        if (!text) {
-          void this.renderer.clearSubtitle(150);
-          return "continue";
-        }
-
-        const x = toNumber(this.exactArg(args, "x"), 0);
-        const y = toNumber(this.exactArg(args, "y"), 0);
-        if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
-
-        this.displayedLineIndex = line.lineNumber;
-        if (this.destroyed) return "continue";
-        // Native _OnTypeWriterEnd (2791 VA 0x1841E5A20) raises the auto
-        // click with the subtitle's own raw typeWriter.messageLength.
-        const onTypingComplete = this.beginTextTyping(text.length);
-        await this.renderer.setSubtitle({
-          alignment:
-            parseSubtitleAlignment(this.exactArg(args, "alignment")) ?? "left",
-          delayMs: this.getCurrentSpeed().typeWriterDelayMs,
-          onTypingComplete,
-          sizePx: toNumber(this.exactArg(args, "size"), 24),
-          text,
-          widthPx: Math.min(
-            toNumber(this.exactArg(args, "width"), 1280),
-            1280 - x,
-          ),
-          x,
-          y,
-        } satisfies SubtitleInput);
-        return "wait_input";
-      }
-
-      case "spellsticker": {
-        // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellSticker.
-        // `block` waits for a click, whose follow-up hides the sticker.
-        const id = toString(this.exactArg(args, "id"));
-        if (!id) {
-          // Native logs "[AVG.SpellSticker] Empty sticker id." and returns
-          // false before reading `block`: nothing renders and nothing blocks.
-          this.warn("parse", "spellsticker id is empty");
-          return "continue";
-        }
-        const action = toString(this.exactArg(args, "action"), "show");
-        const block = toBoolean(this.exactArg(args, "block"), false);
-        // Native `_ShowSticker` inlines `_ApplyAlpha`: CanvasGroup.alpha is
-        // only written when the alpha param exists (TryGetParam + clamp 0..1),
-        // so a reused sticker keeps its previous alpha. Keep the field
-        // optional instead of forcing the default 1.
-        const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
-        await (action.toLowerCase() === "hide"
-          ? this.renderer.hideSpellSticker(id)
-          : this.renderer.setSpellSticker({
-              alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
-              angle: toOptionalNumber(this.exactArg(args, "angle")),
-              content: this.translateText(line.content),
-              id,
-              style: toString(this.exactArg(args, "style"), "sami"),
-              x: toOptionalNumber(this.exactArg(args, "x")),
-              xScale: toOptionalNumber(this.exactArg(args, "xScale")),
-              y: toOptionalNumber(this.exactArg(args, "y")),
-              yScale: toOptionalNumber(this.exactArg(args, "yScale")),
-            } satisfies SpellStickerInput));
-        if (block) {
-          this.pendingInputEffect =
-            action.toLowerCase() === "hide"
-              ? null
-              : () => this.renderer.hideSpellSticker(id);
-          return "wait_input";
-        }
-        return "continue";
-      }
-
-      case "spellstickerclear": {
-        // Native port: Torappu.AVG.AVGSpellStickerPanel._ExecuteSpellStickerClear.
-        await this.renderer.clearSpellStickers();
-        this.pendingInputEffect = null;
-        return toBoolean(this.exactArg(args, "block"), false)
-          ? "wait_input"
-          : "continue";
-      }
-
-      case "theater": {
-        // Native port: Torappu.AVG.AVGTheaterLabel._ExecuteTheaterNode. Web adapts
-        // the native theater UI mode to autoplay state only.
-        // AVGController.SetTheaterMode gates only on get_isRunning, so both
-        // branches of _SetTheaterModeStatus (2.7.81 VA 0x183f92420) run
-        // whether or not theater mode is already active.
-        const mode = toBoolean(this.exactArg(args, "mode"), true);
-        if (mode) {
-          // _SaveAutoStatus runs on every enter: a nested [theater] re-saves
-          // the theater's own button auto, so the exit then stays in auto.
-          this.theaterAutoPlayCache = this.getAutoPlayState();
-          this.theaterMode = true;
-          this.buttonSpeedLevel = 0;
-          this.applyScriptAutoPlayMode("button_auto");
-        } else {
-          // _StopAutoClick() on every exit, then restore the saved status
-          // (m_needResumeAutoStatus; QUICK_PLAY maps to DEFAULT) or, with
-          // nothing saved, set_autoPlayMode(DEFAULT): an unpaired exit drops
-          // a running auto play to manual. The cache outliving a SkipToThis
-          // jump is covered in skipNode().
-          this.cancelAutoClick();
-          const cached = this.theaterAutoPlayCache;
-          this.theaterMode = false;
-          this.theaterAutoPlayCache = null;
-          let restoreMode: AutoPlayMode = "default";
-          if (cached) {
-            this.buttonSpeedLevel = cached.buttonSpeedLevel;
-            this.quickSpeedLevel = cached.quickSpeedLevel;
-            if (cached.mode !== "quick_play") restoreMode = cached.mode;
-          }
-          this.applyScriptAutoPlayMode(restoreMode);
-        }
-        return "continue";
-      }
-
-      default: {
-        if (unsupportedAd8Commands.has(line.command)) {
-          this.warn("unsupported_command", line.command);
-          return "continue";
-        }
-
+      default:
         this.warn("unknown_command", line.command);
         return "continue";
-      }
     }
   }
 
@@ -3384,10 +3587,11 @@ export class StoryRuntime {
   }
 
   private onTypingComplete(messageLength: number): void {
-    if (this.destroyed || this.state === "finished" || this.state === "error")
-      return;
-    this.lastCompletedTextLength = messageLength;
-    this.scheduleAutoClick(messageLength);
+    const speed = this.getCurrentSpeed();
+    this.scheduleAutoClick(
+      (speed.autoWaitBaseTime + messageLength * speed.autoWaitTimePerText) *
+        1000,
+    );
   }
 
   /**
@@ -3403,12 +3607,6 @@ export class StoryRuntime {
       completed = true;
       this.onTypingComplete(messageLength);
     };
-  }
-
-  private invalidatePlaybackCallbacks(): void {
-    this.playbackGeneration += 1;
-    this.lastCompletedTextLength = null;
-    this.cancelAutoClick();
   }
 
   private parseEnterDirection(value: unknown): CharacterSlotInput["enterFrom"] {

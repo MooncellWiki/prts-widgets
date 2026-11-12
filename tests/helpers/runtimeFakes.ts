@@ -1,5 +1,7 @@
 import { richCharsToTaggedText } from "../../src/widgets/StoryPlayer/engine/richtext";
 
+import { PlaybackTestFrames } from "./playbackFrames";
+
 import type { Context } from "../../src/widgets/StoryPlayer/context";
 import type {
   AnimTextInput,
@@ -14,7 +16,6 @@ import type {
   CharacterSlotInput,
   CurtainInput,
   DialogueLayout,
-  DialogueText,
   DecisionSelection,
   FocusOutInput,
   FocusParamInput,
@@ -23,6 +24,7 @@ import type {
   ImageTweenInput,
   InterludeInput,
   LargeBackgroundTweenInput,
+  OverlayTextLayout,
   PlayMusicInput,
   PlaySoundInput,
   ShowItemInput,
@@ -31,12 +33,13 @@ import type {
   StickerTweenInput,
   StoryAudio,
   StoryRenderer,
-  SubtitleInput,
   TimerClearInput,
   TimerStickerInput,
+  TypewriterText,
 } from "../../src/widgets/StoryPlayer/engine/types";
 
 export class FakeRenderer implements StoryRenderer {
+  readonly frames = new PlaybackTestFrames();
   animTextCalls: AnimTextInput[] = [];
   avgDisplayCalls: AvgDisplayInput[] = [];
   actionCalls: CharacterActionInput[] = [];
@@ -86,14 +89,16 @@ export class FakeRenderer implements StoryRenderer {
   finishDialogueCommandCalls = 0;
   showItemCalls: ShowItemInput[] = [];
   stickerCalls: StickerInput[] = [];
+  stickerDelayChanges: Array<{ id: string; delayMs: number }> = [];
   stickerTweenCalls: StickerTweenInput[] = [];
   spellStickerCalls: SpellStickerInput[] = [];
   spellStickerHideCalls: string[] = [];
   spellStickerClearCount = 0;
   stickerClearCalls: Array<{ fadeMs: number; id?: string }> = [];
   stickersClearCalls: number[] = [];
-  subtitleCalls: SubtitleInput[] = [];
+  subtitleCalls: Array<OverlayTextLayout & { text: string }> = [];
   subtitleClearCalls: number[] = [];
+  subtitleText = "";
   shakeCalls: CameraShakeInput[] = [];
   timerClearCalls: TimerClearInput[] = [];
   timerStickerCalls: TimerStickerInput[] = [];
@@ -108,9 +113,10 @@ export class FakeRenderer implements StoryRenderer {
     options: string[];
     values: number[];
   }[] = [];
-  /** 为 true 时 showDecision 挂起等 settleDecision（模拟玩家尚未点击） */
+  /** 为 true 时等测试用例主动点选。 */
   holdDecisions = false;
-  private decisionWaiters: Array<(selection: DecisionSelection) => void> = [];
+  private onDecisionSelected: ((selection: DecisionSelection) => void) | null =
+    null;
   private resolveVideoWaiter: (() => void) | null = null;
 
   setCameraEffect(
@@ -191,6 +197,7 @@ export class FakeRenderer implements StoryRenderer {
 
   clearSubtitle(fadeMs = 0): void {
     this.subtitleClearCalls.push(fadeMs);
+    this.subtitleText = "";
   }
 
   clearTimerSticker(input?: TimerClearInput): void {
@@ -207,12 +214,23 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   destroy(): void {}
-  finishTextTyping(panel: "sticker" | "subtitle"): boolean {
+  finishStickerTyping(id: string): boolean {
     if (!this.typingActive) return false;
+    const input = this.stickerCalls.findLast((sticker) => sticker.id === id);
+    if (!input) return false;
     this.typingActive = false;
-    const calls = panel === "sticker" ? this.stickerCalls : this.subtitleCalls;
-    calls.at(-1)?.onTypingComplete?.();
+    input.onTypingComplete?.();
     return true;
+  }
+
+  onFrameEnd(callback: () => void): () => void {
+    return this.frames.onFrameEnd(callback);
+  }
+
+  onFrameUpdate(
+    ...args: Parameters<StoryRenderer["onFrameUpdate"]>
+  ): () => void {
+    return this.frames.onFrameUpdate(...args);
   }
 
   async mount(): Promise<void> {}
@@ -271,7 +289,7 @@ export class FakeRenderer implements StoryRenderer {
 
   setDialogue(
     speaker: string,
-    { chars, visibleCount }: DialogueText,
+    { chars, visibleCount }: TypewriterText,
     layout?: DialogueLayout,
   ): void {
     const text = richCharsToTaggedText(chars.slice(0, visibleCount));
@@ -328,7 +346,10 @@ export class FakeRenderer implements StoryRenderer {
     if (input.delayMs <= 0) input.onTypingComplete?.();
   }
 
-  /** Sticker counterpart of finishSubtitleTypingNaturally. */
+  setStickerTypeWriterDelay(id: string, delayMs: number): void {
+    this.stickerDelayChanges.push({ id, delayMs });
+  }
+
   finishStickerTypingNaturally(): void {
     this.typingActive = false;
     this.stickerCalls.at(-1)?.onTypingComplete?.();
@@ -338,26 +359,21 @@ export class FakeRenderer implements StoryRenderer {
     this.stickerTweenCalls.push(input);
   }
 
-  setSpellSticker(input: SpellStickerInput): void {
+  async setSpellSticker(input: SpellStickerInput): Promise<number | undefined> {
     this.spellStickerCalls.push(input);
+    return undefined;
   }
 
-  async setSubtitle(input: SubtitleInput): Promise<void> {
-    this.subtitleCalls.push(input);
-    this.typingActive = input.delayMs > 0;
-    // Faithful to PixiStoryRenderer: an instant subtitle is done typing the
-    // moment it is shown.
-    if (input.delayMs <= 0) input.onTypingComplete?.();
-  }
-
-  /**
-   * Emulates the real renderer clearing its typing target and running the
-   * `SubtitlePanel._OnTypeWriterEnd` callback when the typewriter ends on its
-   * own (as opposed to a click finishing it).
-   */
-  finishSubtitleTypingNaturally(): void {
-    this.typingActive = false;
-    this.subtitleCalls.at(-1)?.onTypingComplete?.();
+  setSubtitle(
+    { chars, visibleCount }: TypewriterText,
+    layout?: OverlayTextLayout,
+  ): void {
+    if (layout)
+      this.subtitleCalls.push({
+        ...layout,
+        text: richCharsToTaggedText(chars),
+      });
+    this.subtitleText = richCharsToTaggedText(chars.slice(0, visibleCount));
   }
 
   async setTimerSticker(input: TimerStickerInput): Promise<void> {
@@ -368,32 +384,25 @@ export class FakeRenderer implements StoryRenderer {
     this.shakeCalls.push(input);
   }
 
-  async showDecision(
+  showDecision(
     options: string[],
     values: number[],
-    disabled?: boolean[],
-  ): Promise<DecisionSelection> {
-    this.decisionCalls.push({ disabled: disabled ?? [], options, values });
-    if (!this.holdDecisions) {
-      return { optionIndex: this.decisionIndex, value: this.decisionValue };
-    }
-    return new Promise<DecisionSelection>((resolve) => {
-      this.decisionWaiters.push(resolve);
-    });
+    disabled: boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ): void {
+    this.decisionCalls.push({ disabled, options, values });
+    if (this.holdDecisions) this.onDecisionSelected = onSelect;
+    else
+      onSelect({ optionIndex: this.decisionIndex, value: this.decisionValue });
   }
 
-  /** 按「未点击」结算挂起中的 decision，对应 PixiStoryRenderer.settleDecision */
   settleDecision(): void {
-    this.pickDecision({ optionIndex: -1, value: 0 });
+    this.onDecisionSelected = null;
   }
 
   /** 模拟玩家点击挂起中的 decision 选项 */
   pickDecision(selection: DecisionSelection): void {
-    const waiters = this.decisionWaiters;
-    this.decisionWaiters = [];
-    for (const resolve of waiters) {
-      resolve(selection);
-    }
+    this.onDecisionSelected?.(selection);
   }
 
   stopVideo(): void {

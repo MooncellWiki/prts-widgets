@@ -1,69 +1,87 @@
 import { TYPE_WRITER_ORIGIN_DELAY_MS } from "../commandParams";
 import { parseRichChars } from "../richtext";
 
-import type { DialogueText } from "../types";
+import type { StoryRenderer, TypewriterText } from "../types";
 
-type RenderText = (text: DialogueText, initial?: boolean) => void;
-
-const MAX_TIMEOUT_MS = 2_147_483_647;
+type RenderText = (text: TypewriterText, initial?: boolean) => void;
 
 interface TypingSession {
-  chars: DialogueText["chars"];
+  cancelUpdate?: () => void;
+  chars: TypewriterText["chars"];
   delayMs: number;
+  elapsedMs: number;
+  endStep: number;
+  iteratorSteps?: readonly number[];
   onTypeEnd: () => void;
   render: RenderText;
-  visibleCount: number;
-  wake?: () => void;
+  step: number;
 }
 
 /**
  * Native port: Torappu.AVG.AVGTypeWriterText's BeginText / AppendText,
- * TryFinish and Update. DialogView uses the entire message for layout and
- * reveals it by character count in place of Unity's mesh quads.
+ * TryFinish and Update (2791 @ 0x18424FA30). Update accumulates unscaled
+ * frame time and consumes every reveal step whose interval has passed.
  */
 export class AVGTypeWriterText {
   private session: TypingSession | null = null;
 
-  constructor(private readonly sleep: (ms: number) => Promise<void>) {}
+  constructor(private readonly onFrameUpdate: StoryRenderer["onFrameUpdate"]) {}
 
-  /** For an append, startIndex is the visible length of the previous text. */
+  get isTyping(): boolean {
+    return this.session !== null;
+  }
+
+  get typingStep(): number | undefined {
+    return this.session?.step;
+  }
+
+  /** For an append, startIndex is the previous reveal or iterator position. */
   beginText(
-    text: string,
+    text: string | TypewriterText["chars"],
     {
       delayMs,
+      iteratorSteps,
       onTypeEnd,
       render,
       startIndex,
     }: {
       delayMs: number;
+      iteratorSteps?: readonly number[];
       onTypeEnd: () => void;
       render: RenderText;
       startIndex: number;
     },
   ): number {
     this.stopTypingSilently();
-    const chars = parseRichChars(text);
-    const visibleCount = Math.min(Math.max(0, startIndex), chars.length);
-    const interval = delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : delayMs;
-    if (visibleCount >= chars.length || !(interval > 0)) {
-      render({ chars, visibleCount: chars.length }, true);
-      onTypeEnd();
-    } else {
-      const session = {
-        chars,
-        delayMs: interval,
-        onTypeEnd,
-        render,
-        visibleCount,
-      };
-      this.session = session;
-      render({ chars, visibleCount }, true);
-      void this.runTyping(session);
-    }
+    const chars = typeof text === "string" ? parseRichChars(text) : text;
+    const step = Math.min(
+      Math.max(0, startIndex),
+      iteratorSteps?.length ?? chars.length,
+    );
+    // The 2791 mesh path completes on the last quad (0x184250AA0). The
+    // sticker's string iterators (0x18425E880 / 0x18425E2A0) yield the
+    // full message again and then return false to signal completion.
+    const endStep = iteratorSteps ? iteratorSteps.length + 2 : chars.length;
+    const session: TypingSession = {
+      chars,
+      delayMs,
+      elapsedMs: 0,
+      endStep,
+      iteratorSteps,
+      onTypeEnd,
+      render,
+      step,
+    };
+    this.session = session;
+    render({ chars, visibleCount: this.visibleCount(session) }, true);
+    if (this.session === session)
+      session.cancelUpdate = this.onFrameUpdate(({ deltaMs }) =>
+        this.update(session, deltaMs),
+      );
     return chars.length;
   }
 
-  tryFinish(): boolean {
+  tryFinish(invokeTypeEnd = true): boolean {
     const session = this.session;
     if (!session) return false;
     this.stopTypingSilently();
@@ -71,64 +89,43 @@ export class AVGTypeWriterText {
       chars: session.chars,
       visibleCount: session.chars.length,
     });
-    session.onTypeEnd();
+    if (invokeTypeEnd) session.onTypeEnd();
     return true;
   }
 
   stopTypingSilently(): void {
     const session = this.session;
     this.session = null;
-    session?.wake?.();
+    session?.cancelUpdate?.();
   }
 
   /** Native set_typeWriterDelay replaces the interval and keeps m_typerTime. */
   setDelay(delayMs: number): void {
     const session = this.session;
-    if (!session || session.delayMs === delayMs) return;
-    session.delayMs = delayMs;
-    session.wake?.();
+    if (session) session.delayMs = delayMs;
   }
 
-  private async runTyping(session: TypingSession): Promise<void> {
-    const { chars, render } = session;
-    let elapsedMs = 0;
-    while (this.session === session) {
-      const delayMs = session.delayMs;
-      const waitMs = delayMs - elapsedMs;
-      if (waitMs > 0) {
-        const startedAt = performance.now();
-        const interrupted = new Promise<number>((resolve) => {
-          session.wake = () => resolve(performance.now() - startedAt);
-        });
-        if (Number.isFinite(waitMs)) {
-          const timeoutMs = Math.min(waitMs, MAX_TIMEOUT_MS);
-          elapsedMs += await Promise.race([
-            this.sleep(timeoutMs).then(() =>
-              Math.max(timeoutMs, performance.now() - startedAt),
-            ),
-            interrupted,
-          ]);
-        } else {
-          // An infinite interval only wakes for a speed change or cancellation.
-          elapsedMs += await interrupted;
-        }
-        session.wake = undefined;
-        continue;
-      }
+  private visibleCount({ chars, iteratorSteps, step }: TypingSession): number {
+    if (step === 0) return 0;
+    return iteratorSteps ? (iteratorSteps[step - 1] ?? chars.length) : step;
+  }
 
-      const remaining = chars.length - session.visibleCount;
-      const count =
-        delayMs > 0
-          ? Math.min(remaining, Math.floor(elapsedMs / delayMs))
-          : remaining;
-      if (count === remaining) {
-        // 2791 _UpdateMeshRevealer (0x184250AA0) completes on the last quad.
-        this.tryFinish();
-        return;
-      }
-      elapsedMs -= count * delayMs;
-      session.visibleCount += count;
-      render({ chars, visibleCount: session.visibleCount });
+  private update(session: TypingSession, deltaMs: number): void {
+    if (this.session !== session) return;
+    const previousVisibleCount = this.visibleCount(session);
+    const interval =
+      session.delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : session.delayMs;
+    session.elapsedMs += deltaMs;
+    while (session.step < session.endStep && session.elapsedMs > interval) {
+      session.elapsedMs -= interval;
+      session.step += 1;
     }
+    if (session.step === session.endStep) {
+      this.tryFinish();
+      return;
+    }
+    const visibleCount = this.visibleCount(session);
+    if (visibleCount !== previousVisibleCount)
+      session.render({ chars: session.chars, visibleCount });
   }
 }

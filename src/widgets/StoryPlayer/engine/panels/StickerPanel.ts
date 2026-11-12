@@ -8,8 +8,13 @@ import {
   toString,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
+import { AVGEvent, type EventPool } from "../eventPool";
 
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
+import type {
+  CommandRegistry,
+  CommandResult,
+  WaitForClick,
+} from "../commandRegistry";
 import type {
   ParsedCommandLine,
   StoryRenderer,
@@ -20,16 +25,29 @@ import type {
 } from "../types";
 
 interface StickerPlayback {
+  animateRatio: () => number;
   beginTyping: (messageLength: number) => () => void;
-  calculateFadeMs: (value: unknown, fallback?: number) => number;
+  playbackGeneration: () => number;
   typeWriterDelayMs: () => number;
   translateText: (text: string) => string;
   warn: (detail: string) => void;
 }
 
 interface StickerSlot {
+  id: string;
+  multiline: boolean;
   rawLength: number;
-  layout: Omit<StickerInput, "append" | "id" | "onTypingComplete" | "text">;
+  layout: Omit<
+    StickerInput,
+    "append" | "id" | "onTypingComplete" | "resetText" | "text"
+  >;
+}
+
+function afterResult<T>(
+  result: T | Promise<T>,
+  complete: (result: T) => CommandResult,
+): CommandResult | Promise<CommandResult> {
+  return result instanceof Promise ? result.then(complete) : complete(result);
 }
 
 /**
@@ -47,6 +65,8 @@ export class StickerPanel {
    * auto-play (`_OnStickerTypeEnd(msgLength)` bills the raw, marked-up text).
    */
   private readonly stickerSlots = new Map<string, StickerSlot>();
+  /** Native m_currentSticker, restricted to views that are still visible. */
+  private currentSticker: StickerSlot | null = null;
 
   /**
    * Native port: `StickerPanel.m_recyclePool`, reduced to the one piece of
@@ -69,8 +89,48 @@ export class StickerPanel {
       "stickertween",
       "timersticker",
       "timerclear",
-    ])
-      registry.register(command, (line) => this.execute(line));
+    ]) {
+      registry.register(command, (line) => {
+        const generation = this.playback.playbackGeneration();
+        return afterResult(this.execute(line), (result) => {
+          // ExecutorComponent.Execute (2791 @ 0x18419B4F0) calls FinishCommand
+          // on a false return. StickerPanel.OnFinish (0x1841E1F60) completes
+          // the current typewriter before the next command and the draw.
+          if (
+            result === "continue" &&
+            generation === this.playback.playbackGeneration()
+          )
+            this.finishCurrentStickerTyping();
+          return result;
+        });
+      });
+    }
+  }
+
+  /** Native OnStoryBegin and _SetTypeWriterDelay (2791 @ 0x1841E21F0 / 0x1841E4980). */
+  onStoryBegin(eventPool: EventPool<AVGEvent>): void {
+    eventPool.on(AVGEvent.SpeedSet, () => {
+      const slot = this.currentSticker;
+      if (!slot) return;
+      // AVGStickerTextView.SetTypeWriterDelay (0x184245F70) replaces the
+      // scaled show interval with the global interval, which later appends keep.
+      const delayMs = this.playback.typeWriterDelayMs();
+      slot.layout.delayMs = delayMs;
+      this.renderer.setStickerTypeWriterDelay(slot.id, delayMs);
+    });
+  }
+
+  /** Native _OnClicked (2791 @ 0x1841E4500) and ForceCommandEnd (0x1841E1C10). */
+  private readonly clickWait: WaitForClick = {
+    handleClick: (finishCommand) => {
+      if (!this.finishCurrentStickerTyping()) finishCommand();
+    },
+    forceEnd: () => this.finishCurrentStickerTyping(),
+  };
+
+  private finishCurrentStickerTyping(): boolean {
+    const slot = this.currentSticker;
+    return slot ? this.renderer.finishStickerTyping(slot.id) : false;
   }
 
   /** Native OnReset -> _RecycleStickers; timer stops before text is recycled. */
@@ -79,6 +139,7 @@ export class StickerPanel {
     for (let i = 0; i < this.stickerSlots.size; i += 1)
       this.stickerPoolFadeMs.push(150);
     this.stickerSlots.clear();
+    this.currentSticker = null;
     await this.renderer.clearStickers(150);
   }
 
@@ -96,23 +157,25 @@ export class StickerPanel {
   private stickerTypeDelayMs(value: unknown): number {
     const originDelaySeconds = TYPE_WRITER_ORIGIN_DELAY_MS / 1000;
     const scale = toNumber(value, 1) / originDelaySeconds;
-    return Math.max(0, this.playback.typeWriterDelayMs() * scale);
+    // AVGTypeWriterText.Update (2791 @ 0x18424FA30) uses originDelay
+    // when the scaled interval is negative.
+    return this.playback.typeWriterDelayMs() * scale;
   }
 
   private setSticker(
-    id: string,
     text: string,
     slot: StickerSlot,
-    append: boolean,
+    options: Pick<StickerInput, "append" | "resetText">,
   ): Promise<void> | void {
+    const { id } = slot;
     this.stickerSlots.set(id, slot);
+    this.currentSticker = slot;
     const onTypeEnd = this.playback.beginTyping(slot.rawLength);
     return this.renderer.setSticker({
       ...slot.layout,
-      append,
+      ...options,
       id,
-      // 2791 _OnStickerTypeEnd (0x1841E4640) reports the completing view's
-      // length, even after a different id starts typing.
+      // 2791 _OnStickerTypeEnd (0x1841E4640) uses the completing view's length.
       onTypingComplete: () => {
         if (this.stickerSlots.get(id) === slot) onTypeEnd();
       },
@@ -120,7 +183,9 @@ export class StickerPanel {
     });
   }
 
-  private async execute(line: ParsedCommandLine): Promise<CommandResult> {
+  private execute(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
     const args = line.args;
     switch (line.command) {
       case "sticker": {
@@ -139,6 +204,7 @@ export class StickerPanel {
         // `block` defaults differ per branch: true when the id is new (show),
         // false once the id already exists (append or hide).
         const block = toBoolean(arg(args, "block"), !existing);
+        const result = block ? this.clickWait : "continue";
         const duration = toNumber(arg(args, "duration"), -1);
         // RenderSticker keeps `duration` verbatim when it is >= 0 (0 means an
         // instant show) and only falls back to 0.15 when the parameter is
@@ -152,11 +218,15 @@ export class StickerPanel {
           // the slot leaves the dict, and RaiseAutoClick(0) keeps auto-play
           // moving with the base wait.
           this.stickerSlots.delete(id);
+          // Native points m_currentSticker at the view being hidden, so
+          // neither the speed event nor clicks act on another live sticker.
+          this.currentSticker = null;
           this.stickerPoolFadeMs.push(hideFadeMs);
           const onHidden = this.playback.beginTyping(0);
-          await this.renderer.clearSticker(id, hideFadeMs);
-          onHidden();
-          return block ? "wait_input" : "continue";
+          return afterResult(this.renderer.clearSticker(id, hideFadeMs), () => {
+            onHidden();
+            return result;
+          });
         }
 
         if (existing) {
@@ -167,13 +237,16 @@ export class StickerPanel {
           // stored layout (instead of re-defaulting to x=0/y=0) keeps the
           // letter appends in main 13-05, which omit x/y, in place.
           const text = this.playback.translateText(toString(arg(args, "text")));
-          await this.setSticker(
-            id,
+          // AVGTypeWriterText.AppendText (2791 @ 0x18424F1C0) clears a
+          // single-line message before starting the multiline run.
+          const rawLength =
+            (existing.multiline ? existing.rawLength : 0) + text.length;
+          const render = this.setSticker(
             text,
-            { ...existing, rawLength: existing.rawLength + text.length },
-            true,
+            { ...existing, multiline: true, rawLength },
+            { append: true, resetText: !existing.multiline },
           );
-          return block ? "wait_input" : "continue";
+          return afterResult(render, () => result);
         }
 
         // Show branch (dict miss): _GenParam reads the full layout. An empty
@@ -215,13 +288,12 @@ export class StickerPanel {
           x,
           y,
         };
-        await this.setSticker(
-          id,
+        const render = this.setSticker(
           text,
-          { rawLength: text.length, layout },
-          false,
+          { id, layout, multiline: multi, rawLength: text.length },
+          { append: false },
         );
-        return block ? "wait_input" : "continue";
+        return afterResult(render, () => result);
       }
 
       case "stickertween": {
@@ -259,6 +331,8 @@ export class StickerPanel {
           pto !== undefined ||
           rto !== undefined ||
           sto !== undefined;
+        const durationMs = (key: string) =>
+          Math.max(0, toNumber(arg(args, key), 0) * 1000);
         const tween: StickerTweenInput = {
           // A group is emitted only when its `*to` key parses: native wraps
           // each group in an IEmptyable param and ExecuteTween skips empty
@@ -270,9 +344,7 @@ export class StickerPanel {
             ? {}
             : {
                 alpha: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "aduration"),
-                  ),
+                  durationMs: durationMs("aduration"),
                   from: toOptionalNumber(arg(args, "afrom")) ?? 0,
                   to: toNumber(ato, 0),
                 },
@@ -284,9 +356,7 @@ export class StickerPanel {
             ? {}
             : {
                 position: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "pduration"),
-                  ),
+                  durationMs: durationMs("pduration"),
                   from: parseVector2(arg(args, "pfrom")) ?? {
                     x: 0,
                     y: 0,
@@ -298,9 +368,7 @@ export class StickerPanel {
             ? {}
             : {
                 rotation: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "rduration"),
-                  ),
+                  durationMs: durationMs("rduration"),
                   from: toOptionalNumber(arg(args, "rfrom")) ?? 0,
                   to: rto,
                 },
@@ -309,27 +377,22 @@ export class StickerPanel {
             ? {}
             : {
                 scale: {
-                  durationMs: this.playback.calculateFadeMs(
-                    arg(args, "sduration"),
-                  ),
+                  durationMs: durationMs("sduration"),
                   from: toOptionalNumber(arg(args, "sfrom")) ?? 0,
                   to: sto,
                 },
               }),
+          // AVGStickerTextView.ExecuteTween (2791 @ 0x184486F10) sets the
+          // playback rate once, when the final command builds the sequence.
+          timeScale: this.playback.animateRatio(),
         };
-        if (hasGroup) await this.renderer.stickerTween(tween);
-        // Durations go through calculateFadeMs on purpose: native keeps
-        // `*duration` literal and scales playback once via
-        // `Sequence.timeScale = AVGController.animateRatio`
-        // (AVGStickerTextView.ExecuteTween, VA 0x184165be0 / 0x184165940).
-        // Multiplying the duration by the animateRatio captured at execution
-        // time is the documented visually-equivalent adaptation and matches
-        // how the other tween commands behave here.
-        //
         // Native registers the Event.Click advance only when `block && isend`
         // both hold (0x183e92416); the other three combinations return false
         // immediately and the tween keeps playing in the background.
-        return block && isend ? "wait_input" : "continue";
+        const result = block && isend ? this.clickWait : "continue";
+        return hasGroup
+          ? afterResult(this.renderer.stickerTween(tween), () => result)
+          : result;
       }
 
       case "timersticker": {
@@ -338,7 +401,7 @@ export class StickerPanel {
         // false): the timer view is created once and reused, and only
         // time/x/y/width/size/duration/afrom/ato are read -- id/text/block
         // are ignored.
-        await this.renderer.setTimerSticker({
+        const render = this.renderer.setTimerSticker({
           durationMs:
             Math.max(0, toNumber(arg(args, "duration"), 1) * 1000) || 130,
           fromAlpha: toNumber(arg(args, "afrom"), 0),
@@ -352,16 +415,16 @@ export class StickerPanel {
           x: toNumber(arg(args, "x"), 0),
           y: toNumber(arg(args, "y"), 0),
         } satisfies TimerStickerInput);
-        return "continue";
+        return afterResult(render, () => "continue");
       }
 
       case "timerclear": {
         // Native port: Torappu.AVG.StickerPanel._ExcuteTimerClier / AVGTimerView.
         // StopTimer hides the reusable slot rather than destroying it.
-        await this.renderer.clearTimerSticker({
+        const render = this.renderer.clearTimerSticker({
           durationMs: Math.max(0, toNumber(arg(args, "duration"), 0.13) * 1000),
         } satisfies TimerClearInput);
-        return "continue";
+        return afterResult(render, () => "continue");
       }
 
       case "stickerclear": {
@@ -371,9 +434,12 @@ export class StickerPanel {
         for (let i = 0; i < this.stickerSlots.size; i += 1)
           this.stickerPoolFadeMs.push(150);
         this.stickerSlots.clear();
+        this.currentSticker = null;
         void this.renderer.clearStickers(150);
         void this.renderer.clearTimerSticker({ durationMs: 0 });
-        return toBoolean(arg(args, "block"), false) ? "wait_input" : "continue";
+        return toBoolean(arg(args, "block"), false)
+          ? this.clickWait
+          : "continue";
       }
 
       default:

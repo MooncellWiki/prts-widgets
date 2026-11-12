@@ -85,7 +85,11 @@ export function createStoryPlayer(context: Context): StoryPlayer {
 
     async advance(): Promise<void> {
       if (!mounted) throw new Error("StoryPlayer is not mounted yet");
-      await ensureRuntime().advance();
+      const current = ensureRuntime();
+      // The native DecisionPanel owns stage presses while it is open.
+      // The Web stage also forwards keyboard shortcuts through this entry.
+      if (current.getState() === "waiting_decision") return;
+      await current.advance();
     },
 
     canSkipNode(): boolean {

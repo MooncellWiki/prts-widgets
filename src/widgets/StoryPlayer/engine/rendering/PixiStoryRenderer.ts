@@ -13,7 +13,9 @@ import {
   TextStyle,
   Texture,
   type TextureSource,
+  type Ticker,
   TilingSprite,
+  UPDATE_PRIORITY,
 } from "pixi.js";
 
 import {
@@ -28,13 +30,6 @@ import {
   type StoryAssetFamily,
 } from "../asset";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
-import {
-  buildTagStyles,
-  colorTagName,
-  parseRichChars,
-  richCharsToTaggedText,
-  type RichChar,
-} from "../richtext";
 import { computeShowItemLayout, SHOWITEM_FRAME_BORDER } from "../showitem";
 import {
   STORY_HEIGHT,
@@ -52,7 +47,6 @@ import {
   type CurtainInput,
   type DecisionSelection,
   type DialogueLayout,
-  type DialogueText,
   type FocusOutInput,
   type FocusParamInput,
   type GridBackgroundInput,
@@ -60,15 +54,17 @@ import {
   type ImageTweenInput,
   type InterludeInput,
   type LargeBackgroundTweenInput,
+  type PlaybackFrame,
   type ShowItemFadeStyle,
   type ShowItemInput,
   type SpellStickerInput,
   type StickerInput,
   type StickerTweenInput,
   type StoryRenderer,
-  type SubtitleInput,
+  type OverlayTextLayout,
   type TimerClearInput,
   type TimerStickerInput,
+  type TypewriterText,
 } from "../types";
 
 import { guardClaimedClicks } from "./core/ClickClaim";
@@ -101,6 +97,7 @@ import { FocusEffectPanel } from "./panels/FocusEffectPanel";
 import { InterludePanel } from "./panels/InterludePanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerView } from "./panels/StickerView";
+import { SubtitleView } from "./panels/SubtitleView";
 import { VideoPanel } from "./panels/VideoPanel";
 
 import type { Context } from "../../context";
@@ -290,35 +287,6 @@ function easeOutCubic(progress: number): number {
 
 function easeOutQuad(progress: number): number {
   return 1 - (1 - progress) * (1 - progress);
-}
-
-/**
- * Native `Torappu.AVG.AVGTypeWriterText.BeginText` hides the unrevealed tail
- * behind a fully transparent `<color=#00000000>` span so the whole message is
- * laid out (and wrapped) from t0 -- revealing characters never re-wraps the
- * lines already on screen.
- */
-const SUBTITLE_HIDDEN_TAIL_COLOR = "#00000000";
-const SUBTITLE_HIDDEN_TAIL_TAG = colorTagName(SUBTITLE_HIDDEN_TAIL_COLOR);
-
-/**
- * Web-only counterpart to the transparent tail: PIXI's tagged-text drop shadow
- * pass forces an opaque fill (`CanvasTextGenerator._setupDropShadow`) and never
- * reads the run's own fill, so an `alpha = 0` run still casts the style's
- * shadow -- the "hidden" tail would read as legible grey ghost text. Unity
- * modulates its shadow by vertex alpha instead, so native has nothing to turn
- * off here. Disabling the shadow per tag hits PIXI's own skip branch and leaves
- * the measured layout byte-identical.
- */
-const SUBTITLE_HIDDEN_TAIL_STYLE = {
-  dropShadow: false,
-  fill: SUBTITLE_HIDDEN_TAIL_COLOR,
-} as const;
-
-// Keeps each char's bold/italic so the hidden tail wraps like the revealed
-// text will: native appends the unrevealed rest with its own tags.
-function subtitleHiddenTail(chars: RichChar[]): RichChar[] {
-  return chars.map((char) => ({ ...char, color: SUBTITLE_HIDDEN_TAIL_COLOR }));
 }
 
 /**
@@ -597,6 +565,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
   private readonly videoPanel: VideoPanel;
   private readonly dialogView: DialogView;
+  private readonly subtitleView: SubtitleView;
   private readonly decisionView: DecisionView;
   private readonly interludePanel: InterludePanel;
   private readonly animTextPanel: AnimTextPanel;
@@ -650,29 +619,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private inverseAmount = 0;
   private grayscaleFilter: ColorMatrixFilter | null = null;
   private readonly stickerViews = new Map<string, StickerView>();
-  /**
-   * Native port: `StickerPanel.m_currentSticker`. `_ExecuteSticker` points it
-   * at whichever view the latest sticker command touched -- the shown, the
-   * appended *and* the hidden one -- and `_RecycleStickers` nulls it. Both
-   * `ForceCommandEnd` and `_OnClicked` only `TryFinishType` this one view.
-   */
-  private currentStickerId: string | null = null;
-  private subtitleFadeSessionId = 0;
-  /**
-   * Native port: `SubtitlePanel._SetHiddenInternal`'s `m_hidden`. Flips the
-   * moment `set_isHidden` is called, while the alpha tween catches up. A
-   * `setSubtitle` on an already-shown panel must not replay the fade-in.
-   */
-  private subtitleHidden = true;
-  private subtitleText: Text | null = null;
-  private subtitleTypingTarget: {
-    alignment: SubtitleInput["alignment"];
-    baseX: number;
-    fullText: string;
-    onTypingComplete?: () => void;
-    widthPx: number;
-  } | null = null;
-  private subtitleTypingSessionId = 0;
   private timerFadeSessionId = 0;
   /**
    * Mirrors `AVGTimerView.m_countTimerTask != null`. It gates the inline
@@ -709,6 +655,13 @@ export class PixiStoryRenderer implements StoryRenderer {
       (durationMs, update, complete) =>
         this.tween(durationMs, update, complete),
     );
+    this.subtitleView = new SubtitleView(this.uiLayer, {
+      createTextStyle: (size, width) =>
+        this.createOverlayTextStyle(size, width),
+      layoutText: (text, x, width, alignment) =>
+        this.layoutSubtitle(text, x, width, alignment),
+      tween: (...args) => this.tween(...args),
+    });
     this.decisionView = new DecisionView(this.uiLayer);
     this.interludePanel = new InterludePanel(
       this.cutinLayer,
@@ -801,6 +754,38 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.layers.attach(app.stage);
   }
 
+  onFrameEnd(callback: () => void): () => void {
+    const ticker = this.app?.ticker;
+    if (!ticker) throw new Error("Story renderer is not mounted");
+    // Pixi's TickerPlugin draws the scene at LOW. UTILITY runs after that draw.
+    ticker.addOnce(callback, undefined, UPDATE_PRIORITY.UTILITY);
+    return () => {
+      if (this.app?.ticker === ticker) ticker.remove(callback);
+    };
+  }
+
+  onFrameUpdate(
+    callback: (frame: PlaybackFrame) => void,
+    phase: "update" | "afterUpdate" = "update",
+  ): () => void {
+    const ticker = this.app?.ticker;
+    if (!ticker) throw new Error("Story renderer is not mounted");
+    // Unity's WaitUntil checks after component updates. Run it before LOW draws.
+    const priority =
+      phase === "afterUpdate"
+        ? UPDATE_PRIORITY.NORMAL - 1
+        : UPDATE_PRIORITY.NORMAL;
+    const update = (tick: Ticker) =>
+      callback({
+        deltaMs: tick.elapsedMS,
+        nowMs: tick.lastTime + tick.elapsedMS,
+      });
+    ticker.add(update, undefined, priority);
+    return () => {
+      if (this.app?.ticker === ticker) ticker.remove(update);
+    };
+  }
+
   /**
    * 跟随宿主尺寸同步画布分辨率。ResizeObserver 覆盖布局变化（窗口缩放、
    * 全屏切换）；window resize 兜底 devicePixelRatio 变化（页面缩放、跨屏
@@ -841,7 +826,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel.destroy();
     for (const view of this.stickerViews.values()) view.destroy();
     this.stickerViews.clear();
-    this.currentStickerId = null;
     this.focusEffectPanel.destroy();
     this.cgItemPanel.destroy();
     this.backgroundRoot = null;
@@ -893,16 +877,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.app?.destroy(true, { children: true });
     this.app = null;
     this.dialogView.destroy();
-    this.subtitleText = null;
+    this.subtitleView.destroy();
     this.timerStickerText = null;
     this.clearTimerInterval();
     this.timerFadeSessionId += 1;
     this.timerStopFadeComplete = null;
     this.timerTaskActive = false;
-    this.subtitleFadeSessionId += 1;
-    this.subtitleHidden = true;
-    this.subtitleTypingTarget = null;
-    this.subtitleTypingSessionId += 1;
     this.videoPanel.destroy();
   }
 
@@ -930,33 +910,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.videoPanel.stop();
   }
 
-  finishTextTyping(panel: "sticker" | "subtitle"): boolean {
-    if (panel === "sticker") {
-      // Only m_currentSticker is finished; other stickers keep typing.
-      return (
-        this.currentStickerId !== null &&
-        (this.stickerViews.get(this.currentStickerId)?.finishTyping() ?? false)
-      );
-    }
-
-    const target = this.subtitleTypingTarget;
-    if (!this.subtitleText || !target) return false;
-    this.subtitleTypingSessionId += 1;
-    this.subtitleText.text = target.fullText;
-    this.layoutSubtitle(
-      this.subtitleText,
-      target.baseX,
-      target.widthPx,
-      target.alignment,
-    );
-    this.subtitleTypingTarget = null;
-    target.onTypingComplete?.();
-    return true;
+  finishStickerTyping(id: string): boolean {
+    return this.stickerViews.get(id)?.finishTyping() ?? false;
   }
 
   setDialogue(
     speaker: string,
-    text: DialogueText,
+    text: TypewriterText,
     layout?: DialogueLayout,
   ): void {
     this.dialogView.setDialogue(speaker, text, layout);
@@ -970,12 +930,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.dialogView.restoreMessageWidth();
   }
 
-  async showDecision(
+  showDecision(
     options: string[],
     values: number[],
-    disabled?: boolean[],
-  ): Promise<DecisionSelection> {
-    return this.decisionView.show(options, values, disabled);
+    disabled: boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ): void {
+    this.decisionView.show(options, values, disabled, onSelect);
   }
 
   settleDecision(): void {
@@ -2753,46 +2714,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  async clearSubtitle(fadeMs = 0): Promise<void> {
-    this.subtitleTypingSessionId += 1;
-    this.subtitleFadeSessionId += 1;
-    this.subtitleTypingTarget = null;
-    // Native `set_isHidden(true)` flips `m_hidden` immediately; the fade only
-    // animates the visible alpha towards it.
-    this.subtitleHidden = true;
-
-    const subtitle = this.subtitleText;
-    if (!subtitle) return;
-
-    if (!subtitle.visible || !subtitle.text) {
-      subtitle.text = "";
-      subtitle.visible = false;
-      subtitle.alpha = 1;
-      return;
-    }
-
-    const sessionId = this.subtitleFadeSessionId;
-    const startAlpha = subtitle.alpha;
-    if (fadeMs <= 0) {
-      subtitle.text = "";
-      subtitle.visible = false;
-      subtitle.alpha = 1;
-      return;
-    }
-
-    await this.tween(
-      fadeMs,
-      (progress) => {
-        if (this.subtitleFadeSessionId !== sessionId) return;
-        subtitle.alpha = startAlpha * (1 - progress);
-      },
-      () => {
-        if (this.subtitleFadeSessionId !== sessionId) return;
-        subtitle.text = "";
-        subtitle.visible = false;
-        subtitle.alpha = 1;
-      },
-    );
+  clearSubtitle(fadeMs = 0): Promise<void> | void {
+    return this.subtitleView.clear(fadeMs);
   }
 
   /**
@@ -2801,13 +2724,12 @@ export class PixiStoryRenderer implements StoryRenderer {
    * completes instantly, so the full text is what fades out, not the
    * partially typed prefix.
    */
-  async clearSticker(id?: string, fadeMs = 0): Promise<void> {
+  clearSticker(id?: string, fadeMs = 0): void {
     if (!id) {
-      await this.clearStickers(fadeMs);
+      this.clearStickers(fadeMs);
       return;
     }
 
-    this.currentStickerId = id;
     this.stickerViews.get(id)?.hide(fadeMs, true);
   }
 
@@ -2815,11 +2737,10 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Native port: `StickerPanel._RecycleStickers` (stickerclear and the skip
    * reset) calls `ResetStickerTransform` + `HideSticker(0)` on every view
    * without `TryFinishType`, so typing is not completed before the fade, and
-   * then nulls `m_currentSticker`.
+   * then StickerPanel nulls `m_currentSticker`.
    */
-  async clearStickers(fadeMs = 0): Promise<void> {
+  clearStickers(fadeMs = 0): void {
     for (const view of this.stickerViews.values()) view.recycle(fadeMs);
-    this.currentStickerId = null;
   }
 
   clearSpellStickers(): void {
@@ -2839,7 +2760,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    * so a timersticker fade-in still running when timerclear lands cannot keep
    * writing alpha alongside the fade-out.
    */
-  async clearTimerSticker(input?: TimerClearInput): Promise<void> {
+  clearTimerSticker(input?: TimerClearInput): void {
     this.clearTimerInterval();
     // `DOKill(_canvas, complete: false)`: an earlier fade is dropped mid-flight,
     // so a StopTimer fade it may have been running never reaches its OnComplete.
@@ -3285,112 +3206,21 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
   }
 
-  /**
-   * Port scope: `Torappu.AVG.SubtitlePanel._ExecuteSubtitle` normal-playback
-   * semantics. PIXI text/typewriter scheduling adapts `AVGTypeWriterText`;
-   * playback/reader-mode executor variants are intentionally not represented.
-   */
-  async setSubtitle(input: SubtitleInput): Promise<void> {
-    const subtitle = this.subtitleText;
-    if (!subtitle) return;
-
-    this.subtitleTypingSessionId += 1;
-    this.subtitleTypingTarget = null;
-
-    // Native `SubtitlePanel._SetHiddenInternal` (2.7.61 VA 0x183e94ff0):
-    // `set_isHidden(false)` is a no-op while the panel is already visible, so
-    // consecutive subtitles swap text seamlessly without replaying the 150ms
-    // Linear fade-in. A hidden panel fades in from its current alpha, which
-    // also covers interrupting an in-flight fade-out (DOKill + DOFade).
-    //
-    // The fade session is only bumped when a fade actually starts: native's
-    // no-op branch never reaches DOKill either, so a fade-in that is still
-    // running when the next subtitle arrives must keep animating to 1. Bumping
-    // it unconditionally would orphan that tween and strand the panel at
-    // whatever alpha it had reached.
-    if (this.subtitleHidden) {
-      this.subtitleHidden = false;
-      const startAlpha = subtitle.visible ? subtitle.alpha : 0;
-      subtitle.visible = true;
-      this.subtitleFadeSessionId += 1;
-      const fadeSessionId = this.subtitleFadeSessionId;
-      void this.tween(
-        150,
-        (progress) => {
-          if (this.subtitleFadeSessionId === fadeSessionId)
-            subtitle.alpha = startAlpha + (1 - startAlpha) * progress;
-        },
-        () => {
-          if (this.subtitleFadeSessionId === fadeSessionId) subtitle.alpha = 1;
-        },
-      );
-    }
-
-    const prevChars: RichChar[] = [];
-    const newChars = parseRichChars(input.text);
-    const allChars = [...prevChars, ...newChars];
-
-    const style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
-    // Native maps alignment to TextAnchor.UpperLeft/UpperCenter/UpperRight,
-    // which horizontally aligns *every wrapped line* inside the width box;
-    // PIXI needs the per-line `align` style in addition to the whole-block
-    // offset that layoutSubtitle applies.
-    style.align = input.alignment;
-    // The transparent hidden tail below needs its tag registered while typing,
-    // with the drop shadow disabled so the unrevealed text stays invisible.
-    const tagStyles: NonNullable<TextStyle["tagStyles"]> =
-      buildTagStyles(allChars);
-    if (input.delayMs > 0)
-      tagStyles[SUBTITLE_HIDDEN_TAIL_TAG] = { ...SUBTITLE_HIDDEN_TAIL_STYLE };
-    if (Object.keys(tagStyles).length > 0) style.tagStyles = tagStyles;
-    subtitle.style = style;
-    subtitle.y = input.y;
-
-    const fullText = richCharsToTaggedText(allChars);
-    if (input.delayMs <= 0) {
-      subtitle.text = fullText;
-      this.layoutSubtitle(subtitle, input.x, input.widthPx, input.alignment);
-      // Nothing to type: the typewriter is done the moment the text is shown.
-      input.onTypingComplete?.();
-      return;
-    }
-
-    const sessionId = this.subtitleTypingSessionId;
-    // Native `AVGTypeWriterText.BeginText` lays out the full message from t0
-    // by keeping the unrevealed tail in the text wrapped in a fully
-    // transparent <color=#00000000> span; revealing chars never re-wraps the
-    // lines that are already on screen.
-    subtitle.text = richCharsToTaggedText([
-      ...prevChars,
-      ...subtitleHiddenTail(newChars),
-    ]);
-    this.layoutSubtitle(subtitle, input.x, input.widthPx, input.alignment);
-    this.subtitleTypingTarget = {
-      alignment: input.alignment,
-      baseX: input.x,
-      fullText,
-      onTypingComplete: input.onTypingComplete,
-      widthPx: input.widthPx,
-    };
-    void this.runSubtitleTyping(sessionId, subtitle, {
-      alignment: input.alignment,
-      baseX: input.x,
-      delayMs: input.delayMs,
-      newChars,
-      onTypingComplete: input.onTypingComplete,
-      prevChars,
-      widthPx: input.widthPx,
-    });
+  setSubtitle(text: TypewriterText, layout?: OverlayTextLayout): void {
+    this.subtitleView.render(text, layout);
   }
 
   /** StickerPanel supplies command inputs; each view owns its visual state. */
-  setSticker(input: StickerInput): Promise<void> {
-    this.currentStickerId = input.id;
-    return this.ensureStickerView(input.id).show(input);
+  setSticker(input: StickerInput): void {
+    this.ensureStickerView(input.id).show(input);
   }
 
-  setSpellSticker(input: SpellStickerInput): void {
-    this.spellStickerPanel.show(input);
+  setStickerTypeWriterDelay(id: string, delayMs: number): void {
+    this.stickerViews.get(id)?.setTypeWriterDelay(delayMs);
+  }
+
+  setSpellSticker(input: SpellStickerInput): number | undefined {
+    return this.spellStickerPanel.show(input);
   }
 
   stickerTween(input: StickerTweenInput): void {
@@ -3405,7 +3235,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    * `_StartCountTimer`, then the `_ShowTimer` fade, and only after RenderTimer
    * returns does `_ExcuteTimerSticker` re-activate the view.
    */
-  async setTimerSticker(input: TimerStickerInput): Promise<void> {
+  setTimerSticker(input: TimerStickerInput): void {
     const timer = this.ensureTimerStickerText();
 
     timer.style = this.createOverlayTextStyle(input.sizePx, input.widthPx);
@@ -3498,18 +3328,13 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private async createUi(): Promise<void> {
     await this.dialogView.mount();
-    this.subtitleText = new Text({
-      style: this.createOverlayTextStyle(18, 675),
-      text: "",
-    });
-    this.subtitleText.visible = false;
+    this.subtitleView.mount();
     this.timerStickerText = new Text({
       style: this.createOverlayTextStyle(18, 220),
       text: "",
     });
     this.timerStickerText.visible = false;
 
-    this.uiLayer.addChild(this.subtitleText);
     this.uiLayer.addChild(this.timerStickerText);
   }
 
@@ -5040,11 +4865,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const existing = this.stickerViews.get(id);
     if (existing) return existing;
     const view = new StickerView({
-      isActive: () => Boolean(this.app),
       createOverlayTextStyle: (size, width) =>
         this.createOverlayTextStyle(size, width),
       layoutSubtitle: (text, x, width, alignment) =>
         this.layoutSubtitle(text, x, width, alignment),
+      onFrameUpdate: (update) => this.onFrameUpdate(update),
       tween: (duration, step, done) => this.tween(duration, step, done),
     });
     this.stickerViews.set(id, view);
@@ -5079,7 +4904,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     subtitle: Text,
     baseX: number,
     widthPx: number,
-    alignment: SubtitleInput["alignment"],
+    alignment: OverlayTextLayout["alignment"],
   ): void {
     const renderedWidth = Math.min(subtitle.width, widthPx);
     switch (alignment) {
@@ -5094,50 +4919,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       default: {
         subtitle.x = baseX;
       }
-    }
-  }
-
-  private async runSubtitleTyping(
-    sessionId: number,
-    subtitle: Text,
-    input: {
-      alignment: SubtitleInput["alignment"];
-      baseX: number;
-      delayMs: number;
-      newChars: RichChar[];
-      onTypingComplete?: () => void;
-      prevChars: RichChar[];
-      widthPx: number;
-    },
-  ): Promise<void> {
-    for (let index = 0; index < input.newChars.length; index += 1) {
-      if (!this.app || this.subtitleTypingSessionId !== sessionId) return;
-
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
-
-      if (!this.app || this.subtitleTypingSessionId !== sessionId) return;
-
-      // The transparent tail keeps the full-text line layout fixed while the
-      // visible prefix grows (native BeginText hidden-string port).
-      subtitle.text = richCharsToTaggedText([
-        ...input.prevChars,
-        ...input.newChars.slice(0, index + 1),
-        ...subtitleHiddenTail(input.newChars.slice(index + 1)),
-      ]);
-      this.layoutSubtitle(
-        subtitle,
-        input.baseX,
-        input.widthPx,
-        input.alignment,
-      );
-    }
-
-    if (this.subtitleTypingSessionId === sessionId) {
-      this.subtitleTypingTarget = null;
-      // Native `SubtitlePanel._OnTypeWriterEnd` (2.7.61 VA 0x183e94e80):
-      // typing that finishes on its own raises the auto click; without this,
-      // auto mode would sit on the subtitle waiting for a manual click.
-      input.onTypingComplete?.();
     }
   }
 

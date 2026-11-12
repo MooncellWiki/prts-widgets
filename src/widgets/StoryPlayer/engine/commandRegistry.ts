@@ -1,7 +1,34 @@
-import type { ParsedCommandLine } from "./types";
+import type { DecisionSelection, ParsedCommandLine } from "./types";
 
-/** Executor result: `wait_input` mirrors a native executor returning true. */
-export type CommandResult = "continue" | "wait_input";
+export interface ClickCompletion {
+  onClick?: () => Promise<void> | void;
+  onFinish?: () => void;
+}
+
+type FinishCommand = (completion?: ClickCompletion) => void;
+
+/**
+ * Web adaptation of an executor returning true and subscribing to ON_CLICK.
+ * The click handler calls FinishCommand to request completion at frame end.
+ * The runtime keeps the executor's ForceEnd callback until completion.
+ */
+export interface WaitForClick {
+  handleClick: (finishCommand: FinishCommand) => void;
+  forceEnd?: () => void;
+}
+
+export interface WaitForDecision {
+  showDecision: (onSelect: (selection: DecisionSelection) => void) => void;
+  applySelection: (selection: DecisionSelection) => void;
+  closeDecision: () => void;
+}
+
+export interface WaitForDelay {
+  delayMs: number;
+}
+
+export type CommandWait = WaitForClick | WaitForDecision | WaitForDelay;
+export type CommandResult = "continue" | CommandWait;
 
 export type CommandExecutor<TResult> = (
   command: ParsedCommandLine,

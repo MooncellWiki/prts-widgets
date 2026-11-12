@@ -22,31 +22,23 @@ function paintButton(
     .stroke({ color: 0xff_ff_ff, width: 2 });
 }
 
-/** 面板未经点击被清除（新 decision 顶替/销毁）时的结算值，与旧 clear(0) 一致 */
-const unclickedSelection = (): DecisionSelection => ({
-  optionIndex: -1,
-  value: 0,
-});
-
 /**
  * Web adapter for `Torappu.AVG.DecisionPanel`'s option widgets. Presents the
- * options and returns the clicked index and value through browser events.
+ * options and reports selection immediately. Native OnFinish (2791 @
+ * 0x1841C7150) closes the view when the executor finishes at frame end.
  */
 export class DecisionView {
   private container: Container | null = null;
-  private resolve: ((selection: DecisionSelection) => void) | null = null;
 
   constructor(private readonly layer: ContainerType) {}
 
   show(
     options: string[],
     values: number[],
-    disabledOptions: boolean[] = [],
-  ): Promise<DecisionSelection> {
-    // Settle any decision this one replaces: `_ExecuteDecision` awaits the
-    // selected value, so dropping the pending resolver would strand the
-    // command loop in `waiting_decision` forever.
-    this.clear(unclickedSelection());
+    disabledOptions: boolean[],
+    onSelect: (selection: DecisionSelection) => void,
+  ): void {
+    this.clear();
     const container = new Container();
     const overlay = new Graphics()
       .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
@@ -101,28 +93,22 @@ export class DecisionView {
           // Log All 高亮用点击下标，闸门用 value。同一 value 可对应多个选项。
           // values 由 DecisionPanel 的 parseDecision 逐项解析，这里的 0
           // 只是兜底；0 与原生 `_GetOptionValue` 的越界返回值一致。
-          this.clear({ optionIndex: index, value: values[index] ?? 0 });
+          onSelect({ optionIndex: index, value: values[index] ?? 0 });
         });
       }
       container.addChild(button);
     }
     this.layer.addChild(container);
     this.container = container;
-    return new Promise<DecisionSelection>((resolve) => {
-      this.resolve = resolve;
-    });
   }
 
-  clear(selection: DecisionSelection = unclickedSelection()): void {
-    const resolve = this.resolve;
-    this.resolve = null;
+  clear(): void {
     this.container?.removeFromParent();
     this.container?.destroy({ children: true });
     this.container = null;
-    resolve?.(selection);
   }
 
   destroy(): void {
-    this.clear(unclickedSelection());
+    this.clear();
   }
 }

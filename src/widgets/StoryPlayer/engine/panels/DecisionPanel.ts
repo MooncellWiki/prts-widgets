@@ -4,22 +4,15 @@ import type { Context } from "../../context";
 import type { DecisionCommandPredicator } from "../DecisionCommandPredicator";
 import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
-  AutoPlayMode,
   DecisionPolicy,
   ParsedCommandLine,
   StoryRenderer,
 } from "../types";
 
 interface DecisionPlayback {
-  beginWait: () => AutoPlayMode;
-  finishWait: (autoPlayRestore: AutoPlayMode) => void;
   pickOption: DecisionPolicy;
   resetAutoPlayMode: () => void;
   warnInvalidParameter: (detail: string, line?: ParsedCommandLine) => void;
-}
-
-interface PendingDecision {
-  autoPlayRestore: AutoPlayMode;
 }
 
 // _ExecuteDecision (2791 @ 0x1841C7400) logs excess options by comparing
@@ -33,7 +26,6 @@ const OBSERVED_MAX_DECISION_OPTIONS = 4;
  * The web view delivers the selection and the controller owns playback mode.
  */
 export class DecisionPanel {
-  private pendingDecision: PendingDecision | null = null;
   private destroyed = false;
 
   constructor(
@@ -55,31 +47,11 @@ export class DecisionPanel {
     });
   }
 
-  getPendingDecision(): PendingDecision | null {
-    return this.pendingDecision;
-  }
-
-  /**
-   * Native ForceCommandEnd (2791 @ 0x1841C6D40) leaves the panel alone, and
-   * ShouldResetOnSkip returns false. Web closes the view as an unclicked
-   * selection to release the command loop. The sampled view may already have
-   * settled from a click during cleanup.
-   */
-  settleOnSkip(pending: PendingDecision | null): void {
-    if (pending && this.pendingDecision === pending)
-      this.renderer.settleDecision();
-  }
-
   destroy(): void {
     this.destroyed = true;
-    const pending = this.pendingDecision;
-    this.pendingDecision = null;
-    if (pending) this.renderer.settleDecision();
   }
 
-  private async executeDecision(
-    line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+  private executeDecision(line: ParsedCommandLine): CommandResult {
     // _ExecuteDecision (2791 @ 0x1841C7400) resets the gate before checking
     // options. The web player warns and continues for a missing options key.
     this.predicator.beginDecision();
@@ -123,21 +95,12 @@ export class DecisionPanel {
       return "continue";
     }
 
-    const pending = { autoPlayRestore: this.playback.beginWait() };
-    this.pendingDecision = pending;
-    try {
-      const selection = await this.renderer.showDecision(
-        options,
-        values,
-        disabled,
-      );
-      if (this.pendingDecision !== pending) return "continue";
-      this.pendingDecision = null;
-      this.predicator.applySelection(line.lineNumber, selection);
-      this.playback.finishWait(pending.autoPlayRestore);
-      return "continue";
-    } finally {
-      if (this.pendingDecision === pending) this.pendingDecision = null;
-    }
+    return {
+      applySelection: (selection) =>
+        this.predicator.applySelection(line.lineNumber, selection),
+      closeDecision: () => this.renderer.settleDecision(),
+      showDecision: (onSelect) =>
+        this.renderer.showDecision(options, values, disabled, onSelect),
+    };
   }
 }

@@ -1,15 +1,20 @@
 import {
   exactArg,
   toBoolean,
-  toNumber,
+  toOptionalNumber,
   toString,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
+import { AVGEvent, type EventPool } from "../eventPool";
 import { parseRichChars } from "../richtext";
 
 import { AVGTypeWriterText } from "./AVGTypeWriterText";
 
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
+import type {
+  CommandRegistry,
+  CommandResult,
+  WaitForClick,
+} from "../commandRegistry";
 import type {
   DialogueLayout,
   ParsedCommandLine,
@@ -22,7 +27,6 @@ interface DialogPlayback {
   beginTyping: (messageLength: number) => () => void;
   prepareEndtip: () => boolean;
   setDisplayedLine: (lineNumber: number) => void;
-  sleep: (ms: number) => Promise<void>;
   translateText: (text: string) => string;
   typeWriterDelayMs: () => number;
 }
@@ -44,11 +48,13 @@ export class DialogPanel {
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
-      "setDialogue" | "hideDialogue" | "finishDialogueCommand"
+      "setDialogue" | "hideDialogue" | "finishDialogueCommand" | "onFrameUpdate"
     >,
     private readonly playback: DialogPlayback,
   ) {
-    this.typeWriter = new AVGTypeWriterText(playback.sleep);
+    this.typeWriter = new AVGTypeWriterText((update) =>
+      renderer.onFrameUpdate(update),
+    );
   }
 
   register(registry: CommandRegistry<CommandResult>): void {
@@ -78,33 +84,33 @@ export class DialogPanel {
     );
   }
 
-  /** Native _OnClicked (2791 @ 0x1841CAD30), while the typewriter is active. */
-  finishTypingOnClick(): boolean {
-    if (!this.typeWriter.tryFinish()) return false;
-    if (this.multilineEnd) this.resetMultiline();
-    return true;
-  }
-
-  /** The advancing click ends the command and restores the original width. */
-  finishCommand(): void {
-    if (this.multilineEnd) this.resetMultiline();
-    this.renderer.finishDialogueCommand();
-  }
+  /** Native _OnClicked (2791 @ 0x1841CAD30) and OnFinish. */
+  private readonly clickWait: WaitForClick = {
+    handleClick: (finishCommand) => {
+      const finishedTyping = this.typeWriter.tryFinish();
+      if (this.multilineEnd) this.resetMultiline();
+      if (finishedTyping) return;
+      finishCommand({ onFinish: () => this.renderer.finishDialogueCommand() });
+    },
+    forceEnd: () => this.forceCommandEnd(),
+  };
 
   /**
    * Native ForceCommandEnd (2791 @ 0x1841C8440) reveals the line and restores
-   * its width. StoryRuntime invalidates the interrupted line's callback
-   * before force-ending. ShouldResetOnSkip is false, so the multiline run
-   * remains available to the next command after the jump.
+   * its width. The type-end callback can raise an auto click during a
+   * protected skip. ShouldResetOnSkip is false, so the multiline run remains
+   * available to the next command after the jump.
    */
-  forceCommandEnd(): void {
+  private forceCommandEnd(): void {
     this.typeWriter.tryFinish();
     this.renderer.finishDialogueCommand();
   }
 
   /** Native _SetTypeWriterDelay (2791 @ 0x1841CB4C0) handles ON_SPEED_SET. */
-  onSpeedSet(): void {
-    this.typeWriter.setDelay(this.playback.typeWriterDelayMs());
+  onStoryBegin(eventPool: EventPool<AVGEvent>): void {
+    eventPool.on(AVGEvent.SpeedSet, () =>
+      this.typeWriter.setDelay(this.playback.typeWriterDelayMs()),
+    );
   }
 
   stopTypingSilently(): void {
@@ -132,7 +138,7 @@ export class DialogPanel {
     this.resetMultiline();
     this.playback.setDisplayedLine(lineNumber);
     this.beginText(speaker, text, executor);
-    return "wait_input";
+    return this.clickWait;
   }
 
   private executeMultiline(line: ParsedCommandLine): CommandResult {
@@ -147,10 +153,9 @@ export class DialogPanel {
     // _ExecuteMultiline defaults `delay` to the current global delay in
     // seconds before dividing by originDelay (40ms). A missing delay at
     // button-auto level 1 therefore types at 0.25x the usual interval.
-    const delaySeconds = toNumber(
-      exactArg(line.args, "delay"),
-      this.playback.typeWriterDelayMs() / 1000,
-    );
+    const scriptedDelay = toOptionalNumber(exactArg(line.args, "delay"));
+    const delaySeconds =
+      scriptedDelay ?? this.playback.typeWriterDelayMs() / 1000;
     this.multilineShownChars = this.beginText(
       toString(exactArg(line.args, "name")),
       this.multilineText,
@@ -161,7 +166,7 @@ export class DialogPanel {
         startIndex: this.multilineShownChars,
       },
     );
-    return "wait_input";
+    return this.clickWait;
   }
 
   private executeEndtip(line: ParsedCommandLine): CommandResult {
@@ -171,7 +176,7 @@ export class DialogPanel {
     if (!this.playback.prepareEndtip()) return "continue";
     this.resetMultiline();
     this.beginText("", line.content, "endtip");
-    return "wait_input";
+    return this.clickWait;
   }
 
   private beginText(
