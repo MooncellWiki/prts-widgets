@@ -77,6 +77,15 @@ export function toNumber(value: unknown, fallback = 0): number {
   return toOptionalNumber(value) ?? fallback;
 }
 
+/** Numeric conversion used by `System.Convert.ToInt32(double)`. */
+export function roundHalfToEven(value: number): number {
+  const floor = Math.floor(value);
+  const fraction = value - floor;
+  if (fraction < 0.5) return floor;
+  if (fraction > 0.5) return floor + 1;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+
 export function toBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {

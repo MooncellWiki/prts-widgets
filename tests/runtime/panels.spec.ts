@@ -151,6 +151,26 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it.each(["2", '"2"', '" horiz_expand_left2right "'])(
+    "reads cutin fadestyle %s with the native enum rules",
+    async (fadestyle) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[showitem(style="cutin",image="item_a",fadestyle=${fadestyle})]`,
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+      expect(renderer.showItemCalls).toMatchObject([
+        { fadeStyle: "horiz_expand_left2right", style: "cutin" },
+      ]);
+    },
+  );
+
   it("destroys a lingering show-item slot when playback reaches the story end", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

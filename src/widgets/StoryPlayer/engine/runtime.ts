@@ -11,6 +11,7 @@ import {
 import {
   exactArg,
   parseVector2,
+  roundHalfToEven,
   toBoolean,
   toNumber,
   toOptionalNumber,
@@ -204,15 +205,6 @@ function toNativeIntParam(value: unknown, fallback: number): number {
   if (value === "true") return 1;
   if (value === "false") return 0;
   return roundHalfToEven(toNumber(value, fallback));
-}
-
-/** `System.Convert.ToInt32(double)` rounds half to even, not toward zero. */
-function roundHalfToEven(value: number): number {
-  const floor = Math.floor(value);
-  const fraction = value - floor;
-  if (fraction < 0.5) return floor;
-  if (fraction > 0.5) return floor + 1;
-  return floor % 2 === 0 ? floor : floor + 1;
 }
 
 function parseNumberSequence(value: unknown): number[] {
@@ -475,6 +467,7 @@ export class StoryRuntime {
     });
     this.showItemPanel = new ShowItemPanel(renderer, {
       resolveImageKey: (key) => this.resolveImageKey(key),
+      waitForAnimation: (animation) => this.waitInterruptiblePromise(animation),
       warnInvalidParameter: (detail, line) =>
         this.warn("invalid_parameter", detail, line.lineNumber, line.command),
     });

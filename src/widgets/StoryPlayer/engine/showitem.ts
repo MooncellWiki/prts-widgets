@@ -21,18 +21,16 @@
 // down — and the centered item; `fadestyle` drives which edge the window
 // expands from (see the renderer's cutin state).
 
+import { tryParseInt32 } from "./commandParams";
+
 import type { ShowItemFadeStyle, ShowItemLayout } from "./types";
 
 export type { ShowItemFadeStyle, ShowItemLayout };
 
 export const SHOWITEM_FRAME_BORDER = 32;
 
-/**
- * The serialized `AVGShowItemCutinSlot.FadeStyle` member names. An unknown
- * story value silently degrades to `fade` on both sides (the native enum
- * parser returns its default 0).
- */
-const FADE_STYLES: ReadonlySet<string> = new Set([
+/** `AVGShowItemCutinSlot.FadeStyle` member names in ordinal order. */
+const FADE_STYLES: readonly ShowItemFadeStyle[] = [
   "fade",
   "horiz_expand_center",
   "horiz_expand_left2right",
@@ -40,14 +38,18 @@ const FADE_STYLES: ReadonlySet<string> = new Set([
   "vert_expand_center",
   "vert_expand_top2bottom",
   "vert_expand_bottom2top",
-]);
+];
 
+/** 2791 CutinSlot.Show (0x184244230) uses case-sensitive GetEnum. */
 export function parseShowItemFadeStyle(
   raw: string | undefined,
 ): ShowItemFadeStyle | undefined {
-  return raw !== undefined && FADE_STYLES.has(raw)
-    ? (raw as ShowItemFadeStyle)
-    : undefined;
+  const value = raw?.trim();
+  if (!value) return undefined;
+  const ordinal = tryParseInt32(value);
+  return ordinal === null
+    ? FADE_STYLES.find((style) => style === value)
+    : FADE_STYLES[ordinal];
 }
 
 export function computeShowItemLayout(

@@ -804,7 +804,7 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("keeps an item that finishes showing during a segment skip until hideitem finishes", async () => {
+  it("lets the destination hideitem start before the old showitem fade finishes", async () => {
     const renderer = new FakeRenderer();
     const shown = Promise.withResolvers<void>();
     const hidden = Promise.withResolvers<void>();
@@ -823,6 +823,8 @@ describe("StoryRuntime", () => {
         "[SkipToThis]",
         "[hideitem(fadetime=0.25)]",
         '[name="B"]after',
+        "[hideitem]",
+        '[name="B"]next',
       ]),
       renderer,
       new FakeAudio(),
@@ -832,19 +834,65 @@ describe("StoryRuntime", () => {
     expect(showItem).toHaveBeenCalledTimes(1);
     const skipped = runtime.skipNode();
     await setImmediate();
-    expect(clearItems).not.toHaveBeenCalled();
 
-    shown.resolve();
-    await setImmediate();
-    // AVGShowItemPanel.ShouldResetOnSkip is false. The destination hide
-    // sees the occupied slot and waits for its fade before playing dialogue.
+    // SkipStory clears the blocker and leaves the slot for the destination.
     expect(clearItems).toHaveBeenCalledExactlyOnceWith(250, true);
     expect(renderer.lastDialogue.speaker).toBe("");
 
     hidden.resolve();
     await Promise.all([started, skipped]);
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+
+    shown.resolve();
+    await runtime.advance();
+    expect(clearItems).toHaveBeenNthCalledWith(2, 500, false);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
   });
+
+  it.each(["showitem", "hideitem"])(
+    "clears the item slot when a skip ends the story during %s",
+    async (command) => {
+      const renderer = new FakeRenderer();
+      const animation = Promise.withResolvers<void>();
+      const isHide = command === "hideitem";
+      const beforeSkip = isHide ? [[500, true]] : [];
+      vi.spyOn(renderer, "showItem").mockImplementation(() =>
+        isHide ? Promise.resolve() : animation.promise,
+      );
+      const clearItems = vi
+        .spyOn(renderer, "clearItems")
+        .mockImplementation((_fadeMs, hasSlot) =>
+          isHide && hasSlot ? animation.promise : undefined,
+        );
+      const runtime = new StoryRuntime(
+        createContext([
+          '[skipnode(mode="skip")]',
+          '[showitem(image="item_a")]',
+          ...(isHide ? ["[hideitem]"] : []),
+          '[name="A"]skipped',
+          '[skipnode(mode="skip")]',
+          '[name="B"]unreachable',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      const started = runtime.start();
+      await setImmediate();
+      expect(runtime.getState()).toBe("running");
+      expect(clearItems.mock.calls).toEqual(beforeSkip);
+
+      const skipped = runtime.skipNode();
+      await setImmediate();
+      expect(runtime.getState()).toBe("finished");
+      expect(clearItems.mock.calls).toEqual([...beforeSkip, [0]]);
+      await Promise.all([started, skipped]);
+
+      animation.resolve();
+      await setImmediate();
+      expect(clearItems).toHaveBeenCalledTimes(beforeSkip.length + 1);
+    },
+  );
 
   it("drops the click follow-up of a skipped blocking spellsticker", async () => {
     let finishSticker!: () => void;

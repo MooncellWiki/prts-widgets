@@ -209,7 +209,7 @@ describe("PixiStoryRenderer", () => {
     expect(content.position.y).toBe(720 / 2 - 20);
   });
 
-  it("snaps the photo root to alpha 1 before the hide fade", async () => {
+  it("snaps the photo root to alpha 1 and lets the first tween finish the hide", async () => {
     const renderer = createRenderer();
     renderer.showItemFrameTextureFailed = true;
     renderer.textureForImageKey = vi.fn(
@@ -219,7 +219,7 @@ describe("PixiStoryRenderer", () => {
     renderer.tween = tween;
 
     // Show still mid-fade when hideitem lands: the root sits below alpha 1.
-    renderer.showItem(createShowItemInput());
+    const showCall = renderer.showItem(createShowItemInput());
     await flushAsync();
     const root = renderer.itemLayer.children[0];
     expect(root.alpha).toBe(0);
@@ -231,9 +231,12 @@ describe("PixiStoryRenderer", () => {
     expect(root.alpha).toBe(1);
     tweens[1].step(0.5);
     expect(root.alpha).toBeCloseTo(0.5);
-    tweens[1].complete();
-    await hideCall;
+    // Both tweens call the slot's OnAnimEnd. Show can finish first and
+    // invoke the Hide callback that took over the slot.
+    tweens[0].complete();
+    await flushAsync();
     expect(root.parent).toBeNull();
+    await Promise.all([showCall, hideCall]);
   });
 
   it("plays the cutin fade style as a plain canvas fade over the immediate backdrop", async () => {
@@ -298,7 +301,7 @@ describe("PixiStoryRenderer", () => {
         fadeMs: 400,
         fadeStyle: "horiz_expand_left2right",
         style: "cutin",
-        width: 200,
+        width: 200.5,
       }),
     );
     await flushAsync();
@@ -311,6 +314,7 @@ describe("PixiStoryRenderer", () => {
     expect(state.maskH).toBe(720);
     expect(state.backdrop.alpha).toBe(0);
     tweens[0].step(0.5);
+    // The native GetInt rounds 200.5 to the even integer 200.
     expect(state.maskW).toBeCloseTo(100);
     expect(state.backdrop.alpha).toBeCloseTo(0.2);
     tweens[0].complete();
@@ -359,6 +363,47 @@ describe("PixiStoryRenderer", () => {
     await renderer.clearItems(500, true);
 
     expect(stamp.parent).toBe(renderer.itemLayer);
+  });
+
+  it("clears the fading root and cancels its pending replacement on reset", async () => {
+    const renderer = createRenderer();
+    renderer.showItemFrameTextureFailed = true;
+    renderer.textureForImageKey = vi.fn(
+      async () => new Texture({ label: "item" }),
+    );
+    const { tween, tweens } = createManualTweens();
+    renderer.tween = tween;
+    await renderer.showItem(createShowItemInput({ fadeMs: 0 }));
+    const oldRoot = renderer.showItemRoot;
+
+    const replacement = renderer.showItem(
+      createShowItemInput({ fadeMs: 300, key: "item_b" }),
+    );
+    expect(tweens).toHaveLength(1);
+    await renderer.clearItems(0);
+
+    expect(oldRoot.parent).toBeNull();
+    await replacement;
+    expect(renderer.textureForImageKey).toHaveBeenCalledTimes(1);
+    expect(renderer.itemLayer.children).toHaveLength(0);
+  });
+
+  it("does not mount a show-item root after reset during its texture load", async () => {
+    const renderer = createRenderer();
+    renderer.showItemFrameTextureFailed = true;
+    const texture = Promise.withResolvers<Texture>();
+    renderer.textureForImageKey = vi.fn(() => texture.promise);
+
+    const showing = renderer.showItem(createShowItemInput({ fadeMs: 0 }));
+    expect(renderer.textureForImageKey).toHaveBeenCalledExactlyOnceWith(
+      "item_a",
+      "image",
+    );
+    await renderer.clearItems(0);
+    texture.resolve(new Texture({ label: "item" }));
+    await showing;
+
+    expect(renderer.itemLayer.children).toHaveLength(0);
   });
 
   it("skips the texture lookup for an empty image but keeps the framed placeholder slot", async () => {

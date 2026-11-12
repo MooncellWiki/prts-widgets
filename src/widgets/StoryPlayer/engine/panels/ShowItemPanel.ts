@@ -10,6 +10,8 @@ import type {
 
 interface ShowItemPlayback {
   resolveImageKey: (key: string) => string | null;
+  /** Resolves to true if playback was interrupted before the animation ended. */
+  waitForAnimation: (animation: Promise<void>) => Promise<boolean>;
   warnInvalidParameter: (detail: string, line: ParsedCommandLine) => void;
 }
 
@@ -27,7 +29,9 @@ function readFadeMs(args: StoryCommandArgs): number {
  * owns its visual state and resolves the promises that stand in for FinishCommand.
  */
 export class ShowItemPanel {
-  private slotInUse = false;
+  // Keep the slot occupied through the tween. A newer operation owns the
+  // slot once it starts, so an older fade-out cannot clear that state.
+  private slotInUse: symbol | null = null;
 
   constructor(
     private readonly renderer: Pick<StoryRenderer, "clearItems" | "showItem">,
@@ -46,7 +50,7 @@ export class ShowItemPanel {
    */
   reset(): void {
     if (!this.slotInUse) return;
-    this.slotInUse = false;
+    this.slotInUse = null;
     void this.renderer.clearItems(0);
   }
 
@@ -60,8 +64,10 @@ export class ShowItemPanel {
       // The replacement callback (2791 @ 0x1841B6290) hides and resets
       // the old slot before _ShowItem attempts its style lookup.
       if (this.slotInUse) {
-        this.slotInUse = false;
-        await this.renderer.clearItems(fadeMs, true);
+        const interrupted = await this.playback.waitForAnimation(
+          this.fadeOut(fadeMs),
+        );
+        if (interrupted) return "continue";
       }
       this.playback.warnInvalidParameter(
         `showitem style is not registered: ${style}`,
@@ -78,9 +84,10 @@ export class ShowItemPanel {
     if (!key)
       this.playback.warnInvalidParameter("showitem: image is empty", line);
 
-    // _ExecuteShowItem (2791 @ 0x1841B1A40) waits for the slot's animation.
-    // The renderer also fades out an existing slot using the new fadetime.
-    await this.renderer.showItem({
+    // _ShowItem (2791 @ 0x1841B1EC0) assigns the slot before starting Show.
+    // SkipStory can release the command's wait while the slot is still live.
+    this.slotInUse = Symbol();
+    const animation = this.renderer.showItem({
       // Native SetAlpha takes the unclamped value; the renderer clamps at blend.
       blackAlpha: toNumber(exactArg(args, "black"), 0.4),
       block: true,
@@ -92,7 +99,7 @@ export class ShowItemPanel {
       style,
       width: toNumber(exactArg(args, "width"), Number.NaN),
     });
-    this.slotInUse = true;
+    await this.playback.waitForAnimation(animation);
     return "continue";
   }
 
@@ -101,9 +108,15 @@ export class ShowItemPanel {
   ): Promise<CommandResult> {
     // _ExecuteHideItem (2791 @ 0x1841B1910) blocks when _slotInUse exists.
     // The renderer uses this flag to wait for the fade and remove the slot.
-    const hadSlot = this.slotInUse;
-    this.slotInUse = false;
-    await this.renderer.clearItems(readFadeMs(line.args), hadSlot);
+    await this.playback.waitForAnimation(this.fadeOut(readFadeMs(line.args)));
     return "continue";
+  }
+
+  private async fadeOut(fadeMs: number): Promise<void> {
+    const hasSlot = this.slotInUse !== null;
+    const slot = hasSlot ? Symbol() : null;
+    this.slotInUse = slot;
+    await this.renderer.clearItems(fadeMs, hasSlot);
+    if (this.slotInUse === slot) this.slotInUse = null;
   }
 }

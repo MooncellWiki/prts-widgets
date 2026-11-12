@@ -29,6 +29,7 @@ import {
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
+import { roundHalfToEven } from "../commandParams";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
 import { computeShowItemLayout, SHOWITEM_FRAME_BORDER } from "../showitem";
 import {
@@ -544,6 +545,8 @@ export class PixiStoryRenderer implements StoryRenderer {
    * Null while a photo slot (or nothing) is on stage.
    */
   private showItemCutin: ShowItemCutinState | null = null;
+  private showItemSessionId = 0;
+  private showItemAnimationEnd: (() => void) | null = null;
   /**
    * Bundled nine-slice texture of the serialized `sprite_avg_showItem_photo`
    * photo frame (native scene asset; CDN and the PRTS mirror do not carry
@@ -854,6 +857,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageRoots.clear();
     this.imageRoot = null;
     this.imageLayer.removeChildren();
+    this.showItemSessionId += 1;
+    this.finishShowItemAnimation();
     this.itemLayer.removeChildren();
     this.showItemRoot = null;
     this.showItemCutin = null;
@@ -1541,22 +1546,29 @@ export class PixiStoryRenderer implements StoryRenderer {
    * edge while the black backdrop cross-fades.
    */
   async showItem(input: ShowItemInput): Promise<void> {
+    const sessionId = ++this.showItemSessionId;
     const chain = async (): Promise<void> => {
       // Replacement branch of `_ExecuteShowItem`: the old slot's `Hide` runs
       // with the NEW command's fadetime (per-style, see hideShowItem), then
       // the slot is recycled (`_Reset`). A root already detached from the
       // layer (hideitem / scene reset) mirrors a cleared `_slotInUse`, so it
       // takes the direct-show branch instead.
-      if (this.showItemRoot?.parent) {
+      if (this.showItemRoot) {
         await this.hideShowItem(input.fadeMs);
-      } else {
-        this.showItemRoot = null;
-        this.showItemCutin = null;
+        if (sessionId !== this.showItemSessionId) return;
       }
 
       const texture = input.key
         ? await this.textureForImageKey(input.key, "image")
         : null;
+      if (sessionId !== this.showItemSessionId) return;
+
+      const frameTexture =
+        input.style === "photo" ? await this.loadShowItemFrameTexture() : null;
+      const headerTexture =
+        input.style === "cutin" ? await this.loadDialogFrameTexture() : null;
+      if (sessionId !== this.showItemSessionId) return;
+
       // `AVGShowItemSlot.Show` (0x183ED3E80) skips only the sprite assignment
       // when the asset fails to load (an empty `image` included); the slot
       // still plays its fade and blocks for fadetime. A failed load also
@@ -1566,18 +1578,14 @@ export class PixiStoryRenderer implements StoryRenderer {
       const image = texture
         ? createShowItemSprite(texture)
         : createShowItemPlaceholder();
-      const cutinWidth = Number.isFinite(input.width)
-        ? Math.round(input.width!)
+      // CutinSlot.Show reads width via GetInt -> Convert.ToInt32.
+      const cutinWidth = isFiniteNumber(input.width)
+        ? roundHalfToEven(input.width)
         : (texture?.width ?? 100);
       // Unity saturates out-of-range graphic alpha at blend time; clamping
       // here reproduces the rendered result of the unclamped
       // `GetFloat("black", 0.4)` the native slots pass straight to SetAlpha.
       const blackAlpha = Math.max(0, Math.min(1, input.blackAlpha));
-      const frameTexture =
-        input.style === "photo" ? await this.loadShowItemFrameTexture() : null;
-      const headerTexture =
-        input.style === "cutin" ? await this.loadDialogFrameTexture() : null;
-
       const root = new Container();
       // Cutin expand styles keep the canvas group opaque (only the mask
       // window and black alpha animate); photo and cutin `fade` fade the
@@ -1632,9 +1640,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           this.showItemRoot = root;
           this.showItemCutin = cutin;
           this.itemLayer.addChild(root);
-          await this.tween(input.fadeMs, expand, undefined, {
-            ease: dotweenDefaultEase,
-          });
+          await this.tweenShowItem(root, input.fadeMs, expand);
           return;
         }
       } else {
@@ -1677,14 +1683,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       // Photo Show and cutin `fade`: the canvas group fades 0 -> 1 while the
       // backdrop is already at `black` (SetAlpha applies it immediately).
       // DOFade carries no SetEase, so DOTween's default OutQuad applies.
-      await this.tween(
-        input.fadeMs,
-        (progress) => {
-          root.alpha = progress;
-        },
-        undefined,
-        { ease: dotweenDefaultEase },
-      );
+      await this.tweenShowItem(root, input.fadeMs, (progress) => {
+        root.alpha = progress;
+      });
     };
 
     if (input.block) await chain();
@@ -1817,11 +1818,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   private async hideShowItem(fadeMs: number): Promise<void> {
     const root = this.showItemRoot;
     const cutin = this.showItemCutin;
-    this.showItemRoot = null;
-    this.showItemCutin = null;
-    if (!root?.parent) return;
-    if (fadeMs <= 0) {
-      root.removeFromParent();
+    if (!root) return;
+    if (!root.parent || fadeMs <= 0) {
+      this.removeShowItem(root);
       return;
     }
 
@@ -1831,53 +1830,61 @@ export class PixiStoryRenderer implements StoryRenderer {
       const startH = cutin.maskH;
       const startBlack = cutin.backdrop.alpha;
       const state = cutin;
-      const collapse = (progress: number): void => {
+      await this.tweenShowItem(root, fadeMs, (progress) => {
         state.maskW = horizontal ? startW * (1 - progress) : startW;
         state.maskH = horizontal ? startH : startH * (1 - progress);
         state.backdrop.alpha = startBlack * (1 - progress);
         this.drawShowItemCutinWindow(state);
-      };
-      await this.tween(
-        fadeMs,
-        collapse,
-        () => {
-          root.removeFromParent();
-        },
-        { ease: dotweenDefaultEase },
-      );
-      return;
-    }
-
-    if (!cutin) {
-      // `AVGShowItemPhotoSlot.Hide` resets the canvas group to alpha 1
-      // before the DOFade; only an interrupted Show ever notices the snap.
-      root.alpha = 1;
-      await this.tween(
-        fadeMs,
-        (progress) => {
-          root.alpha = 1 - progress;
-        },
-        () => {
-          root.removeFromParent();
-        },
-        { ease: dotweenDefaultEase },
-      );
-      return;
-    }
-
-    // Cutin `fade` Hide: canvas fade from the current alpha; the backdrop
-    // under the same canvas group fades with it.
-    const startAlpha = root.alpha;
-    await this.tween(
-      fadeMs,
-      (progress) => {
+      });
+    } else {
+      // Photo Hide snaps the canvas group to full opacity. Cutin `fade`
+      // starts from the current alpha.
+      if (!cutin) root.alpha = 1;
+      const startAlpha = root.alpha;
+      await this.tweenShowItem(root, fadeMs, (progress) => {
         root.alpha = startAlpha * (1 - progress);
-      },
+      });
+    }
+    this.removeShowItem(root);
+  }
+
+  private removeShowItem(root: Container): void {
+    if (this.showItemRoot !== root) return;
+    this.showItemRoot = null;
+    this.showItemCutin = null;
+    this.finishShowItemAnimation();
+    root.removeFromParent();
+  }
+
+  /**
+   * `AVGShowItemSlot.OnAnimEnd` (2791 @ 0x184245310) invokes the last
+   * callback installed by Show or Hide, even when an older tween ends first.
+   */
+  private tweenShowItem(
+    root: Container,
+    fadeMs: number,
+    step: (progress: number) => void,
+  ): Promise<void> {
+    const finished = Promise.withResolvers<void>();
+    this.showItemAnimationEnd = finished.resolve;
+    const tween = this.tween(
+      fadeMs,
+      step,
       () => {
-        root.removeFromParent();
+        if (this.showItemRoot === root) this.finishShowItemAnimation();
       },
-      { ease: dotweenDefaultEase },
+      {
+        ease: dotweenDefaultEase,
+        isAlive: () => root.parent === this.itemLayer,
+      },
     );
+    return Promise.race([tween, finished.promise]);
+  }
+
+  private finishShowItemAnimation(): void {
+    const finish = this.showItemAnimationEnd;
+    this.showItemAnimationEnd = null;
+    finish?.();
   }
 
   async showCgItem(input: CgItemInput): Promise<void> {
@@ -1905,6 +1912,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    * stamps sharing this layer must survive a hideitem.
    */
   async clearItems(fadeMs = 0, hasSlot = false): Promise<void> {
+    this.showItemSessionId += 1;
     const hide = this.hideShowItem(fadeMs);
     if (hasSlot) await hide;
     else void hide;
