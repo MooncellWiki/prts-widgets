@@ -804,6 +804,48 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
+  it("keeps an item that finishes showing during a segment skip until hideitem finishes", async () => {
+    const renderer = new FakeRenderer();
+    const shown = Promise.withResolvers<void>();
+    const hidden = Promise.withResolvers<void>();
+    const showItem = vi
+      .spyOn(renderer, "showItem")
+      .mockReturnValue(shown.promise);
+    const clearItems = vi
+      .spyOn(renderer, "clearItems")
+      .mockImplementation((_fadeMs, hasSlot) =>
+        hasSlot ? hidden.promise : undefined,
+      );
+    const runtime = new StoryRuntime(
+      createContext([
+        '[showitem(image="item_a")]',
+        '[name="A"]skipped',
+        "[SkipToThis]",
+        "[hideitem(fadetime=0.25)]",
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    expect(showItem).toHaveBeenCalledTimes(1);
+    const skipped = runtime.skipNode();
+    await setImmediate();
+    expect(clearItems).not.toHaveBeenCalled();
+
+    shown.resolve();
+    await setImmediate();
+    // AVGShowItemPanel.ShouldResetOnSkip is false. The destination hide
+    // sees the occupied slot and waits for its fade before playing dialogue.
+    expect(clearItems).toHaveBeenCalledExactlyOnceWith(250, true);
+    expect(renderer.lastDialogue.speaker).toBe("");
+
+    hidden.resolve();
+    await Promise.all([started, skipped]);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+  });
+
   it("drops the click follow-up of a skipped blocking spellsticker", async () => {
     let finishSticker!: () => void;
     const sticker = new Promise<number>((resolve) => {

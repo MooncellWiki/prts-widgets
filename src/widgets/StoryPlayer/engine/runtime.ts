@@ -28,10 +28,10 @@ import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
+import { ShowItemPanel } from "./panels/ShowItemPanel";
 import { StickerPanel } from "./panels/StickerPanel";
 import { SubtitlePanel } from "./panels/SubtitlePanel";
 import { parseScript } from "./parser";
-import { parseShowItemFadeStyle } from "./showitem";
 import { expandStoryText } from "./textVariables";
 
 import type { Context } from "../context";
@@ -128,8 +128,6 @@ const builtinCommandNames = [
   "largebg",
   "largeimg",
   "image",
-  "showitem",
-  "hideitem",
   "imagetween",
   "imagerotate",
   "largebgtween",
@@ -414,11 +412,6 @@ export class StoryRuntime {
    * (2.7.81 VA 0x183fc3be0), so a skip keeps both the map and the cursor.
    */
   private readonly labelMap: Map<string, number>;
-  /**
-   * Native port: Torappu.AVG.AVGShowItemPanel's single `_slotInUse`.
-   * It determines whether `_ExecuteHideItem` blocks.
-   */
-  private itemSlotInUse = false;
   private theaterMode = false;
   private theaterAutoPlayCache: AutoPlayState | null = null;
   private playbackGeneration = 0;
@@ -426,6 +419,7 @@ export class StoryRuntime {
   private state: PlayerState = "idle";
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
+  private readonly showItemPanel: ShowItemPanel;
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
   private pendingDelay: PendingDelay | null = null;
@@ -479,6 +473,11 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
+    this.showItemPanel = new ShowItemPanel(renderer, {
+      resolveImageKey: (key) => this.resolveImageKey(key),
+      warnInvalidParameter: (detail, line) =>
+        this.warn("invalid_parameter", detail, line.lineNumber, line.command),
+    });
     this.stickerPanel = new StickerPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       beginTyping: (length) => this.beginTextTyping(length),
@@ -499,6 +498,7 @@ export class StoryRuntime {
     });
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
+    this.showItemPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
     this.commandRegistry.register("spellsticker", (line) =>
@@ -1042,7 +1042,7 @@ export class StoryRuntime {
         this.cursor = this.lines.length;
         // Skipping past the last anchor ends the story, and the native reset
         // path tears a live show-item slot down on the way out.
-        this.resetItemSlot();
+        this.showItemPanel.reset();
       }
     }
 
@@ -1240,22 +1240,6 @@ export class StoryRuntime {
   }
 
   /**
-   * Native port: `Torappu.AVG.AVGShowItemPanel.OnReset` → `_Reset`
-   * (GameAssembly 2.7.61 @ 0x183E5C1B0). Story end and reset both funnel
-   * through the native reset path: a live `_slotInUse` gameObject is
-   * destroyed without delay and the reference cleared, so the item image and
-   * its black backdrop never outlive the story. Native also runs this after a
-   * skip cut the story short, hence the skipNode call site.
-   */
-  private resetItemSlot(): void {
-    // Native `_Reset` only acts while `_slotInUse` is non-null; after a
-    // hideitem (or a first reset) the slot is already gone.
-    if (!this.itemSlotInUse) return;
-    this.itemSlotInUse = false;
-    void this.renderer.clearItems(0);
-  }
-
-  /**
    * Native port: AVGController.MoveNext's end-of-story path (the bounds-check
    * exit at 2.7.81 VA 0x183fa6d3b). processLoop also reuses it for the web-only
    * guard on an out-of-range warp target, where native would throw instead.
@@ -1268,7 +1252,7 @@ export class StoryRuntime {
     this.renderer.clearAvgDisplays();
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
-    this.resetItemSlot();
+    this.showItemPanel.reset();
     // Native port: AVGController.OnStoryEnd (2791 VA 0x18416B9C0) calls every
     // component's OnReset once no new story is running, and
     // CommonExecutors.OnReset -> _ResetAudio (0x1841C6200) stops every SOUND
@@ -2339,99 +2323,6 @@ export class StoryRuntime {
           x: toNumber(this.exactArg(args, "x"), 0),
           y: toNumber(this.exactArg(args, "y"), 0),
         });
-        return "continue";
-      }
-
-      case "showitem": {
-        // Native port: Torappu.AVG.AVGShowItemPanel._ExecuteShowItem. `_slotStyles`
-        // only registers `photo` and `cutin`; `cg` and anything else
-        // miss _FindSlotStyle, which logs an error and finishes the command
-        // without rendering. Every shipped sample is the default `photo`.
-        const fadeMs = Math.max(
-          0,
-          Math.round(toNumber(this.exactArg(args, "fadetime"), 0.5) * 1000),
-        );
-        const style = toString(this.exactArg(args, "style"), "photo");
-        if (style !== "photo" && style !== "cutin") {
-          // The style lookup lives in `_ShowItem`, which the replacement branch
-          // only reaches through the old slot's `Hide` -> `b__0` (`_Reset`):
-          // a live slot still fades out with this command's fadetime and is
-          // destroyed before the LogError + FinishCommand.
-          if (this.itemSlotInUse) {
-            this.itemSlotInUse = false;
-            await this.renderer.clearItems(fadeMs, true);
-          }
-          this.warn(
-            "invalid_parameter",
-            `showitem style is not registered: ${style}`,
-            line.lineNumber,
-            line.command,
-          );
-          return "continue";
-        }
-
-        // Native `_ShowItem` (0x183E5C290) never guards an empty `image`
-        // (default ""): it still instantiates the slot, the sprite load fails
-        // and the slot fades in with only its 100x100 placeholder, blocking
-        // like any other showitem (and filling `_slotInUse` for a later
-        // hideitem). A null key takes the renderer's failed-load path, which
-        // draws exactly that.
-        const image = toString(this.exactArg(args, "image"));
-        const resolved = this.resolveImageKey(image);
-        if (!resolved)
-          this.warn(
-            "invalid_parameter",
-            "showitem: image is empty",
-            line.lineNumber,
-            line.command,
-          );
-
-        // Native port scope: AVGShowItemPanel._ExecuteShowItem / _ExecuteHideItem.
-        // Neither executor reads `block`: showitem always returns true, and
-        // hideitem returns true only while a slot is actually in use. The photo
-        // slot's serialized defaults are _defaultFadeTime 0.5 and
-        // _defaultBlackAlpha 0.4; offsetx/offsety default to a hardcoded 0.
-        await this.renderer.showItem({
-          // `GetFloat("black", 0.4)` applies no range constraint; out-of-range
-          // values saturate at blend time on the Unity side, and the renderer
-          // clamps at its draw sites to the same effect.
-          blackAlpha: toNumber(this.exactArg(args, "black"), 0.4),
-          block: true,
-          fadeMs,
-          // `fadestyle`/`width` are read only by the cutin slot's Show; an
-          // unknown fadestyle degrades to `fade` (native enum default).
-          fadeStyle: parseShowItemFadeStyle(
-            toString(this.exactArg(args, "fadestyle")),
-          ),
-          key: resolved,
-          offsetX: toNumber(this.exactArg(args, "offsetx"), 0),
-          offsetY: toNumber(this.exactArg(args, "offsety"), 0),
-          style,
-          width: toNumber(this.exactArg(args, "width"), Number.NaN),
-        });
-        this.itemSlotInUse = true;
-        return "continue";
-      }
-
-      case "hideitem": {
-        // Native port: Torappu.AVG.AVGShowItemPanel._ExecuteHideItem
-        // (GameAssembly 2.7.61 @ 0x183E5BCE0). The executor reads no story
-        // parameter for gating (`block` is ignored); no live slot returns
-        // false, a live slot always returns true and blocks until the slot's
-        // Hide tween completes (_Reset + FinishCommand). `fadetime` falls back
-        // to the slot's own serialized `_defaultFadeTime` (0.5s). The gate is
-        // the `_slotInUse` reference, which showitem fills even for an empty
-        // or unloadable image (that slot fades in with its placeholder,
-        // blocks, and later fades out), and `itemSlotInUse` follows it.
-        const hadItem = this.itemSlotInUse;
-        this.itemSlotInUse = false;
-        await this.renderer.clearItems(
-          Math.max(
-            0,
-            Math.round(toNumber(this.exactArg(args, "fadetime"), 0.5) * 1000),
-          ),
-          hadItem,
-        );
         return "continue";
       }
 
