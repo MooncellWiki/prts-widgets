@@ -27,6 +27,7 @@ import {
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
+import { CgItemPanel } from "./panels/CgItemPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { ShowItemPanel } from "./panels/ShowItemPanel";
@@ -154,9 +155,7 @@ const builtinCommandNames = [
   "focusparam",
   "theater",
   "bgeffect",
-  "cgitem",
   "effect",
-  "hidecgitem",
 ] as const;
 
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
@@ -218,38 +217,6 @@ function parseNumberSequence(value: unknown): number[] {
       return Number(normalized);
     })
     .filter((item) => Number.isFinite(item));
-}
-
-/**
- * Native port: `Torappu.AVG.CommandParser.ParseRotateParam` parses `rto` /
- * `rfrom` as Vector3 and feeds only the z component to `DORotate`. Scripts
- * are expected to write "x,y,z"; a bare number is accepted as a z-only
- * shorthand (web adaptation -- the native Vector3 parser is stricter, but no
- * shipped script writes the key at all, so the relaxation is harmless).
- */
-function parseCgVector2(value: unknown): { x: number; y: number } | undefined {
-  if (typeof value !== "string") return undefined;
-  const parts = value.split(",");
-  if (parts.length !== 2) return undefined;
-  const x = Number.parseFloat(parts[0]!.trim());
-  const y = Number.parseFloat(parts[1]!.trim());
-  return {
-    x: Number.isFinite(x) ? x : 0,
-    y: Number.isFinite(y) ? y : 0,
-  };
-}
-
-function parseCgColor(
-  value: unknown,
-): { r: number; g: number; b: number; a: number } | undefined {
-  if (typeof value !== "string") return undefined;
-  const parts = value.split(",");
-  if (parts.length !== 4) return undefined;
-  const values = parts.map((part) => {
-    const parsed = Number.parseFloat(part.trim());
-    return Number.isFinite(parsed) ? parsed : 1;
-  });
-  return { a: values[3]!, b: values[2]!, g: values[1]!, r: values[0]! };
 }
 
 function parseInterludeType(value: unknown): InterludeElementType {
@@ -489,6 +456,10 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
+    new CgItemPanel(renderer, {
+      resolveImageKey: (key) => this.resolveImageKey(key),
+      warn: (type, detail) => this.warn(type, detail),
+    }).register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
@@ -2322,116 +2293,6 @@ export class StoryRuntime {
           x: toNumber(this.exactArg(args, "x"), 0),
           y: toNumber(this.exactArg(args, "y"), 0),
         });
-        return "continue";
-      }
-
-      case "cgitem": {
-        // Native port: Torappu.AVG.AVGCgItemPanel._ExecuteShowCgItem. This
-        // adapter preserves the id-derived slot key and independent transform
-        const image = toString(this.exactArg(args, "image"));
-        const id = toString(this.exactArg(args, "id"));
-        const key = id ? `${image}_${id}` : image;
-        const style = toString(this.exactArg(args, "style"), "cg");
-        if (style === "blocker") {
-          // Native port scope: `AVGCgItemPanel._ShowItem` (2.7.81
-          // 0x183fb12b0) runs its common prefix (instantiate the style's
-          // slot prefab, dispose the old same-key entry, write
-          // m_slotsInUseDict, bind PostDisplay) for `style="blocker"` as
-          // well; it then skips the sprite load, calls the blocker slot's
-          // `Show(command, null, null)` and finishes the command at once.
-          // The web player has no such prefab, so the whole command is
-          // deliberately omitted here (corpus usage: 0).
-          this.warn(
-            "unsupported_command",
-            "cgitem style=blocker uses a native-only scene sprite",
-          );
-          return "continue";
-        }
-        if (style !== "cg") {
-          this.warn(
-            "invalid_parameter",
-            `cgitem style is not registered: ${style}`,
-          );
-          return "continue";
-        }
-        if (!image) {
-          this.warn("missing_asset", "cgitem: (empty)");
-          return "continue";
-        }
-        const resolved = this.resolveImageKey(image);
-        if (!resolved) {
-          this.warn("missing_asset", `cgitem: ${image}`);
-          return "continue";
-        }
-        const seconds = (name: string) =>
-          Math.max(0, toNumber(this.exactArg(args, name), 0) * 1000);
-        const colorFrom = parseCgColor(this.exactArg(args, "cfrom"));
-        const colorTo = parseCgColor(this.exactArg(args, "cto"));
-        await this.renderer.showCgItem({
-          alphaDelayMs: seconds("adelay"),
-          alphaDurationMs: seconds("aduration"),
-          alphaFrom: toNumber(this.exactArg(args, "afrom"), 1),
-          alphaTo: toNumber(this.exactArg(args, "ato"), 1),
-          assetKey: resolved,
-          block: toBoolean(this.exactArg(args, "block"), false),
-          colorFrom: colorFrom && colorTo ? colorFrom : undefined,
-          colorTo: colorFrom && colorTo ? colorTo : undefined,
-          // `AVGShowItemCgSlot.Show` (2.7.81 0x18405dde0) reads the curve with
-          // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`. In
-          // DOTween's `Ease` enum `Unset = 0, Linear = 1, InSine = 2`, so the
-          // default is `Ease.Linear`, not an eased curve; 185/188 corpus
-          // cgitem lines omit `ease` and therefore move linearly.
-          ease: toString(this.exactArg(args, "ease"), "Linear"),
-          height: Math.trunc(toNumber(this.exactArg(args, "height"), 0)),
-          key,
-          positionDelayMs: seconds("pdelay"),
-          positionDurationMs: seconds("pduration"),
-          positionFrom: parseCgVector2(this.exactArg(args, "pfrom")),
-          positionTo: parseCgVector2(this.exactArg(args, "pto")),
-          rotationDurationMs: seconds("rduration"),
-          rotationFrom: toNumber(this.exactArg(args, "rfrom"), -1),
-          rotationTo: toNumber(this.exactArg(args, "rto"), 0),
-          scaleDelayMs: seconds("sdelay"),
-          scaleDurationMs: seconds("sduration"),
-          scaleFrom: toNumber(this.exactArg(args, "sfrom"), 1),
-          scaleTo: toNumber(this.exactArg(args, "sto"), 1),
-          width: Math.trunc(toNumber(this.exactArg(args, "width"), 0)),
-        });
-        return "continue";
-      }
-
-      case "hidecgitem": {
-        // Native port: Torappu.AVG.AVGCgItemPanel._ExecuteHideCgItem. An omitted
-        // key clears all slots; a supplied image/id selects one.
-        const image = toString(this.exactArg(args, "image"));
-        const id = toString(this.exactArg(args, "id"));
-        const key = image || id ? (id ? `${image}_${id}` : image) : undefined;
-        // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) resolves the fade as
-        // `GetFloat(param, "fadetime", 0.13)` and then replaces it wholesale
-        // with `Command.TryGetParam(string, out float)` (0x183fbf5a0) when
-        // the script wrote `duration` -- no combining. TryGetParam hits on
-        // key presence and runs `Convert.ToSingle`, so an unparseable value
-        // throws in native; like toNumber, the port keeps fadetime instead of
-        // breaking playback. Clear-all fades every slot through the same
-        // `Hide`, so the override applies there too. It is exclusive to the
-        // CG slot: photo/cutin `Hide` (0x18405fc60 / 0x18405f0e0) read
-        // fadetime only, so `hideitem` is unaffected. Corpus:
-        // act54side/level_act54side_08_beg.txt:540-556 (keyed, duration=3/2)
-        // and act52side/level_act52side_08_end.txt:227 (clear-all,
-        // duration=2).
-        const fadeSeconds =
-          toOptionalNumber(this.exactArg(args, "duration")) ??
-          toNumber(this.exactArg(args, "fadetime"), 0.13);
-        await this.renderer.clearCgItems(
-          key,
-          Math.max(0, Math.round(fadeSeconds * 1000)),
-          // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) reads the curve
-          // with `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`;
-          // DOTween `Ease` 1 is Linear (`Unset` = 0, `InSine` = 2), the same
-          // default as Show. No corpus hidecgitem line writes `ease`.
-          toString(this.exactArg(args, "ease"), "Linear"),
-          toBoolean(this.exactArg(args, "block"), false),
-        );
         return "continue";
       }
 

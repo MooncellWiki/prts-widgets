@@ -269,14 +269,14 @@ describe("PixiStoryRenderer", () => {
       });
 
     expect(renderer.tween).not.toHaveBeenCalled();
-    expect(renderer.cgItemPanel.targets("a")[0].filters ?? []).toHaveLength(0);
+    expect(renderer.cgItemView.targets("a")[0].filters ?? []).toHaveLength(0);
     expect(renderer.charLayer.filters ?? []).toHaveLength(0);
   });
 
   it("binds a stored cgitem focus amount on show and drops it on dispose", async () => {
     const renderer = createFocusRenderer();
     const filtersOf = (key: string) =>
-      renderer.cgItemPanel.targets(key)[0].filters ?? [];
+      renderer.cgItemView.targets(key)[0].filters ?? [];
 
     // `SetWhenBind` stores the amount before the display object exists and
     // `TryRegister` replays it on registration.

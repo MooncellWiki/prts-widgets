@@ -52,9 +52,10 @@ function rgb(color: { r: number; g: number; b: number }): number {
 }
 
 /**
- * Port scope: `Torappu.AVG.AVGCgItemPanel._ExecuteShowCgItem` and
- * `_ExecuteHideCgItem`, including independent delayed tracks and clear-all's
- * non-blocking completion. PIXI sprites substitute for `AVGShowItemCgSlot`.
+ * Pixi adapter for `Torappu.AVG.AVGCgItemPanel`'s keyed slots, including
+ * independent delayed tracks and clear-all's non-blocking completion.
+ * Pixi sprites substitute for `AVGShowItemCgSlot`. Segment skips keep these
+ * slots alive because ShouldResetOnSkip (2791 @ 0x184189160) defaults to false.
  *
  * The command's `layer` parameter is deliberately not modelled: although
  * `AVGShowItemCgSlot.Show` reads it, it only reaches `_OverrideLayer` behind
@@ -63,7 +64,7 @@ function rgb(color: { r: number; g: number; b: number }): number {
  * false, so stacking follows slot instantiation order -- which is what adding
  * each root to `layer` in command order already reproduces.
  */
-export class CgItemPanel {
+export class CgItemView {
   private readonly states = new Map<string, CgItemState>();
   /**
    * Clear-all slots still fading out, mapped to their key. Native
@@ -82,7 +83,7 @@ export class CgItemPanel {
   ) {}
 
   async show(input: CgItemInput): Promise<void> {
-    // Native provenance: `AVGCgItemPanel._ShowItem` (0x183e35d80, 2.7.61)
+    // Native provenance: `AVGCgItemPanel._ShowItem` (2791 @ 0x18418ABF0)
     // instantiates the new slot, instantly `Dispose()`s the previous same-key
     // entry (no fade), and writes the new entry into `m_slotsInUseDict`
     // BEFORE any sprite work. Its `_LoadSprite` is a synchronous cached load

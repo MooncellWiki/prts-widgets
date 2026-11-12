@@ -83,7 +83,7 @@ import { SlideMaskFilter } from "./core/SlideMaskFilter";
 import { TweenRunner, type TweenRunOptions } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
-import { CgItemPanel } from "./panels/CgItemPanel";
+import { CgItemView } from "./panels/CgItemView";
 import {
   CharacterCutinPanel,
   type CutinCharacterArt,
@@ -518,7 +518,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly avgDisplayPanel: AvgDisplayPanel;
   private readonly spellStickerPanel: SpellStickerPanel;
   private readonly focusEffectPanel: FocusEffectPanel;
-  private readonly cgItemPanel: CgItemPanel;
+  private readonly cgItemView: CgItemView;
 
   private blockerSprite: Sprite | null = null;
   /**
@@ -630,7 +630,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       (durationMs, update, complete) =>
         this.tween(durationMs, update, complete),
     );
-    this.cgItemPanel = new CgItemPanel(
+    this.cgItemView = new CgItemView(
       this.layers.cgItems,
       (key) => this.textureForImageKey(key, "image"),
       (duration, update, complete) => this.tween(duration, update, complete),
@@ -760,7 +760,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.timerView?.destroy();
     this.timerView = null;
     this.focusEffectPanel.destroy();
-    this.cgItemPanel.destroy();
+    this.cgItemView.destroy();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
     this.backgroundTweenSessionId += 1;
@@ -1475,7 +1475,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   async showCgItem(input: CgItemInput): Promise<void> {
-    await this.cgItemPanel.show(input);
+    await this.cgItemView.show(input);
   }
 
   async clearCgItems(
@@ -1484,7 +1484,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     ease = "Linear",
     block = false,
   ): Promise<void> {
-    await this.cgItemPanel.hide(key, fadeMs, ease, block);
+    await this.cgItemView.hide(key, fadeMs, ease, block);
   }
 
   /**
@@ -2667,7 +2667,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
       case "cgitem": {
-        return this.cgItemPanel.targets(id);
+        return this.cgItemView.targets(id);
       }
       // `customchar` and unknown types never get here (hasFocusChannels).
       default: {

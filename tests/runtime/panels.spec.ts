@@ -398,6 +398,33 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("keeps raw cgitem slot keys separate from normalized asset keys", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image=" CG_Item ",id="Left")]',
+        '[hidecgitem(image=" CG_Item ",id="Left")]',
+        '[hidecgitem(id="Left")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.cgItemCalls).toEqual([
+      expect.objectContaining({
+        assetKey: "cg_item",
+        key: " CG_Item _Left",
+      }),
+    ]);
+    expect(renderer.clearCgItemCalls.map(({ key }) => key)).toEqual([
+      " CG_Item _Left",
+      "_Left",
+    ]);
+  });
+
   it("reads a trailing-dot cgitem alpha as a number, not the fallback", async () => {
     // level_main_15-01_end.txt:742 写的就是 `afrom = 0.`：native 的 Newtonsoft
     // 交给 Double.TryParse(NumberStyles.Float) 读成 0，cg 从透明淡入 3 秒；
