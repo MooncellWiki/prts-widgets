@@ -1,31 +1,23 @@
 import {
   Container,
-  Graphics,
+  type Graphics,
   NineSliceSprite,
-  Sprite,
+  type Sprite,
   Texture,
   TextureSource,
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createRenderer } from "../helpers/rendererFixtures";
+import {
+  createContext,
+  FakeAudio,
+  FakeRenderer,
+} from "../helpers/runtimeFakes";
 
-import type { ShowItemInput } from "../../src/widgets/StoryPlayer/engine/types";
-
-function createShowItemInput(
-  overrides: Partial<ShowItemInput> = {},
-): ShowItemInput {
-  return {
-    blackAlpha: 0.4,
-    block: true,
-    fadeMs: 500,
-    key: "item_a",
-    offsetX: 0,
-    offsetY: 0,
-    style: "photo",
-    ...overrides,
-  };
-}
+import type { TweenRunOptions } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import type { StoryShowItemSlot } from "../../src/widgets/StoryPlayer/engine/types";
 
 interface ManualTween {
   complete: () => void;
@@ -33,418 +25,310 @@ interface ManualTween {
   step: (progress: number) => void;
 }
 
-function createManualTweens(): {
-  tween: ReturnType<typeof vi.fn>;
-  tweens: ManualTween[];
-} {
+function createShowItemRenderer() {
+  const renderer = createRenderer();
+  const layer: Container = renderer.itemLayer;
   const tweens: ManualTween[] = [];
-  const tween = vi.fn(
-    (durationMs: number, step: (progress: number) => void, done?: () => void) =>
-      new Promise<void>((resolve) => {
-        tweens.push({
-          complete: () => {
-            step(1);
-            done?.();
-            resolve();
-          },
-          durationMs,
-          step,
-        });
-      }),
+  renderer.showItemFrameTextureFailed = true;
+  renderer.dialogFrameTextureFailed = true;
+  renderer.textureForImageKey = vi.fn(
+    async () => new Texture({ label: "item" }),
   );
-  return { tween, tweens };
+  renderer.tween = (
+    durationMs: number,
+    step: (progress: number) => void,
+    done?: () => void,
+    options?: TweenRunOptions,
+  ) =>
+    new Promise<void>((resolve) => {
+      tweens.push({
+        complete: () => {
+          if (options?.isAlive?.() !== false) step(1);
+          done?.();
+          resolve();
+        },
+        durationMs,
+        step,
+      });
+    });
+
+  return {
+    createSlot: (style: string): StoryShowItemSlot =>
+      renderer.createShowItemSlot(style),
+    createRuntime: (lines: string[]) => {
+      const playback = new FakeRenderer();
+      playback.createShowItemSlot = (style) =>
+        renderer.createShowItemSlot(style);
+      return new StoryRuntime(createContext(lines), playback, new FakeAudio());
+    },
+    layer,
+    renderer,
+    tweens,
+  };
 }
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-describe("PixiStoryRenderer", () => {
-  it("replaces the item slot by fading the old root out with the new command's fadetime", async () => {
-    const renderer = createRenderer();
-    // Skip the bundled frame texture load (not under test here).
-    renderer.showItemFrameTextureFailed = true;
-    const { tween, tweens } = createManualTweens();
-    renderer.tween = tween;
-    renderer.textureForImageKey = vi.fn(
-      async () => new Texture({ label: "item" }),
-    );
-
-    // Direct-show branch (`_slotInUse == null`): only the fade-in plays.
-    const firstCall = renderer.showItem(createShowItemInput());
+describe("ShowItemSlot rendering", () => {
+  it("replaces the slot by fading it out with the new command's fadetime", async () => {
+    const { createRuntime, layer, tweens } = createShowItemRenderer();
+    const runtime = createRuntime([
+      '[showitem(image="item_a")]',
+      '[showitem(image="item_b",fadetime=0.3)]',
+      '[name="A"]ok',
+    ]);
+    const started = runtime.start();
     await flushAsync();
     expect(tweens.map((entry) => entry.durationMs)).toEqual([500]);
-    tweens[0].complete();
-    await firstCall;
-    const firstRoot = renderer.itemLayer.children[0];
-    expect(firstRoot.alpha).toBe(1);
-
-    // Replacement branch: the old root fades out with the NEW command's
-    // fadetime first, then the new picture fades in (both stages block).
-    const secondCall = renderer.showItem(
-      createShowItemInput({ fadeMs: 300, key: "item_b" }),
-    );
+    const firstRoot = layer.children[0]!;
+    tweens[0]!.complete();
     await flushAsync();
+
     expect(tweens.map((entry) => entry.durationMs)).toEqual([500, 300]);
-    tweens[1].step(0.5);
+    tweens[1]!.step(0.5);
     expect(firstRoot.alpha).toBeCloseTo(0.5);
-    tweens[1].complete();
+    tweens[1]!.complete();
     await flushAsync();
     expect(firstRoot.parent).toBeNull();
     expect(tweens.map((entry) => entry.durationMs)).toEqual([500, 300, 300]);
-    tweens[2].complete();
-    await secondCall;
-    expect(renderer.itemLayer.children).toHaveLength(1);
-    expect(renderer.itemLayer.children[0]).not.toBe(firstRoot);
+    expect(runtime.getState()).toBe("running");
+    tweens[2]!.complete();
+    await started;
+    expect(layer.children).toHaveLength(1);
+    expect(layer.children[0]).not.toBe(firstRoot);
+    expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("takes the direct-show branch once the previous root left the layer", async () => {
-    const renderer = createRenderer();
-    // Skip the bundled frame texture load (not under test here).
-    renderer.showItemFrameTextureFailed = true;
-    const { tween, tweens } = createManualTweens();
-    renderer.tween = tween;
-    renderer.textureForImageKey = vi.fn(
-      async () => new Texture({ label: "item" }),
-    );
-
-    const firstCall = renderer.showItem(createShowItemInput());
+  it("starts the next show directly once hideitem has removed the old slot", async () => {
+    const { createRuntime, layer, tweens } = createShowItemRenderer();
+    const runtime = createRuntime([
+      '[showitem(image="item_a",fadetime=0)]',
+      "[hideitem(fadetime=0)]",
+      '[showitem(image="item_b",fadetime=0.3)]',
+      '[name="A"]ok',
+    ]);
+    const started = runtime.start();
     await flushAsync();
-    tweens[0].complete();
-    await firstCall;
-    // hideitem / scene reset already detached the root: `_slotInUse` is
-    // effectively cleared, so no fade-out stage may run.
-    renderer.itemLayer.children[0].removeFromParent();
 
-    const secondCall = renderer.showItem(
-      createShowItemInput({ fadeMs: 300, key: "item_b" }),
-    );
-    await flushAsync();
-    expect(tweens.map((entry) => entry.durationMs)).toEqual([500, 300]);
-    tweens[1].complete();
-    await secondCall;
-    expect(renderer.itemLayer.children).toHaveLength(1);
+    expect(tweens.map((entry) => entry.durationMs)).toEqual([300]);
+    tweens[0]!.complete();
+    await started;
+    expect(layer.children).toHaveLength(1);
   });
 
-  it("keeps an animtext root on the shared item layer when swapping items", async () => {
-    const renderer = createRenderer();
-    // Skip the bundled frame texture load (not under test here).
-    renderer.showItemFrameTextureFailed = true;
-    renderer.textureForImageKey = vi.fn(
-      async () => new Texture({ label: "item" }),
-    );
-    // animtext renders into the same layer but is a separate native panel;
-    // swapping the show-item slot must not sweep it away.
-    const animTextRoot = new Container();
-    renderer.itemLayer.addChild(animTextRoot);
+  it("keeps animtext on the shared layer when swapping and hiding items", async () => {
+    const { createRuntime, layer } = createShowItemRenderer();
+    const animTextRoot = layer.addChild(new Container());
+    const runtime = createRuntime([
+      '[showitem(image="item_a",fadetime=0)]',
+      '[showitem(image="item_b",fadetime=0)]',
+      '[name="A"]before hide',
+      "[hideitem(fadetime=0)]",
+      '[name="A"]after hide',
+    ]);
 
-    await renderer.showItem(createShowItemInput({ fadeMs: 0 }));
-    await renderer.showItem(createShowItemInput({ fadeMs: 0, key: "item_b" }));
+    await runtime.start();
+    expect(layer.children[0]).toBe(animTextRoot);
+    expect(layer.children).toHaveLength(2);
+    await runtime.advance();
+    expect(layer.children).toEqual([animTextRoot]);
+  });
 
-    expect(animTextRoot.parent).toBe(renderer.itemLayer);
-    expect(renderer.itemLayer.children).toHaveLength(2);
+  it("leaves the shared layer alone when hideitem has no slot", async () => {
+    const { createRuntime, layer, tweens } = createShowItemRenderer();
+    const stamp = layer.addChild(new Container());
+    await createRuntime(["[hideitem]", '[name="A"]ok']).start();
+
+    expect(layer.children).toEqual([stamp]);
+    expect(tweens).toHaveLength(0);
   });
 
   it("plays the placeholder fade when the item texture fails to load", async () => {
-    const renderer = createRenderer();
-    // Both the item texture and the bundled frame texture are unavailable:
-    // the root keeps the black backdrop and the 100x100 white `image_item`
-    // placeholder a sprite-less Unity Image still draws.
-    renderer.showItemFrameTextureFailed = true;
-    const { tween, tweens } = createManualTweens();
-    renderer.tween = tween;
+    const { createSlot, layer, renderer, tweens } = createShowItemRenderer();
     renderer.textureForImageKey = vi.fn(async () => null);
+    const finished = vi.fn();
+    await createSlot("photo").show({}, "item_a", finished);
 
-    // `AVGShowItemSlot.Show` skips only the sprite assignment on a failed
-    // load; the slot still fades in and blocks for fadetime.
-    const call = renderer.showItem(createShowItemInput());
-    await flushAsync();
-    expect(renderer.itemLayer.children).toHaveLength(1);
-    const root = renderer.itemLayer.children[0];
-    expect(root.children).toHaveLength(2);
-    const placeholder = root.children[1].children[0];
-    expect(placeholder).toBeInstanceOf(Graphics);
+    const root = layer.children[0]!;
+    const placeholder = root.children[1]!.children[0] as Sprite;
+    expect(placeholder.texture).toBe(Texture.WHITE);
     expect(placeholder.width).toBe(100);
     expect(placeholder.height).toBe(100);
     expect(tweens.map((entry) => entry.durationMs)).toEqual([500]);
-    tweens[0].complete();
-    await call;
+    expect(finished).not.toHaveBeenCalled();
+    tweens[0]!.complete();
     expect(root.alpha).toBe(1);
+    expect(finished).toHaveBeenCalledTimes(1);
   });
 
-  it("wraps the item in the nine-slice photo frame at native size plus 32px per side", async () => {
-    const renderer = createRenderer();
-    // Pre-stub the bundled frame texture like the blocker slide-mask specs;
-    // a real-sized item source pins the frame dimensions.
+  it("fits the nine-slice photo frame to the image's native size and offset", async () => {
+    const { createSlot, layer, renderer } = createShowItemRenderer();
     renderer.showItemFrameTexture = new Texture({ label: "frame" });
     renderer.textureForImageKey = vi.fn(
       async () =>
-        new Texture({
-          label: "item",
-          source: new TextureSource({ height: 529, width: 941 }),
-        }),
+        new Texture({ source: new TextureSource({ height: 529, width: 941 }) }),
+    );
+    await createSlot("photo").show(
+      { fadetime: 0, offsetx: 30, offsety: 20 },
+      "item_a",
+      vi.fn(),
     );
 
-    await renderer.showItem(
-      createShowItemInput({ fadeMs: 0, offsetX: 30, offsetY: 20 }),
-    );
-
-    const root = renderer.itemLayer.children[0];
-    const content = root.children[root.children.length - 1];
-    expect(content.children[0]).toBeInstanceOf(NineSliceSprite);
+    const content = layer.children[0]!.children[1]!;
     const frame = content.children[0] as NineSliceSprite;
+    expect(frame).toBeInstanceOf(NineSliceSprite);
     expect(frame.leftWidth).toBe(32);
     expect(frame.topHeight).toBe(32);
     expect(frame.rightWidth).toBe(32);
     expect(frame.bottomHeight).toBe(32);
-    // Fitter: `background` tracks `image_item` size + 32px padding per side.
     expect(frame.width).toBe(941 + 32 * 2);
     expect(frame.height).toBe(529 + 32 * 2);
-    // The item sprite stays at its native size and renders above the frame.
     const sprite = content.children[1] as Sprite;
-    expect(sprite).toBeInstanceOf(Sprite);
     expect(sprite.scale.x).toBe(1);
     expect(sprite.scale.y).toBe(1);
-    // `offsetx/offsety` move `_image` (the fitter tracks it with the frame);
-    // Unity's y axis points up, PIXI's down.
     expect(content.position.x).toBe(1280 / 2 + 30);
     expect(content.position.y).toBe(720 / 2 - 20);
   });
 
-  it("snaps the photo root to alpha 1 and lets the first tween finish the hide", async () => {
-    const renderer = createRenderer();
-    renderer.showItemFrameTextureFailed = true;
-    renderer.textureForImageKey = vi.fn(
-      async () => new Texture({ label: "item" }),
-    );
-    const { tween, tweens } = createManualTweens();
-    renderer.tween = tween;
-
-    // Show still mid-fade when hideitem lands: the root sits below alpha 1.
-    const showCall = renderer.showItem(createShowItemInput());
-    await flushAsync();
-    const root = renderer.itemLayer.children[0];
+  it("snaps photo alpha to 1 and lets the first tween finish the current hide", async () => {
+    const { createSlot, layer, tweens } = createShowItemRenderer();
+    const slot = createSlot("photo");
+    const shown = vi.fn();
+    const hidden = vi.fn(() => slot.destroy());
+    await slot.show({}, "item_a", shown);
+    const root = layer.children[0]!;
     expect(root.alpha).toBe(0);
 
-    // `AVGShowItemPhotoSlot.Hide` resets the canvas group to alpha 1 before
-    // the DOFade to 0, so the fade always starts from full visibility.
-    const hideCall = renderer.clearItems(300, true);
-    await flushAsync();
+    slot.hide({ fadetime: 0.3 }, hidden);
     expect(root.alpha).toBe(1);
-    tweens[1].step(0.5);
+    tweens[1]!.step(0.5);
     expect(root.alpha).toBeCloseTo(0.5);
-    // Both tweens call the slot's OnAnimEnd. Show can finish first and
-    // invoke the Hide callback that took over the slot.
-    tweens[0].complete();
-    await flushAsync();
+    tweens[0]!.complete();
     expect(root.parent).toBeNull();
-    await Promise.all([showCall, hideCall]);
+    tweens[1]!.complete();
+
+    expect(shown).not.toHaveBeenCalled();
+    expect(hidden).toHaveBeenCalledTimes(1);
   });
 
-  it("plays the cutin fade style as a plain canvas fade over the immediate backdrop", async () => {
-    const renderer = createRenderer();
-    renderer.dialogFrameTexture = new Texture({ label: "header" });
+  it("plays cutin fade over the full-width mask and hides from current alpha", async () => {
+    const { createSlot, layer, renderer, tweens } = createShowItemRenderer();
     renderer.textureForImageKey = vi.fn(
       async () =>
-        new Texture({
-          label: "item",
-          source: new TextureSource({ height: 529, width: 941 }),
-        }),
+        new Texture({ source: new TextureSource({ height: 529, width: 941 }) }),
     );
-    const { tween, tweens } = createManualTweens();
-    renderer.tween = tween;
+    const slot = createSlot("cutin");
+    await slot.show({ fadetime: 0.4 }, "item_a", vi.fn());
 
-    const call = renderer.showItem(
-      createShowItemInput({ fadeMs: 400, style: "cutin" }),
-    );
-    await flushAsync();
-    const state = renderer.showItemCutin;
-    const root = renderer.itemLayer.children[0];
-    // `fade` keeps the mask window at full extent and fades the canvas group;
-    // the backdrop is already at `black` (SetAlpha applies immediately).
-    expect(state).not.toBeNull();
-    expect(state.fadeStyle).toBe("fade");
-    // No `width` key: the window defaults to the sprite's native width.
-    expect(state.maskW).toBe(941);
-    expect(state.maskH).toBe(720);
-    expect(state.backdrop.alpha).toBeCloseTo(0.4);
+    const root = layer.children[0]!;
+    const [backdrop, mask] = root.children as Graphics[];
+    expect(mask!.width).toBe(941);
+    expect(mask!.height).toBe(720);
+    expect(backdrop!.alpha).toBeCloseTo(0.4);
     expect(root.alpha).toBe(0);
-    tweens[0].complete();
-    await call;
+    tweens[0]!.complete();
     expect(root.alpha).toBe(1);
 
-    // Cutin `fade` Hide fades from the CURRENT alpha (no photo-style snap).
     root.alpha = 0.4;
-    const hideCall = renderer.clearItems(300, true);
-    await flushAsync();
-    tweens[1].step(0.5);
+    slot.hide({ fadetime: 0.3 }, () => slot.destroy());
+    tweens[1]!.step(0.5);
     expect(root.alpha).toBeCloseTo(0.2);
-    tweens[1].complete();
-    await hideCall;
+    tweens[1]!.complete();
     expect(root.parent).toBeNull();
-    expect(renderer.showItemCutin).toBeNull();
   });
 
-  it("expands the cutin mask window from the styled edge while the backdrop cross-fades", async () => {
-    const renderer = createRenderer();
-    renderer.dialogFrameTexture = new Texture({ label: "header" });
-    renderer.textureForImageKey = vi.fn(
-      async () =>
-        new Texture({
-          label: "item",
-          source: new TextureSource({ height: 529, width: 941 }),
-        }),
-    );
-    const { tween, tweens } = createManualTweens();
-    renderer.tween = tween;
+  it.each([2, "2", " horiz_expand_left2right "])(
+    "expands and collapses the cutin window for fadestyle %s",
+    async (fadestyle) => {
+      const { createSlot, layer, tweens } = createShowItemRenderer();
+      const slot = createSlot("cutin");
+      await slot.show({ fadestyle, width: 200.5 }, "item_a", vi.fn());
 
-    const call = renderer.showItem(
-      createShowItemInput({
-        fadeMs: 400,
-        fadeStyle: "horiz_expand_left2right",
-        style: "cutin",
-        width: 200.5,
-      }),
-    );
+      const root = layer.children[0]!;
+      const [backdrop, mask] = root.children as Graphics[];
+      expect(root.alpha).toBe(1);
+      expect(mask!.width).toBe(0);
+      expect(mask!.height).toBe(720);
+      expect(backdrop!.alpha).toBe(0);
+      tweens[0]!.step(0.5);
+      // GetInt rounds 200.5 to the even integer 200.
+      expect(mask!.width).toBeCloseTo(100);
+      expect(mask!.getLocalBounds().minX).toBeCloseTo(1280 / 2 - 100);
+      expect(backdrop!.alpha).toBeCloseTo(0.2);
+      tweens[0]!.complete();
+      expect(mask!.width).toBe(200);
+
+      slot.hide({ fadetime: 0.3 }, () => slot.destroy());
+      tweens[1]!.step(0.5);
+      expect(mask!.width).toBeCloseTo(100);
+      expect(backdrop!.alpha).toBeCloseTo(0.2);
+      expect(root.alpha).toBe(1);
+      tweens[1]!.complete();
+      expect(root.parent).toBeNull();
+    },
+  );
+
+  it("clears a fading slot and discards its pending replacement on destroy", async () => {
+    const { createRuntime, layer, renderer, tweens } = createShowItemRenderer();
+    const runtime = createRuntime([
+      '[showitem(image="item_a",fadetime=0)]',
+      '[showitem(image="item_b",fadetime=0.3)]',
+    ]);
+    const started = runtime.start();
     await flushAsync();
-    const state = renderer.showItemCutin;
-    const root = renderer.itemLayer.children[0];
-    // Expand styles keep the canvas group opaque; the window starts at zero
-    // width (pinned to the band's left edge) and the black starts at 0.
-    expect(root.alpha).toBe(1);
-    expect(state.maskW).toBe(0);
-    expect(state.maskH).toBe(720);
-    expect(state.backdrop.alpha).toBe(0);
-    tweens[0].step(0.5);
-    // The native GetInt rounds 200.5 to the even integer 200.
-    expect(state.maskW).toBeCloseTo(100);
-    expect(state.backdrop.alpha).toBeCloseTo(0.2);
-    tweens[0].complete();
-    await call;
-    expect(state.maskW).toBe(200);
-
-    // Hide collapses the window back along the same edge (left pinned) and
-    // fades the black out; the canvas group stays opaque.
-    const hideCall = renderer.clearItems(300, true);
-    await flushAsync();
-    tweens[1].step(0.5);
-    expect(state.maskW).toBeCloseTo(100);
-    expect(state.backdrop.alpha).toBeCloseTo(0.2);
-    expect(root.alpha).toBe(1);
-    tweens[1].complete();
-    await hideCall;
-    expect(root.parent).toBeNull();
-    expect(renderer.showItemCutin).toBeNull();
-  });
-
-  it("clearItems removes only the show-item root and leaves animtext stamps alone", async () => {
-    const renderer = createRenderer();
-    // Native hideitem only fades the show-item slot; animtext is a separate
-    // panel, but the web port mounts both on itemLayer, so clearItems must
-    // track the slot root explicitly instead of fading the whole layer.
-    const itemRoot = new Container();
-    const stamp = new Container();
-    renderer.itemLayer.addChild(stamp);
-    renderer.itemLayer.addChild(itemRoot);
-    renderer.showItemRoot = itemRoot;
-
-    await renderer.clearItems(0);
-
-    expect(itemRoot.parent).toBeNull();
-    expect(renderer.showItemRoot).toBeNull();
-    expect(stamp.parent).toBe(renderer.itemLayer);
-  });
-
-  it("clearItems with no live slot leaves the layer untouched", async () => {
-    const renderer = createRenderer();
-    const stamp = new Container();
-    renderer.itemLayer.addChild(stamp);
-    renderer.showItemRoot = null;
-
-    await renderer.clearItems(0);
-    await renderer.clearItems(500, true);
-
-    expect(stamp.parent).toBe(renderer.itemLayer);
-  });
-
-  it("clears the fading root and cancels its pending replacement on reset", async () => {
-    const renderer = createRenderer();
-    renderer.showItemFrameTextureFailed = true;
-    renderer.textureForImageKey = vi.fn(
-      async () => new Texture({ label: "item" }),
-    );
-    const { tween, tweens } = createManualTweens();
-    renderer.tween = tween;
-    await renderer.showItem(createShowItemInput({ fadeMs: 0 }));
-    const oldRoot = renderer.showItemRoot;
-
-    const replacement = renderer.showItem(
-      createShowItemInput({ fadeMs: 300, key: "item_b" }),
-    );
     expect(tweens).toHaveLength(1);
-    await renderer.clearItems(0);
 
-    expect(oldRoot.parent).toBeNull();
-    await replacement;
+    runtime.destroy();
+    await started;
+    tweens[0]!.complete();
     expect(renderer.textureForImageKey).toHaveBeenCalledTimes(1);
-    expect(renderer.itemLayer.children).toHaveLength(0);
+    expect(layer.children).toHaveLength(0);
   });
 
-  it("does not mount a show-item root after reset during its texture load", async () => {
-    const renderer = createRenderer();
-    renderer.showItemFrameTextureFailed = true;
+  it("does not mount a slot after destroy during the texture load", async () => {
+    const { createRuntime, layer, renderer } = createShowItemRenderer();
     const texture = Promise.withResolvers<Texture>();
     renderer.textureForImageKey = vi.fn(() => texture.promise);
-
-    const showing = renderer.showItem(createShowItemInput({ fadeMs: 0 }));
+    const runtime = createRuntime(['[showitem(image="item_a",fadetime=0)]']);
+    const started = runtime.start();
     expect(renderer.textureForImageKey).toHaveBeenCalledExactlyOnceWith(
       "item_a",
       "image",
     );
-    await renderer.clearItems(0);
-    texture.resolve(new Texture({ label: "item" }));
-    await showing;
 
-    expect(renderer.itemLayer.children).toHaveLength(0);
+    runtime.destroy();
+    await started;
+    texture.resolve(new Texture({ label: "item" }));
+    await flushAsync();
+    expect(layer.children).toHaveLength(0);
   });
 
-  it("skips the texture lookup for an empty image but keeps the framed placeholder slot", async () => {
-    const renderer = createRenderer();
+  it("keeps a framed placeholder without looking up an empty image", async () => {
+    const { createSlot, layer, renderer } = createShowItemRenderer();
     renderer.showItemFrameTexture = new Texture({ label: "frame" });
-    renderer.textureForImageKey = vi.fn(
-      async () => new Texture({ label: "item" }),
-    );
+    await createSlot("photo").show({ fadetime: 0 }, null, vi.fn());
 
-    await renderer.showItem(createShowItemInput({ fadeMs: 0, key: null }));
-
-    // Native still instantiates the slot: backdrop plus the frame around the
-    // serialized 100x100 white `_image` placeholder, without a sprite.
     expect(renderer.textureForImageKey).not.toHaveBeenCalled();
-    const root = renderer.itemLayer.children[0];
-    const content = root.children.at(-1)!;
-    expect(content.children).toHaveLength(2);
-    const frame = content.children[0] as NineSliceSprite;
+    const content = layer.children[0]!.children[1]!;
+    const [frame, image] = content.children as [NineSliceSprite, Sprite];
     expect(frame.width).toBe(100 + 32 * 2);
     expect(frame.height).toBe(100 + 32 * 2);
-    expect(content.children[1]).toBeInstanceOf(Graphics);
+    expect(image.texture).toBe(Texture.WHITE);
   });
 
   it("hangs the cutin header 150px into the window top, rotated 180 degrees", async () => {
-    const renderer = createRenderer();
+    const { createSlot, layer, renderer } = createShowItemRenderer();
     renderer.dialogFrameTexture = new Texture({
       label: "header",
       source: new TextureSource({ height: 310, width: 4 }),
     });
-    renderer.textureForImageKey = vi.fn(
-      async () => new Texture({ label: "item" }),
+    await createSlot("cutin").show(
+      { fadetime: 0, width: 200 },
+      "item_a",
+      vi.fn(),
     );
 
-    await renderer.showItem(
-      createShowItemInput({ fadeMs: 0, style: "cutin", width: 200 }),
-    );
-
-    // `header` is a 200px child of the plate: pivot bottom-center at 50px
-    // above the window top, rotated 180°, so the mask clips 50px and 150px
-    // hang into the window (upside down) across the full window width.
-    const header = renderer.showItemCutin.header as Sprite;
+    const header = layer.children[0]!.children[2]!.children[1] as Sprite;
     expect(header.rotation).toBeCloseTo(Math.PI);
     expect(header.anchor.x).toBe(0.5);
     expect(header.anchor.y).toBe(1);
@@ -452,7 +336,6 @@ describe("PixiStoryRenderer", () => {
     expect(header.height).toBeCloseTo(200);
     expect(header.position.x).toBeCloseTo(0);
     expect(header.position.y).toBeCloseTo(-360 - 50);
-    // The 720-tall window spans the stage, so its top edge sits at y = 0.
     const bounds = header.getBounds();
     expect(bounds.minY).toBeCloseTo(-50);
     expect(bounds.maxY).toBeCloseTo(150);

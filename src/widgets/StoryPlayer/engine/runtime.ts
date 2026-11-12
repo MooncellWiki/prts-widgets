@@ -1213,6 +1213,7 @@ export class StoryRuntime {
     this.lineSeek = null;
     this.decisionPanel.destroy();
     this.dialogPanel.destroy();
+    this.showItemPanel.reset();
     this.stopPlaybackInput();
     this.playbackGeneration += 1;
     this.interruptPendingWait();

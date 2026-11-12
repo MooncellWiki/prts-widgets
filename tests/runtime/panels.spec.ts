@@ -110,7 +110,7 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("shows and hides story items with legacy defaults", async () => {
+  it("selects the default photo slot and sends hideitem to it", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];
     const runtime = new StoryRuntime(
@@ -128,48 +128,19 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    // The photo slot's serialized defaults: _defaultFadeTime 0.5 and
-    // _defaultBlackAlpha 0.4, with offsetx/offsety hardcoded to 0. `width`
-    // falls back to the sprite's native size (signalled as NaN here) and
-    // `fadestyle` stays unset (photo never reads it).
+    // The panel selects the slot and forwards the command's original params.
     expect(renderer.showItemCalls).toEqual([
       {
-        blackAlpha: 0.4,
-        block: true,
-        fadeMs: 500,
+        args: { image: "item_act12side_1" },
         key: "item_act12side_1",
-        offsetX: 0,
-        offsetY: 0,
         style: "photo",
-        width: Number.NaN,
       },
     ]);
-    // hideitem does not read `block` either: it blocks whenever a slot was in
-    // use, which it is here because the preceding showitem filled it.
-    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 500, hasSlot: true }]);
+    expect(renderer.hideItemCalls).toEqual([{}]);
+    expect(renderer.destroyItemCalls).toBe(1);
     expect(warnings).toEqual([]);
     expect(runtime.getState()).toBe("waiting_input");
   });
-
-  it.each(["2", '"2"', '" horiz_expand_left2right "'])(
-    "reads cutin fadestyle %s with the native enum rules",
-    async (fadestyle) => {
-      const renderer = new FakeRenderer();
-      const runtime = new StoryRuntime(
-        createContext([
-          `[showitem(style="cutin",image="item_a",fadestyle=${fadestyle})]`,
-          '[name="A"]ok',
-        ]),
-        renderer,
-        new FakeAudio(),
-      );
-
-      await runtime.start();
-      expect(renderer.showItemCalls).toMatchObject([
-        { fadeStyle: "horiz_expand_left2right", style: "cutin" },
-      ]);
-    },
-  );
 
   it("destroys a lingering show-item slot when playback reaches the story end", async () => {
     const renderer = new FakeRenderer();
@@ -186,7 +157,7 @@ describe("StoryRuntime", () => {
 
     // The script never runs hideitem; the item stays on screen through the
     // last dialogue line...
-    expect(renderer.clearItemsCalls).toEqual([]);
+    expect(renderer.destroyItemCalls).toBe(0);
     expect(runtime.getState()).toBe("waiting_input");
 
     await runtime.advance();
@@ -194,7 +165,8 @@ describe("StoryRuntime", () => {
     // ...and the end-of-story reset (native AVGShowItemPanel.OnReset →
     // _Reset) tears it down without a fade.
     expect(runtime.getState()).toBe("finished");
-    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 0, hasSlot: false }]);
+    expect(renderer.destroyItemCalls).toBe(1);
+    expect(renderer.hideItemCalls).toEqual([]);
   });
 
   it("destroys a lingering show-item slot when a skip ends the story", async () => {
@@ -213,14 +185,15 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
 
-    expect(renderer.clearItemsCalls).toEqual([]);
+    expect(renderer.destroyItemCalls).toBe(0);
 
     await runtime.skipNode();
 
     // Skipping past the last anchor ends the story, and the native reset
     // path destroys a live show-item slot on the way out.
     expect(runtime.getState()).toBe("finished");
-    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 0, hasSlot: false }]);
+    expect(renderer.destroyItemCalls).toBe(1);
+    expect(renderer.hideItemCalls).toEqual([]);
   });
 
   it("warns and still plays the placeholder slot for a showitem without an image", async () => {
@@ -243,9 +216,10 @@ describe("StoryRuntime", () => {
     // the sprite load fails and the placeholder fade still plays, so the
     // following hideitem finds a live `_slotInUse` and blocks.
     expect(renderer.showItemCalls).toEqual([
-      expect.objectContaining({ fadeMs: 500, key: null }),
+      expect.objectContaining({ key: null }),
     ]);
-    expect(renderer.clearItemsCalls).toEqual([{ fadeMs: 500, hasSlot: true }]);
+    expect(renderer.hideItemCalls).toEqual([{}]);
+    expect(renderer.destroyItemCalls).toBe(1);
     expect(warnings).toEqual([
       expect.objectContaining({
         command: "showitem",
@@ -276,10 +250,10 @@ describe("StoryRuntime", () => {
     // fadetime) and `_Reset` before `_ShowItem` misses the style, so the later
     // hideitem has no slot left to block on.
     expect(renderer.showItemCalls.map((call) => call.key)).toEqual(["item_a"]);
-    expect(renderer.clearItemsCalls).toEqual([
-      { fadeMs: 200, hasSlot: true },
-      { fadeMs: 500, hasSlot: false },
+    expect(renderer.hideItemCalls).toEqual([
+      { fadetime: 0.2, image: "item_b", style: "cg" },
     ]);
+    expect(renderer.destroyItemCalls).toBe(1);
     expect(warnings).toEqual([
       expect.objectContaining({
         detail: "showitem style is not registered: cg",

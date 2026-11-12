@@ -1,40 +1,24 @@
-import { exactArg, toNumber, toString } from "../commandParams";
-import { parseShowItemFadeStyle } from "../showitem";
+import { exactArg, toString } from "../commandParams";
 
 import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
   ParsedCommandLine,
-  StoryCommandArgs,
   StoryRenderer,
+  StoryShowItemSlot,
 } from "../types";
 
 interface ShowItemPlayback {
   resolveImageKey: (key: string) => string | null;
-  /** Resolves to true if playback was interrupted before the animation ended. */
   waitForAnimation: (animation: Promise<void>) => Promise<boolean>;
   warnInvalidParameter: (detail: string, line: ParsedCommandLine) => void;
 }
 
-/** Both native slots default to 0.5s and read fadetime without animateRatio. */
-function readFadeMs(args: StoryCommandArgs): number {
-  return Math.max(
-    0,
-    Math.round(toNumber(exactArg(args, "fadetime"), 0.5) * 1000),
-  );
-}
-
-/**
- * Native port: Torappu.AVG.AVGShowItemPanel (2791 GetExecutors @ 0x1841B1690).
- * The Web panel tracks whether the single slot is occupied. StoryRenderer
- * owns its visual state and resolves the promises that stand in for FinishCommand.
- */
+/** Native port: Torappu.AVG.AVGShowItemPanel (2791 GetExecutors @ 0x1841B1690). */
 export class ShowItemPanel {
-  // Keep the slot occupied through the tween. A newer operation owns the
-  // slot once it starts, so an older fade-out cannot clear that state.
-  private slotInUse: symbol | null = null;
+  private slotInUse: StoryShowItemSlot | null = null;
 
   constructor(
-    private readonly renderer: Pick<StoryRenderer, "clearItems" | "showItem">,
+    private readonly renderer: Pick<StoryRenderer, "createShowItemSlot">,
     private readonly playback: ShowItemPlayback,
   ) {}
 
@@ -44,79 +28,82 @@ export class ShowItemPanel {
   }
 
   /**
-   * Native OnReset → _Reset (2791 @ 0x1841B1820 / 0x1841B1DE0) destroys
-   * an occupied slot immediately. ShouldResetOnSkip defaults to false, so
-   * the runtime calls reset at story end and keeps the slot on segment jumps.
+   * OnReset → _Reset (2791 @ 0x1841B1820 / 0x1841B1DE0). Segment jumps
+   * release the command wait and leave the slot alone (ShouldResetOnSkip).
    */
   reset(): void {
-    if (!this.slotInUse) return;
+    const slot = this.slotInUse;
     this.slotInUse = null;
-    void this.renderer.clearItems(0);
+    slot?.destroy();
   }
 
   private async executeShowItem(
     line: ParsedCommandLine,
   ): Promise<CommandResult> {
-    const { args } = line;
-    const fadeMs = readFadeMs(args);
-    const style = toString(exactArg(args, "style"), "photo");
-    if (style !== "photo" && style !== "cutin") {
-      // The replacement callback (2791 @ 0x1841B6290) hides and resets
-      // the old slot before _ShowItem attempts its style lookup.
-      if (this.slotInUse) {
-        const interrupted = await this.playback.waitForAnimation(
-          this.fadeOut(fadeMs),
-        );
-        if (interrupted) return "continue";
-      }
-      this.playback.warnInvalidParameter(
-        `showitem style is not registered: ${style}`,
-        line,
-      );
-      return "continue";
-    }
-
-    // Native _ShowItem still creates a slot when the sprite is missing. A
-    // null key uses the renderer's 100×100 placeholder path.
-    const key = this.playback.resolveImageKey(
-      toString(exactArg(args, "image")),
-    );
-    if (!key)
-      this.playback.warnInvalidParameter("showitem: image is empty", line);
-
-    // _ShowItem (2791 @ 0x1841B1EC0) assigns the slot before starting Show.
-    // SkipStory can release the command's wait while the slot is still live.
-    this.slotInUse = Symbol();
-    const animation = this.renderer.showItem({
-      // Native SetAlpha takes the unclamped value; the renderer clamps at blend.
-      blackAlpha: toNumber(exactArg(args, "black"), 0.4),
-      block: true,
-      fadeMs,
-      fadeStyle: parseShowItemFadeStyle(toString(exactArg(args, "fadestyle"))),
-      key,
-      offsetX: toNumber(exactArg(args, "offsetx"), 0),
-      offsetY: toNumber(exactArg(args, "offsety"), 0),
-      style,
-      width: toNumber(exactArg(args, "width"), Number.NaN),
+    const animation = new Promise<void>((finish, reject) => {
+      const show = () => {
+        void this.showItem(line, finish).catch(reject);
+      };
+      // _ExecuteShowItem @ 0x1841B1A40 gives the new command to the old slot.
+      // Its Hide callback resets the slot before the new style lookup.
+      if (this.slotInUse) this.hideItem(this.slotInUse, line, show);
+      else show();
     });
     await this.playback.waitForAnimation(animation);
     return "continue";
   }
 
+  private async showItem(
+    line: ParsedCommandLine,
+    finish: () => void,
+  ): Promise<void> {
+    const style = toString(exactArg(line.args, "style"), "photo");
+    const slot = this.renderer.createShowItemSlot(style);
+    if (!slot) {
+      this.playback.warnInvalidParameter(
+        `showitem style is not registered: ${style}`,
+        line,
+      );
+      finish();
+      return;
+    }
+
+    // _ShowItem @ 0x1841B1EC0 registers the new slot before loading the sprite.
+    this.slotInUse = slot;
+    const key = this.playback.resolveImageKey(
+      toString(exactArg(line.args, "image")),
+    );
+    if (!key)
+      this.playback.warnInvalidParameter("showitem: image is empty", line);
+    try {
+      await slot.show(line.args, key, finish);
+    } catch (error) {
+      if (this.slotInUse === slot) this.reset();
+      throw error;
+    }
+  }
+
   private async executeHideItem(
     line: ParsedCommandLine,
   ): Promise<CommandResult> {
-    // _ExecuteHideItem (2791 @ 0x1841B1910) blocks when _slotInUse exists.
-    // The renderer uses this flag to wait for the fade and remove the slot.
-    await this.playback.waitForAnimation(this.fadeOut(readFadeMs(line.args)));
+    // _ExecuteHideItem @ 0x1841B1910 returns immediately without a live slot.
+    const slot = this.slotInUse;
+    if (slot) {
+      await this.playback.waitForAnimation(
+        new Promise<void>((finish) => this.hideItem(slot, line, finish)),
+      );
+    }
     return "continue";
   }
 
-  private async fadeOut(fadeMs: number): Promise<void> {
-    const hasSlot = this.slotInUse !== null;
-    const slot = hasSlot ? Symbol() : null;
-    this.slotInUse = slot;
-    await this.renderer.clearItems(fadeMs, hasSlot);
-    if (this.slotInUse === slot) this.slotInUse = null;
+  private hideItem(
+    slot: StoryShowItemSlot,
+    line: ParsedCommandLine,
+    finish: () => void,
+  ): void {
+    slot.hide(line.args, () => {
+      this.reset();
+      finish();
+    });
   }
 }

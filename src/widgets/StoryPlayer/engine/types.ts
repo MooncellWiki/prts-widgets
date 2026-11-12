@@ -440,31 +440,16 @@ export interface GridBackgroundInput {
   y: number;
 }
 
-export interface ShowItemInput {
-  /** Alpha of the full-screen black backdrop the slot puts behind the item. */
-  blackAlpha: number;
-  block: boolean;
-  fadeMs: number;
-  /**
-   * `fadestyle` — read only by the cutin slot (photo ignores it, dead param);
-   * unknown strings degrade to `fade`, matching the native enum default.
-   */
-  fadeStyle?: ShowItemFadeStyle;
-  /**
-   * Item image key; null for an empty `image`, which native still turns into
-   * a slot whose sprite load fails (placeholder-only fade).
-   */
-  key: string | null;
-  /** Unity UI `localPosition` offset: +x right, +y up. */
-  offsetX: number;
-  offsetY: number;
-  /** Slot selector: `_slotStyles` registers exactly `photo` and `cutin`. */
-  style: "cutin" | "photo";
-  /**
-   * `width` — cutin mask width. Native defaults it to the loaded sprite's
-   * native width (the serialized 100x100 placeholder when the load failed).
-   */
-  width?: number;
+/** The slot instance held by `AVGShowItemPanel._slotInUse`. */
+export interface StoryShowItemSlot {
+  /** Starts Show after loading art. onEnd reports the animation completion. */
+  show: (
+    args: StoryCommandArgs,
+    key: string | null,
+    onEnd: () => void,
+  ) => Promise<void>;
+  hide: (args: StoryCommandArgs, onEnd: () => void) => void;
+  destroy: () => void;
 }
 
 /**
@@ -781,13 +766,6 @@ export interface StoryRenderer {
   ) => Promise<void> | void;
   clearImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearLargeImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
-  /**
-   * `hasSlot` mirrors whether `Torappu.AVG.AVGShowItemPanel._slotInUse` was
-   * live (i.e. whether `_ExecuteHideItem` blocks). Deliberately not named
-   * `block`: the native executor never reads the story command's `block`
-   * parameter, and the flag only encodes "a slot exists".
-   */
-  clearItems: (fadeMs?: number, hasSlot?: boolean) => Promise<void> | void;
   clearSticker: (id?: string, fadeMs?: number) => Promise<void> | void;
   clearStickers: (fadeMs?: number) => Promise<void> | void;
   clearSpellStickers: () => Promise<void> | void;
@@ -844,7 +822,7 @@ export interface StoryRenderer {
   setInterlude: (input: InterludeInput) => Promise<void>;
   setLargeBackgroundTween: (input: LargeBackgroundTweenInput) => Promise<void>;
   setLargeImageTween: (input: LargeBackgroundTweenInput) => Promise<void>;
-  showItem: (input: ShowItemInput) => Promise<void>;
+  createShowItemSlot: (style: string) => StoryShowItemSlot | null;
   showCgItem: (input: CgItemInput) => Promise<void>;
   setSticker: (input: StickerInput) => Promise<void> | void;
   setStickerTypeWriterDelay: (id: string, delayMs: number) => void;

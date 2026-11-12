@@ -12,6 +12,7 @@ import {
 import type {
   RuntimeWarning,
   StoryMetadata,
+  StoryShowItemSlot,
 } from "../../src/widgets/StoryPlayer/engine/types";
 
 function storyMetadata(overrides: Partial<StoryMetadata> = {}): StoryMetadata {
@@ -806,16 +807,14 @@ describe("StoryRuntime", () => {
 
   it("lets the destination hideitem start before the old showitem fade finishes", async () => {
     const renderer = new FakeRenderer();
-    const shown = Promise.withResolvers<void>();
-    const hidden = Promise.withResolvers<void>();
-    const showItem = vi
-      .spyOn(renderer, "showItem")
-      .mockReturnValue(shown.promise);
-    const clearItems = vi
-      .spyOn(renderer, "clearItems")
-      .mockImplementation((_fadeMs, hasSlot) =>
-        hasSlot ? hidden.promise : undefined,
-      );
+    const show = vi.fn<StoryShowItemSlot["show"]>(async () => {});
+    const hide = vi.fn<StoryShowItemSlot["hide"]>();
+    const destroy = vi.fn();
+    vi.spyOn(renderer, "createShowItemSlot").mockReturnValue({
+      show,
+      hide,
+      destroy,
+    });
     const runtime = new StoryRuntime(
       createContext([
         '[showitem(image="item_a")]',
@@ -831,21 +830,24 @@ describe("StoryRuntime", () => {
     );
 
     const started = runtime.start();
-    expect(showItem).toHaveBeenCalledTimes(1);
+    expect(show).toHaveBeenCalledTimes(1);
     const skipped = runtime.skipNode();
     await setImmediate();
 
     // SkipStory clears the blocker and leaves the slot for the destination.
-    expect(clearItems).toHaveBeenCalledExactlyOnceWith(250, true);
+    expect(hide).toHaveBeenCalledExactlyOnceWith(
+      { fadetime: 0.25 },
+      expect.any(Function),
+    );
     expect(renderer.lastDialogue.speaker).toBe("");
 
-    hidden.resolve();
+    hide.mock.calls[0]![1]();
     await Promise.all([started, skipped]);
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
 
-    shown.resolve();
     await runtime.advance();
-    expect(clearItems).toHaveBeenNthCalledWith(2, 500, false);
+    expect(hide).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(1);
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
   });
 
@@ -853,17 +855,17 @@ describe("StoryRuntime", () => {
     "clears the item slot when a skip ends the story during %s",
     async (command) => {
       const renderer = new FakeRenderer();
-      const animation = Promise.withResolvers<void>();
       const isHide = command === "hideitem";
-      const beforeSkip = isHide ? [[500, true]] : [];
-      vi.spyOn(renderer, "showItem").mockImplementation(() =>
-        isHide ? Promise.resolve() : animation.promise,
-      );
-      const clearItems = vi
-        .spyOn(renderer, "clearItems")
-        .mockImplementation((_fadeMs, hasSlot) =>
-          isHide && hasSlot ? animation.promise : undefined,
-        );
+      const show: StoryShowItemSlot["show"] = async (_args, _key, finish) => {
+        if (isHide) finish();
+      };
+      const hide = vi.fn<StoryShowItemSlot["hide"]>();
+      const destroy = vi.fn();
+      vi.spyOn(renderer, "createShowItemSlot").mockReturnValue({
+        show,
+        hide,
+        destroy,
+      });
       const runtime = new StoryRuntime(
         createContext([
           '[skipnode(mode="skip")]',
@@ -880,17 +882,15 @@ describe("StoryRuntime", () => {
       const started = runtime.start();
       await setImmediate();
       expect(runtime.getState()).toBe("running");
-      expect(clearItems.mock.calls).toEqual(beforeSkip);
+      expect(hide).toHaveBeenCalledTimes(isHide ? 1 : 0);
+      expect(destroy).not.toHaveBeenCalled();
 
       const skipped = runtime.skipNode();
       await setImmediate();
       expect(runtime.getState()).toBe("finished");
-      expect(clearItems.mock.calls).toEqual([...beforeSkip, [0]]);
+      expect(destroy).toHaveBeenCalledTimes(1);
       await Promise.all([started, skipped]);
-
-      animation.resolve();
-      await setImmediate();
-      expect(clearItems).toHaveBeenCalledTimes(beforeSkip.length + 1);
+      expect(hide).toHaveBeenCalledTimes(isHide ? 1 : 0);
     },
   );
 
