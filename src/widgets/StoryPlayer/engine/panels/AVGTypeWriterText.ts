@@ -11,6 +11,7 @@ interface TypingSession {
   chars: TypewriterText["chars"];
   delayMs: number;
   endStep: number;
+  iteratorSteps?: readonly number[];
   onTypeEnd: () => void;
   render: RenderText;
   step: number;
@@ -25,30 +26,28 @@ interface TypingSession {
 export class AVGTypeWriterText {
   private session: TypingSession | null = null;
 
-  constructor(
-    private readonly sleep: (ms: number) => Promise<void>,
-    private readonly mode: "mesh" | "iterator" = "mesh",
-  ) {}
+  constructor(private readonly sleep: (ms: number) => Promise<void>) {}
 
   get isTyping(): boolean {
     return this.session !== null;
   }
 
-  get typingVisibleCount(): number | undefined {
-    const session = this.session;
-    return session ? Math.min(session.step, session.chars.length) : undefined;
+  get typingStep(): number | undefined {
+    return this.session?.step;
   }
 
-  /** For an append, startIndex is the number of characters already revealed. */
+  /** For an append, startIndex is the previous reveal or iterator position. */
   beginText(
     text: string | TypewriterText["chars"],
     {
       delayMs,
+      iteratorSteps,
       onTypeEnd,
       render,
       startIndex,
     }: {
       delayMs: number;
+      iteratorSteps?: readonly number[];
       onTypeEnd: () => void;
       render: RenderText;
       startIndex: number;
@@ -56,26 +55,30 @@ export class AVGTypeWriterText {
   ): number {
     this.stopTypingSilently();
     const chars = typeof text === "string" ? parseRichChars(text) : text;
-    const visibleCount = Math.min(Math.max(0, startIndex), chars.length);
+    const step = Math.min(
+      Math.max(0, startIndex),
+      iteratorSteps?.length ?? chars.length,
+    );
     const interval = delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : delayMs;
     // The 2791 mesh path completes on the last quad (0x184250AA0). The
     // sticker's string iterators (0x18425E880 / 0x18425E2A0) yield the
     // full message again and then return false to signal completion.
-    const endStep = chars.length + (this.mode === "iterator" ? 2 : 0);
-    if (visibleCount === endStep || !(interval > 0)) {
+    const endStep = iteratorSteps ? iteratorSteps.length + 2 : chars.length;
+    if (!iteratorSteps && (step === endStep || !(interval > 0))) {
       render({ chars, visibleCount: chars.length }, true);
       onTypeEnd();
     } else {
-      const session = {
+      const session: TypingSession = {
         chars,
         delayMs: interval,
         endStep,
+        iteratorSteps,
         onTypeEnd,
         render,
-        step: visibleCount,
+        step,
       };
       this.session = session;
-      render({ chars, visibleCount }, true);
+      render({ chars, visibleCount: this.visibleCount(session) }, true);
       void this.runTyping(session);
     }
     return chars.length;
@@ -107,9 +110,21 @@ export class AVGTypeWriterText {
     session.wake?.();
   }
 
+  private visibleCount({ chars, iteratorSteps, step }: TypingSession): number {
+    if (step === 0) return 0;
+    return iteratorSteps ? (iteratorSteps[step - 1] ?? chars.length) : step;
+  }
+
   private async runTyping(session: TypingSession): Promise<void> {
     const { chars, render } = session;
     let elapsedMs = 0;
+    if (session.iteratorSteps && session.delayMs === 0) {
+      // BeginText enters typing immediately. A later Update consumes the
+      // zero-delay iterator and invokes the completion callback.
+      const startedAt = performance.now();
+      await this.sleep(0);
+      elapsedMs = performance.now() - startedAt;
+    }
     while (this.session === session) {
       const delayMs = session.delayMs;
       const waitMs = delayMs - elapsedMs;
@@ -144,10 +159,11 @@ export class AVGTypeWriterText {
         return;
       }
       elapsedMs -= steps * delayMs;
-      const previousStep = session.step;
+      const previousVisibleCount = this.visibleCount(session);
       session.step += steps;
-      if (previousStep < chars.length)
-        render({ chars, visibleCount: Math.min(session.step, chars.length) });
+      const visibleCount = this.visibleCount(session);
+      if (visibleCount !== previousVisibleCount)
+        render({ chars, visibleCount });
     }
   }
 }

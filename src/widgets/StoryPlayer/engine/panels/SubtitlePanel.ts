@@ -1,9 +1,4 @@
-import {
-  exactArg,
-  parseSubtitleAlignment,
-  toNumber,
-  toString,
-} from "../commandParams";
+import { exactArg, toNumber, toString } from "../commandParams";
 import { AVGEvent, type EventPool } from "../eventPool";
 import {
   STORY_HEIGHT,
@@ -94,8 +89,10 @@ export class SubtitlePanel {
       return "continue";
     if (!this.playback.setDisplayedLine(line.lineNumber)) return "continue";
 
+    const alignment = exactArg(args, "alignment");
     const layout: OverlayTextLayout = {
-      alignment: parseSubtitleAlignment(exactArg(args, "alignment")) ?? "left",
+      alignment:
+        alignment === "center" || alignment === "right" ? alignment : "left",
       sizePx: toNumber(exactArg(args, "size"), 24),
       widthPx: Math.min(
         toNumber(exactArg(args, "width"), STORY_WIDTH),

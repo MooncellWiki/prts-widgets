@@ -1174,33 +1174,36 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("ignores subtitle ghost parameters and falls back invalid alignment to left", async () => {
-    const renderer = new FakeRenderer();
-    const sleep = vi.fn(() => new Promise<void>(() => {}));
-    const runtime = new StoryRuntime(
-      createContext([
-        '[subtitle(text="x",alignment="middle",delay=9,fadetime=9,multi=true)]',
-      ]),
-      renderer,
-      new FakeAudio(),
-      { sleep, typingIntervalMs: 25 },
-    );
+  it.each(["middle", "CENTER", "RIGHT"])(
+    "ignores subtitle ghost parameters and falls back from %s alignment to left",
+    async (alignment) => {
+      const renderer = new FakeRenderer();
+      const sleep = vi.fn(() => new Promise<void>(() => {}));
+      const runtime = new StoryRuntime(
+        createContext([
+          `[subtitle(text="x",alignment="${alignment}",delay=9,fadetime=9,multi=true)]`,
+        ]),
+        renderer,
+        new FakeAudio(),
+        { sleep, typingIntervalMs: 25 },
+      );
 
-    await runtime.start();
+      await runtime.start();
 
-    expect(renderer.subtitleCalls).toEqual([
-      {
-        alignment: "left",
-        sizePx: 24,
-        text: "x",
-        widthPx: 1280,
-        x: 0,
-        y: 0,
-      },
-    ]);
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(25);
-    runtime.destroy();
-  });
+      expect(renderer.subtitleCalls).toEqual([
+        {
+          alignment: "left",
+          sizePx: 24,
+          text: "x",
+          widthPx: 1280,
+          x: 0,
+          y: 0,
+        },
+      ]);
+      expect(sleep).toHaveBeenCalledExactlyOnceWith(25);
+      runtime.destroy();
+    },
+  );
 
   it("stops the timer sticker when skipping a node", async () => {
     const renderer = new FakeRenderer();

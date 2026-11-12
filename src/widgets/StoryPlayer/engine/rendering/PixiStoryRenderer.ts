@@ -4848,6 +4848,12 @@ export class PixiStoryRenderer implements StoryRenderer {
       layoutSubtitle: (text, x, width, alignment) =>
         this.layoutSubtitle(text, x, width, alignment),
       tween: (duration, step, done) => this.tween(duration, step, done),
+      waitForUpdate: () =>
+        new Promise((resolve) => {
+          const ticker = this.app?.ticker;
+          if (ticker) ticker.addOnce(() => resolve());
+          else setTimeout(resolve, 0);
+        }),
     });
     this.stickerViews.set(id, view);
     this.uiLayer.addChild(view.root);

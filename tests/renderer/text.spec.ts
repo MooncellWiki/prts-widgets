@@ -398,11 +398,12 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
-  it("keeps the sticker typing through the iterator's last two steps", async () => {
+  it("advances sticker iterators on tag, character and completion steps", async () => {
     vi.useFakeTimers();
     try {
       const renderer = createRenderer();
-      renderer.app = {};
+      const addOnce = vi.fn<(update: () => void) => void>();
+      renderer.app = { ticker: { addOnce } };
       renderer.layoutSubtitle = vi.fn();
       renderer.tween = vi.fn(() => Promise.resolve());
       const input = {
@@ -423,7 +424,12 @@ describe("PixiStoryRenderer", () => {
         onTypingComplete: instant,
         text: "hi",
       });
-      expect(instant).toHaveBeenCalledTimes(1);
+      expect(renderer.stickerViews.get("a").isTyping).toBe(true);
+      expect(instant).not.toHaveBeenCalled();
+      addOnce.mock.calls[0]![0]();
+      await Promise.resolve();
+      expect(renderer.stickerViews.get("a").isTyping).toBe(false);
+      expect(instant).toHaveBeenCalledExactlyOnceWith();
 
       const typed = vi.fn();
       await renderer.setSticker({
@@ -431,14 +437,15 @@ describe("PixiStoryRenderer", () => {
         delayMs: 10,
         id: "b",
         onTypingComplete: typed,
-        text: "hi",
+        text: "<i>A</i>",
       });
       const view = renderer.stickerViews.get("b");
-      await vi.advanceTimersByTimeAsync(20);
-      expect(view.text.text).toBe("hi");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(view.text.text).toBe(`<_i>${transparentText("A")}</_i>`);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(view.text.text).toBe("<_i>A</_i>");
+      await vi.advanceTimersByTimeAsync(29);
       expect(view.isTyping).toBe(true);
-      expect(typed).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(19);
       expect(typed).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(view.isTyping).toBe(false);
@@ -819,7 +826,7 @@ describe("StickerView lifecycle", () => {
           `<_i>${transparentText("AB")}</_i>${transparentText("\nCD")}`,
         );
 
-        await vi.advanceTimersByTimeAsync(40);
+        await vi.advanceTimersByTimeAsync(80);
         expect(text.text).toBe(
           `<_i>A</_i><_i>${transparentText("B")}</_i>${transparentText("\nCD")}`,
         );
@@ -1007,6 +1014,8 @@ describe("StickerView lifecycle", () => {
     expect(view.root.x).toBe(280);
     expect(view.root.y).toBe(400);
     expect(view.text.x).toBe(40);
+    expect(view.text.text).toBe(transparentText("AB"));
+    expect(view.finishTyping()).toBe(true);
     expect(view.text.text).toBe("AB");
   });
 

@@ -18,6 +18,7 @@ interface StickerViewHost {
     width: number,
     alignment: StickerInput["alignment"],
   ) => void;
+  waitForUpdate: () => Promise<void>;
   tween: (
     duration: number,
     step: (progress: number) => void,
@@ -62,13 +63,14 @@ export class StickerView {
   readonly root = new Container();
   readonly text: Text;
   // The 2791 sticker_text prefab has no ITypeWriterRevealer.
-  private readonly typeWriter = new AVGTypeWriterText(
-    (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    "iterator",
+  private readonly typeWriter = new AVGTypeWriterText((ms) =>
+    ms === 0
+      ? this.host.waitForUpdate()
+      : new Promise((resolve) => setTimeout(resolve, ms)),
   );
   private fadeSession = 0;
   private tweenSession = 0;
-  private richChars: RichChar[] | null = null;
+  private message: { chars: RichChar[]; iteratorSteps: number[] } | null = null;
   private tweenQueue: StickerTweenStepInput[] = [];
 
   constructor(private readonly host: StickerViewHost) {
@@ -119,7 +121,7 @@ export class StickerView {
 
   async show(input: StickerInput): Promise<void> {
     const { root, text } = this;
-    const wasActive = this.richChars !== null;
+    const wasActive = this.message !== null;
     // Native AppendText (0x1842455F0) leaves the fade, tween and transform
     // alone. Only a fresh show invalidates their sessions.
     if (!input.append || !wasActive) {
@@ -147,15 +149,22 @@ export class StickerView {
     }
 
     const continueText = input.append && !input.resetText;
-    const prevChars = continueText ? (this.richChars ?? []) : [];
-    const newChars = parseRichChars(input.text);
-    const allChars = [...prevChars, ...newChars];
+    const previous = continueText ? this.message : null;
+    const previousCharCount = previous?.chars.length ?? 0;
+    const iteratorSteps = [...(previous?.iteratorSteps ?? [])];
+    const newChars = parseRichChars(input.text, (visibleCount) => {
+      iteratorSteps.push(previousCharCount + visibleCount);
+    });
+    const allChars = [...(previous?.chars ?? []), ...newChars];
     // A multiline append keeps the reveal position and resets elapsed time
     // (2791 AVGTypeWriterText.AppendText @ 0x18424F1C0).
-    const startIndex = continueText
-      ? (this.typeWriter.typingVisibleCount ?? prevChars.length)
+    const startIndex = previous
+      ? Math.min(
+          this.typeWriter.typingStep ?? previous.iteratorSteps.length,
+          previous.iteratorSteps.length,
+        )
       : 0;
-    this.richChars = allChars;
+    this.message = { chars: allChars, iteratorSteps };
 
     const style = this.host.createOverlayTextStyle(input.sizePx, input.widthPx);
     style.align = input.alignment;
@@ -170,6 +179,7 @@ export class StickerView {
 
     this.typeWriter.beginText(allChars, {
       delayMs: input.delayMs,
+      iteratorSteps,
       onTypeEnd: () => input.onTypingComplete?.(),
       render: ({ chars, visibleCount }) => {
         text.text =
@@ -188,7 +198,7 @@ export class StickerView {
     // The hide executor raises its own auto click with length zero.
     if (finishTyping) this.typeWriter.tryFinish(false);
     else this.typeWriter.stopTypingSilently();
-    this.richChars = null;
+    this.message = null;
     if (!root.visible || !text.text || fadeMs <= 0) {
       this.clearVisual();
       return;
@@ -215,7 +225,7 @@ export class StickerView {
    * m_stickerDict -- no TryFinishType, so a partial typewriter is what fades.
    */
   recycle(fadeMs: number): void {
-    if (this.richChars !== null) this.resetTransform();
+    if (this.message !== null) this.resetTransform();
     this.hide(fadeMs, false);
   }
 

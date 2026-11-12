@@ -46,8 +46,8 @@ function scanRichTags(text: string): RichTag[] {
  * panel_decision options, panel_subtitle, sticker_text, timer_sticker_text,
  * spellsticker) serializes `m_RichText` 1, so Unity's rich text renders
  * `<b>`, `<i>` and `<color>` spans instead of showing the tags.
- * `AVGTypeWriterText._GetTextMessageGenerator` (2.7.71 VA 0x183f9fc30) skips
- * every `<…>` without spending a typing step, so tags are zero-width here.
+ * The 2791 string iterators spend a step on each tag, which changes the
+ * iterator position without revealing a character.
  *
  * Web adaptation scope: `<b>`, `<i>` and `<color=#hex>`, which is every tag
  * the story corpus uses (525 `<i>`, 410 `<color=#RRGGBB>`, 1 `<b>`; no
@@ -55,7 +55,10 @@ function scanRichTags(text: string): RichTag[] {
  * pairs with the nearest open tag of its kind, and a tag left unpaired stays
  * literal text. The corpus has no unpaired or crossed tags.
  */
-export function parseRichChars(text: string): RichChar[] {
+export function parseRichChars(
+  text: string,
+  onIteratorStep?: (visibleCount: number) => void,
+): RichChar[] {
   const tags = scanRichTags(text);
 
   // Pair closers with the nearest open tag of the same kind.
@@ -80,7 +83,10 @@ export function parseRichChars(text: string): RichChar[] {
     const color = active.findLast((tag) => tag.kind === "color")?.value ?? null;
     const bold = active.some((tag) => tag.kind === "b");
     const italic = active.some((tag) => tag.kind === "i");
-    for (const char of segment) chars.push({ bold, char, color, italic });
+    for (const char of segment) {
+      chars.push({ bold, char, color, italic });
+      onIteratorStep?.(chars.length);
+    }
   };
 
   let cursor = 0;
@@ -88,6 +94,7 @@ export function parseRichChars(text: string): RichChar[] {
     if (!paired.has(tag)) continue;
     pushText(text.slice(cursor, tag.start));
     cursor = tag.end;
+    onIteratorStep?.(chars.length);
     if (!tag.close) {
       active.push(tag);
       continue;
