@@ -683,13 +683,12 @@ export class StoryRuntime {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
 
-    const modeChanged = this.autoPlayMode !== mode;
     this.autoPlayMode = mode;
-    if (modeChanged && mode === "quick_play" && this.state === "waiting_input")
-      void this.advanceFromClick();
-    // set_autoPlayMode (2791 @ 0x184175100) emits the quick-play click
-    // before broadcasting the cache. Even setting DEFAULT again on a
-    // manual press runs _UpdateAutoPlayModeUI and emits ON_SPEED_SET.
+    // set_autoPlayMode (2791 @ 0x184175100) emits a click on every QUICK_PLAY
+    // assignment before broadcasting the cache.
+    if (mode === "quick_play") void this.advanceFromClick();
+    // Setting DEFAULT again on a manual press still runs
+    // _UpdateAutoPlayModeUI and emits ON_SPEED_SET.
     this.eventPool.emit(AVGEvent.SpeedSet);
     this.resumeAutoClick();
   }

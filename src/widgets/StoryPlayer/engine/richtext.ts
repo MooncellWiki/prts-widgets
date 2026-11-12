@@ -7,6 +7,7 @@ export interface RichChar {
 
 /** PIXI `tagStyles` entries emitted for rich-text runs. */
 export interface RichTagStyle {
+  dropShadow?: false;
   fill?: string;
   fontStyle?: "italic";
   fontWeight?: "bold";
@@ -158,4 +159,17 @@ export function buildTagStyles(chars: readonly RichChar[]): RichTagStyles {
     if (color !== null) styles[colorTagName(color)] = { fill: color };
   }
   return styles;
+}
+
+export function buildTypewriterTagStyles(
+  chars: readonly RichChar[],
+): RichTagStyles {
+  return {
+    ...buildTagStyles(chars),
+    // Pixi's tagged text shadow pass ignores transparent fill.
+    [colorTagName(HIDDEN_TEXT_COLOR)]: {
+      dropShadow: false,
+      fill: HIDDEN_TEXT_COLOR,
+    },
+  };
 }

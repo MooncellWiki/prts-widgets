@@ -42,6 +42,34 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
+  it("emits a click when quick play is selected again during a blocking spellsticker", async () => {
+    vi.useFakeTimers();
+    const renderer = new FakeRenderer();
+    vi.spyOn(renderer, "setSpellSticker").mockResolvedValueOnce(1750);
+    const runtime = new StoryRuntime(
+      createContext([
+        '[spellsticker(id="s",style="sami",block=true)]<p=1>A</>',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    try {
+      runtime.setAutoPlayMode("quick_play");
+      await runtime.start();
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(renderer.spellStickerHideCalls).toEqual([]);
+
+      runtime.setAutoPlayMode("quick_play");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(renderer.spellStickerHideCalls).toEqual(["s"]);
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
+    } finally {
+      runtime.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps spellsticker alpha unset when the param is missing", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

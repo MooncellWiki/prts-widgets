@@ -1,9 +1,7 @@
 import { Text, type Container, type TextStyle } from "pixi.js";
 
 import {
-  buildTagStyles,
-  colorTagName,
-  HIDDEN_TEXT_COLOR,
+  buildTypewriterTagStyles,
   richCharsToTaggedText,
 } from "../../richtext";
 
@@ -56,14 +54,7 @@ export class SubtitleView {
       const style = this.host.createTextStyle(layout.sizePx, layout.widthPx);
       // TextAnchor aligns each wrapped line. layoutText places the whole block.
       style.align = layout.alignment;
-      style.tagStyles = {
-        ...buildTagStyles(chars),
-        // Pixi's tagged text shadow pass ignores transparent fill.
-        [colorTagName(HIDDEN_TEXT_COLOR)]: {
-          dropShadow: false,
-          fill: HIDDEN_TEXT_COLOR,
-        },
-      };
+      style.tagStyles = buildTypewriterTagStyles(chars);
       text.style = style;
       text.y = layout.y;
     }

@@ -7,6 +7,10 @@ import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
 import { createContext, FakeAudio } from "../helpers/runtimeFakes";
 
+function transparentText(text: string): string {
+  return `<_c00000000>${text}</_c00000000>`;
+}
+
 describe("PixiStoryRenderer", () => {
   it("runs frame-end callbacks after the scene draws and only once", () => {
     const renderer = createRenderer();
@@ -342,10 +346,8 @@ describe("PixiStoryRenderer", () => {
       y: 20,
     });
 
-    // Without a mounted app the typing loop parks right after registering its
-    // target, so nothing has been typed yet.
     const sticker = renderer.stickerViews.get("a").text;
-    expect(sticker.text).toBe("");
+    expect(sticker.text).toBe(transparentText("hello"));
     expect(renderer.stickerViews.get("a").isTyping).toBe(true);
 
     // Hide mid-typing: native runs TryFinishType before HideSticker, so the
@@ -381,21 +383,22 @@ describe("PixiStoryRenderer", () => {
       });
       await vi.advanceTimersByTimeAsync(80);
       const sticker = renderer.stickerViews.get("a").text;
-      expect(sticker.text).toBe("he");
+      const partial = `he${transparentText("llo")}`;
+      expect(sticker.text).toBe(partial);
 
       // _RecycleStickers (stickerclear / skip reset) calls HideSticker(0)
       // with no TryFinishType: the partial text is what fades out.
       await renderer.clearStickers(150);
-      expect(sticker.text).toBe("he");
+      expect(sticker.text).toBe(partial);
       expect(renderer.stickerViews.get("a").isTyping).toBe(false);
       await vi.advanceTimersByTimeAsync(200);
-      expect(sticker.text).toBe("he");
+      expect(sticker.text).toBe(partial);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("reports sticker completion on the last character or a typing click", async () => {
+  it("keeps the sticker typing through the iterator's last two steps", async () => {
     vi.useFakeTimers();
     try {
       const renderer = createRenderer();
@@ -430,10 +433,16 @@ describe("PixiStoryRenderer", () => {
         onTypingComplete: typed,
         text: "hi",
       });
-      await vi.advanceTimersByTimeAsync(10);
+      const view = renderer.stickerViews.get("b");
+      await vi.advanceTimersByTimeAsync(20);
+      expect(view.text.text).toBe("hi");
+      expect(view.isTyping).toBe(true);
       expect(typed).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(10);
-      expect(typed).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(19);
+      expect(typed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(view.isTyping).toBe(false);
+      expect(typed).toHaveBeenCalledExactlyOnceWith();
 
       const clicked = vi.fn();
       await renderer.setSticker({
@@ -443,6 +452,8 @@ describe("PixiStoryRenderer", () => {
         onTypingComplete: clicked,
         text: "hey",
       });
+      await vi.advanceTimersByTimeAsync(30);
+      expect(renderer.stickerViews.get("clicked").text.text).toBe("hey");
       expect(renderer.finishStickerTyping("clicked")).toBe(true);
       expect(clicked).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(50);
@@ -759,7 +770,7 @@ describe("StickerView lifecycle", () => {
 
     expect(renderer.finishStickerTyping("b")).toBe(true);
     expect(textOf("b")).toBe("B");
-    expect(textOf("a")).toBe("");
+    expect(textOf("a")).toBe(transparentText("A"));
     expect(renderer.finishStickerTyping("b")).toBe(false);
 
     await renderer.setSticker({ ...input, append: true, id: "a", text: "+" });
@@ -773,6 +784,53 @@ describe("StickerView lifecycle", () => {
     await renderer.clearStickers(0);
     expect(renderer.finishStickerTyping("c")).toBe(false);
   });
+
+  it.each(["center", "right"] as const)(
+    "lays out %s-aligned stickers using the full message during typing",
+    async (alignment) => {
+      vi.useFakeTimers();
+      try {
+        const renderer = createStickerRenderer();
+        const layout = vi.fn((text: { text: string; x: number }, x: number) => {
+          text.x = x + 40;
+          return text.text;
+        });
+        renderer.layoutSubtitle = layout;
+        await renderer.setSticker({
+          alignment,
+          append: false,
+          delayMs: 40,
+          fadeMs: 0,
+          id: "st1",
+          sizePx: 24,
+          text: "<i>AB</i>\nCD",
+          widthPx: 200,
+          x: 0,
+          y: 0,
+        });
+        const { text } = renderer.stickerViews.get("st1");
+        expect(layout).toHaveReturnedWith("<_i>AB</_i>\nCD");
+        expect(text.style.align).toBe(alignment);
+        expect(text.style.tagStyles._c00000000).toEqual({
+          dropShadow: false,
+          fill: "#00000000",
+        });
+        expect(text.text).toBe(
+          `<_i>${transparentText("AB")}</_i>${transparentText("\nCD")}`,
+        );
+
+        await vi.advanceTimersByTimeAsync(40);
+        expect(text.text).toBe(
+          `<_i>A</_i><_i>${transparentText("B")}</_i>${transparentText("\nCD")}`,
+        );
+        expect(layout).toHaveBeenCalledTimes(1);
+        expect(text.x).toBe(40);
+        await renderer.clearStickers(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("retimes a visible sticker without losing its accumulated typing time", async () => {
     vi.useFakeTimers();
@@ -799,17 +857,25 @@ describe("StickerView lifecycle", () => {
       const old = renderer.stickerViews.get("old");
       const current = renderer.stickerViews.get("current");
       await vi.advanceTimersByTimeAsync(35);
-      expect(current.text.text).toBe("");
+      expect(current.text.text).toBe(transparentText("ABCDE"));
 
       renderer.setStickerTypeWriterDelay("current", 10);
       await vi.advanceTimersByTimeAsync(0);
-      expect(current.text.text).toBe("ABC");
+      expect(current.text.text).toBe(`ABC${transparentText("DE")}`);
       await vi.advanceTimersByTimeAsync(14);
-      expect(current.text.text).toBe("ABCD");
+      expect(current.text.text).toBe(`ABCD${transparentText("E")}`);
       await vi.advanceTimersByTimeAsync(1);
       expect(current.text.text).toBe("ABCDE");
+      expect(complete).not.toHaveBeenCalled();
+
+      // The two finishing steps also use the current interval.
+      await vi.advanceTimersByTimeAsync(4);
+      renderer.setStickerTypeWriterDelay("current", 5);
+      await vi.advanceTimersByTimeAsync(5);
+      expect(complete).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
       expect(complete).toHaveBeenCalledExactlyOnceWith();
-      expect(old.text.text).toBe("");
+      expect(old.text.text).toBe(transparentText("ABCDE"));
       await renderer.clearStickers();
     } finally {
       vi.useRealTimers();
@@ -817,11 +883,23 @@ describe("StickerView lifecycle", () => {
   });
 
   it.each([
-    { resetText: false, initial: "H", next: "HE", full: "HELLO!" },
-    { resetText: true, initial: "", next: "!", full: "!" },
+    {
+      resetText: false,
+      initial: `H${transparentText("ELLO!")}`,
+      next: `HE${transparentText("LLO!")}`,
+      full: "HELLO!",
+      remainingMs: 160,
+    },
+    {
+      resetText: true,
+      initial: transparentText("!"),
+      next: "!",
+      full: "!",
+      remainingMs: 0,
+    },
   ])(
     "continues or resets the sticker's visible prefix (resetText=$resetText)",
-    async ({ resetText, initial, next, full }) => {
+    async ({ resetText, initial, next, full, remainingMs }) => {
       vi.useFakeTimers();
       try {
         const renderer = createStickerRenderer();
@@ -845,7 +923,7 @@ describe("StickerView lifecycle", () => {
         });
         const { text } = renderer.stickerViews.get("st1");
         await vi.advanceTimersByTimeAsync(55);
-        expect(text.text).toBe("H");
+        expect(text.text).toBe(`H${transparentText("ELLO")}`);
 
         await renderer.setSticker({
           ...layout,
@@ -858,8 +936,10 @@ describe("StickerView lifecycle", () => {
         expect(text.text).toBe(initial);
         await vi.advanceTimersByTimeAsync(1);
         expect(text.text).toBe(next);
-        await vi.advanceTimersByTimeAsync(160);
+        await vi.advanceTimersByTimeAsync(remainingMs);
         expect(text.text).toBe(full);
+        expect(appendComplete).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(80);
         expect(firstComplete).not.toHaveBeenCalled();
         expect(appendComplete).toHaveBeenCalledExactlyOnceWith();
       } finally {
@@ -1037,9 +1117,12 @@ describe("StickerView lifecycle", () => {
         tweens[0]!.done?.();
       }).not.toThrow();
       await vi.advanceTimersByTimeAsync(100);
-      expect(firstDone).not.toHaveBeenCalled();
-      expect(secondDone).toHaveBeenCalledTimes(1);
       expect(b.text.text).toBe("bb");
+      expect(b.isTyping).toBe(true);
+      expect(secondDone).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(60);
+      expect(firstDone).not.toHaveBeenCalled();
+      expect(secondDone).toHaveBeenCalledExactlyOnceWith();
       expect(b.isTyping).toBe(false);
       b.destroy();
     } finally {

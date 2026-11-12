@@ -2,7 +2,7 @@ import { Container, Text, type TextStyle } from "pixi.js";
 
 import { AVGTypeWriterText } from "../../panels/AVGTypeWriterText";
 import {
-  buildTagStyles,
+  buildTypewriterTagStyles,
   parseRichChars,
   richCharsToTaggedText,
   type RichChar,
@@ -61,8 +61,10 @@ type StickerTweenStepInput =
 export class StickerView {
   readonly root = new Container();
   readonly text: Text;
+  // The 2791 sticker_text prefab has no ITypeWriterRevealer.
   private readonly typeWriter = new AVGTypeWriterText(
     (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    "iterator",
   );
   private fadeSession = 0;
   private tweenSession = 0;
@@ -156,15 +158,24 @@ export class StickerView {
     this.richChars = allChars;
 
     const style = this.host.createOverlayTextStyle(input.sizePx, input.widthPx);
-    style.tagStyles = buildTagStyles(allChars);
+    style.align = input.alignment;
+    style.tagStyles = buildTypewriterTagStyles(allChars);
     text.style = style;
+
+    // _AppendHiddenString (2791 @ 0x18424FD20) keeps the entire message in
+    // the layout. Measure it once so Pixi's color runs can't shift the rect.
+    const fullText = richCharsToTaggedText(allChars);
+    text.text = fullText;
+    this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
 
     this.typeWriter.beginText(allChars, {
       delayMs: input.delayMs,
       onTypeEnd: () => input.onTypingComplete?.(),
       render: ({ chars, visibleCount }) => {
-        text.text = richCharsToTaggedText(chars.slice(0, visibleCount));
-        this.host.layoutSubtitle(text, 0, input.widthPx, input.alignment);
+        text.text =
+          visibleCount < chars.length
+            ? richCharsToTaggedText(chars, visibleCount)
+            : fullText;
       },
       startIndex,
     });

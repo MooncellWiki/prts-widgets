@@ -10,28 +10,33 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 interface TypingSession {
   chars: TypewriterText["chars"];
   delayMs: number;
+  endStep: number;
   onTypeEnd: () => void;
   render: RenderText;
-  visibleCount: number;
+  step: number;
   wake?: () => void;
 }
 
 /**
  * Native port: Torappu.AVG.AVGTypeWriterText's BeginText / AppendText,
- * TryFinish and Update. The views use the entire message for layout and
- * reveal it by character count in place of Unity's mesh quads.
+ * TryFinish and Update. Browser timers advance the reveal by character
+ * count for both the mesh and string iterator paths.
  */
 export class AVGTypeWriterText {
   private session: TypingSession | null = null;
 
-  constructor(private readonly sleep: (ms: number) => Promise<void>) {}
+  constructor(
+    private readonly sleep: (ms: number) => Promise<void>,
+    private readonly mode: "mesh" | "iterator" = "mesh",
+  ) {}
 
   get isTyping(): boolean {
     return this.session !== null;
   }
 
   get typingVisibleCount(): number | undefined {
-    return this.session?.visibleCount;
+    const session = this.session;
+    return session ? Math.min(session.step, session.chars.length) : undefined;
   }
 
   /** For an append, startIndex is the number of characters already revealed. */
@@ -53,16 +58,21 @@ export class AVGTypeWriterText {
     const chars = typeof text === "string" ? parseRichChars(text) : text;
     const visibleCount = Math.min(Math.max(0, startIndex), chars.length);
     const interval = delayMs < 0 ? TYPE_WRITER_ORIGIN_DELAY_MS : delayMs;
-    if (visibleCount >= chars.length || !(interval > 0)) {
+    // The 2791 mesh path completes on the last quad (0x184250AA0). The
+    // sticker's string iterators (0x18425E880 / 0x18425E2A0) yield the
+    // full message again and then return false to signal completion.
+    const endStep = chars.length + (this.mode === "iterator" ? 2 : 0);
+    if (visibleCount === endStep || !(interval > 0)) {
       render({ chars, visibleCount: chars.length }, true);
       onTypeEnd();
     } else {
       const session = {
         chars,
         delayMs: interval,
+        endStep,
         onTypeEnd,
         render,
-        visibleCount,
+        step: visibleCount,
       };
       this.session = session;
       render({ chars, visibleCount }, true);
@@ -124,19 +134,20 @@ export class AVGTypeWriterText {
         continue;
       }
 
-      const remaining = chars.length - session.visibleCount;
-      const count =
+      const remaining = session.endStep - session.step;
+      const steps =
         delayMs > 0
           ? Math.min(remaining, Math.floor(elapsedMs / delayMs))
           : remaining;
-      if (count === remaining) {
-        // 2791 _UpdateMeshRevealer (0x184250AA0) completes on the last quad.
+      if (steps === remaining) {
         this.tryFinish();
         return;
       }
-      elapsedMs -= count * delayMs;
-      session.visibleCount += count;
-      render({ chars, visibleCount: session.visibleCount });
+      elapsedMs -= steps * delayMs;
+      const previousStep = session.step;
+      session.step += steps;
+      if (previousStep < chars.length)
+        render({ chars, visibleCount: Math.min(session.step, chars.length) });
     }
   }
 }
