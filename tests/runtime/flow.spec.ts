@@ -416,6 +416,8 @@ describe("StoryRuntime", () => {
     vi.useFakeTimers();
     try {
       const renderer = new FakeRenderer();
+      const cancelUpdate = vi.fn();
+      vi.spyOn(renderer, "onFrameUpdate").mockReturnValue(cancelUpdate);
       const runtime = new StoryRuntime(
         createContext(["[multiline(delay=0)]instant", '[name="B"]next']),
         renderer,
@@ -426,6 +428,7 @@ describe("StoryRuntime", () => {
       await runtime.start();
       expect(renderer.lastDialogue.text).toBe("");
       await runtime.advance();
+      expect(cancelUpdate).toHaveBeenCalledExactlyOnceWith();
       expect(renderer.lastDialogue.text).toBe("instant");
       expect(runtime.getDisplayedLineIndex()).toBe(1);
       await runtime.advance();

@@ -479,6 +479,7 @@ export class StoryRuntime {
       beginTyping: (length) => this.beginTextTyping(length),
       calculateFadeMs: (value, fallback) =>
         this.calculateFadeMs(value, fallback),
+      playbackGeneration: () => this.playbackGeneration,
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),

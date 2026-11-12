@@ -765,6 +765,18 @@ export class PixiStoryRenderer implements StoryRenderer {
     };
   }
 
+  onFrameUpdate(callback: () => void): () => void {
+    const ticker = this.app?.ticker;
+    if (!ticker) {
+      const timeout = setTimeout(callback, 0);
+      return () => clearTimeout(timeout);
+    }
+    ticker.addOnce(callback, undefined, UPDATE_PRIORITY.NORMAL);
+    return () => {
+      if (this.app?.ticker === ticker) ticker.remove(callback);
+    };
+  }
+
   /**
    * 跟随宿主尺寸同步画布分辨率。ResizeObserver 覆盖布局变化（窗口缩放、
    * 全屏切换）；window resize 兜底 devicePixelRatio 变化（页面缩放、跨屏
@@ -4847,13 +4859,8 @@ export class PixiStoryRenderer implements StoryRenderer {
         this.createOverlayTextStyle(size, width),
       layoutSubtitle: (text, x, width, alignment) =>
         this.layoutSubtitle(text, x, width, alignment),
+      onFrameUpdate: (update) => this.onFrameUpdate(update),
       tween: (duration, step, done) => this.tween(duration, step, done),
-      waitForUpdate: () =>
-        new Promise((resolve) => {
-          const ticker = this.app?.ticker;
-          if (ticker) ticker.addOnce(() => resolve());
-          else setTimeout(resolve, 0);
-        }),
     });
     this.stickerViews.set(id, view);
     this.uiLayer.addChild(view.root);

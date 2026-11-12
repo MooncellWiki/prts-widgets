@@ -224,6 +224,11 @@ export class FakeRenderer implements StoryRenderer {
     return () => {};
   }
 
+  onFrameUpdate(callback: () => void): () => void {
+    const timeout = setTimeout(callback, 0);
+    return () => clearTimeout(timeout);
+  }
+
   async mount(): Promise<void> {}
   async playVideo(url: string): Promise<void> {
     this.videoCalls.push(url);

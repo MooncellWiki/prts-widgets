@@ -30,6 +30,84 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
+  it("completes a zero-delay multiline in the next update before drawing", async () => {
+    vi.useFakeTimers();
+    const context = createContext([
+      "[multiline(delay=0)]abc",
+      '[name="A"]next',
+    ]);
+    const renderer = createRenderer(context);
+    const ticker = new Ticker();
+    renderer.app = { ticker };
+    const setDialogue = vi.spyOn(renderer, "setDialogue");
+    const sleep = vi.fn(
+      (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    );
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+      sleep,
+      typingIntervalMs: 40,
+    });
+    try {
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
+      await vi.advanceTimersByTimeAsync(16);
+      expect(setDialogue).toHaveBeenCalledTimes(1);
+      expect(setDialogue.mock.lastCall?.[1]).toMatchObject({ visibleCount: 0 });
+      expect(sleep).not.toHaveBeenCalled();
+
+      const draw = vi.fn(() => {
+        expect(setDialogue.mock.lastCall?.[1]).toMatchObject({
+          visibleCount: 3,
+        });
+        expect(sleep).toHaveBeenCalledExactlyOnceWith(1590);
+      });
+      ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+      ticker.update(16);
+      expect(draw).toHaveBeenCalledTimes(1);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      ticker.destroy();
+      renderer.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([0, 0.04])(
+    "finishes non-blocking sticker show and append before the next command (delay=%s)",
+    async (delay) => {
+      vi.useFakeTimers();
+      const context = createContext([
+        `[sticker(id="s",text="one",multi=true,delay=${delay},duration=0,block=false)]`,
+        '[sticker(id="s",text="two",multi=true)]',
+        '[name="A"]next',
+      ]);
+      const renderer = createRenderer(context);
+      renderer.layoutSubtitle = vi.fn();
+      const sleep = vi.fn(
+        (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      );
+      const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+        sleep,
+        typingIntervalMs: 40,
+      });
+      try {
+        runtime.setAutoPlayMode("button_auto");
+        await runtime.start();
+        expect(runtime.getDisplayedLineIndex()).toBe(3);
+        const sticker = renderer.stickerViews.get("s");
+        expect(sticker.isTyping).toBe(false);
+        expect(sticker.text.text).toBe("onetwo");
+        // The show and append register their auto waits before dialogue types.
+        expect(sleep.mock.calls).toEqual([[1590], [1680], [40]]);
+      } finally {
+        runtime.destroy();
+        renderer.destroy();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("auto-advances consecutive blocking spellstickers using the show clips", async () => {
     vi.useFakeTimers();
     const context = createContext([
@@ -400,10 +478,10 @@ describe("PixiStoryRenderer", () => {
 
   it("advances sticker iterators on tag, character and completion steps", async () => {
     vi.useFakeTimers();
+    const ticker = new Ticker();
     try {
       const renderer = createRenderer();
-      const addOnce = vi.fn<(update: () => void) => void>();
-      renderer.app = { ticker: { addOnce } };
+      renderer.app = { ticker };
       renderer.layoutSubtitle = vi.fn();
       renderer.tween = vi.fn(() => Promise.resolve());
       const input = {
@@ -426,10 +504,13 @@ describe("PixiStoryRenderer", () => {
       });
       expect(renderer.stickerViews.get("a").isTyping).toBe(true);
       expect(instant).not.toHaveBeenCalled();
-      addOnce.mock.calls[0]![0]();
-      await Promise.resolve();
-      expect(renderer.stickerViews.get("a").isTyping).toBe(false);
-      expect(instant).toHaveBeenCalledExactlyOnceWith();
+      const draw = vi.fn(() => {
+        expect(renderer.stickerViews.get("a").text.text).toBe("hi");
+        expect(instant).toHaveBeenCalledExactlyOnceWith();
+      });
+      ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+      ticker.update(16);
+      expect(draw).toHaveBeenCalledTimes(1);
 
       const typed = vi.fn();
       await renderer.setSticker({
@@ -493,6 +574,7 @@ describe("PixiStoryRenderer", () => {
       await vi.advanceTimersByTimeAsync(100);
       expect(hidden).not.toHaveBeenCalled();
     } finally {
+      ticker.destroy();
       vi.useRealTimers();
     }
   });

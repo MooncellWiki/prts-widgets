@@ -291,20 +291,18 @@ describe("StoryRuntime", () => {
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
-  it.each([
-    { block: true, finishedIds: ["current"] },
-    { block: false, finishedIds: [] },
-  ])(
-    "only finishes a blocking sticker before skip recycling (block=$block)",
-    async ({ block, finishedIds }) => {
+  it.each([true, false])(
+    "only force-finishes a blocking sticker on skip (block=%s)",
+    async (block) => {
       const renderer = new FakeRenderer();
       const finishTyping = vi.spyOn(renderer, "finishStickerTyping");
       const recycle = vi
         .spyOn(renderer, "clearStickers")
         .mockImplementationOnce(() => {
-          expect(finishTyping.mock.calls.map(([id]) => id)).toEqual(
-            finishedIds,
-          );
+          expect(finishTyping.mock.calls.map(([id]) => id)).toEqual([
+            "background",
+            "current",
+          ]);
         });
       const runtime = new StoryRuntime(
         createContext([
@@ -320,6 +318,9 @@ describe("StoryRuntime", () => {
       );
 
       await runtime.start();
+      expect(finishTyping.mock.calls.map(([id]) => id)).toEqual(
+        block ? ["background"] : ["background", "current"],
+      );
       await runtime.skipNode();
 
       expect(recycle).toHaveBeenCalledExactlyOnceWith(150);

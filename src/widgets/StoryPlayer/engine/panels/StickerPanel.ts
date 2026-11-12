@@ -27,6 +27,7 @@ import type {
 interface StickerPlayback {
   beginTyping: (messageLength: number) => () => void;
   calculateFadeMs: (value: unknown, fallback?: number) => number;
+  playbackGeneration: () => number;
   typeWriterDelayMs: () => number;
   translateText: (text: string) => string;
   warn: (detail: string) => void;
@@ -81,8 +82,21 @@ export class StickerPanel {
       "stickertween",
       "timersticker",
       "timerclear",
-    ])
-      registry.register(command, (line) => this.execute(line));
+    ]) {
+      registry.register(command, async (line) => {
+        const generation = this.playback.playbackGeneration();
+        const result = await this.execute(line);
+        // ExecutorComponent.Execute (2791 @ 0x18419B4F0) calls FinishCommand
+        // on a false return. StickerPanel.OnFinish (0x1841E1F60) then
+        // completes the current typewriter before the next command.
+        if (
+          result === "continue" &&
+          generation === this.playback.playbackGeneration()
+        )
+          this.finishCurrentStickerTyping();
+        return result;
+      });
+    }
   }
 
   /** Native OnStoryBegin and _SetTypeWriterDelay (2791 @ 0x1841E21F0 / 0x1841E4980). */
@@ -153,8 +167,7 @@ export class StickerPanel {
       ...slot.layout,
       ...options,
       id,
-      // 2791 _OnStickerTypeEnd (0x1841E4640) reports the completing view's
-      // length, even after a different id starts typing.
+      // 2791 _OnStickerTypeEnd (0x1841E4640) uses the completing view's length.
       onTypingComplete: () => {
         if (this.stickerSlots.get(id) === slot) onTypeEnd();
       },

@@ -36,11 +36,13 @@ export class SubtitlePanel {
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
-      "clearSubtitle" | "setSubtitle"
+      "clearSubtitle" | "onFrameUpdate" | "setSubtitle"
     >,
     private readonly playback: SubtitlePlayback,
   ) {
-    this.typeWriter = new AVGTypeWriterText(playback.sleep);
+    this.typeWriter = new AVGTypeWriterText(playback.sleep, (update) =>
+      renderer.onFrameUpdate(update),
+    );
   }
 
   register(registry: CommandRegistry<CommandResult>): void {

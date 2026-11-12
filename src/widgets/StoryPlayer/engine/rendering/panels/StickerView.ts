@@ -8,7 +8,11 @@ import {
   type RichChar,
 } from "../../richtext";
 
-import type { StickerInput, StickerTweenInput } from "../../types";
+import type {
+  StickerInput,
+  StickerTweenInput,
+  StoryRenderer,
+} from "../../types";
 
 interface StickerViewHost {
   createOverlayTextStyle: (size: number, width: number) => TextStyle;
@@ -18,7 +22,7 @@ interface StickerViewHost {
     width: number,
     alignment: StickerInput["alignment"],
   ) => void;
-  waitForUpdate: () => Promise<void>;
+  onFrameUpdate: StoryRenderer["onFrameUpdate"];
   tween: (
     duration: number,
     step: (progress: number) => void,
@@ -63,10 +67,9 @@ export class StickerView {
   readonly root = new Container();
   readonly text: Text;
   // The 2791 sticker_text prefab has no ITypeWriterRevealer.
-  private readonly typeWriter = new AVGTypeWriterText((ms) =>
-    ms === 0
-      ? this.host.waitForUpdate()
-      : new Promise((resolve) => setTimeout(resolve, ms)),
+  private readonly typeWriter = new AVGTypeWriterText(
+    (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    (update) => this.host.onFrameUpdate(update),
   );
   private fadeSession = 0;
   private tweenSession = 0;

@@ -49,11 +49,13 @@ export class DialogPanel {
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
-      "setDialogue" | "hideDialogue" | "finishDialogueCommand"
+      "setDialogue" | "hideDialogue" | "finishDialogueCommand" | "onFrameUpdate"
     >,
     private readonly playback: DialogPlayback,
   ) {
-    this.typeWriter = new AVGTypeWriterText(playback.sleep);
+    this.typeWriter = new AVGTypeWriterText(playback.sleep, (update) =>
+      renderer.onFrameUpdate(update),
+    );
   }
 
   register(registry: CommandRegistry<CommandResult>): void {

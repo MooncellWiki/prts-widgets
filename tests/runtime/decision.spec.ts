@@ -315,13 +315,11 @@ describe("StoryRuntime", () => {
         runtime.setAutoPlayMode("button_auto");
         runtime.setAutoPlaySpeedLevel(1);
         const started = runtime.start();
-        await vi.waitFor(() =>
-          expect(runtime.getState()).toBe("waiting_decision"),
-        );
+        await vi.advanceTimersByTimeAsync(0);
+        expect(runtime.getState()).toBe("waiting_decision");
         expect(runtime.getAutoPlayState().mode).toBe("button_auto");
         expect(renderer.stickerDelayChanges).toEqual([]);
-
-        renderer.finishStickerTypingNaturally();
+        expect(renderer.typingActive).toBe(false);
         expect(sleep).toHaveBeenCalledExactlyOnceWith(590);
         await vi.advanceTimersByTimeAsync(choiceWaitMs);
         expect(runtime.getState()).toBe("waiting_decision");

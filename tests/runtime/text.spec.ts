@@ -947,10 +947,13 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("reschedules an auto click when an earlier live sticker finishes", async () => {
+  it("lets dialogue completion replace the preceding non-blocking sticker's auto click", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new FakeRenderer();
+      const sleep = vi.fn(
+        (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      );
       const runtime = new StoryRuntime(
         createContext([
           '[sticker(id="a",text="0123456789",block=false)]',
@@ -959,17 +962,16 @@ describe("StoryRuntime", () => {
         ]),
         renderer,
         new FakeAudio(),
-        { typingIntervalMs: 40 },
+        { sleep, typingIntervalMs: 40 },
       );
       runtime.setAutoPlayMode("button_auto");
       await runtime.start();
+      expect(renderer.typingActive).toBe(false);
+      expect(sleep).toHaveBeenNthCalledWith(1, 1800);
 
-      // The dialogue finishes typing at 200ms and arms a 1.65s click.
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(renderer.lastDialogue.speaker).toBe("B");
-      // The live sticker replaces it with 1.5s + 10 * 30ms from now.
-      renderer.finishStickerTypingNaturally();
-      await vi.advanceTimersByTimeAsync(1799);
+      // The dialogue finishes typing at 200ms and replaces the 1.8s click
+      // with a new 1.65s wait.
+      await vi.advanceTimersByTimeAsync(1849);
       expect(renderer.lastDialogue.speaker).toBe("B");
       await vi.advanceTimersByTimeAsync(1);
       expect(renderer.lastDialogue.speaker).toBe("C");
@@ -979,7 +981,7 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("ignores a replaced sticker callback and leaves a non-blocking sticker typing on the dialog click", async () => {
+  it("ignores delayed callbacks from a completed non-blocking sticker show and append", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new FakeRenderer();
@@ -998,16 +1000,17 @@ describe("StoryRuntime", () => {
 
       await vi.advanceTimersByTimeAsync(1000);
       renderer.stickerCalls[0]!.onTypingComplete?.();
+      renderer.stickerCalls[1]!.onTypingComplete?.();
       await vi.advanceTimersByTimeAsync(850);
       expect(renderer.lastDialogue.speaker).toBe("C");
-      expect(renderer.typingActive).toBe(true);
+      expect(renderer.typingActive).toBe(false);
       runtime.destroy();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("lets a blocking stickertween finish its panel's current sticker on click", async () => {
+  it("advances a blocking stickertween in one click after a non-blocking sticker", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -1020,9 +1023,6 @@ describe("StoryRuntime", () => {
       { typingIntervalMs: 40 },
     );
     await runtime.start();
-    expect(renderer.typingActive).toBe(true);
-
-    await runtime.advance();
     expect(runtime.getDisplayedLineIndex()).toBeNull();
     expect(renderer.typingActive).toBe(false);
 

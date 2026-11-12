@@ -1,13 +1,14 @@
 import { TYPE_WRITER_ORIGIN_DELAY_MS } from "../commandParams";
 import { parseRichChars } from "../richtext";
 
-import type { TypewriterText } from "../types";
+import type { StoryRenderer, TypewriterText } from "../types";
 
 type RenderText = (text: TypewriterText, initial?: boolean) => void;
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 interface TypingSession {
+  cancelUpdate?: () => void;
   chars: TypewriterText["chars"];
   delayMs: number;
   endStep: number;
@@ -20,13 +21,16 @@ interface TypingSession {
 
 /**
  * Native port: Torappu.AVG.AVGTypeWriterText's BeginText / AppendText,
- * TryFinish and Update. Browser timers advance the reveal by character
- * count for both the mesh and string iterator paths.
+ * TryFinish and Update. Browser timers pace the reveal, and a frame update
+ * completes text that starts with a zero interval.
  */
 export class AVGTypeWriterText {
   private session: TypingSession | null = null;
 
-  constructor(private readonly sleep: (ms: number) => Promise<void>) {}
+  constructor(
+    private readonly sleep: (ms: number) => Promise<void>,
+    private readonly onFrameUpdate: StoryRenderer["onFrameUpdate"],
+  ) {}
 
   get isTyping(): boolean {
     return this.session !== null;
@@ -68,7 +72,7 @@ export class AVGTypeWriterText {
     const endStep = iteratorSteps ? iteratorSteps.length + 2 : chars.length;
     if (
       !iteratorSteps &&
-      (step === endStep || (interval === 0 && !deferZeroDelay))
+      (interval === 0 ? !deferZeroDelay : step === endStep)
     ) {
       render({ chars, visibleCount: chars.length }, true);
       onTypeEnd();
@@ -84,7 +88,7 @@ export class AVGTypeWriterText {
       };
       this.session = session;
       render({ chars, visibleCount: this.visibleCount(session) }, true);
-      void this.runTyping(session);
+      if (this.session === session) this.startTyping(session);
     }
     return chars.length;
   }
@@ -104,6 +108,7 @@ export class AVGTypeWriterText {
   stopTypingSilently(): void {
     const session = this.session;
     this.session = null;
+    session?.cancelUpdate?.();
     session?.wake?.();
   }
 
@@ -120,16 +125,25 @@ export class AVGTypeWriterText {
     return iteratorSteps ? (iteratorSteps[step - 1] ?? chars.length) : step;
   }
 
-  private async runTyping(session: TypingSession): Promise<void> {
-    const { chars, render } = session;
-    let elapsedMs = 0;
+  private startTyping(session: TypingSession): void {
     if (session.delayMs === 0) {
-      // BeginText enters typing immediately. A later Update consumes the
-      // zero-delay text and invokes the completion callback.
+      // Native Update (2791 @ 0x18424FA30) consumes the zero-delay text
+      // before the next draw. Run the reveal inside the frame callback.
       const startedAt = performance.now();
-      await this.sleep(0);
-      elapsedMs = performance.now() - startedAt;
+      session.cancelUpdate = this.onFrameUpdate(() => {
+        session.cancelUpdate = undefined;
+        void this.runTyping(session, performance.now() - startedAt);
+      });
+    } else {
+      void this.runTyping(session);
     }
+  }
+
+  private async runTyping(
+    session: TypingSession,
+    elapsedMs = 0,
+  ): Promise<void> {
+    const { chars, render } = session;
     while (this.session === session) {
       const delayMs = session.delayMs;
       const waitMs = delayMs - elapsedMs;
