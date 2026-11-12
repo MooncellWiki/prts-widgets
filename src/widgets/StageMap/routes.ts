@@ -268,6 +268,7 @@ export class RoutePlanner {
     let pos = start;
     /** 出生时速度为 0（MoveController.Reset 0x8B6980） */
     let velocity: Vec2 = { x: 0, y: 0 };
+    let stalled = false;
     const kind = () => (hidden ? "hidden" : visible);
     const restart = (k: RouteLeg["kind"]) => {
       legs.push(leg);
@@ -276,8 +277,18 @@ export class RoutePlanner {
 
     const moveTo = (grid: GridPos, offset: Vec2, reachDistance = 0) => {
       const target = { x: grid.col + offset.x, y: grid.row + offset.y };
-      const map = this.nextMap(grid, motion, route.allowDiagonalMove);
       const reach = Math.max(0.05, reachDistance);
+      // 2.7.91 MoveController.CalculateMoveDelta 0x90F560：非正移速原地停下。
+      // 静态预览也停在当前检查点；不能用 speed=0 计算帧数上限（会变成 Infinity），
+      // 也不能退回瞬间转向的走法，否则会把泄漏源等静止单位画成在移动。
+      if (
+        steering &&
+        (!Number.isFinite(steering.speed) || steering.speed <= 0)
+      ) {
+        stalled = dist(pos, target) > reach;
+        return;
+      }
+      const map = this.nextMap(grid, motion, route.allowDiagonalMove);
       const steered =
         steering &&
         simulateSteered(map, pos, velocity, grid, target, reach, steering);
@@ -304,14 +315,14 @@ export class RoutePlanner {
     let closeAt = -1;
     for (
       let i = 0, guard = 0;
-      i < cps.length && guard < cps.length * 2 + 2;
+      i < cps.length && !stalled && guard < cps.length * 2 + 2;
       guard++
     ) {
       const cp = cps[i];
       if (MOVE_TYPES.has(cp.type)) {
         if (leg.kind !== kind()) restart(kind());
         moveTo(cp.position, cp.reachOffset ?? { x: 0, y: 0 }, cp.reachDistance);
-        if (i === closeAt) break;
+        if (stalled || i === closeAt) break;
       } else if (WAIT_TYPES.has(cp.type)) {
         // 等待时方向为零，转向力把速度减到 0
         velocity = { x: 0, y: 0 };
@@ -349,7 +360,7 @@ export class RoutePlanner {
       }
       i++;
     }
-    if (!patrol) {
+    if (!patrol && !stalled) {
       if (leg.kind !== kind()) restart(kind());
       moveTo(route.endPosition, { x: 0, y: 0 });
     }

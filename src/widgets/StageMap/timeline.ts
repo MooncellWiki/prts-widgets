@@ -1,3 +1,5 @@
+import { randomSpawns } from "./randomSpawns";
+
 import type {
   ActionData,
   Difficulty,
@@ -33,7 +35,7 @@ export interface SpawnGroup {
   routeIndex: number;
   /** 路线取 extraRoutes（分支里的出兵都是：_DealAction 把 useExtraRoute 改写成「是不是分支」） */
   extraRoute: boolean;
-  /** 随机出兵：同一阶段里同组几个按权重抽一个，这是抽中的概率；只随包（pack）走的是 NaN */
+  /** 随机出兵：本动作保留下来的概率（含随包）；没有抽签条件时为 null */
   chance: number | null;
   /** 分支：哪一个分支的第几段 */
   branch: { key: string; phase: number } | null;
@@ -151,55 +153,6 @@ function expand(
   return items;
 }
 
-/**
- * 随机出兵（RandomGroupSchedulerPreprocessor.DoPreprocess 0x94A310，肉鸽 / 保全 / 生息演算等玩法）：
- * 同一阶段内同一 randomSpawnGroupKey 的几个动作按 weight 抽一个，抽中空 key 就是这次不出；
- * 带 randomSpawnGroupPackKey 的随同包的抽签结果一起出或一起不出。普通关卡的玩法不做这一步，它们的数据里这两个字段也都是空的
- */
-function randomChances(actions: ActionData[]) {
-  const totals = new Map<string, number>();
-  for (const a of actions)
-    if (a.randomSpawnGroupKey)
-      totals.set(
-        a.randomSpawnGroupKey,
-        (totals.get(a.randomSpawnGroupKey) ?? 0) + Math.max(0, a.weight),
-      );
-  return (a: ActionData): number | null => {
-    if (a.randomSpawnGroupKey) {
-      const total = totals.get(a.randomSpawnGroupKey) ?? 0;
-      return total > 0 ? Math.max(0, a.weight) / total : 0;
-    }
-    return a.randomSpawnGroupPackKey ? Number.NaN : null;
-  };
-}
-
-/** 一个阶段里最少 / 最多出几只：随机组按选项里计数的最小 / 最大值算，只随包走的最少算 0 */
-function countRange(
-  actions: ActionData[],
-  counted: (a: ActionData) => number,
-): { min: number; max: number } {
-  let min = 0;
-  let max = 0;
-  const groups = new Map<string, number[]>();
-  for (const a of actions) {
-    if (a.randomSpawnGroupKey) {
-      const list = groups.get(a.randomSpawnGroupKey) ?? [];
-      list.push(counted(a));
-      groups.set(a.randomSpawnGroupKey, list);
-    } else if (a.randomSpawnGroupPackKey) {
-      max += counted(a);
-    } else {
-      min += counted(a);
-      max += counted(a);
-    }
-  }
-  for (const list of groups.values()) {
-    min += Math.min(...list);
-    max += Math.max(...list);
-  }
-  return { min, max };
-}
-
 export function buildTimeline(
   level: LevelData,
   difficulty: Difficulty,
@@ -249,20 +202,32 @@ export function buildTimeline(
     clock: number,
     where: Pick<SpawnGroup, "wave" | "extraRoute" | "branch">,
   ) {
-    const enabledActions = fragment.actions
-      .filter(isEnabled)
-      .map((a) =>
-        !where.extraRoute &&
-        (a.actionType === "SPAWN" || a.actionType === "DISPLAY_ENEMY_INFO") &&
-        replace.has(a.key)
-          ? { ...a, key: replace.get(a.key)! }
-          : a,
-      );
-    // 抽签时「这次不出」也占权重
-    const chance = randomChances(enabledActions);
+    const allActions = fragment.actions.map((a) =>
+      !where.extraRoute &&
+      (a.actionType === "SPAWN" || a.actionType === "DISPLAY_ENEMY_INFO") &&
+      replace.has(a.key)
+        ? { ...a, key: replace.get(a.key)! }
+        : a,
+    );
+    // 2.7.91 SchedulerDriver._InitScheduler 0x97CDC0：随机预处理先于隐藏组检查。
+    // 未启用的选项仍占权重，抽中它时本组可能不出兵；随包动作也要一起计数。
+    const random = randomSpawns(allActions);
+    const range = random.countRange((a) =>
+      a.actionType !== "SPAWN" ||
+      !isEnabled(a) ||
+      !a.key ||
+      a.notCountInTotal ||
+      notCounted(a.key)
+        ? 0
+        : a.count,
+    );
     // 空 key 的出兵、EMPTY 都是随机组里「这次不出」的那一项（只出现在肉鸽关卡），随机预处理最后会删掉
-    const actions = enabledActions.filter(
-      (a) => a.actionType !== "EMPTY" && (a.key || a.actionType !== "SPAWN"),
+    const actions = allActions.filter(
+      (a) =>
+        isEnabled(a) &&
+        random.chance(a) !== 0 &&
+        a.actionType !== "EMPTY" &&
+        (a.key || a.actionType !== "SPAWN"),
     );
     const items = actions.flatMap((a) =>
       expand(
@@ -274,7 +239,7 @@ export function buildTimeline(
       ),
     );
     const groups: SpawnGroup[] = [];
-    if (items.length === 0) return { groups, length: 0, enabledActions };
+    if (items.length === 0) return { groups, length: 0, range };
     const shift = Math.max(0, -Math.min(...items.map((i) => i.t)));
     for (const item of items) {
       const { action } = item;
@@ -286,13 +251,13 @@ export function buildTimeline(
         count: action.count,
         interval: action.interval,
         routeIndex: action.routeIndex,
-        chance: chance(action),
+        chance: random.chance(action),
       });
     }
     return {
       groups,
       length: Math.max(...items.map((i) => i.t)) + shift,
-      enabledActions,
+      range,
     };
   }
 
@@ -309,20 +274,8 @@ export function buildTimeline(
         branch: null,
       });
       // Scheduler.Init：总数 = 波次里启用的 SPAWN 的 count 之和，去掉 notCountInTotal 的；随机组按每组最少 / 最多算
-      const range = countRange(
-        done.enabledActions.filter(
-          (a) => a.actionType === "SPAWN" || a.actionType === "EMPTY",
-        ),
-        (a) =>
-          a.actionType !== "SPAWN" ||
-          !a.key ||
-          a.notCountInTotal ||
-          notCounted(a.key)
-            ? 0
-            : a.count,
-      );
-      enemyCount.min += range.min;
-      enemyCount.max += range.max;
+      enemyCount.min += done.range.min;
+      enemyCount.max += done.range.max;
       groups.push(...done.groups);
       clock += done.length;
     }

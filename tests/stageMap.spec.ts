@@ -632,6 +632,200 @@ describe("出兵时间（出现即被击倒）", () => {
   });
 });
 
+describe("随机出兵与随包", () => {
+  const level = (actions: ActionData[]) =>
+    levelWith({
+      waves: [
+        {
+          preDelay: 0,
+          postDelay: 0,
+          maxTimeWaitingForNextWave: -1,
+          fragments: [{ preDelay: 0, actions }],
+        },
+      ],
+    });
+  const choice = (
+    key: string,
+    count: number,
+    group: string | null,
+    pack: string | null,
+    weight = 1,
+  ) =>
+    action({
+      key,
+      count,
+      randomSpawnGroupKey: group,
+      randomSpawnGroupPackKey: pack,
+      weight,
+    });
+
+  it("rogue6_1-4 第三个阶段：互斥包的总数是 8–10，随包概率与选项相同", () => {
+    const t = buildTimeline(
+      level([
+        action({ count: 3 }),
+        choice("enemy_a", 3, "t1", null),
+        choice("enemy_a", 4, "t1", null),
+        choice("enemy_a", 2, "big", "s", 30),
+        choice("enemy_a", 1, null, "s"),
+        choice("enemy_a", 1, "big", "d", 70),
+        choice("enemy_a", 1, null, "d"),
+      ]),
+      "NORMAL",
+    );
+    expect(t.enemyCount).toEqual({ min: 8, max: 10 });
+    expect(t.groups.map((g) => g.chance)).toEqual([
+      null,
+      0.5,
+      0.5,
+      0.3,
+      0.3,
+      0.7,
+      0.7,
+    ]);
+  });
+
+  it("rogue5_4-5 的 t4：未启用的隐藏选项仍占权重，抽中时本组不出兵", () => {
+    const lv = level([
+      choice("enemy_a", 1, "t4", null, 20),
+      choice("enemy_b", 1, "t4", null, 80),
+      {
+        ...choice("enemy_c", 1, "t4", null, 80),
+        hiddenGroup: "copper_b",
+      },
+    ]);
+    lv.runes = [
+      {
+        key: "level_hidden_group_enable",
+        difficultyMask: "FOUR_STAR",
+        blackboard: [{ key: "key", value: 0, valueStr: "copper_b" }],
+      },
+    ];
+    const normal = buildTimeline(lv, "NORMAL");
+    expect(normal.groups.map((g) => g.key)).toEqual(["enemy_a", "enemy_b"]);
+    expect(normal.groups[0].chance).toBeCloseTo(20 / 180);
+    expect(normal.groups[1].chance).toBeCloseTo(80 / 180);
+    expect(normal.enemyCount).toEqual({ min: 0, max: 1 });
+    const raid = buildTimeline(lv, "FOUR_STAR");
+    expect(raid.groups.map((g) => g.chance)).toEqual([
+      20 / 180,
+      80 / 180,
+      80 / 180,
+    ]);
+    expect(raid.enemyCount).toEqual({ min: 1, max: 1 });
+  });
+
+  it("抽中空 key 仍删除它的整包，不会单独留下随包敌人", () => {
+    const t = buildTimeline(
+      level([
+        choice("", 1, "g", "empty"),
+        choice("enemy_a", 1, "g", "full"),
+        choice("enemy_empty_pack", 5, null, "empty"),
+        choice("enemy_full_pack", 2, null, "full"),
+      ]),
+      "NORMAL",
+    );
+    expect(t.groups.map((g) => [g.key, g.chance])).toEqual([
+      ["enemy_a", 0.5],
+      ["enemy_full_pack", 0.5],
+    ]);
+    expect(t.enemyCount).toEqual({ min: 0, max: 3 });
+  });
+
+  it("装置激活动作也参与抽签并控制随包出兵", () => {
+    const t = buildTimeline(
+      level([
+        {
+          ...choice("trap_a", 1, "g", "a"),
+          actionType: "ACTIVATE_PREDEFINED",
+        },
+        choice("enemy_b", 1, "g", "b"),
+        choice("enemy_pack_a", 2, null, "a"),
+        choice("enemy_pack_b", 4, null, "b"),
+      ]),
+      "NORMAL",
+    );
+    expect(t.groups.map((g) => g.chance)).toEqual([0.5, 0.5, 0.5]);
+    expect(t.enemyCount).toEqual({ min: 2, max: 5 });
+  });
+
+  it("没有抽签选项控制的包始终保留", () => {
+    const t = buildTimeline(
+      level([choice("enemy_a", 3, null, "uncontrolled")]),
+      "NORMAL",
+    );
+    expect(t.groups.map((g) => g.chance)).toEqual([null]);
+    expect(t.enemyCount).toEqual({ min: 3, max: 3 });
+  });
+
+  it("同组的互斥选项共用一个包名时，无论抽中谁都会删除整个包", () => {
+    const t = buildTimeline(
+      level([
+        choice("enemy_a", 1, "g", "shared"),
+        choice("enemy_b", 2, "g", "shared"),
+        choice("enemy_pack", 3, null, "shared"),
+      ]),
+      "NORMAL",
+    );
+    expect(t.groups).toEqual([]);
+    expect(t.enemyCount).toEqual({ min: 0, max: 0 });
+  });
+
+  it("不同随机组控制同一个包时，必须同时抽中才保留", () => {
+    const t = buildTimeline(
+      level([
+        choice("enemy_a", 1, "g1", "shared"),
+        choice("enemy_b", 1, "g1", null),
+        choice("enemy_c", 1, "g2", "shared"),
+        choice("enemy_d", 1, "g2", null),
+        choice("enemy_pack", 5, null, "shared"),
+      ]),
+      "NORMAL",
+    );
+    expect(t.groups.map((g) => g.chance)).toEqual([0.25, 0.5, 0.25, 0.5, 0.25]);
+    expect(t.enemyCount).toEqual({ min: 1, max: 7 });
+  });
+
+  it("零权重选项不出场，也不拉长阶段", () => {
+    const t = buildTimeline(
+      level([
+        { ...choice("enemy_never", 9, "g", null, 0), preDelay: 100 },
+        choice("enemy_a", 1, "g", null),
+      ]),
+      "NORMAL",
+    );
+    expect(t.groups.map((g) => g.key)).toEqual(["enemy_a"]);
+    expect(t.enemyCount).toEqual({ min: 1, max: 1 });
+    expect(t.duration).toBe(0);
+  });
+
+  it("总权重为零时，同原生取第一项", () => {
+    const t = buildTimeline(
+      level([
+        choice("enemy_first", 2, "g", null, 0),
+        choice("enemy_second", 3, "g", null, 0),
+      ]),
+      "NORMAL",
+    );
+    expect(t.groups.map((g) => [g.key, g.chance])).toEqual([
+      ["enemy_first", 1],
+    ]);
+    expect(t.enemyCount).toEqual({ min: 2, max: 2 });
+  });
+
+  it("几十个独立组分别求和，不枚举所有组合", () => {
+    const actions = Array.from({ length: 40 }, (_, i) => [
+      choice("enemy_a", 1, `g${i}`, `a${i}`),
+      choice("enemy_b", 2, `g${i}`, `b${i}`),
+      choice("enemy_pack_a", 1, null, `a${i}`),
+      choice("enemy_pack_b", 1, null, `b${i}`),
+    ]).flat();
+    expect(buildTimeline(level(actions), "NORMAL").enemyCount).toEqual({
+      min: 80,
+      max: 120,
+    });
+  });
+});
+
 describe("出生动画与分支", () => {
   const wave = (actions: ActionData[], preDelay = 0) => ({
     preDelay: 0,
@@ -745,6 +939,38 @@ describe("转向", () => {
 
   it("不知道敌人时按瞬间转向画折线", () => {
     expect(plan().legs[0].points).toHaveLength(3);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "移速 %s 时原地停下，不进入逐帧模拟或退回几何路线",
+    (speed) => {
+      // 17-4 默认首组的泄漏源就是零移速，但路线起点与终点不同。
+      const path = plan({ speed, factor: 8, maxForce: 10 });
+      expect(path.legs).toEqual([]);
+      expect(path.end).toEqual(path.start);
+      expect(path.patrol).toBe(false);
+    },
+  );
+
+  it("静止单位停在第一个未到达的移动检查点，保留之前的等待点", () => {
+    const path = new RoutePlanner(gridOf(["S.E"])).plan(
+      route({
+        endPosition: { row: 0, col: 2 },
+        checkpoints: [
+          cp("WAIT_FOR_SECONDS", 0, 0, 50),
+          cp("PATROL_MOVE", 0, 1),
+          cp("APPEAR_AT_POS", 0, 2),
+          cp("WAIT_FOR_SECONDS", 0, 2, 10),
+        ],
+      }),
+      { speed: 0, factor: 8, maxForce: 10 },
+    )!;
+    expect(path.legs).toEqual([]);
+    expect(path.stops).toEqual([
+      { at: { x: 0, y: 0 }, type: "WAIT_FOR_SECONDS", time: 50 },
+    ]);
+    expect(path.end).toEqual({ x: 0, y: 0 });
+    expect(path.patrol).toBe(false);
   });
 });
 
