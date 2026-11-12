@@ -144,27 +144,48 @@ describe("PixiStoryRenderer", () => {
   });
 
   it.each([0, 0.04])(
-    "finishes non-blocking sticker show and append before the next command (delay=%s)",
+    "finishes non-blocking sticker show and append before drawing the resumed frame (delay=%s)",
     async (delay) => {
       const context = createContext([
+        '[name="A"]A',
         `[sticker(id="s",text="one",multi=true,delay=${delay},duration=0,block=false)]`,
         '[sticker(id="s",text="two",multi=true)]',
-        '[name="A"]next',
+        '[name="B"]next',
       ]);
       const renderer = createRenderer(context);
       renderer.layoutSubtitle = vi.fn();
+      const ticker = new Ticker();
+      ticker.lastTime = 0;
+      renderer.app = { ticker };
       const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
         typingIntervalMs: 40,
       });
       try {
-        runtime.setAutoPlayMode("button_auto");
         await runtime.start();
-        expect(runtime.getDisplayedLineIndex()).toBe(3);
-        const sticker = renderer.stickerViews.get("s");
-        expect(sticker.isTyping).toBe(false);
-        expect(sticker.text.text).toBe("onetwo");
+        ticker.update(48);
+        const advancing = runtime.advance();
+        ticker.update(64); // FinishCommand at frame end.
+
+        const draw = vi.fn(() => {
+          const sticker = renderer.stickerViews.get("s");
+          return {
+            isTyping: sticker?.isTyping,
+            line: runtime.getDisplayedLineIndex(),
+            text: sticker?.text.text,
+          };
+        });
+        ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
+        ticker.update(80); // The command coroutine resumes before this draw.
+        await advancing;
+        expect(draw).toHaveReturnedWith({
+          isTyping: false,
+          line: 4,
+          text: "onetwo",
+        });
       } finally {
         runtime.destroy();
+        renderer.app = null;
+        ticker.destroy();
         renderer.destroy();
       }
     },

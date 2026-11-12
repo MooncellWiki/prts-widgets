@@ -2723,9 +2723,9 @@ export class PixiStoryRenderer implements StoryRenderer {
    * completes instantly, so the full text is what fades out, not the
    * partially typed prefix.
    */
-  async clearSticker(id?: string, fadeMs = 0): Promise<void> {
+  clearSticker(id?: string, fadeMs = 0): void {
     if (!id) {
-      await this.clearStickers(fadeMs);
+      this.clearStickers(fadeMs);
       return;
     }
 
@@ -2738,7 +2738,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    * without `TryFinishType`, so typing is not completed before the fade, and
    * then StickerPanel nulls `m_currentSticker`.
    */
-  async clearStickers(fadeMs = 0): Promise<void> {
+  clearStickers(fadeMs = 0): void {
     for (const view of this.stickerViews.values()) view.recycle(fadeMs);
   }
 
@@ -2759,7 +2759,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    * so a timersticker fade-in still running when timerclear lands cannot keep
    * writing alpha alongside the fade-out.
    */
-  async clearTimerSticker(input?: TimerClearInput): Promise<void> {
+  clearTimerSticker(input?: TimerClearInput): void {
     this.clearTimerInterval();
     // `DOKill(_canvas, complete: false)`: an earlier fade is dropped mid-flight,
     // so a StopTimer fade it may have been running never reaches its OnComplete.
@@ -3210,8 +3210,8 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /** StickerPanel supplies command inputs; each view owns its visual state. */
-  setSticker(input: StickerInput): Promise<void> {
-    return this.ensureStickerView(input.id).show(input);
+  setSticker(input: StickerInput): void {
+    this.ensureStickerView(input.id).show(input);
   }
 
   setStickerTypeWriterDelay(id: string, delayMs: number): void {
@@ -3234,7 +3234,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    * `_StartCountTimer`, then the `_ShowTimer` fade, and only after RenderTimer
    * returns does `_ExcuteTimerSticker` re-activate the view.
    */
-  async setTimerSticker(input: TimerStickerInput): Promise<void> {
+  setTimerSticker(input: TimerStickerInput): void {
     const timer = this.ensureTimerStickerText();
 
     timer.style = this.createOverlayTextStyle(input.sizePx, input.widthPx);

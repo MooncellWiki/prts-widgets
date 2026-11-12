@@ -174,20 +174,23 @@ describe("StoryRuntime", () => {
 
   it.each([
     // ForceCommandEnd hides m_blockingStickerId before OnReset clears all.
-    { action: "show", hiddenBeforeClear: ["s"] },
+    { action: "show", clicked: false, hidesBeforeSkip: 0 },
     // A blocking hide leaves no blocking id, so only the executor hides.
-    { action: "hide", hiddenBeforeClear: ["s"] },
+    { action: "hide", clicked: false, hidesBeforeSkip: 1 },
+    // _OnClicked clears the blocking id even before frame-end completion.
+    { action: "show", clicked: true, hidesBeforeSkip: 1 },
   ])(
-    "force-ends a blocking spellsticker $action before the skip reset clears it",
-    async ({ action, hiddenBeforeClear }) => {
+    "hides a blocking spellsticker $action once before the skip reset (clicked=$clicked)",
+    async ({ action, clicked, hidesBeforeSkip }) => {
       const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
       const clear = vi
         .spyOn(renderer, "clearSpellStickers")
         .mockImplementationOnce(() => {
-          expect(renderer.spellStickerHideCalls).toEqual(hiddenBeforeClear);
+          expect(renderer.spellStickerHideCalls).toEqual(["s"]);
         });
-      // nofirstskip on a first read makes get_isSkippable() false, which is
-      // the only fork where SkipStory reaches _ResetComponentsOnSkip.
+      // nofirstskip on a first read takes the protected skip branch and
+      // reaches _ResetComponentsOnSkip.
       const runtime = new StoryRuntime(
         createContext([
           `[spellsticker(id="s",action="${action}",block=true)]<p=1>x</>`,
@@ -196,10 +199,17 @@ describe("StoryRuntime", () => {
         renderer,
         new FakeAudio(),
       );
-      await runtime.start();
-      await runtime.skipNode();
-      expect(clear).toHaveBeenCalledExactlyOnceWith();
-      expect(renderer.spellStickerHideCalls).toEqual(hiddenBeforeClear);
+      try {
+        await runtime.start();
+        const advancing = clicked ? runtime.advance() : undefined;
+        expect(renderer.spellStickerHideCalls).toHaveLength(hidesBeforeSkip);
+        await runtime.skipNode();
+        await advancing;
+        expect(clear).toHaveBeenCalledExactlyOnceWith();
+        expect(renderer.spellStickerHideCalls).toEqual(["s"]);
+      } finally {
+        runtime.destroy();
+      }
     },
   );
 

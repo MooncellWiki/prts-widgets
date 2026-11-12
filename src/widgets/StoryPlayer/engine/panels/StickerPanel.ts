@@ -43,6 +43,13 @@ interface StickerSlot {
   >;
 }
 
+function afterResult<T>(
+  result: T | Promise<T>,
+  complete: (result: T) => CommandResult,
+): CommandResult | Promise<CommandResult> {
+  return result instanceof Promise ? result.then(complete) : complete(result);
+}
+
 /**
  * Native provenance: 2791 StickerPanel (GetExecutors 0x1841E1CC0).
  * Owns the five sticker commands, active slots and recycled fade state.
@@ -83,18 +90,19 @@ export class StickerPanel {
       "timersticker",
       "timerclear",
     ]) {
-      registry.register(command, async (line) => {
+      registry.register(command, (line) => {
         const generation = this.playback.playbackGeneration();
-        const result = await this.execute(line);
-        // ExecutorComponent.Execute (2791 @ 0x18419B4F0) calls FinishCommand
-        // on a false return. StickerPanel.OnFinish (0x1841E1F60) then
-        // completes the current typewriter before the next command.
-        if (
-          result === "continue" &&
-          generation === this.playback.playbackGeneration()
-        )
-          this.finishCurrentStickerTyping();
-        return result;
+        return afterResult(this.execute(line), (result) => {
+          // ExecutorComponent.Execute (2791 @ 0x18419B4F0) calls FinishCommand
+          // on a false return. StickerPanel.OnFinish (0x1841E1F60) completes
+          // the current typewriter before the next command and the draw.
+          if (
+            result === "continue" &&
+            generation === this.playback.playbackGeneration()
+          )
+            this.finishCurrentStickerTyping();
+          return result;
+        });
       });
     }
   }
@@ -175,7 +183,9 @@ export class StickerPanel {
     });
   }
 
-  private async execute(line: ParsedCommandLine): Promise<CommandResult> {
+  private execute(
+    line: ParsedCommandLine,
+  ): CommandResult | Promise<CommandResult> {
     const args = line.args;
     switch (line.command) {
       case "sticker": {
@@ -194,6 +204,7 @@ export class StickerPanel {
         // `block` defaults differ per branch: true when the id is new (show),
         // false once the id already exists (append or hide).
         const block = toBoolean(arg(args, "block"), !existing);
+        const result = block ? this.clickWait : "continue";
         const duration = toNumber(arg(args, "duration"), -1);
         // RenderSticker keeps `duration` verbatim when it is >= 0 (0 means an
         // instant show) and only falls back to 0.15 when the parameter is
@@ -212,9 +223,10 @@ export class StickerPanel {
           this.currentSticker = null;
           this.stickerPoolFadeMs.push(hideFadeMs);
           const onHidden = this.playback.beginTyping(0);
-          await this.renderer.clearSticker(id, hideFadeMs);
-          onHidden();
-          return block ? this.clickWait : "continue";
+          return afterResult(this.renderer.clearSticker(id, hideFadeMs), () => {
+            onHidden();
+            return result;
+          });
         }
 
         if (existing) {
@@ -229,12 +241,12 @@ export class StickerPanel {
           // single-line message before starting the multiline run.
           const rawLength =
             (existing.multiline ? existing.rawLength : 0) + text.length;
-          await this.setSticker(
+          const render = this.setSticker(
             text,
             { ...existing, multiline: true, rawLength },
             { append: true, resetText: !existing.multiline },
           );
-          return block ? this.clickWait : "continue";
+          return afterResult(render, () => result);
         }
 
         // Show branch (dict miss): _GenParam reads the full layout. An empty
@@ -276,12 +288,12 @@ export class StickerPanel {
           x,
           y,
         };
-        await this.setSticker(
+        const render = this.setSticker(
           text,
           { id, layout, multiline: multi, rawLength: text.length },
           { append: false },
         );
-        return block ? this.clickWait : "continue";
+        return afterResult(render, () => result);
       }
 
       case "stickertween": {
@@ -377,7 +389,6 @@ export class StickerPanel {
                 },
               }),
         };
-        if (hasGroup) await this.renderer.stickerTween(tween);
         // Durations go through calculateFadeMs on purpose: native keeps
         // `*duration` literal and scales playback once via
         // `Sequence.timeScale = AVGController.animateRatio`
@@ -389,7 +400,10 @@ export class StickerPanel {
         // Native registers the Event.Click advance only when `block && isend`
         // both hold (0x183e92416); the other three combinations return false
         // immediately and the tween keeps playing in the background.
-        return block && isend ? this.clickWait : "continue";
+        const result = block && isend ? this.clickWait : "continue";
+        return hasGroup
+          ? afterResult(this.renderer.stickerTween(tween), () => result)
+          : result;
       }
 
       case "timersticker": {
@@ -398,7 +412,7 @@ export class StickerPanel {
         // false): the timer view is created once and reused, and only
         // time/x/y/width/size/duration/afrom/ato are read -- id/text/block
         // are ignored.
-        await this.renderer.setTimerSticker({
+        const render = this.renderer.setTimerSticker({
           durationMs:
             Math.max(0, toNumber(arg(args, "duration"), 1) * 1000) || 130,
           fromAlpha: toNumber(arg(args, "afrom"), 0),
@@ -412,16 +426,16 @@ export class StickerPanel {
           x: toNumber(arg(args, "x"), 0),
           y: toNumber(arg(args, "y"), 0),
         } satisfies TimerStickerInput);
-        return "continue";
+        return afterResult(render, () => "continue");
       }
 
       case "timerclear": {
         // Native port: Torappu.AVG.StickerPanel._ExcuteTimerClier / AVGTimerView.
         // StopTimer hides the reusable slot rather than destroying it.
-        await this.renderer.clearTimerSticker({
+        const render = this.renderer.clearTimerSticker({
           durationMs: Math.max(0, toNumber(arg(args, "duration"), 0.13) * 1000),
         } satisfies TimerClearInput);
-        return "continue";
+        return afterResult(render, () => "continue");
       }
 
       case "stickerclear": {

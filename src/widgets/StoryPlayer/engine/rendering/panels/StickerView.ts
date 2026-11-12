@@ -121,7 +121,7 @@ export class StickerView {
     this.root.scale.set(1, 1);
   }
 
-  async show(input: StickerInput): Promise<void> {
+  show(input: StickerInput): void {
     const { root, text } = this;
     const wasActive = this.message !== null;
     // Native AppendText (0x1842455F0) leaves the fade, tween and transform

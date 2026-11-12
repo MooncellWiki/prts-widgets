@@ -3386,9 +3386,16 @@ export class StoryRuntime {
           (showDurationMs ?? 0) > 0 ? showDurationMs : undefined,
         );
         // _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) hide the
-        // blocking show by ID. A hide command already hid it during execution.
+        // blocking show by ID and clear it before the next callback can hide.
+        // A hide command already hid it during execution.
         if (hide) return { handleClick: (finishCommand) => finishCommand() };
-        const hideBlocking = () => this.renderer.hideSpellSticker(id);
+        let blockingStickerId: string | null = id;
+        const hideBlocking = () => {
+          if (blockingStickerId === null) return;
+          const stickerId = blockingStickerId;
+          blockingStickerId = null;
+          return this.renderer.hideSpellSticker(stickerId);
+        };
         return {
           handleClick: (finishCommand) =>
             finishCommand({ onClick: hideBlocking }),
