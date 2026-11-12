@@ -61,8 +61,8 @@ describe("StoryRuntime", () => {
   });
 
   it.each([
-    { skipAtMs: 20, remainingMs: 1530 },
-    { skipAtMs: 540, remainingMs: 1030 },
+    { skipAtMs: 20, remainingMs: 1531 },
+    { skipAtMs: 540, remainingMs: 1032 },
   ])(
     "carries the auto click across a protected skip at $skipAtMs ms",
     async ({ skipAtMs, remainingMs }) => {
@@ -86,8 +86,8 @@ describe("StoryRuntime", () => {
         expect(runtime.getAutoPlayState().mode).toBe("button_auto");
         expect(runtime.getState()).toBe("waiting_input");
 
-        // The subtitle schedules its 1530ms wait on its 40ms type-end or
-        // when ForceCommandEnd reveals it during the jump.
+        // The subtitle captures a 1530ms wait at type-end, or when
+        // ForceCommandEnd reveals it during the jump. Include the fake frames.
         await vi.advanceTimersByTimeAsync(remainingMs - 1);
         expect(renderer.lastDialogue.speaker).toBe("");
         await vi.advanceTimersByTimeAsync(1);

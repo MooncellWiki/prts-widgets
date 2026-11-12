@@ -6,6 +6,8 @@ import { parseScript } from "../src/widgets/StoryPlayer/engine/parser";
 import { richCharsToTaggedText } from "../src/widgets/StoryPlayer/engine/richtext";
 import { StoryRuntime } from "../src/widgets/StoryPlayer/engine/runtime";
 
+import { FakeRenderer } from "./helpers/runtimeFakes";
+
 import type { Context } from "../src/widgets/StoryPlayer/context";
 import type {
   DecisionPolicy,
@@ -258,7 +260,7 @@ describe("StoryRuntime decision policy", () => {
 const seekRuntime = (script: readonly string[]): StoryRuntime =>
   new StoryRuntime(
     createContext(script),
-    asRenderer(new DecisionFakeRenderer()),
+    new FakeRenderer(),
     audio,
     // 自动点击的等待走注入的 sleep，测试里直接放行
     { sleep: () => Promise.resolve(), typingIntervalMs: 0 },

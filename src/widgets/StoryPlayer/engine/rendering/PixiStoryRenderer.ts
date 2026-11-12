@@ -765,13 +765,21 @@ export class PixiStoryRenderer implements StoryRenderer {
     };
   }
 
-  onFrameUpdate(callback: () => void): () => void {
+  onFrameUpdate(
+    callback: () => void,
+    phase: "update" | "afterUpdate" = "update",
+  ): () => void {
     const ticker = this.app?.ticker;
     if (!ticker) {
       const timeout = setTimeout(callback, 0);
       return () => clearTimeout(timeout);
     }
-    ticker.addOnce(callback, undefined, UPDATE_PRIORITY.NORMAL);
+    // Unity's WaitUntil checks after component updates. Run it before LOW draws.
+    const priority =
+      phase === "afterUpdate"
+        ? UPDATE_PRIORITY.NORMAL - 1
+        : UPDATE_PRIORITY.NORMAL;
+    ticker.addOnce(callback, undefined, priority);
     return () => {
       if (this.app?.ticker === ticker) ticker.remove(callback);
     };

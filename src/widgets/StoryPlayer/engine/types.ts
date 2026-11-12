@@ -793,8 +793,11 @@ export interface StoryRenderer {
   mount: (host: HTMLElement) => Promise<void>;
   /** Run once after the next scene render and return a cancellation callback. */
   onFrameEnd: (callback: () => void) => () => void;
-  /** Run once before the next scene render and return a cancellation callback. */
-  onFrameUpdate: (callback: () => void) => () => void;
+  /** Run once before the scene renders and return a cancellation callback. */
+  onFrameUpdate: (
+    callback: () => void,
+    phase?: "update" | "afterUpdate",
+  ) => () => void;
   playVideo: (url: string) => Promise<void>;
   setAnimText: (input: AnimTextInput) => Promise<void>;
   setAvgDisplay: (input: AvgDisplayInput) => Promise<void>;

@@ -21,8 +21,8 @@ interface TypingSession {
 
 /**
  * Native port: Torappu.AVG.AVGTypeWriterText's BeginText / AppendText,
- * TryFinish and Update. Browser timers pace the reveal, and a frame update
- * completes text that starts with a zero interval.
+ * TryFinish and Update. Browser timers pace the reveal. The first frame
+ * update completes text with a zero interval or no quads left to reveal.
  */
 export class AVGTypeWriterText {
   private session: TypingSession | null = null;
@@ -70,10 +70,7 @@ export class AVGTypeWriterText {
     // sticker's string iterators (0x18425E880 / 0x18425E2A0) yield the
     // full message again and then return false to signal completion.
     const endStep = iteratorSteps ? iteratorSteps.length + 2 : chars.length;
-    if (
-      !iteratorSteps &&
-      (interval === 0 ? !deferZeroDelay : step === endStep)
-    ) {
+    if (!iteratorSteps && interval === 0 && !deferZeroDelay && step < endStep) {
       render({ chars, visibleCount: chars.length }, true);
       onTypeEnd();
     } else {
@@ -126,9 +123,8 @@ export class AVGTypeWriterText {
   }
 
   private startTyping(session: TypingSession): void {
-    if (session.delayMs === 0) {
-      // Native Update (2791 @ 0x18424FA30) consumes the zero-delay text
-      // before the next draw. Run the reveal inside the frame callback.
+    if (session.delayMs === 0 || session.step === session.endStep) {
+      // Native Update (2791 @ 0x18424FA30) ends these sessions before drawing.
       const startedAt = performance.now();
       session.cancelUpdate = this.onFrameUpdate(() => {
         session.cancelUpdate = undefined;
@@ -145,9 +141,10 @@ export class AVGTypeWriterText {
   ): Promise<void> {
     const { chars, render } = session;
     while (this.session === session) {
+      const remaining = session.endStep - session.step;
       const delayMs = session.delayMs;
       const waitMs = delayMs - elapsedMs;
-      if (waitMs > 0) {
+      if (remaining > 0 && waitMs > 0) {
         const startedAt = performance.now();
         const interrupted = new Promise<number>((resolve) => {
           session.wake = () => resolve(performance.now() - startedAt);
@@ -168,7 +165,6 @@ export class AVGTypeWriterText {
         continue;
       }
 
-      const remaining = session.endStep - session.step;
       const steps =
         delayMs > 0
           ? Math.min(remaining, Math.floor(elapsedMs / delayMs))

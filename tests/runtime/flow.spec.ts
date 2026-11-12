@@ -162,7 +162,7 @@ describe("StoryRuntime", () => {
       const start = runtime.start();
       await vi.advanceTimersByTimeAsync(1779);
       expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "auto" });
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(3);
       await start;
 
       expect(runtime.getState()).toBe("waiting_input");
@@ -384,7 +384,7 @@ describe("StoryRuntime", () => {
       // marked-up string: 1.5s + 25 chars * 0.03s, not 2 visible chars.
       await vi.advanceTimersByTimeAsync(2249);
       expect(renderer.lastDialogue.speaker).toBe("A");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(2);
       expect(renderer.lastDialogue.speaker).toBe("B");
     } finally {
       vi.useRealTimers();
@@ -439,7 +439,7 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it("starts the auto wait on the same tick as the last character", async () => {
+  it("schedules the auto wait when the last character appears", async () => {
     vi.useFakeTimers();
     try {
       const renderer = new FakeRenderer();
@@ -451,8 +451,9 @@ describe("StoryRuntime", () => {
       runtime.setAutoPlayMode("button_auto");
       await runtime.start();
 
-      // Last glyph at 80ms, then 1500ms + 2 * 30ms.
-      await vi.advanceTimersByTimeAsync(1639);
+      // Last glyph at 80ms, then 1500ms + 2 * 30ms. The fake frame checks
+      // each add 1ms because they are queued from timer callbacks.
+      await vi.advanceTimersByTimeAsync(1641);
       expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ab" });
       await vi.advanceTimersByTimeAsync(1);
       expect(renderer.lastDialogue.speaker).toBe("B");
@@ -540,7 +541,7 @@ describe("StoryRuntime", () => {
       // "second" finished at 60ms on quick level 0 and queued a 200ms wait.
       await vi.advanceTimersByTimeAsync(189);
       expect(runtime.getAutoPlayState().mode).toBe("quick_play");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(3);
       expect(runtime.getAutoPlayState().mode).toBe("default");
     } finally {
       vi.useRealTimers();
@@ -609,31 +610,49 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
   });
 
-  it("runs the implicit endtip of an empty script in auto play", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([""]),
-      renderer,
-      new FakeAudio(),
-    );
+  it.each([
+    { action: "click", cancelledUpdates: 1 },
+    { action: "update", cancelledUpdates: 0 },
+  ] as const)(
+    "finishes the empty endtip's typewriter on the first $action",
+    async ({ action, cancelledUpdates }) => {
+      const renderer = new FakeRenderer();
+      const cancelUpdate = vi.fn();
+      const onFrameUpdate = vi
+        .spyOn(renderer, "onFrameUpdate")
+        .mockReturnValue(cancelUpdate);
+      const runtime = new StoryRuntime(
+        createContext([""]),
+        renderer,
+        new FakeAudio(),
+        { typingIntervalMs: 40 },
+      );
 
-    // Native TryParse (2.7.61: 0x183E7E450) appends endtip even when the
-    // command list is empty, so an empty script still shows the blocking
-    // end-tip box in auto play instead of finishing immediately.
-    runtime.setAutoPlayMode("button_auto");
-    await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+      await runtime.start();
 
-    expect(runtime.getState()).toBe("waiting_input");
-    expect(runtime.getAutoPlayState().mode).toBe("default");
-    expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
-    expect(renderer.dialogueLayouts.at(-1)).toEqual({
-      executor: "endtip",
-      text: "",
-    });
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
+      expect(renderer.dialogueLayouts.at(-1)).toEqual({
+        executor: "endtip",
+        text: "",
+      });
+      expect(onFrameUpdate).toHaveBeenCalledTimes(1);
 
-    await runtime.advance();
-    expect(runtime.getState()).toBe("finished");
-  });
+      const finishTyping = {
+        click: () => runtime.advance(),
+        update: onFrameUpdate.mock.calls[0]![0],
+      };
+      await finishTyping[action]();
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(cancelUpdate).toHaveBeenCalledTimes(cancelledUpdates);
+
+      await runtime.advance();
+      expect(runtime.getState()).toBe("finished");
+      runtime.destroy();
+    },
+  );
 
   it("plays a video whose res carries no .mp4 extension", async () => {
     const renderer = new FakeRenderer();

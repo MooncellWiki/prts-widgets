@@ -30,6 +30,51 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
+  it("samples auto-play mode after the frame update on both sides of the wait", async () => {
+    vi.useFakeTimers();
+    const context = createContext(['[subtitle(text="A")]', '[name="B"]next']);
+    const renderer = createRenderer(context);
+    const ticker = new Ticker();
+    renderer.app = { ticker };
+    const sleep = vi.fn(
+      (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    );
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio(), {
+      sleep,
+    });
+    try {
+      await runtime.start();
+      runtime.setAutoPlayMode("button_auto");
+      renderer.onFrameUpdate(() => runtime.setAutoPlayMode("default"));
+      ticker.update(16);
+      expect(sleep).not.toHaveBeenCalled();
+
+      runtime.setAutoPlayMode("button_auto");
+      ticker.update(32);
+      expect(sleep).toHaveBeenCalledExactlyOnceWith(1530);
+      runtime.setAutoPlayMode("default");
+      await vi.advanceTimersByTimeAsync(1530);
+
+      runtime.setAutoPlayMode("button_auto");
+      runtime.setAutoPlayMode("default");
+      ticker.update(48);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(runtime.getDisplayedLineIndex()).toBe(1);
+
+      runtime.setAutoPlayMode("button_auto");
+      expect(runtime.getDisplayedLineIndex()).toBe(1);
+      ticker.update(64);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      ticker.destroy();
+      renderer.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it("completes a zero-delay multiline in the next update before drawing", async () => {
     vi.useFakeTimers();
     const context = createContext([
@@ -98,8 +143,10 @@ describe("PixiStoryRenderer", () => {
         const sticker = renderer.stickerViews.get("s");
         expect(sticker.isTyping).toBe(false);
         expect(sticker.text.text).toBe("onetwo");
-        // The show and append register their auto waits before dialogue types.
-        expect(sleep.mock.calls).toEqual([[1590], [1680], [40]]);
+        // The append replaces the show's pending wait before the frame check.
+        expect(sleep).toHaveBeenCalledExactlyOnceWith(40);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sleep.mock.calls).toEqual([[40], [1680]]);
       } finally {
         runtime.destroy();
         renderer.destroy();
@@ -126,13 +173,13 @@ describe("PixiStoryRenderer", () => {
       await vi.advanceTimersByTimeAsync(1749);
       expect(show).toHaveBeenCalledTimes(1);
       expect(hide).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(2);
       expect(show).toHaveBeenCalledTimes(2);
       expect(hide.mock.calls).toEqual([["s"]]);
 
       await vi.advanceTimersByTimeAsync(1515);
       expect(hide.mock.calls).toEqual([["s"]]);
-      await vi.advanceTimersByTimeAsync(2);
+      await vi.advanceTimersByTimeAsync(3);
       expect(hide.mock.calls).toEqual([["s"], ["f"]]);
       expect(runtime.getDisplayedLineIndex()).toBe(3);
     } finally {

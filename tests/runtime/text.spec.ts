@@ -169,7 +169,7 @@ describe("StoryRuntime", () => {
 
       await vi.advanceTimersByTimeAsync(1499);
       expect(renderer.lastDialogue.speaker).toBe("A");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(2);
       expect(renderer.lastDialogue.speaker).toBe("B");
       runtime.destroy();
     } finally {
@@ -424,7 +424,7 @@ describe("StoryRuntime", () => {
       // own length must drive the wait, not the previous message's.
       await vi.advanceTimersByTimeAsync(1649);
       expect(renderer.lastDialogue).toEqual({ speaker: "", text: "" });
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(3);
       expect(renderer.lastDialogue.speaker).toBe("A");
       runtime.destroy();
     } finally {
@@ -457,7 +457,7 @@ describe("StoryRuntime", () => {
 
       await vi.advanceTimersByTimeAsync(574);
       expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(3);
       expect(renderer.lastDialogue.speaker).toBe("A");
       runtime.destroy();
     } finally {
@@ -481,11 +481,11 @@ describe("StoryRuntime", () => {
       expect(renderer.subtitleText).toBe("HELLO");
 
       runtime.setAutoPlaySpeedLevel(1);
-      // Type-end at 200ms captured 1650ms. The new 575ms delay applies to
-      // a later RaiseAutoClick, so this subtitle still advances at 1850ms.
+      // Type-end at 200ms captures 1650ms. The wait starts and releases
+      // on frame updates. The new gear applies to later RaiseAutoClick calls.
       await vi.advanceTimersByTimeAsync(1349);
       expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(3);
       expect(renderer.lastDialogue.speaker).toBe("A");
       runtime.destroy();
     } finally {
@@ -641,7 +641,7 @@ describe("StoryRuntime", () => {
       runtime.setAutoPlaySpeedLevel(1);
       expect(renderer.stickerDelayChanges).toEqual([{ id: "b", delayMs: 10 }]);
       renderer.finishStickerTypingNaturally();
-      await vi.advanceTimersByTimeAsync(605);
+      await vi.advanceTimersByTimeAsync(606);
       expect(renderer.stickerCalls.at(-1)).toMatchObject({
         append: true,
         delayMs: 10,
@@ -845,7 +845,7 @@ describe("StoryRuntime", () => {
       // 0.03s before clicking past the sticker (delay=0 prints at once).
       await vi.advanceTimersByTimeAsync(1649);
       expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(2);
       expect(renderer.lastDialogue.speaker).toBe("B");
     } finally {
       vi.useRealTimers();
@@ -876,7 +876,7 @@ describe("StoryRuntime", () => {
       // The final message is NEW+, which queues 1500 + 4 * 30 ms.
       await vi.advanceTimersByTimeAsync(1619);
       expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(2);
       expect(renderer.lastDialogue.speaker).toBe("B");
       runtime.destroy();
     } finally {
@@ -906,7 +906,7 @@ describe("StoryRuntime", () => {
       // per-character extension.
       await vi.advanceTimersByTimeAsync(1499);
       expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(2);
       expect(renderer.lastDialogue.speaker).toBe("B");
     } finally {
       vi.useRealTimers();
@@ -940,7 +940,7 @@ describe("StoryRuntime", () => {
       renderer.finishStickerTypingNaturally();
       await vi.advanceTimersByTimeAsync(1649);
       expect(renderer.lastDialogue.speaker).toBe("");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(2);
       expect(renderer.lastDialogue.speaker).toBe("B");
     } finally {
       vi.useRealTimers();
@@ -967,13 +967,15 @@ describe("StoryRuntime", () => {
       runtime.setAutoPlayMode("button_auto");
       await runtime.start();
       expect(renderer.typingActive).toBe(false);
-      expect(sleep).toHaveBeenNthCalledWith(1, 1800);
+      expect(sleep).toHaveBeenCalledExactlyOnceWith(40);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sleep).toHaveBeenNthCalledWith(2, 1800);
 
       // The dialogue finishes typing at 200ms and replaces the 1.8s click
       // with a new 1.65s wait.
       await vi.advanceTimersByTimeAsync(1849);
       expect(renderer.lastDialogue.speaker).toBe("B");
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(3);
       expect(renderer.lastDialogue.speaker).toBe("C");
       runtime.destroy();
     } finally {
@@ -1001,7 +1003,7 @@ describe("StoryRuntime", () => {
       await vi.advanceTimersByTimeAsync(1000);
       renderer.stickerCalls[0]!.onTypingComplete?.();
       renderer.stickerCalls[1]!.onTypingComplete?.();
-      await vi.advanceTimersByTimeAsync(850);
+      await vi.advanceTimersByTimeAsync(852);
       expect(renderer.lastDialogue.speaker).toBe("C");
       expect(renderer.typingActive).toBe(false);
       runtime.destroy();

@@ -176,6 +176,7 @@ interface PendingInput {
 }
 
 interface PendingAutoClick {
+  cancelFrameCheck?: () => void;
   delayMs: number;
   phase: "awaiting_mode" | "timing" | "elapsed";
 }
@@ -1076,7 +1077,9 @@ export class StoryRuntime {
   }
 
   private cancelAutoClick(): void {
+    const pending = this.pendingAutoClick;
     this.pendingAutoClick = null;
+    pending?.cancelFrameCheck?.();
   }
 
   private scheduleAutoClick(
@@ -1085,6 +1088,7 @@ export class StoryRuntime {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
     // RaiseAutoClick (2791 @ 0x18416C3F0) replaces the coroutine even in DEFAULT.
+    this.cancelAutoClick();
     this.pendingAutoClick = {
       delayMs,
       phase: "awaiting_mode",
@@ -1093,28 +1097,34 @@ export class StoryRuntime {
   }
 
   private resumeAutoClick(): void {
-    // _DoAutoClick (2791 MoveNext @ 0x184180000) gates on non-DEFAULT
-    // before and after the real-time wait. Mode and gear changes keep its delay.
     const pending = this.pendingAutoClick;
-    if (!pending || this.autoPlayMode === "default") return;
-    if (pending.phase === "awaiting_mode") {
+    if (
+      !pending ||
+      pending.cancelFrameCheck ||
+      pending.phase === "timing" ||
+      this.autoPlayMode === "default"
+    )
+      return;
+
+    // _DoAutoClick (2791 MoveNext @ 0x184180000) yields WaitUntil on both
+    // sides of the real-time wait. Check the mode after component updates.
+    pending.cancelFrameCheck = this.renderer.onFrameUpdate(() => {
+      pending.cancelFrameCheck = undefined;
+      if (this.pendingAutoClick !== pending || this.autoPlayMode === "default")
+        return;
+      if (pending.phase === "elapsed") {
+        this.pendingAutoClick = null;
+        void this.advanceFromClick();
+        return;
+      }
+
       pending.phase = "timing";
       void this.sleep(pending.delayMs).then(() => {
         if (this.pendingAutoClick !== pending) return;
         pending.phase = "elapsed";
         this.resumeAutoClick();
       });
-      return;
-    }
-    // An injected clock can expire while the executor is still returning.
-    // Let processLoop bind its click handler before delivering the event.
-    if (
-      pending.phase !== "elapsed" ||
-      (this.processing && this.state === "running")
-    )
-      return;
-    this.pendingAutoClick = null;
-    if (this.state === "waiting_input") void this.advanceFromClick();
+    }, "afterUpdate");
   }
 
   destroy(): void {
@@ -1242,11 +1252,6 @@ export class StoryRuntime {
           this.waitForInput(Array.isArray(result) ? result : [result]);
           return;
         }
-        if (
-          this.pendingAutoClick?.phase === "elapsed" &&
-          this.autoPlayMode !== "default"
-        )
-          this.cancelAutoClick();
       }
     } catch (error) {
       this.state = "error";
@@ -1260,7 +1265,6 @@ export class StoryRuntime {
       this.resolveProcessingCompletion?.();
       this.resolveProcessingCompletion = null;
       this.processingCompletion = null;
-      this.resumeAutoClick();
     }
   }
 
