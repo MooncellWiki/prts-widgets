@@ -633,8 +633,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
-      (key) => this.textureForImageKey(key, "image"),
-      (...args) => this.tween(...args),
+      (key) => {
+        const rawUrl = resolveStoryAssetByKey(key, "image");
+        const url = rawUrl && resolveAssetUrl(rawUrl);
+        if (url && Assets.cache.has(url)) return Assets.get<Texture>(url);
+        return this.textureForImageKey(key, "image");
+      },
+      (...args) => this.updatePhaseTweenRunner.run(...args),
       onWarning,
       {
         disposed: (key, root) => this.focusEffectPanel.releaseCgItem(key, root),
@@ -1472,25 +1477,26 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
   }
 
-  async showCgItem(input: CgItemInput): Promise<void> {
-    await this.cgItemView.show(input);
+  showCgItem(input: CgItemInput, onComplete?: () => void) {
+    return this.cgItemView.show(input, onComplete);
   }
 
-  async clearCgItems(
+  clearCgItems(
     key?: string,
     fadeMs = 130,
     ease = "Linear",
-    block = false,
-  ): Promise<void> {
-    await this.cgItemView.hide(key, fadeMs, ease, block);
+    _block = false,
+    onComplete?: () => void,
+  ) {
+    return this.cgItemView.hide(key, fadeMs, ease, onComplete);
   }
 
   resetCgItems(): void {
     this.cgItemView.clear();
   }
 
-  shakeCgItem(input: CgItemShakeInput): Promise<void> {
-    return this.cgItemView.shake(input);
+  shakeCgItem(input: CgItemShakeInput, onComplete?: () => void) {
+    return this.cgItemView.shake(input, onComplete);
   }
 
   stopCgItemShakes(key?: string): void {

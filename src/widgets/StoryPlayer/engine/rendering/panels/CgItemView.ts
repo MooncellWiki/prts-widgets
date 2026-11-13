@@ -1,37 +1,40 @@
 import { Container, Sprite, Texture } from "pixi.js";
 
-import { createExecutionHandle, type ExecutionHandle } from "../../execution";
+import {
+  createExecutionHandle,
+  type ExecutionEndReason,
+  type ExecutionHandle,
+} from "../../execution";
 import {
   STORY_HEIGHT,
   STORY_WIDTH,
   type CgItemInput,
   type CgItemShakeInput,
 } from "../../types";
-import { dotweenEaseCurve } from "../core/DotweenEase";
+import { dotweenEaseCurve, type EaseCurve } from "../core/DotweenEase";
 import { canvasOrderForLayer, sceneCanvasOrder } from "../core/LayerGraph";
+import { Sequence } from "../core/Sequence";
 import { buildShakePath, sampleShakePath } from "../core/ShakePath";
 
-import type { TweenRunOptions } from "../core/TweenRunner";
+import type { TweenRunner } from "../core/TweenRunner";
 
-type TextureLoader = (key: string) => Promise<Texture | null>;
-type Tween = (
-  durationMs: number,
-  update: (progress: number) => void,
-  complete?: () => void,
-  options?: TweenRunOptions,
-) => Promise<void>;
-
+type TextureLoader = (key: string) => Texture | Promise<Texture | null> | null;
 interface CgItemState {
   /**
    * `AVGShowItemCgSlot.m_animEpoch`: every `Hide` re-binds the slot's
-   * `_onAnimEnd` and bumps the epoch through `_MakeAnimEndCb`, so only the
-   * latest hide on a slot may complete it.
+   * `_onAnimEnd` and bumps the epoch through `_MakeAnimEndCb`. Only the latest
+   * hide can dispose the slot and complete the command.
    */
-  hideEpoch: number;
+  animEpoch: number;
+  hide?: ExecutionHandle;
   key: string;
   root: Container;
-  sessionId: number;
-  shake?: ExecutionHandle;
+  show?: ExecutionHandle;
+  shake?: {
+    handle: ExecutionHandle;
+    infinite: boolean;
+    onComplete?: () => void;
+  };
 }
 
 /**
@@ -91,25 +94,27 @@ export class CgItemView {
   constructor(
     private readonly layer: Container,
     private readonly loadTexture: TextureLoader,
-    private readonly tween: Tween,
+    private readonly tween: TweenRunner["run"],
     private readonly onWarning?: (detail: string) => void,
     private readonly lifecycle?: CgItemLifecycle,
   ) {
     this.layer.sortableChildren = true;
   }
 
-  async show(input: CgItemInput): Promise<void> {
+  /** The command panel observes the sequence even for a nonblocking show. */
+  show(
+    input: CgItemInput,
+    onComplete?: () => void,
+  ): Promise<ExecutionEndReason> {
     // Native provenance: `AVGCgItemPanel._ShowItem` (2791 @ 0x18418ABF0)
     // instantiates the new slot, instantly `Dispose()`s the previous same-key
     // entry (no fade), and writes the new entry into `m_slotsInUseDict`
     // BEFORE any sprite work. Its `_LoadSprite` is a synchronous cached load
     // (assets are preloaded via `InternalResRefCollector.GatherResRefs`), so
     // the executor never waits on I/O. The web port mirrors the command-side
-    // ordering -- dispose old, register the placeholder root -- and only then
-    // starts the asynchronous texture load, so uncached assets stay off the
-    // command critical path (block=false returns before the bytes arrive) and
-    // a `hidecgitem` arriving mid-load still finds the key instead of leaking
-    // the sprite.
+    // ordering -- dispose old, register the placeholder root, use the cached
+    // texture. On a cache miss block=false returns before the bytes arrive,
+    // and a `hidecgitem` arriving mid-load can still find the key.
     const { assetKey, key } = input;
     const oldState = this.states.get(key);
     if (oldState) this.dispose(oldState);
@@ -118,24 +123,22 @@ export class CgItemView {
     root.zIndex = canvasOrderForLayer(sceneCanvasOrder.cgitem, input.layer);
     this.layer.addChild(root);
     const state: CgItemState = {
-      hideEpoch: 0,
+      animEpoch: 0,
       key,
       root,
-      sessionId: 1,
     };
+    const show = createExecutionHandle(input.block);
+    state.show = show;
     if (key) {
       this.states.set(key, state);
       this.lifecycle?.registered(key, root);
     } else {
       this.unkeyed.add(state);
     }
-    const sessionId = state.sessionId;
-
     const draw = (texture: Texture | null, width: number, height: number) => {
       // The slot was replaced, hidden, or cleared while the texture was in
       // flight: drop the frames instead of resurrecting a destroyed root.
-      if (key && this.states.get(key) !== state) return;
-      if (state.sessionId !== sessionId) return;
+      if (state.show !== show) return;
       if (!texture) {
         // Web adaptation: native would keep an empty registered slot; the
         // frontend undoes the pending registration so a failed load leaves
@@ -164,25 +167,12 @@ export class CgItemView {
       // the same Ease.Linear default/fallback as every other AVG tween
       // command and the shared DOTween curve library applies as-is.
       const ease = dotweenEaseCurve(input.ease);
-      const runs: Promise<void>[] = [];
-      const run = (
+      const sequence = new Sequence(this.tween);
+      const insert = (
         delayMs: number,
         durationMs: number,
         update: (progress: number) => void,
-      ) => {
-        const totalMs = delayMs + durationMs;
-        runs.push(
-          this.tween(totalMs, (raw) => {
-            if (state.sessionId !== sessionId) return;
-            const elapsed = raw * totalMs;
-            const local = Math.max(
-              0,
-              Math.min(1, (elapsed - delayMs) / durationMs),
-            );
-            update(ease(local));
-          }),
-        );
-      };
+      ) => sequence.insert(delayMs, { durationMs, ease, update });
 
       // AVGShowItemCgSlot.Show (2791 @ 0x184242CE0) writes Unity localPosition.
       // Convert its upward Y to Pixi's downward Y at the rendering boundary.
@@ -190,7 +180,7 @@ export class CgItemView {
       if (positionFrom && positionTo) {
         if (input.positionDurationMs > epsilon * 1000) {
           image.position.set(positionFrom.x, -positionFrom.y);
-          run(input.positionDelayMs, input.positionDurationMs, (progress) =>
+          insert(input.positionDelayMs, input.positionDurationMs, (progress) =>
             image.position.set(
               lerp(positionFrom.x, positionTo.x, progress),
               -lerp(positionFrom.y, positionTo.y, progress),
@@ -204,7 +194,7 @@ export class CgItemView {
       if (Math.abs(input.scaleFrom - input.scaleTo) > epsilon) {
         if (input.scaleDurationMs > epsilon * 1000) {
           image.scale.set(input.scaleFrom);
-          run(input.scaleDelayMs, input.scaleDurationMs, (progress) =>
+          insert(input.scaleDelayMs, input.scaleDurationMs, (progress) =>
             image.scale.set(lerp(input.scaleFrom, input.scaleTo, progress)),
           );
         } else {
@@ -216,7 +206,7 @@ export class CgItemView {
         if (input.alphaDurationMs > epsilon * 1000) {
           sprite.tint = rgb(input.colorFrom);
           sprite.alpha = input.colorFrom.a;
-          run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
+          insert(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
             const color = {
               a: lerp(input.colorFrom!.a, input.colorTo!.a, progress),
               b: lerp(input.colorFrom!.b, input.colorTo!.b, progress),
@@ -233,7 +223,7 @@ export class CgItemView {
       } else if (Math.abs(input.alphaFrom - input.alphaTo) > epsilon) {
         if (input.alphaDurationMs > epsilon * 1000) {
           sprite.alpha = input.alphaFrom;
-          run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
+          insert(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
             sprite.alpha = lerp(input.alphaFrom, input.alphaTo, progress);
           });
         } else {
@@ -251,7 +241,7 @@ export class CgItemView {
           let delta = ((input.rotationTo % 360) - unityStart) % 360;
           if (Math.abs(delta) > 180) delta -= 360 * Math.sign(delta);
           image.angle = start;
-          run(0, input.rotationDurationMs, (progress) => {
+          insert(0, input.rotationDurationMs, (progress) => {
             image.angle = start - delta * progress;
           });
         } else {
@@ -259,26 +249,46 @@ export class CgItemView {
         }
       }
 
-      return Promise.all(runs).then(() => {});
+      const finish = () => {
+        if (state.show !== show) return;
+        state.show = undefined;
+        show.end();
+        onComplete?.();
+      };
+      return sequence.play({
+        // Sequence.DoStartup (2791 @ 0x18442C6F0) accepts an empty sequence
+        // with OnComplete. Even a static CG can finish a command on update.
+        deferZeroDuration: assetKey !== undefined,
+        isAlive: () => !root.destroyed,
+        onComplete: finish,
+      });
     };
 
     // 2791 blocker prefab (806 / Image 4251) is a centered stretch-anchored
     // sprite_white. _ShowItem calls Show with a null sprite and no callback.
     if (assetKey === undefined) {
       void draw(Texture.WHITE, STORY_WIDTH, STORY_HEIGHT);
-      return;
+      return show.completion;
     }
-    const completion = this.loadTexture(assetKey).then((texture) => {
-      return draw(texture, texture?.width ?? 0, texture?.height ?? 0);
+    const drawTexture = (texture: Texture | null) =>
+      draw(texture, texture?.width ?? 0, texture?.height ?? 0);
+    const texture = this.loadTexture(assetKey);
+    const drawing =
+      texture instanceof Promise
+        ? texture.then(drawTexture)
+        : drawTexture(texture);
+    void drawing?.catch((error: unknown) => {
+      if (state.show !== show) return;
+      this.onWarning?.(`cgitem asset failed: ${assetKey}: ${String(error)}`);
+      this.dispose(state);
     });
-
-    // `block=true` waits for the sprite work AND every track (native awaits
-    // the whole Sequence; the texture wait is the web-only extra).
-    if (input.block) await completion;
-    else void completion;
+    return show.completion;
   }
 
-  async shake(input: CgItemShakeInput): Promise<void> {
+  shake(
+    input: CgItemShakeInput,
+    onComplete?: () => void,
+  ): Promise<ExecutionEndReason> | void {
     const state = this.states.get(input.key);
     if (!state) {
       this.onWarning?.(`cgitemshake target not found: ${input.key}`);
@@ -287,17 +297,13 @@ export class CgItemView {
     // DOKill(complete:true) completes a finite shake. DOTween's
     // TweenManager.Complete (2791 @ 0x184462630) skips infinite loops, so a
     // replacement starts from their current offset.
-    state.shake?.end("force_end");
+    this.endShake(state, "force_end");
     if (input.durationMs === 0) return;
 
     const { x: startX, y: startY } = state.root.position;
-    const handle = createExecutionHandle(input.block, (reason) => {
-      state.shake = undefined;
-      if (reason === "complete" || !input.infinite)
-        this.resetShakePosition(state);
-    });
-    state.shake = handle;
-    const isCurrent = () => state.shake === handle;
+    const handle = createExecutionHandle(input.block);
+    state.shake = { handle, infinite: input.infinite, onComplete };
+    const isCurrent = () => state.shake?.handle === handle;
     const path = buildShakePath(input.durationMs, {
       ...input,
       vectorBased: true,
@@ -310,11 +316,11 @@ export class CgItemView {
         state.root.position.set(startX + x, startY - y);
       },
       () => {
-        if (isCurrent()) handle.end();
+        if (isCurrent()) this.endShake(state, "complete");
       },
       { isAlive: isCurrent, loops: input.infinite ? -1 : 1 },
     );
-    if (handle.blocking) await handle.completion;
+    return handle.completion;
   }
 
   stopShakes(key?: string): void {
@@ -327,20 +333,32 @@ export class CgItemView {
   }
 
   private stopShake(state: CgItemState): void {
-    state.shake?.end("force_end");
+    this.endShake(state, "force_end");
     this.resetShakePosition(state);
+  }
+
+  private endShake(state: CgItemState, reason: ExecutionEndReason): void {
+    const shake = state.shake;
+    if (!shake) return;
+    state.shake = undefined;
+    if (reason === "complete" || (reason === "force_end" && !shake.infinite)) {
+      this.resetShakePosition(state);
+      // DOKill(complete:true) invokes the finite tween's OnComplete.
+      shake.handle.end();
+      shake.onComplete?.();
+    } else shake.handle.end(reason);
   }
 
   private resetShakePosition(state: CgItemState): void {
     state.root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
   }
 
-  async hide(
+  hide(
     key: string | undefined,
     fadeMs: number,
     ease: string,
-    block: boolean,
-  ): Promise<void> {
+    onComplete?: () => void,
+  ): Promise<ExecutionEndReason> | void {
     if (this.states.size === 0) return;
     // _ClearItemByKey / _ClearAllItems stop root shakes before starting
     // the fade. Image-child position and scale tracks keep running.
@@ -351,47 +369,52 @@ export class CgItemView {
       // Web releases a missing-key wait. Native returns block and has
       // no slot callback to finish that command.
       if (!state) return;
-      // AVGShowItemCgSlot.Hide (2791 @ 0x184242970) lets earlier fades
-      // keep writing but _MakeAnimEndCb only completes the current hide.
-      const hideEpoch = ++state.hideEpoch;
-      const startAlpha = state.root.alpha;
-      const task = this.tween(
-        fadeMs,
-        (raw) => {
-          if (!state.root.destroyed)
-            state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
-        },
-        () => {
-          if (state.hideEpoch === hideEpoch && this.states.get(key) === state)
-            this.dispose(state);
-        },
-      );
-      if (block) await task;
-      else void task;
-      return;
+      return this.fadeSlot(state, fadeMs, easeCurve, onComplete);
     }
 
     const entries = [...this.states.values()];
     this.states.clear();
     for (const state of entries) {
-      // `_ClearAllItems` hides every slot through the same `Hide`, so an
-      // in-flight keyed hide loses its completion here as well; otherwise it
-      // would `dispose` whatever a later `show` registers under that key.
-      state.hideEpoch += 1;
       this.fading.add(state);
-      const startAlpha = state.root.alpha;
-      void this.tween(
-        fadeMs,
-        (raw) => {
-          if (!this.fading.has(state)) return;
-          state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
-        },
-        () => {
-          if (this.fading.has(state)) this.dispose(state);
-        },
-      );
+      void this.fadeSlot(state, fadeMs, easeCurve);
     }
     // _ClearAllItems finishes the command as soon as all fades have started.
+  }
+
+  private fadeSlot(
+    state: CgItemState,
+    fadeMs: number,
+    ease: EaseCurve,
+    onComplete?: () => void,
+  ): Promise<ExecutionEndReason> {
+    // AVGShowItemCgSlot.Hide (2791 @ 0x184242970) leaves old tweens running.
+    // _MakeAnimEndCb binds completion to the latest hide on this slot.
+    const animEpoch = ++state.animEpoch;
+    state.show?.end("reset");
+    state.show = undefined;
+    state.hide?.end("reset");
+    const hide = createExecutionHandle(true);
+    state.hide = hide;
+    const isAlive = () => !state.root.destroyed;
+    // DOTween reads the fade's starting alpha on its first update.
+    let startAlpha: number | undefined;
+    void this.tween(
+      fadeMs,
+      (progress) => {
+        if (!isAlive()) return;
+        startAlpha ??= state.root.alpha;
+        state.root.alpha = lerp(startAlpha, 0, ease(progress));
+      },
+      () => {
+        if (state.animEpoch !== animEpoch || !isAlive()) return;
+        state.hide = undefined;
+        this.dispose(state);
+        hide.end();
+        onComplete?.();
+      },
+      { deferZeroDuration: true, isAlive },
+    );
+    return hide.completion;
   }
 
   /**
@@ -420,8 +443,11 @@ export class CgItemView {
     if (this.states.get(state.key) === state) this.states.delete(state.key);
     this.fading.delete(state);
     this.unkeyed.delete(state);
-    state.shake?.end("reset");
-    state.sessionId += 1;
+    this.endShake(state, "reset");
+    state.show?.end("reset");
+    state.show = undefined;
+    state.hide?.end("reset");
+    state.hide = undefined;
     if (state.key) this.lifecycle?.disposed(state.key, state.root);
     state.root.destroy({ children: true });
   }

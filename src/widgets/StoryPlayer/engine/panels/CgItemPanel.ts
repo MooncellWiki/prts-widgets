@@ -1,4 +1,9 @@
 import {
+  ExecutorComponent,
+  type ExecutorResult,
+  type PanelExecutors,
+} from "../ExecutorComponent";
+import {
   exactArg,
   toBoolean,
   toNumber,
@@ -7,7 +12,6 @@ import {
   tryConvertToInt32,
 } from "../commandParams";
 
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
   CgItemInput,
   ParsedCommandLine,
@@ -18,10 +22,6 @@ import type {
 interface CgItemPlayback {
   animateRatio: () => number;
   resolveImageKey: (key: string) => string | null;
-  waitForAnimation: (
-    animation: Promise<void>,
-    interrupt: () => void,
-  ) => Promise<boolean>;
   warn: (type: RuntimeWarning["type"], detail: string) => void;
 }
 
@@ -57,24 +57,30 @@ function parseCgColor(value: unknown): CgItemInput["colorFrom"] {
  * SkipStory force-ends blocking executors. This panel's ForceCommandEnd
  * (2791 @ 0x184188EA0) stops root shakes and leaves the slots and fades alive.
  */
-export class CgItemPanel {
+export class CgItemPanel extends ExecutorComponent {
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
       "clearCgItems" | "shakeCgItem" | "showCgItem" | "stopCgItemShakes"
     >,
     private readonly playback: CgItemPlayback,
-  ) {}
-
-  register(registry: CommandRegistry<CommandResult>): void {
-    registry.register("cgitem", (line) => this.executeShowCgItem(line));
-    registry.register("cgitemshake", (line) => this.executeShakeCgItem(line));
-    registry.register("hidecgitem", (line) => this.executeHideCgItem(line));
+  ) {
+    super();
   }
 
-  private async executeShowCgItem({
-    args,
-  }: ParsedCommandLine): Promise<CommandResult> {
+  protected getExecutors(): PanelExecutors {
+    return {
+      cgitem: (line) => this.executeShowCgItem(line),
+      cgitemshake: (line) => this.executeShakeCgItem(line),
+      hidecgitem: (line) => this.executeHideCgItem(line),
+    };
+  }
+
+  protected override forceCommandEnd(): void {
+    this.renderer.stopCgItemShakes();
+  }
+
+  private executeShowCgItem({ args }: ParsedCommandLine): ExecutorResult {
     // _ShowItem (2791 @ 0x18418ABF0) skips the asset load for the blocker
     // prefab and finishes its command as soon as the slot is shown.
     const style = toString(exactArg(args, "style"), "cg");
@@ -97,13 +103,13 @@ export class CgItemPanel {
     }
 
     const key = slotKey(image, toString(exactArg(args, "id")));
-    const durationMs = (name: string) =>
-      Math.max(0, toNumber(exactArg(args, name), 0) * 1000);
+    const secondsToMs = (name: string) => toNumber(exactArg(args, name)) * 1000;
+    const durationMs = (name: string) => Math.max(0, secondsToMs(name));
     const colorFrom = parseCgColor(exactArg(args, "cfrom"));
     const colorTo = parseCgColor(exactArg(args, "cto"));
     const block = style === "cg" && toBoolean(exactArg(args, "block"));
-    const animation = this.renderer.showCgItem({
-      alphaDelayMs: durationMs("adelay"),
+    const input: CgItemInput = {
+      alphaDelayMs: secondsToMs("adelay"),
       alphaDurationMs: durationMs("aduration"),
       alphaFrom: toNumber(exactArg(args, "afrom"), 1),
       alphaTo: toNumber(exactArg(args, "ato"), 1),
@@ -117,26 +123,29 @@ export class CgItemPanel {
       key,
       // AVGShowItemCgSlot.Show reads layer with GetInt(defaultValue: 0).
       layer: tryConvertToInt32(exactArg(args, "layer")) ?? 0,
-      positionDelayMs: durationMs("pdelay"),
+      positionDelayMs: secondsToMs("pdelay"),
       positionDurationMs: durationMs("pduration"),
       positionFrom: parseCgVector2(exactArg(args, "pfrom")),
       positionTo: parseCgVector2(exactArg(args, "pto")),
       rotationDurationMs: durationMs("rduration"),
       rotationFrom: toNumber(exactArg(args, "rfrom"), -1),
       rotationTo: toNumber(exactArg(args, "rto"), 0),
-      scaleDelayMs: durationMs("sdelay"),
+      scaleDelayMs: secondsToMs("sdelay"),
       scaleDurationMs: durationMs("sduration"),
       scaleFrom: toNumber(exactArg(args, "sfrom"), 1),
       scaleTo: toNumber(exactArg(args, "sto"), 1),
       width: tryConvertToInt32(exactArg(args, "width")) ?? 0,
-    });
-    await this.waitForAnimation(animation, block);
-    return "continue";
+    };
+    return {
+      animation: this.renderer.showCgItem(
+        input,
+        style === "cg" ? this.finishCommand : undefined,
+      ),
+      block,
+    };
   }
 
-  private async executeShakeCgItem({
-    args,
-  }: ParsedCommandLine): Promise<CommandResult> {
+  private executeShakeCgItem({ args }: ParsedCommandLine): ExecutorResult {
     const key = slotKey(
       toString(exactArg(args, "image")),
       toString(exactArg(args, "id")),
@@ -159,24 +168,27 @@ export class CgItemPanel {
     const durationMs =
       Math.abs(scaledDuration) <= 0.00001 ? 0 : scaledDuration * 1000;
     const block = durationMs !== 0 && toBoolean(exactArg(args, "block"));
-    const animation = this.renderer.shakeCgItem({
+    // A nonblocking shake only resets its transform at OnComplete.
+    return {
+      animation: this.renderer.shakeCgItem(
+        {
+          block,
+          durationMs: durationMs < 0 ? 10_000 : durationMs,
+          fadeOut: toBoolean(exactArg(args, "fadeout")),
+          infinite: durationMs < 0,
+          key,
+          randomness: toNumber(exactArg(args, "randomness"), 90),
+          vibrato: tryConvertToInt32(exactArg(args, "vibrato")) ?? 10,
+          xStrength: toNumber(exactArg(args, "xstrength"), 1),
+          yStrength: toNumber(exactArg(args, "ystrength"), 0),
+        },
+        block ? this.finishCommand : undefined,
+      ),
       block,
-      durationMs: durationMs < 0 ? 10_000 : durationMs,
-      fadeOut: toBoolean(exactArg(args, "fadeout")),
-      infinite: durationMs < 0,
-      key,
-      randomness: toNumber(exactArg(args, "randomness"), 90),
-      vibrato: tryConvertToInt32(exactArg(args, "vibrato")) ?? 10,
-      xStrength: toNumber(exactArg(args, "xstrength"), 1),
-      yStrength: toNumber(exactArg(args, "ystrength"), 0),
-    });
-    await this.waitForAnimation(animation, block);
-    return "continue";
+    };
   }
 
-  private async executeHideCgItem({
-    args,
-  }: ParsedCommandLine): Promise<CommandResult> {
+  private executeHideCgItem({ args }: ParsedCommandLine): ExecutorResult {
     // _ExecuteHideCgItem (2791 @ 0x184189F20) selects one slot for a
     // nonempty key. _ClearAllItems finishes after starting every fade.
     const key = slotKey(
@@ -194,21 +206,11 @@ export class CgItemPanel {
       Math.max(0, Math.round(fadeSeconds * 1000)),
       toString(exactArg(args, "ease"), "Linear"),
       block,
+      key ? this.finishCommand : undefined,
     );
-    await this.waitForAnimation(animation, Boolean(key) && block);
-    return "continue";
-  }
-
-  private async waitForAnimation(
-    animation: Promise<void> | void,
-    blocking: boolean,
-  ): Promise<void> {
-    if (animation && blocking) {
-      await this.playback.waitForAnimation(animation, () =>
-        this.renderer.stopCgItemShakes(),
-      );
-    } else {
-      await animation;
-    }
+    return {
+      animation,
+      block: Boolean(key) && block,
+    };
   }
 }

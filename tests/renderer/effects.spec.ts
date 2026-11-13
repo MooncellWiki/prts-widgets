@@ -58,6 +58,9 @@ function createFocusRenderer(): any {
       complete?.();
     },
   );
+  renderer.updatePhaseTweenRunner.run = (
+    ...args: Parameters<typeof renderer.tween>
+  ) => renderer.tween(...args);
   return renderer;
 }
 

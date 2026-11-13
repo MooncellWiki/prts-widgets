@@ -359,7 +359,10 @@ export class FakeRenderer implements StoryRenderer {
     };
   }
 
-  async showCgItem(input: CgItemInput): Promise<void> {
+  async showCgItem(
+    input: CgItemInput,
+    _onComplete?: () => void,
+  ): Promise<void> {
     this.cgItemCalls.push(input);
   }
 

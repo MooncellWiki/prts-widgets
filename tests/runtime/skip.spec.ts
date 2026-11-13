@@ -890,6 +890,9 @@ describe("StoryRuntime", () => {
       const isHide = command === "hidecgitem";
       const isShake = command === "cgitemshake";
       const animate = isHide ? hide : isShake ? shake : show;
+      // Keep the setup show in flight so its native FinishCommand does not
+      // release the blocking hide or shake before the skip.
+      show.mockImplementationOnce(() => new Promise<void>(() => {}));
       animate.mockImplementationOnce(() => animation.promise);
       const runtime = new StoryRuntime(
         createContext([

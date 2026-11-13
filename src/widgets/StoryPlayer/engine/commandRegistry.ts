@@ -27,11 +27,18 @@ export interface WaitForDelay {
   delayMs: number;
 }
 
-export type CommandWait = WaitForClick | WaitForDecision | WaitForDelay;
+export interface WaitForAnimation {
+  animation: Promise<void>;
+  forceEnd: () => void;
+}
+
+export type CommandWait =
+  WaitForAnimation | WaitForClick | WaitForDecision | WaitForDelay;
 export type CommandResult = "continue" | CommandWait;
 
 export type CommandExecutor<TResult> = (
   command: ParsedCommandLine,
+  isCurrent?: () => boolean,
 ) => TResult | Promise<TResult>;
 
 /**

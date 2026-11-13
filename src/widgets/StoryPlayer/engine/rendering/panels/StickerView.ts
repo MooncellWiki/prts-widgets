@@ -7,6 +7,7 @@ import {
   richCharsToTaggedText,
   type RichChar,
 } from "../../richtext";
+import { Sequence } from "../core/Sequence";
 
 import type {
   StickerInput,
@@ -244,11 +245,7 @@ export class StickerView {
    * native order (position, rotation, alpha, scale); `isend=false` steps only
    * accumulate, and the first `isend=true` command builds and plays the whole
    * sequence -- mirrored here by a per-view pending queue (native keeps
-   * m_builder on the view as well). Web adaptation: instead of a DOTween
-   * Sequence, every step gets a time window inside a single tween of the total
-   * duration; a `join` step starts when the previous step started, otherwise
-   * after it ends (DOTween Join vs Append). Build those windows from the
-   * script durations and apply the final command's Sequence.timeScale once.
+   * m_builder on the view as well). The final command sets Sequence.timeScale.
    * Rotation is degrees in native localEulerAngles and radians in pixi, hence
    * the conversion.
    */
@@ -276,26 +273,7 @@ export class StickerView {
     this.tweenSession = sessionId;
     const isCurrent = () => this.tweenSession === sessionId;
 
-    const steps = queue;
-
-    // Append/Join scheduling: `join` shares the previous step's start,
-    // everything else starts after the longest step of its segment ends.
-    const windows: Array<{ start: number; step: (typeof steps)[number] }> = [];
-    let segmentStart = 0;
-    let segmentLongest = 0;
-    let open = false;
-    for (const step of steps) {
-      if (!open || !step.join) {
-        segmentStart += segmentLongest;
-        segmentLongest = 0;
-        open = true;
-      }
-      windows.push({ start: segmentStart, step });
-      segmentLongest = Math.max(segmentLongest, step.durationMs);
-    }
-    const totalMs = segmentStart + segmentLongest;
-
-    const apply = (step: (typeof steps)[number], progress: number): void => {
+    const apply = (step: StickerTweenStepInput, progress: number): void => {
       if (step.kind === "position") {
         root.x = step.from.x + (step.to.x - step.from.x) * progress;
         root.y = step.from.y + (step.to.y - step.from.y) * progress;
@@ -310,31 +288,25 @@ export class StickerView {
     // `BuildSequence` creates every tween up front, and each
     // `AVGTweenFactory._Create*Tween` snaps the transform to that step's
     // `from` right there -- before the sequence plays and regardless of when
-    // the step's own window opens. So all the snaps happen now, and the
-    // clamped window below keeps a not-yet-started step pinned to `from`.
-    for (const { step } of windows) apply(step, 0);
+    // the step's own window opens. Keep the Web's clamped sampling between
+    // windows so multiple tracks for the same property retain their order.
+    const sequence = new Sequence(this.host.tween);
+    for (const step of queue) {
+      apply(step, 0);
+      const tween = {
+        durationMs: step.durationMs,
+        update: (progress: number) => apply(step, progress),
+      };
+      if (step.join) sequence.join(tween);
+      else sequence.append(tween);
+    }
 
     // TweenManager.Update (2791 @ 0x1844679F0) leaves a zero-rate sequence
     // at its starting values. Positive rates scale the elapsed time.
-    const timeScale = input.timeScale ?? 1;
-    if (timeScale <= 0) return;
-    void this.host.tween(
-      totalMs / timeScale,
-      (progress) => {
-        if (!isCurrent()) return;
-        const elapsed = progress * totalMs;
-        for (const { start, step } of windows) {
-          const local =
-            step.durationMs <= 0
-              ? 1
-              : Math.min(1, Math.max(0, (elapsed - start) / step.durationMs));
-          apply(step, local);
-        }
-      },
-      () => {
-        if (!isCurrent()) return;
-        for (const { step } of windows) apply(step, 1);
-      },
-    );
+    void sequence.play({
+      isAlive: isCurrent,
+      sampleAllTracks: true,
+      timeScale: input.timeScale,
+    });
   }
 }

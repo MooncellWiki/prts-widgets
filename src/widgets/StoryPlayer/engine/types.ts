@@ -1,3 +1,4 @@
+import type { AnimationCompletion } from "./execution";
 import type { RichChar } from "./richtext";
 
 export const STORY_WIDTH = 1280;
@@ -744,7 +745,8 @@ export interface StoryRenderer {
     fadeMs?: number,
     ease?: string,
     block?: boolean,
-  ) => Promise<void> | void;
+    onComplete?: () => void,
+  ) => AnimationCompletion;
   resetCgItems: () => void;
   clearAvgDisplays: () => Promise<void> | void;
   clearAnimTexts: () => Promise<void> | void;
@@ -824,7 +826,10 @@ export interface StoryRenderer {
   setLargeBackgroundTween: (input: LargeBackgroundTweenInput) => Promise<void>;
   setLargeImageTween: (input: LargeBackgroundTweenInput) => Promise<void>;
   createShowItemSlot: (style: string) => StoryShowItemSlot | null;
-  showCgItem: (input: CgItemInput) => Promise<void>;
+  showCgItem: (
+    input: CgItemInput,
+    onComplete?: () => void,
+  ) => AnimationCompletion;
   setSticker: (input: StickerInput) => Promise<void> | void;
   setStickerTypeWriterDelay: (id: string, delayMs: number) => void;
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
@@ -837,7 +842,10 @@ export interface StoryRenderer {
   setSubtitle: (text: TypewriterText, layout?: OverlayTextLayout) => void;
   setTimerSticker: (input: TimerStickerInput) => Promise<void> | void;
   shakeCamera: (input: CameraShakeInput) => Promise<void>;
-  shakeCgItem: (input: CgItemShakeInput) => Promise<void>;
+  shakeCgItem: (
+    input: CgItemShakeInput,
+    onComplete?: () => void,
+  ) => AnimationCompletion;
   stopCgItemShakes: (key?: string) => void;
   showDecision: (
     options: string[],

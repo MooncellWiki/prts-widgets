@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { setImmediate } from "node:timers/promises";
+
+import { describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
@@ -330,7 +332,7 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[cgitem(image="cgitem_test",id="left",style="cg",pfrom="1,2",pto="3,4",pduration=2,pdelay=0.5,sfrom=0.8,sto=1.2,sduration=3,sdelay=0.25,afrom=0,ato=1,aduration=1,adelay=0.1,rfrom=-10,rto=20,rduration=4,width=640,height=360,ease="Linear",block=true,layer=9,fadetime=8)]',
+        '[cgitem(image="cgitem_test",id="left",style="cg",pfrom="1,2",pto="3,4",pduration=2,pdelay=-0.5,sfrom=0.8,sto=1.2,sduration=3,sdelay=0.25,afrom=0,ato=1,aduration=1,adelay=0.1,rfrom=-10,rto=20,rduration=4,width=640,height=360,ease="Linear",block=true,layer=9,fadetime=8)]',
         '[hidecgitem(image="cgitem_test",id="left",block=true)]',
         '[name="A"]ok',
       ]),
@@ -354,7 +356,7 @@ describe("StoryRuntime", () => {
         height: 360,
         key: "cgitem_test_left",
         layer: 9,
-        positionDelayMs: 500,
+        positionDelayMs: -500,
         positionDurationMs: 2000,
         positionFrom: { x: 1, y: 2 },
         positionTo: { x: 3, y: 4 },
@@ -494,6 +496,52 @@ describe("StoryRuntime", () => {
     expect(renderer.cgItemShakeStops).toEqual([" CG_Item _Left", undefined]);
     expect(renderer.lastDialogue.text).toBe("after");
   });
+
+  it.each([
+    { finish: "complete" as const, advances: true },
+    { finish: "reset" as const, advances: false },
+  ])(
+    "handles an earlier CG show ending with $finish during a blocking shake",
+    async ({ finish, advances }) => {
+      const renderer = new FakeRenderer();
+      const show = Promise.withResolvers<void>();
+      const shake = Promise.withResolvers<void>();
+      const showCgItem = vi
+        .spyOn(renderer, "showCgItem")
+        .mockReturnValue(show.promise);
+      const shakeCgItem = vi
+        .spyOn(renderer, "shakeCgItem")
+        .mockReturnValue(shake.promise);
+      const runtime = new StoryRuntime(
+        createContext([
+          '[cgitem(image="a",afrom=0,ato=1,aduration=0.5)]',
+          '[cgitemshake(image="a",duration=2,block=true)]',
+          '[name="A"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      const started = runtime.start();
+      try {
+        expect(shakeCgItem).toHaveBeenCalledTimes(1);
+        expect(runtime.getState()).toBe("running");
+        if (finish === "complete") showCgItem.mock.calls[0]![1]?.();
+        show.resolve();
+        await setImmediate();
+        expect(renderer.lastDialogue.text === "after").toBe(advances);
+        shake.resolve();
+        await started;
+        expect(renderer.lastDialogue.text).toBe("after");
+        expect(renderer.cgItemShakeStops).toEqual([]);
+      } finally {
+        runtime.destroy();
+        show.resolve();
+        shake.resolve();
+        await started;
+      }
+    },
+  );
 
   it("parses nonempty invalid CG positions and colors with the native fallbacks", async () => {
     const renderer = new FakeRenderer();

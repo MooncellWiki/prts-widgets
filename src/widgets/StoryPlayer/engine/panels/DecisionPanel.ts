@@ -1,8 +1,9 @@
+import { ExecutorComponent, type PanelExecutors } from "../ExecutorComponent";
 import { parseDecision, parsePredicateReferences } from "../log/semantics";
 
 import type { Context } from "../../context";
 import type { DecisionCommandPredicator } from "../DecisionCommandPredicator";
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
+import type { WaitForDecision } from "../commandRegistry";
 import type {
   DecisionPolicy,
   ParsedCommandLine,
@@ -25,7 +26,7 @@ const OBSERVED_MAX_DECISION_OPTIONS = 4;
  * Runs decision/predicate against the controller's shared predicator.
  * The web view delivers the selection and the controller owns playback mode.
  */
-export class DecisionPanel {
+export class DecisionPanel extends ExecutorComponent {
   private destroyed = false;
 
   constructor(
@@ -36,22 +37,28 @@ export class DecisionPanel {
     >,
     private readonly context: Pick<Context, "audioVariables">,
     private readonly playback: DecisionPlayback,
-  ) {}
+  ) {
+    super();
+  }
 
-  register(registry: CommandRegistry<CommandResult>): void {
-    registry.register("decision", (line) => this.executeDecision(line));
-    // _ExecutePredicate (2791 @ 0x1841C7730) only replaces the references.
-    registry.register("predicate", (line) => {
-      this.predicator.setReferences(parsePredicateReferences(line));
-      return "continue";
-    });
+  protected getExecutors(): PanelExecutors {
+    return {
+      decision: (line) => this.executeDecision(line),
+      // _ExecutePredicate (2791 @ 0x1841C7730) only replaces the references.
+      predicate: (line) => {
+        this.predicator.setReferences(parsePredicateReferences(line));
+        return "continue";
+      },
+    };
   }
 
   destroy(): void {
     this.destroyed = true;
   }
 
-  private executeDecision(line: ParsedCommandLine): CommandResult {
+  private executeDecision(
+    line: ParsedCommandLine,
+  ): "continue" | WaitForDecision {
     // _ExecuteDecision (2791 @ 0x1841C7400) resets the gate before checking
     // options. The web player warns and continues for a missing options key.
     this.predicator.beginDecision();

@@ -1,3 +1,4 @@
+import { ExecutorComponent, type PanelExecutors } from "../ExecutorComponent";
 import {
   exactArg as arg,
   parseSubtitleAlignment,
@@ -11,11 +12,7 @@ import {
 } from "../commandParams";
 import { AVGEvent, type EventPool } from "../eventPool";
 
-import type {
-  CommandRegistry,
-  CommandResult,
-  WaitForClick,
-} from "../commandRegistry";
+import type { WaitForClick } from "../commandRegistry";
 import type {
   ParsedCommandLine,
   StoryRenderer,
@@ -28,7 +25,6 @@ import type {
 interface StickerPlayback {
   animateRatio: () => number;
   beginTyping: (messageLength: number) => () => void;
-  playbackGeneration: () => number;
   typeWriterDelayMs: () => number;
   translateText: (text: string) => string;
   warn: (detail: string) => void;
@@ -44,10 +40,12 @@ interface StickerSlot {
   >;
 }
 
+type StickerResult = "continue" | WaitForClick;
+
 function afterResult<T>(
   result: T | Promise<T>,
-  complete: (result: T) => CommandResult,
-): CommandResult | Promise<CommandResult> {
+  complete: (result: T) => StickerResult,
+): StickerResult | Promise<StickerResult> {
   return result instanceof Promise ? result.then(complete) : complete(result);
 }
 
@@ -57,7 +55,7 @@ function afterResult<T>(
  * Web adaptation: StoryRenderer supplies views; playback owns the shared
  * input/autoplay arbitration. No Pixi dependency is needed to run commands.
  */
-export class StickerPanel {
+export class StickerPanel extends ExecutorComponent {
   /**
    * Native port: `StickerPanel.m_stickerDict` — id → live sticker slot. Beyond
    * membership (show/append/hide routing), each slot carries what the native
@@ -81,31 +79,19 @@ export class StickerPanel {
   constructor(
     private readonly renderer: StoryRenderer,
     private readonly playback: StickerPlayback,
-  ) {}
+  ) {
+    super();
+  }
 
-  register(registry: CommandRegistry<CommandResult>): void {
-    for (const command of [
-      "sticker",
-      "stickerclear",
-      "stickertween",
-      "timersticker",
-      "timerclear",
-    ]) {
-      registry.register(command, (line) => {
-        const generation = this.playback.playbackGeneration();
-        return afterResult(this.execute(line), (result) => {
-          // ExecutorComponent.Execute (2791 @ 0x18419B4F0) calls FinishCommand
-          // on a false return. StickerPanel.OnFinish (0x1841E1F60) completes
-          // the current typewriter before the next command and the draw.
-          if (
-            result === "continue" &&
-            generation === this.playback.playbackGeneration()
-          )
-            this.finishCurrentStickerTyping();
-          return result;
-        });
-      });
-    }
+  protected getExecutors(): PanelExecutors {
+    const execute = (line: ParsedCommandLine) => this.executeSticker(line);
+    return {
+      sticker: execute,
+      stickerclear: execute,
+      stickertween: execute,
+      timerclear: execute,
+      timersticker: execute,
+    };
   }
 
   /** Native OnStoryBegin and _SetTypeWriterDelay (2791 @ 0x1841E21F0 / 0x1841E4980). */
@@ -126,8 +112,12 @@ export class StickerPanel {
     handleClick: (finishCommand) => {
       if (!this.finishCurrentStickerTyping()) finishCommand();
     },
-    forceEnd: () => this.finishCurrentStickerTyping(),
   };
+
+  /** 2791 OnFinish / ForceCommandEnd (@ 0x1841E1F60 / 0x1841E1C10). */
+  protected override onFinish(): void {
+    this.finishCurrentStickerTyping();
+  }
 
   private finishCurrentStickerTyping(): boolean {
     const slot = this.currentSticker;
@@ -184,9 +174,9 @@ export class StickerPanel {
     });
   }
 
-  private execute(
+  private executeSticker(
     line: ParsedCommandLine,
-  ): CommandResult | Promise<CommandResult> {
+  ): StickerResult | Promise<StickerResult> {
     const args = line.args;
     switch (line.command) {
       case "sticker": {

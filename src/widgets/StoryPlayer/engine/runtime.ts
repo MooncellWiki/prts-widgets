@@ -31,6 +31,7 @@ import { CgItemPanel } from "./panels/CgItemPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { ShowItemPanel } from "./panels/ShowItemPanel";
+import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerPanel } from "./panels/StickerPanel";
 import { SubtitlePanel } from "./panels/SubtitlePanel";
 import { parseScript } from "./parser";
@@ -53,7 +54,6 @@ import type {
   RuntimeLogPosition,
   RuntimeOptions,
   RuntimeWarning,
-  SpellStickerInput,
   StoryAudio,
   StoryCommandArgs,
   StoryPlayerEvents,
@@ -379,6 +379,7 @@ export class StoryRuntime {
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly showItemPanel: ShowItemPanel;
+  private readonly spellStickerPanel: SpellStickerPanel;
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
   private pendingDelay: PendingDelay | null = null;
@@ -434,14 +435,17 @@ export class StoryRuntime {
     });
     this.showItemPanel = new ShowItemPanel(renderer, {
       resolveImageKey: (key) => this.resolveImageKey(key),
-      waitForAnimation: (animation) => this.waitInterruptiblePromise(animation),
       warnInvalidParameter: (detail, line) =>
         this.warn("invalid_parameter", detail, line.lineNumber, line.command),
+    });
+    this.spellStickerPanel = new SpellStickerPanel(renderer, {
+      scheduleAutoClick: (delayMs) => this.scheduleAutoClick(delayMs),
+      translateText: (text) => this.translateText(text),
+      warn: (detail) => this.warn("parse", detail),
     });
     this.stickerPanel = new StickerPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       beginTyping: (length) => this.beginTextTyping(length),
-      playbackGeneration: () => this.playbackGeneration,
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
@@ -459,21 +463,14 @@ export class StoryRuntime {
     new CgItemPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       resolveImageKey: (key) => this.resolveImageKey(key),
-      waitForAnimation: (animation, interrupt) =>
-        this.waitInterruptiblePromise(animation, interrupt),
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
+    this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
-    this.commandRegistry.register("spellsticker", (line) =>
-      this.executeSpellSticker(line),
-    );
-    this.commandRegistry.register("spellstickerclear", (line) =>
-      this.executeSpellStickerClear(line),
-    );
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -1045,7 +1042,7 @@ export class StoryRuntime {
           // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
           () => this.renderer.clearInterludes(),
           () => this.renderer.clearCharacterCutin(),
-          () => this.renderer.clearSpellStickers(),
+          () => this.spellStickerPanel.reset(),
           () => this.subtitlePanel.reset(),
           () => this.stickerPanel.reset(),
         ]) {
@@ -1280,24 +1277,39 @@ export class StoryRuntime {
         if (!this.decisionPredicator.needToExecuteCommand(line)) continue;
 
         const generation = this.playbackGeneration;
+        const isCurrent = () =>
+          !this.destroyed && generation === this.playbackGeneration;
         const execution =
           line.kind === "command"
-            ? this.executeCommand(line)
-            : this.dialogPanel.executeTextLine(line);
+            ? this.executeCommand(line, isCurrent)
+            : this.dialogPanel.executeTextLine(line, isCurrent);
         const result =
           execution instanceof Promise ? await execution : execution;
         if (this.destroyed) return;
         // A skipped executor can still return a stale input wait. Its click
         // follow-up (spellsticker block) travels with the dropped handler.
-        if (generation !== this.playbackGeneration) continue;
+        if (!isCurrent()) continue;
         if (result !== "continue") {
           const waits = Array.isArray(result) ? result : [result];
+          const animations = waits.filter((wait) => "animation" in wait);
+          if (animations.length > 0) {
+            await this.waitInterruptiblePromise(
+              Promise.all(animations.map(({ animation }) => animation)),
+              () => {
+                for (const { forceEnd } of animations) forceEnd();
+              },
+            );
+            if (!isCurrent()) continue;
+          }
           const decision = waits.find((wait) => "showDecision" in wait);
           if (decision) return this.waitForDecision(decision);
           const delay = waits.find((wait) => "delayMs" in wait);
           if (delay) return this.waitForDelay(delay.delayMs);
-          this.waitForInput(waits.filter((wait) => "handleClick" in wait));
-          return;
+          const clicks = waits.filter((wait) => "handleClick" in wait);
+          if (clicks.length) {
+            this.waitForInput(clicks);
+            return;
+          }
         }
       }
     } catch (error) {
@@ -1442,6 +1454,7 @@ export class StoryRuntime {
 
   private executeCommand(
     line: ParsedCommandLine,
+    isCurrent: () => boolean,
   ): CommandResult | CommandWait[] | Promise<CommandResult | CommandWait[]> {
     // HEADER remains in Story.commands but has no registered executor.
     if (line.command === "header") return "continue";
@@ -1450,92 +1463,17 @@ export class StoryRuntime {
       this.warn("unknown_command", line.command);
       return "continue";
     }
-    if (executors.length === 1) return executors[0]!(line);
+    if (executors.length === 1) return executors[0]!(line, isCurrent);
     const combine = (results: CommandResult[]) => {
       const waits = results.filter((result) => result !== "continue");
       return waits.length > 0 ? waits : "continue";
     };
-    const results = executors.map((executor) => executor(line));
+    const results = executors.map((executor) => executor(line, isCurrent));
     return results.every(
       (result): result is CommandResult => !(result instanceof Promise),
     )
       ? combine(results)
       : Promise.all(results).then(combine);
-  }
-
-  private executeSpellSticker(
-    line: ParsedCommandLine,
-  ): CommandResult | Promise<CommandResult> {
-    // Native _ExecuteSpellSticker (2791 @ 0x1841B37F0) displays or hides the
-    // view inline. Keep synchronous renderers on the same command-loop turn.
-    const { args } = line;
-    const id = toString(this.exactArg(args, "id"));
-    if (!id) {
-      this.warn("parse", "spellsticker id is empty");
-      return "continue";
-    }
-    const hide =
-      toString(this.exactArg(args, "action"), "show").toLowerCase() === "hide";
-    const block = toBoolean(this.exactArg(args, "block"), false);
-    // Native _ShowSticker writes alpha only when supplied, preserving the
-    // previous alpha when reusing a sticker.
-    const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
-    const generation = this.playbackGeneration;
-    const render = hide
-      ? this.renderer.hideSpellSticker(id)
-      : this.renderer.setSpellSticker({
-          alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
-          angle: toOptionalNumber(this.exactArg(args, "angle")),
-          content: this.translateText(line.content),
-          id,
-          style: toString(this.exactArg(args, "style"), "sami"),
-          x: toOptionalNumber(this.exactArg(args, "x")),
-          xScale: toOptionalNumber(this.exactArg(args, "xScale")),
-          y: toOptionalNumber(this.exactArg(args, "y")),
-          yScale: toOptionalNumber(this.exactArg(args, "yScale")),
-        } satisfies SpellStickerInput);
-
-    const complete = (durationMs: number | void): CommandResult => {
-      if (!block || generation !== this.playbackGeneration) return "continue";
-      // Use the show clip's length, falling back to the base auto wait.
-      this.scheduleAutoClick(
-        typeof durationMs === "number" && durationMs > 0
-          ? durationMs
-          : undefined,
-      );
-      // _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) hide the
-      // blocking show by ID and clear it before another callback can hide.
-      if (hide) return { handleClick: (finishCommand) => finishCommand() };
-      let blockingStickerId: string | null = id;
-      const hideBlocking = () => {
-        if (blockingStickerId === null) return;
-        const stickerId = blockingStickerId;
-        blockingStickerId = null;
-        return this.renderer.hideSpellSticker(stickerId);
-      };
-      return {
-        handleClick: (finishCommand) =>
-          finishCommand({ onClick: hideBlocking }),
-        forceEnd: hideBlocking,
-      };
-    };
-    return render instanceof Promise ? render.then(complete) : complete(render);
-  }
-
-  private executeSpellStickerClear(
-    line: ParsedCommandLine,
-  ): CommandResult | Promise<CommandResult> {
-    // _ExecuteSpellStickerClear (2791 @ 0x1841B35D0) clears inline and
-    // raises an auto click with length zero when the command blocks.
-    const block = toBoolean(this.exactArg(line.args, "block"), false);
-    const generation = this.playbackGeneration;
-    const render = this.renderer.clearSpellStickers();
-    const complete = (): CommandResult => {
-      if (!block || generation !== this.playbackGeneration) return "continue";
-      this.scheduleAutoClick();
-      return { handleClick: (finishCommand) => finishCommand() };
-    };
-    return render instanceof Promise ? render.then(complete) : complete();
   }
 
   private executeBuiltinCommand(
