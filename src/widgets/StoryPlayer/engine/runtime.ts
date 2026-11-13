@@ -458,6 +458,7 @@ export class StoryRuntime {
     });
     new CgItemPanel(renderer, {
       resolveImageKey: (key) => this.resolveImageKey(key),
+      waitForAnimation: (animation) => this.waitInterruptiblePromise(animation),
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);

@@ -470,6 +470,7 @@ export interface CgItemInput {
   ease: string;
   height: number;
   key: string;
+  layer: number;
   positionDelayMs: number;
   positionDurationMs: number;
   positionFrom?: { x: number; y: number };

@@ -4,6 +4,7 @@ import {
   toNumber,
   toOptionalNumber,
   toString,
+  tryConvertToInt32,
 } from "../commandParams";
 
 import type { CommandRegistry, CommandResult } from "../commandRegistry";
@@ -16,6 +17,7 @@ import type {
 
 interface CgItemPlayback {
   resolveImageKey: (key: string) => string | null;
+  waitForAnimation: (animation: Promise<void>) => Promise<boolean>;
   warn: (type: RuntimeWarning["type"], detail: string) => void;
 }
 
@@ -51,8 +53,8 @@ function parseCgColor(value: unknown): CgItemInput["colorFrom"] {
 
 /**
  * Native port: Torappu.AVG.AVGCgItemPanel (2791 GetExecutors @ 0x184188F00).
- * StoryRenderer owns the keyed slots and PostDisplay registration. Its
- * promises implement the show and hide commands' completion timing.
+ * StoryRenderer owns the slots and PostDisplay registration. SkipStory
+ * (2791 @ 0x18416E560) releases the command wait while the slot keeps animating.
  */
 export class CgItemPanel {
   constructor(
@@ -108,7 +110,7 @@ export class CgItemPanel {
       Math.max(0, toNumber(exactArg(args, name), 0) * 1000);
     const colorFrom = parseCgColor(exactArg(args, "cfrom"));
     const colorTo = parseCgColor(exactArg(args, "cto"));
-    await this.renderer.showCgItem({
+    const animation = this.renderer.showCgItem({
       alphaDelayMs: durationMs("adelay"),
       alphaDurationMs: durationMs("aduration"),
       alphaFrom: toNumber(exactArg(args, "afrom"), 1),
@@ -121,6 +123,8 @@ export class CgItemPanel {
       ease: toString(exactArg(args, "ease"), "Linear"),
       height: Math.trunc(toNumber(exactArg(args, "height"), 0)),
       key,
+      // AVGShowItemCgSlot.Show reads layer with GetInt(defaultValue: 0).
+      layer: tryConvertToInt32(exactArg(args, "layer")) ?? 0,
       positionDelayMs: durationMs("pdelay"),
       positionDurationMs: durationMs("pduration"),
       positionFrom: parseCgVector2(exactArg(args, "pfrom")),
@@ -134,6 +138,7 @@ export class CgItemPanel {
       scaleTo: toNumber(exactArg(args, "sto"), 1),
       width: Math.trunc(toNumber(exactArg(args, "width"), 0)),
     });
+    await this.playback.waitForAnimation(animation);
     return "continue";
   }
 
@@ -151,12 +156,13 @@ export class CgItemPanel {
     const fadeSeconds =
       toOptionalNumber(exactArg(args, "duration")) ??
       toNumber(exactArg(args, "fadetime"), 0.13);
-    await this.renderer.clearCgItems(
+    const animation = this.renderer.clearCgItems(
       key || undefined,
       Math.max(0, Math.round(fadeSeconds * 1000)),
       toString(exactArg(args, "ease"), "Linear"),
       toBoolean(exactArg(args, "block"), false),
     );
+    if (animation) await this.playback.waitForAnimation(animation);
     return "continue";
   }
 }

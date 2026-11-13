@@ -57,12 +57,9 @@ function rgb(color: { r: number; g: number; b: number }): number {
  * Pixi sprites substitute for `AVGShowItemCgSlot`. Segment skips keep these
  * slots alive because ShouldResetOnSkip (2791 @ 0x184189160) defaults to false.
  *
- * The command's `layer` parameter is deliberately not modelled: although
- * `AVGShowItemCgSlot.Show` reads it, it only reaches `_OverrideLayer` behind
- * `m_overrideLayer`, and the sole caller of `SetOverrideLayer` is
- * `AVGReaderModeCgItemView._ShowItem`. During normal playback the flag stays
- * false, so stacking follows slot instantiation order -- which is what adding
- * each root to `layer` in command order already reproduces.
+ * AVGShowItemCgSlot's constructor (2791 @ 0x184243F30) enables layer overrides.
+ * _OverrideLayer sets the Canvas order to the CG canvas order plus 10*(layer-1).
+ * Pixi zIndex uses the script layer directly to order slots in the CG container.
  */
 export class CgItemView {
   private readonly states = new Map<string, CgItemState>();
@@ -80,7 +77,9 @@ export class CgItemView {
     private readonly tween: Tween,
     private readonly onWarning?: (detail: string) => void,
     private readonly lifecycle?: CgItemLifecycle,
-  ) {}
+  ) {
+    this.layer.sortableChildren = true;
+  }
 
   async show(input: CgItemInput): Promise<void> {
     // Native provenance: `AVGCgItemPanel._ShowItem` (2791 @ 0x18418ABF0)
@@ -97,6 +96,7 @@ export class CgItemView {
     this.dispose(input.key);
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+    root.zIndex = input.layer;
     this.layer.addChild(root);
     const state: CgItemState = {
       hideEpoch: 0,
@@ -157,20 +157,20 @@ export class CgItemView {
         );
       };
 
-      // `Torappu.AVG.AVGShowItemCgSlot.Show` drives Transform.localPosition and
-      // `_GenPosByRaw` keeps the raw y sign. PIXI uses sprite.position as the
-      // coordinate-system adaptation, so do not inherit sticker's UI-y inversion.
-      if (input.positionFrom && input.positionTo) {
+      // AVGShowItemCgSlot.Show (2791 @ 0x184242CE0) writes Unity localPosition.
+      // Convert its upward Y to Pixi's downward Y at the rendering boundary.
+      const { positionFrom, positionTo } = input;
+      if (positionFrom && positionTo) {
         if (input.positionDurationMs > 0) {
-          sprite.position.set(input.positionFrom.x, input.positionFrom.y);
+          sprite.position.set(positionFrom.x, -positionFrom.y);
           run(input.positionDelayMs, input.positionDurationMs, (progress) =>
             sprite.position.set(
-              lerp(input.positionFrom!.x, input.positionTo!.x, progress),
-              lerp(input.positionFrom!.y, input.positionTo!.y, progress),
+              lerp(positionFrom.x, positionTo.x, progress),
+              -lerp(positionFrom.y, positionTo.y, progress),
             ),
           );
         } else {
-          sprite.position.set(input.positionTo.x, input.positionTo.y);
+          sprite.position.set(positionTo.x, -positionTo.y);
         }
       }
 

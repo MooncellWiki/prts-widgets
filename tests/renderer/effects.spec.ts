@@ -29,6 +29,7 @@ const focusCgItemInput: CgItemInput = {
   ease: "Linear",
   height: 0,
   key: "a",
+  layer: 0,
   positionDelayMs: 0,
   positionDurationMs: 0,
   rotationDurationMs: 0,

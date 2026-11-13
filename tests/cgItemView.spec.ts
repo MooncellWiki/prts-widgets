@@ -16,6 +16,7 @@ function input(key: string, overrides: Partial<CgItemInput> = {}): CgItemInput {
     ease: "Linear",
     height: 0,
     key,
+    layer: 0,
     positionDelayMs: 0,
     positionDurationMs: 0,
     rotationDurationMs: 0,
@@ -103,8 +104,58 @@ describe("CgItemView", () => {
 
     expect(view.targets("a")).toHaveLength(1);
     expect(view.targets("b")).toHaveLength(1);
-    expect(view.targets("a")[0]).not.toBe(oldA);
+    const newA = view.targets("a")[0]!;
+    expect(newA).not.toBe(oldA);
+    expect(newA.children[0]!.x).toBe(10);
+    expect(newA.children[0]!.y).toBe(-20);
     expect(layer.children).toHaveLength(2);
+  });
+
+  it("converts Unity Y at the start and throughout a position tween", async () => {
+    const manual = manualTween();
+    const view = new CgItemView(
+      new Container(),
+      async () => Texture.WHITE,
+      manual.tween,
+    );
+    await view.show(
+      input("a", {
+        positionDurationMs: 400,
+        positionFrom: { x: 80, y: -500 },
+        positionTo: { x: 80, y: -250 },
+      }),
+    );
+    await flushMicrotasks();
+    const root = view.targets("a")[0]!;
+    const sprite = root.children[0]!;
+
+    expect(root.y + sprite.y).toBe(860);
+    manual.step(0.5);
+    expect(root.y + sprite.y).toBe(735);
+    manual.step(1);
+    expect(root.y + sprite.y).toBe(610);
+  });
+
+  it("draws higher layer values above lower ones and keeps creation order for ties", async () => {
+    const layer = new Container();
+    const view = new CgItemView(
+      layer,
+      async () => Texture.WHITE,
+      tweenImmediately,
+    );
+    await view.show(input("first", { layer: 4 }));
+    await view.show(input("second", { layer: 3 }));
+    await view.show(input("third", { layer: 2 }));
+    await view.show(input("default"));
+    await view.show(input("last", { layer: 4 }));
+
+    expect(layer.sortableChildren).toBe(true);
+    layer.sortChildren();
+    expect(layer.children.map((child) => child.zIndex)).toEqual([
+      0, 2, 3, 4, 4,
+    ]);
+    expect(layer.getChildIndex(view.targets("first")[0]!)).toBe(3);
+    expect(layer.getChildIndex(view.targets("last")[0]!)).toBe(4);
   });
 
   it("hides one key, then clears every remaining key", async () => {

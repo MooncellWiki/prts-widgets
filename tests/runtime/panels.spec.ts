@@ -353,6 +353,7 @@ describe("StoryRuntime", () => {
         ease: "Linear",
         height: 360,
         key: "cgitem_test_left",
+        layer: 9,
         positionDelayMs: 500,
         positionDurationMs: 2000,
         positionFrom: { x: 1, y: 2 },
@@ -394,6 +395,7 @@ describe("StoryRuntime", () => {
         assetKey: "cgitem_test",
         ease: "Linear",
         key: "cgitem_test",
+        layer: 0,
       }),
     ]);
   });

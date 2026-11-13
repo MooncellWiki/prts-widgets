@@ -879,6 +879,49 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
   });
 
+  it.each(["cgitem", "hidecgitem"])(
+    "resumes a skip while a blocking %s animation is still running",
+    async (command) => {
+      const renderer = new FakeRenderer();
+      const animation = Promise.withResolvers<void>();
+      const show = vi.spyOn(renderer, "showCgItem");
+      const hide = vi.spyOn(renderer, "clearCgItems");
+      const isHide = command === "hidecgitem";
+      const animate = isHide ? hide : show;
+      animate.mockImplementationOnce(() => animation.promise);
+      const runtime = new StoryRuntime(
+        createContext([
+          `[cgitem(image="item_a",pduration=20,block=${!isHide})]`,
+          ...(isHide
+            ? ['[hidecgitem(image="item_a",fadetime=20,block=true)]']
+            : []),
+          '[name="A"]skipped',
+          "[SkipToThis]",
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      const started = runtime.start();
+      await setImmediate();
+      expect(animate).toHaveBeenCalledTimes(1);
+      expect(runtime.getState()).toBe("running");
+
+      const skipped = runtime.skipNode();
+      try {
+        await setImmediate();
+        expect(runtime.getState()).toBe("waiting_input");
+        expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+        expect(hide).toHaveBeenCalledTimes(isHide ? 1 : 0);
+      } finally {
+        animation.resolve();
+        await Promise.all([started, skipped]);
+        runtime.destroy();
+      }
+    },
+  );
+
   it.each(["showitem", "hideitem"])(
     "clears the item slot when a skip ends the story during %s",
     async (command) => {
