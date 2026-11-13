@@ -541,6 +541,29 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
+  it.each([
+    { duration: 0.000001, alphaAt65Ms: 0.75 },
+    { duration: 0.00001, alphaAt65Ms: 0.75 },
+    { duration: 0.000011, alphaAt65Ms: 1 },
+  ])(
+    "uses the native fade-in threshold for duration=$duration",
+    async ({ duration, alphaAt65Ms }) => {
+      const { destroy, renderer, runtime, ticker } = createTickerPlayback([
+        `[timersticker(time=60,duration=${duration})]`,
+        '[name="A"]hold',
+      ]);
+      try {
+        await runtime.start();
+        ticker.update(65);
+        expect(renderer.timerView.root.alpha).toBe(alphaAt65Ms);
+        ticker.update(130);
+        expect(renderer.timerView.root.alpha).toBe(1);
+      } finally {
+        destroy();
+      }
+    },
+  );
+
   it("keeps ticking during a fade and completes it before showing again", () => {
     vi.useFakeTimers({ now: 0 });
     const { destroy, renderer, ticker } = createTickerPlayback([]);
@@ -632,21 +655,35 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
-  it("clears a running timer on the next update after the story ends", async () => {
+  it("keeps the timer running through the natural story-end wait", async () => {
+    vi.useFakeTimers({ now: 950 });
     const { destroy, renderer, runtime, ticker } = createTickerPlayback([
       "[timersticker(time=60)]",
     ]);
     try {
-      await runtime.start();
+      const started = runtime.start();
       const timer = renderer.timerView.root;
+      expect(runtime.getState()).toBe("waiting_timer");
+      expect(timer.visible).toBe(true);
+
+      vi.advanceTimersByTime(50);
+      ticker.update(50);
+      expect(timer.text).toBe("00:00:01");
+      ticker.update(249);
+      expect(runtime.getState()).toBe("waiting_timer");
+      expect(timer.visible).toBe(true);
+
+      ticker.update(250);
+      await started;
       expect(runtime.getState()).toBe("finished");
       expect(timer.visible).toBe(true);
 
-      ticker.update(16);
+      ticker.update(266);
       expect(timer.visible).toBe(false);
       expect(timer.alpha).toBe(0);
     } finally {
       destroy();
+      vi.useRealTimers();
     }
   });
 

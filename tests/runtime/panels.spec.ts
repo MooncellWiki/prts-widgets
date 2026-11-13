@@ -17,6 +17,7 @@ describe("StoryRuntime", () => {
         '[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover",layer=2,afrom=0,ato=0.6,duration=2,isblock=true)]',
         '[avgdisplay(id="2",name="act3mainss_01",style="animekv",slot="cgover",x=-200,y=80,scalex=1.2,scaley=1.2,entryfrom=0,entryto=0.2,duration=5,block=true)]',
         '[avgdisplay(id="1")]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -66,6 +67,7 @@ describe("StoryRuntime", () => {
         '[avgdisplay(id="9",name="bg_black",style=" +05 ",slot="01")]',
         '[avgdisplay(id="9",name="bg_black",style="bg",slot="bgover")]',
         '[avgdisplay(id="9",name="bg_black",style="BG",slot="BgOver")]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -160,7 +162,9 @@ describe("StoryRuntime", () => {
     expect(renderer.destroyItemCalls).toBe(0);
     expect(runtime.getState()).toBe("waiting_input");
 
-    await runtime.advance();
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
 
     // ...and the end-of-story reset (native AVGShowItemPanel.OnReset →
     // _Reset) tears it down without a fade.
@@ -328,6 +332,7 @@ describe("StoryRuntime", () => {
       createContext([
         '[cgitem(image="cgitem_test",id="left",style="cg",pfrom="1,2",pto="3,4",pduration=2,pdelay=0.5,sfrom=0.8,sto=1.2,sduration=3,sdelay=0.25,afrom=0,ato=1,aduration=1,adelay=0.1,rfrom=-10,rto=20,rduration=4,width=640,height=360,ease="Linear",block=true,layer=9,fadetime=8)]',
         '[hidecgitem(image="cgitem_test",id="left",block=true)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -377,7 +382,7 @@ describe("StoryRuntime", () => {
     // Linear (`Unset` is 0, `InSine` is 2).
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
-      createContext(['[cgitem(image="cgitem_test")]']),
+      createContext(['[cgitem(image="cgitem_test")]', '[name="A"]ok']),
       renderer,
       new FakeAudio(),
     );
@@ -401,6 +406,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[cgitem(image="cgitem_test", style="cg",afrom = 0., ato = 1, aduration = 3,layer = 1)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -418,7 +424,7 @@ describe("StoryRuntime", () => {
   it("maps parameterless hidecgitem to clear-all", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
-      createContext(['[hidecgitem(fadetime=1,ease="Linear")]']),
+      createContext(['[hidecgitem(fadetime=1,ease="Linear")]', '[name="A"]ok']),
       renderer,
       new FakeAudio(),
     );
@@ -434,7 +440,7 @@ describe("StoryRuntime", () => {
     // `Ease` 1 is Linear (`Unset` = 0, `InSine` = 2).
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
-      createContext(['[hidecgitem(image="cgitem_test")]']),
+      createContext(['[hidecgitem(image="cgitem_test")]', '[name="A"]ok']),
       renderer,
       new FakeAudio(),
     );
@@ -459,6 +465,7 @@ describe("StoryRuntime", () => {
         '[hidecgitem(image="cgitem_test",fadetime=0.5,duration=2)]',
         '[hidecgitem(image="cgitem_test",fadetime=0.7,duration=abc)]',
         "[hidecgitem(duration=2,block=false)]",
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),

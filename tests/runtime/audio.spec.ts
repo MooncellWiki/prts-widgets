@@ -8,17 +8,21 @@ import {
 } from "../helpers/runtimeFakes";
 
 describe("StoryRuntime", () => {
-  it.each(["advance", "skipNode"] as const)(
-    "fades residual loop sounds once on story end via %s",
-    async (finish) => {
+  it.each([
+    { action: "advance", frames: [16, 16, 16, 200] },
+    { action: "skipNode", frames: [] },
+  ] as const)(
+    "fades residual loop sounds once on story end via $action",
+    async ({ action, frames }) => {
       const audio = new FakeAudio();
+      const renderer = new FakeRenderer();
       const runtime = new StoryRuntime(
         createContext([
           '[playsound(key="s",loop=true)]',
           '[name="A"]ok',
           '[skipnode(mode="skip")]',
         ]),
-        new FakeRenderer(),
+        renderer,
         audio,
       );
       await runtime.start();
@@ -26,7 +30,9 @@ describe("StoryRuntime", () => {
       expect(audio.playSoundCalls).toHaveLength(1);
       expect(runtime.canSkipNode()).toBe(true);
       expect(audio.resetAudioCalls).toBe(0);
-      await runtime[finish]();
+      const finishing = runtime[action]();
+      await renderer.frames.advance(...frames);
+      await finishing;
       expect(runtime.getState()).toBe("finished");
       expect(audio.resetAudioCalls).toBe(1);
     },
@@ -128,6 +134,8 @@ describe("StoryRuntime", () => {
 
   it("runs the end-of-story audio reset when playback finishes", async () => {
     const audio = new FakeAudio();
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
     const runtime = new StoryRuntime(
       createContext([
         // A loop ambience with no matching stopsound: only the story-end
@@ -135,14 +143,19 @@ describe("StoryRuntime", () => {
         '[playsound(key="$burningloop1", loop=true, channel="bgs")]',
         "[name=A]done",
       ]),
-      new FakeRenderer(),
+      renderer,
       audio,
     );
 
     await runtime.start();
     // The reset must not fire while the story is merely waiting.
     expect(audio.resetAudioCalls).toBe(0);
-    await runtime.advance();
+    await renderer.frames.advance(16);
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 199);
+    expect(audio.resetAudioCalls).toBe(0);
+    await renderer.frames.advance(1);
+    await advancing;
 
     expect(runtime.getState()).toBe("finished");
     // Exactly once: finishPlayback is the single natural-end entry point.

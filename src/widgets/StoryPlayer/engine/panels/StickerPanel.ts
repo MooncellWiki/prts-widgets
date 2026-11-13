@@ -6,6 +6,7 @@ import {
   toNumber,
   toOptionalNumber,
   toString,
+  tryConvertToInt32,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
 import { AVGEvent, type EventPool } from "../eventPool";
@@ -402,14 +403,10 @@ export class StickerPanel {
         // time/x/y/width/size/duration/afrom/ato are read -- id/text/block
         // are ignored.
         const render = this.renderer.setTimerSticker({
-          durationMs:
-            Math.max(0, toNumber(arg(args, "duration"), 1) * 1000) || 130,
+          durationMs: toNumber(arg(args, "duration"), 1) * 1000,
           fromAlpha: toNumber(arg(args, "afrom"), 0),
-          limitSeconds:
-            arg(args, "time") === undefined
-              ? undefined
-              : Math.round(toNumber(arg(args, "time"), -1)),
-          sizePx: toNumber(arg(args, "size"), 24),
+          limitSeconds: tryConvertToInt32(arg(args, "time")) ?? undefined,
+          sizePx: tryConvertToInt32(arg(args, "size")) ?? 24,
           toAlpha: toNumber(arg(args, "ato"), 1),
           widthPx: toNumber(arg(args, "width"), 1280),
           x: toNumber(arg(args, "x"), 0),

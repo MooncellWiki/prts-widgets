@@ -313,6 +313,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         "[ImageTween(fadetime=0.5, xScaleFrom=1., yScaleFrom=1, xScaleTo=0.85, yScaleTo=0.85,duration=12)]",
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),

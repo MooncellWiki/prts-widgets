@@ -1,11 +1,6 @@
 import { Graphics, Sprite, type Texture } from "pixi.js";
 
-import {
-  exactArg,
-  roundHalfToEven,
-  toString,
-  tryParseInt32,
-} from "../../commandParams";
+import { exactArg, toString, tryConvertToInt32 } from "../../commandParams";
 import { parseShowItemFadeStyle, ShowItemFadeStyle } from "../../showitem";
 import { STORY_HEIGHT, type StoryCommandArgs } from "../../types";
 
@@ -15,16 +10,8 @@ import { ShowItemSlot, type ShowItemAnimation } from "./ShowItemSlot";
 function readWidth(args: StoryCommandArgs): number | undefined {
   const value = exactArg(args, "width");
   if (value === undefined) return undefined;
-  const width =
-    typeof value === "string"
-      ? tryParseInt32(value)
-      : roundHalfToEven(Number(value));
-  if (
-    width === null ||
-    !Number.isInteger(width) ||
-    width < -2_147_483_648 ||
-    width > 2_147_483_647
-  )
+  const width = tryConvertToInt32(value);
+  if (width === null)
     throw new RangeError(
       `Invalid showitem width ${JSON.stringify(value)}. Expected an Int32.`,
     );

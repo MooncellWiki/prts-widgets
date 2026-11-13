@@ -1046,7 +1046,7 @@ export class StoryRuntime {
     // these resets. Web cleanup can yield even as the old executor settles.
     const cleanup = createExecutionHandle(true);
     this.skipCleanup = cleanup;
-    let resumedProcess = activeProcessCompletion;
+    let resumedProcess: Promise<void> | undefined;
     try {
       try {
         // The protected skipnode branch keeps the auto-click coroutine.
@@ -1080,22 +1080,17 @@ export class StoryRuntime {
         }
       }
     } finally {
-      // An async executor can finish while the reset is in progress. Release
-      // its wait and let its loop unwind before starting the destination.
+      // Let the interrupted loop unwind under skipCleanup before resuming or
+      // ending the story. It can still be returning from an async executor.
       this.dialogPanel.stopTypingSilently();
       this.interruptPendingWait();
-      if (shouldResume) await activeProcessCompletion;
+      await activeProcessCompletion;
       if (shouldResume && !this.destroyed && this.state !== "error") {
         resumedProcess = this.resumeSkipOnFrame(cleanup);
       } else {
         this.skipCleanup = null;
         cleanup.end();
-        if (
-          !this.destroyed &&
-          this.state !== "error" &&
-          !activeProcessCompletion
-        )
-          this.finishPlayback();
+        if (!this.destroyed && this.state !== "error") this.finishPlayback();
       }
     }
     if (resumedProcess) await resumedProcess;
@@ -1234,9 +1229,8 @@ export class StoryRuntime {
   }
 
   /**
-   * Native port: AVGController.MoveNext's end-of-story path (the bounds-check
-   * exit at 2.7.81 VA 0x183fa6d3b). processLoop also reuses it for the web-only
-   * guard on an out-of-range warp target, where native would throw instead.
+   * Native port: AVGController.OnStoryEnd (2791 @ 0x18416B9C0) runs the
+   * component resets after the command coroutine ends or SkipStory stops it.
    */
   private finishPlayback(): void {
     this.stopPlaybackInput();
@@ -1284,8 +1278,9 @@ export class StoryRuntime {
         // gate further down (native: flow-controller vs predicator are two
         // separate MoveNext concerns).
         if (this.cursor >= this.lines.length) {
-          this.finishPlayback();
-          return;
+          // _DoExecuteCommands.MoveNext (2791 @ 0x184180CA6) yields
+          // WaitForSecondsRealtime(0.2) before DoEndStory.
+          return this.waitForDelay(200, () => this.finishPlayback());
         }
 
         if (this.gotoIndex >= 0) {
@@ -1418,23 +1413,30 @@ export class StoryRuntime {
     }
   }
 
-  private async waitForDelay(delayMs: number): Promise<void> {
+  private async waitForDelay(
+    delayMs: number,
+    resume: () => Promise<void> | void = () => this.processLoop(),
+  ): Promise<void> {
     this.state = "waiting_timer";
     await this.waitInterruptiblePromise(
-      new Promise<void>((resolve) => {
+      new Promise<void>((resolve, reject) => {
         this.pendingDelay = {
           delayMs,
           finish: () => {
             this.pendingDelay = null;
             this.state = "running";
-            resolve(this.processLoop());
+            try {
+              resolve(resume());
+            } catch (error) {
+              reject(error);
+            }
           },
         };
       }),
       () => {
         this.pendingDelay = null;
       },
-    );
+    ).catch((error: unknown) => this.failPlayback(error));
   }
 
   private resolveCharacterName(ref: string): CharacterRefResolution {

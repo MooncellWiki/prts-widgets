@@ -41,7 +41,12 @@ export class TimerView {
     this.fadeSessionId += 1;
     this.stopFadeComplete?.();
     this.root.alpha = input.fromAlpha;
-    this.fadeTo(input.toAlpha, input.durationMs > 0 ? input.durationMs : 130);
+    // _ShowTimer uses MathUtil.GT (2791 VA 0x1869451f0) on float32 seconds.
+    const durationSeconds = Math.fround(input.durationMs / 1000);
+    this.fadeTo(
+      input.toAlpha,
+      durationSeconds > Math.fround(0.00001) ? input.durationMs : 130,
+    );
     this.root.visible = true;
   }
 

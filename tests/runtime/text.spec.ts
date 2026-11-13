@@ -207,7 +207,7 @@ describe("StoryRuntime", () => {
         expect(renderer.spellStickerHideCalls).toHaveLength(hidesBeforeSkip);
         const skipping = runtime.skipNode();
         await setImmediate();
-        await renderer.frames.advance(16);
+        await renderer.frames.advance(16, 16, 200);
         await skipping;
         await advancing;
         expect(clear).toHaveBeenCalledExactlyOnceWith();
@@ -223,6 +223,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[animtext(id="at1",name="group_location_stamp",style="avg_both",pos="-400,-200",block=false,duration=9,type="effect",clear=true)]<p=1>地点</><p=2>时间</>',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -361,6 +362,35 @@ describe("StoryRuntime", () => {
     ]);
     expect(renderer.stickersClearCalls).toEqual([150]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("converts timer time and size like boxed Int32 command parameters", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[timersticker(time=0.5,size=44.5)]",
+        '[timersticker(time=1.5,size="45")]',
+        '[timersticker(time=true,size="44.5")]',
+        "[timersticker(time=2147483648,size=null)]",
+        "[timersticker]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(
+      renderer.timerStickerCalls.map(({ limitSeconds, sizePx }) => ({
+        limitSeconds,
+        sizePx,
+      })),
+    ).toEqual([
+      { limitSeconds: 0, sizePx: 44 },
+      { limitSeconds: 2, sizePx: 45 },
+      { limitSeconds: 1, sizePx: 24 },
+      { limitSeconds: undefined, sizePx: 0 },
+      { limitSeconds: undefined, sizePx: 24 },
+    ]);
   });
 
   it("click finishes subtitle typing before advancing", async () => {
@@ -521,7 +551,9 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
     expect(renderer.subtitleText).toBe("HELLO");
-    await runtime.advance();
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
     expect(runtime.getState()).toBe("finished");
     expect(renderer.subtitleText).toBe("");
     expect(renderer.subtitleClearCalls).toEqual([0]);
@@ -681,6 +713,7 @@ describe("StoryRuntime", () => {
         '[sticker(id="a",text="one",x=100,y=200,width=300,size=28,alignment="center",delay=0.08,block=false)]',
         '[sticker(id="a",text="two",multi=true,block=false)]',
         '[sticker(id="a",text="ignored",duration=2,block=false)]',
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),

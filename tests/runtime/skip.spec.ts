@@ -619,6 +619,34 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCharacterCutinCalls).toEqual([]);
   });
 
+  it("cancels the natural end wait when skipping the story", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[skipnode(mode="skip")]', "[timersticker(time=60)]"]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    try {
+      const started = runtime.start();
+      await setImmediate();
+      await renderer.frames.advance(16, 100);
+      expect(runtime.getState()).toBe("waiting_timer");
+      expect(renderer.timerClearCalls).toEqual([]);
+
+      await runtime.skipNode();
+      await started;
+      expect(runtime.getState()).toBe("finished");
+      expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
+
+      await renderer.frames.advance(200);
+      expect(renderer.timerClearCalls).toHaveLength(1);
+    } finally {
+      runtime.destroy();
+    }
+  });
+
   it("settles a pending decision when skipping so the command loop resumes", async () => {
     const renderer = new FakeRenderer();
     renderer.holdDecisions = true;
@@ -920,7 +948,9 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
 
     await runtime.advance();
-    await runtime.advance();
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
 
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "next" });
     // The destination sticker shares the id; the stale hide must not land.

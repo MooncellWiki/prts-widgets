@@ -172,7 +172,9 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "manual" });
 
     // Theater mode swallows clicks; once it exits a click advances again.
-    await runtime.advance();
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
     expect(runtime.getState()).toBe("finished");
   });
 
@@ -463,7 +465,7 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
 
     const advance = runtime.advance();
-    await renderer.frames.advance(16, 16);
+    await renderer.frames.advance(16, 16, 16, 200);
     await advance;
     expect(runtime.getAutoPlayState().mode).toBe("default");
   });
@@ -546,7 +548,9 @@ describe("StoryRuntime", () => {
     );
 
     await runtime.start();
-    await runtime.advance();
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
 
     // shouldProcessEndtip is false unless button-auto or quick-play is running,
     // and a click drops back to manual mode anyway, so the executor returns
@@ -585,7 +589,7 @@ describe("StoryRuntime", () => {
       expect(runtime.getState()).toBe("waiting_input");
 
       const advance = runtime.advance();
-      await renderer.frames.advance(16, 16);
+      await renderer.frames.advance(16, 16, 16, 200);
       await advance;
       expect(runtime.getState()).toBe("finished");
       runtime.destroy();
@@ -866,7 +870,9 @@ describe("StoryRuntime", () => {
 
     // The auto-appended endtip is a no-op in manual mode (shouldProcessEndtip is
     // false unless button-auto or quick-play is running), so the story ends here.
-    await runtime.advance();
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
     expect(runtime.getState()).toBe("finished");
   });
 
@@ -1263,7 +1269,9 @@ describe("StoryRuntime", () => {
       { onWarning: (warning) => warnings.push(warning) },
     );
 
-    await runtime.start();
+    const started = runtime.start();
+    await renderer.frames.advance(16, 200);
+    await started;
 
     expect(runtime.getState()).toBe("finished");
     expect(renderer.dialogueTexts).toEqual([]);
