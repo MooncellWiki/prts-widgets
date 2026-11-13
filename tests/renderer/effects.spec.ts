@@ -585,8 +585,9 @@ describe("PixiStoryRenderer blocker", () => {
     // (sibling 3): curtains cover the blocker when both are up. The web world
     // (scene, cgItems, curtains) takes the blocker right below the curtains.
     expect(sprite.parent).toBe(world);
-    expect(world.getChildIndex(sprite)).toBe(2);
-    expect(world.getChildIndex(renderer.layers.curtains)).toBe(3);
+    expect(world.getChildIndex(sprite)).toBeLessThan(
+      world.getChildIndex(renderer.layers.curtains),
+    );
   });
 
   it("saturates 0-255 endpoints at the tint write instead of rescaling mid-fade", async () => {

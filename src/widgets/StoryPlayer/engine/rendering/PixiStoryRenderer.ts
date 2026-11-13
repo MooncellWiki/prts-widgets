@@ -6,7 +6,6 @@ import {
   Container,
   FillGradient,
   Graphics,
-  NineSliceSprite,
   Point,
   Sprite,
   Text,
@@ -30,7 +29,6 @@ import {
   type StoryAssetFamily,
 } from "../asset";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
-import { computeShowItemLayout, SHOWITEM_FRAME_BORDER } from "../showitem";
 import {
   STORY_HEIGHT,
   STORY_WIDTH,
@@ -55,12 +53,11 @@ import {
   type InterludeInput,
   type LargeBackgroundTweenInput,
   type PlaybackFrame,
-  type ShowItemFadeStyle,
-  type ShowItemInput,
   type SpellStickerInput,
   type StickerInput,
   type StickerTweenInput,
   type StoryRenderer,
+  type StoryShowItemSlot,
   type OverlayTextLayout,
   type TimerClearInput,
   type TimerStickerInput,
@@ -95,6 +92,8 @@ import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
 import { FocusEffectPanel } from "./panels/FocusEffectPanel";
 import { InterludePanel } from "./panels/InterludePanel";
+import { ShowItemCutinSlot } from "./panels/ShowItemCutinSlot";
+import { ShowItemPhotoSlot } from "./panels/ShowItemPhotoSlot";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerView } from "./panels/StickerView";
 import { SubtitleView } from "./panels/SubtitleView";
@@ -415,52 +414,6 @@ interface CurtainRenderState {
   tweenSessionId: number;
 }
 
-/** A loaded `image_item` sprite at its native size (`SetNativeSize`). */
-function createShowItemSprite(texture: Texture): Sprite {
-  const sprite = new Sprite(texture);
-  sprite.anchor.set(0.5);
-  return sprite;
-}
-
-/**
- * `image_item` after a failed load: `AVGShowItemSlot.Show` skips both the
- * sprite assignment and `SetNativeSize`, and a Unity Image without a sprite
- * still renders its white color as a solid quad at the serialized 100x100.
- */
-function createShowItemPlaceholder(): Graphics {
-  return new Graphics().rect(-50, -50, 100, 100).fill(0xff_ff_ff);
-}
-
-/**
- * Live state of the cutin show-item slot: the RectMask2D window (`offset` →
- * `mask`, targetW x 720 in canvas units) and the plate/header that stretch
- * inside it. `maskW`/`maskH` are the live window size the expand styles
- * tween in both directions.
- */
-interface ShowItemCutinState {
-  /** Full-canvas black backdrop; the expand styles tween its alpha. */
-  backdrop: Graphics;
-  /** Slot center in root space; the mask rect is drawn around it. */
-  cx: number;
-  cy: number;
-  /** `_showFadeStyle` as stored by the cutin Show and reused by Hide. */
-  fadeStyle: ShowItemFadeStyle;
-  /**
-   * `header` strip (`sprite_avg_cutscene` tinted black at 0.706): a 200px
-   * child of the plate pinned to the window's top edge, rotated 180°, so the
-   * window clips its top 50px and shows 150px fading downward.
-   */
-  header: Sprite | null;
-  /** Mask window graphics; siblings with the slot container, root coords. */
-  mask: Graphics;
-  maskH: number;
-  maskW: number;
-  /** `background` plate (0.192 gray) stretched to the live window. */
-  plate: Graphics;
-  targetH: number;
-  targetW: number;
-}
-
 /**
  * Web/PIXI renderer for the AVG command surfaces. Each command method ports
  * the documented observable state and blocking boundaries, while containers,
@@ -529,21 +482,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private largeImageTweenSessionId = 0;
   private imageRoot: Container | null = null;
   private imageRotateSessionId = 0;
-  private readonly itemLayer = this.layers.items;
-  /**
-   * Native port: the renderer-side handle on `Torappu.AVG.AVGShowItemPanel`'s
-   * single `_slotInUse` gameObject. Keeping an explicit reference (instead of
-   * fading every child of itemLayer) matters because the web AnimTextPanel
-   * mounts its stamps on the same layer while native animtext is a separate
-   * panel that hideitem never touches.
-   */
-  private showItemRoot: Container | null = null;
-  /**
-   * Live cutin slot handle (mask window + stretch plate/header), mirroring
-   * the `_showFadeStyle` field and the mask subtree its Show/Hide animate.
-   * Null while a photo slot (or nothing) is on stage.
-   */
-  private showItemCutin: ShowItemCutinState | null = null;
   /**
    * Bundled nine-slice texture of the serialized `sprite_avg_showItem_photo`
    * photo frame (native scene asset; CDN and the PRTS mirror do not carry
@@ -563,6 +501,13 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly uiLayer = this.layers.ui;
   private readonly worldLayer = this.layers.world;
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
+  // 2791 runs DOTween.Update before AVGController._DoExecuteCommands polls
+  // its blockers. Use the Pixi update phase for item tweens so SkipToThis
+  // resumes after the old animation has advanced in the same frame.
+  private readonly showItemTweenRunner = new TweenRunner(
+    () => Boolean(this.app),
+    (advance) => this.onFrameUpdate(({ deltaMs }) => advance(deltaMs)),
+  );
   private readonly videoPanel: VideoPanel;
   private readonly dialogView: DialogView;
   private readonly subtitleView: SubtitleView;
@@ -677,7 +622,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         this.tween(durationMs, update, complete),
     );
     this.animTextPanel = new AnimTextPanel(
-      this.itemLayer,
+      this.layers.animTexts,
       (durationMs, update, complete) =>
         this.tween(durationMs, update, complete),
       onWarning,
@@ -854,9 +799,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageRoots.clear();
     this.imageRoot = null;
     this.imageLayer.removeChildren();
-    this.itemLayer.removeChildren();
-    this.showItemRoot = null;
-    this.showItemCutin = null;
+    this.layers.showItems.removeChildren();
     this.cutinPanel.destroy();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
@@ -1526,358 +1469,26 @@ export class PixiStoryRenderer implements StoryRenderer {
     return this.dialogFrameTexture;
   }
 
-  /**
-   * Port scope: `Torappu.AVG.AVGShowItemPanel._ExecuteShowItem` / `_ShowItem`
-   * (2.7.61 VAs 0x183E5BE10 / 0x183E5C290). Native owns a single slot
-   * (`_slotInUse`): while a slot is on stage the executor hands the NEW
-   * command to the old slot's `Hide` (vtable slot 5), so the old picture
-   * fades out with the NEW command's fadetime, then the `b__0` closure
-   * (`_Reset` + `_ShowItem`, 0x183E62FB0) destroys the slot before the next
-   * picture fades in — both stages block the executor. `style` picks the
-   * serialized prefab: photo renders the item at native size over the bundled
-   * nine-slice `sprite_avg_showItem_photo` frame (item + 32px per side, see
-   * engine/showitem.ts); cutin renders the RectMask2D window (0.192-gray
-   * stretch plate + header strip + item) that `fadestyle` expands from one
-   * edge while the black backdrop cross-fades.
-   */
-  async showItem(input: ShowItemInput): Promise<void> {
-    const chain = async (): Promise<void> => {
-      // Replacement branch of `_ExecuteShowItem`: the old slot's `Hide` runs
-      // with the NEW command's fadetime (per-style, see hideShowItem), then
-      // the slot is recycled (`_Reset`). A root already detached from the
-      // layer (hideitem / scene reset) mirrors a cleared `_slotInUse`, so it
-      // takes the direct-show branch instead.
-      if (this.showItemRoot?.parent) {
-        await this.hideShowItem(input.fadeMs);
-      } else {
-        this.showItemRoot = null;
-        this.showItemCutin = null;
-      }
-
-      const texture = input.key
-        ? await this.textureForImageKey(input.key, "image")
-        : null;
-      // `AVGShowItemSlot.Show` (0x183ED3E80) skips only the sprite assignment
-      // when the asset fails to load (an empty `image` included); the slot
-      // still plays its fade and blocks for fadetime. A failed load also
-      // leaves native `_image` at its serialized 100x100 placeholder
-      // (`SetNativeSize` is skipped), which is also the fallback behind the
-      // cutin `width` key.
-      const image = texture
-        ? createShowItemSprite(texture)
-        : createShowItemPlaceholder();
-      const cutinWidth = Number.isFinite(input.width)
-        ? Math.round(input.width!)
-        : (texture?.width ?? 100);
-      // Unity saturates out-of-range graphic alpha at blend time; clamping
-      // here reproduces the rendered result of the unclamped
-      // `GetFloat("black", 0.4)` the native slots pass straight to SetAlpha.
-      const blackAlpha = Math.max(0, Math.min(1, input.blackAlpha));
-      const frameTexture =
-        input.style === "photo" ? await this.loadShowItemFrameTexture() : null;
-      const headerTexture =
-        input.style === "cutin" ? await this.loadDialogFrameTexture() : null;
-
-      const root = new Container();
-      // Cutin expand styles keep the canvas group opaque (only the mask
-      // window and black alpha animate); photo and cutin `fade` fade the
-      // whole canvas group from 0.
-      const fadeStyle = input.fadeStyle ?? "fade";
-      const cutinExpand = input.style === "cutin" && fadeStyle !== "fade";
-      root.alpha = input.fadeMs > 0 && !cutinExpand ? 0 : 1;
-      // Full-canvas `black` child; the cutin expand styles animate its own
-      // alpha (Show: 0 -> black, Hide: -> 0) while photo/cutin-fade fade it
-      // together with everything else through the root alpha.
-      const backdrop = new Graphics();
-      backdrop.rect(0, 0, STORY_WIDTH, STORY_HEIGHT);
-      backdrop.fill({ color: 0x00_00_00 });
-      backdrop.alpha = blackAlpha;
-      root.addChild(backdrop);
-
-      // Both slots write `offsetx/offsety` into a Unity `localPosition` (photo:
-      // `_image`, cutin: `_offsetTransform`), whose y axis points up; PIXI's
-      // points down.
-      const contentX = STORY_WIDTH / 2 + input.offsetX;
-      const contentY = STORY_HEIGHT / 2 - input.offsetY;
-
-      let cutin: ShowItemCutinState | null = null;
-      if (input.style === "cutin") {
-        cutin = this.buildShowItemCutin({
-          backdrop,
-          contentX,
-          contentY,
-          fadeStyle,
-          headerTexture,
-          image,
-          root,
-          targetW: cutinWidth,
+  createShowItemSlot(style: string): StoryShowItemSlot | null {
+    const host = {
+      layer: this.layers.showItems,
+      loadImage: (key: string) => this.textureForImageKey(key, "image"),
+      tween: this.showItemTweenRunner.run.bind(this.showItemTweenRunner),
+    };
+    switch (style) {
+      case "photo":
+        return new ShowItemPhotoSlot({
+          ...host,
+          loadDecoration: () => this.loadShowItemFrameTexture(),
         });
-        if (cutinExpand) {
-          // Expand Show: the canvas group stays opaque, the mask window grows
-          // from the style's edge and the black backdrop cross-fades 0 ->
-          // black. Native runs DOSizeDelta + DOFade as two tweens of the same
-          // fadetime under DOTween's default OutQuad ease (neither SetEase),
-          // so one eased tween drives both here. fadeMs 0 still opens the
-          // window full: the runner settles a 0-duration run at progress 1,
-          // like DOSizeDelta(_, _, 0) completing on the next native frame.
-          backdrop.alpha = 0;
-          const horizontal = cutin.fadeStyle.startsWith("horiz");
-          const state = cutin;
-          const expand = (progress: number): void => {
-            state.maskW = horizontal ? state.targetW * progress : state.targetW;
-            state.maskH = horizontal ? state.targetH : state.targetH * progress;
-            backdrop.alpha = blackAlpha * progress;
-            this.drawShowItemCutinWindow(state);
-          };
-          this.showItemRoot = root;
-          this.showItemCutin = cutin;
-          this.itemLayer.addChild(root);
-          await this.tween(input.fadeMs, expand, undefined, {
-            ease: dotweenDefaultEase,
-          });
-          return;
-        }
-      } else {
-        // Prefab child order: `black` (backdrop) < `background` (frame) <
-        // `image_item`, all centered. `offsetx/offsety` move `_image` only;
-        // the sibling frame's `UICustomAnchor` re-fits it to `image_item`
-        // plus 32px every frame, so the web port moves both as one group.
-        const layout = computeShowItemLayout(
-          texture ? texture.width : 100,
-          texture ? texture.height : 100,
-        );
-        const content = new Container();
-        content.position.set(contentX, contentY);
-        if (frameTexture) {
-          const frame = new NineSliceSprite({
-            bottomHeight: SHOWITEM_FRAME_BORDER,
-            leftWidth: SHOWITEM_FRAME_BORDER,
-            rightWidth: SHOWITEM_FRAME_BORDER,
-            texture: frameTexture,
-            topHeight: SHOWITEM_FRAME_BORDER,
-          });
-          frame.anchor.set(0.5);
-          frame.width = layout.frameWidth;
-          frame.height = layout.frameHeight;
-          content.addChild(frame);
-        }
-        content.addChild(image);
-        root.addChild(content);
-      }
-
-      // Only the tracked slot root is added here: `animtext` renders into the
-      // same layer but is an independent native panel (`AnimTextPanel`), so it
-      // must survive item swaps instead of being swept by removeChildren().
-      this.showItemRoot = root;
-      this.showItemCutin = cutin;
-      this.itemLayer.addChild(root);
-
-      if (input.fadeMs <= 0) return;
-
-      // Photo Show and cutin `fade`: the canvas group fades 0 -> 1 while the
-      // backdrop is already at `black` (SetAlpha applies it immediately).
-      // DOFade carries no SetEase, so DOTween's default OutQuad applies.
-      await this.tween(
-        input.fadeMs,
-        (progress) => {
-          root.alpha = progress;
-        },
-        undefined,
-        { ease: dotweenDefaultEase },
-      );
-    };
-
-    if (input.block) await chain();
-    else void chain();
-  }
-
-  /**
-   * Builds the cutin slot subtree: the full-canvas `black` sits outside the
-   * mask, while `offset` -> `mask` (RectMask2D) clips the 0.192-gray stretch
-   * plate, its `sprite_avg_cutscene` header strip (tinted black at 0.706)
-   * and the centered item. The window starts at full extent for
-   * `fade` and zero extent along the expansion axis otherwise, matching the
-   * state Show seeds before its tween starts.
-   */
-  private buildShowItemCutin(args: {
-    backdrop: Graphics;
-    contentX: number;
-    contentY: number;
-    fadeStyle: ShowItemFadeStyle;
-    headerTexture: Texture | null;
-    image: Container;
-    root: Container;
-    targetW: number;
-  }): ShowItemCutinState {
-    // `offset` stretches over the fixed 1280x720 `panel_avg` and Show sizes
-    // the mask to its rect height, so the window is 720 tall.
-    const targetH = STORY_HEIGHT;
-    const slot = new Container();
-    slot.position.set(args.contentX, args.contentY);
-    const plate = new Graphics();
-    slot.addChild(plate);
-    let header: Sprite | null = null;
-    if (args.headerTexture) {
-      // Pivot bottom-center at 50px above the window top, rotated 180°
-      // around Z: the strip hangs 150px into the window upside down.
-      header = new Sprite(args.headerTexture);
-      header.anchor.set(0.5, 1);
-      header.rotation = Math.PI;
-      header.tint = 0x00_00_00;
-      header.alpha = 0.706;
-      header.height = 200;
-      slot.addChild(header);
+      case "cutin":
+        return new ShowItemCutinSlot({
+          ...host,
+          loadDecoration: () => this.loadDialogFrameTexture(),
+        });
+      default:
+        return null;
     }
-    slot.addChild(args.image);
-    const mask = new Graphics();
-    args.root.addChild(mask);
-    slot.mask = mask;
-    args.root.addChild(slot);
-
-    const horizontal = args.fadeStyle.startsWith("horiz");
-    // Show seeds the mask window at full extent for `fade` and zero extent
-    // along the expansion axis otherwise (canvas group alpha covers `fade`).
-    const state: ShowItemCutinState = {
-      backdrop: args.backdrop,
-      cx: args.contentX,
-      cy: args.contentY,
-      fadeStyle: args.fadeStyle,
-      header,
-      mask,
-      maskH: horizontal || args.fadeStyle === "fade" ? targetH : 0,
-      maskW: horizontal ? 0 : args.targetW,
-      plate,
-      targetH,
-      targetW: args.targetW,
-    };
-    this.drawShowItemCutinWindow(state);
-    return state;
-  }
-
-  /**
-   * Redraws the cutin mask window plus the plate/header that stretch inside
-   * it. Pivot table from Show/Hide: left2right pins the left edge, right2left
-   * the right edge, top2bottom the top edge, bottom2top the bottom edge; the
-   * rest stay centered. PIXI's y axis is inverted relative to Unity, which
-   * swaps which coordinate stays pinned for the vertical styles.
-   */
-  private drawShowItemCutinWindow(state: ShowItemCutinState): void {
-    const { maskH: h, maskW: w, targetH, targetW } = state;
-    let x: number;
-    switch (state.fadeStyle) {
-      case "horiz_expand_left2right": {
-        x = -targetW / 2;
-        break;
-      }
-      case "horiz_expand_right2left": {
-        x = targetW / 2 - w;
-        break;
-      }
-      default: {
-        x = -w / 2;
-        break;
-      }
-    }
-    let y: number;
-    switch (state.fadeStyle) {
-      case "vert_expand_top2bottom": {
-        y = -targetH / 2;
-        break;
-      }
-      case "vert_expand_bottom2top": {
-        y = targetH / 2 - h;
-        break;
-      }
-      default: {
-        y = -h / 2;
-        break;
-      }
-    }
-    state.mask
-      .clear()
-      .rect(state.cx + x, state.cy + y, w, h)
-      .fill(0xff_ff_ff);
-    state.plate.clear().rect(x, y, w, h).fill(0x31_31_31);
-    if (state.header) {
-      state.header.position.set(x + w / 2, y - 50);
-      state.header.width = w;
-    }
-  }
-
-  /**
-   * Port of the slot `Hide` both executors dispatch to (vtable slot 5). Photo
-   * unconditionally snaps the canvas group to alpha 1 before fading to 0;
-   * cutin reuses the `_showFadeStyle` stored by its Show — a plain canvas
-   * fade from the current alpha for `fade` (no snap), or the mask window
-   * collapsing along its expansion axis with a parallel black fade for the
-   * expand styles (root alpha stays 1). No native Hide tween calls SetEase,
-   * so every fade runs on DOTween's default OutQuad. `fadeMs <= 0` is an
-   * immediate destroy (`DOFade(_, _, 0)` completes on the next native frame).
-   */
-  private async hideShowItem(fadeMs: number): Promise<void> {
-    const root = this.showItemRoot;
-    const cutin = this.showItemCutin;
-    this.showItemRoot = null;
-    this.showItemCutin = null;
-    if (!root?.parent) return;
-    if (fadeMs <= 0) {
-      root.removeFromParent();
-      return;
-    }
-
-    if (cutin && cutin.fadeStyle !== "fade") {
-      const horizontal = cutin.fadeStyle.startsWith("horiz");
-      const startW = cutin.maskW;
-      const startH = cutin.maskH;
-      const startBlack = cutin.backdrop.alpha;
-      const state = cutin;
-      const collapse = (progress: number): void => {
-        state.maskW = horizontal ? startW * (1 - progress) : startW;
-        state.maskH = horizontal ? startH : startH * (1 - progress);
-        state.backdrop.alpha = startBlack * (1 - progress);
-        this.drawShowItemCutinWindow(state);
-      };
-      await this.tween(
-        fadeMs,
-        collapse,
-        () => {
-          root.removeFromParent();
-        },
-        { ease: dotweenDefaultEase },
-      );
-      return;
-    }
-
-    if (!cutin) {
-      // `AVGShowItemPhotoSlot.Hide` resets the canvas group to alpha 1
-      // before the DOFade; only an interrupted Show ever notices the snap.
-      root.alpha = 1;
-      await this.tween(
-        fadeMs,
-        (progress) => {
-          root.alpha = 1 - progress;
-        },
-        () => {
-          root.removeFromParent();
-        },
-        { ease: dotweenDefaultEase },
-      );
-      return;
-    }
-
-    // Cutin `fade` Hide: canvas fade from the current alpha; the backdrop
-    // under the same canvas group fades with it.
-    const startAlpha = root.alpha;
-    await this.tween(
-      fadeMs,
-      (progress) => {
-        root.alpha = startAlpha * (1 - progress);
-      },
-      () => {
-        root.removeFromParent();
-      },
-      { ease: dotweenDefaultEase },
-    );
   }
 
   async showCgItem(input: CgItemInput): Promise<void> {
@@ -1891,23 +1502,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     block = false,
   ): Promise<void> {
     await this.cgItemPanel.hide(key, fadeMs, ease, block);
-  }
-
-  /**
-   * Port of `Torappu.AVG.AVGShowItemPanel._ExecuteHideItem` dispatching to the
-   * slot's `Hide` (GameAssembly 2.7.61: panel @ 0x183E5BCE0, photo slot
-   * `AVGShowItemPhotoSlot.Hide` @ 0x183ED35E0, cutin slot
-   * `AVGShowItemCutinSlot.Hide` @ 0x183ED2A60). Native photo Hide snaps the
-   * canvas group to alpha 1 and DOTween-fades it to 0; cutin Hide reuses the
-   * stored `_showFadeStyle` — alpha fade for `fade`, or the mask window
-   * collapsing along its expansion axis plus a parallel black fade. Only the
-   * show-item root is touched: native animtext is a separate panel, and the
-   * stamps sharing this layer must survive a hideitem.
-   */
-  async clearItems(fadeMs = 0, hasSlot = false): Promise<void> {
-    const hide = this.hideShowItem(fadeMs);
-    if (hasSlot) await hide;
-    else void hide;
   }
 
   /**
@@ -3353,17 +2947,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     blocker.alpha = 0;
 
     this.blockerSprite = blocker;
-    // Native hierarchy: panel_blocker (sibling 1) renders *below*
-    // panel_curtains (sibling 3), so curtains cover the blocker when both are
-    // up (black-mask pass, 2.7.61 scene layout). Insert just below the
-    // curtains container instead of appending on top of it. `indexOf` rather
-    // than `getChildIndex`, which throws when curtains has no parent yet
-    // (LayerGraph.attach runs in mount, so only an un-mounted harness hits
-    // that) -- there, appending is the right fallback.
-    const curtainIndex = this.worldLayer.children.indexOf(this.curtainLayer);
+    // 2791 UICanvas siblings draw panel_blocker before panel_displayable
+    // and panel_curtains. The layer may be unattached in renderer tests.
+    const stampIndex = this.worldLayer.children.indexOf(this.layers.animTexts);
     this.worldLayer.addChildAt(
       blocker,
-      curtainIndex === -1 ? this.worldLayer.children.length : curtainIndex,
+      stampIndex === -1 ? this.worldLayer.children.length : stampIndex,
     );
 
     return blocker;

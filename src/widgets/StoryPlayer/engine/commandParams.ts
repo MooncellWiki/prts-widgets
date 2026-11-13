@@ -1,4 +1,8 @@
-import type { OverlayTextLayout, StoryCommandArgs } from "./types";
+import type {
+  OverlayTextLayout,
+  StoryCommandArgs,
+  StoryCommandValue,
+} from "./types";
 
 /**
  * `AVGTypeWriterText.originDelay` of the dialogue / sticker typewriter assets
@@ -8,7 +12,10 @@ import type { OverlayTextLayout, StoryCommandArgs } from "./types";
 export const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
 
 /** Exact-key parameter lookup (no case folding), as `Command.TryGetParam`. */
-export function exactArg(args: StoryCommandArgs, key: string): unknown {
+export function exactArg(
+  args: StoryCommandArgs,
+  key: string,
+): StoryCommandValue | undefined {
   return Object.prototype.hasOwnProperty.call(args, key)
     ? args[key]
     : undefined;
@@ -75,6 +82,15 @@ export function toOptionalNumber(value: unknown): number | undefined {
 
 export function toNumber(value: unknown, fallback = 0): number {
   return toOptionalNumber(value) ?? fallback;
+}
+
+/** Numeric conversion used by `System.Convert.ToInt32(double)`. */
+export function roundHalfToEven(value: number): number {
+  const floor = Math.floor(value);
+  const fraction = value - floor;
+  if (fraction < 0.5) return floor;
+  if (fraction > 0.5) return floor + 1;
+  return floor % 2 === 0 ? floor : floor + 1;
 }
 
 export function toBoolean(value: unknown, fallback = false): boolean {

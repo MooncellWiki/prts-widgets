@@ -87,7 +87,25 @@ function parseValue(raw: string): StoryCommandValue {
   }
   if (value === "true") return true;
   if (value === "false") return false;
-  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
+  if (value === "null") return null;
+  // 2791 JsonTextReader.ParseNumber @ 0x1861B7F50 reads hex and
+  // leading-zero integers as base 16 and 8, with signed Int64 results.
+  const integerLiteral = /^0x[0-9a-f]+$/i.test(value)
+    ? value
+    : /^0[0-7]+$/.test(value)
+      ? `0o${value.slice(1)}`
+      : null;
+  if (integerLiteral) {
+    const integer = Number(integerLiteral);
+    if (Number.isSafeInteger(integer) || typeof BigInt === "undefined")
+      return integer;
+    const exact = BigInt(integerLiteral);
+    if (exact === BigInt.asUintN(64, exact))
+      return Number(BigInt.asIntN(64, exact));
+  }
+  // Preserve the boxed value type produced by Newtonsoft for GetInt/GetEnum.
+  if (/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value))
+    return Number(value);
   return value;
 }
 

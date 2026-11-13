@@ -27,12 +27,13 @@ import type {
   OverlayTextLayout,
   PlayMusicInput,
   PlaySoundInput,
-  ShowItemInput,
   SpellStickerInput,
   StickerInput,
   StickerTweenInput,
   StoryAudio,
+  StoryCommandArgs,
   StoryRenderer,
+  StoryShowItemSlot,
   TimerClearInput,
   TimerStickerInput,
   TypewriterText,
@@ -58,7 +59,8 @@ export class FakeRenderer implements StoryRenderer {
   characterCutinCalls: CharacterCutinInput[] = [];
   clearCharacterCutinCalls: string[] = [];
   clearedSlots: Array<{ fadeMs?: number; slot?: string }> = [];
-  clearItemsCalls: Array<{ fadeMs: number; hasSlot: boolean }> = [];
+  hideItemCalls: StoryCommandArgs[] = [];
+  destroyItemCalls = 0;
   clearCgItemCalls: Array<{
     block: boolean;
     ease: string;
@@ -87,7 +89,11 @@ export class FakeRenderer implements StoryRenderer {
   dialogueLayouts: DialogueLayout[] = [];
   dialogueHidden = true;
   finishDialogueCommandCalls = 0;
-  showItemCalls: ShowItemInput[] = [];
+  showItemCalls: Array<{
+    args: StoryCommandArgs;
+    key: string | null;
+    style: string;
+  }> = [];
   stickerCalls: StickerInput[] = [];
   stickerDelayChanges: Array<{ id: string; delayMs: number }> = [];
   stickerTweenCalls: StickerTweenInput[] = [];
@@ -164,10 +170,6 @@ export class FakeRenderer implements StoryRenderer {
   clearImage(): void {}
   clearLargeImage(fadeMs = 0, block = false): void {
     this.gridBackgroundClearCalls.push({ block, fadeMs });
-  }
-
-  clearItems(fadeMs = 0, hasSlot = false): void {
-    this.clearItemsCalls.push({ fadeMs, hasSlot });
   }
 
   clearCgItems(
@@ -332,8 +334,21 @@ export class FakeRenderer implements StoryRenderer {
     this.largeImageTweenCalls.push(input);
   }
 
-  async showItem(input: ShowItemInput): Promise<void> {
-    this.showItemCalls.push(input);
+  createShowItemSlot(style: string): StoryShowItemSlot | null {
+    if (style !== "photo" && style !== "cutin") return null;
+    return {
+      show: async (args, key, finish) => {
+        this.showItemCalls.push({ args, key, style });
+        finish();
+      },
+      hide: (args, finish) => {
+        this.hideItemCalls.push(args);
+        finish();
+      },
+      destroy: () => {
+        this.destroyItemCalls += 1;
+      },
+    };
   }
 
   async showCgItem(input: CgItemInput): Promise<void> {

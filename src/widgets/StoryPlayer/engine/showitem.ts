@@ -1,6 +1,6 @@
 // Native slot metrics, measured from the serialized scene
-// (`slot_showItem_photo` / `slot_showItem_cutin` prefabs, 2.7.51 APK
-// sharedassets1, re-checked against 2.7.81):
+// (`slot_showItem_photo` / `slot_showItem_cutin` prefabs in PC 2.7.91
+// sharedassets1.assets):
 //
 // SceneCanvas runs a 1280x720 ScaleWithScreenSize scaler — the stage's exact
 // logical size — and every slot ancestor is scale 1, so the base `Show`
@@ -19,35 +19,44 @@
 // `sprite_avg_cutscene` (0,0,0,0.706) — pivot bottom-center 50px above the
 // window top and rotated 180°, so 150px of it hangs into the window upside
 // down — and the centered item; `fadestyle` drives which edge the window
-// expands from (see the renderer's cutin state).
+// expands from.
 
-import type { ShowItemFadeStyle, ShowItemLayout } from "./types";
+import { tryParseInt32 } from "./commandParams";
 
-export type { ShowItemFadeStyle, ShowItemLayout };
+import type { ShowItemLayout } from "./types";
+
+export type { ShowItemLayout };
 
 export const SHOWITEM_FRAME_BORDER = 32;
 
-/**
- * The serialized `AVGShowItemCutinSlot.FadeStyle` member names. An unknown
- * story value silently degrades to `fade` on both sides (the native enum
- * parser returns its default 0).
- */
-const FADE_STYLES: ReadonlySet<string> = new Set([
-  "fade",
-  "horiz_expand_center",
-  "horiz_expand_left2right",
-  "horiz_expand_right2left",
-  "vert_expand_center",
-  "vert_expand_top2bottom",
-  "vert_expand_bottom2top",
-]);
+/** `AVGShowItemCutinSlot.FadeStyle` member names and values. */
+export enum ShowItemFadeStyle {
+  fade = 0,
+  horiz_expand_center = 1,
+  horiz_expand_left2right = 2,
+  horiz_expand_right2left = 3,
+  vert_expand_center = 4,
+  vert_expand_top2bottom = 5,
+  vert_expand_bottom2top = 6,
+}
 
-export function parseShowItemFadeStyle(
-  raw: string | undefined,
-): ShowItemFadeStyle | undefined {
-  return raw !== undefined && FADE_STYLES.has(raw)
-    ? (raw as ShowItemFadeStyle)
-    : undefined;
+/**
+ * 2791 GetEnum @ 0x1846BAC50 uses case-sensitive Enum.Parse, including
+ * unnamed Int32 values and comma-separated names. Its catch path logs and
+ * returns the supplied default (fade).
+ */
+export function parseShowItemFadeStyle(raw: string): ShowItemFadeStyle {
+  const ordinal = tryParseInt32(raw.trim());
+  if (ordinal !== null) return ordinal;
+
+  let result = ShowItemFadeStyle.fade;
+  for (const member of raw.split(",")) {
+    const name = member.trim() as keyof typeof ShowItemFadeStyle;
+    const value = ShowItemFadeStyle[name];
+    if (typeof value !== "number") return ShowItemFadeStyle.fade;
+    result |= value;
+  }
+  return result;
 }
 
 export function computeShowItemLayout(

@@ -15,9 +15,9 @@ import type {
   DecisionSelection,
   TypewriterText,
   LineSeekUpdate,
-  ShowItemInput,
   StoryAudio,
   StoryRenderer,
+  StoryShowItemSlot,
 } from "../src/widgets/StoryPlayer/engine/types";
 
 /**
@@ -146,8 +146,15 @@ class DecisionFakeRenderer {
 
   settleDecision(): void {}
 
-  async showItem(input: ShowItemInput): Promise<void> {
-    this.showItemKeys.push(input.key);
+  createShowItemSlot(): StoryShowItemSlot {
+    return {
+      show: async (_args, key, finish) => {
+        this.showItemKeys.push(key);
+        finish();
+      },
+      hide: (_args, finish) => finish(),
+      destroy: () => {},
+    };
   }
 
   setDialogue(speaker: string, { chars, visibleCount }: TypewriterText): void {
