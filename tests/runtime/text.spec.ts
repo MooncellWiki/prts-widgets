@@ -364,33 +364,79 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it("converts timer time and size like boxed Int32 command parameters", async () => {
+  it("converts boxed timer parameters and uses defaults for omitted keys", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
         "[timersticker(time=0.5,size=44.5)]",
         '[timersticker(time=1.5,size="45")]',
-        '[timersticker(time=true,size="44.5")]',
-        "[timersticker(time=2147483648,size=null)]",
+        '[timersticker(time=true,x="1,234.5",y=false)]',
+        "[timersticker(time=null,size=null,width=null,ato=null,duration=null)]",
         "[timersticker]",
+        "[timerclear(duration=null)]",
+        "[timerclear]",
         '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
     );
     await runtime.start();
-    expect(
-      renderer.timerStickerCalls.map(({ limitSeconds, sizePx }) => ({
-        limitSeconds,
-        sizePx,
-      })),
-    ).toEqual([
-      { limitSeconds: 0, sizePx: 44 },
-      { limitSeconds: 2, sizePx: 45 },
-      { limitSeconds: 1, sizePx: 24 },
-      { limitSeconds: undefined, sizePx: 0 },
-      { limitSeconds: undefined, sizePx: 24 },
+    const defaults = {
+      durationMs: 1000,
+      fromAlpha: 0,
+      limitSeconds: undefined,
+      sizePx: 24,
+      toAlpha: 1,
+      widthPx: 1280,
+      x: 0,
+      y: 0,
+    };
+    expect(renderer.timerStickerCalls).toEqual([
+      { ...defaults, limitSeconds: 0, sizePx: 44 },
+      { ...defaults, limitSeconds: 2, sizePx: 45 },
+      { ...defaults, limitSeconds: 1, x: 1234.5 },
+      {
+        ...defaults,
+        durationMs: 0,
+        limitSeconds: 0,
+        sizePx: 0,
+        toAlpha: 0,
+        widthPx: 0,
+      },
+      defaults,
     ]);
+    expect(renderer.timerClearCalls).toEqual([
+      { durationMs: 0 },
+      { durationMs: 130 },
+    ]);
+  });
+
+  it.each([
+    ['[timersticker(size="44.5")]', "timersticker size"],
+    ["[timersticker(time=2147483648)]", "timersticker time"],
+    ['[timersticker(ato="oops")]', "timersticker ato"],
+    ['[timerclear(duration="oops")]', "timerclear duration"],
+    ['[timerclear(duration="1e40")]', "timerclear duration"],
+  ])("reports a conversion error for %s", async (command, parameter) => {
+    const renderer = new FakeRenderer();
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext([command, '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+    await runtime.start();
+    expect(runtime.getState()).toBe("error");
+    expect(onWarning).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        detail: expect.stringContaining(parameter),
+        type: "error",
+      }),
+    );
+    expect(renderer.timerStickerCalls).toEqual([]);
+    expect(renderer.timerClearCalls).toEqual([]);
+    expect(renderer.dialogueTexts).toEqual([]);
   });
 
   it("click finishes subtitle typing before advancing", async () => {

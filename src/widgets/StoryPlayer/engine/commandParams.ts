@@ -108,6 +108,23 @@ export function tryConvertToInt32(
   return integer >= INT32_MIN && integer <= INT32_MAX ? integer : null;
 }
 
+/**
+ * Convert.ToSingle for boxed command values. The client sets InvariantCulture
+ * in _InitAPPDefaultCulture (2791), and Single.Parse allows group separators.
+ */
+export function tryConvertToSingle(value: StoryCommandValue): number | null {
+  if (typeof value !== "string") return Math.fround(Number(value));
+
+  const text = value.trim();
+  if (text === "NaN") return Number.NaN;
+  if (text === "Infinity" || text === "-Infinity") return Number(text);
+  if (!/^[+-]?(?:\d[\d,]*(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
+    return null;
+
+  const single = Math.fround(Number(text.replaceAll(",", "")));
+  return Number.isFinite(single) ? single : null;
+}
+
 export function toBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {

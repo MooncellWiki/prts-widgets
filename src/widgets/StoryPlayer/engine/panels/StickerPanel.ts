@@ -7,6 +7,7 @@ import {
   toOptionalNumber,
   toString,
   tryConvertToInt32,
+  tryConvertToSingle,
   TYPE_WRITER_ORIGIN_DELAY_MS,
 } from "../commandParams";
 import { AVGEvent, type EventPool } from "../eventPool";
@@ -49,6 +50,23 @@ function afterResult<T>(
   complete: (result: T) => CommandResult,
 ): CommandResult | Promise<CommandResult> {
   return result instanceof Promise ? result.then(complete) : complete(result);
+}
+
+/** 2791 Command.TryGetParam (0x18419AF30 / 0x18419B2B0) propagates conversion errors. */
+function readTimerParam(
+  line: ParsedCommandLine,
+  key: string,
+  type: "Int32" | "Single" = "Single",
+): number | undefined {
+  const value = arg(line.args, key);
+  if (value === undefined) return undefined;
+  const number =
+    type === "Int32" ? tryConvertToInt32(value) : tryConvertToSingle(value);
+  if (number === null)
+    throw new RangeError(
+      `Invalid ${line.command} ${key}=${JSON.stringify(value)}. Expected ${type}.`,
+    );
+  return number;
 }
 
 /**
@@ -135,13 +153,14 @@ export class StickerPanel {
   }
 
   /** Native OnReset -> _RecycleStickers; timer stops before text is recycled. */
-  async reset(): Promise<void> {
-    await this.renderer.clearTimerSticker({ durationMs: 0 });
+  async reset(stickerFadeMs = 150): Promise<void> {
+    const timerReset = this.renderer.clearTimerSticker({ durationMs: 0 });
+    if (timerReset) await timerReset;
     for (let i = 0; i < this.stickerSlots.size; i += 1)
       this.stickerPoolFadeMs.push(150);
     this.stickerSlots.clear();
     this.currentSticker = null;
-    await this.renderer.clearStickers(150);
+    await this.renderer.clearStickers(stickerFadeMs);
   }
 
   /**
@@ -403,14 +422,14 @@ export class StickerPanel {
         // time/x/y/width/size/duration/afrom/ato are read -- id/text/block
         // are ignored.
         const render = this.renderer.setTimerSticker({
-          durationMs: toNumber(arg(args, "duration"), 1) * 1000,
-          fromAlpha: toNumber(arg(args, "afrom"), 0),
-          limitSeconds: tryConvertToInt32(arg(args, "time")) ?? undefined,
-          sizePx: tryConvertToInt32(arg(args, "size")) ?? 24,
-          toAlpha: toNumber(arg(args, "ato"), 1),
-          widthPx: toNumber(arg(args, "width"), 1280),
-          x: toNumber(arg(args, "x"), 0),
-          y: toNumber(arg(args, "y"), 0),
+          limitSeconds: readTimerParam(line, "time", "Int32"),
+          x: readTimerParam(line, "x") ?? 0,
+          y: readTimerParam(line, "y") ?? 0,
+          widthPx: readTimerParam(line, "width") ?? 1280,
+          sizePx: readTimerParam(line, "size", "Int32") ?? 24,
+          durationMs: (readTimerParam(line, "duration") ?? 1) * 1000,
+          fromAlpha: readTimerParam(line, "afrom") ?? 0,
+          toAlpha: readTimerParam(line, "ato") ?? 1,
         } satisfies TimerStickerInput);
         return afterResult(render, () => "continue");
       }
@@ -419,7 +438,10 @@ export class StickerPanel {
         // Native port: Torappu.AVG.StickerPanel._ExcuteTimerClier / AVGTimerView.
         // StopTimer hides the reusable slot rather than destroying it.
         const render = this.renderer.clearTimerSticker({
-          durationMs: Math.max(0, toNumber(arg(args, "duration"), 0.13) * 1000),
+          durationMs: Math.max(
+            0,
+            (readTimerParam(line, "duration") ?? 0.13) * 1000,
+          ),
         } satisfies TimerClearInput);
         return afterResult(render, () => "continue");
       }

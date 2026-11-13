@@ -655,13 +655,16 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
-  it("keeps the timer running through the natural story-end wait", async () => {
+  it("clears stickers after the natural story-end wait", async () => {
     vi.useFakeTimers({ now: 950 });
     const { destroy, renderer, runtime, ticker } = createTickerPlayback([
+      '[sticker(id="left",text="still here",duration=0,block=false)]',
       "[timersticker(time=60)]",
     ]);
+    renderer.layoutSubtitle = vi.fn();
     try {
       const started = runtime.start();
+      const sticker = renderer.stickerViews.get("left").root;
       const timer = renderer.timerView.root;
       expect(runtime.getState()).toBe("waiting_timer");
       expect(timer.visible).toBe(true);
@@ -671,11 +674,15 @@ describe("PixiStoryRenderer", () => {
       expect(timer.text).toBe("00:00:01");
       ticker.update(249);
       expect(runtime.getState()).toBe("waiting_timer");
+      expect(sticker.visible).toBe(true);
       expect(timer.visible).toBe(true);
 
+      const draw = vi.fn(() => sticker.visible);
+      ticker.addOnce(draw, undefined, UPDATE_PRIORITY.LOW);
       ticker.update(250);
       await started;
       expect(runtime.getState()).toBe("finished");
+      expect(draw).toHaveReturnedWith(false);
       expect(timer.visible).toBe(true);
 
       ticker.update(266);

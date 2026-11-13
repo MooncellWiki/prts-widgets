@@ -588,11 +588,12 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("runs end-of-story timer and subtitle cleanup when the skip ends the story", async () => {
+  it("resets the timer, stickers and subtitle when the skip ends the story", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
         '[name="A"]hello',
+        '[sticker(id="left",text="still here",block=false)]',
         "[timersticker(x=30,y=90,size=24,time=10)]",
         '[name="B"]next',
         '[skipnode(mode="skip")]',
@@ -604,16 +605,17 @@ describe("StoryRuntime", () => {
 
     await runtime.start();
     await runtime.advance();
+    expect(renderer.stickerCalls).toHaveLength(1);
     expect(renderer.timerStickerCalls).toHaveLength(1);
 
     // mode="skip" makes get_isSkippable() true, so SkipStory takes
     // StopStory("Skipped") and returns before _ResetComponentsOnSkip.
-    // The later OnStoryEnd reset still clears the timer and subtitle.
+    // The later OnStoryEnd reset reaches both StickerPanel and SubtitlePanel.
     await runtime.skipNode();
 
     expect(runtime.getState()).toBe("finished");
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
-    expect(renderer.stickersClearCalls).toEqual([]);
+    expect(renderer.stickersClearCalls).toEqual([0]);
     expect(renderer.subtitleClearCalls).toEqual([0]);
     expect(renderer.spellStickerClearCount).toBe(0);
     expect(renderer.clearCharacterCutinCalls).toEqual([]);

@@ -1090,7 +1090,8 @@ export class StoryRuntime {
       } else {
         this.skipCleanup = null;
         cleanup.end();
-        if (!this.destroyed && this.state !== "error") this.finishPlayback();
+        if (!this.destroyed && this.state !== "error")
+          await this.finishPlayback();
       }
     }
     if (resumedProcess) await resumedProcess;
@@ -1232,13 +1233,10 @@ export class StoryRuntime {
    * Native port: AVGController.OnStoryEnd (2791 @ 0x18416B9C0) runs the
    * component resets after the command coroutine ends or SkipStory stops it.
    */
-  private finishPlayback(): void {
+  private finishPlayback(): Promise<void> {
     this.stopPlaybackInput();
     // AVGController.OnStoryEnd (2791 @ 0x18416B9C0) calls SubtitlePanel.OnReset.
     void this.subtitlePanel.reset();
-    // The same OnReset pass reaches StickerPanel._RecycleStickers (0x1841E46E0),
-    // which queues AVGTimerView.StopTimer(0) for the current timer.
-    void this.renderer.clearTimerSticker({ durationMs: 0 });
     this.renderer.clearAnimTexts();
     this.renderer.clearAvgDisplays();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1251,8 +1249,12 @@ export class StoryRuntime {
     // unterminated loop ambience cannot outlive the story. MUSIC is global in
     // native and deliberately untouched here.
     this.audio.resetAudio();
+    // OnStoryCommitted (2791 @ 0x18416B750) hides the AVG root before OnReset.
+    // Recycle the ordinary sticker views immediately on the Web canvas.
+    const stickerReset = this.stickerPanel.reset(0);
     this.state = "finished";
     this.finishLineSeekMissed("finished");
+    return stickerReset;
   }
 
   private async processLoop(): Promise<void> {
@@ -1292,7 +1294,7 @@ export class StoryRuntime {
           // last line and this branch is unreachable today; it is only a
           // defensive guard that finishes the story instead of throwing.
           if (this.cursor >= this.lines.length) {
-            this.finishPlayback();
+            await this.finishPlayback();
             return;
           }
         }
