@@ -9,7 +9,7 @@ import {
 import { parseShowItemFadeStyle, ShowItemFadeStyle } from "../../showitem";
 import { STORY_HEIGHT, type StoryCommandArgs } from "../../types";
 
-import { ShowItemSlot } from "./ShowItemSlot";
+import { ShowItemSlot, type ShowItemAnimation } from "./ShowItemSlot";
 
 /** GetInt @ 0x186941320 converts the boxed parameter via Convert.ToInt32. */
 function readWidth(args: StoryCommandArgs): number | undefined {
@@ -41,7 +41,7 @@ export class ShowItemCutinSlot extends ShowItemSlot {
   private maskWidth = 0;
   private maskHeight = 0;
 
-  protected prepareShow(args: StoryCommandArgs): (progress: number) => void {
+  protected prepareShow(args: StoryCommandArgs): ShowItemAnimation {
     this.fadeStyle = parseShowItemFadeStyle(
       toString(exactArg(args, "fadestyle")),
     );
@@ -53,42 +53,49 @@ export class ShowItemCutinSlot extends ShowItemSlot {
 
     if (this.fadeStyle === ShowItemFadeStyle.fade) {
       this.root.alpha = 0;
-      return this.fadeIn;
+      return { step: this.fadeIn };
     }
 
-    // The native DOSizeDelta and DOFade use the same duration. Web samples
-    // both together on the browser clock.
+    // Only the mask's DOSizeDelta has SetIgnoreTimeScale and OnComplete.
     const blackAlpha = this.backdropAlpha;
     const horizontal = this.horizontal;
     this.root.alpha = 1;
     this.backdropAlpha = 0;
-    return (progress) => {
-      this.backdropAlpha = blackAlpha * progress;
-      this.drawWindow(
-        horizontal ? this.targetWidth * progress : this.targetWidth,
-        horizontal ? STORY_HEIGHT : STORY_HEIGHT * progress,
-      );
+    return {
+      backdropStep: (progress) => {
+        this.backdropAlpha = blackAlpha * progress;
+      },
+      step: (progress) =>
+        this.drawWindow(
+          horizontal ? this.targetWidth * progress : this.targetWidth,
+          horizontal ? STORY_HEIGHT : STORY_HEIGHT * progress,
+        ),
     };
   }
 
-  protected prepareHide(): (progress: number) => void {
-    if (this.fadeStyle === ShowItemFadeStyle.fade) return this.fadeOut();
+  protected prepareHide(): ShowItemAnimation {
+    if (this.fadeStyle === ShowItemFadeStyle.fade)
+      return { step: this.fadeOut() };
 
     const horizontal = this.horizontal;
-    let from: { width: number; height: number; blackAlpha: number } | undefined;
-    return (progress) => {
-      // DOSizeDelta and DOFade each sample their start on the first update.
-      from ??= {
-        width: this.maskWidth,
-        height: this.maskHeight,
-        blackAlpha: this.backdropAlpha,
-      };
-      const remaining = 1 - progress;
-      this.backdropAlpha = from.blackAlpha * remaining;
-      this.drawWindow(
-        horizontal ? from.width * remaining : from.width,
-        horizontal ? from.height : from.height * remaining,
-      );
+    // DOSizeDelta and DOFade each sample their start on their first update.
+    let fromAlpha: number | undefined;
+    let fromWidth: number | undefined;
+    let fromHeight: number | undefined;
+    return {
+      backdropStep: (progress) => {
+        fromAlpha ??= this.backdropAlpha;
+        this.backdropAlpha = fromAlpha * (1 - progress);
+      },
+      step: (progress) => {
+        fromWidth ??= this.maskWidth;
+        fromHeight ??= this.maskHeight;
+        const remaining = 1 - progress;
+        this.drawWindow(
+          horizontal ? fromWidth * remaining : fromWidth,
+          horizontal ? fromHeight : fromHeight * remaining,
+        );
+      },
     };
   }
 

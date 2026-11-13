@@ -5,21 +5,19 @@ import {
   type Sprite,
   Texture,
   TextureSource,
+  Ticker,
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  TweenRunner,
-  type TweenRunOptions,
-} from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
-import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
+import { createRenderer } from "../helpers/rendererFixtures";
 import {
   createContext,
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
+import type { TweenRunOptions } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../src/widgets/StoryPlayer/engine/types";
 
 interface ManualTween {
@@ -28,7 +26,7 @@ interface ManualTween {
   step: (progress: number) => void;
 }
 
-function createShowItemRenderer() {
+function createShowItemRenderer(ticker?: Ticker) {
   const renderer = createRenderer();
   const layer: Container = renderer.layers.showItems;
   const tweens: ManualTween[] = [];
@@ -37,23 +35,28 @@ function createShowItemRenderer() {
   renderer.textureForImageKey = vi.fn(
     async () => new Texture({ label: "item" }),
   );
-  renderer.tween = (
-    durationMs: number,
-    step: (progress: number) => void,
-    done?: () => void,
-    options?: TweenRunOptions,
-  ) =>
-    new Promise<void>((resolve) => {
-      tweens.push({
-        complete: () => {
-          if (options?.isAlive?.() !== false) step(1);
-          done?.();
-          resolve();
-        },
-        durationMs,
-        step,
+  if (ticker) {
+    renderer.app = { ticker };
+    ticker.lastTime = 0;
+  } else {
+    renderer.showItemTweenRunner.run = (
+      durationMs: number,
+      step: (progress: number) => void,
+      done?: () => void,
+      options?: TweenRunOptions,
+    ) =>
+      new Promise<void>((resolve) => {
+        tweens.push({
+          complete: () => {
+            if (options?.isAlive?.() !== false) step(1);
+            done?.();
+            resolve();
+          },
+          durationMs,
+          step,
+        });
       });
-    });
+  }
 
   return {
     createSlot: (style: string): StoryShowItemSlot =>
@@ -62,6 +65,8 @@ function createShowItemRenderer() {
       const playback = new FakeRenderer();
       playback.createShowItemSlot = (style) =>
         renderer.createShowItemSlot(style);
+      if (ticker)
+        playback.onFrameUpdate = renderer.onFrameUpdate.bind(renderer);
       return new StoryRuntime(createContext(lines), playback, new FakeAudio());
     },
     layer,
@@ -103,42 +108,78 @@ describe("ShowItemSlot rendering", () => {
   });
 
   it("finishes zero-duration Show and Hide on separate tween updates", async () => {
-    const { createRuntime, layer, renderer } = createShowItemRenderer();
-    const { advance, clock, drainFrame } = createManualClock();
-    const runner = new TweenRunner(() => true, clock);
-    renderer.tween = runner.run.bind(runner);
+    const ticker = new Ticker();
+    const { createRuntime, layer } = createShowItemRenderer(ticker);
     const runtime = createRuntime([
       '[showitem(image="item_a",fadetime=0)]',
       "[hideitem(fadetime=0)]",
       '[showitem(image="item_b",fadetime=0.3)]',
       '[name="A"]ok',
     ]);
-    const started = runtime.start();
-    await flushAsync();
-    const first = layer.children[0]!;
-    expect(first.alpha).toBe(0);
-    expect(runtime.getState()).toBe("running");
+    try {
+      const started = runtime.start();
+      await flushAsync();
+      const first = layer.children[0]!;
+      expect(first.alpha).toBe(0);
+      expect(runtime.getState()).toBe("running");
 
-    advance(16);
-    drainFrame();
-    await flushAsync();
-    expect(layer.children).toEqual([first]);
-    expect(first.alpha).toBe(1);
+      ticker.update(16);
+      await flushAsync();
+      expect(layer.children).toEqual([first]);
+      expect(first.alpha).toBe(1);
 
-    advance(16);
-    drainFrame();
-    await flushAsync();
-    const second = layer.children[0]!;
-    expect(first.destroyed).toBe(true);
-    expect(second.alpha).toBe(0);
-    expect(runtime.getState()).toBe("running");
+      ticker.update(32);
+      await flushAsync();
+      const second = layer.children[0]!;
+      expect(first.destroyed).toBe(true);
+      expect(second.alpha).toBe(0);
+      expect(runtime.getState()).toBe("running");
 
-    advance(300);
-    drainFrame();
-    await started;
-    expect(layer.children).toEqual([second]);
-    expect(second.alpha).toBe(1);
-    expect(runtime.getState()).toBe("waiting_input");
+      ticker.update(332);
+      await started;
+      expect(layer.children).toEqual([second]);
+      expect(second.alpha).toBe(1);
+      expect(runtime.getState()).toBe("waiting_input");
+    } finally {
+      runtime.destroy();
+      ticker.destroy();
+    }
+  });
+
+  it("finishes the old show before a same-frame skip starts its destination hide", async () => {
+    const ticker = new Ticker();
+    const { createRuntime, layer } = createShowItemRenderer(ticker);
+    const runtime = createRuntime([
+      '[showitem(image="item_a",fadetime=0)]',
+      "[SkipToThis]",
+      "[hideitem(fadetime=1)]",
+      '[name="A"]ok',
+    ]);
+
+    try {
+      const started = runtime.start();
+      await flushAsync();
+      const root = layer.children[0]!;
+      expect(root.alpha).toBe(0);
+      const skipped = runtime.skipNode();
+      await flushAsync();
+
+      ticker.update(16);
+      await flushAsync();
+      expect(layer.children).toEqual([root]);
+      expect(runtime.getState()).toBe("running");
+      expect(root.alpha).toBe(1);
+
+      ticker.update(516);
+      expect(root.alpha).toBeCloseTo(0.25);
+      ticker.update(1016);
+      await Promise.all([started, skipped]);
+      expect(root.destroyed).toBe(true);
+      expect(runtime.getState()).toBe("waiting_input");
+    } finally {
+      runtime.destroy();
+      ticker.destroy();
+    }
   });
 
   it("renders item slots in the 2791 scene order and keeps animtext independent", async () => {
@@ -269,15 +310,15 @@ describe("ShowItemSlot rendering", () => {
       style: "photo",
       fadestyle: 0,
       initialAlpha: 1,
-      alpha: 0.2916,
+      alpha: 0.4131,
       black: 0.4,
       width: 200,
     },
     {
       style: "cutin",
       fadestyle: 0,
-      initialAlpha: 0.19,
-      alpha: 0.2916,
+      initialAlpha: 0.36,
+      alpha: 0.4131,
       black: 0.4,
       width: 200,
     },
@@ -286,16 +327,14 @@ describe("ShowItemSlot rendering", () => {
       fadestyle: 2,
       initialAlpha: 1,
       alpha: 1,
-      black: 0.11664,
-      width: 58.32,
+      black: 0.16524,
+      width: 82.62,
     },
   ])(
     "samples the $style/$fadestyle Hide start on the first overlapping frame",
     async ({ style, fadestyle, initialAlpha, alpha, black, width }) => {
-      const { createRuntime, layer, renderer } = createShowItemRenderer();
-      const { advance, clock, drainFrame } = createManualClock();
-      const runner = new TweenRunner(() => true, clock);
-      renderer.tween = runner.run.bind(runner);
+      const ticker = new Ticker();
+      const { createRuntime, layer, renderer } = createShowItemRenderer(ticker);
       renderer.textureForImageKey = vi.fn(
         async () =>
           new Texture({
@@ -309,26 +348,29 @@ describe("ShowItemSlot rendering", () => {
         '[name="A"]ok',
       ]);
       const started = runtime.start();
-      await flushAsync();
-      const root = layer.children[0]!;
-      advance(100);
-      drainFrame();
+      let skipped: Promise<void> | undefined;
+      try {
+        await flushAsync();
+        const root = layer.children[0]!;
+        ticker.update(100);
 
-      const skipped = runtime.skipNode();
-      await flushAsync();
-      expect(root.alpha).toBeCloseTo(initialAlpha);
+        skipped = runtime.skipNode();
+        await flushAsync();
+        ticker.update(200);
+        expect(root.alpha).toBeCloseTo(initialAlpha);
 
-      // OutQuad at 20% is 0.36. The old Show writes it first, then Hide
-      // samples that value and applies its own 10% elapsed progress (0.19).
-      advance(100);
-      drainFrame();
-      drainFrame();
-      expect(root.alpha).toBeCloseTo(alpha);
-      expect(root.children[0]!.alpha).toBeCloseTo(black);
-      expect(root.children[1]!.width).toBeCloseTo(width);
-      expect(runtime.getState()).toBe("running");
-      runtime.destroy();
-      await Promise.all([started, skipped]);
+        // The jump starts Hide after Show's 20% update. On the next frame
+        // Show writes 0.51 first and Hide samples it before applying OutQuad.
+        ticker.update(300);
+        expect(root.alpha).toBeCloseTo(alpha);
+        expect(root.children[0]!.alpha).toBeCloseTo(black);
+        expect(root.children[1]!.width).toBeCloseTo(width);
+        expect(runtime.getState()).toBe("running");
+      } finally {
+        runtime.destroy();
+        ticker.destroy();
+        await Promise.all([started, skipped]);
+      }
     },
   );
 
@@ -380,16 +422,19 @@ describe("ShowItemSlot rendering", () => {
       // GetInt rounds 200.5 to the even integer 200.
       expect(mask!.width).toBeCloseTo(100);
       expect(mask!.getLocalBounds().minX).toBeCloseTo(1280 / 2 - 100);
+      tweens[1]!.step(0.5);
       expect(backdrop!.alpha).toBeCloseTo(0.2);
       tweens[0]!.complete();
+      tweens[1]!.complete();
       expect(mask!.width).toBe(200);
 
       slot.hide({ fadetime: 0.3 }, () => slot.destroy());
-      tweens[1]!.step(0.5);
+      tweens[2]!.step(0.5);
       expect(mask!.width).toBeCloseTo(100);
+      tweens[3]!.step(0.5);
       expect(backdrop!.alpha).toBeCloseTo(0.2);
       expect(root.alpha).toBe(1);
-      tweens[1]!.complete();
+      tweens[2]!.complete();
       expect(root.parent).toBeNull();
     },
   );
@@ -420,17 +465,56 @@ describe("ShowItemSlot rendering", () => {
     await slot.show({ black: 2, fadestyle: 2, width: 200 }, "item_a", vi.fn());
     const backdrop = layer.children[0]!.children[0]!;
 
-    tweens[0]!.step(0.25);
+    tweens[1]!.step(0.25);
     expect(backdrop.alpha).toBeCloseTo(0.5);
     tweens[0]!.complete();
+    tweens[1]!.complete();
     expect(backdrop.alpha).toBe(1);
 
     slot.hide({}, () => slot.destroy());
-    tweens[1]!.step(0.25);
+    tweens[3]!.step(0.25);
     expect(backdrop.alpha).toBe(1);
-    tweens[1]!.step(0.75);
+    tweens[3]!.step(0.75);
     expect(backdrop.alpha).toBeCloseTo(0.5);
-    tweens[1]!.complete();
+    tweens[2]!.complete();
+  });
+
+  it("uses capped frame time for cutin black fades and completes on the mask", async () => {
+    const ticker = new Ticker();
+    const { createSlot, layer } = createShowItemRenderer(ticker);
+    const slot = createSlot("cutin");
+    const shown = vi.fn();
+    const hidden = vi.fn();
+
+    try {
+      await slot.show(
+        { fadestyle: 2, fadetime: 1, width: 200 },
+        "item_a",
+        shown,
+      );
+      const [backdrop, mask] = layer.children[0]!.children as Graphics[];
+      ticker.update(1000);
+      expect(mask!.width).toBe(200);
+      expect(backdrop!.alpha).toBeCloseTo(0.4 * (1 - (2 / 3) ** 2));
+      expect(shown).toHaveBeenCalledTimes(1);
+
+      ticker.update(1500);
+      ticker.update(2000);
+      expect(backdrop!.alpha).toBeCloseTo(0.4);
+      slot.hide({ fadetime: 1 }, hidden);
+      ticker.update(2500);
+      expect(mask!.width).toBeCloseTo(50);
+      expect(backdrop!.alpha).toBeCloseTo(0.4 * (2 / 3) ** 2);
+      expect(hidden).not.toHaveBeenCalled();
+
+      ticker.update(3000);
+      expect(mask!.width).toBe(0);
+      expect(backdrop!.alpha).toBeCloseTo(0.4 * (1 / 3) ** 2);
+      expect(hidden).toHaveBeenCalledTimes(1);
+    } finally {
+      slot.destroy();
+      ticker.destroy();
+    }
   });
 
   it.each([
@@ -549,13 +633,14 @@ describe("ShowItemSlot rendering", () => {
       expect(image.texture).toBe(Texture.WHITE);
       const skipped = runtime.skipNode();
       await flushAsync();
-      expect(tweens.map((entry) => entry.durationMs)).toEqual([250]);
+      const durations = style === "cutin" ? [250, 250] : [250];
+      expect(tweens.map((entry) => entry.durationMs)).toEqual(durations);
       expect(runtime.getState()).toBe("running");
 
       texture.resolve(Promise.resolve().then(textureOutcomes[outcome]));
       await flushAsync();
       expect(image.texture).toBe(Texture.WHITE);
-      expect(tweens).toHaveLength(1);
+      expect(tweens).toHaveLength(durations.length);
       expect(root.parent).toBe(layer);
       tweens[0]!.complete();
       await Promise.all([started, skipped]);

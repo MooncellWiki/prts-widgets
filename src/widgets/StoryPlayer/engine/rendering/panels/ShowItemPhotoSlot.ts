@@ -2,18 +2,18 @@ import { NineSliceSprite, type Texture } from "pixi.js";
 
 import { computeShowItemLayout, SHOWITEM_FRAME_BORDER } from "../../showitem";
 
-import { ShowItemSlot } from "./ShowItemSlot";
+import { ShowItemSlot, type ShowItemAnimation } from "./ShowItemSlot";
 
 /** AVGShowItemPhotoSlot (2791 Show @ 0x184244D10, Hide @ 0x184244B60). */
 export class ShowItemPhotoSlot extends ShowItemSlot {
-  protected prepareShow(): (progress: number) => void {
+  protected prepareShow(): ShowItemAnimation {
     this.root.alpha = 0;
-    return this.fadeIn;
+    return { step: this.fadeIn };
   }
 
-  protected prepareHide(): (progress: number) => void {
+  protected prepareHide(): ShowItemAnimation {
     this.root.alpha = 1;
-    return this.fadeOut();
+    return { step: this.fadeOut() };
   }
 
   protected setDecoration(texture: Texture): void {

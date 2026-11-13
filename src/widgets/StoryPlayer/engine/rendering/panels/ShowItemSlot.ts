@@ -9,7 +9,7 @@ import {
 } from "../../types";
 import { dotweenDefaultEase } from "../core/DotweenEase";
 
-import type { TweenRunner } from "../core/TweenRunner";
+import type { TweenRunner, TweenRunOptions } from "../core/TweenRunner";
 
 export interface ShowItemSlotHost {
   layer: Container;
@@ -17,6 +17,14 @@ export interface ShowItemSlotHost {
   loadDecoration: () => Promise<Texture | null>;
   tween: TweenRunner["run"];
 }
+
+export interface ShowItemAnimation {
+  backdropStep?: (progress: number) => void;
+  step: (progress: number) => void;
+}
+
+// Unity TimeManager in 2791 caps scaled deltaTime at one third of a second.
+const MAX_SCALED_FRAME_DELTA_MS = 1000 / 3;
 
 function readFadeMs(args: StoryCommandArgs): number {
   const value = exactArg(args, "fadetime");
@@ -61,7 +69,7 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     const blackArg = exactArg(args, "black");
     const black = blackArg === null ? 0 : toNumber(blackArg, 0.4);
     this.backdropAlpha = black;
-    const step = this.prepareShow(args);
+    const animation = this.prepareShow(args);
     // The native prefab exists before the synchronous sprite load. On Web,
     // Hide can animate the placeholder while the texture request is pending.
     this.host.layer.addChild(this.root);
@@ -81,7 +89,7 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
       return;
     }
 
-    this.animate(readFadeMs(args), step);
+    this.animate(readFadeMs(args), animation);
   }
 
   hide(args: StoryCommandArgs, onEnd: () => void): void {
@@ -101,11 +109,9 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     if (!this.root.destroyed) this.root.destroy({ children: true });
   }
 
-  protected abstract prepareShow(
-    args: StoryCommandArgs,
-  ): (progress: number) => void;
+  protected abstract prepareShow(args: StoryCommandArgs): ShowItemAnimation;
 
-  protected abstract prepareHide(): (progress: number) => void;
+  protected abstract prepareHide(): ShowItemAnimation;
 
   protected abstract setDecoration(texture: Texture): void;
 
@@ -139,20 +145,33 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     };
   }
 
-  private animate(durationMs: number, step: (progress: number) => void): void {
+  private animate(
+    durationMs: number,
+    { backdropStep, step }: ShowItemAnimation,
+  ): void {
+    const isAlive = () => this.root.parent === this.host.layer;
+    const options: TweenRunOptions = {
+      // 2791 TweenManager.Update @ 0x1844679F0 completes duration 0 on update.
+      deferZeroDuration: true,
+      ease: dotweenDefaultEase,
+      isAlive,
+    };
     void this.host.tween(
       durationMs,
       step,
       () => {
-        if (this.root.parent === this.host.layer) this.finishAnimation();
+        if (isAlive()) this.finishAnimation();
       },
-      {
-        // 2791 TweenManager.Update @ 0x1844679F0 also completes duration 0 here.
-        deferZeroDuration: true,
-        ease: dotweenDefaultEase,
-        isAlive: () => this.root.parent === this.host.layer,
-      },
+      options,
     );
+    if (backdropStep) {
+      // Cutin's separate Graphic.DOFade uses scaled deltaTime. Web playback
+      // runs at Unity's default timeScale 1.
+      void this.host.tween(durationMs, backdropStep, undefined, {
+        ...options,
+        maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
+      });
+    }
   }
 
   /** OnAnimEnd @ 0x184245310 invokes the slot's current callback once. */

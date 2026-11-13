@@ -2,7 +2,9 @@ import { browserAnimationClock, type AnimationClock } from "../../execution";
 
 import { linearEase, type EaseCurve } from "./DotweenEase";
 
-/** Optional DOTween `SetEase`/`SetLoops` behaviour for {@link TweenRunner.run}. */
+type SubscribeFrame = (update: (deltaMs: number) => void) => () => void;
+
+/** Optional timing and easing behaviour for {@link TweenRunner.run}. */
 export interface TweenRunOptions {
   /** Run a zero-duration tween on the next update, like DOTween. */
   deferZeroDuration?: boolean;
@@ -27,6 +29,8 @@ export interface TweenRunOptions {
    * single pass and anything below -1 becomes -1.
    */
   loops?: number;
+  /** Upper limit on each elapsed frame, like Unity's scaled deltaTime. */
+  maxFrameDeltaMs?: number;
 }
 
 /**
@@ -37,7 +41,8 @@ export interface TweenRunOptions {
 export class TweenRunner {
   constructor(
     private readonly isAlive: () => boolean,
-    private readonly clock: AnimationClock = browserAnimationClock,
+    private readonly clock:
+      AnimationClock | SubscribeFrame = browserAnimationClock,
   ) {}
 
   run(
@@ -57,27 +62,47 @@ export class TweenRunner {
       requestedLoops === 0 ? 1 : Math.max(-1, Math.trunc(requestedLoops));
     const totalMs = loops > 0 ? durationMs * loops : Number.POSITIVE_INFINITY;
     const isRunAlive = options?.isAlive;
+    const maxFrameDeltaMs =
+      options?.maxFrameDeltaMs ?? Number.POSITIVE_INFINITY;
     return new Promise((resolve) => {
-      const start = this.clock.now();
-      const tick = () => {
+      let elapsed = 0;
+      this.advanceEachFrame((deltaMs) => {
         if (!this.isAlive() || (isRunAlive && !isRunAlive())) {
           done?.();
           resolve();
-          return;
+          return false;
         }
-        const elapsed = this.clock.now() - start;
+        elapsed += Math.min(deltaMs, maxFrameDeltaMs);
         if (durationMs <= 0 || elapsed >= totalMs) {
           step(ease(1));
           done?.();
           resolve();
-          return;
+          return false;
         }
         // DOTween's default Restart loop type replays from the start value
         // at every cycle boundary.
         step(ease((elapsed % durationMs) / durationMs));
-        this.clock.requestFrame(tick);
-      };
-      this.clock.requestFrame(tick);
+        return true;
+      });
     });
+  }
+
+  private advanceEachFrame(advance: (deltaMs: number) => boolean): void {
+    const clock = this.clock;
+    if (typeof clock === "function") {
+      const unsubscribe = clock((deltaMs) => {
+        if (!advance(deltaMs)) unsubscribe();
+      });
+      return;
+    }
+
+    let previous = clock.now();
+    const tick = () => {
+      const now = clock.now();
+      const deltaMs = now - previous;
+      previous = now;
+      if (advance(deltaMs)) clock.requestFrame(tick);
+    };
+    clock.requestFrame(tick);
   }
 }

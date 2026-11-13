@@ -501,6 +501,13 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly uiLayer = this.layers.ui;
   private readonly worldLayer = this.layers.world;
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
+  // 2791 runs DOTween.Update before AVGController._DoExecuteCommands polls
+  // its blockers. Use the Pixi update phase for item tweens so SkipToThis
+  // resumes after the old animation has advanced in the same frame.
+  private readonly showItemTweenRunner = new TweenRunner(
+    () => Boolean(this.app),
+    (advance) => this.onFrameUpdate(({ deltaMs }) => advance(deltaMs)),
+  );
   private readonly videoPanel: VideoPanel;
   private readonly dialogView: DialogView;
   private readonly subtitleView: SubtitleView;
@@ -1466,7 +1473,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     const host = {
       layer: this.layers.showItems,
       loadImage: (key: string) => this.textureForImageKey(key, "image"),
-      tween: (...args: Parameters<TweenRunner["run"]>) => this.tween(...args),
+      tween: this.showItemTweenRunner.run.bind(this.showItemTweenRunner),
     };
     switch (style) {
       case "photo":
