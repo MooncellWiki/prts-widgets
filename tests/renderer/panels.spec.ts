@@ -39,7 +39,7 @@ function createShowItemRenderer(ticker?: Ticker) {
     renderer.app = { ticker };
     ticker.lastTime = 0;
   } else {
-    renderer.showItemTweenRunner.run = (
+    renderer.updatePhaseTweenRunner.run = (
       durationMs: number,
       step: (progress: number) => void,
       done?: () => void,

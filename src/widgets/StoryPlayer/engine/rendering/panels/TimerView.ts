@@ -1,20 +1,27 @@
 import { Text, type TextStyle } from "pixi.js";
 
-import type { TimerClearInput, TimerStickerInput } from "../../types";
+import { dotweenDefaultEase } from "../core/DotweenEase";
+
+import type {
+  StoryRenderer,
+  TimerClearInput,
+  TimerStickerInput,
+} from "../../types";
 import type { TweenRunner } from "../core/TweenRunner";
 
 interface TimerViewOptions {
   createOverlayTextStyle: (size: number, width: number) => TextStyle;
+  onFrameUpdate: StoryRenderer["onFrameUpdate"];
   tween: TweenRunner["run"];
 }
 
-/** Torappu.AVG.AVGTimerView, using Pixi Text and a browser interval. */
+/** Torappu.AVG.AVGTimerView, using Pixi Text and the renderer's frame updates. */
 export class TimerView {
   readonly root = new Text({ text: "" });
 
   private fadeSessionId = 0;
   private stopFadeComplete: (() => void) | null = null;
-  private interval: ReturnType<typeof setInterval> | null = null;
+  private cancelCountUp: (() => void) | null = null;
 
   constructor(private readonly options: TimerViewOptions) {}
 
@@ -60,10 +67,6 @@ export class TimerView {
       this.root.alpha = 0;
       this.root.visible = false;
     };
-    if (input.durationMs <= 0) {
-      finish();
-      return;
-    }
     this.stopFadeComplete = finish;
     this.fadeTo(0, input.durationMs, finish);
   }
@@ -90,34 +93,39 @@ export class TimerView {
         this.root.alpha = toAlpha;
         done?.();
       },
-      { isAlive },
+      // 2791 CanvasGroup.DOFade (0x184442db0) inherits OutQuad. A zero-duration
+      // fade completes in TweenManager.Update (0x1844679f0).
+      { deferZeroDuration: true, ease: dotweenDefaultEase, isAlive },
     );
   }
 
   private startCountUp(capSeconds: number): void {
     // _StartCountTimer (2791 VA 0x1842470c0) seeds the text only when it
     // creates a task. An existing task keeps its text until the next tick.
-    if (this.interval === null) this.root.text = "00:00:00";
+    if (this.cancelCountUp === null) this.root.text = "00:00:00";
     this.stopCountUp();
 
-    const startMs = Date.now();
-    // CountDownTask samples at 200 ms. Using elapsed wall time lets the
-    // browser catch up after throttling. _TimerEnd leaves the final text up.
-    this.interval = setInterval(() => {
-      const elapsedSeconds = Math.min(
-        capSeconds,
-        Math.max(0, Math.floor((Date.now() - startMs) / 1000)),
-      );
+    // CountDownTask.SetCountDown (2791 @ 0x181e3be70) and TaskTimer.Tick
+    // (0x1855df6f0) use whole-second wall time. The 200 ms gate therefore
+    // admits the first frame after a reset and each advance of the timestamp.
+    const startSeconds = Math.trunc(Date.now() / 1000);
+    let lastTickSeconds = Number.NEGATIVE_INFINITY;
+    this.cancelCountUp = this.options.onFrameUpdate(() => {
+      const nowSeconds = Math.trunc(Date.now() / 1000);
+      if (nowSeconds <= lastTickSeconds) return;
+      lastTickSeconds = nowSeconds;
+
+      const elapsedSeconds = Math.max(0, nowSeconds - startSeconds);
       const text = formatTimer(elapsedSeconds);
       if (this.root.text !== text) this.root.text = text;
+      // TaskTimer.Tick publishes the sampled value before firing the timeout.
       if (elapsedSeconds >= capSeconds) this.stopCountUp();
-    }, 200);
+    });
   }
 
   private stopCountUp(): void {
-    if (this.interval === null) return;
-    clearInterval(this.interval);
-    this.interval = null;
+    this.cancelCountUp?.();
+    this.cancelCountUp = null;
   }
 }
 

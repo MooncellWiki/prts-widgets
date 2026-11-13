@@ -1242,6 +1242,9 @@ export class StoryRuntime {
     this.stopPlaybackInput();
     // AVGController.OnStoryEnd (2791 @ 0x18416B9C0) calls SubtitlePanel.OnReset.
     void this.subtitlePanel.reset();
+    // The same OnReset pass reaches StickerPanel._RecycleStickers (0x1841E46E0),
+    // which queues AVGTimerView.StopTimer(0) for the current timer.
+    void this.renderer.clearTimerSticker({ durationMs: 0 });
     this.renderer.clearAnimTexts();
     this.renderer.clearAvgDisplays();
     // Native end-of-story reset destroys a lingering show-item slot

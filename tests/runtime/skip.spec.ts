@@ -275,7 +275,7 @@ describe("StoryRuntime", () => {
     expect(runtime.canSkipNode()).toBe(true);
   });
 
-  it("prioritizes SkipToThis, resumes after its anchor, and clears the timer sticker instantly", async () => {
+  it("prioritizes SkipToThis, resumes after its anchor, and queues a zero-duration timer clear", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
@@ -289,7 +289,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
     // Native skip routes through StickerPanel.OnReset → _RecycleStickers,
-    // whose first step is AVGTimerView.StopTimer(0): instant hide.
+    // whose first step queues AVGTimerView.StopTimer(0).
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
@@ -588,7 +588,7 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("leaves the screen alone when the skip ends the story", async () => {
+  it("runs end-of-story timer and subtitle cleanup when the skip ends the story", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -608,11 +608,11 @@ describe("StoryRuntime", () => {
 
     // mode="skip" makes get_isSkippable() true, so SkipStory takes
     // StopStory("Skipped") and returns before _ResetComponentsOnSkip.
-    // SubtitlePanel is still cleared by the later OnStoryEnd reset.
+    // The later OnStoryEnd reset still clears the timer and subtitle.
     await runtime.skipNode();
 
     expect(runtime.getState()).toBe("finished");
-    expect(renderer.timerClearCalls).toEqual([]);
+    expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
     expect(renderer.stickersClearCalls).toEqual([]);
     expect(renderer.subtitleClearCalls).toEqual([0]);
     expect(renderer.spellStickerClearCount).toBe(0);

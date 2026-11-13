@@ -9,6 +9,19 @@ import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
 import { createContext, FakeAudio } from "../helpers/runtimeFakes";
 
+import type { TimerStickerInput } from "../../src/widgets/StoryPlayer/engine/types";
+
+const timerInput = {
+  durationMs: 1000,
+  fromAlpha: 0,
+  limitSeconds: 9999,
+  sizePx: 24,
+  toAlpha: 1,
+  widthPx: 1280,
+  x: 935,
+  y: 80,
+} satisfies TimerStickerInput;
+
 function transparentText(text: string): string {
   return `<_c00000000>${text}</_c00000000>`;
 }
@@ -449,214 +462,223 @@ describe("PixiStoryRenderer", () => {
     }
   });
 
-  it("counts the timer sticker up from 00:00:00 like the native stopwatch", async () => {
-    vi.useFakeTimers();
-    const renderer = createRenderer();
+  it("counts up from zero on whole-second wall-clock boundaries", () => {
+    vi.useFakeTimers({ now: 900 });
+    const { destroy, renderer, ticker } = createTickerPlayback([]);
     try {
-      renderer.tween = vi.fn(async () => {});
-
-      await renderer.setTimerSticker({
-        durationMs: 0,
-        fromAlpha: 0,
-        limitSeconds: 9999,
-        sizePx: 24,
-        toAlpha: 1,
-        widthPx: 1280,
-        x: 935,
-        y: 80,
-      });
-
+      renderer.setTimerSticker(timerInput);
       const timer = renderer.timerView.root;
-
-      // `AVGTimerView._StartCountTimer` fires `_TimerTick(0)` once
-      // immediately and the value then counts up from zero -- `time` is a
-      // timeout cap, not the initial value (02:46:39 must never show here).
       expect(timer.text).toBe("00:00:00");
 
-      // Within the ~200ms internal tick the elapsed value is still 0s; the
-      // first change lands on the whole-second boundary.
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(99);
+      ticker.update(99);
       expect(timer.text).toBe("00:00:00");
-
-      // Each value climbs by one per second, derived from the wall clock, so
-      // throttled intervals cannot drift it.
-      vi.advanceTimersByTime(800);
+      vi.advanceTimersByTime(1);
+      ticker.update(100);
       expect(timer.text).toBe("00:00:01");
       vi.advanceTimersByTime(10_000);
+      ticker.update(10_100);
       expect(timer.text).toBe("00:00:11");
-    } finally {
-      renderer.destroy();
-      vi.useRealTimers();
-    }
-  });
 
-  it("freezes the timer at the time cap and wraps hours at 24", async () => {
-    vi.useFakeTimers();
-    const renderer = createRenderer();
-    try {
-      renderer.tween = vi.fn(async () => {});
-      const base = {
-        durationMs: 0,
-        fromAlpha: 0,
-        sizePx: 24,
-        toAlpha: 1,
-        widthPx: 1280,
-        x: 0,
-        y: 0,
-      };
-
-      // Reaching `time` fires `_TimerEnd`, which only clears the task; the
-      // view stays visible frozen at the cap (not 00:00:00) and the interval
-      // stops once the cap is reached.
-      await renderer.setTimerSticker({ ...base, limitSeconds: 100_000 });
-      const timer = renderer.timerView.root;
+      // ResetTime lets the next frame publish even in the same wall second.
+      renderer.setTimerSticker(timerInput);
+      expect(timer.text).toBe("00:00:11");
+      ticker.update(10_116);
       expect(timer.text).toBe("00:00:00");
-      vi.setSystemTime(Date.now() + 100_000_000);
-      vi.advanceTimersByTime(200);
-      expect(timer.text).toBe("03:46:40");
-      expect(timer.visible).toBe(true);
-      vi.advanceTimersByTime(1000);
-      expect(timer.text).toBe("03:46:40");
     } finally {
-      renderer.destroy();
+      destroy();
       vi.useRealTimers();
     }
   });
 
-  it("drops stale timer fades when a newer timersticker or clear takes over", async () => {
-    const renderer = createRenderer();
-    const tweens: Array<{
-      done: () => void;
-      step: (progress: number) => void;
-    }> = [];
-    renderer.tween = vi.fn(
-      async (
-        _durationMs: number,
-        step: (progress: number) => void,
-        done?: () => void,
-      ) => {
-        tweens.push({ done: done ?? (() => {}), step });
-      },
-    );
-    const base = {
-      durationMs: 1000,
-      fromAlpha: 0,
-      limitSeconds: undefined,
-      sizePx: 24,
-      toAlpha: 1,
-      widthPx: 1280,
-      x: 0,
-      y: 0,
-    };
+  it.each([
+    { elapsedSeconds: 5, expected: "00:00:05", limitSeconds: 3 },
+    { elapsedSeconds: 100_000, expected: "03:46:40", limitSeconds: 100_000 },
+  ])(
+    "freezes the last sampled reading at $expected after timeout",
+    ({ elapsedSeconds, expected, limitSeconds }) => {
+      vi.useFakeTimers({ now: 0 });
+      const { destroy, renderer, ticker } = createTickerPlayback([]);
+      try {
+        renderer.setTimerSticker({ ...timerInput, limitSeconds });
+        const timer = renderer.timerView.root;
+        expect(timer.text).toBe("00:00:00");
 
-    // Fade-in half done when timerclear arrives: the stale fade-in's late
-    // step/done must not write alpha after the fade-out took over.
-    await renderer.setTimerSticker(base);
-    const timer = renderer.timerView.root;
-    tweens[0]!.step(0.5);
-    expect(timer.alpha).toBe(0.5);
-    await renderer.clearTimerSticker({ durationMs: 300 });
-    tweens[0]!.step(1);
-    tweens[0]!.done();
-    expect(timer.alpha).toBe(0.5);
-    tweens[1]!.step(1);
-    tweens[1]!.done();
-    expect(timer.alpha).toBe(0);
-    expect(timer.visible).toBe(false);
+        vi.setSystemTime(elapsedSeconds * 1000);
+        ticker.update(elapsedSeconds * 1000);
+        expect(timer.text).toBe(expected);
+        expect(timer.visible).toBe(true);
 
-    // Fade-out half done when a new timersticker reactivates the slot: the
-    // stale fade-out's done must not re-hide it or clamp its alpha.
-    await renderer.setTimerSticker({ ...base, fromAlpha: 0.4 });
-    expect(timer.visible).toBe(true);
-    await renderer.clearTimerSticker({ durationMs: 300 });
-    tweens[3]!.step(0.5);
-    expect(timer.alpha).toBeCloseTo(0.2);
-    await renderer.setTimerSticker({ ...base, fromAlpha: 0.2, toAlpha: 0.9 });
-    tweens[3]!.step(1);
-    tweens[3]!.done();
-    expect(timer.visible).toBe(true);
-    expect(timer.alpha).toBe(0.2);
-    tweens[4]!.step(1);
-    expect(timer.alpha).toBeCloseTo(0.9);
-    renderer.destroy();
+        vi.advanceTimersByTime(1000);
+        ticker.update((elapsedSeconds + 1) * 1000);
+        expect(timer.text).toBe(expected);
+        renderer.setTimerSticker({ ...timerInput, limitSeconds });
+        expect(timer.text).toBe("00:00:00");
+      } finally {
+        destroy();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("fades with OutQuad and retires a replaced tween", () => {
+    const { destroy, renderer, ticker } = createTickerPlayback([]);
+    try {
+      renderer.setTimerSticker({ ...timerInput, limitSeconds: undefined });
+      const timer = renderer.timerView.root;
+      ticker.update(500);
+      expect(timer.alpha).toBe(0.75);
+
+      renderer.clearTimerSticker({ durationMs: 1000 });
+      ticker.update(1000);
+      expect(timer.alpha).toBe(0.1875);
+      expect(timer.visible).toBe(true);
+      ticker.update(1500);
+      expect(timer.alpha).toBe(0);
+      expect(timer.visible).toBe(false);
+    } finally {
+      destroy();
+    }
   });
 
-  it("lets a completed timerclear fade retire the clock a timersticker just restarted", async () => {
-    vi.useFakeTimers();
-    const renderer = createRenderer();
+  it("keeps ticking during a fade and completes it before showing again", () => {
+    vi.useFakeTimers({ now: 0 });
+    const { destroy, renderer, ticker } = createTickerPlayback([]);
     try {
-      renderer.tween = vi.fn(async () => {});
-      const base = {
-        durationMs: 0,
-        fromAlpha: 0,
-        limitSeconds: 9999,
-        sizePx: 24,
-        toAlpha: 1,
-        widthPx: 1280,
-        x: 0,
-        y: 0,
-      };
-
-      await renderer.setTimerSticker(base);
+      renderer.setTimerSticker(timerInput);
       const timer = renderer.timerView.root;
       vi.advanceTimersByTime(3000);
+      ticker.update(3000);
       expect(timer.text).toBe("00:00:03");
 
-      // A fading timerclear has not run `<StopTimer>b__7_0` yet, so the slot
-      // still owns its count task: the next timersticker reuses it (no
-      // 00:00:00 reseed) and RenderTimer's `DOKill(_canvas, complete: true)`
-      // then completes that fade, nulling `m_countTimerTask` outright.
-      await renderer.clearTimerSticker({ durationMs: 2000 });
+      renderer.clearTimerSticker({ durationMs: 2000 });
       vi.advanceTimersByTime(1000);
+      ticker.update(4000);
       expect(timer.text).toBe("00:00:04");
-      await renderer.setTimerSticker(base);
+      renderer.setTimerSticker(timerInput);
 
-      expect(timer.text).toBe("00:00:04");
       expect(timer.visible).toBe(true);
       vi.advanceTimersByTime(5000);
+      ticker.update(9000);
+      expect(timer.alpha).toBe(1);
+      expect(timer.visible).toBe(true);
       expect(timer.text).toBe("00:00:04");
 
-      // With the task gone, the following timersticker rebuilds it and the
-      // inline `_TimerTick(0)` reseeds the slot.
-      await renderer.setTimerSticker(base);
+      renderer.setTimerSticker(timerInput);
       expect(timer.text).toBe("00:00:00");
       vi.advanceTimersByTime(1000);
+      ticker.update(10_000);
       expect(timer.text).toBe("00:00:01");
     } finally {
-      renderer.destroy();
+      destroy();
       vi.useRealTimers();
     }
   });
 
-  it("leaves the timer slot untouched when timersticker omits time", async () => {
-    vi.useFakeTimers();
-    const renderer = createRenderer();
+  it("defers a zero-duration clear and completes it on a same-frame show", () => {
+    vi.useFakeTimers({ now: 0 });
+    const { destroy, renderer, ticker } = createTickerPlayback([]);
     try {
-      renderer.tween = vi.fn(async () => {});
-      const base = {
-        durationMs: 0,
-        fromAlpha: 0,
-        sizePx: 24,
-        toAlpha: 1,
-        widthPx: 1280,
-        x: 0,
-        y: 0,
-      };
+      renderer.setTimerSticker(timerInput);
+      const timer = renderer.timerView.root;
+      vi.advanceTimersByTime(4000);
+      ticker.update(4000);
 
-      await renderer.setTimerSticker({ ...base, limitSeconds: 9999 });
+      renderer.clearTimerSticker({ durationMs: 0 });
+      expect(timer.visible).toBe(true);
+      expect(timer.alpha).toBe(1);
+      renderer.setTimerSticker(timerInput);
+      expect(timer.text).toBe("00:00:04");
+
+      vi.advanceTimersByTime(1000);
+      ticker.update(5000);
+      expect(timer.visible).toBe(true);
+      expect(timer.text).toBe("00:00:04");
+
+      renderer.setTimerSticker(timerInput);
+      expect(timer.text).toBe("00:00:00");
+      renderer.clearTimerSticker({ durationMs: 0 });
+      expect(timer.visible).toBe(true);
+      ticker.update(5016);
+      expect(timer.visible).toBe(false);
+      expect(timer.alpha).toBe(0);
+      vi.advanceTimersByTime(1000);
+      ticker.update(6000);
+      expect(timer.text).toBe("00:00:00");
+    } finally {
+      destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the running clock untouched when timersticker omits time", () => {
+    vi.useFakeTimers({ now: 0 });
+    const { destroy, renderer, ticker } = createTickerPlayback([]);
+    try {
+      renderer.setTimerSticker(timerInput);
       const timer = renderer.timerView.root;
       vi.advanceTimersByTime(2000);
+      ticker.update(2000);
       expect(timer.text).toBe("00:00:02");
 
-      // `RenderTimer` skips `_StartCountTimer` unless `time > 0` (native
-      // default -1), so the running clock keeps its original start and the
-      // slot is never reseeded to 00:00:00.
-      await renderer.setTimerSticker(base);
+      renderer.setTimerSticker({ ...timerInput, limitSeconds: undefined });
       expect(timer.text).toBe("00:00:02");
       vi.advanceTimersByTime(1000);
+      ticker.update(3000);
       expect(timer.text).toBe("00:00:03");
     } finally {
-      renderer.destroy();
+      destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears a running timer on the next update after the story ends", async () => {
+    const { destroy, renderer, runtime, ticker } = createTickerPlayback([
+      "[timersticker(time=60)]",
+    ]);
+    try {
+      await runtime.start();
+      const timer = renderer.timerView.root;
+      expect(runtime.getState()).toBe("finished");
+      expect(timer.visible).toBe(true);
+
+      ticker.update(16);
+      expect(timer.visible).toBe(false);
+      expect(timer.alpha).toBe(0);
+    } finally {
+      destroy();
+    }
+  });
+
+  it("finishes the skip reset before showing the timer at the destination", async () => {
+    vi.useFakeTimers({ now: 0 });
+    const { destroy, renderer, runtime, ticker } = createTickerPlayback([
+      "[timersticker(time=60)]",
+      '[name="A"]before',
+      "[SkipToThis]",
+      "[timersticker(time=60)]",
+      '[name="B"]after',
+    ]);
+    try {
+      await runtime.start();
+      const timer = renderer.timerView.root;
+      vi.advanceTimersByTime(3000);
+      ticker.update(3000);
+      expect(timer.text).toBe("00:00:03");
+
+      const skipping = runtime.skipNode();
+      await setImmediate();
+      expect(timer.visible).toBe(true);
+      ticker.update(3016);
+      await skipping;
+      expect(timer.visible).toBe(true);
+      expect(timer.text).toBe("00:00:00");
+
+      vi.advanceTimersByTime(1000);
+      ticker.update(4016);
+      expect(timer.text).toBe("00:00:01");
+    } finally {
+      destroy();
       vi.useRealTimers();
     }
   });
