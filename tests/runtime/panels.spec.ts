@@ -90,6 +90,34 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it.each([
+    { block: true, durationMs: 50, mode: "default" },
+    { block: false, durationMs: 0, mode: "quick_play" },
+  ] as const)("scales avgdisplay's bg default in $mode", async (expected) => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[avgdisplay(id="1",name="bg_black",style=" +05 ",slot=1,block=true)]',
+        '[name="A"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    runtime.setAutoPlayMode(expected.mode);
+    await runtime.start();
+
+    expect(renderer.avgDisplayCalls).toEqual([
+      expect.objectContaining({
+        block: expected.block,
+        durationMs: expected.durationMs,
+        slot: "bgover",
+        style: "bg",
+      }),
+    ]);
+  });
+
   it("rejects showitem styles the panel does not register", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];

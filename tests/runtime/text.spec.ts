@@ -243,6 +243,33 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("expands animtext variables and warns only for an invalid pos", async () => {
+    const renderer = new FakeRenderer();
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[animtext(name="group_location_stamp",pos="bad")]<p=2>{@m}</>',
+        '[animtext(name="group_location_stamp",POS="3,4")]<p=1>地点</>',
+        '[name="A"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    expect(renderer.animTextCalls).toMatchObject([
+      { content: "<p=2>sound_beta_2/avg/m</>", position: { x: 0, y: 0 } },
+      { content: "<p=1>地点</>", position: { x: 0, y: 0 } },
+    ]);
+    expect(onWarning).toHaveBeenCalledExactlyOnceWith({
+      cursor: 1,
+      detail: "animtext pos parse failed: bad",
+      type: "invalid_parameter",
+    });
+  });
+
   it("types dialogue <i> spans as zero-width and renders them as italic runs", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

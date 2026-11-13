@@ -2,7 +2,6 @@ import mitt, { type Handler } from "mitt";
 
 import { DecisionCommandPredicator } from "./DecisionCommandPredicator";
 import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
-import { resolveAvgDisplaySlot, resolveAvgDisplayStyle } from "./avgDisplay";
 import {
   type CharacterRefResolution,
   nativeCharacterFadeIdentity,
@@ -30,6 +29,7 @@ import { createExecutionHandle, type ExecutionHandle } from "./execution";
 import { CgItemPanel } from "./panels/CgItemPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
+import { DisplayableExecutor } from "./panels/DisplayableExecutor";
 import { ShowItemPanel } from "./panels/ShowItemPanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerPanel } from "./panels/StickerPanel";
@@ -41,7 +41,6 @@ import type { Context } from "../context";
 import type {
   AutoPlayMode,
   AutoPlayState,
-  AvgDisplayInput,
   BackgroundInput,
   CharacterActionInput,
   CharacterSlotInput,
@@ -141,8 +140,6 @@ const builtinCommandNames = [
   "characteraction",
   "charactercutin",
   "interlude",
-  "animtext",
-  "avgdisplay",
   "playmusic",
   "stopmusic",
   "musicvolume",
@@ -378,6 +375,7 @@ export class StoryRuntime {
   private state: PlayerState = "idle";
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
+  private readonly displayableExecutor: DisplayableExecutor;
   private readonly showItemPanel: ShowItemPanel;
   private readonly spellStickerPanel: SpellStickerPanel;
   private readonly stickerPanel: StickerPanel;
@@ -433,6 +431,12 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
+    this.displayableExecutor = new DisplayableExecutor(renderer, {
+      calculateFadeMs: (seconds, fallback) =>
+        this.calculateFadeMs(seconds, fallback),
+      translateText: (text) => this.translateText(text),
+      warnInvalidParameter: (detail) => this.warn("invalid_parameter", detail),
+    });
     this.showItemPanel = new ShowItemPanel(renderer, {
       resolveImageKey: (key) => this.resolveImageKey(key),
       warnInvalidParameter: (detail, line) =>
@@ -467,6 +471,7 @@ export class StoryRuntime {
     }).register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
+    this.displayableExecutor.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
     this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
@@ -1208,8 +1213,7 @@ export class StoryRuntime {
     this.stopPlaybackInput();
     // AVGController.OnStoryEnd (2791 @ 0x18416B9C0) calls SubtitlePanel.OnReset.
     void this.subtitlePanel.reset();
-    this.renderer.clearAnimTexts();
-    this.renderer.clearAvgDisplays();
+    this.displayableExecutor.reset();
     // AVGCgItemPanel.OnReset (2791 @ 0x1841890F0) disposes the slots at
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
@@ -3085,78 +3089,6 @@ export class StoryRuntime {
           },
           type,
         } satisfies InterludeInput);
-        return "continue";
-      }
-
-      case "animtext": {
-        // Native port: Torappu.AVG.AVGDisplayableExecutor._ExecuteAnimatedText.
-        const rawPosition = this.exactArg(args, "pos");
-        const parsedPosition = parseVector2(rawPosition);
-        if (rawPosition !== undefined && !parsedPosition)
-          this.warn(
-            "invalid_parameter",
-            `animtext pos parse failed: ${toString(rawPosition)}`,
-          );
-        const position = parsedPosition ?? { x: 0, y: 0 };
-        await this.renderer.setAnimText({
-          block: toBoolean(this.exactArg(args, "block"), false),
-          content: this.translateText(line.trailingText),
-          id: toString(this.exactArg(args, "id")),
-          name: toString(this.exactArg(args, "name")),
-          position,
-          style: toString(this.exactArg(args, "style")),
-        });
-        return "continue";
-      }
-
-      case "avgdisplay": {
-        // Native port: Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable
-        const optional = (key: string) =>
-          toOptionalNumber(this.exactArg(args, key));
-        const style = resolveAvgDisplayStyle(
-          toString(this.exactArg(args, "style")),
-        );
-        const slot = resolveAvgDisplaySlot(
-          toString(this.exactArg(args, "slot")),
-        );
-        // All three avgdisplay features read the same `duration` key and each
-        // scales it through CalculateFadetime.
-        const durationMs = this.calculateFadeMs(
-          this.exactArg(args, "duration"),
-          style === "bg" ? 0.1 : 0,
-        );
-        await this.renderer.setAvgDisplay({
-          alphaFrom: optional("afrom"),
-          alphaTo: optional("ato"),
-          block:
-            durationMs > 0 && toBoolean(this.exactArg(args, "block"), false),
-          durationMs,
-          entryFrom: optional("entryfrom"),
-          entryIndex: Math.trunc(
-            toNumber(this.exactArg(args, "entryindex"), 0),
-          ),
-          entryTo: optional("entryto"),
-          id: toString(this.exactArg(args, "id")),
-          layer: Math.trunc(toNumber(this.exactArg(args, "layer"), 1)),
-          name: toString(this.exactArg(args, "name")),
-          rotationX: toNumber(this.exactArg(args, "rox"), 0),
-          rotationY: toNumber(this.exactArg(args, "roy"), 0),
-          rotationZ: toNumber(this.exactArg(args, "roz"), 0),
-          scaleX: optional("scalex"),
-          scaleXFrom: optional("scalexfrom"),
-          scaleXTo: optional("scalexto"),
-          scaleY: optional("scaley"),
-          scaleYFrom: optional("scaleyfrom"),
-          scaleYTo: optional("scaleyto"),
-          slot,
-          style,
-          x: optional("x"),
-          xFrom: optional("xfrom"),
-          xTo: optional("xto"),
-          y: optional("y"),
-          yFrom: optional("yfrom"),
-          yTo: optional("yto"),
-        } satisfies AvgDisplayInput);
         return "continue";
       }
 

@@ -293,6 +293,103 @@ describe("StoryRuntime", () => {
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
+  it("retains displayables across SkipToThis and clears them at natural end", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const clearAnimTexts = vi.spyOn(renderer, "clearAnimTexts");
+    const clearAvgDisplays = vi.spyOn(renderer, "clearAvgDisplays");
+    const runtime = new StoryRuntime(
+      createContext([
+        '[animtext(id="at1",name="group_location_stamp",style="avg_only_medium",pos="-400,-200")]<p=2>望日前三日</>',
+        '[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover",afrom=0,ato=0.6,duration=2)]',
+        '[name="A"]before',
+        '[name="B"]skipped',
+        "[SkipToThis]",
+        '[name="C"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    try {
+      await runtime.start();
+      expect(renderer.animTextCalls).toHaveLength(1);
+      expect(renderer.avgDisplayCalls).toHaveLength(1);
+
+      const skipping = runtime.skipNode();
+      await setImmediate();
+      await renderer.frames.advance(16);
+      await skipping;
+      expect(runtime.getDisplayedLineIndex()).toBe(6);
+      expect(clearAnimTexts).not.toHaveBeenCalled();
+      expect(clearAvgDisplays).not.toHaveBeenCalled();
+
+      await renderer.frames.advance(16);
+      const advancing = runtime.advance();
+      await renderer.frames.advance(16, 16, 16, 199);
+      expect(runtime.getState()).toBe("waiting_timer");
+      expect(clearAnimTexts).not.toHaveBeenCalled();
+      expect(clearAvgDisplays).not.toHaveBeenCalled();
+
+      await renderer.frames.advance(1);
+      await advancing;
+      expect(runtime.getState()).toBe("finished");
+      expect(clearAnimTexts).toHaveBeenCalledTimes(1);
+      expect(clearAvgDisplays).toHaveBeenCalledTimes(1);
+      expect(clearAnimTexts).toHaveBeenCalledBefore(clearAvgDisplays);
+    } finally {
+      runtime.destroy();
+    }
+  });
+
+  it.each([
+    {
+      command: '[animtext(name="group_location_stamp")]<p=1>地点</>',
+      method: "setAnimText",
+    },
+    {
+      command: '[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover")]',
+      method: "setAvgDisplay",
+    },
+  ] as const)(
+    "waits for $method before resuming a pending SkipToThis",
+    async ({ command, method }) => {
+      const renderer = new FakeRenderer();
+      renderer.frames.manual = true;
+      const { promise, resolve } = Promise.withResolvers<void>();
+      const render = vi.spyOn(renderer, method).mockReturnValueOnce(promise);
+      const runtime = new StoryRuntime(
+        createContext([
+          command,
+          '[name="A"]before',
+          "[SkipToThis]",
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      try {
+        const starting = runtime.start();
+        const skipping = runtime.skipNode();
+        await setImmediate();
+        await renderer.frames.advance(16);
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(runtime.getDisplayedLineIndex()).toBeNull();
+
+        resolve();
+        await setImmediate();
+        await renderer.frames.advance(16);
+        await starting;
+        await skipping;
+        expect(runtime.getDisplayedLineIndex()).toBe(4);
+      } finally {
+        resolve();
+        runtime.destroy();
+      }
+    },
+  );
+
   it("cancels a queued skip continuation when the player is destroyed", async () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
@@ -621,11 +718,18 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCharacterCutinCalls).toEqual([]);
   });
 
-  it("cancels the natural end wait when skipping the story", async () => {
+  it("cancels the natural end wait and clears displayables once when skipping the story", async () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
+    const clearAnimTexts = vi.spyOn(renderer, "clearAnimTexts");
+    const clearAvgDisplays = vi.spyOn(renderer, "clearAvgDisplays");
     const runtime = new StoryRuntime(
-      createContext(['[skipnode(mode="skip")]', "[timersticker(time=60)]"]),
+      createContext([
+        '[skipnode(mode="skip")]',
+        "[timersticker(time=60)]",
+        '[animtext(name="group_location_stamp")]<p=1>地点</>',
+        '[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover")]',
+      ]),
       renderer,
       new FakeAudio(),
     );
@@ -636,6 +740,8 @@ describe("StoryRuntime", () => {
       await renderer.frames.advance(16, 100);
       expect(runtime.getState()).toBe("waiting_timer");
       expect(renderer.timerClearCalls).toEqual([]);
+      expect(clearAnimTexts).not.toHaveBeenCalled();
+      expect(clearAvgDisplays).not.toHaveBeenCalled();
 
       await runtime.skipNode();
       await started;
@@ -644,6 +750,9 @@ describe("StoryRuntime", () => {
 
       await renderer.frames.advance(200);
       expect(renderer.timerClearCalls).toHaveLength(1);
+      expect(clearAnimTexts).toHaveBeenCalledTimes(1);
+      expect(clearAvgDisplays).toHaveBeenCalledTimes(1);
+      expect(clearAnimTexts).toHaveBeenCalledBefore(clearAvgDisplays);
     } finally {
       runtime.destroy();
     }
