@@ -275,7 +275,7 @@ describe("StoryRuntime", () => {
     expect(runtime.canSkipNode()).toBe(true);
   });
 
-  it("prioritizes SkipToThis, resumes after its anchor, and clears the timer sticker instantly", async () => {
+  it("prioritizes SkipToThis, resumes after its anchor, and queues a zero-duration timer clear", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext(['[name="A"]before', "[SkipToThis]", '[name="B"]after']),
@@ -289,7 +289,7 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
     // Native skip routes through StickerPanel.OnReset → _RecycleStickers,
-    // whose first step is AVGTimerView.StopTimer(0): instant hide.
+    // whose first step queues AVGTimerView.StopTimer(0).
     expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
   });
 
@@ -588,7 +588,7 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("leaves the screen alone when the skip ends the story", async () => {
+  it("runs end-of-story timer and subtitle cleanup when the skip ends the story", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -608,15 +608,43 @@ describe("StoryRuntime", () => {
 
     // mode="skip" makes get_isSkippable() true, so SkipStory takes
     // StopStory("Skipped") and returns before _ResetComponentsOnSkip.
-    // SubtitlePanel is still cleared by the later OnStoryEnd reset.
+    // The later OnStoryEnd reset still clears the timer and subtitle.
     await runtime.skipNode();
 
     expect(runtime.getState()).toBe("finished");
-    expect(renderer.timerClearCalls).toEqual([]);
+    expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
     expect(renderer.stickersClearCalls).toEqual([]);
     expect(renderer.subtitleClearCalls).toEqual([0]);
     expect(renderer.spellStickerClearCount).toBe(0);
     expect(renderer.clearCharacterCutinCalls).toEqual([]);
+  });
+
+  it("cancels the natural end wait when skipping the story", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[skipnode(mode="skip")]', "[timersticker(time=60)]"]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    try {
+      const started = runtime.start();
+      await setImmediate();
+      await renderer.frames.advance(16, 100);
+      expect(runtime.getState()).toBe("waiting_timer");
+      expect(renderer.timerClearCalls).toEqual([]);
+
+      await runtime.skipNode();
+      await started;
+      expect(runtime.getState()).toBe("finished");
+      expect(renderer.timerClearCalls).toEqual([{ durationMs: 0 }]);
+
+      await renderer.frames.advance(200);
+      expect(renderer.timerClearCalls).toHaveLength(1);
+    } finally {
+      runtime.destroy();
+    }
   });
 
   it("settles a pending decision when skipping so the command loop resumes", async () => {
@@ -920,7 +948,9 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
 
     await runtime.advance();
-    await runtime.advance();
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
 
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "next" });
     // The destination sticker shares the id; the stale hide must not land.

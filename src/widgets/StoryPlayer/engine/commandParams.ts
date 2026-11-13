@@ -11,6 +11,9 @@ import type {
  */
 export const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
 
+const INT32_MIN = -2_147_483_648;
+const INT32_MAX = 2_147_483_647;
+
 /** Exact-key parameter lookup (no case folding), as `Command.TryGetParam`. */
 export function exactArg(
   args: StoryCommandArgs,
@@ -52,7 +55,7 @@ export function tryParseInt32(text: string): number | null {
   if (i !== text.length) return null;
 
   const value = negative ? -magnitude : magnitude;
-  if (value < -2_147_483_648 || value > 2_147_483_647) return null;
+  if (value < INT32_MIN || value > INT32_MAX) return null;
   return value;
 }
 
@@ -91,6 +94,18 @@ export function roundHalfToEven(value: number): number {
   if (fraction < 0.5) return floor;
   if (fraction > 0.5) return floor + 1;
   return floor % 2 === 0 ? floor : floor + 1;
+}
+
+/**
+ * Convert.ToInt32 for boxed command values. Returns null on conversion failure.
+ */
+export function tryConvertToInt32(
+  value: StoryCommandValue | undefined,
+): number | null {
+  if (typeof value === "string") return tryParseInt32(value);
+  const integer =
+    typeof value === "number" ? roundHalfToEven(value) : Number(value);
+  return integer >= INT32_MIN && integer <= INT32_MAX ? integer : null;
 }
 
 export function toBoolean(value: unknown, fallback = false): boolean {

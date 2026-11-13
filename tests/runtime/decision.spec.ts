@@ -160,6 +160,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[decision(options="&不可选;可选", values="1;2")]', // line 1
+        '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
@@ -180,7 +181,10 @@ describe("StoryRuntime", () => {
     const warnings: RuntimeWarning[] = [];
     const onWarning = (warning: RuntimeWarning) => warnings.push(warning);
     const runtime = new StoryRuntime(
-      createContext(['[decision(options="1;2;3;4;5", values="1;2;3;4;5")]']),
+      createContext([
+        '[decision(options="1;2;3;4;5", values="1;2;3;4;5")]',
+        '[name="A"]ok',
+      ]),
       new FakeRenderer(),
       new FakeAudio(),
       { onWarning },
@@ -199,7 +203,10 @@ describe("StoryRuntime", () => {
 
     const boundaryWarnings: RuntimeWarning[] = [];
     const boundaryRuntime = new StoryRuntime(
-      createContext(['[decision(options="1;2;3;4", values="1;2;3;4")]']),
+      createContext([
+        '[decision(options="1;2;3;4", values="1;2;3;4")]',
+        '[name="A"]ok',
+      ]),
       new FakeRenderer(),
       new FakeAudio(),
       { onWarning: (warning) => boundaryWarnings.push(warning) },
