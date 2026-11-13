@@ -1,13 +1,24 @@
-import { Container, Sprite, type Texture } from "pixi.js";
+import { Container, Sprite, Texture } from "pixi.js";
 
-import { STORY_HEIGHT, STORY_WIDTH, type CgItemInput } from "../../types";
+import { createExecutionHandle, type ExecutionHandle } from "../../execution";
+import {
+  STORY_HEIGHT,
+  STORY_WIDTH,
+  type CgItemInput,
+  type CgItemShakeInput,
+} from "../../types";
 import { dotweenEaseCurve } from "../core/DotweenEase";
+import { canvasOrderForLayer, sceneCanvasOrder } from "../core/LayerGraph";
+import { buildShakePath, sampleShakePath } from "../core/ShakePath";
+
+import type { TweenRunOptions } from "../core/TweenRunner";
 
 type TextureLoader = (key: string) => Promise<Texture | null>;
 type Tween = (
   durationMs: number,
   update: (progress: number) => void,
   complete?: () => void,
+  options?: TweenRunOptions,
 ) => Promise<void>;
 
 interface CgItemState {
@@ -17,9 +28,10 @@ interface CgItemState {
    * latest hide on a slot may complete it.
    */
   hideEpoch: number;
+  key: string;
   root: Container;
   sessionId: number;
-  sprite: Sprite | null;
+  shake?: ExecutionHandle;
 }
 
 /**
@@ -31,9 +43,12 @@ interface CgItemState {
  * (processors' `BeforeItemDisposed`).
  */
 export interface CgItemLifecycle {
-  disposed: (key: string) => void;
-  registered: (key: string) => void;
+  disposed: (key: string, root: Container) => void;
+  registered: (key: string, root: Container) => void;
 }
+
+// MathUtil.GT and Equals in 2791 (0x1869451F0 / 0x186944A70).
+const epsilon = 0.00001;
 
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
@@ -59,17 +74,19 @@ function rgb(color: { r: number; g: number; b: number }): number {
  *
  * AVGShowItemCgSlot's constructor (2791 @ 0x184243F30) enables layer overrides.
  * _OverrideLayer sets the Canvas order to the CG canvas order plus 10*(layer-1).
- * Pixi zIndex uses the script layer directly to order slots in the CG container.
+ * LayerGraph uses that order across the scene camera's canvases.
  */
 export class CgItemView {
   private readonly states = new Map<string, CgItemState>();
   /**
-   * Clear-all slots still fading out, mapped to their key. Native
+   * Clear-all slots still fading out. Native
    * `_ClearAllItems` empties `m_slotsInUseDict` at once but only disposes
    * each slot at its fade end, so until then the slot stays registered with
    * the PostDisplay processors (focus effects keep applying).
    */
-  private readonly fading = new Map<CgItemState, string>();
+  private readonly fading = new Set<CgItemState>();
+  // _AddItemToDict ignores empty keys. An empty-key blocker is still drawn.
+  private readonly unkeyed = new Set<CgItemState>();
 
   constructor(
     private readonly layer: Container,
@@ -93,45 +110,55 @@ export class CgItemView {
     // command critical path (block=false returns before the bytes arrive) and
     // a `hidecgitem` arriving mid-load still finds the key instead of leaking
     // the sprite.
-    this.dispose(input.key);
+    const { assetKey, key } = input;
+    const oldState = this.states.get(key);
+    if (oldState) this.dispose(oldState);
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
-    root.zIndex = input.layer;
+    root.zIndex = canvasOrderForLayer(sceneCanvasOrder.cgitem, input.layer);
     this.layer.addChild(root);
     const state: CgItemState = {
       hideEpoch: 0,
+      key,
       root,
       sessionId: 1,
-      sprite: null,
     };
-    this.states.set(input.key, state);
-    this.lifecycle?.registered(input.key);
+    if (key) {
+      this.states.set(key, state);
+      this.lifecycle?.registered(key, root);
+    } else {
+      this.unkeyed.add(state);
+    }
     const sessionId = state.sessionId;
 
-    const completion = this.loadTexture(input.assetKey).then((texture) => {
+    const draw = (texture: Texture | null, width: number, height: number) => {
       // The slot was replaced, hidden, or cleared while the texture was in
       // flight: drop the frames instead of resurrecting a destroyed root.
-      if (this.states.get(input.key) !== state) return;
+      if (key && this.states.get(key) !== state) return;
       if (state.sessionId !== sessionId) return;
       if (!texture) {
         // Web adaptation: native would keep an empty registered slot; the
         // frontend undoes the pending registration so a failed load leaves
         // no invisible target behind (the missing asset is already warned).
-        this.onWarning?.(`cgitem asset is missing: ${input.assetKey}`);
-        this.dispose(input.key);
+        this.onWarning?.(`cgitem asset is missing: ${assetKey}`);
+        this.dispose(state);
         return;
       }
 
       const sprite = new Sprite(texture);
-      state.sprite = sprite;
       sprite.anchor.set(0.5);
-      sprite.setSize(texture.width, texture.height);
-      root.addChild(sprite);
+      if (input.width > 0 && input.height > 0) {
+        width = input.width;
+        height = input.height;
+      }
 
-      if (input.width > 0 && input.height > 0)
-        sprite.setSize(input.width, input.height);
+      // Unity sets the Image rect size independently of localScale. Pixi's
+      // Sprite.setSize writes scale, so the image transform owns the tracks.
+      sprite.setSize(width, height);
+      const image = root.addChild(new Container());
+      image.addChild(sprite);
 
-      // `AVGShowItemCgSlot.Show` (2.7.81 0x18405dde0) reads the curve with
+      // `AVGShowItemCgSlot.Show` (2791 @ 0x184242CE0) reads the curve with
       // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`; DOTween's
       // `Ease` enum is `Unset = 0, Linear = 1, InSine = 2, ...`, so this is
       // the same Ease.Linear default/fallback as every other AVG tween
@@ -143,15 +170,15 @@ export class CgItemView {
         durationMs: number,
         update: (progress: number) => void,
       ) => {
-        const totalMs = Math.max(0, delayMs) + Math.max(0, durationMs);
+        const totalMs = delayMs + durationMs;
         runs.push(
           this.tween(totalMs, (raw) => {
             if (state.sessionId !== sessionId) return;
             const elapsed = raw * totalMs;
-            const local =
-              durationMs <= 0
-                ? 1
-                : Math.max(0, Math.min(1, (elapsed - delayMs) / durationMs));
+            const local = Math.max(
+              0,
+              Math.min(1, (elapsed - delayMs) / durationMs),
+            );
             update(ease(local));
           }),
         );
@@ -161,32 +188,32 @@ export class CgItemView {
       // Convert its upward Y to Pixi's downward Y at the rendering boundary.
       const { positionFrom, positionTo } = input;
       if (positionFrom && positionTo) {
-        if (input.positionDurationMs > 0) {
-          sprite.position.set(positionFrom.x, -positionFrom.y);
+        if (input.positionDurationMs > epsilon * 1000) {
+          image.position.set(positionFrom.x, -positionFrom.y);
           run(input.positionDelayMs, input.positionDurationMs, (progress) =>
-            sprite.position.set(
+            image.position.set(
               lerp(positionFrom.x, positionTo.x, progress),
               -lerp(positionFrom.y, positionTo.y, progress),
             ),
           );
         } else {
-          sprite.position.set(positionTo.x, -positionTo.y);
+          image.position.set(positionTo.x, -positionTo.y);
         }
       }
 
-      if (input.scaleFrom !== input.scaleTo) {
-        if (input.scaleDurationMs > 0) {
-          sprite.scale.set(input.scaleFrom);
+      if (Math.abs(input.scaleFrom - input.scaleTo) > epsilon) {
+        if (input.scaleDurationMs > epsilon * 1000) {
+          image.scale.set(input.scaleFrom);
           run(input.scaleDelayMs, input.scaleDurationMs, (progress) =>
-            sprite.scale.set(lerp(input.scaleFrom, input.scaleTo, progress)),
+            image.scale.set(lerp(input.scaleFrom, input.scaleTo, progress)),
           );
         } else {
-          sprite.scale.set(input.scaleTo);
+          image.scale.set(input.scaleTo);
         }
       }
 
       if (input.colorFrom && input.colorTo) {
-        if (input.alphaDurationMs > 0) {
+        if (input.alphaDurationMs > epsilon * 1000) {
           sprite.tint = rgb(input.colorFrom);
           sprite.alpha = input.colorFrom.a;
           run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
@@ -203,8 +230,8 @@ export class CgItemView {
           sprite.tint = rgb(input.colorTo);
           sprite.alpha = input.colorTo.a;
         }
-      } else if (input.alphaFrom !== input.alphaTo) {
-        if (input.alphaDurationMs > 0) {
+      } else if (Math.abs(input.alphaFrom - input.alphaTo) > epsilon) {
+        if (input.alphaDurationMs > epsilon * 1000) {
           sprite.alpha = input.alphaFrom;
           run(input.alphaDelayMs, input.alphaDurationMs, (progress) => {
             sprite.alpha = lerp(input.alphaFrom, input.alphaTo, progress);
@@ -214,24 +241,35 @@ export class CgItemView {
         }
       }
 
-      // Native provenance: `AVGShowItemCgSlot.Show` (not the panel) gates its
-      // whole rotation block on `!MathUtil.GT(rfrom, 0)`, i.e. `rfrom <= 0`, so
-      // the default `rfrom = -1` always takes it and an explicit positive `rfrom`
-      // disables rotation entirely. `Transform.Rotate` is relative while
-      // `DORotate(..., RotateMode.Fast)` targets an absolute angle; a fresh
-      // sprite sits at 0, so `+= rfrom` then tween to `rto` reproduces both.
-      if (input.rotationFrom <= 0) {
-        if (input.rotationDurationMs > 0) {
-          sprite.angle += input.rotationFrom;
+      // AVGShowItemCgSlot.Show uses Unity's upward Y for Rotate and DORotate.
+      // Reflect its Z angle in Pixi. QuaternionPlugin.SetChangeValue
+      // (2791 @ 0x184455A90) takes the shortest arc in RotateMode.Fast.
+      if (input.rotationFrom <= epsilon) {
+        if (input.rotationDurationMs > epsilon * 1000) {
+          const start = -input.rotationFrom;
+          const unityStart = ((input.rotationFrom % 360) + 360) % 360;
+          let delta = ((input.rotationTo % 360) - unityStart) % 360;
+          if (Math.abs(delta) > 180) delta -= 360 * Math.sign(delta);
+          image.angle = start;
           run(0, input.rotationDurationMs, (progress) => {
-            sprite.angle = lerp(input.rotationFrom, input.rotationTo, progress);
+            image.angle = start - delta * progress;
           });
         } else {
-          sprite.angle += input.rotationTo;
+          image.angle = -input.rotationTo;
         }
       }
 
       return Promise.all(runs).then(() => {});
+    };
+
+    // 2791 blocker prefab (806 / Image 4251) is a centered stretch-anchored
+    // sprite_white. _ShowItem calls Show with a null sprite and no callback.
+    if (assetKey === undefined) {
+      void draw(Texture.WHITE, STORY_WIDTH, STORY_HEIGHT);
+      return;
+    }
+    const completion = this.loadTexture(assetKey).then((texture) => {
+      return draw(texture, texture?.width ?? 0, texture?.height ?? 0);
     });
 
     // `block=true` waits for the sprite work AND every track (native awaits
@@ -240,63 +278,92 @@ export class CgItemView {
     else void completion;
   }
 
+  async shake(input: CgItemShakeInput): Promise<void> {
+    const state = this.states.get(input.key);
+    if (!state) {
+      this.onWarning?.(`cgitemshake target not found: ${input.key}`);
+      return;
+    }
+    // DOKill(complete:true) completes a finite shake. DOTween's
+    // TweenManager.Complete (2791 @ 0x184462630) skips infinite loops, so a
+    // replacement starts from their current offset.
+    state.shake?.end("force_end");
+    if (input.durationMs === 0) return;
+
+    const { x: startX, y: startY } = state.root.position;
+    const handle = createExecutionHandle(input.block, (reason) => {
+      state.shake = undefined;
+      if (reason === "complete" || !input.infinite)
+        this.resetShakePosition(state);
+    });
+    state.shake = handle;
+    const isCurrent = () => state.shake === handle;
+    const path = buildShakePath(input.durationMs, {
+      ...input,
+      vectorBased: true,
+    });
+    void this.tween(
+      input.durationMs,
+      (progress) => {
+        if (!isCurrent()) return;
+        const { x, y } = sampleShakePath(path, progress);
+        state.root.position.set(startX + x, startY - y);
+      },
+      () => {
+        if (isCurrent()) handle.end();
+      },
+      { isAlive: isCurrent, loops: input.infinite ? -1 : 1 },
+    );
+    if (handle.blocking) await handle.completion;
+  }
+
+  stopShakes(key?: string): void {
+    if (key) {
+      const state = this.states.get(key);
+      if (state) this.stopShake(state);
+      return;
+    }
+    for (const state of this.states.values()) this.stopShake(state);
+  }
+
+  private stopShake(state: CgItemState): void {
+    state.shake?.end("force_end");
+    this.resetShakePosition(state);
+  }
+
+  private resetShakePosition(state: CgItemState): void {
+    state.root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+  }
+
   async hide(
     key: string | undefined,
     fadeMs: number,
     ease: string,
     block: boolean,
   ): Promise<void> {
-    // Native provenance (2.7.81 `_ExecuteHideCgItem` 0x183fb05e0 /
-    // `_ClearAllItems` 0x183fafbc0): before fading, native unconditionally
-    // runs `_StopShakeByKey(key)` (keyed path) / `_StopAllShakes()` (clear
-    // all) -- DOKill(complete) on the slot ROOT transform plus zeroing its
-    // anchoredPosition/localPosition. Without `cgitemshake` (not ported, 0
-    // corpus uses) that kills nothing, and the root already sits at its
-    // authored origin, so the step is a visual no-op that the port skips;
-    // the show-side pfrom/pto tween lives on the image child, not the root,
-    // and keeps driving during the fade either way. Revisit if/when
-    // cgitemshake is ported.
     if (this.states.size === 0) return;
-    // `AVGShowItemCgSlot.Hide` uses the same `GetEnum<Ease>` resolution
-    // (`(Ease)1` = Ease.Linear default) as Show.
+    // _ClearItemByKey / _ClearAllItems stop root shakes before starting
+    // the fade. Image-child position and scale tracks keep running.
+    this.stopShakes(key);
     const easeCurve = dotweenEaseCurve(ease);
     if (key) {
       const state = this.states.get(key);
-      // Native divergence: with `block=true` and a missing key the native
-      // executor returns true while nobody ever calls `FinishCommand`
-      // (`_ClearItemByKey` returns silently), so the panel stays suspended
-      // until skip/`ForceCommandEnd` rescues it -- a native defect, not
-      // behaviour worth reproducing. The Web port releases immediately.
+      // Web releases a missing-key wait. Native returns block and has
+      // no slot callback to finish that command.
       if (!state) return;
-      // Native provenance: the hide path performs no DOKill -- base
-      // `AVGShowItemSlot.Hide` (2.7.81 0x184060370) only stores the
-      // callback, and the CG slot's `_MakeAnimEndCb` epoch bump merely mutes
-      // the show sequence's OnComplete -- so the show-side sequence keeps
-      // driving position/scale while the fade runs and until the completing
-      // `Dispose` destroys the slot. Do NOT bump `sessionId` here (that
-      // would freeze those writes); only snapshot it so the completion
-      // callback stays inert when a newer `show` has replaced the slot
-      // mid-fade (replacement bumps the id in `dispose`).
-      const sessionAtHide = state.sessionId;
-      // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) starts a fresh DOFade
-      // without killing an earlier one and completes through
-      // `_MakeAnimEndCb` (0x18405ee40), whose callback only fires while its
-      // epoch is still current. A second hide on the same key (or a later
-      // clear-all) therefore mutes this fade's completion: the slot is
-      // disposed when the latest fade ends, not the first.
+      // AVGShowItemCgSlot.Hide (2791 @ 0x184242970) lets earlier fades
+      // keep writing but _MakeAnimEndCb only completes the current hide.
       const hideEpoch = ++state.hideEpoch;
       const startAlpha = state.root.alpha;
       const task = this.tween(
         fadeMs,
         (raw) => {
-          state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
+          if (!state.root.destroyed)
+            state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
         () => {
-          if (
-            state.hideEpoch === hideEpoch &&
-            state.sessionId === sessionAtHide
-          )
-            this.dispose(key);
+          if (state.hideEpoch === hideEpoch && this.states.get(key) === state)
+            this.dispose(state);
         },
       );
       if (block) await task;
@@ -304,14 +371,14 @@ export class CgItemView {
       return;
     }
 
-    const entries = [...this.states.entries()];
+    const entries = [...this.states.values()];
     this.states.clear();
-    for (const [key, state] of entries) {
+    for (const state of entries) {
       // `_ClearAllItems` hides every slot through the same `Hide`, so an
       // in-flight keyed hide loses its completion here as well; otherwise it
       // would `dispose` whatever a later `show` registers under that key.
       state.hideEpoch += 1;
-      this.fading.set(state, key);
+      this.fading.add(state);
       const startAlpha = state.root.alpha;
       void this.tween(
         fadeMs,
@@ -320,22 +387,11 @@ export class CgItemView {
           state.root.alpha = lerp(startAlpha, 0, easeCurve(raw));
         },
         () => {
-          // `clear()` may already have destroyed the slot.
-          if (!this.fading.delete(state)) return;
-          // During the fade show-side writes keep running (native drives the
-          // slots until `Dispose`); once the fade completes, bump the session
-          // to stop writes into the destroyed sprite.
-          state.sessionId += 1;
-          state.root.destroy({ children: true });
-          // Native `BeforeItemDisposed` removes the channel's stored focus
-          // amount by key, which would also strip a newer slot that `show`
-          // registered under the same key mid-fade and orphan it from later
-          // `focusout` writes -- a native defect; keep the newer slot bound.
-          if (!this.states.has(key)) this.lifecycle?.disposed(key);
+          if (this.fading.has(state)) this.dispose(state);
         },
       );
     }
-    // `_ExecuteHideCgItem` completes clear-all immediately even if `block=true`.
+    // _ClearAllItems finishes the command as soon as all fades have started.
   }
 
   /**
@@ -345,32 +401,28 @@ export class CgItemView {
   targets(key: string): Container[] {
     const state = this.states.get(key);
     const roots = state ? [state.root] : [];
-    for (const [fadingState, fadingKey] of this.fading)
-      if (fadingKey === key) roots.push(fadingState.root);
+    for (const state of this.fading)
+      if (state.key === key) roots.push(state.root);
     return roots;
   }
 
   clear(): void {
-    const keys = new Set([...this.states.keys(), ...this.fading.values()]);
-    for (const state of [...this.states.values(), ...this.fading.keys()]) {
-      state.sessionId += 1;
-      state.root.destroy({ children: true });
-    }
-    this.states.clear();
-    this.fading.clear();
-    for (const key of keys) this.lifecycle?.disposed(key);
+    for (const state of this.states.values()) this.dispose(state);
+    for (const state of this.fading) this.dispose(state);
+    for (const state of this.unkeyed) this.dispose(state);
   }
 
   destroy(): void {
     this.clear();
   }
 
-  private dispose(key: string): void {
-    const state = this.states.get(key);
-    if (!state) return;
+  private dispose(state: CgItemState): void {
+    if (this.states.get(state.key) === state) this.states.delete(state.key);
+    this.fading.delete(state);
+    this.unkeyed.delete(state);
+    state.shake?.end("reset");
     state.sessionId += 1;
+    if (state.key) this.lifecycle?.disposed(state.key, state.root);
     state.root.destroy({ children: true });
-    this.states.delete(key);
-    this.lifecycle?.disposed(key);
   }
 }

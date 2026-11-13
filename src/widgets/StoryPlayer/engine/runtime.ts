@@ -457,8 +457,10 @@ export class StoryRuntime {
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
     new CgItemPanel(renderer, {
+      animateRatio: () => this.getCurrentSpeed().animateRatio,
       resolveImageKey: (key) => this.resolveImageKey(key),
-      waitForAnimation: (animation) => this.waitInterruptiblePromise(animation),
+      waitForAnimation: (animation, interrupt) =>
+        this.waitInterruptiblePromise(animation, interrupt),
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
@@ -1213,6 +1215,9 @@ export class StoryRuntime {
     void this.renderer.clearTimerSticker({ durationMs: 0 });
     this.renderer.clearAnimTexts();
     this.renderer.clearAvgDisplays();
+    // AVGCgItemPanel.OnReset (2791 @ 0x1841890F0) disposes the slots at
+    // story end. ShouldResetOnSkip keeps them alive across segment skips.
+    this.renderer.resetCgItems();
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.showItemPanel.reset();

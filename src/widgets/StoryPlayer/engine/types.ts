@@ -323,6 +323,10 @@ export interface CameraShakeInput {
   yStrength: number;
 }
 
+export interface CgItemShakeInput extends Omit<CameraShakeInput, "stop"> {
+  key: string;
+}
+
 export type FocusColorMode = "Colorinverse" | "Grayscale" | "None";
 
 export interface FocusOutInput {
@@ -459,7 +463,8 @@ export interface ShowItemLayout {
 }
 
 export interface CgItemInput {
-  assetKey: string;
+  /** undefined selects the built-in blocker template. */
+  assetKey?: string;
   alphaDelayMs: number;
   alphaDurationMs: number;
   alphaFrom: number;
@@ -740,6 +745,7 @@ export interface StoryRenderer {
     ease?: string,
     block?: boolean,
   ) => Promise<void> | void;
+  resetCgItems: () => void;
   clearAvgDisplays: () => Promise<void> | void;
   clearAnimTexts: () => Promise<void> | void;
   setCameraEffect: (
@@ -831,6 +837,8 @@ export interface StoryRenderer {
   setSubtitle: (text: TypewriterText, layout?: OverlayTextLayout) => void;
   setTimerSticker: (input: TimerStickerInput) => Promise<void> | void;
   shakeCamera: (input: CameraShakeInput) => Promise<void>;
+  shakeCgItem: (input: CgItemShakeInput) => Promise<void>;
+  stopCgItemShakes: (key?: string) => void;
   showDecision: (
     options: string[],
     values: number[],

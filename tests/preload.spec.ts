@@ -372,6 +372,18 @@ describe("preloadContextAssets", () => {
     ]);
   });
 
+  it("only requests textures for CG slots that load a sprite", () => {
+    const context = createContext([
+      '[cgitem(image="visible")]',
+      '[cgitem(image="blocker_key",style="blocker")]',
+      '[cgitemshake(image="shake_key")]',
+      '[hidecgitem(image="hide_key")]',
+    ]);
+    expect(collectContextAssetUrls(context)).toEqual([
+      "https://torappu.prts.wiki/assets/avg/images/visible.png",
+    ]);
+  });
+
   it("preloads avgdisplay bg content as a background asset", async () => {
     const context = createContext([
       '[avgdisplay(id="1",style="bg",name="bg_black",slot="bgover")]',

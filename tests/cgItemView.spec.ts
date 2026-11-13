@@ -1,9 +1,14 @@
 import { Container, Texture, type Sprite } from "pixi.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { LayerGraph } from "../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import { CgItemView } from "../src/widgets/StoryPlayer/engine/rendering/panels/CgItemView";
 
-import type { CgItemInput } from "../src/widgets/StoryPlayer/engine/types";
+import type { TweenRunOptions } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import type {
+  CgItemInput,
+  CgItemShakeInput,
+} from "../src/widgets/StoryPlayer/engine/types";
 
 function input(key: string, overrides: Partial<CgItemInput> = {}): CgItemInput {
   return {
@@ -27,6 +32,24 @@ function input(key: string, overrides: Partial<CgItemInput> = {}): CgItemInput {
     scaleFrom: 1,
     scaleTo: 1,
     width: 0,
+    ...overrides,
+  };
+}
+
+function shakeInput(
+  key: string,
+  overrides: Partial<CgItemShakeInput> = {},
+): CgItemShakeInput {
+  return {
+    block: false,
+    durationMs: 1000,
+    fadeOut: false,
+    infinite: false,
+    key,
+    randomness: 0,
+    vibrato: 2,
+    xStrength: 0,
+    yStrength: 20,
     ...overrides,
   };
 }
@@ -61,6 +84,7 @@ function manualTween() {
 function manualTweenSteps() {
   const steps: Array<{
     complete: () => void;
+    options?: TweenRunOptions;
     resolve: () => void;
     update: (progress: number) => void;
   }> = [];
@@ -68,10 +92,12 @@ function manualTweenSteps() {
     _durationMs: number,
     update: (progress: number) => void,
     complete?: () => void,
+    options?: TweenRunOptions,
   ): Promise<void> =>
     new Promise((resolve) => {
       steps.push({
         complete: complete ?? ((): void => {}),
+        options,
         resolve,
         update,
       });
@@ -136,10 +162,12 @@ describe("CgItemView", () => {
     expect(root.y + sprite.y).toBe(610);
   });
 
-  it("draws higher layer values above lower ones and keeps creation order for ties", async () => {
-    const layer = new Container();
+  it("sorts CGs with the scene canvases while preserving their transform parents", async () => {
+    const stage = new Container();
+    const layers = new LayerGraph();
+    layers.attach(stage);
     const view = new CgItemView(
-      layer,
+      layers.cgItems,
       async () => Texture.WHITE,
       tweenImmediately,
     );
@@ -147,15 +175,180 @@ describe("CgItemView", () => {
     await view.show(input("second", { layer: 3 }));
     await view.show(input("third", { layer: 2 }));
     await view.show(input("default"));
+    await view.show(input("sameAsCutin", { layer: 1 }));
     await view.show(input("last", { layer: 4 }));
 
-    expect(layer.sortableChildren).toBe(true);
-    layer.sortChildren();
-    expect(layer.children.map((child) => child.zIndex)).toEqual([
-      0, 2, 3, 4, 4,
-    ]);
-    expect(layer.getChildIndex(view.targets("first")[0]!)).toBe(3);
-    expect(layer.getChildIndex(view.targets("last")[0]!)).toBe(4);
+    layers.sceneDraw.sortRenderLayerChildren();
+    const order = layers.sceneDraw.renderLayerChildren;
+    const index = (key: string) => order.indexOf(view.targets(key)[0]!);
+    expect(index("default")).toBeLessThan(order.indexOf(layers.cutins));
+    expect(index("sameAsCutin")).toBeGreaterThan(order.indexOf(layers.cutins));
+    expect(index("third")).toBeLessThan(index("second"));
+    expect(index("second")).toBeLessThan(index("first"));
+    expect(index("first")).toBeLessThan(index("last"));
+    layers.scene.position.set(20, 30);
+    expect(layers.cutins.toGlobal({ x: 0, y: 0 })).toMatchObject({
+      x: 20,
+      y: 30,
+    });
+    const last = view.targets("last")[0]!;
+    expect(last.toGlobal({ x: 0, y: 0 })).toMatchObject({ x: 640, y: 360 });
+
+    await view.hide("last", 0, "Linear", true);
+    expect(order).not.toContain(last);
+  });
+
+  it("converts Unity rotation at both ends and takes the shortest Fast arc", async () => {
+    const manual = manualTween();
+    const view = new CgItemView(
+      new Container(),
+      async () => Texture.WHITE,
+      manual.tween,
+    );
+    await view.show(input("static", { rotationFrom: -5, rotationTo: -5 }));
+    expect(view.targets("static")[0]!.children[0]!.angle).toBeCloseTo(5);
+    await view.show(
+      input("moving", {
+        rotationDurationMs: 2000,
+        rotationFrom: -350,
+        rotationTo: -10,
+      }),
+    );
+    const image = view.targets("moving")[0]!.children[0]!;
+    expect(image.angle).toBeCloseTo(350);
+    manual.step(0.5);
+    expect(image.angle).toBeCloseTo(360);
+    manual.step(1);
+    expect(image.angle).toBeCloseTo(370);
+  });
+
+  it("multiplies explicit width and height by the scale track", async () => {
+    const manual = manualTween();
+    const view = new CgItemView(
+      new Container(),
+      async () => Texture.WHITE,
+      manual.tween,
+    );
+    await view.show(
+      input("a", {
+        height: 100,
+        scaleDurationMs: 1000,
+        scaleTo: 2,
+        width: 200,
+      }),
+    );
+    const image = view.targets("a")[0]!.children[0]!;
+    expect([image.width, image.height]).toEqual([200, 100]);
+    manual.step(0.5);
+    expect([image.width, image.height]).toEqual([300, 150]);
+    manual.step(1);
+    expect([image.width, image.height]).toEqual([400, 200]);
+  });
+
+  it("shows the white blocker immediately while its alpha still animates", async () => {
+    const { steps, tween } = manualTweenSteps();
+    const load = vi.fn(async () => Texture.WHITE);
+    const layer = new Container();
+    const view = new CgItemView(layer, load, tween);
+
+    await view.show(
+      input("cover", {
+        alphaDurationMs: 1000,
+        alphaFrom: 0,
+        assetKey: undefined,
+        block: true,
+      }),
+    );
+    const image = view.targets("cover")[0]!.children[0]!;
+    const sprite = image.children[0] as Sprite;
+    expect(load).not.toHaveBeenCalled();
+    expect(sprite.texture).toBe(Texture.WHITE);
+    expect([image.width, image.height]).toEqual([1280, 720]);
+    expect(sprite.alpha).toBe(0);
+    steps[0]!.update(0.5);
+    expect(sprite.alpha).toBe(0.5);
+
+    await view.show(input("", { assetKey: undefined }));
+    expect(view.targets("")).toEqual([]);
+    await view.hide(undefined, 0, "Linear", true);
+    steps[1]!.complete();
+    expect(layer.children).toHaveLength(1);
+    view.clear();
+    expect(layer.children).toHaveLength(0);
+  });
+
+  it("shakes the slot root, replaces its loop and settles it on hide", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.25);
+    const { steps, tween } = manualTweenSteps();
+    const view = new CgItemView(
+      new Container(),
+      async () => Texture.WHITE,
+      tween,
+    );
+    try {
+      await view.show(
+        input("a", {
+          positionFrom: { x: 0, y: 0 },
+          positionTo: { x: 30, y: 20 },
+        }),
+      );
+      const root = view.targets("a")[0]!;
+      const image = root.children[0]!;
+      const first = view.shake(
+        shakeInput("a", { block: true, infinite: true }),
+      );
+      const original = steps[0]!;
+      expect(original.options?.loops).toBe(-1);
+      original.update(0.5);
+      expect(root.y).toBeCloseTo(340);
+      expect(image.position).toMatchObject({ x: 30, y: -20 });
+
+      const second = view.shake(shakeInput("a", { block: true }));
+      await first;
+      expect(original.options?.isAlive?.()).toBe(false);
+      original.complete();
+      expect(steps[1]!.options?.isAlive?.()).toBe(true);
+      steps[1]!.update(0.5);
+      expect(root.y).toBeCloseTo(320);
+
+      await view.hide("a", 100, "Linear", false);
+      await second;
+      expect(root.y).toBe(360);
+      steps[1]!.update(0.5);
+      expect(root.y).toBe(360);
+      expect(view.targets("a")).toEqual([root]);
+      steps[2]!.complete();
+      expect(view.targets("a")).toEqual([]);
+    } finally {
+      random.mockRestore();
+      view.destroy();
+    }
+  });
+
+  it("stops only the requested root or every root before clear-all", async () => {
+    const { steps, tween } = manualTweenSteps();
+    const view = new CgItemView(
+      new Container(),
+      async () => Texture.WHITE,
+      tween,
+    );
+    await view.show(input("a"));
+    await view.show(input("b"));
+    const a = view.targets("a")[0]!;
+    const b = view.targets("b")[0]!;
+    await view.shake(shakeInput("a"));
+    await view.shake(shakeInput("b"));
+    steps[0]!.update(0.5);
+    steps[1]!.update(0.5);
+    view.stopShakes("a");
+    expect(a.position).toMatchObject({ x: 640, y: 360 });
+    expect(steps[0]!.options?.isAlive?.()).toBe(false);
+    expect(steps[1]!.options?.isAlive?.()).toBe(true);
+
+    await view.hide(undefined, 100, "Linear", true);
+    expect(b.position).toMatchObject({ x: 640, y: 360 });
+    expect(steps[1]!.options?.isAlive?.()).toBe(false);
+    view.clear();
   });
 
   it("hides one key, then clears every remaining key", async () => {
@@ -205,8 +398,8 @@ describe("CgItemView", () => {
       );
       await flushMicrotasks();
       manual.step(0.5);
-      const sprite = view.targets("a")[0]!.children[0] as Sprite;
-      expect(sprite.position.x).toBeCloseTo(expected, 5);
+      const image = view.targets("a")[0]!.children[0]!;
+      expect(image.position.x).toBeCloseTo(expected, 5);
     }
   });
 
@@ -332,7 +525,7 @@ describe("CgItemView", () => {
     // block=false returns before the mock loader settles; flush so the
     // sprite exists and the show tween is registered.
     await flushMicrotasks();
-    const sprite = view.targets("a")[0].children[0] as Sprite;
+    const sprite = view.targets("a")[0].children[0]!;
     steps[0].update(0.25);
     expect(sprite.position.x).toBe(25);
 
@@ -427,7 +620,7 @@ describe("CgItemView", () => {
       }),
     );
     await flushMicrotasks();
-    const sprite = view.targets("a")[0].children[0] as Sprite;
+    const sprite = view.targets("a")[0].children[0]!;
     steps[0].update(0.5);
     expect(sprite.position.x).toBe(50);
 
@@ -505,10 +698,9 @@ describe("CgItemView", () => {
 
     fadeB.complete();
     expect(view.targets("b")).toEqual([]);
-    // The newer "a" keeps its channel when the old one finishes fading.
     fadeA.complete();
     expect(view.targets("a")).toHaveLength(1);
     expect(view.targets("a")[0]).not.toBe(oldA);
-    expect(events).toEqual(["registered:a", "disposed:b"]);
+    expect(events).toEqual(["registered:a", "disposed:b", "disposed:a"]);
   });
 });

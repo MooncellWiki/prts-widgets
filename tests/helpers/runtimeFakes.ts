@@ -11,6 +11,7 @@ import type {
   BlockerInput,
   CameraShakeInput,
   CgItemInput,
+  CgItemShakeInput,
   CharacterActionInput,
   CharacterCutinInput,
   CharacterSlotInput,
@@ -68,6 +69,9 @@ export class FakeRenderer implements StoryRenderer {
     key?: string;
   }> = [];
   cgItemCalls: CgItemInput[] = [];
+  cgItemShakeCalls: CgItemShakeInput[] = [];
+  cgItemShakeStops: Array<string | undefined> = [];
+  cgItemResets = 0;
   curtainCalls: CurtainInput[] = [];
   curtainClearCalls: Array<{ block: boolean; fadeMs: number }> = [];
   focusOutCalls: FocusOutInput[] = [];
@@ -179,6 +183,10 @@ export class FakeRenderer implements StoryRenderer {
     block = false,
   ): void {
     this.clearCgItemCalls.push({ block, ease, fadeMs, key });
+  }
+
+  resetCgItems(): void {
+    this.cgItemResets += 1;
   }
 
   clearSticker(id?: string, fadeMs = 0): void {
@@ -397,6 +405,14 @@ export class FakeRenderer implements StoryRenderer {
 
   async shakeCamera(input: CameraShakeInput): Promise<void> {
     this.shakeCalls.push(input);
+  }
+
+  async shakeCgItem(input: CgItemShakeInput): Promise<void> {
+    this.cgItemShakeCalls.push(input);
+  }
+
+  stopCgItemShakes(key?: string): void {
+    this.cgItemShakeStops.push(key);
   }
 
   showDecision(

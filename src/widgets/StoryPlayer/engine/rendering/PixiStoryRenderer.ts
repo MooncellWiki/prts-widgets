@@ -39,6 +39,7 @@ import {
   type BlockerInput,
   type CameraShakeInput,
   type CgItemInput,
+  type CgItemShakeInput,
   type CharacterActionInput,
   type CharacterCutinInput,
   type CharacterSlotInput,
@@ -626,21 +627,18 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
     this.focusEffectPanel = new FocusEffectPanel(
-      (type, id) => this.resolveFocusTargets(type, id),
+      (type) => this.resolveFocusTargets(type),
       (durationMs, update, complete) =>
         this.tween(durationMs, update, complete),
     );
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
       (key) => this.textureForImageKey(key, "image"),
-      (duration, update, complete) => this.tween(duration, update, complete),
+      (...args) => this.tween(...args),
       onWarning,
-      // A cgitem's focus channel is its key (`_GenCfgByType`): registration
-      // replays the stored amount, disposal drops it (see
-      // FocusEffectPanel.refresh / release).
       {
-        disposed: (key) => this.focusEffectPanel.release("cgitem", key),
-        registered: () => this.focusEffectPanel.refresh(),
+        disposed: (key, root) => this.focusEffectPanel.releaseCgItem(key, root),
+        registered: (key, root) => this.focusEffectPanel.bindCgItem(key, root),
       },
     );
   }
@@ -1485,6 +1483,18 @@ export class PixiStoryRenderer implements StoryRenderer {
     block = false,
   ): Promise<void> {
     await this.cgItemView.hide(key, fadeMs, ease, block);
+  }
+
+  resetCgItems(): void {
+    this.cgItemView.clear();
+  }
+
+  shakeCgItem(input: CgItemShakeInput): Promise<void> {
+    return this.cgItemView.shake(input);
+  }
+
+  stopCgItemShakes(key?: string): void {
+    this.cgItemView.stopShakes(key);
   }
 
   /**
@@ -2598,15 +2608,17 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private updateCameraFilter(): void {
+    const sceneCamera = this.layers.sceneCamera;
     if (this.grayscaleAmount === 0 && this.inverseAmount === 0) {
-      this.sceneLayer.filters = [];
+      sceneCamera.filters = [];
       this.grayscaleFilter = null;
       return;
     }
 
     if (!this.grayscaleFilter) this.grayscaleFilter = new ColorMatrixFilter();
 
-    // Native AVGSceneGrayScale blits the scene once with
+    // Native AVGSceneGrayScale blits the scene camera's target, which
+    // contains both SceneCanvas and CgItemCanvas. It uses
     // AVG/[UC]Common/Arts/Materials/mat_grayscale, writing
     // `_Params = (0.299, 0.587, 0.114, grayAmount)` and `_Inverse`. See
     // buildColorEffectMatrix for the shader math and why pixi's
@@ -2615,7 +2627,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.grayscaleAmount,
       this.inverseAmount,
     );
-    this.sceneLayer.filters = [this.grayscaleFilter];
+    sceneCamera.filters = [this.grayscaleFilter];
   }
 
   /**
@@ -2646,7 +2658,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     }
   }
 
-  private resolveFocusTargets(type: string, id: string): Container[] {
+  private resolveFocusTargets(type: string): Container[] {
     switch (type) {
       case "bg": {
         return [this.backgroundLayer];
@@ -2666,10 +2678,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       case "lbg": {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
-      case "cgitem": {
-        return this.cgItemView.targets(id);
-      }
-      // `customchar` and unknown types never get here (hasFocusChannels).
+      // FocusEffectPanel owns the PostDisplay bindings for cgitem.
       default: {
         return [];
       }

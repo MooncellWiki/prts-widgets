@@ -169,6 +169,8 @@ class DecisionFakeRenderer {
 
   clearSubtitle(): void {}
 
+  resetCgItems(): void {}
+
   destroy(): void {}
 }
 

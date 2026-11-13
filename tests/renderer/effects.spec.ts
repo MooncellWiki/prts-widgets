@@ -167,7 +167,7 @@ describe("PixiStoryRenderer", () => {
     // ColorMatrixFilter.grayscale() builds an additive [s,s,s] matrix that
     // clips mid-grays to white around amount 1, so the matrix is composed
     // manually.
-    const matrix = renderer.sceneLayer.filters[0].matrix as number[];
+    const matrix = renderer.layers.sceneCamera.filters[0].matrix as number[];
     expect(matrix.slice(0, 5)).toEqual([0.299, 0.587, 0.114, 0, 0]);
     expect(matrix.slice(5, 10)).toEqual([0.299, 0.587, 0.114, 0, 0]);
     expect(matrix.slice(10, 15)).toEqual([0.299, 0.587, 0.114, 0, 0]);
@@ -182,7 +182,8 @@ describe("PixiStoryRenderer", () => {
     // Native _Inverse lerps each channel toward 1-color in the same blit:
     // rows scale by -1 with offset 1. (normalizeZero turns the -0 produced
     // by 0 * -1 into +0, which toEqual distinguishes.)
-    const inverseMatrix = renderer.sceneLayer.filters[0].matrix as number[];
+    const inverseMatrix = renderer.layers.sceneCamera.filters[0]
+      .matrix as number[];
     expect(normalizeZero(inverseMatrix.slice(0, 5))).toEqual([-1, 0, 0, 0, 1]);
     expect(normalizeZero(inverseMatrix.slice(5, 10))).toEqual([0, -1, 0, 0, 1]);
     expect(normalizeZero(inverseMatrix.slice(10, 15))).toEqual([
@@ -192,7 +193,8 @@ describe("PixiStoryRenderer", () => {
     // With grayscale=1 kept from a previous command, desaturation and
     // inversion compose into one matrix.
     await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
-    const bothMatrix = renderer.sceneLayer.filters[0].matrix as number[];
+    const bothMatrix = renderer.layers.sceneCamera.filters[0]
+      .matrix as number[];
     expect(normalizeZero(bothMatrix.slice(0, 5))).toEqual([
       -0.299, -0.587, -0.114, 0, 1,
     ]);
@@ -308,6 +310,42 @@ describe("PixiStoryRenderer", () => {
     expect(filtersOf("a").length).toBeGreaterThan(0);
     await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
     expect(filtersOf("a")).toHaveLength(0);
+  });
+
+  it("unbinds a replacement's focus channel when the old clear-all fade ends", async () => {
+    const renderer = createFocusRenderer();
+    const command = {
+      block: false,
+      durationMs: 0,
+      id: "a",
+      to: 1,
+      type: "cgitem",
+    };
+    await renderer.showCgItem(focusCgItemInput);
+    const old = renderer.cgItemView.targets("a")[0];
+    await renderer.setFocusOut(command);
+    let finishFade: (() => void) | undefined;
+    renderer.tween.mockImplementationOnce(
+      async (_duration: number, _step: unknown, complete: () => void) => {
+        finishFade = complete;
+      },
+    );
+    await renderer.clearCgItems(undefined, 1000, "Linear", true);
+    await renderer.showCgItem(focusCgItemInput);
+    const current = renderer.cgItemView.targets("a")[0];
+    expect(current).not.toBe(old);
+    expect(current.filters).toHaveLength(1);
+
+    await renderer.setFocusOut({ ...command, to: 0 });
+    expect(current.filters).toHaveLength(0);
+    expect(old.filters).toHaveLength(1);
+    finishFade?.();
+    expect(old.destroyed).toBe(true);
+
+    await renderer.setFocusOut(command);
+    expect(current.filters).toHaveLength(0);
+    await renderer.showCgItem({ ...focusCgItemInput, key: "b" });
+    expect(renderer.cgItemView.targets("b")[0].filters ?? []).toHaveLength(0);
   });
 
   it("draws a curtain as a solid body plus a fixed-width feather strip", async () => {

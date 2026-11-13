@@ -40,6 +40,8 @@ function stateKey(type: string, id: string): string {
  */
 export class FocusEffectPanel {
   private readonly states = new Map<string, FocusState>();
+  private readonly cgItemTargets = new Map<string, Container>();
+  private readonly cgItemAmounts = new Map<Container, number>();
   private readonly filteredTargets = new Set<Container>();
   private config: FocusParamInput = { blur: true, color: "None" };
 
@@ -64,8 +66,7 @@ export class FocusEffectPanel {
     this.states.set(key, state);
 
     if (input.from !== undefined) {
-      state.amount = input.from;
-      this.render();
+      this.writeAmount(state, input.from);
     }
 
     const from = state.amount;
@@ -78,13 +79,11 @@ export class FocusEffectPanel {
         // each channel with `TweenUtils.SmoothStep` (slow at both ends), not
         // linear time.
         const eased = progress * progress * (3 - 2 * progress);
-        state.amount = from + (input.to - from) * eased;
-        this.render();
+        this.writeAmount(state, from + (input.to - from) * eased);
       },
       () => {
         if (state.sessionId !== sessionId) return;
-        state.amount = input.to;
-        this.render();
+        this.writeAmount(state, input.to);
       },
     );
 
@@ -95,6 +94,8 @@ export class FocusEffectPanel {
   destroy(): void {
     for (const state of this.states.values()) state.sessionId += 1;
     this.states.clear();
+    this.cgItemTargets.clear();
+    this.cgItemAmounts.clear();
     for (const target of this.filteredTargets) target.filters = [];
     this.filteredTargets.clear();
   }
@@ -102,39 +103,50 @@ export class FocusEffectPanel {
   /**
    * Native provenance: `AVGSceneFocusOut.TryRegister` + `SetWhenBind.Bind`
    * replay a channel's stored amount the moment a PostDisplay item
-   * registers -- a cgitem displayed after `focusout` already ran picks up
-   * the existing amount immediately. The Web adaptation re-resolves targets
-   * whenever the per-object target set (cgitem panel) changes; layer-backed
-   * types (bg/char/cg/lbg) get this for free because their native handlers
-   * are bound once and kept while the key matches, just as the filter sits
-   * on the layer itself.
+   * registers. SetWhenBind (2791 @ 0x185583670) stores one target per key.
+   * A same-key show during a clear-all fade rebinds subsequent writes to
+   * the new image. Layer-backed types resolve their existing containers.
    */
-  refresh(): void {
+  bindCgItem(id: string, target: Container): void {
+    this.cgItemTargets.set(id, target);
+    this.cgItemAmounts.set(
+      target,
+      this.states.get(stateKey("cgitem", id))?.amount ?? 0,
+    );
     this.render();
   }
 
   /**
    * Native provenance: `PostDisplayItem.Dispose` runs
-   * `AVGSceneFocusOut.BeforeItemDisposed` (2.7.81 0x184004BB0), which
-   * removes the channel's `SetWhenBind` from `m_amounts`. `GetAmount` then
-   * reads 0, and the next item registered on the channel binds a fresh,
-   * never-set entry, so a hidden-then-reshown (or same-key replaced) cgitem
-   * comes back clean. Resetting the amount reproduces both; a tween still
-   * running on the channel keeps writing, as native `TweenAction` ticks
-   * re-create the entry through `SetAmount`.
+   * `AVGSceneFocusOut.BeforeItemDisposed` (2791 @ 0x1841FA3B0). It
+   * removes the channel by id even if a newer image was already bound.
+   * TweenAction can still write a pending amount through SetAmount, which
+   * creates a fresh entry without a target until the next bind.
    */
-  release(type: string, id: string): void {
-    const state = this.states.get(stateKey(type, id));
-    if (!state) return;
-    state.amount = 0;
+  releaseCgItem(id: string, target: Container): void {
+    this.cgItemTargets.delete(id);
+    this.cgItemAmounts.delete(target);
+    const state = this.states.get(stateKey("cgitem", id));
+    if (state) state.amount = 0;
+    this.render();
+  }
+
+  private writeAmount(state: FocusState, amount: number): void {
+    state.amount = amount;
+    if (state.type === "cgitem") {
+      const target = this.cgItemTargets.get(state.id);
+      if (target) this.cgItemAmounts.set(target, amount);
+    }
     this.render();
   }
 
   private render(): void {
-    const amounts = new Map<Container, number>();
+    const amounts = new Map(this.cgItemAmounts);
     for (const state of this.states.values()) {
-      for (const target of this.resolveTargets(state.type, state.id))
+      if (state.type === "cgitem") continue;
+      for (const target of this.resolveTargets(state.type, state.id)) {
         amounts.set(target, Math.max(amounts.get(target) ?? 0, state.amount));
+      }
     }
 
     for (const target of this.filteredTargets) {

@@ -427,6 +427,112 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("dispatches the built-in CG blocker without an image lookup", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(style="blocker",id="Cover",block=true,aduration=5)]',
+        '[hidecgitem(id="Cover")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(renderer.cgItemCalls[0]).toMatchObject({
+      alphaDurationMs: 5000,
+      assetKey: undefined,
+      block: false,
+      key: "_Cover",
+    });
+    expect(renderer.clearCgItemCalls[0]?.key).toBe("_Cover");
+    expect(renderer.lastDialogue.text).toBe("after");
+  });
+
+  it("dispatches keyed CG shakes with scaled duration and explicit stop targets", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image=" CG_Item ",id="Left")]',
+        '[cgitemshake(image=" CG_Item ",id="Left",duration=4,block=true,xstrength=12,ystrength=8,vibrato=2.5,randomness=45,fadeout=true)]',
+        '[cgitemshake(image=" CG_Item ",id="Left")]',
+        '[cgitemshake(image=" CG_Item ",id="Left",stop=true,block=true)]',
+        "[cgitemshake(stop=true)]",
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+    expect(renderer.cgItemShakeCalls).toEqual([
+      {
+        block: true,
+        durationMs: 2000,
+        fadeOut: true,
+        infinite: false,
+        key: " CG_Item _Left",
+        randomness: 45,
+        vibrato: 2,
+        xStrength: 12,
+        yStrength: 8,
+      },
+      {
+        block: false,
+        durationMs: 10_000,
+        fadeOut: false,
+        infinite: true,
+        key: " CG_Item _Left",
+        randomness: 90,
+        vibrato: 10,
+        xStrength: 1,
+        yStrength: 0,
+      },
+    ]);
+    expect(renderer.cgItemShakeStops).toEqual([" CG_Item _Left", undefined]);
+    expect(renderer.lastDialogue.text).toBe("after");
+  });
+
+  it("parses nonempty invalid CG positions and colors with the native fallbacks", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image="a",pfrom="20oops,40",pto="invalid",cfrom="bad",cto="1,0.5,bad,1",width=2.5,height=3.5)]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.cgItemCalls[0]).toMatchObject({
+      colorFrom: { a: 1, b: 1, g: 1, r: 1 },
+      colorTo: { a: 1, b: 0, g: 0.5, r: 1 },
+      height: 4,
+      positionFrom: { x: 0, y: 40 },
+      positionTo: { x: 0, y: 0 },
+      width: 2,
+    });
+  });
+
+  it("disposes CG slots at story end without a hide command", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[cgitem(image="a")]', '[name="A"]last']),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.cgItemResets).toBe(0);
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.cgItemResets).toBe(1);
+    expect(renderer.clearCgItemCalls).toEqual([]);
+  });
+
   it("reads a trailing-dot cgitem alpha as a number, not the fallback", async () => {
     // level_main_15-01_end.txt:742 写的就是 `afrom = 0.`：native 的 Newtonsoft
     // 交给 Double.TryParse(NumberStyles.Float) 读成 0，cg 从透明淡入 3 秒；
