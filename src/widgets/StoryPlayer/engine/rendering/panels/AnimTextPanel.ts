@@ -23,12 +23,10 @@ import {
 } from "../../richtext";
 import { STORY_HEIGHT, STORY_WIDTH, type AnimTextInput } from "../../types";
 
-const ANIMATION_MS = 5000;
+import type { PreparedAnimation } from "../../execution";
+import type { TweenRunner } from "../core/TweenRunner";
 
-interface StampView {
-  root: Container;
-  sessionId: number;
-}
+const ANIMATION_MS = 5000;
 
 function lerpKeyframes(
   time: number,
@@ -234,20 +232,19 @@ export function parseSplitContent(
  * (`_CleanAllTextStamps` on reset / script end).
  */
 export class AnimTextPanel {
-  private readonly stamps: StampView[] = [];
-  private sessionId = 0;
+  private readonly stamps: Container[] = [];
+  private generation = 0;
 
   constructor(
     private readonly layer: Container,
-    private readonly tween: (
-      durationMs: number,
-      update: (progress: number) => void,
-      complete?: () => void,
-    ) => Promise<void>,
+    private readonly tween: TweenRunner["run"],
     private readonly onWarning?: (detail: string) => void,
   ) {}
 
-  async show(input: AnimTextInput): Promise<void> {
+  async show(
+    input: AnimTextInput,
+    onComplete?: () => void,
+  ): Promise<PreparedAnimation> {
     // Native loads any template via
     // `ResourceRouter.GetAVGAnimateTextTemplatePath` (`AVG/AnimateText/{0}`,
     // 2.7.71 VA 0x183f386c0) and LogError+throws when the prefab is missing. This
@@ -255,7 +252,7 @@ export class AnimTextPanel {
     // game data (`group_location_stamp`); other names warn and no-op.
     if (input.name !== "group_location_stamp") {
       this.onWarning?.(`unsupported_visual animtext:${input.name}`);
-      return;
+      return { animation: undefined };
     }
 
     const names = [
@@ -267,6 +264,7 @@ export class AnimTextPanel {
       "icon_start",
       "back_gradient",
     ] as const;
+    const generation = this.generation;
     let textures: Record<(typeof names)[number], Texture>;
     try {
       const loaded = await Promise.all(
@@ -277,8 +275,9 @@ export class AnimTextPanel {
       ) as Record<(typeof names)[number], Texture>;
     } catch {
       this.onWarning?.("missing animtext prefab sprites: group_location_stamp");
-      return;
+      return { animation: undefined };
     }
+    if (generation !== this.generation) return { animation: undefined };
 
     const root = new Container();
     root.position.set(
@@ -352,10 +351,10 @@ export class AnimTextPanel {
 
     root.alpha = 0;
     this.layer.addChild(root);
-    const view = { root, sessionId: ++this.sessionId };
-    this.stamps.push(view);
-    const run = this.tween(ANIMATION_MS, (progress) => {
-      if (!this.stamps.includes(view)) return;
+    this.stamps.push(root);
+    const isAlive = () => !root.destroyed;
+    const update = (progress: number) => {
+      if (!isAlive()) return;
       const time = progress * 5;
       root.alpha = lerpKeyframes(time, [
         [0, 0],
@@ -423,14 +422,18 @@ export class AnimTextPanel {
         );
       }
       shadow.visible = true;
-    });
-    if (input.block) await run;
-    else void run;
+    };
+    const complete = () => {
+      if (isAlive()) onComplete?.();
+    };
+    return {
+      animation: this.tween(ANIMATION_MS, update, complete, { isAlive }),
+    };
   }
 
   clear(): void {
-    this.sessionId += 1;
-    for (const stamp of this.stamps) stamp.root.destroy({ children: true });
+    this.generation += 1;
+    for (const stamp of this.stamps) stamp.destroy({ children: true });
     this.stamps.length = 0;
   }
 

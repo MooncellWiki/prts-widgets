@@ -233,7 +233,6 @@ describe("StoryRuntime", () => {
 
     expect(renderer.animTextCalls).toEqual([
       {
-        block: false,
         content: "<p=1>地点</><p=2>时间</>",
         id: "at1",
         name: "group_location_stamp",
@@ -241,6 +240,59 @@ describe("StoryRuntime", () => {
         style: "avg_both",
       },
     ]);
+  });
+
+  it("expands animtext variables and warns only for an invalid pos", async () => {
+    const renderer = new FakeRenderer();
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[animtext(name="group_location_stamp",pos="bad")]<p=2>{@m}</>',
+        '[animtext(name="group_location_stamp",POS="3,4")]<p=1>地点</>',
+        '[name="A"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    expect(renderer.animTextCalls).toMatchObject([
+      { content: "<p=2>sound_beta_2/avg/m</>", position: { x: 0, y: 0 } },
+      { content: "<p=1>地点</>", position: { x: 0, y: 0 } },
+    ]);
+    expect(onWarning).toHaveBeenCalledExactlyOnceWith({
+      cursor: 1,
+      detail: "animtext pos parse failed: bad",
+      type: "invalid_parameter",
+    });
+  });
+
+  it.each([
+    ["1,,2", { x: 1, y: 2 }, false],
+    [" , -4, ,3.5, 9, ", { x: -4, y: 3.5 }, false],
+    ["", { x: 0, y: 0 }, false],
+    [" , , ", { x: 0, y: 0 }, false],
+    ["1,,", { x: 0, y: 0 }, true],
+    ["1,2,bad", { x: 0, y: 0 }, true],
+  ] as const)("parses animtext pos %j", async (raw, position, warns) => {
+    const renderer = new FakeRenderer();
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext([
+        `[animtext(name="group_location_stamp",pos="${raw}")]<p=1>地点</>`,
+        '[name="A"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    expect(renderer.animTextCalls).toMatchObject([{ position }]);
+    expect(onWarning).toHaveBeenCalledTimes(warns ? 1 : 0);
   });
 
   it("types dialogue <i> spans as zero-width and renders them as italic runs", async () => {

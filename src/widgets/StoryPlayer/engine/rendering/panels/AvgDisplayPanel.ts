@@ -1,11 +1,15 @@
 import { Container, Sprite, type Texture } from "pixi.js";
 
+import { STORY_HEIGHT, STORY_WIDTH, type AvgDisplayInput } from "../../types";
 import { canvasOrderForLayer, sceneCanvasOrder } from "../core/LayerGraph";
+import { Sequence } from "../core/Sequence";
 
-import type { AvgDisplayInput } from "../../types";
+import type { PreparedAnimation } from "../../execution";
+import type { TweenRunner } from "../core/TweenRunner";
 
 interface AvgDisplayState {
   name: string;
+  ready?: Promise<void>;
   root: Container;
   sessionId: number;
   slot: "bgover" | "cgover" | "charover";
@@ -13,11 +17,6 @@ interface AvgDisplayState {
 }
 
 type TextureLoader = (name: string) => Promise<Texture | null>;
-type Tween = (
-  durationMs: number,
-  update: (progress: number) => void,
-  complete?: () => void,
-) => Promise<void>;
 
 /**
  * Port scope: `Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable`.
@@ -30,7 +29,7 @@ export class AvgDisplayPanel {
   constructor(
     private readonly slots: Record<"bgover" | "cgover" | "charover", Container>,
     private readonly loadBackground: TextureLoader,
-    private readonly tween: Tween,
+    private readonly tween: TweenRunner["run"],
     private readonly onWarning?: (detail: string) => void,
   ) {}
 
@@ -44,10 +43,13 @@ export class AvgDisplayPanel {
     this.clear();
   }
 
-  async display(input: AvgDisplayInput): Promise<void> {
+  async display(
+    input: AvgDisplayInput,
+    onComplete?: () => void,
+  ): Promise<PreparedAnimation> {
     if (!input.name) {
       this.remove(input.id);
-      return;
+      return { animation: undefined };
     }
 
     const { slot } = input;
@@ -55,38 +57,41 @@ export class AvgDisplayPanel {
       this.onWarning?.(
         `invalid_parameter avgdisplay slot:${input.slot || "(empty)"}`,
       );
-      return;
+      return { animation: undefined };
     }
     const parent = this.slots[slot];
 
     let state = this.states.get(input.id);
-    // _DisplayInternal (2.7.81 VA 0x183F9A5F0) disposes and regenerates the
-    // id's holder when the parsed slot/type enums differ. The runtime already
-    // canonicalizes both through resolveAvgDisplayStyle/Slot (GenTypeFromRaw /
-    // GenSlotFromRaw), so string equality here is that enum comparison.
+    // _DisplayInternal (2791 @ 0x18418E090) regenerates a holder when the
+    // parsed slot/type enums differ. DisplayableExecutor canonicalizes both.
     if (state && (state.slot !== input.slot || state.style !== input.style)) {
       this.remove(input.id);
       state = undefined;
     }
 
     if (!state) {
+      const root = new Container();
+      // AVGDisplayableImageHolder.GenerateContent (2791 @ 0x18424EA50) sets
+      // sorting when the holder gets its content and uses the prefab layout.
+      root.zIndex = canvasOrderForLayer(sceneCanvasOrder[slot], input.layer);
+      if (input.style === "bg")
+        root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
       state = {
         name: "",
-        root: new Container(),
+        root,
         sessionId: 0,
         slot,
         style: input.style,
       };
-      parent.addChild(state.root);
+      parent.addChild(root);
       this.states.set(input.id, state);
     }
-    // ImageHolder.Display uses the slot canvas' global sorting order.
-    state.root.zIndex = canvasOrderForLayer(
-      sceneCanvasOrder[slot],
-      input.layer,
-    );
 
-    if (state.name !== input.name) {
+    const holder = state;
+    const { root } = holder;
+    const sessionId = ++holder.sessionId;
+    const isAlive = () => !root.destroyed && holder.sessionId === sessionId;
+    if (holder.name !== input.name) {
       // Divergence (intentional, verified 2.7.61 and 2.7.81): native
       // _LoadContentIfNeed (2.7.81 VA 0x183F9A040, inlined into Display at
       // 0x183F97E20) compares the holder's GameObject name -- NOT the command
@@ -97,13 +102,21 @@ export class AvgDisplayPanel {
       // intent; no production story re-names a live id without an intervening
       // destroy (`[avgdisplay(id="1")]`), so this divergence is
       // corpus-unreachable.
-      for (const child of state.root.removeChildren()) child.destroy();
-      state.name = input.name;
-      await this.generateContent(state, input);
+      for (const child of root.removeChildren()) child.destroy();
+      holder.name = input.name;
+      // Only the latest request for this holder may install its content.
+      const ready = this.loadContent(input).then((texture) => {
+        if (!texture || root.destroyed || holder.ready !== ready) return;
+        const sprite = root.addChild(new Sprite(texture));
+        sprite.anchor.set(0.5);
+        sprite.setSize(STORY_WIDTH, STORY_HEIGHT);
+      });
+      holder.ready = ready;
     }
+    if (holder.ready) await holder.ready;
+    if (!isAlive()) return { animation: undefined };
+    holder.ready = undefined;
 
-    const sessionId = ++state.sessionId;
-    const root = state.root;
     const currentX = root.position.x - 640;
     const currentY = 360 - root.position.y;
     const startX = input.xFrom ?? input.x ?? currentX;
@@ -136,70 +149,61 @@ export class AvgDisplayPanel {
       input.style === "animekv" &&
       (input.entryFrom !== undefined || input.entryTo !== undefined);
 
-    if (supportsPosition) root.position.set(640 + startX, 360 - startY);
-    if (supportsScale) root.scale.set(startScaleX, startScaleY);
     if (
       input.style === "effect" ||
       input.style === "bgeffect" ||
       input.style === "character"
     )
       root.rotation = (input.rotationZ * Math.PI) / 180;
-    if (fadeActive) root.alpha = input.alphaFrom ?? 1;
-
-    const hasPositionTween =
-      supportsPosition && (startX !== endX || startY !== endY);
-    const hasScaleTween =
-      supportsScale && (startScaleX !== endScaleX || startScaleY !== endScaleY);
-    const alphaTo = input.alphaTo ?? 0;
-    const hasFadeTween = fadeActive && root.alpha !== alphaTo;
-    const hasTween =
-      input.durationMs > 0 &&
-      (hasPositionTween || hasScaleTween || hasFadeTween || hasEntry);
-
-    const apply = (progress: number) => {
-      if (state?.sessionId !== sessionId) return;
-      if (supportsPosition)
+    // AVGDisplayableHolder.Display (2791 @ 0x18418B810) joins all feature
+    // tweens and returns no sequence when every feature applies immediately.
+    const { durationMs } = input;
+    let sequence: Sequence | undefined;
+    const applyFeature = (
+      changes: boolean,
+      update: (progress: number) => void,
+    ) => {
+      if (durationMs > 0 && changes) {
+        update(0);
+        (sequence ??= new Sequence(this.tween)).join({ durationMs, update });
+      } else update(1);
+    };
+    if (supportsPosition) {
+      applyFeature(startX !== endX || startY !== endY, (progress) =>
         root.position.set(
           640 + startX + (endX - startX) * progress,
           360 - (startY + (endY - startY) * progress),
-        );
-      if (supportsScale)
-        root.scale.set(
-          startScaleX + (endScaleX - startScaleX) * progress,
-          startScaleY + (endScaleY - startScaleY) * progress,
-        );
-      if (fadeActive)
-        root.alpha =
-          (input.alphaFrom ?? 1) +
-          (alphaTo - (input.alphaFrom ?? 1)) * progress;
-    };
-
-    if (!hasTween) {
-      apply(1);
-      return;
+        ),
+      );
     }
-    const run = this.tween(input.durationMs, apply);
-    if (input.block) await run;
-    else void run;
+    if (supportsScale) {
+      applyFeature(
+        startScaleX !== endScaleX || startScaleY !== endScaleY,
+        (progress) =>
+          root.scale.set(
+            startScaleX + (endScaleX - startScaleX) * progress,
+            startScaleY + (endScaleY - startScaleY) * progress,
+          ),
+      );
+    }
+    if (fadeActive) {
+      const from = input.alphaFrom ?? 1;
+      const to = input.alphaTo ?? 0;
+      applyFeature(from !== to, (progress) => {
+        root.alpha = from + (to - from) * progress;
+      });
+    }
+    // The Web keeps the scripted timing for the unsupported animekv clip.
+    if (hasEntry) applyFeature(true, () => {});
+    return { animation: sequence?.play({ isAlive, onComplete }) };
   }
 
-  private async generateContent(
-    state: AvgDisplayState,
-    input: AvgDisplayInput,
-  ): Promise<void> {
-    if (input.style === "bg") {
-      const texture = await this.loadBackground(input.name);
-      if (!texture) return;
-      const sprite = new Sprite(texture);
-      sprite.anchor.set(0.5);
-      sprite.width = 1280;
-      sprite.height = 720;
-      state.root.addChild(sprite);
-      return;
-    }
+  private async loadContent(input: AvgDisplayInput): Promise<Texture | null> {
+    if (input.style === "bg") return this.loadBackground(input.name);
     this.onWarning?.(
       `unsupported_visual avgdisplay:${input.style}:${input.name}`,
     );
+    return null;
   }
 
   private remove(id: string): void {

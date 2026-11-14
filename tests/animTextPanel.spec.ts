@@ -19,7 +19,6 @@ vi.mock("pixi.js", async (importOriginal) => ({
 
 function input(overrides: Partial<AnimTextInput> = {}): AnimTextInput {
   return {
-    block: false,
     content: "",
     id: "at1",
     name: "group_location_stamp",
@@ -29,7 +28,7 @@ function input(overrides: Partial<AnimTextInput> = {}): AnimTextInput {
   };
 }
 
-// tween 永不完成即可:block=false 时 show() 不等动画,文本属性可当场断言。
+// show() resolves after loading the view even with an unfinished tween.
 const pendingTween = () => new Promise<void>(() => {});
 
 function collectTexts(container: Container): Text[] {
@@ -57,6 +56,31 @@ async function stampTexts(
 describe("AnimTextPanel", () => {
   beforeEach(() => {
     loadMock.mockClear();
+  });
+
+  it("returns the stamp animation separately from loading its sprites", async () => {
+    const layer = new Container();
+    const running = Promise.withResolvers<void>();
+    const tween = vi.fn(
+      (
+        _durationMs: number,
+        _step: (progress: number) => void,
+        _complete?: () => void,
+      ) => running.promise,
+    );
+    const panel = new AnimTextPanel(layer, tween);
+    const onComplete = vi.fn();
+    const { animation } = await panel.show(input(), onComplete);
+
+    expect(layer.children).toHaveLength(1);
+    expect(animation).toBe(running.promise);
+    expect(onComplete).not.toHaveBeenCalled();
+    const [, , complete] = tween.mock.calls[0]!;
+    complete?.();
+    running.resolve();
+    await animation;
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    panel.destroy();
   });
 
   it("fills slot i from <p=i+1> by index, so a <p=2>-only stamp lands in the sub slot", async () => {
