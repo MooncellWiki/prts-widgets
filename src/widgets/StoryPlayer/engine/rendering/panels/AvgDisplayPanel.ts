@@ -71,8 +71,9 @@ export class AvgDisplayPanel {
 
     if (!state) {
       const root = new Container();
-      // AVGDisplayableImageHolder.GenerateContent (2791 @ 0x18424EA50)
-      // leaves layout to the prefab. Center the Web holder's anchored sprite.
+      // AVGDisplayableImageHolder.GenerateContent (2791 @ 0x18424EA50) sets
+      // sorting when the holder gets its content and uses the prefab layout.
+      root.zIndex = canvasOrderForLayer(sceneCanvasOrder[slot], input.layer);
       if (input.style === "bg")
         root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
       state = {
@@ -85,11 +86,6 @@ export class AvgDisplayPanel {
       parent.addChild(root);
       this.states.set(input.id, state);
     }
-    // ImageHolder.Display uses the slot canvas' global sorting order.
-    state.root.zIndex = canvasOrderForLayer(
-      sceneCanvasOrder[slot],
-      input.layer,
-    );
 
     const holder = state;
     const { root } = holder;

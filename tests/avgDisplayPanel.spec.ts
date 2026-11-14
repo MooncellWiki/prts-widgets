@@ -163,6 +163,25 @@ describe("AvgDisplayPanel", () => {
     expect(root.position.x).toBe(640 + 30);
   });
 
+  it("keeps the original layer when reusing a bg holder", async () => {
+    const { panel, slots } = makePanel();
+    const bg = input({ slot: "cgover" });
+    const overlay = slots.cgover!;
+
+    await panel.display(bg);
+    const holder = overlay.children[0]!;
+    expect(holder.zIndex).toBe(131);
+
+    await panel.display({ ...bg, layer: 6 });
+    expect(overlay.children[0]).toBe(holder);
+    expect(holder.zIndex).toBe(131);
+
+    await panel.display({ ...bg, name: "" });
+    await panel.display({ ...bg, layer: 6 });
+    expect(holder.destroyed).toBe(true);
+    expect(overlay.children[0]!.zIndex).toBe(181);
+  });
+
   // Native port: _DisplayInternal (2.7.81 VA 0x183F9A5F0) keeps the id's
   // holder while the parsed slot/type enums match and rebuilds it otherwise.
   // Spelling variants ("5", " +05", "bg") are folded by the runtime before
