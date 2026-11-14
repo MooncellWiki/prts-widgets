@@ -5,7 +5,7 @@ import {
   Container,
   type Graphics,
   NineSliceSprite,
-  type Sprite,
+  Sprite,
   Texture,
   TextureSource,
   Ticker,
@@ -27,6 +27,7 @@ import {
 
 import type { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import type { CutinCharacterArt } from "../../src/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
 import type { StoryShowItemSlot } from "../../src/widgets/StoryPlayer/engine/types";
 
 interface ManualTween {
@@ -977,6 +978,120 @@ describe("Displayable and focus frame order", () => {
       await started;
     }
   });
+
+  it.each([
+    [
+      "blocking character cut-in",
+      [
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0.032,block=true)]',
+      ],
+      [0, 1],
+    ],
+    [
+      "zero-duration character cut-in",
+      ['[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0,block=true)]'],
+      [1, 1],
+    ],
+    [
+      "parallel interlude position and alpha tweens",
+      [
+        '[interlude(channel=3,maskid="group_interclude_square_common")]',
+        '[interlude(channel=3,type=2,name="bg_test",pfrom="0,0",pto="10,0",duration=0.032,aduration=0.016,block=true)]',
+      ],
+      [0, 1],
+    ],
+  ])(
+    "draws the next command in the completion frame of %s",
+    async (_, commands, expected) => {
+      const draws: number[] = [];
+      const { app, destroy, runtime } = await createRenderedPlayback(
+        [...commands, '[cgitem(image="after")]', '[name="A"]ok'],
+        ({ cgItems }) => draws.push(cgItems.children.length),
+      );
+      const started = runtime.start();
+      try {
+        expect(runtime.getDisplayedLineIndex()).toBeNull();
+        app.ticker.update(16);
+        app.ticker.update(32);
+        expect(draws).toEqual(expected);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it.each([
+    {
+      old: '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=1,block=true)]',
+      replacement:
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0,block=false)]',
+      textureMethod: "textureForCutinCharacter",
+    },
+    {
+      old: '[interlude(channel=3,type=3,name="avg_npc_1",maskid="interlude_dialog_left",block=true)]',
+      replacement:
+        '[interlude(channel=3,type=3,name="avg_npc_1",maskid="interlude_dialog_left",block=false)]',
+      textureMethod: "textureForInterlude",
+    },
+  ])(
+    "can skip an uncached $textureMethod and reuse the same slot after the jump",
+    async ({ old, replacement, textureMethod }) => {
+      const draws: Array<[number, number]> = [];
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          old,
+          "[SkipToThis]",
+          replacement,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        ({ cutins, cgItems }) =>
+          draws.push([cutins.children.length, cgItems.children.length]),
+      );
+      const pending = Promise.withResolvers<Texture | CutinCharacterArt>();
+      const texture = new Texture({ label: "late art" });
+      const hasLateArt = (node: Container): boolean =>
+        (node instanceof Sprite && node.texture === texture) ||
+        node.children.some(hasLateArt);
+      const lateArt =
+        textureMethod === "textureForCutinCharacter"
+          ? { offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1, texture }
+          : texture;
+      const load = vi
+        .spyOn(renderer, textureMethod)
+        .mockReturnValueOnce(pending.promise);
+      const started = runtime.start();
+      const [oldRoot] = renderer.layers.cutins.children;
+      let skipping: Promise<void> | undefined;
+      try {
+        expect(oldRoot.destroyed).toBe(false);
+        skipping = runtime.skipNode();
+        expect(oldRoot.destroyed).toBe(true);
+        await flushAsync();
+        app.ticker.update(16);
+        await skipping;
+        expect(load).toHaveBeenCalledTimes(2);
+        expect(draws).toEqual([[1, 1]]);
+        const [replacementRoot] = renderer.layers.cutins.children;
+
+        pending.resolve(lateArt);
+        await flushAsync();
+        app.ticker.update(32);
+        expect(renderer.layers.cutins.children).toEqual([replacementRoot]);
+        expect(hasLateArt(replacementRoot)).toBe(false);
+        expect(draws).toEqual([
+          [1, 1],
+          [1, 1],
+        ]);
+      } finally {
+        pending.resolve(lateArt);
+        load.mockRestore();
+        destroy();
+        await Promise.all([started, skipping]);
+      }
+    },
+  );
 
   it("continues from a media event on the update after frame end", async () => {
     const draws: number[] = [];

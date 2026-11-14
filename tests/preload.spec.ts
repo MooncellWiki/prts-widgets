@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DIALOG_FRAME_URL,
+  INTERLUDE_ASSETS,
   SHOWITEM_PHOTO_FRAME_URL,
   STAMP_ASSETS,
 } from "../src/widgets/StoryPlayer/assets";
@@ -182,6 +183,28 @@ describe("preloadContextAssets", () => {
     );
     expect(loadMock.mock.calls[0]![0]).toEqual(
       expect.not.arrayContaining([SHOWITEM_PHOTO_FRAME_URL]),
+    );
+  });
+
+  it("preloads cut-in art and keeps bundled interlude textures out of the asset list", async () => {
+    const context = createContext([
+      '[charactercutin(widgetID="1",name="avg_npc_180#3")]',
+      '[interlude(channel=1,maskid="ui_cutin_mask_horizon")]',
+      '[interlude(channel=1,type=2,name="bg_rhodes_day")]',
+    ]);
+    const storyUrls = [
+      "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+      "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
+    ];
+    const manifest = collectContextAssetUrls(context);
+    expect(manifest.toSorted()).toEqual(storyUrls.toSorted());
+
+    await preloadContextAssets(context);
+    expect(loadMock.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([
+        ...storyUrls,
+        ...Object.values(INTERLUDE_ASSETS),
+      ]),
     );
   });
 

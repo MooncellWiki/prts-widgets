@@ -1,4 +1,9 @@
 import {
+  ExecutorComponent,
+  type ExecutorResult,
+  type PanelExecutors,
+} from "../ExecutorComponent";
+import {
   exactArg,
   parseVector2,
   toBoolean,
@@ -8,7 +13,6 @@ import {
 } from "../commandParams";
 
 import type { CharacterRefResolution } from "../characterRef";
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
   InterludeElementType,
   InterludeInput,
@@ -34,7 +38,7 @@ function parseInterludeType(value: unknown): InterludeElementType {
 }
 
 /** Native port: Torappu.AVG.AVGCharacterCutinPanel (2791 GetExecutors @ 0x18419E7E0). */
-export class CharacterCutinPanel {
+export class CharacterCutinPanel extends ExecutorComponent {
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
@@ -44,24 +48,32 @@ export class CharacterCutinPanel {
       | "setInterlude"
     >,
     private readonly playback: CharacterCutinPlayback,
-  ) {}
-
-  register(registry: CommandRegistry<CommandResult>): void {
-    registry.register("charactercutin", (line) =>
-      this.executeCharacterCutin(line),
-    );
-    registry.register("interlude", (line) => this.executeInterlude(line));
+  ) {
+    super();
   }
 
-  /** AVGCharacterCutinPanel.ShouldResetOnSkip (2791 @ 0x18419EB20). */
-  async resetOnSkip(isDestroyed: () => boolean): Promise<void> {
-    await this.renderer.clearInterludes();
-    if (!isDestroyed()) await this.renderer.clearCharacterCutin();
+  protected getExecutors(): PanelExecutors {
+    return {
+      charactercutin: (line, isCurrent) =>
+        this.executeCharacterCutin(line, isCurrent),
+      interlude: (line, isCurrent) => this.executeInterlude(line, isCurrent),
+    };
   }
 
-  private async executeCharacterCutin(
+  /**
+   * OnReset (2791 @ 0x18419E970) recycles the slots before resetting
+   * CutinController. ShouldResetOnSkip opts the panel into segment jumps.
+   * ForceCommandEnd (0x18419E780) leaves the view cleanup to OnReset.
+   */
+  reset(): void {
+    this.renderer.clearCharacterCutin();
+    this.renderer.clearInterludes();
+  }
+
+  private executeCharacterCutin(
     line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+    isCurrent?: () => boolean,
+  ): ExecutorResult {
     const { args } = line;
     const widgetId = toString(args.widgetID);
     if (!widgetId) {
@@ -112,7 +124,7 @@ export class CharacterCutinPanel {
     // AVGCharacterCutinSlot.Show/SlotUpdate read the case-sensitive layout
     // keys verbatim. Preserve omitted values so Show can use the prefab
     // defaults and SlotUpdate can hold the slot's current values.
-    await this.renderer.setCharacterCutin({
+    const input = {
       block,
       characterKey: resolved?.base,
       characterMissing: Boolean(nameRef) && !resolved,
@@ -128,13 +140,18 @@ export class CharacterCutinPanel {
       widgetId,
       width: toOptionalNumber(args.width),
       zoom: toOptionalNumber(args.zoom),
-    });
-    return "continue";
+    };
+    const animation = this.renderer.setCharacterCutin(
+      input,
+      block ? () => this.finishIfCurrent(isCurrent) : undefined,
+    );
+    return animation ? { animation, block: true } : "continue";
   }
 
-  private async executeInterlude(
+  private executeInterlude(
     line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+    isCurrent?: () => boolean,
+  ): ExecutorResult {
     // _ExecuteInterlude and _GenCutinParamWithCommand (2791 @ 0x18419F250 /
     // 0x18419F4E0). Validation uses channel default 0. CutinParam uses -1.
     // _EnsureDialogExtra supplies icharpos and icharscale to the dialog template.
@@ -172,13 +189,14 @@ export class CharacterCutinPanel {
     const duration = (key: string): number =>
       Math.round(this.playback.calculateFadeMs(exactArg(args, key), 0));
 
-    await this.renderer.setInterlude({
+    const block = toBoolean(exactArg(args, "block"), false);
+    const input = {
       alphaDurationMs: duration("aduration"),
       alphaFrom: toNumber(exactArg(args, "afrom"), -1),
       alphaTo: toNumber(exactArg(args, "ato"), -1),
       avatarCharacterKey: resolvedAvatar?.base,
       avatarExpression: resolvedAvatar?.expression,
-      block: toBoolean(exactArg(args, "block"), false),
+      block,
       channel,
       charName: toString(exactArg(args, "char")),
       clear: toBoolean(exactArg(args, "clear"), false),
@@ -209,7 +227,17 @@ export class CharacterCutinPanel {
         y: 0,
       },
       type,
-    } satisfies InterludeInput);
-    return "continue";
+    } satisfies InterludeInput;
+    const animation = this.renderer.setInterlude(
+      input,
+      block ? () => this.finishIfCurrent(isCurrent) : undefined,
+    );
+    return animation ? { animation, block: true } : "continue";
+  }
+
+  private finishIfCurrent(isCurrent?: () => boolean): void {
+    // Clear-all can finish more than one channel. Native FinishCommand uses
+    // the active command in the same playback generation.
+    if (isCurrent?.() !== false) this.finishCommand();
   }
 }

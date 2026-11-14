@@ -117,7 +117,7 @@ describe("CharacterCutinPanel", () => {
     const loadTexture = vi.fn().mockResolvedValue(tex);
     const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
 
-    await panel.run(input({ offsetX: -300, offsetY: 40 }));
+    await panel.run(input({ offsetX: -300, offsetY: 40 }))?.completion;
 
     expect(layer.children).toHaveLength(1);
     const root = layer.children[0]!;
@@ -162,7 +162,7 @@ describe("CharacterCutinPanel", () => {
         povY: 30,
         zoom: 2,
       }),
-    );
+    )?.completion;
 
     const state = slots(panel).get("1")!;
     // _zoomAndPovRectTransform: localScale = zoom, anchoredPosition =
@@ -192,7 +192,7 @@ describe("CharacterCutinPanel", () => {
       instantTween,
     );
 
-    await panel.run(input({ offsetX: -300, width: 200 }));
+    await panel.run(input({ offsetX: -300, width: 200 }))?.completion;
 
     const state = slots(panel).get("1")!;
     const sprite = state.chars[0].sprite;
@@ -210,7 +210,7 @@ describe("CharacterCutinPanel", () => {
       instantTween,
     );
 
-    await panel.run(input({}));
+    await panel.run(input({}))?.completion;
 
     const state = slots(panel).get("1")!;
     // _defualtBackground: under the mask (clipped), below the zoomAndPov
@@ -249,7 +249,7 @@ describe("CharacterCutinPanel", () => {
         fadeMs: 100,
         fadeStyle: "horiz_expand_left2right",
       }),
-    );
+    )?.completion;
     drive(0, 0.5);
 
     const state = slots(panel).get("1")!;
@@ -281,7 +281,7 @@ describe("CharacterCutinPanel", () => {
         fadeStyle: "horiz_expand_left2right",
         offsetX: -300,
       }),
-    );
+    )?.completion;
     first.drive(0, 1);
 
     const second = captureTween();
@@ -294,7 +294,7 @@ describe("CharacterCutinPanel", () => {
         offsetX: 300,
         width: 300,
       }),
-    );
+    )?.completion;
     second.drive(0, 0.5);
 
     const state = slots(panel).get("1")!;
@@ -330,8 +330,8 @@ describe("CharacterCutinPanel", () => {
       width: 200,
     });
 
-    await panel.run(line);
-    await panel.run({ ...line });
+    await panel.run(line)?.completion;
+    await panel.run({ ...line })?.completion;
 
     const state = slots(panel).get("1")!;
     expect(state.chars).toHaveLength(1);
@@ -348,7 +348,8 @@ describe("CharacterCutinPanel", () => {
       instantTween,
     );
 
-    await panel.run(input({ offsetX: -300, povX: -50, width: 400, zoom: 1.5 }));
+    await panel.run(input({ offsetX: -300, povX: -50, width: 400, zoom: 1.5 }))
+      ?.completion;
     // Native reads every layout key with the live transform as its default
     // (`GetInt(param, "width", (int)sizeDelta.x)` etc.), so a name-only
     // update must not animate the slot back to the prefab defaults.
@@ -360,7 +361,7 @@ describe("CharacterCutinPanel", () => {
         width: undefined,
         zoom: undefined,
       }),
-    );
+    )?.completion;
 
     const state = slots(panel).get("1")!;
     expect(state.root.x).toBe(340);
@@ -383,7 +384,7 @@ describe("CharacterCutinPanel", () => {
     expect(state.maskSize).toEqual({ h: 720, w: 0 });
 
     release(art(120, 300));
-    await pending;
+    await pending?.completion;
     expect(state.maskSize).toEqual({ h: 720, w: 200 });
   });
 
@@ -397,7 +398,7 @@ describe("CharacterCutinPanel", () => {
     expect(state.root.alpha).toBe(0);
 
     release(art(120, 300));
-    await pending;
+    await pending?.completion;
     expect(state.root.alpha).toBe(1);
   });
 
@@ -414,12 +415,13 @@ describe("CharacterCutinPanel", () => {
       active(d, u, c),
     );
 
-    await panel.run(input({ block: false, fadeMs: 100 }));
+    await panel.run(input({ block: false, fadeMs: 100 }))?.completion;
     first.drive(0, 1);
 
     const second = captureTween();
     active = second.tween;
-    await panel.run(input({ block: false, expression: "2$2", fadeMs: 100 }));
+    await panel.run(input({ block: false, expression: "2$2", fadeMs: 100 }))
+      ?.completion;
     second.drive(0, 0.5);
 
     const state = slots(panel).get("1")!;
@@ -448,7 +450,7 @@ describe("CharacterCutinPanel", () => {
         fadeMs: 100,
         fadeStyle: "horiz_expand_right2left",
       }),
-    );
+    )?.completion;
     drive(0, 1);
     expect(slots(panel).size).toBe(1);
 
@@ -460,7 +462,7 @@ describe("CharacterCutinPanel", () => {
         fadeMs: 100,
         fadeStyle: undefined,
       }),
-    );
+    )?.completion;
     drive(1, 0.5);
 
     const state = slots(panel).get("1")!;
@@ -482,7 +484,7 @@ describe("CharacterCutinPanel", () => {
       tween,
     );
 
-    await panel.run(input({ block: false, fadeMs: 100 }));
+    await panel.run(input({ block: false, fadeMs: 100 }))?.completion;
     drive(0, 1);
 
     await panel.run(
@@ -492,7 +494,7 @@ describe("CharacterCutinPanel", () => {
         expression: undefined,
         fadeMs: 100,
       }),
-    );
+    )?.completion;
     drive(1, 0.5);
 
     const state = slots(panel).get("1")!;
@@ -518,7 +520,7 @@ describe("CharacterCutinPanel", () => {
         expression: undefined,
         fadeMs: 250,
       }),
-    );
+    )?.completion;
 
     // One tween, for the full fadetime.
     expect(tweenSpy.mock.calls.map(([durationMs]) => durationMs)).toEqual([
@@ -542,8 +544,8 @@ describe("CharacterCutinPanel", () => {
       instantTween,
     );
 
-    await panel.run(input({ widgetId: "1" }));
-    await panel.run(input({ widgetId: "2" }));
+    await panel.run(input({ widgetId: "1" }))?.completion;
+    await panel.run(input({ widgetId: "2" }))?.completion;
     panel.clear("1");
     expect(slots(panel).has("1")).toBe(false);
     expect(slots(panel).has("2")).toBe(true);

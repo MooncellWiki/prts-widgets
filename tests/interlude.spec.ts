@@ -27,7 +27,7 @@ vi.mock(
       dialogFrame: white(),
       gradientV: white(),
     };
-    return { ...mod, loadInterludeTextures: async () => tex };
+    return { ...mod, loadInterludeTextures: () => tex };
   },
 );
 
@@ -104,10 +104,11 @@ describe("InterludePanel", () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
     const panel = new InterludePanel(layer, loadTexture, tweenImmediately);
 
-    await panel.run(input());
+    await panel.run(input())?.completion;
     expect(layer.children).toHaveLength(1);
 
-    await panel.run(input({ name: "avg_test", slot: "m", type: 2 }));
+    await panel.run(input({ name: "avg_test", slot: "m", type: 2 }))
+      ?.completion;
     expect(layer.children).toHaveLength(1);
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(
       input({ name: "avg_test", slot: "m", type: 2 }),
@@ -117,7 +118,7 @@ describe("InterludePanel", () => {
     expect(bg.node.visible).toBe(true);
     expect(bg.node.alpha).toBe(1);
 
-    await panel.run(input({ clear: true }));
+    await panel.run(input({ clear: true }))?.completion;
     expect(layer.children).toHaveLength(0);
   });
 
@@ -129,7 +130,8 @@ describe("InterludePanel", () => {
     );
 
     // level_main_16-04_end shape: switch flips between speaking and silent.
-    await panel.run(input({ maskId: VERTICAL, switchOn: true }));
+    await panel.run(input({ block: false, maskId: VERTICAL, switchOn: true }))
+      ?.completion;
     const state = channel(panel);
     const [, waveActive, waveStop] = state.deco.root.children;
     expect(waveActive.visible).toBe(true);
@@ -137,19 +139,21 @@ describe("InterludePanel", () => {
 
     await panel.run(
       input({ maskId: VERTICAL, name: "avg_npc_1#1", switchOn: true, type: 3 }),
-    );
+    )?.completion;
     const avatar = state.elements.get("\u0000avatar");
     expect(avatar.node.visible).toBe(true);
 
-    await panel.run(input({ maskId: VERTICAL, switchOn: false, type: 3 }));
+    await panel.run(input({ maskId: VERTICAL, switchOn: false, type: 3 }))
+      ?.completion;
     expect(waveActive.visible).toBe(false);
     expect(waveStop.visible).toBe(true);
     expect(avatar.node.visible).toBe(true);
     expect(state.root.visible).toBe(true);
 
     // The key defaults to false and is re-rendered on every update.
-    await panel.run(input({ maskId: VERTICAL, switchOn: true }));
-    await panel.run(input({ maskId: VERTICAL }));
+    await panel.run(input({ block: false, maskId: VERTICAL, switchOn: true }))
+      ?.completion;
+    await panel.run(input({ block: false, maskId: VERTICAL }))?.completion;
     expect(waveActive.visible).toBe(false);
     expect(waveStop.visible).toBe(true);
   });
@@ -168,7 +172,7 @@ describe("InterludePanel", () => {
         offset: { x: -250, y: 0 },
         size: { x: 290, y: 760 },
       }),
-    );
+    )?.completion;
     const state = channel(panel);
     expect(state.root.position.x).toBe(640);
     expect(state.root.position.y).toBe(360);
@@ -183,26 +187,30 @@ describe("InterludePanel", () => {
         positionTo: { x: -250, y: 0 },
         type: 3,
       }),
-    );
+    )?.completion;
     const avatar = state.elements.get("\u0000avatar");
     expect(avatar.node.position.x).toBe(-250);
     expect(state.charPoz.position.x).toBe(0);
   });
 
   it("runs alpha/pos/scale tweens in parallel with their own durations", async () => {
-    const durations: number[] = [];
+    const tweens: Array<{
+      duration: number;
+      update: (progress: number) => void;
+      complete: () => void;
+    }> = [];
     const panel = new InterludePanel(
       new Container(),
-      async () => Texture.EMPTY,
-      recordingTween(durations),
+      () => Texture.EMPTY,
+      async (duration, update, done) => {
+        tweens.push({ complete: () => done?.(), duration, update });
+      },
     );
 
     // Channel must pre-exist: native OnCutinBegin never reaches
     // _ProcessElement, so element params ride an update command.
-    await panel.run(input({ block: false }));
-    durations.length = 0;
-
-    await panel.run(
+    await panel.run(input({ block: false }))?.completion;
+    const animation = panel.run(
       input({
         alphaDurationMs: 300,
         durationMs: 1000,
@@ -215,9 +223,22 @@ describe("InterludePanel", () => {
         type: 2,
       }),
     );
-    expect(durations).toEqual([300, 1000, 500]);
+    expect(tweens.map(({ duration }) => duration)).toEqual([1000]);
+    const [sequence] = tweens;
 
     const { node } = channel(panel).elements.get("\u0000bg");
+    sequence.update(0.25);
+    expect(node.alpha).toBeCloseTo(250 / 300);
+    expect(node.position.x).toBe(2.5);
+    expect(node.scale.x).toBe(1.5);
+    sequence.update(0.75);
+    expect(node.alpha).toBe(1);
+    expect(node.position.x).toBe(7.5);
+    expect(node.scale.x).toBe(2);
+    expect(animation?.endReason).toBeUndefined();
+    sequence.update(1);
+    sequence.complete();
+    expect(animation?.endReason).toBe("complete");
     expect(node.alpha).toBe(1);
     expect(node.position.x).toBe(10);
     expect(node.scale.x).toBe(2);
@@ -236,7 +257,7 @@ describe("InterludePanel", () => {
     // level_main_13-05_beg lines 13-14: a non-blocking 2s fade-in, then a
     // position-only command on the same uichar slot. Natively the first
     // sequence keeps running (DOKill cannot reach nested tweens).
-    await panel.run(input({ block: false }));
+    await panel.run(input({ block: false }))?.completion;
     await panel.run(
       input({
         alphaDurationMs: 2000,
@@ -245,7 +266,7 @@ describe("InterludePanel", () => {
         slot: "m",
         type: 1,
       }),
-    );
+    )?.completion;
     await panel.run(
       input({
         block: false,
@@ -255,7 +276,7 @@ describe("InterludePanel", () => {
         slot: "m",
         type: 1,
       }),
-    );
+    )?.completion;
     const { node } = channel(panel).elements.get("m");
     expect(node.alpha).toBe(0);
 
@@ -275,7 +296,7 @@ describe("InterludePanel", () => {
       },
     );
 
-    await panel.run(input({ block: false }));
+    await panel.run(input({ block: false }))?.completion;
     await panel.run(
       input({
         alphaDurationMs: 2000,
@@ -285,7 +306,7 @@ describe("InterludePanel", () => {
         name: "bg_a",
         type: 2,
       }),
-    );
+    )?.completion;
     await panel.run(
       input({
         alphaDurationMs: 2000,
@@ -295,7 +316,7 @@ describe("InterludePanel", () => {
         name: "bg_b",
         type: 2,
       }),
-    );
+    )?.completion;
     const { node } = channel(panel).elements.get("\u0000bg");
     pending[1](1);
     expect(node.alpha).toBe(0.5);
@@ -314,7 +335,7 @@ describe("InterludePanel", () => {
       },
     );
 
-    await panel.run(input({ block: false }));
+    await panel.run(input({ block: false }))?.completion;
     await panel.run(
       input({
         alphaDurationMs: 2000,
@@ -324,14 +345,14 @@ describe("InterludePanel", () => {
         name: "bg_light",
         type: 2,
       }),
-    );
+    )?.completion;
     const state = channel(panel);
     const bg = state.elements.get("\u0000bg");
     expect(bg.node.alpha).toBe(0);
 
     await panel.run(
       input({ block: false, name: "cutin_char_4", slot: "m", type: 1 }),
-    );
+    )?.completion;
     pending[0](1);
     expect(bg.node.alpha).toBe(1);
     expect(state.elements.get("m")).not.toBe(bg);
@@ -356,7 +377,7 @@ describe("InterludePanel", () => {
         async () => Texture.EMPTY,
         recordingTween(durations),
       );
-      await panel.run(input({ maskId, style }));
+      await panel.run(input({ maskId, style }))?.completion;
       expect(durations).toEqual(expected);
     }
   });
@@ -374,7 +395,7 @@ describe("InterludePanel", () => {
         offset: { x: 10, y: 20 },
         size: { x: 1280, y: 100 },
       }),
-    );
+    )?.completion;
     const state = channel(panel);
     expect(state.template.root.position.x).toBe(10);
     expect(state.template.root.position.y).toBe(-20);
@@ -388,7 +409,7 @@ describe("InterludePanel", () => {
         size: { x: 5, y: 5 },
         type: 2,
       }),
-    );
+    )?.completion;
     expect(state.template.root.position.x).toBe(10);
     expect(state.template.root.position.y).toBe(-20);
     expect(state.template.maskGraphics.width).toBeCloseTo(1280, 0);
@@ -410,7 +431,7 @@ describe("InterludePanel", () => {
         templateSizeFrom: { x: 0, y: 1 },
         templateSizeTo: { x: 1, y: 1 },
       }),
-    );
+    )?.completion;
     // ts entry (500) + show floor (1000).
     expect(durations).toEqual([500, 1000]);
     const state = channel(panel);
@@ -427,8 +448,8 @@ describe("InterludePanel", () => {
         templateSizeTo: { x: 1, y: 1 },
         type: 2,
       }),
-    );
-    expect(durations).toEqual([500, 1000]);
+    )?.completion;
+    expect(durations).toEqual([500, 1000, 0]);
   });
 
   it("clears by scaling from the current template ratio to tsto (tsfrom not reused)", async () => {
@@ -446,7 +467,7 @@ describe("InterludePanel", () => {
         templateSizeFrom: { x: 0.2, y: 1 },
         templateSizeTo: { x: 1, y: 1 },
       }),
-    );
+    )?.completion;
     const state = channel(panel);
     expect(state.ratio.x).toBeCloseTo(0.6);
     expect(state.ratio.y).toBe(1);
@@ -459,7 +480,7 @@ describe("InterludePanel", () => {
         templateSizeFrom: { x: 9, y: 9 },
         templateSizeTo: { x: 0, y: 1 },
       }),
-    );
+    )?.completion;
     expect(state.ratio.x).toBeCloseTo(0.3);
     expect(state.template.scaleNode.scale.x).toBeCloseTo(0.3);
     // deco.Hide fades the deco out over 0.5s.
@@ -475,34 +496,62 @@ describe("InterludePanel", () => {
       (detail) => warnings.push(detail),
     );
 
-    await panel.run(input());
-    await panel.run(input({ name: "cutin_char_1", slot: "right", type: 1 }));
-    await panel.run(input({ name: "cutin_char_2", slot: "r", type: 1 }));
-    await panel.run(input({ name: "cutin_char_3", slot: "", type: 1 }));
-    await panel.run(input({ name: "cutin_char_4", slot: "middle", type: 1 }));
-    await panel.run(input({ name: "cutin_char_5", slot: "x", type: 1 }));
+    await panel.run(input())?.completion;
+    await panel.run(input({ name: "cutin_char_1", slot: "right", type: 1 }))
+      ?.completion;
+    await panel.run(input({ name: "cutin_char_2", slot: "r", type: 1 }))
+      ?.completion;
+    await panel.run(input({ name: "cutin_char_3", slot: "", type: 1 }))
+      ?.completion;
+    await panel.run(input({ name: "cutin_char_4", slot: "middle", type: 1 }))
+      ?.completion;
+    await panel.run(input({ name: "cutin_char_5", slot: "x", type: 1 }))
+      ?.completion;
     const state = channel(panel);
     expect([...state.elements.keys()].sort()).toEqual(["m", "r"]);
     expect(warnings).toEqual([]);
   });
 
-  it("warns when a blocking clear-all aggregates several channels", async () => {
+  it("releases a blocking clear-all on the first recycled channel", async () => {
     const layer = new Container();
-    const warnings: string[] = [];
+    const hides = new Map<number, () => void>();
     const panel = new InterludePanel(
       layer,
-      async () => Texture.EMPTY,
-      tweenImmediately,
-      (detail) => warnings.push(detail),
+      () => Texture.EMPTY,
+      async (duration, update, done) => {
+        if (done)
+          hides.set(duration, () => {
+            update(1);
+            done();
+          });
+      },
     );
-    await panel.run(input({ channel: 3 }));
-    await panel.run(input({ channel: 4 }));
+    panel.run(input({ block: false, channel: 3, maskId: VERTICAL }));
+    panel.run(input({ block: false, channel: 4, maskId: DIALOG }));
+    const finish = vi.fn();
+    const clear = panel.run(
+      input({
+        channel: -1,
+        clear: true,
+        templateSizeDurationMs: 250,
+      }),
+      finish,
+    );
 
-    await panel.run(input({ channel: -1, clear: true }));
+    expect(clear?.endReason).toBeUndefined();
+    hides.get(250)!();
+    expect(clear?.endReason).toBe("complete");
+    expect(finish).toHaveBeenCalledTimes(1);
+    expect(layer.children).toHaveLength(1);
+    hides.get(500)!();
+    expect(finish).toHaveBeenCalledTimes(2);
     expect(layer.children).toHaveLength(0);
-    expect(warnings.some((detail) => detail.includes("aggregates 2"))).toBe(
-      true,
-    );
+
+    const emptyClear = panel.run(input({ channel: -1, clear: true }), finish);
+    expect(emptyClear).toMatchObject({ blocking: true, endReason: undefined });
+    panel.clearAll();
+    expect(emptyClear?.endReason).toBe("reset");
+    expect(finish).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the deco name when a later command has no char", async () => {
@@ -513,14 +562,18 @@ describe("InterludePanel", () => {
     );
 
     // sandbox_2_ending_2 shape: char only on the creating command.
-    await panel.run(input({ charName: "拜松", maskId: SQUARE, style: 1 }));
+    await panel.run(input({ charName: "拜松", maskId: SQUARE, style: 1 }))
+      ?.completion;
     const state = channel(panel);
     expect(state.deco.label.text).toBe("拜松");
 
-    await panel.run(input({ maskId: SQUARE, switchOn: true }));
+    await panel.run(input({ block: false, maskId: SQUARE, switchOn: true }))
+      ?.completion;
     expect(state.deco.label.text).toBe("拜松");
 
-    await panel.run(input({ charName: "Kal'tsit", maskId: SQUARE }));
+    await panel.run(
+      input({ block: false, charName: "Kal'tsit", maskId: SQUARE }),
+    )?.completion;
     expect(state.deco.label.text).toBe("Kal'tsit");
   });
 
@@ -531,20 +584,22 @@ describe("InterludePanel", () => {
       tweenImmediately,
     );
 
-    await panel.run(input({ maskId: SQUARE, style: 1 }));
+    await panel.run(input({ maskId: SQUARE, style: 1 }))?.completion;
     const unknown = channel(panel).template.emptyImage;
     expect(unknown.visible).toBe(true);
 
     await panel.run(
       input({ maskId: SQUARE, name: "avg_npc_990_1#10$1", type: 3 }),
-    );
+    )?.completion;
     expect(unknown.visible).toBe(false);
 
     // Name-less updates (switch flips, moves) keep the placeholder hidden.
-    await panel.run(input({ maskId: SQUARE, switchOn: true }));
+    await panel.run(input({ block: false, maskId: SQUARE, switchOn: true }))
+      ?.completion;
     expect(unknown.visible).toBe(false);
 
-    await panel.run(input({ maskId: SQUARE, name: "CHAR_EMPTY", type: 3 }));
+    await panel.run(input({ maskId: SQUARE, name: "CHAR_EMPTY", type: 3 }))
+      ?.completion;
     expect(unknown.visible).toBe(true);
   });
 
@@ -555,10 +610,10 @@ describe("InterludePanel", () => {
       async () => Texture.EMPTY,
       tweenImmediately,
     );
-    await panel.run(input({ channel: 3 }));
-    await panel.run(input({ channel: 4 }));
+    await panel.run(input({ channel: 3 }))?.completion;
+    await panel.run(input({ channel: 4 }))?.completion;
 
-    await panel.run(input({ channel: -1, clear: true }));
+    await panel.run(input({ channel: -1, clear: true }))?.completion;
     expect(layer.children).toHaveLength(0);
   });
 
@@ -573,7 +628,7 @@ describe("InterludePanel", () => {
 
     await panel.run(
       input({ maskId: VERTICAL, name: "cutin_char_3", slot: "m", type: 1 }),
-    );
+    )?.completion;
     expect(channel(panel).elements.size).toBe(0);
     expect(loadTexture).not.toHaveBeenCalled();
     expect(durations).toEqual([1000]);
@@ -592,7 +647,7 @@ describe("InterludePanel", () => {
       },
     );
 
-    await panel.run(input({ block: false }));
+    await panel.run(input({ block: false }))?.completion;
     await panel.run(
       input({
         alphaDurationMs: 2000,
@@ -602,12 +657,12 @@ describe("InterludePanel", () => {
         name: "bg_light",
         type: 2,
       }),
-    );
+    )?.completion;
     const { node } = channel(panel).elements.get("\u0000bg");
 
     await panel.run(
       input({ block: false, clear: true, templateSizeDurationMs: 500 }),
-    );
+    )?.completion;
     // OnCutinEnd's DOKill cannot reach the nested fade: it keeps running.
     pending[0](0.5);
     expect(node.alpha).toBe(0.5);
@@ -636,7 +691,7 @@ describe("InterludePanel mask templates", () => {
         offset: { x: -450, y: 125 },
         style: 1,
       }),
-    );
+    )?.completion;
     const state = channel(panel);
     expect(durations).toEqual([SQUARE_SHOW_MS, 3000]);
     // back_shadow ends at 250; content_mask insets 36 → 214.
@@ -656,12 +711,13 @@ describe("InterludePanel mask templates", () => {
       async () => Texture.EMPTY,
       tweenImmediately,
     );
-    await panel.run(input({ maskId: VERTICAL, size: { x: 290, y: 760 } }));
+    await panel.run(input({ maskId: VERTICAL, size: { x: 290, y: 760 } }))
+      ?.completion;
     expect(channel(panel).template.maskGraphics.width).toBeCloseTo(290 - 36, 0);
 
     await panel.run(
       input({ channel: 4, maskId: VERTICAL, size: { x: 0, y: 0 } }),
-    );
+    )?.completion;
     expect(channel(panel, 4).template.maskGraphics.width).toBeCloseTo(
       320 - 36,
       0,
@@ -674,12 +730,13 @@ describe("InterludePanel mask templates", () => {
       async () => Texture.EMPTY,
       tweenImmediately,
     );
-    await panel.run(input({ maskId: "ui_cutin_mask_vertical", style: 0 }));
+    await panel.run(input({ maskId: "ui_cutin_mask_vertical", style: 0 }))
+      ?.completion;
     expect(channel(panel).template.scaleNode.scale.x).toBe(0);
 
     await panel.run(
       input({ channel: 4, maskId: "ui_cutin_mask_vertical", style: 1 }),
-    );
+    )?.completion;
     expect(channel(panel, 4).template.scaleNode.scale.x).toBe(1);
   });
 
@@ -691,23 +748,24 @@ describe("InterludePanel mask templates", () => {
       tweenImmediately,
     );
 
-    await panel.run(input({ maskId: DIALOG, offset: { x: 0, y: 150 } }));
+    await panel.run(input({ maskId: DIALOG, offset: { x: 0, y: 150 } }))
+      ?.completion;
     const state = channel(panel);
     const dialog = state.template.dialog;
     // anchoredPosition = offset with anchor/pivot at the left middle.
     expect(state.template.root.position.x).toBe(-640);
     expect(state.template.root.position.y).toBe(-150);
 
-    await panel.run(input({ maskId: DIALOG, name: "avg_npc_999_1", type: 3 }));
+    await panel.run(input({ maskId: DIALOG, name: "avg_npc_999_1", type: 3 }))
+      ?.completion;
     expect(state.elements.size).toBe(0);
     expect(dialog.charImage.texture).toBe(Texture.WHITE);
     expect(dialog.charImage.visible).toBe(true);
     // img_char keeps its 1380 rect.
     expect(dialog.charImage.width).toBeCloseTo(1380, 0);
 
-    await panel.run(
-      input({ maskId: DIALOG, name: "77_g4_classroom", type: 2 }),
-    );
+    await panel.run(input({ maskId: DIALOG, name: "77_g4_classroom", type: 2 }))
+      ?.completion;
     expect(dialog.bgImage.texture).toBe(Texture.WHITE);
     expect(dialog.bgImage.width).toBeCloseTo(550, 0);
     expect(state.elements.size).toBe(0);
@@ -731,7 +789,7 @@ describe("InterludePanel mask templates", () => {
       style: 3,
       type: 3,
     });
-    await panel.run(command);
+    await panel.run(command)?.completion;
     const state = channel(panel);
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(command);
     expect(state.elements.size).toBe(0);
@@ -749,7 +807,8 @@ describe("InterludePanel mask templates", () => {
       tweenImmediately,
     );
 
-    await panel.run(input({ maskId: DIALOG, name: "avg_npc_1#1", type: 3 }));
+    await panel.run(input({ maskId: DIALOG, name: "avg_npc_1#1", type: 3 }))
+      ?.completion;
     const dialog = channel(panel).template.dialog;
     expect(loadTexture).toHaveBeenCalledTimes(1);
 
@@ -761,7 +820,7 @@ describe("InterludePanel mask templates", () => {
         name: "AVG_NPC_1#1",
         type: 3,
       }),
-    );
+    )?.completion;
     expect(loadTexture).toHaveBeenCalledTimes(1);
     expect(dialog.charImage.position.x).toBe(30);
     expect(dialog.charImage.position.y).toBe(520 - 40);
@@ -785,9 +844,8 @@ describe("InterludePanel mask templates", () => {
         style: 3,
         type: 3,
       }),
-    );
-    // Intro clip tween (700) + the blocking wait on the same length.
-    expect(durations).toEqual([700, 700]);
+    )?.completion;
+    expect(durations).toEqual([700]);
   });
 
   it("applies no show floor when a dialog channel is created without style 3", async () => {
@@ -797,7 +855,7 @@ describe("InterludePanel mask templates", () => {
       async () => Texture.EMPTY,
       recordingTween(durations),
     );
-    await panel.run(input({ maskId: DIALOG }));
+    await panel.run(input({ maskId: DIALOG }))?.completion;
     expect(durations).toEqual([]);
   });
 
@@ -809,13 +867,14 @@ describe("InterludePanel mask templates", () => {
       tweenImmediately,
     );
 
-    await panel.run(input({ maskId: DIALOG }));
+    await panel.run(input({ maskId: DIALOG }))?.completion;
     const update = input({ maskId: DIALOG, name: "cutin_char_1", type: 1 });
-    await panel.run(update);
+    await panel.run(update)?.completion;
     const state = channel(panel);
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(update);
     expect(state.template.dialog.charImage.texture).toBe(Texture.WHITE);
-    expect(state.elements.size).toBe(0);
+    expect(state.elements.size).toBe(1);
+    expect(state.content.visible).toBe(false);
   });
 
   it("fades the dialog group out on clear (0.5s default)", async () => {
@@ -826,20 +885,20 @@ describe("InterludePanel mask templates", () => {
       async () => Texture.EMPTY,
       recordingTween(durations),
     );
-    await panel.run(input({ maskId: DIALOG }));
+    await panel.run(input({ maskId: DIALOG }))?.completion;
     const group = channel(panel).template.dialog.group;
 
-    await panel.run(input({ clear: true }));
+    await panel.run(input({ clear: true }))?.completion;
     expect(durations).toEqual([500]);
     expect(group.alpha).toBe(0);
     expect(layer.children).toHaveLength(0);
   });
 
-  it("direction on an update runs the element tweens and the channel clip", async () => {
+  it("runs only the direction clip and waits for a reset when the update blocks", async () => {
     const durations: number[] = [];
     const panel = new InterludePanel(
       new Container(),
-      async () => Texture.EMPTY,
+      () => Texture.EMPTY,
       recordingTween(durations),
     );
 
@@ -851,10 +910,10 @@ describe("InterludePanel mask templates", () => {
         size: { x: 1300, y: 360 },
         style: 3,
       }),
-    );
+    )?.completion;
     durations.length = 0;
 
-    await panel.run(
+    const wait = panel.run(
       input({
         direction: "rin",
         durationMs: 1000,
@@ -873,9 +932,12 @@ describe("InterludePanel mask templates", () => {
     const { node } = state.elements.get("m");
     // aDuration 0: SetCutinElement sets alpha straight to aTo (1).
     expect(node.alpha).toBe(1);
-    expect(node.position.x).toBe(-200);
+    expect(node.position.x).toBe(0);
     expect(node.position.y).toBe(-180);
-    expect(durations).toEqual([1000, 300, CLIP_SECONDS.direction * 1000]);
+    expect(durations).toEqual([CLIP_SECONDS.direction * 1000]);
+    expect(wait).toMatchObject({ blocking: true, endReason: undefined });
+    panel.clearAll();
+    expect(wait?.endReason).toBe("reset");
     // The clip's alpha envelope ends at 0.
     expect(state.root.alpha).toBeCloseTo(0, 3);
   });
@@ -896,7 +958,7 @@ describe("InterludePanel mask templates", () => {
         name: "cutin_char_22",
         type: 1,
       }),
-    );
+    )?.completion;
     expect(loadTexture).not.toHaveBeenCalled();
     expect(channel(panel).elements.size).toBe(0);
     // Clip (not gating) + the 1s show floor.

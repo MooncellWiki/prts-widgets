@@ -10,6 +10,7 @@ import {
 
 import { INTERLUDE_ASSETS } from "../../../assets";
 import importedClips from "../../../assets/interlude/clips.json";
+import { getCachedTexture } from "../core/TextureAsset";
 
 // interlude mask 模板体系的 Web 重建。
 //
@@ -163,45 +164,36 @@ export interface InterludeTextureSet {
   gradientV: Texture;
 }
 
-let texturePromise: Promise<InterludeTextureSet> | null = null;
+const templateTextureUrls = {
+  iconBack: INTERLUDE_ASSETS.icon_back,
+  unknownVertical: INTERLUDE_ASSETS.unknown_vertical,
+  unknownSquare: INTERLUDE_ASSETS.unknown_square,
+  commonFrame: INTERLUDE_ASSETS.common_frame,
+  waveBase: INTERLUDE_ASSETS.wave_base,
+  waveShadow: INTERLUDE_ASSETS.wave_shadow,
+  dialogGrad: INTERLUDE_ASSETS.dialog_grad,
+  dialogFrame: INTERLUDE_ASSETS.dialog_frame,
+  gradientV: INTERLUDE_ASSETS.gradient_v,
+} satisfies Record<keyof InterludeTextureSet, string>;
 
 /** 模板贴图懒加载(随 widget 打包的静态资源)。 */
-export function loadInterludeTextures(): Promise<InterludeTextureSet> {
-  texturePromise ??= (async () => {
-    const [
-      iconBack,
-      unknownVertical,
-      unknownSquare,
-      commonFrame,
-      waveBase,
-      waveShadow,
-      dialogGrad,
-      dialogFrame,
-      gradientV,
-    ] = await Promise.all([
-      Assets.load(INTERLUDE_ASSETS.icon_back),
-      Assets.load(INTERLUDE_ASSETS.unknown_vertical),
-      Assets.load(INTERLUDE_ASSETS.unknown_square),
-      Assets.load(INTERLUDE_ASSETS.common_frame),
-      Assets.load(INTERLUDE_ASSETS.wave_base),
-      Assets.load(INTERLUDE_ASSETS.wave_shadow),
-      Assets.load(INTERLUDE_ASSETS.dialog_grad),
-      Assets.load(INTERLUDE_ASSETS.dialog_frame),
-      Assets.load(INTERLUDE_ASSETS.gradient_v),
-    ]);
-    return {
-      iconBack,
-      unknownVertical,
-      unknownSquare,
-      commonFrame,
-      waveBase,
-      waveShadow,
-      dialogGrad,
-      dialogFrame,
-      gradientV,
-    };
-  })();
-  return texturePromise;
+export function loadInterludeTextures():
+  InterludeTextureSet | Promise<InterludeTextureSet> {
+  const cached: Array<[string, Texture]> = [];
+  const entries = Object.entries(templateTextureUrls);
+  for (const [name, url] of entries) {
+    const texture = getCachedTexture(url);
+    if (!texture) {
+      return Assets.load<Texture>(Object.values(templateTextureUrls)).then(
+        (textures) =>
+          Object.fromEntries(
+            entries.map(([key, path]) => [key, textures[path]]),
+          ) as unknown as InterludeTextureSet,
+      );
+    }
+    cached.push([name, texture]);
+  }
+  return Object.fromEntries(cached) as unknown as InterludeTextureSet;
 }
 
 type Vec2 = { x: number; y: number };
