@@ -270,7 +270,7 @@ describe("StoryRuntime", () => {
     expect(quickRenderer.cameraEffectCalls.at(-1)?.durationMs).toBe(0);
   });
 
-  it("maps focusout duration, from and native blocking semantics without reading fadetime", async () => {
+  it("keeps focusout duration unscaled and ignores fadetime", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -282,6 +282,7 @@ describe("StoryRuntime", () => {
       new FakeAudio(),
     );
 
+    runtime.setAutoPlayMode("quick_play");
     await runtime.start();
 
     expect(renderer.focusOutCalls).toEqual([

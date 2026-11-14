@@ -27,6 +27,7 @@ import {
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
+import { CameraEffectExecutor } from "./panels/CameraEffectExecutor";
 import { CgItemPanel } from "./panels/CgItemPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
@@ -147,10 +148,6 @@ const builtinCommandNames = [
   "playsound",
   "stopsound",
   "soundvolume",
-  "cameraeffect",
-  "camerashake",
-  "focusout",
-  "focusparam",
   "theater",
   "bgeffect",
   "effect",
@@ -459,6 +456,13 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
+    new CameraEffectExecutor(renderer, {
+      animateRatio: () => this.getCurrentSpeed().animateRatio,
+      calculateFadeMs: (seconds, fallback) =>
+        this.calculateFadeMs(seconds, fallback),
+      warnUnsupportedVisual: (detail) =>
+        this.warn("unsupported_visual", detail),
+    }).register(this.commandRegistry);
     new CgItemPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       resolveImageKey: (key) => this.resolveImageKey(key),
@@ -1712,52 +1716,6 @@ export class StoryRuntime {
             this.renderer.stopVideo();
           },
         };
-      }
-
-      case "focusout": {
-        // AVGCameraEffect._ExecuteFocusout (2791 @ 0x184187C20) passes the
-        // duration through unscaled. MathUtil.GT/GE use a 1e-5 tolerance.
-        const duration = toNumber(this.exactArg(args, "duration"));
-        const from = toOptionalNumber(this.exactArg(args, "from"));
-        const epsilon = Math.fround(1e-5);
-        const durationMs =
-          Math.fround(duration) > epsilon ? duration * 1000 : 0;
-        const animation = this.renderer.setFocusOut({
-          block:
-            durationMs > 0 && toBoolean(this.exactArg(args, "block"), false),
-          durationMs,
-          from:
-            from !== undefined && Math.fround(from) >= -epsilon
-              ? from
-              : undefined,
-          id: toString(this.exactArg(args, "id")),
-          to: toNumber(this.exactArg(args, "to"), 0),
-          type: toString(this.exactArg(args, "type")),
-        });
-        if (!animation || animation.endReason !== undefined) return "continue";
-        return {
-          // AVGCameraEffect.ForceCommandEnd (2791 @ 0x184186000) resets
-          // the scene transform. The scene effect manager owns its tween.
-          forceEnd: () => this.renderer.stopCameraShake(),
-          isComplete: () => animation.endReason !== undefined,
-        };
-      }
-
-      case "focusparam": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
-        // is a config-only write: it sets useBlur / color on the shared
-        // AVGSceneFocusOut Config and marks the command buffer dirty
-        // (MarkEffectImplConfigDirty). It never touches channel amounts and
-        // never blocks -- the executor always returns false.
-        const effect = toString(this.exactArg(args, "effect"));
-        this.renderer.setFocusParam({
-          blur: toBoolean(this.exactArg(args, "blur"), true),
-          color:
-            effect === "Grayscale" || effect === "Colorinverse"
-              ? effect
-              : "None",
-        });
-        return "continue";
       }
 
       case "theater": {
@@ -3099,81 +3057,6 @@ export class StoryRuntime {
           },
           type,
         } satisfies InterludeInput);
-        return "continue";
-      }
-
-      case "cameraeffect": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect
-        // (2.7.61 VA 0x183E32560): case-sensitive Grayscale/Colorinverse
-        // dispatch. Chaos is intentionally unimplemented and degraded to a
-        // warning upstream (see setCameraEffect's port-scope note).
-        const effect = toString(this.exactArg(args, "effect"));
-        const block = toBoolean(this.exactArg(args, "block"), false);
-        const keep = toBoolean(this.exactArg(args, "keep"), false);
-        // AVGCameraEffect._defaultFadetime is serialized as 0.4 on
-        // AVGController > AVGCamera_Scene; a 0 default would make every
-        // fadetime-less cameraeffect invisible.
-        // Native scales the raw seconds by AVGController.animateRatio
-        // (0x183E327C1) before tweening; apply the same current-speed ratio
-        // as `delay` and `calculateFadeMs` (button_auto keeps 1, quick_play
-        // collapses tweens to instant).
-        const fadeMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "fadetime"), 0.4) *
-            this.getCurrentSpeed().animateRatio *
-            1000,
-        );
-        if (effect === "Chaos") {
-          this.warn("unsupported_visual", "cameraeffect:Chaos");
-          return "continue";
-        }
-        if (effect === "Colorinverse") {
-          await this.renderer.setCameraEffect(
-            effect,
-            keep ? 1 : 0,
-            0,
-            false,
-            true,
-          );
-          return "continue";
-        }
-        if (effect !== "Grayscale") return "continue";
-        await this.renderer.setCameraEffect(
-          effect,
-          toNumber(this.exactArg(args, "amount"), 1),
-          fadeMs,
-          block,
-          keep,
-          toOptionalNumber(this.exactArg(args, "initamount")),
-        );
-        return "continue";
-      }
-
-      case "camerashake": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteCameraShake. Duration
-        // defaults to -1 and falls back to 10s with infinite loops; `fadetime`
-        // is never read. Duration is scaled by AVGController.animateRatio
-        // before anything else (2.7.61 GameAssembly @ 0x183E32E52): the scaled
-        // value drives the loops sign test (scaled >= 0 ? 1 : -1), the 10.0s
-        // fallback, and DOTween's waypoint count. Native then short-circuits on
-        // MathUtil.IsZero(scaled) (0x183E32EFD), so quick-play speeds
-        // (animateRatio = 0) skip the shake entirely; the renderer's
-        // durationMs <= 0 skip reproduces that without blocking.
-        const scaledDuration =
-          toNumber(this.exactArg(args, "duration"), -1) *
-          this.getCurrentSpeed().animateRatio;
-        await this.renderer.shakeCamera({
-          block: toBoolean(this.exactArg(args, "block"), false),
-          durationMs:
-            scaledDuration < 0 ? 10_000 : Math.max(0, scaledDuration * 1000),
-          fadeOut: toBoolean(this.exactArg(args, "fadeout"), false),
-          infinite: scaledDuration < 0,
-          randomness: toNumber(this.exactArg(args, "randomness"), 90),
-          stop: toBoolean(this.exactArg(args, "stop"), false),
-          vibrato: Math.trunc(toNumber(this.exactArg(args, "vibrato"), 10)),
-          xStrength: toNumber(this.exactArg(args, "xstrength"), 1),
-          yStrength: toNumber(this.exactArg(args, "ystrength"), 0),
-        });
         return "continue";
       }
 
