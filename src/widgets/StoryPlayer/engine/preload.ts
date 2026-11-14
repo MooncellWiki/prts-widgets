@@ -2,6 +2,7 @@ import { Assets } from "pixi.js";
 
 import {
   DIALOG_FRAME_URL,
+  INTERLUDE_ASSETS,
   SHOWITEM_PHOTO_FRAME_URL,
   STAMP_ASSETS,
 } from "../assets";
@@ -15,7 +16,7 @@ import {
 } from "./asset";
 import { resolveAvgDisplayStyle } from "./avgDisplay";
 import { resolveCharacterSelection } from "./characterRef";
-import { toString } from "./commandParams";
+import { toNumber, toString } from "./commandParams";
 import {
   ANIMTEXT_MAIN_FONT,
   DIALOG_FONT,
@@ -131,8 +132,7 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
     }
     if (line.command === "interlude") {
       const type = argAsString(line.args.type);
-      const numericType =
-        typeof line.args.type === "number" ? line.args.type : Number(type);
+      const numericType = Math.trunc(toNumber(line.args.type));
       const name = argAsString(line.args.name);
       if (type === "bg" || numericType === 2)
         addImageUrl(urls, name, "background");
@@ -231,12 +231,14 @@ function addCharacterUrls(
     if (line.kind !== "command") continue;
 
     const refs: string[] = [];
-    if (line.command === "charslot") refs.push(argAsString(line.args.name));
+    if (line.command === "charslot" || line.command === "charactercutin")
+      refs.push(argAsString(line.args.name));
     else if (line.command === "character")
       refs.push(argAsString(line.args.name), argAsString(line.args.name2));
     else if (
       line.command === "interlude" &&
-      (line.args.type === 3 || argAsString(line.args.type) === "char")
+      (Math.trunc(toNumber(line.args.type)) === 3 ||
+        argAsString(line.args.type) === "char")
     )
       refs.push(argAsString(line.args.name));
     else continue;
@@ -339,6 +341,12 @@ function collectPreloadAssetUrls(
   // Assets.load 走网络，会把第一次 showitem 的淡入整体推迟，故剧本用到
   // showitem 时一并预热。属 web 适配。
   if (usesCommand(lines, "showitem")) urls.add(SHOWITEM_PHOTO_FRAME_URL);
+
+  // The native cut-in controller loads its template synchronously. Prewarm
+  // the bundled textures for the same path through Pixi's cache.
+  if (usesCommand(lines, "interlude")) {
+    for (const url of Object.values(INTERLUDE_ASSETS)) urls.add(url);
+  }
 
   return [...urls];
 }

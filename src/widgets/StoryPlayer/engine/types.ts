@@ -777,8 +777,8 @@ export interface StoryRenderer {
   clearSpellStickers: () => Promise<void> | void;
   clearSubtitle: (fadeMs?: number) => Promise<void> | void;
   clearTimerSticker: (input?: TimerClearInput) => void;
-  clearCharacterCutin: (widgetId?: string) => Promise<void>;
-  clearInterludes: () => Promise<void>;
+  clearCharacterCutin: (widgetId?: string) => void;
+  clearInterludes: () => void;
   destroy: () => void;
   /** Reveal the remaining text of the selected sticker. */
   finishStickerTyping: (id: string) => boolean;
@@ -803,7 +803,10 @@ export interface StoryRenderer {
   setBackgroundTween: (input: BackgroundTweenInput) => Promise<void>;
   setBlocker: (input: BlockerInput) => Promise<void> | void;
   setCharacter: (input: CharacterSlotInput) => Promise<void>;
-  setCharacterCutin: (input: CharacterCutinInput) => Promise<void>;
+  setCharacterCutin: (
+    input: CharacterCutinInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setCurtain: (input: CurtainInput) => Promise<void>;
   setGridBackground: (input: GridBackgroundInput) => Promise<void>;
   setLargeImage: (input: GridBackgroundInput) => Promise<void>;
@@ -831,7 +834,10 @@ export interface StoryRenderer {
   setImage: (key: string, input?: BackgroundInput) => Promise<void>;
   setImageRotate: (input: ImageRotateInput) => Promise<void>;
   setImageTween: (input: ImageTweenInput) => Promise<void>;
-  setInterlude: (input: InterludeInput) => Promise<void>;
+  setInterlude: (
+    input: InterludeInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setLargeBackgroundTween: (input: LargeBackgroundTweenInput) => Promise<void>;
   setLargeImageTween: (input: LargeBackgroundTweenInput) => Promise<void>;
   createShowItemSlot: (style: string) => StoryShowItemSlot | null;

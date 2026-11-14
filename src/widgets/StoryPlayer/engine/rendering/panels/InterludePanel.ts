@@ -7,7 +7,9 @@ import {
   type Texture,
 } from "pixi.js";
 
+import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import { STORY_HEIGHT, STORY_WIDTH, type InterludeInput } from "../../types";
+import { Sequence } from "../core/Sequence";
 
 import {
   CLIP_SECONDS,
@@ -22,15 +24,14 @@ import {
   setDialogBackground,
   type DecoNodes,
   type DialogNodes,
+  type InterludeTextureSet,
   type TemplateNodes,
 } from "./interludeTemplates";
 
-type TextureLoader = (input: InterludeInput) => Promise<Texture | null>;
-type Tween = (
-  durationMs: number,
-  update: (progress: number) => void,
-  complete?: () => void,
-) => Promise<void>;
+import type { TextureLoad } from "../core/TextureAsset";
+import type { TweenRunner } from "../core/TweenRunner";
+
+type Preparation = void | Promise<void>;
 type Vec2 = { x: number; y: number };
 
 /** `_leftChar`/`_middleChar`/`_rightChar`/`_imgBg`/缓存的 charslot。 */
@@ -82,6 +83,7 @@ interface ChannelState {
   directionGen: number;
   /** dialog 入场 clip 的世代(HideCutinMask 先 _KillDialogIntroTween)。 */
   introGen: number;
+  hideGen: number;
   /** `CutinTemplate.m_cachedName`。 */
   cachedName: string;
   /** `m_dialogCharPosOffset` / `m_dialogCharScaleMul`(只在给出时覆盖)。 */
@@ -152,8 +154,8 @@ function elementKeyFor(input: InterludeInput): string {
  *   sequences keep running (see ElementState) and a blocking command waits
  *   for its own tweens.
  * - `direction=rin/lin` (`_TryPlayAnimation`) plays the 2.083s channel clip on
- *   top; natively a blocking element update then never gets its callback, the
- *   Web completes when the clip and the element tweens end.
+ *   top; a blocking element update then waits for SkipStory because it never
+ *   attaches a completion callback to its sequence.
  * - 2.7.61 `CutinTemplateDialogView` (`interlude_dialog_left/right`) overrides
  *   Show/Update/Hide without calling the base: no deco/`_emptyImg`/size/ts;
  *   type 2 refreshes `img_bg`, type 3/1 refresh `img_char` (type 3 from the AVG
@@ -166,88 +168,145 @@ function elementKeyFor(input: InterludeInput): string {
  *   reachable by the native DOKills and stop with the recycled channel.
  *
  * Web adaptations: stencil channels are PIXI Graphics masks; unknown maskids
- * fall back to the legacy plain rectangle; type 1 on a dialog only feeds the
- * portrait (the parallel `_ProcessElement` on the channel element is not
- * ported; corpus has no such command); type 3 avatars keep the texture's
- * native size centred on the element (the `cutin_charslot` bottom anchor is
- * not ported).
+ * fall back to the legacy plain rectangle; a dialog displays its own
+ * portrait while type 1 runs the channel element sequence; type 3 avatars
+ * keep the texture's native size centred on the element.
  */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
+  private readonly pending = new Set<ExecutionHandle>();
 
   constructor(
     private readonly layer: Container,
-    private readonly loadTexture: TextureLoader,
-    private readonly tween: Tween,
+    private readonly loadTexture: (input: InterludeInput) => TextureLoad,
+    private readonly tween: TweenRunner["run"],
     private readonly onWarning?: (detail: string) => void,
   ) {}
 
-  async run(input: InterludeInput): Promise<void> {
-    if (input.clear) {
-      await this.clear(input);
-      return;
-    }
-    if (input.channel < 0) {
+  run(input: InterludeInput, onComplete?: () => void): ExecutionHandle | void {
+    if (!input.clear && input.channel < 0) {
       this.onWarning?.("interlude has no channel and is not a clear command");
       return;
     }
 
-    const existing = this.channels.get(input.channel);
-    if (existing) await this.update(existing, input);
-    else await this.begin(input);
+    const animation = createExecutionHandle(true, () =>
+      this.pending.delete(animation),
+    );
+    this.pending.add(animation);
+    const complete = () => {
+      if (animation.endReason === "reset" || animation.failure) return;
+      animation.end();
+      onComplete?.();
+    };
+    try {
+      const state = this.channels.get(input.channel);
+      const preparation = input.clear
+        ? this.clear(input, complete)
+        : state
+          ? this.update(state, input, complete)
+          : this.begin(input, complete);
+      if (preparation)
+        void preparation.catch((error: unknown) => animation.fail(error));
+    } catch (error) {
+      animation.fail(error);
+    }
+    return animation.endReason === "complete" ? undefined : animation;
   }
 
-  async clearAll(): Promise<void> {
+  clearAll(): void {
+    for (const animation of this.pending) animation.end("reset");
     for (const state of this.channels.values())
       state.root.destroy({ children: true });
     this.channels.clear();
   }
 
   destroy(): void {
-    void this.clearAll();
+    this.clearAll();
   }
 
-  /** `CutinChannel.OnCutinBegin`。 */
-  private async begin(input: InterludeInput): Promise<void> {
-    const state = await this.createChannel(input);
-    const template = state.template;
-    let showMs = 0;
-    if (template?.dialog) {
-      showMs = this.playDialogIntro(state, template.dialog, input);
-      await this.refreshDialog(state, template.dialog, input);
-    } else if (template) {
-      this.renderDeco(state, input);
-      state.cachedName = input.name;
-      if (template.emptyImage)
-        template.emptyImage.visible = isEmptyName(input.name);
-      showMs = this.showTemplate(state, template, input);
-    } else {
-      this.renderFallbackLabel(state, input);
-      if (
-        input.style === 0 &&
-        (input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0)
-      )
-        this.startScaleEntry(state, input);
-    }
-    // _TryPlayAnimation runs after ShowCutinMask; its clip never gates begin.
-    void this.playDirection(state, input);
-    if (input.block && showMs > 0) await this.tween(showMs, () => {});
+  /** CutinChannel.OnCutinBegin (2791 @ 0x1814F9270). */
+  private begin(input: InterludeInput, complete: () => void): Preparation {
+    const state = this.createChannel(input);
+    const start = (textures?: InterludeTextureSet): Preparation => {
+      if (state.root.destroyed) return;
+      this.buildChannel(state, input, textures);
+      const template = state.template;
+      if (template?.dialog) {
+        const dialog = template.dialog;
+        const show = () => {
+          if (state.root.destroyed) return;
+          this.playDialogIntro(state, dialog, input, complete);
+          this.playDirection(state, input);
+        };
+        const portrait = this.refreshDialog(state, dialog, input);
+        return portrait ? portrait.then(show) : show();
+      }
+
+      let showMs = 0;
+      if (template) {
+        this.renderDeco(state, input);
+        state.cachedName = input.name;
+        if (template.emptyImage)
+          template.emptyImage.visible = isEmptyName(input.name);
+        showMs = this.showTemplate(state, template, input);
+      } else {
+        this.renderFallbackLabel(state, input);
+        if (
+          input.style === 0 &&
+          (input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0)
+        )
+          this.startScaleEntry(state, input);
+      }
+      // TryPlayAnimation runs after ShowCutinMask without gating begin.
+      this.playDirection(state, input);
+      if (input.block && showMs > 0)
+        this.runTween(state, showMs, () => {}, complete);
+      else complete();
+    };
+
+    if (!KNOWN_MASK_IDS.has(input.maskId)) return start();
+    const textures = loadInterludeTextures();
+    return textures instanceof Promise
+      ? textures.then(start, (error: unknown) => {
+          if (state.root.destroyed) return;
+          this.onWarning?.(
+            `interlude template load failed for ${input.maskId}: ${String(error)}`,
+          );
+          return start();
+        })
+      : start(textures);
   }
 
-  /** `CutinChannel.OnCutinUpdate`。 */
-  private async update(
+  /** CutinChannel.OnCutinUpdate (2791 @ 0x1814F9820). */
+  private update(
     state: ChannelState,
     input: InterludeInput,
-  ): Promise<void> {
+    complete: () => void,
+  ): Preparation {
     const template = state.template;
     if (template?.dialog) {
-      // ConsumesAvatar/BackgroundUpdates: type 3/2 skip _ProcessElement and
-      // complete at once; UpdateCutinMask refreshes the dialog images.
-      await this.refreshDialog(state, template.dialog, input);
-      return;
+      const dialog = template.dialog;
+      if (input.type === 1) {
+        // Type 1 still creates a channel element sequence. The dialog has
+        // its own portrait, so keep the channel content hidden.
+        return this.prepareTexture(
+          state,
+          input.name ? this.loadTexture(input) : null,
+          (texture) => {
+            this.processElement(state, input, texture, complete);
+            this.refreshDialog(state, dialog, input, () => texture);
+          },
+        );
+      }
+
+      const finish = () => {
+        // Only the consumed background/avatar update invokes cb inline.
+        if (input.type === 2 || input.type === 3 || !input.block) complete();
+      };
+      const preparation = this.refreshDialog(state, dialog, input);
+      return preparation ? preparation.then(finish) : finish();
     }
 
-    // UpdateCutinMask (base): _emptyImg on name change + deco Render.
     if (template) {
       if (this.cacheName(state, input.name) && template.emptyImage)
         template.emptyImage.visible = isEmptyName(input.name);
@@ -256,13 +315,19 @@ export class InterludePanel {
       this.renderFallbackLabel(state, input);
     }
 
-    // Type 0/unknown never reaches _ProcessElement; natively a blocking one
-    // hangs on a plain template, we complete immediately instead.
-    if (input.type < 1 || input.type > 3) return;
-    await this.processElement(state, input);
+    // Type 0/unknown updates the template without calling completion.
+    if (input.type < 1 || input.type > 3) {
+      if (!input.block) complete();
+      return;
+    }
+    return this.prepareTexture(
+      state,
+      input.name ? this.loadTexture(input) : null,
+      (texture) => this.processElement(state, input, texture, complete),
+    );
   }
 
-  private async createChannel(input: InterludeInput): Promise<ChannelState> {
+  private createChannel(input: InterludeInput): ChannelState {
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     const maskContainer = new Container();
@@ -298,31 +363,43 @@ export class InterludePanel {
       scaleGen: 0,
       directionGen: 0,
       introGen: 0,
+      hideGen: 0,
       cachedName: "",
       dialogCharOffset: { x: 0, y: 0 },
       dialogCharScale: { x: 1, y: 1 },
     };
+    this.channels.set(input.channel, state);
+    return state;
+  }
+
+  private buildChannel(
+    state: ChannelState,
+    input: InterludeInput,
+    textures?: InterludeTextureSet,
+  ): void {
+    const { content, decoContainer, maskContainer } = state;
     const offsetX = input.offset.x;
     const offsetY = -input.offset.y;
 
-    if (input.maskId && KNOWN_MASK_IDS.has(input.maskId)) {
+    if (textures) {
       try {
-        const tex = await loadInterludeTextures();
-        const template = buildTemplate(input.maskId, tex);
+        const template = buildTemplate(input.maskId, textures);
         if (template) {
           state.template = template;
           let anchorX = 0;
           if (template.anchor === "left") anchorX = -STORY_WIDTH / 2;
           else if (template.anchor === "right") anchorX = STORY_WIDTH / 2;
           template.root.position.set(anchorX + offsetX, offsetY);
-          if (!template.dialog) {
+          if (template.dialog) {
+            content.visible = false;
+          } else {
             const size =
               input.size.x * input.size.x + input.size.y * input.size.y >= 1e-10
                 ? input.size
                 : template.defaultSize;
             template.resize(size.x, size.y);
             content.mask = template.maskGraphics;
-            const deco = buildDeco(input.maskId, tex);
+            const deco = buildDeco(input.maskId, textures);
             if (deco) {
               deco.root.position.set(offsetX, offsetY);
               decoContainer.addChild(deco.root);
@@ -332,6 +409,7 @@ export class InterludePanel {
           state.ratio = { ...template.initialScale };
           this.applyRatio(state);
           maskContainer.addChild(template.root);
+          return;
         }
       } catch (error) {
         this.onWarning?.(
@@ -340,17 +418,12 @@ export class InterludePanel {
       }
     }
 
-    if (!state.template) {
-      const fallback = new Graphics();
-      fallback.position.set(offsetX, offsetY);
-      maskContainer.addChild(fallback);
-      content.mask = fallback;
-      state.fallbackMask = fallback;
-      this.applyRatio(state);
-    }
-
-    this.channels.set(input.channel, state);
-    return state;
+    const fallback = new Graphics();
+    fallback.position.set(offsetX, offsetY);
+    maskContainer.addChild(fallback);
+    content.mask = fallback;
+    state.fallbackMask = fallback;
+    this.applyRatio(state);
   }
 
   /**
@@ -379,8 +452,7 @@ export class InterludePanel {
         waveGroup: state.deco?.waveGroup ?? null,
       };
       applySquareShow(nodes, 0);
-      void this.tween(seconds * 1000, (progress) => {
-        if (state.root.destroyed) return;
+      this.runTween(state, seconds * 1000, (progress) => {
         applySquareShow(nodes, progress * seconds);
       });
     }
@@ -388,8 +460,7 @@ export class InterludePanel {
     if (style === 3 && template.animatorClip === "hori_mask_open") {
       const seconds = CLIP_SECONDS.horiMaskOpen;
       applyHoriMaskOpen(template.maskNode, 0);
-      void this.tween(seconds * 1000, (progress) => {
-        if (state.root.destroyed) return;
+      this.runTween(state, seconds * 1000, (progress) => {
         applyHoriMaskOpen(template.maskNode, progress * seconds);
       });
       return 0;
@@ -404,13 +475,19 @@ export class InterludePanel {
     const to = { ...input.templateSizeTo };
     this.setRatio(state, from);
     const gen = ++state.scaleGen;
-    void this.tween(input.templateSizeDurationMs, (progress) => {
-      if (state.scaleGen !== gen || state.root.destroyed) return;
-      this.setRatio(state, {
-        x: lerp(from.x, to.x, progress),
-        y: lerp(from.y, to.y, progress),
-      });
-    });
+    this.runTween(
+      state,
+      input.templateSizeDurationMs,
+      (progress) => {
+        if (state.scaleGen !== gen) return;
+        this.setRatio(state, {
+          x: lerp(from.x, to.x, progress),
+          y: lerp(from.y, to.y, progress),
+        });
+      },
+      undefined,
+      Boolean(state.template),
+    );
   }
 
   private setRatio(state: ChannelState, ratio: Vec2): void {
@@ -499,43 +576,42 @@ export class InterludePanel {
     return element;
   }
 
-  /** `CutinChannel._ProcessElement`. */
-  private async processElement(
+  /** CutinChannel._ProcessElement (2791 @ 0x1814FA570). */
+  private processElement(
     state: ChannelState,
     input: InterludeInput,
-  ): Promise<void> {
+    texture: Texture | null,
+    complete: () => void,
+  ): void {
     const element = this.ensureElement(state, elementKeyFor(input), input.type);
     const node = element.node;
-    const runs: Array<Promise<void>> = [];
+    let sequence: Sequence | undefined;
+    const tracks = () => (sequence ??= new Sequence(this.tween));
 
-    // SetCutinElement (name present): sprite + SetNativeSize; aFrom/aTo are
-    // normalised by _ProcessElement (<0 → 0 / 1); aDuration > 0 fades
-    // aFrom→aTo, otherwise alpha is set to aTo at once.
+    // SetCutinElement sets the sprite and the start value. The native
+    // sequence appends its alpha tween and joins the position/scale tweens.
     if (input.name) {
-      const texture = await this.loadTexture(input);
-      if (!texture) {
-        this.onWarning?.(`interlude element asset is missing: ${input.name}`);
-        return;
-      }
-      if (node.destroyed) return;
-      element.sprite.texture = texture;
-      node.visible = true;
-      const from = Math.max(input.alphaFrom, 0);
-      const to = input.alphaTo >= 0 ? input.alphaTo : 1;
-      const gen = ++element.alphaGen;
-      if (input.alphaDurationMs > 0) {
-        node.alpha = from;
-        runs.push(
-          this.tween(input.alphaDurationMs, (progress) => {
-            if (element.alphaGen !== gen || node.destroyed) return;
-            node.alpha = lerp(from, to, progress);
-          }),
-        );
+      if (texture) {
+        element.sprite.texture = texture;
+        node.visible = true;
+        const from = Math.max(input.alphaFrom, 0);
+        const to = input.alphaTo >= 0 ? input.alphaTo : 1;
+        const gen = ++element.alphaGen;
+        if (input.alphaDurationMs > 0) {
+          node.alpha = from;
+          tracks().append({
+            durationMs: input.alphaDurationMs,
+            update: (progress) => {
+              if (element.alphaGen === gen)
+                node.alpha = lerp(from, to, progress);
+            },
+          });
+        } else {
+          node.alpha = to;
+        }
       } else {
-        node.alpha = to;
+        this.onWarning?.(`interlude element asset is missing: ${input.name}`);
       }
-    } else if (node.destroyed) {
-      return;
     }
 
     if (input.positionFrom && input.positionTo) {
@@ -543,50 +619,55 @@ export class InterludePanel {
       const to = input.positionTo;
       const gen = ++element.moveGen;
       node.position.set(from.x, -from.y);
-      runs.push(
-        this.tween(input.durationMs, (progress) => {
-          if (element.moveGen !== gen || node.destroyed) return;
+      tracks().join({
+        durationMs: input.durationMs,
+        update: (progress) => {
+          if (element.moveGen !== gen) return;
           node.position.set(
             lerp(from.x, to.x, progress),
             -lerp(from.y, to.y, progress),
           );
-        }),
-      );
+        },
+      });
     }
     if (input.scaleFrom && input.scaleTo) {
       const from = input.scaleFrom;
       const to = input.scaleTo;
       const gen = ++element.scaleGen;
       node.scale.set(from.x, from.y);
-      runs.push(
-        this.tween(input.scaleDurationMs, (progress) => {
-          if (element.scaleGen !== gen || node.destroyed) return;
+      tracks().join({
+        durationMs: input.scaleDurationMs,
+        update: (progress) => {
+          if (element.scaleGen !== gen) return;
           node.scale.set(
             lerp(from.x, to.x, progress),
             lerp(from.y, to.y, progress),
           );
-        }),
-      );
+        },
+      });
     }
 
-    const direction = this.playDirection(state, input);
-    if (!input.block) return;
-    await Promise.all(direction ? [direction, ...runs] : runs);
+    if (this.playDirection(state, input)) {
+      // TryPlayAnimation plays the channel clip instead of starting the
+      // element sequence, so a blocking update has no completion callback.
+      if (!input.block) complete();
+      return;
+    }
+
+    // Sequence.DoStartup @ 0x18442C6F0 takes an empty sequence with OnComplete.
+    if (input.block) tracks();
+    void sequence?.play({
+      deferZeroDuration: true,
+      isAlive: () => !state.root.destroyed,
+      onComplete: input.block ? complete : undefined,
+    });
+    if (!input.block) complete();
   }
 
-  /**
-   * `_TryPlayAnimation`: `direction=rin/lin` restarts the channel animWrapper
-   * clip (SampleClipAtBegin + Play). Returns null when there is no direction.
-   */
-  private playDirection(
-    state: ChannelState,
-    input: InterludeInput,
-  ): Promise<void> | null {
-    const direction =
-      input.direction === "rin" || input.direction === "lin"
-        ? input.direction
-        : null;
-    if (!direction) return null;
+  /** TryPlayAnimation @ 0x1814FABE0 restarts a direction clip. */
+  private playDirection(state: ChannelState, input: InterludeInput): boolean {
+    const direction = input.direction;
+    if (direction !== "rin" && direction !== "lin") return false;
     const nodes = {
       alphaTarget: state.root,
       bkgScale: state.bkgScale,
@@ -597,60 +678,65 @@ export class InterludePanel {
     const seconds = CLIP_SECONDS.direction;
     const gen = ++state.directionGen;
     applyDirectionClip(nodes, direction, 0);
-    return this.tween(seconds * 1000, (progress) => {
-      if (state.directionGen !== gen || state.root.destroyed) return;
-      applyDirectionClip(nodes, direction, progress * seconds);
+    this.runTween(state, seconds * 1000, (progress) => {
+      if (state.directionGen === gen)
+        applyDirectionClip(nodes, direction, progress * seconds);
     });
+    return true;
   }
 
-  /**
-   * `_PlayDialogIntro`: style 3 only; speed = ClipLength / duration, so the clip
-   * is remapped onto the command `duration`; `NeedSkipAnimation(duration)`
-   * samples the end pose. Returns the intro length in ms (0 = no tween).
-   */
+  /** CutinTemplateDialogView._PlayDialogIntro remaps clip time to duration. */
   private playDialogIntro(
     state: ChannelState,
     dialog: DialogNodes,
     input: InterludeInput,
-  ): number {
-    if (input.style !== 3) return 0;
+    complete: () => void,
+  ): void {
+    if (input.style !== 3) {
+      complete();
+      return;
+    }
     const seconds = dialog.right
       ? CLIP_SECONDS.dialogIntroRight
       : CLIP_SECONDS.dialogIntroLeft;
     if (input.durationMs <= 0) {
       applyDialogIntro(dialog, seconds);
-      return 0;
+      complete();
+      return;
     }
     applyDialogIntro(dialog, 0);
     const gen = ++state.introGen;
-    void this.tween(input.durationMs, (progress) => {
-      if (state.introGen !== gen || state.root.destroyed) return;
-      applyDialogIntro(dialog, progress * seconds);
-    });
-    return input.durationMs;
+    this.runTween(
+      state,
+      input.durationMs,
+      (progress) => {
+        if (state.introGen === gen)
+          applyDialogIntro(dialog, progress * seconds);
+      },
+      input.block ? complete : undefined,
+    );
+    if (!input.block) complete();
   }
 
-  /**
-   * `_RefreshDialogBackground` (type 2) / `_RefreshDialogChar` (type 3 and 1).
-   */
-  private async refreshDialog(
+  /** CutinTemplateDialogView._RefreshDialogBackground / _RefreshDialogChar. */
+  private refreshDialog(
     state: ChannelState,
     dialog: DialogNodes,
     input: InterludeInput,
-  ): Promise<void> {
+    loadTexture = () => this.loadTexture(input),
+  ): Preparation {
     if (input.type === 2) {
       if (isEmptyName(input.name)) {
         setDialogBackground(dialog, null);
         return;
       }
-      const texture = await this.loadTexture(input);
-      if (state.root.destroyed) return;
-      if (texture) setDialogBackground(dialog, texture);
-      else
-        this.onWarning?.(
-          `interlude dialog background is missing: ${input.name}`,
-        );
-      return;
+      return this.prepareTexture(state, loadTexture(), (texture) => {
+        if (texture) setDialogBackground(dialog, texture);
+        else
+          this.onWarning?.(
+            `interlude dialog background is missing: ${input.name}`,
+          );
+      });
     }
     if (input.type !== 3 && input.type !== 1) return;
 
@@ -659,56 +745,79 @@ export class InterludePanel {
     if (input.dialogCharScale)
       state.dialogCharScale = { ...input.dialogCharScale };
     const image = dialog.charImage;
+    const layoutChar = () => {
+      if (image.visible)
+        layoutDialogChar(dialog, state.dialogCharOffset, state.dialogCharScale);
+    };
     if (this.cacheName(state, input.name)) {
       if (isEmptyName(input.name)) {
         image.visible = false;
       } else {
-        const texture = await this.loadTexture(input);
-        if (state.root.destroyed) return;
-        if (texture) {
-          image.texture = texture;
-          image.visible = true;
-        } else {
-          image.visible = false;
-          this.onWarning?.(`interlude dialog avatar is missing: ${input.name}`);
-        }
+        return this.prepareTexture(state, loadTexture(), (texture) => {
+          if (texture) {
+            image.texture = texture;
+            image.visible = true;
+          } else {
+            image.visible = false;
+            this.onWarning?.(
+              `interlude dialog avatar is missing: ${input.name}`,
+            );
+          }
+          layoutChar();
+        });
       }
     }
-    if (image.visible)
-      layoutDialogChar(dialog, state.dialogCharOffset, state.dialogCharScale);
+    layoutChar();
   }
 
-  private async clear(input: InterludeInput): Promise<void> {
+  private prepareTexture(
+    state: ChannelState,
+    texture: TextureLoad,
+    use: (texture: Texture | null) => void,
+  ): Preparation {
+    const apply = (resolved: Texture | null) => {
+      if (!state.root.destroyed) use(resolved);
+    };
+    return texture instanceof Promise
+      ? texture.then(apply, () => apply(null))
+      : apply(texture);
+  }
+
+  private clear(input: InterludeInput, complete: () => void): void {
+    const channel = this.channels.get(input.channel);
     const states =
       input.channel < 0
-        ? [...this.channels.entries()]
-        : [...this.channels.entries()].filter(
-            ([channel]) => channel === input.channel,
-          );
-    // Native _ProcessChannelClean clear-all invokes the completion callback
-    // once per recycled channel (and never when there are none); we aggregate
-    // into a single completion on purpose.
-    if (input.channel < 0 && input.block && states.length > 1)
-      this.onWarning?.(
-        `interlude clear-all aggregates ${states.length} channel completions into one (native fires per channel)`,
-      );
-    const tasks = states.map(async ([channel, state]) => {
-      const run = this.hide(state, input, () => {
-        if (!state.root.destroyed) state.root.destroy({ children: true });
-        if (this.channels.get(channel) === state) this.channels.delete(channel);
+        ? [...this.channels]
+        : channel
+          ? [[input.channel, channel] as const]
+          : [];
+
+    // CutinController._ProcessChannelClean (2791 @ 0x1814FB710) registers a
+    // callback per channel. Recycle each Web view independently and release
+    // on the first completion.
+    for (const [id, state] of states) {
+      const gen = ++state.hideGen;
+      const isCurrent = () => state.hideGen === gen;
+      this.hide(state, input, isCurrent, () => {
+        if (state.hideGen !== gen || state.root.destroyed) return;
+        this.channels.delete(id);
+        state.root.destroy({ children: true });
+        if (input.block && state.template) complete();
       });
-      if (input.block) await run;
-      else void run;
-    });
-    if (input.block) await Promise.all(tasks);
+      if (input.block && !state.template) complete();
+    }
+    // An absent explicit channel finishes immediately. An empty clear-all
+    // has no channel callback to release a blocking command.
+    if (!input.block || (input.channel >= 0 && !channel)) complete();
   }
 
-  /** `CutinChannel.OnCutinEnd` → `HideCutinMask`; `done` recycles the channel. */
+  /** CutinChannel.OnCutinEnd -> HideCutinMask. */
   private hide(
     state: ChannelState,
     input: InterludeInput,
+    isCurrent: () => boolean,
     done: () => void,
-  ): Promise<void> {
+  ): void {
     const template = state.template;
     if (template?.dialog) {
       const group = template.dialog.group;
@@ -717,45 +826,74 @@ export class InterludePanel {
       const to = input.alphaTo >= 0 ? input.alphaTo : 0;
       const durationMs =
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
-      return this.tween(
+      this.runTween(
+        state,
         durationMs,
         (progress) => {
-          if (state.root.destroyed) return;
-          group.alpha = lerp(from, to, progress);
+          if (isCurrent()) group.alpha = lerp(from, to, progress);
         },
         done,
       );
+      return;
     }
 
     if (state.deco) {
       const deco = state.deco.root;
-      void this.tween(500, (progress) => {
-        if (!deco.destroyed) deco.alpha = 1 - progress;
+      this.runTween(state, 500, (progress) => {
+        if (isCurrent()) deco.alpha = 1 - progress;
       });
     }
-    const scaleOut = (complete?: () => void): Promise<void> => {
+    const scaleOut = (complete?: () => void): void => {
       const from = { ...state.ratio };
       const to = { ...input.templateSizeTo };
       const gen = ++state.scaleGen;
-      return this.tween(
+      this.runTween(
+        state,
         input.templateSizeDurationMs,
         (progress) => {
-          if (state.scaleGen !== gen || state.root.destroyed) return;
+          if (state.scaleGen !== gen) return;
           this.setRatio(state, {
             x: lerp(from.x, to.x, progress),
             y: lerp(from.y, to.y, progress),
           });
         },
         complete,
+        Boolean(template),
       );
     };
-    // Style Scale (and the Web fallback rectangle): DOScale from the current
-    // ratio to tsTo (tsFrom is not reused), completing the hide.
-    if (!template || input.style === 0) return scaleOut(done);
-    // Both: the DOScale runs alongside the _imgMask fade without a callback.
-    if (input.style === 2) void scaleOut();
-    // Other styles complete on DOFade(_imgMask → ato, aduration): only the
-    // timing is visible since _imgMask writes stencil only.
-    return this.tween(input.alphaDurationMs, () => {}, done);
+    if (!template) {
+      // The legacy fallback rectangle has no native CutinTemplate. Recycle
+      // it on its own tween and release the command inline.
+      scaleOut(done);
+      return;
+    }
+    if (input.style === 0) {
+      scaleOut(done);
+      return;
+    }
+    if (input.style === 2) scaleOut();
+    if (template.hasImgMask)
+      this.runTween(state, input.alphaDurationMs, () => {}, done, true);
+    else done();
+  }
+
+  private runTween(
+    state: ChannelState,
+    durationMs: number,
+    update: (progress: number) => void,
+    onComplete?: () => void,
+    deferZeroDuration = false,
+  ): void {
+    const isAlive = () => !state.root.destroyed;
+    void this.tween(
+      durationMs,
+      (progress) => {
+        if (isAlive()) update(progress);
+      },
+      () => {
+        if (isAlive()) onComplete?.();
+      },
+      { deferZeroDuration, isAlive },
+    );
   }
 }

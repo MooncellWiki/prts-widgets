@@ -107,17 +107,11 @@ describe("StoryRuntime", () => {
     },
   );
 
-  it("clears interludes before cut-in slots and waits for both on a segment skip", async () => {
-    const interludeCleanup = Promise.withResolvers<void>();
-    const cutinCleanup = Promise.withResolvers<void>();
+  it("recycles the cut-in slots before resetting the interlude channels on a segment skip", async () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const clearInterludes = vi
-      .spyOn(renderer, "clearInterludes")
-      .mockReturnValueOnce(interludeCleanup.promise);
-    const clearCharacterCutin = vi
-      .spyOn(renderer, "clearCharacterCutin")
-      .mockReturnValueOnce(cutinCleanup.promise);
+    const clearCharacterCutin = vi.spyOn(renderer, "clearCharacterCutin");
+    const clearInterludes = vi.spyOn(renderer, "clearInterludes");
     const clearSpellStickers = vi.spyOn(renderer, "clearSpellStickers");
     const runtime = new StoryRuntime(
       createContext([
@@ -129,34 +123,21 @@ describe("StoryRuntime", () => {
       new FakeAudio(),
     );
 
-    const startPromise = runtime.start();
-    const skipPromise = runtime.skipNode();
+    const started = runtime.start();
+    const skipped = runtime.skipNode();
     try {
-      await renderer.frames.advance(16);
-      expect(clearInterludes).toHaveBeenCalledTimes(1);
-      expect(clearCharacterCutin).not.toHaveBeenCalled();
-      expect(runtime.getState()).toBe("waiting_timer");
-
-      interludeCleanup.resolve();
       await setImmediate();
-      await renderer.frames.advance(16);
       expect(clearCharacterCutin).toHaveBeenCalledExactlyOnceWith();
-      expect(clearSpellStickers).not.toHaveBeenCalled();
-      expect(runtime.getState()).toBe("waiting_timer");
-
-      cutinCleanup.resolve();
-      await setImmediate();
-      expect(clearSpellStickers).toHaveBeenCalledTimes(1);
+      expect(clearInterludes).toHaveBeenCalledExactlyOnceWith();
+      expect(clearCharacterCutin).toHaveBeenCalledBefore(clearInterludes);
+      expect(clearInterludes).toHaveBeenCalledBefore(clearSpellStickers);
       expect(runtime.getState()).toBe("waiting_timer");
       await renderer.frames.advance(16);
-      await Promise.all([startPromise, skipPromise]);
-      expect(runtime.getState()).toBe("waiting_input");
+      await Promise.all([started, skipped]);
       expect(runtime.getDisplayedLineIndex()).toBe(3);
     } finally {
-      interludeCleanup.resolve();
-      cutinCleanup.resolve();
       runtime.destroy();
-      await Promise.all([startPromise, skipPromise]);
+      await Promise.all([started, skipped]);
     }
   });
 
@@ -773,8 +754,10 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
-  it("resets the timer, stickers and subtitle when the skip ends the story", async () => {
+  it("resets the timer, stickers, subtitle and cut-in panel when the skip ends the story", async () => {
     const renderer = new FakeRenderer();
+    const clearInterludes = vi.spyOn(renderer, "clearInterludes");
+    const clearCharacterCutin = vi.spyOn(renderer, "clearCharacterCutin");
     const runtime = new StoryRuntime(
       createContext([
         '[name="A"]hello',
@@ -803,7 +786,9 @@ describe("StoryRuntime", () => {
     expect(renderer.stickersClearCalls).toEqual([0]);
     expect(renderer.subtitleClearCalls).toEqual([0]);
     expect(renderer.spellStickerClearCount).toBe(0);
-    expect(renderer.clearCharacterCutinCalls).toEqual([]);
+    expect(clearCharacterCutin).toHaveBeenCalledExactlyOnceWith();
+    expect(clearInterludes).toHaveBeenCalledExactlyOnceWith();
+    expect(clearCharacterCutin).toHaveBeenCalledBefore(clearInterludes);
   });
 
   it("cancels the natural end wait and clears displayables once when skipping the story", async () => {
@@ -1133,7 +1118,9 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
     const cleanup = Promise.withResolvers<void>();
-    vi.spyOn(renderer, "clearInterludes").mockReturnValueOnce(cleanup.promise);
+    vi.spyOn(renderer, "clearSpellStickers").mockReturnValueOnce(
+      cleanup.promise,
+    );
     const animation = createExecutionHandle(true);
     const destination = createExecutionHandle(true);
     const show = vi
@@ -1261,7 +1248,7 @@ describe("StoryRuntime", () => {
   it("releases a pending decision if skip cleanup rejects", async () => {
     const renderer = new FakeRenderer();
     renderer.holdDecisions = true;
-    vi.spyOn(renderer, "clearInterludes").mockRejectedValueOnce(
+    vi.spyOn(renderer, "clearSpellStickers").mockRejectedValueOnce(
       new Error("reset failed"),
     );
     const runtime = new StoryRuntime(

@@ -1038,7 +1038,7 @@ export class StoryRuntime {
       }
       if (shouldResume) {
         for (const reset of [
-          () => this.characterCutinPanel.resetOnSkip(() => this.destroyed),
+          () => this.characterCutinPanel.reset(),
           () => this.spellStickerPanel.reset(),
           () => this.subtitlePanel.reset(),
           () => this.stickerPanel.reset(),
@@ -1204,6 +1204,7 @@ export class StoryRuntime {
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
     this.cameraEffectExecutor.reset();
+    this.characterCutinPanel.reset();
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.showItemPanel.reset();
