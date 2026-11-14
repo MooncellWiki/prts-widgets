@@ -11,6 +11,11 @@ import {
 import { STAMP_ASSETS } from "../../../assets";
 import { tryParseInt32 } from "../../commandParams";
 import {
+  createExecutionHandle,
+  type AnimationPreparation,
+  type ExecutionHandle,
+} from "../../execution";
+import {
   ANIMTEXT_MAIN_FONT_FAMILY,
   ANIMTEXT_MAIN_FONT_WEIGHT,
   DIALOG_FONT_FAMILY,
@@ -22,11 +27,14 @@ import {
   richCharsToTaggedText,
 } from "../../richtext";
 import { STORY_HEIGHT, STORY_WIDTH, type AnimTextInput } from "../../types";
+import { getCachedTexture } from "../core/TextureAsset";
 
-import type { PreparedAnimation } from "../../execution";
 import type { TweenRunner } from "../core/TweenRunner";
 
 const ANIMATION_MS = 5000;
+type StampPart = keyof typeof STAMP_ASSETS;
+type StampTextures = Record<StampPart, Texture>;
+const stampParts = Object.keys(STAMP_ASSETS) as StampPart[];
 
 function lerpKeyframes(
   time: number,
@@ -232,7 +240,7 @@ export function parseSplitContent(
  * (`_CleanAllTextStamps` on reset / script end).
  */
 export class AnimTextPanel {
-  private readonly stamps: Container[] = [];
+  private readonly stamps = new Map<Container, ExecutionHandle>();
   private generation = 0;
 
   constructor(
@@ -241,10 +249,7 @@ export class AnimTextPanel {
     private readonly onWarning?: (detail: string) => void,
   ) {}
 
-  async show(
-    input: AnimTextInput,
-    onComplete?: () => void,
-  ): Promise<PreparedAnimation> {
+  show(input: AnimTextInput, onComplete?: () => void): AnimationPreparation {
     // Native loads any template via
     // `ResourceRouter.GetAVGAnimateTextTemplatePath` (`AVG/AnimateText/{0}`,
     // 2.7.71 VA 0x183f386c0) and LogError+throws when the prefab is missing. This
@@ -252,33 +257,38 @@ export class AnimTextPanel {
     // game data (`group_location_stamp`); other names warn and no-op.
     if (input.name !== "group_location_stamp") {
       this.onWarning?.(`unsupported_visual animtext:${input.name}`);
-      return { animation: undefined };
+      return;
     }
 
-    const names = [
-      "back_shadow",
-      "frame_outer",
-      "icon_back",
-      "frame_inner",
-      "icon_comps",
-      "icon_start",
-      "back_gradient",
-    ] as const;
     const generation = this.generation;
-    let textures: Record<(typeof names)[number], Texture>;
-    try {
-      const loaded = await Promise.all(
-        names.map((name) => Assets.load<Texture>(STAMP_ASSETS[name])),
-      );
-      textures = Object.fromEntries(
-        names.map((name, index) => [name, loaded[index]]),
-      ) as Record<(typeof names)[number], Texture>;
-    } catch {
-      this.onWarning?.("missing animtext prefab sprites: group_location_stamp");
-      return { animation: undefined };
+    const draw = (loaded: Texture[]) => {
+      if (generation !== this.generation) return;
+      const textures = Object.fromEntries(
+        stampParts.map((name, index) => [name, loaded[index]]),
+      ) as StampTextures;
+      return this.playStamp(input, textures, onComplete);
+    };
+    const textures = stampParts.map((name) => {
+      const url = STAMP_ASSETS[name];
+      return getCachedTexture(url) ?? Assets.load<Texture>(url);
+    });
+    if (
+      textures.every(
+        (texture): texture is Texture => !(texture instanceof Promise),
+      )
+    ) {
+      return draw(textures);
     }
-    if (generation !== this.generation) return { animation: undefined };
+    return Promise.all(textures).then(draw, () => {
+      this.onWarning?.("missing animtext prefab sprites: group_location_stamp");
+    });
+  }
 
+  private playStamp(
+    input: AnimTextInput,
+    textures: StampTextures,
+    onComplete?: () => void,
+  ): ExecutionHandle {
     const root = new Container();
     root.position.set(
       STORY_WIDTH / 2 + input.position.x,
@@ -351,7 +361,8 @@ export class AnimTextPanel {
 
     root.alpha = 0;
     this.layer.addChild(root);
-    this.stamps.push(root);
+    const animation = createExecutionHandle(onComplete !== undefined);
+    this.stamps.set(root, animation);
     const isAlive = () => !root.destroyed;
     const update = (progress: number) => {
       if (!isAlive()) return;
@@ -424,17 +435,22 @@ export class AnimTextPanel {
       shadow.visible = true;
     };
     const complete = () => {
-      if (isAlive()) onComplete?.();
+      if (isAlive()) {
+        animation.end();
+        onComplete?.();
+      } else animation.end("reset");
     };
-    return {
-      animation: this.tween(ANIMATION_MS, update, complete, { isAlive }),
-    };
+    void this.tween(ANIMATION_MS, update, complete, { isAlive });
+    return animation;
   }
 
   clear(): void {
     this.generation += 1;
-    for (const stamp of this.stamps) stamp.destroy({ children: true });
-    this.stamps.length = 0;
+    for (const [stamp, animation] of this.stamps) {
+      animation.end("reset");
+      stamp.destroy({ children: true });
+    }
+    this.stamps.clear();
   }
 
   destroy(): void {

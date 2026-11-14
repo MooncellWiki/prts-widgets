@@ -4,8 +4,8 @@ import { PlaybackTestFrames } from "./playbackFrames";
 
 import type { Context } from "../../src/widgets/StoryPlayer/context";
 import type {
+  AnimationPreparation,
   ExecutionHandle,
-  PreparedAnimation,
 } from "../../src/widgets/StoryPlayer/engine/execution";
 import type {
   AnimTextInput,
@@ -119,7 +119,6 @@ export class FakeRenderer implements StoryRenderer {
   typingActive = false;
   videoCalls: string[] = [];
   videoStopped = false;
-  videoWaiter: Promise<void> = Promise.resolve();
   decisionValue = 0;
   decisionIndex = -1;
   decisionCalls: {
@@ -131,7 +130,7 @@ export class FakeRenderer implements StoryRenderer {
   holdDecisions = false;
   private onDecisionSelected: ((selection: DecisionSelection) => void) | null =
     null;
-  private resolveVideoWaiter: (() => void) | null = null;
+  private onVideoEnd: (() => void) | null = null;
 
   setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
@@ -248,29 +247,24 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   async mount(): Promise<void> {}
-  async playVideo(url: string): Promise<void> {
+  playVideo(url: string, onEnd: () => void): void {
     this.videoCalls.push(url);
     this.videoStopped = false;
-    this.videoWaiter = new Promise<void>((resolve) => {
-      this.resolveVideoWaiter = resolve;
-    });
-    await this.videoWaiter;
+    this.onVideoEnd = onEnd;
   }
 
-  async setAnimText(
+  setAnimText(
     input: AnimTextInput,
     _onComplete?: () => void,
-  ): Promise<PreparedAnimation> {
+  ): AnimationPreparation {
     this.animTextCalls.push(input);
-    return { animation: undefined };
   }
 
-  async setAvgDisplay(
+  setAvgDisplay(
     input: AvgDisplayInput,
     _onComplete?: () => void,
-  ): Promise<PreparedAnimation> {
+  ): AnimationPreparation {
     this.avgDisplayCalls.push(input);
-    return { animation: undefined };
   }
 
   async setBackground(key: string, input?: BackgroundInput): Promise<void> {
@@ -357,7 +351,7 @@ export class FakeRenderer implements StoryRenderer {
   createShowItemSlot(style: string): StoryShowItemSlot | null {
     if (style !== "photo" && style !== "cutin") return null;
     return {
-      show: async (args, key, finish) => {
+      show: (args, key, finish) => {
         this.showItemCalls.push({ args, key, style });
         finish();
       },
@@ -414,7 +408,7 @@ export class FakeRenderer implements StoryRenderer {
     this.subtitleText = richCharsToTaggedText(chars.slice(0, visibleCount));
   }
 
-  async setTimerSticker(input: TimerStickerInput): Promise<void> {
+  setTimerSticker(input: TimerStickerInput): void {
     this.timerStickerCalls.push(input);
   }
 
@@ -455,13 +449,13 @@ export class FakeRenderer implements StoryRenderer {
 
   stopVideo(): void {
     this.videoStopped = true;
-    this.resolveVideoWaiter?.();
-    this.resolveVideoWaiter = null;
+    this.onVideoEnd = null;
   }
 
   finishVideo(): void {
-    this.resolveVideoWaiter?.();
-    this.resolveVideoWaiter = null;
+    const onEnd = this.onVideoEnd;
+    this.onVideoEnd = null;
+    onEnd?.();
   }
 }
 

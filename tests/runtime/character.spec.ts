@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
@@ -12,7 +12,6 @@ import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types"
 describe("StoryRuntime", () => {
   it("places a single character in the middle slot without ever blocking", async () => {
     const renderer = new FakeRenderer();
-    const sleep = vi.fn(async () => {});
     const runtime = new StoryRuntime(
       createContext([
         '[character(name="avg_npc_1",block=true,fadetime=0.2,enter="left",blackstart=0.2,blackend=0.8)]',
@@ -20,7 +19,6 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      { sleep },
     );
 
     await runtime.start();
@@ -49,7 +47,6 @@ describe("StoryRuntime", () => {
         transType: 0,
       },
     ]);
-    expect(sleep).not.toHaveBeenCalled();
     expect(runtime.getState()).toBe("waiting_input");
   });
 

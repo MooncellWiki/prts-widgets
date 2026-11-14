@@ -1,13 +1,19 @@
 import { Container, Sprite, type Texture } from "pixi.js";
 
+import {
+  createExecutionHandle,
+  type AnimationPreparation,
+  type ExecutionHandle,
+} from "../../execution";
 import { STORY_HEIGHT, STORY_WIDTH, type AvgDisplayInput } from "../../types";
 import { canvasOrderForLayer, sceneCanvasOrder } from "../core/LayerGraph";
 import { Sequence } from "../core/Sequence";
 
-import type { PreparedAnimation } from "../../execution";
+import type { TextureLoad } from "../core/TextureAsset";
 import type { TweenRunner } from "../core/TweenRunner";
 
 interface AvgDisplayState {
+  animation?: ExecutionHandle;
   name: string;
   ready?: Promise<void>;
   root: Container;
@@ -15,8 +21,6 @@ interface AvgDisplayState {
   slot: "bgover" | "cgover" | "charover";
   style: string;
 }
-
-type TextureLoader = (name: string) => Promise<Texture | null>;
 
 /**
  * Port scope: `Torappu.AVG.AVGDisplayableExecutor._ExecuteAVGDisplayable`.
@@ -28,28 +32,26 @@ export class AvgDisplayPanel {
 
   constructor(
     private readonly slots: Record<"bgover" | "cgover" | "charover", Container>,
-    private readonly loadBackground: TextureLoader,
+    private readonly loadBackground: (name: string) => TextureLoad,
     private readonly tween: TweenRunner["run"],
     private readonly onWarning?: (detail: string) => void,
   ) {}
 
   clear(): void {
-    for (const state of this.states.values())
-      state.root.destroy({ children: true });
-    this.states.clear();
+    for (const id of this.states.keys()) this.remove(id);
   }
 
   destroy(): void {
     this.clear();
   }
 
-  async display(
+  display(
     input: AvgDisplayInput,
     onComplete?: () => void,
-  ): Promise<PreparedAnimation> {
+  ): AnimationPreparation {
     if (!input.name) {
       this.remove(input.id);
-      return { animation: undefined };
+      return;
     }
 
     const { slot } = input;
@@ -57,7 +59,7 @@ export class AvgDisplayPanel {
       this.onWarning?.(
         `invalid_parameter avgdisplay slot:${input.slot || "(empty)"}`,
       );
-      return { animation: undefined };
+      return;
     }
     const parent = this.slots[slot];
 
@@ -90,6 +92,8 @@ export class AvgDisplayPanel {
     const holder = state;
     const { root } = holder;
     const sessionId = ++holder.sessionId;
+    holder.animation?.end("reset");
+    holder.animation = undefined;
     const isAlive = () => !root.destroyed && holder.sessionId === sessionId;
     if (holder.name !== input.name) {
       // Divergence (intentional, verified 2.7.61 and 2.7.81): native
@@ -104,19 +108,34 @@ export class AvgDisplayPanel {
       // corpus-unreachable.
       for (const child of root.removeChildren()) child.destroy();
       holder.name = input.name;
-      // Only the latest request for this holder may install its content.
-      const ready = this.loadContent(input).then((texture) => {
-        if (!texture || root.destroyed || holder.ready !== ready) return;
-        const sprite = root.addChild(new Sprite(texture));
-        sprite.anchor.set(0.5);
-        sprite.setSize(STORY_WIDTH, STORY_HEIGHT);
-      });
-      holder.ready = ready;
+      const texture = this.loadContent(input);
+      if (texture instanceof Promise) {
+        // Only the latest request for this holder may install its content.
+        const ready = texture.then((loaded) => {
+          if (!root.destroyed && holder.ready === ready)
+            this.addSprite(root, loaded);
+        });
+        holder.ready = ready;
+      } else {
+        holder.ready = undefined;
+        this.addSprite(root, texture);
+      }
     }
-    if (holder.ready) await holder.ready;
-    if (!isAlive()) return { animation: undefined };
-    holder.ready = undefined;
+    const animate = () => {
+      if (!isAlive()) return;
+      holder.ready = undefined;
+      return this.playFeatures(holder, input, isAlive, onComplete);
+    };
+    return holder.ready ? holder.ready.then(animate) : animate();
+  }
 
+  private playFeatures(
+    holder: AvgDisplayState,
+    input: AvgDisplayInput,
+    isAlive: () => boolean,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    const { root } = holder;
     const currentX = root.position.x - 640;
     const currentY = 360 - root.position.y;
     const startX = input.xFrom ?? input.x ?? currentX;
@@ -195,10 +214,21 @@ export class AvgDisplayPanel {
     }
     // The Web keeps the scripted timing for the unsupported animekv clip.
     if (hasEntry) applyFeature(true, () => {});
-    return { animation: sequence?.play({ isAlive, onComplete }) };
+    if (!sequence) return;
+    const animation = createExecutionHandle(onComplete !== undefined);
+    holder.animation = animation;
+    void sequence.play({
+      isAlive,
+      onComplete: () => {
+        holder.animation = undefined;
+        animation.end();
+        onComplete?.();
+      },
+    });
+    return animation;
   }
 
-  private async loadContent(input: AvgDisplayInput): Promise<Texture | null> {
+  private loadContent(input: AvgDisplayInput): TextureLoad {
     if (input.style === "bg") return this.loadBackground(input.name);
     this.onWarning?.(
       `unsupported_visual avgdisplay:${input.style}:${input.name}`,
@@ -206,10 +236,18 @@ export class AvgDisplayPanel {
     return null;
   }
 
+  private addSprite(root: Container, texture: Texture | null): void {
+    if (!texture) return;
+    const sprite = root.addChild(new Sprite(texture));
+    sprite.anchor.set(0.5);
+    sprite.setSize(STORY_WIDTH, STORY_HEIGHT);
+  }
+
   private remove(id: string): void {
     const state = this.states.get(id);
     if (!state) return;
     state.sessionId += 1;
+    state.animation?.end("reset");
     state.root.destroy({ children: true });
     this.states.delete(id);
   }

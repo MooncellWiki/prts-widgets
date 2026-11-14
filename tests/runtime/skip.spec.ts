@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createExecutionHandle,
-  type PreparedAnimation,
+  type ExecutionHandle,
 } from "../../src/widgets/StoryPlayer/engine/execution";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
@@ -186,7 +186,6 @@ describe("StoryRuntime", () => {
   });
 
   it("skipnode can finish the story from a dialogue input wait", async () => {
-    const sleep = vi.fn(() => new Promise<void>(() => {}));
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -199,7 +198,6 @@ describe("StoryRuntime", () => {
       new FakeAudio(),
       {
         firstRead: false,
-        sleep,
         typingIntervalMs: 30,
       },
     );
@@ -366,7 +364,8 @@ describe("StoryRuntime", () => {
     async ({ command, method }) => {
       const renderer = new FakeRenderer();
       renderer.frames.manual = true;
-      const { promise, resolve } = Promise.withResolvers<PreparedAnimation>();
+      const { promise, resolve } =
+        Promise.withResolvers<ExecutionHandle | void>();
       const render = vi.spyOn(renderer, method).mockReturnValueOnce(promise);
       const runtime = new StoryRuntime(
         createContext([
@@ -387,14 +386,14 @@ describe("StoryRuntime", () => {
         expect(render).toHaveBeenCalledTimes(1);
         expect(runtime.getDisplayedLineIndex()).toBeNull();
 
-        resolve({ animation: undefined });
+        resolve();
         await setImmediate();
         await renderer.frames.advance(16);
         await starting;
         await skipping;
         expect(runtime.getDisplayedLineIndex()).toBe(4);
       } finally {
-        resolve({ animation: undefined });
+        resolve();
         runtime.destroy();
       }
     },
@@ -407,16 +406,16 @@ describe("StoryRuntime", () => {
     "lets a skipped $0.method animation finish the next displayable command",
     async ({ blockingCommand, method }, next) => {
       const renderer = new FakeRenderer();
-      const firstAnimation = Promise.withResolvers<void>();
-      const secondAnimation = Promise.withResolvers<void>();
+      const firstAnimation = createExecutionHandle(true);
+      const secondAnimation = createExecutionHandle(true);
       const clearAnimTexts = vi.spyOn(renderer, "clearAnimTexts");
       const clearAvgDisplays = vi.spyOn(renderer, "clearAvgDisplays");
-      const first = vi.spyOn(renderer, method).mockResolvedValueOnce({
-        animation: firstAnimation.promise,
-      });
-      const second = vi.spyOn(renderer, next.method).mockResolvedValueOnce({
-        animation: secondAnimation.promise,
-      });
+      const first = vi
+        .spyOn(renderer, method)
+        .mockReturnValueOnce(firstAnimation);
+      const second = vi
+        .spyOn(renderer, next.method)
+        .mockReturnValueOnce(secondAnimation);
       const runtime = new StoryRuntime(
         createContext([
           blockingCommand,
@@ -444,15 +443,14 @@ describe("StoryRuntime", () => {
         expect(clearAvgDisplays).not.toHaveBeenCalled();
 
         first.mock.calls[0]![1]!();
-        firstAnimation.resolve();
+        firstAnimation.end();
+        renderer.frames.step();
         await setImmediate();
         expect(runtime.getDisplayedLineIndex()).toBe(5);
         await skipping;
         await started;
       } finally {
         runtime.destroy();
-        firstAnimation.resolve();
-        secondAnimation.resolve();
         await Promise.all([started, skipping]);
       }
     },
@@ -1049,6 +1047,7 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue.speaker).toBe("");
 
     hide.mock.calls[0]![1]();
+    renderer.frames.step();
     await Promise.all([started, skipped]);
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
 

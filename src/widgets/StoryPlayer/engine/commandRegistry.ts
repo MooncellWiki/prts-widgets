@@ -1,7 +1,7 @@
 import type { DecisionSelection, ParsedCommandLine } from "./types";
 
 export interface ClickCompletion {
-  onClick?: () => Promise<void> | void;
+  onClick?: () => void;
   onFinish?: () => void;
 }
 
@@ -23,27 +23,13 @@ export interface WaitForDecision {
   closeDecision: () => void;
 }
 
-export interface WaitForDelay {
-  delayMs: number;
+/** Completion is checked after Update and before the scene is drawn. */
+export interface WaitForFrame {
+  isComplete: (nowMs: number) => boolean;
+  forceEnd?: () => void;
 }
 
-export interface WaitForAnimation {
-  animation: Promise<void>;
-  forceEnd: () => void;
-}
-
-/** Completion can be observed in the same update that ends the animation. */
-export interface WaitForFrameAnimation {
-  isComplete: () => boolean;
-  forceEnd: () => void;
-}
-
-export type CommandWait =
-  | WaitForAnimation
-  | WaitForClick
-  | WaitForDecision
-  | WaitForDelay
-  | WaitForFrameAnimation;
+export type CommandWait = WaitForClick | WaitForDecision | WaitForFrame;
 export type CommandResult = "continue" | CommandWait;
 
 export type CommandExecutor<TResult> = (

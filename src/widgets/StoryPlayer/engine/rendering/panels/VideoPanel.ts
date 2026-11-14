@@ -8,11 +8,8 @@ import type { Container } from "pixi.js";
  * represented by an HTMLVideoElement.
  */
 export class VideoPanel {
-  private active: HTMLVideoElement | null = null;
   private host: HTMLDivElement | null = null;
-  private sessionId = 0;
-  /** Settles the in-flight `play()` promise; `stop()` must not strand it. */
-  private finishActive: (() => void) | null = null;
+  private disposeActive: (() => void) | null = null;
 
   constructor(
     private readonly uiLayer: Container,
@@ -35,13 +32,14 @@ export class VideoPanel {
     this.host = host;
   }
 
-  async play(url: string): Promise<void> {
-    if (!this.host) return;
-    this.stop();
+  play(url: string, onEnd: () => void): void {
     const host = this.host;
+    if (!host) {
+      onEnd();
+      return;
+    }
+    this.stop();
     const video = document.createElement("video");
-    const sessionId = ++this.sessionId;
-    this.active = video;
     this.uiLayer.visible = false;
     host.style.display = "flex";
     host.replaceChildren(video);
@@ -58,59 +56,33 @@ export class VideoPanel {
       width: "100%",
     });
 
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      let onEnded!: () => void;
-      let onError!: () => void;
-      const finish = (failed: boolean) => {
-        if (settled) return;
-        settled = true;
-        if (failed) this.warn?.(`video playback failed: ${url}`);
-        video.removeEventListener("ended", onEnded);
-        video.removeEventListener("error", onError);
-        if (this.active === video) this.active = null;
-        if (this.finishActive === finishExternally) this.finishActive = null;
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-        video.remove();
-        if (this.sessionId === sessionId && this.host) {
-          this.host.style.display = "none";
-          this.host.replaceChildren();
-          this.uiLayer.visible = true;
-        }
-        resolve();
-      };
-      // Detaching `src` and calling `load()` does not reliably raise `error`,
-      // so a force-stop has to release this promise itself.
-      const finishExternally = () => finish(false);
-      this.finishActive = finishExternally;
-      onEnded = () => finish(false);
-      onError = () => finish(true);
-      video.addEventListener("ended", onEnded);
-      video.addEventListener("error", onError);
-      void video.play().catch(onError);
-    });
-  }
-
-  stop(): void {
-    this.sessionId += 1;
-    const finishActive = this.finishActive;
-    this.finishActive = null;
-    const video = this.active;
-    this.active = null;
-    if (video) {
+    const dispose = () => {
+      this.disposeActive = null;
+      video.removeEventListener("ended", onEnded);
+      video.removeEventListener("error", onError);
       video.pause();
       video.removeAttribute("src");
       video.load();
       video.remove();
-    }
-    if (this.host) {
-      this.host.style.display = "none";
-      this.host.replaceChildren();
-    }
-    this.uiLayer.visible = true;
-    finishActive?.();
+      host.style.display = "none";
+      this.uiLayer.visible = true;
+    };
+    const finish = (failed: boolean) => {
+      if (this.disposeActive !== dispose) return;
+      dispose();
+      if (failed) this.warn?.(`video playback failed: ${url}`);
+      onEnd();
+    };
+    const onEnded = () => finish(false);
+    const onError = () => finish(true);
+    this.disposeActive = dispose;
+    video.addEventListener("ended", onEnded);
+    video.addEventListener("error", onError);
+    void video.play().catch(onError);
+  }
+
+  stop(): void {
+    this.disposeActive?.();
   }
 
   destroy(): void {

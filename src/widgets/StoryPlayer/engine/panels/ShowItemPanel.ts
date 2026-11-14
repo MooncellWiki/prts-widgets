@@ -4,6 +4,7 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import { exactArg, toString } from "../commandParams";
+import { createExecutionHandle, type ExecutionHandle } from "../execution";
 
 import type {
   ParsedCommandLine,
@@ -45,24 +46,26 @@ export class ShowItemPanel extends ExecutorComponent {
   }
 
   private executeShowItem(line: ParsedCommandLine): ExecutorResult {
-    const animation = new Promise<void>((finish, reject) => {
-      const show = () => {
-        void this.showItem(line, finish).catch(reject);
-      };
-      // _ExecuteShowItem @ 0x1841B1A40 gives the new command to the old slot.
-      // Its Hide callback resets the slot before the new style lookup.
-      if (this.slotInUse) this.hideItem(this.slotInUse, line, show);
-      else show();
-    });
+    const animation = createExecutionHandle(true);
+    const show = () => {
+      try {
+        this.showItem(line, animation);
+      } catch (error) {
+        animation.fail(error);
+      }
+    };
+    // _ExecuteShowItem @ 0x1841B1A40 gives the new command to the old slot.
+    // Its Hide callback resets the slot before the new style lookup.
+    if (this.slotInUse) this.hideItem(this.slotInUse, line, show);
+    else show();
     // The slot owns replacement callbacks. After SkipStory, the destination
     // can start its Hide before the previous Web animation has settled.
-    return { animation, block: true };
+    return animation.endReason === "complete"
+      ? "continue"
+      : { animation, block: true };
   }
 
-  private async showItem(
-    line: ParsedCommandLine,
-    finish: () => void,
-  ): Promise<void> {
+  private showItem(line: ParsedCommandLine, animation: ExecutionHandle): void {
     const styleArg = exactArg(line.args, "style");
     const style = styleArg === undefined ? "photo" : toString(styleArg);
     const slot = this.renderer.createShowItemSlot(style);
@@ -71,22 +74,26 @@ export class ShowItemPanel extends ExecutorComponent {
         `showitem style is not registered: ${style}`,
         line,
       );
-      finish();
+      animation.end();
       return;
     }
 
     // _ShowItem @ 0x1841B1EC0 registers the new slot before loading the sprite.
     this.slotInUse = slot;
-    const key = this.playback.resolveImageKey(
-      toString(exactArg(line.args, "image")),
-    );
-    if (!key)
-      this.playback.warnInvalidParameter("showitem: image is empty", line);
-    try {
-      await slot.show(line.args, key, finish);
-    } catch (error) {
+    const fail = (error: unknown) => {
       if (this.slotInUse === slot) this.reset();
-      throw error;
+      animation.fail(error);
+    };
+    try {
+      const key = this.playback.resolveImageKey(
+        toString(exactArg(line.args, "image")),
+      );
+      if (!key)
+        this.playback.warnInvalidParameter("showitem: image is empty", line);
+      const prepare = slot.show(line.args, key, () => animation.end());
+      if (prepare) void prepare.catch(fail);
+    } catch (error) {
+      fail(error);
     }
   }
 
@@ -94,12 +101,9 @@ export class ShowItemPanel extends ExecutorComponent {
     // _ExecuteHideItem @ 0x1841B1910 returns immediately without a live slot.
     const slot = this.slotInUse;
     if (!slot) return "continue";
-    return {
-      animation: new Promise<void>((finish) =>
-        this.hideItem(slot, line, finish),
-      ),
-      block: true,
-    };
+    const animation = createExecutionHandle(true);
+    this.hideItem(slot, line, () => animation.end());
+    return { animation, block: true };
   }
 
   private hideItem(
@@ -108,6 +112,7 @@ export class ShowItemPanel extends ExecutorComponent {
     finish: () => void,
   ): void {
     slot.hide(line.args, () => {
+      if (this.slotInUse !== slot) return;
       this.reset();
       finish();
     });

@@ -2,19 +2,18 @@ import type {
   CommandExecutor,
   CommandRegistry,
   CommandResult,
-  WaitForAnimation,
   WaitForClick,
   WaitForDecision,
-  WaitForFrameAnimation,
+  WaitForFrame,
 } from "./commandRegistry";
-import type { AnimationCompletion, ExecutionHandle } from "./execution";
+import type { ExecutionHandle } from "./execution";
 
 export type ExecutorResult =
   | "continue"
   | WaitForDecision
   | Pick<WaitForClick, "handleClick">
   | {
-      animation: AnimationCompletion | ExecutionHandle;
+      animation: ExecutionHandle | void;
       block: boolean;
     };
 
@@ -24,7 +23,6 @@ export type PanelExecutors = Readonly<
 
 interface Execution {
   isCurrent: () => boolean;
-  animation?: { reject: (error: unknown) => void; resolve: () => void };
 }
 
 /**
@@ -93,11 +91,8 @@ export abstract class ExecutorComponent {
     }
     if ("animation" in result) {
       const { animation, block } = result;
-      if (animation && block) {
-        if ("endReason" in animation)
-          return this.waitForFrameAnimation(execution, animation);
-        return this.waitForAnimation(execution, animation);
-      }
+      if (animation && block)
+        return this.waitForFrameAnimation(execution, animation);
       // Nonblocking views own their animation and its error handling.
       this.finish(execution);
       return "continue";
@@ -132,39 +127,24 @@ export abstract class ExecutorComponent {
   private waitForFrameAnimation(
     execution: Execution,
     animation: ExecutionHandle,
-  ): WaitForFrameAnimation {
+  ): WaitForFrame {
+    if (animation.failure) {
+      this.current = null;
+      throw animation.failure.error;
+    }
     return {
       forceEnd: () => this.finish(execution, "force"),
       isComplete: () => {
         // FinishCommand may already have released this panel's current wait.
         if (this.current !== execution) return true;
         if (animation.endReason === undefined) return false;
+        if (animation.failure) {
+          this.current = null;
+          throw animation.failure.error;
+        }
         this.finish(execution);
         return true;
       },
-    };
-  }
-
-  private waitForAnimation(
-    execution: Execution,
-    animation: Promise<unknown>,
-  ): WaitForAnimation {
-    const wait = new Promise<void>((resolve, reject) => {
-      execution.animation = { reject, resolve };
-    });
-    void animation.then(
-      () => {
-        if (execution.isCurrent()) this.finish(execution);
-      },
-      (error) => {
-        if (this.current !== execution || !execution.isCurrent()) return;
-        this.current = null;
-        execution.animation?.reject(error);
-      },
-    );
-    return {
-      animation: wait,
-      forceEnd: () => this.finish(execution, "force"),
     };
   }
 
@@ -174,14 +154,7 @@ export abstract class ExecutorComponent {
   ): void {
     if (this.current !== execution) return;
     this.current = null;
-    try {
-      if (end === "force") this.forceCommandEnd();
-      else if (execution.isCurrent()) this.onFinish();
-    } catch (error) {
-      if (!execution.animation) throw error;
-      execution.animation.reject(error);
-      return;
-    }
-    execution.animation?.resolve();
+    if (end === "force") this.forceCommandEnd();
+    else if (execution.isCurrent()) this.onFinish();
   }
 }

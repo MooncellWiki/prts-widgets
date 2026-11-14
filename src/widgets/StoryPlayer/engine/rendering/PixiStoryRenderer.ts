@@ -81,6 +81,7 @@ import {
 } from "./core/SceneGeometry";
 import { buildShakePath, sampleShakePath } from "./core/ShakePath";
 import { SlideMaskFilter } from "./core/SlideMaskFilter";
+import { getCachedTexture, type TextureLoad } from "./core/TextureAsset";
 import { TweenRunner, type TweenRunOptions } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
@@ -504,12 +505,14 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly uiLayer = this.layers.ui;
   private readonly worldLayer = this.layers.world;
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
+  private readonly tweenUpdates = new Set<(deltaMs: number) => void>();
+  private stopTweenUpdates: (() => void) | null = null;
   // 2791 runs DOTween.Update before AVGController._DoExecuteCommands polls
   // its blockers. Use the update phase for tweens whose completion the runtime
   // polls before rendering. Focusout uses TimeManager's frame tick in 2791.
   private readonly updatePhaseTweenRunner = new TweenRunner(
     () => Boolean(this.app),
-    (advance) => this.onFrameUpdate(({ deltaMs }) => advance(deltaMs)),
+    (advance) => this.subscribeTweenUpdate(advance),
   );
   private readonly videoPanel: VideoPanel;
   private readonly dialogView: DialogView;
@@ -582,18 +585,15 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageLayer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.imageLayer.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
-    this.dialogView = new DialogView(
-      this.uiLayer,
-      onWarning,
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+    this.dialogView = new DialogView(this.uiLayer, onWarning, (...args) =>
+      this.updatePhaseTweenRunner.run(...args),
     );
     this.subtitleView = new SubtitleView(this.uiLayer, {
       createTextStyle: (size, width) =>
         this.createOverlayTextStyle(size, width),
       layoutText: (text, x, width, alignment) =>
         this.layoutSubtitle(text, x, width, alignment),
-      tween: (...args) => this.tween(...args),
+      tween: (...args) => this.updatePhaseTweenRunner.run(...args),
     });
     this.decisionView = new DecisionView(this.uiLayer);
     this.interludePanel = new InterludePanel(
@@ -611,7 +611,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     this.animTextPanel = new AnimTextPanel(
       this.layers.animTexts,
-      (...args) => this.tween(...args),
+      (...args) => this.updatePhaseTweenRunner.run(...args),
       onWarning,
     );
     this.avgDisplayPanel = new AvgDisplayPanel(
@@ -621,7 +621,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         charover: this.layers.avgDisplayCharacter,
       },
       (name) => this.textureForImageKey(name, "background"),
-      (...args) => this.tween(...args),
+      (...args) => this.updatePhaseTweenRunner.run(...args),
       onWarning,
     );
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
@@ -631,12 +631,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
-      (key) => {
-        const rawUrl = resolveStoryAssetByKey(key, "image");
-        const url = rawUrl && resolveAssetUrl(rawUrl);
-        if (url && Assets.cache.has(url)) return Assets.get<Texture>(url);
-        return this.textureForImageKey(key, "image");
-      },
+      (key) => this.textureForImageKey(key, "image"),
       (...args) => this.updatePhaseTweenRunner.run(...args),
       onWarning,
       {
@@ -715,6 +710,23 @@ export class PixiStoryRenderer implements StoryRenderer {
     ticker.add(update, undefined, priority);
     return () => {
       if (this.app?.ticker === ticker) ticker.remove(update);
+    };
+  }
+
+  private subscribeTweenUpdate(advance: (deltaMs: number) => void): () => void {
+    this.tweenUpdates.add(advance);
+    this.stopTweenUpdates ??= this.onFrameUpdate(({ deltaMs }) => {
+      // TweenManager.Update (2791 @ 0x184467690) captures the upper bound
+      // before walking active tweens. Tweens made by an OnComplete start
+      // on the following update, even when Pixi is still walking listeners.
+      for (const update of [...this.tweenUpdates]) update(deltaMs);
+    });
+    return () => {
+      this.tweenUpdates.delete(advance);
+      if (this.tweenUpdates.size === 0) {
+        this.stopTweenUpdates?.();
+        this.stopTweenUpdates = null;
+      }
     };
   }
 
@@ -806,15 +818,22 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.resizeHost = null;
     this.releaseClickGuard?.();
     this.releaseClickGuard = null;
-    this.app?.destroy(true, { children: true });
+    this.stopTweenUpdates?.();
+    this.stopTweenUpdates = null;
+    const app = this.app;
     this.app = null;
+    // Settle the runner's teardown callbacks before destroying the stage.
+    const remainingTweens = [...this.tweenUpdates];
+    this.tweenUpdates.clear();
+    for (const update of remainingTweens) update(0);
+    app?.destroy(true, { children: true });
     this.dialogView.destroy();
     this.subtitleView.destroy();
     this.videoPanel.destroy();
   }
 
-  async playVideo(url: string): Promise<void> {
-    await this.videoPanel.play(url);
+  playVideo(url: string, onEnd: () => void): void {
+    this.videoPanel.play(url, onEnd);
   }
 
   setAnimText(input: AnimTextInput, onComplete?: () => void) {
@@ -1426,31 +1445,34 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   /** Loads the bundled photo-frame texture once; null after a failure. */
-  private async loadShowItemFrameTexture(): Promise<Texture | null> {
-    if (!this.showItemFrameTexture && !this.showItemFrameTextureFailed) {
-      try {
-        this.showItemFrameTexture = await Assets.load<Texture>(
-          SHOWITEM_PHOTO_FRAME_URL,
-        );
-      } catch {
+  private loadShowItemFrameTexture(): TextureLoad {
+    this.showItemFrameTexture ??=
+      getCachedTexture(SHOWITEM_PHOTO_FRAME_URL) ?? null;
+    if (this.showItemFrameTexture || this.showItemFrameTextureFailed)
+      return this.showItemFrameTexture;
+    return Assets.load<Texture>(SHOWITEM_PHOTO_FRAME_URL).then(
+      (texture) => (this.showItemFrameTexture = texture),
+      () => {
         this.showItemFrameTextureFailed = true;
         this.onWarning?.("missing show item frame texture");
-      }
-    }
-    return this.showItemFrameTexture;
+        return null;
+      },
+    );
   }
 
   /** Loads the shared dialog gradient once; null after a failure. */
-  private async loadDialogFrameTexture(): Promise<Texture | null> {
-    if (!this.dialogFrameTexture && !this.dialogFrameTextureFailed) {
-      try {
-        this.dialogFrameTexture = await Assets.load<Texture>(DIALOG_FRAME_URL);
-      } catch {
+  private loadDialogFrameTexture(): TextureLoad {
+    this.dialogFrameTexture ??= getCachedTexture(DIALOG_FRAME_URL) ?? null;
+    if (this.dialogFrameTexture || this.dialogFrameTextureFailed)
+      return this.dialogFrameTexture;
+    return Assets.load<Texture>(DIALOG_FRAME_URL).then(
+      (texture) => (this.dialogFrameTexture = texture),
+      () => {
         this.dialogFrameTextureFailed = true;
         this.onWarning?.("missing show item header texture");
-      }
-    }
-    return this.dialogFrameTexture;
+        return null;
+      },
+    );
   }
 
   createShowItemSlot(style: string): StoryShowItemSlot | null {
@@ -4320,7 +4342,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       layoutSubtitle: (text, x, width, alignment) =>
         this.layoutSubtitle(text, x, width, alignment),
       onFrameUpdate: (update) => this.onFrameUpdate(update),
-      tween: (duration, step, done) => this.tween(duration, step, done),
+      tween: (...args) => this.updatePhaseTweenRunner.run(...args),
     });
     this.stickerViews.set(id, view);
     this.uiLayer.addChild(view.root);
@@ -4494,10 +4516,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     return buildGridRoot(input, textures);
   }
 
-  private async textureForImageKey(
-    key: string,
-    kind: StoryAssetFamily,
-  ): Promise<Texture | null> {
+  private textureForImageKey(key: string, kind: StoryAssetFamily): TextureLoad {
     const rawUrl = resolveStoryAssetByKey(key, kind);
     if (!rawUrl) {
       this.onWarning?.(`missing ${kind}: ${key}`);
@@ -4507,7 +4526,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     return this.textureForUrl(rawUrl, kind, key);
   }
 
-  private async textureForCharacterKey(key: string): Promise<Texture | null> {
+  private textureForCharacterKey(key: string): TextureLoad {
     const rawUrl = resolveStoryCharacterAssetByKey(key);
     if (!rawUrl) {
       this.onWarning?.(`missing character: ${key}`);
@@ -4543,19 +4562,19 @@ export class PixiStoryRenderer implements StoryRenderer {
     return null;
   }
 
-  private async textureForUrl(
+  private textureForUrl(
     rawUrl: string,
     kind: string,
     key: string,
-  ): Promise<Texture | null> {
+  ): TextureLoad {
     const url = resolveAssetUrl(rawUrl);
-    try {
-      const texture = await Assets.load<Texture>(url);
-      return texture;
-    } catch {
-      this.onWarning?.(`failed ${kind}: ${key}`);
-      return null;
-    }
+    return (
+      getCachedTexture(url) ??
+      Assets.load<Texture>(url).catch(() => {
+        this.onWarning?.(`failed ${kind}: ${key}`);
+        return null;
+      })
+    );
   }
 
   private tween(

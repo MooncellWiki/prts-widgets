@@ -128,10 +128,8 @@ describe("StoryRuntime", () => {
     "honors $flags when avgdisplay returns a running tween",
     async ({ flags, waits }) => {
       const renderer = new FakeRenderer();
-      const animation = Promise.withResolvers<void>();
-      vi.spyOn(renderer, "setAvgDisplay").mockResolvedValueOnce({
-        animation: animation.promise,
-      });
+      const animation = createExecutionHandle(true);
+      vi.spyOn(renderer, "setAvgDisplay").mockReturnValueOnce(animation);
       const runtime = new StoryRuntime(
         createContext([
           `[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover",${flags})]`,
@@ -145,11 +143,11 @@ describe("StoryRuntime", () => {
         await setImmediate();
         expect(runtime.getState()).toBe(waits ? "running" : "waiting_input");
 
-        animation.resolve();
+        animation.end();
+        renderer.frames.step();
         await started;
         expect(runtime.getDisplayedLineIndex()).toBe(2);
       } finally {
-        animation.resolve();
         runtime.destroy();
         await started;
       }

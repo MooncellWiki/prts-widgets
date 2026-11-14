@@ -9,12 +9,13 @@ import {
 } from "../../types";
 import { dotweenDefaultEase } from "../core/DotweenEase";
 
+import type { TextureLoad } from "../core/TextureAsset";
 import type { TweenRunner, TweenRunOptions } from "../core/TweenRunner";
 
 export interface ShowItemSlotHost {
   layer: Container;
-  loadImage: (key: string) => Promise<Texture | null>;
-  loadDecoration: () => Promise<Texture | null>;
+  loadImage: (key: string) => TextureLoad;
+  loadDecoration: () => TextureLoad;
   tween: TweenRunner["run"];
 }
 
@@ -54,11 +55,11 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     this.root.addChild(this.backdrop, this.content);
   }
 
-  async show(
+  show(
     args: StoryCommandArgs,
     key: string | null,
     onEnd: () => void,
-  ): Promise<void> {
+  ): Promise<void> | void {
     this.onAnimEnd = onEnd;
     this.showing = true;
     // Both prefab transforms use Unity's upward Y axis.
@@ -74,22 +75,24 @@ export abstract class ShowItemSlot implements StoryShowItemSlot {
     // Hide can animate the placeholder while the texture request is pending.
     this.host.layer.addChild(this.root);
 
-    try {
-      const [texture, decoration] = await Promise.all([
-        key ? this.host.loadImage(key) : null,
-        this.host.loadDecoration(),
-      ]);
+    const draw = (texture: Texture | null, decoration: Texture | null) => {
       if (!this.showing || this.root.parent !== this.host.layer) return;
       if (texture) this.setImage(texture);
       if (decoration) this.setDecoration(decoration);
-    } catch (error) {
-      // A skip can hand this slot to Hide while its Web assets are pending.
-      // A late load failure must leave that Hide in charge of cleanup.
-      if (this.showing) throw error;
-      return;
+      this.animate(readFadeMs(args), animation);
+    };
+    const texture = key ? this.host.loadImage(key) : null;
+    const decoration = this.host.loadDecoration();
+    if (texture instanceof Promise || decoration instanceof Promise) {
+      return Promise.all([texture, decoration]).then(
+        ([art, frame]) => draw(art, frame),
+        (error) => {
+          // Hide may take over while Web assets are still pending.
+          if (this.showing) throw error;
+        },
+      );
     }
-
-    this.animate(readFadeMs(args), animation);
+    draw(texture, decoration);
   }
 
   hide(args: StoryCommandArgs, onEnd: () => void): void {

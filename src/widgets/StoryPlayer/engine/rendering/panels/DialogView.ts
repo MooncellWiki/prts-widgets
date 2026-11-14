@@ -22,6 +22,7 @@ import {
   type DialogueLayout,
   type TypewriterText,
 } from "../../types";
+import { getCachedTexture } from "../core/TextureAsset";
 
 interface DialogueLine {
   chars: TypewriterText["chars"];
@@ -75,7 +76,9 @@ export class DialogView {
     let top: Sprite | null = null;
     let bottom: Sprite | null = null;
     try {
-      const texture = await Assets.load<Texture>(DIALOG_FRAME_URL);
+      const texture =
+        getCachedTexture(DIALOG_FRAME_URL) ??
+        (await Assets.load<Texture>(DIALOG_FRAME_URL));
       top = new Sprite(texture);
       top.width = STORY_WIDTH;
       top.height = 102;

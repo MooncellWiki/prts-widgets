@@ -49,14 +49,14 @@ export class SpellStickerPanel extends ExecutorComponent {
 
   // _OnClicked / ForceCommandEnd (2791 @ 0x1841B43F0 / 0x1841B27A0).
   // Clear the id before the view callback so a same-frame skip hides it once.
-  private readonly hideBlocking = (): Promise<void> | void => {
+  private readonly hideBlocking = (): void => {
     const id = this.blockingStickerId;
     this.blockingStickerId = null;
-    if (id !== null) return this.renderer.hideSpellSticker(id);
+    if (id !== null) this.renderer.hideSpellSticker(id);
   };
 
   protected override forceCommandEnd(): void {
-    void this.hideBlocking();
+    this.hideBlocking();
   }
 
   private readonly clickWait: WaitForClick = {
