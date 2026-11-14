@@ -23,7 +23,7 @@ import {
   type CommandWait,
   type WaitForClick,
   type WaitForDecision,
-  type WaitForFrameAnimation,
+  type WaitForFrame,
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
@@ -158,15 +158,9 @@ const builtinCommandNames = [
 
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
 
-interface InterruptibleWait {
-  id: number;
-  interrupt?: () => void;
-  resolve: () => void;
-}
-
-interface PendingFrameAnimations {
-  animations: readonly WaitForFrameAnimation[];
-  remainingWaits: readonly CommandWait[];
+interface PendingFrameWait {
+  waits: readonly WaitForFrame[];
+  resume: () => Promise<void>;
   resolve: (continuation?: Promise<void>) => void;
 }
 
@@ -183,14 +177,12 @@ interface PendingAutoClick {
   phase: "awaiting_mode" | "timing" | "elapsed";
 }
 
-interface PendingDelay {
-  deadlineMs?: number;
-  delayMs: number;
-  finish: () => void;
-}
-
-function sleepWithTimeout(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delayWait(delayMs: number): WaitForFrame {
+  let deadlineMs: number | undefined;
+  return {
+    // WaitForSecondsRealtime initializes the deadline on its first poll.
+    isComplete: (nowMs) => nowMs >= (deadlineMs ??= nowMs + delayMs),
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -348,13 +340,10 @@ export class StoryRuntime {
   private destroyed = false;
   private readonly lines: ReturnType<typeof parseScript>;
   private readonly firstRead: boolean;
-  private pendingWait: InterruptibleWait | null = null;
-  private pendingWaitId = 0;
   private processing = false;
   private processingCompletion: Promise<void> | null = null;
   private resolveProcessingCompletion: (() => void) | null = null;
   private readonly renderer: StoryRenderer;
-  private readonly sleep: (ms: number) => Promise<void>;
   private currentSkipMode: SkipMode = "skip";
   private skipCleanup: ExecutionHandle | null = null;
   private readonly skipNodeLabels: SkipNodeLabel[];
@@ -387,8 +376,7 @@ export class StoryRuntime {
   private readonly spellStickerPanel: SpellStickerPanel;
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
-  private pendingDelay: PendingDelay | null = null;
-  private pendingFrameAnimations: PendingFrameAnimations | null = null;
+  private pendingFrameWait: PendingFrameWait | null = null;
   private pendingInput: PendingInput | null = null;
   private resumeCommands: (() => void) | null = null;
 
@@ -409,7 +397,6 @@ export class StoryRuntime {
     this.firstRead = options.firstRead ?? true;
     this.renderer = renderer;
     this.audio = audio;
-    this.sleep = options.sleep ?? sleepWithTimeout;
     this.skipNodeLabels = preprocessSkipNodes(this.lines);
     this.skipToIndex = preprocessSkipToIndex(this.lines);
     this.labelMap = preprocessLabelMap(this.lines);
@@ -860,35 +847,31 @@ export class StoryRuntime {
 
     // Keep the blockers available to SkipStory until their frame-end finish.
     const generation = this.playbackGeneration;
-    let cancelFrameEnd: (() => void) | undefined;
     try {
-      // SubtitlePanel._OnClicked (2791 @ 0x1841E5920) and the other click
-      // handlers invoke FinishCommand at WaitForEndOfFrame. Spellsticker
-      // hides on the click itself, and DialogPanel restores width in OnFinish.
-      const effects = pending.effects
-        .map(({ onClick }) => onClick?.())
-        .filter((effect) => effect !== undefined);
-      if (
-        effects.length > 0 &&
-        (await this.waitInterruptiblePromise(Promise.all(effects)))
-      )
-        return;
+      // SubtitlePanel._OnClicked (2791 @ 0x1841E5920) finishes at frame
+      // end. Spellsticker hides on the click itself.
+      for (const { onClick } of pending.effects) onClick?.();
       if (this.pendingInput !== pending) return;
 
-      await this.waitInterruptiblePromise(
-        new Promise<void>((resolve, reject) => {
-          cancelFrameEnd = this.finishInputAtFrameEnd(
-            () => {
-              if (this.pendingInput !== pending) return false;
-              for (const { onFinish } of pending.effects) onFinish?.();
-              if (this.pendingInput !== pending) return false;
-              this.pendingInput = null;
-              return true;
+      const finish = createExecutionHandle(true);
+      const cancelFrameEnd = this.finishAtFrameEnd(finish, () => {
+        for (const { onFinish } of pending.effects) onFinish?.();
+        if (this.pendingInput === pending) this.pendingInput = null;
+      });
+      await this.waitForFrame(
+        [
+          {
+            isComplete: () => finish.endReason !== undefined,
+            forceEnd: () => {
+              finish.end("force_end");
+              cancelFrameEnd();
             },
-            resolve,
-            reject,
-          );
-        }),
+          },
+        ],
+        () => {
+          if (finish.failure) return Promise.reject(finish.failure.error);
+          return this.processLoop();
+        },
       );
     } catch (error) {
       if (!this.destroyed && generation === this.playbackGeneration)
@@ -899,74 +882,73 @@ export class StoryRuntime {
           })),
         );
       throw error;
-    } finally {
-      cancelFrameEnd?.();
     }
   }
 
-  private async waitForDecision(decision: WaitForDecision): Promise<void> {
-    const generation = this.playbackGeneration;
+  private waitForDecision(decision: WaitForDecision): Promise<void> {
     this.state = "waiting_decision";
-    let open = true;
+    const finish = createExecutionHandle(true);
     let selected = false;
     let cancelFrameEnd: (() => void) | undefined;
+    let open = true;
     const close = () => {
       if (!open) return;
       open = false;
       decision.closeDecision();
     };
-
+    const completion = this.waitForFrame([
+      {
+        isComplete: () => {
+          if (finish.failure) throw finish.failure.error;
+          return finish.endReason !== undefined;
+        },
+        forceEnd: () => {
+          finish.end("force_end");
+          cancelFrameEnd?.();
+          close();
+        },
+      },
+    ]);
     try {
-      await this.waitInterruptiblePromise(
-        new Promise<void>((resolve, reject) => {
-          decision.showDecision((selection) => {
-            if (!open || selected || this.destroyed) return;
-            selected = true;
-            try {
-              // OnDecisionSelected (2791 @ 0x184169F40) records the choice
-              // immediately. InternalCommand.Finish schedules FinishCommand
-              // via InvokeEndOfFrame (0x1841C7340).
-              decision.applySelection(selection);
-              if (this.skipCleanup) return;
-              cancelFrameEnd = this.finishInputAtFrameEnd(
-                () => {
-                  if (!open || this.skipCleanup) return false;
-                  close();
-                  return true;
-                },
-                resolve,
-                reject,
-              );
-            } catch (error) {
-              reject(error);
-            }
-          });
-        }),
-        close,
-      );
+      decision.showDecision((selection) => {
+        if (!open || selected || this.destroyed) return;
+        selected = true;
+        try {
+          // OnDecisionSelected (2791 @ 0x184169F40) records the choice
+          // immediately. InternalCommand.Finish schedules FinishCommand
+          // via InvokeEndOfFrame (0x1841C7340).
+          decision.applySelection(selection);
+          if (!this.skipCleanup)
+            cancelFrameEnd = this.finishAtFrameEnd(finish, close);
+        } catch (error) {
+          finish.fail(error);
+        }
+      });
     } catch (error) {
-      if (!this.destroyed && generation === this.playbackGeneration)
-        this.failPlayback(error);
-    } finally {
-      cancelFrameEnd?.();
-      close();
+      finish.fail(error);
     }
+    return completion;
   }
 
-  private finishInputAtFrameEnd(
-    onFinish: () => boolean,
-    resolve: (continuation: Promise<void>) => void,
-    reject: (error: unknown) => void,
+  private finishAtFrameEnd(
+    handle: ExecutionHandle,
+    onFinish?: () => void,
   ): () => void {
     return this.renderer.onFrameEnd(() => {
+      if (handle.endReason !== undefined || this.skipCleanup || this.destroyed)
+        return;
       try {
-        if (!onFinish() || this.destroyed) return;
+        onFinish?.();
+        if (
+          handle.endReason !== undefined ||
+          this.skipCleanup ||
+          this.destroyed
+        )
+          return;
         this.state = "running";
-        // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blocker
-        // list on the next coroutine update. Run the loop in that update.
-        this.resumeCommands = () => resolve(this.processLoop());
+        handle.end();
       } catch (error) {
-        reject(error);
+        handle.fail(error);
       }
     });
   }
@@ -1037,7 +1019,8 @@ export class StoryRuntime {
         // ForceCommandEnd can replace it before the old callbacks expire.
         for (const handler of interruptedInput?.handlers ?? [])
           handler.forceEnd?.();
-        this.cancelFrameAnimations();
+        // A decision can still record a selection during skip cleanup.
+        if (this.state !== "waiting_decision") this.cancelFrameWait();
       } finally {
         this.playbackGeneration += 1;
         if (skipToThis) {
@@ -1068,7 +1051,7 @@ export class StoryRuntime {
       // Let the interrupted loop unwind under skipCleanup before resuming or
       // ending the story. It can still be returning from an async executor.
       this.dialogPanel.stopTypingSilently();
-      this.interruptPendingWait();
+      this.cancelFrameWait();
       await activeProcessCompletion;
       if (shouldResume && !this.destroyed && this.state !== "error") {
         resumedProcess = this.resumeSkipOnFrame(cleanup);
@@ -1156,17 +1139,10 @@ export class StoryRuntime {
   }
 
   private pollAfterUpdate(nowMs: number): void {
-    const delay = this.pendingDelay;
-    this.pollFrameAnimations();
+    this.pollFrameWait(nowMs);
     const resume = this.resumeCommands;
     this.resumeCommands = null;
     resume?.();
-    if (!this.skipCleanup && delay && this.pendingDelay === delay) {
-      // WaitForSecondsRealtime initializes the deadline on its first poll.
-      // A delay created by this frame's continuation starts on a later poll.
-      delay.deadlineMs ??= nowMs + delay.delayMs;
-      if (nowMs >= delay.deadlineMs) delay.finish();
-    }
     if (this.skipCleanup) return;
 
     const pending = this.pendingAutoClick;
@@ -1198,7 +1174,6 @@ export class StoryRuntime {
     this.showItemPanel.reset();
     this.stopPlaybackInput();
     this.playbackGeneration += 1;
-    this.interruptPendingWait();
     // 销毁后不该再有推送落到 UI 上
     this.events.all.clear();
   }
@@ -1207,7 +1182,7 @@ export class StoryRuntime {
     this.stopFramePolling?.();
     this.stopFramePolling = null;
     this.cancelInputWait();
-    this.cancelFrameAnimations();
+    this.cancelFrameWait();
     // The Web runtime handles one story. Clear its story-long ON_SPEED_SET
     // subscriptions together when that story ends.
     this.eventPool.clear();
@@ -1266,8 +1241,6 @@ export class StoryRuntime {
             (wait) => "showDecision" in wait,
           );
           if (decision) return this.waitForDecision(decision);
-          const delay = remainingWaits.find((wait) => "delayMs" in wait);
-          if (delay) return this.waitForDelay(delay.delayMs);
           const clicks = remainingWaits.filter((wait) => "handleClick" in wait);
           if (clicks.length) {
             this.waitForInput(clicks);
@@ -1289,7 +1262,10 @@ export class StoryRuntime {
         if (this.cursor >= this.lines.length) {
           // _DoExecuteCommands.MoveNext (2791 @ 0x184180CA6) yields
           // WaitForSecondsRealtime(0.2) before DoEndStory.
-          return this.waitForDelay(200, () => this.finishPlayback());
+          this.state = "waiting_timer";
+          return this.waitForFrame([delayWait(200)], () =>
+            this.finishPlayback(),
+          ).catch((error: unknown) => this.failPlayback(error));
         }
 
         if (this.gotoIndex >= 0) {
@@ -1327,30 +1303,12 @@ export class StoryRuntime {
         if (result === "continue") continue;
 
         const waits = Array.isArray(result) ? result : [result];
-        const animations = waits.filter((wait) => "animation" in wait);
-        const frameAnimations = waits.filter((wait) => "isComplete" in wait);
-        const followUp = waits.filter(
-          (wait) => !("animation" in wait) && !("isComplete" in wait),
-        );
-        if (animations.length > 0) {
-          await this.waitInterruptiblePromise(
-            Promise.all(animations.map(({ animation }) => animation)),
-            () => {
-              for (const { forceEnd } of animations) forceEnd();
-              for (const { forceEnd } of frameAnimations) forceEnd();
-            },
+        const frameWaits = waits.filter((wait) => "isComplete" in wait);
+        const followUp = waits.filter((wait) => !("isComplete" in wait));
+        if (frameWaits.length > 0)
+          return this.waitForFrame(frameWaits, () =>
+            this.processLoop(followUp),
           );
-          if (!isCurrent()) continue;
-        }
-        if (frameAnimations.length > 0) {
-          return new Promise<void>((resolve) => {
-            this.pendingFrameAnimations = {
-              animations: frameAnimations,
-              remainingWaits: followUp,
-              resolve,
-            };
-          });
-        }
         remainingWaits = followUp;
       }
     } catch (error) {
@@ -1363,31 +1321,43 @@ export class StoryRuntime {
     }
   }
 
-  private pollFrameAnimations(): void {
-    const pending = this.pendingFrameAnimations;
+  private waitForFrame(
+    waits: readonly WaitForFrame[],
+    resume: () => Promise<void> = () => this.processLoop(),
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      this.pendingFrameWait = { resolve, resume, waits };
+    });
+  }
+
+  private pollFrameWait(nowMs: number): void {
+    const pending = this.pendingFrameWait;
     if (this.skipCleanup || !pending) return;
     // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blockers
     // after DOTween's update and dispatches synchronously when they are clear.
     try {
-      if (!pending.animations.every((wait) => wait.isComplete())) return;
-      if (this.pendingFrameAnimations !== pending) return;
-      this.pendingFrameAnimations = null;
-      pending.resolve(this.processLoop(pending.remainingWaits));
+      if (!pending.waits.every((wait) => wait.isComplete(nowMs))) return;
+      if (this.pendingFrameWait !== pending) return;
+      this.pendingFrameWait = null;
+      this.state = "running";
+      pending.resolve(pending.resume());
     } catch (error) {
-      this.failPlayback(error);
+      try {
+        this.failPlayback(error);
+      } finally {
+        pending.resolve();
+      }
     }
   }
 
-  private cancelFrameAnimations(): void {
-    const pending = this.pendingFrameAnimations;
+  private cancelFrameWait(): void {
+    const pending = this.pendingFrameWait;
     if (!pending) return;
-    this.pendingFrameAnimations = null;
+    this.pendingFrameWait = null;
     const cleanup = this.skipCleanup;
     try {
-      for (const wait of pending.animations) wait.forceEnd();
+      for (const wait of pending.waits) wait.forceEnd?.();
     } finally {
-      // Keep the interrupted caller waiting for the same skip cleanup as a
-      // Promise-based executor.
       pending.resolve(cleanup?.completion.then(() => undefined));
     }
   }
@@ -1443,59 +1413,6 @@ export class StoryRuntime {
 
   private hasAudioKey(key: string): boolean {
     return Boolean(resolveStoryAudioByKey(key, this.context.audioVariables));
-  }
-
-  private interruptPendingWait(): void {
-    const wait = this.pendingWait;
-    this.pendingWait = null;
-    wait?.interrupt?.();
-    wait?.resolve();
-  }
-
-  private async waitInterruptiblePromise(
-    task: Promise<unknown>,
-    interrupt?: () => void,
-  ): Promise<boolean> {
-    const id = ++this.pendingWaitId;
-    const interrupted = new Promise<boolean>((resolve) => {
-      this.pendingWait = {
-        id,
-        interrupt,
-        resolve: () => resolve(true),
-      };
-    });
-
-    try {
-      return await Promise.race([task.then(() => false), interrupted]);
-    } finally {
-      if (this.pendingWait?.id === id) this.pendingWait = null;
-    }
-  }
-
-  private async waitForDelay(
-    delayMs: number,
-    resume: () => Promise<void> | void = () => this.processLoop(),
-  ): Promise<void> {
-    this.state = "waiting_timer";
-    await this.waitInterruptiblePromise(
-      new Promise<void>((resolve, reject) => {
-        this.pendingDelay = {
-          delayMs,
-          finish: () => {
-            this.pendingDelay = null;
-            this.state = "running";
-            try {
-              resolve(resume());
-            } catch (error) {
-              reject(error);
-            }
-          },
-        };
-      }),
-      () => {
-        this.pendingDelay = null;
-      },
-    ).catch((error: unknown) => this.failPlayback(error));
   }
 
   private resolveCharacterName(ref: string): CharacterRefResolution {
@@ -1557,7 +1474,8 @@ export class StoryRuntime {
       case "delay":
         // CommonExecutors._ExecuteDelayCommand (2791 @ 0x1841C3EF0)
         // starts WaitForSecondsRealtime even when the scaled time is zero.
-        return { delayMs: this.calculateFadeMs(this.exactArg(args, "time")) };
+        this.state = "waiting_timer";
+        return delayWait(this.calculateFadeMs(this.exactArg(args, "time")));
 
       case "skipnode": {
         const label = this.skipNodeLabels[this.skipNodeQueueIndex];
@@ -1737,6 +1655,65 @@ export class StoryRuntime {
         return completion ? completion.then(() => "continue") : "continue";
       }
 
+      case "video": {
+        // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
+        // (2.7.61: still the legacy bool executor, consumed by the new
+        // ExecutorComponent.Execute(Command, Action) adapter). `url` takes
+        // priority; an http(s) value is emitted verbatim like native
+        // (0x183E68AAD), while any other value goes through the same CDN
+        // normalization as `res` — a web delivery adaptation, native never
+        // converts `url`.
+        const url = toString(this.exactArg(args, "url"));
+        const res = toString(this.exactArg(args, "res"));
+        if (!url && !res) {
+          // Native: DLog.LogError("[AVG.Video] No url or res!") + return
+          // false → ExecutorComponent.Execute finishes the command
+          // synchronously in the same frame (0x183E45C12); no blocking state
+          // is ever entered.
+          this.warn("invalid_parameter", "video: no url or res");
+          return "continue";
+        }
+
+        const resolved = url
+          ? resolveStoryVideoByKey(url)
+          : resolveStoryVideoByKey(res);
+        if (!resolved) {
+          this.warn("missing_asset", `video: ${url || res}`);
+          return "continue";
+        }
+
+        // Native port: VideoManager.CheckVideoExist (0x183B2FDB0) gates the
+        // `res` branch before playback; a miss raises
+        // Toast(NO_VIDEO_MESSAGE) and _PlayVideo returns false so the command
+        // ends in the same frame (0x183E689FC) without blocking. The `url`
+        // branch has no such check in native. Web adaptation: the existence
+        // answer is HEAD-probed while the context loads
+        // (`findMissingVideoUrls`), so this stays a synchronous lookup like
+        // the native RawResManager one; onWarning is the Toast equivalent.
+        if (!url && this.context.missingVideoUrls?.has(resolved)) {
+          this.warn("missing_asset", `video: ${res}`);
+          return "continue";
+        }
+
+        this.state = "waiting_video";
+        const finish = createExecutionHandle(true);
+        let cancelFrameEnd: (() => void) | undefined;
+        this.renderer.playVideo(resolved, () => {
+          if (finish.endReason !== undefined || cancelFrameEnd) return;
+          // PLAYEND/ERROR calls InvokeEndOfFrame before releasing the
+          // executor. The following Update may advance the command loop.
+          cancelFrameEnd = this.finishAtFrameEnd(finish);
+        });
+        return {
+          isComplete: () => finish.endReason !== undefined,
+          forceEnd: () => {
+            finish.end("force_end");
+            cancelFrameEnd?.();
+            this.renderer.stopVideo();
+          },
+        };
+      }
+
       case "focusout": {
         // AVGCameraEffect._ExecuteFocusout (2791 @ 0x184187C20) passes the
         // duration through unscaled. MathUtil.GT/GE use a 1e-5 tolerance.
@@ -1833,62 +1810,6 @@ export class StoryRuntime {
     const args = line.args;
 
     switch (line.command) {
-      case "video": {
-        // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
-        // (2.7.61: still the legacy bool executor, consumed by the new
-        // ExecutorComponent.Execute(Command, Action) adapter). `url` takes
-        // priority; an http(s) value is emitted verbatim like native
-        // (0x183E68AAD), while any other value goes through the same CDN
-        // normalization as `res` — a web delivery adaptation, native never
-        // converts `url`.
-        const url = toString(this.exactArg(args, "url"));
-        const res = toString(this.exactArg(args, "res"));
-        if (!url && !res) {
-          // Native: DLog.LogError("[AVG.Video] No url or res!") + return
-          // false → ExecutorComponent.Execute finishes the command
-          // synchronously in the same frame (0x183E45C12); no blocking state
-          // is ever entered.
-          this.warn("invalid_parameter", "video: no url or res");
-          return "continue";
-        }
-
-        const resolved = url
-          ? resolveStoryVideoByKey(url)
-          : resolveStoryVideoByKey(res);
-        if (!resolved) {
-          this.warn("missing_asset", `video: ${url || res}`);
-          return "continue";
-        }
-
-        // Native port: VideoManager.CheckVideoExist (0x183B2FDB0) gates the
-        // `res` branch before playback; a miss raises
-        // Toast(NO_VIDEO_MESSAGE) and _PlayVideo returns false so the command
-        // ends in the same frame (0x183E689FC) without blocking. The `url`
-        // branch has no such check in native. Web adaptation: the existence
-        // answer is HEAD-probed while the context loads
-        // (`findMissingVideoUrls`), so this stays a synchronous lookup like
-        // the native RawResManager one; onWarning is the Toast equivalent.
-        if (!url && this.context.missingVideoUrls?.has(resolved)) {
-          this.warn("missing_asset", `video: ${res}`);
-          return "continue";
-        }
-
-        this.state = "waiting_video";
-        const interrupted = await this.waitInterruptiblePromise(
-          this.renderer.playVideo(resolved),
-          () => this.renderer.stopVideo(),
-        );
-        // Native finishes on PLAYEND/ERROR at the END of the CURRENT frame
-        // (InvokeEndOfFrame → WaitForEndOfFrame; 2.7.61 token-verified — the
-        // IDA shared-body symbol InvokeNextFrame is an ICF-fold alias).
-        // `sleep(0)` is the macro-task web approximation. Force-end is
-        // released by CommandExecutorWrapper.ForceEnd synchronously in-frame
-        // and deliberately bypasses this yield.
-        if (!interrupted) await this.sleep(0);
-        this.state = "running";
-        return "continue";
-      }
-
       case "background": {
         // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage as registered by
         // BackgroundPanel. This covers its clear branch (empty or unresolvable

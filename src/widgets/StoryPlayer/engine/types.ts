@@ -1,4 +1,4 @@
-import type { ExecutionHandle, PreparedAnimation } from "./execution";
+import type { AnimationPreparation, ExecutionHandle } from "./execution";
 import type { RichChar } from "./richtext";
 
 export const STORY_WIDTH = 1280;
@@ -452,7 +452,7 @@ export interface StoryShowItemSlot {
     args: StoryCommandArgs,
     key: string | null,
     onEnd: () => void,
-  ) => Promise<void>;
+  ) => Promise<void> | void;
   hide: (args: StoryCommandArgs, onEnd: () => void) => void;
   destroy: () => void;
 }
@@ -771,7 +771,7 @@ export interface StoryRenderer {
   clearStickers: (fadeMs?: number) => Promise<void> | void;
   clearSpellStickers: () => Promise<void> | void;
   clearSubtitle: (fadeMs?: number) => Promise<void> | void;
-  clearTimerSticker: (input?: TimerClearInput) => Promise<void> | void;
+  clearTimerSticker: (input?: TimerClearInput) => void;
   clearCharacterCutin: (widgetId?: string) => Promise<void>;
   clearInterludes: () => Promise<void>;
   destroy: () => void;
@@ -785,15 +785,15 @@ export interface StoryRenderer {
     callback: (frame: PlaybackFrame) => void,
     phase?: "update" | "afterUpdate",
   ) => () => void;
-  playVideo: (url: string) => Promise<void>;
+  playVideo: (url: string, onEnd: () => void) => void;
   setAnimText: (
     input: AnimTextInput,
     onComplete?: () => void,
-  ) => Promise<PreparedAnimation>;
+  ) => AnimationPreparation;
   setAvgDisplay: (
     input: AvgDisplayInput,
     onComplete?: () => void,
-  ) => Promise<PreparedAnimation>;
+  ) => AnimationPreparation;
   setBackground: (key: string, input?: BackgroundInput) => Promise<void>;
   setBackgroundTween: (input: BackgroundTweenInput) => Promise<void>;
   setBlocker: (input: BlockerInput) => Promise<void> | void;
@@ -841,10 +841,10 @@ export interface StoryRenderer {
   setSpellSticker: (
     input: SpellStickerInput,
   ) => Promise<number | undefined> | number | undefined;
-  hideSpellSticker: (id: string) => Promise<void> | void;
+  hideSpellSticker: (id: string) => void;
   /** The initial reveal supplies layout. Later reveals keep that layout. */
   setSubtitle: (text: TypewriterText, layout?: OverlayTextLayout) => void;
-  setTimerSticker: (input: TimerStickerInput) => Promise<void> | void;
+  setTimerSticker: (input: TimerStickerInput) => void;
   shakeCamera: (input: CameraShakeInput) => Promise<void>;
   shakeCgItem: (
     input: CgItemShakeInput,
@@ -967,7 +967,5 @@ export interface RuntimeOptions {
   animateRatio?: number;
   firstRead?: boolean;
   onWarning?: (warning: RuntimeWarning) => void;
-  /** Override the browser yield after a video completes. */
-  sleep?: (ms: number) => Promise<void>;
   typingIntervalMs?: number;
 }

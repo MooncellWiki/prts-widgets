@@ -144,8 +144,7 @@ export class StickerPanel extends ExecutorComponent {
 
   /** Native OnReset -> _RecycleStickers; timer stops before text is recycled. */
   async reset(stickerFadeMs = 150): Promise<void> {
-    const timerReset = this.renderer.clearTimerSticker({ durationMs: 0 });
-    if (timerReset) await timerReset;
+    this.renderer.clearTimerSticker({ durationMs: 0 });
     for (let i = 0; i < this.stickerSlots.size; i += 1)
       this.stickerPoolFadeMs.push(150);
     this.stickerSlots.clear();
@@ -411,7 +410,7 @@ export class StickerPanel extends ExecutorComponent {
         // false): the timer view is created once and reused, and only
         // time/x/y/width/size/duration/afrom/ato are read -- id/text/block
         // are ignored.
-        const render = this.renderer.setTimerSticker({
+        this.renderer.setTimerSticker({
           limitSeconds: readTimerParam(line, "time", "Int32"),
           x: readTimerParam(line, "x") ?? 0,
           y: readTimerParam(line, "y") ?? 0,
@@ -421,19 +420,19 @@ export class StickerPanel extends ExecutorComponent {
           fromAlpha: readTimerParam(line, "afrom") ?? 0,
           toAlpha: readTimerParam(line, "ato") ?? 1,
         } satisfies TimerStickerInput);
-        return afterResult(render, () => "continue");
+        return "continue";
       }
 
       case "timerclear": {
         // Native port: Torappu.AVG.StickerPanel._ExcuteTimerClier / AVGTimerView.
         // StopTimer hides the reusable slot rather than destroying it.
-        const render = this.renderer.clearTimerSticker({
+        this.renderer.clearTimerSticker({
           durationMs: Math.max(
             0,
             (readTimerParam(line, "duration") ?? 0.13) * 1000,
           ),
         } satisfies TimerClearInput);
-        return afterResult(render, () => "continue");
+        return "continue";
       }
 
       case "stickerclear": {
@@ -445,7 +444,7 @@ export class StickerPanel extends ExecutorComponent {
         this.stickerSlots.clear();
         this.currentSticker = null;
         void this.renderer.clearStickers(150);
-        void this.renderer.clearTimerSticker({ durationMs: 0 });
+        this.renderer.clearTimerSticker({ durationMs: 0 });
         return toBoolean(arg(args, "block"), false)
           ? this.clickWait
           : "continue";

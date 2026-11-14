@@ -176,7 +176,6 @@ describe("StoryRuntime", () => {
       audio,
       {
         firstRead: false,
-        sleep: vi.fn(() => new Promise<void>(() => {})),
         typingIntervalMs: 30,
       },
     );

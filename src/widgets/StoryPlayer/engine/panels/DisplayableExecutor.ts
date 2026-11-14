@@ -12,6 +12,7 @@ import {
   toString,
 } from "../commandParams";
 
+import type { AnimationPreparation } from "../execution";
 import type { ParsedCommandLine, StoryRenderer } from "../types";
 
 interface DisplayablePlayback {
@@ -51,9 +52,9 @@ export class DisplayableExecutor extends ExecutorComponent {
     void this.renderer.clearAvgDisplays();
   }
 
-  private async executeAnimText(
+  private executeAnimText(
     line: ParsedCommandLine,
-  ): Promise<ExecutorResult> {
+  ): ExecutorResult | Promise<ExecutorResult> {
     // _ExecuteAnimatedText (2791 @ 0x184176860).
     const { args, trailingText } = line;
     const rawPosition = toString(exactArg(args, "pos"));
@@ -78,8 +79,7 @@ export class DisplayableExecutor extends ExecutorComponent {
       );
     }
 
-    // Native attaches FinishCommand to InitView for a blocking stamp. The
-    // Web first awaits its assets, then ExecutorComponent handles the wait.
+    // Native attaches FinishCommand to InitView for a blocking stamp.
     const block = toBoolean(exactArg(args, "block"));
     const input = {
       content: this.playback.translateText(trailingText),
@@ -88,16 +88,16 @@ export class DisplayableExecutor extends ExecutorComponent {
       position,
       style: toString(exactArg(args, "style")),
     };
-    const { animation } = await this.renderer.setAnimText(
+    const animation = this.renderer.setAnimText(
       input,
       block ? this.finishCommand : undefined,
     );
-    return { animation, block };
+    return this.withAnimation(animation, block);
   }
 
-  private async executeAvgDisplay(
+  private executeAvgDisplay(
     line: ParsedCommandLine,
-  ): Promise<ExecutorResult> {
+  ): ExecutorResult | Promise<ExecutorResult> {
     // _ExecuteAVGDisplayable (2791 @ 0x184176290).
     const { args } = line;
     const optional = (key: string) => toOptionalNumber(exactArg(args, key));
@@ -139,10 +139,19 @@ export class DisplayableExecutor extends ExecutorComponent {
       yFrom: optional("yfrom"),
       yTo: optional("yto"),
     };
-    const { animation } = await this.renderer.setAvgDisplay(
+    const animation = this.renderer.setAvgDisplay(
       input,
       block ? this.finishCommand : undefined,
     );
-    return { animation, block };
+    return this.withAnimation(animation, block);
+  }
+
+  private withAnimation(
+    animation: AnimationPreparation,
+    block: boolean,
+  ): ExecutorResult | Promise<ExecutorResult> {
+    return animation instanceof Promise
+      ? animation.then((ready) => ({ animation: ready, block }))
+      : { animation, block };
   }
 }

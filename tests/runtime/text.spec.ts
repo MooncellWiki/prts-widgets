@@ -351,7 +351,6 @@ describe("StoryRuntime", () => {
 
   it("maps sticker and timer sticker commands", async () => {
     const renderer = new FakeRenderer();
-    const sleep = vi.fn(async () => {});
     const runtime = new StoryRuntime(
       createContext([
         '[sticker(id="tip",text="LEFT",alignment="left",size=20,width=200,x=40,y=60,delay=0.05,multi=true,fadetime=0.1)]',
@@ -363,7 +362,6 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      { sleep },
     );
 
     await runtime.start();
@@ -687,7 +685,7 @@ describe("StoryRuntime", () => {
       ]),
       renderer,
       new FakeAudio(),
-      { sleep: () => new Promise(() => {}), typingIntervalMs: 40 },
+      { typingIntervalMs: 40 },
     );
 
     await runtime.start();

@@ -1,17 +1,16 @@
 export type ExecutionEndReason = "complete" | "force_end" | "reset";
-/** The view's end Promise settles even if the animation is retired. */
-export type AnimationCompletion = Promise<ExecutionEndReason | void> | void;
-
-/** Result of preparing a view, with any running animation reported separately. */
-export interface PreparedAnimation {
-  animation: AnimationCompletion;
-}
+type ExecutionOutcome = ExecutionEndReason | "error";
+/** A cache miss may have to load art before it can start the animation. */
+export type AnimationPreparation =
+  ExecutionHandle | void | Promise<ExecutionHandle | void>;
 
 export interface ExecutionHandle {
   readonly blocking: boolean;
-  readonly completion: Promise<ExecutionEndReason>;
-  readonly endReason: ExecutionEndReason | undefined;
+  readonly completion: Promise<ExecutionOutcome>;
+  readonly endReason: ExecutionOutcome | undefined;
+  readonly failure: { readonly error: unknown } | undefined;
   end: (reason?: ExecutionEndReason) => void;
+  fail: (error: unknown) => void;
 }
 
 /**
@@ -24,27 +23,46 @@ export interface ExecutionHandle {
  */
 export function createExecutionHandle(
   blocking: boolean,
-  onEnd?: (reason: ExecutionEndReason) => void,
+  onEnd?: (reason: ExecutionOutcome) => void,
 ): ExecutionHandle {
-  let endReason: ExecutionEndReason | undefined;
-  let resolve!: (reason: ExecutionEndReason) => void;
-  const completion = new Promise<ExecutionEndReason>((done) => {
-    resolve = done;
-  });
+  let endReason: ExecutionOutcome | undefined;
+  let failure: ExecutionHandle["failure"];
+  let completion: Promise<ExecutionOutcome> | undefined;
+  let resolve: ((reason: ExecutionOutcome) => void) | undefined;
+  const settle = (
+    reason: ExecutionOutcome,
+    result?: ExecutionHandle["failure"],
+  ) => {
+    if (endReason !== undefined) return;
+    endReason = reason;
+    failure = result;
+    try {
+      onEnd?.(reason);
+    } finally {
+      resolve?.(reason);
+    }
+  };
   return {
     blocking,
-    completion,
+    get completion() {
+      return (completion ??=
+        endReason === undefined
+          ? new Promise((done) => {
+              resolve = done;
+            })
+          : Promise.resolve(endReason));
+    },
     get endReason() {
       return endReason;
     },
+    get failure() {
+      return failure;
+    },
     end(reason = "complete") {
-      if (endReason !== undefined) return;
-      endReason = reason;
-      try {
-        onEnd?.(reason);
-      } finally {
-        resolve(reason);
-      }
+      settle(reason);
+    },
+    fail(error) {
+      settle("error", { error });
     },
   };
 }

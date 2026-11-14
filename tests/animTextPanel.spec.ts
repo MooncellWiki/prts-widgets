@@ -14,7 +14,7 @@ const { loadMock } = vi.hoisted(() => ({
 
 vi.mock("pixi.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("pixi.js")>()),
-  Assets: { load: loadMock },
+  Assets: { cache: { has: () => false }, load: loadMock },
 }));
 
 function input(overrides: Partial<AnimTextInput> = {}): AnimTextInput {
@@ -70,15 +70,16 @@ describe("AnimTextPanel", () => {
     );
     const panel = new AnimTextPanel(layer, tween);
     const onComplete = vi.fn();
-    const { animation } = await panel.show(input(), onComplete);
+    const animation = await panel.show(input(), onComplete);
 
     expect(layer.children).toHaveLength(1);
-    expect(animation).toBe(running.promise);
+    expect(animation?.endReason).toBeUndefined();
     expect(onComplete).not.toHaveBeenCalled();
     const [, , complete] = tween.mock.calls[0]!;
     complete?.();
     running.resolve();
-    await animation;
+    expect(animation?.endReason).toBe("complete");
+    await expect(animation?.completion).resolves.toBe("complete");
     expect(onComplete).toHaveBeenCalledTimes(1);
     panel.destroy();
   });

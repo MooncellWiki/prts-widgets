@@ -16,9 +16,9 @@ import { canvasOrderForLayer, sceneCanvasOrder } from "../core/LayerGraph";
 import { Sequence } from "../core/Sequence";
 import { buildShakePath, sampleShakePath } from "../core/ShakePath";
 
+import type { TextureLoad } from "../core/TextureAsset";
 import type { TweenRunner } from "../core/TweenRunner";
 
-type TextureLoader = (key: string) => Texture | Promise<Texture | null> | null;
 interface CgItemState {
   /**
    * `AVGShowItemCgSlot.m_animEpoch`: every `Hide` re-binds the slot's
@@ -93,7 +93,7 @@ export class CgItemView {
 
   constructor(
     private readonly layer: Container,
-    private readonly loadTexture: TextureLoader,
+    private readonly loadTexture: (key: string) => TextureLoad,
     private readonly tween: TweenRunner["run"],
     private readonly onWarning?: (detail: string) => void,
     private readonly lifecycle?: CgItemLifecycle,

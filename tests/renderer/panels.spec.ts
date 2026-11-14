@@ -1,6 +1,7 @@
 import {
   Application,
   Assets,
+  type BlurFilter,
   Container,
   type Graphics,
   NineSliceSprite,
@@ -12,7 +13,10 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { collectContextAssetUrls } from "../../src/widgets/StoryPlayer/engine/preload";
+import {
+  collectContextAssetUrls,
+  preloadContextAssets,
+} from "../../src/widgets/StoryPlayer/engine/preload";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createRenderer } from "../helpers/rendererFixtures";
 import {
@@ -21,6 +25,7 @@ import {
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
+import type { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../src/widgets/StoryPlayer/engine/types";
 
@@ -34,6 +39,7 @@ function createShowItemRenderer(ticker?: Ticker) {
   const renderer = createRenderer();
   const layer: Container = renderer.layers.showItems;
   const tweens: ManualTween[] = [];
+  let playback: FakeRenderer | undefined;
   renderer.showItemFrameTextureFailed = true;
   renderer.dialogFrameTextureFailed = true;
   renderer.textureForImageKey = vi.fn(
@@ -55,6 +61,7 @@ function createShowItemRenderer(ticker?: Ticker) {
             if (options?.isAlive?.() !== false) step(1);
             done?.();
             resolve();
+            playback?.frames.step();
           },
           durationMs,
           step,
@@ -66,7 +73,7 @@ function createShowItemRenderer(ticker?: Ticker) {
     createSlot: (style: string): StoryShowItemSlot =>
       renderer.createShowItemSlot(style),
     createRuntime: (lines: string[]) => {
-      const playback = new FakeRenderer();
+      playback = new FakeRenderer();
       playback.createShowItemSlot = (style) =>
         renderer.createShowItemSlot(style);
       if (ticker)
@@ -80,6 +87,51 @@ function createShowItemRenderer(ticker?: Ticker) {
 }
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+async function createRenderedPlayback(
+  script: string[],
+  draw: (layers: LayerGraph) => void,
+) {
+  const context = createContext(script);
+  const urls = new Set<string>();
+  const load = vi.spyOn(Assets, "load").mockImplementation(async (assets) => {
+    const textures: Record<string, Texture> = {};
+    for (const url of assets as string[]) {
+      const label = url.split("/").at(-1)?.split(".")[0];
+      const source = new TextureSource({ height: 32, width: 32 });
+      textures[url] = new Texture({ label, source });
+      Assets.cache.set(url, textures[url]);
+      urls.add(url);
+    }
+    return textures;
+  });
+  try {
+    await preloadContextAssets(context);
+  } finally {
+    load.mockRestore();
+  }
+  const renderer = createRenderer(context);
+  const app = new Application();
+  app.render = () => draw(renderer.layers);
+  TickerPlugin.init.call(app, { autoStart: false });
+  renderer.app = app;
+  renderer.layers.attach(app.stage);
+  app.ticker.lastTime = 0;
+  const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+  return {
+    app,
+    destroy() {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      app.ticker.destroy();
+      app.stage.destroy({ children: true });
+      for (const url of urls) Assets.cache.remove(url);
+    },
+    renderer,
+    runtime,
+  };
+}
 
 describe("CG item rendering", () => {
   const showLines = [
@@ -213,6 +265,42 @@ describe("CG item rendering", () => {
 });
 
 describe("ShowItemSlot rendering", () => {
+  it("draws cached replacement art on the hide's last frame and advances the new fade on the next update", async () => {
+    const draws: unknown[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        "[showitem(image=123,fadetime=0)]",
+        '[showitem(image=" SECOND ",fadetime=0.032)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ showItems, cgItems }) => {
+        const item = showItems.children[0];
+        const [frame, art] = (item?.children[1]?.children ?? []) as Sprite[];
+        draws.push([
+          art?.texture.label,
+          frame?.texture.label,
+          item?.alpha,
+          cgItems.children.length,
+        ]);
+      },
+    );
+    const started = runtime.start();
+    try {
+      for (const now of [16, 32, 48, 64, 80]) app.ticker.update(now);
+      expect(draws).toEqual([
+        ["123", "sprite_avg_showItem_photo", 1, 0],
+        ["123", "sprite_avg_showItem_photo", 0.25, 0],
+        ["second", "sprite_avg_showItem_photo", 0, 0],
+        ["second", "sprite_avg_showItem_photo", 0.75, 0],
+        ["second", "sprite_avg_showItem_photo", 1, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
   it("replaces the slot by fading it out with the new command's fadetime", async () => {
     const { createRuntime, layer, tweens } = createShowItemRenderer();
     const runtime = createRuntime([
@@ -822,5 +910,131 @@ describe("ShowItemSlot rendering", () => {
     const bounds = header.getBounds();
     expect(bounds.minY).toBeCloseTo(-50);
     expect(bounds.maxY).toBeCloseTo(150);
+  });
+});
+
+describe("Displayable and focus frame order", () => {
+  it("draws the cached avgdisplay on the stamp's last frame and the next CG on the holder's last frame", async () => {
+    const draws: unknown[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[animtext(name="group_location_stamp",block=true)]<p=1>stamp</>',
+        '[avgdisplay(id="a",name=" BG_TEST ",slot="bgover",style="bg",duration=0.032,afrom=0.25,ato=1,block=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ animTexts, avgDisplayBackground, cgItems }) => {
+        const holder = avgDisplayBackground.children[0];
+        const sprite = holder?.children[0] as Sprite | undefined;
+        draws.push([
+          animTexts.children[0]?.alpha,
+          sprite?.texture.label,
+          holder?.alpha,
+          cgItems.children.length,
+        ]);
+      },
+    );
+    const started = runtime.start();
+    try {
+      for (const now of [4000, 5000, 5016, 5032]) app.ticker.update(now);
+      expect(draws).toEqual([
+        [1, undefined, undefined, 0],
+        [0, "bg_test", 0.25, 0],
+        [0, "bg_test", 0.625, 0],
+        [0, "bg_test", 1, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("draws the following CG in the frame blocking focusout finishes", async () => {
+    const draws: unknown[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[cgitem(image="first")]',
+        '[focusout(type="cgitem",id="first",from=0,to=1,duration=0.032,block=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ cgItems }) => {
+        const blur = cgItems.children[0]?.filters?.[0] as
+          BlurFilter | undefined;
+        draws.push([blur?.strength, cgItems.children.length]);
+      },
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(draws).toEqual([
+        [4, 1],
+        [8, 2],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("continues from a media event on the update after frame end", async () => {
+    const draws: number[] = [];
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      ['[video(res="video/entry")]', '[cgitem(image="after")]', '[name="A"]ok'],
+      ({ cgItems }) => draws.push(cgItems.children.length),
+    );
+    const host = document.createElement("div");
+    renderer.videoPanel.mount(host);
+    const started = runtime.start();
+    try {
+      const video = host.querySelector("video")!;
+      expect(runtime.getState()).toBe("waiting_video");
+      expect(video).toBeInstanceOf(HTMLVideoElement);
+
+      video.dispatchEvent(new Event("ended"));
+      app.ticker.update(16);
+      expect(runtime.getState()).toBe("running");
+      app.ticker.update(32);
+      expect(draws).toEqual([0, 1]);
+      await started;
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("force-ends a blocking focus wait while its channel continues after the skip", async () => {
+    const draws: unknown[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[cgitem(image="first")]',
+        '[focusout(type="cgitem",id="first",from=0,to=1,duration=0.032,block=true)]',
+        '[name="A"]skip',
+        "[SkipToThis]",
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ cgItems }) => {
+        const blur = cgItems.children[0]?.filters?.[0] as
+          BlurFilter | undefined;
+        draws.push([blur?.strength, cgItems.children.length]);
+      },
+    );
+    const started = runtime.start();
+    const skipped = runtime.skipNode();
+    try {
+      await flushAsync();
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(draws).toEqual([
+        [4, 2],
+        [8, 2],
+      ]);
+      await Promise.all([started, skipped]);
+    } finally {
+      destroy();
+      await Promise.all([started, skipped]);
+    }
   });
 });

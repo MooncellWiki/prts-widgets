@@ -140,7 +140,7 @@ describe("PixiStoryRenderer", () => {
       '[name="B"]B',
     ]);
     renderer.layoutSubtitle = vi.fn();
-    const tween = vi.spyOn(renderer, "tween");
+    const tween = vi.spyOn(renderer.updatePhaseTweenRunner, "run");
     try {
       runtime.setAutoPlayMode("quick_play");
       await runtime.start();
@@ -733,7 +733,7 @@ describe("PixiStoryRenderer", () => {
     // frame-driven tween; stub both so the test observes the text state.
     renderer.layoutSubtitle = vi.fn();
     let finishFade: (() => void) | null = null;
-    renderer.tween = vi.fn(
+    renderer.updatePhaseTweenRunner.run = vi.fn(
       (
         _durationMs: number,
         _step: (progress: number) => void,
@@ -776,7 +776,7 @@ describe("PixiStoryRenderer", () => {
     const renderer = createRenderer();
     renderer.frames.manual = true;
     renderer.layoutSubtitle = vi.fn();
-    renderer.tween = vi.fn(() => Promise.resolve());
+    renderer.updatePhaseTweenRunner.run = vi.fn(() => Promise.resolve());
     await renderer.setSticker({
       alignment: "left",
       append: false,
@@ -809,7 +809,7 @@ describe("PixiStoryRenderer", () => {
       const renderer = createRenderer();
       renderer.app = { ticker };
       renderer.layoutSubtitle = vi.fn();
-      renderer.tween = vi.fn(() => Promise.resolve());
+      renderer.updatePhaseTweenRunner.run = vi.fn(() => Promise.resolve());
       const input = {
         alignment: "left" as const,
         append: false,
@@ -908,14 +908,16 @@ describe("PixiStoryRenderer", () => {
 function createSubtitleRenderer() {
   const renderer = createRenderer();
   const manual = createManualClock();
-  renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+  renderer.updatePhaseTweenRunner = new TweenRunner(() => true, manual.clock);
   renderer.layoutSubtitle = vi.fn();
   renderer.subtitleView.mount();
   const subtitle = renderer.uiLayer.children.at(-1);
   // Count the fades while keeping the real runner so alpha reaches its target.
-  const original = renderer.tween.bind(renderer);
+  const original = renderer.updatePhaseTweenRunner.run.bind(
+    renderer.updatePhaseTweenRunner,
+  );
   const tween = vi.fn((...args: unknown[]) => original(...args));
-  renderer.tween = tween;
+  renderer.updatePhaseTweenRunner.run = tween;
   return { manual, renderer, subtitle, tween };
 }
 
@@ -1058,7 +1060,7 @@ describe("PixiStoryRenderer stickerTween", () => {
       durationMs: number;
       step: (progress: number) => void;
     }> = [];
-    renderer.tween = vi.fn(
+    renderer.updatePhaseTweenRunner.run = vi.fn(
       (durationMs: number, step: (p: number) => void, done?: () => void) => {
         tweenCalls.push({ done, durationMs, step });
         return Promise.resolve();
@@ -1129,10 +1131,12 @@ describe("PixiStoryRenderer stickerTween", () => {
     const sticker = await showSticker(renderer);
 
     const steps: Array<(progress: number) => void> = [];
-    renderer.tween = vi.fn((_durationMs: number, step: (p: number) => void) => {
-      steps.push(step);
-      return Promise.resolve();
-    });
+    renderer.updatePhaseTweenRunner.run = vi.fn(
+      (_durationMs: number, step: (p: number) => void) => {
+        steps.push(step);
+        return Promise.resolve();
+      },
+    );
 
     renderer.stickerTween({
       id: "st",
@@ -1373,7 +1377,7 @@ describe("StickerView lifecycle", () => {
       step: (progress: number) => void;
       done?: () => void;
     }> = [];
-    renderer.tween = vi.fn((durationMs, step, done) => {
+    renderer.updatePhaseTweenRunner.run = vi.fn((durationMs, step, done) => {
       tweens.push({ durationMs, done, step });
       return Promise.resolve();
     });
@@ -1433,7 +1437,7 @@ describe("StickerView lifecycle", () => {
   it("resets rotation and scale on re-show and recycle, not on hide", async () => {
     const renderer = createStickerRenderer();
     const root = await showSticker(renderer);
-    renderer.tween = vi.fn((_ms, _step, done) => {
+    renderer.updatePhaseTweenRunner.run = vi.fn((_ms, _step, done) => {
       done?.();
       return Promise.resolve();
     });
@@ -1469,7 +1473,7 @@ describe("StickerView lifecycle", () => {
     const renderer = createStickerRenderer();
     const root = await showSticker(renderer);
     const steps: Array<(progress: number) => void> = [];
-    renderer.tween = vi.fn((_ms, step) => {
+    renderer.updatePhaseTweenRunner.run = vi.fn((_ms, step) => {
       steps.push(step);
       return Promise.resolve();
     });
@@ -1498,7 +1502,7 @@ describe("StickerView lifecycle", () => {
       step: (progress: number) => void;
       done?: () => void;
     }> = [];
-    renderer.tween = vi.fn((_ms, step, done) => {
+    renderer.updatePhaseTweenRunner.run = vi.fn((_ms, step, done) => {
       tweens.push({ step, done });
       return Promise.resolve();
     });

@@ -1,6 +1,10 @@
 import { Assets } from "pixi.js";
 
-import { SHOWITEM_PHOTO_FRAME_URL, STAMP_ASSETS } from "../assets";
+import {
+  DIALOG_FRAME_URL,
+  SHOWITEM_PHOTO_FRAME_URL,
+  STAMP_ASSETS,
+} from "../assets";
 
 import {
   resolveAssetUrl,
@@ -11,6 +15,7 @@ import {
 } from "./asset";
 import { resolveAvgDisplayStyle } from "./avgDisplay";
 import { resolveCharacterSelection } from "./characterRef";
+import { toString } from "./commandParams";
 import {
   ANIMTEXT_MAIN_FONT,
   DIALOG_FONT,
@@ -19,7 +24,6 @@ import {
   type FontSpec,
 } from "./font";
 import { parseScript } from "./parser";
-import { DIALOG_FRAME_URL } from "./renderer";
 
 import type { Context } from "../context";
 import type { ParsedLine, StoryCharacterFaceAsset } from "./types";
@@ -111,17 +115,17 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
       // Unquoted `style=5` parses to a number; resolve it like the runtime.
       const style = resolveAvgDisplayStyle(String(line.args.style ?? ""));
       const name = argAsString(line.args.name);
-      if (style === "bg") addImageUrl(urls, name, "background");
+      if (style === "bg")
+        addImageUrl(urls, toString(line.args.name), "background");
       else if (style === "character") addCharacterUrl(urls, name);
       continue;
     }
     if (line.command === "cgitem" && line.args.style === "blocker") continue;
-    if (
-      line.command === "image" ||
-      line.command === "showitem" ||
-      line.command === "cgitem" ||
-      line.command === "blocker"
-    ) {
+    if (line.command === "showitem" || line.command === "cgitem") {
+      addImageUrl(urls, toString(line.args.image), "image");
+      continue;
+    }
+    if (line.command === "image" || line.command === "blocker") {
       addImageUrl(urls, image, "image");
       continue;
     }
@@ -319,15 +323,14 @@ function collectPreloadAssetUrls(
   const urls = new Set(buildContextAssetManifest(context, lines).urls);
 
   // 固定 UI 资源（对话框上下黑条纹理），随每次 preload 一起预热进 pixi Assets 缓存，
-  // renderer 在 createUi 时再 Assets.load 即可命中缓存。它属于播放器内置资源，
+  // DialogView 和 cutin 道具共用这张缓存纹理。它属于播放器内置资源，
   // 不应出现在面向用户的剧情资源列表中。
   urls.add(DIALOG_FRAME_URL);
 
   // animtext `group_location_stamp` 的 7 张内置贴片同理。native 侧
   // AVGDisplayableExecutor.InternalResRefCollector.GatherResRefs 对 ANIMATE_TEXT
   // 落入空分支、不登记任何资源引用（native LoadAsset 同步，印章当帧出现）；
-  // web 的 Assets.load 异步，首次播放会晚 1-2 帧，故在剧本确实使用 animtext 时
-  // 一并预热，让面板内 Assets.load 命中缓存。属 web 适配，非 native 行为移植。
+  // Web 在剧本用到 animtext 时预热，播放时同步读取缓存，保证印章当帧出现。
   if (usesCommand(lines, "animtext")) {
     for (const url of Object.values(STAMP_ASSETS)) urls.add(url);
   }

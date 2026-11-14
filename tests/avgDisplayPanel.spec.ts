@@ -83,7 +83,7 @@ describe("AvgDisplayPanel", () => {
       tween,
     );
     const onComplete = vi.fn();
-    const { animation: running } = await panel.display(
+    const running = await panel.display(
       input({
         durationMs: 1000,
         entryFrom: 0,
@@ -100,7 +100,7 @@ describe("AvgDisplayPanel", () => {
       }),
       onComplete,
     );
-    expect(running).toBe(animation.promise);
+    expect(running?.endReason).toBeUndefined();
     expect(tween).toHaveBeenCalledTimes(1);
     const [durationMs, step, complete] = tween.mock.calls[0]!;
     expect(durationMs).toBe(1000);
@@ -113,7 +113,8 @@ describe("AvgDisplayPanel", () => {
 
     complete?.();
     animation.resolve();
-    await running;
+    expect(running?.endReason).toBe("complete");
+    await expect(running?.completion).resolves.toBe("complete");
     expect(root.position).toMatchObject({ x: 740, y: 330 });
     expect(root.scale).toMatchObject({ x: 2, y: 3 });
     expect(onComplete).toHaveBeenCalledTimes(1);
@@ -127,7 +128,7 @@ describe("AvgDisplayPanel", () => {
   it("leaves bg alpha untouched when durationMs <= 0", async () => {
     const { panel, slots } = makePanel();
     // Establish a dimmed overlay (afrom == ato snaps alpha directly).
-    const { animation } = await panel.display(
+    const animation = await panel.display(
       input({ alphaFrom: 0.5, alphaTo: 0.5, durationMs: 1000 }),
     );
     expect(animation).toBeUndefined();
