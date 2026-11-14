@@ -10,6 +10,7 @@ export interface PreparedAnimation {
 export interface ExecutionHandle {
   readonly blocking: boolean;
   readonly completion: Promise<ExecutionEndReason>;
+  readonly endReason: ExecutionEndReason | undefined;
   end: (reason?: ExecutionEndReason) => void;
 }
 
@@ -17,15 +18,15 @@ export interface ExecutionHandle {
  * Native provenance: `Torappu.AVG.CommandExecutorWrapper` completion and
  * force-end lifecycle.
  *
- * Ports one-shot command completion with an explicit blocking flag. A Promise
- * is the web adaptation of native finish callbacks and coroutine resumption.
+ * Ports one-shot completion. The frame loop reads endReason synchronously.
+ * The Promise lets callers observe the same completion.
  *
  */
 export function createExecutionHandle(
   blocking: boolean,
   onEnd?: (reason: ExecutionEndReason) => void,
 ): ExecutionHandle {
-  let settled = false;
+  let endReason: ExecutionEndReason | undefined;
   let resolve!: (reason: ExecutionEndReason) => void;
   const completion = new Promise<ExecutionEndReason>((done) => {
     resolve = done;
@@ -33,11 +34,17 @@ export function createExecutionHandle(
   return {
     blocking,
     completion,
+    get endReason() {
+      return endReason;
+    },
     end(reason = "complete") {
-      if (settled) return;
-      settled = true;
-      onEnd?.(reason);
-      resolve(reason);
+      if (endReason !== undefined) return;
+      endReason = reason;
+      try {
+        onEnd?.(reason);
+      } finally {
+        resolve(reason);
+      }
     },
   };
 }

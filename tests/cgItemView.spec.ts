@@ -125,15 +125,15 @@ describe("CgItemView", () => {
       tweenImmediately,
     );
 
-    await view.show(input("a"));
+    await view.show(input("a")).completion;
     const oldA = view.targets("a")[0];
-    await view.show(input("b"));
+    await view.show(input("b")).completion;
     await view.show(
       input("a", {
         positionFrom: { x: 0, y: 0 },
         positionTo: { x: 10, y: 20 },
       }),
-    );
+    ).completion;
 
     expect(view.targets("a")).toHaveLength(1);
     expect(view.targets("b")).toHaveLength(1);
@@ -198,7 +198,7 @@ describe("CgItemView", () => {
     expect(image.x).toBe(62.5);
     expect(sprite.alpha).toBeCloseTo(2 / 3);
     steps[0]!.complete();
-    await expect(done).resolves.toBe("complete");
+    expect(done.endReason).toBe("complete");
     expect(image.x).toBe(100);
     expect(sprite.alpha).toBe(1);
   });
@@ -212,12 +212,12 @@ describe("CgItemView", () => {
       async () => Texture.WHITE,
       tweenImmediately,
     );
-    await view.show(input("first", { layer: 4 }));
-    await view.show(input("second", { layer: 3 }));
-    await view.show(input("third", { layer: 2 }));
-    await view.show(input("default"));
-    await view.show(input("sameAsCutin", { layer: 1 }));
-    await view.show(input("last", { layer: 4 }));
+    await view.show(input("first", { layer: 4 })).completion;
+    await view.show(input("second", { layer: 3 })).completion;
+    await view.show(input("third", { layer: 2 })).completion;
+    await view.show(input("default")).completion;
+    await view.show(input("sameAsCutin", { layer: 1 })).completion;
+    await view.show(input("last", { layer: 4 })).completion;
 
     layers.sceneDraw.sortRenderLayerChildren();
     const order = layers.sceneDraw.renderLayerChildren;
@@ -235,7 +235,7 @@ describe("CgItemView", () => {
     const last = view.targets("last")[0]!;
     expect(last.toGlobal({ x: 0, y: 0 })).toMatchObject({ x: 640, y: 360 });
 
-    await view.hide("last", 0, "Linear");
+    await view.hide("last", 0, "Linear")?.completion;
     expect(order).not.toContain(last);
   });
 
@@ -246,7 +246,8 @@ describe("CgItemView", () => {
       async () => Texture.WHITE,
       manual.tween,
     );
-    await view.show(input("static", { rotationFrom: -5, rotationTo: -5 }));
+    await view.show(input("static", { rotationFrom: -5, rotationTo: -5 }))
+      .completion;
     expect(view.targets("static")[0]!.children[0]!.angle).toBeCloseTo(5);
     void view.show(
       input("moving", {
@@ -333,9 +334,9 @@ describe("CgItemView", () => {
     steps[0]!.update(0.5);
     expect(sprite.alpha).toBe(0.5);
 
-    await view.show(input("", { assetKey: undefined }));
+    await view.show(input("", { assetKey: undefined })).completion;
     expect(view.targets("")).toEqual([]);
-    await view.hide(undefined, 0, "Linear");
+    view.hide(undefined, 0, "Linear");
     expect(layer.children).toHaveLength(1);
     view.clear();
     expect(layer.children).toHaveLength(0);
@@ -354,14 +355,14 @@ describe("CgItemView", () => {
 
     expect(view.targets("a")[0]!.children).toHaveLength(1);
     expect(onShowEnd).not.toHaveBeenCalled();
-    await expect(view.show(input("", { assetKey: undefined }))).resolves.toBe(
+    expect(view.show(input("", { assetKey: undefined })).endReason).toBe(
       "complete",
     );
     expect(onShowEnd).not.toHaveBeenCalled();
     manual.advance(16);
     manual.drainFrame();
     expect(onShowEnd).toHaveBeenCalledTimes(1);
-    await expect(shown).resolves.toBe("complete");
+    expect(shown.endReason).toBe("complete");
   });
 
   it("shakes the slot root, replaces its loop and settles it on hide", async () => {
@@ -378,7 +379,7 @@ describe("CgItemView", () => {
           positionFrom: { x: 0, y: 0 },
           positionTo: { x: 30, y: 20 },
         }),
-      );
+      ).completion;
       const root = view.targets("a")[0]!;
       const image = root.children[0]!;
       const first = view.shake(
@@ -391,7 +392,7 @@ describe("CgItemView", () => {
       expect(image.position).toMatchObject({ x: 30, y: -20 });
 
       const second = view.shake(shakeInput("a", { block: true }));
-      await first;
+      expect(first?.endReason).toBe("force_end");
       expect(original.options?.isAlive?.()).toBe(false);
       original.complete();
       expect(steps[1]!.options?.isAlive?.()).toBe(true);
@@ -399,7 +400,7 @@ describe("CgItemView", () => {
       expect(root.y).toBeCloseTo(320);
 
       void view.hide("a", 100, "Linear");
-      await second;
+      expect(second?.endReason).toBe("complete");
       expect(root.y).toBe(360);
       steps[1]!.update(0.5);
       expect(root.y).toBe(360);
@@ -419,8 +420,8 @@ describe("CgItemView", () => {
       async () => Texture.WHITE,
       tween,
     );
-    await view.show(input("a"));
-    await view.show(input("b"));
+    await view.show(input("a")).completion;
+    await view.show(input("b")).completion;
     const a = view.targets("a")[0]!;
     const b = view.targets("b")[0]!;
     void view.shake(shakeInput("a"));
@@ -432,7 +433,7 @@ describe("CgItemView", () => {
     expect(steps[0]!.options?.isAlive?.()).toBe(false);
     expect(steps[1]!.options?.isAlive?.()).toBe(true);
 
-    await view.hide(undefined, 100, "Linear");
+    view.hide(undefined, 100, "Linear");
     expect(b.position).toMatchObject({ x: 640, y: 360 });
     expect(steps[1]!.options?.isAlive?.()).toBe(false);
     view.clear();
@@ -445,14 +446,14 @@ describe("CgItemView", () => {
       async () => Texture.WHITE,
       tweenImmediately,
     );
-    await view.show(input("a"));
-    await view.show(input("b"));
+    await view.show(input("a")).completion;
+    await view.show(input("b")).completion;
 
-    await view.hide("a", 130, "Linear");
+    await view.hide("a", 130, "Linear")?.completion;
     expect(view.targets("a")).toEqual([]);
     expect(view.targets("b")).toHaveLength(1);
 
-    await view.hide(undefined, 130, "Linear");
+    view.hide(undefined, 130, "Linear");
     expect(view.targets("")).toEqual([]);
     expect(layer.children).toHaveLength(0);
   });
@@ -500,7 +501,7 @@ describe("CgItemView", () => {
     );
 
     let finished = false;
-    const task = view.show(input("a")).then(() => {
+    const task = view.show(input("a")).completion.then(() => {
       finished = true;
     });
     await flushMicrotasks();
@@ -531,14 +532,14 @@ describe("CgItemView", () => {
 
     expect(view.targets("a")[0]).not.toBe(oldRoot);
     expect(layer.children).toHaveLength(1);
-    await expect(firstShow).resolves.toBe("reset");
+    expect(firstShow.endReason).toBe("reset");
 
     first.resolve(Texture.WHITE);
     await flushMicrotasks();
     expect(view.targets("a")[0]!.children).toHaveLength(0);
 
     second.resolve(Texture.WHITE);
-    await secondShow;
+    await secondShow.completion;
     expect(view.targets("a")[0]!.children).toHaveLength(1);
   });
 
@@ -553,8 +554,8 @@ describe("CgItemView", () => {
     const show = view.show(input("a"));
     expect(view.targets("a")).toHaveLength(1);
 
-    await view.hide("a", 130, "Linear");
-    await expect(show).resolves.toBe("reset");
+    await view.hide("a", 130, "Linear")?.completion;
+    expect(show.endReason).toBe("reset");
     expect(view.targets("a")).toEqual([]);
 
     deferred.resolve(Texture.WHITE);
@@ -572,7 +573,9 @@ describe("CgItemView", () => {
     );
 
     const onComplete = vi.fn();
-    await expect(view.show(input("a"), onComplete)).resolves.toBe("reset");
+    await expect(view.show(input("a"), onComplete).completion).resolves.toBe(
+      "reset",
+    );
     expect(onComplete).not.toHaveBeenCalled();
 
     expect(warnings[0]).toContain("cgitem asset is missing: a");
@@ -590,7 +593,7 @@ describe("CgItemView", () => {
       const layer = new Container();
       const { steps, tween } = manualTweenSteps();
       const view = new CgItemView(layer, async () => Texture.WHITE, tween);
-      await view.show(input("a"));
+      await view.show(input("a")).completion;
       const root = view.targets("a")[0];
 
       void view.hide("a", 500, ease);
@@ -637,11 +640,11 @@ describe("CgItemView", () => {
     const layer = new Container();
     const { steps, tween } = manualTweenSteps();
     const view = new CgItemView(layer, async () => Texture.WHITE, tween);
-    await view.show(input("a"));
+    await view.show(input("a")).completion;
     const oldRoot = view.targets("a")[0];
 
     void view.hide("a", 500, "Linear");
-    await view.show(input("a"));
+    await view.show(input("a")).completion;
     const newRoot = view.targets("a")[0];
     expect(newRoot).not.toBe(oldRoot);
 
@@ -658,7 +661,7 @@ describe("CgItemView", () => {
     const layer = new Container();
     const { steps, tween } = manualTweenSteps();
     const view = new CgItemView(layer, async () => Texture.WHITE, tween);
-    await view.show(input("a"));
+    await view.show(input("a")).completion;
 
     void view.hide("a", 1000, "Linear");
     void view.hide("a", 2000, "Linear");
@@ -676,12 +679,12 @@ describe("CgItemView", () => {
     const layer = new Container();
     const { steps, tween } = manualTweenSteps();
     const view = new CgItemView(layer, async () => Texture.WHITE, tween);
-    await view.show(input("a"));
+    await view.show(input("a")).completion;
     const old = view.targets("a")[0];
 
     void view.hide("a", 500, "Linear");
-    await view.hide(undefined, 1000, "Linear");
-    await view.show(input("a"));
+    view.hide(undefined, 1000, "Linear");
+    await view.show(input("a")).completion;
     const fresh = view.targets("a")[0];
 
     steps[0].update(1);
@@ -713,7 +716,7 @@ describe("CgItemView", () => {
     steps[0].update(0.5);
     expect(sprite.position.x).toBe(50);
 
-    await view.hide(undefined, 500, "Linear");
+    view.hide(undefined, 500, "Linear");
     steps[0].update(0.75);
     // Native keeps driving the removed slots until Dispose destroys them.
     expect(sprite.position.x).toBe(75);
@@ -743,8 +746,8 @@ describe("CgItemView", () => {
 
     // `_ShowItem` disposes the previous same-key slot before binding the new
     // one, so a re-show reports both, in that order.
-    await view.show(input("a"));
-    await view.show(input("a"));
+    await view.show(input("a")).completion;
+    await view.show(input("a")).completion;
     expect(events).toEqual(["registered:a", "disposed:a", "registered:a"]);
 
     // A keyed hide disposes only when its fade completes.
@@ -769,20 +772,20 @@ describe("CgItemView", () => {
         registered: (key) => events.push(`registered:${key}`),
       },
     );
-    await view.show(input("a"));
-    await view.show(input("b"));
+    await view.show(input("a")).completion;
+    await view.show(input("b")).completion;
     const oldA = view.targets("a")[0];
     events.length = 0;
 
     // `_ClearAllItems` finishes even with block=true while the slots stay
     // registered as PostDisplay items until their individual fades end.
-    await view.hide(undefined, 100, "Linear");
+    view.hide(undefined, 100, "Linear");
     const [fadeA, fadeB] = steps.slice(-2);
     expect(view.targets("a")).toEqual([oldA]);
     expect(view.targets("b")).toHaveLength(1);
 
     // A same-key show during the fade registers alongside the fading slot.
-    await view.show(input("a"));
+    await view.show(input("a")).completion;
     expect(view.targets("a")).toHaveLength(2);
 
     fadeB.complete();

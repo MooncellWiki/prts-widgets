@@ -1,4 +1,6 @@
 import {
+  Application,
+  Assets,
   Container,
   type Graphics,
   NineSliceSprite,
@@ -6,9 +8,11 @@ import {
   Texture,
   TextureSource,
   Ticker,
+  TickerPlugin,
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { collectContextAssetUrls } from "../../src/widgets/StoryPlayer/engine/preload";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createRenderer } from "../helpers/rendererFixtures";
 import {
@@ -76,6 +80,137 @@ function createShowItemRenderer(ticker?: Ticker) {
 }
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+describe("CG item rendering", () => {
+  const showLines = [
+    '[cgitem(image="first",afrom=0,ato=1,aduration=0.032,block=true)]',
+  ];
+  const showDraws = [
+    [["first", 0.5]],
+    [
+      ["first", 1],
+      ["second", 0.25],
+    ],
+    [
+      ["first", 1],
+      ["second", 0.625],
+    ],
+  ];
+  const hideLines = [
+    '[cgitem(image="first")]',
+    '[hidecgitem(image="first",duration=0.032,block=true)]',
+  ];
+  const hideDraws = [[["first", 0.5]], [["second", 0.25]], [["second", 0.625]]];
+
+  it.each([
+    {
+      command: "cgitem",
+      lines: showLines,
+      expectedDraws: showDraws,
+    },
+    {
+      command: "cgitem then two instant blockers",
+      lines: [
+        ...showLines,
+        "[blocker(a=1,fadetime=0)]",
+        '[blocker(a=0,fadetime=0,image="first")]',
+      ],
+      expectedDraws: showDraws,
+    },
+    {
+      command: "hidecgitem",
+      lines: hideLines,
+      expectedDraws: hideDraws,
+    },
+    {
+      command: "blocking focusout",
+      lines: ['[focusout(type="bg",from=0,to=1,duration=0.032,block=true)]'],
+      expectedDraws: [[], [["second", 0.25]], [["second", 0.625]]],
+    },
+    {
+      command: "hidecgitem then focusout",
+      lines: [
+        ...hideLines,
+        '[focusout(type="cgitem",id=" SECOND ",to=0.5,duration=0,block=false)]',
+      ],
+      expectedDraws: hideDraws,
+    },
+    {
+      command: "cgitemshake",
+      lines: [
+        '[cgitem(image="first")]',
+        // Let the static CG finish before the shake takes the panel's callback.
+        "[delay(time=0)]",
+        '[cgitemshake(image="first",duration=0.032,block=true)]',
+      ],
+      expectedDraws: [
+        [["first", 1]],
+        [["first", 1]],
+        [
+          ["first", 1],
+          ["second", 0.25],
+        ],
+        [
+          ["first", 1],
+          ["second", 0.625],
+        ],
+      ],
+    },
+  ])(
+    "draws the next cached CG in the completion frame ($command)",
+    async ({ lines, expectedDraws }) => {
+      const context = createContext([
+        ...lines,
+        '[cgitem(image=" SECOND ",afrom=0.25,ato=1,aduration=0.032)]',
+        '[name="A"]after',
+      ]);
+      const urls = collectContextAssetUrls(context);
+      for (const url of urls) {
+        const source = new TextureSource({ height: 32, width: 32 });
+        const label = url.endsWith("/first.png") ? "first" : "second";
+        Assets.cache.set(url, new Texture({ label, source }));
+      }
+
+      const renderer = createRenderer(context);
+      const cgLayer: Container = renderer.layers.cgItems;
+      const drawn: Array<Array<[string | undefined, number]>> = [];
+      const blockerAlphas: number[] = [];
+      const app = new Application();
+      app.render = () => {
+        blockerAlphas.push(renderer.blockerSprite?.alpha ?? 0);
+        drawn.push(
+          cgLayer.children.flatMap((root) => {
+            const sprite = root.children[0]?.children[0] as Sprite | undefined;
+            return sprite
+              ? [[sprite.texture.label, sprite.alpha * root.alpha]]
+              : [];
+          }),
+        );
+      };
+      TickerPlugin.init.call(app, { autoStart: false });
+      renderer.app = app;
+      renderer.layers.attach(app.stage);
+      app.ticker.lastTime = 0;
+
+      const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+      const started = runtime.start();
+      try {
+        for (const [index, expected] of expectedDraws.entries()) {
+          app.ticker.update((index + 1) * 16);
+          expect(blockerAlphas[index]).toBe(0);
+          expect(drawn[index]).toEqual(expected);
+        }
+      } finally {
+        runtime.destroy();
+        renderer.resetCgItems();
+        app.ticker.destroy();
+        app.stage.destroy({ children: true });
+        for (const url of urls) Assets.cache.remove(url);
+        await started;
+      }
+    },
+  );
+});
 
 describe("ShowItemSlot rendering", () => {
   it("replaces the slot by fading it out with the new command's fadetime", async () => {

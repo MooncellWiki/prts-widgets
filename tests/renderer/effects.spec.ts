@@ -1,8 +1,10 @@
-import { Container, Texture } from "pixi.js";
+import { Application, Container, Texture, TickerPlugin } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
+import { createContext, FakeAudio } from "../helpers/runtimeFakes";
 
 import type { CgItemInput } from "../../src/widgets/StoryPlayer/engine/types";
 
@@ -251,9 +253,53 @@ describe("PixiStoryRenderer", () => {
     ]);
   });
 
+  it("releases a blocking focusout on SkipToThis while its tween keeps running", async () => {
+    const context = createContext([
+      '[focusparam(effect="Colorinverse",blur=false)]',
+      '[focusout(type="bg",from=0,to=1,duration=0.064,block=true)]',
+      '[name="A"]skipped',
+      "[SkipToThis]",
+      '[name="B"]after',
+    ]);
+    const renderer = createRenderer(context);
+    const app = new Application();
+    app.render = () => {};
+    TickerPlugin.init.call(app, { autoStart: false });
+    renderer.app = app;
+    renderer.layers.attach(app.stage);
+    renderer.dialogFrameTextureFailed = true;
+    app.ticker.lastTime = 0;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    const focusAmount = () => renderer.backgroundLayer.filters?.[0]?.matrix[4];
+    let skipped: Promise<void> | undefined;
+    try {
+      app.ticker.update(16);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      renderer.layers.scene.position.set(4, 8);
+      skipped = runtime.skipNode();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      app.ticker.update(32);
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+      expect(renderer.layers.scene.position.x).toBe(0);
+      expect(renderer.layers.scene.position.y).toBe(0);
+      expect(focusAmount()).toBeCloseTo(0.5);
+
+      app.ticker.update(48);
+      app.ticker.update(64);
+      expect(focusAmount()).toBeCloseTo(1);
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+    } finally {
+      runtime.destroy();
+      app.ticker.destroy();
+      app.stage.destroy({ children: true });
+      await Promise.all([started, skipped]);
+    }
+  });
+
   it("treats focusout on an empty channel as a non-blocking native no-op", async () => {
     const renderer = createFocusRenderer();
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     renderer.tween.mockClear();
 
     // `_ExecuteFocusout` returns before any `UpdateEffect` when
@@ -293,13 +339,13 @@ describe("PixiStoryRenderer", () => {
       to: 1,
       type: "cgitem",
     });
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     expect(filtersOf("a").length).toBeGreaterThan(0);
 
     // `BeforeItemDisposed` removes the stored amount: a re-show after the
     // hide completes comes back clean.
-    await renderer.clearCgItems("a", 0);
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.clearCgItems("a", 0)?.completion;
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     expect(filtersOf("a")).toHaveLength(0);
 
     // Same for a same-key replacement, which disposes the old slot first.
@@ -311,7 +357,7 @@ describe("PixiStoryRenderer", () => {
       type: "cgitem",
     });
     expect(filtersOf("a").length).toBeGreaterThan(0);
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     expect(filtersOf("a")).toHaveLength(0);
   });
 
@@ -324,7 +370,7 @@ describe("PixiStoryRenderer", () => {
       to: 1,
       type: "cgitem",
     };
-    await renderer.showCgItem(focusCgItemInput);
+    await renderer.showCgItem(focusCgItemInput).completion;
     const old = renderer.cgItemView.targets("a")[0];
     await renderer.setFocusOut(command);
     let finishFade: (() => void) | undefined;
@@ -333,8 +379,8 @@ describe("PixiStoryRenderer", () => {
         finishFade = complete;
       },
     );
-    await renderer.clearCgItems(undefined, 1000, "Linear", true);
-    await renderer.showCgItem(focusCgItemInput);
+    renderer.clearCgItems(undefined, 1000, "Linear", true);
+    await renderer.showCgItem(focusCgItemInput).completion;
     const current = renderer.cgItemView.targets("a")[0];
     expect(current).not.toBe(old);
     expect(current.filters).toHaveLength(1);
@@ -347,7 +393,7 @@ describe("PixiStoryRenderer", () => {
 
     await renderer.setFocusOut(command);
     expect(current.filters).toHaveLength(0);
-    await renderer.showCgItem({ ...focusCgItemInput, key: "b" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "b" }).completion;
     expect(renderer.cgItemView.targets("b")[0].filters ?? []).toHaveLength(0);
   });
 

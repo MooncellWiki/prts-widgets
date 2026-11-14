@@ -102,6 +102,7 @@ import { TimerView } from "./panels/TimerView";
 import { VideoPanel } from "./panels/VideoPanel";
 
 import type { Context } from "../../context";
+import type { ExecutionHandle } from "../execution";
 
 function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -504,8 +505,8 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly worldLayer = this.layers.world;
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
   // 2791 runs DOTween.Update before AVGController._DoExecuteCommands polls
-  // its blockers. Item and timer tweens use the Pixi update phase to preserve
-  // this ordering when playback resumes after a skip.
+  // its blockers. Use the update phase for tweens whose completion the runtime
+  // polls before rendering. Focusout uses TimeManager's frame tick in 2791.
   private readonly updatePhaseTweenRunner = new TweenRunner(
     () => Boolean(this.app),
     (advance) => this.onFrameUpdate(({ deltaMs }) => advance(deltaMs)),
@@ -626,8 +627,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
     this.focusEffectPanel = new FocusEffectPanel(
       (type) => this.resolveFocusTargets(type),
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+      (...args) => this.updatePhaseTweenRunner.run(...args),
     );
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
@@ -2351,36 +2351,45 @@ export class PixiStoryRenderer implements StoryRenderer {
    * zero-duration and idempotent inverse branches. A PIXI sprite stands in for
    * the native blocker view.
    */
-  async setBlocker(input: BlockerInput): Promise<void> {
+  setBlocker(input: BlockerInput): Promise<void> | void {
     const blocker = this.ensureBlocker();
     if (input.style === "default" && input.image) {
       const url = resolveStoryAssetByKey(input.image, "image");
       if (url) {
-        try {
-          blocker.texture = await Assets.load<Texture>(url);
-          blocker.width = STORY_WIDTH;
-          blocker.height = STORY_HEIGHT;
-          this.applyBlockerScaleSign(blocker);
-        } catch {
-          this.onWarning?.(`missing blocker image: ${input.image}`);
+        // The native sprite lookup is synchronous. A cache miss waits for
+        // the Web asset loader before applying the color.
+        if (!Assets.cache.has(url)) {
+          return Assets.load<Texture>(url)
+            .then(
+              (texture) => this.setBlockerTexture(blocker, texture),
+              () => this.onWarning?.(`missing blocker image: ${input.image}`),
+            )
+            .then(() => this.applyBlockerColor(blocker, input));
         }
+        this.setBlockerTexture(blocker, Assets.get<Texture>(url));
       }
     } else if (input.style !== "default") {
       // Native slider/verticalslider set sprite = null (2.7.61 VA 0x183e30297):
       // the quad stays full-screen and the SlideMask material draws the wipe.
       // Texture.WHITE is the web equivalent of Unity's null-sprite white quad.
-      blocker.texture = Texture.WHITE;
-      blocker.width = STORY_WIDTH;
-      blocker.height = STORY_HEIGHT;
-      this.applyBlockerScaleSign(blocker);
+      this.setBlockerTexture(blocker, Texture.WHITE);
       if (input.fadeMs > 0) {
         // _GenTweenerWithParam mounts slide_mask only on the animated path
         // (VA 0x183e30860); the zero-duration branch never touches the
         // material, so it persists from the previous command.
-        await this.attachBlockerSlideFilter(blocker, input.style);
+        const load = this.attachBlockerSlideFilter(blocker, input.style);
+        if (load)
+          return load.then(() => this.applyBlockerColor(blocker, input));
       }
     }
+    return this.applyBlockerColor(blocker, input);
+  }
 
+  private applyBlockerColor(
+    blocker: Sprite,
+    input: BlockerInput,
+  ): Promise<void> | void {
+    if (blocker.destroyed) return;
     const current = this.readBlockerColor();
     // `DOKill(_blocker, complete: false)` equivalent (2.7.61 VA 0x183e30522):
     // a new command kills the previous DOColor mid-flight, so at most one
@@ -2438,17 +2447,14 @@ export class PixiStoryRenderer implements StoryRenderer {
           // the plain white quad is the standing web approximation of it.
           // The size write is required because the 1x1 Texture.WHITE would
           // otherwise inherit the previous texture's scale.
-          blocker.texture = Texture.WHITE;
-          blocker.width = STORY_WIDTH;
-          blocker.height = STORY_HEIGHT;
-          this.applyBlockerScaleSign(blocker);
+          this.setBlockerTexture(blocker, Texture.WHITE);
           blocker.visible = false;
         }
       },
     );
 
-    if (input.block) await run;
-    else void run;
+    if (input.block) return run;
+    void run;
   }
 
   /**
@@ -2598,13 +2604,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  async setFocusOut(input: FocusOutInput): Promise<void> {
-    // `_ExecuteFocusout` (2.7.81 0x183FAE3A0) returns false right after
+  setFocusOut(input: FocusOutInput): ExecutionHandle | void {
+    // `_ExecuteFocusout` (2791 @ 0x184187C20) returns false right after
     // `_GenCfgByType` when `EffectConfig.IsChannelEmpty()` holds -- before
     // the `from` write and the tween -- so an empty channel stores nothing
     // and never blocks, whatever `duration`/`block` say.
     if (!this.hasFocusChannels(input.type, input.id)) return;
-    await this.focusEffectPanel.setFocus(input);
+    return this.focusEffectPanel.setFocus(input);
   }
 
   setFocusParam(input: FocusParamInput): void {
@@ -2804,6 +2810,14 @@ export class PixiStoryRenderer implements StoryRenderer {
     return blocker;
   }
 
+  private setBlockerTexture(blocker: Sprite, texture: Texture): void {
+    if (blocker.destroyed) return;
+    blocker.texture = texture;
+    blocker.width = STORY_WIDTH;
+    blocker.height = STORY_HEIGHT;
+    this.applyBlockerScaleSign(blocker);
+  }
+
   /**
    * Push the persistent localScale sign onto the sprite and the wipe shader.
    * Called after every width/height write, which recomputes the scale
@@ -2826,23 +2840,30 @@ export class PixiStoryRenderer implements StoryRenderer {
    * bundled `slide_left` mask once; on failure the wipe degrades to the plain
    * whole-surface veil (warning) instead of blocking playback.
    */
-  private async attachBlockerSlideFilter(
+  private attachBlockerSlideFilter(
     blocker: Sprite,
     style: "slider" | "verticalslider",
-  ): Promise<void> {
+  ): Promise<void> | void {
     if (!this.blockerMaskSource && !this.blockerMaskSourceFailed) {
-      try {
-        const texture = await Assets.load<Texture>(SLIDE_MASK_TEXTURE_URL);
-        // Native sampler: bilinear + clamp wrap (Texture2D slide_left
-        // settings), which is PIXI's default texture style.
-        this.blockerMaskSource = texture.source;
-      } catch {
-        this.blockerMaskSourceFailed = true;
-        this.onWarning?.("missing blocker slide mask texture");
+      if (!Assets.cache.has(SLIDE_MASK_TEXTURE_URL)) {
+        return Assets.load<Texture>(SLIDE_MASK_TEXTURE_URL).then(
+          (texture) => {
+            this.blockerMaskSource = texture.source;
+            this.attachBlockerSlideFilter(blocker, style);
+          },
+          () => {
+            this.blockerMaskSourceFailed = true;
+            this.onWarning?.("missing blocker slide mask texture");
+          },
+        );
       }
+      this.blockerMaskSource = Assets.get<Texture>(
+        SLIDE_MASK_TEXTURE_URL,
+      ).source;
     }
+    // Native slide_left samples bilinear with clamp wrap, PIXI's defaults.
     const source = this.blockerMaskSource;
-    if (!source) return;
+    if (!source || blocker.destroyed) return;
 
     this.blockerSlideMaterial ??= new SlideMaskFilter(source);
     this.blockerSlideFilter = this.blockerSlideMaterial;
@@ -4218,7 +4239,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     return true;
   }
 
-  private stopCameraShake(sessionId?: number): void {
+  stopCameraShake(sessionId?: number): void {
     if (sessionId !== undefined && sessionId !== this.cameraShakeSessionId)
       return;
 

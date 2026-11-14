@@ -3,7 +3,10 @@ import { richCharsToTaggedText } from "../../src/widgets/StoryPlayer/engine/rich
 import { PlaybackTestFrames } from "./playbackFrames";
 
 import type { Context } from "../../src/widgets/StoryPlayer/context";
-import type { PreparedAnimation } from "../../src/widgets/StoryPlayer/engine/execution";
+import type {
+  ExecutionHandle,
+  PreparedAnimation,
+} from "../../src/widgets/StoryPlayer/engine/execution";
 import type {
   AnimTextInput,
   AvgDisplayInput,
@@ -182,7 +185,7 @@ export class FakeRenderer implements StoryRenderer {
     fadeMs = 130,
     ease = "Linear",
     block = false,
-  ): void {
+  ): ExecutionHandle | void {
     this.clearCgItemCalls.push({ block, ease, fadeMs, key });
   }
 
@@ -368,10 +371,10 @@ export class FakeRenderer implements StoryRenderer {
     };
   }
 
-  async showCgItem(
+  showCgItem(
     input: CgItemInput,
     _onComplete?: () => void,
-  ): Promise<void> {
+  ): ExecutionHandle | void {
     this.cgItemCalls.push(input);
   }
 
@@ -419,7 +422,9 @@ export class FakeRenderer implements StoryRenderer {
     this.shakeCalls.push(input);
   }
 
-  async shakeCgItem(input: CgItemShakeInput): Promise<void> {
+  stopCameraShake(): void {}
+
+  shakeCgItem(input: CgItemShakeInput): ExecutionHandle | void {
     this.cgItemShakeCalls.push(input);
   }
 

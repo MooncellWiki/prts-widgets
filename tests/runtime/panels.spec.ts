@@ -2,6 +2,7 @@ import { setImmediate } from "node:timers/promises";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createExecutionHandle } from "../../src/widgets/StoryPlayer/engine/execution";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
   createContext,
@@ -599,14 +600,13 @@ describe("StoryRuntime", () => {
     "handles an earlier CG show ending with $finish during a blocking shake",
     async ({ finish, advances }) => {
       const renderer = new FakeRenderer();
-      const show = Promise.withResolvers<void>();
-      const shake = Promise.withResolvers<void>();
-      const showCgItem = vi
-        .spyOn(renderer, "showCgItem")
-        .mockReturnValue(show.promise);
+      renderer.frames.manual = true;
+      const show = createExecutionHandle(false);
+      const shake = createExecutionHandle(true);
+      const showCgItem = vi.spyOn(renderer, "showCgItem").mockReturnValue(show);
       const shakeCgItem = vi
         .spyOn(renderer, "shakeCgItem")
-        .mockReturnValue(shake.promise);
+        .mockReturnValue(shake);
       const runtime = new StoryRuntime(
         createContext([
           '[cgitem(image="a",afrom=0,ato=1,aduration=0.5)]',
@@ -621,18 +621,19 @@ describe("StoryRuntime", () => {
       try {
         expect(shakeCgItem).toHaveBeenCalledTimes(1);
         expect(runtime.getState()).toBe("running");
+        show.end(finish);
         if (finish === "complete") showCgItem.mock.calls[0]![1]?.();
-        show.resolve();
-        await setImmediate();
-        expect(renderer.lastDialogue.text === "after").toBe(advances);
-        shake.resolve();
+        expect(runtime.getState()).toBe("running");
+        renderer.frames.step(16);
+        expect(runtime.getState()).toBe(advances ? "waiting_input" : "running");
+        shake.end();
+        renderer.frames.step(16);
+        expect(runtime.getState()).toBe("waiting_input");
         await started;
-        expect(renderer.lastDialogue.text).toBe("after");
+        expect(runtime.getDisplayedLineIndex()).toBe(3);
         expect(renderer.cgItemShakeStops).toEqual([]);
       } finally {
         runtime.destroy();
-        show.resolve();
-        shake.resolve();
         await started;
       }
     },

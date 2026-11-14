@@ -32,8 +32,18 @@ export interface WaitForAnimation {
   forceEnd: () => void;
 }
 
+/** Completion can be observed in the same update that ends the animation. */
+export interface WaitForFrameAnimation {
+  isComplete: () => boolean;
+  forceEnd: () => void;
+}
+
 export type CommandWait =
-  WaitForAnimation | WaitForClick | WaitForDecision | WaitForDelay;
+  | WaitForAnimation
+  | WaitForClick
+  | WaitForDecision
+  | WaitForDelay
+  | WaitForFrameAnimation;
 export type CommandResult = "continue" | CommandWait;
 
 export type CommandExecutor<TResult> = (

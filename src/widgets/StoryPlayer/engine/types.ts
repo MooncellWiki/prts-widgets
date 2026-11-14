@@ -1,4 +1,4 @@
-import type { AnimationCompletion, PreparedAnimation } from "./execution";
+import type { ExecutionHandle, PreparedAnimation } from "./execution";
 import type { RichChar } from "./richtext";
 
 export const STORY_WIDTH = 1280;
@@ -744,7 +744,7 @@ export interface StoryRenderer {
     ease?: string,
     block?: boolean,
     onComplete?: () => void,
-  ) => AnimationCompletion;
+  ) => ExecutionHandle | void;
   resetCgItems: () => void;
   clearAvgDisplays: () => Promise<void> | void;
   clearAnimTexts: () => Promise<void> | void;
@@ -756,7 +756,7 @@ export interface StoryRenderer {
     keep: boolean,
     initialAmount?: number,
   ) => Promise<void> | void;
-  setFocusOut: (input: FocusOutInput) => Promise<void> | void;
+  setFocusOut: (input: FocusOutInput) => ExecutionHandle | void;
   setFocusParam: (input: FocusParamInput) => void;
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearCharacters: (slot?: string, fadeMs?: number) => Promise<void> | void;
@@ -796,7 +796,7 @@ export interface StoryRenderer {
   ) => Promise<PreparedAnimation>;
   setBackground: (key: string, input?: BackgroundInput) => Promise<void>;
   setBackgroundTween: (input: BackgroundTweenInput) => Promise<void>;
-  setBlocker: (input: BlockerInput) => Promise<void>;
+  setBlocker: (input: BlockerInput) => Promise<void> | void;
   setCharacter: (input: CharacterSlotInput) => Promise<void>;
   setCharacterCutin: (input: CharacterCutinInput) => Promise<void>;
   setCurtain: (input: CurtainInput) => Promise<void>;
@@ -833,7 +833,7 @@ export interface StoryRenderer {
   showCgItem: (
     input: CgItemInput,
     onComplete?: () => void,
-  ) => AnimationCompletion;
+  ) => ExecutionHandle | void;
   setSticker: (input: StickerInput) => Promise<void> | void;
   setStickerTypeWriterDelay: (id: string, delayMs: number) => void;
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
@@ -849,7 +849,8 @@ export interface StoryRenderer {
   shakeCgItem: (
     input: CgItemShakeInput,
     onComplete?: () => void,
-  ) => AnimationCompletion;
+  ) => ExecutionHandle | void;
+  stopCameraShake: () => void;
   stopCgItemShakes: (key?: string) => void;
   showDecision: (
     options: string[],

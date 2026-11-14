@@ -2,6 +2,10 @@ import { setImmediate } from "node:timers/promises";
 
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  createExecutionHandle,
+  type PreparedAnimation,
+} from "../../src/widgets/StoryPlayer/engine/execution";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
   createContext,
@@ -9,7 +13,6 @@ import {
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
-import type { PreparedAnimation } from "../../src/widgets/StoryPlayer/engine/execution";
 import type {
   RuntimeWarning,
   StoryMetadata,
@@ -1059,7 +1062,7 @@ describe("StoryRuntime", () => {
     "resumes a skip while a blocking %s animation is still running",
     async (command) => {
       const renderer = new FakeRenderer();
-      const animation = Promise.withResolvers<void>();
+      const animation = createExecutionHandle(true);
       const show = vi.spyOn(renderer, "showCgItem");
       const hide = vi.spyOn(renderer, "clearCgItems");
       const shake = vi.spyOn(renderer, "shakeCgItem");
@@ -1068,8 +1071,8 @@ describe("StoryRuntime", () => {
       const animate = isHide ? hide : isShake ? shake : show;
       // Keep the setup show in flight so its native FinishCommand does not
       // release the blocking hide or shake before the skip.
-      show.mockImplementationOnce(() => new Promise<void>(() => {}));
-      animate.mockImplementationOnce(() => animation.promise);
+      show.mockReturnValue(createExecutionHandle(false));
+      animate.mockReturnValueOnce(animation);
       const runtime = new StoryRuntime(
         createContext([
           `[cgitem(image="item_a",pduration=20,block=${!isHide && !isShake})]`,
@@ -1099,12 +1102,62 @@ describe("StoryRuntime", () => {
         expect(renderer.cgItemShakeStops).toEqual([undefined]);
         expect(renderer.cgItemResets).toBe(0);
       } finally {
-        animation.resolve();
-        await Promise.all([started, skipped]);
         runtime.destroy();
+        await Promise.all([started, skipped]);
       }
     },
   );
+
+  it("waits for skip cleanup before a finished CG can advance the destination", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const cleanup = Promise.withResolvers<void>();
+    vi.spyOn(renderer, "clearInterludes").mockReturnValueOnce(cleanup.promise);
+    const animation = createExecutionHandle(true);
+    const destination = createExecutionHandle(true);
+    const show = vi
+      .spyOn(renderer, "showCgItem")
+      .mockReturnValueOnce(animation)
+      .mockImplementationOnce(() => {
+        destination.end();
+        return destination;
+      });
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image="before",block=true)]',
+        '[name="A"]skipped',
+        "[SkipToThis]",
+        '[cgitem(image="after",block=true)]',
+        '[name="B"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    const skipped = runtime.skipNode();
+    try {
+      expect(renderer.cgItemShakeStops).toEqual([undefined]);
+      animation.end();
+      show.mock.calls[0]![1]?.();
+      await renderer.frames.advance(16);
+      expect(show).toHaveBeenCalledTimes(1);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+
+      cleanup.resolve();
+      await setImmediate();
+      expect(show).toHaveBeenCalledTimes(1);
+      renderer.frames.step(16);
+      expect(show).toHaveBeenCalledTimes(2);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      renderer.frames.step(16);
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+    } finally {
+      cleanup.resolve();
+      runtime.destroy();
+      await Promise.all([started, skipped]);
+    }
+  });
 
   it.each(["showitem", "hideitem"])(
     "clears the item slot when a skip ends the story during %s",

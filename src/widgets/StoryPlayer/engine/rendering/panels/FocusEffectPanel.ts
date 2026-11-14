@@ -1,18 +1,16 @@
 import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
 
+import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import { buildColorEffectMatrix } from "../core/ColorEffectMatrix";
 
 import type { FocusOutInput, FocusParamInput } from "../../types";
+import type { TweenRunner } from "../core/TweenRunner";
 
-type Tween = (
-  durationMs: number,
-  update: (progress: number) => void,
-  complete?: () => void,
-) => Promise<void>;
 type ResolveTargets = (type: string, id: string) => Container[];
 
 interface FocusState {
   amount: number;
+  animation?: ExecutionHandle;
   id: string;
   sessionId: number;
   type: string;
@@ -47,7 +45,7 @@ export class FocusEffectPanel {
 
   constructor(
     private readonly resolveTargets: ResolveTargets,
-    private readonly tween: Tween,
+    private readonly tween: TweenRunner["run"],
   ) {}
 
   setParam(input: FocusParamInput): void {
@@ -55,7 +53,7 @@ export class FocusEffectPanel {
     this.render();
   }
 
-  async setFocus(input: FocusOutInput): Promise<void> {
+  setFocus(input: FocusOutInput): ExecutionHandle | void {
     const key = stateKey(input.type, input.id);
     const state = this.states.get(key) ?? {
       amount: 0,
@@ -65,16 +63,29 @@ export class FocusEffectPanel {
     };
     this.states.set(key, state);
 
+    // _SetEffectAmount (2791 @ 0x1841D38B0) releases the old tween's
+    // callback when another write interrupts the channel.
+    state.animation?.end("force_end");
+    const animation =
+      input.block && input.durationMs > 0
+        ? createExecutionHandle(true)
+        : undefined;
+    state.animation = animation;
+    const sessionId = ++state.sessionId;
     if (input.from !== undefined) {
       this.writeAmount(state, input.from);
     }
+    if (input.durationMs <= 0) {
+      this.writeAmount(state, input.to);
+      return;
+    }
 
     const from = state.amount;
-    const sessionId = ++state.sessionId;
-    const run = this.tween(
+    const isCurrent = () => state.sessionId === sessionId;
+    void this.tween(
       input.durationMs,
       (progress) => {
-        if (state.sessionId !== sessionId) return;
+        if (!isCurrent()) return;
         // Native provenance: `AVGSceneEffectManager._SetEffectAmount` tweens
         // each channel with `TweenUtils.SmoothStep` (slow at both ends), not
         // linear time.
@@ -82,17 +93,21 @@ export class FocusEffectPanel {
         this.writeAmount(state, from + (input.to - from) * eased);
       },
       () => {
-        if (state.sessionId !== sessionId) return;
+        if (!isCurrent()) return;
         this.writeAmount(state, input.to);
+        state.animation = undefined;
+        animation?.end();
       },
+      { isAlive: isCurrent },
     );
-
-    if (input.block && input.durationMs > 0) await run;
-    else void run;
+    return animation;
   }
 
   destroy(): void {
-    for (const state of this.states.values()) state.sessionId += 1;
+    for (const state of this.states.values()) {
+      state.sessionId += 1;
+      state.animation?.end("reset");
+    }
     this.states.clear();
     this.cgItemTargets.clear();
     this.cgItemAmounts.clear();

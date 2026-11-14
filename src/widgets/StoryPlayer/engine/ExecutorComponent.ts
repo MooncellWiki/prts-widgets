@@ -4,15 +4,17 @@ import type {
   CommandResult,
   WaitForAnimation,
   WaitForClick,
-  WaitForDelay,
+  WaitForDecision,
+  WaitForFrameAnimation,
 } from "./commandRegistry";
-import type { AnimationCompletion } from "./execution";
+import type { AnimationCompletion, ExecutionHandle } from "./execution";
 
 export type ExecutorResult =
-  | Exclude<CommandResult, WaitForAnimation | WaitForClick | WaitForDelay>
+  | "continue"
+  | WaitForDecision
   | Pick<WaitForClick, "handleClick">
   | {
-      animation: AnimationCompletion;
+      animation: AnimationCompletion | ExecutionHandle;
       block: boolean;
     };
 
@@ -90,8 +92,12 @@ export abstract class ExecutorComponent {
       return result;
     }
     if ("animation" in result) {
-      if (result.animation && result.block)
-        return this.waitForAnimation(execution, result.animation);
+      const { animation, block } = result;
+      if (animation && block) {
+        if ("endReason" in animation)
+          return this.waitForFrameAnimation(execution, animation);
+        return this.waitForAnimation(execution, animation);
+      }
       // Nonblocking views own their animation and its error handling.
       this.finish(execution);
       return "continue";
@@ -119,6 +125,22 @@ export abstract class ExecutorComponent {
         } finally {
           this.finish(execution);
         }
+      },
+    };
+  }
+
+  private waitForFrameAnimation(
+    execution: Execution,
+    animation: ExecutionHandle,
+  ): WaitForFrameAnimation {
+    return {
+      forceEnd: () => this.finish(execution, "force"),
+      isComplete: () => {
+        // FinishCommand may already have released this panel's current wait.
+        if (this.current !== execution) return true;
+        if (animation.endReason === undefined) return false;
+        this.finish(execution);
+        return true;
       },
     };
   }
