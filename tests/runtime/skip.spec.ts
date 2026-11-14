@@ -107,13 +107,18 @@ describe("StoryRuntime", () => {
     },
   );
 
-  it("waits for asynchronous skip cleanup before resuming a skipped delay", async () => {
-    let finishCleanup!: () => void;
-    const cleanup = new Promise<void>((resolve) => {
-      finishCleanup = resolve;
-    });
+  it("clears interludes before cut-in slots and waits for both on a segment skip", async () => {
+    const interludeCleanup = Promise.withResolvers<void>();
+    const cutinCleanup = Promise.withResolvers<void>();
     const renderer = new FakeRenderer();
-    vi.spyOn(renderer, "clearInterludes").mockReturnValue(cleanup);
+    renderer.frames.manual = true;
+    const clearInterludes = vi
+      .spyOn(renderer, "clearInterludes")
+      .mockReturnValueOnce(interludeCleanup.promise);
+    const clearCharacterCutin = vi
+      .spyOn(renderer, "clearCharacterCutin")
+      .mockReturnValueOnce(cutinCleanup.promise);
+    const clearSpellStickers = vi.spyOn(renderer, "clearSpellStickers");
     const runtime = new StoryRuntime(
       createContext([
         "[delay(time=30)]",
@@ -125,17 +130,34 @@ describe("StoryRuntime", () => {
     );
 
     const startPromise = runtime.start();
-    await Promise.resolve();
     const skipPromise = runtime.skipNode();
-    await Promise.resolve();
+    try {
+      await renderer.frames.advance(16);
+      expect(clearInterludes).toHaveBeenCalledTimes(1);
+      expect(clearCharacterCutin).not.toHaveBeenCalled();
+      expect(runtime.getState()).toBe("waiting_timer");
 
-    expect(runtime.getState()).toBe("waiting_timer");
-    finishCleanup();
-    await skipPromise;
-    await startPromise;
+      interludeCleanup.resolve();
+      await setImmediate();
+      await renderer.frames.advance(16);
+      expect(clearCharacterCutin).toHaveBeenCalledExactlyOnceWith();
+      expect(clearSpellStickers).not.toHaveBeenCalled();
+      expect(runtime.getState()).toBe("waiting_timer");
 
-    expect(runtime.getState()).toBe("waiting_input");
-    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+      cutinCleanup.resolve();
+      await setImmediate();
+      expect(clearSpellStickers).toHaveBeenCalledTimes(1);
+      expect(runtime.getState()).toBe("waiting_timer");
+      await renderer.frames.advance(16);
+      await Promise.all([startPromise, skipPromise]);
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(runtime.getDisplayedLineIndex()).toBe(3);
+    } finally {
+      interludeCleanup.resolve();
+      cutinCleanup.resolve();
+      runtime.destroy();
+      await Promise.all([startPromise, skipPromise]);
+    }
   });
 
   it("nofirstskip permits skip after the story has been read", async () => {
