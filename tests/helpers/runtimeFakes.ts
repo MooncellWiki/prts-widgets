@@ -158,6 +158,8 @@ export class FakeRenderer implements StoryRenderer {
     this.focusParamCalls.push(input);
   }
 
+  resetCameraEffects(): void {}
+
   clearBackground(): void {}
   clearAvgDisplays(): void {}
   clearAnimTexts(): void {}
@@ -412,7 +414,7 @@ export class FakeRenderer implements StoryRenderer {
     this.timerStickerCalls.push(input);
   }
 
-  async shakeCamera(input: CameraShakeInput): Promise<void> {
+  shakeCamera(input: CameraShakeInput): void {
     this.shakeCalls.push(input);
   }
 

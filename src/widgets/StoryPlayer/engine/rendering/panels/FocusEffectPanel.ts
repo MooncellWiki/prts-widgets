@@ -53,7 +53,10 @@ export class FocusEffectPanel {
     this.render();
   }
 
-  setFocus(input: FocusOutInput): ExecutionHandle | void {
+  setFocus(
+    input: FocusOutInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
     const key = stateKey(input.type, input.id);
     const state = this.states.get(key) ?? {
       amount: 0,
@@ -68,7 +71,9 @@ export class FocusEffectPanel {
     state.animation?.end("force_end");
     const animation =
       input.block && input.durationMs > 0
-        ? createExecutionHandle(true)
+        ? createExecutionHandle(true, (reason) => {
+            if (reason === "complete" || reason === "force_end") onComplete?.();
+          })
         : undefined;
     state.animation = animation;
     const sessionId = ++state.sessionId;
@@ -113,6 +118,7 @@ export class FocusEffectPanel {
     this.cgItemAmounts.clear();
     for (const target of this.filteredTargets) target.filters = [];
     this.filteredTargets.clear();
+    this.config = { blur: true, color: "None" };
   }
 
   /**

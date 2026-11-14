@@ -746,6 +746,7 @@ export interface StoryRenderer {
     onComplete?: () => void,
   ) => ExecutionHandle | void;
   resetCgItems: () => void;
+  resetCameraEffects: () => void;
   clearAvgDisplays: () => Promise<void> | void;
   clearAnimTexts: () => Promise<void> | void;
   setCameraEffect: (
@@ -755,8 +756,12 @@ export interface StoryRenderer {
     block: boolean,
     keep: boolean,
     initialAmount?: number,
-  ) => Promise<void> | void;
-  setFocusOut: (input: FocusOutInput) => ExecutionHandle | void;
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  setFocusOut: (
+    input: FocusOutInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setFocusParam: (input: FocusParamInput) => void;
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearCharacters: (slot?: string, fadeMs?: number) => Promise<void> | void;
@@ -845,7 +850,10 @@ export interface StoryRenderer {
   /** The initial reveal supplies layout. Later reveals keep that layout. */
   setSubtitle: (text: TypewriterText, layout?: OverlayTextLayout) => void;
   setTimerSticker: (input: TimerStickerInput) => void;
-  shakeCamera: (input: CameraShakeInput) => Promise<void>;
+  shakeCamera: (
+    input: CameraShakeInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   shakeCgItem: (
     input: CgItemShakeInput,
     onComplete?: () => void,
