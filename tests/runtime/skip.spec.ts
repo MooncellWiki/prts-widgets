@@ -9,6 +9,7 @@ import {
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
+import type { PreparedAnimation } from "../../src/widgets/StoryPlayer/engine/execution";
 import type {
   RuntimeWarning,
   StoryMetadata,
@@ -342,21 +343,27 @@ describe("StoryRuntime", () => {
     }
   });
 
-  it.each([
+  const displayableCommands = [
     {
       command: '[animtext(name="group_location_stamp")]<p=1>地点</>',
+      blockingCommand:
+        '[animtext(name="group_location_stamp",block=true)]<p=1>地点</>',
       method: "setAnimText",
     },
     {
       command: '[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover")]',
+      blockingCommand:
+        '[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover",block=true)]',
       method: "setAvgDisplay",
     },
-  ] as const)(
-    "waits for $method before resuming a pending SkipToThis",
+  ] as const;
+
+  it.each(displayableCommands)(
+    "waits for $method to prepare its view before resuming a pending SkipToThis",
     async ({ command, method }) => {
       const renderer = new FakeRenderer();
       renderer.frames.manual = true;
-      const { promise, resolve } = Promise.withResolvers<void>();
+      const { promise, resolve } = Promise.withResolvers<PreparedAnimation>();
       const render = vi.spyOn(renderer, method).mockReturnValueOnce(promise);
       const runtime = new StoryRuntime(
         createContext([
@@ -377,15 +384,73 @@ describe("StoryRuntime", () => {
         expect(render).toHaveBeenCalledTimes(1);
         expect(runtime.getDisplayedLineIndex()).toBeNull();
 
-        resolve();
+        resolve({ animation: undefined });
         await setImmediate();
         await renderer.frames.advance(16);
         await starting;
         await skipping;
         expect(runtime.getDisplayedLineIndex()).toBe(4);
       } finally {
-        resolve();
+        resolve({ animation: undefined });
         runtime.destroy();
+      }
+    },
+  );
+
+  it.each([
+    [displayableCommands[0], displayableCommands[1]],
+    [displayableCommands[1], displayableCommands[0]],
+  ] as const)(
+    "lets a skipped $0.method animation finish the next displayable command",
+    async ({ blockingCommand, method }, next) => {
+      const renderer = new FakeRenderer();
+      const firstAnimation = Promise.withResolvers<void>();
+      const secondAnimation = Promise.withResolvers<void>();
+      const clearAnimTexts = vi.spyOn(renderer, "clearAnimTexts");
+      const clearAvgDisplays = vi.spyOn(renderer, "clearAvgDisplays");
+      const first = vi.spyOn(renderer, method).mockResolvedValueOnce({
+        animation: firstAnimation.promise,
+      });
+      const second = vi.spyOn(renderer, next.method).mockResolvedValueOnce({
+        animation: secondAnimation.promise,
+      });
+      const runtime = new StoryRuntime(
+        createContext([
+          blockingCommand,
+          '[name="A"]before',
+          "[SkipToThis]",
+          next.blockingCommand,
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      const started = runtime.start();
+      let skipping: Promise<void> | undefined;
+      try {
+        await setImmediate();
+        expect(runtime.getState()).toBe("running");
+        expect(runtime.getDisplayedLineIndex()).toBeNull();
+
+        skipping = runtime.skipNode();
+        await setImmediate();
+        expect(second).toHaveBeenCalledTimes(1);
+        expect(runtime.getDisplayedLineIndex()).toBeNull();
+        expect(clearAnimTexts).not.toHaveBeenCalled();
+        expect(clearAvgDisplays).not.toHaveBeenCalled();
+
+        first.mock.calls[0]![1]!();
+        firstAnimation.resolve();
+        await setImmediate();
+        expect(runtime.getDisplayedLineIndex()).toBe(5);
+        await skipping;
+        await started;
+      } finally {
+        runtime.destroy();
+        firstAnimation.resolve();
+        secondAnimation.resolve();
+        await Promise.all([started, skipping]);
       }
     },
   );

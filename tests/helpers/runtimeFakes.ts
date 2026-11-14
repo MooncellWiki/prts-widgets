@@ -3,6 +3,7 @@ import { richCharsToTaggedText } from "../../src/widgets/StoryPlayer/engine/rich
 import { PlaybackTestFrames } from "./playbackFrames";
 
 import type { Context } from "../../src/widgets/StoryPlayer/context";
+import type { PreparedAnimation } from "../../src/widgets/StoryPlayer/engine/execution";
 import type {
   AnimTextInput,
   AvgDisplayInput,
@@ -253,12 +254,20 @@ export class FakeRenderer implements StoryRenderer {
     await this.videoWaiter;
   }
 
-  async setAnimText(input: AnimTextInput): Promise<void> {
+  async setAnimText(
+    input: AnimTextInput,
+    _onComplete?: () => void,
+  ): Promise<PreparedAnimation> {
     this.animTextCalls.push(input);
+    return { animation: undefined };
   }
 
-  async setAvgDisplay(input: AvgDisplayInput): Promise<void> {
+  async setAvgDisplay(
+    input: AvgDisplayInput,
+    _onComplete?: () => void,
+  ): Promise<PreparedAnimation> {
     this.avgDisplayCalls.push(input);
+    return { animation: undefined };
   }
 
   async setBackground(key: string, input?: BackgroundInput): Promise<void> {

@@ -12,7 +12,7 @@ import {
 import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
-  it("maps avgdisplay lifecycle and strict feature parameters", async () => {
+  it("maps avgdisplay lifecycle and feature parameters", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -31,7 +31,6 @@ describe("StoryRuntime", () => {
       expect.objectContaining({
         alphaFrom: 0,
         alphaTo: 0.6,
-        block: false,
         durationMs: 2000,
         id: "1",
         layer: 2,
@@ -40,7 +39,6 @@ describe("StoryRuntime", () => {
         style: "bg",
       }),
       expect.objectContaining({
-        block: true,
         durationMs: 5000,
         entryFrom: 0,
         entryTo: 0.2,
@@ -54,7 +52,6 @@ describe("StoryRuntime", () => {
         y: 80,
       }),
       expect.objectContaining({
-        block: false,
         id: "1",
         name: "",
       }),
@@ -91,8 +88,8 @@ describe("StoryRuntime", () => {
   });
 
   it.each([
-    { block: true, durationMs: 50, mode: "default" },
-    { block: false, durationMs: 0, mode: "quick_play" },
+    { durationMs: 50, mode: "default" },
+    { durationMs: 0, mode: "quick_play" },
   ] as const)("scales avgdisplay's bg default in $mode", async (expected) => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -110,13 +107,53 @@ describe("StoryRuntime", () => {
 
     expect(renderer.avgDisplayCalls).toEqual([
       expect.objectContaining({
-        block: expected.block,
         durationMs: expected.durationMs,
         slot: "bgover",
         style: "bg",
       }),
     ]);
   });
+
+  it.each([
+    {
+      flags: "block=true",
+      waits: true,
+    },
+    {
+      flags: "isblock=true",
+      waits: false,
+    },
+  ])(
+    "honors $flags when avgdisplay returns a running tween",
+    async ({ flags, waits }) => {
+      const renderer = new FakeRenderer();
+      const animation = Promise.withResolvers<void>();
+      vi.spyOn(renderer, "setAvgDisplay").mockResolvedValueOnce({
+        animation: animation.promise,
+      });
+      const runtime = new StoryRuntime(
+        createContext([
+          `[avgdisplay(id="1",name="bg_black",style="bg",slot="bgover",${flags})]`,
+          '[name="A"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      const started = runtime.start();
+      try {
+        await setImmediate();
+        expect(runtime.getState()).toBe(waits ? "running" : "waiting_input");
+
+        animation.resolve();
+        await started;
+        expect(runtime.getDisplayedLineIndex()).toBe(2);
+      } finally {
+        animation.resolve();
+        runtime.destroy();
+        await started;
+      }
+    },
+  );
 
   it("rejects showitem styles the panel does not register", async () => {
     const renderer = new FakeRenderer();

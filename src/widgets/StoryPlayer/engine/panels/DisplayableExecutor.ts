@@ -1,3 +1,8 @@
+import {
+  ExecutorComponent,
+  type ExecutorResult,
+  type PanelExecutors,
+} from "../ExecutorComponent";
 import { resolveAvgDisplaySlot, resolveAvgDisplayStyle } from "../avgDisplay";
 import {
   exactArg,
@@ -8,7 +13,6 @@ import {
   toString,
 } from "../commandParams";
 
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type { ParsedCommandLine, StoryRenderer } from "../types";
 
 interface DisplayablePlayback {
@@ -17,19 +21,26 @@ interface DisplayablePlayback {
   warnInvalidParameter: (detail: string) => void;
 }
 
-/** Native port: Torappu.AVG.AVGDisplayableExecutor (2791 GetExecutors @ 0x184175CA0). */
-export class DisplayableExecutor {
+/**
+ * Torappu.AVG.AVGDisplayableExecutor (2791 GetExecutors @ 0x184175CA0).
+ * ForceCommandEnd (0x184175C40) leaves the stamp and holder animations running.
+ */
+export class DisplayableExecutor extends ExecutorComponent {
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
       "clearAnimTexts" | "clearAvgDisplays" | "setAnimText" | "setAvgDisplay"
     >,
     private readonly playback: DisplayablePlayback,
-  ) {}
+  ) {
+    super();
+  }
 
-  register(registry: CommandRegistry<CommandResult>): void {
-    registry.register("animtext", (line) => this.executeAnimText(line));
-    registry.register("avgdisplay", (line) => this.executeAvgDisplay(line));
+  protected getExecutors(): PanelExecutors {
+    return {
+      animtext: (line) => this.executeAnimText(line),
+      avgdisplay: (line) => this.executeAvgDisplay(line),
+    };
   }
 
   /**
@@ -43,7 +54,7 @@ export class DisplayableExecutor {
 
   private async executeAnimText(
     line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+  ): Promise<ExecutorResult> {
     // _ExecuteAnimatedText (2791 @ 0x184176860).
     const { args, trailingText } = line;
     const rawPosition = exactArg(args, "pos");
@@ -53,21 +64,26 @@ export class DisplayableExecutor {
         `animtext pos parse failed: ${toString(rawPosition)}`,
       );
 
-    // Web awaits view preparation, then the view awaits the clip if blocking.
-    await this.renderer.setAnimText({
-      block: toBoolean(exactArg(args, "block"), false),
+    // Native attaches FinishCommand to InitView for a blocking stamp. The
+    // Web first awaits its assets, then ExecutorComponent handles the wait.
+    const block = toBoolean(exactArg(args, "block"));
+    const input = {
       content: this.playback.translateText(trailingText),
       id: toString(exactArg(args, "id")),
       name: toString(exactArg(args, "name")),
       position: parsedPosition ?? { x: 0, y: 0 },
       style: toString(exactArg(args, "style")),
-    });
-    return "continue";
+    };
+    const { animation } = await this.renderer.setAnimText(
+      input,
+      block ? this.finishCommand : undefined,
+    );
+    return { animation, block };
   }
 
   private async executeAvgDisplay(
     line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+  ): Promise<ExecutorResult> {
     // _ExecuteAVGDisplayable (2791 @ 0x184176290).
     const { args } = line;
     const optional = (key: string) => toOptionalNumber(exactArg(args, key));
@@ -79,11 +95,11 @@ export class DisplayableExecutor {
       style === "bg" ? 0.1 : 0,
     );
 
-    // The view loads the holder's content and decides whether a tween ran.
-    await this.renderer.setAvgDisplay({
+    // Native only waits when the holder returned a tween and block was set.
+    const block = durationMs > 0 && toBoolean(exactArg(args, "block"));
+    const input = {
       alphaFrom: optional("afrom"),
       alphaTo: optional("ato"),
-      block: durationMs > 0 && toBoolean(exactArg(args, "block"), false),
       durationMs,
       entryFrom: optional("entryfrom"),
       entryIndex: Math.trunc(toNumber(exactArg(args, "entryindex"), 0)),
@@ -108,7 +124,11 @@ export class DisplayableExecutor {
       y: optional("y"),
       yFrom: optional("yfrom"),
       yTo: optional("yto"),
-    });
-    return "continue";
+    };
+    const { animation } = await this.renderer.setAvgDisplay(
+      input,
+      block ? this.finishCommand : undefined,
+    );
+    return { animation, block };
   }
 }

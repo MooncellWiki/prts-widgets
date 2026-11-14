@@ -1,5 +1,5 @@
 import { Container, Texture } from "pixi.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AvgDisplayPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/AvgDisplayPanel";
 
@@ -7,7 +7,6 @@ import type { AvgDisplayInput } from "../src/widgets/StoryPlayer/engine/types";
 
 function input(overrides: Partial<AvgDisplayInput> = {}): AvgDisplayInput {
   return {
-    block: false,
     durationMs: 0,
     entryIndex: 0,
     id: "1",
@@ -49,6 +48,58 @@ function makePanel(): {
 }
 
 describe("AvgDisplayPanel", () => {
+  it("returns one sequence for position and scale and keeps them in step", async () => {
+    const bgover = new Container();
+    const animation = Promise.withResolvers<void>();
+    const tween = vi.fn(
+      (
+        _durationMs: number,
+        _step: (progress: number) => void,
+        _done?: () => void,
+      ) => animation.promise,
+    );
+    const panel = new AvgDisplayPanel(
+      { bgover, cgover: new Container(), charover: new Container() },
+      async () => Texture.WHITE,
+      tween,
+    );
+    const onComplete = vi.fn();
+    const { animation: running } = await panel.display(
+      input({
+        durationMs: 1000,
+        entryFrom: 0,
+        entryTo: 1,
+        scaleXFrom: 1,
+        scaleXTo: 2,
+        scaleYFrom: 2,
+        scaleYTo: 3,
+        style: "animekv",
+        xFrom: 0,
+        xTo: 100,
+        yFrom: 10,
+        yTo: 30,
+      }),
+      onComplete,
+    );
+    expect(running).toBe(animation.promise);
+    expect(tween).toHaveBeenCalledTimes(1);
+    const [durationMs, step, complete] = tween.mock.calls[0]!;
+    expect(durationMs).toBe(1000);
+
+    const root = bgover.children[0]!;
+    step(0.5);
+    expect(root.position).toMatchObject({ x: 690, y: 340 });
+    expect(root.scale).toMatchObject({ x: 1.5, y: 2.5 });
+    expect(onComplete).not.toHaveBeenCalled();
+
+    complete?.();
+    animation.resolve();
+    await running;
+    expect(root.position).toMatchObject({ x: 740, y: 330 });
+    expect(root.scale).toMatchObject({ x: 2, y: 3 });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
   // Native port: AVGDisplayableHolder._ApplyFadeFeature (2.7.81 VA
   // 0x183F98A70) skips the whole fade feature when CalculateFadetime(duration)
   // <= 0, leaving alpha untouched (position/scale still snap to their end
@@ -57,9 +108,10 @@ describe("AvgDisplayPanel", () => {
   it("leaves bg alpha untouched when durationMs <= 0", async () => {
     const { panel, slots } = makePanel();
     // Establish a dimmed overlay (afrom == ato snaps alpha directly).
-    await panel.display(
+    const { animation } = await panel.display(
       input({ alphaFrom: 0.5, alphaTo: 0.5, durationMs: 1000 }),
     );
+    expect(animation).toBeUndefined();
     const root = slots.bgover.children[0];
     expect(root.alpha).toBe(0.5);
 

@@ -233,7 +233,6 @@ describe("StoryRuntime", () => {
 
     expect(renderer.animTextCalls).toEqual([
       {
-        block: false,
         content: "<p=1>地点</><p=2>时间</>",
         id: "at1",
         name: "group_location_stamp",

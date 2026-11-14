@@ -610,8 +610,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     this.animTextPanel = new AnimTextPanel(
       this.layers.animTexts,
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+      (...args) => this.tween(...args),
       onWarning,
     );
     this.avgDisplayPanel = new AvgDisplayPanel(
@@ -621,8 +620,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         charover: this.layers.avgDisplayCharacter,
       },
       (name) => this.textureForImageKey(name, "background"),
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+      (...args) => this.tween(...args),
       onWarning,
     );
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
@@ -819,12 +817,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     await this.videoPanel.play(url);
   }
 
-  async setAnimText(input: AnimTextInput): Promise<void> {
-    await this.animTextPanel.show(input);
+  setAnimText(input: AnimTextInput, onComplete?: () => void) {
+    return this.animTextPanel.show(input, onComplete);
   }
 
-  async setAvgDisplay(input: AvgDisplayInput): Promise<void> {
-    await this.avgDisplayPanel.display(input);
+  setAvgDisplay(input: AvgDisplayInput, onComplete?: () => void) {
+    return this.avgDisplayPanel.display(input, onComplete);
   }
 
   clearAvgDisplays(): void {

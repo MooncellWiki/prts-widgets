@@ -1,4 +1,4 @@
-import type { AnimationCompletion } from "./execution";
+import type { AnimationCompletion, PreparedAnimation } from "./execution";
 import type { RichChar } from "./richtext";
 
 export const STORY_WIDTH = 1280;
@@ -581,7 +581,6 @@ export interface SpellStickerInput {
 }
 
 export interface AnimTextInput {
-  block: boolean;
   content: string;
   id: string;
   name: string;
@@ -596,7 +595,6 @@ export type AvgDisplaySlot = "bgover" | "cgover" | "charover" | string;
 export interface AvgDisplayInput {
   alphaFrom?: number;
   alphaTo?: number;
-  block: boolean;
   durationMs: number;
   entryFrom?: number;
   entryIndex: number;
@@ -788,8 +786,14 @@ export interface StoryRenderer {
     phase?: "update" | "afterUpdate",
   ) => () => void;
   playVideo: (url: string) => Promise<void>;
-  setAnimText: (input: AnimTextInput) => Promise<void>;
-  setAvgDisplay: (input: AvgDisplayInput) => Promise<void>;
+  setAnimText: (
+    input: AnimTextInput,
+    onComplete?: () => void,
+  ) => Promise<PreparedAnimation>;
+  setAvgDisplay: (
+    input: AvgDisplayInput,
+    onComplete?: () => void,
+  ) => Promise<PreparedAnimation>;
   setBackground: (key: string, input?: BackgroundInput) => Promise<void>;
   setBackgroundTween: (input: BackgroundTweenInput) => Promise<void>;
   setBlocker: (input: BlockerInput) => Promise<void>;
