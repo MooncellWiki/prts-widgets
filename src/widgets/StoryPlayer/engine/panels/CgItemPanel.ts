@@ -5,7 +5,6 @@ import {
 } from "../ExecutorComponent";
 import {
   exactArg,
-  toBoolean,
   toNumber,
   toOptionalNumber,
   toString,
@@ -16,6 +15,7 @@ import type {
   CgItemInput,
   ParsedCommandLine,
   RuntimeWarning,
+  StoryCommandArgs,
   StoryRenderer,
 } from "../types";
 
@@ -23,6 +23,21 @@ interface CgItemPlayback {
   animateRatio: () => number;
   resolveImageKey: (key: string) => string | null;
   warn: (type: RuntimeWarning["type"], detail: string) => void;
+}
+
+/** GetBool (2791 @ 0x186940F30) uses Convert.ToBoolean for boxed values. */
+function getBool(args: StoryCommandArgs, key: string): boolean {
+  const value = exactArg(args, key);
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string")
+    return /^[\p{White_Space}\0]*true[\p{White_Space}\0]*$/iu.test(value);
+  return value === true;
+}
+
+/** GetFloat and Command.TryGetParam convert an explicit null to zero. */
+function getFloat(args: StoryCommandArgs, key: string): number | undefined {
+  const value = exactArg(args, key);
+  return value === null ? 0 : toOptionalNumber(value);
 }
 
 /** Native _GenSlotParam (2791 @ 0x18418A440) uses the raw image and id. */
@@ -103,16 +118,16 @@ export class CgItemPanel extends ExecutorComponent {
     }
 
     const key = slotKey(image, toString(exactArg(args, "id")));
-    const secondsToMs = (name: string) => toNumber(exactArg(args, name)) * 1000;
+    const secondsToMs = (name: string) => (getFloat(args, name) ?? 0) * 1000;
     const durationMs = (name: string) => Math.max(0, secondsToMs(name));
     const colorFrom = parseCgColor(exactArg(args, "cfrom"));
     const colorTo = parseCgColor(exactArg(args, "cto"));
-    const block = style === "cg" && toBoolean(exactArg(args, "block"));
+    const block = style === "cg" && getBool(args, "block");
     const input: CgItemInput = {
       alphaDelayMs: secondsToMs("adelay"),
       alphaDurationMs: durationMs("aduration"),
-      alphaFrom: toNumber(exactArg(args, "afrom"), 1),
-      alphaTo: toNumber(exactArg(args, "ato"), 1),
+      alphaFrom: getFloat(args, "afrom") ?? 1,
+      alphaTo: getFloat(args, "ato") ?? 1,
       assetKey,
       block,
       colorFrom: colorFrom && colorTo ? colorFrom : undefined,
@@ -128,12 +143,12 @@ export class CgItemPanel extends ExecutorComponent {
       positionFrom: parseCgVector2(exactArg(args, "pfrom")),
       positionTo: parseCgVector2(exactArg(args, "pto")),
       rotationDurationMs: durationMs("rduration"),
-      rotationFrom: toNumber(exactArg(args, "rfrom"), -1),
-      rotationTo: toNumber(exactArg(args, "rto"), 0),
+      rotationFrom: getFloat(args, "rfrom") ?? -1,
+      rotationTo: getFloat(args, "rto") ?? 0,
       scaleDelayMs: secondsToMs("sdelay"),
       scaleDurationMs: durationMs("sduration"),
-      scaleFrom: toNumber(exactArg(args, "sfrom"), 1),
-      scaleTo: toNumber(exactArg(args, "sto"), 1),
+      scaleFrom: getFloat(args, "sfrom") ?? 1,
+      scaleTo: getFloat(args, "sto") ?? 1,
       width: tryConvertToInt32(exactArg(args, "width")) ?? 0,
     };
     return {
@@ -150,7 +165,7 @@ export class CgItemPanel extends ExecutorComponent {
       toString(exactArg(args, "image")),
       toString(exactArg(args, "id")),
     );
-    if (toBoolean(exactArg(args, "stop"))) {
+    if (getBool(args, "stop")) {
       this.renderer.stopCgItemShakes(key || undefined);
       return "continue";
     }
@@ -164,23 +179,23 @@ export class CgItemPanel extends ExecutorComponent {
     // _ExecuteCgItemShake (2791 @ 0x1841898D0) scales the duration.
     // A negative result gives a 10-second path with infinite restart loops.
     const scaledDuration =
-      toNumber(exactArg(args, "duration"), -1) * this.playback.animateRatio();
+      (getFloat(args, "duration") ?? -1) * this.playback.animateRatio();
     const durationMs =
       Math.abs(scaledDuration) <= 0.00001 ? 0 : scaledDuration * 1000;
-    const block = durationMs !== 0 && toBoolean(exactArg(args, "block"));
+    const block = durationMs !== 0 && getBool(args, "block");
     // A nonblocking shake only resets its transform at OnComplete.
     return {
       animation: this.renderer.shakeCgItem(
         {
           block,
           durationMs: durationMs < 0 ? 10_000 : durationMs,
-          fadeOut: toBoolean(exactArg(args, "fadeout")),
+          fadeOut: getBool(args, "fadeout"),
           infinite: durationMs < 0,
           key,
-          randomness: toNumber(exactArg(args, "randomness"), 90),
+          randomness: getFloat(args, "randomness") ?? 90,
           vibrato: tryConvertToInt32(exactArg(args, "vibrato")) ?? 10,
-          xStrength: toNumber(exactArg(args, "xstrength"), 1),
-          yStrength: toNumber(exactArg(args, "ystrength"), 0),
+          xStrength: getFloat(args, "xstrength") ?? 1,
+          yStrength: getFloat(args, "ystrength") ?? 0,
         },
         block ? this.finishCommand : undefined,
       ),
@@ -198,9 +213,8 @@ export class CgItemPanel extends ExecutorComponent {
     // AVGShowItemCgSlot.Hide (2791 @ 0x184242970) lets duration override
     // fadetime. Web keeps fadetime when duration cannot be converted.
     const fadeSeconds =
-      toOptionalNumber(exactArg(args, "duration")) ??
-      toNumber(exactArg(args, "fadetime"), 0.13);
-    const block = toBoolean(exactArg(args, "block"));
+      getFloat(args, "duration") ?? getFloat(args, "fadetime") ?? 0.13;
+    const block = getBool(args, "block");
     const animation = this.renderer.clearCgItems(
       key || undefined,
       Math.max(0, Math.round(fadeSeconds * 1000)),

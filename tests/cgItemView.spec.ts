@@ -288,6 +288,28 @@ describe("CgItemView", () => {
     expect([image.width, image.height]).toEqual([400, 200]);
   });
 
+  it("adds the blocker's size delta to its stretched rect before scaling", () => {
+    const manual = manualTween();
+    const view = new CgItemView(
+      new Container(),
+      () => Texture.WHITE,
+      manual.tween,
+    );
+    void view.show(
+      input("cover", {
+        assetKey: undefined,
+        height: 100,
+        scaleDurationMs: 1000,
+        scaleTo: 2,
+        width: 200,
+      }),
+    );
+    const image = view.targets("cover")[0]!.children[0]!;
+    expect([image.width, image.height]).toEqual([1480, 820]);
+    manual.step(1);
+    expect([image.width, image.height]).toEqual([2960, 1640]);
+  });
+
   it("shows the white blocker immediately while its alpha still animates", async () => {
     const { steps, tween } = manualTweenSteps();
     const load = vi.fn(async () => Texture.WHITE);

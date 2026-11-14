@@ -332,8 +332,8 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[cgitem(image="cgitem_test",id="left",style="cg",pfrom="1,2",pto="3,4",pduration=2,pdelay=-0.5,sfrom=0.8,sto=1.2,sduration=3,sdelay=0.25,afrom=0,ato=1,aduration=1,adelay=0.1,rfrom=-10,rto=20,rduration=4,width=640,height=360,ease="Linear",block=true,layer=9,fadetime=8)]',
-        '[hidecgitem(image="cgitem_test",id="left",block=true)]',
+        '[cgitem(image="cgitem_test",id="left",style="cg",pfrom="1,2",pto="3,4",pduration=2,pdelay=-0.5,sfrom=0.8,sto=1.2,sduration=3,sdelay=0.25,afrom=0,ato=1,aduration=1,adelay=0.1,rfrom=-10,rto=20,rduration=4,width=640,height=360,ease="Linear",block=1,layer=9,fadetime=8)]',
+        '[hidecgitem(image="cgitem_test",id="left",block=" TRUE ")]',
         '[name="A"]ok',
       ]),
       renderer,
@@ -457,10 +457,10 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[cgitem(image=" CG_Item ",id="Left")]',
-        '[cgitemshake(image=" CG_Item ",id="Left",duration=4,block=true,xstrength=12,ystrength=8,vibrato=2.5,randomness=45,fadeout=true)]',
+        '[cgitemshake(image=" CG_Item ",id="Left",duration=4,stop=0,block=1,xstrength=12,ystrength=8,vibrato=2.5,randomness=45,fadeout=" TrUe ")]',
         '[cgitemshake(image=" CG_Item ",id="Left")]',
-        '[cgitemshake(image=" CG_Item ",id="Left",stop=true,block=true)]',
-        "[cgitemshake(stop=true)]",
+        '[cgitemshake(image=" CG_Item ",id="Left",stop=-1,block=true)]',
+        '[cgitemshake(stop=" TRUE ")]',
         '[name="A"]after',
       ]),
       renderer,
@@ -494,6 +494,36 @@ describe("StoryRuntime", () => {
       },
     ]);
     expect(renderer.cgItemShakeStops).toEqual([" CG_Item _Left", undefined]);
+    expect(renderer.lastDialogue.text).toBe("after");
+  });
+
+  it("converts explicit null CG floats to zero", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image="a",ato=null,sto=null,rfrom=null)]',
+        '[cgitemshake(image="a",duration=null,block=true,xstrength=null,randomness=null)]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(renderer.cgItemCalls[0]).toMatchObject({
+      alphaFrom: 1,
+      alphaTo: 0,
+      rotationFrom: 0,
+      scaleFrom: 1,
+      scaleTo: 0,
+    });
+    expect(renderer.cgItemShakeCalls[0]).toMatchObject({
+      block: false,
+      durationMs: 0,
+      infinite: false,
+      randomness: 0,
+      xStrength: 0,
+    });
     expect(renderer.lastDialogue.text).toBe("after");
   });
 
@@ -647,6 +677,8 @@ describe("StoryRuntime", () => {
       createContext([
         '[hidecgitem(image="cgitem_test",fadetime=0.5,duration=2)]',
         '[hidecgitem(image="cgitem_test",fadetime=0.7,duration=abc)]',
+        '[hidecgitem(image="cgitem_test",fadetime=0.7,duration=null)]',
+        '[hidecgitem(image="cgitem_test",fadetime=null)]',
         "[hidecgitem(duration=2,block=false)]",
         '[name="A"]ok',
       ]),
@@ -657,6 +689,8 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCgItemCalls).toEqual([
       { block: false, ease: "Linear", fadeMs: 2000, key: "cgitem_test" },
       { block: false, ease: "Linear", fadeMs: 700, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 0, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 0, key: "cgitem_test" },
       { block: false, ease: "Linear", fadeMs: 2000, key: undefined },
     ]);
   });

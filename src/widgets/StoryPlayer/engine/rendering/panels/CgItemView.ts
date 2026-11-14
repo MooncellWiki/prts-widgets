@@ -116,6 +116,7 @@ export class CgItemView {
     // texture. On a cache miss block=false returns before the bytes arrive,
     // and a `hidecgitem` arriving mid-load can still find the key.
     const { assetKey, key } = input;
+    const isBlocker = assetKey === undefined;
     const oldState = this.states.get(key);
     if (oldState) this.dispose(oldState);
     const root = new Container();
@@ -151,8 +152,10 @@ export class CgItemView {
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5);
       if (input.width > 0 && input.height > 0) {
-        width = input.width;
-        height = input.height;
+        // AVGShowItemCgSlot.Show writes sizeDelta (2791 @ 0x18424327B).
+        // The blocker Image stretches to its parent before applying that delta.
+        width = input.width + (isBlocker ? width : 0);
+        height = input.height + (isBlocker ? height : 0);
       }
 
       // Unity sets the Image rect size independently of localScale. Pixi's
@@ -258,7 +261,7 @@ export class CgItemView {
       return sequence.play({
         // Sequence.DoStartup (2791 @ 0x18442C6F0) accepts an empty sequence
         // with OnComplete. Even a static CG can finish a command on update.
-        deferZeroDuration: assetKey !== undefined,
+        deferZeroDuration: !isBlocker,
         isAlive: () => !root.destroyed,
         onComplete: finish,
       });
@@ -266,7 +269,7 @@ export class CgItemView {
 
     // 2791 blocker prefab (806 / Image 4251) is a centered stretch-anchored
     // sprite_white. _ShowItem calls Show with a null sprite and no callback.
-    if (assetKey === undefined) {
+    if (isBlocker) {
       void draw(Texture.WHITE, STORY_WIDTH, STORY_HEIGHT);
       return show.completion;
     }
