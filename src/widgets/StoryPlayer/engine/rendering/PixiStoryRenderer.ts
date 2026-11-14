@@ -2598,13 +2598,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  async setFocusOut(input: FocusOutInput): Promise<void> {
-    // `_ExecuteFocusout` (2.7.81 0x183FAE3A0) returns false right after
+  setFocusOut(input: FocusOutInput): Promise<void> | void {
+    // `_ExecuteFocusout` (2791 @ 0x184187C20) returns false right after
     // `_GenCfgByType` when `EffectConfig.IsChannelEmpty()` holds -- before
     // the `from` write and the tween -- so an empty channel stores nothing
     // and never blocks, whatever `duration`/`block` say.
     if (!this.hasFocusChannels(input.type, input.id)) return;
-    await this.focusEffectPanel.setFocus(input);
+    return this.focusEffectPanel.setFocus(input);
   }
 
   setFocusParam(input: FocusParamInput): void {

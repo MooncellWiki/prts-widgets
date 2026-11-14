@@ -55,7 +55,7 @@ export class FocusEffectPanel {
     this.render();
   }
 
-  async setFocus(input: FocusOutInput): Promise<void> {
+  setFocus(input: FocusOutInput): Promise<void> | void {
     const key = stateKey(input.type, input.id);
     const state = this.states.get(key) ?? {
       amount: 0,
@@ -87,8 +87,8 @@ export class FocusEffectPanel {
       },
     );
 
-    if (input.block && input.durationMs > 0) await run;
-    else void run;
+    if (input.block && input.durationMs > 0) return run;
+    void run;
   }
 
   destroy(): void {

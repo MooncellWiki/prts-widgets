@@ -1702,6 +1702,29 @@ export class StoryRuntime {
         return "continue";
       }
 
+      case "focusout": {
+        // AVGCameraEffect._ExecuteFocusout (2791 @ 0x184187C20) passes the
+        // duration through unscaled. A nonnegative from value is applied
+        // immediately. Only a blocking tween delays the next command.
+        const durationMs = Math.max(
+          0,
+          toNumber(this.exactArg(args, "duration"), 0) * 1000,
+        );
+        const from = toOptionalNumber(this.exactArg(args, "from"));
+        const completion = this.renderer.setFocusOut({
+          block:
+            durationMs > 0 && toBoolean(this.exactArg(args, "block"), false),
+          durationMs,
+          from: from !== undefined && from >= 0 ? from : undefined,
+          id: toString(this.exactArg(args, "id")),
+          to: toNumber(this.exactArg(args, "to"), 0),
+          type: toString(this.exactArg(args, "type")),
+        });
+        return completion instanceof Promise
+          ? completion.then(() => "continue")
+          : "continue";
+      }
+
       case "focusparam": {
         // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusParam. This
         // is a config-only write: it sets useBlur / color on the shared
@@ -3227,31 +3250,6 @@ export class StoryRuntime {
           vibrato: Math.trunc(toNumber(this.exactArg(args, "vibrato"), 10)),
           xStrength: toNumber(this.exactArg(args, "xstrength"), 1),
           yStrength: toNumber(this.exactArg(args, "ystrength"), 0),
-        });
-        return "continue";
-      }
-
-      case "focusout": {
-        // Native port: Torappu.AVG.AVGCameraEffect._ExecuteFocusout. Its
-        // duration is passed through unscaled -- the executor's refs contain
-        // neither get_animateRatio nor CalculateFadetime, so focusout belongs
-        // to the "bypass" family and fast-forward tiers do not shorten its
-        // tween or block wait (unlike calculateFadeMs-based commands). A
-        // `from >= 0` does a zero-duration UpdateEffect before the real
-        // tween, and `block` only gates the command when duration > 0.
-        const durationMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "duration"), 0) * 1000,
-        );
-        const from = toOptionalNumber(this.exactArg(args, "from"));
-        await this.renderer.setFocusOut({
-          block:
-            durationMs > 0 && toBoolean(this.exactArg(args, "block"), false),
-          durationMs,
-          from: from !== undefined && from >= 0 ? from : undefined,
-          id: toString(this.exactArg(args, "id")),
-          to: toNumber(this.exactArg(args, "to"), 0),
-          type: toString(this.exactArg(args, "type")),
         });
         return "continue";
       }

@@ -82,6 +82,12 @@ function createShowItemRenderer(ticker?: Ticker) {
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("CG item rendering", () => {
+  const hideLines = [
+    '[cgitem(image="first")]',
+    '[hidecgitem(image="first",duration=0.032,block=true)]',
+  ];
+  const hideDraws = [[["first", 0.5]], [["second", 0.25]], [["second", 0.625]]];
+
   it.each([
     {
       command: "cgitem",
@@ -102,15 +108,16 @@ describe("CG item rendering", () => {
     },
     {
       command: "hidecgitem",
+      lines: hideLines,
+      expectedDraws: hideDraws,
+    },
+    {
+      command: "hidecgitem then focusout",
       lines: [
-        '[cgitem(image="first")]',
-        '[hidecgitem(image="first",duration=0.032,block=true)]',
+        ...hideLines,
+        '[focusout(type="cgitem",id=" SECOND ",to=0.5,duration=0,block=false)]',
       ],
-      expectedDraws: [
-        [["first", 0.5]],
-        [["second", 0.25]],
-        [["second", 0.625]],
-      ],
+      expectedDraws: hideDraws,
     },
     {
       command: "cgitemshake",
@@ -134,7 +141,7 @@ describe("CG item rendering", () => {
       ],
     },
   ])(
-    "draws the next cached CG in the frame blocking $command finishes",
+    "draws the next cached CG in the completion frame ($command)",
     async ({ lines, expectedDraws }) => {
       const context = createContext([
         ...lines,
