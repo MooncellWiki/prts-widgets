@@ -422,6 +422,8 @@ export class FakeRenderer implements StoryRenderer {
     this.shakeCalls.push(input);
   }
 
+  stopCameraShake(): void {}
+
   shakeCgItem(input: CgItemShakeInput): ExecutionHandle | void {
     this.cgItemShakeCalls.push(input);
   }

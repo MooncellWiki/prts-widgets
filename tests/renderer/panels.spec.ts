@@ -82,6 +82,20 @@ function createShowItemRenderer(ticker?: Ticker) {
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("CG item rendering", () => {
+  const showLines = [
+    '[cgitem(image="first",afrom=0,ato=1,aduration=0.032,block=true)]',
+  ];
+  const showDraws = [
+    [["first", 0.5]],
+    [
+      ["first", 1],
+      ["second", 0.25],
+    ],
+    [
+      ["first", 1],
+      ["second", 0.625],
+    ],
+  ];
   const hideLines = [
     '[cgitem(image="first")]',
     '[hidecgitem(image="first",duration=0.032,block=true)]',
@@ -91,25 +105,27 @@ describe("CG item rendering", () => {
   it.each([
     {
       command: "cgitem",
+      lines: showLines,
+      expectedDraws: showDraws,
+    },
+    {
+      command: "cgitem then two instant blockers",
       lines: [
-        '[cgitem(image="first",afrom=0,ato=1,aduration=0.032,block=true)]',
+        ...showLines,
+        "[blocker(a=1,fadetime=0)]",
+        '[blocker(a=0,fadetime=0,image="first")]',
       ],
-      expectedDraws: [
-        [["first", 0.5]],
-        [
-          ["first", 1],
-          ["second", 0.25],
-        ],
-        [
-          ["first", 1],
-          ["second", 0.625],
-        ],
-      ],
+      expectedDraws: showDraws,
     },
     {
       command: "hidecgitem",
       lines: hideLines,
       expectedDraws: hideDraws,
+    },
+    {
+      command: "blocking focusout",
+      lines: ['[focusout(type="bg",from=0,to=1,duration=0.032,block=true)]'],
+      expectedDraws: [[], [["second", 0.25]], [["second", 0.625]]],
     },
     {
       command: "hidecgitem then focusout",
@@ -149,17 +165,19 @@ describe("CG item rendering", () => {
         '[name="A"]after',
       ]);
       const urls = collectContextAssetUrls(context);
-      for (const [index, url] of urls.entries()) {
+      for (const url of urls) {
         const source = new TextureSource({ height: 32, width: 32 });
-        const label = index === 0 ? "first" : "second";
+        const label = url.endsWith("/first.png") ? "first" : "second";
         Assets.cache.set(url, new Texture({ label, source }));
       }
 
       const renderer = createRenderer(context);
       const cgLayer: Container = renderer.layers.cgItems;
       const drawn: Array<Array<[string | undefined, number]>> = [];
+      const blockerAlphas: number[] = [];
       const app = new Application();
       app.render = () => {
+        blockerAlphas.push(renderer.blockerSprite?.alpha ?? 0);
         drawn.push(
           cgLayer.children.flatMap((root) => {
             const sprite = root.children[0]?.children[0] as Sprite | undefined;
@@ -179,6 +197,7 @@ describe("CG item rendering", () => {
       try {
         for (const [index, expected] of expectedDraws.entries()) {
           app.ticker.update((index + 1) * 16);
+          expect(blockerAlphas[index]).toBe(0);
           expect(drawn[index]).toEqual(expected);
         }
       } finally {

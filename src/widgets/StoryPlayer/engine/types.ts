@@ -756,7 +756,7 @@ export interface StoryRenderer {
     keep: boolean,
     initialAmount?: number,
   ) => Promise<void> | void;
-  setFocusOut: (input: FocusOutInput) => Promise<void> | void;
+  setFocusOut: (input: FocusOutInput) => ExecutionHandle | void;
   setFocusParam: (input: FocusParamInput) => void;
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearCharacters: (slot?: string, fadeMs?: number) => Promise<void> | void;
@@ -796,7 +796,7 @@ export interface StoryRenderer {
   ) => Promise<PreparedAnimation>;
   setBackground: (key: string, input?: BackgroundInput) => Promise<void>;
   setBackgroundTween: (input: BackgroundTweenInput) => Promise<void>;
-  setBlocker: (input: BlockerInput) => Promise<void>;
+  setBlocker: (input: BlockerInput) => Promise<void> | void;
   setCharacter: (input: CharacterSlotInput) => Promise<void>;
   setCharacterCutin: (input: CharacterCutinInput) => Promise<void>;
   setCurtain: (input: CurtainInput) => Promise<void>;
@@ -850,6 +850,7 @@ export interface StoryRenderer {
     input: CgItemShakeInput,
     onComplete?: () => void,
   ) => ExecutionHandle | void;
+  stopCameraShake: () => void;
   stopCgItemShakes: (key?: string) => void;
   showDecision: (
     options: string[],

@@ -1702,27 +1702,68 @@ export class StoryRuntime {
         return "continue";
       }
 
+      case "blocker": {
+        // AVGBlockerPanel._ExecuteBlocker (2791 @ 0x184184890) scales fadetime
+        // by animateRatio. A zero fade writes the color and finishes inline.
+        // The malformed default `defualt` is intentional.
+        const styleArg = toString(this.exactArg(args, "style"), "defualt");
+        const style =
+          styleArg === "slider" || styleArg === "verticalslider"
+            ? styleArg
+            : "default";
+        const fadeMs = this.calculateFadeMs(
+          this.exactArg(args, "fadetime"),
+          0.4,
+        );
+        const completion = this.renderer.setBlocker({
+          block: fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false),
+          fadeMs,
+          from: {
+            a: toNumber(this.exactArg(args, "afrom"), Number.NaN),
+            b: toNumber(this.exactArg(args, "bfrom"), Number.NaN),
+            g: toNumber(this.exactArg(args, "gfrom"), Number.NaN),
+            r: toNumber(this.exactArg(args, "rfrom"), Number.NaN),
+          },
+          image: toString(this.exactArg(args, "image")) || undefined,
+          inverse: toBoolean(this.exactArg(args, "inverse"), false),
+          style,
+          to: {
+            a: toNumber(this.exactArg(args, "a"), 1),
+            b: toNumber(this.exactArg(args, "b"), 0),
+            g: toNumber(this.exactArg(args, "g"), 0),
+            r: toNumber(this.exactArg(args, "r"), 0),
+          },
+        });
+        return completion ? completion.then(() => "continue") : "continue";
+      }
+
       case "focusout": {
         // AVGCameraEffect._ExecuteFocusout (2791 @ 0x184187C20) passes the
-        // duration through unscaled. A nonnegative from value is applied
-        // immediately. Only a blocking tween delays the next command.
-        const durationMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "duration"), 0) * 1000,
-        );
+        // duration through unscaled. MathUtil.GT/GE use a 1e-5 tolerance.
+        const duration = toNumber(this.exactArg(args, "duration"));
         const from = toOptionalNumber(this.exactArg(args, "from"));
-        const completion = this.renderer.setFocusOut({
+        const epsilon = Math.fround(1e-5);
+        const durationMs =
+          Math.fround(duration) > epsilon ? duration * 1000 : 0;
+        const animation = this.renderer.setFocusOut({
           block:
             durationMs > 0 && toBoolean(this.exactArg(args, "block"), false),
           durationMs,
-          from: from !== undefined && from >= 0 ? from : undefined,
+          from:
+            from !== undefined && Math.fround(from) >= -epsilon
+              ? from
+              : undefined,
           id: toString(this.exactArg(args, "id")),
           to: toNumber(this.exactArg(args, "to"), 0),
           type: toString(this.exactArg(args, "type")),
         });
-        return completion instanceof Promise
-          ? completion.then(() => "continue")
-          : "continue";
+        if (!animation || animation.endReason !== undefined) return "continue";
+        return {
+          // AVGCameraEffect.ForceCommandEnd (2791 @ 0x184186000) resets
+          // the scene transform. The scene effect manager owns its tween.
+          forceEnd: () => this.renderer.stopCameraShake(),
+          isComplete: () => animation.endReason !== undefined,
+        };
       }
 
       case "focusparam": {
@@ -2493,45 +2534,6 @@ export class StoryRuntime {
           yScaleFrom: toOptionalNumber(this.arg(args, "yscalefrom")) ?? yScale,
           yScaleTo: toOptionalNumber(this.arg(args, "yscaleto")) ?? yScale,
           yTo: toOptionalNumber(this.arg(args, "yto")) ?? y,
-        });
-        return "continue";
-      }
-
-      case "blocker": {
-        // Native port: Torappu.AVG.AVGBlockerPanel._ExecuteBlocker. The malformed
-        // default `defualt` is intentional. Like every IFadeTimeRatio panel,
-        // blocker routes fadetime through AVGUtils.CalculateFadetime
-        // (`AVGController.animateRatio * fadetime`, 2.7.61 VA 0x183e3040e), so
-        // quick_play (animateRatio = 0) collapses into the native IsZero branch:
-        // instant recolor and a forced non-blocking return.
-        const styleArg = toString(this.exactArg(args, "style"), "defualt");
-        const style =
-          styleArg === "slider" || styleArg === "verticalslider"
-            ? styleArg
-            : "default";
-        const fadeMs = this.calculateFadeMs(
-          this.exactArg(args, "fadetime"),
-          0.4,
-        );
-
-        await this.renderer.setBlocker({
-          block: fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false),
-          fadeMs,
-          from: {
-            a: toNumber(this.exactArg(args, "afrom"), Number.NaN),
-            b: toNumber(this.exactArg(args, "bfrom"), Number.NaN),
-            g: toNumber(this.exactArg(args, "gfrom"), Number.NaN),
-            r: toNumber(this.exactArg(args, "rfrom"), Number.NaN),
-          },
-          image: toString(this.exactArg(args, "image")) || undefined,
-          inverse: toBoolean(this.exactArg(args, "inverse"), false),
-          style,
-          to: {
-            a: toNumber(this.exactArg(args, "a"), 1),
-            b: toNumber(this.exactArg(args, "b"), 0),
-            g: toNumber(this.exactArg(args, "g"), 0),
-            r: toNumber(this.exactArg(args, "r"), 0),
-          },
         });
         return "continue";
       }

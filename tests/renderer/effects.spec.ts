@@ -1,8 +1,10 @@
-import { Container, Texture } from "pixi.js";
+import { Application, Container, Texture, TickerPlugin } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
+import { createContext, FakeAudio } from "../helpers/runtimeFakes";
 
 import type { CgItemInput } from "../../src/widgets/StoryPlayer/engine/types";
 
@@ -249,6 +251,50 @@ describe("PixiStoryRenderer", () => {
     expect(normalizeZero(filters[0]!.matrix.slice(0, 5))).toEqual([
       0, 0, 0, 0, 0.5,
     ]);
+  });
+
+  it("releases a blocking focusout on SkipToThis while its tween keeps running", async () => {
+    const context = createContext([
+      '[focusparam(effect="Colorinverse",blur=false)]',
+      '[focusout(type="bg",from=0,to=1,duration=0.064,block=true)]',
+      '[name="A"]skipped',
+      "[SkipToThis]",
+      '[name="B"]after',
+    ]);
+    const renderer = createRenderer(context);
+    const app = new Application();
+    app.render = () => {};
+    TickerPlugin.init.call(app, { autoStart: false });
+    renderer.app = app;
+    renderer.layers.attach(app.stage);
+    renderer.dialogFrameTextureFailed = true;
+    app.ticker.lastTime = 0;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    const focusAmount = () => renderer.backgroundLayer.filters?.[0]?.matrix[4];
+    let skipped: Promise<void> | undefined;
+    try {
+      app.ticker.update(16);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      renderer.layers.scene.position.set(4, 8);
+      skipped = runtime.skipNode();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      app.ticker.update(32);
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+      expect(renderer.layers.scene.position.x).toBe(0);
+      expect(renderer.layers.scene.position.y).toBe(0);
+      expect(focusAmount()).toBeCloseTo(0.5);
+
+      app.ticker.update(48);
+      app.ticker.update(64);
+      expect(focusAmount()).toBeCloseTo(1);
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+    } finally {
+      runtime.destroy();
+      app.ticker.destroy();
+      app.stage.destroy({ children: true });
+      await Promise.all([started, skipped]);
+    }
   });
 
   it("treats focusout on an empty channel as a non-blocking native no-op", async () => {
