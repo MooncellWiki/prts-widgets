@@ -253,7 +253,7 @@ describe("PixiStoryRenderer", () => {
 
   it("treats focusout on an empty channel as a non-blocking native no-op", async () => {
     const renderer = createFocusRenderer();
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     renderer.tween.mockClear();
 
     // `_ExecuteFocusout` returns before any `UpdateEffect` when
@@ -293,13 +293,13 @@ describe("PixiStoryRenderer", () => {
       to: 1,
       type: "cgitem",
     });
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     expect(filtersOf("a").length).toBeGreaterThan(0);
 
     // `BeforeItemDisposed` removes the stored amount: a re-show after the
     // hide completes comes back clean.
-    await renderer.clearCgItems("a", 0);
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.clearCgItems("a", 0)?.completion;
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     expect(filtersOf("a")).toHaveLength(0);
 
     // Same for a same-key replacement, which disposes the old slot first.
@@ -311,7 +311,7 @@ describe("PixiStoryRenderer", () => {
       type: "cgitem",
     });
     expect(filtersOf("a").length).toBeGreaterThan(0);
-    await renderer.showCgItem({ ...focusCgItemInput, key: "a" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
     expect(filtersOf("a")).toHaveLength(0);
   });
 
@@ -324,7 +324,7 @@ describe("PixiStoryRenderer", () => {
       to: 1,
       type: "cgitem",
     };
-    await renderer.showCgItem(focusCgItemInput);
+    await renderer.showCgItem(focusCgItemInput).completion;
     const old = renderer.cgItemView.targets("a")[0];
     await renderer.setFocusOut(command);
     let finishFade: (() => void) | undefined;
@@ -333,8 +333,8 @@ describe("PixiStoryRenderer", () => {
         finishFade = complete;
       },
     );
-    await renderer.clearCgItems(undefined, 1000, "Linear", true);
-    await renderer.showCgItem(focusCgItemInput);
+    renderer.clearCgItems(undefined, 1000, "Linear", true);
+    await renderer.showCgItem(focusCgItemInput).completion;
     const current = renderer.cgItemView.targets("a")[0];
     expect(current).not.toBe(old);
     expect(current.filters).toHaveLength(1);
@@ -347,7 +347,7 @@ describe("PixiStoryRenderer", () => {
 
     await renderer.setFocusOut(command);
     expect(current.filters).toHaveLength(0);
-    await renderer.showCgItem({ ...focusCgItemInput, key: "b" });
+    await renderer.showCgItem({ ...focusCgItemInput, key: "b" }).completion;
     expect(renderer.cgItemView.targets("b")[0].filters ?? []).toHaveLength(0);
   });
 

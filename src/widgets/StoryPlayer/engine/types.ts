@@ -1,4 +1,4 @@
-import type { AnimationCompletion, PreparedAnimation } from "./execution";
+import type { ExecutionHandle, PreparedAnimation } from "./execution";
 import type { RichChar } from "./richtext";
 
 export const STORY_WIDTH = 1280;
@@ -744,7 +744,7 @@ export interface StoryRenderer {
     ease?: string,
     block?: boolean,
     onComplete?: () => void,
-  ) => AnimationCompletion;
+  ) => ExecutionHandle | void;
   resetCgItems: () => void;
   clearAvgDisplays: () => Promise<void> | void;
   clearAnimTexts: () => Promise<void> | void;
@@ -833,7 +833,7 @@ export interface StoryRenderer {
   showCgItem: (
     input: CgItemInput,
     onComplete?: () => void,
-  ) => AnimationCompletion;
+  ) => ExecutionHandle | void;
   setSticker: (input: StickerInput) => Promise<void> | void;
   setStickerTypeWriterDelay: (id: string, delayMs: number) => void;
   stickerTween: (input: StickerTweenInput) => Promise<void> | void;
@@ -849,7 +849,7 @@ export interface StoryRenderer {
   shakeCgItem: (
     input: CgItemShakeInput,
     onComplete?: () => void,
-  ) => AnimationCompletion;
+  ) => ExecutionHandle | void;
   stopCgItemShakes: (key?: string) => void;
   showDecision: (
     options: string[],

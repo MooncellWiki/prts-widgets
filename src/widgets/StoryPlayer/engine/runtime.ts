@@ -23,6 +23,7 @@ import {
   type CommandWait,
   type WaitForClick,
   type WaitForDecision,
+  type WaitForFrameAnimation,
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
@@ -161,6 +162,12 @@ interface InterruptibleWait {
   id: number;
   interrupt?: () => void;
   resolve: () => void;
+}
+
+interface PendingFrameAnimations {
+  animations: readonly WaitForFrameAnimation[];
+  remainingWaits: readonly CommandWait[];
+  resolve: (continuation?: Promise<void>) => void;
 }
 
 interface PendingInput {
@@ -381,6 +388,7 @@ export class StoryRuntime {
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
   private pendingDelay: PendingDelay | null = null;
+  private pendingFrameAnimations: PendingFrameAnimations | null = null;
   private pendingInput: PendingInput | null = null;
   private resumeCommands: (() => void) | null = null;
 
@@ -1029,6 +1037,7 @@ export class StoryRuntime {
         // ForceCommandEnd can replace it before the old callbacks expire.
         for (const handler of interruptedInput?.handlers ?? [])
           handler.forceEnd?.();
+        this.cancelFrameAnimations();
       } finally {
         this.playbackGeneration += 1;
         if (skipToThis) {
@@ -1148,6 +1157,7 @@ export class StoryRuntime {
 
   private pollAfterUpdate(nowMs: number): void {
     const delay = this.pendingDelay;
+    this.pollFrameAnimations();
     const resume = this.resumeCommands;
     this.resumeCommands = null;
     resume?.();
@@ -1197,6 +1207,7 @@ export class StoryRuntime {
     this.stopFramePolling?.();
     this.stopFramePolling = null;
     this.cancelInputWait();
+    this.cancelFrameAnimations();
     // The Web runtime handles one story. Clear its story-long ON_SPEED_SET
     // subscriptions together when that story ends.
     this.eventPool.clear();
@@ -1235,7 +1246,9 @@ export class StoryRuntime {
     return stickerReset;
   }
 
-  private async processLoop(): Promise<void> {
+  private async processLoop(
+    remainingWaits?: readonly CommandWait[],
+  ): Promise<void> {
     if (this.processing) return;
 
     this.processing = true;
@@ -1247,6 +1260,22 @@ export class StoryRuntime {
       while (!this.destroyed) {
         if (this.skipCleanup)
           return this.skipCleanup.completion.then(() => undefined);
+
+        if (remainingWaits) {
+          const decision = remainingWaits.find(
+            (wait) => "showDecision" in wait,
+          );
+          if (decision) return this.waitForDecision(decision);
+          const delay = remainingWaits.find((wait) => "delayMs" in wait);
+          if (delay) return this.waitForDelay(delay.delayMs);
+          const clicks = remainingWaits.filter((wait) => "handleClick" in wait);
+          if (clicks.length) {
+            this.waitForInput(clicks);
+            return;
+          }
+          remainingWaits = undefined;
+        }
+
         // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
         // incremented index BEFORE consulting ICommandFlowController
         // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
@@ -1295,28 +1324,34 @@ export class StoryRuntime {
         // A skipped executor can still return a stale input wait. Its click
         // follow-up (spellsticker block) travels with the dropped handler.
         if (!isCurrent()) continue;
-        if (result !== "continue") {
-          const waits = Array.isArray(result) ? result : [result];
-          const animations = waits.filter((wait) => "animation" in wait);
-          if (animations.length > 0) {
-            await this.waitInterruptiblePromise(
-              Promise.all(animations.map(({ animation }) => animation)),
-              () => {
-                for (const { forceEnd } of animations) forceEnd();
-              },
-            );
-            if (!isCurrent()) continue;
-          }
-          const decision = waits.find((wait) => "showDecision" in wait);
-          if (decision) return this.waitForDecision(decision);
-          const delay = waits.find((wait) => "delayMs" in wait);
-          if (delay) return this.waitForDelay(delay.delayMs);
-          const clicks = waits.filter((wait) => "handleClick" in wait);
-          if (clicks.length) {
-            this.waitForInput(clicks);
-            return;
-          }
+        if (result === "continue") continue;
+
+        const waits = Array.isArray(result) ? result : [result];
+        const animations = waits.filter((wait) => "animation" in wait);
+        const frameAnimations = waits.filter((wait) => "isComplete" in wait);
+        const followUp = waits.filter(
+          (wait) => !("animation" in wait) && !("isComplete" in wait),
+        );
+        if (animations.length > 0) {
+          await this.waitInterruptiblePromise(
+            Promise.all(animations.map(({ animation }) => animation)),
+            () => {
+              for (const { forceEnd } of animations) forceEnd();
+              for (const { forceEnd } of frameAnimations) forceEnd();
+            },
+          );
+          if (!isCurrent()) continue;
         }
+        if (frameAnimations.length > 0) {
+          return new Promise<void>((resolve) => {
+            this.pendingFrameAnimations = {
+              animations: frameAnimations,
+              remainingWaits: followUp,
+              resolve,
+            };
+          });
+        }
+        remainingWaits = followUp;
       }
     } catch (error) {
       this.failPlayback(error);
@@ -1325,6 +1360,35 @@ export class StoryRuntime {
       this.resolveProcessingCompletion?.();
       this.resolveProcessingCompletion = null;
       this.processingCompletion = null;
+    }
+  }
+
+  private pollFrameAnimations(): void {
+    const pending = this.pendingFrameAnimations;
+    if (this.skipCleanup || !pending) return;
+    // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blockers
+    // after DOTween's update and dispatches synchronously when they are clear.
+    try {
+      if (!pending.animations.every((wait) => wait.isComplete())) return;
+      if (this.pendingFrameAnimations !== pending) return;
+      this.pendingFrameAnimations = null;
+      pending.resolve(this.processLoop(pending.remainingWaits));
+    } catch (error) {
+      this.failPlayback(error);
+    }
+  }
+
+  private cancelFrameAnimations(): void {
+    const pending = this.pendingFrameAnimations;
+    if (!pending) return;
+    this.pendingFrameAnimations = null;
+    const cleanup = this.skipCleanup;
+    try {
+      for (const wait of pending.animations) wait.forceEnd();
+    } finally {
+      // Keep the interrupted caller waiting for the same skip cleanup as a
+      // Promise-based executor.
+      pending.resolve(cleanup?.completion.then(() => undefined));
     }
   }
 

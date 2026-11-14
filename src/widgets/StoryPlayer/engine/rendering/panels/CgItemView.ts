@@ -102,10 +102,7 @@ export class CgItemView {
   }
 
   /** The command panel observes the sequence even for a nonblocking show. */
-  show(
-    input: CgItemInput,
-    onComplete?: () => void,
-  ): Promise<ExecutionEndReason> {
+  show(input: CgItemInput, onComplete?: () => void): ExecutionHandle {
     // Native provenance: `AVGCgItemPanel._ShowItem` (2791 @ 0x18418ABF0)
     // instantiates the new slot, instantly `Dispose()`s the previous same-key
     // entry (no fade), and writes the new entry into `m_slotsInUseDict`
@@ -271,7 +268,7 @@ export class CgItemView {
     // sprite_white. _ShowItem calls Show with a null sprite and no callback.
     if (isBlocker) {
       void draw(Texture.WHITE, STORY_WIDTH, STORY_HEIGHT);
-      return show.completion;
+      return show;
     }
     const drawTexture = (texture: Texture | null) =>
       draw(texture, texture?.width ?? 0, texture?.height ?? 0);
@@ -285,13 +282,13 @@ export class CgItemView {
       this.onWarning?.(`cgitem asset failed: ${assetKey}: ${String(error)}`);
       this.dispose(state);
     });
-    return show.completion;
+    return show;
   }
 
   shake(
     input: CgItemShakeInput,
     onComplete?: () => void,
-  ): Promise<ExecutionEndReason> | void {
+  ): ExecutionHandle | void {
     const state = this.states.get(input.key);
     if (!state) {
       this.onWarning?.(`cgitemshake target not found: ${input.key}`);
@@ -323,7 +320,7 @@ export class CgItemView {
       },
       { isAlive: isCurrent, loops: input.infinite ? -1 : 1 },
     );
-    return handle.completion;
+    return handle;
   }
 
   stopShakes(key?: string): void {
@@ -361,7 +358,7 @@ export class CgItemView {
     fadeMs: number,
     ease: string,
     onComplete?: () => void,
-  ): Promise<ExecutionEndReason> | void {
+  ): ExecutionHandle | void {
     if (this.states.size === 0) return;
     // _ClearItemByKey / _ClearAllItems stop root shakes before starting
     // the fade. Image-child position and scale tracks keep running.
@@ -389,7 +386,7 @@ export class CgItemView {
     fadeMs: number,
     ease: EaseCurve,
     onComplete?: () => void,
-  ): Promise<ExecutionEndReason> {
+  ): ExecutionHandle {
     // AVGShowItemCgSlot.Hide (2791 @ 0x184242970) leaves old tweens running.
     // _MakeAnimEndCb binds completion to the latest hide on this slot.
     const animEpoch = ++state.animEpoch;
@@ -417,7 +414,7 @@ export class CgItemView {
       },
       { deferZeroDuration: true, isAlive },
     );
-    return hide.completion;
+    return hide;
   }
 
   /**

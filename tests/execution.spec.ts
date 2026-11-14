@@ -43,8 +43,10 @@ describe("command execution primitives", () => {
   it("settles an execution handle once with its end reason", async () => {
     const onEnd = vi.fn();
     const handle = createExecutionHandle(true, onEnd);
+    expect(handle.endReason).toBeUndefined();
     handle.end("force_end");
     handle.end("reset");
+    expect(handle.endReason).toBe("force_end");
     await expect(handle.completion).resolves.toBe("force_end");
     expect(onEnd).toHaveBeenCalledExactlyOnceWith("force_end");
   });
