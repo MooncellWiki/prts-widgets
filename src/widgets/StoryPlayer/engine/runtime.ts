@@ -366,6 +366,7 @@ export class StoryRuntime {
   private playbackGeneration = 0;
   private quickSpeedLevel = 0;
   private state: PlayerState = "idle";
+  private readonly cameraEffectExecutor: CameraEffectExecutor;
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly displayableExecutor: DisplayableExecutor;
@@ -456,18 +457,19 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
-    new CameraEffectExecutor(renderer, {
+    this.cameraEffectExecutor = new CameraEffectExecutor(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       calculateFadeMs: (seconds, fallback) =>
         this.calculateFadeMs(seconds, fallback),
       warnUnsupportedVisual: (detail) =>
         this.warn("unsupported_visual", detail),
-    }).register(this.commandRegistry);
+    });
     new CgItemPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       resolveImageKey: (key) => this.resolveImageKey(key),
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
+    this.cameraEffectExecutor.register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.displayableExecutor.register(this.commandRegistry);
@@ -1207,6 +1209,7 @@ export class StoryRuntime {
     // AVGCgItemPanel.OnReset (2791 @ 0x1841890F0) disposes the slots at
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
+    this.cameraEffectExecutor.reset();
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.showItemPanel.reset();

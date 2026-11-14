@@ -15,7 +15,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         "[camerashake(xstrength=12,ystrength=8)]",
-        "[camerashake(duration=0.5,randomness=40,vibrato=18,block=false,stop=true)]",
+        "[camerashake(duration=0.5,randomness=40,vibrato=18,block=true,stop=true)]",
         '[name="A"]ok',
       ]),
       renderer,
@@ -99,7 +99,7 @@ describe("StoryRuntime", () => {
     // and the renderer's durationMs <= 0 skip mirrors that.
     expect(renderer.shakeCalls).toEqual([
       {
-        block: true,
+        block: false,
         durationMs: 0,
         fadeOut: false,
         infinite: false,

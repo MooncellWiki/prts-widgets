@@ -28,6 +28,7 @@ import {
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
+import { createExecutionHandle, type ExecutionHandle } from "../execution";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
 import {
   STORY_HEIGHT,
@@ -103,7 +104,6 @@ import { TimerView } from "./panels/TimerView";
 import { VideoPanel } from "./panels/VideoPanel";
 
 import type { Context } from "../../context";
-import type { ExecutionHandle } from "../execution";
 
 function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -564,8 +564,12 @@ export class PixiStoryRenderer implements StoryRenderer {
   private blockerSlideMaterial: SlideMaskFilter | null = null;
   private blockerMaskSource: TextureSource | null = null;
   private blockerMaskSourceFailed = false;
-  private cameraShakeSessionId = 0;
-  private cameraShakeWaitResolve: (() => void) | null = null;
+  private cameraShake?: {
+    animation: ExecutionHandle;
+    infinite: boolean;
+    onComplete?: () => void;
+  };
+  private readonly grayscaleTweens = new Set<ExecutionHandle>();
   private grayscaleAmount = 0;
   private inverseAmount = 0;
   private grayscaleFilter: ColorMatrixFilter | null = null;
@@ -762,7 +766,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   destroy(): void {
     this.stopVideo();
-    this.stopCameraShake();
     this.decisionView.destroy();
     this.interludePanel.destroy();
     this.animTextPanel.destroy();
@@ -772,8 +775,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.stickerViews.clear();
     this.timerView?.destroy();
     this.timerView = null;
-    this.focusEffectPanel.destroy();
     this.cgItemView.destroy();
+    this.resetCameraEffects();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
     this.backgroundTweenSessionId += 1;
@@ -2567,72 +2570,83 @@ export class PixiStoryRenderer implements StoryRenderer {
    * grayscale/inverse branches and their completion behavior. A PIXI color
    * filter substitutes for `AVGSceneEffectManager`'s camera post-process.
    *
-   * Deliberately unported (verified on 2.7.61 / build 2761 IDA decompile):
-   * - Chaos: dual-material distortion, intentionally skipped upstream.
-   * - Reset lifecycle: native `OnReset`/`ShouldResetOnSkip=true` clears the
-   *   effect record on story reset/skip; the web player rebuilds the renderer
-   *   per playback instead, so no explicit reset exists here.
-   * - Colorinverse amount is a shader `_Inverse` float natively (interpolable
-   *   0..1, modeled below as `lerp(prev, 1-prev, inverse)` in the matrix).
+   * Colorinverse writes the `_Inverse` channel immediately. The Web matrix
+   * models that shader channel as `lerp(prev, 1-prev, inverse)`.
    */
-  async setCameraEffect(
+  setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
     amount: number,
     durationMs: number,
     block: boolean,
     keep: boolean,
     initialAmount?: number,
-  ): Promise<void> {
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
     if (effect === "Colorinverse") {
       this.inverseAmount = amount;
       this.updateCameraFilter();
       return;
     }
-    // Native `_TweenGrayscaleAmount` (2.7.61 VA 0x183E33C60): a negative
-    // initamount (not just the omitted key's -1 default) starts from the
-    // current grayscale amount via GetEffectAmount("grayscale", "grayscale");
-    // other values are the explicit tween start. Native tests it with
-    // MathUtil.LT(initAmount, 0), which decompiles to `-1e-5 > initAmount`, so
-    // its real threshold sits an epsilon below 0; the plain `>= 0` here only
-    // differs over [-1e-5, 0), which no story script hits.
+    // _TweenGrayscaleAmount (2791 @ 0x1841885F0) uses MathUtil.LT to select
+    // the current amount for negative initamount. DOTween's setter first
+    // writes on Update, including when quick play produces a zero duration.
     const from =
-      initialAmount !== undefined && initialAmount >= 0
+      initialAmount !== undefined &&
+      Math.fround(initialAmount) >= -Math.fround(1e-5)
         ? initialAmount
         : this.grayscaleAmount;
-    this.grayscaleAmount = from;
-    this.updateCameraFilter();
-    const run = this.tween(
+    const animation = createExecutionHandle(block);
+    this.grayscaleTweens.add(animation);
+    void this.updatePhaseTweenRunner.run(
       durationMs,
       (progress) => {
-        // Native: the executor never calls SetEase, so DOTween.To tweens with
-        // DOTween's default ease. This build ships DOTween 1.2.760, whose
-        // cctor (VA 0x18410B0E0) writes defaultEaseType = 6 = Ease.OutQuad
-        // (fast-then-slow), not linear. DOTween.AutoInit does let a
-        // Resources/DOTweenSettings asset overwrite that field, and the asset
-        // lives in the player's resources.assets rather than a hot-update
-        // bundle so it cannot be read here — but OutQuad is also
-        // DOTweenSettings' own default, so the compiled value stands.
-        // DOTween's OutQuad is `-t*(t-2)`, i.e. the 1-(1-t)^2 below.
-        const eased = 1 - (1 - progress) ** 2;
-        this.grayscaleAmount = from + (amount - from) * eased;
+        this.grayscaleAmount = from + (amount - from) * progress;
         this.updateCameraFilter();
       },
       () => {
-        this.grayscaleAmount = keep ? amount : 0;
-        this.updateCameraFilter();
+        if (!this.grayscaleTweens.delete(animation)) return;
+        // __ExecuteCameraEffect_b__0 (2791 @ 0x18419DEF0) calls
+        // FinishCommand before clearing a grayscale effect with keep=false.
+        animation.end();
+        onComplete?.();
+        if (!keep) {
+          this.grayscaleAmount = 0;
+          this.updateCameraFilter();
+        }
+      },
+      {
+        deferZeroDuration: true,
+        ease: dotweenDefaultEase,
+        isAlive: () => this.grayscaleTweens.has(animation),
       },
     );
-    if (block) await run;
-    else void run;
+    return animation;
   }
 
-  setFocusOut(input: FocusOutInput): ExecutionHandle | void {
+  resetCameraEffects(): void {
+    // AVGCameraEffect.OnReset clears scene-root shakes and camera effects;
+    // ShouldResetOnSkip (2791 @ 0x184186430) leaves them live at segment jumps.
+    this.stopCameraShake();
+    for (const tween of this.grayscaleTweens) tween.end("reset");
+    this.grayscaleTweens.clear();
+    this.grayscaleAmount = 0;
+    this.inverseAmount = 0;
+    this.updateCameraFilter();
+    // AVGController.OnStoryCommitted (2791 @ 0x18416B750) disposes the
+    // scene effect manager, which owns focus tweens and PostDisplay bindings.
+    this.focusEffectPanel.destroy();
+  }
+
+  setFocusOut(
+    input: FocusOutInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
     // `_ExecuteFocusout` (2791 @ 0x184187C20) returns false right after
     // `_GenCfgByType` when `EffectConfig.IsChannelEmpty()` holds -- before
     // the `from` write and the tween -- so an empty channel stores nothing
     // and never blocks, whatever `duration`/`block` say.
     if (!this.hasFocusChannels(input.type, input.id)) return;
-    return this.focusEffectPanel.setFocus(input);
+    return this.focusEffectPanel.setFocus(input, onComplete);
   }
 
   setFocusParam(input: FocusParamInput): void {
@@ -2726,43 +2740,40 @@ export class PixiStoryRenderer implements StoryRenderer {
    * full |(xStrength, yStrength)| magnitude (see ShakePath). Sampling and
    * scheduling are a Web/PIXI adaptation of the same tween.
    */
-  async shakeCamera(input: CameraShakeInput): Promise<void> {
-    this.stopCameraShake();
+  shakeCamera(
+    input: CameraShakeInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    // _ExecuteCameraShake (2791 @ 0x1841874E0) kills the previous tween
+    // first. An infinite tween does not run OnComplete, so a replacement
+    // starts at the current offset. The stop branch also resets position.
+    this.endCameraShake("force_end");
+    if (input.stop) {
+      this.sceneLayer.position.set(0, 0);
+      return;
+    }
+    if (input.durationMs <= 0) return;
 
-    if (input.stop || input.durationMs <= 0) return;
-
-    const sessionId = ++this.cameraShakeSessionId;
+    const { x: startX, y: startY } = this.sceneLayer.position;
+    const animation = createExecutionHandle(input.block);
+    this.cameraShake = { animation, infinite: input.infinite, onComplete };
+    const isCurrent = () => this.cameraShake?.animation === animation;
     const path = buildShakePath(input.durationMs, {
       ...input,
       vectorBased: true,
     });
-    const runCycle = async (): Promise<void> => {
-      await this.tween(input.durationMs, (progress) => {
-        if (sessionId !== this.cameraShakeSessionId) return;
+    void this.updatePhaseTweenRunner.run(
+      input.durationMs,
+      (progress) => {
         const offset = sampleShakePath(path, progress);
-        this.sceneLayer.position.set(offset.x, offset.y);
-      });
-      if (sessionId !== this.cameraShakeSessionId) return;
-      if (input.infinite) {
-        void runCycle();
-        return;
-      }
-      this.stopCameraShake(sessionId);
-    };
-
-    let wait: Promise<void> | undefined;
-    if (input.block) {
-      wait = new Promise<void>((resolve) => {
-        this.cameraShakeWaitResolve = resolve;
-      });
-    }
-
-    void runCycle();
-
-    if (wait) {
-      await wait;
-      this.cameraShakeWaitResolve = null;
-    }
+        this.sceneLayer.position.set(startX + offset.x, startY + offset.y);
+      },
+      () => {
+        if (isCurrent()) this.endCameraShake("complete");
+      },
+      { isAlive: isCurrent, loops: input.infinite ? -1 : 1 },
+    );
+    return animation;
   }
 
   setSubtitle(text: TypewriterText, layout?: OverlayTextLayout): void {
@@ -4261,14 +4272,23 @@ export class PixiStoryRenderer implements StoryRenderer {
     return true;
   }
 
-  stopCameraShake(sessionId?: number): void {
-    if (sessionId !== undefined && sessionId !== this.cameraShakeSessionId)
-      return;
-
-    this.cameraShakeSessionId += 1;
+  stopCameraShake(): void {
+    this.endCameraShake("force_end");
     this.sceneLayer.position.set(0, 0);
-    this.cameraShakeWaitResolve?.();
-    this.cameraShakeWaitResolve = null;
+  }
+
+  private endCameraShake(reason: "complete" | "force_end"): void {
+    const shake = this.cameraShake;
+    if (!shake) return;
+    this.cameraShake = undefined;
+    // TweenManager.Complete (2791 @ 0x184462630) skips infinite loops.
+    if (reason === "force_end" && shake.infinite) {
+      shake.animation.end(reason);
+      return;
+    }
+    this.sceneLayer.position.set(0, 0);
+    shake.animation.end();
+    shake.onComplete?.();
   }
 
   private readBlockerColor(): {
