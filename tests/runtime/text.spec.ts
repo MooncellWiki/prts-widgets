@@ -269,6 +269,32 @@ describe("StoryRuntime", () => {
     });
   });
 
+  it.each([
+    ["1,,2", { x: 1, y: 2 }, false],
+    [" , -4, ,3.5, 9, ", { x: -4, y: 3.5 }, false],
+    ["", { x: 0, y: 0 }, false],
+    [" , , ", { x: 0, y: 0 }, false],
+    ["1,,", { x: 0, y: 0 }, true],
+    ["1,2,bad", { x: 0, y: 0 }, true],
+  ] as const)("parses animtext pos %j", async (raw, position, warns) => {
+    const renderer = new FakeRenderer();
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext([
+        `[animtext(name="group_location_stamp",pos="${raw}")]<p=1>地点</>`,
+        '[name="A"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    expect(renderer.animTextCalls).toMatchObject([{ position }]);
+    expect(onWarning).toHaveBeenCalledTimes(warns ? 1 : 0);
+  });
+
   it("types dialogue <i> spans as zero-width and renders them as italic runs", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

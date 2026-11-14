@@ -1,10 +1,10 @@
 import { Container, Sprite, type Texture } from "pixi.js";
 
+import { STORY_HEIGHT, STORY_WIDTH, type AvgDisplayInput } from "../../types";
 import { canvasOrderForLayer, sceneCanvasOrder } from "../core/LayerGraph";
 import { Sequence } from "../core/Sequence";
 
 import type { PreparedAnimation } from "../../execution";
-import type { AvgDisplayInput } from "../../types";
 import type { TweenRunner } from "../core/TweenRunner";
 
 interface AvgDisplayState {
@@ -70,14 +70,19 @@ export class AvgDisplayPanel {
     }
 
     if (!state) {
+      const root = new Container();
+      // AVGDisplayableImageHolder.GenerateContent (2791 @ 0x18424EA50)
+      // leaves layout to the prefab. Center the Web holder's anchored sprite.
+      if (input.style === "bg")
+        root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
       state = {
         name: "",
-        root: new Container(),
+        root,
         sessionId: 0,
         slot,
         style: input.style,
       };
-      parent.addChild(state.root);
+      parent.addChild(root);
       this.states.set(input.id, state);
     }
     // ImageHolder.Display uses the slot canvas' global sorting order.
@@ -108,7 +113,7 @@ export class AvgDisplayPanel {
         if (!texture || root.destroyed || holder.ready !== ready) return;
         const sprite = root.addChild(new Sprite(texture));
         sprite.anchor.set(0.5);
-        sprite.setSize(1280, 720);
+        sprite.setSize(STORY_WIDTH, STORY_HEIGHT);
       });
       holder.ready = ready;
     }

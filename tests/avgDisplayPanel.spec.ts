@@ -2,8 +2,11 @@ import { Container, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { AvgDisplayPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/AvgDisplayPanel";
-
-import type { AvgDisplayInput } from "../src/widgets/StoryPlayer/engine/types";
+import {
+  STORY_HEIGHT,
+  STORY_WIDTH,
+  type AvgDisplayInput,
+} from "../src/widgets/StoryPlayer/engine/types";
 
 function input(overrides: Partial<AvgDisplayInput> = {}): AvgDisplayInput {
   return {
@@ -48,6 +51,22 @@ function makePanel(): {
 }
 
 describe("AvgDisplayPanel", () => {
+  it.each(["bgover", "charover", "cgover"] as const)(
+    "fills the story canvas for bg in %s",
+    async (slot) => {
+      const { panel, slots } = makePanel();
+
+      await panel.display(input({ slot, x: 100, y: 50 }));
+
+      expect(slots[slot]!.children[0]!.getBounds()).toMatchObject({
+        minX: 0,
+        minY: 0,
+        maxX: STORY_WIDTH,
+        maxY: STORY_HEIGHT,
+      });
+    },
+  );
+
   it("returns one sequence for position and scale and keeps them in step", async () => {
     const bgover = new Container();
     const animation = Promise.withResolvers<void>();

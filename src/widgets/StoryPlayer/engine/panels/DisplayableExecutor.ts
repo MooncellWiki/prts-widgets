@@ -6,7 +6,6 @@ import {
 import { resolveAvgDisplaySlot, resolveAvgDisplayStyle } from "../avgDisplay";
 import {
   exactArg,
-  parseVector2,
   toBoolean,
   toNumber,
   toOptionalNumber,
@@ -57,12 +56,27 @@ export class DisplayableExecutor extends ExecutorComponent {
   ): Promise<ExecutorResult> {
     // _ExecuteAnimatedText (2791 @ 0x184176860).
     const { args, trailingText } = line;
-    const rawPosition = exactArg(args, "pos");
-    const parsedPosition = parseVector2(rawPosition);
-    if (rawPosition !== undefined && !parsedPosition)
+    const rawPosition = toString(exactArg(args, "pos"));
+    // _GenParamWithCmd (2791 @ 0x184176B30) uses Command.TryGetParam<float[]>
+    // (0x18419B020), which skips empty fields and checks the whole list.
+    const coordinates = rawPosition
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map(toOptionalNumber);
+    const [x, y] = coordinates;
+    let position = { x: 0, y: 0 };
+    if (
+      x !== undefined &&
+      y !== undefined &&
+      coordinates.every(Number.isFinite)
+    ) {
+      position = { x, y };
+    } else if (coordinates.length > 0) {
       this.playback.warnInvalidParameter(
-        `animtext pos parse failed: ${toString(rawPosition)}`,
+        `animtext pos parse failed: ${rawPosition}`,
       );
+    }
 
     // Native attaches FinishCommand to InitView for a blocking stamp. The
     // Web first awaits its assets, then ExecutorComponent handles the wait.
@@ -71,7 +85,7 @@ export class DisplayableExecutor extends ExecutorComponent {
       content: this.playback.translateText(trailingText),
       id: toString(exactArg(args, "id")),
       name: toString(exactArg(args, "name")),
-      position: parsedPosition ?? { x: 0, y: 0 },
+      position,
       style: toString(exactArg(args, "style")),
     };
     const { animation } = await this.renderer.setAnimText(
