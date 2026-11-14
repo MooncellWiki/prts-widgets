@@ -881,6 +881,57 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "next" });
   });
 
+  it.each(["cgitem", "hidecgitem", "cgitemshake"])(
+    "resumes a skip while a blocking %s animation is still running",
+    async (command) => {
+      const renderer = new FakeRenderer();
+      const animation = Promise.withResolvers<void>();
+      const show = vi.spyOn(renderer, "showCgItem");
+      const hide = vi.spyOn(renderer, "clearCgItems");
+      const shake = vi.spyOn(renderer, "shakeCgItem");
+      const isHide = command === "hidecgitem";
+      const isShake = command === "cgitemshake";
+      const animate = isHide ? hide : isShake ? shake : show;
+      // Keep the setup show in flight so its native FinishCommand does not
+      // release the blocking hide or shake before the skip.
+      show.mockImplementationOnce(() => new Promise<void>(() => {}));
+      animate.mockImplementationOnce(() => animation.promise);
+      const runtime = new StoryRuntime(
+        createContext([
+          `[cgitem(image="item_a",pduration=20,block=${!isHide && !isShake})]`,
+          ...(isHide
+            ? ['[hidecgitem(image="item_a",fadetime=20,block=true)]']
+            : []),
+          ...(isShake ? ['[cgitemshake(image="item_a",block=true)]'] : []),
+          '[name="A"]skipped',
+          "[SkipToThis]",
+          '[name="B"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      const started = runtime.start();
+      await setImmediate();
+      expect(animate).toHaveBeenCalledTimes(1);
+      expect(runtime.getState()).toBe("running");
+
+      const skipped = runtime.skipNode();
+      try {
+        await setImmediate();
+        expect(runtime.getState()).toBe("waiting_input");
+        expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "after" });
+        expect(hide).toHaveBeenCalledTimes(isHide ? 1 : 0);
+        expect(renderer.cgItemShakeStops).toEqual([undefined]);
+        expect(renderer.cgItemResets).toBe(0);
+      } finally {
+        animation.resolve();
+        await Promise.all([started, skipped]);
+        runtime.destroy();
+      }
+    },
+  );
+
   it.each(["showitem", "hideitem"])(
     "clears the item slot when a skip ends the story during %s",
     async (command) => {

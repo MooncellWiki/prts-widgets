@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { setImmediate } from "node:timers/promises";
+
+import { describe, expect, it, vi } from "vitest";
 
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import {
@@ -330,8 +332,8 @@ describe("StoryRuntime", () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[cgitem(image="cgitem_test",id="left",style="cg",pfrom="1,2",pto="3,4",pduration=2,pdelay=0.5,sfrom=0.8,sto=1.2,sduration=3,sdelay=0.25,afrom=0,ato=1,aduration=1,adelay=0.1,rfrom=-10,rto=20,rduration=4,width=640,height=360,ease="Linear",block=true,layer=9,fadetime=8)]',
-        '[hidecgitem(image="cgitem_test",id="left",block=true)]',
+        '[cgitem(image="cgitem_test",id="left",style="cg",pfrom="1,2",pto="3,4",pduration=2,pdelay=-0.5,sfrom=0.8,sto=1.2,sduration=3,sdelay=0.25,afrom=0,ato=1,aduration=1,adelay=0.1,rfrom=-10,rto=20,rduration=4,width=640,height=360,ease="Linear",block=1,layer=9,fadetime=8)]',
+        '[hidecgitem(image="cgitem_test",id="left",block=" TRUE ")]',
         '[name="A"]ok',
       ]),
       renderer,
@@ -353,7 +355,8 @@ describe("StoryRuntime", () => {
         ease: "Linear",
         height: 360,
         key: "cgitem_test_left",
-        positionDelayMs: 500,
+        layer: 9,
+        positionDelayMs: -500,
         positionDurationMs: 2000,
         positionFrom: { x: 1, y: 2 },
         positionTo: { x: 3, y: 4 },
@@ -394,8 +397,218 @@ describe("StoryRuntime", () => {
         assetKey: "cgitem_test",
         ease: "Linear",
         key: "cgitem_test",
+        layer: 0,
       }),
     ]);
+  });
+
+  it("keeps raw cgitem slot keys separate from normalized asset keys", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image=" CG_Item ",id="Left")]',
+        '[hidecgitem(image=" CG_Item ",id="Left")]',
+        '[hidecgitem(id="Left")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.cgItemCalls).toEqual([
+      expect.objectContaining({
+        assetKey: "cg_item",
+        key: " CG_Item _Left",
+      }),
+    ]);
+    expect(renderer.clearCgItemCalls.map(({ key }) => key)).toEqual([
+      " CG_Item _Left",
+      "_Left",
+    ]);
+  });
+
+  it("dispatches the built-in CG blocker without an image lookup", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(style="blocker",id="Cover",block=true,aduration=5)]',
+        '[hidecgitem(id="Cover")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(renderer.cgItemCalls[0]).toMatchObject({
+      alphaDurationMs: 5000,
+      assetKey: undefined,
+      block: false,
+      key: "_Cover",
+    });
+    expect(renderer.clearCgItemCalls[0]?.key).toBe("_Cover");
+    expect(renderer.lastDialogue.text).toBe("after");
+  });
+
+  it("dispatches keyed CG shakes with scaled duration and explicit stop targets", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image=" CG_Item ",id="Left")]',
+        '[cgitemshake(image=" CG_Item ",id="Left",duration=4,stop=0,block=1,xstrength=12,ystrength=8,vibrato=2.5,randomness=45,fadeout=" TrUe ")]',
+        '[cgitemshake(image=" CG_Item ",id="Left")]',
+        '[cgitemshake(image=" CG_Item ",id="Left",stop=-1,block=true)]',
+        '[cgitemshake(stop=" TRUE ")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+    expect(renderer.cgItemShakeCalls).toEqual([
+      {
+        block: true,
+        durationMs: 2000,
+        fadeOut: true,
+        infinite: false,
+        key: " CG_Item _Left",
+        randomness: 45,
+        vibrato: 2,
+        xStrength: 12,
+        yStrength: 8,
+      },
+      {
+        block: false,
+        durationMs: 10_000,
+        fadeOut: false,
+        infinite: true,
+        key: " CG_Item _Left",
+        randomness: 90,
+        vibrato: 10,
+        xStrength: 1,
+        yStrength: 0,
+      },
+    ]);
+    expect(renderer.cgItemShakeStops).toEqual([" CG_Item _Left", undefined]);
+    expect(renderer.lastDialogue.text).toBe("after");
+  });
+
+  it("converts explicit null CG floats to zero", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image="a",ato=null,sto=null,rfrom=null)]',
+        '[cgitemshake(image="a",duration=null,block=true,xstrength=null,randomness=null)]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    expect(renderer.cgItemCalls[0]).toMatchObject({
+      alphaFrom: 1,
+      alphaTo: 0,
+      rotationFrom: 0,
+      scaleFrom: 1,
+      scaleTo: 0,
+    });
+    expect(renderer.cgItemShakeCalls[0]).toMatchObject({
+      block: false,
+      durationMs: 0,
+      infinite: false,
+      randomness: 0,
+      xStrength: 0,
+    });
+    expect(renderer.lastDialogue.text).toBe("after");
+  });
+
+  it.each([
+    { finish: "complete" as const, advances: true },
+    { finish: "reset" as const, advances: false },
+  ])(
+    "handles an earlier CG show ending with $finish during a blocking shake",
+    async ({ finish, advances }) => {
+      const renderer = new FakeRenderer();
+      const show = Promise.withResolvers<void>();
+      const shake = Promise.withResolvers<void>();
+      const showCgItem = vi
+        .spyOn(renderer, "showCgItem")
+        .mockReturnValue(show.promise);
+      const shakeCgItem = vi
+        .spyOn(renderer, "shakeCgItem")
+        .mockReturnValue(shake.promise);
+      const runtime = new StoryRuntime(
+        createContext([
+          '[cgitem(image="a",afrom=0,ato=1,aduration=0.5)]',
+          '[cgitemshake(image="a",duration=2,block=true)]',
+          '[name="A"]after',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      const started = runtime.start();
+      try {
+        expect(shakeCgItem).toHaveBeenCalledTimes(1);
+        expect(runtime.getState()).toBe("running");
+        if (finish === "complete") showCgItem.mock.calls[0]![1]?.();
+        show.resolve();
+        await setImmediate();
+        expect(renderer.lastDialogue.text === "after").toBe(advances);
+        shake.resolve();
+        await started;
+        expect(renderer.lastDialogue.text).toBe("after");
+        expect(renderer.cgItemShakeStops).toEqual([]);
+      } finally {
+        runtime.destroy();
+        show.resolve();
+        shake.resolve();
+        await started;
+      }
+    },
+  );
+
+  it("parses nonempty invalid CG positions and colors with the native fallbacks", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[cgitem(image="a",pfrom="20oops,40",pto="invalid",cfrom="bad",cto="1,0.5,bad,1",width=2.5,height=3.5)]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.cgItemCalls[0]).toMatchObject({
+      colorFrom: { a: 1, b: 1, g: 1, r: 1 },
+      colorTo: { a: 1, b: 0, g: 0.5, r: 1 },
+      height: 4,
+      positionFrom: { x: 0, y: 40 },
+      positionTo: { x: 0, y: 0 },
+      width: 2,
+    });
+  });
+
+  it("disposes CG slots at story end without a hide command", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext(['[cgitem(image="a")]', '[name="A"]last']),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.cgItemResets).toBe(0);
+    const advancing = runtime.advance();
+    await renderer.frames.advance(16, 16, 16, 200);
+    await advancing;
+    expect(runtime.getState()).toBe("finished");
+    expect(renderer.cgItemResets).toBe(1);
+    expect(renderer.clearCgItemCalls).toEqual([]);
   });
 
   it("reads a trailing-dot cgitem alpha as a number, not the fallback", async () => {
@@ -464,6 +677,8 @@ describe("StoryRuntime", () => {
       createContext([
         '[hidecgitem(image="cgitem_test",fadetime=0.5,duration=2)]',
         '[hidecgitem(image="cgitem_test",fadetime=0.7,duration=abc)]',
+        '[hidecgitem(image="cgitem_test",fadetime=0.7,duration=null)]',
+        '[hidecgitem(image="cgitem_test",fadetime=null)]',
         "[hidecgitem(duration=2,block=false)]",
         '[name="A"]ok',
       ]),
@@ -474,6 +689,8 @@ describe("StoryRuntime", () => {
     expect(renderer.clearCgItemCalls).toEqual([
       { block: false, ease: "Linear", fadeMs: 2000, key: "cgitem_test" },
       { block: false, ease: "Linear", fadeMs: 700, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 0, key: "cgitem_test" },
+      { block: false, ease: "Linear", fadeMs: 0, key: "cgitem_test" },
       { block: false, ease: "Linear", fadeMs: 2000, key: undefined },
     ]);
   });

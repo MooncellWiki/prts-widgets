@@ -1,11 +1,28 @@
-import { Container } from "pixi.js";
+import { Container, RenderLayer } from "pixi.js";
+
+// 2791 sharedassets1.assets, AVGController (3630) canvas holder config.
+export const sceneCanvasOrder = {
+  background: 1,
+  bgover: 10,
+  cgitem: 180,
+  cgover: 131,
+  character: 61,
+  charover: 70,
+  cutin: 180,
+  image: 121,
+  largeBackground: 2,
+  showItem: 130,
+} as const;
+
+/** AVGCanvasLayerHolder._CalculateNewLayer (2791 @ 0x184167D50). */
+export function canvasOrderForLayer(base: number, layer: number): number {
+  return base + 10 * (layer - 1);
+}
 
 /**
- * Web/PIXI adaptation of the scene roots consumed by
- * `Torappu.AVG.AVGCameraEffect._ExecuteCameraShake` and the AVG panels.
- * It preserves the documented `SceneCanvas/panel_avg` sibling relationships,
- * while flattening Unity canvases into PIXI containers rather than porting
- * Unity's Canvas implementation.
+ * Unity's SceneCanvas and CgItemCanvas share AVGCamera_Scene. A Pixi
+ * RenderLayer reproduces their nested canvases' overrideSorting while
+ * SceneCanvas/panel_avg still owns the transform used by camerashake.
  */
 export class LayerGraph {
   readonly background = new Container();
@@ -21,30 +38,54 @@ export class LayerGraph {
   readonly animTexts = new Container();
   readonly showItems = new Container();
   readonly scene = new Container();
+  readonly sceneCamera = new Container();
+  readonly sceneDraw = new RenderLayer({ sortableChildren: true });
   readonly ui = new Container();
   readonly world = new Container();
 
+  constructor() {
+    for (const slots of [
+      this.cgItems,
+      this.avgDisplayBackground,
+      this.avgDisplayCharacter,
+      this.avgDisplayCg,
+    ]) {
+      slots.on("childAdded", (root) => this.sceneDraw.attach(root));
+    }
+  }
+
   attach(stage: Container): void {
-    // 2791 sharedassets1 SceneCanvas sort orders: background 1, large
-    // background 2, bgoverlay 10, character 61, charoverlay 70, image 121,
-    // showItem 130, cgoverlay 131, character_cutin 180. Web image stacking
-    // still uses the legacy position below characters.
-    this.scene.addChild(this.background);
-    this.scene.addChild(this.gridBackground);
-    this.scene.addChild(this.avgDisplayBackground);
-    this.scene.addChild(this.images);
-    this.scene.addChild(this.characters);
-    this.scene.addChild(this.avgDisplayCharacter);
-    this.scene.addChild(this.showItems);
-    this.scene.addChild(this.avgDisplayCg);
-    this.scene.addChild(this.cutins);
-    this.world.addChild(this.scene);
-    // CgItemCanvas is a separate root canvas after SceneCanvas, so it sits
-    // outside `scene`: camerashake moves AVGCameraEffect._sceneRoot, which is
-    // the SceneCanvas-side panel_avg only, and must not drag CG items along.
-    this.world.addChild(this.cgItems);
+    this.scene.addChild(
+      this.background,
+      this.gridBackground,
+      this.avgDisplayBackground,
+      this.characters,
+      this.avgDisplayCharacter,
+      this.images,
+      this.showItems,
+      this.avgDisplayCg,
+      this.cutins,
+    );
+    const fixedCanvases = [
+      [this.background, sceneCanvasOrder.background],
+      [this.gridBackground, sceneCanvasOrder.largeBackground],
+      [this.characters, sceneCanvasOrder.character],
+      [this.images, sceneCanvasOrder.image],
+      [this.showItems, sceneCanvasOrder.showItem],
+      [this.cutins, sceneCanvasOrder.cutin],
+    ] as const;
+    // At an equal sortingOrder Unity draws SceneCanvas before CgItemCanvas.
+    this.sceneDraw.sortFunction = (a, b) =>
+      a.zIndex - b.zIndex ||
+      Number(a.parent === this.cgItems) - Number(b.parent === this.cgItems);
+    for (const [root, order] of fixedCanvases) {
+      root.zIndex = order;
+      this.sceneDraw.attach(root);
+    }
+    this.sceneCamera.addChild(this.scene, this.cgItems, this.sceneDraw);
+    this.world.addChild(this.sceneCamera);
     // UICanvas/panel_displayable draws animtext above the scene and blocker,
-    // below panel_curtains. SceneCanvas camera effects apply only to scene.
+    // below panel_curtains.
     this.world.addChild(this.animTexts);
     this.world.addChild(this.curtains);
     stage.addChild(this.world);

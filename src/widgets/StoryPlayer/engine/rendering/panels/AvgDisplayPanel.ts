@@ -1,12 +1,14 @@
 import { Container, Sprite, type Texture } from "pixi.js";
 
-import type { AvgDisplayInput, AvgDisplaySlot } from "../../types";
+import { canvasOrderForLayer, sceneCanvasOrder } from "../core/LayerGraph";
+
+import type { AvgDisplayInput } from "../../types";
 
 interface AvgDisplayState {
   name: string;
   root: Container;
   sessionId: number;
-  slot: AvgDisplaySlot;
+  slot: "bgover" | "cgover" | "charover";
   style: string;
 }
 
@@ -48,13 +50,14 @@ export class AvgDisplayPanel {
       return;
     }
 
-    const parent = this.containerFor(input.slot);
-    if (!parent) {
+    const { slot } = input;
+    if (slot !== "bgover" && slot !== "cgover" && slot !== "charover") {
       this.onWarning?.(
         `invalid_parameter avgdisplay slot:${input.slot || "(empty)"}`,
       );
       return;
     }
+    const parent = this.slots[slot];
 
     let state = this.states.get(input.id);
     // _DisplayInternal (2.7.81 VA 0x183F9A5F0) disposes and regenerates the
@@ -71,12 +74,17 @@ export class AvgDisplayPanel {
         name: "",
         root: new Container(),
         sessionId: 0,
-        slot: input.slot,
+        slot,
         style: input.style,
       };
       parent.addChild(state.root);
       this.states.set(input.id, state);
     }
+    // ImageHolder.Display uses the slot canvas' global sorting order.
+    state.root.zIndex = canvasOrderForLayer(
+      sceneCanvasOrder[slot],
+      input.layer,
+    );
 
     if (state.name !== input.name) {
       // Divergence (intentional, verified 2.7.61 and 2.7.81): native
@@ -96,9 +104,6 @@ export class AvgDisplayPanel {
 
     const sessionId = ++state.sessionId;
     const root = state.root;
-    root.zIndex = input.layer;
-    parent.sortableChildren = true;
-
     const currentX = root.position.x - 640;
     const currentY = 360 - root.position.y;
     const startX = input.xFrom ?? input.x ?? currentX;
@@ -176,12 +181,6 @@ export class AvgDisplayPanel {
     const run = this.tween(input.durationMs, apply);
     if (input.block) await run;
     else void run;
-  }
-
-  private containerFor(slot: AvgDisplaySlot): Container | null {
-    if (slot === "bgover" || slot === "cgover" || slot === "charover")
-      return this.slots[slot];
-    return null;
   }
 
   private async generateContent(

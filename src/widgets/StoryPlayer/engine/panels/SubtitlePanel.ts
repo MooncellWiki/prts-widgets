@@ -1,3 +1,4 @@
+import { ExecutorComponent, type PanelExecutors } from "../ExecutorComponent";
 import { exactArg, toNumber, toString } from "../commandParams";
 import { AVGEvent, type EventPool } from "../eventPool";
 import {
@@ -10,11 +11,7 @@ import {
 
 import { AVGTypeWriterText } from "./AVGTypeWriterText";
 
-import type {
-  CommandRegistry,
-  CommandResult,
-  WaitForClick,
-} from "../commandRegistry";
+import type { WaitForClick } from "../commandRegistry";
 
 interface SubtitlePlayback {
   beginTyping: (messageLength: number) => () => void;
@@ -29,7 +26,7 @@ interface SubtitlePlayback {
  * The panel owns command parsing, the typewriter and input. SubtitleView
  * adapts the visual responsibilities to Pixi through StoryRenderer.
  */
-export class SubtitlePanel {
+export class SubtitlePanel extends ExecutorComponent {
   private readonly typeWriter: AVGTypeWriterText;
 
   constructor(
@@ -39,13 +36,14 @@ export class SubtitlePanel {
     >,
     private readonly playback: SubtitlePlayback,
   ) {
+    super();
     this.typeWriter = new AVGTypeWriterText((update) =>
       renderer.onFrameUpdate(update),
     );
   }
 
-  register(registry: CommandRegistry<CommandResult>): void {
-    registry.register("subtitle", (line) => this.executeSubtitle(line));
+  protected getExecutors(): PanelExecutors {
+    return { subtitle: (line) => this.executeSubtitle(line) };
   }
 
   /** Native OnStoryBegin / _SetTypeWriterDelay (2791 @ 0x1841E5010 / 0x1841E5D10). */
@@ -70,11 +68,14 @@ export class SubtitlePanel {
     handleClick: (finishCommand) => {
       if (!this.typeWriter.tryFinish()) finishCommand();
     },
-    // Native ForceCommandEnd (2791 @ 0x1841E4BA0) leaves visibility to OnReset.
-    forceEnd: () => this.typeWriter.tryFinish(),
   };
 
-  private executeSubtitle(line: ParsedCommandLine): CommandResult {
+  /** 2791 OnFinish / ForceCommandEnd (@ 0x1841E4D30 / 0x1841E4BA0). */
+  protected override onFinish(): void {
+    this.typeWriter.tryFinish();
+  }
+
+  private executeSubtitle(line: ParsedCommandLine): "continue" | WaitForClick {
     // _ExecuteSubtitle (2791 @ 0x1841E5320) ignores the script's delay.
     const { args } = line;
     const text = this.playback.translateText(toString(exactArg(args, "text")));

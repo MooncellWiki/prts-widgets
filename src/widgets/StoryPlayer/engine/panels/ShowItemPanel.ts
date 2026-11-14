@@ -1,6 +1,10 @@
+import {
+  ExecutorComponent,
+  type ExecutorResult,
+  type PanelExecutors,
+} from "../ExecutorComponent";
 import { exactArg, toString } from "../commandParams";
 
-import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type {
   ParsedCommandLine,
   StoryRenderer,
@@ -9,22 +13,25 @@ import type {
 
 interface ShowItemPlayback {
   resolveImageKey: (key: string) => string | null;
-  waitForAnimation: (animation: Promise<void>) => Promise<boolean>;
   warnInvalidParameter: (detail: string, line: ParsedCommandLine) => void;
 }
 
 /** Native port: Torappu.AVG.AVGShowItemPanel (2791 GetExecutors @ 0x1841B1690). */
-export class ShowItemPanel {
+export class ShowItemPanel extends ExecutorComponent {
   private slotInUse: StoryShowItemSlot | null = null;
 
   constructor(
     private readonly renderer: Pick<StoryRenderer, "createShowItemSlot">,
     private readonly playback: ShowItemPlayback,
-  ) {}
+  ) {
+    super();
+  }
 
-  register(registry: CommandRegistry<CommandResult>): void {
-    registry.register("showitem", (line) => this.executeShowItem(line));
-    registry.register("hideitem", (line) => this.executeHideItem(line));
+  protected getExecutors(): PanelExecutors {
+    return {
+      hideitem: (line) => this.executeHideItem(line),
+      showitem: (line) => this.executeShowItem(line),
+    };
   }
 
   /**
@@ -37,9 +44,7 @@ export class ShowItemPanel {
     slot?.destroy();
   }
 
-  private async executeShowItem(
-    line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+  private executeShowItem(line: ParsedCommandLine): ExecutorResult {
     const animation = new Promise<void>((finish, reject) => {
       const show = () => {
         void this.showItem(line, finish).catch(reject);
@@ -49,8 +54,9 @@ export class ShowItemPanel {
       if (this.slotInUse) this.hideItem(this.slotInUse, line, show);
       else show();
     });
-    await this.playback.waitForAnimation(animation);
-    return "continue";
+    // The slot owns replacement callbacks. After SkipStory, the destination
+    // can start its Hide before the previous Web animation has settled.
+    return { animation, block: true };
   }
 
   private async showItem(
@@ -84,17 +90,16 @@ export class ShowItemPanel {
     }
   }
 
-  private async executeHideItem(
-    line: ParsedCommandLine,
-  ): Promise<CommandResult> {
+  private executeHideItem(line: ParsedCommandLine): ExecutorResult {
     // _ExecuteHideItem @ 0x1841B1910 returns immediately without a live slot.
     const slot = this.slotInUse;
-    if (slot) {
-      await this.playback.waitForAnimation(
-        new Promise<void>((finish) => this.hideItem(slot, line, finish)),
-      );
-    }
-    return "continue";
+    if (!slot) return "continue";
+    return {
+      animation: new Promise<void>((finish) =>
+        this.hideItem(slot, line, finish),
+      ),
+      block: true,
+    };
   }
 
   private hideItem(

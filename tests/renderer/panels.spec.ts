@@ -164,6 +164,8 @@ describe("ShowItemSlot rendering", () => {
       const skipped = runtime.skipNode();
       await flushAsync();
 
+      // FinishCommand for the old Show can arrive on the same update as the
+      // destination Hide. It must not settle the Hide's own wait.
       ticker.update(16);
       await flushAsync();
       expect(layer.children).toEqual([root]);

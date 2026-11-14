@@ -115,6 +115,7 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
       else if (style === "character") addCharacterUrl(urls, name);
       continue;
     }
+    if (line.command === "cgitem" && line.args.style === "blocker") continue;
     if (
       line.command === "image" ||
       line.command === "showitem" ||

@@ -27,9 +27,11 @@ import {
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
+import { CgItemPanel } from "./panels/CgItemPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { ShowItemPanel } from "./panels/ShowItemPanel";
+import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerPanel } from "./panels/StickerPanel";
 import { SubtitlePanel } from "./panels/SubtitlePanel";
 import { parseScript } from "./parser";
@@ -52,7 +54,6 @@ import type {
   RuntimeLogPosition,
   RuntimeOptions,
   RuntimeWarning,
-  SpellStickerInput,
   StoryAudio,
   StoryCommandArgs,
   StoryPlayerEvents,
@@ -154,9 +155,7 @@ const builtinCommandNames = [
   "focusparam",
   "theater",
   "bgeffect",
-  "cgitem",
   "effect",
-  "hidecgitem",
 ] as const;
 
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
@@ -218,38 +217,6 @@ function parseNumberSequence(value: unknown): number[] {
       return Number(normalized);
     })
     .filter((item) => Number.isFinite(item));
-}
-
-/**
- * Native port: `Torappu.AVG.CommandParser.ParseRotateParam` parses `rto` /
- * `rfrom` as Vector3 and feeds only the z component to `DORotate`. Scripts
- * are expected to write "x,y,z"; a bare number is accepted as a z-only
- * shorthand (web adaptation -- the native Vector3 parser is stricter, but no
- * shipped script writes the key at all, so the relaxation is harmless).
- */
-function parseCgVector2(value: unknown): { x: number; y: number } | undefined {
-  if (typeof value !== "string") return undefined;
-  const parts = value.split(",");
-  if (parts.length !== 2) return undefined;
-  const x = Number.parseFloat(parts[0]!.trim());
-  const y = Number.parseFloat(parts[1]!.trim());
-  return {
-    x: Number.isFinite(x) ? x : 0,
-    y: Number.isFinite(y) ? y : 0,
-  };
-}
-
-function parseCgColor(
-  value: unknown,
-): { r: number; g: number; b: number; a: number } | undefined {
-  if (typeof value !== "string") return undefined;
-  const parts = value.split(",");
-  if (parts.length !== 4) return undefined;
-  const values = parts.map((part) => {
-    const parsed = Number.parseFloat(part.trim());
-    return Number.isFinite(parsed) ? parsed : 1;
-  });
-  return { a: values[3]!, b: values[2]!, g: values[1]!, r: values[0]! };
 }
 
 function parseInterludeType(value: unknown): InterludeElementType {
@@ -412,6 +379,7 @@ export class StoryRuntime {
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly showItemPanel: ShowItemPanel;
+  private readonly spellStickerPanel: SpellStickerPanel;
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
   private pendingDelay: PendingDelay | null = null;
@@ -467,14 +435,17 @@ export class StoryRuntime {
     });
     this.showItemPanel = new ShowItemPanel(renderer, {
       resolveImageKey: (key) => this.resolveImageKey(key),
-      waitForAnimation: (animation) => this.waitInterruptiblePromise(animation),
       warnInvalidParameter: (detail, line) =>
         this.warn("invalid_parameter", detail, line.lineNumber, line.command),
+    });
+    this.spellStickerPanel = new SpellStickerPanel(renderer, {
+      scheduleAutoClick: (delayMs) => this.scheduleAutoClick(delayMs),
+      translateText: (text) => this.translateText(text),
+      warn: (detail) => this.warn("parse", detail),
     });
     this.stickerPanel = new StickerPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       beginTyping: (length) => this.beginTextTyping(length),
-      playbackGeneration: () => this.playbackGeneration,
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
@@ -489,17 +460,17 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
+    new CgItemPanel(renderer, {
+      animateRatio: () => this.getCurrentSpeed().animateRatio,
+      resolveImageKey: (key) => this.resolveImageKey(key),
+      warn: (type, detail) => this.warn(type, detail),
+    }).register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
+    this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
-    this.commandRegistry.register("spellsticker", (line) =>
-      this.executeSpellSticker(line),
-    );
-    this.commandRegistry.register("spellstickerclear", (line) =>
-      this.executeSpellStickerClear(line),
-    );
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -1071,7 +1042,7 @@ export class StoryRuntime {
           // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
           () => this.renderer.clearInterludes(),
           () => this.renderer.clearCharacterCutin(),
-          () => this.renderer.clearSpellStickers(),
+          () => this.spellStickerPanel.reset(),
           () => this.subtitlePanel.reset(),
           () => this.stickerPanel.reset(),
         ]) {
@@ -1239,6 +1210,9 @@ export class StoryRuntime {
     void this.subtitlePanel.reset();
     this.renderer.clearAnimTexts();
     this.renderer.clearAvgDisplays();
+    // AVGCgItemPanel.OnReset (2791 @ 0x1841890F0) disposes the slots at
+    // story end. ShouldResetOnSkip keeps them alive across segment skips.
+    this.renderer.resetCgItems();
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.showItemPanel.reset();
@@ -1305,24 +1279,39 @@ export class StoryRuntime {
         if (!this.decisionPredicator.needToExecuteCommand(line)) continue;
 
         const generation = this.playbackGeneration;
+        const isCurrent = () =>
+          !this.destroyed && generation === this.playbackGeneration;
         const execution =
           line.kind === "command"
-            ? this.executeCommand(line)
-            : this.dialogPanel.executeTextLine(line);
+            ? this.executeCommand(line, isCurrent)
+            : this.dialogPanel.executeTextLine(line, isCurrent);
         const result =
           execution instanceof Promise ? await execution : execution;
         if (this.destroyed) return;
         // A skipped executor can still return a stale input wait. Its click
         // follow-up (spellsticker block) travels with the dropped handler.
-        if (generation !== this.playbackGeneration) continue;
+        if (!isCurrent()) continue;
         if (result !== "continue") {
           const waits = Array.isArray(result) ? result : [result];
+          const animations = waits.filter((wait) => "animation" in wait);
+          if (animations.length > 0) {
+            await this.waitInterruptiblePromise(
+              Promise.all(animations.map(({ animation }) => animation)),
+              () => {
+                for (const { forceEnd } of animations) forceEnd();
+              },
+            );
+            if (!isCurrent()) continue;
+          }
           const decision = waits.find((wait) => "showDecision" in wait);
           if (decision) return this.waitForDecision(decision);
           const delay = waits.find((wait) => "delayMs" in wait);
           if (delay) return this.waitForDelay(delay.delayMs);
-          this.waitForInput(waits.filter((wait) => "handleClick" in wait));
-          return;
+          const clicks = waits.filter((wait) => "handleClick" in wait);
+          if (clicks.length) {
+            this.waitForInput(clicks);
+            return;
+          }
         }
       }
     } catch (error) {
@@ -1467,6 +1456,7 @@ export class StoryRuntime {
 
   private executeCommand(
     line: ParsedCommandLine,
+    isCurrent: () => boolean,
   ): CommandResult | CommandWait[] | Promise<CommandResult | CommandWait[]> {
     // HEADER remains in Story.commands but has no registered executor.
     if (line.command === "header") return "continue";
@@ -1475,92 +1465,17 @@ export class StoryRuntime {
       this.warn("unknown_command", line.command);
       return "continue";
     }
-    if (executors.length === 1) return executors[0]!(line);
+    if (executors.length === 1) return executors[0]!(line, isCurrent);
     const combine = (results: CommandResult[]) => {
       const waits = results.filter((result) => result !== "continue");
       return waits.length > 0 ? waits : "continue";
     };
-    const results = executors.map((executor) => executor(line));
+    const results = executors.map((executor) => executor(line, isCurrent));
     return results.every(
       (result): result is CommandResult => !(result instanceof Promise),
     )
       ? combine(results)
       : Promise.all(results).then(combine);
-  }
-
-  private executeSpellSticker(
-    line: ParsedCommandLine,
-  ): CommandResult | Promise<CommandResult> {
-    // Native _ExecuteSpellSticker (2791 @ 0x1841B37F0) displays or hides the
-    // view inline. Keep synchronous renderers on the same command-loop turn.
-    const { args } = line;
-    const id = toString(this.exactArg(args, "id"));
-    if (!id) {
-      this.warn("parse", "spellsticker id is empty");
-      return "continue";
-    }
-    const hide =
-      toString(this.exactArg(args, "action"), "show").toLowerCase() === "hide";
-    const block = toBoolean(this.exactArg(args, "block"), false);
-    // Native _ShowSticker writes alpha only when supplied, preserving the
-    // previous alpha when reusing a sticker.
-    const alpha = toOptionalNumber(this.exactArg(args, "alpha"));
-    const generation = this.playbackGeneration;
-    const render = hide
-      ? this.renderer.hideSpellSticker(id)
-      : this.renderer.setSpellSticker({
-          alpha: alpha === undefined ? undefined : clamp(alpha, 0, 1),
-          angle: toOptionalNumber(this.exactArg(args, "angle")),
-          content: this.translateText(line.content),
-          id,
-          style: toString(this.exactArg(args, "style"), "sami"),
-          x: toOptionalNumber(this.exactArg(args, "x")),
-          xScale: toOptionalNumber(this.exactArg(args, "xScale")),
-          y: toOptionalNumber(this.exactArg(args, "y")),
-          yScale: toOptionalNumber(this.exactArg(args, "yScale")),
-        } satisfies SpellStickerInput);
-
-    const complete = (durationMs: number | void): CommandResult => {
-      if (!block || generation !== this.playbackGeneration) return "continue";
-      // Use the show clip's length, falling back to the base auto wait.
-      this.scheduleAutoClick(
-        typeof durationMs === "number" && durationMs > 0
-          ? durationMs
-          : undefined,
-      );
-      // _OnClicked and ForceCommandEnd (2791 @ 0x1841B27A0) hide the
-      // blocking show by ID and clear it before another callback can hide.
-      if (hide) return { handleClick: (finishCommand) => finishCommand() };
-      let blockingStickerId: string | null = id;
-      const hideBlocking = () => {
-        if (blockingStickerId === null) return;
-        const stickerId = blockingStickerId;
-        blockingStickerId = null;
-        return this.renderer.hideSpellSticker(stickerId);
-      };
-      return {
-        handleClick: (finishCommand) =>
-          finishCommand({ onClick: hideBlocking }),
-        forceEnd: hideBlocking,
-      };
-    };
-    return render instanceof Promise ? render.then(complete) : complete(render);
-  }
-
-  private executeSpellStickerClear(
-    line: ParsedCommandLine,
-  ): CommandResult | Promise<CommandResult> {
-    // _ExecuteSpellStickerClear (2791 @ 0x1841B35D0) clears inline and
-    // raises an auto click with length zero when the command blocks.
-    const block = toBoolean(this.exactArg(line.args, "block"), false);
-    const generation = this.playbackGeneration;
-    const render = this.renderer.clearSpellStickers();
-    const complete = (): CommandResult => {
-      if (!block || generation !== this.playbackGeneration) return "continue";
-      this.scheduleAutoClick();
-      return { handleClick: (finishCommand) => finishCommand() };
-    };
-    return render instanceof Promise ? render.then(complete) : complete();
   }
 
   private executeBuiltinCommand(
@@ -2324,116 +2239,6 @@ export class StoryRuntime {
           x: toNumber(this.exactArg(args, "x"), 0),
           y: toNumber(this.exactArg(args, "y"), 0),
         });
-        return "continue";
-      }
-
-      case "cgitem": {
-        // Native port: Torappu.AVG.AVGCgItemPanel._ExecuteShowCgItem. This
-        // adapter preserves the id-derived slot key and independent transform
-        const image = toString(this.exactArg(args, "image"));
-        const id = toString(this.exactArg(args, "id"));
-        const key = id ? `${image}_${id}` : image;
-        const style = toString(this.exactArg(args, "style"), "cg");
-        if (style === "blocker") {
-          // Native port scope: `AVGCgItemPanel._ShowItem` (2.7.81
-          // 0x183fb12b0) runs its common prefix (instantiate the style's
-          // slot prefab, dispose the old same-key entry, write
-          // m_slotsInUseDict, bind PostDisplay) for `style="blocker"` as
-          // well; it then skips the sprite load, calls the blocker slot's
-          // `Show(command, null, null)` and finishes the command at once.
-          // The web player has no such prefab, so the whole command is
-          // deliberately omitted here (corpus usage: 0).
-          this.warn(
-            "unsupported_command",
-            "cgitem style=blocker uses a native-only scene sprite",
-          );
-          return "continue";
-        }
-        if (style !== "cg") {
-          this.warn(
-            "invalid_parameter",
-            `cgitem style is not registered: ${style}`,
-          );
-          return "continue";
-        }
-        if (!image) {
-          this.warn("missing_asset", "cgitem: (empty)");
-          return "continue";
-        }
-        const resolved = this.resolveImageKey(image);
-        if (!resolved) {
-          this.warn("missing_asset", `cgitem: ${image}`);
-          return "continue";
-        }
-        const seconds = (name: string) =>
-          Math.max(0, toNumber(this.exactArg(args, name), 0) * 1000);
-        const colorFrom = parseCgColor(this.exactArg(args, "cfrom"));
-        const colorTo = parseCgColor(this.exactArg(args, "cto"));
-        await this.renderer.showCgItem({
-          alphaDelayMs: seconds("adelay"),
-          alphaDurationMs: seconds("aduration"),
-          alphaFrom: toNumber(this.exactArg(args, "afrom"), 1),
-          alphaTo: toNumber(this.exactArg(args, "ato"), 1),
-          assetKey: resolved,
-          block: toBoolean(this.exactArg(args, "block"), false),
-          colorFrom: colorFrom && colorTo ? colorFrom : undefined,
-          colorTo: colorFrom && colorTo ? colorTo : undefined,
-          // `AVGShowItemCgSlot.Show` (2.7.81 0x18405dde0) reads the curve with
-          // `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`. In
-          // DOTween's `Ease` enum `Unset = 0, Linear = 1, InSine = 2`, so the
-          // default is `Ease.Linear`, not an eased curve; 185/188 corpus
-          // cgitem lines omit `ease` and therefore move linearly.
-          ease: toString(this.exactArg(args, "ease"), "Linear"),
-          height: Math.trunc(toNumber(this.exactArg(args, "height"), 0)),
-          key,
-          positionDelayMs: seconds("pdelay"),
-          positionDurationMs: seconds("pduration"),
-          positionFrom: parseCgVector2(this.exactArg(args, "pfrom")),
-          positionTo: parseCgVector2(this.exactArg(args, "pto")),
-          rotationDurationMs: seconds("rduration"),
-          rotationFrom: toNumber(this.exactArg(args, "rfrom"), -1),
-          rotationTo: toNumber(this.exactArg(args, "rto"), 0),
-          scaleDelayMs: seconds("sdelay"),
-          scaleDurationMs: seconds("sduration"),
-          scaleFrom: toNumber(this.exactArg(args, "sfrom"), 1),
-          scaleTo: toNumber(this.exactArg(args, "sto"), 1),
-          width: Math.trunc(toNumber(this.exactArg(args, "width"), 0)),
-        });
-        return "continue";
-      }
-
-      case "hidecgitem": {
-        // Native port: Torappu.AVG.AVGCgItemPanel._ExecuteHideCgItem. An omitted
-        // key clears all slots; a supplied image/id selects one.
-        const image = toString(this.exactArg(args, "image"));
-        const id = toString(this.exactArg(args, "id"));
-        const key = image || id ? (id ? `${image}_${id}` : image) : undefined;
-        // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) resolves the fade as
-        // `GetFloat(param, "fadetime", 0.13)` and then replaces it wholesale
-        // with `Command.TryGetParam(string, out float)` (0x183fbf5a0) when
-        // the script wrote `duration` -- no combining. TryGetParam hits on
-        // key presence and runs `Convert.ToSingle`, so an unparseable value
-        // throws in native; like toNumber, the port keeps fadetime instead of
-        // breaking playback. Clear-all fades every slot through the same
-        // `Hide`, so the override applies there too. It is exclusive to the
-        // CG slot: photo/cutin `Hide` (0x18405fc60 / 0x18405f0e0) read
-        // fadetime only, so `hideitem` is unaffected. Corpus:
-        // act54side/level_act54side_08_beg.txt:540-556 (keyed, duration=3/2)
-        // and act52side/level_act52side_08_end.txt:227 (clear-all,
-        // duration=2).
-        const fadeSeconds =
-          toOptionalNumber(this.exactArg(args, "duration")) ??
-          toNumber(this.exactArg(args, "fadetime"), 0.13);
-        await this.renderer.clearCgItems(
-          key,
-          Math.max(0, Math.round(fadeSeconds * 1000)),
-          // `AVGShowItemCgSlot.Hide` (2.7.81 0x18405da70) reads the curve
-          // with `GetEnum<Ease>(param, "ease", (Ease)1, ignoreCase: false)`;
-          // DOTween `Ease` 1 is Linear (`Unset` = 0, `InSine` = 2), the same
-          // default as Show. No corpus hidecgitem line writes `ease`.
-          toString(this.exactArg(args, "ease"), "Linear"),
-          toBoolean(this.exactArg(args, "block"), false),
-        );
         return "continue";
       }
 

@@ -1,4 +1,6 @@
 export type ExecutionEndReason = "complete" | "force_end" | "reset";
+/** The view's end Promise settles even if the animation is retired. */
+export type AnimationCompletion = Promise<ExecutionEndReason | void> | void;
 
 export interface ExecutionHandle {
   readonly blocking: boolean;

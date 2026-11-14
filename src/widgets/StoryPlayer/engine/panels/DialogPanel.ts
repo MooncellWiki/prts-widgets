@@ -1,3 +1,4 @@
+import { ExecutorComponent, type PanelExecutors } from "../ExecutorComponent";
 import {
   exactArg,
   toBoolean,
@@ -10,11 +11,7 @@ import { parseRichChars } from "../richtext";
 
 import { AVGTypeWriterText } from "./AVGTypeWriterText";
 
-import type {
-  CommandRegistry,
-  CommandResult,
-  WaitForClick,
-} from "../commandRegistry";
+import type { CommandResult, WaitForClick } from "../commandRegistry";
 import type {
   DialogueLayout,
   ParsedCommandLine,
@@ -37,7 +34,7 @@ interface DialogPlayback {
  * The web adapter renders through StoryRenderer and leaves input arbitration
  * and RaiseAutoClick scheduling to StoryRuntime.
  */
-export class DialogPanel {
+export class DialogPanel extends ExecutorComponent {
   private readonly typeWriter: AVGTypeWriterText;
   private destroyed = false;
   private multilineText = "";
@@ -52,35 +49,41 @@ export class DialogPanel {
     >,
     private readonly playback: DialogPlayback,
   ) {
+    super();
     this.typeWriter = new AVGTypeWriterText((update) =>
       renderer.onFrameUpdate(update),
     );
   }
 
-  register(registry: CommandRegistry<CommandResult>): void {
-    registry.register("dialog", (line) =>
-      this.executeDialog(
-        toString(exactArg(line.args, "name")),
-        line.content,
-        line.lineNumber,
-      ),
-    );
-    registry.register("aside", (line) =>
-      this.executeDialog("", line.content, line.lineNumber, "aside"),
-    );
-    registry.register("multiline", (line) => this.executeMultiline(line));
-    registry.register("endtip", (line) => this.executeEndtip(line));
+  protected getExecutors(): PanelExecutors {
+    return {
+      dialog: (line) =>
+        this.executeDialog(
+          toString(exactArg(line.args, "name")),
+          line.content,
+          line.lineNumber,
+        ),
+      aside: (line) =>
+        this.executeDialog("", line.content, line.lineNumber, "aside"),
+      multiline: (line) => this.executeMultiline(line),
+      endtip: (line) => this.executeEndtip(line),
+    };
   }
 
   /** The web parser also represents name tags and bare narration as text lines. */
   executeTextLine(
     line: ParsedDialogueLine | ParsedNarrationLine,
-  ): CommandResult {
+    isCurrent: () => boolean,
+  ): CommandResult | Promise<CommandResult> {
     if (line.kind === "narration" && !line.text) return "continue";
-    return this.executeDialog(
-      line.kind === "dialogue" ? line.speaker : "",
-      line.text,
-      line.lineNumber,
+    return this.execute(
+      () =>
+        this.executeDialog(
+          line.kind === "dialogue" ? line.speaker : "",
+          line.text,
+          line.lineNumber,
+        ),
+      isCurrent,
     );
   }
 
@@ -90,18 +93,17 @@ export class DialogPanel {
       const finishedTyping = this.typeWriter.tryFinish();
       if (this.multilineEnd) this.resetMultiline();
       if (finishedTyping) return;
-      finishCommand({ onFinish: () => this.renderer.finishDialogueCommand() });
+      finishCommand();
     },
-    forceEnd: () => this.forceCommandEnd(),
   };
 
   /**
-   * Native ForceCommandEnd (2791 @ 0x1841C8440) reveals the line and restores
-   * its width. The type-end callback can raise an auto click during a
+   * Native OnFinish / ForceCommandEnd (2791 @ 0x1841C8710 / 0x1841C8440)
+   * reveal the line and restore its width. Typing can raise an auto click during a
    * protected skip. ShouldResetOnSkip is false, so the multiline run remains
    * available to the next command after the jump.
    */
-  private forceCommandEnd(): void {
+  protected override onFinish(): void {
     this.typeWriter.tryFinish();
     this.renderer.finishDialogueCommand();
   }
@@ -127,7 +129,7 @@ export class DialogPanel {
     text: string,
     lineNumber: number,
     executor: "dialog" | "aside" = "dialog",
-  ): CommandResult {
+  ): "continue" | WaitForClick {
     // _ExecuteDialog and _ExecuteAside hide on empty content. Only a new
     // content-bearing command resets the accumulated multiline.
     if (!text) {
@@ -141,7 +143,7 @@ export class DialogPanel {
     return this.clickWait;
   }
 
-  private executeMultiline(line: ParsedCommandLine): CommandResult {
+  private executeMultiline(line: ParsedCommandLine): "continue" | WaitForClick {
     const text = line.trailingText;
     if (!text) {
       this.renderer.hideDialogue();
@@ -169,7 +171,7 @@ export class DialogPanel {
     return this.clickWait;
   }
 
-  private executeEndtip(line: ParsedCommandLine): CommandResult {
+  private executeEndtip(line: ParsedCommandLine): "continue" | WaitForClick {
     // _ExecuteEndtip (2791 @ 0x1841CA2D0) gates on shouldProcessEndtip and
     // switches to manual. The implicit endtip has empty content, which still
     // shows the frame and waits for a click.
