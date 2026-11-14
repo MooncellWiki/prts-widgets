@@ -9,7 +9,6 @@ import {
 } from "./characterRef";
 import {
   exactArg,
-  parseVector2,
   roundHalfToEven,
   toBoolean,
   toNumber,
@@ -29,6 +28,7 @@ import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
 import { CameraEffectExecutor } from "./panels/CameraEffectExecutor";
 import { CgItemPanel } from "./panels/CgItemPanel";
+import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { DisplayableExecutor } from "./panels/DisplayableExecutor";
@@ -47,8 +47,6 @@ import type {
   CharacterActionInput,
   CharacterSlotInput,
   DecisionPolicy,
-  InterludeElementType,
-  InterludeInput,
   LineSeekUpdate,
   ParsedCommandLine,
   PlayerState,
@@ -140,8 +138,6 @@ const builtinCommandNames = [
   "charslot",
   "character",
   "characteraction",
-  "charactercutin",
-  "interlude",
   "playmusic",
   "stopmusic",
   "musicvolume",
@@ -210,15 +206,6 @@ function parseNumberSequence(value: unknown): number[] {
       return Number(normalized);
     })
     .filter((item) => Number.isFinite(item));
-}
-
-function parseInterludeType(value: unknown): InterludeElementType {
-  const raw = toString(value).trim();
-  if (raw === "uichar") return 1;
-  if (raw === "bg") return 2;
-  if (raw === "char") return 3;
-  const numeric = Math.trunc(toNumber(value, 0));
-  return numeric === 1 || numeric === 2 || numeric === 3 ? numeric : 0;
 }
 
 function resolveGroupedAssetSelection(
@@ -367,6 +354,7 @@ export class StoryRuntime {
   private quickSpeedLevel = 0;
   private state: PlayerState = "idle";
   private readonly cameraEffectExecutor: CameraEffectExecutor;
+  private readonly characterCutinPanel: CharacterCutinPanel;
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly displayableExecutor: DisplayableExecutor;
@@ -399,6 +387,13 @@ export class StoryRuntime {
     this.skipToIndex = preprocessSkipToIndex(this.lines);
     this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
+    this.characterCutinPanel = new CharacterCutinPanel(renderer, {
+      calculateFadeMs: (seconds, fallback) =>
+        this.calculateFadeMs(seconds, fallback),
+      resolveCharacterName: (ref) => this.resolveCharacterName(ref),
+      warn: (type, detail) => this.warn(type, detail),
+      warnNativeSlotThrows: (ref, line) => this.warnNativeSlotThrows(ref, line),
+    });
     this.decisionPanel = new DecisionPanel(
       this.decisionPredicator,
       renderer,
@@ -470,6 +465,7 @@ export class StoryRuntime {
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     this.cameraEffectExecutor.register(this.commandRegistry);
+    this.characterCutinPanel.register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.displayableExecutor.register(this.commandRegistry);
@@ -1042,9 +1038,7 @@ export class StoryRuntime {
       }
       if (shouldResume) {
         for (const reset of [
-          // AVGCharacterCutinPanel.ShouldResetOnSkip opts both executors in.
-          () => this.renderer.clearInterludes(),
-          () => this.renderer.clearCharacterCutin(),
+          () => this.characterCutinPanel.reset(),
           () => this.spellStickerPanel.reset(),
           () => this.subtitlePanel.reset(),
           () => this.stickerPanel.reset(),
@@ -1210,6 +1204,7 @@ export class StoryRuntime {
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
     this.cameraEffectExecutor.reset();
+    this.characterCutinPanel.reset();
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.showItemPanel.reset();
@@ -2888,178 +2883,6 @@ export class StoryRuntime {
           xOffset: type === "zoom" ? 0 : toNumber(args.xpos, 0),
           yOffset: type === "zoom" ? 0 : toNumber(args.ypos, 0),
         } satisfies CharacterActionInput);
-        return "continue";
-      }
-
-      case "charactercutin": {
-        const widgetId = toString(args.widgetID);
-        if (!widgetId) {
-          this.warn("parse", "charactercutin widgetID is empty");
-          return "continue";
-        }
-
-        const nameRef = toString(args.name).trim();
-        const resolution = nameRef ? this.resolveCharacterName(nameRef) : null;
-        if (resolution?.kind === "native_throws")
-          return this.warnNativeSlotThrows(nameRef, line);
-        const resolved =
-          resolution?.kind === "found" ? resolution.selection : null;
-        // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteCharacterCutin
-        // (build 2761: 0x183e49440). Defaults come from the cutin slot's
-        // serialized fields (_defaultFadetime = 0.4, _defaultSlotWidth = 200),
-        // not from PRTS's 0.14 / 150. `block` really is the key here, unlike
-        // the rest of the character family's `isblock`.
-        //
-        // AVGCharacterCutinSlot implements IFadeTimeRatio: every Show /
-        // SlotUpdate / Hide duration is `animateRatio * fadetime` (Show
-        // 0x183eb1320, SlotUpdate 0x183eb20a0, Hide 0x183eb0d80), so fadeMs
-        // must route through calculateFadeMs instead of a bare *1000.
-        const fadeMs = Math.round(this.calculateFadeMs(args.fadetime, 0.4));
-        const block = toBoolean(args.block, false);
-
-        // Native: an unresolvable `name` still allocates the slot and runs
-        // its tween (AVGCharacterSlot logs its own error internally), so only
-        // the character art is missing while the block timing survives. Keep
-        // the warning for diagnostics and flag the renderer accordingly.
-        if (nameRef && !resolved) {
-          this.warn("missing_asset", `charactercutin: ${nameRef}`);
-        }
-
-        const fadeStyleRaw = toString(args.fadestyle).trim().toLowerCase();
-        const validFadeStyles = [
-          "fade",
-          "horiz_expand_center",
-          "horiz_expand_left2right",
-          "horiz_expand_right2left",
-          "vert_expand_center",
-          "vert_expand_top2bottom",
-          "vert_expand_bottom2top",
-        ] as const;
-        const fadeStyle = validFadeStyles.includes(
-          fadeStyleRaw as (typeof validFadeStyles)[number],
-        )
-          ? (fadeStyleRaw as (typeof validFadeStyles)[number])
-          : undefined;
-
-        // Native port: slot-layout keys are read verbatim by
-        // AVGCharacterCutinSlot.Show/SlotUpdate (0x183eb1320 / 0x183eb20a0).
-        // 2.7.61 renamed the slot scale key `scale` -> `zoom`;
-        // povX/povY/charOffsetX/charOffsetY keep their CamelCase spelling --
-        // native looks them up in a case-sensitive dictionary.
-        //
-        // These stay `undefined` when absent rather than collapsing to a
-        // default here: Show and SlotUpdate disagree about what an omitted
-        // key means (prefab default vs. hold the slot's current value), and
-        // only the panel knows which branch it is on.
-        await this.renderer.setCharacterCutin({
-          block,
-          characterKey: resolved?.base,
-          characterMissing: Boolean(nameRef) && !resolved,
-          charOffsetX: toOptionalNumber(args.charOffsetX),
-          charOffsetY: toOptionalNumber(args.charOffsetY),
-          expression: resolved?.expression,
-          fadeMs,
-          fadeStyle,
-          offsetX: toOptionalNumber(args.offsetx),
-          offsetY: toOptionalNumber(args.offsety),
-          povX: toOptionalNumber(args.povX),
-          povY: toOptionalNumber(args.povY),
-          widgetId,
-          width: toOptionalNumber(args.width),
-          zoom: toOptionalNumber(args.zoom),
-        });
-        return "continue";
-      }
-
-      case "interlude": {
-        // Native port: Torappu.AVG.AVGCharacterCutinPanel._ExecuteInterlude and
-        // _GenCutinParamWithCommand. Validation uses default 0, while CutinParam
-        // [uses -1]. 2.7.61 adds `icharpos`/`icharscale`: non-empty vectors go
-        // through _EnsureDialogExtra into CutinParam.extra.dialog.charPos/
-        // charScale (consumed by the new CutinTemplateDialogView template).
-        const checkedChannel = Math.trunc(
-          toNumber(this.exactArg(args, "channel"), 0),
-        );
-        if (checkedChannel < 0) {
-          this.warn(
-            "invalid_parameter",
-            `interlude channel is invalid: ${checkedChannel}`,
-          );
-          return "continue";
-        }
-
-        const channelArg = this.exactArg(args, "channel");
-        const channel =
-          channelArg === undefined ? -1 : Math.trunc(toNumber(channelArg, -1));
-        const type = parseInterludeType(this.exactArg(args, "type"));
-        const name = toString(this.exactArg(args, "name"));
-        // Only type 3 goes through the AVG portrait pipeline: type 1 loads
-        // from Cutin/Characters, also on a CutinTemplateDialogView
-        // (_LoadPortraitImage → ResourceUrls.GetCutinCharPath).
-        const avatarResolution =
-          type === 3 && name ? this.resolveCharacterName(name) : null;
-        if (avatarResolution?.kind === "native_throws")
-          return this.warnNativeSlotThrows(name, line);
-        const resolvedAvatar =
-          avatarResolution?.kind === "found"
-            ? avatarResolution.selection
-            : null;
-        if (type === 3 && name && !resolvedAvatar)
-          this.warn("missing_asset", `interlude avatar: ${name}`);
-
-        const positionFrom = parseVector2(this.exactArg(args, "pfrom"));
-        const positionTo = parseVector2(this.exactArg(args, "pto"));
-        const scaleFrom = parseVector2(this.exactArg(args, "sfrom"));
-        const scaleTo = parseVector2(this.exactArg(args, "sto"));
-        const duration = (key: string): number =>
-          Math.max(
-            0,
-            Math.round(
-              toNumber(this.exactArg(args, key), 0) *
-                this.getCurrentSpeed().animateRatio *
-                1000,
-            ),
-          );
-
-        await this.renderer.setInterlude({
-          alphaDurationMs: duration("aduration"),
-          alphaFrom: toNumber(this.exactArg(args, "afrom"), -1),
-          alphaTo: toNumber(this.exactArg(args, "ato"), -1),
-          avatarCharacterKey: resolvedAvatar?.base,
-          avatarExpression: resolvedAvatar?.expression,
-          block: toBoolean(this.exactArg(args, "block"), false),
-          channel,
-          charName: toString(this.exactArg(args, "char")),
-          clear: toBoolean(this.exactArg(args, "clear"), false),
-          dialogCharPos: parseVector2(this.exactArg(args, "icharpos")),
-          dialogCharScale: parseVector2(this.exactArg(args, "icharscale")),
-          direction: toString(this.exactArg(args, "direction")),
-          durationMs: duration("duration"),
-          maskId: toString(this.exactArg(args, "maskid")),
-          name,
-          offset: parseVector2(this.exactArg(args, "offset")) ?? { x: 0, y: 0 },
-          positionFrom: positionFrom && positionTo ? positionFrom : undefined,
-          positionTo: positionFrom && positionTo ? positionTo : undefined,
-          scaleDurationMs: duration("sduration"),
-          scaleFrom: scaleFrom && scaleTo ? scaleFrom : undefined,
-          scaleTo: scaleFrom && scaleTo ? scaleTo : undefined,
-          size: parseVector2(this.exactArg(args, "size")) ?? { x: 0, y: 0 },
-          slot: toString(this.exactArg(args, "slot")),
-          style: Math.trunc(toNumber(this.exactArg(args, "style"), 0)),
-          // Native `switch` (GetOrDefault false) only feeds the deco
-          // TwoStateToggle, re-rendered on every show/update.
-          switchOn: toBoolean(this.exactArg(args, "switch"), false),
-          templateSizeDurationMs: duration("tsduration"),
-          templateSizeFrom: parseVector2(this.exactArg(args, "tsfrom")) ?? {
-            x: 0,
-            y: 0,
-          },
-          templateSizeTo: parseVector2(this.exactArg(args, "tsto")) ?? {
-            x: 0,
-            y: 0,
-          },
-          type,
-        } satisfies InterludeInput);
         return "continue";
       }
 

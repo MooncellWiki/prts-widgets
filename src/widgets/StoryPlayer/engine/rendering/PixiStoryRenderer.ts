@@ -603,15 +603,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.interludePanel = new InterludePanel(
       this.cutinLayer,
       (input) => this.textureForInterlude(input),
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+      (...args) => this.updatePhaseTweenRunner.run(...args),
       onWarning,
     );
     this.cutinPanel = new CharacterCutinPanel(
       this.cutinLayer,
       (input) => this.textureForCutinCharacter(input),
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+      (...args) => this.updatePhaseTweenRunner.run(...args),
     );
     this.animTextPanel = new AnimTextPanel(
       this.layers.animTexts,
@@ -767,6 +765,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   destroy(): void {
     this.stopVideo();
     this.decisionView.destroy();
+    this.cutinPanel.destroy();
     this.interludePanel.destroy();
     this.animTextPanel.destroy();
     this.avgDisplayPanel.destroy();
@@ -804,7 +803,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageRoot = null;
     this.imageLayer.removeChildren();
     this.layers.showItems.removeChildren();
-    this.cutinPanel.destroy();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
     this.characterSlots.clear();
@@ -1375,16 +1373,19 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  async clearCharacterCutin(widgetId?: string): Promise<void> {
+  clearCharacterCutin(widgetId?: string): void {
     this.cutinPanel.clear(widgetId);
   }
 
-  async clearInterludes(): Promise<void> {
-    await this.interludePanel.clearAll();
+  clearInterludes(): void {
+    this.interludePanel.clearAll();
   }
 
-  async setInterlude(input: InterludeInput): Promise<void> {
-    await this.interludePanel.run(input);
+  setInterlude(
+    input: InterludeInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.interludePanel.run(input, onComplete);
   }
 
   /**
@@ -1394,14 +1395,17 @@ export class PixiStoryRenderer implements StoryRenderer {
    * (show / SlotUpdate / hide) live in CharacterCutinPanel together with the
    * `AVGCharacterCutinSlot` Show/SlotUpdate/Hide geometry.
    */
-  async setCharacterCutin(input: CharacterCutinInput): Promise<void> {
+  setCharacterCutin(
+    input: CharacterCutinInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
     if (!this.app) return;
-    await this.cutinPanel.run(input);
+    return this.cutinPanel.run(input, onComplete);
   }
 
-  private async textureForCutinCharacter(
+  private textureForCutinCharacter(
     input: CharacterCutinInput,
-  ): Promise<CutinCharacterArt | null> {
+  ): CutinCharacterArt | null | Promise<CutinCharacterArt | null> {
     const base = input.characterKey;
     const expression = input.expression;
     if (!base || !expression) return null;
@@ -1431,20 +1435,25 @@ export class PixiStoryRenderer implements StoryRenderer {
       return null;
     }
 
-    const texture = await this.textureForCharacterKey(assetKey);
-    if (!texture) return null;
     // AVGCharacterSpriteHub.SetImage resizes the character Image to the hub's
     // serialized size and shifts it by pos; the scene character path applies
     // the same layout (see buildCharacterSlotState), so the cutin must too.
-    const sizeX = link.size.x || texture.width;
-    const sizeY = link.size.y || texture.height;
-    return {
-      offsetX: link.pos.x || 0,
-      offsetY: link.pos.y || 0,
-      scaleX: sizeX / Math.max(1, texture.width),
-      scaleY: sizeY / Math.max(1, texture.height),
-      texture,
+    const createArt = (texture: Texture | null): CutinCharacterArt | null => {
+      if (!texture) return null;
+      const sizeX = link.size.x || texture.width;
+      const sizeY = link.size.y || texture.height;
+      return {
+        offsetX: link.pos.x || 0,
+        offsetY: link.pos.y || 0,
+        scaleX: sizeX / Math.max(1, texture.width),
+        scaleY: sizeY / Math.max(1, texture.height),
+        texture,
+      };
     };
+    const texture = this.textureForCharacterKey(assetKey);
+    return texture instanceof Promise
+      ? texture.then(createArt)
+      : createArt(texture);
   }
 
   /** Loads the bundled photo-frame texture once; null after a failure. */
@@ -4556,9 +4565,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     return this.textureForUrl(rawUrl, "character", key);
   }
 
-  private async textureForInterlude(
-    input: InterludeInput,
-  ): Promise<Texture | null> {
+  private textureForInterlude(input: InterludeInput): TextureLoad {
     if (input.type !== 3) {
       // CutinController routes type 1 (uichar) through Cutin/Characters and
       // type 2 (bg) through AVG/Backgrounds; only type 3 reuses AVG characters.

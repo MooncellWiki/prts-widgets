@@ -202,7 +202,7 @@ export class FakeRenderer implements StoryRenderer {
     this.stickersClearCalls.push(fadeMs);
   }
 
-  clearSpellStickers(): void {
+  clearSpellStickers(): Promise<void> | void {
     this.spellStickerClearCount += 1;
   }
 
@@ -219,14 +219,11 @@ export class FakeRenderer implements StoryRenderer {
     if (input) this.timerClearCalls.push(input);
   }
 
-  clearCharacterCutin(widgetId?: string): Promise<void> {
+  clearCharacterCutin(widgetId?: string): void {
     this.clearCharacterCutinCalls.push(widgetId ?? "");
-    return Promise.resolve();
   }
 
-  clearInterludes(): Promise<void> {
-    return Promise.resolve();
-  }
+  clearInterludes(): void {}
 
   destroy(): void {}
   finishStickerTyping(id: string): boolean {
@@ -285,7 +282,7 @@ export class FakeRenderer implements StoryRenderer {
     this.characterCalls.push(input);
   }
 
-  async setCharacterCutin(input: CharacterCutinInput): Promise<void> {
+  setCharacterCutin(input: CharacterCutinInput): ExecutionHandle | void {
     this.characterCutinCalls.push(input);
   }
 
@@ -336,7 +333,7 @@ export class FakeRenderer implements StoryRenderer {
   async setImageTween(input: ImageTweenInput): Promise<void> {
     this.imageTweenCalls.push(input);
   }
-  async setInterlude(input: InterludeInput): Promise<void> {
+  setInterlude(input: InterludeInput): ExecutionHandle | void {
     this.interludeCalls.push(input);
   }
 

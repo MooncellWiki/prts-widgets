@@ -1,11 +1,14 @@
 import { Container, Graphics, Sprite, type Texture } from "pixi.js";
 
+import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import {
   STORY_HEIGHT,
   STORY_WIDTH,
   type CharacterCutinFadeStyle,
   type CharacterCutinInput,
 } from "../../types";
+
+import type { TweenRunner } from "../core/TweenRunner";
 
 /**
  * Character art plus the AVGCharacterSpriteHub layout the game applies on
@@ -20,14 +23,13 @@ export interface CutinCharacterArt {
   scaleY: number;
 }
 
-type TextureLoader = (
-  input: CharacterCutinInput,
-) => Promise<CutinCharacterArt | null>;
-type Tween = (
+type CutinArtLoad =
+  CutinCharacterArt | null | Promise<CutinCharacterArt | null>;
+type SlotTween = (
   durationMs: number,
   update: (progress: number) => void,
   complete?: () => void,
-) => Promise<void>;
+) => void;
 
 /**
  * `AVGCharacterCutinSlot.FadeStyle` ordinals. The vertical members spell
@@ -95,7 +97,7 @@ interface CutinSlotState {
   maskSize: { h: number; w: number };
   /** `_offsetTransform` port: the slot center sits at screen center + offset. */
   root: Container;
-  sessionId: number;
+  animation?: ExecutionHandle;
   /** Final mask size; directional pivots pin against this while expanding. */
   targetSize: { h: number; w: number };
 }
@@ -134,95 +136,150 @@ export class CharacterCutinPanel {
 
   constructor(
     private readonly layer: Container,
-    private readonly loadTexture: TextureLoader,
-    private readonly tween: Tween,
+    private readonly loadTexture: (input: CharacterCutinInput) => CutinArtLoad,
+    private readonly tween: TweenRunner["run"],
   ) {}
 
-  async run(input: CharacterCutinInput): Promise<void> {
+  run(
+    input: CharacterCutinInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
     const state = this.slots.get(input.widgetId);
-    // Native branching in _ExecuteCharacterCutin: empty `name` means Hide
-    // (a no-op when the widgetID is unknown); a non-empty name Shows a new
-    // slot or SlotUpdates the existing one. `characterMissing` keeps the
-    // show/update path alive for unresolvable names: native still allocates
-    // the slot and runs its tween while AVGCharacterSlot logs its own error.
+    // Empty name hides an existing slot, or finishes synchronously when the
+    // widgetID is absent (2791 _ExecuteCharacterCutin @ 0x18419ECB0).
     if (!input.characterKey && !input.characterMissing) {
-      if (state)
-        await this.hideSlot(input.widgetId, input.fadeMs, state, input.block);
-      return;
+      if (!state) return;
+      return this.runSlot(
+        state,
+        input,
+        null,
+        (_, tween) => {
+          this.hideSlot(input, state, tween);
+        },
+        onComplete,
+      );
     }
 
-    if (state) await this.updateSlot(input, state);
-    else await this.showSlot(input, layoutFor(input));
+    const layout = layoutFor(input);
+    const slot = state ?? this.createSlot(input.widgetId, layout, input);
+    const keepsArt =
+      !input.characterMissing &&
+      `${input.characterKey}/${input.expression}` === slot.charIdentity;
+    const art =
+      keepsArt || input.characterMissing ? null : this.loadTexture(input);
+    return this.runSlot(
+      slot,
+      input,
+      art,
+      (texture, tween) => {
+        if (state) this.updateSlot(input, state, texture, keepsArt, tween);
+        else this.showSlot(input, slot, layout, texture, tween);
+      },
+      onComplete,
+    );
   }
 
   clear(widgetId?: string): void {
     if (widgetId === undefined) {
-      for (const state of this.slots.values()) {
-        state.sessionId += 1;
-        state.root.destroy({ children: true });
-      }
-      this.slots.clear();
+      for (const id of this.slots.keys()) this.clear(id);
       return;
     }
 
     const state = this.slots.get(widgetId);
     if (!state) return;
-    state.sessionId += 1;
-    state.root.destroy({ children: true });
-    this.slots.delete(widgetId);
+    state.animation?.end("reset");
+    this.destroySlot(widgetId, state);
   }
 
   destroy(): void {
     this.clear();
   }
 
-  private async showSlot(
+  private runSlot(
+    state: CutinSlotState,
     input: CharacterCutinInput,
+    art: CutinArtLoad,
+    play: (texture: CutinCharacterArt | null, tween: SlotTween) => void,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    state.animation?.end("reset");
+    const animation = createExecutionHandle(true);
+    state.animation = animation;
+    const isAlive = () =>
+      state.animation === animation && !state.root.destroyed;
+    const start = (texture: CutinCharacterArt | null) => {
+      if (!isAlive()) return;
+      play(texture, (duration, update, done) => {
+        // Show, SlotUpdate and Hide attach OnComplete even at zero fade time
+        // (2791 @ 0x184203DA0 / 0x184204B20 / 0x184203800).
+        void this.tween(
+          duration,
+          (progress) => {
+            if (isAlive()) update(progress);
+          },
+          () => {
+            if (!isAlive()) return;
+            done?.();
+            if (input.block) {
+              animation.end();
+              onComplete?.();
+            }
+          },
+          { deferZeroDuration: true, isAlive },
+        );
+      });
+      // A cache miss waits for the slot setup. A nonblocking command then
+      // advances while the slot's tween keeps running.
+      if (!input.block) animation.end();
+    };
+    if (art instanceof Promise) {
+      void art
+        .catch(() => null)
+        .then(start)
+        .catch((error: unknown) => {
+          if (isAlive()) animation.fail(error);
+        });
+    } else {
+      start(art);
+    }
+    return animation.endReason === "complete" ? undefined : animation;
+  }
+
+  private showSlot(
+    input: CharacterCutinInput,
+    state: CutinSlotState,
     layout: CutinLayout,
-  ): Promise<void> {
-    // createSlot already seeded the entry state (alpha 0 for `fade`, a
-    // zero-extent mask for the expand styles), so nothing is on screen while
-    // the character texture is still in flight.
-    const state = this.createSlot(input.widgetId, layout, input);
+    art: CutinCharacterArt | null,
+    tween: SlotTween,
+  ): void {
     // AVGCharacterSlot.Set(name, 0.0, white) swaps the sprite instantly.
-    const art = input.characterMissing ? null : await this.loadTexture(input);
-    if (this.slots.get(input.widgetId) !== state) return;
     if (art)
       this.addCharacter(state, art, input.characterKey, input.expression, 1);
 
-    const sessionId = ++state.sessionId;
     if (state.fadeStyle === 0) {
-      // fade: canvas-group alpha 0 -> 1 with the mask already at full size.
-      const run = this.tween(input.fadeMs, (progress) => {
-        if (state.sessionId !== sessionId) return;
+      // Fade the canvas group with the mask already at full size.
+      tween(input.fadeMs, (progress) => {
         state.root.alpha = progress;
       });
-      if (input.block) await run;
-      else void run;
       return;
     }
 
-    // Expand styles keep alpha = 1 and grow the mask rect from zero along
-    // the style's pivot edge (native DOSizeDelta / DOTween.To).
+    // Expand styles keep alpha at 1 and grow the mask from the pivot edge.
     const start = { ...state.maskSize };
-    const run = this.tween(input.fadeMs, (progress) => {
-      if (state.sessionId !== sessionId) return;
+    tween(input.fadeMs, (progress) => {
       state.maskSize.h = lerp(start.h, layout.maskH, progress);
       state.maskSize.w = lerp(start.w, layout.maskW, progress);
       this.drawMask(state);
     });
-    if (input.block) await run;
-    else void run;
   }
 
-  private async updateSlot(
+  private updateSlot(
     input: CharacterCutinInput,
     state: CutinSlotState,
-  ): Promise<void> {
-    // Native SlotUpdate reads the current sizeDelta / offset / scale / pov as
-    // the tween start; bumping the session freezes any in-flight tween at
-    // those captured values, which is the superset native relies on.
-    const sessionId = ++state.sessionId;
+    art: CutinCharacterArt | null,
+    keepsArt: boolean,
+    tween: SlotTween,
+  ): void {
     state.fadeStyle = fadeStyleId(input.fadeStyle);
 
     const start = {
@@ -235,44 +292,22 @@ export class CharacterCutinPanel {
       rootY: state.root.y,
       zoom: state.content.scale.x,
     };
-    // Every layout key defaults to the slot's live transform in native
-    // (`GetInt(param, "width", (int)sizeDelta.x)` and friends), so an update
-    // that omits a key holds its current value instead of snapping back to
-    // the command default.
+    // SlotUpdate defaults omitted layout keys to their live transforms.
     const layout = layoutFor(input, start);
     state.targetSize = { h: layout.maskH, w: layout.maskW };
 
-    // AVGCharacterSlot.Set(name, duration, white): the sprite swap crossfades
-    // over the tween duration instead of replacing instantly. On a matching
-    // key Set skips its whole swap branch (`!op_Equality(m_currentKey, key)`
-    // guards it), so the current art must stay put -- neither re-mounted nor
-    // faded out.
-    const identity = `${input.characterKey}/${input.expression}`;
-    const keepsCurrentArt =
-      !input.characterMissing && identity === state.charIdentity;
-    const outgoing = keepsCurrentArt ? [] : [...state.chars];
-    let incoming: CutinChar | null = null;
-    if (!keepsCurrentArt && !input.characterMissing) {
-      const art = await this.loadTexture(input);
-      if (this.slots.get(input.widgetId) !== state) return;
-      if (art) {
-        incoming = this.addCharacter(
-          state,
-          art,
-          input.characterKey,
-          input.expression,
-          0,
-        );
-      }
-    }
+    // AVGCharacterSlot.Set crossfades changed art. A matching key skips
+    // the swap branch and leaves the current sprite in place.
+    const outgoing = keepsArt ? [] : [...state.chars];
+    const incoming = art
+      ? this.addCharacter(state, art, input.characterKey, input.expression, 0)
+      : null;
 
-    const run = this.tween(
+    tween(
       input.fadeMs,
       (progress) => {
-        if (state.sessionId !== sessionId) return;
-        // SlotUpdate does not tween the canvas-group alpha itself, but an
-        // interrupted fade-style Show must still settle at 1 like native's
-        // concurrently running DOFade would.
+        // Let an interrupted fade-style Show settle to alpha 1 as it would
+        // with the two native tweens running concurrently.
         state.root.alpha = lerp(start.alpha, 1, progress);
         state.root.position.set(
           lerp(start.rootX, layout.rootX, progress),
@@ -290,61 +325,43 @@ export class CharacterCutinPanel {
         if (incoming) incoming.sprite.alpha = progress;
       },
       () => {
-        if (state.sessionId !== sessionId) return;
         for (const char of outgoing) this.removeCharacter(state, char);
       },
     );
-    if (input.block) await run;
-    else void run;
   }
 
-  private async hideSlot(
-    widgetId: string,
-    fadeMs: number,
+  private hideSlot(
+    input: CharacterCutinInput,
     state: CutinSlotState,
-    block: boolean,
-  ): Promise<void> {
-    // Native Hide only reads `fadetime` and reverses along the stored
-    // m_showFadeStyle: alpha for `fade`, mask collapse for expand styles
-    // (which keep alpha = 1). b__0 then recycles the slot and removes the
-    // widgetID, so a later Show starts from a fresh slot.
-    const sessionId = ++state.sessionId;
+    tween: SlotTween,
+  ): void {
+    // Hide reverses m_showFadeStyle. Its callback recycles the slot before
+    // releasing the command (2791 _ExecuteCharacterCutin_b__0 @ 0x1841B5EF0).
+    const recycle = () => this.destroySlot(input.widgetId, state);
     if (state.fadeStyle === 0) {
       const startAlpha = state.root.alpha;
-      const run = this.tween(
-        fadeMs,
+      tween(
+        input.fadeMs,
         (progress) => {
-          if (state.sessionId !== sessionId) return;
           state.root.alpha = lerp(startAlpha, 0, progress);
         },
-        () => {
-          if (state.sessionId !== sessionId) return;
-          this.destroySlot(widgetId, state);
-        },
+        recycle,
       );
-      if (block) await run;
-      else void run;
       return;
     }
 
     const horizontal = state.fadeStyle >= 1 && state.fadeStyle <= 3;
     const startH = state.maskSize.h;
     const startW = state.maskSize.w;
-    const run = this.tween(
-      fadeMs,
+    tween(
+      input.fadeMs,
       (progress) => {
-        if (state.sessionId !== sessionId) return;
         state.maskSize.h = horizontal ? startH : lerp(startH, 0, progress);
         state.maskSize.w = horizontal ? lerp(startW, 0, progress) : startW;
         this.drawMask(state);
       },
-      () => {
-        if (state.sessionId !== sessionId) return;
-        this.destroySlot(widgetId, state);
-      },
+      recycle,
     );
-    if (block) await run;
-    else void run;
   }
 
   private createSlot(
@@ -388,7 +405,6 @@ export class CharacterCutinPanel {
       mask,
       maskSize: { h: layout.maskH, w: layout.maskW },
       root,
-      sessionId: 0,
       targetSize: { h: layout.maskH, w: layout.maskW },
     };
     // Entry state, seeded before the caller awaits the character texture:
