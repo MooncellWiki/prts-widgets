@@ -21,14 +21,14 @@ async function index(): Promise<void> {
   const username = process.argv[3];
   const password = process.argv[4];
 
-  const entry = path.resolve(__dirname, `../src/entries/${name}.ts`);
+  const entry = path.resolve(__dirname, `../src/entries/widgets/${name}.ts`);
   console.log(`${entry} created`);
 
   writeFileSync(
     entry,
     `import { createApp } from 'vue';
 import 'virtual:uno.css';
-import ${name} from '../widgets/${name}.vue';
+import ${name} from '@/widgets/${name}.vue';
 
 const ele = document.getElementById('root');
 if (ele?.dataset?.item) {
@@ -42,7 +42,7 @@ if (ele?.dataset?.item) {
   const tmplEntry = path.resolve(__dirname, `../templates/${name}.html`);
   writeFileSync(
     tmplEntry,
-    `<includeonly><div id="root"></div><head></head><script type="module" src="/src/entries/${name}.ts"></script></includeonly><noinclude>{{Documentation}}[[分类:由机器人维护的小部件]]</noinclude>`,
+    `<includeonly><div id="root"></div><head></head><script type="module" src="/src/entries/widgets/${name}.ts"></script></includeonly><noinclude>{{Documentation}}[[分类:由机器人维护的小部件]]</noinclude>`,
   );
   console.log(`${tmplEntry} created`);
 

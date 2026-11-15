@@ -21,7 +21,7 @@ export const EMPTY_MEDAL_META: MedalMetaData = {
   groupDeprecateType: {},
 };
 
-/** 光荣之路/data。一页上的几个奖章展示共用整页的 pinia（见 entries/MedalShowcase.ts），只取一次 */
+/** 光荣之路/data。一页上的几个奖章展示共用整页的 pinia（见 entries/widgets/MedalShowcase.ts），只取一次 */
 export const medalMetaQuery = defineQueryOptions({
   key: ["medal-meta"],
   query: () =>

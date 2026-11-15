@@ -64,6 +64,17 @@ function runGate(template: string, skin: string, shell = "") {
 }
 
 describe("takeAssetTags", () => {
+  it("保留 CSS 拆分后的多张样式表及其加载顺序", () => {
+    const source = built("CharList").replace(
+      "</head>",
+      `<link rel="stylesheet" crossorigin href="${BASE}CharList.FFFFFFFF.css"></head>`,
+    );
+    expect(takeAssetTags(source).assets.css).toEqual([
+      `${BASE}style.EEEEEEEE.css`,
+      `${BASE}CharList.FFFFFFFF.css`,
+    ]);
+  });
+
   it("按次序取出入口、预加载与样式，模板其余部分原样留下", () => {
     const { html, at, assets } = takeAssetTags(built("CharList"));
     expect(assets).toEqual({

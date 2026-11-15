@@ -1,7 +1,7 @@
 import "virtual:uno.css";
 import { createApp } from "vue";
 
-import XbMapViewer from "../widgets/XbMapViewer/XbMapViewer.vue";
+import XbMapViewer from "@/widgets/XbMapViewer/XbMapViewer.vue";
 
 const ele = document.querySelector("#root");
 const data = document.querySelector("#MAPDATA")?.textContent;

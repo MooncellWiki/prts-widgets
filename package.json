@@ -22,6 +22,7 @@
     "prepare": "simple-git-hooks"
   },
   "dependencies": {
+    "@mooncellwiki/prts-design-css": "0.1.35",
     "@mooncellwiki/prts-design-vue": "0.1.35",
     "@pinia/colada": "^1.4.9",
     "@pixi/sound": "^6.0.2",

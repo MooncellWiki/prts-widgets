@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 
 import "virtual:uno.css";
-import StoryPlayer from "../widgets/StoryPlayer/index.vue";
+import StoryPlayer from "@/widgets/StoryPlayer/index.vue";
 
 // 同页的旧版剧情模拟器会加载 krliov.toolbox.js
 // （static.prts.wiki/assets/scenario/krliov.toolbox.js），其中用裸赋值给各原型

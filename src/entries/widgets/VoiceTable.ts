@@ -1,13 +1,12 @@
 import { createApp } from "vue";
 
-import VoiceTable from "../widgets/VoiceTable/VoiceTable.vue";
-import { readCvNames } from "../widgets/VoiceTable/voice";
-
+import VoiceTable from "@/widgets/VoiceTable/VoiceTable.vue";
 import type {
   OverrideVoiceBaseItem,
   VoiceBaseItem,
   VoiceDataItem,
-} from "../widgets/VoiceTable/types";
+} from "@/widgets/VoiceTable/types";
+import { readCvNames } from "@/widgets/VoiceTable/voice";
 
 const ele = document.querySelector("#voice-table-root");
 const dataRoot = document.querySelector<HTMLElement>("#voice-data-root");

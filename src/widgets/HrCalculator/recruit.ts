@@ -9,7 +9,7 @@ import {
   isSenior,
 } from "./consts";
 
-/** cargoquery 的一行（chara ⋈ char_obtain，见 entries/HrCalculator.ts） */
+/** cargoquery 的一行（chara ⋈ char_obtain，见 entries/widgets/HrCalculator.ts） */
 export interface Source {
   profession: string;
   position: string;

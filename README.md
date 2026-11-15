@@ -34,13 +34,47 @@
 - 泰拉人名录剧情立绘 [Widget:NpcPortrait/dev](https://prts.wiki/w/Widget:NpcPortrait/dev)
 - 后勤技能一览 [Widget:BaseSkillList/dev](https://prts.wiki/w/Widget:BaseSkillList/dev)
 
+## 独立页面
+
+### 开发与调试
+
+运行 `pnpm dev`，按终端实际端口打开：
+
+```text
+/pages/StoryPlayer.html?path=obt/main/level_main_00-01_beg.txt
+```
+
+`path` 相对 `gamedata/latest/story`；也可用 `url` 传完整 HTTP(S) 地址，优先于 `path`。
+在同一地址后加 `&debug&line=9`，开启调试工具栏、原始脚本、行号跳转和 `window.__storyRec` 抓帧器。
+调试模式仅在 dev 可用，生产构建不包含调试代码。
+
+要预览本地产物，使用本地 base 构建，避免请求默认配置中的线上 OSS 资源：
+
+```bash
+pnpm exec vite build --base=/ --outDir dist-preview
+pnpm exec vite preview --base=/ --outDir dist-preview
+```
+
+打开预览地址下的同一路径。生产字体有跨源限制，本地预览可能退回系统字体；字体效果使用 `pnpm dev` 的代理检查。
+
+### 接入独立页模式
+
+以 StoryPlayer 为例：
+
+1. 在 `pages/<Name>.html` 创建 HTML 壳，包含 viewport、挂载节点及 `/src/entries/pages/<Name>.ts` 入口。
+2. 在 `src/entries/pages/` 创建入口，导入 `@mooncellwiki/prts-design-css/standalone.css` 和 `src/pages/page.css`，页面 `body` 加 `ak-scope`。
+3. 在 `src/pages/` 编写 Vue 页面壳，调用 `usePageTheme()`，负责取数、加载与错误状态，通过 props 挂载 `src/widgets/` 中的共享组件。跨源数据接口须支持 CORS。
+4. Wiki 入口继续放在 `src/entries/widgets/`。独立 HTML 不放入 `templates/`；Vite 自动收集 `pages/*.html`，`pnpm build` 后产物位于 `dist/pages/`。
+
+参考 [StoryPlayer 入口](src/entries/pages/StoryPlayer.ts) 和 [页面壳](src/pages/StoryPlayer.vue)。
+
 ## 贡献代码
 
 [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 全站脚本
 
-`src/entries/` 里有几个不对应 `Widget:` 页面的入口，它们由站内按固定文件名引用，所以
+`src/entries/widgets/` 里有几个不对应 `Widget:` 页面的入口，它们由站内按固定文件名引用，所以
 产物不带 hash（见 `vite.config.ts` 的 `nohashEntries`）：
 
 | 入口                   | 产物                   | 引用位置               | 作用                                            |
@@ -52,8 +86,7 @@
 
 这些产物必须自包含（不 import 任何带 hash 的 chunk）：站内引用的是固定 URL，CDN 和浏览器
 会缓存旧版，而 `pnpm run prune` 会把 OSS 上不在本次 `dist/` 里的文件删掉，一旦它们依赖了
-带 hash 的 chunk，缓存里的旧产物就会指向已经被删掉的文件。`vite.config.ts` 的
-`assertSelfContained` 插件在构建时把这条钉死。
+带 hash 的 chunk，缓存里的旧产物就会指向已经被删掉的文件。修改构建配置时需检查这些固定入口的依赖；当前没有自动断言插件。
 
 ## 发布
 

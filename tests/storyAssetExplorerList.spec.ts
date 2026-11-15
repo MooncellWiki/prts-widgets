@@ -176,7 +176,7 @@ describe("explorer store server paging", () => {
   function json(data: ExploreResponse) {
     return new Response(JSON.stringify(data));
   }
-  /** 同 entries/StoryAssetExplorer.ts：store 和组件里的 useQuery 要从 app 上取 Pinia Colada 的配置 */
+  /** 同 entries/widgets/StoryAssetExplorer.ts：store 和组件里的 useQuery 要从 app 上取 Pinia Colada 的配置 */
   function install(app: App, pinia = createPinia()): Pinia {
     app.use(createStores({ pinia }));
     if (!pinias.includes(pinia)) pinias.push(pinia);

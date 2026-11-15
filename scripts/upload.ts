@@ -1,9 +1,14 @@
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import OSS from "ali-oss";
 import { config as loadEnv } from "dotenv";
+
+import {
+  cacheControlFor,
+  collectPublishFiles,
+  remotePrefix,
+} from "./deploy/files";
 
 const BUILD_DIR = "dist";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -14,24 +19,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 只给短缓存。static.prts.wiki 的 CDN 在 /widgets/production/ 上开了「优先遵循
 // 源站缓存策略」，两类文件的 CDN 缓存时长都以这里写进 OSS 的 Cache-Control 为准；
 // 不写的话 CDN 按该目录规则缓存 1 年，部署后只能手动刷新。
-const HASHED_FILE_RE = /\.[\w-]{8}\.[^.]+(?:\.map)?$/;
-const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
-const MUTABLE_CACHE_CONTROL = "public, max-age=300";
 
 loadEnv({
   path: [path.join(__dirname, "../.env.dev"), path.join(__dirname, "../.env")],
   quiet: true,
 });
 
-const dirents = fs.readdirSync(path.join(__dirname, `../${BUILD_DIR}/`), {
-  withFileTypes: true,
-});
-
-const filesNames = dirents
-  .filter((dirent) => dirent.isFile())
-  .map((dirent) => dirent.name);
-
-const distSet = new Set(filesNames);
+const buildDir = path.join(__dirname, "..", BUILD_DIR);
+const distSet = new Set(collectPublishFiles(buildDir));
 console.log("[INFO] Dist set:", distSet);
 
 const {
@@ -65,13 +60,16 @@ const store = new OSS({
   bucket: BUCKET,
 });
 
-for (const file of distSet) {
-  const cacheControl = HASHED_FILE_RE.test(file)
-    ? IMMUTABLE_CACHE_CONTROL
-    : MUTABLE_CACHE_CONTROL;
+const prefix = remotePrefix(REMOTE_PATH);
+// 先上传带 hash 的依赖，最后发布可变页面壳，避免新页面短暂引用未上传的资源。
+const files = [...distSet].sort(
+  (a, b) => Number(a.endsWith(".html")) - Number(b.endsWith(".html")),
+);
+for (const file of files) {
+  const cacheControl = cacheControlFor(file);
   const result = await store.put(
-    path.posix.join(REMOTE_PATH, file),
-    path.posix.join(`${BUILD_DIR}/`, file),
+    path.posix.join(prefix, file),
+    path.join(buildDir, file),
     { headers: { "Cache-Control": cacheControl } },
   );
   console.log(

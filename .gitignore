@@ -3,6 +3,7 @@
 
 ### Project
 dist-ssr
+dist-preview
 .env.dev
 
 # rollup-plugin-visualizer

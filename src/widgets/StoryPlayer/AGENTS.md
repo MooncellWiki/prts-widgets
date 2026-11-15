@@ -8,17 +8,36 @@
 ## 本地调试
 
 ```bash
-pnpm dev  # 打开 http://localhost:8080/debug/StoryPlayer.html?path=obt/main/level_main_00-01_beg.txt
+pnpm dev  # 按终端实际端口打开下列页面
 ```
 
-不依赖 prts.wiki 宿主页。URL 参数、seek 档位、`window.__storyRec` 抓帧器、
-依赖的引擎钩子与坑位清单等调试文档全在 `debug/StoryPlayer.html` 顶部注释里，
-改调试行为时同步更新。
+正式页：`/pages/StoryPlayer.html?path=obt/main/level_main_00-01_beg.txt`。
+调试模式：同一地址加 `&debug`，例如
+`/pages/StoryPlayer.html?debug&path=obt/main/level_main_00-01_beg.txt&line=9`。
+
+- `path`：相对 `gamedata/latest/story` 的路径或完整 HTTP(S) URL；`url` 为完整 URL，优先于 path。
+- `line`：1-based 原始文本行号，调试模式加载后快进至该文本行；multiline 应填段末行。
+- `window.__storyRec`：仅 dev 调试模式提供 `start/stop/clear/status/collect(stride)/snapshot(quality)`。
+  闲置画布可能抓到空白，终态优先用 snapshot 或页面截图。切换脚本按当前 canvas 采集，卸载调试页时释放 recorder。
+- `window.__storySeekPlan`：最近一次行号跳转的分支计划，详见 `StoryPlayerDebugShell.vue`。
+
+调试壳由 `src/pages/StoryPlayer.vue` 的 `import.meta.env.DEV && params.has("debug")`
+分支异步加载；生产产物不包含工具栏、seek 编排和 recorder。
+
+## 正式独立页
+
+`pages/StoryPlayer.html` → `src/entries/pages/StoryPlayer.ts` → `src/pages/StoryPlayer.vue`，
+与 Wiki 共用 `index.vue`。`src/pages/story.ts` 提供两种模式共用的取数和错误校验。
+入口普通 import 设计 CSS；`cssCodeSplit: true` 加 CSS 专用 chunk 保证 Wiki 不加载它。
+`src/pages/usePageTheme.ts` 使用 VueUse `useColorMode` 同步系统偏好和显式 `data-theme`，
+组件仍使用 `src/utils/theme.ts` 的 Naive UI 适配。组件里不新增宿主判断。
+独立页的开发、调试和接入步骤见 [README](../../../README.md#独立页面)。
 
 ## 数据流
 
 ```
-src/entries/StoryPlayer.ts        # 从 #datas_txt 取剧情 txt，挂载 index.vue
+src/entries/widgets/StoryPlayer.ts        # Wiki：从 #datas_txt 取剧情 txt
+src/entries/pages/StoryPlayer.ts   # 独立页：经 src/pages/StoryPlayer.vue 取数，再挂载 index.vue
   └─ index.vue                    # UI 外壳：lobby/text/player 三种 viewMode、全屏 HUD、自动播放
       ├─ fullscreen.ts            # Fullscreen API + 网页全屏兜底（iPhone），触屏锁横屏
       ├─ context.ts               # 拉 character.json + story_variables.json
@@ -77,7 +96,7 @@ Log All 高亮与调试页行跟随都订阅它。
   同步读贴图，资源须由 `preload.ts` 预热；缓存未命中才退回异步加载，首帧会缺图。
 - **assets.ts 必须用 `new URL('./x.png', import.meta.url)` 字面量**：widget
   跨源加载，普通 import 在 dev 下会 404，字面量才能被 Vite 静态打包。
-- **两处不能删的"怪代码"**：`entries/StoryPlayer.ts` 开头的原型补丁还原
+- **两处不能删的"怪代码"**：`entries/widgets/StoryPlayer.ts` 开头的原型补丁还原
   （防同页旧版播放器的 krliov.toolbox.js 可枚举补丁破坏 pixi `for...in`）；
   `createStoryPlayer.ts` 对 `@pixi/sound` 的副作用 import（注册 Assets 加载器，
   不能改 `import type`）。

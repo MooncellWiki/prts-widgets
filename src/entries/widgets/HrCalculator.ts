@@ -2,9 +2,9 @@ import { createApp } from "vue";
 
 import { createPinia } from "pinia";
 
-import { createStores, prefetch } from "../utils/pinia";
-import HrCalculator from "../widgets/HrCalculator/index.vue";
-import { recruitSourceQuery } from "../widgets/HrCalculator/source";
+import { createStores, prefetch } from "@/utils/pinia";
+import HrCalculator from "@/widgets/HrCalculator/index.vue";
+import { recruitSourceQuery } from "@/widgets/HrCalculator/source";
 
 const ele = document.querySelector("#root");
 

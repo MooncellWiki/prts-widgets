@@ -31,7 +31,7 @@ describe("viteLoader", () => {
   ])("URL %s 连接 %s", async (search, origin) => {
     expect(await runLoader(search)).toEqual([
       `${origin}/@vite/client`,
-      `${origin}/src/entries/CharList.ts`,
+      `${origin}/src/entries/widgets/CharList.ts`,
     ]);
   });
 
@@ -95,6 +95,14 @@ ${viteLoader("SpineViewer")}
   it("同步过的页面再跑一次不变", () => {
     const synced = syncDevPage(charList);
     expect(syncDevPage(synced)).toBe(synced);
+  });
+
+  it("识别 widgets 目录下的直接入口标签", () => {
+    const moved = charList.replace(
+      "/src/entries/CharList.ts",
+      "/src/entries/widgets/CharList.ts",
+    );
+    expect(syncDevPage(moved)).toBe(syncDevPage(charList));
   });
 
   it("旧版加载片段整段换成当前版本", () => {

@@ -21,7 +21,9 @@ const TARGET = [
 ];
 const BASE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-const entries = readdirSync(path.join(BASE_DIR, "src/entries/"));
+const entries = readdirSync(path.join(BASE_DIR, "src/entries/widgets/")).filter(
+  (entry) => entry.endsWith(".ts"),
+);
 const templates = readdirSync(path.join(BASE_DIR, "templates/"));
 const nohashEntries = new Set(["sentry", "sw", "DisplayController", "Tooltip"]);
 
@@ -92,17 +94,23 @@ function legacySkinGate(): Plugin {
 
 const input: Record<string, string> = {};
 for (const entry of entries) {
-  input[entry.replace(".ts", "")] = `src/entries/${entry}`;
+  input[entry.replace(".ts", "")] = `src/entries/widgets/${entry}`;
 }
 
 const templatesInput: Record<string, string> = {
-  sentry: "src/entries/sentry.ts",
-  sw: "src/entries/sw.prts.ts",
-  DisplayController: "src/entries/DisplayController.ts",
-  Tooltip: "src/entries/Tooltip.ts",
+  sentry: "src/entries/widgets/sentry.ts",
+  sw: "src/entries/widgets/sw.prts.ts",
+  DisplayController: "src/entries/widgets/DisplayController.ts",
+  Tooltip: "src/entries/widgets/Tooltip.ts",
 };
 for (const template of templates) {
   templatesInput[template.replace(".html", "")] = `templates/${template}`;
+}
+
+const pagesInput: Record<string, string> = {};
+for (const page of readdirSync(path.join(BASE_DIR, "pages/"))) {
+  if (page.endsWith(".html"))
+    pagesInput[`${page.slice(0, -5)}Page`] = `pages/${page}`;
 }
 
 // https://vitejs.dev/config/
@@ -112,9 +120,14 @@ export default defineConfig(({ command }) => {
   return {
     base: useHtmlMode ? "https://static.prts.wiki/widgets/production" : "/",
     resolve: {
-      alias: {
-        "@": path.resolve(BASE_DIR, "./src"),
-      },
+      alias: [
+        { find: "@", replacement: path.resolve(BASE_DIR, "./src") },
+        // 已发布的 Wiki /dev 加载片段仍可能引用旧路径；迁移目录不要求先改线上页面。
+        {
+          find: /^\/src\/entries\/([^/]+)\.ts(?=\?|$)/,
+          replacement: `${path.resolve(BASE_DIR, "src/entries/widgets")}/$1.ts`,
+        },
+      ],
     },
     plugins: [
       devWidgetLinks(
@@ -160,12 +173,18 @@ export default defineConfig(({ command }) => {
       minify: "oxc",
       sourcemap: true,
       manifest: true,
-      cssCodeSplit: false,
+      cssCodeSplit: true,
       rollupOptions: {
-        input: useHtmlMode ? templatesInput : input,
+        input: useHtmlMode
+          ? { ...templatesInput, ...pagesInput }
+          : { ...input, ...pagesInput },
         output: {
           sourcemapBaseUrl: "https://static.prts.wiki/widgets/production/",
           manualChunks(id) {
+            // 独立页普通 import 的设计 CSS 单独成块，不能被下面的 vendor
+            // 规则并入 Wiki 各入口都会加载的公共样式。
+            if (id.includes("@mooncellwiki/prts-design-css"))
+              return "prts-design-css";
             // Tooltip 入口是 <head> 里以固定文件名引用的，不能依赖带 hash 的共享
             // chunk，tippy 必须内联进去。
             if (TIPPY_MODULE_RE.test(id) || id.includes("@popperjs")) return;

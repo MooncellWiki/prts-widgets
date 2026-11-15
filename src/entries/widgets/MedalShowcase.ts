@@ -1,8 +1,8 @@
 import { createApp } from "vue";
 
 import "virtual:uno.css";
-import { createStores, pagePinia } from "../utils/pinia";
-import MedalShowcase from "../widgets/MedalList/MedalShowcase.vue";
+import { createStores, pagePinia } from "@/utils/pinia";
+import MedalShowcase from "@/widgets/MedalList/MedalShowcase.vue";
 
 const eles = document.querySelectorAll(
   ".medal-showcase",

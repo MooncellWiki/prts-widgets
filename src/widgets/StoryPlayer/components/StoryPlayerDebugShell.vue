@@ -10,6 +10,8 @@ import {
 
 import { NAlert, NButton, NInput, NInputNumber, NSplit } from "naive-ui";
 
+import { EXAMPLE_STORY_PATH, fetchStoryScript } from "@/pages/story";
+
 import { resolveStoryScriptUrl } from "../context";
 import {
   analyzeStoryFlow,
@@ -25,8 +27,8 @@ import type {
 } from "../engine/types";
 
 /**
- * StoryPlayer 独立调试页外壳（仅 dev，由 src/entries/StoryPlayerDebug.ts
- * 挂载，不进 build 产物）：不依赖 prts.wiki 宿主页，直接按路径从
+ * StoryPlayer 独立页的调试外壳（仅 dev，通过 ?debug 加载，不进 build 产物）：
+ * 不依赖 prts.wiki 宿主页，直接按路径从
  * torappu.prts.wiki 拉剧情 txt 播放。
  *
  * 布局：左侧播放器，右侧原始脚本（带行号，标记当前播放行，decision 行
@@ -41,7 +43,7 @@ defineOptions({ name: "StoryPlayerDebugShell" });
 
 const PATH_PARAM = "path";
 const LINE_PARAM = "line";
-const EXAMPLE_PATH = "obt/main/level_main_00-01_beg.txt";
+const EXAMPLE_PATH = EXAMPLE_STORY_PATH;
 /** 等待播放器创建完成（context/字体预载是异步的）的引导轮询间隔；
  *  就绪后即挂 onDisplayedLineChange 订阅并武装跳转，停表，不再常驻轮询 */
 const PLAYER_WAIT_INTERVAL_MS = 150;
@@ -52,12 +54,13 @@ function readQueryParams(): { path: string; line: string } {
   const params = new URLSearchParams(window.location.search);
   return {
     line: params.get(LINE_PARAM) ?? "",
-    path: params.get(PATH_PARAM) ?? "",
+    path: params.get("url")?.trim() || params.get(PATH_PARAM) || "",
   };
 }
 
 function syncQueryParams(path: string, line: string | null): void {
   const url = new URL(window.location.href);
+  url.searchParams.delete("url");
   url.searchParams.set(PATH_PARAM, path);
   if (line === null) url.searchParams.delete(LINE_PARAM);
   else url.searchParams.set(LINE_PARAM, line);
@@ -147,10 +150,7 @@ async function loadScript(rawPath: string): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}：${url}`);
-    const text = await response.text();
-    if (!text.trim()) throw new Error(`剧情内容为空：${url}`);
+    const text = await fetchStoryScript(url);
     scriptText.value = text;
     scriptLines.value = text.replace(/\r\n?/g, "\n").split("\n");
     analysis.value = analyzeScript(text);
@@ -600,7 +600,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 <style scoped>
 /*
  * 调试页自有样式不走 uno，全部手写 spd- 前缀，保证确定性渲染
- * （页面级 html/body/#root 高度在 debug/StoryPlayer.html）。
+ * （页面级 html/body/#root 高度在 src/pages/page.css）。
  */
 .spd-root {
   box-sizing: border-box;
@@ -619,7 +619,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-url {
-  color: #9ca3af;
+  color: var(--ak-fg-muted);
   font-size: 12px;
   word-break: break-all;
 }
@@ -638,7 +638,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 
 .spd-script-pane {
   box-sizing: border-box;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ak-border);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
@@ -649,7 +649,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-script-header {
-  color: #9ca3af;
+  color: var(--ak-fg-muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -695,7 +695,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-line-no {
-  color: #9ca3af;
+  color: var(--ak-fg-muted);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -711,16 +711,16 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-line-text {
-  color: #374151;
+  color: var(--ak-fg);
   cursor: pointer;
 }
 
 .spd-line-text:hover {
-  background-color: #f3f4f6;
+  background-color: var(--ak-bg-hover);
 }
 
 .spd-line-cmd {
-  color: #9ca3af;
+  color: var(--ak-fg-muted);
 }
 
 .spd-line-current {
@@ -729,11 +729,11 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-line-current .spd-line-content {
-  color: #0c4a6e;
+  color: var(--ak-link);
 }
 
 .spd-line-current .spd-line-no {
-  color: #0369a1;
+  color: var(--ak-link);
 }
 
 .spd-mark {
@@ -747,7 +747,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-placeholder {
-  color: #9ca3af;
+  color: var(--ak-fg-muted);
   font-size: 12px;
   padding: 8px;
 }

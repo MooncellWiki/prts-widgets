@@ -2,9 +2,9 @@ import { createApp } from "vue";
 
 import { createPinia } from "pinia";
 
-import { createStores, prefetch } from "../utils/pinia";
-import EnemiesListV2 from "../widgets/EnemiesListV2/index.vue";
-import { enemySourceQuery } from "../widgets/EnemiesListV2/source";
+import { createStores, prefetch } from "@/utils/pinia";
+import EnemiesListV2 from "@/widgets/EnemiesListV2/index.vue";
+import { enemySourceQuery } from "@/widgets/EnemiesListV2/source";
 
 const ele = document.querySelector("#root");
 

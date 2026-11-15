@@ -1,9 +1,8 @@
 import { createApp } from "vue";
 
-import { Spine } from "../widgets/SpineViewer/engine/SpineApi";
-import SpineViewer from "../widgets/SpineViewer/index.vue";
-
-import type { SpineMeta } from "../widgets/SpineViewer/types";
+import { Spine } from "@/widgets/SpineViewer/engine/SpineApi";
+import SpineViewer from "@/widgets/SpineViewer/index.vue";
+import type { SpineMeta } from "@/widgets/SpineViewer/types";
 
 // @ts-expect-error
 window.SpineApi = Spine;

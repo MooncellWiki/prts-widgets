@@ -58,9 +58,9 @@ import type {
 } from "./engine/types";
 
 const props = defineProps<{
-  /** 剧情 txt 全文，由页面内嵌的 #datas_txt 提供 */
+  /** 剧情 txt 全文，由入口壳提供 */
   script: string;
-  /** 创建后跳过 lobby 直接加载资源并开始播放（独立调试页用，宿主页不传） */
+  /** 创建后跳过 lobby 直接加载资源并开始播放（独立页用，Wiki 入口不传） */
   autoStart?: boolean;
 }>();
 

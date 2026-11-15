@@ -2,8 +2,7 @@ import "virtual:uno.css";
 import { createApp } from "vue";
 
 import { STATIC_ENDPOINT } from "@/utils/consts";
-
-import PenguinWidget from "../widgets/PenguinWidget.vue";
+import PenguinWidget from "@/widgets/PenguinWidget.vue";
 
 const ele = document.querySelector<HTMLElement>("#penguin-widget");
 const type = ele?.dataset.type;

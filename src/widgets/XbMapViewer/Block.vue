@@ -60,7 +60,7 @@ onMounted(() => {
         : ` ${props.blockmap[token].desc}`;
   }
 
-  // 这里的内容不是 .mc-tooltips 结构，仍要自己挂；tippy6 由 src/entries/Tooltip.ts 注入
+  // 这里的内容不是 .mc-tooltips 结构，仍要自己挂；tippy6 由 src/entries/widgets/Tooltip.ts 注入
   if (content.length > 0 && self.value) {
     window.tippy6?.(self.value, {
       allowHTML: true,
