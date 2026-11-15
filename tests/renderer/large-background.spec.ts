@@ -20,6 +20,38 @@ function createGridBackgroundInput(): GridBackgroundInput {
 }
 
 describe("PixiStoryRenderer", () => {
+  it("keeps lbg focus applied when a puzzle is first loaded or replaced", async () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    const layer = renderer.layers.gridBackground;
+
+    renderer.setFocusParam({ blur: false, color: "Colorinverse" });
+    renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 1,
+      type: "lbg",
+    });
+    await renderer.setGridBackground(createGridBackgroundInput());
+    expect(layer.children).toHaveLength(1);
+    const first = layer.children[0];
+    expect(layer.filters?.[0]?.matrix[4]).toBe(1);
+
+    await renderer.setGridBackground({
+      ...createGridBackgroundInput(),
+      imageKeys: ["a", "b", "c", "d"],
+    });
+    expect(layer.children).toHaveLength(1);
+    expect(layer.children[0]).not.toBe(first);
+    expect(layer.filters?.[0]?.matrix[4]).toBe(1);
+    expect(renderer.layers.background.filters ?? []).toHaveLength(0);
+
+    renderer.resetCameraEffects();
+    expect(layer.filters).toHaveLength(0);
+  });
+
   it("keeps the large background in front of the background regardless of update order", async () => {
     const renderer = createRenderer();
     const input = createGridBackgroundInput();

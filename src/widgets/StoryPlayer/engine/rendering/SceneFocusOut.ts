@@ -7,14 +7,12 @@ import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import type { FocusOutInput, FocusParamInput } from "../types";
 import type { TweenRunner } from "./core/TweenRunner";
 
-type ResolveTargets = (type: string) => Container[];
-
 interface FocusState {
   amount: number;
   animation?: ExecutionHandle;
   id: string;
+  layer?: Container;
   sessionId: number;
-  type: string;
 }
 
 function stateKey(type: string, id: string): string {
@@ -47,7 +45,7 @@ export class SceneFocusOut {
   private config: FocusParamInput = { blur: true, color: "None" };
 
   constructor(
-    private readonly resolveTargets: ResolveTargets,
+    private readonly layerTargets: ReadonlyMap<string, Container>,
     private readonly tween: TweenRunner["run"],
   ) {}
 
@@ -60,12 +58,20 @@ export class SceneFocusOut {
     input: FocusOutInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    const key = stateKey(input.type, input.id);
+    const { type } = input;
+    const layer = this.layerTargets.get(type);
+    const id = type === "cgitem" ? input.id : "";
+    // _ExecuteFocusout (2791 @ 0x184187C20) checks IsChannelEmpty before
+    // writing or tweening. A cgitem with an id can store an amount before
+    // its target binds. The Web renderer has no customchar slots.
+    if (!layer && id === "") return;
+
+    const key = stateKey(type, id);
     const state = this.states.get(key) ?? {
       amount: 0,
-      id: input.id,
+      id,
+      layer,
       sessionId: 0,
-      type: input.type,
     };
     this.states.set(key, state);
 
@@ -129,7 +135,7 @@ export class SceneFocusOut {
    * replay a channel's stored amount the moment a PostDisplay item
    * registers. SetWhenBind (2791 @ 0x185583670) stores one target per key.
    * A same-key show during a clear-all fade rebinds subsequent writes to
-   * the new image. Layer-backed types resolve their existing containers.
+   * the new image.
    */
   bindCgItem(id: string, target: Container): void {
     this.cgItemTargets.set(id, target);
@@ -157,7 +163,7 @@ export class SceneFocusOut {
 
   private writeAmount(state: FocusState, amount: number): void {
     state.amount = amount;
-    if (state.type === "cgitem") {
+    if (!state.layer) {
       const target = this.cgItemTargets.get(state.id);
       if (target) this.cgItemAmounts.set(target, amount);
     }
@@ -167,10 +173,7 @@ export class SceneFocusOut {
   private render(): void {
     const amounts = new Map(this.cgItemAmounts);
     for (const state of this.states.values()) {
-      if (state.type === "cgitem") continue;
-      for (const target of this.resolveTargets(state.type)) {
-        amounts.set(target, Math.max(amounts.get(target) ?? 0, state.amount));
-      }
+      if (state.layer) amounts.set(state.layer, state.amount);
     }
 
     for (const target of this.filteredTargets) {

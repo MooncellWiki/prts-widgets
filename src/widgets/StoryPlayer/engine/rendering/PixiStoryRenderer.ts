@@ -623,10 +623,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       onWarning,
     );
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
-    this.sceneEffects = new SceneEffectManager(
-      this.layers.sceneCamera,
-      (type) => this.resolveFocusTargets(type),
-      (...args) => this.updatePhaseTweenRunner.run(...args),
+    this.sceneEffects = new SceneEffectManager(this.layers, (...args) =>
+      this.updatePhaseTweenRunner.run(...args),
     );
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
@@ -2598,33 +2596,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   setFocusParam(input: FocusParamInput): void {
     this.sceneEffects.setFocusParam(input);
-  }
-
-  private resolveFocusTargets(type: string): Container[] {
-    switch (type) {
-      case "bg": {
-        return [this.backgroundLayer];
-      }
-      case "char": {
-        return [this.charLayer];
-      }
-      // `AVGImagePanel._PostDisplayKey` registers ck_cg_1/2 for `image`'s
-      // fore/back images, not CG objects.
-      case "cg": {
-        return [this.imageLayer];
-      }
-      // `LargeBackgroundPanel._PostDisplayKey` registers ck_lbg_1..4 over the
-      // family-shared `_images` list, which `_LoadImage` fills for largebg /
-      // verticalbg / gridbg alike. The Web port only tracks the composed
-      // root, so focus effects apply to the whole puzzle rather than one tile.
-      case "lbg": {
-        return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
-      }
-      // SceneEffectManager owns the PostDisplay bindings for cgitem.
-      default: {
-        return [];
-      }
-    }
   }
 
   /**

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SceneEffectManager } from "../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
 import { buildColorEffectMatrix } from "../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
+import { LayerGraph } from "../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 
 import type { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { FocusOutInput } from "../src/widgets/StoryPlayer/engine/types";
@@ -23,9 +24,9 @@ function createSceneEffects(
     update(1);
     complete?.();
   },
-  resolveFocusTargets: (type: string) => Container[] = () => [],
+  layers = new LayerGraph(),
 ): SceneEffectManager {
-  return new SceneEffectManager(new Container(), resolveFocusTargets, tween);
+  return new SceneEffectManager(layers, tween);
 }
 
 describe("SceneEffectManager", () => {
@@ -101,10 +102,16 @@ describe("SceneEffectManager", () => {
     expect(target.filters).toHaveLength(0);
   });
 
-  it.each(["bg", "cg", "char", "lbg"])(
+  it.each([
+    ["bg", "background"],
+    ["cg", "images"],
+    ["char", "characters"],
+    ["lbg", "gridBackground"],
+  ] as const)(
     "updates the same %s focus channel across asset IDs",
-    (type) => {
-      const target = new Container();
+    (type, layer) => {
+      const layers = new LayerGraph();
+      const target = layers[layer];
       let step: ((progress: number) => void) | undefined;
       let finish: (() => void) | undefined;
       const effects = createSceneEffects(
@@ -112,7 +119,7 @@ describe("SceneEffectManager", () => {
           step = update;
           finish = complete;
         },
-        () => [target],
+        layers,
       );
       const onComplete = vi.fn();
       const fade = effects.setFocusOut(

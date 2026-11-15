@@ -7,7 +7,13 @@ import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import { dotweenDefaultEase } from "./core/DotweenEase";
 
 import type { FocusOutInput, FocusParamInput } from "../types";
+import type { LayerGraph } from "./core/LayerGraph";
 import type { TweenRunner } from "./core/TweenRunner";
+
+type SceneEffectLayers = Pick<
+  LayerGraph,
+  "background" | "characters" | "gridBackground" | "images" | "sceneCamera"
+>;
 
 /**
  * Native port: Torappu.AVG.AVGSceneEffectManager (2791 UpdateEffect
@@ -17,16 +23,29 @@ import type { TweenRunner } from "./core/TweenRunner";
 export class SceneEffectManager {
   private readonly focus: SceneFocusOut;
   private readonly grayscaleTweens = new Set<ExecutionHandle>();
+  private readonly sceneCamera: Container;
   private grayscaleAmount = 0;
   private inverseAmount = 0;
   private sceneColorFilter: ColorMatrixFilter | null = null;
 
   constructor(
-    private readonly sceneCamera: Container,
-    resolveFocusTargets: (type: string) => Container[],
+    layers: SceneEffectLayers,
     private readonly tween: TweenRunner["run"],
   ) {
-    this.focus = new SceneFocusOut(resolveFocusTargets, tween);
+    this.sceneCamera = layers.sceneCamera;
+    this.focus = new SceneFocusOut(
+      new Map([
+        ["bg", layers.background],
+        ["char", layers.characters],
+        // AVGImagePanel registers ck_cg_1/2 on its image layers.
+        ["cg", layers.images],
+        // LargeBackgroundPanel._BindCamEffectTarget (2791 @ 0x1841D81E0)
+        // binds fixed ck_lbg_* image slots. The persistent Pixi layer
+        // carries their shared focus amount across puzzle replacements.
+        ["lbg", layers.gridBackground],
+      ]),
+      tween,
+    );
   }
 
   setCameraEffect(
@@ -83,9 +102,6 @@ export class SceneEffectManager {
     input: FocusOutInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    // _ExecuteFocusout (2791 @ 0x184187C20) checks IsChannelEmpty before
-    // writing the starting amount or creating a tween.
-    if (!this.hasFocusChannels(input.type, input.id)) return;
     return this.focus.setFocus(input, onComplete);
   }
 
@@ -125,27 +141,5 @@ export class SceneEffectManager {
       this.inverseAmount,
     );
     this.sceneCamera.filters = [this.sceneColorFilter];
-  }
-
-  /**
-   * _GenCfgByType (2791 @ 0x184187FB0) uses fixed channels for bg/char/cg/lbg
-   * and the supplied id for cgitem. The Web renderer has no customchar
-   * slots to contribute channels.
-   */
-  private hasFocusChannels(type: string, id: string): boolean {
-    switch (type) {
-      case "bg":
-      case "cg":
-      case "char":
-      case "lbg": {
-        return true;
-      }
-      case "cgitem": {
-        return id !== "";
-      }
-      default: {
-        return false;
-      }
-    }
   }
 }
