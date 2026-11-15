@@ -176,10 +176,14 @@ export class FakeRenderer implements StoryRenderer {
     this.gridBackgroundClearCalls.push({ block, fadeMs });
   }
 
+  cancelGridBackgroundPreparation(): void {}
+
   clearImage(): void {}
   clearLargeImage(fadeMs = 0, block = false): void {
     this.gridBackgroundClearCalls.push({ block, fadeMs });
   }
+
+  cancelLargeImagePreparation(): void {}
 
   clearCgItems(
     key?: string,
@@ -290,11 +294,11 @@ export class FakeRenderer implements StoryRenderer {
     this.curtainCalls.push(input);
   }
 
-  async setGridBackground(input: GridBackgroundInput): Promise<void> {
+  setGridBackground(input: GridBackgroundInput): ExecutionHandle | void {
     this.gridBackgroundCalls.push(input);
   }
 
-  async setLargeImage(input: GridBackgroundInput): Promise<void> {
+  setLargeImage(input: GridBackgroundInput): ExecutionHandle | void {
     this.gridBackgroundCalls.push(input);
   }
 
@@ -337,13 +341,13 @@ export class FakeRenderer implements StoryRenderer {
     this.interludeCalls.push(input);
   }
 
-  async setLargeBackgroundTween(
+  setLargeBackgroundTween(
     input: LargeBackgroundTweenInput,
-  ): Promise<void> {
+  ): ExecutionHandle | void {
     this.largeBackgroundTweenCalls.push(input);
   }
 
-  async setLargeImageTween(input: LargeBackgroundTweenInput): Promise<void> {
+  setLargeImageTween(input: LargeBackgroundTweenInput): ExecutionHandle | void {
     this.largeImageTweenCalls.push(input);
   }
 

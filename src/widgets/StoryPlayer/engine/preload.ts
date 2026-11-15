@@ -28,6 +28,7 @@ import {
   type FontSpec,
 } from "./font";
 import { parseScript } from "./parser";
+import { resolvePuzzleAssets } from "./puzzleCommands";
 
 import type { Context } from "../context";
 import type { ParsedLine, StoryCharacterFaceAsset } from "./types";
@@ -41,17 +42,6 @@ export interface ContextAssetManifest {
 
 function argAsString(raw: unknown): string {
   return typeof raw === "string" ? raw.trim() : "";
-}
-
-function resolveGroupedImageSelection(
-  imageGroup: string,
-  cgGroup: string,
-  isBackgroundCommand: boolean,
-): { asBackground: boolean; group: string } | null {
-  if (imageGroup)
-    return { asBackground: isBackgroundCommand, group: imageGroup };
-  if (cgGroup) return { asBackground: false, group: cgGroup };
-  return null;
 }
 
 function addImageUrl(
@@ -163,20 +153,13 @@ function addScriptImageUrls(
       line.command === "largebg" ||
       line.command === "largeimg"
     ) {
-      const imageGroup = argAsString(line.args.imagegroup);
-      const cgGroup = argAsString(line.args.cggroup);
-      const groupSelection = resolveGroupedImageSelection(
-        imageGroup,
-        cgGroup,
-        line.command.endsWith("bg"),
+      const assets = resolvePuzzleAssets(
+        line.args,
+        line.command === "largeimg",
       );
-      if (!groupSelection) continue;
-      for (const key of groupSelection.group.split("/"))
-        addImageUrl(
-          urls,
-          key,
-          groupSelection.asBackground ? "background" : "image",
-        );
+      if (!assets) continue;
+      for (const key of assets.imageKeys)
+        addImageUrl(urls, key, assets.assetKind);
     }
   }
 }

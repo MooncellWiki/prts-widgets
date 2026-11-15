@@ -533,9 +533,9 @@ describe("preloadContextAssets", () => {
     ]);
   });
 
-  it("preloads largeimg imagegroup tiles as image assets", async () => {
+  it("preloads largeimg imagegroup tiles as image assets with legacy case folding", async () => {
     const context = createContext([
-      '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900")]',
+      '[largeimg(ImageGroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900")]',
     ]);
 
     await preloadContextAssets(context);

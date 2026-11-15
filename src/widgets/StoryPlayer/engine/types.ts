@@ -780,9 +780,12 @@ export interface StoryRenderer {
   clearGridBackground: (
     fadeMs?: number,
     block?: boolean,
-  ) => Promise<void> | void;
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  cancelGridBackgroundPreparation: () => void;
   clearImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
-  clearLargeImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
+  clearLargeImage: (fadeMs?: number, block?: boolean) => ExecutionHandle | void;
+  cancelLargeImagePreparation: () => void;
   clearSticker: (id?: string, fadeMs?: number) => Promise<void> | void;
   clearStickers: (fadeMs?: number) => Promise<void> | void;
   clearSpellStickers: () => Promise<void> | void;
@@ -819,8 +822,11 @@ export interface StoryRenderer {
     onComplete?: () => void,
   ) => ExecutionHandle | void;
   setCurtain: (input: CurtainInput) => Promise<void>;
-  setGridBackground: (input: GridBackgroundInput) => Promise<void>;
-  setLargeImage: (input: GridBackgroundInput) => Promise<void>;
+  setGridBackground: (
+    input: GridBackgroundInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  setLargeImage: (input: GridBackgroundInput) => ExecutionHandle | void;
   runCharacterAction: (input: CharacterActionInput) => Promise<void>;
   /**
    * `layout` places the message once per command; typewriter updates omit it
@@ -849,8 +855,13 @@ export interface StoryRenderer {
     input: InterludeInput,
     onComplete?: () => void,
   ) => ExecutionHandle | void;
-  setLargeBackgroundTween: (input: LargeBackgroundTweenInput) => Promise<void>;
-  setLargeImageTween: (input: LargeBackgroundTweenInput) => Promise<void>;
+  setLargeBackgroundTween: (
+    input: LargeBackgroundTweenInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  setLargeImageTween: (
+    input: LargeBackgroundTweenInput,
+  ) => ExecutionHandle | void;
   createShowItemSlot: (style: string) => StoryShowItemSlot | null;
   showCgItem: (
     input: CgItemInput,

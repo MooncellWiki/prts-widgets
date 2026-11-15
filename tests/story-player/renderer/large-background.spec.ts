@@ -1,8 +1,14 @@
-import { Texture } from "pixi.js";
+import { type Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { createContext, createRenderer } from "../helpers/rendererFixtures";
+import { buildGridBackgroundRoot } from "../../../src/widgets/StoryPlayer/engine/rendering/core/SceneGeometry";
+import {
+  createContext,
+  createRenderedPlayback,
+  createRenderer,
+} from "../helpers/rendererFixtures";
 
+import type { ExecutionHandle } from "../../../src/widgets/StoryPlayer/engine/execution";
 import type { GridBackgroundInput } from "../../../src/widgets/StoryPlayer/engine/types";
 
 function createGridBackgroundInput(): GridBackgroundInput {
@@ -20,6 +26,82 @@ function createGridBackgroundInput(): GridBackgroundInput {
 }
 
 describe("PixiStoryRenderer", () => {
+  it.each([
+    {
+      action: "replace",
+      apply: (renderer: ReturnType<typeof createRenderer>) =>
+        renderer.setGridBackground({
+          ...createGridBackgroundInput(),
+          imageKeys: ["new"],
+        }),
+      labels: ["replacement"],
+    },
+    {
+      action: "destroy",
+      apply: (renderer: ReturnType<typeof createRenderer>) =>
+        renderer.destroy(),
+      labels: [],
+    },
+  ])("retires a pending tile load on $action", async ({ apply, labels }) => {
+    const renderer = createRenderer();
+    renderer.app = { destroy: vi.fn() };
+    const layer = renderer.layers.gridBackground;
+    const pending = Promise.withResolvers<Texture>();
+    const replacement = new Texture({ label: "replacement" });
+    renderer.textureForImageKey = vi
+      .fn()
+      .mockReturnValue(replacement)
+      .mockReturnValueOnce(pending.promise);
+    const input = createGridBackgroundInput();
+    const loading: ExecutionHandle = renderer.setGridBackground(input);
+    expect(layer.children).toHaveLength(0);
+
+    apply(renderer);
+    expect(loading.endReason).toBe("reset");
+    const mounted = [...layer.children];
+    expect(
+      mounted.map((root) => (root.children[0] as Sprite).texture.label),
+    ).toEqual(labels);
+
+    pending.resolve(new Texture({ label: "late art" }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(layer.children).toEqual(mounted);
+    renderer.destroy();
+  });
+
+  it("fades legacy foreground puzzles and clears only roots belonging to that view", async () => {
+    const renderer = createRenderer();
+    renderer.app = { destroy: vi.fn() };
+    renderer.frames.manual = true;
+    const { gridBackground, images } = renderer.layers;
+    const texture = new Texture({ label: "shared" });
+    renderer.textureForImageKey = vi.fn().mockReturnValue(texture);
+    const input = createGridBackgroundInput();
+    await renderer.setImage("ordinary");
+    renderer.setGridBackground(input);
+    renderer.setLargeImage(input);
+    const [ordinary, previous] = images.children;
+    const [background] = gridBackground.children;
+    renderer.setLargeImage({ ...input, fadeMs: 32 });
+    const [, , incoming] = images.children;
+    expect(incoming.scale.x).toBe(1.2);
+    try {
+      renderer.frames.step(16);
+      expect(images.children).toEqual([ordinary, previous, incoming]);
+      expect(incoming.alpha).toBe(0.5);
+      renderer.frames.step(16);
+      expect(images.children).toEqual([ordinary, incoming]);
+      expect(previous.destroyed).toBe(true);
+      renderer.clearLargeImage();
+      expect(images.children).toEqual([ordinary]);
+      expect(gridBackground.children).toEqual([background]);
+      expect(texture.destroyed).toBe(false);
+    } finally {
+      renderer.destroy();
+    }
+  });
+
   it("keeps lbg focus applied when a puzzle is first loaded or replaced", async () => {
     const renderer = createRenderer();
     renderer.app = {};
@@ -34,7 +116,7 @@ describe("PixiStoryRenderer", () => {
       to: 1,
       type: "lbg",
     });
-    await renderer.setGridBackground(createGridBackgroundInput());
+    await renderer.setGridBackground(createGridBackgroundInput())?.completion;
     expect(layer.children).toHaveLength(1);
     const first = layer.children[0];
     expect(layer.filters?.[0]?.matrix[4]).toBe(1);
@@ -42,7 +124,7 @@ describe("PixiStoryRenderer", () => {
     await renderer.setGridBackground({
       ...createGridBackgroundInput(),
       imageKeys: ["a", "b", "c", "d"],
-    });
+    })?.completion;
     expect(layer.children).toHaveLength(1);
     expect(layer.children[0]).not.toBe(first);
     expect(layer.filters?.[0]?.matrix[4]).toBe(1);
@@ -66,22 +148,23 @@ describe("PixiStoryRenderer", () => {
     });
 
     const input = createGridBackgroundInput();
-    await renderer.setGridBackground(input);
-    const old = renderer.largeBackgroundRoot.children[0];
+    await renderer.setGridBackground(input)?.completion;
+    const old = renderer.largeBackgroundView.root.children[0];
     expect(old.filters?.[0]?.matrix[4]).toBe(0.5);
-    expect(renderer.largeBackgroundRoot.children[1].filters ?? []).toHaveLength(
-      0,
-    );
+    expect(
+      renderer.largeBackgroundView.root.children[1].filters ?? [],
+    ).toHaveLength(0);
 
     await renderer.setGridBackground({
       ...input,
       imageKeys: ["a", "b", "c", "d"],
-    });
-    const [first, second] = renderer.largeBackgroundRoot.children;
-    expect(old.filters).toHaveLength(0);
+    })?.completion;
+    const [first, second] = renderer.largeBackgroundView.root.children;
+    expect(old.destroyed).toBe(true);
+    expect(old.filters ?? []).toHaveLength(0);
     expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
     expect(second.filters ?? []).toHaveLength(0);
-    expect(renderer.gridBackgroundLayer.filters ?? []).toHaveLength(0);
+    expect(renderer.layers.gridBackground.filters ?? []).toHaveLength(0);
   });
 
   it("keeps the large background in front of the background regardless of update order", async () => {
@@ -91,7 +174,7 @@ describe("PixiStoryRenderer", () => {
     renderer.app = {};
     // Mirror LayerGraph.attach's scene order: background first, grid layer next.
     renderer.sceneLayer.addChild(renderer.backgroundLayer);
-    renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
+    renderer.sceneLayer.addChild(renderer.layers.gridBackground);
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
     // panel_large_background is a permanent sibling in front of panel_background
@@ -99,10 +182,10 @@ describe("PixiStoryRenderer", () => {
     // on top -- executing background after gridbg must not sink the puzzle
     // below it.
     const gridIndex = () =>
-      renderer.sceneLayer.children.indexOf(renderer.gridBackgroundLayer) -
+      renderer.sceneLayer.children.indexOf(renderer.layers.gridBackground) -
       renderer.sceneLayer.children.indexOf(renderer.backgroundLayer);
 
-    await renderer.setGridBackground(input);
+    await renderer.setGridBackground(input)?.completion;
     expect(gridIndex()).toBe(1);
 
     await renderer.setBackground("bg_test");
@@ -111,7 +194,7 @@ describe("PixiStoryRenderer", () => {
       renderer.backgroundRoot,
     );
 
-    await renderer.setGridBackground(input);
+    await renderer.setGridBackground(input)?.completion;
     expect(gridIndex()).toBe(1);
     expect(renderer.backgroundLayer.children.at(-1)).toBe(
       renderer.backgroundRoot,
@@ -156,21 +239,23 @@ describe("PixiStoryRenderer", () => {
       // that fade mid-flight.
       const renderer = createRenderer();
       renderer.app = {};
-      renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
+      renderer.sceneLayer.addChild(renderer.layers.gridBackground);
       renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
-      renderer.tween = vi.fn(() => new Promise<void>(() => {}));
+      renderer.updatePhaseTweenRunner.run = vi.fn(
+        () => new Promise<void>(() => {}),
+      );
 
-      await renderer.setGridBackground({ ...input, fadeMs: 0 });
-      const firstRoot = renderer.gridBackgroundLayer.children.at(0);
-      expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+      await renderer.setGridBackground({ ...input, fadeMs: 0 })?.completion;
+      const firstRoot = renderer.layers.gridBackground.children.at(0);
+      expect(renderer.layers.gridBackground.children).toHaveLength(1);
 
-      await renderer.setGridBackground({ ...input, fadeMs: 500 });
+      await renderer.setGridBackground({ ...input, fadeMs: 500 })?.completion;
 
       expect(firstRoot.parent).toBeNull();
-      expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
-      expect(renderer.gridBackgroundLayer.children.at(0).alpha).toBe(0);
-      expect(renderer.largeBackgroundRoot).toBe(
-        renderer.gridBackgroundLayer.children.at(0),
+      expect(renderer.layers.gridBackground.children).toHaveLength(1);
+      expect(renderer.layers.gridBackground.children.at(0).alpha).toBe(0);
+      expect(renderer.largeBackgroundView.root).toBe(
+        renderer.layers.gridBackground.children.at(0),
       );
     },
   );
@@ -208,11 +293,11 @@ describe("PixiStoryRenderer", () => {
         warnings.push(warning),
       );
       renderer.app = {};
-      renderer.sceneLayer.addChild(renderer.gridBackgroundLayer);
+      renderer.sceneLayer.addChild(renderer.layers.gridBackground);
       renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
-      await renderer.setGridBackground(input);
-      expect(renderer.gridBackgroundLayer.children).toHaveLength(1);
+      await renderer.setGridBackground(input)?.completion;
+      expect(renderer.layers.gridBackground.children).toHaveLength(1);
 
       renderer.textureForImageKey = vi
         .fn()
@@ -221,17 +306,16 @@ describe("PixiStoryRenderer", () => {
             ? Promise.resolve(null)
             : Promise.resolve(Texture.EMPTY),
         );
-      await renderer.setGridBackground(input);
+      await renderer.setGridBackground(input)?.completion;
 
       expect(warnings).toEqual([`missing grid background: ${missingKey}`]);
-      expect(renderer.gridBackgroundLayer.children).toHaveLength(0);
-      expect(renderer.largeBackgroundRoot).toBeNull();
+      expect(renderer.layers.gridBackground.children).toHaveLength(0);
+      expect(renderer.largeBackgroundView.root).toBeNull();
     },
   );
 
   it("applies the strict gridbg xScale and yScale transform", () => {
-    const renderer = createRenderer();
-    const root = renderer.buildGridBackgroundRoot(createGridBackgroundInput(), [
+    const root = buildGridBackgroundRoot(createGridBackgroundInput(), [
       Texture.EMPTY,
       Texture.EMPTY,
       Texture.EMPTY,
@@ -243,8 +327,7 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("places every verticalbg tile, pivots on the first two heights and applies x/y/scale", () => {
-    const renderer = createRenderer();
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["v1", "v2", "v3"],
@@ -266,14 +349,13 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("stacks verticalbg tiles from top to bottom", () => {
-    const renderer = createRenderer();
     const textures = [
       new Texture({ label: "tile-0" }),
       new Texture({ label: "tile-1" }),
       new Texture({ label: "tile-2" }),
       new Texture({ label: "tile-3" }),
     ];
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["tile-0", "tile-1", "tile-2", "tile-3"],
@@ -301,14 +383,12 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies verticalbg initposmode offsets with the two-tile height sum", () => {
-    const renderer = createRenderer();
-
     const build = (
       initPositionMode: GridBackgroundInput["initPositionMode"],
       solidHeights: number[],
       solidWidths: number[],
     ) =>
-      renderer.buildGridBackgroundRoot(
+      buildGridBackgroundRoot(
         {
           ...createGridBackgroundInput(),
           imageKeys: solidHeights.map((_, index) => `v${index}`),
@@ -369,12 +449,12 @@ describe("PixiStoryRenderer", () => {
       solidWidths: [1280],
       x: 0,
       y: 0,
-    });
+    })?.completion;
 
     // The whole family shares one `_offset` container in native, so the
     // vertical composition must be registered for largebgtween as well.
-    const root = renderer.gridBackgroundLayer.children[0];
-    expect(renderer.largeBackgroundRoot).toBe(root);
+    const root = renderer.layers.gridBackground.children[0];
+    expect(renderer.largeBackgroundView.root).toBe(root);
 
     await renderer.setLargeBackgroundTween({
       block: false,
@@ -389,12 +469,11 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("lays out largebg as exactly two horizontal tiles", () => {
-    const renderer = createRenderer();
     const textures = [
       new Texture({ label: "tile-0" }),
       new Texture({ label: "tile-1" }),
     ];
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["tile-0", "tile-1"],
@@ -431,9 +510,10 @@ describe("PixiStoryRenderer", () => {
     //   lowercenter (0, (500 - 720) / 2)                    -> (0, -110)
     // The Pixi root pivots on the same rect as native's `_offset`, so the
     // only conversion is the flipped y axis: (640 + x, 360 - y).
-    const renderer = createRenderer();
-    const place = (initPositionMode: string) => {
-      const root = renderer.buildGridBackgroundRoot(
+    const place = (
+      initPositionMode: GridBackgroundInput["initPositionMode"],
+    ) => {
+      const root = buildGridBackgroundRoot(
         {
           ...createGridBackgroundInput(),
           imageKeys: ["tile-0", "tile-1"],
@@ -458,9 +538,8 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("applies gridbg initposmode offsets in the centered pivot space", () => {
-    const renderer = createRenderer();
-    const build = (initPositionMode: string) =>
-      renderer.buildGridBackgroundRoot(
+    const build = (initPositionMode: GridBackgroundInput["initPositionMode"]) =>
+      buildGridBackgroundRoot(
         {
           ...createGridBackgroundInput(),
           initPositionMode,
@@ -475,7 +554,7 @@ describe("PixiStoryRenderer", () => {
         [Texture.EMPTY, Texture.EMPTY, Texture.EMPTY, Texture.EMPTY],
       );
 
-    const positions = (mode: string) => {
+    const positions = (mode: GridBackgroundInput["initPositionMode"]) => {
       const { position } = build(mode);
       return { x: position.x, y: position.y };
     };
@@ -493,7 +572,7 @@ describe("PixiStoryRenderer", () => {
     // Corpus shape (level_main_16-01_beg.txt:112): 1280/1280 × 720/720 with
     // default mode anchors the view on the top row: the half-tile offset
     // (640, -360) puts the puzzle's top edge exactly on the canvas top.
-    const corpusRoot = renderer.buildGridBackgroundRoot(
+    const corpusRoot = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         initPositionMode: "default",
@@ -519,12 +598,12 @@ describe("PixiStoryRenderer", () => {
         ...createGridBackgroundInput(),
         imageKeys: ["t1", "t2", "t3", "t4"],
         layout,
-      });
-      const root = renderer.gridBackgroundLayer.children.at(-1);
+      })?.completion;
+      const root = renderer.layers.gridBackground.children.at(-1);
       // `LargeBackgroundPanel._ExecuteImageTween` drives the family-shared
       // `_offset`, so gridbg/verticalbg puzzles must be tweenable too.
-      expect(renderer.largeBackgroundRoot).toBe(root);
-      expect(root.parent).toBe(renderer.gridBackgroundLayer);
+      expect(renderer.largeBackgroundView.root).toBe(root);
+      expect(root.parent).toBe(renderer.layers.gridBackground);
     }
   });
 
@@ -542,7 +621,7 @@ describe("PixiStoryRenderer", () => {
       layout: "grid",
       x: 0,
       y: 0,
-    });
+    })?.completion;
 
     // level_main_16-01_beg.txt:112-113 pans the skystarry grid with
     // [largebgtween(duration=40,yFrom=720,yTo=360)]. Native `_offset` is a
@@ -552,14 +631,14 @@ describe("PixiStoryRenderer", () => {
     // band becomes the bottom tile row.
     await renderer.setLargeBackgroundTween({ durationMs: 0, yTo: 720 });
 
-    const root = renderer.largeBackgroundRoot;
+    const root = renderer.largeBackgroundView.root;
     expect(root.position.x).toBe(1280);
     expect(root.position.y).toBe(0);
   });
 
   it("applies largebgtween in largebg transform space", async () => {
     const renderer = createRenderer();
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["tile-0", "tile-1"],
@@ -581,9 +660,9 @@ describe("PixiStoryRenderer", () => {
 
     expect(root.position.y).toBe(360);
     renderer.app = {};
-    renderer.gridBackgroundLayer.addChild(root);
-    renderer.largeBackgroundRoot = root;
-    renderer.tween = vi.fn(
+    renderer.layers.gridBackground.addChild(root);
+    renderer.largeBackgroundView.root = root;
+    renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
         _durationMs: number,
         step: (progress: number) => void,
@@ -622,7 +701,7 @@ describe("PixiStoryRenderer", () => {
 
   it("maps largebgtween ease and loop onto the tween engine", async () => {
     const renderer = createRenderer();
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["tile-0", "tile-1"],
@@ -642,9 +721,9 @@ describe("PixiStoryRenderer", () => {
     const stepped: number[] = [];
 
     renderer.app = {};
-    renderer.gridBackgroundLayer.addChild(root);
-    renderer.largeBackgroundRoot = root;
-    renderer.tween = vi.fn(
+    renderer.layers.gridBackground.addChild(root);
+    renderer.largeBackgroundView.root = root;
+    renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
         _durationMs: number,
         step: (progress: number) => void,
@@ -685,7 +764,7 @@ describe("PixiStoryRenderer", () => {
 
   it("applies largeimgtween in largeimg transform space", async () => {
     const renderer = createRenderer();
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["tile-0", "tile-1"],
@@ -705,8 +784,8 @@ describe("PixiStoryRenderer", () => {
 
     renderer.app = {};
     renderer.imageLayer.addChild(root);
-    renderer.largeImageRoot = root;
-    renderer.tween = vi.fn(
+    renderer.largeImageView.root = root;
+    renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
         _durationMs: number,
         step: (progress: number) => void,
@@ -757,7 +836,7 @@ describe("PixiStoryRenderer", () => {
 
   it("maps largeimgtween ease and loop onto the tween engine", async () => {
     const renderer = createRenderer();
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["tile-0", "tile-1"],
@@ -775,8 +854,8 @@ describe("PixiStoryRenderer", () => {
 
     renderer.app = {};
     renderer.imageLayer.addChild(root);
-    renderer.largeImageRoot = root;
-    renderer.tween = vi.fn(
+    renderer.largeImageView.root = root;
+    renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
         _durationMs: number,
         step: (progress: number) => void,
@@ -814,7 +893,7 @@ describe("PixiStoryRenderer", () => {
 
   it("applies zero-duration largeimgtween immediately and cancels stale tweens", async () => {
     const renderer = createRenderer();
-    const root = renderer.buildGridBackgroundRoot(
+    const root = buildGridBackgroundRoot(
       {
         ...createGridBackgroundInput(),
         imageKeys: ["tile-0", "tile-1"],
@@ -830,8 +909,8 @@ describe("PixiStoryRenderer", () => {
 
     renderer.app = {};
     renderer.imageLayer.addChild(root);
-    renderer.largeImageRoot = root;
-    renderer.tween = vi.fn(
+    renderer.largeImageView.root = root;
+    renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
         _durationMs: number,
         step: (progress: number) => void,
@@ -851,7 +930,7 @@ describe("PixiStoryRenderer", () => {
       yTo: 0,
     });
 
-    const applySpy = vi.spyOn(renderer, "applyCenteredTransform");
+    const applySpy = vi.spyOn(root.position, "set");
 
     await renderer.setLargeImageTween({
       block: true,
@@ -860,8 +939,8 @@ describe("PixiStoryRenderer", () => {
     });
 
     expect(applySpy.mock.calls).toEqual([
-      [root, { scaleX: 0.5, scaleY: 0.75, x: -320, y: 0 }],
-      [root, { scaleX: 0.5, scaleY: 0.75, x: -160, y: 0 }],
+      [320, 360],
+      [480, 360],
     ]);
 
     (pendingStep as ((progress: number) => void) | null)?.(1);
@@ -869,5 +948,179 @@ describe("PixiStoryRenderer", () => {
 
     expect(root.position.x - 640).toBe(-160);
     expect(360 - root.position.y).toBe(0);
+  });
+});
+
+const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+describe("LargeBackgroundPanel frame order", () => {
+  const instantShow =
+    '[largebg(imagegroup="left/right",solidwidth="16/16",solidheight=16,initposmode="center")]';
+  const blockedShow =
+    '[largebg(imagegroup="left/right",solidwidth="16/16",solidheight=16,initposmode="center",fadetime=0.032,block=true)]';
+
+  it.each([
+    {
+      commands: [blockedShow],
+      draws: [
+        [0.5, 640, 0],
+        [1, 640, 1],
+      ],
+      name: "fade in",
+    },
+    {
+      commands: [
+        instantShow,
+        "[largebgtween(xTo=64,duration=0.032,block=true)]",
+      ],
+      draws: [
+        [1, 672, 0],
+        [1, 704, 1],
+      ],
+      name: "move",
+    },
+    {
+      commands: [instantShow, "[largebg(fadetime=0.032,block=true)]"],
+      draws: [
+        [0.5, 640, 0],
+        [undefined, undefined, 1],
+      ],
+      name: "clear",
+    },
+    {
+      commands: [
+        instantShow,
+        "[largebgtween(xTo=64,duration=0.032)]",
+        "[largebg(fadetime=0.064,block=true)]",
+      ],
+      draws: [
+        [0.75, 672, 0],
+        [0.5, 704, 1],
+        [0.25, 704, 1],
+        [undefined, undefined, 1],
+      ],
+      name: "nonblocking move during a blocked clear",
+    },
+  ])(
+    "draws the next command when $name completes the current wait",
+    async ({ commands, draws }) => {
+      const frames: unknown[] = [];
+      const { app, destroy, runtime } = await createRenderedPlayback(
+        [...commands, '[cgitem(image="after")]', '[name="A"]ok'],
+        ({ gridBackground, cgItems }) => {
+          const [root] = gridBackground.children;
+          frames.push([root?.alpha, root?.position.x, cgItems.children.length]);
+        },
+      );
+      const started = runtime.start();
+      try {
+        for (const [index] of draws.entries())
+          app.ticker.update((index + 1) * 16);
+        expect(frames).toEqual(draws);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("keeps the fade alive across a skip and lets its completion release the panel's next wait", async () => {
+    const frames: unknown[] = [];
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        blockedShow,
+        "[SkipToThis]",
+        "[largebgtween(xTo=64,duration=0.032,block=true)]",
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ gridBackground, cgItems }) => {
+        const [root] = gridBackground.children;
+        frames.push([root?.alpha, root?.position.x, cgItems.children.length]);
+      },
+    );
+    const started = runtime.start();
+    const [root] = renderer.layers.gridBackground.children;
+    expect(root.alpha).toBe(0);
+    const skipped = runtime.skipNode();
+    try {
+      await flushAsync();
+      app.ticker.update(16);
+      app.ticker.update(32);
+      app.ticker.update(48);
+      expect(renderer.layers.gridBackground.children).toEqual([root]);
+      expect(frames).toEqual([
+        [0.5, 640, 0],
+        [1, 672, 1],
+        [1, 704, 1],
+      ]);
+    } finally {
+      destroy();
+      await Promise.all([started, skipped]);
+    }
+  });
+
+  it("skips an uncached puzzle immediately and ignores its late tile after the jump", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[largebg(imagegroup="old_left/right",solidwidth="16/16",solidheight=16)]',
+        "[SkipToThis]",
+        instantShow,
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const delayed = Promise.withResolvers<Texture>();
+    const oldTile = new Texture({ label: "old left" });
+    const load = vi
+      .spyOn(renderer, "textureForImageKey")
+      .mockReturnValueOnce(delayed.promise);
+    const started = runtime.start();
+    const { gridBackground, cgItems } = renderer.layers;
+    const skipped = runtime.skipNode();
+    try {
+      expect(gridBackground.children).toHaveLength(0);
+      await flushAsync();
+      app.ticker.update(16);
+      expect(gridBackground.children).toHaveLength(1);
+      expect(cgItems.children).toHaveLength(1);
+      const [replacement] = gridBackground.children;
+      delayed.resolve(oldTile);
+      await flushAsync();
+      app.ticker.update(32);
+      expect(gridBackground.children).toEqual([replacement]);
+      expect(
+        replacement.children.map((tile: Sprite) => tile.texture.label),
+      ).toEqual(["left", "right"]);
+    } finally {
+      delayed.resolve(oldTile);
+      destroy();
+      load.mockRestore();
+      await Promise.all([started, skipped]);
+    }
+  });
+
+  it("clears the native puzzle at story end while a move is still running", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [instantShow, "[largebgtween(xTo=64,duration=1,loop=true)]"],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const [root] = renderer.layers.gridBackground.children;
+      app.ticker.update(16);
+      expect(root.destroyed).toBe(false);
+      // Let the runner pass the story's 200 ms end delay.
+      app.ticker.update(216);
+      expect(runtime.getState()).toBe("finished");
+      expect(renderer.layers.gridBackground.children).toHaveLength(0);
+      expect(root.destroyed).toBe(true);
+      app.ticker.update(232);
+      expect(renderer.tweenUpdates.size).toBe(0);
+    } finally {
+      destroy();
+      await started;
+    }
   });
 });
