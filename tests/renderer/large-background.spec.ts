@@ -20,6 +20,70 @@ function createGridBackgroundInput(): GridBackgroundInput {
 }
 
 describe("PixiStoryRenderer", () => {
+  it("keeps lbg focus applied when a puzzle is first loaded or replaced", async () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    const layer = renderer.layers.gridBackground;
+
+    renderer.setFocusParam({ blur: false, color: "Colorinverse" });
+    renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "",
+      to: 1,
+      type: "lbg",
+    });
+    await renderer.setGridBackground(createGridBackgroundInput());
+    expect(layer.children).toHaveLength(1);
+    const first = layer.children[0];
+    expect(layer.filters?.[0]?.matrix[4]).toBe(1);
+
+    await renderer.setGridBackground({
+      ...createGridBackgroundInput(),
+      imageKeys: ["a", "b", "c", "d"],
+    });
+    expect(layer.children).toHaveLength(1);
+    expect(layer.children[0]).not.toBe(first);
+    expect(layer.filters?.[0]?.matrix[4]).toBe(1);
+    expect(renderer.layers.background.filters ?? []).toHaveLength(0);
+
+    renderer.resetCameraEffects();
+    expect(layer.filters).toHaveLength(0);
+  });
+
+  it("retains a focusout addressed to one lbg slot across puzzle replacement", async () => {
+    const renderer = createRenderer();
+    renderer.app = {};
+    renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+    renderer.setFocusParam({ blur: false, color: "Colorinverse" });
+    renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "ck_lbg_1",
+      to: 0.5,
+      type: "cgitem",
+    });
+
+    const input = createGridBackgroundInput();
+    await renderer.setGridBackground(input);
+    const old = renderer.largeBackgroundRoot.children[0];
+    expect(old.filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(renderer.largeBackgroundRoot.children[1].filters ?? []).toHaveLength(
+      0,
+    );
+
+    await renderer.setGridBackground({
+      ...input,
+      imageKeys: ["a", "b", "c", "d"],
+    });
+    const [first, second] = renderer.largeBackgroundRoot.children;
+    expect(old.filters).toHaveLength(0);
+    expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(second.filters ?? []).toHaveLength(0);
+    expect(renderer.gridBackgroundLayer.filters ?? []).toHaveLength(0);
+  });
+
   it("keeps the large background in front of the background regardless of update order", async () => {
     const renderer = createRenderer();
     const input = createGridBackgroundInput();

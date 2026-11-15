@@ -17,9 +17,15 @@ export function createContext(): Context {
 export function createRenderer(
   context: Context = createContext(),
   onWarning?: (detail: string) => void,
+  now?: () => number,
 ): any {
-  const renderer = new PixiStoryRenderer(context, onWarning);
   const frames = new PlaybackTestFrames();
+  let tickerTime: number | undefined;
+  const renderer = new PixiStoryRenderer(
+    context,
+    onWarning,
+    now ?? (() => tickerTime ?? frames.now()),
+  );
   const onFrameEnd = renderer.onFrameEnd.bind(renderer);
   const onFrameUpdate = renderer.onFrameUpdate.bind(renderer);
   return Object.assign(renderer, {
@@ -30,11 +36,15 @@ export function createRenderer(
         : frames.onFrameEnd(
             callback,
           )) satisfies PixiStoryRenderer["onFrameEnd"],
-    onFrameUpdate: ((...args) =>
+    onFrameUpdate: ((callback, phase) =>
       (renderer as any).app?.ticker
-        ? onFrameUpdate(...args)
+        ? onFrameUpdate((frame) => {
+            tickerTime = frame.nowMs;
+            callback(frame);
+          }, phase)
         : frames.onFrameUpdate(
-            ...args,
+            callback,
+            phase,
           )) satisfies PixiStoryRenderer["onFrameUpdate"],
   }) as any;
 }

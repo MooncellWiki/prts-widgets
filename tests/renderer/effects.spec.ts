@@ -1,6 +1,7 @@
 import { Application, Container, Texture, TickerPlugin } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { buildColorEffectMatrix } from "../../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
@@ -13,6 +14,14 @@ import type { CgItemInput } from "../../src/widgets/StoryPlayer/engine/types";
 // and let a broken matrix pass.
 function normalizeZero(values: number[]): number[] {
   return values.map((v) => (v === 0 ? 0 : v));
+}
+
+function sceneColorFilter(gray: number, inverse = 0) {
+  return expect.objectContaining({
+    matrix: buildColorEffectMatrix(gray, inverse).map((value) =>
+      expect.closeTo(value, 12),
+    ),
+  });
 }
 
 function createBlockerRenderer(): any {
@@ -106,65 +115,71 @@ function toPointSet(points: number[]): string[] {
 
 describe("PixiStoryRenderer", () => {
   it("eases the cameraeffect grayscale tween with DOTween's default OutQuad", () => {
-    const manual = createManualClock();
     const renderer = createRenderer();
-    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+    renderer.app = {};
+    renderer.frames.manual = true;
 
     void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0);
 
-    expect(renderer.grayscaleAmount).toBe(0);
-    manual.advance(500);
-    manual.drainFrame();
+    const sceneCamera = renderer.layers.sceneCamera;
+    expect(sceneCamera.filters ?? []).toHaveLength(0);
+    renderer.frames.step(500);
     // Native AVGCameraEffect never calls SetEase, so DOTween.To runs with
     // DOTween 1.2.760's defaultEaseType=6 (OutQuad): halfway = 0.75, not the
     // linear 0.5.
-    expect(renderer.grayscaleAmount).toBeCloseTo(0.75);
-    manual.advance(500);
-    manual.drainFrame();
-    expect(renderer.grayscaleAmount).toBe(1);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.75)]);
+    renderer.frames.step(500);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(1)]);
   });
 
-  it("starts the grayscale tween from the current amount for any negative initamount", async () => {
-    const manual = createManualClock();
+  it("starts the grayscale tween from the current amount for a negative initamount", () => {
     const renderer = createRenderer();
-    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+    renderer.app = {};
+    renderer.frames.manual = true;
 
-    await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
-    expect(renderer.grayscaleAmount).toBe(0.6);
+    renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
+    renderer.frames.step();
+    const sceneCamera = renderer.layers.sceneCamera;
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
 
     void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, -1);
 
     // Native _TweenGrayscaleAmount checks MathUtil.LT(initAmount, 0): any
     // negative initamount means "start from the current grayscale amount",
     // not an explicit negative start.
-    expect(renderer.grayscaleAmount).toBe(0.6);
-    manual.advance(500);
-    manual.drainFrame();
-    expect(renderer.grayscaleAmount).toBeCloseTo(0.9);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
+    renderer.frames.step(500);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.9)]);
   });
 
-  it("starts the grayscale tween from an explicit non-negative initamount", async () => {
-    const manual = createManualClock();
+  it("writes an explicit grayscale initamount on the first update", () => {
     const renderer = createRenderer();
-    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
+    renderer.app = {};
+    renderer.frames.manual = true;
 
-    await renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
-    expect(renderer.grayscaleAmount).toBe(0.6);
+    renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
+    renderer.frames.step();
+    const sceneCamera = renderer.layers.sceneCamera;
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
 
     // MathUtil.LT(0.2, 0) is false, so native takes the argument as the tween
     // start and discards the 0.6 the effect manager currently holds.
     void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0.2);
 
-    expect(renderer.grayscaleAmount).toBe(0.2);
-    manual.advance(500);
-    manual.drainFrame();
-    expect(renderer.grayscaleAmount).toBeCloseTo(0.8);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
+    renderer.frames.step(0);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.2)]);
+    renderer.frames.step(500);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.8)]);
   });
 
-  it("applies grayscale as Rec.601 luma desaturation, not an additive tint", async () => {
+  it("applies grayscale as Rec.601 luma desaturation, not an additive tint", () => {
     const renderer = createRenderer();
+    renderer.app = {};
+    renderer.frames.manual = true;
 
-    await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+    renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+    renderer.frames.step();
 
     // Native AVGSceneGrayScale blits with mat_grayscale and writes
     // _Params = (0.299, 0.587, 0.114, amount): Rec.601 luma desaturation
@@ -179,10 +194,12 @@ describe("PixiStoryRenderer", () => {
     expect(matrix.slice(15, 20)).toEqual([0, 0, 0, 1, 0]);
   });
 
-  it("composes Colorinverse over grayscale like the native _Inverse lerp", async () => {
+  it("composes Colorinverse over grayscale like the native _Inverse lerp", () => {
     const renderer = createRenderer();
+    renderer.app = {};
+    renderer.frames.manual = true;
 
-    await renderer.setCameraEffect("Colorinverse", 1, 0, false, true);
+    renderer.setCameraEffect("Colorinverse", 1, 0, false, true);
 
     // Native _Inverse lerps each channel toward 1-color in the same blit:
     // rows scale by -1 with offset 1. (normalizeZero turns the -0 produced
@@ -197,7 +214,8 @@ describe("PixiStoryRenderer", () => {
 
     // With grayscale=1 kept from a previous command, desaturation and
     // inversion compose into one matrix.
-    await renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+    renderer.setCameraEffect("Grayscale", 1, 0, false, true);
+    renderer.frames.step();
     const bothMatrix = renderer.layers.sceneCamera.filters[0]
       .matrix as number[];
     expect(normalizeZero(bothMatrix.slice(0, 5))).toEqual([
@@ -209,6 +227,133 @@ describe("PixiStoryRenderer", () => {
     expect(normalizeZero(bothMatrix.slice(10, 15))).toEqual([
       -0.299, -0.587, -0.114, 0, 1,
     ]);
+  });
+
+  it.each([
+    [
+      '[cameraeffect(effect="Grayscale",fadetime=0.032,block=true)]',
+      [null, 3],
+      0,
+    ],
+    ['[cameraeffect(effect="Grayscale",fadetime=0,block=true)]', [3, 3], 0],
+    ["[camerashake(duration=0.032,block=true)]", [null, 3], 0],
+    ['[focusout(type="bg",to=1,duration=0.012,block=true)]', [null, 3], 12],
+  ])(
+    "draws the next line in the frame %s completes",
+    async (command, draws, now) => {
+      const context = createContext([
+        '[cameraeffect(effect="Colorinverse",keep=true,block=true)]',
+        command,
+        '[name="A"]after',
+      ]);
+      const renderer = createRenderer(context, undefined, () => now);
+      const app = new Application();
+      const drawnLines: Array<number | null> = [];
+      const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+      app.render = () => drawnLines.push(runtime.getDisplayedLineIndex());
+      TickerPlugin.init.call(app, { autoStart: false });
+      renderer.app = app;
+      renderer.layers.attach(app.stage);
+      renderer.dialogFrameTextureFailed = true;
+      app.ticker.lastTime = 0;
+      const started = runtime.start();
+      try {
+        const sceneCamera = renderer.layers.sceneCamera;
+        expect(sceneCamera.filters).toEqual([sceneColorFilter(0, 1)]);
+        expect(runtime.getDisplayedLineIndex()).toBeNull();
+        for (const time of [16, 32]) {
+          now = time;
+          app.ticker.update(time);
+        }
+        expect(drawnLines).toEqual(draws);
+        expect(sceneCamera.filters).toEqual([sceneColorFilter(0, 1)]);
+        expect(renderer.layers.scene.position.x).toBe(0);
+        expect(renderer.layers.scene.position.y).toBe(0);
+      } finally {
+        runtime.destroy();
+        renderer.app = null;
+        renderer.destroy();
+        app.ticker.destroy();
+        app.stage.destroy({ children: true });
+        await started;
+      }
+    },
+  );
+
+  it("force-ends an infinite blocked shake and preserves other camera effects at a segment skip", async () => {
+    const context = createContext([
+      '[cameraeffect(effect="Colorinverse",keep=true)]',
+      '[cameraeffect(effect="Grayscale",fadetime=0.064,keep=true)]',
+      "[camerashake(block=true)]",
+      '[name="A"]skipped',
+      "[SkipToThis]",
+      '[name="B"]after',
+    ]);
+    const renderer = createRenderer(context);
+    renderer.app = {};
+    renderer.frames.manual = true;
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    const position = renderer.layers.scene.position;
+    let skipped: Promise<void> | undefined;
+    try {
+      await renderer.frames.advance(10_000);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      const sceneCamera = renderer.layers.sceneCamera;
+      expect(sceneCamera.filters).toEqual([sceneColorFilter(1, 1)]);
+
+      position.set(8, 4);
+      skipped = runtime.skipNode();
+      expect([position.x, position.y]).toEqual([0, 0]);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      renderer.frames.step(16);
+      expect(runtime.getDisplayedLineIndex()).toBe(6);
+      expect([position.x, position.y]).toEqual([0, 0]);
+      expect(sceneCamera.filters).toEqual([sceneColorFilter(1, 1)]);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      await Promise.all([started, skipped]);
+    }
+  });
+
+  it("clears camera and focus effects on story end and stops pending tween writes", async () => {
+    const context = createContext([
+      '[cameraeffect(effect="Colorinverse",keep=true)]',
+      '[cameraeffect(effect="Grayscale",fadetime=1,keep=true)]',
+      '[focusparam(effect="Colorinverse",blur=false)]',
+      '[focusout(type="bg",from=0.5,to=1,duration=1)]',
+      "[camerashake()]",
+      '[name="A"]text',
+      '[skipnode(mode="skip")]',
+    ]);
+    const renderer = createRenderer(context);
+    renderer.app = {};
+    renderer.frames.manual = true;
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    try {
+      renderer.frames.step(16);
+      expect(renderer.layers.sceneCamera.filters).toEqual([
+        sceneColorFilter(0.031744, 1),
+      ]);
+      expect(renderer.backgroundLayer.filters).toHaveLength(1);
+      await runtime.skipNode();
+      expect(runtime.getState()).toBe("finished");
+      renderer.frames.step(1000);
+      expect(renderer.layers.sceneCamera.filters).toHaveLength(0);
+      expect(renderer.backgroundLayer.filters).toHaveLength(0);
+      expect(renderer.layers.scene.position.x).toBe(0);
+      expect(renderer.layers.scene.position.y).toBe(0);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      await started;
+    }
   });
 
   it("desaturates focusout targets with the same Rec.601 matrix as cameraeffect", async () => {

@@ -2,7 +2,6 @@ import {
   Application,
   Assets,
   CanvasSource,
-  ColorMatrixFilter,
   Container,
   FillGradient,
   Graphics,
@@ -28,6 +27,11 @@ import {
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
+import {
+  browserAnimationClock,
+  createExecutionHandle,
+  type ExecutionHandle,
+} from "../execution";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
 import {
   STORY_HEIGHT,
@@ -65,8 +69,8 @@ import {
   type TypewriterText,
 } from "../types";
 
+import { SceneEffectManager } from "./SceneEffectManager";
 import { guardClaimedClicks } from "./core/ClickClaim";
-import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import {
   dotweenDefaultEase,
   dotweenEaseCurve,
@@ -92,7 +96,6 @@ import {
 } from "./panels/CharacterCutinPanel";
 import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
-import { FocusEffectPanel } from "./panels/FocusEffectPanel";
 import { InterludePanel } from "./panels/InterludePanel";
 import { ShowItemCutinSlot } from "./panels/ShowItemCutinSlot";
 import { ShowItemPhotoSlot } from "./panels/ShowItemPhotoSlot";
@@ -103,7 +106,6 @@ import { TimerView } from "./panels/TimerView";
 import { VideoPanel } from "./panels/VideoPanel";
 
 import type { Context } from "../../context";
-import type { ExecutionHandle } from "../execution";
 
 function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -353,6 +355,8 @@ interface CharacterBuiltVisual {
   visual: Container;
 }
 
+type CharacterSlot = "l" | "m" | "r";
+
 interface CharacterRenderState {
   actionX: number;
   actionY: number;
@@ -393,7 +397,7 @@ interface CharacterRenderState {
   shakeOffsetX: number;
   shakeOffsetY: number;
   shakeSessionId: number;
-  slot: string;
+  slot: CharacterSlot;
   sourceHeight: number;
   sourceWidth: number;
   transformSessionId: number;
@@ -522,7 +526,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly animTextPanel: AnimTextPanel;
   private readonly avgDisplayPanel: AvgDisplayPanel;
   private readonly spellStickerPanel: SpellStickerPanel;
-  private readonly focusEffectPanel: FocusEffectPanel;
+  private readonly sceneEffects: SceneEffectManager;
   private readonly cgItemView: CgItemView;
 
   private blockerSprite: Sprite | null = null;
@@ -564,15 +568,19 @@ export class PixiStoryRenderer implements StoryRenderer {
   private blockerSlideMaterial: SlideMaskFilter | null = null;
   private blockerMaskSource: TextureSource | null = null;
   private blockerMaskSourceFailed = false;
-  private cameraShakeSessionId = 0;
-  private cameraShakeWaitResolve: (() => void) | null = null;
-  private grayscaleAmount = 0;
-  private inverseAmount = 0;
-  private grayscaleFilter: ColorMatrixFilter | null = null;
+  private cameraShake?: {
+    animation: ExecutionHandle;
+    infinite: boolean;
+    onComplete?: () => void;
+  };
   private readonly stickerViews = new Map<string, StickerView>();
   private timerView: TimerView | null = null;
 
-  constructor(context: Context, onWarning?: (detail: string) => void) {
+  constructor(
+    context: Context,
+    onWarning?: (detail: string) => void,
+    now = browserAnimationClock.now,
+  ) {
     this.context = context;
     this.onWarning = onWarning;
     // Native port: `AVGImagePanel` executors transform the panel's own
@@ -625,9 +633,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       onWarning,
     );
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
-    this.focusEffectPanel = new FocusEffectPanel(
-      (type) => this.resolveFocusTargets(type),
+    this.sceneEffects = new SceneEffectManager(
+      this.layers,
       (...args) => this.updatePhaseTweenRunner.run(...args),
+      now,
     );
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
@@ -635,8 +644,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       (...args) => this.updatePhaseTweenRunner.run(...args),
       onWarning,
       {
-        disposed: (key, root) => this.focusEffectPanel.releaseCgItem(key, root),
-        registered: (key, root) => this.focusEffectPanel.bindCgItem(key, root),
+        disposed: (key, root) => this.sceneEffects.releaseCgItem(key, root),
+        registered: (key, root) => this.sceneEffects.bindCgItem(key, root),
       },
     );
   }
@@ -762,7 +771,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   destroy(): void {
     this.stopVideo();
-    this.stopCameraShake();
     this.decisionView.destroy();
     this.interludePanel.destroy();
     this.animTextPanel.destroy();
@@ -772,8 +780,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.stickerViews.clear();
     this.timerView?.destroy();
     this.timerView = null;
-    this.focusEffectPanel.destroy();
     this.cgItemView.destroy();
+    this.resetCameraEffects();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
     this.backgroundTweenSessionId += 1;
@@ -961,6 +969,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.backgroundSprite = sprite;
     this.backgroundLayer.addChild(root);
     const fadeMs = input?.fadeMs ?? 0;
+    this.sceneEffects.setImageFocusTargets(
+      "bg",
+      root,
+      fadeMs > 0 ? (previous ?? undefined) : undefined,
+    );
     root.alpha = fadeMs > 0 ? 0 : 1;
     if (fadeMs <= 0) {
       previous?.removeFromParent();
@@ -969,7 +982,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = progress),
-      () => previous?.removeFromParent(),
+      () => {
+        if (!previous) return;
+        previous.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(previous);
+      },
     );
     if (input?.block) await run;
     else void run;
@@ -980,6 +997,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const root = this.backgroundRoot;
     this.backgroundRoot = null;
     this.backgroundSprite = null;
+    this.sceneEffects.setImageFocusTargets(
+      "bg",
+      undefined,
+      fadeMs > 0 ? (root ?? undefined) : undefined,
+    );
     if (!root) return;
     if (fadeMs <= 0) {
       root.removeFromParent();
@@ -989,7 +1011,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = startAlpha * (1 - progress)),
-      () => root.removeFromParent(),
+      () => {
+        root.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(root);
+      },
     );
     if (block) await run;
     else void run;
@@ -1093,6 +1118,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeBackgroundRoot = null;
     const previous = [...this.gridBackgroundLayer.children];
     for (const child of previous) child.removeFromParent();
+    this.sceneEffects.setLargeBackgroundFocusTargets([]);
     const textures = await Promise.all(
       input.imageKeys.map((key) =>
         this.textureForImageKey(key, input.assetKind ?? "background"),
@@ -1122,6 +1148,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     root.alpha = input.fadeMs > 0 ? 0 : 1;
     this.gridBackgroundLayer.addChild(root);
+    this.sceneEffects.setLargeBackgroundFocusTargets(root.children);
 
     if (input.fadeMs <= 0) return;
 
@@ -1154,10 +1181,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeBackgroundRoot = null;
     this.largeBackgroundTweenSessionId += 1;
     const roots = [...this.gridBackgroundLayer.children];
-    if (roots.length === 0) return;
-
-    if (fadeMs <= 0) {
+    if (roots.length === 0 || fadeMs <= 0) {
       for (const root of roots) root.removeFromParent();
+      this.sceneEffects.setLargeBackgroundFocusTargets([]);
       return;
     }
 
@@ -1174,6 +1200,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
         for (const root of roots) root.removeFromParent();
+        this.sceneEffects.setLargeBackgroundFocusTargets([]);
       },
     );
 
@@ -1337,6 +1364,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageRoot = root;
     this.imageLayer.addChild(root);
     const fadeMs = input?.fadeMs ?? 0;
+    this.sceneEffects.setImageFocusTargets(
+      "cg",
+      root,
+      fadeMs > 0 ? (previous ?? undefined) : undefined,
+    );
     root.alpha = fadeMs > 0 ? 0 : 1;
     if (fadeMs <= 0) {
       previous?.removeFromParent();
@@ -1345,7 +1377,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = progress),
-      () => previous?.removeFromParent(),
+      () => {
+        if (!previous) return;
+        previous.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(previous);
+      },
     );
     if (input?.block) await run;
     else void run;
@@ -1357,6 +1393,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     // any in-flight rotation keeps playing (see setImageRotate).
     const root = this.imageRoot;
     this.imageRoot = null;
+    this.sceneEffects.setImageFocusTargets(
+      "cg",
+      undefined,
+      fadeMs > 0 ? (root ?? undefined) : undefined,
+    );
     if (!root) return;
     if (fadeMs <= 0) {
       root.removeFromParent();
@@ -1366,7 +1407,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = startAlpha * (1 - progress)),
-      () => root.removeFromParent(),
+      () => {
+        root.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(root);
+      },
     );
     if (block) await run;
     else void run;
@@ -1955,6 +1999,15 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (previous && imageFadeMs <= 0) this.disposeCharacterState(previous);
     this.characterSlots.set(slot, state);
     this.charLayer.addChild(root);
+    // AVGCharacterSlot.Set (2791 @ 0x184237BC0) swaps holders on key changes.
+    this.sceneEffects.setImageFocusTargets(
+      slot,
+      visual,
+      imageFadeMs > 0 ? previous?.visual : undefined,
+      !previous ||
+        (previous.nativeKey ?? previous.fadeIdentity) !==
+          (input.nativeKey ?? fadeIdentity),
+    );
     this.applyCharacterZOrder(input.focus ?? 0);
 
     if (previous && imageFadeMs > 0)
@@ -2271,6 +2324,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       const state = this.characterSlots.get(normalized);
       if (!state) return;
       this.characterSlots.delete(normalized);
+      this.sceneEffects.setImageFocusTargets(
+        normalized,
+        undefined,
+        fadeMs > 0 ? state.visual : undefined,
+      );
       if (fadeMs > 0)
         await this.fadeOutAndRemove(state.root, fadeMs, () =>
           this.disposeCharacterState(state),
@@ -2281,6 +2339,13 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const states = [...this.characterSlots.values()];
     this.characterSlots.clear();
+    for (const state of states) {
+      this.sceneEffects.setImageFocusTargets(
+        state.slot,
+        undefined,
+        fadeMs > 0 ? state.visual : undefined,
+      );
+    }
     if (fadeMs > 0) {
       await Promise.all(
         states.map((state) =>
@@ -2562,159 +2627,44 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  /**
-   * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect` for the
-   * grayscale/inverse branches and their completion behavior. A PIXI color
-   * filter substitutes for `AVGSceneEffectManager`'s camera post-process.
-   *
-   * Deliberately unported (verified on 2.7.61 / build 2761 IDA decompile):
-   * - Chaos: dual-material distortion, intentionally skipped upstream.
-   * - Reset lifecycle: native `OnReset`/`ShouldResetOnSkip=true` clears the
-   *   effect record on story reset/skip; the web player rebuilds the renderer
-   *   per playback instead, so no explicit reset exists here.
-   * - Colorinverse amount is a shader `_Inverse` float natively (interpolable
-   *   0..1, modeled below as `lerp(prev, 1-prev, inverse)` in the matrix).
-   */
-  async setCameraEffect(
+  setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
     amount: number,
     durationMs: number,
     block: boolean,
     keep: boolean,
     initialAmount?: number,
-  ): Promise<void> {
-    if (effect === "Colorinverse") {
-      this.inverseAmount = amount;
-      this.updateCameraFilter();
-      return;
-    }
-    // Native `_TweenGrayscaleAmount` (2.7.61 VA 0x183E33C60): a negative
-    // initamount (not just the omitted key's -1 default) starts from the
-    // current grayscale amount via GetEffectAmount("grayscale", "grayscale");
-    // other values are the explicit tween start. Native tests it with
-    // MathUtil.LT(initAmount, 0), which decompiles to `-1e-5 > initAmount`, so
-    // its real threshold sits an epsilon below 0; the plain `>= 0` here only
-    // differs over [-1e-5, 0), which no story script hits.
-    const from =
-      initialAmount !== undefined && initialAmount >= 0
-        ? initialAmount
-        : this.grayscaleAmount;
-    this.grayscaleAmount = from;
-    this.updateCameraFilter();
-    const run = this.tween(
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.sceneEffects.setCameraEffect(
+      effect,
+      amount,
       durationMs,
-      (progress) => {
-        // Native: the executor never calls SetEase, so DOTween.To tweens with
-        // DOTween's default ease. This build ships DOTween 1.2.760, whose
-        // cctor (VA 0x18410B0E0) writes defaultEaseType = 6 = Ease.OutQuad
-        // (fast-then-slow), not linear. DOTween.AutoInit does let a
-        // Resources/DOTweenSettings asset overwrite that field, and the asset
-        // lives in the player's resources.assets rather than a hot-update
-        // bundle so it cannot be read here — but OutQuad is also
-        // DOTweenSettings' own default, so the compiled value stands.
-        // DOTween's OutQuad is `-t*(t-2)`, i.e. the 1-(1-t)^2 below.
-        const eased = 1 - (1 - progress) ** 2;
-        this.grayscaleAmount = from + (amount - from) * eased;
-        this.updateCameraFilter();
-      },
-      () => {
-        this.grayscaleAmount = keep ? amount : 0;
-        this.updateCameraFilter();
-      },
+      block,
+      keep,
+      initialAmount,
+      onComplete,
     );
-    if (block) await run;
-    else void run;
   }
 
-  setFocusOut(input: FocusOutInput): ExecutionHandle | void {
-    // `_ExecuteFocusout` (2791 @ 0x184187C20) returns false right after
-    // `_GenCfgByType` when `EffectConfig.IsChannelEmpty()` holds -- before
-    // the `from` write and the tween -- so an empty channel stores nothing
-    // and never blocks, whatever `duration`/`block` say.
-    if (!this.hasFocusChannels(input.type, input.id)) return;
-    return this.focusEffectPanel.setFocus(input);
+  resetCameraEffects(): void {
+    // AVGCameraEffect.OnReset clears scene-root shakes and camera effects;
+    // ShouldResetOnSkip (2791 @ 0x184186430) leaves them live at segment jumps.
+    this.stopCameraShake();
+    // AVGController.OnStoryCommitted (2791 @ 0x18416B750) disposes the
+    // scene effect manager, which owns focus tweens and PostDisplay bindings.
+    this.sceneEffects.reset();
+  }
+
+  setFocusOut(
+    input: FocusOutInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.sceneEffects.setFocusOut(input, onComplete);
   }
 
   setFocusParam(input: FocusParamInput): void {
-    this.focusEffectPanel.setParam(input);
-  }
-
-  private updateCameraFilter(): void {
-    const sceneCamera = this.layers.sceneCamera;
-    if (this.grayscaleAmount === 0 && this.inverseAmount === 0) {
-      sceneCamera.filters = [];
-      this.grayscaleFilter = null;
-      return;
-    }
-
-    if (!this.grayscaleFilter) this.grayscaleFilter = new ColorMatrixFilter();
-
-    // Native AVGSceneGrayScale blits the scene camera's target, which
-    // contains both SceneCanvas and CgItemCanvas. It uses
-    // AVG/[UC]Common/Arts/Materials/mat_grayscale, writing
-    // `_Params = (0.299, 0.587, 0.114, grayAmount)` and `_Inverse`. See
-    // buildColorEffectMatrix for the shader math and why pixi's
-    // grayscale()/negative() helpers cannot express it.
-    this.grayscaleFilter.matrix = buildColorEffectMatrix(
-      this.grayscaleAmount,
-      this.inverseAmount,
-    );
-    sceneCamera.filters = [this.grayscaleFilter];
-  }
-
-  /**
-   * `AVGCameraEffect._GenCfgByType` (2.7.81 0x183FAE730) +
-   * `EffectConfig.IsChannelEmpty`: bg/char/cg/lbg look up fixed channel
-   * lists in the static `_channels` table (never empty); `cgitem` writes the
-   * raw `id` into the single `_channel` field, so an empty id is empty rather
-   * than "all items"; `customchar` collects `m_customInUse` custom slots via
-   * `AVGCharacterslotPanel.TryCollect(All)CustomSlotEffectChannels` -- a
-   * channel set disjoint from the standard l/m/r slots, and this port has no
-   * custom slot system, so it is always empty here; any other type misses
-   * `_channels` and is empty too.
-   */
-  private hasFocusChannels(type: string, id: string): boolean {
-    switch (type) {
-      case "bg":
-      case "cg":
-      case "char":
-      case "lbg": {
-        return true;
-      }
-      case "cgitem": {
-        return id !== "";
-      }
-      default: {
-        return false;
-      }
-    }
-  }
-
-  private resolveFocusTargets(type: string): Container[] {
-    switch (type) {
-      case "bg": {
-        return [this.backgroundLayer];
-      }
-      case "char": {
-        return [this.charLayer];
-      }
-      // `AVGImagePanel._PostDisplayKey` registers ck_cg_1/2 for `image`'s
-      // fore/back images, not CG objects.
-      case "cg": {
-        return [this.imageLayer];
-      }
-      // `LargeBackgroundPanel._PostDisplayKey` registers ck_lbg_1..4 over the
-      // family-shared `_images` list, which `_LoadImage` fills for largebg /
-      // verticalbg / gridbg alike. The Web port only tracks the composed
-      // root, so focus effects apply to the whole puzzle rather than one tile.
-      case "lbg": {
-        return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
-      }
-      // FocusEffectPanel owns the PostDisplay bindings for cgitem.
-      default: {
-        return [];
-      }
-    }
+    this.sceneEffects.setFocusParam(input);
   }
 
   /**
@@ -2726,43 +2676,40 @@ export class PixiStoryRenderer implements StoryRenderer {
    * full |(xStrength, yStrength)| magnitude (see ShakePath). Sampling and
    * scheduling are a Web/PIXI adaptation of the same tween.
    */
-  async shakeCamera(input: CameraShakeInput): Promise<void> {
-    this.stopCameraShake();
+  shakeCamera(
+    input: CameraShakeInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    // _ExecuteCameraShake (2791 @ 0x1841874E0) kills the previous tween
+    // first. An infinite tween does not run OnComplete, so a replacement
+    // starts at the current offset. The stop branch also resets position.
+    this.endCameraShake("force_end");
+    if (input.stop) {
+      this.sceneLayer.position.set(0, 0);
+      return;
+    }
+    if (input.durationMs <= 0) return;
 
-    if (input.stop || input.durationMs <= 0) return;
-
-    const sessionId = ++this.cameraShakeSessionId;
+    const { x: startX, y: startY } = this.sceneLayer.position;
+    const animation = createExecutionHandle(input.block);
+    this.cameraShake = { animation, infinite: input.infinite, onComplete };
+    const isCurrent = () => this.cameraShake?.animation === animation;
     const path = buildShakePath(input.durationMs, {
       ...input,
       vectorBased: true,
     });
-    const runCycle = async (): Promise<void> => {
-      await this.tween(input.durationMs, (progress) => {
-        if (sessionId !== this.cameraShakeSessionId) return;
+    void this.updatePhaseTweenRunner.run(
+      input.durationMs,
+      (progress) => {
         const offset = sampleShakePath(path, progress);
-        this.sceneLayer.position.set(offset.x, offset.y);
-      });
-      if (sessionId !== this.cameraShakeSessionId) return;
-      if (input.infinite) {
-        void runCycle();
-        return;
-      }
-      this.stopCameraShake(sessionId);
-    };
-
-    let wait: Promise<void> | undefined;
-    if (input.block) {
-      wait = new Promise<void>((resolve) => {
-        this.cameraShakeWaitResolve = resolve;
-      });
-    }
-
-    void runCycle();
-
-    if (wait) {
-      await wait;
-      this.cameraShakeWaitResolve = null;
-    }
+        this.sceneLayer.position.set(startX + offset.x, startY + offset.y);
+      },
+      () => {
+        if (isCurrent()) this.endCameraShake("complete");
+      },
+      { isAlive: isCurrent, loops: input.infinite ? -1 : 1 },
+    );
+    return animation;
   }
 
   setSubtitle(text: TypewriterText, layout?: OverlayTextLayout): void {
@@ -3226,7 +3173,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private async buildCharacterSlotState(
     input: CharacterSlotInput,
-    slot: string,
+    slot: CharacterSlot,
     current?: CharacterRenderState,
   ): Promise<CharacterRenderState | null> {
     if (!input.characterKey || !input.expression) return current ?? null;
@@ -3311,6 +3258,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.updateCharacterOpacity(state);
       this.characterSlots.set(slot, state);
       this.charLayer.addChild(root);
+      this.sceneEffects.setImageFocusTargets(slot, built.visual);
       return state;
     }
 
@@ -3381,6 +3329,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     // outgoing visual gets a dedicated fade here.
     const fadeMs = Math.max(0, Math.round(input.replaceFadeMs ?? 0));
     built.visual.alpha = clamp01(current.contentAlpha);
+    this.sceneEffects.setImageFocusTargets(
+      slot,
+      built.visual,
+      fadeMs > 0 && previousVisual !== built.visual
+        ? previousVisual
+        : undefined,
+    );
     if (previousVisual && previousVisual !== built.visual && fadeMs > 0) {
       const sessionId = ++current.replaceFadeSessionId;
       const previousAlpha = previousVisual.alpha;
@@ -3554,6 +3509,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private releaseCharacterVisual(visual: Container): void {
+    this.sceneEffects.releaseFixedFocusTarget(visual);
     const cacheKey = this.faceOverlayVisualKeys.get(visual);
     if (cacheKey === undefined) return;
     this.faceOverlayVisualKeys.delete(visual);
@@ -3640,7 +3596,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     // `_ProcessFocusArray` (0x183e50b30) clears all four flags, then lights
     // only the listed slots; unrecognized values light nothing. Brightness
     // changes are tweens in the Sequence (SetFocus), applied instantly here.
-    const active = new Set(
+    const active = new Set<string>(
       focusSlots.map((value) => this.normalizeCharacterSlot(value)),
     );
 
@@ -3827,7 +3783,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.outgoingVisual = null;
   }
 
-  private normalizeCharacterSlot(slot?: string): string {
+  private normalizeCharacterSlot(slot?: string): CharacterSlot {
     switch ((slot ?? "").trim().toLowerCase()) {
       case "char_left":
       case "l":
@@ -4261,14 +4217,23 @@ export class PixiStoryRenderer implements StoryRenderer {
     return true;
   }
 
-  stopCameraShake(sessionId?: number): void {
-    if (sessionId !== undefined && sessionId !== this.cameraShakeSessionId)
-      return;
-
-    this.cameraShakeSessionId += 1;
+  stopCameraShake(): void {
+    this.endCameraShake("force_end");
     this.sceneLayer.position.set(0, 0);
-    this.cameraShakeWaitResolve?.();
-    this.cameraShakeWaitResolve = null;
+  }
+
+  private endCameraShake(reason: "complete" | "force_end"): void {
+    const shake = this.cameraShake;
+    if (!shake) return;
+    this.cameraShake = undefined;
+    // TweenManager.Complete (2791 @ 0x184462630) skips infinite loops.
+    if (reason === "force_end" && shake.infinite) {
+      shake.animation.end(reason);
+      return;
+    }
+    this.sceneLayer.position.set(0, 0);
+    shake.animation.end();
+    shake.onComplete?.();
   }
 
   private readBlockerColor(): {
