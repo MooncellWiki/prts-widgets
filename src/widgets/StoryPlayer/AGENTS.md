@@ -37,14 +37,17 @@ Log All 高亮与调试页行跟随都订阅它。
 | --- | --- |
 | `engine/types.ts` | 全部公共类型 + `StoryRenderer`/`StoryAudio`/`StoryPlayer` 接口 + 1280×720 常量 |
 | `engine/parser.ts` | `[command(args)]text` 行解析、反斜杠续行、隐式 endtip、header→StoryMetadata |
-| `engine/runtime.ts` | 核心状态机：`PlayerState`、decision 闸门、skipnode/skiptothis、打字机、自动播放多档速度 |
-| `engine/commandRegistry.ts` / `execution.ts` | 命令名小写化分发；`ExecutionHandle` 阻塞语义 + 可注入 `AnimationClock` |
+| `engine/runtime.ts` | 核心状态机：`PlayerState`、命令循环与等待调度（帧/点击/决策）、skipnode/skiptothis、自动播放多档速度；尚未拆成面板的命令（背景、立绘、音频、blocker、video、focusout 等）仍在这里执行 |
+| `engine/commandRegistry.ts` / `execution.ts` | 命令名小写化分发与 `CommandWait` 等待类型；`ExecutionHandle` 阻塞语义 + 可注入 `AnimationClock` |
+| `engine/ExecutorComponent.ts` | 原生 `ExecutorComponent` 基类：`getExecutors()` 注册命令，面板共用一个 `finishCommand` 完成槽，`onFinish`/`forceCommandEnd` 对应原生同名方法 |
+| `engine/panels/` | 命令侧面板（`ExecutorComponent` 子类）：Dialog、Decision、Subtitle、Sticker（含 timer）、SpellSticker、ShowItem、CgItem、DisplayableExecutor（animtext/avgdisplay）；负责参数解析和命令生命周期，画面交给 `StoryRenderer`。`AVGTypeWriterText` 是对话/字幕共用的打字机 |
+| `engine/DecisionCommandPredicator.ts` / `eventPool.ts` | decision 闸门共享状态（runtime 分发前读，DecisionPanel 写）；`AVGController.eventPool` 的 ON_CLICK/ON_SPEED_SET |
 | `engine/asset.ts` | 资源路由到 `torappu.prts.wiki/assets`（bg/images/characters/video/audio、`$var`/`@path` 音频键） |
 | `engine/characterRef.ts` | 角色引用 `$group`/`@alias`/`#index` 解析 + fade identity |
 | `engine/font.ts` | FontFace 显式预载客户端字体（对话 NotoSansHans-Medium；animtext、萨米 spellsticker 的字体由 preload.ts 按需加载并计入进度），必须在 PIXI 测量前完成 |
 | `engine/rendering/PixiStoryRenderer.ts` | `StoryRenderer` 的 PIXI 实现，逻辑坐标恒 1280×720 |
-| `engine/rendering/panels/` | 各命令 UI 面板：Dialog/Decision/Video/Interlude/CgItem/AvgDisplay/AnimText/SpellSticker/FocusEffect |
-| `engine/rendering/core/` | `LayerGraph`（层序）、`TweenRunner`、`ShakePath`（镜头与角色抖动）、`SceneGeometry`、`ClickClaim`（点击归属） |
+| `engine/rendering/panels/` | 各命令的 PIXI 视图：Dialog/Decision/Subtitle/Sticker/Timer/SpellSticker/ShowItem 槽位/CgItem/AvgDisplay/AnimText/FocusEffect/Video/Interlude/CharacterCutin |
+| `engine/rendering/core/` | `LayerGraph`（层序，含 2791 SceneCanvas 排序值）、`TweenRunner`、`Sequence`（DOTween Sequence 的 insert/append/join）、`TextureAsset`（同步读预加载缓存）、`DotweenEase`、`ShakePath`（镜头、角色与 CG 抖动）、`SceneGeometry`、`ColorEffectMatrix`/`SlideMaskFilter`、`ClickClaim`（点击归属） |
 | `engine/log/` | `semantics`（与 runtime 共享的纯语义）→ `symbolicFlow`（符号状态 DAG）→ `condition`（DNF 路径条件）→ `document`（UI 投影） |
 | `engine/` 其余 | `richtext`（富文本颜色）、`textVariables`（`{@xxx}` 展开，nickname 取 `wgUserName` 兜底"博士"）、`avgDisplay`（avgdisplay style/slot 枚举归一，runtime 与 preload 共用）、`showitem`（道具原生尺寸 + 内置九宫格相框 `sprite_avg_showItem_photo`，见 assets/ui）、`audio` |
 | `components/` | LogAllPanel/LogAllList、AssetListModal + CharacterFacePreview |
@@ -65,6 +68,13 @@ Log All 高亮与调试页行跟随都订阅它。
   idle/waiting_input 推进；其他阻塞状态下的点击只把自动播放模式重置为手动
   （对齐 OnClickPress，theater 下连这一步也不做）。画布内可交互对象（决策
   选项）认领的点击由 `rendering/core/ClickClaim` 截停，不会冒泡成推进点击。
+- **帧顺序**（对齐 2791 的 DOTween Update → 命令协程 → 绘制）：Pixi ticker
+  的 update 阶段推进补间与打字机，`afterUpdate` 阶段 runtime 检查
+  `WaitForFrame` 并推进命令，然后才绘制；点击、决策选项和视频结束在帧末
+  （绘制后）确认，下一帧再推进。面板命令的阻塞补间要用
+  `PixiStoryRenderer` 的 `updatePhaseTweenRunner`，否则完成会晚一帧。
+  道具、CG、印章和 avgdisplay 执行时经 `TextureAsset.getCachedTexture`
+  同步读贴图，资源须由 `preload.ts` 预热；缓存未命中才退回异步加载，首帧会缺图。
 - **assets.ts 必须用 `new URL('./x.png', import.meta.url)` 字面量**：widget
   跨源加载，普通 import 在 dev 下会 404，字面量才能被 Vite 静态打包。
 - **两处不能删的"怪代码"**：`entries/StoryPlayer.ts` 开头的原型补丁还原
@@ -94,11 +104,19 @@ pnpm build           # 含 vue-tsc 类型检查
   runtime 的 `FakeRenderer`/`FakeAudio`/`createContext` 在
   `tests/helpers/runtimeFakes.ts`，renderer 跨文件共用的 helper 在
   `tests/helpers/rendererFixtures.ts`。
+- `engine/panels/` 的命令面板经 runtime 用例覆盖（`tests/runtime/panels.spec.ts`、
+  `text.spec.ts` 等）；`rendering/panels/` 中较复杂的视图在 `tests/` 根目录另有
+  独立 spec（如 `cgItemView.spec.ts`、`avgDisplayPanel.spec.ts`）。
 
 ## 常见任务
 
-- **移植新命令**：`runtime.ts` 注册 `builtinCommandNames` → 参数解析成
-  `types.ts` 的 `*Input` → 渲染落在 `PixiStoryRenderer` 或新 panel →
+- **移植新命令**：先按原生归属选位置。属于已拆出的面板就加进
+  `engine/panels/` 对应类的 `getExecutors()`；新的原生面板继承
+  `ExecutorComponent`，在 `runtime.ts` 构造函数里 `register`；其余命令才进
+  `runtime.ts` 的 `builtinCommandNames`。面板执行器返回 `"continue"`、
+  `{ animation, block }`（阻塞时由 runtime 逐帧检查，动画结束调
+  `finishCommand`）、点击或决策等待。之后参数解析成 `types.ts` 的 `*Input` →
+  渲染落在 `PixiStoryRenderer` 或 `rendering/panels/` 的视图 →
   `preload.ts` 补资源收集 → 注释标 provenance。涉及分支/文本可见性的命令
   还要同步 `log/semantics.ts`、`log/symbolicFlow.ts`、
   `tests/helpers/storyOracle.ts` 三处语义。
