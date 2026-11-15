@@ -18,7 +18,9 @@ interface FocusState {
 }
 
 function stateKey(type: string, id: string): string {
-  return `${type}\u0000${id}`;
+  // AVGCameraEffect._GenCfgByType (2791 @ 0x184187FB0) looks up
+  // bg/cg/char/lbg by type. A cgitem channel uses the exact id.
+  return type === "cgitem" ? `cgitem\u0000${id}` : type;
 }
 
 /**

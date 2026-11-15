@@ -1,5 +1,5 @@
 import { BlurFilter, type ColorMatrixFilter, Container } from "pixi.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { SceneEffectManager } from "../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
 import { buildColorEffectMatrix } from "../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
@@ -23,8 +23,9 @@ function createSceneEffects(
     update(1);
     complete?.();
   },
+  resolveFocusTargets: (type: string) => Container[] = () => [],
 ): SceneEffectManager {
-  return new SceneEffectManager(new Container(), () => [], tween);
+  return new SceneEffectManager(new Container(), resolveFocusTargets, tween);
 }
 
 describe("SceneEffectManager", () => {
@@ -98,6 +99,52 @@ describe("SceneEffectManager", () => {
       input({ durationMs: 0, id: "x", to: 0, type: "cgitem" }),
     );
     expect(target.filters).toHaveLength(0);
+  });
+
+  it.each(["bg", "cg", "char", "lbg"])(
+    "updates the same %s focus channel across asset IDs",
+    (type) => {
+      const target = new Container();
+      let step: ((progress: number) => void) | undefined;
+      let finish: (() => void) | undefined;
+      const effects = createSceneEffects(
+        async (_duration, update, complete) => {
+          step = update;
+          finish = complete;
+        },
+        () => [target],
+      );
+      const onComplete = vi.fn();
+      const fade = effects.setFocusOut(
+        input({ block: true, durationMs: 1000, id: "first", to: 1, type }),
+        onComplete,
+      );
+      step?.(0.5);
+      expect(target.filters).toHaveLength(1);
+
+      effects.setFocusOut(input({ id: "second", type }));
+      expect(fade?.endReason).toBe("force_end");
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(target.filters).toHaveLength(0);
+
+      step?.(1);
+      finish?.();
+      expect(target.filters).toHaveLength(0);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("matches cgitem focus channels by exact ID", () => {
+    const effects = createSceneEffects();
+    const upper = new Container();
+    const lower = new Container();
+    effects.bindCgItem("A", upper);
+    effects.bindCgItem("a", lower);
+    effects.setFocusOut(input({ id: "A", to: 1, type: "cgitem" }));
+    effects.setFocusOut(input({ id: "a", type: "cgitem" }));
+
+    expect(upper.filters).toHaveLength(1);
+    expect(lower.filters).toHaveLength(0);
   });
 
   it("replays a stored amount when the cgitem target binds", () => {
