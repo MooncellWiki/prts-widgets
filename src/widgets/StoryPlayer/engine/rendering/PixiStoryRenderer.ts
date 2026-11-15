@@ -2,7 +2,6 @@ import {
   Application,
   Assets,
   CanvasSource,
-  ColorMatrixFilter,
   Container,
   FillGradient,
   Graphics,
@@ -66,8 +65,8 @@ import {
   type TypewriterText,
 } from "../types";
 
+import { SceneEffectManager } from "./SceneEffectManager";
 import { guardClaimedClicks } from "./core/ClickClaim";
-import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import {
   dotweenDefaultEase,
   dotweenEaseCurve,
@@ -93,7 +92,6 @@ import {
 } from "./panels/CharacterCutinPanel";
 import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
-import { FocusEffectPanel } from "./panels/FocusEffectPanel";
 import { InterludePanel } from "./panels/InterludePanel";
 import { ShowItemCutinSlot } from "./panels/ShowItemCutinSlot";
 import { ShowItemPhotoSlot } from "./panels/ShowItemPhotoSlot";
@@ -522,7 +520,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly animTextPanel: AnimTextPanel;
   private readonly avgDisplayPanel: AvgDisplayPanel;
   private readonly spellStickerPanel: SpellStickerPanel;
-  private readonly focusEffectPanel: FocusEffectPanel;
+  private readonly sceneEffects: SceneEffectManager;
   private readonly cgItemView: CgItemView;
 
   private blockerSprite: Sprite | null = null;
@@ -569,10 +567,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     infinite: boolean;
     onComplete?: () => void;
   };
-  private readonly grayscaleTweens = new Set<ExecutionHandle>();
-  private grayscaleAmount = 0;
-  private inverseAmount = 0;
-  private grayscaleFilter: ColorMatrixFilter | null = null;
   private readonly stickerViews = new Map<string, StickerView>();
   private timerView: TimerView | null = null;
 
@@ -629,7 +623,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       onWarning,
     );
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
-    this.focusEffectPanel = new FocusEffectPanel(
+    this.sceneEffects = new SceneEffectManager(
+      this.layers.sceneCamera,
       (type) => this.resolveFocusTargets(type),
       (...args) => this.updatePhaseTweenRunner.run(...args),
     );
@@ -639,8 +634,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       (...args) => this.updatePhaseTweenRunner.run(...args),
       onWarning,
       {
-        disposed: (key, root) => this.focusEffectPanel.releaseCgItem(key, root),
-        registered: (key, root) => this.focusEffectPanel.bindCgItem(key, root),
+        disposed: (key, root) => this.sceneEffects.releaseCgItem(key, root),
+        registered: (key, root) => this.sceneEffects.bindCgItem(key, root),
       },
     );
   }
@@ -2565,14 +2560,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  /**
-   * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteCameraEffect` for the
-   * grayscale/inverse branches and their completion behavior. A PIXI color
-   * filter substitutes for `AVGSceneEffectManager`'s camera post-process.
-   *
-   * Colorinverse writes the `_Inverse` channel immediately. The Web matrix
-   * models that shader channel as `lerp(prev, 1-prev, inverse)`.
-   */
   setCameraEffect(
     effect: "Colorinverse" | "Grayscale",
     amount: number,
@@ -2582,126 +2569,35 @@ export class PixiStoryRenderer implements StoryRenderer {
     initialAmount?: number,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    if (effect === "Colorinverse") {
-      this.inverseAmount = amount;
-      this.updateCameraFilter();
-      return;
-    }
-    // _TweenGrayscaleAmount (2791 @ 0x1841885F0) uses MathUtil.LT to select
-    // the current amount for negative initamount. DOTween's setter first
-    // writes on Update, including when quick play produces a zero duration.
-    const from =
-      initialAmount !== undefined &&
-      Math.fround(initialAmount) >= -Math.fround(1e-5)
-        ? initialAmount
-        : this.grayscaleAmount;
-    const animation = createExecutionHandle(block);
-    this.grayscaleTweens.add(animation);
-    void this.updatePhaseTweenRunner.run(
+    return this.sceneEffects.setCameraEffect(
+      effect,
+      amount,
       durationMs,
-      (progress) => {
-        this.grayscaleAmount = from + (amount - from) * progress;
-        this.updateCameraFilter();
-      },
-      () => {
-        if (!this.grayscaleTweens.delete(animation)) return;
-        // __ExecuteCameraEffect_b__0 (2791 @ 0x18419DEF0) calls
-        // FinishCommand before clearing a grayscale effect with keep=false.
-        animation.end();
-        onComplete?.();
-        if (!keep) {
-          this.grayscaleAmount = 0;
-          this.updateCameraFilter();
-        }
-      },
-      {
-        deferZeroDuration: true,
-        ease: dotweenDefaultEase,
-        isAlive: () => this.grayscaleTweens.has(animation),
-      },
+      block,
+      keep,
+      initialAmount,
+      onComplete,
     );
-    return animation;
   }
 
   resetCameraEffects(): void {
     // AVGCameraEffect.OnReset clears scene-root shakes and camera effects;
     // ShouldResetOnSkip (2791 @ 0x184186430) leaves them live at segment jumps.
     this.stopCameraShake();
-    for (const tween of this.grayscaleTweens) tween.end("reset");
-    this.grayscaleTweens.clear();
-    this.grayscaleAmount = 0;
-    this.inverseAmount = 0;
-    this.updateCameraFilter();
     // AVGController.OnStoryCommitted (2791 @ 0x18416B750) disposes the
     // scene effect manager, which owns focus tweens and PostDisplay bindings.
-    this.focusEffectPanel.destroy();
+    this.sceneEffects.reset();
   }
 
   setFocusOut(
     input: FocusOutInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    // `_ExecuteFocusout` (2791 @ 0x184187C20) returns false right after
-    // `_GenCfgByType` when `EffectConfig.IsChannelEmpty()` holds -- before
-    // the `from` write and the tween -- so an empty channel stores nothing
-    // and never blocks, whatever `duration`/`block` say.
-    if (!this.hasFocusChannels(input.type, input.id)) return;
-    return this.focusEffectPanel.setFocus(input, onComplete);
+    return this.sceneEffects.setFocusOut(input, onComplete);
   }
 
   setFocusParam(input: FocusParamInput): void {
-    this.focusEffectPanel.setParam(input);
-  }
-
-  private updateCameraFilter(): void {
-    const sceneCamera = this.layers.sceneCamera;
-    if (this.grayscaleAmount === 0 && this.inverseAmount === 0) {
-      sceneCamera.filters = [];
-      this.grayscaleFilter = null;
-      return;
-    }
-
-    if (!this.grayscaleFilter) this.grayscaleFilter = new ColorMatrixFilter();
-
-    // Native AVGSceneGrayScale blits the scene camera's target, which
-    // contains both SceneCanvas and CgItemCanvas. It uses
-    // AVG/[UC]Common/Arts/Materials/mat_grayscale, writing
-    // `_Params = (0.299, 0.587, 0.114, grayAmount)` and `_Inverse`. See
-    // buildColorEffectMatrix for the shader math and why pixi's
-    // grayscale()/negative() helpers cannot express it.
-    this.grayscaleFilter.matrix = buildColorEffectMatrix(
-      this.grayscaleAmount,
-      this.inverseAmount,
-    );
-    sceneCamera.filters = [this.grayscaleFilter];
-  }
-
-  /**
-   * `AVGCameraEffect._GenCfgByType` (2.7.81 0x183FAE730) +
-   * `EffectConfig.IsChannelEmpty`: bg/char/cg/lbg look up fixed channel
-   * lists in the static `_channels` table (never empty); `cgitem` writes the
-   * raw `id` into the single `_channel` field, so an empty id is empty rather
-   * than "all items"; `customchar` collects `m_customInUse` custom slots via
-   * `AVGCharacterslotPanel.TryCollect(All)CustomSlotEffectChannels` -- a
-   * channel set disjoint from the standard l/m/r slots, and this port has no
-   * custom slot system, so it is always empty here; any other type misses
-   * `_channels` and is empty too.
-   */
-  private hasFocusChannels(type: string, id: string): boolean {
-    switch (type) {
-      case "bg":
-      case "cg":
-      case "char":
-      case "lbg": {
-        return true;
-      }
-      case "cgitem": {
-        return id !== "";
-      }
-      default: {
-        return false;
-      }
-    }
+    this.sceneEffects.setFocusParam(input);
   }
 
   private resolveFocusTargets(type: string): Container[] {
@@ -2724,7 +2620,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       case "lbg": {
         return this.largeBackgroundRoot ? [this.largeBackgroundRoot] : [];
       }
-      // FocusEffectPanel owns the PostDisplay bindings for cgitem.
+      // SceneEffectManager owns the PostDisplay bindings for cgitem.
       default: {
         return [];
       }

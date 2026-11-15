@@ -1,9 +1,10 @@
 import { BlurFilter, type ColorMatrixFilter, Container } from "pixi.js";
 import { describe, expect, it } from "vitest";
 
+import { SceneEffectManager } from "../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
 import { buildColorEffectMatrix } from "../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
-import { FocusEffectPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/FocusEffectPanel";
 
+import type { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { FocusOutInput } from "../src/widgets/StoryPlayer/engine/types";
 
 function input(overrides: Partial<FocusOutInput> = {}): FocusOutInput {
@@ -17,20 +18,26 @@ function input(overrides: Partial<FocusOutInput> = {}): FocusOutInput {
   };
 }
 
-describe("FocusEffectPanel", () => {
+function createSceneEffects(
+  tween: TweenRunner["run"] = async (_duration, update, complete) => {
+    update(1);
+    complete?.();
+  },
+): SceneEffectManager {
+  return new SceneEffectManager(new Container(), () => [], tween);
+}
+
+describe("SceneEffectManager", () => {
   it("tweens the amount with SmoothStep easing, not linear time", () => {
     const target = new Container();
     let step: ((progress: number) => void) | undefined;
-    const panel = new FocusEffectPanel(
-      () => [],
-      async (_duration, update) => {
-        step = update;
-      },
-    );
-    panel.bindCgItem("x", target);
-    panel.setParam({ blur: false, color: "Colorinverse" });
+    const effects = createSceneEffects(async (_duration, update) => {
+      step = update;
+    });
+    effects.bindCgItem("x", target);
+    effects.setFocusParam({ blur: false, color: "Colorinverse" });
 
-    void panel.setFocus(
+    void effects.setFocusOut(
       input({ durationMs: 1000, id: "x", to: 1, type: "cgitem" }),
     );
 
@@ -48,17 +55,11 @@ describe("FocusEffectPanel", () => {
 
   it("grades the inverse matrix by the amount instead of always fully inverting", () => {
     const target = new Container();
-    const panel = new FocusEffectPanel(
-      () => [],
-      async (_duration, update, complete) => {
-        update(1);
-        complete?.();
-      },
-    );
-    panel.bindCgItem("x", target);
+    const effects = createSceneEffects();
+    effects.bindCgItem("x", target);
 
-    panel.setParam({ blur: false, color: "Colorinverse" });
-    void panel.setFocus(
+    effects.setFocusParam({ blur: false, color: "Colorinverse" });
+    void effects.setFocusOut(
       input({ durationMs: 0, id: "x", to: 0.5, type: "cgitem" }),
     );
 
@@ -71,17 +72,11 @@ describe("FocusEffectPanel", () => {
 
   it("grades the grayscale matrix by the amount", () => {
     const target = new Container();
-    const panel = new FocusEffectPanel(
-      () => [],
-      async (_duration, update, complete) => {
-        update(1);
-        complete?.();
-      },
-    );
-    panel.bindCgItem("x", target);
+    const effects = createSceneEffects();
+    effects.bindCgItem("x", target);
 
-    panel.setParam({ blur: false, color: "Grayscale" });
-    void panel.setFocus(
+    effects.setFocusParam({ blur: false, color: "Grayscale" });
+    void effects.setFocusOut(
       input({ durationMs: 0, id: "x", to: 0.25, type: "cgitem" }),
     );
 
@@ -91,21 +86,15 @@ describe("FocusEffectPanel", () => {
 
   it("drops filters when the amount reaches zero", () => {
     const target = new Container();
-    const panel = new FocusEffectPanel(
-      () => [],
-      async (_duration, update, complete) => {
-        update(1);
-        complete?.();
-      },
-    );
-    panel.bindCgItem("x", target);
+    const effects = createSceneEffects();
+    effects.bindCgItem("x", target);
 
-    void panel.setFocus(
+    void effects.setFocusOut(
       input({ durationMs: 0, id: "x", to: 1, type: "cgitem" }),
     );
     expect(target.filters).toHaveLength(1);
 
-    void panel.setFocus(
+    void effects.setFocusOut(
       input({ durationMs: 0, id: "x", to: 0, type: "cgitem" }),
     );
     expect(target.filters).toHaveLength(0);
@@ -113,23 +102,17 @@ describe("FocusEffectPanel", () => {
 
   it("replays a stored amount when the cgitem target binds", () => {
     const target = new Container();
-    const panel = new FocusEffectPanel(
-      () => [],
-      async (_duration, update, complete) => {
-        update(1);
-        complete?.();
-      },
-    );
+    const effects = createSceneEffects();
 
     // `focusout` runs before the cgitem exists: the amount is stored, the
     // channel resolves to nothing (SetWhenBind semantics).
-    void panel.setFocus(
+    void effects.setFocusOut(
       input({ durationMs: 0, id: "a", to: 1, type: "cgitem" }),
     );
     expect(target.filters ?? []).toHaveLength(0);
 
     // The cgitem registers afterwards and the stored amount replays.
-    panel.bindCgItem("a", target);
+    effects.bindCgItem("a", target);
     expect(target.filters[0]).toBeInstanceOf(BlurFilter);
   });
 
@@ -137,16 +120,13 @@ describe("FocusEffectPanel", () => {
     const target = new Container();
     let step: ((progress: number) => void) | undefined;
     let finish: (() => void) | undefined;
-    const panel = new FocusEffectPanel(
-      () => [],
-      async (_duration, update, complete) => {
-        step = update;
-        finish = complete;
-      },
-    );
-    panel.bindCgItem("a", target);
+    const effects = createSceneEffects(async (_duration, update, complete) => {
+      step = update;
+      finish = complete;
+    });
+    effects.bindCgItem("a", target);
 
-    void panel.setFocus(
+    void effects.setFocusOut(
       input({ durationMs: 1000, id: "a", to: 1, type: "cgitem" }),
     );
     step?.(1);
@@ -154,21 +134,21 @@ describe("FocusEffectPanel", () => {
 
     // `BeforeItemDisposed` removes the stored amount; native `TweenAction`
     // ticks re-create it through `SetAmount`, so the tween still lands.
-    panel.releaseCgItem("a", target);
+    effects.releaseCgItem("a", target);
     expect(target.filters).toHaveLength(0);
     finish?.();
     expect(target.filters).toHaveLength(0);
     const next = new Container();
-    panel.bindCgItem("a", next);
+    effects.bindCgItem("a", next);
     expect(next.filters).toHaveLength(1);
 
     // With no tween left, a release sticks and the next tween starts from 0
     // (`GetAmount` of a missing entry).
-    panel.releaseCgItem("a", next);
+    effects.releaseCgItem("a", next);
     expect(next.filters).toHaveLength(0);
-    panel.bindCgItem("a", next);
-    panel.setParam({ blur: false, color: "Grayscale" });
-    void panel.setFocus(
+    effects.bindCgItem("a", next);
+    effects.setFocusParam({ blur: false, color: "Grayscale" });
+    void effects.setFocusOut(
       input({ durationMs: 1000, id: "a", to: 1, type: "cgitem" }),
     );
     step?.(0.5);

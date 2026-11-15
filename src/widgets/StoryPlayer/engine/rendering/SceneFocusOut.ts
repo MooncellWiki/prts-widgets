@@ -1,12 +1,13 @@
 import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
 
-import { createExecutionHandle, type ExecutionHandle } from "../../execution";
-import { buildColorEffectMatrix } from "../core/ColorEffectMatrix";
+import { createExecutionHandle, type ExecutionHandle } from "../execution";
 
-import type { FocusOutInput, FocusParamInput } from "../../types";
-import type { TweenRunner } from "../core/TweenRunner";
+import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 
-type ResolveTargets = (type: string, id: string) => Container[];
+import type { FocusOutInput, FocusParamInput } from "../types";
+import type { TweenRunner } from "./core/TweenRunner";
+
+type ResolveTargets = (type: string) => Container[];
 
 interface FocusState {
   amount: number;
@@ -36,7 +37,7 @@ function stateKey(type: string, id: string): string {
  * for the blend because stock PIXI filters cannot composite two copies of
  * live content.
  */
-export class FocusEffectPanel {
+export class SceneFocusOut {
   private readonly states = new Map<string, FocusState>();
   private readonly cgItemTargets = new Map<string, Container>();
   private readonly cgItemAmounts = new Map<Container, number>();
@@ -108,7 +109,7 @@ export class FocusEffectPanel {
     return animation;
   }
 
-  destroy(): void {
+  reset(): void {
     for (const state of this.states.values()) {
       state.sessionId += 1;
       state.animation?.end("reset");
@@ -165,7 +166,7 @@ export class FocusEffectPanel {
     const amounts = new Map(this.cgItemAmounts);
     for (const state of this.states.values()) {
       if (state.type === "cgitem") continue;
-      for (const target of this.resolveTargets(state.type, state.id)) {
+      for (const target of this.resolveTargets(state.type)) {
         amounts.set(target, Math.max(amounts.get(target) ?? 0, state.amount));
       }
     }

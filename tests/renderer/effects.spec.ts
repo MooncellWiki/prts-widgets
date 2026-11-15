@@ -1,6 +1,7 @@
 import { Application, Container, Texture, TickerPlugin } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { buildColorEffectMatrix } from "../../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
 import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
@@ -13,6 +14,14 @@ import type { CgItemInput } from "../../src/widgets/StoryPlayer/engine/types";
 // and let a broken matrix pass.
 function normalizeZero(values: number[]): number[] {
   return values.map((v) => (v === 0 ? 0 : v));
+}
+
+function sceneColorFilter(gray: number, inverse = 0) {
+  return expect.objectContaining({
+    matrix: buildColorEffectMatrix(gray, inverse).map((value) =>
+      expect.closeTo(value, 12),
+    ),
+  });
 }
 
 function createBlockerRenderer(): any {
@@ -112,14 +121,15 @@ describe("PixiStoryRenderer", () => {
 
     void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0);
 
-    expect(renderer.grayscaleAmount).toBe(0);
+    const sceneCamera = renderer.layers.sceneCamera;
+    expect(sceneCamera.filters ?? []).toHaveLength(0);
     renderer.frames.step(500);
     // Native AVGCameraEffect never calls SetEase, so DOTween.To runs with
     // DOTween 1.2.760's defaultEaseType=6 (OutQuad): halfway = 0.75, not the
     // linear 0.5.
-    expect(renderer.grayscaleAmount).toBeCloseTo(0.75);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.75)]);
     renderer.frames.step(500);
-    expect(renderer.grayscaleAmount).toBe(1);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(1)]);
   });
 
   it("starts the grayscale tween from the current amount for a negative initamount", () => {
@@ -129,16 +139,17 @@ describe("PixiStoryRenderer", () => {
 
     renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
     renderer.frames.step();
-    expect(renderer.grayscaleAmount).toBe(0.6);
+    const sceneCamera = renderer.layers.sceneCamera;
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
 
     void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, -1);
 
     // Native _TweenGrayscaleAmount checks MathUtil.LT(initAmount, 0): any
     // negative initamount means "start from the current grayscale amount",
     // not an explicit negative start.
-    expect(renderer.grayscaleAmount).toBe(0.6);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
     renderer.frames.step(500);
-    expect(renderer.grayscaleAmount).toBeCloseTo(0.9);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.9)]);
   });
 
   it("writes an explicit grayscale initamount on the first update", () => {
@@ -148,17 +159,18 @@ describe("PixiStoryRenderer", () => {
 
     renderer.setCameraEffect("Grayscale", 0.6, 0, false, true);
     renderer.frames.step();
-    expect(renderer.grayscaleAmount).toBe(0.6);
+    const sceneCamera = renderer.layers.sceneCamera;
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
 
     // MathUtil.LT(0.2, 0) is false, so native takes the argument as the tween
     // start and discards the 0.6 the effect manager currently holds.
     void renderer.setCameraEffect("Grayscale", 1, 1000, false, true, 0.2);
 
-    expect(renderer.grayscaleAmount).toBe(0.6);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.6)]);
     renderer.frames.step(0);
-    expect(renderer.grayscaleAmount).toBe(0.2);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.2)]);
     renderer.frames.step(500);
-    expect(renderer.grayscaleAmount).toBeCloseTo(0.8);
+    expect(sceneCamera.filters).toEqual([sceneColorFilter(0.8)]);
   });
 
   it("applies grayscale as Rec.601 luma desaturation, not an additive tint", () => {
@@ -241,12 +253,13 @@ describe("PixiStoryRenderer", () => {
       app.ticker.lastTime = 0;
       const started = runtime.start();
       try {
-        expect(renderer.inverseAmount).toBe(1);
+        const sceneCamera = renderer.layers.sceneCamera;
+        expect(sceneCamera.filters).toEqual([sceneColorFilter(0, 1)]);
         expect(runtime.getDisplayedLineIndex()).toBeNull();
         app.ticker.update(16);
         app.ticker.update(32);
         expect(drawnLines).toEqual(draws);
-        expect(renderer.grayscaleAmount).toBe(0);
+        expect(sceneCamera.filters).toEqual([sceneColorFilter(0, 1)]);
         expect(renderer.layers.scene.position.x).toBe(0);
         expect(renderer.layers.scene.position.y).toBe(0);
       } finally {
@@ -280,7 +293,8 @@ describe("PixiStoryRenderer", () => {
     try {
       await renderer.frames.advance(10_000);
       expect(runtime.getDisplayedLineIndex()).toBeNull();
-      expect(renderer.grayscaleAmount).toBe(1);
+      const sceneCamera = renderer.layers.sceneCamera;
+      expect(sceneCamera.filters).toEqual([sceneColorFilter(1, 1)]);
 
       position.set(8, 4);
       skipped = runtime.skipNode();
@@ -289,8 +303,7 @@ describe("PixiStoryRenderer", () => {
       renderer.frames.step(16);
       expect(runtime.getDisplayedLineIndex()).toBe(6);
       expect([position.x, position.y]).toEqual([0, 0]);
-      expect(renderer.grayscaleAmount).toBe(1);
-      expect(renderer.inverseAmount).toBe(1);
+      expect(sceneCamera.filters).toEqual([sceneColorFilter(1, 1)]);
     } finally {
       runtime.destroy();
       renderer.app = null;
@@ -317,7 +330,9 @@ describe("PixiStoryRenderer", () => {
     const started = runtime.start();
     try {
       renderer.frames.step(16);
-      expect(renderer.grayscaleAmount).toBeGreaterThan(0);
+      expect(renderer.layers.sceneCamera.filters).toEqual([
+        sceneColorFilter(0.031744, 1),
+      ]);
       expect(renderer.backgroundLayer.filters).toHaveLength(1);
       await runtime.skipNode();
       expect(runtime.getState()).toBe("finished");
