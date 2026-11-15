@@ -27,7 +27,11 @@ import {
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
-import { createExecutionHandle, type ExecutionHandle } from "../execution";
+import {
+  browserAnimationClock,
+  createExecutionHandle,
+  type ExecutionHandle,
+} from "../execution";
 import { DIALOG_FONT_FAMILY, DIALOG_FONT_WEIGHT } from "../font";
 import {
   STORY_HEIGHT,
@@ -351,6 +355,8 @@ interface CharacterBuiltVisual {
   visual: Container;
 }
 
+type CharacterSlot = "l" | "m" | "r";
+
 interface CharacterRenderState {
   actionX: number;
   actionY: number;
@@ -391,7 +397,7 @@ interface CharacterRenderState {
   shakeOffsetX: number;
   shakeOffsetY: number;
   shakeSessionId: number;
-  slot: string;
+  slot: CharacterSlot;
   sourceHeight: number;
   sourceWidth: number;
   transformSessionId: number;
@@ -570,7 +576,11 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly stickerViews = new Map<string, StickerView>();
   private timerView: TimerView | null = null;
 
-  constructor(context: Context, onWarning?: (detail: string) => void) {
+  constructor(
+    context: Context,
+    onWarning?: (detail: string) => void,
+    now = browserAnimationClock.now,
+  ) {
     this.context = context;
     this.onWarning = onWarning;
     // Native port: `AVGImagePanel` executors transform the panel's own
@@ -623,8 +633,10 @@ export class PixiStoryRenderer implements StoryRenderer {
       onWarning,
     );
     this.spellStickerPanel = new SpellStickerPanel(this.uiLayer, onWarning);
-    this.sceneEffects = new SceneEffectManager(this.layers, (...args) =>
-      this.updatePhaseTweenRunner.run(...args),
+    this.sceneEffects = new SceneEffectManager(
+      this.layers,
+      (...args) => this.updatePhaseTweenRunner.run(...args),
+      now,
     );
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
@@ -957,6 +969,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.backgroundSprite = sprite;
     this.backgroundLayer.addChild(root);
     const fadeMs = input?.fadeMs ?? 0;
+    this.sceneEffects.setImageFocusTargets(
+      "bg",
+      root,
+      fadeMs > 0 ? (previous ?? undefined) : undefined,
+    );
     root.alpha = fadeMs > 0 ? 0 : 1;
     if (fadeMs <= 0) {
       previous?.removeFromParent();
@@ -965,7 +982,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = progress),
-      () => previous?.removeFromParent(),
+      () => {
+        if (!previous) return;
+        previous.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(previous);
+      },
     );
     if (input?.block) await run;
     else void run;
@@ -976,6 +997,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const root = this.backgroundRoot;
     this.backgroundRoot = null;
     this.backgroundSprite = null;
+    this.sceneEffects.setImageFocusTargets(
+      "bg",
+      undefined,
+      fadeMs > 0 ? (root ?? undefined) : undefined,
+    );
     if (!root) return;
     if (fadeMs <= 0) {
       root.removeFromParent();
@@ -985,7 +1011,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = startAlpha * (1 - progress)),
-      () => root.removeFromParent(),
+      () => {
+        root.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(root);
+      },
     );
     if (block) await run;
     else void run;
@@ -1089,6 +1118,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeBackgroundRoot = null;
     const previous = [...this.gridBackgroundLayer.children];
     for (const child of previous) child.removeFromParent();
+    this.sceneEffects.setLargeBackgroundFocusTargets([]);
     const textures = await Promise.all(
       input.imageKeys.map((key) =>
         this.textureForImageKey(key, input.assetKind ?? "background"),
@@ -1118,6 +1148,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     root.alpha = input.fadeMs > 0 ? 0 : 1;
     this.gridBackgroundLayer.addChild(root);
+    this.sceneEffects.setLargeBackgroundFocusTargets(root.children);
 
     if (input.fadeMs <= 0) return;
 
@@ -1150,10 +1181,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeBackgroundRoot = null;
     this.largeBackgroundTweenSessionId += 1;
     const roots = [...this.gridBackgroundLayer.children];
-    if (roots.length === 0) return;
-
-    if (fadeMs <= 0) {
+    if (roots.length === 0 || fadeMs <= 0) {
       for (const root of roots) root.removeFromParent();
+      this.sceneEffects.setLargeBackgroundFocusTargets([]);
       return;
     }
 
@@ -1170,6 +1200,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       () => {
         if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
         for (const root of roots) root.removeFromParent();
+        this.sceneEffects.setLargeBackgroundFocusTargets([]);
       },
     );
 
@@ -1333,6 +1364,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageRoot = root;
     this.imageLayer.addChild(root);
     const fadeMs = input?.fadeMs ?? 0;
+    this.sceneEffects.setImageFocusTargets(
+      "cg",
+      root,
+      fadeMs > 0 ? (previous ?? undefined) : undefined,
+    );
     root.alpha = fadeMs > 0 ? 0 : 1;
     if (fadeMs <= 0) {
       previous?.removeFromParent();
@@ -1341,7 +1377,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = progress),
-      () => previous?.removeFromParent(),
+      () => {
+        if (!previous) return;
+        previous.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(previous);
+      },
     );
     if (input?.block) await run;
     else void run;
@@ -1353,6 +1393,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     // any in-flight rotation keeps playing (see setImageRotate).
     const root = this.imageRoot;
     this.imageRoot = null;
+    this.sceneEffects.setImageFocusTargets(
+      "cg",
+      undefined,
+      fadeMs > 0 ? (root ?? undefined) : undefined,
+    );
     if (!root) return;
     if (fadeMs <= 0) {
       root.removeFromParent();
@@ -1362,7 +1407,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     const run = this.tween(
       fadeMs,
       (progress) => (root.alpha = startAlpha * (1 - progress)),
-      () => root.removeFromParent(),
+      () => {
+        root.removeFromParent();
+        this.sceneEffects.releaseFixedFocusTarget(root);
+      },
     );
     if (block) await run;
     else void run;
@@ -1951,6 +1999,15 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (previous && imageFadeMs <= 0) this.disposeCharacterState(previous);
     this.characterSlots.set(slot, state);
     this.charLayer.addChild(root);
+    // AVGCharacterSlot.Set (2791 @ 0x184237BC0) swaps holders on key changes.
+    this.sceneEffects.setImageFocusTargets(
+      slot,
+      visual,
+      imageFadeMs > 0 ? previous?.visual : undefined,
+      !previous ||
+        (previous.nativeKey ?? previous.fadeIdentity) !==
+          (input.nativeKey ?? fadeIdentity),
+    );
     this.applyCharacterZOrder(input.focus ?? 0);
 
     if (previous && imageFadeMs > 0)
@@ -2267,6 +2324,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       const state = this.characterSlots.get(normalized);
       if (!state) return;
       this.characterSlots.delete(normalized);
+      this.sceneEffects.setImageFocusTargets(
+        normalized,
+        undefined,
+        fadeMs > 0 ? state.visual : undefined,
+      );
       if (fadeMs > 0)
         await this.fadeOutAndRemove(state.root, fadeMs, () =>
           this.disposeCharacterState(state),
@@ -2277,6 +2339,13 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     const states = [...this.characterSlots.values()];
     this.characterSlots.clear();
+    for (const state of states) {
+      this.sceneEffects.setImageFocusTargets(
+        state.slot,
+        undefined,
+        fadeMs > 0 ? state.visual : undefined,
+      );
+    }
     if (fadeMs > 0) {
       await Promise.all(
         states.map((state) =>
@@ -3104,7 +3173,7 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   private async buildCharacterSlotState(
     input: CharacterSlotInput,
-    slot: string,
+    slot: CharacterSlot,
     current?: CharacterRenderState,
   ): Promise<CharacterRenderState | null> {
     if (!input.characterKey || !input.expression) return current ?? null;
@@ -3189,6 +3258,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.updateCharacterOpacity(state);
       this.characterSlots.set(slot, state);
       this.charLayer.addChild(root);
+      this.sceneEffects.setImageFocusTargets(slot, built.visual);
       return state;
     }
 
@@ -3259,6 +3329,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     // outgoing visual gets a dedicated fade here.
     const fadeMs = Math.max(0, Math.round(input.replaceFadeMs ?? 0));
     built.visual.alpha = clamp01(current.contentAlpha);
+    this.sceneEffects.setImageFocusTargets(
+      slot,
+      built.visual,
+      fadeMs > 0 && previousVisual !== built.visual
+        ? previousVisual
+        : undefined,
+    );
     if (previousVisual && previousVisual !== built.visual && fadeMs > 0) {
       const sessionId = ++current.replaceFadeSessionId;
       const previousAlpha = previousVisual.alpha;
@@ -3432,6 +3509,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private releaseCharacterVisual(visual: Container): void {
+    this.sceneEffects.releaseFixedFocusTarget(visual);
     const cacheKey = this.faceOverlayVisualKeys.get(visual);
     if (cacheKey === undefined) return;
     this.faceOverlayVisualKeys.delete(visual);
@@ -3518,7 +3596,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     // `_ProcessFocusArray` (0x183e50b30) clears all four flags, then lights
     // only the listed slots; unrecognized values light nothing. Brightness
     // changes are tweens in the Sequence (SetFocus), applied instantly here.
-    const active = new Set(
+    const active = new Set<string>(
       focusSlots.map((value) => this.normalizeCharacterSlot(value)),
     );
 
@@ -3705,7 +3783,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.outgoingVisual = null;
   }
 
-  private normalizeCharacterSlot(slot?: string): string {
+  private normalizeCharacterSlot(slot?: string): CharacterSlot {
     switch ((slot ?? "").trim().toLowerCase()) {
       case "char_left":
       case "l":

@@ -2,7 +2,7 @@ import { ColorMatrixFilter, type Container } from "pixi.js";
 
 import { createExecutionHandle, type ExecutionHandle } from "../execution";
 
-import { SceneFocusOut } from "./SceneFocusOut";
+import { SceneFocusOut, type FocusImagePair } from "./SceneFocusOut";
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import { dotweenDefaultEase } from "./core/DotweenEase";
 
@@ -31,20 +31,18 @@ export class SceneEffectManager {
   constructor(
     layers: SceneEffectLayers,
     private readonly tween: TweenRunner["run"],
+    now?: () => number,
   ) {
     this.sceneCamera = layers.sceneCamera;
     this.focus = new SceneFocusOut(
       new Map([
         ["bg", layers.background],
         ["char", layers.characters],
-        // AVGImagePanel registers ck_cg_1/2 on its image layers.
         ["cg", layers.images],
-        // LargeBackgroundPanel._BindCamEffectTarget (2791 @ 0x1841D81E0)
-        // binds fixed ck_lbg_* image slots. The persistent Pixi layer
-        // carries their shared focus amount across puzzle replacements.
         ["lbg", layers.gridBackground],
       ]),
       tween,
+      now,
     );
   }
 
@@ -107,6 +105,23 @@ export class SceneEffectManager {
 
   setFocusParam(input: FocusParamInput): void {
     this.focus.setParam(input);
+  }
+
+  setImageFocusTargets(
+    pair: FocusImagePair,
+    fore?: Container,
+    back?: Container,
+    swap?: boolean,
+  ): void {
+    this.focus.setImageTargets(pair, fore, back, swap);
+  }
+
+  setLargeBackgroundFocusTargets(targets: readonly Container[]): void {
+    this.focus.setLargeBackgroundTargets(targets);
+  }
+
+  releaseFixedFocusTarget(target: Container): void {
+    this.focus.releaseFixedTarget(target);
   }
 
   bindCgItem(id: string, target: Container): void {

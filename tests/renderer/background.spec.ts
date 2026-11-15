@@ -4,6 +4,45 @@ import { describe, expect, it, vi } from "vitest";
 import { createContext, createRenderer } from "../helpers/rendererFixtures";
 
 describe("PixiStoryRenderer", () => {
+  it.each([
+    { layer: "background", show: "setBackground", id: "ck_bg_2" },
+    { layer: "images", show: "setImage", id: "ck_cg_2" },
+  ] as const)(
+    "keeps focus on the $layer holder through a swap",
+    async ({ layer, show, id }) => {
+      const renderer = createRenderer();
+      renderer.app = {};
+      renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
+      renderer.setFocusParam({ blur: false, color: "Colorinverse" });
+      renderer.setFocusOut({
+        block: false,
+        durationMs: 0,
+        id,
+        to: 0.5,
+        type: "cgitem",
+      });
+
+      await renderer[show]("first");
+      const [first] = renderer.layers[layer].children;
+      expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
+
+      let finishFade: (() => void) | undefined;
+      renderer.tween = vi.fn(async (_ms, _update, complete) => {
+        finishFade = complete;
+      });
+      await renderer[show]("second", { fadeMs: 100 });
+      const second = renderer.layers[layer].children[1];
+      expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
+      expect(second.filters ?? []).toHaveLength(0);
+      finishFade?.();
+      expect(first.filters).toHaveLength(0);
+
+      await renderer[show]("third");
+      const [third] = renderer.layers[layer].children;
+      expect(third.filters?.[0]?.matrix[4]).toBe(0.5);
+    },
+  );
+
   it("applies background transforms in a dedicated transform space", async () => {
     const renderer = createRenderer();
     renderer.app = {};

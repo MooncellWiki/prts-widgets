@@ -246,6 +246,27 @@ describe("PixiStoryRenderer", () => {
     expect(same.motionLayer.x).toBe(200);
   });
 
+  it("keeps a same-key re-show on its current PostDisplay holder", async () => {
+    const renderer = createLiveCharacterRenderer();
+    renderer.setFocusParam({ blur: false, color: "Colorinverse" });
+    renderer.setFocusOut({
+      block: false,
+      durationMs: 0,
+      id: "ck_char_middle_2",
+      to: 0.5,
+      type: "cgitem",
+    });
+    const command = characterCommand("char_chen", "1$1");
+    const visual = () => renderer.characterSlots.get("m").visual;
+
+    await renderer.setCharacter(command);
+    expect(visual().filters?.[0]?.matrix[4]).toBe(0.5);
+    await renderer.setCharacter(command);
+    expect(visual().filters?.[0]?.matrix[4]).toBe(0.5);
+    await renderer.setCharacter(characterCommand("char_chen#2", "2$1"));
+    expect(visual().filters ?? []).toHaveLength(0);
+  });
+
   it("zeroes the offset when the character re-shows under a different key", async () => {
     const renderer = createLiveCharacterRenderer();
 

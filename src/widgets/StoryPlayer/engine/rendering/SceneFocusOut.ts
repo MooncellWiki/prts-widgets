@@ -1,6 +1,11 @@
 import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
 
-import { createExecutionHandle, type ExecutionHandle } from "../execution";
+import {
+  browserAnimationClock,
+  createExecutionHandle,
+  type ExecutionEndReason,
+  type ExecutionHandle,
+} from "../execution";
 
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 
@@ -9,17 +14,40 @@ import type { TweenRunner } from "./core/TweenRunner";
 
 interface FocusState {
   amount: number;
-  animation?: ExecutionHandle;
+  endTween?: (reason: ExecutionEndReason) => void;
   id: string;
-  layer?: Container;
-  sessionId: number;
 }
 
-function stateKey(type: string, id: string): string {
-  // AVGCameraEffect._GenCfgByType (2791 @ 0x184187FB0) looks up
-  // bg/cg/char/lbg by type. A cgitem channel uses the exact id.
-  return type === "cgitem" ? `cgitem\u0000${id}` : type;
+interface PostDisplay {
+  amount: number;
+  target?: Container;
 }
+
+const imageChannels = {
+  bg: ["ck_bg_1", "ck_bg_2"],
+  cg: ["ck_cg_1", "ck_cg_2"],
+  l: ["ck_char_left_1", "ck_char_left_2"],
+  m: ["ck_char_middle_1", "ck_char_middle_2"],
+  r: ["ck_char_right_1", "ck_char_right_2"],
+} as const;
+
+export type FocusImagePair = keyof typeof imageChannels;
+
+const largeBackgroundChannels = [
+  "ck_lbg_1",
+  "ck_lbg_2",
+  "ck_lbg_3",
+  "ck_lbg_4",
+] as const;
+
+// AVGCameraEffect._GenCfgByType (2791 @ 0x184187FB0) expands fixed
+// types to these ids. A cgitem command can address any exact id.
+const focusChannels = new Map<string, readonly string[]>([
+  ["bg", imageChannels.bg],
+  ["cg", imageChannels.cg],
+  ["char", [...imageChannels.l, ...imageChannels.m, ...imageChannels.r]],
+  ["lbg", largeBackgroundChannels],
+]);
 
 /**
  * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
@@ -39,15 +67,32 @@ function stateKey(type: string, id: string): string {
  */
 export class SceneFocusOut {
   private readonly states = new Map<string, FocusState>();
-  private readonly cgItemTargets = new Map<string, Container>();
-  private readonly cgItemAmounts = new Map<Container, number>();
+  private readonly bindings = new Map<string, PostDisplay>();
+  private readonly fixedSlots = new Map<string, PostDisplay>();
+  private readonly fixedLayers: Array<{
+    layer: Container;
+    slots: PostDisplay[];
+  }> = [];
+  private readonly cgItems = new Map<Container, PostDisplay>();
+  private readonly swappedPairs = new Set<FocusImagePair>();
   private readonly filteredTargets = new Set<Container>();
   private config: FocusParamInput = { blur: true, color: "None" };
 
   constructor(
-    private readonly layerTargets: ReadonlyMap<string, Container>,
+    layerTargets: ReadonlyMap<string, Container>,
     private readonly tween: TweenRunner["run"],
-  ) {}
+    private readonly now = browserAnimationClock.now,
+  ) {
+    for (const [type, ids] of focusChannels) {
+      const slots = ids.map((id) => {
+        const slot = { amount: 0 };
+        this.fixedSlots.set(id, slot);
+        this.bindings.set(id, slot);
+        return slot;
+      });
+      this.fixedLayers.push({ layer: layerTargets.get(type)!, slots });
+    }
+  }
 
   setParam(input: FocusParamInput): void {
     this.config = input;
@@ -58,76 +103,119 @@ export class SceneFocusOut {
     input: FocusOutInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    const { type } = input;
-    const layer = this.layerTargets.get(type);
-    const id = type === "cgitem" ? input.id : "";
     // _ExecuteFocusout (2791 @ 0x184187C20) checks IsChannelEmpty before
     // writing or tweening. A cgitem with an id can store an amount before
     // its target binds. The Web renderer has no customchar slots.
-    if (!layer && id === "") return;
-
-    const key = stateKey(type, id);
-    const state = this.states.get(key) ?? {
-      amount: 0,
-      id,
-      layer,
-      sessionId: 0,
-    };
-    this.states.set(key, state);
+    const ids =
+      input.type === "cgitem"
+        ? input.id
+          ? [input.id]
+          : []
+        : (focusChannels.get(input.type) ?? []);
+    if (ids.length === 0) return;
 
     // _SetEffectAmount (2791 @ 0x1841D38B0) releases the old tween's
-    // callback when another write interrupts the channel.
-    state.animation?.end("force_end");
-    const animation =
-      input.block && input.durationMs > 0
-        ? createExecutionHandle(true, (reason) => {
-            if (reason === "complete" || reason === "force_end") onComplete?.();
-          })
-        : undefined;
-    state.animation = animation;
-    const sessionId = ++state.sessionId;
+    // callback only after every channel has completed or been interrupted.
+    const states = ids.map((id) => {
+      const state = this.states.get(id) ?? { amount: 0, id };
+      this.states.set(id, state);
+      state.endTween?.("force_end");
+      return state;
+    });
     if (input.from !== undefined) {
-      this.writeAmount(state, input.from);
+      for (const state of states) this.writeAmount(state, input.from);
+      this.render();
     }
     if (input.durationMs <= 0) {
-      this.writeAmount(state, input.to);
+      for (const state of states) this.writeAmount(state, input.to);
+      this.render();
       return;
     }
 
-    const from = state.amount;
-    const isCurrent = () => state.sessionId === sessionId;
+    const animation = input.block
+      ? createExecutionHandle(true, (reason) => {
+          if (reason === "complete" || reason === "force_end") onComplete?.();
+        })
+      : undefined;
+    const active = new Map(states.map((state) => [state, state.amount]));
+    for (const state of states) {
+      state.endTween = (reason) => {
+        state.endTween = undefined;
+        active.delete(state);
+        if (active.size === 0) animation?.end(reason);
+      };
+    }
+    const update = (progress: number) => {
+      if (active.size === 0) return;
+      // Native AVGSceneEffectManager._SetEffectAmount uses TweenUtils.SmoothStep.
+      const eased = progress * progress * (3 - 2 * progress);
+      for (const [state, from] of active)
+        this.writeAmount(state, from + (input.to - from) * eased);
+      this.render();
+    };
     void this.tween(
       input.durationMs,
-      (progress) => {
-        if (!isCurrent()) return;
-        // Native provenance: `AVGSceneEffectManager._SetEffectAmount` tweens
-        // each channel with `TweenUtils.SmoothStep` (slow at both ends), not
-        // linear time.
-        const eased = progress * progress * (3 - 2 * progress);
-        this.writeAmount(state, from + (input.to - from) * eased);
-      },
+      update,
       () => {
-        if (!isCurrent()) return;
-        this.writeAmount(state, input.to);
-        state.animation = undefined;
-        animation?.end();
+        if (active.size === 0) return;
+        update(1);
+        for (const state of active.keys()) state.endTween?.("complete");
       },
-      { isAlive: isCurrent },
+      // SmoothStep.Start resets a ScaledStopwatch (2791 @ 0x1869B6790).
+      { isAlive: () => active.size > 0, now: this.now },
     );
     return animation;
   }
 
   reset(): void {
-    for (const state of this.states.values()) {
-      state.sessionId += 1;
-      state.animation?.end("reset");
-    }
+    for (const state of this.states.values()) state.endTween?.("reset");
     this.states.clear();
-    this.cgItemTargets.clear();
-    this.cgItemAmounts.clear();
+    this.cgItems.clear();
+    this.swappedPairs.clear();
+    this.bindings.clear();
+    for (const [id, slot] of this.fixedSlots) {
+      slot.amount = 0;
+      slot.target = undefined;
+      this.bindings.set(id, slot);
+    }
     for (const target of this.filteredTargets) target.filters = [];
     this.filteredTargets.clear();
     this.config = { blur: true, color: "None" };
+  }
+
+  /**
+   * AVGImagePanel._SwapImages and AVGCharacterSlot._SwapImages (2791
+   * @ 0x1841AE700 / 0x18423A2E0) swap the holders with the images, so the
+   * incoming art takes the old back channel. Pixi creates new visuals.
+   */
+  setImageTargets(
+    pair: FocusImagePair,
+    fore?: Container,
+    back?: Container,
+    swap = true,
+  ): void {
+    if (swap && !this.swappedPairs.delete(pair)) this.swappedPairs.add(pair);
+    const [first, second] = imageChannels[pair];
+    const swapped = this.swappedPairs.has(pair);
+    this.fixedSlots.get(first)!.target = swapped ? back : fore;
+    this.fixedSlots.get(second)!.target = swapped ? fore : back;
+    this.render();
+  }
+
+  /** LargeBackgroundPanel._BindCamEffectTarget (2791 @ 0x1841D81E0). */
+  setLargeBackgroundTargets(targets: readonly Container[]): void {
+    for (const [index, id] of largeBackgroundChannels.entries())
+      this.fixedSlots.get(id)!.target = targets[index];
+    this.render();
+  }
+
+  releaseFixedTarget(target: Container): void {
+    for (const slot of this.fixedSlots.values()) {
+      if (slot.target !== target) continue;
+      slot.target = undefined;
+      this.render();
+      break;
+    }
   }
 
   /**
@@ -138,11 +226,9 @@ export class SceneFocusOut {
    * the new image.
    */
   bindCgItem(id: string, target: Container): void {
-    this.cgItemTargets.set(id, target);
-    this.cgItemAmounts.set(
-      target,
-      this.states.get(stateKey("cgitem", id))?.amount ?? 0,
-    );
+    const display = { amount: this.states.get(id)?.amount ?? 0 };
+    this.bindings.set(id, display);
+    this.cgItems.set(target, display);
     this.render();
   }
 
@@ -154,26 +240,34 @@ export class SceneFocusOut {
    * creates a fresh entry without a target until the next bind.
    */
   releaseCgItem(id: string, target: Container): void {
-    this.cgItemTargets.delete(id);
-    this.cgItemAmounts.delete(target);
-    const state = this.states.get(stateKey("cgitem", id));
+    this.bindings.delete(id);
+    this.cgItems.delete(target);
+    const state = this.states.get(id);
     if (state) state.amount = 0;
     this.render();
   }
 
   private writeAmount(state: FocusState, amount: number): void {
     state.amount = amount;
-    if (!state.layer) {
-      const target = this.cgItemTargets.get(state.id);
-      if (target) this.cgItemAmounts.set(target, amount);
-    }
-    this.render();
+    const display = this.bindings.get(state.id);
+    if (display) display.amount = amount;
   }
 
   private render(): void {
-    const amounts = new Map(this.cgItemAmounts);
-    for (const state of this.states.values()) {
-      if (state.layer) amounts.set(state.layer, state.amount);
+    const amounts = new Map<Container, number>();
+    for (const [target, display] of this.cgItems)
+      amounts.set(target, display.amount);
+    for (const { layer, slots } of this.fixedLayers) {
+      const amount = slots[0]!.amount;
+      // A shared filter keeps a composed puzzle continuous across tile edges.
+      if (slots.every((slot) => slot.amount === amount)) {
+        if (amount > 0) amounts.set(layer, amount);
+      } else {
+        for (const slot of slots) {
+          if (slot.target && slot.amount > 0)
+            amounts.set(slot.target, slot.amount);
+        }
+      }
     }
 
     for (const target of this.filteredTargets) {

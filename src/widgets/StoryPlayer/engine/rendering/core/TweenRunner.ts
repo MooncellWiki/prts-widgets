@@ -31,6 +31,8 @@ export interface TweenRunOptions {
   loops?: number;
   /** Upper limit on each elapsed frame, like Unity's scaled deltaTime. */
   maxFrameDeltaMs?: number;
+  /** Measure elapsed time from run() using this monotonic clock. */
+  now?: () => number;
 }
 
 /**
@@ -64,6 +66,8 @@ export class TweenRunner {
     const isRunAlive = options?.isAlive;
     const maxFrameDeltaMs =
       options?.maxFrameDeltaMs ?? Number.POSITIVE_INFINITY;
+    const now = options?.now;
+    let previous = now?.() ?? 0;
     return new Promise((resolve) => {
       let elapsed = 0;
       this.advanceEachFrame((deltaMs) => {
@@ -71,6 +75,11 @@ export class TweenRunner {
           done?.();
           resolve();
           return false;
+        }
+        if (now) {
+          const current = now();
+          deltaMs = current - previous;
+          previous = current;
         }
         elapsed += Math.min(deltaMs, maxFrameDeltaMs);
         if (durationMs <= 0 || elapsed >= totalMs) {

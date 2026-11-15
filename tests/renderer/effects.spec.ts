@@ -230,18 +230,23 @@ describe("PixiStoryRenderer", () => {
   });
 
   it.each([
-    ['[cameraeffect(effect="Grayscale",fadetime=0.032,block=true)]', [null, 3]],
-    ['[cameraeffect(effect="Grayscale",fadetime=0,block=true)]', [3, 3]],
-    ["[camerashake(duration=0.032,block=true)]", [null, 3]],
+    [
+      '[cameraeffect(effect="Grayscale",fadetime=0.032,block=true)]',
+      [null, 3],
+      0,
+    ],
+    ['[cameraeffect(effect="Grayscale",fadetime=0,block=true)]', [3, 3], 0],
+    ["[camerashake(duration=0.032,block=true)]", [null, 3], 0],
+    ['[focusout(type="bg",to=1,duration=0.012,block=true)]', [null, 3], 12],
   ])(
     "draws the next line in the frame %s completes",
-    async (command, draws) => {
+    async (command, draws, now) => {
       const context = createContext([
         '[cameraeffect(effect="Colorinverse",keep=true,block=true)]',
         command,
         '[name="A"]after',
       ]);
-      const renderer = createRenderer(context);
+      const renderer = createRenderer(context, undefined, () => now);
       const app = new Application();
       const drawnLines: Array<number | null> = [];
       const runtime = new StoryRuntime(context, renderer, new FakeAudio());
@@ -256,8 +261,10 @@ describe("PixiStoryRenderer", () => {
         const sceneCamera = renderer.layers.sceneCamera;
         expect(sceneCamera.filters).toEqual([sceneColorFilter(0, 1)]);
         expect(runtime.getDisplayedLineIndex()).toBeNull();
-        app.ticker.update(16);
-        app.ticker.update(32);
+        for (const time of [16, 32]) {
+          now = time;
+          app.ticker.update(time);
+        }
         expect(drawnLines).toEqual(draws);
         expect(sceneCamera.filters).toEqual([sceneColorFilter(0, 1)]);
         expect(renderer.layers.scene.position.x).toBe(0);

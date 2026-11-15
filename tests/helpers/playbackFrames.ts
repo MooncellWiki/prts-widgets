@@ -16,6 +16,8 @@ export class PlaybackTestFrames {
   };
   private readonly frameEnds = new Set<() => void>();
 
+  now = (): number => this.nowMs;
+
   onFrameUpdate: StoryRenderer["onFrameUpdate"] = (
     callback,
     phase = "update",

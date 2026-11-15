@@ -154,6 +154,41 @@ describe("SceneEffectManager", () => {
     expect(lower.filters).toHaveLength(0);
   });
 
+  it("continues a layer tween after one of its PostDisplay channels is replaced", () => {
+    const layers = new LayerGraph();
+    const first = new Container();
+    const second = new Container();
+    let step: ((progress: number) => void) | undefined;
+    let finish: (() => void) | undefined;
+    const effects = createSceneEffects(async (_duration, update, complete) => {
+      step = update;
+      finish = complete;
+    }, layers);
+    effects.setLargeBackgroundFocusTargets([first, second]);
+    effects.setFocusParam({ blur: false, color: "Colorinverse" });
+
+    const onComplete = vi.fn();
+    const fade = effects.setFocusOut(
+      input({ block: true, durationMs: 1000, to: 1, type: "lbg" }),
+      onComplete,
+    );
+    step?.(0.25);
+    effects.setFocusOut(input({ id: "ck_lbg_1", to: 0.25, type: "cgitem" }));
+    expect(fade?.endReason).toBeUndefined();
+    expect(onComplete).not.toHaveBeenCalled();
+
+    step?.(0.5);
+    expect(layers.gridBackground.filters).toHaveLength(0);
+    expect((first.filters[0] as ColorMatrixFilter).matrix[4]).toBe(0.25);
+    expect((second.filters[0] as ColorMatrixFilter).matrix[4]).toBe(0.5);
+
+    finish?.();
+    expect(fade?.endReason).toBe("complete");
+    expect(onComplete).toHaveBeenCalledExactlyOnceWith();
+    expect((first.filters[0] as ColorMatrixFilter).matrix[4]).toBe(0.25);
+    expect((second.filters[0] as ColorMatrixFilter).matrix[4]).toBe(1);
+  });
+
   it("replays a stored amount when the cgitem target binds", () => {
     const target = new Container();
     const effects = createSceneEffects();
