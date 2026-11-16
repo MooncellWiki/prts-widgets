@@ -30,10 +30,21 @@ export const avatar = ({ zh, charId }: Portrayed, elite?: number) => {
     ? torappu(`char_avatar/${charId}${stage}.png`, file)
     : media(file);
 };
-export const halfPortrait = ({ zh, charId }: Portrayed) =>
-  charId
-    ? torappu(`char_portrait/${charId}_1.png`, `半身像_${zh}_1.png`)
-    : media(`半身像_${zh}_1.png`);
+export const halfPortrait = ({
+  zh,
+  charId,
+  portraitId,
+  skinIndex,
+}: Portrayed & { portraitId?: string; skinIndex?: string }) => {
+  const id = portraitId || (charId ? `${charId}_1` : "");
+  const filename = `半身像_${zh}_${skinIndex ? `skin${skinIndex}` : "1"}.png`;
+  // 游戏已收录、wiki 尚无时装序号时，不能退回干员默认服装冒充该时装。
+  if (portraitId && !skinIndex)
+    return `${TORAPPU_ENDPOINT}/assets/char_portrait/${encodeURIComponent(portraitId)}.png`;
+  return id
+    ? torappu(`char_portrait/${encodeURIComponent(id)}.png`, filename)
+    : media(filename);
+};
 
 /**
  * 挂在 <img> 上，或挂在图片的容器上（@error.capture，error 不冒泡）；同一张图只挂一处，
