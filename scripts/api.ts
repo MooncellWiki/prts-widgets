@@ -5,7 +5,6 @@ interface RequestOptions {
 }
 
 interface WikiApiResponse {
-  purge?: { title: string; purged?: boolean }[];
   query?: {
     tokens?: {
       csrftoken?: string;
@@ -13,7 +12,7 @@ interface WikiApiResponse {
     };
     pages?: {
       missing?: boolean;
-      revisions?: { revid: number; slots: { main: { content: string } } }[];
+      revisions?: { slots: { main: { content: string } } }[];
     }[];
   };
   login?: {
@@ -197,11 +196,6 @@ export async function edit(
   pagename: string,
   content: string,
   summary: string = "by prts-widgets script",
-  options: {
-    baserevid?: number;
-    nocreate?: boolean;
-    createonly?: boolean;
-  } = {},
 ): Promise<EditResult> {
   csrfToken ??= await getCsrfToken();
   const resp = await request({
@@ -214,9 +208,6 @@ export async function edit(
       summary,
       token: csrfToken,
       format: "json",
-      ...(options.baserevid ? { baserevid: String(options.baserevid) } : {}),
-      ...(options.nocreate ? { nocreate: "1" } : {}),
-      ...(options.createonly ? { createonly: "1" } : {}),
     },
   });
 
@@ -243,45 +234,18 @@ export async function edit(
 export async function getContent(
   pagename: string,
 ): Promise<string | undefined> {
-  return (await getRevision(pagename))?.content;
-}
-
-export async function getRevision(
-  pagename: string,
-): Promise<{ revid: number; content: string } | undefined> {
   const resp = await request({
     query: {
       action: "query",
       prop: "revisions",
-      rvprop: "ids|content",
+      rvprop: "content",
       rvslots: "main",
       titles: pagename,
       format: "json",
       formatversion: "2",
     },
   });
-  if (resp.error) throw new Error(`${resp.error.code}: ${resp.error.info}`);
-  const revision = resp.query?.pages?.[0]?.revisions?.[0];
-  return revision
-    ? { revid: revision.revid, content: revision.slots.main.content }
-    : undefined;
-}
-
-/** 清理被模板/Widget 修改影响的解析缓存。 */
-export async function purgePages(titles: string[]): Promise<void> {
-  const resp = await request({
-    method: "POST",
-    body: {
-      action: "purge",
-      titles: titles.join("|"),
-      forcelinkupdate: "1",
-      format: "json",
-      formatversion: "2",
-    },
-  });
-  if (resp.error) throw new Error(`${resp.error.code}: ${resp.error.info}`);
-  if (resp.purge?.length !== titles.length || resp.purge.some((p) => !p.purged))
-    throw new Error("部分页面清理缓存失败");
+  return resp.query?.pages?.[0]?.revisions?.[0]?.slots.main.content;
 }
 
 async function view(pagename: string): Promise<Response> {

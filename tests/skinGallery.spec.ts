@@ -2,11 +2,6 @@ import { createApp, nextTick } from "vue";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  expandSlider,
-  replaceCarousel,
-  replaceHome,
-} from "../scripts/skin-gallery/patch";
 import { halfPortrait, onImageError } from "../src/utils/charImage";
 import Carousel from "../src/widgets/SkinGallery/Carousel.vue";
 import {
@@ -186,43 +181,5 @@ describe("时装回廊迁移", () => {
     expect(first.querySelector("img")?.src).toContain("kv_summer24.png");
     app.unmount();
     other.unmount();
-  });
-
-  it("临时扩槽保持顺序及隐藏参数，重复运行不重复添加", () => {
-    const slot = (id: string) =>
-      `<div class="swiper-slide" style="<!--{$imgdis_${id}|regex_replace:'x':''}-->"><img src="<!--{$sliderimg_${id}|regex_replace:'x':''}-->"></div>`;
-    const old = [
-      ...Array.from({ length: 10 }, (_, i) => slot(String(10 - i))),
-      slot("default"),
-    ].join("\n");
-    const fixed = expandSlider(old);
-    expect(
-      [...fixed.matchAll(/\$sliderimg_(\d+|default)\|/g)].map((m) => m[1]),
-    ).toEqual([
-      ...Array.from({ length: 20 }, (_, i) => String(20 - i)),
-      "default",
-    ]);
-    expect(fixed).toContain("$imgdis_20|");
-    expect(fixed).toContain(old);
-    expect(expandSlider(fixed)).toBe(fixed);
-    expect(() => expandSlider("unknown format")).toThrow(
-      "Slider 槽位结构已变化",
-    );
-  });
-
-  it("迁移只替换轮播及首页引用，保留运营表格及模板数据源", () => {
-    const old =
-      "__NOTOC__\n{{时装回廊/轮播\n|图1={{filepath:宣传图.png|nowiki}}\n|名称=时代\n}}\n==时装==\n{{干员时装|价格=18}}";
-    const migrated = replaceCarousel(old, "epoque");
-    expect(migrated).toBe(
-      "__NOTOC__\n{{#Widget:SkinGalleryV2|mode=carousel|brand=epoque}}\n==时装==\n{{干员时装|价格=18}}",
-    );
-    expect(replaceCarousel(migrated, "epoque")).toBe(migrated);
-    expect(() => replaceCarousel("{{时装回廊/轮播", "epoque")).toThrow(
-      "轮播模板括号不匹配",
-    );
-    expect(replaceHome("{{Ads}}\n{{时装回廊}}")).toBe(
-      "{{Ads}}\n{{#Widget:SkinGalleryV2}}",
-    );
   });
 });
