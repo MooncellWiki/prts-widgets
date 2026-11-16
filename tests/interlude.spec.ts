@@ -76,14 +76,6 @@ async function tweenImmediately(
   complete?.();
 }
 
-/** Tween stub that only advances half-way and never completes. */
-async function tweenHalfway(
-  _duration: number,
-  update: (progress: number) => void,
-): Promise<void> {
-  update(0.5);
-}
-
 /** Records every tween duration and completes it at once. */
 function recordingTween(durations: number[]) {
   return async (
@@ -235,7 +227,7 @@ describe("InterludePanel", () => {
     },
   );
 
-  it("runs alpha/pos/scale tweens in parallel with their own durations", async () => {
+  it("runs OutQuad alpha, position and scale tracks with their own durations", async () => {
     const tweens: Array<{
       duration: number;
       update: (progress: number) => void;
@@ -270,12 +262,12 @@ describe("InterludePanel", () => {
 
     const { node } = channel(panel).elements.get("\u0000bg");
     sequence.update(0.25);
-    expect(node.alpha).toBeCloseTo(250 / 300);
-    expect(node.position.x).toBe(2.5);
-    expect(node.scale.x).toBe(1.5);
+    expect(node.alpha).toBeCloseTo(1 - (1 - 250 / 300) ** 2);
+    expect(node.position.x).toBe(4.375);
+    expect(node.scale.x).toBe(1.75);
     sequence.update(0.75);
     expect(node.alpha).toBe(1);
-    expect(node.position.x).toBe(7.5);
+    expect(node.position.x).toBe(9.375);
     expect(node.scale.x).toBe(2);
     expect(animation?.endReason).toBeUndefined();
     sequence.update(1);
@@ -324,47 +316,139 @@ describe("InterludePanel", () => {
 
     pending[0](1);
     expect(node.alpha).toBe(1);
+    pending[1](0.5);
+    expect(node.position.x).toBe(50);
     pending[1](1);
     expect(node.position.x).toBe(60);
   });
 
-  it("lets a newer tween on the same property take over", async () => {
-    const pending: Array<(progress: number) => void> = [];
+  it("keeps an older element sequence writing after a shorter one completes", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
     const panel = new InterludePanel(
       new Container(),
-      async () => Texture.EMPTY,
-      async (_duration, update) => {
-        pending.push(update);
-      },
+      () => Texture.WHITE,
+      runner.run.bind(runner),
     );
 
-    await panel.run(input({ block: false }))?.completion;
-    await panel.run(
+    panel.run(input({ block: false }));
+    panel.run(
       input({
         alphaDurationMs: 2000,
         alphaFrom: 0,
         alphaTo: 1,
         block: false,
+        durationMs: 2000,
         name: "bg_a",
+        positionFrom: { x: 0, y: 0 },
+        positionTo: { x: 16, y: 0 },
+        scaleDurationMs: 2000,
+        scaleFrom: { x: 1, y: 1 },
+        scaleTo: { x: 2, y: 2 },
         type: 2,
       }),
-    )?.completion;
-    await panel.run(
+    );
+    frames.step(500);
+    panel.run(
       input({
-        alphaDurationMs: 2000,
+        alphaDurationMs: 500,
         alphaFrom: 1,
         alphaTo: 0.5,
         block: false,
+        durationMs: 500,
         name: "bg_b",
+        positionFrom: { x: 10, y: 0 },
+        positionTo: { x: 20, y: 0 },
+        scaleDurationMs: 500,
+        scaleFrom: { x: 2, y: 2 },
+        scaleTo: { x: 3, y: 3 },
         type: 2,
       }),
-    )?.completion;
+    );
     const { node } = channel(panel).elements.get("\u0000bg");
-    pending[1](1);
+    frames.step(500);
     expect(node.alpha).toBe(0.5);
-    // The superseded fade no longer writes.
-    pending[0](1);
-    expect(node.alpha).toBe(0.5);
+    expect(node.position.x).toBe(20);
+    expect(node.scale.x).toBe(3);
+
+    frames.step(500);
+    expect(node.alpha).toBe(0.9375);
+    expect(node.position.x).toBe(15);
+    expect(node.scale.x).toBe(1.9375);
+  });
+
+  it("advances the front and back avatar images separately on a named update", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
+    const panel = new InterludePanel(
+      new Container(),
+      () => Texture.WHITE,
+      runner.run.bind(runner),
+    );
+
+    panel.run(input({ block: false }));
+    const name = "avg_4213_skybx_1#1$1";
+    const first = panel.run(input({ name, type: 3 }));
+    const { node } = channel(panel).elements.get("\u0000avatar");
+    const visibleAlphas = () =>
+      node.children
+        .filter((image: Container) => image.visible)
+        .map((image: Container) => image.alpha);
+    expect(visibleAlphas()).toEqual([0]);
+    frames.step(16);
+    expect(first?.endReason).toBe("complete");
+    expect(visibleAlphas()).toEqual([1]);
+
+    // level_act47side_07_beg line 285 uses the same name for this fade.
+    const wait = panel.run(
+      input({ alphaDurationMs: 1000, alphaFrom: 1, alphaTo: 0, name, type: 3 }),
+    );
+    expect(visibleAlphas()).toEqual([1, 1]);
+    frames.step(500);
+    expect(visibleAlphas()).toEqual([0.5, 0.5]);
+    expect(wait?.endReason).toBeUndefined();
+    frames.step(500);
+    expect(visibleAlphas()).toEqual([0]);
+    expect(wait?.endReason).toBe("complete");
+  });
+
+  it("keeps the reused front avatar visible after an interrupted back fade", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
+    const panel = new InterludePanel(
+      new Container(),
+      () => Texture.WHITE,
+      runner.run.bind(runner),
+    );
+
+    panel.run(input({ block: false }));
+    panel.run(input({ block: false, name: "first", type: 3 }));
+    const { node } = channel(panel).elements.get("\u0000avatar");
+    const firstFront = node.children[1];
+    frames.step(16);
+    panel.run(
+      input({ alphaDurationMs: 1000, block: false, name: "second", type: 3 }),
+    );
+    frames.step(500);
+    panel.run(input({ block: false, name: "third", type: 3 }));
+    frames.step(500);
+
+    expect(node.children[1]).toBe(firstFront);
+    expect(firstFront.visible).toBe(true);
+    expect(firstFront.alpha).toBe(1);
+    expect(node.children[0].visible).toBe(false);
   });
 
   it("keeps a background tween running across a char command on the same channel", async () => {
@@ -494,14 +578,20 @@ describe("InterludePanel", () => {
     expect(durations).toEqual([500, 1000, 0]);
   });
 
-  it("clears by scaling from the current template ratio to tsto (tsfrom not reused)", async () => {
+  it("uses OutQuad to scale in and clear from the current template ratio", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
     const panel = new InterludePanel(
       new Container(),
-      async () => Texture.EMPTY,
-      tweenHalfway,
+      () => Texture.EMPTY,
+      runner.run.bind(runner),
     );
 
-    await panel.run(
+    panel.run(
       input({
         block: false,
         maskId: VERTICAL,
@@ -509,12 +599,13 @@ describe("InterludePanel", () => {
         templateSizeFrom: { x: 0.2, y: 1 },
         templateSizeTo: { x: 1, y: 1 },
       }),
-    )?.completion;
+    );
+    frames.step(250);
     const state = channel(panel);
-    expect(state.ratio.x).toBeCloseTo(0.6);
+    expect(state.ratio.x).toBeCloseTo(0.8);
     expect(state.ratio.y).toBe(1);
 
-    await panel.run(
+    panel.run(
       input({
         block: false,
         clear: true,
@@ -522,11 +613,12 @@ describe("InterludePanel", () => {
         templateSizeFrom: { x: 9, y: 9 },
         templateSizeTo: { x: 0, y: 1 },
       }),
-    )?.completion;
-    expect(state.ratio.x).toBeCloseTo(0.3);
-    expect(state.template.scaleNode.scale.x).toBeCloseTo(0.3);
+    );
+    frames.step(200);
+    expect(state.ratio.x).toBeCloseTo(0.2);
+    expect(state.template.scaleNode.scale.x).toBeCloseTo(0.2);
     // deco.Hide fades the deco out over 0.5s.
-    expect(state.deco.root.alpha).toBeCloseTo(0.5);
+    expect(state.deco.root.alpha).toBeCloseTo(0.36);
   });
 
   it("maps uichar slots like _GetImgElementByParam without warnings", async () => {
@@ -707,7 +799,7 @@ describe("InterludePanel", () => {
     )?.completion;
     // OnCutinEnd's DOKill cannot reach the nested fade: it keeps running.
     pending[0](0.5);
-    expect(node.alpha).toBe(0.5);
+    expect(node.alpha).toBe(0.75);
 
     finishHide?.();
     expect(layer.children).toHaveLength(0);
@@ -928,19 +1020,28 @@ describe("InterludePanel mask templates", () => {
     expect(state.content.visible).toBe(false);
   });
 
-  it("fades the dialog group out on clear (0.5s default)", async () => {
+  it("fades the dialog group out with OutQuad on clear (0.5s default)", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
     const layer = new Container();
-    const durations: number[] = [];
     const panel = new InterludePanel(
       layer,
-      async () => Texture.EMPTY,
-      recordingTween(durations),
+      () => Texture.EMPTY,
+      runner.run.bind(runner),
     );
-    await panel.run(input({ maskId: DIALOG }))?.completion;
+    panel.run(input({ maskId: DIALOG }));
     const group = channel(panel).template.dialog.group;
 
-    await panel.run(input({ clear: true }))?.completion;
-    expect(durations).toEqual([500]);
+    const wait = panel.run(input({ clear: true }));
+    frames.step(250);
+    expect(group.alpha).toBe(0.25);
+    expect(wait?.endReason).toBeUndefined();
+    frames.step(250);
+    expect(wait?.endReason).toBe("complete");
     expect(group.alpha).toBe(0);
     expect(layer.children).toHaveLength(0);
   });

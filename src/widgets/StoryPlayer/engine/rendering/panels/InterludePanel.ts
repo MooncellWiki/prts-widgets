@@ -4,12 +4,17 @@ import {
   Sprite,
   Text,
   TextStyle,
+  type ObservablePoint,
   type Texture,
 } from "pixi.js";
 
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import { STORY_HEIGHT, STORY_WIDTH, type InterludeInput } from "../../types";
-import { dotweenEaseCurve } from "../core/DotweenEase";
+import {
+  dotweenDefaultEase,
+  dotweenEaseCurve,
+  linearEase,
+} from "../core/DotweenEase";
 import { Sequence } from "../core/Sequence";
 
 import {
@@ -30,26 +35,22 @@ import {
 } from "./interludeTemplates";
 
 import type { TextureLoad } from "../core/TextureAsset";
-import type { TweenRunner } from "../core/TweenRunner";
+import type { TweenRunner, TweenRunOptions } from "../core/TweenRunner";
 
 type Preparation = void | Promise<void>;
 type Vec2 = { x: number; y: number };
 
+interface AvatarBackImage {
+  fadeId: number;
+  sprite: Sprite;
+}
+
 /** `_leftChar`/`_middleChar`/`_rightChar`/`_imgBg`/缓存的 charslot。 */
 interface ElementState {
-  /** 元素节点:DoMove(`_offset`)、DoScale(`_img`)与淡入淡出的共同目标。 */
+  /** 元素节点对应 DoMove 的 `_offset` 和 DoScale 的缩放目标。 */
   node: Container;
   sprite: Sprite;
-  /**
-   * 按属性的 tween 世代。native `_ProcessElement` 每条命令新建 Sequence,
-   * 开头的 `DOKill(element)` 杀不到嵌在旧 Sequence 里的 tween(DOTween 的
-   * defaultAutoPlay = All,旧 Sequence 照常跑完),只有同一属性的新 tween
-   * 会在播放期间盖过它。所以只作废新命令写到的属性:第 13 章
-   * `aduration=2, block=false` 淡入后紧跟同元素位移的写法依赖淡入继续。
-   */
-  alphaGen: number;
-  moveGen: number;
-  scaleGen: number;
+  avatarBack?: AvatarBackImage;
 }
 
 interface ChannelState {
@@ -102,12 +103,35 @@ const KNOWN_MASK_IDS = new Set([
   "interlude_dialog_right",
 ]);
 
-// AVGCharacterSlot.SlotMoveChar tests MathUtil.IsZero against 1e-5 seconds.
-const AVATAR_MOVE_ZERO_MS = 0.01;
+// MathUtil.IsZero and GT(a, 0) use a tolerance of 1e-5 seconds.
+const TWEEN_ZERO_MS = 0.01;
 const avatarMoveEase = dotweenEaseCurve("OutCubic");
 
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
+}
+
+/** DOTween reads the start value from the target when the tween first advances. */
+function tweenAlpha(target: Container, to: number): (progress: number) => void {
+  let from: number | undefined;
+  return (progress) => {
+    from ??= target.alpha;
+    target.alpha = lerp(from, to, progress);
+  };
+}
+
+function tweenPoint(
+  target: ObservablePoint,
+  toX: number,
+  toY: number,
+): (progress: number) => void {
+  let fromX: number | undefined;
+  let fromY: number | undefined;
+  return (progress) => {
+    fromX ??= target.x;
+    fromY ??= target.y;
+    target.set(lerp(fromX, toX, progress), lerp(fromY, toY, progress));
+  };
 }
 
 /** `CutinTemplate._ShowEmptyImage`:空名或 `char_empty`(忽略大小写)。 */
@@ -155,9 +179,8 @@ function elementKeyFor(input: InterludeInput): string {
  *   flips the wave between `wave_active` (speaking) and `wave_stop`. `switch`
  *   never touches content visibility.
  * - Elements (`_ProcessElement` → `SetCutinElement`/`DoMove`/`DoScale`) run
- *   alpha/pos/scale tweens in parallel with their own durations; earlier
- *   sequences keep running (see ElementState) and a blocking command waits
- *   for its own tweens.
+ *   alpha/pos/scale tweens in parallel with their own durations. Earlier
+ *   sequences keep running even when a later sequence writes the same element.
  * - `direction=rin/lin` (`_TryPlayAnimation`) plays the 2.083s channel clip on
  *   top; a blocking element update then waits for SkipStory because it never
  *   attaches a completion callback to its sequence.
@@ -502,7 +525,7 @@ export class InterludePanel {
         });
       },
       undefined,
-      Boolean(state.template),
+      { deferZeroDuration: Boolean(state.template), ease: dotweenDefaultEase },
     );
   }
 
@@ -576,18 +599,20 @@ export class InterludePanel {
     const sprite = new Sprite();
     sprite.anchor.set(0.5);
     node.addChild(sprite);
+    const element: ElementState = { node, sprite };
+    if (type === 3) {
+      const back = new Sprite();
+      back.anchor.set(0.5);
+      back.visible = false;
+      sprite.visible = false;
+      node.addChildAt(back, 0);
+      element.avatarBack = { fadeId: 0, sprite: back };
+    }
     // Inactive until SetCutinElement assigns a sprite.
     node.visible = false;
     // cutin_channel prefab: char_img_right sits at (-140, 63) until a DoMove.
     if (key === "r") node.position.set(-140, -63);
     (type === 2 ? state.bkgPoz : state.charPoz).addChild(node);
-    const element: ElementState = {
-      node,
-      sprite,
-      alphaGen: 0,
-      moveGen: 0,
-      scaleGen: 0,
-    };
     state.elements.set(key, element);
     return element;
   }
@@ -600,30 +625,41 @@ export class InterludePanel {
     complete: () => void,
   ): void {
     const element = this.ensureElement(state, elementKeyFor(input), input.type);
-    const node = element.node;
+    const { avatarBack, node } = element;
     let sequence: Sequence | undefined;
     const tracks = () => (sequence ??= new Sequence(this.tween));
 
     // SetCutinElement sets the sprite and the start value. The native
     // sequence appends its alpha tween and joins the position/scale tweens.
+    // DOKill(element) leaves the child tweens in earlier sequences active.
     if (input.name) {
-      if (texture) {
+      if (avatarBack) {
+        this.swapAvatar(
+          state,
+          element,
+          avatarBack,
+          texture,
+          input.alphaDurationMs,
+        );
+      } else if (texture) {
         element.sprite.texture = texture;
+      }
+      if (texture) {
         node.visible = true;
         const from = Math.max(input.alphaFrom, 0);
         const to = input.alphaTo >= 0 ? input.alphaTo : 1;
-        const gen = ++element.alphaGen;
-        if (input.alphaDurationMs > 0) {
-          node.alpha = from;
+        const target = avatarBack ? element.sprite : node;
+        // _GenForeImageTween uses the AVGCharacterSlot prefab's Linear ease
+        // even at zero duration. CutinImageElement uses the DOTween default.
+        if (avatarBack || input.alphaDurationMs > TWEEN_ZERO_MS) {
+          target.alpha = from;
           tracks().append({
             durationMs: input.alphaDurationMs,
-            update: (progress) => {
-              if (element.alphaGen === gen)
-                node.alpha = lerp(from, to, progress);
-            },
+            ease: avatarBack ? linearEase : dotweenDefaultEase,
+            update: tweenAlpha(target, to),
           });
         } else {
-          node.alpha = to;
+          target.alpha = to;
         }
       } else {
         this.onWarning?.(`interlude element asset is missing: ${input.name}`);
@@ -633,40 +669,26 @@ export class InterludePanel {
     if (input.positionFrom && input.positionTo) {
       const from = input.positionFrom;
       const to = input.positionTo;
-      const gen = ++element.moveGen;
       // SlotMoveChar (2791 @ 0x1842389E0) applies a near-zero move inline.
-      const isAvatar = input.type === 3;
-      if (isAvatar && Math.abs(input.durationMs) <= AVATAR_MOVE_ZERO_MS) {
+      if (avatarBack && Math.abs(input.durationMs) <= TWEEN_ZERO_MS) {
         node.position.set(to.x, -to.y);
       } else {
         node.position.set(from.x, -from.y);
         tracks().join({
           durationMs: input.durationMs,
-          ease: isAvatar ? avatarMoveEase : undefined,
-          update: (progress) => {
-            if (element.moveGen !== gen) return;
-            node.position.set(
-              lerp(from.x, to.x, progress),
-              -lerp(from.y, to.y, progress),
-            );
-          },
+          ease: avatarBack ? avatarMoveEase : dotweenDefaultEase,
+          update: tweenPoint(node.position, to.x, -to.y),
         });
       }
     }
     if (input.scaleFrom && input.scaleTo) {
       const from = input.scaleFrom;
       const to = input.scaleTo;
-      const gen = ++element.scaleGen;
       node.scale.set(from.x, from.y);
       tracks().join({
         durationMs: input.scaleDurationMs,
-        update: (progress) => {
-          if (element.scaleGen !== gen) return;
-          node.scale.set(
-            lerp(from.x, to.x, progress),
-            lerp(from.y, to.y, progress),
-          );
-        },
+        ease: dotweenDefaultEase,
+        update: tweenPoint(node.scale, to.x, to.y),
       });
     }
 
@@ -682,6 +704,43 @@ export class InterludePanel {
       onComplete,
     });
     if (!input.block) complete();
+  }
+
+  /**
+   * AVGCharacterSlot._SlotSetCharInternal (2791 @ 0x18423A040) swaps the
+   * two images. _LoadImage and _GenBackImageTween kill the direct fade
+   * on the reused images. The new back fade runs outside the command sequence.
+   */
+  private swapAvatar(
+    state: ChannelState,
+    element: ElementState,
+    avatarBack: AvatarBackImage,
+    texture: Texture | null,
+    durationMs: number,
+  ): void {
+    const incoming = avatarBack.sprite;
+    const outgoing = element.sprite;
+    element.sprite = incoming;
+    avatarBack.sprite = outgoing;
+    element.node.setChildIndex(incoming, element.node.children.length - 1);
+    incoming.visible = texture !== null;
+    if (texture) incoming.texture = texture;
+
+    const fadeId = ++avatarBack.fadeId;
+    if (!outgoing.visible) return;
+    this.runTween(
+      state,
+      durationMs,
+      tweenAlpha(outgoing, 0),
+      () => {
+        outgoing.visible = false;
+      },
+      {
+        deferZeroDuration: true,
+        ease: linearEase,
+        isAlive: () => avatarBack.fadeId === fadeId,
+      },
+    );
   }
 
   /** TryPlayAnimation @ 0x1814FABE0 restarts a direction clip. */
@@ -845,25 +904,20 @@ export class InterludePanel {
     if (template?.dialog) {
       const group = template.dialog.group;
       state.introGen += 1;
-      const from = group.alpha;
       const to = input.alphaTo >= 0 ? input.alphaTo : 0;
       const durationMs =
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
-      this.runTween(
-        state,
-        durationMs,
-        (progress) => {
-          if (isCurrent()) group.alpha = lerp(from, to, progress);
-        },
-        done,
-      );
+      this.runTween(state, durationMs, tweenAlpha(group, to), done, {
+        ease: dotweenDefaultEase,
+        isAlive: isCurrent,
+      });
       return;
     }
 
     if (state.deco) {
-      const deco = state.deco.root;
-      this.runTween(state, 500, (progress) => {
-        if (isCurrent()) deco.alpha = 1 - progress;
+      this.runTween(state, 500, tweenAlpha(state.deco.root, 0), undefined, {
+        ease: dotweenDefaultEase,
+        isAlive: isCurrent,
       });
     }
     const scaleOut = (complete?: () => void): void => {
@@ -881,7 +935,7 @@ export class InterludePanel {
           });
         },
         complete,
-        Boolean(template),
+        { deferZeroDuration: Boolean(template), ease: dotweenDefaultEase },
       );
     };
     if (!template) {
@@ -895,9 +949,11 @@ export class InterludePanel {
       return;
     }
     if (input.style === 2) scaleOut();
-    if (template.hasImgMask)
-      this.runTween(state, input.alphaDurationMs, () => {}, done, true);
-    else done();
+    if (template.hasImgMask) {
+      this.runTween(state, input.alphaDurationMs, () => {}, done, {
+        deferZeroDuration: true,
+      });
+    } else done();
   }
 
   private runTween(
@@ -905,9 +961,10 @@ export class InterludePanel {
     durationMs: number,
     update: (progress: number) => void,
     onComplete?: () => void,
-    deferZeroDuration = false,
+    options?: TweenRunOptions,
   ): void {
-    const isAlive = () => !state.root.destroyed;
+    const isAlive = () =>
+      !state.root.destroyed && options?.isAlive?.() !== false;
     void this.tween(
       durationMs,
       (progress) => {
@@ -916,7 +973,7 @@ export class InterludePanel {
       () => {
         if (isAlive()) onComplete?.();
       },
-      { deferZeroDuration, isAlive },
+      { ...options, isAlive },
     );
   }
 }

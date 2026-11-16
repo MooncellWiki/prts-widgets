@@ -405,12 +405,41 @@ describe("CharacterCutinPanel", () => {
     expect(state.root.alpha).toBe(1);
   });
 
+  it("starts a fresh Show when a named command supersedes a pending entry texture", async () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
+    const { loadTexture, release } = deferredArt();
+    const replacement = art(140, 300);
+    const layer = new Container();
+    const panel = new CharacterCutinPanel(
+      layer,
+      ({ expression }) => (expression === "2$2" ? replacement : loadTexture()),
+      runner.run.bind(runner),
+    );
+
+    const pending = panel.run(input());
+    const show = panel.run(input({ expression: "2$2" }));
+    expect(pending?.endReason).toBe("reset");
+    release(art(120, 300));
+    await frames.advance(16);
+
+    const state = slots(panel).get("1")!;
+    expect(layer.children).toHaveLength(1);
+    expect(state.chars[0].sprite.texture).toBe(replacement.texture);
+    expect(state.root.alpha).toBe(1);
+    expect(show?.endReason).toBe("complete");
+  });
+
   it.each([
-    { fadeMs: 0, frameMs: 16, firstFrameAlphas: [1] },
-    { fadeMs: 100, frameMs: 50, firstFrameAlphas: [0.5, 0.5] },
+    { fadeMs: 0, frameMs: 16, firstFrameAlphas: [1], finalX: 740 },
+    { fadeMs: 100, frameMs: 50, firstFrameAlphas: [0.5, 0.5], finalX: 640 },
   ])(
     "finishes a $fadeMs ms portrait swap across a same-portrait layout update",
-    ({ fadeMs, frameMs, firstFrameAlphas }) => {
+    ({ fadeMs, frameMs, firstFrameAlphas, finalX }) => {
       const frames = new PlaybackTestFrames();
       frames.manual = true;
       const tween = new TweenRunner(
@@ -435,9 +464,12 @@ describe("CharacterCutinPanel", () => {
       expect(state.chars.map(({ sprite }) => sprite.alpha)).toEqual(
         firstFrameAlphas,
       );
-      frames.step(frameMs);
       expect(layout?.endReason).toBe("complete");
       expect(state.root.x).toBe(740);
+
+      frames.step(frameMs);
+      // The first layout can outlast the second layout's zero-duration tween.
+      expect(state.root.x).toBe(finalX);
       expect(state.chars).toHaveLength(1);
       expect(state.chars[0].sprite.texture).toBe(texB.texture);
       expect(state.chars[0].sprite.alpha).toBe(1);
@@ -541,6 +573,67 @@ describe("CharacterCutinPanel", () => {
 
     frames.step(50);
     expect(slots(panel).has("1")).toBe(false);
+  });
+
+  it.each([
+    { clearedWidgetId: "2", finishCalls: 1, reason: "complete" },
+    { clearedWidgetId: "1", finishCalls: 0, reason: "reset" },
+  ])(
+    "recycles on Hide before clearing widget $clearedWidgetId",
+    ({ clearedWidgetId, finishCalls, reason }) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const runner = new TweenRunner(
+        () => true,
+        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+      );
+      const layer = new Container();
+      const panel = new CharacterCutinPanel(
+        layer,
+        () => art(120, 300),
+        runner.run.bind(runner),
+      );
+      panel.run(input());
+      frames.step(16);
+
+      panel.run(input({ block: false, characterKey: undefined }));
+      const finish = vi.fn();
+      const layout = panel.run(input({ fadeMs: 64, offsetX: 100 }), finish);
+      frames.step(16);
+      expect(layer.children).toHaveLength(0);
+      expect(slots(panel).has("1")).toBe(false);
+      expect(layout?.endReason).toBeUndefined();
+      expect(finish).not.toHaveBeenCalled();
+
+      panel.clear(clearedWidgetId);
+      frames.step(48);
+      expect(layout?.endReason).toBe(reason);
+      expect(finish).toHaveBeenCalledTimes(finishCalls);
+    },
+  );
+
+  it("keeps the entry fade running on its own clock across a SlotUpdate", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
+    const panel = new CharacterCutinPanel(
+      new Container(),
+      () => art(120, 300),
+      runner.run.bind(runner),
+    );
+    panel.run(input({ block: false, fadeMs: 100 }));
+    const layout = panel.run(input({ fadeMs: 25, offsetX: 100 }));
+    const { root } = slots(panel).get("1")!;
+    frames.step(25);
+    expect(root.alpha).toBe(0.4375);
+    expect(root.x).toBe(740);
+    expect(layout?.endReason).toBe("complete");
+
+    frames.step(75);
+    expect(root.alpha).toBe(1);
   });
 
   it("still runs the show tween for an unresolvable name to keep block timing", async () => {

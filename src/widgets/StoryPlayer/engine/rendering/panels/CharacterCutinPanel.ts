@@ -29,7 +29,7 @@ type CutinArtLoad =
 type SlotTween = (
   durationMs: number,
   update: (progress: number) => void,
-  complete?: () => void,
+  options?: { onComplete?: () => void; completeAfterRecycle?: boolean },
 ) => void;
 
 /**
@@ -99,7 +99,9 @@ interface CutinSlotState {
   maskSize: { h: number; w: number };
   /** `_offsetTransform` port: the slot center sits at screen center + offset. */
   root: Container;
-  animation?: ExecutionHandle;
+  /** A cache miss can leave the slot allocated before its first tween starts. */
+  hasStarted: boolean;
+  artWait?: ExecutionHandle;
   /** Final mask size; directional pivots pin against this while expanding. */
   targetSize: { h: number; w: number };
 }
@@ -135,6 +137,7 @@ interface CutinSlotState {
  */
 export class CharacterCutinPanel {
   private readonly slots = new Map<string, CutinSlotState>();
+  private readonly waits = new Map<ExecutionHandle, string>();
 
   constructor(
     private readonly layer: Container,
@@ -146,22 +149,25 @@ export class CharacterCutinPanel {
     input: CharacterCutinInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    const state = this.slots.get(input.widgetId);
+    const current = this.slots.get(input.widgetId);
     // Empty name hides an existing slot, or finishes synchronously when the
     // widgetID is absent (2791 _ExecuteCharacterCutin @ 0x18419ECB0).
     if (!input.characterKey && !input.characterMissing) {
-      if (!state) return;
+      if (!current) return;
       return this.runSlot(
-        state,
+        current,
         input,
         null,
         (_, tween) => {
-          this.hideSlot(input, state, tween);
+          this.hideSlot(input, current, tween);
         },
         onComplete,
       );
     }
 
+    const state = current?.hasStarted ? current : undefined;
+    // A superseded cache miss has only seeded an invisible entry pose.
+    if (current && !state) this.destroySlot(input.widgetId, current);
     const layout = layoutFor(input);
     const slot = state ?? this.createSlot(input.widgetId, layout, input);
     const keepsArt =
@@ -182,15 +188,16 @@ export class CharacterCutinPanel {
   }
 
   clear(widgetId?: string): void {
+    for (const [animation, owner] of this.waits) {
+      if (widgetId === undefined || widgetId === owner) animation.end("reset");
+    }
     if (widgetId === undefined) {
-      for (const id of this.slots.keys()) this.clear(id);
+      for (const [id, state] of this.slots) this.destroySlot(id, state);
       return;
     }
 
     const state = this.slots.get(widgetId);
-    if (!state) return;
-    state.animation?.end("reset");
-    this.destroySlot(widgetId, state);
+    if (state) this.destroySlot(widgetId, state);
   }
 
   destroy(): void {
@@ -204,26 +211,37 @@ export class CharacterCutinPanel {
     play: (texture: CutinCharacterArt | null, tween: SlotTween) => void,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    state.animation?.end("reset");
-    const animation = createExecutionHandle(true);
-    state.animation = animation;
-    const isAlive = () =>
-      state.animation === animation && !state.root.destroyed;
+    // Supersede an unresolved Web asset load. Once started, 2791 Show,
+    // SlotUpdate and Hide each keep their own tween and completion.
+    state.artWait?.end("reset");
+    const animation = createExecutionHandle(true, () =>
+      this.waits.delete(animation),
+    );
+    this.waits.set(animation, input.widgetId);
     const start = (texture: CutinCharacterArt | null) => {
-      if (!isAlive()) return;
-      play(texture, (duration, update, done) => {
+      if (state.root.destroyed || animation.endReason !== undefined) return;
+      state.artWait = undefined;
+      state.hasStarted = true;
+      play(texture, (duration, update, options) => {
         // Show, SlotUpdate and Hide use the bundled DOTweenSettings' OutQuad
         // and attach OnComplete even at zero fade time (2791 @ 0x184203DA0 /
         // 0x184204B20 / 0x184203800).
+        const isAlive = () =>
+          !state.root.destroyed ||
+          (options?.completeAfterRecycle === true &&
+            animation.endReason === undefined);
         void this.tween(
           duration,
           (progress) => {
-            if (isAlive()) update(progress);
+            if (!state.root.destroyed) update(progress);
           },
           () => {
-            if (!isAlive()) return;
-            done?.();
-            if (input.block) {
+            if (!isAlive()) {
+              animation.end("reset");
+              return;
+            }
+            options?.onComplete?.();
+            if (input.block && animation.endReason === undefined) {
               animation.end();
               onComplete?.();
             }
@@ -236,11 +254,12 @@ export class CharacterCutinPanel {
       if (!input.block) animation.end();
     };
     if (art instanceof Promise) {
+      state.artWait = animation;
       void art
         .catch(() => null)
         .then(start)
         .catch((error: unknown) => {
-          if (isAlive()) animation.fail(error);
+          animation.fail(error);
         });
     } else {
       start(art);
@@ -284,7 +303,6 @@ export class CharacterCutinPanel {
     tween: SlotTween,
   ): void {
     const start = {
-      alpha: state.root.alpha,
       contentX: state.content.x,
       contentY: state.content.y,
       maskH: state.maskSize.h,
@@ -299,23 +317,26 @@ export class CharacterCutinPanel {
 
     if (!keepsArt) this.crossfadeCharacter(input, state, art);
 
-    tween(input.fadeMs, (progress) => {
-      // Let an interrupted fade-style Show settle to alpha 1 as it would
-      // with the two native tweens running concurrently.
-      state.root.alpha = lerp(start.alpha, 1, progress);
-      state.root.position.set(
-        lerp(start.rootX, layout.rootX, progress),
-        lerp(start.rootY, layout.rootY, progress),
-      );
-      state.content.position.set(
-        lerp(start.contentX, layout.contentX, progress),
-        lerp(start.contentY, layout.contentY, progress),
-      );
-      state.content.scale.set(lerp(start.zoom, layout.zoom, progress));
-      state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
-      state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
-      this.drawMask(state);
-    });
+    tween(
+      input.fadeMs,
+      (progress) => {
+        state.root.position.set(
+          lerp(start.rootX, layout.rootX, progress),
+          lerp(start.rootY, layout.rootY, progress),
+        );
+        state.content.position.set(
+          lerp(start.contentX, layout.contentX, progress),
+          lerp(start.contentY, layout.contentY, progress),
+        );
+        state.content.scale.set(lerp(start.zoom, layout.zoom, progress));
+        state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
+        state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
+        this.drawMask(state);
+      },
+      // OnRecycle kills the canvas group and mask targets. SlotUpdate's
+      // targetless DOTween.To can still finish after the slot is recycled.
+      { completeAfterRecycle: true },
+    );
   }
 
   /** AVGCharacterSlot.Set owns the portrait tween separately from SlotUpdate's layout. */
@@ -356,13 +377,14 @@ export class CharacterCutinPanel {
     // releasing the command (2791 _ExecuteCharacterCutin_b__0 @ 0x1841B5EF0).
     const recycle = () => this.destroySlot(input.widgetId, state);
     if (state.fadeStyle === 0) {
-      const startAlpha = state.root.alpha;
+      let startAlpha: number | undefined;
       tween(
         input.fadeMs,
         (progress) => {
+          startAlpha ??= state.root.alpha;
           state.root.alpha = lerp(startAlpha, 0, progress);
         },
-        recycle,
+        { onComplete: recycle },
       );
       return;
     }
@@ -377,7 +399,7 @@ export class CharacterCutinPanel {
         state.maskSize.w = horizontal ? lerp(startW, 0, progress) : startW;
         this.drawMask(state);
       },
-      recycle,
+      { onComplete: recycle },
     );
   }
 
@@ -420,6 +442,7 @@ export class CharacterCutinPanel {
       charTweenId: 0,
       content,
       fadeStyle: fadeStyleId(input.fadeStyle),
+      hasStarted: false,
       mask,
       maskSize: { h: layout.maskH, w: layout.maskW },
       root,
@@ -481,6 +504,7 @@ export class CharacterCutinPanel {
   }
 
   private destroySlot(widgetId: string, state: CutinSlotState): void {
+    state.artWait?.end("reset");
     state.root.destroy({ children: true });
     this.slots.delete(widgetId);
   }
