@@ -706,41 +706,70 @@ describe("InterludePanel", () => {
     expect(warnings).toEqual([]);
   });
 
-  it("releases a blocking clear-all once on the first recycled channel", () => {
-    const layer = new Container();
-    const frames = new PlaybackTestFrames();
-    frames.manual = true;
-    const panel = createPanel(
-      layer,
-      () => Texture.EMPTY,
-      frames.createTweenRunner(),
-    );
-    panel.run(input({ block: false, channel: 3, maskId: VERTICAL }));
-    panel.run(input({ block: false, channel: 4, maskId: DIALOG }));
-    const finish = vi.fn();
-    const clear = panel.run(
-      input({
-        channel: -1,
-        clear: true,
-        templateSizeDurationMs: 250,
-      }),
-      finish,
-    );
+  it.each([true, false])(
+    "hides without recycling on clear-all with block=%s",
+    (block) => {
+      const layer = new Container();
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const warn = vi.fn();
+      const panel = createPanel(
+        layer,
+        () => Texture.EMPTY,
+        frames.createTweenRunner(),
+        warn,
+      );
+      panel.run(input({ block: false, channel: 3, maskId: SQUARE }));
+      panel.run(input({ block: false, channel: 4, maskId: DIALOG }));
+      const square = channel(panel, 3);
+      const dialog = channel(panel, 4);
+      const deco = square.deco.root;
+      const finish = vi.fn();
+      const clear = panel.run(
+        input({
+          block,
+          channel: -1,
+          clear: true,
+          templateSizeDurationMs: 250,
+          templateSizeTo: { x: 0, y: 1 },
+        }),
+        block ? finish : undefined,
+      );
 
-    expect(clear?.endReason).toBeUndefined();
-    frames.step(250);
-    expect(clear?.endReason).toBe("complete");
-    expect(finish).toHaveBeenCalledTimes(1);
-    expect(layer.children).toHaveLength(1);
-    frames.step(250);
-    expect(finish).toHaveBeenCalledTimes(1);
-    expect(layer.children).toHaveLength(0);
+      expect(Boolean(clear)).toBe(block);
+      expect(clear?.endReason).toBeUndefined();
+      frames.step(250);
+      expect(square.template.scaleNode.scale).toMatchObject({ x: 0, y: 1 });
+      expect(deco.destroyed).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      frames.step(250);
+      expect(dialog.template.dialog.group.alpha).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(channel(panel, 3)).toBe(square);
+      expect(channel(panel, 4)).toBe(dialog);
+      expect(layer.children).toEqual([square.root, dialog.root]);
+      expect(clear?.endReason).toBeUndefined();
+      expect(finish).not.toHaveBeenCalled();
+
+      panel.clearAll();
+      expect(clear?.endReason).toBe(block ? "reset" : undefined);
+      expect(layer.children).toHaveLength(0);
+    },
+  );
+
+  it("keeps an empty blocking clear-all pending until reset", () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.EMPTY,
+      createInstantTweenRunner(),
+    );
+    const finish = vi.fn();
 
     const emptyClear = panel.run(input({ channel: -1, clear: true }), finish);
     expect(emptyClear).toMatchObject({ blocking: true, endReason: undefined });
     panel.clearAll();
     expect(emptyClear?.endReason).toBe("reset");
-    expect(finish).toHaveBeenCalledTimes(1);
+    expect(finish).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -931,19 +960,29 @@ describe("InterludePanel", () => {
     expect(unknown.visible).toBe(true);
   });
 
-  it("clears every channel when channel is negative", async () => {
-    const layer = new Container();
-    const panel = createPanel(
-      layer,
-      async () => Texture.EMPTY,
-      createInstantTweenRunner(),
-    );
-    await panel.run(input({ channel: 3 }))?.completion;
-    await panel.run(input({ channel: 4 }))?.completion;
+  it.each([true, false])(
+    "fails inline on clear-all without a template with block=%s",
+    (block) => {
+      const layer = new Container();
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const panel = createPanel(
+        layer,
+        () => Texture.EMPTY,
+        frames.createTweenRunner(),
+      );
+      panel.run(input({ block: false, channel: 3 }));
+      panel.run(input({ block: false, channel: 4, maskId: DIALOG }));
+      const group = channel(panel, 4).template.dialog.group;
 
-    await panel.run(input({ channel: -1, clear: true }))?.completion;
-    expect(layer.children).toHaveLength(0);
-  });
+      const clear = panel.run(input({ block, channel: -1, clear: true }));
+      expect(clear?.endReason).toBe("error");
+      expect(clear?.failure?.error).toBeInstanceOf(Error);
+      frames.step(500);
+      expect(group.alpha).toBe(1);
+      expect(layer.children).toHaveLength(2);
+    },
+  );
 
   it("drops element params on a create command (native begin never reaches _ProcessElement)", async () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);

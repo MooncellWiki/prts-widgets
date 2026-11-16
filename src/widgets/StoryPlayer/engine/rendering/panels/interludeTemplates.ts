@@ -659,7 +659,7 @@ export function applySquareShow(
       1,
     );
   }
-  if (frameGroup) {
+  if (frameGroup && !frameGroup.destroyed) {
     // 居中定尺寸:SizeDelta 即绝对尺寸(子节点 common_frame 拉伸跟随)。
     frameGroup.width = sample(
       curve("square_show", "float", "group_frame_common", "m_SizeDelta.x"),
@@ -677,7 +677,7 @@ export function applySquareShow(
       1,
     );
   }
-  if (nameGroup) {
+  if (nameGroup && !nameGroup.destroyed) {
     nameGroup.position.x = sample(
       curve("square_show", "float", "group_name", "m_AnchoredPosition.x"),
       t,
@@ -689,7 +689,7 @@ export function applySquareShow(
       1,
     );
   }
-  if (waveGroup) {
+  if (waveGroup && !waveGroup.destroyed) {
     waveGroup.position.y = -sample(
       curve("square_show", "float", "group_wave", "m_AnchoredPosition.y"),
       t,

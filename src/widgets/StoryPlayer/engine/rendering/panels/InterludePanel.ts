@@ -928,26 +928,36 @@ export class InterludePanel {
   }
 
   private clear(input: InterludeInput, complete: () => void): void {
-    const channel = this.channels.get(input.channel);
-    const states =
-      input.channel < 0
-        ? [...this.channels]
-        : channel
-          ? [[input.channel, channel] as const]
-          : [];
+    if (input.channel < 0) {
+      this.hideAllChannels(input);
+      if (!input.block) complete();
+      return;
+    }
 
-    // Web recycles each channel independently and releases the clear once.
-    // The 2791 all-channel callback (0x181507EC0) reads an unset channel.
-    for (const [id, state] of states) {
+    const state = this.channels.get(input.channel);
+    if (state) {
       this.hide(state, input, () => {
-        this.recycleChannel(id, state);
+        this.recycleChannel(input.channel, state);
         if (input.block && state.template) complete();
       });
-      if (input.block && !state.template) complete();
     }
-    // An absent explicit channel finishes immediately. An empty clear-all
-    // has no channel callback to release a blocking command.
-    if (!input.block || (input.channel >= 0 && !channel)) complete();
+    if (!input.block || !state?.template) complete();
+  }
+
+  private hideAllChannels(input: InterludeInput): void {
+    // _ProcessChannelClean (2791 @ 0x1814FB710) leaves the shared callback's
+    // channel unset. b__1 (0x181507EC0) faults before recycling or finishing
+    // the command. DOTween catches callback failures in Safe Mode
+    // (0x18443D780). An inline OnCutinEnd propagates the error.
+    const message = "interlude clear-all completion received an unset channel";
+    const done = (fromTween: boolean) => {
+      if (!fromTween) throw new Error(message);
+      this.onWarning?.(message);
+    };
+    for (const state of this.channels.values()) {
+      if (state.template) this.hide(state, input, done);
+      else done(false);
+    }
   }
 
   private recycleChannel(id: number, state: ChannelState): void {
@@ -968,8 +978,24 @@ export class InterludePanel {
   private hide(
     state: ChannelState,
     input: InterludeInput,
-    done: () => void,
+    done: (fromTween: boolean) => void,
   ): void {
+    const finish = (fromTween: boolean) => {
+      // _HideOncomplete (2791 @ 0x181502120) schedules destruction of the
+      // deco before calling the controller's channel completion callback.
+      const deco = state.deco;
+      if (deco) {
+        this.tweens.afterUpdate(() => {
+          if (state.deco !== deco) return;
+          state.deco = null;
+          this.tweens.killTarget(deco.root);
+          if (!deco.root.destroyed) deco.root.destroy({ children: true });
+        });
+      }
+      done(fromTween);
+    };
+    const onComplete = () => finish(true);
+
     const template = state.template;
     if (template?.dialog) {
       const group = template.dialog.group;
@@ -982,7 +1008,7 @@ export class InterludePanel {
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
       this.runTween(state, durationMs, tweenAlpha(group, to), {
         ease: dotweenDefaultEase,
-        onComplete: done,
+        onComplete,
         target: group,
       });
       return;
@@ -995,17 +1021,17 @@ export class InterludePanel {
       });
     }
     if (!template || input.style === 0) {
-      this.tweenScale(state, input, done);
+      this.tweenScale(state, input, onComplete);
       return;
     }
     if (input.style === 2) this.tweenScale(state, input);
     if (template.hasImgMask) {
       this.runTween(state, input.alphaDurationMs, () => {}, {
         deferZeroDuration: true,
-        onComplete: done,
+        onComplete,
         target: template.maskNode,
       });
-    } else done();
+    } else finish(false);
   }
 
   private runTween(

@@ -599,12 +599,12 @@ describe("CharacterCutinPanel", () => {
   );
 
   it.each([
-    { fadeStyle: "horiz_expand_left2right", endReason: "complete" },
-    { fadeStyle: "horiz_expand_center", endReason: "reset" },
-    { fadeStyle: "fade", endReason: "reset" },
+    { fadeStyle: "horiz_expand_left2right", completes: true },
+    { fadeStyle: "horiz_expand_center", completes: false },
+    { fadeStyle: "fade", completes: false },
   ] as const)(
-    "ends a later $fadeStyle hide with $endReason when a shorter hide recycles first",
-    ({ fadeStyle, endReason }) => {
+    "preserves the later $fadeStyle hide's completion behavior after recycle",
+    ({ fadeStyle, completes }) => {
       const layer = new Container();
       const frames = new PlaybackTestFrames();
       frames.manual = true;
@@ -623,7 +623,7 @@ describe("CharacterCutinPanel", () => {
 
       frames.step(100);
       expect(layer.children).toHaveLength(0);
-      expect(wait?.endReason).toBe(endReason === "reset" ? "reset" : undefined);
+      expect(wait?.endReason).toBeUndefined();
       expect(finish).not.toHaveBeenCalled();
 
       panel.run(input({ block: false, fadeStyle }));
@@ -631,9 +631,12 @@ describe("CharacterCutinPanel", () => {
       frames.step(899);
       expect(finish).not.toHaveBeenCalled();
       frames.step(1);
-      expect(wait?.endReason).toBe(endReason);
-      expect(finish).toHaveBeenCalledTimes(endReason === "complete" ? 1 : 0);
+      expect(wait?.endReason).toBe(completes ? "complete" : undefined);
+      expect(finish).toHaveBeenCalledTimes(completes ? 1 : 0);
       expect(layer.children).toEqual([replacement]);
+
+      panel.clear();
+      expect(wait?.endReason).toBe(completes ? "complete" : "reset");
     },
   );
 
@@ -686,6 +689,27 @@ describe("CharacterCutinPanel", () => {
 
     frames.step(75);
     expect(root.alpha).toBe(1);
+  });
+
+  it("holds the captured integer height when updating a slot during vertical entry", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = new CharacterCutinPanel(
+      new Container(),
+      () => art(120, 300),
+      frames.createTweenRunner(),
+    );
+    panel.run(
+      input({ block: false, fadeMs: 64, fadeStyle: "vert_expand_center" }),
+    );
+    const { maskSize } = slots(panel).get("1")!;
+    frames.step(8);
+    expect(maskSize.h).toBe(168.75);
+
+    const update = panel.run(input({ fadeMs: 56 }));
+    frames.step(56);
+    expect(update?.endReason).toBe("complete");
+    expect(maskSize).toEqual({ h: 168, w: 200 });
   });
 
   it("still runs the show tween for an unresolvable name to keep block timing", async () => {

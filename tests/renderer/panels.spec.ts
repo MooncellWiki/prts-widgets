@@ -1286,31 +1286,55 @@ describe("Displayable and focus frame order", () => {
     },
   );
 
-  it("keeps the next blocking cutin active when the second clear-all channel recycles", async () => {
-    const draws: number[] = [];
-    const { app, destroy, runtime } = await createRenderedPlayback(
-      [
-        '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
-        '[interlude(channel=4,maskid="interlude_dialog_left")]',
-        "[interlude(clear=true,block=true,tsduration=0.016,aduration=0.032)]",
-        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=1,block=true)]',
-        '[cgitem(image="after")]',
-        '[name="A"]ok',
-      ],
-      ({ cgItems }) => draws.push(cgItems.children.length),
-    );
-    const started = runtime.start();
-    try {
-      app.ticker.update(16);
-      app.ticker.update(32);
-      expect(draws).toEqual([0, 0]);
-      app.ticker.update(1016);
-      expect(draws).toEqual([0, 0, 1]);
-    } finally {
-      destroy();
-      await started;
-    }
-  });
+  it.each(["fade", "horiz_expand_center", "clear-all"] as const)(
+    "keeps the command blocked after %s until a segment jump",
+    async (kind) => {
+      const clearAll = kind === "clear-all";
+      const commands = clearAll
+        ? [
+            '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+            '[interlude(channel=4,maskid="interlude_dialog_left")]',
+            "[interlude(clear=true,block=true,tsduration=0.016,aduration=0.032)]",
+          ]
+        : [
+            `[charactercutin(widgetID="1",name="avg_npc_1",fadestyle="${kind}",fadetime=0)]`,
+            '[charactercutin(widgetID="1",fadetime=0.016)]',
+            '[charactercutin(widgetID="1",fadetime=0.032,block=true)]',
+          ];
+      const draws: Array<[number, number]> = [];
+      const { app, destroy, runtime } = await createRenderedPlayback(
+        [
+          ...commands,
+          '[cgitem(image="before_skip")]',
+          "[SkipToThis]",
+          '[cgitem(image="after_skip")]',
+          '[name="A"]ok',
+        ],
+        ({ cutins, cgItems }) =>
+          draws.push([cutins.children.length, cgItems.children.length]),
+      );
+      const started = runtime.start();
+      let skipping: Promise<void> | undefined;
+      try {
+        app.ticker.update(16);
+        app.ticker.update(32);
+        const remaining = clearAll ? 2 : 0;
+        expect(draws).toEqual([
+          [remaining, 0],
+          [remaining, 0],
+        ]);
+
+        skipping = runtime.skipNode();
+        await flushAsync();
+        app.ticker.update(48);
+        await skipping;
+        expect(draws.at(-1)).toEqual([0, 1]);
+      } finally {
+        destroy();
+        await Promise.all([started, skipping]);
+      }
+    },
+  );
 
   it.each([
     {

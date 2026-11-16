@@ -221,10 +221,9 @@ export class CharacterCutinPanel {
           {
             deferZeroDuration: true,
             ease: dotweenDefaultEase,
-            onCancel: () => {
-              forget();
-              animation.end("reset");
-            },
+            // OnRecycle calls DOKill(false) (2791 @ 0x184203D50). The
+            // command keeps waiting until its callback or a playback reset.
+            onCancel: forget,
             onComplete: () => {
               forget();
               options?.onComplete?.();
@@ -305,11 +304,13 @@ export class CharacterCutinPanel {
     keepsArt: boolean,
     tween: SlotTween,
   ): void {
+    // SlotUpdate (2791 @ 0x184204B20) captures both sizeDelta axes as
+    // integers. With default horizontal alignment, width sets only x.
     const start = {
       contentX: state.pov.x,
       contentY: state.pov.y,
-      maskH: state.maskSize.h,
-      maskW: state.maskSize.w,
+      maskH: Math.trunc(state.maskSize.h),
+      maskW: Math.trunc(state.maskSize.w),
       rootX: state.root.x,
       rootY: state.root.y,
       zoom: state.content.scale.x,
@@ -541,10 +542,10 @@ function layoutFor(
   input: CharacterCutinInput,
   current?: CutinLayout,
 ): CutinLayout {
-  const maskH = STORY_HEIGHT;
   const fallback = current ?? {
     contentX: 0,
     contentY: 0,
+    maskH: STORY_HEIGHT,
     maskW: DEFAULT_SLOT_WIDTH,
     rootX: STORY_WIDTH / 2,
     rootY: STORY_HEIGHT / 2,
@@ -553,7 +554,7 @@ function layoutFor(
   return {
     contentX: input.povX === undefined ? fallback.contentX : -input.povX,
     contentY: input.povY === undefined ? fallback.contentY : input.povY,
-    maskH,
+    maskH: fallback.maskH,
     maskW: input.width ?? fallback.maskW,
     rootX:
       input.offsetX === undefined
