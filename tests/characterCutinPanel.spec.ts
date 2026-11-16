@@ -7,10 +7,13 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import {
   CharacterCutinPanel,
   type CutinCharacterArt,
 } from "../src/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
+
+import { PlaybackTestFrames } from "./helpers/playbackFrames";
 
 import type { CharacterCutinInput } from "../src/widgets/StoryPlayer/engine/types";
 
@@ -402,37 +405,61 @@ describe("CharacterCutinPanel", () => {
     expect(state.root.alpha).toBe(1);
   });
 
-  it("SlotUpdate crossfades to a new character over the tween duration", async () => {
-    const layer = new Container();
-    const texA = art(120, 300);
-    const texB = art(140, 300);
-    const loadTexture = vi.fn(async (cutin: CharacterCutinInput) =>
-      cutin.expression === "2$2" ? texB : texA,
+  it.each([
+    { fadeMs: 0, frameMs: 16, firstFrameAlphas: [1] },
+    { fadeMs: 100, frameMs: 50, firstFrameAlphas: [0.5, 0.5] },
+  ])(
+    "finishes a $fadeMs ms portrait swap across a same-portrait layout update",
+    ({ fadeMs, frameMs, firstFrameAlphas }) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const tween = new TweenRunner(
+        () => true,
+        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+      );
+      const texA = art(120, 300);
+      const texB = art(140, 300);
+      const panel = new CharacterCutinPanel(
+        new Container(),
+        ({ expression }) => (expression === "2$2" ? texB : texA),
+        tween.run.bind(tween),
+      );
+      panel.run(input());
+      frames.step(16);
+
+      panel.run(input({ block: false, expression: "2$2", fadeMs }));
+      const layout = panel.run(input({ expression: "2$2", offsetX: 100 }));
+      const state = slots(panel).get("1")!;
+
+      frames.step(frameMs);
+      expect(state.chars.map(({ sprite }) => sprite.alpha)).toEqual(
+        firstFrameAlphas,
+      );
+      frames.step(frameMs);
+      expect(layout?.endReason).toBe("complete");
+      expect(state.root.x).toBe(740);
+      expect(state.chars).toHaveLength(1);
+      expect(state.chars[0].sprite.texture).toBe(texB.texture);
+      expect(state.chars[0].sprite.alpha).toBe(1);
+    },
+  );
+
+  it("restores the previous portrait after a replacement fails to load", () => {
+    const portrait = art(120, 300);
+    const panel = new CharacterCutinPanel(
+      new Container(),
+      ({ expression }) => (expression === "2$2" ? null : portrait),
+      instantTween,
     );
-    const first = captureTween();
-    let active = first.tween;
-    const panel = new CharacterCutinPanel(layer, loadTexture, (d, u, c) =>
-      active(d, u, c),
-    );
-
-    await panel.run(input({ block: false, fadeMs: 100 }))?.completion;
-    first.drive(0, 1);
-
-    const second = captureTween();
-    active = second.tween;
-    await panel.run(input({ block: false, expression: "2$2", fadeMs: 100 }))
-      ?.completion;
-    second.drive(0, 0.5);
-
+    panel.run(input());
     const state = slots(panel).get("1")!;
-    expect(state.chars).toHaveLength(2);
-    expect(state.chars[0].sprite.alpha).toBeCloseTo(0.5);
-    expect(state.chars[1].sprite.alpha).toBeCloseTo(0.5);
 
-    second.drive(0, 1);
+    panel.run(input({ expression: "2$2" }));
+    expect(state.chars).toHaveLength(0);
+
+    panel.run(input());
     expect(state.chars).toHaveLength(1);
-    expect(state.chars[0].sprite.texture).toBe(texB.texture);
-    expect(state.chars[0].sprite.alpha).toBe(1);
+    expect(state.chars[0].sprite.texture).toBe(portrait.texture);
   });
 
   it("hide collapses the mask along the stored style and removes the slot", async () => {

@@ -828,15 +828,16 @@ describe("InterludePanel mask templates", () => {
     expect(dialog.charImage.height).toBeCloseTo(1380 * 2, 0);
   });
 
-  it("remaps the dialog intro to the command duration for style 3", async () => {
+  it("holds the dialog at its first pose until the portrait loads, then plays the requested duration", async () => {
     const durations: number[] = [];
+    const portrait = Promise.withResolvers<Texture>();
     const panel = new InterludePanel(
       new Container(),
-      async () => Texture.EMPTY,
+      () => portrait.promise,
       recordingTween(durations),
     );
 
-    await panel.run(
+    const intro = panel.run(
       input({
         durationMs: 700,
         maskId: DIALOG,
@@ -844,7 +845,15 @@ describe("InterludePanel mask templates", () => {
         style: 3,
         type: 3,
       }),
-    )?.completion;
+    );
+    const { charImage, group } = channel(panel).template.dialog;
+    expect(group.alpha).toBe(0);
+    expect(durations).toEqual([]);
+
+    portrait.resolve(Texture.WHITE);
+    await intro?.completion;
+    expect(charImage.texture).toBe(Texture.WHITE);
+    expect(group.alpha).toBe(1);
     expect(durations).toEqual([700]);
   });
 

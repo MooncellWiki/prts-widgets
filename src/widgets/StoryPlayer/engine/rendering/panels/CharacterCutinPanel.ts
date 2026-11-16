@@ -79,6 +79,7 @@ interface CutinSlotState {
   backdrop: Graphics;
   /** Live character sprites; more than one only during a SlotUpdate crossfade. */
   chars: CutinChar[];
+  charTweenId: number;
   /** `_characterSlot` identity of the last Set, used to skip no-op crossfades. */
   charIdentity: string;
   /**
@@ -296,37 +297,53 @@ export class CharacterCutinPanel {
     const layout = layoutFor(input, start);
     state.targetSize = { h: layout.maskH, w: layout.maskW };
 
-    // AVGCharacterSlot.Set crossfades changed art. A matching key skips
-    // the swap branch and leaves the current sprite in place.
-    const outgoing = keepsArt ? [] : [...state.chars];
+    if (!keepsArt) this.crossfadeCharacter(input, state, art);
+
+    tween(input.fadeMs, (progress) => {
+      // Let an interrupted fade-style Show settle to alpha 1 as it would
+      // with the two native tweens running concurrently.
+      state.root.alpha = lerp(start.alpha, 1, progress);
+      state.root.position.set(
+        lerp(start.rootX, layout.rootX, progress),
+        lerp(start.rootY, layout.rootY, progress),
+      );
+      state.content.position.set(
+        lerp(start.contentX, layout.contentX, progress),
+        lerp(start.contentY, layout.contentY, progress),
+      );
+      state.content.scale.set(lerp(start.zoom, layout.zoom, progress));
+      state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
+      state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
+      this.drawMask(state);
+    });
+  }
+
+  /** AVGCharacterSlot.Set owns the portrait tween separately from SlotUpdate's layout. */
+  private crossfadeCharacter(
+    input: CharacterCutinInput,
+    state: CutinSlotState,
+    art: CutinCharacterArt | null,
+  ): void {
+    const outgoing = [...state.chars];
     const incoming = art
       ? this.addCharacter(state, art, input.characterKey, input.expression, 0)
       : null;
-
-    tween(
+    if (!incoming) state.charIdentity = "";
+    const tweenId = ++state.charTweenId;
+    const isAlive = () =>
+      state.charTweenId === tweenId && !state.root.destroyed;
+    void this.tween(
       input.fadeMs,
       (progress) => {
-        // Let an interrupted fade-style Show settle to alpha 1 as it would
-        // with the two native tweens running concurrently.
-        state.root.alpha = lerp(start.alpha, 1, progress);
-        state.root.position.set(
-          lerp(start.rootX, layout.rootX, progress),
-          lerp(start.rootY, layout.rootY, progress),
-        );
-        state.content.position.set(
-          lerp(start.contentX, layout.contentX, progress),
-          lerp(start.contentY, layout.contentY, progress),
-        );
-        state.content.scale.set(lerp(start.zoom, layout.zoom, progress));
-        state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
-        state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
-        this.drawMask(state);
+        if (!isAlive()) return;
         for (const char of outgoing) char.sprite.alpha = 1 - progress;
         if (incoming) incoming.sprite.alpha = progress;
       },
       () => {
+        if (!isAlive()) return;
         for (const char of outgoing) this.removeCharacter(state, char);
       },
+      { deferZeroDuration: true, isAlive },
     );
   }
 
@@ -400,6 +417,7 @@ export class CharacterCutinPanel {
       charSlotX: input.charOffsetX ?? 0,
       charSlotY: layout.maskH / 2 - (input.charOffsetY ?? 0),
       chars: [],
+      charTweenId: 0,
       content,
       fadeStyle: fadeStyleId(input.fadeStyle),
       mask,

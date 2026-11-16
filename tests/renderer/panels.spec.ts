@@ -1021,6 +1021,51 @@ describe("Displayable and focus frame order", () => {
     },
   );
 
+  it.each(["cached", "uncached"] as const)(
+    "resumes in the recycle frame when a blocking interlude update uses %s art",
+    async (cache) => {
+      const draws: Array<[number, number]> = [];
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+          "[interlude(channel=3,clear=true,tsduration=0.016)]",
+          '[interlude(channel=3,type=2,name="bg_test",aduration=0.064,block=true)]',
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        ({ cutins, cgItems }) =>
+          draws.push([cutins.children.length, cgItems.children.length]),
+      );
+      const pending = Promise.withResolvers<Texture>();
+      const textureLoad = {
+        cached: renderer.textureForInterlude.bind(renderer),
+        uncached: () => pending.promise,
+      }[cache];
+      const load = vi
+        .spyOn(renderer, "textureForInterlude")
+        .mockImplementationOnce(textureLoad);
+      const started = runtime.start();
+      try {
+        expect(load).toHaveBeenCalledTimes(1);
+        app.ticker.update(16);
+        expect(draws).toEqual([[0, 1]]);
+
+        pending.resolve(Texture.WHITE);
+        await flushAsync();
+        app.ticker.update(32);
+        expect(draws).toEqual([
+          [0, 1],
+          [0, 1],
+        ]);
+      } finally {
+        pending.resolve(Texture.WHITE);
+        load.mockRestore();
+        destroy();
+        await started;
+      }
+    },
+  );
+
   it.each([
     {
       old: '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=1,block=true)]',

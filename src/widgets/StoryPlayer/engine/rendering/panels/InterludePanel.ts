@@ -174,7 +174,7 @@ function elementKeyFor(input: InterludeInput): string {
  */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
-  private readonly pending = new Set<ExecutionHandle>();
+  private readonly pending = new Map<ExecutionHandle, ChannelState | null>();
 
   constructor(
     private readonly layer: Container,
@@ -192,21 +192,26 @@ export class InterludePanel {
     const animation = createExecutionHandle(true, () =>
       this.pending.delete(animation),
     );
-    this.pending.add(animation);
     const complete = () => {
       if (animation.endReason === "reset" || animation.failure) return;
       animation.end();
       onComplete?.();
     };
     try {
-      const state = this.channels.get(input.channel);
-      const preparation = input.clear
-        ? this.clear(input, complete)
-        : state
+      if (input.clear) {
+        // A clear command can span several channels.
+        this.pending.set(animation, null);
+        this.clear(input, complete);
+      } else {
+        const existing = this.channels.get(input.channel);
+        const state = existing ?? this.createChannel(input);
+        this.pending.set(animation, state);
+        const preparation = existing
           ? this.update(state, input, complete)
-          : this.begin(input, complete);
-      if (preparation)
-        void preparation.catch((error: unknown) => animation.fail(error));
+          : this.begin(state, input, complete);
+        if (preparation)
+          void preparation.catch((error: unknown) => animation.fail(error));
+      }
     } catch (error) {
       animation.fail(error);
     }
@@ -214,7 +219,7 @@ export class InterludePanel {
   }
 
   clearAll(): void {
-    for (const animation of this.pending) animation.end("reset");
+    for (const animation of this.pending.keys()) animation.end("reset");
     for (const state of this.channels.values())
       state.root.destroy({ children: true });
     this.channels.clear();
@@ -225,14 +230,20 @@ export class InterludePanel {
   }
 
   /** CutinChannel.OnCutinBegin (2791 @ 0x1814F9270). */
-  private begin(input: InterludeInput, complete: () => void): Preparation {
-    const state = this.createChannel(input);
+  private begin(
+    state: ChannelState,
+    input: InterludeInput,
+    complete: () => void,
+  ): Preparation {
     const start = (textures?: InterludeTextureSet): Preparation => {
       if (state.root.destroyed) return;
       this.buildChannel(state, input, textures);
       const template = state.template;
       if (template?.dialog) {
         const dialog = template.dialog;
+        // Seed the entry pose before the Web texture load can yield a frame.
+        if (input.style === 3 && input.durationMs > 0)
+          applyDialogIntro(dialog, 0);
         const show = () => {
           if (state.root.destroyed) return;
           this.playDialogIntro(state, dialog, input, complete);
@@ -704,7 +715,6 @@ export class InterludePanel {
       complete();
       return;
     }
-    applyDialogIntro(dialog, 0);
     const gen = ++state.introGen;
     this.runTween(
       state,
@@ -800,6 +810,11 @@ export class InterludePanel {
       const isCurrent = () => state.hideGen === gen;
       this.hide(state, input, isCurrent, () => {
         if (state.hideGen !== gen || state.root.destroyed) return;
+        // Retired views skip their texture and tween callbacks. Release their
+        // frame waits here so the runtime can advance on the recycle frame.
+        for (const [animation, owner] of this.pending) {
+          if (owner === state) animation.end("reset");
+        }
         this.channels.delete(id);
         state.root.destroy({ children: true });
         if (input.block && state.template) complete();
