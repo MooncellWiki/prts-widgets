@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, type Texture } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import {
@@ -7,25 +7,15 @@ import {
   type CharacterCutinFadeStyle,
   type CharacterCutinInput,
 } from "../../types";
+import { CharacterSlotView } from "../characters/CharacterSlotView";
 import { dotweenDefaultEase } from "../core/DotweenEase";
 
+import type {
+  CharacterArt,
+  CharacterArtLoad,
+} from "../characters/CharacterArt";
 import type { TweenRunner } from "../core/TweenRunner";
 
-/**
- * Character art plus the AVGCharacterSpriteHub layout the game applies on
- * top of the raw sheet: the Image rect is resized to `size` (here folded
- * into sprite scale) and shifted by `pos` relative to the slot node.
- */
-export interface CutinCharacterArt {
-  texture: Texture;
-  offsetX: number;
-  offsetY: number;
-  scaleX: number;
-  scaleY: number;
-}
-
-type CutinArtLoad =
-  CutinCharacterArt | null | Promise<CutinCharacterArt | null>;
 type SlotTween = (
   durationMs: number,
   update: (progress: number) => void,
@@ -68,28 +58,12 @@ interface CutinLayout {
   zoom: number;
 }
 
-interface CutinChar {
-  /** AVGCharacterSpriteHub pos of this character, applied on re-layouts. */
-  offsetX: number;
-  offsetY: number;
-  sprite: Sprite;
-}
-
 interface CutinSlotState {
   /** `_defualtBackground` port: the #898989 strip behind the character. */
   backdrop: Graphics;
-  /** Live character sprites; more than one only during a SlotUpdate crossfade. */
-  chars: CutinChar[];
-  charTweenId: number;
   /** `_characterSlot` identity of the last Set, used to skip no-op crossfades. */
   charIdentity: string;
-  /**
-   * `_characterSlot.localPosition` port. Only Show writes it -- SlotUpdate
-   * @ 0x183eb20a0 never touches the node -- so it survives every update and
-   * each sprite hangs off it plus its own AVGCharacterSpriteHub pos.
-   */
-  charSlotX: number;
-  charSlotY: number;
+  portrait: CharacterSlotView;
   /** `_zoomAndPovRectTransform` port: scale = zoom, position = (-povX, povY). */
   content: Container;
   /** `m_showFadeStyle` is set by Show and read by Hide (2791 @ 0x184203800). */
@@ -141,7 +115,9 @@ export class CharacterCutinPanel {
 
   constructor(
     private readonly layer: Container,
-    private readonly loadTexture: (input: CharacterCutinInput) => CutinArtLoad,
+    private readonly loadPortrait: (
+      input: CharacterCutinInput,
+    ) => CharacterArtLoad,
     private readonly tween: TweenRunner["run"],
   ) {}
 
@@ -174,7 +150,7 @@ export class CharacterCutinPanel {
       !input.characterMissing &&
       `${input.characterKey}/${input.expression}` === slot.charIdentity;
     const art =
-      keepsArt || input.characterMissing ? null : this.loadTexture(input);
+      keepsArt || input.characterMissing ? null : this.loadPortrait(input);
     return this.runSlot(
       slot,
       input,
@@ -207,8 +183,8 @@ export class CharacterCutinPanel {
   private runSlot(
     state: CutinSlotState,
     input: CharacterCutinInput,
-    art: CutinArtLoad,
-    play: (texture: CutinCharacterArt | null, tween: SlotTween) => void,
+    art: CharacterArtLoad,
+    play: (art: CharacterArt | null, tween: SlotTween) => void,
     onComplete?: () => void,
   ): ExecutionHandle | void {
     // Supersede an unresolved Web asset load. Once started, 2791 Show,
@@ -218,11 +194,11 @@ export class CharacterCutinPanel {
       this.waits.delete(animation),
     );
     this.waits.set(animation, input.widgetId);
-    const start = (texture: CutinCharacterArt | null) => {
+    const start = (art: CharacterArt | null) => {
       if (state.root.destroyed || animation.endReason !== undefined) return;
       state.artWait = undefined;
       state.hasStarted = true;
-      play(texture, (duration, update, options) => {
+      play(art, (duration, update, options) => {
         // Show, SlotUpdate and Hide use the bundled DOTweenSettings' OutQuad
         // and attach OnComplete even at zero fade time (2791 @ 0x184203DA0 /
         // 0x184204B20 / 0x184203800).
@@ -271,12 +247,11 @@ export class CharacterCutinPanel {
     input: CharacterCutinInput,
     state: CutinSlotState,
     layout: CutinLayout,
-    art: CutinCharacterArt | null,
+    art: CharacterArt | null,
     tween: SlotTween,
   ): void {
     // AVGCharacterSlot.Set(name, 0.0, white) swaps the sprite instantly.
-    if (art)
-      this.addCharacter(state, art, input.characterKey, input.expression, 1);
+    this.setPortrait(state, input, art, 1);
 
     if (state.fadeStyle === 0) {
       // Fade the canvas group with the mask already at full size.
@@ -298,7 +273,7 @@ export class CharacterCutinPanel {
   private updateSlot(
     input: CharacterCutinInput,
     state: CutinSlotState,
-    art: CutinCharacterArt | null,
+    art: CharacterArt | null,
     keepsArt: boolean,
     tween: SlotTween,
   ): void {
@@ -343,27 +318,17 @@ export class CharacterCutinPanel {
   private crossfadeCharacter(
     input: CharacterCutinInput,
     state: CutinSlotState,
-    art: CutinCharacterArt | null,
+    art: CharacterArt | null,
   ): void {
-    const outgoing = [...state.chars];
-    const incoming = art
-      ? this.addCharacter(state, art, input.characterKey, input.expression, 0)
-      : null;
-    if (!incoming) state.charIdentity = "";
-    const tweenId = ++state.charTweenId;
-    const isAlive = () =>
-      state.charTweenId === tweenId && !state.root.destroyed;
+    const { front, isAlive, outgoing } = this.setPortrait(state, input, art, 0);
     void this.tween(
       input.fadeMs,
       (progress) => {
         if (!isAlive()) return;
-        for (const char of outgoing) char.sprite.alpha = 1 - progress;
-        if (incoming) incoming.sprite.alpha = progress;
+        outgoing?.update(progress);
+        if (front) front.alpha = progress;
       },
-      () => {
-        if (!isAlive()) return;
-        for (const char of outgoing) this.removeCharacter(state, char);
-      },
+      outgoing?.finish,
       { deferZeroDuration: true, isAlive },
     );
   }
@@ -433,13 +398,13 @@ export class CharacterCutinPanel {
     const state: CutinSlotState = {
       backdrop,
       charIdentity: "",
-      // Show writes `_characterSlot.localPosition = (charOffsetX,
-      // charOffsetY - maskHeight / 2)`: the slot node is pinned to the mask
-      // bottom edge (Unity y-up flipped for PIXI).
-      charSlotX: input.charOffsetX ?? 0,
-      charSlotY: layout.maskH / 2 - (input.charOffsetY ?? 0),
-      chars: [],
-      charTweenId: 0,
+      // Show places _characterSlot at the bottom of the mask (2791
+      // @ 0x184203DA0). SlotUpdate leaves this local position alone.
+      portrait: new CharacterSlotView(
+        content,
+        input.charOffsetX ?? 0,
+        layout.maskH / 2 - (input.charOffsetY ?? 0),
+      ),
       content,
       fadeStyle: fadeStyleId(input.fadeStyle),
       hasStarted: false,
@@ -465,42 +430,17 @@ export class CharacterCutinPanel {
     return state;
   }
 
-  private addCharacter(
+  private setPortrait(
     state: CutinSlotState,
-    art: CutinCharacterArt,
-    characterKey: string | undefined,
-    expression: string | undefined,
+    input: CharacterCutinInput,
+    art: CharacterArt | null,
     alpha: number,
-  ): CutinChar {
-    const sprite = new Sprite(art.texture);
-    // The character keeps the hub's native layout: the sheet is scaled to
-    // AVGCharacterSpriteHub.size (SetImage resizes the Image rect) and the
-    // art center lands at the slot node (`charSlot*`, pinned to the mask
-    // bottom by Show) plus the hub pos. The prefab's slot_character/offset
-    // child ((0, 360) serialized) is zeroed by AVGCharacterSlot.Set's
-    // resetOffsetPos before the hub pos is applied. Only the mask crops.
-    sprite.anchor.set(0.5);
-    sprite.scale.set(art.scaleX, art.scaleY);
-    sprite.position.set(
-      state.charSlotX + art.offsetX,
-      state.charSlotY - art.offsetY,
-    );
-    sprite.alpha = alpha;
-    state.content.addChild(sprite);
-    const char: CutinChar = {
-      offsetX: art.offsetX,
-      offsetY: art.offsetY,
-      sprite,
-    };
-    state.chars.push(char);
-    state.charIdentity = `${characterKey}/${expression}`;
-    return char;
-  }
-
-  private removeCharacter(state: CutinSlotState, char: CutinChar): void {
-    const index = state.chars.indexOf(char);
-    if (index !== -1) state.chars.splice(index, 1);
-    char.sprite.destroy();
+  ) {
+    const swap = state.portrait.swap(art, alpha);
+    state.charIdentity = swap.front
+      ? `${input.characterKey}/${input.expression}`
+      : "";
+    return swap;
   }
 
   private destroySlot(widgetId: string, state: CutinSlotState): void {

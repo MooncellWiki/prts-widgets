@@ -1,6 +1,7 @@
 import { Container, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { CharacterArtLoader } from "../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
 import { createRenderer } from "../helpers/rendererFixtures";
 
 import type { Context } from "../../src/widgets/StoryPlayer/context";
@@ -22,9 +23,12 @@ function createCharacterRenderer(): any {
   };
   const renderer = createRenderer(context);
   renderer.buildCharacterVisual = vi.fn(async () => ({
+    height: 200,
+    pos: { x: 0, y: 0 },
     sourceHeight: 200,
     sourceWidth: 100,
     visual: new Container(),
+    width: 100,
   }));
   renderer.tween = vi.fn(async () => {});
   return renderer;
@@ -165,8 +169,14 @@ describe("PixiStoryRenderer", () => {
     const renderer = createFaceOverlayRenderer(baked);
     const composited = new Texture();
     const compositeSpy = vi
-      .spyOn(renderer, "bakeFaceOverlayTexture")
+      .spyOn(renderer.characterArt, "bakeOverlay")
       .mockReturnValue(composited);
+    renderer.bakeDarkenedCharacterTexture.mockImplementation(
+      (sprites: Sprite[]) => {
+        expect(sprites.map((sprite) => sprite.texture)).toEqual([composited]);
+        return baked;
+      },
+    );
 
     const built = await renderer.buildCharacterVisual("avg_test", "1$1", 0, 1);
 
@@ -177,8 +187,6 @@ describe("PixiStoryRenderer", () => {
     // fade alpha, making the face region's effective opacity 1-(1-p)^2 -- the
     // face would fade in ahead of the body.
     expect(compositeSpy).toHaveBeenCalledWith(
-      "body-1",
-      "face-1",
       await renderer.textureForCharacterKey("body-1"),
       await renderer.textureForCharacterKey("face-1"),
       { h: 40, w: 50, x: 10, y: 20 },
@@ -189,16 +197,14 @@ describe("PixiStoryRenderer", () => {
 
     // The black gradient then bakes over the single composited sprite, so the
     // darkening covers the whole character.
-    const [sprites] = renderer.bakeDarkenedCharacterTexture.mock.calls[0];
-    expect(sprites.length).toBe(1);
-    expect((sprites[0] as Sprite).texture).toBe(composited);
+    expect(renderer.bakeDarkenedCharacterTexture.mock.calls).toHaveLength(1);
     expect((content.children[0] as Sprite).texture).toBe(baked);
   });
 
   it("keeps the composited sprite when the black bake fails", async () => {
     const renderer = createFaceOverlayRenderer(new Texture());
     const composited = new Texture();
-    renderer.bakeFaceOverlayTexture = vi.fn(() => composited);
+    vi.spyOn(renderer.characterArt, "bakeOverlay").mockReturnValue(composited);
     renderer.bakeDarkenedCharacterTexture = vi.fn(() => null);
 
     const built = await renderer.buildCharacterVisual("avg_test", "1$1", 0, 1);
@@ -754,6 +760,7 @@ describe("PixiStoryRenderer", () => {
       focusMode: "subset",
       focusSlots: ["l", "m", "r"],
       posZoom: { x: 0.5, y: 0.5 },
+      replaceFadeMs: 400,
       slot: "m",
     });
     expect(state.scaleX).toBe(1);
@@ -761,7 +768,8 @@ describe("PixiStoryRenderer", () => {
     expect(state.zoomShiftX).toBe(0);
     expect(state.zoomShiftY).toBe(0);
     expect(state.actionX).toBe(-300);
-    expect(renderer.tween).not.toHaveBeenCalled();
+    // A back-image fade runs, with no extra zoom tween.
+    expect(renderer.tween).toHaveBeenCalledTimes(1);
     // The outgoing Image keeps its own transform while it fades, so the
     // previous visual carries the old zoom on itself.
     expect(previousVisual.scale.x).toBeCloseTo(1.5);
@@ -914,41 +922,43 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("evicts unreferenced face-overlay bakes beyond the cache limit only", () => {
-    const renderer = createRenderer();
-    const entries: Array<{ key: string; texture: any }> = [];
-    for (let index = 0; index < 10; index += 1) {
-      const texture = { destroy: vi.fn() };
-      const key = `base|face-${index}`;
-      renderer.faceOverlayTextures.set(key, { refs: 0, texture });
-      entries.push({ key, texture });
-    }
-    // The two oldest bakes are still drawn by visuals on stage.
-    const pinnedA = new Container();
-    const pinnedB = new Container();
-    renderer.retainFaceOverlay(pinnedA, entries[0].key);
-    renderer.retainFaceOverlay(pinnedB, entries[1].key);
-
-    renderer.trimFaceOverlayCache();
-
-    // 10 entries, limit 8: the oldest *unreferenced* two (indices 2 and 3)
-    // go; the pinned ones stay even though they are older.
-    expect(renderer.faceOverlayTextures.has(entries[0].key)).toBe(true);
-    expect(renderer.faceOverlayTextures.has(entries[1].key)).toBe(true);
-    expect(renderer.faceOverlayTextures.has(entries[2].key)).toBe(false);
-    expect(renderer.faceOverlayTextures.has(entries[3].key)).toBe(false);
-    expect(entries[2].texture.destroy).toHaveBeenCalledWith(true);
-    expect(entries[4].texture.destroy).not.toHaveBeenCalled();
-    expect(renderer.faceOverlayTextures.size).toBe(8);
-
-    // Releasing a pinned visual makes its bake evictable again.
-    renderer.faceOverlayTextures.set("base|face-x", {
-      refs: 0,
-      texture: { destroy: vi.fn() },
+    const loader = new CharacterArtLoader(() => Texture.WHITE);
+    const baked = Array.from({ length: 11 }, () => {
+      const texture = new Texture();
+      vi.spyOn(texture, "destroy").mockImplementation(() => {});
+      return texture;
     });
-    renderer.discardCharacterVisual(pinnedA);
-    expect(renderer.faceOverlayTextures.has(entries[0].key)).toBe(false);
-    expect(entries[0].texture.destroy).toHaveBeenCalledWith(true);
-    expect(renderer.faceOverlayTextures.size).toBe(8);
+    const bake = vi.spyOn(loader as any, "bakeOverlay");
+    for (const texture of baked) bake.mockReturnValueOnce(texture);
+    const draw = (index: number) => {
+      const art = loader.load({
+        body: "body",
+        face: {
+          group: 0,
+          image: `face-${index}`,
+          rect: { h: 1, w: 1, x: 0, y: 0 },
+        },
+        pos: { x: 0, y: 0 },
+        size: { x: 0, y: 0 },
+      });
+      if (!art || art instanceof Promise)
+        throw new Error("Expected cached art");
+      return art.acquire();
+    };
+    const pinnedA = draw(0);
+    const pinnedB = draw(1);
+    for (let index = 2; index < 10; index += 1) draw(index)?.release?.();
+
+    expect(
+      baked.filter((texture) => vi.mocked(texture.destroy).mock.calls.length),
+    ).toEqual(baked.slice(2, 4));
+
+    pinnedA?.release?.();
+    draw(10)?.release?.();
+    expect(baked[0].destroy).toHaveBeenCalledWith(true);
+    expect(baked[1].destroy).not.toHaveBeenCalled();
+    pinnedB?.release?.();
+    loader.destroy();
   });
 
   it("swaps the image instantly for an explicit enter without transtype", async () => {
