@@ -355,13 +355,19 @@ export class CharacterCutinPanel {
     }
 
     const horizontal = state.fadeStyle >= 1 && state.fadeStyle <= 3;
-    const startH = state.maskSize.h;
-    const startW = state.maskSize.w;
+    const size = { ...state.maskSize };
+    const end = horizontal ? { h: size.h, w: 0 } : { h: 0, w: size.w };
+    // 2791 Hide @ 0x184203800 uses DOSizeDelta for center styles, sampling
+    // the live size on its first update. The directional setters capture
+    // the size when the command executes.
+    const centered = state.fadeStyle === 1 || state.fadeStyle === 4;
+    let start = centered ? undefined : size;
     tween(
       input.fadeMs,
       (progress) => {
-        state.maskSize.h = horizontal ? startH : lerp(startH, 0, progress);
-        state.maskSize.w = horizontal ? lerp(startW, 0, progress) : startW;
+        start ??= { ...state.maskSize };
+        state.maskSize.h = lerp(start.h, end.h, progress);
+        state.maskSize.w = lerp(start.w, end.w, progress);
         this.drawMask(state);
       },
       { onComplete: recycle },

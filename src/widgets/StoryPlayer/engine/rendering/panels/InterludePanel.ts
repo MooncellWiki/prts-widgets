@@ -4,8 +4,8 @@ import {
   Sprite,
   Text,
   TextStyle,
+  Texture,
   type ObservablePoint,
-  type Texture,
 } from "pixi.js";
 
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
@@ -80,12 +80,13 @@ interface ChannelState {
   /** The single CutinAVGCharacterSlot owned by this channel. */
   avatar?: CharacterSlotView;
   avatarLoadId: number;
-  /** 模板 scaleNode 的当前比例(clear 从这里收缩到 tsto)。 */
-  ratio: Vec2;
+  /** AVGCharacterSlot.m_currentKey, set when the portrait loads. */
+  avatarName: string;
   /** 回落矩形的尺寸。 */
   size: Vec2;
-  /** scaleNode 上 DOScale 的世代(clear 的收缩接管入场)。 */
-  scaleGen: number;
+  fallbackScale: Vec2;
+  /** Web fallback: the clear supersedes the rectangle's entry tween. */
+  fallbackScaleGen: number;
   /** 通道 animWrapper 上 direction clip 的世代(重播即替换)。 */
   directionGen: number;
   /** dialog 入场 clip 的世代(HideCutinMask 先 _KillDialogIntroTween)。 */
@@ -424,9 +425,10 @@ export class InterludePanel {
       label: null,
       elements: new Map(),
       avatarLoadId: 0,
-      ratio: { x: 1, y: 1 },
+      avatarName: "",
       size: { ...input.size },
-      scaleGen: 0,
+      fallbackScale: { x: 1, y: 1 },
+      fallbackScaleGen: 0,
       directionGen: 0,
       introGen: 0,
       hideGen: 0,
@@ -472,8 +474,7 @@ export class InterludePanel {
               state.deco = deco;
             }
           }
-          state.ratio = { ...template.initialScale };
-          this.applyRatio(state);
+          this.setScale(state, template.initialScale);
           maskContainer.addChild(template.root);
           return;
         }
@@ -489,7 +490,7 @@ export class InterludePanel {
     maskContainer.addChild(fallback);
     content.mask = fallback;
     state.fallbackMask = fallback;
-    this.applyRatio(state);
+    this.setScale(state, state.fallbackScale);
   }
 
   /**
@@ -506,7 +507,7 @@ export class InterludePanel {
     if ((style === 0 || style === 2) && tsEntry)
       this.startScaleEntry(state, input);
     else if (style === 1 && template.hasImgMask)
-      this.setRatio(state, { x: 1, y: 1 });
+      this.setScale(state, { x: 1, y: 1 });
 
     if (template.autoClip === "square_show") {
       const seconds = CLIP_SECONDS.squareShow;
@@ -537,38 +538,54 @@ export class InterludePanel {
 
   /** Style Scale/Both: localScale = tsFrom, DOScale to tsTo (not gating). */
   private startScaleEntry(state: ChannelState, input: InterludeInput): void {
-    const from = { ...input.templateSizeFrom };
-    const to = { ...input.templateSizeTo };
-    this.setRatio(state, from);
-    const gen = ++state.scaleGen;
+    this.setScale(state, input.templateSizeFrom);
+    this.tweenScale(state, input);
+  }
+
+  private tweenScale(
+    state: ChannelState,
+    input: InterludeInput,
+    onComplete?: () => void,
+  ): void {
+    const { x, y } = input.templateSizeTo;
+    if (state.template) {
+      // Native ShowCutinMask / HideCutinMask (2791 @ 0x181501750 /
+      // 0x1815013A0) start independent DOScale tweens on the same transform.
+      this.runTween(
+        state,
+        input.templateSizeDurationMs,
+        tweenPoint(state.template.scaleNode.scale, x, y),
+        onComplete,
+        { deferZeroDuration: true, ease: dotweenDefaultEase },
+      );
+      return;
+    }
+
+    const from = state.fallbackScale;
+    const gen = ++state.fallbackScaleGen;
     this.runTween(
       state,
       input.templateSizeDurationMs,
       (progress) => {
-        if (state.scaleGen !== gen) return;
-        this.setRatio(state, {
-          x: lerp(from.x, to.x, progress),
-          y: lerp(from.y, to.y, progress),
+        if (state.fallbackScaleGen !== gen) return;
+        this.setScale(state, {
+          x: lerp(from.x, x, progress),
+          y: lerp(from.y, y, progress),
         });
       },
-      undefined,
-      { deferZeroDuration: Boolean(state.template), ease: dotweenDefaultEase },
+      onComplete,
+      { ease: dotweenDefaultEase },
     );
   }
 
-  private setRatio(state: ChannelState, ratio: Vec2): void {
-    state.ratio = { x: ratio.x, y: ratio.y };
-    this.applyRatio(state);
-  }
-
-  /** 模板:ratio 即 scaleNode.localScale;回落:按 ratio 重画矩形。 */
-  private applyRatio(state: ChannelState): void {
+  private setScale(state: ChannelState, scale: Vec2): void {
     if (state.template) {
-      state.template.scaleNode.scale.set(state.ratio.x, state.ratio.y);
+      state.template.scaleNode.scale.set(scale.x, scale.y);
       return;
     }
-    const w = state.size.x * state.ratio.x;
-    const h = state.size.y * state.ratio.y;
+    state.fallbackScale = { ...scale };
+    const w = state.size.x * scale.x;
+    const h = state.size.y * scale.y;
     state.fallbackMask
       ?.clear()
       .rect(-w / 2, -h / 2, w, h)
@@ -661,7 +678,13 @@ export class InterludePanel {
       root = avatar.root;
       offset = avatar.offset;
       if (input.name) {
+        // The normal SetCutinElement branch passes resetOffsetPos=true.
+        // _SlotSetCharInternal (2791 @ 0x18423A040) preserves the offset
+        // when the previous key is char_empty.
+        if (state.avatarName.toLowerCase() !== "char_empty")
+          offset.position.set(0, 0);
         const { front, isAlive, outgoing } = avatar.swap(resource.art, from);
+        state.avatarName = front ? input.name : "";
         alphaTarget = front;
         // The back Image fade is independent of the element sequence.
         if (outgoing)
@@ -684,8 +707,10 @@ export class InterludePanel {
         input.type,
       );
       root = offset = element.node;
-      if (resource.texture) {
-        element.sprite.texture = resource.texture;
+      if (input.name) {
+        // CutinImageElement.SetCutinElement (2791 @ 0x1814FC3D0) assigns
+        // a missing sprite to the image and still sets up the alpha tween.
+        element.sprite.texture = resource.texture ?? Texture.EMPTY;
         root.visible = true;
         alphaTarget = root;
       }
@@ -696,22 +721,20 @@ export class InterludePanel {
     // SetCutinElement sets the sprite and the start value. The native
     // sequence appends its alpha tween and joins the position/scale tweens.
     // DOKill(element) leaves the child tweens in earlier sequences active.
-    if (input.name) {
-      if (alphaTarget) {
-        // _GenForeImageTween uses the AVGCharacterSlot prefab's Linear ease
-        // even at zero duration. CutinImageElement uses the DOTween default.
-        if (isAvatar || input.alphaDurationMs > TWEEN_ZERO_MS) {
-          alphaTarget.alpha = from;
-          tracks().append({
-            durationMs: input.alphaDurationMs,
-            ease: isAvatar ? linearEase : dotweenDefaultEase,
-            update: tweenAlpha(alphaTarget, to),
-          });
-        } else {
-          alphaTarget.alpha = to;
-        }
+    if (input.name && (!alphaTarget || (!isAvatar && !resource.texture)))
+      this.onWarning?.(`interlude element asset is missing: ${input.name}`);
+    if (alphaTarget) {
+      // _GenForeImageTween uses the AVGCharacterSlot prefab's Linear ease
+      // even at zero duration. CutinImageElement uses the DOTween default.
+      if (isAvatar || input.alphaDurationMs > TWEEN_ZERO_MS) {
+        alphaTarget.alpha = from;
+        tracks().append({
+          durationMs: input.alphaDurationMs,
+          ease: isAvatar ? linearEase : dotweenDefaultEase,
+          update: tweenAlpha(alphaTarget, to),
+        });
       } else {
-        this.onWarning?.(`interlude element asset is missing: ${input.name}`);
+        alphaTarget.alpha = to;
       }
     }
 
@@ -932,35 +955,11 @@ export class InterludePanel {
         isAlive: isCurrent,
       });
     }
-    const scaleOut = (complete?: () => void): void => {
-      const from = { ...state.ratio };
-      const to = { ...input.templateSizeTo };
-      const gen = ++state.scaleGen;
-      this.runTween(
-        state,
-        input.templateSizeDurationMs,
-        (progress) => {
-          if (state.scaleGen !== gen) return;
-          this.setRatio(state, {
-            x: lerp(from.x, to.x, progress),
-            y: lerp(from.y, to.y, progress),
-          });
-        },
-        complete,
-        { deferZeroDuration: Boolean(template), ease: dotweenDefaultEase },
-      );
-    };
-    if (!template) {
-      // The legacy fallback rectangle has no native CutinTemplate. Recycle
-      // it on its own tween and release the command inline.
-      scaleOut(done);
+    if (!template || input.style === 0) {
+      this.tweenScale(state, input, done);
       return;
     }
-    if (input.style === 0) {
-      scaleOut(done);
-      return;
-    }
-    if (input.style === 2) scaleOut();
+    if (input.style === 2) this.tweenScale(state, input);
     if (template.hasImgMask) {
       this.runTween(state, input.alphaDurationMs, () => {}, done, {
         deferZeroDuration: true,

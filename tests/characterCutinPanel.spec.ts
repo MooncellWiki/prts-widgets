@@ -585,6 +585,39 @@ describe("CharacterCutinPanel", () => {
   });
 
   it.each([
+    { fadeStyle: "horiz_expand_center", axis: "w", firstSize: 49.21875 },
+    { fadeStyle: "vert_expand_center", axis: "h", firstSize: 177.1875 },
+    { fadeStyle: "horiz_expand_left2right", axis: "w", firstSize: 0 },
+  ] as const)(
+    "uses the native $fadeStyle hide start size during entry",
+    ({ fadeStyle, axis, firstSize }) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const runner = new TweenRunner(
+        () => true,
+        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+      );
+      const panel = new CharacterCutinPanel(
+        new Container(),
+        () => art(120, 300),
+        runner.run.bind(runner),
+      );
+      panel.run(input({ block: false, fadeMs: 100, fadeStyle }));
+      const hide = panel.run(input({ characterKey: undefined, fadeMs: 100 }));
+      const state = slots(panel).get("1")!;
+
+      // At 25 ms, OutQuad has advanced each tween by 7/16. The center
+      // styles shrink from the size that Show just wrote on this frame.
+      frames.step(25);
+      expect(state.maskSize[axis]).toBeCloseTo(firstSize);
+      expect(hide?.endReason).toBeUndefined();
+      frames.step(75);
+      expect(hide?.endReason).toBe("complete");
+      expect(slots(panel).has("1")).toBe(false);
+    },
+  );
+
+  it.each([
     { clearedWidgetId: "2", finishCalls: 1, reason: "complete" },
     { clearedWidgetId: "1", finishCalls: 0, reason: "reset" },
   ])(
