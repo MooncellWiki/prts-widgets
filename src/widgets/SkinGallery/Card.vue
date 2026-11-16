@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 
 import { halfPortrait, media, onImageError } from "@/utils/charImage";
 
-import { galleryLink } from "./compat";
+import { galleryLink } from "./model";
 
 import type { GalleryCard } from "./types";
 

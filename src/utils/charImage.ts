@@ -36,11 +36,14 @@ export const halfPortrait = ({
   portraitId,
   skinIndex,
 }: Portrayed & { portraitId?: string; skinIndex?: string }) => {
-  const id = portraitId || (charId ? `${charId}_1` : "");
   const filename = `半身像_${zh}_${skinIndex ? `skin${skinIndex}` : "1"}.png`;
   // 游戏已收录、wiki 尚无时装序号时，不能退回干员默认服装冒充该时装。
   if (portraitId && !skinIndex)
     return `${TORAPPU_ENDPOINT}/assets/char_portrait/${encodeURIComponent(portraitId)}.png`;
+  // 反过来：有时装序号但没有 portraitId，只有 wiki 那张。拿 charId_1 去 torappu 会取到默认服装且必然成功，
+  // 回退不会触发，等于静默换了张图，所以直接走 media。
+  if (skinIndex && !portraitId) return media(filename);
+  const id = portraitId || (charId ? `${charId}_1` : "");
   return id
     ? torappu(`char_portrait/${encodeURIComponent(id)}.png`, filename)
     : media(filename);

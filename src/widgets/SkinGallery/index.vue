@@ -8,9 +8,8 @@ import { useTheme } from "@/utils/theme";
 
 import Card from "./Card.vue";
 import Carousel from "./Carousel.vue";
-import { wikiBrandName } from "./compat";
 import { galleryQuery } from "./data";
-import { findBrand } from "./model";
+import { findBrand, wikiBrandName } from "./model";
 
 const props = withDefaults(defineProps<{ brand?: string; mode?: string }>(), {
   brand: "",
