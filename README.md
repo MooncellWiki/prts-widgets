@@ -30,7 +30,7 @@
 - 剧情播放器 [Widget:StoryPlayer/dev](https://prts.wiki/w/Widget:StoryPlayer/dev)
 - 剧情资源概览 [Widget:StoryAssetExplorer/dev](https://prts.wiki/w/Widget:StoryAssetExplorer/dev)
 - 时装商店 [Widget:SkinShop/dev](https://prts.wiki/w/Widget:SkinShop/dev)
-- 时装回廊（新版）[Widget:SkinGalleryV2/dev](https://prts.wiki/w/Widget:SkinGalleryV2/dev)，迁移和发布顺序见 [迁移计划](https://github.com/MooncellWiki/prts-widgets/issues/491)
+- 时装回廊 [Widget:SkinGalleryV2/dev](https://prts.wiki/w/Widget:SkinGalleryV2/dev)
 - 高级凭证区 [Widget:HighShop/dev](https://prts.wiki/w/Widget:HighShop/dev)
 - 泰拉人名录剧情立绘 [Widget:NpcPortrait/dev](https://prts.wiki/w/Widget:NpcPortrait/dev)
 - 后勤技能一览 [Widget:BaseSkillList/dev](https://prts.wiki/w/Widget:BaseSkillList/dev)
