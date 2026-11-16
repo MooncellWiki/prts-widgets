@@ -171,7 +171,7 @@ export function fileBodies(raw: string): PortraitBody[] {
 }
 
 /**
- * character.json（gzip 后约 130 KB）。每个条目一个 app，都装整页共用的 pinia（见 entries/NpcPortrait.ts），
+ * character.json（gzip 后约 130 KB）。每个条目一个 app，都装整页共用的 pinia（见 entries/widgets/NpcPortrait.ts），
  * 整页只取一次；失败的下次用到时（点重试、展开别的条目）重新取。
  */
 export const characterMapQuery = defineQueryOptions({

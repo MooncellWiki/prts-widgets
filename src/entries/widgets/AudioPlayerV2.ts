@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 
 import "virtual:uno.css";
-import AudioPlayerV2 from "../widgets/AudioPlayerV2/index.vue";
+import AudioPlayerV2 from "@/widgets/AudioPlayerV2/index.vue";
 
 const players: NodeListOf<HTMLElement> =
   document.querySelectorAll("div.audio-player");

@@ -16,7 +16,7 @@ describe("global tooltip does not cannibalize the source DOM", () => {
 
   it("keeps both children after the head entry has scanned the page", async () => {
     // head 里的 Tooltip.js 是 defer module，先于 body 里的小部件入口执行
-    await import("../src/entries/Tooltip");
+    await import("../src/entries/widgets/Tooltip");
 
     const row = document.querySelector<HTMLDivElement>("#filter-data > div")!;
     const tip = row.querySelector(".mc-tooltips")!;
@@ -34,7 +34,7 @@ describe("global tooltip does not cannibalize the source DOM", () => {
 
   it('treats data-interactive="false" as not interactive', async () => {
     // 模块只会 start() 一次，这批节点走的是 MutationObserver 那条路
-    await import("../src/entries/Tooltip");
+    await import("../src/entries/widgets/Tooltip");
     document.body.innerHTML = `
       <span class="mc-tooltips" id="on"><span>甲</span><span style="display:none" data-interactive="true">A</span></span>
       <span class="mc-tooltips" id="off"><span>乙</span><span style="display:none" data-interactive="false">B</span></span>

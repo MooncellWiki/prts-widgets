@@ -1,0 +1,32 @@
+html,
+body,
+#root {
+  min-height: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ak-bg-canvas);
+  color: var(--ak-fg);
+}
+
+:root.skin-theme-clientpref-day {
+  color-scheme: light;
+}
+
+:root.skin-theme-clientpref-night {
+  color-scheme: dark;
+}
+
+.page-status {
+  box-sizing: border-box;
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  overflow-wrap: anywhere;
+}
+
+.page-status a {
+  color: var(--ak-link);
+}

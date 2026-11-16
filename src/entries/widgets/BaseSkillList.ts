@@ -1,8 +1,8 @@
 import { createApp } from "vue";
 
-import { createStores, pagePinia, prefetch } from "../utils/pinia";
-import { baseSkillSourceQuery } from "../widgets/BaseSkillList/data";
-import BaseSkillList from "../widgets/BaseSkillList/index.vue";
+import { createStores, pagePinia, prefetch } from "@/utils/pinia";
+import { baseSkillSourceQuery } from "@/widgets/BaseSkillList/data";
+import BaseSkillList from "@/widgets/BaseSkillList/index.vue";
 
 /**
  * 后勤技能一览：{{#widget:BaseSkillList}} 是整张一览（后勤技能一览页面），

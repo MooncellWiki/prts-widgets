@@ -228,14 +228,15 @@ function openCharacterFaces(asset: AssetListItem): void {
   object-fit: contain;
 }
 
-/* 弹窗挂在播放器根节点里，根节点是 ak-not-prose，Arknights 皮肤上链接默认继承
-   文字色：照正文链接自己上色。播放器没有 AkScope，别的皮肤没有 --ak-* 令牌，
-   不能去掉皮肤限定，那里走宿主默认的链接色 */
-.skin-arknights .asset-link {
+/* ak-not-prose 内的链接显式用设计令牌。皮肤或独立页的 ak-scope 提供令牌，
+   其它宿主仍沿用自己的链接色；body 上的作用域也覆盖 teleport 弹窗。 */
+.skin-arknights .asset-link,
+.ak-scope .asset-link {
   color: var(--ak-link);
 }
 
-.skin-arknights .asset-link:hover {
+.skin-arknights .asset-link:hover,
+.ak-scope .asset-link:hover {
   color: var(--ak-link-hover);
 }
 </style>

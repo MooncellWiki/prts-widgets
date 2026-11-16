@@ -20,7 +20,7 @@ const port = new URLSearchParams(location.search).get("vitePort") ?? "${DEFAULT_
 if (!/^\\d{1,5}$/.test(port)) throw new Error("vitePort 不是端口号：" + port);
 const origin = "http://localhost:" + port;
 await import(origin + "/@vite/client");
-await import(origin + "/src/entries/${entry}.ts");
+await import(origin + "/src/entries/widgets/${entry}.ts");
 </script>`;
 }
 
@@ -37,8 +37,8 @@ const VITE_CLIENT_TAG =
   /<script type="module" src="http:\/\/localhost:\d+\/@vite\/client"><\/script>\n?/g;
 // 写死端口的旧入口标签，或者之前同步过的 viteLoader
 const VITE_ENTRY_TAG =
-  /<script type="module" (?:src="http:\/\/localhost:\d+\/src\/entries\/\w+\.ts">|data-prts-vite>[\s\S]*?)<\/script>/g;
-const ENTRY_PATH = /\/src\/entries\/(\w+)\.ts/;
+  /<script type="module" (?:src="http:\/\/localhost:\d+\/src\/entries\/(?:widgets\/)?\w+\.ts">|data-prts-vite>[\s\S]*?)<\/script>/g;
+const ENTRY_PATH = /\/src\/entries\/(?:widgets\/)?(\w+)\.ts/;
 
 /**
  * 把 /dev 页面里加载 Vite 的标签换成当前的 viteLoader。

@@ -1,10 +1,15 @@
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import OSS from "ali-oss";
 import { config as loadEnv } from "dotenv";
 
+import {
+  collectPublishFiles,
+  listRemoteFiles,
+  obsoleteFiles,
+  remotePrefix,
+} from "./deploy/files";
 import { legacyFiles } from "./legacy";
 
 const BUILD_DIR = "dist";
@@ -15,20 +20,13 @@ loadEnv({
   quiet: true,
 });
 
-const dirents = fs.readdirSync(path.join(__dirname, `../${BUILD_DIR}/`), {
-  withFileTypes: true,
-});
-
-const filesNames = dirents
-  .filter((dirent) => dirent.isFile())
-  .map((dirent) => dirent.name);
-
-const distSet = new Set(filesNames);
+const distSet = new Set(
+  collectPublishFiles(path.join(__dirname, "..", BUILD_DIR)),
+);
 console.log("[INFO] Dist set:", distSet);
 
 // 旧皮肤上的干员一览 / 公招计算 / 敌人一览 / 道具一览直接引改版前的构建产物（见 scripts/legacy），不在本次 dist 里也得留着
 const legacySet = legacyFiles();
-const isLegacy = (name: string) => legacySet.has(name.replace(/\.map$/, ""));
 
 const {
   REGION,
@@ -61,32 +59,21 @@ const store = new OSS({
   bucket: BUCKET,
 });
 
-// List REMOTE_PATH dir objects, not including subdirs
-const result = await store.listV2({
-  prefix: REMOTE_PATH,
-  delimiter: "/",
-  "max-keys": 1000,
-});
-
-console.log(
-  "[INFO] List result:",
-  result.objects.map((object) => object.name),
-);
-
-const removingFiles = result.objects
-  .filter(
-    (object) =>
-      !distSet.has(object.name.replace(REMOTE_PATH, "")) &&
-      !isLegacy(object.name.replace(REMOTE_PATH, "")) &&
-      object.name !== REMOTE_PATH,
-  )
-  .map((file) => file.name);
+const prefix = remotePrefix(REMOTE_PATH);
+const remoteFiles = await listRemoteFiles(store, prefix);
+console.log("[INFO] List result:", remoteFiles);
+const removingFiles = obsoleteFiles(remoteFiles, prefix, distSet, legacySet);
 
 console.log("[INFO] Removing files:", removingFiles);
 
 if (removingFiles.length === 0) {
   console.log("[INFO] No files to remove.");
 } else {
-  const deleteResult = await store.deleteMulti(removingFiles);
-  console.log("[INFO] Delete result:", deleteResult.deleted);
+  // OSS DeleteMultipleObjects 单次最多 1000 个对象。
+  for (let offset = 0; offset < removingFiles.length; offset += 1000) {
+    const deleteResult = await store.deleteMulti(
+      removingFiles.slice(offset, offset + 1000),
+    );
+    console.log("[INFO] Delete result:", deleteResult.deleted);
+  }
 }

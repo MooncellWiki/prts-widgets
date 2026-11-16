@@ -1,8 +1,8 @@
 import "virtual:uno.css";
 import { createApp } from "vue";
 
-import { createStores } from "../utils/pinia";
-import ItemDemand from "../widgets/ItemDemand.vue";
+import { createStores } from "@/utils/pinia";
+import ItemDemand from "@/widgets/ItemDemand.vue";
 
 const ele = document.querySelector<HTMLElement>("#root");
 if (ele?.dataset?.item)

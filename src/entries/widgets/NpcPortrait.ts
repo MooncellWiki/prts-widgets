@@ -1,8 +1,8 @@
 import { createApp } from "vue";
 
-import { createStores, pagePinia } from "../utils/pinia";
-import NpcPortrait from "../widgets/NpcPortrait/index.vue";
-import { observePortraits } from "../widgets/NpcPortrait/observe";
+import { createStores, pagePinia } from "@/utils/pinia";
+import NpcPortrait from "@/widgets/NpcPortrait/index.vue";
+import { observePortraits } from "@/widgets/NpcPortrait/observe";
 
 /**
  * 样式来自皮肤：Arknights 皮肤上已加载全套，这里是空操作；Vector / Minerva 上动态加载令牌 + 作用域 + 组件。

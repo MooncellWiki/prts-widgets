@@ -1,9 +1,13 @@
 import { createApp } from "vue";
 
-import { createStores } from "../utils/pinia";
-import StoryAssetExplorer from "../widgets/StoryAssetExplorer/index.vue";
+import { createPinia } from "pinia";
 
-const ele = document.querySelector<HTMLElement>("#root");
+import ItemList from "@/widgets/ItemList/index.vue";
+import { readItems } from "@/widgets/ItemList/item";
+
+const ele = document.querySelector("#root");
+/** 道具数据：页面上 #cargo-data 里 模板:道具筛选数据2 输出的每件道具一条 */
+const source = readItems(document.querySelector("#cargo-data"));
 
 /**
  * 样式来自皮肤：Arknights 皮肤已加载全套，这两个模块是空操作；Vector / Minerva 上
@@ -17,14 +21,7 @@ if (ele) {
   (window.RLQ = window.RLQ || []).push([
     STYLE_MODULES,
     () => {
-      createApp(StoryAssetExplorer, {
-        type: ele.dataset.type,
-        id: ele.dataset.id,
-      })
-        .use(createStores())
-        .mount(ele);
+      createApp(ItemList, { source }).use(createPinia()).mount(ele);
     },
   ]);
-} else {
-  console.error("root element not found");
 }

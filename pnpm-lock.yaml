@@ -166,9 +166,12 @@ importers:
 
   .:
     dependencies:
+      '@mooncellwiki/prts-design-css':
+        specifier: 0.1.35
+        version: 0.1.35
       '@mooncellwiki/prts-design-vue':
         specifier: 0.1.35
-        version: 0.1.35(vue@3.5.44(typescript@6.0.3))
+        version: 0.1.35(@mooncellwiki/prts-design-css@0.1.35)(vue@3.5.44(typescript@6.0.3))
       '@pinia/colada':
         specifier: ^1.4.9
         version: 1.4.9(pinia@4.1.0(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.44(typescript@6.0.3)))(vue@3.5.44(typescript@6.0.3))
@@ -1151,6 +1154,9 @@ packages:
 
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
+
+  '@mooncellwiki/prts-design-css@0.1.35':
+    resolution: {integrity: sha512-FFGb5xSKhkyDKkW6bPMZCqZcAsqCctWx8TuiaWOTB1QY9GYVQ/UPo1kjxBAo+/68vUv+eUB4B6obj17+/ehZ0g==}
 
   '@mooncellwiki/prts-design-vue@0.1.35':
     resolution: {integrity: sha512-U7u8iuxipQQnJAlpPV+03VcGv21YcN7UJa5GYAxSkId3cob8ihC4QinKJY91SqWZwok7w5TS5ma/+vXTt8Tneg==}
@@ -4712,9 +4718,13 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@mooncellwiki/prts-design-vue@0.1.35(vue@3.5.44(typescript@6.0.3))':
+  '@mooncellwiki/prts-design-css@0.1.35': {}
+
+  '@mooncellwiki/prts-design-vue@0.1.35(@mooncellwiki/prts-design-css@0.1.35)(vue@3.5.44(typescript@6.0.3))':
     dependencies:
       vue: 3.5.44(typescript@6.0.3)
+    optionalDependencies:
+      '@mooncellwiki/prts-design-css': 0.1.35
 
   '@napi-rs/wasm-runtime@1.2.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
