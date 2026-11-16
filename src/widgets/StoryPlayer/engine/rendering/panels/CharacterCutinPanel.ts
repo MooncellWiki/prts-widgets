@@ -69,7 +69,7 @@ interface CutinSlotState {
   /** _zoomAndPovRectTransform.anchoredPosition relative to the mask center. */
   pov: { x: number; y: number };
   /** `m_showFadeStyle` is set by Show and read by Hide (2791 @ 0x184203800). */
-  readonly fadeStyle: number;
+  fadeStyle: number;
   mask: Graphics;
   /** Current mask size; the expand animations tween this instead of the sprite. */
   maskSize: { h: number; w: number };
@@ -79,8 +79,8 @@ interface CutinSlotState {
   hasStarted: boolean;
   artWait?: ExecutionHandle;
   /** The pivot's offset from the center, as a fraction of the entry size. */
-  readonly maskPivot: { x: number; y: number };
-  readonly entryMaskSize: { h: number; w: number };
+  maskPivot: { x: number; y: number };
+  entryMaskSize: { h: number; w: number };
 }
 
 /**
@@ -114,6 +114,9 @@ interface CutinSlotState {
  */
 export class CharacterCutinPanel {
   private readonly slots = new Map<string, CutinSlotState>();
+  /** The pool owns these views independently of the widget ID dictionary. */
+  private readonly slotViews = new Set<CutinSlotState>();
+  private readonly recycledSlots: CutinSlotState[] = [];
   private readonly waits = new Map<ExecutionHandle, string>();
   private readonly targetlessTweens = new Map<TweenHandle, string>();
 
@@ -147,9 +150,9 @@ export class CharacterCutinPanel {
 
     const state = current?.hasStarted ? current : undefined;
     // A superseded cache miss has only seeded an invisible entry pose.
-    if (current && !state) this.destroySlot(input.widgetId, current);
+    if (current && !state) this.recycleSlot(current);
     const layout = layoutFor(input);
-    const slot = state ?? this.createSlot(input.widgetId, layout, input);
+    const slot = state ?? this.allocateSlot(input.widgetId, layout, input);
     const keepsArt =
       !input.characterMissing &&
       `${input.characterKey}/${input.expression}` === slot.charIdentity;
@@ -175,12 +178,20 @@ export class CharacterCutinPanel {
       if (widgetId === undefined || widgetId === owner) tween.kill();
     }
     if (widgetId === undefined) {
-      for (const [id, state] of this.slots) this.destroySlot(id, state);
+      for (const state of this.slotViews) this.destroySlot(state);
+      this.slots.clear();
+      this.recycledSlots.length = 0;
       return;
     }
 
     const state = this.slots.get(widgetId);
-    if (state) this.destroySlot(widgetId, state);
+    if (!state) return;
+    for (const [id, slot] of this.slots) {
+      if (slot === state) this.slots.delete(id);
+    }
+    const poolIndex = this.recycledSlots.indexOf(state);
+    if (poolIndex >= 0) this.recycledSlots.splice(poolIndex, 1);
+    this.destroySlot(state);
   }
 
   destroy(): void {
@@ -213,28 +224,23 @@ export class CharacterCutinPanel {
         const forget = () => {
           if (handle) this.targetlessTweens.delete(handle);
         };
-        handle = this.tweens.start(
-          duration,
-          (progress) => {
-            if (!state.root.destroyed) update(progress);
+        handle = this.tweens.start(duration, update, {
+          deferZeroDuration: true,
+          ease: dotweenDefaultEase,
+          isAlive: () => !state.root.destroyed,
+          // OnRecycle calls DOKill(false) (2791 @ 0x184203D50). The
+          // command keeps waiting until its callback or a playback reset.
+          onCancel: forget,
+          onComplete: () => {
+            forget();
+            options?.onComplete?.();
+            if (input.block && animation.endReason === undefined) {
+              animation.end();
+              onComplete?.();
+            }
           },
-          {
-            deferZeroDuration: true,
-            ease: dotweenDefaultEase,
-            // OnRecycle calls DOKill(false) (2791 @ 0x184203D50). The
-            // command keeps waiting until its callback or a playback reset.
-            onCancel: forget,
-            onComplete: () => {
-              forget();
-              options?.onComplete?.();
-              if (input.block && animation.endReason === undefined) {
-                animation.end();
-                onComplete?.();
-              }
-            },
-            target: options?.target,
-          },
-        );
+          target: options?.target,
+        });
         // Reset ends targetless tweens too, including ones whose slots
         // have already been recycled by a shorter hide.
         if (!options?.target && handle.endReason === undefined)
@@ -283,18 +289,21 @@ export class CharacterCutinPanel {
 
     // Expand styles keep alpha at 1 and grow the mask from the pivot edge.
     const start = { ...state.maskSize };
-    const entryPosition =
-      state.maskPivot.x || state.maskPivot.y
-        ? { x: layout.contentX, y: layout.contentY }
-        : undefined;
+    const target = this.maskTweenTarget(state);
+    const pivot = state.maskPivot;
     tween(
       input.fadeMs,
       (progress) => {
         state.maskSize.h = lerp(start.h, layout.maskH, progress);
         state.maskSize.w = lerp(start.w, layout.maskW, progress);
-        this.drawMask(state, entryPosition);
+        if (!target) {
+          const remaining = 1 - progress;
+          state.pov.x = layout.contentX - remaining * pivot.x * layout.maskW;
+          state.pov.y = layout.contentY - remaining * pivot.y * layout.maskH;
+        }
+        this.drawMask(state);
       },
-      { target: this.maskTweenTarget(state) },
+      { target },
     );
   }
 
@@ -363,9 +372,12 @@ export class CharacterCutinPanel {
     state: CutinSlotState,
     tween: SlotTween,
   ): void {
-    // Hide reverses m_showFadeStyle. Its callback recycles the slot before
-    // releasing the command (2791 _ExecuteCharacterCutin_b__0 @ 0x1841B5EF0).
-    const recycle = () => this.destroySlot(input.widgetId, state);
+    // _ExecuteCharacterCutin_b__0 (2791 @ 0x1841B5EF0) recycles the
+    // captured slot, then removes the captured widget ID.
+    const recycle = () => {
+      this.recycleSlot(state);
+      this.slots.delete(input.widgetId);
+    };
     if (state.fadeStyle === 0) {
       let startAlpha: number | undefined;
       tween(
@@ -385,20 +397,23 @@ export class CharacterCutinPanel {
     // 2791 Hide @ 0x184203800 uses DOSizeDelta for center styles, sampling
     // the live size on its first update. The directional setters capture
     // the size when the command executes.
-    const centered = state.fadeStyle === 1 || state.fadeStyle === 4;
-    let start = centered ? undefined : size;
-    const exitPosition = centered
-      ? undefined
-      : { x: state.content.x, y: state.content.y };
+    const target = this.maskTweenTarget(state);
+    let start = target ? undefined : size;
+    const pov = target ? undefined : { ...state.pov };
+    const pivot = state.maskPivot;
     tween(
       input.fadeMs,
       (progress) => {
         start ??= { ...state.maskSize };
         state.maskSize.h = lerp(start.h, end.h, progress);
         state.maskSize.w = lerp(start.w, end.w, progress);
-        this.drawMask(state, exitPosition);
+        if (pov) {
+          state.pov.x = pov.x - progress * pivot.x * size.w;
+          state.pov.y = pov.y - progress * pivot.y * size.h;
+        }
+        this.drawMask(state);
       },
-      { onComplete: recycle, target: this.maskTweenTarget(state) },
+      { onComplete: recycle, target },
     );
   }
 
@@ -409,15 +424,53 @@ export class CharacterCutinPanel {
       : undefined;
   }
 
-  private createSlot(
+  private allocateSlot(
     widgetId: string,
     layout: CutinLayout,
     input: CharacterCutinInput,
   ): CutinSlotState {
-    // Pool allocation equivalent: GameObjectPool.Allocate zeroes the
-    // anchoredPosition, then Show's layout math positions everything.
-    const root = new Container();
+    const fadeStyle = fadeStyleId(input.fadeStyle);
+    const entry = {
+      charIdentity: "",
+      entryMaskSize: { h: layout.maskH, w: layout.maskW },
+      fadeStyle,
+      hasStarted: false,
+      maskPivot: {
+        x: fadeStyle === 2 ? -0.5 : fadeStyle === 3 ? 0.5 : 0,
+        y: fadeStyle === 5 ? -0.5 : fadeStyle === 6 ? 0.5 : 0,
+      },
+      maskSize: {
+        h: fadeStyle >= 4 ? 0 : layout.maskH,
+        w: fadeStyle >= 1 && fadeStyle <= 3 ? 0 : layout.maskW,
+      },
+      pov: { x: layout.contentX, y: layout.contentY },
+    };
+    // GameObjectPool.Allocate (2791 @ 0x182AB73D0) reuses the last
+    // recycled object. Live direction/SlotUpdate setters still hold it.
+    const recycled = this.recycledSlots.pop();
+    const state = recycled
+      ? Object.assign(recycled, entry)
+      : { ...this.createSlotView(), ...entry };
+    const { root, content, portrait } = state;
     root.position.set(layout.rootX, layout.rootY);
+    content.scale.set(layout.zoom);
+    // Show places _characterSlot at the bottom of the mask (2791
+    // @ 0x184203DA0). SlotUpdate leaves this local position alone.
+    portrait.root.position.set(
+      input.charOffsetX ?? 0,
+      layout.maskH / 2 - (input.charOffsetY ?? 0),
+    );
+    // Seed the entry pose before a Web texture request can yield a frame.
+    root.alpha = fadeStyle === 0 ? 0 : 1;
+    this.drawMask(state);
+    this.slotViews.add(state);
+    this.slots.set(widgetId, state);
+    this.layer.addChild(root);
+    return state;
+  }
+
+  private createSlotView() {
+    const root = new Container();
     // _defualtBackground: sprite_white tinted (0.537, 0.537, 0.537) = #898989,
     // active whenever the command has no `background` key (Show flips the two
     // nodes around). It sits under `mask` beside -- not inside --
@@ -429,77 +482,49 @@ export class CharacterCutinPanel {
       .rect(-STORY_WIDTH / 2, -STORY_HEIGHT / 2, STORY_WIDTH, STORY_HEIGHT)
       .fill(0x89_89_89);
     const content = new Container();
-    content.scale.set(layout.zoom);
     const mask = new Graphics();
     root.addChild(mask, backdrop, content);
     root.mask = mask;
-    this.layer.addChild(root);
-
-    const fadeStyle = fadeStyleId(input.fadeStyle);
-    const state: CutinSlotState = {
+    return {
       backdrop,
-      charIdentity: "",
-      // Show places _characterSlot at the bottom of the mask (2791
-      // @ 0x184203DA0). SlotUpdate leaves this local position alone.
-      portrait: new CharacterSlotView(
-        content,
-        input.charOffsetX ?? 0,
-        layout.maskH / 2 - (input.charOffsetY ?? 0),
-      ),
+      portrait: new CharacterSlotView(content, 0, 0),
       content,
-      pov: { x: layout.contentX, y: layout.contentY },
-      fadeStyle,
-      hasStarted: false,
       mask,
-      maskSize: { h: layout.maskH, w: layout.maskW },
       root,
-      maskPivot: {
-        x: fadeStyle === 2 ? -0.5 : fadeStyle === 3 ? 0.5 : 0,
-        y: fadeStyle === 5 ? -0.5 : fadeStyle === 6 ? 0.5 : 0,
-      },
-      entryMaskSize: { h: layout.maskH, w: layout.maskW },
     };
-    // Entry state, seeded before the caller awaits the character texture:
-    // `fade` starts transparent with a full-size mask, the expand styles keep
-    // alpha = 1 and start from a zero-extent mask. Without this the slot would
-    // render at full size for the frames the texture request takes.
-    if (state.fadeStyle === 0) root.alpha = 0;
-    else {
-      const horizontal = state.fadeStyle >= 1 && state.fadeStyle <= 3;
-      state.maskSize = {
-        h: horizontal ? layout.maskH : 0,
-        w: horizontal ? 0 : layout.maskW,
-      };
-    }
-    this.drawMask(state);
-    this.slots.set(widgetId, state);
-    return state;
   }
 
-  private destroySlot(widgetId: string, state: CutinSlotState): void {
-    if (this.slots.get(widgetId) !== state) return;
-    this.slots.delete(widgetId);
+  private recycleSlot(state: CutinSlotState): void {
+    if (state.root.parent !== this.layer) return;
+    // OnRecycle (2791 @ 0x184203D50) clears the portrait and kills
+    // the CanvasGroup and mask tweens. Targetless setters keep running.
+    this.stopSlotTweens(state);
+    state.portrait.clear();
+    state.charIdentity = "";
+    state.root.removeFromParent();
+    this.recycledSlots.push(state);
+  }
+
+  private destroySlot(state: CutinSlotState): void {
+    this.stopSlotTweens(state);
+    state.root.destroy({ children: true });
+    this.slotViews.delete(state);
+  }
+
+  private stopSlotTweens(state: CutinSlotState): void {
     state.artWait?.end("reset");
-    // 2791 OnRecycle (0x184203D50) kills the CanvasGroup and mask RectTransform.
+    state.artWait = undefined;
     this.tweens.killTarget(state.root);
     this.tweens.killTarget(state.mask);
-    state.root.destroy({ children: true });
   }
 
-  private drawMask(
-    state: CutinSlotState,
-    fixedContentPosition?: { x: number; y: number },
-  ): void {
+  private drawMask(state: CutinSlotState): void {
     const { h, w } = state.maskSize;
     // 2791 Show sets the mask pivot and its position (0x184203DA0).
     // SlotUpdate (0x184249B00) resizes around that pivot. The anchored POV
     // follows the mask center. Directional Show/Hide compensate for its move.
     const centerX = state.maskPivot.x * (state.entryMaskSize.w - w);
     const centerY = state.maskPivot.y * (state.entryMaskSize.h - h);
-    if (fixedContentPosition) {
-      state.pov.x = fixedContentPosition.x - centerX;
-      state.pov.y = fixedContentPosition.y - centerY;
-    }
     state.content.position.set(centerX + state.pov.x, centerY + state.pov.y);
     state.mask
       .clear()

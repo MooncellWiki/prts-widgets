@@ -665,12 +665,43 @@ describe("CharacterCutinPanel", () => {
       frames.step(1);
       expect(wait?.endReason).toBe(completes ? "complete" : undefined);
       expect(finish).toHaveBeenCalledTimes(completes ? 1 : 0);
-      expect(layer.children).toEqual([replacement]);
+      expect(layer.children).toEqual(completes ? [] : [replacement]);
+      expect(slots(panel).has("1")).toBe(!completes);
 
       panel.clear();
       expect(wait?.endReason).toBe(completes ? "complete" : "reset");
     },
   );
+
+  it("recycles the reused slot even if it is now assigned to another widget", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const layer = new Container();
+    const panel = new CharacterCutinPanel(
+      layer,
+      () => art(120, 300),
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, fadeStyle: "horiz_expand_left2right" }));
+    frames.step(16);
+
+    const hide = { block: false, characterKey: undefined };
+    panel.run(input({ ...hide, fadeMs: 100 }));
+    panel.run(input({ ...hide, fadeMs: 1000 }));
+    frames.step(100);
+
+    const show = panel.run(input({ fadeMs: 1000, widgetId: "2", width: 400 }));
+    const reused = slots(panel).get("2")!;
+    frames.step(400);
+    // The old direction setter still writes the captured width to this slot.
+    expect(reused.maskSize.w).toBeCloseTo(50);
+    frames.step(500);
+    expect(layer.children).toHaveLength(0);
+    expect(slots(panel).get("2")).toBe(reused);
+    expect(show?.endReason).toBeUndefined();
+    panel.clear();
+    expect(show?.endReason).toBe("reset");
+  });
 
   it.each([
     { clearedWidgetId: "2", finishCalls: 1, reason: "complete" },

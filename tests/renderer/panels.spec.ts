@@ -1204,7 +1204,7 @@ describe("Displayable and focus frame order", () => {
   );
 
   it.each(["cached", "uncached"] as const)(
-    "uses the Web recycle fallback for a blocking interlude update with %s art",
+    "keeps a blocking interlude sequence waiting after recycle with %s art",
     async (cache) => {
       const draws: Array<[number, number]> = [];
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
@@ -1212,38 +1212,49 @@ describe("Displayable and focus frame order", () => {
           '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
           "[interlude(channel=3,clear=true,tsduration=0.016)]",
           '[interlude(channel=3,type=2,name="bg_test",aduration=0.064,block=true)]',
-          '[cgitem(image="after")]',
+          '[cgitem(image="before_skip")]',
+          "[SkipToThis]",
+          '[cgitem(image="after_skip")]',
           '[name="A"]ok',
         ],
         ({ cutins, cgItems }) =>
           draws.push([cutins.children.length, cgItems.children.length]),
       );
       const pending = Promise.withResolvers<Texture>();
-      const textureLoad = {
-        cached: renderer.textureForInterlude.bind(renderer),
-        uncached: () => pending.promise,
-      }[cache];
+      const textureLoad =
+        cache === "cached"
+          ? renderer.textureForInterlude.bind(renderer)
+          : () => pending.promise;
       const load = vi
         .spyOn(renderer, "textureForInterlude")
         .mockImplementationOnce(textureLoad);
       const started = runtime.start();
+      let skipping: Promise<void> | undefined;
       try {
         expect(load).toHaveBeenCalledTimes(1);
         app.ticker.update(16);
-        expect(draws).toEqual([[0, 1]]);
+        expect(draws).toEqual([[0, 0]]);
 
         pending.resolve(Texture.WHITE);
         await flushAsync();
         app.ticker.update(32);
+        app.ticker.update(96);
         expect(draws).toEqual([
-          [0, 1],
-          [0, 1],
+          [0, 0],
+          [0, 0],
+          [0, 0],
         ]);
+
+        skipping = runtime.skipNode();
+        await flushAsync();
+        app.ticker.update(112);
+        await skipping;
+        expect(draws.at(-1)).toEqual([0, 1]);
       } finally {
         pending.resolve(Texture.WHITE);
         load.mockRestore();
         destroy();
-        await started;
+        await Promise.all([started, skipping]);
       }
     },
   );

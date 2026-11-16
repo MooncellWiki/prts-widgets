@@ -81,7 +81,8 @@ interface ChannelState {
   /** 回落路径的文字标签。 */
   label: Text | null;
   elements: Map<string, ElementState>;
-  elementScales: Map<string, Vec2>;
+  /** The most recent char, background and avatar sequences in CutinChannel. */
+  elementSequences: Map<InterludeInput["type"], TweenHandle>;
   /** The single CutinAVGCharacterSlot owned by this channel. */
   avatar?: CharacterSlotView;
   avatarLoadId: number;
@@ -115,6 +116,7 @@ const KNOWN_MASK_IDS = new Set([
 // MathUtil.IsZero and GT(a, 0) use a tolerance of 1e-5 seconds.
 const TWEEN_ZERO_MS = 0.01;
 const avatarMoveEase = dotweenEaseCurve("OutCubic");
+const BACKGROUND_ELEMENT_KEY = "\u0000bg";
 
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
@@ -153,7 +155,7 @@ function isEmptyName(name: string): boolean {
  * _imgBackground. Type 1 chooses a left, right or default middle image.
  */
 function elementKeyFor(input: InterludeInput): string {
-  if (input.type === 2) return "\u0000bg";
+  if (input.type === 2) return BACKGROUND_ELEMENT_KEY;
   if (input.slot === "right" || input.slot === "r") return "r";
   if (input.slot === "left" || input.slot === "l") return "l";
   return "m";
@@ -198,8 +200,9 @@ function elementKeyFor(input: InterludeInput): string {
  * - Clear (`OnCutinEnd` → `HideCutinMask`): base templates fade the deco out
  *   (0.5s) and DOScale `_scaleTrans` from its current ratio to `tsto` (style 0)
  *   or wait the `_imgMask` fade (other styles); dialogs fade the group to
- *   `ato` over `aduration` (0.5s default). Running element/clip tweens are not
- *   reachable by the native DOKills and stop with the recycled channel.
+ *   `ato` over `aduration` (0.5s default). OnRecycle kills the sequence
+ *   currently stored for each element type. Earlier sequences can still
+ *   write to pooled image elements.
  *
  * Web adaptations: stencil channels are PIXI Graphics masks; unknown maskids
  * fall back to the legacy plain rectangle; a dialog displays its own
@@ -208,7 +211,7 @@ function elementKeyFor(input: InterludeInput): string {
  */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
-  private readonly recycledElementScales: Map<string, Vec2>[] = [];
+  private readonly recycledElements: Map<string, ElementState>[] = [];
   private readonly pending = new Map<ExecutionHandle, ChannelState | null>();
 
   constructor(
@@ -221,7 +224,7 @@ export class InterludePanel {
     private readonly loadAvatar: (input: InterludeInput) => CharacterArtLoad,
     private readonly tweens: Pick<
       TweenRunner,
-      "run" | "start" | "killTarget" | "afterUpdate"
+      "start" | "killTarget" | "afterUpdate"
     >,
     private readonly onWarning?: (detail: string) => void,
   ) {}
@@ -248,7 +251,14 @@ export class InterludePanel {
       } else {
         const existing = this.channels.get(input.channel);
         const state = existing ?? this.createChannel(input);
-        this.pending.set(animation, state);
+        // Recycle can release a Web-only texture wait. OnCutinUpdate
+        // (2791 @ 0x1814F9820) completes consumed dialog updates inline.
+        const dialogCompletesInline =
+          existing?.template?.dialog && (input.type === 2 || input.type === 3);
+        this.pending.set(
+          animation,
+          !input.block || dialogCompletesInline ? state : null,
+        );
         const preparation = existing
           ? this.update(state, input, complete)
           : this.begin(state, input, complete);
@@ -265,8 +275,11 @@ export class InterludePanel {
     for (const animation of this.pending.keys()) animation.end("reset");
     for (const state of this.channels.values())
       state.root.destroy({ children: true });
+    for (const elements of this.recycledElements)
+      for (const { node } of elements.values())
+        node.destroy({ children: true });
     this.channels.clear();
-    this.recycledElementScales.length = 0;
+    this.recycledElements.length = 0;
   }
 
   destroy(): void {
@@ -361,7 +374,11 @@ export class InterludePanel {
 
       const finish = () => {
         // Only the consumed background/avatar update invokes cb inline.
-        if (input.type === 2 || input.type === 3 || !input.block) complete();
+        if (
+          !state.root.destroyed &&
+          (input.type === 2 || input.type === 3 || !input.block)
+        )
+          complete();
       };
       const preparation = this.refreshDialog(state, dialog, input);
       return preparation ? preparation.then(finish) : finish();
@@ -421,6 +438,11 @@ export class InterludePanel {
     root.addChild(maskContainer, content, decoContainer);
     this.layer.addChild(root);
 
+    const elements =
+      this.recycledElements.pop() ?? new Map<string, ElementState>();
+    for (const [key, { node }] of elements)
+      (key === BACKGROUND_ELEMENT_KEY ? bkgPoz : charPoz).addChild(node);
+
     const state: ChannelState = {
       root,
       maskContainer,
@@ -435,8 +457,8 @@ export class InterludePanel {
       decoName: "",
       fallbackMask: null,
       label: null,
-      elements: new Map(),
-      elementScales: this.recycledElementScales.pop() ?? new Map(),
+      elements,
+      elementSequences: new Map(),
       avatarLoadId: 0,
       avatarName: "",
       size: { ...input.size },
@@ -663,8 +685,6 @@ export class InterludePanel {
     const existing = state.elements.get(key);
     if (existing) return existing;
     const node = new Container();
-    const scale = state.elementScales.get(key);
-    if (scale) node.scale.set(scale.x, scale.y);
     const sprite = new Sprite();
     sprite.anchor.set(0.5);
     node.addChild(sprite);
@@ -744,9 +764,16 @@ export class InterludePanel {
         alphaTarget = root;
       }
     }
-    let sequence: Sequence | undefined;
-    const tracks = () =>
-      (sequence ??= new Sequence(this.tweens.run.bind(this.tweens)));
+    // OnCutinUpdate (2791 @ 0x1814F9820) stores the new sequence even
+    // when it has no tracks. OnRecycle can kill only the stored sequence.
+    const sequence = new Sequence((durationMs, update, done, options) => {
+      const handle = this.tweens.start(durationMs, update, {
+        ...options,
+        onComplete: done,
+      });
+      state.elementSequences.set(input.type, handle);
+      return handle.completion;
+    });
 
     // SetCutinElement sets the sprite and the start value. The native
     // sequence appends its alpha tween and joins the position/scale tweens.
@@ -758,7 +785,7 @@ export class InterludePanel {
       // even at zero duration. CutinImageElement uses the DOTween default.
       if (isAvatar || input.alphaDurationMs > TWEEN_ZERO_MS) {
         alphaTarget.alpha = from;
-        tracks().append({
+        sequence.append({
           durationMs: input.alphaDurationMs,
           ease: isAvatar ? linearEase : dotweenDefaultEase,
           update: tweenAlpha(alphaTarget, to),
@@ -776,7 +803,7 @@ export class InterludePanel {
         offset.position.set(to.x, -to.y);
       } else {
         offset.position.set(from.x, -from.y);
-        tracks().join({
+        sequence.join({
           durationMs: input.durationMs,
           ease: isAvatar ? avatarMoveEase : dotweenDefaultEase,
           update: tweenPoint(offset.position, to.x, -to.y),
@@ -787,7 +814,7 @@ export class InterludePanel {
       const from = input.scaleFrom;
       const to = input.scaleTo;
       root.scale.set(from.x, from.y);
-      tracks().join({
+      sequence.join({
         durationMs: input.scaleDurationMs,
         ease: dotweenDefaultEase,
         update: tweenPoint(root.scale, to.x, to.y),
@@ -799,10 +826,9 @@ export class InterludePanel {
     const playsDirection = this.playDirection(state, input);
     const onComplete = input.block && !playsDirection ? complete : undefined;
     // Sequence.DoStartup @ 0x18442C6F0 takes an empty sequence with OnComplete.
-    if (onComplete) tracks();
-    void sequence?.play({
+    void sequence.play({
       deferZeroDuration: true,
-      isAlive: () => state.root.parent === this.layer,
+      isAlive: () => !root.destroyed,
       onComplete,
     });
     if (!input.block) complete();
@@ -970,16 +996,20 @@ export class InterludePanel {
     if (this.channels.get(id) !== state) return;
     this.channels.delete(id);
     state.root.removeFromParent();
-    // CutinImageElement.ClearElement (2791 @ 0x1814FC0C0) keeps the image
-    // scale. GameObjectPool.Allocate (0x182AB73D0) reuses the last channel
-    // returned to the pool. Preserve its scales across Pixi node rebuilds.
-    for (const [key, { node }] of state.elements) {
-      const { x, y } = node.scale;
-      state.elementScales.set(key, { x, y });
+    // CutinImageElement.ClearElement (2791 @ 0x1814FC0C0) clears the
+    // sprite and offset. Keep the image nodes for GameObjectPool.Allocate
+    // (0x182AB73D0), including writes by older sequences during recycle.
+    for (const { node, sprite } of state.elements.values()) {
+      sprite.texture = Texture.EMPTY;
+      node.visible = false;
+      node.position.set(0, 0);
+      node.removeFromParent();
     }
-    this.recycledElementScales.push(state.elementScales);
-    // OnRecycle (2791 @ 0x1814F9CD0) kills the element sequences. Web
-    // settles their waits here, as well as any unfinished texture loads.
+    this.recycledElements.push(state.elements);
+    // OnRecycle (2791 @ 0x1814F9CD0) kills the stored sequences without
+    // completing their commands.
+    for (const sequence of state.elementSequences.values()) sequence.kill();
+    state.elementSequences.clear();
     for (const [animation, owner] of this.pending) {
       if (owner === state) animation.end("reset");
     }

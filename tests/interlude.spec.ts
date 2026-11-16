@@ -190,6 +190,51 @@ describe("InterludePanel", () => {
     expect([reset.x, reset.y]).toEqual([1, 1]);
   });
 
+  it.each([false, true])(
+    "keeps older background tweens on the reused image when the last sequence has a move (%s)",
+    (moves) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const panel = createPanel(
+        new Container(),
+        () => Texture.WHITE,
+        frames.createTweenRunner(),
+      );
+      const show = { block: false, maskId: VERTICAL };
+      const bg = { block: false, name: "bg_light", type: 2 } as const;
+      panel.run(input(show));
+      panel.run(
+        input({
+          ...bg,
+          scaleDurationMs: 1000,
+          scaleFrom: { x: 1, y: 1 },
+          scaleTo: { x: 3, y: 3 },
+        }),
+      );
+      frames.step(100);
+      panel.run(
+        input({
+          block: false,
+          durationMs: 1000,
+          positionFrom: moves ? { x: 0, y: 0 } : undefined,
+          positionTo: moves ? { x: 200, y: 0 } : undefined,
+          type: 2,
+        }),
+      );
+      panel.run(input({ block: false, clear: true }));
+      frames.step(100);
+      expect(channel(panel)).toBeUndefined();
+
+      panel.run(input({ ...show, channel: 4 }));
+      panel.run(input({ ...bg, channel: 4 }));
+      const { node } = channel(panel, 4).elements.get("\u0000bg");
+      expect(node.scale.x).toBeCloseTo(1.72);
+      frames.step(800);
+      expect(node.scale.x).toBe(3);
+      expect(node.position.x).toBe(0);
+    },
+  );
+
   it("drives only the deco wave toggle with switch, never content visibility", async () => {
     const panel = createPanel(
       new Container(),
@@ -1048,7 +1093,7 @@ describe("InterludePanel", () => {
     expect(durations).toEqual([1000]);
   });
 
-  it("lets element tweens run through the hide until the channel is recycled", async () => {
+  it("lets the latest element tween run through the hide and kills it on recycle", async () => {
     const layer = new Container();
     const frames = new PlaybackTestFrames();
     frames.manual = true;
@@ -1080,8 +1125,12 @@ describe("InterludePanel", () => {
 
     frames.step(500);
     expect(layer.children).toHaveLength(0);
+    expect(node.parent).toBeNull();
+    const alphaAtRecycle = node.alpha;
+    frames.step(500);
+    expect(node.alpha).toBe(alphaAtRecycle);
+    panel.clearAll();
     expect(node.destroyed).toBe(true);
-    expect(() => frames.step(500)).not.toThrow();
   });
 });
 
@@ -1299,6 +1348,30 @@ describe("InterludePanel mask templates", () => {
     expect(loadAvatar).toHaveBeenCalledTimes(3);
     panel.run(input({ clear: true }));
     expect(releaseThird).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the texture wait on recycling a dialog that completes the update inline", async () => {
+    const layer = new Container();
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const texture = Promise.withResolvers<Texture>();
+    const panel = createPanel(
+      layer,
+      () => texture.promise,
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, maskId: DIALOG }));
+    panel.run(input({ alphaDurationMs: 16, block: false, clear: true }));
+    const wait = panel.run(input({ name: "bg_light", type: 2 }));
+
+    expect(wait?.endReason).toBeUndefined();
+    frames.step(16);
+    expect(wait?.endReason).toBe("reset");
+    expect(layer.children).toHaveLength(0);
+
+    texture.resolve(Texture.WHITE);
+    await texture.promise;
+    expect(layer.children).toHaveLength(0);
   });
 
   it("applies no show floor when a dialog channel is created without style 3", async () => {
