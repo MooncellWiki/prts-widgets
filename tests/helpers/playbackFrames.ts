@@ -1,5 +1,7 @@
 import { setImmediate } from "node:timers/promises";
 
+import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+
 import type {
   PlaybackFrame,
   StoryRenderer,
@@ -17,6 +19,13 @@ export class PlaybackTestFrames {
   private readonly frameEnds = new Set<() => void>();
 
   now = (): number => this.nowMs;
+
+  createTweenRunner(): TweenRunner {
+    return new TweenRunner(
+      () => true,
+      (advance) => this.onFrameUpdate(({ deltaMs }) => advance(deltaMs)),
+    );
+  }
 
   onFrameUpdate: StoryRenderer["onFrameUpdate"] = (
     callback,
@@ -62,4 +71,15 @@ export class PlaybackTestFrames {
       if (!this.manual) this.step();
     });
   }
+}
+
+/** Completes each finite tween as soon as the test subscribes to a frame. */
+export function createInstantTweenRunner(): TweenRunner {
+  return new TweenRunner(
+    () => true,
+    (advance) => {
+      advance(Infinity);
+      return () => {};
+    },
+  );
 }

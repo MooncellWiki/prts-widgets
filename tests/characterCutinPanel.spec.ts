@@ -7,16 +7,16 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { CharacterCutinPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
 
-import { PlaybackTestFrames } from "./helpers/playbackFrames";
+import {
+  createInstantTweenRunner,
+  PlaybackTestFrames,
+} from "./helpers/playbackFrames";
 
 import type { CharacterArt } from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
 import type { CharacterSlotView } from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterSlotView";
 import type { CharacterCutinInput } from "../src/widgets/StoryPlayer/engine/types";
-
-type Update = (progress: number) => void;
 
 /** The fields of the panel's private per-widget slot state these tests read. */
 interface SlotView {
@@ -76,15 +76,6 @@ function art(width: number, height: number): CharacterArt {
   };
 }
 
-async function instantTween(
-  _durationMs: number,
-  update: Update,
-  complete?: () => void,
-): Promise<void> {
-  update(1);
-  complete?.();
-}
-
 /** A texture loader whose promise the test resolves by hand. */
 function deferredArt(): {
   loadTexture: () => Promise<CharacterArt>;
@@ -97,33 +88,16 @@ function deferredArt(): {
   return { loadTexture: () => pending, release: (v) => resolve(v) };
 }
 
-/** Captures tween callbacks so tests can drive progress manually. */
-function captureTween() {
-  const updates: Update[] = [];
-  const completions: Array<() => void> = [];
-  const tween = async (
-    _durationMs: number,
-    update: Update,
-    complete?: () => void,
-  ): Promise<void> => {
-    updates.push(update);
-    completions.push(() => complete?.());
-  };
-  return {
-    drive(index: number, progress: number): void {
-      updates[index]!(progress);
-      if (progress >= 1) completions[index]!();
-    },
-    tween,
-  };
-}
-
 describe("CharacterCutinPanel", () => {
   it("renders the character at original size in a full-height mask at screen center + offset", async () => {
     const layer = new Container();
     const tex = art(120, 300);
     const loadTexture = vi.fn().mockResolvedValue(tex);
-    const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
+    const panel = new CharacterCutinPanel(
+      layer,
+      loadTexture,
+      createInstantTweenRunner(),
+    );
 
     await panel.run(input({ offsetX: -300, offsetY: 40 }))?.completion;
 
@@ -161,7 +135,7 @@ describe("CharacterCutinPanel", () => {
     const panel = new CharacterCutinPanel(
       layer,
       async () => art(120, 300),
-      instantTween,
+      createInstantTweenRunner(),
     );
 
     await panel.run(
@@ -197,7 +171,7 @@ describe("CharacterCutinPanel", () => {
     const panel = new CharacterCutinPanel(
       layer,
       async () => espumo,
-      instantTween,
+      createInstantTweenRunner(),
     );
 
     await panel.run(input({ offsetX: -300, width: 200 }))?.completion;
@@ -217,7 +191,7 @@ describe("CharacterCutinPanel", () => {
     const panel = new CharacterCutinPanel(
       layer,
       async () => art(120, 300),
-      instantTween,
+      createInstantTweenRunner(),
     );
 
     await panel.run(input({}))?.completion;
@@ -246,11 +220,12 @@ describe("CharacterCutinPanel", () => {
 
   it("expands the mask rect from the pinned edge instead of scaling the sprite", async () => {
     const layer = new Container();
-    const { drive, tween } = captureTween();
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
     const panel = new CharacterCutinPanel(
       layer,
       async () => art(120, 300),
-      tween,
+      frames.createTweenRunner(),
     );
 
     await panel.run(
@@ -260,29 +235,31 @@ describe("CharacterCutinPanel", () => {
         fadeStyle: "horiz_expand_left2right",
       }),
     )?.completion;
-    drive(0, 0.5);
+    frames.step(50);
 
     const state = slots(panel).get("1")!;
-    expect(state.maskSize).toEqual({ h: 720, w: 100 });
+    expect(state.maskSize).toEqual({ h: 720, w: 150 });
     // left2right pins the left edge at -width / 2 and grows rightward.
     expect(state.mask.bounds.minX).toBe(-100);
-    expect(state.mask.bounds.maxX).toBe(0);
+    expect(state.mask.bounds.maxX).toBe(50);
     expect(state.root.alpha).toBe(1);
     expect(state.content.x).toBe(0);
     expect(visibleSprites(state)[0].scale.x).toBe(1);
     expect(visibleSprites(state)[0].x).toBe(0);
 
-    drive(0, 1);
+    frames.step(50);
     expect(state.maskSize).toEqual({ h: 720, w: 200 });
   });
 
   it("SlotUpdate interpolates from the current layout instead of replaying the entry", async () => {
     const layer = new Container();
     const loadTexture = vi.fn().mockResolvedValue(art(120, 300));
-    const first = captureTween();
-    let active = first.tween;
-    const panel = new CharacterCutinPanel(layer, loadTexture, (d, u, c) =>
-      active(d, u, c),
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = new CharacterCutinPanel(
+      layer,
+      loadTexture,
+      frames.createTweenRunner(),
     );
 
     await panel.run(
@@ -293,10 +270,8 @@ describe("CharacterCutinPanel", () => {
         offsetX: -300,
       }),
     )?.completion;
-    first.drive(0, 1);
+    frames.step(100);
 
-    const second = captureTween();
-    active = second.tween;
     await panel.run(
       input({
         block: false,
@@ -306,15 +281,15 @@ describe("CharacterCutinPanel", () => {
         width: 300,
       }),
     )?.completion;
-    second.drive(0, 0.5);
+    frames.step(50);
 
     const state = slots(panel).get("1")!;
     // Root glides 340 -> 940, mask width 200 -> 300; no fresh entry replay
     // and no second sprite for the same character identity.
-    expect(state.root.x).toBe(640);
-    expect(state.maskSize).toEqual({ h: 720, w: 250 });
+    expect(state.root.x).toBe(790);
+    expect(state.maskSize).toEqual({ h: 720, w: 275 });
     expect(state.mask.bounds.minX).toBe(-100);
-    expect(state.content.x).toBe(25);
+    expect(state.content.x).toBe(37.5);
     expect(state.root.alpha).toBe(1);
     expect(visibleSprites(state)).toHaveLength(1);
     expect(visibleSprites(state)[0].alpha).toBe(1);
@@ -324,7 +299,7 @@ describe("CharacterCutinPanel", () => {
     // Drive the tween to completion: a same-key Set skips its whole swap
     // branch in native, so the art must survive the update rather than being
     // treated as an outgoing crossfade layer.
-    second.drive(0, 1);
+    frames.step(50);
     expect(visibleSprites(state)).toHaveLength(1);
     expect(visibleSprites(state)[0].alpha).toBe(1);
     expect(visibleSprites(state)[0].destroyed).toBe(false);
@@ -333,7 +308,11 @@ describe("CharacterCutinPanel", () => {
   it("SlotUpdate keeps the art of a repeated name (story_hibisc_1_1.txt:350/360)", async () => {
     const layer = new Container();
     const loadTexture = vi.fn().mockResolvedValue(art(120, 300));
-    const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
+    const panel = new CharacterCutinPanel(
+      layer,
+      loadTexture,
+      createInstantTweenRunner(),
+    );
     // Both lines are byte-identical, including `fadetime=0` -- which makes the
     // tween settle synchronously, so a mishandled crossfade drops the art on
     // the spot instead of over 400ms.
@@ -358,7 +337,7 @@ describe("CharacterCutinPanel", () => {
     const panel = new CharacterCutinPanel(
       layer,
       async () => art(120, 300),
-      instantTween,
+      createInstantTweenRunner(),
     );
 
     await panel.run(input({ offsetX: -300, povX: -50, width: 400, zoom: 1.5 }))
@@ -386,7 +365,11 @@ describe("CharacterCutinPanel", () => {
   it("does not render a full-size slot while the character texture loads", async () => {
     const layer = new Container();
     const { loadTexture, release } = deferredArt();
-    const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
+    const panel = new CharacterCutinPanel(
+      layer,
+      loadTexture,
+      createInstantTweenRunner(),
+    );
 
     const pending = panel.run(
       input({ fadeMs: 400, fadeStyle: "horiz_expand_center" }),
@@ -404,7 +387,11 @@ describe("CharacterCutinPanel", () => {
   it("does not render an opaque fade-style slot while the texture loads", async () => {
     const layer = new Container();
     const { loadTexture, release } = deferredArt();
-    const panel = new CharacterCutinPanel(layer, loadTexture, instantTween);
+    const panel = new CharacterCutinPanel(
+      layer,
+      loadTexture,
+      createInstantTweenRunner(),
+    );
 
     const pending = panel.run(input({ fadeMs: 400 }));
     const state = slots(panel).get("1")!;
@@ -418,17 +405,14 @@ describe("CharacterCutinPanel", () => {
   it("starts a fresh Show when a named command supersedes a pending entry texture", async () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
-    const runner = new TweenRunner(
-      () => true,
-      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
-    );
+    const runner = frames.createTweenRunner();
     const { loadTexture, release } = deferredArt();
     const replacement = art(140, 300);
     const layer = new Container();
     const panel = new CharacterCutinPanel(
       layer,
       ({ expression }) => (expression === "2$2" ? replacement : loadTexture()),
-      runner.run.bind(runner),
+      runner,
     );
 
     const pending = panel.run(input());
@@ -454,16 +438,13 @@ describe("CharacterCutinPanel", () => {
     ({ fadeMs, frameMs, firstFrameAlphas, finalX }) => {
       const frames = new PlaybackTestFrames();
       frames.manual = true;
-      const tween = new TweenRunner(
-        () => true,
-        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
-      );
+      const tween = frames.createTweenRunner();
       const texA = art(120, 300);
       const texB = art(140, 300);
       const panel = new CharacterCutinPanel(
         new Container(),
         ({ expression }) => (expression === "2$2" ? texB : texA),
-        tween.run.bind(tween),
+        tween,
       );
       panel.run(input());
       frames.step(16);
@@ -493,7 +474,7 @@ describe("CharacterCutinPanel", () => {
     const panel = new CharacterCutinPanel(
       new Container(),
       ({ expression }) => (expression === "2$2" ? null : portrait),
-      instantTween,
+      createInstantTweenRunner(),
     );
     panel.run(input());
     const state = slots(panel).get("1")!;
@@ -510,11 +491,12 @@ describe("CharacterCutinPanel", () => {
     "hide collapses the entry mask after SlotUpdate with fadestyle=%s",
     async (fadeStyle) => {
       const layer = new Container();
-      const { drive, tween } = captureTween();
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
       const panel = new CharacterCutinPanel(
         layer,
         async () => art(120, 300),
-        tween,
+        frames.createTweenRunner(),
       );
 
       await panel.run(
@@ -524,12 +506,12 @@ describe("CharacterCutinPanel", () => {
           fadeStyle: "horiz_expand_right2left",
         }),
       )?.completion;
-      drive(0, 1);
+      frames.step(100);
       expect(slots(panel).size).toBe(1);
 
       await panel.run(input({ block: false, fadeStyle, width: 300 }))
         ?.completion;
-      drive(1, 1);
+      frames.step(0);
 
       await panel.run(
         input({
@@ -540,15 +522,15 @@ describe("CharacterCutinPanel", () => {
           fadeStyle: undefined,
         }),
       )?.completion;
-      drive(2, 0.5);
+      frames.step(50);
 
       const state = slots(panel).get("1")!;
-      expect(state.maskSize).toEqual({ h: 720, w: 150 });
+      expect(state.maskSize).toEqual({ h: 720, w: 75 });
       expect(state.mask.bounds.maxX).toBe(100);
       expect(state.content.x).toBe(-50);
       expect(state.root.alpha).toBe(1);
 
-      drive(2, 1);
+      frames.step(50);
       // Native b__0 @ 0x183e62c90 recycles the slot and drops the widgetID.
       expect(slots(panel).has("1")).toBe(false);
       expect(layer.children).toHaveLength(0);
@@ -558,14 +540,11 @@ describe("CharacterCutinPanel", () => {
   it("uses OutQuad for fade-style entry and exit", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
-    const runner = new TweenRunner(
-      () => true,
-      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
-    );
+    const runner = frames.createTweenRunner();
     const panel = new CharacterCutinPanel(
       new Container(),
       () => art(120, 300),
-      runner.run.bind(runner),
+      runner,
     );
 
     panel.run(input({ fadeMs: 100 }));
@@ -599,14 +578,10 @@ describe("CharacterCutinPanel", () => {
     ({ fadeStyle, axis, firstSize }) => {
       const frames = new PlaybackTestFrames();
       frames.manual = true;
-      const runner = new TweenRunner(
-        () => true,
-        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
-      );
       const panel = new CharacterCutinPanel(
         new Container(),
         () => art(120, 300),
-        runner.run.bind(runner),
+        frames.createTweenRunner(),
       );
       panel.run(input({ block: false, fadeMs: 100, fadeStyle }));
       const hide = panel.run(input({ characterKey: undefined, fadeMs: 100 }));
@@ -624,6 +599,45 @@ describe("CharacterCutinPanel", () => {
   );
 
   it.each([
+    { fadeStyle: "horiz_expand_left2right", endReason: "complete" },
+    { fadeStyle: "horiz_expand_center", endReason: "reset" },
+    { fadeStyle: "fade", endReason: "reset" },
+  ] as const)(
+    "ends a later $fadeStyle hide with $endReason when a shorter hide recycles first",
+    ({ fadeStyle, endReason }) => {
+      const layer = new Container();
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const panel = new CharacterCutinPanel(
+        layer,
+        () => art(120, 300),
+        frames.createTweenRunner(),
+      );
+      panel.run(input({ fadeStyle }));
+      frames.step(16);
+
+      const hide = { characterKey: undefined, expression: undefined };
+      panel.run(input({ ...hide, block: false, fadeMs: 100 }));
+      const finish = vi.fn();
+      const wait = panel.run(input({ ...hide, fadeMs: 1000 }), finish);
+
+      frames.step(100);
+      expect(layer.children).toHaveLength(0);
+      expect(wait?.endReason).toBe(endReason === "reset" ? "reset" : undefined);
+      expect(finish).not.toHaveBeenCalled();
+
+      panel.run(input({ block: false, fadeStyle }));
+      const replacement = layer.children[0];
+      frames.step(899);
+      expect(finish).not.toHaveBeenCalled();
+      frames.step(1);
+      expect(wait?.endReason).toBe(endReason);
+      expect(finish).toHaveBeenCalledTimes(endReason === "complete" ? 1 : 0);
+      expect(layer.children).toEqual([replacement]);
+    },
+  );
+
+  it.each([
     { clearedWidgetId: "2", finishCalls: 1, reason: "complete" },
     { clearedWidgetId: "1", finishCalls: 0, reason: "reset" },
   ])(
@@ -631,16 +645,9 @@ describe("CharacterCutinPanel", () => {
     ({ clearedWidgetId, finishCalls, reason }) => {
       const frames = new PlaybackTestFrames();
       frames.manual = true;
-      const runner = new TweenRunner(
-        () => true,
-        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
-      );
+      const runner = frames.createTweenRunner();
       const layer = new Container();
-      const panel = new CharacterCutinPanel(
-        layer,
-        () => art(120, 300),
-        runner.run.bind(runner),
-      );
+      const panel = new CharacterCutinPanel(layer, () => art(120, 300), runner);
       panel.run(input());
       frames.step(16);
 
@@ -663,14 +670,11 @@ describe("CharacterCutinPanel", () => {
   it("keeps the entry fade running on its own clock across a SlotUpdate", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
-    const runner = new TweenRunner(
-      () => true,
-      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
-    );
+    const runner = frames.createTweenRunner();
     const panel = new CharacterCutinPanel(
       new Container(),
       () => art(120, 300),
-      runner.run.bind(runner),
+      runner,
     );
     panel.run(input({ block: false, fadeMs: 100 }));
     const layout = panel.run(input({ fadeMs: 25, offsetX: 100 }));
@@ -686,10 +690,12 @@ describe("CharacterCutinPanel", () => {
 
   it("still runs the show tween for an unresolvable name to keep block timing", async () => {
     const layer = new Container();
-    const { drive, tween } = captureTween();
-    const tweenSpy = vi.fn(tween);
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = frames.createTweenRunner();
+    const tweenSpy = vi.spyOn(runner, "start");
     const loadTexture = vi.fn();
-    const panel = new CharacterCutinPanel(layer, loadTexture, tweenSpy);
+    const panel = new CharacterCutinPanel(layer, loadTexture, runner);
 
     await panel.run(
       input({
@@ -710,7 +716,7 @@ describe("CharacterCutinPanel", () => {
     expect(visibleSprites(state)).toHaveLength(0);
 
     // Driving that tween fades the (empty) slot in.
-    drive(0, 1);
+    frames.step(250);
     expect(state.root.alpha).toBe(1);
     expect(slots(panel).has("1")).toBe(true);
   });
@@ -720,7 +726,7 @@ describe("CharacterCutinPanel", () => {
     const panel = new CharacterCutinPanel(
       layer,
       async () => art(120, 300),
-      instantTween,
+      createInstantTweenRunner(),
     );
 
     await panel.run(input({ widgetId: "1" }))?.completion;

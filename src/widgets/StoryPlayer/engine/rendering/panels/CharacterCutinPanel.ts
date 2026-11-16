@@ -14,12 +14,12 @@ import type {
   CharacterArt,
   CharacterArtLoad,
 } from "../characters/CharacterArt";
-import type { TweenRunner } from "../core/TweenRunner";
+import type { TweenHandle, TweenRunner } from "../core/TweenRunner";
 
 type SlotTween = (
   durationMs: number,
   update: (progress: number) => void,
-  options?: { onComplete?: () => void; completeAfterRecycle?: boolean },
+  options?: { onComplete?: () => void; target?: object },
 ) => void;
 
 /**
@@ -115,13 +115,14 @@ interface CutinSlotState {
 export class CharacterCutinPanel {
   private readonly slots = new Map<string, CutinSlotState>();
   private readonly waits = new Map<ExecutionHandle, string>();
+  private readonly targetlessTweens = new Map<TweenHandle, string>();
 
   constructor(
     private readonly layer: Container,
     private readonly loadPortrait: (
       input: CharacterCutinInput,
     ) => CharacterArtLoad,
-    private readonly tween: TweenRunner["run"],
+    private readonly tweens: Pick<TweenRunner, "start" | "killTarget">,
   ) {}
 
   run(
@@ -170,6 +171,9 @@ export class CharacterCutinPanel {
     for (const [animation, owner] of this.waits) {
       if (widgetId === undefined || widgetId === owner) animation.end("reset");
     }
+    for (const [tween, owner] of this.targetlessTweens) {
+      if (widgetId === undefined || widgetId === owner) tween.kill();
+    }
     if (widgetId === undefined) {
       for (const [id, state] of this.slots) this.destroySlot(id, state);
       return;
@@ -205,28 +209,37 @@ export class CharacterCutinPanel {
         // Show, SlotUpdate and Hide use the bundled DOTweenSettings' OutQuad
         // and attach OnComplete even at zero fade time (2791 @ 0x184203DA0 /
         // 0x184204B20 / 0x184203800).
-        const isAlive = () =>
-          !state.root.destroyed ||
-          (options?.completeAfterRecycle === true &&
-            animation.endReason === undefined);
-        void this.tween(
+        let handle: TweenHandle | undefined;
+        const forget = () => {
+          if (handle) this.targetlessTweens.delete(handle);
+        };
+        handle = this.tweens.start(
           duration,
           (progress) => {
             if (!state.root.destroyed) update(progress);
           },
-          () => {
-            if (!isAlive()) {
+          {
+            deferZeroDuration: true,
+            ease: dotweenDefaultEase,
+            onCancel: () => {
+              forget();
               animation.end("reset");
-              return;
-            }
-            options?.onComplete?.();
-            if (input.block && animation.endReason === undefined) {
-              animation.end();
-              onComplete?.();
-            }
+            },
+            onComplete: () => {
+              forget();
+              options?.onComplete?.();
+              if (input.block && animation.endReason === undefined) {
+                animation.end();
+                onComplete?.();
+              }
+            },
+            target: options?.target,
           },
-          { deferZeroDuration: true, ease: dotweenDefaultEase, isAlive },
         );
+        // Reset ends targetless tweens too, including ones whose slots
+        // have already been recycled by a shorter hide.
+        if (!options?.target && handle.endReason === undefined)
+          this.targetlessTweens.set(handle, input.widgetId);
       });
       // A cache miss waits for the slot setup. A nonblocking command then
       // advances while the slot's tween keeps running.
@@ -258,9 +271,13 @@ export class CharacterCutinPanel {
 
     if (state.fadeStyle === 0) {
       // Fade the canvas group with the mask already at full size.
-      tween(input.fadeMs, (progress) => {
-        state.root.alpha = progress;
-      });
+      tween(
+        input.fadeMs,
+        (progress) => {
+          state.root.alpha = progress;
+        },
+        { target: state.root },
+      );
       return;
     }
 
@@ -270,11 +287,15 @@ export class CharacterCutinPanel {
       state.maskPivot.x || state.maskPivot.y
         ? { x: layout.contentX, y: layout.contentY }
         : undefined;
-    tween(input.fadeMs, (progress) => {
-      state.maskSize.h = lerp(start.h, layout.maskH, progress);
-      state.maskSize.w = lerp(start.w, layout.maskW, progress);
-      this.drawMask(state, entryPosition);
-    });
+    tween(
+      input.fadeMs,
+      (progress) => {
+        state.maskSize.h = lerp(start.h, layout.maskH, progress);
+        state.maskSize.w = lerp(start.w, layout.maskW, progress);
+        this.drawMask(state, entryPosition);
+      },
+      { target: this.maskTweenTarget(state) },
+    );
   }
 
   private updateSlot(
@@ -298,24 +319,19 @@ export class CharacterCutinPanel {
 
     if (!keepsArt) this.crossfadeCharacter(input, state, art);
 
-    tween(
-      input.fadeMs,
-      (progress) => {
-        state.root.position.set(
-          lerp(start.rootX, layout.rootX, progress),
-          lerp(start.rootY, layout.rootY, progress),
-        );
-        state.pov.x = lerp(start.contentX, layout.contentX, progress);
-        state.pov.y = lerp(start.contentY, layout.contentY, progress);
-        state.content.scale.set(lerp(start.zoom, layout.zoom, progress));
-        state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
-        state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
-        this.drawMask(state);
-      },
-      // OnRecycle kills the canvas group and mask targets. SlotUpdate's
-      // targetless DOTween.To can still finish after the slot is recycled.
-      { completeAfterRecycle: true },
-    );
+    // SlotUpdate (2791 @ 0x184204B20) uses targetless DOTween.To.
+    tween(input.fadeMs, (progress) => {
+      state.root.position.set(
+        lerp(start.rootX, layout.rootX, progress),
+        lerp(start.rootY, layout.rootY, progress),
+      );
+      state.pov.x = lerp(start.contentX, layout.contentX, progress);
+      state.pov.y = lerp(start.contentY, layout.contentY, progress);
+      state.content.scale.set(lerp(start.zoom, layout.zoom, progress));
+      state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
+      state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
+      this.drawMask(state);
+    });
   }
 
   /** AVGCharacterSlot.Set owns the portrait tween separately from SlotUpdate's layout. */
@@ -325,15 +341,14 @@ export class CharacterCutinPanel {
     art: CharacterArt | null,
   ): void {
     const { front, isAlive, outgoing } = this.setPortrait(state, input, art, 0);
-    void this.tween(
+    this.tweens.start(
       input.fadeMs,
       (progress) => {
         if (!isAlive()) return;
         outgoing?.update(progress);
         if (front) front.alpha = progress;
       },
-      outgoing?.finish,
-      { deferZeroDuration: true, isAlive },
+      { deferZeroDuration: true, isAlive, onComplete: outgoing?.finish },
     );
   }
 
@@ -353,7 +368,7 @@ export class CharacterCutinPanel {
           startAlpha ??= state.root.alpha;
           state.root.alpha = lerp(startAlpha, 0, progress);
         },
-        { onComplete: recycle },
+        { onComplete: recycle, target: state.root },
       );
       return;
     }
@@ -377,8 +392,15 @@ export class CharacterCutinPanel {
         state.maskSize.w = lerp(start.w, end.w, progress);
         this.drawMask(state, exitPosition);
       },
-      { onComplete: recycle },
+      { onComplete: recycle, target: this.maskTweenTarget(state) },
     );
+  }
+
+  /** Show/Hide use DOSizeDelta for centre styles and DOTween.To for directional styles. */
+  private maskTweenTarget(state: CutinSlotState): Graphics | undefined {
+    return state.fadeStyle === 1 || state.fadeStyle === 4
+      ? state.mask
+      : undefined;
   }
 
   private createSlot(
@@ -462,9 +484,13 @@ export class CharacterCutinPanel {
   }
 
   private destroySlot(widgetId: string, state: CutinSlotState): void {
-    state.artWait?.end("reset");
-    state.root.destroy({ children: true });
+    if (this.slots.get(widgetId) !== state) return;
     this.slots.delete(widgetId);
+    state.artWait?.end("reset");
+    // 2791 OnRecycle (0x184203D50) kills the CanvasGroup and mask RectTransform.
+    this.tweens.killTarget(state.root);
+    this.tweens.killTarget(state.mask);
+    state.root.destroy({ children: true });
   }
 
   private drawMask(

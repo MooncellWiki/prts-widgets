@@ -137,6 +137,49 @@ async function createRenderedPlayback(
   };
 }
 
+describe("Interlude background rendering", () => {
+  it.each([
+    { key: "64_G16_jindadike_l", ppu: 80, width: 1280, height: 720 },
+    { key: "33_g4_srctheater", ppu: 100, width: 1024, height: 576 },
+    { key: "77_g4_classroom", ppu: undefined, width: 1024, height: 576 },
+  ])(
+    "sizes $key to $width x $height independently of the interlude scale tween",
+    async ({ key, ppu, width, height }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[interlude(channel=3,maskid="ui_cutin_mask_horizon",size="1300,360",style=3)]',
+          `[interlude(channel=3,type=2,name="${key}",sfrom="1.5,1.25",sto="1.25,1",sduration=0.032,block=true)]`,
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      renderer.context.backgroundPpuMap =
+        ppu === undefined ? {} : { [key.toLowerCase()]: ppu };
+      renderer.textureForImageKey = () =>
+        new Texture({
+          source: new TextureSource({ height: 576, width: 1024 }),
+        });
+      const started = runtime.start();
+      try {
+        app.ticker.update(16);
+        const { node, sprite } = renderer.interludePanel.channels
+          .get(3)
+          .elements.get("\u0000bg");
+        expect([sprite.width, sprite.height]).toEqual([width, height]);
+        expect(node.scale.x).toBeCloseTo(1.3125);
+        expect(node.scale.y).toBeCloseTo(1.0625);
+
+        app.ticker.update(32);
+        expect([sprite.width, sprite.height]).toEqual([width, height]);
+        expect([node.scale.x, node.scale.y]).toEqual([1.25, 1]);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+});
+
 describe("Interlude avatar rendering", () => {
   it.each([
     {
@@ -1123,6 +1166,15 @@ describe("Displayable and focus frame order", () => {
       [1, 1],
     ],
     [
+      "directional cut-in hide after its slot is recycled",
+      [
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadestyle="horiz_expand_left2right",fadetime=0)]',
+        '[charactercutin(widgetID="1",fadetime=0.016)]',
+        '[charactercutin(widgetID="1",fadetime=0.032,block=true)]',
+      ],
+      [0, 1],
+    ],
+    [
       "parallel interlude position and alpha tweens",
       [
         '[interlude(channel=3,maskid="group_interclude_square_common")]',
@@ -1197,12 +1249,13 @@ describe("Displayable and focus frame order", () => {
   );
 
   it.each([
-    { key: "tsduration", style: 0, secondDuration: 0.016, cgsOnFirstFrame: 1 },
-    { key: "aduration", style: 1, secondDuration: 0.016, cgsOnFirstFrame: 1 },
-    { key: "tsduration", style: 0, secondDuration: 0.032, cgsOnFirstFrame: 0 },
+    { key: "tsduration", style: 0, secondDuration: 0.016, cgCount: 1 },
+    { key: "aduration", style: 1, secondDuration: 0.016, cgCount: 1 },
+    { key: "tsduration", style: 0, secondDuration: 0.032, cgCount: 0 },
+    { key: "aduration", style: 1, secondDuration: 0.032, cgCount: 0 },
   ])(
-    "completes the blocking clear at $key=$secondDuration after the first clear recycles",
-    async ({ key, style, secondDuration, cgsOnFirstFrame }) => {
+    "draws $cgCount CGs after overlapping clears with $key=$secondDuration",
+    async ({ key, style, secondDuration, cgCount }) => {
       const draws: Array<[number, number]> = [];
       const clear = `interlude(channel=3,clear=true,style=${style}`;
       const { app, destroy, runtime } = await createRenderedPlayback(
@@ -1220,9 +1273,11 @@ describe("Displayable and focus frame order", () => {
       try {
         app.ticker.update(16);
         app.ticker.update(32);
+        // Both fades can complete in the recycling update. On the next frame
+        // the template is destroyed and any remaining mask tween is cancelled.
         expect(draws).toEqual([
-          [0, cgsOnFirstFrame],
-          [0, 1],
+          [0, cgCount],
+          [0, cgCount],
         ]);
       } finally {
         destroy();

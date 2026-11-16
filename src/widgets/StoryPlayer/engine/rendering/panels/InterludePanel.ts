@@ -40,13 +40,14 @@ import type {
   CharacterArtLoad,
 } from "../characters/CharacterArt";
 import type { TextureLoad } from "../core/TextureAsset";
-import type { TweenRunner, TweenRunOptions } from "../core/TweenRunner";
+import type {
+  TweenHandle,
+  TweenRunner,
+  TweenStartOptions,
+} from "../core/TweenRunner";
 
 type Preparation = void | Promise<void>;
 type Vec2 = { x: number; y: number };
-type ChannelTweenOptions = TweenRunOptions & {
-  completeAfterRecycle?: () => boolean;
-};
 
 type ElementArt =
   | { kind: "image"; texture: Texture | null }
@@ -88,13 +89,10 @@ interface ChannelState {
   /** 回落矩形的尺寸。 */
   size: Vec2;
   fallbackScale: Vec2;
-  /** The Web fallback rectangle keeps only its latest scale tween. */
-  fallbackScaleGen: number;
   /** 通道 animWrapper 上 direction clip 的世代(重播即替换)。 */
   directionGen: number;
-  /** dialog 入场 clip 的世代(HideCutinMask 先 _KillDialogIntroTween)。 */
-  introGen: number;
-  dialogHideGen: number;
+  /** dialog 入场 clip 的句柄(HideCutinMask 先 _KillDialogIntroTween)。 */
+  dialogIntro?: TweenHandle;
   /** `CutinTemplate.m_cachedName`。 */
   cachedName: string;
   /** `m_dialogCharPosOffset` / `m_dialogCharScaleMul`(只在给出时覆盖)。 */
@@ -214,8 +212,15 @@ export class InterludePanel {
   constructor(
     private readonly layer: Container,
     private readonly loadTexture: (input: InterludeInput) => TextureLoad,
+    private readonly nativeBackgroundRect: (
+      key: string,
+      texture: Texture,
+    ) => readonly [number, number],
     private readonly loadAvatar: (input: InterludeInput) => CharacterArtLoad,
-    private readonly tween: TweenRunner["run"],
+    private readonly tweens: Pick<
+      TweenRunner,
+      "run" | "start" | "killTarget" | "afterUpdate"
+    >,
     private readonly onWarning?: (detail: string) => void,
   ) {}
 
@@ -237,7 +242,7 @@ export class InterludePanel {
       if (input.clear) {
         // A clear command can span several channels.
         this.pending.set(animation, null);
-        this.clear(input, animation, complete);
+        this.clear(input, complete);
       } else {
         const existing = this.channels.get(input.channel);
         const state = existing ?? this.createChannel(input);
@@ -307,7 +312,7 @@ export class InterludePanel {
       // TryPlayAnimation runs after ShowCutinMask without gating begin.
       this.playDirection(state, input);
       if (input.block && showMs > 0)
-        this.runTween(state, showMs, () => {}, complete);
+        this.runTween(state, showMs, () => {}, { onComplete: complete });
       else complete();
     };
 
@@ -432,10 +437,7 @@ export class InterludePanel {
       avatarName: "",
       size: { ...input.size },
       fallbackScale: { x: 1, y: 1 },
-      fallbackScaleGen: 0,
       directionGen: 0,
-      introGen: 0,
-      dialogHideGen: 0,
       cachedName: "",
       dialogCharOffset: { x: 0, y: 0 },
       dialogCharScale: { x: 1, y: 1 },
@@ -554,28 +556,30 @@ export class InterludePanel {
     state: ChannelState,
     input: InterludeInput,
     onComplete?: () => void,
-    completeAfterRecycle?: () => boolean,
   ): void {
     const { x, y } = input.templateSizeTo;
     if (state.template) {
       // Native ShowCutinMask / HideCutinMask (2791 @ 0x181501750 /
       // 0x1815013A0) start independent DOScale tweens on the same transform.
+      const target = state.template.scaleNode;
       this.runTween(
         state,
         input.templateSizeDurationMs,
-        tweenPoint(state.template.scaleNode.scale, x, y),
-        onComplete,
+        tweenPoint(target.scale, x, y),
         {
-          completeAfterRecycle,
           deferZeroDuration: true,
           ease: dotweenDefaultEase,
+          onComplete,
+          target,
         },
       );
       return;
     }
 
+    // The Web fallback rectangle replaces its previous scale tween.
+    const target = state.fallbackMask ?? state.maskContainer;
+    this.tweens.killTarget(target);
     const from = state.fallbackScale;
-    const gen = ++state.fallbackScaleGen;
     this.runTween(
       state,
       input.templateSizeDurationMs,
@@ -585,10 +589,10 @@ export class InterludePanel {
           y: lerp(from.y, y, progress),
         });
       },
-      onComplete,
       {
         ease: dotweenDefaultEase,
-        isAlive: () => state.fallbackScaleGen === gen,
+        onComplete,
+        target,
       },
     );
   }
@@ -703,17 +707,12 @@ export class InterludePanel {
         alphaTarget = front;
         // The back Image fade is independent of the element sequence.
         if (outgoing)
-          this.runTween(
-            state,
-            input.alphaDurationMs,
-            outgoing.update,
-            outgoing.finish,
-            {
-              deferZeroDuration: true,
-              ease: linearEase,
-              isAlive,
-            },
-          );
+          this.runTween(state, input.alphaDurationMs, outgoing.update, {
+            deferZeroDuration: true,
+            ease: linearEase,
+            isAlive,
+            onComplete: outgoing.finish,
+          });
       }
     } else {
       const element = this.ensureElement(
@@ -726,12 +725,22 @@ export class InterludePanel {
         // CutinImageElement.SetCutinElement (2791 @ 0x1814FC3D0) assigns
         // a missing sprite to the image and still sets up the alpha tween.
         element.sprite.texture = resource.texture ?? Texture.EMPTY;
+        if (input.type === 2 && resource.texture) {
+          // Image.SetNativeSize applies the background's PPU to the image
+          // rect. DoScale applies the script's scale to the outer element.
+          const [width, height] = this.nativeBackgroundRect(
+            input.name,
+            resource.texture,
+          );
+          element.sprite.setSize(width, height);
+        }
         root.visible = true;
         alphaTarget = root;
       }
     }
     let sequence: Sequence | undefined;
-    const tracks = () => (sequence ??= new Sequence(this.tween));
+    const tracks = () =>
+      (sequence ??= new Sequence(this.tweens.run.bind(this.tweens)));
 
     // SetCutinElement sets the sprite and the start value. The native
     // sequence appends its alpha tween and joins the position/scale tweens.
@@ -787,7 +796,7 @@ export class InterludePanel {
     if (onComplete) tracks();
     void sequence?.play({
       deferZeroDuration: true,
-      isAlive: () => !state.root.destroyed,
+      isAlive: () => state.root.parent === this.layer,
       onComplete,
     });
     if (!input.block) complete();
@@ -833,15 +842,11 @@ export class InterludePanel {
       complete();
       return;
     }
-    const gen = ++state.introGen;
-    this.runTween(
+    state.dialogIntro = this.runTween(
       state,
       input.durationMs,
-      (progress) => {
-        if (state.introGen === gen)
-          applyDialogIntro(dialog, progress * seconds);
-      },
-      input.block ? complete : undefined,
+      (progress) => applyDialogIntro(dialog, progress * seconds),
+      { onComplete: input.block ? complete : undefined },
     );
     if (!input.block) complete();
   }
@@ -922,11 +927,7 @@ export class InterludePanel {
       : apply(asset);
   }
 
-  private clear(
-    input: InterludeInput,
-    animation: ExecutionHandle,
-    complete: () => void,
-  ): void {
+  private clear(input: InterludeInput, complete: () => void): void {
     const channel = this.channels.get(input.channel);
     const states =
       input.channel < 0
@@ -935,29 +936,13 @@ export class InterludePanel {
           ? [[input.channel, channel] as const]
           : [];
 
-    const completeAfterRecycle = input.block
-      ? () => animation.endReason === undefined
-      : undefined;
     // Web recycles each channel independently and releases the clear once.
     // The 2791 all-channel callback (0x181507EC0) reads an unset channel.
     for (const [id, state] of states) {
-      this.hide(
-        state,
-        input,
-        () => {
-          if (this.channels.get(id) === state) {
-            // 2791 OnRecycle (0x1814F9CD0) kills the element sequences.
-            // Web releases their command waits when retiring the view.
-            for (const [wait, owner] of this.pending) {
-              if (owner === state) wait.end("reset");
-            }
-            this.channels.delete(id);
-            state.root.destroy({ children: true });
-          }
-          if (input.block && state.template) complete();
-        },
-        completeAfterRecycle,
-      );
+      this.hide(state, input, () => {
+        this.recycleChannel(id, state);
+        if (input.block && state.template) complete();
+      });
       if (input.block && !state.template) complete();
     }
     // An absent explicit channel finishes immediately. An empty clear-all
@@ -965,47 +950,60 @@ export class InterludePanel {
     if (!input.block || (input.channel >= 0 && !channel)) complete();
   }
 
+  private recycleChannel(id: number, state: ChannelState): void {
+    if (this.channels.get(id) !== state) return;
+    this.channels.delete(id);
+    state.root.removeFromParent();
+    // OnRecycle (2791 @ 0x1814F9CD0) kills the element sequences. Web
+    // settles their waits here, as well as any unfinished texture loads.
+    for (const [animation, owner] of this.pending) {
+      if (owner === state) animation.end("reset");
+    }
+    // Destroy(template) takes effect after Update. Other mask tweens
+    // can still complete in this update before the target is destroyed.
+    this.tweens.afterUpdate(() => state.root.destroy({ children: true }));
+  }
+
   /** CutinChannel.OnCutinEnd -> HideCutinMask. */
   private hide(
     state: ChannelState,
     input: InterludeInput,
     done: () => void,
-    completeAfterRecycle?: () => boolean,
   ): void {
     const template = state.template;
     if (template?.dialog) {
-      // 2791 CutinTemplateDialogView.HideCutinMask (0x1814FD2C0) kills the
-      // previous dialog hide before starting a new one.
-      const gen = ++state.dialogHideGen;
       const group = template.dialog.group;
-      state.introGen += 1;
+      // CutinTemplateDialogView.HideCutinMask (2791 @ 0x1814FD2C0) kills
+      // the intro and the previous fade before starting a new one.
+      state.dialogIntro?.kill();
+      this.tweens.killTarget(group);
       const to = input.alphaTo >= 0 ? input.alphaTo : 0;
       const durationMs =
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
-      this.runTween(state, durationMs, tweenAlpha(group, to), done, {
+      this.runTween(state, durationMs, tweenAlpha(group, to), {
         ease: dotweenDefaultEase,
-        isAlive: () => state.dialogHideGen === gen,
+        onComplete: done,
+        target: group,
       });
       return;
     }
 
-    // CutinTemplate.HideCutinMask (2791 @ 0x1815013A0) attaches a callback
-    // to each hide, and template destruction is deferred past the update.
-    // Keep the Web blocker on its own tween clock once the first hide recycles.
     if (state.deco) {
-      this.runTween(state, 500, tweenAlpha(state.deco.root, 0), undefined, {
+      this.runTween(state, 500, tweenAlpha(state.deco.root, 0), {
         ease: dotweenDefaultEase,
+        target: state.deco.root,
       });
     }
     if (!template || input.style === 0) {
-      this.tweenScale(state, input, done, completeAfterRecycle);
+      this.tweenScale(state, input, done);
       return;
     }
     if (input.style === 2) this.tweenScale(state, input);
     if (template.hasImgMask) {
-      this.runTween(state, input.alphaDurationMs, () => {}, done, {
-        completeAfterRecycle,
+      this.runTween(state, input.alphaDurationMs, () => {}, {
         deferZeroDuration: true,
+        onComplete: done,
+        target: template.maskNode,
       });
     } else done();
   }
@@ -1014,22 +1012,11 @@ export class InterludePanel {
     state: ChannelState,
     durationMs: number,
     update: (progress: number) => void,
-    onComplete?: () => void,
-    options?: ChannelTweenOptions,
-  ): void {
-    const { completeAfterRecycle, ...tweenOptions } = options ?? {};
-    const isAlive = () =>
-      (!state.root.destroyed || completeAfterRecycle?.() === true) &&
-      tweenOptions.isAlive?.() !== false;
-    void this.tween(
-      durationMs,
-      (progress) => {
-        if (!state.root.destroyed && isAlive()) update(progress);
-      },
-      () => {
-        if (isAlive()) onComplete?.();
-      },
-      { ...tweenOptions, isAlive },
-    );
+    options?: TweenStartOptions,
+  ): TweenHandle {
+    return this.tweens.start(durationMs, update, {
+      ...options,
+      isAlive: () => !state.root.destroyed && options?.isAlive?.() !== false,
+    });
   }
 }

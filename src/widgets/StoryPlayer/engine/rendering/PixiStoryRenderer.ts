@@ -592,15 +592,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.interludePanel = new InterludePanel(
       this.cutinLayer,
       (input) => this.textureForInterlude(input),
+      (key, texture) => this.nativeBackgroundRect(key, texture, "texture"),
       (input) =>
         this.loadCharacterArt(input.avatarCharacterKey, input.avatarExpression),
-      (...args) => this.updatePhaseTweenRunner.run(...args),
+      this.updatePhaseTweenRunner,
       onWarning,
     );
     this.cutinPanel = new CharacterCutinPanel(
       this.cutinLayer,
       (input) => this.loadCharacterArt(input.characterKey, input.expression),
-      (...args) => this.updatePhaseTweenRunner.run(...args),
+      this.updatePhaseTweenRunner,
     );
     this.animTextPanel = new AnimTextPanel(
       this.layers.animTexts,
@@ -4116,14 +4117,14 @@ export class PixiStoryRenderer implements StoryRenderer {
    * e.g. bg_cher_1 (1024x576, ppu 68.2464) natively renders 1500.44x844,
    * a 17% centered overscan. Web PNGs are texture-sized with no ppu
    * metadata, so the per-key ppu comes from the `avg/background.json`
-   * sidecar (context.backgroundPpuMap). For keys missing from the sidecar
-   * every 16:9 background added since 2023 ships a ppu tuned to exactly the
-   * 1280x720 canvas, so a 16:9 texture maps to that and anything else keeps
-   * its texture size.
+   * sidecar (context.backgroundPpuMap). Standalone 16:9 backgrounds missing
+   * sidecar metadata fall back to 1280x720. Interlude elements keep their
+   * texture size when the sidecar has no entry.
    */
   private nativeBackgroundRect(
     key: string,
     texture: Texture,
+    fallback: "widescreen" | "texture" = "widescreen",
   ): readonly [number, number] {
     const width = Math.max(1, texture.width);
     const height = Math.max(1, texture.height);
@@ -4134,7 +4135,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (ppu !== undefined && ppu > 0) {
       return [(width / ppu) * 100, (height / ppu) * 100];
     }
-    if (Math.abs(width / height - STORY_WIDTH / STORY_HEIGHT) < 0.01) {
+    if (
+      fallback === "widescreen" &&
+      Math.abs(width / height - STORY_WIDTH / STORY_HEIGHT) < 0.01
+    ) {
       return [STORY_WIDTH, STORY_HEIGHT];
     }
     return [width, height];
