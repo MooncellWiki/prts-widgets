@@ -85,13 +85,13 @@ interface ChannelState {
   /** 回落矩形的尺寸。 */
   size: Vec2;
   fallbackScale: Vec2;
-  /** Web fallback: the clear supersedes the rectangle's entry tween. */
+  /** The Web fallback rectangle keeps only its latest scale tween. */
   fallbackScaleGen: number;
   /** 通道 animWrapper 上 direction clip 的世代(重播即替换)。 */
   directionGen: number;
   /** dialog 入场 clip 的世代(HideCutinMask 先 _KillDialogIntroTween)。 */
   introGen: number;
-  hideGen: number;
+  dialogHideGen: number;
   /** `CutinTemplate.m_cachedName`。 */
   cachedName: string;
   /** `m_dialogCharPosOffset` / `m_dialogCharScaleMul`(只在给出时覆盖)。 */
@@ -431,7 +431,7 @@ export class InterludePanel {
       fallbackScaleGen: 0,
       directionGen: 0,
       introGen: 0,
-      hideGen: 0,
+      dialogHideGen: 0,
       cachedName: "",
       dialogCharOffset: { x: 0, y: 0 },
       dialogCharScale: { x: 1, y: 1 },
@@ -567,14 +567,16 @@ export class InterludePanel {
       state,
       input.templateSizeDurationMs,
       (progress) => {
-        if (state.fallbackScaleGen !== gen) return;
         this.setScale(state, {
           x: lerp(from.x, x, progress),
           y: lerp(from.y, y, progress),
         });
       },
       onComplete,
-      { ease: dotweenDefaultEase },
+      {
+        ease: dotweenDefaultEase,
+        isAlive: () => state.fallbackScaleGen === gen,
+      },
     );
   }
 
@@ -908,10 +910,8 @@ export class InterludePanel {
     // Web recycles each channel independently and releases the clear once.
     // The 2791 all-channel callback (0x181507EC0) reads an unset channel.
     for (const [id, state] of states) {
-      const gen = ++state.hideGen;
-      const isCurrent = () => state.hideGen === gen;
-      this.hide(state, input, isCurrent, () => {
-        if (state.hideGen !== gen || state.root.destroyed) return;
+      this.hide(state, input, () => {
+        if (this.channels.get(id) !== state) return;
         // 2791 OnRecycle (0x1814F9CD0) kills these sequences without completion.
         // Web releases the retired view's waits here so playback can continue.
         for (const [animation, owner] of this.pending) {
@@ -932,11 +932,13 @@ export class InterludePanel {
   private hide(
     state: ChannelState,
     input: InterludeInput,
-    isCurrent: () => boolean,
     done: () => void,
   ): void {
     const template = state.template;
     if (template?.dialog) {
+      // 2791 CutinTemplateDialogView.HideCutinMask (0x1814FD2C0) kills the
+      // previous dialog hide before starting a new one.
+      const gen = ++state.dialogHideGen;
       const group = template.dialog.group;
       state.introGen += 1;
       const to = input.alphaTo >= 0 ? input.alphaTo : 0;
@@ -944,15 +946,16 @@ export class InterludePanel {
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
       this.runTween(state, durationMs, tweenAlpha(group, to), done, {
         ease: dotweenDefaultEase,
-        isAlive: isCurrent,
+        isAlive: () => state.dialogHideGen === gen,
       });
       return;
     }
 
+    // 2791 CutinTemplate.HideCutinMask (0x1815013A0) keeps each hide's
+    // completion callback. The first to finish recycles the channel.
     if (state.deco) {
       this.runTween(state, 500, tweenAlpha(state.deco.root, 0), undefined, {
         ease: dotweenDefaultEase,
-        isAlive: isCurrent,
       });
     }
     if (!template || input.style === 0) {

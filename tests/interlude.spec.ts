@@ -798,6 +798,53 @@ describe("InterludePanel", () => {
     expect(finish).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { maskId: VERTICAL, recycleAtMs: 100 },
+    { maskId: DIALOG, recycleAtMs: 1000 },
+    { maskId: "square", recycleAtMs: 1000 },
+  ])(
+    "recycles $maskId at $recycleAtMs ms when two clears overlap",
+    ({ maskId, recycleAtMs }) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const runner = new TweenRunner(
+        () => true,
+        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+      );
+      const layer = new Container();
+      const panel = createPanel(
+        layer,
+        () => Texture.WHITE,
+        runner.run.bind(runner),
+      );
+      const show = input({ block: false, maskId });
+      panel.run(show);
+      const [original] = layer.children;
+
+      for (const duration of [100, 1000]) {
+        panel.run(
+          input({
+            alphaDurationMs: duration,
+            block: false,
+            clear: true,
+            templateSizeDurationMs: duration,
+          }),
+        );
+      }
+
+      frames.step(recycleAtMs - 1);
+      expect(layer.children).toEqual([original]);
+      frames.step(1);
+      expect(layer.children).toHaveLength(0);
+
+      panel.run(show);
+      expect(layer.children).toHaveLength(1);
+      const [replacement] = layer.children;
+      frames.step(1000);
+      expect(layer.children).toEqual([replacement]);
+    },
+  );
+
   it("keeps the deco name when a later command has no char", async () => {
     const panel = createPanel(
       new Container(),
