@@ -8,13 +8,12 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import {
-  CharacterCutinPanel,
-  type CutinCharacterArt,
-} from "../src/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
+import { CharacterCutinPanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
 
 import { PlaybackTestFrames } from "./helpers/playbackFrames";
 
+import type { CharacterArt } from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { CharacterSlotView } from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterSlotView";
 import type { CharacterCutinInput } from "../src/widgets/StoryPlayer/engine/types";
 
 type Update = (progress: number) => void;
@@ -22,7 +21,7 @@ type Update = (progress: number) => void;
 /** The fields of the panel's private per-widget slot state these tests read. */
 interface SlotView {
   backdrop: Graphics;
-  chars: Array<{ sprite: Sprite }>;
+  portrait: CharacterSlotView;
   content: Container;
   mask: Graphics;
   maskSize: { h: number; w: number };
@@ -32,6 +31,12 @@ interface SlotView {
 /** Reaches the private `slots` map; the only cast into panel internals. */
 function slots(panel: CharacterCutinPanel): Map<string, SlotView> {
   return (panel as unknown as { slots: Map<string, SlotView> }).slots;
+}
+
+function visibleSprites(state: SlotView): Sprite[] {
+  return (state.portrait.offset.children as Sprite[]).filter(
+    (sprite) => sprite.visible,
+  );
 }
 
 function input(
@@ -61,13 +66,13 @@ function texture(width: number, height: number): Texture {
 }
 
 /** Art descriptor with a no-op hub (identity pos/size), as texture() implies. */
-function art(width: number, height: number): CutinCharacterArt {
+function art(width: number, height: number): CharacterArt {
+  const image = texture(width, height);
   return {
-    offsetX: 0,
-    offsetY: 0,
-    scaleX: 1,
-    scaleY: 1,
-    texture: texture(width, height),
+    acquire: () => ({ texture: image }),
+    height,
+    pos: { x: 0, y: 0 },
+    width,
   };
 }
 
@@ -82,11 +87,11 @@ async function instantTween(
 
 /** A texture loader whose promise the test resolves by hand. */
 function deferredArt(): {
-  loadTexture: () => Promise<CutinCharacterArt>;
-  release: (value: CutinCharacterArt) => void;
+  loadTexture: () => Promise<CharacterArt>;
+  release: (value: CharacterArt) => void;
 } {
-  let resolve!: (value: CutinCharacterArt) => void;
-  const pending = new Promise<CutinCharacterArt>((r) => {
+  let resolve!: (value: CharacterArt) => void;
+  const pending = new Promise<CharacterArt>((r) => {
     resolve = r;
   });
   return { loadTexture: () => pending, release: (v) => resolve(v) };
@@ -133,7 +138,7 @@ describe("CharacterCutinPanel", () => {
     expect(state.maskSize).toEqual({ h: 720, w: 200 });
     expect(root.mask).toBe(state.mask);
 
-    const sprite = state.chars[0].sprite;
+    const sprite = visibleSprites(state)[0];
     expect(sprite.anchor.x).toBe(0.5);
     expect(sprite.anchor.y).toBe(0.5);
     // No stretching: the texture keeps its original scale, only the mask crops.
@@ -143,8 +148,10 @@ describe("CharacterCutinPanel", () => {
     // hub pos of the character (see the hub test below) shifts the art from
     // there. AVGCharacterSlot.Set zeroes the prefab's (0, 360) offset child
     // before the hub pos applies.
-    expect(sprite.x).toBe(0);
-    expect(sprite.y).toBe(360);
+    expect(state.content.toLocal(sprite.getGlobalPosition())).toMatchObject({
+      x: 0,
+      y: 360,
+    });
     // fade style: alpha tween completed to 1 with the mask at full size.
     expect(root.alpha).toBe(1);
   });
@@ -173,8 +180,7 @@ describe("CharacterCutinPanel", () => {
     expect(state.content.scale.x).toBe(2);
     expect(state.content.x).toBe(50);
     expect(state.content.y).toBe(30);
-    expect(state.chars[0].sprite.x).toBe(5);
-    expect(state.chars[0].sprite.y).toBe(380);
+    expect(state.portrait.root.position).toMatchObject({ x: 5, y: 380 });
   });
 
   it("applies the AVGCharacterSpriteHub pos/size on top of the slot position", async () => {
@@ -182,12 +188,11 @@ describe("CharacterCutinPanel", () => {
     // avg_486_espumo_1 (act12side_01_beg line 214): hub size 1210x1210 over a
     // 1024x1024 sheet, pos (0, 110). Native: art center lands at
     // charOffsetY - maskHeight/2 + pos.y = -250 (Unity y-up) -> PIXI +250.
-    const espumo: CutinCharacterArt = {
-      offsetX: 0,
-      offsetY: 110,
-      scaleX: 1210 / 1024,
-      scaleY: 1210 / 1024,
-      texture: texture(1024, 1024),
+    const espumo: CharacterArt = {
+      ...art(1024, 1024),
+      height: 1210,
+      pos: { x: 0, y: 110 },
+      width: 1210,
     };
     const panel = new CharacterCutinPanel(
       layer,
@@ -198,9 +203,11 @@ describe("CharacterCutinPanel", () => {
     await panel.run(input({ offsetX: -300, width: 200 }))?.completion;
 
     const state = slots(panel).get("1")!;
-    const sprite = state.chars[0].sprite;
-    expect(sprite.y).toBe(250);
-    expect(sprite.x).toBe(0);
+    const sprite = visibleSprites(state)[0];
+    expect(state.content.toLocal(sprite.getGlobalPosition())).toMatchObject({
+      x: 0,
+      y: 250,
+    });
     expect(sprite.scale.x).toBeCloseTo(1210 / 1024);
     expect(sprite.scale.y).toBeCloseTo(1210 / 1024);
   });
@@ -261,8 +268,8 @@ describe("CharacterCutinPanel", () => {
     expect(state.mask.bounds.minX).toBe(-100);
     expect(state.mask.bounds.maxX).toBe(0);
     expect(state.root.alpha).toBe(1);
-    expect(state.chars[0].sprite.scale.x).toBe(1);
-    expect(state.chars[0].sprite.x).toBe(0);
+    expect(visibleSprites(state)[0].scale.x).toBe(1);
+    expect(visibleSprites(state)[0].x).toBe(0);
 
     drive(0, 1);
     expect(state.maskSize).toEqual({ h: 720, w: 200 });
@@ -306,8 +313,8 @@ describe("CharacterCutinPanel", () => {
     expect(state.root.x).toBe(640);
     expect(state.maskSize).toEqual({ h: 720, w: 250 });
     expect(state.root.alpha).toBe(1);
-    expect(state.chars).toHaveLength(1);
-    expect(state.chars[0].sprite.alpha).toBe(1);
+    expect(visibleSprites(state)).toHaveLength(1);
+    expect(visibleSprites(state)[0].alpha).toBe(1);
     expect(loadTexture).toHaveBeenCalledTimes(1);
     expect(layer.children).toHaveLength(1);
 
@@ -315,9 +322,9 @@ describe("CharacterCutinPanel", () => {
     // branch in native, so the art must survive the update rather than being
     // treated as an outgoing crossfade layer.
     second.drive(0, 1);
-    expect(state.chars).toHaveLength(1);
-    expect(state.chars[0].sprite.alpha).toBe(1);
-    expect(state.chars[0].sprite.destroyed).toBe(false);
+    expect(visibleSprites(state)).toHaveLength(1);
+    expect(visibleSprites(state)[0].alpha).toBe(1);
+    expect(visibleSprites(state)[0].destroyed).toBe(false);
   });
 
   it("SlotUpdate keeps the art of a repeated name (story_hibisc_1_1.txt:350/360)", async () => {
@@ -337,8 +344,8 @@ describe("CharacterCutinPanel", () => {
     await panel.run({ ...line })?.completion;
 
     const state = slots(panel).get("1")!;
-    expect(state.chars).toHaveLength(1);
-    expect(state.chars[0].sprite.alpha).toBe(1);
+    expect(visibleSprites(state)).toHaveLength(1);
+    expect(visibleSprites(state)[0].alpha).toBe(1);
     // Set never re-loads for a matching key either.
     expect(loadTexture).toHaveBeenCalledTimes(1);
   });
@@ -429,7 +436,9 @@ describe("CharacterCutinPanel", () => {
 
     const state = slots(panel).get("1")!;
     expect(layer.children).toHaveLength(1);
-    expect(state.chars[0].sprite.texture).toBe(replacement.texture);
+    expect(visibleSprites(state)[0].texture).toBe(
+      replacement.acquire()?.texture,
+    );
     expect(state.root.alpha).toBe(1);
     expect(show?.endReason).toBe("complete");
   });
@@ -461,7 +470,7 @@ describe("CharacterCutinPanel", () => {
       const state = slots(panel).get("1")!;
 
       frames.step(frameMs);
-      expect(state.chars.map(({ sprite }) => sprite.alpha)).toEqual(
+      expect(visibleSprites(state).map((sprite) => sprite.alpha)).toEqual(
         firstFrameAlphas,
       );
       expect(layout?.endReason).toBe("complete");
@@ -470,9 +479,9 @@ describe("CharacterCutinPanel", () => {
       frames.step(frameMs);
       // The first layout can outlast the second layout's zero-duration tween.
       expect(state.root.x).toBe(finalX);
-      expect(state.chars).toHaveLength(1);
-      expect(state.chars[0].sprite.texture).toBe(texB.texture);
-      expect(state.chars[0].sprite.alpha).toBe(1);
+      expect(visibleSprites(state)).toHaveLength(1);
+      expect(visibleSprites(state)[0].texture).toBe(texB.acquire()?.texture);
+      expect(visibleSprites(state)[0].alpha).toBe(1);
     },
   );
 
@@ -487,11 +496,11 @@ describe("CharacterCutinPanel", () => {
     const state = slots(panel).get("1")!;
 
     panel.run(input({ expression: "2$2" }));
-    expect(state.chars).toHaveLength(0);
+    expect(visibleSprites(state)).toHaveLength(0);
 
     panel.run(input());
-    expect(state.chars).toHaveLength(1);
-    expect(state.chars[0].sprite.texture).toBe(portrait.texture);
+    expect(visibleSprites(state)).toHaveLength(1);
+    expect(visibleSprites(state)[0].texture).toBe(portrait.acquire()?.texture);
   });
 
   it.each([undefined, "fade"] as const)(
@@ -659,7 +668,7 @@ describe("CharacterCutinPanel", () => {
     ]);
     expect(loadTexture).not.toHaveBeenCalled();
     const state = slots(panel).get("1")!;
-    expect(state.chars).toHaveLength(0);
+    expect(visibleSprites(state)).toHaveLength(0);
 
     // Driving that tween fades the (empty) slot in.
     drive(0, 1);

@@ -7,6 +7,11 @@ import { CLIP_SECONDS } from "../src/widgets/StoryPlayer/engine/rendering/panels
 
 import { PlaybackTestFrames } from "./helpers/playbackFrames";
 
+import type {
+  CharacterArt,
+  CharacterArtLoad,
+} from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { TextureLoad } from "../src/widgets/StoryPlayer/engine/rendering/core/TextureAsset";
 import type { InterludeInput } from "../src/widgets/StoryPlayer/engine/types";
 
 // 模板贴图走随包静态资源(Assets.load),测试里替换为空纹理保持离线。
@@ -89,6 +94,28 @@ function recordingTween(durations: number[]) {
   };
 }
 
+function createPanel(
+  layer: Container,
+  loadTexture: (input: InterludeInput) => TextureLoad,
+  tween: TweenRunner["run"],
+  onWarning?: (detail: string) => void,
+  loadAvatar = (input: InterludeInput): CharacterArtLoad => {
+    const texture = loadTexture(input);
+    const describe = (resolved: Texture | null): CharacterArt | null =>
+      resolved && {
+        acquire: () => ({ texture: resolved }),
+        height: resolved.height,
+        pos: { x: 0, y: 0 },
+        width: resolved.width,
+      };
+    return texture instanceof Promise
+      ? texture.then(describe)
+      : describe(texture);
+  },
+): InterludePanel {
+  return new InterludePanel(layer, loadTexture, loadAvatar, tween, onWarning);
+}
+
 function channel(panel: InterludePanel, id = 3): any {
   return (panel as any).channels.get(id);
 }
@@ -97,7 +124,7 @@ describe("InterludePanel", () => {
   it("reuses a channel, adds an element, and clears the channel", async () => {
     const layer = new Container();
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
-    const panel = new InterludePanel(layer, loadTexture, tweenImmediately);
+    const panel = createPanel(layer, loadTexture, tweenImmediately);
 
     await panel.run(input())?.completion;
     expect(layer.children).toHaveLength(1);
@@ -118,7 +145,7 @@ describe("InterludePanel", () => {
   });
 
   it("drives only the deco wave toggle with switch, never content visibility", async () => {
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -135,14 +162,18 @@ describe("InterludePanel", () => {
     await panel.run(
       input({ maskId: VERTICAL, name: "avg_npc_1#1", switchOn: true, type: 3 }),
     )?.completion;
-    const avatar = state.elements.get("\u0000avatar");
-    expect(avatar.node.visible).toBe(true);
+    const avatar = state.avatar;
+    expect(
+      avatar.offset.children.some((sprite: Container) => sprite.visible),
+    ).toBe(true);
 
     await panel.run(input({ maskId: VERTICAL, switchOn: false, type: 3 }))
       ?.completion;
     expect(waveActive.visible).toBe(false);
     expect(waveStop.visible).toBe(true);
-    expect(avatar.node.visible).toBe(true);
+    expect(
+      avatar.offset.children.some((sprite: Container) => sprite.visible),
+    ).toBe(true);
     expect(state.root.visible).toBe(true);
 
     // The key defaults to false and is re-rendered on every update.
@@ -154,7 +185,7 @@ describe("InterludePanel", () => {
   });
 
   it("moves only the template and deco by offset, never the elements", async () => {
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -183,8 +214,8 @@ describe("InterludePanel", () => {
         type: 3,
       }),
     )?.completion;
-    const avatar = state.elements.get("\u0000avatar");
-    expect(avatar.node.position.x).toBe(-250);
+    const avatar = state.avatar;
+    expect(avatar.offset.position.x).toBe(-250);
     expect(state.charPoz.position.x).toBe(0);
   });
 
@@ -201,7 +232,7 @@ describe("InterludePanel", () => {
         () => true,
         (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
       );
-      const panel = new InterludePanel(
+      const panel = createPanel(
         new Container(),
         () => Texture.WHITE,
         runner.run.bind(runner),
@@ -216,7 +247,7 @@ describe("InterludePanel", () => {
           type: 3,
         }),
       );
-      const { node } = channel(panel).elements.get("\u0000avatar");
+      const { offset: node } = channel(panel).avatar;
       expect(node.x).toBe(startX);
       expect(wait?.endReason).toBeUndefined();
       frames.step(durationMs / 2);
@@ -233,7 +264,7 @@ describe("InterludePanel", () => {
       update: (progress: number) => void;
       complete: () => void;
     }> = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       () => Texture.EMPTY,
       async (duration, update, done) => {
@@ -280,7 +311,7 @@ describe("InterludePanel", () => {
 
   it("keeps a running fade when the next command on the same element only moves it", async () => {
     const pending: Array<(progress: number) => void> = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       async (_duration, update) => {
@@ -329,7 +360,7 @@ describe("InterludePanel", () => {
       () => true,
       (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
     );
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       () => Texture.WHITE,
       runner.run.bind(runner),
@@ -388,7 +419,7 @@ describe("InterludePanel", () => {
       () => true,
       (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
     );
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       () => Texture.WHITE,
       runner.run.bind(runner),
@@ -397,7 +428,7 @@ describe("InterludePanel", () => {
     panel.run(input({ block: false }));
     const name = "avg_4213_skybx_1#1$1";
     const first = panel.run(input({ name, type: 3 }));
-    const { node } = channel(panel).elements.get("\u0000avatar");
+    const { offset: node } = channel(panel).avatar;
     const visibleAlphas = () =>
       node.children
         .filter((image: Container) => image.visible)
@@ -427,7 +458,7 @@ describe("InterludePanel", () => {
       () => true,
       (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
     );
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       () => Texture.WHITE,
       runner.run.bind(runner),
@@ -435,7 +466,7 @@ describe("InterludePanel", () => {
 
     panel.run(input({ block: false }));
     panel.run(input({ block: false, name: "first", type: 3 }));
-    const { node } = channel(panel).elements.get("\u0000avatar");
+    const { offset: node } = channel(panel).avatar;
     const firstFront = node.children[1];
     frames.step(16);
     panel.run(
@@ -453,7 +484,7 @@ describe("InterludePanel", () => {
 
   it("keeps a background tween running across a char command on the same channel", async () => {
     const pending: Array<(progress: number) => void> = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       async (_duration, update) => {
@@ -498,7 +529,7 @@ describe("InterludePanel", () => {
     ];
     for (const [maskId, style, expected] of cases) {
       const durations: number[] = [];
-      const panel = new InterludePanel(
+      const panel = createPanel(
         new Container(),
         async () => Texture.EMPTY,
         recordingTween(durations),
@@ -509,7 +540,7 @@ describe("InterludePanel", () => {
   });
 
   it("applies size/offset only when the channel is created, not on updates", async () => {
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -543,7 +574,7 @@ describe("InterludePanel", () => {
 
   it("starts the ts scale entry on _scaleTrans once at creation, never on updates", async () => {
     const durations: number[] = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       recordingTween(durations),
@@ -585,7 +616,7 @@ describe("InterludePanel", () => {
       () => true,
       (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
     );
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       () => Texture.EMPTY,
       runner.run.bind(runner),
@@ -623,7 +654,7 @@ describe("InterludePanel", () => {
 
   it("maps uichar slots like _GetImgElementByParam without warnings", async () => {
     const warnings: string[] = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -649,7 +680,7 @@ describe("InterludePanel", () => {
   it("releases a blocking clear-all once on the first recycled channel", async () => {
     const layer = new Container();
     const hides = new Map<number, () => void>();
-    const panel = new InterludePanel(
+    const panel = createPanel(
       layer,
       () => Texture.EMPTY,
       async (duration, update, done) => {
@@ -689,7 +720,7 @@ describe("InterludePanel", () => {
   });
 
   it("keeps the deco name when a later command has no char", async () => {
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -712,7 +743,7 @@ describe("InterludePanel", () => {
   });
 
   it("re-checks _emptyImg only when a non-empty name changes", async () => {
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -739,7 +770,7 @@ describe("InterludePanel", () => {
 
   it("clears every channel when channel is negative", async () => {
     const layer = new Container();
-    const panel = new InterludePanel(
+    const panel = createPanel(
       layer,
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -754,7 +785,7 @@ describe("InterludePanel", () => {
   it("drops element params on a create command (native begin never reaches _ProcessElement)", async () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
     const durations: number[] = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       loadTexture,
       recordingTween(durations),
@@ -772,7 +803,7 @@ describe("InterludePanel", () => {
     const layer = new Container();
     const pending: Array<(progress: number) => void> = [];
     let finishHide: (() => void) | undefined;
-    const panel = new InterludePanel(
+    const panel = createPanel(
       layer,
       async () => Texture.EMPTY,
       async (_duration, update, complete) => {
@@ -811,7 +842,7 @@ describe("InterludePanel", () => {
 describe("InterludePanel mask templates", () => {
   it("builds the square template and plays its show clip for every style", async () => {
     const durations: number[] = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       recordingTween(durations),
@@ -840,7 +871,7 @@ describe("InterludePanel mask templates", () => {
   });
 
   it("resizes the template from the command size (native: sizeDelta written only when |size|² > ε)", async () => {
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -859,7 +890,7 @@ describe("InterludePanel mask templates", () => {
   });
 
   it("keeps ui_cutin_mask_vertical collapsed until style 1 resets its scale", async () => {
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       tweenImmediately,
@@ -876,11 +907,7 @@ describe("InterludePanel mask templates", () => {
 
   it("dialog template consumes avatar/background updates instead of mounting elements", async () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.WHITE);
-    const panel = new InterludePanel(
-      new Container(),
-      loadTexture,
-      tweenImmediately,
-    );
+    const panel = createPanel(new Container(), loadTexture, tweenImmediately);
 
     await panel.run(input({ maskId: DIALOG, offset: { x: 0, y: 150 } }))
       ?.completion;
@@ -908,7 +935,7 @@ describe("InterludePanel mask templates", () => {
   it("dialog create consumes the avatar and skips the intro at duration 0 (act54side shape)", async () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
     const durations: number[] = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       loadTexture,
       recordingTween(durations),
@@ -935,11 +962,7 @@ describe("InterludePanel mask templates", () => {
 
   it("applies icharpos/icharscale on top of the prefab layout and reloads only on name change", async () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.WHITE);
-    const panel = new InterludePanel(
-      new Container(),
-      loadTexture,
-      tweenImmediately,
-    );
+    const panel = createPanel(new Container(), loadTexture, tweenImmediately);
 
     await panel.run(input({ maskId: DIALOG, name: "avg_npc_1#1", type: 3 }))
       ?.completion;
@@ -965,7 +988,7 @@ describe("InterludePanel mask templates", () => {
   it("holds the dialog at its first pose until the portrait loads, then plays the requested duration", async () => {
     const durations: number[] = [];
     const portrait = Promise.withResolvers<Texture>();
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       () => portrait.promise,
       recordingTween(durations),
@@ -993,7 +1016,7 @@ describe("InterludePanel mask templates", () => {
 
   it("applies no show floor when a dialog channel is created without style 3", async () => {
     const durations: number[] = [];
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
       recordingTween(durations),
@@ -1004,11 +1027,7 @@ describe("InterludePanel mask templates", () => {
 
   it("feeds dialog type 1 updates into img_char", async () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.WHITE);
-    const panel = new InterludePanel(
-      new Container(),
-      loadTexture,
-      tweenImmediately,
-    );
+    const panel = createPanel(new Container(), loadTexture, tweenImmediately);
 
     await panel.run(input({ maskId: DIALOG }))?.completion;
     const update = input({ maskId: DIALOG, name: "cutin_char_1", type: 1 });
@@ -1028,7 +1047,7 @@ describe("InterludePanel mask templates", () => {
       (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
     );
     const layer = new Container();
-    const panel = new InterludePanel(
+    const panel = createPanel(
       layer,
       () => Texture.EMPTY,
       runner.run.bind(runner),
@@ -1050,7 +1069,7 @@ describe("InterludePanel mask templates", () => {
     "runs the element sequence alongside the direction clip with block=%s",
     async (block) => {
       const durations: number[] = [];
-      const panel = new InterludePanel(
+      const panel = createPanel(
         new Container(),
         () => Texture.EMPTY,
         recordingTween(durations),
@@ -1103,7 +1122,7 @@ describe("InterludePanel mask templates", () => {
   it("direction on a create plays the clip without mounting the element", async () => {
     const durations: number[] = [];
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
-    const panel = new InterludePanel(
+    const panel = createPanel(
       new Container(),
       loadTexture,
       recordingTween(durations),

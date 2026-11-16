@@ -10,6 +10,7 @@ import {
 
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import { STORY_HEIGHT, STORY_WIDTH, type InterludeInput } from "../../types";
+import { CharacterSlotView } from "../characters/CharacterSlotView";
 import {
   dotweenDefaultEase,
   dotweenEaseCurve,
@@ -34,23 +35,24 @@ import {
   type TemplateNodes,
 } from "./interludeTemplates";
 
+import type {
+  CharacterArt,
+  CharacterArtLoad,
+} from "../characters/CharacterArt";
 import type { TextureLoad } from "../core/TextureAsset";
 import type { TweenRunner, TweenRunOptions } from "../core/TweenRunner";
 
 type Preparation = void | Promise<void>;
 type Vec2 = { x: number; y: number };
 
-interface AvatarBackImage {
-  fadeId: number;
-  sprite: Sprite;
-}
+type ElementArt =
+  | { kind: "image"; texture: Texture | null }
+  | { kind: "avatar"; art: CharacterArt | null };
 
-/** `_leftChar`/`_middleChar`/`_rightChar`/`_imgBg`/缓存的 charslot。 */
+/** CutinImageElement for _leftChar, _middleChar, _rightChar or _imgBg. */
 interface ElementState {
-  /** 元素节点对应 DoMove 的 `_offset` 和 DoScale 的缩放目标。 */
   node: Container;
   sprite: Sprite;
-  avatarBack?: AvatarBackImage;
 }
 
 interface ChannelState {
@@ -75,6 +77,9 @@ interface ChannelState {
   /** 回落路径的文字标签。 */
   label: Text | null;
   elements: Map<string, ElementState>;
+  /** The single CutinAVGCharacterSlot owned by this channel. */
+  avatar?: CharacterSlotView;
+  avatarLoadId: number;
   /** 模板 scaleNode 的当前比例(clear 从这里收缩到 tsto)。 */
   ratio: Vec2;
   /** 回落矩形的尺寸。 */
@@ -140,14 +145,11 @@ function isEmptyName(name: string): boolean {
 }
 
 /**
- * Native `_GetImgElementByParam`: type 2 is always the channel `_imgBackground`
- * and type 3 a single cached `CutinAVGCharacterSlot` (slot ignored); type 1
- * maps "right"/"r" and "left"/"l", everything else (empty or unknown) to
- * `_middleChar` without any error. Keys are uncollidable across types.
+ * CutinChannel._GetImgElementByParam (2791 @ 0x1814FA130). Type 2 uses
+ * _imgBackground. Type 1 chooses a left, right or default middle image.
  */
 function elementKeyFor(input: InterludeInput): string {
   if (input.type === 2) return "\u0000bg";
-  if (input.type === 3) return "\u0000avatar";
   if (input.slot === "right" || input.slot === "r") return "r";
   if (input.slot === "left" || input.slot === "l") return "l";
   return "m";
@@ -197,8 +199,8 @@ function elementKeyFor(input: InterludeInput): string {
  *
  * Web adaptations: stencil channels are PIXI Graphics masks; unknown maskids
  * fall back to the legacy plain rectangle; a dialog displays its own
- * portrait while type 1 runs the channel element sequence; type 3 avatars
- * keep the texture's native size centred on the element.
+ * portrait while type 1 runs the channel element sequence. The regular
+ * type 3 branch uses the prefab's bottom anchor and the portrait hub rect.
  */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
@@ -207,6 +209,7 @@ export class InterludePanel {
   constructor(
     private readonly layer: Container,
     private readonly loadTexture: (input: InterludeInput) => TextureLoad,
+    private readonly loadAvatar: (input: InterludeInput) => CharacterArtLoad,
     private readonly tween: TweenRunner["run"],
     private readonly onWarning?: (detail: string) => void,
   ) {}
@@ -328,11 +331,16 @@ export class InterludePanel {
       if (input.type === 1) {
         // Type 1 still creates a channel element sequence. The dialog has
         // its own portrait, so keep the channel content hidden.
-        return this.prepareTexture(
+        return this.prepareAsset(
           state,
           input.name ? this.loadTexture(input) : null,
           (texture) => {
-            this.processElement(state, input, texture, complete);
+            this.processElement(
+              state,
+              input,
+              { kind: "image", texture },
+              complete,
+            );
             this.refreshDialog(state, dialog, input, () => texture);
           },
         );
@@ -359,10 +367,28 @@ export class InterludePanel {
       if (!input.block) complete();
       return;
     }
-    return this.prepareTexture(
+    if (input.type === 3) {
+      const loadId = input.name ? ++state.avatarLoadId : state.avatarLoadId;
+      return this.prepareAsset(
+        state,
+        input.name ? this.loadAvatar(input) : null,
+        (art) => {
+          if (input.name && state.avatarLoadId !== loadId) complete();
+          else
+            this.processElement(
+              state,
+              input,
+              { kind: "avatar", art },
+              complete,
+            );
+        },
+      );
+    }
+    return this.prepareAsset(
       state,
       input.name ? this.loadTexture(input) : null,
-      (texture) => this.processElement(state, input, texture, complete),
+      (texture) =>
+        this.processElement(state, input, { kind: "image", texture }, complete),
     );
   }
 
@@ -397,6 +423,7 @@ export class InterludePanel {
       fallbackMask: null,
       label: null,
       elements: new Map(),
+      avatarLoadId: 0,
       ratio: { x: 1, y: 1 },
       size: { ...input.size },
       scaleGen: 0,
@@ -600,14 +627,6 @@ export class InterludePanel {
     sprite.anchor.set(0.5);
     node.addChild(sprite);
     const element: ElementState = { node, sprite };
-    if (type === 3) {
-      const back = new Sprite();
-      back.anchor.set(0.5);
-      back.visible = false;
-      sprite.visible = false;
-      node.addChildAt(back, 0);
-      element.avatarBack = { fadeId: 0, sprite: back };
-    }
     // Inactive until SetCutinElement assigns a sprite.
     node.visible = false;
     // cutin_channel prefab: char_img_right sits at (-140, 63) until a DoMove.
@@ -621,11 +640,56 @@ export class InterludePanel {
   private processElement(
     state: ChannelState,
     input: InterludeInput,
-    texture: Texture | null,
+    resource: ElementArt,
     complete: () => void,
   ): void {
-    const element = this.ensureElement(state, elementKeyFor(input), input.type);
-    const { avatarBack, node } = element;
+    let root: Container;
+    let offset: Container;
+    let alphaTarget: Container | null = null;
+    const isAvatar = resource.kind === "avatar";
+    const from = Math.max(input.alphaFrom, 0);
+    const to = input.alphaTo >= 0 ? input.alphaTo : 1;
+    if (isAvatar) {
+      // CutinAVGCharacterSlot (2791 @ 0x1814F8E50 / 0x1814F8C20 /
+      // 0x1814F8D20). The cutin_charslot prefab is anchored at the canvas
+      // bottom. Move targets _offset and scale targets the slot transform.
+      const avatar = (state.avatar ??= new CharacterSlotView(
+        state.charPoz,
+        0,
+        STORY_HEIGHT / 2,
+      ));
+      root = avatar.root;
+      offset = avatar.offset;
+      if (input.name) {
+        const { front, isAlive, outgoing } = avatar.swap(resource.art, from);
+        alphaTarget = front;
+        // The back Image fade is independent of the element sequence.
+        if (outgoing)
+          this.runTween(
+            state,
+            input.alphaDurationMs,
+            outgoing.update,
+            outgoing.finish,
+            {
+              deferZeroDuration: true,
+              ease: linearEase,
+              isAlive,
+            },
+          );
+      }
+    } else {
+      const element = this.ensureElement(
+        state,
+        elementKeyFor(input),
+        input.type,
+      );
+      root = offset = element.node;
+      if (resource.texture) {
+        element.sprite.texture = resource.texture;
+        root.visible = true;
+        alphaTarget = root;
+      }
+    }
     let sequence: Sequence | undefined;
     const tracks = () => (sequence ??= new Sequence(this.tween));
 
@@ -633,33 +697,18 @@ export class InterludePanel {
     // sequence appends its alpha tween and joins the position/scale tweens.
     // DOKill(element) leaves the child tweens in earlier sequences active.
     if (input.name) {
-      if (avatarBack) {
-        this.swapAvatar(
-          state,
-          element,
-          avatarBack,
-          texture,
-          input.alphaDurationMs,
-        );
-      } else if (texture) {
-        element.sprite.texture = texture;
-      }
-      if (texture) {
-        node.visible = true;
-        const from = Math.max(input.alphaFrom, 0);
-        const to = input.alphaTo >= 0 ? input.alphaTo : 1;
-        const target = avatarBack ? element.sprite : node;
+      if (alphaTarget) {
         // _GenForeImageTween uses the AVGCharacterSlot prefab's Linear ease
         // even at zero duration. CutinImageElement uses the DOTween default.
-        if (avatarBack || input.alphaDurationMs > TWEEN_ZERO_MS) {
-          target.alpha = from;
+        if (isAvatar || input.alphaDurationMs > TWEEN_ZERO_MS) {
+          alphaTarget.alpha = from;
           tracks().append({
             durationMs: input.alphaDurationMs,
-            ease: avatarBack ? linearEase : dotweenDefaultEase,
-            update: tweenAlpha(target, to),
+            ease: isAvatar ? linearEase : dotweenDefaultEase,
+            update: tweenAlpha(alphaTarget, to),
           });
         } else {
-          target.alpha = to;
+          alphaTarget.alpha = to;
         }
       } else {
         this.onWarning?.(`interlude element asset is missing: ${input.name}`);
@@ -670,25 +719,25 @@ export class InterludePanel {
       const from = input.positionFrom;
       const to = input.positionTo;
       // SlotMoveChar (2791 @ 0x1842389E0) applies a near-zero move inline.
-      if (avatarBack && Math.abs(input.durationMs) <= TWEEN_ZERO_MS) {
-        node.position.set(to.x, -to.y);
+      if (isAvatar && Math.abs(input.durationMs) <= TWEEN_ZERO_MS) {
+        offset.position.set(to.x, -to.y);
       } else {
-        node.position.set(from.x, -from.y);
+        offset.position.set(from.x, -from.y);
         tracks().join({
           durationMs: input.durationMs,
-          ease: avatarBack ? avatarMoveEase : dotweenDefaultEase,
-          update: tweenPoint(node.position, to.x, -to.y),
+          ease: isAvatar ? avatarMoveEase : dotweenDefaultEase,
+          update: tweenPoint(offset.position, to.x, -to.y),
         });
       }
     }
     if (input.scaleFrom && input.scaleTo) {
       const from = input.scaleFrom;
       const to = input.scaleTo;
-      node.scale.set(from.x, from.y);
+      root.scale.set(from.x, from.y);
       tracks().join({
         durationMs: input.scaleDurationMs,
         ease: dotweenDefaultEase,
-        update: tweenPoint(node.scale, to.x, to.y),
+        update: tweenPoint(root.scale, to.x, to.y),
       });
     }
 
@@ -704,43 +753,6 @@ export class InterludePanel {
       onComplete,
     });
     if (!input.block) complete();
-  }
-
-  /**
-   * AVGCharacterSlot._SlotSetCharInternal (2791 @ 0x18423A040) swaps the
-   * two images. _LoadImage and _GenBackImageTween kill the direct fade
-   * on the reused images. The new back fade runs outside the command sequence.
-   */
-  private swapAvatar(
-    state: ChannelState,
-    element: ElementState,
-    avatarBack: AvatarBackImage,
-    texture: Texture | null,
-    durationMs: number,
-  ): void {
-    const incoming = avatarBack.sprite;
-    const outgoing = element.sprite;
-    element.sprite = incoming;
-    avatarBack.sprite = outgoing;
-    element.node.setChildIndex(incoming, element.node.children.length - 1);
-    incoming.visible = texture !== null;
-    if (texture) incoming.texture = texture;
-
-    const fadeId = ++avatarBack.fadeId;
-    if (!outgoing.visible) return;
-    this.runTween(
-      state,
-      durationMs,
-      tweenAlpha(outgoing, 0),
-      () => {
-        outgoing.visible = false;
-      },
-      {
-        deferZeroDuration: true,
-        ease: linearEase,
-        isAlive: () => avatarBack.fadeId === fadeId,
-      },
-    );
   }
 
   /** TryPlayAnimation @ 0x1814FABE0 restarts a direction clip. */
@@ -808,7 +820,7 @@ export class InterludePanel {
         setDialogBackground(dialog, null);
         return;
       }
-      return this.prepareTexture(state, loadTexture(), (texture) => {
+      return this.prepareAsset(state, loadTexture(), (texture) => {
         if (texture) setDialogBackground(dialog, texture);
         else
           this.onWarning?.(
@@ -831,7 +843,7 @@ export class InterludePanel {
       if (isEmptyName(input.name)) {
         image.visible = false;
       } else {
-        return this.prepareTexture(state, loadTexture(), (texture) => {
+        return this.prepareAsset(state, loadTexture(), (texture) => {
           if (texture) {
             image.texture = texture;
             image.visible = true;
@@ -848,17 +860,17 @@ export class InterludePanel {
     layoutChar();
   }
 
-  private prepareTexture(
+  private prepareAsset<T>(
     state: ChannelState,
-    texture: TextureLoad,
-    use: (texture: Texture | null) => void,
+    asset: T | null | Promise<T | null>,
+    use: (asset: T | null) => void,
   ): Preparation {
-    const apply = (resolved: Texture | null) => {
+    const apply = (resolved: T | null) => {
       if (!state.root.destroyed) use(resolved);
     };
-    return texture instanceof Promise
-      ? texture.then(apply, () => apply(null))
-      : apply(texture);
+    return asset instanceof Promise
+      ? asset.then(apply, () => apply(null))
+      : apply(asset);
   }
 
   private clear(input: InterludeInput, complete: () => void): void {

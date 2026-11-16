@@ -15,6 +15,7 @@ import {
   type StoryAssetFamily,
 } from "./asset";
 import { resolveAvgDisplayStyle } from "./avgDisplay";
+import { describeCharacterPortrait } from "./characterPortrait";
 import { resolveCharacterSelection } from "./characterRef";
 import { toNumber, toString } from "./commandParams";
 import {
@@ -252,34 +253,26 @@ function addCharacterUrls(
       const link = context.linkMap[resolved.base];
       if (!link) continue;
 
-      const item = link.array.find(
-        (entry) => entry.name === resolved.expression,
-      );
-      if (!item) continue;
+      const portrait = describeCharacterPortrait(link, resolved.expression);
+      if (!portrait) continue;
 
-      if (item.group === -1 && "image" in item && item.image) {
-        const imageUrl = addCharacterUrl(urls, item.image);
-        if (imageUrl) {
+      if (portrait.face) {
+        const faceUrl = addCharacterUrl(urls, portrait.face.image);
+        const bodyUrl = addCharacterUrl(urls, portrait.body);
+        if (faceUrl && bodyUrl)
+          addFaceGroup(link, portrait.face.group, bodyUrl, resolved.expression);
+      } else {
+        const bodyUrl = addCharacterUrl(urls, portrait.body);
+        if (bodyUrl) {
           for (const [groupIndex, group] of link.groups.entries()) {
             if (
               group.mode === "face_overlay" &&
-              resolveCharacterUrl(group.base) === imageUrl
+              resolveCharacterUrl(group.base) === bodyUrl
             )
-              addFaceGroup(link, groupIndex, imageUrl);
+              addFaceGroup(link, groupIndex, bodyUrl);
           }
         }
-        continue;
       }
-
-      if (!("face" in item) || !item.face || item.group < 0) continue;
-
-      const group = link.groups[item.group];
-      if (group?.mode !== "face_overlay") continue;
-
-      const usedFaceUrl = addCharacterUrl(urls, item.face);
-      const baseUrl = addCharacterUrl(urls, group.base);
-      if (!usedFaceUrl || !baseUrl) continue;
-      addFaceGroup(link, item.group, baseUrl, item.name);
     }
   }
 

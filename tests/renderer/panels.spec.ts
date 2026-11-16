@@ -25,9 +25,10 @@ import {
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
+import type { Context } from "../../src/widgets/StoryPlayer/context";
+import type { CharacterArt } from "../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
 import type { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import type { CutinCharacterArt } from "../../src/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
 import type { StoryShowItemSlot } from "../../src/widgets/StoryPlayer/engine/types";
 
 interface ManualTween {
@@ -92,8 +93,10 @@ const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 async function createRenderedPlayback(
   script: string[],
   draw: (layers: LayerGraph) => void,
+  characters?: Context["linkMap"],
 ) {
   const context = createContext(script);
+  Object.assign(context.linkMap, characters);
   const urls = new Set<string>();
   const load = vi.spyOn(Assets, "load").mockImplementation(async (assets) => {
     const textures: Record<string, Texture> = {};
@@ -133,6 +136,113 @@ async function createRenderedPlayback(
     runtime,
   };
 }
+
+describe("Interlude avatar rendering", () => {
+  it.each([
+    {
+      base: "avg_npc_222",
+      ref: "avg_npc_222",
+      pos: { x: 0, y: 200 },
+      size: 1220,
+      sheet: 1024,
+      move: "-250,0",
+      center: { x: 390, y: 520 },
+      faceRect: undefined,
+    },
+    {
+      base: "avg_npc_1983_1",
+      ref: "avg_npc_1983_1#1$1",
+      pos: { x: -200, y: 175 },
+      size: 960,
+      sheet: 1255,
+      move: "-350,-50",
+      center: { x: 90, y: 595 },
+      faceRect: { h: 147, w: 122, x: 848, y: 75 },
+    },
+  ])(
+    "applies the 2791 bottom anchor and hub rect for $base",
+    async ({ base, ref, pos, size, sheet, move, center, faceRect }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[interlude(channel=3,maskid="group_interclude_vertical_common",offset="-250,0")]',
+          `[interlude(channel=3,type=3,name="${ref}",pfrom="${move}",pto="${move}",duration=0,block=true)]`,
+          '[name="A"]ok',
+        ],
+        () => {},
+        {
+          [base]: {
+            array: faceRect
+              ? [{ alias: "", face: "face", group: 0, name: "1$1" }]
+              : [{ alias: "", group: -1, image: "body", name: base }],
+            groups: faceRect
+              ? [{ base: "body", faceRect, mode: "face_overlay" }]
+              : [],
+            pos,
+            size: { x: size, y: size },
+          },
+        },
+      );
+      const createTexture = (width: number, height: number) => {
+        const resource = document.createElement("canvas");
+        resource.width = width;
+        resource.height = height;
+        return new Texture({ source: new TextureSource({ resource }) });
+      };
+      const body = createTexture(sheet, sheet);
+      const face = createTexture(122, 147);
+      renderer.textureForCharacterKey = (key: string) =>
+        key === "body" ? body : face;
+      const drawImage = vi.fn();
+      const context = vi
+        .spyOn(
+          HTMLCanvasElement.prototype as {
+            getContext: (kind: "2d") => CanvasRenderingContext2D | null;
+          },
+          "getContext",
+        )
+        .mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+      const findSprite = (node: Container): Sprite | undefined => {
+        if (node instanceof Sprite) return node.visible ? node : undefined;
+        for (const child of node.children) {
+          const sprite = findSprite(child);
+          if (sprite) return sprite;
+        }
+      };
+      const started = runtime.start();
+      try {
+        app.ticker.update(16);
+        const channel = renderer.layers.cutins.children[0] as Container;
+        const charScale = channel.children[1].children[1];
+        const sprite = findSprite(charScale);
+        expect(sprite?.getGlobalPosition()).toMatchObject(center);
+        expect(sprite?.width).toBeCloseTo(size);
+        expect(sprite?.height).toBeCloseTo(size);
+        const expectedFace = faceRect
+          ? [
+              [
+                face.source.resource,
+                0,
+                0,
+                122,
+                147,
+                faceRect.x,
+                faceRect.y,
+                faceRect.w,
+                faceRect.h,
+              ],
+            ]
+          : [];
+        expect(drawImage.mock.calls.slice(1)).toEqual(expectedFace);
+      } finally {
+        destroy();
+        context.mockRestore();
+        body.destroy(true);
+        face.destroy(true);
+        await started;
+      }
+    },
+  );
+});
 
 describe("CG item rendering", () => {
   const showLines = [
@@ -1097,7 +1207,7 @@ describe("Displayable and focus frame order", () => {
       old: '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=1,block=true)]',
       replacement:
         '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0,block=false)]',
-      textureMethod: "textureForCutinCharacter",
+      textureMethod: "loadCharacterArt",
     },
     {
       old: '[interlude(channel=3,type=3,name="avg_npc_1",maskid="interlude_dialog_left",block=true)]',
@@ -1120,14 +1230,19 @@ describe("Displayable and focus frame order", () => {
         ({ cutins, cgItems }) =>
           draws.push([cutins.children.length, cgItems.children.length]),
       );
-      const pending = Promise.withResolvers<Texture | CutinCharacterArt>();
+      const pending = Promise.withResolvers<Texture | CharacterArt>();
       const texture = new Texture({ label: "late art" });
       const hasLateArt = (node: Container): boolean =>
         (node instanceof Sprite && node.texture === texture) ||
         node.children.some(hasLateArt);
       const lateArt =
-        textureMethod === "textureForCutinCharacter"
-          ? { offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1, texture }
+        textureMethod === "loadCharacterArt"
+          ? {
+              acquire: () => ({ texture }),
+              height: texture.height,
+              pos: { x: 0, y: 0 },
+              width: texture.width,
+            }
           : texture;
       const load = vi
         .spyOn(renderer, textureMethod)
