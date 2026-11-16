@@ -1,8 +1,11 @@
 import { Container, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { InterludePanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/InterludePanel";
 import { CLIP_SECONDS } from "../src/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates";
+
+import { PlaybackTestFrames } from "./helpers/playbackFrames";
 
 import type { InterludeInput } from "../src/widgets/StoryPlayer/engine/types";
 
@@ -192,6 +195,45 @@ describe("InterludePanel", () => {
     expect(avatar.node.position.x).toBe(-250);
     expect(state.charPoz.position.x).toBe(0);
   });
+
+  it.each([
+    { durationMs: 0, startX: -460, halfwayX: -460 },
+    { durationMs: 0.01, startX: -460, halfwayX: -460 },
+    { durationMs: 0.2, startX: -450, halfwayX: -458.75 },
+  ])(
+    "moves the avatar using SlotMoveChar with a $durationMs ms duration",
+    ({ durationMs, startX, halfwayX }) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const runner = new TweenRunner(
+        () => true,
+        (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+      );
+      const panel = new InterludePanel(
+        new Container(),
+        () => Texture.WHITE,
+        runner.run.bind(runner),
+      );
+      panel.run(input({ block: false, maskId: SQUARE }));
+      const wait = panel.run(
+        input({
+          durationMs,
+          name: "avg_1041_angel2_1#9$1",
+          positionFrom: { x: -450, y: 0 },
+          positionTo: { x: -460, y: 0 },
+          type: 3,
+        }),
+      );
+      const { node } = channel(panel).elements.get("\u0000avatar");
+      expect(node.x).toBe(startX);
+      expect(wait?.endReason).toBeUndefined();
+      frames.step(durationMs / 2);
+      expect(node.x).toBe(halfwayX);
+      frames.step(durationMs / 2);
+      expect(node.x).toBe(-460);
+      expect(wait?.endReason).toBe("complete");
+    },
+  );
 
   it("runs alpha/pos/scale tweens in parallel with their own durations", async () => {
     const tweens: Array<{
@@ -512,7 +554,7 @@ describe("InterludePanel", () => {
     expect(warnings).toEqual([]);
   });
 
-  it("releases a blocking clear-all on the first recycled channel", async () => {
+  it("releases a blocking clear-all once on the first recycled channel", async () => {
     const layer = new Container();
     const hides = new Map<number, () => void>();
     const panel = new InterludePanel(
@@ -544,14 +586,14 @@ describe("InterludePanel", () => {
     expect(finish).toHaveBeenCalledTimes(1);
     expect(layer.children).toHaveLength(1);
     hides.get(500)!();
-    expect(finish).toHaveBeenCalledTimes(2);
+    expect(finish).toHaveBeenCalledTimes(1);
     expect(layer.children).toHaveLength(0);
 
     const emptyClear = panel.run(input({ channel: -1, clear: true }), finish);
     expect(emptyClear).toMatchObject({ blocking: true, endReason: undefined });
     panel.clearAll();
     expect(emptyClear?.endReason).toBe("reset");
-    expect(finish).toHaveBeenCalledTimes(2);
+    expect(finish).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the deco name when a later command has no char", async () => {
@@ -903,53 +945,59 @@ describe("InterludePanel mask templates", () => {
     expect(layer.children).toHaveLength(0);
   });
 
-  it("runs only the direction clip and waits for a reset when the update blocks", async () => {
-    const durations: number[] = [];
-    const panel = new InterludePanel(
-      new Container(),
-      () => Texture.EMPTY,
-      recordingTween(durations),
-    );
+  it.each([false, true])(
+    "runs the element sequence alongside the direction clip with block=%s",
+    async (block) => {
+      const durations: number[] = [];
+      const panel = new InterludePanel(
+        new Container(),
+        () => Texture.EMPTY,
+        recordingTween(durations),
+      );
 
-    // act44side_08_end shape: horizon channel, then a direction uichar.
-    await panel.run(
-      input({
-        maskId: "ui_cutin_mask_horizon",
-        offset: { x: 0, y: 180 },
-        size: { x: 1300, y: 360 },
-        style: 3,
-      }),
-    )?.completion;
-    durations.length = 0;
+      // act44side_08_end shape: horizon channel, then a direction uichar.
+      await panel.run(
+        input({
+          maskId: "ui_cutin_mask_horizon",
+          offset: { x: 0, y: 180 },
+          size: { x: 1300, y: 360 },
+          style: 3,
+        }),
+      )?.completion;
+      durations.length = 0;
 
-    const wait = panel.run(
-      input({
-        direction: "rin",
-        durationMs: 1000,
-        maskId: "ui_cutin_mask_horizon",
-        name: "cutin_char_21",
-        positionFrom: { x: 0, y: 180 },
-        positionTo: { x: -200, y: 180 },
-        scaleDurationMs: 300,
-        scaleFrom: { x: 1.5, y: 1.5 },
-        scaleTo: { x: 1, y: 1 },
-        slot: "m",
-        type: 1,
-      }),
-    );
-    const state = channel(panel);
-    const { node } = state.elements.get("m");
-    // aDuration 0: SetCutinElement sets alpha straight to aTo (1).
-    expect(node.alpha).toBe(1);
-    expect(node.position.x).toBe(0);
-    expect(node.position.y).toBe(-180);
-    expect(durations).toEqual([CLIP_SECONDS.direction * 1000]);
-    expect(wait).toMatchObject({ blocking: true, endReason: undefined });
-    panel.clearAll();
-    expect(wait?.endReason).toBe("reset");
-    // The clip's alpha envelope ends at 0.
-    expect(state.root.alpha).toBeCloseTo(0, 3);
-  });
+      const wait = panel.run(
+        input({
+          block,
+          direction: "rin",
+          durationMs: 1000,
+          maskId: "ui_cutin_mask_horizon",
+          name: "cutin_char_21",
+          positionFrom: { x: 0, y: 180 },
+          positionTo: { x: -200, y: 180 },
+          scaleDurationMs: 300,
+          scaleFrom: { x: 1.5, y: 1.5 },
+          scaleTo: { x: 1, y: 1 },
+          slot: "m",
+          type: 1,
+        }),
+      );
+      const state = channel(panel);
+      const { node } = state.elements.get("m");
+      // aDuration 0: SetCutinElement sets alpha straight to aTo (1).
+      expect(node.alpha).toBe(1);
+      expect(node.position.x).toBe(-200);
+      expect(node.position.y).toBe(-180);
+      expect(node.scale.x).toBe(1);
+      expect(durations).toEqual([CLIP_SECONDS.direction * 1000, 1000]);
+      expect(wait?.blocking ?? false).toBe(block);
+      expect(wait?.endReason).toBeUndefined();
+      panel.clearAll();
+      expect(wait?.endReason).toBe(block ? "reset" : undefined);
+      // The clip's alpha envelope ends at 0.
+      expect(state.root.alpha).toBeCloseTo(0, 3);
+    },
+  );
 
   it("direction on a create plays the clip without mounting the element", async () => {
     const durations: number[] = [];

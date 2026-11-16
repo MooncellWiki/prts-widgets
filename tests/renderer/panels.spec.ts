@@ -1022,7 +1022,7 @@ describe("Displayable and focus frame order", () => {
   );
 
   it.each(["cached", "uncached"] as const)(
-    "resumes in the recycle frame when a blocking interlude update uses %s art",
+    "uses the Web recycle fallback for a blocking interlude update with %s art",
     async (cache) => {
       const draws: Array<[number, number]> = [];
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
@@ -1065,6 +1065,32 @@ describe("Displayable and focus frame order", () => {
       }
     },
   );
+
+  it("keeps the next blocking cutin active when the second clear-all channel recycles", async () => {
+    const draws: number[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+        '[interlude(channel=4,maskid="interlude_dialog_left")]',
+        "[interlude(clear=true,block=true,tsduration=0.016,aduration=0.032)]",
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=1,block=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ cgItems }) => draws.push(cgItems.children.length),
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(draws).toEqual([0, 0]);
+      app.ticker.update(1016);
+      expect(draws).toEqual([0, 0, 1]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
 
   it.each([
     {

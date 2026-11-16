@@ -462,73 +462,84 @@ describe("CharacterCutinPanel", () => {
     expect(state.chars[0].sprite.texture).toBe(portrait.texture);
   });
 
-  it("hide collapses the mask along the stored style and removes the slot", async () => {
-    const layer = new Container();
-    const { drive, tween } = captureTween();
+  it.each([undefined, "fade"] as const)(
+    "hide collapses the entry mask after SlotUpdate with fadestyle=%s",
+    async (fadeStyle) => {
+      const layer = new Container();
+      const { drive, tween } = captureTween();
+      const panel = new CharacterCutinPanel(
+        layer,
+        async () => art(120, 300),
+        tween,
+      );
+
+      await panel.run(
+        input({
+          block: false,
+          fadeMs: 100,
+          fadeStyle: "horiz_expand_right2left",
+        }),
+      )?.completion;
+      drive(0, 1);
+      expect(slots(panel).size).toBe(1);
+
+      await panel.run(input({ block: false, fadeStyle }))?.completion;
+      drive(1, 1);
+
+      await panel.run(
+        input({
+          block: false,
+          characterKey: undefined,
+          expression: undefined,
+          fadeMs: 100,
+          fadeStyle: undefined,
+        }),
+      )?.completion;
+      drive(2, 0.5);
+
+      const state = slots(panel).get("1")!;
+      expect(state.maskSize).toEqual({ h: 720, w: 100 });
+      expect(state.root.alpha).toBe(1);
+
+      drive(2, 1);
+      // Native b__0 @ 0x183e62c90 recycles the slot and drops the widgetID.
+      expect(slots(panel).has("1")).toBe(false);
+      expect(layer.children).toHaveLength(0);
+    },
+  );
+
+  it("uses OutQuad for fade-style entry and exit", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const runner = new TweenRunner(
+      () => true,
+      (update) => frames.onFrameUpdate(({ deltaMs }) => update(deltaMs)),
+    );
     const panel = new CharacterCutinPanel(
-      layer,
-      async () => art(120, 300),
-      tween,
+      new Container(),
+      () => art(120, 300),
+      runner.run.bind(runner),
     );
 
-    await panel.run(
-      input({
-        block: false,
-        fadeMs: 100,
-        fadeStyle: "horiz_expand_right2left",
-      }),
-    )?.completion;
-    drive(0, 1);
-    expect(slots(panel).size).toBe(1);
+    panel.run(input({ fadeMs: 100 }));
+    const state = slots(panel).get("1")!;
+    frames.step(50);
+    expect(state.root.alpha).toBeCloseTo(0.75);
+    frames.step(50);
 
-    await panel.run(
+    panel.run(
       input({
-        block: false,
         characterKey: undefined,
         expression: undefined,
         fadeMs: 100,
-        fadeStyle: undefined,
       }),
-    )?.completion;
-    drive(1, 0.5);
-
-    const state = slots(panel).get("1")!;
-    expect(state.maskSize).toEqual({ h: 720, w: 100 });
-    expect(state.root.alpha).toBe(1);
-
-    drive(1, 1);
-    // Native b__0 @ 0x183e62c90 recycles the slot and drops the widgetID.
-    expect(slots(panel).has("1")).toBe(false);
-    expect(layer.children).toHaveLength(0);
-  });
-
-  it("hide of a fade-style slot tweens alpha back to zero", async () => {
-    const layer = new Container();
-    const { drive, tween } = captureTween();
-    const panel = new CharacterCutinPanel(
-      layer,
-      async () => art(120, 300),
-      tween,
     );
+    frames.step(50);
 
-    await panel.run(input({ block: false, fadeMs: 100 }))?.completion;
-    drive(0, 1);
-
-    await panel.run(
-      input({
-        block: false,
-        characterKey: undefined,
-        expression: undefined,
-        fadeMs: 100,
-      }),
-    )?.completion;
-    drive(1, 0.5);
-
-    const state = slots(panel).get("1")!;
-    expect(state.root.alpha).toBeCloseTo(0.5);
+    expect(state.root.alpha).toBeCloseTo(0.25);
     expect(state.maskSize).toEqual({ h: 720, w: 200 });
 
-    drive(1, 1);
+    frames.step(50);
     expect(slots(panel).has("1")).toBe(false);
   });
 

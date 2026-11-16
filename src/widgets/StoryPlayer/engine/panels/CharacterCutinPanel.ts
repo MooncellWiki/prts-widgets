@@ -187,7 +187,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
     const scaleFrom = parseVector2(exactArg(args, "sfrom"));
     const scaleTo = parseVector2(exactArg(args, "sto"));
     const duration = (key: string): number =>
-      Math.round(this.playback.calculateFadeMs(exactArg(args, key), 0));
+      this.playback.calculateFadeMs(exactArg(args, key), 0);
 
     const block = toBoolean(exactArg(args, "block"), false);
     const input = {
@@ -236,8 +236,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
   }
 
   private finishIfCurrent(isCurrent?: () => boolean): void {
-    // Clear-all can finish more than one channel. Native FinishCommand uses
-    // the active command in the same playback generation.
+    // A renderer callback belongs to the playback generation that started it.
     if (isCurrent?.() !== false) this.finishCommand();
   }
 }

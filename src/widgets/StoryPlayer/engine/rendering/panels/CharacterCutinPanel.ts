@@ -7,6 +7,7 @@ import {
   type CharacterCutinFadeStyle,
   type CharacterCutinInput,
 } from "../../types";
+import { dotweenDefaultEase } from "../core/DotweenEase";
 
 import type { TweenRunner } from "../core/TweenRunner";
 
@@ -91,8 +92,8 @@ interface CutinSlotState {
   charSlotY: number;
   /** `_zoomAndPovRectTransform` port: scale = zoom, position = (-povX, povY). */
   content: Container;
-  /** `m_showFadeStyle`: the last style stored by Show/SlotUpdate, drives Hide. */
-  fadeStyle: number;
+  /** `m_showFadeStyle` is set by Show and read by Hide (2791 @ 0x184203800). */
+  readonly fadeStyle: number;
   mask: Graphics;
   /** Current mask size; the expand animations tween this instead of the sprite. */
   maskSize: { h: number; w: number };
@@ -211,8 +212,9 @@ export class CharacterCutinPanel {
     const start = (texture: CutinCharacterArt | null) => {
       if (!isAlive()) return;
       play(texture, (duration, update, done) => {
-        // Show, SlotUpdate and Hide attach OnComplete even at zero fade time
-        // (2791 @ 0x184203DA0 / 0x184204B20 / 0x184203800).
+        // Show, SlotUpdate and Hide use the bundled DOTweenSettings' OutQuad
+        // and attach OnComplete even at zero fade time (2791 @ 0x184203DA0 /
+        // 0x184204B20 / 0x184203800).
         void this.tween(
           duration,
           (progress) => {
@@ -226,7 +228,7 @@ export class CharacterCutinPanel {
               onComplete?.();
             }
           },
-          { deferZeroDuration: true, isAlive },
+          { deferZeroDuration: true, ease: dotweenDefaultEase, isAlive },
         );
       });
       // A cache miss waits for the slot setup. A nonblocking command then
@@ -281,8 +283,6 @@ export class CharacterCutinPanel {
     keepsArt: boolean,
     tween: SlotTween,
   ): void {
-    state.fadeStyle = fadeStyleId(input.fadeStyle);
-
     const start = {
       alpha: state.root.alpha,
       contentX: state.content.x,

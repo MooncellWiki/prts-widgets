@@ -9,6 +9,7 @@ import {
 
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import { STORY_HEIGHT, STORY_WIDTH, type InterludeInput } from "../../types";
+import { dotweenEaseCurve } from "../core/DotweenEase";
 import { Sequence } from "../core/Sequence";
 
 import {
@@ -100,6 +101,10 @@ const KNOWN_MASK_IDS = new Set([
   "interlude_dialog_left",
   "interlude_dialog_right",
 ]);
+
+// AVGCharacterSlot.SlotMoveChar tests MathUtil.IsZero against 1e-5 seconds.
+const AVATAR_MOVE_ZERO_MS = 0.01;
+const avatarMoveEase = dotweenEaseCurve("OutCubic");
 
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
@@ -193,7 +198,7 @@ export class InterludePanel {
       this.pending.delete(animation),
     );
     const complete = () => {
-      if (animation.endReason === "reset" || animation.failure) return;
+      if (animation.endReason !== undefined) return;
       animation.end();
       onComplete?.();
     };
@@ -629,17 +634,24 @@ export class InterludePanel {
       const from = input.positionFrom;
       const to = input.positionTo;
       const gen = ++element.moveGen;
-      node.position.set(from.x, -from.y);
-      tracks().join({
-        durationMs: input.durationMs,
-        update: (progress) => {
-          if (element.moveGen !== gen) return;
-          node.position.set(
-            lerp(from.x, to.x, progress),
-            -lerp(from.y, to.y, progress),
-          );
-        },
-      });
+      // SlotMoveChar (2791 @ 0x1842389E0) applies a near-zero move inline.
+      const isAvatar = input.type === 3;
+      if (isAvatar && Math.abs(input.durationMs) <= AVATAR_MOVE_ZERO_MS) {
+        node.position.set(to.x, -to.y);
+      } else {
+        node.position.set(from.x, -from.y);
+        tracks().join({
+          durationMs: input.durationMs,
+          ease: isAvatar ? avatarMoveEase : undefined,
+          update: (progress) => {
+            if (element.moveGen !== gen) return;
+            node.position.set(
+              lerp(from.x, to.x, progress),
+              -lerp(from.y, to.y, progress),
+            );
+          },
+        });
+      }
     }
     if (input.scaleFrom && input.scaleTo) {
       const from = input.scaleFrom;
@@ -658,19 +670,16 @@ export class InterludePanel {
       });
     }
 
-    if (this.playDirection(state, input)) {
-      // TryPlayAnimation plays the channel clip instead of starting the
-      // element sequence, so a blocking update has no completion callback.
-      if (!input.block) complete();
-      return;
-    }
-
+    // 2791 enables DOTween AutoPlay.All. The element sequence plays alongside
+    // the direction clip, and _ProcessElement omits OnComplete in that branch.
+    const playsDirection = this.playDirection(state, input);
+    const onComplete = input.block && !playsDirection ? complete : undefined;
     // Sequence.DoStartup @ 0x18442C6F0 takes an empty sequence with OnComplete.
-    if (input.block) tracks();
+    if (onComplete) tracks();
     void sequence?.play({
       deferZeroDuration: true,
       isAlive: () => !state.root.destroyed,
-      onComplete: input.block ? complete : undefined,
+      onComplete,
     });
     if (!input.block) complete();
   }
@@ -802,16 +811,15 @@ export class InterludePanel {
           ? [[input.channel, channel] as const]
           : [];
 
-    // CutinController._ProcessChannelClean (2791 @ 0x1814FB710) registers a
-    // callback per channel. Recycle each Web view independently and release
-    // on the first completion.
+    // Web recycles each channel independently and releases the clear once.
+    // The 2791 all-channel callback (0x181507EC0) reads an unset channel.
     for (const [id, state] of states) {
       const gen = ++state.hideGen;
       const isCurrent = () => state.hideGen === gen;
       this.hide(state, input, isCurrent, () => {
         if (state.hideGen !== gen || state.root.destroyed) return;
-        // Retired views skip their texture and tween callbacks. Release their
-        // frame waits here so the runtime can advance on the recycle frame.
+        // 2791 OnRecycle (0x1814F9CD0) kills these sequences without completion.
+        // Web releases the retired view's waits here so playback can continue.
         for (const [animation, owner] of this.pending) {
           if (owner === state) animation.end("reset");
         }
