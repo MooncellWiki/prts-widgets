@@ -122,8 +122,8 @@ export class CharacterCutinPanel extends ExecutorComponent {
       : undefined;
 
     // AVGCharacterCutinSlot.Show/SlotUpdate read the case-sensitive layout
-    // keys verbatim. Preserve omitted values so Show can use the prefab
-    // defaults and SlotUpdate can hold the slot's current values.
+    // keys verbatim. Preserve omitted values for Show's prefab defaults
+    // and SlotUpdate's defaults derived from the live transforms.
     const input = {
       block,
       characterKey: resolved?.base,

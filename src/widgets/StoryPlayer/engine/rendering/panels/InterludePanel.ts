@@ -81,6 +81,7 @@ interface ChannelState {
   /** 回落路径的文字标签。 */
   label: Text | null;
   elements: Map<string, ElementState>;
+  elementScales: Map<string, Vec2>;
   /** The single CutinAVGCharacterSlot owned by this channel. */
   avatar?: CharacterSlotView;
   avatarLoadId: number;
@@ -207,6 +208,7 @@ function elementKeyFor(input: InterludeInput): string {
  */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
+  private readonly recycledElementScales: Map<string, Vec2>[] = [];
   private readonly pending = new Map<ExecutionHandle, ChannelState | null>();
 
   constructor(
@@ -264,6 +266,7 @@ export class InterludePanel {
     for (const state of this.channels.values())
       state.root.destroy({ children: true });
     this.channels.clear();
+    this.recycledElementScales.length = 0;
   }
 
   destroy(): void {
@@ -433,6 +436,7 @@ export class InterludePanel {
       fallbackMask: null,
       label: null,
       elements: new Map(),
+      elementScales: this.recycledElementScales.pop() ?? new Map(),
       avatarLoadId: 0,
       avatarName: "",
       size: { ...input.size },
@@ -659,6 +663,8 @@ export class InterludePanel {
     const existing = state.elements.get(key);
     if (existing) return existing;
     const node = new Container();
+    const scale = state.elementScales.get(key);
+    if (scale) node.scale.set(scale.x, scale.y);
     const sprite = new Sprite();
     sprite.anchor.set(0.5);
     node.addChild(sprite);
@@ -964,6 +970,14 @@ export class InterludePanel {
     if (this.channels.get(id) !== state) return;
     this.channels.delete(id);
     state.root.removeFromParent();
+    // CutinImageElement.ClearElement (2791 @ 0x1814FC0C0) keeps the image
+    // scale. GameObjectPool.Allocate (0x182AB73D0) reuses the last channel
+    // returned to the pool. Preserve its scales across Pixi node rebuilds.
+    for (const [key, { node }] of state.elements) {
+      const { x, y } = node.scale;
+      state.elementScales.set(key, { x, y });
+    }
+    this.recycledElementScales.push(state.elementScales);
     // OnRecycle (2791 @ 0x1814F9CD0) kills the element sequences. Web
     // settles their waits here, as well as any unfinished texture loads.
     for (const [animation, owner] of this.pending) {

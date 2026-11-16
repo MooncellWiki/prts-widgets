@@ -143,6 +143,53 @@ describe("InterludePanel", () => {
     expect(layer.children).toHaveLength(0);
   });
 
+  it("reuses the background scale across channel IDs until the panel resets", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    const show = { block: false, maskId: "ui_cutin_mask_vertical", style: 1 };
+    const clear = { block: false, clear: true };
+
+    // act33side_01_end: channel 2 scales the background, then channel 3
+    // reuses the pooled channel with no sfrom or sto.
+    panel.run(input({ ...show, channel: 2 }));
+    panel.run(
+      input({
+        block: false,
+        channel: 2,
+        name: "27_g4_giantwall",
+        scaleFrom: { x: 1.3, y: 1.3 },
+        scaleTo: { x: 1.3, y: 1.3 },
+        type: 2,
+      }),
+    );
+    frames.step(16);
+    panel.run(input({ ...clear, channel: 2 }));
+    frames.step(16);
+
+    const background = {
+      block: false,
+      name: "44_g3_ludwigsuniv_outside",
+      type: 2,
+    } as const;
+    panel.run(input({ ...show, channel: 3 }));
+    panel.run(input({ ...background, channel: 3 }));
+    const inherited = channel(panel, 3).elements.get("\u0000bg").node.scale;
+    expect([inherited.x, inherited.y]).toEqual([1.3, 1.3]);
+
+    panel.run(input({ ...clear, channel: 3 }));
+    frames.step(16);
+    panel.clearAll();
+    panel.run(input({ ...show, channel: 3 }));
+    panel.run(input({ ...background, channel: 3 }));
+    const reset = channel(panel, 3).elements.get("\u0000bg").node.scale;
+    expect([reset.x, reset.y]).toEqual([1, 1]);
+  });
+
   it("drives only the deco wave toggle with switch, never content visibility", async () => {
     const panel = createPanel(
       new Container(),

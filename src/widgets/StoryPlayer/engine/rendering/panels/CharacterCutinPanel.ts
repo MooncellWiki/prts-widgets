@@ -265,8 +265,9 @@ export class CharacterCutinPanel {
     art: CharacterArt | null,
     tween: SlotTween,
   ): void {
-    // AVGCharacterSlot.Set(name, 0.0, white) swaps the sprite instantly.
-    this.setPortrait(state, input, art, 1);
+    // Show (2791 @ 0x184203DA0) calls AVGCharacterSlot.Set(name, 0, white).
+    // The front image stays transparent until its first DOTween update.
+    this.fadePortrait(input, state, art, 0);
 
     if (state.fadeStyle === 0) {
       // Fade the canvas group with the mask already at full size.
@@ -318,7 +319,7 @@ export class CharacterCutinPanel {
     // SlotUpdate reads the live layout before starting its tween.
     const layout = layoutFor(input, start);
 
-    if (!keepsArt) this.crossfadeCharacter(input, state, art);
+    if (!keepsArt) this.fadePortrait(input, state, art, input.fadeMs);
 
     // SlotUpdate (2791 @ 0x184204B20) uses targetless DOTween.To.
     tween(input.fadeMs, (progress) => {
@@ -335,17 +336,21 @@ export class CharacterCutinPanel {
     });
   }
 
-  /** AVGCharacterSlot.Set owns the portrait tween separately from SlotUpdate's layout. */
-  private crossfadeCharacter(
+  /** AVGCharacterSlot.Set (2791 @ 0x184237BC0) owns the portrait tween. */
+  private fadePortrait(
     input: CharacterCutinInput,
     state: CutinSlotState,
     art: CharacterArt | null,
+    durationMs: number,
   ): void {
-    const { front, isAlive, outgoing } = this.setPortrait(state, input, art, 0);
+    const { front, isAlive, outgoing } = state.portrait.swap(art, 0);
+    state.charIdentity = front
+      ? `${input.characterKey}/${input.expression}`
+      : "";
+    if (!front && !outgoing) return;
     this.tweens.start(
-      input.fadeMs,
+      durationMs,
       (progress) => {
-        if (!isAlive()) return;
         outgoing?.update(progress);
         if (front) front.alpha = progress;
       },
@@ -471,19 +476,6 @@ export class CharacterCutinPanel {
     return state;
   }
 
-  private setPortrait(
-    state: CutinSlotState,
-    input: CharacterCutinInput,
-    art: CharacterArt | null,
-    alpha: number,
-  ) {
-    const swap = state.portrait.swap(art, alpha);
-    state.charIdentity = swap.front
-      ? `${input.characterKey}/${input.expression}`
-      : "";
-    return swap;
-  }
-
   private destroySlot(widgetId: string, state: CutinSlotState): void {
     if (this.slots.get(widgetId) !== state) return;
     this.slots.delete(widgetId);
@@ -517,26 +509,15 @@ export class CharacterCutinPanel {
 }
 
 /**
- * Geometry port of `AVGCharacterCutinSlot.Show` @ 0x183eb1320 (build 2761):
- * the mask is `width x _offsetTransform.rect.height` under the default
- * `align = HORIZONTAL` (the vertical align flavor is unused by the corpus),
- * the slot center sits at screen center + (offsetx, offsety),
- * `_zoomAndPovRectTransform` gets localScale = `zoom` (renamed from `scale`
- * in 2.7.61) and anchoredPosition = (-povX, -povY). Unity's y-up local space
- * is flipped to PIXI's y-down coordinates here. (`charOffsetX`/`charOffsetY`
- * live on the slot node instead -- see `CutinSlotState.charSlot*`.)
+ * AVGCharacterCutinSlot.Show (2791 @ 0x184203DA0) centers the slot at
+ * (offsetx, offsety) relative to the screen center. With horizontal
+ * alignment the mask is width by the full canvas height. The POV
+ * transform gets scale zoom and anchoredPosition (-povX, -povY),
+ * with Y flipped for Pixi.
  *
- * `current` carries the SlotUpdate flavour @ 0x183eb20a0: there every key is
- * read with the slot's live transform as its `GetFloat`/`GetInt` default
- * (`GetInt(param, "width", (int)sizeDelta.x)`, `GetFloat(param, "offsetx",
- * localPosition.x)`, ...), so an omitted key holds rather than resets. Show
- * has no such slot state yet and falls back to the serialized prefab values.
- *
- * One native quirk is deliberately not ported: SlotUpdate computes povX as
- * `-GetFloat("povX", anchoredPosition.x)`, and since anchoredPosition.x is
- * already `-povX`, omitting the key flips its sign every update. Holding the
- * current value is what the key's own default was reaching for; no corpus
- * line hits the difference (0 SlotUpdates omit a pov the Show had set).
+ * SlotUpdate (0x184204B20) uses the live transforms as defaults. It negates
+ * the POV parameters after reading them, so each omitted POV axis becomes
+ * the negative of its current offset.
  */
 function layoutFor(
   input: CharacterCutinInput,
@@ -552,8 +533,8 @@ function layoutFor(
     zoom: 1,
   };
   return {
-    contentX: input.povX === undefined ? fallback.contentX : -input.povX,
-    contentY: input.povY === undefined ? fallback.contentY : input.povY,
+    contentX: -(input.povX ?? fallback.contentX),
+    contentY: input.povY ?? -fallback.contentY,
     maskH: fallback.maskH,
     maskW: input.width ?? fallback.maskW,
     rootX:

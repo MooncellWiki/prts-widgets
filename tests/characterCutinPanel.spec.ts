@@ -332,7 +332,7 @@ describe("CharacterCutinPanel", () => {
     expect(loadTexture).toHaveBeenCalledTimes(1);
   });
 
-  it("SlotUpdate holds layout keys the command omits", async () => {
+  it("SlotUpdate negates omitted POV axes and keeps the other layout values", async () => {
     const layer = new Container();
     const panel = new CharacterCutinPanel(
       layer,
@@ -340,16 +340,15 @@ describe("CharacterCutinPanel", () => {
       createInstantTweenRunner(),
     );
 
-    await panel.run(input({ offsetX: -300, povX: -50, width: 400, zoom: 1.5 }))
-      ?.completion;
-    // Native reads every layout key with the live transform as its default
-    // (`GetInt(param, "width", (int)sizeDelta.x)` etc.), so a name-only
-    // update must not animate the slot back to the prefab defaults.
+    await panel.run(
+      input({ offsetX: -300, povX: -50, povY: 80, width: 400, zoom: 1.5 }),
+    )?.completion;
     await panel.run(
       input({
         expression: "2$2",
         offsetX: undefined,
         povX: undefined,
+        povY: undefined,
         width: undefined,
         zoom: undefined,
       }),
@@ -358,8 +357,41 @@ describe("CharacterCutinPanel", () => {
     const state = slots(panel).get("1")!;
     expect(state.root.x).toBe(340);
     expect(state.maskSize).toEqual({ h: 720, w: 400 });
-    expect(state.content.x).toBe(50);
+    expect(state.content.x).toBe(-50);
+    expect(state.content.y).toBe(-80);
     expect(state.content.scale.x).toBe(1.5);
+  });
+
+  it("keeps the entry portrait transparent if a same-frame update replaces it", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const entryArt = art(120, 300);
+    const updateArt = art(140, 300);
+    const panel = new CharacterCutinPanel(
+      new Container(),
+      ({ expression }) => (expression === "2$2" ? updateArt : entryArt),
+      frames.createTweenRunner(),
+    );
+    const entry = input({
+      block: false,
+      fadeMs: 100,
+      fadeStyle: "horiz_expand_center",
+    });
+    panel.run(entry);
+    const update = panel.run({ ...entry, block: true, expression: "2$2" });
+    const state = slots(panel).get("1")!;
+
+    frames.step(50);
+    expect(state.maskSize.w).toBe(150);
+    expect(visibleSprites(state).map((sprite) => sprite.alpha)).toEqual([
+      0, 0.5,
+    ]);
+    frames.step(50);
+    const [portrait] = visibleSprites(state);
+    expect(visibleSprites(state)).toHaveLength(1);
+    expect(portrait.texture).toBe(updateArt.acquire()?.texture);
+    expect(portrait.alpha).toBe(1);
+    expect(update?.endReason).toBe("complete");
   });
 
   it("does not render a full-size slot while the character texture loads", async () => {
