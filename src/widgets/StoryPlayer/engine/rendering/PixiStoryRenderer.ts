@@ -4273,22 +4273,10 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   private textureForInterlude(input: InterludeInput): TextureLoad {
-    if (input.type !== 3) {
-      // CutinController routes type 1 (uichar) through Cutin/Characters and
-      // type 2 (bg) through AVG/Backgrounds; only type 3 reuses AVG characters.
-      let kind: StoryAssetFamily = "image";
-      if (input.type === 2) kind = "background";
-      else if (input.type === 1) kind = "cutin";
-      return this.textureForImageKey(input.name, kind);
-    }
-
-    const base = input.avatarCharacterKey;
-    const expression = input.avatarExpression;
-    if (!base || !expression) return null;
-    const link = this.context.linkMap[base];
-    const portrait = link && describeCharacterPortrait(link, expression);
-    // The dialog template consumes type 3 via its own img_char.
-    return portrait ? this.textureForCharacterKey(portrait.body) : null;
+    // CutinImageElement.SetCutinElement (2791 @ 0x1814FC3D0) routes
+    // uichar through Cutin/Characters and bg through AVG/Backgrounds.
+    const kind = input.type === 2 ? "background" : "cutin";
+    return this.textureForImageKey(input.name, kind);
   }
 
   private textureForUrl(

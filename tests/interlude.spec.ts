@@ -1140,6 +1140,39 @@ describe("InterludePanel mask templates", () => {
     expect(durations).toEqual([700]);
   });
 
+  it("releases the dialog portrait on replacement, char_empty and recycle", () => {
+    const releaseFirst = vi.fn();
+    const releaseSecond = vi.fn();
+    const releaseThird = vi.fn();
+    const loadAvatar = vi.fn<(input: InterludeInput) => CharacterArtLoad>();
+    for (const release of [releaseFirst, releaseSecond, releaseThird]) {
+      loadAvatar.mockReturnValueOnce({
+        acquire: () => ({ texture: Texture.WHITE, release }),
+        width: 1,
+        height: 1,
+        pos: { x: 0, y: 0 },
+      });
+    }
+    const panel = createPanel(
+      new Container(),
+      () => Texture.EMPTY,
+      tweenImmediately,
+      undefined,
+      loadAvatar,
+    );
+    const show = input({ maskId: DIALOG, name: "avg_npc_1#1", type: 3 });
+    panel.run(show);
+    panel.run({ ...show, name: "avg_npc_1#2" });
+    expect(releaseFirst).toHaveBeenCalledTimes(1);
+    expect(releaseSecond).not.toHaveBeenCalled();
+    panel.run({ ...show, name: "char_empty" });
+    expect(releaseSecond).toHaveBeenCalledTimes(1);
+    panel.run(show);
+    expect(loadAvatar).toHaveBeenCalledTimes(3);
+    panel.run(input({ clear: true }));
+    expect(releaseThird).toHaveBeenCalledTimes(1);
+  });
+
   it("applies no show floor when a dialog channel is created without style 3", async () => {
     const durations: number[] = [];
     const panel = createPanel(

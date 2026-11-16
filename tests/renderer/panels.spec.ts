@@ -146,6 +146,7 @@ describe("Interlude avatar rendering", () => {
       size: 1220,
       sheet: 1024,
       move: "-250,0",
+      maskId: "group_interclude_vertical_common",
       center: { x: 390, y: 520 },
       faceRect: undefined,
     },
@@ -156,15 +157,27 @@ describe("Interlude avatar rendering", () => {
       size: 960,
       sheet: 1255,
       move: "-350,-50",
+      maskId: "group_interclude_vertical_common",
       center: { x: 90, y: 595 },
       faceRect: { h: 147, w: 122, x: 848, y: 75 },
     },
+    {
+      base: "avg_npc_1983_1",
+      ref: "avg_npc_1983_1#1$1",
+      pos: { x: -200, y: 175 },
+      size: 960,
+      sheet: 1255,
+      move: "-350,-50",
+      maskId: "interlude_dialog_left",
+      center: { x: 0, y: 520 },
+      faceRect: { h: 147, w: 122, x: 848, y: 75 },
+    },
   ])(
-    "applies the 2791 bottom anchor and hub rect for $base",
-    async ({ base, ref, pos, size, sheet, move, center, faceRect }) => {
+    "renders $base with 2791 portrait art in $maskId",
+    async ({ base, ref, pos, size, sheet, move, center, faceRect, maskId }) => {
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
         [
-          '[interlude(channel=3,maskid="group_interclude_vertical_common",offset="-250,0")]',
+          `[interlude(channel=3,maskid="${maskId}",offset="-250,0")]`,
           `[interlude(channel=3,type=3,name="${ref}",pfrom="${move}",pto="${move}",duration=0,block=true)]`,
           '[name="A"]ok',
         ],
@@ -213,10 +226,17 @@ describe("Interlude avatar rendering", () => {
         app.ticker.update(16);
         const channel = renderer.layers.cutins.children[0] as Container;
         const charScale = channel.children[1].children[1];
-        const sprite = findSprite(charScale);
-        expect(sprite?.getGlobalPosition()).toMatchObject(center);
-        expect(sprite?.width).toBeCloseTo(size);
-        expect(sprite?.height).toBeCloseTo(size);
+        const dialog = renderer.interludePanel.channels.get(3).template.dialog;
+        const sprite: Sprite | undefined =
+          dialog?.charImage ?? findSprite(charScale);
+        const position = dialog
+          ? sprite?.position
+          : sprite?.getGlobalPosition();
+        const renderedSize = dialog ? 1380 : size;
+        expect(sprite?.visible).toBe(true);
+        expect(position).toMatchObject(center);
+        expect(sprite?.width).toBeCloseTo(renderedSize);
+        expect(sprite?.height).toBeCloseTo(renderedSize);
         const expectedFace = faceRect
           ? [
               [
@@ -1176,6 +1196,41 @@ describe("Displayable and focus frame order", () => {
     },
   );
 
+  it.each([
+    { key: "tsduration", style: 0, secondDuration: 0.016, cgsOnFirstFrame: 1 },
+    { key: "aduration", style: 1, secondDuration: 0.016, cgsOnFirstFrame: 1 },
+    { key: "tsduration", style: 0, secondDuration: 0.032, cgsOnFirstFrame: 0 },
+  ])(
+    "completes the blocking clear at $key=$secondDuration after the first clear recycles",
+    async ({ key, style, secondDuration, cgsOnFirstFrame }) => {
+      const draws: Array<[number, number]> = [];
+      const clear = `interlude(channel=3,clear=true,style=${style}`;
+      const { app, destroy, runtime } = await createRenderedPlayback(
+        [
+          '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+          `[${clear},${key}=0.016)]`,
+          `[${clear},${key}=${secondDuration},block=true)]`,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        ({ cutins, cgItems }) =>
+          draws.push([cutins.children.length, cgItems.children.length]),
+      );
+      const started = runtime.start();
+      try {
+        app.ticker.update(16);
+        app.ticker.update(32);
+        expect(draws).toEqual([
+          [0, cgsOnFirstFrame],
+          [0, 1],
+        ]);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
   it("keeps the next blocking cutin active when the second clear-all channel recycles", async () => {
     const draws: number[] = [];
     const { app, destroy, runtime } = await createRenderedPlayback(
@@ -1204,20 +1259,20 @@ describe("Displayable and focus frame order", () => {
 
   it.each([
     {
+      command: "charactercutin",
       old: '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=1,block=true)]',
       replacement:
         '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0,block=false)]',
-      textureMethod: "loadCharacterArt",
     },
     {
+      command: "interlude",
       old: '[interlude(channel=3,type=3,name="avg_npc_1",maskid="interlude_dialog_left",block=true)]',
       replacement:
         '[interlude(channel=3,type=3,name="avg_npc_1",maskid="interlude_dialog_left",block=false)]',
-      textureMethod: "textureForInterlude",
     },
   ])(
-    "can skip an uncached $textureMethod and reuse the same slot after the jump",
-    async ({ old, replacement, textureMethod }) => {
+    "can skip an uncached $command and reuse the same slot after the jump",
+    async ({ old, replacement }) => {
       const draws: Array<[number, number]> = [];
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
         [
@@ -1230,22 +1285,19 @@ describe("Displayable and focus frame order", () => {
         ({ cutins, cgItems }) =>
           draws.push([cutins.children.length, cgItems.children.length]),
       );
-      const pending = Promise.withResolvers<Texture | CharacterArt>();
+      const pending = Promise.withResolvers<CharacterArt>();
       const texture = new Texture({ label: "late art" });
       const hasLateArt = (node: Container): boolean =>
         (node instanceof Sprite && node.texture === texture) ||
         node.children.some(hasLateArt);
-      const lateArt =
-        textureMethod === "loadCharacterArt"
-          ? {
-              acquire: () => ({ texture }),
-              height: texture.height,
-              pos: { x: 0, y: 0 },
-              width: texture.width,
-            }
-          : texture;
+      const lateArt = {
+        acquire: vi.fn(() => ({ texture })),
+        height: texture.height,
+        pos: { x: 0, y: 0 },
+        width: texture.width,
+      };
       const load = vi
-        .spyOn(renderer, textureMethod)
+        .spyOn(renderer, "loadCharacterArt")
         .mockReturnValueOnce(pending.promise);
       const started = runtime.start();
       const [oldRoot] = renderer.layers.cutins.children;
@@ -1266,6 +1318,7 @@ describe("Displayable and focus frame order", () => {
         app.ticker.update(32);
         expect(renderer.layers.cutins.children).toEqual([replacementRoot]);
         expect(hasLateArt(replacementRoot)).toBe(false);
+        expect(lateArt.acquire).not.toHaveBeenCalled();
         expect(draws).toEqual([
           [1, 1],
           [1, 1],

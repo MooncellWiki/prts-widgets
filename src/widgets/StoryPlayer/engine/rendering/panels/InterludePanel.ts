@@ -44,6 +44,9 @@ import type { TweenRunner, TweenRunOptions } from "../core/TweenRunner";
 
 type Preparation = void | Promise<void>;
 type Vec2 = { x: number; y: number };
+type ChannelTweenOptions = TweenRunOptions & {
+  completeAfterRecycle?: () => boolean;
+};
 
 type ElementArt =
   | { kind: "image"; texture: Texture | null }
@@ -97,6 +100,7 @@ interface ChannelState {
   /** `m_dialogCharPosOffset` / `m_dialogCharScaleMul`(只在给出时覆盖)。 */
   dialogCharOffset: Vec2;
   dialogCharScale: Vec2;
+  dialogCharRelease?: () => void;
 }
 
 /** 有 prefab 模板的 maskid(热更包 `avg/[uc]common.ab`)。 */
@@ -233,7 +237,7 @@ export class InterludePanel {
       if (input.clear) {
         // A clear command can span several channels.
         this.pending.set(animation, null);
-        this.clear(input, complete);
+        this.clear(input, animation, complete);
       } else {
         const existing = this.channels.get(input.channel);
         const state = existing ?? this.createChannel(input);
@@ -460,6 +464,10 @@ export class InterludePanel {
           template.root.position.set(anchorX + offsetX, offsetY);
           if (template.dialog) {
             content.visible = false;
+            template.dialog.charImage.once("destroyed", () => {
+              state.dialogCharRelease?.();
+              state.dialogCharRelease = undefined;
+            });
           } else {
             const size =
               input.size.x * input.size.x + input.size.y * input.size.y >= 1e-10
@@ -546,6 +554,7 @@ export class InterludePanel {
     state: ChannelState,
     input: InterludeInput,
     onComplete?: () => void,
+    completeAfterRecycle?: () => boolean,
   ): void {
     const { x, y } = input.templateSizeTo;
     if (state.template) {
@@ -556,7 +565,11 @@ export class InterludePanel {
         input.templateSizeDurationMs,
         tweenPoint(state.template.scaleNode.scale, x, y),
         onComplete,
-        { deferZeroDuration: true, ease: dotweenDefaultEase },
+        {
+          completeAfterRecycle,
+          deferZeroDuration: true,
+          ease: dotweenDefaultEase,
+        },
       );
       return;
     }
@@ -864,25 +877,36 @@ export class InterludePanel {
       if (image.visible)
         layoutDialogChar(dialog, state.dialogCharOffset, state.dialogCharScale);
     };
-    if (this.cacheName(state, input.name)) {
-      if (isEmptyName(input.name)) {
-        image.visible = false;
-      } else {
-        return this.prepareAsset(state, loadTexture(), (texture) => {
-          if (texture) {
-            image.texture = texture;
-            image.visible = true;
-          } else {
-            image.visible = false;
-            this.onWarning?.(
-              `interlude dialog avatar is missing: ${input.name}`,
-            );
-          }
-          layoutChar();
-        });
-      }
+    if (!this.cacheName(state, input.name)) {
+      layoutChar();
+      return;
     }
-    layoutChar();
+
+    const loadId = ++state.avatarLoadId;
+    const setPortrait = (texture: Texture | null, release?: () => void) => {
+      image.texture = texture ?? Texture.EMPTY;
+      image.visible = texture !== null;
+      state.dialogCharRelease?.();
+      state.dialogCharRelease = release;
+      layoutChar();
+    };
+    if (isEmptyName(input.name)) {
+      setPortrait(null);
+      return;
+    }
+    // 2791 CutinTemplateDialogView._LoadAvgPortrait (0x1814FEE50) loads
+    // the same hub layers as AVGCharacterSlot. img_char uses its prefab rect.
+    const portrait = input.type === 3 ? this.loadAvatar(input) : loadTexture();
+    return this.prepareAsset<Texture | CharacterArt>(state, portrait, (art) => {
+      if (state.avatarLoadId !== loadId) return;
+      const mounted =
+        art instanceof Texture
+          ? { texture: art, release: undefined }
+          : art?.acquire();
+      setPortrait(mounted?.texture ?? null, mounted?.release);
+      if (!mounted)
+        this.onWarning?.(`interlude dialog avatar is missing: ${input.name}`);
+    });
   }
 
   private prepareAsset<T>(
@@ -898,7 +922,11 @@ export class InterludePanel {
       : apply(asset);
   }
 
-  private clear(input: InterludeInput, complete: () => void): void {
+  private clear(
+    input: InterludeInput,
+    animation: ExecutionHandle,
+    complete: () => void,
+  ): void {
     const channel = this.channels.get(input.channel);
     const states =
       input.channel < 0
@@ -907,20 +935,29 @@ export class InterludePanel {
           ? [[input.channel, channel] as const]
           : [];
 
+    const completeAfterRecycle = input.block
+      ? () => animation.endReason === undefined
+      : undefined;
     // Web recycles each channel independently and releases the clear once.
     // The 2791 all-channel callback (0x181507EC0) reads an unset channel.
     for (const [id, state] of states) {
-      this.hide(state, input, () => {
-        if (this.channels.get(id) !== state) return;
-        // 2791 OnRecycle (0x1814F9CD0) kills these sequences without completion.
-        // Web releases the retired view's waits here so playback can continue.
-        for (const [animation, owner] of this.pending) {
-          if (owner === state) animation.end("reset");
-        }
-        this.channels.delete(id);
-        state.root.destroy({ children: true });
-        if (input.block && state.template) complete();
-      });
+      this.hide(
+        state,
+        input,
+        () => {
+          if (this.channels.get(id) === state) {
+            // 2791 OnRecycle (0x1814F9CD0) kills the element sequences.
+            // Web releases their command waits when retiring the view.
+            for (const [wait, owner] of this.pending) {
+              if (owner === state) wait.end("reset");
+            }
+            this.channels.delete(id);
+            state.root.destroy({ children: true });
+          }
+          if (input.block && state.template) complete();
+        },
+        completeAfterRecycle,
+      );
       if (input.block && !state.template) complete();
     }
     // An absent explicit channel finishes immediately. An empty clear-all
@@ -933,6 +970,7 @@ export class InterludePanel {
     state: ChannelState,
     input: InterludeInput,
     done: () => void,
+    completeAfterRecycle?: () => boolean,
   ): void {
     const template = state.template;
     if (template?.dialog) {
@@ -951,20 +989,22 @@ export class InterludePanel {
       return;
     }
 
-    // 2791 CutinTemplate.HideCutinMask (0x1815013A0) keeps each hide's
-    // completion callback. The first to finish recycles the channel.
+    // CutinTemplate.HideCutinMask (2791 @ 0x1815013A0) attaches a callback
+    // to each hide, and template destruction is deferred past the update.
+    // Keep the Web blocker on its own tween clock once the first hide recycles.
     if (state.deco) {
       this.runTween(state, 500, tweenAlpha(state.deco.root, 0), undefined, {
         ease: dotweenDefaultEase,
       });
     }
     if (!template || input.style === 0) {
-      this.tweenScale(state, input, done);
+      this.tweenScale(state, input, done, completeAfterRecycle);
       return;
     }
     if (input.style === 2) this.tweenScale(state, input);
     if (template.hasImgMask) {
       this.runTween(state, input.alphaDurationMs, () => {}, done, {
+        completeAfterRecycle,
         deferZeroDuration: true,
       });
     } else done();
@@ -975,19 +1015,21 @@ export class InterludePanel {
     durationMs: number,
     update: (progress: number) => void,
     onComplete?: () => void,
-    options?: TweenRunOptions,
+    options?: ChannelTweenOptions,
   ): void {
+    const { completeAfterRecycle, ...tweenOptions } = options ?? {};
     const isAlive = () =>
-      !state.root.destroyed && options?.isAlive?.() !== false;
+      (!state.root.destroyed || completeAfterRecycle?.() === true) &&
+      tweenOptions.isAlive?.() !== false;
     void this.tween(
       durationMs,
       (progress) => {
-        if (isAlive()) update(progress);
+        if (!state.root.destroyed && isAlive()) update(progress);
       },
       () => {
         if (isAlive()) onComplete?.();
       },
-      { ...options, isAlive },
+      { ...tweenOptions, isAlive },
     );
   }
 }

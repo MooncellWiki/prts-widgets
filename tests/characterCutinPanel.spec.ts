@@ -268,6 +268,7 @@ describe("CharacterCutinPanel", () => {
     expect(state.mask.bounds.minX).toBe(-100);
     expect(state.mask.bounds.maxX).toBe(0);
     expect(state.root.alpha).toBe(1);
+    expect(state.content.x).toBe(0);
     expect(visibleSprites(state)[0].scale.x).toBe(1);
     expect(visibleSprites(state)[0].x).toBe(0);
 
@@ -312,6 +313,8 @@ describe("CharacterCutinPanel", () => {
     // and no second sprite for the same character identity.
     expect(state.root.x).toBe(640);
     expect(state.maskSize).toEqual({ h: 720, w: 250 });
+    expect(state.mask.bounds.minX).toBe(-100);
+    expect(state.content.x).toBe(25);
     expect(state.root.alpha).toBe(1);
     expect(visibleSprites(state)).toHaveLength(1);
     expect(visibleSprites(state)[0].alpha).toBe(1);
@@ -524,7 +527,8 @@ describe("CharacterCutinPanel", () => {
       drive(0, 1);
       expect(slots(panel).size).toBe(1);
 
-      await panel.run(input({ block: false, fadeStyle }))?.completion;
+      await panel.run(input({ block: false, fadeStyle, width: 300 }))
+        ?.completion;
       drive(1, 1);
 
       await panel.run(
@@ -539,7 +543,9 @@ describe("CharacterCutinPanel", () => {
       drive(2, 0.5);
 
       const state = slots(panel).get("1")!;
-      expect(state.maskSize).toEqual({ h: 720, w: 100 });
+      expect(state.maskSize).toEqual({ h: 720, w: 150 });
+      expect(state.mask.bounds.maxX).toBe(100);
+      expect(state.content.x).toBe(-50);
       expect(state.root.alpha).toBe(1);
 
       drive(2, 1);

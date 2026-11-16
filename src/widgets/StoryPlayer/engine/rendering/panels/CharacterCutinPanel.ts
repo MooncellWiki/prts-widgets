@@ -64,8 +64,10 @@ interface CutinSlotState {
   /** `_characterSlot` identity of the last Set, used to skip no-op crossfades. */
   charIdentity: string;
   portrait: CharacterSlotView;
-  /** `_zoomAndPovRectTransform` port: scale = zoom, position = (-povX, povY). */
+  /** `_zoomAndPovRectTransform` port, positioned in the slot root. */
   content: Container;
+  /** _zoomAndPovRectTransform.anchoredPosition relative to the mask center. */
+  pov: { x: number; y: number };
   /** `m_showFadeStyle` is set by Show and read by Hide (2791 @ 0x184203800). */
   readonly fadeStyle: number;
   mask: Graphics;
@@ -76,8 +78,9 @@ interface CutinSlotState {
   /** A cache miss can leave the slot allocated before its first tween starts. */
   hasStarted: boolean;
   artWait?: ExecutionHandle;
-  /** Final mask size; directional pivots pin against this while expanding. */
-  targetSize: { h: number; w: number };
+  /** The pivot's offset from the center, as a fraction of the entry size. */
+  readonly maskPivot: { x: number; y: number };
+  readonly entryMaskSize: { h: number; w: number };
 }
 
 /**
@@ -263,10 +266,14 @@ export class CharacterCutinPanel {
 
     // Expand styles keep alpha at 1 and grow the mask from the pivot edge.
     const start = { ...state.maskSize };
+    const entryPosition =
+      state.maskPivot.x || state.maskPivot.y
+        ? { x: layout.contentX, y: layout.contentY }
+        : undefined;
     tween(input.fadeMs, (progress) => {
       state.maskSize.h = lerp(start.h, layout.maskH, progress);
       state.maskSize.w = lerp(start.w, layout.maskW, progress);
-      this.drawMask(state);
+      this.drawMask(state, entryPosition);
     });
   }
 
@@ -278,17 +285,16 @@ export class CharacterCutinPanel {
     tween: SlotTween,
   ): void {
     const start = {
-      contentX: state.content.x,
-      contentY: state.content.y,
+      contentX: state.pov.x,
+      contentY: state.pov.y,
       maskH: state.maskSize.h,
       maskW: state.maskSize.w,
       rootX: state.root.x,
       rootY: state.root.y,
       zoom: state.content.scale.x,
     };
-    // SlotUpdate defaults omitted layout keys to their live transforms.
+    // SlotUpdate reads the live layout before starting its tween.
     const layout = layoutFor(input, start);
-    state.targetSize = { h: layout.maskH, w: layout.maskW };
 
     if (!keepsArt) this.crossfadeCharacter(input, state, art);
 
@@ -299,10 +305,8 @@ export class CharacterCutinPanel {
           lerp(start.rootX, layout.rootX, progress),
           lerp(start.rootY, layout.rootY, progress),
         );
-        state.content.position.set(
-          lerp(start.contentX, layout.contentX, progress),
-          lerp(start.contentY, layout.contentY, progress),
-        );
+        state.pov.x = lerp(start.contentX, layout.contentX, progress);
+        state.pov.y = lerp(start.contentY, layout.contentY, progress);
         state.content.scale.set(lerp(start.zoom, layout.zoom, progress));
         state.maskSize.h = lerp(start.maskH, layout.maskH, progress);
         state.maskSize.w = lerp(start.maskW, layout.maskW, progress);
@@ -362,13 +366,16 @@ export class CharacterCutinPanel {
     // the size when the command executes.
     const centered = state.fadeStyle === 1 || state.fadeStyle === 4;
     let start = centered ? undefined : size;
+    const exitPosition = centered
+      ? undefined
+      : { x: state.content.x, y: state.content.y };
     tween(
       input.fadeMs,
       (progress) => {
         start ??= { ...state.maskSize };
         state.maskSize.h = lerp(start.h, end.h, progress);
         state.maskSize.w = lerp(start.w, end.w, progress);
-        this.drawMask(state);
+        this.drawMask(state, exitPosition);
       },
       { onComplete: recycle },
     );
@@ -394,13 +401,13 @@ export class CharacterCutinPanel {
       .rect(-STORY_WIDTH / 2, -STORY_HEIGHT / 2, STORY_WIDTH, STORY_HEIGHT)
       .fill(0x89_89_89);
     const content = new Container();
-    content.position.set(layout.contentX, layout.contentY);
     content.scale.set(layout.zoom);
     const mask = new Graphics();
     root.addChild(mask, backdrop, content);
     root.mask = mask;
     this.layer.addChild(root);
 
+    const fadeStyle = fadeStyleId(input.fadeStyle);
     const state: CutinSlotState = {
       backdrop,
       charIdentity: "",
@@ -412,12 +419,17 @@ export class CharacterCutinPanel {
         layout.maskH / 2 - (input.charOffsetY ?? 0),
       ),
       content,
-      fadeStyle: fadeStyleId(input.fadeStyle),
+      pov: { x: layout.contentX, y: layout.contentY },
+      fadeStyle,
       hasStarted: false,
       mask,
       maskSize: { h: layout.maskH, w: layout.maskW },
       root,
-      targetSize: { h: layout.maskH, w: layout.maskW },
+      maskPivot: {
+        x: fadeStyle === 2 ? -0.5 : fadeStyle === 3 ? 0.5 : 0,
+        y: fadeStyle === 5 ? -0.5 : fadeStyle === 6 ? 0.5 : 0,
+      },
+      entryMaskSize: { h: layout.maskH, w: layout.maskW },
     };
     // Entry state, seeded before the caller awaits the character texture:
     // `fade` starts transparent with a full-size mask, the expand styles keep
@@ -455,45 +467,25 @@ export class CharacterCutinPanel {
     this.slots.delete(widgetId);
   }
 
-  private drawMask(state: CutinSlotState): void {
+  private drawMask(
+    state: CutinSlotState,
+    fixedContentPosition?: { x: number; y: number },
+  ): void {
     const { h, w } = state.maskSize;
-    const targetW = state.targetSize.w;
-    // Native pivot table from Show/Hide: left2right pins the left edge,
-    // right2left the right edge, top2bottom the top edge, bottom2top the
-    // bottom edge; the rest stay centered. Vertical styles never animate the
-    // width, so the centered x form also covers them.
-    let x: number;
-    switch (state.fadeStyle) {
-      case 2: {
-        x = -targetW / 2;
-        break;
-      }
-      case 3: {
-        x = targetW / 2 - w;
-        break;
-      }
-      default: {
-        x = -w / 2;
-        break;
-      }
+    // 2791 Show sets the mask pivot and its position (0x184203DA0).
+    // SlotUpdate (0x184249B00) resizes around that pivot. The anchored POV
+    // follows the mask center. Directional Show/Hide compensate for its move.
+    const centerX = state.maskPivot.x * (state.entryMaskSize.w - w);
+    const centerY = state.maskPivot.y * (state.entryMaskSize.h - h);
+    if (fixedContentPosition) {
+      state.pov.x = fixedContentPosition.x - centerX;
+      state.pov.y = fixedContentPosition.y - centerY;
     }
-    const targetH = state.targetSize.h;
-    let y: number;
-    switch (state.fadeStyle) {
-      case 5: {
-        y = -targetH / 2;
-        break;
-      }
-      case 6: {
-        y = targetH / 2 - h;
-        break;
-      }
-      default: {
-        y = -h / 2;
-        break;
-      }
-    }
-    state.mask.clear().rect(x, y, w, h).fill(0xff_ff_ff);
+    state.content.position.set(centerX + state.pov.x, centerY + state.pov.y);
+    state.mask
+      .clear()
+      .rect(centerX - w / 2, centerY - h / 2, w, h)
+      .fill(0xff_ff_ff);
   }
 }
 
