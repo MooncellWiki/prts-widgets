@@ -49,6 +49,7 @@ vi.mock(
       dialogGrad: white(),
       dialogFrame: white(),
       gradientV: white(),
+      maskSoftEdge: white(),
     };
     return { ...mod, loadInterludeTextures: vi.fn(() => tex) };
   },
@@ -296,6 +297,8 @@ describe("InterludePanel", () => {
 
       mask.resolve(textures);
       await reopened?.completion;
+      expect(content.visible).toBe(false);
+      frames.step(16);
       expect(content.visible).toBe(true);
       expect(node.visible && node.renderable).toBe(true);
       expect(node.alpha).toBe(0.4);
@@ -843,6 +846,7 @@ describe("InterludePanel", () => {
       [VERTICAL, 2, [3000]],
       // No _animWrapper on the vertical template: ANIMATOR keeps the 1s floor.
       [VERTICAL, 3, [1000]],
+      ["ui_cutin_mask_angle", 0, [1000]],
       // Horizon has an animWrapper: the clip plays, completion is immediate.
       ["ui_cutin_mask_horizon", 3, [CLIP_SECONDS.horiMaskOpen * 1000]],
       // Unknown maskid: the native template load fails and completes at once.
@@ -858,6 +862,61 @@ describe("InterludePanel", () => {
       await panel.run(input({ maskId, style }))?.completion;
       expect(durations).toEqual(expected);
     }
+  });
+
+  it.each([1, 2])(
+    "starts the nonblocking style %i mask fade before rendering its readers",
+    (style) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const panel = createPanel(
+        new Container(),
+        () => Texture.WHITE,
+        frames.createTweenRunner(),
+      );
+
+      // act16mini_st02:679–680 assigns an opaque background on the same frame.
+      expect(
+        panel.run(
+          input({ block: false, maskId: "ui_cutin_mask_horizon", style }),
+        ),
+      ).toBeUndefined();
+      panel.run(input({ block: false, name: "bg_black", type: 2 }));
+      const state = channel(panel);
+      const { node } = state.elements.get("\u0000bg");
+      expect(node.alpha).toBe(1);
+      expect(state.content.visible).toBe(false);
+      frames.step(1);
+      expect(state.content.visible).toBe(false);
+      frames.step(15);
+      expect(state.content.visible).toBe(true);
+      expect(node.alpha).toBe(1);
+    },
+  );
+
+  it("culls the stencil reader before the fade-out callback releases the channel", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, maskId: VERTICAL }));
+    const state = channel(panel);
+    const fade = panel.run(
+      input({ alphaDurationMs: 1000, clear: true, style: 1 }),
+    );
+    frames.step(950);
+    expect(state.content.visible).toBe(true);
+    expect(state.template.emptyImage.renderable).toBe(true);
+    frames.step(10);
+    expect(state.content.visible).toBe(false);
+    expect(state.template.emptyImage.renderable).toBe(false);
+    expect(fade?.endReason).toBeUndefined();
+    frames.step(40);
+    expect(fade?.endReason).toBe("complete");
+    expect(channel(panel)).toBeUndefined();
   });
 
   it("applies size/offset only when the channel is created, not on updates", async () => {
@@ -1200,46 +1259,60 @@ describe("InterludePanel", () => {
     },
   );
 
-  it("finishes both same-frame clears when the first callback reopens the channel", () => {
-    const frames = new PlaybackTestFrames();
-    frames.manual = true;
-    const layer = new Container();
-    const panel = createPanel(
-      layer,
-      () => Texture.WHITE,
-      frames.createTweenRunner(),
-    );
-    const show = { block: false, maskId: VERTICAL, style: 1 };
-    panel.run(input(show));
-    const [root] = layer.children;
-    const [maskContainer] = root.children;
-    const [oldTemplate] = maskContainer.children;
-    const reopen = vi.fn(() => panel.run(input(show)));
-    const first = panel.run(
-      input({ clear: true, templateSizeDurationMs: 100 }),
-      reopen,
-    );
-    const finish = vi.fn();
-    const wait = panel.run(
-      input({ clear: true, templateSizeDurationMs: 120 }),
-      finish,
-    );
+  it.each([0, 1])(
+    "finishes both same-frame style %i clears when the first callback reopens the channel",
+    (style) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const layer = new Container();
+      const panel = createPanel(
+        layer,
+        () => Texture.WHITE,
+        frames.createTweenRunner(),
+      );
+      const show = { block: false, maskId: VERTICAL, style: 1 };
+      panel.run(input(show));
+      const [root] = layer.children;
+      const [maskContainer] = root.children;
+      const [oldTemplate] = maskContainer.children;
+      const reopen = vi.fn(() => panel.run(input({ ...show, style: 0 })));
+      const first = panel.run(
+        input({
+          alphaDurationMs: 100,
+          clear: true,
+          style,
+          templateSizeDurationMs: 100,
+        }),
+        reopen,
+      );
+      const finish = vi.fn();
+      const wait = panel.run(
+        input({
+          alphaDurationMs: 120,
+          clear: true,
+          style,
+          templateSizeDurationMs: 120,
+        }),
+        finish,
+      );
 
-    frames.step(120);
-    expect(first?.endReason).toBe("complete");
-    expect(wait?.endReason).toBe("complete");
-    expect(reopen).toHaveBeenCalledExactlyOnceWith();
-    expect(finish).toHaveBeenCalledExactlyOnceWith();
-    expect(oldTemplate.destroyed).toBe(true);
-    expect(layer.children).toEqual([root]);
-    expect(root.children[0]).toBe(maskContainer);
-    expect(maskContainer.children).toHaveLength(1);
-    expect(maskContainer.children[0].destroyed).toBe(false);
+      frames.step(120);
+      expect(first?.endReason).toBe("complete");
+      expect(wait?.endReason).toBe("complete");
+      expect(reopen).toHaveBeenCalledExactlyOnceWith();
+      expect(finish).toHaveBeenCalledExactlyOnceWith();
+      expect(oldTemplate.destroyed).toBe(true);
+      expect(layer.children).toEqual([root]);
+      expect(root.children[0]).toBe(maskContainer);
+      expect(maskContainer.children).toHaveLength(1);
+      expect(maskContainer.children[0].destroyed).toBe(false);
+      expect(channel(panel).content.visible).toBe(true);
 
-    panel.run(input({ ...show, channel: 4 }));
-    expect(layer.children).toHaveLength(2);
-    expect(layer.children[0]).toBe(root);
-  });
+      panel.run(input({ ...show, channel: 4 }));
+      expect(layer.children).toHaveLength(2);
+      expect(layer.children[0]).toBe(root);
+    },
+  );
 
   it("replaces the previous dialog hide", () => {
     const frames = new PlaybackTestFrames();
@@ -1481,6 +1554,36 @@ describe("InterludePanel mask templates", () => {
       input({ channel: 4, maskId: "ui_cutin_mask_vertical", style: 1 }),
     )?.completion;
     expect(channel(panel, 4).template.scaleNode.scale.x).toBe(1);
+  });
+
+  it("builds the 2791 angled mask with its collapsed pose and stretched edges", async () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    const show = { maskId: "ui_cutin_mask_angle", size: { x: 0, y: 0 } };
+    await panel.run(input(show))?.completion;
+    const collapsed = channel(panel).template;
+    expect(collapsed.root.rotation).toBeCloseTo(-Math.PI / 9);
+    expect(collapsed.root.scale).toMatchObject({ x: 1, y: 0 });
+    expect(collapsed.maskGraphics.width).toBeCloseTo(1689.2, 2);
+    expect(collapsed.maskGraphics.height).toBeCloseTo(335.27, 2);
+
+    await panel.run(
+      input({ ...show, channel: 4, size: { x: 900, y: 300 }, style: 1 }),
+    )?.completion;
+    const expanded = channel(panel, 4).template;
+    const [, bottom, top] = expanded.root.children;
+    expect(expanded.root.scale).toMatchObject({ x: 1, y: 1 });
+    expect(expanded.maskGraphics.width).toBeCloseTo(900);
+    expect(expanded.maskGraphics.height).toBeCloseTo(300);
+    expect(bottom).toMatchObject({ y: 150, rotation: Math.PI });
+    expect(bottom.width).toBeCloseTo(900);
+    expect(bottom.height).toBeCloseTo(19.47);
+    expect(top).toMatchObject({ y: -150, rotation: 0 });
+    expect(top.width).toBeCloseTo(900);
+    expect(top.height).toBeCloseTo(5);
   });
 
   it("dialog template consumes avatar/background updates instead of mounting elements", async () => {

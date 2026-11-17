@@ -39,7 +39,7 @@ import { buildActiveWave } from "./interludeWave";
 //   节点下,自动跟随模板的 DOScale/位移/入场动画;读取者(通道内容层、
 //   vertical 的 `img_unknown`、dialog 的 `img_bg`/`img_char`)以它裁切。
 // - `bg_defaul_gradient` 的渐变 shader 用 `top_gradient` 贴图拉伸近似;
-//   `mask_soft_edge` 软边与 dialog `img_char_mask` 的自定义网格按矩形近似。
+//   dialog `img_char_mask` 的自定义网格按矩形近似。
 // - 关键帧间插值取线性(原生为 slope 贝塞尔);UI 曲线键距稀疏,视觉差异可忽略。
 
 /** `assets/interlude/clips.json` 的结构(AnimationClip typetree 转写)。 */
@@ -169,6 +169,7 @@ export interface InterludeTextureSet {
   dialogGrad: Texture;
   dialogFrame: Texture;
   gradientV: Texture;
+  maskSoftEdge: Texture;
 }
 
 const templateTextureUrls = {
@@ -182,6 +183,7 @@ const templateTextureUrls = {
   dialogGrad: INTERLUDE_ASSETS.dialog_grad,
   dialogFrame: INTERLUDE_ASSETS.dialog_frame,
   gradientV: INTERLUDE_ASSETS.gradient_v,
+  maskSoftEdge: INTERLUDE_ASSETS.mask_soft_edge,
 } satisfies Record<keyof InterludeTextureSet, string>;
 
 /** 模板贴图懒加载(随 widget 打包的静态资源)。 */
@@ -244,7 +246,7 @@ export interface TemplateNodes {
   anchor: "center" | "left" | "right";
   /** `_scaleTrans ?? transform`:style 0/2 的 ts DOScale 与 clear 收缩目标。 */
   scaleNode: Container;
-  /** scaleNode 的 prefab localScale(`ui_cutin_mask_vertical` 为 (0,1))。 */
+  /** scaleNode 的 prefab localScale。 */
   initialScale: Vec2;
   /** `_imgMask`(或 dialog 的 `img_char_mask`)所在节点。 */
   maskNode: Container;
@@ -252,6 +254,8 @@ export interface TemplateNodes {
   maskGraphics: Graphics;
   /** 模板配了 `_imgMask`(style 1/2 才 Join 3s DOFade;dialog 无)。 */
   hasImgMask: boolean;
+  /** 模板内读 `_imgMask` stencil 的 `_components`。 */
+  stencilReaders?: readonly Container[];
   /**
    * `_animWrapper` + `_animLocs[0]`:style 3 时播放且 m_cutinSeq = null(立即
    * 完成)。null = 没有 animWrapper,style 3 什么都不播,仍走 1s 地板。
@@ -373,6 +377,7 @@ export function buildTemplate(
       maskNode,
       maskGraphics,
       hasImgMask: true,
+      stencilReaders: [unknown],
       animatorClip: null,
       autoClip: null,
       emptyImage: unknown,
@@ -428,37 +433,60 @@ export function buildTemplate(
 
   if (
     maskId === "ui_cutin_mask_vertical" ||
-    maskId === "ui_cutin_mask_horizon"
+    maskId === "ui_cutin_mask_horizon" ||
+    maskId === "ui_cutin_mask_angle"
   ) {
-    // 纯 stencil 窗口:唯一子节点 ui_cutin_mask(`_imgMask`,拉伸,无贴图)。
-    // vertical 337.3x788.5,prefab localScale = (0,1)(style 0 无 ts / style 3
-    // 时保持收起),无 animWrapper;horizon 1689.2x335.27,animWrapper 播
-    // avg_cutin_hori_com_mask(ui_cutin_mask 的 y 开合,见 applyHoriMaskOpen)。
+    // 2791 PC 纯 stencil 模板的 _imgMask 随根节点拉伸。
+    // horizon 支持 avg_cutin_hori_com_mask。vertical 与 angle 初始收起。
     const vertical = maskId === "ui_cutin_mask_vertical";
+    const angled = maskId === "ui_cutin_mask_angle";
     const maskNode = new Container();
     const maskGraphics = new Graphics();
     maskNode.addChild(maskGraphics);
     root.addChild(maskNode);
+    const edges: Array<{ sprite: Sprite; side: number; height: number }> = [];
+    if (angled) {
+      // Unity 逆时针 20°，Pixi 的 Y 轴方向相反。
+      root.rotation = -Math.PI / 9;
+      for (const [side, height] of [
+        [1, 19.47],
+        [-1, 5],
+      ] as const) {
+        const sprite = new Sprite({ texture: tex.maskSoftEdge, tint: 0 });
+        sprite.anchor.set(0.5, 0);
+        if (side > 0) sprite.rotation = Math.PI;
+        root.addChild(sprite);
+        edges.push({ sprite, side, height });
+      }
+    }
     const defaultSize = vertical
       ? { x: 337.3, y: 788.5 }
       : { x: 1689.2, y: 335.27 };
-    drawMaskRect(maskGraphics, defaultSize.x, defaultSize.y);
+    const resize = (width: number, height: number): void => {
+      drawMaskRect(maskGraphics, width, height);
+      for (const { sprite, side, height: edgeHeight } of edges) {
+        sprite.setSize(Math.max(0, width), edgeHeight);
+        sprite.y = (side * height) / 2;
+      }
+    };
+    resize(defaultSize.x, defaultSize.y);
     return {
       root,
       anchor: "center",
       scaleNode: root,
-      initialScale: vertical ? { x: 0, y: 1 } : { x: 1, y: 1 },
+      initialScale: { x: vertical ? 0 : 1, y: angled ? 0 : 1 },
       maskNode,
       maskGraphics,
       hasImgMask: true,
-      animatorClip: vertical ? null : "hori_mask_open",
+      animatorClip:
+        maskId === "ui_cutin_mask_horizon" ? "hori_mask_open" : null,
       autoClip: null,
       emptyImage: null,
       setBackShadowSize: null,
       backShadowGroup: null,
       dialog: null,
       defaultSize,
-      resize: (width, height) => drawMaskRect(maskGraphics, width, height),
+      resize,
     };
   }
 

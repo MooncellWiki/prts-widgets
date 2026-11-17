@@ -10,6 +10,7 @@ import {
   toNumber,
   toOptionalNumber,
   toString,
+  tryConvertToInt32,
   tryParseInt32,
 } from "../commandParams";
 import { parseShowItemFadeStyle, ShowItemFadeStyle } from "../showitem";
@@ -219,7 +220,8 @@ export class CharacterCutinPanel extends ExecutorComponent {
       scaleTo: scaleFrom && scaleTo ? scaleTo : undefined,
       size: parseVector2(exactArg(args, "size")) ?? { x: 0, y: 0 },
       slot: toString(exactArg(args, "slot")),
-      style: Math.trunc(toNumber(exactArg(args, "style"), 0)),
+      // Command.TryGetParam<int> (2791 @ 0x18419AF30) uses Convert.ToInt32.
+      style: tryConvertToInt32(exactArg(args, "style")) ?? 0,
       // Native switch feeds the deco TwoStateToggle on each show or update.
       switchOn: toBoolean(exactArg(args, "switch"), false),
       templateSizeDurationMs: duration("tsduration"),

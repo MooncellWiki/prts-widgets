@@ -392,6 +392,27 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("rounds interlude style with the native Convert.ToInt32 rules", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[interlude(channel=3,style=0.9)]",
+        "[interlude(channel=3,style=1.5)]",
+        "[interlude(channel=3,style=2.5)]",
+        '[interlude(channel=3,style="3")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.interludeCalls.map((input) => input.style)).toEqual([
+      1, 2, 2, 3,
+    ]);
+  });
+
   it("maps cgitem tween parameters and hidecgitem keys with native defaults", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

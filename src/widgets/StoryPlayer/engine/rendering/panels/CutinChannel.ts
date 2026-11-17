@@ -116,6 +116,7 @@ const KNOWN_MASK_IDS = new Set([
   "group_interclude_square_common",
   "ui_cutin_mask_vertical",
   "ui_cutin_mask_horizon",
+  "ui_cutin_mask_angle",
   "interlude_dialog_left",
   "interlude_dialog_right",
 ]);
@@ -180,8 +181,8 @@ function elementKeyFor(input: InterludeInput): string {
  *   builds the `maskid` prefab tree (see `interludeTemplates.ts`), writes
  *   size (|size|² > ε) and offset once, renders the deco and `_emptyImg`, and
  *   owns completion: the sequence has a 1s `AppendInterval` floor, Fade/Both
- *   join a 3s DOFade of `_imgMask` (an invisible stencil writer, so only the
- *   timing is ported) and Scale/Both run an independent tsFrom→tsTo DOScale
+ *   join a 3s DOFade of `_imgMask` (its alpha controls stencil writes)
+ *   and Scale/Both run an independent tsFrom→tsTo DOScale
  *   on `_scaleTrans`. ANIMATOR completes immediately only when the template
  *   has an `_animWrapper` (horizon); square's show clip is a
  *   `playAutomatically` Animation that runs for every style. Begin never
@@ -205,7 +206,7 @@ function elementKeyFor(input: InterludeInput): string {
  *   intro clip only plays for style 3, remapped to the command `duration`.
  * - Clear (`OnCutinEnd` → `HideCutinMask`): base templates fade the deco out
  *   (0.5s) and DOScale `_scaleTrans` from its current ratio to `tsto` (style 0)
- *   or wait the `_imgMask` fade (other styles); dialogs fade the group to
+ *   or fade `_imgMask` (other styles); dialogs fade the group to
  *   `ato` over `aduration` (0.5s default). OnRecycle kills the sequence
  *   currently stored for each element type. Earlier sequences can still
  *   write to pooled image elements.
@@ -401,13 +402,13 @@ export class CutinChannel {
         return portrait ? portrait.then(show) : show();
       }
 
-      let showMs = 0;
+      let hasShowSequence = false;
       if (template) {
         this.renderDeco(state, input);
         state.cachedName = input.name;
         if (template.emptyImage)
           template.emptyImage.visible = isEmptyName(input.name);
-        showMs = this.showTemplate(state, template, input);
+        hasShowSequence = this.showTemplate(state, template, input);
       } else {
         this.renderFallbackLabel(state, input);
         if (
@@ -418,9 +419,14 @@ export class CutinChannel {
       }
       // TryPlayAnimation runs after ShowCutinMask without gating begin.
       this.playDirection(state, input);
-      if (input.block && showMs > 0)
-        this.runTween(state, showMs, () => {}, { onComplete: complete });
-      else complete();
+      const onComplete = input.block ? complete : undefined;
+      if (template?.hasImgMask && (input.style === 1 || input.style === 2)) {
+        template.maskNode.alpha = 0;
+        this.syncStencilVisibility(state, template);
+        this.fadeMask(state, template, 1, 3000, onComplete);
+      } else if (onComplete && hasShowSequence)
+        this.runTween(state, 1000, () => {}, { onComplete });
+      if (!onComplete || !hasShowSequence) complete();
     };
 
     const textures = KNOWN_MASK_IDS.has(input.maskId)
@@ -591,15 +597,12 @@ export class CutinChannel {
     this.setScale(state, state.fallbackScale);
   }
 
-  /**
-   * Base `CutinTemplate.ShowCutinMask` timing and template visuals; returns the
-   * completion floor of the show sequence in ms.
-   */
+  /** Prepares ShowCutinMask (2791 @ 0x181501750) and reports its sequence. */
   private showTemplate(
     state: ChannelState,
     template: TemplateNodes,
     input: InterludeInput,
-  ): number {
+  ): boolean {
     const style = input.style;
     const tsEntry = input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0;
     if ((style === 0 || style === 2) && tsEntry)
@@ -628,10 +631,46 @@ export class CutinChannel {
       this.runTween(state, seconds * 1000, (progress) => {
         applyHoriMaskOpen(template.maskNode, progress * seconds);
       });
-      return 0;
+      return false;
     }
-    if ((style === 1 || style === 2) && template.hasImgMask) return 3000;
-    return 1000;
+    return true;
+  }
+
+  private syncStencilVisibility(
+    state: ChannelState,
+    template: TemplateNodes,
+  ): void {
+    if (this.state !== state) return;
+    // The 2791 writer uses Color32 vertices and cullTransparentMesh.
+    // Pixi's readers keep their own alpha while the writer is culled.
+    const writesStencil = template.maskNode.alpha > 0.5 / 255;
+    state.content.visible = writesStencil;
+    for (const reader of template.stencilReaders ?? [])
+      reader.renderable = writesStencil;
+  }
+
+  private fadeMask(
+    state: ChannelState,
+    template: TemplateNodes,
+    alpha: number,
+    durationMs: number,
+    onComplete?: () => void,
+  ): void {
+    const step = tweenAlpha(template.maskNode, alpha);
+    this.runTween(
+      state,
+      durationMs,
+      (progress) => {
+        step(progress);
+        this.syncStencilVisibility(state, template);
+      },
+      {
+        deferZeroDuration: true,
+        ease: dotweenDefaultEase,
+        onComplete,
+        target: template.maskNode,
+      },
+    );
   }
 
   /** Style Scale/Both: localScale = tsFrom, DOScale to tsTo (not gating). */
@@ -1034,6 +1073,7 @@ export class CutinChannel {
       done(fromTween);
     };
     const onComplete = () => finish(true);
+    const to = input.alphaTo >= 0 ? input.alphaTo : 0;
 
     if (template.dialog) {
       const group = template.dialog.group;
@@ -1041,7 +1081,6 @@ export class CutinChannel {
       // the intro and the previous fade before starting a new one.
       state.dialogIntro?.kill();
       this.tweens.killTarget(group);
-      const to = input.alphaTo >= 0 ? input.alphaTo : 0;
       const durationMs =
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
       this.runTween(state, durationMs, tweenAlpha(group, to), {
@@ -1064,11 +1103,8 @@ export class CutinChannel {
     }
     if (input.style === 2) this.tweenScale(state, input);
     if (template.hasImgMask) {
-      this.runTween(state, input.alphaDurationMs, () => {}, {
-        deferZeroDuration: true,
-        onComplete,
-        target: template.maskNode,
-      });
+      // HideCutinMask (2791 @ 0x1815013A0) fades the same stencil writer.
+      this.fadeMask(state, template, to, input.alphaDurationMs, onComplete);
     } else finish(false);
   }
 
