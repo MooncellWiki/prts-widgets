@@ -113,6 +113,11 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
       addImageUrl(urls, image, "background");
       continue;
     }
+    if (line.command === "charactercutin") {
+      // AVGCharacterCutinPanel.InternalResRefCollector (2791 @ 0x1841B53A0).
+      addImageUrl(urls, toString(line.args.background), "background");
+      continue;
+    }
     if (line.command === "avgdisplay") {
       // Unquoted `style=5` parses to a number; resolve it like the runtime.
       const style = resolveAvgDisplayStyle(String(line.args.style ?? ""));

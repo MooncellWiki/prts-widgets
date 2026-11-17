@@ -867,7 +867,6 @@ describe("InterludePanel", () => {
   it.each([
     { maskId: VERTICAL, recycleAtMs: 100 },
     { maskId: DIALOG, recycleAtMs: 1000 },
-    { maskId: "square", recycleAtMs: 1000 },
   ])(
     "recycles $maskId at $recycleAtMs ms when two clears overlap",
     ({ maskId, recycleAtMs }) => {
@@ -906,6 +905,31 @@ describe("InterludePanel", () => {
       expect(layer.children).toEqual([replacement]);
     },
   );
+
+  it("recycles a maskless channel before releasing a blocking clear", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const layer = new Container();
+    const panel = createPanel(
+      layer,
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, maskId: "" }));
+    const finish = vi.fn(() => expect(layer.children).toHaveLength(0));
+    const result = panel.run(
+      input({ clear: true, templateSizeDurationMs: 1000 }),
+      finish,
+    );
+    expect(result).toBeUndefined();
+    expect(finish).toHaveBeenCalledExactlyOnceWith();
+
+    panel.run(input({ block: false, maskId: VERTICAL }));
+    const replacement = channel(panel);
+    expect(replacement.template).not.toBeNull();
+    frames.step(1000);
+    expect(layer.children).toEqual([replacement.root]);
+  });
 
   it.each([
     { style: 0, tween: "scale" },
@@ -1103,7 +1127,7 @@ describe("InterludePanel", () => {
       frames.createTweenRunner(),
     );
 
-    await panel.run(input({ block: false }))?.completion;
+    await panel.run(input({ block: false, maskId: VERTICAL }))?.completion;
     await panel.run(
       input({
         alphaDurationMs: 2000,
@@ -1231,33 +1255,36 @@ describe("InterludePanel mask templates", () => {
     expect(state.elements.size).toBe(0);
   });
 
-  it("dialog create consumes the avatar and skips the intro at duration 0 (act54side shape)", async () => {
-    const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
-    const durations: number[] = [];
-    const panel = createPanel(
-      new Container(),
-      loadTexture,
-      recordingTweens(durations),
-    );
+  it.each([0, 0.005, 0.01])(
+    "dialog create consumes the avatar and samples the end pose at %s ms",
+    async (durationMs) => {
+      const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
+      const durations: number[] = [];
+      const panel = createPanel(
+        new Container(),
+        loadTexture,
+        recordingTweens(durations),
+      );
 
-    const command = input({
-      dialogCharPos: { x: 0, y: 0 },
-      durationMs: 0,
-      maskId: DIALOG,
-      name: "avg_npc_2380_1#1$1",
-      offset: { x: 0, y: 150 },
-      style: 3,
-      type: 3,
-    });
-    await panel.run(command)?.completion;
-    const state = channel(panel);
-    expect(loadTexture).toHaveBeenCalledExactlyOnceWith(command);
-    expect(state.elements.size).toBe(0);
-    expect(state.template.dialog.charImage.position.y).toBe(520);
-    // End pose sampled, no intro tween and no 1s/3s floor on the dialog path.
-    expect(state.template.dialog.group.position.x).toBe(10);
-    expect(durations).toEqual([]);
-  });
+      const command = input({
+        dialogCharPos: { x: 0, y: 0 },
+        durationMs,
+        maskId: DIALOG,
+        name: "avg_npc_2380_1#1$1",
+        offset: { x: 0, y: 150 },
+        style: 3,
+        type: 3,
+      });
+      await panel.run(command)?.completion;
+      const state = channel(panel);
+      expect(loadTexture).toHaveBeenCalledExactlyOnceWith(command);
+      expect(state.elements.size).toBe(0);
+      expect(state.template.dialog.charImage.position.y).toBe(520);
+      // End pose sampled, no intro tween and no 1s/3s floor on the dialog path.
+      expect(state.template.dialog.group.position.x).toBe(10);
+      expect(durations).toEqual([]);
+    },
+  );
 
   it("applies icharpos/icharscale on top of the prefab layout and reloads only on name change", async () => {
     const loadTexture = vi.fn().mockResolvedValue(Texture.WHITE);

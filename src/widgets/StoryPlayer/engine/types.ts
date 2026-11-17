@@ -653,6 +653,10 @@ export type CharacterCutinFadeStyle =
   | "vert_expand_bottom2top";
 
 export interface CharacterCutinInput {
+  /** Entry layout from AVGCharacterCutinSlot.Show. */
+  align?: "horizontal" | "vertical";
+  backgroundKey?: string;
+  backgroundOffset?: number;
   block: boolean;
   characterKey?: string;
   /**

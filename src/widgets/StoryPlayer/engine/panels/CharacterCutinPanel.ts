@@ -10,10 +10,12 @@ import {
   toNumber,
   toOptionalNumber,
   toString,
+  tryParseInt32,
 } from "../commandParams";
 
 import type { CharacterRefResolution } from "../characterRef";
 import type {
+  CharacterCutinInput,
   InterludeElementType,
   InterludeInput,
   ParsedCommandLine,
@@ -124,7 +126,15 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // AVGCharacterCutinSlot.Show/SlotUpdate read the case-sensitive layout
     // keys verbatim. Preserve omitted values for Show's prefab defaults
     // and SlotUpdate's defaults derived from the live transforms.
-    const input = {
+    // Show (2791 @ 0x184203DA0) reads Align with case-sensitive Enum.Parse.
+    const align = toString(args.align).trim();
+    const input: CharacterCutinInput = {
+      align:
+        align === "VERTICAL" || tryParseInt32(align) === 1
+          ? "vertical"
+          : "horizontal",
+      backgroundKey: toString(args.background) || undefined,
+      backgroundOffset: toOptionalNumber(args.backgroundOffset),
       block,
       characterKey: resolved?.base,
       characterMissing: Boolean(nameRef) && !resolved,

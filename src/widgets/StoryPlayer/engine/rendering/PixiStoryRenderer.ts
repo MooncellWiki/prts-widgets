@@ -601,6 +601,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.cutinPanel = new CharacterCutinPanel(
       this.cutinLayer,
       (input) => this.loadCharacterArt(input.characterKey, input.expression),
+      (key) => this.textureForImageKey(key, "background"),
       this.updatePhaseTweenRunner,
     );
     this.animTextPanel = new AnimTextPanel(

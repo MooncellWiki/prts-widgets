@@ -299,7 +299,7 @@ export class InterludePanel {
       if (template?.dialog) {
         const dialog = template.dialog;
         // Seed the entry pose before the Web texture load can yield a frame.
-        if (input.style === 3 && input.durationMs > 0)
+        if (input.style === 3 && input.durationMs > TWEEN_ZERO_MS)
           applyDialogIntro(dialog, 0);
         const show = () => {
           if (state.root.destroyed) return;
@@ -869,7 +869,9 @@ export class InterludePanel {
     const seconds = dialog.right
       ? CLIP_SECONDS.dialogIntroRight
       : CLIP_SECONDS.dialogIntroLeft;
-    if (input.durationMs <= 0) {
+    // _PlayDialogIntro (2791 @ 0x1814FFB50) samples the end pose
+    // when AVGUtils.NeedSkipAnimation considers the duration zero.
+    if (input.durationMs <= TWEEN_ZERO_MS) {
       applyDialogIntro(dialog, seconds);
       complete();
       return;
@@ -967,13 +969,16 @@ export class InterludePanel {
     }
 
     const state = this.channels.get(input.channel);
-    if (state) {
-      this.hide(state, input, () => {
-        this.recycleChannel(input.channel, state);
-        if (input.block && state.template) complete();
-      });
+    if (!state) {
+      complete();
+      return;
     }
-    if (!input.block || !state?.template) complete();
+
+    this.hide(state, input, () => {
+      this.recycleChannel(input.channel, state);
+      if (input.block) complete();
+    });
+    if (!input.block) complete();
   }
 
   private hideAllChannels(input: InterludeInput): void {
@@ -986,10 +991,7 @@ export class InterludePanel {
       if (!fromTween) throw new Error(message);
       this.onWarning?.(message);
     };
-    for (const state of this.channels.values()) {
-      if (state.template) this.hide(state, input, done);
-      else done(false);
-    }
+    for (const state of this.channels.values()) this.hide(state, input, done);
   }
 
   private recycleChannel(id: number, state: ChannelState): void {
@@ -1024,6 +1026,14 @@ export class InterludePanel {
     input: InterludeInput,
     done: (fromTween: boolean) => void,
   ): void {
+    const template = state.template;
+    // OnCutinEnd (2791 @ 0x1814F9650) calls back inline without a
+    // template. Release the channel before the next command can reuse its ID.
+    if (!template) {
+      done(false);
+      return;
+    }
+
     const finish = (fromTween: boolean) => {
       // _HideOncomplete (2791 @ 0x181502120) schedules destruction of the
       // deco before calling the controller's channel completion callback.
@@ -1040,8 +1050,7 @@ export class InterludePanel {
     };
     const onComplete = () => finish(true);
 
-    const template = state.template;
-    if (template?.dialog) {
+    if (template.dialog) {
       const group = template.dialog.group;
       // CutinTemplateDialogView.HideCutinMask (2791 @ 0x1814FD2C0) kills
       // the intro and the previous fade before starting a new one.
@@ -1064,7 +1073,7 @@ export class InterludePanel {
         target: state.deco.root,
       });
     }
-    if (!template || input.style === 0) {
+    if (input.style === 0) {
       this.tweenScale(state, input, onComplete);
       return;
     }

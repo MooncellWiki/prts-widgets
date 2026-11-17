@@ -220,40 +220,58 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("maps charactercutin slot layout keys and scales fadetime by animateRatio", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        '[charactercutin(widgetID="1",name="avg_npc_1#1",fadetime=0.4,offsetx=-300,offsety=25,width=220,zoom=1.5,povX=-50,povY=30,charOffsetX=5,charOffsetY=-10,fadestyle="horiz_expand_left2right",block=true)]',
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-      { animateRatio: 0.5 },
-    );
-
-    await runtime.start();
-
-    expect(renderer.characterCutinCalls).toEqual([
-      {
-        block: true,
-        characterKey: "avg_npc_1",
-        characterMissing: false,
-        charOffsetX: 5,
-        charOffsetY: -10,
-        expression: "1$1",
-        fadeMs: 200,
-        fadeStyle: "horiz_expand_left2right",
-        offsetX: -300,
-        offsetY: 25,
-        povX: -50,
-        povY: 30,
-        widgetId: "1",
-        width: 220,
-        zoom: 1.5,
+  it.each([
+    { args: "", expected: { align: "horizontal" } },
+    {
+      args: ',align="VERTICAL",background="bg_test",backgroundOffset=32',
+      expected: {
+        align: "vertical",
+        backgroundKey: "bg_test",
+        backgroundOffset: 32,
       },
-    ]);
-  });
+    },
+    {
+      args: ",align=1,backgroundoffset=100",
+      expected: { align: "vertical", backgroundOffset: undefined },
+    },
+  ])(
+    "maps cut-in layout keys and scales fadetime with args '$args'",
+    async ({ args, expected }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[charactercutin(widgetID="1",name="avg_npc_1#1",fadetime=0.4,offsetx=-300,offsety=25,width=220,zoom=1.5,povX=-50,povY=30,charOffsetX=5,charOffsetY=-10,fadestyle="horiz_expand_left2right",block=true${args})]`,
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { animateRatio: 0.5 },
+      );
+
+      await runtime.start();
+
+      expect(renderer.characterCutinCalls).toEqual([
+        {
+          ...expected,
+          block: true,
+          characterKey: "avg_npc_1",
+          characterMissing: false,
+          charOffsetX: 5,
+          charOffsetY: -10,
+          expression: "1$1",
+          fadeMs: 200,
+          fadeStyle: "horiz_expand_left2right",
+          offsetX: -300,
+          offsetY: 25,
+          povX: -50,
+          povY: 30,
+          widgetId: "1",
+          width: 220,
+          zoom: 1.5,
+        },
+      ]);
+    },
+  );
 
   it("leaves omitted charactercutin layout keys undefined for the panel to resolve", async () => {
     const renderer = new FakeRenderer();

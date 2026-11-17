@@ -14,13 +14,19 @@ import {
   PlaybackTestFrames,
 } from "./helpers/playbackFrames";
 
-import type { CharacterArt } from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type {
+  CharacterArt,
+  CharacterArtLoad,
+} from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
 import type { CharacterSlotView } from "../src/widgets/StoryPlayer/engine/rendering/characters/CharacterSlotView";
+import type { TextureLoad } from "../src/widgets/StoryPlayer/engine/rendering/core/TextureAsset";
+import type { TweenRunner } from "../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { CharacterCutinInput } from "../src/widgets/StoryPlayer/engine/types";
 
 /** The fields of the panel's private per-widget slot state these tests read. */
 interface SlotView {
   backdrop: Graphics;
+  backgroundImage: Sprite;
   portrait: CharacterSlotView;
   content: Container;
   mask: Graphics;
@@ -76,6 +82,15 @@ function art(width: number, height: number): CharacterArt {
   };
 }
 
+function createPanel(
+  layer: Container,
+  loadPortrait: (input: CharacterCutinInput) => CharacterArtLoad,
+  tweens: Pick<TweenRunner, "start" | "killTarget">,
+  loadBackground: (key: string) => TextureLoad = () => null,
+): CharacterCutinPanel {
+  return new CharacterCutinPanel(layer, loadPortrait, loadBackground, tweens);
+}
+
 /** A texture loader whose promise the test resolves by hand. */
 function deferredArt(): {
   loadTexture: () => Promise<CharacterArt>;
@@ -93,11 +108,7 @@ describe("CharacterCutinPanel", () => {
     const layer = new Container();
     const tex = art(120, 300);
     const loadTexture = vi.fn().mockResolvedValue(tex);
-    const panel = new CharacterCutinPanel(
-      layer,
-      loadTexture,
-      createInstantTweenRunner(),
-    );
+    const panel = createPanel(layer, loadTexture, createInstantTweenRunner());
 
     await panel.run(input({ offsetX: -300, offsetY: 40 }))?.completion;
 
@@ -132,7 +143,7 @@ describe("CharacterCutinPanel", () => {
 
   it("applies zoom, pov, and charOffset keys to the slot hierarchy", async () => {
     const layer = new Container();
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       async () => art(120, 300),
       createInstantTweenRunner(),
@@ -168,7 +179,7 @@ describe("CharacterCutinPanel", () => {
       pos: { x: 0, y: 110 },
       width: 1210,
     };
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       async () => espumo,
       createInstantTweenRunner(),
@@ -188,7 +199,7 @@ describe("CharacterCutinPanel", () => {
 
   it("renders the #898989 defaultBackground strip behind the character", async () => {
     const layer = new Container();
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       async () => art(120, 300),
       createInstantTweenRunner(),
@@ -206,23 +217,112 @@ describe("CharacterCutinPanel", () => {
     // root children: mask, backdrop, content.
     expect(state.root.children.indexOf(state.backdrop)).toBe(1);
     expect(state.root.children.indexOf(state.content)).toBe(2);
-    // The backdrop is drawn once at full-canvas size; it never resizes with
-    // the mask (native rect is 2560x720, only the mask clips it).
+    // The backdrop keeps the prefab's 2560x720 rect as the mask resizes.
     expect(state.backdrop.bounds).toMatchObject({
-      maxX: 640,
+      maxX: 1280,
       maxY: 360,
-      minX: -640,
+      minX: -1280,
       minY: -360,
     });
     expect(state.backdrop.scale.x).toBe(1);
     expect(state.backdrop.scale.y).toBe(1);
   });
 
+  it.each([
+    {
+      align: "horizontal",
+      backgroundPosition: { x: 30, y: 0 },
+      backgroundSize: { width: 1440, height: 720 },
+      maskSize: { w: 240, h: 720 },
+    },
+    {
+      align: "vertical",
+      backgroundPosition: { x: 0, y: -30 },
+      backgroundSize: { width: 1280, height: 640 },
+      maskSize: { w: 1280, h: 240 },
+    },
+  ] as const)(
+    "lays out the mask and the background for $align alignment",
+    async ({ align, backgroundPosition, backgroundSize, maskSize }) => {
+      const image = texture(800, 400);
+      const loadBackground = vi.fn(() => image);
+      const panel = createPanel(
+        new Container(),
+        () => art(120, 300),
+        createInstantTweenRunner(),
+        loadBackground,
+      );
+
+      await panel.run(
+        input({
+          align,
+          backgroundKey: "bg_test",
+          backgroundOffset: 30,
+          width: 240,
+          zoom: 2,
+        }),
+      )?.completion;
+
+      const state = slots(panel).get("1")!;
+      expect(loadBackground).toHaveBeenCalledExactlyOnceWith("bg_test");
+      expect(state.maskSize).toEqual(maskSize);
+      expect(state.backdrop.visible).toBe(false);
+      expect(state.backgroundImage.texture).toBe(image);
+      expect(state.backgroundImage.tint).toBe(0x89_89_89);
+      expect(state.backgroundImage.parent).toBe(state.content);
+      expect(state.backgroundImage.position).toMatchObject(backgroundPosition);
+      expect(state.backgroundImage).toMatchObject(backgroundSize);
+      expect(state.portrait.root.y).toBe(maskSize.h / 2);
+    },
+  );
+
+  it("keeps the Show axis and image on update and resets both on reuse", async () => {
+    const image = texture(800, 400);
+    const loadBackground = vi.fn(() => image);
+    const panel = createPanel(
+      new Container(),
+      () => art(120, 300),
+      createInstantTweenRunner(),
+      loadBackground,
+    );
+
+    await panel.run(
+      input({
+        align: "vertical",
+        backgroundKey: "bg_test",
+        backgroundOffset: 30,
+        width: 240,
+      }),
+    )?.completion;
+    const state = slots(panel).get("1")!;
+    await panel.run(
+      input({
+        align: "horizontal",
+        backgroundKey: "bg_ignored",
+        backgroundOffset: -120,
+        width: 300,
+      }),
+    )?.completion;
+    expect(state.maskSize).toEqual({ w: 1280, h: 300 });
+    expect(state.backgroundImage.texture).toBe(image);
+    expect(state.backgroundImage.position.y).toBe(-30);
+    expect(state.portrait.root.y).toBe(120);
+    expect(loadBackground).toHaveBeenCalledExactlyOnceWith("bg_test");
+
+    await panel.run(input({ characterKey: undefined }))?.completion;
+    await panel.run(input({ widgetId: "2" }))?.completion;
+    expect(slots(panel).get("2")).toBe(state);
+    expect(state.maskSize).toEqual({ w: 200, h: 720 });
+    expect(state.backgroundImage.visible).toBe(false);
+    expect(state.backgroundImage.texture).toBe(Texture.EMPTY);
+    expect(state.backdrop.visible).toBe(true);
+  });
+
   it("expands the mask rect from the pinned edge instead of scaling the sprite", async () => {
     const layer = new Container();
     const frames = new PlaybackTestFrames();
     frames.manual = true;
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       async () => art(120, 300),
       frames.createTweenRunner(),
@@ -256,11 +356,7 @@ describe("CharacterCutinPanel", () => {
     const loadTexture = vi.fn().mockResolvedValue(art(120, 300));
     const frames = new PlaybackTestFrames();
     frames.manual = true;
-    const panel = new CharacterCutinPanel(
-      layer,
-      loadTexture,
-      frames.createTweenRunner(),
-    );
+    const panel = createPanel(layer, loadTexture, frames.createTweenRunner());
 
     await panel.run(
       input({
@@ -308,11 +404,7 @@ describe("CharacterCutinPanel", () => {
   it("SlotUpdate keeps the art of a repeated name (story_hibisc_1_1.txt:350/360)", async () => {
     const layer = new Container();
     const loadTexture = vi.fn().mockResolvedValue(art(120, 300));
-    const panel = new CharacterCutinPanel(
-      layer,
-      loadTexture,
-      createInstantTweenRunner(),
-    );
+    const panel = createPanel(layer, loadTexture, createInstantTweenRunner());
     // Both lines are byte-identical, including `fadetime=0` -- which makes the
     // tween settle synchronously, so a mishandled crossfade drops the art on
     // the spot instead of over 400ms.
@@ -334,7 +426,7 @@ describe("CharacterCutinPanel", () => {
 
   it("SlotUpdate negates omitted POV axes and keeps the other layout values", async () => {
     const layer = new Container();
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       async () => art(120, 300),
       createInstantTweenRunner(),
@@ -367,7 +459,7 @@ describe("CharacterCutinPanel", () => {
     frames.manual = true;
     const entryArt = art(120, 300);
     const updateArt = art(140, 300);
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       new Container(),
       ({ expression }) => (expression === "2$2" ? updateArt : entryArt),
       frames.createTweenRunner(),
@@ -397,11 +489,7 @@ describe("CharacterCutinPanel", () => {
   it("does not render a full-size slot while the character texture loads", async () => {
     const layer = new Container();
     const { loadTexture, release } = deferredArt();
-    const panel = new CharacterCutinPanel(
-      layer,
-      loadTexture,
-      createInstantTweenRunner(),
-    );
+    const panel = createPanel(layer, loadTexture, createInstantTweenRunner());
 
     const pending = panel.run(
       input({ fadeMs: 400, fadeStyle: "horiz_expand_center" }),
@@ -419,11 +507,7 @@ describe("CharacterCutinPanel", () => {
   it("does not render an opaque fade-style slot while the texture loads", async () => {
     const layer = new Container();
     const { loadTexture, release } = deferredArt();
-    const panel = new CharacterCutinPanel(
-      layer,
-      loadTexture,
-      createInstantTweenRunner(),
-    );
+    const panel = createPanel(layer, loadTexture, createInstantTweenRunner());
 
     const pending = panel.run(input({ fadeMs: 400 }));
     const state = slots(panel).get("1")!;
@@ -434,6 +518,36 @@ describe("CharacterCutinPanel", () => {
     expect(state.root.alpha).toBe(1);
   });
 
+  it("cancels a pending background when its slot is reused", async () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    let release!: (image: Texture) => void;
+    const background = new Promise<Texture>((resolve) => {
+      release = resolve;
+    });
+    const panel = createPanel(
+      new Container(),
+      () => art(120, 300),
+      frames.createTweenRunner(),
+      () => background,
+    );
+
+    const pending = panel.run(input({ backgroundKey: "bg_test" }));
+    const state = slots(panel).get("1")!;
+    frames.step(16);
+    expect(pending?.endReason).toBeUndefined();
+    expect(state.root.alpha).toBe(0);
+
+    const replacement = panel.run(input({ expression: "2$2" }));
+    expect(pending?.endReason).toBe("reset");
+    release(texture(800, 400));
+    await frames.advance(16);
+    expect(replacement?.endReason).toBe("complete");
+    expect(state.root.alpha).toBe(1);
+    expect(state.backgroundImage.visible).toBe(false);
+    expect(state.backdrop.visible).toBe(true);
+  });
+
   it("starts a fresh Show when a named command supersedes a pending entry texture", async () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
@@ -441,7 +555,7 @@ describe("CharacterCutinPanel", () => {
     const { loadTexture, release } = deferredArt();
     const replacement = art(140, 300);
     const layer = new Container();
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       ({ expression }) => (expression === "2$2" ? replacement : loadTexture()),
       runner,
@@ -473,7 +587,7 @@ describe("CharacterCutinPanel", () => {
       const tween = frames.createTweenRunner();
       const texA = art(120, 300);
       const texB = art(140, 300);
-      const panel = new CharacterCutinPanel(
+      const panel = createPanel(
         new Container(),
         ({ expression }) => (expression === "2$2" ? texB : texA),
         tween,
@@ -503,7 +617,7 @@ describe("CharacterCutinPanel", () => {
 
   it("restores the previous portrait after a replacement fails to load", () => {
     const portrait = art(120, 300);
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       new Container(),
       ({ expression }) => (expression === "2$2" ? null : portrait),
       createInstantTweenRunner(),
@@ -525,7 +639,7 @@ describe("CharacterCutinPanel", () => {
       const layer = new Container();
       const frames = new PlaybackTestFrames();
       frames.manual = true;
-      const panel = new CharacterCutinPanel(
+      const panel = createPanel(
         layer,
         async () => art(120, 300),
         frames.createTweenRunner(),
@@ -573,11 +687,7 @@ describe("CharacterCutinPanel", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
     const runner = frames.createTweenRunner();
-    const panel = new CharacterCutinPanel(
-      new Container(),
-      () => art(120, 300),
-      runner,
-    );
+    const panel = createPanel(new Container(), () => art(120, 300), runner);
 
     panel.run(input({ fadeMs: 100 }));
     const state = slots(panel).get("1")!;
@@ -610,7 +720,7 @@ describe("CharacterCutinPanel", () => {
     ({ fadeStyle, axis, firstSize }) => {
       const frames = new PlaybackTestFrames();
       frames.manual = true;
-      const panel = new CharacterCutinPanel(
+      const panel = createPanel(
         new Container(),
         () => art(120, 300),
         frames.createTweenRunner(),
@@ -640,7 +750,7 @@ describe("CharacterCutinPanel", () => {
       const layer = new Container();
       const frames = new PlaybackTestFrames();
       frames.manual = true;
-      const panel = new CharacterCutinPanel(
+      const panel = createPanel(
         layer,
         () => art(120, 300),
         frames.createTweenRunner(),
@@ -677,7 +787,7 @@ describe("CharacterCutinPanel", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
     const layer = new Container();
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       () => art(120, 300),
       frames.createTweenRunner(),
@@ -713,7 +823,7 @@ describe("CharacterCutinPanel", () => {
       frames.manual = true;
       const runner = frames.createTweenRunner();
       const layer = new Container();
-      const panel = new CharacterCutinPanel(layer, () => art(120, 300), runner);
+      const panel = createPanel(layer, () => art(120, 300), runner);
       panel.run(input());
       frames.step(16);
 
@@ -737,11 +847,7 @@ describe("CharacterCutinPanel", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
     const runner = frames.createTweenRunner();
-    const panel = new CharacterCutinPanel(
-      new Container(),
-      () => art(120, 300),
-      runner,
-    );
+    const panel = createPanel(new Container(), () => art(120, 300), runner);
     panel.run(input({ block: false, fadeMs: 100 }));
     const layout = panel.run(input({ fadeMs: 25, offsetX: 100 }));
     const { root } = slots(panel).get("1")!;
@@ -757,7 +863,7 @@ describe("CharacterCutinPanel", () => {
   it("holds the captured integer height when updating a slot during vertical entry", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       new Container(),
       () => art(120, 300),
       frames.createTweenRunner(),
@@ -782,7 +888,7 @@ describe("CharacterCutinPanel", () => {
     const runner = frames.createTweenRunner();
     const tweenSpy = vi.spyOn(runner, "start");
     const loadTexture = vi.fn();
-    const panel = new CharacterCutinPanel(layer, loadTexture, runner);
+    const panel = createPanel(layer, loadTexture, runner);
 
     await panel.run(
       input({
@@ -810,7 +916,7 @@ describe("CharacterCutinPanel", () => {
 
   it("clear drops one widget or every slot", async () => {
     const layer = new Container();
-    const panel = new CharacterCutinPanel(
+    const panel = createPanel(
       layer,
       async () => art(120, 300),
       createInstantTweenRunner(),
