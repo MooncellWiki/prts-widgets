@@ -164,7 +164,7 @@ describe("Interlude background rendering", () => {
         app.ticker.update(16);
         const { node, sprite } = renderer.interludePanel.channels
           .get(3)
-          .elements.get("\u0000bg");
+          .channel.state.elements.get("\u0000bg");
         expect([sprite.width, sprite.height]).toEqual([width, height]);
         expect(node.scale.x).toBeCloseTo(1.3125);
         expect(node.scale.y).toBeCloseTo(1.0625);
@@ -269,7 +269,8 @@ describe("Interlude avatar rendering", () => {
         app.ticker.update(16);
         const channel = renderer.layers.cutins.children[0] as Container;
         const charScale = channel.children[1].children[1];
-        const dialog = renderer.interludePanel.channels.get(3).template.dialog;
+        const dialog =
+          renderer.interludePanel.channels.get(3).channel.state.template.dialog;
         const sprite: Sprite | undefined =
           dialog?.charImage ?? findSprite(charScale);
         const position = dialog

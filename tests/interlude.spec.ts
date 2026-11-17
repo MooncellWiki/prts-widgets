@@ -1,8 +1,11 @@
-import { Container, Texture } from "pixi.js";
+import { Container, Rectangle, Texture, type Sprite } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { InterludePanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/InterludePanel";
-import { CLIP_SECONDS } from "../src/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates";
+import {
+  CLIP_SECONDS,
+  loadInterludeTextures,
+} from "../src/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates";
 
 import {
   createInstantTweenRunner,
@@ -38,7 +41,7 @@ vi.mock(
       dialogFrame: white(),
       gradientV: white(),
     };
-    return { ...mod, loadInterludeTextures: () => tex };
+    return { ...mod, loadInterludeTextures: vi.fn(() => tex) };
   },
 );
 
@@ -116,7 +119,7 @@ function createPanel(
 }
 
 function channel(panel: InterludePanel, id = 3): any {
-  return (panel as any).channels.get(id);
+  return (panel as any).channels.get(id)?.channel.state;
 }
 
 describe("InterludePanel", () => {
@@ -189,6 +192,66 @@ describe("InterludePanel", () => {
     const reset = channel(panel, 3).elements.get("\u0000bg").node.scale;
     expect([reset.x, reset.y]).toEqual([1, 1]);
   });
+
+  it.each([1, 2] as const)(
+    "keeps the active type %s image rect and alpha after clearing its sprite",
+    async (type) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const layer = new Container();
+      const texture = new Texture({ frame: new Rectangle(0, 0, 128, 64) });
+      const panel = createPanel(
+        layer,
+        () => texture,
+        frames.createTweenRunner(),
+      );
+      const show = { block: false, maskId: VERTICAL, style: 1 };
+      panel.run(input(show));
+      const [root] = layer.children;
+      const [, content] = root.children;
+      panel.run(
+        input({
+          alphaTo: 0.4,
+          block: false,
+          name: "image",
+          positionFrom: { x: 36, y: 7 },
+          positionTo: { x: 36, y: 7 },
+          type,
+        }),
+      );
+      const scale = content.children[type === 2 ? 0 : 1];
+      const [node] = scale.children[0].children;
+      const sprite = node.children[0] as Sprite;
+      panel.run(input({ block: false, clear: true }));
+      frames.step(16);
+
+      const textures = await loadInterludeTextures();
+      const mask = Promise.withResolvers<typeof textures>();
+      vi.mocked(loadInterludeTextures).mockReturnValueOnce(mask.promise);
+      const reopened = panel.run(input(show));
+      expect(layer.children).toEqual([root]);
+      expect(content.visible).toBe(false);
+
+      mask.resolve(textures);
+      await reopened?.completion;
+      expect(content.visible).toBe(true);
+      expect(node.visible && node.renderable).toBe(true);
+      expect(node.alpha).toBe(0.4);
+      expect([node.x, node.y]).toEqual([0, 0]);
+      expect(sprite.texture).toBe(Texture.WHITE);
+      expect([sprite.width, sprite.height]).toEqual([128, 64]);
+
+      panel.run(input({ block: false, clear: true }));
+      frames.step(16);
+      panel.run(input({ ...show, channel: 4 }));
+      expect(layer.children).toEqual([root]);
+      expect(node.visible).toBe(true);
+      expect(node.renderable).toBe(false);
+      panel.run(input({ block: false, channel: 4, name: "image", type }));
+      expect(node.renderable).toBe(true);
+      expect(sprite.texture).toBe(texture);
+    },
+  );
 
   it.each([100, 2100])(
     "keeps the sampled direction pose when the channel is recycled at %sms",
@@ -1016,6 +1079,7 @@ describe("InterludePanel", () => {
       );
       panel.run(input({ block: false, maskId: VERTICAL }));
       const [root] = layer.children;
+      const [template] = root.children[0].children;
       const clear = { clear: true, style };
       panel.run(
         input({
@@ -1037,7 +1101,8 @@ describe("InterludePanel", () => {
 
       frames.step(100);
       expect(layer.children).toHaveLength(0);
-      expect(root.destroyed).toBe(true);
+      expect(template.destroyed).toBe(true);
+      expect(root.destroyed).toBe(false);
       frames.step(900);
       expect(finish).not.toHaveBeenCalled();
       // The cancelled tween supplies no command completion. A reset settles
@@ -1045,10 +1110,11 @@ describe("InterludePanel", () => {
       expect(wait?.endReason).toBeUndefined();
       panel.clearAll();
       expect(wait?.endReason).toBe("reset");
+      expect(root.destroyed).toBe(true);
     },
   );
 
-  it("lets both template clears finish within the update that recycles the channel", () => {
+  it("finishes both same-frame clears when the first callback reopens the channel", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
     const layer = new Container();
@@ -1057,10 +1123,15 @@ describe("InterludePanel", () => {
       () => Texture.WHITE,
       frames.createTweenRunner(),
     );
-    panel.run(input({ block: false, maskId: VERTICAL }));
+    const show = { block: false, maskId: VERTICAL, style: 1 };
+    panel.run(input(show));
     const [root] = layer.children;
-    panel.run(
-      input({ block: false, clear: true, templateSizeDurationMs: 100 }),
+    const [maskContainer] = root.children;
+    const [oldTemplate] = maskContainer.children;
+    const reopen = vi.fn(() => panel.run(input(show)));
+    const first = panel.run(
+      input({ clear: true, templateSizeDurationMs: 100 }),
+      reopen,
     );
     const finish = vi.fn();
     const wait = panel.run(
@@ -1069,10 +1140,19 @@ describe("InterludePanel", () => {
     );
 
     frames.step(120);
+    expect(first?.endReason).toBe("complete");
     expect(wait?.endReason).toBe("complete");
+    expect(reopen).toHaveBeenCalledExactlyOnceWith();
     expect(finish).toHaveBeenCalledExactlyOnceWith();
-    expect(root.destroyed).toBe(true);
-    expect(layer.children).toHaveLength(0);
+    expect(oldTemplate.destroyed).toBe(true);
+    expect(layer.children).toEqual([root]);
+    expect(root.children[0]).toBe(maskContainer);
+    expect(maskContainer.children).toHaveLength(1);
+    expect(maskContainer.children[0].destroyed).toBe(false);
+
+    panel.run(input({ ...show, channel: 4 }));
+    expect(layer.children).toHaveLength(2);
+    expect(layer.children[0]).toBe(root);
   });
 
   it("replaces the previous dialog hide", () => {
@@ -1219,7 +1299,7 @@ describe("InterludePanel", () => {
 
     frames.step(500);
     expect(layer.children).toHaveLength(0);
-    expect(state.bkgScale.parent).toBeNull();
+    expect(state.bkgScale.parent).toBe(state.content);
     expect(node.parent).toBe(state.bkgPoz);
     const alphaAtRecycle = node.alpha;
     frames.step(500);
@@ -1448,17 +1528,19 @@ describe("InterludePanel mask templates", () => {
     expect(releaseThird).toHaveBeenCalledTimes(1);
   });
 
-  it("releases the texture wait on recycling a dialog that completes the update inline", async () => {
+  it("releases a dialog's texture wait on recycle and ignores its late result after reuse", async () => {
     const layer = new Container();
     const frames = new PlaybackTestFrames();
     frames.manual = true;
     const texture = Promise.withResolvers<Texture>();
-    const panel = createPanel(
-      layer,
-      () => texture.promise,
-      frames.createTweenRunner(),
-    );
+    const replacement = new Texture({ frame: new Rectangle(0, 0, 128, 64) });
+    const load = vi
+      .fn()
+      .mockReturnValueOnce(texture.promise)
+      .mockReturnValue(replacement);
+    const panel = createPanel(layer, load, frames.createTweenRunner());
     panel.run(input({ block: false, maskId: DIALOG }));
+    const [root] = layer.children;
     panel.run(input({ alphaDurationMs: 16, block: false, clear: true }));
     const wait = panel.run(input({ name: "bg_light", type: 2 }));
 
@@ -1467,9 +1549,16 @@ describe("InterludePanel mask templates", () => {
     expect(wait?.endReason).toBe("reset");
     expect(layer.children).toHaveLength(0);
 
+    panel.run(input({ block: false, maskId: DIALOG }));
+    panel.run(input({ block: false, name: "bg_replacement", type: 2 }));
+    expect(layer.children).toEqual([root]);
+    const { bgImage } = channel(panel).template.dialog;
+    expect(bgImage.texture).toBe(replacement);
+
     texture.resolve(Texture.WHITE);
     await texture.promise;
-    expect(layer.children).toHaveLength(0);
+    expect(layer.children).toEqual([root]);
+    expect(bgImage.texture).toBe(replacement);
   });
 
   it("applies no show floor when a dialog channel is created without style 3", async () => {
@@ -1595,5 +1684,26 @@ describe("InterludePanel mask templates", () => {
     expect(channel(panel).elements.size).toBe(0);
     // Clip (not gating) + the 1s show floor.
     expect(durations).toEqual([CLIP_SECONDS.direction * 1000, 1000]);
+  });
+
+  it("samples the entry pose without restarting a playing direction clip", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const layer = new Container();
+    const panel = createPanel(
+      layer,
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    const direction = { block: false, direction: "rin" };
+    panel.run(input({ ...direction, maskId: VERTICAL }));
+    const [root] = layer.children;
+    frames.step(1000);
+    expect(root.alpha).toBeCloseTo(1);
+
+    panel.run(input({ ...direction, type: 1 }));
+    expect(root.alpha).toBeCloseTo(0);
+    frames.step(CLIP_SECONDS.direction * 1000 - 1000 + 1);
+    expect(root.alpha).toBeCloseTo(0);
   });
 });
