@@ -189,6 +189,7 @@ describe("preloadContextAssets", () => {
   it("preloads cut-in art and keeps bundled interlude textures out of the asset list", async () => {
     const context = createContext([
       '[charactercutin(widgetID="1",name="avg_npc_180#3",background="bg_cutin")]',
+      '[charactercutin(widgetID="1",name=" avg_npc_180#2")]',
       '[interlude(channel=1,maskid="ui_cutin_mask_horizon")]',
       '[interlude(channel=1,type=2,name="bg_rhodes_day")]',
     ]);
@@ -209,7 +210,7 @@ describe("preloadContextAssets", () => {
     );
   });
 
-  it("loads the dialog font always and the animtext / sami fonts only when used", async () => {
+  it("loads the dialog font always and the template fonts only when used", async () => {
     const fontsFor = async (script: readonly string[]): Promise<string[]> => {
       loadFontMock.mockClear();
       await preloadContextAssets(createContext(script));
@@ -222,6 +223,11 @@ describe("preloadContextAssets", () => {
     expect(
       await fontsFor([
         '[animtext(id="at1",name="group_location_stamp",style="avg_both",pos="-400,-200",block=false)]<p=1>主</><p=2>副</>',
+      ]),
+    ).toEqual(["NotoSansHans-Medium", "SourceHanSansCN-Heavy"]);
+    expect(
+      await fontsFor([
+        '[interlude(channel=3,maskid="group_interclude_square_common",char="九")]',
       ]),
     ).toEqual(["NotoSansHans-Medium", "SourceHanSansCN-Heavy"]);
 

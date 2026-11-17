@@ -1,7 +1,9 @@
 import {
   Assets,
+  CanvasTextMetrics,
   Container,
   Graphics,
+  NineSliceSprite,
   Sprite,
   Text,
   TextStyle,
@@ -10,7 +12,13 @@ import {
 
 import { INTERLUDE_ASSETS } from "../../../assets";
 import importedClips from "../../../assets/interlude/clips.json";
+import {
+  ANIMTEXT_MAIN_FONT_FAMILY,
+  ANIMTEXT_MAIN_FONT_WEIGHT,
+} from "../../font";
 import { getCachedTexture } from "../core/TextureAsset";
+
+import { buildActiveWave } from "./interludeWave";
 
 // interlude mask 模板体系的 Web 重建。
 //
@@ -32,8 +40,6 @@ import { getCachedTexture } from "../core/TextureAsset";
 //   vertical 的 `img_unknown`、dialog 的 `img_bg`/`img_char`)以它裁切。
 // - `bg_defaul_gradient` 的渐变 shader 用 `top_gradient` 贴图拉伸近似;
 //   `mask_soft_edge` 软边与 dialog `img_char_mask` 的自定义网格按矩形近似。
-// - `group_name` 上的布局组件(随文字伸缩的 name_back/brick)未移植,
-//   name_back 固定 40x40。
 // - 关键帧间插值取线性(原生为 slope 贝塞尔);UI 曲线键距稀疏,视觉差异可忽略。
 
 /** `assets/interlude/clips.json` 的结构(AnimationClip typetree 转写)。 */
@@ -158,6 +164,7 @@ export interface InterludeTextureSet {
   unknownSquare: Texture;
   commonFrame: Texture;
   waveBase: Texture;
+  waveDissolve: Texture;
   waveShadow: Texture;
   dialogGrad: Texture;
   dialogFrame: Texture;
@@ -170,6 +177,7 @@ const templateTextureUrls = {
   unknownSquare: INTERLUDE_ASSETS.unknown_square,
   commonFrame: INTERLUDE_ASSETS.common_frame,
   waveBase: INTERLUDE_ASSETS.wave_base,
+  waveDissolve: INTERLUDE_ASSETS.wave_dissolve,
   waveShadow: INTERLUDE_ASSETS.wave_shadow,
   dialogGrad: INTERLUDE_ASSETS.dialog_grad,
   dialogFrame: INTERLUDE_ASSETS.dialog_frame,
@@ -270,8 +278,8 @@ export interface TemplateNodes {
 export interface DecoNodes {
   /** deco 根(`deco_container` 下;面板按 offset 摆放)。 */
   root: Container;
-  /** `text_name`(仅 square deco 有)。 */
-  label: Text | null;
+  /** `text_name` 及其横向布局(仅 square deco 有)。 */
+  setName?: (name: string) => void;
   /**
    * `TwoStateToggle.set_selected`:selected 显示 `wave_active`(说话中的波形),
    * 否则显示 `wave_stop`(静止横线);Awake(`_setWithAwake`)默认未选中。
@@ -280,7 +288,7 @@ export interface DecoNodes {
   /** square deco 的 `group_wave`/`group_name`/`group_frame_common`(入场动画目标)。 */
   waveGroup: Container | null;
   nameGroup: Container | null;
-  frameGroup: Container | null;
+  frameGroup: NineSliceSprite | null;
 }
 
 function centeredSprite(
@@ -293,6 +301,24 @@ function centeredSprite(
   s.width = width;
   s.height = height;
   return s;
+}
+
+function slicedImage(
+  texture: Texture,
+  width: number,
+  height: number,
+  border: number,
+): NineSliceSprite {
+  return new NineSliceSprite({
+    anchor: 0.5,
+    bottomHeight: border,
+    height,
+    leftWidth: border,
+    rightWidth: border,
+    texture,
+    topHeight: border,
+    width,
+  });
 }
 
 /** 以节点原点为中心(重)画裁切矩形。 */
@@ -521,22 +547,7 @@ function buildWaves(tex: InterludeTextureSet): {
 } {
   const shadow = centeredSprite(tex.waveShadow, 220.14, 130);
   shadow.alpha = 0.672;
-  const active = new Container();
-  for (const [x, sx, sy] of [
-    [4.8, 1, 1],
-    [-4.8, -1, 1],
-    [4.8, 1, -1],
-    [-4.8, -1, -1],
-  ] as const) {
-    const w = new Sprite(tex.waveBase);
-    // Unity pivot (1,0) = 右下角;PIXI y 向下,底边即 anchor.y = 1。
-    w.anchor.set(1, 1);
-    w.width = 80;
-    w.height = 42;
-    w.scale.set(w.scale.x * sx, w.scale.y * sy);
-    w.position.set(x, 0);
-    active.addChild(w);
-  }
+  const active = buildActiveWave(tex.waveBase, tex.waveDissolve);
   const stop = new Container();
   for (const [x, sx] of [
     [4.8, 1],
@@ -577,7 +588,6 @@ export function buildDeco(
     setSwitch(false);
     return {
       root,
-      label: null,
       setSwitch,
       waveGroup: null,
       nameGroup: null,
@@ -596,28 +606,42 @@ export function buildDeco(
     waveGroup.scale.set(1, 0.75);
     const { shadow, active, stop } = buildWaves(tex);
     waveGroup.addChild(shadow, active, stop);
-    const frameGroup = new Container();
-    frameGroup.addChild(centeredSprite(tex.commonFrame, 236, 236));
+    // 2791 common_frame is a Sliced Image with 16px edges at reference PPU100.
+    const frameGroup = slicedImage(tex.commonFrame, 236, 236, 16);
     const nameGroup = new Container();
     nameGroup.position.set(-145.3, 85.19);
-    const nameBack = centeredSprite(tex.iconBack, 40, 40);
+    // group_name has a left pivot, a 120px minimum width and a 23px height.
+    // name_back ignores the horizontal layout and stretches 20px beyond it.
+    const nameBack = slicedImage(tex.iconBack, 160, 63, 20);
+    nameBack.anchor.x = 0;
+    nameBack.x = -20;
+    const brick = new Graphics().rect(5, -7, 14, 14).fill(0x28_28_28);
     const label = new Text({
       text: "",
       style: new TextStyle({
         fill: 0x32_32_32,
         fontSize: 18,
-        fontFamily: "SourceHanSansCN-Heavy, sans-serif",
+        fontFamily: [ANIMTEXT_MAIN_FONT_FAMILY, "sans-serif"],
+        fontWeight: ANIMTEXT_MAIN_FONT_WEIGHT,
       }),
     });
     label.anchor.set(0, 0.5);
-    nameGroup.addChild(nameBack, label);
+    // 5px left padding + 14px brick + 5px spacing.
+    label.x = 24;
+    nameGroup.addChild(nameBack, brick, label);
+    const setName = (name: string): void => {
+      if (!name || label.text === name) return;
+      label.text = name;
+      const { width } = CanvasTextMetrics.measureText(name, label.style);
+      nameBack.width = Math.max(120, width + label.x + 5) + 40;
+    };
     root.addChild(waveGroup, frameGroup, nameGroup);
     const setSwitch = (selected: boolean): void => {
       active.visible = selected;
       stop.visible = !selected;
     };
     setSwitch(false);
-    return { root, label, setSwitch, waveGroup, nameGroup, frameGroup };
+    return { root, setName, setSwitch, waveGroup, nameGroup, frameGroup };
   }
 
   return null;
@@ -632,7 +656,7 @@ export function applySquareShow(
   nodes: {
     setBackShadowSize: ((width: number, height: number) => void) | null;
     backShadowGroup: Container | null;
-    frameGroup: Container | null;
+    frameGroup: NineSliceSprite | null;
     nameGroup: Container | null;
     waveGroup: Container | null;
   },
@@ -660,16 +684,18 @@ export function applySquareShow(
     );
   }
   if (frameGroup && !frameGroup.destroyed) {
-    // 居中定尺寸:SizeDelta 即绝对尺寸(子节点 common_frame 拉伸跟随)。
-    frameGroup.width = sample(
-      curve("square_show", "float", "group_frame_common", "m_SizeDelta.x"),
-      t,
-      236,
-    );
-    frameGroup.height = sample(
-      curve("square_show", "float", "group_frame_common", "m_SizeDelta.y"),
-      t,
-      236,
+    // Resize the nine-slice geometry as Unity resizes the RectTransform.
+    frameGroup.setSize(
+      sample(
+        curve("square_show", "float", "group_frame_common", "m_SizeDelta.x"),
+        t,
+        236,
+      ),
+      sample(
+        curve("square_show", "float", "group_frame_common", "m_SizeDelta.y"),
+        t,
+        236,
+      ),
     );
     frameGroup.alpha = sample(
       curve("square_show", "float", "group_frame_common", "m_Alpha"),

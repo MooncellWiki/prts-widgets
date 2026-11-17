@@ -71,6 +71,10 @@ export const INTERLUDE_ASSETS = {
     "assets/ui/interlude/interclude_wave_base.png",
     import.meta.url,
   ).href,
+  wave_dissolve: new URL(
+    "assets/ui/interlude/interclude_wave_dissolve.png",
+    import.meta.url,
+  ).href,
   wave_shadow: new URL("assets/ui/interlude/wave_shadow.png", import.meta.url)
     .href,
   dialog_grad: new URL("assets/ui/interlude/sprite_grad.png", import.meta.url)

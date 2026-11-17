@@ -237,7 +237,8 @@ function addCharacterUrls(
     if (line.kind !== "command") continue;
 
     const refs: string[] = [];
-    if (line.command === "charslot" || line.command === "charactercutin")
+    if (line.command === "charactercutin") refs.push(toString(line.args.name));
+    else if (line.command === "charslot")
       refs.push(argAsString(line.args.name));
     else if (line.command === "character")
       refs.push(argAsString(line.args.name), argAsString(line.args.name2));
@@ -372,12 +373,19 @@ function showsSamiSpellSticker(lines: ParsedLine[]): boolean {
 }
 
 /**
- * 剧本要用的字体：对话字体恒需要，animtext 与萨米 spellsticker 的字体只在剧本
- * 确实用到时才加载。native 字体随 story.unity 常驻，按需加载属 web 适配。
+ * 剧本要用的字体：对话字体恒需要，其他字体按命令需要预热。
+ * native 字体随 story.unity 常驻，按需加载属 web 适配。
  */
 function collectPreloadFonts(lines: ParsedLine[]): FontSpec[] {
   const fonts = [DIALOG_FONT];
-  if (usesCommand(lines, "animtext")) fonts.push(ANIMTEXT_MAIN_FONT);
+  const hasSquareInterlude = lines.some(
+    (line) =>
+      line.kind === "command" &&
+      line.command === "interlude" &&
+      line.args.maskid === "group_interclude_square_common",
+  );
+  if (usesCommand(lines, "animtext") || hasSquareInterlude)
+    fonts.push(ANIMTEXT_MAIN_FONT);
   if (showsSamiSpellSticker(lines)) fonts.push(...SAMI_FONTS);
   return fonts;
 }

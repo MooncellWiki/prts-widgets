@@ -659,6 +659,8 @@ export interface CharacterCutinInput {
   backgroundOffset?: number;
   block: boolean;
   characterKey?: string;
+  /** AVGCharacterSlot.Set compares the script name before resolving the art. */
+  characterRef?: string;
   /**
    * Native provenance: when `name` cannot be resolved, native still allocates
    * the slot and runs its Show/SlotUpdate tween (only AVGCharacterSlot logs

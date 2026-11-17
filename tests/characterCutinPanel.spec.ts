@@ -27,6 +27,8 @@ import type { CharacterCutinInput } from "../src/widgets/StoryPlayer/engine/type
 interface SlotView {
   backdrop: Container;
   backgroundImage: Sprite;
+  backgroundRoot: Container;
+  header: Sprite;
   portrait: CharacterSlotView;
   content: Container;
   mask: Graphics;
@@ -261,15 +263,17 @@ describe("CharacterCutinPanel", () => {
       maskSize: { w: 1280, h: 240 },
     },
   ] as const)(
-    "lays out the mask and the background for $align alignment",
+    "lays out the custom background and its header for $align alignment",
     async ({ align, backgroundPosition, backgroundSize, maskSize }) => {
       const image = texture(800, 400);
+      const gradient = texture(4, 310);
       const loadBackground = vi.fn(() => image);
       const panel = createPanel(
         new Container(),
         () => art(120, 300),
         createInstantTweenRunner(),
         loadBackground,
+        () => gradient,
       );
 
       await panel.run(
@@ -288,9 +292,17 @@ describe("CharacterCutinPanel", () => {
       expect(state.backdrop.visible).toBe(false);
       expect(state.backgroundImage.texture).toBe(image);
       expect(state.backgroundImage.tint).toBe(0x89_89_89);
-      expect(state.backgroundImage.parent).toBe(state.content);
-      expect(state.backgroundImage.position).toMatchObject(backgroundPosition);
+      expect(state.backgroundRoot.parent).toBe(state.content);
+      expect(state.backgroundRoot.position).toMatchObject(backgroundPosition);
+      expect(state.backgroundRoot.children).toEqual([
+        state.backgroundImage,
+        state.header,
+      ]);
       expect(state.backgroundImage).toMatchObject(backgroundSize);
+      expect(state.header.texture).toBe(gradient);
+      expect(state.header.visible).toBe(true);
+      expect(state.header.width).toBe(backgroundSize.width);
+      expect(state.header.y).toBe(-backgroundSize.height / 2 - 50);
       expect(state.portrait.root.y).toBe(maskSize.h / 2);
     },
   );
@@ -324,7 +336,7 @@ describe("CharacterCutinPanel", () => {
     )?.completion;
     expect(state.maskSize).toEqual({ w: 1280, h: 300 });
     expect(state.backgroundImage.texture).toBe(image);
-    expect(state.backgroundImage.position.y).toBe(-30);
+    expect(state.backgroundRoot.position.y).toBe(-30);
     expect(state.portrait.root.y).toBe(120);
     expect(loadBackground).toHaveBeenCalledExactlyOnceWith("bg_test");
 
@@ -334,6 +346,7 @@ describe("CharacterCutinPanel", () => {
     expect(state.maskSize).toEqual({ w: 200, h: 720 });
     expect(state.backgroundImage.visible).toBe(false);
     expect(state.backgroundImage.texture).toBe(Texture.EMPTY);
+    expect(state.header.parent).toBe(state.backdrop);
     expect(state.backdrop.visible).toBe(true);
   });
 
@@ -441,6 +454,29 @@ describe("CharacterCutinPanel", () => {
     expect(visibleSprites(state)[0].alpha).toBe(1);
     // Set never re-loads for a matching key either.
     expect(loadTexture).toHaveBeenCalledTimes(1);
+  });
+
+  it("crossfades different raw names that resolve to the same art", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const loadTexture = vi.fn(() => art(120, 300));
+    const panel = createPanel(
+      new Container(),
+      loadTexture,
+      frames.createTweenRunner(),
+    );
+    const line = input({ characterRef: "avg_test" });
+    panel.run(line);
+    frames.step(16);
+
+    panel.run({ ...line, characterRef: "avg_test#1", fadeMs: 100 });
+    frames.step(25);
+
+    const state = slots(panel).get("1")!;
+    expect(loadTexture).toHaveBeenCalledTimes(2);
+    expect(visibleSprites(state).map((sprite) => sprite.alpha)).toEqual([
+      0.75, 0.25,
+    ]);
   });
 
   it("SlotUpdate negates omitted POV axes and keeps the other layout values", async () => {

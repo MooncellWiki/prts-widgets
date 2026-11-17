@@ -84,7 +84,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
       return "continue";
     }
 
-    const nameRef = toString(args.name).trim();
+    const nameRef = toString(args.name);
     const resolution = nameRef
       ? this.playback.resolveCharacterName(nameRef)
       : null;
@@ -132,6 +132,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
       block,
       characterKey: resolved?.base,
       characterMissing: Boolean(nameRef) && !resolved,
+      characterRef: nameRef || undefined,
       charOffsetX: toOptionalNumber(args.charOffsetX),
       charOffsetY: toOptionalNumber(args.charOffsetY),
       expression: resolved?.expression,

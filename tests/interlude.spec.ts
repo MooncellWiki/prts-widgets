@@ -1,5 +1,13 @@
-import { Container, Rectangle, Texture, type Sprite } from "pixi.js";
-import { describe, expect, it, vi } from "vitest";
+import {
+  CanvasTextMetrics,
+  Container,
+  Mesh,
+  NineSliceSprite,
+  Rectangle,
+  Text,
+  Texture,
+} from "pixi.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InterludePanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/InterludePanel";
 import {
@@ -36,6 +44,7 @@ vi.mock(
       unknownSquare: white(),
       commonFrame: white(),
       waveBase: white(),
+      waveDissolve: new Texture(),
       waveShadow: white(),
       dialogGrad: white(),
       dialogFrame: white(),
@@ -122,7 +131,60 @@ function channel(panel: InterludePanel, id = 3): any {
   return (panel as any).channels.get(id)?.channel.state;
 }
 
+function activeImageSlots(state: {
+  elements: Map<string, { node: Container }>;
+}): string[] {
+  return [...state.elements]
+    .filter(([, { node }]) => node.visible && node.renderable)
+    .map(([key]) => key);
+}
+
+beforeEach(() => {
+  vi.spyOn(CanvasTextMetrics, "measureText").mockImplementation(
+    (text, style) => {
+      const width = text.length * 18;
+      return new CanvasTextMetrics(
+        text,
+        style,
+        width,
+        18,
+        [text],
+        [width],
+        18,
+        width,
+        { ascent: 18, descent: 0, fontSize: 18 },
+      );
+    },
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("InterludePanel", () => {
+  it("starts with the prefab's active white background on stencil channel 1", () => {
+    const panel = createPanel(
+      new Container(),
+      () => null,
+      createInstantTweenRunner(),
+    );
+    const show = {
+      block: false,
+      maskId: "ui_cutin_mask_vertical",
+      style: 1,
+    };
+    panel.run(input({ ...show, channel: 1 }));
+    const state = channel(panel, 1);
+    const { sprite } = state.elements.get("\u0000bg");
+    expect(activeImageSlots(state)).toEqual(["\u0000bg"]);
+    expect(sprite.texture).toBe(Texture.WHITE);
+    expect([sprite.width, sprite.height]).toEqual([1280, 720]);
+
+    panel.run(input({ ...show, channel: 3 }));
+    expect(activeImageSlots(channel(panel, 3))).toEqual([]);
+  });
+
   it("reuses a channel, adds an element, and clears the channel", async () => {
     const layer = new Container();
     const loadTexture = vi.fn().mockResolvedValue(Texture.EMPTY);
@@ -219,9 +281,9 @@ describe("InterludePanel", () => {
           type,
         }),
       );
-      const scale = content.children[type === 2 ? 0 : 1];
-      const [node] = scale.children[0].children;
-      const sprite = node.children[0] as Sprite;
+      const { node, sprite } = channel(panel).elements.get(
+        type === 2 ? "\u0000bg" : "m",
+      );
       panel.run(input({ block: false, clear: true }));
       frames.step(16);
 
@@ -379,6 +441,7 @@ describe("InterludePanel", () => {
       ?.completion;
     const state = channel(panel);
     const [, waveActive, waveStop] = state.deco.root.children;
+    expect(waveActive).toBeInstanceOf(Mesh);
     expect(waveActive.visible).toBe(true);
     expect(waveStop.visible).toBe(false);
 
@@ -563,27 +626,29 @@ describe("InterludePanel", () => {
     { type: 1, key: "m" },
     { type: 2, key: "\u0000bg" },
   ] as const)(
-    "clears the previous type $type image and still waits for a missing image's fade",
+    "uses a white rect of the same size when a type $type image fails to load",
     ({ type, key }) => {
       const frames = new PlaybackTestFrames();
       frames.manual = true;
       const runner = frames.createTweenRunner();
       const warn = vi.fn();
+      const image = new Texture({ frame: new Rectangle(0, 0, 128, 64) });
       const panel = createPanel(
         new Container(),
-        ({ name }) => (name === "missing" ? null : Texture.WHITE),
+        ({ name }) => (name === "missing" ? null : image),
         runner,
         warn,
       );
       panel.run(input({ block: false, maskId: VERTICAL }));
       panel.run(input({ block: false, name: "old", type }));
       const { node, sprite } = channel(panel).elements.get(key);
-      expect(sprite.texture).toBe(Texture.WHITE);
+      expect(sprite.texture).toBe(image);
 
       const wait = panel.run(
         input({ alphaDurationMs: 100, name: "missing", type }),
       );
-      expect(sprite.texture).toBe(Texture.EMPTY);
+      expect(sprite.texture).toBe(Texture.WHITE);
+      expect([sprite.width, sprite.height]).toEqual([128, 64]);
       expect(warn).toHaveBeenCalledWith(
         "interlude element asset is missing: missing",
       );
@@ -926,8 +991,29 @@ describe("InterludePanel", () => {
     await panel.run(input({ name: "cutin_char_5", slot: "x", type: 1 }))
       ?.completion;
     const state = channel(panel);
-    expect([...state.elements.keys()].sort()).toEqual(["m", "r"]);
+    expect(activeImageSlots(state)).toEqual(["m", "r"]);
     expect(warnings).toEqual([]);
+  });
+
+  it("keeps the prefab's avatar, middle, right and left order regardless of activation", () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    panel.run(input({ block: false }));
+    for (const slot of ["l", "r", "m"])
+      panel.run(input({ block: false, name: "cutin", slot, type: 1 }));
+    panel.run(input({ block: false, name: "avg_npc_1", type: 3 }));
+
+    const state = channel(panel);
+    expect(state.charPoz.children).toEqual([
+      state.avatar.root.parent,
+      state.elements.get("m").node,
+      state.elements.get("r").node,
+      state.elements.get("l").node,
+    ]);
+    expect(activeImageSlots(state)).toEqual(["m", "r", "l"]);
   });
 
   it.each([true, false])(
@@ -1176,7 +1262,7 @@ describe("InterludePanel", () => {
     expect(wait?.endReason).toBe("complete");
   });
 
-  it("keeps the deco name when a later command has no char", async () => {
+  it("fits the name plate to the text with the prefab's minimum width and padding", async () => {
     const panel = createPanel(
       new Container(),
       async () => Texture.EMPTY,
@@ -1184,19 +1270,32 @@ describe("InterludePanel", () => {
     );
 
     // sandbox_2_ending_2 shape: char only on the creating command.
-    await panel.run(input({ charName: "拜松", maskId: SQUARE, style: 1 }))
+    await panel.run(input({ charName: "九", maskId: SQUARE, style: 1 }))
       ?.completion;
     const state = channel(panel);
-    expect(state.deco.label.text).toBe("拜松");
+    const [back, brick, label] = state.deco.nameGroup.children;
+    expect(back).toBeInstanceOf(NineSliceSprite);
+    expect([back.x, back.width, back.height, back.leftWidth]).toEqual([
+      -20, 160, 63, 20,
+    ]);
+    expect([brick.width, brick.height]).toEqual([14, 14]);
+    expect(label).toBeInstanceOf(Text);
+    expect([label.text, label.x, label.style.fontWeight]).toEqual([
+      "九",
+      24,
+      "900",
+    ]);
 
     await panel.run(input({ block: false, maskId: SQUARE, switchOn: true }))
       ?.completion;
-    expect(state.deco.label.text).toBe("拜松");
+    expect(label.text).toBe("九");
+    expect(back.width).toBe(160);
 
-    await panel.run(
-      input({ block: false, charName: "Kal'tsit", maskId: SQUARE }),
-    )?.completion;
-    expect(state.deco.label.text).toBe("Kal'tsit");
+    const longName = "罗德岛通讯记录";
+    await panel.run(input({ block: false, charName: longName, maskId: SQUARE }))
+      ?.completion;
+    expect(label.text).toBe(longName);
+    expect(back.width).toBe(longName.length * 18 + 29 + 40);
   });
 
   it("re-checks _emptyImg only when a non-empty name changes", async () => {
@@ -1261,7 +1360,7 @@ describe("InterludePanel", () => {
     await panel.run(
       input({ maskId: VERTICAL, name: "cutin_char_3", slot: "m", type: 1 }),
     )?.completion;
-    expect(channel(panel).elements.size).toBe(0);
+    expect(activeImageSlots(channel(panel))).toEqual([]);
     expect(loadTexture).not.toHaveBeenCalled();
     expect(durations).toEqual([1000]);
   });
@@ -1337,7 +1436,16 @@ describe("InterludePanel mask templates", () => {
     expect(state.template.root.position.y).toBe(-125);
     expect(state.deco.root.position.x).toBe(-450);
     expect(state.deco.root.position.y).toBe(-125);
-    expect(state.deco.frameGroup.width).toBeCloseTo(236, 0);
+    const frame = state.deco.frameGroup;
+    expect(frame).toBeInstanceOf(NineSliceSprite);
+    expect(frame.width).toBeCloseTo(236, 0);
+    expect([
+      frame.leftWidth,
+      frame.rightWidth,
+      frame.topHeight,
+      frame.bottomHeight,
+    ]).toEqual([16, 16, 16, 16]);
+    expect([frame.scale.x, frame.scale.y]).toEqual([1, 1]);
   });
 
   it("resizes the template from the command size (native: sizeDelta written only when |size|² > ε)", async () => {
@@ -1393,7 +1501,7 @@ describe("InterludePanel mask templates", () => {
 
     await panel.run(input({ maskId: DIALOG, name: "avg_npc_999_1", type: 3 }))
       ?.completion;
-    expect(state.elements.size).toBe(0);
+    expect(activeImageSlots(state)).toEqual([]);
     expect(dialog.charImage.texture).toBe(Texture.WHITE);
     expect(dialog.charImage.visible).toBe(true);
     // img_char keeps its 1380 rect.
@@ -1403,7 +1511,7 @@ describe("InterludePanel mask templates", () => {
       ?.completion;
     expect(dialog.bgImage.texture).toBe(Texture.WHITE);
     expect(dialog.bgImage.width).toBeCloseTo(550, 0);
-    expect(state.elements.size).toBe(0);
+    expect(activeImageSlots(state)).toEqual([]);
   });
 
   it.each([0, 0.005, 0.01])(
@@ -1429,7 +1537,7 @@ describe("InterludePanel mask templates", () => {
       await panel.run(command)?.completion;
       const state = channel(panel);
       expect(loadTexture).toHaveBeenCalledExactlyOnceWith(command);
-      expect(state.elements.size).toBe(0);
+      expect(activeImageSlots(state)).toEqual([]);
       expect(state.template.dialog.charImage.position.y).toBe(520);
       // End pose sampled, no intro tween and no 1s/3s floor on the dialog path.
       expect(state.template.dialog.group.position.x).toBe(10);
@@ -1586,7 +1694,7 @@ describe("InterludePanel mask templates", () => {
     const state = channel(panel);
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(update);
     expect(state.template.dialog.charImage.texture).toBe(Texture.WHITE);
-    expect(state.elements.size).toBe(1);
+    expect(activeImageSlots(state)).toEqual(["m"]);
     expect(state.content.visible).toBe(false);
   });
 
@@ -1681,7 +1789,7 @@ describe("InterludePanel mask templates", () => {
       }),
     )?.completion;
     expect(loadTexture).not.toHaveBeenCalled();
-    expect(channel(panel).elements.size).toBe(0);
+    expect(activeImageSlots(channel(panel))).toEqual([]);
     // Clip (not gating) + the 1s show floor.
     expect(durations).toEqual([CLIP_SECONDS.direction * 1000, 1000]);
   });

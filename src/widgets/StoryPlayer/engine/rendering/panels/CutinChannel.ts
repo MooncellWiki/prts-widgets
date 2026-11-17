@@ -57,7 +57,7 @@ type ElementArt =
 interface ElementState {
   node: Container;
   sprite: Sprite;
-  readChannel?: number;
+  readChannel: number;
 }
 
 interface ChannelView {
@@ -73,6 +73,7 @@ interface ChannelView {
   bkgPoz: Container;
   charScale: Container;
   charPoz: Container;
+  avatarContainer: Container;
   elements: Map<string, ElementState>;
 }
 
@@ -81,8 +82,6 @@ interface ChannelState extends ChannelView {
   disposed: boolean;
   template: TemplateNodes | null;
   deco: DecoNodes | null;
-  /** `CutinTemplateDecoView.m_cachedName`。 */
-  decoName: string;
   /** 未知 maskid 的矩形回落(native 加载模板失败即无窗口;Web 兜底)。 */
   fallbackMask: Graphics | null;
   /** 回落路径的文字标签。 */
@@ -226,10 +225,10 @@ export class CutinChannel {
     bkgPoz: new Container(),
     charScale: new Container(),
     charPoz: new Container(),
+    avatarContainer: new Container(),
     elements: new Map(),
   };
   private state?: ChannelState;
-  private recycled = false;
 
   constructor(
     private readonly layer: Container,
@@ -250,6 +249,8 @@ export class CutinChannel {
       bkgPoz,
       charScale,
       charPoz,
+      avatarContainer,
+      elements,
       content,
       maskContainer,
       decoContainer,
@@ -257,6 +258,24 @@ export class CutinChannel {
     } = this.view;
     bkgScale.addChild(bkgPoz);
     charScale.addChild(charPoz);
+    charPoz.addChild(avatarContainer);
+    // 2791 PC cutin_channel prefab. Its image rects and stencil read channel
+    // exist before SetCutinElement. The three type-1 slots start inactive.
+    // The AVG slot container draws below the fixed middle, right, left order.
+    for (const [key, width, height, x, y] of [
+      [BACKGROUND_ELEMENT_KEY, 1280, 720, 0, 0],
+      ["m", 1280, 379, 0, 0],
+      ["r", 180, 180, -140, -63],
+      ["l", 100, 100, 0, 0],
+    ] as const) {
+      const isBackground = key === BACKGROUND_ELEMENT_KEY;
+      const node = new Container({ x, y, visible: isBackground });
+      const sprite = new Sprite({ texture: Texture.WHITE, anchor: 0.5 });
+      sprite.setSize(width, height);
+      node.addChild(sprite);
+      (isBackground ? bkgPoz : charPoz).addChild(node);
+      elements.set(key, { node, sprite, readChannel: 1 });
+    }
     content.addChild(bkgScale, charScale);
     root.addChild(maskContainer, content, decoContainer);
   }
@@ -279,7 +298,6 @@ export class CutinChannel {
       disposed: false,
       template: null,
       deco: null,
-      decoName: "",
       fallbackMask: null,
       label: null,
       assetWaits: new Set(),
@@ -300,7 +318,6 @@ export class CutinChannel {
     const state = this.state;
     if (!state) return;
     this.state = undefined;
-    this.recycled = true;
     state.root.removeFromParent();
     // OnDisable stops the direction clip while retaining its sampled pose.
     state.direction?.tween.kill();
@@ -694,10 +711,7 @@ export class CutinChannel {
   private renderDeco(state: ChannelState, input: InterludeInput): void {
     const deco = state.deco;
     if (!deco) return;
-    if (deco.label && input.charName && input.charName !== state.decoName) {
-      deco.label.text = input.charName;
-      state.decoName = input.charName;
-    }
+    deco.setName?.(input.charName);
     deco.setSwitch(input.switchOn);
   }
 
@@ -722,28 +736,6 @@ export class CutinChannel {
     state.label.text = input.charName;
   }
 
-  private ensureElement(
-    state: ChannelState,
-    key: string,
-    type: number,
-  ): ElementState {
-    const existing = state.elements.get(key);
-    if (existing) return existing;
-    const node = new Container();
-    const sprite = new Sprite();
-    sprite.anchor.set(0.5);
-    node.addChild(sprite);
-    const element: ElementState = { node, sprite };
-    // Inactive until SetCutinElement assigns a sprite.
-    node.visible = false;
-    // The prefab's right slot starts at (-140, 63). OnRecycle
-    // (2791 @ 0x1814F9CD0) zeroes its offset even if it never held a sprite.
-    if (key === "r" && !this.recycled) node.position.set(-140, -63);
-    (type === 2 ? state.bkgPoz : state.charPoz).addChild(node);
-    state.elements.set(key, element);
-    return element;
-  }
-
   /** CutinChannel._ProcessElement (2791 @ 0x1814FA570). */
   private processElement(
     state: ChannelState,
@@ -762,7 +754,7 @@ export class CutinChannel {
       // 0x1814F8D20). The cutin_charslot prefab is anchored at the canvas
       // bottom. Move targets _offset and scale targets the slot transform.
       const avatar = (state.avatar ??= new CharacterSlotView(
-        state.charPoz,
+        state.avatarContainer,
         0,
         STORY_HEIGHT / 2,
       ));
@@ -787,16 +779,15 @@ export class CutinChannel {
           });
       }
     } else {
-      const element = this.ensureElement(
-        state,
-        elementKeyFor(input),
-        input.type,
-      );
+      const element = state.elements.get(elementKeyFor(input))!;
       root = offset = element.node;
       if (input.name) {
         // CutinImageElement.SetCutinElement (2791 @ 0x1814FC3D0) assigns
-        // a missing sprite to the image and still sets up the alpha tween.
-        element.sprite.texture = resource.texture ?? Texture.EMPTY;
+        // a missing sprite to the active Image, whose white mainTexture
+        // fallback draws at the existing rect (2791 @ 0x186E8F310).
+        const sprite = element.sprite;
+        const rect = [sprite.width, sprite.height] as const;
+        sprite.texture = resource.texture ?? Texture.WHITE;
         if (resource.texture) {
           // Image.SetNativeSize applies the background's PPU to the image
           // rect. DoScale applies the script's scale to the outer element.
@@ -804,8 +795,8 @@ export class CutinChannel {
             input.type === 2
               ? this.nativeBackgroundRect(input.name, resource.texture)
               : [resource.texture.width, resource.texture.height];
-          element.sprite.setSize(width, height);
-        }
+          sprite.setSize(width, height);
+        } else sprite.setSize(...rect);
         element.readChannel = input.channel;
         root.renderable = true;
         root.visible = true;

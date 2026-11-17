@@ -42,6 +42,10 @@ function fadeStyleId(style: CharacterCutinInput["fadeStyle"]): number {
   return style ? (FADE_STYLE_IDS[style] ?? 0) : 0;
 }
 
+function characterIdentity(input: CharacterCutinInput): string {
+  return input.characterRef ?? `${input.characterKey}/${input.expression}`;
+}
+
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
 }
@@ -71,7 +75,8 @@ interface CutinSlotState {
   /** `_defualtBackground` port: the #898989 strip behind the character. */
   backdrop: Container;
   header: Sprite;
-  /** `_backgroundImage` sits inside `_zoomAndPovRectTransform`. */
+  /** `_backgroundRectTransform` and its header share the background offset. */
+  backgroundRoot: Container;
   backgroundImage: Sprite;
   /** `_characterSlot` identity of the last Set, used to skip no-op crossfades. */
   charIdentity: string;
@@ -170,18 +175,14 @@ export class CharacterCutinPanel {
     const layout = layoutFor(input, vertical);
     const slot = state ?? this.allocateSlot(input, layout, vertical);
     const keepsArt =
-      !input.characterMissing &&
-      `${input.characterKey}/${input.expression}` === slot.charIdentity;
+      !input.characterMissing && characterIdentity(input) === slot.charIdentity;
     const art =
       keepsArt || input.characterMissing ? null : this.loadPortrait(input);
     const background =
       !state && input.backgroundKey
         ? this.loadBackground(input.backgroundKey)
         : null;
-    const header =
-      !state && (background === null || background instanceof Promise)
-        ? this.loadHeader()
-        : null;
+    const header = state ? null : this.loadHeader();
     return this.runSlot(
       slot,
       input,
@@ -311,30 +312,35 @@ export class CharacterCutinPanel {
     // Show (2791 @ 0x184203DA0) fits the Sprite rect to the mask's cross
     // axis and applies backgroundOffset along its main axis. A failed
     // Web texture load leaves the prefab's gray backing visible.
-    const { backdrop, backgroundImage } = state;
+    const { backdrop, backgroundImage, backgroundRoot } = state;
     backdrop.visible = !background;
     backgroundImage.visible = background !== null;
-    state.header.visible = header !== null;
-    if (header) {
-      state.header.texture = header;
-      state.header.setSize(STORY_WIDTH * 2, 200);
-    }
+    let backgroundWidth = STORY_WIDTH * 2;
+    let backgroundHeight = STORY_HEIGHT;
     if (background) {
       backgroundImage.texture = background;
       const offset = input.backgroundOffset ?? 0;
       if (state.vertical) {
-        backgroundImage.setSize(
-          layout.maskW,
-          (layout.maskW * background.height) / Math.max(1, background.width),
-        );
-        backgroundImage.position.set(0, -offset);
+        backgroundWidth = layout.maskW;
+        backgroundHeight =
+          (layout.maskW * background.height) / Math.max(1, background.width);
+        backgroundRoot.position.set(0, -offset);
       } else {
-        backgroundImage.setSize(
-          (layout.maskH * background.width) / Math.max(1, background.height),
-          layout.maskH,
-        );
-        backgroundImage.position.set(offset, 0);
+        backgroundWidth =
+          (layout.maskH * background.width) / Math.max(1, background.height);
+        backgroundHeight = layout.maskH;
+        backgroundRoot.position.set(offset, 0);
       }
+      backgroundImage.setSize(backgroundWidth, backgroundHeight);
+    }
+    // Both 2791 background objects have the same stretch-anchored header.
+    // Mount it on the visible background so it follows that rect and its POV.
+    (background ? backgroundRoot : backdrop).addChild(state.header);
+    state.header.visible = header !== null;
+    if (header) {
+      state.header.texture = header;
+      state.header.position.set(0, -backgroundHeight / 2 - 50);
+      state.header.setSize(backgroundWidth, 200);
     }
 
     if (state.fadeStyle === 0) {
@@ -425,9 +431,7 @@ export class CharacterCutinPanel {
     durationMs: number,
   ): void {
     const { front, isAlive, outgoing } = state.portrait.swap(art, 0);
-    state.charIdentity = front
-      ? `${input.characterKey}/${input.expression}`
-      : "";
+    state.charIdentity = front ? characterIdentity(input) : "";
     if (!front && !outgoing) return;
     this.tweens.start(
       durationMs,
@@ -550,12 +554,9 @@ export class CharacterCutinPanel {
     const plate = new Graphics()
       .rect(-STORY_WIDTH, -STORY_HEIGHT / 2, STORY_WIDTH * 2, STORY_HEIGHT)
       .fill(BACKGROUND_TINT);
-    // slot_character_cutin/defaultBackground/header uses sprite_avg_cutscene.
-    // Its bottom pivot is 50px above the plate, and the half-turn hangs
-    // 150px of the gradient into a full-height mask.
+    // Both header objects use sprite_avg_cutscene and a half-turn.
     const header = new Sprite(Texture.EMPTY);
     header.anchor.set(0.5, 1);
-    header.position.y = -STORY_HEIGHT / 2 - 50;
     header.rotation = Math.PI;
     header.tint = 0x00_00_00;
     header.alpha = 180 / 255;
@@ -565,14 +566,17 @@ export class CharacterCutinPanel {
     backgroundImage.anchor.set(0.5);
     backgroundImage.tint = BACKGROUND_TINT;
     backgroundImage.visible = false;
+    const backgroundRoot = new Container();
+    backgroundRoot.addChild(backgroundImage);
     const content = new Container();
     const mask = new Graphics();
-    content.addChild(backgroundImage);
+    content.addChild(backgroundRoot);
     root.addChild(mask, backdrop, content);
     root.mask = mask;
     return {
       backdrop,
       backgroundImage,
+      backgroundRoot,
       portrait: new CharacterSlotView(content, 0, 0),
       content,
       header,

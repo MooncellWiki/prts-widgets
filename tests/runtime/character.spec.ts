@@ -282,6 +282,7 @@ describe("StoryRuntime", () => {
           block: true,
           characterKey: "avg_npc_1",
           characterMissing: false,
+          characterRef: "avg_npc_1#1",
           charOffsetX: 5,
           charOffsetY: -10,
           expression: "1$1",
