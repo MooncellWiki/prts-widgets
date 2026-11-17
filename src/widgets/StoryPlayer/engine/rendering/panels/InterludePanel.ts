@@ -59,17 +59,21 @@ interface ElementState {
   sprite: Sprite;
 }
 
-interface ChannelState {
+interface ChannelElements {
+  bkgScale: Container;
+  bkgPoz: Container;
+  charScale: Container;
+  charPoz: Container;
+  elements: Map<string, ElementState>;
+}
+
+interface ChannelState extends ChannelElements {
   /** `cutin_channel`:画布中心(anchoredPosition 恒 0),`_group` CanvasGroup。 */
   root: Container;
   /** `mask_container`:模板挂点。 */
   maskContainer: Container;
   /** stencil 读取层(root_bkg_* + root_char_*),整体由模板 mask 裁切。 */
   content: Container;
-  bkgScale: Container;
-  bkgPoz: Container;
-  charScale: Container;
-  charPoz: Container;
   /** `deco_container`。 */
   decoContainer: Container;
   template: TemplateNodes | null;
@@ -80,7 +84,6 @@ interface ChannelState {
   fallbackMask: Graphics | null;
   /** 回落路径的文字标签。 */
   label: Text | null;
-  elements: Map<string, ElementState>;
   reused: boolean;
   /** The most recent char, background and avatar sequences in CutinChannel. */
   elementSequences: Map<InterludeInput["type"], TweenHandle>;
@@ -92,8 +95,8 @@ interface ChannelState {
   /** 回落矩形的尺寸。 */
   size: Vec2;
   fallbackScale: Vec2;
-  /** 通道 animWrapper 上 direction clip 的世代(重播即替换)。 */
-  directionGen: number;
+  /** 通道 animWrapper 上当前 direction clip。 */
+  directionTween?: TweenHandle;
   /** dialog 入场 clip 的句柄(HideCutinMask 先 _KillDialogIntroTween)。 */
   dialogIntro?: TweenHandle;
   /** `CutinTemplate.m_cachedName`。 */
@@ -212,7 +215,7 @@ function elementKeyFor(input: InterludeInput): string {
  */
 export class InterludePanel {
   private readonly channels = new Map<number, ChannelState>();
-  private readonly recycledElements: Map<string, ElementState>[] = [];
+  private readonly recycledChannels: ChannelElements[] = [];
   private readonly pending = new Map<ExecutionHandle, ChannelState | null>();
 
   constructor(
@@ -274,13 +277,16 @@ export class InterludePanel {
 
   clearAll(): void {
     for (const animation of this.pending.keys()) animation.end("reset");
-    for (const state of this.channels.values())
+    for (const state of this.channels.values()) {
+      state.directionTween?.kill();
       state.root.destroy({ children: true });
-    for (const elements of this.recycledElements)
-      for (const { node } of elements.values())
-        node.destroy({ children: true });
+    }
+    for (const { bkgScale, charScale } of this.recycledChannels) {
+      bkgScale.destroy({ children: true });
+      charScale.destroy({ children: true });
+    }
     this.channels.clear();
-    this.recycledElements.length = 0;
+    this.recycledChannels.length = 0;
   }
 
   destroy(): void {
@@ -427,45 +433,41 @@ export class InterludePanel {
     const root = new Container();
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     const maskContainer = new Container();
-    const bkgScale = new Container();
-    const bkgPoz = new Container();
-    bkgScale.addChild(bkgPoz);
-    const charScale = new Container();
-    const charPoz = new Container();
-    charScale.addChild(charPoz);
+    const recycled = this.recycledChannels.pop();
+    const views = recycled ?? {
+      bkgScale: new Container(),
+      bkgPoz: new Container(),
+      charScale: new Container(),
+      charPoz: new Container(),
+      elements: new Map<string, ElementState>(),
+    };
+    if (!recycled) {
+      views.bkgScale.addChild(views.bkgPoz);
+      views.charScale.addChild(views.charPoz);
+    }
     const content = new Container();
-    content.addChild(bkgScale, charScale);
+    content.addChild(views.bkgScale, views.charScale);
     const decoContainer = new Container();
     root.addChild(maskContainer, content, decoContainer);
     this.layer.addChild(root);
 
-    const recycled = this.recycledElements.pop();
-    const elements = recycled ?? new Map<string, ElementState>();
-    for (const [key, { node }] of elements)
-      (key === BACKGROUND_ELEMENT_KEY ? bkgPoz : charPoz).addChild(node);
-
     const state: ChannelState = {
+      ...views,
       root,
       maskContainer,
       content,
-      bkgScale,
-      bkgPoz,
-      charScale,
-      charPoz,
       decoContainer,
       template: null,
       deco: null,
       decoName: "",
       fallbackMask: null,
       label: null,
-      elements,
       reused: recycled !== undefined,
       elementSequences: new Map(),
       avatarLoadId: 0,
       avatarName: "",
       size: { ...input.size },
       fallbackScale: { x: 1, y: 1 },
-      directionGen: 0,
       cachedName: "",
       dialogCharOffset: { x: 0, y: 0 },
       dialogCharScale: { x: 1, y: 1 },
@@ -849,12 +851,11 @@ export class InterludePanel {
       charPoz: state.charPoz,
     };
     const seconds = CLIP_SECONDS.direction;
-    const gen = ++state.directionGen;
+    state.directionTween?.kill();
     applyDirectionClip(nodes, direction, 0);
-    this.runTween(state, seconds * 1000, (progress) => {
-      if (state.directionGen === gen)
-        applyDirectionClip(nodes, direction, progress * seconds);
-    });
+    state.directionTween = this.runTween(state, seconds * 1000, (progress) =>
+      applyDirectionClip(nodes, direction, progress * seconds),
+    );
     return true;
   }
 
@@ -1001,16 +1002,31 @@ export class InterludePanel {
     if (this.channels.get(id) !== state) return;
     this.channels.delete(id);
     state.root.removeFromParent();
+    // AnimationWrapper.OnDisable (2791 @ 0x18150FB20) stops playback
+    // on recycle while preserving its sampled transforms.
+    state.directionTween?.kill();
     // CutinImageElement.ClearElement (2791 @ 0x1814FC0C0) clears the
     // sprite and offset. Keep the image nodes for GameObjectPool.Allocate
     // (0x182AB73D0), including writes by older sequences during recycle.
-    for (const { node, sprite } of state.elements.values()) {
+    const { avatar, bkgScale, bkgPoz, charScale, charPoz, elements } = state;
+    for (const { node, sprite } of elements.values()) {
       sprite.texture = Texture.EMPTY;
       node.visible = false;
       node.position.set(0, 0);
-      node.removeFromParent();
     }
-    this.recycledElements.push(state.elements);
+    // CutinChannel.OnRecycle (2791 @ 0x1814F9CD0) preserves root_bkg_*
+    // and root_char_* transforms. Keep the avatar with the outgoing root
+    // so it is destroyed with the template at the end of the update.
+    if (avatar) state.content.addChild(avatar.root);
+    bkgScale.removeFromParent();
+    charScale.removeFromParent();
+    this.recycledChannels.push({
+      bkgScale,
+      bkgPoz,
+      charScale,
+      charPoz,
+      elements,
+    });
     // OnRecycle (2791 @ 0x1814F9CD0) kills the stored sequences without
     // completing their commands.
     for (const sequence of state.elementSequences.values()) sequence.kill();

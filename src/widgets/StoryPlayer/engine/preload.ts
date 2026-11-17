@@ -323,7 +323,7 @@ function collectPreloadAssetUrls(
   const urls = new Set(buildContextAssetManifest(context, lines).urls);
 
   // 固定 UI 资源（对话框上下黑条纹理），随每次 preload 一起预热进 pixi Assets 缓存，
-  // DialogView 和 cutin 道具共用这张缓存纹理。它属于播放器内置资源，
+  // DialogView、cutin 道具和角色入场共用这张缓存纹理。它属于播放器内置资源，
   // 不应出现在面向用户的剧情资源列表中。
   urls.add(DIALOG_FRAME_URL);
 

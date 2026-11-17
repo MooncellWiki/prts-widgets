@@ -602,6 +602,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.cutinLayer,
       (input) => this.loadCharacterArt(input.characterKey, input.expression),
       (key) => this.textureForImageKey(key, "background"),
+      () => this.loadDialogFrameTexture(),
       this.updatePhaseTweenRunner,
     );
     this.animTextPanel = new AnimTextPanel(
@@ -1474,7 +1475,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       (texture) => (this.dialogFrameTexture = texture),
       () => {
         this.dialogFrameTextureFailed = true;
-        this.onWarning?.("missing show item header texture");
+        this.onWarning?.("missing cut-in header texture");
         return null;
       },
     );

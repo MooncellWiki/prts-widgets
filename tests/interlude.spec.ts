@@ -190,6 +190,42 @@ describe("InterludePanel", () => {
     expect([reset.x, reset.y]).toEqual([1, 1]);
   });
 
+  it.each([100, 2100])(
+    "keeps the sampled direction pose when the channel is recycled at %sms",
+    (elapsedMs) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const panel = createPanel(
+        new Container(),
+        () => Texture.WHITE,
+        frames.createTweenRunner(),
+      );
+      const show = { block: false, maskId: "ui_cutin_mask_horizon", style: 3 };
+      panel.run(input(show));
+      panel.run(
+        input({ block: false, direction: "rin", name: "avg_test", type: 3 }),
+      );
+      frames.step(elapsedMs);
+
+      const original = channel(panel);
+      panel.run(input({ block: false, clear: true }));
+      frames.step(16);
+      const bkgX = original.bkgPoz.x;
+      const charX = original.charPoz.x;
+      const charScale = original.charScale.scale.x;
+      expect([bkgX, charX, charScale]).not.toEqual([0, 0, 1]);
+      expect(original.avatar.root.destroyed).toBe(true);
+
+      panel.run(input({ ...show, channel: 4 }));
+      frames.step(250);
+      const reused = channel(panel, 4);
+      expect(reused.root.alpha).toBe(1);
+      expect(reused.bkgPoz.x).toBe(bkgX);
+      expect(reused.charPoz.x).toBe(charX);
+      expect(reused.charScale.scale.x).toBe(charScale);
+    },
+  );
+
   it("uses the recycled offset on first use of the right image slot", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
@@ -1171,7 +1207,8 @@ describe("InterludePanel", () => {
         type: 2,
       }),
     )?.completion;
-    const { node } = channel(panel).elements.get("\u0000bg");
+    const state = channel(panel);
+    const { node } = state.elements.get("\u0000bg");
 
     await panel.run(
       input({ block: false, clear: true, templateSizeDurationMs: 1500 }),
@@ -1182,7 +1219,8 @@ describe("InterludePanel", () => {
 
     frames.step(500);
     expect(layer.children).toHaveLength(0);
-    expect(node.parent).toBeNull();
+    expect(state.bkgScale.parent).toBeNull();
+    expect(node.parent).toBe(state.bkgPoz);
     const alphaAtRecycle = node.alpha;
     frames.step(500);
     expect(node.alpha).toBe(alphaAtRecycle);

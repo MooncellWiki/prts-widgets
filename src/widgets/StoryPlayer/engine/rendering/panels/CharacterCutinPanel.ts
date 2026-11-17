@@ -61,9 +61,16 @@ interface CutinLayout {
   zoom: number;
 }
 
+interface SlotAssets {
+  art: CharacterArt | null;
+  background: Texture | null;
+  header: Texture | null;
+}
+
 interface CutinSlotState {
   /** `_defualtBackground` port: the #898989 strip behind the character. */
-  backdrop: Graphics;
+  backdrop: Container;
+  header: Sprite;
   /** `_backgroundImage` sits inside `_zoomAndPovRectTransform`. */
   backgroundImage: Sprite;
   /** `_characterSlot` identity of the last Set, used to skip no-op crossfades. */
@@ -85,9 +92,10 @@ interface CutinSlotState {
   /** A cache miss can leave the slot allocated before its first tween starts. */
   hasStarted: boolean;
   assetWait?: ExecutionHandle;
-  /** The pivot's offset from the center, as a fraction of the entry size. */
+  /** The pivot's offset from the center, as a fraction of the mask size. */
   maskPivot: { x: number; y: number };
-  entryMaskSize: { h: number; w: number };
+  /** The mask pivot's localPosition in the slot, retained across reuse. */
+  maskPosition: { x: number; y: number };
 }
 
 /**
@@ -131,6 +139,7 @@ export class CharacterCutinPanel {
       input: CharacterCutinInput,
     ) => CharacterArtLoad,
     private readonly loadBackground: (key: string) => TextureLoad,
+    private readonly loadHeader: () => TextureLoad,
     private readonly tweens: Pick<TweenRunner, "start" | "killTarget">,
   ) {}
 
@@ -146,9 +155,8 @@ export class CharacterCutinPanel {
       return this.runSlot(
         current,
         input,
-        null,
-        null,
-        (_art, _background, tween) => {
+        [null, null, null],
+        (_assets, tween) => {
           this.hideSlot(input, current, tween);
         },
         onComplete,
@@ -170,14 +178,17 @@ export class CharacterCutinPanel {
       !state && input.backgroundKey
         ? this.loadBackground(input.backgroundKey)
         : null;
+    const header =
+      !state && (background === null || background instanceof Promise)
+        ? this.loadHeader()
+        : null;
     return this.runSlot(
       slot,
       input,
-      art,
-      background,
-      (art, background, tween) => {
-        if (state) this.updateSlot(input, state, art, keepsArt, tween);
-        else this.showSlot(input, slot, layout, art, background, tween);
+      [art, background, header],
+      (assets, tween) => {
+        if (state) this.updateSlot(input, state, assets.art, keepsArt, tween);
+        else this.showSlot(input, slot, layout, assets, tween);
       },
       onComplete,
     );
@@ -214,13 +225,8 @@ export class CharacterCutinPanel {
   private runSlot(
     state: CutinSlotState,
     input: CharacterCutinInput,
-    art: CharacterArtLoad,
-    background: TextureLoad,
-    play: (
-      art: CharacterArt | null,
-      background: Texture | null,
-      tween: SlotTween,
-    ) => void,
+    [art, background, header]: [CharacterArtLoad, TextureLoad, TextureLoad],
+    play: (assets: SlotAssets, tween: SlotTween) => void,
     onComplete?: () => void,
   ): ExecutionHandle | void {
     // Supersede an unresolved Web asset load. Once started, 2791 Show,
@@ -230,11 +236,11 @@ export class CharacterCutinPanel {
       this.waits.delete(animation),
     );
     this.waits.set(animation, input.widgetId);
-    const start = (art: CharacterArt | null, background: Texture | null) => {
+    const start = (assets: SlotAssets) => {
       if (state.root.destroyed || animation.endReason !== undefined) return;
       state.assetWait = undefined;
       state.hasStarted = true;
-      play(art, background, (duration, update, options) => {
+      play(assets, (duration, update, options) => {
         // Show, SlotUpdate and Hide use the bundled DOTweenSettings' OutQuad
         // and attach OnComplete even at zero fade time (2791 @ 0x184203DA0 /
         // 0x184204B20 / 0x184203800).
@@ -268,20 +274,25 @@ export class CharacterCutinPanel {
       // advances while the slot's tween keeps running.
       if (!input.block) animation.end();
     };
-    if (art instanceof Promise || background instanceof Promise) {
+    if (
+      art instanceof Promise ||
+      background instanceof Promise ||
+      header instanceof Promise
+    ) {
       state.assetWait = animation;
-      void Promise.allSettled([art, background])
-        .then(([portrait, bg]) => {
-          start(
-            portrait.status === "fulfilled" ? portrait.value : null,
-            bg.status === "fulfilled" ? bg.value : null,
-          );
+      void Promise.allSettled([art, background, header])
+        .then(([portrait, bg, decoration]) => {
+          start({
+            art: portrait.status === "fulfilled" ? portrait.value : null,
+            background: bg.status === "fulfilled" ? bg.value : null,
+            header: decoration.status === "fulfilled" ? decoration.value : null,
+          });
         })
         .catch((error: unknown) => {
           animation.fail(error);
         });
     } else {
-      start(art, background);
+      start({ art, background, header });
     }
     return animation.endReason === "complete" ? undefined : animation;
   }
@@ -290,8 +301,7 @@ export class CharacterCutinPanel {
     input: CharacterCutinInput,
     state: CutinSlotState,
     layout: CutinLayout,
-    art: CharacterArt | null,
-    background: Texture | null,
+    { art, background, header }: SlotAssets,
     tween: SlotTween,
   ): void {
     // Show (2791 @ 0x184203DA0) calls AVGCharacterSlot.Set(name, 0, white).
@@ -304,6 +314,11 @@ export class CharacterCutinPanel {
     const { backdrop, backgroundImage } = state;
     backdrop.visible = !background;
     backgroundImage.visible = background !== null;
+    state.header.visible = header !== null;
+    if (header) {
+      state.header.texture = header;
+      state.header.setSize(STORY_WIDTH * 2, 200);
+    }
     if (background) {
       backgroundImage.texture = background;
       const offset = input.backgroundOffset ?? 0;
@@ -340,6 +355,13 @@ export class CharacterCutinPanel {
     const target = this.maskTweenTarget(state);
     let start = target ? undefined : { ...state.maskSize };
     const pivot = state.maskPivot;
+    if (!target) {
+      // Directional Show writes localPosition. Fade and centered Show
+      // retain the previous position, including after OnRecycle.
+      state.maskPosition.x = pivot.x * layout.maskW;
+      state.maskPosition.y = pivot.y * layout.maskH;
+      this.drawMask(state);
+    }
     tween(
       input.fadeMs,
       (progress) => {
@@ -482,7 +504,6 @@ export class CharacterCutinPanel {
     const fadeStyle = fadeStyleId(input.fadeStyle);
     const entry = {
       charIdentity: "",
-      entryMaskSize: { h: layout.maskH, w: layout.maskW },
       fadeStyle,
       hasStarted: false,
       maskPivot: {
@@ -525,9 +546,21 @@ export class CharacterCutinPanel {
     // In the 2791 prefab the 2560x720 defaultBackground tracks the mask
     // center. The optional background Image shares the character's zoom and
     // POV, and both are clipped by the same mask.
-    const backdrop = new Graphics()
+    const backdrop = new Container();
+    const plate = new Graphics()
       .rect(-STORY_WIDTH, -STORY_HEIGHT / 2, STORY_WIDTH * 2, STORY_HEIGHT)
       .fill(BACKGROUND_TINT);
+    // slot_character_cutin/defaultBackground/header uses sprite_avg_cutscene.
+    // Its bottom pivot is 50px above the plate, and the half-turn hangs
+    // 150px of the gradient into a full-height mask.
+    const header = new Sprite(Texture.EMPTY);
+    header.anchor.set(0.5, 1);
+    header.position.y = -STORY_HEIGHT / 2 - 50;
+    header.rotation = Math.PI;
+    header.tint = 0x00_00_00;
+    header.alpha = 180 / 255;
+    header.visible = false;
+    backdrop.addChild(plate, header);
     const backgroundImage = new Sprite(Texture.EMPTY);
     backgroundImage.anchor.set(0.5);
     backgroundImage.tint = BACKGROUND_TINT;
@@ -542,7 +575,9 @@ export class CharacterCutinPanel {
       backgroundImage,
       portrait: new CharacterSlotView(content, 0, 0),
       content,
+      header,
       mask,
+      maskPosition: { x: 0, y: 0 },
       root,
     };
   }
@@ -556,6 +591,7 @@ export class CharacterCutinPanel {
     state.backgroundImage.texture = Texture.EMPTY;
     state.backgroundImage.visible = false;
     state.backdrop.visible = true;
+    state.header.visible = false;
     state.charIdentity = "";
     state.root.removeFromParent();
     this.recycledSlots.push(state);
@@ -579,8 +615,8 @@ export class CharacterCutinPanel {
     // 2791 Show sets the mask pivot and its position (0x184203DA0).
     // SlotUpdate (0x184249B00) resizes around that pivot. The anchored POV
     // follows the mask center. Directional Show/Hide compensate for its move.
-    const centerX = state.maskPivot.x * (state.entryMaskSize.w - w);
-    const centerY = state.maskPivot.y * (state.entryMaskSize.h - h);
+    const centerX = state.maskPosition.x - state.maskPivot.x * w;
+    const centerY = state.maskPosition.y - state.maskPivot.y * h;
     state.backdrop.position.set(centerX, centerY);
     state.content.position.set(centerX + state.pov.x, centerY + state.pov.y);
     state.mask

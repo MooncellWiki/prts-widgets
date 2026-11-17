@@ -25,7 +25,7 @@ import type { CharacterCutinInput } from "../src/widgets/StoryPlayer/engine/type
 
 /** The fields of the panel's private per-widget slot state these tests read. */
 interface SlotView {
-  backdrop: Graphics;
+  backdrop: Container;
   backgroundImage: Sprite;
   portrait: CharacterSlotView;
   content: Container;
@@ -87,8 +87,15 @@ function createPanel(
   loadPortrait: (input: CharacterCutinInput) => CharacterArtLoad,
   tweens: Pick<TweenRunner, "start" | "killTarget">,
   loadBackground: (key: string) => TextureLoad = () => null,
+  loadHeader: () => TextureLoad = () => null,
 ): CharacterCutinPanel {
-  return new CharacterCutinPanel(layer, loadPortrait, loadBackground, tweens);
+  return new CharacterCutinPanel(
+    layer,
+    loadPortrait,
+    loadBackground,
+    loadHeader,
+    tweens,
+  );
 }
 
 /** A texture loader whose promise the test resolves by hand. */
@@ -197,20 +204,24 @@ describe("CharacterCutinPanel", () => {
     expect(sprite.scale.y).toBeCloseTo(1210 / 1024);
   });
 
-  it("renders the #898989 defaultBackground strip behind the character", async () => {
+  it("renders the defaultBackground plate and rotated header behind the character", async () => {
     const layer = new Container();
+    const gradient = texture(4, 310);
     const panel = createPanel(
       layer,
       async () => art(120, 300),
       createInstantTweenRunner(),
+      () => null,
+      () => gradient,
     );
 
     await panel.run(input({}))?.completion;
 
     const state = slots(panel).get("1")!;
+    const [plate, header] = state.backdrop.children as [Graphics, Sprite];
     // _defualtBackground: under the mask (clipped), below the zoomAndPov
     // content, static full-canvas rect -- revealed as the mask expands.
-    expect(state.backdrop.context.instructions).toMatchObject([
+    expect(plate.context.instructions).toMatchObject([
       { action: "fill", data: { style: { color: 0x89_89_89 } } },
     ]);
     expect(state.root.mask).toBe(state.mask);
@@ -218,7 +229,7 @@ describe("CharacterCutinPanel", () => {
     expect(state.root.children.indexOf(state.backdrop)).toBe(1);
     expect(state.root.children.indexOf(state.content)).toBe(2);
     // The backdrop keeps the prefab's 2560x720 rect as the mask resizes.
-    expect(state.backdrop.bounds).toMatchObject({
+    expect(plate.bounds).toMatchObject({
       maxX: 1280,
       maxY: 360,
       minX: -1280,
@@ -226,6 +237,14 @@ describe("CharacterCutinPanel", () => {
     });
     expect(state.backdrop.scale.x).toBe(1);
     expect(state.backdrop.scale.y).toBe(1);
+    expect(header.texture).toBe(gradient);
+    expect(header.visible).toBe(true);
+    expect(header.rotation).toBeCloseTo(Math.PI);
+    expect(header.width).toBeCloseTo(2560);
+    expect(header.alpha).toBeCloseTo(180 / 255);
+    const bounds = header.getBounds();
+    expect(bounds.minY).toBeCloseTo(-50);
+    expect(bounds.maxY).toBeCloseTo(150);
   });
 
   it.each([
@@ -845,6 +864,33 @@ describe("CharacterCutinPanel", () => {
     // SlotUpdate writes 272 before the new DOSizeDelta advances 19% to 600.
     expect(reused.maskSize.w).toBeCloseTo(334.32);
   });
+
+  it.each(["fade", "horiz_expand_center"] as const)(
+    "keeps the directional mask position when the recycled slot uses %s",
+    (fadeStyle) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const panel = createPanel(
+        new Container(),
+        () => art(120, 300),
+        frames.createTweenRunner(),
+      );
+
+      panel.run(input({ block: false, fadeStyle: "horiz_expand_left2right" }));
+      frames.step(16);
+      const original = slots(panel).get("1");
+      panel.run(input({ block: false, characterKey: undefined }));
+      frames.step(16);
+
+      panel.run(input({ block: false, fadeStyle, widgetId: "2" }));
+      frames.step(16);
+      const reused = slots(panel).get("2")!;
+      expect(reused).toBe(original);
+      expect(reused.mask.bounds.minX).toBe(-200);
+      expect(reused.mask.bounds.maxX).toBe(0);
+      expect(reused.content.x).toBe(-100);
+    },
+  );
 
   it.each([
     { clearedWidgetId: "2", finishCalls: 1, reason: "complete" },
