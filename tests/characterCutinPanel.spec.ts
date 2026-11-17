@@ -813,6 +813,39 @@ describe("CharacterCutinPanel", () => {
     expect(show?.endReason).toBe("reset");
   });
 
+  it("samples the live mask size on the first centered Show update after reuse", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => art(120, 300),
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, width: 200 }));
+    frames.step(16);
+    const original = slots(panel).get("1");
+
+    panel.run(input({ block: false, fadeMs: 1000, width: 400 }));
+    panel.run(input({ block: false, characterKey: undefined, fadeMs: 100 }));
+    frames.step(100);
+    expect(slots(panel).has("1")).toBe(false);
+
+    panel.run(
+      input({
+        block: false,
+        fadeMs: 1000,
+        fadeStyle: "horiz_expand_center",
+        widgetId: "2",
+        width: 600,
+      }),
+    );
+    const reused = slots(panel).get("2")!;
+    expect(reused).toBe(original);
+    frames.step(100);
+    // SlotUpdate writes 272 before the new DOSizeDelta advances 19% to 600.
+    expect(reused.maskSize.w).toBeCloseTo(334.32);
+  });
+
   it.each([
     { clearedWidgetId: "2", finishCalls: 1, reason: "complete" },
     { clearedWidgetId: "1", finishCalls: 0, reason: "reset" },

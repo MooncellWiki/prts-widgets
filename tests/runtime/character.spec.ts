@@ -221,6 +221,32 @@ describe("StoryRuntime", () => {
   });
 
   it.each([
+    { style: "2", expected: "horiz_expand_left2right" },
+    { style: '" +2 "', expected: "horiz_expand_left2right" },
+    { style: '"horiz_expand_left2right"', expected: "horiz_expand_left2right" },
+    { style: '"HORIZ_EXPAND_LEFT2RIGHT"', expected: "fade" },
+    {
+      style: '"horiz_expand_center, horiz_expand_left2right"',
+      expected: "horiz_expand_right2left",
+    },
+  ])("parses charactercutin fadestyle=$style", async ({ style, expected }) => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        `[charactercutin(widgetID="1",name="avg_npc_1",fadestyle=${style})]`,
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.characterCutinCalls).toHaveLength(1);
+    expect(renderer.characterCutinCalls[0]?.fadeStyle).toBe(expected);
+  });
+
+  it.each([
     { args: "", expected: { align: "horizontal" } },
     {
       args: ',align="VERTICAL",background="bg_test",backgroundOffset=32',

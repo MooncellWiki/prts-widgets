@@ -12,6 +12,7 @@ import {
   toString,
   tryParseInt32,
 } from "../commandParams";
+import { parseShowItemFadeStyle, ShowItemFadeStyle } from "../showitem";
 
 import type { CharacterRefResolution } from "../characterRef";
 import type {
@@ -107,20 +108,13 @@ export class CharacterCutinPanel extends ExecutorComponent {
       this.playback.warn("missing_asset", `charactercutin: ${nameRef}`);
     }
 
-    const fadeStyleRaw = toString(args.fadestyle).trim().toLowerCase();
-    const validFadeStyles = [
-      "fade",
-      "horiz_expand_center",
-      "horiz_expand_left2right",
-      "horiz_expand_right2left",
-      "vert_expand_center",
-      "vert_expand_top2bottom",
-      "vert_expand_bottom2top",
-    ] as const;
-    const fadeStyle = validFadeStyles.includes(
-      fadeStyleRaw as (typeof validFadeStyles)[number],
-    )
-      ? (fadeStyleRaw as (typeof validFadeStyles)[number])
+    // AVGCharacterCutinSlot.Show (2791 @ 0x184203DA0) uses case-sensitive
+    // GetEnum. Both native cut-in FadeStyle enums share names and ordinals.
+    const fadeStyleRaw = toString(args.fadestyle);
+    const fadeStyle = fadeStyleRaw
+      ? (ShowItemFadeStyle[
+          parseShowItemFadeStyle(fadeStyleRaw)
+        ] as CharacterCutinInput["fadeStyle"])
       : undefined;
 
     // AVGCharacterCutinSlot.Show/SlotUpdate read the case-sensitive layout

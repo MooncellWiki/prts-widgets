@@ -81,6 +81,7 @@ interface ChannelState {
   /** 回落路径的文字标签。 */
   label: Text | null;
   elements: Map<string, ElementState>;
+  reused: boolean;
   /** The most recent char, background and avatar sequences in CutinChannel. */
   elementSequences: Map<InterludeInput["type"], TweenHandle>;
   /** The single CutinAVGCharacterSlot owned by this channel. */
@@ -438,8 +439,8 @@ export class InterludePanel {
     root.addChild(maskContainer, content, decoContainer);
     this.layer.addChild(root);
 
-    const elements =
-      this.recycledElements.pop() ?? new Map<string, ElementState>();
+    const recycled = this.recycledElements.pop();
+    const elements = recycled ?? new Map<string, ElementState>();
     for (const [key, { node }] of elements)
       (key === BACKGROUND_ELEMENT_KEY ? bkgPoz : charPoz).addChild(node);
 
@@ -458,6 +459,7 @@ export class InterludePanel {
       fallbackMask: null,
       label: null,
       elements,
+      reused: recycled !== undefined,
       elementSequences: new Map(),
       avatarLoadId: 0,
       avatarName: "",
@@ -691,8 +693,9 @@ export class InterludePanel {
     const element: ElementState = { node, sprite };
     // Inactive until SetCutinElement assigns a sprite.
     node.visible = false;
-    // cutin_channel prefab: char_img_right sits at (-140, 63) until a DoMove.
-    if (key === "r") node.position.set(-140, -63);
+    // The prefab's right slot starts at (-140, 63). OnRecycle
+    // (2791 @ 0x1814F9CD0) zeroes its offset even if it never held a sprite.
+    if (key === "r" && !state.reused) node.position.set(-140, -63);
     (type === 2 ? state.bkgPoz : state.charPoz).addChild(node);
     state.elements.set(key, element);
     return element;

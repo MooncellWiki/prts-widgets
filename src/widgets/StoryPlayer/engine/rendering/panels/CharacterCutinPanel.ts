@@ -335,12 +335,15 @@ export class CharacterCutinPanel {
     }
 
     // Expand styles keep alpha at 1 and grow the mask from the pivot edge.
-    const start = { ...state.maskSize };
+    // Show's center styles use DOSizeDelta (2791 @ 0x184203DA0), which reads
+    // the start size on its first update, after any older targetless setters.
     const target = this.maskTweenTarget(state);
+    let start = target ? undefined : { ...state.maskSize };
     const pivot = state.maskPivot;
     tween(
       input.fadeMs,
       (progress) => {
+        start ??= { ...state.maskSize };
         state.maskSize.h = lerp(start.h, layout.maskH, progress);
         state.maskSize.w = lerp(start.w, layout.maskW, progress);
         if (!target) {

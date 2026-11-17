@@ -190,6 +190,39 @@ describe("InterludePanel", () => {
     expect([reset.x, reset.y]).toEqual([1, 1]);
   });
 
+  it("uses the recycled offset on first use of the right image slot", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    const show = { block: false, maskId: VERTICAL };
+    const right = {
+      block: false,
+      name: "cutin_char_9",
+      slot: "r",
+      type: 1,
+    } as const;
+
+    panel.run(input(show));
+    panel.run(input({ block: false, clear: true }));
+    frames.step(16);
+    expect(channel(panel)).toBeUndefined();
+
+    panel.run(input({ ...show, channel: 4 }));
+    panel.run(input({ ...right, channel: 4 }));
+    const reusedPosition = channel(panel, 4).elements.get("r").node.position;
+    expect([reusedPosition.x, reusedPosition.y]).toEqual([0, 0]);
+
+    panel.clearAll();
+    panel.run(input(show));
+    panel.run(input(right));
+    const freshPosition = channel(panel).elements.get("r").node.position;
+    expect([freshPosition.x, freshPosition.y]).toEqual([-140, -63]);
+  });
+
   it.each([false, true])(
     "keeps older background tweens on the reused image when the last sequence has a move (%s)",
     (moves) => {
