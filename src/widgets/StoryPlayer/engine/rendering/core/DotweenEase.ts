@@ -253,22 +253,24 @@ function easeCurveByName(name: string): EaseCurve | undefined {
 
 /**
  * Resolves the `ease` parameter the way `GetEnum<Ease>(param, "ease",
- * Ease.Linear, ignoreCase: false)` does: enum names match case-sensitively and
- * integer strings (including negatives) parse as ordinals (`"6"` is OutQuad).
+ * Ease.Linear, ignoreCase: false)` does. `Enum.Parse` trims surrounding .NET
+ * whitespace, matches names case-sensitively, and parses integer ordinals.
  * Anything `Enum.Parse` would reject — an unknown name, or an integer outside
  * int32 — throws in native, and `GetEnum` swallows that into a
  * `DLog.LogError("Can not parse enum ...")` plus the Ease.Linear default.
  */
 export function dotweenEaseCurve(ease: string | undefined): EaseCurve {
-  if (ease === undefined) {
+  // Match from the first through the last non-whitespace character.
+  const value = ease?.match(/\P{White_Space}(?:.*\P{White_Space})?/su)?.[0];
+  if (!value) {
     return linearEase;
   }
-  if (/^-?\d+$/.test(ease)) {
-    const ordinal = Number.parseInt(ease, 10);
+  if (/^-?\d+$/.test(value)) {
+    const ordinal = Number.parseInt(value, 10);
     if (ordinal < INT32_MIN || ordinal > INT32_MAX) {
       return linearEase;
     }
     return dotweenEaseByOrdinal[ordinal] ?? dotweenEaseCurves.OutQuad;
   }
-  return easeCurveByName(ease) ?? linearEase;
+  return easeCurveByName(value) ?? linearEase;
 }

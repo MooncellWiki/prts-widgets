@@ -929,6 +929,17 @@ describe("ImagePanel frame order", () => {
       ],
     },
     {
+      name: "an ease name with surrounding spaces",
+      commands: [
+        show,
+        '[imagetween(ease=" OutQuad ",xTo=64,duration=0.032,block=true)]',
+      ],
+      frames: [
+        [1, 688, 0, 0],
+        [1, 704, 0, 1],
+      ],
+    },
+    {
       name: "overlapping moves",
       commands: [
         show,

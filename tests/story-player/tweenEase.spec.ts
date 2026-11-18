@@ -21,6 +21,7 @@ describe("dotweenEaseCurve resolution (GetEnum<Ease> port)", () => {
   it("resolves integer strings as Ease ordinals", () => {
     // `ease="6"` is OutQuad and `ease="1"` is Linear in the story corpus.
     expect(dotweenEaseCurve("6")(0.5)).toBeCloseTo(0.75);
+    expect(dotweenEaseCurve("\u00856\t")(0.5)).toBeCloseTo(0.75);
     expect(dotweenEaseCurve("1")(0.5)).toBe(0.5);
     // `ease="34"` is OutFlash; the corpus spells that one by name
     // (story_mizuki_1_1), but the ordinal has to resolve the same way.
