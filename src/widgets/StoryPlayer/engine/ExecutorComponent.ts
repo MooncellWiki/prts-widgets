@@ -134,6 +134,7 @@ export abstract class ExecutorComponent {
     }
     return {
       forceEnd: () => this.finish(execution, "force"),
+      assetsReady: animation.assetsReady,
       isComplete: () => {
         // FinishCommand may already have released this panel's current wait.
         if (this.current !== execution) return true;

@@ -27,6 +27,8 @@ export interface WaitForDecision {
 export interface WaitForFrame {
   isComplete: (nowMs: number) => boolean;
   forceEnd?: () => void;
+  /** Web asset preparation can finish between updates. */
+  assetsReady?: Promise<void>;
 }
 
 export type CommandWait = WaitForClick | WaitForDecision | WaitForFrame;

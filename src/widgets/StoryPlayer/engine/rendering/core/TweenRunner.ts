@@ -138,13 +138,20 @@ export class TweenRunner {
           previous = current;
         }
         elapsed += Math.min(deltaMs, maxFrameDeltaMs);
+        // TweenManager.Update (2791 @ 0x1844679F0) counts one loop per
+        // update for a zero duration, including an infinite loop.
+        if (durationMs <= 0 && loops < 0) {
+          step(ease(1));
+          return;
+        }
         if (durationMs <= 0 || elapsed >= totalMs) {
           finish("complete", ease(1));
           return;
         }
-        // DOTween's default Restart loop type replays from the start value
-        // at every cycle boundary.
-        step(ease((elapsed % durationMs) / durationMs));
+        // Tween.DoGoto (2791 @ 0x18443D350) samples the end pose on the
+        // boundary. The next positive delta advances into the next cycle.
+        const position = elapsed % durationMs;
+        step(ease(position === 0 && elapsed > 0 ? 1 : position / durationMs));
       },
       completion,
       get endReason() {
@@ -159,7 +166,7 @@ export class TweenRunner {
       target: options.target,
     };
 
-    if (durationMs <= 0 && !options.deferZeroDuration) {
+    if (durationMs <= 0 && loops > 0 && !options.deferZeroDuration) {
       finish("complete", 1);
     } else {
       previous = now?.() ?? 0;

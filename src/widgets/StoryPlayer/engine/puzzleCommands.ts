@@ -1,5 +1,6 @@
 import {
   exactArg,
+  getBool,
   toBoolean,
   toNumber,
   toOptionalNumber,
@@ -37,12 +38,11 @@ export function resolvePuzzleAssets(
   const group = imageGroup || toString(read(args, "cggroup"));
   if (!group) return null;
 
+  // Native Split('/') keeps each slot for the executor's count and name checks.
+  const imageKeys = group.split("/").map((key) => key.trim().toLowerCase());
   return {
     assetKind: imageGroup && !foreground ? "background" : "image",
-    imageKeys: group
-      .split("/")
-      .map((key) => key.trim().toLowerCase())
-      .filter(Boolean),
+    imageKeys: foreground ? imageKeys.filter(Boolean) : imageKeys,
   };
 }
 
@@ -56,6 +56,11 @@ export function parsePuzzleDimensions(value: unknown): number[] {
     .filter(Number.isFinite);
 }
 
+/** MathUtil.LE(seconds, 0) in the 2791 background executors (@ 0x186945C90). */
+export function isTimedPuzzleCommand(seconds: number): boolean {
+  return Math.fround(seconds) > Math.fround(0.00001);
+}
+
 /** LargeBackgroundPanel._ExecuteImageTween uses literal seconds and exact keys. */
 export function parsePuzzleTween(
   args: StoryCommandArgs,
@@ -64,7 +69,9 @@ export function parsePuzzleTween(
   const read = foreground
     ? (key: string) => legacyPuzzleArg(args, key.toLowerCase())
     : (key: string) => exactArg(args, key);
-  const durationMs = Math.max(0, toNumber(read("duration")) * 1000);
+  const seconds = Math.max(0, toNumber(read("duration")));
+  const timed = foreground ? seconds > 0 : isTimedPuzzleCommand(seconds);
+  const loop = foreground ? toBoolean(read("loop")) : getBool(args, "loop");
 
   // The Web extension also accepts the static transform keys as fallbacks.
   const x = foreground ? toOptionalNumber(read("x")) : undefined;
@@ -72,10 +79,13 @@ export function parsePuzzleTween(
   const xScale = foreground ? toOptionalNumber(read("xScale")) : undefined;
   const yScale = foreground ? toOptionalNumber(read("yScale")) : undefined;
   return {
-    block: durationMs > 0 && toBoolean(read("block")),
-    durationMs,
+    block:
+      timed && (foreground ? toBoolean(read("block")) : getBool(args, "block")),
+    // _ExecuteImageTween calls Complete for a near-zero duration. DOTween
+    // skips that operation on an infinite loop.
+    durationMs: timed || loop ? seconds * 1000 : 0,
     ease: toString(read("ease"), "Linear"),
-    loop: toBoolean(read("loop")),
+    loop,
     xFrom: toOptionalNumber(read("xFrom")) ?? x,
     xScaleFrom: toOptionalNumber(read("xScaleFrom")) ?? xScale,
     xScaleTo: toOptionalNumber(read("xScaleTo")) ?? xScale,

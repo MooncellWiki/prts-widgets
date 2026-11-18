@@ -3,10 +3,16 @@ import {
   type ExecutorResult,
   type PanelExecutors,
 } from "../ExecutorComponent";
-import { exactArg, toBoolean, toNumber, toString } from "../commandParams";
+import {
+  exactArg,
+  getBool,
+  toNumber,
+  toString,
+  tryConvertToSingle,
+} from "../commandParams";
 import {
   LOOP_BLOCK_WARNING,
-  parsePuzzleDimensions,
+  isTimedPuzzleCommand,
   parsePuzzleTween,
   resolvePuzzleAssets,
 } from "../puzzleCommands";
@@ -15,6 +21,7 @@ import type {
   GridBackgroundInput,
   ParsedCommandLine,
   RuntimeWarning,
+  StoryCommandValue,
   StoryRenderer,
 } from "../types";
 
@@ -66,9 +73,10 @@ export class LargeBackgroundPanel extends ExecutorComponent {
     const { args, command } = line;
     const assets = resolvePuzzleAssets(args, false);
     // _ExecuteImage / _ExecuteVerticalBG / _ExecuteGridBG forward fadetime
-    // directly to DOFade. Only a positive fade can block the command.
-    const fadeMs = Math.max(0, toNumber(exactArg(args, "fadetime")) * 1000);
-    const block = fadeMs > 0 && toBoolean(exactArg(args, "block"));
+    // directly to DOFade. MathUtil.LE only changes whether the command waits.
+    const seconds = Math.max(0, toNumber(exactArg(args, "fadetime")));
+    const fadeMs = seconds * 1000;
+    const block = isTimedPuzzleCommand(seconds) && getBool(args, "block");
     // The DOFade OnKill callback calls FinishCommand when block is set.
     const onComplete = block ? this.finishCommand : undefined;
     if (!assets) {
@@ -81,24 +89,18 @@ export class LargeBackgroundPanel extends ExecutorComponent {
     const count = assets.imageKeys.length;
     const rawWidth = exactArg(args, "solidwidth");
     const rawHeight = exactArg(args, "solidheight");
-    const width = toNumber(rawWidth);
     const solidWidths =
       layout === "vertical"
-        ? width > 0
-          ? [width]
-          : []
-        : parsePuzzleDimensions(rawWidth).slice(0, 2);
+        ? scalarDimension(rawWidth)
+        : tileDimensions(rawWidth, 2);
     const solidHeights =
       layout === "large"
-        ? [toNumber(rawHeight)]
-        : parsePuzzleDimensions(rawHeight).slice(
-            0,
-            layout === "grid" ? 2 : count,
-          );
+        ? scalarDimension(rawHeight)
+        : tileDimensions(rawHeight, layout === "grid" ? 2 : count);
     const error = puzzleSizeError(
       command,
       layout,
-      count,
+      assets.imageKeys,
       solidWidths.length,
       solidHeights.length,
     );
@@ -162,21 +164,42 @@ export class LargeBackgroundPanel extends ExecutorComponent {
   }
 }
 
+function scalarDimension(value: StoryCommandValue | undefined): number[] {
+  const size = tryConvertToSingle(value ?? 0);
+  return size !== null && Number.isFinite(size) ? [size] : [];
+}
+
+/** _ExecuteGridBG and its siblings call Single.TryParse at each required index. */
+function tileDimensions(
+  value: StoryCommandValue | undefined,
+  count: number,
+): number[] {
+  const dimensions: number[] = [];
+  for (const part of toString(value).split("/", count)) {
+    const size = tryConvertToSingle(part);
+    if (size === null || !Number.isFinite(size)) break;
+    dimensions.push(size);
+  }
+  return dimensions;
+}
+
 function puzzleSizeError(
   command: string,
   layout: PuzzleLayout,
-  count: number,
+  imageKeys: readonly string[],
   widths: number,
   heights: number,
 ): string | undefined {
-  if (count === 0) return `${command} imagegroup is empty`;
+  const count = imageKeys.length;
+  if (count === 0 || imageKeys.includes(""))
+    return `${command} imagegroup contains an empty tile`;
   if (layout === "grid") {
     if (count !== 4 || widths !== 2 || heights !== 2)
       return `gridbg expects ${count} widths/heights, got ${widths}/${heights}`;
   } else if (layout === "vertical") {
     if (count > 4 || widths !== 1 || heights !== count)
       return `verticalbg expects width_count * height_count === image_count, got ${widths} * ${heights} !== ${count}`;
-  } else if (count !== 2 || widths !== 2) {
-    return `largebg expects width_count * height_count === image_count, got ${widths} * 1 !== ${count}`;
+  } else if (count !== 2 || widths !== 2 || heights !== 1) {
+    return `largebg expects width_count * height_count === image_count, got ${widths} * ${heights} !== ${count}`;
   }
 }

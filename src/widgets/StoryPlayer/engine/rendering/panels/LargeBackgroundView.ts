@@ -50,6 +50,34 @@ function finiteValue(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) ? value : fallback;
 }
 
+function puzzleMovement(
+  root: Container | null,
+  input: LargeBackgroundTweenInput,
+) {
+  // The native _offset exists even when none of its tile slots is visible.
+  if (!root) return () => {};
+  const current = readCenteredTransform(root);
+  const from = {
+    scaleX: finiteValue(input.xScaleFrom, current.scaleX),
+    scaleY: finiteValue(input.yScaleFrom, current.scaleY),
+    x: finiteValue(input.xFrom, current.x),
+    y: finiteValue(input.yFrom, current.y),
+  };
+  const to = {
+    scaleX: finiteValue(input.xScaleTo, current.scaleX),
+    scaleY: finiteValue(input.yScaleTo, current.scaleY),
+    x: finiteValue(input.xTo, current.x),
+    y: finiteValue(input.yTo, current.y),
+  };
+  return (progress: number) =>
+    applyCenteredTransform(root, {
+      scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
+      scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
+      x: from.x + (to.x - from.x) * progress,
+      y: from.y + (to.y - from.y) * progress,
+    });
+}
+
 /**
  * Torappu.AVG.LargeBackgroundPanel's tiled _offset, _LoadImage and canvas
  * fades (2791 @ 0x1841D8680 / 0x1841DC960). The Web foreground puzzle owns
@@ -87,14 +115,18 @@ export class LargeBackgroundView {
     const animation = createExecutionHandle(true);
     transition.animation = animation;
     transition.preparing = true;
-    void Promise.all(textures)
-      .then((ready) => this.mountPuzzle(input, ready, transition))
+    const assetsReady = Promise.all(textures)
+      .then((ready) => {
+        this.mountPuzzle(input, ready, transition);
+      })
       .catch((error: unknown) => {
         if (this.transition !== transition) return;
         this.transition = undefined;
         animation.fail(error);
       });
-    return animation;
+    return this.options.kind === "background"
+      ? Object.assign(animation, { assetsReady })
+      : animation;
   }
 
   clear(
@@ -142,9 +174,9 @@ export class LargeBackgroundView {
 
   /** Story teardown releases the panel's remaining Web frame work. */
   reset(): void {
-    this.options.tweens.killTarget(this.layer);
     this.cancelMovement();
     this.resetPanel();
+    this.options.tweens.killTarget(this.layer);
   }
 
   move(
@@ -152,30 +184,21 @@ export class LargeBackgroundView {
     onComplete?: () => void,
   ): ExecutionHandle | void {
     const root = this.root;
-    if (!root || root.parent !== this.layer) return;
-
-    const current = readCenteredTransform(root);
-    const from = {
-      scaleX: finiteValue(input.xScaleFrom, current.scaleX),
-      scaleY: finiteValue(input.yScaleFrom, current.scaleY),
-      x: finiteValue(input.xFrom, current.x),
-      y: finiteValue(input.yFrom, current.y),
-    };
-    const to = {
-      scaleX: finiteValue(input.xScaleTo, current.scaleX),
-      scaleY: finiteValue(input.yScaleTo, current.scaleY),
-      x: finiteValue(input.xTo, current.x),
-      y: finiteValue(input.yTo, current.y),
-    };
+    if (root ? root.parent !== this.layer : this.options.kind === "image")
+      return;
+    const update = puzzleMovement(root, input);
 
     // _ExecuteImageTween (2791 @ 0x1841D9B90) moves and scales the same
     // _offset with matched timing. Native lets older overlapping tweens
     // resume writing once a newer one ends. Web retires the previous one
     // when a new tween takes over the root.
     this.cancelMovement();
-    applyCenteredTransform(root, from);
-    if (input.durationMs <= 0) {
-      applyCenteredTransform(root, to);
+    update(0);
+    if (
+      input.durationMs <= 0 &&
+      !(input.loop && this.options.kind === "background")
+    ) {
+      update(1);
       onComplete?.();
       return;
     }
@@ -184,26 +207,20 @@ export class LargeBackgroundView {
     const movement = { animation };
     this.movement = movement;
     const isAlive = () =>
-      this.movement === movement && root.parent === this.layer;
+      this.movement === movement && (!root || root.parent === this.layer);
     void this.options.tweens.run(
       input.durationMs,
       (progress) => {
-        if (!isAlive()) return;
-        applyCenteredTransform(root, {
-          scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-          scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-          x: from.x + (to.x - from.x) * progress,
-          y: from.y + (to.y - from.y) * progress,
-        });
+        if (isAlive()) update(progress);
       },
       () => {
         if (this.movement !== movement) return;
         this.movement = undefined;
-        if (root.parent !== this.layer) {
+        if (root && root.parent !== this.layer) {
           animation?.end("reset");
           return;
         }
-        applyCenteredTransform(root, to);
+        update(1);
         animation?.end();
         onComplete?.();
       },
@@ -227,6 +244,7 @@ export class LargeBackgroundView {
   ): ExecutionHandle | void {
     if (this.transition !== transition) return;
     transition.preparing = false;
+    this.resumeFadeCallbacks(transition);
 
     if (textures.some((texture) => !texture)) {
       if (this.options.kind === "background") {
@@ -259,7 +277,6 @@ export class LargeBackgroundView {
         transition.animation,
       );
       this.transition = undefined;
-      for (const complete of transition.afterPreparation ?? []) complete();
       return animation;
     }
 
@@ -294,6 +311,10 @@ export class LargeBackgroundView {
     let from: number | undefined;
     const tweens = this.options.tweens;
     const onKill = () => {
+      if (this.transition?.preparing) {
+        (this.transition.afterPreparation ??= []).push(onKill);
+        return;
+      }
       if (to === 0) this.resetImages();
       onComplete?.();
     };
@@ -315,11 +336,7 @@ export class LargeBackgroundView {
           // then resets the current tiles or releases the shared wait.
           tweens.afterUpdate(() => {
             animation?.end();
-            // Native loaded the replacement synchronously before OnKill.
-            // With a cold Web load, apply the callback after its tiles mount.
-            if (this.transition?.preparing)
-              (this.transition.afterPreparation ??= []).push(onKill);
-            else onKill();
+            onKill();
           }),
         target: this.layer,
       },
@@ -369,13 +386,28 @@ export class LargeBackgroundView {
     const transition = this.transition;
     this.transition = undefined;
     transition?.animation?.end(reason);
+    if (transition) this.resumeFadeCallbacks(transition);
   }
 
   private finishTransition(transition: Transition): void {
     if (this.transition !== transition) return;
     this.transition = undefined;
     transition.animation?.end();
-    for (const complete of transition.afterPreparation ?? []) complete();
+  }
+
+  private resumeFadeCallbacks(transition: Transition): void {
+    const callbacks = transition.afterPreparation;
+    if (!callbacks) return;
+    // Native loads tiles inline. Replay elapsed OnKill callbacks in the first
+    // ready Update, after the command following the load has installed its wait.
+    const tweens = this.options.tweens;
+    tweens.start(
+      0,
+      () => {
+        for (const complete of callbacks) tweens.afterUpdate(complete);
+      },
+      { deferZeroDuration: true, target: this.layer },
+    );
   }
 
   private cancelMovement(): void {

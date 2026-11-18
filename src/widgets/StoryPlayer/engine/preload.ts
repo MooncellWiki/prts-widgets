@@ -150,13 +150,16 @@ function addScriptImageUrls(
     if (
       line.command === "gridbg" ||
       line.command === "verticalbg" ||
-      line.command === "largebg" ||
-      line.command === "largeimg"
+      line.command === "largebg"
     ) {
-      const assets = resolvePuzzleAssets(
-        line.args,
-        line.command === "largeimg",
-      );
+      // LargeBackgroundPanel.GatherResRefs (2791 @ 0x1841D7A40) collects
+      // both groups even though playback selects imagegroup first.
+      for (const key of toString(line.args.imagegroup).split("/"))
+        addImageUrl(urls, key, "background");
+      for (const key of toString(line.args.cggroup).split("/"))
+        addImageUrl(urls, key, "image");
+    } else if (line.command === "largeimg") {
+      const assets = resolvePuzzleAssets(line.args, true);
       if (!assets) continue;
       for (const key of assets.imageKeys)
         addImageUrl(urls, key, assets.assetKind);

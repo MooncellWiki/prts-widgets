@@ -5,6 +5,8 @@ export type AnimationPreparation =
   ExecutionHandle | void | Promise<ExecutionHandle | void>;
 
 export interface ExecutionHandle {
+  /** An uncached asset can remove a Web-only wait before the next Update. */
+  readonly assetsReady?: Promise<void>;
   readonly blocking: boolean;
   readonly completion: Promise<ExecutionOutcome>;
   readonly endReason: ExecutionOutcome | undefined;

@@ -1047,6 +1047,25 @@ describe("LargeBackgroundPanel frame order", () => {
       name: "blocked clear of an empty panel",
     },
     {
+      commands: ["[largebgtween(xTo=64,duration=0.032,block=1)]"],
+      draws: [
+        [undefined, undefined, 0],
+        [undefined, undefined, 1],
+      ],
+      name: "blocked movement of an empty panel",
+    },
+    {
+      commands: [
+        "[largebgtween(duration=0.032)]",
+        "[largebg(fadetime=1,block=true)]",
+      ],
+      draws: [
+        [undefined, undefined, 0],
+        [undefined, undefined, 1],
+      ],
+      name: "an empty-panel move releasing a later clear",
+    },
+    {
       commands: ["[delay(time=0.016)]", instantShow],
       draws: [
         [undefined, undefined, 0],
@@ -1233,6 +1252,64 @@ describe("LargeBackgroundPanel frame order", () => {
         expect(gridBackground.children).toHaveLength(rootsAfterCallback);
         expect(gridBackground.alpha).toBe(0.25);
         expect(cgItems.children).toHaveLength(1);
+      } finally {
+        delayed.resolve(Texture.EMPTY);
+        destroy();
+        load.mockRestore();
+        await Promise.all([started, skipped]);
+      }
+    },
+  );
+
+  it.each([
+    { old: [blockedShow], tiles: 1, cgItems: 1, readyAt: 16 },
+    { old: [blockedShow], tiles: 1, cgItems: 1, readyAt: 32 },
+    {
+      old: [instantShow, "[largebg(fadetime=0.032)]"],
+      tiles: 0,
+      cgItems: 0,
+      readyAt: 16,
+    },
+    {
+      old: [instantShow, "[largebg(fadetime=0.032)]"],
+      tiles: 0,
+      cgItems: 0,
+      readyAt: 32,
+    },
+  ])(
+    "delivers the fade from $old to the move after a nonblocking load at $readyAt ms",
+    async ({ old, tiles, cgItems, readyAt }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          ...old,
+          '[name="A"]before',
+          "[SkipToThis]",
+          instantShow.replace("left/right", "cold/right"),
+          "[largebgtween(xTo=64,duration=1,block=true)]",
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const delayed = Promise.withResolvers<Texture>();
+      const started = runtime.start();
+      const load = vi
+        .spyOn(renderer, "textureForImageKey")
+        .mockReturnValueOnce(delayed.promise);
+      const skipped = runtime.skipNode();
+      try {
+        await flushAsync();
+        app.ticker.update(16);
+        if (readyAt === 32) app.ticker.update(32);
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+        delayed.resolve(Texture.EMPTY);
+        await flushAsync();
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+        app.ticker.update(readyAt + 16);
+        expect(renderer.layers.gridBackground.children).toHaveLength(tiles);
+        expect(renderer.layers.cgItems.children).toHaveLength(cgItems);
+        app.ticker.update(1048);
+        expect(renderer.layers.cgItems.children).toHaveLength(cgItems);
       } finally {
         delayed.resolve(Texture.EMPTY);
         destroy();

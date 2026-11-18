@@ -1312,7 +1312,16 @@ export class StoryRuntime {
     resume: () => Promise<void> = () => this.processLoop(),
   ): Promise<void> {
     return new Promise((resolve) => {
-      this.pendingFrameWait = { resolve, resume, waits };
+      const pending = { resolve, resume, waits };
+      this.pendingFrameWait = pending;
+      // _LoadImage is synchronous in 2791. Hand a ready Web preparation to
+      // the next command before another tween update can run its callbacks.
+      if (waits.every((wait) => wait.assetsReady)) {
+        void Promise.all(waits.map((wait) => wait.assetsReady)).then(() => {
+          if (this.pendingFrameWait === pending)
+            this.pollFrameWait(performance.now());
+        });
+      }
     });
   }
 

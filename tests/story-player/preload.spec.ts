@@ -518,7 +518,7 @@ describe("preloadContextAssets", () => {
     ]);
   });
 
-  it("prefers imagegroup background tiles when verticalbg also includes cggroup", async () => {
+  it("collects both imagegroup backgrounds and cggroup images from verticalbg", async () => {
     const context = createContext([
       '[verticalbg(imagegroup="47_g14_skyovercast_L1/47_g14_skyovercast_R1",cggroup="69_i12_1/69_i12_2",solidwidth="1280/1280",solidheight="720")]',
     ]);
@@ -529,6 +529,8 @@ describe("preloadContextAssets", () => {
     expect(loadMock.mock.calls[0]?.[0]).toEqual([
       "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_l1.png",
       "https://torappu.prts.wiki/assets/avg/background/47_g14_skyovercast_r1.png",
+      "https://torappu.prts.wiki/assets/avg/images/69_i12_1.png",
+      "https://torappu.prts.wiki/assets/avg/images/69_i12_2.png",
       DIALOG_FRAME_URL,
     ]);
   });
