@@ -87,7 +87,6 @@ import {
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
-  buildGridBackgroundRoot as buildGridRoot,
   readCenteredTransform as readRootTransform,
   rotateTweenDelta,
 } from "./core/SceneGeometry";
@@ -102,6 +101,7 @@ import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
 import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
 import { InterludePanel } from "./panels/InterludePanel";
+import { LargeBackgroundView } from "./panels/LargeBackgroundView";
 import { ShowItemCutinSlot } from "./panels/ShowItemCutinSlot";
 import { ShowItemPhotoSlot } from "./panels/ShowItemPhotoSlot";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
@@ -469,15 +469,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   // (0x183e54960, literal `xor al, al`), so skipping a segment must NOT clear
   // curtains -- they only go away via curtain commands or full destroy().
   private readonly curtains = new Map<number, CurtainRenderState>();
-  private readonly gridBackgroundLayer = this.layers.gridBackground;
-  private gridBackgroundSessionId = 0;
-  private largeBackgroundRoot: Container | null = null;
-  private largeBackgroundTweenSessionId = 0;
+  private readonly largeBackgroundView: LargeBackgroundView;
+  private readonly largeImageView: LargeBackgroundView;
   private readonly imageLayer = this.layers.images;
-  private largeImageRoot: Container | null = null;
-  private readonly largeImageRoots = new Set<Container>();
-  private largeImageSessionId = 0;
-  private largeImageTweenSessionId = 0;
   private imageRoot: Container | null = null;
   private imageRotateSessionId = 0;
   /**
@@ -646,6 +640,22 @@ export class PixiStoryRenderer implements StoryRenderer {
       (...args) => this.updatePhaseTweenRunner.run(...args),
       now,
     );
+    this.largeBackgroundView = new LargeBackgroundView(
+      this.layers.gridBackground,
+      {
+        bindFocusTargets: (targets) =>
+          this.sceneEffects.setLargeBackgroundFocusTargets(targets),
+        kind: "background",
+        loadTexture: (key, kind) => this.textureForImageKey(key, kind),
+        onWarning,
+        tweens: this.updatePhaseTweenRunner,
+      },
+    );
+    this.largeImageView = new LargeBackgroundView(this.imageLayer, {
+      kind: "image",
+      loadTexture: (key, kind) => this.textureForImageKey(key, kind),
+      tweens: this.updatePhaseTweenRunner,
+    });
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
       (key) => this.textureForImageKey(key, "image"),
@@ -794,15 +804,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.timerView?.destroy();
     this.timerView = null;
     this.cgItemView.destroy();
+    this.largeBackgroundView.reset();
+    this.largeImageView.clear();
     this.resetCameraEffects();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
     this.backgroundTweenSessionId += 1;
     this.backgroundLayer.removeChildren();
-    // panel_large_background is a permanent scene-level sibling in front of
-    // panel_background (LayerGraph.attach), so the grid layer keeps its parent
-    // and only its tile roots need clearing here.
-    this.gridBackgroundLayer.removeChildren();
     this.blockerSprite = null;
     // Blocker's closest OnReset equivalent on destroy: drop in-flight tween
     // callbacks and restore the prefab color (0,0,0,0). OnReset also clears
@@ -812,13 +820,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.blockerSlideFilter = null;
     this.blockerSlideMaterial = null;
     this.blockerColor = { a: 0, b: 0, g: 0, r: 0 };
-    this.gridBackgroundSessionId += 1;
-    this.largeBackgroundRoot = null;
-    this.largeBackgroundTweenSessionId += 1;
-    this.largeImageRoot = null;
-    this.largeImageSessionId += 1;
-    this.largeImageTweenSessionId += 1;
-    this.largeImageRoots.clear();
     this.imageRoot = null;
     this.imageLayer.removeChildren();
     this.layers.showItems.removeChildren();
@@ -1109,206 +1110,41 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  /**
-   * Port scope: `Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG` /
-   * `_ExecuteVerticalBG` / `_ExecuteImage` (selected via the `layout` input)
-   * and the family `_LoadImage`, including all-or-nothing asset loading and
-   * replacement. `Container` composition is the Web adaptation of Unity
-   * RectTransforms. Load failures empty the panel like native `_ResetPanel()`.
-   */
-  async setGridBackground(input: GridBackgroundInput): Promise<void> {
-    const sessionId = ++this.gridBackgroundSessionId;
-    this.largeBackgroundTweenSessionId += 1;
-    // Native port: every family executor — `_ExecuteImage` (largebg, VA
-    // 0x183e77ee0), `_ExecuteGridBG` (0x183e76290) and `_ExecuteVerticalBG`
-    // (0x183e79030) — calls `_ResetImages()` before `_LoadImage`, so the
-    // previous tiles vanish the moment the command executes and the new
-    // puzzle fades in over an emptied panel — a blank gap, never a
-    // cross-fade.
-    this.largeBackgroundRoot = null;
-    const previous = [...this.gridBackgroundLayer.children];
-    for (const child of previous) child.removeFromParent();
-    this.sceneEffects.setLargeBackgroundFocusTargets([]);
-    const textures = await Promise.all(
-      input.imageKeys.map((key) =>
-        this.textureForImageKey(key, input.assetKind ?? "background"),
-      ),
-    );
-    if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
-
-    if (textures.some((texture) => !texture)) {
-      // Native `_LoadImage` failure logs "Failed to load background: [key]"
-      // per tile plus the command-level "An error occurred when load image
-      // {n}." error, then `_ResetPanel()` drops the whole puzzle instead of
-      // keeping the previous one on screen (all-or-nothing).
-      const missingKeys = input.imageKeys.filter(
-        (_, index) => !textures[index],
-      );
-      this.onWarning?.(`missing grid background: ${missingKeys.join("/")}`);
-      await this.clearGridBackground(0);
-      return;
-    }
-
-    const root = this.buildGridBackgroundRoot(input, textures as Texture[]);
-    // The whole family (largebg / verticalbg / gridbg) shares one `_offset`
-    // container in native (`_ExecuteImageTween` drives it regardless of which
-    // executor filled it, 2.7.61: 0x183e77a94), so every layout must register
-    // itself as the largebgtween target.
-    this.largeBackgroundRoot = root;
-
-    root.alpha = input.fadeMs > 0 ? 0 : 1;
-    this.gridBackgroundLayer.addChild(root);
-    this.sceneEffects.setLargeBackgroundFocusTargets(root.children);
-
-    if (input.fadeMs <= 0) return;
-
-    const run = this.tween(
-      input.fadeMs,
-      (progress) => {
-        if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
-        root.alpha = progress;
-      },
-      () => {
-        if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
-        root.alpha = 1;
-      },
-    );
-
-    if (input.block) await run;
-    else void run;
+  setGridBackground(
+    input: GridBackgroundInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    if (this.app) return this.largeBackgroundView.show(input, onComplete);
   }
 
-  /**
-   * Native port note: `_ExecuteImage`'s clear branch (imagegroup and cggroup
-   * both empty) runs `DOFade(0, fadetime)` on the panel's CanvasGroup even
-   * when it is already empty, so `block=true` still waits out the fade. The
-   * Web adaptation returns early on an empty panel instead of animating
-   * nothing — an intentional simplification (no shipped script issues a
-   * parameterized clear on an empty panel).
-   */
-  async clearGridBackground(fadeMs = 0, block = false): Promise<void> {
-    const sessionId = ++this.gridBackgroundSessionId;
-    this.largeBackgroundRoot = null;
-    this.largeBackgroundTweenSessionId += 1;
-    const roots = [...this.gridBackgroundLayer.children];
-    if (roots.length === 0 || fadeMs <= 0) {
-      for (const root of roots) root.removeFromParent();
-      this.sceneEffects.setLargeBackgroundFocusTargets([]);
-      return;
-    }
-
-    const startAlphas = roots.map((root) => root.alpha);
-    const run = this.tween(
-      fadeMs,
-      (progress) => {
-        if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
-        const nextAlpha = 1 - progress;
-        for (const [index, root] of roots.entries()) {
-          root.alpha = startAlphas[index]! * nextAlpha;
-        }
-      },
-      () => {
-        if (!this.app || sessionId !== this.gridBackgroundSessionId) return;
-        for (const root of roots) root.removeFromParent();
-        this.sceneEffects.setLargeBackgroundFocusTargets([]);
-      },
-    );
-
-    if (block) await run;
-    else void run;
+  clearGridBackground(
+    fadeMs?: number,
+    block?: boolean,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    if (fadeMs === undefined) this.largeBackgroundView.resetPanel();
+    else if (this.app)
+      return this.largeBackgroundView.clear(fadeMs, block, onComplete);
   }
 
-  /**
-   * Web-only legacy compatibility surface. The investigated client has no
-   * `largeimg` command or corresponding native executor, so this must not be
-   * represented as a port; it remains isolated from the real `image` path.
-   */
-  async setLargeImage(input: GridBackgroundInput): Promise<void> {
-    const sessionId = ++this.largeImageSessionId;
-    this.largeImageTweenSessionId += 1;
-    const textures = await Promise.all(
-      input.imageKeys.map((key) =>
-        this.textureForImageKey(key, input.assetKind ?? "image"),
-      ),
-    );
-    if (!this.app || sessionId !== this.largeImageSessionId) return;
-
-    if (textures.some((texture) => !texture)) return;
-
-    const root = this.buildGridBackgroundRoot(input, textures as Texture[]);
-    // largeimg is a legacy-only command and retains its existing transform.
-    root.scale.set(1.2);
-    const previous = [...this.largeImageRoots];
-    this.largeImageRoot = root;
-
-    root.alpha = input.fadeMs > 0 ? 0 : 1;
-    this.largeImageRoots.add(root);
-    this.imageLayer.addChild(root);
-
-    if (input.fadeMs <= 0) {
-      for (const child of previous) {
-        child.removeFromParent();
-        this.largeImageRoots.delete(child);
-      }
-      return;
-    }
-
-    const run = this.tween(
-      input.fadeMs,
-      (progress) => {
-        if (!this.app || sessionId !== this.largeImageSessionId) return;
-        root.alpha = progress;
-      },
-      () => {
-        if (!this.app || sessionId !== this.largeImageSessionId) return;
-        root.alpha = 1;
-        for (const child of previous) {
-          child.removeFromParent();
-          this.largeImageRoots.delete(child);
-        }
-      },
-    );
-
-    if (input.block) await run;
-    else void run;
+  resetGridBackground(): void {
+    this.largeBackgroundView.reset();
   }
 
-  async clearLargeImage(fadeMs = 0, block = false): Promise<void> {
-    const sessionId = ++this.largeImageSessionId;
-    this.largeImageRoot = null;
-    this.largeImageTweenSessionId += 1;
-    const roots = [...this.largeImageRoots];
-    if (roots.length === 0) return;
+  cancelGridBackgroundPreparation(): void {
+    this.largeBackgroundView.cancelPreparation();
+  }
 
-    if (fadeMs <= 0) {
-      for (const root of roots) {
-        root.removeFromParent();
-        this.largeImageRoots.delete(root);
-      }
-      return;
-    }
+  setLargeImage(input: GridBackgroundInput): ExecutionHandle | void {
+    if (this.app) return this.largeImageView.show(input);
+  }
 
-    const startAlphas = roots.map((root) => root.alpha);
-    const run = this.tween(
-      fadeMs,
-      (progress) => {
-        if (!this.app || sessionId !== this.largeImageSessionId) return;
-        const nextAlpha = 1 - progress;
-        for (const [index, root] of roots.entries()) {
-          root.alpha = startAlphas[index]! * nextAlpha;
-        }
-      },
-      () => {
-        if (!this.app || sessionId !== this.largeImageSessionId) return;
-        for (const root of roots) {
-          root.removeFromParent();
-          this.largeImageRoots.delete(root);
-        }
-      },
-    );
+  clearLargeImage(fadeMs?: number, block?: boolean): ExecutionHandle | void {
+    return this.largeImageView.clear(fadeMs, block);
+  }
 
-    if (block) await run;
-    else void run;
+  cancelLargeImagePreparation(): void {
+    this.largeImageView.cancelPreparation();
   }
 
   /**
@@ -1630,142 +1466,15 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  /**
-   * Port of `Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween` for
-   * `largebg`; it intentionally uses the panel's direct tween timing,
-   * including the `GetEnum<Ease>("ease", 1)` ease curve and the
-   * `SetLoops(2*!loop-1)` loop count.
-   */
-  async setLargeBackgroundTween(
+  setLargeBackgroundTween(
     input: LargeBackgroundTweenInput,
-  ): Promise<void> {
-    const root = this.largeBackgroundRoot;
-    if (!root || root.parent !== this.gridBackgroundLayer) return;
-
-    const current = this.readCenteredTransform(root);
-    const from = {
-      scaleX: isFiniteNumber(input.xScaleFrom)
-        ? input.xScaleFrom
-        : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleFrom)
-        ? input.yScaleFrom
-        : current.scaleY,
-      x: isFiniteNumber(input.xFrom) ? input.xFrom : current.x,
-      y: isFiniteNumber(input.yFrom) ? input.yFrom : current.y,
-    };
-    const to = {
-      scaleX: isFiniteNumber(input.xScaleTo) ? input.xScaleTo : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleTo) ? input.yScaleTo : current.scaleY,
-      x: isFiniteNumber(input.xTo) ? input.xTo : current.x,
-      y: isFiniteNumber(input.yTo) ? input.yTo : current.y,
-    };
-
-    // Native never kills a running largebgtween before starting a new one:
-    // overlapping tweens both write `_offset` every frame (the newer one
-    // wins while both run, and a longer older tween resumes writing once the
-    // newer completes). Retiring the previous tween via the session id
-    // instead is a deliberate Web deviation that avoids competing writers.
-    const sessionId = ++this.largeBackgroundTweenSessionId;
-    this.applyCenteredTransform(root, from);
-
-    if (input.durationMs <= 0) {
-      this.applyCenteredTransform(root, to);
-      return;
-    }
-
-    // The native move and scale DOTweens share one duration, ease and loop
-    // count, so a single merged interpolation is frame-equivalent; loop=true
-    // turns the run into an infinite Restart loop that replays the From pose
-    // every cycle and never completes (block is dropped upstream for loops).
-    const run = this.tween(
-      input.durationMs,
-      (progress) => {
-        if (!this.isActiveLargeBackground(root, sessionId)) return;
-        this.applyCenteredTransform(root, {
-          scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-          scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-          x: from.x + (to.x - from.x) * progress,
-          y: from.y + (to.y - from.y) * progress,
-        });
-      },
-      () => {
-        if (!this.isActiveLargeBackground(root, sessionId)) return;
-        this.applyCenteredTransform(root, to);
-      },
-      {
-        ease: dotweenEaseCurve(input.ease),
-        loops: input.loop ? -1 : 1,
-      },
-    );
-
-    if (input.block) await run;
-    else void run;
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.largeBackgroundView.move(input, onComplete);
   }
 
-  /**
-   * Web-only companion to the legacy `setLargeImage` surface: the investigated
-   * client has no `largeimgtween` executor. It is intentionally not a native
-   * provenance claim; the tween semantics (ease via `GetEnum<Ease>("ease",
-   * 1)`, loops via `SetLoops(2*!loop-1)`) mirror the closest native
-   * relative, `LargeBackgroundPanel._ExecuteImageTween` (`largebgtween`).
-   */
-  async setLargeImageTween(input: LargeBackgroundTweenInput): Promise<void> {
-    const root = this.largeImageRoot;
-    if (!root || root.parent !== this.imageLayer) return;
-
-    const current = this.readCenteredTransform(root);
-    const from = {
-      scaleX: isFiniteNumber(input.xScaleFrom)
-        ? input.xScaleFrom
-        : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleFrom)
-        ? input.yScaleFrom
-        : current.scaleY,
-      x: isFiniteNumber(input.xFrom) ? input.xFrom : current.x,
-      y: isFiniteNumber(input.yFrom) ? input.yFrom : current.y,
-    };
-    const to = {
-      scaleX: isFiniteNumber(input.xScaleTo) ? input.xScaleTo : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleTo) ? input.yScaleTo : current.scaleY,
-      x: isFiniteNumber(input.xTo) ? input.xTo : current.x,
-      y: isFiniteNumber(input.yTo) ? input.yTo : current.y,
-    };
-
-    const sessionId = ++this.largeImageTweenSessionId;
-    this.applyCenteredTransform(root, from);
-
-    if (input.durationMs <= 0) {
-      this.applyCenteredTransform(root, to);
-      return;
-    }
-
-    // The native move and scale DOTweens share one duration, ease and loop
-    // count, so a single merged interpolation is frame-equivalent; loop=true
-    // turns the run into an infinite Restart loop that replays the From pose
-    // every cycle and never completes (block is dropped upstream for loops).
-    const run = this.tween(
-      input.durationMs,
-      (progress) => {
-        if (!this.isActiveLargeImage(root, sessionId)) return;
-        this.applyCenteredTransform(root, {
-          scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-          scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-          x: from.x + (to.x - from.x) * progress,
-          y: from.y + (to.y - from.y) * progress,
-        });
-      },
-      () => {
-        if (!this.isActiveLargeImage(root, sessionId)) return;
-        this.applyCenteredTransform(root, to);
-      },
-      {
-        ease: dotweenEaseCurve(input.ease),
-        loops: input.loop ? -1 : 1,
-      },
-    );
-
-    if (input.block) await run;
-    else void run;
+  setLargeImageTween(input: LargeBackgroundTweenInput): ExecutionHandle | void {
+    return this.largeImageView.move(input);
   }
 
   /**
@@ -4255,31 +3964,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.backgroundTweenSessionId === sessionId &&
       root.parent === this.backgroundLayer,
     );
-  }
-
-  private isActiveLargeBackground(root: Container, sessionId: number): boolean {
-    return Boolean(
-      this.app &&
-      this.largeBackgroundRoot === root &&
-      this.largeBackgroundTweenSessionId === sessionId &&
-      root.parent === this.gridBackgroundLayer,
-    );
-  }
-
-  private isActiveLargeImage(root: Container, sessionId: number): boolean {
-    return Boolean(
-      this.app &&
-      this.largeImageRoot === root &&
-      this.largeImageTweenSessionId === sessionId &&
-      root.parent === this.imageLayer,
-    );
-  }
-
-  private buildGridBackgroundRoot(
-    input: GridBackgroundInput,
-    textures: Texture[],
-  ): Container {
-    return buildGridRoot(input, textures);
   }
 
   private textureForImageKey(

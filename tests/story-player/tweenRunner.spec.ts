@@ -62,13 +62,15 @@ describe("TweenRunner ease and loops (DOTween SetEase/SetLoops port)", () => {
     const progress: number[] = [];
     const done = vi.fn();
     const run = runner.run(1000, (p) => progress.push(p), done, { loops: 2 });
-    manual.advance(1500);
-    expect(progress).toEqual([0.5]);
+    manual.advance(0);
+    manual.advance(1000);
+    manual.advance(500);
+    expect(progress).toEqual([0, 1, 0.5]);
     manual.advance(500);
     await run;
     // Second cycle boundary lands on the total end: eased final step, then
     // done fires exactly once after both loops.
-    expect(progress).toEqual([0.5, 1]);
+    expect(progress).toEqual([0, 1, 0.5, 1]);
     expect(done).toHaveBeenCalledTimes(1);
   });
 
@@ -98,8 +100,9 @@ describe("TweenRunner ease and loops (DOTween SetEase/SetLoops port)", () => {
     void run.then(() => {
       settled = true;
     });
-    manual.advance(2500);
-    expect(progress).toEqual([0.5]);
+    manual.advance(2000);
+    manual.advance(500);
+    expect(progress).toEqual([1, 0.5]);
     expect(done).not.toHaveBeenCalled();
     expect(settled).toBe(false);
     alive = false;
@@ -107,6 +110,22 @@ describe("TweenRunner ease and loops (DOTween SetEase/SetLoops port)", () => {
     await run;
     expect(settled).toBe(true);
     expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it("samples a zero-duration infinite tween once per update until killed", () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    const step = vi.fn();
+    const onComplete = vi.fn();
+    const tween = runner.start(0, step, { loops: -1, onComplete });
+    expect(step).not.toHaveBeenCalled();
+    manual.advance(16);
+    manual.advance(16);
+    expect(step.mock.calls).toEqual([[1], [1]]);
+    expect(tween.endReason).toBeUndefined();
+    tween.kill(true);
+    expect(tween.endReason).toBe("cancelled");
+    expect(onComplete).not.toHaveBeenCalled();
   });
 
   it("retires a run once its own isAlive turns false", async () => {

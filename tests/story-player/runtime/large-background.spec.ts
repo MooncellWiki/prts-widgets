@@ -437,6 +437,73 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it.each([
+    '[largebg(imagegroup="a//b",solidwidth="16/16")]',
+    '[gridbg(imagegroup="a/b/c/d",solidwidth="bad/16/16",solidheight="16/16")]',
+    '[verticalbg(imagegroup="a/b",solidwidth=16,solidheight="/16")]',
+  ])(
+    "resets the panel on an invalid tile or dimension in %s",
+    async (command) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([command, '[name="A"]ok']),
+        renderer,
+        new FakeAudio(),
+      );
+      await runtime.start();
+      expect(renderer.gridBackgroundCalls).toEqual([]);
+      expect(renderer.gridBackgroundClearCalls).toEqual([
+        { block: false, fadeMs: 0 },
+      ]);
+    },
+  );
+
+  it("accepts a missing vertical width and validates only the dimensions used", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[verticalbg(imagegroup="a/b",solidheight="16/16/unused",fadetime=1,block=1)]',
+        '[largebg(imagegroup="a/b",solidwidth="8/16/unused",solidheight="1,024")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.gridBackgroundCalls).toMatchObject([
+      { block: true, fadeMs: 1000, solidWidths: [0], solidHeights: [16, 16] },
+      { solidWidths: [8, 16], solidHeights: [1024] },
+    ]);
+  });
+
+  it("uses native boolean conversion and the MathUtil.LE duration threshold", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[largebg(fadetime=0.00001,block=true)]",
+        '[largebg(fadetime=0.000011,block="True")]',
+        '[largebgtween(duration=0.000001,block="True")]',
+        "[largebgtween(duration=0.000001,block=1,loop=1)]",
+        "[largebgtween(duration=1,block=1)]",
+        "[largebgtween(duration=1,loop=1)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.gridBackgroundClearCalls).toEqual([
+      { block: false, fadeMs: 0.01 },
+      { block: true, fadeMs: 0.011 },
+    ]);
+    expect(renderer.largeBackgroundTweenCalls).toMatchObject([
+      { block: false, durationMs: 0 },
+      { block: false, durationMs: 0.001, loop: true },
+      { block: true, loop: false },
+      { block: false, loop: true },
+    ]);
+  });
+
   it("maps largeimg into a legacy large tiled image layer", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

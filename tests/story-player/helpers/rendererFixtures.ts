@@ -1,9 +1,25 @@
+import {
+  Application,
+  Assets,
+  Texture,
+  TextureSource,
+  TickerPlugin,
+} from "pixi.js";
+import { vi } from "vitest";
+
+import { preloadContextAssets } from "../../../src/widgets/StoryPlayer/engine/preload";
 import { PixiStoryRenderer } from "../../../src/widgets/StoryPlayer/engine/renderer";
+import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
 
 import { PlaybackTestFrames } from "./playbackFrames";
+import {
+  createContext as createPlaybackContext,
+  FakeAudio,
+} from "./runtimeFakes";
 
 import type { Context } from "../../../src/widgets/StoryPlayer/context";
 import type { AnimationClock } from "../../../src/widgets/StoryPlayer/engine/execution";
+import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 
 export function createContext(): Context {
   return {
@@ -73,5 +89,52 @@ export function createManualClock(): {
       const frame = frames.shift();
       if (frame) frame();
     },
+  };
+}
+
+export async function createRenderedPlayback(
+  script: string[],
+  draw: (layers: LayerGraph) => void,
+  characters?: Context["linkMap"],
+) {
+  const context = createPlaybackContext(script);
+  Object.assign(context.linkMap, characters);
+  const urls = new Set<string>();
+  const load = vi.spyOn(Assets, "load").mockImplementation(async (assets) => {
+    const textures: Record<string, Texture> = {};
+    for (const url of assets as string[]) {
+      const label = url.split("/").at(-1)?.split(".")[0];
+      const source = new TextureSource({ height: 32, width: 32 });
+      textures[url] = new Texture({ label, source });
+      Assets.cache.set(url, textures[url]);
+      urls.add(url);
+    }
+    return textures;
+  });
+  try {
+    await preloadContextAssets(context);
+  } finally {
+    load.mockRestore();
+  }
+  const renderer = createRenderer(context);
+  const app = new Application();
+  app.render = () => draw(renderer.layers);
+  TickerPlugin.init.call(app, { autoStart: false });
+  renderer.app = app;
+  renderer.layers.attach(app.stage);
+  app.ticker.lastTime = 0;
+  const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+  return {
+    app,
+    destroy() {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      app.ticker.destroy();
+      app.stage.destroy({ children: true });
+      for (const url of urls) Assets.cache.remove(url);
+    },
+    renderer,
+    runtime,
   };
 }

@@ -33,6 +33,8 @@ import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { DisplayableExecutor } from "./panels/DisplayableExecutor";
+import { LargeBackgroundPanel } from "./panels/LargeBackgroundPanel";
+import { LargeImageCommands } from "./panels/LargeImageCommands";
 import { ShowItemPanel } from "./panels/ShowItemPanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerPanel } from "./panels/StickerPanel";
@@ -125,15 +127,9 @@ const builtinCommandNames = [
   "gotostage",
   "background",
   "backgroundtween",
-  "gridbg",
-  "verticalbg",
-  "largebg",
-  "largeimg",
   "image",
   "imagetween",
   "imagerotate",
-  "largebgtween",
-  "largeimgtween",
   "blocker",
   "curtain",
   "charslot",
@@ -194,29 +190,6 @@ function toNativeIntParam(value: unknown, fallback: number): number {
   if (value === "true") return 1;
   if (value === "false") return 0;
   return roundHalfToEven(toNumber(value, fallback));
-}
-
-function parseNumberSequence(value: unknown): number[] {
-  if (typeof value === "number" && Number.isFinite(value)) return [value];
-  if (typeof value !== "string") return [];
-
-  return value
-    .split("/")
-    .map((part) => {
-      const normalized = part.trim().replaceAll(",", "");
-      return Number(normalized);
-    })
-    .filter((item) => Number.isFinite(item));
-}
-
-function resolveGroupedAssetSelection(
-  imageGroup: string,
-  cgGroup: string,
-  imageGroupKind: "background" | "image" = "background",
-): { assetKind: "background" | "image"; groupValue: string } | null {
-  if (imageGroup) return { assetKind: imageGroupKind, groupValue: imageGroup };
-  if (cgGroup) return { assetKind: "image", groupValue: cgGroup };
-  return null;
 }
 
 type SkipMode = "skip" | "nofirstskip";
@@ -359,6 +332,7 @@ export class StoryRuntime {
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly displayableExecutor: DisplayableExecutor;
+  private readonly largeBackgroundPanel: LargeBackgroundPanel;
   private readonly showItemPanel: ShowItemPanel;
   private readonly spellStickerPanel: SpellStickerPanel;
   private readonly stickerPanel: StickerPanel;
@@ -425,6 +399,14 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       warnInvalidParameter: (detail) => this.warn("invalid_parameter", detail),
     });
+    this.largeBackgroundPanel = new LargeBackgroundPanel(
+      renderer,
+      (type, detail, line) =>
+        this.warn(type, detail, line?.lineNumber, line?.command),
+    );
+    new LargeImageCommands(renderer, (type, detail) =>
+      this.warn(type, detail),
+    ).register(this.commandRegistry);
     this.showItemPanel = new ShowItemPanel(renderer, {
       resolveImageKey: (key) => this.resolveImageKey(key),
       warnInvalidParameter: (detail, line) =>
@@ -469,6 +451,7 @@ export class StoryRuntime {
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.displayableExecutor.register(this.commandRegistry);
+    this.largeBackgroundPanel.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
     this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
@@ -1110,10 +1093,10 @@ export class StoryRuntime {
    *
    * Only panels implementing IFadeTimeRatio route through it. AVGImagePanel does
    * (background / image / imagerotate); its tween executors bypass it, and the
-   * whole LargeBackgroundPanel family (largebg / verticalbg / gridbg /
-   * largeimgtween) stays outside. AVGBlockerPanel implements it too
-   * (2.7.61 `CalculateFadetime` VA 0x183e2f6d0, inlined into `_ExecuteBlocker`
-   * at 0x183e3040e), so `blocker` also routes through this helper.
+   * LargeBackgroundPanel family applies literal timing in its own executors.
+   * AVGBlockerPanel implements IFadeTimeRatio (2.7.61 `CalculateFadetime`
+   * VA 0x183e2f6d0, inlined into `_ExecuteBlocker` at 0x183e3040e), so its
+   * `blocker` executor also routes through this helper.
    */
   private calculateFadeMs(seconds: unknown, fallback = 0): number {
     return Math.max(
@@ -1203,6 +1186,7 @@ export class StoryRuntime {
     // AVGCgItemPanel.OnReset (2791 @ 0x1841890F0) disposes the slots at
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
+    this.largeBackgroundPanel.reset();
     this.cameraEffectExecutor.reset();
     this.characterCutinPanel.reset();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1328,7 +1312,16 @@ export class StoryRuntime {
     resume: () => Promise<void> = () => this.processLoop(),
   ): Promise<void> {
     return new Promise((resolve) => {
-      this.pendingFrameWait = { resolve, resume, waits };
+      const pending = { resolve, resume, waits };
+      this.pendingFrameWait = pending;
+      // _LoadImage is synchronous in 2791. Hand a ready Web preparation to
+      // the next command before another tween update can run its callbacks.
+      if (waits.every((wait) => wait.assetsReady)) {
+        void Promise.all(waits.map((wait) => wait.assetsReady)).then(() => {
+          if (this.pendingFrameWait === pending)
+            this.pollFrameWait(performance.now());
+        });
+      }
     });
   }
 
@@ -1371,14 +1364,6 @@ export class StoryRuntime {
     const detail =
       error instanceof Error ? error.message : "unknown runtime error";
     this.onWarning?.({ cursor: this.cursor, detail, type: "error" });
-  }
-
-  private arg(args: StoryCommandArgs, key: string): unknown {
-    if (Object.prototype.hasOwnProperty.call(args, key)) return args[key];
-    const matched = Object.keys(args).find(
-      (candidate) => candidate.toLowerCase() === key.toLowerCase(),
-    );
-    return matched === undefined ? undefined : args[matched];
   }
 
   private exactArg(args: StoryCommandArgs, key: string): unknown {
@@ -1851,363 +1836,6 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "gridbg": {
-        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteGridBG. This
-        // validates a 2×2 tile set and keeps fadetime unscaled.
-        const imageGroup = toString(this.exactArg(args, "imagegroup"));
-        const cgGroup = toString(this.exactArg(args, "cggroup"));
-        const groupSelection = resolveGroupedAssetSelection(
-          imageGroup,
-          cgGroup,
-        );
-        // Native always reads `initposmode` (default "default", 2.7.61:
-        // 0x183e76959) and unconditionally rewrites `_initOffset.localPosition`
-        // after assembling the puzzle (0x183e77451-0x183e775ce): a key miss
-        // writes Vector2.zero, the same offset the "center" mode produces.
-        const initPositionModeArg = toString(
-          this.exactArg(args, "initposmode"),
-          "default",
-        );
-        const initPositionMode =
-          initPositionModeArg === "default" ||
-          initPositionModeArg === "upperleft" ||
-          initPositionModeArg === "lowercenter" ||
-          initPositionModeArg === "center"
-            ? initPositionModeArg
-            : "center";
-        const fadeMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "fadetime"), 0) * 1000,
-        );
-        const block =
-          fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false);
-
-        if (!groupSelection) {
-          await this.renderer.clearGridBackground(fadeMs, block);
-          return "continue";
-        }
-
-        const imageKeys = groupSelection.groupValue
-          .split("/")
-          .map((item) => this.resolveImageKey(item))
-          .filter((key): key is string => key !== null);
-        const solidWidths = parseNumberSequence(
-          this.exactArg(args, "solidwidth"),
-        ).slice(0, 2);
-        const solidHeights = parseNumberSequence(
-          this.exactArg(args, "solidheight"),
-        ).slice(0, 2);
-
-        if (imageKeys.length === 0) {
-          this.warn("parse", "gridbg imagegroup is empty");
-          // Native treats every empty tile name as a fatal parse error and
-          // calls `_ResetPanel()` (2.7.61: 0x183e77675), which drops the
-          // current picture instead of keeping it around.
-          await this.renderer.clearGridBackground(0);
-          return "continue";
-        }
-
-        if (
-          imageKeys.length !== 4 ||
-          solidWidths.length !== 2 ||
-          solidHeights.length !== 2
-        ) {
-          this.warn(
-            "parse",
-            `gridbg expects ${imageKeys.length} widths/heights, got ${solidWidths.length}/${solidHeights.length}`,
-          );
-          // Native logs "[AVG.GridBG] Image Count {0} of GridBG is
-          // incorrect." / "... is empty." then clears the panel via
-          // `_ResetPanel()` and returns false (2.7.61: 0x183e76cb8-0x183e77675).
-          await this.renderer.clearGridBackground(0);
-          return "continue";
-        }
-
-        await this.renderer.setGridBackground({
-          assetKind: groupSelection.assetKind,
-          block,
-          fadeMs,
-          imageKeys,
-          initPositionMode,
-          layout: "grid",
-          scaleX: toNumber(this.exactArg(args, "xScale"), 1),
-          scaleY: toNumber(this.exactArg(args, "yScale"), 1),
-          solidHeights,
-          solidWidths,
-          x: toNumber(this.exactArg(args, "x"), 0),
-          y: toNumber(this.exactArg(args, "y"), 0),
-        });
-        return "continue";
-      }
-
-      case "verticalbg": {
-        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteVerticalBG.
-        // It accepts one solidwidth float and up to four vertically stacked
-        // tiles; fadetime stays literal (unscaled) like the rest of the family.
-        // `initposmode` is always read (default "default") and its offset is
-        // written unconditionally at the end of the load branch
-        // (2.7.61: 0x183e79e3e-0x183e79f8d).
-        const imageGroup = toString(this.exactArg(args, "imagegroup"));
-        const cgGroup = toString(this.exactArg(args, "cggroup"));
-        const groupSelection = resolveGroupedAssetSelection(
-          imageGroup,
-          cgGroup,
-        );
-        // POSITION_INIT_FUNCTION (0x183e7b120) only registers the four known
-        // modes; a key miss still writes (0, 0) — the same offset `center`
-        // produces — so unknown values map to center like the largebg/gridbg
-        // siblings, not to default.
-        const initPositionModeArg = toString(
-          this.exactArg(args, "initposmode"),
-          "default",
-        );
-        const initPositionMode =
-          initPositionModeArg === "default" ||
-          initPositionModeArg === "upperleft" ||
-          initPositionModeArg === "lowercenter" ||
-          initPositionModeArg === "center"
-            ? initPositionModeArg
-            : "center";
-        const fadeMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "fadetime"), 0) * 1000,
-        );
-        const block =
-          fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false);
-
-        if (!groupSelection) {
-          await this.renderer.clearGridBackground(fadeMs, block);
-          return "continue";
-        }
-
-        const imageKeys = groupSelection.groupValue
-          .split("/")
-          .map((item) => this.resolveImageKey(item))
-          .filter((key): key is string => key !== null);
-        const solidWidth = toNumber(this.exactArg(args, "solidwidth"), 0);
-        const solidWidths = solidWidth > 0 ? [solidWidth] : [];
-        const solidHeights = parseNumberSequence(
-          this.exactArg(args, "solidheight"),
-        ).slice(0, imageKeys.length);
-
-        if (imageKeys.length === 0) {
-          // Native logs "[AVG.VerticalBG] Image {0} of VerticalBG is Empty."
-          // then `_ResetPanel()` wipes the current composition before the
-          // command fails, so mirror the instant clear here.
-          this.warn(
-            "parse",
-            "verticalbg imagegroup is empty",
-            line.lineNumber,
-            line.command,
-          );
-          await this.renderer.clearGridBackground(0, false);
-          return "continue";
-        }
-
-        if (
-          imageKeys.length > 4 ||
-          solidWidths.length !== 1 ||
-          solidHeights.length !== imageKeys.length
-        ) {
-          // Same native error path: LogError ("Image Count ... incorrect." /
-          // "Height of Image ... is empty/incorrect.") + `_ResetPanel()` (an
-          // instant reset without any fade), clearing the previous backdrop.
-          this.warn(
-            "parse",
-            `verticalbg expects width_count * height_count === image_count, got ${solidWidths.length} * ${solidHeights.length} !== ${imageKeys.length}`,
-            line.lineNumber,
-            line.command,
-          );
-          await this.renderer.clearGridBackground(0, false);
-          return "continue";
-        }
-
-        if (imageKeys.length === 1) {
-          // Native reads heightList[1] for the panel sizeDelta with a raw
-          // get_Item (2.7.61: 0x183e79b2f-0x183e79b7a), so a single tile
-          // aborts with ArgumentOutOfRangeException. We keep rendering with
-          // the quirk-tolerant pivot but warn to stay observable.
-          this.warn(
-            "parse",
-            "verticalbg with a single tile would crash the native client",
-            line.lineNumber,
-            line.command,
-          );
-        }
-
-        await this.renderer.setGridBackground({
-          assetKind: groupSelection.assetKind,
-          block,
-          fadeMs,
-          imageKeys,
-          initPositionMode,
-          layout: "vertical",
-          scaleX: toNumber(this.exactArg(args, "xScale"), 1),
-          scaleY: toNumber(this.exactArg(args, "yScale"), 1),
-          solidHeights,
-          solidWidths,
-          x: toNumber(this.exactArg(args, "x"), 0),
-          y: toNumber(this.exactArg(args, "y"), 0),
-        });
-        return "continue";
-      }
-
-      case "largebg": {
-        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteImage (2.7.61,
-        // VA 0x183e77ee0; the LargeBackgroundPanel method, not AVGImagePanel's
-        // namesake). It composes two horizontal tiles and keeps fadetime
-        // literal. Every validation/load failure makes native log an error,
-        // call `_ResetPanel()` and return false without blocking — mirrored
-        // below by clearing the grid background before continuing.
-        const imageGroup = toString(this.exactArg(args, "imagegroup"));
-        const cgGroup = toString(this.exactArg(args, "cggroup"));
-        const groupSelection = resolveGroupedAssetSelection(
-          imageGroup,
-          cgGroup,
-        );
-        const initPositionModeArg = toString(
-          this.exactArg(args, "initposmode"),
-          "default",
-        );
-        // Native port: POSITION_INIT_FUNCTION only registers
-        // upperleft/center/lowercenter/default (VA 0x183e7b120). An
-        // unregistered key still writes `_initOffset.localPosition =
-        // (0,0,0)` (VA 0x183e78d10) — the same offset as `center` — so
-        // unknown values fall back to center, not default.
-        const initPositionMode =
-          initPositionModeArg === "default" ||
-          initPositionModeArg === "lowercenter" ||
-          initPositionModeArg === "upperleft"
-            ? initPositionModeArg
-            : "center";
-        const fadeMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "fadetime"), 0) * 1000,
-        );
-        const block =
-          fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false);
-
-        if (!groupSelection) {
-          await this.renderer.clearGridBackground(fadeMs, block);
-          return "continue";
-        }
-
-        const imageKeys = groupSelection.groupValue
-          .split("/")
-          .map((item) => this.resolveImageKey(item))
-          .filter((key): key is string => key !== null);
-        const solidWidths = parseNumberSequence(
-          this.exactArg(args, "solidwidth"),
-        ).slice(0, 2);
-        // Native port: `solidheight` (float, default 0.0) has no validation —
-        // 0 still lays out a zero-height, invisible composition that runs its
-        // fade and honors block for the full fadetime.
-        const solidHeight = toNumber(this.exactArg(args, "solidheight"), 0);
-        const solidHeights = [solidHeight];
-
-        if (imageKeys.length === 0) {
-          this.warn("parse", "largebg imagegroup is empty");
-          await this.renderer.clearGridBackground(0);
-          return "continue";
-        }
-
-        if (imageKeys.length !== 2 || solidWidths.length !== 2) {
-          this.warn(
-            "parse",
-            `largebg expects width_count * height_count === image_count, got ${solidWidths.length} * 1 !== ${imageKeys.length}`,
-          );
-          await this.renderer.clearGridBackground(0);
-          return "continue";
-        }
-
-        await this.renderer.setGridBackground({
-          assetKind: groupSelection.assetKind,
-          block,
-          fadeMs,
-          imageKeys,
-          initPositionMode,
-          layout: "large",
-          scaleX: toNumber(this.exactArg(args, "xScale"), 1),
-          scaleY: toNumber(this.exactArg(args, "yScale"), 1),
-          solidHeights,
-          solidWidths,
-          x: toNumber(this.exactArg(args, "x"), 0),
-          y: toNumber(this.exactArg(args, "y"), 0),
-        });
-        return "continue";
-      }
-
-      case "largeimg": {
-        // Web-only compatibility extension: no native panel registers `largeimg`
-        // in the documented client; native `image` is its closest equivalent.
-        const imageGroup = toString(this.arg(args, "imagegroup"));
-        const cgGroup = toString(this.arg(args, "cggroup"));
-        const groupSelection = resolveGroupedAssetSelection(
-          imageGroup,
-          cgGroup,
-          "image",
-        );
-        const groupValue = groupSelection?.groupValue ?? "";
-        const fadeMs = Math.max(
-          0,
-          Math.round(
-            toNumber(this.arg(args, "fadetime"), groupValue ? 0.15 : 0) * 1000,
-          ),
-        );
-        const block = toBoolean(
-          this.arg(args, "blok"),
-          toBoolean(
-            this.arg(args, "isblock"),
-            toBoolean(this.arg(args, "block"), false),
-          ),
-        );
-
-        if (!groupSelection) {
-          await this.renderer.clearLargeImage(fadeMs, block);
-          return "continue";
-        }
-
-        const imageKeys = groupSelection.groupValue
-          .split("/")
-          .map((item) => this.resolveImageKey(item))
-          .filter((key): key is string => key !== null);
-        const solidWidths = parseNumberSequence(this.arg(args, "solidwidth"));
-        const solidHeights = parseNumberSequence(this.arg(args, "solidheight"));
-
-        if (imageKeys.length === 0) {
-          this.warn("parse", "largeimg imagegroup is empty");
-          return "continue";
-        }
-
-        const expectedTileCount = solidWidths.length * solidHeights.length;
-        if (
-          solidWidths.length === 0 ||
-          solidHeights.length === 0 ||
-          expectedTileCount !== imageKeys.length
-        ) {
-          this.warn(
-            "parse",
-            `largeimg expects width_count * height_count === image_count, got ${solidWidths.length} * ${solidHeights.length} !== ${imageKeys.length}`,
-          );
-          return "continue";
-        }
-
-        await this.renderer.setLargeImage({
-          assetKind: groupSelection.assetKind,
-          block,
-          fadeMs,
-          imageKeys,
-          layout: "large",
-          scaleX: Math.max(0, toNumber(this.arg(args, "xscale"), 1)),
-          scaleY: Math.max(0, toNumber(this.arg(args, "yscale"), 1)),
-          solidHeights,
-          solidWidths,
-          x: toNumber(this.arg(args, "x"), 0),
-          y: toNumber(this.arg(args, "y"), 0),
-        });
-        return "continue";
-      }
-
       case "image": {
         // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage. This is the
         // foreground-panel registration of the same inherited executor used by
@@ -2307,110 +1935,6 @@ export class StoryRuntime {
           circles: Math.trunc(toNumber(this.exactArg(args, "circles"), 0)),
           durationMs: this.calculateFadeMs(this.exactArg(args, "fadetime")),
           inverse: toBoolean(this.exactArg(args, "inverse"), false),
-        });
-        return "continue";
-      }
-
-      case "largebgtween": {
-        // Native port: Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween.
-        // It transforms the existing large-background container without loading
-        // assets; `duration` is literal seconds (the panel bypasses
-        // CalculateFadetime/animateRatio) and `duration <= 0` forces a
-        // non-blocking snap to the To pose.
-        const durationMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "duration"), 0) * 1000,
-        );
-        const block =
-          durationMs > 0 && toBoolean(this.exactArg(args, "block"), false);
-        // `GetBool("loop", false)` feeds SetLoops(2*!loop-1): loop=true runs
-        // the tween as an infinite Restart loop.
-        const loop = toBoolean(this.exactArg(args, "loop"), false);
-        if (block && loop) {
-          // Native DLog.LogError text verbatim (typos and the copied
-          // "tween background" wording included), logged when
-          // effectiveBlock && loop. Native then blocks on a tween that never
-          // completes and the story hangs; we keep the error but drop block
-          // so playback continues.
-          this.warn(
-            "invalid_parameter",
-            "Loop and block both true when tween background! Will cause intinity lop!",
-          );
-        }
-
-        await this.renderer.setLargeBackgroundTween({
-          block: block && !loop,
-          durationMs,
-          // `GetEnum<Ease>("ease", 1)`: DOTween Ease name or ordinal string,
-          // default Linear (= 1).
-          ease: toString(this.exactArg(args, "ease"), "Linear"),
-          loop,
-          xFrom: toOptionalNumber(this.exactArg(args, "xFrom")),
-          xScaleFrom: toOptionalNumber(this.exactArg(args, "xScaleFrom")),
-          xScaleTo: toOptionalNumber(this.exactArg(args, "xScaleTo")),
-          xTo: toOptionalNumber(this.exactArg(args, "xTo")),
-          yFrom: toOptionalNumber(this.exactArg(args, "yFrom")),
-          yScaleFrom: toOptionalNumber(this.exactArg(args, "yScaleFrom")),
-          yScaleTo: toOptionalNumber(this.exactArg(args, "yScaleTo")),
-          yTo: toOptionalNumber(this.exactArg(args, "yTo")),
-        });
-        return "continue";
-      }
-
-      case "largeimgtween": {
-        // Web-only compatibility extension paired with `largeimg`; it has no
-        // native executor or registration in the investigated client (2.7.61
-        // has no `largeimgtween` key in any GetExecutors table). Semantics
-        // follow the closest native relative, `largebgtween`
-        // (`Torappu.AVG.LargeBackgroundPanel._ExecuteImageTween`), with two
-        // deliberate Web-only extensions: keys are matched
-        // case-insensitively (`xFrom` and `xfrom` both hit; native reads
-        // exact CamelCase), and the eight tween params fall back to the
-        // static `x`/`y`/`xscale`/`yscale` keys before the current
-        // transform (native always falls back to the current transform).
-        const durationMs = Math.max(
-          0,
-          // Native GetOrDefault<float>("duration", 0.0): omitted duration
-          // snaps instantly instead of tweening.
-          toNumber(this.arg(args, "duration"), 0) * 1000,
-        );
-        const block =
-          durationMs > 0 && toBoolean(this.arg(args, "block"), false);
-        // `GetBool("loop", false)` feeds SetLoops(2*!loop-1): loop=true runs
-        // the tween as an infinite Restart loop.
-        const loop = toBoolean(this.arg(args, "loop"), false);
-        if (block && loop) {
-          // Native DLog.LogError text verbatim (typos and the copied
-          // "tween background" wording included), logged when
-          // effectiveBlock && loop. Native then blocks on a tween that never
-          // completes and the story hangs; we keep the error but drop block
-          // so playback continues.
-          this.warn(
-            "invalid_parameter",
-            "Loop and block both true when tween background! Will cause intinity lop!",
-          );
-        }
-
-        const xScale = toOptionalNumber(this.arg(args, "xscale"));
-        const yScale = toOptionalNumber(this.arg(args, "yscale"));
-        const x = toOptionalNumber(this.arg(args, "x"));
-        const y = toOptionalNumber(this.arg(args, "y"));
-
-        await this.renderer.setLargeImageTween({
-          block: block && !loop,
-          durationMs,
-          // `GetEnum<Ease>("ease", 1)`: DOTween Ease name or ordinal string,
-          // default Linear (= 1).
-          ease: toString(this.arg(args, "ease"), "Linear"),
-          loop,
-          xFrom: toOptionalNumber(this.arg(args, "xfrom")) ?? x,
-          xScaleFrom: toOptionalNumber(this.arg(args, "xscalefrom")) ?? xScale,
-          xScaleTo: toOptionalNumber(this.arg(args, "xscaleto")) ?? xScale,
-          xTo: toOptionalNumber(this.arg(args, "xto")) ?? x,
-          yFrom: toOptionalNumber(this.arg(args, "yfrom")) ?? y,
-          yScaleFrom: toOptionalNumber(this.arg(args, "yscalefrom")) ?? yScale,
-          yScaleTo: toOptionalNumber(this.arg(args, "yscaleto")) ?? yScale,
-          yTo: toOptionalNumber(this.arg(args, "yto")) ?? y,
         });
         return "continue";
       }

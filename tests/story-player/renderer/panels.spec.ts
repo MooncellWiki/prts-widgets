@@ -13,21 +13,19 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  collectContextAssetUrls,
-  preloadContextAssets,
-} from "../../../src/widgets/StoryPlayer/engine/preload";
+import { collectContextAssetUrls } from "../../../src/widgets/StoryPlayer/engine/preload";
 import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
-import { createRenderer } from "../helpers/rendererFixtures";
+import {
+  createRenderedPlayback,
+  createRenderer,
+} from "../helpers/rendererFixtures";
 import {
   createContext,
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
-import type { Context } from "../../../src/widgets/StoryPlayer/context";
 import type { CharacterArt } from "../../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
-import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../../src/widgets/StoryPlayer/engine/types";
 
@@ -96,53 +94,6 @@ function cutinViews(layer: Container): Container[] {
       child.label === "Channel_Container" ? child.children : [child],
     )
     .filter((view) => view.visible);
-}
-
-async function createRenderedPlayback(
-  script: string[],
-  draw: (layers: LayerGraph) => void,
-  characters?: Context["linkMap"],
-) {
-  const context = createContext(script);
-  Object.assign(context.linkMap, characters);
-  const urls = new Set<string>();
-  const load = vi.spyOn(Assets, "load").mockImplementation(async (assets) => {
-    const textures: Record<string, Texture> = {};
-    for (const url of assets as string[]) {
-      const label = url.split("/").at(-1)?.split(".")[0];
-      const source = new TextureSource({ height: 32, width: 32 });
-      textures[url] = new Texture({ label, source });
-      Assets.cache.set(url, textures[url]);
-      urls.add(url);
-    }
-    return textures;
-  });
-  try {
-    await preloadContextAssets(context);
-  } finally {
-    load.mockRestore();
-  }
-  const renderer = createRenderer(context);
-  const app = new Application();
-  app.render = () => draw(renderer.layers);
-  TickerPlugin.init.call(app, { autoStart: false });
-  renderer.app = app;
-  renderer.layers.attach(app.stage);
-  app.ticker.lastTime = 0;
-  const runtime = new StoryRuntime(context, renderer, new FakeAudio());
-  return {
-    app,
-    destroy() {
-      runtime.destroy();
-      renderer.app = null;
-      renderer.destroy();
-      app.ticker.destroy();
-      app.stage.destroy({ children: true });
-      for (const url of urls) Assets.cache.remove(url);
-    },
-    renderer,
-    runtime,
-  };
 }
 
 describe("Cut-in portrait resolution", () => {
