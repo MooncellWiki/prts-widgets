@@ -32,6 +32,7 @@ export class LargeBackgroundPanel extends ExecutorComponent {
       StoryRenderer,
       | "cancelGridBackgroundPreparation"
       | "clearGridBackground"
+      | "resetGridBackground"
       | "setGridBackground"
       | "setLargeBackgroundTween"
     >,
@@ -51,7 +52,7 @@ export class LargeBackgroundPanel extends ExecutorComponent {
 
   /** OnReset clears the puzzle at story end (2791 @ 0x1841D7F80). */
   reset(): void {
-    this.renderer.clearGridBackground();
+    this.renderer.resetGridBackground();
   }
 
   protected override forceCommandEnd(): void {
@@ -104,7 +105,7 @@ export class LargeBackgroundPanel extends ExecutorComponent {
     if (error) {
       // Native _ResetPanel drops the whole composition after invalid input.
       this.warn("parse", error, layout === "vertical" ? line : undefined);
-      this.renderer.clearGridBackground(0, false);
+      this.renderer.clearGridBackground();
       return "continue";
     }
     if (layout === "vertical" && count === 1) {

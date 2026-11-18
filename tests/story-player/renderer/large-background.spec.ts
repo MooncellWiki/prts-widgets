@@ -235,28 +235,25 @@ describe("PixiStoryRenderer", () => {
       // `_ExecuteGridBG` (0x183e76290) and `_ExecuteVerticalBG` (0x183e79030)
       // all call `_ResetImages()` before `_LoadImage`, so a fadetime>0
       // replacement starts from an emptied panel — a blank gap while the new
-      // puzzle fades in, never a cross-fade. The never-completing tween keeps
-      // that fade mid-flight.
+      // puzzle fades in. Check the layer before its first update.
       const renderer = createRenderer();
       renderer.app = {};
-      renderer.sceneLayer.addChild(renderer.layers.gridBackground);
+      renderer.frames.manual = true;
+      const layer = renderer.layers.gridBackground;
+      renderer.sceneLayer.addChild(layer);
       renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
-      renderer.updatePhaseTweenRunner.run = vi.fn(
-        () => new Promise<void>(() => {}),
-      );
 
       await renderer.setGridBackground({ ...input, fadeMs: 0 })?.completion;
-      const firstRoot = renderer.layers.gridBackground.children.at(0);
-      expect(renderer.layers.gridBackground.children).toHaveLength(1);
+      const [firstRoot] = layer.children;
+      expect(layer.children).toHaveLength(1);
+      renderer.frames.step();
 
       await renderer.setGridBackground({ ...input, fadeMs: 500 })?.completion;
 
       expect(firstRoot.parent).toBeNull();
-      expect(renderer.layers.gridBackground.children).toHaveLength(1);
-      expect(renderer.layers.gridBackground.children.at(0).alpha).toBe(0);
-      expect(renderer.largeBackgroundView.root).toBe(
-        renderer.layers.gridBackground.children.at(0),
-      );
+      expect(layer.children).toHaveLength(1);
+      expect(layer.alpha).toBe(0);
+      expect(renderer.largeBackgroundView.root).toBe(layer.children[0]);
     },
   );
 
@@ -1001,64 +998,249 @@ describe("LargeBackgroundPanel frame order", () => {
       ],
       name: "nonblocking move during a blocked clear",
     },
+    {
+      commands: [
+        instantShow,
+        "[largebg(fadetime=0.064)]",
+        "[largebgtween(xTo=64,duration=0.032,block=true)]",
+      ],
+      draws: [
+        [0.75, 672, 0],
+        [0.5, 704, 1],
+        [0.25, 704, 1],
+        [undefined, undefined, 1],
+      ],
+      name: "blocked move during a nonblocking clear",
+    },
+    {
+      commands: [
+        instantShow,
+        "[largebg(fadetime=0.032)]",
+        "[largebgtween(xTo=64,duration=0.032,block=true)]",
+      ],
+      draws: [
+        [0.5, 672, 0],
+        [undefined, undefined, 1],
+      ],
+      name: "a move and clear finishing on the same frame",
+    },
+    {
+      commands: [
+        instantShow,
+        "[largebg(fadetime=0.032)]",
+        "[largebgtween(xTo=64,duration=0.064,block=true)]",
+      ],
+      draws: [
+        [0.5, 656, 0],
+        [undefined, undefined, 0],
+        [undefined, undefined, 0],
+        [undefined, undefined, 0],
+      ],
+      name: "a clear killing a move before it finishes",
+    },
+    {
+      commands: ["[largebg(fadetime=0.032,block=true)]"],
+      draws: [
+        [undefined, undefined, 0],
+        [undefined, undefined, 1],
+      ],
+      name: "blocked clear of an empty panel",
+    },
+    {
+      commands: ["[delay(time=0.016)]", instantShow],
+      draws: [
+        [undefined, undefined, 0],
+        [0, 640, 1],
+        [1, 640, 1],
+      ],
+      name: "zero-duration fade started after Update",
+    },
+    {
+      commands: [instantShow, "[delay(time=0.016)]", "[largebg]"],
+      draws: [
+        [1, 640, 0],
+        [1, 640, 1],
+        [undefined, undefined, 1],
+      ],
+      name: "zero-duration clear started after Update",
+    },
+  ])("preserves the draw order for $name", async ({ commands, draws }) => {
+    const frames: unknown[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [...commands, '[cgitem(image="after")]', '[name="A"]ok'],
+      ({ gridBackground, cgItems }) => {
+        const [root] = gridBackground.children;
+        frames.push([
+          root ? gridBackground.alpha : undefined,
+          root?.position.x,
+          cgItems.children.length,
+        ]);
+      },
+    );
+    const started = runtime.start();
+    try {
+      for (const [index] of draws.entries())
+        app.ticker.update((index + 1) * 16);
+      expect(frames).toEqual(draws);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    {
+      command: "[largebgtween(xTo=64,duration=0.032,block=true)]",
+      draws: [
+        [0.5, 640, 0],
+        [1, 672, 1],
+        [1, 704, 1],
+      ],
+      name: "move",
+    },
+    {
+      command: "[largebg(fadetime=0.064,block=true)]",
+      // The old fade updates alpha to 1 before the new fade samples it,
+      // then its OnKill releases the clear's wait before rendering.
+      draws: [
+        [0.5, 640, 0],
+        [0.75, 640, 1],
+        [0.5, 640, 1],
+      ],
+      name: "clear",
+    },
   ])(
-    "draws the next command when $name completes the current wait",
-    async ({ commands, draws }) => {
+    "lets a fade-in release a blocked $name after skipping",
+    async ({ command, draws }) => {
       const frames: unknown[] = [];
-      const { app, destroy, runtime } = await createRenderedPlayback(
-        [...commands, '[cgitem(image="after")]', '[name="A"]ok'],
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          blockedShow,
+          "[SkipToThis]",
+          command,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
         ({ gridBackground, cgItems }) => {
           const [root] = gridBackground.children;
-          frames.push([root?.alpha, root?.position.x, cgItems.children.length]);
+          frames.push([
+            gridBackground.alpha,
+            root?.position.x,
+            cgItems.children.length,
+          ]);
         },
       );
       const started = runtime.start();
+      const { gridBackground } = renderer.layers;
+      const [root] = gridBackground.children;
+      expect(gridBackground.alpha).toBe(0);
+      const skipped = runtime.skipNode();
       try {
+        await flushAsync();
         for (const [index] of draws.entries())
           app.ticker.update((index + 1) * 16);
+        expect(gridBackground.children).toEqual([root]);
         expect(frames).toEqual(draws);
       } finally {
         destroy();
-        await started;
+        await Promise.all([started, skipped]);
       }
     },
   );
 
-  it("keeps the fade alive across a skip and lets its completion release the panel's next wait", async () => {
-    const frames: unknown[] = [];
+  it("keeps an earlier clear active when a new puzzle is shown", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [instantShow, "[largebg(fadetime=0.032)]", instantShow, '[name="A"]ok'],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { gridBackground } = renderer.layers;
+      const [root] = gridBackground.children;
+      app.ticker.update(16);
+      expect(gridBackground.children).toEqual([root]);
+      app.ticker.update(32);
+      expect(gridBackground.children).toHaveLength(0);
+      expect(root.destroyed).toBe(true);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("limits how far the background fade advances on a long frame", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
-        blockedShow,
-        "[SkipToThis]",
-        "[largebgtween(xTo=64,duration=0.032,block=true)]",
+        instantShow.replace(")]", ",fadetime=0.75,block=true)]"),
         '[cgitem(image="after")]',
         '[name="A"]ok',
       ],
-      ({ gridBackground, cgItems }) => {
-        const [root] = gridBackground.children;
-        frames.push([root?.alpha, root?.position.x, cgItems.children.length]);
-      },
+      () => {},
     );
     const started = runtime.start();
-    const [root] = renderer.layers.gridBackground.children;
-    expect(root.alpha).toBe(0);
-    const skipped = runtime.skipNode();
     try {
-      await flushAsync();
-      app.ticker.update(16);
-      app.ticker.update(32);
-      app.ticker.update(48);
-      expect(renderer.layers.gridBackground.children).toEqual([root]);
-      expect(frames).toEqual([
-        [0.5, 640, 0],
-        [1, 672, 1],
-        [1, 704, 1],
-      ]);
+      const { cgItems, gridBackground } = renderer.layers;
+      app.ticker.update(1000);
+      expect(gridBackground.alpha).toBeCloseTo(4 / 9);
+      expect(cgItems.children).toHaveLength(0);
+      app.ticker.update(2000);
+      app.ticker.update(2100);
+      expect(gridBackground.alpha).toBe(1);
+      expect(cgItems.children).toHaveLength(1);
     } finally {
       destroy();
-      await Promise.all([started, skipped]);
+      await started;
     }
   });
+
+  it.each([
+    { commands: [blockedShow], name: "fade-in", rootsAfterCallback: 1 },
+    {
+      commands: [instantShow, "[largebg(fadetime=0.032,block=true)]"],
+      name: "clear",
+      rootsAfterCallback: 0,
+    },
+  ])(
+    "delivers a surviving $name callback after an uncached replacement mounts",
+    async ({ commands, rootsAfterCallback }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          ...commands,
+          "[SkipToThis]",
+          blockedShow.replace("0.032", "0.064"),
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const delayed = Promise.withResolvers<Texture>();
+      const started = runtime.start();
+      const load = vi
+        .spyOn(renderer, "textureForImageKey")
+        .mockReturnValueOnce(delayed.promise);
+      const skipped = runtime.skipNode();
+      try {
+        const { cgItems, gridBackground } = renderer.layers;
+        await flushAsync();
+        app.ticker.update(16);
+        app.ticker.update(32);
+        expect(gridBackground.children).toHaveLength(0);
+        expect(cgItems.children).toHaveLength(0);
+
+        delayed.resolve(Texture.EMPTY);
+        await flushAsync();
+        app.ticker.update(48);
+        expect(gridBackground.children).toHaveLength(rootsAfterCallback);
+        expect(gridBackground.alpha).toBe(0.25);
+        expect(cgItems.children).toHaveLength(1);
+      } finally {
+        delayed.resolve(Texture.EMPTY);
+        destroy();
+        load.mockRestore();
+        await Promise.all([started, skipped]);
+      }
+    },
+  );
 
   it("skips an uncached puzzle immediately and ignores its late tile after the jump", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(

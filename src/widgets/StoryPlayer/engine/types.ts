@@ -777,12 +777,14 @@ export interface StoryRenderer {
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearCharacters: (slot?: string, fadeMs?: number) => Promise<void> | void;
   clearCurtains: (fadeMs?: number, block?: boolean) => Promise<void> | void;
+  /** Omit the duration for the command's immediate _ResetPanel path. */
   clearGridBackground: (
     fadeMs?: number,
     block?: boolean,
     onComplete?: () => void,
   ) => ExecutionHandle | void;
   cancelGridBackgroundPreparation: () => void;
+  resetGridBackground: () => void;
   clearImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearLargeImage: (fadeMs?: number, block?: boolean) => ExecutionHandle | void;
   cancelLargeImagePreparation: () => void;

@@ -1,17 +1,24 @@
-import { createExecutionHandle, type ExecutionHandle } from "../../execution";
+import {
+  createExecutionHandle,
+  type ExecutionEndReason,
+  type ExecutionHandle,
+} from "../../execution";
 import { dotweenEaseCurve } from "../core/DotweenEase";
 import {
   applyCenteredTransform,
   buildGridBackgroundRoot,
   readCenteredTransform,
 } from "../core/SceneGeometry";
+import {
+  MAX_SCALED_FRAME_DELTA_MS,
+  type TweenRunner,
+} from "../core/TweenRunner";
 
 import type {
   GridBackgroundInput,
   LargeBackgroundTweenInput,
 } from "../../types";
 import type { TextureLoad } from "../core/TextureAsset";
-import type { TweenRunner } from "../core/TweenRunner";
 import type { Container, Texture } from "pixi.js";
 
 type AssetKind = "background" | "image";
@@ -19,7 +26,7 @@ type AssetKind = "background" | "image";
 interface PuzzleViewOptions {
   kind: AssetKind;
   loadTexture: (key: string, kind: AssetKind) => TextureLoad;
-  tween: TweenRunner["run"];
+  tweens: TweenRunner;
   bindFocusTargets?: (targets: readonly Container[]) => void;
   onWarning?: (detail: string) => void;
 }
@@ -28,6 +35,7 @@ interface Transition {
   preparing: boolean;
   animation?: ExecutionHandle;
   onComplete?: () => void;
+  afterPreparation?: Array<() => void>;
 }
 
 interface Movement {
@@ -63,10 +71,10 @@ export class LargeBackgroundView {
     onComplete?: () => void,
   ): ExecutionHandle | void {
     const transition = this.beginTransition(onComplete);
-    this.cancelMovement();
     // Native _ResetImages runs before _LoadImage and reveals the new
     // puzzle over an empty layer. largeimg keeps its outgoing foreground.
-    if (this.options.kind === "background") this.retireRoots([...this.roots]);
+    if (this.options.kind === "background") this.resetImages();
+    else this.cancelMovement();
 
     const textures = input.imageKeys.map((key) =>
       this.options.loadTexture(key, input.assetKind ?? this.options.kind),
@@ -94,26 +102,26 @@ export class LargeBackgroundView {
     block = false,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    const transition = this.beginTransition(onComplete);
+    if (this.options.kind === "background") {
+      this.cancelTransition();
+      // The clear branches in 2791 (e.g. _ExecuteGridBG @ 0x1841D8680)
+      // fade the CanvasGroup. Its OnKill resets the tiles and kills _offset
+      // motion, so the mounted composition remains tweenable until then.
+      return this.fadeBackground(0, fadeMs, block, onComplete);
+    }
+
+    const transition = this.beginTransition();
     this.root = null;
+    this.cancelMovement();
     const roots = [...this.roots];
-    const resetImages = () => {
-      this.cancelMovement();
-      this.retireRoots(roots);
-    };
-    // The Web view can clear an empty layer immediately. The native
-    // CanvasGroup remains tweenable when all four Image slots are empty.
     if (roots.length === 0 || fadeMs <= 0) {
-      resetImages();
+      this.retireRoots(roots);
       this.finishTransition(transition);
       return;
     }
 
-    if (this.options.kind === "image") this.cancelMovement();
     const startAlphas = roots.map((root) => root.alpha);
-    // Native DOFade OnKill invokes _ResetImages, which kills motion and
-    // releases the focus targets before FinishCommand.
-    return this.fade(
+    return this.fadeImage(
       transition,
       fadeMs,
       block,
@@ -121,8 +129,22 @@ export class LargeBackgroundView {
         for (const [index, root] of roots.entries())
           root.alpha = startAlphas[index]! * (1 - progress);
       },
-      resetImages,
+      () => this.retireRoots(roots),
     );
+  }
+
+  /** LargeBackgroundPanel._ResetPanel (2791 @ 0x1841DD420). */
+  resetPanel(): void {
+    this.cancelTransition();
+    this.resetImages();
+    this.layer.alpha = 0;
+  }
+
+  /** Story teardown releases the panel's remaining Web frame work. */
+  reset(): void {
+    this.options.tweens.killTarget(this.layer);
+    this.cancelMovement();
+    this.resetPanel();
   }
 
   move(
@@ -163,7 +185,7 @@ export class LargeBackgroundView {
     this.movement = movement;
     const isAlive = () =>
       this.movement === movement && root.parent === this.layer;
-    void this.options.tween(
+    void this.options.tweens.run(
       input.durationMs,
       (progress) => {
         if (!isAlive()) return;
@@ -195,9 +217,7 @@ export class LargeBackgroundView {
   }
 
   cancelPreparation(): void {
-    if (!this.transition?.preparing) return;
-    this.transition.animation?.end("force_end");
-    this.transition = undefined;
+    if (this.transition?.preparing) this.cancelTransition("force_end");
   }
 
   private mountPuzzle(
@@ -210,6 +230,7 @@ export class LargeBackgroundView {
 
     if (textures.some((texture) => !texture)) {
       if (this.options.kind === "background") {
+        this.layer.alpha = 0;
         const missing = input.imageKeys.filter((_, index) => !textures[index]);
         this.options.onWarning?.(
           `missing grid background: ${missing.join("/")}`,
@@ -228,6 +249,20 @@ export class LargeBackgroundView {
     // _BindCamEffectTarget (2791 @ 0x1841D81E0) registers four permanent
     // slots. The manager holds their amounts while the view replaces tiles.
     this.options.bindFocusTargets?.(root.children);
+    if (this.options.kind === "background") {
+      this.layer.alpha = 0;
+      const animation = this.fadeBackground(
+        1,
+        input.fadeMs,
+        input.block,
+        transition.onComplete,
+        transition.animation,
+      );
+      this.transition = undefined;
+      for (const complete of transition.afterPreparation ?? []) complete();
+      return animation;
+    }
+
     if (input.fadeMs <= 0) {
       this.retireRoots(outgoing);
       this.finishTransition(transition);
@@ -235,7 +270,7 @@ export class LargeBackgroundView {
     }
 
     root.alpha = 0;
-    return this.fade(
+    return this.fadeImage(
       transition,
       input.fadeMs,
       input.block,
@@ -246,7 +281,54 @@ export class LargeBackgroundView {
     );
   }
 
-  private fade(
+  private fadeBackground(
+    to: 0 | 1,
+    durationMs: number,
+    block: boolean,
+    onComplete?: () => void,
+    preparation?: ExecutionHandle,
+  ): ExecutionHandle | void {
+    const animation = block
+      ? (preparation ?? createExecutionHandle(true))
+      : undefined;
+    let from: number | undefined;
+    const tweens = this.options.tweens;
+    const onKill = () => {
+      if (to === 0) this.resetImages();
+      onComplete?.();
+    };
+    tweens.start(
+      durationMs,
+      (progress) => {
+        // DOTween samples the CanvasGroup at startup, after older tweens
+        // have had their turn in this update.
+        from ??= this.layer.alpha;
+        this.layer.alpha = from + (to - from) * progress;
+      },
+      {
+        deferZeroDuration: true,
+        maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
+        onCancel: () => animation?.end("reset"),
+        onComplete: () =>
+          // TweenManager.Update (2791 @ 0x184467690) despawns completed
+          // tweens after updating all targets. The CanvasGroup's OnKill
+          // then resets the current tiles or releases the shared wait.
+          tweens.afterUpdate(() => {
+            animation?.end();
+            // Native loaded the replacement synchronously before OnKill.
+            // With a cold Web load, apply the callback after its tiles mount.
+            if (this.transition?.preparing)
+              (this.transition.afterPreparation ??= []).push(onKill);
+            else onKill();
+          }),
+        target: this.layer,
+      },
+    );
+    if (!block) preparation?.end();
+    return animation;
+  }
+
+  private fadeImage(
     transition: Transition,
     durationMs: number,
     block: boolean,
@@ -257,7 +339,7 @@ export class LargeBackgroundView {
       ? (transition.animation ??= createExecutionHandle(true))
       : undefined;
     const isAlive = () => this.transition === transition;
-    void this.options.tween(
+    void this.options.tweens.run(
       durationMs,
       (progress) => {
         if (isAlive()) update(progress);
@@ -277,21 +359,35 @@ export class LargeBackgroundView {
   }
 
   private beginTransition(onComplete?: () => void): Transition {
-    this.transition?.animation?.end("reset");
+    this.cancelTransition();
     const transition = { onComplete, preparing: false };
     this.transition = transition;
     return transition;
+  }
+
+  private cancelTransition(reason: ExecutionEndReason = "reset"): void {
+    const transition = this.transition;
+    this.transition = undefined;
+    transition?.animation?.end(reason);
   }
 
   private finishTransition(transition: Transition): void {
     if (this.transition !== transition) return;
     this.transition = undefined;
     transition.animation?.end();
+    for (const complete of transition.afterPreparation ?? []) complete();
   }
 
   private cancelMovement(): void {
     this.movement?.animation?.end("reset");
     this.movement = undefined;
+  }
+
+  private resetImages(): void {
+    // _ResetImages (2791 @ 0x1841DD120) DOKills _offset without completing
+    // it. Only a surviving completion callback can release a pending wait.
+    this.movement = undefined;
+    this.retireRoots([...this.roots]);
   }
 
   private retireRoots(roots: Container[]): void {

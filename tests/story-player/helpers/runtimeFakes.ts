@@ -178,6 +178,8 @@ export class FakeRenderer implements StoryRenderer {
 
   cancelGridBackgroundPreparation(): void {}
 
+  resetGridBackground(): void {}
+
   clearImage(): void {}
   clearLargeImage(fadeMs = 0, block = false): void {
     this.gridBackgroundClearCalls.push({ block, fadeMs });

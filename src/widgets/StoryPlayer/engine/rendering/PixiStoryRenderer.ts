@@ -648,13 +648,13 @@ export class PixiStoryRenderer implements StoryRenderer {
         kind: "background",
         loadTexture: (key, kind) => this.textureForImageKey(key, kind),
         onWarning,
-        tween: (...args) => this.updatePhaseTweenRunner.run(...args),
+        tweens: this.updatePhaseTweenRunner,
       },
     );
     this.largeImageView = new LargeBackgroundView(this.imageLayer, {
       kind: "image",
       loadTexture: (key, kind) => this.textureForImageKey(key, kind),
-      tween: (...args) => this.updatePhaseTweenRunner.run(...args),
+      tweens: this.updatePhaseTweenRunner,
     });
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
@@ -804,7 +804,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.timerView?.destroy();
     this.timerView = null;
     this.cgItemView.destroy();
-    this.largeBackgroundView.clear();
+    this.largeBackgroundView.reset();
     this.largeImageView.clear();
     this.resetCameraEffects();
     this.backgroundRoot = null;
@@ -1122,7 +1122,13 @@ export class PixiStoryRenderer implements StoryRenderer {
     block?: boolean,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    return this.largeBackgroundView.clear(fadeMs, block, onComplete);
+    if (fadeMs === undefined) this.largeBackgroundView.resetPanel();
+    else if (this.app)
+      return this.largeBackgroundView.clear(fadeMs, block, onComplete);
+  }
+
+  resetGridBackground(): void {
+    this.largeBackgroundView.reset();
   }
 
   cancelGridBackgroundPreparation(): void {
