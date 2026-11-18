@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "happy-dom",
-    include: ["tests/story-log-corpus.spec.ts"],
+    include: ["tests/story-player/story-log-corpus.spec.ts"],
     testTimeout: 600_000,
   },
 });

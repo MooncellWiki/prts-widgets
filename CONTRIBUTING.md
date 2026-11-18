@@ -61,8 +61,8 @@ pnpm lint        # ESLint
 
 ### 剧情日志全语料回归（可选）
 
-`tests/story-log-corpus.spec.ts` 会把全部剧情脚本跑一遍 Log All 分析，并与
-`tests/helpers/storyOracle.ts` 里的独立解释器逐条选择路径对拍。它依赖游戏
+`tests/story-player/story-log-corpus.spec.ts` 会把全部剧情脚本跑一遍 Log All 分析，并与
+`tests/story-player/helpers/storyOracle.ts` 里的独立解释器逐条选择路径对拍。它依赖游戏
 文本语料，默认在仓库同级目录找：
 
 ```
