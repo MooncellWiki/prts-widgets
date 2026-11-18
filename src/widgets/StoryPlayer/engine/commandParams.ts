@@ -100,6 +100,11 @@ export function toOptionalNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+/** A literal duration above the 2791 MathUtil.LE(seconds, 0) tolerance (@ 0x186945C90). */
+export function hasTweenDuration(seconds: number): boolean {
+  return Math.fround(seconds) > Math.fround(0.00001);
+}
+
 export function toNumber(value: unknown, fallback = 0): number {
   return toOptionalNumber(value) ?? fallback;
 }

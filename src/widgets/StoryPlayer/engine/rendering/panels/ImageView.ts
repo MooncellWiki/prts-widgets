@@ -1,5 +1,6 @@
-import { Container } from "pixi.js";
+import { Container, type Texture } from "pixi.js";
 
+import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import {
   STORY_HEIGHT,
   STORY_WIDTH,
@@ -19,241 +20,328 @@ import type { SceneEffectManager } from "../SceneEffectManager";
 import type { TextureLoad } from "../core/TextureAsset";
 import type { TweenRunner } from "../core/TweenRunner";
 
-function isFiniteNumber(value: number | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+interface ImageSlot {
+  root: Container;
 }
 
-/** PIXI view for the foreground AVGImagePanel. */
+function createSlot(label: string): ImageSlot {
+  return {
+    root: new Container({
+      alpha: 0,
+      label,
+      x: STORY_WIDTH / 2,
+      y: STORY_HEIGHT / 2,
+    }),
+  };
+}
+
+function finiteOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? value : fallback;
+}
+
+/** Torappu.AVG.AVGImagePanel's two Image slots and panel RectTransform. */
 export class ImageView {
-  private imageRoot: Container | null = null;
-  private imageRotateSessionId = 0;
+  private fore = createSlot("image_two");
+  private back = createSlot("image_one");
+  private generation = 0;
+  private preparation?: ExecutionHandle;
+  private readonly deferredFinishes: Array<() => void> = [];
 
   constructor(
-    private readonly imageLayer: Container,
+    private readonly layer: Container,
     private readonly loadTexture: (key: string) => TextureLoad,
-    private readonly tween: TweenRunner["run"],
+    private readonly tweens: TweenRunner,
     private readonly sceneEffects: Pick<
       SceneEffectManager,
-      "setImageFocusTargets" | "releaseFixedFocusTarget"
+      "setImageFocusTargets"
     >,
   ) {
-    // panel_image's centered pivot is serialized in the 2791 scene. With
-    // pivot and position equal the child-space translation stays at zero.
-    imageLayer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
-    imageLayer.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+    // The 2791 scene serializes panel_image with a centered pivot.
+    layer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+    layer.position.copyFrom(layer.pivot);
+    // OnStoryBegin / _BindPostDisplay (2791 @ 0x1841AC2F0 / 0x1841ACBB0).
+    // A Web renderer belongs to one story. Bind each physical slot once
+    // so its PostDisplay channel follows it when fore and back swap.
+    sceneEffects.setImageFocusTargets(
+      "cg",
+      this.fore.root,
+      this.back.root,
+      false,
+    );
+  }
+
+  show(
+    key: string,
+    input?: BackgroundInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    this.cancelPreparation();
+    const load = this.loadTexture(key);
+    if (!(load instanceof Promise))
+      return this.swapAndFade(load, input, onComplete);
+
+    // _LoadSprite (2791 @ 0x1841AE580) is synchronous. On the Web a cold
+    // texture waits before swapping slots, while mounted tweens keep running.
+    const animation = createExecutionHandle(true);
+    this.preparation = animation;
+    const assetsReady = load
+      .then((texture) => {
+        if (this.preparation !== animation) return;
+        this.preparation = undefined;
+        this.swapAndFade(texture, input, onComplete, animation);
+        if (!input?.block) animation.end();
+        this.replayDeferredFinishes();
+      })
+      .catch((error: unknown) => {
+        if (this.preparation === animation) this.preparation = undefined;
+        animation.fail(error);
+      });
+    return Object.assign(animation, { assetsReady });
+  }
+
+  clear(
+    fadeMs = 0,
+    block = false,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    this.cancelPreparation();
+    return this.fade(this.swapSlots(), 0, fadeMs, block, onComplete);
+  }
+
+  /** _ExecuteImageTween (2791 @ 0x1841AD170). */
+  move(
+    input: ImageTweenInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    const root = this.fore.root;
+    const current = readCenteredTransform(root);
+    const from = {
+      scaleX: finiteOr(input.xScaleFrom, current.scaleX),
+      scaleY: finiteOr(input.yScaleFrom, current.scaleY),
+      x: finiteOr(input.xFrom, current.x),
+      y: finiteOr(input.yFrom, current.y),
+    };
+    const to = {
+      scaleX: finiteOr(input.xScaleTo, current.scaleX),
+      scaleY: finiteOr(input.yScaleTo, current.scaleY),
+      x: finiteOr(input.xTo, current.x),
+      y: finiteOr(input.yTo, current.y),
+    };
+    applyCenteredTransform(root, from);
+
+    const animation = input.block ? createExecutionHandle(true) : undefined;
+    const generation = this.generation;
+    let start: typeof from | undefined;
+    this.tweens.start(
+      input.durationMs,
+      (progress) => {
+        // Tweener.DoStartup<Vector3> (2791 @ 0x1847E8280) samples the pose
+        // after the older move/scale pairs have written on this Update.
+        start ??= readCenteredTransform(root);
+        applyCenteredTransform(root, {
+          scaleX: start.scaleX + (to.scaleX - start.scaleX) * progress,
+          scaleY: start.scaleY + (to.scaleY - start.scaleY) * progress,
+          x: start.x + (to.x - start.x) * progress,
+          y: start.y + (to.y - start.y) * progress,
+        });
+      },
+      {
+        ease: input.durationMs > 0 ? dotweenEaseCurve(input.ease) : undefined,
+        loops: input.loop ? -1 : 1,
+        // DOKill(false) stops writes without calling FinishCommand.
+        onCancel: () => {
+          if (generation !== this.generation) animation?.end("reset");
+        },
+        onComplete: this.finishHandler(animation, onComplete),
+        target: root,
+      },
+    );
+    return animation;
+  }
+
+  /** _ExecuteImageRotate / CreateRotateTween (2791 @ 0x1841ACD50 / 0x1841959A0). */
+  rotate(
+    input: ImageRotateInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    this.tweens.killTarget(this.layer);
+    // Unity's positive z points counter-clockwise on screen. Pixi's is clockwise.
+    const angle = -this.layer.angle;
+    const delta = rotateTweenDelta(
+      angle,
+      input.angleDeg,
+      input.circles,
+      input.inverse,
+    );
+    const animation = input.block ? createExecutionHandle(true) : undefined;
+    this.tweens.start(
+      input.durationMs,
+      (progress) => {
+        this.layer.angle = -(angle + delta * progress);
+      },
+      {
+        deferZeroDuration: true,
+        onKill: this.finishHandler(
+          animation,
+          input.block ? onComplete : undefined,
+        ),
+        target: this.layer,
+      },
+    );
+    return animation;
+  }
+
+  cancelPreparation(): void {
+    const animation = this.preparation;
+    if (!animation) return;
+    this.preparation = undefined;
+    animation.end("force_end");
+    this.replayDeferredFinishes();
+  }
+
+  /** OnReset (2791 @ 0x1841AC180) runs at story end. */
+  reset(): void {
+    this.generation++;
+    this.preparation?.end("reset");
+    this.preparation = undefined;
+    this.deferredFinishes.length = 0;
+    this.tweens.killTarget(this.deferredFinishes);
+    this.layer.angle = 0;
+    this.tweens.killTarget(this.layer);
+    this.resetSlot(this.back);
+    this.resetSlot(this.fore);
+    this.sceneEffects.setImageFocusTargets("cg", undefined, undefined, false);
   }
 
   destroy(): void {
-    this.imageRoot = null;
-    this.imageLayer.removeChildren();
+    this.reset();
+    this.fore.root.destroy();
+    this.back.root.destroy();
   }
 
-  async setImage(key: string, input?: BackgroundInput): Promise<void> {
-    const texture = await this.loadTexture(key);
-    if (!texture) {
-      // `_LoadImage` on a null sprite logs "Failed to load image: [{0}]"
-      // (textureForUrl already reports it) and takes the clear branch:
-      // DOFade(_backImage → 0), waiting for the fade when block is set.
-      await this.clearImage(input?.fadeMs ?? 0, input?.block ?? false);
-      return;
-    }
+  private swapAndFade(
+    texture: Texture | null,
+    input?: BackgroundInput,
+    onComplete?: () => void,
+    preparation?: ExecutionHandle,
+  ): ExecutionHandle | void {
+    const fadeMs = input?.fadeMs ?? 0;
+    const block = input?.block ?? false;
+    const back = this.swapSlots();
+    if (!texture)
+      return this.fade(back, 0, fadeMs, block, onComplete, preparation);
 
-    // `_ExecuteImage` only DOKills `_backImage` and its transform; the
-    // panel-level rotation tween from `imagerotate` keeps running across
-    // image swaps and the panel's current angle is preserved. Do NOT bump
-    // imageRotateSessionId here (that would freeze a rotation mid-flight).
-    const root = new Container();
-    // The PPU sidecar only covers AVG/Backgrounds keys.
-    const sprite = createImageSprite(texture, input);
-    // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
-    // omitted scale must leave the screen-adapted size alone.
+    const root = this.fore.root;
+    // _LoadImage (2791 @ 0x1841ADFA0) gives the sprite its own rect.
+    // Foreground art uses texture pixels for native size. PPU is a background sidecar.
+    root.addChild(createImageSprite(texture, input));
     applyCenteredTransform(root, {
       scaleX: input?.scaleX ?? 1,
       scaleY: input?.scaleY ?? 1,
       x: input?.x ?? 0,
       y: input?.y ?? 0,
     });
-    root.addChild(sprite);
-
-    const previous = this.imageRoot;
-    this.imageRoot = root;
-    this.imageLayer.addChild(root);
-    const fadeMs = input?.fadeMs ?? 0;
-    this.sceneEffects.setImageFocusTargets(
-      "cg",
-      root,
-      fadeMs > 0 ? (previous ?? undefined) : undefined,
-    );
-    root.alpha = fadeMs > 0 ? 0 : 1;
-    if (fadeMs <= 0) {
-      previous?.removeFromParent();
-      return;
-    }
-    const run = this.tween(
-      fadeMs,
-      (progress) => (root.alpha = progress),
-      () => {
-        if (!previous) return;
-        previous.removeFromParent();
-        this.sceneEffects.releaseFixedFocusTarget(previous);
-      },
-    );
-    if (input?.block) await run;
-    else void run;
+    // Keep the Web draw order with largeimg on this layer. Fresh art is
+    // appended above earlier roots, including any outgoing Image slot.
+    this.layer.addChild(root);
+    return this.fade(this.fore, 1, fadeMs, block, onComplete, preparation);
   }
 
-  async clearImage(fadeMs = 0, block = false): Promise<void> {
-    // Same as setImage: the clear branch fades `_backImage` out and never
-    // touches the panel rotation tween, so imagerotate keeps its angle and
-    // any in-flight rotation keeps playing (see setImageRotate).
-    const root = this.imageRoot;
-    this.imageRoot = null;
-    this.sceneEffects.setImageFocusTargets(
-      "cg",
-      undefined,
-      fadeMs > 0 ? (root ?? undefined) : undefined,
-    );
-    if (!root) return;
-    if (fadeMs <= 0) {
-      root.removeFromParent();
-      return;
-    }
-    const startAlpha = root.alpha;
-    const run = this.tween(
-      fadeMs,
-      (progress) => (root.alpha = startAlpha * (1 - progress)),
-      () => {
-        root.removeFromParent();
-        this.sceneEffects.releaseFixedFocusTarget(root);
-      },
-    );
-    if (block) await run;
-    else void run;
+  private swapSlots(): ImageSlot {
+    // _ExecuteImage / _SwapImages (2791 @ 0x1841AD900 / 0x1841AE700).
+    // Kill the old back Image and Transform while they are still the back.
+    this.killSlotTweens(this.back);
+    [this.fore, this.back] = [this.back, this.fore];
+    this.clearVisual(this.fore);
+    return this.back;
   }
 
-  /**
-   * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageTween` for the foreground
-   * visual. Native tweens `_foreImage.rectTransform` localPosition/localScale
-   * with DOTween; both are reproduced on the image root, whose scale is the
-   * localScale space (`setImage` keeps the screenadapt ratio on the inner
-   * sprite). `ease` goes through the runner's `SetEase` option as a single
-   * eased progress shared by the position and scale interpolation, matching
-   * `SetEase` on both native tweens, and `loop` maps SetLoops(2*!loop-1) to
-   * the same infinite Restart loop as `setBackgroundTween` (block is dropped
-   * upstream for loops). Consecutive `imagetween`s are not cancelled (native
-   * never calls DOKill either; both DOTween instances keep writing the same
-   * transform); only an infinite loop is retired once its root stops being
-   * the foreground image, since it would otherwise request frames for as long
-   * as the renderer lives.
-   *
-   * Without a foreground image native dereferences `_foreImage` and throws;
-   * story scripts always precede the tween with `[Image]`, so the silent
-   * return only avoids the equivalent crash.
-   */
-  async setImageTween(input: ImageTweenInput): Promise<void> {
-    const root = this.imageRoot;
-    if (!root || root.parent !== this.imageLayer) return;
-
-    // From/To default to the same current transform values (native reads the
-    // current localPosition/localScale once for both fallbacks).
-    const current = readCenteredTransform(root);
-    const from = {
-      scaleX: isFiniteNumber(input.xScaleFrom)
-        ? input.xScaleFrom
-        : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleFrom)
-        ? input.yScaleFrom
-        : current.scaleY,
-      x: isFiniteNumber(input.xFrom) ? input.xFrom : current.x,
-      y: isFiniteNumber(input.yFrom) ? input.yFrom : current.y,
-    };
-    const to = {
-      scaleX: isFiniteNumber(input.xScaleTo) ? input.xScaleTo : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleTo) ? input.yScaleTo : current.scaleY,
-      x: isFiniteNumber(input.xTo) ? input.xTo : current.x,
-      y: isFiniteNumber(input.yTo) ? input.yTo : current.y,
-    };
-
-    // Native jumps to the From transform before starting the tweens, and a
-    // non-positive duration Completes both tweens so the To state lands
-    // immediately.
-    applyCenteredTransform(root, from);
-
-    if (input.durationMs <= 0) {
-      applyCenteredTransform(root, to);
-      return;
-    }
-
-    const run = this.tween(
-      input.durationMs,
+  private fade(
+    slot: ImageSlot,
+    to: 0 | 1,
+    fadeMs: number,
+    block: boolean,
+    onComplete?: () => void,
+    preparation?: ExecutionHandle,
+  ): ExecutionHandle | void {
+    const animation = block
+      ? (preparation ?? createExecutionHandle(true))
+      : undefined;
+    let from: number | undefined;
+    this.tweens.start(
+      fadeMs,
       (progress) => {
-        applyCenteredTransform(root, {
-          scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-          scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-          x: from.x + (to.x - from.x) * progress,
-          y: from.y + (to.y - from.y) * progress,
-        });
+        from ??= slot.root.alpha;
+        slot.root.alpha = from + (to - from) * progress;
       },
-      undefined,
       {
-        ease: dotweenEaseCurve(input.ease),
-        // Single passes keep writing an outgoing root until they finish, as
-        // before; only a never-ending loop has to stop with its root.
-        isAlive: input.loop ? () => this.imageRoot === root : undefined,
-        loops: input.loop ? -1 : 1,
+        deferZeroDuration: true,
+        // _ExecuteImage's OnKill (2791 @ 0x1841B60C0) reads _backImage
+        // when it runs. The original fade may outlive a swap.
+        onKill: this.finishHandler(
+          animation,
+          block ? onComplete : undefined,
+          () => this.resetSlot(this.back),
+        ),
+        target: slot,
       },
     );
-
-    if (input.block) await run;
-    else void run;
+    return animation;
   }
 
-  /**
-   * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageRotate`: rotate the panel
-   * transform (`_rectTransform`, the scene `panel_image` node) rather than its
-   * foreground Image, preserving angle across image swaps. `imageLayer` is the
-   * corresponding PIXI adaptation, with its constructor-time pivot mirroring
-   * the RectTransform's serialized (0.5, 0.5) pivot so the rotation orbits the
-   * panel center instead of the stage origin. Native never resets the angle
-   * except `OnReset` (story start/skip); the widget builds a fresh renderer
-   * per story, so no explicit zeroing is needed here.
-   *
-   * Unity's eulerAngles.z is counter-clockwise on screen (y-up; a positive
-   * sweep is what CreateRotateTween's `counterClockwise` flag asks for), while
-   * PIXI's `angle` is clockwise (y-down). The sweep is computed in Unity space
-   * and negated at the PIXI boundary, the same axis flip applyCenteredTransform
-   * does for `y`.
-   */
-  async setImageRotate(input: ImageRotateInput): Promise<void> {
-    const target = this.imageLayer;
-    const sessionId = ++this.imageRotateSessionId;
-    const startAngle = -target.angle;
-    const delta = rotateTweenDelta(
-      startAngle,
-      input.angleDeg,
-      input.circles,
-      input.inverse,
-    );
-    const endAngle = startAngle + delta;
+  private resetSlot(slot: ImageSlot): void {
+    // _ResetImage (2791 @ 0x1841AE640) leaves the slot's transform in place.
+    this.killSlotTweens(slot);
+    this.clearVisual(slot);
+  }
 
-    if (input.durationMs <= 0) {
-      target.angle = -endAngle;
-      return;
-    }
+  private clearVisual({ root }: ImageSlot): void {
+    root.alpha = 0;
+    root.removeFromParent();
+    for (const visual of root.removeChildren()) visual.destroy();
+  }
 
-    const run = this.tween(
-      input.durationMs,
-      (progress) => {
-        if (this.imageRotateSessionId !== sessionId) return;
-        target.angle = -(startAngle + delta * progress);
-      },
-      () => {
-        if (this.imageRotateSessionId !== sessionId) return;
-        target.angle = -endAngle;
-      },
-    );
+  private killSlotTweens(slot: ImageSlot): void {
+    this.tweens.killTarget(slot);
+    this.tweens.killTarget(slot.root);
+  }
 
-    if (input.block) await run;
-    else void run;
+  private finishHandler(
+    animation: ExecutionHandle | undefined,
+    onComplete: (() => void) | undefined,
+    cleanup?: () => void,
+  ): () => void {
+    const generation = this.generation;
+    return () => {
+      if (generation !== this.generation) {
+        animation?.end("reset");
+        return;
+      }
+      cleanup?.();
+      animation?.end();
+      if (onComplete) this.signalFinish(onComplete);
+    };
+  }
+
+  private signalFinish(finish: () => void): void {
+    if (this.preparation) this.deferredFinishes.push(finish);
+    else finish();
+  }
+
+  private replayDeferredFinishes(): void {
+    if (this.deferredFinishes.length === 0) return;
+    const generation = this.generation;
+    this.tweens.killTarget(this.deferredFinishes);
+    this.tweens.start(0, () => {}, {
+      deferZeroDuration: true,
+      // A nonblocking image can advance immediately on assetsReady. Its
+      // successor has installed its wait by the first ready Update.
+      onComplete: () =>
+        this.tweens.afterUpdate(() => {
+          if (generation !== this.generation || this.preparation) return;
+          for (const finish of this.deferredFinishes.splice(0)) finish();
+        }),
+      target: this.deferredFinishes,
+    });
   }
 }

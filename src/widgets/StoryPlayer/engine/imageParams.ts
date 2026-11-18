@@ -12,6 +12,9 @@ import type {
   StoryCommandArgs,
 } from "./types";
 
+export const LOOP_BLOCK_WARNING =
+  "Loop and block both true when tween background! Will cause intinity lop!";
+
 function parseScreenAdapt(value: unknown): BackgroundInput["screenAdapt"] {
   const mode = toString(value);
   if (

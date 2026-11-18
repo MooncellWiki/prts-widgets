@@ -134,7 +134,9 @@ describe("preloadContextAssets", () => {
     const context = createContext([
       '[background(image="bg_rhodes_day")]',
       '[background(image="bg_rhodes_day")]',
-      '[image(image="avg_01")]',
+      '[image(image=" AVG_01 ")]',
+      '[imagetween(image="ignored_by_move",duration=1)]',
+      '[imagerotate(image="ignored_by_rotate",angle=180)]',
     ]);
 
     // 只列剧情资源:对话框黑条纹理(DIALOG_FRAME_URL)是播放器内置资源,不在其中。

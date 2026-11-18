@@ -222,3 +222,44 @@ describe("TweenRunner lifecycle", () => {
     expect(calls).toEqual(["existing", "dispose", "new"]);
   });
 });
+
+describe("TweenRunner OnKill", () => {
+  it("dispatches OnKill in reverse order after both tweens write", () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    const calls: string[] = [];
+    for (const name of ["first", "second"]) {
+      runner.start(16, () => calls.push(`write ${name}`), {
+        onComplete: () => calls.push(`complete ${name}`),
+        onKill: () => calls.push(`kill ${name}`),
+      });
+    }
+
+    manual.advance(16);
+    expect(calls).toEqual([
+      "write first",
+      "complete first",
+      "write second",
+      "complete second",
+      "kill second",
+      "kill first",
+    ]);
+  });
+
+  it("calls OnKill without completing an explicitly killed tween", () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    const onKill = vi.fn();
+    const onComplete = vi.fn();
+    const step = vi.fn();
+    const target = {};
+    runner.start(16, step, { onComplete, onKill, target });
+
+    runner.killTarget(target);
+    expect(onKill).toHaveBeenCalledTimes(1);
+    manual.advance(16);
+    expect(step).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onKill).toHaveBeenCalledTimes(1);
+  });
+});

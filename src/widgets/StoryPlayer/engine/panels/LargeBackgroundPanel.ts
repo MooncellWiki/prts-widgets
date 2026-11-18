@@ -6,16 +6,13 @@ import {
 import {
   exactArg,
   getBool,
+  hasTweenDuration,
   toNumber,
   toString,
   tryConvertToSingle,
 } from "../commandParams";
-import {
-  LOOP_BLOCK_WARNING,
-  isTimedPuzzleCommand,
-  parsePuzzleTween,
-  resolvePuzzleAssets,
-} from "../puzzleCommands";
+import { LOOP_BLOCK_WARNING } from "../imageParams";
+import { parsePuzzleTween, resolvePuzzleAssets } from "../puzzleCommands";
 
 import type {
   GridBackgroundInput,
@@ -76,7 +73,7 @@ export class LargeBackgroundPanel extends ExecutorComponent {
     // directly to DOFade. MathUtil.LE only changes whether the command waits.
     const seconds = Math.max(0, toNumber(exactArg(args, "fadetime")));
     const fadeMs = seconds * 1000;
-    const block = isTimedPuzzleCommand(seconds) && getBool(args, "block");
+    const block = hasTweenDuration(seconds) && getBool(args, "block");
     // The DOFade OnKill callback calls FinishCommand when block is set.
     const onComplete = block ? this.finishCommand : undefined;
     if (!assets) {

@@ -31,7 +31,11 @@ import {
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
-import { parseImageLayout, parseImageTween } from "./imageParams";
+import {
+  LOOP_BLOCK_WARNING,
+  parseImageLayout,
+  parseImageTween,
+} from "./imageParams";
 import { CameraEffectExecutor } from "./panels/CameraEffectExecutor";
 import { CgItemPanel } from "./panels/CgItemPanel";
 import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
@@ -334,6 +338,7 @@ export class StoryRuntime {
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly displayableExecutor: DisplayableExecutor;
+  private readonly imagePanel: ImagePanel;
   private readonly largeBackgroundPanel: LargeBackgroundPanel;
   private readonly showItemPanel: ShowItemPanel;
   private readonly spellStickerPanel: SpellStickerPanel;
@@ -401,12 +406,12 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       warnInvalidParameter: (detail) => this.warn("invalid_parameter", detail),
     });
-    new ImagePanel(
+    this.imagePanel = new ImagePanel(
       renderer,
       (seconds) => this.calculateFadeMs(seconds),
       (type, detail, line) =>
         this.warn(type, detail, line?.lineNumber, line?.command),
-    ).register(this.commandRegistry);
+    );
     this.largeBackgroundPanel = new LargeBackgroundPanel(
       renderer,
       (type, detail, line) =>
@@ -459,6 +464,7 @@ export class StoryRuntime {
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.displayableExecutor.register(this.commandRegistry);
+    this.imagePanel.register(this.commandRegistry);
     this.largeBackgroundPanel.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
     this.spellStickerPanel.register(this.commandRegistry);
@@ -1195,6 +1201,7 @@ export class StoryRuntime {
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
     this.largeBackgroundPanel.reset();
+    this.imagePanel.reset();
     this.cameraEffectExecutor.reset();
     this.characterCutinPanel.reset();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1796,7 +1803,7 @@ export class StoryRuntime {
           // here (skipNode would wait on it forever).
           this.warn(
             "invalid_parameter",
-            "Loop and block both true when tween background! Will cause intinity lop!",
+            LOOP_BLOCK_WARNING,
             line.lineNumber,
             line.command,
           );

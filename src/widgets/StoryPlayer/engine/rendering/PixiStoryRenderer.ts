@@ -633,7 +633,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageView = new ImageView(
       this.layers.images,
       (key) => this.textureForImageKey(key, "image"),
-      (...args) => this.tween(...args),
+      this.updatePhaseTweenRunner,
       this.sceneEffects,
     );
     this.largeBackgroundView = new LargeBackgroundView(
@@ -802,6 +802,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.cgItemView.destroy();
     this.largeBackgroundView.reset();
     this.largeImageView.clear();
+    this.imageView.destroy();
     this.resetCameraEffects();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
@@ -816,7 +817,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.blockerSlideFilter = null;
     this.blockerSlideMaterial = null;
     this.blockerColor = { a: 0, b: 0, g: 0, r: 0 };
-    this.imageView.destroy();
     this.layers.showItems.removeChildren();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
@@ -1114,12 +1114,42 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageView.cancelPreparation();
   }
 
-  setImage(key: string, input?: BackgroundInput): Promise<void> {
-    return this.imageView.setImage(key, input);
+  setImage(
+    key: string,
+    input?: BackgroundInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.show(key, input, onComplete);
   }
 
-  clearImage(fadeMs = 0, block = false): Promise<void> {
-    return this.imageView.clearImage(fadeMs, block);
+  clearImage(
+    fadeMs?: number,
+    block?: boolean,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.clear(fadeMs, block, onComplete);
+  }
+
+  setImageTween(
+    input: ImageTweenInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.move(input, onComplete);
+  }
+
+  setImageRotate(
+    input: ImageRotateInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.rotate(input, onComplete);
+  }
+
+  cancelImagePreparation(): void {
+    this.imageView.cancelPreparation();
+  }
+
+  resetImage(): void {
+    this.imageView.reset();
   }
 
   clearCharacterCutin(widgetId?: string): void {
@@ -1249,10 +1279,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.cgItemView.stopShakes(key);
   }
 
-  setImageTween(input: ImageTweenInput): Promise<void> {
-    return this.imageView.setImageTween(input);
-  }
-
   setLargeBackgroundTween(
     input: LargeBackgroundTweenInput,
     onComplete?: () => void,
@@ -1262,10 +1288,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   setLargeImageTween(input: LargeBackgroundTweenInput): ExecutionHandle | void {
     return this.largeImageView.move(input);
-  }
-
-  setImageRotate(input: ImageRotateInput): Promise<void> {
-    return this.imageView.setImageRotate(input);
   }
 
   /**

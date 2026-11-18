@@ -40,6 +40,8 @@ export interface TweenStartOptions extends TweenRunOptions {
   target?: object;
   onComplete?: () => void;
   onCancel?: () => void;
+  /** DOTween AutoKill callback, after the Update writes or on explicit kill. */
+  onKill?: () => void;
 }
 
 export interface TweenHandle {
@@ -64,6 +66,7 @@ export class TweenRunner {
   private readonly afterUpdateCallbacks: Array<() => void> = [];
   private stopUpdates: (() => void) | undefined;
   private updating = false;
+  private killCallbacks?: Array<() => void>;
 
   constructor(
     private readonly isAlive: () => boolean,
@@ -103,6 +106,7 @@ export class TweenRunner {
       (typeof clock === "function" ? undefined : () => clock.now());
     let previous = 0;
     let elapsed = 0;
+    let killedDuringUpdate = false;
     let endReason: TweenHandle["endReason"];
     let resolve!: () => void;
     const completion = new Promise<void>((settle) => {
@@ -120,6 +124,10 @@ export class TweenRunner {
           if (finalProgress !== undefined) step(finalProgress);
           options.onComplete?.();
         } else options.onCancel?.();
+        if (options.onKill) {
+          if (this.killCallbacks) this.killCallbacks.push(options.onKill);
+          else options.onKill();
+        }
       } finally {
         resolve();
         this.stopIfIdle();
@@ -128,7 +136,7 @@ export class TweenRunner {
     const tween: ActiveTween = {
       advance(deltaMs) {
         if (endReason !== undefined) return;
-        if (!isAlive()) {
+        if (killedDuringUpdate || !isAlive()) {
           finish("cancelled");
           return;
         }
@@ -157,10 +165,17 @@ export class TweenRunner {
       get endReason() {
         return endReason;
       },
-      kill(complete = false) {
+      kill: (complete = false) => {
         if (endReason !== undefined) return;
+        if (options.onKill && this.killCallbacks && !complete) {
+          // FilteredOperation marks the tween inactive during DOTween Update.
+          // Its next visit collects it for despawn, including kills from OnKill.
+          killedDuringUpdate = true;
+          return;
+        }
         // TweenManager.Complete (2791 @ 0x184462630) skips infinite loops.
-        if (complete && loops > 0 && isAlive()) finish("complete", ease(1));
+        if (complete && !killedDuringUpdate && loops > 0 && isAlive())
+          finish("complete", ease(1));
         else finish("cancelled");
       },
       target: options.target,
@@ -198,12 +213,18 @@ export class TweenRunner {
 
   private update(deltaMs: number): void {
     this.updating = true;
+    const kills: Array<() => void> = [];
+    this.killCallbacks = kills;
     try {
       for (const tween of [...this.active]) tween.advance(deltaMs);
     } finally {
       try {
+        // TweenManager.Update (2791 @ 0x184467690) drains _KillList in reverse.
+        while (kills.length > 0) kills.pop()!();
+        this.killCallbacks = undefined;
         for (const callback of this.afterUpdateCallbacks) callback();
       } finally {
+        this.killCallbacks = undefined;
         this.afterUpdateCallbacks.length = 0;
         this.updating = false;
         this.stopIfIdle();

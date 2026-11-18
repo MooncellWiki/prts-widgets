@@ -4,9 +4,18 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import { normalizeImageKey } from "../asset";
-import { exactArg, toBoolean, toNumber, toString } from "../commandParams";
-import { parseImageLayout, parseImageTween } from "../imageParams";
-import { LOOP_BLOCK_WARNING } from "../puzzleCommands";
+import {
+  exactArg,
+  hasTweenDuration,
+  toBoolean,
+  toNumber,
+  toString,
+} from "../commandParams";
+import {
+  LOOP_BLOCK_WARNING,
+  parseImageLayout,
+  parseImageTween,
+} from "../imageParams";
 
 import type {
   ParsedCommandLine,
@@ -19,7 +28,12 @@ export class ImagePanel extends ExecutorComponent {
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
-      "clearImage" | "setImage" | "setImageTween" | "setImageRotate"
+      | "cancelImagePreparation"
+      | "clearImage"
+      | "resetImage"
+      | "setImage"
+      | "setImageRotate"
+      | "setImageTween"
     >,
     private readonly calculateFadeMs: (seconds: unknown) => number,
     private readonly warn: (
@@ -39,51 +53,74 @@ export class ImagePanel extends ExecutorComponent {
     };
   }
 
-  /** _ExecuteImage (2791 @ 0x1841AD900). */
-  private async show({ args }: ParsedCommandLine): Promise<ExecutorResult> {
+  reset(): void {
+    this.renderer.resetImage();
+  }
+
+  protected override forceCommandEnd(): void {
+    // ForceCommandEnd / ShouldResetOnSkip (2791 @ 0x1841ABDF0 / 0x1841AC5A0)
+    // leave the mounted slots and tweens alone. A Web load may still be pending.
+    this.renderer.cancelImagePreparation();
+  }
+
+  /** _ExecuteImage (2791 @ 0x1841AD900) tests the raw time before animateRatio. */
+  private show({ args }: ParsedCommandLine): ExecutorResult {
     const image = toString(exactArg(args, "image"));
     const key = normalizeImageKey(image);
-    const fadeMs = this.calculateFadeMs(exactArg(args, "fadetime"));
-    const block = fadeMs > 0 && toBoolean(exactArg(args, "block"), false);
-    if (key) {
-      await this.renderer.setImage(key, {
-        ...parseImageLayout(args),
-        block,
-        fadeMs,
-      });
-    } else {
-      if (image) this.warn("missing_asset", `image: ${image}`);
-      await this.renderer.clearImage(fadeMs, block);
-    }
-    return "continue";
+    const seconds = toNumber(exactArg(args, "fadetime"));
+    const fadeMs = this.calculateFadeMs(seconds);
+    const block =
+      hasTweenDuration(seconds) && toBoolean(exactArg(args, "block"), false);
+    if (image && !key) this.warn("missing_asset", `image: ${image}`);
+    const animation = key
+      ? this.renderer.setImage(
+          key,
+          {
+            ...parseImageLayout(args),
+            block,
+            fadeMs,
+          },
+          this.finishCommand,
+        )
+      : this.renderer.clearImage(fadeMs, block, this.finishCommand);
+    // A cold load also returns a frame wait for a nonblocking command.
+    return { animation, block: true };
   }
 
   /** _ExecuteImageTween (2791 @ 0x1841AD170) uses literal seconds. */
-  private async move(line: ParsedCommandLine): Promise<ExecutorResult> {
+  private move(line: ParsedCommandLine): ExecutorResult {
     const { args } = line;
-    const durationMs = Math.max(0, toNumber(exactArg(args, "duration")) * 1000);
-    const block = durationMs > 0 && toBoolean(exactArg(args, "block"), false);
+    const seconds = toNumber(exactArg(args, "duration"));
+    const timed = hasTweenDuration(seconds);
+    const block = timed && toBoolean(exactArg(args, "block"), false);
     const tween = parseImageTween(args);
     // Web adaptation: an infinite Restart loop cannot complete a frame wait.
     if (block && tween.loop)
       this.warn("invalid_parameter", LOOP_BLOCK_WARNING, line);
-    await this.renderer.setImageTween({
-      ...tween,
-      block: block && !tween.loop,
-      durationMs,
-    });
-    return "continue";
+    const animation = this.renderer.setImageTween(
+      {
+        ...tween,
+        block: block && !tween.loop,
+        // Complete snaps a near-zero single pass. Infinite loops ignore Complete.
+        durationMs: timed || tween.loop ? Math.max(0, seconds * 1000) : 0,
+      },
+      this.finishCommand,
+    );
+    return { animation, block: true };
   }
 
   /** _ExecuteImageRotate (2791 @ 0x1841ACD50) uses scaled time and Linear ease. */
-  private async rotate({ args }: ParsedCommandLine): Promise<ExecutorResult> {
-    await this.renderer.setImageRotate({
-      angleDeg: toNumber(exactArg(args, "angle")),
-      block: toBoolean(exactArg(args, "block"), false),
-      circles: Math.trunc(toNumber(exactArg(args, "circles"))),
-      durationMs: this.calculateFadeMs(exactArg(args, "fadetime")),
-      inverse: toBoolean(exactArg(args, "inverse"), false),
-    });
-    return "continue";
+  private rotate({ args }: ParsedCommandLine): ExecutorResult {
+    const animation = this.renderer.setImageRotate(
+      {
+        angleDeg: toNumber(exactArg(args, "angle")),
+        block: toBoolean(exactArg(args, "block"), false),
+        circles: Math.trunc(toNumber(exactArg(args, "circles"))),
+        durationMs: this.calculateFadeMs(exactArg(args, "fadetime")),
+        inverse: toBoolean(exactArg(args, "inverse"), false),
+      },
+      this.finishCommand,
+    );
+    return { animation, block: true };
   }
 }
