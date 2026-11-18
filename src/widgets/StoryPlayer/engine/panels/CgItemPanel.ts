@@ -5,6 +5,7 @@ import {
 } from "../ExecutorComponent";
 import {
   exactArg,
+  getBool,
   toNumber,
   toOptionalNumber,
   toString,
@@ -23,15 +24,6 @@ interface CgItemPlayback {
   animateRatio: () => number;
   resolveImageKey: (key: string) => string | null;
   warn: (type: RuntimeWarning["type"], detail: string) => void;
-}
-
-/** GetBool (2791 @ 0x186940F30) uses Convert.ToBoolean for boxed values. */
-function getBool(args: StoryCommandArgs, key: string): boolean {
-  const value = exactArg(args, key);
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string")
-    return /^[\p{White_Space}\0]*true[\p{White_Space}\0]*$/iu.test(value);
-  return value === true;
 }
 
 /** GetFloat and Command.TryGetParam convert an explicit null to zero. */

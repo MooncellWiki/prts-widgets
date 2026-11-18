@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DIALOG_FRAME_URL,
+  INTERLUDE_ASSETS,
   SHOWITEM_PHOTO_FRAME_URL,
   STAMP_ASSETS,
 } from "../src/widgets/StoryPlayer/assets";
@@ -185,7 +186,71 @@ describe("preloadContextAssets", () => {
     );
   });
 
-  it("loads the dialog font always and the animtext / sami fonts only when used", async () => {
+  it("preloads cut-in art and keeps bundled interlude textures out of the asset list", async () => {
+    const context = createContext([
+      '[charactercutin(widgetID="1",name="avg_npc_180#3",background="bg_cutin")]',
+      '[charactercutin(widgetID="1",name=" avg_npc_180#2")]',
+      '[interlude(channel=1,maskid="ui_cutin_mask_horizon")]',
+      '[interlude(channel=1,type=2,name="bg_rhodes_day")]',
+    ]);
+    const storyUrls = [
+      "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+      "https://torappu.prts.wiki/assets/avg/background/bg_cutin.png",
+      "https://torappu.prts.wiki/assets/avg/background/bg_rhodes_day.png",
+    ];
+    const manifest = collectContextAssetUrls(context);
+    expect(manifest.toSorted()).toEqual(storyUrls.toSorted());
+
+    await preloadContextAssets(context);
+    expect(loadMock.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([
+        ...storyUrls,
+        ...Object.values(INTERLUDE_ASSETS),
+      ]),
+    );
+  });
+
+  it("uses Convert.ToInt32 for interlude asset collection", () => {
+    const context = createContext([
+      '[interlude(type=1.9,name="bg_battlefield")]',
+      '[interlude(type=2.5,name="bg_tie")]',
+      '[interlude(type=2.6,name="avg_npc_180#3")]',
+      '[interlude(type="1.9",name="quoted_decimal")]',
+      '[interlude(type=0.5,name="rounded_to_zero")]',
+      '[interlude(type=1,name="cutin_char_21#1")]',
+      '[interlude(type=1,name="cutin_char_21@variant")]',
+    ]);
+    expect(collectContextAssetUrls(context).toSorted()).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/bg_battlefield.png",
+      "https://torappu.prts.wiki/assets/avg/background/bg_tie.png",
+      "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+      "https://torappu.prts.wiki/assets/avg/cutin/cutin_char_21.png",
+    ]);
+  });
+
+  it("only prewarms playback aliases outside the native interlude resource list", async () => {
+    const context = createContext([
+      '[interlude(type="uichar",name="cutin_char_21#1")]',
+      '[interlude(type="bg",name="bg_test")]',
+      '[interlude(type="char",name="avg_npc_180#3")]',
+      '[interlude(type=" bg ",name="wrong_case_or_spaces")]',
+    ]);
+    expect(collectContextAssetUrls(context)).toEqual([]);
+    await preloadContextAssets(context);
+    const batch = loadMock.mock.calls[0]![0];
+    expect(batch).toEqual(
+      expect.arrayContaining([
+        "https://torappu.prts.wiki/assets/avg/cutin/cutin_char_21.png",
+        "https://torappu.prts.wiki/assets/avg/background/bg_test.png",
+        "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+      ]),
+    );
+    expect(batch).not.toContain(
+      "https://torappu.prts.wiki/assets/avg/background/wrong_case_or_spaces.png",
+    );
+  });
+
+  it("loads the dialog font always and the template fonts only when used", async () => {
     const fontsFor = async (script: readonly string[]): Promise<string[]> => {
       loadFontMock.mockClear();
       await preloadContextAssets(createContext(script));
@@ -198,6 +263,11 @@ describe("preloadContextAssets", () => {
     expect(
       await fontsFor([
         '[animtext(id="at1",name="group_location_stamp",style="avg_both",pos="-400,-200",block=false)]<p=1>主</><p=2>副</>',
+      ]),
+    ).toEqual(["NotoSansHans-Medium", "SourceHanSansCN-Heavy"]);
+    expect(
+      await fontsFor([
+        '[interlude(channel=3,maskid="group_interclude_square_common",char="九")]',
       ]),
     ).toEqual(["NotoSansHans-Medium", "SourceHanSansCN-Heavy"]);
 

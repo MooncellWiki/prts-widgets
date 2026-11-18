@@ -1,15 +1,27 @@
 import {
   Assets,
+  BufferImageSource,
+  CanvasTextMetrics,
   Container,
   Graphics,
+  NineSliceSprite,
+  Rectangle,
   Sprite,
   Text,
   TextStyle,
   Texture,
+  type UniformGroup,
 } from "pixi.js";
 
 import { INTERLUDE_ASSETS } from "../../../assets";
 import importedClips from "../../../assets/interlude/clips.json";
+import {
+  ANIMTEXT_MAIN_FONT_FAMILY,
+  ANIMTEXT_MAIN_FONT_WEIGHT,
+} from "../../font";
+import { getCachedTexture } from "../core/TextureAsset";
+
+import { buildActiveWave } from "./interludeWave";
 
 // interlude mask 模板体系的 Web 重建。
 //
@@ -18,7 +30,7 @@ import importedClips from "../../../assets/interlude/clips.json";
 // (CDN 热更包,不在 APK 基包);channel 骨架与 `direction` 动画在
 // `ui/[uc]common.ab` 的 `cutin_controller`/`cutin_channel`/`cutin_charslot`。
 // 布局数值逐项转写自 2.7.81 资源版本 26-10-14 的 prefab RectTransform dump
-// (2026-10-21);动画关键帧见 `assets/interlude/clips.json`(同批 dump)。逆向
+// (2026-10-21);动画关键帧与切线取自 2791 PC 资源，见 `assets/interlude/clips.json`。逆向
 // 记录:arknights-rev `docs/commands/avg-interlude-command.md` §6/§8/§13.1。
 //
 // 坐标:Unity 的 anchoredPosition/localPosition 已换算到 PIXI(y 取反);
@@ -29,38 +41,37 @@ import importedClips from "../../../assets/interlude/clips.json";
 //   `Graphics` mask 近似:mask 图形挂在写入者(`_imgMask`/`img_char_mask`)
 //   节点下,自动跟随模板的 DOScale/位移/入场动画;读取者(通道内容层、
 //   vertical 的 `img_unknown`、dialog 的 `img_bg`/`img_char`)以它裁切。
-// - `bg_defaul_gradient` 的渐变 shader 用 `top_gradient` 贴图拉伸近似;
-//   `mask_soft_edge` 软边与 dialog `img_char_mask` 的自定义网格按矩形近似。
-// - `group_name` 上的布局组件(随文字伸缩的 name_back/brick)未移植,
-//   name_back 固定 40x40。
-// - 关键帧间插值取线性(原生为 slope 贝塞尔);UI 曲线键距稀疏,视觉差异可忽略。
 
 /** `assets/interlude/clips.json` 的结构(AnimationClip typetree 转写)。 */
-interface ClipKey {
+interface ClipKey<T> {
   t: number;
-  v: number | { x: number; y: number; z: number; w: number };
+  v: T;
+  inSlope: T;
+  outSlope: T;
 }
-interface ClipCurve {
+interface ClipCurve<T> {
   path: string;
   attr?: string;
-  keys: ClipKey[];
+  keys: ClipKey<T>[];
 }
-interface ClipSection {
-  position: ClipCurve[];
-  rotation: ClipCurve[];
-  scale: ClipCurve[];
-  float: ClipCurve[];
+type ClipVector = { x: number; y: number; z: number };
+interface ClipValues {
+  position: ClipVector;
+  rotation: ClipVector & { w: number };
+  scale: ClipVector;
+  float: number;
 }
+type ClipSection = { [K in keyof ClipValues]: ClipCurve<ClipValues[K]>[] };
 type ClipMap = Record<string, ClipSection | undefined>;
 
 const CLIPS = importedClips as unknown as ClipMap;
 
-function curve(
+function curve<K extends keyof ClipValues>(
   clip: string,
-  section: keyof ClipSection,
+  section: K,
   path: string,
   attr?: string,
-): ClipCurve | null {
+): ClipCurve<ClipValues[K]> | null {
   const c = CLIPS[clip];
   if (!c) return null;
   for (const cu of c[section]) {
@@ -74,59 +85,62 @@ function curve(
   return null;
 }
 
-/** 关键帧线性采样(键外取端点值)。 */
-function sample(cu: ClipCurve | null, t: number, fallback: number): number {
+/** The six 2791 legacy AnimationClips use unweighted Hermite tangents. */
+function sampleComponent<T>(
+  cu: ClipCurve<T> | null,
+  t: number,
+  fallback: number,
+  read: (value: T) => number,
+): number {
   if (!cu || cu.keys.length === 0) return fallback;
-  const ks = cu.keys;
-  if (t <= ks[0]!.t) return ks[0]!.v as number;
-  for (let i = 1; i < ks.length; i++) {
-    if (t > ks[i]!.t) continue;
-    const a = ks[i - 1]!;
-    const b = ks[i]!;
-    const span = b.t - a.t;
-    const p = span > 0 ? (t - a.t) / span : 1;
-    return (a.v as number) + ((b.v as number) - (a.v as number)) * p;
+  const keys = cu.keys;
+  if (t <= keys[0]!.t) return read(keys[0]!.v);
+  for (let i = 1; i < keys.length; i++) {
+    const right = keys[i]!;
+    if (t > right.t) continue;
+    if (t === right.t) return read(right.v);
+    const left = keys[i - 1]!;
+    const duration = right.t - left.t;
+    const u = (t - left.t) / duration;
+    const u2 = u * u;
+    const u3 = u2 * u;
+    return (
+      (2 * u3 - 3 * u2 + 1) * read(left.v) +
+      (u3 - 2 * u2 + u) * duration * read(left.outSlope) +
+      (3 * u2 - 2 * u3) * read(right.v) +
+      (u3 - u2) * duration * read(right.inSlope)
+    );
   }
-  return ks[ks.length - 1]!.v as number;
+  return read(keys[keys.length - 1]!.v);
+}
+
+function sample(
+  cu: ClipCurve<number> | null,
+  t: number,
+  fallback: number,
+): number {
+  return sampleComponent(cu, t, fallback, (value) => value);
 }
 
 function sampleVec2(
-  cu: ClipCurve | null,
+  cu: ClipCurve<ClipVector> | null,
   t: number,
   fallback: { x: number; y: number },
 ): { x: number; y: number } {
-  if (!cu || cu.keys.length === 0) return fallback;
-  const ks = cu.keys;
-  const vec = (v: ClipKey["v"]): { x: number; y: number } =>
-    typeof v === "number" ? { x: v, y: v } : { x: v.x, y: v.y };
-  if (t <= ks[0]!.t) return vec(ks[0]!.v);
-  for (let i = 1; i < ks.length; i++) {
-    if (t > ks[i]!.t) continue;
-    const a = vec(ks[i - 1]!.v);
-    const b = vec(ks[i]!.v);
-    const span = ks[i]!.t - ks[i - 1]!.t;
-    const p = span > 0 ? (t - ks[i - 1]!.t) / span : 1;
-    return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
-  }
-  return vec(ks[ks.length - 1]!.v);
+  return {
+    x: sampleComponent(cu, t, fallback.x, (v) => v.x),
+    y: sampleComponent(cu, t, fallback.y, (v) => v.y),
+  };
 }
 
-/** 四元数 key 的 z 轴旋转角(rad)。 */
-function sampleRotZ(cu: ClipCurve | null, t: number): number {
-  if (!cu || cu.keys.length === 0) return 0;
-  const ks = cu.keys;
-  const pick = (k: ClipKey): number =>
-    typeof k.v === "number" ? 0 : 2 * Math.atan2(k.v.z, k.v.w);
-  if (t <= ks[0]!.t) return pick(ks[0]!);
-  for (let i = 1; i < ks.length; i++) {
-    if (t > ks[i]!.t) continue;
-    const a = pick(ks[i - 1]!);
-    const b = pick(ks[i]!);
-    const span = ks[i]!.t - ks[i - 1]!.t;
-    const p = span > 0 ? (t - ks[i - 1]!.t) / span : 1;
-    return a + (b - a) * p;
-  }
-  return pick(ks[ks.length - 1]!);
+/** 对话框只绕 Z 轴旋转，归一化四元数不改变 z/w 的比值。 */
+function sampleRotZ(
+  cu: ClipCurve<ClipValues["rotation"]> | null,
+  t: number,
+): number {
+  const z = sampleComponent(cu, t, 0, (v) => v.z);
+  const w = sampleComponent(cu, t, 1, (v) => v.w);
+  return 2 * Math.atan2(z, w);
 }
 
 /** 各动画时长(秒),取自关键帧末端。 */
@@ -157,51 +171,44 @@ export interface InterludeTextureSet {
   unknownSquare: Texture;
   commonFrame: Texture;
   waveBase: Texture;
+  waveDissolve: Texture;
   waveShadow: Texture;
   dialogGrad: Texture;
   dialogFrame: Texture;
-  gradientV: Texture;
+  maskSoftEdge: Texture;
 }
 
-let texturePromise: Promise<InterludeTextureSet> | null = null;
+const templateTextureUrls = {
+  iconBack: INTERLUDE_ASSETS.icon_back,
+  unknownVertical: INTERLUDE_ASSETS.unknown_vertical,
+  unknownSquare: INTERLUDE_ASSETS.unknown_square,
+  commonFrame: INTERLUDE_ASSETS.common_frame,
+  waveBase: INTERLUDE_ASSETS.wave_base,
+  waveDissolve: INTERLUDE_ASSETS.wave_dissolve,
+  waveShadow: INTERLUDE_ASSETS.wave_shadow,
+  dialogGrad: INTERLUDE_ASSETS.dialog_grad,
+  dialogFrame: INTERLUDE_ASSETS.dialog_frame,
+  maskSoftEdge: INTERLUDE_ASSETS.mask_soft_edge,
+} satisfies Record<keyof InterludeTextureSet, string>;
 
 /** 模板贴图懒加载(随 widget 打包的静态资源)。 */
-export function loadInterludeTextures(): Promise<InterludeTextureSet> {
-  texturePromise ??= (async () => {
-    const [
-      iconBack,
-      unknownVertical,
-      unknownSquare,
-      commonFrame,
-      waveBase,
-      waveShadow,
-      dialogGrad,
-      dialogFrame,
-      gradientV,
-    ] = await Promise.all([
-      Assets.load(INTERLUDE_ASSETS.icon_back),
-      Assets.load(INTERLUDE_ASSETS.unknown_vertical),
-      Assets.load(INTERLUDE_ASSETS.unknown_square),
-      Assets.load(INTERLUDE_ASSETS.common_frame),
-      Assets.load(INTERLUDE_ASSETS.wave_base),
-      Assets.load(INTERLUDE_ASSETS.wave_shadow),
-      Assets.load(INTERLUDE_ASSETS.dialog_grad),
-      Assets.load(INTERLUDE_ASSETS.dialog_frame),
-      Assets.load(INTERLUDE_ASSETS.gradient_v),
-    ]);
-    return {
-      iconBack,
-      unknownVertical,
-      unknownSquare,
-      commonFrame,
-      waveBase,
-      waveShadow,
-      dialogGrad,
-      dialogFrame,
-      gradientV,
-    };
-  })();
-  return texturePromise;
+export function loadInterludeTextures():
+  InterludeTextureSet | Promise<InterludeTextureSet> {
+  const cached: Array<[string, Texture]> = [];
+  const entries = Object.entries(templateTextureUrls);
+  for (const [name, url] of entries) {
+    const texture = getCachedTexture(url);
+    if (!texture) {
+      return Assets.load<Texture>(Object.values(templateTextureUrls)).then(
+        (textures) =>
+          Object.fromEntries(
+            entries.map(([key, path]) => [key, textures[path]]),
+          ) as unknown as InterludeTextureSet,
+      );
+    }
+    cached.push([name, texture]);
+  }
+  return Object.fromEntries(cached) as unknown as InterludeTextureSet;
 }
 
 type Vec2 = { x: number; y: number };
@@ -244,14 +251,16 @@ export interface TemplateNodes {
   anchor: "center" | "left" | "right";
   /** `_scaleTrans ?? transform`:style 0/2 的 ts DOScale 与 clear 收缩目标。 */
   scaleNode: Container;
-  /** scaleNode 的 prefab localScale(`ui_cutin_mask_vertical` 为 (0,1))。 */
+  /** scaleNode 的 prefab localScale。 */
   initialScale: Vec2;
   /** `_imgMask`(或 dialog 的 `img_char_mask`)所在节点。 */
   maskNode: Container;
-  /** 裁切图形:基类模板用它裁切通道内容层(root_bkg_* / root_char_*)。 */
+  /** 裁切图形:模板与通道内容层(root_bkg_* / root_char_*)共享 stencil 窗口。 */
   maskGraphics: Graphics;
   /** 模板配了 `_imgMask`(style 1/2 才 Join 3s DOFade;dialog 无)。 */
   hasImgMask: boolean;
+  /** 模板内读 `_imgMask` stencil 的 `_components`。 */
+  stencilReaders?: readonly Container[];
   /**
    * `_animWrapper` + `_animLocs[0]`:style 3 时播放且 m_cutinSeq = null(立即
    * 完成)。null = 没有 animWrapper,style 3 什么都不播,仍走 1s 地板。
@@ -278,8 +287,8 @@ export interface TemplateNodes {
 export interface DecoNodes {
   /** deco 根(`deco_container` 下;面板按 offset 摆放)。 */
   root: Container;
-  /** `text_name`(仅 square deco 有)。 */
-  label: Text | null;
+  /** `text_name` 及其横向布局(仅 square deco 有)。 */
+  setName?: (name: string) => void;
   /**
    * `TwoStateToggle.set_selected`:selected 显示 `wave_active`(说话中的波形),
    * 否则显示 `wave_stop`(静止横线);Awake(`_setWithAwake`)默认未选中。
@@ -288,7 +297,7 @@ export interface DecoNodes {
   /** square deco 的 `group_wave`/`group_name`/`group_frame_common`(入场动画目标)。 */
   waveGroup: Container | null;
   nameGroup: Container | null;
-  frameGroup: Container | null;
+  frameGroup: NineSliceSprite | null;
 }
 
 function centeredSprite(
@@ -303,6 +312,50 @@ function centeredSprite(
   return s;
 }
 
+// 2791 UIGradientGraphic._DrawVerticalColoredTapeByPoint interpolates the
+// opaque Color32 stops of bg_defaul_gradient at 0, 0.5 and 1. Sample from
+// the first texel center to the last so resizing preserves all three stops.
+type Rgb = readonly [number, number, number];
+function gradientTexture(top: Rgb, middle: Rgb, bottom: Rgb): Texture {
+  const source = new BufferImageSource({
+    width: 1,
+    height: 3,
+    format: "rgba8unorm",
+    scaleMode: "linear",
+    resource: Uint8Array.of(...top, 255, ...middle, 255, ...bottom, 255),
+  });
+  return new Texture({ source, frame: new Rectangle(0, 0.5, 1, 2) });
+}
+
+const verticalGradient = gradientTexture(
+  [174, 173, 173],
+  [88, 88, 88],
+  [180, 180, 180],
+);
+const squareGradient = gradientTexture(
+  [77, 77, 77],
+  [103, 103, 103],
+  [158, 158, 158],
+);
+
+function slicedImage(
+  texture: Texture,
+  width: number,
+  height: number,
+  border: number,
+): NineSliceSprite {
+  return new NineSliceSprite({
+    anchor: 0.5,
+    bottomHeight: border,
+    height,
+    leftWidth: border,
+    rightWidth: border,
+    texture,
+    topHeight: border,
+    width,
+  });
+}
+
 /** 以节点原点为中心(重)画裁切矩形。 */
 function drawMaskRect(g: Graphics, width: number, height: number): void {
   const w = Math.max(0, width);
@@ -313,7 +366,7 @@ function drawMaskRect(g: Graphics, width: number, height: number): void {
 }
 
 /**
- * 按原生 prefab 层级建模板;未知 maskid 返回 null,面板回落到纯矩形 mask。
+ * 按原生 prefab 层级建模板。缺少相应 prefab 时返回 null。
  * 返回时尺寸为 prefab 默认值,面板按命令 `size`(≈0 时保持默认)调用 `resize`。
  */
 export function buildTemplate(
@@ -323,20 +376,19 @@ export function buildTemplate(
   const root = new Container();
 
   if (maskId === "group_interclude_vertical_common") {
-    // root 320x760。back_shadow(icon_back,拉伸锚定 = 根尺寸)即 `_scaleTrans`,
+    // root 320x760。back_shadow(icon_back,20px 九宫格,拉伸锚定 = 根尺寸)即 `_scaleTrans`,
     // 其下 content_mask(`_imgMask`,每边内缩 18)→ bg_defaul_gradient。
     // img_unknown 283x720 是 root 的直接子节点:不随 ts 缩放,但它是
     // content_mask 的 stencil 读取者(`_components`),被窗口裁切。
     const scaleNode = new Container();
-    const backShadow = centeredSprite(tex.iconBack, 320, 760);
-    const gradient = centeredSprite(tex.gradientV, 320 - 36, 760 - 36);
+    const backShadow = slicedImage(tex.iconBack, 320, 760, 20);
+    const gradient = centeredSprite(verticalGradient, 320 - 36, 760 - 36);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
-    const unknownMask = new Graphics();
-    maskNode.addChild(maskGraphics, unknownMask);
+    maskNode.addChild(maskGraphics);
     scaleNode.addChild(backShadow, gradient, maskNode);
     const unknown = centeredSprite(tex.unknownVertical, 283, 720);
-    unknown.mask = unknownMask;
+    unknown.mask = maskGraphics;
     root.addChild(scaleNode, unknown);
     const resize = (width: number, height: number): void => {
       backShadow.width = width;
@@ -344,7 +396,6 @@ export function buildTemplate(
       gradient.width = Math.max(0, width - 36);
       gradient.height = Math.max(0, height - 36);
       drawMaskRect(maskGraphics, width - 36, height - 36);
-      drawMaskRect(unknownMask, width - 36, height - 36);
     };
     resize(320, 760);
     return {
@@ -355,6 +406,7 @@ export function buildTemplate(
       maskNode,
       maskGraphics,
       hasImgMask: true,
+      stencilReaders: [unknown],
       animatorClip: null,
       autoClip: null,
       emptyImage: unknown,
@@ -367,14 +419,14 @@ export function buildTemplate(
   }
 
   if (maskId === "group_interclude_square_common") {
-    // root 300x300(`_scaleTrans` 为空 → DOScale 作用于 root)。back_shadow
+    // root 300x300(`_scaleTrans` 为空 → DOScale 作用于 root)。back_shadow 使用20px 九宫格,
     // 是居中定尺寸的 250x250(带 CanvasGroup),所以命令 size 只改 root 的
     // sizeDelta,子节点不随之变化;content_mask(`_imgMask`)拉伸内缩 36 →
     // 214x214,其下 bg_defaul_gradient + bg_custom_holder/img_unknown(居中
     // 214x214,不读 stencil)。入场动画见 applySquareShow。
     const backShadowGroup = new Container();
-    const backShadow = centeredSprite(tex.iconBack, 250, 250);
-    const gradient = centeredSprite(tex.gradientV, 214, 214);
+    const backShadow = slicedImage(tex.iconBack, 250, 250, 20);
+    const gradient = centeredSprite(squareGradient, 214, 214);
     const unknown = centeredSprite(tex.unknownSquare, 214, 214);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
@@ -410,37 +462,60 @@ export function buildTemplate(
 
   if (
     maskId === "ui_cutin_mask_vertical" ||
-    maskId === "ui_cutin_mask_horizon"
+    maskId === "ui_cutin_mask_horizon" ||
+    maskId === "ui_cutin_mask_angle"
   ) {
-    // 纯 stencil 窗口:唯一子节点 ui_cutin_mask(`_imgMask`,拉伸,无贴图)。
-    // vertical 337.3x788.5,prefab localScale = (0,1)(style 0 无 ts / style 3
-    // 时保持收起),无 animWrapper;horizon 1689.2x335.27,animWrapper 播
-    // avg_cutin_hori_com_mask(ui_cutin_mask 的 y 开合,见 applyHoriMaskOpen)。
+    // 2791 PC 纯 stencil 模板的 _imgMask 随根节点拉伸。
+    // horizon 支持 avg_cutin_hori_com_mask。vertical 与 angle 初始收起。
     const vertical = maskId === "ui_cutin_mask_vertical";
+    const angled = maskId === "ui_cutin_mask_angle";
     const maskNode = new Container();
     const maskGraphics = new Graphics();
     maskNode.addChild(maskGraphics);
     root.addChild(maskNode);
+    const edges: Array<{ sprite: Sprite; side: number; height: number }> = [];
+    if (angled) {
+      // Unity 逆时针 20°，Pixi 的 Y 轴方向相反。
+      root.rotation = -Math.PI / 9;
+      for (const [side, height] of [
+        [1, 19.47],
+        [-1, 5],
+      ] as const) {
+        const sprite = new Sprite({ texture: tex.maskSoftEdge, tint: 0 });
+        sprite.anchor.set(0.5, 0);
+        if (side > 0) sprite.rotation = Math.PI;
+        root.addChild(sprite);
+        edges.push({ sprite, side, height });
+      }
+    }
     const defaultSize = vertical
       ? { x: 337.3, y: 788.5 }
       : { x: 1689.2, y: 335.27 };
-    drawMaskRect(maskGraphics, defaultSize.x, defaultSize.y);
+    const resize = (width: number, height: number): void => {
+      drawMaskRect(maskGraphics, width, height);
+      for (const { sprite, side, height: edgeHeight } of edges) {
+        sprite.setSize(Math.max(0, width), edgeHeight);
+        sprite.y = (side * height) / 2;
+      }
+    };
+    resize(defaultSize.x, defaultSize.y);
     return {
       root,
       anchor: "center",
       scaleNode: root,
-      initialScale: vertical ? { x: 0, y: 1 } : { x: 1, y: 1 },
+      initialScale: { x: vertical ? 0 : 1, y: angled ? 0 : 1 },
       maskNode,
       maskGraphics,
       hasImgMask: true,
-      animatorClip: vertical ? null : "hori_mask_open",
+      animatorClip:
+        maskId === "ui_cutin_mask_horizon" ? "hori_mask_open" : null,
       autoClip: null,
       emptyImage: null,
       setBackShadowSize: null,
       backShadowGroup: null,
       dialog: null,
       defaultSize,
-      resize: (width, height) => drawMaskRect(maskGraphics, width, height),
+      resize,
     };
   }
 
@@ -464,8 +539,26 @@ export function buildTemplate(
     charPart.position.set(right ? -250 : 150, 0);
     const charMask = new Container();
     charMask.position.set(right ? 3 : 48, right ? 3.5 : 0);
-    const maskGraphics = new Graphics();
-    drawMaskRect(maskGraphics, 485, right ? 399.69 : 403.4);
+    // 2791 UIMeshImage.OnPopulateMesh / _MatchMeshWithRectTransform
+    // (0x1815D0E00 / 0x1815D1720). The perimeter vertices below are in
+    // prefab pixels: mesh vertex × 485 / mesh bounds width, with Y flipped.
+    // _RefreshModelMatIfNeeded scales about the mesh origin.
+    const outline = right
+      ? [
+          { x: -115.618, y: -149.237 },
+          { x: 308.508, y: -197.507 },
+          { x: 308.508, y: 202.185 },
+          { x: -85.181, y: 157.064 },
+          { x: -176.492, y: -31.712 },
+        ]
+      : [
+          { x: -259.807, y: 208.052 },
+          { x: -259.807, y: -195.35 },
+          { x: 161.673, y: -146.751 },
+          { x: 225.193, y: -27.39 },
+          { x: 132.746, y: 161.44 },
+        ];
+    const maskGraphics = new Graphics().poly(outline).fill(0xff_ff_ff);
     charMask.addChild(maskGraphics);
     const bgSize = right ? { x: 620.42, y: 590.9 } : { x: 550, y: 570 };
     const bgImage = centeredSprite(tex.dialogGrad, bgSize.x, bgSize.y);
@@ -493,6 +586,7 @@ export function buildTemplate(
       maskNode: charMask,
       maskGraphics,
       hasImgMask: false,
+      stencilReaders: [charContent],
       animatorClip: null,
       autoClip: null,
       emptyImage: null,
@@ -522,29 +616,17 @@ export function buildTemplate(
  * wave_shadow + wave_active(4 片 wave_base 80x42,pivot (1,0),x=±4.8,以
  * scale ±1 镜像成上下左右对称的波形)+ wave_stop(2 片 80x3.98 灰线)。
  */
-function buildWaves(tex: InterludeTextureSet): {
+function buildWaves(
+  tex: InterludeTextureSet,
+  waveUniforms: UniformGroup,
+): {
   shadow: Sprite;
   active: Container;
   stop: Container;
 } {
   const shadow = centeredSprite(tex.waveShadow, 220.14, 130);
   shadow.alpha = 0.672;
-  const active = new Container();
-  for (const [x, sx, sy] of [
-    [4.8, 1, 1],
-    [-4.8, -1, 1],
-    [4.8, 1, -1],
-    [-4.8, -1, -1],
-  ] as const) {
-    const w = new Sprite(tex.waveBase);
-    // Unity pivot (1,0) = 右下角;PIXI y 向下,底边即 anchor.y = 1。
-    w.anchor.set(1, 1);
-    w.width = 80;
-    w.height = 42;
-    w.scale.set(w.scale.x * sx, w.scale.y * sy);
-    w.position.set(x, 0);
-    active.addChild(w);
-  }
+  const active = buildActiveWave(tex.waveBase, tex.waveDissolve, waveUniforms);
   const stop = new Container();
   for (const [x, sx] of [
     [4.8, 1],
@@ -570,13 +652,14 @@ function buildWaves(tex: InterludeTextureSet): {
 export function buildDeco(
   maskId: string,
   tex: InterludeTextureSet,
+  waveUniforms: UniformGroup,
 ): DecoNodes | null {
   if (maskId === "group_interclude_vertical_common") {
     // 167.55x100,localScale (1,1.15):wave_shadow/wave_active/wave_stop 直挂根下,
     // 无 text_name。
     const root = new Container();
     root.scale.set(1, 1.15);
-    const { shadow, active, stop } = buildWaves(tex);
+    const { shadow, active, stop } = buildWaves(tex, waveUniforms);
     root.addChild(shadow, active, stop);
     const setSwitch = (selected: boolean): void => {
       active.visible = selected;
@@ -585,7 +668,6 @@ export function buildDeco(
     setSwitch(false);
     return {
       root,
-      label: null,
       setSwitch,
       waveGroup: null,
       nameGroup: null,
@@ -602,30 +684,44 @@ export function buildDeco(
     const waveGroup = new Container();
     waveGroup.position.set(0, 136);
     waveGroup.scale.set(1, 0.75);
-    const { shadow, active, stop } = buildWaves(tex);
+    const { shadow, active, stop } = buildWaves(tex, waveUniforms);
     waveGroup.addChild(shadow, active, stop);
-    const frameGroup = new Container();
-    frameGroup.addChild(centeredSprite(tex.commonFrame, 236, 236));
+    // 2791 common_frame is a Sliced Image with 16px edges at reference PPU100.
+    const frameGroup = slicedImage(tex.commonFrame, 236, 236, 16);
     const nameGroup = new Container();
     nameGroup.position.set(-145.3, 85.19);
-    const nameBack = centeredSprite(tex.iconBack, 40, 40);
+    // group_name has a left pivot, a 120px minimum width and a 23px height.
+    // name_back ignores the horizontal layout and stretches 20px beyond it.
+    const nameBack = slicedImage(tex.iconBack, 160, 63, 20);
+    nameBack.anchor.x = 0;
+    nameBack.x = -20;
+    const brick = new Graphics().rect(5, -7, 14, 14).fill(0x28_28_28);
     const label = new Text({
       text: "",
       style: new TextStyle({
         fill: 0x32_32_32,
         fontSize: 18,
-        fontFamily: "SourceHanSansCN-Heavy, sans-serif",
+        fontFamily: [ANIMTEXT_MAIN_FONT_FAMILY, "sans-serif"],
+        fontWeight: ANIMTEXT_MAIN_FONT_WEIGHT,
       }),
     });
     label.anchor.set(0, 0.5);
-    nameGroup.addChild(nameBack, label);
+    // 5px left padding + 14px brick + 5px spacing.
+    label.x = 24;
+    nameGroup.addChild(nameBack, brick, label);
+    const setName = (name: string): void => {
+      if (!name || label.text === name) return;
+      label.text = name;
+      const { width } = CanvasTextMetrics.measureText(name, label.style);
+      nameBack.width = Math.max(120, width + label.x + 5) + 40;
+    };
     root.addChild(waveGroup, frameGroup, nameGroup);
     const setSwitch = (selected: boolean): void => {
       active.visible = selected;
       stop.visible = !selected;
     };
     setSwitch(false);
-    return { root, label, setSwitch, waveGroup, nameGroup, frameGroup };
+    return { root, setName, setSwitch, waveGroup, nameGroup, frameGroup };
   }
 
   return null;
@@ -640,7 +736,7 @@ export function applySquareShow(
   nodes: {
     setBackShadowSize: ((width: number, height: number) => void) | null;
     backShadowGroup: Container | null;
-    frameGroup: Container | null;
+    frameGroup: NineSliceSprite | null;
     nameGroup: Container | null;
     waveGroup: Container | null;
   },
@@ -667,17 +763,19 @@ export function applySquareShow(
       1,
     );
   }
-  if (frameGroup) {
-    // 居中定尺寸:SizeDelta 即绝对尺寸(子节点 common_frame 拉伸跟随)。
-    frameGroup.width = sample(
-      curve("square_show", "float", "group_frame_common", "m_SizeDelta.x"),
-      t,
-      236,
-    );
-    frameGroup.height = sample(
-      curve("square_show", "float", "group_frame_common", "m_SizeDelta.y"),
-      t,
-      236,
+  if (frameGroup && !frameGroup.destroyed) {
+    // Resize the nine-slice geometry as Unity resizes the RectTransform.
+    frameGroup.setSize(
+      sample(
+        curve("square_show", "float", "group_frame_common", "m_SizeDelta.x"),
+        t,
+        236,
+      ),
+      sample(
+        curve("square_show", "float", "group_frame_common", "m_SizeDelta.y"),
+        t,
+        236,
+      ),
     );
     frameGroup.alpha = sample(
       curve("square_show", "float", "group_frame_common", "m_Alpha"),
@@ -685,7 +783,7 @@ export function applySquareShow(
       1,
     );
   }
-  if (nameGroup) {
+  if (nameGroup && !nameGroup.destroyed) {
     nameGroup.position.x = sample(
       curve("square_show", "float", "group_name", "m_AnchoredPosition.x"),
       t,
@@ -697,7 +795,7 @@ export function applySquareShow(
       1,
     );
   }
-  if (waveGroup) {
+  if (waveGroup && !waveGroup.destroyed) {
     waveGroup.position.y = -sample(
       curve("square_show", "float", "group_wave", "m_AnchoredPosition.y"),
       t,
@@ -764,6 +862,7 @@ export function setDialogBackground(
 ): void {
   const img = dialog.bgImage;
   if (!texture) {
+    img.texture = Texture.EMPTY;
     img.visible = false;
     return;
   }

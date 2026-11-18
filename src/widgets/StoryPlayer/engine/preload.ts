@@ -2,11 +2,14 @@ import { Assets } from "pixi.js";
 
 import {
   DIALOG_FRAME_URL,
+  INTERLUDE_ASSETS,
   SHOWITEM_PHOTO_FRAME_URL,
   STAMP_ASSETS,
 } from "../assets";
 
 import {
+  cutinPortraitResourceKey,
+  nativeBundleKey,
   resolveAssetUrl,
   resolveStoryAssetByKey,
   resolveStoryAudioByKey,
@@ -14,8 +17,9 @@ import {
   type StoryAssetFamily,
 } from "./asset";
 import { resolveAvgDisplayStyle } from "./avgDisplay";
-import { resolveCharacterSelection } from "./characterRef";
-import { toString } from "./commandParams";
+import { describeCharacterPortrait } from "./characterPortrait";
+import { resolveCharacterRef, resolveNativeCharacterRef } from "./characterRef";
+import { boxedParamString, toString, tryConvertToInt32 } from "./commandParams";
 import {
   ANIMTEXT_MAIN_FONT,
   DIALOG_FONT,
@@ -54,11 +58,9 @@ function addImageUrl(
   urls: Set<string>,
   rawKey: string,
   family: StoryAssetFamily,
+  useBundlePath = family === "cutin",
 ): void {
-  const key = rawKey.trim();
-  if (!key) return;
-
-  const rawUrl = resolveStoryAssetByKey(key, family);
+  const rawUrl = resolveStoryAssetByKey(rawKey, family, useBundlePath);
   if (!rawUrl) return;
   urls.add(resolveAssetUrl(rawUrl));
 }
@@ -102,13 +104,27 @@ function addCharacterUrl(urls: Set<string>, rawKey: string): string | null {
  * batch substitutes for native asset-reference collection and loading.
  *
  */
-function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
+function addScriptImageUrls(
+  urls: Set<string>,
+  lines: ParsedLine[],
+  preload: boolean,
+): void {
   for (const line of lines) {
     if (line.kind !== "command") continue;
 
     const image = argAsString(line.args.image);
     if (line.command === "background") {
       addImageUrl(urls, image, "background");
+      continue;
+    }
+    if (line.command === "charactercutin") {
+      // AVGCharacterCutinPanel.InternalResRefCollector (2791 @ 0x1841B53A0).
+      addImageUrl(
+        urls,
+        boxedParamString(line.args.background),
+        "background",
+        true,
+      );
       continue;
     }
     if (line.command === "avgdisplay") {
@@ -130,14 +146,14 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
       continue;
     }
     if (line.command === "interlude") {
-      const type = argAsString(line.args.type);
-      const numericType =
-        typeof line.args.type === "number" ? line.args.type : Number(type);
-      const name = argAsString(line.args.name);
-      if (type === "bg" || numericType === 2)
-        addImageUrl(urls, name, "background");
-      else if (type === "uichar" || numericType === 1)
-        addImageUrl(urls, name, "cutin");
+      // GatherResRefs (2791 @ 0x1841B53A0) converts the boxed value to Int32.
+      // Only the Web preload also warms the aliases recognized by _GenCutinType.
+      const numericType = tryConvertToInt32(line.args.type);
+      const name = boxedParamString(line.args.name);
+      if (numericType === 2 || (preload && line.args.type === "bg"))
+        addImageUrl(urls, name, "background", true);
+      else if (numericType === 1 || (preload && line.args.type === "uichar"))
+        addImageUrl(urls, cutinPortraitResourceKey(name), "cutin");
       continue;
     }
 
@@ -193,6 +209,7 @@ function addCharacterUrls(
   urls: Set<string>,
   context: Context,
   lines: ParsedLine[],
+  preload: boolean,
 ): StoryCharacterFaceAsset[] {
   const faceAssets = new Map<string, StoryCharacterFaceAsset>();
   const addFaceGroup = (
@@ -231,53 +248,54 @@ function addCharacterUrls(
     if (line.kind !== "command") continue;
 
     const refs: string[] = [];
-    if (line.command === "charslot") refs.push(argAsString(line.args.name));
+    if (line.command === "charactercutin")
+      refs.push(boxedParamString(line.args.name));
+    else if (line.command === "charslot")
+      refs.push(argAsString(line.args.name));
     else if (line.command === "character")
       refs.push(argAsString(line.args.name), argAsString(line.args.name2));
     else if (
       line.command === "interlude" &&
-      (line.args.type === 3 || argAsString(line.args.type) === "char")
+      (tryConvertToInt32(line.args.type) === 3 ||
+        (preload && line.args.type === "char"))
     )
-      refs.push(argAsString(line.args.name));
+      refs.push(boxedParamString(line.args.name));
     else continue;
 
     for (const nameRef of refs) {
       if (!nameRef) continue;
 
-      const resolved = resolveCharacterSelection(context.linkMap, nameRef);
-      if (!resolved) continue;
+      const resolve =
+        line.command === "charactercutin" || line.command === "interlude"
+          ? resolveNativeCharacterRef
+          : resolveCharacterRef;
+      const ref = resolve(context.linkMap, nameRef);
+      if (ref.kind !== "found") continue;
+      const resolved = ref.selection;
 
       const link = context.linkMap[resolved.base];
       if (!link) continue;
 
-      const item = link.array.find(
-        (entry) => entry.name === resolved.expression,
-      );
-      if (!item) continue;
+      const portrait = describeCharacterPortrait(link, resolved.expression);
+      if (!portrait) continue;
 
-      if (item.group === -1 && "image" in item && item.image) {
-        const imageUrl = addCharacterUrl(urls, item.image);
-        if (imageUrl) {
+      if (portrait.face) {
+        const faceUrl = addCharacterUrl(urls, portrait.face.image);
+        const bodyUrl = addCharacterUrl(urls, portrait.body);
+        if (faceUrl && bodyUrl)
+          addFaceGroup(link, portrait.face.group, bodyUrl, resolved.expression);
+      } else {
+        const bodyUrl = addCharacterUrl(urls, portrait.body);
+        if (bodyUrl) {
           for (const [groupIndex, group] of link.groups.entries()) {
             if (
               group.mode === "face_overlay" &&
-              resolveCharacterUrl(group.base) === imageUrl
+              resolveCharacterUrl(group.base) === bodyUrl
             )
-              addFaceGroup(link, groupIndex, imageUrl);
+              addFaceGroup(link, groupIndex, bodyUrl);
           }
         }
-        continue;
       }
-
-      if (!("face" in item) || !item.face || item.group < 0) continue;
-
-      const group = link.groups[item.group];
-      if (group?.mode !== "face_overlay") continue;
-
-      const usedFaceUrl = addCharacterUrl(urls, item.face);
-      const baseUrl = addCharacterUrl(urls, group.base);
-      if (!usedFaceUrl || !baseUrl) continue;
-      addFaceGroup(link, item.group, baseUrl, item.name);
     }
   }
 
@@ -291,6 +309,7 @@ function parseContextScript(context: Context): ParsedLine[] {
 function buildContextAssetManifest(
   context: Context,
   lines: ParsedLine[],
+  preload = false,
 ): ContextAssetManifest {
   const urls = new Set<string>();
   if (context.charMap) {
@@ -298,10 +317,10 @@ function buildContextAssetManifest(
       urls.add(resolveAssetUrl(rawUrl));
   }
 
-  const faceAssets = addCharacterUrls(urls, context, lines);
+  const faceAssets = addCharacterUrls(urls, context, lines, preload);
 
   addScriptAudioUrls(urls, context, lines);
-  addScriptImageUrls(urls, lines);
+  addScriptImageUrls(urls, lines, preload);
 
   return { faceAssets, urls: [...urls] };
 }
@@ -320,10 +339,10 @@ function collectPreloadAssetUrls(
   context: Context,
   lines: ParsedLine[],
 ): string[] {
-  const urls = new Set(buildContextAssetManifest(context, lines).urls);
+  const urls = new Set(buildContextAssetManifest(context, lines, true).urls);
 
   // 固定 UI 资源（对话框上下黑条纹理），随每次 preload 一起预热进 pixi Assets 缓存，
-  // DialogView 和 cutin 道具共用这张缓存纹理。它属于播放器内置资源，
+  // DialogView、cutin 道具和角色入场共用这张缓存纹理。它属于播放器内置资源，
   // 不应出现在面向用户的剧情资源列表中。
   urls.add(DIALOG_FRAME_URL);
 
@@ -339,6 +358,12 @@ function collectPreloadAssetUrls(
   // Assets.load 走网络，会把第一次 showitem 的淡入整体推迟，故剧本用到
   // showitem 时一并预热。属 web 适配。
   if (usesCommand(lines, "showitem")) urls.add(SHOWITEM_PHOTO_FRAME_URL);
+
+  // The native cut-in controller loads its template synchronously. Prewarm
+  // the bundled textures for the same path through Pixi's cache.
+  if (usesCommand(lines, "interlude")) {
+    for (const url of Object.values(INTERLUDE_ASSETS)) urls.add(url);
+  }
 
   return [...urls];
 }
@@ -366,12 +391,20 @@ function showsSamiSpellSticker(lines: ParsedLine[]): boolean {
 }
 
 /**
- * 剧本要用的字体：对话字体恒需要，animtext 与萨米 spellsticker 的字体只在剧本
- * 确实用到时才加载。native 字体随 story.unity 常驻，按需加载属 web 适配。
+ * 剧本要用的字体：对话字体恒需要，其他字体按命令需要预热。
+ * native 字体随 story.unity 常驻，按需加载属 web 适配。
  */
 function collectPreloadFonts(lines: ParsedLine[]): FontSpec[] {
   const fonts = [DIALOG_FONT];
-  if (usesCommand(lines, "animtext")) fonts.push(ANIMTEXT_MAIN_FONT);
+  const hasSquareInterlude = lines.some(
+    (line) =>
+      line.kind === "command" &&
+      line.command === "interlude" &&
+      nativeBundleKey(boxedParamString(line.args.maskid)) ===
+        "group_interclude_square_common",
+  );
+  if (usesCommand(lines, "animtext") || hasSquareInterlude)
+    fonts.push(ANIMTEXT_MAIN_FONT);
   if (showsSamiSpellSticker(lines)) fonts.push(...SAMI_FONTS);
   return fonts;
 }

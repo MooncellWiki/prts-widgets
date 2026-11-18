@@ -135,3 +135,71 @@ describe("TweenRunner ease and loops (DOTween SetEase/SetLoops port)", () => {
     expect(progress).toEqual([0.5]);
   });
 });
+
+describe("TweenRunner lifecycle", () => {
+  it("cancels matching tweens before their turn in the current update", async () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    const target = {};
+    runner.start(16, () => {}, {
+      onComplete: () => runner.killTarget(target),
+    });
+    const step = vi.fn();
+    const onCancel = vi.fn();
+    const onComplete = vi.fn();
+    const targeted = runner.start(16, step, { onCancel, onComplete, target });
+    const targetless = runner.start(16, () => {});
+
+    manual.advance(16);
+    await targeted.completion;
+    expect(targeted.endReason).toBe("cancelled");
+    expect(targetless.endReason).toBe("complete");
+    expect(step).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledExactlyOnceWith();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("writes the final value on kill(true) for finite tweens", () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    const target = {};
+    const finiteStep = vi.fn();
+    const infiniteStep = vi.fn();
+    const onComplete = vi.fn();
+    const finite = runner.start(100, finiteStep, { onComplete, target });
+    const infinite = runner.start(100, infiniteStep, {
+      loops: -1,
+      onComplete,
+      target,
+    });
+
+    runner.killTarget(target, true);
+    runner.killTarget(target, true);
+    manual.advance(100);
+    expect(finite.endReason).toBe("complete");
+    expect(finiteStep.mock.calls).toEqual([[1]]);
+    expect(infinite.endReason).toBe("cancelled");
+    expect(infiniteStep).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  it("runs deferred work after the current batch and starts new tweens next frame", () => {
+    const manual = createManualClock();
+    const runner = new TweenRunner(() => true, manual.clock);
+    const calls: string[] = [];
+    runner.start(16, () => {}, {
+      onComplete: () => {
+        runner.afterUpdate(() => calls.push("dispose"));
+        runner.start(0, () => calls.push("new"), {
+          deferZeroDuration: true,
+        });
+      },
+    });
+    runner.start(16, () => calls.push("existing"));
+
+    manual.advance(16);
+    expect(calls).toEqual(["existing", "dispose"]);
+    manual.advance(16);
+    expect(calls).toEqual(["existing", "dispose", "new"]);
+  });
+});

@@ -1,3 +1,4 @@
+import { nativeBundleKey } from "./asset";
 import { tryParseInt32 } from "./commandParams";
 
 import type { StoryCharacterEntry, StoryLinkNode } from "./types";
@@ -140,13 +141,13 @@ function pickNativeSlot(
 
 /**
  * Whether `AVGCharacterSpriteHubGroup.SetImage` throws for `$N#M`. Both of its
- * bounds guards are off by one (2.7.81 0x18402d4fa body / 0x18402d5cf index,
- * `cmp; jle`): body falls back to 0 only past `spriteGroups.Length` and index
+ * bounds guards are off by one (2791 SetImage @ 0x18423A980).
+ * The body falls back to 0 only past `spriteGroups.Length` and index
  * only past `sprites.Length`, so exactly the length -- or any index into an
  * empty body -- passes the guard and the array read raises
  * IndexOutOfRangeException. Nothing between `ExecutorComponent.Execute` and
  * the `DoExecuteCommands` coroutine catches it, so native stops running the
- * story there. The `@alias` overload (0x18402d8b0) shares the body guard and
+ * story there. The `@alias` overload (2791 @ 0x18423ADF0) shares the body guard and
  * then reads `sprites[0]`, i.e. index 0 here.
  */
 function nativeSlotThrows(
@@ -206,10 +207,40 @@ export function resolveCharacterRef(
   }
 
   const parsed = parseNativeCharacterRef(normalized);
-  if (!parsed) return MISSING;
+  return parsed ? resolveParsedCharacterRef(linkMap, parsed, false) : MISSING;
+}
 
+/** AVGCharacterSlot._LoadImage and CutinTemplateDialogView._LoadAvgPortrait. */
+export function resolveNativeCharacterRef(
+  linkMap: Record<string, StoryLinkNode>,
+  rawRef: string,
+): CharacterRefResolution {
+  const parsed = parseNativeCharacterRef(rawRef);
+  if (!parsed) return MISSING;
+  parsed.base = nativeBundleKey(parsed.base);
+  return resolveParsedCharacterRef(linkMap, parsed, true);
+}
+
+function resolveParsedCharacterRef(
+  linkMap: Record<string, StoryLinkNode>,
+  parsed: NativeCharacterRef,
+  native: boolean,
+): CharacterRefResolution {
   const link = linkMap[parsed.base];
   if (!link) return MISSING;
+  const hasSlotIndices =
+    link.array.length > 0 && link.array.every(hasNativeSlot);
+  // An explicit $body loads only AVGCharacterSpriteHubGroup. Older exports
+  // can have slot indices while omitting every hub's body counts.
+  if (
+    native &&
+    parsed.group !== null &&
+    hasSlotIndices &&
+    !link.bodies &&
+    link.array.every((entry) => entry.body === 0) &&
+    Object.values(linkMap).some((hub) => hub.bodies !== undefined)
+  )
+    return MISSING;
 
   if (
     link.bodies &&
@@ -222,6 +253,34 @@ export function resolveCharacterRef(
     return NATIVE_THROWS;
 
   if (parsed.alias !== null) {
+    if (native) {
+      // Both SetImage overloads compare the complete @alias ordinally.
+      // The flat hub takes the first match. The group keeps the last in this body.
+      let entries = link.array;
+      if (
+        link.bodies ||
+        parsed.group !== null ||
+        (hasSlotIndices && entries.some((entry) => entry.body! > 0))
+      ) {
+        const body = parsed.group ?? 0;
+        const index =
+          body >= 0 && (!link.bodies || body < link.bodies.length) ? body : 0;
+        const inBody = hasSlotIndices
+          ? entries.filter((entry) => entry.body === index)
+          : entries.filter((entry) => entry.name.endsWith(`$${index + 1}`));
+        entries =
+          inBody.length || link.bodies
+            ? inBody
+            : entries.filter((entry) => !hasSlotIndices || entry.body === 0);
+      }
+      const matches = (entry: StoryCharacterEntry) =>
+        entry.alias === parsed.alias;
+      const match = link.bodies
+        ? entries.findLast(matches)
+        : entries.find(matches);
+      const expression = (match ?? entries[0])?.name;
+      return expression ? found(parsed.base, expression) : MISSING;
+    }
     // Deviation from native, on purpose. `_TryParseAlias` keeps the leading
     // `@`, and AVGCharacterSpriteHub.SetImage compares that `@`-prefixed string
     // against SpriteConfig.alias with ordinal equality -- but the stored
@@ -237,7 +296,7 @@ export function resolveCharacterRef(
     return expression ? found(parsed.base, expression) : MISSING;
   }
 
-  if (link.array.length > 0 && link.array.every(hasNativeSlot)) {
+  if (hasSlotIndices) {
     const entry = pickNativeSlot(link.array, parsed.group ?? 0, parsed.index);
     return entry ? found(parsed.base, entry.name) : MISSING;
   }

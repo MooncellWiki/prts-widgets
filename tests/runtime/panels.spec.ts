@@ -13,6 +13,49 @@ import {
 import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
+  it("dispatches interlude begin and clear without resolving an unused avatar", async () => {
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[interlude(channel=1,maskid="ui_cutin_mask_horizon",type=3,name="avg_npc_1#2$1")]',
+      '[interlude(channel=1,clear=true,type=3,name="avg_npc_1#2$1")]',
+      '[charactercutin(widgetID=true,name="avg_npc_1-1$1")]',
+      '[charactercutin(widgetID="True")]',
+      '[name="A"]ok',
+    ]);
+    context.linkMap.avg_npc_1!.bodies = [1];
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    await runtime.start();
+    expect(renderer.interludeCalls.map(({ clear }) => clear)).toEqual([
+      false,
+      true,
+    ]);
+    expect(
+      renderer.characterCutinCalls.map(({ widgetId }) => widgetId),
+    ).toEqual(["True", "True"]);
+    expect(renderer.characterCutinCalls[0].characterMissing).toBe(true);
+  });
+  it("preserves boxed Single values, submillisecond times and unnamed cutin type ordinals", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[interlude(channel=3,afrom=true,ato=null,aduration="0,001",duration=-1,type=42)]',
+        '[charactercutin(widgetID="1",name="avg_missing",fadetime=0.0006)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.interludeCalls[0]).toMatchObject({
+      alphaFrom: 1,
+      alphaTo: 0,
+      alphaDurationMs: 1000,
+      durationMs: -1000,
+      type: 42,
+    });
+    expect(renderer.characterCutinCalls[0].fadeMs).toBeCloseTo(0.6, 5);
+  });
+
   it("maps avgdisplay lifecycle and feature parameters", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -353,8 +396,8 @@ describe("StoryRuntime", () => {
     expect(renderer.interludeCalls).toHaveLength(3);
     expect(renderer.interludeCalls[0]).toMatchObject({
       alphaDurationMs: 250,
-      alphaFrom: 0.2,
-      alphaTo: 0.8,
+      alphaFrom: Math.fround(0.2),
+      alphaTo: Math.fround(0.8),
       block: true,
       channel: 3,
       dialogCharPos: { x: 1, y: 2 },
@@ -379,7 +422,6 @@ describe("StoryRuntime", () => {
     // `switch` defaults to false (GetOrDefault), and type 1 never resolves
     // an AVG avatar (Cutin/Characters only).
     expect(renderer.interludeCalls[2]).toMatchObject({
-      avatarCharacterKey: undefined,
       channel: 3,
       switchOn: false,
       type: 1,
@@ -391,6 +433,151 @@ describe("StoryRuntime", () => {
       }),
     ]);
   });
+
+  it.each([
+    { raw: '"1,"', expected: { x: 0, y: 0 } },
+    { raw: '"1,no"', expected: { x: 0, y: 0 } },
+    { raw: '" "', expected: { x: 0, y: 0 } },
+    { raw: '"2,3,4"', expected: { x: 2, y: 3 } },
+    { raw: '""', expected: undefined },
+  ])(
+    "decodes interlude vectors and their presence flags from $raw",
+    async ({ raw, expected }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[interlude(channel=3,pfrom=${raw},pto="10,20",sfrom="1,1",sto=${raw},icharpos=${raw},icharscale=${raw})]`,
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      await runtime.start();
+      expect(renderer.interludeCalls[0]).toMatchObject({
+        positionFrom: expected,
+        positionTo: expected && { x: 10, y: 20 },
+        scaleFrom: expected && { x: 1, y: 1 },
+        scaleTo: expected,
+        dialogCharPos: expected,
+        dialogCharScale: expected,
+      });
+    },
+  );
+
+  it("rounds interlude style with the native Convert.ToInt32 rules", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[interlude(channel=3,style=0.9)]",
+        "[interlude(channel=3,style=1.5)]",
+        "[interlude(channel=3,style=2.5)]",
+        '[interlude(channel=3,style="3")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.interludeCalls.map((input) => input.style)).toEqual([
+      1, 2, 2, 3,
+    ]);
+  });
+
+  it("converts interlude channels before validating and selecting the channel", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        "[interlude(channel=1.6)]",
+        "[interlude(channel=1.5)]",
+        "[interlude(channel=2.5)]",
+        '[interlude(channel=" +3 ")]',
+        "[interlude(channel=true)]",
+        "[interlude(channel=null)]",
+        "[interlude(channel=-0.6)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(renderer.interludeCalls.map((input) => input.channel)).toEqual([
+      2, 2, 2, 3, 1, 0,
+    ]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail: "interlude channel is invalid: -1",
+        type: "invalid_parameter",
+      }),
+    ]);
+  });
+
+  it.each([
+    { raw: "1", type: 1 },
+    { raw: '" +02 "', type: 2 },
+    { raw: '"uichar"', type: 1 },
+    { raw: '"bg"', type: 2 },
+    { raw: '"char"', type: 3 },
+    { raw: "2.5", type: 0 },
+    { raw: '"1.0"', type: 0 },
+    { raw: '"1e0"', type: 0 },
+    { raw: '" bg "', type: 0 },
+    { raw: '"CHAR"', type: 0 },
+    { raw: "2147483649", type: 0 },
+  ])(
+    "parses interlude type=$raw with Int32.TryParse",
+    async ({ raw, type }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([`[interlude(channel=3,type=${raw})]`, '[name="A"]ok']),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+
+      expect(renderer.interludeCalls).toEqual([
+        expect.objectContaining({ type }),
+      ]);
+    },
+  );
+
+  it.each([
+    { raw: "1", expected: true },
+    { raw: "-2", expected: true },
+    { raw: '" TRUE "', expected: true },
+    { raw: "0", expected: false },
+    { raw: '"fAlSe"', expected: false },
+    { raw: "null", expected: false },
+  ])(
+    "converts interlude boolean parameters from $raw",
+    async ({ raw, expected }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[interlude(channel=3,block=${raw},clear=${raw},switch=${raw})]`,
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+
+      expect(renderer.interludeCalls).toEqual([
+        expect.objectContaining({
+          block: expected,
+          clear: expected,
+          switchOn: expected,
+        }),
+      ]);
+    },
+  );
 
   it("maps cgitem tween parameters and hidecgitem keys with native defaults", async () => {
     const renderer = new FakeRenderer();

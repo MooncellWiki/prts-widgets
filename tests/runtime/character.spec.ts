@@ -220,40 +220,96 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("maps charactercutin slot layout keys and scales fadetime by animateRatio", async () => {
+  it.each([
+    { style: "2", expected: "horiz_expand_left2right" },
+    { style: '"7"', expected: 7 },
+    { style: "-1", expected: -1 },
+    { style: '"horiz_expand_right2left,vert_expand_center"', expected: 7 },
+    { style: '" +2 "', expected: "horiz_expand_left2right" },
+    { style: '"horiz_expand_left2right"', expected: "horiz_expand_left2right" },
+    { style: '"HORIZ_EXPAND_LEFT2RIGHT"', expected: "fade" },
+    {
+      style: '"horiz_expand_center, horiz_expand_left2right"',
+      expected: "horiz_expand_right2left",
+    },
+  ])("parses charactercutin fadestyle=$style", async ({ style, expected }) => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
-        '[charactercutin(widgetID="1",name="avg_npc_1#1",fadetime=0.4,offsetx=-300,offsety=25,width=220,zoom=1.5,povX=-50,povY=30,charOffsetX=5,charOffsetY=-10,fadestyle="horiz_expand_left2right",block=true)]',
+        `[charactercutin(widgetID="1",name="avg_npc_1",fadestyle=${style})]`,
         '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
-      { animateRatio: 0.5 },
     );
 
     await runtime.start();
 
-    expect(renderer.characterCutinCalls).toEqual([
-      {
-        block: true,
-        characterKey: "avg_npc_1",
-        characterMissing: false,
-        charOffsetX: 5,
-        charOffsetY: -10,
-        expression: "1$1",
-        fadeMs: 200,
-        fadeStyle: "horiz_expand_left2right",
-        offsetX: -300,
-        offsetY: 25,
-        povX: -50,
-        povY: 30,
-        widgetId: "1",
-        width: 220,
-        zoom: 1.5,
-      },
-    ]);
+    expect(renderer.characterCutinCalls).toHaveLength(1);
+    expect(renderer.characterCutinCalls[0]?.fadeStyle).toBe(expected);
   });
+
+  it.each([
+    { args: "", expected: { align: "horizontal" } },
+    {
+      args: ',align="VERTICAL",background="bg_test",backgroundOffset=32',
+      expected: {
+        align: "vertical",
+        backgroundKey: "bg_test",
+        backgroundOffset: 32,
+      },
+    },
+    {
+      args: ",align=1,backgroundoffset=100",
+      expected: { align: "vertical", backgroundOffset: undefined },
+    },
+    {
+      args: ',align="HORIZONTAL, VERTICAL",backgroundOffset="1,000"',
+      expected: { align: "vertical", backgroundOffset: 1000 },
+    },
+    { args: ',align="vertical"', expected: { align: "horizontal" } },
+    { args: ',align=" +2 "', expected: { align: 2 } },
+    { args: ",align=-1", expected: { align: -1 } },
+    { args: ',align="2147483648"', expected: { align: "horizontal" } },
+  ])(
+    "maps cut-in layout keys and scales fadetime with args '$args'",
+    async ({ args, expected }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[charactercutin(widgetID="1",name="avg_npc_1#1",fadetime=0.4,offsetx=-300,offsety=25,width=220,zoom=1.5,povX=-50,povY=30,charOffsetX=5,charOffsetY=-10,fadestyle="horiz_expand_left2right",block=true${args})]`,
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+        { animateRatio: 0.5 },
+      );
+
+      await runtime.start();
+
+      expect(renderer.characterCutinCalls).toEqual([
+        {
+          ...expected,
+          block: true,
+          characterKey: "avg_npc_1",
+          characterMissing: false,
+          characterRef: "avg_npc_1#1",
+          charOffsetX: 5,
+          charOffsetY: -10,
+          expression: "1$1",
+          fadeMs: 200,
+          fadeStyle: "horiz_expand_left2right",
+          offsetX: -300,
+          offsetY: 25,
+          povX: -50,
+          povY: 30,
+          widgetId: "1",
+          width: 220,
+          zoom: 1.5,
+        },
+      ]);
+    },
+  );
 
   it("leaves omitted charactercutin layout keys undefined for the panel to resolve", async () => {
     const renderer = new FakeRenderer();
@@ -280,6 +336,37 @@ describe("StoryRuntime", () => {
       width: undefined,
       zoom: undefined,
     });
+  });
+
+  it("converts cut-in widths with Convert.ToInt32 and reads boxed booleans", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=220.5,block=1)]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=221.5,block=" TRUE ")]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=220.6,block=-2)]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width="221",block="FaLsE")]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=null,block=0)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.characterCutinCalls.map(({ block, width }) => ({
+        block,
+        width,
+      })),
+    ).toEqual([
+      { block: true, width: 220 },
+      { block: true, width: 222 },
+      { block: true, width: 221 },
+      { block: false, width: 221 },
+      { block: false, width: 0 },
+    ]);
   });
 
   it("keeps charactercutin block timing when the name cannot be resolved", async () => {
@@ -1028,7 +1115,7 @@ describe("StoryRuntime refs that make native SetImage throw", () => {
     });
   });
 
-  it("drops charactercutin and the interlude avatar instead of a fallback sprite", async () => {
+  it("passes a cutin hub error to the allocated slot and defers interlude resolution to its consumer", async () => {
     const { renderer, runtime, warnings } = run([
       '[charactercutin(widgetID="1",name="avg_slot_1#4$1")]',
       '[interlude(channel=1,type=3,slot="m",name="avg_slot_1#4")]',
@@ -1036,11 +1123,15 @@ describe("StoryRuntime refs that make native SetImage throw", () => {
 
     await runtime.start();
 
-    expect(warnings).toEqual([
-      nativeThrows("avg_slot_1#4$1", "charactercutin"),
-      nativeThrows("avg_slot_1#4", "interlude"),
+    expect(warnings).toEqual([]);
+    expect(renderer.characterCutinCalls).toEqual([
+      expect.objectContaining({
+        characterRef: "avg_slot_1#4$1",
+        invalidCharacterRef: true,
+      }),
     ]);
-    expect(renderer.characterCutinCalls).toEqual([]);
-    expect(renderer.interludeCalls).toEqual([]);
+    expect(renderer.interludeCalls).toEqual([
+      expect.objectContaining({ name: "avg_slot_1#4", type: 3 }),
+    ]);
   });
 });

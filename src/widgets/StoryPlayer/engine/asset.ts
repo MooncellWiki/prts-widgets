@@ -13,6 +13,16 @@ const TORAPPU_ORIGIN = "https://torappu.prts.wiki";
 
 export type StoryAssetFamily = "background" | "image" | "cutin";
 
+/** _StripResPath in the cutin collector and dialog (2791 @ 0x1841B5960, 0x1815007C0). */
+export function cutinPortraitResourceKey(name: string): string {
+  return /^[\p{L}\p{Mn}\p{Nd}\p{Pc}]*/u.exec(name)![0];
+}
+
+/** ABResourceManager._PreprocessAssetPath (2791 @ 0x183E80A30). */
+export function nativeBundleKey(name: string): string {
+  return name.toLowerCase().replace(/\.[^./\\:]+$/u, "");
+}
+
 const FAMILY_FOLDER: Record<StoryAssetFamily, string> = {
   background: "background",
   image: "images",
@@ -46,11 +56,15 @@ export function resolveAssetUrl(raw: string): string {
 export function resolveStoryAssetByKey(
   rawKey: string,
   family: StoryAssetFamily,
+  useBundlePath = family === "cutin",
 ): string | null {
-  const key = normalizeImageKey(rawKey);
+  const key = useBundlePath
+    ? nativeBundleKey(rawKey)
+    : normalizeImageKey(rawKey);
   if (!key) return null;
 
-  return `${TORAPPU_ORIGIN}/assets/avg/${FAMILY_FOLDER[family]}/${key}.png`;
+  const resourcePath = useBundlePath ? encodePathSegments(key) : key;
+  return `${TORAPPU_ORIGIN}/assets/avg/${FAMILY_FOLDER[family]}/${resourcePath}.png`;
 }
 
 export function resolveStoryCharacterAssetByKey(rawKey: string): string | null {

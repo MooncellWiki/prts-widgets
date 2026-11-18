@@ -5,7 +5,7 @@ import {
   Container,
   type Graphics,
   NineSliceSprite,
-  type Sprite,
+  Sprite,
   Texture,
   TextureSource,
   Ticker,
@@ -25,6 +25,8 @@ import {
   FakeRenderer,
 } from "../helpers/runtimeFakes";
 
+import type { Context } from "../../src/widgets/StoryPlayer/context";
+import type { CharacterArt } from "../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
 import type { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../src/widgets/StoryPlayer/engine/types";
@@ -88,11 +90,21 @@ function createShowItemRenderer(ticker?: Ticker) {
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+function cutinViews(layer: Container): Container[] {
+  return layer.children
+    .flatMap((child) =>
+      child.label === "Channel_Container" ? child.children : [child],
+    )
+    .filter((view) => view.visible);
+}
+
 async function createRenderedPlayback(
   script: string[],
   draw: (layers: LayerGraph) => void,
+  characters?: Context["linkMap"],
 ) {
   const context = createContext(script);
+  Object.assign(context.linkMap, characters);
   const urls = new Set<string>();
   const load = vi.spyOn(Assets, "load").mockImplementation(async (assets) => {
     const textures: Record<string, Texture> = {};
@@ -132,6 +144,313 @@ async function createRenderedPlayback(
     runtime,
   };
 }
+
+describe("Cut-in portrait resolution", () => {
+  it("uses the resolved background sprite's PPU when the interlude names a file extension", async () => {
+    const { app, runtime, renderer, destroy } = await createRenderedPlayback(
+      [
+        '[interlude(channel=1,maskid="ui_cutin_mask_horizon")]',
+        '[interlude(channel=1,type=2,name="BG_TEST.PNG")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    renderer.context.backgroundPpuMap = { bg_test: 50 };
+    try {
+      const started = runtime.start();
+      app.ticker.update(16);
+      await started;
+      const { sprite } = renderer.interludePanel.channels
+        .get(1)
+        .state.elements.get("\u0000bg");
+      expect([sprite.width, sprite.height]).toEqual([64, 64]);
+    } finally {
+      destroy();
+    }
+  });
+
+  it.each(["charactercutin", "interlude"])(
+    "stops at a sprite hub bounds error only when %s consumes the portrait",
+    async (command) => {
+      const ref = "avg_npc_1#2$1";
+      const { app, runtime, renderer, destroy } = await createRenderedPlayback(
+        [
+          `[interlude(channel=1,maskid="missing",type=3,name="${ref}")]`,
+          `[interlude(channel=1,clear=true,type=3,name="${ref}")]`,
+          '[interlude(channel=2,maskid="missing")]',
+          command === "charactercutin"
+            ? `[charactercutin(widgetID="A",name="${ref}")]`
+            : `[interlude(channel=2,type=3,name="${ref}")]`,
+          '[name="A"]unreachable',
+        ],
+        () => {},
+        { avg_npc_1: { ...createContext([]).linkMap.avg_npc_1!, bodies: [1] } },
+      );
+      try {
+        const started = runtime.start();
+        app.ticker.update(16);
+        await started;
+        expect(runtime.getState()).toBe("error");
+        expect(renderer.interludePanel.channels.has(1)).toBe(false);
+        expect(renderer.interludePanel.channels.has(2)).toBe(true);
+        expect(renderer.cutinPanel.slots.has("A")).toBe(
+          command === "charactercutin",
+        );
+      } finally {
+        destroy();
+      }
+    },
+  );
+});
+
+describe("Cut-in sibling order", () => {
+  it("recreates the empty controller before the new segment's first character slot", async () => {
+    const { app, renderer, runtime, destroy } = await createRenderedPlayback(
+      [
+        '[charactercutin(widgetID="old",name="avg_npc_1",fadestyle="7",block=true)]',
+        '[cgitem(image="before_skip")]',
+        "[SkipToThis]",
+        '[charactercutin(widgetID="new",name="avg_npc_1")]',
+        '[interlude(channel=3,maskid="ui_cutin_mask_horizon")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    let skipping: Promise<void> | undefined;
+    try {
+      const layer = renderer.layers.cutins;
+      app.ticker.update(4000);
+      expect(layer.children).toEqual([
+        renderer.interludeLayer,
+        renderer.cutinPanel.slots.get("old").root,
+      ]);
+      expect(renderer.layers.cgItems.children).toHaveLength(0);
+      skipping = runtime.skipNode();
+      await flushAsync();
+      app.ticker.update(4016);
+      await skipping;
+      const [controller, slot] = layer.children;
+      expect(controller.children).toEqual([
+        renderer.interludePanel.channels.get(3).state.root,
+      ]);
+      expect(slot).toBe(renderer.cutinPanel.slots.get("new").root);
+    } finally {
+      destroy();
+      await Promise.all([started, skipping]);
+    }
+  });
+
+  it.each([
+    '[interlude(channel=2,maskid="ui_cutin_mask_horizon")]',
+    "[interlude(channel=-1)]",
+    "[interlude(clear=true)]",
+  ])(
+    "keeps the controller below both character slots when the first interlude is %s",
+    async (first) => {
+      const { renderer, runtime, destroy } = await createRenderedPlayback(
+        [
+          '[charactercutin(widgetID="back",name="avg_npc_1")]',
+          first,
+          '[charactercutin(widgetID="front",name="avg_npc_1")]',
+          '[interlude(channel=2,maskid="ui_cutin_mask_horizon")]',
+          '[interlude(channel=3,maskid="ui_cutin_mask_horizon")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        const layer = renderer.layers.cutins;
+        const controller = layer.getChildByLabel("Channel_Container")!;
+        expect(layer.children).toEqual([
+          controller,
+          renderer.cutinPanel.slots.get("back").root,
+          renderer.cutinPanel.slots.get("front").root,
+        ]);
+        expect(controller.children).toEqual(
+          [2, 3].map(
+            (id) => renderer.interludePanel.channels.get(id).state.root,
+          ),
+        );
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+});
+
+describe("Interlude background rendering", () => {
+  it.each([
+    { key: "64_G16_jindadike_l", ppu: 80, width: 1280, height: 720 },
+    { key: "33_g4_srctheater", ppu: 100, width: 1024, height: 576 },
+    { key: "77_g4_classroom", ppu: undefined, width: 1024, height: 576 },
+  ])(
+    "sizes $key to $width x $height independently of the interlude scale tween",
+    async ({ key, ppu, width, height }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[interlude(channel=3,maskid="ui_cutin_mask_horizon",size="1300,360",style=3)]',
+          `[interlude(channel=3,type=2,name="${key}",sfrom="1.5,1.25",sto="1.25,1",sduration=0.032,block=true)]`,
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      renderer.context.backgroundPpuMap =
+        ppu === undefined ? {} : { [key.toLowerCase()]: ppu };
+      renderer.textureForImageKey = () =>
+        new Texture({
+          source: new TextureSource({ height: 576, width: 1024 }),
+        });
+      const started = runtime.start();
+      try {
+        app.ticker.update(16);
+        const { node, sprite } = renderer.interludePanel.channels
+          .get(3)
+          .state.elements.get("\u0000bg");
+        expect([sprite.width, sprite.height]).toEqual([width, height]);
+        expect(node.scale.x).toBeCloseTo(1.3125);
+        expect(node.scale.y).toBeCloseTo(1.0625);
+
+        app.ticker.update(32);
+        expect([sprite.width, sprite.height]).toEqual([width, height]);
+        expect([node.scale.x, node.scale.y]).toEqual([1.25, 1]);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+});
+
+describe("Interlude avatar rendering", () => {
+  it.each([
+    {
+      base: "avg_npc_222",
+      ref: "avg_npc_222",
+      pos: { x: 0, y: 200 },
+      size: 1220,
+      sheet: 1024,
+      move: "-250,0",
+      maskId: "group_interclude_vertical_common",
+      center: { x: 390, y: 520 },
+      faceRect: undefined,
+    },
+    {
+      base: "avg_npc_1983_1",
+      ref: "avg_npc_1983_1#1$1",
+      pos: { x: -200, y: 175 },
+      size: 960,
+      sheet: 1255,
+      move: "-350,-50",
+      maskId: "group_interclude_vertical_common",
+      center: { x: 90, y: 595 },
+      faceRect: { h: 147, w: 122, x: 848, y: 75 },
+    },
+    {
+      base: "avg_npc_1983_1",
+      ref: "avg_npc_1983_1#1$1",
+      pos: { x: -200, y: 175 },
+      size: 960,
+      sheet: 1255,
+      move: "-350,-50",
+      maskId: "interlude_dialog_left",
+      center: { x: 0, y: 520 },
+      faceRect: { h: 147, w: 122, x: 848, y: 75 },
+    },
+  ])(
+    "renders $base with 2791 portrait art in $maskId",
+    async ({ base, ref, pos, size, sheet, move, center, faceRect, maskId }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          `[interlude(channel=3,maskid="${maskId}",offset="-250,0")]`,
+          `[interlude(channel=3,type=3,name="${ref}",pfrom="${move}",pto="${move}",duration=0,block=true)]`,
+          '[name="A"]ok',
+        ],
+        () => {},
+        {
+          [base]: {
+            array: faceRect
+              ? [{ alias: "", face: "face", group: 0, name: "1$1" }]
+              : [{ alias: "", group: -1, image: "body", name: base }],
+            groups: faceRect
+              ? [{ base: "body", faceRect, mode: "face_overlay" }]
+              : [],
+            pos,
+            size: { x: size, y: size },
+          },
+        },
+      );
+      const createTexture = (width: number, height: number) => {
+        const resource = document.createElement("canvas");
+        resource.width = width;
+        resource.height = height;
+        return new Texture({ source: new TextureSource({ resource }) });
+      };
+      const body = createTexture(sheet, sheet);
+      const face = createTexture(122, 147);
+      renderer.textureForCharacterKey = (key: string) =>
+        key === "body" ? body : face;
+      const drawImage = vi.fn();
+      const context = vi
+        .spyOn(
+          HTMLCanvasElement.prototype as {
+            getContext: (kind: "2d") => CanvasRenderingContext2D | null;
+          },
+          "getContext",
+        )
+        .mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+      const findSprite = (node: Container): Sprite | undefined => {
+        if (node instanceof Sprite) return node.visible ? node : undefined;
+        for (const child of node.children) {
+          const sprite = findSprite(child);
+          if (sprite) return sprite;
+        }
+      };
+      const started = runtime.start();
+      try {
+        app.ticker.update(16);
+        const channel = cutinViews(renderer.layers.cutins)[0]!;
+        const charScale = channel.children[1].children[1];
+        const dialog =
+          renderer.interludePanel.channels.get(3).state.template.dialog;
+        const sprite: Sprite | undefined =
+          dialog?.charImage ?? findSprite(charScale);
+        const position = dialog
+          ? sprite?.position
+          : sprite?.getGlobalPosition();
+        const renderedSize = dialog ? 1380 : size;
+        expect(sprite?.visible).toBe(true);
+        expect(position).toMatchObject(center);
+        expect(sprite?.width).toBeCloseTo(renderedSize);
+        expect(sprite?.height).toBeCloseTo(renderedSize);
+        const expectedFace = faceRect
+          ? [
+              [
+                face.source.resource,
+                0,
+                0,
+                122,
+                147,
+                faceRect.x,
+                faceRect.y,
+                faceRect.w,
+                faceRect.h,
+              ],
+            ]
+          : [];
+        expect(drawImage.mock.calls.slice(1)).toEqual(expectedFace);
+      } finally {
+        destroy();
+        context.mockRestore();
+        body.destroy(true);
+        face.destroy(true);
+        await started;
+      }
+    },
+  );
+});
 
 describe("CG item rendering", () => {
   const showLines = [
@@ -977,6 +1296,287 @@ describe("Displayable and focus frame order", () => {
       await started;
     }
   });
+
+  it.each([
+    [
+      "blocking character cut-in",
+      [
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0.032,block=true)]',
+      ],
+      [0, 1],
+    ],
+    [
+      "zero-duration character cut-in",
+      ['[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0,block=true)]'],
+      [1, 1],
+    ],
+    [
+      "character cut-in with a numeric block flag",
+      [
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0.032,block=1)]',
+      ],
+      [0, 1],
+    ],
+    ...["fade", "horiz_expand_center", "horiz_expand_left2right"].map<
+      [string, string[], number[]]
+    >((style) => [
+      `overlapping ${style} hides after the slot is recycled`,
+      [
+        `[charactercutin(widgetID="1",name="avg_npc_1",fadestyle="${style}",fadetime=0)]`,
+        '[charactercutin(widgetID="1",fadetime=0.016)]',
+        '[charactercutin(widgetID="1",fadetime=0.032,block=true)]',
+      ],
+      [0, 1],
+    ]),
+    [
+      "parallel interlude position and alpha tweens",
+      [
+        '[interlude(channel=3,maskid="group_interclude_square_common")]',
+        '[interlude(channel=3,type=2,name="bg_test",pfrom="0,0",pto="10,0",duration=0.032,aduration=0.016,block=true)]',
+      ],
+      [0, 1],
+    ],
+    [
+      "interlude movement from a malformed nonempty vector",
+      [
+        '[interlude(channel=3,maskid="group_interclude_square_common")]',
+        '[interlude(channel=3,type=2,pfrom="bad",pto="10,0",duration=0.032,block=true)]',
+      ],
+      [0, 1],
+    ],
+    [
+      "interlude with a numeric block flag",
+      [
+        '[interlude(channel=3,maskid="group_interclude_square_common")]',
+        '[interlude(channel=3,type=2,name="bg_test",pfrom="0,0",pto="10,0",duration=0.032,block=1)]',
+      ],
+      [0, 1],
+    ],
+  ])(
+    "draws the next command in the completion frame of %s",
+    async (_, commands, expected) => {
+      const draws: number[] = [];
+      const { app, destroy, runtime } = await createRenderedPlayback(
+        [...commands, '[cgitem(image="after")]', '[name="A"]ok'],
+        ({ cgItems }) => draws.push(cgItems.children.length),
+      );
+      const started = runtime.start();
+      try {
+        expect(runtime.getDisplayedLineIndex()).toBeNull();
+        app.ticker.update(16);
+        app.ticker.update(32);
+        expect(draws).toEqual(expected);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it.each(["cached", "uncached"] as const)(
+    "keeps a blocking interlude sequence waiting after recycle with %s art",
+    async (cache) => {
+      const draws: Array<[number, number]> = [];
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+          "[interlude(channel=3,clear=true,tsduration=0.016)]",
+          '[interlude(channel=3,type=2,name="bg_test",aduration=0.064,block=true)]',
+          '[cgitem(image="before_skip")]',
+          "[SkipToThis]",
+          '[cgitem(image="after_skip")]',
+          '[name="A"]ok',
+        ],
+        ({ cutins, cgItems }) =>
+          draws.push([cutinViews(cutins).length, cgItems.children.length]),
+      );
+      const pending = Promise.withResolvers<Texture>();
+      const textureLoad =
+        cache === "cached"
+          ? renderer.textureForInterlude.bind(renderer)
+          : () => pending.promise;
+      const load = vi
+        .spyOn(renderer, "textureForInterlude")
+        .mockImplementationOnce(textureLoad);
+      const started = runtime.start();
+      let skipping: Promise<void> | undefined;
+      try {
+        expect(load).toHaveBeenCalledTimes(1);
+        app.ticker.update(16);
+        expect(draws).toEqual([[0, 0]]);
+
+        pending.resolve(Texture.WHITE);
+        await flushAsync();
+        app.ticker.update(32);
+        app.ticker.update(96);
+        expect(draws).toEqual([
+          [0, 0],
+          [0, 0],
+          [0, 0],
+        ]);
+
+        skipping = runtime.skipNode();
+        await flushAsync();
+        app.ticker.update(112);
+        await skipping;
+        expect(draws.at(-1)).toEqual([0, 1]);
+      } finally {
+        pending.resolve(Texture.WHITE);
+        load.mockRestore();
+        destroy();
+        await Promise.all([started, skipping]);
+      }
+    },
+  );
+
+  it.each([
+    { key: "tsduration", style: 0, secondDuration: 0.016, cgCount: 1 },
+    { key: "aduration", style: 1, secondDuration: 0.016, cgCount: 1 },
+    { key: "tsduration", style: 0, secondDuration: 0.032, cgCount: 0 },
+    { key: "aduration", style: 1, secondDuration: 0.032, cgCount: 0 },
+  ])(
+    "draws $cgCount CGs after overlapping clears with $key=$secondDuration",
+    async ({ key, style, secondDuration, cgCount }) => {
+      const draws: Array<[number, number]> = [];
+      const clear = `interlude(channel=3,clear=true,style=${style}`;
+      const { app, destroy, runtime } = await createRenderedPlayback(
+        [
+          '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+          `[${clear},${key}=0.016)]`,
+          `[${clear},${key}=${secondDuration},block=true)]`,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        ({ cutins, cgItems }) =>
+          draws.push([cutinViews(cutins).length, cgItems.children.length]),
+      );
+      const started = runtime.start();
+      try {
+        app.ticker.update(16);
+        app.ticker.update(32);
+        // Both fades can complete in the recycling update. On the next frame
+        // the template is destroyed and any remaining mask tween is cancelled.
+        expect(draws).toEqual([
+          [0, cgCount],
+          [0, cgCount],
+        ]);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("keeps an interlude clear-all blocked until a segment jump", async () => {
+    const draws: Array<[number, number]> = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+        '[interlude(channel=4,maskid="interlude_dialog_left")]',
+        "[interlude(clear=true,block=true,tsduration=0.016,aduration=0.032)]",
+        '[cgitem(image="before_skip")]',
+        "[SkipToThis]",
+        '[cgitem(image="after_skip")]',
+        '[name="A"]ok',
+      ],
+      ({ cutins, cgItems }) =>
+        draws.push([cutinViews(cutins).length, cgItems.children.length]),
+    );
+    const started = runtime.start();
+    let skipping: Promise<void> | undefined;
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(draws).toEqual([
+        [2, 0],
+        [2, 0],
+      ]);
+
+      skipping = runtime.skipNode();
+      await flushAsync();
+      app.ticker.update(48);
+      await skipping;
+      expect(draws.at(-1)).toEqual([0, 1]);
+    } finally {
+      destroy();
+      await Promise.all([started, skipping]);
+    }
+  });
+
+  it.each([
+    {
+      command: "charactercutin",
+      old: '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=1,block=true)]',
+      replacement:
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0,block=false)]',
+    },
+    {
+      command: "interlude",
+      old: '[interlude(channel=3,type=3,name="avg_npc_1",maskid="interlude_dialog_left",block=true)]',
+      replacement:
+        '[interlude(channel=3,type=3,name="avg_npc_1",maskid="interlude_dialog_left",block=false)]',
+    },
+  ])(
+    "can skip an uncached $command and reuse the same slot after the jump",
+    async ({ old, replacement }) => {
+      const draws: Array<[number, number]> = [];
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          old,
+          "[SkipToThis]",
+          replacement,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        ({ cutins, cgItems }) =>
+          draws.push([cutinViews(cutins).length, cgItems.children.length]),
+      );
+      const pending = Promise.withResolvers<CharacterArt>();
+      const texture = new Texture({ label: "late art" });
+      const hasLateArt = (node: Container): boolean =>
+        (node instanceof Sprite && node.texture === texture) ||
+        node.children.some(hasLateArt);
+      const lateArt = {
+        acquire: vi.fn(() => ({ texture })),
+        height: texture.height,
+        pos: { x: 0, y: 0 },
+        width: texture.width,
+      };
+      const load = vi
+        .spyOn(renderer, "loadCharacterArt")
+        .mockReturnValueOnce(pending.promise);
+      const started = runtime.start();
+      const [oldRoot] = cutinViews(renderer.layers.cutins);
+      let skipping: Promise<void> | undefined;
+      try {
+        expect(oldRoot.destroyed).toBe(false);
+        skipping = runtime.skipNode();
+        expect(oldRoot.destroyed).toBe(true);
+        await flushAsync();
+        app.ticker.update(16);
+        await skipping;
+        expect(load).toHaveBeenCalledTimes(2);
+        expect(draws).toEqual([[1, 1]]);
+        const [replacementRoot] = cutinViews(renderer.layers.cutins);
+
+        pending.resolve(lateArt);
+        await flushAsync();
+        app.ticker.update(32);
+        expect(cutinViews(renderer.layers.cutins)).toEqual([replacementRoot]);
+        expect(hasLateArt(replacementRoot)).toBe(false);
+        expect(lateArt.acquire).not.toHaveBeenCalled();
+        expect(draws).toEqual([
+          [1, 1],
+          [1, 1],
+        ]);
+      } finally {
+        pending.resolve(lateArt);
+        load.mockRestore();
+        destroy();
+        await Promise.all([started, skipping]);
+      }
+    },
+  );
 
   it("continues from a media event on the update after frame end", async () => {
     const draws: number[] = [];

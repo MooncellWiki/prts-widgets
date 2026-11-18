@@ -22,11 +22,14 @@ import {
   SLIDE_MASK_TEXTURE_URL,
 } from "../../assets";
 import {
+  nativeBundleKey,
   resolveAssetUrl,
   resolveStoryAssetByKey,
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
+import { describeCharacterPortrait } from "../characterPortrait";
+import { resolveNativeCharacterRef } from "../characterRef";
 import {
   browserAnimationClock,
   createExecutionHandle,
@@ -70,6 +73,11 @@ import {
 } from "../types";
 
 import { SceneEffectManager } from "./SceneEffectManager";
+import {
+  CharacterArtLoader,
+  type CharacterArt,
+  type CharacterArtLoad,
+} from "./characters/CharacterArt";
 import { guardClaimedClicks } from "./core/ClickClaim";
 import {
   dotweenDefaultEase,
@@ -90,10 +98,7 @@ import { TweenRunner, type TweenRunOptions } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
 import { CgItemView } from "./panels/CgItemView";
-import {
-  CharacterCutinPanel,
-  type CutinCharacterArt,
-} from "./panels/CharacterCutinPanel";
+import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
 import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
 import { InterludePanel } from "./panels/InterludePanel";
@@ -248,24 +253,6 @@ function characterSlotZoom(
   };
 }
 
-interface FaceOverlayCacheEntry {
-  /** Live visuals drawing this bake; only unreferenced bakes are evicted. */
-  refs: number;
-  texture: Texture;
-}
-
-/**
- * Soft cap on cached face-overlay bakes. Each one is a full base-sized
- * canvas plus its GPU upload (CDN bases run 1024^2-1484^2, ~4-9 MB RGBA), so
- * the cache cannot grow with the number of expressions a story shows. Three
- * slots with an incoming and an outgoing visual each pin at most six.
- */
-const FACE_OVERLAY_CACHE_LIMIT = 8;
-
-function faceOverlayCacheKey(baseKey: string, faceKey: string): string {
-  return `${baseKey}|${faceKey}`;
-}
-
 /** Raw float color channel to the 8-bit tint write (the only clamp point). */
 function tintChannel(value: number): number {
   return Math.round(clamp01(value) * 255);
@@ -349,7 +336,10 @@ const CURTAIN_CORNER_HINGES: Readonly<
  * 预加载由 preload.ts 把该 URL 加入预加载集来预热 pixi Assets 缓存。
  */
 
-interface CharacterBuiltVisual {
+interface CharacterBuiltVisual extends Pick<
+  CharacterArt,
+  "width" | "height" | "pos"
+> {
   sourceHeight: number;
   sourceWidth: number;
   visual: Container;
@@ -465,13 +455,13 @@ export class PixiStoryRenderer implements StoryRenderer {
    * 555→556），这里按 max(旧 deadline, 自身 duration) 近似，不建模上锁。
    */
   private readonly characterSlotSeqDeadlines = new Map<string, number>();
-  private readonly faceOverlayTextures = new Map<
-    string,
-    FaceOverlayCacheEntry
-  >();
-  /** Which cached bake each character visual draws, for refcounting. */
-  private readonly faceOverlayVisualKeys = new WeakMap<Container, string>();
+  private readonly characterArt = new CharacterArtLoader((key) =>
+    this.textureForCharacterKey(key),
+  );
   private readonly cutinLayer = this.layers.cutins;
+  private readonly interludeLayer = new Container({
+    label: "Channel_Container",
+  });
   private readonly cutinPanel: CharacterCutinPanel;
 
   private readonly curtainLayer = this.layers.curtains;
@@ -604,18 +594,36 @@ export class PixiStoryRenderer implements StoryRenderer {
       tween: (...args) => this.updatePhaseTweenRunner.run(...args),
     });
     this.decisionView = new DecisionView(this.uiLayer);
+    // RunStory calls AVGCharacterCutinPanel.OnReset before its first command
+    // (2791 @ 0x18416DD17). The controller is the first child of the slot parent.
+    this.cutinLayer.addChild(this.interludeLayer);
     this.interludePanel = new InterludePanel(
-      this.cutinLayer,
+      this.interludeLayer,
       (input) => this.textureForInterlude(input),
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+      (key, texture) =>
+        this.nativeBackgroundRect(nativeBundleKey(key), texture, "texture"),
+      ({ name, avatarCharacterKey, avatarExpression }) => {
+        // Regular OnCutinBegin and OnCutinEnd never look up the avatar.
+        if (avatarCharacterKey && avatarExpression)
+          return this.loadCharacterArt(avatarCharacterKey, avatarExpression);
+        const ref = resolveNativeCharacterRef(this.context.linkMap, name);
+        if (ref.kind === "native_throws")
+          throw new Error(
+            `interlude avatar exceeds its sprite hub bounds: ${name}`,
+          );
+        return ref.kind === "found"
+          ? this.loadCharacterArt(ref.selection.base, ref.selection.expression)
+          : null;
+      },
+      this.updatePhaseTweenRunner,
       onWarning,
     );
     this.cutinPanel = new CharacterCutinPanel(
       this.cutinLayer,
-      (input) => this.textureForCutinCharacter(input),
-      (durationMs, update, complete) =>
-        this.tween(durationMs, update, complete),
+      (input) => this.loadCharacterArt(input.characterKey, input.expression),
+      (key) => this.textureForImageKey(key, "background", true),
+      () => this.loadDialogFrameTexture(),
+      this.updatePhaseTweenRunner,
     );
     this.animTextPanel = new AnimTextPanel(
       this.layers.animTexts,
@@ -673,6 +681,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.videoPanel.mount(host);
 
     this.app = app;
+    this.onFrameUpdate(({ deltaMs }) =>
+      this.interludePanel.advanceTime(deltaMs),
+    );
     // Decision options claim their own press (see ClickClaim): only a click
     // pressed on no interactive canvas object reaches the host's advance.
     this.releaseClickGuard = guardClaimedClicks(
@@ -772,7 +783,9 @@ export class PixiStoryRenderer implements StoryRenderer {
   destroy(): void {
     this.stopVideo();
     this.decisionView.destroy();
+    this.cutinPanel.destroy();
     this.interludePanel.destroy();
+    this.interludeLayer.destroy();
     this.animTextPanel.destroy();
     this.avgDisplayPanel.destroy();
     this.spellStickerPanel.destroy();
@@ -809,14 +822,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.imageRoot = null;
     this.imageLayer.removeChildren();
     this.layers.showItems.removeChildren();
-    this.cutinPanel.destroy();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
     this.characterSlots.clear();
     this.characterSlotSeqDeadlines.clear();
-    for (const entry of this.faceOverlayTextures.values())
-      entry.texture.destroy(true);
-    this.faceOverlayTextures.clear();
     for (const state of this.curtains.values()) this.disposeCurtainState(state);
     this.curtains.clear();
     this.resizeObserver?.disconnect();
@@ -835,6 +844,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.tweenUpdates.clear();
     for (const update of remainingTweens) update(0);
     app?.destroy(true, { children: true });
+    this.characterArt.destroy();
     this.dialogView.destroy();
     this.subtitleView.destroy();
     this.videoPanel.destroy();
@@ -1416,16 +1426,19 @@ export class PixiStoryRenderer implements StoryRenderer {
     else void run;
   }
 
-  async clearCharacterCutin(widgetId?: string): Promise<void> {
+  clearCharacterCutin(widgetId?: string): void {
     this.cutinPanel.clear(widgetId);
   }
 
-  async clearInterludes(): Promise<void> {
-    await this.interludePanel.clearAll();
+  clearInterludes(): void {
+    this.interludePanel.clearAll();
   }
 
-  async setInterlude(input: InterludeInput): Promise<void> {
-    await this.interludePanel.run(input);
+  setInterlude(
+    input: InterludeInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.interludePanel.run(input, onComplete);
   }
 
   /**
@@ -1435,57 +1448,30 @@ export class PixiStoryRenderer implements StoryRenderer {
    * (show / SlotUpdate / hide) live in CharacterCutinPanel together with the
    * `AVGCharacterCutinSlot` Show/SlotUpdate/Hide geometry.
    */
-  async setCharacterCutin(input: CharacterCutinInput): Promise<void> {
+  setCharacterCutin(
+    input: CharacterCutinInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
     if (!this.app) return;
-    await this.cutinPanel.run(input);
+    return this.cutinPanel.run(input, onComplete);
   }
 
-  private async textureForCutinCharacter(
-    input: CharacterCutinInput,
-  ): Promise<CutinCharacterArt | null> {
-    const base = input.characterKey;
-    const expression = input.expression;
+  private loadCharacterArt(
+    base: string | undefined,
+    expression: string | undefined,
+  ): CharacterArtLoad {
     if (!base || !expression) return null;
-
     const link = this.context.linkMap[base];
     if (!link) {
       this.onWarning?.(`missing character base: ${base}`);
       return null;
     }
-
-    const item = link.array.find((entry) => entry.name === expression);
-    if (!item) {
-      this.onWarning?.(`missing character expression: ${base}#${expression}`);
+    const portrait = describeCharacterPortrait(link, expression);
+    if (!portrait) {
+      this.onWarning?.(`invalid character expression: ${base}#${expression}`);
       return null;
     }
-
-    let assetKey: string | null = null;
-    if (item.group === -1 && "image" in item && item.image) {
-      assetKey = item.image;
-    } else if (item.group >= 0 && "face" in item && item.face) {
-      const g = link.groups[item.group];
-      assetKey = g && g.mode === "face_overlay" ? g.base : null;
-    }
-
-    if (!assetKey) {
-      this.onWarning?.(`invalid cutin character: ${base}#${expression}`);
-      return null;
-    }
-
-    const texture = await this.textureForCharacterKey(assetKey);
-    if (!texture) return null;
-    // AVGCharacterSpriteHub.SetImage resizes the character Image to the hub's
-    // serialized size and shifts it by pos; the scene character path applies
-    // the same layout (see buildCharacterSlotState), so the cutin must too.
-    const sizeX = link.size.x || texture.width;
-    const sizeY = link.size.y || texture.height;
-    return {
-      offsetX: link.pos.x || 0,
-      offsetY: link.pos.y || 0,
-      scaleX: sizeX / Math.max(1, texture.width),
-      scaleY: sizeY / Math.max(1, texture.height),
-      texture,
-    };
+    return this.characterArt.load(portrait);
   }
 
   /** Loads the bundled photo-frame texture once; null after a failure. */
@@ -1513,7 +1499,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       (texture) => (this.dialogFrameTexture = texture),
       () => {
         this.dialogFrameTextureFailed = true;
-        this.onWarning?.("missing show item header texture");
+        this.onWarning?.("missing cut-in header texture");
         return null;
       },
     );
@@ -1844,20 +1830,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
     if (!input.characterKey || !input.expression) return;
 
-    const link = this.context.linkMap[input.characterKey];
-    if (!link) {
-      this.onWarning?.(`missing character base: ${input.characterKey}`);
-      return;
-    }
-
-    const item = link.array.find((entry) => entry.name === input.expression);
-    if (!item) {
-      this.onWarning?.(
-        `missing character expression: ${input.characterKey}#${input.expression}`,
-      );
-      return;
-    }
-
     const slot = this.normalizeCharacterSlot(input.slot);
     const slotBaseX: Record<string, number> = {
       // Derived from legacy 960-space anchors [330, 480, 630], scaled to 1280.
@@ -1874,16 +1846,18 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     if (!built) return;
 
-    const { sourceHeight, sourceWidth, visual } = built;
-
-    const sizeX = link.size.x || sourceWidth;
-    const sizeY = link.size.y || sourceHeight;
-    const offsetX = link.pos.x || 0;
-    const offsetY = link.pos.y || 0;
+    const {
+      height: sizeY,
+      pos,
+      sourceHeight,
+      sourceWidth,
+      visual,
+      width: sizeX,
+    } = built;
 
     // Match legacy char layout semantics in 1280x720 space.
-    const targetX = (slotBaseX[slot] ?? slotBaseX.m) - sizeX / 2 + offsetX;
-    const targetY = STORY_HEIGHT - sizeY / 2 - offsetY;
+    const targetX = slotBaseX[slot] - sizeX / 2 + pos.x;
+    const targetY = STORY_HEIGHT - sizeY / 2 - pos.y;
     const enterOffset = this.enterOffset(
       slot,
       input.enterFrom,
@@ -2028,6 +2002,7 @@ export class PixiStoryRenderer implements StoryRenderer {
           root.y = targetY + enterOffset.y * (1 - moveProgress);
         },
         () => {
+          if (visual.destroyed) return;
           root.alpha = 1;
           this.updateCharacterOpacity(state);
           root.x = targetX;
@@ -3075,100 +3050,43 @@ export class PixiStoryRenderer implements StoryRenderer {
     };
   }
 
+  /** Builds the scene holder from the same artwork used by cut-in slots. */
   private async buildCharacterVisual(
     characterKey: string,
     expression: string,
     blackStart?: number,
     blackEnd?: number,
   ): Promise<CharacterBuiltVisual | null> {
-    const link = this.context.linkMap[characterKey];
-    if (!link) {
-      this.onWarning?.(`missing character base: ${characterKey}`);
-      return null;
-    }
-
-    const item = link.array.find((entry) => entry.name === expression);
-    if (!item) {
-      this.onWarning?.(
-        `missing character expression: ${characterKey}#${expression}`,
-      );
-      return null;
-    }
+    const art = await this.loadCharacterArt(characterKey, expression);
+    const mounted = art?.acquire();
+    if (!art || !mounted) return null;
 
     const visual = new Container();
     const content = new Container();
+    const sprite = new Sprite(mounted.texture);
+    sprite.anchor.set(0, 0);
+    if (mounted.release) sprite.once("destroyed", mounted.release);
+    content.addChild(sprite);
     visual.addChild(content);
 
-    let sourceWidth: number;
-    let sourceHeight: number;
-    // Every sprite that contributes character pixels, in draw order. Native
-    // composites the face into the *same* material as the body (`SetSprite`
-    // feeds the face through `_HGDynamicTex`), so alpha (`DOColor` on the fore
-    // Image's vertex colour) and `_BlackStart`/`_BlackEnd` multiply the
-    // already-composited pixels. The web port must bake the face onto the body
-    // up front for the same reason: two stacked sprites would each carry the
-    // fade alpha separately, making the face region's effective opacity
-    // 1-(1-p)^2 instead of p -- the face would fade in ahead of the body.
-    const contentSprites: Sprite[] = [];
-
-    if (item.group === -1 && "image" in item && item.image) {
-      const texture = await this.textureForCharacterKey(item.image);
-      if (!texture) return null;
-
-      const sprite = new Sprite(texture);
-      sprite.anchor.set(0, 0);
-      content.addChild(sprite);
-      contentSprites.push(sprite);
-      sourceWidth = texture.width;
-      sourceHeight = texture.height;
-    } else if (item.group >= 0 && "face" in item && item.face) {
-      const group = link.groups[item.group];
-      if (!group || group.mode !== "face_overlay") {
-        this.onWarning?.(
-          `unsupported character group: ${characterKey}#${expression}`,
-        );
-        return null;
-      }
-
-      const [baseTexture, faceTexture] = await Promise.all([
-        this.textureForCharacterKey(group.base),
-        this.textureForCharacterKey(item.face),
-      ]);
-      if (!baseTexture || !faceTexture) return null;
-
-      const texture = this.bakeFaceOverlayTexture(
-        group.base,
-        item.face,
-        baseTexture,
-        faceTexture,
-        group.faceRect,
-      );
-      if (!texture) return null;
-
-      const sprite = new Sprite(texture);
-      sprite.anchor.set(0, 0);
-      content.addChild(sprite);
-      contentSprites.push(sprite);
-      this.retainFaceOverlay(
-        visual,
-        faceOverlayCacheKey(group.base, item.face),
-      );
-      sourceWidth = baseTexture.width;
-      sourceHeight = baseTexture.height;
-    } else {
-      this.onWarning?.(`invalid character item: ${characterKey}#${expression}`);
-      return null;
-    }
-
+    const sourceWidth = mounted.texture.width;
+    const sourceHeight = mounted.texture.height;
     this.applyCharacterBlackGradient(
       content,
-      contentSprites,
+      [sprite],
       sourceWidth,
       sourceHeight,
       blackStart,
       blackEnd,
     );
-    return { sourceHeight, sourceWidth, visual };
+    return {
+      height: art.height,
+      pos: art.pos,
+      sourceHeight,
+      sourceWidth,
+      visual,
+      width: art.width,
+    };
   }
 
   private async buildCharacterSlotState(
@@ -3177,12 +3095,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     current?: CharacterRenderState,
   ): Promise<CharacterRenderState | null> {
     if (!input.characterKey || !input.expression) return current ?? null;
-
-    const link = this.context.linkMap[input.characterKey];
-    if (!link) {
-      this.onWarning?.(`missing character base: ${input.characterKey}`);
-      return null;
-    }
 
     const built = await this.buildCharacterVisual(
       input.characterKey,
@@ -3193,12 +3105,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (!built) return null;
 
     const slotBaseX: Record<string, number> = { l: 440, m: 640, r: 840 };
-    const sizeX = link.size.x || built.sourceWidth;
-    const sizeY = link.size.y || built.sourceHeight;
-    const offsetX = link.pos.x || 0;
-    const offsetY = link.pos.y || 0;
-    const baseX = (slotBaseX[slot] ?? slotBaseX.m) - sizeX / 2 + offsetX;
-    const baseY = STORY_HEIGHT - sizeY / 2 - offsetY;
+    const { height: sizeY, width: sizeX, pos } = built;
+    const baseX = slotBaseX[slot] - sizeX / 2 + pos.x;
+    const baseY = STORY_HEIGHT - sizeY / 2 - pos.y;
     const baseScaleX = sizeX / Math.max(1, built.sourceWidth);
     const baseScaleY = sizeY / Math.max(1, built.sourceHeight);
 
@@ -3415,127 +3324,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     // composite, yielding dst * (1 - a * p) instead of dst * (1 - a) * p --
     // the shading would fade in with the character and only look right at
     // the end of the fade.
-    for (const sprite of contentSprites) sprite.removeFromParent();
+    for (const sprite of contentSprites) sprite.destroy();
     const darkened = new Sprite(texture);
+    darkened.once("destroyed", () => texture.destroy(true));
     darkened.anchor.set(0, 0);
     content.addChild(darkened);
   }
 
-  /**
-   * Flattens a `face_overlay` group (body + expression face) into a single
-   * texture. Native renders both through one `avgCharSplitShader` material
-   * (`AlphaSplitImageHolder.SetSprite` 0x183ec5e60: the body is the Image's
-   * own sprite, the face rides the same material's `_HGDynamicTex` with the
-   * `faceOffset` UV transform), so the face is composited *inside* the shader
-   * before the vertex colour multiplies the result. Keeping two stacked Pixi
-   * sprites instead would fade each layer with its own copy of the alpha
-   * (`1-(1-p)^2` over the face) and double-apply `_BlackStart` shading, so the
-   * composite is baked once per (base, face) pair and cached (bounded by
-   * `FACE_OVERLAY_CACHE_LIMIT`, refcounted by the visuals drawing it).
-   *
-   * The face texture is stretched to `faceRect` as-is (no aspect-ratio
-   * preservation): the CDN face PNG matches what native maps through the
-   * `faceOffset` scale/offset, verified against the official client.
-   */
-  private bakeFaceOverlayTexture(
-    baseKey: string,
-    faceKey: string,
-    baseTexture: Texture,
-    faceTexture: Texture,
-    faceRect: { x: number; y: number; w: number; h: number },
-  ): Texture | null {
-    const cacheKey = faceOverlayCacheKey(baseKey, faceKey);
-    const cached = this.faceOverlayTextures.get(cacheKey);
-    if (cached) {
-      // Refresh recency: the Map's insertion order is the eviction order.
-      this.faceOverlayTextures.delete(cacheKey);
-      this.faceOverlayTextures.set(cacheKey, cached);
-      return cached.texture;
-    }
-
-    const baseResource = baseTexture.source?.resource as
-      CanvasImageSource | undefined;
-    const faceResource = faceTexture.source?.resource as
-      CanvasImageSource | undefined;
-    // Mirrors bakeDarkenedCharacterTexture: a texture we cannot draw has to
-    // fail the whole bake rather than silently drop the face or the body.
-    if (!baseResource || !faceResource) return null;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(baseTexture.width));
-    canvas.height = Math.max(1, Math.round(baseTexture.height));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    const baseFrame = baseTexture.frame;
-    ctx.drawImage(
-      baseResource,
-      baseFrame.x,
-      baseFrame.y,
-      baseFrame.width,
-      baseFrame.height,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-    );
-    const faceFrame = faceTexture.frame;
-    ctx.drawImage(
-      faceResource,
-      faceFrame.x,
-      faceFrame.y,
-      faceFrame.width,
-      faceFrame.height,
-      faceRect.x,
-      faceRect.y,
-      faceRect.w,
-      faceRect.h,
-    );
-
-    const texture = new Texture({
-      source: new CanvasSource({ resource: canvas }),
-    });
-    this.faceOverlayTextures.set(cacheKey, { refs: 0, texture });
-    this.trimFaceOverlayCache();
-    return texture;
-  }
-
-  /** Pins a cached bake for as long as `visual` is on stage. */
-  private retainFaceOverlay(visual: Container, cacheKey: string): void {
-    const entry = this.faceOverlayTextures.get(cacheKey);
-    if (!entry) return;
-    entry.refs += 1;
-    this.faceOverlayVisualKeys.set(visual, cacheKey);
-  }
-
-  private releaseCharacterVisual(visual: Container): void {
-    this.sceneEffects.releaseFixedFocusTarget(visual);
-    const cacheKey = this.faceOverlayVisualKeys.get(visual);
-    if (cacheKey === undefined) return;
-    this.faceOverlayVisualKeys.delete(visual);
-    const entry = this.faceOverlayTextures.get(cacheKey);
-    if (entry) entry.refs = Math.max(0, entry.refs - 1);
-    this.trimFaceOverlayCache();
-  }
-
-  /** Takes a character visual off stage and drops its hold on its bake. */
   private discardCharacterVisual(visual: Container): void {
-    visual.removeFromParent();
-    this.releaseCharacterVisual(visual);
-  }
-
-  /**
-   * Evicts the least recently baked entries nobody draws any more until the
-   * cache is back under `FACE_OVERLAY_CACHE_LIMIT`. Entries still on stage
-   * are skipped, so the cap is soft.
-   */
-  private trimFaceOverlayCache(): void {
-    for (const [key, entry] of this.faceOverlayTextures) {
-      if (this.faceOverlayTextures.size <= FACE_OVERLAY_CACHE_LIMIT) return;
-      if (entry.refs > 0) continue;
-      this.faceOverlayTextures.delete(key);
-      entry.texture.destroy(true);
-    }
+    this.sceneEffects.releaseFixedFocusTarget(visual);
+    visual.destroy({ children: true });
   }
 
   private bakeDarkenedCharacterTexture(
@@ -3778,8 +3576,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     state.root.removeFromParent();
     // The current visual and any still-fading previous one both hold a
     // face-overlay bake.
-    for (const child of state.rotationLayer.children)
-      this.releaseCharacterVisual(child as Container);
+    for (const child of [...state.rotationLayer.children])
+      this.discardCharacterVisual(child);
     state.outgoingVisual = null;
   }
 
@@ -4345,14 +4143,14 @@ export class PixiStoryRenderer implements StoryRenderer {
    * e.g. bg_cher_1 (1024x576, ppu 68.2464) natively renders 1500.44x844,
    * a 17% centered overscan. Web PNGs are texture-sized with no ppu
    * metadata, so the per-key ppu comes from the `avg/background.json`
-   * sidecar (context.backgroundPpuMap). For keys missing from the sidecar
-   * every 16:9 background added since 2023 ships a ppu tuned to exactly the
-   * 1280x720 canvas, so a 16:9 texture maps to that and anything else keeps
-   * its texture size.
+   * sidecar (context.backgroundPpuMap). Standalone 16:9 backgrounds missing
+   * sidecar metadata fall back to 1280x720. Interlude elements keep their
+   * texture size when the sidecar has no entry.
    */
   private nativeBackgroundRect(
     key: string,
     texture: Texture,
+    fallback: "widescreen" | "texture" = "widescreen",
   ): readonly [number, number] {
     const width = Math.max(1, texture.width);
     const height = Math.max(1, texture.height);
@@ -4363,7 +4161,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     if (ppu !== undefined && ppu > 0) {
       return [(width / ppu) * 100, (height / ppu) * 100];
     }
-    if (Math.abs(width / height - STORY_WIDTH / STORY_HEIGHT) < 0.01) {
+    if (
+      fallback === "widescreen" &&
+      Math.abs(width / height - STORY_WIDTH / STORY_HEIGHT) < 0.01
+    ) {
       return [STORY_WIDTH, STORY_HEIGHT];
     }
     return [width, height];
@@ -4481,8 +4282,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     return buildGridRoot(input, textures);
   }
 
-  private textureForImageKey(key: string, kind: StoryAssetFamily): TextureLoad {
-    const rawUrl = resolveStoryAssetByKey(key, kind);
+  private textureForImageKey(
+    key: string,
+    kind: StoryAssetFamily,
+    useBundlePath = kind === "cutin",
+  ): TextureLoad {
+    const rawUrl = resolveStoryAssetByKey(key, kind, useBundlePath);
     if (!rawUrl) {
       this.onWarning?.(`missing ${kind}: ${key}`);
       return null;
@@ -4501,30 +4306,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     return this.textureForUrl(rawUrl, "character", key);
   }
 
-  private async textureForInterlude(
-    input: InterludeInput,
-  ): Promise<Texture | null> {
-    if (input.type !== 3) {
-      // CutinController routes type 1 (uichar) through Cutin/Characters and
-      // type 2 (bg) through AVG/Backgrounds; only type 3 reuses AVG characters.
-      let kind: StoryAssetFamily = "image";
-      if (input.type === 2) kind = "background";
-      else if (input.type === 1) kind = "cutin";
-      return this.textureForImageKey(input.name, kind);
-    }
-
-    const base = input.avatarCharacterKey;
-    const expression = input.avatarExpression;
-    if (!base || !expression) return null;
-    const link = this.context.linkMap[base];
-    const item = link?.array.find((entry) => entry.name === expression);
-    if (!item) return null;
-    if (item.group === -1 && item.image)
-      return this.textureForCharacterKey(item.image);
-    const group = item.group >= 0 ? link.groups[item.group] : undefined;
-    if (group?.mode === "face_overlay")
-      return this.textureForCharacterKey(group.base);
-    return null;
+  private textureForInterlude(input: InterludeInput): TextureLoad {
+    // CutinImageElement.SetCutinElement (2791 @ 0x1814FC3D0) routes
+    // uichar through Cutin/Characters and bg through AVG/Backgrounds.
+    const kind = input.type === 2 ? "background" : "cutin";
+    return this.textureForImageKey(input.name, kind, true);
   }
 
   private textureForUrl(

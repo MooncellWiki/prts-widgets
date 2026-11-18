@@ -4,6 +4,9 @@ import { linearEase, type EaseCurve } from "./DotweenEase";
 
 type SubscribeFrame = (update: (deltaMs: number) => void) => () => void;
 
+/** Maximum Allowed Timestep in the 2791 PC TimeManager, in milliseconds. */
+export const MAX_SCALED_FRAME_DELTA_MS = Math.fround(1 / 3) * 1000;
+
 /** Optional timing and easing behaviour for {@link TweenRunner.run}. */
 export interface TweenRunOptions {
   /** Run a zero-duration tween on the next update, like DOTween. */
@@ -15,10 +18,7 @@ export interface TweenRunOptions {
   ease?: EaseCurve;
   /**
    * Per-run liveness checked alongside the runner's own `isAlive` on every
-   * frame; once it returns false the run settles exactly like a runner
-   * teardown (`done`, then resolve). Infinite loops need it to stop requesting
-   * frames when their target is retired instead of living as long as the
-   * whole renderer.
+   * frame. An invalid target cancels the tween.
    */
   isAlive?: () => boolean;
   /**
@@ -35,12 +35,36 @@ export interface TweenRunOptions {
   now?: () => number;
 }
 
+export interface TweenStartOptions extends TweenRunOptions {
+  /** DOTween's target identity for filtered operations. */
+  target?: object;
+  onComplete?: () => void;
+  onCancel?: () => void;
+}
+
+export interface TweenHandle {
+  /** Resolves when the tween stops. The reason is also available synchronously. */
+  readonly completion: Promise<void>;
+  readonly endReason: "complete" | "cancelled" | undefined;
+  kill: (complete?: boolean) => void;
+}
+
+interface ActiveTween extends TweenHandle {
+  target?: object;
+  advance: (deltaMs: number) => void;
+}
+
 /**
- * Web-only animation adapter. AVG executors create DOTween sequences; callers
- * preserve their documented command timing while this class uses browser frames
- * instead of claiming a one-to-one native port.
+ * Web frame adapter for DOTween's active tween lifecycle. 2791
+ * TweenManager.Update (0x184467690) captures the iteration bounds at entry.
+ * FilteredOperation (0x1844637F0) handles target kills in reverse order.
  */
 export class TweenRunner {
+  private readonly active = new Set<ActiveTween>();
+  private readonly afterUpdateCallbacks: Array<() => void> = [];
+  private stopUpdates: (() => void) | undefined;
+  private updating = false;
+
   constructor(
     private readonly isAlive: () => boolean,
     private readonly clock:
@@ -53,28 +77,60 @@ export class TweenRunner {
     done?: () => void,
     options?: TweenRunOptions,
   ): Promise<void> {
-    if (durationMs <= 0 && !options?.deferZeroDuration) {
-      step(1);
-      done?.();
-      return Promise.resolve();
-    }
-    const ease = options?.ease ?? linearEase;
-    const requestedLoops = options?.loops ?? 1;
+    // Existing callers use done for both completion and teardown.
+    return this.start(durationMs, step, {
+      ...options,
+      onComplete: done,
+      onCancel: done,
+    }).completion;
+  }
+
+  start(
+    durationMs: number,
+    step: (progress: number) => void,
+    options: TweenStartOptions = {},
+  ): TweenHandle {
+    const ease = options.ease ?? linearEase;
+    const requestedLoops = options.loops ?? 1;
     const loops =
       requestedLoops === 0 ? 1 : Math.max(-1, Math.trunc(requestedLoops));
     const totalMs = loops > 0 ? durationMs * loops : Number.POSITIVE_INFINITY;
-    const isRunAlive = options?.isAlive;
-    const maxFrameDeltaMs =
-      options?.maxFrameDeltaMs ?? Number.POSITIVE_INFINITY;
-    const now = options?.now;
-    let previous = now?.() ?? 0;
-    return new Promise((resolve) => {
-      let elapsed = 0;
-      this.advanceEachFrame((deltaMs) => {
-        if (!this.isAlive() || (isRunAlive && !isRunAlive())) {
-          done?.();
-          resolve();
-          return false;
+    const isAlive = () => this.isAlive() && options.isAlive?.() !== false;
+    const maxFrameDeltaMs = options.maxFrameDeltaMs ?? Number.POSITIVE_INFINITY;
+    const clock = this.clock;
+    const now =
+      options.now ??
+      (typeof clock === "function" ? undefined : () => clock.now());
+    let previous = 0;
+    let elapsed = 0;
+    let endReason: TweenHandle["endReason"];
+    let resolve!: () => void;
+    const completion = new Promise<void>((settle) => {
+      resolve = settle;
+    });
+    const finish = (
+      reason: Exclude<TweenHandle["endReason"], undefined>,
+      finalProgress?: number,
+    ) => {
+      if (endReason !== undefined) return;
+      endReason = reason;
+      this.active.delete(tween);
+      try {
+        if (reason === "complete") {
+          if (finalProgress !== undefined) step(finalProgress);
+          options.onComplete?.();
+        } else options.onCancel?.();
+      } finally {
+        resolve();
+        this.stopIfIdle();
+      }
+    };
+    const tween: ActiveTween = {
+      advance(deltaMs) {
+        if (endReason !== undefined) return;
+        if (!isAlive()) {
+          finish("cancelled");
+          return;
         }
         if (now) {
           const current = now();
@@ -83,35 +139,92 @@ export class TweenRunner {
         }
         elapsed += Math.min(deltaMs, maxFrameDeltaMs);
         if (durationMs <= 0 || elapsed >= totalMs) {
-          step(ease(1));
-          done?.();
-          resolve();
-          return false;
+          finish("complete", ease(1));
+          return;
         }
         // DOTween's default Restart loop type replays from the start value
         // at every cycle boundary.
         step(ease((elapsed % durationMs) / durationMs));
-        return true;
-      });
-    });
+      },
+      completion,
+      get endReason() {
+        return endReason;
+      },
+      kill(complete = false) {
+        if (endReason !== undefined) return;
+        // TweenManager.Complete (2791 @ 0x184462630) skips infinite loops.
+        if (complete && loops > 0 && isAlive()) finish("complete", ease(1));
+        else finish("cancelled");
+      },
+      target: options.target,
+    };
+
+    if (durationMs <= 0 && !options.deferZeroDuration) {
+      finish("complete", 1);
+    } else {
+      previous = now?.() ?? 0;
+      this.active.add(tween);
+      if (!this.stopUpdates && !this.updating) {
+        try {
+          this.stopUpdates = this.subscribe();
+        } catch (error) {
+          this.active.delete(tween);
+          throw error;
+        }
+        this.stopIfIdle();
+      }
+    }
+    return tween;
   }
 
-  private advanceEachFrame(advance: (deltaMs: number) => boolean): void {
-    const clock = this.clock;
-    if (typeof clock === "function") {
-      const unsubscribe = clock((deltaMs) => {
-        if (!advance(deltaMs)) unsubscribe();
-      });
-      return;
+  killTarget(target: object, complete = false): void {
+    for (const tween of [...this.active].reverse()) {
+      if (tween.target === target) tween.kill(complete);
     }
+  }
 
-    let previous = clock.now();
+  /** Run after the current tween update, or inline between frames. */
+  afterUpdate(callback: () => void): void {
+    if (this.updating) this.afterUpdateCallbacks.push(callback);
+    else callback();
+  }
+
+  private update(deltaMs: number): void {
+    this.updating = true;
+    try {
+      for (const tween of [...this.active]) tween.advance(deltaMs);
+    } finally {
+      try {
+        for (const callback of this.afterUpdateCallbacks) callback();
+      } finally {
+        this.afterUpdateCallbacks.length = 0;
+        this.updating = false;
+        this.stopIfIdle();
+      }
+    }
+  }
+
+  private stopIfIdle(): void {
+    if (this.updating || this.active.size !== 0) return;
+    this.stopUpdates?.();
+    this.stopUpdates = undefined;
+  }
+
+  private subscribe(): () => void {
+    const clock = this.clock;
+    if (typeof clock === "function")
+      return clock((deltaMs) => this.update(deltaMs));
+
+    let stopped = false;
     const tick = () => {
-      const now = clock.now();
-      const deltaMs = now - previous;
-      previous = now;
-      if (advance(deltaMs)) clock.requestFrame(tick);
+      if (stopped) return;
+      this.update(0);
+      if (!stopped) frame = clock.requestFrame(tick);
     };
-    clock.requestFrame(tick);
+    let frame = clock.requestFrame(tick);
+    return () => {
+      stopped = true;
+      clock.cancelFrame(frame);
+    };
   }
 }

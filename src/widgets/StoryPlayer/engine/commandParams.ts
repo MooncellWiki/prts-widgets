@@ -59,6 +59,23 @@ export function tryParseInt32(text: string): number | null {
   return value;
 }
 
+/** GetEnum (2791 @ 0x1846BAC50) uses case-sensitive Enum.Parse and defaults to zero here. */
+export function parseEnumInt32(
+  raw: string,
+  members: Readonly<Record<string, string | number>>,
+): number {
+  const ordinal = tryParseInt32(raw.trim());
+  if (ordinal !== null) return ordinal;
+
+  let result = 0;
+  for (const member of raw.split(",")) {
+    const value = members[member.trim()];
+    if (typeof value !== "number") return 0;
+    result |= value;
+  }
+  return result;
+}
+
 /**
  * Native port: `Command.GetOrDefault<float>` (2.7.71 `Command.TryGetParam`
  * VA 0x183EF3950) and `DotNetExtensionMethods.GetFloat` (VA 0x1862F7660)
@@ -134,11 +151,26 @@ export function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+/** GetBool / Command.TryGetParam<bool> (2791) use Convert.ToBoolean. */
+export function getBool(args: StoryCommandArgs, key: string): boolean {
+  const value = exactArg(args, key);
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string")
+    return /^[\p{White_Space}\0]*true[\p{White_Space}\0]*$/iu.test(value);
+  return value === true;
+}
+
 export function toString(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean")
     return String(value);
   return fallback;
+}
+
+/** DotNetExtensionMethods.GetString (2791 @ 0x1869417D0) calls Convert.ToString. */
+export function boxedParamString(value: unknown): string {
+  if (typeof value === "boolean") return value ? "True" : "False";
+  return toString(value);
 }
 
 export function parseVector2(

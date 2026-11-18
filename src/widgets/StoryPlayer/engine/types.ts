@@ -653,18 +653,26 @@ export type CharacterCutinFadeStyle =
   | "vert_expand_bottom2top";
 
 export interface CharacterCutinInput {
+  /** Entry layout from AVGCharacterCutinSlot.Show. */
+  align?: "horizontal" | "vertical" | number;
+  backgroundKey?: string;
+  backgroundOffset?: number;
   block: boolean;
   characterKey?: string;
+  /** AVGCharacterSlot.Set compares the script name before resolving the art. */
+  characterRef?: string;
   /**
    * Native provenance: when `name` cannot be resolved, native still allocates
    * the slot and runs its Show/SlotUpdate tween (only AVGCharacterSlot logs
    * an internal error), so `block` timing must survive a missing character.
    */
   characterMissing?: boolean;
+  /** AVGCharacterSpriteHubGroup.SetImage throws after the slot is allocated. */
+  invalidCharacterRef?: boolean;
   /**
    * Slot-layout keys. `undefined` means the script omitted the key, which is
    * load-bearing: Show falls back to the serialized prefab defaults, while
-   * SlotUpdate (@ 0x183eb20a0) passes the slot's live transform as each
+   * SlotUpdate (2791 @ 0x184204B20) passes the slot's live transform as each
    * `GetFloat`/`GetInt` default, so an omitted key holds its current value
    * instead of snapping back.
    *
@@ -677,7 +685,8 @@ export interface CharacterCutinInput {
   expression?: string;
   /** `animateRatio * fadetime` in ms; AVGCharacterCutinSlot is IFadeTimeRatio. */
   fadeMs: number;
-  fadeStyle?: CharacterCutinFadeStyle;
+  /** Enum.Parse also accepts unnamed Int32 ordinals. */
+  fadeStyle?: CharacterCutinFadeStyle | number;
   offsetX?: number;
   offsetY?: number;
   /** `_zoomAndPovRectTransform.anchoredPosition = (-povX, -povY)`. */
@@ -689,12 +698,14 @@ export interface CharacterCutinInput {
   zoom?: number;
 }
 
-export type InterludeElementType = 0 | 1 | 2 | 3;
+/** CutinParam.ParamType also preserves unnamed Int32 ordinals. */
+export type InterludeElementType = number;
 
 export interface InterludeInput {
   alphaDurationMs: number;
   alphaFrom: number;
   alphaTo: number;
+  /** Optional resolved art for direct renderer calls. Story commands pass the raw name. */
   avatarCharacterKey?: string;
   avatarExpression?: string;
   block: boolean;
@@ -777,8 +788,8 @@ export interface StoryRenderer {
   clearSpellStickers: () => Promise<void> | void;
   clearSubtitle: (fadeMs?: number) => Promise<void> | void;
   clearTimerSticker: (input?: TimerClearInput) => void;
-  clearCharacterCutin: (widgetId?: string) => Promise<void>;
-  clearInterludes: () => Promise<void>;
+  clearCharacterCutin: (widgetId?: string) => void;
+  clearInterludes: () => void;
   destroy: () => void;
   /** Reveal the remaining text of the selected sticker. */
   finishStickerTyping: (id: string) => boolean;
@@ -803,7 +814,10 @@ export interface StoryRenderer {
   setBackgroundTween: (input: BackgroundTweenInput) => Promise<void>;
   setBlocker: (input: BlockerInput) => Promise<void> | void;
   setCharacter: (input: CharacterSlotInput) => Promise<void>;
-  setCharacterCutin: (input: CharacterCutinInput) => Promise<void>;
+  setCharacterCutin: (
+    input: CharacterCutinInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setCurtain: (input: CurtainInput) => Promise<void>;
   setGridBackground: (input: GridBackgroundInput) => Promise<void>;
   setLargeImage: (input: GridBackgroundInput) => Promise<void>;
@@ -831,7 +845,10 @@ export interface StoryRenderer {
   setImage: (key: string, input?: BackgroundInput) => Promise<void>;
   setImageRotate: (input: ImageRotateInput) => Promise<void>;
   setImageTween: (input: ImageTweenInput) => Promise<void>;
-  setInterlude: (input: InterludeInput) => Promise<void>;
+  setInterlude: (
+    input: InterludeInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setLargeBackgroundTween: (input: LargeBackgroundTweenInput) => Promise<void>;
   setLargeImageTween: (input: LargeBackgroundTweenInput) => Promise<void>;
   createShowItemSlot: (style: string) => StoryShowItemSlot | null;

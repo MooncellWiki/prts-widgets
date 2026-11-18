@@ -1,5 +1,7 @@
 import { setImmediate } from "node:timers/promises";
 
+import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+
 import type {
   PlaybackFrame,
   StoryRenderer,
@@ -17,6 +19,13 @@ export class PlaybackTestFrames {
   private readonly frameEnds = new Set<() => void>();
 
   now = (): number => this.nowMs;
+
+  createTweenRunner(): TweenRunner {
+    return new TweenRunner(
+      () => true,
+      (advance) => this.onFrameUpdate(({ deltaMs }) => advance(deltaMs)),
+    );
+  }
 
   onFrameUpdate: StoryRenderer["onFrameUpdate"] = (
     callback,
@@ -47,6 +56,12 @@ export class PlaybackTestFrames {
     if (ends.length) this.queueFrame();
   }
 
+  /** Advance wall time over several ordinary frames. step() injects one frame. */
+  elapse(durationMs: number): void {
+    for (let remaining = durationMs; remaining > 0; remaining -= 100)
+      this.step(Math.min(remaining, 100));
+  }
+
   async advance(...deltas: number[]): Promise<void> {
     for (const delta of deltas) {
       this.step(delta);
@@ -62,4 +77,19 @@ export class PlaybackTestFrames {
       if (!this.manual) this.step();
     });
   }
+}
+
+/** Force finite tweens to their end pose regardless of their clock. */
+export function createInstantTweenRunner(): TweenRunner {
+  const runner = new TweenRunner(
+    () => true,
+    () => () => {},
+  );
+  const start = runner.start.bind(runner);
+  runner.start = (...args) => {
+    const tween = start(...args);
+    tween.kill(true);
+    return tween;
+  };
+  return runner;
 }
