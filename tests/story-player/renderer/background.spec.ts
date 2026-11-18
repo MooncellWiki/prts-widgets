@@ -521,7 +521,7 @@ describe("PixiStoryRenderer", () => {
       durationMs: 1000,
       inverse: false,
     });
-    renderer.frames.step(1000);
+    for (let i = 0; i < 4; i++) renderer.frames.step(250);
     expect(imageLayer.angle).toBeCloseTo(360);
   });
 
@@ -1023,6 +1023,33 @@ describe("ImagePanel frame order", () => {
       }
     },
   );
+
+  it("keeps a blocking rotation on scaled time across a long frame", async () => {
+    const draws: Array<[number, number]> = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        show,
+        "[imagerotate(angle=-90,fadetime=0.5,block=true)]",
+        marker,
+        dialogue,
+      ],
+      ({ images, cgItems }) => {
+        draws.push([Math.round(images.angle), cgItems.children.length]);
+      },
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(500);
+      app.ticker.update(700);
+      expect(draws).toEqual([
+        [60, 0],
+        [90, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
 
   it.each([
     { mode: "default", markers: [1, 2, 2, 3] },

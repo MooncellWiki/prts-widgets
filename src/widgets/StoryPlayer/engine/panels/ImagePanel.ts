@@ -10,6 +10,7 @@ import {
   toBoolean,
   toNumber,
   toString,
+  tryConvertToInt32,
 } from "../commandParams";
 import {
   LOOP_BLOCK_WARNING,
@@ -115,7 +116,9 @@ export class ImagePanel extends ExecutorComponent {
       {
         angleDeg: toNumber(exactArg(args, "angle")),
         block: toBoolean(exactArg(args, "block"), false),
-        circles: Math.trunc(toNumber(exactArg(args, "circles"))),
+        // Command.TryGetParam<int> (2791 @ 0x18419AF30) uses Convert.ToInt32.
+        // The Web player falls back to zero on conversion failure.
+        circles: tryConvertToInt32(exactArg(args, "circles")) ?? 0,
         durationMs: this.calculateFadeMs(exactArg(args, "fadetime")),
         inverse: toBoolean(exactArg(args, "inverse"), false),
       },

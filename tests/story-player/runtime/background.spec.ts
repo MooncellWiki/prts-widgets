@@ -51,6 +51,26 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("rounds numeric imagerotate circles to the nearest even integer at a tie", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[imagerotate(circles=1.5)]",
+        "[imagerotate(circles=-1.5)]",
+        "[imagerotate(circles=2.5)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.imageRotateCalls.map(({ circles }) => circles)).toEqual([
+      2, -2, 2,
+    ]);
+  });
+
   it("maps background with strict transform keys and native width/height multipliers", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

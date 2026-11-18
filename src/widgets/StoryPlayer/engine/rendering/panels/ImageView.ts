@@ -15,10 +15,13 @@ import {
   readCenteredTransform,
   rotateTweenDelta,
 } from "../core/SceneGeometry";
+import {
+  MAX_SCALED_FRAME_DELTA_MS,
+  type TweenRunner,
+} from "../core/TweenRunner";
 
 import type { SceneEffectManager } from "../SceneEffectManager";
 import type { TextureLoad } from "../core/TextureAsset";
-import type { TweenRunner } from "../core/TweenRunner";
 
 interface ImageSlot {
   root: Container;
@@ -181,6 +184,8 @@ export class ImageView {
       },
       {
         deferZeroDuration: true,
+        // DORotate uses Time.deltaTime (2791 DOTweenComponent.Update @ 0x18444D110).
+        maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
         onKill: this.finishHandler(
           animation,
           input.block ? onComplete : undefined,
