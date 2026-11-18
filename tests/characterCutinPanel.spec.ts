@@ -113,6 +113,98 @@ function deferredArt(): {
 }
 
 describe("CharacterCutinPanel", () => {
+  it.each([false, true])(
+    "preserves the partially initialized slot when a named background is missing (async %s)",
+    async (asyncLoad) => {
+      const completed = vi.fn();
+      const panel = createPanel(
+        new Container(),
+        () => art(120, 300),
+        createInstantTweenRunner(),
+        () => (asyncLoad ? Promise.resolve(null) : null),
+      );
+      const handle = panel.run(
+        input({
+          backgroundKey: "missing",
+          offsetX: 72,
+          width: 325,
+          zoom: 2,
+          fadeStyle: "horiz_expand_center",
+        }),
+        completed,
+      );
+      expect(await handle?.completion).toBe("error");
+      expect(completed).not.toHaveBeenCalled();
+      const state = slots(panel).get("1")!;
+      expect(state.root.x).toBe(640);
+      expect(state.maskSize).toEqual({ w: 325, h: 720 });
+      expect(state.content.scale.x).toBe(2);
+      expect(state.backdrop.visible).toBe(false);
+      expect(state.backgroundImage.visible).toBe(true);
+      expect(state.backgroundImage.texture).toBe(Texture.WHITE);
+      panel.run(input({ width: 250, offsetX: 10 }));
+      expect(slots(panel).get("1")).toBe(state);
+      expect(state.maskSize.w).toBe(250);
+      expect(state.root.x).toBe(650);
+    },
+  );
+
+  it("reads the live CanvasGroup alpha when a pooled fade starts", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => art(120, 300),
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, fadeStyle: "fade", fadeMs: 1000 }));
+    const slot = slots(panel).get("1")!;
+    frames.step(100);
+    panel.run(input({ block: false, characterKey: undefined, fadeMs: 0 }));
+    frames.step(100);
+    panel.run(
+      input({ block: false, widgetId: "2", fadeStyle: "fade", fadeMs: 1000 }),
+    );
+    expect(slots(panel).get("2")).toBe(slot);
+    frames.step(100);
+    // The earlier Show writes 0.51 before the new DOFade advances 19%.
+    expect(slot.root.alpha).toBeCloseTo(0.6031, 4);
+  });
+
+  it("restores the canvas alpha before starting an expand-style hide", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => art(120, 300),
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, fadeStyle: "fade", fadeMs: 1000 }));
+    frames.step(100);
+    panel.run(input({ block: false, characterKey: undefined }));
+    frames.step(100);
+    panel.run(
+      input({
+        block: false,
+        widgetId: "2",
+        fadeStyle: "horiz_expand_center",
+        fadeMs: 1000,
+      }),
+    );
+    const { root } = slots(panel).get("2")!;
+    frames.step(100);
+    expect(root.alpha).toBeCloseTo(0.51);
+    panel.run(
+      input({
+        block: false,
+        widgetId: "2",
+        characterKey: undefined,
+        fadeMs: 100,
+      }),
+    );
+    expect(root.alpha).toBe(1);
+  });
+
   it("keeps an unnamed entry style and its blocking show and hide pending until reset", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
@@ -688,7 +780,7 @@ describe("CharacterCutinPanel", () => {
     // The slot is already in the scene graph, so whatever it looks like here
     // is what renders for the frames the texture request takes.
     const state = slots(panel).get("1")!;
-    expect(state.maskSize).toEqual({ h: 720, w: 0 });
+    expect(state.root.renderable).toBe(false);
 
     release(art(120, 300));
     await pending?.completion;
@@ -702,7 +794,7 @@ describe("CharacterCutinPanel", () => {
 
     const pending = panel.run(input({ fadeMs: 400 }));
     const state = slots(panel).get("1")!;
-    expect(state.root.alpha).toBe(0);
+    expect(state.root.renderable).toBe(false);
 
     release(art(120, 300));
     await pending?.completion;
@@ -727,7 +819,7 @@ describe("CharacterCutinPanel", () => {
     const state = slots(panel).get("1")!;
     frames.step(16);
     expect(pending?.endReason).toBeUndefined();
-    expect(state.root.alpha).toBe(0);
+    expect(state.root.renderable).toBe(false);
 
     const replacement = panel.run(input({ expression: "2$2" }));
     expect(pending?.endReason).toBe("reset");

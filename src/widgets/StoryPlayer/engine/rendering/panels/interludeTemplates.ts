@@ -366,7 +366,7 @@ function drawMaskRect(g: Graphics, width: number, height: number): void {
 }
 
 /**
- * 按原生 prefab 层级建模板;未知 maskid 返回 null,面板回落到纯矩形 mask。
+ * 按原生 prefab 层级建模板。缺少相应 prefab 时返回 null。
  * 返回时尺寸为 prefab 默认值,面板按命令 `size`(≈0 时保持默认)调用 `resize`。
  */
 export function buildTemplate(
@@ -385,11 +385,10 @@ export function buildTemplate(
     const gradient = centeredSprite(verticalGradient, 320 - 36, 760 - 36);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
-    const unknownMask = new Graphics();
-    maskNode.addChild(maskGraphics, unknownMask);
+    maskNode.addChild(maskGraphics);
     scaleNode.addChild(backShadow, gradient, maskNode);
     const unknown = centeredSprite(tex.unknownVertical, 283, 720);
-    unknown.mask = unknownMask;
+    unknown.mask = maskGraphics;
     root.addChild(scaleNode, unknown);
     const resize = (width: number, height: number): void => {
       backShadow.width = width;
@@ -397,7 +396,6 @@ export function buildTemplate(
       gradient.width = Math.max(0, width - 36);
       gradient.height = Math.max(0, height - 36);
       drawMaskRect(maskGraphics, width - 36, height - 36);
-      drawMaskRect(unknownMask, width - 36, height - 36);
     };
     resize(320, 760);
     return {
@@ -588,6 +586,7 @@ export function buildTemplate(
       maskNode: charMask,
       maskGraphics,
       hasImgMask: false,
+      stencilReaders: [charContent],
       animatorClip: null,
       autoClip: null,
       emptyImage: null,
@@ -863,6 +862,7 @@ export function setDialogBackground(
 ): void {
   const img = dialog.bgImage;
   if (!texture) {
+    img.texture = Texture.EMPTY;
     img.visible = false;
     return;
   }

@@ -22,12 +22,14 @@ import {
   SLIDE_MASK_TEXTURE_URL,
 } from "../../assets";
 import {
+  nativeBundleKey,
   resolveAssetUrl,
   resolveStoryAssetByKey,
   resolveStoryCharacterAssetByKey,
   type StoryAssetFamily,
 } from "../asset";
 import { describeCharacterPortrait } from "../characterPortrait";
+import { resolveNativeCharacterRef } from "../characterRef";
 import {
   browserAnimationClock,
   createExecutionHandle,
@@ -598,16 +600,28 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.interludePanel = new InterludePanel(
       this.interludeLayer,
       (input) => this.textureForInterlude(input),
-      (key, texture) => this.nativeBackgroundRect(key, texture, "texture"),
-      (input) =>
-        this.loadCharacterArt(input.avatarCharacterKey, input.avatarExpression),
+      (key, texture) =>
+        this.nativeBackgroundRect(nativeBundleKey(key), texture, "texture"),
+      ({ name, avatarCharacterKey, avatarExpression }) => {
+        // Regular OnCutinBegin and OnCutinEnd never look up the avatar.
+        if (avatarCharacterKey && avatarExpression)
+          return this.loadCharacterArt(avatarCharacterKey, avatarExpression);
+        const ref = resolveNativeCharacterRef(this.context.linkMap, name);
+        if (ref.kind === "native_throws")
+          throw new Error(
+            `interlude avatar exceeds its sprite hub bounds: ${name}`,
+          );
+        return ref.kind === "found"
+          ? this.loadCharacterArt(ref.selection.base, ref.selection.expression)
+          : null;
+      },
       this.updatePhaseTweenRunner,
       onWarning,
     );
     this.cutinPanel = new CharacterCutinPanel(
       this.cutinLayer,
       (input) => this.loadCharacterArt(input.characterKey, input.expression),
-      (key) => this.textureForImageKey(key, "background"),
+      (key) => this.textureForImageKey(key, "background", true),
       () => this.loadDialogFrameTexture(),
       this.updatePhaseTweenRunner,
     );
@@ -4268,8 +4282,12 @@ export class PixiStoryRenderer implements StoryRenderer {
     return buildGridRoot(input, textures);
   }
 
-  private textureForImageKey(key: string, kind: StoryAssetFamily): TextureLoad {
-    const rawUrl = resolveStoryAssetByKey(key, kind);
+  private textureForImageKey(
+    key: string,
+    kind: StoryAssetFamily,
+    useBundlePath = kind === "cutin",
+  ): TextureLoad {
+    const rawUrl = resolveStoryAssetByKey(key, kind, useBundlePath);
     if (!rawUrl) {
       this.onWarning?.(`missing ${kind}: ${key}`);
       return null;
@@ -4292,7 +4310,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     // CutinImageElement.SetCutinElement (2791 @ 0x1814FC3D0) routes
     // uichar through Cutin/Characters and bg through AVG/Backgrounds.
     const kind = input.type === 2 ? "background" : "cutin";
-    return this.textureForImageKey(input.name, kind);
+    return this.textureForImageKey(input.name, kind, true);
   }
 
   private textureForUrl(

@@ -145,6 +145,64 @@ async function createRenderedPlayback(
   };
 }
 
+describe("Cut-in portrait resolution", () => {
+  it("uses the resolved background sprite's PPU when the interlude names a file extension", async () => {
+    const { app, runtime, renderer, destroy } = await createRenderedPlayback(
+      [
+        '[interlude(channel=1,maskid="ui_cutin_mask_horizon")]',
+        '[interlude(channel=1,type=2,name="BG_TEST.PNG")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    renderer.context.backgroundPpuMap = { bg_test: 50 };
+    try {
+      const started = runtime.start();
+      app.ticker.update(16);
+      await started;
+      const { sprite } = renderer.interludePanel.channels
+        .get(1)
+        .state.elements.get("\u0000bg");
+      expect([sprite.width, sprite.height]).toEqual([64, 64]);
+    } finally {
+      destroy();
+    }
+  });
+
+  it.each(["charactercutin", "interlude"])(
+    "stops at a sprite hub bounds error only when %s consumes the portrait",
+    async (command) => {
+      const ref = "avg_npc_1#2$1";
+      const { app, runtime, renderer, destroy } = await createRenderedPlayback(
+        [
+          `[interlude(channel=1,maskid="missing",type=3,name="${ref}")]`,
+          `[interlude(channel=1,clear=true,type=3,name="${ref}")]`,
+          '[interlude(channel=2,maskid="missing")]',
+          command === "charactercutin"
+            ? `[charactercutin(widgetID="A",name="${ref}")]`
+            : `[interlude(channel=2,type=3,name="${ref}")]`,
+          '[name="A"]unreachable',
+        ],
+        () => {},
+        { avg_npc_1: { ...createContext([]).linkMap.avg_npc_1!, bodies: [1] } },
+      );
+      try {
+        const started = runtime.start();
+        app.ticker.update(16);
+        await started;
+        expect(runtime.getState()).toBe("error");
+        expect(renderer.interludePanel.channels.has(1)).toBe(false);
+        expect(renderer.interludePanel.channels.has(2)).toBe(true);
+        expect(renderer.cutinPanel.slots.has("A")).toBe(
+          command === "charactercutin",
+        );
+      } finally {
+        destroy();
+      }
+    },
+  );
+});
+
 describe("Cut-in sibling order", () => {
   it("recreates the empty controller before the new segment's first character slot", async () => {
     const { app, renderer, runtime, destroy } = await createRenderedPlayback(
@@ -174,7 +232,7 @@ describe("Cut-in sibling order", () => {
       await skipping;
       const [controller, slot] = layer.children;
       expect(controller.children).toEqual([
-        renderer.interludePanel.channels.get(3).channel.state.root,
+        renderer.interludePanel.channels.get(3).state.root,
       ]);
       expect(slot).toBe(renderer.cutinPanel.slots.get("new").root);
     } finally {
@@ -212,7 +270,7 @@ describe("Cut-in sibling order", () => {
         ]);
         expect(controller.children).toEqual(
           [2, 3].map(
-            (id) => renderer.interludePanel.channels.get(id).channel.state.root,
+            (id) => renderer.interludePanel.channels.get(id).state.root,
           ),
         );
       } finally {
@@ -250,7 +308,7 @@ describe("Interlude background rendering", () => {
         app.ticker.update(16);
         const { node, sprite } = renderer.interludePanel.channels
           .get(3)
-          .channel.state.elements.get("\u0000bg");
+          .state.elements.get("\u0000bg");
         expect([sprite.width, sprite.height]).toEqual([width, height]);
         expect(node.scale.x).toBeCloseTo(1.3125);
         expect(node.scale.y).toBeCloseTo(1.0625);
@@ -356,7 +414,7 @@ describe("Interlude avatar rendering", () => {
         const channel = cutinViews(renderer.layers.cutins)[0]!;
         const charScale = channel.children[1].children[1];
         const dialog =
-          renderer.interludePanel.channels.get(3).channel.state.template.dialog;
+          renderer.interludePanel.channels.get(3).state.template.dialog;
         const sprite: Sprite | undefined =
           dialog?.charImage ?? findSprite(charScale);
         const position = dialog

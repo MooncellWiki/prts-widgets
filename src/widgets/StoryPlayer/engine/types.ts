@@ -667,10 +667,12 @@ export interface CharacterCutinInput {
    * an internal error), so `block` timing must survive a missing character.
    */
   characterMissing?: boolean;
+  /** AVGCharacterSpriteHubGroup.SetImage throws after the slot is allocated. */
+  invalidCharacterRef?: boolean;
   /**
    * Slot-layout keys. `undefined` means the script omitted the key, which is
    * load-bearing: Show falls back to the serialized prefab defaults, while
-   * SlotUpdate (@ 0x183eb20a0) passes the slot's live transform as each
+   * SlotUpdate (2791 @ 0x184204B20) passes the slot's live transform as each
    * `GetFloat`/`GetInt` default, so an omitted key holds its current value
    * instead of snapping back.
    *
@@ -696,12 +698,14 @@ export interface CharacterCutinInput {
   zoom?: number;
 }
 
-export type InterludeElementType = 0 | 1 | 2 | 3;
+/** CutinParam.ParamType also preserves unnamed Int32 ordinals. */
+export type InterludeElementType = number;
 
 export interface InterludeInput {
   alphaDurationMs: number;
   alphaFrom: number;
   alphaTo: number;
+  /** Optional resolved art for direct renderer calls. Story commands pass the raw name. */
   avatarCharacterKey?: string;
   avatarExpression?: string;
   block: boolean;

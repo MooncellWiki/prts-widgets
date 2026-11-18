@@ -12,33 +12,28 @@ import type { InterludeInput } from "../../types";
 import type { CharacterArtLoad } from "../characters/CharacterArt";
 import type { TextureLoad } from "../core/TextureAsset";
 
-interface ChannelAllocation {
-  readonly channel: CutinChannel;
-}
-
 /** GameObjectPool.Allocate/Recycle, 2791 @ 0x182AB73D0 / 0x182AB82E0. */
 class ChannelPool {
   private readonly available: CutinChannel[] = [];
-  private readonly allocated = new Set<ChannelAllocation>();
+  private readonly allocated = new Set<CutinChannel>();
 
   constructor(private readonly create: () => CutinChannel) {}
 
-  allocate(input: InterludeInput): ChannelAllocation {
+  allocate(input: InterludeInput): CutinChannel {
     const channel = this.available.pop() ?? this.create();
     channel.allocate(input);
-    const allocation = { channel };
-    this.allocated.add(allocation);
-    return allocation;
+    this.allocated.add(channel);
+    return channel;
   }
 
-  recycle(allocation: ChannelAllocation): void {
-    if (!this.allocated.delete(allocation)) return;
-    allocation.channel.recycle();
-    this.available.push(allocation.channel);
+  recycle(channel: CutinChannel): void {
+    if (!this.allocated.delete(channel)) return;
+    channel.recycle();
+    this.available.push(channel);
   }
 
   clear(): void {
-    for (const { channel } of this.allocated) channel.destroy();
+    for (const channel of this.allocated) channel.destroy();
     for (const channel of this.available) channel.destroy();
     this.allocated.clear();
     this.available.length = 0;
@@ -47,7 +42,7 @@ class ChannelPool {
 
 /** CutinController.RunCutin (2791 @ 0x1814FB370) and command completion. */
 export class InterludePanel {
-  private readonly channels = new Map<number, ChannelAllocation>();
+  private readonly channels = new Map<number, CutinChannel>();
   private readonly pending = new Set<ExecutionHandle>();
   private readonly pool: ChannelPool;
   private readonly waveUniforms = new UniformGroup({
@@ -90,6 +85,7 @@ export class InterludePanel {
   run(input: InterludeInput, onComplete?: () => void): ExecutionHandle | void {
     if (!input.clear && input.channel < 0) {
       this.onWarning?.("interlude has no channel and is not a clear command");
+      onComplete?.();
       return;
     }
 
@@ -105,12 +101,12 @@ export class InterludePanel {
     try {
       if (input.clear) this.clear(input, complete);
       else {
-        const allocation = this.channels.get(input.channel);
-        if (allocation) allocation.channel.update(input, animation, complete);
+        const channel = this.channels.get(input.channel);
+        if (channel) channel.update(input, animation, complete);
         else {
           const created = this.pool.allocate(input);
           this.channels.set(input.channel, created);
-          created.channel.begin(input, animation, complete);
+          created.begin(input, animation, complete);
         }
       }
     } catch (error) {
@@ -136,19 +132,17 @@ export class InterludePanel {
       return;
     }
 
-    const allocation = this.channels.get(input.channel);
-    if (!allocation) {
+    const channel = this.channels.get(input.channel);
+    if (!channel) {
       complete();
       return;
     }
 
-    allocation.channel.end(input, () => {
-      // A second clear can finish in the same update. It owns its own
-      // completion, while only the current allocation can return the view.
-      if (this.channels.get(input.channel) === allocation) {
-        this.channels.delete(input.channel);
-        this.pool.recycle(allocation);
-      }
+    channel.end(input, () => {
+      // b__0 (2791 @ 0x181507E00) captures the physical channel and the ID
+      // separately. Reentrant playback can reuse the object between callbacks.
+      this.pool.recycle(channel);
+      this.channels.delete(input.channel);
       if (input.block) complete();
     });
     if (!input.block) complete();
@@ -164,6 +158,6 @@ export class InterludePanel {
       if (!fromTween) throw new Error(message);
       this.onWarning?.(message);
     };
-    for (const { channel } of this.channels.values()) channel.end(input, done);
+    for (const channel of this.channels.values()) channel.end(input, done);
   }
 }

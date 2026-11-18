@@ -13,6 +13,49 @@ import {
 import type { RuntimeWarning } from "../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
+  it("dispatches interlude begin and clear without resolving an unused avatar", async () => {
+    const renderer = new FakeRenderer();
+    const context = createContext([
+      '[interlude(channel=1,maskid="ui_cutin_mask_horizon",type=3,name="avg_npc_1#2$1")]',
+      '[interlude(channel=1,clear=true,type=3,name="avg_npc_1#2$1")]',
+      '[charactercutin(widgetID=true,name="avg_npc_1-1$1")]',
+      '[charactercutin(widgetID="True")]',
+      '[name="A"]ok',
+    ]);
+    context.linkMap.avg_npc_1!.bodies = [1];
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    await runtime.start();
+    expect(renderer.interludeCalls.map(({ clear }) => clear)).toEqual([
+      false,
+      true,
+    ]);
+    expect(
+      renderer.characterCutinCalls.map(({ widgetId }) => widgetId),
+    ).toEqual(["True", "True"]);
+    expect(renderer.characterCutinCalls[0].characterMissing).toBe(true);
+  });
+  it("preserves boxed Single values, submillisecond times and unnamed cutin type ordinals", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[interlude(channel=3,afrom=true,ato=null,aduration="0,001",duration=-1,type=42)]',
+        '[charactercutin(widgetID="1",name="avg_missing",fadetime=0.0006)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    await runtime.start();
+    expect(renderer.interludeCalls[0]).toMatchObject({
+      alphaFrom: 1,
+      alphaTo: 0,
+      alphaDurationMs: 1000,
+      durationMs: -1000,
+      type: 42,
+    });
+    expect(renderer.characterCutinCalls[0].fadeMs).toBeCloseTo(0.6, 5);
+  });
+
   it("maps avgdisplay lifecycle and feature parameters", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -353,8 +396,8 @@ describe("StoryRuntime", () => {
     expect(renderer.interludeCalls).toHaveLength(3);
     expect(renderer.interludeCalls[0]).toMatchObject({
       alphaDurationMs: 250,
-      alphaFrom: 0.2,
-      alphaTo: 0.8,
+      alphaFrom: Math.fround(0.2),
+      alphaTo: Math.fround(0.8),
       block: true,
       channel: 3,
       dialogCharPos: { x: 1, y: 2 },
@@ -379,7 +422,6 @@ describe("StoryRuntime", () => {
     // `switch` defaults to false (GetOrDefault), and type 1 never resolves
     // an AVG avatar (Cutin/Characters only).
     expect(renderer.interludeCalls[2]).toMatchObject({
-      avatarCharacterKey: undefined,
       channel: 3,
       switchOn: false,
       type: 1,

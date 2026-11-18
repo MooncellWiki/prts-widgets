@@ -7,6 +7,7 @@ import {
   parseNativeCharacterRef,
   resolveCharacterRef,
   resolveCharacterSelection,
+  resolveNativeCharacterRef,
 } from "../src/widgets/StoryPlayer/engine/characterRef";
 import { tryParseInt32 } from "../src/widgets/StoryPlayer/engine/commandParams";
 
@@ -25,6 +26,39 @@ const linkMap: Record<string, StoryLinkNode> = {
     size: { x: 0, y: 0 },
   },
 };
+
+describe("cutin sprite hub lookup", () => {
+  it("compares the @ prefix and case within the requested body", () => {
+    const array = linkMap.avg_npc_1!.array.map((entry, i) => ({
+      ...entry,
+      body: Math.floor(i / 2),
+      index: i % 2,
+      alias: i % 2 ? "@Smile" : "angry",
+    }));
+    const map = { avg_npc_1: { ...linkMap.avg_npc_1!, array, bodies: [2, 2] } };
+    const expr = (ref: string) => resolveNativeCharacterRef(map, ref);
+    expect(expr("AVG_NPC_1.prefab@Smile$2")).toEqual({
+      kind: "found",
+      selection: { base: "avg_npc_1", expression: "2$2" },
+    });
+    expect(expr("avg_npc_1@smile$2")).toEqual({
+      kind: "found",
+      selection: { base: "avg_npc_1", expression: "1$2" },
+    });
+    expect(expr("avg_npc_1@angry$2")).toEqual({
+      kind: "found",
+      selection: { base: "avg_npc_1", expression: "1$2" },
+    });
+    expect(expr("avg_npc_1-2$2")).toEqual({ kind: "missing" });
+    const oldMap = { avg_npc_1: { ...linkMap.avg_npc_1!, array } };
+    expect(resolveNativeCharacterRef(oldMap, "AVG_NPC_1@Smile$2")).toEqual(
+      expr("AVG_NPC_1.prefab@Smile$2"),
+    );
+    expect(resolveNativeCharacterRef(oldMap, "avg_npc_1#2$2")).toEqual(
+      expr("AVG_NPC_1.prefab@Smile$2"),
+    );
+  });
+});
 
 describe("tryParseInt32", () => {
   it("accepts the whitespace .NET's number parser accepts", () => {

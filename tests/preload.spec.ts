@@ -217,12 +217,37 @@ describe("preloadContextAssets", () => {
       '[interlude(type=2.6,name="avg_npc_180#3")]',
       '[interlude(type="1.9",name="quoted_decimal")]',
       '[interlude(type=0.5,name="rounded_to_zero")]',
+      '[interlude(type=1,name="cutin_char_21#1")]',
+      '[interlude(type=1,name="cutin_char_21@variant")]',
     ]);
     expect(collectContextAssetUrls(context).toSorted()).toEqual([
       "https://torappu.prts.wiki/assets/avg/background/bg_battlefield.png",
       "https://torappu.prts.wiki/assets/avg/background/bg_tie.png",
       "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+      "https://torappu.prts.wiki/assets/avg/cutin/cutin_char_21.png",
     ]);
+  });
+
+  it("only prewarms playback aliases outside the native interlude resource list", async () => {
+    const context = createContext([
+      '[interlude(type="uichar",name="cutin_char_21#1")]',
+      '[interlude(type="bg",name="bg_test")]',
+      '[interlude(type="char",name="avg_npc_180#3")]',
+      '[interlude(type=" bg ",name="wrong_case_or_spaces")]',
+    ]);
+    expect(collectContextAssetUrls(context)).toEqual([]);
+    await preloadContextAssets(context);
+    const batch = loadMock.mock.calls[0]![0];
+    expect(batch).toEqual(
+      expect.arrayContaining([
+        "https://torappu.prts.wiki/assets/avg/cutin/cutin_char_21.png",
+        "https://torappu.prts.wiki/assets/avg/background/bg_test.png",
+        "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+      ]),
+    );
+    expect(batch).not.toContain(
+      "https://torappu.prts.wiki/assets/avg/background/wrong_case_or_spaces.png",
+    );
   });
 
   it("loads the dialog font always and the template fonts only when used", async () => {

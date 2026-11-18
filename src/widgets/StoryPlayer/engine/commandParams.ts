@@ -167,6 +167,12 @@ export function toString(value: unknown, fallback = ""): string {
   return fallback;
 }
 
+/** DotNetExtensionMethods.GetString (2791 @ 0x1869417D0) calls Convert.ToString. */
+export function boxedParamString(value: unknown): string {
+  if (typeof value === "boolean") return value ? "True" : "False";
+  return toString(value);
+}
+
 export function parseVector2(
   value: unknown,
 ): { x: number; y: number } | undefined {

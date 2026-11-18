@@ -90,26 +90,25 @@ interface CutinSlotState {
 
 /**
  * Native port: `Torappu.AVG.AVGCharacterCutinPanel` /
- * `Torappu.AVG.AVGCharacterCutinSlot`, re-verified against build 2761
- * (2.7.61) GameAssembly.dll via IDA:
+ * `Torappu.AVG.AVGCharacterCutinSlot` in build 2791 GameAssembly.dll.
  *
- * - `GetExecutors` @ 0x183e48f70 registers `charactercutin` ->
- *   `_ExecuteCharacterCutin` @ 0x183e49440, whose five branches reduce to
+ * - `GetExecutors` @ 0x18419E7E0 registers `charactercutin` ->
+ *   `_ExecuteCharacterCutin` @ 0x18419ECB0, whose five branches reduce to
  *   show / update / hide by (widgetID present in `_slots`, `name` empty).
- * - `AVGCharacterCutinSlot.Show` @ 0x183eb1320 renders the character at its
+ * - `AVGCharacterCutinSlot.Show` @ 0x184203DA0 renders the character at its
  *   original size and crops it with `_maskRectTransform` sized
  *   `width x _offsetTransform.rect.height` (the full 720-tall canvas under
  *   the default `align=HORIZONTAL`). The slot center sits at screen center +
  *   (offsetx, offsety). Expand fade styles tween the mask rect from zero
  *   (pivot pinned at the expansion edge), never the character scale.
- * - `AVGCharacterCutinSlot.SlotUpdate` @ 0x183eb20a0 does NOT replay the
+ * - `AVGCharacterCutinSlot.SlotUpdate` @ 0x184204B20 does NOT replay the
  *   entry animation: it captures the current sizeDelta / offset position /
  *   zoom scale / pov anchoredPosition and interpolates the whole layout to
  *   the new values over `animateRatio * fadetime`, while
  *   `AVGCharacterSlot.Set(name, duration, ...)` crossfades the character.
- * - `AVGCharacterCutinSlot.Hide` @ 0x183eb0d80 reverses along the stored
+ * - `AVGCharacterCutinSlot.Hide` @ 0x184203800 reverses along the stored
  *   `m_showFadeStyle` (alpha for `fade`, mask collapse for expand styles);
- *   the completion callback `b__0` @ 0x183e62c90 then recycles the slot and
+ *   the completion callback `b__0` @ 0x1841B5EF0 then recycles the slot and
  *   removes the widgetID from `_slots`.
  *
  * Web adaptation: nested Pixi containers and a Graphics mask reproduce the
@@ -140,7 +139,11 @@ export class CharacterCutinPanel {
     const current = this.slots.get(input.widgetId);
     // Empty name hides an existing slot, or finishes synchronously when the
     // widgetID is absent (2791 _ExecuteCharacterCutin @ 0x18419ECB0).
-    if (!input.characterKey && !input.characterMissing) {
+    if (
+      !input.characterKey &&
+      !input.characterMissing &&
+      !input.invalidCharacterRef
+    ) {
       if (!current) return;
       return this.runSlot(
         current,
@@ -154,23 +157,26 @@ export class CharacterCutinPanel {
     }
 
     const state = current?.hasStarted ? current : undefined;
-    // A superseded cache miss has only seeded an invisible entry pose.
+    // A superseded cache miss has only allocated its hidden view.
     if (current && !state) this.recycleSlot(current);
     const align =
       typeof input.align === "string"
         ? { horizontal: 0, vertical: 1 }[input.align]
         : (input.align ?? 0);
     const layout = layoutFor(input, align);
-    const slot = state ?? this.allocateSlot(input, layout, align);
+    const slot = state ?? this.allocateSlot(input, align);
     const keepsArt =
       !input.characterMissing && characterIdentity(input) === slot.charIdentity;
     const art =
-      keepsArt || input.characterMissing ? null : this.loadPortrait(input);
+      keepsArt || input.characterMissing || input.invalidCharacterRef
+        ? null
+        : this.loadPortrait(input);
     const background =
-      !state && input.backgroundKey
+      !state && !input.invalidCharacterRef && input.backgroundKey
         ? this.loadBackground(input.backgroundKey)
         : null;
-    const header = state ? null : this.loadHeader();
+    const header =
+      state || input.invalidCharacterRef ? null : this.loadHeader();
     return this.runSlot(
       slot,
       input,
@@ -178,6 +184,10 @@ export class CharacterCutinPanel {
       (assets, tween) => {
         // AVGCharacterSlot.Set compares the raw name even on a pooled Show.
         // Show uses duration zero, so a new portrait fades in on its first update.
+        if (!keepsArt && input.invalidCharacterRef)
+          throw new Error(
+            `charactercutin portrait exceeds its sprite hub bounds: ${input.characterRef}`,
+          );
         if (!keepsArt)
           this.fadePortrait(input, slot, assets.art, state ? input.fadeMs : 0);
         if (state) this.updateSlot(input, state, tween);
@@ -232,6 +242,7 @@ export class CharacterCutinPanel {
     const start = (assets: SlotAssets) => {
       if (state.root.destroyed || animation.endReason !== undefined) return;
       state.assetWait = undefined;
+      state.root.renderable = true;
       state.hasStarted = true;
       play(assets, (duration, update, options) => {
         // Show, SlotUpdate and Hide use the bundled DOTweenSettings' OutQuad
@@ -269,6 +280,8 @@ export class CharacterCutinPanel {
       background instanceof Promise ||
       header instanceof Promise
     ) {
+      // A fresh native Show is synchronous. Keep its entire prefab offscreen until ready.
+      if (!state.hasStarted) state.root.renderable = false;
       state.assetWait = animation;
       void Promise.allSettled([art, background, header])
         .then(([portrait, bg, decoration]) => {
@@ -282,7 +295,11 @@ export class CharacterCutinPanel {
           animation.fail(error);
         });
     } else {
-      start({ art, background, header });
+      try {
+        start({ art, background, header });
+      } catch (error) {
+        animation.fail(error);
+      }
     }
     return animation.endReason === "complete" ? undefined : animation;
   }
@@ -295,13 +312,29 @@ export class CharacterCutinPanel {
     tween: SlotTween,
   ): void {
     // Show (2791 @ 0x184203DA0) fits the Sprite rect to the mask's cross
-    // axis and applies backgroundOffset along its main axis. A failed
-    // Web texture load leaves the prefab's gray backing visible.
+    // axis and applies backgroundOffset along its main axis.
     const { backdrop, backgroundImage, backgroundRoot } = state;
-    backdrop.visible = !background;
-    backgroundImage.visible = background !== null;
-    let backgroundWidth = STORY_WIDTH * 2;
-    let backgroundHeight = STORY_HEIGHT;
+    // Show sets both mask dimensions, zoom and POV before it reads the background Sprite.
+    state.maskSize = { h: layout.maskH, w: layout.maskW };
+    state.content.scale.set(layout.zoom);
+    state.pov = { x: layout.contentX, y: layout.contentY };
+    this.drawMask(state);
+    backdrop.visible = !input.backgroundKey;
+    backgroundImage.visible = Boolean(input.backgroundKey);
+    const missingBackground = input.backgroundKey && !background;
+    if (missingBackground) {
+      // The named branch switches backgrounds, then dereferences Sprite.rect
+      // before it starts the entry tween. The panel has already added the slot.
+      const { width, height } = backgroundImage;
+      backgroundImage.texture = Texture.WHITE;
+      backgroundImage.setSize(width, height);
+    }
+    let backgroundWidth = input.backgroundKey
+      ? backgroundImage.width
+      : STORY_WIDTH * 2;
+    let backgroundHeight = input.backgroundKey
+      ? backgroundImage.height
+      : STORY_HEIGHT;
     if (background) {
       const offset = input.backgroundOffset ?? 0;
       // An unnamed Align retains the prefab or pooled RectTransform.
@@ -323,7 +356,7 @@ export class CharacterCutinPanel {
     }
     // Both 2791 background objects have the same stretch-anchored header.
     // Mount it on the visible background so it follows that rect and its POV.
-    (background ? backgroundRoot : backdrop).addChild(state.header);
+    (input.backgroundKey ? backgroundRoot : backdrop).addChild(state.header);
     state.header.visible = header !== null;
     if (header) {
       state.header.texture = header;
@@ -331,15 +364,38 @@ export class CharacterCutinPanel {
       state.header.setSize(backgroundWidth, 200);
     }
 
+    if (missingBackground)
+      throw new Error(
+        `charactercutin background sprite is missing: ${input.backgroundKey}`,
+      );
+
+    const style = state.fadeStyle;
+    state.root.position.set(layout.rootX, layout.rootY);
+    state.portrait.root.position.set(
+      input.charOffsetX ?? 0,
+      layout.maskH / 2 - (input.charOffsetY ?? 0),
+    );
     // Show keeps the layout and leaves its callback unattached for an
     // unnamed ordinal (2791 @ 0x184203DA0).
-    if (!hasFadeTween(state.fadeStyle)) return;
-    if (state.fadeStyle === 0) {
-      // Fade the canvas group with the mask already at full size.
+    if (!hasFadeTween(style)) return;
+    state.maskPivot = {
+      x: style === 2 ? -0.5 : style === 3 ? 0.5 : 0,
+      y: style === 5 ? -0.5 : style === 6 ? 0.5 : 0,
+    };
+    state.maskSize = {
+      h: style >= 4 && style <= 6 ? 0 : layout.maskH,
+      w: style >= 1 && style <= 3 ? 0 : layout.maskW,
+    };
+    state.root.alpha = style === 0 ? 0 : 1;
+    this.drawMask(state);
+    if (style === 0) {
+      // DOFade's getter reads the CanvasGroup after earlier tweens in this update.
+      let startAlpha: number | undefined;
       tween(
         input.fadeMs,
         (progress) => {
-          state.root.alpha = progress;
+          startAlpha ??= state.root.alpha;
+          state.root.alpha = lerp(startAlpha, 1, progress);
         },
         { target: state.root },
       );
@@ -456,6 +512,8 @@ export class CharacterCutinPanel {
       return;
     }
 
+    // Hide resets the CanvasGroup in every expand branch (2791 @ 0x184203800).
+    state.root.alpha = 1;
     const horizontal = state.fadeStyle >= 1 && state.fadeStyle <= 3;
     const size = { ...state.maskSize };
     const end = horizontal ? { h: size.h, w: 0 } : { h: 0, w: size.w };
@@ -491,7 +549,6 @@ export class CharacterCutinPanel {
 
   private allocateSlot(
     input: CharacterCutinInput,
-    layout: CutinLayout,
     align: number,
   ): CutinSlotState {
     const fadeStyle =
@@ -500,40 +557,22 @@ export class CharacterCutinPanel {
         : (ShowItemFadeStyle[input.fadeStyle ?? "fade"] ??
           ShowItemFadeStyle.fade);
     const recycled = this.recycledSlots.pop();
-    const entry = {
+    // GameObjectPool.Allocate reactivates a physical prefab without resetting
+    // its transforms (2791 @ 0x182AB73D0). Only Show writes the entry layout.
+    const state = recycled ?? {
+      ...this.createSlotView(),
+      charIdentity: "",
       align,
       fadeStyle,
       hasStarted: false,
-      maskPivot:
-        !hasFadeTween(fadeStyle) && recycled
-          ? recycled.maskPivot
-          : {
-              x: fadeStyle === 2 ? -0.5 : fadeStyle === 3 ? 0.5 : 0,
-              y: fadeStyle === 5 ? -0.5 : fadeStyle === 6 ? 0.5 : 0,
-            },
-      maskSize: {
-        h: fadeStyle >= 4 && fadeStyle <= 6 ? 0 : layout.maskH,
-        w: fadeStyle >= 1 && fadeStyle <= 3 ? 0 : layout.maskW,
-      },
-      pov: { x: layout.contentX, y: layout.contentY },
+      maskPivot: { x: 0, y: 0 },
+      maskSize: { w: DEFAULT_SLOT_WIDTH, h: STORY_HEIGHT },
+      pov: { x: 0, y: 0 },
     };
-    // GameObjectPool.Allocate (2791 @ 0x182AB73D0) reuses the last
-    // recycled object. Outstanding Show, SlotUpdate and Hide tweens still hold it.
-    const state = recycled
-      ? Object.assign(recycled, entry)
-      : { ...this.createSlotView(), charIdentity: "", ...entry };
-    const { root, content, portrait } = state;
-    root.visible = true;
-    root.position.set(layout.rootX, layout.rootY);
-    content.scale.set(layout.zoom);
-    // Show places _characterSlot at the bottom of the mask (2791
-    // @ 0x184203DA0). SlotUpdate leaves this local position alone.
-    portrait.root.position.set(
-      input.charOffsetX ?? 0,
-      layout.maskH / 2 - (input.charOffsetY ?? 0),
-    );
-    // Seed the entry pose before a Web texture request can yield a frame.
-    if (hasFadeTween(fadeStyle)) root.alpha = fadeStyle === 0 ? 0 : 1;
+    state.align = align;
+    state.fadeStyle = fadeStyle;
+    state.hasStarted = false;
+    state.root.visible = true;
     this.drawMask(state);
     this.slotViews.add(state);
     this.slots.set(input.widgetId, state);
@@ -541,7 +580,7 @@ export class CharacterCutinPanel {
   }
 
   private createSlotView() {
-    const root = new Container();
+    const root = new Container({ x: STORY_WIDTH / 2, y: STORY_HEIGHT / 2 });
     // In the 2791 prefab the 2560x720 defaultBackground tracks the mask
     // center. The optional background Image shares the character's zoom and
     // POV, and both are clipped by the same mask.
@@ -606,7 +645,7 @@ export class CharacterCutinPanel {
   private drawMask(state: CutinSlotState): void {
     const { h, w } = state.maskSize;
     // 2791 Show sets the mask pivot and its position (0x184203DA0).
-    // SlotUpdate (0x184249B00) resizes around that pivot. The anchored POV
+    // SlotUpdate (0x184204B20) resizes around that pivot. The anchored POV
     // follows the mask center. Directional Show/Hide compensate for its move.
     const centerX = state.maskPosition.x - state.maskPivot.x * w;
     const centerY = state.maskPosition.y - state.maskPivot.y * h;

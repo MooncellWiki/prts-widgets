@@ -4,11 +4,10 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import {
+  boxedParamString as toString,
   exactArg,
   getBool,
   parseEnumInt32,
-  toNumber,
-  toString,
   tryConvertToInt32,
   tryConvertToSingle,
   tryParseInt32,
@@ -27,10 +26,9 @@ import type {
 } from "../types";
 
 interface CharacterCutinPlayback {
-  calculateFadeMs: (seconds: unknown, fallback: number) => number;
+  animateRatio: () => number;
   resolveCharacterName: (ref: string) => CharacterRefResolution;
   warn: (type: RuntimeWarning["type"], detail: string) => void;
-  warnNativeSlotThrows: (ref: string, line: ParsedCommandLine) => void;
 }
 
 function parseInterludeType(value: unknown): InterludeElementType {
@@ -39,8 +37,7 @@ function parseInterludeType(value: unknown): InterludeElementType {
   if (raw === "bg") return 2;
   if (raw === "char") return 3;
   // _GenCutinType (2791 @ 0x1841A01A0) uses Int32.TryParse.
-  const numeric = tryParseInt32(raw);
-  return numeric === 1 || numeric === 2 || numeric === 3 ? numeric : 0;
+  return tryParseInt32(raw) ?? 0;
 }
 
 /** DotNetExtensionMethods.GetFloat reads the boxed value using the invariant culture. */
@@ -97,6 +94,14 @@ export class CharacterCutinPanel extends ExecutorComponent {
     this.renderer.clearInterludes();
   }
 
+  private fadeMs(args: StoryCommandArgs, key: string, fallback = 0): number {
+    // AVGUtils.CalculateFadetime (2791 @ 0x184195010) multiplies two Singles.
+    const seconds = getFloat(args, key) ?? Math.fround(fallback);
+    return Math.fround(
+      Math.fround(seconds * Math.fround(this.playback.animateRatio())) * 1000,
+    );
+  }
+
   private executeCharacterCutin(
     line: ParsedCommandLine,
     isCurrent?: () => boolean,
@@ -112,23 +117,17 @@ export class CharacterCutinPanel extends ExecutorComponent {
     const resolution = nameRef
       ? this.playback.resolveCharacterName(nameRef)
       : null;
-    if (resolution?.kind === "native_throws") {
-      this.playback.warnNativeSlotThrows(nameRef, line);
-      return "continue";
-    }
     const resolved = resolution?.kind === "found" ? resolution.selection : null;
     // _ExecuteCharacterCutin (2791 @ 0x18419ECB0) uses the cut-in slot's
     // serialized defaults (_defaultFadetime = 0.4, _defaultSlotWidth = 200).
     // AVGCharacterCutinSlot implements IFadeTimeRatio, so Show, SlotUpdate,
     // and Hide all scale fadetime by animateRatio.
-    const fadeMs = Math.round(
-      this.playback.calculateFadeMs(getFloat(args, "fadetime"), 0.4),
-    );
+    const fadeMs = this.fadeMs(args, "fadetime", 0.4);
     const block = getBool(args, "block");
 
     // Native allocates the slot and runs its tween even if it can't resolve
     // the character art. Keep the block timing and flag the missing art.
-    if (nameRef && !resolved) {
+    if (resolution?.kind === "missing") {
       this.playback.warn("missing_asset", `charactercutin: ${nameRef}`);
     }
 
@@ -152,7 +151,10 @@ export class CharacterCutinPanel extends ExecutorComponent {
       backgroundOffset: getFloat(args, "backgroundOffset"),
       block,
       characterKey: resolved?.base,
-      characterMissing: Boolean(nameRef) && !resolved,
+      characterMissing: resolution?.kind === "missing",
+      ...(resolution?.kind === "native_throws" && {
+        invalidCharacterRef: true,
+      }),
       characterRef: nameRef || undefined,
       charOffsetX: getFloat(args, "charOffsetX"),
       charOffsetY: getFloat(args, "charOffsetY"),
@@ -196,33 +198,17 @@ export class CharacterCutinPanel extends ExecutorComponent {
     const channel = channelArg ?? -1;
     const type = parseInterludeType(exactArg(args, "type"));
     const name = toString(exactArg(args, "name"));
-    // Type 3 uses the AVG portrait pipeline. Type 1 loads from
-    // Cutin/Characters via ResourceUrls.GetCutinCharPath.
-    const avatarResolution =
-      type === 3 && name ? this.playback.resolveCharacterName(name) : null;
-    if (avatarResolution?.kind === "native_throws") {
-      this.playback.warnNativeSlotThrows(name, line);
-      return "continue";
-    }
-    const resolvedAvatar =
-      avatarResolution?.kind === "found" ? avatarResolution.selection : null;
-    if (type === 3 && name && !resolvedAvatar)
-      this.playback.warn("missing_asset", `interlude avatar: ${name}`);
-
     const positionFrom = interludeVector(exactArg(args, "pfrom"));
     const positionTo = interludeVector(exactArg(args, "pto"));
     const scaleFrom = interludeVector(exactArg(args, "sfrom"));
     const scaleTo = interludeVector(exactArg(args, "sto"));
-    const duration = (key: string): number =>
-      this.playback.calculateFadeMs(exactArg(args, key), 0);
+    const duration = (key: string): number => this.fadeMs(args, key);
 
     const block = getBool(args, "block");
     const input = {
       alphaDurationMs: duration("aduration"),
-      alphaFrom: toNumber(exactArg(args, "afrom"), -1),
-      alphaTo: toNumber(exactArg(args, "ato"), -1),
-      avatarCharacterKey: resolvedAvatar?.base,
-      avatarExpression: resolvedAvatar?.expression,
+      alphaFrom: getFloat(args, "afrom") ?? -1,
+      alphaTo: getFloat(args, "ato") ?? -1,
       block,
       channel,
       charName: toString(exactArg(args, "char")),

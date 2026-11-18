@@ -6,6 +6,7 @@ import {
   type CharacterRefResolution,
   nativeCharacterFadeIdentity,
   resolveCharacterRef,
+  resolveNativeCharacterRef,
 } from "./characterRef";
 import {
   exactArg,
@@ -388,11 +389,10 @@ export class StoryRuntime {
     this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
     this.characterCutinPanel = new CharacterCutinPanel(renderer, {
-      calculateFadeMs: (seconds, fallback) =>
-        this.calculateFadeMs(seconds, fallback),
-      resolveCharacterName: (ref) => this.resolveCharacterName(ref),
+      animateRatio: () => this.getCurrentSpeed().animateRatio,
+      resolveCharacterName: (ref) =>
+        resolveNativeCharacterRef(this.context.linkMap, ref),
       warn: (type, detail) => this.warn(type, detail),
-      warnNativeSlotThrows: (ref, line) => this.warnNativeSlotThrows(ref, line),
     });
     this.decisionPanel = new DecisionPanel(
       this.decisionPredicator,

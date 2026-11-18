@@ -1,14 +1,12 @@
 import {
   Container,
-  Graphics,
   Sprite,
-  Text,
-  TextStyle,
   Texture,
   type ObservablePoint,
   type UniformGroup,
 } from "pixi.js";
 
+import { cutinPortraitResourceKey, nativeBundleKey } from "../../asset";
 import { STORY_HEIGHT, STORY_WIDTH, type InterludeInput } from "../../types";
 import { CharacterSlotView } from "../characters/CharacterSlotView";
 import {
@@ -84,10 +82,9 @@ interface ChannelState extends ChannelView {
   disposed: boolean;
   template: TemplateNodes | null;
   deco: DecoNodes | null;
-  /** 未知 maskid 的矩形回落(native 加载模板失败即无窗口;Web 兜底)。 */
-  fallbackMask: Graphics | null;
-  /** 回落路径的文字标签。 */
-  label: Text | null;
+  /** Bit assigned by _GetStencilChannel, independent of the controller's channel ID. */
+  writeChannel: number;
+  avatarReadChannel: number;
   /** Cache-miss waits that would otherwise have completed before recycle. */
   assetWaits: Set<ExecutionHandle>;
   /** The most recent char, background and avatar sequences in CutinChannel. */
@@ -95,11 +92,9 @@ interface ChannelState extends ChannelView {
   /** The single CutinAVGCharacterSlot owned by this channel. */
   avatar?: CharacterSlotView;
   avatarLoadId: number;
+  dialogBackgroundLoadId: number;
   /** AVGCharacterSlot.m_currentKey, set when the portrait loads. */
   avatarName: string;
-  /** 回落矩形的尺寸。 */
-  size: Vec2;
-  fallbackScale: Vec2;
   /** 通道 animWrapper 上当前 direction clip。 */
   direction?: { name: "rin" | "lin"; tween: TweenHandle };
   /** `CutinTemplate.m_cachedName`。 */
@@ -123,8 +118,14 @@ const KNOWN_MASK_IDS = new Set([
 
 // MathUtil.IsZero and GT(a, 0) use a tolerance of 1e-5 seconds.
 const TWEEN_ZERO_MS = 0.01;
+const FLOAT_EPSILON = Math.fround(1e-5);
 const avatarMoveEase = dotweenEaseCurve("OutCubic");
 const BACKGROUND_ELEMENT_KEY = "\u0000bg";
+
+/** _GetStencilChannel (2791 @ 0x1814FA3A0), including the NONE entry and lookup failures. */
+function stencilChannel(channel: number): number {
+  return channel >= 1 && channel <= 8 ? 1 << (channel - 1) : 0;
+}
 
 function lerp(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
@@ -199,7 +200,7 @@ function elementKeyFor(input: InterludeInput): string {
  * - `direction=rin/lin` (`_TryPlayAnimation`) plays the 2.083s channel clip on
  *   top; a blocking element update then waits for SkipStory because it never
  *   attaches a completion callback to its sequence.
- * - 2.7.61 `CutinTemplateDialogView` (`interlude_dialog_left/right`) overrides
+ * - 2791 `CutinTemplateDialogView` (`interlude_dialog_left/right`) overrides
  *   Show/Update/Hide without calling the base: no deco/`_emptyImg`/size/ts;
  *   type 2 refreshes `img_bg`, type 3/1 refresh `img_char` (type 3 from the AVG
  *   portrait, type 1 from Cutin/Characters) with `icharpos`/`icharscale`; the
@@ -211,8 +212,7 @@ function elementKeyFor(input: InterludeInput): string {
  *   currently stored for each element type. Earlier sequences can still
  *   write to pooled image elements.
  *
- * Web adaptations: stencil channels are PIXI Graphics masks; unknown maskids
- * fall back to the legacy plain rectangle; a dialog displays its own
+ * Web adaptations: stencil readers use Pixi Graphics masks. A dialog displays its own
  * portrait alongside the stencil-clipped type 1 channel sequence. The regular
  * type 3 branch uses the prefab's bottom anchor and the portrait hub rect.
  */
@@ -287,35 +287,14 @@ export class CutinChannel {
 
   /** _ProcessChannel and OnCutinBegin (2791 @ 0x1814FBAD0 / 0x1814F9270). */
   allocate(input: InterludeInput): void {
-    const { root, content, elements } = this.view;
+    const { root } = this.view;
     root.visible = true;
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     root.scale.set(1);
     root.alpha = 1;
-    // A recycled Image can already be active while Web mask textures load.
-    content.visible = false;
-    // Reused Images keep their stencil read channel until SetCutinElement.
-    // Pixi clips locally, so a reader for another channel stays out of this mask.
-    for (const element of elements.values())
-      element.node.renderable = element.readChannel === input.channel;
-
-    this.state = {
-      ...this.view,
-      disposed: false,
-      template: null,
-      deco: null,
-      fallbackMask: null,
-      label: null,
-      assetWaits: new Set(),
-      elementSequences: new Map(),
-      avatarLoadId: 0,
-      avatarName: "",
-      size: { ...input.size },
-      fallbackScale: { x: 1, y: 1 },
-      cachedName: "",
-      dialogCharOffset: { x: 0, y: 0 },
-      dialogCharScale: { x: 1, y: 1 },
-    };
+    const state = this.activeState();
+    state.writeChannel = stencilChannel(input.channel);
+    this.syncStencilVisibility(state);
   }
 
   /** CutinChannel.OnRecycle (2791 @ 0x1814F9CD0). */
@@ -329,6 +308,7 @@ export class CutinChannel {
     // ClearElement (0x1814FC0C0) clears the Sprite and offset. An active
     // Unity Image with a null Sprite draws a solid quad at its retained rect.
     for (const { node, sprite } of state.elements.values()) {
+      node.mask = null;
       const { width, height } = sprite;
       sprite.texture = Texture.WHITE;
       sprite.setSize(width, height);
@@ -339,7 +319,7 @@ export class CutinChannel {
     for (const animation of state.assetWaits) animation.end("reset");
     state.assetWaits.clear();
 
-    state.content.mask = null;
+    state.avatarContainer.mask = null;
     const { avatar, maskContainer, decoContainer } = state;
     const retired = [
       ...maskContainer.removeChildren(),
@@ -362,8 +342,23 @@ export class CutinChannel {
   }
 
   private activeState(): ChannelState {
-    if (!this.state) throw new Error("CutinChannel is not allocated");
-    return this.state;
+    // A captured ID can still point at a recycled, inactive GameObject.
+    return (this.state ??= {
+      ...this.view,
+      disposed: false,
+      template: null,
+      deco: null,
+      writeChannel: 0,
+      avatarReadChannel: 1,
+      assetWaits: new Set(),
+      elementSequences: new Map(),
+      avatarLoadId: 0,
+      dialogBackgroundLoadId: 0,
+      avatarName: "",
+      cachedName: "",
+      dialogCharOffset: { x: 0, y: 0 },
+      dialogCharScale: { x: 1, y: 1 },
+    });
   }
 
   private trackPreparation(
@@ -395,9 +390,9 @@ export class CutinChannel {
       if (template?.dialog) {
         const dialog = template.dialog;
         // Seed the entry pose before the Web texture load can yield a frame.
-        if (input.style === 3 && input.durationMs > TWEEN_ZERO_MS) {
+        if (input.style === 3 && Math.abs(input.durationMs) > TWEEN_ZERO_MS) {
           applyDialogIntro(dialog, 0);
-          this.syncStencilVisibility(state, template);
+          this.syncStencilVisibility(state);
         }
         const show = () => {
           if (this.state !== state) return;
@@ -415,27 +410,20 @@ export class CutinChannel {
         if (template.emptyImage)
           template.emptyImage.visible = isEmptyName(input.name);
         hasShowSequence = this.showTemplate(state, template, input);
-      } else {
-        this.renderFallbackLabel(state, input);
-        if (
-          input.style === 0 &&
-          (input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0)
-        )
-          this.startScaleEntry(state, input);
       }
-      // TryPlayAnimation runs after ShowCutinMask without gating begin.
-      this.playDirection(state, input);
       const onComplete = input.block ? complete : undefined;
       if (template?.hasImgMask && (input.style === 1 || input.style === 2)) {
         template.maskNode.alpha = 0;
-        this.syncStencilVisibility(state, template);
+        this.syncStencilVisibility(state);
         this.fadeMask(state, template, 1, 3000, onComplete);
       } else if (onComplete && hasShowSequence)
         this.runTween(state, 1000, () => {}, { onComplete });
-      if (!onComplete || !hasShowSequence) complete();
+      if (onComplete && !hasShowSequence) complete();
+      this.playDirection(state, input);
+      if (!input.block) complete();
     };
 
-    const textures = KNOWN_MASK_IDS.has(input.maskId)
+    const textures = KNOWN_MASK_IDS.has(nativeBundleKey(input.maskId))
       ? loadInterludeTextures()
       : undefined;
     const preparation =
@@ -483,13 +471,29 @@ export class CutinChannel {
           state,
           input.name ? this.loadTexture(input) : null,
           (texture) => {
-            this.processElement(
+            const apply = (portrait: Texture | null) => {
+              this.processElement(
+                state,
+                input,
+                { kind: "image", texture },
+                complete,
+              );
+              this.refreshDialog(state, dialog, input, () => portrait);
+              if (!input.block) complete();
+            };
+            const key = cutinPortraitResourceKey(input.name);
+            if (
+              key === input.name ||
+              isEmptyName(input.name) ||
+              state.cachedName.toLowerCase() === input.name.toLowerCase()
+            ) {
+              return apply(texture);
+            }
+            return this.prepareAsset(
               state,
-              input,
-              { kind: "image", texture },
-              complete,
+              this.loadTexture({ ...input, name: key }),
+              apply,
             );
-            this.refreshDialog(state, dialog, input, () => texture);
           },
         );
       }
@@ -506,16 +510,22 @@ export class CutinChannel {
       return preparation ? preparation.then(finish) : finish();
     }
 
-    if (template) {
+    const updateTemplate = () => {
+      if (!template) return;
       if (this.cacheName(state, input.name) && template.emptyImage)
         template.emptyImage.visible = isEmptyName(input.name);
       this.renderDeco(state, input);
-    } else {
-      this.renderFallbackLabel(state, input);
-    }
+    };
+    // OnCutinUpdate processes the element before calling UpdateCutinMask.
+    const applyElement = (resource: ElementArt) => {
+      this.processElement(state, input, resource, complete);
+      updateTemplate();
+      if (!input.block) complete();
+    };
 
     // Type 0/unknown updates the template without calling completion.
     if (input.type < 1 || input.type > 3) {
+      updateTemplate();
       if (!input.block) complete();
       return;
     }
@@ -526,21 +536,14 @@ export class CutinChannel {
         input.name ? this.loadAvatar(input) : null,
         (art) => {
           if (input.name && state.avatarLoadId !== loadId) complete();
-          else
-            this.processElement(
-              state,
-              input,
-              { kind: "avatar", art },
-              complete,
-            );
+          else applyElement({ kind: "avatar", art });
         },
       );
     }
     return this.prepareAsset(
       state,
       input.name ? this.loadTexture(input) : null,
-      (texture) =>
-        this.processElement(state, input, { kind: "image", texture }, complete),
+      (texture) => applyElement({ kind: "image", texture }),
     );
   }
 
@@ -549,43 +552,46 @@ export class CutinChannel {
     input: InterludeInput,
     textures?: InterludeTextureSet,
   ): void {
-    const { content, decoContainer, maskContainer } = state;
+    const { decoContainer, maskContainer } = state;
     const offsetX = input.offset.x;
     const offsetY = -input.offset.y;
 
     if (textures) {
       try {
-        const template = buildTemplate(input.maskId, textures);
+        const maskId = nativeBundleKey(input.maskId);
+        const template = buildTemplate(maskId, textures);
         if (template) {
           state.template = template;
           let anchorX = 0;
           if (template.anchor === "left") anchorX = -STORY_WIDTH / 2;
           else if (template.anchor === "right") anchorX = STORY_WIDTH / 2;
           template.root.position.set(anchorX + offsetX, offsetY);
-          // _ApplyDialogStencilChannel (2791 @ 0x1814FDFE0) shares the
-          // writer with the channel's ordinary CutinImageElement readers.
-          content.mask = template.maskGraphics;
-          content.visible = true;
           if (template.dialog) {
             template.dialog.charImage.once("destroyed", () => {
               state.dialogCharRelease?.();
               state.dialogCharRelease = undefined;
             });
           } else {
+            const { x, y } = input.size;
             const size =
-              input.size.x * input.size.x + input.size.y * input.size.y >= 1e-10
+              Math.fround(Math.fround(x * x) + Math.fround(y * y)) >=
+              Math.fround(FLOAT_EPSILON * FLOAT_EPSILON)
                 ? input.size
                 : template.defaultSize;
             template.resize(size.x, size.y);
-            const deco = buildDeco(input.maskId, textures, this.waveUniforms);
+            const deco = buildDeco(maskId, textures, this.waveUniforms);
             if (deco) {
               deco.root.position.set(offsetX, offsetY);
               decoContainer.addChild(deco.root);
               state.deco = deco;
             }
           }
-          this.setScale(state, template.initialScale);
+          template.scaleNode.scale.set(
+            template.initialScale.x,
+            template.initialScale.y,
+          );
           maskContainer.addChild(template.root);
+          this.syncStencilVisibility(state);
           return;
         }
       } catch (error) {
@@ -595,13 +601,8 @@ export class CutinChannel {
       }
     }
 
-    const fallback = new Graphics();
-    fallback.position.set(offsetX, offsetY);
-    maskContainer.addChild(fallback);
-    content.mask = fallback;
-    content.visible = true;
-    state.fallbackMask = fallback;
-    this.setScale(state, state.fallbackScale);
+    // OnCutinBegin (0x1814F9270) leaves m_maskTemplate null on a missing prefab.
+    this.syncStencilVisibility(state);
   }
 
   /** Prepares ShowCutinMask (2791 @ 0x181501750) and reports its sequence. */
@@ -611,11 +612,17 @@ export class CutinChannel {
     input: InterludeInput,
   ): boolean {
     const style = input.style;
-    const tsEntry = input.templateSizeTo.x > 0 || input.templateSizeTo.y > 0;
-    if ((style === 0 || style === 2) && tsEntry)
-      this.startScaleEntry(state, input);
-    else if (style === 1 && template.hasImgMask)
-      this.setScale(state, { x: 1, y: 1 });
+    const tsEntry =
+      input.templateSizeTo.x > FLOAT_EPSILON ||
+      input.templateSizeTo.y > FLOAT_EPSILON;
+    if ((style === 0 || style === 2) && tsEntry) {
+      template.scaleNode.scale.set(
+        input.templateSizeFrom.x,
+        input.templateSizeFrom.y,
+      );
+      this.tweenScale(state, template, input);
+    } else if (style === 1 && template.hasImgMask)
+      template.scaleNode.scale.set(1);
 
     if (template.autoClip === "square_show") {
       const seconds = CLIP_SECONDS.squareShow;
@@ -626,10 +633,14 @@ export class CutinChannel {
         nameGroup: state.deco?.nameGroup ?? null,
         waveGroup: state.deco?.waveGroup ?? null,
       };
-      applySquareShow(nodes, 0);
-      this.runTween(state, seconds * 1000, (progress) => {
-        applySquareShow(nodes, progress * seconds);
-      });
+      const sample = (time: number) => {
+        applySquareShow(nodes, time);
+        this.syncStencilVisibility(state);
+      };
+      sample(0);
+      this.runTween(state, seconds * 1000, (progress) =>
+        sample(progress * seconds),
+      );
     }
 
     if (style === 3 && template.animatorClip === "hori_mask_open") {
@@ -643,19 +654,41 @@ export class CutinChannel {
     return true;
   }
 
-  private syncStencilVisibility(
-    state: ChannelState,
-    template: TemplateNodes,
-  ): void {
+  private syncStencilVisibility(state: ChannelState): void {
     if (this.state !== state) return;
-    // The 2791 writer uses Color32 vertices and cullTransparentMesh.
-    // Pixi's readers keep their own alpha while the writer is culled.
-    const writerAlpha =
-      template.maskNode.alpha * (template.dialog?.group.alpha ?? 1);
+    const { template, writeChannel } = state;
+    // UIStencilComponent.Status.ReloadMaterial (2791 @ 0x1815656B0).
+    // Equal with readMask 0 always passes, even without a stencil writer.
+    const mask = template?.maskGraphics;
+    const writerAlpha = template
+      ? template.maskNode.alpha *
+        (template.dialog?.group.alpha ?? 1) *
+        (template.backShadowGroup?.alpha ?? 1) *
+        state.root.alpha
+      : 0;
     const writesStencil = writerAlpha > 0.5 / 255;
-    state.content.visible = writesStencil;
-    for (const reader of template.stencilReaders ?? [])
-      reader.renderable = writesStencil;
+    const applyReader = (reader: Container, readChannel: number) => {
+      reader.mask =
+        readChannel !== 0 && readChannel === writeChannel
+          ? (mask ?? null)
+          : null;
+      reader.renderable =
+        readChannel === 0 || (readChannel === writeChannel && writesStencil);
+    };
+    let hasUnmaskedReader = false;
+    for (const { node, readChannel } of state.elements.values()) {
+      applyReader(node, readChannel);
+      if (node.visible && readChannel === 0) hasUnmaskedReader = true;
+    }
+    applyReader(state.avatarContainer, state.avatarReadChannel);
+    state.content.visible =
+      writesStencil ||
+      hasUnmaskedReader ||
+      (state.avatar !== undefined && state.avatarReadChannel === 0);
+    for (const reader of template?.stencilReaders ?? [])
+      applyReader(reader, writeChannel);
+    // The Unity writer has ColorMask 0, including when it has no readers.
+    if (mask) mask.includeInBuild = false;
   }
 
   private fadeMask(
@@ -671,7 +704,7 @@ export class CutinChannel {
       durationMs,
       (progress) => {
         step(progress);
-        this.syncStencilVisibility(state, template);
+        this.syncStencilVisibility(state);
       },
       {
         deferZeroDuration: true,
@@ -682,69 +715,25 @@ export class CutinChannel {
     );
   }
 
-  /** Style Scale/Both: localScale = tsFrom, DOScale to tsTo (not gating). */
-  private startScaleEntry(state: ChannelState, input: InterludeInput): void {
-    this.setScale(state, input.templateSizeFrom);
-    this.tweenScale(state, input);
-  }
-
   private tweenScale(
     state: ChannelState,
+    template: TemplateNodes,
     input: InterludeInput,
     onComplete?: () => void,
   ): void {
     const { x, y } = input.templateSizeTo;
-    if (state.template) {
-      // Native ShowCutinMask / HideCutinMask (2791 @ 0x181501750 /
-      // 0x1815013A0) start independent DOScale tweens on the same transform.
-      const target = state.template.scaleNode;
-      this.runTween(
-        state,
-        input.templateSizeDurationMs,
-        tweenPoint(target.scale, x, y),
-        {
-          deferZeroDuration: true,
-          ease: dotweenDefaultEase,
-          onComplete,
-          target,
-        },
-      );
-      return;
-    }
-
-    // The Web fallback rectangle replaces its previous scale tween.
-    const target = state.fallbackMask ?? state.maskContainer;
-    this.tweens.killTarget(target);
-    const from = state.fallbackScale;
+    const target = template.scaleNode;
     this.runTween(
       state,
       input.templateSizeDurationMs,
-      (progress) => {
-        this.setScale(state, {
-          x: lerp(from.x, x, progress),
-          y: lerp(from.y, y, progress),
-        });
-      },
+      tweenPoint(target.scale, x, y),
       {
+        deferZeroDuration: true,
         ease: dotweenDefaultEase,
         onComplete,
         target,
       },
     );
-  }
-
-  private setScale(state: ChannelState, scale: Vec2): void {
-    if (state.template) {
-      state.template.scaleNode.scale.set(scale.x, scale.y);
-      return;
-    }
-    state.fallbackScale = { ...scale };
-    const w = state.size.x * scale.x;
-    const h = state.size.y * scale.y;
-    state.fallbackMask
-      ?.clear()
-      .rect(-w / 2, -h / 2, w, h)
-      .fill(0xff_ff_ff);
   }
 
   /** `CutinTemplate._CacheName`:空名不算变化;忽略大小写比较。 */
@@ -763,27 +752,6 @@ export class CutinChannel {
     deco.setSwitch(input.switchOn);
   }
 
-  /** 回落路径(无模板、无 deco)沿用旧的文字标签;空 `char` 保留旧文字。 */
-  private renderFallbackLabel(
-    state: ChannelState,
-    input: InterludeInput,
-  ): void {
-    if (!input.charName) return;
-    if (!state.label) {
-      const label = new Text({
-        style: new TextStyle({ fill: 0xff_ff_ff, fontSize: 24 }),
-        text: input.charName,
-      });
-      label.label = "interlude-char";
-      label.anchor.set(0.5);
-      if (state.fallbackMask)
-        label.position.copyFrom(state.fallbackMask.position);
-      state.decoContainer.addChild(label);
-      state.label = label;
-    }
-    state.label.text = input.charName;
-  }
-
   /** CutinChannel._ProcessElement (2791 @ 0x1814FA570). */
   private processElement(
     state: ChannelState,
@@ -795,7 +763,7 @@ export class CutinChannel {
     let offset: Container;
     let alphaTarget: Container | null = null;
     const isAvatar = resource.kind === "avatar";
-    const from = Math.max(input.alphaFrom, 0);
+    const from = input.alphaFrom >= 0 ? input.alphaFrom : 0;
     const to = input.alphaTo >= 0 ? input.alphaTo : 1;
     if (isAvatar) {
       // CutinAVGCharacterSlot (2791 @ 0x1814F8E50 / 0x1814F8C20 /
@@ -815,6 +783,7 @@ export class CutinChannel {
         if (state.avatarName.toLowerCase() !== "char_empty")
           offset.position.set(0, 0);
         const { front, isAlive, outgoing } = avatar.swap(resource.art, from);
+        state.avatarReadChannel = stencilChannel(input.channel);
         state.avatarName = front ? input.name : "";
         alphaTarget = front;
         // The back Image fade is independent of the element sequence.
@@ -847,12 +816,12 @@ export class CutinChannel {
               : [resource.texture.width, resource.texture.height];
           sprite.setSize(width, height);
         } else sprite.setSize(...rect);
-        element.readChannel = input.channel;
-        root.renderable = true;
+        element.readChannel = stencilChannel(input.channel);
         root.visible = true;
         alphaTarget = root;
       }
     }
+    this.syncStencilVisibility(state);
     // OnCutinUpdate (2791 @ 0x1814F9820) stores the new sequence even
     // when it has no tracks. OnRecycle can kill only the stored sequence.
     const sequence = new Sequence((durationMs, update, done, options) => {
@@ -922,7 +891,6 @@ export class CutinChannel {
       isAlive: () => !root.destroyed,
       onComplete,
     });
-    if (!input.block) complete();
   }
 
   /** TryPlayAnimation @ 0x1814FABE0 restarts a direction clip. */
@@ -939,7 +907,11 @@ export class CutinChannel {
     };
     // SampleClipAtBegin still runs for a playing clip. Play declines to
     // restart that state in _SetupOnAnimationStart (2791 @ 0x181511CB0).
-    applyDirectionClip(nodes, direction, 0);
+    const sample = (time: number) => {
+      applyDirectionClip(nodes, direction, time);
+      this.syncStencilVisibility(state);
+    };
+    sample(0);
     const current = state.direction;
     if (current?.name === direction && current.tween.endReason === undefined)
       return true;
@@ -948,7 +920,7 @@ export class CutinChannel {
     state.direction = {
       name: direction,
       tween: this.runTween(state, seconds * 1000, (progress) =>
-        applyDirectionClip(nodes, direction, progress * seconds),
+        sample(progress * seconds),
       ),
     };
     return true;
@@ -970,25 +942,30 @@ export class CutinChannel {
       : CLIP_SECONDS.dialogIntroLeft;
     // _PlayDialogIntro (2791 @ 0x1814FFB50) samples the end pose
     // when AVGUtils.NeedSkipAnimation considers the duration zero.
-    if (input.durationMs <= TWEEN_ZERO_MS) {
+    if (Math.abs(input.durationMs) <= TWEEN_ZERO_MS) {
       applyDialogIntro(dialog, seconds);
-      this.syncStencilVisibility(state, state.template!);
+      this.syncStencilVisibility(state);
       complete();
       return;
     }
-    this.runTween(
-      state,
-      input.durationMs,
-      (progress) => {
-        applyDialogIntro(dialog, progress * seconds);
-        this.syncStencilVisibility(state, state.template!);
-      },
-      { target: dialog },
-    );
+    // A negative AnimationState.speed starts at the beginning and cannot
+    // advance past it. The independent delayed callback still gets an update.
+    if (input.durationMs > 0) {
+      this.runTween(
+        state,
+        input.durationMs,
+        (progress) => {
+          applyDialogIntro(dialog, progress * seconds);
+          this.syncStencilVisibility(state);
+        },
+        { target: dialog },
+      );
+    }
     // _PlayDialogIntroAtSpeed (2791 @ 0x1814FF910) plays the legacy clip and
     // attaches the command callback to an independent DOTween.DelayedCall.
     if (input.block)
       this.runTween(state, input.durationMs, () => {}, {
+        deferZeroDuration: true,
         maxFrameDeltaMs: Infinity,
         onComplete: complete,
         target: dialog,
@@ -1001,14 +978,17 @@ export class CutinChannel {
     state: ChannelState,
     dialog: DialogNodes,
     input: InterludeInput,
-    loadTexture = () => this.loadTexture(input),
+    loadTexture = (name: string) => this.loadTexture({ ...input, name }),
   ): Preparation {
     if (input.type === 2) {
+      // A later synchronous native refresh has the last word on this Image.
+      const loadId = ++state.dialogBackgroundLoadId;
       if (isEmptyName(input.name)) {
         setDialogBackground(dialog, null);
         return;
       }
-      return this.prepareAsset(state, loadTexture(), (texture) => {
+      return this.prepareAsset(state, loadTexture(input.name), (texture) => {
+        if (loadId !== state.dialogBackgroundLoadId) return;
         if (texture) setDialogBackground(dialog, texture);
         else
           this.onWarning?.(
@@ -1040,13 +1020,15 @@ export class CutinChannel {
       state.dialogCharRelease = release;
       layoutChar();
     };
-    if (isEmptyName(input.name)) {
-      setPortrait(null);
-      return;
-    }
+    // _ClearCharImageBeforeLoad clears the old holder even if loading the new hub throws.
+    setPortrait(null);
+    if (isEmptyName(input.name)) return;
     // 2791 CutinTemplateDialogView._LoadAvgPortrait (0x1814FEE50) loads
     // the same hub layers as AVGCharacterSlot. img_char uses its prefab rect.
-    const portrait = input.type === 3 ? this.loadAvatar(input) : loadTexture();
+    const portrait =
+      input.type === 3
+        ? this.loadAvatar(input)
+        : loadTexture(cutinPortraitResourceKey(input.name));
     return this.prepareAsset<Texture | CharacterArt>(state, portrait, (art) => {
       if (state.avatarLoadId !== loadId) return;
       const mounted =
@@ -1062,10 +1044,10 @@ export class CutinChannel {
   private prepareAsset<T>(
     state: ChannelState,
     asset: T | null | Promise<T | null>,
-    use: (asset: T | null) => void,
+    use: (asset: T | null) => Preparation,
   ): Preparation {
     const apply = (resolved: T | null) => {
-      if (this.state === state) use(resolved);
+      if (this.state === state) return use(resolved);
     };
     return asset instanceof Promise
       ? asset.then(apply, () => apply(null))
@@ -1114,7 +1096,7 @@ export class CutinChannel {
         durationMs,
         (progress) => {
           step(progress);
-          this.syncStencilVisibility(state, template);
+          this.syncStencilVisibility(state);
         },
         { ease: dotweenDefaultEase, onComplete, target: group },
       );
@@ -1128,10 +1110,10 @@ export class CutinChannel {
       });
     }
     if (input.style === 0) {
-      this.tweenScale(state, input, onComplete);
+      this.tweenScale(state, template, input, onComplete);
       return;
     }
-    if (input.style === 2) this.tweenScale(state, input);
+    if (input.style === 2) this.tweenScale(state, template, input);
     if (template.hasImgMask) {
       // HideCutinMask (2791 @ 0x1815013A0) fades the same stencil writer.
       this.fadeMask(state, template, to, input.alphaDurationMs, onComplete);

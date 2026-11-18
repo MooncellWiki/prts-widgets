@@ -1115,7 +1115,7 @@ describe("StoryRuntime refs that make native SetImage throw", () => {
     });
   });
 
-  it("drops charactercutin and the interlude avatar instead of a fallback sprite", async () => {
+  it("passes a cutin hub error to the allocated slot and defers interlude resolution to its consumer", async () => {
     const { renderer, runtime, warnings } = run([
       '[charactercutin(widgetID="1",name="avg_slot_1#4$1")]',
       '[interlude(channel=1,type=3,slot="m",name="avg_slot_1#4")]',
@@ -1123,11 +1123,15 @@ describe("StoryRuntime refs that make native SetImage throw", () => {
 
     await runtime.start();
 
-    expect(warnings).toEqual([
-      nativeThrows("avg_slot_1#4$1", "charactercutin"),
-      nativeThrows("avg_slot_1#4", "interlude"),
+    expect(warnings).toEqual([]);
+    expect(renderer.characterCutinCalls).toEqual([
+      expect.objectContaining({
+        characterRef: "avg_slot_1#4$1",
+        invalidCharacterRef: true,
+      }),
     ]);
-    expect(renderer.characterCutinCalls).toEqual([]);
-    expect(renderer.interludeCalls).toEqual([]);
+    expect(renderer.interludeCalls).toEqual([
+      expect.objectContaining({ name: "avg_slot_1#4", type: 3 }),
+    ]);
   });
 });

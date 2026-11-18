@@ -8,6 +8,8 @@ import {
 } from "../assets";
 
 import {
+  cutinPortraitResourceKey,
+  nativeBundleKey,
   resolveAssetUrl,
   resolveStoryAssetByKey,
   resolveStoryAudioByKey,
@@ -16,8 +18,8 @@ import {
 } from "./asset";
 import { resolveAvgDisplayStyle } from "./avgDisplay";
 import { describeCharacterPortrait } from "./characterPortrait";
-import { resolveCharacterSelection } from "./characterRef";
-import { toString, tryConvertToInt32 } from "./commandParams";
+import { resolveCharacterRef, resolveNativeCharacterRef } from "./characterRef";
+import { boxedParamString, toString, tryConvertToInt32 } from "./commandParams";
 import {
   ANIMTEXT_MAIN_FONT,
   DIALOG_FONT,
@@ -56,11 +58,9 @@ function addImageUrl(
   urls: Set<string>,
   rawKey: string,
   family: StoryAssetFamily,
+  useBundlePath = family === "cutin",
 ): void {
-  const key = rawKey.trim();
-  if (!key) return;
-
-  const rawUrl = resolveStoryAssetByKey(key, family);
+  const rawUrl = resolveStoryAssetByKey(rawKey, family, useBundlePath);
   if (!rawUrl) return;
   urls.add(resolveAssetUrl(rawUrl));
 }
@@ -104,7 +104,11 @@ function addCharacterUrl(urls: Set<string>, rawKey: string): string | null {
  * batch substitutes for native asset-reference collection and loading.
  *
  */
-function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
+function addScriptImageUrls(
+  urls: Set<string>,
+  lines: ParsedLine[],
+  preload: boolean,
+): void {
   for (const line of lines) {
     if (line.kind !== "command") continue;
 
@@ -115,7 +119,12 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
     }
     if (line.command === "charactercutin") {
       // AVGCharacterCutinPanel.InternalResRefCollector (2791 @ 0x1841B53A0).
-      addImageUrl(urls, toString(line.args.background), "background");
+      addImageUrl(
+        urls,
+        boxedParamString(line.args.background),
+        "background",
+        true,
+      );
       continue;
     }
     if (line.command === "avgdisplay") {
@@ -137,15 +146,14 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
       continue;
     }
     if (line.command === "interlude") {
-      const type = argAsString(line.args.type);
       // GatherResRefs (2791 @ 0x1841B53A0) converts the boxed value to Int32.
-      // _GenCutinType (0x1841A01A0) parses its string representation at playback.
+      // Only the Web preload also warms the aliases recognized by _GenCutinType.
       const numericType = tryConvertToInt32(line.args.type);
-      const name = argAsString(line.args.name);
-      if (type === "bg" || numericType === 2)
-        addImageUrl(urls, name, "background");
-      else if (type === "uichar" || numericType === 1)
-        addImageUrl(urls, name, "cutin");
+      const name = boxedParamString(line.args.name);
+      if (numericType === 2 || (preload && line.args.type === "bg"))
+        addImageUrl(urls, name, "background", true);
+      else if (numericType === 1 || (preload && line.args.type === "uichar"))
+        addImageUrl(urls, cutinPortraitResourceKey(name), "cutin");
       continue;
     }
 
@@ -201,6 +209,7 @@ function addCharacterUrls(
   urls: Set<string>,
   context: Context,
   lines: ParsedLine[],
+  preload: boolean,
 ): StoryCharacterFaceAsset[] {
   const faceAssets = new Map<string, StoryCharacterFaceAsset>();
   const addFaceGroup = (
@@ -239,7 +248,8 @@ function addCharacterUrls(
     if (line.kind !== "command") continue;
 
     const refs: string[] = [];
-    if (line.command === "charactercutin") refs.push(toString(line.args.name));
+    if (line.command === "charactercutin")
+      refs.push(boxedParamString(line.args.name));
     else if (line.command === "charslot")
       refs.push(argAsString(line.args.name));
     else if (line.command === "character")
@@ -247,16 +257,21 @@ function addCharacterUrls(
     else if (
       line.command === "interlude" &&
       (tryConvertToInt32(line.args.type) === 3 ||
-        argAsString(line.args.type) === "char")
+        (preload && line.args.type === "char"))
     )
-      refs.push(argAsString(line.args.name));
+      refs.push(boxedParamString(line.args.name));
     else continue;
 
     for (const nameRef of refs) {
       if (!nameRef) continue;
 
-      const resolved = resolveCharacterSelection(context.linkMap, nameRef);
-      if (!resolved) continue;
+      const resolve =
+        line.command === "charactercutin" || line.command === "interlude"
+          ? resolveNativeCharacterRef
+          : resolveCharacterRef;
+      const ref = resolve(context.linkMap, nameRef);
+      if (ref.kind !== "found") continue;
+      const resolved = ref.selection;
 
       const link = context.linkMap[resolved.base];
       if (!link) continue;
@@ -294,6 +309,7 @@ function parseContextScript(context: Context): ParsedLine[] {
 function buildContextAssetManifest(
   context: Context,
   lines: ParsedLine[],
+  preload = false,
 ): ContextAssetManifest {
   const urls = new Set<string>();
   if (context.charMap) {
@@ -301,10 +317,10 @@ function buildContextAssetManifest(
       urls.add(resolveAssetUrl(rawUrl));
   }
 
-  const faceAssets = addCharacterUrls(urls, context, lines);
+  const faceAssets = addCharacterUrls(urls, context, lines, preload);
 
   addScriptAudioUrls(urls, context, lines);
-  addScriptImageUrls(urls, lines);
+  addScriptImageUrls(urls, lines, preload);
 
   return { faceAssets, urls: [...urls] };
 }
@@ -323,7 +339,7 @@ function collectPreloadAssetUrls(
   context: Context,
   lines: ParsedLine[],
 ): string[] {
-  const urls = new Set(buildContextAssetManifest(context, lines).urls);
+  const urls = new Set(buildContextAssetManifest(context, lines, true).urls);
 
   // 固定 UI 资源（对话框上下黑条纹理），随每次 preload 一起预热进 pixi Assets 缓存，
   // DialogView、cutin 道具和角色入场共用这张缓存纹理。它属于播放器内置资源，
@@ -384,7 +400,8 @@ function collectPreloadFonts(lines: ParsedLine[]): FontSpec[] {
     (line) =>
       line.kind === "command" &&
       line.command === "interlude" &&
-      line.args.maskid === "group_interclude_square_common",
+      nativeBundleKey(boxedParamString(line.args.maskid)) ===
+        "group_interclude_square_common",
   );
   if (usesCommand(lines, "animtext") || hasSquareInterlude)
     fonts.push(ANIMTEXT_MAIN_FONT);

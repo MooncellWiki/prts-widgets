@@ -48,6 +48,19 @@ describe("story image resolvers", () => {
   });
 });
 
+describe("cutin bundle paths", () => {
+  it.each([
+    ["CUTIN_CHAR_21#1", "cutin_char_21%231"],
+    ["CUTIN_CHAR_21@A", "cutin_char_21%40a"],
+    ["Cutin_Char_21.PNG", "cutin_char_21"],
+    [" Cutin_Char_21 ", "%20cutin_char_21%20"],
+  ])("uses the native bundle key for %s", (raw, path) => {
+    expect(resolveStoryAssetByKey(raw, "cutin")).toBe(
+      `https://torappu.prts.wiki/assets/avg/cutin/${path}.png`,
+    );
+  });
+});
+
 describe("story video resolver", () => {
   it("resolves relative video paths from the shared assets root", () => {
     expect(resolveStoryVideoByKey("video/Act15Side/IW01.mp4")).toBe(

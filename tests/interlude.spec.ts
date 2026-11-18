@@ -72,7 +72,7 @@ function input(overrides: Partial<InterludeInput> = {}): InterludeInput {
     clear: false,
     direction: "",
     durationMs: 0,
-    // Unknown maskid: Web-only rectangle fallback (native has no template).
+    // Unregistered mask ID exercises the native channel without a template.
     maskId: "square",
     name: "",
     offset: { x: 0, y: 0 },
@@ -130,7 +130,7 @@ function createPanel(
 }
 
 function channel(panel: InterludePanel, id = 3): any {
-  return (panel as any).channels.get(id)?.channel.state;
+  return (panel as any).channels.get(id)?.state;
 }
 
 function activeImageSlots(state: {
@@ -165,6 +165,169 @@ afterEach(() => {
 });
 
 describe("InterludePanel", () => {
+  it("loads a template through the case-folded bundle key and its serialized decoration", () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    panel.run(
+      input({ maskId: "GROUP_INTERCLUDE_SQUARE_COMMON.prefab", block: false }),
+    );
+    const state = channel(panel);
+    expect(state.template.autoClip).toBe("square_show");
+    expect(state.deco.root.parent).toBe(state.decoContainer);
+  });
+
+  it("keeps a reused NONE reader visible while the new square's stencil is closed", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ channel: 0, block: false }));
+    panel.run(input({ channel: 0, block: false, name: "old", type: 1 }));
+    panel.run(input({ channel: 0, clear: true, block: false }));
+    panel.run(input({ channel: 1, maskId: SQUARE, style: 1, block: false }));
+    panel.run(input({ channel: 1, type: 2, name: "new", block: false }));
+    const state = channel(panel, 1);
+    expect(state.content.visible).toBe(true);
+    expect(activeImageSlots(state)).toEqual(["m"]);
+    frames.step(200);
+    expect(activeImageSlots(state)).toEqual(["\u0000bg", "m"]);
+  });
+
+  it("does not let an older dialog background fetch undo a later clear", async () => {
+    const slow = Promise.withResolvers<Texture>();
+    const panel = createPanel(
+      new Container(),
+      () => slow.promise,
+      createInstantTweenRunner(),
+    );
+    panel.run(input({ maskId: DIALOG, block: false }));
+    const first = panel.run(input({ type: 2, name: "slow", block: false }));
+    panel.run(input({ type: 2, name: "char_empty", block: false }));
+    slow.resolve(Texture.WHITE);
+    await first?.completion;
+    expect(channel(panel).template.dialog.bgImage.visible).toBe(false);
+    expect(channel(panel).template.dialog.bgImage.texture).toBe(Texture.EMPTY);
+  });
+
+  it("holds the first dialog sample for a negative intro speed and completes on the next update", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    const begin = panel.run(
+      input({ maskId: DIALOG, style: 3, durationMs: -500 }),
+    );
+    const group = channel(panel).template.dialog.group;
+    const startX = group.x;
+    expect(startX).not.toBe(10);
+    expect(begin?.endReason).toBeUndefined();
+    frames.step(16);
+    expect(begin?.endReason).toBe("complete");
+    expect(group.x).toBe(startX);
+  });
+
+  it("waits for the square back_shadow CanvasGroup before its stencil can reveal content", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, maskId: SQUARE, style: 1 }));
+    panel.run(input({ block: false, type: 2, name: "bg_test" }));
+    const state = channel(panel);
+    frames.step(83);
+    expect(state.template.maskNode.alpha).toBeGreaterThan(0);
+    expect(state.template.backShadowGroup.alpha).toBe(0);
+    expect(state.content.visible).toBe(false);
+    frames.step(70);
+    expect(state.content.visible).toBe(true);
+  });
+
+  it.each([0, 9])(
+    "renders a named image and dialog portrait without a stencil on channel %i",
+    (id) => {
+      const panel = createPanel(
+        new Container(),
+        () => Texture.WHITE,
+        createInstantTweenRunner(),
+      );
+      panel.run(input({ block: false, channel: id, maskId: DIALOG }));
+      panel.run(
+        input({ block: false, channel: id, name: "cutin_char_21", type: 1 }),
+      );
+      const state = channel(panel, id);
+      const element = state.elements.get("m");
+      expect(element.node.visible && element.node.renderable).toBe(true);
+      expect(state.content.mask).toBeUndefined();
+      expect(element.node.mask).toBeUndefined();
+      expect(state.template.dialog.charImage.parent.mask).toBeUndefined();
+    },
+  );
+
+  it.each(["#1", "@variant"])(
+    "loads the dialog portrait independently of the ordinary image for suffix %s",
+    (suffix) => {
+      const loader = vi.fn(({ name }: InterludeInput) =>
+        name === "cutin_char_21" ? Texture.WHITE : null,
+      );
+      const panel = createPanel(
+        new Container(),
+        loader,
+        createInstantTweenRunner(),
+      );
+      panel.run(input({ block: false, maskId: DIALOG }));
+      panel.run(
+        input({ block: false, type: 1, name: `cutin_char_21${suffix}` }),
+      );
+      expect(loader.mock.calls.map(([arg]) => arg.name)).toEqual([
+        `cutin_char_21${suffix}`,
+        "cutin_char_21",
+      ]);
+      expect(channel(panel).template.dialog.charImage.visible).toBe(true);
+    },
+  );
+
+  it("leaves an unknown template without a stencil writer or name plate", () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    panel.run(input({ block: false, maskId: "missing", charName: "真理" }));
+    panel.run(input({ block: false, type: 2, name: "bg_test" }));
+    const state = channel(panel);
+    expect(state.maskContainer.children).toHaveLength(0);
+    expect(state.decoContainer.children).toHaveLength(0);
+    expect(state.content.visible).toBe(false);
+  });
+
+  it("keeps the prefab scale when both tsto components are within MathUtil.GT tolerance", () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    panel.run(
+      input({
+        block: false,
+        maskId: "ui_cutin_mask_horizon",
+        templateSizeTo: { x: 0.000001, y: 0 },
+      }),
+    );
+    expect(channel(panel).template.scaleNode.scale.x).toBe(1);
+  });
+
   it("keeps the three-second bg_battlefield fade blocked across a four-second frame", () => {
     const frames = new PlaybackTestFrames();
     frames.manual = true;
@@ -422,6 +585,8 @@ describe("InterludePanel", () => {
       expect(node.visible).toBe(true);
       expect(node.renderable).toBe(false);
       panel.run(input({ block: false, channel: 4, name: "image", type }));
+      expect(node.renderable).toBe(false);
+      frames.step(16);
       expect(node.renderable).toBe(true);
       expect(sprite.texture).toBe(texture);
     },
@@ -1176,7 +1341,7 @@ describe("InterludePanel", () => {
       (detail) => warnings.push(detail),
     );
 
-    await panel.run(input())?.completion;
+    await panel.run(input({ maskId: "ui_cutin_mask_horizon" }))?.completion;
     await panel.run(input({ name: "cutin_char_1", slot: "right", type: 1 }))
       ?.completion;
     await panel.run(input({ name: "cutin_char_2", slot: "r", type: 1 }))
@@ -1198,7 +1363,7 @@ describe("InterludePanel", () => {
       () => Texture.WHITE,
       createInstantTweenRunner(),
     );
-    panel.run(input({ block: false }));
+    panel.run(input({ block: false, maskId: "ui_cutin_mask_horizon" }));
     for (const slot of ["l", "r", "m"])
       panel.run(input({ block: false, name: "cutin", slot, type: 1 }));
     panel.run(input({ block: false, name: "avg_npc_1", type: 3 }));
@@ -1400,7 +1565,7 @@ describe("InterludePanel", () => {
   );
 
   it.each([0, 1])(
-    "finishes both same-frame style %i clears when the first callback reopens the channel",
+    "recycles the reopened physical channel on the second same-frame style %i clear",
     (style) => {
       const frames = new PlaybackTestFrames();
       frames.manual = true;
@@ -1444,12 +1609,12 @@ describe("InterludePanel", () => {
       expect(oldTemplate.destroyed).toBe(true);
       expect(layer.children).toEqual([root]);
       expect(root.children[0]).toBe(maskContainer);
-      expect(maskContainer.children).toHaveLength(1);
-      expect(maskContainer.children[0].destroyed).toBe(false);
-      expect(channel(panel).content.visible).toBe(true);
+      expect(maskContainer.children).toHaveLength(0);
+      expect(root.visible).toBe(false);
+      expect(channel(panel)).toBeUndefined();
 
       panel.run(input({ ...show, channel: 4 }));
-      expect(layer.children).toHaveLength(2);
+      expect(layer.children).toHaveLength(1);
       expect(layer.children[0]).toBe(root);
     },
   );
@@ -2053,7 +2218,7 @@ describe("InterludePanel mask templates", () => {
     expect(state.template.dialog.charImage.texture).toBe(Texture.WHITE);
     expect(activeImageSlots(state)).toEqual(["m"]);
     expect(state.content.visible).toBe(true);
-    expect(state.content.mask).toBe(state.template.maskGraphics);
+    expect(state.elements.get("m").node.mask).toBe(state.template.maskGraphics);
   });
 
   it.each([DIALOG, "interlude_dialog_right"])(
@@ -2090,7 +2255,9 @@ describe("InterludePanel mask templates", () => {
       const state = channel(panel);
       const { node } = state.elements.get("m");
       expect(state.content.visible).toBe(true);
-      expect(state.content.mask).toBe(state.template.maskGraphics);
+      expect(state.elements.get("m").node.mask).toBe(
+        state.template.maskGraphics,
+      );
       expect(state.root.children.indexOf(state.maskContainer)).toBeLessThan(
         state.root.children.indexOf(state.content),
       );
@@ -2228,8 +2395,8 @@ describe("InterludePanel mask templates", () => {
     )?.completion;
     expect(loadTexture).not.toHaveBeenCalled();
     expect(activeImageSlots(channel(panel))).toEqual([]);
-    // Clip (not gating) + the 1s show floor.
-    expect(durations).toEqual([CLIP_SECONDS.direction * 1000, 1000]);
+    // OnCutinBegin calls ShowCutinMask before _TryPlayAnimation.
+    expect(durations).toEqual([1000, CLIP_SECONDS.direction * 1000]);
   });
 
   it("samples the entry pose without restarting a playing direction clip", () => {
