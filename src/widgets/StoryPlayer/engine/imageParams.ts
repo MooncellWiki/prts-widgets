@@ -1,6 +1,6 @@
 import {
   exactArg,
-  toBoolean,
+  getBool,
   toNumber,
   toOptionalNumber,
   toString,
@@ -37,7 +37,7 @@ export function parseImageLayout(
     scaleX: toNumber(exactArg(args, "xScale"), 1),
     scaleY: toNumber(exactArg(args, "yScale"), 1),
     screenAdapt: parseScreenAdapt(exactArg(args, "screenadapt")),
-    tiled: toBoolean(exactArg(args, "tiled"), false),
+    tiled: getBool(args, "tiled"),
     width: toNumber(exactArg(args, "width"), 1),
     x: toNumber(exactArg(args, "x")),
     y: toNumber(exactArg(args, "y")),
@@ -50,7 +50,7 @@ export function parseImageTween(
 ): Omit<ImageTweenInput, "block" | "durationMs"> {
   return {
     ease: toString(exactArg(args, "ease"), "Linear"),
-    loop: toBoolean(exactArg(args, "loop"), false),
+    loop: getBool(args, "loop"),
     xFrom: toOptionalNumber(exactArg(args, "xFrom")),
     xScaleFrom: toOptionalNumber(exactArg(args, "xScaleFrom")),
     xScaleTo: toOptionalNumber(exactArg(args, "xScaleTo")),

@@ -913,6 +913,22 @@ describe("ImagePanel frame order", () => {
       ],
     },
     {
+      name: "converted block and inverse parameters",
+      commands: [
+        '[image(image="first",fadetime=0.032,block=1)]',
+        '[imagetween(xTo=64,duration=0.032,block=" TrUe ")]',
+        '[imagerotate(angle=90,fadetime=0.032,block=-1,inverse="TRUE")]',
+      ],
+      frames: [
+        [0.5, 640, 0, 0],
+        [1, 640, 0, 0],
+        [1, 672, 0, 0],
+        [1, 704, 0, 0],
+        [1, 704, -45, 0],
+        [1, 704, -90, 1],
+      ],
+    },
+    {
       name: "overlapping moves",
       commands: [
         show,
@@ -1129,6 +1145,42 @@ describe("ImagePanel frame order", () => {
     renderer.frames.step(32);
     expect(pose()).toEqual([["third", 1]]);
     renderer.destroy();
+  });
+
+  it("defers an inactive fade's slot cleanup across a same-frame swap", async () => {
+    const { app, destroy, runtime, renderer } = await createRenderedPlayback(
+      [
+        '[image(image="first",fadetime=0.128)]',
+        '[image(image="second",fadetime=0.032,block=true)]',
+        '[image(image="third",fadetime=0.064,block=true)]',
+        dialogue,
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    const { images } = renderer.layers;
+    const pose = () =>
+      images.children.map((root: Container) => [
+        (root.children[0] as Sprite).texture.label,
+        root.alpha,
+      ]);
+
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(pose()).toEqual([
+        ["second", 1],
+        ["third", 0],
+      ]);
+
+      // The second fade marked the first inactive. Its OnKill now reads
+      // the back slot after the third command swapped it.
+      app.ticker.update(48);
+      expect(pose()).toEqual([["third", 0.25]]);
+    } finally {
+      destroy();
+      await started;
+    }
   });
 
   it.each([true, false])(

@@ -111,7 +111,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       createContext([
         '[Image(image="avg_5_boom", width=1, height=1,screenadapt="coverall")]',
-        '[image(image="bg_0_am", tiled=true, fadetime=0, block=false)]',
+        '[image(image="bg_0_am", tiled=1, fadetime=0, block=false)]',
         '[image(image="side_i01",width=1.5,Height=2,xScale=1.2)]',
         '[name="A"]ok',
       ]),
@@ -259,7 +259,7 @@ describe("StoryRuntime", () => {
       createContext([
         "[ImageTween(xFrom=0,xTo=-720,duration=25,block=false)]",
         '[ImageTween(xScaleFrom=1,xScaleTo=1.1,duration=15,ease="OutQuad")]',
-        '[ImageTween(xScaleTo=1.2,duration=45,ease="6",block=true,loop=true)]',
+        '[ImageTween(xScaleTo=1.2,duration=45,ease="6",block=true,loop=" True ")]',
         '[name="A"]ok',
       ]),
       renderer,

@@ -166,16 +166,16 @@ export class TweenRunner {
         return endReason;
       },
       kill: (complete = false) => {
-        if (endReason !== undefined) return;
+        // FilteredOperation (2791 @ 0x1844637F0) skips inactive tweens.
+        if (endReason !== undefined || killedDuringUpdate) return;
         if (options.onKill && this.killCallbacks && !complete) {
-          // FilteredOperation marks the tween inactive during DOTween Update.
-          // Its next visit collects it for despawn, including kills from OnKill.
+          // Mark inactive now. Its next visit collects it for despawn,
+          // including kills from OnKill.
           killedDuringUpdate = true;
           return;
         }
         // TweenManager.Complete (2791 @ 0x184462630) skips infinite loops.
-        if (complete && !killedDuringUpdate && loops > 0 && isAlive())
-          finish("complete", ease(1));
+        if (complete && loops > 0 && isAlive()) finish("complete", ease(1));
         else finish("cancelled");
       },
       target: options.target,

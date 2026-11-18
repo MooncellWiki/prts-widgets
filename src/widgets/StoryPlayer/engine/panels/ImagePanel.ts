@@ -6,8 +6,8 @@ import {
 import { normalizeImageKey } from "../asset";
 import {
   exactArg,
+  getBool,
   hasTweenDuration,
-  toBoolean,
   toNumber,
   toString,
   tryConvertToInt32,
@@ -70,8 +70,7 @@ export class ImagePanel extends ExecutorComponent {
     const key = normalizeImageKey(image);
     const seconds = toNumber(exactArg(args, "fadetime"));
     const fadeMs = this.calculateFadeMs(seconds);
-    const block =
-      hasTweenDuration(seconds) && toBoolean(exactArg(args, "block"), false);
+    const block = hasTweenDuration(seconds) && getBool(args, "block");
     if (image && !key) this.warn("missing_asset", `image: ${image}`);
     const animation = key
       ? this.renderer.setImage(
@@ -93,7 +92,7 @@ export class ImagePanel extends ExecutorComponent {
     const { args } = line;
     const seconds = toNumber(exactArg(args, "duration"));
     const timed = hasTweenDuration(seconds);
-    const block = timed && toBoolean(exactArg(args, "block"), false);
+    const block = timed && getBool(args, "block");
     const tween = parseImageTween(args);
     // Web adaptation: an infinite Restart loop cannot complete a frame wait.
     if (block && tween.loop)
@@ -115,12 +114,12 @@ export class ImagePanel extends ExecutorComponent {
     const animation = this.renderer.setImageRotate(
       {
         angleDeg: toNumber(exactArg(args, "angle")),
-        block: toBoolean(exactArg(args, "block"), false),
+        block: getBool(args, "block"),
         // Command.TryGetParam<int> (2791 @ 0x18419AF30) uses Convert.ToInt32.
         // The Web player falls back to zero on conversion failure.
         circles: tryConvertToInt32(exactArg(args, "circles")) ?? 0,
         durationMs: this.calculateFadeMs(exactArg(args, "fadetime")),
-        inverse: toBoolean(exactArg(args, "inverse"), false),
+        inverse: getBool(args, "inverse"),
       },
       this.finishCommand,
     );
