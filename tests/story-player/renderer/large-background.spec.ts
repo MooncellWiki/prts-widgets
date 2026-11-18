@@ -977,6 +977,20 @@ describe("LargeBackgroundPanel frame order", () => {
       name: "move",
     },
     {
+      commands: [
+        instantShow,
+        "[largebgtween(xTo=64,duration=0.032)]",
+        "[largebgtween(xTo=128,duration=0.064,block=true)]",
+      ],
+      draws: [
+        [1, 696, 0],
+        [1, 720, 1],
+        [1, 744, 1],
+        [1, 768, 1],
+      ],
+      name: "an older move releasing the wait of a newer move",
+    },
+    {
       commands: [instantShow, "[largebg(fadetime=0.032,block=true)]"],
       draws: [
         [0.5, 640, 0],
@@ -1028,15 +1042,16 @@ describe("LargeBackgroundPanel frame order", () => {
       commands: [
         instantShow,
         "[largebg(fadetime=0.032)]",
+        "[largebgtween(xTo=48,duration=0.048)]",
         "[largebgtween(xTo=64,duration=0.064,block=true)]",
       ],
       draws: [
-        [0.5, 656, 0],
+        [0.5, 668, 0],
         [undefined, undefined, 0],
         [undefined, undefined, 0],
         [undefined, undefined, 0],
       ],
-      name: "a clear killing a move before it finishes",
+      name: "a clear killing both overlapping moves before they finish",
     },
     {
       commands: ["[largebg(fadetime=0.032,block=true)]"],
@@ -1101,6 +1116,36 @@ describe("LargeBackgroundPanel frame order", () => {
       for (const [index] of draws.entries())
         app.ticker.update((index + 1) * 16);
       expect(frames).toEqual(draws);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("samples an overlapping move after its predecessor writes and lets the predecessor resume", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        instantShow,
+        "[largebgtween(xTo=128,xScaleTo=2,duration=0.128)]",
+        "[delay(time=0)]",
+        "[largebgtween(xFrom=-64,xTo=96,xScaleFrom=0.5,xScaleTo=3,duration=0.032)]",
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const [root] = renderer.layers.gridBackground.children;
+      const poses = [16, 32, 48, 64].map((now) => {
+        app.ticker.update(now);
+        return [root.x, root.scale.x];
+      });
+      expect(poses).toEqual([
+        [576, 0.5], // The new command writes its From pose immediately.
+        [704, 2.125], // Its first Update samples the older tween's write.
+        [736, 3],
+        [704, 1.5], // The older tween resumes writing at its own elapsed time.
+      ]);
     } finally {
       destroy();
       await started;

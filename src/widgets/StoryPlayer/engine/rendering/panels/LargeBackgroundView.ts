@@ -53,6 +53,7 @@ function finiteValue(value: number | undefined, fallback: number): number {
 function puzzleMovement(
   root: Container | null,
   input: LargeBackgroundTweenInput,
+  sampleStartOnUpdate: boolean,
 ) {
   // The native _offset exists even when none of its tile slots is visible.
   if (!root) return () => {};
@@ -69,13 +70,19 @@ function puzzleMovement(
     x: finiteValue(input.xTo, current.x),
     y: finiteValue(input.yTo, current.y),
   };
-  return (progress: number) =>
+  applyCenteredTransform(root, from);
+  let start = sampleStartOnUpdate ? undefined : from;
+  return (progress: number) => {
+    // Tweener.DoStartup<Vector3> (2791 @ 0x1847E8280) reads the transform
+    // when the tween first advances, after older tweens in the same update.
+    start ??= readCenteredTransform(root);
     applyCenteredTransform(root, {
-      scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-      scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-      x: from.x + (to.x - from.x) * progress,
-      y: from.y + (to.y - from.y) * progress,
+      scaleX: start.scaleX + (to.scaleX - start.scaleX) * progress,
+      scaleY: start.scaleY + (to.scaleY - start.scaleY) * progress,
+      x: start.x + (to.x - start.x) * progress,
+      y: start.y + (to.y - start.y) * progress,
     });
+  };
 }
 
 /**
@@ -86,8 +93,8 @@ function puzzleMovement(
 export class LargeBackgroundView {
   private root: Container | null = null;
   private readonly roots = new Set<Container>();
+  private readonly movements = new Set<Movement>();
   private transition?: Transition;
-  private movement?: Movement;
 
   constructor(
     private readonly layer: Container,
@@ -102,7 +109,7 @@ export class LargeBackgroundView {
     // Native _ResetImages runs before _LoadImage and reveals the new
     // puzzle over an empty layer. largeimg keeps its outgoing foreground.
     if (this.options.kind === "background") this.resetImages();
-    else this.cancelMovement();
+    else this.cancelMovements();
 
     const textures = input.imageKeys.map((key) =>
       this.options.loadTexture(key, input.assetKind ?? this.options.kind),
@@ -144,7 +151,7 @@ export class LargeBackgroundView {
 
     const transition = this.beginTransition();
     this.root = null;
-    this.cancelMovement();
+    this.cancelMovements();
     const roots = [...this.roots];
     if (roots.length === 0 || fadeMs <= 0) {
       this.retireRoots(roots);
@@ -174,7 +181,7 @@ export class LargeBackgroundView {
 
   /** Story teardown releases the panel's remaining Web frame work. */
   reset(): void {
-    this.cancelMovement();
+    this.cancelMovements();
     this.resetPanel();
     this.options.tweens.killTarget(this.layer);
   }
@@ -184,20 +191,15 @@ export class LargeBackgroundView {
     onComplete?: () => void,
   ): ExecutionHandle | void {
     const root = this.root;
-    if (root ? root.parent !== this.layer : this.options.kind === "image")
-      return;
-    const update = puzzleMovement(root, input);
+    const background = this.options.kind === "background";
+    if (root ? root.parent !== this.layer : !background) return;
 
-    // _ExecuteImageTween (2791 @ 0x1841D9B90) moves and scales the same
-    // _offset with matched timing. Native lets older overlapping tweens
-    // resume writing once a newer one ends. Web retires the previous one
-    // when a new tween takes over the root.
-    this.cancelMovement();
-    update(0);
-    if (
-      input.durationMs <= 0 &&
-      !(input.loop && this.options.kind === "background")
-    ) {
+    // _ExecuteImageTween (2791 @ 0x1841D9B90) adds each move and scale pair
+    // to the shared _offset. Tweens advance in creation order and every move
+    // can still call FinishCommand. The Web foreground uses one move at a time.
+    if (!background) this.cancelMovements();
+    const update = puzzleMovement(root, input, background);
+    if (input.durationMs <= 0 && !(input.loop && background)) {
       update(1);
       onComplete?.();
       return;
@@ -205,17 +207,16 @@ export class LargeBackgroundView {
 
     const animation = input.block ? createExecutionHandle(true) : undefined;
     const movement = { animation };
-    this.movement = movement;
+    this.movements.add(movement);
     const isAlive = () =>
-      this.movement === movement && (!root || root.parent === this.layer);
+      this.movements.has(movement) && (!root || root.parent === this.layer);
     void this.options.tweens.run(
       input.durationMs,
       (progress) => {
         if (isAlive()) update(progress);
       },
       () => {
-        if (this.movement !== movement) return;
-        this.movement = undefined;
+        if (!this.movements.delete(movement)) return;
         if (root && root.parent !== this.layer) {
           animation?.end("reset");
           return;
@@ -410,15 +411,15 @@ export class LargeBackgroundView {
     );
   }
 
-  private cancelMovement(): void {
-    this.movement?.animation?.end("reset");
-    this.movement = undefined;
+  private cancelMovements(): void {
+    for (const { animation } of this.movements) animation?.end("reset");
+    this.movements.clear();
   }
 
   private resetImages(): void {
     // _ResetImages (2791 @ 0x1841DD120) DOKills _offset without completing
     // it. Only a surviving completion callback can release a pending wait.
-    this.movement = undefined;
+    this.movements.clear();
     this.retireRoots([...this.roots]);
   }
 
