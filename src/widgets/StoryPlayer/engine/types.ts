@@ -654,7 +654,7 @@ export type CharacterCutinFadeStyle =
 
 export interface CharacterCutinInput {
   /** Entry layout from AVGCharacterCutinSlot.Show. */
-  align?: "horizontal" | "vertical";
+  align?: "horizontal" | "vertical" | number;
   backgroundKey?: string;
   backgroundOffset?: number;
   block: boolean;
@@ -786,8 +786,6 @@ export interface StoryRenderer {
   clearTimerSticker: (input?: TimerClearInput) => void;
   clearCharacterCutin: (widgetId?: string) => void;
   clearInterludes: () => void;
-  /** Reserve the interlude controller's sibling index before validating a command. */
-  ensureInterludeController?: () => void;
   destroy: () => void;
   /** Reveal the remaining text of the selected sticker. */
   finishStickerTyping: (id: string) => boolean;

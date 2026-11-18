@@ -592,6 +592,9 @@ export class PixiStoryRenderer implements StoryRenderer {
       tween: (...args) => this.updatePhaseTweenRunner.run(...args),
     });
     this.decisionView = new DecisionView(this.uiLayer);
+    // RunStory calls AVGCharacterCutinPanel.OnReset before its first command
+    // (2791 @ 0x18416DD17). The controller is the first child of the slot parent.
+    this.cutinLayer.addChild(this.interludeLayer);
     this.interludePanel = new InterludePanel(
       this.interludeLayer,
       (input) => this.textureForInterlude(input),
@@ -664,6 +667,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.videoPanel.mount(host);
 
     this.app = app;
+    this.onFrameUpdate(({ deltaMs }) =>
+      this.interludePanel.advanceTime(deltaMs),
+    );
     // Decision options claim their own press (see ClickClaim): only a click
     // pressed on no interactive canvas object reaches the host's advance.
     this.releaseClickGuard = guardClaimedClicks(
@@ -1412,23 +1418,12 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   clearInterludes(): void {
     this.interludePanel.clearAll();
-    // OnReset (2791 @ 0x18419E970) recreates the controller after clearing
-    // the character pool, even if there are no channels to show yet.
-    this.cutinLayer.addChild(this.interludeLayer);
-  }
-
-  ensureInterludeController(): void {
-    // _InitCutinIfNot (2791 @ 0x1841A0330) inserts one controller at the
-    // current sibling index. All channel allocations belong to its subtree.
-    if (!this.interludeLayer.parent)
-      this.cutinLayer.addChild(this.interludeLayer);
   }
 
   setInterlude(
     input: InterludeInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    this.ensureInterludeController();
     return this.interludePanel.run(input, onComplete);
   }
 

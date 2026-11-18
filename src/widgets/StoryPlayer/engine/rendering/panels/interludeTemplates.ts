@@ -1,13 +1,16 @@
 import {
   Assets,
+  BufferImageSource,
   CanvasTextMetrics,
   Container,
   Graphics,
   NineSliceSprite,
+  Rectangle,
   Sprite,
   Text,
   TextStyle,
   Texture,
+  type UniformGroup,
 } from "pixi.js";
 
 import { INTERLUDE_ASSETS } from "../../../assets";
@@ -38,7 +41,6 @@ import { buildActiveWave } from "./interludeWave";
 //   `Graphics` mask 近似:mask 图形挂在写入者(`_imgMask`/`img_char_mask`)
 //   节点下,自动跟随模板的 DOScale/位移/入场动画;读取者(通道内容层、
 //   vertical 的 `img_unknown`、dialog 的 `img_bg`/`img_char`)以它裁切。
-// - `bg_defaul_gradient` 的渐变 shader 用 `top_gradient` 贴图拉伸近似。
 
 /** `assets/interlude/clips.json` 的结构(AnimationClip typetree 转写)。 */
 interface ClipKey<T> {
@@ -173,7 +175,6 @@ export interface InterludeTextureSet {
   waveShadow: Texture;
   dialogGrad: Texture;
   dialogFrame: Texture;
-  gradientV: Texture;
   maskSoftEdge: Texture;
 }
 
@@ -187,7 +188,6 @@ const templateTextureUrls = {
   waveShadow: INTERLUDE_ASSETS.wave_shadow,
   dialogGrad: INTERLUDE_ASSETS.dialog_grad,
   dialogFrame: INTERLUDE_ASSETS.dialog_frame,
-  gradientV: INTERLUDE_ASSETS.gradient_v,
   maskSoftEdge: INTERLUDE_ASSETS.mask_soft_edge,
 } satisfies Record<keyof InterludeTextureSet, string>;
 
@@ -312,6 +312,32 @@ function centeredSprite(
   return s;
 }
 
+// 2791 UIGradientGraphic._DrawVerticalColoredTapeByPoint interpolates the
+// opaque Color32 stops of bg_defaul_gradient at 0, 0.5 and 1. Sample from
+// the first texel center to the last so resizing preserves all three stops.
+type Rgb = readonly [number, number, number];
+function gradientTexture(top: Rgb, middle: Rgb, bottom: Rgb): Texture {
+  const source = new BufferImageSource({
+    width: 1,
+    height: 3,
+    format: "rgba8unorm",
+    scaleMode: "linear",
+    resource: Uint8Array.of(...top, 255, ...middle, 255, ...bottom, 255),
+  });
+  return new Texture({ source, frame: new Rectangle(0, 0.5, 1, 2) });
+}
+
+const verticalGradient = gradientTexture(
+  [174, 173, 173],
+  [88, 88, 88],
+  [180, 180, 180],
+);
+const squareGradient = gradientTexture(
+  [77, 77, 77],
+  [103, 103, 103],
+  [158, 158, 158],
+);
+
 function slicedImage(
   texture: Texture,
   width: number,
@@ -356,7 +382,7 @@ export function buildTemplate(
     // content_mask 的 stencil 读取者(`_components`),被窗口裁切。
     const scaleNode = new Container();
     const backShadow = slicedImage(tex.iconBack, 320, 760, 20);
-    const gradient = centeredSprite(tex.gradientV, 320 - 36, 760 - 36);
+    const gradient = centeredSprite(verticalGradient, 320 - 36, 760 - 36);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
     const unknownMask = new Graphics();
@@ -402,7 +428,7 @@ export function buildTemplate(
     // 214x214,不读 stencil)。入场动画见 applySquareShow。
     const backShadowGroup = new Container();
     const backShadow = slicedImage(tex.iconBack, 250, 250, 20);
-    const gradient = centeredSprite(tex.gradientV, 214, 214);
+    const gradient = centeredSprite(squareGradient, 214, 214);
     const unknown = centeredSprite(tex.unknownSquare, 214, 214);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
@@ -591,14 +617,17 @@ export function buildTemplate(
  * wave_shadow + wave_active(4 片 wave_base 80x42,pivot (1,0),x=±4.8,以
  * scale ±1 镜像成上下左右对称的波形)+ wave_stop(2 片 80x3.98 灰线)。
  */
-function buildWaves(tex: InterludeTextureSet): {
+function buildWaves(
+  tex: InterludeTextureSet,
+  waveUniforms: UniformGroup,
+): {
   shadow: Sprite;
   active: Container;
   stop: Container;
 } {
   const shadow = centeredSprite(tex.waveShadow, 220.14, 130);
   shadow.alpha = 0.672;
-  const active = buildActiveWave(tex.waveBase, tex.waveDissolve);
+  const active = buildActiveWave(tex.waveBase, tex.waveDissolve, waveUniforms);
   const stop = new Container();
   for (const [x, sx] of [
     [4.8, 1],
@@ -624,13 +653,14 @@ function buildWaves(tex: InterludeTextureSet): {
 export function buildDeco(
   maskId: string,
   tex: InterludeTextureSet,
+  waveUniforms: UniformGroup,
 ): DecoNodes | null {
   if (maskId === "group_interclude_vertical_common") {
     // 167.55x100,localScale (1,1.15):wave_shadow/wave_active/wave_stop 直挂根下,
     // 无 text_name。
     const root = new Container();
     root.scale.set(1, 1.15);
-    const { shadow, active, stop } = buildWaves(tex);
+    const { shadow, active, stop } = buildWaves(tex, waveUniforms);
     root.addChild(shadow, active, stop);
     const setSwitch = (selected: boolean): void => {
       active.visible = selected;
@@ -655,7 +685,7 @@ export function buildDeco(
     const waveGroup = new Container();
     waveGroup.position.set(0, 136);
     waveGroup.scale.set(1, 0.75);
-    const { shadow, active, stop } = buildWaves(tex);
+    const { shadow, active, stop } = buildWaves(tex, waveUniforms);
     waveGroup.addChild(shadow, active, stop);
     // 2791 common_frame is a Sliced Image with 16px edges at reference PPU100.
     const frameGroup = slicedImage(tex.commonFrame, 236, 236, 16);

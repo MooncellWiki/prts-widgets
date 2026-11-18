@@ -209,6 +209,48 @@ describe("CharacterCutinPanel", () => {
     expect(root.alpha).toBe(1);
   });
 
+  it("reuses the older sibling in place and keeps the same portrait until its name changes", () => {
+    const layer = new Container();
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const release = vi.fn();
+    const image = texture(120, 300);
+    const load = vi.fn(() => ({
+      ...art(120, 300),
+      acquire: () => ({ texture: image, release }),
+    }));
+    const panel = createPanel(layer, load, frames.createTweenRunner());
+    panel.run(input({ widgetId: "A" }));
+    panel.run(input({ widgetId: "B" }));
+    frames.step(16);
+    const a = slots(panel).get("A")!;
+    const b = slots(panel).get("B")!;
+    const [front] = visibleSprites(a);
+    panel.run(input({ widgetId: "A", characterKey: undefined }));
+    frames.step(16);
+    expect(a.root.visible).toBe(false);
+    expect(release).not.toHaveBeenCalled();
+    panel.run(input({ widgetId: "C" }));
+    expect(slots(panel).get("C")).toBe(a);
+    expect(layer.children).toEqual([a.root, b.root]);
+    expect(a.root.visible).toBe(true);
+    expect(visibleSprites(a)).toEqual([front]);
+    expect(front!.alpha).toBe(1);
+    expect(load).toHaveBeenCalledTimes(2);
+
+    panel.run(input({ widgetId: "C", characterKey: undefined }));
+    frames.step(16);
+    panel.run(input({ widgetId: "D", characterRef: "another name" }));
+    expect(visibleSprites(a)).toHaveLength(2);
+    expect(release).not.toHaveBeenCalled();
+    frames.step(16);
+    expect(visibleSprites(a)).toHaveLength(1);
+    expect(visibleSprites(a)[0]).not.toBe(front);
+    expect(release).toHaveBeenCalledTimes(1);
+    panel.clear();
+    expect(release).toHaveBeenCalledTimes(3);
+  });
+
   it("applies zoom, pov, and charOffset keys to the slot hierarchy", async () => {
     const layer = new Container();
     const panel = createPanel(
@@ -321,6 +363,12 @@ describe("CharacterCutinPanel", () => {
       backgroundSize: { width: 1280, height: 640 },
       maskSize: { w: 1280, h: 240 },
     },
+    {
+      align: -1,
+      backgroundPosition: { x: 0, y: 0 },
+      backgroundSize: { width: 0, height: 720 },
+      maskSize: { w: 1280, h: 720 },
+    },
   ] as const)(
     "lays out the custom background and its header for $align alignment",
     async ({ align, backgroundPosition, backgroundSize, maskSize }) => {
@@ -366,7 +414,36 @@ describe("CharacterCutinPanel", () => {
     },
   );
 
-  it("keeps the Show axis and image on update and resets both on reuse", async () => {
+  it("preserves a pooled background rect and both mask axes for an unnamed align", () => {
+    const panel = createPanel(
+      new Container(),
+      () => art(120, 300),
+      createInstantTweenRunner(),
+      (key) => (key === "wide" ? texture(800, 400) : texture(100, 300)),
+    );
+    panel.run(
+      input({ align: "vertical", backgroundKey: "wide", backgroundOffset: 30 }),
+    );
+    panel.run(input({ characterKey: undefined }));
+    panel.run(
+      input({
+        align: 2,
+        backgroundKey: "tall",
+        backgroundOffset: 120,
+        width: 80,
+      }),
+    );
+    const state = slots(panel).get("1")!;
+    expect(state.backgroundImage.texture.height).toBe(300);
+    expect(state.backgroundImage).toMatchObject({ width: 1280, height: 640 });
+    expect(state.backgroundRoot.position).toMatchObject({ x: 0, y: -30 });
+    expect(state.maskSize).toEqual({ w: 1280, h: 720 });
+    panel.run(input({ align: "horizontal", width: 40, offsetX: 20 }));
+    expect(state.root.x).toBe(660);
+    expect(state.maskSize).toEqual({ w: 1280, h: 720 });
+  });
+
+  it("keeps the Show axis on update and hides the retained background on a default Show", async () => {
     const image = texture(800, 400);
     const loadBackground = vi.fn(() => image);
     const panel = createPanel(
@@ -404,7 +481,7 @@ describe("CharacterCutinPanel", () => {
     expect(slots(panel).get("2")).toBe(state);
     expect(state.maskSize).toEqual({ w: 200, h: 720 });
     expect(state.backgroundImage.visible).toBe(false);
-    expect(state.backgroundImage.texture).toBe(Texture.EMPTY);
+    expect(state.backgroundImage.texture).toBe(image);
     expect(state.header.parent).toBe(state.backdrop);
     expect(state.backdrop.visible).toBe(true);
   });
@@ -793,7 +870,7 @@ describe("CharacterCutinPanel", () => {
       frames.step(50);
       // Native b__0 @ 0x183e62c90 recycles the slot and drops the widgetID.
       expect(slots(panel).has("1")).toBe(false);
-      expect(layer.children).toHaveLength(0);
+      expect(state.root.visible).toBe(false);
     },
   );
 
@@ -855,12 +932,16 @@ describe("CharacterCutinPanel", () => {
   );
 
   it.each([
-    { fadeStyle: "horiz_expand_left2right", completes: true },
-    { fadeStyle: "horiz_expand_center", completes: false },
-    { fadeStyle: "fade", completes: false },
+    "horiz_expand_left2right",
+    "horiz_expand_right2left",
+    "horiz_expand_center",
+    "vert_expand_top2bottom",
+    "vert_expand_bottom2top",
+    "vert_expand_center",
+    "fade",
   ] as const)(
-    "preserves the later $fadeStyle hide's completion behavior after recycle",
-    ({ fadeStyle, completes }) => {
+    "completes each %s hide at its own deadline after slot reuse",
+    (fadeStyle) => {
       const layer = new Container();
       const frames = new PlaybackTestFrames();
       frames.manual = true;
@@ -878,22 +959,20 @@ describe("CharacterCutinPanel", () => {
       const wait = panel.run(input({ ...hide, fadeMs: 1000 }), finish);
 
       frames.step(100);
-      expect(layer.children).toHaveLength(0);
+      const [root] = layer.children;
+      expect(root!.visible).toBe(false);
       expect(wait?.endReason).toBeUndefined();
       expect(finish).not.toHaveBeenCalled();
 
       panel.run(input({ block: false, fadeStyle }));
-      const replacement = layer.children[0];
+      expect(root!.visible).toBe(true);
       frames.step(899);
       expect(finish).not.toHaveBeenCalled();
       frames.step(1);
-      expect(wait?.endReason).toBe(completes ? "complete" : undefined);
-      expect(finish).toHaveBeenCalledTimes(completes ? 1 : 0);
-      expect(layer.children).toEqual(completes ? [] : [replacement]);
-      expect(slots(panel).has("1")).toBe(!completes);
-
-      panel.clear();
-      expect(wait?.endReason).toBe(completes ? "complete" : "reset");
+      expect(wait?.endReason).toBe("complete");
+      expect(finish).toHaveBeenCalledTimes(1);
+      expect(root!.visible).toBe(false);
+      expect(slots(panel).has("1")).toBe(false);
     },
   );
 
@@ -920,11 +999,11 @@ describe("CharacterCutinPanel", () => {
     // The old direction setter still writes the captured width to this slot.
     expect(reused.maskSize.w).toBeCloseTo(50);
     frames.step(500);
-    expect(layer.children).toHaveLength(0);
+    expect(reused.root.visible).toBe(false);
     expect(slots(panel).get("2")).toBe(reused);
     expect(show?.endReason).toBeUndefined();
-    panel.clear();
-    expect(show?.endReason).toBe("reset");
+    frames.step(100);
+    expect(show?.endReason).toBe("complete");
   });
 
   it("samples the live mask size on the first centered Show update after reuse", () => {
@@ -1005,7 +1084,7 @@ describe("CharacterCutinPanel", () => {
       const finish = vi.fn();
       const layout = panel.run(input({ fadeMs: 64, offsetX: 100 }), finish);
       frames.step(16);
-      expect(layer.children).toHaveLength(0);
+      expect(layer.children).toMatchObject([{ visible: false }]);
       expect(slots(panel).has("1")).toBe(false);
       expect(layout?.endReason).toBeUndefined();
       expect(finish).not.toHaveBeenCalled();

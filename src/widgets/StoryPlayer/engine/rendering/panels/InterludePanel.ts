@@ -1,12 +1,16 @@
+import { UniformGroup, type Container, type Texture } from "pixi.js";
+
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
+import {
+  MAX_SCALED_FRAME_DELTA_MS,
+  type TweenRunner,
+} from "../core/TweenRunner";
 
 import { CutinChannel } from "./CutinChannel";
 
 import type { InterludeInput } from "../../types";
 import type { CharacterArtLoad } from "../characters/CharacterArt";
 import type { TextureLoad } from "../core/TextureAsset";
-import type { TweenRunner } from "../core/TweenRunner";
-import type { Container, Texture } from "pixi.js";
 
 interface ChannelAllocation {
   readonly channel: CutinChannel;
@@ -46,6 +50,9 @@ export class InterludePanel {
   private readonly channels = new Map<number, ChannelAllocation>();
   private readonly pending = new Set<ExecutionHandle>();
   private readonly pool: ChannelPool;
+  private readonly waveUniforms = new UniformGroup({
+    uTime: { value: 0, type: "f32" },
+  });
 
   constructor(
     layer: Container,
@@ -66,9 +73,18 @@ export class InterludePanel {
           nativeBackgroundRect,
           loadAvatar,
           tweens,
+          this.waveUniforms,
           onWarning,
         ),
     );
+  }
+
+  advanceTime(deltaMs: number): void {
+    // Torappu/UI/DoubleDissolve samples Unity _Time.y even across silent
+    // intervals. Both repeating UV offsets return to their origin after 10s.
+    const time = this.waveUniforms.uniforms;
+    time.uTime =
+      (time.uTime + Math.min(deltaMs, MAX_SCALED_FRAME_DELTA_MS) / 1000) % 10;
   }
 
   run(input: InterludeInput, onComplete?: () => void): ExecutionHandle | void {

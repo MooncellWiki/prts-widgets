@@ -263,6 +263,14 @@ describe("StoryRuntime", () => {
       args: ",align=1,backgroundoffset=100",
       expected: { align: "vertical", backgroundOffset: undefined },
     },
+    {
+      args: ',align="HORIZONTAL, VERTICAL",backgroundOffset="1,000"',
+      expected: { align: "vertical", backgroundOffset: 1000 },
+    },
+    { args: ',align="vertical"', expected: { align: "horizontal" } },
+    { args: ',align=" +2 "', expected: { align: 2 } },
+    { args: ",align=-1", expected: { align: -1 } },
+    { args: ',align="2147483648"', expected: { align: "horizontal" } },
   ])(
     "maps cut-in layout keys and scales fadetime with args '$args'",
     async ({ args, expected }) => {

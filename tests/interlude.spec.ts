@@ -4,6 +4,7 @@ import {
   Mesh,
   NineSliceSprite,
   Rectangle,
+  type Sprite,
   Text,
   Texture,
 } from "pixi.js";
@@ -49,7 +50,6 @@ vi.mock(
       waveShadow: white(),
       dialogGrad: white(),
       dialogFrame: white(),
-      gradientV: white(),
       maskSoftEdge: white(),
     };
     return { ...mod, loadInterludeTextures: vi.fn(() => tex) };
@@ -294,6 +294,27 @@ describe("InterludePanel", () => {
     expect(bg.node.alpha).toBe(1);
 
     await panel.run(input({ clear: true }))?.completion;
+    expect(layer.children).toMatchObject([{ visible: false }]);
+  });
+
+  it("reuses the first channel below a later sibling", () => {
+    const layer = new Container();
+    const panel = createPanel(
+      layer,
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    for (const id of [1, 2]) panel.run(input({ channel: id, maskId: "" }));
+    const first = channel(panel, 1).root;
+    const second = channel(panel, 2).root;
+    panel.run(input({ channel: 1, clear: true }));
+    expect(first.visible).toBe(false);
+    expect(second.visible).toBe(true);
+    panel.run(input({ channel: 3, maskId: "" }));
+    expect(channel(panel, 3).root).toBe(first);
+    expect(first.visible).toBe(true);
+    expect(layer.children).toEqual([first, second]);
+    panel.clearAll();
     expect(layer.children).toHaveLength(0);
   });
 
@@ -594,6 +615,35 @@ describe("InterludePanel", () => {
     const avatar = state.avatar;
     expect(avatar.offset.position.x).toBe(-250);
     expect(state.charPoz.position.x).toBe(0);
+  });
+
+  it("shares scaled scene time across silent, speaking and recreated waves", () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    const show = { maskId: VERTICAL, block: false };
+    panel.advanceTime(250);
+    panel.run(input(show));
+    const silent = channel(panel).deco.root.children[1];
+    const clock = silent.shader.resources.waveUniforms;
+    expect(silent.visible).toBe(false);
+    expect(clock.uniforms.uTime).toBe(0.25);
+    panel.advanceTime(1000);
+    panel.run(input({ ...show, channel: 4, switchOn: true }));
+    const speaking = channel(panel, 4).deco.root.children[1];
+    expect(speaking.shader.resources.waveUniforms).toBe(clock);
+    expect(clock.uniforms.uTime).toBeCloseTo(0.25 + 1 / 3, 7);
+    panel.clearAll();
+    for (let i = 0; i < 40; i++) panel.advanceTime(250);
+    panel.advanceTime(125);
+    panel.run(input({ ...show, switchOn: true }));
+    const next = channel(panel).deco.root.children[1];
+    expect(next.shader.resources.waveUniforms.uniforms.uTime).toBeCloseTo(
+      0.375 + 1 / 3,
+      7,
+    );
   });
 
   it.each([
@@ -1259,9 +1309,9 @@ describe("InterludePanel", () => {
       }
 
       frames.elapse(recycleAtMs - 1);
-      expect(layer.children).toEqual([original]);
+      expect(original.visible).toBe(true);
       frames.step(1);
-      expect(layer.children).toHaveLength(0);
+      expect(original.visible).toBe(false);
 
       panel.run(show);
       expect(layer.children).toHaveLength(1);
@@ -1281,7 +1331,9 @@ describe("InterludePanel", () => {
       frames.createTweenRunner(),
     );
     panel.run(input({ block: false, maskId: "" }));
-    const finish = vi.fn(() => expect(layer.children).toHaveLength(0));
+    const finish = vi.fn(() =>
+      expect(layer.children).toMatchObject([{ visible: false }]),
+    );
     const result = panel.run(
       input({ clear: true, templateSizeDurationMs: 1000 }),
       finish,
@@ -1333,7 +1385,7 @@ describe("InterludePanel", () => {
       );
 
       frames.step(100);
-      expect(layer.children).toHaveLength(0);
+      expect(root.visible).toBe(false);
       expect(template.destroyed).toBe(true);
       expect(root.destroyed).toBe(false);
       frames.elapse(900);
@@ -1419,7 +1471,7 @@ describe("InterludePanel", () => {
     expect(layer.children).toHaveLength(1);
     expect(wait?.endReason).toBeUndefined();
     frames.elapse(900);
-    expect(layer.children).toHaveLength(0);
+    expect(layer.children).toMatchObject([{ visible: false }]);
     expect(wait?.endReason).toBe("complete");
   });
 
@@ -1558,7 +1610,7 @@ describe("InterludePanel", () => {
     expect(node.alpha).toBe(0.75);
 
     frames.elapse(500);
-    expect(layer.children).toHaveLength(0);
+    expect(state.root.visible).toBe(false);
     expect(state.bkgScale.parent).toBe(state.content);
     expect(node.parent).toBe(state.bkgPoz);
     const alphaAtRecycle = node.alpha;
@@ -1570,6 +1622,29 @@ describe("InterludePanel", () => {
 });
 
 describe("InterludePanel mask templates", () => {
+  it.each([
+    {
+      maskId: VERTICAL,
+      colors: [174, 173, 173, 255, 88, 88, 88, 255, 180, 180, 180, 255],
+    },
+    {
+      maskId: SQUARE,
+      colors: [77, 77, 77, 255, 103, 103, 103, 255, 158, 158, 158, 255],
+    },
+  ])(
+    "draws the three opaque 2791 $maskId color stops from top to bottom",
+    async ({ maskId, colors }) => {
+      const template = buildTemplate(maskId, await loadInterludeTextures())!;
+      const gradient = template.root.children[0]!.children[1] as Sprite;
+      expect(
+        Array.from(gradient.texture.source.resource as Uint8Array),
+      ).toEqual(colors);
+      expect(gradient.texture.uvs.y0).toBeCloseTo(1 / 6);
+      expect(gradient.texture.uvs.y2).toBeCloseTo(5 / 6);
+      template.root.destroy({ children: true });
+    },
+  );
+
   it.each([
     { maskId: DIALOG, inside: { x: -250, y: 0 }, outside: { x: 205, y: -166 } },
     {
@@ -1937,7 +2012,7 @@ describe("InterludePanel mask templates", () => {
     expect(wait?.endReason).toBeUndefined();
     frames.step(16);
     expect(wait?.endReason).toBe("reset");
-    expect(layer.children).toHaveLength(0);
+    expect(root.visible).toBe(false);
 
     panel.run(input({ block: false, maskId: DIALOG }));
     panel.run(input({ block: false, name: "bg_replacement", type: 2 }));
@@ -2077,7 +2152,7 @@ describe("InterludePanel mask templates", () => {
     frames.step(250);
     expect(wait?.endReason).toBe("complete");
     expect(group.alpha).toBe(0);
-    expect(layer.children).toHaveLength(0);
+    expect(layer.children).toMatchObject([{ visible: false }]);
   });
 
   it.each([false, true])(

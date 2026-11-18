@@ -83,8 +83,6 @@ export const INTERLUDE_ASSETS = {
     "assets/ui/interlude/dialogue_frame.png",
     import.meta.url,
   ).href,
-  gradient_v: new URL("assets/ui/interlude/top_gradient.png", import.meta.url)
-    .href,
   mask_soft_edge: new URL(
     "assets/ui/interlude/mask_soft_edge.png",
     import.meta.url,

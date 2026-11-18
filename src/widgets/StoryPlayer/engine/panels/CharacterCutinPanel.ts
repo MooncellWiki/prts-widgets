@@ -6,8 +6,8 @@ import {
 import {
   exactArg,
   getBool,
+  parseEnumInt32,
   toNumber,
-  toOptionalNumber,
   toString,
   tryConvertToInt32,
   tryConvertToSingle,
@@ -22,6 +22,7 @@ import type {
   InterludeInput,
   ParsedCommandLine,
   RuntimeWarning,
+  StoryCommandArgs,
   StoryRenderer,
 } from "../types";
 
@@ -42,6 +43,16 @@ function parseInterludeType(value: unknown): InterludeElementType {
   return numeric === 1 || numeric === 2 || numeric === 3 ? numeric : 0;
 }
 
+/** DotNetExtensionMethods.GetFloat reads the boxed value using the invariant culture. */
+function getFloat(args: StoryCommandArgs, key: string): number | undefined {
+  const value = exactArg(args, key);
+  return value === undefined
+    ? undefined
+    : (tryConvertToSingle(value) ?? undefined);
+}
+
+const CUTIN_ALIGN = { HORIZONTAL: 0, VERTICAL: 1 } as const;
+
 /** _GenCutinParamWithCommand / _ParseVector (2791 @ 0x18419F4E0 / 0x1841A0640). */
 function interludeVector(value: unknown): { x: number; y: number } | undefined {
   const raw = toString(value);
@@ -60,7 +71,6 @@ export class CharacterCutinPanel extends ExecutorComponent {
       StoryRenderer,
       | "clearCharacterCutin"
       | "clearInterludes"
-      | "ensureInterludeController"
       | "setCharacterCutin"
       | "setInterlude"
     >,
@@ -112,7 +122,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // AVGCharacterCutinSlot implements IFadeTimeRatio, so Show, SlotUpdate,
     // and Hide all scale fadetime by animateRatio.
     const fadeMs = Math.round(
-      this.playback.calculateFadeMs(args.fadetime, 0.4),
+      this.playback.calculateFadeMs(getFloat(args, "fadetime"), 0.4),
     );
     const block = getBool(args, "block");
 
@@ -135,31 +145,28 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // keys verbatim. Preserve omitted values for Show's prefab defaults
     // and SlotUpdate's defaults derived from the live transforms.
     // Show (2791 @ 0x184203DA0) reads Align with case-sensitive Enum.Parse.
-    const align = toString(args.align).trim();
+    const align = parseEnumInt32(toString(args.align), CUTIN_ALIGN);
     const input: CharacterCutinInput = {
-      align:
-        align === "VERTICAL" || tryParseInt32(align) === 1
-          ? "vertical"
-          : "horizontal",
+      align: (["horizontal", "vertical"] as const)[align] ?? align,
       backgroundKey: toString(args.background) || undefined,
-      backgroundOffset: toOptionalNumber(args.backgroundOffset),
+      backgroundOffset: getFloat(args, "backgroundOffset"),
       block,
       characterKey: resolved?.base,
       characterMissing: Boolean(nameRef) && !resolved,
       characterRef: nameRef || undefined,
-      charOffsetX: toOptionalNumber(args.charOffsetX),
-      charOffsetY: toOptionalNumber(args.charOffsetY),
+      charOffsetX: getFloat(args, "charOffsetX"),
+      charOffsetY: getFloat(args, "charOffsetY"),
       expression: resolved?.expression,
       fadeMs,
       fadeStyle,
-      offsetX: toOptionalNumber(args.offsetx),
-      offsetY: toOptionalNumber(args.offsety),
-      povX: toOptionalNumber(args.povX),
-      povY: toOptionalNumber(args.povY),
+      offsetX: getFloat(args, "offsetx"),
+      offsetY: getFloat(args, "offsety"),
+      povX: getFloat(args, "povX"),
+      povY: getFloat(args, "povY"),
       widgetId,
       // GetInt (2791 @ 0x186941320) converts boxed values with ToInt32.
       width: tryConvertToInt32(exactArg(args, "width")) ?? undefined,
-      zoom: toOptionalNumber(args.zoom),
+      zoom: getFloat(args, "zoom"),
     };
     const animation = this.renderer.setCharacterCutin(
       input,
@@ -175,7 +182,6 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // _ExecuteInterlude and _GenCutinParamWithCommand (2791 @ 0x18419F250 /
     // 0x18419F4E0). Validation uses channel default 0. CutinParam uses -1.
     // _EnsureDialogExtra supplies icharpos and icharscale to the dialog template.
-    this.renderer.ensureInterludeController?.();
     const { args } = line;
     const channelArg = tryConvertToInt32(exactArg(args, "channel"));
     const checkedChannel = channelArg ?? 0;

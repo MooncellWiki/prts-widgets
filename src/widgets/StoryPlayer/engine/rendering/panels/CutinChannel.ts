@@ -6,6 +6,7 @@ import {
   TextStyle,
   Texture,
   type ObservablePoint,
+  type UniformGroup,
 } from "pixi.js";
 
 import { STORY_HEIGHT, STORY_WIDTH, type InterludeInput } from "../../types";
@@ -231,7 +232,7 @@ export class CutinChannel {
   private state?: ChannelState;
 
   constructor(
-    private readonly layer: Container,
+    layer: Container,
     private readonly loadTexture: (input: InterludeInput) => TextureLoad,
     private readonly nativeBackgroundRect: (
       key: string,
@@ -242,6 +243,7 @@ export class CutinChannel {
       TweenRunner,
       "start" | "killTarget" | "afterUpdate"
     >,
+    private readonly waveUniforms: UniformGroup,
     private readonly onWarning?: (detail: string) => void,
   ) {
     const {
@@ -278,11 +280,15 @@ export class CutinChannel {
     }
     content.addChild(bkgScale, charScale);
     root.addChild(maskContainer, content, decoContainer);
+    // GameObjectPool keeps the channel under the same parent on recycle and
+    // reuse (2791 @ 0x182AB8D30 / 0x182AB73D0), retaining its sibling index.
+    layer.addChild(root);
   }
 
   /** _ProcessChannel and OnCutinBegin (2791 @ 0x1814FBAD0 / 0x1814F9270). */
   allocate(input: InterludeInput): void {
     const { root, content, elements } = this.view;
+    root.visible = true;
     root.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     root.scale.set(1);
     root.alpha = 1;
@@ -310,7 +316,6 @@ export class CutinChannel {
       dialogCharOffset: { x: 0, y: 0 },
       dialogCharScale: { x: 1, y: 1 },
     };
-    this.layer.addChild(root);
   }
 
   /** CutinChannel.OnRecycle (2791 @ 0x1814F9CD0). */
@@ -318,7 +323,7 @@ export class CutinChannel {
     const state = this.state;
     if (!state) return;
     this.state = undefined;
-    state.root.removeFromParent();
+    state.root.visible = false;
     // OnDisable stops the direction clip while retaining its sampled pose.
     state.direction?.tween.kill();
     // ClearElement (0x1814FC0C0) clears the Sprite and offset. An active
@@ -572,7 +577,7 @@ export class CutinChannel {
                 ? input.size
                 : template.defaultSize;
             template.resize(size.x, size.y);
-            const deco = buildDeco(input.maskId, textures);
+            const deco = buildDeco(input.maskId, textures, this.waveUniforms);
             if (deco) {
               deco.root.position.set(offsetX, offsetY);
               decoContainer.addChild(deco.root);

@@ -2,7 +2,6 @@ import {
   Mesh,
   MeshGeometry,
   Shader,
-  UniformGroup,
   compileHighShaderGlProgram,
   compileHighShaderGpuProgram,
   localUniformBit,
@@ -10,6 +9,7 @@ import {
   roundPixelsBit,
   roundPixelsBitGl,
   type Texture,
+  type UniformGroup,
 } from "pixi.js";
 
 /**
@@ -78,6 +78,7 @@ let programs: Pick<Shader, "glProgram" | "gpuProgram"> | undefined;
 export function buildActiveWave(
   wave: Texture,
   noise: Texture,
+  waveUniforms: UniformGroup,
 ): Mesh<MeshGeometry, Shader> {
   programs ??= {
     glProgram: compileHighShaderGlProgram({
@@ -95,7 +96,6 @@ export function buildActiveWave(
     noiseStyle.addressModeU = "repeat";
     noiseStyle.update();
   }
-  const waveUniforms = new UniformGroup({ uTime: { value: 0, type: "f32" } });
   const shader = new Shader({
     ...programs,
     resources: {
@@ -131,12 +131,6 @@ export function buildActiveWave(
     indices: new Uint32Array(indices),
   });
   const mesh = new Mesh({ geometry, shader, texture: wave });
-  mesh.onRender = () => {
-    // Both U offsets repeat every 10 seconds. Keep the uniform precise in
-    // long sessions and retain the same clock when speaking resumes.
-    if (mesh.visible)
-      waveUniforms.uniforms.uTime = (performance.now() % 10_000) / 1000;
-  };
   mesh.once("destroyed", () => {
     shader.destroy();
     geometry.destroy();

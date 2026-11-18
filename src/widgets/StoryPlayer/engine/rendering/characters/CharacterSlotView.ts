@@ -48,12 +48,6 @@ export class CharacterSlotView {
     parent.addChild(this.root);
   }
 
-  clear(): void {
-    this.swapId += 1;
-    clearImage(this.front);
-    clearImage(this.back);
-  }
-
   swap(
     art: CharacterArt | null,
     alpha: number,

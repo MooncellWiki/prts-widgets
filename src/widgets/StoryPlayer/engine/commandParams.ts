@@ -59,6 +59,23 @@ export function tryParseInt32(text: string): number | null {
   return value;
 }
 
+/** GetEnum (2791 @ 0x1846BAC50) uses case-sensitive Enum.Parse and defaults to zero here. */
+export function parseEnumInt32(
+  raw: string,
+  members: Readonly<Record<string, string | number>>,
+): number {
+  const ordinal = tryParseInt32(raw.trim());
+  if (ordinal !== null) return ordinal;
+
+  let result = 0;
+  for (const member of raw.split(",")) {
+    const value = members[member.trim()];
+    if (typeof value !== "number") return 0;
+    result |= value;
+  }
+  return result;
+}
+
 /**
  * Native port: `Command.GetOrDefault<float>` (2.7.71 `Command.TryGetParam`
  * VA 0x183EF3950) and `DotNetExtensionMethods.GetFloat` (VA 0x1862F7660)

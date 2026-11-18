@@ -91,9 +91,11 @@ function createShowItemRenderer(ticker?: Ticker) {
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 function cutinViews(layer: Container): Container[] {
-  return layer.children.flatMap((child) =>
-    child.label === "Channel_Container" ? child.children : [child],
-  );
+  return layer.children
+    .flatMap((child) =>
+      child.label === "Channel_Container" ? child.children : [child],
+    )
+    .filter((view) => view.visible);
 }
 
 async function createRenderedPlayback(
@@ -162,6 +164,7 @@ describe("Cut-in sibling order", () => {
       const layer = renderer.layers.cutins;
       app.ticker.update(4000);
       expect(layer.children).toEqual([
+        renderer.interludeLayer,
         renderer.cutinPanel.slots.get("old").root,
       ]);
       expect(renderer.layers.cgItems.children).toHaveLength(0);
@@ -185,7 +188,7 @@ describe("Cut-in sibling order", () => {
     "[interlude(channel=-1)]",
     "[interlude(clear=true)]",
   ])(
-    "keeps the controller at the sibling index established by %s",
+    "keeps the controller below both character slots when the first interlude is %s",
     async (first) => {
       const { renderer, runtime, destroy } = await createRenderedPlayback(
         [
@@ -203,8 +206,8 @@ describe("Cut-in sibling order", () => {
         const layer = renderer.layers.cutins;
         const controller = layer.getChildByLabel("Channel_Container")!;
         expect(layer.children).toEqual([
-          renderer.cutinPanel.slots.get("back").root,
           controller,
+          renderer.cutinPanel.slots.get("back").root,
           renderer.cutinPanel.slots.get("front").root,
         ]);
         expect(controller.children).toEqual(
@@ -1256,15 +1259,17 @@ describe("Displayable and focus frame order", () => {
       ],
       [0, 1],
     ],
-    [
-      "directional cut-in hide after its slot is recycled",
+    ...["fade", "horiz_expand_center", "horiz_expand_left2right"].map<
+      [string, string[], number[]]
+    >((style) => [
+      `overlapping ${style} hides after the slot is recycled`,
       [
-        '[charactercutin(widgetID="1",name="avg_npc_1",fadestyle="horiz_expand_left2right",fadetime=0)]',
+        `[charactercutin(widgetID="1",name="avg_npc_1",fadestyle="${style}",fadetime=0)]`,
         '[charactercutin(widgetID="1",fadetime=0.016)]',
         '[charactercutin(widgetID="1",fadetime=0.032,block=true)]',
       ],
       [0, 1],
-    ],
+    ]),
     [
       "parallel interlude position and alpha tweens",
       [
@@ -1404,55 +1409,41 @@ describe("Displayable and focus frame order", () => {
     },
   );
 
-  it.each(["fade", "horiz_expand_center", "clear-all"] as const)(
-    "keeps the command blocked after %s until a segment jump",
-    async (kind) => {
-      const clearAll = kind === "clear-all";
-      const commands = clearAll
-        ? [
-            '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
-            '[interlude(channel=4,maskid="interlude_dialog_left")]',
-            "[interlude(clear=true,block=true,tsduration=0.016,aduration=0.032)]",
-          ]
-        : [
-            `[charactercutin(widgetID="1",name="avg_npc_1",fadestyle="${kind}",fadetime=0)]`,
-            '[charactercutin(widgetID="1",fadetime=0.016)]',
-            '[charactercutin(widgetID="1",fadetime=0.032,block=true)]',
-          ];
-      const draws: Array<[number, number]> = [];
-      const { app, destroy, runtime } = await createRenderedPlayback(
-        [
-          ...commands,
-          '[cgitem(image="before_skip")]',
-          "[SkipToThis]",
-          '[cgitem(image="after_skip")]',
-          '[name="A"]ok',
-        ],
-        ({ cutins, cgItems }) =>
-          draws.push([cutinViews(cutins).length, cgItems.children.length]),
-      );
-      const started = runtime.start();
-      let skipping: Promise<void> | undefined;
-      try {
-        app.ticker.update(16);
-        app.ticker.update(32);
-        const remaining = clearAll ? 2 : 0;
-        expect(draws).toEqual([
-          [remaining, 0],
-          [remaining, 0],
-        ]);
+  it("keeps an interlude clear-all blocked until a segment jump", async () => {
+    const draws: Array<[number, number]> = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[interlude(channel=3,maskid="group_interclude_vertical_common")]',
+        '[interlude(channel=4,maskid="interlude_dialog_left")]',
+        "[interlude(clear=true,block=true,tsduration=0.016,aduration=0.032)]",
+        '[cgitem(image="before_skip")]',
+        "[SkipToThis]",
+        '[cgitem(image="after_skip")]',
+        '[name="A"]ok',
+      ],
+      ({ cutins, cgItems }) =>
+        draws.push([cutinViews(cutins).length, cgItems.children.length]),
+    );
+    const started = runtime.start();
+    let skipping: Promise<void> | undefined;
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(draws).toEqual([
+        [2, 0],
+        [2, 0],
+      ]);
 
-        skipping = runtime.skipNode();
-        await flushAsync();
-        app.ticker.update(48);
-        await skipping;
-        expect(draws.at(-1)).toEqual([0, 1]);
-      } finally {
-        destroy();
-        await Promise.all([started, skipping]);
-      }
-    },
-  );
+      skipping = runtime.skipNode();
+      await flushAsync();
+      app.ticker.update(48);
+      await skipping;
+      expect(draws.at(-1)).toEqual([0, 1]);
+    } finally {
+      destroy();
+      await Promise.all([started, skipping]);
+    }
+  });
 
   it.each([
     {
