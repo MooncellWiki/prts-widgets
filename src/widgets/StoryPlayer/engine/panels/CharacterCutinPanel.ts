@@ -5,8 +5,8 @@ import {
 } from "../ExecutorComponent";
 import {
   exactArg,
+  getBool,
   parseVector2,
-  toBoolean,
   toNumber,
   toOptionalNumber,
   toString,
@@ -33,11 +33,12 @@ interface CharacterCutinPlayback {
 }
 
 function parseInterludeType(value: unknown): InterludeElementType {
-  const raw = toString(value).trim();
+  const raw = toString(value);
   if (raw === "uichar") return 1;
   if (raw === "bg") return 2;
   if (raw === "char") return 3;
-  const numeric = Math.trunc(toNumber(value, 0));
+  // _GenCutinType (2791 @ 0x1841A01A0) uses Int32.TryParse.
+  const numeric = tryParseInt32(raw);
   return numeric === 1 || numeric === 2 || numeric === 3 ? numeric : 0;
 }
 
@@ -101,7 +102,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
     const fadeMs = Math.round(
       this.playback.calculateFadeMs(args.fadetime, 0.4),
     );
-    const block = toBoolean(args.block, false);
+    const block = getBool(args, "block");
 
     // Native allocates the slot and runs its tween even if it can't resolve
     // the character art. Keep the block timing and flag the missing art.
@@ -144,7 +145,8 @@ export class CharacterCutinPanel extends ExecutorComponent {
       povX: toOptionalNumber(args.povX),
       povY: toOptionalNumber(args.povY),
       widgetId,
-      width: toOptionalNumber(args.width),
+      // GetInt (2791 @ 0x186941320) converts boxed values with ToInt32.
+      width: tryConvertToInt32(exactArg(args, "width")) ?? undefined,
       zoom: toOptionalNumber(args.zoom),
     };
     const animation = this.renderer.setCharacterCutin(
@@ -162,8 +164,8 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // 0x18419F4E0). Validation uses channel default 0. CutinParam uses -1.
     // _EnsureDialogExtra supplies icharpos and icharscale to the dialog template.
     const { args } = line;
-    const channelArg = exactArg(args, "channel");
-    const checkedChannel = Math.trunc(toNumber(channelArg, 0));
+    const channelArg = tryConvertToInt32(exactArg(args, "channel"));
+    const checkedChannel = channelArg ?? 0;
     if (checkedChannel < 0) {
       this.playback.warn(
         "invalid_parameter",
@@ -172,7 +174,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
       return "continue";
     }
 
-    const channel = Math.trunc(toNumber(channelArg, -1));
+    const channel = channelArg ?? -1;
     const type = parseInterludeType(exactArg(args, "type"));
     const name = toString(exactArg(args, "name"));
     // Type 3 uses the AVG portrait pipeline. Type 1 loads from
@@ -195,7 +197,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
     const duration = (key: string): number =>
       this.playback.calculateFadeMs(exactArg(args, key), 0);
 
-    const block = toBoolean(exactArg(args, "block"), false);
+    const block = getBool(args, "block");
     const input = {
       alphaDurationMs: duration("aduration"),
       alphaFrom: toNumber(exactArg(args, "afrom"), -1),
@@ -205,7 +207,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
       block,
       channel,
       charName: toString(exactArg(args, "char")),
-      clear: toBoolean(exactArg(args, "clear"), false),
+      clear: getBool(args, "clear"),
       dialogCharPos: parseVector2(exactArg(args, "icharpos")),
       dialogCharScale: parseVector2(exactArg(args, "icharscale")),
       direction: toString(exactArg(args, "direction")),
@@ -223,7 +225,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
       // Command.TryGetParam<int> (2791 @ 0x18419AF30) uses Convert.ToInt32.
       style: tryConvertToInt32(exactArg(args, "style")) ?? 0,
       // Native switch feeds the deco TwoStateToggle on each show or update.
-      switchOn: toBoolean(exactArg(args, "switch"), false),
+      switchOn: getBool(args, "switch"),
       templateSizeDurationMs: duration("tsduration"),
       templateSizeFrom: parseVector2(exactArg(args, "tsfrom")) ?? {
         x: 0,

@@ -1167,6 +1167,13 @@ describe("Displayable and focus frame order", () => {
       [1, 1],
     ],
     [
+      "character cut-in with a numeric block flag",
+      [
+        '[charactercutin(widgetID="1",name="avg_npc_1",fadetime=0.032,block=1)]',
+      ],
+      [0, 1],
+    ],
+    [
       "directional cut-in hide after its slot is recycled",
       [
         '[charactercutin(widgetID="1",name="avg_npc_1",fadestyle="horiz_expand_left2right",fadetime=0)]',
@@ -1180,6 +1187,14 @@ describe("Displayable and focus frame order", () => {
       [
         '[interlude(channel=3,maskid="group_interclude_square_common")]',
         '[interlude(channel=3,type=2,name="bg_test",pfrom="0,0",pto="10,0",duration=0.032,aduration=0.016,block=true)]',
+      ],
+      [0, 1],
+    ],
+    [
+      "interlude with a numeric block flag",
+      [
+        '[interlude(channel=3,maskid="group_interclude_square_common")]',
+        '[interlude(channel=3,type=2,name="bg_test",pfrom="0,0",pto="10,0",duration=0.032,block=1)]',
       ],
       [0, 1],
     ],

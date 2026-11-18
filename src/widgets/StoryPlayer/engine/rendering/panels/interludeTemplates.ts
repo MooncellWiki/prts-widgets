@@ -250,7 +250,7 @@ export interface TemplateNodes {
   initialScale: Vec2;
   /** `_imgMask`(或 dialog 的 `img_char_mask`)所在节点。 */
   maskNode: Container;
-  /** 裁切图形:基类模板用它裁切通道内容层(root_bkg_* / root_char_*)。 */
+  /** 裁切图形:模板与通道内容层(root_bkg_* / root_char_*)共享 stencil 窗口。 */
   maskGraphics: Graphics;
   /** 模板配了 `_imgMask`(style 1/2 才 Join 3s DOFade;dialog 无)。 */
   hasImgMask: boolean;
@@ -345,12 +345,12 @@ export function buildTemplate(
   const root = new Container();
 
   if (maskId === "group_interclude_vertical_common") {
-    // root 320x760。back_shadow(icon_back,拉伸锚定 = 根尺寸)即 `_scaleTrans`,
+    // root 320x760。back_shadow(icon_back,20px 九宫格,拉伸锚定 = 根尺寸)即 `_scaleTrans`,
     // 其下 content_mask(`_imgMask`,每边内缩 18)→ bg_defaul_gradient。
     // img_unknown 283x720 是 root 的直接子节点:不随 ts 缩放,但它是
     // content_mask 的 stencil 读取者(`_components`),被窗口裁切。
     const scaleNode = new Container();
-    const backShadow = centeredSprite(tex.iconBack, 320, 760);
+    const backShadow = slicedImage(tex.iconBack, 320, 760, 20);
     const gradient = centeredSprite(tex.gradientV, 320 - 36, 760 - 36);
     const maskNode = new Container();
     const maskGraphics = new Graphics();
@@ -390,13 +390,13 @@ export function buildTemplate(
   }
 
   if (maskId === "group_interclude_square_common") {
-    // root 300x300(`_scaleTrans` 为空 → DOScale 作用于 root)。back_shadow
+    // root 300x300(`_scaleTrans` 为空 → DOScale 作用于 root)。back_shadow 使用20px 九宫格,
     // 是居中定尺寸的 250x250(带 CanvasGroup),所以命令 size 只改 root 的
     // sizeDelta,子节点不随之变化;content_mask(`_imgMask`)拉伸内缩 36 →
     // 214x214,其下 bg_defaul_gradient + bg_custom_holder/img_unknown(居中
     // 214x214,不读 stencil)。入场动画见 applySquareShow。
     const backShadowGroup = new Container();
-    const backShadow = centeredSprite(tex.iconBack, 250, 250);
+    const backShadow = slicedImage(tex.iconBack, 250, 250, 20);
     const gradient = centeredSprite(tex.gradientV, 214, 214);
     const unknown = centeredSprite(tex.unknownSquare, 214, 214);
     const maskNode = new Container();

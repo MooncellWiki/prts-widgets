@@ -134,6 +134,15 @@ export function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+/** GetBool / Command.TryGetParam<bool> (2791) use Convert.ToBoolean. */
+export function getBool(args: StoryCommandArgs, key: string): boolean {
+  const value = exactArg(args, key);
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string")
+    return /^[\p{White_Space}\0]*true[\p{White_Space}\0]*$/iu.test(value);
+  return value === true;
+}
+
 export function toString(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean")

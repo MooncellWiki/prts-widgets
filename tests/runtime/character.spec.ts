@@ -327,6 +327,37 @@ describe("StoryRuntime", () => {
     });
   });
 
+  it("converts cut-in widths with Convert.ToInt32 and reads boxed booleans", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=220.5,block=1)]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=221.5,block=" TRUE ")]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=220.6,block=-2)]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width="221",block="FaLsE")]',
+        '[charactercutin(widgetID="1",name="avg_npc_1",width=null,block=0)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(
+      renderer.characterCutinCalls.map(({ block, width }) => ({
+        block,
+        width,
+      })),
+    ).toEqual([
+      { block: true, width: 220 },
+      { block: true, width: 222 },
+      { block: true, width: 221 },
+      { block: false, width: 221 },
+      { block: false, width: 0 },
+    ]);
+  });
+
   it("keeps charactercutin block timing when the name cannot be resolved", async () => {
     const renderer = new FakeRenderer();
     const warnings: RuntimeWarning[] = [];

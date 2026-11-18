@@ -213,7 +213,7 @@ function elementKeyFor(input: InterludeInput): string {
  *
  * Web adaptations: stencil channels are PIXI Graphics masks; unknown maskids
  * fall back to the legacy plain rectangle; a dialog displays its own
- * portrait while type 1 runs the channel element sequence. The regular
+ * portrait alongside the stencil-clipped type 1 channel sequence. The regular
  * type 3 branch uses the prefab's bottom anchor and the portrait hub rect.
  */
 export class CutinChannel {
@@ -391,8 +391,10 @@ export class CutinChannel {
       if (template?.dialog) {
         const dialog = template.dialog;
         // Seed the entry pose before the Web texture load can yield a frame.
-        if (input.style === 3 && input.durationMs > TWEEN_ZERO_MS)
+        if (input.style === 3 && input.durationMs > TWEEN_ZERO_MS) {
           applyDialogIntro(dialog, 0);
+          this.syncStencilVisibility(state, template);
+        }
         const show = () => {
           if (this.state !== state) return;
           this.playDialogIntro(state, dialog, input, complete);
@@ -471,8 +473,8 @@ export class CutinChannel {
     if (template?.dialog) {
       const dialog = template.dialog;
       if (input.type === 1) {
-        // Type 1 still creates a channel element sequence. The dialog has
-        // its own portrait, so keep the channel content hidden.
+        // OnCutinUpdate (2791 @ 0x1814F9820) renders the type-1 element
+        // alongside the dialog portrait using the dialog's stencil window.
         return this.prepareAsset(
           state,
           input.name ? this.loadTexture(input) : null,
@@ -556,8 +558,11 @@ export class CutinChannel {
           if (template.anchor === "left") anchorX = -STORY_WIDTH / 2;
           else if (template.anchor === "right") anchorX = STORY_WIDTH / 2;
           template.root.position.set(anchorX + offsetX, offsetY);
+          // _ApplyDialogStencilChannel (2791 @ 0x1814FDFE0) shares the
+          // writer with the channel's ordinary CutinImageElement readers.
+          content.mask = template.maskGraphics;
+          content.visible = true;
           if (template.dialog) {
-            content.visible = false;
             template.dialog.charImage.once("destroyed", () => {
               state.dialogCharRelease?.();
               state.dialogCharRelease = undefined;
@@ -568,8 +573,6 @@ export class CutinChannel {
                 ? input.size
                 : template.defaultSize;
             template.resize(size.x, size.y);
-            content.mask = template.maskGraphics;
-            content.visible = true;
             const deco = buildDeco(input.maskId, textures);
             if (deco) {
               deco.root.position.set(offsetX, offsetY);
@@ -643,7 +646,9 @@ export class CutinChannel {
     if (this.state !== state) return;
     // The 2791 writer uses Color32 vertices and cullTransparentMesh.
     // Pixi's readers keep their own alpha while the writer is culled.
-    const writesStencil = template.maskNode.alpha > 0.5 / 255;
+    const writerAlpha =
+      template.maskNode.alpha * (template.dialog?.group.alpha ?? 1);
+    const writesStencil = writerAlpha > 0.5 / 255;
     state.content.visible = writesStencil;
     for (const reader of template.stencilReaders ?? [])
       reader.renderable = writesStencil;
@@ -959,13 +964,17 @@ export class CutinChannel {
     // when AVGUtils.NeedSkipAnimation considers the duration zero.
     if (input.durationMs <= TWEEN_ZERO_MS) {
       applyDialogIntro(dialog, seconds);
+      this.syncStencilVisibility(state, state.template!);
       complete();
       return;
     }
     state.dialogIntro = this.runTween(
       state,
       input.durationMs,
-      (progress) => applyDialogIntro(dialog, progress * seconds),
+      (progress) => {
+        applyDialogIntro(dialog, progress * seconds);
+        this.syncStencilVisibility(state, state.template!);
+      },
       { onComplete: input.block ? complete : undefined },
     );
     if (!input.block) complete();
@@ -1083,11 +1092,16 @@ export class CutinChannel {
       this.tweens.killTarget(group);
       const durationMs =
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
-      this.runTween(state, durationMs, tweenAlpha(group, to), {
-        ease: dotweenDefaultEase,
-        onComplete,
-        target: group,
-      });
+      const step = tweenAlpha(group, to);
+      this.runTween(
+        state,
+        durationMs,
+        (progress) => {
+          step(progress);
+          this.syncStencilVisibility(state, template);
+        },
+        { ease: dotweenDefaultEase, onComplete, target: group },
+      );
       return;
     }
 

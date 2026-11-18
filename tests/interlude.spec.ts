@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InterludePanel } from "../src/widgets/StoryPlayer/engine/rendering/panels/InterludePanel";
 import {
   CLIP_SECONDS,
+  buildTemplate,
   loadInterludeTextures,
 } from "../src/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates";
 
@@ -164,6 +165,29 @@ afterEach(() => {
 });
 
 describe("InterludePanel", () => {
+  it.each([VERTICAL, SQUARE])(
+    "keeps the 20px sliced backplate borders in %s when resized",
+    async (maskId) => {
+      const template = buildTemplate(maskId, await loadInterludeTextures())!;
+      const group = template.backShadowGroup ?? template.scaleNode;
+      const backplate = group.children[0] as NineSliceSprite;
+      const resize = template.setBackShadowSize ?? template.resize;
+
+      expect(backplate).toBeInstanceOf(NineSliceSprite);
+      resize(290, 760);
+      expect([backplate.width, backplate.height]).toEqual([290, 760]);
+      expect(backplate.scale).toMatchObject({ x: 1, y: 1 });
+      expect([
+        backplate.leftWidth,
+        backplate.topHeight,
+        backplate.rightWidth,
+        backplate.bottomHeight,
+      ]).toEqual([20, 20, 20, 20]);
+
+      template.root.destroy({ children: true });
+    },
+  );
+
   it("starts with the prefab's active white background on stencil channel 1", () => {
     const panel = createPanel(
       new Container(),
@@ -1695,14 +1719,17 @@ describe("InterludePanel mask templates", () => {
         type: 3,
       }),
     );
-    const { charImage, group } = channel(panel).template.dialog;
+    const state = channel(panel);
+    const { charImage, group } = state.template.dialog;
     expect(group.alpha).toBe(0);
+    expect(state.content.visible).toBe(false);
     expect(durations).toEqual([]);
 
     portrait.resolve(Texture.WHITE);
     await intro?.completion;
     expect(charImage.texture).toBe(Texture.WHITE);
     expect(group.alpha).toBe(1);
+    expect(state.content.visible).toBe(true);
     expect(durations).toEqual([700]);
   });
 
@@ -1798,7 +1825,88 @@ describe("InterludePanel mask templates", () => {
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(update);
     expect(state.template.dialog.charImage.texture).toBe(Texture.WHITE);
     expect(activeImageSlots(state)).toEqual(["m"]);
+    expect(state.content.visible).toBe(true);
+    expect(state.content.mask).toBe(state.template.maskGraphics);
+  });
+
+  it.each([DIALOG, "interlude_dialog_right"])(
+    "renders type-1 transforms through %s alongside its portrait",
+    (maskId) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const side = maskId === DIALOG ? -1 : 1;
+      const texture = new Texture({ frame: new Rectangle(0, 0, 512, 512) });
+      const panel = createPanel(
+        new Container(),
+        () => texture,
+        frames.createTweenRunner(),
+      );
+      panel.run(input({ block: false, maskId }));
+      const finish = vi.fn();
+      const wait = panel.run(
+        input({
+          alphaDurationMs: 200,
+          alphaFrom: 0,
+          alphaTo: 1,
+          durationMs: 200,
+          maskId,
+          name: "cutin_char_1",
+          positionFrom: { x: side * 400, y: 150 },
+          positionTo: { x: side * 200, y: 50 },
+          scaleDurationMs: 200,
+          scaleFrom: { x: 0.5, y: 0.5 },
+          scaleTo: { x: 1.5, y: 1.5 },
+          type: 1,
+        }),
+        finish,
+      );
+      const state = channel(panel);
+      const { node } = state.elements.get("m");
+      expect(state.content.visible).toBe(true);
+      expect(state.content.mask).toBe(state.template.maskGraphics);
+      expect(state.root.children.indexOf(state.maskContainer)).toBeLessThan(
+        state.root.children.indexOf(state.content),
+      );
+
+      frames.step(100);
+      expect(node.position).toMatchObject({ x: side * 250, y: -75 });
+      expect(node.scale).toMatchObject({ x: 1.25, y: 1.25 });
+      expect(node.alpha).toBe(0.75);
+      expect(state.template.dialog.charImage).toMatchObject({
+        alpha: 1,
+        visible: true,
+      });
+      expect(wait?.endReason).toBeUndefined();
+      expect(finish).not.toHaveBeenCalled();
+
+      frames.step(100);
+      expect(wait?.endReason).toBe("complete");
+      expect(finish).toHaveBeenCalledExactlyOnceWith();
+      panel.destroy();
+    },
+  );
+
+  it("culls ordinary readers when the dialog stencil writer fades out", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false, maskId: DIALOG }));
+    panel.run(input({ block: false, name: "cutin_char_1", type: 1 }));
+    const state = channel(panel);
+    const hide = panel.run(input({ alphaDurationMs: 1000, clear: true }));
+
+    frames.step(950);
+    expect(state.content.visible).toBe(true);
+    frames.step(10);
     expect(state.content.visible).toBe(false);
+    expect(hide?.endReason).toBeUndefined();
+    frames.step(40);
+    expect(hide?.endReason).toBe("complete");
+    expect(channel(panel)).toBeUndefined();
   });
 
   it("fades the dialog group out with OutQuad on clear (0.5s default)", () => {
