@@ -256,8 +256,8 @@ describe("PixiStoryRenderer", () => {
 
     await renderer.setImage("ac3_title1");
 
-    expect(renderer.imageRoot.children[0].width).toBe(1);
-    expect(renderer.imageRoot.children[0].height).toBe(1);
+    expect(renderer.layers.images.children.at(-1).children[0].width).toBe(1);
+    expect(renderer.layers.images.children.at(-1).children[0].height).toBe(1);
   });
 
   it("separates screenadapt size from the imagetween localScale space", async () => {
@@ -278,7 +278,7 @@ describe("PixiStoryRenderer", () => {
       x: 0,
       y: 0,
     });
-    const root = renderer.imageRoot;
+    const root = renderer.layers.images.children.at(-1);
     // The screenadapt fit lives on the inner sprite (native sizeDelta); the
     // root only carries xScale/yScale (native localScale).
     const sprite = root.children[0];
@@ -321,10 +321,10 @@ describe("PixiStoryRenderer", () => {
       ease: "Linear",
     });
 
-    expect(renderer.imageRoot.scale.x).toBe(1.5);
-    expect(renderer.imageRoot.scale.y).toBe(1.5);
-    expect(renderer.imageRoot.position.x).toBe(664);
-    expect(renderer.imageRoot.position.y).toBe(396);
+    expect(renderer.layers.images.children.at(-1).scale.x).toBe(1.5);
+    expect(renderer.layers.images.children.at(-1).scale.y).toBe(1.5);
+    expect(renderer.layers.images.children.at(-1).position.x).toBe(664);
+    expect(renderer.layers.images.children.at(-1).position.y).toBe(396);
   });
 
   it("applies the imagetween ease curve to position and scale", async () => {
@@ -333,7 +333,7 @@ describe("PixiStoryRenderer", () => {
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
 
     await renderer.setImage("ac3_title1");
-    const root = renderer.imageRoot;
+    const root = renderer.layers.images.children.at(-1);
     const samples: Array<{ scaleX: number; x: number }> = [];
     // The curve reaches the runner through TweenRunner's SetEase option, so the
     // stub has to apply it the way `run` would.
@@ -410,7 +410,7 @@ describe("PixiStoryRenderer", () => {
 
   it("rotates the image panel around its center instead of the stage origin", async () => {
     const renderer = createRenderer();
-    const imageLayer = renderer.imageLayer;
+    const imageLayer = renderer.layers.images;
 
     // Native `panel_image` serializes its RectTransform pivot at (0.5, 0.5) —
     // the panel center. PIXI's default pivot (0, 0) made every rotation orbit
@@ -450,7 +450,7 @@ describe("PixiStoryRenderer", () => {
 
   it("tilts the image panel clockwise on screen for a negative native angle", async () => {
     const renderer = createRenderer();
-    const imageLayer = renderer.imageLayer;
+    const imageLayer = renderer.layers.images;
     const right = new Container();
     right.position.set(740, 360);
     imageLayer.addChild(right);
@@ -513,7 +513,7 @@ describe("PixiStoryRenderer", () => {
     // clips the top row; PIXI starts at the top-left, so the 750px rect needs
     // its tile origin shifted by 750 % 300 to land a boundary on the bottom.
     await renderer.setImage("bg_0_am", input);
-    const imageSprite = renderer.imageRoot.children[0];
+    const imageSprite = renderer.layers.images.children.at(-1).children[0];
     expect(imageSprite.height).toBe(750);
     expect(imageSprite.tilePosition.x).toBe(0);
     expect(imageSprite.tilePosition.y).toBe(150);
@@ -523,7 +523,9 @@ describe("PixiStoryRenderer", () => {
 
     // A whole number of tiles needs no shift.
     await renderer.setImage("bg_0_am", { ...input, height: 2 });
-    expect(renderer.imageRoot.children[0].tilePosition.y).toBe(0);
+    expect(
+      renderer.layers.images.children.at(-1).children[0].tilePosition.y,
+    ).toBe(0);
   });
 
   it("multiplies the native size by width/height before screenadapt", async () => {
@@ -545,8 +547,8 @@ describe("PixiStoryRenderer", () => {
       y: 0,
     });
 
-    expect(renderer.imageRoot.children[0].width).toBe(2);
-    expect(renderer.imageRoot.children[0].height).toBe(0.5);
+    expect(renderer.layers.images.children.at(-1).children[0].width).toBe(2);
+    expect(renderer.layers.images.children.at(-1).children[0].height).toBe(0.5);
   });
 
   it("feeds the multiplied rect into the screenadapt aspect comparison", async () => {
@@ -570,18 +572,19 @@ describe("PixiStoryRenderer", () => {
       y: 0,
     });
 
-    expect(renderer.imageRoot.children[0].width).toBe(1280);
-    expect(renderer.imageRoot.children[0].height).toBe(640);
+    expect(renderer.layers.images.children.at(-1).children[0].width).toBe(1280);
+    expect(renderer.layers.images.children.at(-1).children[0].height).toBe(640);
   });
 
   it("takes the clear branch when the image texture fails to load", async () => {
     const renderer = createRenderer();
     renderer.app = {};
     renderer.textureForImageKey = vi.fn().mockResolvedValue(Texture.EMPTY);
-    const clearImage = vi.spyOn(renderer, "clearImage");
 
     await renderer.setImage("first");
-    expect(renderer.imageRoot.parent).toBe(renderer.imageLayer);
+    expect(renderer.layers.images.children.at(-1).parent).toBe(
+      renderer.layers.images,
+    );
 
     renderer.textureForImageKey = vi.fn().mockResolvedValue(null);
     await renderer.setImage("missing", {
@@ -596,9 +599,8 @@ describe("PixiStoryRenderer", () => {
 
     // _LoadImage on a null sprite logs the failure and fades the old image
     // out (clear branch) instead of keeping the previous image on screen.
-    expect(clearImage).toHaveBeenCalledWith(0, true);
-    expect(renderer.imageRoot).toBeNull();
-    expect(renderer.imageLayer.children).toHaveLength(0);
+    expect(renderer.layers.images.children.at(-1)).toBeUndefined();
+    expect(renderer.layers.images.children).toHaveLength(0);
   });
 
   it("renders a tiled image as a TilingSprite sized to the final rect", async () => {
@@ -616,10 +618,12 @@ describe("PixiStoryRenderer", () => {
       y: 0,
     });
 
-    expect(renderer.imageRoot.children[0]).toBeInstanceOf(TilingSprite);
+    expect(renderer.layers.images.children.at(-1).children[0]).toBeInstanceOf(
+      TilingSprite,
+    );
     // Image.type = Tiled with no multipliers/adapt tiles at the native size.
-    expect(renderer.imageRoot.children[0].width).toBe(1);
-    expect(renderer.imageRoot.children[0].height).toBe(1);
+    expect(renderer.layers.images.children.at(-1).children[0].width).toBe(1);
+    expect(renderer.layers.images.children.at(-1).children[0].height).toBe(1);
 
     await renderer.setImage("bg_0_am", {
       block: false,
@@ -633,8 +637,8 @@ describe("PixiStoryRenderer", () => {
     });
 
     // The tiling rect is the final sizeDelta (native x multipliers x adapt).
-    expect(renderer.imageRoot.children[0].width).toBe(1280);
-    expect(renderer.imageRoot.children[0].height).toBe(720);
+    expect(renderer.layers.images.children.at(-1).children[0].width).toBe(1280);
+    expect(renderer.layers.images.children.at(-1).children[0].height).toBe(720);
     // Restore the shared EMPTY texture so the address mode does not leak into
     // the other specs.
     Texture.EMPTY.source.style.addressMode = "clamp-to-edge";
@@ -662,19 +666,19 @@ describe("PixiStoryRenderer", () => {
       inverse: false,
     });
     rotateSteps.at(-1)!(0.5);
-    expect(renderer.imageLayer.angle).toBe(135);
+    expect(renderer.layers.images.angle).toBe(135);
 
     // _ExecuteImage only DOKills the back Image, never the panel rotation
     // tween: the swap must neither freeze nor reset the rotation.
     await renderer.setImage("30_i04");
     rotateSteps.at(-1)!(1);
-    expect(renderer.imageLayer.angle).toBe(270);
+    expect(renderer.layers.images.angle).toBe(270);
 
     // The clear branch must not freeze it either.
     rotateSteps.at(-1)!(0.5);
     await renderer.clearImage();
     rotateSteps.at(-1)!(1);
-    expect(renderer.imageLayer.angle).toBe(270);
+    expect(renderer.layers.images.angle).toBe(270);
   });
 
   it("applies backgroundtween in background transform space", async () => {

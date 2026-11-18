@@ -780,7 +780,7 @@ describe("PixiStoryRenderer", () => {
     }> = [];
 
     renderer.app = {};
-    renderer.imageLayer.addChild(root);
+    renderer.layers.images.addChild(root);
     renderer.largeImageView.root = root;
     renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
@@ -850,7 +850,7 @@ describe("PixiStoryRenderer", () => {
     }> = [];
 
     renderer.app = {};
-    renderer.imageLayer.addChild(root);
+    renderer.layers.images.addChild(root);
     renderer.largeImageView.root = root;
     renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
@@ -905,7 +905,7 @@ describe("PixiStoryRenderer", () => {
     let pendingDone: (() => void) | null = null;
 
     renderer.app = {};
-    renderer.imageLayer.addChild(root);
+    renderer.layers.images.addChild(root);
     renderer.largeImageView.root = root;
     renderer.updatePhaseTweenRunner.run = vi.fn(
       async (
