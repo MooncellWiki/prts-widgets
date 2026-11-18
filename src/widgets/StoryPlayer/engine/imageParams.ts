@@ -1,10 +1,4 @@
-import {
-  exactArg,
-  getBool,
-  toNumber,
-  toOptionalNumber,
-  toString,
-} from "./commandParams";
+import { exactArg, getBool, getFiniteFloat, toString } from "./commandParams";
 
 import type {
   BackgroundInput,
@@ -33,14 +27,14 @@ export function parseImageLayout(
   args: StoryCommandArgs,
 ): Omit<BackgroundInput, "block" | "fadeMs"> {
   return {
-    height: toNumber(exactArg(args, "height"), 1),
-    scaleX: toNumber(exactArg(args, "xScale"), 1),
-    scaleY: toNumber(exactArg(args, "yScale"), 1),
+    height: getFiniteFloat(args, "height") ?? 1,
+    scaleX: getFiniteFloat(args, "xScale") ?? 1,
+    scaleY: getFiniteFloat(args, "yScale") ?? 1,
     screenAdapt: parseScreenAdapt(exactArg(args, "screenadapt")),
     tiled: getBool(args, "tiled"),
-    width: toNumber(exactArg(args, "width"), 1),
-    x: toNumber(exactArg(args, "x")),
-    y: toNumber(exactArg(args, "y")),
+    width: getFiniteFloat(args, "width") ?? 1,
+    x: getFiniteFloat(args, "x") ?? 0,
+    y: getFiniteFloat(args, "y") ?? 0,
   };
 }
 
@@ -51,13 +45,13 @@ export function parseImageTween(
   return {
     ease: toString(exactArg(args, "ease"), "Linear"),
     loop: getBool(args, "loop"),
-    xFrom: toOptionalNumber(exactArg(args, "xFrom")),
-    xScaleFrom: toOptionalNumber(exactArg(args, "xScaleFrom")),
-    xScaleTo: toOptionalNumber(exactArg(args, "xScaleTo")),
-    xTo: toOptionalNumber(exactArg(args, "xTo")),
-    yFrom: toOptionalNumber(exactArg(args, "yFrom")),
-    yScaleFrom: toOptionalNumber(exactArg(args, "yScaleFrom")),
-    yScaleTo: toOptionalNumber(exactArg(args, "yScaleTo")),
-    yTo: toOptionalNumber(exactArg(args, "yTo")),
+    xFrom: getFiniteFloat(args, "xFrom"),
+    xScaleFrom: getFiniteFloat(args, "xScaleFrom"),
+    xScaleTo: getFiniteFloat(args, "xScaleTo"),
+    xTo: getFiniteFloat(args, "xTo"),
+    yFrom: getFiniteFloat(args, "yFrom"),
+    yScaleFrom: getFiniteFloat(args, "yScaleFrom"),
+    yScaleTo: getFiniteFloat(args, "yScaleTo"),
+    yTo: getFiniteFloat(args, "yTo"),
   };
 }

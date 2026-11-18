@@ -7,8 +7,8 @@ import { normalizeImageKey } from "../asset";
 import {
   exactArg,
   getBool,
+  getFiniteFloat,
   hasTweenDuration,
-  toNumber,
   toString,
   tryConvertToInt32,
 } from "../commandParams";
@@ -36,7 +36,7 @@ export class ImagePanel extends ExecutorComponent {
       | "setImageRotate"
       | "setImageTween"
     >,
-    private readonly calculateFadeMs: (seconds: unknown) => number,
+    private readonly calculateFadeMs: (seconds: number) => number,
     private readonly warn: (
       type: RuntimeWarning["type"],
       detail: string,
@@ -68,7 +68,7 @@ export class ImagePanel extends ExecutorComponent {
   private show({ args }: ParsedCommandLine): ExecutorResult {
     const image = toString(exactArg(args, "image"));
     const key = normalizeImageKey(image);
-    const seconds = toNumber(exactArg(args, "fadetime"));
+    const seconds = getFiniteFloat(args, "fadetime") ?? 0;
     const fadeMs = this.calculateFadeMs(seconds);
     const block = hasTweenDuration(seconds) && getBool(args, "block");
     if (image && !key) this.warn("missing_asset", `image: ${image}`);
@@ -90,7 +90,7 @@ export class ImagePanel extends ExecutorComponent {
   /** _ExecuteImageTween (2791 @ 0x1841AD170) uses literal seconds. */
   private move(line: ParsedCommandLine): ExecutorResult {
     const { args } = line;
-    const seconds = toNumber(exactArg(args, "duration"));
+    const seconds = getFiniteFloat(args, "duration") ?? 0;
     const timed = hasTweenDuration(seconds);
     const block = timed && getBool(args, "block");
     const tween = parseImageTween(args);
@@ -113,12 +113,12 @@ export class ImagePanel extends ExecutorComponent {
   private rotate({ args }: ParsedCommandLine): ExecutorResult {
     const animation = this.renderer.setImageRotate(
       {
-        angleDeg: toNumber(exactArg(args, "angle")),
+        angleDeg: getFiniteFloat(args, "angle") ?? 0,
         block: getBool(args, "block"),
         // Command.TryGetParam<int> (2791 @ 0x18419AF30) uses Convert.ToInt32.
         // The Web player falls back to zero on conversion failure.
         circles: tryConvertToInt32(exactArg(args, "circles")) ?? 0,
-        durationMs: this.calculateFadeMs(exactArg(args, "fadetime")),
+        durationMs: this.calculateFadeMs(getFiniteFloat(args, "fadetime") ?? 0),
         inverse: getBool(args, "inverse"),
       },
       this.finishCommand,

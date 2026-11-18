@@ -173,6 +173,42 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("reads invariant-culture floats for foreground image commands", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[image(image="side_i01",x="1,280.5",width=null,yScale="invalid",fadetime="3,200e-5",block=true)]',
+        '[imagetween(xTo="1,280",yTo=null,xScaleTo="1e,2",duration="3,200e-5",block=true)]',
+        '[imagerotate(angle="-1,080",fadetime="3,200e-5",block=true)]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.imageCalls[0]?.input).toMatchObject({
+      block: true,
+      fadeMs: 32,
+      scaleY: 1,
+      width: 0,
+      x: 1280.5,
+    });
+    expect(renderer.imageTweenCalls[0]).toMatchObject({
+      block: true,
+      durationMs: 32,
+      xScaleTo: undefined,
+      xTo: 1280,
+      yTo: 0,
+    });
+    expect(renderer.imageRotateCalls[0]).toMatchObject({
+      angleDeg: -1080,
+      block: true,
+      durationMs: 32,
+    });
+  });
+
   it("maps backgroundtween with strict CamelCase keys", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

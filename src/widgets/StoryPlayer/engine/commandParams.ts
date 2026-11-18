@@ -130,12 +130,10 @@ export function tryConvertToInt32(
   return integer >= INT32_MIN && integer <= INT32_MAX ? integer : null;
 }
 
-/**
- * Convert.ToSingle for boxed command values. The client sets InvariantCulture
- * in _InitAPPDefaultCulture (2791), and Single.Parse allows group separators.
- */
-export function tryConvertToSingle(value: StoryCommandValue): number | null {
-  if (typeof value !== "string") return Math.fround(Number(value));
+// The client sets InvariantCulture in _InitAPPDefaultCulture (2791).
+// Convert.ToSingle uses Single.Parse with group separators for strings.
+function parseSingleInput(value: StoryCommandValue): number | null {
+  if (typeof value !== "string") return Number(value);
 
   const text = value.trim();
   if (text === "NaN") return Number.NaN;
@@ -143,8 +141,30 @@ export function tryConvertToSingle(value: StoryCommandValue): number | null {
   if (!/^[+-]?(?:\d[\d,]*(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
     return null;
 
-  const single = Math.fround(Number(text.replaceAll(",", "")));
-  return Number.isFinite(single) ? single : null;
+  const parsed = Number(text.replaceAll(",", ""));
+  return Number.isFinite(Math.fround(parsed)) ? parsed : null;
+}
+
+/** Convert.ToSingle for boxed command values. */
+export function tryConvertToSingle(value: StoryCommandValue): number | null {
+  const parsed = parseSingleInput(value);
+  return parsed === null ? null : Math.fround(parsed);
+}
+
+/**
+ * Uses Convert.ToSingle input syntax while keeping Web frame timing at
+ * JavaScript precision. Missing and invalid values use the caller's default.
+ */
+export function getFiniteFloat(
+  args: StoryCommandArgs,
+  key: string,
+): number | undefined {
+  const value = exactArg(args, key);
+  if (value === undefined) return undefined;
+  const parsed = parseSingleInput(value);
+  return parsed !== null && Number.isFinite(Math.fround(parsed))
+    ? parsed
+    : undefined;
 }
 
 export function toBoolean(value: unknown, fallback = false): boolean {
