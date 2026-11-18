@@ -1,0 +1,183 @@
+import { Container, type Text } from "pixi.js";
+import { describe, expect, it, vi } from "vitest";
+
+import { SpellStickerPanel } from "../../src/widgets/StoryPlayer/engine/rendering/panels/SpellStickerPanel";
+
+describe("SpellStickerPanel", () => {
+  it("renders the two native text slots in centered coordinates, hides without removing, and re-shows the same view", () => {
+    const layer = new Container();
+    const panel = new SpellStickerPanel(layer);
+    panel.show({
+      alpha: 2,
+      angle: 5,
+      content: "<p=1>main</><p=2>sub</>",
+      id: "spell1",
+      style: "SAMI",
+      x: -130,
+      xScale: 1.3,
+      y: 20,
+      yScale: 1.2,
+    });
+
+    const root = layer.children[0] as Container;
+    expect(root.position.x).toBe(510);
+    // Native anchoredPosition = (x, -y) in Unity's y-up space: a positive y
+    // param renders below center, so the PIXI y-down mapping is 360 + y.
+    expect(root.position.y).toBe(380);
+    expect(root.scale.x).toBe(1.3);
+    expect(root.scale.y).toBe(1.2);
+    // Unity localEulerAngles.z is counter-clockwise on screen; PIXI's angle
+    // is clockwise, so the param is negated.
+    expect(root.angle).toBe(-5);
+    expect(root.alpha).toBe(1);
+    expect((root.getChildByLabel("text_spell_main") as Text).text).toBe("main");
+    expect((root.getChildByLabel("text_spell_sub") as Text).text).toBe("sub");
+
+    panel.hide("spell1");
+    expect(root.visible).toBe(false);
+    expect(layer.children).toHaveLength(1);
+
+    panel.show({
+      alpha: 0.5,
+      content: "<p=1>again</>",
+      id: "spell1",
+      style: "sami",
+    });
+    expect(layer.children[0]).toBe(root);
+    expect(root.visible).toBe(true);
+  });
+
+  it("keeps a style-switched view orphaned until clear and rejects unknown styles", () => {
+    const layer = new Container();
+    const warning = vi.fn();
+    const panel = new SpellStickerPanel(layer, warning);
+    panel.show({ alpha: 1, content: "", id: "spell1", style: "sami" });
+    panel.show({ alpha: 1, content: "", id: "spell1", style: "fire" });
+    expect(layer.children).toHaveLength(2);
+    const fire = layer.children[1] as Container;
+
+    panel.show({ alpha: 1, content: "", id: "bad", style: "unknown" });
+    expect(layer.children).toHaveLength(2);
+    expect(warning).toHaveBeenCalledWith("missing spellsticker style: unknown");
+
+    // Intentional deviation from native _ClearAll, which cannot see orphans
+    // and would leave them visible; see the comment in clear().
+    panel.clear();
+    expect(layer.children).toHaveLength(0);
+
+    // Like native, clear() also forgets the id→view entry. Re-show with the
+    // id's last style: a stale entry would be reused (its destroyed root never
+    // re-added) instead of building a fresh view.
+    panel.show({ alpha: 1, content: "", id: "spell1", style: "fire" });
+    expect(layer.children).toHaveLength(1);
+    expect(layer.children[0]).not.toBe(fire);
+  });
+
+  it("keeps the previous alpha when the alpha param is missing", () => {
+    const layer = new Container();
+    const panel = new SpellStickerPanel(layer);
+
+    // A fresh view starts at PIXI's default alpha 1 (native: fresh
+    // CanvasGroup) when the first show has no alpha param.
+    panel.show({ content: "<p=1>a</>", id: "s", style: "sami" });
+    const root = layer.children[0] as Container;
+    expect(root.alpha).toBe(1);
+
+    // Native _ShowSticker only writes alpha via TryGetParam, so a reused view
+    // keeps its last value instead of snapping back to 1.
+    panel.show({ alpha: 0.25, content: "<p=1>a</>", id: "s", style: "sami" });
+    expect(root.alpha).toBe(0.25);
+    panel.show({ content: "<p=1>a</>", id: "s", style: "sami" });
+    expect(root.alpha).toBe(0.25);
+  });
+
+  it("keeps the previous text for segments missing from the new content", () => {
+    const layer = new Container();
+    const panel = new SpellStickerPanel(layer);
+    panel.show({
+      alpha: 1,
+      content: "<p=1>main</><p=2>sub</>",
+      id: "s",
+      style: "sami",
+    });
+    const root = layer.children[0] as Container;
+
+    // Native dict.ContainsKey(i) gating: <p=2> only updates the second slot.
+    panel.show({
+      alpha: 1,
+      content: "<p=2>new sub</>",
+      id: "s",
+      style: "sami",
+    });
+    expect((root.getChildByLabel("text_spell_main") as Text).text).toBe("main");
+    expect((root.getChildByLabel("text_spell_sub") as Text).text).toBe(
+      "new sub",
+    );
+
+    // No <p=N> tags at all: dict is empty, both slots keep their text.
+    panel.show({ alpha: 1, content: "plain", id: "s", style: "sami" });
+    expect((root.getChildByLabel("text_spell_main") as Text).text).toBe("main");
+    expect((root.getChildByLabel("text_spell_sub") as Text).text).toBe(
+      "new sub",
+    );
+  });
+
+  it("shows the prefab input text in slots a fresh view's content leaves out", () => {
+    const layer = new Container();
+    const panel = new SpellStickerPanel(layer);
+
+    // Native _ApplyFallbackInputText surfaces each prefab Text's serialized
+    // m_InputText before the <p=N> writes, so only covered slots change.
+    panel.show({ content: "<p=1>main</>", id: "a", style: "fire" });
+    const fire = layer.children[0] as Container;
+    expect((fire.getChildByLabel("text_spell_main") as Text).text).toBe("main");
+    expect((fire.getChildByLabel("text_spell_sub") as Text).text).toBe(
+      "Ночной снег без следа, молчи.",
+    );
+
+    panel.show({ content: "plain", id: "b", style: "sami" });
+    const sami = layer.children[1] as Container;
+    expect((sami.getChildByLabel("text_spell_main") as Text).text).toBe(
+      "不是灾异，而是目光。",
+    );
+    expect((sami.getChildByLabel("text_spell_sub") as Text).text).toBe(
+      "er eigi ógæfa, heldr augna máttur.",
+    );
+  });
+
+  it("uses each prefab's DynFontLoader font with its FontStyle", () => {
+    const layer = new Container();
+    const panel = new SpellStickerPanel(layer);
+    panel.show({ content: "", id: "a", style: "fire" });
+    panel.show({ content: "", id: "b", style: "sami" });
+    const font = (root: Container, label: string) => {
+      const { fontFamily, fontStyle, fontWeight } = (
+        root.getChildByLabel(label) as Text
+      ).style;
+      return { fontFamily: [fontFamily].flat()[0], fontStyle, fontWeight };
+    };
+
+    const [fire, sami] = layer.children as Container[];
+    expect(font(fire!, "text_spell_main")).toEqual({
+      fontFamily: "NotoSansHans-Medium",
+      fontStyle: "italic",
+      fontWeight: "500",
+    });
+    expect(font(fire!, "text_spell_sub")).toEqual({
+      fontFamily: "NotoSansHans-Medium",
+      fontStyle: "normal",
+      fontWeight: "500",
+    });
+    // Both sami Texts are FontStyle Italic (2), not Bold: no synthetic bold.
+    expect(font(sami!, "text_spell_main")).toEqual({
+      fontFamily: "方正特雅宋_GBK",
+      fontStyle: "italic",
+      fontWeight: "400",
+    });
+    expect(font(sami!, "text_spell_sub")).toEqual({
+      fontFamily: "RoHMinSinkStd-UB",
+      fontStyle: "italic",
+      fontWeight: "400",
+    });
+  });
+});

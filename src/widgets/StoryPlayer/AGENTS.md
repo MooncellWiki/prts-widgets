@@ -104,7 +104,7 @@ Log All 高亮与调试页行跟随都订阅它。
 ## 测试与验证
 
 ```bash
-pnpm test            # 单测（vitest + happy-dom），spec 在仓库根 tests/
+pnpm test            # 单测（vitest + happy-dom），StoryPlayer spec 在 tests/story-player/
 pnpm test:story-log  # 全语料 Log All 回归（约 1-2 分钟；语料缺失整组跳过，不进 CI）
 pnpm lint            # ESLint（prettier + import-x，import 按序）
 pnpm build           # 含 vue-tsc 类型检查
@@ -113,18 +113,18 @@ pnpm build           # 含 vue-tsc 类型检查
 - 改哪个模块就跑对应 spec；改动 `engine/log/` 或 runtime 的
   decision/multiline 语义后，本地必跑 `pnpm test:story-log`
   （语料目录用 `STORY_CORPUS_ROOT` 指定）。
-- `tests/helpers/storyOracle.ts` 是独立于 `engine/log/symbolicFlow.ts` 的
+- `tests/story-player/helpers/storyOracle.ts` 是独立于 `engine/log/symbolicFlow.ts` 的
   第二套解释器，全语料对拍用；必须保持独立实现，不要复用引擎代码。
 - `runtime.ts` 与 `PixiStoryRenderer` 的用例按命令族分文件，新用例放进对应文件：
-  `tests/runtime/` 下 flow / skip / decision / character / background /
+  `tests/story-player/runtime/` 下 flow / skip / decision / character / background /
   large-background / effects / text / panels / audio，
-  `tests/renderer/` 下 character / background / large-background / effects /
+  `tests/story-player/renderer/` 下 character / background / large-background / effects /
   text / panels。
   runtime 的 `FakeRenderer`/`FakeAudio`/`createContext` 在
-  `tests/helpers/runtimeFakes.ts`，renderer 跨文件共用的 helper 在
-  `tests/helpers/rendererFixtures.ts`。
-- `engine/panels/` 的命令面板经 runtime 用例覆盖（`tests/runtime/panels.spec.ts`、
-  `text.spec.ts` 等）；`rendering/panels/` 中较复杂的视图在 `tests/` 根目录另有
+  `tests/story-player/helpers/runtimeFakes.ts`，renderer 跨文件共用的 helper 在
+  `tests/story-player/helpers/rendererFixtures.ts`。
+- `engine/panels/` 的命令面板经 runtime 用例覆盖（`tests/story-player/runtime/panels.spec.ts`、
+  `text.spec.ts` 等）；`rendering/panels/` 中较复杂的视图在 `tests/story-player/` 下另有
   独立 spec（如 `cgItemView.spec.ts`、`avgDisplayPanel.spec.ts`）。
 
 ## 常见任务
@@ -138,6 +138,6 @@ pnpm build           # 含 vue-tsc 类型检查
   渲染落在 `PixiStoryRenderer` 或 `rendering/panels/` 的视图 →
   `preload.ts` 补资源收集 → 注释标 provenance。涉及分支/文本可见性的命令
   还要同步 `log/semantics.ts`、`log/symbolicFlow.ts`、
-  `tests/helpers/storyOracle.ts` 三处语义。
+  `tests/story-player/helpers/storyOracle.ts` 三处语义。
 - **改 Log All 展示**：只动 `log/document.ts` 和 `components/LogAll*.vue`；
   `symbolicFlow` 的 DAG 是语义真相，不要为展示改它。
