@@ -90,6 +90,12 @@ function createShowItemRenderer(ticker?: Ticker) {
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+function cutinViews(layer: Container): Container[] {
+  return layer.children.flatMap((child) =>
+    child.label === "Channel_Container" ? child.children : [child],
+  );
+}
+
 async function createRenderedPlayback(
   script: string[],
   draw: (layers: LayerGraph) => void,
@@ -136,6 +142,83 @@ async function createRenderedPlayback(
     runtime,
   };
 }
+
+describe("Cut-in sibling order", () => {
+  it("recreates the empty controller before the new segment's first character slot", async () => {
+    const { app, renderer, runtime, destroy } = await createRenderedPlayback(
+      [
+        '[charactercutin(widgetID="old",name="avg_npc_1",fadestyle="7",block=true)]',
+        '[cgitem(image="before_skip")]',
+        "[SkipToThis]",
+        '[charactercutin(widgetID="new",name="avg_npc_1")]',
+        '[interlude(channel=3,maskid="ui_cutin_mask_horizon")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    let skipping: Promise<void> | undefined;
+    try {
+      const layer = renderer.layers.cutins;
+      app.ticker.update(4000);
+      expect(layer.children).toEqual([
+        renderer.cutinPanel.slots.get("old").root,
+      ]);
+      expect(renderer.layers.cgItems.children).toHaveLength(0);
+      skipping = runtime.skipNode();
+      await flushAsync();
+      app.ticker.update(4016);
+      await skipping;
+      const [controller, slot] = layer.children;
+      expect(controller.children).toEqual([
+        renderer.interludePanel.channels.get(3).channel.state.root,
+      ]);
+      expect(slot).toBe(renderer.cutinPanel.slots.get("new").root);
+    } finally {
+      destroy();
+      await Promise.all([started, skipping]);
+    }
+  });
+
+  it.each([
+    '[interlude(channel=2,maskid="ui_cutin_mask_horizon")]',
+    "[interlude(channel=-1)]",
+    "[interlude(clear=true)]",
+  ])(
+    "keeps the controller at the sibling index established by %s",
+    async (first) => {
+      const { renderer, runtime, destroy } = await createRenderedPlayback(
+        [
+          '[charactercutin(widgetID="back",name="avg_npc_1")]',
+          first,
+          '[charactercutin(widgetID="front",name="avg_npc_1")]',
+          '[interlude(channel=2,maskid="ui_cutin_mask_horizon")]',
+          '[interlude(channel=3,maskid="ui_cutin_mask_horizon")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        const layer = renderer.layers.cutins;
+        const controller = layer.getChildByLabel("Channel_Container")!;
+        expect(layer.children).toEqual([
+          renderer.cutinPanel.slots.get("back").root,
+          controller,
+          renderer.cutinPanel.slots.get("front").root,
+        ]);
+        expect(controller.children).toEqual(
+          [2, 3].map(
+            (id) => renderer.interludePanel.channels.get(id).channel.state.root,
+          ),
+        );
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+});
 
 describe("Interlude background rendering", () => {
   it.each([
@@ -267,7 +350,7 @@ describe("Interlude avatar rendering", () => {
       const started = runtime.start();
       try {
         app.ticker.update(16);
-        const channel = renderer.layers.cutins.children[0] as Container;
+        const channel = cutinViews(renderer.layers.cutins)[0]!;
         const charScale = channel.children[1].children[1];
         const dialog =
           renderer.interludePanel.channels.get(3).channel.state.template.dialog;
@@ -1191,6 +1274,14 @@ describe("Displayable and focus frame order", () => {
       [0, 1],
     ],
     [
+      "interlude movement from a malformed nonempty vector",
+      [
+        '[interlude(channel=3,maskid="group_interclude_square_common")]',
+        '[interlude(channel=3,type=2,pfrom="bad",pto="10,0",duration=0.032,block=true)]',
+      ],
+      [0, 1],
+    ],
+    [
       "interlude with a numeric block flag",
       [
         '[interlude(channel=3,maskid="group_interclude_square_common")]',
@@ -1234,7 +1325,7 @@ describe("Displayable and focus frame order", () => {
           '[name="A"]ok',
         ],
         ({ cutins, cgItems }) =>
-          draws.push([cutins.children.length, cgItems.children.length]),
+          draws.push([cutinViews(cutins).length, cgItems.children.length]),
       );
       const pending = Promise.withResolvers<Texture>();
       const textureLoad =
@@ -1294,7 +1385,7 @@ describe("Displayable and focus frame order", () => {
           '[name="A"]ok',
         ],
         ({ cutins, cgItems }) =>
-          draws.push([cutins.children.length, cgItems.children.length]),
+          draws.push([cutinViews(cutins).length, cgItems.children.length]),
       );
       const started = runtime.start();
       try {
@@ -1338,7 +1429,7 @@ describe("Displayable and focus frame order", () => {
           '[name="A"]ok',
         ],
         ({ cutins, cgItems }) =>
-          draws.push([cutins.children.length, cgItems.children.length]),
+          draws.push([cutinViews(cutins).length, cgItems.children.length]),
       );
       const started = runtime.start();
       let skipping: Promise<void> | undefined;
@@ -1389,7 +1480,7 @@ describe("Displayable and focus frame order", () => {
           '[name="A"]ok',
         ],
         ({ cutins, cgItems }) =>
-          draws.push([cutins.children.length, cgItems.children.length]),
+          draws.push([cutinViews(cutins).length, cgItems.children.length]),
       );
       const pending = Promise.withResolvers<CharacterArt>();
       const texture = new Texture({ label: "late art" });
@@ -1406,7 +1497,7 @@ describe("Displayable and focus frame order", () => {
         .spyOn(renderer, "loadCharacterArt")
         .mockReturnValueOnce(pending.promise);
       const started = runtime.start();
-      const [oldRoot] = renderer.layers.cutins.children;
+      const [oldRoot] = cutinViews(renderer.layers.cutins);
       let skipping: Promise<void> | undefined;
       try {
         expect(oldRoot.destroyed).toBe(false);
@@ -1417,12 +1508,12 @@ describe("Displayable and focus frame order", () => {
         await skipping;
         expect(load).toHaveBeenCalledTimes(2);
         expect(draws).toEqual([[1, 1]]);
-        const [replacementRoot] = renderer.layers.cutins.children;
+        const [replacementRoot] = cutinViews(renderer.layers.cutins);
 
         pending.resolve(lateArt);
         await flushAsync();
         app.ticker.update(32);
-        expect(renderer.layers.cutins.children).toEqual([replacementRoot]);
+        expect(cutinViews(renderer.layers.cutins)).toEqual([replacementRoot]);
         expect(hasLateArt(replacementRoot)).toBe(false);
         expect(lateArt.acquire).not.toHaveBeenCalled();
         expect(draws).toEqual([

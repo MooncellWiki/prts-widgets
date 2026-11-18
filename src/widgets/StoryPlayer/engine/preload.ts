@@ -17,7 +17,7 @@ import {
 import { resolveAvgDisplayStyle } from "./avgDisplay";
 import { describeCharacterPortrait } from "./characterPortrait";
 import { resolveCharacterSelection } from "./characterRef";
-import { toNumber, toString } from "./commandParams";
+import { toString, tryConvertToInt32 } from "./commandParams";
 import {
   ANIMTEXT_MAIN_FONT,
   DIALOG_FONT,
@@ -138,7 +138,9 @@ function addScriptImageUrls(urls: Set<string>, lines: ParsedLine[]): void {
     }
     if (line.command === "interlude") {
       const type = argAsString(line.args.type);
-      const numericType = Math.trunc(toNumber(line.args.type));
+      // GatherResRefs (2791 @ 0x1841B53A0) converts the boxed value to Int32.
+      // _GenCutinType (0x1841A01A0) parses its string representation at playback.
+      const numericType = tryConvertToInt32(line.args.type);
       const name = argAsString(line.args.name);
       if (type === "bg" || numericType === 2)
         addImageUrl(urls, name, "background");
@@ -244,7 +246,7 @@ function addCharacterUrls(
       refs.push(argAsString(line.args.name), argAsString(line.args.name2));
     else if (
       line.command === "interlude" &&
-      (Math.trunc(toNumber(line.args.type)) === 3 ||
+      (tryConvertToInt32(line.args.type) === 3 ||
         argAsString(line.args.type) === "char")
     )
       refs.push(argAsString(line.args.name));

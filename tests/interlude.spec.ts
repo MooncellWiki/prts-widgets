@@ -165,6 +165,70 @@ afterEach(() => {
 });
 
 describe("InterludePanel", () => {
+  it("keeps the three-second bg_battlefield fade blocked across a four-second frame", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    // level_main_13-13_end, channel 2.
+    panel.run(
+      input({
+        channel: 2,
+        maskId: "ui_cutin_mask_vertical",
+        style: 1,
+        block: false,
+      }),
+    );
+    const fade = panel.run(
+      input({
+        channel: 2,
+        type: 2,
+        name: "bg_battlefield",
+        alphaFrom: 0,
+        alphaTo: 1,
+        alphaDurationMs: 3000,
+      }),
+    );
+    const { node } = channel(panel, 2).elements.get("\u0000bg");
+    frames.step(4000);
+    expect(node.alpha).toBeCloseTo(1 - (1 - 1 / 9) ** 2, 6);
+    expect(fade?.endReason).toBeUndefined();
+    frames.elapse(2600);
+    expect(fade?.endReason).toBeUndefined();
+    frames.step(67);
+    expect(node.alpha).toBe(1);
+    expect(fade?.endReason).toBe("complete");
+  });
+
+  it("finishes the outgoing avatar fade on wall time while the front image keeps fading", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    panel.run(input({ block: false }));
+    panel.run(input({ type: 3, name: "first", block: false }));
+    frames.step(16);
+    const { offset } = channel(panel).avatar;
+    const outgoing = offset.children.find((image: Container) => image.visible);
+    const fade = panel.run(
+      input({ type: 3, name: "second", alphaDurationMs: 1000 }),
+    );
+    frames.step(4000);
+    expect(outgoing.visible).toBe(false);
+    const front = offset.children.find((image: Container) => image.visible);
+    expect(front.alpha).toBeCloseTo(1 / 3, 6);
+    expect(fade?.endReason).toBeUndefined();
+    frames.elapse(667);
+    expect(front.alpha).toBe(1);
+    expect(fade?.endReason).toBe("complete");
+  });
+
   it.each([VERTICAL, SQUARE])(
     "keeps the 20px sliced backplate borders in %s when resized",
     async (maskId) => {
@@ -357,7 +421,7 @@ describe("InterludePanel", () => {
       panel.run(
         input({ block: false, direction: "rin", name: "avg_test", type: 3 }),
       );
-      frames.step(elapsedMs);
+      frames.elapse(elapsedMs);
 
       const original = channel(panel);
       panel.run(input({ block: false, clear: true }));
@@ -450,7 +514,7 @@ describe("InterludePanel", () => {
       panel.run(input({ ...bg, channel: 4 }));
       const { node } = channel(panel, 4).elements.get("\u0000bg");
       expect(node.scale.x).toBeCloseTo(1.72);
-      frames.step(800);
+      frames.elapse(800);
       expect(node.scale.x).toBe(3);
       expect(node.position.x).toBe(0);
     },
@@ -594,7 +658,7 @@ describe("InterludePanel", () => {
     expect(node.alpha).toBeCloseTo(1 - (1 - 250 / 300) ** 2);
     expect(node.position.x).toBe(4.375);
     expect(node.scale.x).toBe(1.75);
-    frames.step(500);
+    frames.elapse(500);
     expect(node.alpha).toBe(1);
     expect(node.position.x).toBe(9.375);
     expect(node.scale.x).toBe(2);
@@ -641,11 +705,11 @@ describe("InterludePanel", () => {
     const { node } = channel(panel).elements.get("m");
     expect(node.alpha).toBe(0);
 
-    frames.step(2000);
+    frames.elapse(2000);
     expect(node.alpha).toBe(1);
-    frames.step(18_000);
+    frames.elapse(18_000);
     expect(node.position.x).toBe(50);
-    frames.step(20_000);
+    frames.elapse(20_000);
     expect(node.position.x).toBe(60);
   });
 
@@ -710,7 +774,7 @@ describe("InterludePanel", () => {
         type: 2,
       }),
     );
-    frames.step(500);
+    frames.elapse(500);
     panel.run(
       input({
         alphaDurationMs: 500,
@@ -728,12 +792,12 @@ describe("InterludePanel", () => {
       }),
     );
     const { node } = channel(panel).elements.get("\u0000bg");
-    frames.step(500);
+    frames.elapse(500);
     expect(node.alpha).toBe(0.5);
     expect(node.position.x).toBe(20);
     expect(node.scale.x).toBe(3);
 
-    frames.step(500);
+    frames.elapse(500);
     expect(node.alpha).toBe(0.9375);
     expect(node.position.x).toBe(15);
     expect(node.scale.x).toBe(1.9375);
@@ -769,18 +833,18 @@ describe("InterludePanel", () => {
         type: 3,
       }),
     );
-    frames.step(1500);
+    frames.elapse(1500);
     expect(node.x).toBeCloseTo(4.71);
     const wait = panel.run(
       input({ alphaDurationMs: 1000, alphaFrom: 1, alphaTo: 0, name, type: 3 }),
     );
     expect(node.x).toBe(0);
     expect(visibleAlphas()).toEqual([1, 1]);
-    frames.step(500);
+    frames.elapse(500);
     expect(node.x).toBeCloseTo(8.52);
     expect(visibleAlphas()).toEqual([0.5, 0.5]);
     expect(wait?.endReason).toBeUndefined();
-    frames.step(500);
+    frames.elapse(500);
     expect(visibleAlphas()).toEqual([0]);
     expect(wait?.endReason).toBe("complete");
   });
@@ -821,9 +885,9 @@ describe("InterludePanel", () => {
     panel.run(
       input({ alphaDurationMs: 1000, block: false, name: "second", type: 3 }),
     );
-    frames.step(500);
+    frames.elapse(500);
     panel.run(input({ block: false, name: "third", type: 3 }));
-    frames.step(500);
+    frames.elapse(500);
 
     expect(node.children[1]).toBe(firstFront);
     expect(firstFront.visible).toBe(true);
@@ -858,7 +922,7 @@ describe("InterludePanel", () => {
     await panel.run(
       input({ block: false, name: "cutin_char_4", slot: "m", type: 1 }),
     )?.completion;
-    frames.step(2000);
+    frames.elapse(2000);
     expect(bg.node.alpha).toBe(1);
     expect(state.elements.get("m")).not.toBe(bg);
   });
@@ -931,7 +995,7 @@ describe("InterludePanel", () => {
     const fade = panel.run(
       input({ alphaDurationMs: 1000, clear: true, style: 1 }),
     );
-    frames.step(950);
+    frames.elapse(950);
     expect(state.content.visible).toBe(true);
     expect(state.template.emptyImage.renderable).toBe(true);
     frames.step(10);
@@ -1194,7 +1258,7 @@ describe("InterludePanel", () => {
         );
       }
 
-      frames.step(recycleAtMs - 1);
+      frames.elapse(recycleAtMs - 1);
       expect(layer.children).toEqual([original]);
       frames.step(1);
       expect(layer.children).toHaveLength(0);
@@ -1202,7 +1266,7 @@ describe("InterludePanel", () => {
       panel.run(show);
       expect(layer.children).toHaveLength(1);
       const [replacement] = layer.children;
-      frames.step(1000);
+      frames.elapse(1000);
       expect(layer.children).toEqual([replacement]);
     },
   );
@@ -1228,7 +1292,7 @@ describe("InterludePanel", () => {
     panel.run(input({ block: false, maskId: VERTICAL }));
     const replacement = channel(panel);
     expect(replacement.template).not.toBeNull();
-    frames.step(1000);
+    frames.elapse(1000);
     expect(layer.children).toEqual([replacement.root]);
   });
 
@@ -1272,7 +1336,7 @@ describe("InterludePanel", () => {
       expect(layer.children).toHaveLength(0);
       expect(template.destroyed).toBe(true);
       expect(root.destroyed).toBe(false);
-      frames.step(900);
+      frames.elapse(900);
       expect(finish).not.toHaveBeenCalled();
       // The cancelled tween supplies no command completion. A reset settles
       // the remaining wait.
@@ -1354,7 +1418,7 @@ describe("InterludePanel", () => {
     frames.step(100);
     expect(layer.children).toHaveLength(1);
     expect(wait?.endReason).toBeUndefined();
-    frames.step(900);
+    frames.elapse(900);
     expect(layer.children).toHaveLength(0);
     expect(wait?.endReason).toBe("complete");
   });
@@ -1439,7 +1503,7 @@ describe("InterludePanel", () => {
       const clear = panel.run(input({ block, channel: -1, clear: true }));
       expect(clear?.endReason).toBe("error");
       expect(clear?.failure?.error).toBeInstanceOf(Error);
-      frames.step(500);
+      frames.elapse(500);
       expect(group.alpha).toBe(1);
       expect(layer.children).toHaveLength(2);
     },
@@ -1490,15 +1554,15 @@ describe("InterludePanel", () => {
       input({ block: false, clear: true, templateSizeDurationMs: 1500 }),
     )?.completion;
     // OnCutinEnd's DOKill cannot reach the nested fade: it keeps running.
-    frames.step(1000);
+    frames.elapse(1000);
     expect(node.alpha).toBe(0.75);
 
-    frames.step(500);
+    frames.elapse(500);
     expect(layer.children).toHaveLength(0);
     expect(state.bkgScale.parent).toBe(state.content);
     expect(node.parent).toBe(state.bkgPoz);
     const alphaAtRecycle = node.alpha;
-    frames.step(500);
+    frames.elapse(500);
     expect(node.alpha).toBe(alphaAtRecycle);
     panel.clearAll();
     expect(node.destroyed).toBe(true);
@@ -1506,6 +1570,94 @@ describe("InterludePanel", () => {
 });
 
 describe("InterludePanel mask templates", () => {
+  it.each([
+    { maskId: DIALOG, inside: { x: -250, y: 0 }, outside: { x: 205, y: -166 } },
+    {
+      maskId: "interlude_dialog_right",
+      inside: { x: 295, y: 0 },
+      outside: { x: -150, y: -165 },
+    },
+  ])(
+    "clips the portrait and background to the 2791 mesh for $maskId",
+    async ({ maskId, inside, outside }) => {
+      const template = buildTemplate(maskId, await loadInterludeTextures())!;
+      const { maskGraphics, dialog } = template;
+      expect(dialog!.bgImage.parent).toBe(dialog!.charImage.parent);
+      expect(dialog!.charImage.parent!.mask).toBe(maskGraphics);
+      expect(maskGraphics.containsPoint(inside)).toBe(true);
+      expect(maskGraphics.containsPoint(outside)).toBe(false);
+      template.root.destroy({ children: true });
+    },
+  );
+
+  it("samples the square frame width from its authored tangents at 125 ms", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    panel.run(
+      input({ maskId: SQUARE, charName: "真理", style: 1, block: false }),
+    );
+    frames.step(125);
+    expect(channel(panel).deco.frameGroup.width).toBeCloseTo(168.32872, 3);
+  });
+
+  it.each([
+    {
+      maskId: DIALOG,
+      seconds: CLIP_SECONDS.dialogIntroLeft,
+      angle: 0.02565243,
+    },
+    {
+      maskId: "interlude_dialog_right",
+      seconds: CLIP_SECONDS.dialogIntroRight,
+      angle: -0.02564703,
+    },
+  ])(
+    "samples the scale and rotation of $maskId at 125 ms",
+    ({ maskId, seconds, angle }) => {
+      const frames = new PlaybackTestFrames();
+      frames.manual = true;
+      const panel = createPanel(
+        new Container(),
+        () => Texture.WHITE,
+        frames.createTweenRunner(),
+      );
+      panel.run(
+        input({ maskId, style: 3, durationMs: seconds * 1000, block: false }),
+      );
+      frames.step(125);
+      const { group } = channel(panel).template.dialog;
+      expect(group.rotation).toBeCloseTo(angle, 7);
+      expect(group.scale.x).toBeCloseTo(0.90045254, 7);
+      expect(group.scale.y).toBeCloseTo(0.90045254, 7);
+    },
+  );
+
+  it("releases the blocking dialog callback while its scaled intro is still playing", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      frames.createTweenRunner(),
+    );
+    const intro = panel.run(
+      input({ maskId: DIALOG, style: 3, durationMs: 1000 }),
+    );
+    const { group, restX } = channel(panel).template.dialog;
+    const initialX = group.x;
+    frames.step(4000);
+    expect(intro?.endReason).toBe("complete");
+    expect(group.x).toBeGreaterThan(initialX);
+    expect(group.x).toBeLessThan(restX);
+    frames.elapse(667);
+    expect(group.x).toBe(restX);
+  });
+
   it("builds the square template and plays its show clip for every style", async () => {
     const durations: number[] = [];
     const panel = createPanel(
@@ -1730,7 +1882,7 @@ describe("InterludePanel mask templates", () => {
     expect(charImage.texture).toBe(Texture.WHITE);
     expect(group.alpha).toBe(1);
     expect(state.content.visible).toBe(true);
-    expect(durations).toEqual([700]);
+    expect(durations).toEqual([700, 700]);
   });
 
   it("releases the dialog portrait on replacement, char_empty and recycle", () => {
@@ -1899,7 +2051,7 @@ describe("InterludePanel mask templates", () => {
     const state = channel(panel);
     const hide = panel.run(input({ alphaDurationMs: 1000, clear: true }));
 
-    frames.step(950);
+    frames.elapse(950);
     expect(state.content.visible).toBe(true);
     frames.step(10);
     expect(state.content.visible).toBe(false);
@@ -2017,12 +2169,12 @@ describe("InterludePanel mask templates", () => {
     const direction = { block: false, direction: "rin" };
     panel.run(input({ ...direction, maskId: VERTICAL }));
     const [root] = layer.children;
-    frames.step(1000);
+    frames.elapse(1000);
     expect(root.alpha).toBeCloseTo(1);
 
     panel.run(input({ ...direction, type: 1 }));
     expect(root.alpha).toBeCloseTo(0);
-    frames.step(CLIP_SECONDS.direction * 1000 - 1000 + 1);
+    frames.elapse(CLIP_SECONDS.direction * 1000 - 1000 + 1);
     expect(root.alpha).toBeCloseTo(0);
   });
 });

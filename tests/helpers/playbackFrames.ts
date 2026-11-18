@@ -56,6 +56,12 @@ export class PlaybackTestFrames {
     if (ends.length) this.queueFrame();
   }
 
+  /** Advance wall time over several ordinary frames. step() injects one frame. */
+  elapse(durationMs: number): void {
+    for (let remaining = durationMs; remaining > 0; remaining -= 100)
+      this.step(Math.min(remaining, 100));
+  }
+
   async advance(...deltas: number[]): Promise<void> {
     for (const delta of deltas) {
       this.step(delta);
@@ -73,13 +79,17 @@ export class PlaybackTestFrames {
   }
 }
 
-/** Completes each finite tween as soon as the test subscribes to a frame. */
+/** Force finite tweens to their end pose regardless of their clock. */
 export function createInstantTweenRunner(): TweenRunner {
-  return new TweenRunner(
+  const runner = new TweenRunner(
     () => true,
-    (advance) => {
-      advance(Infinity);
-      return () => {};
-    },
+    () => () => {},
   );
+  const start = runner.start.bind(runner);
+  runner.start = (...args) => {
+    const tween = start(...args);
+    tween.kill(true);
+    return tween;
+  };
+  return runner;
 }

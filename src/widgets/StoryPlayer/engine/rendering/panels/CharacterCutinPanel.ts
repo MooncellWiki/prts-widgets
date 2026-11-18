@@ -1,10 +1,10 @@
 import { Container, Graphics, Sprite, Texture } from "pixi.js";
 
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
+import { ShowItemFadeStyle } from "../../showitem";
 import {
   STORY_HEIGHT,
   STORY_WIDTH,
-  type CharacterCutinFadeStyle,
   type CharacterCutinInput,
 } from "../../types";
 import { CharacterSlotView } from "../characters/CharacterSlotView";
@@ -23,23 +23,8 @@ type SlotTween = (
   options?: { onComplete?: () => void; target?: object },
 ) => void;
 
-/**
- * `AVGCharacterCutinSlot.FadeStyle` ordinals. The vertical members spell
- * `bottom` correctly in native -- a misspelled value silently degrades to
- * `fade` (enum default 0) on both sides.
- */
-const FADE_STYLE_IDS: Record<CharacterCutinFadeStyle, number> = {
-  fade: 0,
-  horiz_expand_center: 1,
-  horiz_expand_left2right: 2,
-  horiz_expand_right2left: 3,
-  vert_expand_center: 4,
-  vert_expand_top2bottom: 5,
-  vert_expand_bottom2top: 6,
-};
-
-function fadeStyleId(style: CharacterCutinInput["fadeStyle"]): number {
-  return style ? (FADE_STYLE_IDS[style] ?? 0) : 0;
+function hasFadeTween(style: number): boolean {
+  return ShowItemFadeStyle[style] !== undefined;
 }
 
 function characterIdentity(input: CharacterCutinInput): string {
@@ -343,6 +328,9 @@ export class CharacterCutinPanel {
       state.header.setSize(backgroundWidth, 200);
     }
 
+    // Show keeps the layout and leaves its callback unattached for an
+    // unnamed ordinal (2791 @ 0x184203DA0).
+    if (!hasFadeTween(state.fadeStyle)) return;
     if (state.fadeStyle === 0) {
       // Fade the canvas group with the mask already at full size.
       tween(
@@ -448,6 +436,8 @@ export class CharacterCutinPanel {
     state: CutinSlotState,
     tween: SlotTween,
   ): void {
+    // Hide uses the saved Show ordinal. Recycling is its tween's OnComplete.
+    if (!hasFadeTween(state.fadeStyle)) return;
     // _ExecuteCharacterCutin_b__0 (2791 @ 0x1841B5EF0) recycles the
     // captured slot, then removes the captured widget ID.
     const recycle = () => {
@@ -505,17 +495,25 @@ export class CharacterCutinPanel {
     layout: CutinLayout,
     vertical: boolean,
   ): CutinSlotState {
-    const fadeStyle = fadeStyleId(input.fadeStyle);
+    const fadeStyle =
+      typeof input.fadeStyle === "number"
+        ? input.fadeStyle
+        : (ShowItemFadeStyle[input.fadeStyle ?? "fade"] ??
+          ShowItemFadeStyle.fade);
+    const recycled = this.recycledSlots.pop();
     const entry = {
       charIdentity: "",
       fadeStyle,
       hasStarted: false,
-      maskPivot: {
-        x: fadeStyle === 2 ? -0.5 : fadeStyle === 3 ? 0.5 : 0,
-        y: fadeStyle === 5 ? -0.5 : fadeStyle === 6 ? 0.5 : 0,
-      },
+      maskPivot:
+        !hasFadeTween(fadeStyle) && recycled
+          ? recycled.maskPivot
+          : {
+              x: fadeStyle === 2 ? -0.5 : fadeStyle === 3 ? 0.5 : 0,
+              y: fadeStyle === 5 ? -0.5 : fadeStyle === 6 ? 0.5 : 0,
+            },
       maskSize: {
-        h: fadeStyle >= 4 ? 0 : layout.maskH,
+        h: fadeStyle >= 4 && fadeStyle <= 6 ? 0 : layout.maskH,
         w: fadeStyle >= 1 && fadeStyle <= 3 ? 0 : layout.maskW,
       },
       pov: { x: layout.contentX, y: layout.contentY },
@@ -523,7 +521,6 @@ export class CharacterCutinPanel {
     };
     // GameObjectPool.Allocate (2791 @ 0x182AB73D0) reuses the last
     // recycled object. Live direction/SlotUpdate setters still hold it.
-    const recycled = this.recycledSlots.pop();
     const state = recycled
       ? Object.assign(recycled, entry)
       : { ...this.createSlotView(), ...entry };
@@ -537,7 +534,7 @@ export class CharacterCutinPanel {
       layout.maskH / 2 - (input.charOffsetY ?? 0),
     );
     // Seed the entry pose before a Web texture request can yield a frame.
-    root.alpha = fadeStyle === 0 ? 0 : 1;
+    if (hasFadeTween(fadeStyle)) root.alpha = fadeStyle === 0 ? 0 : 1;
     this.drawMask(state);
     this.slotViews.add(state);
     this.slots.set(input.widgetId, state);

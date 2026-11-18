@@ -392,6 +392,36 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it.each([
+    { raw: '"1,"', expected: { x: 0, y: 0 } },
+    { raw: '"1,no"', expected: { x: 0, y: 0 } },
+    { raw: '" "', expected: { x: 0, y: 0 } },
+    { raw: '"2,3,4"', expected: { x: 2, y: 3 } },
+    { raw: '""', expected: undefined },
+  ])(
+    "decodes interlude vectors and their presence flags from $raw",
+    async ({ raw, expected }) => {
+      const renderer = new FakeRenderer();
+      const runtime = new StoryRuntime(
+        createContext([
+          `[interlude(channel=3,pfrom=${raw},pto="10,20",sfrom="1,1",sto=${raw},icharpos=${raw},icharscale=${raw})]`,
+          '[name="A"]ok',
+        ]),
+        renderer,
+        new FakeAudio(),
+      );
+      await runtime.start();
+      expect(renderer.interludeCalls[0]).toMatchObject({
+        positionFrom: expected,
+        positionTo: expected && { x: 10, y: 20 },
+        scaleFrom: expected && { x: 1, y: 1 },
+        scaleTo: expected,
+        dialogCharPos: expected,
+        dialogCharScale: expected,
+      });
+    },
+  );
+
   it("rounds interlude style with the native Convert.ToInt32 rules", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

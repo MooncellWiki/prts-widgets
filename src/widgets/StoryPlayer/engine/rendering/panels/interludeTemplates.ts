@@ -27,7 +27,7 @@ import { buildActiveWave } from "./interludeWave";
 // (CDN 热更包,不在 APK 基包);channel 骨架与 `direction` 动画在
 // `ui/[uc]common.ab` 的 `cutin_controller`/`cutin_channel`/`cutin_charslot`。
 // 布局数值逐项转写自 2.7.81 资源版本 26-10-14 的 prefab RectTransform dump
-// (2026-10-21);动画关键帧见 `assets/interlude/clips.json`(同批 dump)。逆向
+// (2026-10-21);动画关键帧与切线取自 2791 PC 资源，见 `assets/interlude/clips.json`。逆向
 // 记录:arknights-rev `docs/commands/avg-interlude-command.md` §6/§8/§13.1。
 //
 // 坐标:Unity 的 anchoredPosition/localPosition 已换算到 PIXI(y 取反);
@@ -38,36 +38,38 @@ import { buildActiveWave } from "./interludeWave";
 //   `Graphics` mask 近似:mask 图形挂在写入者(`_imgMask`/`img_char_mask`)
 //   节点下,自动跟随模板的 DOScale/位移/入场动画;读取者(通道内容层、
 //   vertical 的 `img_unknown`、dialog 的 `img_bg`/`img_char`)以它裁切。
-// - `bg_defaul_gradient` 的渐变 shader 用 `top_gradient` 贴图拉伸近似;
-//   dialog `img_char_mask` 的自定义网格按矩形近似。
-// - 关键帧间插值取线性(原生为 slope 贝塞尔);UI 曲线键距稀疏,视觉差异可忽略。
+// - `bg_defaul_gradient` 的渐变 shader 用 `top_gradient` 贴图拉伸近似。
 
 /** `assets/interlude/clips.json` 的结构(AnimationClip typetree 转写)。 */
-interface ClipKey {
+interface ClipKey<T> {
   t: number;
-  v: number | { x: number; y: number; z: number; w: number };
+  v: T;
+  inSlope: T;
+  outSlope: T;
 }
-interface ClipCurve {
+interface ClipCurve<T> {
   path: string;
   attr?: string;
-  keys: ClipKey[];
+  keys: ClipKey<T>[];
 }
-interface ClipSection {
-  position: ClipCurve[];
-  rotation: ClipCurve[];
-  scale: ClipCurve[];
-  float: ClipCurve[];
+type ClipVector = { x: number; y: number; z: number };
+interface ClipValues {
+  position: ClipVector;
+  rotation: ClipVector & { w: number };
+  scale: ClipVector;
+  float: number;
 }
+type ClipSection = { [K in keyof ClipValues]: ClipCurve<ClipValues[K]>[] };
 type ClipMap = Record<string, ClipSection | undefined>;
 
 const CLIPS = importedClips as unknown as ClipMap;
 
-function curve(
+function curve<K extends keyof ClipValues>(
   clip: string,
-  section: keyof ClipSection,
+  section: K,
   path: string,
   attr?: string,
-): ClipCurve | null {
+): ClipCurve<ClipValues[K]> | null {
   const c = CLIPS[clip];
   if (!c) return null;
   for (const cu of c[section]) {
@@ -81,59 +83,62 @@ function curve(
   return null;
 }
 
-/** 关键帧线性采样(键外取端点值)。 */
-function sample(cu: ClipCurve | null, t: number, fallback: number): number {
+/** The six 2791 legacy AnimationClips use unweighted Hermite tangents. */
+function sampleComponent<T>(
+  cu: ClipCurve<T> | null,
+  t: number,
+  fallback: number,
+  read: (value: T) => number,
+): number {
   if (!cu || cu.keys.length === 0) return fallback;
-  const ks = cu.keys;
-  if (t <= ks[0]!.t) return ks[0]!.v as number;
-  for (let i = 1; i < ks.length; i++) {
-    if (t > ks[i]!.t) continue;
-    const a = ks[i - 1]!;
-    const b = ks[i]!;
-    const span = b.t - a.t;
-    const p = span > 0 ? (t - a.t) / span : 1;
-    return (a.v as number) + ((b.v as number) - (a.v as number)) * p;
+  const keys = cu.keys;
+  if (t <= keys[0]!.t) return read(keys[0]!.v);
+  for (let i = 1; i < keys.length; i++) {
+    const right = keys[i]!;
+    if (t > right.t) continue;
+    if (t === right.t) return read(right.v);
+    const left = keys[i - 1]!;
+    const duration = right.t - left.t;
+    const u = (t - left.t) / duration;
+    const u2 = u * u;
+    const u3 = u2 * u;
+    return (
+      (2 * u3 - 3 * u2 + 1) * read(left.v) +
+      (u3 - 2 * u2 + u) * duration * read(left.outSlope) +
+      (3 * u2 - 2 * u3) * read(right.v) +
+      (u3 - u2) * duration * read(right.inSlope)
+    );
   }
-  return ks[ks.length - 1]!.v as number;
+  return read(keys[keys.length - 1]!.v);
+}
+
+function sample(
+  cu: ClipCurve<number> | null,
+  t: number,
+  fallback: number,
+): number {
+  return sampleComponent(cu, t, fallback, (value) => value);
 }
 
 function sampleVec2(
-  cu: ClipCurve | null,
+  cu: ClipCurve<ClipVector> | null,
   t: number,
   fallback: { x: number; y: number },
 ): { x: number; y: number } {
-  if (!cu || cu.keys.length === 0) return fallback;
-  const ks = cu.keys;
-  const vec = (v: ClipKey["v"]): { x: number; y: number } =>
-    typeof v === "number" ? { x: v, y: v } : { x: v.x, y: v.y };
-  if (t <= ks[0]!.t) return vec(ks[0]!.v);
-  for (let i = 1; i < ks.length; i++) {
-    if (t > ks[i]!.t) continue;
-    const a = vec(ks[i - 1]!.v);
-    const b = vec(ks[i]!.v);
-    const span = ks[i]!.t - ks[i - 1]!.t;
-    const p = span > 0 ? (t - ks[i - 1]!.t) / span : 1;
-    return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
-  }
-  return vec(ks[ks.length - 1]!.v);
+  return {
+    x: sampleComponent(cu, t, fallback.x, (v) => v.x),
+    y: sampleComponent(cu, t, fallback.y, (v) => v.y),
+  };
 }
 
-/** 四元数 key 的 z 轴旋转角(rad)。 */
-function sampleRotZ(cu: ClipCurve | null, t: number): number {
-  if (!cu || cu.keys.length === 0) return 0;
-  const ks = cu.keys;
-  const pick = (k: ClipKey): number =>
-    typeof k.v === "number" ? 0 : 2 * Math.atan2(k.v.z, k.v.w);
-  if (t <= ks[0]!.t) return pick(ks[0]!);
-  for (let i = 1; i < ks.length; i++) {
-    if (t > ks[i]!.t) continue;
-    const a = pick(ks[i - 1]!);
-    const b = pick(ks[i]!);
-    const span = ks[i]!.t - ks[i - 1]!.t;
-    const p = span > 0 ? (t - ks[i - 1]!.t) / span : 1;
-    return a + (b - a) * p;
-  }
-  return pick(ks[ks.length - 1]!);
+/** 对话框只绕 Z 轴旋转，归一化四元数不改变 z/w 的比值。 */
+function sampleRotZ(
+  cu: ClipCurve<ClipValues["rotation"]> | null,
+  t: number,
+): number {
+  const z = sampleComponent(cu, t, 0, (v) => v.z);
+  const w = sampleComponent(cu, t, 1, (v) => v.w);
+  return 2 * Math.atan2(z, w);
 }
 
 /** 各动画时长(秒),取自关键帧末端。 */
@@ -510,8 +515,26 @@ export function buildTemplate(
     charPart.position.set(right ? -250 : 150, 0);
     const charMask = new Container();
     charMask.position.set(right ? 3 : 48, right ? 3.5 : 0);
-    const maskGraphics = new Graphics();
-    drawMaskRect(maskGraphics, 485, right ? 399.69 : 403.4);
+    // 2791 UIMeshImage.OnPopulateMesh / _MatchMeshWithRectTransform
+    // (0x1815D0E00 / 0x1815D1720). The perimeter vertices below are in
+    // prefab pixels: mesh vertex × 485 / mesh bounds width, with Y flipped.
+    // _RefreshModelMatIfNeeded scales about the mesh origin.
+    const outline = right
+      ? [
+          { x: -115.618, y: -149.237 },
+          { x: 308.508, y: -197.507 },
+          { x: 308.508, y: 202.185 },
+          { x: -85.181, y: 157.064 },
+          { x: -176.492, y: -31.712 },
+        ]
+      : [
+          { x: -259.807, y: 208.052 },
+          { x: -259.807, y: -195.35 },
+          { x: 161.673, y: -146.751 },
+          { x: 225.193, y: -27.39 },
+          { x: 132.746, y: 161.44 },
+        ];
+    const maskGraphics = new Graphics().poly(outline).fill(0xff_ff_ff);
     charMask.addChild(maskGraphics);
     const bgSize = right ? { x: 620.42, y: 590.9 } : { x: 550, y: 570 };
     const bgImage = centeredSprite(tex.dialogGrad, bgSize.x, bgSize.y);

@@ -16,6 +16,12 @@ import {
   linearEase,
 } from "../core/DotweenEase";
 import { Sequence } from "../core/Sequence";
+import {
+  MAX_SCALED_FRAME_DELTA_MS,
+  type TweenHandle,
+  type TweenRunner,
+  type TweenStartOptions,
+} from "../core/TweenRunner";
 
 import {
   CLIP_SECONDS,
@@ -40,11 +46,6 @@ import type {
   CharacterArtLoad,
 } from "../characters/CharacterArt";
 import type { TextureLoad } from "../core/TextureAsset";
-import type {
-  TweenHandle,
-  TweenRunner,
-  TweenStartOptions,
-} from "../core/TweenRunner";
 
 type Preparation = void | Promise<void>;
 type Vec2 = { x: number; y: number };
@@ -100,8 +101,6 @@ interface ChannelState extends ChannelView {
   fallbackScale: Vec2;
   /** 通道 animWrapper 上当前 direction clip。 */
   direction?: { name: "rin" | "lin"; tween: TweenHandle };
-  /** dialog 入场 clip 的句柄(HideCutinMask 先 _KillDialogIntroTween)。 */
-  dialogIntro?: TweenHandle;
   /** `CutinTemplate.m_cachedName`。 */
   cachedName: string;
   /** `m_dialogCharPosOffset` / `m_dialogCharScaleMul`(只在给出时覆盖)。 */
@@ -819,6 +818,8 @@ export class CutinChannel {
             deferZeroDuration: true,
             ease: linearEase,
             isAlive,
+            // AVGCharacterSlot._GenBackImageTween uses SetIgnoreTimeScale(true).
+            maxFrameDeltaMs: Infinity,
             onComplete: outgoing.finish,
           });
       }
@@ -852,6 +853,8 @@ export class CutinChannel {
     const sequence = new Sequence((durationMs, update, done, options) => {
       const handle = this.tweens.start(durationMs, update, {
         ...options,
+        // OnCutinUpdate creates a standard DOTween.Sequence (2791 @ 0x1814F9820).
+        maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
         onComplete: done,
       });
       state.elementSequences.set(input.type, handle);
@@ -968,16 +971,24 @@ export class CutinChannel {
       complete();
       return;
     }
-    state.dialogIntro = this.runTween(
+    this.runTween(
       state,
       input.durationMs,
       (progress) => {
         applyDialogIntro(dialog, progress * seconds);
         this.syncStencilVisibility(state, state.template!);
       },
-      { onComplete: input.block ? complete : undefined },
+      { target: dialog },
     );
-    if (!input.block) complete();
+    // _PlayDialogIntroAtSpeed (2791 @ 0x1814FF910) plays the legacy clip and
+    // attaches the command callback to an independent DOTween.DelayedCall.
+    if (input.block)
+      this.runTween(state, input.durationMs, () => {}, {
+        maxFrameDeltaMs: Infinity,
+        onComplete: complete,
+        target: dialog,
+      });
+    else complete();
   }
 
   /** CutinTemplateDialogView._RefreshDialogBackground / _RefreshDialogChar. */
@@ -1088,7 +1099,7 @@ export class CutinChannel {
       const group = template.dialog.group;
       // CutinTemplateDialogView.HideCutinMask (2791 @ 0x1814FD2C0) kills
       // the intro and the previous fade before starting a new one.
-      state.dialogIntro?.kill();
+      this.tweens.killTarget(template.dialog);
       this.tweens.killTarget(group);
       const durationMs =
         input.alphaDurationMs > 0 ? input.alphaDurationMs : 500;
@@ -1129,6 +1140,7 @@ export class CutinChannel {
     options?: TweenStartOptions,
   ): TweenHandle {
     return this.tweens.start(durationMs, update, {
+      maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
       ...options,
       isAlive: () =>
         !state.root.destroyed &&

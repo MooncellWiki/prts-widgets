@@ -4,6 +4,9 @@ import { linearEase, type EaseCurve } from "./DotweenEase";
 
 type SubscribeFrame = (update: (deltaMs: number) => void) => () => void;
 
+/** Maximum Allowed Timestep in the 2791 PC TimeManager, in milliseconds. */
+export const MAX_SCALED_FRAME_DELTA_MS = Math.fround(1 / 3) * 1000;
+
 /** Optional timing and easing behaviour for {@link TweenRunner.run}. */
 export interface TweenRunOptions {
   /** Run a zero-duration tween on the next update, like DOTween. */

@@ -683,7 +683,8 @@ export interface CharacterCutinInput {
   expression?: string;
   /** `animateRatio * fadetime` in ms; AVGCharacterCutinSlot is IFadeTimeRatio. */
   fadeMs: number;
-  fadeStyle?: CharacterCutinFadeStyle;
+  /** Enum.Parse also accepts unnamed Int32 ordinals. */
+  fadeStyle?: CharacterCutinFadeStyle | number;
   offsetX?: number;
   offsetY?: number;
   /** `_zoomAndPovRectTransform.anchoredPosition = (-povX, -povY)`. */
@@ -785,6 +786,8 @@ export interface StoryRenderer {
   clearTimerSticker: (input?: TimerClearInput) => void;
   clearCharacterCutin: (widgetId?: string) => void;
   clearInterludes: () => void;
+  /** Reserve the interlude controller's sibling index before validating a command. */
+  ensureInterludeController?: () => void;
   destroy: () => void;
   /** Reveal the remaining text of the selected sticker. */
   finishStickerTyping: (id: string) => boolean;

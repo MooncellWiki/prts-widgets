@@ -222,6 +222,9 @@ describe("StoryRuntime", () => {
 
   it.each([
     { style: "2", expected: "horiz_expand_left2right" },
+    { style: '"7"', expected: 7 },
+    { style: "-1", expected: -1 },
+    { style: '"horiz_expand_right2left,vert_expand_center"', expected: 7 },
     { style: '" +2 "', expected: "horiz_expand_left2right" },
     { style: '"horiz_expand_left2right"', expected: "horiz_expand_left2right" },
     { style: '"HORIZ_EXPAND_LEFT2RIGHT"', expected: "fade" },

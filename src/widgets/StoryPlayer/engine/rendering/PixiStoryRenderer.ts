@@ -457,6 +457,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.textureForCharacterKey(key),
   );
   private readonly cutinLayer = this.layers.cutins;
+  private readonly interludeLayer = new Container({
+    label: "Channel_Container",
+  });
   private readonly cutinPanel: CharacterCutinPanel;
 
   private readonly curtainLayer = this.layers.curtains;
@@ -590,7 +593,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     });
     this.decisionView = new DecisionView(this.uiLayer);
     this.interludePanel = new InterludePanel(
-      this.cutinLayer,
+      this.interludeLayer,
       (input) => this.textureForInterlude(input),
       (key, texture) => this.nativeBackgroundRect(key, texture, "texture"),
       (input) =>
@@ -762,6 +765,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.decisionView.destroy();
     this.cutinPanel.destroy();
     this.interludePanel.destroy();
+    this.interludeLayer.destroy();
     this.animTextPanel.destroy();
     this.avgDisplayPanel.destroy();
     this.spellStickerPanel.destroy();
@@ -1408,12 +1412,23 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   clearInterludes(): void {
     this.interludePanel.clearAll();
+    // OnReset (2791 @ 0x18419E970) recreates the controller after clearing
+    // the character pool, even if there are no channels to show yet.
+    this.cutinLayer.addChild(this.interludeLayer);
+  }
+
+  ensureInterludeController(): void {
+    // _InitCutinIfNot (2791 @ 0x1841A0330) inserts one controller at the
+    // current sibling index. All channel allocations belong to its subtree.
+    if (!this.interludeLayer.parent)
+      this.cutinLayer.addChild(this.interludeLayer);
   }
 
   setInterlude(
     input: InterludeInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
+    this.ensureInterludeController();
     return this.interludePanel.run(input, onComplete);
   }
 

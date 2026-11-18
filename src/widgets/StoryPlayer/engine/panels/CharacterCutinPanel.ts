@@ -6,11 +6,11 @@ import {
 import {
   exactArg,
   getBool,
-  parseVector2,
   toNumber,
   toOptionalNumber,
   toString,
   tryConvertToInt32,
+  tryConvertToSingle,
   tryParseInt32,
 } from "../commandParams";
 import { parseShowItemFadeStyle, ShowItemFadeStyle } from "../showitem";
@@ -42,6 +42,17 @@ function parseInterludeType(value: unknown): InterludeElementType {
   return numeric === 1 || numeric === 2 || numeric === 3 ? numeric : 0;
 }
 
+/** _GenCutinParamWithCommand / _ParseVector (2791 @ 0x18419F4E0 / 0x1841A0640). */
+function interludeVector(value: unknown): { x: number; y: number } | undefined {
+  const raw = toString(value);
+  if (!raw) return undefined;
+  const [first = "", second = ""] = raw.split(",", 2);
+  const x = tryConvertToSingle(first);
+  const y = tryConvertToSingle(second);
+  // A nonempty parameter enables the track even when Single.TryParse fails.
+  return x === null || y === null ? { x: 0, y: 0 } : { x, y };
+}
+
 /** Native port: Torappu.AVG.AVGCharacterCutinPanel (2791 GetExecutors @ 0x18419E7E0). */
 export class CharacterCutinPanel extends ExecutorComponent {
   constructor(
@@ -49,6 +60,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
       StoryRenderer,
       | "clearCharacterCutin"
       | "clearInterludes"
+      | "ensureInterludeController"
       | "setCharacterCutin"
       | "setInterlude"
     >,
@@ -113,10 +125,10 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // AVGCharacterCutinSlot.Show (2791 @ 0x184203DA0) uses case-sensitive
     // GetEnum. Both native cut-in FadeStyle enums share names and ordinals.
     const fadeStyleRaw = toString(args.fadestyle);
+    const ordinal = parseShowItemFadeStyle(fadeStyleRaw);
     const fadeStyle = fadeStyleRaw
-      ? (ShowItemFadeStyle[
-          parseShowItemFadeStyle(fadeStyleRaw)
-        ] as CharacterCutinInput["fadeStyle"])
+      ? ((ShowItemFadeStyle[ordinal] as CharacterCutinInput["fadeStyle"]) ??
+        ordinal)
       : undefined;
 
     // AVGCharacterCutinSlot.Show/SlotUpdate read the case-sensitive layout
@@ -163,6 +175,7 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // _ExecuteInterlude and _GenCutinParamWithCommand (2791 @ 0x18419F250 /
     // 0x18419F4E0). Validation uses channel default 0. CutinParam uses -1.
     // _EnsureDialogExtra supplies icharpos and icharscale to the dialog template.
+    this.renderer.ensureInterludeController?.();
     const { args } = line;
     const channelArg = tryConvertToInt32(exactArg(args, "channel"));
     const checkedChannel = channelArg ?? 0;
@@ -190,10 +203,10 @@ export class CharacterCutinPanel extends ExecutorComponent {
     if (type === 3 && name && !resolvedAvatar)
       this.playback.warn("missing_asset", `interlude avatar: ${name}`);
 
-    const positionFrom = parseVector2(exactArg(args, "pfrom"));
-    const positionTo = parseVector2(exactArg(args, "pto"));
-    const scaleFrom = parseVector2(exactArg(args, "sfrom"));
-    const scaleTo = parseVector2(exactArg(args, "sto"));
+    const positionFrom = interludeVector(exactArg(args, "pfrom"));
+    const positionTo = interludeVector(exactArg(args, "pto"));
+    const scaleFrom = interludeVector(exactArg(args, "sfrom"));
+    const scaleTo = interludeVector(exactArg(args, "sto"));
     const duration = (key: string): number =>
       this.playback.calculateFadeMs(exactArg(args, key), 0);
 
@@ -208,30 +221,30 @@ export class CharacterCutinPanel extends ExecutorComponent {
       channel,
       charName: toString(exactArg(args, "char")),
       clear: getBool(args, "clear"),
-      dialogCharPos: parseVector2(exactArg(args, "icharpos")),
-      dialogCharScale: parseVector2(exactArg(args, "icharscale")),
+      dialogCharPos: interludeVector(exactArg(args, "icharpos")),
+      dialogCharScale: interludeVector(exactArg(args, "icharscale")),
       direction: toString(exactArg(args, "direction")),
       durationMs: duration("duration"),
       maskId: toString(exactArg(args, "maskid")),
       name,
-      offset: parseVector2(exactArg(args, "offset")) ?? { x: 0, y: 0 },
+      offset: interludeVector(exactArg(args, "offset")) ?? { x: 0, y: 0 },
       positionFrom: positionFrom && positionTo ? positionFrom : undefined,
       positionTo: positionFrom && positionTo ? positionTo : undefined,
       scaleDurationMs: duration("sduration"),
       scaleFrom: scaleFrom && scaleTo ? scaleFrom : undefined,
       scaleTo: scaleFrom && scaleTo ? scaleTo : undefined,
-      size: parseVector2(exactArg(args, "size")) ?? { x: 0, y: 0 },
+      size: interludeVector(exactArg(args, "size")) ?? { x: 0, y: 0 },
       slot: toString(exactArg(args, "slot")),
       // Command.TryGetParam<int> (2791 @ 0x18419AF30) uses Convert.ToInt32.
       style: tryConvertToInt32(exactArg(args, "style")) ?? 0,
       // Native switch feeds the deco TwoStateToggle on each show or update.
       switchOn: getBool(args, "switch"),
       templateSizeDurationMs: duration("tsduration"),
-      templateSizeFrom: parseVector2(exactArg(args, "tsfrom")) ?? {
+      templateSizeFrom: interludeVector(exactArg(args, "tsfrom")) ?? {
         x: 0,
         y: 0,
       },
-      templateSizeTo: parseVector2(exactArg(args, "tsto")) ?? {
+      templateSizeTo: interludeVector(exactArg(args, "tsto")) ?? {
         x: 0,
         y: 0,
       },

@@ -8,9 +8,13 @@ import {
   type StoryShowItemSlot,
 } from "../../types";
 import { dotweenDefaultEase } from "../core/DotweenEase";
+import {
+  MAX_SCALED_FRAME_DELTA_MS,
+  type TweenRunner,
+  type TweenRunOptions,
+} from "../core/TweenRunner";
 
 import type { TextureLoad } from "../core/TextureAsset";
-import type { TweenRunner, TweenRunOptions } from "../core/TweenRunner";
 
 export interface ShowItemSlotHost {
   layer: Container;
@@ -23,9 +27,6 @@ export interface ShowItemAnimation {
   backdropStep?: (progress: number) => void;
   step: (progress: number) => void;
 }
-
-// Unity TimeManager in 2791 caps scaled deltaTime at one third of a second.
-const MAX_SCALED_FRAME_DELTA_MS = 1000 / 3;
 
 function readFadeMs(args: StoryCommandArgs): number {
   const value = exactArg(args, "fadetime");

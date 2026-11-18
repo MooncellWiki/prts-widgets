@@ -113,6 +113,65 @@ function deferredArt(): {
 }
 
 describe("CharacterCutinPanel", () => {
+  it("keeps an unnamed entry style and its blocking show and hide pending until reset", () => {
+    const frames = new PlaybackTestFrames();
+    frames.manual = true;
+    const layer = new Container();
+    const panel = createPanel(
+      layer,
+      () => art(120, 300),
+      frames.createTweenRunner(),
+    );
+    const show = panel.run(input({ fadeMs: 100, fadeStyle: 7 }));
+    const state = slots(panel).get("1")!;
+    frames.step(500);
+    expect(state.maskSize).toEqual({ h: 720, w: 200 });
+    expect(state.root.alpha).toBe(1);
+    expect(show?.endReason).toBeUndefined();
+
+    const update = panel.run(
+      input({ fadeMs: 100, fadeStyle: "fade", offsetX: 20 }),
+    );
+    frames.step(100);
+    expect(update?.endReason).toBe("complete");
+    expect(state.root.x).toBe(660);
+    const hide = panel.run(
+      input({ characterKey: undefined, fadeMs: 100, fadeStyle: "fade" }),
+    );
+    frames.step(500);
+    expect(layer.children).toEqual([state.root]);
+    expect(hide?.endReason).toBeUndefined();
+    panel.clear();
+    expect(show?.endReason).toBe("reset");
+    expect(hide?.endReason).toBe("reset");
+    expect(layer.children).toHaveLength(0);
+  });
+
+  it.each([
+    { previous: "fade", alpha: 0, centerX: 0 },
+    { previous: "horiz_expand_left2right", alpha: 1, centerX: 50 },
+  ] as const)(
+    "retains the recycled $previous slot's alpha and pivot for an unnamed style",
+    ({ previous, alpha, centerX }) => {
+      const panel = createPanel(
+        new Container(),
+        () => art(120, 300),
+        createInstantTweenRunner(),
+      );
+      panel.run(input({ fadeStyle: previous }));
+      const previousSlot = slots(panel).get("1")!;
+      panel.run(input({ characterKey: undefined }));
+      panel.run(
+        input({ widgetId: "2", width: 300, fadeStyle: -1, block: false }),
+      );
+      const slot = slots(panel).get("2")!;
+      expect(slot.root).toBe(previousSlot.root);
+      expect(slot.root.alpha).toBe(alpha);
+      expect(slot.maskSize).toEqual({ h: 720, w: 300 });
+      expect(slot.backdrop.x).toBe(centerX);
+    },
+  );
+
   it("renders the character at original size in a full-height mask at screen center + offset", async () => {
     const layer = new Container();
     const tex = art(120, 300);

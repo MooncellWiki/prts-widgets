@@ -210,6 +210,21 @@ describe("preloadContextAssets", () => {
     );
   });
 
+  it("uses Convert.ToInt32 for interlude asset collection", () => {
+    const context = createContext([
+      '[interlude(type=1.9,name="bg_battlefield")]',
+      '[interlude(type=2.5,name="bg_tie")]',
+      '[interlude(type=2.6,name="avg_npc_180#3")]',
+      '[interlude(type="1.9",name="quoted_decimal")]',
+      '[interlude(type=0.5,name="rounded_to_zero")]',
+    ]);
+    expect(collectContextAssetUrls(context).toSorted()).toEqual([
+      "https://torappu.prts.wiki/assets/avg/background/bg_battlefield.png",
+      "https://torappu.prts.wiki/assets/avg/background/bg_tie.png",
+      "https://torappu.prts.wiki/assets/avg/characters/avg_npc_180/avg_npc_180_3.png",
+    ]);
+  });
+
   it("loads the dialog font always and the template fonts only when used", async () => {
     const fontsFor = async (script: readonly string[]): Promise<string[]> => {
       loadFontMock.mockClear();
