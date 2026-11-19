@@ -1501,7 +1501,7 @@ describe("Displayable and focus frame order", () => {
         width: texture.width,
       };
       const load = vi
-        .spyOn(renderer, "loadCharacterArt")
+        .spyOn(renderer.characterView, "loadArt")
         .mockReturnValueOnce(pending.promise);
       const started = runtime.start();
       const [oldRoot] = cutinViews(renderer.layers.cutins);

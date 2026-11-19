@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createExecutionHandle } from "../../../src/widgets/StoryPlayer/engine/execution";
 import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
 import {
   createContext,
@@ -10,7 +11,7 @@ import {
 import type { RuntimeWarning } from "../../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
-  it("places a single character in the middle slot without ever blocking", async () => {
+  it("places a single character in the middle slot without waiting for its fade", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -462,7 +463,6 @@ describe("StoryRuntime", () => {
         slot: "m",
         // charslot tweens join the per-slot cached Sequence; `character`
         // commands (CharacterPanel) leave this unset.
-        slotSequence: true,
         stop: false,
         // GetOrDefault<int>("times", 0) -- the shake vibrato / jump count.
         times: 0,
@@ -718,7 +718,7 @@ describe("StoryRuntime", () => {
     },
     {
       // The clear branch returns before the sequence is built and hands
-      // isBlock straight to _CleanSlotsWithTween (0x183e4e5c3), so it is
+      // isBlock straight to _CleanSlotsWithTween (2791 @ 0x1841A1CA0), so it is
       // not gated on `end` the way the slot path is.
       name: "keeps isblock even with end=false",
       command: "[charslot(duration=0.5,isblock=true,end=false)]",
@@ -727,12 +727,10 @@ describe("StoryRuntime", () => {
   ])(
     "clears all characters over the charslot duration when slot is omitted and $name",
     async ({ command, stateWhileClearing }) => {
-      let resolveClear: (() => void) | undefined;
+      const clear = createExecutionHandle(true);
       const renderer = new FakeRenderer();
-      renderer.clearCharactersHandler = () =>
-        new Promise<void>((resolve) => {
-          resolveClear = resolve;
-        });
+      renderer.frames.manual = true;
+      renderer.clearCharactersHandler = () => clear;
       const runtime = new StoryRuntime(
         createContext([command, '[name="A"]ok']),
         renderer,
@@ -746,8 +744,10 @@ describe("StoryRuntime", () => {
       expect(renderer.clearedSlots).toEqual([{ fadeMs: 500, slot: undefined }]);
       expect(runtime.getState()).toBe(stateWhileClearing);
 
-      resolveClear?.();
+      clear.end();
+      renderer.frames.step();
       await startPromise;
+      renderer.frames.step();
       expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "ok" });
     },
   );

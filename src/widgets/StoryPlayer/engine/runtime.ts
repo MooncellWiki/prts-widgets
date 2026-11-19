@@ -2,16 +2,10 @@ import mitt, { type Handler } from "mitt";
 
 import { DecisionCommandPredicator } from "./DecisionCommandPredicator";
 import { normalizeImageKey, resolveStoryAudioByKey } from "./asset";
-import {
-  type CharacterRefResolution,
-  nativeCharacterFadeIdentity,
-  resolveCharacterRef,
-  resolveNativeCharacterRef,
-} from "./characterRef";
+import { resolveCharacterRef, resolveNativeCharacterRef } from "./characterRef";
 import {
   exactArg,
   isZeroFloat,
-  roundHalfToEven,
   toBoolean,
   toNumber,
   toString,
@@ -36,6 +30,8 @@ import { BlockerPanel } from "./panels/BlockerPanel";
 import { CameraEffectExecutor } from "./panels/CameraEffectExecutor";
 import { CgItemPanel } from "./panels/CgItemPanel";
 import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
+import { CharacterPanel } from "./panels/CharacterPanel";
+import { CharacterslotPanel } from "./panels/CharacterslotPanel";
 import { CurtainPanel } from "./panels/CurtainPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
@@ -52,11 +48,10 @@ import { parseScript } from "./parser";
 import { expandStoryText } from "./textVariables";
 
 import type { Context } from "../context";
+import type { CharacterCommandContext } from "./panels/characterCommandParams";
 import type {
   AutoPlayMode,
   AutoPlayState,
-  CharacterActionInput,
-  CharacterSlotInput,
   DecisionPolicy,
   LineSeekUpdate,
   ParsedCommandLine,
@@ -134,9 +129,6 @@ const builtinCommandNames = [
   "gotostage",
   "background",
   "backgroundtween",
-  "charslot",
-  "character",
-  "characteraction",
   "playmusic",
   "stopmusic",
   "musicvolume",
@@ -175,23 +167,6 @@ function delayWait(delayMs: number): WaitForFrame {
     // WaitForSecondsRealtime initializes the deadline on its first poll.
     isComplete: (nowMs) => nowMs >= (deadlineMs ??= nowMs + delayMs),
   };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-/**
- * Native port: `Command.GetOrDefault<int>` runs the JSON-boxed parameter value
- * through `System.Convert.ToInt32`. AVGParser wraps the parameter list in JSON,
- * so `random=true` arrives as a real boolean and converts to 1 (false to 0) --
- * it never means "enabled".
- */
-function toNativeIntParam(value: unknown, fallback: number): number {
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (value === "true") return 1;
-  if (value === "false") return 0;
-  return roundHalfToEven(toNumber(value, fallback));
 }
 
 type SkipMode = "skip" | "nofirstskip";
@@ -469,6 +444,19 @@ export class StoryRuntime {
     this.blockerPanel.register(this.commandRegistry);
     this.cameraEffectExecutor.register(this.commandRegistry);
     this.characterCutinPanel.register(this.commandRegistry);
+    const characterPlayback: CharacterCommandContext = {
+      calculateFadeMs: (seconds, fallback) =>
+        this.calculateFadeMs(seconds, fallback),
+      resolveCharacterName: (ref) => resolveCharacterRef(context.linkMap, ref),
+      warn: (type, detail, line) =>
+        this.warn(type, detail, line?.lineNumber, line?.command),
+    };
+    new CharacterPanel(renderer, characterPlayback).register(
+      this.commandRegistry,
+    );
+    new CharacterslotPanel(renderer, characterPlayback).register(
+      this.commandRegistry,
+    );
     this.curtainPanel.register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
@@ -1045,6 +1033,9 @@ export class StoryRuntime {
           handler.forceEnd?.();
         // A decision can still record a selection during skip cleanup.
         if (this.state !== "waiting_decision") this.cancelFrameWait();
+        // Neither native character panel resets the built-in slots on skip.
+        // A Web-only load must release the old executor before playback resumes.
+        this.renderer.cancelCharacterPreparation();
       } finally {
         this.playbackGeneration += 1;
         if (skipToThis) {
@@ -1210,6 +1201,7 @@ export class StoryRuntime {
     this.stopFramePolling = null;
     this.cancelInputWait();
     this.cancelFrameWait();
+    this.renderer.cancelCharacterPreparation();
     // The Web runtime handles one story. Clear its story-long ON_SPEED_SET
     // subscriptions together when that story ends.
     this.eventPool.clear();
@@ -1237,6 +1229,7 @@ export class StoryRuntime {
     this.renderer.resetCgItems();
     this.largeBackgroundPanel.reset();
     this.imagePanel.reset();
+    this.renderer.resetCharacters();
     this.cameraEffectExecutor.reset();
     this.characterCutinPanel.reset();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1436,30 +1429,6 @@ export class StoryRuntime {
 
   private hasAudioKey(key: string): boolean {
     return Boolean(resolveStoryAudioByKey(key, this.context.audioVariables));
-  }
-
-  private resolveCharacterName(ref: string): CharacterRefResolution {
-    return resolveCharacterRef(this.context.linkMap, ref);
-  }
-
-  /**
-   * The ref makes native `SetImage` throw IndexOutOfRangeException, which
-   * nothing catches before the `DoExecuteCommands` coroutine dies: native
-   * stops running the story at this command, with the slot still showing its
-   * previous art. Web adaptation: warn, leave the slot as it is and skip the
-   * rest of the command, but keep playing (as with verticalbg's single tile).
-   */
-  private warnNativeSlotThrows(
-    ref: string,
-    line: ParsedCommandLine,
-  ): "continue" {
-    this.warn(
-      "invalid_parameter",
-      `character ${ref} is out of its sprite hub's bounds; native SetImage throws and stops the story here`,
-      line.lineNumber,
-      line.command,
-    );
-    return "continue";
   }
 
   private executeCommand(
@@ -1757,429 +1726,6 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "charslot": {
-        const rawSlot = toString(args.slot).trim();
-        const slot = this.parseCharacterSlot(rawSlot);
-        const nameRef = toString(args.name);
-        // Native port: Torappu.AVG.AVGCharacterslotPanel._ExecuteCharslot
-        // (2.7.61, VA 0x183e4d310). Duration defaults to 0.0 and goes through
-        // CalculateFadetime; zero skips animation.
-        const durationMs = Math.round(this.calculateFadeMs(args.duration, 0));
-        // `end` (default true) is neither a transform-preservation switch nor
-        // a defer switch. `_GetCachedSlotSeq` (0x183e4f830) hands back a fresh
-        // `DOTween.Sequence()` whenever the previous one already played, and
-        // `DOTween.Sequence()` (0x184109110) starts it playing because
-        // `defaultAutoPlay` is `AutoPlay.All` (cctor 0x18410b0e0) -- the tweens
-        // run either way. All `end` gates is the
-        // `OnComplete(_SetSeqPlayed)` + `Play()` pair at 0x183e4e501, and the
-        // `isblock` check nested inside it at 0x183e4e56f: on the slot path
-        // `isblock` only ever blocks when `end` is true.
-        const isEnd = toString(args.end).trim().toLowerCase() !== "false";
-        const rawBlock = toBoolean(args.isblock, false);
-        const block = rawBlock && isEnd;
-
-        // The clear branch keys off an empty `slot`, never an empty `name`, and it
-        // only touches the three built-in slots (custom slots are left alone).
-        if (!rawSlot) {
-          const clearPromise = this.renderer.clearCharacters(
-            undefined,
-            durationMs,
-          );
-          // This branch returns before the sequence is ever built, so it hands
-          // `isBlock` straight to `_CleanSlotsWithTween` (0x183e4e5c3) without
-          // the `end` gate the slot path has.
-          if (rawBlock) await clearPromise;
-          else void clearPromise;
-          return "continue";
-        }
-
-        if (!slot) {
-          // `custom` and any other unknown slot name resolve through
-          // _TryPrepareCustomSlotCommand / _GetSlotWithName, which we do not model.
-          this.warn(
-            "unsupported_visual",
-            `charslot slot is not a built-in slot: ${rawSlot}`,
-            line.lineNumber,
-            line.command,
-          );
-          return "continue";
-        }
-
-        // `name` is never ToLower'd natively, and `_UpdateSeqWithParam`
-        // (0x183e53940) compares it to "char_empty" with an ordinal
-        // String.op_Equality. That value runs AVGCharacterSlot.SlotCleanChar
-        // (0x183eb4260) and then still falls through to SlotSetCharWithParam
-        // with the same name: two `_SwapImages` in a row put the old art back
-        // in front, and the second `_LoadImage` (0x183eb4f60) opens with
-        // `DOKill(m_image)`, killing the fade the first swap started. Whether
-        // "char_empty" then resolves to a blank sprite hub (the
-        // `m_currentKey.ToLower() != "char_empty"` guard in
-        // `_SlotSetCharInternal` suggests it does) or fails into
-        // `set_sprite(null)` + `enabled = false`, the old art is gone at once:
-        // the slot is emptied regardless of `duration`; action/focus keep
-        // executing.
-        const isEmptyChar = nameRef === "char_empty";
-
-        let resolved: { base: string; expression: string } | null = null;
-        let clearPromise: Promise<void> | null = null;
-        if (isEmptyChar) {
-          clearPromise = Promise.resolve(
-            this.renderer.clearCharacters(slot, 0),
-          );
-        } else if (nameRef) {
-          const resolution = this.resolveCharacterName(nameRef);
-          if (resolution.kind === "native_throws")
-            return this.warnNativeSlotThrows(nameRef, line);
-          resolved = resolution.kind === "found" ? resolution.selection : null;
-          if (!resolved) {
-            // `_SlotSetCharInternal` (0x183eb5830) swaps the Images *before*
-            // `_LoadImage`, so a failed load ("[AVG] Error to load character
-            // pic") leaves the old art as the back Image -- which
-            // `_GenBackImageTween(duration).Play()` fades out -- while the new
-            // fore Image is disabled. The slot ends up empty; the action and
-            // focus sections of `_UpdateSeqWithParam` still run.
-            this.warn("missing_asset", `character: ${nameRef}`);
-            clearPromise = Promise.resolve(
-              this.renderer.clearCharacters(slot, durationMs),
-            );
-          }
-        }
-        if (clearPromise) {
-          if (block) await clearPromise;
-          else void clearPromise;
-        }
-
-        // Native `_UpdateSeqWithParam` alpha handling:
-        // - with a `name`, a negative (or omitted, default -1) afrom or ato
-        //   resets the pair to (0, 1): a plain named charslot always fades
-        //   the new art in over `duration`;
-        // - without a `name`, only `GE(afrom, 0)` gates
-        //   `SlotChangeAlpha(afrom, ato, duration)` (0x183eb3d20), and ato is
-        //   passed through as-is. An omitted ato (-1) therefore tweens the
-        //   vertex colour linearly toward alpha -1, which Unity's Color32
-        //   conversion clamps to 0 -- a fade-out that is fully transparent by
-        //   `duration / 2` (29 corpus lines write `afrom=1` with no ato as an
-        //   exit, e.g. story_whitw2_1_1.txt:475). duration 0 =>
-        //   SetAlpha(fore, ato) with the same clamp. The negative target is
-        //   handed through so the renderer reproduces that timing; it clamps
-        //   at the write.
-        const rawAlphaFrom =
-          args.afrom === undefined ? -1 : toNumber(args.afrom, -1);
-        const rawAlphaTo = args.ato === undefined ? -1 : toNumber(args.ato, -1);
-        let alphaFrom: number | undefined;
-        let alphaTo: number | undefined;
-        if (resolved) {
-          if (rawAlphaFrom < 0 || rawAlphaTo < 0) {
-            alphaFrom = 0;
-            alphaTo = 1;
-          } else {
-            alphaFrom = clamp(rawAlphaFrom, 0, 1);
-            alphaTo = clamp(rawAlphaTo, 0, 1);
-          }
-        } else if (!nameRef && rawAlphaFrom >= 0) {
-          alphaFrom = clamp(rawAlphaFrom, 0, 1);
-          alphaTo = Math.min(1, rawAlphaTo);
-        }
-
-        await this.renderer.setCharacter({
-          action: this.parseCharacterSlotAction(args.action),
-          ...(args.angle === undefined
-            ? {}
-            : { angle: toNumber(args.angle, 0) }),
-          alphaFrom,
-          alphaTo,
-          blackEnd:
-            args.bend === undefined
-              ? undefined
-              : toNumber(args.bend, Number.NaN),
-          blackStart:
-            args.bstart === undefined
-              ? undefined
-              : toNumber(args.bstart, Number.NaN),
-          block,
-          characterKey: resolved?.base,
-          ...(args.circles === undefined
-            ? {}
-            : { circles: Math.trunc(toNumber(args.circles, 0)) }),
-          durationMs,
-          expression: resolved?.expression,
-          fadeIdentity: nameRef
-            ? nativeCharacterFadeIdentity(nameRef)
-            : undefined,
-          focusMode: "subset",
-          focusSlots: this.resolveCharacterSlotFocusSlots(args),
-          ...(args.inverse === undefined
-            ? {}
-            : { inverse: toBoolean(args.inverse, false) }),
-          nativeKey: nameRef || undefined,
-          positionFrom: this.parseCharacterSlotPoint(args.posfrom),
-          // `_ExecuteCharslot` treats a posto that is present but not an
-          // "x,y" pair differently from posfrom/poszoom: those log a parse
-          // error and keep the (1,1) default, posto falls back to
-          // Vector2.zero (0x183e4e2db-0x183e4e322). Scalar `posto=0` lines
-          // in the corpus therefore mean (0,0) natively.
-          positionTo:
-            this.parseCharacterSlotPoint(args.posto) ??
-            (toString(args.posto).trim() ? { x: 0, y: 0 } : undefined),
-          posZoom: this.parseCharacterSlotPoint(args.poszoom),
-          power: Math.max(0, toNumber(args.power, 0)),
-          randomness: clamp(toNativeIntParam(args.random, 10), 0, 100),
-          // The crossfade length of an image swap is `duration` itself
-          // (`_SlotSetCharInternal` -> `_GenForeImageTween` /
-          // `_GenBackImageTween`). `fadetime` is not a charslot key at all
-          // (dead parameter in both 2.7.51 and 2.7.61 audits).
-          replaceFadeMs: durationMs,
-          scaleX:
-            args.xscale === undefined && args.scale === undefined
-              ? undefined
-              : Math.max(0, toNumber(args.xscale, toNumber(args.scale, 1))),
-          scaleY:
-            args.yscale === undefined && args.scale === undefined
-              ? undefined
-              : Math.max(0, toNumber(args.yscale, toNumber(args.scale, 1))),
-          slot,
-          slotSequence: true,
-          stop: toBoolean(args.stop, false),
-          // GetOrDefault<int>("times", 0): DOShakePosition vibrato for
-          // shake, numJumps (clamped to >= 1 by DOLocalJump) for jump.
-          times: toNativeIntParam(args.times, 0),
-        });
-        return "continue";
-      }
-
-      case "character": {
-        const nameRef = toString(args.name);
-        const name2Ref = toString(args.name2);
-        const focus = toNumber(args.focus, 0);
-        const durationMs = this.calculateFadeMs(args.fadetime, 0.15);
-        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacter. It reads
-        // `isblock`, not `block`, and returns it raw without registering any tween
-        // callback -- returning true would
-        // deadlock the queue since nothing ever calls FinishCommand. Scripts only
-        // ever write `block=`, which is not a key this command reads, so the
-        // command is effectively never blocking. Reproduce that, not the deadlock.
-        const block = false;
-        // ECharTransType: 0 = NONE, 1 = ALPHA_IN, 2 = ALPHA_OUT. Native default 0.
-        const transType = Math.trunc(toNumber(args.transtype, 0));
-        const hasRightCharacter = Boolean(name2Ref);
-        // Native processes slots MIDDLE -> LEFT -> RIGHT (same frame, sync).
-        const updates = [
-          {
-            blackEnd: args.blackend,
-            blackStart: args.blackstart,
-            enter: args.enter,
-            name: nameRef && !name2Ref ? nameRef : "",
-            slot: "m",
-            x: args.xpos1,
-            y: args.ypos1,
-          },
-          {
-            blackEnd: args.blackend,
-            blackStart: args.blackstart,
-            enter: args.enter,
-            name: hasRightCharacter ? nameRef : "",
-            slot: "l",
-            x: args.xpos1,
-            y: args.ypos1,
-          },
-          {
-            blackEnd: args.blackend2,
-            blackStart: args.blackstart2,
-            enter: args.enter2,
-            name: name2Ref,
-            slot: "r",
-            x: args.xpos2,
-            y: args.ypos2,
-          },
-        ] as const;
-
-        for (const update of updates) {
-          if (!update.name) {
-            void this.renderer.clearCharacters(update.slot, durationMs);
-            continue;
-          }
-          const resolution = this.resolveCharacterName(update.name);
-          // Slots run MIDDLE -> LEFT -> RIGHT, so the ones before the throw
-          // have already changed in native too; the rest never run.
-          if (resolution.kind === "native_throws")
-            return this.warnNativeSlotThrows(update.name, line);
-          if (resolution.kind === "missing") {
-            this.warn("missing_asset", `character: ${update.name}`);
-            void this.renderer.clearCharacters(update.slot, durationMs);
-            continue;
-          }
-          const resolved = resolution.selection;
-          const enterFrom = this.parseEnterDirection(update.enter);
-          // Native `_ProcessSlotWithParam` takes xpos/ypos as the slide-in
-          // start -- a slot-local offset that `SetCharPos` tweens back to
-          // (0,0) -- but only when `TryGetParam` finds *both*; otherwise it
-          // falls back to `_GenPosition`. Either way `_ProcessSlot` applies
-          // the position only on the `enter` branch, so without a legal
-          // `enter` the values never reach the screen. They are read as
-          // Int32, and Unity y is up while the renderer is y-down.
-          const enterPosition =
-            enterFrom && update.x !== undefined && update.y !== undefined
-              ? {
-                  x: Math.trunc(toNumber(update.x, 0)),
-                  y: -Math.trunc(toNumber(update.y, 0)),
-                }
-              : undefined;
-          await this.renderer.setCharacter({
-            blackEnd: toNumber(update.blackEnd, Number.NaN),
-            blackStart: toNumber(update.blackStart, Number.NaN),
-            block,
-            characterKey: resolved.base,
-            // Native: LEFT/MIDDLE use `(unsigned)focus <= 1 -> focusColor`,
-            // RIGHT uses `(focus & 0xFFFFFFFD) == 0 -> focusColor`.
-            dimmed:
-              update.slot === "r" ? ![0, 2].includes(focus) : focus >>> 0 > 1,
-            durationMs,
-            enterFrom,
-            enterPosition,
-            expression: resolved.expression,
-            fadeIdentity: nativeCharacterFadeIdentity(update.name),
-            focus,
-            nativeKey: update.name,
-            slot: update.slot,
-            transType,
-          });
-        }
-
-        return "continue";
-      }
-
-      case "characteraction": {
-        // Native port: Torappu.AVG.CharacterPanel._ExecuteCharacterAction
-        // (0x183E699F0, build 2761; re-verified on 2.7.81 @ 0x183fd6c90 with
-        // zero behavior change). All five branches scale fadetime through
-        // CharacterPanel.CalculateFadetime (animateRatio × fadetime) and read
-        // the blocking flag from `isblock` only — `_AddFinishCommand`
-        // (0x183E698E0) never reads `block=` (only the cutin panel does), so
-        // the thousands of legacy `block=` spellings in the corpus stay
-        // non-blocking exactly like the native client.
-        const type = this.parseCharacterActionType(args.type);
-        if (!type) {
-          this.warn(
-            "parse",
-            `characteraction type is invalid: ${toString(args.type)}`,
-          );
-          return "continue";
-        }
-        // GetOrDefault("name", "left"): a missing key resolves through the
-        // "left" arm of each truth table (exit → left slot, others → left),
-        // while an unrecognized value hits the else fallback instead.
-        const slot = this.parseCharacterActionSlot(
-          this.exactArg(args, "name") === undefined ? "left" : args.name,
-          type,
-        );
-
-        // Per-branch GetOrDefault defaults: exit/zoom fade in for 1.0s while
-        // move/jump/shake default to 0.5s.
-        const fadetimeFallback = type === "exit" || type === "zoom" ? 1 : 0.5;
-        const durationMs = this.calculateFadeMs(
-          this.exactArg(args, "fadetime"),
-          fadetimeFallback,
-        );
-
-        // NeedSkipAnimation (0x183E69680): jump/shake collapse into a plain
-        // move when the scaled fadetime is zero (skip mode or fadetime=0);
-        // the move executor then applies xpos/ypos instantly.
-        const effectiveType: CharacterActionInput["type"] =
-          (type === "jump" || type === "shake") && durationMs <= 0
-            ? "move"
-            : type;
-
-        let pivot: { x: number; y: number } | undefined;
-        if (type === "zoom") {
-          // xpos/ypos are the [0,1] pivot of the character image (default
-          // 0.5/0.5). AVGCharacterSlot.CharZoom (0x183EB2B50) returns null
-          // for pivots outside [0,1], making the whole command a no-op.
-          const pivotX = toNumber(args.xpos, 0.5);
-          const pivotY = toNumber(args.ypos, 0.5);
-          if (pivotX < 0 || pivotX > 1 || pivotY < 0 || pivotY > 1) {
-            this.warn(
-              "parse",
-              `characteraction zoom pivot out of range: xpos=${toString(args.xpos)}, ypos=${toString(args.ypos)}`,
-            );
-            return "continue";
-          }
-          pivot = { x: pivotX, y: pivotY };
-        }
-
-        // Native exit reads xpos/ypos only when BOTH are present
-        // (TryGetParam<int>) and hands them to SetCharPos in place of the
-        // _GenExitPosition row: an absolute `_offset.localPosition`, i.e. a
-        // displacement from the slot's rest anchor, not story coordinates.
-        // `direction` accepts left/right/up/down and defaults to "left"
-        // when the key is missing; an unrecognized value falls through as
-        // undefined (native exits to the (0,0) rest anchor).
-        const hasExitX = this.exactArg(args, "xpos") !== undefined;
-        const hasExitY = this.exactArg(args, "ypos") !== undefined;
-        const parsedDirection = this.parseCharacterActionDirection(
-          args.direction,
-        );
-        const direction =
-          type === "exit"
-            ? (parsedDirection ??
-              (this.exactArg(args, "direction") === undefined
-                ? "left"
-                : undefined))
-            : parsedDirection;
-
-        // `scale` resets to the native 1.0 default when omitted and passes
-        // through unclamped (native LerpUnclamped accepts negative scale,
-        // which mirrors the sprite); xscale/yscale are web extensions (the
-        // native panel never reads them).
-        const scaleFallback = toNumber(args.scale, 1);
-        const xScale =
-          args.xscale === undefined
-            ? scaleFallback
-            : toNumber(args.xscale, scaleFallback);
-        const yScale =
-          args.yscale === undefined
-            ? scaleFallback
-            : toNumber(args.yscale, scaleFallback);
-
-        await this.renderer.runCharacterAction({
-          // Native reads the pair via TryGetParam<int>, i.e. the JSON doubles
-          // go through Convert.ToInt32's banker's rounding before the cast.
-          absolutePosition:
-            type === "exit" && hasExitX && hasExitY
-              ? {
-                  x: toNativeIntParam(args.xpos, 0),
-                  y: toNativeIntParam(args.ypos, 0),
-                }
-              : undefined,
-          block: toBoolean(args.isblock, false),
-          direction,
-          durationMs,
-          pivot,
-          // jump/shake GetOrDefault defaults: power 10, int times 3. Power is
-          // unclamped — native DOLocalJump/DOShakePosition take it as-is, so
-          // a negative value bounces/shakes downward like the client.
-          power: toNumber(args.power, 10),
-          // Native key is `random` (int, DOShakePosition randomness degrees,
-          // default 10); `randomness=` is not read by the native panel.
-          randomness: toNativeIntParam(args.random, 10),
-          // start/leftend/rightend and stop are web extensions kept for
-          // charslot-style scripts; the native panel never reads them.
-          rotationFromDeg: toNumber(args.start, 0),
-          rotationLeftDeg:
-            args.leftend === undefined ? -15 : -toNumber(args.leftend, 15),
-          rotationRightDeg:
-            args.rightend === undefined ? 15 : toNumber(args.rightend, 15),
-          scaleX: xScale,
-          scaleY: yScale,
-          slot,
-          stop: toBoolean(args.stop, false),
-          times: toNativeIntParam(args.times, 3),
-          type: effectiveType,
-          xOffset: type === "zoom" ? 0 : toNumber(args.xpos, 0),
-          yOffset: type === "zoom" ? 0 : toNumber(args.ypos, 0),
-        } satisfies CharacterActionInput);
-        return "continue";
-      }
-
       default:
         this.warn("unknown_command", line.command);
         return "continue";
@@ -2224,158 +1770,5 @@ export class StoryRuntime {
       completed = true;
       this.onTypingComplete(messageLength);
     };
-  }
-
-  private parseEnterDirection(value: unknown): CharacterSlotInput["enterFrom"] {
-    // Native compares the raw string ordinally against the four literals
-    // left/right/up/down; anything else (including "middle") means no enter.
-    const raw = toString(value);
-    if (raw === "left" || raw === "right" || raw === "up" || raw === "down")
-      return raw;
-    return undefined;
-  }
-
-  private parseCharacterSlot(value: unknown): string | undefined {
-    switch (toString(value).trim().toLowerCase()) {
-      case "char_left":
-      case "l":
-      case "left": {
-        return "l";
-      }
-      case "c":
-      case "center":
-      case "char_middle":
-      case "m":
-      case "middle": {
-        return "m";
-      }
-      case "char_right":
-      case "r":
-      case "right": {
-        return "r";
-      }
-      default: {
-        return undefined;
-      }
-    }
-  }
-
-  private parseCharacterSlotAction(
-    value: unknown,
-  ): CharacterSlotInput["action"] | undefined {
-    const normalized = toString(value).trim().toLowerCase();
-    if (
-      [
-        "jump",
-        "move",
-        "rotate",
-        "setpos",
-        "shake",
-        "shakemove",
-        "zoom",
-      ].includes(normalized)
-    )
-      return normalized as CharacterSlotInput["action"];
-    return undefined;
-  }
-
-  private parseCharacterSlotPoint(
-    value: unknown,
-  ): { x: number; y: number } | undefined {
-    const raw = toString(value).trim();
-    if (!raw) return undefined;
-
-    const [xRaw, yRaw] = raw.split(",").map((part) => part.trim());
-    if (!xRaw || !yRaw) return undefined;
-    if (!/^-?\d+(?:\.\d+)?$/.test(xRaw) || !/^-?\d+(?:\.\d+)?$/.test(yRaw))
-      return undefined;
-
-    return {
-      x: Number(xRaw),
-      y: Number(yRaw),
-    };
-  }
-
-  private resolveCharacterSlotFocusSlots(args: StoryCommandArgs): string[] {
-    // Native `_ExecuteCharslot` turns an omitted `focus` into ["all"], and
-    // `_ProcessFocusArray` (2.7.61, VA 0x183e50b30) recognizes only
-    // all / left|l / middle|m / right|r / custom|c. There is no "n"/"none"/"a"
-    // branch: an unrecognized value clears all four focus flags and lights
-    // nothing, i.e. every slot goes dim. Custom slots are not modeled, so
-    // "all" maps to the three built-ins.
-    const focus = toString(args.focus).trim().toLowerCase();
-    if (!focus || focus === "all") return ["l", "m", "r"];
-
-    // The focus tokens are their own vocabulary, not the `slot` vocabulary:
-    // `_ProcessFocusArray` maps "custom"/"c" to `m_focusCustom`, so "c" must
-    // not fall through to the middle slot the way `parseCharacterSlot` maps
-    // it. Custom slots are unmodeled, so those tokens light nothing.
-    const focusSlotTokens: Record<string, string> = {
-      l: "l",
-      left: "l",
-      m: "m",
-      middle: "m",
-      r: "r",
-      right: "r",
-    };
-    const slots = focus
-      .split(",")
-      .map((value) => focusSlotTokens[value.trim()])
-      .filter((slot): slot is string => slot !== undefined);
-    return [...new Set(slots)];
-  }
-
-  private parseCharacterActionSlot(
-    value: unknown,
-    type: CharacterActionInput["type"],
-  ): string {
-    // Native compares GetOrDefault("name", "left") with String.op_Equality:
-    // ordinal, case-sensitive, no trim. The "left" default for a missing key
-    // is applied by the caller (exit's truth table maps "left" to the left
-    // slot, not to the else fallback).
-    const name = toString(value);
-    if (name === "left") return "l";
-    if (name === "right") return "r";
-    if (name === "middle") return "m";
-    return type === "exit" ? "m" : "l";
-  }
-
-  private parseCharacterActionType(
-    value: unknown,
-  ): CharacterActionInput["type"] | undefined {
-    // _ExecuteCharacterAction matches the five literals with
-    // String.op_Equality (ordinal; 2.7.81 @ 0x183fd6c90) — "MOVE" is an
-    // unknown type that logs an error and never blocks, not a match.
-    const type = toString(value);
-    if (
-      type === "exit" ||
-      type === "jump" ||
-      type === "move" ||
-      type === "shake" ||
-      type === "zoom"
-    ) {
-      return type;
-    }
-    return undefined;
-  }
-
-  private parseCharacterActionDirection(
-    value: unknown,
-  ): CharacterActionInput["direction"] | undefined {
-    // _GenExitPosition (2.7.81 @ 0x183fd8980) recognizes exactly
-    // left/right/up/down via String.op_Equality (ordinal, case-sensitive);
-    // anything else resolves to the (0,0) rest anchor (renderer handles
-    // undefined that way). The "left" default for a missing key is applied by
-    // the exit branch, matching GetOrDefault("direction", "left").
-    const direction = toString(value);
-    if (
-      direction === "down" ||
-      direction === "left" ||
-      direction === "right" ||
-      direction === "up"
-    ) {
-      return direction;
-    }
-    return undefined;
   }
 }

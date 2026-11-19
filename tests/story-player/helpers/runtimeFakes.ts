@@ -83,7 +83,7 @@ export class FakeRenderer implements StoryRenderer {
   clearCharactersHandler?: (
     slot?: string,
     fadeMs?: number,
-  ) => Promise<void> | void;
+  ) => ExecutionHandle | void;
   gridBackgroundCalls: GridBackgroundInput[] = [];
   gridBackgroundClearCalls: Array<{ block: boolean; fadeMs: number }> = [];
   imageCalls: Array<{ input?: BackgroundInput; key: string }> = [];
@@ -163,10 +163,14 @@ export class FakeRenderer implements StoryRenderer {
   clearBackground(): void {}
   clearAvgDisplays(): void {}
   clearAnimTexts(): void {}
-  clearCharacters(slot?: string, fadeMs?: number): Promise<void> | void {
+  clearCharacters(slot?: string, fadeMs?: number): ExecutionHandle | void {
     this.clearedSlots.push({ fadeMs, slot });
     return this.clearCharactersHandler?.(slot, fadeMs);
   }
+
+  cancelCharacterPreparation(): void {}
+
+  resetCharacters(): void {}
 
   clearCurtains(fadeMs = 0): void {
     this.curtainClearCalls.push(fadeMs);
@@ -296,7 +300,11 @@ export class FakeRenderer implements StoryRenderer {
     this.blockerCalls.push(input);
   }
 
-  async setCharacter(input: CharacterSlotInput): Promise<void> {
+  setCharacter(input: CharacterSlotInput): void {
+    this.characterCalls.push(input);
+  }
+
+  setCharacterSlot(input: CharacterSlotInput): void {
     this.characterCalls.push(input);
   }
 
@@ -316,7 +324,7 @@ export class FakeRenderer implements StoryRenderer {
     this.gridBackgroundCalls.push(input);
   }
 
-  async runCharacterAction(input: CharacterActionInput): Promise<void> {
+  runCharacterAction(input: CharacterActionInput): void {
     this.actionCalls.push(input);
   }
 
