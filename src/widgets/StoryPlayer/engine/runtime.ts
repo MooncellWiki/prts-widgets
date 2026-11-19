@@ -17,7 +17,6 @@ import {
   roundHalfToEven,
   toBoolean,
   toNumber,
-  toOptionalNumber,
   toString,
 } from "./commandParams";
 import {
@@ -36,9 +35,11 @@ import {
   parseImageLayout,
   parseImageTween,
 } from "./imageParams";
+import { BlockerPanel } from "./panels/BlockerPanel";
 import { CameraEffectExecutor } from "./panels/CameraEffectExecutor";
 import { CgItemPanel } from "./panels/CgItemPanel";
 import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
+import { CurtainPanel } from "./panels/CurtainPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { DisplayableExecutor } from "./panels/DisplayableExecutor";
@@ -136,8 +137,6 @@ const builtinCommandNames = [
   "gotostage",
   "background",
   "backgroundtween",
-  "blocker",
-  "curtain",
   "charslot",
   "character",
   "characteraction",
@@ -333,8 +332,10 @@ export class StoryRuntime {
   private playbackGeneration = 0;
   private quickSpeedLevel = 0;
   private state: PlayerState = "idle";
+  private readonly blockerPanel: BlockerPanel;
   private readonly cameraEffectExecutor: CameraEffectExecutor;
   private readonly characterCutinPanel: CharacterCutinPanel;
+  private readonly curtainPanel: CurtainPanel;
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly displayableExecutor: DisplayableExecutor;
@@ -369,6 +370,14 @@ export class StoryRuntime {
     this.skipToIndex = preprocessSkipToIndex(this.lines);
     this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
+    this.blockerPanel = new BlockerPanel(renderer, (seconds, fallback) =>
+      this.calculateFadeMs(seconds, fallback),
+    );
+    this.curtainPanel = new CurtainPanel(
+      renderer,
+      (seconds, fallback) => this.calculateFadeMs(seconds, fallback),
+      (detail) => this.warn("invalid_parameter", detail),
+    );
     this.characterCutinPanel = new CharacterCutinPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       resolveCharacterName: (ref) =>
@@ -459,8 +468,10 @@ export class StoryRuntime {
       resolveImageKey: normalizeImageKey,
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
+    this.blockerPanel.register(this.commandRegistry);
     this.cameraEffectExecutor.register(this.commandRegistry);
     this.characterCutinPanel.register(this.commandRegistry);
+    this.curtainPanel.register(this.commandRegistry);
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.displayableExecutor.register(this.commandRegistry);
@@ -1108,9 +1119,7 @@ export class StoryRuntime {
    * Only panels implementing IFadeTimeRatio route through it. AVGImagePanel does
    * (background / image / imagerotate); its tween executors bypass it, and the
    * LargeBackgroundPanel family applies literal timing in its own executors.
-   * AVGBlockerPanel implements IFadeTimeRatio (2.7.61 `CalculateFadetime`
-   * VA 0x183e2f6d0, inlined into `_ExecuteBlocker` at 0x183e3040e), so its
-   * `blocker` executor also routes through this helper.
+   * BlockerPanel and CurtainPanel also scale their fades here.
    */
   private calculateFadeMs(seconds: unknown, fallback = 0): number {
     return Math.max(
@@ -1196,7 +1205,9 @@ export class StoryRuntime {
     this.stopPlaybackInput();
     // AVGController.OnStoryEnd (2791 @ 0x18416B9C0) calls SubtitlePanel.OnReset.
     void this.subtitlePanel.reset();
+    this.blockerPanel.reset();
     this.displayableExecutor.reset();
+    this.curtainPanel.reset();
     // AVGCgItemPanel.OnReset (2791 @ 0x1841890F0) disposes the slots at
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
@@ -1609,41 +1620,6 @@ export class StoryRuntime {
         return "continue";
       }
 
-      case "blocker": {
-        // AVGBlockerPanel._ExecuteBlocker (2791 @ 0x184184890) scales fadetime
-        // by animateRatio. A zero fade writes the color and finishes inline.
-        // The malformed default `defualt` is intentional.
-        const styleArg = toString(this.exactArg(args, "style"), "defualt");
-        const style =
-          styleArg === "slider" || styleArg === "verticalslider"
-            ? styleArg
-            : "default";
-        const fadeMs = this.calculateFadeMs(
-          this.exactArg(args, "fadetime"),
-          0.4,
-        );
-        const completion = this.renderer.setBlocker({
-          block: fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false),
-          fadeMs,
-          from: {
-            a: toNumber(this.exactArg(args, "afrom"), Number.NaN),
-            b: toNumber(this.exactArg(args, "bfrom"), Number.NaN),
-            g: toNumber(this.exactArg(args, "gfrom"), Number.NaN),
-            r: toNumber(this.exactArg(args, "rfrom"), Number.NaN),
-          },
-          image: toString(this.exactArg(args, "image")) || undefined,
-          inverse: toBoolean(this.exactArg(args, "inverse"), false),
-          style,
-          to: {
-            a: toNumber(this.exactArg(args, "a"), 1),
-            b: toNumber(this.exactArg(args, "b"), 0),
-            g: toNumber(this.exactArg(args, "g"), 0),
-            r: toNumber(this.exactArg(args, "r"), 0),
-          },
-        });
-        return completion ? completion.then(() => "continue") : "continue";
-      }
-
       case "video": {
         // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
         // (2.7.61: still the legacy bool executor, consumed by the new
@@ -1813,54 +1789,6 @@ export class StoryRuntime {
           ...tween,
           block: block && !tween.loop,
           durationMs: Math.max(0, toNumber(duration, 0) * 1000),
-        });
-        return "continue";
-      }
-
-      case "curtain": {
-        const direction = Math.trunc(
-          toNumber(this.exactArg(args, "direction"), -1),
-        );
-        // Native port: `AVGCurtainPanel._ExecuteCurtain` inlines
-        // `scaledFadetime = AVGController.animateRatio * fadetime`
-        // (AVGUtils.CalculateFadetime; the panel implements IFadeTimeRatio),
-        // with fadetime defaulting to the panel's `_defaultFadetime` (0.4).
-        // quick_play (animateRatio 0) therefore always lands in the instant
-        // branch / instant all-side reset below.
-        const fadeMs = this.calculateFadeMs(
-          this.exactArg(args, "fadetime"),
-          0.4,
-        );
-        // It zeroes its closure's block field on both the zero-fadetime and
-        // the direction < 0 paths, so only a real curtain tween can block --
-        // the same short circuit blocker has.
-        const block =
-          fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false);
-
-        if (direction < 0) {
-          await this.renderer.clearCurtains(fadeMs, false);
-          return "continue";
-        }
-
-        if (direction > 7) {
-          this.warn("invalid_parameter", `curtain direction:${direction}`);
-          return "continue";
-        }
-        const alpha = toNumber(this.exactArg(args, "a"), -1);
-
-        await this.renderer.setCurtain({
-          alphaFrom: toOptionalNumber(this.exactArg(args, "afrom")),
-          alphaTo: alpha >= 0 ? alpha : undefined,
-          block,
-          delayMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "delay"), 0) * 1000,
-          ),
-          direction,
-          fadeMs,
-          fillFrom: toNumber(this.exactArg(args, "fillfrom"), 1),
-          fillTo: toNumber(this.exactArg(args, "fillto"), 0),
-          grad: toBoolean(this.exactArg(args, "grad"), false),
         });
         return "continue";
       }

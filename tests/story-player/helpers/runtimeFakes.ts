@@ -77,7 +77,7 @@ export class FakeRenderer implements StoryRenderer {
   cgItemShakeStops: Array<string | undefined> = [];
   cgItemResets = 0;
   curtainCalls: CurtainInput[] = [];
-  curtainClearCalls: Array<{ block: boolean; fadeMs: number }> = [];
+  curtainClearCalls: number[] = [];
   focusOutCalls: FocusOutInput[] = [];
   focusParamCalls: FocusParamInput[] = [];
   clearCharactersHandler?: (
@@ -168,8 +168,8 @@ export class FakeRenderer implements StoryRenderer {
     return this.clearCharactersHandler?.(slot, fadeMs);
   }
 
-  clearCurtains(fadeMs = 0, block = false): void {
-    this.curtainClearCalls.push({ block, fadeMs });
+  clearCurtains(fadeMs = 0): void {
+    this.curtainClearCalls.push(fadeMs);
   }
 
   clearGridBackground(fadeMs = 0, block = false): void {
@@ -284,7 +284,11 @@ export class FakeRenderer implements StoryRenderer {
     this.backgroundTweenCalls.push(input);
   }
 
-  async setBlocker(input: BlockerInput): Promise<void> {
+  cancelBlockerPreparation(): void {}
+
+  resetBlocker(): void {}
+
+  setBlocker(input: BlockerInput): void {
     this.blockerCalls.push(input);
   }
 
@@ -296,7 +300,7 @@ export class FakeRenderer implements StoryRenderer {
     this.characterCutinCalls.push(input);
   }
 
-  async setCurtain(input: CurtainInput): Promise<void> {
+  setCurtain(input: CurtainInput): void {
     this.curtainCalls.push(input);
   }
 

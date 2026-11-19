@@ -29,6 +29,7 @@ export class LayerGraph {
   readonly avgDisplayBackground = new Container();
   readonly avgDisplayCharacter = new Container();
   readonly avgDisplayCg = new Container();
+  readonly blocker = new Container();
   readonly characters = new Container();
   readonly cgItems = new Container();
   readonly cutins = new Container();
@@ -84,10 +85,9 @@ export class LayerGraph {
     }
     this.sceneCamera.addChild(this.scene, this.cgItems, this.sceneDraw);
     this.world.addChild(this.sceneCamera);
-    // UICanvas/panel_displayable draws animtext above the scene and blocker,
-    // below panel_curtains.
-    this.world.addChild(this.animTexts);
-    this.world.addChild(this.curtains);
+    // 2791 UICanvas/panel_avg draws panel_blocker, panel_displayable and
+    // panel_curtains in that sibling order above the scene canvases.
+    this.world.addChild(this.blocker, this.animTexts, this.curtains);
     stage.addChild(this.world);
     stage.addChild(this.ui);
   }

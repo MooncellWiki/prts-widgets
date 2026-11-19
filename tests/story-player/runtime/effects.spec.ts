@@ -403,12 +403,7 @@ describe("StoryRuntime", () => {
 
     // _HideAllCurtains returns a literal false from every exit, so the clear path
     // never blocks even when the script asks for it.
-    expect(renderer.curtainClearCalls).toEqual([
-      {
-        block: false,
-        fadeMs: 300,
-      },
-    ]);
+    expect(renderer.curtainClearCalls).toEqual([300]);
     expect(renderer.curtainCalls).toEqual([]);
     expect(runtime.getState()).toBe("waiting_input");
   });
@@ -475,7 +470,32 @@ describe("StoryRuntime", () => {
         grad: false,
       },
     ]);
-    expect(renderer.curtainClearCalls).toEqual([{ block: false, fadeMs: 0 }]);
+    expect(renderer.curtainClearCalls).toEqual([0]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("tests the scaled fade against the 2791 IsZero tolerance for both panels", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[blocker(fadetime=0.00002,block=true)]",
+        "[blocker(fadetime=0.00004,block=true)]",
+        "[curtain(direction=0,fadetime=0.00002,block=true)]",
+        "[curtain(direction=0,fadetime=0.00004,block=true)]",
+        '[name="A"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { animateRatio: 0.5 },
+    );
+
+    await runtime.start();
+
+    for (const calls of [renderer.blockerCalls, renderer.curtainCalls]) {
+      expect(calls.map(({ block, fadeMs }) => [block, fadeMs])).toEqual([
+        [false, 0],
+        [true, 0.02],
+      ]);
+    }
   });
 });

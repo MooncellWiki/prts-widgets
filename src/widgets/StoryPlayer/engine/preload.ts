@@ -4,6 +4,7 @@ import {
   DIALOG_FRAME_URL,
   INTERLUDE_ASSETS,
   SHOWITEM_PHOTO_FRAME_URL,
+  SLIDE_MASK_TEXTURE_URL,
   STAMP_ASSETS,
 } from "../assets";
 
@@ -344,6 +345,18 @@ function collectPreloadAssetUrls(
   // Assets.load 走网络，会把第一次 showitem 的淡入整体推迟，故剧本用到
   // showitem 时一并预热。属 web 适配。
   if (usesCommand(lines, "showitem")) urls.add(SHOWITEM_PHOTO_FRAME_URL);
+
+  // AVGBlockerPanel._SetMaterial (2791 @ 0x1841854F0) loads slide_mask
+  // synchronously. Prewarm its bundled texture for the Web wipe filter.
+  if (
+    lines.some(
+      (line) =>
+        line.kind === "command" &&
+        line.command === "blocker" &&
+        (line.args.style === "slider" || line.args.style === "verticalslider"),
+    )
+  )
+    urls.add(SLIDE_MASK_TEXTURE_URL);
 
   // The native cut-in controller loads its template synchronously. Prewarm
   // the bundled textures for the same path through Pixi's cache.

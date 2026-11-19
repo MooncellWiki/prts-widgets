@@ -1,13 +1,27 @@
-import { Application, Container, Texture, TickerPlugin } from "pixi.js";
-import { describe, expect, it, vi } from "vitest";
+import {
+  Application,
+  Assets,
+  Container,
+  Sprite,
+  Texture,
+  TickerPlugin,
+} from "pixi.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SLIDE_MASK_TEXTURE_URL } from "../../../src/widgets/StoryPlayer/assets";
 import { buildColorEffectMatrix } from "../../../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
-import { TweenRunner } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
-import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
+import {
+  createRenderedPlayback,
+  createRenderer,
+} from "../helpers/rendererFixtures";
 import { createContext, FakeAudio } from "../helpers/runtimeFakes";
 
-import type { CgItemInput } from "../../../src/widgets/StoryPlayer/engine/types";
+import type {
+  BlockerInput,
+  CgItemInput,
+  CurtainInput,
+} from "../../../src/widgets/StoryPlayer/engine/types";
 
 // Turns the -0 that `0 * -1` produces into +0 so `toEqual` stops
 // distinguishing them. Deliberately narrow: `v || 0` would also swallow NaN
@@ -24,8 +38,13 @@ function sceneColorFilter(gray: number, inverse = 0) {
   });
 }
 
-function createBlockerRenderer(): any {
-  const renderer = createRenderer();
+function createMaskRenderer(
+  context?: Parameters<typeof createRenderer>[0],
+  warn?: (detail: string) => void,
+): any {
+  const renderer = createRenderer(context, warn);
+  renderer.app = {};
+  renderer.frames.manual = true;
   renderer.layers.attach(new Container());
   return renderer;
 }
@@ -85,6 +104,7 @@ function createCurtainGraphicState(
   const state = {
     alpha: 1,
     direction,
+    edgeFeather: true,
     fill,
     grad,
     graphic: {
@@ -542,59 +562,38 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.cgItemView.targets("b")[0].filters ?? []).toHaveLength(0);
   });
 
-  it("draws a curtain as a solid body plus a fixed-width feather strip", async () => {
-    const renderer = createRenderer();
-    renderer.app = {};
+  it("draws a curtain as a solid body plus a fixed-width feather strip", () => {
+    const { curtainView } = createRenderer();
+    const { draws, state } = createCurtainGraphicState(6, 0.5, true);
 
-    const fills: unknown[] = [];
-    const state = {
-      alpha: 1,
-      fill: 0.5,
-      grad: true,
-      graphic: {
-        alpha: 1,
-        clear: () => {},
-        poly() {
-          return this;
-        },
-        fill(style: unknown) {
-          fills.push(style);
-          return this;
-        },
-        visible: false,
-      },
-    };
-
-    // direction 6 maps to a rightward sweep, so the inner edge is a vertical
-    // line at x = 640 and the feather occupies x = 620..640.
-    renderer.updateCurtainState(state, { x: 1, y: 0 });
+    // The body is black up to x=620, then the feather covers x=620..640.
+    curtainView.updateCurtainState(state, { x: 1, y: 0 });
 
     expect(state.graphic.visible).toBe(true);
-    // Body is opaque black; only the strip carries the gradient.
-    expect(fills[0]).toBe(0x00_00_00);
-    expect(fills).toHaveLength(2);
-    const gradient = fills[1] as any;
-    expect(gradient.start).toEqual({ x: 620, y: 0 });
-    expect(gradient.end).toEqual({ x: 640, y: 0 });
+    expect(draws).toHaveLength(4);
+    expect(draws[1]).toBe(0x00_00_00);
+    expect(draws[3]).toMatchObject({
+      end: { x: 640, y: 0 },
+      start: { x: 620, y: 0 },
+    });
   });
 
   it("draws corner curtains as 45° wipes hinged past the stage corner", () => {
-    const renderer = createRenderer();
-    renderer.app = {};
+    const { curtainView } = createRenderer();
     const { draws, state } = createCurtainGraphicState(1, 0.07, false);
-    const vector = renderer.resolveCurtainVector(1);
+    const vector = curtainView.resolveCurtainVector(1);
 
     // direction 1 is a 1600x1600 rect rotated -45° around a pivot at
     // (1204.69, -240.69), 116.9px past the top-right corner along the
     // inward normal: fill 0.07 (112px) never reaches the stage.
-    renderer.updateCurtainState(state, vector);
+    curtainView.updateCurtainState(state, vector);
     expect(state.graphic.visible).toBe(false);
     expect(draws).toEqual([]);
 
     // fill 0.5 puts the inner edge 800 - 116.9px into the stage: the 45°
     // line y = x - 314.0, not the stage diagonal.
     state.fill = 0.5;
-    renderer.updateCurtainState(state, vector);
+    curtainView.updateCurtainState(state, vector);
     expect(state.graphic.visible).toBe(true);
     expect(draws).toHaveLength(2);
     expect(toPointSet(draws[0] as number[])).toEqual(
@@ -605,19 +604,18 @@ describe("PixiStoryRenderer", () => {
     // From fill ~0.957 the rect clears the opposite corner.
     draws.length = 0;
     state.fill = 0.96;
-    renderer.updateCurtainState(state, vector);
+    curtainView.updateCurtainState(state, vector);
     expect(toPointSet(draws[0] as number[])).toEqual(
       toPointSet([0, 0, 1280, 0, 1280, 720, 0, 720]),
     );
   });
 
   it("feathers corner curtains along the rotated inner edge", () => {
-    const renderer = createRenderer();
-    renderer.app = {};
+    const { curtainView } = createRenderer();
     const { draws, state } = createCurtainGraphicState(3, 0.5, true);
-    const vector = renderer.resolveCurtainVector(3);
+    const vector = curtainView.resolveCurtainVector(3);
 
-    renderer.updateCurtainState(state, vector);
+    curtainView.updateCurtainState(state, vector);
 
     // direction 3 hinges at (1201.49, 938.18), 98.8px past the bottom-right
     // corner; the inner edge sits at hinge . vector + 800. The 20px gradient
@@ -637,7 +635,7 @@ describe("PixiStoryRenderer", () => {
     // inner edge itself.
     draws.length = 0;
     state.grad = false;
-    renderer.updateCurtainState(state, vector);
+    curtainView.updateCurtainState(state, vector);
     expect(draws).toHaveLength(2);
     const projections = (draws[0] as number[]).flatMap((value, index, all) =>
       index % 2 === 0 ? [value * vector.x + all[index + 1]! * vector.y] : [],
@@ -646,471 +644,502 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("leaves the straight-edge layout padding empty without grad", () => {
-    const renderer = createRenderer();
-    renderer.app = {};
+    const { curtainView } = createRenderer();
     const { draws, state } = createCurtainGraphicState(0, 0.25, false);
 
-    // Straight-edge AVGCurtains pad their layout group by 20px on the inner
-    // edge whether or not the gradient is active: a fill=0.25 top curtain is
-    // a 180px rect but only 160px of black.
-    renderer.updateCurtainState(state, { x: 0, y: 1 });
+    // A partial top curtain keeps the inner 20px of its 180px rect empty.
+    curtainView.updateCurtainState(state, { x: 0, y: 1 });
     expect(draws).toEqual([[0, 160, 0, 0, 1280, 0, 1280, 160], 0x00_00_00]);
 
     // Under 20px nothing but the (inactive) gradient slot is left.
     draws.length = 0;
     state.fill = 0.02;
-    renderer.updateCurtainState(state, { x: 0, y: 1 });
+    curtainView.updateCurtainState(state, { x: 0, y: 1 });
     expect(state.graphic.visible).toBe(false);
     expect(draws).toEqual([]);
   });
+});
 
-  it("snaps curtain alpha to 1 when `a` is absent, ignoring leftover alpha", async () => {
-    const renderer = createRenderer();
-    renderer.app = {};
-    renderer.tween = vi.fn(async () => {});
+const curtainInput: CurtainInput = {
+  block: false,
+  delayMs: 0,
+  direction: 0,
+  fadeMs: 0,
+  fillFrom: 0.25,
+  fillTo: 0.5,
+  grad: false,
+};
 
-    // A previous command left the side at alpha 0.3.
-    await renderer.setCurtain({
-      alphaTo: 0.3,
-      block: false,
-      delayMs: 0,
-      direction: 4,
-      fadeMs: 0,
-      fillFrom: 0.5,
-      fillTo: 0.5,
-      grad: false,
-    });
-    expect(renderer.curtains.get(4).alpha).toBe(0.3);
+describe("PixiStoryRenderer curtain", () => {
+  it("captures the preceding alpha only when the command has an alpha target", () => {
+    const renderer = createMaskRenderer();
+    renderer.setCurtain({ ...curtainInput, alphaTo: 0.3 });
+    const graphic = renderer.layers.curtains.children[0];
+    expect(graphic.alpha).toBe(0.3);
 
-    // With `a` present but no `afrom`, the tween starts from the alpha
-    // captured *before* the unconditional SetCurtainAlpha(1.0) snap.
-    await renderer.setCurtain({
+    const previous = renderer.setCurtain({
+      ...curtainInput,
       alphaTo: 0.8,
-      block: false,
-      delayMs: 0,
-      direction: 4,
+      block: true,
+      delayMs: 50,
       fadeMs: 150,
-      fillFrom: 0.5,
-      fillTo: 0.6,
-      grad: false,
     });
-    expect(renderer.curtains.get(4).alpha).toBe(0.3);
+    expect(graphic.alpha).toBe(0.3);
 
-    // Without `a` native snaps to 1.0 before branching, so a bare `afrom`
-    // is never applied and the leftover 0.3 does not survive.
-    await renderer.setCurtain({
-      alphaFrom: 0.2,
-      block: false,
-      delayMs: 0,
-      direction: 4,
-      fadeMs: 0,
-      fillFrom: 0.5,
-      fillTo: 0.5,
-      grad: false,
-    });
-    expect(renderer.curtains.get(4).alpha).toBe(1);
+    renderer.setCurtain({ ...curtainInput, alphaFrom: 0.2 });
+    renderer.frames.step(200);
+    expect(previous.endReason).toBe("reset");
+    expect(graphic.alpha).toBe(1);
   });
 
-  it("keeps the grad feather while clearCurtains retracts the sides", async () => {
-    const renderer = createRenderer();
-    renderer.app = {};
-    renderer.tween = vi.fn(async () => {});
-    // FillGradient needs a real canvas context; this test is about the input
-    // clearCurtains forwards, not the drawing.
-    renderer.updateCurtainState = vi.fn();
-    const spy = vi.spyOn(renderer, "setCurtain");
-
-    await renderer.setCurtain({
-      block: false,
-      delayMs: 0,
-      direction: 0,
-      fadeMs: 0,
-      fillFrom: 1,
-      fillTo: 0.2,
-      grad: true,
-    });
-    await renderer.clearCurtains(100, false);
-
-    // Native HideCurtain only tweens sizeDelta toward zero; it never touches
-    // alpha or the `_gradientImg` active state.
-    expect(spy).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        alphaFrom: 1,
-        alphaTo: 1,
-        direction: 0,
-        fillTo: 0,
-        grad: true,
-      }),
+  it("retracts the sides while keeping their alpha and feather state", () => {
+    const renderer = createMaskRenderer();
+    // The test canvas cannot rasterize FillGradient.
+    vi.spyOn(renderer.curtainView, "updateCurtainState").mockImplementation(
+      () => {},
     );
+    renderer.setCurtain({ ...curtainInput, direction: 4 });
+    renderer.setCurtain({ ...curtainInput, alphaTo: 0.3, grad: true });
+    const { curtains } = renderer.layers;
+    const top = renderer.curtainView.curtains.get(0);
+    curtains.sortChildren();
+    expect(curtains.children[0]).toBe(top.graphic);
+
+    renderer.clearCurtains(100);
+    renderer.frames.step(50);
+    expect(top.fill).toBeCloseTo(0.125);
+    expect(top.alpha).toBe(0.3);
+    expect(top.grad).toBe(true);
+    expect(renderer.layers.curtains.children).toHaveLength(2);
+
+    renderer.frames.step(50);
+    expect(renderer.layers.curtains.children).toHaveLength(0);
   });
 
-  it("eases the curtain wipe with DOTween's default OutQuad", async () => {
-    const manual = createManualClock();
-    const renderer = createRenderer();
-    renderer.app = {};
-    renderer.tweenRunner = new TweenRunner(() => true, manual.clock);
-    // FillGradient needs a real canvas context; this test is about the tween
-    // curve, not the drawing.
-    renderer.updateCurtainState = vi.fn();
+  it("uses the destination fill to disable padding for a full straight curtain", () => {
+    const renderer = createMaskRenderer();
+    renderer.setCurtain({ ...curtainInput, fillTo: 0.25 });
+    const graphic = renderer.layers.curtains.children[0];
+    expect(graphic.getLocalBounds().height).toBeCloseTo(160);
 
-    await renderer.setCurtain({
-      block: false,
-      delayMs: 0,
-      direction: 6,
-      fadeMs: 1000,
-      fillFrom: 0,
-      fillTo: 1,
-      grad: false,
-    });
-    const state = renderer.curtains.get(6);
-    expect(state.fill).toBe(0);
-
-    manual.advance(500);
-    manual.drainFrame();
-    // Native SetCurtainSizeTween/SetCurtainAlphaTween never call SetEase, so
-    // both the DOSizeDelta wipe and any DOFade run on DOTween's
-    // defaultEaseType=6 (OutQuad): halfway = 0.75, not the linear 0.5.
-    expect(state.fill).toBeCloseTo(0.75);
-
-    manual.advance(500);
-    manual.drainFrame();
-    expect(state.fill).toBe(1);
+    renderer.setCurtain({ ...curtainInput, fadeMs: 100, fillTo: 1 });
+    expect(graphic.getLocalBounds().height).toBeCloseTo(180);
+    renderer.frames.step(50);
+    // Default OutQuad samples 75% at half time.
+    expect(graphic.getLocalBounds().height).toBeCloseTo(585);
+    renderer.frames.step(50);
+    expect(graphic.getLocalBounds().height).toBeCloseTo(720);
   });
 });
 
+const blockerInput: BlockerInput = {
+  block: false,
+  fadeMs: 0,
+  from: { a: Number.NaN, b: Number.NaN, g: Number.NaN, r: Number.NaN },
+  inverse: false,
+  style: "default",
+  to: { a: 1, b: 0, g: 0, r: 0 },
+};
+
+const textureAssets: { load: (url: string) => Promise<Texture> } = Assets;
+
 describe("PixiStoryRenderer blocker", () => {
-  interface CapturedTween {
-    complete: () => void;
-    step: (progress: number) => void;
-  }
-
-  function captureTweens(renderer: any): CapturedTween[] {
-    const tweens: CapturedTween[] = [];
-    renderer.tween = vi.fn(
-      (
-        _durationMs: number,
-        step: (progress: number) => void,
-        complete?: () => void,
-      ) => {
-        tweens.push({ complete: complete ?? (() => {}), step });
-        return new Promise<void>(() => {});
-      },
-    );
-    return tweens;
-  }
-
-  it("renders the blocker below the curtains container", async () => {
-    const renderer = createBlockerRenderer();
-
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 0,
-      from: { a: Number.NaN, b: Number.NaN, g: Number.NaN, r: Number.NaN },
-      image: undefined,
-      inverse: false,
-      style: "default",
-      to: { a: 1, b: 0, g: 0, r: 0 },
-    });
-
-    const world = renderer.layers.world as Container;
-    const sprite = renderer.blockerSprite;
-    // Native panel_blocker (sibling 1) renders below panel_curtains
-    // (sibling 3): curtains cover the blocker when both are up. The web world
-    // (scene, cgItems, curtains) takes the blocker right below the curtains.
-    expect(sprite.parent).toBe(world);
-    expect(world.getChildIndex(sprite)).toBeLessThan(
-      world.getChildIndex(renderer.layers.curtains),
-    );
+  afterEach(() => {
+    if (Assets.cache.has(SLIDE_MASK_TEXTURE_URL))
+      Assets.cache.remove(SLIDE_MASK_TEXTURE_URL);
   });
 
-  it("saturates 0-255 endpoints at the tint write instead of rescaling mid-fade", async () => {
-    const renderer = createBlockerRenderer();
-    const tweens = captureTweens(renderer);
+  it("draws the blocker between the scene and the stamp and curtain layers", () => {
+    const renderer = createMaskRenderer();
+    renderer.setBlocker(blockerInput);
+    renderer.setCurtain(curtainInput);
 
-    await renderer.setBlocker({
-      block: false,
+    const { animTexts, blocker, curtains, sceneCamera, world } =
+      renderer.layers;
+    expect(blocker.children[0]).toBeInstanceOf(Sprite);
+    expect(curtains.children).toHaveLength(1);
+    expect(world.children).toEqual([sceneCamera, blocker, animTexts, curtains]);
+  });
+
+  it("applies OutQuad to raw 0-255 color endpoints and clips only the tint", () => {
+    const renderer = createMaskRenderer();
+    renderer.setBlocker({
+      ...blockerInput,
       fadeMs: 300,
-      from: { a: 0, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: false,
-      style: "default",
       to: { a: 1, b: 255, g: 255, r: 255 },
     });
 
-    const sprite = renderer.blockerSprite;
-    // Halfway the raw channels are 127.5; the GPU-side clamp saturates them,
-    // it does not divide by 255 (which would render mid-gray ~128).
-    tweens[0]!.step(0.5);
+    const sprite = renderer.layers.blocker.children[0];
+    renderer.frames.step(150);
+    expect(sprite.alpha).toBe(0.75);
     expect(sprite.tint).toBe(0xff_ff_ff);
-    expect(renderer.readBlockerColor()).toEqual({
-      a: 0.5,
-      b: 127.5,
-      g: 127.5,
-      r: 127.5,
+    expect(renderer.blockerView.color).toEqual({
+      a: 0.75,
+      b: 191.25,
+      g: 191.25,
+      r: 191.25,
     });
-
-    // Below 1/255 the channel still ramps briefly before saturating.
-    tweens[0]!.step(0.001);
-    expect((sprite.tint >> 16) & 0xff).toBe(65);
   });
 
-  it("drops stale tween callbacks once a new blocker command takes over", async () => {
-    const renderer = createBlockerRenderer();
-    const tweens = captureTweens(renderer);
-
-    // First command fades out to a=0; its completion would reset the texture
-    // and hide the sprite.
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 1000,
-      from: { a: 1, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: false,
-      style: "default",
-      to: { a: 0, b: 0, g: 0, r: 0 },
+  it("kills the old DOColor without its transparent cleanup", () => {
+    const renderer = createMaskRenderer();
+    const first = renderer.setBlocker({
+      ...blockerInput,
+      block: true,
+      fadeMs: 100,
+      from: { ...blockerInput.from, a: 1 },
+      to: { ...blockerInput.to, a: 0 },
     });
-    // Second command (DOKill equivalent) takes over while the first tween
-    // would still be mid-flight.
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 1000,
-      from: {
-        a: Number.NaN,
-        b: Number.NaN,
-        g: Number.NaN,
-        r: Number.NaN,
-      },
-      image: undefined,
-      inverse: false,
-      style: "default",
-      to: { a: 0.5, b: 0, g: 0, r: 0 },
+    const sprite = renderer.layers.blocker.children[0];
+    renderer.frames.step(50);
+    expect(sprite.alpha).toBe(0.25);
+
+    // The next tween inherits the live color when the from channels are absent.
+    const second = renderer.setBlocker({
+      ...blockerInput,
+      block: true,
+      fadeMs: 200,
     });
-
-    const sprite = renderer.blockerSprite;
+    expect(first.endReason).toBe("reset");
+    expect(sprite.alpha).toBe(0.25);
+    renderer.frames.step(100);
     expect(sprite.visible).toBe(true);
-
-    tweens[0]!.step(1);
-    expect(renderer.readBlockerColor().a).toBe(1);
-    tweens[0]!.complete();
-    expect(sprite.visible).toBe(true);
-
-    // The active tween keeps writing.
-    tweens[1]!.step(0.5);
-    expect(renderer.readBlockerColor().a).toBe(0.75);
+    expect(sprite.alpha).toBeCloseTo(0.8125);
+    expect(second.endReason).toBeUndefined();
+    renderer.frames.step(100);
+    expect(second.endReason).toBe("complete");
   });
 
-  it("mounts the slide mask wipe for slider style with the native material constants", async () => {
-    const renderer = createBlockerRenderer();
-    renderer.blockerMaskSource = {
-      _resourceType: "textureSource",
-      style: {},
-    };
-    const tweens = captureTweens(renderer);
-
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 2000,
-      from: { a: 1, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: false,
+  it("sets the wipe axis, persistent inverse and material constants", () => {
+    Assets.cache.set(SLIDE_MASK_TEXTURE_URL, Texture.WHITE);
+    const renderer = createMaskRenderer();
+    const slider: BlockerInput = {
+      ...blockerInput,
+      fadeMs: 200,
       style: "slider",
-      to: { a: 0, b: 0, g: 0, r: 0 },
-    });
-
-    const sprite = renderer.blockerSprite;
-    const filter = renderer.blockerSlideFilter;
-    expect(sprite.filters).toEqual([filter]);
-    // Torappu/UI/AVG/SlideMask material floats: _Slide/_End/_Width.
+      to: { ...blockerInput.to, a: 0.6 },
+    };
+    renderer.setBlocker(slider);
+    const sprite = renderer.layers.blocker.children[0];
+    const filter = sprite.filters[0];
     const uniforms = filter.filterUniforms.uniforms;
     expect(uniforms.uSlide).toBeCloseTo(0.601, 6);
     expect(uniforms.uEnd).toBeCloseTo(0.641, 6);
     expect(uniforms.uExtent).toBeCloseTo(0.787, 6);
-    expect(uniforms.uVertical).toBe(0);
-
-    // The tweened raw alpha drives the shader reveal progress; the sprite
-    // itself stays opaque so the filter input rgb is the untinted tint.
-    tweens[0]!.step(0.5);
-    expect(filter.alpha).toBe(0.5);
-    expect(renderer.readBlockerColor().a).toBe(0.5);
+    expect(filter.isVertical()).toBe(false);
+    renderer.frames.step(100);
+    expect(filter.alpha).toBeCloseTo(0.45);
     expect(sprite.alpha).toBe(1);
-  });
 
-  it("switches the wipe axis and extent for verticalslider and mirrors it with inverse", async () => {
-    const renderer = createBlockerRenderer();
-    renderer.blockerMaskSource = {
-      _resourceType: "textureSource",
-      style: {},
-    };
-    captureTweens(renderer);
-
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 2000,
-      from: { a: 1, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: true,
-      style: "verticalslider",
-      to: { a: 0, b: 0, g: 0, r: 0 },
-    });
-
-    const sprite = renderer.blockerSprite;
-    const filter = renderer.blockerSlideFilter;
-    // ENABLE_VERTICAL uses _Height = 1.0 and samples uv.y.
+    renderer.setBlocker({ ...slider, inverse: true, style: "verticalslider" });
+    expect(sprite.filters[0]).toBe(filter);
     expect(filter.isVertical()).toBe(true);
-    expect(filter.filterUniforms.uniforms.uExtent).toBeCloseTo(1, 6);
-    // localScale.y = -1 mirrors the mask coordinate, and the flip keeps the
-    // full-screen coverage (mirrored around the centered anchor): the 1x1
-    // white quad stretched to 720 carries the sign as scale.y = -720.
-    expect(filter.filterUniforms.uniforms.uFlipY).toBe(1);
-    expect(filter.filterUniforms.uniforms.uFlipX).toBe(0);
+    expect(uniforms.uExtent).toBeCloseTo(1, 6);
+    expect(uniforms.uFlipY).toBe(1);
+    expect(uniforms.uFlipX).toBe(0);
     expect(sprite.scale.y).toBe(-720);
-    expect(Math.abs(sprite.height)).toBe(720);
 
-    // inverse = false never resets the sign (only destroy does), and the
-    // next default-style animated command runs _CleanMaterial.
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 500,
-      from: {
-        a: Number.NaN,
-        b: Number.NaN,
-        g: Number.NaN,
-        r: Number.NaN,
-      },
-      image: undefined,
-      inverse: false,
-      style: "default",
-      to: { a: 1, b: 0, g: 0, r: 0 },
-    });
-    expect(renderer.blockerSlideFilter).toBeNull();
+    renderer.setBlocker({ ...blockerInput, fadeMs: 100 });
     expect(sprite.filters).toEqual([]);
     expect(sprite.scale.y).toBe(-720);
-    expect(sprite.alpha).toBe(1);
+    expect(sprite.alpha).toBeCloseTo(0.45);
+    renderer.setBlocker(slider);
+    expect(sprite.filters[0]).toBe(filter);
   });
 
-  it("hands alpha back to the sprite when the slide wipe is unmounted", async () => {
-    const renderer = createBlockerRenderer();
-    renderer.blockerMaskSource = {
-      _resourceType: "textureSource",
-      style: {},
-    };
-    const tweens = captureTweens(renderer);
+  it("leaves the material and inverse unchanged during an instant color write", () => {
+    const renderer = createMaskRenderer();
+    renderer.setBlocker({ ...blockerInput, inverse: true, style: "slider" });
+    const sprite = renderer.layers.blocker.children[0];
+    expect(sprite.filters ?? []).toHaveLength(0);
+    expect(sprite.scale.x).toBe(1280);
 
-    // A non-blocking slider settles mid-alpha (act53side_07_beg:474 and
-    // act47side_05_end:44 are the two block=false sliders in the corpus).
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 2000,
-      from: { a: 0, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: false,
-      style: "slider",
-      to: { a: 0.5, b: 0, g: 0, r: 0 },
+    Assets.cache.set(SLIDE_MASK_TEXTURE_URL, Texture.WHITE);
+    renderer.setBlocker({ ...blockerInput, fadeMs: 100, style: "slider" });
+    const filter = sprite.filters[0];
+    renderer.setBlocker({
+      ...blockerInput,
+      to: { ...blockerInput.to, a: 0 },
     });
-    tweens[0]!.step(1);
-
-    // _CleanMaterial takes the wipe away; the blocker must drop straight back
-    // to the 0.5 veil rather than sitting fully opaque until the next frame's
-    // tween step lands.
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 1000,
-      from: { a: Number.NaN, b: Number.NaN, g: Number.NaN, r: Number.NaN },
-      image: undefined,
-      inverse: false,
-      style: "default",
-      to: { a: 1, b: 0, g: 0, r: 0 },
-    });
-
-    const sprite = renderer.blockerSprite;
-    expect(sprite.filters).toEqual([]);
-    expect(sprite.alpha).toBe(0.5);
-  });
-
-  it("reuses the slide filter instance across unmount and remount", async () => {
-    const renderer = createBlockerRenderer();
-    renderer.blockerMaskSource = {
-      _resourceType: "textureSource",
-      style: {},
-    };
-    captureTweens(renderer);
-
-    const slider = {
-      block: false,
-      fadeMs: 1000,
-      from: { a: 0, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: false,
-      style: "slider" as const,
-      to: { a: 1, b: 0, g: 0, r: 0 },
-    };
-    await renderer.setBlocker(slider);
-    const filter = renderer.blockerSlideFilter;
-
-    await renderer.setBlocker({
-      ...slider,
-      style: "default" as const,
-      to: { a: 0, b: 0, g: 0, r: 0 },
-    });
-    expect(renderer.blockerSlideFilter).toBeNull();
-
-    // `_SetMaterial` re-fetches the same cached slide_mask Material; the web
-    // port must not rebuild the shader/UniformGroup per mount either.
-    await renderer.setBlocker(slider);
-    expect(renderer.blockerSlideFilter).toBe(filter);
-  });
-
-  it("keeps the material untouched on the zero-duration slider branch", async () => {
-    const renderer = createBlockerRenderer();
-
-    // A zero-duration slider command runs before _GenTweenerWithParam, so no
-    // material is mounted (and none persisted yet).
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 0,
-      from: { a: 1, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: true,
-      style: "slider",
-      to: { a: 1, b: 0, g: 0, r: 0 },
-    });
-    expect(renderer.blockerSlideFilter).toBeNull();
-
-    // After an animated slider mounts the wipe, a zero-duration command
-    // (slider or default) leaves the material in place.
-    renderer.blockerMaskSource = {
-      _resourceType: "textureSource",
-      style: {},
-    };
-    captureTweens(renderer);
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 1000,
-      from: { a: 1, b: 0, g: 0, r: 0 },
-      image: undefined,
-      inverse: false,
-      style: "slider",
-      to: { a: 0, b: 0, g: 0, r: 0 },
-    });
-    const filter = renderer.blockerSlideFilter;
-    expect(renderer.blockerSprite.filters).toEqual([filter]);
-
-    await renderer.setBlocker({
-      block: false,
-      fadeMs: 0,
-      from: {
-        a: Number.NaN,
-        b: Number.NaN,
-        g: Number.NaN,
-        r: Number.NaN,
-      },
-      image: undefined,
-      inverse: false,
-      style: "default",
-      to: { a: 0, b: 0, g: 0, r: 0 },
-    });
-    expect(renderer.blockerSlideFilter).toBe(filter);
-    // The instant color write still routes through the attached filter.
+    renderer.frames.step(100);
+    expect(sprite.filters[0]).toBe(filter);
     expect(filter.alpha).toBe(0);
+  });
+
+  it("keeps cached art when a replacement fails to load", async () => {
+    const url = "https://torappu.prts.wiki/assets/avg/images/mask.png";
+    Assets.cache.set(url, Texture.EMPTY);
+    const warn = vi.fn();
+    const renderer = createMaskRenderer(undefined, warn);
+    const load = vi
+      .spyOn(Assets, "load")
+      .mockRejectedValueOnce(new Error("404"));
+    try {
+      expect(
+        renderer.setBlocker({ ...blockerInput, image: "mask" }),
+      ).toBeUndefined();
+      const sprite = renderer.layers.blocker.children[0];
+      expect(sprite.texture).toBe(Texture.EMPTY);
+      const pending = renderer.setBlocker({
+        ...blockerInput,
+        image: "missing",
+        to: { ...blockerInput.to, a: 0.5 },
+      });
+      expect(pending.endReason).toBeUndefined();
+      await pending.assetsReady;
+      expect(pending.endReason).toBe("complete");
+      expect(sprite.texture).toBe(Texture.EMPTY);
+      expect(sprite.alpha).toBe(0.5);
+      expect(warn).toHaveBeenCalledWith("missing blocker image: missing");
+    } finally {
+      load.mockRestore();
+      Assets.cache.remove(url);
+    }
+  });
+
+  it("discards a cold texture after renderer teardown", async () => {
+    const ready = Promise.withResolvers<Texture>();
+    const load = vi
+      .spyOn(textureAssets, "load")
+      .mockReturnValueOnce(ready.promise);
+    const renderer = createMaskRenderer();
+    try {
+      const pending = renderer.setBlocker({
+        ...blockerInput,
+        image: "delayed",
+      });
+      renderer.app = null;
+      renderer.destroy();
+      ready.resolve(Texture.EMPTY);
+      await pending.assetsReady;
+      expect(pending.endReason).toBe("reset");
+      expect(renderer.layers.blocker.children).toHaveLength(0);
+    } finally {
+      load.mockRestore();
+    }
+  });
+});
+
+describe("StoryPlayer blocker and curtain playback", () => {
+  it.each([
+    {
+      mode: "default",
+      expected: [
+        [0.75, undefined, 0],
+        [1, 0.2, 0],
+        [1, 0.2, 0],
+        [1, expect.closeTo(0.65), 0],
+        [1, 0.8, 1],
+      ],
+    },
+    {
+      mode: "quick_play",
+      expected: Array.from({ length: 5 }, () => [1, 0.8, 1]),
+    },
+  ] as const)(
+    "draws the next command on the completion frame in $mode",
+    async ({ expected, mode }) => {
+      const draws: unknown[] = [];
+      const { app, destroy, runtime } = await createRenderedPlayback(
+        [
+          "[blocker(afrom=0,a=1,fadetime=0.1,block=true)]",
+          "[curtain(direction=0,fillfrom=0.25,fillto=1,afrom=0.2,a=0.8,delay=0.05,fadetime=0.1,block=true)]",
+          '[cgitem(image="marker")]',
+          '[name="A"]next',
+        ],
+        ({ blocker, cgItems, curtains }) => {
+          draws.push([
+            blocker.children[0]?.alpha,
+            curtains.children[0]?.alpha,
+            cgItems.children.length,
+          ]);
+        },
+      );
+      runtime.setAutoPlayMode(mode);
+      const started = runtime.start();
+      try {
+        for (const time of [50, 100, 125, 200, 250]) app.ticker.update(time);
+        expect(draws).toEqual(expected);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("continues mounted blocker and curtain tweens after SkipToThis", async () => {
+    const context = createContext([
+      "[curtain(direction=0,fillfrom=0,fillto=0.5,fadetime=0.1)]",
+      "[blocker(afrom=0,a=1,fadetime=0.1,block=true)]",
+      '[name="A"]skipped',
+      "[SkipToThis]",
+      '[name="B"]after',
+    ]);
+    const renderer = createMaskRenderer(context);
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    const { blocker, curtains } = renderer.layers;
+    try {
+      renderer.frames.step(25);
+      expect(blocker.children[0]?.alpha).toBeCloseTo(0.4375);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      const skipped = runtime.skipNode();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      renderer.frames.step(25);
+      await skipped;
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+      expect(blocker.children[0]?.alpha).toBeCloseTo(0.75);
+      expect(curtains.children[0]?.getLocalBounds().height).toBeCloseTo(250);
+
+      renderer.frames.step(50);
+      expect(blocker.children[0]?.alpha).toBe(1);
+      expect(curtains.children[0]?.getLocalBounds().height).toBeCloseTo(340);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      await started;
+    }
+  });
+
+  it("skips a pending blocker load and rejects the old texture when it arrives", async () => {
+    const context = createContext([
+      '[blocker(image="cold",fadetime=1)]',
+      '[name="A"]skipped',
+      "[SkipToThis]",
+      "[blocker(a=0.5,fadetime=0)]",
+      '[name="B"]after',
+    ]);
+    const ready = Promise.withResolvers<Texture>();
+    const load = vi
+      .spyOn(textureAssets, "load")
+      .mockReturnValueOnce(ready.promise);
+    const renderer = createMaskRenderer(context);
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    try {
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      expect(renderer.layers.blocker.children).toHaveLength(0);
+      const skipped = runtime.skipNode();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      renderer.frames.step(16);
+      await skipped;
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+
+      ready.resolve(Texture.EMPTY);
+      await renderer.frames.advance(16);
+      const sprite = renderer.layers.blocker.children[0];
+      expect(sprite.texture).toBe(Texture.WHITE);
+      expect(sprite.alpha).toBe(0.5);
+    } finally {
+      load.mockRestore();
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      await started;
+    }
+  });
+
+  it("keeps waiting for cold blocker art after the previous tween completes", async () => {
+    const context = createContext([
+      "[blocker(afrom=0,a=1,fadetime=0.1)]",
+      '[blocker(image="cold",a=0.5,fadetime=0.1,block=true)]',
+      '[name="A"]after',
+    ]);
+    const ready = Promise.withResolvers<Texture>();
+    const load = vi
+      .spyOn(textureAssets, "load")
+      .mockReturnValueOnce(ready.promise);
+    const renderer = createMaskRenderer(context);
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    try {
+      renderer.frames.step(100);
+      const sprite = renderer.layers.blocker.children[0];
+      expect(sprite.alpha).toBe(1);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+
+      ready.resolve(Texture.EMPTY);
+      await renderer.frames.advance(0);
+      expect(sprite.texture).toBe(Texture.EMPTY);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      renderer.frames.step(100);
+      expect(sprite.alpha).toBe(0.5);
+      expect(runtime.getDisplayedLineIndex()).toBe(3);
+    } finally {
+      load.mockRestore();
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      await started;
+    }
+  });
+
+  it("lets an interrupted blocking curtain release the panel's next wait on completion", async () => {
+    const context = createContext([
+      "[curtain(direction=0,fillfrom=0,fillto=0.5,fadetime=0.1,block=true)]",
+      '[name="A"]skipped',
+      "[SkipToThis]",
+      "[curtain(direction=4,fillfrom=0,fillto=0.5,fadetime=0.2,block=true)]",
+      '[name="B"]after',
+    ]);
+    const renderer = createMaskRenderer(context);
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    let skipped: Promise<void> | undefined;
+    try {
+      renderer.frames.step(25);
+      skipped = runtime.skipNode();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      renderer.frames.step(25);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+
+      // The earlier blocking sequence uses the same FinishCommand slot.
+      renderer.frames.step(50);
+      expect(runtime.getDisplayedLineIndex()).toBe(5);
+      const bottom = renderer.curtainView.curtains.get(4);
+      expect(bottom.fill).toBeCloseTo(0.21875);
+      renderer.frames.step(150);
+      expect(bottom.fill).toBe(0.5);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      await Promise.all([started, skipped]);
+    }
+  });
+
+  it("resets both views when the story ends with animations still in progress", async () => {
+    const context = createContext([
+      "[blocker(a=1,fadetime=1)]",
+      "[curtain(direction=0,fillfrom=0.25,fillto=0.5,delay=0.5,fadetime=1)]",
+      '[name="A"]end',
+      '[skipnode(mode="skip")]',
+    ]);
+    const renderer = createMaskRenderer(context);
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    await runtime.start();
+    try {
+      const { blocker, curtains } = renderer.layers;
+      renderer.frames.step(100);
+      const sprite = blocker.children[0];
+      const graphic = curtains.children[0];
+      await runtime.skipNode();
+      expect(runtime.getState()).toBe("finished");
+      expect(sprite.destroyed).toBe(true);
+      expect(graphic.destroyed).toBe(true);
+      renderer.frames.elapse(2000);
+      expect(blocker.children).toHaveLength(0);
+      expect(curtains.children).toHaveLength(0);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+    }
   });
 });
