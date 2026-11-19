@@ -5,9 +5,9 @@ import {
 } from "../ExecutorComponent";
 import {
   exactArg,
+  getBool,
+  getFiniteFloat,
   hasTweenDuration,
-  toBoolean,
-  toNumber,
   toString,
 } from "../commandParams";
 
@@ -20,10 +20,7 @@ export class BlockerPanel extends ExecutorComponent {
       StoryRenderer,
       "cancelBlockerPreparation" | "resetBlocker" | "setBlocker"
     >,
-    private readonly calculateFadeMs: (
-      seconds: unknown,
-      fallback: number,
-    ) => number,
+    private readonly calculateFadeMs: (seconds: number) => number,
   ) {
     super();
   }
@@ -49,26 +46,29 @@ export class BlockerPanel extends ExecutorComponent {
       styleArg === "slider" || styleArg === "verticalslider"
         ? styleArg
         : "default";
-    const scaledMs = this.calculateFadeMs(exactArg(args, "fadetime"), 0.4);
+    // GetFloat and GetBool use Convert.ToSingle and Convert.ToBoolean in 2791.
+    const scaledMs = this.calculateFadeMs(
+      getFiniteFloat(args, "fadetime") ?? 0.4,
+    );
     const fadeMs = hasTweenDuration(scaledMs / 1000) ? scaledMs : 0;
     const animation = this.renderer.setBlocker(
       {
-        block: fadeMs > 0 && toBoolean(exactArg(args, "block")),
+        block: fadeMs > 0 && getBool(args, "block"),
         fadeMs,
         from: {
-          a: toNumber(exactArg(args, "afrom"), Number.NaN),
-          b: toNumber(exactArg(args, "bfrom"), Number.NaN),
-          g: toNumber(exactArg(args, "gfrom"), Number.NaN),
-          r: toNumber(exactArg(args, "rfrom"), Number.NaN),
+          a: getFiniteFloat(args, "afrom") ?? Number.NaN,
+          b: getFiniteFloat(args, "bfrom") ?? Number.NaN,
+          g: getFiniteFloat(args, "gfrom") ?? Number.NaN,
+          r: getFiniteFloat(args, "rfrom") ?? Number.NaN,
         },
         image: toString(exactArg(args, "image")) || undefined,
-        inverse: toBoolean(exactArg(args, "inverse")),
+        inverse: getBool(args, "inverse"),
         style,
         to: {
-          a: toNumber(exactArg(args, "a"), 1),
-          b: toNumber(exactArg(args, "b"), 0),
-          g: toNumber(exactArg(args, "g"), 0),
-          r: toNumber(exactArg(args, "r"), 0),
+          a: getFiniteFloat(args, "a") ?? 1,
+          b: getFiniteFloat(args, "b") ?? 0,
+          g: getFiniteFloat(args, "g") ?? 0,
+          r: getFiniteFloat(args, "r") ?? 0,
         },
       },
       this.finishCommand,

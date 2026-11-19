@@ -150,6 +150,29 @@ describe("StoryRuntime", () => {
     ]);
   });
 
+  it("converts boxed blocker floats and booleans like 2791", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[blocker(r="1,024",afrom=null,fadetime=0.25,block=" TRUE ",inverse=1,style="slider")]',
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.blockerCalls).toEqual([
+      expect.objectContaining({
+        block: true,
+        from: expect.objectContaining({ a: 0 }),
+        inverse: true,
+        to: expect.objectContaining({ r: 1024 }),
+      }),
+    ]);
+  });
+
   it.each([
     {
       name: "keeps block",
@@ -361,6 +384,28 @@ describe("StoryRuntime", () => {
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");
+  });
+
+  it("rounds boxed curtain directions and converts block and grad like 2791", async () => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[curtain(direction="1.6",fillto=0.5)]',
+        '[curtain(direction=1.6,fadetime=0.25,block=1,grad=" TRUE ")]',
+        "[curtain(direction=4.5,fadetime=0)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(renderer.curtainCalls).toEqual([
+      expect.objectContaining({ block: true, direction: 2, grad: true }),
+      expect.objectContaining({ block: false, direction: 4, grad: false }),
+    ]);
+    expect(renderer.curtainClearCalls).toEqual([]);
   });
 
   it("ignores the non-native curtain ato key", async () => {

@@ -5,10 +5,10 @@ import {
 } from "../ExecutorComponent";
 import {
   exactArg,
+  getBool,
+  getFiniteFloat,
   hasTweenDuration,
-  toBoolean,
-  toNumber,
-  toOptionalNumber,
+  tryConvertToInt32,
 } from "../commandParams";
 
 import type { ExecutionHandle } from "../execution";
@@ -21,10 +21,7 @@ export class CurtainPanel extends ExecutorComponent {
       StoryRenderer,
       "clearCurtains" | "recycleCurtains" | "resetCurtains" | "setCurtain"
     >,
-    private readonly calculateFadeMs: (
-      seconds: unknown,
-      fallback: number,
-    ) => number,
+    private readonly calculateFadeMs: (seconds: number) => number,
     private readonly warnInvalidParameter: (detail: string) => void,
   ) {
     super();
@@ -54,32 +51,40 @@ export class CurtainPanel extends ExecutorComponent {
 
   /** _ExecuteCurtain (2791 @ 0x1841AA580). The interval uses literal seconds. */
   private show({ args }: ParsedCommandLine): ExecutionHandle | void {
-    const direction = Math.trunc(toNumber(exactArg(args, "direction"), -1));
-    const scaledMs = this.calculateFadeMs(exactArg(args, "fadetime"), 0.4);
+    // GetInt (2791 @ 0x186941320) uses Convert.ToInt32 on boxed values.
+    const rawDirection = exactArg(args, "direction");
+    const direction =
+      rawDirection === undefined ? -1 : tryConvertToInt32(rawDirection);
+    if (direction === null || direction > 7) {
+      this.warnInvalidParameter(
+        `curtain direction:${direction ?? rawDirection}`,
+      );
+      return;
+    }
+
+    const scaledMs = this.calculateFadeMs(
+      getFiniteFloat(args, "fadetime") ?? 0.4,
+    );
     const fadeMs = hasTweenDuration(scaledMs / 1000) ? scaledMs : 0;
     if (direction < 0) {
       // _HideAllCurtains (0x1841AAF20) starts retractions without blocking.
       this.renderer.clearCurtains(fadeMs);
       return;
     }
-    if (direction > 7) {
-      this.warnInvalidParameter(`curtain direction:${direction}`);
-      return;
-    }
 
-    const alpha = toNumber(exactArg(args, "a"), -1);
-    const block = fadeMs > 0 && toBoolean(exactArg(args, "block"));
+    const alpha = getFiniteFloat(args, "a") ?? -1;
+    const block = fadeMs > 0 && getBool(args, "block");
     const animation = this.renderer.setCurtain(
       {
-        alphaFrom: toOptionalNumber(exactArg(args, "afrom")),
+        alphaFrom: getFiniteFloat(args, "afrom"),
         alphaTo: alpha >= 0 ? alpha : undefined,
         block,
-        delayMs: Math.max(0, toNumber(exactArg(args, "delay")) * 1000),
+        delayMs: Math.max(0, (getFiniteFloat(args, "delay") ?? 0) * 1000),
         direction,
         fadeMs,
-        fillFrom: toNumber(exactArg(args, "fillfrom"), 1),
-        fillTo: toNumber(exactArg(args, "fillto")),
-        grad: toBoolean(exactArg(args, "grad")),
+        fillFrom: getFiniteFloat(args, "fillfrom") ?? 1,
+        fillTo: getFiniteFloat(args, "fillto") ?? 0,
+        grad: getBool(args, "grad"),
       },
       block ? this.finishSequence : undefined,
     );

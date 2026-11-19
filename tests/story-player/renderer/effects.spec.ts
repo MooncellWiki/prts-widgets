@@ -2,9 +2,11 @@ import {
   Application,
   Assets,
   Container,
+  DOMAdapter,
   Sprite,
   Texture,
   TickerPlugin,
+  type FillGradient,
 } from "pixi.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -123,6 +125,45 @@ function createCurtainGraphicState(
     sizeDelta,
   };
   return { draws, state };
+}
+
+function stubGradientCanvas() {
+  return vi
+    .spyOn(DOMAdapter.get(), "createCanvas")
+    .mockImplementation((width, height) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width ?? 0;
+      canvas.height = height ?? 0;
+      return Object.assign(canvas, {
+        getContext: () => ({
+          createLinearGradient: () => ({ addColorStop() {} }),
+          fillRect() {},
+        }),
+      });
+    });
+}
+
+function expectCurtainFeather(
+  gradient: FillGradient,
+  vector: { x: number; y: number },
+  innerEdge: number,
+): void {
+  gradient.buildGradient();
+  const sampleU = (distance: number, tangent = 0) => {
+    const projection = innerEdge - 20 + distance;
+    const pixel = {
+      x: vector.x * projection - vector.y * tangent,
+      y: vector.y * projection + vector.x * tangent,
+    };
+    return gradient.transform.applyInverse(pixel).x / gradient.texture.width;
+  };
+  const start = sampleU(0);
+  const end = sampleU(20);
+  expect(Math.min(start, end)).toBeCloseTo(0);
+  expect(Math.max(start, end)).toBeCloseTo(1);
+  expect(sampleU(10)).toBeCloseTo(0.5);
+  expect(sampleU(0, 100)).toBeCloseTo(start);
+  expect(sampleU(20, 100)).toBeCloseTo(end);
 }
 
 // Clipped polygons start wherever the clip enters the stage, so compare
@@ -571,16 +612,18 @@ describe("PixiStoryRenderer", () => {
       true,
     );
 
-    // The body is black up to x=620, then the feather covers x=620..640.
-    curtainView.updateCurtainState(state, { x: 1, y: 0 });
-
-    expect(state.graphic.visible).toBe(true);
-    expect(draws).toHaveLength(4);
-    expect(draws[1]).toBe(0x00_00_00);
-    expect(draws[3]).toMatchObject({
-      end: { x: 640, y: 0 },
-      start: { x: 620, y: 0 },
-    });
+    const canvas = stubGradientCanvas();
+    try {
+      // The body is black up to x=620, then the feather covers x=620..640.
+      const vector = { x: 1, y: 0 };
+      curtainView.updateCurtainState(state, vector);
+      expect(state.graphic.visible).toBe(true);
+      expect(draws).toHaveLength(4);
+      expect(draws[1]).toBe(0x00_00_00);
+      expectCurtainFeather(draws[3] as FillGradient, vector, 640);
+    } finally {
+      canvas.mockRestore();
+    }
   });
 
   it("draws corner curtains as 45° wipes hinged past the stage corner", () => {
@@ -619,42 +662,47 @@ describe("PixiStoryRenderer", () => {
     );
   });
 
-  it("feathers corner curtains along the rotated inner edge", () => {
-    const { curtainView } = createRenderer();
-    const { draws, state } = createCurtainGraphicState(
-      3,
-      { x: 1600, y: 800 },
-      true,
-    );
-    const vector = curtainView.resolveCurtainVector(3);
+  it.each([
+    { direction: 1, hinge: { x: 1204.69, y: -240.69 } },
+    { direction: 3, hinge: { x: 1201.49, y: 938.18 } },
+    { direction: 5, hinge: { x: 70.11, y: 938.18 } },
+    { direction: 7, hinge: { x: 73.31, y: -240.69 } },
+  ])(
+    "samples corner $direction along the feather normal",
+    ({ direction, hinge }) => {
+      const { curtainView } = createRenderer();
+      const { draws, state } = createCurtainGraphicState(
+        direction,
+        { x: 1600, y: 800 },
+        true,
+      );
+      const vector = curtainView.resolveCurtainVector(direction);
+      const edge = hinge.x * vector.x + hinge.y * vector.y + 800;
+      const canvas = stubGradientCanvas();
+      try {
+        curtainView.updateCurtainState(state, vector);
+        expect(state.graphic.visible).toBe(true);
+        expect(draws).toHaveLength(4);
+        expect(draws[1]).toBe(0x00_00_00);
+        expectCurtainFeather(draws[3] as FillGradient, vector, edge);
 
-    curtainView.updateCurtainState(state, vector);
-
-    // direction 3 hinges at (1201.49, 938.18), 98.8px past the bottom-right
-    // corner; the inner edge sits at hinge . vector + 800. The 20px gradient
-    // is a layout child inside the rect, so the body stops 20px short of the
-    // edge and the feather runs along the 45° normal.
-    const edge = 1201.49 * vector.x + 938.18 * vector.y + 800;
-    expect(state.graphic.visible).toBe(true);
-    expect(draws).toHaveLength(4);
-    expect(draws[1]).toBe(0x00_00_00);
-    const gradient = draws[3] as any;
-    expect(gradient.start.x).toBeCloseTo(vector.x * (edge - 20));
-    expect(gradient.start.y).toBeCloseTo(vector.y * (edge - 20));
-    expect(gradient.end.x).toBeCloseTo(vector.x * edge);
-    expect(gradient.end.y).toBeCloseTo(vector.y * edge);
-
-    // Without `grad` the corner layout has no padding: the body reaches the
-    // inner edge itself.
-    draws.length = 0;
-    state.grad = false;
-    curtainView.updateCurtainState(state, vector);
-    expect(draws).toHaveLength(2);
-    const projections = (draws[0] as number[]).flatMap((value, index, all) =>
-      index % 2 === 0 ? [value * vector.x + all[index + 1]! * vector.y] : [],
-    );
-    expect(Math.max(...projections)).toBeCloseTo(edge);
-  });
+        // The unfeathered corner body reaches the inner edge.
+        draws.length = 0;
+        state.grad = false;
+        curtainView.updateCurtainState(state, vector);
+        expect(draws).toHaveLength(2);
+        const projections = (draws[0] as number[]).flatMap(
+          (value, index, all) =>
+            index % 2 === 0
+              ? [value * vector.x + all[index + 1]! * vector.y]
+              : [],
+        );
+        expect(Math.max(...projections)).toBeCloseTo(edge);
+      } finally {
+        canvas.mockRestore();
+      }
+    },
+  );
 
   it("leaves the straight-edge layout padding empty without grad", () => {
     const { curtainView } = createRenderer();
@@ -764,6 +812,45 @@ describe("PixiStoryRenderer curtain", () => {
     expect(graphic.visible).toBe(false);
     expect(graphic.alpha).toBeCloseTo(0.8);
   });
+
+  it("retracts first-use sides opened while the all-side retraction is running", () => {
+    const renderer = createMaskRenderer();
+    renderer.setCurtain({ ...curtainInput, direction: 2 });
+    renderer.clearCurtains(400);
+    expect(renderer.layers.curtains.children).toHaveLength(1);
+
+    renderer.setCurtain({ ...curtainInput, direction: 0, fadeMs: 500 });
+    renderer.setCurtain({ ...curtainInput, direction: 4, fadeMs: 500 });
+    const [, top, bottom] = renderer.layers.curtains.children;
+    expect(top.visible).toBe(true);
+    expect(bottom.visible).toBe(true);
+
+    renderer.frames.step(200);
+    renderer.frames.step(200);
+    expect(top.visible).toBe(false);
+    expect(bottom.visible).toBe(false);
+
+    renderer.frames.step(100);
+    expect(top.visible).toBe(false);
+    expect(bottom.visible).toBe(false);
+  });
+
+  it.each([
+    { fillFrom: 2, fillTo: 0, height: 340 },
+    { fillFrom: -0.5, fillTo: 0.5, height: 160 },
+    { fillFrom: 0.5, fillTo: 2, height: 720 },
+  ])(
+    "samples the unclamped tween from $fillFrom to $fillTo",
+    ({ fillFrom, fillTo, height }) => {
+      const renderer = createMaskRenderer();
+      renderer.setCurtain({ ...curtainInput, fadeMs: 100, fillFrom, fillTo });
+      renderer.recycleCurtains();
+      renderer.frames.step(50);
+      const graphic = renderer.layers.curtains.children[0];
+      expect(graphic.visible).toBe(true);
+      expect(graphic.getLocalBounds().height).toBeCloseTo(height);
+    },
+  );
 
   it("uses the destination fill to disable padding for a full straight curtain", () => {
     const renderer = createMaskRenderer();

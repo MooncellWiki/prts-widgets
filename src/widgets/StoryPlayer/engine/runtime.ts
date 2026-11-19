@@ -370,12 +370,12 @@ export class StoryRuntime {
     this.skipToIndex = preprocessSkipToIndex(this.lines);
     this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
-    this.blockerPanel = new BlockerPanel(renderer, (seconds, fallback) =>
-      this.calculateFadeMs(seconds, fallback),
+    this.blockerPanel = new BlockerPanel(renderer, (seconds) =>
+      this.calculateFadeMs(seconds),
     );
     this.curtainPanel = new CurtainPanel(
       renderer,
-      (seconds, fallback) => this.calculateFadeMs(seconds, fallback),
+      (seconds) => this.calculateFadeMs(seconds),
       (detail) => this.warn("invalid_parameter", detail),
     );
     this.characterCutinPanel = new CharacterCutinPanel(renderer, {

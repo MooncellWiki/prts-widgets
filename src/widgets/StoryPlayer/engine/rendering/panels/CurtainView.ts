@@ -14,6 +14,7 @@ function clamp01(value: number): number {
 
 /** Width of AVGCurtain's feather strip in the 2791 sharedassets1 layout. */
 const CURTAIN_GRADIENT_PX = 20;
+const CURTAIN_DIRECTION_ANGLES = [180, 225, 270, 315, 0, 45, 90, 135];
 const ZERO_EPSILON = Math.fround(1e-5);
 const ZERO_SIZE = { x: 0, y: 0 };
 
@@ -79,7 +80,7 @@ interface CurtainRenderState {
   edgeFeather: boolean;
   feather?: FillGradient;
   grad: boolean;
-  graphic: Graphics;
+  graphic?: Graphics;
   originSize: CurtainSize;
   sizeDelta: CurtainSize;
   vector: { x: number; y: number };
@@ -108,9 +109,16 @@ export class CurtainView {
     }
 
     const state = this.ensureCurtainState(direction, vector);
+    if (!state.graphic) {
+      state.graphic = new Graphics({
+        label: `curtain-${direction}`,
+        zIndex: direction,
+      });
+      this.layer.addChild(state.graphic);
+    }
     const axis = sizeAxis(direction);
     const origin = state.originSize;
-    const sizeTo = { ...origin, [axis]: origin[axis] * clamp01(input.fillTo) };
+    const sizeTo = { ...origin, [axis]: origin[axis] * input.fillTo };
     const alphaTo =
       input.alphaTo === undefined ? undefined : clamp01(input.alphaTo);
     state.active = true;
@@ -131,7 +139,7 @@ export class CurtainView {
     if (input.fillFrom !== undefined) {
       state.sizeDelta = {
         ...origin,
-        [axis]: origin[axis] * clamp01(input.fillFrom),
+        [axis]: origin[axis] * input.fillFrom,
       };
     }
     // SetCurtainAlphaTween snaps to afrom when the alpha track is built.
@@ -178,7 +186,13 @@ export class CurtainView {
 
   /** _HideAllCurtains / HideCurtain (2791 @ 0x1841AAF20 / 0x18423CB70). */
   clear(fadeMs = 0): void {
-    for (const state of this.curtains.values()) {
+    // The prefab has all eight slots. A retraction can finish after an
+    // unused slot opens, while Pixi graphics are allocated on first show.
+    for (const direction of CURTAIN_DIRECTION_ANGLES.keys()) {
+      const state = this.ensureCurtainState(
+        direction,
+        this.resolveCurtainVector(direction)!,
+      );
       if (fadeMs <= 0) {
         this.resetCurtain(state);
         continue;
@@ -208,8 +222,8 @@ export class CurtainView {
     for (const state of this.curtains.values()) {
       if (
         state.active &&
-        (Math.fround(state.alpha) <= ZERO_EPSILON ||
-          Math.fround(state.sizeDelta.y) <= ZERO_EPSILON)
+        (Math.abs(Math.fround(state.alpha)) <= ZERO_EPSILON ||
+          Math.abs(Math.fround(state.sizeDelta.y)) <= ZERO_EPSILON)
       ) {
         state.active = false;
         this.updateCurtainState(state, state.vector);
@@ -221,7 +235,7 @@ export class CurtainView {
     this.tweens.killTarget(this);
     for (const state of this.curtains.values()) {
       this.tweens.killTarget(state);
-      state.graphic.destroy();
+      state.graphic?.destroy();
       state.feather?.destroy();
     }
     this.curtains.clear();
@@ -234,12 +248,6 @@ export class CurtainView {
     const existing = this.curtains.get(direction);
     if (existing) return existing;
 
-    const graphic = new Graphics({
-      label: `curtain-${direction}`,
-      zIndex: direction,
-    });
-    graphic.visible = false;
-    this.layer.addChild(graphic);
     const originSize = CURTAIN_CORNER_HINGES[direction]
       ? { x: CURTAIN_CORNER_SIDE, y: CURTAIN_CORNER_SIDE }
       : { x: STORY_WIDTH, y: STORY_HEIGHT };
@@ -249,9 +257,8 @@ export class CurtainView {
       direction,
       edgeFeather: true,
       grad: false,
-      graphic,
       originSize,
-      sizeDelta: { ...originSize, [sizeAxis(direction)]: 0 },
+      sizeDelta: originSize,
       vector,
     };
     this.curtains.set(direction, state);
@@ -272,14 +279,14 @@ export class CurtainView {
     state: CurtainRenderState,
     vector: { x: number; y: number },
   ): void {
-    state.graphic.alpha = clamp01(state.alpha);
-    state.graphic.clear();
-    state.feather?.destroy();
-    state.feather = undefined;
+    const { graphic } = state;
+    if (!graphic) return;
+    graphic.alpha = clamp01(state.alpha);
+    graphic.clear();
 
     const extent = state.sizeDelta[sizeAxis(state.direction)];
-    if (!state.active || state.graphic.alpha <= 0 || extent <= 0) {
-      state.graphic.visible = false;
+    if (!state.active || graphic.alpha <= 0 || extent <= 0) {
+      graphic.visible = false;
       return;
     }
 
@@ -298,22 +305,31 @@ export class CurtainView {
       ? this.buildCurtainBand(vector, bodyEnd, threshold)
       : [];
     // Corner hinges sit off-stage, so small fills clip away entirely.
-    state.graphic.visible = body.length >= 6 || feather.length >= 6;
+    graphic.visible = body.length >= 6 || feather.length >= 6;
 
-    if (body.length >= 6) state.graphic.poly(body).fill(0x00_00_00);
+    if (body.length >= 6) graphic.poly(body).fill(0x00_00_00);
     if (feather.length < 6) return;
 
-    state.feather = new FillGradient({
+    // The native gradient rotates with the rect. Build a horizontal ramp
+    // once, then rotate its texture matrix with the signed curtain normal.
+    // Pixi's clamp-to-edge gradient builder flips negative axes separately.
+    const gradient = (state.feather ??= new FillGradient({
       colorStops: [
         { color: "rgba(0, 0, 0, 1)", offset: 0 },
         { color: "rgba(0, 0, 0, 0)", offset: 1 },
       ],
-      end: { x: vector.x * threshold, y: vector.y * threshold },
-      start: { x: vector.x * bodyEnd, y: vector.y * bodyEnd },
+      end: { x: CURTAIN_GRADIENT_PX, y: 0 },
+      start: { x: 0, y: 0 },
       textureSpace: "global",
       type: "linear",
-    });
-    state.graphic.poly(feather).fill(state.feather);
+    }));
+    gradient.buildGradient();
+    gradient.transform
+      .identity()
+      .scale(CURTAIN_GRADIENT_PX / gradient.texture.width, 1)
+      .rotate(Math.atan2(vector.y, vector.x))
+      .translate(vector.x * bodyEnd, vector.y * bodyEnd);
+    graphic.poly(feather).fill(gradient);
   }
 
   /**
@@ -420,18 +436,7 @@ export class CurtainView {
   private resolveCurtainVector(
     direction: number,
   ): { x: number; y: number } | null {
-    const mappedAngles: Record<number, number> = {
-      0: 180,
-      1: 225,
-      2: 270,
-      3: 315,
-      4: 0,
-      5: 45,
-      6: 90,
-      7: 135,
-    };
-
-    const angleDeg = mappedAngles[direction];
+    const angleDeg = CURTAIN_DIRECTION_ANGLES[direction];
     if (angleDeg === undefined) return null;
 
     const radians = (angleDeg * Math.PI) / 180;
