@@ -13,6 +13,7 @@ export const TYPE_WRITER_ORIGIN_DELAY_MS = 40;
 
 const INT32_MIN = -2_147_483_648;
 const INT32_MAX = 2_147_483_647;
+const FLOAT_ZERO_TOLERANCE = Math.fround(1e-5);
 
 /** Exact-key parameter lookup (no case folding), as `Command.TryGetParam`. */
 export function exactArg(
@@ -160,7 +161,17 @@ export function toOptionalNumber(value: unknown): number | undefined {
 
 /** A literal duration above the 2791 MathUtil.LE(seconds, 0) tolerance (@ 0x186945C90). */
 export function hasTweenDuration(seconds: number): boolean {
-  return Math.fround(seconds) > Math.fround(0.00001);
+  return Math.fround(seconds) > FLOAT_ZERO_TOLERANCE;
+}
+
+/** 2791 MathUtil.IsZero(float) @ 0x186945A80. */
+export function isZeroFloat(value: number): boolean {
+  return Math.abs(Math.fround(value)) <= FLOAT_ZERO_TOLERANCE;
+}
+
+/** 2791 MathUtil.GE(float, 0) @ 0x186945130. */
+export function isNonNegativeFloat(value: number): boolean {
+  return Math.fround(value) >= -FLOAT_ZERO_TOLERANCE;
 }
 
 export function toNumber(value: unknown, fallback = 0): number {

@@ -692,9 +692,8 @@ describe("ShowItemSlot rendering", () => {
       scene.getChildIndex(layers.cutins),
     );
 
-    const blocker = renderer.ensureBlocker();
     expect(world.getChildIndex(animTexts)).toBeGreaterThan(
-      world.getChildIndex(blocker),
+      world.getChildIndex(layers.blocker),
     );
     expect(world.getChildIndex(animTexts)).toBeLessThan(
       world.getChildIndex(layers.curtains),

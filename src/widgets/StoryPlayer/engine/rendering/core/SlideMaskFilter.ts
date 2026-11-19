@@ -254,7 +254,7 @@ export class SlideMaskFilter extends Filter {
     this.filterUniforms = filterUniforms;
   }
 
-  /** The current tweened blocker alpha (raw float; clamped in-shader). */
+  /** Normalized alpha of the blocker Image's Color32 vertex color. */
   public set alpha(value: number) {
     this.u.uAlpha = value;
   }

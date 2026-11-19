@@ -6,6 +6,7 @@ import {
   DIALOG_FRAME_URL,
   INTERLUDE_ASSETS,
   SHOWITEM_PHOTO_FRAME_URL,
+  SLIDE_MASK_TEXTURE_URL,
   STAMP_ASSETS,
 } from "../../src/widgets/StoryPlayer/assets";
 import {
@@ -189,6 +190,20 @@ describe("preloadContextAssets", () => {
     expect(loadMock.mock.calls[0]![0]).toEqual(
       expect.not.arrayContaining([SHOWITEM_PHOTO_FRAME_URL]),
     );
+  });
+
+  it("preheats the bundled blocker wipe texture for the two slider styles", async () => {
+    for (const style of ["slider", "verticalslider", "Slider", "default"]) {
+      const context = createContext([`[blocker(style=${style})]`]);
+      await preloadContextAssets(context);
+      const urls = loadMock.mock.lastCall![0];
+      expect(urls.includes(SLIDE_MASK_TEXTURE_URL)).toBe(
+        style === "slider" || style === "verticalslider",
+      );
+      expect(collectContextAssetUrls(context)).not.toContain(
+        SLIDE_MASK_TEXTURE_URL,
+      );
+    }
   });
 
   it("preloads cut-in art and keeps bundled interlude textures out of the asset list", async () => {

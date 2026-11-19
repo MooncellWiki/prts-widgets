@@ -3,24 +3,17 @@ import {
   Assets,
   CanvasSource,
   Container,
-  FillGradient,
-  Graphics,
   Point,
   Sprite,
   type Text,
   TextStyle,
   Texture,
-  type TextureSource,
   type Ticker,
   type TilingSprite,
   UPDATE_PRIORITY,
 } from "pixi.js";
 
-import {
-  DIALOG_FRAME_URL,
-  SHOWITEM_PHOTO_FRAME_URL,
-  SLIDE_MASK_TEXTURE_URL,
-} from "../../assets";
+import { DIALOG_FRAME_URL, SHOWITEM_PHOTO_FRAME_URL } from "../../assets";
 import {
   nativeBundleKey,
   resolveAssetUrl,
@@ -79,11 +72,7 @@ import {
   type CharacterArtLoad,
 } from "./characters/CharacterArt";
 import { guardClaimedClicks } from "./core/ClickClaim";
-import {
-  dotweenDefaultEase,
-  dotweenEaseCurve,
-  type EaseCurve,
-} from "./core/DotweenEase";
+import { dotweenEaseCurve, type EaseCurve } from "./core/DotweenEase";
 import { createImageSprite } from "./core/ImageSprite";
 import { LayerGraph } from "./core/LayerGraph";
 import {
@@ -91,13 +80,14 @@ import {
   readCenteredTransform as readRootTransform,
 } from "./core/SceneGeometry";
 import { buildShakePath, sampleShakePath } from "./core/ShakePath";
-import { SlideMaskFilter } from "./core/SlideMaskFilter";
 import { getCachedTexture, type TextureLoad } from "./core/TextureAsset";
 import { TweenRunner, type TweenRunOptions } from "./core/TweenRunner";
 import { AnimTextPanel } from "./panels/AnimTextPanel";
 import { AvgDisplayPanel } from "./panels/AvgDisplayPanel";
+import { BlockerView } from "./panels/BlockerView";
 import { CgItemView } from "./panels/CgItemView";
 import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
+import { CurtainView } from "./panels/CurtainView";
 import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
 import { ImageView } from "./panels/ImageView";
@@ -254,11 +244,6 @@ function characterSlotZoom(
   };
 }
 
-/** Raw float color channel to the 8-bit tint write (the only clamp point). */
-function tintChannel(value: number): number {
-  return Math.round(clamp01(value) * 255);
-}
-
 /**
  * `_GenPosition`'s per-slot term: it cancels each slot's own offset from the
  * panel centre so a horizontal enter starts at the same absolute x everywhere.
@@ -297,39 +282,6 @@ function computeDisplayResolution(host: HTMLElement): number {
     (cssHeight / STORY_HEIGHT) * devicePixelRatio,
   );
 }
-
-/** Width of AVGCurtain's `_gradientImg` feather strip, in logical pixels. */
-const CURTAIN_GRADIENT_PX = 20;
-
-const CURTAIN_STAGE_CORNERS: ReadonlyArray<{ x: number; y: number }> = [
-  { x: 0, y: 0 },
-  { x: STORY_WIDTH, y: 0 },
-  { x: STORY_WIDTH, y: STORY_HEIGHT },
-  { x: 0, y: STORY_HEIGHT },
-];
-
-/**
- * Native corner curtains (direction 1/3/5/7): `_GenSizeDeltaWithMultiplior`
- * scales only the local Y axis of a 1600x1600 AVGCurtain rect, but each
- * corner rect carries a 45° `m_LocalRotation` (z = ±0.3827) around a pivot
- * that sits off-stage past its corner. The inner edge therefore sweeps along
- * the same 45° normal `resolveCurtainVector` returns, at projection
- * `hinge · vector + 1600 * fill` -- a diagonal wipe, offset by the hinge.
- * Hinges are the `panel_curtains` pivots (sharedassets1, 2.7.81) in stage
- * space (y down). They sit 98.8-118.3px past the nearest stage corner, so
- * fills under ~0.062-0.074 never reach the stage, and the stage is fully
- * covered from ~0.946-0.958. The ±800px lateral span covers the whole stage
- * for every corner, so only the inner edge clips.
- */
-const CURTAIN_CORNER_SIDE = 1600;
-const CURTAIN_CORNER_HINGES: Readonly<
-  Record<number, { x: number; y: number }>
-> = {
-  1: { x: 1204.69, y: -240.69 },
-  3: { x: 1201.49, y: 938.18 },
-  5: { x: 70.11, y: 938.18 },
-  7: { x: 73.31, y: -240.69 },
-};
 
 /**
  * 对话框顶部/底部黑条用到的同一张渐变纹理（APK 中 `sprite_avg_cutscene`，
@@ -404,15 +356,6 @@ interface CharacterRenderState {
   zoomShiftY: number;
 }
 
-interface CurtainRenderState {
-  alpha: number;
-  direction: number;
-  fill: number;
-  grad: boolean;
-  graphic: Graphics;
-  tweenSessionId: number;
-}
-
 /**
  * Web/PIXI renderer for the AVG command surfaces. Each command method ports
  * the documented observable state and blocking boundaries, while containers,
@@ -465,14 +408,11 @@ export class PixiStoryRenderer implements StoryRenderer {
   });
   private readonly cutinPanel: CharacterCutinPanel;
 
-  private readonly curtainLayer = this.layers.curtains;
-  // Skip semantics: 2.7.61's AVGCurtainPanel.ShouldResetOnSkip returns false
-  // (0x183e54960, literal `xor al, al`), so skipping a segment must NOT clear
-  // curtains -- they only go away via curtain commands or full destroy().
-  private readonly curtains = new Map<number, CurtainRenderState>();
   private readonly largeBackgroundView: LargeBackgroundView;
   private readonly largeImageView: LargeBackgroundView;
   private readonly imageView: ImageView;
+  private readonly blockerView: BlockerView;
+  private readonly curtainView: CurtainView;
   /**
    * Bundled nine-slice texture of the serialized `sprite_avg_showItem_photo`
    * photo frame (native scene asset; CDN and the PRTS mirror do not carry
@@ -490,7 +430,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly onWarning?: (detail: string) => void;
   private readonly sceneLayer = this.layers.scene;
   private readonly uiLayer = this.layers.ui;
-  private readonly worldLayer = this.layers.world;
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
   private readonly tweenUpdates = new Set<(deltaMs: number) => void>();
   private stopTweenUpdates: (() => void) | null = null;
@@ -512,45 +451,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly sceneEffects: SceneEffectManager;
   private readonly cgItemView: CgItemView;
 
-  private blockerSprite: Sprite | null = null;
-  /**
-   * Raw float mirror of the native `_blocker.color` (prefab initial
-   * (0,0,0,0)). Unity `Color` channels are float32 and may exceed 1 -- scripts
-   * write 0-255 endpoints (r=255 white flashes, 7.5k+ occurrences) whose
-   * mid-tween values saturate only at the GPU. Readback and interpolation stay
-   * in raw scale; only the 8-bit tint write clamps.
-   */
-  private blockerColor: { a: number; b: number; g: number; r: number } = {
-    a: 0,
-    b: 0,
-    g: 0,
-    r: 0,
-  };
-  private blockerTweenSessionId = 0;
-  /**
-   * localScale sign persistence for the slider wipe (native `_ExecuteBlocker`
-   * assigns literal -1 to the flipped axis; `inverse = false` never resets it,
-   * and only OnReset/destroy restores +1). The sign is tracked separately from
-   * `sprite.scale` because every `blocker.width`/`height` write recomputes the
-   * magnitude from the new texture, so the sign is the only part worth owning;
-   * the visible mirror is the shader's (SlideMaskFilter uFlip), since the quad
-   * itself is untextured white.
-   */
-  private blockerScaleSign = { x: 1, y: 1 };
-  /**
-   * `_blocker.material` equivalent: non-null only while the slide wipe is
-   * mounted, so `writeBlockerColor` knows whether alpha belongs to the shader
-   * or to `sprite.alpha`.
-   */
-  private blockerSlideFilter: SlideMaskFilter | null = null;
-  /**
-   * The filter instance itself, mirroring the single `slide_mask` Material
-   * `_SetMaterial` re-fetches from the asset loader cache (2.7.61 VA
-   * 0x183e30b60): mounting and unmounting reuses it rather than rebuilding.
-   */
-  private blockerSlideMaterial: SlideMaskFilter | null = null;
-  private blockerMaskSource: TextureSource | null = null;
-  private blockerMaskSourceFailed = false;
   private cameraShake?: {
     animation: ExecutionHandle;
     infinite: boolean;
@@ -566,6 +466,16 @@ export class PixiStoryRenderer implements StoryRenderer {
   ) {
     this.context = context;
     this.onWarning = onWarning;
+    this.blockerView = new BlockerView(
+      this.layers.blocker,
+      this.updatePhaseTweenRunner,
+      onWarning,
+    );
+    this.curtainView = new CurtainView(
+      this.layers.curtains,
+      this.updatePhaseTweenRunner,
+      onWarning,
+    );
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
     this.dialogView = new DialogView(this.uiLayer, onWarning, (...args) =>
       this.updatePhaseTweenRunner.run(...args),
@@ -803,27 +713,18 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeBackgroundView.reset();
     this.largeImageView.clear();
     this.imageView.destroy();
+    this.blockerView.reset();
+    this.curtainView.reset();
     this.resetCameraEffects();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
     this.backgroundTweenSessionId += 1;
     this.backgroundLayer.removeChildren();
-    this.blockerSprite = null;
-    // Blocker's closest OnReset equivalent on destroy: drop in-flight tween
-    // callbacks and restore the prefab color (0,0,0,0). OnReset also clears
-    // the slide_mask material and restores localScale = one.
-    this.blockerTweenSessionId += 1;
-    this.blockerScaleSign = { x: 1, y: 1 };
-    this.blockerSlideFilter = null;
-    this.blockerSlideMaterial = null;
-    this.blockerColor = { a: 0, b: 0, g: 0, r: 0 };
     this.layers.showItems.removeChildren();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
     this.characterSlots.clear();
     this.characterSlotSeqDeadlines.clear();
-    for (const state of this.curtains.values()) this.disposeCurtainState(state);
-    this.curtains.clear();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.resizeListener?.();
@@ -1807,37 +1708,38 @@ export class PixiStoryRenderer implements StoryRenderer {
     for (const state of states) this.disposeCharacterState(state);
   }
 
-  async clearCurtains(fadeMs = 0, block = false): Promise<void> {
-    const states = [...this.curtains.values()];
-    if (states.length === 0) return;
+  clearCurtains(fadeMs = 0): void {
+    this.curtainView.clear(fadeMs);
+  }
 
-    if (fadeMs <= 0) {
-      for (const state of states)
-        this.removeCurtainState(state.direction, state);
-      return;
-    }
+  recycleCurtains(): void {
+    this.curtainView.recycle();
+  }
 
-    const run = Promise.all(
-      states.map((state) =>
-        this.setCurtain({
-          alphaFrom: state.alpha,
-          alphaTo: state.alpha,
-          block,
-          direction: state.direction,
-          delayMs: 0,
-          fadeMs,
-          fillFrom: state.fill,
-          fillTo: 0,
-          // Native `HideCurtain` only tweens sizeDelta toward zero; it never
-          // touches alpha or the `_gradientImg` active state, so the 20px
-          // feather must stay on while the curtain retracts.
-          grad: state.grad,
-        }),
-      ),
-    );
+  resetCurtains(): void {
+    this.curtainView.reset();
+  }
 
-    if (block) await run;
-    else void run;
+  setCurtain(
+    input: CurtainInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.curtainView.show(input, onComplete);
+  }
+
+  setBlocker(
+    input: BlockerInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.blockerView.show(input, onComplete);
+  }
+
+  cancelBlockerPreparation(): void {
+    this.blockerView.cancelPreparation();
+  }
+
+  resetBlocker(): void {
+    this.blockerView.reset();
   }
 
   clearSubtitle(fadeMs = 0): Promise<void> | void {
@@ -1879,200 +1781,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   clearTimerSticker(input?: TimerClearInput): void {
     this.timerView?.stop(input);
-  }
-
-  /**
-   * Port scope: `Torappu.AVG.AVGBlockerPanel._ExecuteBlocker`, including the
-   * zero-duration and idempotent inverse branches. A PIXI sprite stands in for
-   * the native blocker view.
-   */
-  setBlocker(input: BlockerInput): Promise<void> | void {
-    const blocker = this.ensureBlocker();
-    if (input.style === "default" && input.image) {
-      const url = resolveStoryAssetByKey(input.image, "image");
-      if (url) {
-        // The native sprite lookup is synchronous. A cache miss waits for
-        // the Web asset loader before applying the color.
-        if (!Assets.cache.has(url)) {
-          return Assets.load<Texture>(url)
-            .then(
-              (texture) => this.setBlockerTexture(blocker, texture),
-              () => this.onWarning?.(`missing blocker image: ${input.image}`),
-            )
-            .then(() => this.applyBlockerColor(blocker, input));
-        }
-        this.setBlockerTexture(blocker, Assets.get<Texture>(url));
-      }
-    } else if (input.style !== "default") {
-      // Native slider/verticalslider set sprite = null (2.7.61 VA 0x183e30297):
-      // the quad stays full-screen and the SlideMask material draws the wipe.
-      // Texture.WHITE is the web equivalent of Unity's null-sprite white quad.
-      this.setBlockerTexture(blocker, Texture.WHITE);
-      if (input.fadeMs > 0) {
-        // _GenTweenerWithParam mounts slide_mask only on the animated path
-        // (VA 0x183e30860); the zero-duration branch never touches the
-        // material, so it persists from the previous command.
-        const load = this.attachBlockerSlideFilter(blocker, input.style);
-        if (load)
-          return load.then(() => this.applyBlockerColor(blocker, input));
-      }
-    }
-    return this.applyBlockerColor(blocker, input);
-  }
-
-  private applyBlockerColor(
-    blocker: Sprite,
-    input: BlockerInput,
-  ): Promise<void> | void {
-    if (blocker.destroyed) return;
-    const current = this.readBlockerColor();
-    // `DOKill(_blocker, complete: false)` equivalent (2.7.61 VA 0x183e30522):
-    // a new command kills the previous DOColor mid-flight, so at most one
-    // blocker tween is ever active. Stale step/complete callbacks below are
-    // dropped -- a stale complete with to.a ~= 0 would otherwise reset the
-    // texture and hide the sprite under the new command.
-    const sessionId = ++this.blockerTweenSessionId;
-    const from = {
-      a: Number.isFinite(input.from.a) ? input.from.a : current.a,
-      b: Number.isFinite(input.from.b) ? input.from.b : current.b,
-      g: Number.isFinite(input.from.g) ? input.from.g : current.g,
-      r: Number.isFinite(input.from.r) ? input.from.r : current.r,
-    };
-    this.writeBlockerColor(blocker, from);
-
-    if (input.fadeMs <= 0) {
-      // The zero-fadetime path returns before the inverse block, so scale is
-      // untouched here, and before _GenTweenerWithParam, so the material
-      // (slide filter) keeps whatever the previous animated command mounted.
-      this.writeBlockerColor(blocker, input.to);
-      return;
-    }
-
-    // Animated default-style commands call _CleanMaterial (set_material(null))
-    // inside _GenTweenerWithParam; slider styles mounted the filter above.
-    if (input.style === "default") this.detachBlockerSlideFilter(blocker);
-
-    // `AVGBlockerPanel._ExecuteBlocker` assigns literal -1 rather than negating
-    // the current axis: repeated inverse commands are idempotent, and only reset
-    // via OnReset. The sign lives in blockerScaleSign (PIXI's width setter
-    // rewrites scale magnitudes), and the mask coordinate mirror follows it in
-    // SlideMaskFilter's uFlip uniforms.
-    if (input.inverse) {
-      if (input.style === "slider") this.blockerScaleSign.x = -1;
-      else if (input.style === "verticalslider") this.blockerScaleSign.y = -1;
-      this.applyBlockerScaleSign(blocker);
-    }
-
-    const run = this.tween(
-      input.fadeMs,
-      (progress) => {
-        if (sessionId !== this.blockerTweenSessionId) return;
-        this.writeBlockerColor(blocker, {
-          a: from.a + (input.to.a - from.a) * progress,
-          b: from.b + (input.to.b - from.b) * progress,
-          g: from.g + (input.to.g - from.g) * progress,
-          r: from.r + (input.to.r - from.r) * progress,
-        });
-      },
-      () => {
-        if (sessionId !== this.blockerTweenSessionId) return;
-        if (Math.abs(input.to.a) <= 1e-6) {
-          // _FinishCommand's _ResetBlockerImg equivalent. Native restores the
-          // serialized `_defaultBlocker` sprite (VA 0x183e30af0), not null;
-          // the plain white quad is the standing web approximation of it.
-          // The size write is required because the 1x1 Texture.WHITE would
-          // otherwise inherit the previous texture's scale.
-          this.setBlockerTexture(blocker, Texture.WHITE);
-          blocker.visible = false;
-        }
-      },
-    );
-
-    if (input.block) return run;
-    void run;
-  }
-
-  /**
-   * Port scope: `Torappu.AVG.AVGCurtainPanel._ExecuteCurtain`. It keeps the
-   * direction state, delayed size/alpha transition, and zero-duration branch;
-   * Graphics rectangles are a Web/PIXI adaptation of `AVGCurtain` widgets.
-   */
-  async setCurtain(input: CurtainInput): Promise<void> {
-    const direction = input.direction;
-    const vector = this.resolveCurtainVector(direction);
-    if (!vector) {
-      this.onWarning?.(`unsupported curtain direction: ${input.direction}`);
-      return;
-    }
-
-    const state = this.ensureCurtainState(direction);
-    const fromFill = clamp01(input.fillFrom ?? state.fill);
-    const toFill = clamp01(input.fillTo);
-    // Native port: `_ExecuteCurtain` reads `afrom` (default: the alpha
-    // captured *before* the snap) and then runs `SetCurtainAlpha(1.0)`
-    // unconditionally, before choosing the instant/tween branch. The re-snap
-    // to `afrom` only happens inside the a>=0 alpha tween
-    // (`SetCurtainAlphaTween` snaps afrom while building the sequence). With
-    // `a` absent the curtain therefore presents fully opaque no matter what
-    // alpha an earlier command left behind, and a bare `afrom` is ignored.
-    const capturedAlpha = clamp01(input.alphaFrom ?? state.alpha);
-    const fromAlpha = input.alphaTo === undefined ? 1 : capturedAlpha;
-    const toAlpha =
-      input.alphaTo === undefined ? fromAlpha : clamp01(input.alphaTo);
-
-    state.fill = fromFill;
-    state.alpha = fromAlpha;
-    state.grad = input.grad;
-    this.updateCurtainState(state, vector);
-
-    if (input.fadeMs <= 0) {
-      state.fill = toFill;
-      state.alpha = toAlpha;
-      this.updateCurtainState(state, vector);
-      if (toFill <= 0) this.removeCurtainState(direction, state);
-      return;
-    }
-
-    // Native never actually cancels the side's previous tween. 2.7.61+ calls
-    // DOKill(curtain component, complete: true) (2.7.81 0x183fc3023), whose
-    // target matches neither tween's (_curtainRect / _canvasGroup); and even
-    // 2.7.51's DOKill(transform, false) could not reach them, because both
-    // tweens are nested in a Sequence and AddActiveTweenToSequence drops
-    // nested tweens from the active list DOKill filters. A stale Sequence
-    // keeps writing sizeDelta/alpha until it ends. The session bump is a
-    // deliberate simplification (newest command owns the side), not a port.
-    const sessionId = ++state.tweenSessionId;
-    // Native SetCurtainSizeTween/SetCurtainAlphaTween carry no SetEase, so
-    // both DOSizeDelta and DOFade run on DOTween's default OutQuad (2781
-    // re-verified: DOTween cctor defaultEaseType = 6). Without the explicit
-    // ease the TweenRunner default would be linear.
-    const animate = () =>
-      this.tween(
-        input.fadeMs,
-        (progress) => {
-          if (!this.isActiveCurtainState(direction, state, sessionId)) return;
-          state.fill = fromFill + (toFill - fromFill) * progress;
-          state.alpha = fromAlpha + (toAlpha - fromAlpha) * progress;
-          this.updateCurtainState(state, vector);
-        },
-        () => {
-          if (!this.isActiveCurtainState(direction, state, sessionId)) return;
-          state.fill = toFill;
-          state.alpha = toAlpha;
-          this.updateCurtainState(state, vector);
-          if (toFill <= 0) this.removeCurtainState(direction, state);
-        },
-        { ease: dotweenDefaultEase },
-      );
-    const run =
-      input.delayMs > 0
-        ? new Promise<void>((resolve) =>
-            setTimeout(resolve, input.delayMs),
-          ).then(animate)
-        : animate();
-
-    if (input.block) await run;
-    else void run;
   }
 
   setCameraEffect(
@@ -2199,328 +1907,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private async createUi(): Promise<void> {
     await this.dialogView.mount();
     this.subtitleView.mount();
-  }
-
-  private ensureBlocker(): Sprite {
-    if (this.blockerSprite) return this.blockerSprite;
-
-    const blocker = new Sprite(Texture.WHITE);
-    // Centered anchor: the persistent inverse flip (localScale = -1) mirrors
-    // the quad around its center, exactly like the native stretch-anchored
-    // RectTransform, so coverage stays the full 1280x720 either sign.
-    blocker.anchor.set(0.5);
-    blocker.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
-    blocker.width = STORY_WIDTH;
-    blocker.height = STORY_HEIGHT;
-    blocker.tint = 0x00_00_00;
-    blocker.alpha = 0;
-
-    this.blockerSprite = blocker;
-    // 2791 UICanvas siblings draw panel_blocker before panel_displayable
-    // and panel_curtains. The layer may be unattached in renderer tests.
-    const stampIndex = this.worldLayer.children.indexOf(this.layers.animTexts);
-    this.worldLayer.addChildAt(
-      blocker,
-      stampIndex === -1 ? this.worldLayer.children.length : stampIndex,
-    );
-
-    return blocker;
-  }
-
-  private setBlockerTexture(blocker: Sprite, texture: Texture): void {
-    if (blocker.destroyed) return;
-    blocker.texture = texture;
-    blocker.width = STORY_WIDTH;
-    blocker.height = STORY_HEIGHT;
-    this.applyBlockerScaleSign(blocker);
-  }
-
-  /**
-   * Push the persistent localScale sign onto the sprite and the wipe shader.
-   * Called after every width/height write, which recomputes the scale
-   * magnitude from the new texture's local bounds (PIXI's size setters do
-   * carry the existing sign across, so this is a no-op re-assert there; it is
-   * load-bearing when `blockerScaleSign` itself just changed, and it is the
-   * single place SlideMaskFilter's uFlip stays in sync).
-   */
-  private applyBlockerScaleSign(blocker: Sprite): void {
-    blocker.scale.x = this.blockerScaleSign.x * Math.abs(blocker.scale.x);
-    blocker.scale.y = this.blockerScaleSign.y * Math.abs(blocker.scale.y);
-    this.blockerSlideFilter?.setFlip(
-      this.blockerScaleSign.x < 0,
-      this.blockerScaleSign.y < 0,
-    );
-  }
-
-  /**
-   * `_SetMaterial(slide_mask)` + ENABLE_VERTICAL keyword equivalent. Loads the
-   * bundled `slide_left` mask once; on failure the wipe degrades to the plain
-   * whole-surface veil (warning) instead of blocking playback.
-   */
-  private attachBlockerSlideFilter(
-    blocker: Sprite,
-    style: "slider" | "verticalslider",
-  ): Promise<void> | void {
-    if (!this.blockerMaskSource && !this.blockerMaskSourceFailed) {
-      if (!Assets.cache.has(SLIDE_MASK_TEXTURE_URL)) {
-        return Assets.load<Texture>(SLIDE_MASK_TEXTURE_URL).then(
-          (texture) => {
-            this.blockerMaskSource = texture.source;
-            this.attachBlockerSlideFilter(blocker, style);
-          },
-          () => {
-            this.blockerMaskSourceFailed = true;
-            this.onWarning?.("missing blocker slide mask texture");
-          },
-        );
-      }
-      this.blockerMaskSource = Assets.get<Texture>(
-        SLIDE_MASK_TEXTURE_URL,
-      ).source;
-    }
-    // Native slide_left samples bilinear with clamp wrap, PIXI's defaults.
-    const source = this.blockerMaskSource;
-    if (!source || blocker.destroyed) return;
-
-    this.blockerSlideMaterial ??= new SlideMaskFilter(source);
-    this.blockerSlideFilter = this.blockerSlideMaterial;
-    this.blockerSlideFilter.setVertical(style === "verticalslider");
-    this.applyBlockerScaleSign(blocker);
-    blocker.filters = [this.blockerSlideFilter];
-  }
-
-  /** `_CleanMaterial` (set_material(null)) equivalent for default styles. */
-  private detachBlockerSlideFilter(blocker: Sprite): void {
-    if (!this.blockerSlideFilter) return;
-    blocker.filters = [];
-    // Null the mount so writeBlockerColor returns to sprite.alpha blending;
-    // blockerSlideMaterial keeps the instance for the next slider command,
-    // the way native re-assigns the same cached Material asset.
-    this.blockerSlideFilter = null;
-    // While mounted, sprite.alpha was pinned to 1 and the wipe owned the
-    // alpha. Hand it straight back here: the caller's next color write is a
-    // tween step one frame away, so leaving 1 in place flashes a fully opaque
-    // blocker for that frame.
-    blocker.alpha = clamp01(this.blockerColor.a);
-  }
-
-  private ensureCurtainState(direction: number): CurtainRenderState {
-    const existing = this.curtains.get(direction);
-    if (existing) return existing;
-
-    const graphic = new Graphics();
-    graphic.visible = false;
-    this.curtainLayer.addChild(graphic);
-
-    const state: CurtainRenderState = {
-      alpha: 1,
-      direction,
-      fill: 0,
-      grad: false,
-      graphic,
-      tweenSessionId: 0,
-    };
-    this.curtains.set(direction, state);
-    return state;
-  }
-
-  private updateCurtainState(
-    state: CurtainRenderState,
-    vector: { x: number; y: number },
-  ): void {
-    state.graphic.alpha = clamp01(state.alpha);
-    state.graphic.clear();
-
-    if (state.graphic.alpha <= 0 || state.fill <= 0) {
-      state.graphic.visible = false;
-      return;
-    }
-
-    const threshold = this.curtainThreshold(
-      state.direction,
-      vector,
-      state.fill,
-    );
-    if (threshold === null) {
-      state.graphic.visible = false;
-      return;
-    }
-
-    // The curtain body is a solid black quad (_curtainImg is sprite_white tinted
-    // (0,0,0,1)). `grad` adds a separate CURTAIN_GRADIENT_PX strip on the inner
-    // edge, opaque on the curtain side and fully transparent toward the screen
-    // centre -- it does not fade the whole body.
-    //
-    // The body length comes from each AVGCurtain's layout group. Straight
-    // edges always pad the inner edge by 20px and their gradient ignores
-    // layout, sitting in that padding -- so without `grad` the inner 20px of
-    // the rect stays empty. Corner layouts have no padding and the gradient
-    // is a 20px layout child, so it only takes room from the body while
-    // active.
-    const inset =
-      state.grad || !CURTAIN_CORNER_HINGES[state.direction]
-        ? CURTAIN_GRADIENT_PX
-        : 0;
-    const bodyEnd = threshold - inset;
-    const body = this.buildCurtainBand(vector, null, bodyEnd);
-    const feather = state.grad
-      ? this.buildCurtainBand(vector, bodyEnd, threshold)
-      : [];
-    // Corner hinges sit off-stage, so small fills clip away entirely.
-    state.graphic.visible = body.length >= 6 || feather.length >= 6;
-
-    if (body.length >= 6) state.graphic.poly(body).fill(0x00_00_00);
-    if (feather.length < 6) return;
-
-    state.graphic.poly(feather).fill(
-      new FillGradient({
-        colorStops: [
-          { color: "rgba(0, 0, 0, 1)", offset: 0 },
-          { color: "rgba(0, 0, 0, 0)", offset: 1 },
-        ],
-        end: { x: vector.x * threshold, y: vector.y * threshold },
-        start: { x: vector.x * bodyEnd, y: vector.y * bodyEnd },
-        textureSpace: "global",
-        type: "linear",
-      }),
-    );
-  }
-
-  /**
-   * Projection along `vector` where the curtain's inner edge sits. Straight
-   * edges hinge on the stage edge, so `fill` spans the stage; corners hinge
-   * off-stage at CURTAIN_CORNER_HINGES and grow by the 1600px native side.
-   */
-  private curtainThreshold(
-    direction: number,
-    vector: { x: number; y: number },
-    fill: number,
-  ): number | null {
-    const clampedFill = clamp01(fill);
-    if (clampedFill <= 0) return null;
-
-    const hinge = CURTAIN_CORNER_HINGES[direction];
-    if (hinge)
-      return (
-        hinge.x * vector.x +
-        hinge.y * vector.y +
-        CURTAIN_CORNER_SIDE * clampedFill
-      );
-
-    const projections = CURTAIN_STAGE_CORNERS.map(
-      (point) => point.x * vector.x + point.y * vector.y,
-    );
-    const min = Math.min(...projections);
-    const max = Math.max(...projections);
-    if (Math.abs(max - min) <= 1e-6) return null;
-
-    return min + (max - min) * clampedFill;
-  }
-
-  /** Stage rect clipped to `low <= projection <= high`; `null` low means unbounded. */
-  private buildCurtainBand(
-    vector: { x: number; y: number },
-    low: number | null,
-    high: number,
-  ): number[] {
-    let polygon = this.clipCurtainPolygon(
-      [...CURTAIN_STAGE_CORNERS],
-      vector,
-      high,
-    );
-    if (low !== null) {
-      polygon = this.clipCurtainPolygon(
-        polygon,
-        { x: -vector.x, y: -vector.y },
-        -low,
-      );
-    }
-    if (polygon.length < 3) return [];
-    return polygon.flatMap((point) => [point.x, point.y]);
-  }
-
-  private clipCurtainPolygon(
-    polygon: Array<{ x: number; y: number }>,
-    vector: { x: number; y: number },
-    threshold: number,
-  ): Array<{ x: number; y: number }> {
-    const output: Array<{ x: number; y: number }> = [];
-    const last = polygon.at(-1);
-    if (!last) return output;
-    let previous = last;
-    let previousInside = this.isCurtainPointInside(previous, vector, threshold);
-
-    for (const current of polygon) {
-      const currentInside = this.isCurtainPointInside(
-        current,
-        vector,
-        threshold,
-      );
-      if (currentInside !== previousInside)
-        output.push(
-          this.intersectCurtainEdge(previous, current, vector, threshold),
-        );
-      if (currentInside) output.push(current);
-      previous = current;
-      previousInside = currentInside;
-    }
-
-    return output;
-  }
-
-  private isCurtainPointInside(
-    point: { x: number; y: number },
-    vector: { x: number; y: number },
-    threshold: number,
-  ): boolean {
-    return point.x * vector.x + point.y * vector.y <= threshold + 1e-6;
-  }
-
-  private intersectCurtainEdge(
-    start: { x: number; y: number },
-    end: { x: number; y: number },
-    vector: { x: number; y: number },
-    threshold: number,
-  ): { x: number; y: number } {
-    const startProjection = start.x * vector.x + start.y * vector.y;
-    const endProjection = end.x * vector.x + end.y * vector.y;
-    const delta = endProjection - startProjection;
-    if (Math.abs(delta) <= 1e-6) return { ...start };
-
-    const ratio = (threshold - startProjection) / delta;
-    return {
-      x: start.x + (end.x - start.x) * ratio,
-      y: start.y + (end.y - start.y) * ratio,
-    };
-  }
-
-  /**
-   * Inward half-plane normal per direction, following `_curtainWidgets`
-   * order (0 top, then clockwise). The corner diagonals are the native 45°
-   * rect rotation, not the stage diagonal.
-   */
-  private resolveCurtainVector(
-    direction: number,
-  ): { x: number; y: number } | null {
-    const mappedAngles: Record<number, number> = {
-      0: 180,
-      1: 225,
-      2: 270,
-      3: 315,
-      4: 0,
-      5: 45,
-      6: 90,
-      7: 135,
-    };
-
-    const angleDeg = mappedAngles[direction];
-    if (angleDeg === undefined) return null;
-
-    const radians = (angleDeg * Math.PI) / 180;
-    return {
-      x: Math.sin(radians),
-      y: -Math.cos(radians),
-    };
   }
 
   /** Builds the scene holder from the same artwork used by cut-in slots. */
@@ -3118,21 +2504,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.updateCharacterState(state);
   }
 
-  private disposeCurtainState(state: CurtainRenderState): void {
-    state.tweenSessionId += 1;
-    state.graphic.removeFromParent();
-    state.graphic.destroy();
-  }
-
-  private removeCurtainState(
-    direction: number,
-    state: CurtainRenderState,
-  ): void {
-    if (this.curtains.get(direction) !== state) return;
-    this.curtains.delete(direction);
-    this.disposeCurtainState(state);
-  }
-
   /**
    * Native port: AVGCharacterSlot.MoveChar (0x184029e30 on 2.7.81). Relative
    * displacement (cur + (x, y)); a zero fadeTime applies it instantly and
@@ -3475,19 +2846,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     return true;
   }
 
-  private isActiveCurtainState(
-    direction: number,
-    state: CurtainRenderState,
-    tweenSessionId?: number,
-  ): boolean {
-    if (!this.app) return false;
-    const current = this.curtains.get(direction);
-    if (current !== state) return false;
-    if (tweenSessionId !== undefined && state.tweenSessionId !== tweenSessionId)
-      return false;
-    return true;
-  }
-
   stopCameraShake(): void {
     this.endCameraShake("force_end");
     this.sceneLayer.position.set(0, 0);
@@ -3505,47 +2863,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.sceneLayer.position.set(0, 0);
     shake.animation.end();
     shake.onComplete?.();
-  }
-
-  private readBlockerColor(): {
-    a: number;
-    b: number;
-    g: number;
-    r: number;
-  } {
-    // Native `_ExecuteBlocker` reads the current `Color` (float32) for the
-    // omitted `*From` channels (2.7.61 VA 0x183e30318). Returning the raw
-    // float mirror keeps full precision and preserves 0-255-scale values
-    // across commands, instead of re-reading the quantized 8-bit tint.
-    return { ...this.blockerColor };
-  }
-
-  private writeBlockerColor(
-    blocker: Sprite,
-    color: { a: number; b: number; g: number; r: number },
-  ): void {
-    // Native stores the raw GetFloat values straight into `Color` (float32,
-    // components may exceed 1) and DOColor tweens that raw color; only the GPU
-    // clamps at render time. So a 0-255 endpoint (r=255) saturates the channel
-    // for essentially the whole tween -- the visible fade is the alpha ramp.
-    // Mirror that: keep the raw floats, and clamp just this 8-bit tint write.
-    // (The old per-value `value > 1 ? value / 255 : value` heuristic re-scaled
-    // every intermediate frame, halving mid-fade brightness.)
-    this.blockerColor = { a: color.a, b: color.b, g: color.g, r: color.r };
-    blocker.tint =
-      (tintChannel(color.r) << 16) |
-      (tintChannel(color.g) << 8) |
-      tintChannel(color.b);
-    if (this.blockerSlideFilter) {
-      // SlideMask replaces Image.alpha with the per-pixel wipe: the sprite
-      // stays opaque so the filter input keeps the untinted-dimmed rgb, and
-      // the raw alpha drives the shader's reveal progress directly.
-      this.blockerSlideFilter.alpha = color.a;
-      blocker.alpha = 1;
-    } else {
-      blocker.alpha = clamp01(color.a);
-    }
-    blocker.visible = color.a > 0;
   }
 
   private createOverlayTextStyle(fontSize: number, widthPx: number): TextStyle {

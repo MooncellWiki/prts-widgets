@@ -292,6 +292,7 @@ export interface CharacterActionInput {
 
 export interface BlockerInput {
   block: boolean;
+  /** Signed scaled duration. Zero selects the native immediate branch. */
   fadeMs: number;
   from: { a: number; b: number; g: number; r: number };
   image?: string;
@@ -306,6 +307,7 @@ export interface CurtainInput {
   block: boolean;
   delayMs: number;
   direction: number;
+  /** Signed scaled duration. Zero selects the native immediate branch. */
   fadeMs: number;
   fillFrom?: number;
   fillTo: number;
@@ -776,7 +778,9 @@ export interface StoryRenderer {
   setFocusParam: (input: FocusParamInput) => void;
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearCharacters: (slot?: string, fadeMs?: number) => Promise<void> | void;
-  clearCurtains: (fadeMs?: number, block?: boolean) => Promise<void> | void;
+  clearCurtains: (fadeMs?: number) => void;
+  recycleCurtains: () => void;
+  resetCurtains: () => void;
   /** Omit the duration for the command's immediate _ResetPanel path. */
   clearGridBackground: (
     fadeMs?: number,
@@ -823,13 +827,21 @@ export interface StoryRenderer {
   ) => AnimationPreparation;
   setBackground: (key: string, input?: BackgroundInput) => Promise<void>;
   setBackgroundTween: (input: BackgroundTweenInput) => Promise<void>;
-  setBlocker: (input: BlockerInput) => Promise<void> | void;
+  setBlocker: (
+    input: BlockerInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  cancelBlockerPreparation: () => void;
+  resetBlocker: () => void;
   setCharacter: (input: CharacterSlotInput) => Promise<void>;
   setCharacterCutin: (
     input: CharacterCutinInput,
     onComplete?: () => void,
   ) => ExecutionHandle | void;
-  setCurtain: (input: CurtainInput) => Promise<void>;
+  setCurtain: (
+    input: CurtainInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setGridBackground: (
     input: GridBackgroundInput,
     onComplete?: () => void,
