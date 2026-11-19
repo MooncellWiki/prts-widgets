@@ -952,11 +952,17 @@ describe("PixiStoryRenderer blocker", () => {
     renderer.setBlocker(blockerInput);
     renderer.setCurtain(curtainInput);
 
-    const { animTexts, blocker, curtains, sceneCamera, world } =
+    const { animTexts, blocker, curtains, sceneCamera, sceneViewport, world } =
       renderer.layers;
     expect(blocker.children[0]).toBeInstanceOf(Sprite);
     expect(curtains.children).toHaveLength(1);
-    expect(world.children).toEqual([sceneCamera, blocker, animTexts, curtains]);
+    expect(sceneCamera.parent).toBe(sceneViewport);
+    expect(world.children).toEqual([
+      sceneViewport,
+      blocker,
+      animTexts,
+      curtains,
+    ]);
   });
 
   it("applies OutQuad to raw color endpoints and quantizes the drawn color", () => {

@@ -342,6 +342,7 @@ export class StoryRuntime {
   private readonly spellStickerPanel: SpellStickerPanel;
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
+  private readonly videoPanel: VideoPanel;
   private pendingFrameWait: PendingFrameWait | null = null;
   private pendingInput: PendingInput | null = null;
   private resumeCommands: (() => void) | null = null;
@@ -478,16 +479,17 @@ export class StoryRuntime {
     this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
-    new VideoPanel(renderer, {
+    this.videoPanel = new VideoPanel(renderer, {
       beginWait: () => {
         this.state = "waiting_video";
       },
-      finishAtFrameEnd: (handle, finishCommand) =>
-        this.finishAtFrameEnd(handle, finishCommand),
+      finishAtFrameEnd: (handle, finishCommand, afterForceEnd) =>
+        this.finishAtFrameEnd(handle, finishCommand, afterForceEnd),
       isSkipping: () => this.skipCleanup !== null && !this.destroyed,
       missingVideoUrls: context.missingVideoUrls,
       warn: (type, detail) => this.warn(type, detail),
-    }).register(this.commandRegistry);
+    });
+    this.videoPanel.register(this.commandRegistry);
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -950,11 +952,16 @@ export class StoryRuntime {
   private finishAtFrameEnd(
     handle: ExecutionHandle,
     onFinish?: () => void,
+    afterForceEnd?: () => void,
   ): () => void {
     return this.renderer.onFrameEnd(() => {
-      if (handle.endReason !== undefined || this.skipCleanup || this.destroyed)
-        return;
+      if (this.destroyed) return;
       try {
+        if (handle.endReason === "force_end") {
+          afterForceEnd?.();
+          return;
+        }
+        if (handle.endReason !== undefined || this.skipCleanup) return;
         onFinish?.();
         if (
           handle.endReason !== undefined ||
@@ -1192,8 +1199,7 @@ export class StoryRuntime {
     this.dialogPanel.destroy();
     this.showItemPanel.reset();
     this.stopPlaybackInput();
-    // FinishCommand can release the video wait while its fade is still active.
-    this.renderer.stopVideo();
+    this.videoPanel.reset();
     this.playbackGeneration += 1;
     // 销毁后不该再有推送落到 UI 上
     this.events.all.clear();
@@ -1218,6 +1224,9 @@ export class StoryRuntime {
    */
   private finishPlayback(): Promise<void> {
     this.stopPlaybackInput();
+    // OnStoryCommitted (2791 @ 0x18416B750) deactivates the AVG root while
+    // a video fade or delayed media stop can still be pending.
+    this.videoPanel.reset();
     // AVGController.OnStoryEnd (2791 @ 0x18416B9C0) calls SubtitlePanel.OnReset.
     void this.subtitlePanel.reset();
     this.blockerPanel.reset();

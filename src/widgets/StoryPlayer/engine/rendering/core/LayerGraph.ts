@@ -1,4 +1,12 @@
-import { Container, RenderLayer } from "pixi.js";
+import {
+  AlphaFilter,
+  Container,
+  Graphics,
+  Rectangle,
+  RenderLayer,
+} from "pixi.js";
+
+import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
 
 // 2791 sharedassets1.assets, AVGController (3630) canvas holder config.
 export const sceneCanvasOrder = {
@@ -41,10 +49,19 @@ export class LayerGraph {
   readonly scene = new Container();
   readonly sceneCamera = new Container();
   readonly sceneDraw = new RenderLayer({ sortableChildren: true });
+  readonly sceneViewport = new Container();
   readonly ui = new Container();
   readonly world = new Container();
+  private sceneFade?: AlphaFilter;
 
   constructor() {
+    this.sceneViewport.filterArea = new Rectangle(
+      0,
+      0,
+      STORY_WIDTH,
+      STORY_HEIGHT,
+    );
+    this.sceneViewport.once("destroyed", () => this.sceneFade?.destroy());
     for (const slots of [
       this.cgItems,
       this.avgDisplayBackground,
@@ -84,11 +101,36 @@ export class LayerGraph {
       this.sceneDraw.attach(root);
     }
     this.sceneCamera.addChild(this.scene, this.cgItems, this.sceneDraw);
-    this.world.addChild(this.sceneCamera);
+    const clearColor = new Graphics()
+      .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
+      .fill(0x000000);
+    this.sceneViewport.addChild(clearColor, this.sceneCamera);
+    this.world.addChild(this.sceneViewport);
     // 2791 UICanvas/panel_avg draws panel_blocker, panel_displayable and
     // panel_curtains in that sibling order above the scene canvases.
     this.world.addChild(this.blocker, this.animTexts, this.curtains);
     stage.addChild(this.world);
     stage.addChild(this.ui);
+  }
+
+  /**
+   * 2791 VideoCanvas uses camera 1708 (depth 50), below UICanvas on
+   * camera 1709 (depth 51). The Web keeps opaque DOM media under Pixi and
+   * blends the flattened, opaque scene over it at the inverse opacity.
+   */
+  setVideoOpacity(opacity: number): void {
+    const scene = this.sceneViewport;
+    scene.renderable = opacity < 1;
+    if (opacity <= 0 || opacity >= 1) {
+      if (scene.filters) scene.filters = null;
+      return;
+    }
+    const fade = (this.sceneFade ??= new AlphaFilter({
+      alpha: 1,
+      antialias: "inherit",
+      resolution: "inherit",
+    }));
+    fade.alpha = 1 - opacity;
+    if (!scene.filters) scene.filters = fade;
   }
 }

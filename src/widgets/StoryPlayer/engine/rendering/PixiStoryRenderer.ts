@@ -477,8 +477,8 @@ export class PixiStoryRenderer implements StoryRenderer {
       onWarning,
     );
     this.videoPanel = new VideoPanel(
-      this.uiLayer,
       this.updatePhaseTweenRunner,
+      (opacity) => this.layers.setVideoOpacity(opacity),
       onWarning,
     );
     this.dialogView = new DialogView(this.uiLayer, onWarning, (...args) =>
@@ -585,7 +585,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     await app.init({
       antialias: true,
       autoDensity: true,
-      background: "#000000",
+      backgroundAlpha: 0,
       height: STORY_HEIGHT,
       preference: "webgpu",
       resolution: computeDisplayResolution(host),
@@ -597,8 +597,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     app.canvas.style.width = "100%";
     app.canvas.style.height = "100%";
     app.canvas.style.display = "block";
-    host.append(app.canvas);
+    app.canvas.style.position = "relative";
     this.videoPanel.mount(host);
+    host.append(app.canvas);
 
     this.app = app;
     this.onFrameUpdate(({ deltaMs }) =>

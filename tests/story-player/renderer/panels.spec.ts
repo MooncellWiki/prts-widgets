@@ -1,4 +1,5 @@
 import {
+  AlphaFilter,
   Application,
   Assets,
   type BlurFilter,
@@ -26,6 +27,7 @@ import {
 } from "../helpers/runtimeFakes";
 
 import type { CharacterArt } from "../../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../../src/widgets/StoryPlayer/engine/types";
 
@@ -33,6 +35,12 @@ interface ManualTween {
   complete: () => void;
   durationMs: number;
   step: (progress: number) => void;
+}
+
+function videoOpacity({ sceneViewport }: LayerGraph): number {
+  if (!sceneViewport.renderable) return 1;
+  const filter = sceneViewport.filters?.[0];
+  return filter instanceof AlphaFilter ? 1 - filter.alpha : 0;
 }
 
 function createShowItemRenderer(ticker?: Ticker) {
@@ -1553,20 +1561,18 @@ describe("Displayable and focus frame order", () => {
       const started = runtime.start();
       try {
         const video = host.querySelector("video")!;
-        const overlay = video.parentElement!;
+        const layers: LayerGraph = renderer.layers;
         expect(runtime.getState()).toBe("waiting_video");
         expect(video).toBeInstanceOf(HTMLVideoElement);
         app.ticker.update(16);
-        expect(overlay.style.opacity).toBe("0");
-        expect(renderer.layers.ui.visible).toBe(true);
+        expect(videoOpacity(layers)).toBe(0);
 
         video.dispatchEvent(new Event("playing"));
         app.ticker.update(131);
-        expect(Number(overlay.style.opacity)).toBeCloseTo(0.5);
-        expect(renderer.layers.ui.visible).toBe(true);
+        expect(videoOpacity(layers)).toBeCloseTo(0.5);
         app.ticker.update(246);
-        expect(overlay.style.opacity).toBe("1");
-        expect(renderer.layers.ui.visible).toBe(false);
+        expect(videoOpacity(layers)).toBe(1);
+        expect(layers.ui.visible).toBe(true);
         draws.length = 0;
 
         video.dispatchEvent(new Event(event));
@@ -1574,19 +1580,16 @@ describe("Displayable and focus frame order", () => {
         expect(runtime.getState()).toBe("waiting_video");
         app.ticker.update(262);
         expect(runtime.getState()).toBe("running");
-        expect(overlay.style.opacity).toBe("1");
-        expect(renderer.layers.ui.visible).toBe(true);
+        expect(videoOpacity(layers)).toBe(1);
         app.ticker.update(278);
         expect(draws).toEqual([0, 1]);
         await started;
 
         const fadeStart = 262 + delayMs;
         app.ticker.update(Math.max(278, fadeStart));
-        expect(Number(overlay.style.opacity)).toBeCloseTo(
-          delayMs ? 1 : 214 / 230,
-        );
+        expect(videoOpacity(layers)).toBeCloseTo(delayMs ? 1 : 214 / 230);
         app.ticker.update(fadeStart + 115);
-        expect(Number(overlay.style.opacity)).toBeCloseTo(0.5);
+        expect(videoOpacity(layers)).toBeCloseTo(0.5);
         expect(host.querySelector("video")).toBe(video);
         app.ticker.update(fadeStart + 229);
         expect(host.querySelector("video")).toBe(video);
@@ -1599,6 +1602,84 @@ describe("Displayable and focus frame order", () => {
       }
     },
   );
+
+  it("draws the next blocker and dialog above video during its fade-out delay", async () => {
+    // 2791 draws VideoCanvas on camera 1708 before UICanvas on camera 1709.
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[video(res="video/entry",fadeoutdelay=1)]',
+        "[blocker(a=0.5,fadetime=0)]",
+        '[name="A"]after',
+      ],
+      () => {},
+    );
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValueOnce(undefined);
+    const host = document.createElement("div");
+    renderer.videoPanel.mount(host);
+    const started = runtime.start();
+    try {
+      const video = host.querySelector("video")!;
+      const layers: LayerGraph = renderer.layers;
+      video.dispatchEvent(new Event("playing"));
+      app.ticker.update(230);
+      video.dispatchEvent(new Event("ended"));
+      app.ticker.update(246);
+      app.ticker.update(262);
+      await started;
+
+      expect(videoOpacity(layers)).toBe(1);
+      expect(host.querySelector("video")).toBe(video);
+      expect(layers.sceneViewport.renderable).toBe(false);
+      expect(layers.blocker.renderable).toBe(true);
+      expect(layers.blocker.children[0]?.alpha).toBeCloseTo(0.5);
+      expect(layers.ui.visible).toBe(true);
+      expect(runtime.getDisplayedLineIndex()).toBe(3);
+    } finally {
+      play.mockRestore();
+      destroy();
+      await started;
+    }
+  });
+
+  it("releases the last video when the story ends before its fade starts", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      ['[video(res="video/entry",fadeoutdelay=5)]'],
+      () => {},
+    );
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValueOnce(undefined);
+    const host = document.createElement("div");
+    renderer.videoPanel.mount(host);
+    const started = runtime.start();
+    try {
+      const video = host.querySelector("video")!;
+      video.dispatchEvent(new Event("playing"));
+      app.ticker.update(230);
+      video.dispatchEvent(new Event("ended"));
+      app.ticker.update(246);
+      app.ticker.update(262);
+      app.ticker.update(278);
+      app.ticker.update(477);
+      expect(runtime.getState()).toBe("waiting_timer");
+      expect(host.querySelector("video")).toBe(video);
+      expect(videoOpacity(renderer.layers)).toBe(1);
+
+      app.ticker.update(478);
+      await started;
+      expect(runtime.getState()).toBe("finished");
+      expect(host.querySelector("video")).toBeNull();
+      expect(videoOpacity(renderer.layers)).toBe(0);
+      app.ticker.update(5500);
+      expect(videoOpacity(renderer.layers)).toBe(0);
+    } finally {
+      play.mockRestore();
+      destroy();
+      await started;
+    }
+  });
 
   it.each(["error", "play rejection"])(
     "keeps the overlay transparent after %s before playback starts",
@@ -1619,21 +1700,20 @@ describe("Displayable and focus frame order", () => {
       const started = runtime.start();
       try {
         const video = host.querySelector("video")!;
-        const overlay = video.parentElement!;
         if (failure === "error") video.dispatchEvent(new Event("error"));
         await flushAsync();
         video.dispatchEvent(new Event("playing"));
         expect(runtime.getState()).toBe("waiting_video");
-        expect(overlay.style.opacity).toBe("0");
+        expect(videoOpacity(renderer.layers)).toBe(0);
         app.ticker.update(16);
         app.ticker.update(32);
         await started;
         expect(runtime.getDisplayedLineIndex()).toBe(2);
         expect(renderer.layers.ui.visible).toBe(true);
-        expect(overlay.style.opacity).toBe("0");
+        expect(videoOpacity(renderer.layers)).toBe(0);
         app.ticker.update(1245);
         expect(host.querySelector("video")).toBe(video);
-        expect(overlay.style.opacity).toBe("0");
+        expect(videoOpacity(renderer.layers)).toBe(0);
         app.ticker.update(1246);
         expect(host.querySelector("video")).toBeNull();
       } finally {
@@ -1666,17 +1746,16 @@ describe("Displayable and focus frame order", () => {
     const started = runtime.start();
     try {
       const video = host.querySelector("video")!;
-      const overlay = video.parentElement!;
       video.dispatchEvent(new Event("playing"));
       app.ticker.update(230);
       video.dispatchEvent(new Event("ended"));
       app.ticker.update(246);
-      expect(overlay.style.opacity).toBe("1");
+      expect(videoOpacity(renderer.layers)).toBe(1);
       app.ticker.update(262);
       await started;
       expect(runtime.getDisplayedLineIndex()).toBe(3);
       expect(play).toHaveBeenCalledTimes(1);
-      expect(overlay.style.opacity).toBe("0");
+      expect(videoOpacity(renderer.layers)).toBe(0);
       app.ticker.update(491);
       expect(host.querySelector("video")).toBe(video);
       app.ticker.update(492);
@@ -1692,7 +1771,7 @@ describe("Displayable and focus frame order", () => {
     { delay: -0.1, releaseMs: 130 },
     { delay: -0.24, releaseMs: 0 },
   ])(
-    "stops media for fadeoutdelay=$delay while the panel completes its fade",
+    "reveals the scene when fadeoutdelay=$delay stops media during the fade",
     async ({ delay, releaseMs }) => {
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
         [`[video(res="video/entry",fadeoutdelay=${delay})]`, '[name="A"]after'],
@@ -1716,10 +1795,10 @@ describe("Displayable and focus frame order", () => {
         expect(host.querySelector("video")).toBe(releaseMs > 0 ? video : null);
         app.ticker.update(finishTime + releaseMs);
         expect(host.querySelector("video")).toBeNull();
-        expect(overlay.style.display).toBe("flex");
-        expect(Number(overlay.style.opacity)).toBeCloseTo(1 - releaseMs / 230);
+        expect(overlay.style.display).toBe("none");
+        expect(videoOpacity(renderer.layers)).toBe(0);
         app.ticker.update(finishTime + 230);
-        expect(overlay.style.opacity).toBe("0");
+        expect(videoOpacity(renderer.layers)).toBe(0);
         expect(overlay.style.display).toBe("none");
       } finally {
         play.mockRestore();
@@ -1730,15 +1809,43 @@ describe("Displayable and focus frame order", () => {
   );
 
   it.each([
-    { title: "while its completion is queued", finishAt: 115, finishDelay: 0 },
+    {
+      title: "before a terminal event",
+      ended: false,
+      finishBeforeSkip: false,
+      skipAt: 115,
+      fadeStart: 115,
+      opacityAfterSkip: 214 / 230,
+      releaseAt: 345,
+    },
+    {
+      title: "while its completion is queued",
+      ended: true,
+      finishBeforeSkip: false,
+      skipAt: 115,
+      fadeStart: 115,
+      opacityAfterSkip: 0,
+      releaseAt: 1361,
+    },
     {
       title: "after its completion ran at frame end",
-      finishAt: 131,
-      finishDelay: 1000,
+      ended: true,
+      finishBeforeSkip: true,
+      skipAt: 131,
+      fadeStart: 1131,
+      opacityAfterSkip: 1,
+      releaseAt: 1361,
     },
   ])(
     "uses the correct fade timing when skipping $title",
-    async ({ finishAt, finishDelay }) => {
+    async ({
+      ended,
+      finishBeforeSkip,
+      skipAt,
+      fadeStart,
+      opacityAfterSkip,
+      releaseAt,
+    }) => {
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
         [
           '[video(res="video/entry",fadeoutdelay=1)]',
@@ -1756,23 +1863,28 @@ describe("Displayable and focus frame order", () => {
       let skipping: Promise<void> | undefined;
       try {
         const video = host.querySelector("video")!;
-        const overlay = video.parentElement!;
+        const layers: LayerGraph = renderer.layers;
         video.dispatchEvent(new Event("playing"));
         app.ticker.update(115);
-        video.dispatchEvent(new Event("ended"));
-        if (finishDelay > 0) app.ticker.update(finishAt);
-        const startOpacity = Number(overlay.style.opacity);
+        if (ended) video.dispatchEvent(new Event("ended"));
+        if (finishBeforeSkip) app.ticker.update(skipAt);
+        const startOpacity = videoOpacity(layers);
         skipping = runtime.skipNode();
         expect(host.querySelector("video")).toBe(video);
 
         await flushAsync();
-        app.ticker.update(finishAt + 16);
+        app.ticker.update(skipAt + 16);
         await skipping;
         expect(runtime.getState()).toBe("waiting_input");
-        app.ticker.update(finishAt + finishDelay + 115);
-        expect(Number(overlay.style.opacity)).toBeCloseTo(startOpacity / 2);
+        // A queued OnFinish sets the same-state alpha at frame end.
+        expect(videoOpacity(layers)).toBeCloseTo(
+          startOpacity * opacityAfterSkip,
+        );
+        app.ticker.update(fadeStart + 115);
+        expect(videoOpacity(layers)).toBeCloseTo(startOpacity / 2);
+        app.ticker.update(releaseAt - 1);
         expect(host.querySelector("video")).toBe(video);
-        app.ticker.update(finishAt + finishDelay + 230);
+        app.ticker.update(releaseAt);
         expect(host.querySelector("video")).toBeNull();
       } finally {
         play.mockRestore();
@@ -1808,19 +1920,19 @@ describe("Displayable and focus frame order", () => {
       const next = host.querySelector("video")!;
       expect(next.src).toContain("/video/next");
       expect(next).not.toBe(old);
-      const overlay = next.parentElement!;
-      expect(overlay.style.opacity).toBe("1");
+      expect(videoOpacity(renderer.layers)).toBe(0);
 
-      // The outgoing fade continues while the replacement prepares.
+      // The outgoing alpha keeps changing with no drawable media.
       app.ticker.update(461);
-      expect(Number(overlay.style.opacity)).toBeCloseTo(0.5);
+      expect(videoOpacity(renderer.layers)).toBe(0);
       old.dispatchEvent(new Event("error"));
       next.dispatchEvent(new Event("playing"));
+      expect(videoOpacity(renderer.layers)).toBeCloseTo(0.5);
       app.ticker.update(576);
       expect(host.querySelector("video")).toBe(next);
-      expect(Number(overlay.style.opacity)).toBeCloseTo(0.75);
+      expect(videoOpacity(renderer.layers)).toBeCloseTo(0.75);
       app.ticker.update(691);
-      expect(overlay.style.opacity).toBe("1");
+      expect(videoOpacity(renderer.layers)).toBe(1);
       expect(runtime.getState()).toBe("waiting_video");
     } finally {
       play.mockRestore();

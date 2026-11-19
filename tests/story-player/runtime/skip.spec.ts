@@ -172,7 +172,7 @@ describe("StoryRuntime", () => {
     expect(runtime.canSkipNode()).toBe(false);
   });
 
-  it("discards a queued video completion on SkipToThis and ignores late events", async () => {
+  it("drops a queued close and late events when SkipToThis replaces the video", async () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
     const play = vi.spyOn(renderer, "playVideo");
@@ -204,6 +204,7 @@ describe("StoryRuntime", () => {
         "https://torappu.prts.wiki/assets/video/old",
         "https://torappu.prts.wiki/assets/video/current",
       ]);
+      expect(stop).toHaveBeenCalledExactlyOnceWith(0);
 
       endOldVideo();
       await renderer.frames.advance(16, 16);

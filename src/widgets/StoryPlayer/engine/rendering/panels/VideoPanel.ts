@@ -1,7 +1,6 @@
 import { hasTweenDuration } from "../../commandParams";
 
 import type { TweenHandle, TweenRunner } from "../core/TweenRunner";
-import type { Container } from "pixi.js";
 
 // _SetHiddenInternal (2791 @ 0x1841BEEA0) uses 230 ms and the panel_video
 // prefab (sharedassets1.assets PathID 3845) supplies Ease.Linear.
@@ -21,12 +20,13 @@ export class VideoPanel {
   private host: HTMLDivElement | null = null;
   private activeVideo: ActiveVideo | null = null;
   private hidden = true;
+  private opacity = 0;
   private disposeTween?: TweenHandle;
   private fadeTween?: TweenHandle;
 
   constructor(
-    private readonly uiLayer: Container,
     private readonly tweens: TweenRunner,
+    private readonly onOpacityChange: (opacity: number) => void,
     private readonly warn?: (detail: string) => void,
   ) {}
 
@@ -39,7 +39,6 @@ export class VideoPanel {
       display: "none",
       inset: "0",
       justifyContent: "center",
-      opacity: "0",
       overflow: "hidden",
       pointerEvents: "none",
       position: "absolute",
@@ -76,6 +75,7 @@ export class VideoPanel {
       // when the player is ready. The browser signals playback via playing.
       media.started = true;
       this.setHidden(false);
+      this.updateDisplay();
     };
     this.activeVideo = media;
     host.append(video);
@@ -145,12 +145,8 @@ export class VideoPanel {
 
   /** _SetHiddenInternal (2791 @ 0x1841BEEA0) owns only the CanvasGroup fade. */
   private setHidden(hidden: boolean, delayMs = 0): void {
-    const host = this.host;
-    if (!host) return;
+    if (!this.host) return;
     const targetOpacity = hidden ? 0 : 1;
-    // Web can draw and receive input behind the closing overlay.
-    if (hidden) this.uiLayer.visible = true;
-    host.style.pointerEvents = hidden ? "none" : "";
     if (this.hidden === hidden) {
       this.setOpacity(targetOpacity);
       return;
@@ -167,7 +163,7 @@ export class VideoPanel {
       (progress) => {
         const elapsed = progress * duration;
         if (elapsed < delay) return;
-        startOpacity ??= Number(host.style.opacity);
+        startOpacity ??= this.opacity;
         const fadeProgress =
           progress === 1 ? 1 : (elapsed - delay) / VIDEO_FADE_MS;
         this.setOpacity(
@@ -177,23 +173,23 @@ export class VideoPanel {
       {
         onComplete: () => {
           this.fadeTween = undefined;
-          this.uiLayer.visible = hidden;
         },
       },
     );
   }
 
   private setOpacity(opacity: number): void {
-    if (!this.host) return;
-    this.host.style.opacity = String(opacity);
+    this.opacity = opacity;
     this.updateDisplay();
   }
 
   private updateDisplay(): void {
     const host = this.host;
     if (!host) return;
-    host.style.display =
-      this.activeVideo || Number(host.style.opacity) > 0 ? "flex" : "none";
+    // The native video_player prefab draws only its movie Graphic, which
+    // OnMaterialAvailableChanged (2791 @ 0x184403C30) hides without media.
+    host.style.display = this.activeVideo ? "flex" : "none";
+    this.onOpacityChange(this.activeVideo?.started ? this.opacity : 0);
   }
 
   destroy(): void {

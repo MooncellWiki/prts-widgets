@@ -11,6 +11,7 @@ interface VideoPlayback {
   finishAtFrameEnd: (
     handle: ExecutionHandle,
     finishCommand: () => void,
+    afterForceEnd: () => void,
   ) => () => void;
   isSkipping: () => boolean;
   missingVideoUrls?: ReadonlySet<string>;
@@ -20,6 +21,7 @@ interface VideoPlayback {
 /** Torappu.AVG.AVGVideoPanel.GetExecutors (2791 @ 0x1841BDCC0). */
 export class VideoPanel extends ExecutorComponent {
   private cachedFadeOutDelayMs = 0;
+  private cancelFrameEnd?: () => void;
 
   constructor(
     private readonly renderer: Pick<StoryRenderer, "playVideo" | "stopVideo">,
@@ -32,6 +34,11 @@ export class VideoPanel extends ExecutorComponent {
     return { video: (line, isCurrent) => this.executeVideo(line, isCurrent) };
   }
 
+  reset(): void {
+    this.cancelPendingCompletion();
+    this.renderer.stopVideo();
+  }
+
   /** OnFinish (2791 @ 0x1841BDDE0) uses the delay cached by _ExecuteVideo. */
   protected override onFinish(): void {
     this.renderer.stopVideo(this.cachedFadeOutDelayMs);
@@ -39,7 +46,8 @@ export class VideoPanel extends ExecutorComponent {
 
   /** ForceCommandEnd (2791 @ 0x1841BDC40) starts the fade immediately. */
   protected override forceCommandEnd(): void {
-    this.renderer.stopVideo(this.playback.isSkipping() ? 0 : undefined);
+    if (this.playback.isSkipping()) this.renderer.stopVideo(0);
+    else this.reset();
   }
 
   private executeVideo(
@@ -48,6 +56,7 @@ export class VideoPanel extends ExecutorComponent {
   ): "continue" | WaitForFrame {
     // _ExecuteVideo / _PlayVideo (2791 @ 0x1841BE4F0 / 0x1841BEC90).
     // Web resolves relative keys via the CDN and accepts HTTP(S) URLs.
+    this.cancelPendingCompletion();
     this.cachedFadeOutDelayMs =
       (getFiniteFloat(args, "fadeoutdelay") ?? 0) * 1000;
 
@@ -79,31 +88,38 @@ export class VideoPanel extends ExecutorComponent {
 
   private play(url: string, isCurrent: () => boolean): WaitForFrame {
     const finish = createExecutionHandle(true);
-    let cancelFrameEnd: (() => void) | undefined;
-    const cancelWait = () => {
-      finish.end("force_end");
-      cancelFrameEnd?.();
-    };
     const forceEnd = () => {
-      cancelWait();
+      finish.end("force_end");
       this.forceCommandEnd();
     };
 
     this.playback.beginWait();
     try {
       this.renderer.playVideo(url, () => {
-        if (finish.endReason !== undefined || cancelFrameEnd || !isCurrent())
+        if (
+          finish.endReason !== undefined ||
+          this.cancelFrameEnd ||
+          !isCurrent()
+        )
           return;
-        // _HandlePlayEvent (2791 @ 0x1841BE7D0) queues FinishCommand on
-        // PLAYEND or ERROR. Cancel the Web callback when its wait is dropped.
-        cancelFrameEnd = this.playback.finishAtFrameEnd(
+        // _HandlePlayEvent (2791 @ 0x1841BE7D0) queues FinishCommand.
+        // A segment skip releases the wait, but the queued callback still
+        // runs OnFinish if the same media is closing at frame end.
+        this.cancelFrameEnd = this.playback.finishAtFrameEnd(
           finish,
-          this.finishCommand,
+          () => {
+            this.cancelFrameEnd = undefined;
+            this.finishCommand();
+          },
+          () => {
+            this.cancelFrameEnd = undefined;
+            this.onFinish();
+          },
         );
       });
     } catch (error) {
-      cancelWait();
-      this.renderer.stopVideo();
+      finish.end("force_end");
+      this.reset();
       throw error;
     }
 
@@ -115,5 +131,10 @@ export class VideoPanel extends ExecutorComponent {
         return finish.endReason !== undefined;
       },
     };
+  }
+
+  private cancelPendingCompletion(): void {
+    this.cancelFrameEnd?.();
+    this.cancelFrameEnd = undefined;
   }
 }
