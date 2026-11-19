@@ -18,7 +18,11 @@ import type { Context } from "../../../context";
 import type { SceneEffectManager } from "../SceneEffectManager";
 import type { EaseCurve } from "../core/DotweenEase";
 import type { TextureLoad } from "../core/TextureAsset";
-import type { TweenRunner, TweenStartOptions } from "../core/TweenRunner";
+import type {
+  TweenHandle,
+  TweenRunner,
+  TweenStartOptions,
+} from "../core/TweenRunner";
 
 function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -250,8 +254,23 @@ const SLOT_BASE_X = { l: 440, m: 640, r: 840 } as const;
 
 interface SlotSequence {
   remainingMs: number;
+  onComplete?: () => void;
+  timer?: TweenHandle;
+  clearTween?: TweenHandle;
   waits: Set<ExecutionHandle>;
 }
+
+interface CharacterPreparation {
+  animation: ExecutionHandle;
+  command: "character" | "charslot";
+}
+
+type FinishTarget = "charslot" | object;
+type DeferredTarget = CharacterSlot | FinishTarget;
+
+type DeferredCallback =
+  | { slot: CharacterSlot }
+  | { command: CharacterPreparation["command"]; onComplete: () => void };
 
 /**
  * Web view for the built-in AVGCharacterSlots shared by CharacterPanel and
@@ -263,8 +282,23 @@ export class CharacterView {
     CharacterRenderState
   >();
   private readonly fadingStates = new Set<CharacterRenderState>();
-  private readonly preparations = new Map<CharacterSlot, ExecutionHandle>();
+  private readonly preparations = new Map<
+    CharacterSlot,
+    CharacterPreparation
+  >();
   private readonly slotSequences = new Map<CharacterSlot, SlotSequence>();
+  private readonly deferredCallbacks = new Map<
+    DeferredTarget,
+    DeferredCallback
+  >();
+  private cancelDeferredReplay?: () => void;
+  private readonly slotActionTargets = {
+    l: { offset: {}, shake: {} },
+    m: { offset: {}, shake: {} },
+    r: { offset: {}, shake: {} },
+  };
+  private resettingOffset = false;
+  private readonly characterZoomTweens = {};
   private readonly characterArt: CharacterArtLoader;
 
   constructor(
@@ -300,19 +334,40 @@ export class CharacterView {
   }
 
   show(input: CharacterSlotInput): ExecutionHandle | void {
-    return this.withVisual(input, (slot, built) => {
+    const slot = this.normalizeCharacterSlot(input.slot);
+    const current = this.characterSlots.get(slot);
+    // AVGCharacterSlot.Set (2791 @ 0x184237BC0) reuses the holder for the
+    // same raw key. Keep its in-flight actions when updating the focus.
+    if (
+      current &&
+      input.nativeKey &&
+      input.nativeKey === current.nativeKey &&
+      !input.enterFrom
+    ) {
+      this.cancelSlotPreparation(slot);
+      current.focusBrightness = input.dimmed ? 0.5 : 1;
+      this.updateCharacterOpacity(current);
+      this.applyCharacterZOrder(input.focus ?? 0);
+      return;
+    }
+    return this.withVisual(slot, input, "character", (built) => {
       if (built) this.mountCharacter(input, slot, built);
+      else if (input.characterKey) this.clearSlot(slot, input.durationMs ?? 0);
     });
   }
 
-  updateSlot(input: CharacterSlotInput): ExecutionHandle | void {
-    return this.withVisual(input, (slot, built, preparation) => {
+  updateSlot(
+    input: CharacterSlotInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    const slot = this.normalizeCharacterSlot(input.slot);
+    return this.withVisual(slot, input, "charslot", (built, preparation) => {
       this.applySlotUpdate(input, slot, built);
-      const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
       return this.trackSlotSequence(
         slot,
-        durationMs,
+        Math.max(0, input.durationMs ?? 0),
         !!input.block,
+        onComplete,
         preparation,
       );
     });
@@ -320,43 +375,109 @@ export class CharacterView {
 
   /** AVGCharacterSlot._LoadImage (2791 @ 0x184239340) loads synchronously. */
   private withVisual(
+    slot: CharacterSlot,
     input: CharacterSlotInput,
+    command: CharacterPreparation["command"],
     apply: (
-      slot: CharacterSlot,
       built: CharacterBuiltVisual | null,
       preparation?: ExecutionHandle,
     ) => ExecutionHandle | void,
   ): ExecutionHandle | void {
-    const slot = this.normalizeCharacterSlot(input.slot);
-    this.preparations.get(slot)?.end("force_end");
-    this.preparations.delete(slot);
+    this.cancelSlotPreparation(slot);
     const art = this.loadArt(input.characterKey, input.expression);
     if (!(art instanceof Promise))
-      return apply(slot, this.buildCharacterVisual(input, art));
+      return apply(this.buildCharacterVisual(input, art));
 
     // Wait for a browser cache miss before committing a new visual. Acquiring
     // only on commit keeps a cancelled load from pinning a face-overlay bake.
-    const preparation = createExecutionHandle(true);
+    const animation = createExecutionHandle(true);
+    const preparation = { animation, command };
     this.preparations.set(slot, preparation);
     const assetsReady = art
       .then((ready) => {
         if (this.preparations.get(slot) !== preparation) return;
         this.preparations.delete(slot);
         const built = this.buildCharacterVisual(input, ready);
-        if (!apply(slot, built, preparation)) preparation.end();
+        this.replayPreparedSlotCallbacks();
+        if (!apply(built, animation)) animation.end();
       })
       .catch((error: unknown) => {
         if (this.preparations.get(slot) === preparation)
           this.preparations.delete(slot);
-        preparation.fail(error);
+        animation.fail(error);
       });
-    return Object.assign(preparation, { assetsReady });
+    return Object.assign(animation, { assetsReady });
   }
 
-  cancelPreparation(): void {
-    for (const preparation of this.preparations.values())
-      preparation.end("force_end");
+  cancelPreparation(applyElapsedClears = false): void {
+    const elapsed = applyElapsedClears
+      ? [...this.deferredCallbacks.values()]
+      : [];
+    for (const { animation } of this.preparations.values())
+      animation.end("force_end");
     this.preparations.clear();
+    this.deferredCallbacks.clear();
+    this.cancelDeferredReplay?.();
+    this.cancelDeferredReplay = undefined;
+    // A segment skip preserves the results of a clear that has already run
+    // on the native fixed slots. Apply it before mounting the next segment.
+    for (const callback of elapsed) {
+      if ("slot" in callback) this.resetSlot(callback.slot);
+    }
+  }
+
+  private cancelSlotPreparation(slot: CharacterSlot): void {
+    const preparation = this.preparations.get(slot);
+    if (!preparation) return;
+    this.preparations.delete(slot);
+    this.deferredCallbacks.delete(slot);
+    preparation.animation.end("force_end");
+    for (const [target, callback] of this.deferredCallbacks) {
+      if ("command" in callback && callback.command === preparation.command)
+        this.deferredCallbacks.delete(target);
+    }
+  }
+
+  private signalFinish(target: FinishTarget, onComplete: () => void): void {
+    const command = target === "charslot" ? "charslot" : "character";
+    // Both native panels load inline. A browser portrait wait holds the
+    // script cursor for either panel, while each finish keeps its own owner.
+    if (this.preparations.size)
+      this.deferredCallbacks.set(target, { command, onComplete });
+    else onComplete();
+  }
+
+  private replayCallback(target: DeferredTarget): void {
+    if (this.preparations.size) return;
+    const callback = this.deferredCallbacks.get(target);
+    if (!callback) return;
+    this.deferredCallbacks.delete(target);
+    if ("slot" in callback) this.resetSlot(callback.slot);
+    else callback.onComplete();
+  }
+
+  private finishSlotClear(slot: CharacterSlot): void {
+    // _DoCleanSlot's nested OnComplete (2791 @ 0x1841B6270) clears the
+    // permanent slot. A cold replacement commits before this callback runs.
+    if (this.preparations.size) this.deferredCallbacks.set(slot, { slot });
+    else this.resetSlot(slot);
+  }
+
+  private replayPreparedSlotCallbacks(): void {
+    if (
+      this.preparations.size ||
+      !this.deferredCallbacks.size ||
+      this.cancelDeferredReplay
+    )
+      return;
+    // These callbacks already came due on earlier Updates (2791
+    // TweenManager.Update @ 0x184467690). Replay them in arrival order before
+    // any live tween can reach completion on the first ready frame.
+    this.cancelDeferredReplay = this.tweens.beforeNextUpdate(() => {
+      this.cancelDeferredReplay = undefined;
+      for (const target of this.deferredCallbacks.keys())
+        this.replayCallback(target);
+    });
   }
 
   /**
@@ -369,37 +490,45 @@ export class CharacterView {
     slot: CharacterSlot,
     durationMs: number,
     block: boolean,
+    onComplete?: () => void,
     preparation?: ExecutionHandle,
   ): ExecutionHandle | void {
     let sequence = this.slotSequences.get(slot);
+    const startSpan = !sequence || durationMs > sequence.remainingMs;
     if (!sequence) {
-      if (durationMs <= 0) return;
+      // Sequence.DoStartup (2791 @ 0x18442C6F0) accepts even an empty
+      // sequence with OnComplete and completes it on the first Update.
+      if (durationMs <= 0 && !onComplete) return;
       sequence = { remainingMs: 0, waits: new Set() };
       this.slotSequences.set(slot, sequence);
     }
+    if (onComplete) sequence.onComplete = onComplete;
     const animation = block
       ? (preparation ?? createExecutionHandle(true))
       : undefined;
     if (animation) sequence.waits.add(animation);
-    if (durationMs > sequence.remainingMs) {
+    if (startSpan) {
       const span = sequence;
-      this.tweens.killTarget(span);
+      span.timer?.kill();
       span.remainingMs = durationMs;
-      this.tweens.start(
+      span.timer = this.tweens.start(
         durationMs,
         (progress) => {
           span.remainingMs = durationMs * (1 - progress);
         },
         {
+          deferZeroDuration: true,
           onComplete: () => {
-            this.slotSequences.delete(slot);
             // Another command may start its last visual track after the span's
             // tween was created. Check waits after every tween has written.
             this.tweens.afterUpdate(() => {
+              if (this.slotSequences.get(slot) !== span) return;
+              if (span.onComplete)
+                this.signalFinish("charslot", span.onComplete);
+              this.slotSequences.delete(slot);
               for (const wait of span.waits) wait.end();
             });
           },
-          target: span,
         },
       );
     }
@@ -408,7 +537,8 @@ export class CharacterView {
 
   private clearSlotSequences(): void {
     for (const sequence of this.slotSequences.values()) {
-      this.tweens.killTarget(sequence);
+      sequence.timer?.kill();
+      sequence.clearTween?.kill();
       for (const wait of sequence.waits) wait.end("reset");
     }
     this.slotSequences.clear();
@@ -422,26 +552,35 @@ export class CharacterView {
     input: CharacterActionInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    const state = this.characterSlots.get(
-      this.normalizeCharacterSlot(input.slot),
-    );
-    if (!state) {
-      this.onWarning?.(`missing character slot: ${input.slot}`);
-      return;
-    }
+    // _ExecuteCharacterMove / MoveChar (2791 @ 0x1841C0990 / 0x1842370A0)
+    // operate on the fixed transform even when no artwork is displayed.
+    const state = this.getSlotState(this.normalizeCharacterSlot(input.slot));
+    const targets = this.slotActionTargets[state.slot];
 
     const canBlock = input.type === "zoom" || input.durationMs > 0;
     const animation =
       input.block && canBlock && !(input.type === "shake" && input.stop)
         ? createExecutionHandle(true)
         : undefined;
-    const completion: TweenStartOptions | undefined = animation && {
-      onCancel: () => animation.end("reset"),
-      onComplete: () => {
+    const movesOffset =
+      input.type === "move" || input.type === "exit" || input.type === "jump";
+    let target = targets.offset;
+    if (input.type === "shake") target = targets.shake;
+    if (input.type === "zoom") target = this.characterZoomTweens;
+    // Set (2791 @ 0x184237BC0) can replace the art while its offset and shake
+    // transforms stay alive. Their callbacks still address the panel's wait.
+    const completion: TweenStartOptions = { target };
+    if (animation) {
+      completion.onCancel = () => {
+        // _ResetLocationAndTween (2791 @ 0x184239CD0) kills the offset
+        // tween without OnComplete. The blocked command can still be skipped.
+        if (!movesOffset || !this.resettingOffset) animation.end("reset");
+      };
+      completion.onComplete = () => {
         animation.end();
-        onComplete?.();
-      },
-    };
+        if (onComplete) this.signalFinish(target, onComplete);
+      };
+    }
     switch (input.type) {
       case "move":
         this.startMoveAction(
@@ -462,6 +601,7 @@ export class CharacterView {
           input.durationMs,
           easeOutCubic,
           (progress) => easeOutQuad(easeOutCubic(progress)),
+          { target: targets.offset },
         );
         this.startJumpAction(
           state,
@@ -497,46 +637,115 @@ export class CharacterView {
     return animation;
   }
 
-  clear(slot?: string, fadeMs = 0): ExecutionHandle | void {
-    const normalized = slot ? this.normalizeCharacterSlot(slot) : undefined;
-    if (normalized) {
-      this.preparations.get(normalized)?.end("force_end");
-      this.preparations.delete(normalized);
-    } else {
-      this.cancelPreparation();
-      this.clearSlotSequences();
+  clear(
+    slot?: string,
+    fadeMs = 0,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    if (slot) {
+      const normalized = this.normalizeCharacterSlot(slot);
+      this.cancelSlotPreparation(normalized);
+      this.clearSlot(normalized, fadeMs);
+      return;
     }
 
-    const states = [...this.characterSlots.values()].filter(
-      (state) => !normalized || state.slot === normalized,
-    );
-    const animation =
-      fadeMs > 0 && states.length > 0 ? createExecutionHandle(true) : undefined;
-    let remaining = states.length;
-    for (const state of states) {
-      this.characterSlots.delete(state.slot);
-      this.sceneEffects.setImageFocusTargets(
-        state.slot,
-        undefined,
-        animation ? state.visual : undefined,
+    // _ClearSeq and _CleanSlotsWithTween (2791 @ 0x1841A22C0, 0x1841A1CA0)
+    // cancel old sequences and fade all three built-in slots, even the blank
+    // ones. Only the middle sequence reports FinishCommand (0x1841A1920).
+    for (const key of this.preparations.keys()) this.cancelSlotPreparation(key);
+    for (const key of ["l", "r", "m"] as const)
+      this.deferredCallbacks.delete(key);
+    this.deferredCallbacks.delete("charslot");
+    this.clearSlotSequences();
+    let middleAnimation: ExecutionHandle | void = undefined;
+    for (const key of ["l", "r", "m"] as const) {
+      if (fadeMs <= 0) {
+        this.resetSlot(key);
+        continue;
+      }
+      this.resetSlotShake(key);
+      this.clearSlot(key, fadeMs);
+      const clearTween = this.tweens.start(fadeMs, () => {}, {
+        onComplete: () => this.finishSlotClear(key),
+      });
+      const isMiddle = key === "m";
+      const animation = this.trackSlotSequence(
+        key,
+        fadeMs,
+        isMiddle,
+        isMiddle ? onComplete : undefined,
       );
-      if (animation)
-        this.fadeOutAndRemove(state, fadeMs, {
-          onCancel: () => animation.end("reset"),
-          onComplete: () => {
-            remaining -= 1;
-            if (remaining === 0) animation.end();
-          },
-        });
-      else this.disposeCharacterState(state);
+      // The child clear retains its own end time when later tracks extend
+      // the same sequence, and _ClearSeq cancels both together.
+      this.slotSequences.get(key)!.clearTween = clearTween;
+      if (isMiddle) middleAnimation = animation;
     }
-    return animation;
+    return middleAnimation;
+  }
+
+  private resetSlot(slot: CharacterSlot): void {
+    const target = this.slotActionTargets[slot].offset;
+    this.deferredCallbacks.delete(target);
+    this.resettingOffset = true;
+    try {
+      this.tweens.killTarget(target);
+    } finally {
+      this.resettingOffset = false;
+    }
+    this.resetSlotShake(slot);
+    this.clearSlot(slot, 0);
+  }
+
+  private resetSlotShake(slot: CharacterSlot): void {
+    // _ResetLocationAndTween completes stand-alone shake tweens on its
+    // shake container. Nested charslot tracks remain owned by their sequence.
+    const target = this.slotActionTargets[slot].shake;
+    this.tweens.killTarget(target, true);
+    this.replayCallback(target);
+    const state = this.characterSlots.get(slot);
+    if (state) this.stopShakeAction(state);
+  }
+
+  private discardFadingSlot(slot: CharacterSlot): void {
+    for (const fading of this.fadingStates) {
+      if (fading.slot === slot) this.disposeCharacterState(fading);
+    }
+  }
+
+  private clearSlot(slot: CharacterSlot, fadeMs: number): void {
+    // Clear / Set (2791 @ 0x184236E90 / 0x184237BC0) also drop the back
+    // holder when the front is already blank, including a prior clear's fade.
+    this.discardFadingSlot(slot);
+    const state = this.characterSlots.get(slot);
+    if (!state) return;
+    this.characterSlots.delete(slot);
+    if (!state.root.parent) {
+      this.disposeCharacterState(state);
+      return;
+    }
+    if (state.outgoingVisual) {
+      state.replaceFadeSessionId += 1;
+      this.discardCharacterVisual(state.outgoingVisual);
+      state.outgoingVisual = null;
+    }
+    this.sceneEffects.setImageFocusTargets(
+      slot,
+      undefined,
+      fadeMs > 0 ? state.visual : undefined,
+    );
+    if (fadeMs > 0) this.fadeOutAndRemove(state, fadeMs);
+    else this.disposeCharacterState(state);
   }
 
   /** CharacterPanel / AVGCharacterslotPanel.OnStoryEnd (2791 @ 0x1841BFC50 / 0x1841A1360). */
   reset(): void {
     this.cancelPreparation();
     this.clearSlotSequences();
+    for (const { offset, shake } of Object.values(this.slotActionTargets)) {
+      this.tweens.killTarget(offset);
+      this.tweens.killTarget(shake);
+    }
+    this.tweens.killTarget(this.characterZoomTweens);
     const states = [...this.characterSlots.values(), ...this.fadingStates];
     this.characterSlots.clear();
     for (const state of states) this.disposeCharacterState(state);
@@ -560,7 +769,7 @@ export class CharacterView {
         done?.();
         options?.onComplete?.();
       },
-      target: state,
+      target: options?.target ?? state,
     });
   }
 
@@ -569,42 +778,25 @@ export class CharacterView {
     slot: CharacterSlot,
     built: CharacterBuiltVisual,
   ): void {
-    const {
-      height: sizeY,
-      pos,
-      sourceHeight,
-      sourceWidth,
-      visual,
-      width: sizeX,
-    } = built;
-
-    // Match legacy char layout semantics in 1280x720 space.
-    const targetX = SLOT_BASE_X[slot] - sizeX / 2 + pos.x;
-    const targetY = STORY_HEIGHT - sizeY / 2 - pos.y;
+    this.discardFadingSlot(slot);
+    const current = this.characterSlots.get(slot);
+    const previous = current?.root.parent ? current : undefined;
+    const state = previous
+      ? this.createSlotState(slot)
+      : (current ?? this.createSlotState(slot));
+    this.discardCharacterVisual(state.visual);
+    this.attachSlotArt(state, input, built);
+    const { root, visual } = state;
+    const { x: targetX, y: targetY } = root.position;
     const enterOffset = this.enterOffset(
       slot,
       input.enterFrom,
       input.enterPosition,
     );
-    const root = new Container();
-    const motionLayer = new Container();
-    const rotationLayer = new Container();
-    rotationLayer.addChild(visual);
-    motionLayer.addChild(rotationLayer);
-    root.addChild(motionLayer);
-    root.x = targetX;
-    root.y = targetY;
-
-    const safeWidth = Math.max(1, sourceWidth);
-    const safeHeight = Math.max(1, sourceHeight);
-    const baseScaleX = sizeX / safeWidth;
-    const baseScaleY = sizeY / safeHeight;
-    motionLayer.scale.set(baseScaleX, baseScaleY);
-    rotationLayer.pivot.set(sourceWidth / 2, sourceHeight / 2);
-    rotationLayer.position.set(sourceWidth / 2, sourceHeight / 2);
-
-    const previous = this.characterSlots.get(slot);
-    const focusBrightness = input.dimmed ? 0.5 : 1;
+    state.actionX = 0;
+    state.actionY = 0;
+    state.contentAlpha = 1;
+    state.focusBrightness = input.dimmed ? 0.5 : 1;
     const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
     // Native `AVGCharacterSlot.Set` receives `dontFadeIfSameChar=true` from
     // `CharacterPanel._ProcessSlot`. It compares `_GetIdWithoutAliasOrIndex`
@@ -626,59 +818,6 @@ export class CharacterView {
     // same character's expression is swapped instantly.
     const moveMs = input.enterFrom ? durationMs : 0;
     const animationMs = Math.max(imageFadeMs, moveMs);
-    // `AVGCharacterSlot.Set` @ 0x184237BC0 guards its entire swap branch --
-    // the `_offset` position reset and the localScale reset included -- with
-    // `!op_Equality(m_currentKey, key)`. A re-show under the same key, e.g.
-    // the `character(focus=-1)` that follows a `characteraction move`, never
-    // reaches the reset, so the slot keeps the offset the move left behind.
-    // `m_currentKey` is the raw `name` ref, so `nativeKey` is compared rather
-    // than the resolved base/expression pair: `avg_x` and `avg_x#1$1` can
-    // resolve alike yet are different keys to native.
-    //
-    // An `enter` is exempt. `CharacterPanel._ProcessSlot` @ 0x1841C2800 takes
-    // the branch that first calls `SetCharPos(x, y, 0)` -- which writes that
-    // very same `_offset` absolutely (@ 0x1842375B0) -- and then passes
-    // `resetOffsetPos = 0`; the closing `SetCharPos(0, 0, duration)` tweens it
-    // back to the origin. So a slide always overrides an earlier move.
-    const keepsOffset =
-      !input.enterFrom &&
-      previous !== undefined &&
-      input.nativeKey !== undefined &&
-      previous.nativeKey === input.nativeKey;
-    const state: CharacterRenderState = {
-      actionX: keepsOffset ? previous.actionX : 0,
-      actionY: keepsOffset ? previous.actionY : 0,
-      baseScaleX,
-      baseScaleY,
-      contentAlpha: 1,
-      focusBrightness,
-      expression: input.expression,
-      fadeIdentity,
-      height: sizeY,
-      jumpOffsetY: 0,
-      jumpSessionId: 0,
-      motionLayer,
-      nativeKey: input.nativeKey,
-      opacitySessionId: 0,
-      outgoingVisual: null,
-      replaceFadeSessionId: 0,
-      root,
-      rotationDeg: 0,
-      rotationLayer,
-      rotateSessionId: 0,
-      scaleX: keepsOffset ? previous.scaleX : 1,
-      scaleY: keepsOffset ? previous.scaleY : 1,
-      shakeOffsetX: 0,
-      shakeOffsetY: 0,
-      shakeSessionId: 0,
-      slot,
-      transformSessionId: 0,
-      visual,
-      width: sizeX,
-      zoomSessionId: 0,
-      zoomShiftX: keepsOffset ? previous.zoomShiftX : 0,
-      zoomShiftY: keepsOffset ? previous.zoomShiftY : 0,
-    };
     this.updateCharacterState(state);
 
     root.alpha = imageFadeMs > 0 ? 0 : 1;
@@ -722,11 +861,16 @@ export class CharacterView {
     slot: CharacterSlot,
     built: CharacterBuiltVisual | null,
   ): void {
-    let state = this.characterSlots.get(slot);
-    if (built) state = this.mountCharacterSlot(input, slot, built, state);
-    const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
+    const durationMs = Math.max(0, input.durationMs ?? 0);
+    if (!built && input.characterKey) {
+      // _SlotSetCharInternal (2791 @ 0x18423A040) fades the old back image
+      // after a failed _LoadImage. Focus and actions still use the fixed slot.
+      this.clearSlot(slot, durationMs);
+    }
+    const state = built
+      ? this.mountCharacterSlot(input, slot, built)
+      : this.getSlotState(slot);
     if (input.focusMode) this.applyCharacterSlotFocus(input.focusSlots ?? []);
-    if (!state) return;
 
     const move = characterSlotMove(state, input);
     const zoom = characterSlotZoom(state, input);
@@ -783,7 +927,7 @@ export class CharacterView {
       });
     }
 
-    this.applyCharacterSlotOpacity(state, input, durationMs);
+    this.applyCharacterSlotOpacity(state, input, durationMs, built !== null);
 
     // The move (`_offset.localPosition`) and the zoom (the fore Image's
     // pivot/localScale) are independent tweens natively: an image swap
@@ -848,6 +992,7 @@ export class CharacterView {
           state.zoomShiftY = to.shiftY;
           this.updateCharacterState(state);
         },
+        { deferZeroDuration: true },
       );
     }
   }
@@ -888,73 +1033,101 @@ export class CharacterView {
     };
   }
 
+  private getSlotState(slot: CharacterSlot): CharacterRenderState {
+    let state = this.characterSlots.get(slot);
+    if (!state) {
+      state = this.createSlotState(slot);
+      this.characterSlots.set(slot, state);
+    }
+    return state;
+  }
+
+  /** Fixed slots can animate before a portrait is mounted. */
+  private createSlotState(slot: CharacterSlot): CharacterRenderState {
+    const root = new Container();
+    const motionLayer = new Container();
+    const rotationLayer = new Container();
+    const visual = new Container();
+    rotationLayer.addChild(visual);
+    motionLayer.addChild(rotationLayer);
+    root.addChild(motionLayer);
+    return {
+      actionX: 0,
+      actionY: 0,
+      baseScaleX: 1,
+      baseScaleY: 1,
+      contentAlpha: 1,
+      focusBrightness: 1,
+      height: 0,
+      jumpOffsetY: 0,
+      jumpSessionId: 0,
+      motionLayer,
+      opacitySessionId: 0,
+      outgoingVisual: null,
+      replaceFadeSessionId: 0,
+      root,
+      rotationDeg: 0,
+      rotationLayer,
+      rotateSessionId: 0,
+      scaleX: 1,
+      scaleY: 1,
+      shakeOffsetX: 0,
+      shakeOffsetY: 0,
+      shakeSessionId: 0,
+      slot,
+      transformSessionId: 0,
+      visual,
+      width: 0,
+      zoomSessionId: 0,
+      zoomShiftX: 0,
+      zoomShiftY: 0,
+    };
+  }
+
+  private attachSlotArt(
+    state: CharacterRenderState,
+    input: CharacterSlotInput,
+    art: CharacterBuiltVisual,
+  ): void {
+    state.baseScaleX = art.width / Math.max(1, art.sourceWidth);
+    state.baseScaleY = art.height / Math.max(1, art.sourceHeight);
+    state.expression = input.expression;
+    state.fadeIdentity = input.fadeIdentity ?? input.characterKey;
+    state.height = art.height;
+    state.nativeKey = input.nativeKey;
+    // _GenForeImageTween (2791 @ 0x184238ED0) targets the physical front
+    // Image at creation. Earlier opacity tracks cannot write to this holder.
+    state.opacitySessionId += 1;
+    // CharZoom (2791 @ 0x184236B10) holds the old RectTransform even
+    // when its targetless tween continues running after the swap.
+    state.zoomSessionId += 1;
+    state.scaleX = 1;
+    state.scaleY = 1;
+    state.zoomShiftX = 0;
+    state.zoomShiftY = 0;
+    state.root.position.set(
+      SLOT_BASE_X[state.slot] - art.width / 2 + art.pos.x,
+      STORY_HEIGHT - art.height / 2 - art.pos.y,
+    );
+    state.visual = art.visual;
+    state.width = art.width;
+    state.rotationLayer.pivot.set(art.sourceWidth / 2, art.sourceHeight / 2);
+    state.rotationLayer.position.copyFrom(state.rotationLayer.pivot);
+    state.rotationLayer.addChild(art.visual);
+  }
+
   private mountCharacterSlot(
     input: CharacterSlotInput,
     slot: CharacterSlot,
     built: CharacterBuiltVisual,
-    current?: CharacterRenderState,
   ): CharacterRenderState {
-    const { height: sizeY, width: sizeX, pos } = built;
-    const baseX = SLOT_BASE_X[slot] - sizeX / 2 + pos.x;
-    const baseY = STORY_HEIGHT - sizeY / 2 - pos.y;
-    const baseScaleX = sizeX / Math.max(1, built.sourceWidth);
-    const baseScaleY = sizeY / Math.max(1, built.sourceHeight);
-
-    if (!current) {
-      const root = new Container();
-      const motionLayer = new Container();
-      const rotationLayer = new Container();
-      rotationLayer.addChild(built.visual);
-      motionLayer.addChild(rotationLayer);
-      root.addChild(motionLayer);
-      root.x = baseX;
-      root.y = baseY;
-      rotationLayer.pivot.set(built.sourceWidth / 2, built.sourceHeight / 2);
-      rotationLayer.position.set(built.sourceWidth / 2, built.sourceHeight / 2);
-
-      const state: CharacterRenderState = {
-        actionX: 0,
-        actionY: 0,
-        baseScaleX,
-        baseScaleY,
-        contentAlpha: 1,
-        focusBrightness: 1,
-        expression: input.expression,
-        fadeIdentity: input.fadeIdentity ?? input.characterKey,
-        height: sizeY,
-        jumpOffsetY: 0,
-        jumpSessionId: 0,
-        motionLayer,
-        nativeKey: input.nativeKey,
-        opacitySessionId: 0,
-        outgoingVisual: null,
-        replaceFadeSessionId: 0,
-        root,
-        rotationDeg: 0,
-        rotationLayer,
-        rotateSessionId: 0,
-        scaleX: 1,
-        scaleY: 1,
-        shakeOffsetX: 0,
-        shakeOffsetY: 0,
-        shakeSessionId: 0,
-        slot,
-        transformSessionId: 0,
-        visual: built.visual,
-        width: sizeX,
-        zoomSessionId: 0,
-        zoomShiftX: 0,
-        zoomShiftY: 0,
-      };
-      this.updateCharacterState(state);
-      this.updateCharacterOpacity(state);
-      this.characterSlots.set(slot, state);
-      this.charLayer.addChild(root);
-      this.sceneEffects.setImageFocusTargets(slot, built.visual);
-      return state;
+    this.discardFadingSlot(slot);
+    const current = this.getSlotState(slot);
+    const previousVisual = current.root.parent ? current.visual : undefined;
+    if (!previousVisual) {
+      this.discardCharacterVisual(current.visual);
+      this.charLayer.addChild(current.root);
     }
-
-    const previousVisual = current.visual;
     // Native keeps one back Image; a swap mid-crossfade replaces it outright.
     if (current.outgoingVisual && current.outgoingVisual !== previousVisual)
       this.discardCharacterVisual(current.outgoingVisual);
@@ -970,7 +1143,9 @@ export class CharacterView {
     // outgoing Image keeps its own transform as it fades, so the previous
     // visual carries the old zoom on itself (scaled back through the base
     // ratio because the motion layer now holds the incoming art's base).
-    if (previousVisual !== built.visual) {
+    if (previousVisual) {
+      const baseScaleX = built.width / Math.max(1, built.sourceWidth);
+      const baseScaleY = built.height / Math.max(1, built.sourceHeight);
       previousVisual.scale.set(
         (current.scaleX * current.baseScaleX) / Math.max(1e-6, baseScaleX),
         (current.scaleY * current.baseScaleY) / Math.max(1e-6, baseScaleY),
@@ -980,32 +1155,7 @@ export class CharacterView {
         -current.zoomShiftY / Math.max(1e-6, baseScaleY),
       );
     }
-    current.zoomSessionId += 1;
-    current.scaleX = 1;
-    current.scaleY = 1;
-    current.zoomShiftX = 0;
-    current.zoomShiftY = 0;
-
-    current.baseScaleX = baseScaleX;
-    current.baseScaleY = baseScaleY;
-    current.expression = input.expression;
-    current.fadeIdentity = input.fadeIdentity ?? input.characterKey;
-    current.height = sizeY;
-    // `_SlotSetCharInternal` writes `m_currentKey = options.charName` too.
-    current.nativeKey = input.nativeKey;
-    current.root.x = baseX;
-    current.root.y = baseY;
-    current.visual = built.visual;
-    current.width = sizeX;
-    current.rotationLayer.pivot.set(
-      built.sourceWidth / 2,
-      built.sourceHeight / 2,
-    );
-    current.rotationLayer.position.set(
-      built.sourceWidth / 2,
-      built.sourceHeight / 2,
-    );
-    current.rotationLayer.addChild(built.visual);
+    this.attachSlotArt(current, input, built);
 
     // Native crossfade: `_SlotSetCharInternal` runs the outgoing sprite's
     // fade-out immediately, while the incoming sprite's afrom->ato tween (the
@@ -1014,7 +1164,7 @@ export class CharacterView {
     // charslot key. The incoming visual therefore starts at the current
     // contentAlpha (set to `afrom` right after by the caller) and only the
     // outgoing visual gets a dedicated fade here.
-    const fadeMs = Math.max(0, Math.round(input.replaceFadeMs ?? 0));
+    const fadeMs = Math.max(0, input.replaceFadeMs ?? 0);
     built.visual.alpha = clamp01(current.contentAlpha);
     this.sceneEffects.setImageFocusTargets(
       slot,
@@ -1187,6 +1337,7 @@ export class CharacterView {
     state: CharacterRenderState,
     input: CharacterSlotInput,
     durationMs: number,
+    hasNewArt: boolean,
   ): void {
     const hasFrom = isFiniteNumber(input.alphaFrom);
     const hasTo = isFiniteNumber(input.alphaTo);
@@ -1201,7 +1352,9 @@ export class CharacterView {
     state.contentAlpha = fromAlpha;
     this.updateCharacterOpacity(state);
 
-    if (durationMs <= 0 || fromAlpha === toAlpha) {
+    // _GenForeImageTween (2791 @ 0x184238ED0) schedules even a zero-time
+    // fade for new art. SlotChangeAlpha can write a nameless change inline.
+    if ((!hasNewArt && durationMs <= 0) || fromAlpha === toAlpha) {
       state.contentAlpha = toAlpha;
       this.updateCharacterOpacity(state);
       return;
@@ -1229,6 +1382,7 @@ export class CharacterView {
         state.contentAlpha = toAlpha;
         this.updateCharacterOpacity(state);
       },
+      { deferZeroDuration: hasNewArt },
     );
   }
 
@@ -1310,7 +1464,6 @@ export class CharacterView {
   private fadeOutAndRemove(
     state: CharacterRenderState,
     durationMs: number,
-    options?: TweenStartOptions,
   ): void {
     this.fadingStates.add(state);
     const startAlpha = state.root.alpha;
@@ -1321,7 +1474,6 @@ export class CharacterView {
         state.root.alpha = startAlpha * (1 - progress);
       },
       () => this.disposeCharacterState(state),
-      options,
     );
   }
 

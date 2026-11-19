@@ -1035,7 +1035,7 @@ export class StoryRuntime {
         if (this.state !== "waiting_decision") this.cancelFrameWait();
         // Neither native character panel resets the built-in slots on skip.
         // A Web-only load must release the old executor before playback resumes.
-        this.renderer.cancelCharacterPreparation();
+        this.renderer.cancelCharacterPreparation(shouldResume);
       } finally {
         this.playbackGeneration += 1;
         if (skipToThis) {

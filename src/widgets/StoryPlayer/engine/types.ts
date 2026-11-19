@@ -767,8 +767,12 @@ export interface StoryRenderer {
   ) => ExecutionHandle | void;
   setFocusParam: (input: FocusParamInput) => void;
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
-  clearCharacters: (slot?: string, fadeMs?: number) => ExecutionHandle | void;
-  cancelCharacterPreparation: () => void;
+  clearCharacters: (
+    slot?: string,
+    fadeMs?: number,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  cancelCharacterPreparation: (applyElapsedClears?: boolean) => void;
   resetCharacters: () => void;
   clearCurtains: (fadeMs?: number) => void;
   recycleCurtains: () => void;
@@ -826,7 +830,10 @@ export interface StoryRenderer {
   cancelBlockerPreparation: () => void;
   resetBlocker: () => void;
   setCharacter: (input: CharacterSlotInput) => ExecutionHandle | void;
-  setCharacterSlot: (input: CharacterSlotInput) => ExecutionHandle | void;
+  setCharacterSlot: (
+    input: CharacterSlotInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setCharacterCutin: (
     input: CharacterCutinInput,
     onComplete?: () => void,

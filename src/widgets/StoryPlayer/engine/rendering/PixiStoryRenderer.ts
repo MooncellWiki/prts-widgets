@@ -927,8 +927,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     return this.characterView.show(input);
   }
 
-  setCharacterSlot(input: CharacterSlotInput): ExecutionHandle | void {
-    return this.characterView.updateSlot(input);
+  setCharacterSlot(
+    input: CharacterSlotInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.characterView.updateSlot(input, onComplete);
   }
 
   runCharacterAction(
@@ -938,12 +941,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     return this.characterView.runAction(input, onComplete);
   }
 
-  clearCharacters(slot?: string, fadeMs?: number): ExecutionHandle | void {
-    return this.characterView.clear(slot, fadeMs);
+  clearCharacters(
+    slot?: string,
+    fadeMs?: number,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.characterView.clear(slot, fadeMs, onComplete);
   }
 
-  cancelCharacterPreparation(): void {
-    this.characterView.cancelPreparation();
+  cancelCharacterPreparation(applyElapsedClears?: boolean): void {
+    this.characterView.cancelPreparation(applyElapsedClears);
   }
 
   resetCharacters(): void {

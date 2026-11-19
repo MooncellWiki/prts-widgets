@@ -4,7 +4,7 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import { nativeCharacterFadeIdentity } from "../characterRef";
-import { toBoolean, toNumber, toString } from "../commandParams";
+import { isZeroFloat, toBoolean, toNumber, toString } from "../commandParams";
 
 import {
   type CharacterCommandContext,
@@ -46,9 +46,7 @@ export class CharacterslotPanel extends ExecutorComponent {
     const nameRef = toString(args.name);
     // _ExecuteCharslot (2791 @ 0x1841A3070) scales duration. The Sequence
     // auto-plays, while end gates isblock for a named slot.
-    const durationMs = Math.round(
-      this.playback.calculateFadeMs(args.duration, 0),
-    );
+    const durationMs = this.playback.calculateFadeMs(args.duration, 0);
     const isEnd = toString(args.end).trim().toLowerCase() !== "false";
     const rawBlock = toBoolean(args.isblock, false);
     const block = rawBlock && isEnd;
@@ -56,7 +54,11 @@ export class CharacterslotPanel extends ExecutorComponent {
     if (!rawSlot) {
       // The clear-all branch forwards isblock directly to _CleanSlotsWithTween
       // (2791 @ 0x1841A1CA0) after discarding the cached Sequences.
-      const animation = this.renderer.clearCharacters(undefined, durationMs);
+      const animation = this.renderer.clearCharacters(
+        undefined,
+        isZeroFloat(durationMs / 1000) ? 0 : durationMs,
+        this.finishCommand,
+      );
       return { animation, block: rawBlock };
     }
 
@@ -137,7 +139,9 @@ export class CharacterslotPanel extends ExecutorComponent {
       alphaTo = Math.min(1, rawAlphaTo);
     }
 
-    const animation = this.renderer.setCharacterSlot({
+    // _ExecuteCharslot's Sequence.OnComplete (2791 @ 0x1841B61F0) reads
+    // this panel's shared completion slot even when the sequence starts unblocked.
+    const input: CharacterSlotInput = {
       action: this.parseCharacterSlotAction(args.action),
       ...(args.angle === undefined ? {} : { angle: toNumber(args.angle, 0) }),
       alphaFrom,
@@ -192,7 +196,11 @@ export class CharacterslotPanel extends ExecutorComponent {
       // GetOrDefault<int>("times", 0): DOShakePosition vibrato for
       // shake, numJumps (clamped to >= 1 by DOLocalJump) for jump.
       times: toNativeIntParam(args.times, 0),
-    });
+    };
+    const animation = this.renderer.setCharacterSlot(
+      input,
+      isEnd ? this.finishCommand : undefined,
+    );
     return { animation, block: true };
   }
 

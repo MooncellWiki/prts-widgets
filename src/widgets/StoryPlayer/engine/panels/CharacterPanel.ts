@@ -4,7 +4,13 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import { nativeCharacterFadeIdentity } from "../characterRef";
-import { exactArg, toBoolean, toNumber, toString } from "../commandParams";
+import {
+  exactArg,
+  isZeroFloat,
+  toBoolean,
+  toNumber,
+  toString,
+} from "../commandParams";
 
 import {
   type CharacterCommandContext,
@@ -176,14 +182,16 @@ export class CharacterPanel extends ExecutorComponent {
     // Per-branch GetOrDefault defaults: exit/zoom fade in for 1.0s while
     // move/jump/shake default to 0.5s.
     const fadetimeFallback = type === "exit" || type === "zoom" ? 1 : 0.5;
-    const durationMs = this.playback.calculateFadeMs(
+    const scaledMs = this.playback.calculateFadeMs(
       exactArg(args, "fadetime"),
       fadetimeFallback,
     );
 
-    // NeedSkipAnimation (0x1841BFB10): jump/shake collapse into a plain
-    // move when the scaled fadetime is zero (skip mode or fadetime=0);
-    // the move executor then applies xpos/ypos instantly.
+    // NeedSkipAnimation, MoveChar and SetCharPos (2791 @ 0x1841BFB10,
+    // 0x1842370A0, 0x1842375B0) use MathUtil.IsZero on the scaled seconds.
+    // Jump and shake fall back to an immediate move. CharZoom creates a tween.
+    const durationMs =
+      type !== "zoom" && isZeroFloat(scaledMs / 1000) ? 0 : scaledMs;
     const effectiveType: CharacterActionInput["type"] =
       (type === "jump" || type === "shake") && durationMs <= 0 ? "move" : type;
 

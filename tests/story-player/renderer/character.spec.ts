@@ -1495,6 +1495,24 @@ describe("PixiStoryRenderer characteraction", () => {
 });
 
 describe("character commands during playback", () => {
+  const coldCharacterLinks: Context["linkMap"] = {
+    avg_cold: {
+      array: [{ alias: "", group: -1, image: "cold-body", name: "1$1" }],
+      groups: [],
+      pos: { x: 0, y: 0 },
+      size: { x: 100, y: 200 },
+    },
+  };
+
+  function deferColdCharacter(renderer: ReturnType<typeof createRenderer>) {
+    const load = Promise.withResolvers<Texture | null>();
+    const loadTexture = renderer.textureForCharacterKey.bind(renderer);
+    renderer.textureForCharacterKey = vi.fn((key: string) =>
+      key === "cold-body" ? load.promise : loadTexture(key),
+    );
+    return load;
+  }
+
   it("applies the next slot update in the draw that completes a blocking move", async () => {
     const draws: unknown[] = [];
     const { app, destroy, runtime } = await createRenderedPlayback(
@@ -1546,20 +1564,9 @@ describe("character commands during playback", () => {
         '[name="A"]keep the mounted character',
       ],
       () => {},
-      {
-        avg_cold: {
-          array: [{ alias: "", group: -1, image: "cold-body", name: "1$1" }],
-          groups: [],
-          pos: { x: 0, y: 0 },
-          size: { x: 100, y: 200 },
-        },
-      },
+      coldCharacterLinks,
     );
-    const load = Promise.withResolvers<Texture>();
-    const loadTexture = renderer.textureForCharacterKey.bind(renderer);
-    renderer.textureForCharacterKey = vi.fn((key: string) =>
-      key === "cold-body" ? load.promise : loadTexture(key),
-    );
+    const load = deferColdCharacter(renderer);
 
     const started = runtime.start();
     const [mounted] = renderer.layers.characters.children;
@@ -1609,12 +1616,509 @@ describe("character commands during playback", () => {
     }
   });
 
-  it("settles a blocking zero-duration zoom on the first Update", async () => {
+  it("applies an elapsed clear to a partially loaded pair before resuming a skip", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
-        '[character(name="avg_npc_1",fadetime=0)]',
-        '[characteraction(name="middle",type="zoom",scale=2,fadetime=0,isblock=true)]',
+        "[charslot(duration=0.032)]",
+        '[character(name="avg_npc_1",name2="avg_cold",fadetime=0)]',
+        '[name="A"]skip me',
+        "[SkipToThis]",
         '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const load = deferColdCharacter(renderer);
+    const started = runtime.start();
+    app.ticker.update(16);
+    app.ticker.update(32);
+    const beforeSkip = renderer.layers.characters.children.length;
+    const skipped = runtime.skipNode();
+    try {
+      expect(beforeSkip).toBe(1);
+      await setImmediate();
+      app.ticker.update(48);
+      expect(renderer.layers.characters.children).toHaveLength(0);
+      expect(renderer.layers.cgItems.children).toHaveLength(1);
+      load.resolve(Texture.EMPTY);
+      await setImmediate();
+      expect(renderer.layers.characters.children).toHaveLength(0);
+    } finally {
+      destroy();
+      await Promise.all([started, skipped]);
+    }
+  });
+
+  it.each([
+    { next: "avg_npc_1", cold: false },
+    { next: "avg_cold", cold: false },
+    { next: "avg_cold", cold: true },
+  ])(
+    "keeps an older move's shared completion after a skip and a show of $next (cold: $cold)",
+    async ({ next, cold }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          '[characteraction(name="middle",type="move",xpos=120,fadetime=0.064,isblock=true)]',
+          "[SkipToThis]",
+          `[character(name="${next}",fadetime=0)]`,
+          '[characteraction(name="middle",type="move",xpos=100,fadetime=0.128,isblock=true)]',
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+        coldCharacterLinks,
+      );
+      const load = cold ? deferColdCharacter(renderer) : undefined;
+      const started = runtime.start();
+      app.ticker.update(16);
+      const skipped = runtime.skipNode();
+      try {
+        await setImmediate();
+        app.ticker.update(32);
+        app.ticker.update(48);
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+        app.ticker.update(64);
+        expect(renderer.layers.cgItems.children).toHaveLength(cold ? 0 : 1);
+        load?.resolve(Texture.EMPTY);
+        await setImmediate();
+        app.ticker.update(80);
+        expect(renderer.layers.cgItems.children).toHaveLength(1);
+      } finally {
+        destroy();
+        await Promise.all([started, skipped]);
+      }
+    },
+  );
+
+  it.each([
+    { type: "move", duration: 0.032, released: 1 },
+    { type: "move", duration: 0, released: 0 },
+    { type: "zoom", duration: 0, released: 1 },
+    { type: "shake", duration: 0.032, released: 0 },
+  ])(
+    "applies a clear of $duration seconds to a deferred $type completion",
+    async ({ type, duration, released }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          `[characteraction(name="middle",type="${type}",scale=2,power=10,fadetime=0.064,isblock=true)]`,
+          "[SkipToThis]",
+          '[character(name="avg_cold",fadetime=0)]',
+          `[charslot(duration=${duration})]`,
+          '[characteraction(name="middle",type="move",xpos=120,fadetime=0.128,isblock=true)]',
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+        coldCharacterLinks,
+      );
+      const load = deferColdCharacter(renderer);
+      const started = runtime.start();
+      app.ticker.update(16);
+      const skipped = runtime.skipNode();
+      try {
+        await setImmediate();
+        app.ticker.update(32);
+        app.ticker.update(64);
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+        load.resolve(Texture.EMPTY);
+        await setImmediate();
+        app.ticker.update(96);
+        expect(renderer.layers.cgItems.children).toHaveLength(released);
+      } finally {
+        destroy();
+        await Promise.all([started, skipped]);
+      }
+    },
+  );
+
+  it.each([
+    { duration: 0.032, move: 0.064, readyAt: 80, released: 1 },
+    { duration: 0.016, move: 0.064, readyAt: 80, released: 0 },
+    { duration: 0.064, move: 0.064, readyAt: 96, released: 1 },
+    { duration: 0.016, move: 0.096, readyAt: 96, released: 0 },
+  ])(
+    "replays a clear of $duration seconds and an older $move-second move in Update order",
+    async ({ duration, move, readyAt, released }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          `[characteraction(name="middle",type="move",xpos=120,fadetime=${move},isblock=true)]`,
+          "[SkipToThis]",
+          `[charslot(duration=${duration})]`,
+          '[character(name="avg_cold",fadetime=0)]',
+          '[characteraction(name="middle",type="move",xpos=120,fadetime=0.128,isblock=true)]',
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+        coldCharacterLinks,
+      );
+      const load = deferColdCharacter(renderer);
+      const started = runtime.start();
+      app.ticker.update(16);
+      const skipped = runtime.skipNode();
+      try {
+        await setImmediate();
+        app.ticker.update(32);
+        app.ticker.update(48);
+        app.ticker.update(64);
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+        load.resolve(Texture.EMPTY);
+        await setImmediate();
+        app.ticker.update(readyAt);
+        expect(renderer.layers.characters.children).toHaveLength(0);
+        expect(renderer.layers.cgItems.children).toHaveLength(released);
+      } finally {
+        destroy();
+        await Promise.all([started, skipped]);
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "waits for both portraits before replaying a timed clear and an old move (second load cold: %s)",
+    async (secondCold) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",name2="avg_npc_1",fadetime=0)]',
+          '[characteraction(name="left",type="move",xpos=120,fadetime=0.064,isblock=true)]',
+          "[SkipToThis]",
+          "[charslot(duration=0.032)]",
+          '[character(name="avg_cold",name2="avg_second",fadetime=0)]',
+          '[characteraction(name="left",type="move",xpos=120,fadetime=0.128,isblock=true)]',
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+        {
+          ...coldCharacterLinks,
+          avg_second: {
+            array: [{ alias: "", group: -1, image: "cold-right", name: "1$1" }],
+            groups: [],
+            pos: { x: 0, y: 0 },
+            size: { x: 100, y: 200 },
+          },
+        },
+      );
+      const first = deferColdCharacter(renderer);
+      const second = Promise.withResolvers<Texture>();
+      const loadTexture = renderer.textureForCharacterKey.bind(renderer);
+      renderer.textureForCharacterKey = vi.fn((key: string) =>
+        secondCold && key === "cold-right" ? second.promise : loadTexture(key),
+      );
+      const started = runtime.start();
+      app.ticker.update(16);
+      const skipped = runtime.skipNode();
+      try {
+        await setImmediate();
+        app.ticker.update(32);
+        app.ticker.update(48);
+        app.ticker.update(64);
+        first.resolve(Texture.EMPTY);
+        await setImmediate();
+        app.ticker.update(80);
+        expect(renderer.layers.cgItems.children).toHaveLength(
+          secondCold ? 0 : 1,
+        );
+        second.resolve(Texture.EMPTY);
+        await setImmediate();
+        app.ticker.update(96);
+        expect(renderer.layers.characters.children).toHaveLength(0);
+        expect(renderer.layers.cgItems.children).toHaveLength(1);
+      } finally {
+        destroy();
+        await Promise.all([started, skipped]);
+      }
+    },
+  );
+
+  it.each([
+    '[characteraction(name="middle",type="zoom",scale=2,fadetime=0,isblock=true)]',
+    '[charslot(slot="m",action="zoom",scale=2,duration=0,isblock=true)]',
+  ])(
+    "settles a blocking zero-duration zoom on the first Update for %s",
+    async (command) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          command,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        const [root] = renderer.layers.characters.children;
+        const motion = root.children[0];
+        const originalScale = motion.scale.x;
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+        app.ticker.update(16);
+        expect(motion.scale.x).toBe(originalScale * 2);
+        expect(renderer.layers.cgItems.children).toHaveLength(1);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it.each([
+    {
+      first: '[charslot(slot="l",name="avg_npc_1",duration=0.032)]',
+      after32: 1,
+    },
+    {
+      first: '[charslot(slot="l",name="avg_npc_1",duration=0.032,end=false)]',
+      after32: 0,
+    },
+    { first: "[charslot(duration=0.032)]", after32: 1 },
+  ])("shares the completion slot after $first", async ({ first, after32 }) => {
+    const draws: number[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        first,
+        '[charslot(slot="r",name="avg_npc_1",duration=0.096,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ cgItems }) => draws.push(cgItems.children.length),
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      app.ticker.update(96);
+      expect(draws).toEqual([0, after32, 1]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("waits for the new slot's art before replaying an older slot completion", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[charslot(slot="l",name="avg_npc_1",duration=0.032)]',
+        '[charslot(slot="r",name="avg_cold",duration=0.096,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const load = deferColdCharacter(renderer);
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      const { characters, cgItems } = renderer.layers;
+      expect(characters.children).toHaveLength(1);
+      expect(cgItems.children).toHaveLength(0);
+
+      load.resolve(Texture.EMPTY);
+      await setImmediate();
+      expect(characters.children).toHaveLength(2);
+      expect(cgItems.children).toHaveLength(0);
+      app.ticker.update(48);
+      expect(cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("keeps a charslot finish while the script waits for a character portrait", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[charslot(slot="l",name="avg_npc_1",duration=0.032)]',
+        '[character(name="avg_cold",fadetime=0)]',
+        '[charslot(slot="r",name="avg_npc_1",duration=0.096,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const load = deferColdCharacter(renderer);
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(renderer.layers.cgItems.children).toHaveLength(0);
+      load.resolve(Texture.EMPTY);
+      await setImmediate();
+      app.ticker.update(48);
+      expect(renderer.layers.cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("drops a deferred slot completion when skipping past the cold load", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[charslot(slot="l",name="avg_npc_1",duration=0.032)]',
+        '[charslot(slot="r",name="avg_cold",duration=0.096,isblock=true)]',
+        "[SkipToThis]",
+        '[charslot(slot="m",name="avg_npc_1",duration=0.096,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const load = deferColdCharacter(renderer);
+    const started = runtime.start();
+    app.ticker.update(16);
+    app.ticker.update(32);
+    const skipped = runtime.skipNode();
+    try {
+      await setImmediate();
+      load.resolve(Texture.EMPTY);
+      await setImmediate();
+      app.ticker.update(48);
+      expect(renderer.layers.characters.children).toHaveLength(2);
+      app.ticker.update(64);
+      expect(renderer.layers.cgItems.children).toHaveLength(0);
+      app.ticker.update(144);
+      expect(renderer.layers.cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await Promise.all([started, skipped]);
+    }
+  });
+
+  it("finishes a zero-duration named slot on the first Update", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[charslot(slot="m",name="avg_npc_1",duration=0,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      const visual = characters.children[0].children[0].children[0].children[0];
+      expect(visual.alpha).toBe(0);
+      expect(cgItems.children).toHaveLength(0);
+      app.ticker.update(16);
+      expect(visual.alpha).toBe(1);
+      expect(cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    "[character(fadetime=0)]",
+    '[charslot(slot="m",name="char_empty",duration=0)]',
+    "[charslot(duration=0,isblock=true)]",
+  ])("clears a fading character root immediately with %s", async (clear) => {
+    const { destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        "[character(fadetime=1)]",
+        clear,
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      expect(renderer.layers.characters.children).toHaveLength(0);
+      expect(renderer.layers.cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([false, true])(
+    "clears the live replacement before its move can complete (cold: %s)",
+    async (cold) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          "[charslot(duration=0.032)]",
+          '[character(name="avg_cold",fadetime=0)]',
+          '[characteraction(name="middle",type="move",xpos=120,fadetime=0.032,isblock=true)]',
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+        coldCharacterLinks,
+      );
+      const load = cold ? deferColdCharacter(renderer) : undefined;
+      const started = runtime.start();
+      try {
+        app.ticker.update(16);
+        expect(renderer.layers.characters.children).toHaveLength(1);
+        app.ticker.update(32);
+        expect(renderer.layers.characters.children).toHaveLength(0);
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+        load?.resolve(Texture.EMPTY);
+        await setImmediate();
+        expect(renderer.layers.characters.children).toHaveLength(cold ? 1 : 0);
+        app.ticker.update(64);
+        expect(renderer.layers.characters.children).toHaveLength(0);
+        expect(renderer.layers.cgItems.children).toHaveLength(0);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it.each([
+    { type: "move", after32: 0, after96: 0 },
+    { type: "jump", after32: 0, after96: 0 },
+    { type: "zoom", after32: 0, after96: 1 },
+    { type: "shake", after32: 1, after96: 1 },
+  ])(
+    "uses the $type tween's completion semantics when a clear resets its slot",
+    async ({ type, after32, after96 }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          "[charslot(duration=0.032)]",
+          '[character(name="avg_npc_1",fadetime=0)]',
+          `[characteraction(name="middle",type="${type}",power=10,scale=2,fadetime=0.096,isblock=true)]`,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        const { characters, cgItems } = renderer.layers;
+        app.ticker.update(16);
+        expect(characters.children).toHaveLength(1);
+        expect(cgItems.children).toHaveLength(0);
+        app.ticker.update(32);
+        expect(characters.children).toHaveLength(0);
+        expect(cgItems.children).toHaveLength(after32);
+        app.ticker.update(96);
+        expect(cgItems.children).toHaveLength(after96);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("keeps a zoom on its original holder when mounting art into an empty slot", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[characteraction(name="middle",type="zoom",scale=2,fadetime=0.032)]',
+        '[character(name="avg_npc_1",fadetime=0)]',
         '[name="A"]ok',
       ],
       () => {},
@@ -1623,16 +2127,157 @@ describe("character commands during playback", () => {
     try {
       const [root] = renderer.layers.characters.children;
       const motion = root.children[0];
-      const originalScale = motion.scale.x;
-      expect(renderer.layers.cgItems.children).toHaveLength(0);
+      const baseScale = motion.scale.x;
       app.ticker.update(16);
-      expect(motion.scale.x).toBe(originalScale * 2);
+      expect(motion.scale.x).toBe(baseScale);
+      app.ticker.update(32);
+      expect(motion.scale.x).toBe(baseScale);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("keeps a replacement's alpha when an older zero-time fade reaches Update", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[charslot(slot="m",name="avg_npc_1",duration=0)]',
+        '[charslot(slot="m",name="avg_npc_1",duration=0,afrom=0.25,ato=0.25)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const [root] = renderer.layers.characters.children;
+      const [visual] = root.children[0].children[0].children;
+      expect(visual.alpha).toBe(0.25);
+      app.ticker.update(16);
+      expect(visual.alpha).toBe(0.25);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    { command: '[character(name="avg_cold",fadetime=0.032)]', block: false },
+    {
+      command:
+        '[charslot(slot="m",name="avg_cold",duration=0.032,isblock=true)]',
+      block: true,
+    },
+  ])(
+    "fades the old art after a cold texture miss for $command",
+    async ({ command, block }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          command,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+        coldCharacterLinks,
+      );
+      const load = deferColdCharacter(renderer);
+      const started = runtime.start();
+      try {
+        const { characters, cgItems } = renderer.layers;
+        const [mounted] = characters.children;
+        expect(cgItems.children).toHaveLength(0);
+        load.resolve(null);
+        await setImmediate();
+        app.ticker.update(16);
+        expect(mounted.alpha).toBe(0.5);
+        expect(cgItems.children).toHaveLength(block ? 0 : 1);
+        app.ticker.update(32);
+        expect(characters.children).toHaveLength(0);
+        expect(mounted.destroyed).toBe(true);
+        expect(cgItems.children).toHaveLength(1);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("keeps the same holder moving when a character command changes its focus", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0.032)]',
+        '[character(name="avg_npc_1",focus=-1,fadetime=0)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const [root] = renderer.layers.characters.children;
+      const motion = root.children[0];
+      expect(motion.children[0].children[0].tint).toBe(0x808080);
+      app.ticker.update(16);
+      expect(motion.x).toBe(105);
+      app.ticker.update(32);
+      expect(motion.x).toBe(120);
+      expect(renderer.layers.characters.children).toEqual([root]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("runs a blocking action on the fixed slot after replacement art fails", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[character(name="avg_cold",fadetime=0.032)]',
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0.064,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const load = deferColdCharacter(renderer);
+    const started = runtime.start();
+    try {
+      load.resolve(null);
+      await setImmediate();
+      app.ticker.update(32);
+      expect(renderer.layers.characters.children).toHaveLength(0);
+      expect(renderer.layers.cgItems.children).toHaveLength(0);
+      app.ticker.update(64);
       expect(renderer.layers.cgItems.children).toHaveLength(1);
     } finally {
       destroy();
       await started;
     }
   });
+
+  it.each(["move", "exit", "jump", "shake"])(
+    "snaps a near-zero blocking %s in dispatch",
+    async (type) => {
+      const { destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          `[characteraction(name="middle",type="${type}",xpos=120,ypos=0,fadetime=0.000005,isblock=true)]`,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        expect(renderer.layers.characters.children[0].children[0].x).toBe(120);
+        expect(renderer.layers.cgItems.children).toHaveLength(1);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
 
   it("recycles both mounted and fading character roots when playback ends", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(

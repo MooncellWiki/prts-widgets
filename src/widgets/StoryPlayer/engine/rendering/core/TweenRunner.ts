@@ -63,6 +63,7 @@ interface ActiveTween extends TweenHandle {
  */
 export class TweenRunner {
   private readonly active = new Set<ActiveTween>();
+  private readonly beforeUpdateCallbacks = new Set<() => void>();
   private readonly afterUpdateCallbacks: Array<() => void> = [];
   private stopUpdates: (() => void) | undefined;
   private updating = false;
@@ -186,14 +187,11 @@ export class TweenRunner {
     } else {
       previous = now?.() ?? 0;
       this.active.add(tween);
-      if (!this.stopUpdates && !this.updating) {
-        try {
-          this.stopUpdates = this.subscribe();
-        } catch (error) {
-          this.active.delete(tween);
-          throw error;
-        }
-        this.stopIfIdle();
+      try {
+        this.ensureUpdates();
+      } catch (error) {
+        this.active.delete(tween);
+        throw error;
       }
     }
     return tween;
@@ -203,6 +201,21 @@ export class TweenRunner {
     for (const tween of [...this.active].reverse()) {
       if (tween.target === target) tween.kill(complete);
     }
+  }
+
+  /** Run once before advancing tweens on the next Update. */
+  beforeNextUpdate(callback: () => void): () => void {
+    this.beforeUpdateCallbacks.add(callback);
+    try {
+      this.ensureUpdates();
+    } catch (error) {
+      this.beforeUpdateCallbacks.delete(callback);
+      throw error;
+    }
+    return () => {
+      this.beforeUpdateCallbacks.delete(callback);
+      this.stopIfIdle();
+    };
   }
 
   /** Run after the current tween update, or inline between frames. */
@@ -216,7 +229,11 @@ export class TweenRunner {
     const kills: Array<() => void> = [];
     this.killCallbacks = kills;
     try {
-      for (const tween of [...this.active]) tween.advance(deltaMs);
+      const tweens = [...this.active];
+      for (const callback of [...this.beforeUpdateCallbacks]) {
+        if (this.beforeUpdateCallbacks.delete(callback)) callback();
+      }
+      for (const tween of tweens) tween.advance(deltaMs);
     } finally {
       try {
         // TweenManager.Update (2791 @ 0x184467690) drains _KillList in reverse.
@@ -232,8 +249,15 @@ export class TweenRunner {
     }
   }
 
+  private ensureUpdates(): void {
+    if (this.stopUpdates || this.updating) return;
+    this.stopUpdates = this.subscribe();
+    this.stopIfIdle();
+  }
+
   private stopIfIdle(): void {
-    if (this.updating || this.active.size !== 0) return;
+    if (this.updating || this.active.size || this.beforeUpdateCallbacks.size)
+      return;
     this.stopUpdates?.();
     this.stopUpdates = undefined;
   }
