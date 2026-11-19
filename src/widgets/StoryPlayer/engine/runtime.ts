@@ -478,11 +478,14 @@ export class StoryRuntime {
     this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
-    new VideoPanel({
+    new VideoPanel(renderer, {
+      beginWait: () => {
+        this.state = "waiting_video";
+      },
+      finishAtFrameEnd: (handle, finishCommand) =>
+        this.finishAtFrameEnd(handle, finishCommand),
+      isSkipping: () => this.skipCleanup !== null && !this.destroyed,
       missingVideoUrls: context.missingVideoUrls,
-      stopVideo: (fadeOutDelayMs) => this.renderer.stopVideo(fadeOutDelayMs),
-      waitForPlayback: (url, onFinish) =>
-        this.waitForVideoPlayback(url, onFinish),
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     for (const command of builtinCommandNames)
@@ -944,53 +947,6 @@ export class StoryRuntime {
     return completion;
   }
 
-  private waitForVideoPlayback(
-    url: string,
-    onFinish: () => void,
-  ): WaitForFrame {
-    const generation = this.playbackGeneration;
-    const finish = createExecutionHandle(true);
-    let cancelFrameEnd: (() => void) | undefined;
-    const stopWaiting = (delayMs?: number) => {
-      finish.end("force_end");
-      cancelFrameEnd?.();
-      this.renderer.stopVideo(delayMs);
-    };
-    // AVGVideoPanel.ForceCommandEnd (2791 @ 0x1841BDC40) starts the fade
-    // without the scripted delay. Web teardown disposes media immediately.
-    const forceEnd = () => {
-      const skipping = this.skipCleanup && !this.destroyed;
-      // FinishCommand removes the native blocker at frame end. A skip before
-      // the next poll leaves its scheduled fade alone (ShouldResetOnSkip).
-      if (skipping && finish.endReason === "complete") return;
-      stopWaiting(skipping ? 0 : undefined);
-    };
-
-    this.state = "waiting_video";
-    try {
-      this.renderer.playVideo(url, () => {
-        if (finish.endReason !== undefined || cancelFrameEnd) return;
-        // AVGVideoPanel._HandlePlayEvent (2791 @ 0x1841BE7D0) schedules
-        // FinishCommand via InvokeEndOfFrame. OnFinish (0x1841BDDE0) starts
-        // the delayed fade without blocking the next command.
-        cancelFrameEnd = this.finishAtFrameEnd(finish, onFinish);
-      });
-    } catch (error) {
-      stopWaiting();
-      throw error;
-    }
-
-    // A synchronous renderer callback can end the story before it binds the wait.
-    if (this.destroyed || this.playbackGeneration !== generation) forceEnd();
-    return {
-      forceEnd,
-      isComplete: () => {
-        if (finish.failure) throw finish.failure.error;
-        return finish.endReason !== undefined;
-      },
-    };
-  }
-
   private finishAtFrameEnd(
     handle: ExecutionHandle,
     onFinish?: () => void,
@@ -1236,6 +1192,8 @@ export class StoryRuntime {
     this.dialogPanel.destroy();
     this.showItemPanel.reset();
     this.stopPlaybackInput();
+    // FinishCommand can release the video wait while its fade is still active.
+    this.renderer.stopVideo();
     this.playbackGeneration += 1;
     // 销毁后不该再有推送落到 UI 上
     this.events.all.clear();

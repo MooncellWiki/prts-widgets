@@ -1692,7 +1692,7 @@ describe("Displayable and focus frame order", () => {
     { delay: -0.1, releaseMs: 130 },
     { delay: -0.24, releaseMs: 0 },
   ])(
-    "closes the video using the signed fadeoutdelay of $delay",
+    "stops media for fadeoutdelay=$delay while the panel completes its fade",
     async ({ delay, releaseMs }) => {
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
         [`[video(res="video/entry",fadeoutdelay=${delay})]`, '[name="A"]after'],
@@ -1712,15 +1712,15 @@ describe("Displayable and focus frame order", () => {
         video.dispatchEvent(new Event("ended"));
         const finishTime = 246;
         app.ticker.update(finishTime);
-        const sampleMs = Math.max(0, releaseMs - 1);
-        app.ticker.update(finishTime + sampleMs);
-        const opacity = host.contains(video)
-          ? Number(overlay.style.opacity)
-          : null;
-        const expectedOpacity = expect.closeTo(1 - sampleMs / 230);
-        expect(opacity).toEqual(releaseMs === 0 ? null : expectedOpacity);
+        app.ticker.update(finishTime + Math.max(0, releaseMs - 1));
+        expect(host.querySelector("video")).toBe(releaseMs > 0 ? video : null);
         app.ticker.update(finishTime + releaseMs);
         expect(host.querySelector("video")).toBeNull();
+        expect(overlay.style.display).toBe("flex");
+        expect(Number(overlay.style.opacity)).toBeCloseTo(1 - releaseMs / 230);
+        app.ticker.update(finishTime + 230);
+        expect(overlay.style.opacity).toBe("0");
+        expect(overlay.style.display).toBe("none");
       } finally {
         play.mockRestore();
         destroy();
@@ -1782,7 +1782,7 @@ describe("Displayable and focus frame order", () => {
     },
   );
 
-  it("cancels the old video fade when the next video starts", async () => {
+  it("keeps the panel fade through media replacement until the next video plays", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
         '[video(res="video/first",fadeoutdelay=0.1)]',
@@ -1808,12 +1808,19 @@ describe("Displayable and focus frame order", () => {
       const next = host.querySelector("video")!;
       expect(next.src).toContain("/video/next");
       expect(next).not.toBe(old);
-      expect(next.parentElement!.style.opacity).toBe("0");
+      const overlay = next.parentElement!;
+      expect(overlay.style.opacity).toBe("1");
+
+      // The outgoing fade continues while the replacement prepares.
+      app.ticker.update(461);
+      expect(Number(overlay.style.opacity)).toBeCloseTo(0.5);
       old.dispatchEvent(new Event("error"));
       next.dispatchEvent(new Event("playing"));
-      app.ticker.update(580);
+      app.ticker.update(576);
       expect(host.querySelector("video")).toBe(next);
-      expect(next.parentElement!.style.opacity).toBe("1");
+      expect(Number(overlay.style.opacity)).toBeCloseTo(0.75);
+      app.ticker.update(691);
+      expect(overlay.style.opacity).toBe("1");
       expect(runtime.getState()).toBe("waiting_video");
     } finally {
       play.mockRestore();

@@ -716,6 +716,33 @@ describe("StoryRuntime", () => {
     });
   });
 
+  it("reports a video close failure from the frame-end completion", async () => {
+    const renderer = new FakeRenderer();
+    vi.spyOn(renderer, "stopVideo").mockImplementationOnce(() => {
+      throw new Error("video close failed");
+    });
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext(['[video(res="video/entry")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    const started = runtime.start();
+    renderer.finishVideo();
+    await started;
+
+    expect(runtime.getState()).toBe("error");
+    expect(renderer.videoStopped).toBe(true);
+    expect(renderer.dialogueTexts).toEqual([]);
+    expect(onWarning).toHaveBeenCalledExactlyOnceWith({
+      cursor: 1,
+      detail: "video close failed",
+      type: "error",
+    });
+  });
+
   it("ends the video command in-frame when the res asset is known missing", async () => {
     // Native: CheckVideoExist == false -> Toast(NO_VIDEO_MESSAGE) +
     // _PlayVideo returns false -> same-frame FinishCommand; the queue keeps

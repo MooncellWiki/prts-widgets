@@ -166,8 +166,10 @@ export abstract class ExecutorComponent {
 
   private finish(execution: Execution): void {
     if (this.current !== execution) return;
-    this.current = null;
+    // FinishCommand (2791 @ 0x18419B640) runs OnFinish before releasing
+    // the blocker. A failed OnFinish can still surface through the wait.
     if (execution.isCurrent()) this.onFinish();
+    if (this.current === execution) this.current = null;
   }
 
   private forceEnd(execution: Execution, cleanup?: () => void): void {

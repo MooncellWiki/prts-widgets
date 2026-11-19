@@ -701,7 +701,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   destroy(): void {
-    this.stopVideo();
+    this.videoPanel.destroy();
     this.decisionView.destroy();
     this.cutinPanel.destroy();
     this.interludePanel.destroy();
@@ -748,7 +748,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.characterArt.destroy();
     this.dialogView.destroy();
     this.subtitleView.destroy();
-    this.videoPanel.destroy();
   }
 
   playVideo(url: string, onEnd: () => void): void {
