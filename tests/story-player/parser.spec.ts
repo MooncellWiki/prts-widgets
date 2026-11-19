@@ -190,6 +190,10 @@ describe("parser", () => {
     // sign accepted on integer literals.
     expect(sortType('" by_rarity_down "')).toBe("BY_RARITY_DOWN");
     expect(sortType('"+3"')).toBe("BY_RARITY_DOWN");
+    expect(sortType('"by_level_down,\u0085BY_RARITY_UP"')).toBe(
+      "BY_RARITY_DOWN",
+    );
+    expect(sortType('"BY_LEVEL_DOWN,Missing"')).toBe("BY_GAIN_TIME_DOWN");
     // Empty string: `GetEnum`'s `IsNullOrEmpty` check returns the default.
     expect(sortType('""')).toBe("BY_GAIN_TIME_DOWN");
     // `Enum.Parse` throws on these; `GetEnum` logs and returns the default,

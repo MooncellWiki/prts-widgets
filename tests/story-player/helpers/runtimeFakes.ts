@@ -181,6 +181,10 @@ export class FakeRenderer implements StoryRenderer {
   resetGridBackground(): void {}
 
   clearImage(): void {}
+
+  cancelImagePreparation(): void {}
+
+  resetImage(): void {}
   clearLargeImage(fadeMs = 0, block = false): void {
     this.gridBackgroundClearCalls.push({ block, fadeMs });
   }
@@ -329,14 +333,14 @@ export class FakeRenderer implements StoryRenderer {
     this.lastDialogue = { speaker: "", text: "" };
   }
 
-  async setImage(key: string, input?: BackgroundInput): Promise<void> {
+  setImage(key: string, input?: BackgroundInput): void {
     this.imageCalls.push({ input, key });
   }
-  async setImageRotate(input: ImageRotateInput): Promise<void> {
+  setImageRotate(input: ImageRotateInput): void {
     this.imageRotateCalls.push(input);
   }
 
-  async setImageTween(input: ImageTweenInput): Promise<void> {
+  setImageTween(input: ImageTweenInput): void {
     this.imageTweenCalls.push(input);
   }
   setInterlude(input: InterludeInput): ExecutionHandle | void {

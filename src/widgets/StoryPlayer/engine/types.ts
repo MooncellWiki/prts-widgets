@@ -785,7 +785,13 @@ export interface StoryRenderer {
   ) => ExecutionHandle | void;
   cancelGridBackgroundPreparation: () => void;
   resetGridBackground: () => void;
-  clearImage: (fadeMs?: number, block?: boolean) => Promise<void> | void;
+  clearImage: (
+    fadeMs?: number,
+    block?: boolean,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  cancelImagePreparation: () => void;
+  resetImage: () => void;
   clearLargeImage: (fadeMs?: number, block?: boolean) => ExecutionHandle | void;
   cancelLargeImagePreparation: () => void;
   clearSticker: (id?: string, fadeMs?: number) => Promise<void> | void;
@@ -850,9 +856,19 @@ export interface StoryRenderer {
    * `ForceCommandEnd` on skip): undo `_TryExpandMessageWidthOnOverflow`.
    */
   finishDialogueCommand: () => void;
-  setImage: (key: string, input?: BackgroundInput) => Promise<void>;
-  setImageRotate: (input: ImageRotateInput) => Promise<void>;
-  setImageTween: (input: ImageTweenInput) => Promise<void>;
+  setImage: (
+    key: string,
+    input?: BackgroundInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  setImageRotate: (
+    input: ImageRotateInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  setImageTween: (
+    input: ImageTweenInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setInterlude: (
     input: InterludeInput,
     onComplete?: () => void,

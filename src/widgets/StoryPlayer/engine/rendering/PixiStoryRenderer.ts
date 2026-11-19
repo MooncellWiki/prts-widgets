@@ -12,7 +12,7 @@ import {
   Texture,
   type TextureSource,
   type Ticker,
-  TilingSprite,
+  type TilingSprite,
   UPDATE_PRIORITY,
 } from "pixi.js";
 
@@ -84,11 +84,11 @@ import {
   dotweenEaseCurve,
   type EaseCurve,
 } from "./core/DotweenEase";
+import { createImageSprite } from "./core/ImageSprite";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
   readCenteredTransform as readRootTransform,
-  rotateTweenDelta,
 } from "./core/SceneGeometry";
 import { buildShakePath, sampleShakePath } from "./core/ShakePath";
 import { SlideMaskFilter } from "./core/SlideMaskFilter";
@@ -100,6 +100,7 @@ import { CgItemView } from "./panels/CgItemView";
 import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
 import { DecisionView } from "./panels/DecisionView";
 import { DialogView } from "./panels/DialogView";
+import { ImageView } from "./panels/ImageView";
 import { InterludePanel } from "./panels/InterludePanel";
 import { LargeBackgroundView } from "./panels/LargeBackgroundView";
 import { ShowItemCutinSlot } from "./panels/ShowItemCutinSlot";
@@ -471,9 +472,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly curtains = new Map<number, CurtainRenderState>();
   private readonly largeBackgroundView: LargeBackgroundView;
   private readonly largeImageView: LargeBackgroundView;
-  private readonly imageLayer = this.layers.images;
-  private imageRoot: Container | null = null;
-  private imageRotateSessionId = 0;
+  private readonly imageView: ImageView;
   /**
    * Bundled nine-slice texture of the serialized `sprite_avg_showItem_photo`
    * photo frame (native scene asset; CDN and the PRTS mirror do not carry
@@ -567,15 +566,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   ) {
     this.context = context;
     this.onWarning = onWarning;
-    // Native port: `AVGImagePanel` executors transform the panel's own
-    // RectTransform (the scene `panel_image` node), whose pivot is serialized
-    // at (0.5, 0.5) — the panel center, i.e. the 1280x720 screen center.
-    // Anchor `imageLayer` the same way so `imagerotate` tilts the picture in
-    // place instead of orbiting the stage origin. `pivot == position` keeps
-    // the child-space translation identity, so sprites keep their
-    // (STORY_WIDTH/2, STORY_HEIGHT/2) placement semantics.
-    this.imageLayer.pivot.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
-    this.imageLayer.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
     this.dialogView = new DialogView(this.uiLayer, onWarning, (...args) =>
       this.updatePhaseTweenRunner.run(...args),
@@ -640,6 +630,12 @@ export class PixiStoryRenderer implements StoryRenderer {
       (...args) => this.updatePhaseTweenRunner.run(...args),
       now,
     );
+    this.imageView = new ImageView(
+      this.layers.images,
+      (key) => this.textureForImageKey(key, "image"),
+      this.updatePhaseTweenRunner,
+      this.sceneEffects,
+    );
     this.largeBackgroundView = new LargeBackgroundView(
       this.layers.gridBackground,
       {
@@ -651,7 +647,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         tweens: this.updatePhaseTweenRunner,
       },
     );
-    this.largeImageView = new LargeBackgroundView(this.imageLayer, {
+    this.largeImageView = new LargeBackgroundView(this.layers.images, {
       kind: "image",
       loadTexture: (key, kind) => this.textureForImageKey(key, kind),
       tweens: this.updatePhaseTweenRunner,
@@ -806,6 +802,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.cgItemView.destroy();
     this.largeBackgroundView.reset();
     this.largeImageView.clear();
+    this.imageView.destroy();
     this.resetCameraEffects();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
@@ -820,8 +817,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.blockerSlideFilter = null;
     this.blockerSlideMaterial = null;
     this.blockerColor = { a: 0, b: 0, g: 0, r: 0 };
-    this.imageRoot = null;
-    this.imageLayer.removeChildren();
     this.layers.showItems.removeChildren();
     for (const state of this.characterSlots.values())
       this.disposeCharacterState(state);
@@ -932,39 +927,11 @@ export class PixiStoryRenderer implements StoryRenderer {
     // endpoints (new image cross-faded in, old root removed) still agree.
     this.backgroundTweenSessionId += 1;
     const root = new Container();
-    // `_LoadImage`: TryGetParam("tiled", false) switches Image.type between
-    // Tiled and Simple, tiling the sprite inside the final sizeDelta rect; a
-    // repeat-addressed TilingSprite is the PIXI equivalent. The address mode
-    // is set on the Assets-cached texture, which is harmless for the 0..1-UV
-    // simple sprites sharing it.
-    let sprite: Sprite | TilingSprite;
-    if (input?.tiled) {
-      texture.source.style.addressMode = "repeat";
-      sprite = new TilingSprite({ texture });
-    } else {
-      sprite = new Sprite(texture);
-    }
-    sprite.anchor.set(0.5);
-    const nativeRect = this.nativeBackgroundRect(key, texture);
-    this.layoutImageForScreenAdapt(
-      sprite,
-      input?.screenAdapt,
-      {
-        height: input?.height ?? 1,
-        width: input?.width ?? 1,
-      },
-      nativeRect,
+    const sprite = createImageSprite(
+      texture,
+      input,
+      this.nativeBackgroundRect(key, texture),
     );
-    if (sprite instanceof TilingSprite) {
-      // Image.type = Tiled repeats the sprite at its native (ppu-scaled) size
-      // inside the final sizeDelta rect, so each tile spans nativeRect while
-      // the TilingSprite's own width/height stay at that final rect.
-      sprite.tileScale.set(
-        nativeRect[0] / Math.max(1, texture.width),
-        nativeRect[1] / Math.max(1, texture.height),
-      );
-      this.alignTilesToLowerLeft(sprite);
-    }
     // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
     // omitted scale must leave the screen-adapted size alone.
     this.applyCenteredTransform(root, {
@@ -1147,119 +1114,42 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageView.cancelPreparation();
   }
 
-  /**
-   * Port scope: `Torappu.AVG.AVGImagePanel._ExecuteImage` / `_LoadImage`
-   * (2.7.61 @0x183e57cf0 / @0x183e58390) for the `image` path. Sprite
-   * replacement, cross-fade and the block boundary are preserved; the
-   * width/height sizeDelta multipliers and the `tiled` Image type are applied
-   * like `_LoadImage` steps 5-9, and a failed texture load falls back to the
-   * clear branch (LogError + fade the old image out) instead of keeping it.
-   *
-   * Native `_foreImage` is an Image whose RectTransform sizeDelta carries the
-   * screenadapt-fit size while a parent transform carries `xScale`/`yScale` as
-   * localScale. The root/sprite split reproduces that separation: the adapt
-   * ratio stays on the sprite, `xScale`/`yScale` land on the root, so
-   * `imagetween` scale values live in the native localScale space instead of
-   * being folded into the adapt ratio.
-   */
-  async setImage(key: string, input?: BackgroundInput): Promise<void> {
-    const texture = await this.textureForImageKey(key, "image");
-    if (!texture) {
-      // `_LoadImage` on a null sprite logs "Failed to load image: [{0}]"
-      // (textureForUrl already reports it) and takes the clear branch:
-      // DOFade(_backImage → 0), waiting for the fade when block is set.
-      await this.clearImage(input?.fadeMs ?? 0, input?.block ?? false);
-      return;
-    }
-
-    // `_ExecuteImage` only DOKills `_backImage` and its transform; the
-    // panel-level rotation tween from `imagerotate` keeps running across
-    // image swaps and the panel's current angle is preserved. Do NOT bump
-    // imageRotateSessionId here (that would freeze a rotation mid-flight).
-    const root = new Container();
-    // `_LoadImage`: TryGetParam("tiled", false) switches Image.type between
-    // Tiled and Simple, tiling the sprite inside the final sizeDelta rect;
-    // a repeat-addressed TilingSprite is the PIXI equivalent (same
-    // construction as the background path -- see setBackground).
-    let sprite: Sprite | TilingSprite;
-    if (input?.tiled) {
-      texture.source.style.addressMode = "repeat";
-      sprite = new TilingSprite({ texture });
-    } else {
-      sprite = new Sprite(texture);
-    }
-    sprite.anchor.set(0.5);
-    // Image art keeps the texture's pixel size as the SetNativeSize rect;
-    // the ppu sidecar only covers AVG/Backgrounds keys.
-    this.layoutImageForScreenAdapt(sprite, input?.screenAdapt, {
-      height: input?.height ?? 1,
-      width: input?.width ?? 1,
-    });
-    if (sprite instanceof TilingSprite) this.alignTilesToLowerLeft(sprite);
-    // `_ExecuteImage` reads `xScale`/`yScale` with a 1.0 fallback, so an
-    // omitted scale must leave the screen-adapted size alone.
-    this.applyCenteredTransform(root, {
-      scaleX: input?.scaleX ?? 1,
-      scaleY: input?.scaleY ?? 1,
-      x: input?.x ?? 0,
-      y: input?.y ?? 0,
-    });
-    root.addChild(sprite);
-
-    const previous = this.imageRoot;
-    this.imageRoot = root;
-    this.imageLayer.addChild(root);
-    const fadeMs = input?.fadeMs ?? 0;
-    this.sceneEffects.setImageFocusTargets(
-      "cg",
-      root,
-      fadeMs > 0 ? (previous ?? undefined) : undefined,
-    );
-    root.alpha = fadeMs > 0 ? 0 : 1;
-    if (fadeMs <= 0) {
-      previous?.removeFromParent();
-      return;
-    }
-    const run = this.tween(
-      fadeMs,
-      (progress) => (root.alpha = progress),
-      () => {
-        if (!previous) return;
-        previous.removeFromParent();
-        this.sceneEffects.releaseFixedFocusTarget(previous);
-      },
-    );
-    if (input?.block) await run;
-    else void run;
+  setImage(
+    key: string,
+    input?: BackgroundInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.show(key, input, onComplete);
   }
 
-  async clearImage(fadeMs = 0, block = false): Promise<void> {
-    // Same as setImage: the clear branch fades `_backImage` out and never
-    // touches the panel rotation tween, so imagerotate keeps its angle and
-    // any in-flight rotation keeps playing (see setImageRotate).
-    const root = this.imageRoot;
-    this.imageRoot = null;
-    this.sceneEffects.setImageFocusTargets(
-      "cg",
-      undefined,
-      fadeMs > 0 ? (root ?? undefined) : undefined,
-    );
-    if (!root) return;
-    if (fadeMs <= 0) {
-      root.removeFromParent();
-      return;
-    }
-    const startAlpha = root.alpha;
-    const run = this.tween(
-      fadeMs,
-      (progress) => (root.alpha = startAlpha * (1 - progress)),
-      () => {
-        root.removeFromParent();
-        this.sceneEffects.releaseFixedFocusTarget(root);
-      },
-    );
-    if (block) await run;
-    else void run;
+  clearImage(
+    fadeMs?: number,
+    block?: boolean,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.clear(fadeMs, block, onComplete);
+  }
+
+  setImageTween(
+    input: ImageTweenInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.move(input, onComplete);
+  }
+
+  setImageRotate(
+    input: ImageRotateInput,
+    onComplete?: () => void,
+  ): ExecutionHandle | void {
+    return this.imageView.rotate(input, onComplete);
+  }
+
+  cancelImagePreparation(): void {
+    this.imageView.cancelPreparation();
+  }
+
+  resetImage(): void {
+    this.imageView.reset();
   }
 
   clearCharacterCutin(widgetId?: string): void {
@@ -1389,83 +1279,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.cgItemView.stopShakes(key);
   }
 
-  /**
-   * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageTween` for the foreground
-   * visual. Native tweens `_foreImage.rectTransform` localPosition/localScale
-   * with DOTween; both are reproduced on the image root, whose scale is the
-   * localScale space (`setImage` keeps the screenadapt ratio on the inner
-   * sprite). `ease` goes through the runner's `SetEase` option as a single
-   * eased progress shared by the position and scale interpolation, matching
-   * `SetEase` on both native tweens, and `loop` maps SetLoops(2*!loop-1) to
-   * the same infinite Restart loop as `setBackgroundTween` (block is dropped
-   * upstream for loops). Consecutive `imagetween`s are not cancelled (native
-   * never calls DOKill either; both DOTween instances keep writing the same
-   * transform); only an infinite loop is retired once its root stops being
-   * the foreground image, since it would otherwise request frames for as long
-   * as the renderer lives.
-   *
-   * Without a foreground image native dereferences `_foreImage` and throws;
-   * story scripts always precede the tween with `[Image]`, so the silent
-   * return only avoids the equivalent crash.
-   */
-  async setImageTween(input: ImageTweenInput): Promise<void> {
-    const root = this.imageRoot;
-    if (!root || root.parent !== this.imageLayer) return;
-
-    // From/To default to the same current transform values (native reads the
-    // current localPosition/localScale once for both fallbacks).
-    const current = this.readCenteredTransform(root);
-    const from = {
-      scaleX: isFiniteNumber(input.xScaleFrom)
-        ? input.xScaleFrom
-        : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleFrom)
-        ? input.yScaleFrom
-        : current.scaleY,
-      x: isFiniteNumber(input.xFrom) ? input.xFrom : current.x,
-      y: isFiniteNumber(input.yFrom) ? input.yFrom : current.y,
-    };
-    const to = {
-      scaleX: isFiniteNumber(input.xScaleTo) ? input.xScaleTo : current.scaleX,
-      scaleY: isFiniteNumber(input.yScaleTo) ? input.yScaleTo : current.scaleY,
-      x: isFiniteNumber(input.xTo) ? input.xTo : current.x,
-      y: isFiniteNumber(input.yTo) ? input.yTo : current.y,
-    };
-
-    // Native jumps to the From transform before starting the tweens, and a
-    // non-positive duration Completes both tweens so the To state lands
-    // immediately.
-    this.applyCenteredTransform(root, from);
-
-    if (input.durationMs <= 0) {
-      this.applyCenteredTransform(root, to);
-      return;
-    }
-
-    const run = this.tween(
-      input.durationMs,
-      (progress) => {
-        this.applyCenteredTransform(root, {
-          scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-          scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-          x: from.x + (to.x - from.x) * progress,
-          y: from.y + (to.y - from.y) * progress,
-        });
-      },
-      undefined,
-      {
-        ease: dotweenEaseCurve(input.ease),
-        // Single passes keep writing an outgoing root until they finish, as
-        // before; only a never-ending loop has to stop with its root.
-        isAlive: input.loop ? () => this.imageRoot === root : undefined,
-        loops: input.loop ? -1 : 1,
-      },
-    );
-
-    if (input.block) await run;
-    else void run;
-  }
-
   setLargeBackgroundTween(
     input: LargeBackgroundTweenInput,
     onComplete?: () => void,
@@ -1475,55 +1288,6 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   setLargeImageTween(input: LargeBackgroundTweenInput): ExecutionHandle | void {
     return this.largeImageView.move(input);
-  }
-
-  /**
-   * Port of `Torappu.AVG.AVGImagePanel._ExecuteImageRotate`: rotate the panel
-   * transform (`_rectTransform`, the scene `panel_image` node) rather than its
-   * foreground Image, preserving angle across image swaps. `imageLayer` is the
-   * corresponding PIXI adaptation, with its constructor-time pivot mirroring
-   * the RectTransform's serialized (0.5, 0.5) pivot so the rotation orbits the
-   * panel center instead of the stage origin. Native never resets the angle
-   * except `OnReset` (story start/skip); the widget builds a fresh renderer
-   * per story, so no explicit zeroing is needed here.
-   *
-   * Unity's eulerAngles.z is counter-clockwise on screen (y-up; a positive
-   * sweep is what CreateRotateTween's `counterClockwise` flag asks for), while
-   * PIXI's `angle` is clockwise (y-down). The sweep is computed in Unity space
-   * and negated at the PIXI boundary, the same axis flip applyCenteredTransform
-   * does for `y`.
-   */
-  async setImageRotate(input: ImageRotateInput): Promise<void> {
-    const target = this.imageLayer;
-    const sessionId = ++this.imageRotateSessionId;
-    const startAngle = -target.angle;
-    const delta = rotateTweenDelta(
-      startAngle,
-      input.angleDeg,
-      input.circles,
-      input.inverse,
-    );
-    const endAngle = startAngle + delta;
-
-    if (input.durationMs <= 0) {
-      target.angle = -endAngle;
-      return;
-    }
-
-    const run = this.tween(
-      input.durationMs,
-      (progress) => {
-        if (this.imageRotateSessionId !== sessionId) return;
-        target.angle = -(startAngle + delta * progress);
-      },
-      () => {
-        if (this.imageRotateSessionId !== sessionId) return;
-        target.angle = -endAngle;
-      },
-    );
-
-    if (input.block) await run;
-    else void run;
   }
 
   /**
@@ -3877,68 +3641,6 @@ export class PixiStoryRenderer implements StoryRenderer {
       return [STORY_WIDTH, STORY_HEIGHT];
     }
     return [width, height];
-  }
-
-  /**
-   * Native port: `AVGImagePanel._LoadImage` sizes the Image in three steps.
-   * (1) `Image.SetNativeSize()` resets sizeDelta to the sprite's native
-   * display rect (see nativeBackgroundRect -- confirmed called at
-   * 0x183e58688 in build 2761 right after `image.sprite` is assigned).
-   * (2) sizeDelta is multiplied by the `width`/`height` params
-   * (GetOrDefault<float>(..., 1.0); mulss at 0x183e587b0/0x183e587b4).
-   * (3) An optional SCREEN_ADAPT_FUNCTION_MAP entry maps that multiplied
-   * rect against the 1280x720 reference -- the ratio checks read the
-   * post-multiplier sizeDelta too. With screenadapt omitted the rect keeps
-   * the multiplied native size, which still covers the canvas for ppu-tuned
-   * art (most backgrounds) and reveals the backing color only around art
-   * whose native rect is smaller than 1280x720 (e.g. 33_g4_srctheater).
-   */
-  private layoutImageForScreenAdapt(
-    sprite: Sprite | TilingSprite,
-    mode?: BackgroundInput["screenAdapt"],
-    multipliers?: { height: number; width: number },
-    nativeRect?: readonly [number, number],
-  ): void {
-    const nativeWidth = nativeRect?.[0] ?? Math.max(1, sprite.texture.width);
-    const nativeHeight = nativeRect?.[1] ?? Math.max(1, sprite.texture.height);
-    const sourceWidth = nativeWidth * (multipliers?.width ?? 1);
-    const sourceHeight = nativeHeight * (multipliers?.height ?? 1);
-    let width = sourceWidth;
-    let height = sourceHeight;
-
-    if (mode === "fill") {
-      width = STORY_WIDTH;
-      height = STORY_HEIGHT;
-    } else if (
-      mode === "width" ||
-      (mode === "showall" &&
-        sourceWidth / sourceHeight > STORY_WIDTH / STORY_HEIGHT) ||
-      (mode === "coverall" &&
-        sourceWidth / sourceHeight < STORY_WIDTH / STORY_HEIGHT)
-    ) {
-      width = STORY_WIDTH;
-      height = (sourceHeight * STORY_WIDTH) / sourceWidth;
-    } else if (mode === "height" || mode === "showall" || mode === "coverall") {
-      height = STORY_HEIGHT;
-      width = (sourceWidth * STORY_HEIGHT) / sourceHeight;
-    }
-
-    sprite.width = width;
-    sprite.height = height;
-    sprite.position.set(0, 0);
-  }
-
-  /**
-   * `Image.GenerateTiledSprite` lays tiles out from the rect's lower-left
-   * corner and clips the last row at the top edge, while a TilingSprite starts
-   * at its top-left corner. Shifting the tile origin by the leftover height
-   * puts a tile boundary on the bottom edge like Unity. A no-op whenever the
-   * rect is a whole number of tiles high, which covers every tiled story line
-   * today (none passes screenadapt/width/height, so the rect is one tile).
-   */
-  private alignTilesToLowerLeft(sprite: TilingSprite): void {
-    const tileHeight = sprite.texture.height * sprite.tileScale.y;
-    sprite.tilePosition.set(0, tileHeight > 0 ? sprite.height % tileHeight : 0);
   }
 
   private readCenteredTransform(root: Container): {

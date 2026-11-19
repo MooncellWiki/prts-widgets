@@ -1,6 +1,7 @@
 import {
   exactArg,
   getBool,
+  hasTweenDuration,
   toBoolean,
   toNumber,
   toOptionalNumber,
@@ -12,9 +13,6 @@ import type {
   StoryCommandArgs,
   StoryCommandValue,
 } from "./types";
-
-export const LOOP_BLOCK_WARNING =
-  "Loop and block both true when tween background! Will cause intinity lop!";
 
 /** Web-only key lookup used by largeimg and largeimgtween. */
 export function legacyPuzzleArg(
@@ -56,11 +54,6 @@ export function parsePuzzleDimensions(value: unknown): number[] {
     .filter(Number.isFinite);
 }
 
-/** MathUtil.LE(seconds, 0) in the 2791 background executors (@ 0x186945C90). */
-export function isTimedPuzzleCommand(seconds: number): boolean {
-  return Math.fround(seconds) > Math.fround(0.00001);
-}
-
 /** LargeBackgroundPanel._ExecuteImageTween uses literal seconds and exact keys. */
 export function parsePuzzleTween(
   args: StoryCommandArgs,
@@ -70,7 +63,7 @@ export function parsePuzzleTween(
     ? (key: string) => legacyPuzzleArg(args, key.toLowerCase())
     : (key: string) => exactArg(args, key);
   const seconds = Math.max(0, toNumber(read("duration")));
-  const timed = foreground ? seconds > 0 : isTimedPuzzleCommand(seconds);
+  const timed = foreground ? seconds > 0 : hasTweenDuration(seconds);
   const loop = foreground ? toBoolean(read("loop")) : getBool(args, "loop");
 
   // The Web extension also accepts the static transform keys as fallbacks.

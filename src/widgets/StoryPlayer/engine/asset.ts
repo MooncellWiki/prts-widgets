@@ -29,8 +29,9 @@ const FAMILY_FOLDER: Record<StoryAssetFamily, string> = {
   cutin: "cutin",
 };
 
-function normalizeImageKey(rawKey: string): string {
-  return rawKey.trim().toLowerCase();
+/** Web asset keys are lowercase. Preserve the raw script key for warnings. */
+export function normalizeImageKey(rawKey: string): string | null {
+  return rawKey.trim().toLowerCase() || null;
 }
 
 function encodePathSegments(path: string): string {

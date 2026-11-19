@@ -1,7 +1,11 @@
 import mitt, { type Handler } from "mitt";
 
 import { DecisionCommandPredicator } from "./DecisionCommandPredicator";
-import { resolveStoryAudioByKey, resolveStoryVideoByKey } from "./asset";
+import {
+  normalizeImageKey,
+  resolveStoryAudioByKey,
+  resolveStoryVideoByKey,
+} from "./asset";
 import {
   type CharacterRefResolution,
   nativeCharacterFadeIdentity,
@@ -27,12 +31,18 @@ import {
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
 import { createExecutionHandle, type ExecutionHandle } from "./execution";
+import {
+  LOOP_BLOCK_WARNING,
+  parseImageLayout,
+  parseImageTween,
+} from "./imageParams";
 import { CameraEffectExecutor } from "./panels/CameraEffectExecutor";
 import { CgItemPanel } from "./panels/CgItemPanel";
 import { CharacterCutinPanel } from "./panels/CharacterCutinPanel";
 import { DecisionPanel } from "./panels/DecisionPanel";
 import { DialogPanel } from "./panels/DialogPanel";
 import { DisplayableExecutor } from "./panels/DisplayableExecutor";
+import { ImagePanel } from "./panels/ImagePanel";
 import { LargeBackgroundPanel } from "./panels/LargeBackgroundPanel";
 import { LargeImageCommands } from "./panels/LargeImageCommands";
 import { ShowItemPanel } from "./panels/ShowItemPanel";
@@ -46,7 +56,6 @@ import type { Context } from "../context";
 import type {
   AutoPlayMode,
   AutoPlayState,
-  BackgroundInput,
   CharacterActionInput,
   CharacterSlotInput,
   DecisionPolicy,
@@ -127,9 +136,6 @@ const builtinCommandNames = [
   "gotostage",
   "background",
   "backgroundtween",
-  "image",
-  "imagetween",
-  "imagerotate",
   "blocker",
   "curtain",
   "charslot",
@@ -332,6 +338,7 @@ export class StoryRuntime {
   private readonly decisionPanel: DecisionPanel;
   private readonly dialogPanel: DialogPanel;
   private readonly displayableExecutor: DisplayableExecutor;
+  private readonly imagePanel: ImagePanel;
   private readonly largeBackgroundPanel: LargeBackgroundPanel;
   private readonly showItemPanel: ShowItemPanel;
   private readonly spellStickerPanel: SpellStickerPanel;
@@ -399,6 +406,12 @@ export class StoryRuntime {
       translateText: (text) => this.translateText(text),
       warnInvalidParameter: (detail) => this.warn("invalid_parameter", detail),
     });
+    this.imagePanel = new ImagePanel(
+      renderer,
+      (seconds) => this.calculateFadeMs(seconds),
+      (type, detail, line) =>
+        this.warn(type, detail, line?.lineNumber, line?.command),
+    );
     this.largeBackgroundPanel = new LargeBackgroundPanel(
       renderer,
       (type, detail, line) =>
@@ -408,7 +421,7 @@ export class StoryRuntime {
       this.warn(type, detail),
     ).register(this.commandRegistry);
     this.showItemPanel = new ShowItemPanel(renderer, {
-      resolveImageKey: (key) => this.resolveImageKey(key),
+      resolveImageKey: normalizeImageKey,
       warnInvalidParameter: (detail, line) =>
         this.warn("invalid_parameter", detail, line.lineNumber, line.command),
     });
@@ -443,7 +456,7 @@ export class StoryRuntime {
     });
     new CgItemPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
-      resolveImageKey: (key) => this.resolveImageKey(key),
+      resolveImageKey: normalizeImageKey,
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     this.cameraEffectExecutor.register(this.commandRegistry);
@@ -451,6 +464,7 @@ export class StoryRuntime {
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.displayableExecutor.register(this.commandRegistry);
+    this.imagePanel.register(this.commandRegistry);
     this.largeBackgroundPanel.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
     this.spellStickerPanel.register(this.commandRegistry);
@@ -1187,6 +1201,7 @@ export class StoryRuntime {
     // story end. ShouldResetOnSkip keeps them alive across segment skips.
     this.renderer.resetCgItems();
     this.largeBackgroundPanel.reset();
+    this.imagePanel.reset();
     this.cameraEffectExecutor.reset();
     this.characterCutinPanel.reset();
     // Native end-of-story reset destroys a lingering show-item slot
@@ -1383,19 +1398,6 @@ export class StoryRuntime {
       ...(lineNumber === undefined ? {} : { lineNumber }),
       type,
     });
-  }
-
-  /**
-   * Web adaptation, not native behavior: native passes the raw key straight
-   * into `ResourceRouter.GetBackgroundPath` (`AVG/Backgrounds/<key>`). The
-   * frontend trims and lowercases because the web asset router is
-   * case-sensitive while game data keys are lowercase-only, so this only
-   * ever repairs whitespace or capitalization typos.
-   */
-  private resolveImageKey(key: string): string | null {
-    const normalized = key.trim().toLowerCase();
-    if (!normalized) return null;
-    return normalized;
   }
 
   private hasAudioKey(key: string): boolean {
@@ -1765,29 +1767,17 @@ export class StoryRuntime {
           return "continue";
         }
 
-        const resolved = this.resolveImageKey(image);
+        const resolved = normalizeImageKey(image);
         if (!resolved) {
           this.warn("missing_asset", `background: ${image}`);
           await this.renderer.clearBackground(fadeMs, block);
           return "continue";
         }
 
-        // `_LoadImage` multiplies the SetNativeSize rect by the `width`/
-        // `height` params (GetOrDefault<float>(..., 1.0); the mulss at
-        // 0x183e587b0/0x183e587b4 in build 2761) before screenadapt reads it.
         await this.renderer.setBackground(resolved, {
+          ...parseImageLayout(args),
           block,
           fadeMs,
-          height: toNumber(this.exactArg(args, "height"), 1),
-          scaleX: toNumber(this.exactArg(args, "xScale"), 1),
-          scaleY: toNumber(this.exactArg(args, "yScale"), 1),
-          screenAdapt: this.parseScreenAdapt(
-            this.exactArg(args, "screenadapt"),
-          ),
-          tiled: toBoolean(this.exactArg(args, "tiled"), false),
-          width: toNumber(this.exactArg(args, "width"), 1),
-          x: toNumber(this.exactArg(args, "x"), 0),
-          y: toNumber(this.exactArg(args, "y"), 0),
         });
         return "continue";
       }
@@ -1803,8 +1793,8 @@ export class StoryRuntime {
         const block =
           toNumber(duration, 0) > 0 &&
           toBoolean(this.exactArg(args, "block"), false);
-        const loop = toBoolean(this.exactArg(args, "loop"), false);
-        if (block && loop) {
+        const tween = parseImageTween(args);
+        if (block && tween.loop) {
           // Native logs this (sic) DLog.LogError and still starts the loop,
           // whose OnComplete(FinishCommand) then never fires, so the story
           // hangs. The warning keeps the native typo "intinity lop" on
@@ -1813,128 +1803,16 @@ export class StoryRuntime {
           // here (skipNode would wait on it forever).
           this.warn(
             "invalid_parameter",
-            "Loop and block both true when tween background! Will cause intinity lop!",
+            LOOP_BLOCK_WARNING,
             line.lineNumber,
             line.command,
           );
         }
 
         await this.renderer.setBackgroundTween({
-          block: block && !loop,
+          ...tween,
+          block: block && !tween.loop,
           durationMs: Math.max(0, toNumber(duration, 0) * 1000),
-          ease: toString(this.exactArg(args, "ease"), "Linear"),
-          loop,
-          xFrom: toOptionalNumber(this.exactArg(args, "xFrom")),
-          xScaleFrom: toOptionalNumber(this.exactArg(args, "xScaleFrom")),
-          xScaleTo: toOptionalNumber(this.exactArg(args, "xScaleTo")),
-          xTo: toOptionalNumber(this.exactArg(args, "xTo")),
-          yFrom: toOptionalNumber(this.exactArg(args, "yFrom")),
-          yScaleFrom: toOptionalNumber(this.exactArg(args, "yScaleFrom")),
-          yScaleTo: toOptionalNumber(this.exactArg(args, "yScaleTo")),
-          yTo: toOptionalNumber(this.exactArg(args, "yTo")),
-        });
-        return "continue";
-      }
-
-      case "image": {
-        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImage. This is the
-        // foreground-panel registration of the same inherited executor used by
-        // the `background` command (AVGImagePanel.GetExecutors @0x183e56250
-        // binds "image" → _ExecuteImage @0x183e57cf0; BackgroundPanel binds
-        // "background" to the same MethodInfo). Covers the clear branch, the
-        // load-failure clear branch, the scaled fade and the block boundary.
-        const image = toString(this.exactArg(args, "image"));
-        const fadeMs = this.calculateFadeMs(this.exactArg(args, "fadetime"));
-        const block =
-          fadeMs > 0 && toBoolean(this.exactArg(args, "block"), false);
-        if (!image) {
-          await this.renderer.clearImage(fadeMs, block);
-          return "continue";
-        }
-
-        const resolved = this.resolveImageKey(image);
-        if (!resolved) {
-          this.warn("missing_asset", `image: ${image}`);
-          await this.renderer.clearImage(fadeMs, block);
-          return "continue";
-        }
-
-        await this.renderer.setImage(resolved, {
-          block,
-          fadeMs,
-          // `_LoadImage` multiplies the SetNativeSize rect by the `width`/
-          // `height` params (GetOrDefault<float>(..., 1.0); the mulss at
-          // 0x183e587b0/0x183e587b4 in build 2761) before screenadapt reads it.
-          height: toNumber(this.exactArg(args, "height"), 1),
-          scaleX: toNumber(this.exactArg(args, "xScale"), 1),
-          scaleY: toNumber(this.exactArg(args, "yScale"), 1),
-          screenAdapt: this.parseScreenAdapt(
-            this.exactArg(args, "screenadapt"),
-          ),
-          tiled: toBoolean(this.exactArg(args, "tiled"), false),
-          width: toNumber(this.exactArg(args, "width"), 1),
-          x: toNumber(this.exactArg(args, "x"), 0),
-          y: toNumber(this.exactArg(args, "y"), 0),
-        });
-        return "continue";
-      }
-
-      case "imagetween": {
-        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageTween. Its
-        // duration bypasses CalculateFadetime entirely (unlike `image`'s
-        // fadetime), block only takes effect while duration > 0
-        // (effectiveBlock), and `ease` (GetEnum<Ease>, default Linear) is
-        // applied to both the position and scale tweens. `loop` feeds
-        // SetLoops(2*!loop - 1) exactly like `backgroundtween`, which shares
-        // this executor (2.7.71 VA 0x183f055b0): true → infinite Restart loop.
-        const durationMs = Math.max(
-          0,
-          toNumber(this.exactArg(args, "duration"), 0) * 1000,
-        );
-        const block =
-          durationMs > 0 && toBoolean(this.exactArg(args, "block"), false);
-        const loop = toBoolean(this.exactArg(args, "loop"), false);
-        if (block && loop) {
-          // `_ExecuteImageTween` logs this (sic) error when loop and
-          // effectiveBlock are both true, because SetLoops(-1) never reaches
-          // OnComplete(FinishCommand). The string is shared with
-          // `backgroundtween` and keeps its native typos; block is dropped
-          // below for the same reason as there.
-          this.warn(
-            "invalid_parameter",
-            "Loop and block both true when tween background! Will cause intinity lop!",
-            line.lineNumber,
-            line.command,
-          );
-        }
-        await this.renderer.setImageTween({
-          block: block && !loop,
-          durationMs,
-          ease: toString(this.exactArg(args, "ease"), "Linear"),
-          loop,
-          xFrom: toOptionalNumber(this.exactArg(args, "xFrom")),
-          xScaleFrom: toOptionalNumber(this.exactArg(args, "xScaleFrom")),
-          xScaleTo: toOptionalNumber(this.exactArg(args, "xScaleTo")),
-          xTo: toOptionalNumber(this.exactArg(args, "xTo")),
-          yFrom: toOptionalNumber(this.exactArg(args, "yFrom")),
-          yScaleFrom: toOptionalNumber(this.exactArg(args, "yScaleFrom")),
-          yScaleTo: toOptionalNumber(this.exactArg(args, "yScaleTo")),
-          yTo: toOptionalNumber(this.exactArg(args, "yTo")),
-        });
-        return "continue";
-      }
-
-      case "imagerotate": {
-        // Native port: Torappu.AVG.AVGImagePanel._ExecuteImageRotate. Unlike
-        // the panel's tween executors, fadetime routes through
-        // CalculateFadetime (animateRatio scaling, see calculateFadeMs); the
-        // `ease` argument is never read — native hardcodes Ease.Linear.
-        await this.renderer.setImageRotate({
-          angleDeg: toNumber(this.exactArg(args, "angle"), 0),
-          block: toBoolean(this.exactArg(args, "block"), false),
-          circles: Math.trunc(toNumber(this.exactArg(args, "circles"), 0)),
-          durationMs: this.calculateFadeMs(this.exactArg(args, "fadetime")),
-          inverse: toBoolean(this.exactArg(args, "inverse"), false),
         });
         return "continue";
       }
@@ -2462,19 +2340,6 @@ export class StoryRuntime {
     const raw = toString(value);
     if (raw === "left" || raw === "right" || raw === "up" || raw === "down")
       return raw;
-    return undefined;
-  }
-
-  private parseScreenAdapt(value: unknown): BackgroundInput["screenAdapt"] {
-    const mode = toString(value);
-    if (
-      mode === "coverall" ||
-      mode === "fill" ||
-      mode === "height" ||
-      mode === "showall" ||
-      mode === "width"
-    )
-      return mode;
     return undefined;
   }
 

@@ -4,8 +4,8 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import { toBoolean, toNumber } from "../commandParams";
+import { LOOP_BLOCK_WARNING } from "../imageParams";
 import {
-  LOOP_BLOCK_WARNING,
   legacyPuzzleArg,
   parsePuzzleDimensions,
   parsePuzzleTween,

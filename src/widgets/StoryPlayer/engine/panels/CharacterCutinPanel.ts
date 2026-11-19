@@ -7,9 +7,9 @@ import {
   boxedParamString as toString,
   exactArg,
   getBool,
-  parseEnumInt32,
   tryConvertToInt32,
   tryConvertToSingle,
+  tryParseEnum,
   tryParseInt32,
 } from "../commandParams";
 import { parseShowItemFadeStyle, ShowItemFadeStyle } from "../showitem";
@@ -144,7 +144,8 @@ export class CharacterCutinPanel extends ExecutorComponent {
     // keys verbatim. Preserve omitted values for Show's prefab defaults
     // and SlotUpdate's defaults derived from the live transforms.
     // Show (2791 @ 0x184203DA0) reads Align with case-sensitive Enum.Parse.
-    const align = parseEnumInt32(toString(args.align), CUTIN_ALIGN);
+    const align =
+      tryParseEnum(toString(args.align), CUTIN_ALIGN) ?? CUTIN_ALIGN.HORIZONTAL;
     const input: CharacterCutinInput = {
       align: (["horizontal", "vertical"] as const)[align] ?? align,
       backgroundKey: toString(args.background) || undefined,

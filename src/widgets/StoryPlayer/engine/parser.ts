@@ -1,3 +1,5 @@
+import { boxedParamString, tryParseEnum } from "./commandParams";
+
 import type {
   ParsedDialogueLine,
   ParsedLine,
@@ -258,73 +260,40 @@ function metadataValue(
 // literals by enum *value*: `fit_mode=1` is BLACK_MASK and `char_sort_type = 5`
 // is BY_GAIN_TIME_DOWN. The bare-number form really occurs in guide stories
 // (e.g. obt/guide/l0-6/0_upgrade_skill.txt:1).
-const FIT_MODE_BY_VALUE: Readonly<Record<number, string>> = {
-  0: "DEFAULT",
-  1: "BLACK_MASK",
-};
+enum FitMode {
+  DEFAULT = 0,
+  BLACK_MASK = 1,
+}
 
-const CHARACTER_SORT_TYPE_BY_VALUE: Readonly<Record<number, string>> = {
-  0: "BY_LEVEL_UP",
-  1: "BY_LEVEL_DOWN",
-  2: "BY_RARITY_UP",
-  3: "BY_RARITY_DOWN",
-  4: "BY_GAIN_TIME_UP",
-  5: "BY_GAIN_TIME_DOWN",
-  6: "BY_NAME_UP",
-  7: "BY_NAME_DOWN",
-  8: "BY_COST_UP",
-  9: "BY_COST_DOWN",
-  10: "BY_HP_UP",
-  11: "BY_HP_DOWN",
-  12: "BY_ATK_UP",
-  13: "BY_ATK_DOWN",
-  14: "BY_DEF_UP",
-  15: "BY_DEF_DOWN",
-  16: "BY_RES_UP",
-  17: "BY_RES_DOWN",
-  18: "BY_FAVOR_UP",
-  19: "BY_FAVOR_DOWN",
-  20: "BY_RESPAWN_UP",
-  21: "BY_RESPAWN_DOWN",
-  22: "BY_BLOCKNUM_UP",
-  23: "BY_BLOCKNUM_DOWN",
-  24: "BY_ATKSPEED_UP",
-  25: "BY_ATKSPEED_DOWN",
-  26: "BY_HANDBOOKSTAGE_UP",
-  27: "BY_HANDBOOKSTAGE_DOWN",
-};
-
-/**
- * Port of `DotNetExtensionMethods.GetEnum<T>(..., ignoreCase: true)` as called
- * from `AVGParser.TryParse(String, StoryParam, Story&)`: stringify the param
- * value (native `GetString` -> `Convert.ToString`), return the default for the
- * empty string (native `IsNullOrEmpty`), then `Enum.Parse`: trim, resolve a
- * `[-+]digits` literal by enum value, otherwise match a member name
- * case-insensitively.
- *
- * Anything else (unknown name, whitespace-only, `5.5`, `true`) makes
- * `Enum.Parse` throw, but `GetEnum` catches it, logs "Can not parse enum ..."
- * via `DLog.LogError` and returns the default -- the story still loads, so the
- * default is returned here too (the log line is not ported).
- *
- * Web adaptation: an in-range integer with no member (e.g. `99`) survives as
- * that raw value in native; there is no name to report for it, so it also
- * takes the default. The comma-joined flags syntax of `Enum.Parse` is not
- * ported.
- */
-function resolveEnumName(
-  value: StoryCommandValue | undefined,
-  byValue: Readonly<Record<number, string>>,
-  fallback: string,
-): string {
-  const raw = value === undefined ? "" : String(value);
-  if (raw === "") return fallback;
-  const trimmed = raw.trim();
-  if (/^[-+]?\d+$/.test(trimmed)) {
-    return byValue[Number(trimmed)] ?? fallback;
-  }
-  const name = trimmed.toUpperCase();
-  return Object.values(byValue).includes(name) ? name : fallback;
+enum CharacterSortType {
+  BY_LEVEL_UP = 0,
+  BY_LEVEL_DOWN = 1,
+  BY_RARITY_UP = 2,
+  BY_RARITY_DOWN = 3,
+  BY_GAIN_TIME_UP = 4,
+  BY_GAIN_TIME_DOWN = 5,
+  BY_NAME_UP = 6,
+  BY_NAME_DOWN = 7,
+  BY_COST_UP = 8,
+  BY_COST_DOWN = 9,
+  BY_HP_UP = 10,
+  BY_HP_DOWN = 11,
+  BY_ATK_UP = 12,
+  BY_ATK_DOWN = 13,
+  BY_DEF_UP = 14,
+  BY_DEF_DOWN = 15,
+  BY_RES_UP = 16,
+  BY_RES_DOWN = 17,
+  BY_FAVOR_UP = 18,
+  BY_FAVOR_DOWN = 19,
+  BY_RESPAWN_UP = 20,
+  BY_RESPAWN_DOWN = 21,
+  BY_BLOCKNUM_UP = 22,
+  BY_BLOCKNUM_DOWN = 23,
+  BY_ATKSPEED_UP = 24,
+  BY_ATKSPEED_DOWN = 25,
+  BY_HANDBOOKSTAGE_UP = 26,
+  BY_HANDBOOKSTAGE_DOWN = 27,
 }
 
 export function parseStory(source: string | readonly string[]): {
@@ -340,10 +309,15 @@ export function parseStory(source: string | readonly string[]): {
   // "char_sort_type", BY_GAIN_TIME_DOWN, true)` in `AVGParser.TryParse(String,
   // StoryParam, Story&)` -- numeric literals resolve by enum value and
   // unparseable values fall back to the default.
-  const fitMode = resolveEnumName(
-    metadataValue(header?.args ?? {}, "fit_mode"),
-    FIT_MODE_BY_VALUE,
-    "DEFAULT",
+  const fitMode = tryParseEnum(
+    boxedParamString(header?.args.fit_mode),
+    FitMode,
+    true,
+  );
+  const sortType = tryParseEnum(
+    boxedParamString(header?.args.char_sort_type),
+    CharacterSortType,
+    true,
   );
   const isTutorial = metadataValue(header?.args ?? {}, "is_tutorial") === true;
   const isVideoOnly =
@@ -354,11 +328,10 @@ export function parseStory(source: string | readonly string[]): {
     lines,
     metadata: {
       args: header?.args ?? {},
-      characterSortType: resolveEnumName(
-        metadataValue(header?.args ?? {}, "char_sort_type"),
-        CHARACTER_SORT_TYPE_BY_VALUE,
+      // The metadata view exposes a name, so unnamed sort ordinals use its default.
+      characterSortType:
+        CharacterSortType[sortType ?? CharacterSortType.BY_GAIN_TIME_DOWN] ??
         "BY_GAIN_TIME_DOWN",
-      ),
       denyAutoSwitchScene:
         metadataValue(header?.args ?? {}, "deny_auto_switch_scene") === true,
       dontClearGameObjectPoolOnStart:
@@ -366,7 +339,7 @@ export function parseStory(source: string | readonly string[]): {
           header?.args ?? {},
           "dont_clear_gameobjectpool_onstart",
         ) === true,
-      fitMode: fitMode === "BLACK_MASK" ? "BLACK_MASK" : "DEFAULT",
+      fitMode: fitMode === FitMode.BLACK_MASK ? "BLACK_MASK" : "DEFAULT",
       // Native provenance: `Torappu.AVG.AVGParser.TryParse(string, StoryParam,
       // out Story)`. Ports the HEADER-to-Story metadata mapping: the story id
       // comes from `key`, rather than the unrelated `id` parameter name.

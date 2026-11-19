@@ -1,5 +1,6 @@
 import { setImmediate } from "node:timers/promises";
 
+import { Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +8,7 @@ import {
   type ExecutionHandle,
 } from "../../../src/widgets/StoryPlayer/engine/execution";
 import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { createRenderedPlayback } from "../helpers/rendererFixtures";
 import {
   createContext,
   FakeAudio,
@@ -1469,5 +1471,87 @@ describe("StoryRuntime", () => {
     // `Mode` and the anchor is CAN_SKIP: even a first read ends the story.
     expect(runtime.getState()).toBe("finished");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
+  });
+});
+
+describe("foreground image lifecycle", () => {
+  it.each(["[SkipToThis]", '[skipnode(mode="nofirstskip")]'])(
+    "cancels a preparing image and keeps the mounted pose across %s",
+    async (anchor) => {
+      const { app, destroy, runtime, renderer } = await createRenderedPlayback(
+        [
+          '[image(image="keep")]',
+          "[imagerotate(angle=-80,fadetime=0.128)]",
+          '[image(image="late")]',
+          anchor,
+          '[name="A"]after the jump',
+        ],
+        () => {},
+      );
+      const delayed = Promise.withResolvers<Texture>();
+      const read = renderer.textureForImageKey.bind(renderer);
+      const load = vi
+        .spyOn(renderer, "textureForImageKey")
+        .mockImplementation((...args) =>
+          args[0] === "late" ? delayed.promise : read(...args),
+        );
+
+      const started = runtime.start();
+      const { images } = renderer.layers;
+      const [mounted] = images.children;
+      app.ticker.update(16);
+      expect(images.angle).toBeCloseTo(10);
+      const skipping = runtime.skipNode();
+      try {
+        await setImmediate();
+        app.ticker.update(32);
+        expect(runtime.getDisplayedLineIndex()).toBe(5);
+        expect(images.children).toEqual([mounted]);
+        expect(images.angle).toBeCloseTo(20);
+
+        delayed.resolve(new Texture({ label: "late" }));
+        await setImmediate();
+        app.ticker.update(48);
+        expect(images.children).toEqual([mounted]);
+        expect(images.angle).toBeCloseTo(30);
+      } finally {
+        load.mockRestore();
+        destroy();
+        await Promise.all([started, skipping]);
+      }
+    },
+  );
+
+  it("resets image slots, focus, and the active rotation at story end", async () => {
+    const { app, destroy, runtime, renderer } = await createRenderedPlayback(
+      [
+        '[image(image="last")]',
+        '[focusparam(effect="Colorinverse",blur=false)]',
+        '[focusout(type="cgitem",id="ck_cg_2",to=0.5)]',
+        "[imagerotate(angle=-90,fadetime=1)]",
+        "[imagetween(xTo=64,duration=1,loop=true)]",
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { images } = renderer.layers;
+      const [slot] = images.children;
+      const [sprite] = slot.children;
+      app.ticker.update(16);
+      expect(slot.filters).toHaveLength(1);
+      expect(images.angle).toBeGreaterThan(0);
+      app.ticker.update(216);
+      expect(runtime.getState()).toBe("finished");
+      expect(images.children).toHaveLength(0);
+      expect(sprite.destroyed).toBe(true);
+      expect(slot.filters).toHaveLength(0);
+      expect(images.angle).toBe(0);
+      app.ticker.update(232);
+      expect(renderer.tweenUpdates.size).toBe(0);
+    } finally {
+      destroy();
+      await started;
+    }
   });
 });
