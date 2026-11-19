@@ -29,6 +29,16 @@ describe("dotweenEaseCurve resolution (GetEnum<Ease> port)", () => {
     expect(dotweenEaseCurve("OutFlash")(0.4)).toBeCloseTo(0.64);
   });
 
+  it("resolves signed ordinals, comma-separated names and internal Ease members", () => {
+    expect(dotweenEaseCurve("+6")(0.25)).toBe(0.4375);
+    // 5 | 6 = 7 (InOutQuad).
+    expect(dotweenEaseCurve("InQuad, OutQuad")(0.25)).toBe(0.125);
+    expect(dotweenEaseCurve("Unset")(0.25)).toBe(0.4375);
+    expect(dotweenEaseCurve("INTERNAL_Zero")(0.25)).toBe(1);
+    expect(dotweenEaseCurve("6,OutQuad")).toBe(linearEase);
+    expect(dotweenEaseCurve("InQuad,")).toBe(linearEase);
+  });
+
   it("keeps the native OutQuad default branch for out-of-enum ordinals but falls back to Linear past int32", () => {
     // EaseManager.Evaluate gates its switch on `(uint)(easeType - 1) > 0x24`;
     // everything else computes the OutQuad parabola (@ 0x1841f1170), not

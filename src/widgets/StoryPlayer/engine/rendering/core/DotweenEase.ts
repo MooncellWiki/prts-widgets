@@ -17,6 +17,8 @@
  * overshoot outside that range.
  */
 
+import { tryParseEnum } from "../../commandParams";
+
 export type EaseCurve = (time: number) => number;
 
 export const linearEase: EaseCurve = (time) => time;
@@ -87,13 +89,61 @@ function flashEase(wave: EaseCurve): EaseCurve {
   return (time) => Math.min(1, wave(time));
 }
 
-const dotweenEaseCurves = {
-  Flash: flashEase(linearEase),
-  InBack: (time) => easeBackC3 * time ** 3 - easeBackC1 * time ** 2,
-  InBounce: (time) => 1 - outBounceEase(1 - time),
-  InCirc: (time) => 1 - Math.sqrt(1 - time ** 2),
-  InCubic: (time) => time ** 3,
-  InElastic: (time) =>
+/** DG.Tweening.Ease in the 2791 metadata. */
+enum Ease {
+  Unset = 0,
+  Linear = 1,
+  InSine = 2,
+  OutSine = 3,
+  InOutSine = 4,
+  InQuad = 5,
+  OutQuad = 6,
+  InOutQuad = 7,
+  InCubic = 8,
+  OutCubic = 9,
+  InOutCubic = 10,
+  InQuart = 11,
+  OutQuart = 12,
+  InOutQuart = 13,
+  InQuint = 14,
+  OutQuint = 15,
+  InOutQuint = 16,
+  InExpo = 17,
+  OutExpo = 18,
+  InOutExpo = 19,
+  InCirc = 20,
+  OutCirc = 21,
+  InOutCirc = 22,
+  InElastic = 23,
+  OutElastic = 24,
+  InOutElastic = 25,
+  InBack = 26,
+  OutBack = 27,
+  InOutBack = 28,
+  InBounce = 29,
+  OutBounce = 30,
+  InOutBounce = 31,
+  Flash = 32,
+  InFlash = 33,
+  OutFlash = 34,
+  InOutFlash = 35,
+  INTERNAL_Zero = 36,
+  INTERNAL_Custom = 37,
+}
+
+const outQuadEase: EaseCurve = (time) => 1 - (1 - time) * (1 - time);
+
+const dotweenEaseCurves: Readonly<Partial<Record<number, EaseCurve>>> = {
+  [Ease.Unset]: outQuadEase,
+  [Ease.INTERNAL_Zero]: () => 1,
+  // The story script cannot supply a custom ease delegate.
+  [Ease.INTERNAL_Custom]: linearEase,
+  [Ease.Flash]: flashEase(linearEase),
+  [Ease.InBack]: (time) => easeBackC3 * time ** 3 - easeBackC1 * time ** 2,
+  [Ease.InBounce]: (time) => 1 - outBounceEase(1 - time),
+  [Ease.InCirc]: (time) => 1 - Math.sqrt(1 - time ** 2),
+  [Ease.InCubic]: (time) => time ** 3,
+  [Ease.InElastic]: (time) =>
     time === 0 || time === 1
       ? time
       : -(
@@ -101,26 +151,26 @@ const dotweenEaseCurves = {
           2 ** (10 * (time - 1)) *
           Math.sin(((time - 1 - elasticS) * twoPi) / elasticPeriod)
         ),
-  InExpo: (time) => (time === 0 ? 0 : 2 ** (10 * time - 10)),
-  InFlash: flashEase((time) => time * time),
-  InOutBack: (time) =>
+  [Ease.InExpo]: (time) => (time === 0 ? 0 : 2 ** (10 * time - 10)),
+  [Ease.InFlash]: flashEase((time) => time * time),
+  [Ease.InOutBack]: (time) =>
     time < 0.5
       ? ((2 * time) ** 2 * ((easeBackC2 + 1) * 2 * time - easeBackC2)) / 2
       : ((2 * time - 2) ** 2 *
           ((easeBackC2 + 1) * (2 * time - 2) + easeBackC2) +
           2) /
         2,
-  InOutBounce: (time) =>
+  [Ease.InOutBounce]: (time) =>
     time < 0.5
       ? (1 - outBounceEase(1 - 2 * time)) / 2
       : (1 + outBounceEase(2 * time - 1)) / 2,
-  InOutCirc: (time) =>
+  [Ease.InOutCirc]: (time) =>
     time < 0.5
       ? (1 - Math.sqrt(1 - (2 * time) ** 2)) / 2
       : (Math.sqrt(1 - (-2 * time + 2) ** 2) + 1) / 2,
-  InOutCubic: (time) =>
+  [Ease.InOutCubic]: (time) =>
     time < 0.5 ? 4 * time ** 3 : 1 - (-2 * time + 2) ** 3 / 2,
-  InOutElastic: (time) => {
+  [Ease.InOutElastic]: (time) => {
     if (time === 0 || time === 1) return time;
     // `Evaluate` doubles the time first, so the wave argument is `2 * time - 1`.
     const doubled = 2 * time - 1;
@@ -132,49 +182,49 @@ const dotweenEaseCurves = {
     }
     return 2 ** (-10 * doubled) * wave * 0.5 + 1;
   },
-  InOutExpo: (time) => {
+  [Ease.InOutExpo]: (time) => {
     if (time === 0) return 0;
     if (time === 1) return 1;
     if (time < 0.5) return 2 ** (20 * time - 10) / 2;
     return (2 - 2 ** (-20 * time + 10)) / 2;
   },
-  InOutFlash: flashEase(inOutQuadEase),
-  InOutQuad: inOutQuadEase,
-  InOutQuart: (time) =>
+  [Ease.InOutFlash]: flashEase(inOutQuadEase),
+  [Ease.InOutQuad]: inOutQuadEase,
+  [Ease.InOutQuart]: (time) =>
     time < 0.5 ? 8 * time ** 4 : 1 - (-2 * time + 2) ** 4 / 2,
-  InOutQuint: (time) =>
+  [Ease.InOutQuint]: (time) =>
     time < 0.5 ? 16 * time ** 5 : 1 - (-2 * time + 2) ** 5 / 2,
-  InOutSine: (time) => -(Math.cos(Math.PI * time) - 1) / 2,
-  InQuad: (time) => time * time,
-  InQuart: (time) => time ** 4,
-  InQuint: (time) => time ** 5,
-  InSine: (time) => 1 - Math.cos((time * Math.PI) / 2),
-  Linear: linearEase,
-  OutBack: (time) =>
+  [Ease.InOutSine]: (time) => -(Math.cos(Math.PI * time) - 1) / 2,
+  [Ease.InQuad]: (time) => time * time,
+  [Ease.InQuart]: (time) => time ** 4,
+  [Ease.InQuint]: (time) => time ** 5,
+  [Ease.InSine]: (time) => 1 - Math.cos((time * Math.PI) / 2),
+  [Ease.Linear]: linearEase,
+  [Ease.OutBack]: (time) =>
     1 + easeBackC3 * (time - 1) ** 3 + easeBackC1 * (time - 1) ** 2,
-  OutBounce: outBounceEase,
-  OutCirc: (time) => Math.sqrt(1 - (time - 1) ** 2),
-  OutCubic: (time) => 1 - (1 - time) ** 3,
-  OutElastic: (time) =>
+  [Ease.OutBounce]: outBounceEase,
+  [Ease.OutCirc]: (time) => Math.sqrt(1 - (time - 1) ** 2),
+  [Ease.OutCubic]: (time) => 1 - (1 - time) ** 3,
+  [Ease.OutElastic]: (time) =>
     time === 0 || time === 1
       ? time
       : defaultOvershootOrAmplitude *
           2 ** (-10 * time) *
           Math.sin(((time - elasticS) * twoPi) / elasticPeriod) +
         1,
-  OutExpo: (time) => (time === 1 ? 1 : 1 - 2 ** (-10 * time)),
-  OutFlash: flashEase((time) => -time * (time - 2)),
-  OutQuad: (time) => 1 - (1 - time) * (1 - time),
-  OutQuart: (time) => 1 - (1 - time) ** 4,
-  OutQuint: (time) => 1 - (1 - time) ** 5,
-  OutSine: (time) => Math.sin((time * Math.PI) / 2),
-} satisfies Record<string, EaseCurve>;
+  [Ease.OutExpo]: (time) => (time === 1 ? 1 : 1 - 2 ** (-10 * time)),
+  [Ease.OutFlash]: flashEase((time) => -time * (time - 2)),
+  [Ease.OutQuad]: outQuadEase,
+  [Ease.OutQuart]: (time) => 1 - (1 - time) ** 4,
+  [Ease.OutQuint]: (time) => 1 - (1 - time) ** 5,
+  [Ease.OutSine]: (time) => Math.sin((time * Math.PI) / 2),
+} satisfies Record<Ease, EaseCurve>;
 
 /**
  * `DOTween.defaultEaseType` — the curve a tween runs on when its creator never
  * calls `SetEase`. `DOTween..cctor` assigns the literal `6` (2.7.71 @
  * 0x1841bb710, re-verified on 2.7.81 @ 0x184250040), which is `Ease.OutQuad`
- * in the 1..37 ordinal table below. `DOTween.Init(DOTweenSettings, ...)`
+ * in the Ease enum. `DOTween.Init(DOTweenSettings, ...)`
  * (2.7.81 @ 0x18424c480, reached via InitCheck/AutoInit) then copies the
  * `Resources/DOTweenSettings` asset's `defaultEaseType` over it; the 2.7.81
  * asset serializes `6` as well, so the effective default stays OutQuad. Distinct from `dotweenEaseCurve`'s
@@ -182,95 +232,10 @@ const dotweenEaseCurves = {
  * `GetEnum<Ease>(param, "ease", Ease.Linear, ...)` hands to executors that
  * read an `ease` story parameter.
  */
-export const dotweenDefaultEase: EaseCurve = dotweenEaseCurves.OutQuad;
+export const dotweenDefaultEase: EaseCurve = outQuadEase;
 
-/**
- * DOTween `Ease` ordinal table: `Unset` = 0 through `INTERNAL_Custom` = 37.
- * `EaseManager.Evaluate` gates its switch on `(uint)(easeType - 1) > 0x24`, so
- * only 1..37 get a case of their own and everything else — `Unset` included —
- * falls through to the default branch (`-(t/d) * (t/d - 2)`, the OutQuad
- * parabola). `INTERNAL_Custom` would throw on a null custom ease in native and
- * degrades to Linear here.
- */
-const dotweenEaseByOrdinal: readonly EaseCurve[] = [
-  // 0: Ease.Unset — not a switch case, so it lands on the OutQuad default
-  // branch just like any out-of-table ordinal. (`GetEnum`'s own parse fallback
-  // is Ease.Linear = ordinal 1, which the executors pass as the default.)
-  dotweenEaseCurves.OutQuad,
-  dotweenEaseCurves.Linear,
-  dotweenEaseCurves.InSine,
-  dotweenEaseCurves.OutSine,
-  dotweenEaseCurves.InOutSine,
-  dotweenEaseCurves.InQuad,
-  dotweenEaseCurves.OutQuad,
-  dotweenEaseCurves.InOutQuad,
-  dotweenEaseCurves.InCubic,
-  dotweenEaseCurves.OutCubic,
-  dotweenEaseCurves.InOutCubic,
-  dotweenEaseCurves.InQuart,
-  dotweenEaseCurves.OutQuart,
-  dotweenEaseCurves.InOutQuart,
-  dotweenEaseCurves.InQuint,
-  dotweenEaseCurves.OutQuint,
-  dotweenEaseCurves.InOutQuint,
-  dotweenEaseCurves.InExpo,
-  dotweenEaseCurves.OutExpo,
-  dotweenEaseCurves.InOutExpo,
-  dotweenEaseCurves.InCirc,
-  dotweenEaseCurves.OutCirc,
-  dotweenEaseCurves.InOutCirc,
-  dotweenEaseCurves.InElastic,
-  dotweenEaseCurves.OutElastic,
-  dotweenEaseCurves.InOutElastic,
-  dotweenEaseCurves.InBack,
-  dotweenEaseCurves.OutBack,
-  dotweenEaseCurves.InOutBack,
-  dotweenEaseCurves.InBounce,
-  dotweenEaseCurves.OutBounce,
-  dotweenEaseCurves.InOutBounce,
-  dotweenEaseCurves.Flash,
-  dotweenEaseCurves.InFlash,
-  dotweenEaseCurves.OutFlash,
-  dotweenEaseCurves.InOutFlash,
-  () => 1, // 36: Ease.INTERNAL_Zero — completes instantly.
-  linearEase, // 37: Ease.INTERNAL_Custom — no custom ease available.
-];
-
-const INT32_MIN = -2_147_483_648;
-const INT32_MAX = 2_147_483_647;
-
-/**
- * Own-property lookup only: `dotweenEaseCurves` is an object literal, so a bare
- * index would resolve inherited `Object.prototype` members (`"toString"`,
- * `"valueOf"`, `"__proto__"`, ...) into non-curve values that slip past a
- * nullish fallback and then throw or poison the progress with NaN.
- */
-function easeCurveByName(name: string): EaseCurve | undefined {
-  return Object.hasOwn(dotweenEaseCurves, name)
-    ? (dotweenEaseCurves as Record<string, EaseCurve>)[name]
-    : undefined;
-}
-
-/**
- * Resolves the `ease` parameter the way `GetEnum<Ease>(param, "ease",
- * Ease.Linear, ignoreCase: false)` does. `Enum.Parse` trims surrounding .NET
- * whitespace, matches names case-sensitively, and parses integer ordinals.
- * Anything `Enum.Parse` would reject — an unknown name, or an integer outside
- * int32 — throws in native, and `GetEnum` swallows that into a
- * `DLog.LogError("Can not parse enum ...")` plus the Ease.Linear default.
- */
+/** GetEnum<Ease> supplies Linear on failure. EaseManager.Evaluate runs OutQuad for unnamed values. */
 export function dotweenEaseCurve(ease: string | undefined): EaseCurve {
-  // Match from the first through the last non-whitespace character.
-  const value = ease?.match(/\P{White_Space}(?:.*\P{White_Space})?/su)?.[0];
-  if (!value) {
-    return linearEase;
-  }
-  if (/^-?\d+$/.test(value)) {
-    const ordinal = Number.parseInt(value, 10);
-    if (ordinal < INT32_MIN || ordinal > INT32_MAX) {
-      return linearEase;
-    }
-    return dotweenEaseByOrdinal[ordinal] ?? dotweenEaseCurves.OutQuad;
-  }
-  return easeCurveByName(value) ?? linearEase;
+  const ordinal = tryParseEnum(ease, Ease) ?? Ease.Linear;
+  return dotweenEaseCurves[ordinal] ?? dotweenDefaultEase;
 }

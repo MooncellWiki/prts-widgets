@@ -940,6 +940,19 @@ describe("ImagePanel frame order", () => {
       ],
     },
     {
+      name: "an ease combined from two enum names",
+      commands: [
+        show,
+        '[imagetween(ease="InQuad, OutQuad",xTo=64,duration=0.064,block=true)]',
+      ],
+      frames: [
+        [1, 648, 0, 0],
+        [1, 672, 0, 0],
+        [1, 696, 0, 0],
+        [1, 704, 0, 1],
+      ],
+    },
+    {
       name: "overlapping moves",
       commands: [
         show,

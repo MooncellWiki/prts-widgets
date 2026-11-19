@@ -21,7 +21,7 @@
 // down — and the centered item; `fadestyle` drives which edge the window
 // expands from.
 
-import { parseEnumInt32 } from "./commandParams";
+import { tryParseEnum } from "./commandParams";
 
 import type { ShowItemLayout } from "./types";
 
@@ -46,7 +46,7 @@ export enum ShowItemFadeStyle {
  * returns the supplied default (fade).
  */
 export function parseShowItemFadeStyle(raw: string): ShowItemFadeStyle {
-  return parseEnumInt32(raw, ShowItemFadeStyle);
+  return tryParseEnum(raw, ShowItemFadeStyle) ?? ShowItemFadeStyle.fade;
 }
 
 export function computeShowItemLayout(

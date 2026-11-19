@@ -30,12 +30,8 @@ function isDotNetWhite(text: string, at: number): boolean {
   return code === 0x20 || (code >= 0x09 && code <= 0x0d);
 }
 
-/**
- * Native port of `System.Int32.TryParse` with `NumberStyles.Integer`.
- * Accepts leading and trailing whitespace and a leading sign. Invalid input
- * or values outside the signed 32-bit range return null.
- */
-export function tryParseInt32(text: string): number | null {
+/** Number.TryParseInt32IntegerStyle (2791 @ 0x186126910), before the range check. */
+function parseInteger(text: string): number | null {
   let i = 0;
   while (i < text.length && isDotNetWhite(text, i)) i++;
 
@@ -52,25 +48,87 @@ export function tryParseInt32(text: string): number | null {
   const magnitude = Number(text.slice(digitsStart, i));
 
   while (i < text.length && isDotNetWhite(text, i)) i++;
+  // Number.TrailingZeros accepts a suffix consisting entirely of NULs.
+  while (text[i] === "\0") i++;
   if (i !== text.length) return null;
 
-  const value = negative ? -magnitude : magnitude;
-  if (value < INT32_MIN || value > INT32_MAX) return null;
-  return value;
+  return negative && magnitude !== 0 ? -magnitude : magnitude;
 }
 
-/** GetEnum (2791 @ 0x1846BAC50) uses case-sensitive Enum.Parse and defaults to zero here. */
-export function parseEnumInt32(
-  raw: string,
-  members: Readonly<Record<string, string | number>>,
-): number {
-  const ordinal = tryParseInt32(raw.trim());
-  if (ordinal !== null) return ordinal;
+function inInt32Range(value: number): boolean {
+  return value >= INT32_MIN && value <= INT32_MAX;
+}
+
+/** System.Int32.TryParse with NumberStyles.Integer. */
+export function tryParseInt32(text: string): number | null {
+  const value = parseInteger(text);
+  return value !== null && inInt32Range(value) ? value : null;
+}
+
+const enumWhitespace = /\p{White_Space}/u;
+
+function trimEnumWhitespace(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && enumWhitespace.test(text[start]!)) start++;
+  while (end > start && enumWhitespace.test(text[end - 1]!)) end--;
+  return text.slice(start, end);
+}
+
+type EnumMembers = Readonly<Record<string, number | string>>;
+
+// The AVG enum identifiers are ASCII. 2791 OrdinalIgnoreCase uppercases
+// individual UTF-16 chars and its invariant table maps only a-z into A-Z.
+function foldEnumName(name: string): string {
+  return name.replace(/[a-z]/g, (letter) => letter.toUpperCase());
+}
+
+function enumMemberValue(
+  members: EnumMembers,
+  name: string,
+  ignoreCase: boolean,
+): number | null {
+  if (ignoreCase) {
+    const folded = foldEnumName(name);
+    let first: number | null = null;
+    for (const [key, value] of Object.entries(members)) {
+      if (typeof value !== "number" || foldEnumName(key) !== folded) continue;
+      // GetCachedValuesAndNames orders names by unsigned enum value.
+      if (first === null || value >>> 0 < first >>> 0) first = value;
+    }
+    return first;
+  }
+  const value = Object.hasOwn(members, name) ? members[name] : undefined;
+  return typeof value === "number" ? value : null;
+}
+
+/**
+ * System.Enum.TryParseEnum (2791 @ 0x18615E0A0) for the Int32-backed AVG enums.
+ * GetEnum<T> (@ 0x1846BAC50) supplies the caller's default on failure.
+ */
+export function tryParseEnum(
+  raw: string | null | undefined,
+  members: EnumMembers,
+  ignoreCase = false,
+): number | null {
+  if (raw == null) return null;
+  const text = trimEnumWhitespace(raw);
+  if (!text) return null;
+  // Convert.ChangeType falls through to names on FormatException only.
+  // An unnamed integer succeeds, and OverflowException ends the parse.
+  if (/^[-+\p{Decimal_Number}]/u.test(text[0]!)) {
+    const ordinal = parseInteger(text);
+    if (ordinal !== null) return inInt32Range(ordinal) ? ordinal : null;
+  }
 
   let result = 0;
-  for (const member of raw.split(",")) {
-    const value = members[member.trim()];
-    if (typeof value !== "number") return 0;
+  for (const member of text.split(",")) {
+    const value = enumMemberValue(
+      members,
+      trimEnumWhitespace(member),
+      ignoreCase,
+    );
+    if (value === null) return null;
     result |= value;
   }
   return result;
@@ -127,7 +185,7 @@ export function tryConvertToInt32(
   if (typeof value === "string") return tryParseInt32(value);
   const integer =
     typeof value === "number" ? roundHalfToEven(value) : Number(value);
-  return integer >= INT32_MIN && integer <= INT32_MAX ? integer : null;
+  return inInt32Range(integer) ? integer : null;
 }
 
 // The client sets InvariantCulture in _InitAPPDefaultCulture (2791).
