@@ -736,6 +736,68 @@ const curtainInput: CurtainInput = {
 };
 
 describe("PixiStoryRenderer curtain", () => {
+  it.each([
+    {
+      delayMs: -150,
+      endHeight: 160,
+      fadeMs: 100,
+      name: "the track ends before sequence time zero",
+      steps: [16],
+    },
+    {
+      delayMs: -100,
+      endHeight: 520,
+      fadeMs: 100,
+      name: "the track ends at sequence time zero",
+      steps: [16],
+    },
+    {
+      delayMs: 200,
+      endHeight: 520,
+      fadeMs: -100,
+      name: "the last update crosses both ends of a negative fade",
+      steps: [50, 150],
+    },
+    {
+      delayMs: 200,
+      endHeight: 160,
+      fadeMs: -100,
+      name: "the previous update already passed the end of a negative fade",
+      steps: [150, 50],
+    },
+  ])(
+    "samples the sequence when $name",
+    ({ delayMs, endHeight, fadeMs, steps }) => {
+      const renderer = createMaskRenderer();
+      const animation = renderer.setCurtain({
+        ...curtainInput,
+        block: true,
+        delayMs,
+        fadeMs,
+        fillTo: 0.75,
+      });
+      const graphic = renderer.layers.curtains.children[0];
+      expect(graphic.getLocalBounds().height).toBeCloseTo(160);
+      for (const step of steps) {
+        expect(animation.endReason).toBeUndefined();
+        renderer.frames.step(step);
+      }
+      expect(animation.endReason).toBe("complete");
+      expect(graphic.getLocalBounds().height).toBeCloseTo(endHeight);
+    },
+  );
+
+  it("finishes a negative-duration retraction on Update", () => {
+    const renderer = createMaskRenderer();
+    renderer.setCurtain(curtainInput);
+    const graphic = renderer.layers.curtains.children[0];
+
+    renderer.clearCurtains(-100);
+    expect(graphic.visible).toBe(true);
+    renderer.frames.step(16);
+    expect(graphic.visible).toBe(false);
+  });
+
   it("samples live alpha when a delayed track starts", () => {
     const renderer = createMaskRenderer();
     renderer.setCurtain({ ...curtainInput, alphaTo: 0.3 });
@@ -897,7 +959,7 @@ describe("PixiStoryRenderer blocker", () => {
     expect(world.children).toEqual([sceneCamera, blocker, animTexts, curtains]);
   });
 
-  it("applies OutQuad to raw 0-255 color endpoints and clips only the tint", () => {
+  it("applies OutQuad to raw color endpoints and quantizes the drawn color", () => {
     const renderer = createMaskRenderer();
     renderer.setBlocker({
       ...blockerInput,
@@ -907,7 +969,7 @@ describe("PixiStoryRenderer blocker", () => {
 
     const sprite = renderer.layers.blocker.children[0];
     renderer.frames.step(150);
-    expect(sprite.alpha).toBe(0.75);
+    expect(sprite.alpha).toBe(191 / 255);
     expect(sprite.tint).toBe(0xff_ff_ff);
     expect(renderer.blockerView.color).toEqual({
       a: 0.75,
@@ -915,6 +977,16 @@ describe("PixiStoryRenderer blocker", () => {
       g: 191.25,
       r: 191.25,
     });
+  });
+
+  it("rounds blocker Color32 channels to even at half-byte boundaries", () => {
+    const renderer = createMaskRenderer();
+    const color = { a: 0.5, b: 255, g: 0.7, r: 0.3 };
+    renderer.setBlocker({ ...blockerInput, to: color });
+    const sprite = renderer.layers.blocker.children[0];
+    expect(sprite.tint).toBe(0x4c_b2_ff);
+    expect(sprite.alpha).toBe(128 / 255);
+    expect(renderer.blockerView.color).toEqual(color);
   });
 
   it("kills the old DOColor without its transparent cleanup", () => {
@@ -928,7 +1000,7 @@ describe("PixiStoryRenderer blocker", () => {
     });
     const sprite = renderer.layers.blocker.children[0];
     renderer.frames.step(50);
-    expect(sprite.alpha).toBe(0.25);
+    expect(sprite.alpha).toBe(64 / 255);
 
     // The next tween inherits the live color when the from channels are absent.
     const second = renderer.setBlocker({
@@ -937,10 +1009,10 @@ describe("PixiStoryRenderer blocker", () => {
       fadeMs: 200,
     });
     expect(first.endReason).toBe("reset");
-    expect(sprite.alpha).toBe(0.25);
+    expect(sprite.alpha).toBe(64 / 255);
     renderer.frames.step(100);
     expect(sprite.visible).toBe(true);
-    expect(sprite.alpha).toBeCloseTo(0.8125);
+    expect(sprite.alpha).toBe(207 / 255);
     expect(second.endReason).toBeUndefined();
     renderer.frames.step(100);
     expect(second.endReason).toBe("complete");
@@ -964,7 +1036,7 @@ describe("PixiStoryRenderer blocker", () => {
     expect(uniforms.uExtent).toBeCloseTo(0.787, 6);
     expect(filter.isVertical()).toBe(false);
     renderer.frames.step(100);
-    expect(filter.alpha).toBeCloseTo(0.45);
+    expect(filter.alpha).toBe(115 / 255);
     expect(sprite.alpha).toBe(1);
 
     renderer.setBlocker({ ...slider, inverse: true, style: "verticalslider" });
@@ -978,7 +1050,7 @@ describe("PixiStoryRenderer blocker", () => {
     renderer.setBlocker({ ...blockerInput, fadeMs: 100 });
     expect(sprite.filters).toEqual([]);
     expect(sprite.scale.y).toBe(-720);
-    expect(sprite.alpha).toBeCloseTo(0.45);
+    expect(sprite.alpha).toBe(115 / 255);
     renderer.setBlocker(slider);
     expect(sprite.filters[0]).toBe(filter);
   });
@@ -1025,7 +1097,7 @@ describe("PixiStoryRenderer blocker", () => {
       await pending.assetsReady;
       expect(pending.endReason).toBe("complete");
       expect(sprite.texture).toBe(Texture.EMPTY);
-      expect(sprite.alpha).toBe(0.5);
+      expect(sprite.alpha).toBe(128 / 255);
       expect(warn).toHaveBeenCalledWith("missing blocker image: missing");
     } finally {
       load.mockRestore();
@@ -1061,7 +1133,7 @@ describe("StoryPlayer blocker and curtain playback", () => {
     {
       mode: "default",
       expected: [
-        [0.75, undefined, 0],
+        [191 / 255, undefined, 0],
         [1, 0.2, 0],
         [1, 0.2, 0],
         [1, expect.closeTo(0.65), 0],
@@ -1102,6 +1174,77 @@ describe("StoryPlayer blocker and curtain playback", () => {
       }
     },
   );
+
+  it("advances a curtain from a negative delay and releases on the earlier frame", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        "[curtain(direction=0,fillfrom=0.25,fillto=0.75,delay=-0.1,fadetime=0.4,block=true)]",
+        '[name="A"]next',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const graphic = renderer.layers.curtains.children[0];
+      expect(graphic.getLocalBounds().height).toBeCloseTo(160);
+      app.ticker.update(100);
+      expect(graphic.getLocalBounds().height).toBeCloseTo(430);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      app.ticker.update(301);
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    { a: -0.00001, initial: 0.5, middle: 0.1249925 },
+    { a: -0.0000101, initial: 1, middle: 1 },
+    { a: 2, initial: 0.5, middle: 1 },
+  ])("samples curtain alpha for a=$a", async ({ a, initial, middle }) => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        `[curtain(direction=0,fillfrom=0.25,fillto=0.25,afrom=0.5,a=${a},fadetime=0.4,block=true)]`,
+        '[name="A"]next',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const graphic = renderer.layers.curtains.children[0];
+      expect(graphic.alpha).toBe(initial);
+      app.ticker.update(200);
+      expect(graphic.alpha).toBeCloseTo(middle, 8);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("configures a negative-duration blocker wipe before its completion frame", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[blocker(afrom=0.25,a=1,style="slider",inverse=true,fadetime=-0.1,block=true)]',
+        '[name="A"]next',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const sprite = renderer.layers.blocker.children[0];
+      expect(sprite.filters).toHaveLength(1);
+      expect(sprite.scale.x).toBeLessThan(0);
+      expect(renderer.blockerView.color.a).toBe(0.25);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      app.ticker.update(16);
+      expect(renderer.blockerView.color.a).toBe(1);
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
 
   it.each([
     { alpha: "", direction: 0, name: "zero height", visible: false },
@@ -1177,14 +1320,14 @@ describe("StoryPlayer blocker and curtain playback", () => {
     const { blocker, curtains } = renderer.layers;
     try {
       renderer.frames.step(25);
-      expect(blocker.children[0]?.alpha).toBeCloseTo(0.4375);
+      expect(blocker.children[0]?.alpha).toBe(112 / 255);
       expect(runtime.getDisplayedLineIndex()).toBeNull();
       const skipped = runtime.skipNode();
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       renderer.frames.step(25);
       await skipped;
       expect(runtime.getDisplayedLineIndex()).toBe(5);
-      expect(blocker.children[0]?.alpha).toBeCloseTo(0.75);
+      expect(blocker.children[0]?.alpha).toBe(191 / 255);
       expect(curtains.children[0]?.getLocalBounds().height).toBeCloseTo(295);
 
       renderer.frames.step(50);
@@ -1227,7 +1370,7 @@ describe("StoryPlayer blocker and curtain playback", () => {
       await renderer.frames.advance(16);
       const sprite = renderer.layers.blocker.children[0];
       expect(sprite.texture).toBe(Texture.WHITE);
-      expect(sprite.alpha).toBe(0.5);
+      expect(sprite.alpha).toBe(128 / 255);
     } finally {
       load.mockRestore();
       runtime.destroy();
@@ -1262,7 +1405,7 @@ describe("StoryPlayer blocker and curtain playback", () => {
       expect(sprite.texture).toBe(Texture.EMPTY);
       expect(runtime.getDisplayedLineIndex()).toBeNull();
       renderer.frames.step(100);
-      expect(sprite.alpha).toBe(0.5);
+      expect(sprite.alpha).toBe(128 / 255);
       expect(runtime.getDisplayedLineIndex()).toBe(3);
     } finally {
       load.mockRestore();

@@ -4,11 +4,10 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import {
+  boxedParamString,
   exactArg,
   getBool,
   getFiniteFloat,
-  hasTweenDuration,
-  toString,
 } from "../commandParams";
 
 import type { ParsedCommandLine, StoryRenderer } from "../types";
@@ -41,19 +40,18 @@ export class BlockerPanel extends ExecutorComponent {
 
   /** _ExecuteBlocker (2791 @ 0x184184890) tests IsZero on the scaled fade. */
   private show({ args }: ParsedCommandLine): ExecutorResult {
-    const styleArg = toString(exactArg(args, "style"), "defualt");
+    const styleArg = boxedParamString(exactArg(args, "style"));
     const style =
       styleArg === "slider" || styleArg === "verticalslider"
         ? styleArg
         : "default";
     // GetFloat and GetBool use Convert.ToSingle and Convert.ToBoolean in 2791.
-    const scaledMs = this.calculateFadeMs(
+    const fadeMs = this.calculateFadeMs(
       getFiniteFloat(args, "fadetime") ?? 0.4,
     );
-    const fadeMs = hasTweenDuration(scaledMs / 1000) ? scaledMs : 0;
     const animation = this.renderer.setBlocker(
       {
-        block: fadeMs > 0 && getBool(args, "block"),
+        block: fadeMs !== 0 && getBool(args, "block"),
         fadeMs,
         from: {
           a: getFiniteFloat(args, "afrom") ?? Number.NaN,
@@ -61,7 +59,7 @@ export class BlockerPanel extends ExecutorComponent {
           g: getFiniteFloat(args, "gfrom") ?? Number.NaN,
           r: getFiniteFloat(args, "rfrom") ?? Number.NaN,
         },
-        image: toString(exactArg(args, "image")) || undefined,
+        image: boxedParamString(exactArg(args, "image")) || undefined,
         inverse: getBool(args, "inverse"),
         style,
         to: {

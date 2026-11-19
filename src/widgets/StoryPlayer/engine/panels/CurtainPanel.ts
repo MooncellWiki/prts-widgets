@@ -7,7 +7,7 @@ import {
   exactArg,
   getBool,
   getFiniteFloat,
-  hasTweenDuration,
+  isNonNegativeFloat,
   tryConvertToInt32,
 } from "../commandParams";
 
@@ -62,10 +62,9 @@ export class CurtainPanel extends ExecutorComponent {
       return;
     }
 
-    const scaledMs = this.calculateFadeMs(
+    const fadeMs = this.calculateFadeMs(
       getFiniteFloat(args, "fadetime") ?? 0.4,
     );
-    const fadeMs = hasTweenDuration(scaledMs / 1000) ? scaledMs : 0;
     if (direction < 0) {
       // _HideAllCurtains (0x1841AAF20) starts retractions without blocking.
       this.renderer.clearCurtains(fadeMs);
@@ -73,13 +72,13 @@ export class CurtainPanel extends ExecutorComponent {
     }
 
     const alpha = getFiniteFloat(args, "a") ?? -1;
-    const block = fadeMs > 0 && getBool(args, "block");
+    const block = fadeMs !== 0 && getBool(args, "block");
     const animation = this.renderer.setCurtain(
       {
         alphaFrom: getFiniteFloat(args, "afrom"),
-        alphaTo: alpha >= 0 ? alpha : undefined,
+        alphaTo: isNonNegativeFloat(alpha) ? alpha : undefined,
         block,
-        delayMs: Math.max(0, (getFiniteFloat(args, "delay") ?? 0) * 1000),
+        delayMs: (getFiniteFloat(args, "delay") ?? 0) * 1000,
         direction,
         fadeMs,
         fillFrom: getFiniteFloat(args, "fillfrom") ?? 1,

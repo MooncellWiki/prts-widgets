@@ -14,6 +14,7 @@ import {
 } from "./characterRef";
 import {
   exactArg,
+  isZeroFloat,
   roundHalfToEven,
   toBoolean,
   toNumber,
@@ -371,11 +372,11 @@ export class StoryRuntime {
     this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
     this.blockerPanel = new BlockerPanel(renderer, (seconds) =>
-      this.calculateFadeMs(seconds),
+      this.calculateSignedFadeMs(seconds),
     );
     this.curtainPanel = new CurtainPanel(
       renderer,
-      (seconds) => this.calculateFadeMs(seconds),
+      (seconds) => this.calculateSignedFadeMs(seconds),
       (detail) => this.warn("invalid_parameter", detail),
     );
     this.characterCutinPanel = new CharacterCutinPanel(renderer, {
@@ -1119,13 +1120,19 @@ export class StoryRuntime {
    * Only panels implementing IFadeTimeRatio route through it. AVGImagePanel does
    * (background / image / imagerotate); its tween executors bypass it, and the
    * LargeBackgroundPanel family applies literal timing in its own executors.
-   * BlockerPanel and CurtainPanel also scale their fades here.
    */
   private calculateFadeMs(seconds: unknown, fallback = 0): number {
     return Math.max(
       0,
       toNumber(seconds, fallback) * this.getCurrentSpeed().animateRatio * 1000,
     );
+  }
+
+  /** AVGBlockerPanel / AVGCurtainPanel branch on the scaled float IsZero. */
+  private calculateSignedFadeMs(seconds: number): number {
+    const ratio = this.getCurrentSpeed().animateRatio;
+    const scaledFloat = Math.fround(seconds) * Math.fround(ratio);
+    return isZeroFloat(scaledFloat) ? 0 : seconds * ratio * 1000;
   }
 
   private cancelAutoClick(): void {

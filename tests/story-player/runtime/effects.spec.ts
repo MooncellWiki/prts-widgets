@@ -525,8 +525,12 @@ describe("StoryRuntime", () => {
       createContext([
         "[blocker(fadetime=0.00002,block=true)]",
         "[blocker(fadetime=0.00004,block=true)]",
+        "[blocker(fadetime=-0.00002,block=true)]",
+        "[blocker(fadetime=-0.00004,block=true)]",
         "[curtain(direction=0,fadetime=0.00002,block=true)]",
         "[curtain(direction=0,fadetime=0.00004,block=true)]",
+        "[curtain(direction=0,fadetime=-0.00002,block=true)]",
+        "[curtain(direction=0,fadetime=-0.00004,block=true)]",
         '[name="A"]next',
       ]),
       renderer,
@@ -540,6 +544,8 @@ describe("StoryRuntime", () => {
       expect(calls.map(({ block, fadeMs }) => [block, fadeMs])).toEqual([
         [false, 0],
         [true, 0.02],
+        [false, 0],
+        [true, -0.02],
       ]);
     }
   });

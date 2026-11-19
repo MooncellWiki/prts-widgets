@@ -2,6 +2,7 @@ import { Assets, Sprite, Texture, type Container } from "pixi.js";
 
 import { SLIDE_MASK_TEXTURE_URL } from "../../../assets";
 import { resolveStoryAssetByKey } from "../../asset";
+import { isZeroFloat, roundHalfToEven } from "../../commandParams";
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import { STORY_HEIGHT, STORY_WIDTH, type BlockerInput } from "../../types";
 import { dotweenDefaultEase } from "../core/DotweenEase";
@@ -12,12 +13,10 @@ import type { TweenRunner } from "../core/TweenRunner";
 
 const CLEAR_COLOR = { a: 0, b: 0, g: 0, r: 0 };
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
-function tintChannel(value: number): number {
-  return Math.round(clamp01(value) * 255);
+/** Color32.op_Implicit (2791 @ 0x18135F550) encodes the Image vertex color. */
+function color32Channel(value: number): number {
+  const clamped = Math.min(1, Math.max(0, Math.fround(value)));
+  return roundHalfToEven(Math.fround(clamped * 255));
 }
 
 /** Torappu.AVG.AVGBlockerPanel's full-screen Image and DOColor tween. */
@@ -95,7 +94,7 @@ export class BlockerView {
   private textureUrl(input: BlockerInput): string | null {
     if (input.style === "default")
       return resolveStoryAssetByKey(input.image ?? "", "image");
-    return input.fadeMs > 0 && !this.slideMaterial && !this.maskLoadFailed
+    return input.fadeMs !== 0 && !this.slideMaterial && !this.maskLoadFailed
       ? SLIDE_MASK_TEXTURE_URL
       : null;
   }
@@ -113,7 +112,7 @@ export class BlockerView {
     else if (texture) this.setTexture(sprite, texture);
 
     // Omitted from channels inherit the raw Unity Color, including values
-    // above 1. Clamp only the tint and alpha written to Pixi.
+    // above 1. Convert to Color32 when drawing.
     const current = this.color;
     const from = {
       a: Number.isFinite(input.from.a) ? input.from.a : current.a,
@@ -122,7 +121,7 @@ export class BlockerView {
       r: Number.isFinite(input.from.r) ? input.from.r : current.r,
     };
     this.tweens.killTarget(sprite); // DOKill(_blocker, complete: false)
-    if (input.fadeMs <= 0) {
+    if (input.fadeMs === 0) {
       // The instant branch retains the previous material and scale.
       this.writeColor(sprite, input.to);
       return;
@@ -152,12 +151,15 @@ export class BlockerView {
         });
       },
       {
+        // TweenManager.Update (2791 @ 0x1844679F0) completes a negative
+        // duration on Update, after the material and initial color are set.
+        deferZeroDuration: true,
         ease: dotweenDefaultEase,
         onCancel: () => animation?.end("reset"),
         onComplete: () => {
           // _FinishCommand (2791 @ 0x1841850A0) hides a near-transparent
           // blocker and restores the serialized default Image sprite.
-          if (Math.abs(Math.fround(input.to.a)) <= Math.fround(1e-5)) {
+          if (isZeroFloat(this.color.a)) {
             this.setTexture(sprite, Texture.WHITE);
             sprite.visible = false;
           }
@@ -213,15 +215,16 @@ export class BlockerView {
   private writeColor(sprite: Sprite, color: BlockerInput["to"]): void {
     this.color = { ...color };
     sprite.tint =
-      (tintChannel(color.r) << 16) |
-      (tintChannel(color.g) << 8) |
-      tintChannel(color.b);
+      (color32Channel(color.r) << 16) |
+      (color32Channel(color.g) << 8) |
+      color32Channel(color.b);
+    const alpha = color32Channel(color.a) / 255;
     if (this.slideFilter) {
-      this.slideFilter.alpha = color.a;
+      this.slideFilter.alpha = alpha;
       sprite.alpha = 1;
     } else {
-      sprite.alpha = clamp01(color.a);
+      sprite.alpha = alpha;
     }
-    sprite.visible = color.a > 0;
+    sprite.visible = alpha > 0;
   }
 }

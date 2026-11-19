@@ -292,6 +292,7 @@ export interface CharacterActionInput {
 
 export interface BlockerInput {
   block: boolean;
+  /** Signed scaled duration. Zero selects the native immediate branch. */
   fadeMs: number;
   from: { a: number; b: number; g: number; r: number };
   image?: string;
@@ -306,6 +307,7 @@ export interface CurtainInput {
   block: boolean;
   delayMs: number;
   direction: number;
+  /** Signed scaled duration. Zero selects the native immediate branch. */
   fadeMs: number;
   fillFrom?: number;
   fillTo: number;

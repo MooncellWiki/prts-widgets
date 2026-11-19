@@ -1,5 +1,6 @@
 import { FillGradient, Graphics, type Container } from "pixi.js";
 
+import { isZeroFloat } from "../../commandParams";
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import { STORY_HEIGHT, STORY_WIDTH, type CurtainInput } from "../../types";
 import { dotweenDefaultEase } from "../core/DotweenEase";
@@ -15,7 +16,6 @@ function clamp01(value: number): number {
 /** Width of AVGCurtain's feather strip in the 2791 sharedassets1 layout. */
 const CURTAIN_GRADIENT_PX = 20;
 const CURTAIN_DIRECTION_ANGLES = [180, 225, 270, 315, 0, 45, 90, 135];
-const ZERO_EPSILON = Math.fround(1e-5);
 const ZERO_SIZE = { x: 0, y: 0 };
 
 const CURTAIN_STAGE_CORNERS: ReadonlyArray<{ x: number; y: number }> = [
@@ -101,7 +101,7 @@ export class CurtainView {
 
   /** _ExecuteCurtain (2791 @ 0x1841AA580). */
   show(input: CurtainInput, onComplete?: () => void): ExecutionHandle | void {
-    const { direction, grad } = input;
+    const { alphaTo, delayMs, direction, fadeMs, grad } = input;
     const vector = this.resolveCurtainVector(direction);
     if (!vector) {
       this.onWarning?.(`unsupported curtain direction: ${direction}`);
@@ -119,8 +119,6 @@ export class CurtainView {
     const axis = sizeAxis(direction);
     const origin = state.originSize;
     const sizeTo = { ...origin, [axis]: origin[axis] * input.fillTo };
-    const alphaTo =
-      input.alphaTo === undefined ? undefined : clamp01(input.alphaTo);
     state.active = true;
     state.grad = grad;
     // SetEdgeFeatherEnabled (2791 @ 0x18423D270) restores layout padding
@@ -129,9 +127,9 @@ export class CurtainView {
       grad ||
       Math.abs(Math.fround(Math.fround(input.fillTo) - 1)) > Math.fround(0.01);
 
-    if (input.fadeMs <= 0) {
+    if (fadeMs === 0) {
       state.sizeDelta = sizeTo;
-      state.alpha = alphaTo ?? 1;
+      state.alpha = clamp01(alphaTo ?? 1);
       this.updateCurtainState(state, vector);
       return;
     }
@@ -147,29 +145,41 @@ export class CurtainView {
     state.alpha =
       alphaTo === undefined ? 1 : clamp01(input.alphaFrom ?? state.alpha);
     this.updateCurtainState(state, vector);
-    const { delayMs, fadeMs } = input;
     const animation = input.block ? createExecutionHandle(true) : undefined;
-    const totalMs = delayMs + fadeMs;
+    // AppendInterval sets the initial duration. DoInsert extends it to
+    // each child's end when that end is later (2791 @ 0x18442C310).
+    const trackEndMs = delayMs + fadeMs;
+    const durationMs = Math.max(delayMs, trackEndMs);
+    let previousMs = 0;
     let sizeFrom: CurtainSize | undefined;
     let alphaFrom: number | undefined;
-    // Sequence.ApplyInternalCycle (2791 @ 0x18442B5B0) starts the child
-    // tweens at the interval boundary. They sample the live slot values.
     this.tweens.start(
-      totalMs,
+      durationMs,
       (progress) => {
-        const elapsedMs = progress * totalMs - delayMs;
-        if (elapsedMs < 0) return;
+        const positionMs = progress * durationMs;
+        // ApplyInternalCycle (2791 @ 0x18442B5B0) samples children only
+        // when their interval overlaps this update. Startup reads live values.
+        const overlaps =
+          positionMs >= delayMs &&
+          (delayMs > 0 ? previousMs < trackEndMs : previousMs <= trackEndMs);
+        previousMs = positionMs;
+        if (!overlaps) return;
         const eased =
-          progress === 1 ? 1 : dotweenDefaultEase(elapsedMs / fadeMs);
+          fadeMs < 0 || progress === 1
+            ? 1
+            : dotweenDefaultEase((positionMs - delayMs) / fadeMs);
         sizeFrom ??= state.sizeDelta;
         state.sizeDelta = lerpSize(sizeFrom, sizeTo, eased);
         if (alphaTo !== undefined) {
           alphaFrom ??= state.alpha;
-          state.alpha = lerp(alphaFrom, alphaTo, eased);
+          // DOFade uses the raw endpoint. CanvasGroup.set_alpha clamps
+          // each sampled value (2791 UnityPlayer.dll @ 0x180C4C9A0).
+          state.alpha = clamp01(lerp(alphaFrom, alphaTo, eased));
         }
         this.updateCurtainState(state, vector);
       },
       {
+        deferZeroDuration: true,
         maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
         onCancel: () => animation?.end("reset"),
         onComplete: () => {
@@ -193,7 +203,7 @@ export class CurtainView {
         direction,
         this.resolveCurtainVector(direction)!,
       );
-      if (fadeMs <= 0) {
+      if (fadeMs === 0) {
         this.resetCurtain(state);
         continue;
       }
@@ -208,6 +218,7 @@ export class CurtainView {
           this.updateCurtainState(state, state.vector);
         },
         {
+          deferZeroDuration: true,
           ease: dotweenDefaultEase,
           maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
           onComplete: () => this.resetCurtain(state),
@@ -222,8 +233,7 @@ export class CurtainView {
     for (const state of this.curtains.values()) {
       if (
         state.active &&
-        (Math.abs(Math.fround(state.alpha)) <= ZERO_EPSILON ||
-          Math.abs(Math.fround(state.sizeDelta.y)) <= ZERO_EPSILON)
+        (isZeroFloat(state.alpha) || isZeroFloat(state.sizeDelta.y))
       ) {
         state.active = false;
         this.updateCurtainState(state, state.vector);
