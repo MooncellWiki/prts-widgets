@@ -1,7 +1,7 @@
 import { ExecutorComponent, type PanelExecutors } from "../ExecutorComponent";
 import {
   exactArg,
-  toBoolean,
+  getBool,
   toOptionalNumber,
   toString,
 } from "../commandParams";
@@ -19,7 +19,8 @@ type SpellStickerResult = "continue" | WaitForClick;
 
 /**
  * Torappu.AVG.AVGSpellStickerPanel.GetExecutors (2791 @ 0x1841B28D0).
- * Playback owns the auto-click clock and the renderer plays each view's clip.
+ * Playback owns the auto-click clock and the renderer supplies each style's
+ * native clip duration.
  */
 export class SpellStickerPanel extends ExecutorComponent {
   constructor(
@@ -76,7 +77,7 @@ export class SpellStickerPanel extends ExecutorComponent {
     }
     const hide =
       toString(exactArg(args, "action"), "show").toLowerCase() === "hide";
-    const block = toBoolean(exactArg(args, "block"));
+    const block = getBool(args, "block");
     // _ShowSticker writes alpha when supplied and otherwise reuses it.
     const alpha = toOptionalNumber(exactArg(args, "alpha"));
     const render = hide
@@ -106,7 +107,7 @@ export class SpellStickerPanel extends ExecutorComponent {
   ): SpellStickerResult | Promise<SpellStickerResult> {
     // _ExecuteSpellStickerClear (2791 @ 0x1841B35D0) clears inline and
     // raises an auto click with length zero when the command blocks.
-    const block = toBoolean(exactArg(line.args, "block"));
+    const block = getBool(line.args, "block");
     const render = this.reset();
     const complete = (): SpellStickerResult => {
       if (!block || !isCurrent()) return "continue";

@@ -775,6 +775,35 @@ describe("StoryRuntime", () => {
     await startPromise;
   });
 
+  it("keeps the url branch when the url value is empty", async () => {
+    const renderer = new FakeRenderer();
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext([
+        '[Video(url="",res="video/fallback.mp4")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    const started = runtime.start();
+    try {
+      expect(renderer.videoCalls).toEqual([]);
+      await started;
+      expect(onWarning).toHaveBeenCalledExactlyOnceWith({
+        cursor: 1,
+        detail: "video: empty url",
+        type: "invalid_parameter",
+      });
+      expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
+    } finally {
+      runtime.destroy();
+      await started;
+    }
+  });
+
   it("supports multiline command as dialogue wait", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(

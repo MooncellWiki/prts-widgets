@@ -197,7 +197,7 @@ describe("StoryRuntime", () => {
       expect(frameEnd).toHaveBeenCalledTimes(1);
 
       skipping = runtime.skipNode();
-      expect(stop).toHaveBeenCalledExactlyOnceWith();
+      expect(stop).toHaveBeenCalledExactlyOnceWith(0);
       await setImmediate();
       await renderer.frames.advance(16);
       expect(renderer.videoCalls).toEqual([

@@ -191,6 +191,7 @@ describe("findMissingVideoUrls", () => {
       '[video(res="video/offline.mp4")]',
       // `url` takes priority and native never checks it.
       '[video(url="video/url.mp4", res="video/shadowed.mp4")]',
+      '[video(url="", res="video/also-shadowed.mp4")]',
     ]);
 
     const missing = await findMissingVideoUrls(lines, metadata);

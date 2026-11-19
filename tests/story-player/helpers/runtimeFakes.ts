@@ -464,7 +464,7 @@ export class FakeRenderer implements StoryRenderer {
     this.onDecisionSelected?.(selection);
   }
 
-  stopVideo(): void {
+  stopVideo(_fadeOutDelayMs?: number): void {
     this.videoStopped = true;
     this.onVideoEnd = null;
   }

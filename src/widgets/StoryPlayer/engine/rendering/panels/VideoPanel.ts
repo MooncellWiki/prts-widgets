@@ -1,4 +1,9 @@
+import type { TweenHandle, TweenRunner } from "../core/TweenRunner";
 import type { Container } from "pixi.js";
+
+// _SetHiddenInternal (2791 @ 0x1841BEEA0) uses 230 ms and the panel_video
+// prefab (sharedassets1.assets PathID 3845) supplies Ease.Linear.
+const VIDEO_FADE_OUT_MS = 230;
 
 /**
  * Web adaptation of `Torappu.AVG.AVGVideoPanel._ExecuteVideo` / `_PlayVideo`.
@@ -9,10 +14,11 @@ import type { Container } from "pixi.js";
  */
 export class VideoPanel {
   private host: HTMLDivElement | null = null;
-  private disposeActive: (() => void) | null = null;
+  private stopActive: ((fadeOutDelayMs?: number) => void) | null = null;
 
   constructor(
     private readonly uiLayer: Container,
+    private readonly tweens: TweenRunner,
     private readonly warn?: (detail: string) => void,
   ) {}
 
@@ -40,9 +46,64 @@ export class VideoPanel {
     }
     this.stop();
     const video = document.createElement("video");
+    let fade: TweenHandle | undefined;
+    let ended = false;
+    const disconnect = () => {
+      ended = true;
+      video.removeEventListener("ended", onEnded);
+      video.removeEventListener("error", onError);
+    };
+    const dispose = () => {
+      if (this.stopActive !== stop) return;
+      this.stopActive = null;
+      fade?.kill();
+      disconnect();
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      video.remove();
+      host.style.display = "none";
+      this.uiLayer.visible = true;
+    };
+    const stop = (fadeOutDelayMs?: number) => {
+      if (fadeOutDelayMs === undefined) {
+        dispose();
+        return;
+      }
+      if (fade) return;
+      disconnect();
+      // The following commands can draw and receive input behind the fading
+      // overlay. Keep the element mounted to retain its final frame.
+      this.uiLayer.visible = true;
+      host.style.pointerEvents = "none";
+      const durationMs = fadeOutDelayMs + VIDEO_FADE_OUT_MS;
+      fade = this.tweens.start(
+        durationMs,
+        (progress) => {
+          const elapsedMs = progress * durationMs;
+          const fadeProgress =
+            Math.max(0, elapsedMs - fadeOutDelayMs) / VIDEO_FADE_OUT_MS;
+          host.style.opacity = String(1 - fadeProgress);
+        },
+        { onComplete: dispose },
+      );
+    };
+    const finish = (failed: boolean) => {
+      if (ended) return;
+      disconnect();
+      if (failed) this.warn?.(`video playback failed: ${url}`);
+      onEnd();
+    };
+    const onEnded = () => finish(false);
+    const onError = () => finish(true);
+    this.stopActive = stop;
     this.uiLayer.visible = false;
     host.style.display = "flex";
+    host.style.opacity = "1";
+    host.style.pointerEvents = "";
     host.replaceChildren(video);
+    video.addEventListener("ended", onEnded);
+    video.addEventListener("error", onError);
     Object.assign(video, {
       autoplay: true,
       playsInline: true,
@@ -55,34 +116,11 @@ export class VideoPanel {
       height: "100%",
       width: "100%",
     });
-
-    const dispose = () => {
-      this.disposeActive = null;
-      video.removeEventListener("ended", onEnded);
-      video.removeEventListener("error", onError);
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-      video.remove();
-      host.style.display = "none";
-      this.uiLayer.visible = true;
-    };
-    const finish = (failed: boolean) => {
-      if (this.disposeActive !== dispose) return;
-      dispose();
-      if (failed) this.warn?.(`video playback failed: ${url}`);
-      onEnd();
-    };
-    const onEnded = () => finish(false);
-    const onError = () => finish(true);
-    this.disposeActive = dispose;
-    video.addEventListener("ended", onEnded);
-    video.addEventListener("error", onError);
     void video.play().catch(onError);
   }
 
-  stop(): void {
-    this.disposeActive?.();
+  stop(fadeOutDelayMs?: number): void {
+    this.stopActive?.(fadeOutDelayMs);
   }
 
   destroy(): void {

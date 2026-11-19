@@ -478,9 +478,10 @@ export class StoryRuntime {
     this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
-    new VideoPanel(renderer, {
+    new VideoPanel({
       missingVideoUrls: context.missingVideoUrls,
-      waitForPlayback: (start, stop) => this.waitForVideoPlayback(start, stop),
+      waitForPlayback: (url, fadeOutDelayMs) =>
+        this.waitForVideoPlayback(url, fadeOutDelayMs),
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     for (const command of builtinCommandNames)
@@ -943,36 +944,47 @@ export class StoryRuntime {
   }
 
   private waitForVideoPlayback(
-    start: (onEnd: () => void) => void,
-    stop: () => void,
+    url: string,
+    fadeOutDelayMs: number,
   ): WaitForFrame {
     const generation = this.playbackGeneration;
     const finish = createExecutionHandle(true);
     let cancelFrameEnd: (() => void) | undefined;
-    // AVGVideoPanel.ForceCommandEnd (2791 @ 0x1841BDC40) hides and disposes
-    // the media. Web stops immediately and cancels queued frame-end work.
-    const forceEnd = () => {
+    const stopWaiting = (delayMs?: number) => {
       finish.end("force_end");
       cancelFrameEnd?.();
-      stop();
+      this.renderer.stopVideo(delayMs);
     };
+    // AVGVideoPanel.ForceCommandEnd (2791 @ 0x1841BDC40) starts the fade
+    // without the scripted delay. Web teardown disposes media immediately.
+    const forceEnd = () =>
+      stopWaiting(this.skipCleanup && !this.destroyed ? 0 : undefined);
 
     this.state = "waiting_video";
     try {
-      start(() => {
+      this.renderer.playVideo(url, () => {
         if (finish.endReason !== undefined || cancelFrameEnd) return;
         // AVGVideoPanel._HandlePlayEvent (2791 @ 0x1841BE7D0) schedules
-        // FinishCommand via InvokeEndOfFrame for both PLAYEND and ERROR.
-        cancelFrameEnd = this.finishAtFrameEnd(finish);
+        // FinishCommand via InvokeEndOfFrame. OnFinish (0x1841BDDE0) starts
+        // the delayed fade without blocking the next command.
+        cancelFrameEnd = this.finishAtFrameEnd(finish, () =>
+          this.renderer.stopVideo(fadeOutDelayMs),
+        );
       });
     } catch (error) {
-      forceEnd();
+      stopWaiting();
       throw error;
     }
 
     // A synchronous renderer callback can end the story before it binds the wait.
     if (this.destroyed || this.playbackGeneration !== generation) forceEnd();
-    return { forceEnd, isComplete: () => finish.endReason !== undefined };
+    return {
+      forceEnd,
+      isComplete: () => {
+        if (finish.failure) throw finish.failure.error;
+        return finish.endReason !== undefined;
+      },
+    };
   }
 
   private finishAtFrameEnd(

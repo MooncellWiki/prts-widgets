@@ -476,7 +476,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.updatePhaseTweenRunner,
       onWarning,
     );
-    this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
+    this.videoPanel = new VideoPanel(
+      this.uiLayer,
+      this.updatePhaseTweenRunner,
+      onWarning,
+    );
     this.dialogView = new DialogView(this.uiLayer, onWarning, (...args) =>
       this.updatePhaseTweenRunner.run(...args),
     );
@@ -767,8 +771,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.animTextPanel.clear();
   }
 
-  stopVideo(): void {
-    this.videoPanel.stop();
+  stopVideo(fadeOutDelayMs?: number): void {
+    this.videoPanel.stop(fadeOutDelayMs);
   }
 
   finishStickerTyping(id: string): boolean {

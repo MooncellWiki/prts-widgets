@@ -1,5 +1,8 @@
-import { resolveAssetUrl, resolveStoryVideoByKey } from "./engine/asset";
-import { exactArg, toString } from "./engine/commandParams";
+import {
+  getStoryVideoSource,
+  resolveAssetUrl,
+  resolveStoryVideoByKey,
+} from "./engine/asset";
 import { parseStory } from "./engine/parser";
 
 import type {
@@ -314,10 +317,9 @@ export async function findMissingVideoUrls(
   const urls = new Set<string>();
   for (const line of lines) {
     if (line.kind !== "command" || line.command !== "video") continue;
-    if (toString(exactArg(line.args, "url"))) continue;
-    const resolved = resolveStoryVideoByKey(
-      toString(exactArg(line.args, "res")),
-    );
+    const source = getStoryVideoSource(line.args);
+    if (source?.kind !== "res") continue;
+    const resolved = resolveStoryVideoByKey(source.key);
     if (resolved) urls.add(resolved);
   }
 
