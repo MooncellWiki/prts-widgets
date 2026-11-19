@@ -14,6 +14,8 @@ function clamp01(value: number): number {
 
 /** Width of AVGCurtain's feather strip in the 2791 sharedassets1 layout. */
 const CURTAIN_GRADIENT_PX = 20;
+const ZERO_EPSILON = Math.fround(1e-5);
+const ZERO_SIZE = { x: 0, y: 0 };
 
 const CURTAIN_STAGE_CORNERS: ReadonlyArray<{ x: number; y: number }> = [
   { x: 0, y: 0 },
@@ -45,14 +47,41 @@ const CURTAIN_CORNER_HINGES: Readonly<
   7: { x: 73.31, y: -240.69 },
 };
 
+interface CurtainSize {
+  x: number;
+  y: number;
+}
+
+function sizeAxis(direction: number): keyof CurtainSize {
+  // _GenSizeDeltaWithMultiplior (2791 @ 0x1841AAE00).
+  return direction === 2 || direction === 6 ? "x" : "y";
+}
+
+function lerp(from: number, to: number, progress: number): number {
+  return from + (to - from) * progress;
+}
+
+function lerpSize(
+  from: CurtainSize,
+  to: CurtainSize,
+  progress: number,
+): CurtainSize {
+  return {
+    x: lerp(from.x, to.x, progress),
+    y: lerp(from.y, to.y, progress),
+  };
+}
+
 interface CurtainRenderState {
+  active: boolean;
   alpha: number;
   direction: number;
   edgeFeather: boolean;
   feather?: FillGradient;
-  fill: number;
   grad: boolean;
   graphic: Graphics;
+  originSize: CurtainSize;
+  sizeDelta: CurtainSize;
   vector: { x: number; y: number };
 }
 
@@ -79,12 +108,12 @@ export class CurtainView {
     }
 
     const state = this.ensureCurtainState(direction, vector);
-    this.tweens.killTarget(state.graphic);
-    const fillTo = clamp01(input.fillTo);
-    // No a parameter means the native unconditional alpha=1 snap sticks.
-    const alphaFrom =
-      input.alphaTo === undefined ? 1 : clamp01(input.alphaFrom ?? state.alpha);
-    const alphaTo = clamp01(input.alphaTo ?? 1);
+    const axis = sizeAxis(direction);
+    const origin = state.originSize;
+    const sizeTo = { ...origin, [axis]: origin[axis] * clamp01(input.fillTo) };
+    const alphaTo =
+      input.alphaTo === undefined ? undefined : clamp01(input.alphaTo);
+    state.active = true;
     state.grad = grad;
     // SetEdgeFeatherEnabled (2791 @ 0x18423D270) restores layout padding
     // except for a near-full target without a gradient. Similar uses 0.01f.
@@ -93,63 +122,42 @@ export class CurtainView {
       Math.abs(Math.fround(Math.fround(input.fillTo) - 1)) > Math.fround(0.01);
 
     if (input.fadeMs <= 0) {
-      state.fill = fillTo;
-      state.alpha = alphaTo;
-      if (fillTo <= 0) this.removeCurtainState(state);
-      else this.updateCurtainState(state, vector);
+      state.sizeDelta = sizeTo;
+      state.alpha = alphaTo ?? 1;
+      this.updateCurtainState(state, vector);
       return;
     }
 
-    state.fill = clamp01(input.fillFrom ?? state.fill);
-    state.alpha = alphaFrom;
-    this.updateCurtainState(state, vector);
-    return this.animate(state, { ...input, alphaTo, fillTo }, onComplete);
-  }
-
-  /** _HideAllCurtains / HideCurtain (2791 @ 0x1841AAF20 / 0x18423CB70). */
-  clear(fadeMs = 0): void {
-    for (const state of this.curtains.values()) {
-      if (fadeMs <= 0) {
-        this.removeCurtainState(state);
-      } else {
-        this.tweens.killTarget(state.graphic);
-        // The retraction keeps the current alpha, padding and gradient.
-        this.animate(state, { block: false, delayMs: 0, fadeMs, fillTo: 0 });
-      }
+    if (input.fillFrom !== undefined) {
+      state.sizeDelta = {
+        ...origin,
+        [axis]: origin[axis] * clamp01(input.fillFrom),
+      };
     }
-  }
-
-  private animate(
-    state: CurtainRenderState,
-    {
-      alphaTo = state.alpha,
-      block,
-      delayMs,
-      fadeMs,
-      fillTo,
-    }: Pick<
-      CurtainInput,
-      "alphaTo" | "block" | "delayMs" | "fadeMs" | "fillTo"
-    >,
-    onComplete?: () => void,
-  ): ExecutionHandle | void {
-    const { alpha: alphaFrom, fill: fillFrom, vector } = state;
-    const animation = block ? createExecutionHandle(true) : undefined;
+    // SetCurtainAlphaTween snaps to afrom when the alpha track is built.
+    // Without a track, _ExecuteCurtain only writes alpha=1 at dispatch.
+    state.alpha =
+      alphaTo === undefined ? 1 : clamp01(input.alphaFrom ?? state.alpha);
+    this.updateCurtainState(state, vector);
+    const { delayMs, fadeMs } = input;
+    const animation = input.block ? createExecutionHandle(true) : undefined;
     const totalMs = delayMs + fadeMs;
-    // _ExecuteCurtain inserts both tracks at the same Sequence offset.
-    // Keep the interval and fades on the same scaled Update clock.
+    let sizeFrom: CurtainSize | undefined;
+    let alphaFrom: number | undefined;
+    // Sequence.ApplyInternalCycle (2791 @ 0x18442B5B0) starts the child
+    // tweens at the interval boundary. They sample the live slot values.
     this.tweens.start(
       totalMs,
       (progress) => {
-        if (progress === 1) {
-          state.fill = fillTo;
-          state.alpha = alphaTo;
-        } else {
-          const elapsedMs = progress * totalMs - delayMs;
-          if (elapsedMs < 0) return;
-          const eased = dotweenDefaultEase(elapsedMs / fadeMs);
-          state.fill = fillFrom + (fillTo - fillFrom) * eased;
-          state.alpha = alphaFrom + (alphaTo - alphaFrom) * eased;
+        const elapsedMs = progress * totalMs - delayMs;
+        if (elapsedMs < 0) return;
+        const eased =
+          progress === 1 ? 1 : dotweenDefaultEase(elapsedMs / fadeMs);
+        sizeFrom ??= state.sizeDelta;
+        state.sizeDelta = lerpSize(sizeFrom, sizeTo, eased);
+        if (alphaTo !== undefined) {
+          alphaFrom ??= state.alpha;
+          state.alpha = lerp(alphaFrom, alphaTo, eased);
         }
         this.updateCurtainState(state, vector);
       },
@@ -157,16 +165,66 @@ export class CurtainView {
         maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
         onCancel: () => animation?.end("reset"),
         onComplete: () => {
-          if (fillTo <= 0) this.removeCurtainState(state);
           animation?.end();
           onComplete?.();
         },
-        // 2791's DOKill(AVGCurtain, true) misses the nested Sequence
-        // tracks. The Web view gives the newest command ownership of a side.
-        target: state.graphic,
+        // DOKill(AVGCurtain, true) misses these Sequences in 2791. Keep
+        // them live until completion or teardown of the entire Web view.
+        target: this,
       },
     );
     return animation;
+  }
+
+  /** _HideAllCurtains / HideCurtain (2791 @ 0x1841AAF20 / 0x18423CB70). */
+  clear(fadeMs = 0): void {
+    for (const state of this.curtains.values()) {
+      if (fadeMs <= 0) {
+        this.resetCurtain(state);
+        continue;
+      }
+      // The RectTransform target belongs to the standalone retraction.
+      this.tweens.killTarget(state);
+      let sizeFrom: CurtainSize | undefined;
+      this.tweens.start(
+        fadeMs,
+        (progress) => {
+          sizeFrom ??= state.sizeDelta;
+          state.sizeDelta = lerpSize(sizeFrom, ZERO_SIZE, progress);
+          this.updateCurtainState(state, state.vector);
+        },
+        {
+          ease: dotweenDefaultEase,
+          maxFrameDeltaMs: MAX_SCALED_FRAME_DELTA_MS,
+          onComplete: () => this.resetCurtain(state),
+          target: state,
+        },
+      );
+    }
+  }
+
+  /** RecycleCurtain (2791 @ 0x18423CD10) keeps the slot's size and alpha. */
+  recycle(): void {
+    for (const state of this.curtains.values()) {
+      if (
+        state.active &&
+        (Math.fround(state.alpha) <= ZERO_EPSILON ||
+          Math.fround(state.sizeDelta.y) <= ZERO_EPSILON)
+      ) {
+        state.active = false;
+        this.updateCurtainState(state, state.vector);
+      }
+    }
+  }
+
+  reset(): void {
+    this.tweens.killTarget(this);
+    for (const state of this.curtains.values()) {
+      this.tweens.killTarget(state);
+      state.graphic.destroy();
+      state.feather?.destroy();
+    }
+    this.curtains.clear();
   }
 
   private ensureCurtainState(
@@ -182,24 +240,32 @@ export class CurtainView {
     });
     graphic.visible = false;
     this.layer.addChild(graphic);
+    const originSize = CURTAIN_CORNER_HINGES[direction]
+      ? { x: CURTAIN_CORNER_SIDE, y: CURTAIN_CORNER_SIDE }
+      : { x: STORY_WIDTH, y: STORY_HEIGHT };
     const state: CurtainRenderState = {
+      active: false,
       alpha: 1,
       direction,
       edgeFeather: true,
-      fill: 0,
       grad: false,
       graphic,
+      originSize,
+      sizeDelta: { ...originSize, [sizeAxis(direction)]: 0 },
       vector,
     };
     this.curtains.set(direction, state);
     return state;
   }
 
-  private removeCurtainState(state: CurtainRenderState): void {
-    this.curtains.delete(state.direction);
-    this.tweens.killTarget(state.graphic);
-    state.graphic.destroy();
-    state.feather?.destroy();
+  /** ResetCurtain (2791 @ 0x18423CE20) restores the inactive rect. */
+  private resetCurtain(state: CurtainRenderState): void {
+    this.tweens.killTarget(state);
+    state.active = false;
+    state.alpha = 1;
+    state.edgeFeather = true;
+    state.sizeDelta = state.originSize;
+    this.updateCurtainState(state, state.vector);
   }
 
   private updateCurtainState(
@@ -211,20 +277,13 @@ export class CurtainView {
     state.feather?.destroy();
     state.feather = undefined;
 
-    if (state.graphic.alpha <= 0 || state.fill <= 0) {
+    const extent = state.sizeDelta[sizeAxis(state.direction)];
+    if (!state.active || state.graphic.alpha <= 0 || extent <= 0) {
       state.graphic.visible = false;
       return;
     }
 
-    const threshold = this.curtainThreshold(
-      state.direction,
-      vector,
-      state.fill,
-    );
-    if (threshold === null) {
-      state.graphic.visible = false;
-      return;
-    }
+    const threshold = this.curtainThreshold(state.direction, vector, extent);
 
     // Straight edges reserve room in their layout padding. The corner
     // gradient takes up space as a 20px child only while it is enabled.
@@ -259,33 +318,21 @@ export class CurtainView {
 
   /**
    * Projection along `vector` where the curtain's inner edge sits. Straight
-   * edges hinge on the stage edge, so `fill` spans the stage; corners hinge
-   * off-stage at CURTAIN_CORNER_HINGES and grow by the 1600px native side.
+   * edges hinge on the stage edge. Corners hinge off-stage at
+   * CURTAIN_CORNER_HINGES. The extent is the native rect size on its sweep axis.
    */
   private curtainThreshold(
     direction: number,
     vector: { x: number; y: number },
-    fill: number,
-  ): number | null {
-    const clampedFill = clamp01(fill);
-    if (clampedFill <= 0) return null;
-
+    extent: number,
+  ): number {
     const hinge = CURTAIN_CORNER_HINGES[direction];
-    if (hinge)
-      return (
-        hinge.x * vector.x +
-        hinge.y * vector.y +
-        CURTAIN_CORNER_SIDE * clampedFill
-      );
+    if (hinge) return hinge.x * vector.x + hinge.y * vector.y + extent;
 
     const projections = CURTAIN_STAGE_CORNERS.map(
       (point) => point.x * vector.x + point.y * vector.y,
     );
-    const min = Math.min(...projections);
-    const max = Math.max(...projections);
-    if (Math.abs(max - min) <= 1e-6) return null;
-
-    return min + (max - min) * clampedFill;
+    return Math.min(...projections) + extent;
   }
 
   /** Stage rect clipped to `low <= projection <= high`; `null` low means unbounded. */

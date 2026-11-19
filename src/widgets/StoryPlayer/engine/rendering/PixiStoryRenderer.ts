@@ -714,7 +714,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeImageView.clear();
     this.imageView.destroy();
     this.blockerView.reset();
-    this.curtainView.clear();
+    this.curtainView.reset();
     this.resetCameraEffects();
     this.backgroundRoot = null;
     this.backgroundSprite = null;
@@ -1710,6 +1710,14 @@ export class PixiStoryRenderer implements StoryRenderer {
 
   clearCurtains(fadeMs = 0): void {
     this.curtainView.clear(fadeMs);
+  }
+
+  recycleCurtains(): void {
+    this.curtainView.recycle();
+  }
+
+  resetCurtains(): void {
+    this.curtainView.reset();
   }
 
   setCurtain(

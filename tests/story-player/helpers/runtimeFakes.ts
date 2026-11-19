@@ -172,6 +172,10 @@ export class FakeRenderer implements StoryRenderer {
     this.curtainClearCalls.push(fadeMs);
   }
 
+  recycleCurtains(): void {}
+
+  resetCurtains(): void {}
+
   clearGridBackground(fadeMs = 0, block = false): void {
     this.gridBackgroundClearCalls.push({ block, fadeMs });
   }

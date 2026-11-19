@@ -97,15 +97,15 @@ function createFocusRenderer(): any {
 // A CurtainRenderState whose graphic records every poly()/fill() argument.
 function createCurtainGraphicState(
   direction: number,
-  fill: number,
+  sizeDelta: { x: number; y: number },
   grad: boolean,
 ) {
   const draws: unknown[] = [];
   const state = {
+    active: true,
     alpha: 1,
     direction,
     edgeFeather: true,
-    fill,
     grad,
     graphic: {
       alpha: 1,
@@ -120,6 +120,7 @@ function createCurtainGraphicState(
       },
       visible: false,
     },
+    sizeDelta,
   };
   return { draws, state };
 }
@@ -564,7 +565,11 @@ describe("PixiStoryRenderer", () => {
 
   it("draws a curtain as a solid body plus a fixed-width feather strip", () => {
     const { curtainView } = createRenderer();
-    const { draws, state } = createCurtainGraphicState(6, 0.5, true);
+    const { draws, state } = createCurtainGraphicState(
+      6,
+      { x: 640, y: 720 },
+      true,
+    );
 
     // The body is black up to x=620, then the feather covers x=620..640.
     curtainView.updateCurtainState(state, { x: 1, y: 0 });
@@ -580,7 +585,11 @@ describe("PixiStoryRenderer", () => {
 
   it("draws corner curtains as 45° wipes hinged past the stage corner", () => {
     const { curtainView } = createRenderer();
-    const { draws, state } = createCurtainGraphicState(1, 0.07, false);
+    const { draws, state } = createCurtainGraphicState(
+      1,
+      { x: 1600, y: 112 },
+      false,
+    );
     const vector = curtainView.resolveCurtainVector(1);
 
     // direction 1 is a 1600x1600 rect rotated -45° around a pivot at
@@ -592,7 +601,7 @@ describe("PixiStoryRenderer", () => {
 
     // fill 0.5 puts the inner edge 800 - 116.9px into the stage: the 45°
     // line y = x - 314.0, not the stage diagonal.
-    state.fill = 0.5;
+    state.sizeDelta.y = 800;
     curtainView.updateCurtainState(state, vector);
     expect(state.graphic.visible).toBe(true);
     expect(draws).toHaveLength(2);
@@ -603,7 +612,7 @@ describe("PixiStoryRenderer", () => {
 
     // From fill ~0.957 the rect clears the opposite corner.
     draws.length = 0;
-    state.fill = 0.96;
+    state.sizeDelta.y = 1536;
     curtainView.updateCurtainState(state, vector);
     expect(toPointSet(draws[0] as number[])).toEqual(
       toPointSet([0, 0, 1280, 0, 1280, 720, 0, 720]),
@@ -612,7 +621,11 @@ describe("PixiStoryRenderer", () => {
 
   it("feathers corner curtains along the rotated inner edge", () => {
     const { curtainView } = createRenderer();
-    const { draws, state } = createCurtainGraphicState(3, 0.5, true);
+    const { draws, state } = createCurtainGraphicState(
+      3,
+      { x: 1600, y: 800 },
+      true,
+    );
     const vector = curtainView.resolveCurtainVector(3);
 
     curtainView.updateCurtainState(state, vector);
@@ -645,7 +658,11 @@ describe("PixiStoryRenderer", () => {
 
   it("leaves the straight-edge layout padding empty without grad", () => {
     const { curtainView } = createRenderer();
-    const { draws, state } = createCurtainGraphicState(0, 0.25, false);
+    const { draws, state } = createCurtainGraphicState(
+      0,
+      { x: 1280, y: 180 },
+      false,
+    );
 
     // A partial top curtain keeps the inner 20px of its 180px rect empty.
     curtainView.updateCurtainState(state, { x: 0, y: 1 });
@@ -653,7 +670,7 @@ describe("PixiStoryRenderer", () => {
 
     // Under 20px nothing but the (inactive) gradient slot is left.
     draws.length = 0;
-    state.fill = 0.02;
+    state.sizeDelta.y = 14.4;
     curtainView.updateCurtainState(state, { x: 0, y: 1 });
     expect(state.graphic.visible).toBe(false);
     expect(draws).toEqual([]);
@@ -671,7 +688,7 @@ const curtainInput: CurtainInput = {
 };
 
 describe("PixiStoryRenderer curtain", () => {
-  it("captures the preceding alpha only when the command has an alpha target", () => {
+  it("samples live alpha when a delayed track starts", () => {
     const renderer = createMaskRenderer();
     renderer.setCurtain({ ...curtainInput, alphaTo: 0.3 });
     const graphic = renderer.layers.curtains.children[0];
@@ -686,10 +703,15 @@ describe("PixiStoryRenderer curtain", () => {
     });
     expect(graphic.alpha).toBe(0.3);
 
-    renderer.setCurtain({ ...curtainInput, alphaFrom: 0.2 });
-    renderer.frames.step(200);
-    expect(previous.endReason).toBe("reset");
+    renderer.setCurtain({ ...curtainInput, alphaFrom: 0.2, fadeMs: 200 });
     expect(graphic.alpha).toBe(1);
+    renderer.frames.step(125);
+    // The old alpha track starts from the live value of 1. The new command
+    // has no alpha track, so its size tween leaves this sample alone.
+    expect(graphic.alpha).toBeCloseTo(0.85);
+    renderer.frames.step(75);
+    expect(previous.endReason).toBe("complete");
+    expect(graphic.alpha).toBeCloseTo(0.8);
   });
 
   it("retracts the sides while keeping their alpha and feather state", () => {
@@ -707,13 +729,40 @@ describe("PixiStoryRenderer curtain", () => {
 
     renderer.clearCurtains(100);
     renderer.frames.step(50);
-    expect(top.fill).toBeCloseTo(0.125);
+    expect(top.sizeDelta).toEqual({ x: 320, y: 90 });
     expect(top.alpha).toBe(0.3);
     expect(top.grad).toBe(true);
     expect(renderer.layers.curtains.children).toHaveLength(2);
 
     renderer.frames.step(50);
-    expect(renderer.layers.curtains.children).toHaveLength(0);
+    expect(top.active).toBe(false);
+    expect(top.alpha).toBe(1);
+    expect(top.sizeDelta).toEqual({ x: 1280, y: 720 });
+    expect(curtains.children).toHaveLength(2);
+  });
+
+  it("keeps delayed sequences running after a standalone retraction resets the slot", () => {
+    const renderer = createMaskRenderer();
+    const animation = renderer.setCurtain({
+      ...curtainInput,
+      alphaFrom: 0.4,
+      alphaTo: 0.8,
+      block: true,
+      delayMs: 100,
+      fadeMs: 100,
+    });
+    const graphic = renderer.layers.curtains.children[0];
+
+    renderer.clearCurtains(50);
+    renderer.frames.step(50);
+    expect(graphic.visible).toBe(false);
+    expect(graphic.alpha).toBe(1);
+    expect(animation.endReason).toBeUndefined();
+
+    renderer.frames.step(150);
+    expect(animation.endReason).toBe("complete");
+    expect(graphic.visible).toBe(false);
+    expect(graphic.alpha).toBeCloseTo(0.8);
   });
 
   it("uses the destination fill to disable padding for a full straight curtain", () => {
@@ -967,9 +1016,68 @@ describe("StoryPlayer blocker and curtain playback", () => {
     },
   );
 
+  it.each([
+    { alpha: "", direction: 0, name: "zero height", visible: false },
+    { alpha: "", direction: 2, name: "zero width", visible: true },
+    { alpha: ",afrom=0,a=1", direction: 2, name: "zero alpha", visible: false },
+  ])(
+    "recycles nonblocking curtains at dispatch with $name",
+    async ({ alpha, direction, visible }) => {
+      const context = createContext([
+        `[curtain(direction=${direction},fillfrom=0,fillto=0.5,fadetime=0.1${alpha})]`,
+        '[name="A"]next',
+      ]);
+      const renderer = createMaskRenderer(context);
+      renderer.dialogFrameTextureFailed = true;
+      const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+      try {
+        await runtime.start();
+        expect(runtime.getDisplayedLineIndex()).toBe(2);
+        const graphic = renderer.layers.curtains.children[0];
+        expect(graphic.visible).toBe(false);
+        renderer.frames.step(50);
+        expect(graphic.visible).toBe(visible);
+      } finally {
+        runtime.destroy();
+        renderer.app = null;
+        renderer.destroy();
+      }
+    },
+  );
+
+  it("inherits alpha from a recycled slot when afrom is omitted", async () => {
+    const context = createContext([
+      "[curtain(direction=0,fillto=0,a=0,fadetime=0)]",
+      "[curtain(direction=0,fillfrom=0.5,fillto=0.5,a=1,fadetime=0.1,block=true)]",
+      '[name="A"]next',
+    ]);
+    const renderer = createMaskRenderer(context);
+    renderer.dialogFrameTextureFailed = true;
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+    const started = runtime.start();
+    try {
+      const graphic = renderer.layers.curtains.children[0];
+      expect(graphic.alpha).toBe(0);
+      expect(graphic.visible).toBe(false);
+
+      renderer.frames.step(50);
+      expect(graphic.alpha).toBeCloseTo(0.75);
+      expect(graphic.visible).toBe(true);
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+
+      renderer.frames.step(50);
+      expect(runtime.getDisplayedLineIndex()).toBe(3);
+    } finally {
+      runtime.destroy();
+      renderer.app = null;
+      renderer.destroy();
+      await started;
+    }
+  });
+
   it("continues mounted blocker and curtain tweens after SkipToThis", async () => {
     const context = createContext([
-      "[curtain(direction=0,fillfrom=0,fillto=0.5,fadetime=0.1)]",
+      "[curtain(direction=0,fillfrom=0.25,fillto=0.5,fadetime=0.1)]",
       "[blocker(afrom=0,a=1,fadetime=0.1,block=true)]",
       '[name="A"]skipped',
       "[SkipToThis]",
@@ -990,7 +1098,7 @@ describe("StoryPlayer blocker and curtain playback", () => {
       await skipped;
       expect(runtime.getDisplayedLineIndex()).toBe(5);
       expect(blocker.children[0]?.alpha).toBeCloseTo(0.75);
-      expect(curtains.children[0]?.getLocalBounds().height).toBeCloseTo(250);
+      expect(curtains.children[0]?.getLocalBounds().height).toBeCloseTo(295);
 
       renderer.frames.step(50);
       expect(blocker.children[0]?.alpha).toBe(1);
@@ -1078,40 +1186,47 @@ describe("StoryPlayer blocker and curtain playback", () => {
     }
   });
 
-  it("lets an interrupted blocking curtain release the panel's next wait on completion", async () => {
-    const context = createContext([
-      "[curtain(direction=0,fillfrom=0,fillto=0.5,fadetime=0.1,block=true)]",
-      '[name="A"]skipped',
-      "[SkipToThis]",
-      "[curtain(direction=4,fillfrom=0,fillto=0.5,fadetime=0.2,block=true)]",
-      '[name="B"]after',
-    ]);
-    const renderer = createMaskRenderer(context);
-    renderer.dialogFrameTextureFailed = true;
-    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
-    const started = runtime.start();
-    let skipped: Promise<void> | undefined;
-    try {
-      renderer.frames.step(25);
-      skipped = runtime.skipNode();
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      renderer.frames.step(25);
-      expect(runtime.getDisplayedLineIndex()).toBeNull();
+  it.each([
+    { direction: 0, height: 454.5 },
+    { direction: 4, height: 252 },
+  ])(
+    "lets a skipped curtain sequence release the next wait for direction $direction",
+    async ({ direction, height }) => {
+      const context = createContext([
+        "[curtain(direction=0,fillfrom=0,fillto=0.5,fadetime=0.1,block=true)]",
+        '[name="A"]skipped',
+        "[SkipToThis]",
+        `[curtain(direction=${direction},fillfrom=0,fillto=0.8,fadetime=0.2,block=true)]`,
+        '[name="B"]after',
+      ]);
+      const renderer = createMaskRenderer(context);
+      renderer.dialogFrameTextureFailed = true;
+      const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+      const started = runtime.start();
+      let skipped: Promise<void> | undefined;
+      try {
+        renderer.frames.step(25);
+        skipped = runtime.skipNode();
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        renderer.frames.step(25);
+        expect(runtime.getDisplayedLineIndex()).toBeNull();
 
-      // The earlier blocking sequence uses the same FinishCommand slot.
-      renderer.frames.step(50);
-      expect(runtime.getDisplayedLineIndex()).toBe(5);
-      const bottom = renderer.curtainView.curtains.get(4);
-      expect(bottom.fill).toBeCloseTo(0.21875);
-      renderer.frames.step(150);
-      expect(bottom.fill).toBe(0.5);
-    } finally {
-      runtime.destroy();
-      renderer.app = null;
-      renderer.destroy();
-      await Promise.all([started, skipped]);
-    }
-  });
+        // The earlier blocking sequence uses the same FinishCommand slot.
+        renderer.frames.step(50);
+        expect(runtime.getDisplayedLineIndex()).toBe(5);
+        const next = renderer.curtainView.curtains.get(direction);
+        // On the same side the new track starts from the old sequence's final size.
+        expect(next.sizeDelta.y).toBeCloseTo(height);
+        renderer.frames.step(150);
+        expect(next.sizeDelta.y).toBe(576);
+      } finally {
+        runtime.destroy();
+        renderer.app = null;
+        renderer.destroy();
+        await Promise.all([started, skipped]);
+      }
+    },
+  );
 
   it("resets both views when the story ends with animations still in progress", async () => {
     const context = createContext([

@@ -777,6 +777,8 @@ export interface StoryRenderer {
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
   clearCharacters: (slot?: string, fadeMs?: number) => Promise<void> | void;
   clearCurtains: (fadeMs?: number) => void;
+  recycleCurtains: () => void;
+  resetCurtains: () => void;
   /** Omit the duration for the command's immediate _ResetPanel path. */
   clearGridBackground: (
     fadeMs?: number,
