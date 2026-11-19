@@ -148,6 +148,26 @@ describe("StoryRuntime", () => {
   });
 
   it.each([
+    '[spellsticker(id="s",block=1)]<p=1>x</>',
+    '[spellstickerclear(block="True")]',
+  ])("converts the block parameter in %s like native", async (command) => {
+    const runtime = new StoryRuntime(
+      createContext([command, '[name="A"]after']),
+      new FakeRenderer(),
+      new FakeAudio(),
+    );
+    try {
+      await runtime.start();
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(runtime.getDisplayedLineIndex()).toBeNull();
+      await runtime.advance();
+      expect(runtime.getDisplayedLineIndex()).toBe(2);
+    } finally {
+      runtime.destroy();
+    }
+  });
+
+  it.each([
     '[spellsticker(id="s",action="hide",block=true)]',
     "[spellstickerclear(block=true)]",
   ])("captures the base auto wait for %s in manual mode", async (command) => {

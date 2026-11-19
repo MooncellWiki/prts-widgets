@@ -1,3 +1,7 @@
+import { exactArg, toString } from "./commandParams";
+
+import type { StoryCommandArgs } from "./types";
+
 const TORAPPU_ORIGIN = "https://torappu.prts.wiki";
 
 /**
@@ -72,6 +76,16 @@ export function resolveStoryCharacterAssetByKey(rawKey: string): string | null {
   const key = rawKey.trim();
   if (!key) return null;
   return `${TORAPPU_ORIGIN}/assets/avg/characters/${encodePathSegments(key)}.png`;
+}
+
+/** AVGVideoPanel._PlayVideo (2791 @ 0x1841BEC90) branches on key presence. */
+export function getStoryVideoSource(
+  args: StoryCommandArgs,
+): { kind: "url" | "res"; key: string } | null {
+  const url = exactArg(args, "url");
+  if (url !== undefined) return { kind: "url", key: toString(url) };
+  const res = exactArg(args, "res");
+  return res === undefined ? null : { kind: "res", key: toString(res) };
 }
 
 export function resolveStoryVideoByKey(rawKey: string): string | null {

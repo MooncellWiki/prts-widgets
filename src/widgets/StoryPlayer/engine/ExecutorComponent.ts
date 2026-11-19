@@ -10,8 +10,9 @@ import type { ExecutionHandle } from "./execution";
 
 export type ExecutorResult =
   | "continue"
+  | WaitForClick
   | WaitForDecision
-  | Pick<WaitForClick, "handleClick">
+  | WaitForFrame
   | {
       animation: ExecutionHandle | void;
       block: boolean;
@@ -99,7 +100,7 @@ export abstract class ExecutorComponent {
     }
     if ("handleClick" in result) {
       return {
-        forceEnd: () => this.finish(execution, "force"),
+        forceEnd: () => this.forceEnd(execution, result.forceEnd),
         handleClick: (finish) =>
           result.handleClick((completion) =>
             finish({
@@ -112,6 +113,7 @@ export abstract class ExecutorComponent {
           ),
       };
     }
+    if ("isComplete" in result) return this.wrapFrameWait(execution, result);
     return {
       ...result,
       closeDecision: () => {
@@ -132,30 +134,48 @@ export abstract class ExecutorComponent {
       this.current = null;
       throw animation.failure.error;
     }
-    return {
-      forceEnd: () => this.finish(execution, "force"),
+    return this.wrapFrameWait(execution, {
       assetsReady: animation.assetsReady,
       isComplete: () => {
-        // FinishCommand may already have released this panel's current wait.
-        if (this.current !== execution) return true;
         if (animation.endReason === undefined) return false;
         if (animation.failure) {
           this.current = null;
           throw animation.failure.error;
         }
+        return true;
+      },
+    });
+  }
+
+  private wrapFrameWait(
+    execution: Execution,
+    wait: WaitForFrame,
+  ): WaitForFrame {
+    return {
+      assetsReady: wait.assetsReady,
+      forceEnd: () => this.forceEnd(execution, wait.forceEnd),
+      isComplete: (nowMs) => {
+        // FinishCommand may already have released this panel's current wait.
+        if (this.current !== execution) return true;
+        if (!wait.isComplete(nowMs)) return false;
         this.finish(execution);
         return true;
       },
     };
   }
 
-  private finish(
-    execution: Execution,
-    end: "complete" | "force" = "complete",
-  ): void {
+  private finish(execution: Execution): void {
+    if (this.current !== execution) return;
+    // FinishCommand (2791 @ 0x18419B640) runs OnFinish before releasing
+    // the blocker. A failed OnFinish can still surface through the wait.
+    if (execution.isCurrent()) this.onFinish();
+    if (this.current === execution) this.current = null;
+  }
+
+  private forceEnd(execution: Execution, cleanup?: () => void): void {
     if (this.current !== execution) return;
     this.current = null;
-    if (end === "force") this.forceCommandEnd();
-    else if (execution.isCurrent()) this.onFinish();
+    if (cleanup) cleanup();
+    else this.forceCommandEnd();
   }
 }

@@ -1,10 +1,13 @@
-import { resolveAssetUrl, resolveStoryVideoByKey } from "./engine/asset";
+import {
+  getStoryVideoSource,
+  resolveAssetUrl,
+  resolveStoryVideoByKey,
+} from "./engine/asset";
 import { parseStory } from "./engine/parser";
 
 import type {
   ParsedLine,
   StoryCharacterEntry,
-  StoryCommandArgs,
   StoryLinkNode,
   StoryMetadata,
 } from "./engine/types";
@@ -283,17 +286,6 @@ async function fetchBackgroundPpuMap(): Promise<Record<string, number>> {
   }
 }
 
-/** Same exact-key, string-coercing read as the runtime `video` executor. */
-function videoArg(args: StoryCommandArgs, key: "res" | "url"): string {
-  const value = Object.prototype.hasOwnProperty.call(args, key)
-    ? args[key]
-    : undefined;
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean")
-    return String(value);
-  return "";
-}
-
 async function videoExists(url: string): Promise<boolean> {
   try {
     const response = await fetch(url, { method: "HEAD" });
@@ -305,12 +297,11 @@ async function videoExists(url: string): Promise<boolean> {
 
 /**
  * Native port: `AVGVideoPanel._PlayVideo` gates only the `res` branch on
- * `VideoManager.CheckVideoExist` (2.7.81 VA 0x183C810F0), i.e.
+ * `VideoManager.CheckVideoExist` (2791 @ 0x183E60170), i.e.
  * `RawResManager.CheckExist(TreatVideoPath(res))` where `TreatVideoPath`
  * swaps `.mp4` for `.usm`. Native answers synchronously from the local raw-res
- * manifest; the web has none, so each `res` the command loop can reach is
- * HEAD-probed once while the context loads (the CDN serves the mp4 transcode,
- * hence the unswapped URL) and the runtime only does a set lookup.
+ * manifest. The Web HEAD-probes each `res` once while the context loads
+ * (the CDN serves the mp4 transcode) and VideoPanel does a set lookup.
  *
  * Only a definitive 404/410 counts as missing. A probe that cannot decide
  * (network/CORS failure, any other status) leaves the URL to the `<video>`
@@ -326,8 +317,9 @@ export async function findMissingVideoUrls(
   const urls = new Set<string>();
   for (const line of lines) {
     if (line.kind !== "command" || line.command !== "video") continue;
-    if (videoArg(line.args, "url")) continue;
-    const resolved = resolveStoryVideoByKey(videoArg(line.args, "res"));
+    const source = getStoryVideoSource(line.args);
+    if (source?.kind !== "res") continue;
+    const resolved = resolveStoryVideoByKey(source.key);
     if (resolved) urls.add(resolved);
   }
 

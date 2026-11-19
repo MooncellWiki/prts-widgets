@@ -476,7 +476,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       this.updatePhaseTweenRunner,
       onWarning,
     );
-    this.videoPanel = new VideoPanel(this.uiLayer, onWarning);
+    this.videoPanel = new VideoPanel(
+      this.updatePhaseTweenRunner,
+      (opacity) => this.layers.setVideoOpacity(opacity),
+      onWarning,
+    );
     this.dialogView = new DialogView(this.uiLayer, onWarning, (...args) =>
       this.updatePhaseTweenRunner.run(...args),
     );
@@ -581,7 +585,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     await app.init({
       antialias: true,
       autoDensity: true,
-      background: "#000000",
+      backgroundAlpha: 0,
       height: STORY_HEIGHT,
       preference: "webgpu",
       resolution: computeDisplayResolution(host),
@@ -593,8 +597,9 @@ export class PixiStoryRenderer implements StoryRenderer {
     app.canvas.style.width = "100%";
     app.canvas.style.height = "100%";
     app.canvas.style.display = "block";
-    host.append(app.canvas);
+    app.canvas.style.position = "relative";
     this.videoPanel.mount(host);
+    host.append(app.canvas);
 
     this.app = app;
     this.onFrameUpdate(({ deltaMs }) =>
@@ -697,7 +702,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   }
 
   destroy(): void {
-    this.stopVideo();
+    this.videoPanel.destroy();
     this.decisionView.destroy();
     this.cutinPanel.destroy();
     this.interludePanel.destroy();
@@ -744,7 +749,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.characterArt.destroy();
     this.dialogView.destroy();
     this.subtitleView.destroy();
-    this.videoPanel.destroy();
   }
 
   playVideo(url: string, onEnd: () => void): void {
@@ -767,8 +771,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.animTextPanel.clear();
   }
 
-  stopVideo(): void {
-    this.videoPanel.stop();
+  stopVideo(fadeOutDelayMs?: number): void {
+    this.videoPanel.stop(fadeOutDelayMs);
   }
 
   finishStickerTyping(id: string): boolean {

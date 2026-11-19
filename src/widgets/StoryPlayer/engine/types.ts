@@ -930,7 +930,8 @@ export interface StoryRenderer {
    * 2791 的 DecisionPanel.ForceCommandEnd 为空，ShouldResetOnSkip 为 false。
    */
   settleDecision: () => void;
-  stopVideo: () => void;
+  /** Schedule the media stop and panel fade. Omit the delay for teardown. */
+  stopVideo: (fadeOutDelayMs?: number) => void;
 }
 
 export interface PlayMusicInput {
