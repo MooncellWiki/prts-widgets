@@ -93,11 +93,13 @@ export function createManualClock(): {
 }
 
 export async function createRenderedPlayback(
-  script: string[],
+  script: string[] | Context,
   draw: (layers: LayerGraph) => void,
   characters?: Context["linkMap"],
 ) {
-  const context = createPlaybackContext(script);
+  const context = Array.isArray(script)
+    ? createPlaybackContext(script)
+    : script;
   Object.assign(context.linkMap, characters);
   const urls = new Set<string>();
   const load = vi.spyOn(Assets, "load").mockImplementation(async (assets) => {

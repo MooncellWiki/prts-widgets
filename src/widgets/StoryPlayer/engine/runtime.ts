@@ -480,8 +480,9 @@ export class StoryRuntime {
     this.subtitlePanel.register(this.commandRegistry);
     new VideoPanel({
       missingVideoUrls: context.missingVideoUrls,
-      waitForPlayback: (url, fadeOutDelayMs) =>
-        this.waitForVideoPlayback(url, fadeOutDelayMs),
+      stopVideo: (fadeOutDelayMs) => this.renderer.stopVideo(fadeOutDelayMs),
+      waitForPlayback: (url, onFinish) =>
+        this.waitForVideoPlayback(url, onFinish),
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
     for (const command of builtinCommandNames)
@@ -945,7 +946,7 @@ export class StoryRuntime {
 
   private waitForVideoPlayback(
     url: string,
-    fadeOutDelayMs: number,
+    onFinish: () => void,
   ): WaitForFrame {
     const generation = this.playbackGeneration;
     const finish = createExecutionHandle(true);
@@ -957,8 +958,13 @@ export class StoryRuntime {
     };
     // AVGVideoPanel.ForceCommandEnd (2791 @ 0x1841BDC40) starts the fade
     // without the scripted delay. Web teardown disposes media immediately.
-    const forceEnd = () =>
-      stopWaiting(this.skipCleanup && !this.destroyed ? 0 : undefined);
+    const forceEnd = () => {
+      const skipping = this.skipCleanup && !this.destroyed;
+      // FinishCommand removes the native blocker at frame end. A skip before
+      // the next poll leaves its scheduled fade alone (ShouldResetOnSkip).
+      if (skipping && finish.endReason === "complete") return;
+      stopWaiting(skipping ? 0 : undefined);
+    };
 
     this.state = "waiting_video";
     try {
@@ -967,9 +973,7 @@ export class StoryRuntime {
         // AVGVideoPanel._HandlePlayEvent (2791 @ 0x1841BE7D0) schedules
         // FinishCommand via InvokeEndOfFrame. OnFinish (0x1841BDDE0) starts
         // the delayed fade without blocking the next command.
-        cancelFrameEnd = this.finishAtFrameEnd(finish, () =>
-          this.renderer.stopVideo(fadeOutDelayMs),
-        );
+        cancelFrameEnd = this.finishAtFrameEnd(finish, onFinish);
       });
     } catch (error) {
       stopWaiting();

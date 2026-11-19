@@ -1529,21 +1529,11 @@ describe("Displayable and focus frame order", () => {
   );
 
   it.each([
-    ...["ended", "error"].map((event) => ({
-      delayMs: event === "ended" ? 100 : 0,
-      end: (video: HTMLVideoElement) => video.dispatchEvent(new Event(event)),
-      event,
-      play: () => Promise.resolve(),
-    })),
-    {
-      delayMs: 0,
-      end: () => Promise.resolve(),
-      event: "play rejection",
-      play: () => Promise.reject(new Error("play refused")),
-    },
+    { delayMs: 100, event: "ended" },
+    { delayMs: 0, event: "error" },
   ])(
     "continues from media $event on the update after frame end while the video fades",
-    async ({ delayMs, end, play }) => {
+    async ({ delayMs, event }) => {
       const draws: number[] = [];
       const { app, destroy, renderer, runtime } = await createRenderedPlayback(
         [
@@ -1557,7 +1547,7 @@ describe("Displayable and focus frame order", () => {
       );
       const playMock = vi
         .spyOn(HTMLMediaElement.prototype, "play")
-        .mockImplementationOnce(play);
+        .mockResolvedValueOnce(undefined);
       const host = document.createElement("div");
       renderer.videoPanel.mount(host);
       const started = runtime.start();
@@ -1566,21 +1556,32 @@ describe("Displayable and focus frame order", () => {
         const overlay = video.parentElement!;
         expect(runtime.getState()).toBe("waiting_video");
         expect(video).toBeInstanceOf(HTMLVideoElement);
-        expect(renderer.layers.ui.visible).toBe(false);
+        app.ticker.update(16);
+        expect(overlay.style.opacity).toBe("0");
+        expect(renderer.layers.ui.visible).toBe(true);
 
-        await end(video);
+        video.dispatchEvent(new Event("playing"));
+        app.ticker.update(131);
+        expect(Number(overlay.style.opacity)).toBeCloseTo(0.5);
+        expect(renderer.layers.ui.visible).toBe(true);
+        app.ticker.update(246);
+        expect(overlay.style.opacity).toBe("1");
+        expect(renderer.layers.ui.visible).toBe(false);
+        draws.length = 0;
+
+        video.dispatchEvent(new Event(event));
         expect(host.querySelector("video")).toBe(video);
         expect(runtime.getState()).toBe("waiting_video");
-        app.ticker.update(16);
+        app.ticker.update(262);
         expect(runtime.getState()).toBe("running");
         expect(overlay.style.opacity).toBe("1");
         expect(renderer.layers.ui.visible).toBe(true);
-        app.ticker.update(32);
+        app.ticker.update(278);
         expect(draws).toEqual([0, 1]);
         await started;
 
-        const fadeStart = 16 + delayMs;
-        app.ticker.update(Math.max(32, fadeStart));
+        const fadeStart = 262 + delayMs;
+        app.ticker.update(Math.max(278, fadeStart));
         expect(Number(overlay.style.opacity)).toBeCloseTo(
           delayMs ? 1 : 214 / 230,
         );
@@ -1599,44 +1600,187 @@ describe("Displayable and focus frame order", () => {
     },
   );
 
-  it("fades a skipped video without its configured finish delay", async () => {
+  it.each(["error", "play rejection"])(
+    "keeps the overlay transparent after %s before playback starts",
+    async (failure) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        ['[video(res="video/entry",fadeoutdelay=1)]', '[name="A"]after'],
+        () => {},
+      );
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockImplementationOnce(() =>
+          failure === "error"
+            ? Promise.resolve()
+            : Promise.reject(new Error("play refused")),
+        );
+      const host = document.createElement("div");
+      renderer.videoPanel.mount(host);
+      const started = runtime.start();
+      try {
+        const video = host.querySelector("video")!;
+        const overlay = video.parentElement!;
+        if (failure === "error") video.dispatchEvent(new Event("error"));
+        await flushAsync();
+        video.dispatchEvent(new Event("playing"));
+        expect(runtime.getState()).toBe("waiting_video");
+        expect(overlay.style.opacity).toBe("0");
+        app.ticker.update(16);
+        app.ticker.update(32);
+        await started;
+        expect(runtime.getDisplayedLineIndex()).toBe(2);
+        expect(renderer.layers.ui.visible).toBe(true);
+        expect(overlay.style.opacity).toBe("0");
+        app.ticker.update(1245);
+        expect(host.querySelector("video")).toBe(video);
+        expect(overlay.style.opacity).toBe("0");
+        app.ticker.update(1246);
+        expect(host.querySelector("video")).toBeNull();
+      } finally {
+        play.mockRestore();
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("hides the previous video in-frame when the next video resource is missing", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
-      [
-        '[video(res="video/entry",fadeoutdelay=1)]',
-        "[SkipToThis]",
-        '[name="A"]after',
-      ],
+      {
+        ...createContext([
+          '[video(res="video/first",fadeoutdelay=1)]',
+          '[video(res="video/missing")]',
+          '[name="A"]after',
+        ]),
+        missingVideoUrls: new Set([
+          "https://torappu.prts.wiki/assets/video/missing",
+        ]),
+      },
       () => {},
     );
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValue(undefined);
     const host = document.createElement("div");
     renderer.videoPanel.mount(host);
     const started = runtime.start();
-    let skipping: Promise<void> | undefined;
     try {
       const video = host.querySelector("video")!;
       const overlay = video.parentElement!;
-      video.dispatchEvent(new Event("ended"));
-      skipping = runtime.skipNode();
-      expect(host.querySelector("video")).toBe(video);
-
-      await flushAsync();
-      app.ticker.update(16);
-      await skipping;
-      expect(runtime.getState()).toBe("waiting_input");
-      app.ticker.update(115);
-      expect(Number(overlay.style.opacity)).toBeCloseTo(0.5);
-      expect(host.querySelector("video")).toBe(video);
+      video.dispatchEvent(new Event("playing"));
       app.ticker.update(230);
+      video.dispatchEvent(new Event("ended"));
+      app.ticker.update(246);
+      expect(overlay.style.opacity).toBe("1");
+      app.ticker.update(262);
+      await started;
+      expect(runtime.getDisplayedLineIndex()).toBe(3);
+      expect(play).toHaveBeenCalledTimes(1);
+      expect(overlay.style.opacity).toBe("0");
+      app.ticker.update(491);
+      expect(host.querySelector("video")).toBe(video);
+      app.ticker.update(492);
       expect(host.querySelector("video")).toBeNull();
     } finally {
       play.mockRestore();
       destroy();
-      await Promise.all([started, skipping]);
+      await started;
     }
   });
+
+  it.each([
+    { delay: -0.1, releaseMs: 130 },
+    { delay: -0.24, releaseMs: 0 },
+  ])(
+    "closes the video using the signed fadeoutdelay of $delay",
+    async ({ delay, releaseMs }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [`[video(res="video/entry",fadeoutdelay=${delay})]`, '[name="A"]after'],
+        () => {},
+      );
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValueOnce(undefined);
+      const host = document.createElement("div");
+      renderer.videoPanel.mount(host);
+      const started = runtime.start();
+      try {
+        const video = host.querySelector("video")!;
+        const overlay = video.parentElement!;
+        video.dispatchEvent(new Event("playing"));
+        app.ticker.update(230);
+        video.dispatchEvent(new Event("ended"));
+        const finishTime = 246;
+        app.ticker.update(finishTime);
+        const sampleMs = Math.max(0, releaseMs - 1);
+        app.ticker.update(finishTime + sampleMs);
+        const opacity = host.contains(video)
+          ? Number(overlay.style.opacity)
+          : null;
+        const expectedOpacity = expect.closeTo(1 - sampleMs / 230);
+        expect(opacity).toEqual(releaseMs === 0 ? null : expectedOpacity);
+        app.ticker.update(finishTime + releaseMs);
+        expect(host.querySelector("video")).toBeNull();
+      } finally {
+        play.mockRestore();
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it.each([
+    { title: "while its completion is queued", finishAt: 115, finishDelay: 0 },
+    {
+      title: "after its completion ran at frame end",
+      finishAt: 131,
+      finishDelay: 1000,
+    },
+  ])(
+    "uses the correct fade timing when skipping $title",
+    async ({ finishAt, finishDelay }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[video(res="video/entry",fadeoutdelay=1)]',
+          "[SkipToThis]",
+          '[name="A"]after',
+        ],
+        () => {},
+      );
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValueOnce(undefined);
+      const host = document.createElement("div");
+      renderer.videoPanel.mount(host);
+      const started = runtime.start();
+      let skipping: Promise<void> | undefined;
+      try {
+        const video = host.querySelector("video")!;
+        const overlay = video.parentElement!;
+        video.dispatchEvent(new Event("playing"));
+        app.ticker.update(115);
+        video.dispatchEvent(new Event("ended"));
+        if (finishDelay > 0) app.ticker.update(finishAt);
+        const startOpacity = Number(overlay.style.opacity);
+        skipping = runtime.skipNode();
+        expect(host.querySelector("video")).toBe(video);
+
+        await flushAsync();
+        app.ticker.update(finishAt + 16);
+        await skipping;
+        expect(runtime.getState()).toBe("waiting_input");
+        app.ticker.update(finishAt + finishDelay + 115);
+        expect(Number(overlay.style.opacity)).toBeCloseTo(startOpacity / 2);
+        expect(host.querySelector("video")).toBe(video);
+        app.ticker.update(finishAt + finishDelay + 230);
+        expect(host.querySelector("video")).toBeNull();
+      } finally {
+        play.mockRestore();
+        destroy();
+        await Promise.all([started, skipping]);
+      }
+    },
+  );
 
   it("cancels the old video fade when the next video starts", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
@@ -1655,15 +1799,19 @@ describe("Displayable and focus frame order", () => {
     const started = runtime.start();
     try {
       const old = host.querySelector("video")!;
+      old.dispatchEvent(new Event("playing"));
+      app.ticker.update(230);
       old.dispatchEvent(new Event("ended"));
-      app.ticker.update(16);
+      app.ticker.update(246);
       expect(host.querySelector("video")).toBe(old);
-      app.ticker.update(32);
+      app.ticker.update(262);
       const next = host.querySelector("video")!;
       expect(next.src).toContain("/video/next");
       expect(next).not.toBe(old);
+      expect(next.parentElement!.style.opacity).toBe("0");
       old.dispatchEvent(new Event("error"));
-      app.ticker.update(350);
+      next.dispatchEvent(new Event("playing"));
+      app.ticker.update(580);
       expect(host.querySelector("video")).toBe(next);
       expect(next.parentElement!.style.opacity).toBe("1");
       expect(runtime.getState()).toBe("waiting_video");
