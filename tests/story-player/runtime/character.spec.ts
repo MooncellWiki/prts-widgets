@@ -587,11 +587,10 @@ describe("StoryRuntime", () => {
     // falls through to SlotSetCharWithParam with the same name: the second
     // _LoadImage DOKill()s that fade and disables the Image, so the slot is
     // emptied instantly whatever `duration` says.
-    expect(renderer.clearedSlots).toEqual([{ fadeMs: 0, slot: "l" }]);
-    // The command keeps executing after the clean: focus=all is still applied.
     expect(renderer.characterCalls[1]).toMatchObject({
       characterKey: undefined,
       focusSlots: ["l", "m", "r"],
+      nativeKey: "char_empty",
       slot: "l",
     });
   });
@@ -622,10 +621,10 @@ describe("StoryRuntime", () => {
         type: "missing_asset",
       }),
     ]);
-    expect(renderer.clearedSlots).toEqual([{ fadeMs: 300, slot: "m" }]);
     expect(renderer.characterCalls[1]).toMatchObject({
       action: "shake",
       characterKey: undefined,
+      nativeKey: "avg_missing_1",
       power: 5,
       slot: "m",
     });

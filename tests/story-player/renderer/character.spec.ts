@@ -271,14 +271,16 @@ describe("PixiStoryRenderer", () => {
     // bare `character(focus=-1)` re-shows the same name.
     renderer.setCharacter(characterCommand("char_chen", "1$1"));
     renderer.runCharacterAction(moveAction(200));
-    expect(renderer.characterView.characterSlots.get("m").actionX).toBe(200);
+    expect(renderer.characterView.characterSlots.get("m").motion.actionX).toBe(
+      200,
+    );
 
     renderer.setCharacter(characterCommand("char_chen", "1$1"));
 
     // `Set` skips the `_offset` reset while `m_currentKey == key`, so the
     // character holds the +200 the move left it at instead of snapping back.
     const same = renderer.characterView.characterSlots.get("m");
-    expect(same.actionX).toBe(200);
+    expect(same.motion.actionX).toBe(200);
     expect(same.motionLayer.x).toBe(200);
   });
 
@@ -312,7 +314,9 @@ describe("PixiStoryRenderer", () => {
     // The index is part of `m_currentKey`, so a new expression is a new key
     // and `Set` runs its reset.
     renderer.setCharacter(characterCommand("char_chen#2", "2$1"));
-    expect(renderer.characterView.characterSlots.get("m").actionX).toBe(0);
+    expect(renderer.characterView.characterSlots.get("m").motion.actionX).toBe(
+      0,
+    );
   });
 
   it("compares the raw name ref, not the resolved character and expression", () => {
@@ -325,7 +329,9 @@ describe("PixiStoryRenderer", () => {
     // but `m_currentKey` holds the ref verbatim and `Set` compares it with
     // `op_Equality` -- so native sees a key change here and resets.
     renderer.setCharacter(characterCommand("char_chen#1$1", "1$1"));
-    expect(renderer.characterView.characterSlots.get("m").actionX).toBe(0);
+    expect(renderer.characterView.characterSlots.get("m").motion.actionX).toBe(
+      0,
+    );
   });
 
   it("lets an enter slide override an earlier characteraction move", () => {
@@ -333,6 +339,10 @@ describe("PixiStoryRenderer", () => {
 
     renderer.setCharacter(characterCommand("char_chen", "1$1"));
     renderer.runCharacterAction(moveAction(200));
+    renderer.runCharacterAction(
+      createActionInput({ scaleX: 1.5, scaleY: 1.5, type: "zoom" }),
+    );
+    const holder = renderer.characterView.characterSlots.get("m");
 
     // `_ProcessSlot`'s enter branch drives that same `_offset` through
     // SetCharPos and passes `resetOffsetPos = 0`; the closing
@@ -343,7 +353,9 @@ describe("PixiStoryRenderer", () => {
       durationMs: 300,
       enterFrom: "left",
     });
-    expect(renderer.characterView.characterSlots.get("m").actionX).toBe(0);
+    expect(renderer.characterView.characterSlots.get("m")).toBe(holder);
+    expect(holder.motion.actionX).toBe(0);
+    expect(holder.scaleX).toBe(1.5);
   });
 
   it("swaps expressions of the same native character without cross-fading", () => {
@@ -357,6 +369,7 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     const previous = renderer.characterView.characterSlots.get("m");
+    renderer.characterView.tween.mockClear();
 
     renderer.setCharacter({
       characterKey: "avg_test",
@@ -367,10 +380,12 @@ describe("PixiStoryRenderer", () => {
     });
 
     const current = renderer.characterView.characterSlots.get("m");
-    expect(renderer.characterView.tween).not.toHaveBeenCalled();
-    expect(previous.root.parent).toBeNull();
+    expect(
+      renderer.characterView.tween.mock.calls.map((call: unknown[]) => call[1]),
+    ).toEqual([0, 0]);
+    expect(previous.root.parent).toBe(renderer.characterView.charLayer);
     expect(current.expression).toBe("2$1");
-    expect(current.root.alpha).toBe(1);
+    expect(current.visual.alpha).toBe(0);
   });
 
   it("cross-fades when the native fade identity changes", () => {
@@ -384,6 +399,7 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     const previous = renderer.characterView.characterSlots.get("m");
+    renderer.characterView.tween.mockClear();
 
     renderer.setCharacter({
       characterKey: "avg_test",
@@ -403,7 +419,7 @@ describe("PixiStoryRenderer", () => {
       renderer.characterView.tween.mock.calls.map((call: unknown[]) => call[1]),
     ).toEqual([150, 150]);
     expect(previous.root.parent).toBe(renderer.characterView.charLayer);
-    expect(current.root.alpha).toBe(0);
+    expect(current.visual.alpha).toBe(0);
   });
 
   it("keeps the slot transform across charslot commands without pos input", () => {
@@ -421,7 +437,7 @@ describe("PixiStoryRenderer", () => {
     });
     const state = renderer.characterView.characterSlots.get("m");
     // The stubbed tween never advances, so the slot sits at `posfrom`.
-    expect(state.actionX).toBe(-300);
+    expect(state.motion.actionX).toBe(-300);
 
     // Native never resets `_offset.localPosition` between charslot commands
     // (SlotSetCharWithParam uses resetOffsetPos=false), so a bare command
@@ -434,7 +450,7 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
 
-    expect(state.actionX).toBe(-300);
+    expect(state.motion.actionX).toBe(-300);
     // from == to: no transform tween is even started, which also keeps any
     // still-running tween from a previously deferred command alive.
     expect(renderer.characterView.tween).not.toHaveBeenCalled();
@@ -492,7 +508,7 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     const state = renderer.characterView.characterSlots.get("m");
-    state.actionX = 120;
+    state.motion.actionX = 120;
     renderer.characterView.tween.mockClear();
 
     // level_main_14-02_end.txt:379 pattern (`posto=0`, no posfrom): the
@@ -506,7 +522,7 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
 
-    expect(state.actionX).toBe(120);
+    expect(state.motion.actionX).toBe(120);
     expect(renderer.characterView.tween).not.toHaveBeenCalled();
   });
 
@@ -592,10 +608,7 @@ describe("PixiStoryRenderer", () => {
       fadeIdentity: "avg_test",
       slot: "m",
     });
-    // The charslot path reuses the slot state, so hold on to the outgoing
-    // visual itself rather than the state that will point at the new one.
-    const previousVisual =
-      renderer.characterView.characterSlots.get("m").visual;
+    const previous = renderer.characterView.characterSlots.get("m");
 
     // Story_bubble-style plain swap: no afrom/ato, duration>0. Native resets
     // the pair to (0,1) and the crossfade length equals `duration`.
@@ -616,7 +629,7 @@ describe("PixiStoryRenderer", () => {
     // and the outgoing sprite gets its own fade-out tween.
     expect(current.contentAlpha).toBe(0);
     expect(current.visual.alpha).toBe(0);
-    expect(previousVisual.parent).toBe(current.rotationLayer);
+    expect(previous.root.parent).toBe(renderer.layers.characters);
     expect(
       renderer.characterView.tween.mock.calls.map((call: unknown[]) => call[1]),
     ).toEqual([400, 400]);
@@ -723,9 +736,7 @@ describe("PixiStoryRenderer", () => {
     renderer.characterView.tween.mockClear();
     renderer.setCharacterSlot({
       action: "rotate",
-      characterKey: "avg_test",
       durationMs: 400,
-      expression: "1$1",
       focusMode: "subset",
       focusSlots: ["l", "m", "r"],
       slot: "m",
@@ -757,7 +768,7 @@ describe("PixiStoryRenderer", () => {
     const state = renderer.characterView.characterSlots.get("l");
     // The stubbed tween never advances, so the slot sits at posfrom/afrom
     // with the move and the fade-in both already started.
-    expect(state.actionY).toBe(-500);
+    expect(state.motion.actionY).toBe(-500);
     expect(state.contentAlpha).toBe(0);
     expect(
       renderer.characterView.tween.mock.calls.map((call: unknown[]) => call[1]),
@@ -775,15 +786,14 @@ describe("PixiStoryRenderer", () => {
       focusSlots: ["l", "m", "r"],
       slot: "m",
     });
-    const state = renderer.characterView.characterSlots.get("m");
+    const previous = renderer.characterView.characterSlots.get("m");
     // Stand in for a completed earlier zoom (scale + pivot shift) and a
     // completed move.
-    state.scaleX = 1.5;
-    state.scaleY = 1.5;
-    state.zoomShiftX = 25;
-    state.zoomShiftY = -10;
-    state.actionX = -300;
-    const previousVisual = state.visual;
+    previous.scaleX = 1.5;
+    previous.scaleY = 1.5;
+    previous.zoomShiftX = 25;
+    previous.zoomShiftY = -10;
+    previous.motion.actionX = -300;
     renderer.characterView.tween.mockClear();
 
     // act42side_08_end.txt:109 pattern: `name` + `action="zoom"` with a pivot
@@ -802,23 +812,24 @@ describe("PixiStoryRenderer", () => {
       replaceFadeMs: 400,
       slot: "m",
     });
+    const state = renderer.characterView.characterSlots.get("m");
     expect(state.scaleX).toBe(1);
     expect(state.scaleY).toBe(1);
     expect(state.zoomShiftX).toBe(0);
     expect(state.zoomShiftY).toBe(0);
-    expect(state.actionX).toBe(-300);
-    // A back-image fade runs, with no extra zoom tween.
-    expect(renderer.characterView.tween).toHaveBeenCalledTimes(1);
-    // The outgoing Image keeps its own transform while it fades, so the
-    // previous visual carries the old zoom on itself.
-    expect(previousVisual.scale.x).toBeCloseTo(1.5);
-    expect(previousVisual.scale.y).toBeCloseTo(1.5);
-    expect(previousVisual.x).toBeCloseTo(25);
-    expect(previousVisual.y).toBeCloseTo(10);
+    expect(state.motion.actionX).toBe(-300);
+    // The back fades while the new holder's zoom stays at unit scale.
+    expect(renderer.characterView.tween).toHaveBeenCalledTimes(2);
+    // The outgoing holder keeps its own zoom and shares the slot offset.
+    expect(previous.scaleX).toBe(1.5);
+    expect(previous.scaleY).toBe(1.5);
+    expect(previous.zoomShiftX).toBe(25);
+    expect(previous.zoomShiftY).toBe(-10);
+    expect(previous.motion).toBe(state.motion);
 
     // The zoom branch never reaches SlotMoveChar, so posfrom is inert: it must
     // not snap the slot to -300 the way the plain-move branch would.
-    state.actionX = 0;
+    state.motion.actionX = 0;
     renderer.setCharacterSlot({
       action: "zoom",
       durationMs: 400,
@@ -828,7 +839,7 @@ describe("PixiStoryRenderer", () => {
       positionTo: { x: 400, y: 0 },
       slot: "m",
     });
-    expect(state.actionX).toBe(0);
+    expect(state.motion.actionX).toBe(0);
   });
 
   it("keeps a completed zoom across nameless commands and tweens it back to 1 without a scale", () => {
@@ -860,10 +871,10 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     expect(renderer.characterView.tween).toHaveBeenCalledTimes(1);
-    const [, durationMs, , done] = renderer.characterView.tween.mock.calls[0];
+    const [, durationMs, step] = renderer.characterView.tween.mock.calls[0];
     expect(durationMs).toBe(400);
     expect(state.scaleX).toBe(1.5);
-    done();
+    step(1);
     expect(state.scaleX).toBe(1);
     expect(state.scaleY).toBe(1);
   });
@@ -931,8 +942,8 @@ describe("PixiStoryRenderer", () => {
       positionTo: { x: 120, y: 30 },
       slot: "m",
     });
-    expect(state.actionX).toBe(120);
-    expect(state.actionY).toBe(30);
+    expect(state.motion.actionX).toBe(120);
+    expect(state.motion.actionY).toBe(30);
 
     // shakemove: SlotMoveChar(posFrom, posTo, duration) verbatim. An absent
     // posfrom is the (1,1) default, written as-is.
@@ -944,8 +955,8 @@ describe("PixiStoryRenderer", () => {
       positionTo: { x: -40, y: 0 },
       slot: "m",
     });
-    expect(state.actionX).toBe(-40);
-    expect(state.actionY).toBe(0);
+    expect(state.motion.actionX).toBe(-40);
+    expect(state.motion.actionY).toBe(0);
 
     // A bare jump with a duration lands at localPosition + posTo, and posTo
     // defaults to (1,1) too.
@@ -956,8 +967,8 @@ describe("PixiStoryRenderer", () => {
       focusSlots: ["l", "m", "r"],
       slot: "m",
     });
-    expect(state.actionX).toBe(-39);
-    expect(state.actionY).toBe(1);
+    expect(state.motion.actionX).toBe(-39);
+    expect(state.motion.actionY).toBe(1);
   });
 
   it("evicts unreferenced face-overlay bakes beyond the cache limit only", () => {
@@ -1000,7 +1011,7 @@ describe("PixiStoryRenderer", () => {
     loader.destroy();
   });
 
-  it("swaps the image instantly for an explicit enter without transtype", () => {
+  it("uses a zero-duration image swap for an explicit enter without transtype", () => {
     const renderer = createCharacterRenderer();
 
     renderer.setCharacter({
@@ -1011,6 +1022,7 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     const previous = renderer.characterView.characterSlots.get("m");
+    renderer.characterView.tween.mockClear();
 
     renderer.setCharacter({
       characterKey: "avg_test",
@@ -1027,9 +1039,11 @@ describe("PixiStoryRenderer", () => {
     // outgoing root is disposed and the incoming one is opaque from frame 0 --
     // while the move tween still runs for the full duration.
     const current = renderer.characterView.characterSlots.get("m");
-    expect(renderer.characterView.tween).toHaveBeenCalledTimes(1);
-    expect(previous.root.parent).toBeNull();
-    expect(current.root.alpha).toBe(1);
+    expect(
+      renderer.characterView.tween.mock.calls.map((call: unknown[]) => call[1]),
+    ).toEqual([0, 0, 150]);
+    expect(previous.root.parent).toBe(renderer.characterView.charLayer);
+    expect(current.visual.alpha).toBe(0);
   });
 
   it("still fades an explicit enter when transtype is ALPHA_IN", () => {
@@ -1043,6 +1057,7 @@ describe("PixiStoryRenderer", () => {
       slot: "m",
     });
     const previous = renderer.characterView.characterSlots.get("m");
+    renderer.characterView.tween.mockClear();
 
     renderer.setCharacter({
       characterKey: "avg_test",
@@ -1059,9 +1074,9 @@ describe("PixiStoryRenderer", () => {
     const current = renderer.characterView.characterSlots.get("m");
     expect(
       renderer.characterView.tween.mock.calls.map((call: unknown[]) => call[1]),
-    ).toEqual([150, 150]);
+    ).toEqual([150, 150, 150]);
     expect(previous.root.parent).toBe(renderer.characterView.charLayer);
-    expect(current.root.alpha).toBe(0);
+    expect(current.visual.alpha).toBe(0);
   });
 
   it("offsets the horizontal enter start by each slot's own resting offset", () => {
@@ -1125,15 +1140,15 @@ describe("PixiStoryRenderer", () => {
       transType: 1,
     });
 
-    const root = renderer.characterView.characterSlots.get("m").root;
-    const [, , step] = renderer.characterView.tween.mock.calls[0];
-    step(0.5);
+    const { root, motionLayer, visual } =
+      renderer.characterView.characterSlots.get("m");
+    for (const [, , step] of renderer.characterView.tween.mock.calls) step(0.5);
 
     // Native `SetCharPos` slides with `Ease.OutCubic`; at the halfway point
     // that is 1 - 0.5^3 = 0.875 of the way home, not 0.5: the root starts at
     // 590 - 1152 = -562 and sits 144px short of x = 590 (linear would be 14).
-    expect(root.x).toBeCloseTo(446, 5);
-    expect(root.alpha).toBe(0.5);
+    expect(root.x + motionLayer.x).toBeCloseTo(446, 5);
+    expect(visual.alpha).toBe(0.5);
   });
 
   it("keeps a cross-fading character root below the live slots", () => {
@@ -1204,44 +1219,44 @@ describe("PixiStoryRenderer characteraction", () => {
     renderer.runCharacterAction(
       createActionInput({ direction: "left", type: "exit" }),
     );
-    expect(middle.actionX).toBe(-1152);
-    expect(middle.actionY).toBe(0);
+    expect(middle.motion.actionX).toBe(-1152);
+    expect(middle.motion.actionY).toBe(0);
 
     renderer.runCharacterAction(
       createActionInput({ direction: "right", type: "exit" }),
     );
-    expect(middle.actionX).toBe(1152);
+    expect(middle.motion.actionX).toBe(1152);
 
     // Vertical exits apply +/-1072 on the (up-positive) action axis and also
     // snap the horizontal drift back to the rest anchor.
     renderer.runCharacterAction(
       createActionInput({ direction: "up", type: "exit" }),
     );
-    expect(middle.actionX).toBe(0);
-    expect(middle.actionY).toBe(1072);
+    expect(middle.motion.actionX).toBe(0);
+    expect(middle.motion.actionY).toBe(1072);
     renderer.runCharacterAction(
       createActionInput({ direction: "down", type: "exit" }),
     );
-    expect(middle.actionY).toBe(-1072);
+    expect(middle.motion.actionY).toBe(-1072);
 
     // Unknown directions exit to the (0,0) rest anchor, like _GenExitPosition.
     renderer.runCharacterAction(
       createActionInput({ direction: undefined, type: "exit" }),
     );
-    expect(middle.actionX).toBe(0);
-    expect(middle.actionY).toBe(0);
+    expect(middle.motion.actionX).toBe(0);
+    expect(middle.motion.actionY).toBe(0);
 
     // Slot-specific table rows.
     const left = createActionSlot(renderer, "l");
     renderer.runCharacterAction(
       createActionInput({ direction: "left", slot: "l", type: "exit" }),
     );
-    expect(left.actionX).toBe(-952);
+    expect(left.motion.actionX).toBe(-952);
     const right = createActionSlot(renderer, "r");
     renderer.runCharacterAction(
       createActionInput({ direction: "left", slot: "r", type: "exit" }),
     );
-    expect(right.actionX).toBe(-1352);
+    expect(right.motion.actionX).toBe(-1352);
   });
 
   it("uses exit xpos/ypos as the SetCharPos offset when both are present", () => {
@@ -1259,8 +1274,8 @@ describe("PixiStoryRenderer characteraction", () => {
       }),
     );
 
-    expect(state.actionX).toBe(300);
-    expect(state.actionY).toBe(200);
+    expect(state.motion.actionX).toBe(300);
+    expect(state.motion.actionY).toBe(200);
   });
 
   it("treats zoom xpos/ypos as the image pivot and scales around it", () => {
@@ -1283,12 +1298,12 @@ describe("PixiStoryRenderer characteraction", () => {
 
     expect(state.scaleX).toBe(2);
     expect(state.scaleY).toBe(2);
-    expect(state.zoomShiftX).toBe(-110);
-    expect(state.zoomShiftY).toBe(220);
+    expect(state.zoomShiftX).toBeCloseTo(-110);
+    expect(state.zoomShiftY).toBeCloseTo(220);
     // The image point (0.8w, 0.2-from-bottom) stays pinned at the rest
     // centre: the doubled image spans [-110, 90]x[-220, 180] around it.
-    expect(state.motionLayer.x).toBe(-110);
-    expect(state.motionLayer.y).toBe(-220);
+    expect(state.motionLayer.x).toBeCloseTo(-110);
+    expect(state.motionLayer.y).toBeCloseTo(-220);
 
     // A later zoom with the default 0.5/0.5 pivot (what the runtime always
     // sends when xpos/ypos are absent) un-shifts and re-centres.
@@ -1353,13 +1368,11 @@ describe("PixiStoryRenderer characteraction", () => {
       }),
     );
 
-    // Move + jump each take exactly one fadeTime tween; the jump no longer
-    // costs times × durationMs.
-    expect(tweens.map((tween) => tween.durationMs)).toEqual([400, 400]);
+    expect(tweens.map((tween) => tween.durationMs)).toEqual([400]);
     expect(wait?.endReason).toBeUndefined();
 
     const state = renderer.characterView.characterSlots.get("m");
-    const jumpTween = tweens[1]!;
+    const jumpTween = tweens[0]!;
     // The y arc is DOLocalJump's relative OutQuad yoyo (times=4 → 8 half
     // cycles of width 1/8 in sequence time): even half-cycles play
     // Ease.OutQuad forward, odd ones replay it backwards. CharJump's
@@ -1367,22 +1380,22 @@ describe("PixiStoryRenderer characteraction", () => {
     // the yoyo at OutCubic(p); `atSequenceTime` inverts the warp.
     const atSequenceTime = (time: number) => 1 - Math.cbrt(1 - time);
     jumpTween.step(atSequenceTime(0.125));
-    expect(state.jumpOffsetY).toBeCloseTo(20, 9);
+    expect(state.motion.actionY).toBeCloseTo(20, 9);
     jumpTween.step(atSequenceTime(0.25));
-    expect(state.jumpOffsetY).toBeCloseTo(0, 9);
+    expect(state.motion.actionY).toBeCloseTo(0, 9);
     jumpTween.step(atSequenceTime(0.375));
-    expect(state.jumpOffsetY).toBeCloseTo(20, 9);
+    expect(state.motion.actionY).toBeCloseTo(20, 9);
     // Mid-arc samples: OutQuad(0.5) = 0.75 on the way up and back down
     // (a linear ramp would read 10 here, a sine arc ~14.1).
     jumpTween.step(atSequenceTime(0.0625));
-    expect(state.jumpOffsetY).toBeCloseTo(15, 9);
+    expect(state.motion.actionY).toBeCloseTo(15, 9);
     jumpTween.step(atSequenceTime(0.1875));
-    expect(state.jumpOffsetY).toBeCloseTo(15, 9);
+    expect(state.motion.actionY).toBeCloseTo(15, 9);
     // The warp front-loads the bounces: at a quarter of the wall time the
     // sequence is already 1 - 0.75^3 = 57.8% through, inside the 5th half
     // cycle (rising again).
     jumpTween.step(0.25);
-    expect(state.jumpOffsetY).toBeCloseTo(20 * (1 - (1 - 0.625) ** 2), 9);
+    expect(state.motion.actionY).toBeCloseTo(20 * (1 - (1 - 0.625) ** 2), 9);
 
     // Finalize the tweens the way the real TweenRunner does: step(1) + done.
     for (const tween of tweens) {
@@ -1391,8 +1404,8 @@ describe("PixiStoryRenderer characteraction", () => {
       tween.options?.onComplete?.();
     }
     expect(wait?.endReason).toBe("complete");
-    expect(state.jumpOffsetY).toBe(0);
-    expect(state.actionX).toBe(100);
+    expect(state.motion.actionY).toBe(0);
+    expect(state.motion.actionX).toBe(100);
   });
 
   it("eases move and exit along DOTween Ease.OutCubic, jump through its sequence ease", () => {
@@ -1415,27 +1428,27 @@ describe("PixiStoryRenderer characteraction", () => {
       createActionInput({ durationMs: 400, type: "move", xOffset: 200 }),
     );
     steps[0]!(0.25);
-    expect(state.actionX).toBe(200 * 0.578125);
+    expect(state.motion.actionX).toBe(200 * 0.578125);
 
-    state.actionX = 0;
+    state.motion.actionX = 0;
     steps.length = 0;
     renderer.runCharacterAction(
       createActionInput({ direction: "left", durationMs: 400, type: "exit" }),
     );
     steps[0]!(0.25);
-    expect(state.actionX).toBe(-1152 * 0.578125);
+    expect(state.motion.actionX).toBe(-1152 * 0.578125);
 
     // DOLocalJump's x tween is Linear and its y displacement is
     // EasedValue(OutQuad) over the arc tween's elapsed percentage, but
     // CharJump's SetEase(OutCubic) on the Sequence warps the time both see
     // (Sequence.DoApplyTween evaluates the sequence ease first).
-    state.actionX = 0;
-    state.actionY = 0;
+    state.motion.actionX = 0;
+    state.motion.actionY = 0;
     steps.length = 0;
     renderer.runCharacterAction(
       createActionInput({
         durationMs: 400,
-        power: 20,
+        power: 0,
         times: 2,
         type: "jump",
         xOffset: 200,
@@ -1443,8 +1456,8 @@ describe("PixiStoryRenderer characteraction", () => {
       }),
     );
     steps[0]!(0.25);
-    expect(state.actionX).toBe(200 * 0.578125);
-    expect(state.actionY).toBe(100 * (1 - (1 - 0.578125) ** 2));
+    expect(state.motion.actionX).toBe(200 * 0.578125);
+    expect(state.motion.actionY).toBe(100 * (1 - (1 - 0.578125) ** 2));
   });
 
   it("shakes along DOTween's linear waypoint walk, not an OutCubic-warped one", () => {
@@ -1487,10 +1500,10 @@ describe("PixiStoryRenderer characteraction", () => {
     // vibrato 10 × 1s = 10 segments weighted 1..10 (sum 55): the first one
     // ends at 1/55 and is sampled linearly halfway through.
     calls[0]!.step(1 / 110);
-    expect(state.shakeOffsetX).toBeCloseTo(-5, 9);
-    expect(state.shakeOffsetY).toBeCloseTo(0, 9);
+    expect(state.motion.shakeOffsetX).toBeCloseTo(-5, 9);
+    expect(state.motion.shakeOffsetY).toBeCloseTo(0, 9);
     calls[0]!.step(1 / 55);
-    expect(state.shakeOffsetX).toBeCloseTo(-10, 9);
+    expect(state.motion.shakeOffsetX).toBeCloseTo(-10, 9);
   });
 });
 
@@ -1512,6 +1525,482 @@ describe("character commands during playback", () => {
     );
     return load;
   }
+
+  it.each([
+    '[character(name="avg_cold",fadetime=0)]',
+    '[charslot(slot="m",name="avg_cold",duration=0)]',
+  ])("swaps zero-duration portraits in Update with %s", async (swap) => {
+    const draws: number[][][] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        "[delay(time=0.016)]",
+        swap,
+        '[name="A"]ok',
+      ],
+      ({ characters }) => {
+        draws.push(
+          characters.children.map((root) => [
+            root.x,
+            root.alpha * root.children[0].children[0].children[0].alpha,
+          ]),
+        );
+      },
+      {
+        avg_cold: { ...coldCharacterLinks.avg_cold, pos: { x: 100, y: 0 } },
+      },
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      app.ticker.update(48);
+      expect(draws).toEqual([
+        [[590, 1]],
+        [
+          [590, 1],
+          [690, 0],
+        ],
+        [[690, 1]],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("fades out a zero-duration character clear in Update", async () => {
+    const draws: number[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        "[delay(time=0.016)]",
+        "[character(fadetime=0)]",
+        '[name="A"]ok',
+      ],
+      ({ characters }) => draws.push(characters.children.length),
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      app.ticker.update(48);
+      expect(draws).toEqual([1, 1, 0]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("releases the old back holder when a character interrupts a charslot swap", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="m",name="avg_cold",duration=0.128)]',
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      const { characters } = renderer.layers;
+      app.ticker.update(16);
+      const oldest = characters.children[0];
+      app.ticker.update(32);
+      expect(oldest.destroyed).toBe(true);
+      expect(characters.children).toHaveLength(2);
+      app.ticker.update(48);
+      expect(characters.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("raises both holders of the focused slot during an overlapping swap", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",name2="avg_1012_skadisp_1",focus=1,fadetime=0)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="l",name="avg_cold",duration=0.128)]',
+        '[character(name="avg_cold",name2="avg_1012_skadisp_1",focus=1,fadetime=0)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      const { characters } = renderer.layers;
+      app.ticker.update(16);
+      const [right, leftBack] = characters.children;
+      app.ticker.update(32);
+      const leftFront = renderer.characterView.characterSlots.get("l").root;
+      expect(characters.children).toEqual([right, leftBack, leftFront]);
+      app.ticker.update(48);
+      expect(characters.children).toEqual([right, leftBack, leftFront]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    { enter: "", startX: 0, updateX: 0 },
+    { enter: ',enter="left",transtype=1', startX: -1152, updateX: -144 },
+  ])(
+    "writes the slot position when portrait loading fails with enter=$enter",
+    async ({ enter, startX, updateX }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          '[characteraction(name="middle",type="move",xpos=120,fadetime=0)]',
+          `[character(name="avg_cold",fadetime=0.032${enter})]`,
+          '[name="A"]ok',
+        ],
+        () => {},
+        coldCharacterLinks,
+      );
+      const load = deferColdCharacter(renderer);
+      const started = runtime.start();
+      try {
+        const { characters } = renderer.layers;
+        const [root] = characters.children;
+        app.ticker.update(16);
+        expect(root.children[0].x).toBe(120);
+        load.resolve(null);
+        await setImmediate();
+        expect(root.children[0].x).toBe(startX);
+        app.ticker.update(32);
+        expect(root.children[0].x).toBe(updateX);
+        expect(root.alpha).toBe(0.5);
+        app.ticker.update(48);
+        expect(characters.children).toHaveLength(0);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("continues an in-flight fixed-slot move after a different-key character swap", async () => {
+    const draws: number[][] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0.064)]',
+        "[delay(time=0.016)]",
+        '[character(name="avg_cold",fadetime=0.032)]',
+        '[name="A"]ok',
+      ],
+      ({ characters }) =>
+        draws.push(characters.children.map((root) => root.children[0].x)),
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      for (const time of [16, 32, 48, 64]) app.ticker.update(time);
+      expect(draws).toEqual([[69.375], [0, 0], [118.125, 118.125], [120]]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("resumes an older move after a shorter overlapping move ends", async () => {
+    const draws: number[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0.064)]',
+        '[characteraction(name="middle",type="move",xpos=-20,fadetime=0.032,isblock=true)]',
+        '[name="A"]ok',
+      ],
+      ({ characters }) => draws.push(characters.children[0].children[0].x),
+    );
+    const started = runtime.start();
+    try {
+      for (const time of [16, 32, 48, 64]) app.ticker.update(time);
+      expect(draws).toEqual([-8.828125, -20, 118.125, 120]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("lets a later move write over an older jump on the fixed offset", async () => {
+    const draws: number[] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="jump",power=20,times=1,fadetime=0.064)]',
+        '[characteraction(name="middle",type="move",fadetime=0.032,isblock=true)]',
+        '[name="A"]ok',
+      ],
+      ({ characters }) => draws.push(characters.children[0].children[0].y),
+    );
+    const started = runtime.start();
+    try {
+      for (const time of [16, 32, 48, 64]) app.ticker.update(time);
+      expect(draws).toEqual([-2.43896484375, 0, -1.23046875, 0]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("uses the immediate absolute position for a near-zero charslot jump", async () => {
+    const { destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0)]',
+        '[charslot(slot="m",action="jump",posto="0,0",power=10,duration=0.000005)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      expect(renderer.layers.characters.children[0].children[0].x).toBe(0);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    '[character(name="avg_cold",fadetime=0.064)]',
+    '[charslot(slot="m",name="avg_cold",duration=0.064)]',
+  ])("keeps zooming the outgoing holder after %s", async (swap) => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="zoom",scale=2,fadetime=0.064)]',
+        "[delay(time=0.016)]",
+        swap,
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      const { characters } = renderer.layers;
+      const [old] = characters.children;
+      const baseScale = old.children[0].scale.x;
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(old.children[0].scale.x).toBe(baseScale * 1.5);
+      app.ticker.update(48);
+      expect(old.children[0].scale.x).toBe(baseScale * 1.75);
+      expect(characters.children[1].children[0].scale.x).toBe(baseScale);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("continues zooming a physical holder when the third portrait reuses it", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="zoom",scale=2,fadetime=0.128)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="m",name="avg_cold",duration=0.064)]',
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      const { characters } = renderer.layers;
+      const [first] = characters.children;
+      const baseScale = first.children[0].scale.x;
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(first.destroyed).toBe(true);
+      app.ticker.update(48);
+      const [third] = characters.children;
+      expect(third.children[0].scale.x).toBe(baseScale * 1.375);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("keeps the fixed offset when a character replaces char_empty", async () => {
+    const show = '[character(name="avg_npc_1",fadetime=0)]';
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        show,
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0)]',
+        '[charslot(slot="m",name="char_empty")]',
+        show,
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      const [root] = renderer.layers.characters.children;
+      expect(root.children[0].x).toBe(120);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("swaps out the blank holder as blocking animated clear-all ends", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[characteraction(name="middle",type="zoom",scale=2,fadetime=0.128)]',
+        "[charslot(duration=0.032,isblock=true)]",
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { characters } = renderer.layers;
+      app.ticker.update(16);
+      expect(characters.children).toHaveLength(0);
+      app.ticker.update(32);
+      app.ticker.update(48);
+      const [root] = characters.children;
+      expect(root.children[0].scale.x).toBe(100 / 32);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    {
+      command: '[charslot(slot="m",name="char_empty",duration=0)]',
+      frame: 48,
+      scale: 1,
+      withPortrait: true,
+    },
+    {
+      command: '[charslot(slot="m",name="missing_char",duration=0)]',
+      frame: 16,
+      scale: 1.125,
+      withPortrait: false,
+    },
+    {
+      command: '[character(name="missing_char",fadetime=0)]',
+      frame: 16,
+      scale: 1.125,
+      withPortrait: false,
+    },
+    {
+      command: "[charslot(duration=0.128)]",
+      frame: 16,
+      scale: 1.125,
+      withPortrait: false,
+    },
+  ])(
+    "uses the correct physical holder after $command clears the slot",
+    async ({ command, frame, scale, withPortrait }) => {
+      const show = '[character(name="avg_npc_1",fadetime=0)]';
+      const zoom =
+        '[characteraction(name="middle",type="zoom",scale=2,fadetime=0.128)]';
+      const prefix = withPortrait
+        ? [show, zoom, "[delay(time=0.016)]"]
+        : [zoom];
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [...prefix, command, show, '[name="A"]ok'],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        for (let tick = 16; tick <= frame; tick += 16) app.ticker.update(tick);
+        const [root] = renderer.layers.characters.children;
+        expect(root.children[0].scale.x).toBe((100 / 32) * scale);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it.each([
+    {
+      afterClear: 1.25,
+      zoom: '[charslot(slot="m",action="zoom",poszoom="0.5,0.5",scale=2,duration=0.128)]',
+    },
+    {
+      afterClear: 1.375,
+      zoom: '[characteraction(name="middle",type="zoom",scale=2,fadetime=0.128)]',
+    },
+  ])(
+    "clears the sequence and fades the holder after $zoom",
+    async ({ zoom, afterClear }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          zoom,
+          "[delay(time=0.016)]",
+          "[charslot(duration=0.128)]",
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        const { characters } = renderer.layers;
+        const [back] = characters.children;
+        const baseScale = back.children[0].scale.x;
+        app.ticker.update(16);
+        app.ticker.update(32);
+        expect(back.children[0].scale.x).toBe(baseScale * 1.25);
+        app.ticker.update(48);
+        expect(back.children[0].scale.x).toBe(baseScale * afterClear);
+        expect(back.alpha).toBe(0.875);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("uses the new holder's alpha when a zero-duration charslot replaces a fading character", async () => {
+    const draws: number[][] = [];
+    const { app, destroy, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0.128)]',
+        "[delay(time=0)]",
+        '[charslot(slot="m",name="avg_cold",duration=0,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      ({ characters, cgItems }) => {
+        const root = characters.children.at(-1)!;
+        const holder = root.children[0].children[0].children[0];
+        draws.push([root.alpha * holder.alpha, cgItems.children.length]);
+      },
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      app.ticker.update(16);
+      app.ticker.update(32);
+      expect(draws).toEqual([
+        [0, 0],
+        [1, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
 
   it("applies the next slot update in the draw that completes a blocking move", async () => {
     const draws: unknown[] = [];
@@ -2149,11 +2638,12 @@ describe("character commands during playback", () => {
     );
     const started = runtime.start();
     try {
-      const [root] = renderer.layers.characters.children;
+      const [outgoing, root] = renderer.layers.characters.children;
       const [visual] = root.children[0].children[0].children;
       expect(visual.alpha).toBe(0.25);
       app.ticker.update(16);
       expect(visual.alpha).toBe(0.25);
+      expect(outgoing.destroyed).toBe(true);
     } finally {
       destroy();
       await started;

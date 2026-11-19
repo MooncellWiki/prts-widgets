@@ -73,39 +73,19 @@ export class CharacterslotPanel extends ExecutorComponent {
       return "continue";
     }
 
-    // `name` is never ToLower'd natively, and `_UpdateSeqWithParam`
-    // (2791 @ 0x1841A9600) compares it to "char_empty" with an ordinal
-    // String.op_Equality. That value runs AVGCharacterSlot.SlotCleanChar
-    // (0x184238580) and then still falls through to SlotSetCharWithParam
-    // with the same name: two `_SwapImages` in a row put the old art back
-    // in front, and the second `_LoadImage` (0x184239340) opens with
-    // `DOKill(m_image)`, killing the fade the first swap started. Whether
-    // "char_empty" then resolves to a blank sprite hub (the
-    // `m_currentKey.ToLower() != "char_empty"` guard in
-    // `_SlotSetCharInternal` suggests it does) or fails into
-    // `set_sprite(null)` + `enabled = false`, the old art is gone at once:
-    // the slot is emptied regardless of `duration`; action/focus keep
-    // executing.
+    // _UpdateSeqWithParam (2791 @ 0x1841A9600) matches char_empty ordinally.
+    // CharacterView tracks the transparent holder as the slot applies focus
+    // and actions.
     const isEmptyChar = nameRef === "char_empty";
 
     let resolved: { base: string; expression: string } | null = null;
-    if (isEmptyChar) {
-      this.renderer.clearCharacters(slot, 0);
-    } else if (nameRef) {
+    if (nameRef && !isEmptyChar) {
       const resolution = this.playback.resolveCharacterName(nameRef);
       if (resolution.kind === "native_throws")
         return warnNativeSlotThrows(this.playback.warn, nameRef, line);
       resolved = resolution.kind === "found" ? resolution.selection : null;
-      if (!resolved) {
-        // `_SlotSetCharInternal` (0x18423A040) swaps the Images *before*
-        // `_LoadImage`, so a failed load ("[AVG] Error to load character
-        // pic") leaves the old art as the back Image -- which
-        // `_GenBackImageTween(duration).Play()` fades out -- while the new
-        // fore Image is disabled. The slot ends up empty; the action and
-        // focus sections of `_UpdateSeqWithParam` still run.
+      if (!resolved)
         this.playback.warn("missing_asset", `character: ${nameRef}`);
-        this.renderer.clearCharacters(slot, durationMs);
-      }
     }
     // Native `_UpdateSeqWithParam` alpha handling:
     // - with a `name`, a negative (or omitted, default -1) afrom or ato

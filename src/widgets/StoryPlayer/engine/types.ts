@@ -767,6 +767,7 @@ export interface StoryRenderer {
   ) => ExecutionHandle | void;
   setFocusParam: (input: FocusParamInput) => void;
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
+  /** A single slot with an explicit duration fades on Update. Omit it to clear immediately. */
   clearCharacters: (
     slot?: string,
     fadeMs?: number,

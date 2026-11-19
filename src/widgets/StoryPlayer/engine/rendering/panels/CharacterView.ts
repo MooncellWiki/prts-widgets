@@ -1,6 +1,7 @@
 import { CanvasSource, Container, Sprite, Texture } from "pixi.js";
 
 import { describeCharacterPortrait } from "../../characterPortrait";
+import { isZeroFloat } from "../../commandParams";
 import { createExecutionHandle, type ExecutionHandle } from "../../execution";
 import {
   STORY_HEIGHT,
@@ -63,8 +64,9 @@ interface CharacterSlotZoomState {
  * on the plain-move path. Returns null when the command moves nothing.
  */
 function characterSlotMove(
-  state: { actionX: number; actionY: number },
+  motion: CharacterSlotMotion,
   input: CharacterSlotInput,
+  durationMs: number,
 ): { from: CharacterSlotPoint; to: CharacterSlotPoint } | null {
   const posTo = input.positionTo ?? CHARSLOT_POINT_DEFAULT;
   switch (input.action) {
@@ -81,15 +83,15 @@ function characterSlotMove(
       return { from: input.positionFrom ?? CHARSLOT_POINT_DEFAULT, to: posTo };
     }
     case "jump": {
-      if ((input.durationMs ?? 0) > 0) {
+      if (durationMs > 0) {
         // CharJump (0x184236650): DOLocalJump to `localPosition + posTo`.
         // An omitted posto stays at the (1,1) default -- a bare jump drifts
         // one unit -- while a posto that is present but not an "x,y" pair
         // becomes Vector2.zero (2791 @ 0x1841A3070); the runtime hands
         // that case in as (0,0).
         return {
-          from: { x: state.actionX, y: state.actionY },
-          to: { x: state.actionX + posTo.x, y: state.actionY + posTo.y },
+          from: { x: motion.actionX, y: motion.actionY },
+          to: { x: motion.actionX + posTo.x, y: motion.actionY + posTo.y },
         };
       }
       // NeedSkipAnimation(duration) => _GenCharslotMove => SlotMoveChar(...,
@@ -103,66 +105,36 @@ function characterSlotMove(
 }
 
 /**
- * The zoom half of a `charslot`: CharZoom (0x184236B10) tweens the fore
- * Image's `rectTransform.pivot` to `zoomPos` and its `localScale` to `scale`
- * (setter `<CharZoom>b__1` 0x18424A230 lerp-drives both from one 0→1 float,
- * Ease.Linear), both absolute -- re-issuing the same zoom lands on the same
- * transform instead of stacking. Returns null when the command is not a zoom
- * or CharZoom would reject the pivot.
+ * The fore holder's pivot stays at the original rect centre. Convert its
+ * scale and pivot to a top-left shift per unit of portrait width/height.
  */
-function characterSlotZoom(
-  state: CharacterRenderState,
-  input: CharacterSlotInput,
-): { from: CharacterSlotZoomState; to: CharacterSlotZoomState } | null {
-  if (input.action !== "zoom") return null;
-  // CharZoom validates the pivot first: x/y outside [0,1] => return null,
-  // skipping the whole zoom (scale change included). An absent poszoom
-  // defaults to (1,1), which is inside the valid range; the Web port keeps
-  // treating an absent pivot as (0.5,0.5) ("no pivot move"). Every zoom in
-  // the 2.7.61 corpus writes poszoom, so the native (1,1) default is
-  // unobservable there.
-  const zoom = input.posZoom;
-  const pivotValid =
-    !zoom || (zoom.x >= 0 && zoom.x <= 1 && zoom.y >= 0 && zoom.y <= 1);
-  if (!pivotValid) return null;
-
-  // `CharZoom(zoomPos.x, zoomPos.y, options.scale, duration)` always tweens
-  // to `options.scale`, whose GetOrDefault falls back to 1.0 (2791 @ 0x1841A3070)
-  // -- a zoom without `scale` resets it.
-  const toScaleX = isFiniteNumber(input.scaleX) ? input.scaleX : 1;
-  const toScaleY = isFiniteNumber(input.scaleY) ? input.scaleY : 1;
-  // anchoredPosition is not tweened, and every character prefab ships pivot
-  // (0.5,0.5) / localScale 1 / sizeDelta = character.json size (verified on
-  // avg_npc_2227_1, avg_4225_tanya_1, avg_npc_820_1), so the pivot point
-  // stays where the resting rect was centred: the rect grows `scale`x
-  // around the fixed point at zoomPos, and its centre lands at
-  // `T + scale * (0.5 - zoomPos) * size` (Unity axes). The motion layer
-  // instead scales around the rect's top-left corner, so the shift must
-  // both move the scaled centre there and cancel that corner-origin growth:
-  //   (0.5 - z) * scale * size - (scale - 1) * size / 2
-  // (shiftY is stored in Unity's y-up and negated on apply). Tweening the
-  // shift linearly makes the endpoints exact and leaves a small mid-tween
-  // gap versus native's lerp(scale)*lerp(0.5-pivot) product curve.
-  const pivotX = zoom?.x ?? 0.5;
-  const pivotY = zoom?.y ?? 0.5;
+function characterZoom(
+  scaleX: number,
+  scaleY: number,
+  { x, y }: CharacterSlotPoint = { x: 0.5, y: 0.5 },
+): CharacterSlotZoomState {
   return {
-    from: {
-      scaleX: state.scaleX,
-      scaleY: state.scaleY,
-      shiftX: state.zoomShiftX,
-      shiftY: state.zoomShiftY,
-    },
-    to: {
-      scaleX: toScaleX,
-      scaleY: toScaleY,
-      shiftX:
-        (0.5 - pivotX) * toScaleX * state.width -
-        ((toScaleX - 1) * state.width) / 2,
-      shiftY:
-        (0.5 - pivotY) * toScaleY * state.height +
-        ((toScaleY - 1) * state.height) / 2,
-    },
+    scaleX,
+    scaleY,
+    shiftX: (0.5 - x) * scaleX - (scaleX - 1) / 2,
+    shiftY: (0.5 - y) * scaleY + (scaleY - 1) / 2,
   };
+}
+
+function characterSlotZoom(
+  input: CharacterSlotInput,
+): CharacterSlotZoomState | null {
+  if (input.action !== "zoom") return null;
+  // CharZoom (2791 @ 0x184236B10) only accepts a pivot inside the image.
+  // The Web default keeps an unspecified pivot centred.
+  const pivot = input.posZoom;
+  if (pivot && (pivot.x < 0 || pivot.x > 1 || pivot.y < 0 || pivot.y > 1))
+    return null;
+  return characterZoom(
+    isFiniteNumber(input.scaleX) ? input.scaleX : 1,
+    isFiniteNumber(input.scaleY) ? input.scaleY : 1,
+    pivot,
+  );
 }
 
 /**
@@ -198,10 +170,44 @@ interface CharacterBuiltVisual extends Pick<
 }
 
 type CharacterSlot = "l" | "m" | "r";
+const EMPTY_CHARACTER = "char_empty";
 
-interface CharacterRenderState {
+interface CharacterSlotMotion {
   actionX: number;
   actionY: number;
+  rotationDeg: number;
+  rotateSessionId: number;
+  shakeOffsetX: number;
+  shakeOffsetY: number;
+  shakeSessionId: number;
+}
+
+function createSlotMotion(): CharacterSlotMotion {
+  return {
+    actionX: 0,
+    actionY: 0,
+    rotationDeg: 0,
+    rotateSessionId: 0,
+    shakeOffsetX: 0,
+    shakeOffsetY: 0,
+    shakeSessionId: 0,
+  };
+}
+
+interface CharacterImageHolder {
+  state?: CharacterRenderState;
+}
+
+function createHolderPair(): {
+  back: CharacterImageHolder;
+  /** AVGCharacterSlot.m_currentKey, including the transparent char_empty sprite. */
+  currentKey?: string;
+  front: CharacterImageHolder;
+} {
+  return { back: {}, front: {} };
+}
+
+interface CharacterRenderState {
   baseScaleX: number;
   baseScaleY: number;
   contentAlpha: number;
@@ -209,37 +215,17 @@ interface CharacterRenderState {
   expression?: string;
   fadeIdentity?: string;
   height: number;
-  /**
-   * The previous visual while it cross-fades out. Native keeps exactly one
-   * back Image: the next swap replaces it outright, so a swap during a
-   * crossfade discards this one instead of leaving it half faded.
-   */
-  outgoingVisual: Container | null;
-  jumpOffsetY: number;
-  jumpSessionId: number;
+  holder: CharacterImageHolder;
+  motion: CharacterSlotMotion;
   motionLayer: Container;
-  /**
-   * `AVGCharacterSlot.m_currentKey`: the raw `name` ref the slot was last set
-   * with, index and alias included. `Set` compares it verbatim, so it cannot
-   * be reconstructed from the resolved characterKey/expression pair.
-   */
-  nativeKey?: string;
   opacitySessionId: number;
-  replaceFadeSessionId: number;
   root: Container;
-  rotationDeg: number;
   rotationLayer: Container;
-  rotateSessionId: number;
   scaleX: number;
   scaleY: number;
-  shakeOffsetX: number;
-  shakeOffsetY: number;
-  shakeSessionId: number;
   slot: CharacterSlot;
-  transformSessionId: number;
   visual: Container;
   width: number;
-  zoomSessionId: number;
   /**
    * CharZoom's pivot move, as a translation in stage pixels. Kept apart from
    * `actionX/Y` (the `_offset` position) because native stores it on the
@@ -281,7 +267,12 @@ export class CharacterView {
     CharacterSlot,
     CharacterRenderState
   >();
-  private readonly fadingStates = new Set<CharacterRenderState>();
+  private readonly backHolders = new Map<CharacterSlot, CharacterRenderState>();
+  private readonly slotHolders = {
+    l: createHolderPair(),
+    m: createHolderPair(),
+    r: createHolderPair(),
+  };
   private readonly preparations = new Map<
     CharacterSlot,
     CharacterPreparation
@@ -292,10 +283,17 @@ export class CharacterView {
     DeferredCallback
   >();
   private cancelDeferredReplay?: () => void;
+  // AVGCharacterSlot.Set (2791 @ 0x184237BC0) swaps image holders while
+  // MoveChar (0x1842370A0) and CharShake (0x1842369B0) keep their transforms.
+  private readonly slotMotions = {
+    l: createSlotMotion(),
+    m: createSlotMotion(),
+    r: createSlotMotion(),
+  };
   private readonly slotActionTargets = {
-    l: { offset: {}, shake: {} },
-    m: { offset: {}, shake: {} },
-    r: { offset: {}, shake: {} },
+    l: { offset: {}, sequence: {}, shake: {} },
+    m: { offset: {}, sequence: {}, shake: {} },
+    r: { offset: {}, sequence: {}, shake: {} },
   };
   private resettingOffset = false;
   private readonly characterZoomTweens = {};
@@ -335,24 +333,36 @@ export class CharacterView {
 
   show(input: CharacterSlotInput): ExecutionHandle | void {
     const slot = this.normalizeCharacterSlot(input.slot);
+    const holders = this.slotHolders[slot];
     const current = this.characterSlots.get(slot);
     // AVGCharacterSlot.Set (2791 @ 0x184237BC0) reuses the holder for the
     // same raw key. Keep its in-flight actions when updating the focus.
-    if (
-      current &&
-      input.nativeKey &&
-      input.nativeKey === current.nativeKey &&
-      !input.enterFrom
-    ) {
+    if (input.nativeKey && input.nativeKey === holders.currentKey) {
       this.cancelSlotPreparation(slot);
-      current.focusBrightness = input.dimmed ? 0.5 : 1;
-      this.updateCharacterOpacity(current);
+      if (current) {
+        current.focusBrightness = input.dimmed ? 0.5 : 1;
+        this.updateCharacterOpacity(current);
+      }
+      this.enterCharacter(slot, input);
       this.applyCharacterZOrder(input.focus ?? 0);
       return;
     }
     return this.withVisual(slot, input, "character", (built) => {
-      if (built) this.mountCharacter(input, slot, built);
-      else if (input.characterKey) this.clearSlot(slot, input.durationMs ?? 0);
+      if (!built && !input.nativeKey && !input.characterKey) return;
+      const current = this.characterSlots.get(slot);
+      const fadeMs = this.characterFadeDuration(current, input);
+      // Set (2791 @ 0x184237BC0) resets the offset before loading a different
+      // key unless an enter supplies the position or char_empty was loaded.
+      if (
+        !input.enterFrom &&
+        holders.currentKey?.toLowerCase() !== EMPTY_CHARACTER
+      ) {
+        this.resetSlotPosition(slot);
+        this.updateSlotMotion(slot);
+      }
+      if (built) this.mountCharacter(input, slot, built, fadeMs);
+      else this.clearSlot(slot, fadeMs, "load-failed");
+      this.enterCharacter(slot, input);
     });
   }
 
@@ -542,6 +552,8 @@ export class CharacterView {
       for (const wait of sequence.waits) wait.end("reset");
     }
     this.slotSequences.clear();
+    for (const { sequence } of Object.values(this.slotActionTargets))
+      this.tweens.killTarget(sequence);
   }
 
   /**
@@ -594,17 +606,12 @@ export class CharacterView {
         );
         break;
       case "jump":
-        this.startMoveAction(
-          state,
-          input.xOffset,
-          input.yOffset,
-          input.durationMs,
-          easeOutCubic,
-          (progress) => easeOutQuad(easeOutCubic(progress)),
-          { target: targets.offset },
-        );
         this.startJumpAction(
-          state,
+          state.slot,
+          {
+            x: state.motion.actionX + input.xOffset,
+            y: state.motion.actionY + input.yOffset,
+          },
           input.power,
           input.times,
           input.durationMs,
@@ -639,7 +646,7 @@ export class CharacterView {
 
   clear(
     slot?: string,
-    fadeMs = 0,
+    fadeMs?: number,
     onComplete?: () => void,
   ): ExecutionHandle | void {
     if (slot) {
@@ -657,21 +664,22 @@ export class CharacterView {
       this.deferredCallbacks.delete(key);
     this.deferredCallbacks.delete("charslot");
     this.clearSlotSequences();
+    const durationMs = fadeMs ?? 0;
     let middleAnimation: ExecutionHandle | void = undefined;
     for (const key of ["l", "r", "m"] as const) {
-      if (fadeMs <= 0) {
+      if (durationMs <= 0) {
         this.resetSlot(key);
         continue;
       }
       this.resetSlotShake(key);
-      this.clearSlot(key, fadeMs);
-      const clearTween = this.tweens.start(fadeMs, () => {}, {
+      this.clearSlot(key, durationMs, "animated-clear");
+      const clearTween = this.tweens.start(durationMs, () => {}, {
         onComplete: () => this.finishSlotClear(key),
       });
       const isMiddle = key === "m";
       const animation = this.trackSlotSequence(
         key,
-        fadeMs,
+        durationMs,
         isMiddle,
         isMiddle ? onComplete : undefined,
       );
@@ -692,8 +700,16 @@ export class CharacterView {
     } finally {
       this.resettingOffset = false;
     }
+    this.resetSlotPosition(slot);
+    this.slotMotions[slot].rotationDeg = 0;
     this.resetSlotShake(slot);
-    this.clearSlot(slot, 0);
+    this.clearSlot(slot);
+  }
+
+  private resetSlotPosition(slot: CharacterSlot): void {
+    const motion = this.slotMotions[slot];
+    motion.actionX = 0;
+    motion.actionY = 0;
   }
 
   private resetSlotShake(slot: CharacterSlot): void {
@@ -702,39 +718,45 @@ export class CharacterView {
     const target = this.slotActionTargets[slot].shake;
     this.tweens.killTarget(target, true);
     this.replayCallback(target);
-    const state = this.characterSlots.get(slot);
-    if (state) this.stopShakeAction(state);
+    this.stopShakeAction(slot);
   }
 
-  private discardFadingSlot(slot: CharacterSlot): void {
-    for (const fading of this.fadingStates) {
-      if (fading.slot === slot) this.disposeCharacterState(fading);
-    }
+  private discardBackHolder(slot: CharacterSlot): void {
+    const back = this.backHolders.get(slot);
+    if (back) this.disposeCharacterState(back);
   }
 
-  private clearSlot(slot: CharacterSlot, fadeMs: number): void {
-    // Clear / Set (2791 @ 0x184236E90 / 0x184237BC0) also drop the back
-    // holder when the front is already blank, including a prior clear's fade.
-    this.discardFadingSlot(slot);
+  private clearSlot(
+    slot: CharacterSlot,
+    fadeMs?: number,
+    mode: "clear" | "load-failed" | "animated-clear" | "char_empty" = "clear",
+  ): void {
+    this.discardBackHolder(slot);
     const state = this.characterSlots.get(slot);
-    if (!state) return;
     this.characterSlots.delete(slot);
-    if (!state.root.parent) {
-      this.disposeCharacterState(state);
-      return;
-    }
-    if (state.outgoingVisual) {
-      state.replaceFadeSessionId += 1;
-      this.discardCharacterVisual(state.outgoingVisual);
-      state.outgoingVisual = null;
-    }
+    const front = state?.root.parent ? state : undefined;
+    const holders = this.slotHolders[slot];
+    // SlotCleanChar (2791 @ 0x184238580) loads char_empty. The animated clear's
+    // ClearSelfAndImageHolders (0x184236E00) then swaps it out through Set(null).
+    const swapHolders =
+      mode === "load-failed" ||
+      mode === "animated-clear" ||
+      (mode === "clear" && holders.currentKey !== undefined);
+    holders.currentKey =
+      mode === "char_empty" || mode === "animated-clear"
+        ? EMPTY_CHARACTER
+        : undefined;
+    if (!state && !swapHolders) return;
+    if (swapHolders) this.swapImageHolders(slot);
+    const fade = front !== undefined && fadeMs !== undefined;
     this.sceneEffects.setImageFocusTargets(
       slot,
       undefined,
-      fadeMs > 0 ? state.visual : undefined,
+      fade ? front.visual : undefined,
+      swapHolders,
     );
-    if (fadeMs > 0) this.fadeOutAndRemove(state, fadeMs);
-    else this.disposeCharacterState(state);
+    if (fade) this.fadeOutAndRemove(front, fadeMs);
+    else if (state) this.disposeCharacterState(state);
   }
 
   /** CharacterPanel / AVGCharacterslotPanel.OnStoryEnd (2791 @ 0x1841BFC50 / 0x1841A1360). */
@@ -745,10 +767,17 @@ export class CharacterView {
       this.tweens.killTarget(offset);
       this.tweens.killTarget(shake);
     }
+    for (const motion of Object.values(this.slotMotions))
+      Object.assign(motion, createSlotMotion());
     this.tweens.killTarget(this.characterZoomTweens);
-    const states = [...this.characterSlots.values(), ...this.fadingStates];
+    const states = [
+      ...this.characterSlots.values(),
+      ...this.backHolders.values(),
+    ];
     this.characterSlots.clear();
     for (const state of states) this.disposeCharacterState(state);
+    for (const holders of Object.values(this.slotHolders))
+      holders.currentKey = undefined;
   }
 
   destroy(): void {
@@ -757,7 +786,7 @@ export class CharacterView {
   }
 
   private tween(
-    state: CharacterRenderState,
+    target: object,
     durationMs: number,
     step: (progress: number) => void,
     done?: () => void,
@@ -769,7 +798,7 @@ export class CharacterView {
         done?.();
         options?.onComplete?.();
       },
-      target: options?.target ?? state,
+      target: options?.target ?? target,
     });
   }
 
@@ -777,83 +806,57 @@ export class CharacterView {
     input: CharacterSlotInput,
     slot: CharacterSlot,
     built: CharacterBuiltVisual,
+    imageFadeMs: number,
   ): void {
-    this.discardFadingSlot(slot);
-    const current = this.characterSlots.get(slot);
-    const previous = current?.root.parent ? current : undefined;
-    const state = previous
-      ? this.createSlotState(slot)
-      : (current ?? this.createSlotState(slot));
-    this.discardCharacterVisual(state.visual);
-    this.attachSlotArt(state, input, built);
-    const { root, visual } = state;
-    const { x: targetX, y: targetY } = root.position;
-    const enterOffset = this.enterOffset(
+    const { front: state, back } = this.swapArtwork(input, slot, built);
+    state.focusBrightness = input.dimmed ? 0.5 : 1;
+    this.applyCharacterSlotOpacity(
+      state,
+      {
+        alphaFrom: input.enterFrom && input.transType === 2 ? 1 : 0,
+        alphaTo: 1,
+      },
+      imageFadeMs,
+      true,
+    );
+    if (back) this.fadeOutAndRemove(back, imageFadeMs);
+    this.applyCharacterZOrder(input.focus ?? 0);
+    this.updateCharacterState(state);
+  }
+
+  private characterFadeDuration(
+    previous: CharacterRenderState | undefined,
+    input: CharacterSlotInput,
+  ): number {
+    // _ProcessDurationWithTransType (2791 @ 0x1841C20A0) skips the image
+    // fade for enter with NONE. Set also skips it between expressions.
+    if (input.enterFrom && !input.transType) return 0;
+    if (previous?.fadeIdentity === (input.fadeIdentity ?? input.characterKey))
+      return 0;
+    return Math.max(0, input.durationMs ?? 0);
+  }
+
+  /** CharacterPanel._ProcessSlot (2791 @ 0x1841C2800) enters on the fixed offset. */
+  private enterCharacter(slot: CharacterSlot, input: CharacterSlotInput): void {
+    if (!input.enterFrom) return;
+    const motion = this.slotMotions[slot];
+    const { x, y } = this.enterOffset(
       slot,
       input.enterFrom,
       input.enterPosition,
     );
-    state.actionX = 0;
-    state.actionY = 0;
-    state.contentAlpha = 1;
-    state.focusBrightness = input.dimmed ? 0.5 : 1;
-    const durationMs = Math.max(0, Math.round(input.durationMs ?? 0));
-    // Native `AVGCharacterSlot.Set` receives `dontFadeIfSameChar=true` from
-    // `CharacterPanel._ProcessSlot`. It compares `_GetIdWithoutAliasOrIndex`
-    // for the old/new refs and forces only the image fade to zero when that id
-    // is unchanged. Cross-fading two copies of the same body sprite causes a
-    // visible brightness dip, so expression/focus changes must swap at once.
-    const fadeIdentity = input.fadeIdentity ?? input.characterKey;
-    // Native `_ProcessSlot`: with an `enter`, the image fade duration goes
-    // through `_ProcessDurationWithTransType(duration, transtype)`, which
-    // returns 0 for ECharTransType.NONE (0) -- i.e. the default enter is a
-    // pure slide with no fade; only ALPHA_IN/ALPHA_OUT fade while sliding.
-    // Without `enter` the raw duration is used. `dontFadeIfSameChar` can
-    // still zero the fade in both paths.
-    const fadeMsForNewImage =
-      input.enterFrom && !input.transType ? 0 : durationMs;
-    const imageFadeMs =
-      previous?.fadeIdentity === fadeIdentity ? 0 : fadeMsForNewImage;
-    // An explicit enter still moves for the requested duration even when the
-    // same character's expression is swapped instantly.
-    const moveMs = input.enterFrom ? durationMs : 0;
-    const animationMs = Math.max(imageFadeMs, moveMs);
-    this.updateCharacterState(state);
-
-    root.alpha = imageFadeMs > 0 ? 0 : 1;
-    if (moveMs > 0) {
-      root.x = targetX + enterOffset.x;
-      root.y = targetY + enterOffset.y;
-    }
-
-    if (previous && imageFadeMs <= 0) this.disposeCharacterState(previous);
-    this.characterSlots.set(slot, state);
-    this.charLayer.addChild(root);
-    // AVGCharacterSlot.Set (2791 @ 0x184237BC0) swaps holders on key changes.
-    this.sceneEffects.setImageFocusTargets(
+    motion.actionX = x;
+    motion.actionY = -y;
+    this.updateSlotMotion(slot);
+    const durationMs = input.durationMs ?? 0;
+    this.tweenSlotPosition(
       slot,
-      visual,
-      imageFadeMs > 0 ? previous?.visual : undefined,
-      !previous ||
-        (previous.nativeKey ?? previous.fadeIdentity) !==
-          (input.nativeKey ?? fadeIdentity),
+      0,
+      0,
+      isZeroFloat(durationMs / 1000) ? 0 : durationMs,
+      easeOutCubic,
+      easeOutCubic,
     );
-    this.applyCharacterZOrder(input.focus ?? 0);
-
-    if (previous && imageFadeMs > 0)
-      this.fadeOutAndRemove(previous, imageFadeMs);
-
-    if (animationMs > 0) {
-      this.tween(state, animationMs, (progress) => {
-        root.alpha = imageFadeMs > 0 ? progress : 1;
-        // Native `SetCharPos` runs the slide as
-        // `DOLocalMove(...).SetEase(Ease.OutCubic)`; the shared tween runner
-        // is linear, so ease the move -- and only the move -- here.
-        const moveProgress = moveMs > 0 ? easeOutCubic(progress) : 1;
-        root.x = targetX + enterOffset.x * (1 - moveProgress);
-        root.y = targetY + enterOffset.y * (1 - moveProgress);
-      });
-    }
   }
 
   private applySlotUpdate(
@@ -862,69 +865,92 @@ export class CharacterView {
     built: CharacterBuiltVisual | null,
   ): void {
     const durationMs = Math.max(0, input.durationMs ?? 0);
-    if (!built && input.characterKey) {
-      // _SlotSetCharInternal (2791 @ 0x18423A040) fades the old back image
-      // after a failed _LoadImage. Focus and actions still use the fixed slot.
-      this.clearSlot(slot, durationMs);
+    if (input.nativeKey === EMPTY_CHARACTER) {
+      // _UpdateSeqWithParam (2791 @ 0x1841A9600) swaps twice through
+      // SlotCleanChar and SlotSetCharWithParam. The final front is transparent.
+      this.clearSlot(slot, undefined, EMPTY_CHARACTER);
+    } else if (!built && (input.nativeKey || input.characterKey)) {
+      // _SlotSetCharInternal (2791 @ 0x18423A040) swaps before _LoadImage.
+      this.clearSlot(slot, durationMs, "load-failed");
     }
-    const state = built
-      ? this.mountCharacterSlot(input, slot, built)
-      : this.getSlotState(slot);
+    let state: CharacterRenderState;
+    if (built) {
+      const { front, back } = this.swapArtwork(input, slot, built);
+      state = front;
+      if (back)
+        this.fadeOutAndRemove(back, Math.max(0, input.replaceFadeMs ?? 0));
+    } else {
+      state = this.getSlotState(slot);
+    }
     if (input.focusMode) this.applyCharacterSlotFocus(input.focusSlots ?? []);
 
-    const move = characterSlotMove(state, input);
-    const zoom = characterSlotZoom(state, input);
+    const { motion } = state;
+    const sequenceTarget = this.slotActionTargets[slot].sequence;
+    // AVGCharacterslotPanel.NeedSkipAnimation (2791 @ 0x1841A0FC0)
+    // chooses immediate offset writes and skips shake for near-zero time.
+    const movementMs = isZeroFloat(durationMs / 1000) ? 0 : durationMs;
+    const move = characterSlotMove(motion, input, movementMs);
+    const zoom = characterSlotZoom(input);
 
     // SlotMoveChar writes `localPosition = posFrom` when the tween is
     // created, so the start of a move lands on the spot even when the tween
     // itself has a duration.
     if (move) {
-      state.actionX = move.from.x;
-      state.actionY = move.from.y;
+      motion.actionX = move.from.x;
+      motion.actionY = move.from.y;
     }
     this.updateCharacterState(state);
+    this.updateSlotMotion(slot);
 
     // `_GenSlotActionTw`: NeedSkipAnimation(duration) makes the shake branch
     // return null -- shake (and shakemove's shake half) only exists with a
     // positive duration.
     if (
       (input.action === "shake" || input.action === "shakemove") &&
-      durationMs > 0
+      movementMs > 0
     ) {
-      this.startShakeAction(state, {
-        durationMs,
-        power: Math.max(0, input.power ?? 0),
-        randomness: input.randomness ?? 10,
-        stop: Boolean(input.stop),
-        times: input.times ?? 0,
-      });
+      this.startShakeAction(
+        state,
+        {
+          durationMs: movementMs,
+          power: Math.max(0, input.power ?? 0),
+          randomness: input.randomness ?? 10,
+          stop: Boolean(input.stop),
+          times: input.times ?? 0,
+        },
+        { target: sequenceTarget },
+      );
     }
 
-    if (input.action === "jump")
+    if (input.action === "jump" && move && movementMs > 0)
       this.startJumpAction(
-        state,
+        slot,
+        move.to,
         Math.max(0, input.power ?? 0),
         input.times ?? 0,
-        durationMs,
+        movementMs,
+        { target: sequenceTarget },
       );
 
     // Native drives rotation from the standalone `angle` parameter segment
     // at the tail of `_UpdateSeqWithParam`; `action="rotate"` itself is an
     // unknown action in 2.7.61's `_GenSlotActionTw` (LogError + null).
     if (input.angle !== undefined) {
-      const sessionId = ++state.rotateSessionId;
-      const fromAngle = state.rotationDeg;
+      const sessionId = ++motion.rotateSessionId;
+      const fromAngle = motion.rotationDeg;
       const direction = input.inverse ? -1 : 1;
       const toAngle = direction * (input.angle + 360 * (input.circles ?? 0));
-      this.tween(state, durationMs, (progress) => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.rotateSessionId !== sessionId
-        )
-          return;
-        state.rotationDeg = fromAngle + (toAngle - fromAngle) * progress;
-        this.updateCharacterState(state);
-      });
+      this.tween(
+        state,
+        durationMs,
+        (progress) => {
+          if (motion.rotateSessionId !== sessionId) return;
+          motion.rotationDeg = fromAngle + (toAngle - fromAngle) * progress;
+          this.updateSlotMotion(slot);
+        },
+        undefined,
+        { target: sequenceTarget },
+      );
     }
 
     this.applyCharacterSlotOpacity(state, input, durationMs, built !== null);
@@ -934,67 +960,28 @@ export class CharacterView {
     // resets the zoom but leaves a running move alone, and a command whose
     // from == to starts nothing, so an in-flight tween of either kind
     // survives an unrelated command.
-    if (move && (move.from.x !== move.to.x || move.from.y !== move.to.y)) {
-      const sessionId = ++state.transformSessionId;
-      const moveDurationMs = input.action === "setpos" ? 0 : durationMs;
+    if (
+      move &&
+      (input.action !== "jump" || movementMs <= 0) &&
+      (move.from.x !== move.to.x || move.from.y !== move.to.y)
+    ) {
+      const moveDurationMs = input.action === "setpos" ? 0 : movementMs;
       const { from, to } = move;
       this.tween(
         state,
         moveDurationMs,
         (progress) => {
-          if (!this.isActiveCharacterState(state, sessionId)) return;
-          state.actionX = from.x + (to.x - from.x) * progress;
-          state.actionY = from.y + (to.y - from.y) * progress;
-          this.updateCharacterState(state);
+          motion.actionX = from.x + (to.x - from.x) * progress;
+          motion.actionY = from.y + (to.y - from.y) * progress;
+          this.updateSlotMotion(slot);
         },
-        () => {
-          if (!this.isActiveCharacterState(state, sessionId)) return;
-          state.actionX = to.x;
-          state.actionY = to.y;
-          this.updateCharacterState(state);
-        },
+        undefined,
+        { target: sequenceTarget },
       );
     }
 
-    if (
-      zoom &&
-      (zoom.from.scaleX !== zoom.to.scaleX ||
-        zoom.from.scaleY !== zoom.to.scaleY ||
-        zoom.from.shiftX !== zoom.to.shiftX ||
-        zoom.from.shiftY !== zoom.to.shiftY)
-    ) {
-      const sessionId = ++state.zoomSessionId;
-      const { from, to } = zoom;
-      this.tween(
-        state,
-        durationMs,
-        (progress) => {
-          if (
-            !this.isActiveCharacterState(state) ||
-            state.zoomSessionId !== sessionId
-          )
-            return;
-          state.scaleX = from.scaleX + (to.scaleX - from.scaleX) * progress;
-          state.scaleY = from.scaleY + (to.scaleY - from.scaleY) * progress;
-          state.zoomShiftX = from.shiftX + (to.shiftX - from.shiftX) * progress;
-          state.zoomShiftY = from.shiftY + (to.shiftY - from.shiftY) * progress;
-          this.updateCharacterState(state);
-        },
-        () => {
-          if (
-            !this.isActiveCharacterState(state) ||
-            state.zoomSessionId !== sessionId
-          )
-            return;
-          state.scaleX = to.scaleX;
-          state.scaleY = to.scaleY;
-          state.zoomShiftX = to.shiftX;
-          state.zoomShiftY = to.shiftY;
-          this.updateCharacterState(state);
-        },
-        { deferZeroDuration: true },
-      );
-    }
+    if (zoom)
+      this.tweenZoom(state, zoom, durationMs, { target: sequenceTarget });
   }
 
   /** Builds the scene holder from the same artwork used by cut-in slots. */
@@ -1051,37 +1038,29 @@ export class CharacterView {
     rotationLayer.addChild(visual);
     motionLayer.addChild(rotationLayer);
     root.addChild(motionLayer);
-    return {
-      actionX: 0,
-      actionY: 0,
+    const holder = this.slotHolders[slot].front;
+    const state: CharacterRenderState = {
       baseScaleX: 1,
       baseScaleY: 1,
       contentAlpha: 1,
       focusBrightness: 1,
       height: 0,
-      jumpOffsetY: 0,
-      jumpSessionId: 0,
+      holder,
+      motion: this.slotMotions[slot],
       motionLayer,
       opacitySessionId: 0,
-      outgoingVisual: null,
-      replaceFadeSessionId: 0,
       root,
-      rotationDeg: 0,
       rotationLayer,
-      rotateSessionId: 0,
       scaleX: 1,
       scaleY: 1,
-      shakeOffsetX: 0,
-      shakeOffsetY: 0,
-      shakeSessionId: 0,
       slot,
-      transformSessionId: 0,
       visual,
       width: 0,
-      zoomSessionId: 0,
       zoomShiftX: 0,
       zoomShiftY: 0,
     };
+    holder.state = state;
+    return state;
   }
 
   private attachSlotArt(
@@ -1094,13 +1073,9 @@ export class CharacterView {
     state.expression = input.expression;
     state.fadeIdentity = input.fadeIdentity ?? input.characterKey;
     state.height = art.height;
-    state.nativeKey = input.nativeKey;
     // _GenForeImageTween (2791 @ 0x184238ED0) targets the physical front
     // Image at creation. Earlier opacity tracks cannot write to this holder.
     state.opacitySessionId += 1;
-    // CharZoom (2791 @ 0x184236B10) holds the old RectTransform even
-    // when its targetless tween continues running after the swap.
-    state.zoomSessionId += 1;
     state.scaleX = 1;
     state.scaleY = 1;
     state.zoomShiftX = 0;
@@ -1116,94 +1091,44 @@ export class CharacterView {
     state.rotationLayer.addChild(art.visual);
   }
 
-  private mountCharacterSlot(
+  /**
+   * AVGCharacterSlot._SwapImages (2791 @ 0x18423A2E0) reuses the old back
+   * Image for incoming art. Each holder keeps its own image transform.
+   */
+  private swapArtwork(
     input: CharacterSlotInput,
     slot: CharacterSlot,
     built: CharacterBuiltVisual,
-  ): CharacterRenderState {
-    this.discardFadingSlot(slot);
-    const current = this.getSlotState(slot);
-    const previousVisual = current.root.parent ? current.visual : undefined;
-    if (!previousVisual) {
-      this.discardCharacterVisual(current.visual);
-      this.charLayer.addChild(current.root);
+  ): { front: CharacterRenderState; back?: CharacterRenderState } {
+    this.discardBackHolder(slot);
+    const current = this.characterSlots.get(slot);
+    const back = current?.root.parent ? current : undefined;
+    if (current && !back) this.disposeCharacterState(current);
+    this.swapImageHolders(slot);
+    this.slotHolders[slot].currentKey = input.nativeKey ?? input.characterKey;
+    const front = this.createSlotState(slot);
+    if (back) {
+      front.contentAlpha = back.contentAlpha;
+      front.focusBrightness = back.focusBrightness;
     }
-    // Native keeps one back Image; a swap mid-crossfade replaces it outright.
-    if (current.outgoingVisual && current.outgoingVisual !== previousVisual)
-      this.discardCharacterVisual(current.outgoingVisual);
-    current.outgoingVisual = null;
-
-    // `AVGCharacterSpriteHub._SetImage` (2791 @ 0x18423C580) and its HubGroup twin
-    // (0x18423B650) both open with `GUIUtils.AssignLocalSettings(
-    // m_image.rectTransform, hub.rectTransform)` which copies
-    // the hub prefab's sizeDelta/pivot/localScale/localRotation/localPosition
-    // onto the fore Image on every successful load -- exactly the pivot and
-    // localScale CharZoom's setter animates. A named swap therefore resets
-    // the zoom while the `_offset` move survives (resetOffsetPos=false). The
-    // outgoing Image keeps its own transform as it fades, so the previous
-    // visual carries the old zoom on itself (scaled back through the base
-    // ratio because the motion layer now holds the incoming art's base).
-    if (previousVisual) {
-      const baseScaleX = built.width / Math.max(1, built.sourceWidth);
-      const baseScaleY = built.height / Math.max(1, built.sourceHeight);
-      previousVisual.scale.set(
-        (current.scaleX * current.baseScaleX) / Math.max(1e-6, baseScaleX),
-        (current.scaleY * current.baseScaleY) / Math.max(1e-6, baseScaleY),
+    this.discardCharacterVisual(front.visual);
+    this.attachSlotArt(front, input, built);
+    this.characterSlots.set(slot, front);
+    if (back) {
+      this.charLayer.addChildAt(
+        front.root,
+        this.charLayer.getChildIndex(back.root) + 1,
       );
-      previousVisual.position.set(
-        current.zoomShiftX / Math.max(1e-6, baseScaleX),
-        -current.zoomShiftY / Math.max(1e-6, baseScaleY),
-      );
+    } else {
+      this.charLayer.addChild(front.root);
     }
-    this.attachSlotArt(current, input, built);
+    this.sceneEffects.setImageFocusTargets(slot, front.visual, back?.visual);
+    return { front, back };
+  }
 
-    // Native crossfade: `_SlotSetCharInternal` runs the outgoing sprite's
-    // fade-out immediately, while the incoming sprite's afrom->ato tween (the
-    // same tween `applyCharacterSlotOpacity` drives through contentAlpha) is
-    // the crossfade itself. Its length is `duration` -- `fadetime` is not a
-    // charslot key. The incoming visual therefore starts at the current
-    // contentAlpha (set to `afrom` right after by the caller) and only the
-    // outgoing visual gets a dedicated fade here.
-    const fadeMs = Math.max(0, input.replaceFadeMs ?? 0);
-    built.visual.alpha = clamp01(current.contentAlpha);
-    this.sceneEffects.setImageFocusTargets(
-      slot,
-      built.visual,
-      fadeMs > 0 && previousVisual !== built.visual
-        ? previousVisual
-        : undefined,
-    );
-    if (previousVisual && previousVisual !== built.visual && fadeMs > 0) {
-      const sessionId = ++current.replaceFadeSessionId;
-      const previousAlpha = previousVisual.alpha;
-      current.outgoingVisual = previousVisual;
-      this.tween(
-        current,
-        fadeMs,
-        (progress) => {
-          if (
-            !this.isActiveCharacterState(current) ||
-            current.replaceFadeSessionId !== sessionId
-          )
-            return;
-          previousVisual.alpha = previousAlpha * (1 - progress);
-        },
-        () => {
-          if (
-            !this.isActiveCharacterState(current) ||
-            current.replaceFadeSessionId !== sessionId
-          )
-            return;
-          if (current.outgoingVisual === previousVisual)
-            current.outgoingVisual = null;
-          this.discardCharacterVisual(previousVisual);
-        },
-      );
-    } else if (previousVisual && previousVisual !== built.visual) {
-      this.discardCharacterVisual(previousVisual);
-    }
-
-    return current;
+  private swapImageHolders(slot: CharacterSlot): void {
+    const pair = this.slotHolders[slot];
+    [pair.front, pair.back] = [pair.back, pair.front];
   }
 
   /**
@@ -1335,7 +1260,7 @@ export class CharacterView {
 
   private applyCharacterSlotOpacity(
     state: CharacterRenderState,
-    input: CharacterSlotInput,
+    input: Pick<CharacterSlotInput, "alphaFrom" | "alphaTo">,
     durationMs: number,
     hasNewArt: boolean,
   ): void {
@@ -1442,12 +1367,7 @@ export class CharacterView {
    * sibling order is: focus 1 -> [r, m, l], focus 2 -> [l, m, r],
    * otherwise -> [l, r, m].
    *
-   * Raising each tracked root to the top in that order also keeps roots that
-   * are mid cross-fade below the live ones: they are no longer tracked slots,
-   * so nothing lifts them back up. Computing fixed target indices instead
-   * would not -- `setChildIndex` splices, so each move shifts the indices the
-   * later moves were computed against, and an outgoing root ends up wedged
-   * between two live slots.
+   * The native call moves the slot transform with both image holders.
    */
   private applyCharacterZOrder(focus: number): void {
     const ufocus = focus >>> 0;
@@ -1455,9 +1375,15 @@ export class CharacterView {
     if (ufocus === 1) order = ["r", "m", "l"];
     else if (ufocus === 2) order = ["l", "m", "r"];
     for (const slot of order) {
-      const root = this.characterSlots.get(slot)?.root;
-      if (!root || root.parent !== this.charLayer) continue;
-      this.charLayer.setChildIndex(root, this.charLayer.children.length - 1);
+      const back = this.backHolders.get(slot)?.root;
+      const front = this.characterSlots.get(slot)?.root;
+      for (const root of [back, front]) {
+        if (root?.parent === this.charLayer)
+          this.charLayer.setChildIndex(
+            root,
+            this.charLayer.children.length - 1,
+          );
+      }
     }
   }
 
@@ -1465,7 +1391,7 @@ export class CharacterView {
     state: CharacterRenderState,
     durationMs: number,
   ): void {
-    this.fadingStates.add(state);
+    this.backHolders.set(state.slot, state);
     const startAlpha = state.root.alpha;
     this.tween(
       state,
@@ -1474,19 +1400,33 @@ export class CharacterView {
         state.root.alpha = startAlpha * (1 - progress);
       },
       () => this.disposeCharacterState(state),
+      { deferZeroDuration: true },
     );
   }
 
   private updateCharacterState(state: CharacterRenderState): void {
-    state.motionLayer.x = state.actionX + state.zoomShiftX + state.shakeOffsetX;
-    state.motionLayer.y =
-      state.shakeOffsetY - state.actionY - state.zoomShiftY - state.jumpOffsetY;
+    this.applySlotMotion(state);
     state.motionLayer.scale.set(
       state.baseScaleX * state.scaleX,
       state.baseScaleY * state.scaleY,
     );
-    state.rotationLayer.rotation = (state.rotationDeg * Math.PI) / 180;
     this.updateCharacterOpacity(state);
+  }
+
+  private applySlotMotion(state: CharacterRenderState): void {
+    const { motion } = state;
+    state.motionLayer.x =
+      motion.actionX + state.zoomShiftX + motion.shakeOffsetX;
+    state.motionLayer.y =
+      motion.shakeOffsetY - motion.actionY - state.zoomShiftY;
+    state.rotationLayer.rotation = (motion.rotationDeg * Math.PI) / 180;
+  }
+
+  private updateSlotMotion(slot: CharacterSlot): void {
+    const front = this.characterSlots.get(slot);
+    if (front) this.applySlotMotion(front);
+    const back = this.backHolders.get(slot);
+    if (back) this.applySlotMotion(back);
   }
 
   private updateCharacterOpacity(state: CharacterRenderState): void {
@@ -1498,7 +1438,9 @@ export class CharacterView {
   }
 
   private disposeCharacterState(state: CharacterRenderState): void {
-    this.fadingStates.delete(state);
+    if (this.backHolders.get(state.slot) === state)
+      this.backHolders.delete(state.slot);
+    if (state.holder.state === state) state.holder.state = undefined;
     this.tweens.killTarget(state);
     for (const child of [...state.rotationLayer.children])
       this.discardCharacterVisual(child);
@@ -1530,11 +1472,12 @@ export class CharacterView {
     }
   }
 
-  private stopShakeAction(state: CharacterRenderState): void {
-    state.shakeSessionId += 1;
-    state.shakeOffsetX = 0;
-    state.shakeOffsetY = 0;
-    this.updateCharacterState(state);
+  private stopShakeAction(slot: CharacterSlot): void {
+    const motion = this.slotMotions[slot];
+    motion.shakeSessionId += 1;
+    motion.shakeOffsetX = 0;
+    motion.shakeOffsetY = 0;
+    this.updateSlotMotion(slot);
   }
 
   /**
@@ -1542,8 +1485,7 @@ export class CharacterView {
    * displacement (cur + (x, y)); a zero fadeTime applies it instantly and
    * returns a null tween, which is why `block` only waits when there is a
    * tween to wait for. The tween runs `DOLocalMove(...).SetEase(Ease.OutCubic)`,
-   * so the move branch eases with OutCubic; the jump branch passes its own
-   * per-axis curves (see `runCharacterAction`'s jump case).
+   * so the move branch eases with OutCubic on both axes.
    */
   private startMoveAction(
     state: CharacterRenderState,
@@ -1554,96 +1496,96 @@ export class CharacterView {
     easeY: EaseCurve = ease,
     completion?: TweenStartOptions,
   ): void {
-    const fromX = state.actionX;
-    const fromY = state.actionY;
-    const toX = fromX + xOffset;
-    const toY = fromY + yOffset;
-    const sessionId = ++state.transformSessionId;
-
-    this.tween(
-      state,
+    this.tweenSlotPosition(
+      state.slot,
+      state.motion.actionX + xOffset,
+      state.motion.actionY + yOffset,
       durationMs,
-      (progress) => {
-        if (!this.isActiveCharacterState(state, sessionId)) return;
-        state.actionX = fromX + (toX - fromX) * ease(progress);
-        state.actionY = fromY + (toY - fromY) * easeY(progress);
-        this.updateCharacterState(state);
-      },
-      () => {
-        if (!this.isActiveCharacterState(state, sessionId)) return;
-        state.actionX = toX;
-        state.actionY = toY;
-        this.updateCharacterState(state);
-      },
+      ease,
+      easeY,
       completion,
     );
   }
 
-  /**
-   * Native port: AVGCharacterSlot.CharZoom (2791 @ 0x184236B10) as reached from
-   * `_ExecuteCharacterAction`. xpos/ypos are the [0,1] pivot of the character
-   * image (runtime already rejected out-of-range values, which native turns
-   * into a whole-command no-op); an absent pivot keeps the (0.5,0.5) center.
-   * The pivot point stays where the resting rect was centred while localScale
-   * tweens, so the motion layer gets the same shift compensation the
-   * `charslot` zoom uses (see `characterSlotZoom`):
-   *   (0.5 - pivot) * scale * size - (scale - 1) * size / 2
-   * (shiftY is stored in Unity's y-up and negated on apply). Zoom runs on its
-   * own session so it supersedes a running zoom without touching a move.
-   */
+  private tweenSlotPosition(
+    slot: CharacterSlot,
+    toX: number,
+    toY: number,
+    durationMs: number,
+    easeX: EaseCurve,
+    easeY: EaseCurve,
+    options?: TweenStartOptions,
+    jumpArc?: EaseCurve,
+  ): void {
+    const motion = this.slotMotions[slot];
+    let start: CharacterSlotPoint | undefined;
+    this.tween(
+      this.slotActionTargets[slot].offset,
+      durationMs,
+      (progress) => {
+        // DOTween samples the fixed transform when the tween first updates.
+        // Overlapping moves write in the runner's active order.
+        const { x, y } = (start ??= { x: motion.actionX, y: motion.actionY });
+        motion.actionX = x + (toX - x) * easeX(progress);
+        motion.actionY =
+          y + (toY - y) * easeY(progress) + (jumpArc?.(progress) ?? 0);
+        this.updateSlotMotion(slot);
+      },
+      undefined,
+      options,
+    );
+  }
+
   private runScaleAction(
     state: CharacterRenderState,
     scaleX: number | undefined,
     scaleY: number | undefined,
-    pivot: { x: number; y: number } | undefined,
+    pivot: CharacterSlotPoint | undefined,
     durationMs: number,
-    completion: TweenStartOptions | undefined,
+    completion: TweenStartOptions,
   ): void {
-    const fromScaleX = state.scaleX;
-    const fromScaleY = state.scaleY;
-    const fromShiftX = state.zoomShiftX;
-    const fromShiftY = state.zoomShiftY;
-    const toScaleX = isFiniteNumber(scaleX) ? scaleX : state.scaleX;
-    const toScaleY = isFiniteNumber(scaleY) ? scaleY : state.scaleY;
-    const pivotX = pivot?.x ?? 0.5;
-    const pivotY = pivot?.y ?? 0.5;
-    const toShiftX =
-      (0.5 - pivotX) * toScaleX * state.width -
-      ((toScaleX - 1) * state.width) / 2;
-    const toShiftY =
-      (0.5 - pivotY) * toScaleY * state.height +
-      ((toScaleY - 1) * state.height) / 2;
-    const sessionId = ++state.zoomSessionId;
+    const zoom = characterZoom(
+      isFiniteNumber(scaleX) ? scaleX : state.scaleX,
+      isFiniteNumber(scaleY) ? scaleY : state.scaleY,
+      pivot,
+    );
+    this.tweenZoom(state, zoom, durationMs, completion);
+  }
 
+  /**
+   * CharZoom (2791 @ 0x184236B10) captures the physical RectTransform
+   * in its setter (0x18424A230). A later load can put new art in that holder.
+   * Interpolate the Web pivot shift in portrait-relative units.
+   */
+  private tweenZoom(
+    state: CharacterRenderState,
+    to: CharacterSlotZoomState,
+    durationMs: number,
+    options: TweenStartOptions,
+  ): void {
+    const { holder } = state;
+    const from = {
+      scaleX: state.scaleX,
+      scaleY: state.scaleY,
+      shiftX: state.zoomShiftX / (state.width || 1),
+      shiftY: state.zoomShiftY / (state.height || 1),
+    };
     this.tween(
-      state,
+      holder,
       durationMs,
       (progress) => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.zoomSessionId !== sessionId
-        )
-          return;
-        state.scaleX = fromScaleX + (toScaleX - fromScaleX) * progress;
-        state.scaleY = fromScaleY + (toScaleY - fromScaleY) * progress;
-        state.zoomShiftX = fromShiftX + (toShiftX - fromShiftX) * progress;
-        state.zoomShiftY = fromShiftY + (toShiftY - fromShiftY) * progress;
-        this.updateCharacterState(state);
+        const image = holder.state;
+        if (!image) return;
+        image.scaleX = from.scaleX + (to.scaleX - from.scaleX) * progress;
+        image.scaleY = from.scaleY + (to.scaleY - from.scaleY) * progress;
+        image.zoomShiftX =
+          (from.shiftX + (to.shiftX - from.shiftX) * progress) * image.width;
+        image.zoomShiftY =
+          (from.shiftY + (to.shiftY - from.shiftY) * progress) * image.height;
+        this.updateCharacterState(image);
       },
-      () => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.zoomSessionId !== sessionId
-        )
-          return;
-        state.scaleX = toScaleX;
-        state.scaleY = toScaleY;
-        state.zoomShiftX = toShiftX;
-        state.zoomShiftY = toShiftY;
-        this.updateCharacterState(state);
-      },
-      // CharZoom (2791 @ 0x184236B10) creates DOTween.To at zero duration.
-      { ...completion, deferZeroDuration: true },
+      undefined,
+      { ...options, deferZeroDuration: true },
     );
   }
 
@@ -1693,97 +1635,47 @@ export class CharacterView {
       [toX, toY] = [0, 0];
     }
 
-    const fromX = state.actionX;
-    const fromY = state.actionY;
-    const sessionId = ++state.transformSessionId;
-
-    this.tween(
-      state,
+    this.tweenSlotPosition(
+      state.slot,
+      toX,
+      toY,
       durationMs,
-      (progress) => {
-        if (!this.isActiveCharacterState(state, sessionId)) return;
-        const eased = easeOutCubic(progress);
-        state.actionX = fromX + (toX - fromX) * eased;
-        state.actionY = fromY + (toY - fromY) * eased;
-        this.updateCharacterState(state);
-      },
-      () => {
-        if (!this.isActiveCharacterState(state, sessionId)) return;
-        state.actionX = toX;
-        state.actionY = toY;
-        this.updateCharacterState(state);
-      },
+      easeOutCubic,
+      easeOutCubic,
       completion,
     );
   }
 
   /**
-   * Native port: AVGCharacterSlot.CharJump (2791 @ 0x184236650) →
-   * DOTween DOLocalJump (0x184431260), which is a Sequence of three tweens
-   * that all start together and last fadeTime in total:
-   * - x: `DOLocalMove`-style tween, `SetEase(Ease.Linear)`, cur.x → cur.x+xpos
-   *   over the whole duration (the horizontal move of the jump);
-   * - y: relative `+jumpPower` tween of duration/(2*times) with
-   *   `SetEase(Ease.OutQuad).SetLoops(2*times, LoopType.Yoyo)` — each jump
-   *   rises OutQuad to jumpPower in half a jump period and replays the same
-   *   eased arc backwards on the way down (`times < 1` clamps to 1);
-   * - z: Linear tween to the unchanged z (a no-op here).
-   * This method drives only the arc; the x/y displacement is the move tween
-   * started next to it. CharJump chains `SetEase(Ease.OutCubic)` on the
-   * returned Sequence, and `Sequence.DoApplyTween` (0x18442BE00) evaluates
-   * that ease on the sequence position before ApplyInternalCycle hands it to
-   * the nested tweens, so the yoyo samples OutCubic-warped time (the bounces
-   * bunch up early). `_GenCharslotJump` reaches the same CharJump, so the
-   * charslot jump shares this arc.
+   * CharJump (2791 @ 0x184236650) creates DOLocalJump (0x184431260) on
+   * the fixed offset. The Sequence applies OutCubic to its time
+   * (Sequence.DoApplyTween @ 0x18442BE00). The X track is linear and the
+   * Y setter combines the OutQuad displacement with an OutQuad yoyo arc.
    */
   private startJumpAction(
-    state: CharacterRenderState,
+    slot: CharacterSlot,
+    to: CharacterSlotPoint,
     power: number,
     times: number,
     durationMs: number,
     completion?: TweenStartOptions,
   ): void {
-    const sessionId = ++state.jumpSessionId;
-    state.jumpOffsetY = 0;
-    this.updateCharacterState(state);
-
-    // Native DOLocalJump always creates the y arc tween; a power of 0 is a
-    // flat arc (visual no-op) and a negative power bounces downward, so only
-    // a non-positive duration skips it (the runtime degenerates that case to
-    // a move anyway — this is a defensive guard).
-    if (durationMs <= 0) return;
-
     const cycles = Math.max(1, times);
-    const halfCycleProgress = 1 / (cycles * 2);
-    this.tween(
-      state,
+    this.tweenSlotPosition(
+      slot,
+      to.x,
+      to.y,
       durationMs,
+      easeOutCubic,
+      (progress) => easeOutQuad(easeOutCubic(progress)),
+      completion,
       (progress) => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.jumpSessionId !== sessionId
-        )
-          return;
-        // Position inside the 2*times yoyo cycle list; even cycles play the
-        // OutQuad arc forward, odd cycles replay it backwards.
-        const cyclePos =
-          Math.min(easeOutCubic(progress), 1) / halfCycleProgress;
+        const cyclePos = easeOutCubic(progress) * cycles * 2;
         const cycle = Math.floor(cyclePos);
         const frac = cyclePos - cycle;
         const arc = cycle % 2 === 0 ? easeOutQuad(frac) : easeOutQuad(1 - frac);
-        state.jumpOffsetY = power * arc;
-        this.updateCharacterState(state);
+        return power * arc;
       },
-      () => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.jumpSessionId !== sessionId
-        )
-          return;
-        state.jumpOffsetY = 0;
-        this.updateCharacterState(state);
-      },
-      completion,
     );
   }
 
@@ -1811,12 +1703,13 @@ export class CharacterView {
     >,
     completion?: TweenStartOptions,
   ): void {
-    this.stopShakeAction(state);
+    const { motion, slot } = state;
+    this.stopShakeAction(slot);
     // `stop` is a web extension: native has no such key, so it only needs to
     // cancel above without producing a tween.
     if (input.stop) return;
 
-    const sessionId = state.shakeSessionId;
+    const sessionId = motion.shakeSessionId;
     const durationMs = Math.max(input.durationMs, 0);
     // Random.Range(-r, r) with a negative r still spans [-|r|, |r|].
     const path = buildShakePath(durationMs, {
@@ -1832,41 +1725,23 @@ export class CharacterView {
       state,
       durationMs,
       (progress) => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.shakeSessionId !== sessionId
-        )
-          return;
+        if (motion.shakeSessionId !== sessionId) return;
         const offset = sampleShakePath(path, progress);
-        state.shakeOffsetX = offset.x;
-        state.shakeOffsetY = -offset.y;
-        this.updateCharacterState(state);
+        motion.shakeOffsetX = offset.x;
+        motion.shakeOffsetY = -offset.y;
+        this.updateSlotMotion(slot);
       },
       () => {
-        if (
-          !this.isActiveCharacterState(state) ||
-          state.shakeSessionId !== sessionId
-        )
-          return;
-        state.shakeOffsetX = 0;
-        state.shakeOffsetY = 0;
-        this.updateCharacterState(state);
+        if (motion.shakeSessionId !== sessionId) return;
+        motion.shakeOffsetX = 0;
+        motion.shakeOffsetY = 0;
+        this.updateSlotMotion(slot);
       },
       completion,
     );
   }
 
-  private isActiveCharacterState(
-    state: CharacterRenderState,
-    transformSessionId?: number,
-  ): boolean {
-    const current = this.characterSlots.get(state.slot);
-    if (current !== state) return false;
-    if (
-      transformSessionId !== undefined &&
-      state.transformSessionId !== transformSessionId
-    )
-      return false;
-    return true;
+  private isActiveCharacterState(state: CharacterRenderState): boolean {
+    return this.characterSlots.get(state.slot) === state;
   }
 }

@@ -103,12 +103,10 @@ export class CharacterPanel extends ExecutorComponent {
         // have already changed in native too; the rest never run.
         if (resolution.kind === "native_throws")
           return warnNativeSlotThrows(this.playback.warn, update.name, line);
-        if (resolution.kind === "missing") {
+        if (resolution.kind === "missing")
           this.playback.warn("missing_asset", `character: ${update.name}`);
-          void this.renderer.clearCharacters(update.slot, durationMs);
-          continue;
-        }
-        const resolved = resolution.selection;
+        const resolved =
+          resolution.kind === "found" ? resolution.selection : undefined;
         const enterFrom = this.parseEnterDirection(update.enter);
         // Native `_ProcessSlotWithParam` takes xpos/ypos as the slide-in
         // start -- a slot-local offset that `SetCharPos` tweens back to
@@ -128,7 +126,7 @@ export class CharacterPanel extends ExecutorComponent {
           blackEnd: toNumber(update.blackEnd, Number.NaN),
           blackStart: toNumber(update.blackStart, Number.NaN),
           block,
-          characterKey: resolved.base,
+          characterKey: resolved?.base,
           // Native: LEFT/MIDDLE use `(unsigned)focus <= 1 -> focusColor`,
           // RIGHT uses `(focus & 0xFFFFFFFD) == 0 -> focusColor`.
           dimmed:
@@ -136,7 +134,7 @@ export class CharacterPanel extends ExecutorComponent {
           durationMs,
           enterFrom,
           enterPosition,
-          expression: resolved.expression,
+          expression: resolved?.expression,
           fadeIdentity: nativeCharacterFadeIdentity(update.name),
           focus,
           nativeKey: update.name,
