@@ -22,8 +22,6 @@ type SpellStickerResult = "continue" | WaitForClick;
  * Playback owns the auto-click clock and the renderer plays each view's clip.
  */
 export class SpellStickerPanel extends ExecutorComponent {
-  private blockingStickerId: string | null = null;
-
   constructor(
     private readonly renderer: Pick<
       StoryRenderer,
@@ -42,32 +40,28 @@ export class SpellStickerPanel extends ExecutorComponent {
     };
   }
 
+  /** OnReset / ShouldResetOnSkip (2791 @ 0x1841B2B60 / 0x1841B2C80). */
   reset(): Promise<void> | void {
-    this.blockingStickerId = null;
     return this.renderer.clearSpellStickers();
   }
 
   // _OnClicked / ForceCommandEnd (2791 @ 0x1841B43F0 / 0x1841B27A0).
-  // Clear the id before the view callback so a same-frame skip hides it once.
-  private readonly hideBlocking = (): void => {
-    const id = this.blockingStickerId;
-    this.blockingStickerId = null;
-    if (id !== null) this.renderer.hideSpellSticker(id);
-  };
-
-  protected override forceCommandEnd(): void {
-    this.hideBlocking();
+  // Both paths consume this wait's sticker before touching the view.
+  private waitForClick(id?: string, durationMs?: number | void): WaitForClick {
+    this.playback.scheduleAutoClick(
+      typeof durationMs === "number" && durationMs > 0 ? durationMs : undefined,
+    );
+    let pendingId = id;
+    const hide = () => {
+      const stickerId = pendingId;
+      pendingId = undefined;
+      if (stickerId !== undefined) this.renderer.hideSpellSticker(stickerId);
+    };
+    return {
+      forceEnd: hide,
+      handleClick: (finishCommand) => finishCommand({ onClick: hide }),
+    };
   }
-
-  private readonly clickWait: WaitForClick = {
-    handleClick: (finishCommand) => {
-      finishCommand(
-        this.blockingStickerId === null
-          ? undefined
-          : { onClick: this.hideBlocking },
-      );
-    },
-  };
 
   private executeSticker(
     line: ParsedCommandLine,
@@ -101,13 +95,7 @@ export class SpellStickerPanel extends ExecutorComponent {
         });
     const complete = (durationMs: number | void): SpellStickerResult => {
       if (!block || !isCurrent()) return "continue";
-      this.blockingStickerId = hide ? null : id;
-      this.playback.scheduleAutoClick(
-        typeof durationMs === "number" && durationMs > 0
-          ? durationMs
-          : undefined,
-      );
-      return this.clickWait;
+      return this.waitForClick(hide ? undefined : id, durationMs);
     };
     return render instanceof Promise ? render.then(complete) : complete(render);
   }
@@ -122,8 +110,7 @@ export class SpellStickerPanel extends ExecutorComponent {
     const render = this.reset();
     const complete = (): SpellStickerResult => {
       if (!block || !isCurrent()) return "continue";
-      this.playback.scheduleAutoClick();
-      return this.clickWait;
+      return this.waitForClick();
     };
     return render instanceof Promise ? render.then(complete) : complete();
   }

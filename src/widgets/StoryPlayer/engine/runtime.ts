@@ -1,11 +1,7 @@
 import mitt, { type Handler } from "mitt";
 
 import { DecisionCommandPredicator } from "./DecisionCommandPredicator";
-import {
-  normalizeImageKey,
-  resolveStoryAudioByKey,
-  resolveStoryVideoByKey,
-} from "./asset";
+import { normalizeImageKey, resolveStoryAudioByKey } from "./asset";
 import {
   type CharacterRefResolution,
   nativeCharacterFadeIdentity,
@@ -51,6 +47,7 @@ import { ShowItemPanel } from "./panels/ShowItemPanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerPanel } from "./panels/StickerPanel";
 import { SubtitlePanel } from "./panels/SubtitlePanel";
+import { VideoPanel } from "./panels/VideoPanel";
 import { parseScript } from "./parser";
 import { expandStoryText } from "./textVariables";
 
@@ -130,7 +127,6 @@ const QUICK_AUTO_SPEEDS: readonly AutoSpeed[] = [
 
 const builtinCommandNames = [
   "delay",
-  "video",
   "skipnode",
   "skiptothis",
   "label",
@@ -482,6 +478,11 @@ export class StoryRuntime {
     this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
+    new VideoPanel(renderer, {
+      missingVideoUrls: context.missingVideoUrls,
+      waitForPlayback: (start, stop) => this.waitForVideoPlayback(start, stop),
+      warn: (type, detail) => this.warn(type, detail),
+    }).register(this.commandRegistry);
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -941,6 +942,39 @@ export class StoryRuntime {
     return completion;
   }
 
+  private waitForVideoPlayback(
+    start: (onEnd: () => void) => void,
+    stop: () => void,
+  ): WaitForFrame {
+    const generation = this.playbackGeneration;
+    const finish = createExecutionHandle(true);
+    let cancelFrameEnd: (() => void) | undefined;
+    // AVGVideoPanel.ForceCommandEnd (2791 @ 0x1841BDC40) hides and disposes
+    // the media. Web stops immediately and cancels queued frame-end work.
+    const forceEnd = () => {
+      finish.end("force_end");
+      cancelFrameEnd?.();
+      stop();
+    };
+
+    this.state = "waiting_video";
+    try {
+      start(() => {
+        if (finish.endReason !== undefined || cancelFrameEnd) return;
+        // AVGVideoPanel._HandlePlayEvent (2791 @ 0x1841BE7D0) schedules
+        // FinishCommand via InvokeEndOfFrame for both PLAYEND and ERROR.
+        cancelFrameEnd = this.finishAtFrameEnd(finish);
+      });
+    } catch (error) {
+      forceEnd();
+      throw error;
+    }
+
+    // A synchronous renderer callback can end the story before it binds the wait.
+    if (this.destroyed || this.playbackGeneration !== generation) forceEnd();
+    return { forceEnd, isComplete: () => finish.endReason !== undefined };
+  }
+
   private finishAtFrameEnd(
     handle: ExecutionHandle,
     onFinish?: () => void,
@@ -1316,8 +1350,7 @@ export class StoryRuntime {
         const result =
           execution instanceof Promise ? await execution : execution;
         if (this.destroyed) return;
-        // A skipped executor can still return a stale input wait. Its click
-        // follow-up (spellsticker block) travels with the dropped handler.
+        // A skipped executor can still return a wait from the previous segment.
         if (!isCurrent()) continue;
         if (result === "continue") continue;
 
@@ -1625,65 +1658,6 @@ export class StoryRuntime {
           Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
         );
         return "continue";
-      }
-
-      case "video": {
-        // Native port: Torappu.AVG.AVGVideoPanel._ExecuteVideo / _PlayVideo
-        // (2.7.61: still the legacy bool executor, consumed by the new
-        // ExecutorComponent.Execute(Command, Action) adapter). `url` takes
-        // priority; an http(s) value is emitted verbatim like native
-        // (0x183E68AAD), while any other value goes through the same CDN
-        // normalization as `res` — a web delivery adaptation, native never
-        // converts `url`.
-        const url = toString(this.exactArg(args, "url"));
-        const res = toString(this.exactArg(args, "res"));
-        if (!url && !res) {
-          // Native: DLog.LogError("[AVG.Video] No url or res!") + return
-          // false → ExecutorComponent.Execute finishes the command
-          // synchronously in the same frame (0x183E45C12); no blocking state
-          // is ever entered.
-          this.warn("invalid_parameter", "video: no url or res");
-          return "continue";
-        }
-
-        const resolved = url
-          ? resolveStoryVideoByKey(url)
-          : resolveStoryVideoByKey(res);
-        if (!resolved) {
-          this.warn("missing_asset", `video: ${url || res}`);
-          return "continue";
-        }
-
-        // Native port: VideoManager.CheckVideoExist (0x183B2FDB0) gates the
-        // `res` branch before playback; a miss raises
-        // Toast(NO_VIDEO_MESSAGE) and _PlayVideo returns false so the command
-        // ends in the same frame (0x183E689FC) without blocking. The `url`
-        // branch has no such check in native. Web adaptation: the existence
-        // answer is HEAD-probed while the context loads
-        // (`findMissingVideoUrls`), so this stays a synchronous lookup like
-        // the native RawResManager one; onWarning is the Toast equivalent.
-        if (!url && this.context.missingVideoUrls?.has(resolved)) {
-          this.warn("missing_asset", `video: ${res}`);
-          return "continue";
-        }
-
-        this.state = "waiting_video";
-        const finish = createExecutionHandle(true);
-        let cancelFrameEnd: (() => void) | undefined;
-        this.renderer.playVideo(resolved, () => {
-          if (finish.endReason !== undefined || cancelFrameEnd) return;
-          // PLAYEND/ERROR calls InvokeEndOfFrame before releasing the
-          // executor. The following Update may advance the command loop.
-          cancelFrameEnd = this.finishAtFrameEnd(finish);
-        });
-        return {
-          isComplete: () => finish.endReason !== undefined,
-          forceEnd: () => {
-            finish.end("force_end");
-            cancelFrameEnd?.();
-            this.renderer.stopVideo();
-          },
-        };
       }
 
       case "theater": {

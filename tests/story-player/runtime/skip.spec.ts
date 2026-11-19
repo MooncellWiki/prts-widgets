@@ -172,6 +172,56 @@ describe("StoryRuntime", () => {
     expect(runtime.canSkipNode()).toBe(false);
   });
 
+  it("discards a queued video completion on SkipToThis and ignores late events", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const play = vi.spyOn(renderer, "playVideo");
+    const stop = vi.spyOn(renderer, "stopVideo");
+    const frameEnd = vi.spyOn(renderer, "onFrameEnd");
+    const runtime = new StoryRuntime(
+      createContext([
+        '[video(res="video/old")]',
+        "[SkipToThis]",
+        '[video(res="video/current")]',
+        '[name="A"]after',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+    const started = runtime.start();
+    let skipping: Promise<void> | undefined;
+    try {
+      const endOldVideo = play.mock.calls[0]![1];
+      endOldVideo();
+      endOldVideo();
+      expect(frameEnd).toHaveBeenCalledTimes(1);
+
+      skipping = runtime.skipNode();
+      expect(stop).toHaveBeenCalledExactlyOnceWith();
+      await setImmediate();
+      await renderer.frames.advance(16);
+      expect(renderer.videoCalls).toEqual([
+        "https://torappu.prts.wiki/assets/video/old",
+        "https://torappu.prts.wiki/assets/video/current",
+      ]);
+
+      endOldVideo();
+      await renderer.frames.advance(16, 16);
+      expect(frameEnd).toHaveBeenCalledTimes(1);
+      expect(runtime.getState()).toBe("waiting_video");
+      expect(renderer.dialogueTexts).toEqual([]);
+
+      renderer.finishVideo();
+      await renderer.frames.advance(16, 16);
+      await skipping;
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(runtime.getDisplayedLineIndex()).toBe(4);
+    } finally {
+      runtime.destroy();
+      await Promise.all([started, skipping]);
+    }
+  });
+
   it("maps unrecognized skipnode modes to can-skip like native CalSkipMode", async () => {
     const warnings: RuntimeWarning[] = [];
     const runtime = new StoryRuntime(

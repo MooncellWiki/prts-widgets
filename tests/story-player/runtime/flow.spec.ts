@@ -689,6 +689,33 @@ describe("StoryRuntime", () => {
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "after" });
   });
 
+  it("stops the video if starting playback throws after mounting it", async () => {
+    const renderer = new FakeRenderer();
+    const startVideo = renderer.playVideo.bind(renderer);
+    vi.spyOn(renderer, "playVideo").mockImplementation((url, onEnd) => {
+      startVideo(url, onEnd);
+      throw new Error("video startup failed");
+    });
+    const onWarning = vi.fn();
+    const runtime = new StoryRuntime(
+      createContext(['[video(res="video/entry")]', '[name="A"]after']),
+      renderer,
+      new FakeAudio(),
+      { onWarning },
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("error");
+    expect(renderer.videoStopped).toBe(true);
+    expect(renderer.dialogueTexts).toEqual([]);
+    expect(onWarning).toHaveBeenCalledExactlyOnceWith({
+      cursor: 1,
+      detail: "video startup failed",
+      type: "error",
+    });
+  });
+
   it("ends the video command in-frame when the res asset is known missing", async () => {
     // Native: CheckVideoExist == false -> Toast(NO_VIDEO_MESSAGE) +
     // _PlayVideo returns false -> same-frame FinishCommand; the queue keeps
@@ -725,7 +752,7 @@ describe("StoryRuntime", () => {
     const runtime = new StoryRuntime(
       {
         ...createContext([
-          '[video(url="video/Custom.MP4")]',
+          '[video(url="video/Custom.MP4",res="video/fallback.mp4")]',
           '[name="A"]after',
         ]),
         missingVideoUrls: new Set([

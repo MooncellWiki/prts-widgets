@@ -1528,31 +1528,55 @@ describe("Displayable and focus frame order", () => {
     },
   );
 
-  it("continues from a media event on the update after frame end", async () => {
-    const draws: number[] = [];
-    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
-      ['[video(res="video/entry")]', '[cgitem(image="after")]', '[name="A"]ok'],
-      ({ cgItems }) => draws.push(cgItems.children.length),
-    );
-    const host = document.createElement("div");
-    renderer.videoPanel.mount(host);
-    const started = runtime.start();
-    try {
-      const video = host.querySelector("video")!;
-      expect(runtime.getState()).toBe("waiting_video");
-      expect(video).toBeInstanceOf(HTMLVideoElement);
+  it.each([
+    ...["ended", "error"].map((event) => ({
+      end: (video: HTMLVideoElement) => video.dispatchEvent(new Event(event)),
+      event,
+      play: () => Promise.resolve(),
+    })),
+    {
+      end: () => Promise.resolve(),
+      event: "play rejection",
+      play: () => Promise.reject(new Error("play refused")),
+    },
+  ])(
+    "continues from media $event on the update after frame end",
+    async ({ end, play }) => {
+      const draws: number[] = [];
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[video(res="video/entry")]',
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        ({ cgItems }) => draws.push(cgItems.children.length),
+      );
+      const playMock = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockImplementationOnce(play);
+      const host = document.createElement("div");
+      renderer.videoPanel.mount(host);
+      const started = runtime.start();
+      try {
+        const video = host.querySelector("video")!;
+        expect(runtime.getState()).toBe("waiting_video");
+        expect(video).toBeInstanceOf(HTMLVideoElement);
 
-      video.dispatchEvent(new Event("ended"));
-      app.ticker.update(16);
-      expect(runtime.getState()).toBe("running");
-      app.ticker.update(32);
-      expect(draws).toEqual([0, 1]);
-      await started;
-    } finally {
-      destroy();
-      await started;
-    }
-  });
+        await end(video);
+        expect(host.querySelector("video")).toBeNull();
+        expect(runtime.getState()).toBe("waiting_video");
+        app.ticker.update(16);
+        expect(runtime.getState()).toBe("running");
+        app.ticker.update(32);
+        expect(draws).toEqual([0, 1]);
+        await started;
+      } finally {
+        playMock.mockRestore();
+        destroy();
+        await started;
+      }
+    },
+  );
 
   it("force-ends a blocking focus wait while its channel continues after the skip", async () => {
     const draws: unknown[] = [];
