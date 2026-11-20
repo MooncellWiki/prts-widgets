@@ -186,10 +186,7 @@ describe("playmusic scheduling", () => {
     const secondClip = preloadSound("second");
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const audio = new HtmlStoryAudio(
-      context,
-      renderer.onFrameUpdate.bind(renderer),
-    );
+    const audio = new HtmlStoryAudio(context, renderer);
     const runtime = new StoryRuntime(context, renderer, audio);
 
     const started = runtime.start();
@@ -306,10 +303,7 @@ describe("playmusic scheduling", () => {
     const clip = preloadSound("track");
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const audio = new HtmlStoryAudio(
-      context,
-      renderer.onFrameUpdate.bind(renderer),
-    );
+    const audio = new HtmlStoryAudio(context, renderer);
     const runtime = new StoryRuntime(context, renderer, audio);
 
     const started = runtime.start();
@@ -899,6 +893,185 @@ describe("playsound delay and story reset", () => {
     });
   }
 
+  it("applies a zero-duration volume change on the first audio frame", async () => {
+    const context = createContext([
+      '[playmusic(key="track",delay=0.02)]',
+      "[musicvolume(volume=0.25)]",
+      '[name="A"]done',
+    ]);
+    const clip = preloadSound("track");
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new HtmlStoryAudio(context, renderer);
+    const runtime = new StoryRuntime(context, renderer, audio);
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(20);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(12);
+    renderer.frames.step(32);
+    expect(instance.volume).toBe(0.25);
+    expect(renderer.lastDialogue?.speaker).toBe("A");
+    expect(loads).toHaveLength(0);
+    runtime.destroy();
+    audio.destroy();
+  });
+
+  it("starts a delayed sound at the last audio frame's fade volume", async () => {
+    const context = createContext([
+      '[playsound(key="ambience",channel="c",loop=true,delay=0.05)]',
+      '[soundvolume(channel="c",volume=0,fadetime=0.125)]',
+      '[name="A"]done',
+    ]);
+    const clip = preloadSound("ambience");
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new HtmlStoryAudio(context, renderer);
+    const runtime = new StoryRuntime(context, renderer, audio);
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(32);
+    renderer.frames.step(32);
+    await vi.advanceTimersByTimeAsync(18);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBeCloseTo(1 - 32 / 125);
+
+    await vi.advanceTimersByTimeAsync(14);
+    renderer.frames.step(32);
+    expect(instance.volume).toBeCloseTo(1 - 64 / 125);
+    expect(instance.stopped).toBe(0);
+    expect(loads).toHaveLength(0);
+    runtime.destroy();
+    audio.destroy();
+  });
+
+  it("keeps a fading sound scheduled until the audio frame releases it", async () => {
+    const context = createContext([
+      '[playsound(key="ambience",channel="c",loop=true,delay=0.05)]',
+      '[stopsound(channel="c",fadetime=0.04)]',
+      '[name="A"]done',
+    ]);
+    const clip = preloadSound("ambience");
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new HtmlStoryAudio(context, renderer);
+    const runtime = new StoryRuntime(context, renderer, audio);
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(32);
+    renderer.frames.step(32);
+    await vi.advanceTimersByTimeAsync(18);
+    expect(clip.playCalls).toBe(1);
+    const { instance } = await settlePlayback(clip);
+    expect(instance.volume).toBeCloseTo(0.2);
+
+    await vi.advanceTimersByTimeAsync(14);
+    renderer.frames.step(32);
+    expect(instance.volume).toBe(0);
+    expect(instance.stopped).toBe(1);
+    expect(loads).toHaveLength(0);
+    runtime.destroy();
+    audio.destroy();
+  });
+
+  it("lets the script take over a fading sound when work overruns the frame timestamp", async () => {
+    const context = createContext([
+      '[playsound(key="ambience",channel="c",loop=true)]',
+      '[stopsound(channel="c",fadetime=0.0625)]',
+      "[delay(time=0)]",
+      '[soundvolume(channel="c",volume=0.75)]',
+      '[name="A"]done',
+    ]);
+    const clip = preloadSound("ambience");
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new HtmlStoryAudio(context, renderer);
+    const runtime = new StoryRuntime(context, renderer, audio);
+
+    const started = runtime.start();
+    const { instance } = await settlePlayback(clip);
+    // The 48 ms frame has reached its update callbacks after the fade deadline.
+    await vi.advanceTimersByTimeAsync(80);
+    renderer.frames.step(48);
+    await started;
+    expect(renderer.lastDialogue?.speaker).toBe("A");
+    expect(instance.stopped).toBe(0);
+    expect(instance.volume).toBeCloseTo(1 - 48 / 62.5);
+
+    await vi.advanceTimersByTimeAsync(16);
+    renderer.frames.step(48);
+    expect(instance.stopped).toBe(0);
+    expect(instance.volume).toBe(0.75);
+    expect(loads).toHaveLength(0);
+    runtime.destroy();
+    audio.destroy();
+  });
+
+  it("anchors a stop fade to the frame that releases the script delay", async () => {
+    const context = createContext([
+      '[playsound(key="ambience",channel="c",loop=true)]',
+      "[delay(time=0)]",
+      '[stopsound(channel="c",fadetime=0.0625)]',
+      '[name="A"]done',
+    ]);
+    const clip = preloadSound("ambience");
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new HtmlStoryAudio(context, renderer);
+    const runtime = new StoryRuntime(context, renderer, audio);
+
+    const started = runtime.start();
+    const { instance } = await settlePlayback(clip);
+    await vi.advanceTimersByTimeAsync(80);
+    renderer.frames.step(48);
+    await started;
+    expect(renderer.lastDialogue?.speaker).toBe("A");
+    expect(instance.stopped).toBe(0);
+    expect(instance.volume).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(32);
+    renderer.frames.step(64);
+    expect(instance.stopped).toBe(1);
+    expect(instance.volume).toBe(0);
+    expect(loads).toHaveLength(0);
+    runtime.destroy();
+    audio.destroy();
+  });
+
+  it("settles a stop fade on timers when the mounted page becomes hidden", async () => {
+    const context = createContext([
+      '[playsound(key="ambience",channel="c",loop=true)]',
+      '[stopsound(channel="c",fadetime=0.125)]',
+      '[name="A"]done',
+    ]);
+    const clip = preloadSound("ambience");
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new HtmlStoryAudio(context, renderer);
+    const runtime = new StoryRuntime(context, renderer, audio);
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    try {
+      await runtime.start();
+      const { instance } = await settlePlayback(clip);
+      await vi.advanceTimersByTimeAsync(32);
+      renderer.frames.step(32);
+      expect(instance.volume).toBeCloseTo(1 - 32 / 125);
+
+      hidden.mockReturnValue(true);
+      await vi.advanceTimersByTimeAsync(93);
+      expect(instance.volume).toBe(0);
+      expect(instance.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(instance.stopped).toBe(1);
+    } finally {
+      hidden.mockRestore();
+      runtime.destroy();
+      audio.destroy();
+    }
+  });
+
   it("keeps a negative stop pending until the next audio update and allows same-frame takeover", async () => {
     const context = createContext([
       '[playmusic(key="track")]',
@@ -915,10 +1088,7 @@ describe("playsound delay and story reset", () => {
     const ambience = preloadSound("ambience");
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const audio = new HtmlStoryAudio(
-      context,
-      renderer.onFrameUpdate.bind(renderer),
-    );
+    const audio = new HtmlStoryAudio(context, renderer);
     const runtime = new StoryRuntime(context, renderer, audio);
 
     const started = runtime.start();
@@ -957,10 +1127,7 @@ describe("playsound delay and story reset", () => {
     const ambience = preloadSound("ambience");
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const audio = new HtmlStoryAudio(
-      context,
-      renderer.onFrameUpdate.bind(renderer),
-    );
+    const audio = new HtmlStoryAudio(context, renderer);
     const runtime = new StoryRuntime(context, renderer, audio);
     const started = runtime.start();
     const music = (await settlePlayback(track)).instance;
@@ -1004,10 +1171,7 @@ describe("playsound delay and story reset", () => {
     const clip = preloadSound("ambience");
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const audio = new HtmlStoryAudio(
-      context,
-      renderer.onFrameUpdate.bind(renderer),
-    );
+    const audio = new HtmlStoryAudio(context, renderer);
     const runtime = new StoryRuntime(context, renderer, audio);
     // Pixi may reach the next frame while a Web fallback timer is still queued.
     const clock = vi

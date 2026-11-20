@@ -168,6 +168,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly tweenRunner = new TweenRunner(() => Boolean(this.app));
   private readonly tweenUpdates = new Set<(deltaMs: number) => void>();
   private stopTweenUpdates: (() => void) | null = null;
+  private frameTimeMs: number | undefined;
   // 2791 runs DOTween.Update before AVGController._DoExecuteCommands polls
   // its blockers. Use the update phase for tweens whose completion the runtime
   // polls before rendering. Focusout uses TimeManager's frame tick in 2791.
@@ -197,7 +198,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   constructor(
     context: Context,
     onWarning?: (detail: string) => void,
-    now = browserAnimationClock.now,
+    private readonly now = browserAnimationClock.now,
   ) {
     this.context = context;
     this.onWarning = onWarning;
@@ -382,6 +383,10 @@ export class PixiStoryRenderer implements StoryRenderer {
     };
   }
 
+  get currentFrameTimeMs(): number | undefined {
+    return this.frameTimeMs;
+  }
+
   onFrameUpdate(
     callback: (frame: PlaybackFrame) => void,
     phase: "update" | "afterUpdate" = "update",
@@ -393,11 +398,20 @@ export class PixiStoryRenderer implements StoryRenderer {
       phase === "afterUpdate"
         ? UPDATE_PRIORITY.NORMAL - 1
         : UPDATE_PRIORITY.NORMAL;
-    const update = (tick: Ticker) =>
-      callback({
-        deltaMs: tick.elapsedMS,
-        nowMs: tick.lastTime + tick.elapsedMS,
-      });
+    const update = (tick: Ticker) => {
+      const nowMs = tick.lastTime + tick.elapsedMS;
+      const previousFrameTime = this.frameTimeMs;
+      this.frameTimeMs = nowMs;
+      try {
+        callback({
+          deltaMs: tick.elapsedMS,
+          nowMs,
+          realtimeMs: this.now(),
+        });
+      } finally {
+        this.frameTimeMs = previousFrameTime;
+      }
+    };
     ticker.add(update, undefined, priority);
     return () => {
       if (this.app?.ticker === ticker) ticker.remove(update);

@@ -3,7 +3,12 @@ import { Assets } from "pixi.js";
 import { resolveStoryAudioByKey } from "./asset";
 
 import type { Context } from "../context";
-import type { PlayMusicInput, PlaySoundInput, StoryAudio } from "./types";
+import type {
+  PlayMusicInput,
+  PlaySoundInput,
+  StoryAudio,
+  StoryRenderer,
+} from "./types";
 import type { IMediaInstance, Sound } from "@pixi/sound";
 
 function nowMs(): number {
@@ -54,6 +59,7 @@ function musicAssetIdentity(rawKey: string): string {
 export class HtmlStoryAudio implements StoryAudio {
   private readonly context: Context;
   private destroyed = false;
+  private closing = false;
   private musicAudio: MusicPlayback | null = null;
   private readonly soundCache = new Map<string, Sound>();
   private readonly soundChannels = new Map<string, SoundPlayback>();
@@ -70,7 +76,10 @@ export class HtmlStoryAudio implements StoryAudio {
 
   constructor(
     context: Context,
-    private readonly onFrameUpdate?: (advance: () => void) => () => void,
+    private readonly frames?: Pick<
+      StoryRenderer,
+      "currentFrameTimeMs" | "onFrameUpdate"
+    >,
   ) {
     this.context = context;
   }
@@ -87,6 +96,7 @@ export class HtmlStoryAudio implements StoryAudio {
   async finishSoundFades(): Promise<void> {
     // Web adaptation: the lobby releases music immediately. The audio object
     // stays alive for the SOUND stops already submitted by the finished story.
+    this.closing = true;
     this.stopAllMusic();
     const fades: Promise<void>[] = [];
     for (const [channel, sound] of this.soundChannels) {
@@ -152,7 +162,7 @@ export class HtmlStoryAudio implements StoryAudio {
     const delayMs = input.delayMs + (crossfade ? input.crossfadeMs : 0);
     if (crossfade)
       void this.fadeVolume(next, input.volume, input.crossfadeMs, {
-        startTime: commandTime + delayMs,
+        startTime: this.tweenNowMs() + delayMs,
       });
     await this.playMusicClip(
       next,
@@ -207,7 +217,12 @@ export class HtmlStoryAudio implements StoryAudio {
 
     const ownsChannel = () => this.soundChannels.get(channel) === sound;
     const canStart = () =>
-      ownsChannel() && (!sound.stopFade || nowMs() <= sound.stopFade.deadline);
+      ownsChannel() &&
+      // AudioChannel.Update owns fade completion. A scheduled source can start
+      // between the deadline and that update while the channel is still live.
+      (this.usesFrameUpdates() ||
+        !sound.stopFade ||
+        nowMs() <= sound.stopFade.deadline);
     const startTime = nowMs() + sourceDelayMs(input.delayMs);
     const clip = await this.getSound(url);
     if (!ownsChannel()) return;
@@ -264,8 +279,7 @@ export class HtmlStoryAudio implements StoryAudio {
     // m_allSoundChannels -> AudioChannel.Stop 0.5s linear fade-out, then the
     // set is cleared. MUSIC is global and untouched.
     //
-    // A scheduled sound can start during the fade. The stop deadline also
-    // guards the start if loading or the delay outlasts the fade.
+    // A scheduled sound can start while its channel is still fading.
     for (const channelName of this.avgSoundChannels) {
       const sound = this.soundChannels.get(channelName);
       if (sound) void this.fadeOutSound(channelName, sound, 500);
@@ -299,7 +313,7 @@ export class HtmlStoryAudio implements StoryAudio {
     targetVolume: number,
     durationMs: number,
     {
-      startTime = nowMs(),
+      startTime = this.tweenNowMs(),
       onComplete,
     }: { startTime?: number; onComplete?: () => void } = {},
   ): Promise<void> {
@@ -321,12 +335,12 @@ export class HtmlStoryAudio implements StoryAudio {
     };
 
     // AudioManager.Update (2791 @ 0x1819C4650) advances the channels before
-    // the command coroutine. The timer also settles fades if frames stop.
+    // the command coroutine, using the same unscaled timestamp for the frame.
     return new Promise<void>((resolve) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let cancelFallback: (() => void) | undefined;
       let stopUpdating: (() => void) | undefined;
       const settle = () => {
-        clearTimeout(timer);
+        cancelFallback?.();
         stopUpdating?.();
         playback.fade = undefined;
         resolve();
@@ -338,8 +352,7 @@ export class HtmlStoryAudio implements StoryAudio {
         settle();
         onComplete?.();
       };
-      const tick = () => {
-        const time = nowMs();
+      const tick = (time: number) => {
         // AudioChannel.Update (2791 @ 0x184252F30) still interpolates at
         // equality. Commands at the deadline can take over a silent channel.
         if (time > endTime) {
@@ -352,8 +365,11 @@ export class HtmlStoryAudio implements StoryAudio {
       };
       const scheduleTick = (time: number) => {
         const delay = Math.min(VOLUME_UPDATE_MS, endTime - time);
-        clearTimeout(timer);
-        timer = setTimeout(tick, Math.max(1, Math.ceil(delay)));
+        cancelFallback?.();
+        cancelFallback = this.scheduleUpdateFallback(
+          () => tick(nowMs()),
+          Math.max(1, Math.ceil(delay)),
+        );
       };
 
       if (durationMs <= 0) {
@@ -361,7 +377,7 @@ export class HtmlStoryAudio implements StoryAudio {
         // command in the same frame can replace it at the original volume.
         stopUpdating = this.onNextAudioUpdate(complete);
       } else {
-        stopUpdating = this.onFrameUpdate?.(tick);
+        stopUpdating = this.frames?.onFrameUpdate(({ nowMs }) => tick(nowMs));
         scheduleTick(nowMs());
       }
     });
@@ -413,20 +429,45 @@ export class HtmlStoryAudio implements StoryAudio {
   }
 
   private onNextAudioUpdate(advance: () => void): () => void {
-    const stopUpdating = this.onFrameUpdate?.(advance);
-    // Audio also needs to settle after the canvas is detached or suspended.
-    const timer = setTimeout(advance, VOLUME_UPDATE_MS);
+    const stopUpdating = this.frames?.onFrameUpdate(advance);
+    const cancelFallback = this.scheduleUpdateFallback(
+      advance,
+      VOLUME_UPDATE_MS,
+    );
     return () => {
       stopUpdating?.();
-      clearTimeout(timer);
+      cancelFallback();
     };
+  }
+
+  private usesFrameUpdates(): boolean {
+    return (
+      this.frames !== undefined &&
+      !this.closing &&
+      (typeof document === "undefined" || !document.hidden)
+    );
+  }
+
+  private scheduleUpdateFallback(
+    advance: () => void,
+    delayMs: number,
+  ): () => void {
+    // Web audio stays active while the page is hidden or the canvas is detached.
+    // While frames are available, leave channel state to their update phase.
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      if (this.usesFrameUpdates()) timer = setTimeout(tick, VOLUME_UPDATE_MS);
+      else advance();
+    };
+    timer = setTimeout(tick, delayMs);
+    return () => clearTimeout(timer);
   }
 
   private fadeAndStop(
     playback: Playback,
     durationMs: number,
     release?: () => void,
-    startTime = nowMs(),
+    startTime = this.tweenNowMs(),
   ): Promise<void> {
     // AudioChannel.Stop keeps the channel addressable until an uninterrupted
     // fade reaches zero. A later TweenVolume replaces its stop callback.
@@ -450,7 +491,7 @@ export class HtmlStoryAudio implements StoryAudio {
     playback: SoundPlayback,
     fadeMs: number,
   ): Promise<void> {
-    const startTime = nowMs();
+    const startTime = this.tweenNowMs();
     const completion = this.fadeAndStop(
       playback,
       fadeMs,
@@ -487,10 +528,16 @@ export class HtmlStoryAudio implements StoryAudio {
     return `avgsound_${channel}`;
   }
 
+  private tweenNowMs(): number {
+    // AudioChannel.TweenVolume uses Time.unscaledTime, which is fixed for the
+    // frame even when the command coroutine dispatches late in its update.
+    return this.frames?.currentFrameTimeMs ?? nowMs();
+  }
+
   private currentVolume(playback: Playback): number {
     // Native commands and clip starts use the base volume left by the last
     // AudioChannel.Update. Without a frame clock, sample the Web timer tween.
-    if (this.onFrameUpdate) return playback.volume;
+    if (this.frames) return playback.volume;
     return playback.fade?.volumeAt(nowMs()) ?? playback.volume;
   }
 

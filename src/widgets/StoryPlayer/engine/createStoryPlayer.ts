@@ -41,7 +41,7 @@ export function createStoryPlayer(context: Context): StoryPlayer {
     renderer = new PixiStoryRenderer(context, (detail) =>
       console.warn(`[renderer] ${detail}`),
     );
-    audio = new HtmlStoryAudio(context, renderer.onFrameUpdate.bind(renderer));
+    audio = new HtmlStoryAudio(context, renderer);
     runtime = new StoryRuntime(context, renderer, audio, {
       onWarning: (warning) =>
         console.warn(

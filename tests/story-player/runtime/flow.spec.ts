@@ -41,6 +41,34 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("uses real time to start and release a delay when frame callbacks run late", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new FakeAudio();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=0.0625)]",
+        '[playsound(key="cue")]',
+        '[name="A"]done',
+      ]),
+      renderer,
+      audio,
+    );
+
+    const started = runtime.start();
+    // First poll runs at 80ms, so the deadline is 142.5ms.
+    renderer.frames.step(48, 80);
+    renderer.frames.step(72, 120);
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(audio.playSoundCalls).toHaveLength(0);
+
+    renderer.frames.step(16, 144);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(audio.playSoundCalls).toHaveLength(1);
+    await started;
+    runtime.destroy();
+  });
+
   it("scales delay once by animateRatio and yields a frame for zero", async () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;

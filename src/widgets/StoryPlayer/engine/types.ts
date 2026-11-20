@@ -738,8 +738,10 @@ export interface InterludeInput {
 export interface PlaybackFrame {
   /** Unscaled elapsed time since the previous frame. */
   readonly deltaMs: number;
-  /** Monotonic real time at this frame. */
+  /** Monotonic time fixed for the current frame. */
   readonly nowMs: number;
+  /** Monotonic time when this callback runs. */
+  readonly realtimeMs: number;
 }
 
 export interface StoryRenderer {
@@ -804,6 +806,8 @@ export interface StoryRenderer {
   clearTimerSticker: (input?: TimerClearInput) => void;
   clearCharacterCutin: (widgetId?: string) => void;
   clearInterludes: () => void;
+  /** Monotonic time shared by callbacks in the active playback update. */
+  readonly currentFrameTimeMs: number | undefined;
   destroy: () => void;
   /** Reveal the remaining text of the selected sticker. */
   finishStickerTyping: (id: string) => boolean;

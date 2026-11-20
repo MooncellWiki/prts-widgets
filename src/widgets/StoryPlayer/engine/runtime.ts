@@ -138,8 +138,12 @@ const builtinCommandNames = [
 
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
 
+type FrameWaitPoll = Omit<WaitForFrame, "isComplete"> & {
+  isComplete: (nowMs: number, realtimeMs: number) => boolean;
+};
+
 interface PendingFrameWait {
-  waits: readonly WaitForFrame[];
+  waits: readonly FrameWaitPoll[];
   resume: () => Promise<void>;
   resolve: (continuation?: Promise<void>) => void;
 }
@@ -759,7 +763,7 @@ export class StoryRuntime {
     this.stickerPanel.onStoryBegin(this.eventPool);
     this.subtitlePanel.onStoryBegin(this.eventPool);
     this.stopFramePolling = this.renderer.onFrameUpdate(
-      ({ nowMs }) => this.pollAfterUpdate(nowMs),
+      ({ nowMs, realtimeMs }) => this.pollAfterUpdate(nowMs, realtimeMs),
       "afterUpdate",
     );
     this.state = "running";
@@ -1158,8 +1162,8 @@ export class StoryRuntime {
     };
   }
 
-  private pollAfterUpdate(nowMs: number): void {
-    this.pollFrameWait(nowMs);
+  private pollAfterUpdate(nowMs: number, realtimeMs: number): void {
+    this.pollFrameWait(nowMs, realtimeMs);
     const resume = this.resumeCommands;
     this.resumeCommands = null;
     resume?.();
@@ -1353,14 +1357,15 @@ export class StoryRuntime {
     waits: readonly (WaitForFrame | WaitForDelay)[],
     resume: () => Promise<void> = () => this.processLoop(),
   ): Promise<void> {
-    const frameWaits = waits.map((wait): WaitForFrame => {
+    const frameWaits = waits.map((wait): FrameWaitPoll => {
       if ("isComplete" in wait) return wait;
       this.state = "waiting_timer";
       let deadlineMs: number | undefined;
       return {
-        // WaitForSecondsRealtime.keepWaiting (2791 @ 0x186DE4C30) sets
-        // the deadline on the first poll. Cancelling drops this frame wait.
-        isComplete: (nowMs) => nowMs >= (deadlineMs ??= nowMs + wait.delayMs),
+        // WaitForSecondsRealtime.keepWaiting (2791 @ 0x186DE4C30) uses
+        // Time.realtimeSinceStartup for the first poll's deadline and later checks.
+        isComplete: (_nowMs, realtimeMs) =>
+          realtimeMs >= (deadlineMs ??= realtimeMs + wait.delayMs),
       };
     });
     return new Promise((resolve) => {
@@ -1379,13 +1384,14 @@ export class StoryRuntime {
     });
   }
 
-  private pollFrameWait(nowMs: number): void {
+  private pollFrameWait(nowMs: number, realtimeMs = nowMs): void {
     const pending = this.pendingFrameWait;
     if (this.skipCleanup || !pending) return;
     // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blockers
     // after DOTween's update and dispatches synchronously when they are clear.
     try {
-      if (!pending.waits.every((wait) => wait.isComplete(nowMs))) return;
+      if (!pending.waits.every((wait) => wait.isComplete(nowMs, realtimeMs)))
+        return;
       if (this.pendingFrameWait !== pending) return;
       this.pendingFrameWait = null;
       this.state = "running";
