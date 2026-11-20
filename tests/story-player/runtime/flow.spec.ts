@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { loadContextByScript } from "../../../src/widgets/StoryPlayer/context";
 import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
 import {
   createContext,
@@ -224,6 +225,29 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("finished");
   });
 
+  it.each(["0", "null", '" FALSE "', '"$manual"'])(
+    "restores manual input after converting theater(mode=%s)",
+    async (mode) => {
+      const context = createContext([
+        "[theater]",
+        `[theater(mode=${mode})]`,
+        '[name="A"]manual',
+      ]);
+      context.audioVariables = { manual: false };
+      const runtime = new StoryRuntime(
+        context,
+        new FakeRenderer(),
+        new FakeAudio(),
+      );
+
+      await runtime.start();
+
+      expect(runtime.isTheaterMode()).toBe(false);
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      runtime.destroy();
+    },
+  );
+
   it("resets a running auto play on an unpaired theater exit", async () => {
     // Native SetTheaterMode(false) executes unconditionally: without a saved
     // auto status (_SetTheaterModeStatus !m_needResumeAutoStatus branch) it
@@ -313,6 +337,65 @@ describe("StoryRuntime", () => {
     runtime.setAutoPlayMode("button_auto");
     await renderer.frames.advance(16);
     expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "" });
+  });
+
+  it("starts and releases theater's auto click using real time during frame polls", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext([
+        "[theater]",
+        '[name="A"]a',
+        "[theater(mode=false)]",
+        '[name="B"]next',
+      ]),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+    renderer.frames.step(41, 50);
+    // The frame starts at 57ms, but the first delay poll runs at 100ms.
+    renderer.frames.step(16, 100);
+    renderer.frames.step(1543, 1600);
+    renderer.frames.step(16, 1629);
+    expect(runtime.getState()).toBe("waiting_input");
+
+    // Real time reaches the deadline while the frame timestamp is still 1629ms.
+    renderer.frames.step(13, 1630);
+    expect(runtime.getState()).toBe("waiting_input");
+    renderer.frames.step(1, 1631);
+    expect(runtime.getState()).toBe("running");
+    expect(runtime.getDisplayedLineIndex()).toBe(2);
+
+    renderer.frames.step(1, 1632);
+    expect(runtime.getDisplayedLineIndex()).toBe(4);
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+    runtime.destroy();
+  });
+
+  it("observes an auto click deadline crossed within the first delay poll", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]a', '[name="B"]next']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    runtime.setAutoPlayMode("quick_play");
+    runtime.setAutoPlaySpeedLevel(3);
+    await runtime.start();
+    renderer.frames.step(2);
+    // Quick play level 3 waits 25ms. The two reads straddle that deadline.
+    const readRealtimeMs = vi.fn().mockReturnValueOnce(20).mockReturnValue(45);
+    renderer.frames.step(16, readRealtimeMs);
+    expect(runtime.getState()).toBe("waiting_input");
+
+    renderer.frames.step(16, 46);
+    expect(runtime.getState()).toBe("running");
+    expect(readRealtimeMs).toHaveBeenCalledTimes(2);
+    runtime.destroy();
   });
 
   it("restores the saved mode and both speed levels on a paired theater exit", async () => {
@@ -1360,6 +1443,67 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
     expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["landed"]);
     expect(warnings).toEqual([]);
+  });
+
+  it.each([
+    { label: '"$target"', warp: '"True"' },
+    { label: '"True"', warp: '"$target"' },
+  ])(
+    "resolves and stringifies label $label and warp $warp",
+    async ({ label, warp }) => {
+      const renderer = new FakeRenderer();
+      const context = createContext([
+        `[warp(name=${warp})]`,
+        '[name="A"]skipped',
+        `[label(name=${label})]`,
+        '[name="B"]landed',
+      ]);
+      context.audioVariables = { target: true };
+      const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+
+      await runtime.start();
+
+      expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["landed"]);
+      runtime.destroy();
+    },
+  );
+
+  it("matches label variables by their original keys from the story config", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        json: () =>
+          url.endsWith("/story_variables.json") ? { Target: true } : {},
+        ok: true,
+      })),
+    );
+    try {
+      for (const [key, expected] of [
+        ["Target", "landed"],
+        ["TARGET", "inline"],
+      ]) {
+        const context = await loadContextByScript(
+          [
+            `[warp(name="$${key}")]`,
+            '[name="A"]inline',
+            '[label(name="True")]',
+            '[name="B"]landed',
+          ].join("\n"),
+        );
+        const renderer = new FakeRenderer();
+        const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+        try {
+          await runtime.start();
+
+          expect(renderer.dialogueTexts.filter(Boolean)).toEqual([expected]);
+          expect(context.audioVariables).toEqual({ target: true });
+        } finally {
+          runtime.destroy();
+        }
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("lets warp jump backward to an earlier label", async () => {

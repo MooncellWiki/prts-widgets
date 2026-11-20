@@ -1,5 +1,5 @@
 import { ExecutorComponent, type PanelExecutors } from "./ExecutorComponent";
-import { exactArg } from "./commandParams";
+import { convertStoryParameter, exactArg } from "./commandParams";
 
 import type { ParsedLine } from "./types";
 
@@ -23,14 +23,21 @@ export class SkipLabelController extends ExecutorComponent {
   constructor(
     lines: readonly ParsedLine[],
     private readonly firstRead: boolean,
+    variables?: Readonly<Record<string, unknown>>,
   ) {
     super();
     for (const [index, line] of lines.entries()) {
       if (line.kind !== "command" || line.command !== "skipnode") continue;
       // CalSkipMode (2791 @ 0x1841B69D0) matches the ordinal "nofirstskip".
-      const mode =
-        exactArg(line.args, "mode") === "nofirstskip" ? "nofirstskip" : "skip";
-      this.nodes.push({ lineIndex: index, mode });
+      const mode = convertStoryParameter(
+        exactArg(line.args, "mode"),
+        variables,
+        "exact",
+      );
+      this.nodes.push({
+        lineIndex: index,
+        mode: mode === "nofirstskip" ? "nofirstskip" : "skip",
+      });
     }
   }
 

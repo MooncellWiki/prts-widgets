@@ -1523,6 +1523,25 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("finished");
     expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "x" });
   });
+
+  it("protects the first-read segment when a variable supplies the skipnode mode", async () => {
+    const context = createContext([
+      '[skipnode(mode="$protected")]',
+      '[name="A"]locked',
+    ]);
+    context.audioVariables = { protected: "nofirstskip" };
+    const runtime = new StoryRuntime(
+      context,
+      new FakeRenderer(),
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.canSkipNode()).toBe(false);
+    runtime.destroy();
+  });
 });
 
 describe("foreground image lifecycle", () => {

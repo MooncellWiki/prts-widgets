@@ -1,5 +1,9 @@
 import { ExecutorComponent, type PanelExecutors } from "../ExecutorComponent";
-import { exactArg, toBoolean } from "../commandParams";
+import {
+  boxedParamBool,
+  convertStoryParameter,
+  exactArg,
+} from "../commandParams";
 
 import type { AutoPlayState } from "../types";
 
@@ -18,7 +22,10 @@ export class TheaterLabel extends ExecutorComponent {
   private active = false;
   private savedAutoPlay: AutoPlayState | null = null;
 
-  constructor(private readonly playback: TheaterPlayback) {
+  constructor(
+    private readonly playback: TheaterPlayback,
+    private readonly variables?: Readonly<Record<string, unknown>>,
+  ) {
     super();
   }
 
@@ -29,7 +36,12 @@ export class TheaterLabel extends ExecutorComponent {
   protected getExecutors(): PanelExecutors {
     return {
       theater: ({ args }) => {
-        this.setTheaterMode(toBoolean(exactArg(args, "mode"), true));
+        const mode = convertStoryParameter(
+          exactArg(args, "mode"),
+          this.variables,
+          "exact",
+        );
+        this.setTheaterMode(boxedParamBool(mode, true));
         return "continue";
       },
     };

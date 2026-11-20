@@ -257,20 +257,28 @@ export class StoryRuntime {
     this.skipToIndex = this.lines.findIndex(
       (line) => line.kind === "command" && line.command === "skiptothis",
     );
-    this.gotoLabelController = new GotoLabelController(this.lines);
+    const storyVariables = context.storyVariables ?? context.audioVariables;
+    this.gotoLabelController = new GotoLabelController(
+      this.lines,
+      storyVariables,
+    );
     this.skipLabelController = new SkipLabelController(
       this.lines,
       options.firstRead ?? true,
+      storyVariables,
     );
-    this.theaterLabel = new TheaterLabel({
-      applyAutoPlay: ({ buttonSpeedLevel, mode, quickSpeedLevel }) => {
-        this.buttonSpeedLevel = buttonSpeedLevel;
-        this.quickSpeedLevel = quickSpeedLevel;
-        this.applyScriptAutoPlayMode(mode);
+    this.theaterLabel = new TheaterLabel(
+      {
+        applyAutoPlay: ({ buttonSpeedLevel, mode, quickSpeedLevel }) => {
+          this.buttonSpeedLevel = buttonSpeedLevel;
+          this.quickSpeedLevel = quickSpeedLevel;
+          this.applyScriptAutoPlayMode(mode);
+        },
+        cancelAutoClick: () => this.cancelAutoClick(),
+        readAutoPlay: () => this.getAutoPlayState(),
       },
-      cancelAutoClick: () => this.cancelAutoClick(),
-      readAutoPlay: () => this.getAutoPlayState(),
-    });
+      storyVariables,
+    );
     this.onWarning = options.onWarning;
     this.audioExecutors = new AudioExecutors(audio, context, (type, detail) =>
       this.warn(type, detail),
@@ -1067,15 +1075,15 @@ export class StoryRuntime {
     const pending = this.pendingAutoClick;
     if (!pending) return;
     // _DoAutoClick (2791 @ 0x184180000): WaitUntil, WaitForSecondsRealtime,
-    // then a separate WaitUntil. keepWaiting (0x186DE4C30) initializes the
-    // real-time deadline on its first poll.
+    // then a separate WaitUntil. keepWaiting (0x186DE4C30) reads real time
+    // once to initialize the deadline and again to check it.
     switch (pending.phase) {
       case "awaiting_mode":
         if (this.autoPlayMode !== "default") pending.phase = "timing";
         return;
       case "timing":
-        pending.deadlineMs ??= nowMs + pending.delayMs;
-        if (nowMs >= pending.deadlineMs) pending.phase = "elapsed";
+        pending.deadlineMs ??= readRealtimeMs() + pending.delayMs;
+        if (readRealtimeMs() >= pending.deadlineMs) pending.phase = "elapsed";
         return;
       case "elapsed":
         if (this.autoPlayMode === "default") return;

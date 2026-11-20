@@ -20,6 +20,7 @@ export interface Context {
   scriptText?: string;
   storyMetadata?: StoryMetadata;
   audioVariables?: Record<string, unknown>;
+  storyVariables?: Readonly<Record<string, unknown>>;
   charMap?: Record<string, string>; // Legacy fallback. New rendering path reads from linkMap(character.json).
   linkMap: Record<string, StoryLinkNode>;
   /**
@@ -198,27 +199,32 @@ export function normalizeCharacterMap(
   return output;
 }
 
-const cachedStoryAudioVariables: Record<string, unknown> = {};
+let cachedStoryVariables: Record<string, unknown> = {};
+let cachedStoryAudioVariables: Record<string, unknown> = {};
 
-function mergeStoryVariables(raw: unknown): void {
-  const root = asObject(raw);
-  if (!root) return;
-
-  for (const [key, value] of Object.entries(root))
-    cachedStoryAudioVariables[key.toLowerCase()] = value;
+function setStoryVariables(raw: unknown): void {
+  cachedStoryVariables = asObject(raw) ?? {};
+  cachedStoryAudioVariables = Object.fromEntries(
+    Object.entries(cachedStoryVariables).map(([key, value]) => [
+      key.toLowerCase(),
+      value,
+    ]),
+  );
 }
 
 let loadingStoryVariables: Promise<void> | null = null;
 let storyVariablesLoaded = false;
 
-async function ensureStoryVariables(): Promise<Record<string, unknown>> {
+async function ensureStoryVariables(): Promise<
+  Pick<Context, "audioVariables" | "storyVariables">
+> {
   if (!storyVariablesLoaded) {
     if (!loadingStoryVariables) {
       loadingStoryVariables = (async () => {
         try {
           const response = await fetch(storyUrl("story_variables.json"));
           if (!response.ok) return;
-          mergeStoryVariables(await response.json());
+          setStoryVariables(await response.json());
           storyVariablesLoaded = true;
         } catch {
           // Keep runtime resilient: script loading still works without variables.
@@ -231,7 +237,10 @@ async function ensureStoryVariables(): Promise<Record<string, unknown>> {
     await loadingStoryVariables;
   }
 
-  return { ...cachedStoryAudioVariables };
+  return {
+    audioVariables: { ...cachedStoryAudioVariables },
+    storyVariables: { ...cachedStoryVariables },
+  };
 }
 
 /**
@@ -333,7 +342,7 @@ export async function loadContextByScript(
   scriptText: string,
 ): Promise<Context> {
   const { lines, metadata } = parseStory(scriptText);
-  const [audioVariables, linkMap, backgroundPpuMap, missingVideoUrls] =
+  const [variables, linkMap, backgroundPpuMap, missingVideoUrls] =
     await Promise.all([
       ensureStoryVariables(),
       fetchStoryCharacterMap(),
@@ -345,7 +354,7 @@ export async function loadContextByScript(
     script: scriptText.replace(/\r\n?/g, "\n").split("\n"),
     scriptText,
     storyMetadata: metadata,
-    audioVariables,
+    ...variables,
     linkMap,
     backgroundPpuMap,
     missingVideoUrls,
