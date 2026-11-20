@@ -1,6 +1,8 @@
 import mitt, { type Handler } from "mitt";
 
 import { DecisionCommandPredicator } from "./DecisionCommandPredicator";
+import { GotoLabelController } from "./GotoLabelController";
+import { SkipLabelController } from "./SkipLabelController";
 import { normalizeImageKey } from "./asset";
 import { resolveCharacterRef, resolveNativeCharacterRef } from "./characterRef";
 import {
@@ -46,6 +48,7 @@ import { ShowItemPanel } from "./panels/ShowItemPanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerPanel } from "./panels/StickerPanel";
 import { SubtitlePanel } from "./panels/SubtitlePanel";
+import { TheaterLabel } from "./panels/TheaterLabel";
 import { VideoPanel } from "./panels/VideoPanel";
 import { parseScript } from "./parser";
 import { expandStoryText } from "./textVariables";
@@ -124,14 +127,9 @@ const QUICK_AUTO_SPEEDS: readonly AutoSpeed[] = [
 ];
 
 const builtinCommandNames = [
-  "skipnode",
-  "skiptothis",
-  "label",
-  "warp",
   "gotostage",
   "background",
   "backgroundtween",
-  "theater",
   "bgeffect",
   "effect",
 ] as const;
@@ -159,63 +157,6 @@ interface PendingAutoClick {
   deadlineMs?: number;
   delayMs: number;
   phase: "awaiting_mode" | "timing" | "elapsed";
-}
-
-type SkipMode = "skip" | "nofirstskip";
-
-interface SkipNodeLabel {
-  lineIndex: number;
-  mode: SkipMode;
-}
-
-function preprocessSkipNodes(
-  lines: ReturnType<typeof parseScript>,
-): SkipNodeLabel[] {
-  const labels: SkipNodeLabel[] = [];
-
-  for (const [index, line] of lines.entries()) {
-    if (line.kind !== "command" || line.command !== "skipnode") continue;
-
-    // Native port: Torappu.AVG.AVGStoryCache.AddSkipNode (2.7.81 VA
-    // 0x183FCD3E0) reads the mode via GetOrDefault("mode", "skip"), then
-    // CalSkipMode (0x183FCD6A0) maps only the exact lower-case sentinel
-    // "nofirstskip" to FIRST_CANNOT_SKIP; every other value falls back to
-    // CAN_SKIP. The key lookup is exact as well: Command.param is the
-    // Json.NET-deserialized Dictionary<string, object> with the default
-    // ordinal comparer (AVGParser._ParseCommand 0x183FFBB30), so a `Mode=`
-    // spelling misses and reads the "skip" default.
-    const mode =
-      toString(line.args.mode, "skip") === "nofirstskip"
-        ? "nofirstskip"
-        : "skip";
-    labels.push({ lineIndex: index, mode });
-  }
-
-  return labels;
-}
-
-function preprocessSkipToIndex(lines: ReturnType<typeof parseScript>): number {
-  return lines.findIndex(
-    (line) => line.kind === "command" && line.command === "skiptothis",
-  );
-}
-
-function preprocessLabelMap(
-  lines: ReturnType<typeof parseScript>,
-): Map<string, number> {
-  // Native port: Torappu.AVG.GotoLabelController.PreprocessCommands. It scans
-  // only `label` commands; TryGetParam("name") failing (missing key) makes the
-  // line a silent ignore -- no registration, no warning. RegisterLabel stores
-  // the bare index of the label line itself; the +1 skip offset is applied by
-  // the warp executor (_ExecuteGoto), not here. A repeated name overwrites the
-  // earlier entry (Dictionary set_Item).
-  const labelMap = new Map<string, number>();
-  for (const [index, line] of lines.entries()) {
-    if (line.kind !== "command" || line.command !== "label") continue;
-    if (!Object.prototype.hasOwnProperty.call(line.args, "name")) continue;
-    labelMap.set(toString(line.args.name), index);
-  }
-  return labelMap;
 }
 
 export class StoryRuntime {
@@ -249,7 +190,7 @@ export class StoryRuntime {
       this.closeLineSeek();
       // 落在 [theater] 段内时点击全被吞掉，切手动就卡死：交还 theater 自己的
       // button_auto，等它的 exit 再按缓存恢复
-      this.applyAutoPlayMode(this.theaterMode ? "button_auto" : "default");
+      this.applyAutoPlayMode(this.isTheaterMode() ? "button_auto" : "default");
       onUpdate({ phase: "reached", target });
     }
   }
@@ -266,33 +207,14 @@ export class StoryRuntime {
   } | null = null;
   private destroyed = false;
   private readonly lines: ReturnType<typeof parseScript>;
-  private readonly firstRead: boolean;
   private processing = false;
   private processingCompletion: Promise<void> | null = null;
   private resolveProcessingCompletion: (() => void) | null = null;
   private readonly renderer: StoryRenderer;
-  private currentSkipMode: SkipMode = "skip";
   private skipCleanup: ExecutionHandle | null = null;
-  private readonly skipNodeLabels: SkipNodeLabel[];
-  private skipNodeQueueIndex = 0;
+  private readonly gotoLabelController: GotoLabelController;
+  private readonly skipLabelController: SkipLabelController;
   private readonly skipToIndex: number;
-  /**
-   * Native port: Torappu.AVG.GotoLabelController.m_gotoIndex. One-shot warp
-   * cursor; -1 means "no pending jump". warp sets it, processLoop reads and
-   * resets it before fetching the next command (GotoCommandIndex's read-and-
-   * reset-to--1), so each warp jumps exactly once and two consecutive warps
-   * each take effect.
-   */
-  private gotoIndex = -1;
-  /**
-   * Native port: GotoLabelController.m_labelMap, filled by preprocessLabelMap
-   * (label name -> bare line index). Native clears it only in
-   * AVGGotoLabel.OnReset at story start; ShouldResetOnSkip() returns false
-   * (2.7.81 VA 0x183fc3be0), so a skip keeps both the map and the cursor.
-   */
-  private readonly labelMap: Map<string, number>;
-  private theaterMode = false;
-  private theaterAutoPlayCache: AutoPlayState | null = null;
   private playbackGeneration = 0;
   private quickSpeedLevel = 0;
   private state: PlayerState = "idle";
@@ -309,6 +231,7 @@ export class StoryRuntime {
   private readonly spellStickerPanel: SpellStickerPanel;
   private readonly stickerPanel: StickerPanel;
   private readonly subtitlePanel: SubtitlePanel;
+  private readonly theaterLabel: TheaterLabel;
   private readonly videoPanel: VideoPanel;
   private pendingFrameWait: PendingFrameWait | null = null;
   private pendingInput: PendingInput | null = null;
@@ -328,11 +251,26 @@ export class StoryRuntime {
       autoWaitTimePerText: 0.03,
       typeWriterDelayMs: Math.max(0, Math.round(options.typingIntervalMs ?? 0)),
     };
-    this.firstRead = options.firstRead ?? true;
     this.renderer = renderer;
-    this.skipNodeLabels = preprocessSkipNodes(this.lines);
-    this.skipToIndex = preprocessSkipToIndex(this.lines);
-    this.labelMap = preprocessLabelMap(this.lines);
+    // AVGController._PreprocessCommands (2791 @ 0x184171550) records the
+    // first SkipToThis anchor before delegating label preprocessing.
+    this.skipToIndex = this.lines.findIndex(
+      (line) => line.kind === "command" && line.command === "skiptothis",
+    );
+    this.gotoLabelController = new GotoLabelController(this.lines);
+    this.skipLabelController = new SkipLabelController(
+      this.lines,
+      options.firstRead ?? true,
+    );
+    this.theaterLabel = new TheaterLabel({
+      applyAutoPlay: ({ buttonSpeedLevel, mode, quickSpeedLevel }) => {
+        this.buttonSpeedLevel = buttonSpeedLevel;
+        this.quickSpeedLevel = quickSpeedLevel;
+        this.applyScriptAutoPlayMode(mode);
+      },
+      cancelAutoClick: () => this.cancelAutoClick(),
+      readAutoPlay: () => this.getAutoPlayState(),
+    });
     this.onWarning = options.onWarning;
     this.audioExecutors = new AudioExecutors(audio, context, (type, detail) =>
       this.warn(type, detail),
@@ -458,12 +396,15 @@ export class StoryRuntime {
     this.decisionPanel.register(this.commandRegistry);
     this.dialogPanel.register(this.commandRegistry);
     this.displayableExecutor.register(this.commandRegistry);
+    this.gotoLabelController.register(this.commandRegistry);
     this.imagePanel.register(this.commandRegistry);
     this.largeBackgroundPanel.register(this.commandRegistry);
     this.showItemPanel.register(this.commandRegistry);
+    this.skipLabelController.register(this.commandRegistry);
     this.spellStickerPanel.register(this.commandRegistry);
     this.stickerPanel.register(this.commandRegistry);
     this.subtitlePanel.register(this.commandRegistry);
+    this.theaterLabel.register(this.commandRegistry);
     this.videoPanel = new VideoPanel(renderer, {
       beginWait: () => {
         this.state = "waiting_video";
@@ -556,7 +497,7 @@ export class StoryRuntime {
 
   /** theater 期间模式归 theater 所有，UI 据此禁用模式与速度控件 */
   isTheaterMode(): boolean {
-    return this.theaterMode;
+    return this.theaterLabel.isActive;
   }
 
   /** Web 调试适配：注入后 decision 不等面板点击，直接按返回的下标选择 */
@@ -650,7 +591,7 @@ export class StoryRuntime {
   setAutoPlayMode(requested: AutoPlayMode): void {
     if (this.destroyed || this.state === "finished" || this.state === "error")
       return;
-    const mode = this.theaterMode ? "button_auto" : requested;
+    const mode = this.isTheaterMode() ? "button_auto" : requested;
 
     // 模式以本次调用为准，不再改
     if (mode !== this.autoPlayMode && mode !== "quick_play" && this.lineSeek)
@@ -714,36 +655,19 @@ export class StoryRuntime {
       this.state !== "idle" &&
       this.state !== "error" &&
       this.state !== "finished";
+    // Web exposes skip for scripts with skipnode or a forward SkipToThis.
     const hasSkipAnchor =
-      this.skipToIndex >= 0 || this.skipNodeLabels.length > 0;
-    // SkipToThis is forward-only, so once playback has crossed the anchor
-    // `skipNode` returns without moving: report that as "cannot skip" instead
-    // of leaving an enabled button that does nothing.
-    const skipToPending =
-      this.skipToIndex < 0 || this.cursor <= this.skipToIndex;
-    // Native port: AVGController._UpdateSkipStatus (2.7.81 VA 0x183F934E0)
-    // drives the skip button's visibility with get_isSkippable --
-    // isRunning && story.isSkippable && AVGStoryCache
-    // .CheckIfSkippableInCurMode (0x183FCD770). The last term is nofirstskip's
-    // actual enforcement: on a first read inside a locked segment the button
-    // is gone, so neither the trailing skip anchor can be dequeued into a
-    // whole-story stop nor a SkipToThis jump fired from inside the segment
-    // (training_act50side_01_b: nofirstskip L2 ... SkipToThis L33 -- SkipStory
-    // never checks the mode on its SkipToThis branch, only this gate does).
-    // A header is_skippable=false story (tutorials) hides the button for
-    // everyone.
+      this.skipToIndex >= 0
+        ? this.cursor <= this.skipToIndex
+        : this.skipLabelController.hasSkipNodes;
+    // AVGController.get_isSkippable (2791 @ 0x184174040) checks the story
+    // header and the current segment before exposing the skip button.
     const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
-    const skippableInCurMode =
-      this.currentSkipMode !== "nofirstskip" || !this.firstRead;
-    // This widget exposes a segment-skip button rather than native's whole
-    // story StopStory action. Keep it disabled when the script has no remaining
-    // SkipToThis/skipnode destination at all.
     return (
       running &&
       hasSkipAnchor &&
-      skipToPending &&
       storySkippable &&
-      skippableInCurMode
+      this.skipLabelController.canSkipCurrentSegment
     );
   }
 
@@ -779,17 +703,9 @@ export class StoryRuntime {
       return;
     }
 
-    // Native port: Torappu.AVG.AVGController.OnClickPress (2.7.61 VA
-    // 0x183E15900) resets the auto play mode to DEFAULT on every non-theater
-    // press, with no regard for what the command loop is currently blocked
-    // on -- a press landing inside a blocking `delay` still flips quick_play's
-    // animateRatio back to 1 so delays enqueued afterwards keep real-time
-    // pacing. The press never interrupts the wait itself (OnClickPress does
-    // not touch the blocking executors), which the waiting_input gate below
-    // preserves: the player has no pause semantics and advance() stays a
-    // no-op for the story flow. Theater presses return before this side
-    // effect (native isTheaterMode early-out at 0x183E159B2).
-    if (this.theaterMode) return;
+    // AVGController.OnClickPress (2791 @ 0x184169CB0) ignores theater
+    // presses. Otherwise it switches to manual, even during a frame wait.
+    if (this.isTheaterMode()) return;
 
     this.setAutoPlayMode("default");
 
@@ -973,10 +889,7 @@ export class StoryRuntime {
   async skipNode(): Promise<void> {
     if (this.destroyed || !this.canSkipNode()) return;
 
-    // Native port: Torappu.AVG.AVGController.OnSkipBtnClicked (2.7.61
-    // 0x183e16ee0) drops the skip click entirely while autoPlayMode ==
-    // QUICK_PLAY. The brief-confirm panel it shows otherwise is a native-only
-    // UI that this widget intentionally omits.
+    // AVGController.OnSkipBtnClicked (2791 @ 0x18416B250) ignores quick play.
     if (this.autoPlayMode === "quick_play") return;
 
     const activeProcessCompletion = this.processingCompletion;
@@ -987,32 +900,16 @@ export class StoryRuntime {
     // cursor already points at the next command, hence cursor <= anchorIndex is
     // the native m_executeIndex < m_skipToIndex forward-only test.
     if (skipToThis) {
-      if (this.cursor > this.skipToIndex) return;
       this.cursor = this.skipToIndex + 1;
       shouldResume = true;
     } else {
-      const nextLabel = this.skipNodeLabels[this.skipNodeQueueIndex];
-      if (nextLabel) {
-        this.skipNodeQueueIndex += 1;
-        this.currentSkipMode = nextLabel.mode;
-      }
-
-      // Native port: Torappu.AVG.AVGController.get_isSkippable (2.7.61
-      // 0x183e1f7a0): isRunning && story.isSkippable &&
-      // AVGStoryCache.CheckIfSkippableInCurMode (0x183e5f250). story.isSkippable
-      // is the HEADER `is_skippable` flag -- since 2.7.61 the tutorial gate is
-      // expressed through it (header defaults it to !is_tutorial during
-      // parsing, see parser.ts) instead of a direct !isTutorial check.
-      // CheckIfSkippableInCurMode: a nofirstskip anchor only blocks first
-      // reads.
-      const storySkippable = this.context.storyMetadata?.isSkippable ?? true;
-      const isSkippable =
-        storySkippable &&
-        (this.currentSkipMode !== "nofirstskip" || !this.firstRead);
-      if (nextLabel && !isSkippable) {
-        // Native stores the anchor index and the coroutine's leading increment
-        // resumes at the following command.
-        this.cursor = nextLabel.lineIndex + 1;
+      const nextIndex = this.skipLabelController.consumeNextNode();
+      if (
+        nextIndex !== undefined &&
+        !this.skipLabelController.canSkipCurrentSegment
+      ) {
+        // A protected anchor resumes at the following command.
+        this.cursor = nextIndex + 1;
         shouldResume = true;
       } else {
         this.cursor = this.lines.length;
@@ -1045,12 +942,9 @@ export class StoryRuntime {
         this.playbackGeneration += 1;
         if (skipToThis) {
           // SkipStory resets the mode and story cache after ForceEnd.
-          // Clear the Web theater flag first so setAutoPlayMode accepts
-          // DEFAULT. The pre-theater mode cache lives outside the story cache.
-          this.theaterMode = false;
+          this.theaterLabel.clearOnSkipToThis();
           this.setAutoPlayMode("default");
-          this.skipNodeQueueIndex = this.skipNodeLabels.length;
-          this.currentSkipMode = "skip";
+          this.skipLabelController.reset();
         }
         if (skipToThis || !shouldResume) this.cancelAutoClick();
       }
@@ -1280,16 +1174,8 @@ export class StoryRuntime {
           remainingWaits = undefined;
         }
 
-        // Native port: Torappu.AVG.AVGController.MoveNext bounds-checks the
-        // incremented index BEFORE consulting ICommandFlowController
-        // (bounds → abort → GotoCommandIndex → fetch; 2781 VA 0x183fa6d3b →
-        // 0x183fa6da4 → 0x183fa6ddd): a pending warp cursor only replaces an
-        // in-range index, so a warp on the last line would be dropped by the
-        // story end instead of jumping. Our cursor already points at the next
-        // line to fetch, which folds the increment+bounds pair into the check
-        // below. The overwrite stays independent of the decision predicate
-        // gate further down (native: flow-controller vs predicator are two
-        // separate MoveNext concerns).
+        // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) checks bounds,
+        // consumes a pending warp, then fetches the command for the predicate.
         if (this.cursor >= this.lines.length) {
           // _DoExecuteCommands.MoveNext (2791 @ 0x184180CA6) yields
           // WaitForSecondsRealtime(0.2) before DoEndStory.
@@ -1298,14 +1184,11 @@ export class StoryRuntime {
           ).catch((error: unknown) => this.failPlayback(error));
         }
 
-        if (this.gotoIndex >= 0) {
-          this.cursor = this.gotoIndex;
-          this.gotoIndex = -1;
-          // Web adaptation: native would fetch commands[count] and throw
-          // ArgumentOutOfRangeException. parseScript always ends a script
-          // with an endtip (AVGParser._AppendEndTip), so a label is never the
-          // last line and this branch is unreachable today; it is only a
-          // defensive guard that finishes the story instead of throwing.
+        const gotoIndex = this.gotoLabelController.consumeGotoIndex();
+        if (gotoIndex !== undefined) {
+          this.cursor = gotoIndex;
+          // parseScript appends an endtip after the last label. Treat a
+          // target past the command list as story completion defensively.
           if (this.cursor >= this.lines.length) {
             await this.finishPlayback();
             return;
@@ -1457,8 +1340,9 @@ export class StoryRuntime {
     line: ParsedCommandLine,
     isCurrent: () => boolean,
   ): CommandResult | CommandWait[] | Promise<CommandResult | CommandWait[]> {
-    // HEADER remains in Story.commands but has no registered executor.
-    if (line.command === "header") return "continue";
+    // HEADER and SkipToThis remain in Story.commands without executors.
+    if (line.command === "header" || line.command === "skiptothis")
+      return "continue";
     const executors = this.commandRegistry.get(line.command);
     if (executors === null) {
       this.warn("unknown_command", line.command);
@@ -1480,49 +1364,9 @@ export class StoryRuntime {
   private executeBuiltinCommand(
     line: ParsedCommandLine,
   ): CommandResult | Promise<CommandResult> {
-    const args = line.args;
-
     // The native command loop runs synchronous executors through the next
     // blocker in the same update. Keep these results synchronous.
     switch (line.command) {
-      case "skipnode": {
-        const label = this.skipNodeLabels[this.skipNodeQueueIndex];
-        this.skipNodeQueueIndex += 1;
-        this.currentSkipMode = label?.mode ?? "skip";
-        return "continue";
-      }
-
-      case "skiptothis": {
-        // Native port: Torappu.AVG.AVGController._PreprocessCommands. This is a
-        // preprocess-only command with no executor, so normal playback advances
-        return "continue";
-      }
-
-      case "label": {
-        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteLabel. The native
-        // executor is an empty hotfix shell that always returns false: the
-        // label's whole effect is the preprocess registration done by
-        // preprocessLabelMap, so at run time it is a silent no-op that never
-        // blocks and never warns.
-        return "continue";
-      }
-
-      case "warp": {
-        // Native port: Torappu.AVG.AVGGotoLabel._ExecuteGoto. A missing
-        // `name` key or a labelMap miss is a silent no-op -- no warning, no
-        // exception (every current `[warp(name="chiyu01")]` in the corpus
-        // takes the miss path because no label defines it). On a hit the
-        // one-shot goto cursor becomes the bare label index + 1, i.e. the line
-        // right after the label. Native applies the +1 here too, and MoveNext
-        // fetches the consumed index as-is, the same as processLoop.
-        const name = this.exactArg(args, "name");
-        if (name === undefined) return "continue";
-        const target = this.labelMap.get(toString(name));
-        if (target === undefined) return "continue";
-        this.gotoIndex = target + 1;
-        return "continue";
-      }
-
       case "gotostage": {
         // Native port: Torappu.AVG.AVGGotoStagePanel._ExecuteGotoStage. Its
         // only side effect is a client UI route
@@ -1532,41 +1376,6 @@ export class StoryRuntime {
         // A web story widget has no game shell to route, so the navigation is
         // intentionally omitted and the `target` param goes unread: the
         // command just keeps playback moving.
-        return "continue";
-      }
-
-      case "theater": {
-        // Native port: Torappu.AVG.AVGTheaterLabel._ExecuteTheaterNode. Web adapts
-        // the native theater UI mode to autoplay state only.
-        // AVGController.SetTheaterMode gates only on get_isRunning, so both
-        // branches of _SetTheaterModeStatus (2.7.81 VA 0x183f92420) run
-        // whether or not theater mode is already active.
-        const mode = toBoolean(this.exactArg(args, "mode"), true);
-        if (mode) {
-          // _SaveAutoStatus runs on every enter: a nested [theater] re-saves
-          // the theater's own button auto, so the exit then stays in auto.
-          this.theaterAutoPlayCache = this.getAutoPlayState();
-          this.theaterMode = true;
-          this.buttonSpeedLevel = 0;
-          this.applyScriptAutoPlayMode("button_auto");
-        } else {
-          // _StopAutoClick() on every exit, then restore the saved status
-          // (m_needResumeAutoStatus; QUICK_PLAY maps to DEFAULT) or, with
-          // nothing saved, set_autoPlayMode(DEFAULT): an unpaired exit drops
-          // a running auto play to manual. The cache outliving a SkipToThis
-          // jump is covered in skipNode().
-          this.cancelAutoClick();
-          const cached = this.theaterAutoPlayCache;
-          this.theaterMode = false;
-          this.theaterAutoPlayCache = null;
-          let restoreMode: AutoPlayMode = "default";
-          if (cached) {
-            this.buttonSpeedLevel = cached.buttonSpeedLevel;
-            this.quickSpeedLevel = cached.quickSpeedLevel;
-            if (cached.mode !== "quick_play") restoreMode = cached.mode;
-          }
-          this.applyScriptAutoPlayMode(restoreMode);
-        }
         return "continue";
       }
 

@@ -289,6 +289,32 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("cancels the preceding line's auto click when theater exits", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(['[name="A"]a', "[theater(mode=false)]", '[name="B"]next']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    runtime.setAutoPlayMode("button_auto");
+    await runtime.start();
+    // Finish typing and arm A's 1530ms auto-click timer.
+    await renderer.frames.advance(41, 16);
+    expect(renderer.lastDialogue).toEqual({ speaker: "A", text: "a" });
+
+    const advancing = runtime.advance();
+    await renderer.frames.advance(1530, 16);
+    await advancing;
+    expect(runtime.getDisplayedLineIndex()).toBe(3);
+
+    // Re-enabling auto cannot fire the old timer while B is still typing.
+    runtime.setAutoPlayMode("button_auto");
+    await renderer.frames.advance(16);
+    expect(renderer.lastDialogue).toEqual({ speaker: "B", text: "" });
+  });
+
   it("restores the saved mode and both speed levels on a paired theater exit", async () => {
     // _SetTheaterModeStatus enter saves autoPlayModeCache + btnAutoModeCache
     // and zeroes the button level; the exit puts both back, mapping a cached
