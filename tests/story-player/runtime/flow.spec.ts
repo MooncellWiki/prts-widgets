@@ -69,6 +69,24 @@ describe("StoryRuntime", () => {
     runtime.destroy();
   });
 
+  it("releases a delay when real time crosses the deadline during its first poll", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(["[delay(time=0.0125)]", '[name="A"]done']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    const readRealtimeMs = vi.fn().mockReturnValueOnce(80).mockReturnValue(93);
+    renderer.frames.step(48, readRealtimeMs);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue?.speaker).toBe("A");
+    await started;
+    runtime.destroy();
+  });
+
   it("scales delay once by animateRatio and yields a frame for zero", async () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;

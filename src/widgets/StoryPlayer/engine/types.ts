@@ -740,8 +740,8 @@ export interface PlaybackFrame {
   readonly deltaMs: number;
   /** Monotonic time fixed for the current frame. */
   readonly nowMs: number;
-  /** Monotonic time when this callback runs. */
-  readonly realtimeMs: number;
+  /** Read monotonic real time independently of the frame timestamp. */
+  readonly readRealtimeMs: () => number;
 }
 
 export interface StoryRenderer {

@@ -44,12 +44,14 @@ export class PlaybackTestFrames {
     return () => this.frameEnds.delete(callback);
   };
 
-  step(deltaMs = 1, realtimeMs?: number): void {
+  step(deltaMs = 1, realtime?: number | (() => number)): void {
     this.nowMs += deltaMs;
+    const nowMs = this.nowMs;
     const frame = {
       deltaMs,
-      nowMs: this.nowMs,
-      realtimeMs: realtimeMs ?? this.nowMs,
+      nowMs,
+      readRealtimeMs:
+        typeof realtime === "function" ? realtime : () => realtime ?? nowMs,
     };
     const previousFrameTime = this.currentFrameTimeMs;
     this.currentFrameTimeMs = frame.nowMs;

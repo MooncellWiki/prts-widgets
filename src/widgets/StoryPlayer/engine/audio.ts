@@ -33,22 +33,13 @@ interface Playback {
 }
 
 interface MusicPlayback extends Playback {
-  introKey: string;
-  loopKey: string;
+  introUrl: string | null;
+  loopUrl: string;
   cancelRecycle?: () => void;
 }
 
 interface SoundPlayback extends Playback {
-  stopFade?: { deadline: number; completion: Promise<void> };
-}
-
-/**
- * Fallback identity for a key that resolves to no URL. Resolved URLs already
- * lowercase game assets and keep the case of Web URLs and @paths.
- */
-function musicAssetIdentity(rawKey: string): string {
-  const key = rawKey.trim();
-  return /^(?:@|https?:\/\/)/i.test(key) ? key : key.toLowerCase();
+  stopFade?: Promise<void>;
 }
 
 /**
@@ -101,7 +92,7 @@ export class HtmlStoryAudio implements StoryAudio {
     const fades: Promise<void>[] = [];
     for (const [channel, sound] of this.soundChannels) {
       if (sound.stopFade) {
-        fades.push(sound.stopFade.completion);
+        fades.push(sound.stopFade);
       } else {
         this.soundChannels.delete(channel);
         this.stopPlayback(sound);
@@ -114,17 +105,17 @@ export class HtmlStoryAudio implements StoryAudio {
   async playMusic(input: PlayMusicInput): Promise<void> {
     if (this.destroyed) return;
 
-    // AssetMusicInfo.IsSameAudio compares the substituted intro/loop asset
-    // paths with OrdinalIgnoreCase, so story variables aliasing one asset
-    // name the same music. Compare resolved URLs, not raw script keys.
+    // AssetMusicInfo.IsSameAudio (2791 @ 0x1869FC010) compares substituted
+    // intro and loop paths. Resolve the Web URLs before comparing them.
     const mainUrl = this.resolveAudioUrl(input.key);
     const introUrl = input.intro ? this.resolveAudioUrl(input.intro) : null;
-    const introKey = input.intro
-      ? (introUrl ?? musicAssetIdentity(input.intro))
-      : "";
-    const loopKey = mainUrl ?? musicAssetIdentity(input.key);
+    const hasUrls = mainUrl !== null && (!input.intro || introUrl !== null);
     const previous = this.musicAudio;
-    if (previous?.introKey === introKey && previous.loopKey === loopKey) {
+    if (
+      hasUrls &&
+      previous?.introUrl === introUrl &&
+      previous.loopUrl === mainUrl
+    ) {
       // Same music uses AudioChannel.set_volume (2791 @ 0x184253E20).
       previous.fade?.cancel();
       this.setVolume(previous, input.volume);
@@ -146,11 +137,11 @@ export class HtmlStoryAudio implements StoryAudio {
 
     // AudioClipManager.LoadMusic (2791 @ 0x1842708A0) rejects the whole
     // request when an explicitly named intro or loop fails to load.
-    if (!mainUrl || (input.intro && !introUrl)) return;
+    if (!hasUrls) return;
     const crossfade = previous !== null && input.crossfadeMs > INSTANT_STOP_MS;
     const next: MusicPlayback = {
-      introKey,
-      loopKey,
+      introUrl,
+      loopUrl: mainUrl,
       instance: null,
       volume: crossfade ? 0 : input.volume,
     };
@@ -216,13 +207,6 @@ export class HtmlStoryAudio implements StoryAudio {
     this.stopPlayback(previous ?? null);
 
     const ownsChannel = () => this.soundChannels.get(channel) === sound;
-    const canStart = () =>
-      ownsChannel() &&
-      // AudioChannel.Update owns fade completion. A scheduled source can start
-      // between the deadline and that update while the channel is still live.
-      (this.usesFrameUpdates() ||
-        !sound.stopFade ||
-        nowMs() <= sound.stopFade.deadline);
     const startTime = nowMs() + sourceDelayMs(input.delayMs);
     const clip = await this.getSound(url);
     if (!ownsChannel()) return;
@@ -235,7 +219,9 @@ export class HtmlStoryAudio implements StoryAudio {
     const remainingMs = startTime - nowMs();
     if (remainingMs > 0)
       await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
-    if (!canStart()) return;
+    // AudioChannel.Update (2791 @ 0x184252F30) or its fallback releases the
+    // channel. A source can start between the deadline and that update.
+    if (!ownsChannel()) return;
 
     const instance = await this.playPlayback(clip, {
       complete: input.loop
@@ -250,7 +236,7 @@ export class HtmlStoryAudio implements StoryAudio {
       volume: this.currentVolume(sound),
     });
 
-    this.claimPlayback(sound, instance, canStart());
+    this.claimPlayback(sound, instance, ownsChannel());
     if (!instance && ownsChannel()) {
       this.soundChannels.delete(channel);
       this.stopPlayback(sound);
@@ -353,9 +339,10 @@ export class HtmlStoryAudio implements StoryAudio {
         onComplete?.();
       };
       const tick = (time: number) => {
-        // AudioChannel.Update (2791 @ 0x184252F30) still interpolates at
-        // equality. Commands at the deadline can take over a silent channel.
-        if (time > endTime) {
+        // AudioChannel.Update (2791 @ 0x184252F30) checks start time first,
+        // even for a negative duration. At a positive fade's deadline the
+        // channel is silent and commands can still take over.
+        if (time > startTime && time > endTime) {
           complete();
           return;
         }
@@ -364,7 +351,10 @@ export class HtmlStoryAudio implements StoryAudio {
         scheduleTick(time);
       };
       const scheduleTick = (time: number) => {
-        const delay = Math.min(VOLUME_UPDATE_MS, endTime - time);
+        const delay =
+          durationMs <= 0
+            ? VOLUME_UPDATE_MS
+            : Math.min(VOLUME_UPDATE_MS, endTime - time);
         cancelFallback?.();
         cancelFallback = this.scheduleUpdateFallback(
           () => tick(nowMs()),
@@ -372,14 +362,8 @@ export class HtmlStoryAudio implements StoryAudio {
         );
       };
 
-      if (durationMs <= 0) {
-        // TweenVolume applies even an elapsed tween on the next Update. A
-        // command in the same frame can replace it at the original volume.
-        stopUpdating = this.onNextAudioUpdate(complete);
-      } else {
-        stopUpdating = this.frames?.onFrameUpdate(({ nowMs }) => tick(nowMs));
-        scheduleTick(nowMs());
-      }
+      stopUpdating = this.frames?.onFrameUpdate(({ nowMs }) => tick(nowMs));
+      scheduleTick(nowMs());
     });
   }
 
@@ -467,7 +451,6 @@ export class HtmlStoryAudio implements StoryAudio {
     playback: Playback,
     durationMs: number,
     release?: () => void,
-    startTime = this.tweenNowMs(),
   ): Promise<void> {
     // AudioChannel.Stop keeps the channel addressable until an uninterrupted
     // fade reaches zero. A later TweenVolume replaces its stop callback.
@@ -481,7 +464,6 @@ export class HtmlStoryAudio implements StoryAudio {
       return Promise.resolve();
     }
     return this.fadeVolume(playback, 0, durationMs, {
-      startTime,
       onComplete: stop,
     });
   }
@@ -491,22 +473,11 @@ export class HtmlStoryAudio implements StoryAudio {
     playback: SoundPlayback,
     fadeMs: number,
   ): Promise<void> {
-    const startTime = this.tweenNowMs();
-    const completion = this.fadeAndStop(
-      playback,
-      fadeMs,
-      () => {
-        if (this.soundChannels.get(channel) === playback)
-          this.soundChannels.delete(channel);
-      },
-      startTime,
-    );
-    playback.stopFade = {
-      // A negative stop tween stays live until the update releases its channel.
-      deadline: fadeMs < -INSTANT_STOP_MS ? Infinity : startTime + fadeMs,
-      completion,
-    };
-    return completion;
+    playback.stopFade = this.fadeAndStop(playback, fadeMs, () => {
+      if (this.soundChannels.get(channel) === playback)
+        this.soundChannels.delete(channel);
+    });
+    return playback.stopFade;
   }
 
   private fadeOutMusic(playback: MusicPlayback, fadeMs: number): Promise<void> {

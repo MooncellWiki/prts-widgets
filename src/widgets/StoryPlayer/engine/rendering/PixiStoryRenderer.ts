@@ -406,7 +406,7 @@ export class PixiStoryRenderer implements StoryRenderer {
         callback({
           deltaMs: tick.elapsedMS,
           nowMs,
-          realtimeMs: this.now(),
+          readRealtimeMs: this.now,
         });
       } finally {
         this.frameTimeMs = previousFrameTime;
