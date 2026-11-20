@@ -114,6 +114,36 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("converts boxed audio parameters and applies defaults only to absent values", async () => {
+    const audio = new FakeAudio();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[playmusic(key=7,intro=true,volume=null,crossfade=null)]",
+        '[playsound(key="s",channel=true,loop=1)]',
+        '[playsound(key="m",channel=null,loop=" TRUE ")]',
+        '[soundvolume(channel=true,volume=null,fadetime="1,000")]',
+        '[stopsound(key="s",channel=null)]',
+        '[name="A"]ok',
+      ]),
+      new FakeRenderer(),
+      audio,
+    );
+
+    await runtime.start();
+
+    expect(audio.playMusicCalls).toEqual([
+      { crossfadeMs: 0, delayMs: 0, intro: "True", key: "7", volume: 0 },
+    ]);
+    expect(audio.playSoundCalls).toEqual([
+      { channel: "True", delayMs: 0, key: "s", loop: true, volume: 1 },
+      { channel: "", delayMs: 0, key: "m", loop: true, volume: 1 },
+    ]);
+    expect(audio.soundVolumeCalls).toEqual([
+      { channel: "True", fadeMs: 1_000_000, volume: 0 },
+    ]);
+    expect(audio.stopSoundCalls).toEqual([{ channel: "", fadeMs: 0 }]);
+  });
+
   it("dispatches an empty music key so audio can retire the old channel", async () => {
     const audio = new FakeAudio();
     const onWarning = vi.fn();

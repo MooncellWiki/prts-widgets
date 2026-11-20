@@ -72,17 +72,17 @@ describe("StoryRuntime", () => {
   it.each([
     { time: "true", beforeDeadline: [16, 999] },
     { time: '"1e1"', beforeDeadline: [16, 9999] },
+    { time: '"1,000"', beforeDeadline: [16, 999_999] },
+    { time: '"$half"', beforeDeadline: [16, 499] },
     { time: ".5", beforeDeadline: [16, 499] },
     { time: "2.", beforeDeadline: [16, 1999] },
     { time: '"abc"', beforeDeadline: [] },
   ])("converts delay(time=$time)", async ({ time, beforeDeadline }) => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const runtime = new StoryRuntime(
-      createContext([`[delay(time=${time})]`, '[name="A"]done']),
-      renderer,
-      new FakeAudio(),
-    );
+    const context = createContext([`[delay(time=${time})]`, '[name="A"]done']);
+    context.audioVariables = { half: 0.5 };
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
 
     const started = runtime.start();
     await renderer.frames.advance(...beforeDeadline);

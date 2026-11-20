@@ -590,4 +590,37 @@ describe("preloadContextAssets", () => {
       DIALOG_FRAME_URL,
     ]);
   });
+
+  it("preloads the URLs used by commands with boxed audio keys", async () => {
+    const context = createContext([
+      "[playmusic(key=7,intro=true)]",
+      "[playsound(key=8)]",
+      '[playsound(key="$unresolved")]',
+    ]);
+
+    await preloadContextAssets(context);
+
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "7.mp3",
+      "true.mp3",
+      "8.mp3",
+      DIALOG_FRAME_URL,
+    ]);
+  });
+
+  it("collects boxed audio variables and skips empty intro variables", async () => {
+    const context = createContext([
+      '[playmusic(key="$track",intro="$no_intro")]',
+      '[playsound(key="$effect")]',
+    ]);
+    context.audioVariables = { effect: true, no_intro: "", track: 7 };
+
+    await preloadContextAssets(context);
+
+    expect(loadMock.mock.calls[0]?.[0]).toEqual([
+      "7.mp3",
+      "true.mp3",
+      DIALOG_FRAME_URL,
+    ]);
+  });
 });

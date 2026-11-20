@@ -1,12 +1,18 @@
 import { resolveStoryAudioByKey } from "../asset";
-import { exactArg, toBoolean, toNumber, toString } from "../commandParams";
+import {
+  boxedParamString,
+  convertStoryParameter,
+  exactArg,
+  getBool,
+  getFiniteFloat,
+} from "../commandParams";
 
 import type { Context } from "../../context";
 import type { CommandRegistry, CommandResult } from "../commandRegistry";
 import type { StoryAudio, StoryCommandArgs } from "../types";
 
-function durationMs(args: StoryCommandArgs, key: string, fallback = 0): number {
-  return Math.max(0, toNumber(exactArg(args, key), fallback) * 1000);
+function stringArg(args: StoryCommandArgs, key: string): string {
+  return boxedParamString(exactArg(args, key));
 }
 
 /**
@@ -29,30 +35,29 @@ export class AudioExecutors {
       playmusic: (args) => this.playMusic(args),
       // CommonExecutors._ExecuteStopMusicCommand (2791 @ 0x1841C56C0).
       stopmusic: (args) => {
-        void this.audio.stopMusic(durationMs(args, "fadetime"));
+        void this.audio.stopMusic(this.durationMs(args, "fadetime"));
       },
       // CommonExecutors._ExecuteMusicVolumeCommand (2791 @ 0x1841C48D0).
       musicvolume: (args) => {
         void this.audio.setMusicVolume(
-          toNumber(exactArg(args, "volume"), 1),
-          durationMs(args, "fadetime"),
+          this.volume(args),
+          this.durationMs(args, "fadetime"),
         );
       },
       playsound: (args) => this.playSound(args),
       // CommonExecutors._ExecuteStopSoundCommand (2791 @ 0x1841C57D0).
       stopsound: (args) => {
-        const key = toString(exactArg(args, "key"));
         void this.audio.stopSound(
-          toString(exactArg(args, "channel"), key),
-          durationMs(args, "fadetime"),
+          this.soundChannel(args, stringArg(args, "key")),
+          this.durationMs(args, "fadetime"),
         );
       },
       // CommonExecutors._ExecuteSoundVolumeCommand (2791 @ 0x1841C5170).
       soundvolume: (args) => {
         void this.audio.setSoundVolume(
-          toString(exactArg(args, "channel")),
-          toNumber(exactArg(args, "volume"), 1),
-          durationMs(args, "fadetime"),
+          this.soundChannel(args),
+          this.volume(args),
+          this.durationMs(args, "fadetime"),
         );
       },
     };
@@ -76,46 +81,72 @@ export class AudioExecutors {
     return Boolean(resolveStoryAudioByKey(key, this.context.audioVariables));
   }
 
+  private durationMs(
+    args: StoryCommandArgs,
+    key: string,
+    fallback = 0,
+  ): number {
+    return (
+      (getFiniteFloat(args, key, this.context.audioVariables) ?? fallback) *
+      1000
+    );
+  }
+
+  private volume(args: StoryCommandArgs): number {
+    return getFiniteFloat(args, "volume", this.context.audioVariables) ?? 1;
+  }
+
+  private soundChannel(args: StoryCommandArgs, key = ""): string {
+    // _GenAVGSoundChannelName (2791 @ 0x1841C5C60) receives the substituted
+    // explicit channel or key. Keep the original key for Web URL resolution.
+    // GetString (0x1869417D0) uses the key default only when channel is absent.
+    const channel = exactArg(args, "channel");
+    return boxedParamString(
+      convertStoryParameter(
+        channel === undefined ? key : channel,
+        this.context.audioVariables,
+      ),
+    );
+  }
+
   private playMusic(args: StoryCommandArgs): void {
     // CommonExecutors._ExecutePlayMusicCommand (2791 @ 0x1841C4A30).
     // Submit even an unresolved key so the backend can retire the old track.
-    const key = toString(exactArg(args, "key"));
+    const key = stringArg(args, "key");
     if (!key) this.warn("parse", "playmusic key is empty");
     else if (!this.hasAudioKey(key))
       this.warn("missing_asset", `music: ${key}`);
 
-    const intro = toString(exactArg(args, "intro")) || undefined;
-    if (intro && !this.hasAudioKey(intro))
+    const intro = stringArg(args, "intro");
+    const introKey = boxedParamString(
+      convertStoryParameter(intro, this.context.audioVariables),
+    );
+    if (introKey && !this.hasAudioKey(intro))
       this.warn("missing_asset", `music intro: ${intro}`);
 
     void this.audio.playMusic({
-      crossfadeMs: durationMs(args, "crossfade", 0.4),
-      delayMs: durationMs(args, "delay"),
-      intro,
+      crossfadeMs: this.durationMs(args, "crossfade", 0.4),
+      delayMs: this.durationMs(args, "delay"),
+      intro: introKey ? intro : undefined,
       key,
-      volume: toNumber(exactArg(args, "volume"), 1),
+      volume: this.volume(args),
     });
   }
 
   private playSound(args: StoryCommandArgs): void {
     // CommonExecutors._ExecutePlaySoundCommand (2791 @ 0x1841C4D90).
     // The Web player uses Normal mode, where both one-shots and loops play.
-    const key = toString(exactArg(args, "key"));
-    if (!key) {
-      this.warn("parse", "playsound key is empty");
-      return;
-    }
-    if (!this.hasAudioKey(key)) {
+    const key = stringArg(args, "key");
+    if (!key) this.warn("parse", "playsound key is empty");
+    else if (!this.hasAudioKey(key))
       this.warn("missing_asset", `sound: ${key}`);
-      return;
-    }
 
     void this.audio.playSound({
-      channel: toString(exactArg(args, "channel"), key),
-      delayMs: durationMs(args, "delay"),
+      channel: this.soundChannel(args, key),
+      delayMs: this.durationMs(args, "delay"),
       key,
-      loop: toBoolean(exactArg(args, "loop")),
-      volume: toNumber(exactArg(args, "volume"), 1),
+      loop: getBool(args, "loop", this.context.audioVariables),
+      volume: this.volume(args),
     });
   }
 }

@@ -5,6 +5,7 @@ import { normalizeImageKey } from "./asset";
 import { resolveCharacterRef, resolveNativeCharacterRef } from "./characterRef";
 import {
   exactArg,
+  getFiniteFloat,
   isZeroFloat,
   toBoolean,
   toNumber,
@@ -473,7 +474,9 @@ export class StoryRuntime {
     // CommonExecutors._ExecuteDelayCommand (2791 @ 0x1841C3EF0) scales
     // time once and starts a WaitForSecondsRealtime, including at zero.
     this.commandRegistry.register("delay", ({ args }) => ({
-      delayMs: this.calculateFadeMs(exactArg(args, "time")),
+      delayMs: this.calculateFadeMs(
+        getFiniteFloat(args, "time", this.context.audioVariables),
+      ),
     }));
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
