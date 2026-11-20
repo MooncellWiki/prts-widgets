@@ -2,7 +2,6 @@ import {
   AlphaFilter,
   Application,
   Assets,
-  type BlurFilter,
   Container,
   type Graphics,
   NineSliceSprite,
@@ -27,6 +26,7 @@ import {
 } from "../helpers/runtimeFakes";
 
 import type { CharacterArt } from "../../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { FocusBlurFilter } from "../../../src/widgets/StoryPlayer/engine/rendering/core/FocusBlurFilter";
 import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../../src/widgets/StoryPlayer/engine/types";
@@ -1237,8 +1237,8 @@ describe("Displayable and focus frame order", () => {
       ],
       ({ cgItems }) => {
         const blur = cgItems.children[0]?.filters?.[0] as
-          BlurFilter | undefined;
-        draws.push([blur?.strength, cgItems.children.length]);
+          FocusBlurFilter | undefined;
+        draws.push([blur?.amount, cgItems.children.length]);
       },
     );
     const started = runtime.start();
@@ -1246,8 +1246,8 @@ describe("Displayable and focus frame order", () => {
       app.ticker.update(16);
       app.ticker.update(32);
       expect(draws).toEqual([
-        [4, 1],
-        [8, 2],
+        [0.5, 1],
+        [1, 2],
       ]);
     } finally {
       destroy();
@@ -1955,8 +1955,8 @@ describe("Displayable and focus frame order", () => {
       ],
       ({ cgItems }) => {
         const blur = cgItems.children[0]?.filters?.[0] as
-          BlurFilter | undefined;
-        draws.push([blur?.strength, cgItems.children.length]);
+          FocusBlurFilter | undefined;
+        draws.push([blur?.amount, cgItems.children.length]);
       },
     );
     const started = runtime.start();
@@ -1966,8 +1966,8 @@ describe("Displayable and focus frame order", () => {
       app.ticker.update(16);
       app.ticker.update(32);
       expect(draws).toEqual([
-        [4, 2],
-        [8, 2],
+        [0.5, 2],
+        [1, 2],
       ]);
       await Promise.all([started, skipped]);
     } finally {

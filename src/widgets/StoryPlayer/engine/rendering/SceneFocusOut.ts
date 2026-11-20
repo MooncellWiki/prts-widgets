@@ -1,4 +1,4 @@
-import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
+import { ColorMatrixFilter, type Container } from "pixi.js";
 
 import {
   browserAnimationClock,
@@ -8,6 +8,7 @@ import {
 } from "../execution";
 
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
+import { FocusBlurFilter } from "./core/FocusBlurFilter";
 
 import type { FocusOutInput, FocusParamInput } from "../types";
 import type { TweenRunner } from "./core/TweenRunner";
@@ -51,19 +52,9 @@ const focusChannels = new Map<string, readonly string[]>([
 
 /**
  * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
- * `_ExecuteFocusParam` channel state. Applying `BlurFilter` and
- * `ColorMatrixFilter` per PIXI container is a Web adaptation of the native
- * `AVGSceneEffectManager` post-processing pipeline.
- *
- * Native composites each registered item as "clean image x fully-processed
- * image" mixed by the channel amount (`AVGSceneFocusOut.Render` +
- * `mat_blit_ghost`; grayscale/inverse strength is a material constant and
- * amount only drives the blend -- amount=0.5 is a half mix, not a
- * half-strength effect). The color filters below reproduce that mix by
- * feeding `amount` straight into `buildColorEffectMatrix` (see the comment
- * in `render()` for the shader math). Blur keeps a strength-graded surrogate
- * for the blend because stock PIXI filters cannot composite two copies of
- * live content.
+ * `_ExecuteFocusParam` channel state. `AVGSceneFocusOut.Render` and
+ * `mat_blit_ghost` mix a fully processed image into the clean one by channel
+ * amount. Pixi applies that blend to each flattened focus target.
  */
 export class SceneFocusOut {
   private readonly states = new Map<string, FocusState>();
@@ -75,7 +66,10 @@ export class SceneFocusOut {
   }> = [];
   private readonly cgItems = new Map<Container, PostDisplay>();
   private readonly swappedPairs = new Set<FocusImagePair>();
-  private readonly filteredTargets = new Set<Container>();
+  private readonly filters = new Map<
+    Container,
+    FocusBlurFilter | ColorMatrixFilter
+  >();
   private config: FocusParamInput = { blur: true, color: "None" };
 
   constructor(
@@ -178,8 +172,11 @@ export class SceneFocusOut {
       slot.target = undefined;
       this.bindings.set(id, slot);
     }
-    for (const target of this.filteredTargets) target.filters = [];
-    this.filteredTargets.clear();
+    for (const [target, filter] of this.filters) {
+      target.filters = [];
+      filter.destroy();
+    }
+    this.filters.clear();
     this.config = { blur: true, color: "None" };
   }
 
@@ -229,6 +226,7 @@ export class SceneFocusOut {
     const display = { amount: this.states.get(id)?.amount ?? 0 };
     this.bindings.set(id, display);
     this.cgItems.set(target, display);
+    target.filters ??= [];
     this.render();
   }
 
@@ -254,51 +252,51 @@ export class SceneFocusOut {
   }
 
   private render(): void {
+    const { blur, color } = this.config;
     const amounts = new Map<Container, number>();
-    for (const [target, display] of this.cgItems)
-      amounts.set(target, display.amount);
-    for (const { layer, slots } of this.fixedLayers) {
-      const amount = slots[0]!.amount;
-      // A shared filter keeps a composed puzzle continuous across tile edges.
-      if (slots.every((slot) => slot.amount === amount)) {
-        if (amount > 0) amounts.set(layer, amount);
-      } else {
-        for (const slot of slots) {
-          if (slot.target && slot.amount > 0)
-            amounts.set(slot.target, slot.amount);
+    if (blur || color !== "None") {
+      for (const [target, display] of this.cgItems) {
+        if (display.amount > 0) amounts.set(target, display.amount);
+      }
+      for (const { layer, slots } of this.fixedLayers) {
+        const amount = slots[0]!.amount;
+        // A shared filter keeps the puzzle continuous across tile edges.
+        if (slots.every((slot) => slot.amount === amount)) {
+          if (amount > 0) amounts.set(layer, amount);
+        } else {
+          for (const slot of slots) {
+            if (slot.target && slot.amount > 0)
+              amounts.set(slot.target, slot.amount);
+          }
         }
       }
     }
 
-    for (const target of this.filteredTargets) {
-      if (!amounts.has(target)) target.filters = [];
+    for (const [target, filter] of this.filters) {
+      if (amounts.has(target)) continue;
+      target.filters = [];
+      filter.destroy();
+      this.filters.delete(target);
     }
-    this.filteredTargets.clear();
-
     for (const [target, rawAmount] of amounts) {
-      const amount = Math.max(0, Math.min(1, rawAmount));
-      const filters = [];
-      if (amount > 0 && this.config.blur)
-        filters.push(new BlurFilter({ strength: amount * 8 }));
-      if (amount > 0 && this.config.color !== "None") {
-        // Native `AVGSceneFocusOut.Render` (2.7.61 VA 0x183E859D0) blits with
-        // the same AVG/[UC]Common/Arts/Materials/mat_grayscale material as
-        // `cameraeffect`, writing `_Params = (0.299, 0.587, 0.114,
-        // color == Grayscale)` and `_Inverse = (color == Colorinverse)` — the
-        // channel is binary there, and the per-item focus amount is applied
-        // afterwards by compositing the processed target back through
-        // mat_blit_ghost. That composite is a lerp between the original and
-        // the fully processed pixel, which is exactly what feeding `amount`
-        // into the matrix models, so both channels scale with it.
-        const color = new ColorMatrixFilter();
-        color.matrix =
-          this.config.color === "Grayscale"
+      const amount = Math.min(1, rawAmount);
+      let filter = this.filters.get(target);
+      if (!filter || blur !== filter instanceof FocusBlurFilter) {
+        filter?.destroy();
+        filter = blur ? new FocusBlurFilter() : new ColorMatrixFilter();
+        this.filters.set(target, filter);
+        target.filters = [filter];
+      }
+      if (filter instanceof FocusBlurFilter) {
+        filter.setBlend(amount, color);
+      } else {
+        // With blur disabled the ghost blend is equivalent to interpolating
+        // between identity and the full color matrix.
+        filter.matrix =
+          color === "Grayscale"
             ? buildColorEffectMatrix(amount, 0)
             : buildColorEffectMatrix(0, amount);
-        filters.push(color);
       }
-      target.filters = filters;
-      if (filters.length > 0) this.filteredTargets.add(target);
     }
   }
 }

@@ -1,8 +1,9 @@
-import { BlurFilter, type ColorMatrixFilter, Container } from "pixi.js";
+import { type ColorMatrixFilter, Container } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { SceneEffectManager } from "../../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
 import { buildColorEffectMatrix } from "../../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
+import { FocusBlurFilter } from "../../src/widgets/StoryPlayer/engine/rendering/core/FocusBlurFilter";
 import { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 
 import type { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
@@ -100,6 +101,33 @@ describe("SceneEffectManager", () => {
       input({ durationMs: 0, id: "x", to: 0, type: "cgitem" }),
     );
     expect(target.filters).toHaveLength(0);
+  });
+
+  it("blends a single fixed blur over the puzzle as its focus amount changes", () => {
+    const layers = new LayerGraph();
+    let step: ((progress: number) => void) | undefined;
+    const effects = createSceneEffects(async (_duration, update) => {
+      step = update;
+    }, layers);
+    effects.setFocusOut(input({ durationMs: 1000, type: "lbg", to: 1 }));
+
+    step?.(0.25);
+    const [blur] = layers.gridBackground.filters as FocusBlurFilter[];
+    expect(blur).toBeInstanceOf(FocusBlurFilter);
+    expect(blur!.amount).toBe(0.156_25);
+
+    effects.setFocusParam({ blur: true, color: "Grayscale" });
+    step?.(0.5);
+    expect(layers.gridBackground.filters).toEqual([blur]);
+    expect(blur!.resources.focusBlurUniforms.uniforms).toMatchObject({
+      uAmount: 0.5,
+      uGray: 1,
+      uInverse: 0,
+    });
+
+    step?.(1);
+    expect(layers.gridBackground.filters[0]).toBe(blur);
+    expect(blur!.amount).toBe(1);
   });
 
   it.each([
@@ -202,7 +230,7 @@ describe("SceneEffectManager", () => {
 
     // The cgitem registers afterwards and the stored amount replays.
     effects.bindCgItem("a", target);
-    expect(target.filters[0]).toBeInstanceOf(BlurFilter);
+    expect(target.filters[0]).toBeInstanceOf(FocusBlurFilter);
   });
 
   it("keeps storing tween updates after disposal for the next bind", () => {

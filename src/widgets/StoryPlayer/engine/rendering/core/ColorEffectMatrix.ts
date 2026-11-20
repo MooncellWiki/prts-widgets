@@ -5,9 +5,7 @@ import type { ColorMatrix } from "pixi.js";
  * (`0.29899999, 0.58700001, 0.114` as float32). They sum to 1, so desaturating
  * with them preserves brightness.
  */
-const LUMA_R = 0.299;
-const LUMA_G = 0.587;
-const LUMA_B = 0.114;
+export const COLOR_EFFECT_LUMA = [0.299, 0.587, 0.114] as const;
 
 /**
  * Builds the 4x5 `ColorMatrixFilter` matrix that models Torappu's shared
@@ -58,10 +56,11 @@ export function buildColorEffectMatrix(
   gray: number,
   inverse: number,
 ): ColorMatrix {
+  const [red, green, blue] = COLOR_EFFECT_LUMA;
   const scale = 1 - 2 * inverse;
-  const lumR = LUMA_R * gray;
-  const lumG = LUMA_G * gray;
-  const lumB = LUMA_B * gray;
+  const lumR = red * gray;
+  const lumG = green * gray;
+  const lumB = blue * gray;
   const diag = 1 - gray;
   return [
     (lumR + diag) * scale,
