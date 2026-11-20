@@ -460,9 +460,10 @@ export function buildTemplate(
     };
   }
 
+  const horizon = maskId === "ui_cutin_mask_horizon";
   if (
     maskId === "ui_cutin_mask_vertical" ||
-    maskId === "ui_cutin_mask_horizon" ||
+    horizon ||
     maskId === "ui_cutin_mask_angle"
   ) {
     // 2791 PC 纯 stencil 模板的 _imgMask 随根节点拉伸。
@@ -471,6 +472,11 @@ export function buildTemplate(
     const angled = maskId === "ui_cutin_mask_angle";
     const maskNode = new Container();
     const maskGraphics = new Graphics();
+    if (horizon) {
+      // Pixi updates only the last batched draw of a shared Graphics mask.
+      // Draw the mask separately so every reader follows the open/close clip.
+      maskGraphics.context.batchMode = "no-batch";
+    }
     maskNode.addChild(maskGraphics);
     root.addChild(maskNode);
     const edges: Array<{ sprite: Sprite; side: number; height: number }> = [];
@@ -507,8 +513,7 @@ export function buildTemplate(
       maskNode,
       maskGraphics,
       hasImgMask: true,
-      animatorClip:
-        maskId === "ui_cutin_mask_horizon" ? "hori_mask_open" : null,
+      animatorClip: horizon ? "hori_mask_open" : null,
       autoClip: null,
       emptyImage: null,
       setBackShadowSize: null,
