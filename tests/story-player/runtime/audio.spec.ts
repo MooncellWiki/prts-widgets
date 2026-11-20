@@ -38,20 +38,24 @@ describe("StoryRuntime", () => {
     },
   );
 
-  it("maps musicvolume and soundvolume commands", async () => {
+  it("dispatches audio fades in the same update at literal durations", async () => {
     const audio = new FakeAudio();
     const runtime = new StoryRuntime(
       createContext([
+        "[StopMusic(fadetime=0.75,block=true)]",
         "[musicvolume(volume=0.25,fadetime=1.5)]",
         '[soundvolume(channel="b",volume=0.75,fadetime=0.5)]',
         '[name="A"]ok',
       ]),
       new FakeRenderer(),
       audio,
+      { animateRatio: 0 },
     );
 
-    await runtime.start();
+    const starting = runtime.start();
 
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(audio.stopMusicCalls).toEqual([750]);
     expect(audio.musicVolumeCalls).toEqual([
       {
         fadeMs: 1500,
@@ -65,7 +69,7 @@ describe("StoryRuntime", () => {
         volume: 0.75,
       },
     ]);
-    expect(runtime.getState()).toBe("waiting_input");
+    await starting;
   });
 
   it("maps native audio defaults, exact parameter casing, and raw channels", async () => {
@@ -80,6 +84,7 @@ describe("StoryRuntime", () => {
       ]),
       new FakeRenderer(),
       audio,
+      { animateRatio: 0 },
     );
 
     await runtime.start();
