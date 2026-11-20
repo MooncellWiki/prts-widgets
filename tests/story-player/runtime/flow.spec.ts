@@ -225,7 +225,18 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("finished");
   });
 
-  it.each(["0", "null", '" FALSE "', '"$manual"'])(
+  it.each([
+    ",",
+    "0",
+    "\u00850\u0085",
+    "\u00000\u0000",
+    "/* before, including = */ false",
+    "null",
+    "undefined",
+    '" FALSE "',
+    '"$manual"',
+    '"\\u0066alse"',
+  ])(
     "restores manual input after converting theater(mode=%s)",
     async (mode) => {
       const context = createContext([
@@ -244,6 +255,68 @@ describe("StoryRuntime", () => {
 
       expect(runtime.isTheaterMode()).toBe(false);
       expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(runtime.getState()).toBe("waiting_input");
+      runtime.destroy();
+    },
+  );
+
+  it.each([
+    "true/* after, including () */",
+    "NaN",
+    "\u0085NaN\u0085",
+    "Infinity",
+    "-Infinity",
+    '"\\u0074rue"',
+    '"\\fTrue\\f"',
+    '"\\u0000True\\u0000"',
+  ])("enables theater after converting mode %s", async (mode) => {
+    const renderer = new FakeRenderer();
+    const runtime = new StoryRuntime(
+      createContext([`[theater(mode=${mode})]`, '[name="A"]auto']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    await runtime.start();
+
+    expect(runtime.isTheaterMode()).toBe(true);
+    expect(runtime.getAutoPlayState().mode).toBe("button_auto");
+    expect(runtime.getState()).toBe("waiting_input");
+    runtime.destroy();
+  });
+
+  it.each([
+    "",
+    '""',
+    '"0"',
+    '"$missing"',
+    '"NaN"',
+    '"Infinity"',
+    '"undefined"',
+  ])(
+    "fails playback before enabling theater for invalid mode %s",
+    async (mode) => {
+      const renderer = new FakeRenderer();
+      const onWarning = vi.fn();
+      const runtime = new StoryRuntime(
+        createContext([`[theater(mode=${mode})]`, '[name="A"]never shown']),
+        renderer,
+        new FakeAudio(),
+        { onWarning },
+      );
+
+      await runtime.start();
+
+      expect(runtime.getState()).toBe("error");
+      expect(runtime.isTheaterMode()).toBe(false);
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      expect(renderer.dialogueTexts).toEqual([]);
+      expect(onWarning).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detail: "theater: invalid mode",
+          type: "error",
+        }),
+      );
       runtime.destroy();
     },
   );
@@ -1464,6 +1537,29 @@ describe("StoryRuntime", () => {
       await runtime.start();
 
       expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["landed"]);
+      runtime.destroy();
+    },
+  );
+
+  it.each([
+    { label: '"$target"', warp: '""' },
+    { label: '""', warp: '"$target"' },
+  ])(
+    "keeps a null name distinct from an empty label ($label, $warp)",
+    async ({ label, warp }) => {
+      const renderer = new FakeRenderer();
+      const context = createContext([
+        `[warp(name=${warp})]`,
+        '[name="A"]inline',
+        `[label(name=${label})]`,
+        '[name="B"]landed',
+      ]);
+      context.storyVariables = { target: null };
+      const runtime = new StoryRuntime(context, renderer, new FakeAudio());
+
+      await runtime.start();
+
+      expect(renderer.dialogueTexts.filter(Boolean)).toEqual(["inline"]);
       runtime.destroy();
     },
   );

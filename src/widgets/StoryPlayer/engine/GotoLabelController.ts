@@ -63,6 +63,8 @@ export class GotoLabelController extends ExecutorComponent {
       this.variables,
       "exact",
     );
-    return name === undefined ? undefined : boxedParamString(name);
+    // Web treats explicit null as an unusable name. The native string
+    // getter calls ToString on the boxed value, which requires a non-null box.
+    return name == null ? undefined : boxedParamString(name);
   }
 }

@@ -1,8 +1,8 @@
 import { ExecutorComponent, type PanelExecutors } from "../ExecutorComponent";
 import {
-  boxedParamBool,
   convertStoryParameter,
   exactArg,
+  tryConvertToBoolean,
 } from "../commandParams";
 
 import type { AutoPlayState } from "../types";
@@ -41,7 +41,11 @@ export class TheaterLabel extends ExecutorComponent {
           this.variables,
           "exact",
         );
-        this.setTheaterMode(boxedParamBool(mode, true));
+        const active = mode === undefined ? true : tryConvertToBoolean(mode);
+        // Command.GetOrDefault<bool> defaults on a missing key. The typed
+        // getter surfaces Boolean.Parse's FormatException for invalid strings.
+        if (active === undefined) throw new TypeError("theater: invalid mode");
+        this.setTheaterMode(active);
         return "continue";
       },
     };

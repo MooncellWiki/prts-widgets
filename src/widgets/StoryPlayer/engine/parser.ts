@@ -22,14 +22,15 @@ const commandRegex = /^\[\s*(?:(.*?)\((.*)\)|(?:([.|\w]*)|(.*)))\s*\]\s*(.*)/;
 // than treating X as one.
 const dialogueInnerRegex = /^name\s*=\s*"((?:\\.|[^"])*)"$/;
 
-function splitArgs(raw: string): string[] {
-  const output: string[] = [];
+function splitArgs(raw: string) {
+  const output: { commaTerminated: boolean; part: string }[] = [];
   let current = "";
   let depth = 0;
   let quote: '"' | "'" | null = null;
   let escaped = false;
 
-  for (const char of raw) {
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index]!;
     if (escaped) {
       current += char;
       escaped = false;
@@ -45,6 +46,16 @@ function splitArgs(raw: string): string[] {
       if (char === quote) quote = null;
       continue;
     }
+    // JsonTextReader.ParseComment (2791 @ 0x1861B70B0) consumes block
+    // comments between parameter tokens. Keep adjacent tokens separated.
+    if (char === "/" && raw[index + 1] === "*") {
+      const end = raw.indexOf("*/", index + 2);
+      if (end !== -1) {
+        current += " ";
+        index = end + 1;
+        continue;
+      }
+    }
     if (char === '"' || char === "'") {
       quote = char;
       current += char;
@@ -55,31 +66,43 @@ function splitArgs(raw: string): string[] {
     } else if (char === ")") {
       depth = Math.max(0, depth - 1);
     } else if (char === "," && depth === 0) {
-      if (current.trim()) output.push(current.trim());
+      const part = current.trim();
+      if (part) output.push({ commaTerminated: true, part });
       current = "";
       continue;
     }
     current += char;
   }
 
-  if (current.trim()) output.push(current.trim());
+  const part = current.trim();
+  if (part) output.push({ commaTerminated: false, part });
   return output;
 }
 
+const quotedEscapeCharacters: Readonly<Record<string, string>> = {
+  '"': '"',
+  "'": "'",
+  "/": "/",
+  "\\": "\\",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+};
+
+/** JsonTextReader.ReadStringIntoBuffer (2791 @ 0x1861BD6E0). */
 function unescapeQuoted(value: string): string {
-  const quote = value[0];
-  const body = value.slice(1, -1);
-  return body.replace(/\\(.)/g, (_match, escaped: string) => {
-    if (escaped === "n") return "\n";
-    if (escaped === "r") return "\r";
-    if (escaped === "t") return "\t";
-    if (escaped === quote || escaped === "\\") return escaped;
-    return `\\${escaped}`;
-  });
+  return value
+    .slice(1, -1)
+    .replace(/\\(u[\da-fA-F]{4}|.)/g, (_match, escaped: string) => {
+      if (escaped.length === 5)
+        return String.fromCharCode(Number.parseInt(escaped.slice(1), 16));
+      return quotedEscapeCharacters[escaped] ?? `\\${escaped}`;
+    });
 }
 
-function parseValue(raw: string): StoryCommandValue {
-  const value = raw.trim();
+function parseValue(value: string): StoryCommandValue {
   if (
     value.length >= 2 &&
     ((value.startsWith('"') && value.endsWith('"')) ||
@@ -89,7 +112,11 @@ function parseValue(raw: string): StoryCommandValue {
   }
   if (value === "true") return true;
   if (value === "false") return false;
-  if (value === "null") return null;
+  // JsonTextReader.ParseValue (2791 @ 0x1861B9FC0) accepts these bare
+  // literals. CreateValueInternal boxes the floats and reads undefined as null.
+  if (value === "null" || value === "undefined") return null;
+  if (value === "NaN" || value === "Infinity" || value === "-Infinity")
+    return Number(value);
   // 2791 JsonTextReader.ParseNumber @ 0x1861B7F50 reads hex and
   // leading-zero integers as base 16 and 8, with signed Int64 results.
   const integerLiteral = /^0x[0-9a-f]+$/i.test(value)
@@ -113,11 +140,19 @@ function parseValue(raw: string): StoryCommandValue {
 
 function parseArgs(raw: string): StoryCommandArgs {
   const args: StoryCommandArgs = {};
-  for (const part of splitArgs(raw)) {
+  for (const { commaTerminated, part } of splitArgs(raw)) {
     const separator = part.indexOf("=");
     if (separator === -1) continue;
     const key = part.slice(0, separator).trim();
-    if (key) args[key] = parseValue(part.slice(separator + 1));
+    // ParseValue (2791 @ 0x1861B9FC0) and ParsePostValue (0x1861B9170)
+    // skip NUL and Char.IsWhiteSpace, including NEL outside quoted values.
+    const value = part
+      .slice(separator + 1)
+      .replace(/^[\s\u0085\0]+|[\s\u0085\0]+$/g, "");
+    // JsonTextReader.ParseValue (2791 @ 0x1861B9FC0) emits Undefined for a
+    // comma in value position, just as it does for the undefined literal.
+    if (key)
+      args[key] = commaTerminated && value === "" ? null : parseValue(value);
   }
   return args;
 }

@@ -277,22 +277,25 @@ export function getBool(
   key: string,
   variables?: Readonly<Record<string, unknown>>,
 ): boolean {
-  return boxedParamBool(convertStoryParameter(exactArg(args, key), variables));
+  return (
+    tryConvertToBoolean(
+      convertStoryParameter(exactArg(args, key), variables),
+    ) ?? false
+  );
 }
 
-export function boxedParamBool(
+export function tryConvertToBoolean(
   value: StoryCommandValue | undefined,
-  fallback = false,
-): boolean {
+): boolean | undefined {
   if (typeof value === "number") return value !== 0;
   if (typeof value === "string") {
     const match =
       /^[\p{White_Space}\0]*(true|false)[\p{White_Space}\0]*$/u.exec(
         value.toLowerCase(),
       );
-    return match ? match[1] === "true" : fallback;
+    return match ? match[1] === "true" : undefined;
   }
-  return value === undefined ? fallback : value === true;
+  return value === undefined ? undefined : value === true;
 }
 
 export function toString(value: unknown, fallback = ""): string {
