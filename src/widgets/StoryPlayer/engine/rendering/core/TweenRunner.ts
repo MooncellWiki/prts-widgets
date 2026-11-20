@@ -51,9 +51,14 @@ export interface TweenHandle {
   kill: (complete?: boolean) => void;
 }
 
-interface ActiveTween extends TweenHandle {
-  target?: object;
+interface UpdateParticipant {
   advance: (deltaMs: number) => void;
+  target?: object;
+  kill?: TweenHandle["kill"];
+}
+
+interface ActiveTween extends TweenHandle, UpdateParticipant {
+  kill: TweenHandle["kill"];
 }
 
 /**
@@ -62,7 +67,8 @@ interface ActiveTween extends TweenHandle {
  * FilteredOperation (0x1844637F0) handles target kills in reverse order.
  */
 export class TweenRunner {
-  private readonly active = new Set<ActiveTween>();
+  private readonly active = new Set<UpdateParticipant>();
+  private readonly beforeUpdateCallbacks = new Set<() => void>();
   private readonly afterUpdateCallbacks: Array<() => void> = [];
   private stopUpdates: (() => void) | undefined;
   private updating = false;
@@ -185,24 +191,47 @@ export class TweenRunner {
       finish("complete", 1);
     } else {
       previous = now?.() ?? 0;
-      this.active.add(tween);
-      if (!this.stopUpdates && !this.updating) {
-        try {
-          this.stopUpdates = this.subscribe();
-        } catch (error) {
-          this.active.delete(tween);
-          throw error;
-        }
-        this.stopIfIdle();
-      }
+      this.add(tween);
     }
     return tween;
   }
 
   killTarget(target: object, complete = false): void {
     for (const tween of [...this.active].reverse()) {
-      if (tween.target === target) tween.kill(complete);
+      if (tween.target === target) tween.kill?.(complete);
     }
+  }
+
+  /** Advance a composite animation in the top-level tween order. */
+  subscribeUpdate(advance: (deltaMs: number) => void): () => void {
+    const update: UpdateParticipant = {
+      advance: (deltaMs) => {
+        if (!this.active.has(update)) return;
+        if (this.isAlive()) advance(deltaMs);
+        else stop();
+      },
+    };
+    const stop = () => {
+      this.active.delete(update);
+      this.stopIfIdle();
+    };
+    this.add(update);
+    return stop;
+  }
+
+  /** Run once before advancing tweens on the next Update. */
+  beforeNextUpdate(callback: () => void): () => void {
+    this.beforeUpdateCallbacks.add(callback);
+    try {
+      this.ensureUpdates();
+    } catch (error) {
+      this.beforeUpdateCallbacks.delete(callback);
+      throw error;
+    }
+    return () => {
+      this.beforeUpdateCallbacks.delete(callback);
+      this.stopIfIdle();
+    };
   }
 
   /** Run after the current tween update, or inline between frames. */
@@ -216,7 +245,11 @@ export class TweenRunner {
     const kills: Array<() => void> = [];
     this.killCallbacks = kills;
     try {
-      for (const tween of [...this.active]) tween.advance(deltaMs);
+      const tweens = [...this.active];
+      for (const callback of [...this.beforeUpdateCallbacks]) {
+        if (this.beforeUpdateCallbacks.delete(callback)) callback();
+      }
+      for (const tween of tweens) tween.advance(deltaMs);
     } finally {
       try {
         // TweenManager.Update (2791 @ 0x184467690) drains _KillList in reverse.
@@ -232,8 +265,25 @@ export class TweenRunner {
     }
   }
 
+  private add(update: UpdateParticipant): void {
+    this.active.add(update);
+    try {
+      this.ensureUpdates();
+    } catch (error) {
+      this.active.delete(update);
+      throw error;
+    }
+  }
+
+  private ensureUpdates(): void {
+    if (this.stopUpdates || this.updating) return;
+    this.stopUpdates = this.subscribe();
+    this.stopIfIdle();
+  }
+
   private stopIfIdle(): void {
-    if (this.updating || this.active.size !== 0) return;
+    if (this.updating || this.active.size || this.beforeUpdateCallbacks.size)
+      return;
     this.stopUpdates?.();
     this.stopUpdates = undefined;
   }

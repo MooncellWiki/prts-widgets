@@ -200,6 +200,7 @@ export interface CharacterSlotInput {
   block?: boolean;
   characterKey?: string;
   circles?: number;
+  delayMs?: number;
   dimmed?: boolean;
   durationMs?: number;
   enterFrom?: "down" | "left" | "right" | "up";
@@ -207,6 +208,7 @@ export interface CharacterSlotInput {
   expression?: string;
   fadeIdentity?: string;
   focus?: number;
+  focusDurationMs?: number;
   /**
    * charslot 的 focus 是全量重刷:`_ProcessFocusArray` 清零后按列表点亮,
    * 不认识的取值(含 "n"/"none"/"a")= 全部槽 unfocus。focusSlots 为点亮集。
@@ -217,7 +219,7 @@ export interface CharacterSlotInput {
   /**
    * The raw `name` ref, which is what native stores as
    * `AVGCharacterSlot.m_currentKey` and compares verbatim in `Set`
-   * (@ 0x183eb38a0) to decide whether to reset the slot offset. Distinct from
+   * (2791 @ 0x184237BC0) to decide whether to reset the slot offset. Distinct from
    * `fadeIdentity`, which is the alias/index-stripped id used only to skip the
    * image cross-fade.
    */
@@ -232,16 +234,6 @@ export interface CharacterSlotInput {
   scaleX?: number;
   scaleY?: number;
   slot: string;
-  /**
-   * charslot 专用：该命令的 tween 会进 `AVGCharacterslotPanel` 的每槽缓存
-   * Sequence（`_UpdateSeqWithTween` 是 Insert 并行，`_GetCachedSlotSeq`
-   * 0x183e4f830 在 Sequence 未被标 played 前复用它；DOTween 的
-   * `creationLocked` 让这种复用只对同一帧内的相邻命令成立），`isblock`
-   * 等整条 Sequence 完成（OnComplete → FinishCommand），详见 renderer 的
-   * `characterSlotSeqDeadlines`。`character` 命令走 `CharacterPanel`，
-   * tween 不入该 Sequence，不得置位。
-   */
-  slotSequence?: boolean;
   stop?: boolean;
   times?: number;
   transType?: number;
@@ -777,7 +769,14 @@ export interface StoryRenderer {
   ) => ExecutionHandle | void;
   setFocusParam: (input: FocusParamInput) => void;
   clearBackground: (fadeMs?: number, block?: boolean) => Promise<void> | void;
-  clearCharacters: (slot?: string, fadeMs?: number) => Promise<void> | void;
+  /** A single slot with an explicit duration fades on Update. Omit it to clear immediately. */
+  clearCharacters: (
+    slot?: string,
+    fadeMs?: number,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
+  cancelCharacterPreparation: (applyElapsedClears?: boolean) => void;
+  resetCharacters: () => void;
   clearCurtains: (fadeMs?: number) => void;
   recycleCurtains: () => void;
   resetCurtains: () => void;
@@ -833,7 +832,11 @@ export interface StoryRenderer {
   ) => ExecutionHandle | void;
   cancelBlockerPreparation: () => void;
   resetBlocker: () => void;
-  setCharacter: (input: CharacterSlotInput) => Promise<void>;
+  setCharacter: (input: CharacterSlotInput) => ExecutionHandle | void;
+  setCharacterSlot: (
+    input: CharacterSlotInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   setCharacterCutin: (
     input: CharacterCutinInput,
     onComplete?: () => void,
@@ -847,7 +850,10 @@ export interface StoryRenderer {
     onComplete?: () => void,
   ) => ExecutionHandle | void;
   setLargeImage: (input: GridBackgroundInput) => ExecutionHandle | void;
-  runCharacterAction: (input: CharacterActionInput) => Promise<void>;
+  runCharacterAction: (
+    input: CharacterActionInput,
+    onComplete?: () => void,
+  ) => ExecutionHandle | void;
   /**
    * `layout` places the message once per command; typewriter updates omit it
    * and keep the current position.

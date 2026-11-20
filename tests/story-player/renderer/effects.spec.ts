@@ -529,7 +529,7 @@ describe("PixiStoryRenderer", () => {
 
     expect(renderer.tween).not.toHaveBeenCalled();
     expect(renderer.cgItemView.targets("a")[0].filters ?? []).toHaveLength(0);
-    expect(renderer.charLayer.filters ?? []).toHaveLength(0);
+    expect(renderer.layers.characters.filters ?? []).toHaveLength(0);
   });
 
   it("binds a stored cgitem focus amount on show and drops it on dispose", async () => {
