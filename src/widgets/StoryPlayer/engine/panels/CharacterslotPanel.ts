@@ -121,8 +121,9 @@ export class CharacterslotPanel extends ExecutorComponent {
 
     // _ExecuteCharslot's Sequence.OnComplete (2791 @ 0x1841B61F0) reads
     // this panel's shared completion slot even when the sequence starts unblocked.
+    const action = this.parseCharacterSlotAction(args.action);
     const input: CharacterSlotInput = {
-      action: this.parseCharacterSlotAction(args.action),
+      action,
       ...(args.angle === undefined ? {} : { angle: toNumber(args.angle, 0) }),
       alphaFrom,
       alphaTo,
@@ -146,7 +147,12 @@ export class CharacterslotPanel extends ExecutorComponent {
         ? {}
         : { inverse: toBoolean(args.inverse, false) }),
       nativeKey: nameRef || undefined,
-      positionFrom: this.parseCharacterSlotPoint(args.posfrom),
+      // _UpdateSeqWithParam (2791 @ 0x1841A9600) tries the plain posfrom
+      // move only for an empty actionName. An unknown name yields no tween.
+      positionFrom:
+        action || !toString(args.action)
+          ? this.parseCharacterSlotPoint(args.posfrom)
+          : undefined,
       // `_ExecuteCharslot` treats a posto that is present but not an
       // "x,y" pair differently from posfrom/poszoom: those log a parse
       // error and keep the (1,1) default, posto falls back to
