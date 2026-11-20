@@ -29,12 +29,15 @@ export function exactArg(
 export function convertStoryParameter(
   value: StoryCommandValue | undefined,
   variables?: Readonly<Record<string, unknown>>,
+  keyMatch: "exact" | "folded" = "folded",
 ): StoryCommandValue | undefined {
   if (typeof value !== "string" || !value.startsWith("$") || !variables)
     return value;
 
-  // The Web context stores variable names lowercased.
-  const key = value.slice(1).toLowerCase();
+  // AVGVariableConfig uses the ordinal dictionary loaded by TryLoadConfig
+  // (2791 @ 0x184199380). Audio's existing Web aliases use folded keys.
+  const name = value.slice(1);
+  const key = keyMatch === "exact" ? name : name.toLowerCase();
   if (!Object.hasOwn(variables, key)) return value;
   const replacement = variables[key];
   if (
@@ -274,11 +277,25 @@ export function getBool(
   key: string,
   variables?: Readonly<Record<string, unknown>>,
 ): boolean {
-  const value = convertStoryParameter(exactArg(args, key), variables);
+  return (
+    tryConvertToBoolean(
+      convertStoryParameter(exactArg(args, key), variables),
+    ) ?? false
+  );
+}
+
+export function tryConvertToBoolean(
+  value: StoryCommandValue | undefined,
+): boolean | undefined {
   if (typeof value === "number") return value !== 0;
-  if (typeof value === "string")
-    return /^[\p{White_Space}\0]*true[\p{White_Space}\0]*$/iu.test(value);
-  return value === true;
+  if (typeof value === "string") {
+    const match =
+      /^[\p{White_Space}\0]*(true|false)[\p{White_Space}\0]*$/u.exec(
+        value.toLowerCase(),
+      );
+    return match ? match[1] === "true" : undefined;
+  }
+  return value === undefined ? undefined : value === true;
 }
 
 export function toString(value: unknown, fallback = ""): string {
