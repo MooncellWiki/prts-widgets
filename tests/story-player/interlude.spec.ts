@@ -1167,6 +1167,24 @@ describe("InterludePanel", () => {
     }
   });
 
+  it("keeps the animated horizon mask unbatched across its readers", () => {
+    const panel = createPanel(
+      new Container(),
+      () => Texture.WHITE,
+      createInstantTweenRunner(),
+    );
+    panel.run(
+      input({ block: false, maskId: "ui_cutin_mask_horizon", style: 3 }),
+    );
+    panel.run(input({ block: false, name: "cutin_char_21", type: 1 }));
+    panel.run(input({ block: false, name: "64_g16_jindadike_l", type: 2 }));
+
+    const { elements, template } = channel(panel);
+    expect(elements.get("\u0000bg").node.mask).toBe(template.maskGraphics);
+    expect(elements.get("m").node.mask).toBe(template.maskGraphics);
+    expect(template.maskGraphics.context.batchMode).toBe("no-batch");
+  });
+
   it.each([1, 2])(
     "starts the nonblocking style %i mask fade before rendering its readers",
     (style) => {
