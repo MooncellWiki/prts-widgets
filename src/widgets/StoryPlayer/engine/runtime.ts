@@ -1,10 +1,11 @@
 import mitt, { type Handler } from "mitt";
 
 import { DecisionCommandPredicator } from "./DecisionCommandPredicator";
-import { normalizeImageKey, resolveStoryAudioByKey } from "./asset";
+import { normalizeImageKey } from "./asset";
 import { resolveCharacterRef, resolveNativeCharacterRef } from "./characterRef";
 import {
   exactArg,
+  getFiniteFloat,
   isZeroFloat,
   toBoolean,
   toNumber,
@@ -17,6 +18,7 @@ import {
   type CommandWait,
   type WaitForClick,
   type WaitForDecision,
+  type WaitForDelay,
   type WaitForFrame,
 } from "./commandRegistry";
 import { AVGEvent, EventPool } from "./eventPool";
@@ -26,6 +28,7 @@ import {
   parseImageLayout,
   parseImageTween,
 } from "./imageParams";
+import { AudioExecutors } from "./panels/AudioExecutors";
 import { BlockerPanel } from "./panels/BlockerPanel";
 import { CameraEffectExecutor } from "./panels/CameraEffectExecutor";
 import { CgItemPanel } from "./panels/CgItemPanel";
@@ -121,7 +124,6 @@ const QUICK_AUTO_SPEEDS: readonly AutoSpeed[] = [
 ];
 
 const builtinCommandNames = [
-  "delay",
   "skipnode",
   "skiptothis",
   "label",
@@ -129,12 +131,6 @@ const builtinCommandNames = [
   "gotostage",
   "background",
   "backgroundtween",
-  "playmusic",
-  "stopmusic",
-  "musicvolume",
-  "playsound",
-  "stopsound",
-  "soundvolume",
   "theater",
   "bgeffect",
   "effect",
@@ -142,8 +138,12 @@ const builtinCommandNames = [
 
 const unsupportedAd8Commands = new Set(["bgeffect", "effect"]);
 
+type FrameWaitPoll = Omit<WaitForFrame, "isComplete"> & {
+  isComplete: (nowMs: number, readRealtimeMs: () => number) => boolean;
+};
+
 interface PendingFrameWait {
-  waits: readonly WaitForFrame[];
+  waits: readonly FrameWaitPoll[];
   resume: () => Promise<void>;
   resolve: (continuation?: Promise<void>) => void;
 }
@@ -159,14 +159,6 @@ interface PendingAutoClick {
   deadlineMs?: number;
   delayMs: number;
   phase: "awaiting_mode" | "timing" | "elapsed";
-}
-
-function delayWait(delayMs: number): WaitForFrame {
-  let deadlineMs: number | undefined;
-  return {
-    // WaitForSecondsRealtime initializes the deadline on its first poll.
-    isComplete: (nowMs) => nowMs >= (deadlineMs ??= nowMs + delayMs),
-  };
 }
 
 type SkipMode = "skip" | "nofirstskip";
@@ -227,7 +219,7 @@ function preprocessLabelMap(
 }
 
 export class StoryRuntime {
-  private readonly audio: StoryAudio;
+  private readonly audioExecutors: AudioExecutors;
   private readonly defaultSpeed: AutoSpeed;
   private autoPlayMode: AutoPlayMode = "default";
   private pendingAutoClick: PendingAutoClick | null = null;
@@ -338,11 +330,13 @@ export class StoryRuntime {
     };
     this.firstRead = options.firstRead ?? true;
     this.renderer = renderer;
-    this.audio = audio;
     this.skipNodeLabels = preprocessSkipNodes(this.lines);
     this.skipToIndex = preprocessSkipToIndex(this.lines);
     this.labelMap = preprocessLabelMap(this.lines);
     this.onWarning = options.onWarning;
+    this.audioExecutors = new AudioExecutors(audio, context, (type, detail) =>
+      this.warn(type, detail),
+    );
     this.blockerPanel = new BlockerPanel(renderer, (seconds) =>
       this.calculateSignedFadeMs(seconds),
     );
@@ -441,6 +435,7 @@ export class StoryRuntime {
       resolveImageKey: normalizeImageKey,
       warn: (type, detail) => this.warn(type, detail),
     }).register(this.commandRegistry);
+    this.audioExecutors.register(this.commandRegistry);
     this.blockerPanel.register(this.commandRegistry);
     this.cameraEffectExecutor.register(this.commandRegistry);
     this.characterCutinPanel.register(this.commandRegistry);
@@ -480,6 +475,13 @@ export class StoryRuntime {
       warn: (type, detail) => this.warn(type, detail),
     });
     this.videoPanel.register(this.commandRegistry);
+    // CommonExecutors._ExecuteDelayCommand (2791 @ 0x1841C3EF0) scales
+    // time once and starts a WaitForSecondsRealtime, including at zero.
+    this.commandRegistry.register("delay", ({ args }) => ({
+      delayMs: this.calculateFadeMs(
+        getFiniteFloat(args, "time", this.context.audioVariables),
+      ),
+    }));
     for (const command of builtinCommandNames)
       this.commandRegistry.register(command, (line) =>
         this.executeBuiltinCommand(line),
@@ -761,7 +763,8 @@ export class StoryRuntime {
     this.stickerPanel.onStoryBegin(this.eventPool);
     this.subtitlePanel.onStoryBegin(this.eventPool);
     this.stopFramePolling = this.renderer.onFrameUpdate(
-      ({ nowMs }) => this.pollAfterUpdate(nowMs),
+      ({ nowMs, readRealtimeMs }) =>
+        this.pollAfterUpdate(nowMs, readRealtimeMs),
       "afterUpdate",
     );
     this.state = "running";
@@ -1160,8 +1163,8 @@ export class StoryRuntime {
     };
   }
 
-  private pollAfterUpdate(nowMs: number): void {
-    this.pollFrameWait(nowMs);
+  private pollAfterUpdate(nowMs: number, readRealtimeMs: () => number): void {
+    this.pollFrameWait(nowMs, readRealtimeMs);
     const resume = this.resumeCommands;
     this.resumeCommands = null;
     resume?.();
@@ -1240,13 +1243,7 @@ export class StoryRuntime {
     // Native end-of-story reset destroys a lingering show-item slot
     // (AVGShowItemPanel._Reset) instead of leaving the item on screen.
     this.showItemPanel.reset();
-    // Native port: AVGController.OnStoryEnd (2791 VA 0x18416B9C0) calls every
-    // component's OnReset once no new story is running, and
-    // CommonExecutors.OnReset -> _ResetAudio (0x1841C6200) stops every SOUND
-    // channel playsound started and stopsound did not explicitly stop, so an
-    // unterminated loop ambience cannot outlive the story. MUSIC is global in
-    // native and deliberately untouched here.
-    this.audio.resetAudio();
+    this.audioExecutors.reset();
     // OnStoryCommitted (2791 @ 0x18416B750) hides the AVG root before OnReset.
     // Recycle the ordinary sticker views immediately on the Web canvas.
     const stickerReset = this.stickerPanel.reset(0);
@@ -1256,7 +1253,7 @@ export class StoryRuntime {
   }
 
   private async processLoop(
-    remainingWaits?: readonly CommandWait[],
+    remainingWaits?: readonly (WaitForClick | WaitForDecision)[],
   ): Promise<void> {
     if (this.processing) return;
 
@@ -1296,8 +1293,7 @@ export class StoryRuntime {
         if (this.cursor >= this.lines.length) {
           // _DoExecuteCommands.MoveNext (2791 @ 0x184180CA6) yields
           // WaitForSecondsRealtime(0.2) before DoEndStory.
-          this.state = "waiting_timer";
-          return this.waitForFrame([delayWait(200)], () =>
+          return this.waitForFrame([{ delayMs: 200 }], () =>
             this.finishPlayback(),
           ).catch((error: unknown) => this.failPlayback(error));
         }
@@ -1336,8 +1332,12 @@ export class StoryRuntime {
         if (result === "continue") continue;
 
         const waits = Array.isArray(result) ? result : [result];
-        const frameWaits = waits.filter((wait) => "isComplete" in wait);
-        const followUp = waits.filter((wait) => !("isComplete" in wait));
+        const frameWaits = waits.filter(
+          (wait) => "isComplete" in wait || "delayMs" in wait,
+        );
+        const followUp = waits.filter(
+          (wait) => "handleClick" in wait || "showDecision" in wait,
+        );
         if (frameWaits.length > 0)
           return this.waitForFrame(frameWaits, () =>
             this.processLoop(followUp),
@@ -1355,30 +1355,51 @@ export class StoryRuntime {
   }
 
   private waitForFrame(
-    waits: readonly WaitForFrame[],
+    waits: readonly (WaitForFrame | WaitForDelay)[],
     resume: () => Promise<void> = () => this.processLoop(),
   ): Promise<void> {
+    const frameWaits = waits.map((wait): FrameWaitPoll => {
+      if ("isComplete" in wait) return wait;
+      this.state = "waiting_timer";
+      let deadlineMs: number | undefined;
+      return {
+        // WaitForSecondsRealtime.keepWaiting (2791 @ 0x186DE4C30) reads
+        // Time.realtimeSinceStartup separately to set and check the deadline.
+        isComplete: (_nowMs, readRealtimeMs) => {
+          deadlineMs ??= readRealtimeMs() + wait.delayMs;
+          return readRealtimeMs() >= deadlineMs;
+        },
+      };
+    });
     return new Promise((resolve) => {
-      const pending = { resolve, resume, waits };
+      const pending = { resolve, resume, waits: frameWaits };
       this.pendingFrameWait = pending;
       // _LoadImage is synchronous in 2791. Hand a ready Web preparation to
       // the next command before another tween update can run its callbacks.
-      if (waits.every((wait) => wait.assetsReady)) {
-        void Promise.all(waits.map((wait) => wait.assetsReady)).then(() => {
-          if (this.pendingFrameWait === pending)
-            this.pollFrameWait(performance.now());
-        });
+      if (frameWaits.every((wait) => wait.assetsReady)) {
+        void Promise.all(frameWaits.map((wait) => wait.assetsReady)).then(
+          () => {
+            if (this.pendingFrameWait === pending)
+              this.pollFrameWait(performance.now());
+          },
+        );
       }
     });
   }
 
-  private pollFrameWait(nowMs: number): void {
+  private pollFrameWait(
+    nowMs: number,
+    readRealtimeMs = () => performance.now(),
+  ): void {
     const pending = this.pendingFrameWait;
     if (this.skipCleanup || !pending) return;
     // _DoExecuteCommands.MoveNext (2791 @ 0x184180280) polls its blockers
     // after DOTween's update and dispatches synchronously when they are clear.
     try {
-      if (!pending.waits.every((wait) => wait.isComplete(nowMs))) return;
+      if (
+        !pending.waits.every((wait) => wait.isComplete(nowMs, readRealtimeMs))
+      )
+        return;
       if (this.pendingFrameWait !== pending) return;
       this.pendingFrameWait = null;
       this.state = "running";
@@ -1432,10 +1453,6 @@ export class StoryRuntime {
     });
   }
 
-  private hasAudioKey(key: string): boolean {
-    return Boolean(resolveStoryAudioByKey(key, this.context.audioVariables));
-  }
-
   private executeCommand(
     line: ParsedCommandLine,
     isCurrent: () => boolean,
@@ -1468,12 +1485,6 @@ export class StoryRuntime {
     // The native command loop runs synchronous executors through the next
     // blocker in the same update. Keep these results synchronous.
     switch (line.command) {
-      case "delay":
-        // CommonExecutors._ExecuteDelayCommand (2791 @ 0x1841C3EF0)
-        // starts WaitForSecondsRealtime even when the scaled time is zero.
-        this.state = "waiting_timer";
-        return delayWait(this.calculateFadeMs(this.exactArg(args, "time")));
-
       case "skipnode": {
         const label = this.skipNodeLabels[this.skipNodeQueueIndex];
         this.skipNodeQueueIndex += 1;
@@ -1521,99 +1532,6 @@ export class StoryRuntime {
         // A web story widget has no game shell to route, so the navigation is
         // intentionally omitted and the `target` param goes unread: the
         // command just keeps playback moving.
-        return "continue";
-      }
-
-      case "playmusic": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecutePlayMusicCommand.
-        // The audio backend retires the current MUSIC channel before loading
-        // the requested asset, including when its key cannot be resolved.
-        const key = toString(this.exactArg(args, "key"));
-        if (!key) this.warn("parse", "playmusic key is empty");
-        else if (!this.hasAudioKey(key))
-          this.warn("missing_asset", `music: ${key}`);
-
-        const intro = toString(this.exactArg(args, "intro")) || undefined;
-        if (intro && !this.hasAudioKey(intro))
-          this.warn("missing_asset", `music intro: ${intro}`);
-
-        void this.audio.playMusic({
-          crossfadeMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "crossfade"), 0.4) * 1000,
-          ),
-          delayMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "delay"), 0) * 1000,
-          ),
-          intro,
-          key,
-          volume: toNumber(this.exactArg(args, "volume"), 1),
-        });
-        return "continue";
-      }
-
-      case "stopmusic": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopMusicCommand.
-        void this.audio.stopMusic(
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "musicvolume": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteMusicVolumeCommand.
-        void this.audio.setMusicVolume(
-          toNumber(this.exactArg(args, "volume"), 1),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "playsound": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecutePlaySoundCommand.
-        // Channel defaults to key; the call is non-blocking. Native also
-        // suppresses one-shots in Reader/Pure mode. This player runs Normal mode.
-        const key = toString(this.exactArg(args, "key"));
-        if (!key) {
-          this.warn("parse", "playsound key is empty");
-          return "continue";
-        }
-        if (!this.hasAudioKey(key)) {
-          this.warn("missing_asset", `sound: ${key}`);
-          return "continue";
-        }
-
-        void this.audio.playSound({
-          channel: toString(this.exactArg(args, "channel"), key),
-          delayMs: Math.max(
-            0,
-            toNumber(this.exactArg(args, "delay"), 0) * 1000,
-          ),
-          key,
-          loop: toBoolean(this.exactArg(args, "loop"), false),
-          volume: toNumber(this.exactArg(args, "volume"), 1),
-        });
-        return "continue";
-      }
-
-      case "stopsound": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteStopSoundCommand.
-        const key = toString(this.exactArg(args, "key"));
-        void this.audio.stopSound(
-          toString(this.exactArg(args, "channel"), key),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
-        return "continue";
-      }
-
-      case "soundvolume": {
-        // Native port: Torappu.AVG.CommonExecutors._ExecuteSoundVolumeCommand.
-        void this.audio.setSoundVolume(
-          toString(this.exactArg(args, "channel")),
-          toNumber(this.exactArg(args, "volume"), 1),
-          Math.max(0, toNumber(this.exactArg(args, "fadetime"), 0) * 1000),
-        );
         return "continue";
       }
 

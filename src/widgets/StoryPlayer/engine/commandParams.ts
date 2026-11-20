@@ -25,6 +25,28 @@ export function exactArg(
     : undefined;
 }
 
+/** AVGVariableConfig.Convert (2791 @ 0x1841991E0) runs before typed reads. */
+export function convertStoryParameter(
+  value: StoryCommandValue | undefined,
+  variables?: Readonly<Record<string, unknown>>,
+): StoryCommandValue | undefined {
+  if (typeof value !== "string" || !value.startsWith("$") || !variables)
+    return value;
+
+  // The Web context stores variable names lowercased.
+  const key = value.slice(1).toLowerCase();
+  if (!Object.hasOwn(variables, key)) return value;
+  const replacement = variables[key];
+  if (
+    replacement === null ||
+    typeof replacement === "string" ||
+    typeof replacement === "number" ||
+    typeof replacement === "boolean"
+  )
+    return replacement;
+  return value;
+}
+
 /** `System.Number.IsWhite` accepts space and the ASCII characters 0x09–0x0D. */
 function isDotNetWhite(text: string, at: number): boolean {
   const code = text.codePointAt(at) ?? -1;
@@ -227,8 +249,9 @@ export function tryConvertToSingle(value: StoryCommandValue): number | null {
 export function getFiniteFloat(
   args: StoryCommandArgs,
   key: string,
+  variables?: Readonly<Record<string, unknown>>,
 ): number | undefined {
-  const value = exactArg(args, key);
+  const value = convertStoryParameter(exactArg(args, key), variables);
   if (value === undefined) return undefined;
   const parsed = parseSingleInput(value);
   return parsed !== null && Number.isFinite(Math.fround(parsed))
@@ -246,8 +269,12 @@ export function toBoolean(value: unknown, fallback = false): boolean {
 }
 
 /** GetBool / Command.TryGetParam<bool> (2791) use Convert.ToBoolean. */
-export function getBool(args: StoryCommandArgs, key: string): boolean {
-  const value = exactArg(args, key);
+export function getBool(
+  args: StoryCommandArgs,
+  key: string,
+  variables?: Readonly<Record<string, unknown>>,
+): boolean {
+  const value = convertStoryParameter(exactArg(args, key), variables);
   if (typeof value === "number") return value !== 0;
   if (typeof value === "string")
     return /^[\p{White_Space}\0]*true[\p{White_Space}\0]*$/iu.test(value);

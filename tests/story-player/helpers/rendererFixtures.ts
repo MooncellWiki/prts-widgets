@@ -37,10 +37,10 @@ export function createRenderer(
 ): any {
   const frames = new PlaybackTestFrames();
   let tickerTime: number | undefined;
-  const renderer = new PixiStoryRenderer(
+  const renderer: PixiStoryRenderer = new PixiStoryRenderer(
     context,
     onWarning,
-    now ?? (() => tickerTime ?? frames.now()),
+    now ?? (() => renderer.currentFrameTimeMs ?? tickerTime ?? frames.now()),
   );
   const onFrameEnd = renderer.onFrameEnd.bind(renderer);
   const onFrameUpdate = renderer.onFrameUpdate.bind(renderer);

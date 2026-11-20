@@ -109,7 +109,7 @@ describe("StoryPlayer.closeAfterStory", () => {
 });
 
 describe("StoryPlayer skip button audio", () => {
-  it("returns to the lobby while both sound fades run to their original deadlines", async () => {
+  it("returns to the lobby while both sounds fade and release after their original deadlines", async () => {
     const musicClip = preloadSound("bgm");
     const loopClip = preloadSound("loop");
     const stoppingClip = preloadSound("steps");
@@ -152,6 +152,9 @@ describe("StoryPlayer skip button audio", () => {
       expect(loop.stopped).toBe(1);
       expect(stopping.stopped).toBe(0);
       await vi.advanceTimersByTimeAsync(608);
+      expect(stopping.volume).toBe(0);
+      expect(stopping.stopped).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
       expect(stopping.stopped).toBe(1);
     } finally {
       app.unmount();

@@ -1,4 +1,9 @@
-import { exactArg, toString } from "./commandParams";
+import {
+  boxedParamString,
+  convertStoryParameter,
+  exactArg,
+  toString,
+} from "./commandParams";
 
 import type { StoryCommandArgs } from "./types";
 
@@ -101,18 +106,15 @@ export function resolveStoryAudioByKey(
   rawKey: string,
   variables?: Record<string, unknown> | null,
 ): string | null {
-  const key = rawKey.trim();
-  if (!key) return null;
-
+  let key = rawKey.trim();
   if (key.startsWith("$")) {
-    if (!variables) return null;
-
-    const variableKey = key.slice(1).toLowerCase();
-    const variableValue = variables[variableKey];
-    if (typeof variableValue !== "string") return null;
-    return audioUrlFromValue(variableValue);
+    // AVGVariableConfig.Convert precedes GetString (2791 @ 0x1869417D0).
+    const value = convertStoryParameter(key, variables ?? undefined);
+    if (value === key) return null;
+    key = boxedParamString(value).trim();
   }
 
+  if (!key) return null;
   if (key.startsWith("@")) return `${TORAPPU_ORIGIN}/assets/${key.slice(1)}`;
 
   if (/^https?:\/\//i.test(key)) return key;

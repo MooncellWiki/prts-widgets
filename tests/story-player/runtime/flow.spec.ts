@@ -41,6 +41,52 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
+  it("uses real time to start and release a delay when frame callbacks run late", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const audio = new FakeAudio();
+    const runtime = new StoryRuntime(
+      createContext([
+        "[delay(time=0.0625)]",
+        '[playsound(key="cue")]',
+        '[name="A"]done',
+      ]),
+      renderer,
+      audio,
+    );
+
+    const started = runtime.start();
+    // First poll runs at 80ms, so the deadline is 142.5ms.
+    renderer.frames.step(48, 80);
+    renderer.frames.step(72, 120);
+    expect(runtime.getState()).toBe("waiting_timer");
+    expect(audio.playSoundCalls).toHaveLength(0);
+
+    renderer.frames.step(16, 144);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(audio.playSoundCalls).toHaveLength(1);
+    await started;
+    runtime.destroy();
+  });
+
+  it("releases a delay when real time crosses the deadline during its first poll", async () => {
+    const renderer = new FakeRenderer();
+    renderer.frames.manual = true;
+    const runtime = new StoryRuntime(
+      createContext(["[delay(time=0.0125)]", '[name="A"]done']),
+      renderer,
+      new FakeAudio(),
+    );
+
+    const started = runtime.start();
+    const readRealtimeMs = vi.fn().mockReturnValueOnce(80).mockReturnValue(93);
+    renderer.frames.step(48, readRealtimeMs);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(renderer.lastDialogue?.speaker).toBe("A");
+    await started;
+    runtime.destroy();
+  });
+
   it("scales delay once by animateRatio and yields a frame for zero", async () => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
@@ -72,17 +118,17 @@ describe("StoryRuntime", () => {
   it.each([
     { time: "true", beforeDeadline: [16, 999] },
     { time: '"1e1"', beforeDeadline: [16, 9999] },
+    { time: '"1,000"', beforeDeadline: [16, 999_999] },
+    { time: '"$half"', beforeDeadline: [16, 499] },
     { time: ".5", beforeDeadline: [16, 499] },
     { time: "2.", beforeDeadline: [16, 1999] },
     { time: '"abc"', beforeDeadline: [] },
   ])("converts delay(time=$time)", async ({ time, beforeDeadline }) => {
     const renderer = new FakeRenderer();
     renderer.frames.manual = true;
-    const runtime = new StoryRuntime(
-      createContext([`[delay(time=${time})]`, '[name="A"]done']),
-      renderer,
-      new FakeAudio(),
-    );
+    const context = createContext([`[delay(time=${time})]`, '[name="A"]done']);
+    context.audioVariables = { half: 0.5 };
+    const runtime = new StoryRuntime(context, renderer, new FakeAudio());
 
     const started = runtime.start();
     await renderer.frames.advance(...beforeDeadline);

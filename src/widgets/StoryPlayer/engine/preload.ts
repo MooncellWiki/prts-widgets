@@ -186,9 +186,10 @@ function addScriptAudioUrls(
 
     if (line.command !== "playmusic" && line.command !== "playsound") continue;
 
-    addAudioUrl(urls, context, argAsString(line.args.key));
+    // Match the executor's GetString conversion so every requested clip is warm.
+    addAudioUrl(urls, context, boxedParamString(line.args.key));
     if (line.command === "playmusic")
-      addAudioUrl(urls, context, argAsString(line.args.intro));
+      addAudioUrl(urls, context, boxedParamString(line.args.intro));
   }
 }
 

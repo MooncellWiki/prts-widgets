@@ -46,6 +46,10 @@ import type {
 
 export class FakeRenderer implements StoryRenderer {
   readonly frames = new PlaybackTestFrames();
+  get currentFrameTimeMs(): number | undefined {
+    return this.frames.currentFrameTimeMs;
+  }
+
   animTextCalls: AnimTextInput[] = [];
   avgDisplayCalls: AvgDisplayInput[] = [];
   actionCalls: CharacterActionInput[] = [];

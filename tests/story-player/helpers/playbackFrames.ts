@@ -10,6 +10,7 @@ import type {
 /** Frame adapter for tests without a mounted Pixi ticker. */
 export class PlaybackTestFrames {
   manual = false;
+  currentFrameTimeMs: number | undefined;
   private nowMs = 0;
   private frameQueued = false;
   private readonly updates = {
@@ -43,12 +44,24 @@ export class PlaybackTestFrames {
     return () => this.frameEnds.delete(callback);
   };
 
-  step(deltaMs = 1): void {
+  step(deltaMs = 1, realtime?: number | (() => number)): void {
     this.nowMs += deltaMs;
-    const frame = { deltaMs, nowMs: this.nowMs };
-    for (const listeners of [this.updates.update, this.updates.afterUpdate]) {
-      for (const callback of [...listeners])
-        if (listeners.has(callback)) callback(frame);
+    const nowMs = this.nowMs;
+    const frame = {
+      deltaMs,
+      nowMs,
+      readRealtimeMs:
+        typeof realtime === "function" ? realtime : () => realtime ?? nowMs,
+    };
+    const previousFrameTime = this.currentFrameTimeMs;
+    this.currentFrameTimeMs = frame.nowMs;
+    try {
+      for (const listeners of [this.updates.update, this.updates.afterUpdate]) {
+        for (const callback of [...listeners])
+          if (listeners.has(callback)) callback(frame);
+      }
+    } finally {
+      this.currentFrameTimeMs = previousFrameTime;
     }
     const ends = [...this.frameEnds];
     for (const callback of ends)

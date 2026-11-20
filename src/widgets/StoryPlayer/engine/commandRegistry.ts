@@ -31,7 +31,13 @@ export interface WaitForFrame {
   assetsReady?: Promise<void>;
 }
 
-export type CommandWait = WaitForClick | WaitForDecision | WaitForFrame;
+/** Real-time wait whose deadline starts on the first frame poll. */
+export interface WaitForDelay {
+  delayMs: number;
+}
+
+export type CommandWait =
+  WaitForClick | WaitForDecision | WaitForDelay | WaitForFrame;
 export type CommandResult = "continue" | CommandWait;
 
 export type CommandExecutor<TResult> = (
