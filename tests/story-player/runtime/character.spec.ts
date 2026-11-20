@@ -441,10 +441,12 @@ describe("StoryRuntime", () => {
         blackStart: undefined,
         block: false,
         characterKey: "avg_1012_skadisp_1",
+        delayMs: 0,
         // charslot's `duration` defaults to 0.0, not to DEFAULT_FADE_TIME.
         durationMs: 0,
         expression: "avg_1012_skadisp_2",
         fadeIdentity: "avg_1012_skadiSP_1",
+        focusDurationMs: 0,
         // Omitted focus => ["all"] natively: every built-in slot is lit.
         focusMode: "subset",
         focusSlots: ["l", "m", "r"],

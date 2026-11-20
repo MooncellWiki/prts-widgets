@@ -12,7 +12,7 @@ import {
 import type { Context } from "../../../src/widgets/StoryPlayer/context";
 import type { TweenStartOptions } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 
-function createCharacterRenderer(): any {
+function createCharacterRenderer(stubTween = true): any {
   const context: Context = {
     linkMap: {
       avg_test: {
@@ -42,7 +42,7 @@ function createCharacterRenderer(): any {
           }
         : null,
   );
-  renderer.characterView.tween = vi.fn();
+  if (stubTween) renderer.characterView.tween = vi.fn();
   return renderer;
 }
 
@@ -451,7 +451,8 @@ describe("PixiStoryRenderer", () => {
   });
 
   it("waits out the cached slot sequence for an isblock shake after an end=false enter", () => {
-    const renderer = createLiveCharacterRenderer();
+    const renderer = createCharacterRenderer(false);
+    renderer.app = { stage: new Container() };
     renderer.frames.manual = true;
 
     // level_act23side_02_beg.txt:425 -- an `end=false` enter leaves a 3s
@@ -1876,11 +1877,11 @@ describe("character commands during playback", () => {
     random.mockRestore();
     try {
       for (const time of [16, 32, 48, 64]) app.ticker.update(time);
-      // The zero-strength shake holds the pose it sampled on its first
-      // Update. The older shake writes again from the third frame.
+      // ApplyInternalCycle (2791 @ 0x18442B5B0) still samples a child
+      // inserted at zero when the previous position equals its end.
       expect(positions[0]).toBeCloseTo(-7.5);
       expect(positions[1]).toBeCloseTo(-7.5);
-      expect(positions[2]).toBeCloseTo(-3.75);
+      expect(positions[2]).toBeCloseTo(-7.5);
       expect(positions[3]).toBeCloseTo(0);
       expect(counts).toEqual([0, 0, 0, 1]);
     } finally {
@@ -2123,6 +2124,39 @@ describe("character commands during playback", () => {
     }
   });
 
+  it("keeps the fixed offset when a negative-duration clear skips the child cleanup", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0)]',
+        "[delay(time=0.016)]",
+        "[charslot(duration=-0.032,isblock=true)]",
+        '[character(name="avg_cold",fadetime=0)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      app.ticker.update(16);
+      const [old] = characters.children;
+      app.ticker.update(32);
+      expect(characters.children).toEqual([old]);
+      expect(cgItems.children).toHaveLength(0);
+      app.ticker.update(48);
+      expect(old.destroyed).toBe(true);
+      expect(characters.children).toHaveLength(1);
+      expect(characters.children[0].children[0].x).toBe(120);
+      expect(cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
   it.each([
     {
       command: '[charslot(slot="m",name="char_empty",duration=0)]',
@@ -2310,6 +2344,233 @@ describe("character commands during playback", () => {
     }
   });
 
+  it("delays the new slot tracks while the previous portrait fades out", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="m",name="avg_cold",posfrom="80,0",posto="144,0",delay=0.048,duration=0.032,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      app.ticker.update(16);
+      const [old] = characters.children;
+      app.ticker.update(32);
+      const front = characters.children[1];
+      const motion = front.children[0];
+      const visual = motion.children[0].children[0];
+      const samples = [48, 64, 80, 96, 112].map((tick) => {
+        app.ticker.update(tick);
+        return [motion.x, visual.alpha, old.destroyed, cgItems.children.length];
+      });
+      expect(samples).toEqual([
+        [80, 0, false, 0],
+        [80, 0, true, 0],
+        [80, 0, true, 0],
+        [136, 0.5, true, 0],
+        [144, 1, true, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("samples a zero-duration replacement added to a running slot sequence", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[charslot(slot="m",posfrom="0,0",posto="64,0",duration=0.064,end=false)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="m",name="avg_cold",duration=0,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+      coldCharacterLinks,
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      app.ticker.update(16);
+      const [old] = characters.children;
+      app.ticker.update(32);
+      const motion = characters.children[1].children[0];
+      const visual = motion.children[0].children[0];
+      expect(visual.alpha).toBe(0);
+      app.ticker.update(48);
+      expect(visual.alpha).toBe(1);
+      expect(motion.x).toBe(63);
+      expect(old.destroyed).toBe(true);
+      expect(cgItems.children).toHaveLength(0);
+      app.ticker.update(64);
+      expect(motion.x).toBe(64);
+      expect(cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("keeps posfrom when a negative-duration slot move ends before the Sequence starts", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[characteraction(name="middle",type="move",xpos=120,fadetime=0)]',
+        '[charslot(slot="m",posfrom="0,0",posto="-50,0",duration=-0.5,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      const motion = characters.children[0].children[0];
+      expect(motion.x).toBe(0);
+      expect(cgItems.children).toHaveLength(0);
+      app.ticker.update(16);
+      expect(motion.x).toBe(0);
+      expect(cgItems.children).toHaveLength(1);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    { blockUntilUpdate: true, finalX: 120, type: "move" },
+    { blockUntilUpdate: true, finalX: 0, type: "jump" },
+    { blockUntilUpdate: false, finalX: 0, type: "shake" },
+  ])(
+    "dispatches a negative-duration characteraction $type through its native branch",
+    async ({ blockUntilUpdate, finalX, type }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          '[character(name="avg_npc_1",fadetime=0)]',
+          `[characteraction(name="middle",type="${type}",xpos=120,fadetime=-0.5,isblock=true)]`,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        const { characters, cgItems } = renderer.layers;
+        const motion = characters.children[0].children[0];
+        expect(motion.x).toBe(0);
+        expect(cgItems.children).toHaveLength(blockUntilUpdate ? 0 : 1);
+        app.ticker.update(16);
+        expect(motion.x).toBe(finalX);
+        expect(cgItems.children).toHaveLength(1);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it("waits for the delayed focus tween on a different fixed slot", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="r",focus="none",focusduration=0.032,delay=0.032,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      app.ticker.update(16);
+      const visual = characters.children[0].children[0].children[0].children[0];
+      app.ticker.update(32);
+      const samples = [48, 64, 80, 96].map((tick) => {
+        app.ticker.update(tick);
+        return [visual.tint, visual.alpha, cgItems.children.length];
+      });
+      expect(samples).toEqual([
+        [0xffffff, 1, 0],
+        [0xffffff, 1, 0],
+        [0x9f9f9f, 1, 0],
+        [0x808080, 1, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("applies children of the same slot sequence in insertion-time order", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[charslot(slot="m",posfrom="10,0",posto="74,0",delay=0.032,duration=0.032,end=false)]',
+        '[charslot(slot="m",posfrom="10,0",posto="138,0",duration=0.064,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      const motion = characters.children[0].children[0];
+      const samples = [16, 32, 48, 64].map((tick) => {
+        app.ticker.update(tick);
+        return [motion.x, cgItems.children.length];
+      });
+      expect(samples).toEqual([
+        [84, 0],
+        [122, 0],
+        [80, 0],
+        [74, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("lets a standalone action update after an already-created slot sequence", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[charslot(slot="m",posfrom="0,0",posto="64,0",duration=0.064,end=false)]',
+        '[characteraction(name="middle",type="move",xpos=128,fadetime=0.064)]',
+        '[charslot(slot="m",posfrom="0,0",posto="-128,0",duration=0.032,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      const motion = characters.children[0].children[0];
+      const samples = [16, 32, 64].map((tick) => {
+        app.ticker.update(tick);
+        return [motion.x, cgItems.children.length];
+      });
+      expect(samples).toEqual([
+        [28.701171875, 0],
+        [98.578125, 0],
+        [128, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
   it("plays a shakemove's shake outside the Sequence that owns its move", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
@@ -2320,7 +2581,7 @@ describe("character commands during playback", () => {
       ],
       () => {},
     );
-    const { shake, sequence } = renderer.characterView.slotActionTargets.m;
+    const { shake } = renderer.characterView.slotActionTargets.m;
     const startTween = vi.spyOn(renderer.updatePhaseTweenRunner, "start");
     const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
     const started = runtime.start();
@@ -2328,8 +2589,10 @@ describe("character commands during playback", () => {
       const targets = startTween.mock.calls
         .filter(([duration]) => duration === 64)
         .map(([, , options]) => (options as TweenStartOptions).target);
-      expect(targets.some((target) => target === shake)).toBe(true);
-      expect(targets.some((target) => target === sequence)).toBe(true);
+      expect(targets).toEqual([shake]);
+      expect(renderer.characterView.slotSequences.get("m").tracks).toHaveLength(
+        1,
+      );
       const { motion, motionLayer } =
         renderer.characterView.characterSlots.get("m");
       app.ticker.update(16);
@@ -2349,15 +2612,17 @@ describe("character commands during playback", () => {
   it.each([
     {
       show: '[charslot(slot="m",name="avg_npc_1",duration=0.064)]',
+      alphas: [0.5, 0, 0, 1],
       cgCounts: [0, 0, 0, 1],
     },
     {
       show: '[character(name="avg_npc_1",fadetime=0.064)]',
+      alphas: [0.5, 0, 1, 1],
       cgCounts: [0, 1, 1, 1],
     },
   ])(
     "resumes an older fade on the same Image after $show",
-    async ({ show, cgCounts }) => {
+    async ({ show, alphas, cgCounts }) => {
       const draws: number[][] = [];
       const { app, destroy, runtime } = await createRenderedPlayback(
         [
@@ -2377,8 +2642,10 @@ describe("character commands during playback", () => {
       const started = runtime.start();
       try {
         for (const tick of [16, 32, 48, 64]) app.ticker.update(tick);
+        // Only a child on a longer Sequence writes on the Update after
+        // its ending sample at 32 ms (ApplyInternalCycle @ 0x18442B5B0).
         expect(draws).toEqual(
-          [0.5, 0, 1, 1].map((alpha, index) => [alpha, cgCounts[index]]),
+          alphas.map((alpha, index) => [alpha, cgCounts[index]]),
         );
       } finally {
         destroy();

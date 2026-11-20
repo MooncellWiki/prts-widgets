@@ -4,7 +4,13 @@ import {
   type PanelExecutors,
 } from "../ExecutorComponent";
 import { nativeCharacterFadeIdentity } from "../characterRef";
-import { isZeroFloat, toBoolean, toNumber, toString } from "../commandParams";
+import {
+  getFiniteFloat,
+  isZeroFloat,
+  toBoolean,
+  toNumber,
+  toString,
+} from "../commandParams";
 
 import {
   type CharacterCommandContext,
@@ -138,9 +144,16 @@ export class CharacterslotPanel extends ExecutorComponent {
       ...(args.circles === undefined
         ? {}
         : { circles: Math.trunc(toNumber(args.circles, 0)) }),
+      // _ExecuteCharslot scales duration and focusduration only. delay is
+      // the unscaled insertion point in _UpdateSeqWithTween (0x1841A9BE0).
+      delayMs: (getFiniteFloat(args, "delay") ?? 0) * 1000,
       durationMs,
       expression: resolved?.expression,
       fadeIdentity: nameRef ? nativeCharacterFadeIdentity(nameRef) : undefined,
+      focusDurationMs: this.playback.calculateFadeMs(
+        getFiniteFloat(args, "focusduration"),
+        0,
+      ),
       focusMode: "subset",
       focusSlots: this.resolveCharacterSlotFocusSlots(args),
       ...(args.inverse === undefined

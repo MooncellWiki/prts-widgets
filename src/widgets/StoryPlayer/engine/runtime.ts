@@ -445,8 +445,10 @@ export class StoryRuntime {
     this.cameraEffectExecutor.register(this.commandRegistry);
     this.characterCutinPanel.register(this.commandRegistry);
     const characterPlayback: CharacterCommandContext = {
+      // CharacterPanel and AVGCharacterslotPanel.CalculateFadetime
+      // (2791 @ 0x1841BF7F0 / 0x1841A0A20) retain the duration's sign.
       calculateFadeMs: (seconds, fallback) =>
-        this.calculateFadeMs(seconds, fallback),
+        this.scaleFadeMs(seconds, fallback),
       resolveCharacterName: (ref) => resolveCharacterRef(context.linkMap, ref),
       warn: (type, detail, line) =>
         this.warn(type, detail, line?.lineNumber, line?.command),
@@ -1126,9 +1128,12 @@ export class StoryRuntime {
    * LargeBackgroundPanel family applies literal timing in its own executors.
    */
   private calculateFadeMs(seconds: unknown, fallback = 0): number {
-    return Math.max(
-      0,
-      toNumber(seconds, fallback) * this.getCurrentSpeed().animateRatio * 1000,
+    return Math.max(0, this.scaleFadeMs(seconds, fallback));
+  }
+
+  private scaleFadeMs(seconds: unknown, fallback: number): number {
+    return (
+      toNumber(seconds, fallback) * this.getCurrentSpeed().animateRatio * 1000
     );
   }
 

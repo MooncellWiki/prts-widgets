@@ -13,18 +13,14 @@ import {
   type CharacterArt,
   type CharacterArtLoad,
 } from "../characters/CharacterArt";
+import { dotweenDefaultEase, type EaseCurve } from "../core/DotweenEase";
 import { rotateTweenDelta } from "../core/SceneGeometry";
 import { buildShakePath, sampleShakePath } from "../core/ShakePath";
 
 import type { Context } from "../../../context";
 import type { SceneEffectManager } from "../SceneEffectManager";
-import type { EaseCurve } from "../core/DotweenEase";
 import type { TextureLoad } from "../core/TextureAsset";
-import type {
-  TweenHandle,
-  TweenRunner,
-  TweenStartOptions,
-} from "../core/TweenRunner";
+import type { TweenRunner, TweenStartOptions } from "../core/TweenRunner";
 
 function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -90,7 +86,7 @@ function characterSlotMove(
       return { from: input.positionFrom ?? CHARSLOT_POINT_DEFAULT, to: posTo };
     }
     case "jump": {
-      if (durationMs > 0) {
+      if (durationMs !== 0) {
         // CharJump (0x184236650): DOLocalJump to `localPosition + posTo`.
         // An omitted posto stays at the (1,1) default -- a bare jump drifts
         // one unit -- while a posto that is present but not an "x,y" pair
@@ -230,12 +226,27 @@ interface CharacterRenderState extends CharacterSlotZoomState {
 // Derived from the legacy 960-space anchors [330, 480, 630].
 const SLOT_BASE_X = { l: 440, m: 640, r: 840 } as const;
 
-interface SlotSequence {
-  remainingMs: number;
+interface SlotTrack {
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  step: (progress: number) => void;
   onComplete?: () => void;
-  timer?: TweenHandle;
-  clearTween?: TweenHandle;
-  waits: Set<ExecutionHandle>;
+  finished: boolean;
+}
+
+interface SlotSequence {
+  elapsedMs: number;
+  endMs: number;
+  onComplete?: () => void;
+  stop?: () => void;
+  tracks: SlotTrack[];
+  waits: ExecutionHandle[];
+}
+
+interface CharacterTweenOptions extends TweenStartOptions {
+  sequence?: SlotSequence;
+  sequenceDelayMs?: number;
 }
 
 interface CharacterPreparation {
@@ -285,9 +296,9 @@ export class CharacterView {
     r: createSlotMotion(),
   };
   private readonly slotActionTargets = {
-    l: { offset: {}, sequence: {}, shake: {} },
-    m: { offset: {}, sequence: {}, shake: {} },
-    r: { offset: {}, sequence: {}, shake: {} },
+    l: { offset: {}, shake: {} },
+    m: { offset: {}, shake: {} },
+    r: { offset: {}, shake: {} },
   };
   private killingSlotOffset = false;
   private readonly characterZoomTweens = {};
@@ -367,14 +378,13 @@ export class CharacterView {
   ): ExecutionHandle | void {
     const slot = this.normalizeCharacterSlot(input.slot);
     return this.withVisual(slot, input, "charslot", (built, preparation) => {
-      const sequenceMs = this.applySlotUpdate(input, slot, built);
-      return this.trackSlotSequence(
-        slot,
-        sequenceMs,
-        !!input.block,
-        onComplete,
-        preparation,
-      );
+      const sequence = this.getSlotSequence(slot);
+      this.applySlotUpdate(input, slot, built, sequence);
+      if (onComplete) sequence.onComplete = onComplete;
+      if (!input.block) return;
+      const animation = preparation ?? createExecutionHandle(true);
+      sequence.waits.push(animation);
+      return animation;
     });
   }
 
@@ -462,7 +472,7 @@ export class CharacterView {
   }
 
   private finishSlotClear(slot: CharacterSlot): void {
-    // _DoCleanSlot's nested OnComplete (2791 @ 0x1841B6270) clears the
+    // _DoCleanSlot (2791 @ 0x1841A24F0) adds a nested OnComplete to clear the
     // permanent slot. A cold replacement commits before this callback runs.
     if (this.preparations.size) this.deferredCallbacks.set(slot, { slot });
     else this.resetSlot(slot);
@@ -487,68 +497,60 @@ export class CharacterView {
 
   /**
    * _GetCachedSlotSeq / _UpdateSeqWithTween (2791 @ 0x1841A5700 / 0x1841A9BE0).
-   * Web keeps the existing parallel-duration approximation: a later blocking
-   * command waits out the longest in-flight track on its slot. The span and
-   * visible tracks share an Update clock.
+   * Children share a single Update position among standalone tweens. For
+   * writes added on later frames, Web keeps the existing approximation of
+   * inserting relative to the new command's dispatch time.
    */
-  private trackSlotSequence(
-    slot: CharacterSlot,
-    durationMs: number,
-    block: boolean,
-    onComplete?: () => void,
-    preparation?: ExecutionHandle,
-  ): ExecutionHandle | void {
-    let sequence = this.slotSequences.get(slot);
-    const startSpan = !sequence || durationMs > sequence.remainingMs;
-    if (!sequence) {
-      // Sequence.DoStartup (2791 @ 0x18442C6F0) accepts even an empty
-      // sequence with OnComplete and completes it on the first Update.
-      if (durationMs <= 0 && !onComplete) return;
-      sequence = { remainingMs: 0, waits: new Set() };
-      this.slotSequences.set(slot, sequence);
-    }
-    if (onComplete) sequence.onComplete = onComplete;
-    const animation = block
-      ? (preparation ?? createExecutionHandle(true))
-      : undefined;
-    if (animation) sequence.waits.add(animation);
-    if (startSpan) {
-      const span = sequence;
-      span.timer?.kill();
-      span.remainingMs = durationMs;
-      span.timer = this.tweens.start(
-        durationMs,
-        (progress) => {
-          span.remainingMs = durationMs * (1 - progress);
-        },
-        {
-          deferZeroDuration: true,
-          onComplete: () => {
-            // Another command may start its last visual track after the span's
-            // tween was created. Check waits after every tween has written.
-            this.tweens.afterUpdate(() => {
-              if (this.slotSequences.get(slot) !== span) return;
-              if (span.onComplete)
-                this.signalFinish("charslot", span.onComplete);
-              this.slotSequences.delete(slot);
-              for (const wait of span.waits) wait.end();
-            });
-          },
-        },
-      );
-    }
-    return animation;
+  private getSlotSequence(slot: CharacterSlot): SlotSequence {
+    const cached = this.slotSequences.get(slot);
+    if (cached) return cached;
+    const sequence: SlotSequence = {
+      elapsedMs: 0,
+      endMs: 0,
+      tracks: [],
+      waits: [],
+    };
+    sequence.stop = this.tweens.subscribeUpdate((deltaMs) => {
+      // Sequence.ApplyInternalCycle (2791 @ 0x18442B5B0) advances children
+      // by start position. DoStartup (0x18442C6F0) keeps ties in insertion order.
+      const fromMs = sequence.elapsedMs;
+      const toMs = Math.min(fromMs + deltaMs, sequence.endMs);
+      sequence.elapsedMs = toMs;
+      for (const track of sequence.tracks) {
+        if (track.startMs > toMs) break;
+        if (track.finished) {
+          if (track.startMs <= 0 && track.endMs === fromMs) track.step(1);
+          continue;
+        }
+        // A negative child can end before its start is reached.
+        if (track.durationMs < 0 && fromMs >= track.endMs) continue;
+        const progress =
+          track.durationMs <= 0
+            ? 1
+            : clamp01((toMs - track.startMs) / track.durationMs);
+        track.step(progress);
+        if (progress === 1) {
+          track.finished = true;
+          track.onComplete?.();
+        }
+      }
+      if (toMs < sequence.endMs) return;
+      sequence.stop?.();
+      this.slotSequences.delete(slot);
+      if (sequence.onComplete)
+        this.signalFinish("charslot", sequence.onComplete);
+      for (const wait of sequence.waits) wait.end();
+    });
+    this.slotSequences.set(slot, sequence);
+    return sequence;
   }
 
   private clearSlotSequences(): void {
     for (const sequence of this.slotSequences.values()) {
-      sequence.timer?.kill();
-      sequence.clearTween?.kill();
+      sequence.stop?.();
       for (const wait of sequence.waits) wait.end("reset");
     }
     this.slotSequences.clear();
-    for (const { sequence } of Object.values(this.slotActionTargets))
-      this.tweens.killTarget(sequence);
   }
 
   /**
@@ -559,12 +561,14 @@ export class CharacterView {
     input: CharacterActionInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
+    // DOShakePosition (2791 @ 0x1844365E0) rejects negative durations.
+    if (input.type === "shake" && input.durationMs < 0 && !input.stop) return;
     // _ExecuteCharacterMove / MoveChar (2791 @ 0x1841C0990 / 0x1842370A0)
     // operate on the fixed transform even when no artwork is displayed.
     const state = this.getSlotState(this.normalizeCharacterSlot(input.slot));
     const targets = this.slotActionTargets[state.slot];
 
-    const canBlock = input.type === "zoom" || input.durationMs > 0;
+    const canBlock = input.type === "zoom" || input.durationMs !== 0;
     const animation =
       input.block && canBlock && !(input.type === "shake" && input.stop)
         ? createExecutionHandle(true)
@@ -662,26 +666,25 @@ export class CharacterView {
     const durationMs = fadeMs ?? 0;
     let middleAnimation: ExecutionHandle | void = undefined;
     for (const key of ["l", "r", "m"] as const) {
-      if (durationMs <= 0) {
+      if (durationMs === 0) {
         this.resetSlot(key);
         continue;
       }
       this.resetSlotShake(key);
       this.clearSlot(key, durationMs, "animated-clear");
-      const clearTween = this.tweens.start(durationMs, () => {}, {
-        onComplete: () => this.finishSlotClear(key),
-      });
-      const isMiddle = key === "m";
-      const animation = this.trackSlotSequence(
-        key,
+      const sequence = this.getSlotSequence(key);
+      this.tween(
+        sequence,
         durationMs,
-        isMiddle,
-        isMiddle ? onComplete : undefined,
+        () => {},
+        () => this.finishSlotClear(key),
+        { sequence },
       );
-      // The child clear retains its own end time when later tracks extend
-      // the same sequence, and _ClearSeq cancels both together.
-      this.slotSequences.get(key)!.clearTween = clearTween;
-      if (isMiddle) middleAnimation = animation;
+      if (key === "m") {
+        sequence.onComplete = onComplete;
+        middleAnimation = createExecutionHandle(true);
+        sequence.waits.push(middleAnimation);
+      }
     }
     return middleAnimation;
   }
@@ -789,15 +792,37 @@ export class CharacterView {
     durationMs: number,
     step: (progress: number) => void,
     done?: () => void,
-    options?: TweenStartOptions,
+    options?: CharacterTweenOptions,
   ): void {
+    const { sequence, sequenceDelayMs = 0, ...tweenOptions } = options ?? {};
+    if (sequence && (durationMs !== 0 || options?.deferZeroDuration)) {
+      // _UpdateSeqWithTween (2791 @ 0x1841A9BE0) inserts at delay.
+      // Sequence.DoInsert (0x18442C310) includes the signed child duration.
+      const startMs = sequence.elapsedMs + sequenceDelayMs;
+      const endMs = startMs + durationMs;
+      if (endMs < sequence.elapsedMs) return;
+      sequence.endMs = Math.max(sequence.endMs, endMs);
+      sequence.tracks.push({
+        startMs,
+        endMs,
+        durationMs,
+        step,
+        onComplete: done,
+        finished: false,
+      });
+      sequence.tracks.sort((a, b) => a.startMs - b.startMs);
+      return;
+    }
     this.tweens.start(durationMs, step, {
-      ...options,
+      ...tweenOptions,
+      // TweenManager.Update (2791 @ 0x1844679F0) completes standalone
+      // negative tweens on Update, like zero-duration DOTween tweens.
+      deferZeroDuration: durationMs < 0 || tweenOptions.deferZeroDuration,
       onComplete: () => {
         done?.();
-        options?.onComplete?.();
+        tweenOptions.onComplete?.();
       },
-      target: options?.target ?? target,
+      target: tweenOptions.target ?? target,
     });
   }
 
@@ -861,44 +886,55 @@ export class CharacterView {
     input: CharacterSlotInput,
     slot: CharacterSlot,
     built: CharacterBuiltVisual | null,
-  ): number {
-    const durationMs = Math.max(0, input.durationMs ?? 0);
-    const sequenceTarget = this.slotActionTargets[slot].sequence;
+    sequence: SlotSequence,
+  ): void {
+    const durationMs = input.durationMs ?? 0;
+    const sequenceOptions = { sequence, sequenceDelayMs: input.delayMs };
     const blankPortrait = input.nativeKey === EMPTY_CHARACTER;
-    // _SlotSetCharInternal (2791 @ 0x18423A040) returns the foreground
-    // tween on success. Its independently played back fade is outside
-    // the Sequence, including when _LoadImage fails.
-    let sequenceMs = built || blankPortrait ? durationMs : 0;
     if (blankPortrait) {
       // _UpdateSeqWithParam (2791 @ 0x1841A9600) swaps twice through
       // SlotCleanChar and SlotSetCharWithParam. The final front is transparent.
       this.clearSlot(slot, undefined, EMPTY_CHARACTER);
+      this.tween(sequence, durationMs, () => {}, undefined, {
+        ...sequenceOptions,
+        deferZeroDuration: true,
+      });
     } else if (!built && (input.nativeKey || input.characterKey)) {
       // _SlotSetCharInternal (2791 @ 0x18423A040) swaps before _LoadImage.
+      // Its independently played back fade is outside the Sequence.
       this.clearSlot(slot, durationMs, "load-failed");
     }
     let state: CharacterRenderState;
     if (built) {
       const { front, back } = this.swapArtwork(input, slot, built);
       state = front;
-      if (back)
-        this.fadeOutAndRemove(back, Math.max(0, input.replaceFadeMs ?? 0));
+      if (back) this.fadeOutAndRemove(back, input.replaceFadeMs ?? 0);
     } else {
       state = this.getSlotState(slot);
     }
-    if (input.focusMode)
+    const focusSlots = input.focusMode
+      ? new Set(
+          input.focusSlots?.map((value) => this.normalizeCharacterSlot(value)),
+        )
+      : undefined;
+    if (focusSlots)
       this.applyCharacterSlotFocus(
-        input.focusSlots ?? [],
+        focusSlots,
+        input.focusDurationMs ?? 0,
+        sequenceOptions,
         input.nativeKey || input.characterKey ? slot : undefined,
       );
 
     if (built) {
       this.applyCharacterSlotOpacity(
         state,
-        input,
+        {
+          ...input,
+          brightness: focusSlots ? (focusSlots.has(slot) ? 1 : 0.5) : undefined,
+        },
         durationMs,
         true,
-        sequenceTarget,
+        sequenceOptions,
       );
     } else if (!input.nativeKey && !input.characterKey) {
       // SlotChangeAlpha (2791 @ 0x184238040) returns a timed tween only
@@ -913,10 +949,8 @@ export class CharacterView {
           input,
           alphaMs,
           false,
-          sequenceTarget,
+          sequenceOptions,
         );
-      if (hasSprite && isFiniteNumber(input.alphaFrom) && alphaMs > 0)
-        sequenceMs = alphaMs;
     }
 
     const { motion } = state;
@@ -938,8 +972,7 @@ export class CharacterView {
     this.updateSlotMotion(slot);
 
     // `_GenSlotActionTw`: NeedSkipAnimation(duration) makes the shake branch
-    // return null -- shake (and shakemove's shake half) only exists with a
-    // positive duration.
+    // return null; DOShakePosition also returns null for negative durations.
     if (
       (input.action === "shake" || input.action === "shakemove") &&
       movementMs > 0
@@ -953,31 +986,26 @@ export class CharacterView {
           stop: Boolean(input.stop),
           times: input.times ?? 0,
         },
-        {
-          // _GenCharslotShakemove (2791 @ 0x1841A5040) starts CharShake on
-          // the shake container and returns only SlotMoveChar to the Sequence.
-          target:
-            input.action === "shakemove"
-              ? this.slotActionTargets[slot].shake
-              : sequenceTarget,
-        },
+        // _GenCharslotShakemove (2791 @ 0x1841A5040) starts CharShake on
+        // the shake container and returns only SlotMoveChar to the Sequence.
+        input.action === "shakemove"
+          ? { target: this.slotActionTargets[slot].shake }
+          : sequenceOptions,
       );
-      if (input.action === "shake" && !input.stop) sequenceMs = movementMs;
     }
 
-    if (input.action === "jump" && move && movementMs > 0) {
+    if (input.action === "jump" && move && movementMs !== 0) {
       this.startJumpAction(
         slot,
         move.to,
         Math.max(0, input.power ?? 0),
         input.times ?? 0,
         movementMs,
-        { target: sequenceTarget },
+        sequenceOptions,
       );
-      sequenceMs = movementMs;
     } else if (
       move &&
-      (moveDurationMs > 0 ||
+      (moveDurationMs !== 0 ||
         move.from.x !== move.to.x ||
         move.from.y !== move.to.y)
     ) {
@@ -988,14 +1016,12 @@ export class CharacterView {
         moveDurationMs,
         easeOutCubic,
         easeOutCubic,
-        { target: sequenceTarget },
+        sequenceOptions,
       );
-      if (moveDurationMs > 0) sequenceMs = moveDurationMs;
     }
 
     if (zoom) {
-      this.tweenZoom(state, zoom, durationMs, { target: sequenceTarget });
-      sequenceMs = durationMs;
+      this.tweenZoom(state, zoom, durationMs, sequenceOptions);
     }
 
     // _UpdateSeqWithParam (2791 @ 0x1841A9600) inserts rotation after the
@@ -1016,15 +1042,19 @@ export class CharacterView {
           !!input.inverse,
         );
         let startAngle: number | undefined;
-        this.tween(sequenceTarget, movementMs, (progress) => {
-          startAngle ??= motion.rotationDeg;
-          motion.rotationDeg = startAngle - delta * progress;
-          this.updateSlotMotion(slot);
-        });
-        sequenceMs = movementMs;
+        this.tween(
+          sequence,
+          movementMs,
+          (progress) => {
+            startAngle ??= motion.rotationDeg;
+            motion.rotationDeg = startAngle - delta * progress;
+            this.updateSlotMotion(slot);
+          },
+          undefined,
+          sequenceOptions,
+        );
       }
     }
-    return sequenceMs;
   }
 
   /** Builds the scene holder from the same artwork used by cut-in slots. */
@@ -1287,16 +1317,15 @@ export class CharacterView {
   }
 
   private applyCharacterSlotFocus(
-    focusSlots: string[],
+    active: ReadonlySet<CharacterSlot>,
+    durationMs: number,
+    options: CharacterTweenOptions,
     namedSlot?: CharacterSlot,
   ): void {
     // Native focus is a full re-resolve on every charslot:
     // `_ProcessFocusArray` (0x1841A6A00) clears all four flags, then lights
-    // only the listed slots; unrecognized values light nothing. Brightness
-    // changes are tweens in the Sequence (SetFocus), applied instantly here.
-    const active = new Set<string>(
-      focusSlots.map((value) => this.normalizeCharacterSlot(value)),
-    );
+    // only the listed slots; unrecognized values light nothing.
+    const animate = hasTweenDuration(durationMs / 1000);
 
     // _ProcessCharFocus (2791 @ 0x1841A6570) visits M/L/R before the named
     // slot's SetFocus call. SetFocus (0x184237760) raises the fixed slot
@@ -1307,14 +1336,41 @@ export class CharacterView {
       order.push(namedSlot);
     }
     for (const slot of order) {
-      const state = this.characterSlots.get(slot);
+      const hasBlankImage =
+        this.slotHolders[slot].currentKey === EMPTY_CHARACTER;
+      const state = hasBlankImage
+        ? this.getSlotState(slot)
+        : this.characterSlots.get(slot);
       const focused = active.has(slot);
-      if (state) {
-        state.focusBrightness = focused ? 1 : 0.5;
-        this.updateCharacterOpacity(state);
+      const activeImage =
+        slot === namedSlot || hasBlankImage || state?.root.parent;
+      if (state && activeImage) {
+        const brightness = focused ? 1 : 0.5;
+        if (animate) {
+          // SetFocus (2791 @ 0x184237760) adds a DOColorWithoutAlpha
+          // tween for this physical image to the executing slot's Sequence.
+          const { holder } = state;
+          let from: number | undefined;
+          this.tween(
+            state,
+            durationMs,
+            (progress) => {
+              const image = holder.state;
+              if (!image) return;
+              from ??= image.focusBrightness;
+              image.focusBrightness =
+                from + (brightness - from) * dotweenDefaultEase(progress);
+              this.updateCharacterOpacity(image);
+            },
+            undefined,
+            options,
+          );
+        } else {
+          state.focusBrightness = brightness;
+          this.updateCharacterOpacity(state);
+        }
       }
-      if (focused && (slot === namedSlot || state?.root.parent))
-        this.raiseSlot(slot);
+      if (focused && activeImage) this.raiseSlot(slot);
     }
   }
 
@@ -1325,7 +1381,7 @@ export class CharacterView {
     },
     durationMs: number,
     hasNewArt: boolean,
-    target: object = state,
+    options?: CharacterTweenOptions,
   ): void {
     const hasFrom = isFiniteNumber(input.alphaFrom);
     const hasTo = isFiniteNumber(input.alphaTo);
@@ -1363,7 +1419,8 @@ export class CharacterView {
         from.brightness + (toBrightness - from.brightness) * progress;
       this.updateCharacterOpacity(image);
     };
-    this.tween(target, durationMs, write, () => write(1), {
+    this.tween(state, durationMs, write, () => write(1), {
+      ...options,
       deferZeroDuration: hasNewArt,
     });
   }
@@ -1590,7 +1647,7 @@ export class CharacterView {
     durationMs: number,
     easeX: EaseCurve,
     easeY: EaseCurve,
-    options?: TweenStartOptions,
+    options?: CharacterTweenOptions,
     jumpArc?: EaseCurve,
   ): void {
     const motion = this.slotMotions[slot];
@@ -1637,7 +1694,7 @@ export class CharacterView {
     state: CharacterRenderState,
     to: CharacterSlotZoomState,
     durationMs: number,
-    options: TweenStartOptions,
+    options: CharacterTweenOptions,
   ): void {
     const { holder, pivotX, pivotY, scaleX, scaleY } = state;
     this.tween(
@@ -1726,8 +1783,17 @@ export class CharacterView {
     power: number,
     times: number,
     durationMs: number,
-    completion?: TweenStartOptions,
+    completion?: CharacterTweenOptions,
   ): void {
+    if (durationMs < 0) {
+      // DOLocalJump inserts both negative-duration children at zero. The
+      // resulting empty time range still completes the Sequence on Update.
+      this.tween(this.slotActionTargets[slot].offset, 0, () => {}, undefined, {
+        ...completion,
+        deferZeroDuration: true,
+      });
+      return;
+    }
     const cycles = Math.max(1, times);
     this.tweenSlotPosition(
       slot,
@@ -1769,7 +1835,7 @@ export class CharacterView {
       CharacterActionInput,
       "durationMs" | "power" | "randomness" | "stop" | "times"
     >,
-    completion?: TweenStartOptions,
+    completion?: CharacterTweenOptions,
   ): void {
     const { motion, slot } = state;
     // `stop` is a web extension: native has no such key, so it only needs to

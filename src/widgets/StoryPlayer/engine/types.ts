@@ -200,6 +200,7 @@ export interface CharacterSlotInput {
   block?: boolean;
   characterKey?: string;
   circles?: number;
+  delayMs?: number;
   dimmed?: boolean;
   durationMs?: number;
   enterFrom?: "down" | "left" | "right" | "up";
@@ -207,6 +208,7 @@ export interface CharacterSlotInput {
   expression?: string;
   fadeIdentity?: string;
   focus?: number;
+  focusDurationMs?: number;
   /**
    * charslot 的 focus 是全量重刷:`_ProcessFocusArray` 清零后按列表点亮,
    * 不认识的取值(含 "n"/"none"/"a")= 全部槽 unfocus。focusSlots 为点亮集。

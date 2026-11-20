@@ -191,7 +191,7 @@ export class CharacterPanel extends ExecutorComponent {
     const durationMs =
       type !== "zoom" && isZeroFloat(scaledMs / 1000) ? 0 : scaledMs;
     const effectiveType: CharacterActionInput["type"] =
-      (type === "jump" || type === "shake") && durationMs <= 0 ? "move" : type;
+      (type === "jump" || type === "shake") && durationMs === 0 ? "move" : type;
 
     let pivot: { x: number; y: number } | undefined;
     if (type === "zoom") {
