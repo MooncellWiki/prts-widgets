@@ -1142,7 +1142,7 @@ describe("StoryRuntime", () => {
       { typingIntervalMs: 40 },
     );
     await runtime.start();
-    expect(runtime.getDisplayedLineIndex()).toBeNull();
+    expect(runtime.getDisplayedLineIndex()).toBe(1);
     expect(renderer.typingActive).toBe(false);
 
     await runtime.advance();
