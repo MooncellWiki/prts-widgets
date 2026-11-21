@@ -8,7 +8,15 @@ import {
   watch,
 } from "vue";
 
-import { NAlert, NButton, NInput, NInputNumber, NSplit } from "naive-ui";
+import {
+  AkButton,
+  AkInput,
+  AkInputNumber,
+  AkMessage,
+  type MessageVariant,
+} from "@mooncellwiki/prts-design-vue";
+import { useMediaQuery } from "@vueuse/core";
+import { NSplit } from "naive-ui";
 
 import { EXAMPLE_STORY_PATH, fetchStoryScript } from "@/pages/story";
 
@@ -40,6 +48,12 @@ import type {
  */
 
 defineOptions({ name: "StoryPlayerDebugShell" });
+
+const verticalLayout = useMediaQuery("(max-width: 720px)");
+const splitTheme = {
+  resizableTriggerColor: "var(--ak-border)",
+  resizableTriggerColorHover: "var(--ak-accent)",
+};
 
 const PATH_PARAM = "path";
 const LINE_PARAM = "line";
@@ -416,14 +430,14 @@ function seekSummary(): string {
   return `${picks.join("，")}，其余选第 1 项${suffix}`;
 }
 
-function seekAlertType(): "error" | "warning" | "success" | "info" {
+function seekMessageVariant(): MessageVariant {
   switch (seek.value?.phase) {
     case "reached": {
       return "success";
     }
     case "missed":
     case "error": {
-      return "error";
+      return "danger";
     }
     case "aborted": {
       return "warning";
@@ -466,58 +480,65 @@ function scriptLineClasses(lineNumber: number): string[] {
 </script>
 
 <template>
-  <div class="spd-root">
+  <div class="spd-root ak-not-prose">
     <div class="spd-toolbar">
-      <NInput
-        :value="pathValue"
-        placeholder="剧情路径（相对 gamedata/latest/story）或完整 URL，如 obt/main/level_main_00-01_beg.txt"
-        style="width: min(480px, 100%)"
+      <AkInput
+        v-model="pathValue"
+        class="spd-path"
+        label="剧情路径"
+        placeholder="剧情相对路径或完整 URL"
         :disabled="loading"
-        @update:value="pathValue = $event"
         @keydown.enter="loadScript(pathValue)"
       />
-      <NButton type="primary" :loading="loading" @click="loadScript(pathValue)">
+      <AkButton
+        variant="primary"
+        icon="play"
+        :loading="loading"
+        :disabled="loading"
+        @click="loadScript(pathValue)"
+      >
         加载并播放
-      </NButton>
-      <NInputNumber
-        :value="lineValue"
+      </AkButton>
+      <AkInputNumber
+        v-model="lineValue"
+        label="目标行号"
         placeholder="行号"
         :min="1"
-        :precision="0"
-        style="width: 130px"
         :disabled="loading"
-        @update:value="lineValue = $event"
         @keydown.enter="onSeek()"
       />
-      <NButton :disabled="!scriptText" @click="onSeek()"> 跳转到该行 </NButton>
-      <NButton
+      <AkButton :disabled="!scriptText" @click="onSeek()">
+        跳转到该行
+      </AkButton>
+      <AkButton
         v-if="isSeekActive(seek)"
-        quaternary
+        variant="ghost"
         @click="resetSeek('已手动取消')"
       >
         取消
-      </NButton>
+      </AkButton>
     </div>
-    <NAlert v-if="loadError" type="error" title="剧情加载失败">
+    <AkMessage v-if="loadError" variant="danger" title="剧情加载失败">
       {{ loadError }}
-    </NAlert>
+    </AkMessage>
     <div v-if="loadedUrl" class="spd-url">{{ loadedUrl }}</div>
-    <NAlert
+    <AkMessage
       v-if="seek"
-      :type="seekAlertType()"
+      :variant="seekMessageVariant()"
       :title="
         seek.phase === 'seeking'
-          ? `快速播放中：当前 L${currentLine ?? '?'} → 目标 L${seek.target}`
+          ? `快速播放中 · L${currentLine ?? '?'} → L${seek.target}`
           : seek.message
       "
     >
       <div class="spd-alert-detail">{{ seekSummary() }}</div>
-    </NAlert>
+    </AkMessage>
     <!-- 根容器锁死一屏高，页面本身不再滚动；两个 pane 各自内部滚动 -->
     <NSplit
       class="spd-main"
       :default-size="0.68"
-      direction="horizontal"
+      :direction="verticalLayout ? 'vertical' : 'horizontal'"
+      :theme-overrides="splitTheme"
       :max="0.85"
       :min="0.25"
     >
@@ -530,11 +551,9 @@ function scriptLineClasses(lineNumber: number): string[] {
             :script="scriptText"
             auto-start
           />
-          <NAlert v-else type="info" title="独立调试页">
-            输入剧情路径后加载播放；行号 + 跳转 =
-            快速播放自动选分支直达该行后切手动。资源与文本都直接来自
-            torappu.prts.wiki，不需要 prts.wiki 宿主页。
-          </NAlert>
+          <AkMessage v-else title="独立调试页">
+            输入剧情路径开始播放。输入行号可自动选择分支，跳到指定行后切回手动播放。
+          </AkMessage>
         </div>
       </template>
       <template #2>
@@ -606,16 +625,20 @@ function scriptLineClasses(lineNumber: number): string[] {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--ak-space-3);
   height: 100vh;
-  padding: 16px;
+  padding: var(--ak-space-4);
 }
 
 .spd-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--ak-space-2);
+}
+
+.spd-path {
+  width: min(30rem, 100%);
 }
 
 .spd-url {
@@ -639,7 +662,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 .spd-script-pane {
   box-sizing: border-box;
   border: 1px solid var(--ak-border);
-  border-radius: 6px;
+  background: var(--ak-bg-surface);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -670,9 +693,8 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-swatch {
-  background: rgba(14, 165, 233, 0.2);
-  border: 1px solid rgba(2, 132, 199, 0.5);
-  border-radius: 2px;
+  background: var(--ak-mark-bg);
+  border: 1px solid var(--ak-accent-muted);
   display: inline-block;
   height: 10px;
   width: 20px;
@@ -685,9 +707,8 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-line {
-  border-radius: 4px;
   display: flex;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--ak-font-mono);
   font-size: 12px;
   gap: 8px;
   line-height: 20px;
@@ -724,7 +745,7 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-line-current {
-  background-color: rgba(14, 165, 233, 0.2);
+  background-color: var(--ak-mark-bg);
   font-weight: 700;
 }
 
@@ -737,12 +758,12 @@ function scriptLineClasses(lineNumber: number): string[] {
 }
 
 .spd-mark {
-  color: rgba(245, 158, 11, 0.6);
+  color: var(--ak-warning);
   flex-shrink: 0;
 }
 
 .spd-mark-planned {
-  color: #d97706;
+  color: var(--ak-warning);
   font-weight: 700;
 }
 

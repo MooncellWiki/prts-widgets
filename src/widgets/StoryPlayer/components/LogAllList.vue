@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { NText } from "naive-ui";
-
 import {
   formatConditionLabel,
   TRUE_CONDITION,
@@ -18,7 +16,7 @@ import type { RuntimeChoiceSelection } from "../engine/types";
 
 /**
  * 时间线式 Log All 列表（无外壳）：按 blocks 顺序渲染 LogDocument。
- * 外层全屏壳由 LogAllPanel 负责。
+ * 滚动区和标题栏由 LogAllPanel 负责。
  *
  * 渲染模型：
  * - lines → 普通文本行（可带路径条件高亮）；
@@ -157,41 +155,29 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
 <template>
   <ul
     v-if="items.length > 0"
-    class="m-0 list-none p-0 space-y-2.5"
+    class="log-all-list"
     :class="rootClass"
+    role="list"
   >
-    <li v-for="(item, i) in items" :key="i" class="p-0">
-      <!-- 文本区块：audience 相同的连续行 -->
+    <li v-for="(item, i) in items" :key="i" class="log-item">
       <template v-if="item.kind === 'lines'">
         <div
           v-for="(row, j) in item.rows"
           :key="j"
           :data-active-line="row.active"
-          class="log-row leading-relaxed"
+          :aria-current="row.active === 'exact' ? 'step' : undefined"
+          class="log-row"
         >
-          <NText
-            tag="span"
-            type="primary"
-            class="log-marker text-center"
-            :aria-label="row.active ? '当前播放位置' : undefined"
-            :aria-hidden="row.active ? undefined : true"
-          >
-            {{ row.active ? "▶" : "" }}
-          </NText>
-          <NText
-            v-if="row.entry.speaker"
-            type="primary"
-            tag="strong"
-            class="log-speaker"
-          >
+          <span class="log-marker" aria-hidden="true">{{
+            row.active ? "▶" : ""
+          }}</span>
+          <strong v-if="row.entry.speaker" class="log-speaker">
             {{ row.entry.speaker }}
-          </NText>
+          </strong>
           <span
-            v-else
-            class="log-speaker log-speaker--empty"
-            aria-hidden="true"
-          />
-          <span class="log-content">
+            class="log-content"
+            :class="{ 'log-narration': row.entry.source === 'narration' }"
+          >
             <span
               v-for="(span, si) in row.entry.spans"
               :key="si"
@@ -200,64 +186,42 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
                 fontWeight: span.bold ? 'bold' : undefined,
                 fontStyle: span.italic ? 'italic' : undefined,
               }"
-              :class="
-                !span.color && row.entry.source === 'narration'
-                  ? 'opacity-75'
-                  : undefined
-              "
               >{{ span.text }}</span
             >
           </span>
         </div>
       </template>
 
-      <!-- 选择记录：与普通文本行同一套栅格，「剧情选择」占说话人槽，
-           选项与备注进内容列，缩进与正文对齐 -->
-      <div v-else-if="item.kind === 'choice'" class="log-row leading-relaxed">
-        <span class="log-marker" aria-hidden="true" />
-        <NText type="primary" tag="strong" class="log-speaker">剧情选择</NText>
-        <span class="log-content">
-          <template v-for="(option, oi) in item.block.options" :key="oi">
-            <span v-if="oi > 0"> / </span>
-            <span
-              :class="
-                optionSelected(item.block, option.optionIndex)
-                  ? 'choice-option-selected rounded px-1 font-semibold'
-                  : undefined
-              "
-              >{{ option.label }}</span
-            >
-          </template>
-          <NText v-if="item.block.inert" depth="3" class="ml-2 text-xs">
+      <div v-else-if="item.kind === 'choice'" class="log-row">
+        <strong class="log-speaker">剧情选择</strong>
+        <div class="log-content">
+          <span
+            v-for="option in item.block.options"
+            :key="option.optionIndex"
+            class="log-choice-option"
+            :class="{
+              'log-choice-option--selected': optionSelected(
+                item.block,
+                option.optionIndex,
+              ),
+            }"
+          >
+            {{ option.label }}
+          </span>
+          <p v-if="item.block.inert" class="log-note">
             {{
               item.block.options.length > 1 ? "选择不影响后续剧情" : "无分支"
             }}
-          </NText>
-          <NText
-            v-else-if="!choiceSelected(item.block)"
-            depth="3"
-            class="ml-2 text-xs"
-          >
+          </p>
+          <p v-else-if="!choiceSelected(item.block)" class="log-note">
             各选项后续文本见下方分栏
-          </NText>
-        </span>
+          </p>
+        </div>
       </div>
 
-      <!-- 条件区块：带标签的分支内容，非当前路径淡化；标签行走同一套
-           栅格，「选择「...」：」与正文/选项一样从内容列起排 -->
-      <div
-        v-else
-        class="conditional-block py-1 pl-3"
-        :class="item.off ? 'opacity-40' : undefined"
-      >
-        <div class="log-row mb-1.5 leading-relaxed">
-          <span class="log-marker" aria-hidden="true" />
-          <span class="log-speaker log-speaker--empty" aria-hidden="true" />
-          <span
-            class="log-content text-xs font-bold tracking-[0.06em] opacity-70"
-          >
-            {{ item.label }}：
-          </span>
+      <div v-else class="log-branch" :class="{ 'log-branch--off': item.off }">
+        <div class="log-row log-branch-label">
+          <span class="log-content">{{ item.label }}</span>
         </div>
         <LogAllList
           :document="document"
@@ -268,20 +232,14 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
       </div>
     </li>
   </ul>
-  <NText v-else tag="p" depth="3" class="m-0 text-sm tracking-[0.03em]">
-    没有可显示的对话文本。
-  </NText>
+  <p v-else class="log-note">没有可显示的对话文本。</p>
 </template>
 
 <style scoped>
-/* 三列栅格：播放标记 | 说话人 | 正文，列宽由顶层列表的 CSS 变量决定（见
-   rootClass）。窄于 30rem（竖屏手机）时按顶层列表的容器宽度切成两列：
-   说话人单独占一行、正文占满标记右侧整列，否则正文列只剩一百多像素、每行
-   五六个字。弹窗、嵌入卡片、全屏都按各自的宽度判断；不支持容器查询的
-   浏览器保持三列。 */
+/* 保持各分支的标记、说话人与正文列对齐。 */
 .log-all-list--root {
   --log-marker-width: 1.25rem;
-  --log-speaker-width: 6.75rem;
+  --log-speaker-width: 8rem;
   container-type: inline-size;
 }
 
@@ -293,32 +251,99 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
   --log-speaker-width: 0px;
 }
 
+.log-all-list,
+.log-item {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Minerva 额外给正文 ul 加左侧内距。 */
+.log-all-list {
+  padding-inline: 0 !important;
+}
+
+.log-item::marker {
+  content: none;
+}
+
 .log-row {
   display: grid;
   grid-template-columns:
     var(--log-marker-width) var(--log-speaker-width)
     minmax(0, 1fr);
   align-items: start;
+  padding: var(--ak-space-1) var(--ak-space-2);
+  font-size: var(--ak-fs-sm);
+}
+
+.log-row[data-active-line] {
+  background: var(--ak-accent-subtle);
+  box-shadow: inset 2px 0 var(--ak-accent);
 }
 
 .log-marker {
   grid-column: 1;
   overflow: hidden;
+  color: var(--ak-link);
+  font-size: var(--ak-fs-xs);
 }
 
 .log-speaker {
   grid-column: 2;
-  margin-right: 0.75rem;
+  margin-right: var(--ak-space-3);
+  color: var(--log-speaker-color, var(--ak-link));
   text-align: right;
-}
-
-.log-all-list--no-speaker .log-speaker {
-  display: none;
 }
 
 .log-content {
   grid-column: 3;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.log-narration,
+.log-note {
+  color: var(--ak-fg-muted);
+}
+
+.log-note {
+  margin: var(--ak-space-1) 0 0;
+  font-size: var(--ak-fs-xs);
+}
+
+.log-choice-option {
+  display: inline-block;
+  margin: 0 var(--ak-space-1) var(--ak-space-1) 0;
+  padding: 0 var(--ak-space-2);
+  border: 1px solid var(--ak-border);
+  background: var(--ak-bg-surface-2);
+}
+
+.log-choice-option--selected {
+  border-color: var(--ak-accent);
+  color: var(--ak-link);
+  background: var(--ak-accent-subtle);
+  font-weight: 700;
+}
+
+.log-branch {
+  margin-block: var(--ak-space-2);
+  padding-block: var(--ak-space-1);
+  border-left: 2px solid var(--ak-accent-muted);
+  background: var(--ak-bg-surface-2);
+}
+
+.log-branch--off {
+  --log-speaker-color: var(--ak-fg-muted);
+  color: var(--ak-fg-muted);
+  border-left-color: var(--ak-border);
+}
+
+.log-branch-label {
+  color: var(--ak-fg-muted);
+  font-size: var(--ak-fs-xs);
+  font-weight: 700;
 }
 
 @container (max-width: 30rem) {
@@ -331,47 +356,8 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
     text-align: left;
   }
 
-  .log-speaker--empty {
-    display: none;
-  }
-
-  /* 有说话人时正文按自动排布落到下一行的第二列；没有时紧跟标记 */
   .log-content {
     grid-column: 2;
   }
-}
-
-/* naive-ui 的 primary 不在 uno theme 里，border-primary/bg-primary 生成不了
-   规则；主题色从最近的 naive 组件根（NCard/NModal）继承 --n-color-target。
-   项目没有 preflight，border-width 初始值是 medium 而非 0：边框必须整体在
-   这里声明（同 ArkSign 的 border-left 写法），不能只写 border-l-2 /
-   border-solid 这类单属性 utility，否则其余三边会以默认宽度和 currentColor
-   画出来 */
-.conditional-block {
-  border-left: 2px solid
-    color-mix(in srgb, var(--n-color-target, #18a058) 40%, transparent);
-}
-
-.choice-option-selected {
-  background-color: color-mix(
-    in srgb,
-    var(--n-color-target, #18a058) 15%,
-    transparent
-  );
-}
-
-ul,
-li {
-  list-style: none !important;
-}
-
-/* Minerva 的 .content ul { padding-left: 1em } 比 .p-0 优先级高，每层列表
-   会多缩进一字宽，正文和卡片标题对不齐 */
-ul {
-  padding: 0 !important;
-}
-
-li::marker {
-  content: none !important;
 }
 </style>

@@ -2,11 +2,14 @@
 import { computed, ref } from "vue";
 
 import {
-  ImageOutlined as ImageIcon,
-  InsertDriveFileOutlined as FileIcon,
-} from "@vicons/material";
-import { NButton, NIcon, NImage, NModal, NText } from "naive-ui";
+  AkButton,
+  AkCard,
+  AkDialog,
+  AkEmpty,
+  AkIcon,
+} from "@mooncellwiki/prts-design-vue";
 
+import AssetImagePreview from "./AssetImagePreview.vue";
 import CharacterFaceBrowserModal from "./CharacterFaceBrowserModal.vue";
 
 import type { StoryCharacterFaceAsset } from "../engine/types";
@@ -14,10 +17,8 @@ import type { StoryCharacterFaceAsset } from "../engine/types";
 const props = defineProps<{
   urls: string[];
   faceAssets: StoryCharacterFaceAsset[];
-  /** NModal 的 teleport 目标，全屏播放时需要挂进全屏容器 */
-  to?: string | HTMLElement;
 }>();
-const show = defineModel<boolean>("show");
+const show = defineModel<boolean>("show", { default: false });
 
 type AssetKind = "audio" | "image" | "other" | "video";
 
@@ -28,6 +29,8 @@ interface AssetListItem {
   url: string;
 }
 
+const selectedImage = ref<AssetListItem | null>(null);
+const showImage = ref(false);
 const selectedCharacterAsset = ref<AssetListItem | null>(null);
 const showCharacterFaces = ref(false);
 
@@ -84,159 +87,195 @@ function openCharacterFaces(asset: AssetListItem): void {
   selectedCharacterAsset.value = asset;
   showCharacterFaces.value = true;
 }
+
+function openImage(asset: AssetListItem): void {
+  selectedImage.value = asset;
+  showImage.value = true;
+}
 </script>
 
 <template>
-  <NModal
-    v-model:show="show"
-    preset="card"
-    title="资源列表"
-    :to="to"
-    style="width: min(860px, 94vw); max-width: min(860px, 94vw)"
-    :bordered="false"
-    :auto-focus="false"
+  <AkDialog
+    v-model="show"
+    class="story-asset-dialog"
+    size="lg"
+    @keydown.esc.stop
   >
-    <template #header-extra>
-      <NText depth="3" class="text-xs font-normal">
-        共 {{ assetItems.length }} 项
-      </NText>
+    <template #header>
+      资源列表 <span class="asset-count">共 {{ assetItems.length }} 项</span>
     </template>
+    <template v-if="show">
+      <AkEmpty v-if="!assetItems.length" title="没有可导出的资源" />
+      <div v-else class="asset-grid">
+        <AkCard v-for="asset in assetItems" :key="asset.url" class="asset-card">
+          <template #cover>
+            <button
+              v-if="asset.kind === 'image'"
+              type="button"
+              class="asset-preview asset-preview--image"
+              :aria-label="`预览图片 ${asset.name}`"
+              @click="openImage(asset)"
+            >
+              <img :src="asset.url" alt="" loading="lazy" decoding="async" />
+            </button>
 
-    <div
-      class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] max-h-[70vh] gap-3 overflow-y-auto p-1"
-    >
-      <article
-        v-for="asset in assetItems"
-        :key="asset.url"
-        class="asset-card min-w-0 overflow-hidden rounded-xl"
-      >
-        <div
-          v-if="asset.kind === 'image'"
-          class="asset-preview asset-preview--transparent flex items-center justify-center"
-        >
-          <NImage
-            :src="asset.url"
-            :alt="asset.name"
-            lazy
-            object-fit="contain"
-            show-toolbar-tooltip
-            class="asset-image h-full w-full overflow-hidden"
-          />
-        </div>
+            <div
+              v-else-if="asset.kind === 'audio'"
+              class="asset-preview asset-preview--audio"
+            >
+              <audio
+                :src="asset.url"
+                controls
+                preload="none"
+                :aria-label="asset.name"
+              />
+            </div>
 
-        <div
-          v-else-if="asset.kind === 'audio'"
-          class="asset-preview flex items-center justify-center p-3"
-        >
-          <audio
-            :src="asset.url"
-            controls
-            preload="none"
-            class="block h-10 max-w-full w-full"
-          />
-        </div>
+            <video
+              v-else-if="asset.kind === 'video'"
+              :src="asset.url"
+              controls
+              preload="metadata"
+              class="asset-preview asset-preview--video"
+              :aria-label="asset.name"
+            />
 
-        <video
-          v-else-if="asset.kind === 'video'"
-          :src="asset.url"
-          controls
-          preload="metadata"
-          class="asset-preview block h-auto w-full object-contain"
-        />
+            <a
+              v-else
+              :href="asset.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="asset-preview"
+              :aria-label="`打开文件 ${asset.name}`"
+            >
+              <AkIcon name="empty" :size="40" />
+            </a>
+          </template>
 
-        <a
-          v-else
-          :href="asset.url"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="asset-preview flex items-center justify-center"
-          :aria-label="`打开文件 ${asset.name}`"
-        >
-          <NIcon size="56"><FileIcon /></NIcon>
-        </a>
-
-        <div class="p-3">
           <a
             :href="asset.url"
             target="_blank"
             rel="noopener noreferrer"
-            class="asset-link line-clamp-2 break-all text-sm font-medium leading-5"
+            class="asset-link"
             :title="asset.url"
           >
             {{ asset.name }}
           </a>
 
-          <NButton
+          <AkButton
             v-if="asset.faces.length > 0"
-            class="mt-3 w-full"
-            size="small"
-            secondary
+            class="asset-faces"
+            size="sm"
+            icon="glasses"
+            block
             @click="openCharacterFaces(asset)"
           >
-            <template #icon>
-              <NIcon><ImageIcon /></NIcon>
-            </template>
             查看表情（{{ asset.faces.length }}）
-          </NButton>
-        </div>
-      </article>
-    </div>
-  </NModal>
+          </AkButton>
+        </AkCard>
+      </div>
+    </template>
+  </AkDialog>
 
+  <!-- 原生对话框都留在播放器树内，原生和网页全屏均可打开。 -->
+  <AssetImagePreview
+    v-if="show && selectedImage"
+    v-model="showImage"
+    :name="selectedImage.name"
+    :url="selectedImage.url"
+  />
   <CharacterFaceBrowserModal
+    v-if="show && selectedCharacterAsset"
     v-model:show="showCharacterFaces"
-    :to="to"
-    :faces="selectedCharacterAsset?.faces ?? []"
-    :filename-base="selectedCharacterAsset?.name ?? '角色'"
-    :title="`${selectedCharacterAsset?.name ?? '角色'} · 表情预览`"
+    :faces="selectedCharacterAsset.faces"
+    :filename-base="selectedCharacterAsset.name"
+    :title="`${selectedCharacterAsset.name} · 表情预览`"
   />
 </template>
 
 <style scoped>
+.story-asset-dialog {
+  box-sizing: border-box;
+  max-width: min(56rem, calc(100vw - 2 * var(--ak-space-3)));
+}
+
+.asset-count {
+  margin-left: var(--ak-space-2);
+  color: var(--ak-fg-muted);
+  font-size: var(--ak-fs-xs);
+  font-weight: 400;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: var(--ak-space-3);
+}
+
 .asset-card {
-  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  min-width: 0;
+}
+
+.asset-card :deep(.ak-card__body) {
+  padding: var(--ak-space-3);
 }
 
 .asset-preview {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  border: 0;
+  background: var(--ak-bg-inset);
+}
+
+.asset-preview--image {
   overflow: hidden;
-  background: color-mix(in srgb, currentColor 7%, transparent);
+  background: var(--story-preview-background);
+  cursor: zoom-in;
 }
 
-.asset-preview--transparent {
-  background-color: #f4f4f4;
-  background-image:
-    linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
-    linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
-  background-position:
-    0 0,
-    0 8px,
-    8px -8px,
-    -8px 0;
-  background-size: 16px 16px;
+.asset-preview--image:is(:hover, :focus-visible) {
+  outline: 2px solid var(--ak-focus);
+  outline-offset: -2px;
 }
 
-.asset-image :deep(img) {
+.asset-preview--image img {
   display: block;
   width: 100%;
   height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  min-height: 0;
   object-fit: contain;
 }
 
-/* ak-not-prose 内的链接显式用设计令牌。皮肤或独立页的 ak-scope 提供令牌，
-   其它宿主仍沿用自己的链接色；body 上的作用域也覆盖 teleport 弹窗。 */
-.skin-arknights .asset-link,
-.ak-scope .asset-link {
-  color: var(--ak-link);
+.asset-preview--audio {
+  padding-inline: var(--ak-space-2);
 }
 
-.skin-arknights .asset-link:hover,
-.ak-scope .asset-link:hover {
+.asset-preview--audio audio {
+  width: 100%;
+}
+
+.asset-preview--video {
+  display: block;
+  object-fit: contain;
+}
+
+.asset-link {
+  display: block;
+  color: var(--ak-link);
+  font-size: var(--ak-fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.asset-link:hover {
   color: var(--ak-link-hover);
+  text-decoration: underline;
+}
+
+.asset-faces {
+  margin-top: var(--ak-space-2);
 }
 </style>

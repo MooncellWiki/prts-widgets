@@ -34,7 +34,11 @@ const ele = document.querySelector<HTMLElement>("#root");
 const script =
   document.querySelector<HTMLElement>("#datas_txt")?.textContent?.trim() ?? "";
 if (ele && script) {
-  createApp(StoryPlayer, { script }).mount(ele);
+  // Arknights 皮肤已带样式。其它皮肤在 ResourceLoader 就绪后加载共用组件样式。
+  (window.RLQ = window.RLQ || []).push([
+    ["skins.arknights.components", "skins.arknights.fonts"],
+    () => createApp(StoryPlayer, { script }).mount(ele),
+  ]);
 } else {
   console.error("datas_txt or ele not found", ele);
 }

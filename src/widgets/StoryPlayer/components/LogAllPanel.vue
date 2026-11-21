@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 
-import { NCard, NModal, NText } from "naive-ui";
+import { AkButton, AkMessage, AkPanel } from "@mooncellwiki/prts-design-vue";
 
 import LogAllList from "./LogAllList.vue";
 
@@ -9,82 +9,125 @@ import type { LogDocument } from "../engine/log";
 import type { RuntimeChoiceSelection } from "../engine/types";
 
 const props = defineProps<{
-  show: boolean;
   document: LogDocument;
   activeLineIndex?: number | null;
   selections?: RuntimeChoiceSelection[];
-  embedded?: boolean;
 }>();
-const emit = defineEmits<{ "update:show": [boolean] }>();
+const emit = defineEmits<{ close: [] }>();
 
 const scrollRoot = ref<HTMLElement | null>(null);
 
-// 当正在显示的行变化时，把它滚动进视图（仅弹窗内、非阻塞）。
+function scrollToActiveLine(): void {
+  const root = scrollRoot.value;
+  if (!root) return;
+  // 同一行可能出现在多个分支，优先定位已选路径里的那一条。
+  const line =
+    root.querySelector<HTMLElement>('[data-active-line="exact"]') ??
+    root.querySelector<HTMLElement>("[data-active-line]");
+  if (!line) return;
+
+  // 只滚动阅读区，避免拖动 Wiki 宿主页面。
+  root.scrollTop +=
+    line.getBoundingClientRect().top -
+    root.getBoundingClientRect().top -
+    (root.clientHeight - line.offsetHeight) / 2;
+}
+
+onMounted(() => {
+  scrollRoot.value?.focus({ preventScroll: true });
+  scrollToActiveLine();
+});
 watch(
-  () => props.activeLineIndex,
-  async () => {
-    await nextTick();
-    const root = scrollRoot.value;
-    if (!root) return;
-    // 同一行号可能在多个分支各出现一次，优先定位到确定在当前路径上的那条
-    const el =
-      root.querySelector<HTMLElement>('[data-active-line="exact"]') ??
-      root.querySelector<HTMLElement>("[data-active-line]");
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  [() => props.activeLineIndex, () => props.selections],
+  scrollToActiveLine,
+  {
+    flush: "post",
   },
 );
 </script>
 
 <template>
-  <NCard
-    v-if="embedded && show"
-    title="LOG ALL"
-    closable
-    class="h-full"
-    content-style="height: calc(100% - 59px); min-height: 0; overflow-y: auto"
-    @close="emit('update:show', false)"
+  <AkPanel
+    class="log-all-panel"
+    title="剧情全文"
+    title-tag="h2"
+    en="LOG ALL"
+    @keydown.esc.stop.prevent="emit('close')"
   >
     <template #header-extra>
-      <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
-    </template>
-
-    <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
-      分支组合过多，部分内容未按选择路线区分。
-    </NText>
-
-    <div ref="scrollRoot">
-      <LogAllList
-        :document="document"
-        :active-line-index="activeLineIndex"
-        :selections="selections"
+      <AkButton
+        icon="x"
+        label="关闭剧情全文"
+        size="sm"
+        variant="ghost"
+        @click="emit('close')"
       />
-    </div>
-  </NCard>
-
-  <NModal
-    v-else-if="!embedded"
-    :show="show"
-    preset="card"
-    title="LOG ALL"
-    style="width: min(760px, 94vw); max-width: min(760px, 94vw)"
-    :bordered="false"
-    :auto-focus="false"
-    @update:show="emit('update:show', $event)"
-  >
-    <template #header-extra>
-      <span class="text-xs font-normal opacity-60">全部对话文本（含分支）</span>
     </template>
-
-    <NText v-if="document.degraded" depth="3" tag="p" class="m-0 mb-2 text-xs">
-      分支组合过多，部分内容未按选择路线区分。
-    </NText>
-
-    <div ref="scrollRoot" class="max-h-[70vh] overflow-y-auto py-1">
-      <LogAllList
-        :document="document"
-        :active-line-index="activeLineIndex"
-        :selections="selections"
-      />
+    <div
+      ref="scrollRoot"
+      class="log-all-scroll"
+      role="region"
+      aria-label="剧情文本内容"
+      tabindex="0"
+    >
+      <div class="log-all-reading">
+        <AkMessage
+          v-if="document.degraded"
+          class="log-all-notice"
+          variant="warning"
+        >
+          分支组合过多，部分内容未按选择路线区分。
+        </AkMessage>
+        <LogAllList
+          :document="document"
+          :active-line-index="activeLineIndex"
+          :selections="selections"
+        />
+      </div>
     </div>
-  </NModal>
+  </AkPanel>
 </template>
+
+<style scoped>
+.log-all-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.log-all-panel :deep(.ak-panel__head) {
+  min-height: 48px;
+}
+
+.log-all-panel :deep(.ak-panel__title) {
+  font-family: var(--ak-font-body);
+}
+
+.log-all-panel :deep(.ak-panel__body) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+}
+
+.log-all-scroll {
+  width: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.log-all-scroll:focus-visible {
+  outline-offset: -3px;
+}
+
+.log-all-reading {
+  max-width: 56rem;
+  margin-inline: auto;
+  padding: var(--ak-space-3) clamp(var(--ak-space-2), 2vw, var(--ak-space-6));
+}
+
+.log-all-notice {
+  margin-bottom: var(--ak-space-3);
+}
+</style>

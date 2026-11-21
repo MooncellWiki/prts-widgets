@@ -10,31 +10,16 @@ import {
 } from "vue";
 
 import {
-  FileDownloadOutlined as ExportIcon,
-  FullscreenExitOutlined as FullscreenExitIcon,
-  FullscreenOutlined as FullscreenIcon,
-  FeedbackOutlined as FeedbackIcon,
-  SubjectFilled as LogAllIcon,
-  MenuFilled as MenuIcon,
-  PlayArrowFilled as PlayArrowIcon,
-  SkipNextFilled as SkipNextIcon,
-} from "@vicons/material";
-import {
-  darkTheme,
-  NButton,
-  NButtonGroup,
-  NCard,
-  NConfigProvider,
-  NIcon,
-  NAlert,
-  NSelect,
-  NSpace,
-  NSpin,
-  NText,
-  type GlobalThemeOverrides,
-} from "naive-ui";
-
-import { useTheme } from "@/utils/theme";
+  AkButton,
+  AkMessage,
+  AkPanel,
+  AkProgress,
+  AkRadioButton,
+  AkRadioGroup,
+  AkSelect,
+  AkSpinner,
+  type SelectValue,
+} from "@mooncellwiki/prts-design-vue";
 
 import AssetListModal from "./components/AssetListModal.vue";
 import LogAllPanel from "./components/LogAllPanel.vue";
@@ -64,10 +49,10 @@ const props = defineProps<{
   autoStart?: boolean;
 }>();
 
-const { theme, themeOverrides } = useTheme();
-
 const hostRef = ref<HTMLElement | null>(null);
 const fullscreenRootRef = ref<HTMLElement | null>(null);
+const controlsRef = ref<HTMLElement | null>(null);
+const logTrigger = ref<InstanceType<typeof AkButton> | null>(null);
 const {
   isFullscreen,
   isPseudo: isPseudoFullscreen,
@@ -129,20 +114,6 @@ const canSkipStory = computed(
   () => canSkipNode.value && autoPlayMode.value !== "quick_play",
 );
 
-// 舞台区域尺寸：宽屏统一 16:9。窄屏（竖屏手机）下 16:9 只有两百来像素高，
-// lobby 改按内容自然高度，阅读 LOG ALL 时撑高（story-stage--reading）。
-// 播放器的画布 frame 在 story-stage 里按容器查询保持 16:9 居中，区域变成
-// 什么形状都不会拉伸画布。
-const stageSectionClass = computed(() => {
-  if (viewMode.value === "lobby") return "max-w-7xl sm:aspect-video";
-  if (viewMode.value === "text") return "max-w-7xl story-stage--reading";
-  if (isFullscreen.value) return "story-stage story-stage--fullscreen";
-  return [
-    "story-stage max-w-7xl",
-    showLogAll.value ? "story-stage--reading" : "aspect-video",
-  ];
-});
-
 const currentSpeedLevel = computed(() =>
   autoPlayMode.value === "quick_play"
     ? quickSpeedLevel.value
@@ -200,7 +171,7 @@ function sameSelections(
 function openLogAll(): void {
   if (!scriptText.value) return;
   if (viewMode.value === "lobby") viewMode.value = "text";
-  // 打开弹窗时关掉自动播放，方便玩家在弹窗里对照当前显示的句子
+  // 阅读时暂停自动推进，方便对照当前显示的句子。
   if (autoPlayMode.value !== "default") {
     player?.setAutoPlayMode("default");
     syncState();
@@ -209,12 +180,16 @@ function openLogAll(): void {
     parseStory(scriptText.value).lines,
     context?.audioVariables,
   );
+  if (isFullscreen.value) hideHud();
   showLogAll.value = true;
 }
 
-function closeLogAll(): void {
+async function closeLogAll(): Promise<void> {
   showLogAll.value = false;
   if (viewMode.value === "text") viewMode.value = "lobby";
+  if (isFullscreen.value) showHud();
+  await nextTick();
+  (logTrigger.value?.$el as HTMLElement | undefined)?.focus();
 }
 
 function openAssetList(): void {
@@ -232,15 +207,8 @@ function openAssetList(): void {
 const HUD_AUTO_HIDE_MS = 4000;
 const hudVisible = ref(false);
 let hudTimer: ReturnType<typeof setTimeout> | null = null;
-// 指针停在 HUD 上（鼠标悬停、触摸按下期间）不计时，离开后重新倒计时；
-// 速度下拉菜单 teleport 在 HUD 外面，展开期间同样不能把 HUD 收掉
+// 鼠标悬停、键盘操作或速度选择期间保持 HUD 可见。
 let hudHovered = false;
-let hudMenuOpen = false;
-
-// HUD 叠在黑底舞台上，固定用暗色主题，卡片半透明露出底下的画面
-const hudThemeOverrides: GlobalThemeOverrides = {
-  Card: { color: "rgba(0, 0, 0, 0.55)" },
-};
 
 function clearHudTimer(): void {
   if (hudTimer) clearTimeout(hudTimer);
@@ -249,8 +217,12 @@ function clearHudTimer(): void {
 
 function scheduleHudHide(): void {
   clearHudTimer();
-  if (!isFullscreen.value || hudHovered || hudMenuOpen) return;
-  hudTimer = setTimeout(() => (hudVisible.value = false), HUD_AUTO_HIDE_MS);
+  if (!isFullscreen.value || hudHovered || showAssetList.value) return;
+  hudTimer = setTimeout(() => {
+    if (controlsRef.value?.querySelector("select:focus, :focus-visible"))
+      return;
+    hideHud();
+  }, HUD_AUTO_HIDE_MS);
 }
 
 function showHud(): void {
@@ -270,13 +242,14 @@ function onHudHover(hovered: boolean): void {
   else scheduleHudHide();
 }
 
-function onHudMenuShow(show: boolean): void {
-  hudMenuOpen = show;
-  if (show) clearHudTimer();
-  else scheduleHudHide();
+async function revealHud(): Promise<void> {
+  showHud();
+  await nextTick();
+  controlsRef.value?.querySelector<HTMLElement>("button:enabled")?.focus();
 }
 
 watch(isFullscreen, (fullscreen) => (fullscreen ? showHud() : hideHud()));
+watch(showAssetList, scheduleHudHide);
 
 function onStageClick(): void {
   if (isFullscreen.value) hideHud();
@@ -285,13 +258,15 @@ function onStageClick(): void {
   });
 }
 
-function setAutoPlayMode(mode: AutoPlayMode): void {
+function setAutoPlayMode(mode: string | number | undefined): void {
+  if (mode !== "default" && mode !== "button_auto" && mode !== "quick_play")
+    return;
   player?.setAutoPlayMode(mode);
   syncState();
 }
 
-function setAutoPlaySpeedLevel(level: number): void {
-  if (!Number.isFinite(level)) return;
+function setAutoPlaySpeedLevel(level: SelectValue | null | undefined): void {
+  if (typeof level !== "number" || !Number.isFinite(level)) return;
   player?.setAutoPlaySpeedLevel(level);
   syncState();
 }
@@ -439,6 +414,8 @@ async function onSkipNode(event?: Event): Promise<void> {
     context = null;
     preloadReady.value = false;
     preloadProgress.value = 0;
+    showLogAll.value = false;
+    if (isFullscreen.value) void toggleFullscreen();
     viewMode.value = "lobby";
     if (timer) {
       clearInterval(timer);
@@ -496,302 +473,306 @@ defineExpose({
 </script>
 
 <template>
-  <NConfigProvider
-    preflight-style-disabled
-    :theme="theme"
-    :theme-overrides="themeOverrides"
+  <div
+    v-show="!legacyPlayerActive"
+    ref="fullscreenRootRef"
+    class="story-player ak-scope ak-not-prose"
+    :class="{
+      'story-player--fullscreen': isFullscreen,
+      'story-player--pseudo-fullscreen': isPseudoFullscreen,
+    }"
+    :data-theme="isFullscreen ? 'dark' : undefined"
   >
-    <!-- 根节点标 ak-not-prose，不吃 Arknights 皮肤的正文排版（列表的菱形项目符号 li::before、ul/p 的外边距等） -->
-    <main
-      v-show="!legacyPlayerActive"
-      ref="fullscreenRootRef"
-      class="story-player ak-not-prose box-border w-full flex flex-col items-center"
-      :class="
-        isFullscreen
-          ? [
-              'story-player--fullscreen',
-              { 'story-player--pseudo-fullscreen': isPseudoFullscreen },
-            ]
-          : 'max-w-full min-h-full gap-3.5 py-3 sm:p-6'
-      "
+    <AkPanel
+      v-if="viewMode === 'lobby'"
+      class="story-lobby"
+      title="剧情播放器"
+      title-tag="h2"
     >
-      <section
-        class="relative w-full overflow-hidden"
-        :class="stageSectionClass"
-      >
-        <NCard
-          v-if="viewMode === 'lobby'"
-          class="h-full"
-          title="剧情加载方式"
-          content-style="height: calc(100% - 59px)"
-        >
-          <div v-if="preloadError">
-            <NAlert type="error" title="加载失败">{{ preloadError }}</NAlert>
-          </div>
-
-          <div v-else class="h-full flex flex-col items-center justify-center">
-            <NText tag="p" depth="3" class="mt-0 text-sm">
-              完整加载会预载剧情所需的图片、音频等资源；只加载文本不会下载这些资源。
-            </NText>
-            <NSpace>
-              <NButton
-                type="primary"
-                :disabled="!hasScript"
-                @click="onStartPlay"
-              >
-                完整加载
-              </NButton>
-              <NButton :disabled="!hasScript" @click="openLogAll">
-                <template #icon>
-                  <NIcon><LogAllIcon /></NIcon>
-                </template>
-                只加载文本
-              </NButton>
-              <NButton :disabled="!hasScript" @click="onLoadLegacyPlayer">
-                加载旧版播放器
-              </NButton>
-            </NSpace>
-          </div>
-        </NCard>
-
-        <!-- 只加载文本时没有播放进度，不传当前行与选择历史 -->
-        <LogAllPanel
-          v-else-if="viewMode === 'text'"
-          :show="showLogAll"
-          embedded
-          :document="logAllDocument"
-          @update:show="closeLogAll"
-        />
-
-        <template v-else>
-          <div class="story-stage-frame bg-black">
-            <div
-              ref="hostRef"
-              class="h-full w-full cursor-pointer outline-none"
-              tabindex="0"
-              @click="onStageClick"
-              @keydown="onKeydown"
-            />
-
-            <div
-              v-if="isPreloading"
-              class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[2px]"
-            >
-              <NSpin :description="`正在预加载资源 ${preloadPercent}%`" />
-            </div>
-
-            <div
-              v-else-if="!preloadReady && preloadError"
-              class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 p-6 backdrop-blur-[2px]"
-            >
-              <NAlert type="error" title="资源加载失败">{{
-                preloadError
-              }}</NAlert>
-            </div>
-
-            <div
-              v-else-if="!preloadReady"
-              class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[2px]"
-            >
-              <NSpin description="准备中..." />
-            </div>
-          </div>
-
-          <!-- 盖住整个舞台区域而不只是 16:9 画布：全屏时铺满屏幕，窄屏时
-               跟着区域撑高，阅读宽度不受画布比例限制 -->
-          <LogAllPanel
-            v-model:show="showLogAll"
-            embedded
-            class="absolute inset-0 z-10"
-            :document="logAllDocument"
-            :active-line-index="logAllActiveLineIndex"
-            :selections="logAllSelections"
-          />
-        </template>
-      </section>
-
-      <!-- 全屏时套暗色主题：控制栏变成叠在黑底舞台上的 HUD -->
-      <NConfigProvider
-        v-if="viewMode === 'player'"
-        abstract
-        :theme="isFullscreen ? darkTheme : undefined"
-        :theme-overrides="isFullscreen ? hudThemeOverrides : undefined"
-      >
-        <Transition name="story-hud">
-          <NCard
-            v-show="!isFullscreen || (hudVisible && !showLogAll)"
-            class="w-full"
-            :class="isFullscreen ? 'story-hud' : 'max-w-7xl'"
-            size="small"
-            :bordered="!isFullscreen"
-            aria-label="播放控制"
-            @pointerenter="onHudHover(true)"
-            @pointerleave="onHudHover(false)"
+      <AkMessage v-if="preloadError" variant="danger" title="加载失败">
+        {{ preloadError }}
+      </AkMessage>
+      <div class="story-lobby-options">
+        <div class="story-lobby-option">
+          <AkButton
+            variant="primary"
+            icon="play"
+            :disabled="!hasScript"
+            @click="onStartPlay"
           >
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <NSpace align="center" :wrap="true">
-                <NText
-                  v-if="!isFullscreen"
-                  depth="3"
-                  class="text-xs font-bold tracking-[0.12em]"
-                >
-                  播放模式
-                </NText>
-                <NButtonGroup size="small">
-                  <NButton
-                    v-for="option in playModeOptions"
-                    :key="option.value"
-                    :type="
-                      autoPlayMode === option.value ? 'primary' : 'default'
-                    "
-                    :disabled="controlsDisabled || theaterMode"
-                    @click="setAutoPlayMode(option.value)"
-                  >
-                    {{ option.label }}
-                  </NButton>
-                </NButtonGroup>
-              </NSpace>
+            完整加载
+          </AkButton>
+          <p>预载图片和音频，在舞台播放剧情。</p>
+        </div>
+        <div class="story-lobby-option">
+          <AkButton
+            ref="logTrigger"
+            icon="list"
+            :disabled="!hasScript"
+            @click="openLogAll"
+          >
+            只加载文本
+          </AkButton>
+          <p>阅读全部对话与分支，无需下载图片和音频。</p>
+        </div>
+      </div>
+      <AkButton
+        class="story-legacy"
+        variant="ghost"
+        size="sm"
+        :disabled="!hasScript"
+        @click="onLoadLegacyPlayer"
+      >
+        加载旧版播放器
+      </AkButton>
+    </AkPanel>
 
-              <NSpace align="center" :wrap="true">
-                <NButton size="small" @click="toggleFullscreen">
-                  <template #icon>
-                    <NIcon>
-                      <FullscreenExitIcon v-if="isFullscreen" />
-                      <FullscreenIcon v-else />
-                    </NIcon>
-                  </template>
-                  {{ isFullscreen ? "退出全屏" : "全屏" }}
-                </NButton>
+    <!-- 只加载文本时不传当前行与选择历史 -->
+    <LogAllPanel
+      v-else-if="viewMode === 'text'"
+      class="story-transcript"
+      :document="logAllDocument"
+      @close="closeLogAll"
+    />
 
-                <NButton
-                  size="small"
-                  :disabled="!hasScript"
-                  @click="openLogAll"
-                >
-                  <template #icon>
-                    <NIcon><LogAllIcon /></NIcon>
-                  </template>
-                  文本
-                </NButton>
+    <template v-else>
+      <div
+        class="story-stage"
+        :class="{
+          'story-stage--fullscreen': isFullscreen,
+          'story-stage--reading': showLogAll,
+        }"
+      >
+        <div class="story-stage-frame" :inert="showLogAll">
+          <div
+            ref="hostRef"
+            class="story-stage-host"
+            role="region"
+            aria-label="剧情舞台，按空格或回车推进剧情"
+            tabindex="0"
+            @click="onStageClick"
+            @keydown="onKeydown"
+          />
 
-                <NButton
-                  size="small"
-                  :disabled="!preloadReady"
-                  @click="openAssetList"
-                >
-                  <template #icon>
-                    <NIcon><ExportIcon /></NIcon>
-                  </template>
-                  导出
-                </NButton>
+          <div
+            v-if="!preloadReady"
+            class="story-stage-status ak-scope"
+            data-theme="dark"
+          >
+            <AkProgress
+              v-if="isPreloading"
+              class="story-stage-progress"
+              label="正在预加载资源"
+              :percentage="preloadPercent"
+              size="sm"
+              stripes
+            />
+            <AkMessage
+              v-else-if="preloadError"
+              variant="danger"
+              title="资源加载失败"
+            >
+              {{ preloadError }}
+            </AkMessage>
+            <AkSpinner v-else description="准备中…" />
+          </div>
+        </div>
 
-                <NButton size="small" @click="openFeedback">
-                  <template #icon>
-                    <NIcon><FeedbackIcon /></NIcon>
-                  </template>
-                  反馈
-                </NButton>
+        <LogAllPanel
+          v-if="showLogAll"
+          class="story-transcript-overlay"
+          :document="logAllDocument"
+          :active-line-index="logAllActiveLineIndex"
+          :selections="logAllSelections"
+          @close="closeLogAll"
+        />
+      </div>
 
-                <!-- 全屏时点画面就能推进，只在尚未开始时保留入口 -->
-                <NButton
-                  v-if="!isFullscreen || state === 'idle'"
-                  size="small"
-                  :disabled="!canAdvance"
-                  quaternary
-                  @click="onAdvance"
-                >
-                  <template #icon>
-                    <NIcon><PlayArrowIcon /></NIcon>
-                  </template>
-                  {{ state === "idle" ? "开始" : "继续" }}
-                </NButton>
-
-                <NButton
-                  size="small"
-                  type="primary"
-                  :disabled="!(preloadReady && canSkipStory)"
-                  @click="onSkipNode"
-                >
-                  <template #icon>
-                    <NIcon><SkipNextIcon /></NIcon>
-                  </template>
-                  跳过剧情
-                </NButton>
-              </NSpace>
-
-              <NSpace align="center" :wrap="true">
-                <NText
-                  v-if="!isFullscreen"
-                  depth="3"
-                  class="text-xs font-bold tracking-[0.12em]"
-                >
-                  播放速度
-                </NText>
-                <NSelect
-                  size="small"
-                  style="width: 96px"
-                  aria-label="播放速度"
-                  :value="currentSpeedLevel"
-                  :options="speedOptions"
-                  :disabled="
-                    controlsDisabled ||
-                    theaterMode ||
-                    autoPlayMode === 'default'
-                  "
-                  @update:value="setAutoPlaySpeedLevel"
-                  @update:show="onHudMenuShow"
-                />
-              </NSpace>
-            </div>
-          </NCard>
-        </Transition>
-
-        <NButton
-          v-if="isFullscreen && !hudVisible && !showLogAll"
-          class="story-hud-toggle"
-          circle
-          secondary
-          aria-label="显示播放控制"
-          @click="showHud"
+      <Transition name="story-hud">
+        <section
+          v-show="!isFullscreen || (hudVisible && !showLogAll)"
+          ref="controlsRef"
+          class="story-controls"
+          :class="{ 'story-hud': isFullscreen }"
+          aria-label="播放控制"
+          @pointerenter="onHudHover(true)"
+          @pointerleave="onHudHover(false)"
+          @focusout="scheduleHudHide"
         >
-          <template #icon>
-            <NIcon><MenuIcon /></NIcon>
-          </template>
-        </NButton>
-      </NConfigProvider>
+          <div class="story-controls-group">
+            <!-- 全屏时点画面就能推进，只在尚未开始时保留入口 -->
+            <AkButton
+              v-if="!isFullscreen || state === 'idle'"
+              variant="contrast"
+              size="sm"
+              icon="play"
+              :disabled="!canAdvance"
+              @click="onAdvance"
+            >
+              {{ state === "idle" ? "开始" : "继续" }}
+            </AkButton>
+            <AkRadioGroup
+              label="播放模式"
+              size="sm"
+              :model-value="autoPlayMode"
+              :disabled="controlsDisabled || theaterMode"
+              @update:model-value="setAutoPlayMode"
+            >
+              <AkRadioButton
+                v-for="option in playModeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </AkRadioButton>
+            </AkRadioGroup>
+            <div class="story-speed-control">
+              <span aria-hidden="true">速度</span>
+              <AkSelect
+                class="story-speed"
+                size="sm"
+                label="播放速度"
+                :model-value="currentSpeedLevel"
+                :options="speedOptions"
+                :disabled="
+                  controlsDisabled || theaterMode || autoPlayMode === 'default'
+                "
+                @update:model-value="setAutoPlaySpeedLevel"
+              />
+            </div>
+          </div>
+
+          <div class="story-controls-group">
+            <AkButton
+              ref="logTrigger"
+              size="sm"
+              variant="ghost"
+              icon="list"
+              :disabled="!hasScript"
+              :aria-expanded="showLogAll"
+              @click="openLogAll"
+            >
+              文本
+            </AkButton>
+            <AkButton
+              size="sm"
+              variant="ghost"
+              icon="download"
+              :disabled="!preloadReady"
+              @click="openAssetList"
+            >
+              导出
+            </AkButton>
+            <AkButton
+              size="sm"
+              variant="ghost"
+              icon="monitor"
+              @click="toggleFullscreen"
+            >
+              {{ isFullscreen ? "退出全屏" : "全屏" }}
+            </AkButton>
+            <AkButton
+              size="sm"
+              variant="ghost"
+              icon="talk"
+              @click="openFeedback"
+            >
+              反馈
+            </AkButton>
+            <AkButton
+              size="sm"
+              :disabled="!(preloadReady && canSkipStory)"
+              @click="onSkipNode"
+            >
+              跳过剧情
+            </AkButton>
+          </div>
+        </section>
+      </Transition>
+
+      <AkButton
+        v-if="isFullscreen && !hudVisible && !showLogAll"
+        class="story-hud-toggle"
+        icon="menu"
+        label="显示播放控制"
+        @click="revealHud"
+      />
 
       <AssetListModal
         v-model:show="showAssetList"
         :urls="assetUrls"
         :face-assets="characterFaceAssets"
-        :to="fullscreenRootRef || undefined"
       />
-    </main>
-  </NConfigProvider>
+    </template>
+  </div>
 </template>
 
 <style scoped>
-/* 窄屏（竖屏手机）下 16:9 只有两百来像素高，LOG ALL 放不下：阅读文本时
-   区域改用视口高度，宽屏仍保持 16:9 */
-.story-stage--reading {
-  height: min(70vh, 40rem);
+.story-player {
+  --story-player-width: 72rem;
+  --story-preview-background: repeating-conic-gradient(
+      var(--ak-bg-surface-2) 0% 25%,
+      var(--ak-bg-surface-3) 0% 50%
+    )
+    0 0 / 16px 16px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--story-player-width);
+  margin-inline: auto;
 }
 
-@media (min-width: 640px) {
-  .story-stage--reading {
-    height: auto;
-    aspect-ratio: 16 / 9;
-  }
+.story-lobby {
+  margin: 0;
 }
 
-/* 舞台区域可能不是 16:9（全屏、窄屏阅读 LOG ALL），画布 frame 按容器查询
-   等比居中，避免画布被拉伸；不支持容器查询的老浏览器退回铺满 */
+.story-lobby :deep(.ak-panel__title) {
+  font-family: var(--ak-font-body);
+}
+
+.story-lobby-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: var(--ak-space-3);
+}
+
+.story-lobby-option {
+  padding: var(--ak-space-4);
+  border: 1px solid var(--ak-border);
+  background: var(--ak-bg-surface-2);
+}
+
+.story-lobby-option p {
+  margin: var(--ak-space-2) 0 0;
+  color: var(--ak-fg-muted);
+  font-size: var(--ak-fs-sm);
+}
+
+.story-lobby :deep(.ak-message) {
+  margin-bottom: var(--ak-space-3);
+}
+
+.story-legacy {
+  margin-top: var(--ak-space-3);
+}
+
+.story-transcript {
+  height: min(68vh, 42rem);
+}
+
 .story-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #000;
   container-type: size;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #000;
+}
+
+/* 竖屏的 16:9 舞台高度不足以阅读全文，打开全文时给滚动区留出空间。 */
+.story-stage--reading {
+  min-height: min(68vh, 30rem);
 }
 
 .story-stage-frame {
@@ -800,6 +781,7 @@ defineExpose({
   height: 100%;
 }
 
+/* 全屏或阅读时，按舞台容器尺寸等比居中画布。 */
 @supports (width: 1cqw) {
   .story-stage-frame {
     width: min(100cqw, calc(100cqh * 16 / 9));
@@ -807,64 +789,134 @@ defineExpose({
   }
 }
 
-.story-player--fullscreen {
-  position: relative;
-  height: 100vh;
-  padding: 0;
-  overflow: hidden;
-  background-color: #000;
+.story-stage-host {
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
 }
 
-/* Fullscreen API 不可用（iPhone Safari）时的网页全屏。z-index 高于
-   Minerva/Vector 的页面层（最高约 450），低于 naive-ui 浮层（2000 起）和
-   Sentry 反馈表单，下拉菜单与弹窗照常显示在上面 */
+.story-stage-host:focus-visible {
+  outline: 2px solid var(--ak-focus);
+  outline-offset: -2px;
+}
+
+.story-stage-status.ak-scope {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--ak-space-4);
+  background: var(--ak-bg-overlay);
+  overflow-wrap: anywhere;
+}
+
+.story-stage-progress {
+  width: min(100%, 24rem);
+}
+
+.story-transcript-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+
+.story-controls,
+.story-controls-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.story-controls {
+  justify-content: space-between;
+  gap: var(--ak-space-2) var(--ak-space-4);
+  padding: var(--ak-space-2) var(--ak-space-3);
+  border: 1px solid var(--ak-border);
+  border-top: 2px solid var(--ak-accent);
+  background: var(--ak-bg-surface-2);
+}
+
+.story-controls-group {
+  gap: var(--ak-space-1);
+}
+
+.story-controls-group:first-child {
+  gap: var(--ak-space-2);
+}
+
+.story-speed-control {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-1);
+  color: var(--ak-fg-muted);
+  font-size: var(--ak-fs-xs);
+}
+
+.story-speed {
+  width: auto;
+  min-width: 4.5rem;
+}
+
+@media (max-width: 38rem) {
+  .story-controls-group .ak-btn--ghost {
+    padding-inline: var(--ak-space-2);
+  }
+}
+
+.story-player--fullscreen {
+  position: relative;
+  max-width: none;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+}
+
+/* Fullscreen API 不可用时覆盖 Wiki 页面层。 */
 .story-player--pseudo-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 1000;
-  width: auto;
+  z-index: var(--ak-z-overlay);
   height: auto;
 }
 
 .story-stage--fullscreen {
   position: absolute;
   inset: 0;
+  aspect-ratio: auto;
 }
 
 .story-hud {
   position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
+  inset: 0 0 auto;
   z-index: 20;
-  padding-top: env(safe-area-inset-top, 0px);
-  border-radius: 0;
+  padding-top: calc(var(--ak-space-2) + env(safe-area-inset-top, 0px));
+  padding-right: max(var(--ak-space-3), env(safe-area-inset-right, 0px));
+  padding-left: max(var(--ak-space-3), env(safe-area-inset-left, 0px));
+  border-width: 0 0 1px;
+  background: var(--ak-bg-canvas);
+  background: color-mix(in srgb, var(--ak-bg-canvas) 90%, transparent);
   backdrop-filter: blur(6px);
 }
 
 .story-hud-toggle {
   position: absolute;
-  top: max(12px, env(safe-area-inset-top, 0px));
-  right: max(12px, env(safe-area-inset-right, 0px));
+  top: max(var(--ak-space-3), env(safe-area-inset-top, 0px));
+  right: max(var(--ak-space-3), env(safe-area-inset-right, 0px));
   z-index: 20;
-  opacity: 0.6;
 }
 
-.story-hud-toggle:hover,
-.story-hud-toggle:focus-visible {
-  opacity: 1;
-}
+@media (prefers-reduced-motion: no-preference) {
+  .story-hud-enter-active,
+  .story-hud-leave-active {
+    transition:
+      opacity var(--ak-dur-normal),
+      transform var(--ak-dur-normal);
+  }
 
-.story-hud-enter-active,
-.story-hud-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-
-.story-hud.story-hud-enter-from,
-.story-hud.story-hud-leave-to {
-  opacity: 0;
-  transform: translateY(-100%);
+  .story-hud.story-hud-enter-from,
+  .story-hud.story-hud-leave-to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
 }
 </style>
