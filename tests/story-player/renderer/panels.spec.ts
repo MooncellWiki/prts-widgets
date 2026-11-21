@@ -18,6 +18,7 @@ import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
 import {
   createRenderedPlayback,
   createRenderer,
+  focusAmount,
 } from "../helpers/rendererFixtures";
 import {
   createContext,
@@ -26,7 +27,6 @@ import {
 } from "../helpers/runtimeFakes";
 
 import type { CharacterArt } from "../../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
-import type { FocusBlurFilter } from "../../../src/widgets/StoryPlayer/engine/rendering/core/FocusBlurFilter";
 import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import type { TweenRunOptions } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { StoryShowItemSlot } from "../../../src/widgets/StoryPlayer/engine/types";
@@ -351,6 +351,7 @@ describe("Interlude avatar rendering", () => {
       const face = createTexture(122, 147);
       renderer.textureForCharacterKey = (key: string) =>
         key === "body" ? body : face;
+      const clearRect = vi.fn();
       const drawImage = vi.fn();
       const context = vi
         .spyOn(
@@ -359,7 +360,10 @@ describe("Interlude avatar rendering", () => {
           },
           "getContext",
         )
-        .mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+        .mockReturnValue({
+          clearRect,
+          drawImage,
+        } as unknown as CanvasRenderingContext2D);
       const findSprite = (node: Container): Sprite | undefined => {
         if (node instanceof Sprite) return node.visible ? node : undefined;
         for (const child of node.children) {
@@ -400,6 +404,9 @@ describe("Interlude avatar rendering", () => {
             ]
           : [];
         expect(drawImage.mock.calls.slice(1)).toEqual(expectedFace);
+        expect(clearRect.mock.calls).toEqual(
+          faceRect ? [[faceRect.x, faceRect.y, faceRect.w, faceRect.h]] : [],
+        );
       } finally {
         destroy();
         context.mockRestore();
@@ -1228,7 +1235,7 @@ describe("Displayable and focus frame order", () => {
 
   it("draws the following CG in the frame blocking focusout finishes", async () => {
     const draws: unknown[] = [];
-    const { app, destroy, runtime } = await createRenderedPlayback(
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
         '[cgitem(image="first")]',
         '[focusout(type="cgitem",id="first",from=0,to=1,duration=0.032,block=true)]',
@@ -1236,9 +1243,10 @@ describe("Displayable and focus frame order", () => {
         '[name="A"]ok',
       ],
       ({ cgItems }) => {
-        const blur = cgItems.children[0]?.filters?.[0] as
-          FocusBlurFilter | undefined;
-        draws.push([blur?.amount, cgItems.children.length]);
+        draws.push([
+          focusAmount(renderer.sceneEffects, cgItems.children[0]),
+          cgItems.children.length,
+        ]);
       },
     );
     const started = runtime.start();
@@ -1944,7 +1952,7 @@ describe("Displayable and focus frame order", () => {
 
   it("force-ends a blocking focus wait while its channel continues after the skip", async () => {
     const draws: unknown[] = [];
-    const { app, destroy, runtime } = await createRenderedPlayback(
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
         '[cgitem(image="first")]',
         '[focusout(type="cgitem",id="first",from=0,to=1,duration=0.032,block=true)]',
@@ -1954,9 +1962,10 @@ describe("Displayable and focus frame order", () => {
         '[name="A"]ok',
       ],
       ({ cgItems }) => {
-        const blur = cgItems.children[0]?.filters?.[0] as
-          FocusBlurFilter | undefined;
-        draws.push([blur?.amount, cgItems.children.length]);
+        draws.push([
+          focusAmount(renderer.sceneEffects, cgItems.children[0]),
+          cgItems.children.length,
+        ]);
       },
     );
     const started = runtime.start();

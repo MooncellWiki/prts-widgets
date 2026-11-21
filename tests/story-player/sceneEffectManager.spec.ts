@@ -1,10 +1,10 @@
-import { type ColorMatrixFilter, Container } from "pixi.js";
+import { Container } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { SceneEffectManager } from "../../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
-import { buildColorEffectMatrix } from "../../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
-import { FocusBlurFilter } from "../../src/widgets/StoryPlayer/engine/rendering/core/FocusBlurFilter";
 import { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+
+import { focusAmount } from "./helpers/rendererFixtures";
 
 import type { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type { FocusOutInput } from "../../src/widgets/StoryPlayer/engine/types";
@@ -30,6 +30,16 @@ function createSceneEffects(
   return new SceneEffectManager(layers, tween);
 }
 
+const fixedBindings = {
+  bg: (effects, target) => effects.setImageFocusTargets("bg", target),
+  cg: (effects, target) => effects.setImageFocusTargets("cg", target),
+  char: (effects, target) => effects.setImageFocusTargets("m", target),
+  lbg: (effects, target) => effects.setLargeBackgroundFocusTargets([target]),
+} satisfies Record<
+  string,
+  (effects: SceneEffectManager, target: Container) => void
+>;
+
 describe("SceneEffectManager", () => {
   it("tweens the amount with SmoothStep easing, not linear time", () => {
     const target = new Container();
@@ -47,47 +57,38 @@ describe("SceneEffectManager", () => {
     // `_SetEffectAmount` uses TweenUtils.SmoothStep: at raw 0.25 the eased
     // value is 0.25^2 * (3 - 2*0.25) = 0.15625, not 0.25.
     step?.(0.25);
-    const color = target.filters[0] as ColorMatrixFilter;
-    expect([...color.matrix]).toEqual(buildColorEffectMatrix(0, 0.156_25));
+    expect(focusAmount(effects, target)).toBe(0.156_25);
 
     step?.(0.5);
-    expect([...(target.filters[0] as ColorMatrixFilter).matrix]).toEqual(
-      buildColorEffectMatrix(0, 0.5),
-    );
+    expect(focusAmount(effects, target)).toBe(0.5);
   });
 
-  it("grades the inverse matrix by the amount instead of always fully inverting", () => {
+  it("keeps the amount when focusparam switches between color, off, and blur", () => {
     const target = new Container();
     const effects = createSceneEffects();
     effects.bindCgItem("x", target);
 
-    effects.setFocusParam({ blur: false, color: "Colorinverse" });
     void effects.setFocusOut(
       input({ durationMs: 0, id: "x", to: 0.5, type: "cgitem" }),
     );
 
-    // Native keeps `_Inverse` binary and blends the processed target back
-    // through mat_blit_ghost; folding the amount into the matrix models that
-    // same lerp, so a half-focused target is half inverted.
-    const color = target.filters[0] as ColorMatrixFilter;
-    expect([...color.matrix]).toEqual(buildColorEffectMatrix(0, 0.5));
+    effects.setFocusParam({ blur: false, color: "Colorinverse" });
+    expect(effects.focusFrame?.config).toEqual({
+      blur: false,
+      color: "Colorinverse",
+    });
+    expect(focusAmount(effects, target)).toBe(0.5);
+    effects.setFocusParam({ blur: false, color: "None" });
+    expect(effects.focusFrame).toBeUndefined();
+    effects.setFocusParam({ blur: true, color: "Grayscale" });
+    expect(effects.focusFrame?.config).toEqual({
+      blur: true,
+      color: "Grayscale",
+    });
+    expect(focusAmount(effects, target)).toBe(0.5);
   });
 
-  it("grades the grayscale matrix by the amount", () => {
-    const target = new Container();
-    const effects = createSceneEffects();
-    effects.bindCgItem("x", target);
-
-    effects.setFocusParam({ blur: false, color: "Grayscale" });
-    void effects.setFocusOut(
-      input({ durationMs: 0, id: "x", to: 0.25, type: "cgitem" }),
-    );
-
-    const color = target.filters[0] as ColorMatrixFilter;
-    expect([...color.matrix]).toEqual(buildColorEffectMatrix(0.25, 0));
-  });
-
-  it("drops filters when the amount reaches zero", () => {
+  it("skips the camera pass when the amount reaches zero", () => {
     const target = new Container();
     const effects = createSceneEffects();
     effects.bindCgItem("x", target);
@@ -95,51 +96,18 @@ describe("SceneEffectManager", () => {
     void effects.setFocusOut(
       input({ durationMs: 0, id: "x", to: 1, type: "cgitem" }),
     );
-    expect(target.filters).toHaveLength(1);
+    expect(focusAmount(effects, target)).toBe(1);
 
     void effects.setFocusOut(
       input({ durationMs: 0, id: "x", to: 0, type: "cgitem" }),
     );
-    expect(target.filters).toHaveLength(0);
+    expect(effects.focusFrame).toBeUndefined();
   });
 
-  it("blends a single fixed blur over the puzzle as its focus amount changes", () => {
-    const layers = new LayerGraph();
-    let step: ((progress: number) => void) | undefined;
-    const effects = createSceneEffects(async (_duration, update) => {
-      step = update;
-    }, layers);
-    effects.setFocusOut(input({ durationMs: 1000, type: "lbg", to: 1 }));
-
-    step?.(0.25);
-    const [blur] = layers.gridBackground.filters as FocusBlurFilter[];
-    expect(blur).toBeInstanceOf(FocusBlurFilter);
-    expect(blur!.amount).toBe(0.156_25);
-
-    effects.setFocusParam({ blur: true, color: "Grayscale" });
-    step?.(0.5);
-    expect(layers.gridBackground.filters).toEqual([blur]);
-    expect(blur!.resources.focusBlurUniforms.uniforms).toMatchObject({
-      uAmount: 0.5,
-      uGray: 1,
-      uInverse: 0,
-    });
-
-    step?.(1);
-    expect(layers.gridBackground.filters[0]).toBe(blur);
-    expect(blur!.amount).toBe(1);
-  });
-
-  it.each([
-    ["bg", "background"],
-    ["cg", "images"],
-    ["char", "characters"],
-    ["lbg", "gridBackground"],
-  ] as const)(
+  it.each(Object.entries(fixedBindings))(
     "updates the same %s focus channel across asset IDs",
-    (type, layer) => {
-      const layers = new LayerGraph();
-      const target = layers[layer];
+    (type, bind) => {
+      const target = new Container();
       let step: ((progress: number) => void) | undefined;
       let finish: (() => void) | undefined;
       const effects = createSceneEffects(
@@ -147,24 +115,24 @@ describe("SceneEffectManager", () => {
           step = update;
           finish = complete;
         },
-        layers,
       );
+      bind(effects, target);
       const onComplete = vi.fn();
       const fade = effects.setFocusOut(
         input({ block: true, durationMs: 1000, id: "first", to: 1, type }),
         onComplete,
       );
       step?.(0.5);
-      expect(target.filters).toHaveLength(1);
+      expect(focusAmount(effects, target)).toBe(0.5);
 
       effects.setFocusOut(input({ id: "second", type }));
       expect(fade?.endReason).toBe("force_end");
       expect(onComplete).toHaveBeenCalledTimes(1);
-      expect(target.filters).toHaveLength(0);
+      expect(effects.focusFrame).toBeUndefined();
 
       step?.(1);
       finish?.();
-      expect(target.filters).toHaveLength(0);
+      expect(effects.focusFrame).toBeUndefined();
       expect(onComplete).toHaveBeenCalledTimes(1);
     },
   );
@@ -178,8 +146,8 @@ describe("SceneEffectManager", () => {
     effects.setFocusOut(input({ id: "A", to: 1, type: "cgitem" }));
     effects.setFocusOut(input({ id: "a", type: "cgitem" }));
 
-    expect(upper.filters).toHaveLength(1);
-    expect(lower.filters).toHaveLength(0);
+    expect(focusAmount(effects, upper)).toBe(1);
+    expect(focusAmount(effects, lower)).toBe(0);
   });
 
   it("continues a layer tween after one of its PostDisplay channels is replaced", () => {
@@ -206,15 +174,14 @@ describe("SceneEffectManager", () => {
     expect(onComplete).not.toHaveBeenCalled();
 
     step?.(0.5);
-    expect(layers.gridBackground.filters).toHaveLength(0);
-    expect((first.filters[0] as ColorMatrixFilter).matrix[4]).toBe(0.25);
-    expect((second.filters[0] as ColorMatrixFilter).matrix[4]).toBe(0.5);
+    expect(focusAmount(effects, first)).toBe(0.25);
+    expect(focusAmount(effects, second)).toBe(0.5);
 
     finish?.();
     expect(fade?.endReason).toBe("complete");
     expect(onComplete).toHaveBeenCalledExactlyOnceWith();
-    expect((first.filters[0] as ColorMatrixFilter).matrix[4]).toBe(0.25);
-    expect((second.filters[0] as ColorMatrixFilter).matrix[4]).toBe(1);
+    expect(focusAmount(effects, first)).toBe(0.25);
+    expect(focusAmount(effects, second)).toBe(1);
   });
 
   it("replays a stored amount when the cgitem target binds", () => {
@@ -226,11 +193,13 @@ describe("SceneEffectManager", () => {
     void effects.setFocusOut(
       input({ durationMs: 0, id: "a", to: 1, type: "cgitem" }),
     );
-    expect(target.filters ?? []).toHaveLength(0);
+    expect([...effects.focusFrame!.targets]).toEqual([]);
 
     // The cgitem registers afterwards and the stored amount replays.
     effects.bindCgItem("a", target);
-    expect(target.filters[0]).toBeInstanceOf(FocusBlurFilter);
+    expect([...effects.focusFrame!.targets]).toEqual([
+      { amount: 1, soft: true, target },
+    ]);
   });
 
   it("keeps storing tween updates after disposal for the next bind", () => {
@@ -247,30 +216,28 @@ describe("SceneEffectManager", () => {
       input({ durationMs: 1000, id: "a", to: 1, type: "cgitem" }),
     );
     step?.(1);
-    expect(target.filters).toHaveLength(1);
+    expect(focusAmount(effects, target)).toBe(1);
 
     // `BeforeItemDisposed` removes the stored amount; native `TweenAction`
     // ticks re-create it through `SetAmount`, so the tween still lands.
     effects.releaseCgItem("a", target);
-    expect(target.filters).toHaveLength(0);
+    expect(focusAmount(effects, target)).toBe(0);
     finish?.();
-    expect(target.filters).toHaveLength(0);
+    expect(focusAmount(effects, target)).toBe(0);
     const next = new Container();
     effects.bindCgItem("a", next);
-    expect(next.filters).toHaveLength(1);
+    expect(focusAmount(effects, next)).toBe(1);
 
     // With no tween left, a release sticks and the next tween starts from 0
     // (`GetAmount` of a missing entry).
     effects.releaseCgItem("a", next);
-    expect(next.filters).toHaveLength(0);
+    expect(focusAmount(effects, next)).toBe(0);
     effects.bindCgItem("a", next);
     effects.setFocusParam({ blur: false, color: "Grayscale" });
     void effects.setFocusOut(
       input({ durationMs: 1000, id: "a", to: 1, type: "cgitem" }),
     );
     step?.(0.5);
-    expect([...(next.filters[0] as ColorMatrixFilter).matrix]).toEqual(
-      buildColorEffectMatrix(0.5, 0),
-    );
+    expect(focusAmount(effects, next)).toBe(0.5);
   });
 });

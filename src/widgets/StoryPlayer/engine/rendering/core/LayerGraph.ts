@@ -4,9 +4,12 @@ import {
   Graphics,
   Rectangle,
   RenderLayer,
+  Texture,
 } from "pixi.js";
 
 import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
+
+import { VideoFrame } from "./VideoFrame";
 
 // 2791 sharedassets1.assets, AVGController (3630) canvas holder config.
 export const sceneCanvasOrder = {
@@ -20,6 +23,7 @@ export const sceneCanvasOrder = {
   image: 121,
   largeBackground: 2,
   showItem: 130,
+  video: 353,
 } as const;
 
 /** AVGCanvasLayerHolder._CalculateNewLayer (2791 @ 0x184167D50). */
@@ -52,6 +56,7 @@ export class LayerGraph {
   readonly sceneViewport = new Container();
   readonly ui = new Container();
   readonly world = new Container();
+  readonly video = new VideoFrame();
   private sceneFade?: AlphaFilter;
 
   constructor() {
@@ -61,6 +66,11 @@ export class LayerGraph {
       STORY_WIDTH,
       STORY_HEIGHT,
     );
+    // AVGSceneEffectManager._EnsureSourceDesc uses the camera's full viewport.
+    // Scene contents can be smaller, larger, or move during camerashake.
+    this.sceneCamera.filterArea = this.sceneViewport.filterArea.clone();
+    this.video.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+    this.video.zIndex = sceneCanvasOrder.video;
     this.sceneViewport.once("destroyed", () => this.sceneFade?.destroy());
     for (const slots of [
       this.cgItems,
@@ -100,7 +110,13 @@ export class LayerGraph {
       root.zIndex = order;
       this.sceneDraw.attach(root);
     }
-    this.sceneCamera.addChild(this.scene, this.cgItems, this.sceneDraw);
+    this.sceneCamera.addChild(
+      this.scene,
+      this.cgItems,
+      this.video,
+      this.sceneDraw,
+    );
+    this.sceneDraw.attach(this.video);
     const clearColor = new Graphics()
       .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
       .fill(0x000000);
@@ -114,11 +130,24 @@ export class LayerGraph {
   }
 
   /**
-   * 2791 VideoCanvas uses camera 1708 (depth 50), below UICanvas on
-   * camera 1709 (depth 51). The Web keeps opaque DOM media under Pixi and
-   * blends the flattened, opaque scene over it at the inverse opacity.
+   * 2791 VideoCanvas (2503) draws on AVGCamera_Scene at order 353, so
+   * scene effects also see its opacity during fades. Videos without
+   * CORS access use the DOM beneath the canvas.
    */
-  setVideoOpacity(opacity: number): void {
+  setVideoFrame(opacity: number, texture?: Texture): void {
+    this.video.visible = texture !== undefined && opacity > 0;
+    if (texture && this.video.texture !== texture) {
+      const scale = Math.min(
+        STORY_WIDTH / texture.width,
+        STORY_HEIGHT / texture.height,
+      );
+      this.video.setFrame(texture);
+      this.video.scale.set(texture.width * scale, texture.height * scale);
+    }
+    this.video.alpha = opacity;
+    if (texture) opacity = 0;
+    else this.video.setFrame(Texture.EMPTY);
+
     const scene = this.sceneViewport;
     scene.renderable = opacity < 1;
     if (opacity <= 0 || opacity >= 1) {

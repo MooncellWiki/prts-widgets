@@ -1,5 +1,3 @@
-import { ColorMatrixFilter, type Container } from "pixi.js";
-
 import {
   browserAnimationClock,
   createExecutionHandle,
@@ -7,11 +5,9 @@ import {
   type ExecutionHandle,
 } from "../execution";
 
-import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
-import { FocusBlurFilter } from "./core/FocusBlurFilter";
-
 import type { FocusOutInput, FocusParamInput } from "../types";
 import type { TweenRunner } from "./core/TweenRunner";
+import type { Container } from "pixi.js";
 
 interface FocusState {
   amount: number;
@@ -21,7 +17,19 @@ interface FocusState {
 
 interface PostDisplay {
   amount: number;
+  soft: boolean;
   target?: Container;
+}
+
+export interface FocusTarget {
+  amount: number;
+  soft: boolean;
+  target: Container;
+}
+
+export interface FocusFrame {
+  config: FocusParamInput;
+  targets: Iterable<FocusTarget>;
 }
 
 const imageChannels = {
@@ -52,45 +60,43 @@ const focusChannels = new Map<string, readonly string[]>([
 
 /**
  * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
- * `_ExecuteFocusParam` channel state. `AVGSceneFocusOut.Render` and
- * `mat_blit_ghost` mix a fully processed image into the clean one by channel
- * amount. Pixi applies that blend to each flattened focus target.
+ * `_ExecuteFocusParam` and `AVGSceneFocusOut` channel state. Each bound
+ * PostDisplay owns its last amount even when the channel is rebound.
  */
 export class SceneFocusOut {
   private readonly states = new Map<string, FocusState>();
   private readonly bindings = new Map<string, PostDisplay>();
   private readonly fixedSlots = new Map<string, PostDisplay>();
-  private readonly fixedLayers: Array<{
-    layer: Container;
-    slots: PostDisplay[];
-  }> = [];
   private readonly cgItems = new Map<Container, PostDisplay>();
   private readonly swappedPairs = new Set<FocusImagePair>();
-  private readonly filters = new Map<
-    Container,
-    FocusBlurFilter | ColorMatrixFilter
-  >();
   private config: FocusParamInput = { blur: true, color: "None" };
 
   constructor(
-    layerTargets: ReadonlyMap<string, Container>,
     private readonly tween: TweenRunner["run"],
     private readonly now = browserAnimationClock.now,
   ) {
     for (const [type, ids] of focusChannels) {
-      const slots = ids.map((id) => {
-        const slot = { amount: 0 };
+      for (const id of ids) {
+        // BindPostDisplay (2791 @ 0x1841D04F0) uses SoftItem for LBKG/CHAR_SLOT.
+        const slot = { amount: 0, soft: type === "char" || type === "lbg" };
         this.fixedSlots.set(id, slot);
         this.bindings.set(id, slot);
-        return slot;
-      });
-      this.fixedLayers.push({ layer: layerTargets.get(type)!, slots });
+      }
     }
   }
 
   setParam(input: FocusParamInput): void {
     this.config = input;
-    this.render();
+  }
+
+  get frame(): FocusFrame | undefined {
+    if (!this.config.blur && this.config.color === "None") return;
+    // AVGSceneFocusOut.GetActiveChannels (2791 @ 0x1841FA450) checks the
+    // stored values (including those waiting for a sprite) with MathUtil.GT.
+    for (const state of this.states.values()) {
+      if (state.amount > 1e-5)
+        return { config: this.config, targets: this.targets() };
+    }
   }
 
   setFocus(
@@ -118,11 +124,9 @@ export class SceneFocusOut {
     });
     if (input.from !== undefined) {
       for (const state of states) this.writeAmount(state, input.from);
-      this.render();
     }
     if (input.durationMs <= 0) {
       for (const state of states) this.writeAmount(state, input.to);
-      this.render();
       return;
     }
 
@@ -145,7 +149,6 @@ export class SceneFocusOut {
       const eased = progress * progress * (3 - 2 * progress);
       for (const [state, from] of active)
         this.writeAmount(state, from + (input.to - from) * eased);
-      this.render();
     };
     void this.tween(
       input.durationMs,
@@ -172,11 +175,6 @@ export class SceneFocusOut {
       slot.target = undefined;
       this.bindings.set(id, slot);
     }
-    for (const [target, filter] of this.filters) {
-      target.filters = [];
-      filter.destroy();
-    }
-    this.filters.clear();
     this.config = { blur: true, color: "None" };
   }
 
@@ -196,21 +194,18 @@ export class SceneFocusOut {
     const swapped = this.swappedPairs.has(pair);
     this.fixedSlots.get(first)!.target = swapped ? back : fore;
     this.fixedSlots.get(second)!.target = swapped ? fore : back;
-    this.render();
   }
 
   /** LargeBackgroundPanel._BindCamEffectTarget (2791 @ 0x1841D81E0). */
   setLargeBackgroundTargets(targets: readonly Container[]): void {
     for (const [index, id] of largeBackgroundChannels.entries())
       this.fixedSlots.get(id)!.target = targets[index];
-    this.render();
   }
 
   releaseFixedTarget(target: Container): void {
     for (const slot of this.fixedSlots.values()) {
       if (slot.target !== target) continue;
       slot.target = undefined;
-      this.render();
       break;
     }
   }
@@ -223,11 +218,9 @@ export class SceneFocusOut {
    * the new image.
    */
   bindCgItem(id: string, target: Container): void {
-    const display = { amount: this.states.get(id)?.amount ?? 0 };
+    const display = { amount: this.states.get(id)?.amount ?? 0, soft: true };
     this.bindings.set(id, display);
     this.cgItems.set(target, display);
-    target.filters ??= [];
-    this.render();
   }
 
   /**
@@ -242,7 +235,6 @@ export class SceneFocusOut {
     this.cgItems.delete(target);
     const state = this.states.get(id);
     if (state) state.amount = 0;
-    this.render();
   }
 
   private writeAmount(state: FocusState, amount: number): void {
@@ -251,52 +243,12 @@ export class SceneFocusOut {
     if (display) display.amount = amount;
   }
 
-  private render(): void {
-    const { blur, color } = this.config;
-    const amounts = new Map<Container, number>();
-    if (blur || color !== "None") {
-      for (const [target, display] of this.cgItems) {
-        if (display.amount > 0) amounts.set(target, display.amount);
-      }
-      for (const { layer, slots } of this.fixedLayers) {
-        const amount = slots[0]!.amount;
-        // A shared filter keeps the puzzle continuous across tile edges.
-        if (slots.every((slot) => slot.amount === amount)) {
-          if (amount > 0) amounts.set(layer, amount);
-        } else {
-          for (const slot of slots) {
-            if (slot.target && slot.amount > 0)
-              amounts.set(slot.target, slot.amount);
-          }
-        }
-      }
+  private *targets(): IterableIterator<FocusTarget> {
+    for (const { target, amount, soft } of this.fixedSlots.values()) {
+      if (target && amount > 0) yield { target, amount, soft };
     }
-
-    for (const [target, filter] of this.filters) {
-      if (amounts.has(target)) continue;
-      target.filters = [];
-      filter.destroy();
-      this.filters.delete(target);
-    }
-    for (const [target, rawAmount] of amounts) {
-      const amount = Math.min(1, rawAmount);
-      let filter = this.filters.get(target);
-      if (!filter || blur !== filter instanceof FocusBlurFilter) {
-        filter?.destroy();
-        filter = blur ? new FocusBlurFilter() : new ColorMatrixFilter();
-        this.filters.set(target, filter);
-        target.filters = [filter];
-      }
-      if (filter instanceof FocusBlurFilter) {
-        filter.setBlend(amount, color);
-      } else {
-        // With blur disabled the ghost blend is equivalent to interpolating
-        // between identity and the full color matrix.
-        filter.matrix =
-          color === "Grayscale"
-            ? buildColorEffectMatrix(amount, 0)
-            : buildColorEffectMatrix(0, amount);
-      }
+    for (const [target, { amount, soft }] of this.cgItems) {
+      if (amount > 0) yield { target, amount, soft };
     }
   }
 }

@@ -4,6 +4,7 @@ import {
   Texture,
   TextureSource,
   TickerPlugin,
+  type Container,
 } from "pixi.js";
 import { vi } from "vitest";
 
@@ -19,7 +20,18 @@ import {
 
 import type { Context } from "../../../src/widgets/StoryPlayer/context";
 import type { AnimationClock } from "../../../src/widgets/StoryPlayer/engine/execution";
+import type { SceneEffectManager } from "../../../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
 import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+
+export function focusAmount(
+  effects: SceneEffectManager,
+  target: Container | undefined,
+): number {
+  for (const display of effects.focusFrame?.targets ?? []) {
+    if (display.target === target) return display.amount;
+  }
+  return 0;
+}
 
 export function createContext(): Context {
   return {

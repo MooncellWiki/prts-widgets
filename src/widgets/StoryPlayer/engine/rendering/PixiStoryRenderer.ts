@@ -214,7 +214,7 @@ export class PixiStoryRenderer implements StoryRenderer {
     );
     this.videoPanel = new VideoPanel(
       this.updatePhaseTweenRunner,
-      (opacity) => this.layers.setVideoOpacity(opacity),
+      (opacity, texture) => this.layers.setVideoFrame(opacity, texture),
       onWarning,
     );
     this.dialogView = new DialogView(this.uiLayer, onWarning, (...args) =>
