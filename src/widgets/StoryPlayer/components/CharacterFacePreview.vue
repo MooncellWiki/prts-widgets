@@ -179,6 +179,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .character-face-preview {
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   min-height: 0;
   overflow: hidden;

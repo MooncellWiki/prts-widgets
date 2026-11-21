@@ -180,6 +180,7 @@ function openImage(asset: AssetListItem): void {
   <!-- 原生对话框都留在播放器树内，原生和网页全屏均可打开。 -->
   <AssetImagePreview
     v-if="show && selectedImage"
+    :key="selectedImage.url"
     v-model="showImage"
     :name="selectedImage.name"
     :url="selectedImage.url"
