@@ -23,8 +23,8 @@ import {
   type FocusExpression,
 } from "./core/FocusGhost";
 import {
-  characterAlphaBlend,
   installSceneAlphaBlends,
+  sourceAlphaBlend,
 } from "./core/NativeSceneAlpha";
 import { SceneFocusFilter } from "./core/SceneFocusFilter";
 
@@ -32,7 +32,10 @@ import type { FocusOutInput, FocusParamInput } from "../types";
 import type { LayerGraph } from "./core/LayerGraph";
 import type { TweenRunner } from "./core/TweenRunner";
 
-type SceneEffectLayers = Pick<LayerGraph, "characters" | "sceneCamera">;
+type SceneEffectLayers = Pick<
+  LayerGraph,
+  "characters" | "sceneCamera" | "video"
+>;
 
 function findImage(target: Container): FocusDrawable | undefined {
   if (target instanceof Sprite || target instanceof TilingSprite) return target;
@@ -190,7 +193,8 @@ export class SceneEffectManager {
     installSceneAlphaBlends(renderer);
     if (!this.focusActive) {
       this.focusActive = true;
-      this.layers.characters.blendMode = characterAlphaBlend;
+      this.layers.characters.blendMode = sourceAlphaBlend;
+      this.layers.video.blendMode = sourceAlphaBlend;
       this.focusFilter ??= new SceneFocusFilter();
       this.updateFilters();
     }
@@ -220,6 +224,7 @@ export class SceneEffectManager {
     if (!this.focusActive) return;
     this.focusActive = false;
     this.layers.characters.blendMode = "inherit";
+    this.layers.video.blendMode = "inherit";
     for (const ghost of this.ghosts.values()) ghost.destroy();
     this.ghosts.clear();
     this.updateFilters();

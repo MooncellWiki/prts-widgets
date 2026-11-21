@@ -1,6 +1,7 @@
-import { Texture, VideoSource } from "pixi.js";
+import { type Size, Texture, VideoSource } from "pixi.js";
 
-import { hasTweenDuration } from "../../commandParams";
+import { hasTweenDuration, roundHalfToEven } from "../../commandParams";
+import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
 
 import type { TweenHandle, TweenRunner } from "../core/TweenRunner";
 
@@ -11,8 +12,23 @@ const VIDEO_FADE_MS = 230;
 interface ActiveVideo {
   element: HTMLVideoElement;
   events: AbortController;
+  size?: Size;
   started: boolean;
   texture?: Texture<VideoSource>;
+}
+
+// SofdecMediaPlayer.Play (2791 @ 0x186A3A210) calls Scale2DByMaxValue
+// (0x18697FF80) to cap the movie at the holder size without enlarging it.
+function fitVideoSize(width: number, height: number): Size {
+  const scale = Math.min(
+    1,
+    Math.fround(STORY_WIDTH / width),
+    Math.fround(STORY_HEIGHT / height),
+  );
+  return {
+    width: roundHalfToEven(Math.fround(width * scale)),
+    height: roundHalfToEven(Math.fround(height * scale)),
+  };
 }
 
 /**
@@ -31,6 +47,7 @@ export class VideoPanel {
     private readonly tweens: TweenRunner,
     private readonly onVideoChange: (
       opacity: number,
+      size?: Size,
       texture?: Texture,
     ) => void,
     private readonly warn?: (detail: string) => void,
@@ -41,7 +58,6 @@ export class VideoPanel {
     const host = document.createElement("div");
     Object.assign(host.style, {
       alignItems: "center",
-      background: "#000",
       display: "none",
       inset: "0",
       justifyContent: "center",
@@ -97,13 +113,21 @@ export class VideoPanel {
       // _StartPlayCoroutine.MoveNext (2791 @ 0x1841CC6A0) shows the panel
       // when the player is ready. The browser signals playback via playing.
       media.started = true;
-      if (video.crossOrigin && video.videoWidth && video.videoHeight) {
+      const { videoWidth, videoHeight } = video;
+      const size = fitVideoSize(
+        videoWidth || STORY_WIDTH,
+        videoHeight || STORY_HEIGHT,
+      );
+      media.size = size;
+      video.style.width = `${(size.width / STORY_WIDTH) * 100}%`;
+      video.style.height = `${(size.height / STORY_HEIGHT) * 100}%`;
+      if (video.crossOrigin && videoWidth && videoHeight) {
         const source = new VideoSource({
           autoLoad: false,
           autoPlay: false,
-          height: video.videoHeight,
+          height: videoHeight,
           resource: video,
-          width: video.videoWidth,
+          width: videoWidth,
         });
         media.texture = new Texture({ source });
         // The playback element owns error and end-of-media reporting.
@@ -126,10 +150,9 @@ export class VideoPanel {
       src: url,
     });
     Object.assign(video.style, {
-      background: "#000",
       display: "block",
-      height: "100%",
-      width: "100%",
+      flexShrink: "0",
+      objectFit: "fill",
     });
     start();
   }
@@ -230,7 +253,11 @@ export class VideoPanel {
     const media = this.activeVideo;
     host.style.display = media ? "flex" : "none";
     host.style.opacity = media?.texture ? "0" : "1";
-    this.onVideoChange(media?.started ? this.opacity : 0, media?.texture);
+    this.onVideoChange(
+      media?.started ? this.opacity : 0,
+      media?.size,
+      media?.texture,
+    );
   }
 
   destroy(): void {

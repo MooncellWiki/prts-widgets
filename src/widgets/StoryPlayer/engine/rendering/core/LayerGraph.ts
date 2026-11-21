@@ -1,10 +1,11 @@
 import {
-  AlphaFilter,
   Container,
   Graphics,
   Rectangle,
   RenderLayer,
+  Sprite,
   Texture,
+  type Size,
 } from "pixi.js";
 
 import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
@@ -57,21 +58,26 @@ export class LayerGraph {
   readonly ui = new Container();
   readonly world = new Container();
   readonly video = new VideoFrame();
-  private sceneFade?: AlphaFilter;
+  readonly domVideoMask = new Sprite({
+    anchor: 0.5,
+    blendMode: "erase",
+    eventMode: "none",
+    texture: Texture.WHITE,
+    visible: false,
+  });
 
   constructor() {
-    this.sceneViewport.filterArea = new Rectangle(
+    // AVGSceneEffectManager._EnsureSourceDesc uses the camera's full viewport.
+    // Scene contents can be smaller, larger, or move during camerashake.
+    this.sceneCamera.filterArea = new Rectangle(
       0,
       0,
       STORY_WIDTH,
       STORY_HEIGHT,
     );
-    // AVGSceneEffectManager._EnsureSourceDesc uses the camera's full viewport.
-    // Scene contents can be smaller, larger, or move during camerashake.
-    this.sceneCamera.filterArea = this.sceneViewport.filterArea.clone();
     this.video.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
     this.video.zIndex = sceneCanvasOrder.video;
-    this.sceneViewport.once("destroyed", () => this.sceneFade?.destroy());
+    this.domVideoMask.position.copyFrom(this.video.position);
     for (const slots of [
       this.cgItems,
       this.avgDisplayBackground,
@@ -110,17 +116,20 @@ export class LayerGraph {
       root.zIndex = order;
       this.sceneDraw.attach(root);
     }
+    // 2791 story.unity's EmptyCamera (level7, Camera 143) clears to opaque
+    // black before AVGCamera_Scene (1708), which clears only the depth.
+    const clearColor = new Graphics()
+      .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
+      .fill(0x000000);
     this.sceneCamera.addChild(
+      clearColor,
       this.scene,
       this.cgItems,
       this.video,
       this.sceneDraw,
     );
     this.sceneDraw.attach(this.video);
-    const clearColor = new Graphics()
-      .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
-      .fill(0x000000);
-    this.sceneViewport.addChild(clearColor, this.sceneCamera);
+    this.sceneViewport.addChild(this.sceneCamera, this.domVideoMask);
     this.world.addChild(this.sceneViewport);
     // 2791 UICanvas/panel_avg draws panel_blocker, panel_displayable and
     // panel_curtains in that sibling order above the scene canvases.
@@ -131,35 +140,20 @@ export class LayerGraph {
 
   /**
    * 2791 VideoCanvas (2503) draws on AVGCamera_Scene at order 353, so
-   * scene effects also see its opacity during fades. Videos without
-   * CORS access use the DOM beneath the canvas.
+   * scene effects also see its opacity during fades. The video_player
+   * prefab draws only its centered player rect. For DOM playback, erase
+   * the same rect from the canvas below the blocker and HUD.
    */
-  setVideoFrame(opacity: number, texture?: Texture): void {
-    this.video.visible = texture !== undefined && opacity > 0;
-    if (texture && this.video.texture !== texture) {
-      const scale = Math.min(
-        STORY_WIDTH / texture.width,
-        STORY_HEIGHT / texture.height,
-      );
-      this.video.setFrame(texture);
-      this.video.scale.set(texture.width * scale, texture.height * scale);
-    }
+  setVideoFrame(opacity: number, size?: Size, texture?: Texture): void {
+    const visible = size !== undefined && opacity > 0;
+    this.video.visible = visible && texture !== undefined;
     this.video.alpha = opacity;
-    if (texture) opacity = 0;
-    else this.video.setFrame(Texture.EMPTY);
-
-    const scene = this.sceneViewport;
-    scene.renderable = opacity < 1;
-    if (opacity <= 0 || opacity >= 1) {
-      if (scene.filters) scene.filters = null;
-      return;
+    this.video.setFrame(texture ?? Texture.EMPTY);
+    this.domVideoMask.visible = visible && texture === undefined;
+    this.domVideoMask.alpha = opacity;
+    if (size) {
+      this.video.scale.set(size.width, size.height);
+      this.domVideoMask.setSize(size);
     }
-    const fade = (this.sceneFade ??= new AlphaFilter({
-      alpha: 1,
-      antialias: "inherit",
-      resolution: "inherit",
-    }));
-    fade.alpha = 1 - opacity;
-    if (!scene.filters) scene.filters = fade;
   }
 }

@@ -1,5 +1,4 @@
 import {
-  AlphaFilter,
   Application,
   Assets,
   Container,
@@ -37,10 +36,9 @@ interface ManualTween {
   step: (progress: number) => void;
 }
 
-function videoOpacity({ sceneViewport }: LayerGraph): number {
-  if (!sceneViewport.renderable) return 1;
-  const filter = sceneViewport.filters?.[0];
-  return filter instanceof AlphaFilter ? 1 - filter.alpha : 0;
+function videoOpacity({ domVideoMask, video }: LayerGraph): number {
+  if (video.visible) return video.alpha;
+  return domVideoMask.visible ? domVideoMask.alpha : 0;
 }
 
 function createShowItemRenderer(ticker?: Ticker) {
@@ -1630,6 +1628,12 @@ describe("Displayable and focus frame order", () => {
     try {
       const video = host.querySelector("video")!;
       const layers: LayerGraph = renderer.layers;
+      // Model the playing event after a cross-origin fallback.
+      video.removeAttribute("crossorigin");
+      Object.defineProperties(video, {
+        videoWidth: { value: 320 },
+        videoHeight: { value: 240 },
+      });
       video.dispatchEvent(new Event("playing"));
       app.ticker.update(230);
       video.dispatchEvent(new Event("ended"));
@@ -1639,7 +1643,11 @@ describe("Displayable and focus frame order", () => {
 
       expect(videoOpacity(layers)).toBe(1);
       expect(host.querySelector("video")).toBe(video);
-      expect(layers.sceneViewport.renderable).toBe(false);
+      expect(layers.domVideoMask.getSize()).toEqual({
+        width: 320,
+        height: 240,
+      });
+      expect(video.style.width).toBe("25%");
       expect(layers.blocker.renderable).toBe(true);
       expect(layers.blocker.children[0]?.alpha).toBeCloseTo(0.5);
       expect(layers.ui.visible).toBe(true);

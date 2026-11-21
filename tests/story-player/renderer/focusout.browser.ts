@@ -50,6 +50,7 @@ async function testFocusOut(): Promise<void> {
   await app.init({
     antialias: true,
     autoStart: false,
+    backgroundAlpha: 0,
     height: STORY_HEIGHT,
     preference: backend,
     resolution,
@@ -78,6 +79,7 @@ async function testFocusOut(): Promise<void> {
   const ctx = capture.getContext("2d", { willReadFrequently: true })!;
   const draw = () => {
     app.render();
+    ctx.clearRect(0, 0, capture.width, capture.height);
     ctx.drawImage(app.canvas, 0, 0);
   };
   const sample = (x: number, y = 150) =>
@@ -151,15 +153,40 @@ async function testFocusOut(): Promise<void> {
   cgAmount("rim", 0);
   backgroundAmount(1);
   layers.video.tint = 0x0000ff;
-  layers.setVideoFrame(0.5, Texture.WHITE);
+  const videoSize = { width: 320, height: 240 };
+  layers.setVideoFrame(0.5, videoSize, Texture.WHITE);
   draw();
   near(
-    sample(900)[1],
-    128,
-    "Fading video overwrites the backdrop ghost in VideoCanvas order",
+    sample(750, 360)[1],
+    191,
+    "Fading Sofdec video uses SrcAlpha on the backdrop ghost",
   );
+  near(sample(900, 360)[1], 255, "Pixels outside the video keep the scene");
   layers.setVideoFrame(0);
   effects.reset();
+
+  layers.setVideoFrame(0.5, videoSize);
+  strip(layers.ui, 600, 32, 0x00ff00);
+  draw();
+  near(sample(640, 360)[3], 128, "DOM video reveals its fitted rect");
+  near(sample(900, 360)[3], 255, "DOM video keeps the scene outside its rect");
+  near(sample(620, 360)[1], 255, "UI stays above DOM video");
+  layers.setVideoFrame(0);
+
+  background.visible = false;
+  lowerBackground.visible = false;
+  effects.bindCgItem("cg", cg);
+  cgAmount("cg", 1);
+  effects.setFocusParam({ blur: false, color: "Colorinverse" });
+  draw();
+  near(sample(80)[1], 0, "The empty scene stays black during focus inversion");
+  near(sample(300)[1], 128, "The bound CG inverts over the black backdrop");
+  cgAmount("cg", 0);
+  cgAmount("unbound", 1);
+  effects.setFocusParam({ blur: true, color: "None" });
+  draw();
+  near(sample(239)[2], 0, "An unbound channel leaves the CG edge sharp");
+
   app.destroy(true, { children: true });
   texture.destroy(true);
 }

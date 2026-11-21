@@ -6,14 +6,16 @@ import {
 } from "pixi.js";
 
 export const ghostAlphaBlend = "story-ghost-alpha" as BLEND_MODES;
-export const characterAlphaBlend = "story-character-alpha" as BLEND_MODES;
+export const sourceAlphaBlend = "story-source-alpha" as BLEND_MODES;
 
 const installed = new WeakSet<Renderer>();
 
 /**
  * 2791 Torappu/AVG/AlphaGhost writes A with BlendOp RevSub and factors One,
- * One. AVG_Char_AlphaSplit uses SrcAlpha, OneMinusSrcAlpha for both channels.
- * Pixi already premultiplies the sprite's RGB, so only its A factors change.
+ * One. AVG_Char_AlphaSplit and CriMana/SofdecPrimeYuv use SrcAlpha and
+ * OneMinusSrcAlpha for both RGB and A. The video factors are set by
+ * RendererResource.SetupStaticMaterialProperties (2791 @ 0x1844224D0).
+ * Pixi already premultiplies RGB, so only the A factors change.
  */
 export function installSceneAlphaBlends(
   renderer: WebGLRenderer | WebGPURenderer,
@@ -36,7 +38,7 @@ export function installSceneAlphaBlends(
         gl.FUNC_ADD,
         gl.FUNC_REVERSE_SUBTRACT,
       ];
-      modes[characterAlphaBlend] = [
+      modes[sourceAlphaBlend] = [
         gl.ONE,
         gl.ONE_MINUS_SRC_ALPHA,
         gl.SRC_ALPHA,
@@ -66,7 +68,7 @@ export function installSceneAlphaBlends(
       },
     ],
     [
-      characterAlphaBlend,
+      sourceAlphaBlend,
       { color: normal, alpha: { ...normal, srcFactor: "src-alpha" } },
     ],
   ]);
