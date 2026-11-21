@@ -63,16 +63,13 @@ describe("SceneEffectManager", () => {
     expect(focusAmount(effects, target)).toBe(0.5);
   });
 
-  it("keeps the amount when focusparam switches between color, off, and blur", () => {
+  it("keeps the amount and reuses blur once the material is initialized", () => {
     const target = new Container();
     const effects = createSceneEffects();
     effects.bindCgItem("x", target);
 
-    void effects.setFocusOut(
-      input({ durationMs: 0, id: "x", to: 0.5, type: "cgitem" }),
-    );
-
     effects.setFocusParam({ blur: false, color: "Colorinverse" });
+    effects.setFocusOut(input({ id: "x", to: 0.5, type: "cgitem" }));
     expect(effects.focusFrame?.config).toEqual({
       blur: false,
       color: "Colorinverse",
@@ -85,7 +82,30 @@ describe("SceneEffectManager", () => {
       blur: true,
       color: "Grayscale",
     });
+    effects.setFocusParam({ blur: false, color: "None" });
+    expect(effects.focusFrame?.config).toEqual({ blur: true, color: "None" });
     expect(focusAmount(effects, target)).toBe(0.5);
+
+    effects.setFocusParam({ blur: false, color: "Grayscale" });
+    expect(effects.focusFrame?.config).toEqual({
+      blur: false,
+      color: "Grayscale",
+    });
+
+    effects.reset();
+    effects.setFocusParam({ blur: false, color: "None" });
+    effects.setFocusOut(input({ id: "x", to: 1, type: "cgitem" }));
+    expect(effects.focusFrame).toBeUndefined();
+  });
+
+  it("initializes blur when a tween is queued before its first update", () => {
+    const effects = createSceneEffects(async () => {});
+    effects.setFocusOut(input({ durationMs: 1000, to: 1 }));
+    expect(effects.focusFrame).toBeUndefined();
+
+    effects.setFocusParam({ blur: false, color: "None" });
+    effects.setFocusOut(input({ to: 1 }));
+    expect(effects.focusFrame?.config).toEqual({ blur: true, color: "None" });
   });
 
   it("skips the camera pass when the amount reaches zero", () => {

@@ -116,13 +116,18 @@ async function testFocusOut(): Promise<void> {
   near(sample(340)[1], 0, "Front CG overwrites the lower ghost");
   cgAmount("cg", 0);
 
-  effects.setFocusParam({ blur: true, color: "None" });
+  effects.setFocusParam({ blur: true, color: "Grayscale" });
   draw();
-  near(sample(80, 150)[0], 255, "Top of the processed scene");
+  near(sample(80)[1], 76, "Background is grayscaled with blur");
+
+  effects.setFocusParam({ blur: false, color: "None" });
+  draw();
+  near(sample(80, 150)[0], 255, "Clearing focus color restores red");
+  near(sample(80, 150)[1], 0, "Cached blur has no color pass");
   near(sample(80, 570)[2], 255, "Bottom of the processed scene");
   const blurredBlue = sample(239)[2];
   if (blurredBlue < 20)
-    throw new Error("The blur must sample the neighboring CG");
+    throw new Error("Cached blur must still sample the neighboring CG");
   backgroundAmount(0.5);
   draw();
   near(sample(239)[2], blurredBlue / 2, "Half amount blends the same blur");

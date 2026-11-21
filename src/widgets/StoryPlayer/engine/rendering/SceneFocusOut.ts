@@ -58,6 +58,8 @@ const focusChannels = new Map<string, readonly string[]>([
   ["lbg", largeBackgroundChannels],
 ]);
 
+const activeAmountThreshold = 1e-5;
+
 /**
  * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
  * `_ExecuteFocusParam` and `AVGSceneFocusOut` channel state. Each bound
@@ -70,6 +72,7 @@ export class SceneFocusOut {
   private readonly cgItems = new Map<Container, PostDisplay>();
   private readonly swappedPairs = new Set<FocusImagePair>();
   private config: FocusParamInput = { blur: true, color: "None" };
+  private blurInitialized = false;
 
   constructor(
     private readonly tween: TweenRunner["run"],
@@ -87,15 +90,20 @@ export class SceneFocusOut {
 
   setParam(input: FocusParamInput): void {
     this.config = input;
+    this.updateBlurInitialization();
   }
 
   get frame(): FocusFrame | undefined {
-    if (!this.config.blur && this.config.color === "None") return;
+    const { color } = this.config;
+    // AVGSceneFocusOut.Render (2791 @ 0x1841FAADE) takes the blur path
+    // for color=None and can reuse a previously created m_blurMat.
+    const blur = this.config.blur || (color === "None" && this.blurInitialized);
+    if (!blur && color === "None") return;
     // AVGSceneFocusOut.GetActiveChannels (2791 @ 0x1841FA450) checks the
     // stored values (including those waiting for a sprite) with MathUtil.GT.
     for (const state of this.states.values()) {
-      if (state.amount > 1e-5)
-        return { config: this.config, targets: this.targets() };
+      if (state.amount > activeAmountThreshold)
+        return { config: { blur, color }, targets: this.targets() };
     }
   }
 
@@ -124,9 +132,11 @@ export class SceneFocusOut {
     });
     if (input.from !== undefined) {
       for (const state of states) this.writeAmount(state, input.from);
+      this.updateBlurInitialization();
     }
     if (input.durationMs <= 0) {
       for (const state of states) this.writeAmount(state, input.to);
+      this.updateBlurInitialization();
       return;
     }
 
@@ -143,6 +153,7 @@ export class SceneFocusOut {
         if (active.size === 0) animation?.end(reason);
       };
     }
+    this.updateBlurInitialization();
     const update = (progress: number) => {
       if (active.size === 0) return;
       // Native AVGSceneEffectManager._SetEffectAmount uses TweenUtils.SmoothStep.
@@ -176,6 +187,7 @@ export class SceneFocusOut {
       this.bindings.set(id, slot);
     }
     this.config = { blur: true, color: "None" };
+    this.blurInitialized = false;
   }
 
   /**
@@ -241,6 +253,18 @@ export class SceneFocusOut {
     state.amount = amount;
     const display = this.bindings.get(state.id);
     if (display) display.amount = amount;
+  }
+
+  private updateBlurInitialization(): void {
+    // UpdateEffect (2791 @ 0x1841D0E50) and MarkEffectImplConfigDirty
+    // (0x1841D0CE0) can build the command buffer before the next draw.
+    if (this.blurInitialized || !this.config.blur) return;
+    for (const state of this.states.values()) {
+      if (state.amount > activeAmountThreshold || state.endTween) {
+        this.blurInitialized = true;
+        return;
+      }
+    }
   }
 
   private *targets(): IterableIterator<FocusTarget> {
