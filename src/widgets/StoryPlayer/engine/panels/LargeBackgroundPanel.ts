@@ -68,7 +68,7 @@ export class LargeBackgroundPanel extends ExecutorComponent {
 
   private show(line: ParsedCommandLine, layout: PuzzleLayout): ExecutorResult {
     const { args, command } = line;
-    const assets = resolvePuzzleAssets(args, false);
+    const assets = resolvePuzzleAssets(args);
     // _ExecuteImage / _ExecuteVerticalBG / _ExecuteGridBG forward fadetime
     // directly to DOFade. MathUtil.LE only changes whether the command waits.
     const seconds = Math.max(0, toNumber(exactArg(args, "fadetime")));
@@ -144,7 +144,7 @@ export class LargeBackgroundPanel extends ExecutorComponent {
   }
 
   private move({ args }: ParsedCommandLine): ExecutorResult {
-    const input = parsePuzzleTween(args, false);
+    const input = parsePuzzleTween(args);
     // Keep the native diagnostic and the Web policy of advancing on loops.
     if (input.block && input.loop)
       this.warn("invalid_parameter", LOOP_BLOCK_WARNING);

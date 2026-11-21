@@ -43,7 +43,6 @@ import { DialogPanel } from "./panels/DialogPanel";
 import { DisplayableExecutor } from "./panels/DisplayableExecutor";
 import { ImagePanel } from "./panels/ImagePanel";
 import { LargeBackgroundPanel } from "./panels/LargeBackgroundPanel";
-import { LargeImageCommands } from "./panels/LargeImageCommands";
 import { ShowItemPanel } from "./panels/ShowItemPanel";
 import { SpellStickerPanel } from "./panels/SpellStickerPanel";
 import { StickerPanel } from "./panels/StickerPanel";
@@ -339,9 +338,6 @@ export class StoryRuntime {
       (type, detail, line) =>
         this.warn(type, detail, line?.lineNumber, line?.command),
     );
-    new LargeImageCommands(renderer, (type, detail) =>
-      this.warn(type, detail),
-    ).register(this.commandRegistry);
     this.showItemPanel = new ShowItemPanel(renderer, {
       resolveImageKey: normalizeImageKey,
       warnInvalidParameter: (detail, line) =>

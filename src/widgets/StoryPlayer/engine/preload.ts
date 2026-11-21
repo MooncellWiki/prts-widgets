@@ -29,7 +29,6 @@ import {
   type FontSpec,
 } from "./font";
 import { parseScript } from "./parser";
-import { resolvePuzzleAssets } from "./puzzleCommands";
 
 import type { Context } from "../context";
 import type { ParsedLine, StoryCharacterFaceAsset } from "./types";
@@ -159,11 +158,6 @@ function addScriptImageUrls(
         addImageUrl(urls, key, "background");
       for (const key of toString(line.args.cggroup).split("/"))
         addImageUrl(urls, key, "image");
-    } else if (line.command === "largeimg") {
-      const assets = resolvePuzzleAssets(line.args, true);
-      if (!assets) continue;
-      for (const key of assets.imageKeys)
-        addImageUrl(urls, key, assets.assetKind);
     }
   }
 }

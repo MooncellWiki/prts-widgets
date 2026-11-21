@@ -552,21 +552,6 @@ describe("preloadContextAssets", () => {
     ]);
   });
 
-  it("preloads largeimg imagegroup tiles as image assets with legacy case folding", async () => {
-    const context = createContext([
-      '[largeimg(ImageGroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900")]',
-    ]);
-
-    await preloadContextAssets(context);
-
-    expect(loadMock).toHaveBeenCalledTimes(1);
-    expect(loadMock.mock.calls[0]?.[0]).toEqual([
-      "https://torappu.prts.wiki/assets/avg/images/61_i12.png",
-      "https://torappu.prts.wiki/assets/avg/images/61_i11.png",
-      DIALOG_FRAME_URL,
-    ]);
-  });
-
   it("collects only playmusic key and intro plus playsound key", async () => {
     const context = createContext([
       '[playmusic(key="$m",intro="$intro")]',

@@ -10,6 +10,32 @@ import {
 import type { RuntimeWarning } from "../../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
+  it("skips retired foreground puzzle commands and continues playback", async () => {
+    const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
+    const runtime = new StoryRuntime(
+      createContext([
+        '[LargeImg(imagegroup="old/tile",block=true)]',
+        "[LargeImgTween(xTo=10,duration=1,block=true)]",
+        '[name="A"]ok',
+      ]),
+      renderer,
+      new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    await runtime.start();
+
+    expect(warnings).toEqual([
+      expect.objectContaining({ type: "unknown_command", detail: "largeimg" }),
+      expect.objectContaining({
+        type: "unknown_command",
+        detail: "largeimgtween",
+      }),
+    ]);
+    expect(runtime.getState()).toBe("waiting_input");
+  });
+
   it("maps gridbg into a tiled background layer", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -120,11 +146,6 @@ describe("StoryRuntime", () => {
       name: "verticalbg",
       command: "[verticalbg(fadetime=3,block=true)]",
       fadeMs: 3000,
-    },
-    {
-      name: "largeimg via the legacy blok typo",
-      command: "[largeimg(fadetime=0.2,blok=true)]",
-      fadeMs: 200,
     },
   ])(
     "clears $name with fadetime and block when no image group is provided",
@@ -504,37 +525,6 @@ describe("StoryRuntime", () => {
     ]);
   });
 
-  it("maps largeimg into a legacy large tiled image layer", async () => {
-    const renderer = new FakeRenderer();
-    const runtime = new StoryRuntime(
-      createContext([
-        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",x=-160,yscale=0.8,fadetime=0)]',
-        '[name="A"]ok',
-      ]),
-      renderer,
-      new FakeAudio(),
-    );
-
-    await runtime.start();
-
-    expect(renderer.gridBackgroundCalls).toEqual([
-      {
-        assetKind: "image",
-        block: false,
-        fadeMs: 0,
-        imageKeys: ["61_i12", "61_i11"],
-        layout: "large",
-        scaleX: 1,
-        scaleY: 0.8,
-        solidHeights: [900],
-        solidWidths: [1600, 1600],
-        x: -160,
-        y: 0,
-      },
-    ]);
-    expect(renderer.gridBackgroundClearCalls).toEqual([]);
-  });
-
   it("maps largebgtween with strict CamelCase keys", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
@@ -598,92 +588,38 @@ describe("StoryRuntime", () => {
     expect(runtime.getState()).toBe("waiting_input");
   });
 
-  it.each([
-    {
-      name: "largebgtween",
-      script: [
-        '[largebg(imagegroup="bg_beach_1/bg_beach_2",solidwidth="920/920",solidheight="720",x=-180,fadetime=0)]',
-        "[largebgtween(xFrom=0,xTo=-720,duration=1,block=true,loop=true)]",
-      ],
-      tweenCalls: (renderer: FakeRenderer) =>
-        renderer.largeBackgroundTweenCalls,
-      ease: "Linear",
-    },
-    {
-      name: "largeimgtween",
-      script: [
-        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",x=-160,fadetime=0)]',
-        '[largeimgtween(xFrom=0,xTo=-720,duration=1,block=true,loop=true,ease="OutQuad")]',
-      ],
-      tweenCalls: (renderer: FakeRenderer) => renderer.largeImageTweenCalls,
-      ease: "OutQuad",
-    },
-  ])(
-    "keeps playing when $name combines loop with block",
-    async ({ script, tweenCalls, ease }) => {
-      const renderer = new FakeRenderer();
-      const warnings: RuntimeWarning[] = [];
-      const runtime = new StoryRuntime(
-        createContext([...script, '[name="A"]ok']),
-        renderer,
-        new FakeAudio(),
-        { onWarning: (warning) => warnings.push(warning) },
-      );
-
-      await runtime.start();
-
-      // Native logs the DLog.LogError text verbatim (typos included) and then
-      // hangs waiting for a looping tween's OnComplete; the port keeps the
-      // error but drops block so playback reaches the next line.
-      expect(warnings).toEqual([
-        expect.objectContaining({
-          detail:
-            "Loop and block both true when tween background! Will cause intinity lop!",
-          type: "invalid_parameter",
-        }),
-      ]);
-      expect(tweenCalls(renderer)).toEqual([
-        {
-          block: false,
-          durationMs: 1000,
-          ease,
-          loop: true,
-          xFrom: 0,
-          xScaleFrom: undefined,
-          xScaleTo: undefined,
-          xTo: -720,
-          yFrom: undefined,
-          yScaleFrom: undefined,
-          yScaleTo: undefined,
-          yTo: undefined,
-        },
-      ]);
-      expect(runtime.getState()).toBe("waiting_input");
-    },
-  );
-
-  it("maps largeimgtween with legacy aliases and current-transform fallbacks", async () => {
+  it("keeps playing when largebgtween combines loop with block", async () => {
     const renderer = new FakeRenderer();
+    const warnings: RuntimeWarning[] = [];
     const runtime = new StoryRuntime(
       createContext([
-        '[largeimg(imagegroup="61_i12/61_i11",solidwidth="1600/1600",solidheight="900",x=-160,yscale=0.8,fadetime=0)]',
-        "[largeimgtween(xFrom=0,xTo=-720,duration=25,block=false)]",
-        "[largeimgtween(duration=0.5,xScaleFrom=0.75,xScaleTo=0.8,yScaleFrom=0.75,yScaleTo=0.8)]",
-        "[largeimgtween(y=360,block=true)]",
+        '[largebg(imagegroup="bg_beach_1/bg_beach_2",solidwidth="920/920",solidheight="720",x=-180,fadetime=0)]',
+        "[largebgtween(xFrom=0,xTo=-720,duration=1,block=true,loop=true)]",
         '[name="A"]ok',
       ]),
       renderer,
       new FakeAudio(),
+      { onWarning: (warning) => warnings.push(warning) },
     );
 
     await runtime.start();
 
-    expect(renderer.largeImageTweenCalls).toEqual([
+    // Native logs the DLog.LogError text verbatim (typos included) and then
+    // hangs waiting for a looping tween's OnComplete; the port keeps the
+    // error but drops block so playback reaches the next line.
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        detail:
+          "Loop and block both true when tween background! Will cause intinity lop!",
+        type: "invalid_parameter",
+      }),
+    ]);
+    expect(renderer.largeBackgroundTweenCalls).toEqual([
       {
         block: false,
-        durationMs: 25_000,
+        durationMs: 1000,
         ease: "Linear",
-        loop: false,
+        loop: true,
         xFrom: 0,
         xScaleFrom: undefined,
         xScaleTo: undefined,
@@ -692,37 +628,6 @@ describe("StoryRuntime", () => {
         yScaleFrom: undefined,
         yScaleTo: undefined,
         yTo: undefined,
-      },
-      {
-        block: false,
-        durationMs: 500,
-        ease: "Linear",
-        loop: false,
-        xFrom: undefined,
-        xScaleFrom: 0.75,
-        xScaleTo: 0.8,
-        xTo: undefined,
-        yFrom: undefined,
-        yScaleFrom: 0.75,
-        yScaleTo: 0.8,
-        yTo: undefined,
-      },
-      {
-        // Omitted `duration` keeps the native-referenced default 0
-        // (GetOrDefault<float>("duration", 0.0)): the command snaps
-        // instantly and never blocks, even with block=true.
-        block: false,
-        durationMs: 0,
-        ease: "Linear",
-        loop: false,
-        xFrom: undefined,
-        xScaleFrom: undefined,
-        xScaleTo: undefined,
-        xTo: undefined,
-        yFrom: 360,
-        yScaleFrom: undefined,
-        yScaleTo: undefined,
-        yTo: 360,
       },
     ]);
     expect(runtime.getState()).toBe("waiting_input");

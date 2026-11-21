@@ -144,7 +144,6 @@ export class PixiStoryRenderer implements StoryRenderer {
   private readonly cutinPanel: CharacterCutinPanel;
 
   private readonly largeBackgroundView: LargeBackgroundView;
-  private readonly largeImageView: LargeBackgroundView;
   private readonly imageView: ImageView;
   private readonly blockerView: BlockerView;
   private readonly curtainView: CurtainView;
@@ -307,17 +306,11 @@ export class PixiStoryRenderer implements StoryRenderer {
       {
         bindFocusTargets: (targets) =>
           this.sceneEffects.setLargeBackgroundFocusTargets(targets),
-        kind: "background",
         loadTexture: (key, kind) => this.textureForImageKey(key, kind),
         onWarning,
         tweens: this.updatePhaseTweenRunner,
       },
     );
-    this.largeImageView = new LargeBackgroundView(this.layers.images, {
-      kind: "image",
-      loadTexture: (key, kind) => this.textureForImageKey(key, kind),
-      tweens: this.updatePhaseTweenRunner,
-    });
     this.cgItemView = new CgItemView(
       this.layers.cgItems,
       (key) => this.textureForImageKey(key, "image"),
@@ -481,7 +474,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.timerView = null;
     this.cgItemView.destroy();
     this.largeBackgroundView.reset();
-    this.largeImageView.clear();
     this.imageView.destroy();
     this.blockerView.reset();
     this.curtainView.reset();
@@ -768,18 +760,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.largeBackgroundView.cancelPreparation();
   }
 
-  setLargeImage(input: GridBackgroundInput): ExecutionHandle | void {
-    if (this.app) return this.largeImageView.show(input);
-  }
-
-  clearLargeImage(fadeMs?: number, block?: boolean): ExecutionHandle | void {
-    return this.largeImageView.clear(fadeMs, block);
-  }
-
-  cancelLargeImagePreparation(): void {
-    this.largeImageView.cancelPreparation();
-  }
-
   setImage(
     key: string,
     input?: BackgroundInput,
@@ -932,10 +912,6 @@ export class PixiStoryRenderer implements StoryRenderer {
     onComplete?: () => void,
   ): ExecutionHandle | void {
     return this.largeBackgroundView.move(input, onComplete);
-  }
-
-  setLargeImageTween(input: LargeBackgroundTweenInput): ExecutionHandle | void {
-    return this.largeImageView.move(input);
   }
 
   setCharacter(input: CharacterSlotInput): ExecutionHandle | void {

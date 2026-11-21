@@ -246,8 +246,7 @@ export class ImageView {
       x: input?.x ?? 0,
       y: input?.y ?? 0,
     });
-    // Keep the Web draw order with largeimg on this layer. Fresh art is
-    // appended above earlier roots, including any outgoing Image slot.
+    // Fresh art is appended above the outgoing image slot.
     this.layer.addChild(root);
     return this.fade(this.fore, 1, fadeMs, block, onComplete, preparation);
   }
