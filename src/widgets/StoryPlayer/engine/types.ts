@@ -233,6 +233,8 @@ export interface CharacterSlotInput {
   replaceFadeMs?: number;
   scaleX?: number;
   scaleY?: number;
+  /** The charslot `end` flag. Defaults to true. */
+  sequenceEnd?: boolean;
   slot: string;
   stop?: boolean;
   times?: number;

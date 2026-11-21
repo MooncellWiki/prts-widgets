@@ -5,11 +5,13 @@ import {
 } from "../ExecutorComponent";
 import { nativeCharacterFadeIdentity } from "../characterRef";
 import {
+  getBool,
   getFiniteFloat,
   isZeroFloat,
   toBoolean,
   toNumber,
   toString,
+  tryConvertToBoolean,
 } from "../commandParams";
 
 import {
@@ -51,10 +53,11 @@ export class CharacterslotPanel extends ExecutorComponent {
     const slot = this.parseCharacterSlot(rawSlot);
     const nameRef = toString(args.name);
     // _ExecuteCharslot (2791 @ 0x1841A3070) scales duration. The Sequence
-    // auto-plays, while end gates isblock for a named slot.
+    // auto-plays, while end gates isblock and installs the played callback.
     const durationMs = this.playback.calculateFadeMs(args.duration, 0);
-    const isEnd = toString(args.end).trim().toLowerCase() !== "false";
-    const rawBlock = toBoolean(args.isblock, false);
+    // Command.TryGetParam<bool> (2791 @ 0x18419ADC0) accepts boxed numbers.
+    const isEnd = tryConvertToBoolean(args.end) ?? true;
+    const rawBlock = getBool(args, "isblock");
     const block = rawBlock && isEnd;
 
     if (!rawSlot) {
@@ -190,6 +193,7 @@ export class CharacterslotPanel extends ExecutorComponent {
         args.yscale === undefined && args.scale === undefined
           ? undefined
           : Math.max(0, toNumber(args.yscale, toNumber(args.scale, 1))),
+      sequenceEnd: isEnd,
       slot,
       stop: toBoolean(args.stop, false),
       // GetOrDefault<int>("times", 0): DOShakePosition vibrato for

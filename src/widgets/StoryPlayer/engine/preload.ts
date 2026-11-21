@@ -232,9 +232,10 @@ function addCharacterUrls(
     const refs: string[] = [];
     if (line.command === "charactercutin")
       refs.push(boxedParamString(line.args.name));
-    else if (line.command === "charslot")
-      refs.push(argAsString(line.args.name));
-    else if (line.command === "character")
+    else if (line.command === "charslot") {
+      // CharacterslotPanel resolves the untrimmed value when playback starts.
+      refs.push(toString(line.args.name));
+    } else if (line.command === "character")
       refs.push(argAsString(line.args.name), argAsString(line.args.name2));
     else if (
       line.command === "interlude" &&

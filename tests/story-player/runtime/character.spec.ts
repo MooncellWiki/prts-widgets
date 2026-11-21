@@ -462,9 +462,8 @@ describe("StoryRuntime", () => {
         replaceFadeMs: 0,
         scaleX: undefined,
         scaleY: undefined,
+        sequenceEnd: true,
         slot: "m",
-        // charslot tweens join the per-slot cached Sequence; `character`
-        // commands (CharacterPanel) leave this unset.
         stop: false,
         // GetOrDefault<int>("times", 0) -- the shake vibrato / jump count.
         times: 0,
@@ -665,7 +664,7 @@ describe("StoryRuntime", () => {
     expect(renderer.characterCalls[2].alphaTo).toBeUndefined();
   });
 
-  it("maps charslot random like native GetOrDefault<int> and end=false only to blocking", async () => {
+  it("maps charslot random like native GetOrDefault<int> and forwards end=false", async () => {
     const renderer = new FakeRenderer();
     const runtime = new StoryRuntime(
       createContext([
@@ -698,6 +697,7 @@ describe("StoryRuntime", () => {
       positionFrom: { x: 0, y: -500 },
       positionTo: { x: 0, y: 0 },
       replaceFadeMs: 2000,
+      sequenceEnd: false,
       slot: "l",
     });
     expect(renderer.characterCalls[2]).toMatchObject({
