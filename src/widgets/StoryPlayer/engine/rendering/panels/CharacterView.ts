@@ -236,10 +236,11 @@ interface SlotTrack {
 }
 
 interface SlotSequence {
-  creationLocked: boolean;
   elapsedMs: number;
   endMs: number;
+  endRequested: boolean;
   onComplete?: () => void;
+  status: "unlocked" | "locked" | "inactive";
   stop?: () => void;
   tracks: SlotTrack[];
   waits: ExecutionHandle[];
@@ -381,7 +382,10 @@ export class CharacterView {
     return this.withVisual(slot, input, "charslot", (built, preparation) => {
       const sequence = this.getSlotSequence(slot);
       this.applySlotUpdate(input, slot, built, sequence);
-      if (onComplete) sequence.onComplete = onComplete;
+      if (sequence.status !== "inactive" && input.sequenceEnd !== false) {
+        sequence.endRequested = true;
+        if (onComplete) sequence.onComplete = onComplete;
+      }
       if (!input.block) return;
       const animation = preparation ?? createExecutionHandle(true);
       sequence.waits.push(animation);
@@ -504,9 +508,10 @@ export class CharacterView {
     const cached = this.slotSequences.get(slot);
     if (cached) return cached;
     const sequence: SlotSequence = {
-      creationLocked: false,
       elapsedMs: 0,
       endMs: 0,
+      endRequested: false,
+      status: "unlocked",
       tracks: [],
       waits: [],
     };
@@ -514,8 +519,8 @@ export class CharacterView {
       // TweenManager.Update (2791 @ 0x1844679F0) locks insertion before
       // advancing time. Sequence.DoStartup (0x18442C6F0) sorts by start
       // position and keeps ties in insertion order.
-      if (!sequence.creationLocked) {
-        sequence.creationLocked = true;
+      if (sequence.status === "unlocked") {
+        sequence.status = "locked";
         sequence.tracks.sort((a, b) => a.startMs - b.startMs);
       }
       // Sequence.ApplyInternalCycle (2791 @ 0x18442B5B0) advances children.
@@ -542,10 +547,16 @@ export class CharacterView {
       }
       if (toMs < sequence.endMs) return;
       sequence.stop?.();
-      this.slotSequences.delete(slot);
+      sequence.stop = undefined;
+      sequence.status = "inactive";
+      sequence.tracks.length = 0;
+      // _ExecuteCharslot's end callback (2791 @ 0x1841B61F0) marks the
+      // cache played. An auto-killed end=false Sequence remains cached.
+      if (sequence.endRequested) this.slotSequences.delete(slot);
       if (sequence.onComplete)
         this.signalFinish("charslot", sequence.onComplete);
       for (const wait of sequence.waits) wait.end();
+      sequence.waits.length = 0;
     });
     this.slotSequences.set(slot, sequence);
     return sequence;
@@ -676,9 +687,12 @@ export class CharacterView {
         this.resetSlot(key);
         continue;
       }
+      // _DoCleanSlot (2791 @ 0x1841A24F0) calls ResetShakeTween before
+      // SlotCleanChar. The clear tween resets the other transforms on completion.
       this.resetSlotShake(key);
       this.clearSlot(key, durationMs, "animated-clear");
       const sequence = this.getSlotSequence(key);
+      sequence.endRequested = true;
       this.tween(
         sequence,
         durationMs,
@@ -721,8 +735,8 @@ export class CharacterView {
   }
 
   private resetSlotShake(slot: CharacterSlot): void {
-    // _ResetLocationAndTween completes stand-alone shake tweens on its
-    // shake container. Nested charslot tracks remain owned by their sequence.
+    // ResetShakeTween (2791 @ 0x184237360) completes standalone tweens on
+    // the shake container. Nested charslot tracks remain owned by their sequence.
     const target = this.slotActionTargets[slot].shake;
     this.tweens.killTarget(target, true);
     this.replayCallback(target);
@@ -802,8 +816,7 @@ export class CharacterView {
   ): void {
     const { sequence, sequenceDelayMs = 0, ...tweenOptions } = options ?? {};
     if (
-      sequence &&
-      !sequence.creationLocked &&
+      sequence?.status === "unlocked" &&
       (durationMs !== 0 || tweenOptions.deferZeroDuration)
     ) {
       // _UpdateSeqWithTween (2791 @ 0x1841A9BE0) inserts at an absolute
@@ -823,9 +836,8 @@ export class CharacterView {
       });
       return;
     }
-    // Insert (2791 @ 0x18443C1B0) leaves the rejected child in DOTween's
-    // active list. It plays without the insertion delay, while isblock
-    // continues to wait on the cached Sequence.
+    // When Insert (2791 @ 0x18443C1B0) rejects a child, it stays in
+    // DOTween's active list and plays independently of the cached Sequence.
     this.tweens.start(durationMs, step, {
       ...tweenOptions,
       // TweenManager.Update (2791 @ 0x1844679F0) completes standalone

@@ -1,6 +1,6 @@
 import { setImmediate } from "node:timers/promises";
 
-import { Container, Sprite, Texture } from "pixi.js";
+import { Assets, Container, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { CharacterArtLoader } from "../../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
@@ -1490,6 +1490,60 @@ describe("character commands during playback", () => {
   }
 
   it.each([
+    { reference: "avg_alias@smile", portrait: "smile" },
+    { reference: "avg_alias@smile ", portrait: "default" },
+  ])(
+    "mounts the preloaded charslot portrait for '$reference'",
+    async ({ reference, portrait }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          `[charslot(slot="m",name="${reference}",duration=0,isblock=true)]`,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+        {
+          avg_alias: {
+            array: [
+              { alias: "", group: -1, image: "avg_alias/default", name: "1$1" },
+              {
+                alias: "smile",
+                group: -1,
+                image: "avg_alias/smile",
+                name: "2$1",
+              },
+            ],
+            groups: [],
+            pos: { x: 0, y: 0 },
+            size: { x: 100, y: 200 },
+          },
+        },
+      );
+      const load = vi
+        .spyOn(Assets, "load")
+        .mockRejectedValue(
+          new Error("unexpected texture load during playback"),
+        );
+      const started = runtime.start();
+      try {
+        const { characters, cgItems } = renderer.layers;
+        expect(load).not.toHaveBeenCalled();
+        const visual =
+          characters.children[0].children[0].children[0].children[0];
+        const sprite = visual.children[0].children[0] as Sprite;
+        expect(sprite.texture.label).toBe(portrait);
+        expect(cgItems.children).toHaveLength(0);
+        app.ticker.update(16);
+        expect(cgItems.children).toHaveLength(1);
+      } finally {
+        load.mockRestore();
+        destroy();
+        await started;
+      }
+    },
+  );
+
+  it.each([
     '[character(name="avg_cold",fadetime=0)]',
     '[charslot(slot="m",name="avg_cold",duration=0)]',
   ])("swaps zero-duration portraits in Update with %s", async (swap) => {
@@ -2418,6 +2472,83 @@ describe("character commands during playback", () => {
       await started;
     }
   });
+
+  it("stops an independent shake when animated clear-all starts", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[charslot(slot="m",afrom=1,ato=1,duration=0.128)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="m",action="shake",power=10,times=1,delay=0.128,duration=0.128)]',
+        "[delay(time=0.016)]",
+        "[charslot(duration=0.064,isblock=true)]",
+        '[character(name="avg_npc_1",fadetime=0)]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const started = runtime.start();
+    try {
+      const { characters } = renderer.layers;
+      const [old] = characters.children;
+      for (const tick of [16, 32, 48]) app.ticker.update(tick);
+      expect(old.children[0].x).not.toBe(0);
+      app.ticker.update(64);
+      expect(old.children[0].x).toBe(0);
+      app.ticker.update(80);
+      expect(old.children[0].x).toBe(0);
+      expect(old.alpha).toBe(0.75);
+
+      for (const tick of [96, 112, 128]) app.ticker.update(tick);
+      expect(old.destroyed).toBe(true);
+      expect(characters.children).toHaveLength(1);
+      expect(characters.children[0].children[0].x).toBe(0);
+      app.ticker.update(144);
+      expect(characters.children[0].children[0].x).toBe(0);
+    } finally {
+      random.mockRestore();
+      destroy();
+      await started;
+    }
+  });
+
+  it.each([
+    { end: "false", isblock: "true" },
+    { end: "0", isblock: "true" },
+    { end: "false", isblock: "1" },
+  ])(
+    "rejects inserts into the inactive cached sequence left by end=$end with isblock=$isblock",
+    async ({ end, isblock }) => {
+      const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+        [
+          `[charslot(slot="m",name="avg_npc_1",duration=0.032,end=${end})]`,
+          "[delay(time=0.048)]",
+          `[charslot(slot="m",afrom=1,ato=0,delay=0.064,duration=0.032,isblock=${isblock})]`,
+          '[cgitem(image="after")]',
+          '[name="A"]ok',
+        ],
+        () => {},
+      );
+      const started = runtime.start();
+      try {
+        const { characters, cgItems } = renderer.layers;
+        const visual =
+          characters.children[0].children[0].children[0].children[0];
+        for (const tick of [16, 32, 48, 64]) app.ticker.update(tick);
+        expect(visual.alpha).toBe(1);
+        app.ticker.update(80);
+        expect(visual.alpha).toBe(0.5);
+        app.ticker.update(96);
+        expect(visual.alpha).toBe(0);
+        app.ticker.update(176);
+        expect(cgItems.children).toHaveLength(0);
+      } finally {
+        destroy();
+        await started;
+      }
+    },
+  );
 
   it("samples a cross-frame zero-duration replacement on the next Update", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
