@@ -169,7 +169,7 @@ export class StoryRuntime {
   private readonly eventPool = new EventPool<AVGEvent>();
   private readonly context: Context;
   private cursor = 0;
-  /** 当前屏幕对话框正在显示的源行 lineNumber（cursor-1 那条）。null 表示无显示文本（初始/finished/video-only/纯命令推进） */
+  /** 最近上报的显示文本源行号。尚无文本时为 null。 */
   private displayedLineIndexValue: number | null = null;
   /** Web 适配（无原生对应）：引擎向 UI 推送变更的事件总线，UI 用它替代轮询 */
   private readonly events = mitt<StoryPlayerEvents>();
@@ -312,12 +312,16 @@ export class StoryRuntime {
           ),
       },
     );
+    // Web notification listeners can skip or destroy playback synchronously.
+    const setDisplayedLine = (lineNumber: number): boolean => {
+      const generation = this.playbackGeneration;
+      this.displayedLineIndex = lineNumber;
+      return !this.destroyed && generation === this.playbackGeneration;
+    };
     this.dialogPanel = new DialogPanel(renderer, {
       beginTyping: (length) => this.beginTextTyping(length),
       prepareEndtip: () => this.prepareEndtip(),
-      setDisplayedLine: (lineNumber) => {
-        this.displayedLineIndex = lineNumber;
-      },
+      setDisplayedLine,
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
@@ -351,17 +355,14 @@ export class StoryRuntime {
     this.stickerPanel = new StickerPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       beginTyping: (length) => this.beginTextTyping(length),
+      setDisplayedLine,
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),
       warn: (detail) => this.warn("parse", detail),
     });
     this.subtitlePanel = new SubtitlePanel(renderer, {
       beginTyping: (length) => this.beginTextTyping(length),
-      setDisplayedLine: (lineNumber) => {
-        const generation = this.playbackGeneration;
-        this.displayedLineIndex = lineNumber;
-        return !this.destroyed && generation === this.playbackGeneration;
-      },
+      setDisplayedLine,
       translateText: (text) => this.translateText(text),
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
     });
@@ -439,13 +440,13 @@ export class StoryRuntime {
     return this.state;
   }
 
-  /** 当前屏幕对话框正在显示的源行 lineNumber；null 表示当前没有显示文本 */
+  /** 当前显示行供 Log All 和调试页跟随。 */
   getDisplayedLineIndex(): number | null {
     return this.displayedLineIndex;
   }
 
   /**
-   * 把 UI 监听器包成不会反噬引擎的 handler。mitt 的 emit 不吞异常，而 5 个赋值点都
+   * 把 UI 监听器包成不会反噬引擎的 handler。mitt 的 emit 不吞异常，而显示行赋值都
    * 在 processLoop 的 try 里，监听器直接抛会被那里的 catch 收成 state="error" 把播放
    * 打死；轮询时代 UI 侧的异常伤不到引擎，推送不能倒退，所以这里统一收成 warning。
    */

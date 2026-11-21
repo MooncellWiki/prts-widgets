@@ -26,6 +26,8 @@ import type {
 interface StickerPlayback {
   animateRatio: () => number;
   beginTyping: (messageLength: number) => () => void;
+  /** Reports the line and returns whether its playback is still current. */
+  setDisplayedLine: (lineNumber: number) => boolean;
   typeWriterDelayMs: () => number;
   translateText: (text: string) => string;
   warn: (detail: string) => void;
@@ -246,6 +248,8 @@ export class StickerPanel extends ExecutorComponent {
           // stored layout (instead of re-defaulting to x=0/y=0) keeps the
           // letter appends in main 13-05, which omit x/y, in place.
           const text = this.playback.translateText(toString(arg(args, "text")));
+          if (text && !this.playback.setDisplayedLine(line.lineNumber))
+            return "continue";
           // AVGTypeWriterText.AppendText (2791 @ 0x18424F1C0) clears a
           // single-line message before starting the multiline run.
           const rawLength =
@@ -266,7 +270,8 @@ export class StickerPanel extends ExecutorComponent {
         const x = toNumber(arg(args, "x"), 0);
         const y = toNumber(arg(args, "y"), 0);
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";
-        if (!text) return "continue";
+        if (!text || !this.playback.setDisplayedLine(line.lineNumber))
+          return "continue";
 
         // _GenSticker (2.7.71 VA 0x183f3be10) takes the head of the shared
         // recycle pool (SafeGet(0) + RemoveAt(0)) whatever id it last served;

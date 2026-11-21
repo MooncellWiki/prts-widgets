@@ -315,6 +315,44 @@ describe("StoryRuntime seekToLine", () => {
     expect(runtime.getAutoPlayState().mode).toBe("default");
   });
 
+  it.each([
+    { branch: "show", preceding: [] },
+    {
+      branch: "append",
+      preceding: [
+        '[sticker(id="s",multi=true,text="first",delay=0,block=false)]',
+      ],
+    },
+  ])("stops on a blocking sticker $branch", async ({ preceding }) => {
+    const script = [
+      '[name="A"]before',
+      ...preceding,
+      '[sticker(id="s",multi=true,text="target",delay=0,block=true)]',
+      '[sticker(id="s",duration=0.5)]',
+      '[name="A"]after',
+    ];
+    const target = preceding.length + 2;
+    const choices = new Map<number, number>();
+    expect(planFor(script, target)).toEqual({
+      ok: true,
+      plan: { choices, degraded: false },
+    });
+
+    const { runtime, frames } = seekRuntime(script);
+    const updates: LineSeekUpdate[] = [];
+    runtime.seekToLine(target, choices, (update) => updates.push(update));
+
+    await runtime.start();
+    expect(await waitForTerminal(updates, frames)).toEqual({
+      phase: "reached",
+      target,
+    });
+    await frames.advance(100, 100);
+    expect(runtime.getDisplayedLineIndex()).toBe(target);
+    expect(runtime.getState()).toBe("waiting_input");
+    expect(runtime.getAutoPlayState().mode).toBe("default");
+  });
+
   it("keeps seeking across [theater], which switches mode on its own", async () => {
     // [theater(mode=true)] 切 button_auto，(mode=false) 的缓存恢复又把
     // quick_play 映射回 default——两次都不是人工干预，跳转要照常推进
