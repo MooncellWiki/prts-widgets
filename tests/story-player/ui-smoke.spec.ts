@@ -1,6 +1,6 @@
 import { createApp } from "vue";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import LogAllList from "../../src/widgets/StoryPlayer/components/LogAllList.vue";
 import { buildLogAll } from "../../src/widgets/StoryPlayer/engine/log/index";
@@ -50,6 +50,34 @@ describe("LogAllList UI smoke", () => {
     const active = host.querySelector<HTMLElement>("[data-active-line]");
     expect(active?.dataset.activeLine).toBe("exact");
     expect(active?.textContent).toBe("▶A甲分支");
+    app.unmount();
+  });
+
+  it("forwards source line numbers when activating text within a branch", () => {
+    const onSeek = vi.fn();
+    const { app, host } = mountLogAll({
+      document: buildLogAll(
+        parseScript([
+          '[decision(options="选A;选B", values="1;2")]',
+          '[predicate(references="1")]',
+          '[name="A"]甲分支',
+          '[predicate(references="2")]',
+          '[name="B"]乙分支',
+        ]),
+      ),
+      onSeek,
+      seekable: true,
+    });
+
+    const rows = host.querySelectorAll<HTMLElement>(
+      '.log-branch .log-row[role="button"]',
+    );
+    expect(rows).toHaveLength(2);
+    rows[0]!.click();
+    rows[1]!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+    expect(onSeek.mock.calls).toEqual([[3], [5]]);
     app.unmount();
   });
 

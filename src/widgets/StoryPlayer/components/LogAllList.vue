@@ -41,7 +41,9 @@ const props = defineProps<{
   activeLineIndex?: number | null;
   /** runtime 实际执行过的选择历史，用于求值当前路径 */
   selections?: RuntimeChoiceSelection[];
+  seekable?: boolean;
 }>();
+const emit = defineEmits<{ seek: [lineIndex: number] }>();
 
 /** 命中当前播放行：exact = 确实在当前路径上；maybe = 该分支尚未确定 */
 type ActiveMark = "exact" | "maybe";
@@ -150,6 +152,11 @@ const optionSelected = (block: LogChoiceBlock, optionIndex: number): boolean =>
 
 const choiceSelected = (block: LogChoiceBlock): boolean =>
   assignment.value.has(block.decisionId);
+
+function seekOnClick(lineIndex: number): void {
+  if (props.seekable && window.getSelection()?.isCollapsed !== false)
+    emit("seek", lineIndex);
+}
 </script>
 
 <template>
@@ -167,6 +174,14 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
           :data-active-line="row.active"
           :aria-current="row.active === 'exact' ? 'step' : undefined"
           class="log-row"
+          :class="{ 'log-row--seekable': seekable }"
+          :role="seekable ? 'button' : undefined"
+          :tabindex="seekable ? 0 : undefined"
+          :title="seekable ? '快进到该行' : undefined"
+          @click="seekOnClick(row.entry.lineIndex)"
+          @keydown.enter.space.prevent="
+            seekable && emit('seek', row.entry.lineIndex)
+          "
         >
           <span class="log-marker" aria-hidden="true">{{
             row.active ? "▶" : ""
@@ -228,6 +243,8 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
           :blocks="item.block.blocks"
           :active-line-index="activeLineIndex"
           :selections="selections"
+          :seekable="seekable"
+          @seek="emit('seek', $event)"
         />
       </div>
     </li>
@@ -275,6 +292,19 @@ const choiceSelected = (block: LogChoiceBlock): boolean =>
   align-items: start;
   padding: var(--ak-space-1) var(--ak-space-2);
   font-size: var(--ak-fs-sm);
+}
+
+.log-row--seekable {
+  cursor: pointer;
+}
+
+.log-row--seekable:hover {
+  background: var(--ak-bg-hover);
+}
+
+.log-row--seekable:focus-visible {
+  outline: 2px solid var(--ak-focus);
+  outline-offset: -2px;
 }
 
 .log-row[data-active-line] {

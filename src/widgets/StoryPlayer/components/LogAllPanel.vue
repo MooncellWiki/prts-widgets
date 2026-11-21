@@ -12,8 +12,10 @@ const props = defineProps<{
   document: LogDocument;
   activeLineIndex?: number | null;
   selections?: RuntimeChoiceSelection[];
+  seekable?: boolean;
+  seekError?: string | null;
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; seek: [lineIndex: number] }>();
 
 const scrollRoot = ref<HTMLElement | null>(null);
 
@@ -55,6 +57,7 @@ watch(
     @keydown.esc.stop.prevent="emit('close')"
   >
     <template #header-extra>
+      <span v-if="seekable" class="log-all-seek-hint">点击文本行快进</span>
       <AkButton
         icon="x"
         label="关闭剧情全文"
@@ -63,6 +66,9 @@ watch(
         @click="emit('close')"
       />
     </template>
+    <AkMessage v-if="seekError" class="log-all-seek-error" variant="warning">
+      {{ seekError }}
+    </AkMessage>
     <div
       ref="scrollRoot"
       class="log-all-scroll"
@@ -82,6 +88,8 @@ watch(
           :document="document"
           :active-line-index="activeLineIndex"
           :selections="selections"
+          :seekable="seekable"
+          @seek="emit('seek', $event)"
         />
       </div>
     </div>
@@ -106,12 +114,15 @@ watch(
 
 .log-all-panel :deep(.ak-panel__body) {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   padding: 0;
 }
 
 .log-all-scroll {
+  flex: 1;
+  min-height: 0;
   width: 100%;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -129,5 +140,15 @@ watch(
 
 .log-all-notice {
   margin-bottom: var(--ak-space-3);
+}
+
+.log-all-seek-hint {
+  color: var(--ak-fg-muted);
+  font-size: var(--ak-fs-xs);
+  text-align: end;
+}
+
+.log-all-seek-error {
+  margin: var(--ak-space-3);
 }
 </style>

@@ -26,7 +26,11 @@ import LogAllPanel from "./components/LogAllPanel.vue";
 import { loadContextByScript, type Context } from "./context";
 import { createStoryPlayer } from "./engine/createStoryPlayer";
 import { preloadDialogFont } from "./engine/font";
-import { buildLogAll, type LogDocument } from "./engine/log";
+import {
+  analyzeStoryFlow,
+  buildLogDocument,
+  planChoicesForLine,
+} from "./engine/log";
 import { parseStory } from "./engine/parser";
 import {
   collectContextAssetManifest,
@@ -37,6 +41,7 @@ import { useStageFullscreen } from "./fullscreen";
 
 import type {
   AutoPlayMode,
+  LineSeekUpdate,
   PlayerState,
   RuntimeChoiceSelection,
   StoryPlayer,
@@ -76,16 +81,51 @@ const viewMode = ref<"lobby" | "text" | "player">("lobby");
 const legacyPlayerActive = ref(false);
 
 const showLogAll = ref(false);
-// 文档包含 ConditionStore 类实例且只整体替换，用 shallowRef 避免深层解包
-const logAllDocument = shallowRef<LogDocument>(buildLogAll([]));
+// 全文显示和跳转规划共用分析结果，保留其中的 ConditionStore 实例。
+const logAllFlow = shallowRef(analyzeStoryFlow([]));
+const logAllDocument = computed(() => buildLogDocument(logAllFlow.value));
 const logAllActiveLineIndex = ref<number | null>(null);
 const logAllSelections = ref<RuntimeChoiceSelection[]>([]);
+const logSeekError = ref<string | null>(null);
+
+interface LogSeekNotice {
+  phase: "preparing" | LineSeekUpdate["phase"] | "error";
+  target: number;
+  degraded: boolean;
+  message: string;
+}
+
+const logSeekNotice = shallowRef<LogSeekNotice | null>(null);
+const logSeekActive = computed(
+  () =>
+    logSeekNotice.value?.phase === "preparing" ||
+    logSeekNotice.value?.phase === "seeking",
+);
+const logSeekTitle = computed(() => {
+  const notice = logSeekNotice.value;
+  return notice?.phase === "seeking"
+    ? `快速播放中 · L${logAllActiveLineIndex.value ?? "?"} → L${notice.target}`
+    : notice?.message;
+});
+const logSeekVariants = {
+  preparing: "info",
+  seeking: "info",
+  reached: "success",
+  missed: "danger",
+  aborted: "warning",
+  error: "danger",
+} as const;
+let activeLogSeek: { cancel?: () => void } | null = null;
+let logSeekDismissTimer: ReturnType<typeof setTimeout> | null = null;
+
 const showAssetList = ref(false);
 const assetUrls = ref<string[]>([]);
 const characterFaceAssets = ref<StoryCharacterFaceAsset[]>([]);
 
 let player: StoryPlayer | null = null;
 let closingPlayer: StoryPlayer | null = null;
+let isMountingPlayer = false;
+let unmounted = false;
 let timer: ReturnType<typeof setInterval> | null = null;
 let context: Context | null = null;
 const scriptText = ref<string | null>(props.script || null);
@@ -172,11 +212,13 @@ function openLogAll(): void {
   if (!scriptText.value) return;
   if (viewMode.value === "lobby") viewMode.value = "text";
   // 阅读时暂停自动推进，方便对照当前显示的句子。
+  if (activeLogSeek) cancelLogSeek();
   if (autoPlayMode.value !== "default") {
     player?.setAutoPlayMode("default");
     syncState();
   }
-  logAllDocument.value = buildLogAll(
+  logSeekError.value = null;
+  logAllFlow.value = analyzeStoryFlow(
     parseStory(scriptText.value).lines,
     context?.audioVariables,
   );
@@ -190,6 +232,103 @@ async function closeLogAll(): Promise<void> {
   if (isFullscreen.value) showHud();
   await nextTick();
   (logTrigger.value?.$el as HTMLElement | undefined)?.focus();
+}
+
+async function seekFromLog(target: number): Promise<void> {
+  if (isPreloading.value || logSeekActive.value) return;
+
+  const result = planChoicesForLine(logAllFlow.value, target);
+  if (!result.ok) {
+    logSeekError.value = `无法快进到第 ${target} 行`;
+    return;
+  }
+
+  clearLogSeek();
+  const request: { cancel?: () => void } = {};
+  activeLogSeek = request;
+  const { choices, degraded } = result.plan;
+  logSeekNotice.value = {
+    phase: "preparing",
+    target,
+    degraded,
+    message: "正在准备跳转…",
+  };
+  showLogAll.value = false;
+  preloadReady.value = false;
+
+  try {
+    // 分支方案从脚本起点计算，快进前要重建播放器。
+    stopStateSync();
+    player?.destroy();
+    const rebuilt = await onStartPlay();
+    if (activeLogSeek !== request) return;
+    if (!rebuilt) throw new Error(preloadError.value ?? "播放器未能就绪");
+
+    request.cancel = rebuilt.seekToLine(target, choices, (update) => {
+      if (activeLogSeek === request) updateLogSeek(update);
+    });
+    syncState();
+    await rebuilt.start();
+    if (player === rebuilt) syncState();
+  } catch (error) {
+    if (activeLogSeek !== request) return;
+    clearLogSeek();
+    player?.setAutoPlayMode("default");
+    syncState();
+    logSeekNotice.value = {
+      phase: "error",
+      target,
+      degraded,
+      message: `跳转失败：${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+function updateLogSeek(update: LineSeekUpdate): void {
+  const notice = logSeekNotice.value;
+  if (!notice) return;
+
+  const { phase, reason, target } = update;
+  const messages = {
+    seeking: "快速播放中",
+    reached: `已到达第 ${target} 行`,
+    missed:
+      reason === "error"
+        ? `播放出错，未到达第 ${target} 行`
+        : `播放结束，未到达第 ${target} 行`,
+    aborted: "已切换播放模式，跳转中止",
+  };
+  logSeekNotice.value = { ...notice, phase, message: messages[phase] };
+  if (phase === "seeking") return;
+
+  activeLogSeek = null;
+  if (phase === "reached") logSeekDismissTimer = setTimeout(clearLogSeek, 4000);
+}
+
+function clearLogSeek(): void {
+  const request = activeLogSeek;
+  activeLogSeek = null;
+  request?.cancel?.();
+  if (logSeekDismissTimer) clearTimeout(logSeekDismissTimer);
+  logSeekDismissTimer = null;
+  logSeekNotice.value = null;
+}
+
+function cancelLogSeek(): void {
+  const notice = logSeekNotice.value;
+  const armed = Boolean(activeLogSeek?.cancel);
+  clearLogSeek();
+  if (armed) {
+    // 解除选项编排后退出快进，避免剧情继续自动推进。
+    player?.setAutoPlayMode("default");
+    syncState();
+  }
+  if (notice)
+    logSeekNotice.value = {
+      ...notice,
+      phase: "aborted",
+      message: "已取消跳转",
+    };
 }
 
 function openAssetList(): void {
@@ -304,16 +443,19 @@ async function openFeedback(): Promise<void> {
   }
 }
 
-async function initAndPreload(): Promise<void> {
-  if (!hostRef.value) {
+async function initAndPreload(): Promise<StoryPlayer | null> {
+  if (unmounted || isPreloading.value) return null;
+
+  const host = hostRef.value;
+  if (!host) {
     preloadError.value = "播放器容器未初始化";
-    return;
+    return null;
   }
 
   const script = scriptText.value;
   if (!script) {
     preloadError.value = "未提供剧情文本（#datas_txt）";
-    return;
+    return null;
   }
 
   isPreloading.value = true;
@@ -321,13 +463,13 @@ async function initAndPreload(): Promise<void> {
   preloadError.value = null;
   preloadProgress.value = 0;
 
-  const host = hostRef.value;
   try {
-    const storyContext = await loadContextByScript(script);
+    const storyContext = context ?? (await loadContextByScript(script));
+    if (unmounted) return null;
     context = storyContext;
 
     // 剧情资源与字体（含对话字体）一起开始下载，进度条统计两者。
-    await Promise.all([
+    const results = await Promise.allSettled([
       preloadContextAssets(storyContext, (progress) => {
         preloadProgress.value = progress;
       }),
@@ -336,25 +478,42 @@ async function initAndPreload(): Promise<void> {
         // PIXI 的 CanvasTextMetrics 会用回退字体测量，导致 BestFit 字号和长文本
         // Y 偏移算错。
         await preloadDialogFont();
-        if (player) return;
-        player = createStoryPlayer(storyContext);
-        await player.mount(host);
-        // 当前行号走推送（Web 适配），Log All 高亮即时更新；其余状态仍靠下方轮询。
-        // 订阅即补发当前值，重开一局时高亮不会停在上一局最后一行
-        player.onDisplayedLineChange(
-          (lineIndex) => (logAllActiveLineIndex.value = lineIndex),
-        );
-        syncState();
-        if (!timer) timer = setInterval(syncState, 80);
+        if (unmounted) return;
+        if (!player) {
+          player = createStoryPlayer(storyContext);
+          player.onDisplayedLineChange(
+            (lineIndex) => (logAllActiveLineIndex.value = lineIndex),
+          );
+        }
+        const loadingPlayer = player;
+        isMountingPlayer = true;
+        try {
+          await loadingPlayer.mount(host);
+        } finally {
+          isMountingPlayer = false;
+          // Pixi 初始化完成后才可销毁，避免卸载时漏掉异步创建的画布。
+          if (unmounted) loadingPlayer.destroy();
+        }
       })(),
     ]);
+    if (unmounted) return null;
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure) throw failure.reason;
+    if (!player) return null;
+
+    syncState();
+    timer = setInterval(syncState, 80);
     preloadProgress.value = 1;
     preloadReady.value = true;
-    hostRef.value?.focus();
+    host.focus();
+    return player;
   } catch (error) {
+    destroyPlayer();
+    context = null;
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[story-player] preload failed:", detail, error);
     preloadError.value = detail || "资源加载失败";
+    return null;
   } finally {
     isPreloading.value = false;
   }
@@ -369,16 +528,17 @@ function onLoadLegacyPlayer(): void {
   }
 
   destroyClosingPlayer();
+  clearLogSeek();
   legacyPlayerActive.value = true;
   legacyRoot.style.removeProperty("display");
 }
 
-async function onStartPlay(): Promise<void> {
-  if (!scriptText.value) return;
+async function onStartPlay(): Promise<StoryPlayer | null> {
+  if (!scriptText.value) return null;
   destroyClosingPlayer();
   viewMode.value = "player";
   await nextTick();
-  await initAndPreload();
+  return initAndPreload();
 }
 
 // autoStart 只是替使用者连按"完整加载"和"开始"，不引入新的启动路径
@@ -395,6 +555,17 @@ async function onAdvance(): Promise<void> {
   syncState();
 }
 
+function stopStateSync(): void {
+  if (timer) clearInterval(timer);
+  timer = null;
+}
+
+function destroyPlayer(): void {
+  stopStateSync();
+  if (!isMountingPlayer) player?.destroy();
+  player = null;
+}
+
 function destroyClosingPlayer(): void {
   closingPlayer?.destroy();
   closingPlayer = null;
@@ -406,9 +577,10 @@ async function onSkipNode(event?: Event): Promise<void> {
   if (!skippedPlayer || !preloadReady.value) return;
 
   await skippedPlayer.skipNode();
-  if (player !== skippedPlayer) return;
+  if (player !== skippedPlayer || !preloadReady.value) return;
   syncState();
   if (state.value === "finished") {
+    clearLogSeek();
     closingPlayer = skippedPlayer;
     player = null;
     context = null;
@@ -417,10 +589,7 @@ async function onSkipNode(event?: Event): Promise<void> {
     showLogAll.value = false;
     if (isFullscreen.value) void toggleFullscreen();
     viewMode.value = "lobby";
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
+    stopStateSync();
     // 返回大厅后，音效继续走 OnReset 或 stopsound 已提交的淡停。
     try {
       await skippedPlayer.closeAfterStory();
@@ -454,13 +623,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  unmounted = true;
   clearHudTimer();
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
-  player?.destroy();
-  player = null;
+  clearLogSeek();
+  destroyPlayer();
   destroyClosingPlayer();
 });
 
@@ -532,7 +698,10 @@ defineExpose({
       v-else-if="viewMode === 'text'"
       class="story-transcript"
       :document="logAllDocument"
+      :seek-error="logSeekError"
+      seekable
       @close="closeLogAll"
+      @seek="seekFromLog"
     />
 
     <template v-else>
@@ -584,8 +753,32 @@ defineExpose({
           :document="logAllDocument"
           :active-line-index="logAllActiveLineIndex"
           :selections="logAllSelections"
+          :seekable="!isPreloading"
+          :seek-error="logSeekError"
           @close="closeLogAll"
+          @seek="seekFromLog"
         />
+
+        <AkMessage
+          v-if="logSeekNotice && !showLogAll"
+          class="story-seek-notice"
+          :title="logSeekTitle"
+          :variant="logSeekVariants[logSeekNotice.phase]"
+          :closable="!logSeekActive"
+          @close="clearLogSeek"
+        >
+          <div
+            v-if="logSeekNotice.degraded || logSeekActive"
+            class="story-seek-details"
+          >
+            <span v-if="logSeekNotice.degraded"
+              >分支组合过多，跳转可能无法到达目标行。</span
+            >
+            <AkButton v-if="logSeekActive" size="xs" @click="cancelLogSeek">
+              取消跳转
+            </AkButton>
+          </div>
+        </AkMessage>
       </div>
 
       <Transition name="story-hud">
@@ -820,6 +1013,26 @@ defineExpose({
   z-index: 10;
 }
 
+.story-seek-notice {
+  position: absolute;
+  top: var(--ak-space-3);
+  left: 50%;
+  z-index: 11;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - 2 * var(--ak-space-3));
+  margin: 0;
+  transform: translateX(-50%);
+  overflow-wrap: anywhere;
+}
+
+.story-seek-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ak-space-2);
+}
+
 .story-controls,
 .story-controls-group {
   display: flex;
@@ -883,6 +1096,11 @@ defineExpose({
   position: absolute;
   inset: 0;
   aspect-ratio: auto;
+}
+
+.story-stage--fullscreen .story-seek-notice {
+  top: auto;
+  bottom: max(var(--ak-space-3), env(safe-area-inset-bottom, 0px));
 }
 
 .story-hud {
