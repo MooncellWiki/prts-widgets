@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { loadContextByScript } from "../../../src/widgets/StoryPlayer/context";
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { loadContextByScript } from "@/widgets/StoryPlayer/context";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+import type { RuntimeWarning } from "@/widgets/StoryPlayer/engine/types";
+
 import {
   createContext,
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
-
-import type { RuntimeWarning } from "../../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
   it("enters waiting_input on first dialogue", async () => {

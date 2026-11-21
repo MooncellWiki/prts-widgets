@@ -2,9 +2,9 @@ import { createApp, defineComponent, h, type App } from "vue";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import StoryPage from "../../src/pages/StoryPlayer.vue";
+import StoryPage from "@/pages/StoryPlayer.vue";
 
-vi.mock("../../src/widgets/StoryPlayer/index.vue", () => ({
+vi.mock("@/widgets/StoryPlayer/index.vue", () => ({
   default: defineComponent({
     props: { script: String, autoStart: Boolean },
     setup: (props) => () =>
@@ -15,7 +15,7 @@ vi.mock("../../src/widgets/StoryPlayer/index.vue", () => ({
       ),
   }),
 }));
-vi.mock("../../src/pages/StoryPlayerDebug.vue", () => ({
+vi.mock("@/pages/StoryPlayerDebug.vue", () => ({
   __esModule: true,
   default: defineComponent({
     setup: () => () => h("div", { class: "debug-stub" }, "debug tools"),

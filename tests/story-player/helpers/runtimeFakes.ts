@@ -1,12 +1,9 @@
-import { richCharsToTaggedText } from "../../../src/widgets/StoryPlayer/engine/richtext";
-
-import { PlaybackTestFrames } from "./playbackFrames";
-
-import type { Context } from "../../../src/widgets/StoryPlayer/context";
+import type { Context } from "@/widgets/StoryPlayer/context";
 import type {
   AnimationPreparation,
   ExecutionHandle,
-} from "../../../src/widgets/StoryPlayer/engine/execution";
+} from "@/widgets/StoryPlayer/engine/execution";
+import { richCharsToTaggedText } from "@/widgets/StoryPlayer/engine/richtext";
 import type {
   AnimTextInput,
   AvgDisplayInput,
@@ -42,7 +39,9 @@ import type {
   TimerClearInput,
   TimerStickerInput,
   TypewriterText,
-} from "../../../src/widgets/StoryPlayer/engine/types";
+} from "@/widgets/StoryPlayer/engine/types";
+
+import { PlaybackTestFrames } from "./playbackFrames";
 
 export class FakeRenderer implements StoryRenderer {
   readonly frames = new PlaybackTestFrames();

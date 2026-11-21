@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   dotweenEaseCurve,
   linearEase,
-} from "../../src/widgets/StoryPlayer/engine/rendering/core/DotweenEase";
+} from "@/widgets/StoryPlayer/engine/rendering/core/DotweenEase";
 
 describe("dotweenEaseCurve resolution (GetEnum<Ease> port)", () => {
   it("resolves enum names case-sensitively and falls back to Linear otherwise", () => {

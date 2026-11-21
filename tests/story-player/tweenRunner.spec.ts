@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { dotweenEaseCurve } from "../../src/widgets/StoryPlayer/engine/rendering/core/DotweenEase";
-import { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-
-import type { AnimationClock } from "../../src/widgets/StoryPlayer/engine/execution";
+import type { AnimationClock } from "@/widgets/StoryPlayer/engine/execution";
+import { dotweenEaseCurve } from "@/widgets/StoryPlayer/engine/rendering/core/DotweenEase";
+import { TweenRunner } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 
 /** Synchronous AnimationClock whose frames flush only when time advances. */
 function createManualClock() {

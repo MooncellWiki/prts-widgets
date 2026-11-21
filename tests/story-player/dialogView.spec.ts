@@ -8,10 +8,9 @@ import {
 } from "pixi.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DialogView } from "../../src/widgets/StoryPlayer/engine/rendering/panels/DialogView";
-import { parseRichChars } from "../../src/widgets/StoryPlayer/engine/richtext";
-
-import type { DialogueLayout } from "../../src/widgets/StoryPlayer/engine/types";
+import { DialogView } from "@/widgets/StoryPlayer/engine/rendering/panels/DialogView";
+import { parseRichChars } from "@/widgets/StoryPlayer/engine/richtext";
+import type { DialogueLayout } from "@/widgets/StoryPlayer/engine/types";
 
 interface Fade {
   done?: () => void;

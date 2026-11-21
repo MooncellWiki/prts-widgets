@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeShowItemLayout,
   SHOWITEM_FRAME_BORDER,
-} from "../../src/widgets/StoryPlayer/engine/showitem";
+} from "@/widgets/StoryPlayer/engine/showitem";
 
 describe("computeShowItemLayout", () => {
   it("sizes the nine-slice frame at the native sprite size plus 32px padding per side", () => {

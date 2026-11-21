@@ -3,13 +3,13 @@ import { setImmediate } from "node:timers/promises";
 import { Ticker, UPDATE_PRIORITY } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { TweenRunner } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import { parseRichChars } from "../../../src/widgets/StoryPlayer/engine/richtext";
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { TweenRunner } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { parseRichChars } from "@/widgets/StoryPlayer/engine/richtext";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+import type { TimerStickerInput } from "@/widgets/StoryPlayer/engine/types";
+
 import { createManualClock, createRenderer } from "../helpers/rendererFixtures";
 import { createContext, FakeAudio } from "../helpers/runtimeFakes";
-
-import type { TimerStickerInput } from "../../../src/widgets/StoryPlayer/engine/types";
 
 const timerInput = {
   durationMs: 1000,

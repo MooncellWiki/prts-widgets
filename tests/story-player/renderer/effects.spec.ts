@@ -10,21 +10,21 @@ import {
 } from "pixi.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SLIDE_MASK_TEXTURE_URL } from "../../../src/widgets/StoryPlayer/assets";
-import { buildColorEffectMatrix } from "../../../src/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { SLIDE_MASK_TEXTURE_URL } from "@/widgets/StoryPlayer/assets";
+import { buildColorEffectMatrix } from "@/widgets/StoryPlayer/engine/rendering/core/ColorEffectMatrix";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+import type {
+  BlockerInput,
+  CgItemInput,
+  CurtainInput,
+} from "@/widgets/StoryPlayer/engine/types";
+
 import {
   createRenderedPlayback,
   createRenderer,
   focusAmount,
 } from "../helpers/rendererFixtures";
 import { createContext, FakeAudio } from "../helpers/runtimeFakes";
-
-import type {
-  BlockerInput,
-  CgItemInput,
-  CurtainInput,
-} from "../../../src/widgets/StoryPlayer/engine/types";
 
 // Turns the -0 that `0 * -1` produces into +0 so `toEqual` stops
 // distinguishing them. Deliberately narrow: `v || 0` would also swallow NaN

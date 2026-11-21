@@ -1,19 +1,18 @@
 import { Container, Texture, type Sprite } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+import { LayerGraph } from "@/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 import {
   TweenRunner,
   type TweenRunOptions,
-} from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import { CgItemView } from "../../src/widgets/StoryPlayer/engine/rendering/panels/CgItemView";
-
-import { createManualClock } from "./helpers/rendererFixtures";
-
+} from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { CgItemView } from "@/widgets/StoryPlayer/engine/rendering/panels/CgItemView";
 import type {
   CgItemInput,
   CgItemShakeInput,
-} from "../../src/widgets/StoryPlayer/engine/types";
+} from "@/widgets/StoryPlayer/engine/types";
+
+import { createManualClock } from "./helpers/rendererFixtures";
 
 function input(key: string, overrides: Partial<CgItemInput> = {}): CgItemInput {
   return {

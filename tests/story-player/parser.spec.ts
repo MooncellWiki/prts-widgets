@@ -4,7 +4,7 @@ import {
   parseLine,
   parseScript,
   parseStory,
-} from "../../src/widgets/StoryPlayer/engine/parser";
+} from "@/widgets/StoryPlayer/engine/parser";
 
 describe("parser", () => {
   it("parses command line with args and trailing text", () => {

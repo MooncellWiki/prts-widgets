@@ -10,33 +10,32 @@ import {
 } from "pixi.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { InterludePanel } from "../../src/widgets/StoryPlayer/engine/rendering/panels/InterludePanel";
+import type {
+  CharacterArt,
+  CharacterArtLoad,
+} from "@/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { TextureLoad } from "@/widgets/StoryPlayer/engine/rendering/core/TextureAsset";
+import type { TweenRunner } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { InterludePanel } from "@/widgets/StoryPlayer/engine/rendering/panels/InterludePanel";
 import {
   CLIP_SECONDS,
   buildTemplate,
   loadInterludeTextures,
-} from "../../src/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates";
+} from "@/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates";
+import type { InterludeInput } from "@/widgets/StoryPlayer/engine/types";
 
 import {
   createInstantTweenRunner,
   PlaybackTestFrames,
 } from "./helpers/playbackFrames";
 
-import type {
-  CharacterArt,
-  CharacterArtLoad,
-} from "../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
-import type { TextureLoad } from "../../src/widgets/StoryPlayer/engine/rendering/core/TextureAsset";
-import type { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import type { InterludeInput } from "../../src/widgets/StoryPlayer/engine/types";
-
 // 模板贴图走随包静态资源(Assets.load),测试里替换为空纹理保持离线。
 vi.mock(
-  "../../src/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates",
+  "@/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates",
   async (importOriginal) => {
     const mod =
       await importOriginal<
-        typeof import("../../src/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates")
+        typeof import("@/widgets/StoryPlayer/engine/rendering/panels/interludeTemplates")
       >();
     // Texture.EMPTY 的 orig 为 null,模板构建里设置 width 会炸;用 WHITE(1x1)。
     const white = () => Texture.WHITE;

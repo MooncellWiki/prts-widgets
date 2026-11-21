@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+
 import {
   createContext,
   FakeAudio,

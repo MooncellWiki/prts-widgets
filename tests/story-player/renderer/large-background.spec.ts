@@ -1,16 +1,16 @@
 import { type Container, type Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { buildGridBackgroundRoot } from "../../../src/widgets/StoryPlayer/engine/rendering/core/SceneGeometry";
+import type { ExecutionHandle } from "@/widgets/StoryPlayer/engine/execution";
+import { buildGridBackgroundRoot } from "@/widgets/StoryPlayer/engine/rendering/core/SceneGeometry";
+import type { GridBackgroundInput } from "@/widgets/StoryPlayer/engine/types";
+
 import {
   createContext,
   createRenderedPlayback,
   createRenderer,
   focusAmount,
 } from "../helpers/rendererFixtures";
-
-import type { ExecutionHandle } from "../../../src/widgets/StoryPlayer/engine/execution";
-import type { GridBackgroundInput } from "../../../src/widgets/StoryPlayer/engine/types";
 
 function createGridBackgroundInput(): GridBackgroundInput {
   return {
