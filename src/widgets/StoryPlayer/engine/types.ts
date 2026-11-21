@@ -797,8 +797,6 @@ export interface StoryRenderer {
   ) => ExecutionHandle | void;
   cancelImagePreparation: () => void;
   resetImage: () => void;
-  clearLargeImage: (fadeMs?: number, block?: boolean) => ExecutionHandle | void;
-  cancelLargeImagePreparation: () => void;
   clearSticker: (id?: string, fadeMs?: number) => Promise<void> | void;
   clearStickers: (fadeMs?: number) => Promise<void> | void;
   clearSpellStickers: () => Promise<void> | void;
@@ -853,7 +851,6 @@ export interface StoryRenderer {
     input: GridBackgroundInput,
     onComplete?: () => void,
   ) => ExecutionHandle | void;
-  setLargeImage: (input: GridBackgroundInput) => ExecutionHandle | void;
   runCharacterAction: (
     input: CharacterActionInput,
     onComplete?: () => void,
@@ -898,9 +895,6 @@ export interface StoryRenderer {
   setLargeBackgroundTween: (
     input: LargeBackgroundTweenInput,
     onComplete?: () => void,
-  ) => ExecutionHandle | void;
-  setLargeImageTween: (
-    input: LargeBackgroundTweenInput,
   ) => ExecutionHandle | void;
   createShowItemSlot: (style: string) => StoryShowItemSlot | null;
   showCgItem: (

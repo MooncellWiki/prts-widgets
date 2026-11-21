@@ -95,7 +95,6 @@ export class FakeRenderer implements StoryRenderer {
   imageTweenCalls: ImageTweenInput[] = [];
   interludeCalls: InterludeInput[] = [];
   largeBackgroundTweenCalls: LargeBackgroundTweenInput[] = [];
-  largeImageTweenCalls: LargeBackgroundTweenInput[] = [];
   lastDialogue = { speaker: "", text: "" };
   dialogueTexts: string[] = [];
   dialogueLayouts: DialogueLayout[] = [];
@@ -197,12 +196,6 @@ export class FakeRenderer implements StoryRenderer {
   cancelImagePreparation(): void {}
 
   resetImage(): void {}
-  clearLargeImage(fadeMs = 0, block = false): void {
-    this.gridBackgroundClearCalls.push({ block, fadeMs });
-  }
-
-  cancelLargeImagePreparation(): void {}
-
   clearCgItems(
     key?: string,
     fadeMs = 130,
@@ -324,10 +317,6 @@ export class FakeRenderer implements StoryRenderer {
     this.gridBackgroundCalls.push(input);
   }
 
-  setLargeImage(input: GridBackgroundInput): ExecutionHandle | void {
-    this.gridBackgroundCalls.push(input);
-  }
-
   runCharacterAction(input: CharacterActionInput): void {
     this.actionCalls.push(input);
   }
@@ -371,10 +360,6 @@ export class FakeRenderer implements StoryRenderer {
     input: LargeBackgroundTweenInput,
   ): ExecutionHandle | void {
     this.largeBackgroundTweenCalls.push(input);
-  }
-
-  setLargeImageTween(input: LargeBackgroundTweenInput): ExecutionHandle | void {
-    this.largeImageTweenCalls.push(input);
   }
 
   createShowItemSlot(style: string): StoryShowItemSlot | null {
