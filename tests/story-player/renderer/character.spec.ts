@@ -2383,13 +2383,49 @@ describe("character commands during playback", () => {
     }
   });
 
-  it("samples a zero-duration replacement added to a running slot sequence", async () => {
+  it("plays a cross-frame fade independently of the locked slot sequence", async () => {
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
+      [
+        '[charslot(slot="m",name="avg_npc_1",duration=0.064,end=false)]',
+        "[delay(time=0.016)]",
+        '[charslot(slot="m",afrom=0.625,ato=0,delay=0.048,duration=0.064,isblock=true)]',
+        '[cgitem(image="after")]',
+        '[name="A"]ok',
+      ],
+      () => {},
+    );
+    const started = runtime.start();
+    try {
+      const { characters, cgItems } = renderer.layers;
+      const visual = characters.children[0].children[0].children[0].children[0];
+      app.ticker.update(16);
+      expect(visual.alpha).toBe(0.25);
+      app.ticker.update(32);
+      expect(visual.alpha).toBe(0.625);
+
+      const samples = [48, 64, 80, 96].map((tick) => {
+        app.ticker.update(tick);
+        return [visual.alpha, cgItems.children.length];
+      });
+      expect(samples).toEqual([
+        [0.5625, 0],
+        [0.375, 1],
+        [0.1875, 1],
+        [0, 1],
+      ]);
+    } finally {
+      destroy();
+      await started;
+    }
+  });
+
+  it("samples a cross-frame zero-duration replacement on the next Update", async () => {
     const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
         '[character(name="avg_npc_1",fadetime=0)]',
         '[charslot(slot="m",posfrom="0,0",posto="64,0",duration=0.064,end=false)]',
         "[delay(time=0.016)]",
-        '[charslot(slot="m",name="avg_cold",duration=0,isblock=true)]',
+        '[charslot(slot="m",name="avg_cold",delay=0.048,duration=0,isblock=true)]',
         '[cgitem(image="after")]',
         '[name="A"]ok',
       ],

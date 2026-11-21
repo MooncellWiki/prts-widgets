@@ -236,6 +236,7 @@ interface SlotTrack {
 }
 
 interface SlotSequence {
+  creationLocked: boolean;
   elapsedMs: number;
   endMs: number;
   onComplete?: () => void;
@@ -497,22 +498,27 @@ export class CharacterView {
 
   /**
    * _GetCachedSlotSeq / _UpdateSeqWithTween (2791 @ 0x1841A5700 / 0x1841A9BE0).
-   * Children share a single Update position among standalone tweens. For
-   * writes added on later frames, Web keeps the existing approximation of
-   * inserting relative to the new command's dispatch time.
+   * Children share a single Update position among standalone tweens.
    */
   private getSlotSequence(slot: CharacterSlot): SlotSequence {
     const cached = this.slotSequences.get(slot);
     if (cached) return cached;
     const sequence: SlotSequence = {
+      creationLocked: false,
       elapsedMs: 0,
       endMs: 0,
       tracks: [],
       waits: [],
     };
     sequence.stop = this.tweens.subscribeUpdate((deltaMs) => {
-      // Sequence.ApplyInternalCycle (2791 @ 0x18442B5B0) advances children
-      // by start position. DoStartup (0x18442C6F0) keeps ties in insertion order.
+      // TweenManager.Update (2791 @ 0x1844679F0) locks insertion before
+      // advancing time. Sequence.DoStartup (0x18442C6F0) sorts by start
+      // position and keeps ties in insertion order.
+      if (!sequence.creationLocked) {
+        sequence.creationLocked = true;
+        sequence.tracks.sort((a, b) => a.startMs - b.startMs);
+      }
+      // Sequence.ApplyInternalCycle (2791 @ 0x18442B5B0) advances children.
       const fromMs = sequence.elapsedMs;
       const toMs = Math.min(fromMs + deltaMs, sequence.endMs);
       sequence.elapsedMs = toMs;
@@ -795,12 +801,17 @@ export class CharacterView {
     options?: CharacterTweenOptions,
   ): void {
     const { sequence, sequenceDelayMs = 0, ...tweenOptions } = options ?? {};
-    if (sequence && (durationMs !== 0 || options?.deferZeroDuration)) {
-      // _UpdateSeqWithTween (2791 @ 0x1841A9BE0) inserts at delay.
+    if (
+      sequence &&
+      !sequence.creationLocked &&
+      (durationMs !== 0 || tweenOptions.deferZeroDuration)
+    ) {
+      // _UpdateSeqWithTween (2791 @ 0x1841A9BE0) inserts at an absolute
+      // position in the Sequence.
       // Sequence.DoInsert (0x18442C310) includes the signed child duration.
-      const startMs = sequence.elapsedMs + sequenceDelayMs;
+      const startMs = sequenceDelayMs;
       const endMs = startMs + durationMs;
-      if (endMs < sequence.elapsedMs) return;
+      if (endMs < 0) return;
       sequence.endMs = Math.max(sequence.endMs, endMs);
       sequence.tracks.push({
         startMs,
@@ -810,9 +821,11 @@ export class CharacterView {
         onComplete: done,
         finished: false,
       });
-      sequence.tracks.sort((a, b) => a.startMs - b.startMs);
       return;
     }
+    // Insert (2791 @ 0x18443C1B0) leaves the rejected child in DOTween's
+    // active list. It plays without the insertion delay, while isblock
+    // continues to wait on the cached Sequence.
     this.tweens.start(durationMs, step, {
       ...tweenOptions,
       // TweenManager.Update (2791 @ 0x1844679F0) completes standalone
@@ -988,9 +1001,7 @@ export class CharacterView {
         },
         // _GenCharslotShakemove (2791 @ 0x1841A5040) starts CharShake on
         // the shake container and returns only SlotMoveChar to the Sequence.
-        input.action === "shakemove"
-          ? { target: this.slotActionTargets[slot].shake }
-          : sequenceOptions,
+        input.action === "shakemove" ? undefined : sequenceOptions,
       );
     }
 
@@ -1043,7 +1054,7 @@ export class CharacterView {
         );
         let startAngle: number | undefined;
         this.tween(
-          sequence,
+          this.slotActionTargets[slot].offset,
           movementMs,
           (progress) => {
             startAngle ??= motion.rotationDeg;
@@ -1700,7 +1711,7 @@ export class CharacterView {
   ): void {
     const { holder, pivotX, pivotY, scaleX, scaleY } = state;
     this.tween(
-      holder,
+      this.characterZoomTweens,
       durationMs,
       (progress) => {
         const image = holder.state;
@@ -1865,7 +1876,7 @@ export class CharacterView {
     // Other shake tweens on this transform keep their Update order.
     let origin: CharacterSlotPoint | undefined;
     this.tween(
-      state,
+      this.slotActionTargets[slot].shake,
       durationMs,
       (progress) => {
         if (motion.shakeSessionId !== sessionId) return;
