@@ -101,7 +101,7 @@ describe("SceneEffectManager", () => {
   it("initializes blur when a tween is queued before its first update", () => {
     const effects = createSceneEffects(async () => {});
     effects.setFocusOut(input({ durationMs: 1000, to: 1 }));
-    expect(effects.focusFrame).toBeUndefined();
+    expect(effects.focusFrame?.config).toEqual({ blur: true, color: "None" });
 
     effects.setFocusParam({ blur: false, color: "None" });
     effects.setFocusOut(input({ to: 1 }));

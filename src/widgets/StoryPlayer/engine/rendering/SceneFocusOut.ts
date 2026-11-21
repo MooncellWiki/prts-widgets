@@ -98,13 +98,8 @@ export class SceneFocusOut {
     // AVGSceneFocusOut.Render (2791 @ 0x1841FAADE) takes the blur path
     // for color=None and can reuse a previously created m_blurMat.
     const blur = this.config.blur || (color === "None" && this.blurInitialized);
-    if (!blur && color === "None") return;
-    // AVGSceneFocusOut.GetActiveChannels (2791 @ 0x1841FA450) checks the
-    // stored values (including those waiting for a sprite) with MathUtil.GT.
-    for (const state of this.states.values()) {
-      if (state.amount > activeAmountThreshold)
-        return { config: { blur, color }, targets: this.targets() };
-    }
+    if ((!blur && color === "None") || !this.isActive) return;
+    return { config: { blur, color }, targets: this.targets() };
   }
 
   setFocus(
@@ -255,16 +250,20 @@ export class SceneFocusOut {
     if (display) display.amount = amount;
   }
 
+  private get isActive(): boolean {
+    // AVGSceneEffectManager._UpdateCommandStatus (2791 @ 0x1841D4510)
+    // checks both active tweens and GetActiveChannels' stored amounts.
+    for (const state of this.states.values()) {
+      if (state.endTween || state.amount > activeAmountThreshold) return true;
+    }
+    return false;
+  }
+
   private updateBlurInitialization(): void {
     // UpdateEffect (2791 @ 0x1841D0E50) and MarkEffectImplConfigDirty
     // (0x1841D0CE0) can build the command buffer before the next draw.
-    if (this.blurInitialized || !this.config.blur) return;
-    for (const state of this.states.values()) {
-      if (state.amount > activeAmountThreshold || state.endTween) {
-        this.blurInitialized = true;
-        return;
-      }
-    }
+    if (!this.blurInitialized && this.config.blur && this.isActive)
+      this.blurInitialized = true;
   }
 
   private *targets(): IterableIterator<FocusTarget> {

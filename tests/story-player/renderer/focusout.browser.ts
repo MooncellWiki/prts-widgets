@@ -59,7 +59,13 @@ async function testFocusOut(): Promise<void> {
   if (app.renderer.name !== backend)
     throw new Error(`Requested ${backend}, got ${app.renderer.name}`);
   const layers = new LayerGraph();
-  const effects = new SceneEffectManager(layers, async () => {});
+  let finishTween: (() => void) | undefined;
+  const effects = new SceneEffectManager(
+    layers,
+    async (_duration, _update, complete) => {
+      finishTween = complete;
+    },
+  );
   layers.attach(app.stage);
 
   const background = strip(layers.background, 0, STORY_WIDTH, 0xff0000);
@@ -84,10 +90,10 @@ async function testFocusOut(): Promise<void> {
   };
   const sample = (x: number, y = 150) =>
     ctx.getImageData(x * resolution, y * resolution, 1, 1).data;
-  const backgroundAmount = (to: number) =>
+  const backgroundAmount = (to: number, durationMs = 0) =>
     effects.setFocusOut({
       block: false,
-      durationMs: 0,
+      durationMs,
       id: "",
       to,
       type: "bg",
@@ -102,6 +108,17 @@ async function testFocusOut(): Promise<void> {
     });
 
   effects.setFocusParam({ blur: false, color: "Colorinverse" });
+  backgroundAmount(0, 1000);
+  draw();
+  near(sample(520)[1], 64, "A running zero-amount tween keeps the scene pass");
+  finishTween?.();
+  draw();
+  near(
+    sample(520)[1],
+    0,
+    "A completed zero-amount tween releases the scene pass",
+  );
+
   backgroundAmount(1);
   draw();
   near(sample(80)[1], 255, "Opaque focused background");
