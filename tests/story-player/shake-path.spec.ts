@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildShakePath,
   sampleShakePath,
-} from "../../src/widgets/StoryPlayer/engine/rendering/core/ShakePath";
+} from "@/widgets/StoryPlayer/engine/rendering/core/ShakePath";
 
 describe("DOTween-compatible shake path", () => {
   it("builds vibrato * duration waypoints with fade-out-weighted durations and returns to zero", () => {

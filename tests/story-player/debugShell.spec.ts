@@ -2,7 +2,7 @@ import { createApp, defineComponent, h } from "vue";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import StoryPlayerDebugShell from "../../src/widgets/StoryPlayer/components/StoryPlayerDebugShell.vue";
+import StoryPlayerDebugShell from "@/widgets/StoryPlayer/components/StoryPlayerDebugShell.vue";
 
 // index.vue 整链会拉 context/字体并挂 PIXI（happy-dom 跑不动），stub 成
 // 只暴露 getPlayer 的空组件；订阅回调由测试手动 emit，驱动行高亮断言
@@ -27,7 +27,7 @@ const stub = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../src/widgets/StoryPlayer/index.vue", () => ({
+vi.mock("@/widgets/StoryPlayer/index.vue", () => ({
   default: defineComponent({
     name: "StoryPlayerStub",
     setup(_, { expose }) {

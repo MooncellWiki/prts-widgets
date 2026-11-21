@@ -7,21 +7,20 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { CharacterCutinPanel } from "../../src/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
+import type {
+  CharacterArt,
+  CharacterArtLoad,
+} from "@/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { CharacterSlotView } from "@/widgets/StoryPlayer/engine/rendering/characters/CharacterSlotView";
+import type { TextureLoad } from "@/widgets/StoryPlayer/engine/rendering/core/TextureAsset";
+import type { TweenRunner } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { CharacterCutinPanel } from "@/widgets/StoryPlayer/engine/rendering/panels/CharacterCutinPanel";
+import type { CharacterCutinInput } from "@/widgets/StoryPlayer/engine/types";
 
 import {
   createInstantTweenRunner,
   PlaybackTestFrames,
 } from "./helpers/playbackFrames";
-
-import type {
-  CharacterArt,
-  CharacterArtLoad,
-} from "../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
-import type { CharacterSlotView } from "../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterSlotView";
-import type { TextureLoad } from "../../src/widgets/StoryPlayer/engine/rendering/core/TextureAsset";
-import type { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import type { CharacterCutinInput } from "../../src/widgets/StoryPlayer/engine/types";
 
 /** The fields of the panel's private per-widget slot state these tests read. */
 interface SlotView {

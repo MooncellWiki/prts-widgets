@@ -8,20 +8,19 @@ import {
 } from "pixi.js";
 import { vi } from "vitest";
 
-import { preloadContextAssets } from "../../../src/widgets/StoryPlayer/engine/preload";
-import { PixiStoryRenderer } from "../../../src/widgets/StoryPlayer/engine/renderer";
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import type { Context } from "@/widgets/StoryPlayer/context";
+import type { AnimationClock } from "@/widgets/StoryPlayer/engine/execution";
+import { preloadContextAssets } from "@/widgets/StoryPlayer/engine/preload";
+import { PixiStoryRenderer } from "@/widgets/StoryPlayer/engine/renderer";
+import type { SceneEffectManager } from "@/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
+import type { LayerGraph } from "@/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
 
 import { PlaybackTestFrames } from "./playbackFrames";
 import {
   createContext as createPlaybackContext,
   FakeAudio,
 } from "./runtimeFakes";
-
-import type { Context } from "../../../src/widgets/StoryPlayer/context";
-import type { AnimationClock } from "../../../src/widgets/StoryPlayer/engine/execution";
-import type { SceneEffectManager } from "../../../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
-import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
 
 export function focusAmount(
   effects: SceneEffectManager,

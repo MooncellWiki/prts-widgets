@@ -2,14 +2,14 @@ import { setImmediate } from "node:timers/promises";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+import type { RuntimeWarning } from "@/widgets/StoryPlayer/engine/types";
+
 import {
   createContext,
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
-
-import type { RuntimeWarning } from "../../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
   it("maps spellsticker parameters and hides the blocking view before advancing", async () => {

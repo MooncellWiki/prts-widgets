@@ -1,12 +1,12 @@
 import { Container, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { AvgDisplayPanel } from "../../src/widgets/StoryPlayer/engine/rendering/panels/AvgDisplayPanel";
+import { AvgDisplayPanel } from "@/widgets/StoryPlayer/engine/rendering/panels/AvgDisplayPanel";
 import {
   STORY_HEIGHT,
   STORY_WIDTH,
   type AvgDisplayInput,
-} from "../../src/widgets/StoryPlayer/engine/types";
+} from "@/widgets/StoryPlayer/engine/types";
 
 function input(overrides: Partial<AvgDisplayInput> = {}): AvgDisplayInput {
   return {

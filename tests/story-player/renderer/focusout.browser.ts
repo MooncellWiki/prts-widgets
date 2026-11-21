@@ -6,12 +6,9 @@ import {
   type Container,
 } from "pixi.js";
 
-import { SceneEffectManager } from "../../../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
-import { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
-import {
-  STORY_HEIGHT,
-  STORY_WIDTH,
-} from "../../../src/widgets/StoryPlayer/engine/types";
+import { SceneEffectManager } from "@/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
+import { LayerGraph } from "@/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+import { STORY_HEIGHT, STORY_WIDTH } from "@/widgets/StoryPlayer/engine/types";
 
 // Open with pnpm dev. Use ?backend=webgl or ?backend=webgpu&resolution=2.
 const params = new URLSearchParams(location.search);

@@ -4,7 +4,7 @@ import {
   resolveAssetUrl,
   resolveStoryAssetByKey,
   resolveStoryVideoByKey,
-} from "../../src/widgets/StoryPlayer/engine/asset";
+} from "@/widgets/StoryPlayer/engine/asset";
 
 describe("resolveAssetUrl", () => {
   it("keeps torappu host unchanged", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { guardClaimedClicks } from "../../src/widgets/StoryPlayer/engine/rendering/core/ClickClaim";
+import { guardClaimedClicks } from "@/widgets/StoryPlayer/engine/rendering/core/ClickClaim";
 
 function setup(isClaimed: (clientX: number, clientY: number) => boolean) {
   const host = document.createElement("div");

@@ -8,10 +8,9 @@ import {
   resolveCharacterRef,
   resolveCharacterSelection,
   resolveNativeCharacterRef,
-} from "../../src/widgets/StoryPlayer/engine/characterRef";
-import { tryParseInt32 } from "../../src/widgets/StoryPlayer/engine/commandParams";
-
-import type { StoryLinkNode } from "../../src/widgets/StoryPlayer/engine/types";
+} from "@/widgets/StoryPlayer/engine/characterRef";
+import { tryParseInt32 } from "@/widgets/StoryPlayer/engine/commandParams";
+import type { StoryLinkNode } from "@/widgets/StoryPlayer/engine/types";
 
 const linkMap: Record<string, StoryLinkNode> = {
   avg_npc_1: {

@@ -2,8 +2,8 @@ import { createApp, nextTick } from "vue";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createStoryPlayer } from "../../src/widgets/StoryPlayer/engine/createStoryPlayer";
-import StoryPlayerWidget from "../../src/widgets/StoryPlayer/index.vue";
+import { createStoryPlayer } from "@/widgets/StoryPlayer/engine/createStoryPlayer";
+import StoryPlayerWidget from "@/widgets/StoryPlayer/index.vue";
 
 import {
   loads,
@@ -19,27 +19,27 @@ vi.mock("@pixi/sound", () => ({ sound: { disableAutoPause: false } }));
 vi.mock("pixi.js", async () => ({
   Assets: (await import("./helpers/fakePixiSound")).fakeAssets,
 }));
-vi.mock("../../src/widgets/StoryPlayer/engine/renderer", () => ({
+vi.mock("@/widgets/StoryPlayer/engine/renderer", () => ({
   PixiStoryRenderer: class {
     constructor() {
       return new FakeRenderer();
     }
   },
 }));
-vi.mock("../../src/widgets/StoryPlayer/context", () => ({
+vi.mock("@/widgets/StoryPlayer/context", () => ({
   loadContextByScript: async (script: string) =>
     createContext(script.split("\n")),
 }));
-vi.mock("../../src/widgets/StoryPlayer/engine/preload", () => ({
+vi.mock("@/widgets/StoryPlayer/engine/preload", () => ({
   preloadContextAssets: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../src/widgets/StoryPlayer/engine/font", () => ({
+vi.mock("@/widgets/StoryPlayer/engine/font", () => ({
   preloadDialogFont: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../src/widgets/StoryPlayer/components/AssetListModal.vue", () => ({
+vi.mock("@/widgets/StoryPlayer/components/AssetListModal.vue", () => ({
   default: { render: () => null },
 }));
-vi.mock("../../src/widgets/StoryPlayer/components/LogAllPanel.vue", () => ({
+vi.mock("@/widgets/StoryPlayer/components/LogAllPanel.vue", () => ({
   default: { render: () => null },
 }));
 

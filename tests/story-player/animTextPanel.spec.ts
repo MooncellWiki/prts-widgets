@@ -4,9 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AnimTextPanel,
   parseSplitContent,
-} from "../../src/widgets/StoryPlayer/engine/rendering/panels/AnimTextPanel";
-
-import type { AnimTextInput } from "../../src/widgets/StoryPlayer/engine/types";
+} from "@/widgets/StoryPlayer/engine/rendering/panels/AnimTextPanel";
+import type { AnimTextInput } from "@/widgets/StoryPlayer/engine/types";
 
 const { loadMock } = vi.hoisted(() => ({
   loadMock: vi.fn(async () => Texture.WHITE),

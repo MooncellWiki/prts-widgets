@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { loadPageStory } from "../../src/pages/story";
+import { loadPageStory } from "@/pages/story";
 
 afterEach(() => vi.unstubAllGlobals());
 

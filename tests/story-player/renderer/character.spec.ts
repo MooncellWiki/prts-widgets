@@ -3,15 +3,15 @@ import { setImmediate } from "node:timers/promises";
 import { Assets, Container, Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { CharacterArtLoader } from "../../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { Context } from "@/widgets/StoryPlayer/context";
+import { CharacterArtLoader } from "@/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { TweenStartOptions } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+
 import {
   createRenderedPlayback,
   createRenderer,
   focusAmount,
 } from "../helpers/rendererFixtures";
-
-import type { Context } from "../../../src/widgets/StoryPlayer/context";
-import type { TweenStartOptions } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 
 function createCharacterRenderer(stubTween = true): any {
   const context: Context = {

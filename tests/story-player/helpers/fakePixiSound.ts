@@ -1,4 +1,4 @@
-import { resolveStoryAudioByKey } from "../../../src/widgets/StoryPlayer/engine/asset";
+import { resolveStoryAudioByKey } from "@/widgets/StoryPlayer/engine/asset";
 
 /*
  * Stand-ins for the PIXI sound stack used by HtmlStoryAudio. A spec mocks

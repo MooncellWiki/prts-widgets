@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { createExecutionHandle } from "../../../src/widgets/StoryPlayer/engine/execution";
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { createExecutionHandle } from "@/widgets/StoryPlayer/engine/execution";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+import type { RuntimeWarning } from "@/widgets/StoryPlayer/engine/types";
+
 import {
   createContext,
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
-
-import type { RuntimeWarning } from "../../../src/widgets/StoryPlayer/engine/types";
 
 describe("StoryRuntime", () => {
   it("places a single character in the middle slot without waiting for its fade", async () => {

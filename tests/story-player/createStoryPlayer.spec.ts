@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createStoryPlayer } from "../../src/widgets/StoryPlayer/engine/createStoryPlayer";
+import { createStoryPlayer } from "@/widgets/StoryPlayer/engine/createStoryPlayer";
 
 import { FakeRenderer } from "./helpers/runtimeFakes";
 
 // 使用实际的 StoryRuntime。图形和 @pixi/sound 用桩以便在 happy-dom 中运行。
 vi.mock("@pixi/sound", () => ({ sound: { disableAutoPause: false } }));
-vi.mock("../../src/widgets/StoryPlayer/engine/renderer", async () => {
+vi.mock("@/widgets/StoryPlayer/engine/renderer", async () => {
   const { FakeRenderer } = await import("./helpers/runtimeFakes");
   return { PixiStoryRenderer: FakeRenderer };
 });

@@ -1,11 +1,10 @@
 import { setImmediate } from "node:timers/promises";
 
-import { TweenRunner } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-
+import { TweenRunner } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
 import type {
   PlaybackFrame,
   StoryRenderer,
-} from "../../../src/widgets/StoryPlayer/engine/types";
+} from "@/widgets/StoryPlayer/engine/types";
 
 /** Frame adapter for tests without a mounted Pixi ticker. */
 export class PlaybackTestFrames {

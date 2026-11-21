@@ -3,9 +3,9 @@ import { createApp, h } from "vue";
 import { NConfigProvider } from "naive-ui";
 import { describe, expect, it } from "vitest";
 
-import LogAllList from "../../src/widgets/StoryPlayer/components/LogAllList.vue";
-import { buildLogAll } from "../../src/widgets/StoryPlayer/engine/log/index";
-import { parseScript } from "../../src/widgets/StoryPlayer/engine/parser";
+import LogAllList from "@/widgets/StoryPlayer/components/LogAllList.vue";
+import { buildLogAll } from "@/widgets/StoryPlayer/engine/log/index";
+import { parseScript } from "@/widgets/StoryPlayer/engine/parser";
 
 describe("LogAllList UI smoke", () => {
   it("renders blocks with labels and highlights current path", async () => {

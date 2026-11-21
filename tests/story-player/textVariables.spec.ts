@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   expandStoryText,
   getStoryNickname,
-} from "../../src/widgets/StoryPlayer/engine/textVariables";
+} from "@/widgets/StoryPlayer/engine/textVariables";
 
 afterEach(() => {
   window.mw = undefined;
