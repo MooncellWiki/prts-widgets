@@ -59,13 +59,27 @@ async function mountPanel() {
   });
   await panel.mount();
   const root = layer.children[0] as Container;
-  const [, bottom, , dialogue] = root.children as [Sprite, Sprite, Text, Text];
-  return { bottom, dialogue, fades, panel, root };
+  const [top, bottom, , dialogue] = root.children as [
+    Sprite,
+    Sprite,
+    Text,
+    Text,
+  ];
+  return { bottom, dialogue, fades, panel, root, top };
 }
 
 describe("DialogView", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("tints the shared gradient with each native frame color", async () => {
+    const { bottom, top } = await mountPanel();
+
+    expect(top.tint).toBe(0x20_21_2a);
+    expect(top.alpha).toBeCloseTo(180 / 255);
+    expect(bottom.tint).toBe(0x00_00_00);
+    expect(bottom.alpha).toBe(1);
   });
 
   it("starts hidden and fades in over 150ms the first time it shows", async () => {

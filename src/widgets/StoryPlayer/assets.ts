@@ -16,7 +16,7 @@
 // 注意：`new URL` 必须用字符串字面量作为第一参数直接内联，Vite 才能静态分析
 // 出资产依赖并打包；不能用函数包装或变量拼接。
 
-/** 对话框顶部/底部黑条渐变纹理 */
+/** 对话框与切入条共用的 Alpha8 渐变。PNG 用白色 RGB 保留各节点的 tint。 */
 export const DIALOG_FRAME_URL = new URL(
   "assets/ui/sprite_avg_cutscene.png",
   import.meta.url,

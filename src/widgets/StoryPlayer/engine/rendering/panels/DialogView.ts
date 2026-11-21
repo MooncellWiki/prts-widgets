@@ -85,12 +85,15 @@ export class DialogView {
       top.anchor.set(0, 1);
       top.scale.y *= -1;
       top.position.set(0, 0);
-      top.tint = 0x20_21_25;
-      top.alpha = 0.7059;
+      // The 2791 DialogPanel uses an Alpha8 sprite for both frames. The
+      // white RGB in the PNG lets Pixi apply each native Image color.
+      top.tint = 0x20_21_2a;
+      top.alpha = 180 / 255;
       bottom = new Sprite(texture);
       bottom.width = STORY_WIDTH;
       bottom.height = DialogView.BOTTOM_HEIGHT;
       bottom.position.set(0, STORY_HEIGHT - DialogView.BOTTOM_HEIGHT);
+      bottom.tint = 0x00_00_00;
     } catch {
       this.warn?.("failed ui: sprite_avg_cutscene");
     }
