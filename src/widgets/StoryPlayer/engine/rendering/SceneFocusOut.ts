@@ -1,5 +1,3 @@
-import { BlurFilter, ColorMatrixFilter, type Container } from "pixi.js";
-
 import {
   browserAnimationClock,
   createExecutionHandle,
@@ -7,10 +5,9 @@ import {
   type ExecutionHandle,
 } from "../execution";
 
-import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
-
 import type { FocusOutInput, FocusParamInput } from "../types";
 import type { TweenRunner } from "./core/TweenRunner";
+import type { Container } from "pixi.js";
 
 interface FocusState {
   amount: number;
@@ -20,7 +17,19 @@ interface FocusState {
 
 interface PostDisplay {
   amount: number;
+  soft: boolean;
   target?: Container;
+}
+
+export interface FocusTarget {
+  amount: number;
+  soft: boolean;
+  target: Container;
+}
+
+export interface FocusFrame {
+  config: FocusParamInput;
+  targets: Iterable<FocusTarget>;
 }
 
 const imageChannels = {
@@ -49,54 +58,48 @@ const focusChannels = new Map<string, readonly string[]>([
   ["lbg", largeBackgroundChannels],
 ]);
 
+const activeAmountThreshold = 1e-5;
+
 /**
  * Port scope: `Torappu.AVG.AVGCameraEffect._ExecuteFocusout` and
- * `_ExecuteFocusParam` channel state. Applying `BlurFilter` and
- * `ColorMatrixFilter` per PIXI container is a Web adaptation of the native
- * `AVGSceneEffectManager` post-processing pipeline.
- *
- * Native composites each registered item as "clean image x fully-processed
- * image" mixed by the channel amount (`AVGSceneFocusOut.Render` +
- * `mat_blit_ghost`; grayscale/inverse strength is a material constant and
- * amount only drives the blend -- amount=0.5 is a half mix, not a
- * half-strength effect). The color filters below reproduce that mix by
- * feeding `amount` straight into `buildColorEffectMatrix` (see the comment
- * in `render()` for the shader math). Blur keeps a strength-graded surrogate
- * for the blend because stock PIXI filters cannot composite two copies of
- * live content.
+ * `_ExecuteFocusParam` and `AVGSceneFocusOut` channel state. Each bound
+ * PostDisplay owns its last amount even when the channel is rebound.
  */
 export class SceneFocusOut {
   private readonly states = new Map<string, FocusState>();
   private readonly bindings = new Map<string, PostDisplay>();
   private readonly fixedSlots = new Map<string, PostDisplay>();
-  private readonly fixedLayers: Array<{
-    layer: Container;
-    slots: PostDisplay[];
-  }> = [];
   private readonly cgItems = new Map<Container, PostDisplay>();
   private readonly swappedPairs = new Set<FocusImagePair>();
-  private readonly filteredTargets = new Set<Container>();
   private config: FocusParamInput = { blur: true, color: "None" };
+  private blurInitialized = false;
 
   constructor(
-    layerTargets: ReadonlyMap<string, Container>,
     private readonly tween: TweenRunner["run"],
     private readonly now = browserAnimationClock.now,
   ) {
     for (const [type, ids] of focusChannels) {
-      const slots = ids.map((id) => {
-        const slot = { amount: 0 };
+      for (const id of ids) {
+        // BindPostDisplay (2791 @ 0x1841D04F0) uses SoftItem for LBKG/CHAR_SLOT.
+        const slot = { amount: 0, soft: type === "char" || type === "lbg" };
         this.fixedSlots.set(id, slot);
         this.bindings.set(id, slot);
-        return slot;
-      });
-      this.fixedLayers.push({ layer: layerTargets.get(type)!, slots });
+      }
     }
   }
 
   setParam(input: FocusParamInput): void {
     this.config = input;
-    this.render();
+    this.updateBlurInitialization();
+  }
+
+  get frame(): FocusFrame | undefined {
+    const { color } = this.config;
+    // AVGSceneFocusOut.Render (2791 @ 0x1841FAADE) takes the blur path
+    // for color=None and can reuse a previously created m_blurMat.
+    const blur = this.config.blur || (color === "None" && this.blurInitialized);
+    if ((!blur && color === "None") || !this.isActive) return;
+    return { config: { blur, color }, targets: this.targets() };
   }
 
   setFocus(
@@ -124,11 +127,11 @@ export class SceneFocusOut {
     });
     if (input.from !== undefined) {
       for (const state of states) this.writeAmount(state, input.from);
-      this.render();
+      this.updateBlurInitialization();
     }
     if (input.durationMs <= 0) {
       for (const state of states) this.writeAmount(state, input.to);
-      this.render();
+      this.updateBlurInitialization();
       return;
     }
 
@@ -145,13 +148,13 @@ export class SceneFocusOut {
         if (active.size === 0) animation?.end(reason);
       };
     }
+    this.updateBlurInitialization();
     const update = (progress: number) => {
       if (active.size === 0) return;
       // Native AVGSceneEffectManager._SetEffectAmount uses TweenUtils.SmoothStep.
       const eased = progress * progress * (3 - 2 * progress);
       for (const [state, from] of active)
         this.writeAmount(state, from + (input.to - from) * eased);
-      this.render();
     };
     void this.tween(
       input.durationMs,
@@ -178,9 +181,8 @@ export class SceneFocusOut {
       slot.target = undefined;
       this.bindings.set(id, slot);
     }
-    for (const target of this.filteredTargets) target.filters = [];
-    this.filteredTargets.clear();
     this.config = { blur: true, color: "None" };
+    this.blurInitialized = false;
   }
 
   /**
@@ -199,21 +201,18 @@ export class SceneFocusOut {
     const swapped = this.swappedPairs.has(pair);
     this.fixedSlots.get(first)!.target = swapped ? back : fore;
     this.fixedSlots.get(second)!.target = swapped ? fore : back;
-    this.render();
   }
 
   /** LargeBackgroundPanel._BindCamEffectTarget (2791 @ 0x1841D81E0). */
   setLargeBackgroundTargets(targets: readonly Container[]): void {
     for (const [index, id] of largeBackgroundChannels.entries())
       this.fixedSlots.get(id)!.target = targets[index];
-    this.render();
   }
 
   releaseFixedTarget(target: Container): void {
     for (const slot of this.fixedSlots.values()) {
       if (slot.target !== target) continue;
       slot.target = undefined;
-      this.render();
       break;
     }
   }
@@ -226,10 +225,9 @@ export class SceneFocusOut {
    * the new image.
    */
   bindCgItem(id: string, target: Container): void {
-    const display = { amount: this.states.get(id)?.amount ?? 0 };
+    const display = { amount: this.states.get(id)?.amount ?? 0, soft: true };
     this.bindings.set(id, display);
     this.cgItems.set(target, display);
-    this.render();
   }
 
   /**
@@ -244,7 +242,6 @@ export class SceneFocusOut {
     this.cgItems.delete(target);
     const state = this.states.get(id);
     if (state) state.amount = 0;
-    this.render();
   }
 
   private writeAmount(state: FocusState, amount: number): void {
@@ -253,52 +250,28 @@ export class SceneFocusOut {
     if (display) display.amount = amount;
   }
 
-  private render(): void {
-    const amounts = new Map<Container, number>();
-    for (const [target, display] of this.cgItems)
-      amounts.set(target, display.amount);
-    for (const { layer, slots } of this.fixedLayers) {
-      const amount = slots[0]!.amount;
-      // A shared filter keeps a composed puzzle continuous across tile edges.
-      if (slots.every((slot) => slot.amount === amount)) {
-        if (amount > 0) amounts.set(layer, amount);
-      } else {
-        for (const slot of slots) {
-          if (slot.target && slot.amount > 0)
-            amounts.set(slot.target, slot.amount);
-        }
-      }
+  private get isActive(): boolean {
+    // AVGSceneEffectManager._UpdateCommandStatus (2791 @ 0x1841D4510)
+    // checks both active tweens and GetActiveChannels' stored amounts.
+    for (const state of this.states.values()) {
+      if (state.endTween || state.amount > activeAmountThreshold) return true;
     }
+    return false;
+  }
 
-    for (const target of this.filteredTargets) {
-      if (!amounts.has(target)) target.filters = [];
+  private updateBlurInitialization(): void {
+    // UpdateEffect (2791 @ 0x1841D0E50) and MarkEffectImplConfigDirty
+    // (0x1841D0CE0) can build the command buffer before the next draw.
+    if (!this.blurInitialized && this.config.blur && this.isActive)
+      this.blurInitialized = true;
+  }
+
+  private *targets(): IterableIterator<FocusTarget> {
+    for (const { target, amount, soft } of this.fixedSlots.values()) {
+      if (target && amount > 0) yield { target, amount, soft };
     }
-    this.filteredTargets.clear();
-
-    for (const [target, rawAmount] of amounts) {
-      const amount = Math.max(0, Math.min(1, rawAmount));
-      const filters = [];
-      if (amount > 0 && this.config.blur)
-        filters.push(new BlurFilter({ strength: amount * 8 }));
-      if (amount > 0 && this.config.color !== "None") {
-        // Native `AVGSceneFocusOut.Render` (2.7.61 VA 0x183E859D0) blits with
-        // the same AVG/[UC]Common/Arts/Materials/mat_grayscale material as
-        // `cameraeffect`, writing `_Params = (0.299, 0.587, 0.114,
-        // color == Grayscale)` and `_Inverse = (color == Colorinverse)` — the
-        // channel is binary there, and the per-item focus amount is applied
-        // afterwards by compositing the processed target back through
-        // mat_blit_ghost. That composite is a lerp between the original and
-        // the fully processed pixel, which is exactly what feeding `amount`
-        // into the matrix models, so both channels scale with it.
-        const color = new ColorMatrixFilter();
-        color.matrix =
-          this.config.color === "Grayscale"
-            ? buildColorEffectMatrix(amount, 0)
-            : buildColorEffectMatrix(0, amount);
-        filters.push(color);
-      }
-      target.filters = filters;
-      if (filters.length > 0) this.filteredTargets.add(target);
+    for (const [target, { amount, soft }] of this.cgItems) {
+      if (amount > 0) yield { target, amount, soft };
     }
   }
 }

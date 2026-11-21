@@ -2,10 +2,12 @@ import { CanvasSource, Texture } from "pixi.js";
 
 import type { CharacterPortrait } from "../../characterPortrait";
 import type { StoryFaceRect } from "../../types";
+import type { FocusExpression } from "../core/FocusGhost";
 import type { TextureLoad } from "../core/TextureAsset";
 
 interface CharacterTexture {
   texture: Texture;
+  expression?: FocusExpression;
   release?: () => void;
 }
 
@@ -102,6 +104,7 @@ export class CharacterArtLoader {
     let released = false;
     return {
       texture: pinned.texture,
+      expression: { body, face, rect },
       release: () => {
         if (released) return;
         released = true;
@@ -146,6 +149,9 @@ export class CharacterArtLoader {
       canvas.height,
     );
     const f = face.frame;
+    // The 2791 AVG_Char_AlphaSplit shader selects the face RGBA inside
+    // its UV rectangle, including face texels with fractional or zero A.
+    ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
     ctx.drawImage(
       faceSource,
       f.x,

@@ -7,6 +7,7 @@ import { CharacterArtLoader } from "../../../src/widgets/StoryPlayer/engine/rend
 import {
   createRenderedPlayback,
   createRenderer,
+  focusAmount,
 } from "../helpers/rendererFixtures";
 
 import type { Context } from "../../../src/widgets/StoryPlayer/context";
@@ -292,11 +293,11 @@ describe("PixiStoryRenderer", () => {
     const visual = () => renderer.characterView.characterSlots.get("m").visual;
 
     renderer.setCharacter(command);
-    expect(visual().filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, visual())).toBe(0.5);
     renderer.setCharacter(command);
-    expect(visual().filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, visual())).toBe(0.5);
     renderer.setCharacter(characterCommand("char_chen#2", "2$1"));
-    expect(visual().filters ?? []).toHaveLength(0);
+    expect(focusAmount(renderer.sceneEffects, visual())).toBe(0);
   });
 
   it("zeroes the offset when the character re-shows under a different key", () => {

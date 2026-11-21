@@ -1,8 +1,6 @@
 import {
-  AlphaFilter,
   Application,
   Assets,
-  type BlurFilter,
   Container,
   type Graphics,
   NineSliceSprite,
@@ -19,6 +17,7 @@ import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
 import {
   createRenderedPlayback,
   createRenderer,
+  focusAmount,
 } from "../helpers/rendererFixtures";
 import {
   createContext,
@@ -37,10 +36,9 @@ interface ManualTween {
   step: (progress: number) => void;
 }
 
-function videoOpacity({ sceneViewport }: LayerGraph): number {
-  if (!sceneViewport.renderable) return 1;
-  const filter = sceneViewport.filters?.[0];
-  return filter instanceof AlphaFilter ? 1 - filter.alpha : 0;
+function videoOpacity({ domVideoMask, video }: LayerGraph): number {
+  if (video.visible) return video.alpha;
+  return domVideoMask.visible ? domVideoMask.alpha : 0;
 }
 
 function createShowItemRenderer(ticker?: Ticker) {
@@ -351,6 +349,7 @@ describe("Interlude avatar rendering", () => {
       const face = createTexture(122, 147);
       renderer.textureForCharacterKey = (key: string) =>
         key === "body" ? body : face;
+      const clearRect = vi.fn();
       const drawImage = vi.fn();
       const context = vi
         .spyOn(
@@ -359,7 +358,10 @@ describe("Interlude avatar rendering", () => {
           },
           "getContext",
         )
-        .mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+        .mockReturnValue({
+          clearRect,
+          drawImage,
+        } as unknown as CanvasRenderingContext2D);
       const findSprite = (node: Container): Sprite | undefined => {
         if (node instanceof Sprite) return node.visible ? node : undefined;
         for (const child of node.children) {
@@ -400,6 +402,9 @@ describe("Interlude avatar rendering", () => {
             ]
           : [];
         expect(drawImage.mock.calls.slice(1)).toEqual(expectedFace);
+        expect(clearRect.mock.calls).toEqual(
+          faceRect ? [[faceRect.x, faceRect.y, faceRect.w, faceRect.h]] : [],
+        );
       } finally {
         destroy();
         context.mockRestore();
@@ -1228,7 +1233,7 @@ describe("Displayable and focus frame order", () => {
 
   it("draws the following CG in the frame blocking focusout finishes", async () => {
     const draws: unknown[] = [];
-    const { app, destroy, runtime } = await createRenderedPlayback(
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
         '[cgitem(image="first")]',
         '[focusout(type="cgitem",id="first",from=0,to=1,duration=0.032,block=true)]',
@@ -1236,9 +1241,10 @@ describe("Displayable and focus frame order", () => {
         '[name="A"]ok',
       ],
       ({ cgItems }) => {
-        const blur = cgItems.children[0]?.filters?.[0] as
-          BlurFilter | undefined;
-        draws.push([blur?.strength, cgItems.children.length]);
+        draws.push([
+          focusAmount(renderer.sceneEffects, cgItems.children[0]),
+          cgItems.children.length,
+        ]);
       },
     );
     const started = runtime.start();
@@ -1246,8 +1252,8 @@ describe("Displayable and focus frame order", () => {
       app.ticker.update(16);
       app.ticker.update(32);
       expect(draws).toEqual([
-        [4, 1],
-        [8, 2],
+        [0.5, 1],
+        [1, 2],
       ]);
     } finally {
       destroy();
@@ -1622,6 +1628,12 @@ describe("Displayable and focus frame order", () => {
     try {
       const video = host.querySelector("video")!;
       const layers: LayerGraph = renderer.layers;
+      // Model the playing event after a cross-origin fallback.
+      video.removeAttribute("crossorigin");
+      Object.defineProperties(video, {
+        videoWidth: { value: 320 },
+        videoHeight: { value: 240 },
+      });
       video.dispatchEvent(new Event("playing"));
       app.ticker.update(230);
       video.dispatchEvent(new Event("ended"));
@@ -1631,7 +1643,11 @@ describe("Displayable and focus frame order", () => {
 
       expect(videoOpacity(layers)).toBe(1);
       expect(host.querySelector("video")).toBe(video);
-      expect(layers.sceneViewport.renderable).toBe(false);
+      expect(layers.domVideoMask.getSize()).toEqual({
+        width: 320,
+        height: 240,
+      });
+      expect(video.style.width).toBe("25%");
       expect(layers.blocker.renderable).toBe(true);
       expect(layers.blocker.children[0]?.alpha).toBeCloseTo(0.5);
       expect(layers.ui.visible).toBe(true);
@@ -1944,7 +1960,7 @@ describe("Displayable and focus frame order", () => {
 
   it("force-ends a blocking focus wait while its channel continues after the skip", async () => {
     const draws: unknown[] = [];
-    const { app, destroy, runtime } = await createRenderedPlayback(
+    const { app, destroy, renderer, runtime } = await createRenderedPlayback(
       [
         '[cgitem(image="first")]',
         '[focusout(type="cgitem",id="first",from=0,to=1,duration=0.032,block=true)]',
@@ -1954,9 +1970,10 @@ describe("Displayable and focus frame order", () => {
         '[name="A"]ok',
       ],
       ({ cgItems }) => {
-        const blur = cgItems.children[0]?.filters?.[0] as
-          BlurFilter | undefined;
-        draws.push([blur?.strength, cgItems.children.length]);
+        draws.push([
+          focusAmount(renderer.sceneEffects, cgItems.children[0]),
+          cgItems.children.length,
+        ]);
       },
     );
     const started = runtime.start();
@@ -1966,8 +1983,8 @@ describe("Displayable and focus frame order", () => {
       app.ticker.update(16);
       app.ticker.update(32);
       expect(draws).toEqual([
-        [4, 2],
-        [8, 2],
+        [0.5, 2],
+        [1, 2],
       ]);
       await Promise.all([started, skipped]);
     } finally {

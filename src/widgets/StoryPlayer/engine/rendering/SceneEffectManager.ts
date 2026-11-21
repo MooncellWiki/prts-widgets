@@ -1,10 +1,32 @@
-import { ColorMatrixFilter, type Container } from "pixi.js";
+import {
+  ColorMatrixFilter,
+  Sprite,
+  TilingSprite,
+  WebGLRenderer,
+  WebGPURenderer,
+  type Container,
+  type Renderer,
+} from "pixi.js";
 
 import { createExecutionHandle, type ExecutionHandle } from "../execution";
 
-import { SceneFocusOut, type FocusImagePair } from "./SceneFocusOut";
+import {
+  SceneFocusOut,
+  type FocusFrame,
+  type FocusImagePair,
+} from "./SceneFocusOut";
 import { buildColorEffectMatrix } from "./core/ColorEffectMatrix";
 import { dotweenDefaultEase } from "./core/DotweenEase";
+import {
+  FocusGhost,
+  type FocusDrawable,
+  type FocusExpression,
+} from "./core/FocusGhost";
+import {
+  installSceneAlphaBlends,
+  sourceAlphaBlend,
+} from "./core/NativeSceneAlpha";
+import { SceneFocusFilter } from "./core/SceneFocusFilter";
 
 import type { FocusOutInput, FocusParamInput } from "../types";
 import type { LayerGraph } from "./core/LayerGraph";
@@ -12,38 +34,51 @@ import type { TweenRunner } from "./core/TweenRunner";
 
 type SceneEffectLayers = Pick<
   LayerGraph,
-  "background" | "characters" | "gridBackground" | "images" | "sceneCamera"
+  "characters" | "sceneCamera" | "video"
 >;
+
+function findImage(target: Container): FocusDrawable | undefined {
+  if (target instanceof Sprite || target instanceof TilingSprite) return target;
+  for (const child of target.children) {
+    const image = findImage(child);
+    if (image) return image;
+  }
+}
 
 /**
  * Native port: Torappu.AVG.AVGSceneEffectManager (2791 UpdateEffect
- * @ 0x1841D0E50, BindPostDisplay @ 0x1841D04F0). Pixi container filters
- * supply the scene color pass and focus overlays.
+ * @ 0x1841D0E50, BindPostDisplay @ 0x1841D04F0). The scene camera's filter
+ * captures its ordered draw list into the RGBA8 source for focusout.
  */
 export class SceneEffectManager {
   private readonly focus: SceneFocusOut;
+  private readonly ghosts = new Map<FocusDrawable, FocusGhost>();
+  private readonly expressions = new WeakMap<Container, FocusExpression>();
   private readonly grayscaleTweens = new Set<ExecutionHandle>();
   private readonly sceneCamera: Container;
+  private focusActive = false;
+  private focusFilter?: SceneFocusFilter;
   private grayscaleAmount = 0;
   private inverseAmount = 0;
-  private sceneColorFilter: ColorMatrixFilter | null = null;
+  private sceneColorFilter?: ColorMatrixFilter;
 
   constructor(
-    layers: SceneEffectLayers,
+    private readonly layers: SceneEffectLayers,
     private readonly tween: TweenRunner["run"],
     now?: () => number,
   ) {
     this.sceneCamera = layers.sceneCamera;
-    this.focus = new SceneFocusOut(
-      new Map([
-        ["bg", layers.background],
-        ["char", layers.characters],
-        ["cg", layers.images],
-        ["lbg", layers.gridBackground],
-      ]),
-      tween,
-      now,
-    );
+    this.focus = new SceneFocusOut(tween, now);
+    this.sceneCamera.onRender = (renderer) => this.prepareFocus(renderer);
+    this.sceneCamera.once("destroyed", () => {
+      this.focusFilter?.destroy();
+      this.sceneColorFilter?.destroy();
+      this.ghosts.clear();
+    });
+  }
+
+  get focusFrame(): FocusFrame | undefined {
+    return this.focus.frame;
   }
 
   setCameraEffect(
@@ -124,6 +159,10 @@ export class SceneEffectManager {
     this.focus.releaseFixedTarget(target);
   }
 
+  setFocusExpression(target: Container, expression: FocusExpression): void {
+    this.expressions.set(target, expression);
+  }
+
   bindCgItem(id: string, target: Container): void {
     this.focus.bindCgItem(id, target);
   }
@@ -137,24 +176,87 @@ export class SceneEffectManager {
     this.grayscaleTweens.clear();
     this.grayscaleAmount = 0;
     this.inverseAmount = 0;
-    this.updateSceneColor();
     this.focus.reset();
+    this.disableFocus();
+    this.updateFilters();
+  }
+
+  private prepareFocus(renderer: Renderer): void {
+    const frame = this.focusFrame;
+    if (
+      !frame ||
+      !(renderer instanceof WebGLRenderer || renderer instanceof WebGPURenderer)
+    ) {
+      this.disableFocus();
+      return;
+    }
+    installSceneAlphaBlends(renderer);
+    if (!this.focusActive) {
+      this.focusActive = true;
+      this.layers.characters.blendMode = sourceAlphaBlend;
+      this.layers.video.blendMode = sourceAlphaBlend;
+      this.focusFilter ??= new SceneFocusFilter();
+      this.updateFilters();
+    }
+    this.focusFilter!.configure(frame.config);
+
+    const current = new Set<FocusDrawable>();
+    for (const { target, amount, soft } of frame.targets) {
+      if (target.destroyed || !target.parent) continue;
+      const image = findImage(target);
+      if (!image) continue;
+      current.add(image);
+      let ghost = this.ghosts.get(image);
+      if (!ghost) {
+        ghost = new FocusGhost(image);
+        this.ghosts.set(image, ghost);
+      }
+      ghost.sync(amount, soft, this.expressions.get(target));
+    }
+    for (const [image, ghost] of this.ghosts) {
+      if (current.has(image)) continue;
+      ghost.destroy();
+      this.ghosts.delete(image);
+    }
+  }
+
+  private disableFocus(): void {
+    if (!this.focusActive) return;
+    this.focusActive = false;
+    this.layers.characters.blendMode = "inherit";
+    this.layers.video.blendMode = "inherit";
+    for (const ghost of this.ghosts.values()) ghost.destroy();
+    this.ghosts.clear();
+    this.updateFilters();
   }
 
   private updateSceneColor(): void {
-    if (this.grayscaleAmount === 0 && this.inverseAmount === 0) {
-      this.sceneCamera.filters = [];
-      this.sceneColorFilter = null;
-      return;
-    }
+    this.updateFilters();
+    if (this.sceneColorFilter)
+      this.sceneColorFilter.matrix = buildColorEffectMatrix(
+        this.grayscaleAmount,
+        this.inverseAmount,
+      );
+  }
 
-    // AVGSceneGrayScale.Render (2791 @ 0x1841FB700) applies both channels
-    // in one pass over the scene camera, including its CG item canvas.
-    this.sceneColorFilter ??= new ColorMatrixFilter();
-    this.sceneColorFilter.matrix = buildColorEffectMatrix(
-      this.grayscaleAmount,
-      this.inverseAmount,
-    );
-    this.sceneCamera.filters = [this.sceneColorFilter];
+  private updateFilters(): void {
+    const filters = [];
+    if (this.focusActive && this.focusFilter) filters.push(this.focusFilter);
+    if (this.grayscaleAmount !== 0 || this.inverseAmount !== 0) {
+      // AVGSceneEffectManager.EFFECT_ORDER (2791 @ 0x1841D4F00) places
+      // AVGSceneGrayScale after the focusout composite on the same camera.
+      this.sceneColorFilter ??= new ColorMatrixFilter({
+        antialias: "inherit",
+        resolution: "inherit",
+      });
+      filters.push(this.sceneColorFilter);
+    }
+    const previous = this.sceneCamera.filters;
+    if (
+      previous?.length === filters.length &&
+      filters.every((filter, index) => previous[index] === filter)
+    )
+      return;
+    this.sceneCamera.filters = filters;
   }
 }

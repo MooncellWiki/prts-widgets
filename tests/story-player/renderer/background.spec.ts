@@ -14,6 +14,7 @@ import {
   createContext,
   createRenderedPlayback,
   createRenderer,
+  focusAmount,
 } from "../helpers/rendererFixtures";
 
 import type { ExecutionHandle } from "../../../src/widgets/StoryPlayer/engine/execution";
@@ -43,7 +44,7 @@ describe("PixiStoryRenderer", () => {
 
     await renderer.setBackground("first");
     const [first] = renderer.layers.background.children;
-    expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0.5);
 
     let finishFade: (() => void) | undefined;
     renderer.tween = vi.fn(async (_ms, _update, complete) => {
@@ -51,14 +52,14 @@ describe("PixiStoryRenderer", () => {
     });
     await renderer.setBackground("second", { fadeMs: 100 });
     const second = renderer.layers.background.children[1];
-    expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
-    expect(second.filters ?? []).toHaveLength(0);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, second)).toBe(0);
     finishFade?.();
-    expect(first.filters).toHaveLength(0);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0);
 
     await renderer.setBackground("third");
     const [third] = renderer.layers.background.children;
-    expect(third.filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, third)).toBe(0.5);
   });
 
   it("keeps each ck_cg focus channel on its physical slot through shows and clears", () => {
@@ -76,13 +77,13 @@ describe("PixiStoryRenderer", () => {
     renderer.setImage("first");
     renderer.frames.step(16);
     const [first] = images.children;
-    expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0.5);
 
     renderer.setImage("second", { fadeMs: 32 });
     renderer.frames.step(16);
     const second = images.children[1];
-    expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
-    expect(second.filters ?? []).toHaveLength(0);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, second)).toBe(0);
     renderer.frames.step(16);
     expect(first.parent).toBeNull();
     expect(images.children).toEqual([second]);
@@ -106,12 +107,13 @@ describe("PixiStoryRenderer", () => {
     renderer.setImage("fourth", { fadeMs: 32 });
     renderer.frames.step(16);
     expect(images.children).toEqual([second, first]);
-    expect(images.filters?.[0]?.matrix[4]).toBe(0.75);
+    expect(focusAmount(renderer.sceneEffects, second)).toBe(0.75);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0.75);
 
     renderer.resetImage();
     expect(images.children).toHaveLength(0);
-    expect(first.filters ?? []).toHaveLength(0);
-    expect(second.filters ?? []).toHaveLength(0);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0);
+    expect(focusAmount(renderer.sceneEffects, second)).toBe(0);
     renderer.destroy();
   });
 

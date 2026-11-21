@@ -1,4 +1,4 @@
-import { type Sprite, Texture } from "pixi.js";
+import { type Container, type Sprite, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildGridBackgroundRoot } from "../../../src/widgets/StoryPlayer/engine/rendering/core/SceneGeometry";
@@ -6,6 +6,7 @@ import {
   createContext,
   createRenderedPlayback,
   createRenderer,
+  focusAmount,
 } from "../helpers/rendererFixtures";
 
 import type { ExecutionHandle } from "../../../src/widgets/StoryPlayer/engine/execution";
@@ -45,7 +46,7 @@ describe("PixiStoryRenderer", () => {
   ])("retires a pending tile load on $action", async ({ apply, labels }) => {
     const renderer = createRenderer();
     renderer.app = { destroy: vi.fn() };
-    const layer = renderer.layers.gridBackground;
+    const layer: Container = renderer.layers.gridBackground;
     const pending = Promise.withResolvers<Texture>();
     const replacement = new Texture({ label: "replacement" });
     renderer.textureForImageKey = vi
@@ -119,7 +120,10 @@ describe("PixiStoryRenderer", () => {
     await renderer.setGridBackground(createGridBackgroundInput())?.completion;
     expect(layer.children).toHaveLength(1);
     const first = layer.children[0];
-    expect(layer.filters?.[0]?.matrix[4]).toBe(1);
+    const firstTiles: Container[] = [...first.children];
+    expect(
+      firstTiles.map((tile) => focusAmount(renderer.sceneEffects, tile)),
+    ).toEqual([1, 1, 1, 1]);
 
     await renderer.setGridBackground({
       ...createGridBackgroundInput(),
@@ -127,11 +131,16 @@ describe("PixiStoryRenderer", () => {
     })?.completion;
     expect(layer.children).toHaveLength(1);
     expect(layer.children[0]).not.toBe(first);
-    expect(layer.filters?.[0]?.matrix[4]).toBe(1);
-    expect(renderer.layers.background.filters ?? []).toHaveLength(0);
+    for (const tile of firstTiles)
+      expect(focusAmount(renderer.sceneEffects, tile)).toBe(0);
+    expect(
+      layer.children[0].children.map((tile: Container) =>
+        focusAmount(renderer.sceneEffects, tile),
+      ),
+    ).toEqual([1, 1, 1, 1]);
 
     renderer.resetCameraEffects();
-    expect(layer.filters).toHaveLength(0);
+    expect(renderer.sceneEffects.focusFrame).toBeUndefined();
   });
 
   it("retains a focusout addressed to one lbg slot across puzzle replacement", async () => {
@@ -150,10 +159,13 @@ describe("PixiStoryRenderer", () => {
     const input = createGridBackgroundInput();
     await renderer.setGridBackground(input)?.completion;
     const old = renderer.largeBackgroundView.root.children[0];
-    expect(old.filters?.[0]?.matrix[4]).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, old)).toBe(0.5);
     expect(
-      renderer.largeBackgroundView.root.children[1].filters ?? [],
-    ).toHaveLength(0);
+      focusAmount(
+        renderer.sceneEffects,
+        renderer.largeBackgroundView.root.children[1],
+      ),
+    ).toBe(0);
 
     await renderer.setGridBackground({
       ...input,
@@ -161,10 +173,9 @@ describe("PixiStoryRenderer", () => {
     })?.completion;
     const [first, second] = renderer.largeBackgroundView.root.children;
     expect(old.destroyed).toBe(true);
-    expect(old.filters ?? []).toHaveLength(0);
-    expect(first.filters?.[0]?.matrix[4]).toBe(0.5);
-    expect(second.filters ?? []).toHaveLength(0);
-    expect(renderer.layers.gridBackground.filters ?? []).toHaveLength(0);
+    expect(focusAmount(renderer.sceneEffects, old)).toBe(0);
+    expect(focusAmount(renderer.sceneEffects, first)).toBe(0.5);
+    expect(focusAmount(renderer.sceneEffects, second)).toBe(0);
   });
 
   it("keeps the large background in front of the background regardless of update order", async () => {

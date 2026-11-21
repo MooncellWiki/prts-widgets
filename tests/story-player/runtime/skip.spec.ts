@@ -8,7 +8,10 @@ import {
   type ExecutionHandle,
 } from "../../../src/widgets/StoryPlayer/engine/execution";
 import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
-import { createRenderedPlayback } from "../helpers/rendererFixtures";
+import {
+  createRenderedPlayback,
+  focusAmount,
+} from "../helpers/rendererFixtures";
 import {
   createContext,
   FakeAudio,
@@ -1609,13 +1612,13 @@ describe("foreground image lifecycle", () => {
       const [slot] = images.children;
       const [sprite] = slot.children;
       app.ticker.update(16);
-      expect(slot.filters).toHaveLength(1);
+      expect(focusAmount(renderer.sceneEffects, slot)).toBe(0.5);
       expect(images.angle).toBeGreaterThan(0);
       app.ticker.update(216);
       expect(runtime.getState()).toBe("finished");
       expect(images.children).toHaveLength(0);
       expect(sprite.destroyed).toBe(true);
-      expect(slot.filters).toHaveLength(0);
+      expect(focusAmount(renderer.sceneEffects, slot)).toBe(0);
       expect(images.angle).toBe(0);
       app.ticker.update(232);
       expect(renderer.tweenUpdates.size).toBe(0);

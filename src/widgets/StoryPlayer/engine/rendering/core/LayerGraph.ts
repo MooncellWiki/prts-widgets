@@ -1,12 +1,16 @@
 import {
-  AlphaFilter,
   Container,
   Graphics,
   Rectangle,
   RenderLayer,
+  Sprite,
+  Texture,
+  type Size,
 } from "pixi.js";
 
 import { STORY_HEIGHT, STORY_WIDTH } from "../../types";
+
+import { VideoFrame } from "./VideoFrame";
 
 // 2791 sharedassets1.assets, AVGController (3630) canvas holder config.
 export const sceneCanvasOrder = {
@@ -20,6 +24,7 @@ export const sceneCanvasOrder = {
   image: 121,
   largeBackground: 2,
   showItem: 130,
+  video: 353,
 } as const;
 
 /** AVGCanvasLayerHolder._CalculateNewLayer (2791 @ 0x184167D50). */
@@ -52,16 +57,27 @@ export class LayerGraph {
   readonly sceneViewport = new Container();
   readonly ui = new Container();
   readonly world = new Container();
-  private sceneFade?: AlphaFilter;
+  readonly video = new VideoFrame();
+  readonly domVideoMask = new Sprite({
+    anchor: 0.5,
+    blendMode: "erase",
+    eventMode: "none",
+    texture: Texture.WHITE,
+    visible: false,
+  });
 
   constructor() {
-    this.sceneViewport.filterArea = new Rectangle(
+    // AVGSceneEffectManager._EnsureSourceDesc uses the camera's full viewport.
+    // Scene contents can be smaller, larger, or move during camerashake.
+    this.sceneCamera.filterArea = new Rectangle(
       0,
       0,
       STORY_WIDTH,
       STORY_HEIGHT,
     );
-    this.sceneViewport.once("destroyed", () => this.sceneFade?.destroy());
+    this.video.position.set(STORY_WIDTH / 2, STORY_HEIGHT / 2);
+    this.video.zIndex = sceneCanvasOrder.video;
+    this.domVideoMask.position.copyFrom(this.video.position);
     for (const slots of [
       this.cgItems,
       this.avgDisplayBackground,
@@ -100,11 +116,20 @@ export class LayerGraph {
       root.zIndex = order;
       this.sceneDraw.attach(root);
     }
-    this.sceneCamera.addChild(this.scene, this.cgItems, this.sceneDraw);
+    // 2791 story.unity's EmptyCamera (level7, Camera 143) clears to opaque
+    // black before AVGCamera_Scene (1708), which clears only the depth.
     const clearColor = new Graphics()
       .rect(0, 0, STORY_WIDTH, STORY_HEIGHT)
       .fill(0x000000);
-    this.sceneViewport.addChild(clearColor, this.sceneCamera);
+    this.sceneCamera.addChild(
+      clearColor,
+      this.scene,
+      this.cgItems,
+      this.video,
+      this.sceneDraw,
+    );
+    this.sceneDraw.attach(this.video);
+    this.sceneViewport.addChild(this.sceneCamera, this.domVideoMask);
     this.world.addChild(this.sceneViewport);
     // 2791 UICanvas/panel_avg draws panel_blocker, panel_displayable and
     // panel_curtains in that sibling order above the scene canvases.
@@ -114,23 +139,21 @@ export class LayerGraph {
   }
 
   /**
-   * 2791 VideoCanvas uses camera 1708 (depth 50), below UICanvas on
-   * camera 1709 (depth 51). The Web keeps opaque DOM media under Pixi and
-   * blends the flattened, opaque scene over it at the inverse opacity.
+   * 2791 VideoCanvas (2503) draws on AVGCamera_Scene at order 353, so
+   * scene effects also see its opacity during fades. The video_player
+   * prefab draws only its centered player rect. For DOM playback, erase
+   * the same rect from the canvas below the blocker and HUD.
    */
-  setVideoOpacity(opacity: number): void {
-    const scene = this.sceneViewport;
-    scene.renderable = opacity < 1;
-    if (opacity <= 0 || opacity >= 1) {
-      if (scene.filters) scene.filters = null;
-      return;
+  setVideoFrame(opacity: number, size?: Size, texture?: Texture): void {
+    const visible = size !== undefined && opacity > 0;
+    this.video.visible = visible && texture !== undefined;
+    this.video.alpha = opacity;
+    this.video.setFrame(texture ?? Texture.EMPTY);
+    this.domVideoMask.visible = visible && texture === undefined;
+    this.domVideoMask.alpha = opacity;
+    if (size) {
+      this.video.scale.set(size.width, size.height);
+      this.domVideoMask.setSize(size);
     }
-    const fade = (this.sceneFade ??= new AlphaFilter({
-      alpha: 1,
-      antialias: "inherit",
-      resolution: "inherit",
-    }));
-    fade.alpha = 1 - opacity;
-    if (!scene.filters) scene.filters = fade;
   }
 }

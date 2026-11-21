@@ -16,6 +16,7 @@ import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
 import {
   createRenderedPlayback,
   createRenderer,
+  focusAmount,
 } from "../helpers/rendererFixtures";
 import { createContext, FakeAudio } from "../helpers/runtimeFakes";
 
@@ -402,12 +403,15 @@ describe("PixiStoryRenderer", () => {
       expect(renderer.layers.sceneCamera.filters).toEqual([
         sceneColorFilter(0.031744, 1),
       ]);
-      expect(renderer.backgroundLayer.filters).toHaveLength(1);
+      expect(renderer.sceneEffects.focusFrame?.config).toEqual({
+        blur: false,
+        color: "Colorinverse",
+      });
       await runtime.skipNode();
       expect(runtime.getState()).toBe("finished");
       renderer.frames.step(1000);
       expect(renderer.layers.sceneCamera.filters).toHaveLength(0);
-      expect(renderer.backgroundLayer.filters).toHaveLength(0);
+      expect(renderer.sceneEffects.focusFrame).toBeUndefined();
       expect(renderer.layers.scene.position.x).toBe(0);
       expect(renderer.layers.scene.position.y).toBe(0);
     } finally {
@@ -416,48 +420,6 @@ describe("PixiStoryRenderer", () => {
       renderer.destroy();
       await started;
     }
-  });
-
-  it("desaturates focusout targets with the same Rec.601 matrix as cameraeffect", async () => {
-    const renderer = createRenderer();
-
-    renderer.setFocusParam({ blur: false, color: "Grayscale" });
-    await renderer.setFocusOut({
-      block: false,
-      durationMs: 0,
-      id: "",
-      to: 1,
-      type: "bg",
-    });
-
-    // Native AVGSceneFocusOut.Render blits with the same mat_grayscale
-    // material as AVGSceneGrayScale, so focusout must not fall back to pixi's
-    // additive grayscale() tint either.
-    const filters = renderer.backgroundLayer.filters as { matrix: number[] }[];
-    expect(filters).toHaveLength(1);
-    expect(filters[0]!.matrix.slice(0, 5)).toEqual([0.299, 0.587, 0.114, 0, 0]);
-  });
-
-  it("scales the focusout inverse channel by the focus amount", async () => {
-    const renderer = createRenderer();
-
-    renderer.setFocusParam({ blur: false, color: "Colorinverse" });
-    await renderer.setFocusOut({
-      block: false,
-      durationMs: 0,
-      id: "",
-      to: 0.5,
-      type: "bg",
-    });
-
-    // Native keeps `_Inverse` binary and blends the processed target back in
-    // by the per-item amount through mat_blit_ghost; folding the amount into
-    // `_Inverse` models that same lerp, so a half-focused target collapses to
-    // flat mid-grey instead of fully inverting.
-    const filters = renderer.backgroundLayer.filters as { matrix: number[] }[];
-    expect(normalizeZero(filters[0]!.matrix.slice(0, 5))).toEqual([
-      0, 0, 0, 0, 0.5,
-    ]);
   });
 
   it("releases a blocking focusout on SkipToThis while its tween keeps running", async () => {
@@ -474,11 +436,17 @@ describe("PixiStoryRenderer", () => {
     TickerPlugin.init.call(app, { autoStart: false });
     renderer.app = app;
     renderer.layers.attach(app.stage);
+    const background = renderer.backgroundLayer.addChild(new Container());
+    renderer.sceneEffects.setImageFocusTargets(
+      "bg",
+      background,
+      undefined,
+      false,
+    );
     renderer.dialogFrameTextureFailed = true;
     app.ticker.lastTime = 0;
     const runtime = new StoryRuntime(context, renderer, new FakeAudio());
     const started = runtime.start();
-    const focusAmount = () => renderer.backgroundLayer.filters?.[0]?.matrix[4];
     let skipped: Promise<void> | undefined;
     try {
       app.ticker.update(16);
@@ -490,11 +458,11 @@ describe("PixiStoryRenderer", () => {
       expect(runtime.getDisplayedLineIndex()).toBe(5);
       expect(renderer.layers.scene.position.x).toBe(0);
       expect(renderer.layers.scene.position.y).toBe(0);
-      expect(focusAmount()).toBeCloseTo(0.5);
+      expect(focusAmount(renderer.sceneEffects, background)).toBeCloseTo(0.5);
 
       app.ticker.update(48);
       app.ticker.update(64);
-      expect(focusAmount()).toBeCloseTo(1);
+      expect(focusAmount(renderer.sceneEffects, background)).toBeCloseTo(1);
       expect(runtime.getDisplayedLineIndex()).toBe(5);
     } finally {
       runtime.destroy();
@@ -528,14 +496,13 @@ describe("PixiStoryRenderer", () => {
       });
 
     expect(renderer.tween).not.toHaveBeenCalled();
-    expect(renderer.cgItemView.targets("a")[0].filters ?? []).toHaveLength(0);
-    expect(renderer.layers.characters.filters ?? []).toHaveLength(0);
+    expect(renderer.sceneEffects.focusFrame).toBeUndefined();
   });
 
   it("binds a stored cgitem focus amount on show and drops it on dispose", async () => {
     const renderer = createFocusRenderer();
-    const filtersOf = (key: string) =>
-      renderer.cgItemView.targets(key)[0].filters ?? [];
+    const amountOf = (key: string) =>
+      focusAmount(renderer.sceneEffects, renderer.cgItemView.targets(key)[0]);
 
     // `SetWhenBind` stores the amount before the display object exists and
     // `TryRegister` replays it on registration.
@@ -547,13 +514,13 @@ describe("PixiStoryRenderer", () => {
       type: "cgitem",
     });
     await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
-    expect(filtersOf("a").length).toBeGreaterThan(0);
+    expect(amountOf("a")).toBe(1);
 
     // `BeforeItemDisposed` removes the stored amount: a re-show after the
     // hide completes comes back clean.
     await renderer.clearCgItems("a", 0)?.completion;
     await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
-    expect(filtersOf("a")).toHaveLength(0);
+    expect(amountOf("a")).toBe(0);
 
     // Same for a same-key replacement, which disposes the old slot first.
     await renderer.setFocusOut({
@@ -563,9 +530,9 @@ describe("PixiStoryRenderer", () => {
       to: 1,
       type: "cgitem",
     });
-    expect(filtersOf("a").length).toBeGreaterThan(0);
+    expect(amountOf("a")).toBe(1);
     await renderer.showCgItem({ ...focusCgItemInput, key: "a" }).completion;
-    expect(filtersOf("a")).toHaveLength(0);
+    expect(amountOf("a")).toBe(0);
   });
 
   it("unbinds a replacement's focus channel when the old clear-all fade ends", async () => {
@@ -580,6 +547,9 @@ describe("PixiStoryRenderer", () => {
     await renderer.showCgItem(focusCgItemInput).completion;
     const old = renderer.cgItemView.targets("a")[0];
     await renderer.setFocusOut(command);
+    // Keep another channel active so the retired slot's ghost still draws
+    // after the shared cgitem channel is set to zero on the replacement.
+    await renderer.setFocusOut({ ...command, id: "", type: "bg" });
     let finishFade: (() => void) | undefined;
     renderer.tween.mockImplementationOnce(
       async (_duration: number, _step: unknown, complete: () => void) => {
@@ -590,18 +560,20 @@ describe("PixiStoryRenderer", () => {
     await renderer.showCgItem(focusCgItemInput).completion;
     const current = renderer.cgItemView.targets("a")[0];
     expect(current).not.toBe(old);
-    expect(current.filters).toHaveLength(1);
+    expect(focusAmount(renderer.sceneEffects, current)).toBe(1);
 
     await renderer.setFocusOut({ ...command, to: 0 });
-    expect(current.filters).toHaveLength(0);
-    expect(old.filters).toHaveLength(1);
+    expect(focusAmount(renderer.sceneEffects, current)).toBe(0);
+    expect(focusAmount(renderer.sceneEffects, old)).toBe(1);
     finishFade?.();
     expect(old.destroyed).toBe(true);
 
     await renderer.setFocusOut(command);
-    expect(current.filters).toHaveLength(0);
+    expect(focusAmount(renderer.sceneEffects, current)).toBe(0);
     await renderer.showCgItem({ ...focusCgItemInput, key: "b" }).completion;
-    expect(renderer.cgItemView.targets("b")[0].filters ?? []).toHaveLength(0);
+    expect(
+      focusAmount(renderer.sceneEffects, renderer.cgItemView.targets("b")[0]),
+    ).toBe(0);
   });
 
   it("draws a curtain as a solid body plus a fixed-width feather strip", () => {

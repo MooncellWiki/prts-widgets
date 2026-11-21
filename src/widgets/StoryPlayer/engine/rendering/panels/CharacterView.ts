@@ -311,7 +311,7 @@ export class CharacterView {
     private readonly tweens: TweenRunner,
     private readonly sceneEffects: Pick<
       SceneEffectManager,
-      "releaseFixedFocusTarget" | "setImageFocusTargets"
+      "releaseFixedFocusTarget" | "setFocusExpression" | "setImageFocusTargets"
     >,
     private readonly onWarning?: (detail: string) => void,
   ) {
@@ -1072,6 +1072,8 @@ export class CharacterView {
     if (mounted.release) sprite.once("destroyed", mounted.release);
     content.addChild(sprite);
     visual.addChild(content);
+    if (mounted.expression)
+      this.sceneEffects.setFocusExpression(visual, mounted.expression);
 
     const sourceWidth = mounted.texture.width;
     const sourceHeight = mounted.texture.height;
