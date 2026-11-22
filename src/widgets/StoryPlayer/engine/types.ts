@@ -1018,6 +1018,8 @@ export interface StoryPlayer {
   ) => () => void;
   setAutoPlayMode: (mode: AutoPlayMode) => void;
   setAutoPlaySpeedLevel: (level: number) => void;
+  /** 固定源画布像素为剧情逻辑尺寸，供调试采集使用。 */
+  setCanvasResolutionLocked: (locked: boolean) => void;
   /** 注入/移除 decision 自动决策钩子（调试入口用） */
   setDecisionPolicy: (policy: DecisionPolicy | null) => void;
   /**

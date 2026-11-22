@@ -13,6 +13,7 @@ import {
   AkInput,
   AkInputNumber,
   AkMessage,
+  AkSwitch,
   type MessageVariant,
 } from "@mooncellwiki/prts-design-vue";
 import { useMediaQuery } from "@vueuse/core";
@@ -127,6 +128,7 @@ const lineValue = ref<number | null>(
     : null,
 );
 const loading = ref(false);
+const lockCanvasResolution = ref(false);
 const loadError = ref<string | null>(null);
 const scriptText = ref<string | null>(null);
 /** 原始物理行（行号与 parser 的 lineNumber 同一空间） */
@@ -517,6 +519,9 @@ function scriptLineClasses(lineNumber: number): string[] {
       >
         取消
       </AkButton>
+      <AkSwitch v-model="lockCanvasResolution" size="sm">
+        锁定 1280×720
+      </AkSwitch>
     </div>
     <AkMessage v-if="loadError" variant="danger" title="剧情加载失败">
       {{ loadError }}
@@ -549,6 +554,7 @@ function scriptLineClasses(lineNumber: number): string[] {
             :key="scriptEpoch"
             ref="playerComponent"
             :script="scriptText"
+            :lock-canvas-resolution="lockCanvasResolution"
             auto-start
           />
           <AkMessage v-else title="独立调试页">

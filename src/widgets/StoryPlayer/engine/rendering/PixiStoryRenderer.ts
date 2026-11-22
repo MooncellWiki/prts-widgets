@@ -129,6 +129,7 @@ export class PixiStoryRenderer implements StoryRenderer {
   private resizeHost: HTMLElement | null = null;
   private resizeListener: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private canvasResolutionLocked = false;
   private readonly layers = new LayerGraph();
   private readonly backgroundLayer = this.layers.background;
   private backgroundRoot: Container | null = null;
@@ -333,7 +334,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       backgroundAlpha: 0,
       height: STORY_HEIGHT,
       preference: "webgpu",
-      resolution: computeDisplayResolution(host),
+      resolution: this.getDisplayResolution(host),
       width: STORY_WIDTH,
     });
 
@@ -362,6 +363,7 @@ export class PixiStoryRenderer implements StoryRenderer {
       },
     );
     this.watchDisplayResolution(host);
+    this.syncDisplayResolution(true);
 
     await this.createUi();
     this.layers.attach(app.stage);
@@ -446,13 +448,25 @@ export class PixiStoryRenderer implements StoryRenderer {
     this.resizeObserver.observe(host);
   }
 
-  private syncDisplayResolution(): void {
+  setCanvasResolutionLocked(locked: boolean): void {
+    if (this.canvasResolutionLocked === locked) return;
+    this.canvasResolutionLocked = locked;
+    this.syncDisplayResolution(true);
+  }
+
+  private getDisplayResolution(host: HTMLElement): number {
+    return this.canvasResolutionLocked ? 1 : computeDisplayResolution(host);
+  }
+
+  private syncDisplayResolution(force = false): void {
     const app = this.app;
     const host = this.resizeHost;
     if (!app || !host) return;
 
-    const resolution = computeDisplayResolution(host);
-    if (Math.abs(app.renderer.resolution - resolution) < 0.01) return;
+    const resolution = this.getDisplayResolution(host);
+    const current = app.renderer.resolution;
+    if (current === resolution) return;
+    if (!force && Math.abs(current - resolution) < 0.01) return;
     app.renderer.resize(STORY_WIDTH, STORY_HEIGHT, resolution);
     // autoDensity 在 resize 时会把 style 写回 1280x720 逻辑像素，恢复撑满宿主。
     app.canvas.style.width = "100%";
