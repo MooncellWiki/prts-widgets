@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 
-import { DownloadOutlined as DownloadIcon } from "@vicons/material";
-import { NButton, NIcon, NImage, NModal, NSpace, NTag, NText } from "naive-ui";
+import {
+  AkButton,
+  AkDialog,
+  AkEmpty,
+  AkMessage,
+  AkTag,
+} from "@mooncellwiki/prts-design-vue";
 
 import CharacterFacePreview from "./CharacterFacePreview.vue";
+import { downloadAsset, saveBlob } from "./download";
 
 import type { StoryCharacterFaceAsset } from "../engine/types";
 
@@ -12,10 +18,8 @@ const props = defineProps<{
   faces: readonly StoryCharacterFaceAsset[];
   filenameBase: string;
   title: string;
-  /** NModal 的 teleport 目标，全屏播放时需要挂进全屏容器 */
-  to?: string | HTMLElement;
 }>();
-const show = defineModel<boolean>("show");
+const show = defineModel<boolean>("show", { default: false });
 
 interface CharacterFacePreviewInstance {
   exportComposite: () => Promise<Blob>;
@@ -31,7 +35,6 @@ watch(
   ([visible, faces]) => {
     if (!visible) return;
     selectedFace.value = faces.find((face) => face.used) ?? faces[0] ?? null;
-    downloading.value = null;
     downloadError.value = null;
   },
   { immediate: true },
@@ -40,10 +43,6 @@ watch(
 function selectFace(face: StoryCharacterFaceAsset): void {
   selectedFace.value = face;
   downloadError.value = null;
-}
-
-function safeFilename(raw: string): string {
-  return raw.replace(/[<>:"/\\|?*]/g, "_");
 }
 
 function filenameFromUrl(url: string): string {
@@ -58,28 +57,17 @@ function filenameFromUrl(url: string): string {
   return `${selectedFace.value?.expression ?? "face"}.png`;
 }
 
-function saveBlob(blob: Blob, filename: string): void {
-  const objectUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = safeFilename(filename);
-  anchor.style.display = "none";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-}
-
 async function downloadComposite(): Promise<void> {
   const face = selectedFace.value;
   if (!face || !previewRef.value) return;
 
+  const baseName = props.filenameBase.replace(/\.[^.]+$/, "");
+  const filename = `${baseName}_${face.expression}.png`;
   downloading.value = "composite";
   downloadError.value = null;
   try {
     const blob = await previewRef.value.exportComposite();
-    const baseName = props.filenameBase.replace(/\.[^.]+$/, "");
-    saveBlob(blob, `${baseName}_${face.expression}.png`);
+    saveBlob(blob, filename);
   } catch (error) {
     console.error("[character-face-browser] composite download failed:", error);
     downloadError.value = "合成图下载失败";
@@ -95,9 +83,7 @@ async function downloadFace(): Promise<void> {
   downloading.value = "face";
   downloadError.value = null;
   try {
-    const response = await fetch(face.faceUrl);
-    if (!response.ok) throw new Error(`failed to fetch ${face.faceUrl}`);
-    saveBlob(await response.blob(), filenameFromUrl(face.faceUrl));
+    await downloadAsset(face.faceUrl, filenameFromUrl(face.faceUrl));
   } catch (error) {
     console.error("[character-face-browser] face download failed:", error);
     downloadError.value = "脸部差分下载失败";
@@ -108,173 +94,186 @@ async function downloadFace(): Promise<void> {
 </script>
 
 <template>
-  <NModal
-    v-model:show="show"
-    :to="to"
-    preset="card"
+  <AkDialog
+    v-model="show"
+    class="character-face-dialog"
+    size="lg"
     :title="title"
-    style="width: min(1000px, 94vw); max-width: min(1000px, 94vw)"
-    :bordered="false"
-    :auto-focus="false"
+    @keydown.esc.stop
   >
-    <template #header-extra>
-      <NText depth="3" class="text-xs font-normal">
-        共 {{ faces.length }} 项
-      </NText>
-    </template>
+    <template v-if="show">
+      <div v-if="selectedFace" class="character-face-browser">
+        <section class="character-face-stage" aria-label="合成预览">
+          <CharacterFacePreview
+            ref="previewRef"
+            :base-url="selectedFace.baseUrl"
+            :face-url="selectedFace.faceUrl"
+            :face-rect="selectedFace.faceRect"
+            :label="selectedFace.expression"
+            class="character-face-canvas"
+          />
 
-    <div v-if="selectedFace" class="character-face-browser">
-      <section
-        class="character-face-stage min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl"
-      >
-        <CharacterFacePreview
-          ref="previewRef"
-          :base-url="selectedFace.baseUrl"
-          :face-url="selectedFace.faceUrl"
-          :face-rect="selectedFace.faceRect"
-          :label="selectedFace.expression"
-          class="min-h-[280px] flex-1"
-        />
-
-        <footer class="face-preview-actions p-3">
-          <div class="mb-2 break-all text-sm">
-            {{ selectedFace.expression }}
-          </div>
-          <NSpace :wrap="true">
-            <NButton
-              size="small"
-              type="primary"
-              :loading="downloading === 'composite'"
-              :disabled="Boolean(downloading)"
-              @click="downloadComposite"
-            >
-              <template #icon>
-                <NIcon><DownloadIcon /></NIcon>
-              </template>
-              下载合成图
-            </NButton>
-            <NButton
-              size="small"
-              :loading="downloading === 'face'"
-              :disabled="Boolean(downloading)"
-              @click="downloadFace"
-            >
-              <template #icon>
-                <NIcon><DownloadIcon /></NIcon>
-              </template>
-              下载脸部差分
-            </NButton>
-          </NSpace>
-          <NText v-if="downloadError" type="error" class="mt-2 block text-xs">
-            {{ downloadError }}
-          </NText>
-        </footer>
-      </section>
-
-      <aside class="character-face-options min-h-0" aria-label="脸部差分">
-        <NButton
-          v-for="face in faces"
-          :key="`${face.baseUrl}:${face.faceUrl}:${face.expression}`"
-          class="character-face-option mb-2 w-full last:mb-0 h-auto! p-2!"
-          :type="selectedFace === face ? 'primary' : 'default'"
-          :secondary="selectedFace === face"
-          :disabled="Boolean(downloading)"
-          @click="selectFace(face)"
-        >
-          <div class="min-w-0 w-full flex items-center gap-2 text-left">
-            <div
-              class="face-option-thumbnail h-12 w-12 flex-none overflow-hidden rounded-md"
-            >
-              <NImage
-                :src="face.faceUrl"
-                :alt="face.expression"
-                object-fit="contain"
-                preview-disabled
-                class="face-option-image h-full w-full overflow-hidden"
-              />
-            </div>
-            <div class="min-w-0 flex-1 break-all text-sm">
-              <div>{{ face.expression }}</div>
-              <NTag
-                v-if="face.used"
-                class="mt-1 block w-fit"
-                size="tiny"
-                type="success"
-                :bordered="false"
+          <footer class="face-preview-actions">
+            <strong class="face-preview-name">{{
+              selectedFace.expression
+            }}</strong>
+            <div class="face-downloads">
+              <AkButton
+                size="sm"
+                variant="contrast"
+                icon="download"
+                :loading="downloading === 'composite'"
+                :disabled="Boolean(downloading)"
+                @click="downloadComposite"
               >
-                剧情使用
-              </NTag>
+                下载合成图
+              </AkButton>
+              <AkButton
+                size="sm"
+                icon="download"
+                :loading="downloading === 'face'"
+                :disabled="Boolean(downloading)"
+                @click="downloadFace"
+              >
+                下载脸部差分
+              </AkButton>
             </div>
-          </div>
-        </NButton>
-      </aside>
-    </div>
-    <div v-else class="text-disabled">没有可展示的表情差分</div>
-  </NModal>
+            <AkMessage v-if="downloadError" variant="danger">{{
+              downloadError
+            }}</AkMessage>
+          </footer>
+        </section>
+
+        <aside class="character-face-options" aria-label="脸部差分">
+          <AkButton
+            v-for="face in faces"
+            :key="`${face.baseUrl}:${face.faceUrl}:${face.expression}`"
+            class="character-face-option"
+            :variant="selectedFace === face ? 'outline' : 'default'"
+            :aria-pressed="selectedFace === face"
+            :disabled="Boolean(downloading)"
+            @click="selectFace(face)"
+          >
+            <img
+              :src="face.faceUrl"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              class="face-option-thumbnail"
+            />
+            <span class="face-option-label">
+              {{ face.expression }}
+              <AkTag v-if="face.used" size="sm" variant="accent-soft"
+                >剧情使用</AkTag
+              >
+            </span>
+          </AkButton>
+        </aside>
+      </div>
+      <AkEmpty v-else title="没有可展示的表情差分" />
+    </template>
+  </AkDialog>
 </template>
 
 <style scoped>
+.character-face-dialog {
+  box-sizing: border-box;
+  max-width: min(60rem, calc(100vw - 2 * var(--ak-space-3)));
+}
+
+.character-face-dialog :deep(.ak-dialog__title) {
+  overflow-wrap: anywhere;
+}
+
+.character-face-dialog :deep(.ak-dialog__body) {
+  container-type: inline-size;
+}
+
 .character-face-browser {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 12px;
-  height: min(70vh, 680px);
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem);
+  gap: var(--ak-space-3);
+  height: min(60vh, 38rem);
 }
 
 .character-face-stage {
-  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--ak-border);
+}
+
+.character-face-canvas {
+  flex: 1;
 }
 
 .character-face-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-2);
+  min-width: 0;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 2px;
 }
 
 .face-preview-actions {
-  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  display: grid;
+  gap: var(--ak-space-2);
+  padding: var(--ak-space-3);
+  border-top: 1px solid var(--ak-border);
+  background: var(--ak-bg-surface-2);
+}
+
+.face-preview-name {
+  overflow-wrap: anywhere;
+}
+
+.face-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ak-space-2);
+}
+
+.character-face-option {
+  flex: none;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: var(--ak-space-2);
+  text-align: start;
+  white-space: normal;
 }
 
 .face-option-thumbnail {
-  background-color: #f4f4f4;
-  background-image:
-    linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
-    linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
-  background-position:
-    0 0,
-    0 6px,
-    6px -6px,
-    -6px 0;
-  background-size: 12px 12px;
-}
-
-.face-option-image :deep(img) {
-  display: block;
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  flex: 0 0 3rem;
+  width: 3rem;
+  height: 3rem;
   object-fit: contain;
+  background: var(--story-preview-background);
 }
 
-@media (max-width: 700px) {
+.face-option-label {
+  display: grid;
+  gap: var(--ak-space-1);
+  min-width: 0;
+  justify-items: start;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 38rem) {
   .character-face-browser {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(320px, 55vh) auto;
+    grid-template-rows: minmax(14rem, 40vh) auto;
     height: auto;
   }
 
   .character-face-options {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 0 0 4px;
+    flex-direction: row;
+    overflow: auto;
   }
 
   .character-face-option {
-    flex: 0 0 180px;
-    margin-bottom: 0;
+    flex-basis: 9rem;
   }
 }
 </style>

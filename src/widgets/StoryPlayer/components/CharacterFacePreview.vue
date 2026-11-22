@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-import { NSpin, NText } from "naive-ui";
+import { AkSpinner } from "@mooncellwiki/prts-design-vue";
 
 import type { StoryFaceRect } from "../engine/types";
 
@@ -162,36 +162,42 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    class="character-face-preview relative min-h-0 w-full flex items-center justify-center overflow-hidden"
-  >
+  <div class="character-face-preview">
     <canvas
       v-show="!loading && !error"
       ref="canvasRef"
-      class="block max-h-full max-w-full"
       role="img"
       :aria-label="label"
     />
-    <NSpin v-if="loading" size="small" />
-    <NText v-else-if="error" depth="3" class="px-3 text-center text-xs">
+    <AkSpinner v-if="loading" variant="bars" label="正在加载合成预览" />
+    <p v-else-if="error" class="preview-error" role="status">
       合成预览加载失败
-    </NText>
+    </p>
   </div>
 </template>
 
 <style scoped>
 .character-face-preview {
-  background-color: #f4f4f4;
-  background-image:
-    linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
-    linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
-  background-position:
-    0 0,
-    0 8px,
-    8px -8px,
-    -8px 0;
-  background-size: 16px 16px;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--story-preview-background);
+}
+
+.character-face-preview canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.preview-error {
+  margin: 0;
+  padding-inline: var(--ak-space-3);
+  color: var(--ak-fg-muted);
+  font-size: var(--ak-fs-sm);
+  text-align: center;
 }
 </style>

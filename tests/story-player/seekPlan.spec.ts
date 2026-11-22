@@ -274,6 +274,7 @@ const seekRuntime = (script: readonly string[]) => {
   renderer.frames.manual = true;
   return {
     frames: renderer.frames,
+    renderer,
     runtime: new StoryRuntime(createContext(script), renderer, audio),
   };
 };
@@ -315,42 +316,53 @@ describe("StoryRuntime seekToLine", () => {
   });
 
   it.each([
-    { branch: "show", preceding: [] },
-    {
-      branch: "append",
-      preceding: [
-        '[sticker(id="s",multi=true,text="first",delay=0,block=false)]',
-      ],
+    { branch: "show", block: ",block=true" },
+    { branch: "show", block: ",block=false" },
+    { branch: "append", block: ",block=true" },
+    { branch: "append", block: ",block=false" },
+    { branch: "append", block: "" },
+  ])(
+    "waits for a click on the target sticker ($branch$block)",
+    async ({ branch, block }) => {
+      const preceding =
+        branch === "append"
+          ? ['[sticker(id="s",multi=true,text="first",delay=0,block=false)]']
+          : [];
+      const script = [
+        '[name="A"]before',
+        ...preceding,
+        `[sticker(id="s",multi=true,text="target",delay=0${block})]`,
+        '[sticker(id="next",text="next",delay=0,block=false)]',
+        '[sticker(id="s",duration=0.5)]',
+        '[name="A"]after',
+      ];
+      const target = preceding.length + 2;
+      const choices = new Map<number, number>();
+      expect(planFor(script, target)).toEqual({
+        ok: true,
+        plan: { choices, degraded: false },
+      });
+
+      const { runtime, renderer, frames } = seekRuntime(script);
+      const updates: LineSeekUpdate[] = [];
+      runtime.seekToLine(target, choices, (update) => updates.push(update));
+
+      await runtime.start();
+      expect(await waitForTerminal(updates, frames)).toEqual({
+        phase: "reached",
+        target,
+      });
+      await frames.advance(100, 100);
+      expect(runtime.getDisplayedLineIndex()).toBe(target);
+      expect(runtime.getState()).toBe("waiting_input");
+      expect(runtime.getAutoPlayState().mode).toBe("default");
+      renderer.finishStickerTypingNaturally();
+      const advance = runtime.advance();
+      await frames.advance(100, 100);
+      await advance;
+      expect(runtime.getDisplayedLineIndex()).toBe(script.length);
     },
-  ])("stops on a blocking sticker $branch", async ({ preceding }) => {
-    const script = [
-      '[name="A"]before',
-      ...preceding,
-      '[sticker(id="s",multi=true,text="target",delay=0,block=true)]',
-      '[sticker(id="s",duration=0.5)]',
-      '[name="A"]after',
-    ];
-    const target = preceding.length + 2;
-    const choices = new Map<number, number>();
-    expect(planFor(script, target)).toEqual({
-      ok: true,
-      plan: { choices, degraded: false },
-    });
-
-    const { runtime, frames } = seekRuntime(script);
-    const updates: LineSeekUpdate[] = [];
-    runtime.seekToLine(target, choices, (update) => updates.push(update));
-
-    await runtime.start();
-    expect(await waitForTerminal(updates, frames)).toEqual({
-      phase: "reached",
-      target,
-    });
-    await frames.advance(100, 100);
-    expect(runtime.getDisplayedLineIndex()).toBe(target);
-    expect(runtime.getState()).toBe("waiting_input");
-    expect(runtime.getAutoPlayState().mode).toBe("default");
-  });
+  );
 
   it("keeps seeking across [theater], which switches mode on its own", async () => {
     // [theater(mode=true)] 切 button_auto，(mode=false) 的缓存恢复又把

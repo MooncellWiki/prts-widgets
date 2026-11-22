@@ -1,6 +1,7 @@
-import { createApp } from "vue";
+import { createApp, h } from "vue";
 
 import "virtual:uno.css";
+import { useHostTheme } from "@/utils/useHostTheme";
 import StoryPlayer from "@/widgets/StoryPlayer/index.vue";
 
 // 同页的旧版剧情模拟器会加载 krliov.toolbox.js
@@ -34,7 +35,17 @@ const ele = document.querySelector<HTMLElement>("#root");
 const script =
   document.querySelector<HTMLElement>("#datas_txt")?.textContent?.trim() ?? "";
 if (ele && script) {
-  createApp(StoryPlayer, { script }).mount(ele);
+  const app = createApp({
+    setup() {
+      const theme = useHostTheme();
+      return () => h(StoryPlayer, { script, hostTheme: theme.value });
+    },
+  });
+  // Arknights 皮肤已带样式。其它皮肤在 ResourceLoader 就绪后加载共用组件样式。
+  (window.RLQ = window.RLQ || []).push([
+    ["skins.arknights.components", "skins.arknights.fonts"],
+    () => app.mount(ele),
+  ]);
 } else {
   console.error("datas_txt or ele not found", ele);
 }

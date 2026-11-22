@@ -355,6 +355,8 @@ export class StoryRuntime {
     this.stickerPanel = new StickerPanel(renderer, {
       animateRatio: () => this.getCurrentSpeed().animateRatio,
       beginTyping: (length) => this.beginTextTyping(length),
+      shouldHoldSeekTarget: (lineNumber) =>
+        this.lineSeek?.target === lineNumber && !this.isTheaterMode(),
       setDisplayedLine,
       typeWriterDelayMs: () => this.getCurrentSpeed().typeWriterDelayMs,
       translateText: (text) => this.translateText(text),

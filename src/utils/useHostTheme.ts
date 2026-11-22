@@ -1,15 +1,12 @@
-import { ref, type Ref } from "vue";
+import { onScopeDispose, ref, type Ref } from "vue";
 
-import { isClient, useMutationObserver } from "@vueuse/core";
+import { isClient, useEventListener, useMutationObserver } from "@vueuse/core";
 
 // 与 src/utils/theme.ts 的 isWikiNight 同义（那边连着 naive-ui 的主题，这里不想把它带进来）
-function isWikiNight() {
+function isWikiNight(prefersDark: boolean) {
   const { classList } = document.documentElement;
   if (classList.contains("skin-theme-clientpref-night")) return true;
-  return (
-    classList.contains("skin-theme-clientpref-os") &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-  );
+  return classList.contains("skin-theme-clientpref-os") && prefersDark;
 }
 
 /**
@@ -23,14 +20,21 @@ export function useHostTheme(): Ref<"light" | "dark" | undefined> {
   if (!isClient || document.body.classList.contains("skin-arknights"))
     return ref(undefined);
 
-  const current = () => (isWikiNight() ? "dark" : "light");
+  const system = window.matchMedia("(prefers-color-scheme: dark)");
+  const current = () => (isWikiNight(system.matches) ? "dark" : "light");
   const theme = ref<"light" | "dark" | undefined>(current());
-  useMutationObserver(
-    document.documentElement,
-    () => {
-      theme.value = current();
-    },
-    { attributeFilter: ["class"] },
-  );
+  const sync = () => {
+    theme.value = current();
+  };
+  useMutationObserver(document.documentElement, sync, {
+    attributeFilter: ["class"],
+  });
+  if (typeof system.addEventListener === "function") {
+    useEventListener(system, "change", sync);
+  } else {
+    // Safari 12 的 MediaQueryList 只提供 addListener / removeListener。
+    system.addListener(sync);
+    onScopeDispose(() => system.removeListener(sync));
+  }
   return theme;
 }
