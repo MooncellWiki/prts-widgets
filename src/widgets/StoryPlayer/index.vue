@@ -54,6 +54,8 @@ const props = defineProps<{
   hostTheme?: "light" | "dark";
   /** 创建后跳过 lobby 直接加载资源并开始播放（独立页用，Wiki 入口不传） */
   autoStart?: boolean;
+  /** 调试采集时以剧情逻辑分辨率渲染。 */
+  lockCanvasResolution?: boolean;
 }>();
 
 const hostRef = ref<HTMLElement | null>(null);
@@ -391,6 +393,10 @@ async function revealHud(): Promise<void> {
 
 watch(isFullscreen, (fullscreen) => (fullscreen ? showHud() : hideHud()));
 watch(showAssetList, scheduleHudHide);
+watch(
+  () => props.lockCanvasResolution,
+  (locked) => player?.setCanvasResolutionLocked(Boolean(locked)),
+);
 
 function onStageClick(): void {
   if (isFullscreen.value) hideHud();
@@ -483,6 +489,7 @@ async function initAndPreload(): Promise<StoryPlayer | null> {
         if (unmounted) return;
         if (!player) {
           player = createStoryPlayer(storyContext);
+          player.setCanvasResolutionLocked(Boolean(props.lockCanvasResolution));
           player.onDisplayedLineChange(
             (lineIndex) => (logAllActiveLineIndex.value = lineIndex),
           );

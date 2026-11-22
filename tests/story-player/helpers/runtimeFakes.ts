@@ -260,6 +260,8 @@ export class FakeRenderer implements StoryRenderer {
   }
 
   async mount(): Promise<void> {}
+
+  setCanvasResolutionLocked(): void {}
   playVideo(url: string, onEnd: () => void): void {
     this.videoCalls.push(url);
     this.videoStopped = false;

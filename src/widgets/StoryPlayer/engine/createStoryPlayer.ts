@@ -29,6 +29,7 @@ export function createStoryPlayer(context: Context): StoryPlayer {
   let renderer: PixiStoryRenderer | null = null;
   let audio: HtmlStoryAudio | null = null;
   let mounted = false;
+  let canvasResolutionLocked = false;
   // destroy() 后 mount() 会重建 runtime。事件总线挂在闭包上，每个 runtime 只往它转发
   // 一次，监听器的生死就与 runtime 无关：旧 runtime 被丢弃时它那份订阅跟着一起没了，
   // 不需要逐个注销再重挂。
@@ -41,6 +42,7 @@ export function createStoryPlayer(context: Context): StoryPlayer {
     renderer = new PixiStoryRenderer(context, (detail) =>
       console.warn(`[renderer] ${detail}`),
     );
+    renderer.setCanvasResolutionLocked(canvasResolutionLocked);
     audio = new HtmlStoryAudio(context, renderer);
     runtime = new StoryRuntime(context, renderer, audio, {
       onWarning: (warning) =>
@@ -148,6 +150,11 @@ export function createStoryPlayer(context: Context): StoryPlayer {
 
     setAutoPlaySpeedLevel(level: number): void {
       ensureRuntime().setAutoPlaySpeedLevel(level);
+    },
+
+    setCanvasResolutionLocked(locked: boolean): void {
+      canvasResolutionLocked = locked;
+      renderer?.setCanvasResolutionLocked(locked);
     },
 
     setDecisionPolicy(policy: DecisionPolicy | null): void {
