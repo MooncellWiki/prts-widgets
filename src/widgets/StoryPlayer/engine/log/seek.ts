@@ -1,3 +1,5 @@
+import { TRUE_CONDITION } from "./condition";
+
 import type { DecisionId, OptionIndex, StoryFlowResult } from "./types";
 
 /**
@@ -26,6 +28,7 @@ export type SeekPlanResult =
 export function planChoicesForLine(
   flow: StoryFlowResult,
   targetLineIndex: number,
+  rowAudience: number = TRUE_CONDITION,
 ): SeekPlanResult {
   // 目标行必须是某个文本 emission 的 lineIndex。multiline 合成条目只落在
   // 段末行号上，中间片段行号查不到——调用方应引导用户改填段末行号。
@@ -45,10 +48,13 @@ export function planChoicesForLine(
       definition.options.map((option) => option.optionIndex),
     );
 
-  // 同一行号理论上只会有一个 emission（pending 按行去重），多个时任意
-  // audience 都对应可达路径，取第一个能求出赋值的即可
+  // 不同分支的 multiline 可能在同一行收尾。全文带上所点条目的条件，
+  // 只按行号跳转的调试入口则可取任一可达路径。
   for (const audience of audiences) {
-    const assignment = flow.conditions.satisfyingAssignment(audience, domains);
+    const assignment = flow.conditions.satisfyingAssignment(
+      flow.conditions.and(audience, rowAudience),
+      domains,
+    );
     if (assignment) {
       // optionIndex=0 的表项与「默认选第 0 项」等价，裁掉保持方案最小
       for (const [decisionId, optionIndex] of assignment)

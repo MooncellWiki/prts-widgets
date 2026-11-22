@@ -26,6 +26,7 @@ import type {
 interface StickerPlayback {
   animateRatio: () => number;
   beginTyping: (messageLength: number) => () => void;
+  shouldHoldSeekTarget: (lineNumber: number) => boolean;
   /** Reports the line and returns whether its playback is still current. */
   setDisplayedLine: (lineNumber: number) => boolean;
   typeWriterDelayMs: () => number;
@@ -215,7 +216,6 @@ export class StickerPanel extends ExecutorComponent {
         // `block` defaults differ per branch: true when the id is new (show),
         // false once the id already exists (append or hide).
         const block = toBoolean(arg(args, "block"), !existing);
-        const result = block ? this.clickWait : "continue";
         const duration = toNumber(arg(args, "duration"), -1);
         // RenderSticker keeps `duration` verbatim when it is >= 0 (0 means an
         // instant show) and only falls back to 0.15 when the parameter is
@@ -236,10 +236,17 @@ export class StickerPanel extends ExecutorComponent {
           const onHidden = this.playback.beginTyping(0);
           return afterResult(this.renderer.clearSticker(id, hideFadeMs), () => {
             onHidden();
-            return result;
+            return block ? this.clickWait : "continue";
           });
         }
 
+        // 全文跳到非阻塞贴纸时也要等玩家推进。上报显示行后 runtime
+        // 会结束跳转，所以在显示或追加文字前确定本条命令的等待方式。
+        const text = this.playback.translateText(toString(arg(args, "text")));
+        const result =
+          block || (text && this.playback.shouldHoldSeekTarget(line.lineNumber))
+            ? this.clickWait
+            : "continue";
         if (existing) {
           // Append branch: the executor only calls
           // AVGStickerTextView.AppendText(view, text) — it never reads
@@ -247,7 +254,6 @@ export class StickerPanel extends ExecutorComponent {
           // layout and typewriter speed of its last show. Replaying the
           // stored layout (instead of re-defaulting to x=0/y=0) keeps the
           // letter appends in main 13-05, which omit x/y, in place.
-          const text = this.playback.translateText(toString(arg(args, "text")));
           if (text && !this.playback.setDisplayedLine(line.lineNumber))
             return "continue";
           // AVGTypeWriterText.AppendText (2791 @ 0x18424F1C0) clears a
@@ -266,7 +272,6 @@ export class StickerPanel extends ExecutorComponent {
         // translated text or out-of-range coordinates produce an empty param,
         // which _ExecuteSticker drops silently — no view, and the id never
         // enters the dict, so a later command on the same id still shows.
-        const text = this.playback.translateText(toString(arg(args, "text")));
         const x = toNumber(arg(args, "x"), 0);
         const y = toNumber(arg(args, "y"), 0);
         if (x < 0 || x > 1280 || y < 0 || y > 720) return "continue";

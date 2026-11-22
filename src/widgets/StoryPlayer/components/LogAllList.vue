@@ -43,7 +43,7 @@ const props = defineProps<{
   selections?: RuntimeChoiceSelection[];
   seekable?: boolean;
 }>();
-const emit = defineEmits<{ seek: [lineIndex: number] }>();
+const emit = defineEmits<{ seek: [lineIndex: number, audience: number] }>();
 
 /** 命中当前播放行：exact = 确实在当前路径上；maybe = 该分支尚未确定 */
 type ActiveMark = "exact" | "maybe";
@@ -153,9 +153,9 @@ const optionSelected = (block: LogChoiceBlock, optionIndex: number): boolean =>
 const choiceSelected = (block: LogChoiceBlock): boolean =>
   assignment.value.has(block.decisionId);
 
-function seekOnClick(lineIndex: number): void {
+function seekOnClick(lineIndex: number, audience: number): void {
   if (props.seekable && window.getSelection()?.isCollapsed !== false)
-    emit("seek", lineIndex);
+    emit("seek", lineIndex, audience);
 }
 </script>
 
@@ -178,9 +178,9 @@ function seekOnClick(lineIndex: number): void {
           :role="seekable ? 'button' : undefined"
           :tabindex="seekable ? 0 : undefined"
           :title="seekable ? '快进到该行' : undefined"
-          @click="seekOnClick(row.entry.lineIndex)"
+          @click="seekOnClick(row.entry.lineIndex, item.block.audience)"
           @keydown.enter.space.prevent="
-            seekable && emit('seek', row.entry.lineIndex)
+            seekable && emit('seek', row.entry.lineIndex, item.block.audience)
           "
         >
           <span class="log-marker" aria-hidden="true">{{
@@ -244,7 +244,7 @@ function seekOnClick(lineIndex: number): void {
           :active-line-index="activeLineIndex"
           :selections="selections"
           :seekable="seekable"
-          @seek="emit('seek', $event)"
+          @seek="(lineIndex, audience) => emit('seek', lineIndex, audience)"
         />
       </div>
     </li>

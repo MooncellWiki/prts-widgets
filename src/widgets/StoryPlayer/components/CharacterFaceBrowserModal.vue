@@ -61,12 +61,13 @@ async function downloadComposite(): Promise<void> {
   const face = selectedFace.value;
   if (!face || !previewRef.value) return;
 
+  const baseName = props.filenameBase.replace(/\.[^.]+$/, "");
+  const filename = `${baseName}_${face.expression}.png`;
   downloading.value = "composite";
   downloadError.value = null;
   try {
     const blob = await previewRef.value.exportComposite();
-    const baseName = props.filenameBase.replace(/\.[^.]+$/, "");
-    saveBlob(blob, `${baseName}_${face.expression}.png`);
+    saveBlob(blob, filename);
   } catch (error) {
     console.error("[character-face-browser] composite download failed:", error);
     downloadError.value = "合成图下载失败";

@@ -187,6 +187,7 @@ function openImage(asset: AssetListItem): void {
   />
   <CharacterFaceBrowserModal
     v-if="show && selectedCharacterAsset"
+    :key="selectedCharacterAsset.url"
     v-model:show="showCharacterFaces"
     :faces="selectedCharacterAsset.faces"
     :filename-base="selectedCharacterAsset.name"

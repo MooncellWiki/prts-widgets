@@ -3,6 +3,7 @@ import { effectScope, type EffectScope } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { usePageTheme } from "../src/pages/usePageTheme";
+import { useHostTheme } from "../src/utils/useHostTheme";
 
 let scope: EffectScope | undefined;
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -75,4 +76,43 @@ describe("page theme via VueUse", () => {
       "skin-theme-clientpref-day",
     );
   });
+});
+
+it("uses Vector's light default and tracks system changes when the wiki requests them", async () => {
+  const setSystemDark = mockSystemTheme(true);
+  scope = effectScope();
+  const theme = scope.run(useHostTheme)!;
+  const root = document.documentElement;
+  await flush();
+  expect(theme.value).toBe("light");
+  root.className = "skin-theme-clientpref-os";
+  await flush();
+  expect(theme.value).toBe("dark");
+  setSystemDark(false);
+  await flush();
+  expect(theme.value).toBe("light");
+  root.className = "skin-theme-clientpref-night";
+  await flush();
+  expect(theme.value).toBe("dark");
+});
+
+it("tracks and releases the wiki theme listener on legacy MediaQueryList", () => {
+  const system = {
+    matches: false,
+    addListener: vi.fn<(sync: () => void) => void>(),
+    removeListener: vi.fn(),
+  };
+  vi.spyOn(window, "matchMedia").mockReturnValue(
+    system as unknown as MediaQueryList,
+  );
+  document.documentElement.className = "skin-theme-clientpref-os";
+  scope = effectScope();
+  const theme = scope.run(useHostTheme)!;
+  const [sync] = system.addListener.mock.calls[0]!;
+  expect(theme.value).toBe("light");
+  system.matches = true;
+  sync();
+  expect(theme.value).toBe("dark");
+  scope.stop();
+  expect(system.removeListener).toHaveBeenCalledWith(sync);
 });

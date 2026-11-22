@@ -15,7 +15,10 @@ const props = defineProps<{
   seekable?: boolean;
   seekError?: string | null;
 }>();
-const emit = defineEmits<{ close: []; seek: [lineIndex: number] }>();
+const emit = defineEmits<{
+  close: [];
+  seek: [lineIndex: number, audience: number];
+}>();
 
 const scrollRoot = ref<HTMLElement | null>(null);
 
@@ -89,7 +92,7 @@ watch(
           :active-line-index="activeLineIndex"
           :selections="selections"
           :seekable="seekable"
-          @seek="emit('seek', $event)"
+          @seek="(lineIndex, audience) => emit('seek', lineIndex, audience)"
         />
       </div>
     </div>

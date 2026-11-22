@@ -50,6 +50,8 @@ import type {
 const props = defineProps<{
   /** 剧情 txt 全文，由入口壳提供 */
   script: string;
+  /** Wiki 入口提供局部主题，独立页继承页面配色。 */
+  hostTheme?: "light" | "dark";
   /** 创建后跳过 lobby 直接加载资源并开始播放（独立页用，Wiki 入口不传） */
   autoStart?: boolean;
 }>();
@@ -234,10 +236,10 @@ async function closeLogAll(): Promise<void> {
   (logTrigger.value?.$el as HTMLElement | undefined)?.focus();
 }
 
-async function seekFromLog(target: number): Promise<void> {
+async function seekFromLog(target: number, audience: number): Promise<void> {
   if (isPreloading.value || logSeekActive.value) return;
 
-  const result = planChoicesForLine(logAllFlow.value, target);
+  const result = planChoicesForLine(logAllFlow.value, target, audience);
   if (!result.ok) {
     logSeekError.value = `无法快进到第 ${target} 行`;
     return;
@@ -647,7 +649,7 @@ defineExpose({
       'story-player--fullscreen': isFullscreen,
       'story-player--pseudo-fullscreen': isPseudoFullscreen,
     }"
-    :data-theme="isFullscreen ? 'dark' : undefined"
+    :data-theme="isFullscreen ? 'dark' : hostTheme"
   >
     <AkPanel
       v-if="viewMode === 'lobby'"

@@ -3,7 +3,13 @@ import { createApp } from "vue";
 import { describe, expect, it, vi } from "vitest";
 
 import LogAllList from "../../src/widgets/StoryPlayer/components/LogAllList.vue";
-import { buildLogAll } from "../../src/widgets/StoryPlayer/engine/log/index";
+import LogAllPanel from "../../src/widgets/StoryPlayer/components/LogAllPanel.vue";
+import {
+  analyzeStoryFlow,
+  buildLogAll,
+  buildLogDocument,
+  planChoicesForLine,
+} from "../../src/widgets/StoryPlayer/engine/log/index";
 import { parseScript } from "../../src/widgets/StoryPlayer/engine/parser";
 
 function mountLogAll(props: InstanceType<typeof LogAllList>["$props"]) {
@@ -53,31 +59,45 @@ describe("LogAllList UI smoke", () => {
     app.unmount();
   });
 
-  it("forwards source line numbers when activating text within a branch", () => {
-    const onSeek = vi.fn();
-    const { app, host } = mountLogAll({
-      document: buildLogAll(
-        parseScript([
-          '[decision(options="选A;选B", values="1;2")]',
-          '[predicate(references="1")]',
-          '[name="A"]甲分支',
-          '[predicate(references="2")]',
-          '[name="B"]乙分支',
-        ]),
-      ),
+  it("plans the selected branch for multiline rows sharing a source line", () => {
+    const flow = analyzeStoryFlow(
+      parseScript([
+        '[decision(options="选A;选B",values="1;2")]',
+        '[predicate(references="1")]',
+        '[multiline(name="A")]甲',
+        '[predicate(references="2")]',
+        '[multiline(name="B")]乙',
+        '[predicate(references="1;2")]',
+        "[multiline(end=true)]共同结尾",
+      ]),
+    );
+    const onSeek = vi.fn((line: number, audience: number) =>
+      planChoicesForLine(flow, line, audience),
+    );
+    const host = document.createElement("div");
+    const app = createApp(LogAllPanel, {
+      document: buildLogDocument(flow),
       onSeek,
       seekable: true,
     });
+    app.mount(host);
 
     const rows = host.querySelectorAll<HTMLElement>(
       '.log-branch .log-row[role="button"]',
     );
-    expect(rows).toHaveLength(2);
+    expect(Array.from(rows, (row) => row.textContent)).toEqual([
+      "A甲共同结尾",
+      "B乙共同结尾",
+    ]);
     rows[0]!.click();
     rows[1]!.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
     );
-    expect(onSeek.mock.calls).toEqual([[3], [5]]);
+    expect(onSeek.mock.calls.map(([line]) => line)).toEqual([7, 7]);
+    expect(onSeek.mock.results.map(({ value }) => value)).toEqual([
+      { ok: true, plan: { choices: new Map(), degraded: false } },
+      { ok: true, plan: { choices: new Map([[1, 1]]), degraded: false } },
+    ]);
     app.unmount();
   });
 
