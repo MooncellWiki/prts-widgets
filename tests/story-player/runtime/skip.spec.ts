@@ -6,8 +6,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createExecutionHandle,
   type ExecutionHandle,
-} from "../../../src/widgets/StoryPlayer/engine/execution";
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+} from "@/widgets/StoryPlayer/engine/execution";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+import type {
+  RuntimeWarning,
+  StoryMetadata,
+  StoryShowItemSlot,
+} from "@/widgets/StoryPlayer/engine/types";
+
 import {
   createRenderedPlayback,
   focusAmount,
@@ -17,12 +23,6 @@ import {
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
-
-import type {
-  RuntimeWarning,
-  StoryMetadata,
-  StoryShowItemSlot,
-} from "../../../src/widgets/StoryPlayer/engine/types";
 
 function storyMetadata(overrides: Partial<StoryMetadata> = {}): StoryMetadata {
   return {

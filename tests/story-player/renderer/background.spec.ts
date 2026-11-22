@@ -10,14 +10,14 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
+import type { ExecutionHandle } from "@/widgets/StoryPlayer/engine/execution";
+
 import {
   createContext,
   createRenderedPlayback,
   createRenderer,
   focusAmount,
 } from "../helpers/rendererFixtures";
-
-import type { ExecutionHandle } from "../../../src/widgets/StoryPlayer/engine/execution";
 
 function createImageRenderer(onWarning?: (detail: string) => void) {
   const renderer = createRenderer(createContext(), onWarning);

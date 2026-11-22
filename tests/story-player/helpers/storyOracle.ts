@@ -1,6 +1,5 @@
-import { expandStoryText } from "../../../src/widgets/StoryPlayer/engine/textVariables";
-
-import type { ParsedLine } from "../../../src/widgets/StoryPlayer/engine/types";
+import { expandStoryText } from "@/widgets/StoryPlayer/engine/textVariables";
+import type { ParsedLine } from "@/widgets/StoryPlayer/engine/types";
 
 /**
  * 独立 runtime oracle：按行解释剧本、模拟一条具体玩家路径的小解释器。

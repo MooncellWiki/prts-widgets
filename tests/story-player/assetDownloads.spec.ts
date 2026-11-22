@@ -2,22 +2,19 @@ import { createApp, defineComponent, h, nextTick } from "vue";
 
 import { expect, it, vi } from "vitest";
 
-import AssetListModal from "../../src/widgets/StoryPlayer/components/AssetListModal.vue";
-import { saveBlob } from "../../src/widgets/StoryPlayer/components/download";
+import AssetListModal from "@/widgets/StoryPlayer/components/AssetListModal.vue";
+import { saveBlob } from "@/widgets/StoryPlayer/components/download";
 
 const exportComposite = vi.hoisted(() => vi.fn<() => Promise<Blob>>());
-vi.mock(
-  "../../src/widgets/StoryPlayer/components/CharacterFacePreview.vue",
-  () => ({
-    default: defineComponent({
-      setup(_, { expose }) {
-        expose({ exportComposite });
-        return () => h("canvas");
-      },
-    }),
+vi.mock("@/widgets/StoryPlayer/components/CharacterFacePreview.vue", () => ({
+  default: defineComponent({
+    setup(_, { expose }) {
+      expose({ exportComposite });
+      return () => h("canvas");
+    },
   }),
-);
-vi.mock("../../src/widgets/StoryPlayer/components/download", () => ({
+}));
+vi.mock("@/widgets/StoryPlayer/components/download", () => ({
   downloadAsset: vi.fn(),
   saveBlob: vi.fn(),
 }));

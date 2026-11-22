@@ -1,13 +1,12 @@
 import { Container } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { SceneEffectManager } from "../../src/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
-import { LayerGraph } from "../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+import { SceneEffectManager } from "@/widgets/StoryPlayer/engine/rendering/SceneEffectManager";
+import { LayerGraph } from "@/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+import type { TweenRunner } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import type { FocusOutInput } from "@/widgets/StoryPlayer/engine/types";
 
 import { focusAmount } from "./helpers/rendererFixtures";
-
-import type { TweenRunner } from "../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import type { FocusOutInput } from "../../src/widgets/StoryPlayer/engine/types";
 
 function input(overrides: Partial<FocusOutInput> = {}): FocusOutInput {
   return {

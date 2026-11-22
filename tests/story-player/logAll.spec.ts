@@ -3,7 +3,7 @@ import { assert, describe, expect, it } from "vitest";
 import {
   ConditionStore,
   TRUE_CONDITION,
-} from "../../src/widgets/StoryPlayer/engine/log/condition";
+} from "@/widgets/StoryPlayer/engine/log/condition";
 import {
   analyzeStoryFlow,
   buildLogAll,
@@ -11,15 +11,14 @@ import {
   collectAllEntries,
   formatConditionLabel,
   projectVisibleEntries,
-} from "../../src/widgets/StoryPlayer/engine/log/index";
-import { parseScript } from "../../src/widgets/StoryPlayer/engine/parser";
-
-import { enumerateOracleTraces } from "./helpers/storyOracle";
-
+} from "@/widgets/StoryPlayer/engine/log/index";
 import type {
   LogBlock,
   LogDocument,
-} from "../../src/widgets/StoryPlayer/engine/log/types";
+} from "@/widgets/StoryPlayer/engine/log/types";
+import { parseScript } from "@/widgets/StoryPlayer/engine/parser";
+
+import { enumerateOracleTraces } from "./helpers/storyOracle";
 
 const run = (source: string | readonly string[]) =>
   buildLogAll(parseScript(source));

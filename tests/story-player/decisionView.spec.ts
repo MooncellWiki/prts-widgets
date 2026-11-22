@@ -1,7 +1,7 @@
 import { Container, type FederatedPointerEvent, type Text } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { DecisionView } from "../../src/widgets/StoryPlayer/engine/rendering/panels/DecisionView";
+import { DecisionView } from "@/widgets/StoryPlayer/engine/rendering/panels/DecisionView";
 
 describe("DecisionView", () => {
   it("reports the tapped option immediately and leaves the panel open until cleared", () => {

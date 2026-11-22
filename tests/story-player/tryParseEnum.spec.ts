@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { tryParseEnum } from "../../src/widgets/StoryPlayer/engine/commandParams";
+import { tryParseEnum } from "@/widgets/StoryPlayer/engine/commandParams";
 
 enum Members {
   None = 0,

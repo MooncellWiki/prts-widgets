@@ -1,7 +1,7 @@
 import { Container, type Text } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { SpellStickerPanel } from "../../src/widgets/StoryPlayer/engine/rendering/panels/SpellStickerPanel";
+import { SpellStickerPanel } from "@/widgets/StoryPlayer/engine/rendering/panels/SpellStickerPanel";
 
 describe("SpellStickerPanel", () => {
   it("renders the two native text slots in centered coordinates, hides without removing, and re-shows the same view", () => {

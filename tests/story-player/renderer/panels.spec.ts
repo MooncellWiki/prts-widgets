@@ -12,8 +12,13 @@ import {
 } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { collectContextAssetUrls } from "../../../src/widgets/StoryPlayer/engine/preload";
-import { StoryRuntime } from "../../../src/widgets/StoryPlayer/engine/runtime";
+import { collectContextAssetUrls } from "@/widgets/StoryPlayer/engine/preload";
+import type { CharacterArt } from "@/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
+import type { LayerGraph } from "@/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
+import type { TweenRunOptions } from "@/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
+import type { StoryShowItemSlot } from "@/widgets/StoryPlayer/engine/types";
+
 import {
   createRenderedPlayback,
   createRenderer,
@@ -24,11 +29,6 @@ import {
   FakeAudio,
   FakeRenderer,
 } from "../helpers/runtimeFakes";
-
-import type { CharacterArt } from "../../../src/widgets/StoryPlayer/engine/rendering/characters/CharacterArt";
-import type { LayerGraph } from "../../../src/widgets/StoryPlayer/engine/rendering/core/LayerGraph";
-import type { TweenRunOptions } from "../../../src/widgets/StoryPlayer/engine/rendering/core/TweenRunner";
-import type { StoryShowItemSlot } from "../../../src/widgets/StoryPlayer/engine/types";
 
 interface ManualTween {
   complete: () => void;

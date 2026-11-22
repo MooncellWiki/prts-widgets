@@ -2,15 +2,15 @@ import { createApp } from "vue";
 
 import { describe, expect, it, vi } from "vitest";
 
-import LogAllList from "../../src/widgets/StoryPlayer/components/LogAllList.vue";
-import LogAllPanel from "../../src/widgets/StoryPlayer/components/LogAllPanel.vue";
+import LogAllList from "@/widgets/StoryPlayer/components/LogAllList.vue";
+import LogAllPanel from "@/widgets/StoryPlayer/components/LogAllPanel.vue";
 import {
   analyzeStoryFlow,
   buildLogAll,
   buildLogDocument,
   planChoicesForLine,
-} from "../../src/widgets/StoryPlayer/engine/log/index";
-import { parseScript } from "../../src/widgets/StoryPlayer/engine/parser";
+} from "@/widgets/StoryPlayer/engine/log/index";
+import { parseScript } from "@/widgets/StoryPlayer/engine/parser";
 
 function mountLogAll(props: InstanceType<typeof LogAllList>["$props"]) {
   const host = document.createElement("div");

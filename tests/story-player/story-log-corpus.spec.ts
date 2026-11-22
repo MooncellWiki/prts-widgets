@@ -9,10 +9,10 @@ import {
   buildLogAll,
   buildLogDocument,
   projectVisibleEntries,
-} from "../../src/widgets/StoryPlayer/engine/log/index";
-import { parseScript } from "../../src/widgets/StoryPlayer/engine/parser";
-import { parseRichChars } from "../../src/widgets/StoryPlayer/engine/richtext";
-import { expandStoryText } from "../../src/widgets/StoryPlayer/engine/textVariables";
+} from "@/widgets/StoryPlayer/engine/log/index";
+import { parseScript } from "@/widgets/StoryPlayer/engine/parser";
+import { parseRichChars } from "@/widgets/StoryPlayer/engine/richtext";
+import { expandStoryText } from "@/widgets/StoryPlayer/engine/textVariables";
 
 import { enumerateOracleTraces } from "./helpers/storyOracle";
 

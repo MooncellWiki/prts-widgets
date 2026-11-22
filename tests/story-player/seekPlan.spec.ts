@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { planChoicesForLine } from "../../src/widgets/StoryPlayer/engine/log/seek";
-import { analyzeStoryFlow } from "../../src/widgets/StoryPlayer/engine/log/symbolicFlow";
-import { parseScript } from "../../src/widgets/StoryPlayer/engine/parser";
-import { richCharsToTaggedText } from "../../src/widgets/StoryPlayer/engine/richtext";
-import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
-
-import { PlaybackTestFrames } from "./helpers/playbackFrames";
-import { FakeRenderer } from "./helpers/runtimeFakes";
-
-import type { Context } from "../../src/widgets/StoryPlayer/context";
+import type { Context } from "@/widgets/StoryPlayer/context";
+import { planChoicesForLine } from "@/widgets/StoryPlayer/engine/log/seek";
+import { analyzeStoryFlow } from "@/widgets/StoryPlayer/engine/log/symbolicFlow";
+import { parseScript } from "@/widgets/StoryPlayer/engine/parser";
+import { richCharsToTaggedText } from "@/widgets/StoryPlayer/engine/richtext";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
 import type {
   DecisionPolicy,
   DecisionSelection,
@@ -18,7 +14,10 @@ import type {
   StoryAudio,
   StoryRenderer,
   StoryShowItemSlot,
-} from "../../src/widgets/StoryPlayer/engine/types";
+} from "@/widgets/StoryPlayer/engine/types";
+
+import { PlaybackTestFrames } from "./helpers/playbackFrames";
+import { FakeRenderer } from "./helpers/runtimeFakes";
 
 /**
  * 行号跳转规划：planChoicesForLine 从符号分析产物里取出「到达目标行的

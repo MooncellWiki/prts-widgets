@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rotateTweenDelta } from "../../src/widgets/StoryPlayer/engine/rendering/core/SceneGeometry";
+import { rotateTweenDelta } from "@/widgets/StoryPlayer/engine/rendering/core/SceneGeometry";
 
 describe("AVGUtils.CreateRotateTween sweep", () => {
   it("forces a negative sweep clockwise even without circles", () => {

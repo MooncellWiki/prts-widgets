@@ -8,14 +8,13 @@ import {
   SHOWITEM_PHOTO_FRAME_URL,
   SLIDE_MASK_TEXTURE_URL,
   STAMP_ASSETS,
-} from "../../src/widgets/StoryPlayer/assets";
+} from "@/widgets/StoryPlayer/assets";
+import type { Context } from "@/widgets/StoryPlayer/context";
 import {
   collectContextAssetManifest,
   collectContextAssetUrls,
   preloadContextAssets,
-} from "../../src/widgets/StoryPlayer/engine/preload";
-
-import type { Context } from "../../src/widgets/StoryPlayer/context";
+} from "@/widgets/StoryPlayer/engine/preload";
 
 const { loadFontMock, loadMock } = vi.hoisted(() => ({
   loadFontMock: vi.fn(async (_font: { family: string }) => {}),
@@ -50,13 +49,10 @@ vi.mock("pixi.js", () => ({
   UniformGroup: class {},
 }));
 
-vi.mock(
-  "../../src/widgets/StoryPlayer/engine/font",
-  async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    loadFont: loadFontMock,
-  }),
-);
+vi.mock("@/widgets/StoryPlayer/engine/font", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  loadFont: loadFontMock,
+}));
 
 function createContext(script: readonly string[]): Context {
   return {

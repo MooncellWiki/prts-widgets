@@ -4,7 +4,7 @@ import {
   buildTagStyles,
   parseRichChars,
   richCharsToTaggedText,
-} from "../../src/widgets/StoryPlayer/engine/richtext";
+} from "@/widgets/StoryPlayer/engine/richtext";
 
 const plain = (text: string): string =>
   parseRichChars(text)

@@ -1,9 +1,6 @@
 import { expect, it, vi } from "vitest";
 
-import {
-  AVGEvent,
-  EventPool,
-} from "../../src/widgets/StoryPlayer/engine/eventPool";
+import { AVGEvent, EventPool } from "@/widgets/StoryPlayer/engine/eventPool";
 
 it("keeps the current listener set stable through nested emits", () => {
   const pool = new EventPool<AVGEvent>();

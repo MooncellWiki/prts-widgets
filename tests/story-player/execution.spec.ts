@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CommandRegistry } from "../../src/widgets/StoryPlayer/engine/commandRegistry";
-import { createExecutionHandle } from "../../src/widgets/StoryPlayer/engine/execution";
-
-import type { ParsedCommandLine } from "../../src/widgets/StoryPlayer/engine/types";
+import { CommandRegistry } from "@/widgets/StoryPlayer/engine/commandRegistry";
+import { createExecutionHandle } from "@/widgets/StoryPlayer/engine/execution";
+import type { ParsedCommandLine } from "@/widgets/StoryPlayer/engine/types";
 
 function command(name: string): ParsedCommandLine {
   return {

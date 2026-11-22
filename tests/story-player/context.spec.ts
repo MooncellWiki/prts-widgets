@@ -6,8 +6,8 @@ import {
   findMissingVideoUrls,
   normalizeBackgroundPpuMap,
   normalizeCharacterMap,
-} from "../../src/widgets/StoryPlayer/context";
-import { parseStory } from "../../src/widgets/StoryPlayer/engine/parser";
+} from "@/widgets/StoryPlayer/context";
+import { parseStory } from "@/widgets/StoryPlayer/engine/parser";
 
 describe("normalizeCharacterMap", () => {
   it("keys the link map by the lowercased base so mixed-case entries resolve", () => {

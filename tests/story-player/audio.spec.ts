@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveStoryAudioByKey } from "../../src/widgets/StoryPlayer/engine/asset";
-import { HtmlStoryAudio } from "../../src/widgets/StoryPlayer/engine/audio";
-import { StoryRuntime } from "../../src/widgets/StoryPlayer/engine/runtime";
+import type { Context } from "@/widgets/StoryPlayer/context";
+import { resolveStoryAudioByKey } from "@/widgets/StoryPlayer/engine/asset";
+import { HtmlStoryAudio } from "@/widgets/StoryPlayer/engine/audio";
+import { StoryRuntime } from "@/widgets/StoryPlayer/engine/runtime";
 
 import {
   FakeSound,
@@ -14,8 +15,6 @@ import {
   settlePlayback,
 } from "./helpers/fakePixiSound";
 import { createContext, FakeRenderer } from "./helpers/runtimeFakes";
-
-import type { Context } from "../../src/widgets/StoryPlayer/context";
 
 vi.mock("pixi.js", async () => ({
   Assets: (await import("./helpers/fakePixiSound")).fakeAssets,
