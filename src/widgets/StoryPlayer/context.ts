@@ -31,6 +31,8 @@ export interface Context {
    * heuristics in the renderer.
    */
   backgroundPpuMap?: Record<string, number>;
+  /** Foreground sprite pixelsPerUnit from `avg/image.json`. */
+  imagePpuMap?: Record<string, number>;
   /**
    * Resolved `video(res=...)` URLs the CDN definitively reported missing; see
    * `findMissingVideoUrls`. Absent/empty means every video is attempted.
@@ -263,14 +265,12 @@ async function fetchStoryCharacterMap(): Promise<
 }
 
 /**
- * Validates `avg/background.json` into key -> pixelsPerUnit. Keys are folded
+ * Validates an AVG sprite sidecar into key -> pixelsPerUnit. Keys are folded
  * lowercase (the pipeline emits the lowercase bundle container names, but the
  * fold keeps hand-edited or future variants honest); non-finite or
  * non-positive values are dropped.
  */
-export function normalizeBackgroundPpuMap(
-  raw: unknown,
-): Record<string, number> {
+export function normalizeSpritePpuMap(raw: unknown): Record<string, number> {
   const root = asObject(raw);
   if (!root) return {};
 
@@ -283,14 +283,15 @@ export function normalizeBackgroundPpuMap(
   return output;
 }
 
-async function fetchBackgroundPpuMap(): Promise<Record<string, number>> {
+async function fetchSpritePpuMap(
+  family: "background" | "image",
+): Promise<Record<string, number>> {
   try {
-    const response = await fetch(assetUrl("avg/background.json"));
+    const response = await fetch(assetUrl(`avg/${family}.json`));
     if (!response.ok) return {};
-    return normalizeBackgroundPpuMap(await response.json());
+    return normalizeSpritePpuMap(await response.json());
   } catch {
-    // Missing sidecar is not fatal: the renderer falls back to texture-size
-    // heuristics for the background rect.
+    // The renderer has a fallback for images without PPU metadata.
     return {};
   }
 }
@@ -342,11 +343,12 @@ export async function loadContextByScript(
   scriptText: string,
 ): Promise<Context> {
   const { lines, metadata } = parseStory(scriptText);
-  const [variables, linkMap, backgroundPpuMap, missingVideoUrls] =
+  const [variables, linkMap, backgroundPpuMap, imagePpuMap, missingVideoUrls] =
     await Promise.all([
       ensureStoryVariables(),
       fetchStoryCharacterMap(),
-      fetchBackgroundPpuMap(),
+      fetchSpritePpuMap("background"),
+      fetchSpritePpuMap("image"),
       findMissingVideoUrls(lines, metadata),
     ]);
 
@@ -357,6 +359,7 @@ export async function loadContextByScript(
     ...variables,
     linkMap,
     backgroundPpuMap,
+    imagePpuMap,
     missingVideoUrls,
   };
 }

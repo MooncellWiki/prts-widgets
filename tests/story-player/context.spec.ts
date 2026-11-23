@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   findMissingVideoUrls,
-  normalizeBackgroundPpuMap,
+  loadContextByScript,
   normalizeCharacterMap,
+  normalizeSpritePpuMap,
 } from "@/widgets/StoryPlayer/context";
 import { parseStory } from "@/widgets/StoryPlayer/engine/parser";
 
@@ -129,9 +130,9 @@ describe("normalizeCharacterMap body/index", () => {
   });
 });
 
-describe("normalizeBackgroundPpuMap", () => {
+describe("normalizeSpritePpuMap", () => {
   it("folds keys lowercase and keeps finite positive ppus", () => {
-    const map = normalizeBackgroundPpuMap({
+    const map = normalizeSpritePpuMap({
       bg_cher_1: 68.24644470214844,
       BG_Woods: 100,
     });
@@ -143,7 +144,7 @@ describe("normalizeBackgroundPpuMap", () => {
   });
 
   it("drops null, NaN and non-positive ppus but coerces numeric strings", () => {
-    const map = normalizeBackgroundPpuMap({
+    const map = normalizeSpritePpuMap({
       bg_bad_string: "80",
       bg_bad_null: null,
       bg_bad_negative: -1,
@@ -158,10 +159,44 @@ describe("normalizeBackgroundPpuMap", () => {
   });
 
   it("returns an empty map for non-object payloads", () => {
-    expect(normalizeBackgroundPpuMap(null)).toEqual({});
-    expect(normalizeBackgroundPpuMap([1, 2])).toEqual({});
-    expect(normalizeBackgroundPpuMap("nope")).toEqual({});
+    expect(normalizeSpritePpuMap(null)).toEqual({});
+    expect(normalizeSpritePpuMap([1, 2])).toEqual({});
+    expect(normalizeSpritePpuMap("nope")).toEqual({});
   });
+});
+
+describe("loadContextByScript", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([true, false])(
+    "loads separate sprite maps (image available: %s)",
+    async (available) => {
+      const fetchMock = vi.fn(async (url: string) => {
+        if (url.endsWith("/avg/image.json")) {
+          return {
+            ok: available,
+            json: async () => ({ AC6_3: 68.25, invalid: 0 }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () =>
+            url.endsWith("/avg/background.json") ? { ac6_3: 100 } : {},
+        };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const context = await loadContextByScript('[Image(image="ac6_3")]');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://torappu.prts.wiki/assets/avg/image.json",
+      );
+      expect(context.imagePpuMap).toEqual(available ? { ac6_3: 68.25 } : {});
+      expect(context.backgroundPpuMap).toEqual({ ac6_3: 100 });
+    },
+  );
 });
 
 describe("findMissingVideoUrls", () => {

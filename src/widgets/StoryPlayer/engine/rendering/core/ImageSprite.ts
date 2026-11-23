@@ -2,9 +2,21 @@ import { Sprite, TilingSprite, type Texture } from "pixi.js";
 
 import { STORY_HEIGHT, STORY_WIDTH, type BackgroundInput } from "../../types";
 
+/** Unity Image.SetNativeSize uses sprite.rect / ppu with a canvas reference PPU of 100. */
+export function nativeSpriteRect(
+  texture: Texture,
+  ppu?: number,
+): readonly [number, number] | undefined {
+  if (ppu === undefined || !Number.isFinite(ppu) || ppu <= 0) return;
+  return [
+    (Math.max(1, texture.width) / ppu) * 100,
+    (Math.max(1, texture.height) / ppu) * 100,
+  ];
+}
+
 /**
  * AVGImagePanel._LoadImage (2791 @ 0x1841ADFA0) multiplies the native rect
- * before applying screenadapt. BackgroundPanel supplies the sprite's PPU.
+ * before applying screenadapt.
  */
 export function createImageSprite(
   texture: Texture,

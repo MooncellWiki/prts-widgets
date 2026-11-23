@@ -9,7 +9,7 @@ import {
   type ImageTweenInput,
 } from "../../types";
 import { dotweenEaseCurve } from "../core/DotweenEase";
-import { createImageSprite } from "../core/ImageSprite";
+import { createImageSprite, nativeSpriteRect } from "../core/ImageSprite";
 import {
   applyCenteredTransform,
   readCenteredTransform,
@@ -75,13 +75,14 @@ export class ImageView {
 
   show(
     key: string,
+    ppu: number | undefined,
     input?: BackgroundInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
     this.cancelPreparation();
     const load = this.loadTexture(key);
     if (!(load instanceof Promise))
-      return this.swapAndFade(load, input, onComplete);
+      return this.swapAndFade(load, ppu, input, onComplete);
 
     // _LoadSprite (2791 @ 0x1841AE580) is synchronous. On the Web a cold
     // texture waits before swapping slots, while mounted tweens keep running.
@@ -91,7 +92,7 @@ export class ImageView {
       .then((texture) => {
         if (this.preparation !== animation) return;
         this.preparation = undefined;
-        this.swapAndFade(texture, input, onComplete, animation);
+        this.swapAndFade(texture, ppu, input, onComplete, animation);
         if (!input?.block) animation.end();
         this.replayDeferredFinishes();
       })
@@ -226,6 +227,7 @@ export class ImageView {
 
   private swapAndFade(
     texture: Texture | null,
+    ppu: number | undefined,
     input?: BackgroundInput,
     onComplete?: () => void,
     preparation?: ExecutionHandle,
@@ -237,9 +239,10 @@ export class ImageView {
       return this.fade(back, 0, fadeMs, block, onComplete, preparation);
 
     const root = this.fore.root;
-    // _LoadImage (2791 @ 0x1841ADFA0) gives the sprite its own rect.
-    // Foreground art uses texture pixels for native size. PPU is a background sidecar.
-    root.addChild(createImageSprite(texture, input));
+    // _LoadImage (2791 @ 0x1841ADFA0) applies SetNativeSize before script layout.
+    root.addChild(
+      createImageSprite(texture, input, nativeSpriteRect(texture, ppu)),
+    );
     applyCenteredTransform(root, {
       scaleX: input?.scaleX ?? 1,
       scaleY: input?.scaleY ?? 1,

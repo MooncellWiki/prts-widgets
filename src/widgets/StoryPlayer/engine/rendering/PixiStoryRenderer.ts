@@ -66,7 +66,7 @@ import {
 import { SceneEffectManager } from "./SceneEffectManager";
 import { guardClaimedClicks } from "./core/ClickClaim";
 import { dotweenEaseCurve } from "./core/DotweenEase";
-import { createImageSprite } from "./core/ImageSprite";
+import { createImageSprite, nativeSpriteRect } from "./core/ImageSprite";
 import { LayerGraph } from "./core/LayerGraph";
 import {
   applyCenteredTransform as applyCenteredTransformToRoot,
@@ -779,7 +779,8 @@ export class PixiStoryRenderer implements StoryRenderer {
     input?: BackgroundInput,
     onComplete?: () => void,
   ): ExecutionHandle | void {
-    return this.imageView.show(key, input, onComplete);
+    const ppu = this.context.imagePpuMap?.[key.toLowerCase()];
+    return this.imageView.show(key, ppu, input, onComplete);
   }
 
   clearImage(
@@ -1259,15 +1260,16 @@ export class PixiStoryRenderer implements StoryRenderer {
     texture: Texture,
     fallback: "widescreen" | "texture" = "widescreen",
   ): readonly [number, number] {
-    const width = Math.max(1, texture.width);
-    const height = Math.max(1, texture.height);
     // Sidecar keys are the lowercase bundle container names (= web asset
     // URLs); normalize defensively in case a story references a key with
     // different casing than the bundle.
-    const ppu = this.context.backgroundPpuMap?.[key.toLowerCase()];
-    if (ppu !== undefined && ppu > 0) {
-      return [(width / ppu) * 100, (height / ppu) * 100];
-    }
+    const nativeRect = nativeSpriteRect(
+      texture,
+      this.context.backgroundPpuMap?.[key.toLowerCase()],
+    );
+    if (nativeRect) return nativeRect;
+    const width = Math.max(1, texture.width);
+    const height = Math.max(1, texture.height);
     if (
       fallback === "widescreen" &&
       Math.abs(width / height - STORY_WIDTH / STORY_HEIGHT) < 0.01
