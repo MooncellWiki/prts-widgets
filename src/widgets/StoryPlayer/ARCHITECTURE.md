@@ -21,7 +21,7 @@ flowchart TD
 ```
 
 - **入口。** Wiki 从 `#datas_txt` 取文本。独立页由 `loadPageStory()` 读取 `url` 或 `path` 并获取文本，再传给同一个 Vue 组件。`index.vue` 负责大厅、文本全览、播放 HUD 和全屏。 [Wiki 入口](../../entries/widgets/StoryPlayer.ts) · [独立页](../../pages/StoryPlayer.vue) · [独立页取数](../../pages/story.ts) · [Vue 外壳](index.vue)
-- **准备。** `loadContextByScript()` 解析 `HEADER`，加载剧情变量、角色映射和背景 PPU（每单位像素数），并探测缺失视频。外壳并行预加载资源和准备播放器，对话字体在 Pixi `mount()` 前就绪。 [上下文](context.ts) · [预加载](engine/preload.ts) · [字体](engine/font.ts)
+- **准备。** `loadContextByScript()` 解析 `HEADER`，从 `avg/metadata.json` 读取剧情变量与逐图 PPU（每单位像素数），并行加载角色映射和探测缺失视频。前景和背景按 `纹理尺寸 × 100 / PPU` 计算原生尺寸。外壳并行预加载资源和准备播放器，对话字体在 Pixi `mount()` 前就绪。 [上下文](context.ts) · [预加载](engine/preload.ts) · [字体](engine/font.ts)
 - **运行。** `createStoryPlayer()` 组装运行时、渲染和音频，实现对外 `StoryPlayer` 接口。命令模块通过 `StoryRenderer` 和 `StoryAudio` 接口调用后端，视图持有容器、贴图、动画和槽位。 [播放器入口](engine/createStoryPlayer.ts) · [公共接口](engine/types.ts) · [渲染器](engine/rendering/PixiStoryRenderer.ts) · [音频](engine/audio.ts)
 
 ## 核心类与方法

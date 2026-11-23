@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   findMissingVideoUrls,
-  normalizeBackgroundPpuMap,
+  loadContextByScript,
   normalizeCharacterMap,
+  normalizeSpritePpuMap,
 } from "@/widgets/StoryPlayer/context";
 import { parseStory } from "@/widgets/StoryPlayer/engine/parser";
 
@@ -129,9 +130,9 @@ describe("normalizeCharacterMap body/index", () => {
   });
 });
 
-describe("normalizeBackgroundPpuMap", () => {
+describe("normalizeSpritePpuMap", () => {
   it("folds keys lowercase and keeps finite positive ppus", () => {
-    const map = normalizeBackgroundPpuMap({
+    const map = normalizeSpritePpuMap({
       bg_cher_1: 68.24644470214844,
       BG_Woods: 100,
     });
@@ -143,7 +144,7 @@ describe("normalizeBackgroundPpuMap", () => {
   });
 
   it("drops null, NaN and non-positive ppus but coerces numeric strings", () => {
-    const map = normalizeBackgroundPpuMap({
+    const map = normalizeSpritePpuMap({
       bg_bad_string: "80",
       bg_bad_null: null,
       bg_bad_negative: -1,
@@ -158,9 +159,67 @@ describe("normalizeBackgroundPpuMap", () => {
   });
 
   it("returns an empty map for non-object payloads", () => {
-    expect(normalizeBackgroundPpuMap(null)).toEqual({});
-    expect(normalizeBackgroundPpuMap([1, 2])).toEqual({});
-    expect(normalizeBackgroundPpuMap("nope")).toEqual({});
+    expect(normalizeSpritePpuMap(null)).toEqual({});
+    expect(normalizeSpritePpuMap([1, 2])).toEqual({});
+    expect(normalizeSpritePpuMap("nope")).toEqual({});
+  });
+});
+
+describe("loadContextByScript", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads both sprite maps and story variables with one metadata request", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      Response.json(
+        url.endsWith("/avg/metadata.json")
+          ? {
+              backgroundPpuMap: { ac6_3: 100 },
+              imagePpuMap: { AC6_3: 68.25, invalid: 0 },
+              storyVariables: { Music: "track" },
+            }
+          : {},
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = await loadContextByScript('[Image(image="ac6_3")]');
+
+    expect(fetchMock.mock.calls.flat()).toEqual([
+      "https://torappu.prts.wiki/assets/avg/metadata.json",
+      "https://torappu.prts.wiki/assets/avg/character.json",
+    ]);
+    expect(context.imagePpuMap).toEqual({ ac6_3: 68.25 });
+    expect(context.backgroundPpuMap).toEqual({ ac6_3: 100 });
+    expect(context.storyVariables).toEqual({ Music: "track" });
+    expect(context.audioVariables).toEqual({ music: "track" });
+  });
+
+  it("loads the older variables and background table when metadata is unavailable", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/avg/metadata.json"))
+        return new Response(null, { status: 404 });
+      if (url.endsWith("/story_variables.json"))
+        return Response.json({ LegacyMusic: "track" });
+      if (url.endsWith("/avg/background.json"))
+        return Response.json({ ac6_3: 80 });
+      return Response.json({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = await loadContextByScript('[Image(image="ac6_3")]');
+
+    expect(fetchMock.mock.calls.flat()).toEqual([
+      "https://torappu.prts.wiki/assets/avg/metadata.json",
+      "https://torappu.prts.wiki/assets/avg/character.json",
+      "https://torappu.prts.wiki/gamedata/latest/story/story_variables.json",
+      "https://torappu.prts.wiki/assets/avg/background.json",
+    ]);
+    expect(context.imagePpuMap).toEqual({});
+    expect(context.backgroundPpuMap).toEqual({ ac6_3: 80 });
+    expect(context.storyVariables).toEqual({ LegacyMusic: "track" });
+    expect(context.audioVariables).toEqual({ legacymusic: "track" });
   });
 });
 

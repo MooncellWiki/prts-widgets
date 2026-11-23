@@ -1569,7 +1569,13 @@ describe("StoryRuntime", () => {
       "fetch",
       vi.fn(async (url: string) => ({
         json: () =>
-          url.endsWith("/story_variables.json") ? { Target: true } : {},
+          url.endsWith("/avg/metadata.json")
+            ? {
+                backgroundPpuMap: {},
+                imagePpuMap: {},
+                storyVariables: { Target: true },
+              }
+            : {},
         ok: true,
       })),
     );

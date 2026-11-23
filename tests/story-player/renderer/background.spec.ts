@@ -332,6 +332,35 @@ describe("PixiStoryRenderer", () => {
     expect(renderer.layers.images.children.at(-1).children[0].height).toBe(1);
   });
 
+  it.each([
+    { key: "AC6_3", scale: 0.9, cold: false, width: 1350.4, height: 759.6 },
+    { key: "ac6_5", scale: 0.7, cold: true, width: 1050.311, height: 590.8 },
+    { key: "missing", scale: 1, cold: false, width: 1024, height: 576 },
+  ])("uses the foreground native size for $key", async (sample) => {
+    const renderer = createImageRenderer();
+    renderer.context.imagePpuMap = {
+      ac6_3: 68.24644470214844,
+      ac6_5: 68.24644470214844,
+    };
+    const texture = new Texture({
+      source: new TextureSource({ width: 1024, height: 576 }),
+    });
+    renderer.textureForImageKey = vi
+      .fn()
+      .mockReturnValue(sample.cold ? Promise.resolve(texture) : texture);
+
+    const loading = renderer.setImage(sample.key, {
+      scaleX: sample.scale,
+      scaleY: sample.scale,
+    });
+    await loading?.assetsReady;
+
+    const root = renderer.layers.images.children.at(-1);
+    const sprite = root.children[0];
+    expect(sprite.width * root.scale.x).toBeCloseTo(sample.width, 2);
+    expect(sprite.height * root.scale.y).toBeCloseTo(sample.height, 2);
+  });
+
   it("separates screenadapt size from the imagetween localScale space", () => {
     const renderer = createImageRenderer();
 
@@ -566,6 +595,7 @@ describe("PixiStoryRenderer", () => {
 
   it("multiplies the native size by width/height before screenadapt", () => {
     const renderer = createImageRenderer();
+    renderer.context.imagePpuMap = { avg_5_boom: 50 };
 
     // _LoadImage: SetNativeSize, then sizeDelta = (w * width, h * height)
     // with a 1.0 fallback, before any screenadapt step.
@@ -581,8 +611,8 @@ describe("PixiStoryRenderer", () => {
       y: 0,
     });
 
-    expect(renderer.layers.images.children.at(-1).children[0].width).toBe(2);
-    expect(renderer.layers.images.children.at(-1).children[0].height).toBe(0.5);
+    expect(renderer.layers.images.children.at(-1).children[0].width).toBe(4);
+    expect(renderer.layers.images.children.at(-1).children[0].height).toBe(1);
   });
 
   it("feeds the multiplied rect into the screenadapt aspect comparison", () => {
