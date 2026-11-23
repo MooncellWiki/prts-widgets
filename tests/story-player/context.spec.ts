@@ -170,33 +170,57 @@ describe("loadContextByScript", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([true, false])(
-    "loads separate sprite maps (image available: %s)",
-    async (available) => {
-      const fetchMock = vi.fn(async (url: string) => {
-        if (url.endsWith("/avg/image.json")) {
-          return {
-            ok: available,
-            json: async () => ({ AC6_3: 68.25, invalid: 0 }),
-          };
-        }
-        return {
-          ok: true,
-          json: async () =>
-            url.endsWith("/avg/background.json") ? { ac6_3: 100 } : {},
-        };
-      });
-      vi.stubGlobal("fetch", fetchMock);
+  it("loads both sprite maps and story variables with one metadata request", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      Response.json(
+        url.endsWith("/avg/metadata.json")
+          ? {
+              backgroundPpuMap: { ac6_3: 100 },
+              imagePpuMap: { AC6_3: 68.25, invalid: 0 },
+              storyVariables: { Music: "track" },
+            }
+          : {},
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
-      const context = await loadContextByScript('[Image(image="ac6_3")]');
+    const context = await loadContextByScript('[Image(image="ac6_3")]');
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        "https://torappu.prts.wiki/assets/avg/image.json",
-      );
-      expect(context.imagePpuMap).toEqual(available ? { ac6_3: 68.25 } : {});
-      expect(context.backgroundPpuMap).toEqual({ ac6_3: 100 });
-    },
-  );
+    expect(fetchMock.mock.calls.flat()).toEqual([
+      "https://torappu.prts.wiki/assets/avg/metadata.json",
+      "https://torappu.prts.wiki/assets/avg/character.json",
+    ]);
+    expect(context.imagePpuMap).toEqual({ ac6_3: 68.25 });
+    expect(context.backgroundPpuMap).toEqual({ ac6_3: 100 });
+    expect(context.storyVariables).toEqual({ Music: "track" });
+    expect(context.audioVariables).toEqual({ music: "track" });
+  });
+
+  it("loads the older variables and background table when metadata is unavailable", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/avg/metadata.json"))
+        return new Response(null, { status: 404 });
+      if (url.endsWith("/story_variables.json"))
+        return Response.json({ LegacyMusic: "track" });
+      if (url.endsWith("/avg/background.json"))
+        return Response.json({ ac6_3: 80 });
+      return Response.json({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = await loadContextByScript('[Image(image="ac6_3")]');
+
+    expect(fetchMock.mock.calls.flat()).toEqual([
+      "https://torappu.prts.wiki/assets/avg/metadata.json",
+      "https://torappu.prts.wiki/assets/avg/character.json",
+      "https://torappu.prts.wiki/gamedata/latest/story/story_variables.json",
+      "https://torappu.prts.wiki/assets/avg/background.json",
+    ]);
+    expect(context.imagePpuMap).toEqual({});
+    expect(context.backgroundPpuMap).toEqual({ ac6_3: 80 });
+    expect(context.storyVariables).toEqual({ LegacyMusic: "track" });
+    expect(context.audioVariables).toEqual({ legacymusic: "track" });
+  });
 });
 
 describe("findMissingVideoUrls", () => {

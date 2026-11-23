@@ -24,14 +24,13 @@ export interface Context {
   charMap?: Record<string, string>; // Legacy fallback. New rendering path reads from linkMap(character.json).
   linkMap: Record<string, StoryLinkNode>;
   /**
-   * AVG background key -> sprite pixelsPerUnit, from `avg/background.json`
-   * (same sidecar family as character.json). The native background rect is
+   * AVG background key -> sprite pixelsPerUnit. The native background rect is
    * `texture size / ppu * 100` (Image.SetNativeSize), so the renderer needs
    * the ppu to reproduce it. Absent/empty falls back to texture-size
    * heuristics in the renderer.
    */
   backgroundPpuMap?: Record<string, number>;
-  /** Foreground sprite pixelsPerUnit from `avg/image.json`. */
+  /** Foreground sprite pixelsPerUnit from `avg/metadata.json`. */
   imagePpuMap?: Record<string, number>;
   /**
    * Resolved `video(res=...)` URLs the CDN definitively reported missing; see
@@ -201,48 +200,39 @@ export function normalizeCharacterMap(
   return output;
 }
 
-let cachedStoryVariables: Record<string, unknown> = {};
-let cachedStoryAudioVariables: Record<string, unknown> = {};
-
-function setStoryVariables(raw: unknown): void {
-  cachedStoryVariables = asObject(raw) ?? {};
-  cachedStoryAudioVariables = Object.fromEntries(
-    Object.entries(cachedStoryVariables).map(([key, value]) => [
-      key.toLowerCase(),
-      value,
-    ]),
-  );
+function variableMaps(storyVariables: Record<string, unknown>) {
+  return {
+    storyVariables,
+    audioVariables: Object.fromEntries(
+      Object.entries(storyVariables).map(([key, value]) => [
+        key.toLowerCase(),
+        value,
+      ]),
+    ),
+  };
 }
 
-let loadingStoryVariables: Promise<void> | null = null;
-let storyVariablesLoaded = false;
-
-async function ensureStoryVariables(): Promise<
-  Pick<Context, "audioVariables" | "storyVariables">
-> {
-  if (!storyVariablesLoaded) {
-    if (!loadingStoryVariables) {
-      loadingStoryVariables = (async () => {
-        try {
-          const response = await fetch(storyUrl("story_variables.json"));
-          if (!response.ok) return;
-          setStoryVariables(await response.json());
-          storyVariablesLoaded = true;
-        } catch {
-          // Keep runtime resilient: script loading still works without variables.
-        } finally {
-          loadingStoryVariables = null;
-        }
-      })();
-    }
-
-    await loadingStoryVariables;
+async function fetchOptionalJsonObject(
+  url: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await fetch(url);
+    return response.ok ? asObject(await response.json()) : null;
+  } catch {
+    return null;
   }
+}
 
-  return {
-    audioVariables: { ...cachedStoryAudioVariables },
-    storyVariables: { ...cachedStoryVariables },
-  };
+let legacyStoryVariables: Promise<Record<string, unknown> | null> | undefined;
+
+async function fetchLegacyStoryVariables(): Promise<Record<string, unknown>> {
+  const pending = (legacyStoryVariables ??= fetchOptionalJsonObject(
+    storyUrl("story_variables.json"),
+  ));
+  const variables = await pending;
+  if (!variables && legacyStoryVariables === pending)
+    legacyStoryVariables = undefined;
+  return { ...variables };
 }
 
 /**
@@ -283,17 +273,29 @@ export function normalizeSpritePpuMap(raw: unknown): Record<string, number> {
   return output;
 }
 
-async function fetchSpritePpuMap(
-  family: "background" | "image",
-): Promise<Record<string, number>> {
-  try {
-    const response = await fetch(assetUrl(`avg/${family}.json`));
-    if (!response.ok) return {};
-    return normalizeSpritePpuMap(await response.json());
-  } catch {
-    // The renderer has a fallback for images without PPU metadata.
-    return {};
+async function fetchStoryAssetMetadata() {
+  const metadata = await fetchOptionalJsonObject(assetUrl("avg/metadata.json"));
+  const variables = asObject(metadata?.storyVariables);
+  const background = asObject(metadata?.backgroundPpuMap);
+  const images = asObject(metadata?.imagePpuMap);
+  if (variables && background && images) {
+    return {
+      ...variableMaps(variables),
+      backgroundPpuMap: normalizeSpritePpuMap(background),
+      imagePpuMap: normalizeSpritePpuMap(images),
+    };
   }
+
+  // Older Torappu deployments expose the variables and background PPU separately.
+  const [legacyVariables, legacyBackground] = await Promise.all([
+    fetchLegacyStoryVariables(),
+    fetchOptionalJsonObject(assetUrl("avg/background.json")),
+  ]);
+  return {
+    ...variableMaps(legacyVariables),
+    backgroundPpuMap: normalizeSpritePpuMap(legacyBackground),
+    imagePpuMap: {},
+  };
 }
 
 async function videoExists(url: string): Promise<boolean> {
@@ -343,23 +345,18 @@ export async function loadContextByScript(
   scriptText: string,
 ): Promise<Context> {
   const { lines, metadata } = parseStory(scriptText);
-  const [variables, linkMap, backgroundPpuMap, imagePpuMap, missingVideoUrls] =
-    await Promise.all([
-      ensureStoryVariables(),
-      fetchStoryCharacterMap(),
-      fetchSpritePpuMap("background"),
-      fetchSpritePpuMap("image"),
-      findMissingVideoUrls(lines, metadata),
-    ]);
+  const [assetMetadata, linkMap, missingVideoUrls] = await Promise.all([
+    fetchStoryAssetMetadata(),
+    fetchStoryCharacterMap(),
+    findMissingVideoUrls(lines, metadata),
+  ]);
 
   return {
     script: scriptText.replace(/\r\n?/g, "\n").split("\n"),
     scriptText,
     storyMetadata: metadata,
-    ...variables,
+    ...assetMetadata,
     linkMap,
-    backgroundPpuMap,
-    imagePpuMap,
     missingVideoUrls,
   };
 }

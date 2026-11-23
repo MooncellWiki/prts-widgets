@@ -1250,7 +1250,7 @@ export class PixiStoryRenderer implements StoryRenderer {
    * 68.2464 / ...), so this is generally NOT the texture's pixel size --
    * e.g. bg_cher_1 (1024x576, ppu 68.2464) natively renders 1500.44x844,
    * a 17% centered overscan. Web PNGs are texture-sized with no ppu
-   * metadata, so the per-key ppu comes from the `avg/background.json`
+   * metadata, so the per-key ppu comes from the `avg/metadata.json`
    * sidecar (context.backgroundPpuMap). Standalone 16:9 backgrounds missing
    * sidecar metadata fall back to 1280x720. Interlude elements keep their
    * texture size when the sidecar has no entry.
