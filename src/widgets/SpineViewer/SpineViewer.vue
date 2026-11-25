@@ -71,6 +71,8 @@ const BG = [
 type BgKey = (typeof BG)[number]["key"] | "custom";
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+const ZOOM_MIN = 20;
+const ZOOM_MAX = 800;
 
 /* ── 选择：时装 × 模型 ── */
 const skins = sortSkins(Object.keys(props.conf.skin));
@@ -132,10 +134,23 @@ const hitN = ref(0);
 const shown = ref<View & { pct: number }>({ x: 0, y: 0, z: 1, pct: 0 });
 /** 取景框（导出的范围）；cut = 舞台不是正方形（放大 / 手机横屏），要把框画出来 */
 const crop = ref<Box & { cut: boolean }>({ x: 0, y: 0, s: 0, cut: false });
+const canEditZoom = computed(
+  () => !!cur.value && !veil.value && !recording.value && crop.value.s > 0,
+);
+const zoomDraft = ref<string | null>(null);
+const zoomText = computed({
+  get: () =>
+    zoomDraft.value ?? (shown.value.pct ? String(shown.value.pct) : ""),
+  set: (value: string) => (zoomDraft.value = value),
+});
+watch(canEditZoom, (enabled) => {
+  if (!enabled) zoomDraft.value = null;
+});
 
 const canvas = useTemplateRef<HTMLCanvasElement>("canvas");
 const stageEl = useTemplateRef<HTMLElement>("stageEl");
 const root = useTemplateRef<HTMLElement>("root");
+const zoomField = useTemplateRef<HTMLInputElement>("zoomField");
 let stage: Stage | null = null;
 let home: View = { x: 0, y: 0, z: 1 };
 /** 拖过 / 缩放过：换动作时不再替人取景，双击复位才回到 home */
@@ -156,7 +171,7 @@ function paint() {
   const v = stage.view;
   // 100% = 取景框 1000 单位的那把尺；动作太大自动缩小时这里会小于 100%
   const { s: side } = stage.box;
-  const pct = side ? Math.round(((v.z * RULER) / side) * 100) : 0;
+  const pct = side ? Math.round(((v.z * RULER) / side) * 10_000) / 100 : 0;
   const s = shown.value;
   if (s.x !== v.x || s.y !== v.y || s.z !== v.z || s.pct !== pct)
     shown.value = { ...v, pct };
@@ -533,11 +548,15 @@ function resetView() {
 }
 function zoomAt(cx: number, cy: number, scale: number) {
   if (!stage) return;
-  const u = stage.box.s / RULER;
-  if (!u) return;
+  const baseScale = stage.box.s / RULER;
+  if (!baseScale) return;
   custom = true;
   const v = stage.view;
-  const z = clamp(scale, u * 0.2, u * 8);
+  const z = clamp(
+    scale,
+    baseScale * (ZOOM_MIN / 100),
+    baseScale * (ZOOM_MAX / 100),
+  );
   v.x = cx - ((cx - v.x) * z) / v.z;
   v.y = cy - ((cy - v.y) * z) / v.z;
   v.z = z;
@@ -546,11 +565,28 @@ function zoomAt(cx: number, cy: number, scale: number) {
 function zoomBy(cx: number, cy: number, factor: number) {
   if (stage) zoomAt(cx, cy, stage.view.z * factor);
 }
-function setOriginalScale() {
-  if (!stage) return;
+function applyZoomInput() {
+  const text = zoomDraft.value
+    ?.normalize("NFKC")
+    .trim()
+    .replace(/\s*%$/, "")
+    .replace(",", ".");
+  zoomDraft.value = null;
+  if (!stage || !canEditZoom.value || !text) return;
+  const pct = Number(text);
+  if (!Number.isFinite(pct)) return;
   // 以导出取景框的中心为锚点，保持中心对准的内容。
   const { x, y, s } = stage.box;
-  zoomAt(x + s / 2, y + s / 2, s / RULER);
+  zoomAt(x + s / 2, y + s / 2, (s / RULER) * (pct / 100));
+}
+function onZoomEnter(e: KeyboardEvent) {
+  if (e.isComposing) return;
+  e.preventDefault();
+  zoomField.value?.blur();
+}
+function cancelZoomInput() {
+  zoomDraft.value = null;
+  zoomField.value?.blur();
 }
 /*
  * 放大：整块铺满视口（不用 Fullscreen API——iOS 的 Safari 不给普通元素全屏），页面不滚；Esc 退出。
@@ -824,17 +860,26 @@ onBeforeUnmount(() => {
           >
             <SvIcon :name="max ? 'min' : 'max'" />
           </button>
-          <button
-            type="button"
-            class="sv__tool sv__tool--scale"
-            aria-label="1:1（缩放至 100%）"
-            data-ak-tip="缩放至 100%（原始比例）"
-            :disabled="!cur || !!veil || !!recording || !crop.s"
-            @click="setOriginalScale"
+          <label
+            class="sv__zoom"
+            :title="`缩放比例（${ZOOM_MIN}–${ZOOM_MAX}%），按 Enter 应用`"
           >
-            1:1
-          </button>
-          <div class="sv__zoom">{{ shown.pct ? `${shown.pct}%` : "" }}</div>
+            <input
+              ref="zoomField"
+              v-model="zoomText"
+              type="text"
+              inputmode="decimal"
+              enterkeyhint="done"
+              autocomplete="off"
+              aria-label="缩放比例（%）"
+              :disabled="!canEditZoom"
+              @focus="zoomField?.select()"
+              @blur="applyZoomInput"
+              @keydown.enter="onZoomEnter"
+              @keydown.esc.stop.prevent="cancelZoomInput"
+            />
+            <span aria-hidden="true">%</span>
+          </label>
         </div>
         <div ref="bgBox" class="sv__bg" role="group" aria-label="背景">
           <button
@@ -1123,6 +1168,7 @@ onBeforeUnmount(() => {
   top: 10px;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 4px;
 }
 
@@ -1179,16 +1225,32 @@ onBeforeUnmount(() => {
   }
 }
 
-.sv__tool--scale {
-  font: 700 12px/1 var(--ak-font-label);
-}
-
 .sv__zoom {
-  text-align: center;
-  font: 700 10px/1 var(--ak-font-label);
-  color: rgba(var(--sv-ink), 0.5);
-  padding-top: 2px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 80px;
+  height: 32px;
+  padding: 0 6px;
+  cursor: text;
+  color: rgba(var(--sv-ink), 0.85);
+  background: rgba(var(--sv-ink), 0.08);
+  border: 1px solid rgba(var(--sv-ink), 0.14);
+  font: 700 16px/1 var(--ak-font-label);
   font-variant-numeric: tabular-nums;
+
+  &:focus-within {
+    outline: 2px solid var(--ak-focus);
+    outline-offset: 2px;
+  }
+
+  > input {
+    all: unset;
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+  }
 }
 
 // 背景：深 / 浅 / 透明 / 自定义（自定义那格开合取色面板 ColorPicker）
