@@ -124,7 +124,7 @@ const recording = ref<string | null>(null);
 /** 导出遮罩上文件名后面的一句：GIF 的进度 / 出错 */
 const recNote = ref("");
 /** 舞台上的遮罩：载入中 / 载入失败 */
-const veil = ref<{ error: boolean; text: string } | null>(null);
+const veil = ref<"loading" | { error: string } | null>(null);
 const hud = ref({ file: "", info: "" });
 /** 播放头扫过判定帧的次数：当 key 用，换一次重放闪烁动画 */
 const hitN = ref(0);
@@ -324,26 +324,17 @@ async function load() {
   if (!stage) return;
   const seq = ++loadSeq;
   const item = props.conf.skin[skin.value][model.value];
-  veil.value = {
-    error: false,
-    text: `正在载入 ${skin.value} · ${model.value}`,
-  };
+  const path = props.conf.prefix + item.file;
+  veil.value = "loading";
   stop();
   let loaded: Loaded;
   try {
-    loaded = await stage.load(
-      `${skin.value}/${model.value}`,
-      props.conf.prefix + item.file,
-      item.skin,
-    );
+    loaded = await stage.load(`${skin.value}/${model.value}`, path, item.skin);
   } catch (err) {
     if (seq !== loadSeq) return;
     cur.value = stage.cur = null;
     anim.value = null;
-    veil.value = {
-      error: true,
-      text: `模型载入失败：${err instanceof Error ? err.message : String(err)}`,
-    };
+    veil.value = { error: err instanceof Error ? err.message : String(err) };
     return;
   }
   if (seq !== loadSeq) return;
@@ -860,11 +851,16 @@ onBeforeUnmount(() => {
         </div>
         <span class="sv__hint">{{ hint }}</span>
         <div v-if="veil" class="sv__veil">
-          <template v-if="veil.error">
-            <span>{{ veil.text }}</span>
+          <div v-if="veil !== 'loading'" class="sv__load-error">
+            <div class="sv__load-error-message" role="alert">
+              <strong>模型载入失败</strong>
+              <div class="sv__load-error-detail" tabindex="0">
+                {{ veil.error }}
+              </div>
+            </div>
             <AkButton size="sm" @click="load">重试</AkButton>
-          </template>
-          <AkSpinner v-else :description="veil.text" />
+          </div>
+          <AkSpinner v-else :description="`正在载入 ${skin} · ${model}`" />
         </div>
       </div>
       <AnimList
@@ -1219,13 +1215,39 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
-  align-content: center;
-  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+  overflow-wrap: anywhere;
   text-align: center;
-  background: var(--sv-bg, #0f0f10);
-  color: rgba(255, 255, 255, 0.7);
+  background: var(--ak-bg-surface);
+  color: var(--ak-fg);
   font-size: var(--ak-fs-sm);
+}
+
+.sv__load-error {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 12px;
+  width: min(100%, 36rem);
+  max-height: 100%;
+}
+
+.sv__load-error-message {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+}
+
+.sv__load-error-detail {
+  margin-top: 4px;
+  padding-inline: 8px;
+  overflow: auto;
+  color: var(--ak-fg-secondary);
+  white-space: pre-wrap;
 }
 
 .sv__rec {
