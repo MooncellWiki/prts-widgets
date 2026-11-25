@@ -2831,11 +2831,11 @@ var spine
         if (request.status == 200) {
           success(new Uint8Array(request.response))
         } else {
-          error(request.status, request.responseText)
+          error(request.status)
         }
       }
       request.onerror = function () {
-        error(request.status, request.responseText)
+        error(request.status)
       }
       request.send()
     }
@@ -2860,24 +2860,10 @@ var spine
           _this.toLoad--
           _this.loaded++
         },
-        function (state, responseText) {
-          _this.errors[path] =
-            "Couldn't load binary " +
-            path +
-            ': status ' +
-            status +
-            ', ' +
-            responseText
-          if (error)
-            error(
-              path,
-              "Couldn't load binary " +
-                path +
-                ': status ' +
-                status +
-                ', ' +
-                responseText,
-            )
+        function (status) {
+          var message = "Couldn't load binary " + path + ': status ' + status
+          _this.errors[path] = message
+          if (error) error(path, message)
           _this.toLoad--
           _this.loaded++
         },
@@ -3087,7 +3073,7 @@ var spine
             "Couldn't load texture atlas " +
             path +
             ': status ' +
-            status +
+            state +
             ', ' +
             responseText
           if (error)
@@ -3096,7 +3082,7 @@ var spine
               "Couldn't load texture atlas " +
                 path +
                 ': status ' +
-                status +
+                state +
                 ', ' +
                 responseText,
             )

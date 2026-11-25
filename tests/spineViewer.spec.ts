@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import spine from "../src/spine/runtime/spine-webgl";
 import {
   chainMembers,
   chainOf,
@@ -19,6 +20,38 @@ import { encodeGif, planGif } from "../src/widgets/SpineViewer/engine/gif";
 
 const anim = (name: string, duration = 1) => summarize(name, duration, []);
 const names = (list: { name: string }[]) => list.map((a) => a.name);
+
+describe("Spine 骨骼下载", () => {
+  it.each([
+    { handler: "onload", status: 404 },
+    { handler: "onerror", status: 0 },
+  ] as const)(
+    "$handler 时把状态 $status 交给错误回调",
+    ({ handler, status }) => {
+      const request = vi
+        .spyOn(XMLHttpRequest.prototype, "send")
+        .mockImplementation(function (this: XMLHttpRequest) {
+          Object.defineProperty(this, "status", { value: status });
+          this[handler]?.(new ProgressEvent(handler.slice(2)));
+        });
+      const assets = new spine.AssetManager(vi.fn());
+      const success = vi.fn();
+      const error = vi.fn();
+
+      try {
+        assets.loadBinary("model.skel", success, error);
+        expect(success).not.toHaveBeenCalled();
+        expect(error).toHaveBeenCalledExactlyOnceWith(
+          "model.skel",
+          `Couldn't load binary model.skel: status ${status}`,
+        );
+        expect(assets.isLoadingComplete()).toBe(true);
+      } finally {
+        request.mockRestore();
+      }
+    },
+  );
+});
 
 describe("summarize", () => {
   it("按时间排事件，帧数与判定帧按 30 帧 / 秒取整", () => {
