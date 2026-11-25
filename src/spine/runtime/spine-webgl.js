@@ -2831,7 +2831,11 @@ var spine
         if (request.status == 200) {
           success(new Uint8Array(request.response))
         } else {
-          error(request.status)
+          // responseText 无法读取 arraybuffer，显式解码服务端的报错正文。
+          error(
+            request.status,
+            new TextDecoder().decode(request.response ?? undefined),
+          )
         }
       }
       request.onerror = function () {
@@ -2860,8 +2864,9 @@ var spine
           _this.toLoad--
           _this.loaded++
         },
-        function (status) {
+        function (status, responseText) {
           var message = "Couldn't load binary " + path + ': status ' + status
+          if (responseText) message += ', ' + responseText
           _this.errors[path] = message
           if (error) error(path, message)
           _this.toLoad--

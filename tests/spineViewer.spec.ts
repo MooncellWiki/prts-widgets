@@ -23,15 +23,18 @@ const names = (list: { name: string }[]) => list.map((a) => a.name);
 
 describe("Spine 骨骼下载", () => {
   it.each([
-    { handler: "onload", status: 404 },
-    { handler: "onerror", status: 0 },
+    { handler: "onload", status: 404, body: "<Code>NoSuchKey</Code>" },
+    { handler: "onerror", status: 0, body: "" },
   ] as const)(
-    "$handler 时把状态 $status 交给错误回调",
-    ({ handler, status }) => {
+    "$handler 时把状态 $status 和响应正文交给错误回调",
+    ({ handler, status, body }) => {
       const request = vi
         .spyOn(XMLHttpRequest.prototype, "send")
         .mockImplementation(function (this: XMLHttpRequest) {
           Object.defineProperty(this, "status", { value: status });
+          Object.defineProperty(this, "response", {
+            value: body ? new TextEncoder().encode(body).buffer : null,
+          });
           this[handler]?.(new ProgressEvent(handler.slice(2)));
         });
       const assets = new spine.AssetManager(vi.fn());
@@ -43,7 +46,7 @@ describe("Spine 骨骼下载", () => {
         expect(success).not.toHaveBeenCalled();
         expect(error).toHaveBeenCalledExactlyOnceWith(
           "model.skel",
-          `Couldn't load binary model.skel: status ${status}`,
+          `Couldn't load binary model.skel: status ${status}${body ? `, ${body}` : ""}`,
         );
         expect(assets.isLoadingComplete()).toBe(true);
       } finally {
