@@ -71,6 +71,8 @@ const BG = [
 type BgKey = (typeof BG)[number]["key"] | "custom";
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+const ZOOM_MIN = 20;
+const ZOOM_MAX = 800;
 
 /* ── 选择：时装 × 模型 ── */
 const skins = sortSkins(Object.keys(props.conf.skin));
@@ -132,10 +134,23 @@ const hitN = ref(0);
 const shown = ref<View & { pct: number }>({ x: 0, y: 0, z: 1, pct: 0 });
 /** 取景框（导出的范围）；cut = 舞台不是正方形（放大 / 手机横屏），要把框画出来 */
 const crop = ref<Box & { cut: boolean }>({ x: 0, y: 0, s: 0, cut: false });
+const canEditZoom = computed(
+  () => !!cur.value && !veil.value && !recording.value && crop.value.s > 0,
+);
+const zoomDraft = ref<string | null>(null);
+const zoomText = computed({
+  get: () =>
+    zoomDraft.value ?? (shown.value.pct ? String(shown.value.pct) : ""),
+  set: (value: string) => (zoomDraft.value = value),
+});
+watch(canEditZoom, (enabled) => {
+  if (!enabled) zoomDraft.value = null;
+});
 
 const canvas = useTemplateRef<HTMLCanvasElement>("canvas");
 const stageEl = useTemplateRef<HTMLElement>("stageEl");
 const root = useTemplateRef<HTMLElement>("root");
+const zoomField = useTemplateRef<HTMLInputElement>("zoomField");
 let stage: Stage | null = null;
 let home: View = { x: 0, y: 0, z: 1 };
 /** 拖过 / 缩放过：换动作时不再替人取景，双击复位才回到 home */
@@ -156,7 +171,7 @@ function paint() {
   const v = stage.view;
   // 100% = 取景框 1000 单位的那把尺；动作太大自动缩小时这里会小于 100%
   const { s: side } = stage.box;
-  const pct = side ? Math.round(((v.z * RULER) / side) * 100) : 0;
+  const pct = side ? Math.round(((v.z * RULER) / side) * 10_000) / 100 : 0;
   const s = shown.value;
   if (s.x !== v.x || s.y !== v.y || s.z !== v.z || s.pct !== pct)
     shown.value = { ...v, pct };
@@ -531,16 +546,47 @@ function resetView() {
   Object.assign(stage.view, home);
   paint();
 }
-function zoomAt(cx: number, cy: number, k: number) {
+function zoomAt(cx: number, cy: number, scale: number) {
   if (!stage) return;
+  const baseScale = stage.box.s / RULER;
+  if (!baseScale) return;
   custom = true;
   const v = stage.view;
-  const u = stage.box.s / RULER;
-  const z = clamp(v.z * k, u * 0.2, u * 8);
+  const z = clamp(
+    scale,
+    baseScale * (ZOOM_MIN / 100),
+    baseScale * (ZOOM_MAX / 100),
+  );
   v.x = cx - ((cx - v.x) * z) / v.z;
   v.y = cy - ((cy - v.y) * z) / v.z;
   v.z = z;
   paint();
+}
+function zoomBy(cx: number, cy: number, factor: number) {
+  if (stage) zoomAt(cx, cy, stage.view.z * factor);
+}
+function applyZoomInput() {
+  const text = zoomDraft.value
+    ?.normalize("NFKC")
+    .trim()
+    .replace(/\s*%$/, "")
+    .replace(",", ".");
+  zoomDraft.value = null;
+  if (!stage || !canEditZoom.value || !text) return;
+  const pct = Number(text);
+  if (!Number.isFinite(pct)) return;
+  // 以导出取景框的中心为锚点，保持中心对准的内容。
+  const { x, y, s } = stage.box;
+  zoomAt(x + s / 2, y + s / 2, (s / RULER) * (pct / 100));
+}
+function onZoomEnter(e: KeyboardEvent) {
+  if (e.isComposing) return;
+  e.preventDefault();
+  zoomField.value?.blur();
+}
+function cancelZoomInput() {
+  zoomDraft.value = null;
+  zoomField.value?.blur();
 }
 /*
  * 放大：整块铺满视口（不用 Fullscreen API——iOS 的 Safari 不给普通元素全屏），页面不滚；Esc 退出。
@@ -633,7 +679,7 @@ function onPointerMove(e: PointerEvent) {
   }
   const [a, b] = [...pts.values()];
   const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-  if (pinch) zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / pinch);
+  if (pinch) zoomBy((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / pinch);
   pinch = d;
 }
 function onPointerUp(e: PointerEvent) {
@@ -649,7 +695,7 @@ useEventListener(
     if (!cur.value || !(e.ctrlKey || e.metaKey || max.value)) return;
     e.preventDefault();
     const [x, y] = local(e);
-    zoomAt(x, y, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)));
+    zoomBy(x, y, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)));
   },
   { passive: false },
 );
@@ -738,6 +784,30 @@ onBeforeUnmount(() => {
           @update:model-value="pickModel(String($event))"
         />
       </div>
+      <label class="sv__field">
+        <span class="ak-overline">缩放</span>
+        <span
+          class="ak-input-group sv__zoom"
+          :title="`缩放比例（${ZOOM_MIN}–${ZOOM_MAX}%），按 Enter 应用`"
+        >
+          <input
+            ref="zoomField"
+            v-model="zoomText"
+            class="ak-input ak-input--sm"
+            type="text"
+            inputmode="decimal"
+            enterkeyhint="done"
+            autocomplete="off"
+            aria-label="缩放比例（%）"
+            :disabled="!canEditZoom"
+            @focus="zoomField?.select()"
+            @blur="applyZoomInput"
+            @keydown.enter="onZoomEnter"
+            @keydown.esc.stop.prevent="cancelZoomInput"
+          />
+          <span class="ak-input-group__addon" aria-hidden="true">%</span>
+        </span>
+      </label>
     </div>
 
     <div class="sv__main">
@@ -814,7 +884,6 @@ onBeforeUnmount(() => {
           >
             <SvIcon :name="max ? 'min' : 'max'" />
           </button>
-          <div class="sv__zoom">{{ shown.pct ? `${shown.pct}%` : "" }}</div>
         </div>
         <div ref="bgBox" class="sv__bg" role="group" aria-label="背景">
           <button
@@ -928,7 +997,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// 选择条：时装芯片 + 模型下拉，都靠左（操作区聚在一起）；一行放不下时整栏换行
+// 选择条：时装、模型、缩放靠左排列，放不下时整栏换行
 .sv__bar {
   display: flex;
   flex-wrap: wrap;
@@ -961,6 +1030,25 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.sv__zoom {
+  width: 92px;
+
+  > .ak-input {
+    padding-inline: 6px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+
+    @media (pointer: coarse) {
+      font-size: 16px;
+    }
+  }
+
+  > .ak-input-group__addon {
+    padding-inline: 6px;
+    border-inline-start: 0;
+  }
 }
 
 // 舞台是正方形（导出也是这个画幅），边长随正文列宽、最大 560；动作列表吃掉剩下的宽度，高度跟舞台齐
@@ -1159,14 +1247,6 @@ onBeforeUnmount(() => {
   }
 }
 
-.sv__zoom {
-  text-align: center;
-  font: 700 10px/1 var(--ak-font-label);
-  color: rgba(var(--sv-ink), 0.5);
-  padding-top: 2px;
-  font-variant-numeric: tabular-nums;
-}
-
 // 背景：深 / 浅 / 透明 / 自定义（自定义那格开合取色面板 ColorPicker）
 .sv__bg {
   position: absolute;
@@ -1289,6 +1369,21 @@ onBeforeUnmount(() => {
     flex: 1;
     min-height: 0;
     max-height: none;
+  }
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+  .sv.is-max > .sv__main {
+    display: grid;
+
+    > .sv__list {
+      contain: size;
+    }
+  }
+
+  .sv.is-max .sv__tools {
+    flex-direction: row;
+    align-items: center;
   }
 }
 </style>
