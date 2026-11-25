@@ -531,16 +531,26 @@ function resetView() {
   Object.assign(stage.view, home);
   paint();
 }
-function zoomAt(cx: number, cy: number, k: number) {
+function zoomAt(cx: number, cy: number, scale: number) {
   if (!stage) return;
+  const u = stage.box.s / RULER;
+  if (!u) return;
   custom = true;
   const v = stage.view;
-  const u = stage.box.s / RULER;
-  const z = clamp(v.z * k, u * 0.2, u * 8);
+  const z = clamp(scale, u * 0.2, u * 8);
   v.x = cx - ((cx - v.x) * z) / v.z;
   v.y = cy - ((cy - v.y) * z) / v.z;
   v.z = z;
   paint();
+}
+function zoomBy(cx: number, cy: number, factor: number) {
+  if (stage) zoomAt(cx, cy, stage.view.z * factor);
+}
+function setOriginalScale() {
+  if (!stage) return;
+  // 以导出取景框的中心为锚点，保持中心对准的内容。
+  const { x, y, s } = stage.box;
+  zoomAt(x + s / 2, y + s / 2, s / RULER);
 }
 /*
  * 放大：整块铺满视口（不用 Fullscreen API——iOS 的 Safari 不给普通元素全屏），页面不滚；Esc 退出。
@@ -633,7 +643,7 @@ function onPointerMove(e: PointerEvent) {
   }
   const [a, b] = [...pts.values()];
   const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-  if (pinch) zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / pinch);
+  if (pinch) zoomBy((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / pinch);
   pinch = d;
 }
 function onPointerUp(e: PointerEvent) {
@@ -649,7 +659,7 @@ useEventListener(
     if (!cur.value || !(e.ctrlKey || e.metaKey || max.value)) return;
     e.preventDefault();
     const [x, y] = local(e);
-    zoomAt(x, y, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)));
+    zoomBy(x, y, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)));
   },
   { passive: false },
 );
@@ -813,6 +823,16 @@ onBeforeUnmount(() => {
             @click="max = !max"
           >
             <SvIcon :name="max ? 'min' : 'max'" />
+          </button>
+          <button
+            type="button"
+            class="sv__tool sv__tool--scale"
+            aria-label="1:1（缩放至 100%）"
+            data-ak-tip="缩放至 100%（原始比例）"
+            :disabled="!cur || !!veil || !!recording || !crop.s"
+            @click="setOriginalScale"
+          >
+            1:1
           </button>
           <div class="sv__zoom">{{ shown.pct ? `${shown.pct}%` : "" }}</div>
         </div>
@@ -1159,6 +1179,10 @@ onBeforeUnmount(() => {
   }
 }
 
+.sv__tool--scale {
+  font: 700 12px/1 var(--ak-font-label);
+}
+
 .sv__zoom {
   text-align: center;
   font: 700 10px/1 var(--ak-font-label);
@@ -1289,6 +1313,21 @@ onBeforeUnmount(() => {
     flex: 1;
     min-height: 0;
     max-height: none;
+  }
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+  .sv.is-max > .sv__main {
+    display: grid;
+
+    > .sv__list {
+      contain: size;
+    }
+  }
+
+  .sv.is-max .sv__tools {
+    flex-direction: row;
+    align-items: center;
   }
 }
 </style>
