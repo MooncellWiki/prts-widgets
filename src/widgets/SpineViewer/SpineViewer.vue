@@ -784,6 +784,30 @@ onBeforeUnmount(() => {
           @update:model-value="pickModel(String($event))"
         />
       </div>
+      <label class="sv__field">
+        <span class="ak-overline">缩放</span>
+        <span
+          class="ak-input-group sv__zoom"
+          :title="`缩放比例（${ZOOM_MIN}–${ZOOM_MAX}%），按 Enter 应用`"
+        >
+          <input
+            ref="zoomField"
+            v-model="zoomText"
+            class="ak-input ak-input--sm"
+            type="text"
+            inputmode="decimal"
+            enterkeyhint="done"
+            autocomplete="off"
+            aria-label="缩放比例（%）"
+            :disabled="!canEditZoom"
+            @focus="zoomField?.select()"
+            @blur="applyZoomInput"
+            @keydown.enter="onZoomEnter"
+            @keydown.esc.stop.prevent="cancelZoomInput"
+          />
+          <span class="ak-input-group__addon" aria-hidden="true">%</span>
+        </span>
+      </label>
     </div>
 
     <div class="sv__main">
@@ -860,26 +884,6 @@ onBeforeUnmount(() => {
           >
             <SvIcon :name="max ? 'min' : 'max'" />
           </button>
-          <label
-            class="sv__zoom"
-            :title="`缩放比例（${ZOOM_MIN}–${ZOOM_MAX}%），按 Enter 应用`"
-          >
-            <input
-              ref="zoomField"
-              v-model="zoomText"
-              type="text"
-              inputmode="decimal"
-              enterkeyhint="done"
-              autocomplete="off"
-              aria-label="缩放比例（%）"
-              :disabled="!canEditZoom"
-              @focus="zoomField?.select()"
-              @blur="applyZoomInput"
-              @keydown.enter="onZoomEnter"
-              @keydown.esc.stop.prevent="cancelZoomInput"
-            />
-            <span aria-hidden="true">%</span>
-          </label>
         </div>
         <div ref="bgBox" class="sv__bg" role="group" aria-label="背景">
           <button
@@ -993,7 +997,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// 选择条：时装芯片 + 模型下拉，都靠左（操作区聚在一起）；一行放不下时整栏换行
+// 选择条：时装、模型、缩放靠左排列，放不下时整栏换行
 .sv__bar {
   display: flex;
   flex-wrap: wrap;
@@ -1026,6 +1030,25 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.sv__zoom {
+  width: 92px;
+
+  > .ak-input {
+    padding-inline: 6px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+
+    @media (pointer: coarse) {
+      font-size: 16px;
+    }
+  }
+
+  > .ak-input-group__addon {
+    padding-inline: 6px;
+    border-inline-start: 0;
+  }
 }
 
 // 舞台是正方形（导出也是这个画幅），边长随正文列宽、最大 560；动作列表吃掉剩下的宽度，高度跟舞台齐
@@ -1168,7 +1191,6 @@ onBeforeUnmount(() => {
   top: 10px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
   gap: 4px;
 }
 
@@ -1222,34 +1244,6 @@ onBeforeUnmount(() => {
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
-  }
-}
-
-.sv__zoom {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  width: 80px;
-  height: 32px;
-  padding: 0 6px;
-  cursor: text;
-  color: rgba(var(--sv-ink), 0.85);
-  background: rgba(var(--sv-ink), 0.08);
-  border: 1px solid rgba(var(--sv-ink), 0.14);
-  font: 700 16px/1 var(--ak-font-label);
-  font-variant-numeric: tabular-nums;
-
-  &:focus-within {
-    outline: 2px solid var(--ak-focus);
-    outline-offset: 2px;
-  }
-
-  > input {
-    all: unset;
-    flex: 1;
-    min-width: 0;
-    text-align: right;
   }
 }
 
