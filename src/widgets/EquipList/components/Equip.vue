@@ -373,11 +373,18 @@ const modeMission = () => props.simplemode === "mission";
   display: flex;
   width: 100%;
   max-width: 800px;
-  margin: 5px 0;
+  margin: 5px;
   padding: 5px;
-  box-shadow: 2px 2px 3px #888;
+  border: 0;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.24);
   box-sizing: border-box;
   flex-flow: column;
+}
+:deep(.modbody.mod-dark:not(.simple)) {
+  border: 1px solid #54595d;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 :deep(.modbody.mobile) {
   font-size: 95%;
@@ -545,7 +552,7 @@ const modeMission = () => props.simplemode === "mission";
     2px 2px 4px #fff;
 }
 :deep(.prts-item-quantity-label) {
-  bottom: -3px;
+  bottom: 0px;
   right: 2px;
   font-size: 10pt;
 }

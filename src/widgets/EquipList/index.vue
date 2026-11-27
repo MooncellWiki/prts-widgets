@@ -1,77 +1,85 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, useTemplateRef } from "vue";
 
+import { AkButton, AkEmpty, AkScope } from "@mooncellwiki/prts-design-vue";
 import { useQuery } from "@pinia/colada";
-import {
-  NButton,
-  NButtonGroup,
-  NCard,
-  NCollapseTransition,
-  NConfigProvider,
-  NInput,
-  NLayout,
-  NScrollbar,
-  NSelect,
-} from "naive-ui";
+import { useElementSize } from "@vueuse/core";
+import { NConfigProvider, NLayout } from "naive-ui";
 
-import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-import { isMobile } from "@/utils/utils";
+import { useHostTheme } from "@/utils/useHostTheme";
 
+import Toolbar from "./Toolbar.vue";
 import EquipGroup from "./components/EquipGroup.vue";
 import EquipTable from "./components/EquipTable.vue";
-import FilterSub from "./components/FilterSub.vue";
-import {
-  customLabel,
-  getFilterOptions,
-  getFilterValue,
-  getSortOptions,
-  rarityMap,
-  statsStyleMap,
-} from "./consts";
+import { customLabel, rarityMap } from "./consts";
 import { equipListQuery } from "./equipData";
+import FilterPanel from "./filter/FilterPanel.vue";
+import ModuleFilterPanel from "./filter/ModuleFilterPanel.vue";
+import {
+  createEquipFilterSelection,
+  createOperatorSelection,
+  DEFAULT_SORT,
+  GroupBy,
+  RARITY_FILTER_OPTIONS,
+  selectionCount,
+  TYPE_FILTER_OPTIONS,
+  View,
+  type EquipFilterSelection,
+  type EquipGroupBy,
+  type EquipSort,
+  type EquipView,
+  type FilterGroup,
+  type FilterOption,
+  type OperatorFilterDef,
+  type OperatorFilterId,
+  type OperatorSelection,
+} from "./filters";
+import { matchesEquipSearch, matchesFilters, sortEquipRows } from "./query";
 import { useEquipListStore } from "./store";
 
 import type { CharEquips, EquipRow } from "./types";
 
-interface FilterValue {
-  mode: string;
-  value: string | string[];
-}
-const textValue = (v: FilterValue) =>
-  typeof v.value === "string" ? v.value : "";
-function newFilterItem(): FilterValue {
-  return {
-    mode: "all",
-    value: "yes",
-  };
-}
-
-function newSortItem(): FilterValue {
-  return {
-    mode: "desc",
-    value: "desc",
-  };
-}
-
 const i18nConfig = getNaiveUILocale();
 const { theme, themeOverrides, isDark } = useTheme();
+const scopeTheme = useHostTheme();
 const locale = getLanguage();
 const store = useEquipListStore();
 const { data } = useQuery(equipListQuery);
+
 const rawEquipData = computed(() => data.value?.chars ?? []);
-/** 数据没到（含取数失败）和模组卡片还在处理时，筛选按钮禁用 */
+/** 数据没到（含取数失败）和模组卡片还在处理时，筛选控件禁用 */
 const busy = computed(() => !data.value || store.processing > 0);
-const timeData = computed(() =>
-  (data.value?.time ?? []).map((i) => ({
-    label: new Date(i.time * 1000).toLocaleDateString(locale),
-    value: i.time.toString(),
+const timeData = computed<FilterOption[]>(() =>
+  (data.value?.time ?? []).map((item) => ({
+    label: new Date(item.time * 1000).toLocaleDateString(locale),
+    value: item.time.toString(),
   })),
 );
-const filterShow = ref(true);
-const equipFilterShow = ref(true);
-const listShow = ref(true);
+
+/* 排布看结果区自己的宽度，不看视口（侧栏收起 / 展开都会改变它）：< 640 是手机排布 */
+const root = useTemplateRef<HTMLElement>("root");
+const { width } = useElementSize(
+  root,
+  { width: Number.POSITIVE_INFINITY, height: 0 },
+  { box: "border-box" },
+);
+
+const view = ref<EquipView>(View.TABLE);
+const group = ref<EquipGroupBy>(GroupBy.SUB);
+const advancedOpen = ref(false);
+const operatorSelection = ref<OperatorSelection>(createOperatorSelection());
+const filterSelection = ref<EquipFilterSelection>(createEquipFilterSelection());
+const searchQuery = ref("");
+const sort = ref<EquipSort>({ ...DEFAULT_SORT });
+const advancedCount = computed(() => selectionCount(filterSelection.value));
+
+const resetAllFilters = () => {
+  operatorSelection.value = createOperatorSelection();
+  filterSelection.value = createEquipFilterSelection();
+  searchQuery.value = "";
+};
 
 /** 职业 → 子职业（按干员出现的顺序） */
 const subProfMap = computed(() => {
@@ -84,418 +92,198 @@ const subProfMap = computed(() => {
 });
 const filteredSubProfMap = computed(() => {
   const map: Record<string, string[]> = {};
-  if (states.value.type.length === 0) return subProfMap.value;
-  for (const t of states.value.type) {
-    map[t] = subProfMap.value[t];
+  if (operatorSelection.value.type.length === 0) return subProfMap.value;
+  for (const type of operatorSelection.value.type) {
+    map[type] = subProfMap.value[type] ?? [];
   }
   return map;
 });
 
-const subOptions = computed(() => {
-  return {
-    title: customLabel.subtypeLabel,
-    placeholder: customLabel.subPlaceholder,
-    options: Object.entries(filteredSubProfMap.value).map(([k, v]) => {
-      return {
-        type: "group",
-        label: k,
-        key: k,
-        children: v.map((subProf) => {
-          return {
-            label: subProf,
-            value: subProf,
-          };
-        }),
-      };
+/** 职业 / 稀有度 / 分支三行的定义；分支选项随选中的职业收窄。 */
+const operatorFilters = computed<OperatorFilterDef[]>(() => {
+  const groups: FilterGroup[] = Object.entries(filteredSubProfMap.value).map(
+    ([label, options]) => ({
+      label,
+      options: options.map((value) => ({ value, label: value })),
     }),
-  };
+  );
+  return [
+    {
+      id: "type",
+      title: customLabel.typeLabel,
+      options: TYPE_FILTER_OPTIONS,
+    },
+    {
+      id: "rarity",
+      title: customLabel.rarityLabel,
+      options: RARITY_FILTER_OPTIONS,
+    },
+    {
+      id: "sub",
+      title: customLabel.subtypeLabel,
+      options: groups.flatMap((group) => group.options),
+      groups,
+    },
+  ];
 });
-const options = {
-  type: {
-    title: customLabel.typeLabel,
-    options: customLabel.typeOptions,
-  },
-  rarity: {
-    title: customLabel.rarityLabel,
-    options: Object.values(rarityMap),
-  },
-};
-const sortOptions = {
-  sortOption: getSortOptions(),
-  filterOption: getFilterOptions(),
-};
-const states = ref<Record<string, string[]>>({
-  type: [],
-  rarity: [],
-  sub: [],
-});
-const sortStates = ref<Record<string, FilterValue[]>>({
-  filter: [newFilterItem()],
-  sort: [newSortItem()],
-});
-const group = ref("sub");
 
-const filterData = (data: Record<string, string>): boolean => {
-  return sortStates.value.filter.every((v) => {
-    switch (v.mode) {
-      case "all": {
-        return true;
-      }
-      case "trait": {
-        const { add } = data;
+/** 取消职业后，把不属于剩余职业的分支选择一起删掉（同干员一览）。 */
+function pruneSubTypes() {
+  if (operatorSelection.value.type.length === 0) return;
+  const allowed = new Set(Object.values(filteredSubProfMap.value).flat());
+  operatorSelection.value.sub = operatorSelection.value.sub.filter((name) =>
+    allowed.has(name),
+  );
+}
 
-        return v.value === "yes" ? !!add : !add;
-      }
-      case "type": {
-        const { type } = data;
-        // 切换 mode 不会重置 value，这里可能还是 newFilterItem() 的字符串默认值
-        const types = Array.isArray(v.value) ? v.value : [];
-        if (types.length === 0) return true;
+function toggleOperator(id: OperatorFilterId, value: string) {
+  const selected = operatorSelection.value[id];
+  const index = selected.indexOf(value);
+  if (index === -1) selected.push(value);
+  else selected.splice(index, 1);
+  if (id === "type") pruneSubTypes();
+}
 
-        return types.some((t) => !!type?.match(new RegExp(`-${t}`, "i")));
-      }
-      case "talent": {
-        const { talent2 = "", talent3 = "" } = data;
-        const match =
-          talent2.includes("新增天赋") || talent3.includes("新增天赋");
+function clearOperator(id: OperatorFilterId) {
+  operatorSelection.value[id] = [];
+}
 
-        return v.value === "yes" ? match : !match;
-      }
-      case "addtime": {
-        return v.value.includes(data[v.mode]!);
-      }
-      case "mission2opt": {
-        if (typeof v.value !== "string") return false;
-
-        return !!data[v.mode]?.includes(v.value);
-      }
-      default: {
-        return v.value === "yes" ? data[v.mode] !== "0" : data[v.mode] === "0";
-      }
-    }
-  });
-};
 const filteredEquipData = computed((): CharEquips[] => {
-  const s = states.value;
+  const selection = operatorSelection.value;
   const result: CharEquips[] = [];
-  for (const ce of rawEquipData.value) {
+  for (const charEquip of rawEquipData.value) {
     const rarityP =
-      s.rarity.length > 0 &&
-      !s.rarity.includes(rarityMap[ce.char.rarity.toString()]);
-    const subP = s.sub.length > 0 && !s.sub.includes(ce.char.subtype);
-    const typeP = s.type.length > 0 && !s.type.includes(ce.char.type);
+      selection.rarity.length > 0 &&
+      !selection.rarity.includes(
+        rarityMap[charEquip.char.rarity.toString()] ?? "",
+      );
+    const subP =
+      selection.sub.length > 0 &&
+      !selection.sub.includes(charEquip.char.subtype);
+    const typeP =
+      selection.type.length > 0 &&
+      !selection.type.includes(charEquip.char.type);
     if (rarityP || subP || typeP) continue;
-    const data = ce.equips.filter((e) => filterData(e));
-    if (data.length > 0)
+
+    const equips = charEquip.equips.filter(
+      (equip) =>
+        matchesFilters(equip, filterSelection.value) &&
+        matchesEquipSearch(charEquip.char, equip, searchQuery.value),
+    );
+    if (equips.length > 0)
       result.push({
-        char: ce.char,
-        equips: data,
+        char: charEquip.char,
+        equips,
       });
   }
   return result;
 });
+
 const CharEquipList = computed(() => {
   const result: EquipRow[] = [];
-  for (const ce of filteredEquipData.value) {
+  for (const charEquip of filteredEquipData.value) {
     result.push(
-      ...ce.equips.map((e) => {
-        return {
-          name: e.name ?? "",
-          type: e.type ?? "",
-          operator: ce.char.name,
-          oprarity: ce.char.rarity,
-          opid: ce.char.id,
-          data: e,
-        };
-      }),
+      ...charEquip.equips.map((equip) => ({
+        name: equip.name ?? "",
+        type: equip.type ?? "",
+        operator: charEquip.char.name,
+        oprarity: charEquip.char.rarity,
+        opid: charEquip.char.id,
+        data: equip,
+      })),
     );
   }
-  result.sort((x, y) => {
-    switch (sortStates.value.sort[0].mode) {
-      case "default": {
-        return x.oprarity === y.oprarity
-          ? y.opid - x.opid
-          : Number.parseInt(y.oprarity as string) -
-              Number.parseInt(x.oprarity as string);
-      }
-      case "asc": {
-        return x.data.addtime === y.data.addtime
-          ? y.opid - x.opid
-          : Number.parseInt(x.data.addtime ?? "0") -
-              Number.parseInt(y.data.addtime ?? "0");
-      }
-      case "desc": {
-        return x.data.addtime === y.data.addtime
-          ? y.opid - x.opid
-          : Number.parseInt(y.data.addtime ?? "0") -
-              Number.parseInt(x.data.addtime ?? "0");
-      }
-      default: {
-        const mode = sortStates.value.sort[0].mode;
-        const order = sortStates.value.sort[0].value === "asc" ? 1 : -1;
-        const numx = x.data[`${mode}3`] ? Number(x.data[`${mode}3`]) : 0;
-        const numy = y.data[`${mode}3`] ? Number(y.data[`${mode}3`]) : 0;
-        return numx === numy
-          ? y.opid - x.opid
-          : (numx - numy) * order * (statsStyleMap[mode] ?? 1);
-      }
-    }
-  });
-  return result;
+  return sortEquipRows(result, sort.value);
 });
-
-const mobileStyle = () => {
-  return isMobile() ? "padding: 5px" : undefined;
-};
 </script>
 
 <template>
-  <NConfigProvider
-    inline-theme-disabled
-    :theme="theme"
-    :theme-overrides="themeOverrides"
-    :locale="i18nConfig.locale"
-    :date-locale="i18nConfig.dateLocale"
-    preflight-style-disabled
-  >
-    <NLayout
-      :class="[
-        'mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4',
-        isDark && 'prts-widget-dark',
-      ]"
+  <AkScope class="ep ak-not-prose" :theme="scopeTheme">
+    <NConfigProvider
+      inline-theme-disabled
+      :theme="theme"
+      :theme-overrides="themeOverrides"
+      :locale="i18nConfig.locale"
+      :date-locale="i18nConfig.dateLocale"
+      preflight-style-disabled
     >
-      <NCard
-        :title="customLabel.filterTitle"
-        header-style="text-align: center;"
-        size="small"
+      <NLayout
+        :class="[
+          'mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4',
+          isDark && 'prts-widget-dark',
+        ]"
       >
-        <template #header-extra>
-          <div class="m-1 cursor-pointer" @click="filterShow = !filterShow">
-            <span v-if="filterShow" class="mdi mdi-chevron-up text-2xl" />
-            <span v-else class="mdi mdi-chevron-down text-2xl" />
-          </div>
-        </template>
-        <NCollapseTransition :show="filterShow">
-          <table class="w-full border-collapse text-left">
-            <tbody class="align-baseline">
-              <tr>
-                <OptionsGroup
-                  v-model="states.type"
-                  :title="options.type.title"
-                  :options="options.type.options"
-                  :disabled="busy"
-                />
-              </tr>
-              <tr>
-                <OptionsGroup
-                  v-model="states.rarity"
-                  :title="options.rarity.title"
-                  :options="options.rarity.options"
-                  :disabled="busy"
-                />
-              </tr>
-              <tr>
-                <FilterSub
-                  v-model:selected="states.sub"
-                  :title="subOptions.title"
-                  :options="subOptions.options"
-                  :placeholder="subOptions.placeholder"
-                  :disabled="busy"
-                />
-              </tr>
-            </tbody>
-          </table>
-        </NCollapseTransition>
-      </NCard>
-      <NCard
-        :title="customLabel.tableCollapse"
-        header-style="text-align: center;"
-        size="small"
-      >
-        <template #header-extra>
-          <div
-            class="m-1 cursor-pointer"
-            @click="equipFilterShow = !equipFilterShow"
+        <div ref="root" :class="['ep-root', { 'ep--narrow': width < 640 }]">
+          <FilterPanel
+            v-model:advanced-open="advancedOpen"
+            :filters="operatorFilters"
+            :selection="operatorSelection"
+            :advanced-count="advancedCount"
+            :disabled="busy"
+            @toggle="toggleOperator"
+            @clear="clearOperator"
           >
-            <span v-if="equipFilterShow" class="mdi mdi-chevron-up text-2xl" />
-            <span v-else class="mdi mdi-chevron-down text-2xl" />
-          </div>
-        </template>
-        <NCollapseTransition :show="equipFilterShow">
-          <div class="flex flex-row items-center justify-center">
-            <span class="basis-1/8">
-              {{ customLabel.tableFilterLabel }}
-            </span>
-            <div class="flex basis-7/8 flex-col items-center">
-              <NButtonGroup size="small">
-                <NButton
-                  type="default"
-                  class="my-1"
-                  @click="
-                    () => {
-                      sortStates.filter.push({
-                        mode: 'all',
-                        value: 'yes',
-                      });
-                    }
-                  "
-                >
-                  <span class="mdi mdi-plus text-xl"></span>
-                </NButton>
-                <NButton
-                  type="default"
-                  class="my-1"
-                  @click="
-                    () => {
-                      if (sortStates.filter.length > 1) {
-                        sortStates.filter.pop();
-                      }
-                    }
-                  "
-                >
-                  <span class="mdi mdi-minus text-xl"></span>
-                </NButton>
-              </NButtonGroup>
-              <div
-                v-for="(v, i) in sortStates.filter"
-                :key="i"
-                class="w-full flex flex-row items-center"
-              >
-                <NSelect
-                  v-model:value="v.mode"
-                  class="m-1"
-                  :disabled="busy"
-                  :options="sortOptions.filterOption"
-                />
-                <NSelect
-                  v-if="v.mode === 'addtime'"
-                  v-model:value="v.value"
-                  class="m-1"
-                  :disabled="busy"
-                  :options="timeData"
-                  clearable
-                  multiple
-                  :fallback-option="false"
-                />
-                <NInput
-                  v-else-if="v.mode === 'mission2opt'"
-                  :value="textValue(v)"
-                  :disabled="busy"
-                  clearable
-                  @update:value="v.value = $event"
-                >
-                </NInput>
-                <NSelect
-                  v-else
-                  v-model:value="v.value"
-                  class="m-1"
-                  :disabled="busy || v.mode === 'all'"
-                  :options="getFilterValue(v.mode)"
-                  :multiple="v.mode === 'type'"
-                  :clearable="v.mode === 'type'"
-                  :fallback-option="false"
-                />
-              </div>
-            </div>
-          </div>
-          <div class="flex flex-row items-center justify-center">
-            <span class="basis-1/8">
-              {{ customLabel.tableSortLabel }}
-            </span>
-            <div class="flex basis-7/8 flex-row items-center">
-              <NSelect
-                v-model:value="sortStates.sort[0].mode"
-                class="m-1"
-                :disabled="busy || listShow === false"
-                :options="sortOptions.sortOption"
+            <template #advanced>
+              <ModuleFilterPanel
+                v-model:selection="filterSelection"
+                :time-options="timeData"
+                :disabled="busy"
+                :narrow="width < 640"
               />
+            </template>
+          </FilterPanel>
+
+          <Toolbar
+            v-model:q="searchQuery"
+            v-model:sort="sort"
+            v-model:view="view"
+            v-model:group="group"
+          />
+
+          <AkScope tag="div" class="ep-result" :theme="scopeTheme">
+            <AkEmpty
+              v-if="CharEquipList.length === 0"
+              title="没有符合条件的模组"
+            >
+              放宽几项筛选条件，或者<AkButton
+                variant="link"
+                @click="resetAllFilters"
+              >
+                清除全部条件</AkButton
+              >。
+            </AkEmpty>
+            <div v-else-if="view === View.TABLE">
+              <EquipTable :data="CharEquipList" />
             </div>
-          </div>
-        </NCollapseTransition>
-      </NCard>
-      <NCard
-        title=" "
-        header-style="text-align: center;"
-        :content-style="mobileStyle()"
-        size="small"
-      >
-        <template #header-extra>
-          <NButtonGroup v-if="!listShow" size="small" class="mx-1">
-            <NButton
-              secondary
-              :disabled="busy"
-              :type="group === 'sub' ? 'info' : 'default'"
-              @click="group = 'sub'"
-            >
-              <span class="mdi mdi-shape text-xl" />
-            </NButton>
-            <NButton
-              secondary
-              :disabled="busy"
-              :type="group === 'time' ? 'info' : 'default'"
-              @click="group = 'time'"
-            >
-              <span class="mdi mdi-clock-time-eight text-xl" />
-            </NButton>
-            <NButton
-              secondary
-              :disabled="busy"
-              :type="group === 'opt' ? 'info' : 'default'"
-              @click="group = 'opt'"
-            >
-              <span class="mdi mdi-sword-cross text-xl" />
-            </NButton>
-          </NButtonGroup>
-          <NButtonGroup v-else size="small" class="mx-1">
-            <NButton
-              secondary
-              :disabled="busy"
-              :type="store.simple === 'stats' ? 'info' : 'default'"
-              @click="store.simple = 'stats'"
-            >
-              <span class="mdi mdi-numeric text-xl" />
-            </NButton>
-            <NButton
-              secondary
-              :disabled="busy"
-              :type="store.simple === 'mission' ? 'info' : 'default'"
-              @click="store.simple = 'mission'"
-            >
-              <span class="mdi mdi-clipboard-check text-xl" />
-            </NButton>
-          </NButtonGroup>
-          <NButtonGroup size="small">
-            <NButton
-              secondary
-              :disabled="busy"
-              :type="listShow ? 'info' : 'default'"
-              @click="listShow = true"
-            >
-              <span class="mdi mdi-view-list text-xl" />
-            </NButton>
-            <NButton
-              secondary
-              :disabled="busy"
-              :type="listShow ? 'default' : 'info'"
-              @click="listShow = false"
-            >
-              <span class="mdi mdi-view-grid text-xl" />
-            </NButton>
-          </NButtonGroup>
-        </template>
-        <div v-if="!listShow">
-          <EquipGroup :data="filteredEquipData" :group="group"></EquipGroup>
+            <div v-else>
+              <EquipGroup :data="filteredEquipData" :group="group" />
+            </div>
+          </AkScope>
         </div>
-        <div v-else>
-          <NScrollbar trigger="none" :x-scrollable="true">
-            <EquipTable :data="CharEquipList"> </EquipTable>
-          </NScrollbar>
-        </div>
-      </NCard>
-    </NLayout>
-  </NConfigProvider>
+      </NLayout>
+    </NConfigProvider>
+  </AkScope>
 </template>
 
 <style scoped>
 @import "@/styles/dark-mode.scss";
+</style>
+
+<style scoped lang="scss">
+// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
+.ep.ak-scope[data-theme],
+.ep-result.ak-scope[data-theme] {
+  background-color: transparent;
+}
+
+// 手机上给筛选面板留一点边，桌面交给 NLayout 的 md:p-4
+.ep-root {
+  padding: 5px;
+}
+
+@media (min-width: 768px) {
+  .ep-root {
+    padding: 0;
+  }
+}
 </style>

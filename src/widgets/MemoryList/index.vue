@@ -1,31 +1,28 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, useTemplateRef, watch } from "vue";
 
+import { AkScope } from "@mooncellwiki/prts-design-vue";
 import { useQuery } from "@pinia/colada";
+import { useElementSize } from "@vueuse/core";
 import { debounce } from "lodash-es";
-import {
-  NButton,
-  NConfigProvider,
-  NEmpty,
-  NInput,
-  NLayout,
-  NPagination,
-} from "naive-ui";
+import { NConfigProvider, NEmpty, NLayout } from "naive-ui";
 
-import OptionsGroup from "@/components/OptionsGroup.vue";
 import { getNaiveUILocale } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
-import { isMobileSkin } from "@/utils/utils";
+import { useHostTheme } from "@/utils/useHostTheme";
 
 import Memory from "./Memory.vue";
+import PagerBar from "./PagerBar.vue";
+import Toolbar from "./Toolbar.vue";
 import { filterRarity, rarityMap } from "./consts";
+import FilterPanel from "./filter/FilterPanel.vue";
 import { memoryQuery } from "./utils";
 
 import type { CharMemory } from "./types";
 
-const isMobile = isMobileSkin();
 const i18nConfig = getNaiveUILocale();
 const { theme, themeOverrides, isDark } = useTheme();
+const scopeTheme = useHostTheme();
 const states = ref<string[]>([]);
 const sorting = ref("lmmr");
 const order = ref(-1);
@@ -33,6 +30,16 @@ const searchTerm = ref("");
 const { data } = useQuery(memoryQuery);
 const charMemoryData = computed(() => data.value ?? []);
 const isLoaded = computed(() => !!data.value);
+
+/* 排布看内容区自己的宽度，不看视口：窄了分页条另起一行、卡片文字收小 */
+const root = useTemplateRef<HTMLElement>("root");
+// 挂载前（含外壳预渲染）是 +∞：先按最宽的排布出
+const { width } = useElementSize(
+  root,
+  { width: Number.POSITIVE_INFINITY, height: 0 },
+  { box: "border-box" },
+);
+const narrow = computed(() => width.value < 640);
 
 const compareDate = (mmrx: CharMemory, mmry: CharMemory) => {
   const [datex, datey] = [mmrx, mmry].map((mmr) => {
@@ -82,7 +89,6 @@ const pagination = reactive({
   page: 1,
   pageSize: 10,
   pageSizes: [10, 25, 50, 100],
-  pageSlot: isMobile ? 5 : 9,
 });
 function onUpdatePageSize(pageSize: number) {
   pagination.pageSize = pageSize;
@@ -95,147 +101,132 @@ const shownMemory = computed(() => {
     pagination.pageSize * pagination.page,
   );
 });
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(filteredMemory.value.length / pagination.pageSize)),
+);
 
-// 取到数据后先按默认排序列一遍
-watch(data, () => _calcMemory());
-const sortModes = [
-  { type: "opt", label: "干员上线" },
-  { type: "fmmr", label: "首个密录" },
-  { type: "lmmr", label: "最新密录" },
-];
-const orderModes = [
-  { value: 1, icon: "mdi-sort-calendar-descending" },
-  { value: -1, icon: "mdi-sort-calendar-ascending" },
-];
-const sortMode = (mode: string) => {
+/** 搜索词由 AkSearch 给，可能带 undefined（清空输入时） */
+function onSearchInput(value: string) {
+  searchTerm.value = value;
   calcMemory();
-  sorting.value = mode;
-};
-const orderMode = (mode: number) => {
+}
+
+function onSort(value: string) {
+  sorting.value = value;
   calcMemory();
-  order.value = mode;
-};
-const pickSize = () => {
-  return isMobile ? "small" : "medium";
-};
+}
+
+function onOrder(value: number) {
+  order.value = value;
+  calcMemory();
+}
+
+// 取到数据后先按默认排序列一遍；缓存里已经有数据（或外壳预渲染）时也要先算一次
+watch(data, () => _calcMemory(), { immediate: true });
 </script>
 
 <template>
-  <NConfigProvider
-    preflight-style-disabled
-    inline-theme-disabled
-    :theme="theme"
-    :theme-overrides="themeOverrides"
-    :locale="i18nConfig.locale"
-    :date-locale="i18nConfig.dateLocale"
-  >
-    <NLayout
-      :class="[
-        'mx-auto max-w-3xl p-2 antialiased lg:max-w-[90rem] md:p-4',
-        isDark && 'prts-widget-dark',
-      ]"
+  <AkScope class="memory-list ak-not-prose" :theme="scopeTheme" data-no-toggle>
+    <NConfigProvider
+      preflight-style-disabled
+      inline-theme-disabled
+      :theme="theme"
+      :theme-overrides="themeOverrides"
+      :locale="i18nConfig.locale"
+      :date-locale="i18nConfig.dateLocale"
     >
-      <table class="w-full border-collapse text-left important-table">
-        <tbody class="align-baseline">
-          <tr>
-            <OptionsGroup
-              v-model="states"
-              :title="filterRarity.title"
-              :options="filterRarity.options"
-              @update:model-value="calcMemory"
-            />
-          </tr>
-          <tr>
-            <td>
-              <div class="flex flex-row items-center justify-center">
-                <span class="basis-1/8">排序</span>
-                <div
-                  class="flex basis-7/8 flex-row items-center justify-between"
-                >
-                  <div class="flex flex-wrap justify-start">
-                    <NButton
-                      v-for="(item, index) in sortModes"
-                      :key="index"
-                      class="m-1"
-                      :disabled="!isLoaded"
-                      :type="sorting === item.type ? 'info' : 'default'"
-                      @click="sortMode(item.type)"
-                      >{{ item.label }}</NButton
-                    >
-                  </div>
-                  <div class="flex flex-wrap justify-end">
-                    <NButton
-                      v-for="(item, index) in orderModes"
-                      :key="index"
-                      class="m-1"
-                      :disabled="!isLoaded"
-                      :type="order === item.value ? 'info' : 'default'"
-                      @click="orderMode(item.value)"
-                      ><span :class="['text-2xl mdi', item.icon]"></span>
-                    </NButton>
-                  </div>
-                </div>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <div class="flex items-center">
-                <NInput
-                  v-model:value="searchTerm"
-                  class="my-2"
-                  type="text"
-                  placeholder="搜索干员名称/密录名称/引言文字"
-                  @update:value="calcMemory"
-                >
-                  <template #prefix>
-                    <span class="mdi mdi-magnify text-lg" />
-                  </template>
-                </NInput>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <NPagination
-        v-model:page="pagination.page"
-        class="my-2 justify-center"
-        :item-count="filteredMemory.length"
-        :page-size="pagination.pageSize"
-        :page-sizes="pagination.pageSizes"
-        :page-slot="pagination.pageSlot"
-        :size="pickSize()"
-        show-size-picker
-        @update:page-size="onUpdatePageSize"
-      />
-      <div class="w-full flex flex-col flex-wrap lg:flex-row">
-        <Memory
-          v-for="charm in shownMemory"
-          :key="charm.char"
-          :char-memory="charm"
-        >
-        </Memory>
-      </div>
-      <NEmpty v-if="shownMemory.length === 0" description="无结果">
-        <template #icon>
-          <span class="mdi mdi-book-search text-5xl" />
-        </template>
-      </NEmpty>
-      <NPagination
-        v-model:page="pagination.page"
-        class="my-2 justify-center"
-        :item-count="filteredMemory.length"
-        :page-size="pagination.pageSize"
-        :page-sizes="pagination.pageSizes"
-        :page-slot="pagination.pageSlot"
-        :size="pickSize()"
-        show-size-picker
-        @update:page-size="onUpdatePageSize"
-      />
-    </NLayout>
-  </NConfigProvider>
+      <NLayout
+        :class="[
+          'mx-auto max-w-3xl p-2 antialiased lg:max-w-[90rem] md:p-4',
+          isDark && 'prts-widget-dark',
+        ]"
+      >
+        <div ref="root" class="ml-root">
+          <FilterPanel
+            v-model="states"
+            :title="filterRarity.title"
+            :options="filterRarity.options"
+            @update:model-value="calcMemory"
+          />
+
+          <Toolbar
+            :q="searchTerm"
+            :sorting="sorting"
+            :order="order"
+            :disabled="!isLoaded"
+            @update:q="onSearchInput"
+            @update:sorting="onSort"
+            @update:order="onOrder"
+          />
+
+          <PagerBar
+            :page="pagination.page"
+            :page-count="pageCount"
+            :page-size="pagination.pageSize"
+            :page-sizes="pagination.pageSizes"
+            label="分页（顶部）"
+            :narrow="narrow"
+            @update:page="pagination.page = $event"
+            @update:page-size="onUpdatePageSize"
+          />
+
+          <div class="ml-result">
+            <Memory
+              v-for="charm in shownMemory"
+              :key="charm.char"
+              :char-memory="charm"
+              :narrow="narrow"
+            >
+            </Memory>
+          </div>
+
+          <NEmpty v-if="shownMemory.length === 0" description="无结果">
+            <template #icon>
+              <span class="mdi mdi-book-search text-5xl" />
+            </template>
+          </NEmpty>
+
+          <PagerBar
+            :page="pagination.page"
+            :page-count="pageCount"
+            :page-size="pagination.pageSize"
+            :page-sizes="pagination.pageSizes"
+            label="分页（底部）"
+            :narrow="narrow"
+            @update:page="pagination.page = $event"
+            @update:page-size="onUpdatePageSize"
+          />
+        </div>
+      </NLayout>
+    </NConfigProvider>
+  </AkScope>
 </template>
 
 <style scoped>
 @import "@/styles/dark-mode.scss";
+</style>
+
+<style scoped lang="scss">
+// 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
+.memory-list.ak-scope[data-theme] {
+  background-color: transparent;
+}
+
+.ml-root {
+  min-width: 0;
+}
+
+// 结果区排布同改版前：窄的一列，≥1024 两列（Memory.vue 自己也是 AkScope，卡片宽度写在那边）
+.ml-result {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .ml-result {
+    flex-direction: row;
+  }
+}
 </style>

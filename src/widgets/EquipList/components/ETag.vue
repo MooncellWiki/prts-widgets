@@ -38,7 +38,7 @@ const getIconSrc = (type: string) => {
       </div>
       <div v-else class="ml-5px mr-3px inline-block h-[50px] w-[50px]">
         <div
-          class="relative my-2px inline-block h-[40px] w-[40px] transform-translate-y-[5px] border-[2px] border-[#00b1ff] border-rd-[50%] border-solid bg-[#2f2f2f] shadow-[0_2px_4px_0px_#00000099]"
+          class="absolute my-2px inline-block h-[40px] w-[40px] border-[2px] border-[#00b1ff] border-rd-[50%] border-solid bg-[#2f2f2f] shadow-[0_2px_4px_0px_#00000099]"
         >
           <div class="h-[40px] flex items-center justify-center">
             <span

@@ -51,6 +51,10 @@ describe("模组一览：展开 / 收起", () => {
       char("干员乙", ["模组C"]),
     ]);
 
+    // PRTS 面板外壳：标题、分支名、本组人数
+    expect(host.querySelector(".ak-panel")).toBeInstanceOf(HTMLElement);
+    expect(host.querySelector(".el-sub__title")?.textContent).toBe("尖兵");
+
     avatars(host)[0].click();
     await nextTick();
     expect([...store.shown]).toEqual(["模组A", "模组B"]);
@@ -68,12 +72,12 @@ describe("模组一览：展开 / 收起", () => {
       char("干员乙", ["模组C"]),
     ]);
 
-    host.querySelector<HTMLElement>(".mdi-arrow-expand")!.click();
+    host.querySelector<HTMLElement>(".el-sub__expand")!.click();
     await nextTick();
     expect([...store.shown]).toEqual(["模组A", "模组C"]);
     expect(host.querySelectorAll(".modbody")).toHaveLength(2);
 
-    host.querySelector<HTMLElement>(".mdi-arrow-collapse")!.click();
+    host.querySelector<HTMLElement>(".el-sub__collapse")!.click();
     await nextTick();
     expect(store.shown.size).toBe(0);
   });
