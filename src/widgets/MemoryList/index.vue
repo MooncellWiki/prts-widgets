@@ -1,18 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, ref, useTemplateRef, watch } from "vue";
 
-import { AkScope } from "@mooncellwiki/prts-design-vue";
+import { AkEmpty, AkScope } from "@mooncellwiki/prts-design-vue";
 import { useQuery } from "@pinia/colada";
 import { useElementSize } from "@vueuse/core";
 import { debounce } from "lodash-es";
-import { NConfigProvider, NEmpty, NLayout } from "naive-ui";
 
-import { getNaiveUILocale } from "@/utils/i18n";
-import { useTheme } from "@/utils/theme";
 import { useHostTheme } from "@/utils/useHostTheme";
 
 import Memory from "./Memory.vue";
 import PagerBar from "./PagerBar.vue";
+import ResultBar from "./ResultBar.vue";
 import Toolbar from "./Toolbar.vue";
 import { filterRarity, rarityMap } from "./consts";
 import FilterPanel from "./filter/FilterPanel.vue";
@@ -20,8 +18,6 @@ import { memoryQuery } from "./utils";
 
 import type { CharMemory } from "./types";
 
-const i18nConfig = getNaiveUILocale();
-const { theme, themeOverrides, isDark } = useTheme();
 const scopeTheme = useHostTheme();
 const states = ref<string[]>([]);
 const sorting = ref("lmmr");
@@ -105,6 +101,14 @@ const pageCount = computed(() =>
   Math.max(1, Math.ceil(filteredMemory.value.length / pagination.pageSize)),
 );
 
+/** 条数按密录算：一位干员可能有多条密录 */
+const totalMemoryCount = computed(() =>
+  charMemoryData.value.reduce((sum, charm) => sum + charm.memories.length, 0),
+);
+const shownMemoryCount = computed(() =>
+  filteredMemory.value.reduce((sum, charm) => sum + charm.memories.length, 0),
+);
+
 /** 搜索词由 AkSearch 给，可能带 undefined（清空输入时） */
 function onSearchInput(value: string) {
   searchTerm.value = value;
@@ -127,89 +131,97 @@ watch(data, () => _calcMemory(), { immediate: true });
 
 <template>
   <AkScope class="memory-list ak-not-prose" :theme="scopeTheme" data-no-toggle>
-    <NConfigProvider
-      preflight-style-disabled
-      inline-theme-disabled
-      :theme="theme"
-      :theme-overrides="themeOverrides"
-      :locale="i18nConfig.locale"
-      :date-locale="i18nConfig.dateLocale"
-    >
-      <NLayout
-        :class="[
-          'mx-auto max-w-3xl p-2 antialiased lg:max-w-[90rem] md:p-4',
-          isDark && 'prts-widget-dark',
-        ]"
-      >
-        <div ref="root" class="ml-root">
-          <FilterPanel
-            v-model="states"
-            :title="filterRarity.title"
-            :options="filterRarity.options"
-            @update:model-value="calcMemory"
-          />
+    <div class="ml-layout">
+      <div ref="root" class="ml-root">
+        <FilterPanel
+          v-model="states"
+          :title="filterRarity.title"
+          :options="filterRarity.options"
+          @update:model-value="calcMemory"
+        />
 
-          <Toolbar
-            :q="searchTerm"
-            :sorting="sorting"
-            :order="order"
-            :disabled="!isLoaded"
-            @update:q="onSearchInput"
-            @update:sorting="onSort"
-            @update:order="onOrder"
-          />
+        <Toolbar
+          :q="searchTerm"
+          :sorting="sorting"
+          :order="order"
+          :disabled="!isLoaded"
+          @update:q="onSearchInput"
+          @update:sorting="onSort"
+          @update:order="onOrder"
+        />
 
-          <PagerBar
-            :page="pagination.page"
-            :page-count="pageCount"
-            :page-size="pagination.pageSize"
-            :page-sizes="pagination.pageSizes"
-            label="分页（顶部）"
+        <ResultBar
+          v-if="isLoaded"
+          :shown="shownMemoryCount"
+          :total="totalMemoryCount"
+        />
+
+        <PagerBar
+          :page="pagination.page"
+          :page-count="pageCount"
+          :page-size="pagination.pageSize"
+          :page-sizes="pagination.pageSizes"
+          label="分页（顶部）"
+          :narrow="narrow"
+          :select-page="false"
+          @update:page="pagination.page = $event"
+          @update:page-size="onUpdatePageSize"
+        />
+
+        <div class="ml-result">
+          <Memory
+            v-for="charm in shownMemory"
+            :key="charm.char"
+            :char-memory="charm"
             :narrow="narrow"
-            @update:page="pagination.page = $event"
-            @update:page-size="onUpdatePageSize"
-          />
-
-          <div class="ml-result">
-            <Memory
-              v-for="charm in shownMemory"
-              :key="charm.char"
-              :char-memory="charm"
-              :narrow="narrow"
-            >
-            </Memory>
-          </div>
-
-          <NEmpty v-if="shownMemory.length === 0" description="无结果">
-            <template #icon>
-              <span class="mdi mdi-book-search text-5xl" />
-            </template>
-          </NEmpty>
-
-          <PagerBar
-            :page="pagination.page"
-            :page-count="pageCount"
-            :page-size="pagination.pageSize"
-            :page-sizes="pagination.pageSizes"
-            label="分页（底部）"
-            :narrow="narrow"
-            @update:page="pagination.page = $event"
-            @update:page-size="onUpdatePageSize"
-          />
+          >
+          </Memory>
         </div>
-      </NLayout>
-    </NConfigProvider>
+
+        <AkEmpty v-if="shownMemory.length === 0" title="无结果" icon="search" />
+
+        <PagerBar
+          :page="pagination.page"
+          :page-count="pageCount"
+          :page-size="pagination.pageSize"
+          :page-sizes="pagination.pageSizes"
+          label="分页（底部）"
+          :narrow="narrow"
+          @update:page="pagination.page = $event"
+          @update:page-size="onUpdatePageSize"
+        />
+      </div>
+    </div>
   </AkScope>
 </template>
-
-<style scoped>
-@import "@/styles/dark-mode.scss";
-</style>
 
 <style scoped lang="scss">
 // 别的皮肤上根节点带 data-theme（见 useHostTheme），设计系统会连画布底色一起铺；这里嵌在宿主正文里，不要那块底
 .memory-list.ak-scope[data-theme] {
   background-color: transparent;
+}
+
+// 页面容器：mx-auto max-w-3xl p-2 antialiased lg:max-w-[90rem] md:p-4
+.ml-layout {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+  padding: 0.5rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (min-width: 768px) {
+  .ml-layout {
+    padding: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ml-layout {
+    max-width: 90rem;
+  }
 }
 
 .ml-root {

@@ -87,7 +87,7 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
 </script>
 
 <template>
-  <div class="w-full flex flex-col flex-wrap">
+  <div class="equip-groups">
     <SubContainer
       v-for="(chars, subtype) in groupedEquipData"
       :key="subtype"
@@ -105,3 +105,13 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
     </template>
   </AkEmpty>
 </template>
+
+<style scoped>
+.equip-groups {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  width: 100%;
+  font-size: var(--ak-fs-sm);
+}
+</style>

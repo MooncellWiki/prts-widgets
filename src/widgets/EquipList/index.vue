@@ -193,16 +193,19 @@ const CharEquipList = computed(() => {
   }
   return sortEquipRows(result, sort.value);
 });
+
+const totalModuleCount = computed(() =>
+  rawEquipData.value.reduce((sum, char) => sum + char.equips.length, 0),
+);
+
+const clearAdvancedFilters = () => {
+  filterSelection.value = createEquipFilterSelection();
+};
 </script>
 
 <template>
   <AkScope class="ep ak-not-prose" :theme="scopeTheme">
-    <div
-      :class="[
-        'mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4',
-        isDark && 'prts-widget-dark',
-      ]"
-    >
+    <div :class="['ep-page', isDark && 'prts-widget-dark']">
       <div ref="root" :class="['ep-root', { 'ep--narrow': width < 640 }]">
         <FilterPanel
           v-model:advanced-open="advancedOpen"
@@ -212,6 +215,7 @@ const CharEquipList = computed(() => {
           :disabled="busy"
           @toggle="toggleOperator"
           @clear="clearOperator"
+          @clear-advanced="clearAdvancedFilters"
         >
           <template #advanced>
             <ModuleFilterPanel
@@ -229,6 +233,15 @@ const CharEquipList = computed(() => {
           v-model:view="view"
           v-model:group="group"
         />
+
+        <div v-if="totalModuleCount > 0" class="ep-count">
+          <template v-if="CharEquipList.length === totalModuleCount">
+            共 <b>{{ totalModuleCount }}</b> 个模组
+          </template>
+          <template v-else>
+            <b>{{ CharEquipList.length }}</b> / {{ totalModuleCount }} 个模组
+          </template>
+        </div>
 
         <AkScope tag="div" class="ep-result" :theme="scopeTheme">
           <AkEmpty v-if="CharEquipList.length === 0" title="没有符合条件的模组">
@@ -262,7 +275,39 @@ const CharEquipList = computed(() => {
   background-color: transparent;
 }
 
-// 手机上给筛选面板留一点边，桌面交给外层 md:p-4
+.ep-page {
+  max-width: 48rem;
+  margin-inline: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ep-count {
+  margin: 0 0 var(--ak-space-2);
+  color: var(--ak-fg-muted);
+  font-size: var(--ak-fs-sm);
+
+  b {
+    margin-right: 2px;
+    color: var(--ak-fg);
+    font: 700 var(--ak-fs-h3) / 1 var(--ak-font-label);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (min-width: 768px) {
+  .ep-page {
+    padding: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ep-page {
+    max-width: 90rem;
+  }
+}
+
+// 手机上给筛选面板留一点边，桌面交给外层 padding
 .ep-root {
   padding: 5px;
 }

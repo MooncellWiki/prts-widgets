@@ -1,16 +1,38 @@
 import { getImagePath } from "@/utils/utils";
 
-export function processMaterial(res: string): string {
-  const regexp = /\[\[文件:道具 带框 (.*?)\.png(.*?)]]/g;
-  const result = res.matchAll(regexp);
-  for (const group of result) {
-    res = res.replace(
-      group[0],
-      () =>
-        `<a href="/w/${group[1]}"><img src="${getImagePath(`道具_带框_${group[1]}.png`)}" width="50" /></a>`,
-    );
+export interface ParsedMaterial {
+  name: string;
+  src: string;
+  href: string;
+  count?: string;
+}
+
+/** 把 cargo 的材料 wikitext 拆成 AkItem 需要的字段。 */
+export function parseMaterials(res: string): ParsedMaterial[] {
+  const blocks =
+    /<div[^>]*class="[^"]*prts-item-icon[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
+  const items: ParsedMaterial[] = [];
+  for (const block of res.matchAll(blocks)) {
+    const content = block[1] ?? "";
+    const file = content.match(/\[\[文件:道具 带框 (.*?)\.png([^\]]*)\]\]/);
+    if (!file) continue;
+    const imageName = file[1]!.trim();
+    const attrs = file[2] ?? "";
+    const link = attrs.match(/\|link=([^|\]]+)/)?.[1]?.trim() || imageName;
+    const count = content
+      .match(
+        /<span[^>]*class="[^"]*prts-item-quantity-label[^"]*"[^>]*>([\s\S]*?)<\/span>/,
+      )?.[1]
+      ?.replace(/<[^>]*>/g, "")
+      .trim();
+    items.push({
+      name: link,
+      src: getImagePath(`道具_带框_${imageName}.png`),
+      href: `/w/${link}`,
+      count: count || undefined,
+    });
   }
-  return res;
+  return items;
 }
 
 export function recoverHTML(res: string): string {

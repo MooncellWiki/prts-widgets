@@ -13,10 +13,10 @@ const props = withDefaults(
     pageSize: number;
     pageSizes: number[];
     label: string;
-    /** 窄排布：每页条数与页码另起一行、居中 */
     narrow?: boolean;
+    selectPage?: boolean;
   }>(),
-  { narrow: false },
+  { narrow: false, selectPage: true },
 );
 const emit = defineEmits<{
   "update:page": [page: number];
@@ -37,6 +37,7 @@ function onSize(value: SelectValue | null | undefined) {
 <template>
   <div :class="['ml-pager', { 'ml-pager--narrow': narrow }]">
     <AkSelect
+      v-if="selectPage"
       class="ml-pager__size"
       :model-value="pageSize"
       :options="sizeOptions"
@@ -58,7 +59,7 @@ function onSize(value: SelectValue | null | undefined) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
+  justify-content: right;
   gap: 8px;
   margin: 0 0 var(--ak-space-3);
 

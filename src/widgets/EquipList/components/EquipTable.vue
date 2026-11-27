@@ -31,11 +31,6 @@ const { width } = useElementSize(
   { box: "border-box" },
 );
 const narrow = computed(() => width.value < 480);
-const pagerSlots = computed(() => {
-  if (width.value < 720) return 5;
-  if (width.value < 960) return 7;
-  return 9;
-});
 const page = ref(1);
 const pageSize = ref(10);
 /** 展开着的模组：operator.name */
@@ -87,6 +82,15 @@ function toggleRow(row: EquipRow) {
     ref="root"
     :class="['ep-table-wrap', { 'ep-table-wrap--narrow': narrow }]"
   >
+    <div class="ep-table-top">
+      <ListPager
+        :page="page"
+        :page-count="pageCount"
+        :narrow="narrow"
+        label="分页"
+        @update:page="page = $event"
+      />
+    </div>
     <div class="ep-table-scroll">
       <table
         :class="['ak-table', 'ep-table', { 'ak-table--compact': isMobile() }]"
@@ -161,7 +165,6 @@ function toggleRow(row: EquipRow) {
         :page="page"
         :page-count="pageCount"
         :narrow="narrow"
-        :page-slot="pagerSlots"
         label="分页"
         @update:page="page = $event"
       />
@@ -290,11 +293,13 @@ function toggleRow(row: EquipRow) {
     overflow-wrap: anywhere;
   }
 
+  .ep-table.top,
   .ep-table-foot {
     gap: 6px;
   }
 }
 
+.ep-table.top,
 .ep-table-foot {
   display: flex;
   flex-wrap: wrap;
@@ -302,6 +307,10 @@ function toggleRow(row: EquipRow) {
   justify-content: flex-end;
   gap: 8px;
   margin-top: var(--ak-space-3);
+}
+
+.ep-table-top {
+  margin-bottom: var(--ak-space-3);
 }
 
 .ep-table__page-size {

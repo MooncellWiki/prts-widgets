@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from "vue";
 
-import { AkTag } from "@mooncellwiki/prts-design-vue";
+import { AkButton, AkTag } from "@mooncellwiki/prts-design-vue";
 
 import FilterChips from "./FilterChips.vue";
 import FilterRow from "./FilterRow.vue";
@@ -30,6 +30,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   toggle: [id: OperatorFilterId, value: string];
   clear: [id: OperatorFilterId];
+  clearAdvanced: [];
 }>();
 
 const advancedOpen = defineModel<boolean>("advancedOpen", { default: false });
@@ -72,18 +73,34 @@ const onToggle = (id: OperatorFilterId, value: string) =>
       </FilterRow>
     </div>
 
-    <button
-      type="button"
-      :class="['ep-more', { 'has-active': advancedCount > 0 }]"
-      :aria-expanded="advancedOpen"
-      :aria-controls="advancedId"
-      @click="advancedOpen = !advancedOpen"
+    <div
+      :class="[
+        'ep-more',
+        { 'has-active': advancedCount > 0, 'is-open': advancedOpen },
+      ]"
     >
-      <span>高级筛选</span>
-      <AkTag v-if="advancedCount" size="sm" variant="accent-soft">
-        已选 {{ advancedCount }}
-      </AkTag>
-    </button>
+      <button
+        type="button"
+        class="ep-more__toggle"
+        :aria-expanded="advancedOpen"
+        :aria-controls="advancedId"
+        @click="advancedOpen = !advancedOpen"
+      >
+        <span>高级筛选</span>
+        <AkTag v-if="advancedCount" size="sm" variant="accent-soft">
+          已选 {{ advancedCount }}
+        </AkTag>
+      </button>
+      <AkButton
+        v-if="advancedCount"
+        variant="link"
+        size="sm"
+        class="ep-more__clear"
+        @click="emit('clearAdvanced')"
+      >
+        清除
+      </AkButton>
+    </div>
     <div v-show="advancedOpen" :id="advancedId" class="ep-advanced">
       <slot name="advanced" />
     </div>
@@ -107,16 +124,12 @@ const onToggle = (id: OperatorFilterId, value: string) =>
 }
 
 .ep-more {
-  all: unset;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   min-height: 40px;
-  padding: 0 var(--ak-space-4) 0 var(--ak-space-3);
-  cursor: pointer;
-  user-select: none;
   background: var(--ak-bg-surface-2);
   border-top: 1px solid var(--ak-border);
   border-left: var(--ak-bar-w) solid var(--ak-border-strong);
@@ -125,11 +138,6 @@ const onToggle = (id: OperatorFilterId, value: string) =>
 
   &:hover {
     background: var(--ak-bg-hover);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--ak-focus);
-    outline-offset: -2px;
   }
 
   &.has-active {
@@ -141,7 +149,7 @@ const onToggle = (id: OperatorFilterId, value: string) =>
     flex: none;
     width: 10px;
     height: 10px;
-    margin-left: auto;
+    margin-right: var(--ak-space-4);
     background:
       linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
       linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
@@ -149,11 +157,35 @@ const onToggle = (id: OperatorFilterId, value: string) =>
     transition: background-size var(--ak-dur-fast);
   }
 
-  &[aria-expanded="true"]::after {
+  &.is-open::after {
     background-size:
       100% 2px,
       2px 0;
   }
+}
+
+.ep-more__toggle {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 40px;
+  padding-left: var(--ak-space-3);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: var(--ak-fs-sm);
+
+  &:focus-visible {
+    outline: 2px solid var(--ak-focus);
+    outline-offset: -2px;
+  }
+}
+
+.ep-more__clear {
+  flex: none;
 }
 
 .ep-advanced {

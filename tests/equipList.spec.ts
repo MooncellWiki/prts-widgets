@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import SubContainer from "../src/widgets/EquipList/components/SubContainer.vue";
 import { useEquipListStore } from "../src/widgets/EquipList/store";
+import { parseMaterials } from "../src/widgets/EquipList/utils";
 
 import type { CharEquips } from "../src/widgets/EquipList/types";
 
@@ -22,6 +23,29 @@ function char(name: string, equips: string[]): CharEquips {
     equips: equips.map((equip) => ({ name: equip, type: `${name}-X` })),
   };
 }
+
+describe("材料解析", () => {
+  it("拆出道具名、图片、链接和数量", () => {
+    const html =
+      '<div class="prts-item-icon">[[文件:道具 带框 模组数据块.png|50px|link=模组数据块]]<span class="prts-item-quantity-label">1</span></div>' +
+      '<div class="prts-item-icon">[[文件:道具 带框 龙门币.png|50px|link=龙门币]]<span class="prts-item-quantity-label">2万</span></div>';
+
+    expect(parseMaterials(html)).toEqual([
+      {
+        name: "模组数据块",
+        src: expect.stringContaining("道具_带框_模组数据块.png"),
+        href: "/w/模组数据块",
+        count: "1",
+      },
+      {
+        name: "龙门币",
+        src: expect.stringContaining("道具_带框_龙门币.png"),
+        href: "/w/龙门币",
+        count: "2万",
+      },
+    ]);
+  });
+});
 
 describe("模组一览：展开 / 收起", () => {
   let app: App | undefined;
@@ -43,7 +67,7 @@ describe("模组一览：展开 / 收起", () => {
   }
 
   const avatars = (host: HTMLElement) =>
-    host.querySelectorAll<HTMLElement>(".h-\\[60px\\].cursor-pointer");
+    host.querySelectorAll<HTMLElement>(".sub-avatar__pic");
 
   it("点头像展开这名干员的全部模组，再点收起", async () => {
     const { host, store } = mount([

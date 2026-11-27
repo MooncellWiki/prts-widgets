@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { AkPopover, AkScope } from "@mooncellwiki/prts-design-vue";
-import { NDivider } from "naive-ui";
+import { AkDivider, AkPopover, AkScope } from "@mooncellwiki/prts-design-vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { getImagePath } from "@/utils/utils";
@@ -42,48 +41,41 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
 
 <template>
   <AkScope tag="div" :class="['ml-card', { 'ml-card--narrow': narrow }]">
-    <div class="h-full flex flex-row items-center justify-center">
-      <div
-        class="min-w-[85px] flex basis-1/5 flex-col items-center justify-center"
-      >
+    <div class="ml-memory">
+      <div class="ml-memory__avatar">
         <a :href="link">
           <img
-            class="m-[2px] cursor-pointer"
+            class="ml-memory__avatar-img"
             :src="src"
             width="60"
             height="60"
           />
         </a>
-        <span class="text-sm">{{ charMemory.char }}</span>
+        <span class="ml-memory__char">{{ charMemory.char }}</span>
       </div>
-      <div class="flex basis-4/5 flex-col items-center justify-center">
+      <div class="ml-memory__body">
         <div
           v-for="mmr in charMemory.memories"
           :key="mmr.name"
-          class="w-full flex flex-col"
+          class="ml-memory__set"
         >
-          <div
-            v-if="mmr.isNew"
-            class="my-1 w-full flex flex-col bg-orange text-center text-white"
-          >
-            新增密录
-          </div>
-          <div
-            class="w-full flex items-center bg-[#313131] py-[3px] text-3 text-white"
-          >
-            <div
-              class="min-w-[4em] flex flex-wrap b-r-1 b-r-white b-r-solid px-1 md:min-w-[9.5em]"
-            >
-              <div class="flex items-center">
-                <img width="15" class="pr-1" :src="getSrcElite(mmr.elite)" />
-                <span class="font-bold">Lv.{{ mmr.level }}</span>
+          <div v-if="mmr.isNew" class="ml-memory__new">新增密录</div>
+          <div class="ml-memory__head">
+            <div class="ml-memory__levels">
+              <div class="ml-memory__level">
+                <img
+                  width="15"
+                  class="ml-memory__level-icon"
+                  :src="getSrcElite(mmr.elite)"
+                />
+                <span class="ml-memory__strong">Lv.{{ mmr.level }}</span>
               </div>
-              <div class="flex items-center">
-                <img width="14" class="p-1" :src="srcfavor" />
-                <span class="font-bold">{{ mmr.favor }}%</span>
+              <div class="ml-memory__level">
+                <img width="14" class="ml-memory__favor-icon" :src="srcfavor" />
+                <span class="ml-memory__strong">{{ mmr.favor }}%</span>
               </div>
             </div>
-            <div class="mx-1 w-full flex items-center justify-between">
+            <div class="ml-memory__name-row">
               <span>{{ mmr.name }}</span>
               <AkPopover
                 class="ml-medal-popover"
@@ -91,14 +83,8 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
                 placement="top-end"
               >
                 <template #trigger>
-                  <div
-                    class="w-[40] flex cursor-help items-center justify-center"
-                    style="
-                      border-radius: 3px;
-                      background: linear-gradient(0deg, #ffffff38, transparent);
-                    "
-                  >
-                    <span class="mdi mdi-medal text-4 text-white"></span>
+                  <div class="ml-memory__medal-trigger">
+                    <span class="mdi mdi-medal ml-memory__medal-icon"></span>
                     <img :src="getSrcMedal(mmr)" width="20" />
                   </div>
                 </template>
@@ -114,15 +100,20 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
               </AkPopover>
             </div>
           </div>
-          <div v-for="info in mmr.info" :key="info.link" class="flex flex-col">
-            <NDivider v-if="info.link !== mmr.info[0].link" />
-            <div class="flex flex-nowrap py-2">
-              <div class="flex-basis-5/6">
+          <div
+            v-for="info in mmr.info"
+            :key="info.link"
+            class="ml-memory__info"
+          >
+            <AkDivider
+              v-if="info.link !== mmr.info[0].link"
+              class="ml-memory__divider"
+            />
+            <div class="ml-memory__intro-row">
+              <div class="ml-memory__intro">
                 {{ info.intro }}
               </div>
-              <div
-                class="min-w-[4.5em] flex flex-basis-1/6 items-center justify-center"
-              >
+              <div class="ml-memory__play">
                 <a :href="`/w/${info.link}`">
                   <img width="50" :src="srcplay" />
                 </a>
@@ -136,6 +127,141 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
 </template>
 
 <style scoped lang="scss">
+// 干员列 + 右侧密录行：原 UnoCSS 布局改成这里的 scoped 样式
+.ml-memory {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.ml-memory__avatar {
+  display: flex;
+  flex: 0 1 20%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 85px;
+}
+
+.ml-memory__avatar-img {
+  margin: 2px;
+  cursor: pointer;
+}
+
+.ml-memory__char {
+  font-size: var(--ak-fs-sm);
+}
+
+.ml-memory__body {
+  display: flex;
+  flex: 0 1 80%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ml-memory__set {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.ml-memory__new {
+  width: 100%;
+  margin: 0.25rem 0;
+  background: #fb923c;
+  color: #fff;
+  text-align: center;
+}
+
+.ml-memory__head {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 3px 0;
+  background: #313131;
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+.ml-memory__levels {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 4em;
+  padding: 0 0.25rem;
+  border-right: 1px solid #fff;
+}
+
+@media (min-width: 768px) {
+  .ml-memory__levels {
+    min-width: 9.5em;
+  }
+}
+
+.ml-memory__level {
+  display: flex;
+  align-items: center;
+}
+
+.ml-memory__level-icon {
+  padding-right: 0.25rem;
+}
+
+.ml-memory__favor-icon {
+  padding: 0.25rem;
+}
+
+.ml-memory__strong {
+  font-weight: 700;
+}
+
+.ml-memory__name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0 0.25rem;
+}
+
+.ml-memory__medal-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  border-radius: 3px;
+  background: linear-gradient(0deg, #ffffff38, transparent);
+}
+
+.ml-memory__medal-icon {
+  color: #fff;
+  font-size: 1rem;
+}
+
+.ml-memory__info {
+  display: flex;
+  flex-direction: column;
+}
+
+.ml-memory__intro-row {
+  display: flex;
+  flex-wrap: nowrap;
+  padding: 0.5rem 0;
+}
+
+.ml-memory__intro {
+  flex-basis: 83.3333%;
+}
+
+.ml-memory__play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-basis: 16.6667%;
+  min-width: 4.5em;
+}
+
 // 奖章弹出卡：AkPopover 自己给表面 / 顶边主色条，这里只排图、名、说明
 .ml-medal {
   display: flex;
@@ -181,7 +307,6 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
   font-style: italic;
 }
 
-// 原来的 NCard 外壳换成 AkScope；卡面用设计系统令牌自己画，内部内容不动
 .ml-card {
   box-sizing: border-box;
   display: flex;
@@ -195,6 +320,7 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
   transition:
     border-color var(--ak-dur-normal) var(--ak-ease),
     box-shadow var(--ak-dur-normal);
+  font-size: var(--ak-fs-sm);
 
   &:hover {
     border-color: var(--ak-accent-muted);
@@ -205,13 +331,17 @@ const srcplay = getImagePath("情报处理室_播放按钮.png");
     width: calc(50% - 0.5rem);
   }
 
-  // 内容区窄：整体收 8% 左右；干员名用的是固定 rem 的 text-sm，按同一比例单独收
+  // 内容区窄：整体收 8% 左右；干员名用的是固定 rem 字号，按同一比例单独收
   &.ml-card--narrow {
-    font-size: 0.92em;
+    font-size: min(95%, var(--ak-fs-sm));
 
-    .text-sm {
-      font-size: 0.8rem;
+    .ml-memory__char {
+      font-size: min(95%, var(--ak-fs-sm));
     }
   }
+}
+
+.ml-memory__divider {
+  margin: 3px 0;
 }
 </style>

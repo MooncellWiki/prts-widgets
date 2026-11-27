@@ -111,41 +111,41 @@ const dateTime = computed(() => date.value.toISOString());
     align-items: center;
     gap: 8px;
     min-width: 0;
+  }
 
-    &__head-icon {
-      flex: none;
-      color: var(--ak-fg-muted);
+  &__head-icon {
+    flex: none;
+    color: var(--ak-fg-muted);
+  }
+
+  &__title {
+    font-weight: 700;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__link {
+    color: var(--ak-link);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--ak-link-hover);
+      text-decoration: underline;
     }
+  }
 
-    &__title {
-      font-weight: 700;
-      line-height: 1.2;
-      font-variant-numeric: tabular-nums;
-    }
+  &__tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
 
-    &__link {
-      color: var(--ak-link);
-      text-decoration: none;
-
-      &:hover {
-        color: var(--ak-link-hover);
-        text-decoration: underline;
-      }
-    }
-
-    &__tools {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    &__body {
-      display: flex;
-      flex-wrap: wrap;
-      align-content: flex-start;
-      padding: 6px;
-      background: var(--ak-bg-surface);
-    }
+  &__body {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    padding: 6px;
+    background: var(--ak-bg-surface);
   }
 }
 </style>

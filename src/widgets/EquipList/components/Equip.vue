@@ -9,9 +9,10 @@ import { getImagePath, isMobile } from "@/utils/utils";
 
 import { colorMap, customLabel, statsStyleMap } from "../consts";
 import { useEquipListStore } from "../store";
-import { fixAtkRange, processLink, processMaterial } from "../utils";
+import { fixAtkRange, processLink } from "../utils";
 
 import ETag from "./ETag.vue";
+import Materials from "./Materials.vue";
 
 function getStatColor(type: string, stat: string): string {
   return Number(stat) * (statsStyleMap[type] ?? 1) >= 0 ? "#00B0FF" : "#FF6237";
@@ -103,10 +104,10 @@ const modeMission = () => props.simplemode === "mission";
       :class="{ simple, mobile: isMobile(), 'mod-dark': isDark }"
     >
       <div
-        class="linebox bg-orange text-center m-0!"
+        class="linebox modbody-latest"
         :class="{ nosimple: !simple || !isLatest(e.latest) }"
       >
-        <span class="w-full color-white font-bold">
+        <span class="modbody-latest__title">
           {{ customLabel.equipString.latest }}
         </span>
       </div>
@@ -117,19 +118,21 @@ const modeMission = () => props.simplemode === "mission";
             background: colorMap[e.color] ?? colorMap.grey,
           }"
         >
-          <div class="flex-none">
+          <div class="modtype__icon">
             <img
               :src="`${TORAPPU_ENDPOINT}/assets/uniequip_type/${e.typeIcon?.toLowerCase()}.png`"
               height="30"
               class="typepic"
             />
           </div>
-          <div class="flex-none color-white font-bold">
+          <div class="modtype__name">
             {{ e.type }}
           </div>
         </div>
         <div class="modname">
-          <a :href="`/w/${name}#${e.name}`" class="font-bold">{{ e.name }}</a>
+          <a :href="`/w/${name}#${e.name}`" class="modname__link">{{
+            e.name
+          }}</a>
         </div>
       </div>
       <div class="majorsep" :class="{ nosimple: simple }"></div>
@@ -145,10 +148,7 @@ const modeMission = () => props.simplemode === "mission";
           <div class="rankinfo">
             <div class="ranktext">
               <span v-for="stats in customLabel.statsMap" :key="stats[0]">
-                <span
-                  v-if="e[stats[0]] !== '0'"
-                  class="mx-[0.5em] whitespace-nowrap"
-                >
+                <span v-if="e[stats[0]] !== '0'" class="rankstat">
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
@@ -165,14 +165,14 @@ const modeMission = () => props.simplemode === "mission";
               <span v-if="e.add">
                 <span>
                   <span class="mdi mdi-plus-circle"></span>
-                  <span class="font-bold">&nbsp;特性追加：</span>
+                  <span class="talent__label">&nbsp;特性追加：</span>
                   <span v-html="e.trait"></span>
                 </span>
               </span>
               <span v-else>
                 <span>
                   <span class="mdi mdi-arrow-up-drop-circle"></span>
-                  <span class="font-bold">&nbsp;特性更新：</span>
+                  <span class="talent__label">&nbsp;特性更新：</span>
                   <span v-html="e.trait"></span>
                 </span>
               </span>
@@ -194,10 +194,7 @@ const modeMission = () => props.simplemode === "mission";
           <div class="rankinfo">
             <div class="ranktext">
               <span v-for="stats in customLabel.statsMap" :key="stats[0]">
-                <span
-                  v-if="e[`${stats[0]}2`] !== '0'"
-                  class="mx-[0.5em] whitespace-nowrap"
-                >
+                <span v-if="e[`${stats[0]}2`] !== '0'" class="rankstat">
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
@@ -235,10 +232,7 @@ const modeMission = () => props.simplemode === "mission";
           <div class="rankinfo">
             <div class="ranktext">
               <span v-for="stats in customLabel.statsMap" :key="stats[0]">
-                <span
-                  v-if="e[`${stats[0]}3`] !== '0'"
-                  class="mx-[0.5em] whitespace-nowrap"
-                >
+                <span v-if="e[`${stats[0]}3`] !== '0'" class="rankstat">
                   {{ stats[1] }}&nbsp;
                   <span
                     :style="{
@@ -263,10 +257,10 @@ const modeMission = () => props.simplemode === "mission";
         </div>
         <div class="majorsep" :class="{ nosimple: simple }"></div>
         <div class="linebox" :class="{ nosimple: simple && !modeMission() }">
-          <div class="descr font-bold" :class="{ nosimple: simple }">
+          <div class="descr" :class="{ nosimple: simple }">
             {{ customLabel.equipString.mission }}
           </div>
-          <div class="lineparta flex-col">
+          <div class="lineparta lineparta--col">
             <span v-if="!!e.mission1">
               <span class="mdi mdi-chevron-right"></span>
               &nbsp;
@@ -285,24 +279,24 @@ const modeMission = () => props.simplemode === "mission";
         </div>
         <div class="majorsep" :class="{ nosimple: simple }"></div>
         <div class="linebox" :class="{ nosimple: simple }">
-          <div class="descr font-bold" :class="{ nosimple: simple }">
+          <div class="descr" :class="{ nosimple: simple }">
             {{ customLabel.equipString.condition }}
           </div>
-          <div class="lineparta flex-wrap">
-            <div class="linebox flex-col">
+          <div class="lineparta lineparta--wrap">
+            <div class="linebox linebox--col">
               <div class="consume">
-                <span class="flex flex-nowrap items-center">
+                <span class="consume__row">
                   <div
-                    class="iconfilter rankicon inline-block"
+                    class="iconfilter rankicon"
                     :class="{ nosimple: simple }"
                   >
                     <img
                       :src="getImagePath('模组等级_1.png')"
                       height="30"
-                      class="rankpic m-1"
+                      class="rankpic consume__rankpic"
                     />
                   </div>
-                  <span v-if="!e.cond">
+                  <span v-if="!e.cond" class="consume__items">
                     <ETag type="favor" value="0"></ETag>
                     <ETag type="lv" :value="e.lv ?? '???'"></ETag>
                     <ETag
@@ -310,53 +304,49 @@ const modeMission = () => props.simplemode === "mission";
                       type="mission"
                       value=""
                     ></ETag>
-                    <span v-html="processMaterial(e.mat ?? '')"></span>
+                    <Materials :html="e.mat ?? ''" />
                   </span>
-                  <span v-else v-html="e.cond"></span>
+                  <span v-else class="consume__items" v-html="e.cond"></span>
                 </span>
               </div>
               <div class="minorsep" :class="{ simple }"></div>
               <div class="consume">
-                <span class="flex flex-nowrap items-center">
+                <span class="consume__row">
                   <div
-                    class="iconfilter rankicon inline-block"
+                    class="iconfilter rankicon"
                     :class="{ nosimple: simple }"
                   >
                     <img
                       :src="getImagePath('模组等级_2.png')"
                       height="30"
-                      class="rankpic m-1"
+                      class="rankpic consume__rankpic"
                     />
                   </div>
-                  <span v-if="!e.cond2">
-                    <span>
-                      <ETag type="favor" value="50" />
-                    </span>
-                    <span v-html="processMaterial(e.mat2 ?? '')"></span>
+                  <span v-if="!e.cond2" class="consume__items">
+                    <ETag type="favor" value="50" />
+                    <Materials :html="e.mat2 ?? ''" />
                   </span>
-                  <span v-else v-html="e.cond2"></span>
+                  <span v-else class="consume__items" v-html="e.cond2"></span>
                 </span>
               </div>
               <div class="minorsep" :class="{ simple }"></div>
               <div class="consume">
-                <span class="flex items-center">
+                <span class="consume__row">
                   <div
-                    class="iconfilter rankicon inline-block"
+                    class="iconfilter rankicon"
                     :class="{ nosimple: simple }"
                   >
                     <img
                       :src="getImagePath('模组等级_3.png')"
                       height="30"
-                      class="rankpic m-1"
+                      class="rankpic consume__rankpic"
                     />
                   </div>
-                  <span v-if="!e.cond3">
-                    <span>
-                      <ETag type="favor" value="100" />
-                    </span>
-                    <span v-html="processMaterial(e.mat3 ?? '')"></span>
+                  <span v-if="!e.cond3" class="consume__items">
+                    <ETag type="favor" value="100" />
+                    <Materials :html="e.mat3 ?? ''" />
                   </span>
-                  <span v-else v-html="e.cond3"></span>
+                  <span v-else class="consume__items" v-html="e.cond3"></span>
                 </span>
               </div>
             </div>
@@ -376,6 +366,7 @@ const modeMission = () => props.simplemode === "mission";
   margin: 5px;
   padding: 5px;
   border: 0;
+  font-size: var(--ak-fs-sm);
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.12),
     0 1px 2px rgba(0, 0, 0, 0.24);
@@ -387,7 +378,7 @@ const modeMission = () => props.simplemode === "mission";
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 :deep(.modbody.mobile) {
-  font-size: 95%;
+  font-size: min(95%, var(--ak-fs-sm));
 }
 :deep(.modbody.simple) {
   display: flex;
@@ -582,5 +573,55 @@ const modeMission = () => props.simplemode === "mission";
     2px -2px 4px rgba(0, 0, 0, 0.9),
     -2px 2px 4px rgba(0, 0, 0, 0.9),
     2px 2px 4px rgba(0, 0, 0, 0.9) !important;
+}
+:deep(.modbody-latest) {
+  margin: 0 !important;
+  text-align: center;
+  background: var(--ak-orange-500);
+}
+:deep(.modbody-latest__title) {
+  width: 100%;
+  color: #fff;
+  font-weight: 700;
+}
+:deep(.modtype__icon),
+:deep(.modtype__name) {
+  flex: none;
+}
+:deep(.modtype__name) {
+  color: #fff;
+  font-weight: 700;
+}
+:deep(.modname__link),
+:deep(.talent__label),
+:deep(.descr) {
+  font-weight: 700;
+}
+:deep(.rankstat) {
+  margin-inline: 0.5em;
+  white-space: nowrap;
+}
+:deep(.lineparta--col),
+:deep(.linebox--col) {
+  flex-direction: column;
+}
+:deep(.lineparta--wrap) {
+  flex-wrap: wrap;
+}
+.consume__row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.consume__items {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  gap: 2px;
+}
+:deep(.consume__rankpic) {
+  margin: 4px;
 }
 </style>
