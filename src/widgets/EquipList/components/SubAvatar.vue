@@ -2,7 +2,6 @@
 import { useVModel } from "@vueuse/core";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
-import { getLanguage, LANGUAGES } from "@/utils/i18n";
 import { getImagePath } from "@/utils/utils";
 
 import { shadowColor } from "../consts";
@@ -34,26 +33,22 @@ const toggleShow = (c: CharEquips) => {
   else store.collapse([c]);
   showInfo.value = show;
 };
-const locale = getLanguage();
 </script>
 
 <template>
-  <div class="flex flex-col" :style="{ width: showInfo ? '100%' : 'auto' }">
-    <div class="flex">
-      <div
-        class="relative m-[2px] inline-block h-[60px] w-[60px] flex-none cursor-pointer"
-        @click="toggleShow(char)"
-      >
+  <div class="sub-avatar" :style="{ width: showInfo ? '100%' : 'auto' }">
+    <div class="sub-avatar__row">
+      <div class="sub-avatar__pic" @click="toggleShow(char)">
         <img
           :src="getImagePath(`头像_${char.char.name}_2.png`)"
           width="60"
           height="60"
         />
-        <span class="absolute bottom-[-8%] left-0 font-size-[18px] font-black">
+        <span class="sub-avatar__index">
           <span
             v-for="e in char.equips"
             :key="e.name"
-            class="mx-0.5"
+            class="sub-avatar__extra"
             :style="{
               filter:
                 `drop-shadow(0 1px 0.8px ${shadowColor[e.color!] ?? 'grey'}) ` +
@@ -64,28 +59,75 @@ const locale = getLanguage();
           >
             <img
               :src="`${TORAPPU_ENDPOINT}/assets/uniequip_extratype/${e.typeIcon?.at(-1)?.toLowerCase()}.png`"
-              class="h-[9px] w-[9px]"
+              class="sub-avatar__extra-icon"
               width="9"
               height="9"
             />
           </span>
         </span>
       </div>
-      <div v-if="showInfo" class="w-full flex items-center justify-center">
-        <span v-if="locale === LANGUAGES.JA" class="font-bold">
-          {{ char.char.nameJP ?? char.char.name }}
+      <div v-if="showInfo" class="sub-avatar__name">
+        <span class="sub-avatar__name-text"
+          ><a :href="`/w/${char.char.name}`">{{ char.char.name }}</a>
         </span>
-        <span
-          v-else-if="locale === LANGUAGES.EN || locale === LANGUAGES.KO"
-          class="font-bold"
-        >
-          {{ char.char.nameEN ?? char.char.name }}
-        </span>
-        <span v-else class="font-bold">{{ char.char.name }}</span>
       </div>
     </div>
-    <div v-if="showInfo" class="w-full">
+    <div v-if="showInfo" class="sub-avatar__meta">
       <Equip :name="char.char.name" :data="char.equips"></Equip>
     </div>
   </div>
 </template>
+
+<style scoped>
+.sub-avatar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+}
+
+.sub-avatar__row {
+  display: flex;
+}
+
+.sub-avatar__pic {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 60px;
+  height: 60px;
+  margin: 2px;
+  cursor: pointer;
+}
+
+.sub-avatar__index {
+  position: absolute;
+  bottom: -8%;
+  left: 0;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.sub-avatar__extra {
+  margin-inline: 2px;
+}
+
+.sub-avatar__extra-icon {
+  width: 9px;
+  height: 9px;
+}
+
+.sub-avatar__name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.sub-avatar__name-text {
+  font-weight: 700;
+}
+
+.sub-avatar__meta {
+  width: 100%;
+}
+</style>

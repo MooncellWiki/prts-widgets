@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { NCard } from "naive-ui";
+import { computed } from "vue";
+
+import {
+  AkButton,
+  AkButtonGroup,
+  AkPanel,
+  AkProfession,
+} from "@mooncellwiki/prts-design-vue";
 
 import { getLanguage } from "@/utils/i18n";
-import { getImagePath } from "@/utils/utils";
 
+import { branchLine } from "../../CharList/assets";
 import { useEquipListStore } from "../store";
 
 import SubAvatar from "./SubAvatar.vue";
@@ -24,50 +31,57 @@ const props = withDefaults(
 
 const store = useEquipListStore();
 const locale = getLanguage();
+
+const date = computed(() => {
+  const value = new Date(Number(props.title) * 1000);
+  // 旧数据里可能是非数字 / 空标题；时间行也别让卡片整个挂掉
+  return Number.isNaN(value.getTime()) ? new Date(0) : value;
+});
+const dateText = computed(() => date.value.toLocaleDateString(locale));
+const dateTime = computed(() => date.value.toISOString());
 </script>
 
 <template>
-  <NCard
-    class="my-1 w-full"
-    header-style="text-align: center; padding: 10px;"
-    content-style="padding: 6px"
-    size="small"
-    hoverable
-  >
+  <AkPanel :class="['el-sub', `el-sub--${groupby}`]">
     <template #header>
-      <div v-if="groupby === 'sub'" class="flex items-center justify-center">
-        <span
-          class="h-[40px] w-[40px] inline-flex items-center justify-center overflow-hidden bg-black align-text-bottom"
-        >
-          <img
-            class="absolute scale-50"
-            :src="getImagePath(`职业分支图标_${title}.png`)"
-          />
-        </span>
-        <span class="inline-block text-center" style="width: 7em">
-          {{ title }}
-        </span>
-      </div>
-      <div v-if="groupby === 'time'">
-        {{ new Date(Number(title) * 1000).toLocaleDateString(locale) }}
-      </div>
-      <div v-if="groupby === 'opt'">
-        <a :href="`/w/${title}`">
-          {{ title }}
-        </a>
-      </div>
+      <span class="el-sub__head">
+        <template v-if="groupby === 'sub'">
+          <AkProfession :src="branchLine(title)" :name="title" branch />
+          <span class="el-sub__title">{{ title }}</span>
+        </template>
+
+        <template v-else-if="groupby === 'time'">
+          <time class="el-sub__title" :datetime="dateTime">{{ dateText }}</time>
+        </template>
+
+        <template v-else>
+          <a class="el-sub__link" :href="`/w/${title}`">{{ title }}</a>
+        </template>
+      </span>
     </template>
+
     <template #header-extra>
-      <span
-        class="mdi mdi-arrow-expand cursor-pointer p-0.5 text-xl"
-        @click="store.expand(chars)"
-      />
-      <span
-        class="mdi mdi-arrow-collapse cursor-pointer p-0.5 text-xl"
-        @click="store.collapse(chars)"
-      />
+      <span class="el-sub__tools">
+        <AkButtonGroup size="sm" label="展开或收起本组模组">
+          <AkButton
+            class="el-sub__expand"
+            variant="ghost"
+            @click="store.expand(chars)"
+          >
+            展开
+          </AkButton>
+          <AkButton
+            class="el-sub__collapse"
+            variant="ghost"
+            @click="store.collapse(chars)"
+          >
+            收起
+          </AkButton>
+        </AkButtonGroup>
+      </span>
     </template>
-    <div class="flex flex-wrap">
+
+    <div class="el-sub__body">
       <SubAvatar
         v-for="(char, ind) in chars"
         :key="ind"
@@ -75,5 +89,63 @@ const locale = getLanguage();
         :char="char"
       />
     </div>
-  </NCard>
+  </AkPanel>
 </template>
+
+<style scoped lang="scss">
+.el-sub {
+  margin: 0 0 var(--ak-space-3);
+
+  :deep(.ak-panel__body) {
+    padding: 0;
+  }
+
+  :deep(.ak-panel__title) {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  &__head-icon {
+    flex: none;
+    color: var(--ak-fg-muted);
+  }
+
+  &__title {
+    font-weight: 700;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__link {
+    color: var(--ak-link);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--ak-link-hover);
+      text-decoration: underline;
+    }
+  }
+
+  &__tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__body {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    padding: 6px;
+    background: var(--ak-bg-surface);
+  }
+}
+</style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { NEmpty } from "naive-ui";
+import { AkEmpty } from "@mooncellwiki/prts-design-vue";
 
 import { customLabel } from "../consts";
 
@@ -87,7 +87,7 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
 </script>
 
 <template>
-  <div class="w-full flex flex-col flex-wrap">
+  <div class="equip-groups">
     <SubContainer
       v-for="(chars, subtype) in groupedEquipData"
       :key="subtype"
@@ -96,12 +96,22 @@ const groupedEquipData = computed<Record<string, CharEquips[]>>(() => {
       :groupby="group"
     />
   </div>
-  <NEmpty
+  <AkEmpty
     v-if="Object.keys(groupedEquipData).length === 0"
     :description="customLabel.emptyDesc"
   >
     <template #icon>
-      <span class="mdi mdi-account-filter-outline text-5xl" />
+      <span class="ak-empty__icon mdi mdi-account-filter-outline" />
     </template>
-  </NEmpty>
+  </AkEmpty>
 </template>
+
+<style scoped>
+.equip-groups {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  width: 100%;
+  font-size: var(--ak-fs-sm);
+}
+</style>

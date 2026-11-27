@@ -29,12 +29,12 @@ export const statsStyleMap: Record<string, number> = {
   atkspd: 1,
 };
 
+/** 模组稀有度 3 / 4 / 5 → 4 / 5 / 6 星；筛选芯片上的星形自己画。 */
 export const rarityMap: Record<string, string> = {
-  "3": "4★",
-  "4": "5★",
-  "5": "6★",
+  "3": "4",
+  "4": "5",
+  "5": "6",
 };
-
 export const tagIconFavor = getImagePath("图标_模组需求_信赖.png");
 
 export const tagIconOther = getImagePath("图标_模组需求_精英2等级.png");
@@ -91,150 +91,3 @@ export const customLabel = {
   },
   loading: "加载中",
 };
-
-function stats(type: string): string {
-  const ele = customLabel.statsMap.find((e) => e[0] === type);
-  return ele ? ele[1] : "";
-}
-
-export function getSortOptions() {
-  return [
-    {
-      label: customLabel.sortOptions.default,
-      value: "default",
-    },
-    {
-      label: customLabel.sortOptions.asc,
-      value: "asc",
-    },
-    {
-      label: customLabel.sortOptions.desc,
-      value: "desc",
-    },
-    {
-      label: stats("hp"),
-      value: "hp",
-    },
-    {
-      label: stats("atk"),
-      value: "atk",
-    },
-    {
-      label: stats("def"),
-      value: "def",
-    },
-    {
-      label: stats("res"),
-      value: "res",
-    },
-    {
-      label: stats("cost"),
-      value: "cost",
-    },
-    {
-      label: stats("time"),
-      value: "time",
-    },
-    {
-      label: stats("atkspd"),
-      value: "atkspd",
-    },
-  ];
-}
-
-export function getFilterOptions() {
-  return [
-    {
-      label: customLabel.sortOptions.all,
-      value: "all",
-    },
-    {
-      label: customLabel.sortOptions.filterTalent,
-      value: "talent",
-    },
-    {
-      label: customLabel.sortOptions.filterTrait,
-      value: "trait",
-    },
-    {
-      label: customLabel.sortOptions.filterType,
-      value: "type",
-    },
-    {
-      label: customLabel.sortOptions.filterTime,
-      value: "addtime",
-    },
-    {
-      label: customLabel.sortOptions.filterOpt,
-      value: "mission2opt",
-    },
-    {
-      label: stats("hp"),
-      value: "hp",
-    },
-    {
-      label: stats("atk"),
-      value: "atk",
-    },
-    {
-      label: stats("def"),
-      value: "def",
-    },
-    {
-      label: stats("res"),
-      value: "res",
-    },
-    {
-      label: stats("cost"),
-      value: "cost",
-    },
-    {
-      label: stats("time"),
-      value: "time",
-    },
-    {
-      label: stats("block"),
-      value: "block",
-    },
-    {
-      label: stats("atkspd"),
-      value: "atkspd",
-    },
-  ];
-}
-
-export function getFilterValue(option: string = "all") {
-  return option === "type"
-    ? [
-        {
-          label: "X",
-          value: "x",
-        },
-        {
-          label: "Y",
-          value: "y",
-        },
-        {
-          label: "Δ",
-          value: "δ",
-        },
-        {
-          label: "α",
-          value: "α",
-        },
-        {
-          label: "β",
-          value: "β",
-        },
-      ]
-    : [
-        {
-          label: customLabel.sortOptions.yes,
-          value: "yes",
-        },
-        {
-          label: customLabel.sortOptions.no,
-          value: "no",
-        },
-      ];
-}
