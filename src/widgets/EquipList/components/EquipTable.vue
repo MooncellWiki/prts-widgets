@@ -241,7 +241,7 @@ function toggleRow(row: EquipRow) {
   }
 
   &__detail > td {
-    padding: 0;
+    padding: 0 !important;
     background: transparent !important;
   }
 

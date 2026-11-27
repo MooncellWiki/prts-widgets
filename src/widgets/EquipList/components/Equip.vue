@@ -362,7 +362,7 @@ const modeMission = () => props.simplemode === "mission";
 :deep(.modbody) {
   display: flex;
   width: 100%;
-  max-width: 800px;
+  max-width: min(800px, calc(100% - 10px));
   margin: 5px;
   padding: 5px;
   border: 0;
