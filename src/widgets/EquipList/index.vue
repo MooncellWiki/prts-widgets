@@ -4,9 +4,8 @@ import { computed, ref, useTemplateRef } from "vue";
 import { AkButton, AkEmpty, AkScope } from "@mooncellwiki/prts-design-vue";
 import { useQuery } from "@pinia/colada";
 import { useElementSize } from "@vueuse/core";
-import { NConfigProvider, NLayout } from "naive-ui";
 
-import { getLanguage, getNaiveUILocale } from "@/utils/i18n";
+import { getLanguage } from "@/utils/i18n";
 import { useTheme } from "@/utils/theme";
 import { useHostTheme } from "@/utils/useHostTheme";
 
@@ -41,8 +40,7 @@ import { useEquipListStore } from "./store";
 
 import type { CharEquips, EquipRow } from "./types";
 
-const i18nConfig = getNaiveUILocale();
-const { theme, themeOverrides, isDark } = useTheme();
+const { isDark } = useTheme();
 const scopeTheme = useHostTheme();
 const locale = getLanguage();
 const store = useEquipListStore();
@@ -199,69 +197,57 @@ const CharEquipList = computed(() => {
 
 <template>
   <AkScope class="ep ak-not-prose" :theme="scopeTheme">
-    <NConfigProvider
-      inline-theme-disabled
-      :theme="theme"
-      :theme-overrides="themeOverrides"
-      :locale="i18nConfig.locale"
-      :date-locale="i18nConfig.dateLocale"
-      preflight-style-disabled
+    <div
+      :class="[
+        'mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4',
+        isDark && 'prts-widget-dark',
+      ]"
     >
-      <NLayout
-        :class="[
-          'mx-auto max-w-3xl antialiased lg:max-w-[90rem] md:p-4',
-          isDark && 'prts-widget-dark',
-        ]"
-      >
-        <div ref="root" :class="['ep-root', { 'ep--narrow': width < 640 }]">
-          <FilterPanel
-            v-model:advanced-open="advancedOpen"
-            :filters="operatorFilters"
-            :selection="operatorSelection"
-            :advanced-count="advancedCount"
-            :disabled="busy"
-            @toggle="toggleOperator"
-            @clear="clearOperator"
-          >
-            <template #advanced>
-              <ModuleFilterPanel
-                v-model:selection="filterSelection"
-                :time-options="timeData"
-                :disabled="busy"
-                :narrow="width < 640"
-              />
-            </template>
-          </FilterPanel>
+      <div ref="root" :class="['ep-root', { 'ep--narrow': width < 640 }]">
+        <FilterPanel
+          v-model:advanced-open="advancedOpen"
+          :filters="operatorFilters"
+          :selection="operatorSelection"
+          :advanced-count="advancedCount"
+          :disabled="busy"
+          @toggle="toggleOperator"
+          @clear="clearOperator"
+        >
+          <template #advanced>
+            <ModuleFilterPanel
+              v-model:selection="filterSelection"
+              :time-options="timeData"
+              :disabled="busy"
+              :narrow="width < 640"
+            />
+          </template>
+        </FilterPanel>
 
-          <Toolbar
-            v-model:q="searchQuery"
-            v-model:sort="sort"
-            v-model:view="view"
-            v-model:group="group"
-          />
+        <Toolbar
+          v-model:q="searchQuery"
+          v-model:sort="sort"
+          v-model:view="view"
+          v-model:group="group"
+        />
 
-          <AkScope tag="div" class="ep-result" :theme="scopeTheme">
-            <AkEmpty
-              v-if="CharEquipList.length === 0"
-              title="没有符合条件的模组"
+        <AkScope tag="div" class="ep-result" :theme="scopeTheme">
+          <AkEmpty v-if="CharEquipList.length === 0" title="没有符合条件的模组">
+            放宽几项筛选条件，或者<AkButton
+              variant="link"
+              @click="resetAllFilters"
             >
-              放宽几项筛选条件，或者<AkButton
-                variant="link"
-                @click="resetAllFilters"
-              >
-                清除全部条件</AkButton
-              >。
-            </AkEmpty>
-            <div v-else-if="view === View.TABLE">
-              <EquipTable :data="CharEquipList" />
-            </div>
-            <div v-else>
-              <EquipGroup :data="filteredEquipData" :group="group" />
-            </div>
-          </AkScope>
-        </div>
-      </NLayout>
-    </NConfigProvider>
+              清除全部条件</AkButton
+            >。
+          </AkEmpty>
+          <div v-else-if="view === View.TABLE">
+            <EquipTable :data="CharEquipList" />
+          </div>
+          <div v-else>
+            <EquipGroup :data="filteredEquipData" :group="group" />
+          </div>
+        </AkScope>
+      </div>
+    </div>
   </AkScope>
 </template>
 
@@ -276,7 +262,7 @@ const CharEquipList = computed(() => {
   background-color: transparent;
 }
 
-// 手机上给筛选面板留一点边，桌面交给 NLayout 的 md:p-4
+// 手机上给筛选面板留一点边，桌面交给外层 md:p-4
 .ep-root {
   padding: 5px;
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NTooltip } from "naive-ui";
+import { AkTooltip } from "@mooncellwiki/prts-design-vue";
 
 import { customLabel, tagIconFavor, tagIconOther } from "../consts";
 
@@ -14,7 +14,7 @@ const getIconSrc = (type: string) => {
 </script>
 
 <template>
-  <NTooltip trigger="hover">
+  <AkTooltip trigger="hover">
     <template #trigger>
       <div
         v-if="type === 'lv' || type === 'favor'"
@@ -57,5 +57,5 @@ const getIconSrc = (type: string) => {
     <div v-if="type === 'mission'">
       {{ customLabel.equipString.condMission }}
     </div>
-  </NTooltip>
+  </AkTooltip>
 </template>

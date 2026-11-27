@@ -1,10 +1,3 @@
-import type { SelectGroupOption } from "naive-ui";
-
-export interface SelectionConfig {
-  title: string;
-  options: SelectGroupOption[];
-}
-
 export interface Char {
   name: string;
   nameEN: string;

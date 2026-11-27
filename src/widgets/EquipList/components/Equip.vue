@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeMount, onBeforeUpdate, onMounted, ref } from "vue";
 
-import { NSpin } from "naive-ui";
+import { AkSpinner } from "@mooncellwiki/prts-design-vue";
 
 import { TORAPPU_ENDPOINT } from "@/utils/consts";
 import { useTheme } from "@/utils/theme";
@@ -95,7 +95,7 @@ const modeMission = () => props.simplemode === "mission";
 </script>
 
 <template>
-  <NSpin :show="loading">
+  <AkSpinner :show="loading">
     <div
       v-for="e in content"
       :key="e.name"
@@ -365,7 +365,7 @@ const modeMission = () => props.simplemode === "mission";
       </div>
     </div>
     <template #description> {{ customLabel.loading }} </template>
-  </NSpin>
+  </AkSpinner>
 </template>
 
 <style scoped>
