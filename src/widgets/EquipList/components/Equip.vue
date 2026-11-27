@@ -552,17 +552,17 @@ const modeMission = () => props.simplemode === "mission";
     2px 2px 4px #fff;
 }
 :deep(.prts-item-quantity-label) {
-  bottom: 0px;
+  bottom: 2px;
   right: 2px;
   font-size: 10pt;
 }
 :deep(.prts-item-quantity-label-small) {
-  bottom: 0;
+  bottom: 2px;
   right: 0;
   font-size: smaller;
 }
 :deep(.prts-item-quantity-label-center) {
-  bottom: 0;
+  bottom: 2px;
   right: 50%;
   transform: translateX(50%);
   font-size: smaller;
